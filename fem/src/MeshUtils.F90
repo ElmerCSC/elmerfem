@@ -6460,7 +6460,6 @@ END SUBROUTINE GetMaxDefs
           NodesT % x(n), NodesT % y(n), NodesT % z(n), & 
           Basis(n), BasisM(n), dBasisdx(n,3), STAT = AllocStat )
       IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 1')
-
       
       IF( Naxial > 1 ) THEN
         ALLOCATE( Alpha(n), AlphaM(n) )
@@ -6474,10 +6473,12 @@ END SUBROUTINE GetMaxDefs
         IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 2')        
       END IF
         
-      n = 12 ! Hard-coded size sufficient for second-order edge elements
-      ALLOCATE( WBasis(n,3), WBasisM(n,3), RotWBasis(n,3), STAT=AllocStat )
-      IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 3')
-      
+      IF( EdgeBasis ) THEN 
+        n = 12 ! Hard-coded size sufficient for second-order edge elements
+        ALLOCATE( WBasis(n,3), WBasisM(n,3), RotWBasis(n,3), STAT=AllocStat )
+        IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 3')
+      END IF
+        
       Nodes % z  = 0.0_dp
       NodesM % z = 0.0_dp
       NodesT % z = 0.0_dp
@@ -6511,7 +6512,10 @@ END SUBROUTINE GetMaxDefs
       Nslave = 0
       Nmaster = 0
 
-      
+
+      ! Identify center nodes for axial projectors since at the origin the angle
+      ! is impossible to determin. Instead for the origin the angle is the average
+      ! of the other angles in the element. 
       CenterI = 0
       CenterIM = 0
       IF( Naxial > 1 ) THEN
@@ -6606,9 +6610,10 @@ END SUBROUTINE GetMaxDefs
             amin = MINVAL( Alpha(1:ne) )
             amax = MAXVAL( Alpha(1:ne) )            
           END IF
+        END IF ! Naxial > 1
 
-        END IF
-
+        ! If we have full angle eliminate the discontinuity of the angle
+        ! since we like to do the mapping using continuous coorinates. 
         IF( FullCircle ) THEN
           LeftCircle = ( ALL( ABS( Alpha(1:ne) ) > ArcCoeff * 90.0_dp ) )
           IF( LeftCircle ) THEN
@@ -6708,7 +6713,6 @@ END SUBROUTINE GetMaxDefs
           END IF
           
           NodesM % y(1:nM) = BMesh2 % Nodes % y(IndexesM(1:nM))
-          NodesM % x(1:nM) = ArcCoeff * BMesh2 % Nodes % x(IndexesM(1:nM))
         
           ! Make the quick and dirty search first
           ! This requires some minimal width of the cut
@@ -6718,7 +6722,10 @@ END SUBROUTINE GetMaxDefs
             
             ymaxm = MAXVAL( NodesM % y(1:neM))
             IF( ymaxm < ymin ) CYCLE
+
+            NodesM % x(1:nM) = ArcCoeff * BMesh2 % Nodes % x(IndexesM(1:nM))
           ELSE
+            NodesM % x(1:nM) = ArcCoeff * BMesh2 % Nodes % x(IndexesM(1:nM))
 
             ! For axial projector first check the radius since it does not have complications with
             ! periodicity and is therefore cheaper. 
@@ -6774,7 +6781,7 @@ END SUBROUTINE GetMaxDefs
           IF( LeftCircle ) THEN
             ! Omit the element if it is definately on the right circle
             IF( ALL( ABS( AlphaM(1:neM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
-            DO j=1,neM
+            DO j=1,nM
               IF( AlphaM(j) < 0.0_dp ) AlphaM(j) = AlphaM(j) + ArcCoeff * 360.0_dp
             END DO
           END IF
@@ -6818,12 +6825,6 @@ END SUBROUTINE GetMaxDefs
             END IF
 
             Nrange = Nrange1
-            ! Check whether there could be a intersection in an other interval as well
-            !IF( xminm + ArcRange < xmax + ArcTol ) THEN
-            !  Nrange2 = 1
-            !ELSE
-            !  Nrange2 = 0
-            !END IF
           END IF
 
           xminm = MINVAL( NodesM % x(1:neM) )
@@ -6841,15 +6842,10 @@ END SUBROUTINE GetMaxDefs
           ! Therefore this check is postponed until here.
           IF( Naxial > 1 ) THEN
             yminm = MINVAL( NodesM % y(1:nM) )
-            IF( yminm > ymax - Ytol ) GOTO 100
+            IF( yminm > ymax ) GOTO 100
             
             ymaxm = MAXVAL( NodesM % y(1:nM))
-            IF( ymaxm < ymin + Ytol ) GOTO 100
-          END IF
-
-
-          IF( DebugElem ) THEN
-            PRINT *,'X in range:',xminm,xmaxm
+            IF( ymaxm < ymin ) GOTO 100
           END IF
 
           neM = ElementM % TYPE % NumberOfEdges 
@@ -6865,7 +6861,7 @@ END SUBROUTINE GetMaxDefs
             x1 = Nodes % x(i)
             y1 = Nodes % y(i)
             i2 = i + 1 
-            IF( i2 > ne ) i2 = 1
+            IF( i2 > ne ) i2 = 1  ! check the (ne,1) edge also
             x2 = Nodes % x(i2)
             y2 = Nodes % y(i2)
 
@@ -6896,7 +6892,8 @@ END SUBROUTINE GetMaxDefs
               
               CALL InvertMatrix( A,2 )
               C(1:2) = MATMUL(A(1:2,1:2),B(1:2))
-              
+
+              ! Check that the hit is within the line segment
               IF(ANY(C(1:2) < 0.0) .OR. ANY(C(1:2) > 1.0d0)) CYCLE
               
               ! We have a hit, two line segments can have only one hit
@@ -6955,6 +6952,7 @@ END SUBROUTINE GetMaxDefs
             PRINT *,'CornerHits:',k
           END IF
 
+          ! Possible corner hits for the master element
           DO i=1,neM
             IF( CornerFoundM(i) ) CYCLE
 
@@ -7085,7 +7083,9 @@ END SUBROUTINE GetMaxDefs
             END IF
 
             IF( dArea < RelTolY**2 * RefArea ) CYCLE
-            
+
+            ! Triangle is created by keeping one corner node fixed and rotating through
+            ! the other nodes. 
             NodesT % x(2) = x(k+1)
             NodesT % y(2) = y(k+1)
             NodesT % x(3) = x(k+2)
@@ -7413,6 +7413,9 @@ END SUBROUTINE GetMaxDefs
 100       IF( Repeating ) THEN
             IF( NRange /= NRange2 ) THEN
               Nrange = Nrange2
+
+              ! Rotate the sector to a new position for axial case
+              ! Or just some up the angle in the radial/2D case
               IF( Naxial > 1 ) THEN
                 dAlpha = (Nrange2 - Nrange1) * 2.0_dp * PI / Naxial
              
@@ -7461,9 +7464,14 @@ END SUBROUTINE GetMaxDefs
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
           NodesM % x, NodesM % y, NodesM % z, &
           NodesT % x, NodesT % y, NodesT % z, &
-          Basis, BasisM, dBasisdx, &
-          WBasis, WBasisM, RotWBasis )
-
+          Basis, BasisM, dBasisdx )
+      IF( EdgeBasis ) THEN
+        DEALLOCATE( WBasis, WBasisM, RotWBasis )
+      END IF
+      IF(BiOrthogonalBasis) THEN
+        DEALLOCATE(CoeffBasis, MASS )
+      END IF
+       
       CALL Info('LevelProjector','Number of integration pair candidates: '&
           //TRIM(I2S(TotCands)),Level=10)
       CALL Info('LevelProjector','Number of integration pairs: '&
