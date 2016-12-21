@@ -17465,11 +17465,12 @@ CONTAINS
     Graph % n = 0
   END SUBROUTINE Graph_Deallocate
 
-  SUBROUTINE ElmerGraphColour(Graph, Colouring)
+  SUBROUTINE ElmerGraphColour(Graph, Colouring, ConsistentColours)
     IMPLICIT NONE
 
     TYPE(Graph_t), INTENT(IN) :: Graph
     TYPE(Graphcolour_t) :: Colouring
+    LOGICAL, OPTIONAL :: ConsistentColours
 
     INTEGER, ALLOCATABLE :: uncolored(:)
     INTEGER, ALLOCATABLE :: fc(:), ucptr(:), rc(:), rcnew(:)
@@ -17478,6 +17479,7 @@ CONTAINS
             nrc, nunc, nthr, TID, allocstat, gn
     INTEGER, ALLOCATABLE :: colours(:)
     INTEGER, PARAMETER :: VERTEX_PER_THREAD = 100
+    LOGICAL :: consistent
 
     ! Iterative parallel greedy algorithm (Alg 2.) from 
     ! U. V. Catalyurek, J. Feo, A.H. Gebremedhin, M. Halappanavar, A. Pothen. 
@@ -17491,6 +17493,10 @@ CONTAINS
     gn = Graph % n
     nunc = gn
 
+    ! Check if a reproducible colouring is being requested
+    consistent = .FALSE.
+    IF (PRESENT(ConsistentColours)) consistent = ConsistentColours
+
     ! Get maximum vertex degree of the given graph
     !$OMP PARALLEL DO SHARED(Graph) &
     !$OMP PRIVATE(v) REDUCTION(max:dualmaxdeg) DEFAULT(NONE)
@@ -17501,7 +17507,7 @@ CONTAINS
 
     nthr = 1
     ! Ensure that each vertex has at most one thread attached to it
-    !$ nthr = MIN(omp_get_max_threads(), gn)
+    !$ IF (.NOT. consistent) nthr = MIN(omp_get_max_threads(), gn)
 
     ! Allocate memory for colours of vertices and thread colour pointers
     ALLOCATE(colours(gn), uncolored(gn), ucptr(nthr+1), STAT=allocstat)

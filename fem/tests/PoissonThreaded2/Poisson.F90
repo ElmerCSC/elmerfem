@@ -29,15 +29,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, SAVE :: maxdofs
   LOGICAL, SAVE :: AllocationsDone = .FALSE.
   !$OMP THREADPRIVATE(STIFF, LOAD, FORCE, AllocationsDone, maxdofs)
-  ! Variables related to graph colouring
-!  INTEGER :: col
-!  TYPE(Graph_t) :: DualGraph
-!  TYPE(GraphColour_t) :: GraphColouring
-!  TYPE(Graph_t), POINTER :: ColourIndexList
-!  INTEGER, ALLOCATABLE :: dualptr(:), dualind(:), colours(:), &
-!        cptr(:), cind(:)
-!  INTEGER, POINTER :: colorinds(:)
-  INTEGER :: nactive,col
+  INTEGER :: nactive,col,nColours
 
   LOGICAL :: VecAsm, MCAsm
 
@@ -50,32 +42,11 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   !----------------
   CALL DefaultInitialize()
 
-  ! Check that mesh colouring is actually in use
   VecAsm = .TRUE.
-!  MCAsm = ListGetLogical( Solver % Values, 'Mesh Colouring', Found )
-!  IF (VecAsm .AND. MCAsm .AND. Found) THEN
-!    CALL Info('PoissonSolver', 'Vectorized assembly in use')
-
-    ! Construct the dual graph from Elmer mesh
-!    CALL ElmerMeshToDualGraph(Mesh, DualGraph)
-    
-    ! Colour the dual graph
-!    CALL ElmerGraphColour(DualGraph, GraphColouring)
-    
-    ! Deallocate dual graph as it is no longer needed
- !   CALL Graph_Deallocate(DualGraph)
-    
-    ! Construct colour lists
- !   CALL ElmerColouringToGraph(GraphColouring, ColourIndexList)
- !   CALL Colouring_Deallocate(GraphColouring)
- ! ELSE
- !   CALL Fatal('PoissonSolver', 'Vectorized assembly not in use')
- ! END IF
-  
-!  ColourIndexList => Solver % ColourIndexList
+  CALL ResetTimer('ThreadedAssembly')
 
   !$OMP PARALLEL DEFAULT(NONE) &
-  !$OMP SHARED(Solver, Mesh, nActive,VecAsm) &
+  !$OMP SHARED(Solver, Mesh, nColours, nActive, VecAsm) &
   !$OMP PRIVATE(BodyForce, Element, col, n, nd, nb, t, istat, Found, Norm, &
   !$OMP         Indexes, nind, LoadPtr)
 
@@ -93,13 +64,14 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 
   ! Perform FE assembly one colour at a time (thread-safe)
   ! Element indices are listed in packed (CRS) structure  ColourIndexList
-  
-  CALL ResetTimer('ThreadedAssembly')
+  !$OMP SINGLE
+  nColours = GetNOFColours(Solver) ! Initialize coloured assembly
+  !$OMP END SINGLE
 
-  DO col=1,GetNOFColours(Solver)
+  DO col=1,nColours
     !$OMP SINGLE
     CALL Info('PoissonSolve','Assembly of colour: '//TRIM(I2S(col)),Level=10)
-    nactive = GetNOFActive(Solver)
+    nactive = GetNOFActive(Solver) ! Pick the next available colour
     !$OMP END SINGLE
 
     !$OMP DO SCHEDULE(STATIC)
@@ -113,8 +85,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
       BodyForce => GetBodyForce(Element)
       
       IF ( ASSOCIATED(BodyForce) ) THEN
-        LoadPtr => GetReal( BodyForce, 'Source', Found, UElement=Element )
-        LOAD(1:n) = LoadPtr(1:n)
+        CALL GetRealValues( BodyForce, 'Source', Load, Found, UElement=Element )
       END IF
 
       !Get element local matrix and rhs vector:
@@ -130,9 +101,6 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   !$OMP END PARALLEL
 
   CALL CheckTimer('ThreadedAssembly',Delete=.TRUE.)
-
-  ! Deallocate colouring 
-  !CALL Graph_Deallocate(ColourIndexList)
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
@@ -175,20 +143,23 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
       ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
               DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
       IF (allocstat /= 0) THEN
-        CALL Fatal('LocalMatrix','Storage allocation for local element basis failed')
+        CALL Fatal('LocalMatrix',&
+                'Storage allocation for local element basis failed')
       END IF
     ELSE IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) THEN
       DEALLOCATE(Basis, dBasisdx, DetJ, LoadAtIPs)
       ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
               DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
       IF (allocstat /= 0) THEN
-        CALL Fatal('LocalMatrix','Storage allocation for local element basis failed')
+        CALL Fatal('LocalMatrix',&
+                'Storage allocation for local element basis failed')
       END IF
     END IF
     
     ldbasis = SIZE(Basis,1)
     ! Compute values of all basis functions at all integration points
-    stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, DetJ, Basis, dBasisdx )
+    stat = ElementInfoVec( Element, Nodes, ngp, &
+            IP % U, IP % V, IP % W, DetJ, Basis, dBasisdx )
     ! Compute actual integration weights (recycle memory space of DetJ)
     DetJ(1:ngp) = IP % s(1:ngp)*Detj(1:ngp)
 
