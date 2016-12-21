@@ -43,8 +43,8 @@ Solver 1
   Optimize Bandwidth = True
   Steady State Convergence Tolerance = 1e-09
 
-!  Mesh Colouring = Logical True
-  Multithreaded Solver = Logical True
+  MultiColour Solver = Logical True
+  MultiColour Consistent = Logical True
 End
 
 Boundary Condition 1

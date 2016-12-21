@@ -626,10 +626,9 @@ CONTAINS
     REAL(KIND=dp) :: tt, InitValue
     REAL(KIND=dp), POINTER :: Component(:)
 
-
     TYPE(Graph_t) :: DualGraph
     TYPE(GraphColour_t) :: GraphColouring
-
+    LOGICAL :: ConsistentColours
     
 
     ! Set pointer to the list of solver parameters
@@ -1094,14 +1093,19 @@ CONTAINS
           Solver % Variable % TYPE = Variable_on_nodes_on_elements
 
 
-        IF( ListGetLogical( SolverParams,'Multithreaded Solver',Found ) ) THEN
+        IF( ListGetLogical( SolverParams,'MultiColour Solver',Found ) ) THEN
           CALL Info('AddEquationBasics','Creating structures for mesh colouring')
+          ConsistentColours = .FALSE.
+          IF ( ListGetLogical(SolverParams,'MultiColour Consistent', Found) ) THEN
+            CALL Info('AddEquationBasics','Creating consistent colouring')
+            ConsistentColours = .TRUE.
+          END IF
 
           ! Construct the dual graph from Elmer mesh
           CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
           
           ! Colour the dual graph
-          CALL ElmerGraphColour(DualGraph, GraphColouring)
+          CALL ElmerGraphColour(DualGraph, GraphColouring, ConsistentColours)
           
           ! Deallocate dual graph as it is no longer needed
           CALL Graph_Deallocate(DualGraph)
@@ -3811,13 +3815,13 @@ CONTAINS
       CALL DefaultInitialize( Solver )
       
       IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
-        ncolours = Solver % ColourIndexList % n 
+        ncolours = Solver % ColourIndexList % n
       ELSE
         ncolours = 1 
       END IF
+      Solver % CurrentColour = 0
 
       SolverAddr = Solver % PROCEDURE
-      CurrentColour = 0
       DO col=1,ncolours
         ! The > CurrentColour < is advanced by GetNOFActive() routine
         ! to have similar interface as for non-steps solver
