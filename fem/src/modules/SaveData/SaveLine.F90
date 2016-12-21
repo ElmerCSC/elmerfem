@@ -1185,12 +1185,13 @@ CONTAINS
     GotDivisions = .FALSE.
     IF( NoLines > 0 ) THEN
       NoDivisions => ListGetIntegerArray( Params,'Polyline Divisions',GotDivisions)
-      IF( SIZE( NoDivisions ) < NoLines + COUNT(SaveAxis) ) THEN
-        CALL Fatal('SaveLine','Polyline divisions size too small!')
+      IF( GotDivisions ) THEN
+        IF( SIZE( NoDivisions ) < NoLines + COUNT(SaveAxis) ) THEN
+          CALL Fatal('SaveLine','Polyline divisions size too small!')
+        END IF
       END IF
     END IF
-
-
+    
 
     SaveNodes2 = 0  
     IF( NoLines > 0  .OR. ANY(SaveAxis(1:DIM) ) ) THEN
