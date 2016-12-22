@@ -809,7 +809,8 @@
       ALLOCATE( work(wsize,N) )
 
       HUTI_TOLERANCE = 1.0D-12
-
+      HUTI_MAXTOLERANCE = 1.0d20
+      
       iterProc  = AddrFunc(HUTI_D_CG)
       mvProc    = AddrFunc(Matvec)
       pcondProc = AddrFunc(DiagPrec)
