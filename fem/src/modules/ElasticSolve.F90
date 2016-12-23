@@ -90,7 +90,12 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     dim = CoordinateSystemDimension()
     IF (MixedFormulation) THEN
       DOFs = dim + 1
-      CALL ListAddString( SolverParams, 'Variable', 'MixedSol' )
+      SELECT CASE(dim)
+      CASE(2)
+        CALL ListAddString( SolverParams, 'Variable', 'MixedSol[Disp:2 Pres:1]' )
+      CASE(3)
+        CALL ListAddString( SolverParams, 'Variable', 'MixedSol[Disp:3 Pres:1]' )
+      END SELECT
     ELSE
       DOFs = dim
       CALL ListAddString( SolverParams, 'Variable', 'Displacement' )
