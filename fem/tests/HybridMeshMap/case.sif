@@ -84,6 +84,9 @@ Solver 2
 
 ! Add base displacement to each column displacement
   Base Displacement Variable = String "Lateral Mesh Update"  
+
+! Which is the order. Base first, or stucture first (default)? 
+!  Base Displacement First = Logical True
 End
 
 
@@ -186,8 +189,9 @@ Boundary Condition 6
   Target Boundaries = 6
   Name = "Top"
   Temperature = 0.0
-  Top Surface = Real 2.0
+  Top Surface = Variable "Coordinate 2"
+    Real MATC "1.0+0.2*tx"
 End
 
 
-Solver 3 :: Reference Norm = 3.51859615E-01
+Solver 3 :: Reference Norm = 1.05122984E-01
