@@ -174,7 +174,8 @@ CONTAINS
 
     nerror = TestBasis(ngp, nbasis, Element % TYPE % DIMENSION, Basis, BasisVec, &
             dBasisdx, dBasisdxVec, tol)
-    
+
+    CALL DeallocatePElement(Element)
     DEALLOCATE(Basis, dBasisdx, BasisVec, dBasisdxVec)
   END FUNCTION TestLineElement
 
@@ -279,6 +280,7 @@ CONTAINS
     nerror = TestBasis(ngp, nbasis, Element % TYPE % DIMENSION, Basis, BasisVec, &
             dBasisdx, dBasisdxVec, tol)
 
+    CALL DeallocatePElement(Element)
     DEALLOCATE(Basis, dBasisdx, BasisVec, dBasisdxVec)
   END FUNCTION TestTriangleElement
   
@@ -381,6 +383,7 @@ CONTAINS
     nerror = TestBasis(ngp, nbasis, Element % TYPE % DIMENSION, Basis, BasisVec, &
             dBasisdx, dBasisdxVec, tol)
 
+    CALL DeallocatePElement(Element)
     DEALLOCATE(Basis, dBasisdx, BasisVec, dBasisdxVec)
   END FUNCTION TestQuadElement
 
@@ -487,6 +490,7 @@ CONTAINS
     nerror = TestBasis(ngp, nbasis, Element % TYPE % DIMENSION, Basis, BasisVec, &
             dBasisdx, dBasisdxVec, tol)
 
+    CALL DeallocatePElement(Element)
     DEALLOCATE(Basis, dBasisdx, BasisVec, dBasisdxVec)
   END FUNCTION TestTetraElement
 
@@ -594,6 +598,7 @@ CONTAINS
     nerror = TestBasis(ngp, nbasis, Element % TYPE % DIMENSION, Basis, BasisVec, &
             dBasisdx, dBasisdxVec, tol)
 
+    CALL DeallocatePElement(Element)
     DEALLOCATE(Basis, dBasisdx, BasisVec, dBasisdxVec)
   END FUNCTION TestWedgeElement
 
@@ -702,6 +707,7 @@ CONTAINS
     nerror = TestBasis(ngp, nbasis, Element % TYPE % DIMENSION, Basis, BasisVec, &
             dBasisdx, dBasisdxVec, tol)
 
+    CALL DeallocatePElement(Element)
     DEALLOCATE(Basis, dBasisdx, BasisVec, dBasisdxVec)
   END FUNCTION TestBrickElement
 
@@ -779,6 +785,15 @@ CONTAINS
     PElement % PDefs % GaussPoints = GetNumberOfGaussPoints(PElement, &
             Mesh)
   END FUNCTION AllocatePElement
+
+  SUBROUTINE DeallocatePElement(PElement)
+    IMPLICIT NONE
+    
+    TYPE(Element_t), POINTER :: PElement
+
+    DEALLOCATE(PElement % PDefs)
+    DEALLOCATE(PElement)
+  END SUBROUTINE DeallocatePElement
 
   ! Portable wall-clock timer
   FUNCTION ftimer() RESULT(timerval)

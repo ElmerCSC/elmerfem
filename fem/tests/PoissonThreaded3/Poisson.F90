@@ -32,12 +32,13 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: VecAsm
   !------------------------------------------------------------------------------
-
   Mesh => GetMesh()
   VecAsm = .TRUE.
 
+  nactive = GetNOFActive(Solver)
+
   !$OMP PARALLEL DEFAULT(NONE) &
-  !$OMP SHARED(Solver, Mesh, nactive ) &
+  !$OMP SHARED(Solver, Mesh, nactive, VecAsm) &
   !$OMP PRIVATE(BodyForce, Element, n, nd, nb, t, istat, Found, LoadPtr)
 
   ! Allocate some permanent storage per thread:
@@ -51,9 +52,6 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
     END IF
     AllocationsDone = .TRUE.
   END IF
-
-
-  nactive = GetNOFActive(Solver)
 
   ! Perform FE assembly 
   ! The _bulk routine is always done one colour at a time (thread-safe)
@@ -69,8 +67,7 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
     BodyForce => GetBodyForce(Element)
 
     IF ( ASSOCIATED(BodyForce) ) THEN
-      LoadPtr => GetReal( BodyForce, 'Source', Found, UElement=Element )
-      Load(1:n) = LoadPtr(1:n)
+      CALL GetRealValues( BodyForce, 'Source', Load, Found, UElement=Element )
     END IF
 
     !Get element local matrix and rhs vector:
@@ -78,9 +75,12 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
     CALL LocalMatrix( STIFF, FORCE, LOAD, Element, n, nd+nb )
     CALL LCondensate( nd, nb, STIFF, FORCE, maxdofs )
 
-    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=VecAsm )
+    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, &
+            VecAssembly=VecAsm )
   END DO ! Element loop
   !$OMP END DO
+  
+  !$OMP END PARALLEL
 
   CONTAINS
 

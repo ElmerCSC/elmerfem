@@ -1,0 +1,18 @@
+Linear System Use Hypre = Logical True
+
+Linear System Solver = Iterative
+Linear System Iterative Method = "boomeramg"
+Linear System Max Iterations = 1000
+Linear System Convergence Tolerance = 1.0E-08
+Linear System Abort Not Converged = True
+Linear System Residual Output = 20
+
+BoomerAMG Relax Type = Integer 3
+BoomerAMG Coarsen Type = Integer 0
+BoomerAMG Num Sweeps = Integer 1
+Boomeramg Max Levels = Integer 25
+BoomerAMG Interpolation Type = Integer 0
+BoomerAMG Smooth Type = Integer 6
+BoomerAMG Cycle Type = Integer 1
+BoomerAMG Num Functions = Integer 1 ! DOFs
+BoomerAMG Strong Threshold = Real 0.25

@@ -39,6 +39,7 @@ SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared
 SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
 SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
+SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
@@ -186,6 +187,12 @@ IF(Hypre_FOUND)
   # LINK_DIRECTORIES(${Hypre_LIBRARIES})
 ENDIF()
 
+IF(FETI4I_FOUND)
+  SET(HAVE_FETI4I TRUE)
+  MARK_AS_ADVANCED(HAVE_FETI4I)
+  ADD_DEFINITIONS(-DHAVE_FETI4I)
+ENDIF()
+
 # Check if Fortran compiler supports procedure pointer
 INCLUDE(testProcedurePointer)
 IF(NOT CMAKE_Fortran_COMPILER_SUPPORTS_PROCEDUREPOINTER)
@@ -231,8 +238,10 @@ ADD_DEFINITIONS(-DUSE_ARPACK)
 # Set up rpaths to point ELMER_INSTALL_LIB_DIR
 IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")   
   SET(ELMERSOLVER_RPATH_STRING "\$ORIGIN/../${ELMER_INSTALL_LIB_DIR}")
+  SET(ELMERLIB_RPATH_STRING "\$ORIGIN/")
 ELSEIF(APPLE)                               
   SET(ELMERSOLVER_RPATH_STRING "@loader_path/../${ELMER_INSTALL_LIB_DIR}")
+  SET(ELMERLIB_RPATH_STRING "@loader_path/")
 ENDIF()
 
 # Uncomment these to use rpath with linked libraries
@@ -243,15 +252,8 @@ ENDIF()
 # IF("${isSystemDir}" STREQUAL "-1")
 #    SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 # ENDIF("${isSystemDir}" STREQUAL "-1")
-MARK_AS_ADVANCED(USE_EIO)
 
 ADD_SUBDIRECTORY(matc)
-
-IF(WITH_EIO)
-  ADD_SUBDIRECTORY(eio)
-  SET(HAVE_EIO TRUE)
-  MARK_AS_ADVANCED(HAVE_EIO)
-ENDIF(WITH_EIO)
 
 IF(WITH_ElmerIce)
   MESSAGE(STATUS "Adding optional package ElmerIce")
@@ -341,6 +343,11 @@ IF(WITH_Trilinos)
   MESSAGE(STATUS "  Trilinos_LIBRARIES: " "${Trilinos_LIBRARIES}")
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF(WITH_Trilinos)
+
+IF(WITH_CONTRIB)
+  MESSAGE(STATUS "  Building contributed solvers")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(WITH_CONTRIB)
 
 IF(WITH_ELMERGUITESTER)
   MESSAGE(STATUS "  Building ElmerGUI tester")

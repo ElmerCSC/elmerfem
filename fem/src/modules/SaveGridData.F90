@@ -548,7 +548,7 @@ CONTAINS
     IF( ParEnv % PEs > 1 ) THEN
       tmpcount = totcount
       CALL MPI_ALLREDUCE( tmpcount, totcount, 3, MPI_INTEGER, &
-          MPI_SUM, MPI_COMM_WORLD, ierr ) 
+          MPI_SUM, ELMER_COMM_WORLD, ierr ) 
     END IF
 
     WRITE( Message,'(A,I8)') 'Number of candidate nodes:',totcount(1)

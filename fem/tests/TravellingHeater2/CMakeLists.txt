@@ -1,0 +1,9 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE(case2.sif case2.sif COPYONLY)
+ADD_ELMERTEST_MODULE(TravellingHeater2 HeatSource HeatSource.F90)
+
+file(COPY ELMERSOLVER_STARTINFO HeatSource.F90 slab2.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(TravellingHeater2)

@@ -883,6 +883,8 @@ void InitializeKnots(struct FemType *data)
   data->boundarynamesexist = FALSE;
   data->bodynamesexist = FALSE;
 
+  data->nodepermexist = FALSE;  
+  
   data->nopartitions = 1;
   data->partitionexist = FALSE;
   data->periodicexist = FALSE;

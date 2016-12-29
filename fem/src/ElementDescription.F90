@@ -67,6 +67,12 @@ MODULE ElementDescription
    !
    LOGICAL, PRIVATE :: TypeListInitialized = .FALSE.
    TYPE(ElementType_t), PRIVATE, POINTER :: ElementTypeList
+   ! Local workspace for basis function values and mapping
+   REAL(KIND=dp), ALLOCATABLE, PRIVATE :: BasisWrk(:,:), &
+           dBasisdxWrk(:,:,:), LtoGMapsWrk(:,:,:), DetJWrk(:), &
+           uWrk(:), vWrk(:), wWrk(:)
+   !$OMP THREADPRIVATE(BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, uWrk, vWrk, wWrk)
+!DIR$ ATTRIBUTES ALIGN:64::BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, uWrk, vWrk, wWrk
 
 CONTAINS
 
@@ -3533,10 +3539,50 @@ END IF
    END FUNCTION ElementInfo
 !------------------------------------------------------------------------------
 
+   SUBROUTINE ElementInfo_InitWork(m, n)
+     IMPLICIT NONE
+
+     INTEGER, INTENT(IN) :: m, n
+     INTEGER :: allocstat
+
+     allocstat = 0
+     IF (.NOT. ALLOCATED(BasisWrk)) THEN
+       ALLOCATE(BasisWrk(m,n), &
+               dBasisdxWrk(m,n,3), &
+            LtoGMapsWrk(m,3,3), &
+            DetJWrk(m), &
+            uWrk(m), vWrk(m), wWrk(m), STAT=allocstat)
+     ELSE IF (SIZE(BasisWrk,1) /= m .OR. SIZE(BasisWrk,2) /= n) THEN
+       DEALLOCATE(BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, &
+               uWrk, vWrk, wWrk)
+       ALLOCATE(BasisWrk(m,n), &
+               dBasisdxWrk(m,n,3), &
+               LtoGMapsWrk(m,3,3), &
+               DetJWrk(m), &
+               uWrk(m), vWrk(m), wWrk(m), STAT=allocstat)
+     END IF
+
+     ! Check memory allocation status
+     IF (allocstat /= 0) THEN
+       CALL Error('ElementInfo_InitWork','Storage allocation for local element basis failed')
+     END IF
+   END SUBROUTINE ElementInfo_InitWork
+   
+   SUBROUTINE ElementInfo_FreeWork()
+     IMPLICIT NONE
+
+     IF (ALLOCATED(BasisWrk)) THEN
+       DEALLOCATE(BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, &
+               uWrk, vWrk, wWrk)
+     END IF
+   END SUBROUTINE ElementInfo_FreeWork
+
+
 ! ElementInfoVec uses only P element definitions for basis functions, even for purely nodal elements
 !------------------------------------------------------------------------------
    FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, Basis, dBasisdx ) RESULT(retval)
 !------------------------------------------------------------------------------
+     USE H1ElementBasisFunctions
      IMPLICIT NONE
 
      TYPE(Element_t), TARGET :: Element    !< Element structure
@@ -3552,13 +3598,9 @@ END IF
      !------------------------------------------------------------------------------
      !    Local variables
      !------------------------------------------------------------------------------
-     INTEGER :: cdim, dim, i, j, k, l, ip, n, p, nb, nbc, nbp, nbdxp, allocstat
+     INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, &
+             nb, nbc, nbp, nbdxp, allocstat, ncpad
      LOGICAL :: elem
-
-     ! Local workspace for basis function values and mapping
-     REAL(KIND=dp), ALLOCATABLE, SAVE :: dLBasisdx(:,:,:), LtoGMaps(:,:,:)
-     !$OMP THREADPRIVATE(dLBasisdx, LtoGMaps)
-!DIR$ ATTRIBUTES ALIGN:64::dLBasisdx, LtoGMaps
      !------------------------------------------------------------------------------
      retval = .TRUE.
      n    = Element % TYPE % NumberOfNodes
@@ -3567,25 +3609,7 @@ END IF
      cdim = CoordinateSystemDimension()
 
      ! Set up workspace
-     IF (.NOT. ALLOCATED(dLBasisdx)) THEN
-       ALLOCATE(dLBasisdx(nc,nb,3), LtoGMaps(nc,3,3), STAT=allocstat)
-       ! Check memory allocation status
-       IF (allocstat /= 0) THEN
-         CALL Error('ElementInfoVec','Storage allocation for local element basis failed')
-         retval = .FALSE.
-         RETURN
-       END IF
-     ELSE IF (SIZE(dLBasisdx,1) < nc .OR. SIZE(dLBasisdx,2) < nb) THEN
-       DEALLOCATE(dLBasisdx,LtoGMaps)
-       ALLOCATE(dLBasisdx(nc,nb,3), LtoGMaps(nc,3,3), STAT=allocstat)
-       ! Check memory allocation status
-       IF (allocstat /= 0) THEN
-         CALL Error('ElementInfoVec','Storage allocation for local element basis failed')
-         retval = .FALSE.
-         RETURN
-       END IF
-     END IF
-
+     CALL ElementInfo_InitWork(VECTOR_BLOCK_LENGTH, nb)
      IF ( nb < Element % TYPE % NumberOfNodes ) THEN
        CALL Fatal('ElementInfoVec','Not enough storage to compute local element basis')
      END IF
@@ -3594,214 +3618,262 @@ END IF
      IF (Element % TYPE % ElementCODE == 101) THEN
        DetJ(1:nc) = REAL(1, dp)
        Basis(1:nc,1) = REAL(1, dp)
-       IF (PRESENT(dBasisdx)) dBasisdx(1:nc,1,1) = REAL(0, dp)
+       IF (PRESENT(dBasisdx)) THEN
+          DO i=1,nc
+             dBasisdx(i,1,1) = REAL(0, dp)
+          END DO
+       END IF
        RETURN
      END IF
 
-     ! Compute local nodal basis
-     SELECT CASE (Element % Type % ElementCode)
-     ! Element: LINE
-     CASE (202)
-       ! Compute nodal basis
-       CALL H1LineNodalBasisVec(nc, u, Basis)
-       ! Compute local first derivatives
-       CALL H1dLineNodalBasisVec(nc, u, dLBasisdx)
-       nbc = 2
-       nbp = 2
-       nbdxp = 2
+     ! Block the computation for large values of input points
+     DO ll=1,nc,VECTOR_BLOCK_LENGTH
+       lln = MIN(ll+VECTOR_BLOCK_LENGTH-1,nc)
+       ncl = lln-ll+1
 
-       ! Element bubble functions
-       IF (Element % BDOFS > 0) THEN 
-         ! Compute P from bubble dofs
-         P = Element % BDOFS + 1
-
-         ! TODO: Check the size of Basis and dLBasisdx before the call
-
-         ! TODO: Implement direction for surface elements
-         CALL H1LineBubblePBasisVec(nc, u, P, nbp, Basis)
-         CALL H1dLineBubblePBasisVec(nc, u, P, nbdxp, dLBasisdx)
+       ! Block copy input
+       uWrk(1:ncl) = u(ll:lln)
+       IF (cdim > 1) THEN
+         vWrk(1:ncl) = v(ll:lln)
+       END IF
+       IF (cdim > 2) THEN
+         wWrk(1:ncl) = w(ll:lln)
        END IF
 
-     ! Element: TRIANGLE
-     CASE (303)
-       ! Compute nodal basis
-       CALL H1TriangleNodalPBasisVec(nc, u, v, Basis)
-       ! Compute local first derivatives
-       CALL H1dTriangleNodalPBasisVec(nc, u, v, dLBasisdx)
-       nbc = 3
-       nbp = 3
-       nbdxp = 3
-       
-       IF (ASSOCIATED( Element % EdgeIndexes )) THEN
-         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
-       END IF
+       ! Compute local nodal basis
+       SELECT CASE (Element % Type % ElementCode)
+         ! Element: LINE
+       CASE (202)
+         ! Compute nodal basis
+         CALL H1LineNodalBasisVec(ncl, uWrk, BasisWrk)
+         ! Compute local first derivatives
+         CALL H1dLineNodalBasisVec(ncl, uWrk, dBasisdxWrk)
+         nbc = 2
+         nbp = 2
+         nbdxp = 2
 
-       ! Element bubble functions
-       IF (Element % BDOFS > 0) THEN 
-         ! Compute P from bubble dofs
-         P = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+         ! Element bubble functions
+         IF (Element % BDOFS > 0) THEN 
+           ! Compute P from bubble dofs
+           P = Element % BDOFS + 1
 
-         ! TODO: Check the size of Basis and dLBasisdx before the call
+           ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
-         ! TODO: Implement direction for surface elements
-         CALL H1TriangleBubblePBasisVec(nc, u, v, P, nbp, Basis)
-         CALL H1dTriangleBubblePBasisVec(nc, u, v, P, nbdxp, dLBasisdx)
-       END IF
+           ! TODO: Implement direction for surface elements
+           CALL H1LineBubblePBasisVec(ncl, uWrk, P, nbp, BasisWrk)
+           CALL H1dLineBubblePBasisVec(ncl, uWrk, P, nbdxp, dBasisdxWrk)
+         END IF
 
-       ! QUADRILATERAL
-     CASE (404)
-       ! Compute nodal basis
-       CALL H1QuadNodalBasisVec(nc, u, v, Basis)
-       ! Compute local first derivatives
-       CALL H1dQuadNodalBasisVec(nc, u, v, dLBasisdx)
-       nbc = 4
-       nbp = 4
-       nbdxp = 4
+         ! Element: TRIANGLE
+       CASE (303)
+         ! Compute nodal basis
+         CALL H1TriangleNodalPBasisVec(ncl, uWrk, vWrk, BasisWrk)
+         ! Compute local first derivatives
+         CALL H1dTriangleNodalPBasisVec(ncl, uWrk, vWrk, dBasisdxWrk)
+         nbc = 3
+         nbp = 3
+         nbdxp = 3
 
-       IF (ASSOCIATED( Element % EdgeIndexes )) THEN
-         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
-       END IF
+         IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+         END IF
 
-       ! Element bubble functions
-       IF (Element % BDOFS > 0) THEN 
-         ! Compute P from bubble dofs
-         p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+         ! Element bubble functions
+         IF (Element % BDOFS > 0) THEN 
+           ! Compute P from bubble dofs
+           P = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
-         ! TODO: Check the size of Basis and dLBasisdx before the call
+           ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
-         ! TODO: Implement direction for surface elements
-         CALL H1QuadBubblePBasisVec(nc, u, v, P, nbp, Basis)
-         CALL H1dQuadBubblePBasisVec(nc, u, v, P, nbdxp, dLBasisdx)
-       END IF
+           ! TODO: Implement direction for surface elements
+           CALL H1TriangleBubblePBasisVec(ncl, uWrk, vWrk, P, nbp, BasisWrk)
+           CALL H1dTriangleBubblePBasisVec(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+         END IF
 
-       ! TETRAHEDRON
-     CASE (504)
-       ! Compute nodal basis
-       CALL H1TetraNodalPBasisVec(nc, u, v, w, Basis)
-       ! Compute local first derivatives
-       CALL H1dTetraNodalPBasisVec(nc, u, v, w, dLBasisdx)
-       nbc = 4
-       nbp = 4
-       nbdxp = 4
+         ! QUADRILATERAL
+       CASE (404)
+         ! Compute nodal basis
+         CALL H1QuadNodalBasisVec(ncl, uWrk, vWrk, BasisWrk)
+         ! Compute local first derivatives
+         CALL H1dQuadNodalBasisVec(ncl, uWrk, vWrk, dBasisdxWrk)
+         nbc = 4
+         nbp = 4
+         nbdxp = 4
 
-       IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
-           ASSOCIATED( Element % FaceIndexes )) THEN
-         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
-       END IF
+         IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+         END IF
 
-       ! Element bubble functions
-       IF (Element % BDOFS > 0) THEN 
-         ! Compute P based on bubble dofs
-         P=NINT(1/3d0*(81*(Element % BDOFS) + &
-                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
-                 1d0/(81*(Element % BDOFS)+ &
-                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
+         ! Element bubble functions
+         IF (Element % BDOFS > 0) THEN 
+           ! Compute P from bubble dofs
+           p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
-         ! TODO: Check the size of Basis and dLBasisdx before the call
+           ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
-         CALL H1TetraBubblePBasisVec(nc, u, v, w, P, nbp, Basis)
-         CALL H1dTetraBubblePBasisVec(nc, u, v, w, P, nbdxp, dLBasisdx)
-       END IF
+           ! TODO: Implement direction for surface elements
+           CALL H1QuadBubblePBasisVec(ncl, uWrk, vWrk, P, nbp, BasisWrk)
+           CALL H1dQuadBubblePBasisVec(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+         END IF
 
-       ! WEDGE
-     CASE (706)
-       ! Compute nodal basis
-       CALL H1WedgeNodalPBasisVec(nc, u, v, w, Basis)
-       ! Compute local first derivatives
-       CALL H1dWedgeNodalPBasisVec(nc, u, v, w, dLBasisdx)
-       nbc = 6
-       nbp = 6
-       nbdxp = 6
+         ! TETRAHEDRON
+       CASE (504)
+         ! Compute nodal basis
+         CALL H1TetraNodalPBasisVec(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         ! Compute local first derivatives
+         CALL H1dTetraNodalPBasisVec(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
+         nbc = 4
+         nbp = 4
+         nbdxp = 4
 
-       IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
-           ASSOCIATED( Element % FaceIndexes )) THEN
-         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
-       END IF
+         IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
+                 ASSOCIATED( Element % FaceIndexes )) THEN
+           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+         END IF
 
-       ! Element bubble functions
-       IF (Element % BDOFS > 0) THEN 
-         ! Compute P from bubble dofs
-         p=NINT(1/3d0*(81*(Element % BDOFS) + &
-                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
-                 1d0/(81*(Element % BDOFS)+ &
-                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
+         ! Element bubble functions
+         IF (Element % BDOFS > 0) THEN 
+           ! Compute P based on bubble dofs
+           P=NINT(1/3d0*(81*(Element % BDOFS) + &
+                   3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
+                   1d0/(81*(Element % BDOFS)+ &
+                   3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
 
-         ! TODO: Check the size of Basis and dLBasisdx before the call
+           ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
-         CALL H1WedgeBubblePBasisVec(nc, u, v, w, P, nbp, Basis)
-         CALL H1dWedgeBubblePBasisVec(nc, u, v, w, P, nbdxp, dLBasisdx)
-       END IF
+           CALL H1TetraBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
+           CALL H1dTetraBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+         END IF
 
-       ! HEXAHEDRON
-     CASE (808)
-       ! Compute local basis
-       CALL H1BrickNodalBasisVec(nc, u, v, w, Basis)
-       ! Compute local first derivatives
-       CALL H1dBrickNodalBasisVec(nc, u, v, w, dLBasisdx)
-       nbc = 8
-       nbp = 8
-       nbdxp = 8
+         ! WEDGE
+       CASE (706)
+         ! Compute nodal basis
+         CALL H1WedgeNodalPBasisVec(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         ! Compute local first derivatives
+         CALL H1dWedgeNodalPBasisVec(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
+         nbc = 6
+         nbp = 6
+         nbdxp = 6
 
-       IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
-           ASSOCIATED( Element % FaceIndexes )) THEN
-         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
-       END IF
+         IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
+                 ASSOCIATED( Element % FaceIndexes )) THEN
+           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+         END IF
 
-       ! Element bubble functions
-       IF (Element % BDOFS > 0) THEN 
-         ! Compute P from bubble dofs
-         P=NINT(1/3d0*(81*nb + &
-                 3*SQRT(-3d0+729*nb**2))**(1/3d0) + &
-                 1d0/(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
-         
-         ! TODO: Check the size of Basis and dLBasisdx before the call
+         ! Element bubble functions
+         IF (Element % BDOFS > 0) THEN 
+           ! Compute P from bubble dofs
+           p=NINT(1/3d0*(81*(Element % BDOFS) + &
+                   3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
+                   1d0/(81*(Element % BDOFS)+ &
+                   3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
 
-         CALL H1BrickBubblePBasisVec(nc, u, v, w, P, nbp, Basis)
-         CALL H1dBrickBubblePBasisVec(nc, u, v, w, P, nbdxp, dLBasisdx)
-       END IF
+           ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
-     CASE DEFAULT
-       WRITE( Message, '(a,i4,a)' ) 'Vectorized basis for element: ', &
-               Element % TYPE % ElementCode, ' not implemented.'
-       CALL Error( 'ElementInfoVec', Message )
-       CALL Fatal( 'ElementInfoVec', 'ElementInfoVec is still experimental.' )
-     END SELECT
+           CALL H1WedgeBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
+           CALL H1dWedgeBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+         END IF
 
-     ! Set the final number of basis functions 
-     nbc = nbp     
+         ! HEXAHEDRON
+       CASE (808)
+         ! Compute local basis
+         CALL H1BrickNodalBasisVec(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         ! Compute local first derivatives
+         CALL H1dBrickNodalBasisVec(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
+         nbc = 8
+         nbp = 8
+         nbdxp = 8
 
-     !--------------------------------------------------------------
-     ! Element (contravariant) metric and square root of determinant
-     !--------------------------------------------------------------
-     elem = ElementMetricVec( nbc, Element, Nodes, nc, detJ, dLBasisdx, LtoGMaps )
-     IF (.NOT. elem) THEN
-       retval = .FALSE.
-       RETURN
-     END IF
+         IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
+                 ASSOCIATED( Element % FaceIndexes )) THEN
+           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+         END IF
 
-     ! Get global basis functions
-     !--------------------------------------------------------------
-     ! First derivatives
-     IF (PRESENT(dBasisdx)) THEN
-       dBasisdx = REAL(0,dp)
-!DIR$ LOOP COUNT MAX=3
-       DO k=1,dim
-!DIR$ LOOP COUNT MAX=3
-         DO j=1,cdim
-!DIR$ LOOP COUNT MAX=3
-           DO i=1,nbc
-             DO l=1,nc
-               ! Map local basis function to global
-               dBasisdx(l,i,j) = dBasisdx(l,i,j) + dLBasisdx(l,i,k)*LtoGMaps(l,j,k)
-             END DO
-           END DO
+         ! Element bubble functions
+         IF (Element % BDOFS > 0) THEN 
+           ! Compute P from bubble dofs
+           P=NINT(1/3d0*(81*nb + &
+                   3*SQRT(-3d0+729*nb**2))**(1/3d0) + &
+                   1d0/(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+
+           ! TODO: Check the size of Basis and dBasisdxWrk before the call
+           CALL H1BrickBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
+           CALL H1dBrickBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+         END IF
+
+       CASE DEFAULT
+         WRITE( Message, '(a,i4,a)' ) 'Vectorized basis for element: ', &
+                 Element % TYPE % ElementCode, ' not implemented.'
+         CALL Error( 'ElementInfoVec', Message )
+         CALL Fatal( 'ElementInfoVec', 'ElementInfoVec is still experimental.' )
+       END SELECT
+
+       ! Set the final number of basis functions 
+       nbc = nbp     
+
+       ! Copy basis function values to global array
+       DO j=1,nbc
+         !$OMP SIMD
+         DO i=ll,lln
+           Basis(i,j)=BasisWrk(i-ll+1,j)
          END DO
        END DO
-     END IF
+
+       !--------------------------------------------------------------
+       ! Element (contravariant) metric and square root of determinant
+       !--------------------------------------------------------------
+       elem = ElementMetricVec( nbc, Element, Nodes, ncl, DetJWrk, dBasisdxWrk, LtoGMapsWrk )
+       IF (.NOT. elem) THEN
+         retval = .FALSE.
+         RETURN
+       END IF
+       
+       !$OMP SIMD
+       DO i=ll,lln
+         DetJ(i)=DetJWrk(i-ll+1)
+       END DO
+
+       ! Get global basis functions
+       !--------------------------------------------------------------
+       ! First derivatives
+       IF (PRESENT(dBasisdx)) THEN
+         !DIR$ LOOP COUNT MAX=3
+         DO j=1,cdim
+           DO i=1,nbc
+             SELECT CASE (dim)
+             CASE(1)
+               !$OMP SIMD
+               DO l=ll,lln
+                 ! Map local basis function to global
+                 dBasisdx(l,i,j) = dBasisdxWrk(l-ll+1,i,1)*LtoGMapsWrk(l-ll+1,j,1)
+               END DO
+               !$OMP END SIMD
+             CASE(2)
+               !$OMP SIMD
+               DO l=ll,lln
+                 ! Map local basis function to global
+                 dBasisdx(l,i,j) = dBasisdxWrk(l-ll+1,i,1)*LtoGMapsWrk(l-ll+1,j,1) +&
+                         dBasisdxWrk(l-ll+1,i,2)*LtoGMapsWrk(l-ll+1,j,2)
+               END DO
+               !$OMP END SIMD
+             CASE(3)
+               !$OMP SIMD
+               DO l=ll,lln
+                 ! Map local basis function to global
+                 dBasisdx(l,i,j) = dBasisdxWrk(l-ll+1,i,1)*LtoGMapsWrk(l-ll+1,j,1) +&
+                         dBasisdxWrk(l-ll+1,i,2)*LtoGMapsWrk(l-ll+1,j,2) +&
+                         dBasisdxWrk(l-ll+1,i,3)*LtoGMapsWrk(l-ll+1,j,3)
+               END DO
+               !$OMP END SIMD
+             END SELECT
+           END DO
+         END DO
+       END IF
+
+     END DO ! Block over Gauss points
 !------------------------------------------------------------------------------
    END FUNCTION ElementInfoVec
 !------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 !>  Returns just the size of the element at its center.
@@ -9278,6 +9350,7 @@ END IF
      REAL(KIND=dp) :: s
      INTEGER :: cdim,dim,i,j,k,l,n,ip, jj, kk
      INTEGER :: ldbasis, ldxyz, utind
+!DIR$ ASSUME_ALIGNED dlBasisdx:64, LtoGMap:64
      !------------------------------------------------------------------------------
      AllSuccess = .TRUE.
 
@@ -9305,21 +9378,25 @@ END IF
      !------------------------------------------------------------------------------
      !       Compute the covariant metric tensor of the element coordinate system (symmetric)
      !------------------------------------------------------------------------------
-
-     ! G(1:nc,1:dim,1:cdim)=REAL(0,dp)
-     G=REAL(0,dp)
+     ! G=REAL(0,dp) ! Removed as k loop broken into two pieces
 !DIR$ LOOP COUNT MAX=3
      DO j=1,dim
        ! G is symmetric, compute only the upper triangular part
 !DIR$ LOOP COUNT MAX=3
        DO i=1,j
-         ! G(1:nc,i,j) = REAL(0,dp)
+!DIR$ INLINE
          utind = GetSymmetricIndex(i,j)
          ! Linearized upper triangular indices
          ! | (1,1) (1,2) (1,3) | = | 1 2 4 |
          ! |       (2,2) (2,3) |   |   3 5 |
          ! |             (3,3) |   |     6 |
-         DO k=1,cdim
+
+         !$OMP SIMD
+         DO l=1,nc
+           G(l,utind)=dx(l,1,i)*dx(l,1,j) ! G(l,utind)=0
+         END DO
+         !$OMP END SIMD
+         DO k=2,cdim
            !$OMP SIMD
            DO l=1,nc
              G(l,utind)=G(l,utind)+dx(l,k,i)*dx(l,k,j)

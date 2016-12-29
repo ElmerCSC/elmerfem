@@ -1408,7 +1408,7 @@ CONTAINS
         DO p=1,nd
           DO q=1,nd
             JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
-              muder/babs*SUM(B_ip(:)*Bt(q,:))*SUM(B_ip*Bt(p,:))
+              muder/babs*SUM(B_ip*Bt(q,:))*SUM(CONJG(B_ip)*Bt(p,:))
           END DO
         END DO
       END IF

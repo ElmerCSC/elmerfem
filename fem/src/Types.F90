@@ -53,6 +53,8 @@ MODULE Types
 #endif 
 
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
+   ! Parameter for internal blocking
+   INTEGER, PARAMETER :: VECTOR_BLOCK_LENGTH = 128
 
 #if defined(ARCH_32_BITS)
    INTEGER, PARAMETER :: AddrInt = SELECTED_INT_KIND(9)
@@ -273,7 +275,8 @@ END INTERFACE
      LOGICAL, DIMENSION(:), POINTER   :: IsNeighbour
      LOGICAL, DIMENSION(:), POINTER   :: SendingNB
      INTEGER                          :: NumOfNeighbours
-  END TYPE ParEnv_t
+     INTEGER                          :: NumberOfThreads = 1
+   END TYPE ParEnv_t
 
 
   TYPE GlueTableT
@@ -571,7 +574,7 @@ END INTERFACE
      TYPE(BoundaryInfo_t),  POINTER :: BoundaryInfo => NULL()
 
      INTEGER :: ElementIndex=-1, GElementIndex=-1, PartIndex=-1, NDOFs=0, BDOFs=0, DGDOFs=0
-     INTEGER, DIMENSION(:), POINTER :: &
+     INTEGER, DIMENSION(:), POINTER CONTIG :: &
          NodeIndexes => NULL(), EdgeIndexes   => NULL(), &
          FaceIndexes => NULL(), BubbleIndexes => NULL(), &
          DGIndexes   => NULL()
@@ -747,7 +750,7 @@ END INTERFACE
       INTEGER(KIND=AddrInt) :: MortarProc
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
-
+      INTEGER :: CurrentColour = 0
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
@@ -906,8 +909,8 @@ END INTERFACE
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
-    INTEGER :: CurrentColour = 1
 
+    INTEGER :: ELMER_COMM_WORLD = -1
 !------------------------------------------------------------------------------
 END MODULE Types
 !------------------------------------------------------------------------------

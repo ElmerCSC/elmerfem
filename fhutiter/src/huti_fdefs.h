@@ -19,6 +19,7 @@
 #define HUTI_OK 0
 #define HUTI_CONVERGENCE 1
 #define HUTI_MAXITER 2
+#define HUTI_DIVERGENCE 3
 
 ! QMR method
 
@@ -137,6 +138,7 @@
 ! Input parameters supplied by user
 
 #define HUTI_TOLERANCE dpar(1)
+#define HUTI_MAXTOLERANCE dpar(2)
 
 !  
 ! End of definitions

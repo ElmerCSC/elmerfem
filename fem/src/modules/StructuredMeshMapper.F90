@@ -69,7 +69,8 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
        DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
-       MidLayerExists, WriteMappedMeshToDisk = .FALSE.
+       MidLayerExists, WriteMappedMeshToDisk = .FALSE., GotBaseVar, &
+       BaseDisplaceFirst
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, MidVal, ElemVector(3),DotPro,Eps,Length, MinHeight
   REAL(KIND=dp) :: at0,at1,at2,Heps
@@ -78,7 +79,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 #endif
   REAL(KIND=dp), POINTER :: Coord(:),BotField(:),TopField(:),TangledMask(:)
   REAL(KIND=dp), ALLOCATABLE :: OrigCoord(:), Field(:), Surface(:)
-  TYPE(Variable_t), POINTER :: Var, VeloVar, UpdateVar, TangledMaskVar
+  TYPE(Variable_t), POINTER :: Var, VeloVar, UpdateVar, TangledMaskVar, BaseVar
   TYPE(Element_t), POINTER :: Element
   TYPE(Nodes_t), SAVE :: Nodes
   TYPE(ValueList_t),POINTER :: BC
@@ -99,6 +100,8 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   PSolver => Solver
   Mesh => Solver % Mesh
 
+  dim = Mesh % MeshDim
+  
   Reinitialize = ListGetLogical(SolverParams, "Always Detect Structure", Found)
   IF(.NOT. Found) Reinitialize = .FALSE.
 
@@ -289,7 +292,21 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     END DO
   END IF
 
+  GotBaseVar = .FALSE.
+  VarName = GetString( SolverParams,'Base Displacement Variable',Found)
+  IF( Found ) THEN
+    BaseVar => VariableGet( Mesh % Variables, VarName )
+    GotBaseVar = ASSOCIATED( BaseVar )
+    IF(.NOT. GotBaseVar ) THEN
+      CALL Fatal('StructuredMeshMapper','The variable does not exist: '//TRIM(VarName))
+    END IF
 
+    BaseDisplaceFirst = GetLogical( SolverParams,'Base Displacement First',Found ) 
+    IF( BaseDisplaceFirst ) THEN
+      CALL Info('StructuredMeshMapper','Applying base displacement before structural mapping')
+    END IF
+  END IF
+  
 
   ! Get the velocity variable component. 
   !-------------------------------------------------------------------
@@ -328,6 +345,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   DisplacementMode = GetLogical(SolverParams,'Displacement Mode',Found)
 
+  IF( GotBaseVar .AND. BaseDisplaceFirst ) THEN
+    CALL BaseVarDisplace() 
+  END IF
 
 
   ! Get the new mapping using linear interpolation from bottom and top
@@ -469,7 +489,11 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(i) - OrigCoord(i)
   END DO
 
-
+  IF( GotBaseVar .AND. .NOT. BaseDisplaceFirst ) THEN
+    CALL BaseVarDisplace() 
+  END IF
+  
+  
   IF( GotVeloVar .AND. .NOT. Visited ) THEN
     IF( GetLogical(SolverParams,'Mesh Velocity First Zero',Found ) ) THEN
       VeloVar % Values = 0.0_dp
@@ -492,6 +516,34 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   Visited = .TRUE.
 
+
+CONTAINS
+
+  SUBROUTINE BaseVarDisplace()
+
+    CALL Info('StructuredMeshMapper','Adding base displacement to the displacements!')
+    DO i=1,nsize
+      j = i
+      IF( MaskExists ) THEN
+        j = MaskPerm(i) 
+        IF( j == 0) CYCLE
+      END IF
+      ibot = BotPointer(i)
+
+      IF( BaseVar % Dofs == 2 ) THEN
+        Mesh % Nodes % x(i) = Mesh % Nodes % x(i) + &
+            BaseVar % Values( 2*BaseVar % Perm(ibot)-1 )  
+        Mesh % Nodes % y(i) = Mesh % Nodes % y(i) + &
+            BaseVar % Values( 2*BaseVar % Perm(ibot) )  
+      ELSE
+        CALL Fatal('StructuredMeshMapper','Base displacement assumed to be two!')
+      END IF
+    END DO
+       
+  END SUBROUTINE BaseVarDisplace
+
+
+  
   !------------------------------------------------------------------------------
 END SUBROUTINE StructuredMeshMapper
 !------------------------------------------------------------------------------

@@ -12,9 +12,6 @@ ENDIF()
 SET(FINDNORM_BIN "${CMAKE_CURRENT_BINARY_DIR}/findnorm")
 SET(MESH2D_BIN "${CMAKE_BINARY_DIR}/meshgen2d/src/Mesh2D")
 
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/runtests.in.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/runtests)
-
 MACRO(SUBDIRLIST result curdir depth)
   set(glob_pattern "*")
   FOREACH(D RANGE 1 depth)
@@ -31,12 +28,18 @@ ENDMACRO()
 
 SUBDIRLIST(SUBDIRS ${CMAKE_CURRENT_SOURCE_DIR} 2)
 
+SET(_test_counter 0)
 FOREACH(subdir ${SUBDIRS})
-  IF(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt")
-    ADD_SUBDIRECTORY(${subdir})
-    LIST(APPEND TEST_SUBDIRS ${subdir})
-  ENDIF(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt")
+  IF(NOT ${subdir} MATCHES "^contrib/"
+      OR WITH_CONTRIB)
+    IF(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt")
+      MATH(EXPR _test_counter "${_test_counter}+1")
+      ADD_SUBDIRECTORY(${subdir})
+      LIST(APPEND TEST_SUBDIRS ${subdir})
+    ENDIF(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt")
+  ENDIF()
 ENDFOREACH()
+MESSAGE(STATUS "Found ${_test_counter} tests")
 
 SET(INSTALL_OLD_TESTS FALSE CACHE BOOL "(deprecated) Install old test system under build directory.")
 

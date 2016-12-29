@@ -1331,13 +1331,13 @@ CONTAINS
         END DO  
       END IF
       CALL MPI_BSEND( cm_int, peNodes, MPI_INTEGER, pe, &
-                100, MPI_COMM_WORLD, ierr )
+                100, ELMER_COMM_WORLD, ierr )
       IF (totcount>0 ) THEN
         CALL MPI_BSEND( cm_values, Dofs*totcount, &
-           MPI_DOUBLE_PRECISION, pe, 101, MPI_COMM_WORLD, ierr )
+           MPI_DOUBLE_PRECISION, pe, 101, ELMER_COMM_WORLD, ierr )
 
         CALL MPI_BSEND( cm_extent, totcount, &
-           MPI_DOUBLE_PRECISION, pe, 102, MPI_COMM_WORLD, ierr )
+           MPI_DOUBLE_PRECISION, pe, 102, ELMER_COMM_WORLD, ierr )
         DEALLOCATE( cm_values, cm_extent)
       END IF
       DEALLOCATE(cm_int )
@@ -1357,7 +1357,7 @@ CONTAINS
       IF ( pe==Parenv % mype ) CYCLE
 
       CALL MPI_RECV( cm_int, myNodes, MPI_INTEGER, pe, &
-             100, MPI_COMM_WORLD, status, ierr )
+             100, ELMER_COMM_WORLD, status, ierr )
 
       totcount=SUM(cm_int(1:myNodes))
 
@@ -1365,10 +1365,10 @@ CONTAINS
         ALLOCATE( cm_values(Dofs*totcount), cm_extent(totcount) )
 
         CALL MPI_RECV( cm_values, Dofs*totcount, &
-          MPI_DOUBLE_PRECISION, pe, 101, MPI_COMM_WORLD, status, ierr )
+          MPI_DOUBLE_PRECISION, pe, 101, ELMER_COMM_WORLD, status, ierr )
 
         CALL MPI_RECV( cm_extent, totcount, &
-          MPI_DOUBLE_PRECISION, pe, 102, MPI_COMM_WORLD, status, ierr )
+          MPI_DOUBLE_PRECISION, pe, 102, ELMER_COMM_WORLD, status, ierr )
 
         j = 0
         totcount = 0
@@ -1470,7 +1470,7 @@ CONTAINS
         cm_int0(i) = PointStore(i) % Int
       END DO
       CALL MPI_ALLREDUCE( cm_int0,cm_int,PlaneNodes, &
-        MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,ierr )
+        MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr )
 
       nn=COUNT(cm_int<=MinimumHits)
       ALLOCATE(cm_values0(dofs*nn), cm_values(dofs*nn), &
@@ -1571,10 +1571,10 @@ CONTAINS
     IF ( ParEnv % PEs > 1 ) THEN
       IF ( nn>0 ) THEN
         CALL MPI_ALLREDUCE( icount0, icount, nn, &
-             MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,ierr )
+             MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr )
 
         CALL MPI_ALLREDUCE( cm_values0, cm_values, Dofs*nn, &
-             MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr )
+             MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr )
 
         nn = 0
         DO node=1,Mesh2d % NumberOfNodes
@@ -1619,7 +1619,7 @@ CONTAINS
         k = j+peNodes-1
         DO l=1,Dofs
           CALL MPI_RECV( ValueTable2D(l) % Values(j:k), peNodes, &
-            MPI_DOUBLE_PRECISION, pe, 104, MPI_COMM_WORLD, status, ierr )
+            MPI_DOUBLE_PRECISION, pe, 104, ELMER_COMM_WORLD, status, ierr )
         END DO
       END DO
     ELSE
@@ -1627,11 +1627,11 @@ CONTAINS
       k = j+myNodes-1
       DO l=1,Dofs
         CALL MPI_BSEND( ValueTable2D(l) % Values(j:k), myNodes, &
-            MPI_DOUBLE_PRECISION, 0, 104, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, 0, 104, ELMER_COMM_WORLD, ierr )
       END DO
       Mesh2d % OutputActive = .FALSE.
     END IF
-    CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 !------------------------------------------------------------------------------
   END SUBROUTINE GatherResults
 !------------------------------------------------------------------------------

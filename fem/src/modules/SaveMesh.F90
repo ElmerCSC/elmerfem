@@ -102,7 +102,7 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
         PRINT *, 'Save Mesh, creating directory...' !TEST
         CALL SYSTEM("mkdir -p "//MeshDir)        
      END IF
-     CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
      CALL WriteMeshToDisk2(Model, Mesh, MeshDir, ParEnv % MyPe)
   END IF

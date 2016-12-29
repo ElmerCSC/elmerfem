@@ -1,0 +1,10 @@
+! ----- names for bodies -----
+$ lower_block = 55
+$ upper_block = 56
+! ----- names for boundaries -----
+$ lower_block_bot = 57
+$ lower_block_top = 58
+$ upper_block_bot = 59
+$ upper_block_top = 60
+$ symmetry_yz = 61
+$ symmetry_xz = 62
