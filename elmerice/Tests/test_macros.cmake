@@ -48,7 +48,7 @@ MACRO(RUN_ELMERICE_TEST)
   MESSAGE(STATUS "BINARY_DIR = ${BINARY_DIR}")
   SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
   SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
-  SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/UserFunctions")
+  SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Solvers/GridDataReader:${BINARY_DIR}/elmerice/Solvers/ScatteredDataInterpolator:${BINARY_DIR}/elmerice/UserFunctions")
   #Optional arguments like WITH_MPI
   SET(LIST_VAR "${ARGN}")
   IF(LIST_VAR STREQUAL "")

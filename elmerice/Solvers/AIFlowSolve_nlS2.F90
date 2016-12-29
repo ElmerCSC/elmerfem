@@ -867,7 +867,10 @@ CONTAINS
                  
       Subroutine OPILGGE_ai_nl(ai,Angle,etaI,eta36)
           USE Types
-          REAL(KIND=dp) :: ai(3), Angle(3), EtaI(:),Eta36(6,6)
+          REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: ai
+          REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: Angle
+          REAL(kind=dp), INTENT(in),  DIMENSION(:)   :: etaI
+          REAL(kind=dp), INTENT(out), DIMENSION(6,6) :: eta36
         END SUBROUTINE OPILGGE_ai_nl
 
       END INTERFACE
@@ -1320,7 +1323,10 @@ CONTAINS
                  
       Subroutine OPILGGE_ai_nl(ai,Angle,etaI,eta36)
           USE Types
-          REAL(KIND=dp) :: ai(3), Angle(3), EtaI(:), Eta36(6,6)
+          REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: ai
+          REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: Angle
+          REAL(kind=dp), INTENT(in),  DIMENSION(:)   :: etaI
+          REAL(kind=dp), INTENT(out), DIMENSION(6,6) :: eta36
         END SUBROUTINE OPILGGE_ai_nl
       END INTERFACE
 !------------------------------------------------------------------------------
