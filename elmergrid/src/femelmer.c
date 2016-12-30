@@ -378,13 +378,16 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
   int i,j,sideelemtype2,elemind,parent,normal,elemtype;
   int elemsides,side,sidenodes,nohits,hit,hit1,hit2;
   int sideind2[MAXNODESD1];
-
+  int debug;
+  
   hit = FALSE;
   elemsides = 0;
   elemtype = 0;
   hit1 = FALSE;
   hit2 = FALSE;
 
+  debug = FALSE;
+  
   for(parent=1;parent<=2;parent++) {
     if(parent == 1) 
       elemind = bound->parent[sideelem];
@@ -404,17 +407,19 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 
 	for(side=0;side<elemsides;side++) {
 
-	  if(0) printf("elem = %d %d %d %d\n",elemind,elemsides,normal,side);
+	  if(debug) printf("elem = %d %d %d %d\n",elemind,elemsides,normal,side);
 
 	  GetElementSide(elemind,side,normal,data,&sideind2[0],&sideelemtype2);
-
+	  
 	  if(sideelemtype2 < 300 && sideelemtype > 300) break;	
 	  if(sideelemtype2 < 200 && sideelemtype > 200) break;		
 	  if(sideelemtype != sideelemtype2) continue;
 
-	  sidenodes = sideelemtype % 100;
+	  sidenodes = sideelemtype / 100;
 
 	  for(j=0;j<sidenodes;j++) {
+	    if(debug) printf("sidenode: %d %d %d\n",j,sideind[j],sideind2[j]);
+
 	    hit = TRUE;
 	    for(i=0;i<sidenodes;i++) 
 	      if(sideind[(i+j)%sidenodes] != sideind2[i]) hit = FALSE;
@@ -474,14 +479,16 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 
     skip:  
       if(!hit) {
-	printf("FindParentSide: cannot locate BC element in given bulk element\n");
-	printf("BC elem of type %d with indexes: ",sideelemtype);
-	for(i=0;i<sideelemtype%100;i++)
+	printf("FindParentSide: cannot locate BC element in parent %d: %d\n",parent,elemind);
+	printf("BC elem of type %d with corner indexes: ",sideelemtype);
+	for(i=0;i<sideelemtype/100;i++)
 	  printf(" %d ",sideind[i]);
 	printf("\n");
 
-	printf("Bulk elem %d of type %d with indexes: ",elemind,elemtype);
-	for(i=0;i<elemtype/100;i++)
+	printf("Bulk elem %d of type %d with corner indexes: ",elemind,elemtype);
+	j = elemtype/100;
+	if( j >= 5 && j<=7 ) j = j-1;
+	for(i=0;i<j;i++)
 	  printf(" %d ",data->topology[elemind][i]);
 	printf("\n");             
       }
