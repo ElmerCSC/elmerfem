@@ -502,9 +502,9 @@ void GetElementSide(int element,int side,int normal,
     }
     else if (side == 4) {
       *sideelemtype = 408;     
-      for(i=0;i<3;i++)
+      for(i=0;i<4;i++)
 	ind[i] = elemind[i];
-      for(i=0;i<3;i++)
+      for(i=0;i<4;i++)
 	ind[i+4] = elemind[i+5];
     }
     else if(side < 13) {
