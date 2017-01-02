@@ -393,7 +393,7 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
       elemind = bound->parent[sideelem];
     else
       elemind = bound->parent2[sideelem];
-
+    
     if(elemind > 0) {
       elemtype = data->elementtypes[elemind];
       elemsides = elemtype / 100;
@@ -438,7 +438,7 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 	    }
 	  }
 	}
-      }	
+      }
 
       
       /* this finding of sides does not guarantee that normals are oriented correctly */
@@ -480,7 +480,7 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
     skip:  
       if(!hit) {
 	printf("FindParentSide: cannot locate BC element in parent %d: %d\n",parent,elemind);
-	printf("BC elem of type %d with corner indexes: ",sideelemtype);
+	printf("BC elem %d of type %d with corner indexes: ",sideelem,sideelemtype);
 	for(i=0;i<sideelemtype/100;i++)
 	  printf(" %d ",sideind[i]);
 	printf("\n");
@@ -775,8 +775,8 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
     }
       
     if(activeelemperm) {
-      p1 = invelemperm[p1];
-      p2 = invelemperm[p2];
+      if( p1 > 0 ) p1 = invelemperm[p1];
+      if( p2 > 0 ) p2 = invelemperm[p2];
     }
     
     if(elementtype > maxelemtype ) {
@@ -805,7 +805,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
       bound->parent[i] = p1;
       bound->parent2[i] = p2;
     }
-
+    
     if(bound->parent[i] > 0) {
       fail = FindParentSide(data,bound,i,elementtype,sideind);
       if(fail) falseparents++;      
@@ -1265,7 +1265,6 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     if(bound[j].nosides == 0) continue;
     
     for(i=1; i <= bound[j].nosides; i++) {
-
       GetBoundaryElement(i,&bound[j],data,ind,&sideelemtype); 
       sumsides++;
       

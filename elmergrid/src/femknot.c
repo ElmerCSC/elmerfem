@@ -633,7 +633,7 @@ void GetBoundaryElement(int sideind,struct BoundaryType *bound,struct FemType *d
   }
 
   element = bound->parent[sideind];
-
+  
   if(element) {
     side = bound->side[sideind];
     normal = bound->normal[sideind];
@@ -7023,7 +7023,8 @@ void ReduceElementOrder(struct FemType *data,int matmin,int matmax)
     if(material >= matmin && material <= matmax) 
       elemcode2 = 101*(elemcode1/100);
     if(elemcode2 == 505) elemcode2 = 504; /* tetrahedron */
-    if(elemcode2 == 707) elemcode2 = 706; /* prism */
+    else if(elemcode2 == 606) elemcode2 = 605; /* pyramid */
+    else if(elemcode2 == 707) elemcode2 = 706; /* prism */
 #if 0
     printf("element=%d  codes=[%d,%d]\n",element,elemcode1,elemcode2);
     printf("mat=%d  interval=[%d,%d]\n",material,matmin,matmax);
