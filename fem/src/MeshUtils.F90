@@ -3522,10 +3522,11 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: ThisActive, TargetActive
     INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
-    LOGICAL :: OnTheFlyBC, CheckForHalo, NarrowHalo, NoHalo, Found
+    LOGICAL :: OnTheFlyBC, CheckForHalo, NarrowHalo, NoHalo, SplitQuadratic, Found
 
     TYPE(Element_t), POINTER :: Parent,q
-    INTEGER :: en, in, HaloCount, ActiveCount
+    INTEGER :: en, in, HaloCount, ActiveCount, ElemCode, nSplit
+    INTEGER :: QuadMap(4), TriMap(3)
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
 
     CALL Info('CreateInterfaceMeshes','Making a list of elements at interface',Level=9)
@@ -3538,6 +3539,17 @@ END SUBROUTINE GetMaxDefs
     ! Interface meshes consist of boundary elements only    
     Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
 
+
+    
+    SplitQuadratic = ListGetLogical( Model % Simulation,'Mortar BCs Split Quadratic',Found ) 
+    IF( Mesh % NumberOfFaces > 0 .OR. Mesh % NumberOfEdges > 0 ) THEN
+      SplitQuadratic = .FALSE.
+    END IF
+    IF( SplitQuadratic ) CALL Info('CreateInterfaceMeshes',&
+        'Quadratic elements will be split',Level=7)
+    
+      
+    
     ! If the target is larger than number of BCs givem then 
     ! it has probably been created on-the-fly from a discontinuous boundary.
     OnTheFlyBC = ( Trgt > Model % NumberOfBCs )
@@ -3616,14 +3628,24 @@ END SUBROUTINE GetMaxDefs
     HaloCount = 0
     DO i=1, Mesh % NumberOfBoundaryElements
       Element => Elements(i)
-      IF (Element % TYPE % ElementCode<=200) CYCLE
+      ElemCode = Element % Type % ElementCode 
+      IF (ElemCode<=200) CYCLE
+
+      nSplit = 1
+      IF( SplitQuadratic ) THEN
+        IF( ElemCode == 306 .OR. ElemCode == 409 ) THEN
+          nSplit = 4
+        ELSE IF( ElemCode == 408 ) THEN
+          nSplit = 5
+        END IF
+      END IF
 
       Constraint = Element % BoundaryInfo % Constraint
       IF( Model % BCs(This) % Tag == Constraint ) THEN
         IF( CheckForHalo ) THEN
           IF( NarrowHalo ) THEN
             IF( ANY(ActiveNode(Element % NodeIndexes) ) ) THEN
-              n1 = n1 + 1
+              n1 = n1 + nSplit
             ELSE
               HaloCount = HaloCount + 1
             END IF
@@ -3639,20 +3661,20 @@ END SUBROUTINE GetMaxDefs
                   ( Right % PartIndex == ParEnv % MyPe ) 
             END IF
             IF( ThisActive ) THEN
-              n1 = n1 + 1
+              n1 = n1 + nSplit
             ELSE
               HaloCount = HaloCount + 1
             END IF
           END IF
         ELSE
-          n1 = n1 + 1
+           n1 = n1 + nSplit
         END IF
       END IF
 
       IF( OnTheFlyBC ) THEN
-        IF( Trgt == Constraint ) n2 = n2 + 1
+        IF( Trgt == Constraint ) n2 = n2 + nSplit
       ELSE
-        IF ( Model % BCs(Trgt) % Tag == Constraint ) n2 = n2 + 1
+        IF ( Model % BCs(Trgt) % Tag == Constraint ) n2 = n2 + nSplit
       END IF
     END DO
 
@@ -3675,6 +3697,9 @@ END SUBROUTINE GetMaxDefs
     BMesh1 % Parent => Mesh
     BMesh2 % Parent => Mesh
 
+    WRITE(Message,'(A,I0,A,I0)') 'Number of interface elements: ',n1,', ',n2
+    CALL Info('CreateInterfaceMeshes',Message,Level=9)    
+    
     CALL AllocateVector( BMesh1 % Elements,n1 )
     CALL AllocateVector( BMesh2 % Elements,n2 )
     CALL AllocateVector( Perm1, Mesh % NumberOfNodes )
@@ -3695,6 +3720,18 @@ END SUBROUTINE GetMaxDefs
     DO i=1, Mesh % NumberOfBoundaryElements
       Element => Elements(i)
       
+      ElemCode = Element % Type % ElementCode 
+      IF (ElemCode <= 200) CYCLE
+
+      nSplit = 1
+      IF( SplitQuadratic ) THEN
+        IF( ElemCode == 306 .OR. ElemCode == 409 ) THEN
+          nSplit = 4
+        ELSE IF( ElemCode == 408 ) THEN
+          nSplit = 5
+        END IF
+      END IF
+       
       Constraint = Element % BoundaryInfo % Constraint
       
       ThisActive = ( Model % BCs(This) % Tag == Constraint ) 
@@ -3728,58 +3765,132 @@ END SUBROUTINE GetMaxDefs
       ! Set the pointers accordingly so we need to code the complex stuff
       ! only once.
       IF ( ThisActive ) THEN
-        n1 = n1 + 1
+        n1 = n1 + nSplit
         ind = n1
         PMesh => BMesh1
         PPerm => Perm1
       ELSE
-        n2 = n2 + 1
+        n2 = n2 + nSplit
         ind = n2
         PMesh => BMesh2
         PPerm => Perm2
       END IF
 
-      n = Element % TYPE % NumberOfNodes             
-      PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, n )
-      PMesh % Elements(ind) = Element
+      
+      IF( nSplit > 1 ) THEN
+        IF( ElemCode == 408 ) THEN
+          QuadMap = (/ 5,6,7,8 /)
+          CALL AllocateVector(PMesh % Elements(ind-4) % NodeIndexes,4 )
+          PMesh % Elements(ind-4) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
+          PMesh % Elements(ind-4) % TYPE => GetElementType(404)
 
-      CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,n )
+          TriMap = (/ 1, 5, 8 /)
+          CALL AllocateVector(PMesh % Elements(ind-3) % NodeIndexes,3 )
+          PMesh % Elements(ind-3) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
+          PMesh % Elements(ind-3) % TYPE => GetElementType(303)
 
-      IF( Mesh % NumberOfFaces == 0 .OR. Mesh % NumberOfEdges == 0 ) THEN
-        PMesh % Elements(ind) % NodeIndexes(1:n) = Element % NodeIndexes(1:n)
+          TriMap = (/ 2, 6, 5 /)
+          CALL AllocateVector(PMesh % Elements(ind-2) % NodeIndexes,3 )
+          PMesh % Elements(ind-2) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
+          PMesh % Elements(ind-2) % TYPE => GetElementType(303)
 
+          TriMap = (/ 3, 7, 6 /)
+          CALL AllocateVector(PMesh % Elements(ind-1) % NodeIndexes,3 )
+          PMesh % Elements(ind-1) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
+          PMesh % Elements(ind-1) % TYPE => GetElementType(303)
+
+          TriMap = (/ 4, 8, 7 /)
+          CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,3 )
+          PMesh % Elements(ind) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)            
+          PMesh % Elements(ind) % TYPE => GetElementType(303)
+
+          PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
+        ELSE IF( ElemCode == 409 ) THEN
+          QuadMap = (/ 1, 5, 9, 8 /)
+          CALL AllocateVector(PMesh % Elements(ind-3) % NodeIndexes,4 )
+          PMesh % Elements(ind-3) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
+          PMesh % Elements(ind-3) % TYPE => GetElementType(404)
+
+          QuadMap = (/ 2, 6, 9, 5 /)
+          CALL AllocateVector(PMesh % Elements(ind-2) % NodeIndexes,4 )
+          PMesh % Elements(ind-2) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
+          PMesh % Elements(ind-2) % TYPE => GetElementType(404)
+
+          QuadMap = (/ 3, 7, 9, 6 /)
+          CALL AllocateVector(PMesh % Elements(ind-1) % NodeIndexes,4 )
+          PMesh % Elements(ind-1) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
+          PMesh % Elements(ind-1) % TYPE => GetElementType(404)
+
+          QuadMap = (/ 4, 8, 9, 7 /)
+          CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,4 )
+          PMesh % Elements(ind) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
+          PMesh % Elements(ind) % TYPE => GetElementType(404)
+
+          PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
+        ELSE IF( ElemCode == 306 ) THEN
+          TriMap = (/ 1, 4, 6 /)
+          CALL AllocateVector(PMesh % Elements(ind-3) % NodeIndexes,3 )
+          PMesh % Elements(ind-3) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
+          PMesh % Elements(ind-3) % TYPE => GetElementType(303)
+
+          TriMap = (/ 2, 5, 4 /)
+          CALL AllocateVector(PMesh % Elements(ind-2) % NodeIndexes,3 )
+          PMesh % Elements(ind-2) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
+          PMesh % Elements(ind-2) % TYPE => GetElementType(303)
+
+          TriMap = (/ 3, 6, 5 /)
+          CALL AllocateVector(PMesh % Elements(ind-1) % NodeIndexes,3 )
+          PMesh % Elements(ind-1) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
+          PMesh % Elements(ind-1) % TYPE => GetElementType(303)
+
+          TriMap = (/ 4, 5, 6 /)
+          CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,3 )
+          PMesh % Elements(ind) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
+          PMesh % Elements(ind) % TYPE => GetElementType(303)
+        END IF
+        n = Element % TYPE % NumberOfNodes             
         PPerm( Element % NodeIndexes(1:n) ) = 1
       ELSE
-        ! If we have edge dofs we want the face element be associated with the 
-        ! face list since that only has properly defined edge indexes.
-        Parent => Element % BoundaryInfo % Left
-        IF(.NOT. ASSOCIATED( Parent ) ) THEN
-          Parent => Element % BoundaryInfo % Right
+        n = Element % TYPE % NumberOfNodes             
+        PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, n )
+        PMesh % Elements(ind) = Element
+        CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,n )
+      
+        IF( Mesh % NumberOfFaces == 0 .OR. Mesh % NumberOfEdges == 0 ) THEN
+          PMesh % Elements(ind) % NodeIndexes(1:n) = Element % NodeIndexes(1:n)
+          PPerm( Element % NodeIndexes(1:n) ) = 1
+        ELSE
+          ! If we have edge dofs we want the face element be associated with the 
+          ! face list since that only has properly defined edge indexes.
+          Parent => Element % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED( Parent ) ) THEN
+            Parent => Element % BoundaryInfo % Right
+          END IF
+
+          q => Find_Face(Parent,Element)
+
+          PMesh % Elements(ind) % NodeIndexes(1:n) = q % NodeIndexes(1:n)
+
+          ! set the elementindex to be faceindex as it may be needed
+          ! for the edge elements.
+          PMesh % Elements(ind) % ElementIndex = q % ElementIndex
+
+          IF(ASSOCIATED(q % Pdefs)) THEN
+            ALLOCATE(Pmesh % Elements(ind) % Pdefs)
+            PMesh % Elements(ind) % PDefs = q % Pdefs
+          END IF
+
+          ! Set also the owner partition
+          !       PMesh % Elements(ind) % PartIndex = q % PartIndex
+
+          en = q % TYPE % NumberOfEdges
+          ALLOCATE(PMesh % Elements(ind) % EdgeIndexes(en))
+          Pmesh % Elements(ind) % EdgeIndexes(1:en) = q % EdgeIndexes(1:en)
+
+          PPerm( q % NodeIndexes(1:n) ) = 1
         END IF
-
-        q => Find_Face(Parent,Element)
-
-        PMesh % Elements(ind) % NodeIndexes(1:n) = q % NodeIndexes(1:n)
-
-        ! set the elementindex to be faceindex as it may be needed
-        ! for the edge elements.
-        PMesh % Elements(ind) % ElementIndex = q % ElementIndex
-
-        IF(ASSOCIATED(q % Pdefs)) THEN
-          ALLOCATE(Pmesh % Elements(ind) % Pdefs)
-          PMesh % Elements(ind) % PDefs = q % Pdefs
-        END IF
-
-        ! Set also the owner partition
-!       PMesh % Elements(ind) % PartIndex = q % PartIndex
-
-        en = q % TYPE % NumberOfEdges
-        ALLOCATE(PMesh % Elements(ind) % EdgeIndexes(en))
-        Pmesh % Elements(ind) % EdgeIndexes(1:en) = q % EdgeIndexes(1:en)
-
-        PPerm( q % NodeIndexes(1:n) ) = 1
       END IF
-
+        
 
     END DO
   
@@ -3798,7 +3909,7 @@ END SUBROUTINE GetMaxDefs
       CALL Fatal('CreateInterfaceMeshes','No active nodes on periodic boundary!')
     END IF
 
-    WRITE(Message,'(A,I0,A,I0)') 'Number of periodic nodes: ',&
+    WRITE(Message,'(A,I0,A,I0)') 'Number of interface nodes: ',&
         BMesh1 % NumberOfNodes, ', ',BMesh2 % NumberOfNOdes
     CALL Info('CreateInterfaceMeshes',Message,Level=9)    
     
