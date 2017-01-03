@@ -3517,7 +3517,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: Success
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,m,n,n1,n2,k1,k2,ind,Constraint,DIM
+    INTEGER :: i,j,k,l,m,n,n1,n2,k1,k2,ind,Constraint,DIM,ii,jj,kk
     TYPE(Element_t), POINTER :: Element, Left, Right, Elements(:)
     LOGICAL :: ThisActive, TargetActive
     INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:)
@@ -3526,7 +3526,7 @@ END SUBROUTINE GetMaxDefs
 
     TYPE(Element_t), POINTER :: Parent,q
     INTEGER :: en, in, HaloCount, ActiveCount, ElemCode, nSplit
-    INTEGER :: QuadMap(4), TriMap(3)
+    INTEGER :: SplitMap(4), SplitSizes(5)
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
 
     CALL Info('CreateInterfaceMeshes','Making a list of elements at interface',Level=9)
@@ -3779,77 +3779,91 @@ END SUBROUTINE GetMaxDefs
       
       IF( nSplit > 1 ) THEN
         IF( ElemCode == 408 ) THEN
-          QuadMap = (/ 5,6,7,8 /)
-          CALL AllocateVector(PMesh % Elements(ind-4) % NodeIndexes,4 )
-          PMesh % Elements(ind-4) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
-          PMesh % Elements(ind-4) % TYPE => GetElementType(404)
+          SplitSizes(1:nSplit) = (/ 4,3,3,3,3 /)
+          DO ii=1,nSplit
+            jj = ind-nSplit+ii
+            m = SplitSizes(ii)
+            
+            SELECT CASE (ii)
+            CASE( 1 )
+              SplitMap(1:m) = (/ 5,6,7,8 /)
+            CASE( 2 )
+              SplitMap(1:m) = (/ 1, 5, 8 /)
+            CASE( 3 ) 
+              SplitMap(1:m) = (/ 2, 6, 5 /)
+            CASE( 4 )
+              SplitMap(1:m) = (/ 3, 7, 6 /)
+            CASE( 5 ) 
+              SplitMap(1:m) = (/ 4, 8, 7 /)
+            END SELECT
 
-          TriMap = (/ 1, 5, 8 /)
-          CALL AllocateVector(PMesh % Elements(ind-3) % NodeIndexes,3 )
-          PMesh % Elements(ind-3) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
-          PMesh % Elements(ind-3) % TYPE => GetElementType(303)
-
-          TriMap = (/ 2, 6, 5 /)
-          CALL AllocateVector(PMesh % Elements(ind-2) % NodeIndexes,3 )
-          PMesh % Elements(ind-2) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
-          PMesh % Elements(ind-2) % TYPE => GetElementType(303)
-
-          TriMap = (/ 3, 7, 6 /)
-          CALL AllocateVector(PMesh % Elements(ind-1) % NodeIndexes,3 )
-          PMesh % Elements(ind-1) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
-          PMesh % Elements(ind-1) % TYPE => GetElementType(303)
-
-          TriMap = (/ 4, 8, 7 /)
-          CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,3 )
-          PMesh % Elements(ind) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)            
-          PMesh % Elements(ind) % TYPE => GetElementType(303)
-
+            CALL AllocateVector(PMesh % Elements(jj) % NodeIndexes, m )
+            PMesh % Elements(jj) % NodeIndexes(1:m) = &
+                Element % NodeIndexes(SplitMap(1:m))
+            PMesh % Elements(jj) % TYPE => GetElementType(101*m)
+            IF( ThisActive ) THEN
+              PMesh % Elements(jj) % BoundaryInfo => Element % BoundaryInfo 
+            END IF
+          END DO          
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
+
         ELSE IF( ElemCode == 409 ) THEN
-          QuadMap = (/ 1, 5, 9, 8 /)
-          CALL AllocateVector(PMesh % Elements(ind-3) % NodeIndexes,4 )
-          PMesh % Elements(ind-3) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
-          PMesh % Elements(ind-3) % TYPE => GetElementType(404)
+          SplitSizes(1:n) = (/ 4,4,4,4 /)
+          DO ii=1,nSplit
+            jj = ind-nSplit+ii
+            m = SplitSizes(ii)
+            
+            SELECT CASE (ii)
+            CASE( 1 )
+              SplitMap(1:m) = (/ 1, 5, 9, 8 /)
+            CASE( 2 )
+              SplitMap(1:m) = (/ 2, 6, 9, 5 /)
+            CASE( 3 ) 
+              SplitMap(1:m) = (/ 3, 7, 9, 6 /)
+            CASE( 4 ) 
+              SplitMap(1:m) = (/ 4, 8, 9, 7 /)
+            END SELECT
 
-          QuadMap = (/ 2, 6, 9, 5 /)
-          CALL AllocateVector(PMesh % Elements(ind-2) % NodeIndexes,4 )
-          PMesh % Elements(ind-2) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
-          PMesh % Elements(ind-2) % TYPE => GetElementType(404)
-
-          QuadMap = (/ 3, 7, 9, 6 /)
-          CALL AllocateVector(PMesh % Elements(ind-1) % NodeIndexes,4 )
-          PMesh % Elements(ind-1) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
-          PMesh % Elements(ind-1) % TYPE => GetElementType(404)
-
-          QuadMap = (/ 4, 8, 9, 7 /)
-          CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,4 )
-          PMesh % Elements(ind) % NodeIndexes(1:4) = Element % NodeIndexes(QuadMap)
-          PMesh % Elements(ind) % TYPE => GetElementType(404)
-
+            CALL AllocateVector(PMesh % Elements(jj) % NodeIndexes, m )
+            PMesh % Elements(jj) % NodeIndexes(1:m) = &
+                Element % NodeIndexes(SplitMap(1:m))
+            PMesh % Elements(jj) % TYPE => GetElementType(101*m)
+            IF( ThisActive ) THEN
+              PMesh % Elements(jj) % BoundaryInfo => Element % BoundaryInfo 
+            END IF
+          END DO
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
+          
         ELSE IF( ElemCode == 306 ) THEN
-          TriMap = (/ 1, 4, 6 /)
-          CALL AllocateVector(PMesh % Elements(ind-3) % NodeIndexes,3 )
-          PMesh % Elements(ind-3) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
-          PMesh % Elements(ind-3) % TYPE => GetElementType(303)
+          SplitSizes(1:n) = (/ 3,3,3,3 /)
+          DO ii=1,nSplit
+            jj = ind-nSplit+ii
+            m = SplitSizes(ii)
+            
+            SELECT CASE (ii)
+            CASE( 1 )
+              SplitMap(1:m) = (/ 1, 4, 6 /)
+            CASE( 2 )
+              SplitMap(1:m) = (/ 2, 5, 4 /)
+            CASE( 3 ) 
+              SplitMap(1:m) = (/ 3, 6, 5 /)
+            CASE( 4 ) 
+              SplitMap(1:m) = (/ 4, 5, 6 /)
+            END SELECT
 
-          TriMap = (/ 2, 5, 4 /)
-          CALL AllocateVector(PMesh % Elements(ind-2) % NodeIndexes,3 )
-          PMesh % Elements(ind-2) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
-          PMesh % Elements(ind-2) % TYPE => GetElementType(303)
-
-          TriMap = (/ 3, 6, 5 /)
-          CALL AllocateVector(PMesh % Elements(ind-1) % NodeIndexes,3 )
-          PMesh % Elements(ind-1) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
-          PMesh % Elements(ind-1) % TYPE => GetElementType(303)
-
-          TriMap = (/ 4, 5, 6 /)
-          CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,3 )
-          PMesh % Elements(ind) % NodeIndexes(1:3) = Element % NodeIndexes(TriMap)
-          PMesh % Elements(ind) % TYPE => GetElementType(303)
+            CALL AllocateVector(PMesh % Elements(j) % NodeIndexes, m )
+            PMesh % Elements(jj) % NodeIndexes(1:m) = &
+                Element % NodeIndexes(SplitMap(1:m))
+            PMesh % Elements(jj) % TYPE => GetElementType(101*m)
+            IF( ThisActive ) THEN
+              PMesh % Elements(jj) % BoundaryInfo => Element % BoundaryInfo 
+            END IF
+          END DO
+          PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 3 )
         END IF
         n = Element % TYPE % NumberOfNodes             
         PPerm( Element % NodeIndexes(1:n) ) = 1
+
       ELSE
         n = Element % TYPE % NumberOfNodes             
         PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, n )

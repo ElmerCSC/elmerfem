@@ -2111,6 +2111,7 @@ CONTAINS
          StickContact = ListGetLogical( BC,'Stick Contact',Found )
          IF(.NOT. Found ) TieContact = ListGetLogical( BC,'Tie Contact',Found )
          IF(.NOT. Found ) FrictionContact = ListGetLogical( BC,'Friction Contact',Found )
+         IF(.NOT. Found ) SlipContact = ListGetLogical( BC,'Slip Contact',Found )
          IF(.NOT. Found ) SlipContact = ListGetLogical( BC,'Slide Contact',Found )
          IF(.NOT. Found ) THEN 
            CALL Warn('DetermineContact','No contact type given, assuming > Slip Contact <')
@@ -2124,6 +2125,17 @@ CONTAINS
        IF( SlipContact ) CALL Info('DetermineContact','Using slip contact for displacement',Level=10)
        
 
+       ! At the start it may be beneficial to assume initial tie contact
+       IF( (FrictionContact .OR. StickContact .OR. SlipContact ) .AND. &
+           (TimeStep == 1 .AND. NonlinIter == 1 ) ) THEN
+         DoIt = ListGetLogical(BC,'Initial Tie Contact',Found )
+         IF( DoIt ) THEN
+           FrictionContact = .FALSE.; StickContact = .FALSE.; SlipContact = .FALSE.
+           TieContact = .TRUE.
+           CALL Info('DetermineContact','Assuming initial tie contact',Level=10)
+         END IF
+       END IF
+         
        ! At the first time it may be beneficial to assume frictionless initial contact.
        SkipFriction = .FALSE.
        IF( (FrictionContact .OR. StickContact .OR. SlipContact ) .AND. TimeStep == 1 ) THEN
@@ -2569,9 +2581,10 @@ CONTAINS
        INTEGER, POINTER :: Indexes(:)
        INTEGER :: elemcode, CoeffSign
        REAL(KIND=dp), ALLOCATABLE :: CoeffTable(:)
-       INTEGER :: l2
-       LOGICAL :: DebugNormals
-
+       INTEGER :: l2,elem,i1,i2,j1,j2
+       LOGICAL :: LinearContactGap, DebugNormals
+       
+       
        CALL Info('DetermineContact','Computing distance between mortar boundaries',Level=14)
 
        DispVals => Solver % Variable % Values
@@ -2592,6 +2605,8 @@ CONTAINS
              'Previous displacement field required!')
        END IF
 
+       LinearContactGap = ListGetLogical( Model % Simulation,&
+           'Contact BCs linear gap', Found )      
 
        ALLOCATE( SlaveNode( Mesh % NumberOfNodes ) ) 
        SlaveNode = .FALSE.
@@ -2880,6 +2895,51 @@ CONTAINS
          END IF
        END IF
 
+       
+       IF( LinearContactGap ) THEN       
+         DO elem=Mesh % NumberOfBulkElements + 1, &
+             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+           
+           Element => Mesh % Elements( elem )         
+           
+           IsSlave = ( Element % BoundaryInfo % Constraint == Model % BCs(bc_ind) % Tag ) 
+           IsMaster = ( Element % BoundaryInfo % Constraint == Model % BCs(master_ind) % Tag ) 
+           IF( .NOT. ( IsSlave .OR. ( CreateDual .AND. IsMaster ) ) ) CYCLE
+           
+           Indexes => Element % NodeIndexes         
+           ElemCode = Element % TYPE % ElementCode           
+
+           SELECT CASE ( ElemCode )
+
+           CASE( 408 )
+             DO i=5,8
+               i1=i-4
+               i2=i1+1
+               IF(i2==5) i2=1
+               j = DistVar % Perm(Indexes(i))
+               IF( j == 0 ) CYCLE
+               j1 = DistVar % Perm(Indexes(i1))
+               j2 = DistVar % Perm(Indexes(i2))
+
+               DistVar % Values(j) = 0.5_dp * &
+                   ( DistVar % Values(j1) + DistVar % Values(j2))
+               GapVar % Values(j) = 0.5_dp * &
+                   ( GapVar % Values(j1) + GapVar % Values(j2))
+               
+               IF( CalculateVelocity ) THEN
+                 DO k=1,Dofs
+                   VeloVar % Values( Dofs*(j-1)+k ) = 0.5_dp * &
+                       ( VeloVar % Values(Dofs*(j1-1)+k) + VeloVar % Values(Dofs*(j2-1)+k))  
+                 END DO
+               END IF
+             END DO
+             
+           CASE DEFAULT
+             CALL Fatal('DetermineContact','Implement linear gaps for: '//TRIM(I2S(ElemCode)))
+           END SELECT
+         END DO
+       END IF
+       
        IF( CalculateVelocity ) THEN
          !PRINT *,'Velo range:',MINVAL( VeloVar % Values), MAXVAL( VeloVar % Values)
        END IF
@@ -2910,7 +2970,9 @@ CONTAINS
        LOGICAL :: Stat, IsSlave, IsMaster
        TYPE(Matrix_t), POINTER :: ActiveProjector
        LOGICAL, ALLOCATABLE :: NodeDone(:)
-
+       LOGICAL :: LinearContactLoads
+       INTEGER :: i1,i2,j1,j2,ElemCode
+       
        n = Mesh % MaxElementNodes
        ALLOCATE(Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
@@ -2923,7 +2985,10 @@ CONTAINS
        ALLOCATE( NodeDone( Mesh % NumberOfNodes ) )
        NodeDone = .FALSE.
 
+       LinearContactLoads = ListGetLogical( Model % Simulation,&
+           'Contact BCs linear loads', Found )
 
+       
 100    DO elem=Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
          
@@ -3016,6 +3081,41 @@ CONTAINS
          END IF
        END DO
 
+       IF( LinearContactLoads ) THEN       
+         DO elem=Mesh % NumberOfBulkElements + 1, &
+             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+           
+           Element => Mesh % Elements( elem )         
+
+           IsSlave = ( Element % BoundaryInfo % Constraint == Model % BCs(bc_ind) % Tag ) 
+           IsMaster = ( Element % BoundaryInfo % Constraint == Model % BCs(master_ind) % Tag ) 
+           IF( .NOT. ( IsSlave .OR. ( CreateDual .AND. IsMaster ) ) ) CYCLE
+           
+           Indexes => Element % NodeIndexes         
+           ElemCode = Element % TYPE % ElementCode           
+
+           SELECT CASE ( ElemCode )
+
+           CASE( 408 )
+             DO i=5,8
+               i1=i-4
+               i2=i1+1
+               IF(i2==5) i2=1
+               j = SlipLoadVar % Perm(Indexes(i))
+               j1 = SlipLoadVar % Perm(Indexes(i1))
+               j2 = SlipLoadVar % Perm(Indexes(i2))
+               SlipLoadVar % Values(j) = 0.5_dp * &
+                   ( SlipLoadVar % Values(j1) + SlipLoadVar % Values(j2))
+               NormalLoadVar % Values(j) = 0.5_dp * &
+                   ( NormalLoadVar % Values(j1) + NormalLoadVar % Values(j2))
+             END DO
+               
+           CASE DEFAULT
+             CALL Fatal('DetermineContact','Implement linear loads for: '//TRIM(I2S(ElemCode)))
+           END SELECT
+         END DO
+       END IF
+       
        IF( FlatProjector .OR. PlaneProjector ) THEN
          IF( NormalCount == 0 ) THEN
            CALL Info('DetermineContact','All normals are consistently signed',Level=10)
