@@ -5766,6 +5766,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
 !-------------------------------------------------------------------------------------------
    IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
+   
+   CALL Info('MagnetoDynamicsCalcFields','------------------------------',Level=6)
+   CALL Info('MagnetoDynamicsCalcFields','Computing postprocessed fields',Level=5)
+
 
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
@@ -7549,6 +7553,8 @@ CONTAINS
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
 
+   CALL Info('MagnetoDynamicsCalcFields','Solving for field: '//TRIM(Var % Name),Level=6)
+   
    DO i=1,m
      dofs = dofs+1
      Solver % Matrix % RHS => b(:,dofs)
