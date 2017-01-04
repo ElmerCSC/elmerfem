@@ -358,11 +358,80 @@ CONTAINS
 END MODULE MagnetoDynamicsUtils
 
 
+! !> \ingroup Solvers
+! !------------------------------------------------------------------------------
+! SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
+! !------------------------------------------------------------------------------
+!   USE MagnetoDynamicsUtils
+!   IMPLICIT NONE
+! !------------------------------------------------------------------------------
+!   TYPE(Solver_t) :: Solver
+!   TYPE(Model_t) :: Model
+
+!   REAL(KIND=dp) :: dt
+!   LOGICAL :: Transient
+! !------------------------------------------------------------------------------
+!   LOGICAL :: Found, PiolaVersion, SecondOrder, LorentzConductivity
+!   TYPE(ValueList_t), POINTER :: SolverParams
+ 
+!   LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+!     ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
+!   IF(LorentzConductivity) CALL INFO("WhitneyAVSolver_Init0", "Material is moving: has Lorentz force present")
+
+!   SolverParams => GetSolverParams()
+!   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
+!     PiolaVersion = GetLogical(SolverParams, &
+!         'Use Piola Transform', Found )   
+!     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
+!     IF (PiolaVersion) THEN
+!       IF ( Transient .OR. LorentzConductivity ) THEN
+!         IF (SecondOrder) THEN
+!           CALL ListAddString( SolverParams, &
+!               "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
+!         ELSE
+!           CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+!         END IF
+!       ELSE
+!         ! No use to save nodal field as it does not exist!
+!         CALL ListAddLogical( SolverParams,'Variable Output',.FALSE. )
+!         IF (SecondOrder) THEN
+!           CALL ListAddString( SolverParams, "Element", &
+!               "n:0 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
+!         ELSE
+!           CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+!         END IF
+!       END IF
+!     ELSE
+!       IF ( Transient .OR. LorentzConductivity ) THEN
+!         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+!       ELSE
+!         ! No use to save nodal field as it does not exist!
+!         CALL ListAddLogical( SolverParams,'Variable Output',.FALSE. )
+!         CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+!       END IF
+
+!       IF(GetString(SolverParams,'Linear System Solver')=='block') THEN
+!         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+!         CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
+!       END IF
+!     END IF
+!   END IF
+  
+!   CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.) 
+
+! ! This is for internal communication with the saving routines
+!   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
+
+! !------------------------------------------------------------------------------
+! END SUBROUTINE WhitneyAVSolver_Init0
+! !------------------------------------------------------------------------------
+
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
+
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -371,50 +440,75 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion, SecondOrder, LorentzConductivity
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SteadyGauge, LorentzConductivity
   TYPE(ValueList_t), POINTER :: SolverParams
- 
-  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
-    ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
-  IF(LorentzConductivity) CALL INFO("WhitneyAVSolver_Init0", "Material is moving: has Lorentz force present")
+  TYPE(ValueListEntry_t), POINTER :: VariablePtr
+  INTEGER, PARAMETER :: b_empty = b'0', b_Piola = b'1', &
+       b_Secondorder = b'10', b_Gauge = b'100', &
+       b_Transient = b'1000', b_Lorentz = b'10000'
+
+  integer :: Paramlist
+  Paramlist = 0
+
+  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
+       ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
+  IF(LorentzConductivity) &
+       CALL INFO("WhitneyAVSolver_Init0", "Material is moving: has Lorentz force present")
 
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
+    PiolaVersion = GetLogical(SolverParams, &
+        'Use Piola Transform', Found )   
     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
-    IF( SecondOrder ) THEN
-      PiolaVersion = .TRUE.
-    ELSE
-      PiolaVersion = GetLogical(SolverParams, &
-          'Use Piola Transform', Found )   
-    END IF
+    SteadyGauge = GetLogical(SolverParams, 'Steady State Lagrange Gauge', Found)
 
-    IF (PiolaVersion) THEN
-      IF ( Transient .OR. LorentzConductivity ) THEN
-        IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, &
-              "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
-        ELSE
-          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
-        END IF
-      ELSE
-        ! No use to save nodal field as it does not exist!
-        CALL ListAddLogical( SolverParams,'Variable Output',.FALSE. )
-        IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, "Element", &
-              "n:0 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
-        ELSE
-          CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
-        END IF
-      END IF
-    ELSE
-      IF ( Transient .OR. LorentzConductivity ) THEN
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
-      ELSE
-        ! No use to save nodal field as it does not exist!
-        CALL ListAddLogical( SolverParams,'Variable Output',.FALSE. )
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
-      END IF
+    IF (PiolaVersion) Paramlist = Paramlist + b_Piola
+    IF (SecondOrder) Paramlist = Paramlist + b_Secondorder
+    IF (SteadyGauge) Paramlist = Paramlist + b_Gauge
+    IF (Transient) Paramlist = Paramlist + b_Transient
+    IF (LorentzConductivity) Paramlist = Paramlist + b_Lorentz
 
+    SELECT CASE (Paramlist)
+    CASE (b_Piola + b_Transient + b_Secondorder, &
+         b_Piola + b_Transient + b_Secondorder + b_Lorentz )
+      CALL ListAddString( SolverParams, &
+           "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
+
+    CASE (b_Piola + b_Transient, &
+         b_Piola + b_Transient + b_Lorentz)
+      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+
+    CASE (b_Piola + b_Gauge + b_Secondorder)
+      CALL ListAddString( SolverParams, &
+           "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
+
+    CASE (b_Piola + b_Gauge)
+      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+
+    CASE (b_Piola + b_Secondorder)
+      CALL ListAddString( SolverParams, "Element", &
+           "n:0 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
+
+    CASE (b_Piola)
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+
+    CASE (b_Piola + b_Lorentz)
+      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+
+    CASE (b_Transient, &
+         b_Transient + b_Lorentz)
+      CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+
+    CASE (b_empty)
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+
+    CASE default
+      WRITE (Message,*), 'Unsupported degree-gauge-transient combination', Paramlist
+      CALL Fatal('WhitneyAVSolver_Init0', Message)
+
+    END SELECT
+
+    IF (.NOT. PiolaVersion) THEN
       IF(GetString(SolverParams,'Linear System Solver')=='block') THEN
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
         CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
@@ -424,7 +518,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   
   CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.) 
 
-! This is for internal communication with the saving routines
+  ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
 !------------------------------------------------------------------------------
@@ -483,8 +577,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
          SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
          PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis, &
          HasTensorReluctivity
+  LOGICAL :: SteadyGauge, TransientGauge, DivConstraintCollected=.FALSE., &
+       HasStabC
 
-  REAL(KIND=dp) :: Relax
+  REAL(KIND=dp) :: Relax, gauge_penalize_c
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
@@ -526,6 +622,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         'Using quadratic approximation, pyramidical elements are not yet available',Level=4)
   END IF
 
+  SteadyGauge = GetLogical(GetSolverParams(), 'Steady State Lagrange Gauge', Found)
+  TransientGauge = GetLogical(GetSolverParams(), 'Transient Lagrange Gauge', Found)
+  gauge_penalize_c = GetCReal(GetSolverParams(), 'Gauge System Penalization Coefficient', HasStabC)
 
   ! Gauge tree, if requested or using direct solver:
   ! ------------------------------------------------
@@ -540,6 +639,16 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   IF( PiolaVersion .AND. TG ) THEN
     CALL Fatal('WhitneyAVSolver', &
         'Tree Gauge cannot be used in conjuction with Piola transformation')
+  END IF
+
+  IF(SteadyGauge) THEN
+    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
+  END IF
+
+  IF(TransientGauge) THEN
+    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in transient computation")
+    CALL Warning("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
+    ! TODO: Check if there is mortar boundaries and report the above in that case only.
   END IF
 
 
