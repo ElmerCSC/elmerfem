@@ -6578,7 +6578,8 @@ END SUBROUTINE GetMaxDefs
 
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
- 
+
+      
       n = Mesh % MaxElementNodes
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
           NodesM % x(n), NodesM % y(n), NodesM % z(n), &
@@ -9255,8 +9256,11 @@ END SUBROUTINE GetMaxDefs
 
     IF( GotNormal ) THEN
       CALL TangentDirections( Normal,Tangent1,Tangent2 )
+    ELSE
+      CALL Info('AxialInterfaceMeshes',&
+          'Assuming axial interface to have z-axis the normal!',Level=8)
     END IF
-
+    
     ! Go trough master (k=1) and target mesh (k=2)
     !--------------------------------------------
     FullCircle = .FALSE.
@@ -9818,7 +9822,8 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: rowsum, dia, val
     INTEGER, POINTER :: IntInvPerm(:)
     LOGICAL :: GlobalInds
-
+    INTEGER, POINTER :: GlobalDofs(:)
+    
     IF(.NOT.ASSOCIATED(Projector)) RETURN
     
     IF( PRESENT( InvPerm ) ) THEN
@@ -9836,18 +9841,54 @@ END SUBROUTINE GetMaxDefs
       IF( PRESENT( Parallel ) ) GlobalInds = Parallel
     END IF
 
+    IF( GlobalInds ) THEN
+      NULLIFY( GlobalDofs ) 
+      IF( ASSOCIATED( CurrentModel % Solver % Matrix ) ) THEN
+        GlobalDofs => CurrentModel % Solver % Matrix % ParallelInfo % GlobalDofs
+      END IF
+      IF(.NOT. ASSOCIATED( GlobalDofs ) ) THEN
+        CALL Info('SaveProjector','Cannot find GlobalDofs for Solver matrix')
+        GlobalDofs => CurrentModel % Mesh % ParallelInfo % GlobalDofs
+      END IF
+    END IF
+          
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
       ii = intinvperm(i)
-      IF( ii == 0 ) CYCLE
+      IF( ii == 0) THEN
+        PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
+        CYCLE
+      END IF
       IF( GlobalInds ) THEN
-        ii = CurrentModel % Mesh % ParallelInfo % GlobalDofs(ii)
+        IF( ii > SIZE( GlobalDofs ) ) THEN
+          PRINT *,'ParEnv % MyPe, Projecor invperm is larger than globaldofs',&
+              ii, SIZE( GlobalDofs ), i, Projector % NumberOfRows
+          CYCLE
+        END IF
+        ii = GlobalDofs(ii)
+      END IF
+      IF( ii == 0) THEN
+        PRINT *,'Projector global InvPerm is zero:',ParEnv % MyPe, i, ii
+        CYCLE
       END IF
       DO j=projector % rows(i), projector % rows(i+1)-1
         jj = projector % cols(j)
+        IF( jj == 0) THEN
+          PRINT *,'Projector col is zero:',ParEnv % MyPe, i, ii, j, jj
+          CYCLE
+        END IF       
         val = projector % values(j)
         IF( GlobalInds ) THEN
-          jj = CurrentModel % Mesh % ParallelInfo % GlobalDofs(jj)
+          IF( jj > SIZE( GlobalDofs ) ) THEN
+            PRINT *,'Projecor invperm is larger than globaldofs',&
+                jj, SIZE( GlobalDofs )
+            CYCLE
+          END IF
+          jj = GlobalDofs(jj)
+          IF( jj == 0) THEN
+            PRINT *,'Projector global col is zero:',ParEnv % MyPe, i, ii, j, jj
+            CYCLE
+          END IF
           WRITE(1,*) ii,jj,ParEnv % MyPe, val
         ELSE
           WRITE(1,*) ii,jj,val
@@ -9881,7 +9922,7 @@ END SUBROUTINE GetMaxDefs
         END DO
 
         IF( GlobalInds ) THEN
-          ii = CurrentModel % Mesh % ParallelInfo % GlobalDofs(ii)
+          ii = GlobalDofs(ii)
           WRITE(1,*) ii, i, &
               projector % rows(i+1)-projector % rows(i), ParEnv % MyPe, dia, rowsum
         ELSE
