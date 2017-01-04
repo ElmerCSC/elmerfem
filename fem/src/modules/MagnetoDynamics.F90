@@ -496,7 +496,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
 
     CASE (b_Transient, &
-         b_Transient + b_Lorentz)
+         b_Transient + b_Lorentz, &
+         b_Lorentz)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
 
     CASE (b_empty)
@@ -647,7 +648,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   IF(TransientGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in transient computation")
-    CALL Warning("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
+    CALL Warn("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
   END IF
 
