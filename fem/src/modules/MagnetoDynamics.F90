@@ -420,149 +420,119 @@ CONTAINS
   END SUBROUTINE GetPermittivity
 !------------------------------------------------------------------------------
 
-!-------------------------------------------------------------------------------
-! Packs rows associated with edge dofs from
-! constraint matrix and adds ColOffset to
-! column indices of (1,1) block. 
-!-------------------------------------------------------------------------------
-SUBROUTINE PackEdgeRows(CM, Model, ColOffset)
-!-------------------------------------------------------------------------------
-  TYPE(Matrix_t), INTENT(INOUT), POINTER :: CM
-  TYPE(Model_t), INTENT(IN) :: Model
-  INTEGER, OPTIONAL :: ColOffset
-!-------------------------------------------------------------------------------
-  LOGICAL, ALLOCATABLE :: Emptyrow(:)
-  INTEGER :: ColOffsetF
-  REAL(KIND=dp), POINTER CONTIG :: V(:), RHS(:)
-  INTEGER, POINTER CONTIG :: R(:), C(:), InvPerm(:), Perm(:)
-  INTEGER :: i, j, numempty, k, fileind
+  !-------------------------------------------------------------------------------
+  !> Packs rows associated with edge dofs from constraint matrix and
+  !> adds ColOffset to column indices of (1,1) block.
+  !> If CM % ConstrainedDOF(i) is true then the ith row is treted empty.
+  !! @param ColOffset add to column index of that correspond to nodal dofs
+  !!                   by this amount 
+  !-------------------------------------------------------------------------------
+  SUBROUTINE PackEdgeRows(CM, Model, ColOffset)
+    !-------------------------------------------------------------------------------
+    TYPE(Matrix_t), INTENT(INOUT), POINTER :: CM 
+    TYPE(Model_t), INTENT(IN) :: Model
+    INTEGER, OPTIONAL :: ColOffset
+    !-------------------------------------------------------------------------------
+    LOGICAL, ALLOCATABLE :: Emptyrow(:)
+    INTEGER :: ColOffsetF
+    REAL(KIND=dp), POINTER CONTIG :: V(:), RHS(:)
+    INTEGER, POINTER CONTIG :: R(:), C(:), InvPerm(:), Perm(:)
+    INTEGER :: i, j, numempty, k, fileind
 
-  ALLOCATE(EmptyRow(CM % NumberOfRows))
-  EmptyRow = .TRUE.
+    ALLOCATE(EmptyRow(CM % NumberOfRows))
+    EmptyRow = .TRUE.
 
-  IF (.NOT. PRESENT(ColOffset)) THEN
-    ColOffsetF = CM % NumberOfRows
-  ELSE
-    ColOffsetF = ColOffset
-  END IF
-
-  DO j = 1, CM % NumberOfRows
-    DO i = CM % Rows(j), CM % Rows(j+1)-1
-      IF (CM % Cols(i) <= Model % NumberOfNodes) &
-          CM % Cols(i) = CM % Cols(i) + ColOffsetF
-    END DO
-  END DO
-
-  numempty = 0
-  ROW_LOOP: DO i = 1, CM % NumberOfRows
-    ! If CM % ConstrainedDOF, then this must be a row corresponding to
-    ! edge dof so it mus tbe zero
-    IF ( CM % ConstrainedDOF(i) ) THEN
-      Emptyrow(i) = .TRUE.
-    ELSE ! Otherwise the row might correspond with dirichlet scalar dof
-         ! Such row must not be packed but diagonal entry of the final matrix
-         ! must be set to 1. (Done later?)
-      COL_LOOP : DO j = CM % Rows(i), CM % Rows(i+1)-1
-        IF (abs(CM % values(j)) >= 1e-12_dp) THEN
-          EmptyRow(i) = .FALSE.
-          EXIT COL_LOOP
-        END IF
-      END DO COL_LOOP
-      ! IF ( .NOT. CM % ConstrainedDOF(i) .AND. EmptyRow(i) ) print *, 'Found bad empty row, i = ', i ! DEBUG
+    IF (.NOT. PRESENT(ColOffset)) THEN
+      ColOffsetF = CM % NumberOfRows
+    ELSE
+      ColOffsetF = ColOffset
     END IF
 
-    IF (EmptyRow(i)) THEN
-      CM % RHS(i) = 0.0_dp
-      IF (CM % Constraineddof(i)) numempty = numempty + 1
-    END IF
-  END DO ROW_LOOP
-
-  
-  ! Pack empty rows
-  ALLOCATE(R(CM % NumberOfRows-numempty+1))
-  ALLOCATE(InvPerm(CM % NumberOfRows-numempty))
-  ALLOCATE(Perm(CM % NumberOfRows-numempty))
-  ALLOCATE(RHS(CM % NumberOfRows-numempty))
-  RHS(:) = 0.0_dp
-  k = 2
-  R(1) = 1
-  DO i = 2, CM % NumberOfRows+1
-    IF(.not. emptyrow(i-1)) THEN
-      IF(ASSOCIATED(CM%InvPerm)) InvPerm(k-1) = CM % InvPerm(i-1)
-      IF(ASSOCIATED(CM%Perm)) Perm(k-1) = CM % Perm(i-1)
-      R(k) = R(k-1) + CM % Rows(i) - CM % rows(i-1)
-
-      k = k + 1
-    END IF
-  END DO
-  k = size(R)
-  ALLOCATE(C(R(k)-1), V(R(k)-1))
-
-  k = 1
-  DO i = 2, CM % NumberOfRows+1
-    IF (.not. EmptyRow(i-1)) THEN
-      DO j = 0, R(k+1)-R(k)-1
-        C(R(k)+j) = CM % cols(CM % rows(i-1)+j)
-        V(R(k)+j) = CM % Values(CM % rows(i-1)+j)
+    DO j = 1, CM % NumberOfRows
+      DO i = CM % Rows(j), CM % Rows(j+1)-1
+        IF (CM % Cols(i) <= Model % NumberOfNodes) &
+             CM % Cols(i) = CM % Cols(i) + ColOffsetF
       END DO
-      k = k+1
+    END DO
+
+    numempty = 0
+    ROW_LOOP: DO i = 1, CM % NumberOfRows
+      ! If CM % ConstrainedDOF(i) is true, then this must be a row corresponding to
+      ! edge dof so it must tbe zero. 
+      IF ( CM % ConstrainedDOF(i) ) THEN
+        Emptyrow(i) = .TRUE.
+      ELSE ! Otherwise the row might correspond with dirichlet scalar dof
+        ! Such row must not be packed but diagonal entry of the final matrix
+        ! must be set to 1. (Done later?)
+        COL_LOOP : DO j = CM % Rows(i), CM % Rows(i+1)-1
+          IF (abs(CM % values(j)) >= 1e-12_dp) THEN
+            EmptyRow(i) = .FALSE.
+            EXIT COL_LOOP
+          END IF
+        END DO COL_LOOP
+      END IF
+
+      IF (EmptyRow(i)) THEN
+        CM % RHS(i) = 0.0_dp
+        IF (CM % Constraineddof(i)) numempty = numempty + 1
+      END IF
+    END DO ROW_LOOP
+
+
+    ! Pack empty rows
+    ALLOCATE(R(CM % NumberOfRows-numempty+1))
+    ALLOCATE(InvPerm(CM % NumberOfRows-numempty))
+    ALLOCATE(Perm(CM % NumberOfRows-numempty))
+    ALLOCATE(RHS(CM % NumberOfRows-numempty))
+    RHS(:) = 0.0_dp
+    k = 2
+    R(1) = 1
+    DO i = 2, CM % NumberOfRows+1
+      IF(.not. emptyrow(i-1)) THEN
+        IF(ASSOCIATED(CM%InvPerm)) InvPerm(k-1) = CM % InvPerm(i-1)
+        IF(ASSOCIATED(CM%Perm)) Perm(k-1) = CM % Perm(i-1)
+        R(k) = R(k-1) + CM % Rows(i) - CM % rows(i-1)
+
+        k = k + 1
+      END IF
+    END DO
+    k = size(R)
+    ALLOCATE(C(R(k)-1), V(R(k)-1))
+
+    k = 1
+    DO i = 2, CM % NumberOfRows+1
+      IF (.not. EmptyRow(i-1)) THEN
+        DO j = 0, R(k+1)-R(k)-1
+          C(R(k)+j) = CM % cols(CM % rows(i-1)+j)
+          V(R(k)+j) = CM % Values(CM % rows(i-1)+j)
+        END DO
+        k = k+1
+      END IF
+    END DO
+
+    deallocate(CM % Rows)
+    deallocate(CM % Cols)
+    deallocate(CM % Values)
+    deallocate(cm % rhs)
+    if(ASSOCIATED(CM % InvPerm)) THEN
+      DEALLOCATE(CM % InvPerm)
+      CM % InvPerm => InvPerm
     END IF
-  END DO
+    IF(ASSOCIATED(CM % Perm)) THEN 
+      DEALLOCATE(CM % Perm)
+      CM % Perm => Perm
+    END IF
 
-  IF ( ASSOCIATED(CM % Perm) .and. ASSOCIATED(CM % InvPerm)) THEN ! DEBUG
-    fileind = 932
-    open(unit=fileind, file='perm_before_'//trim(i2s(parEnv % MyPe)), action='write')
-    do i = 1,size(cm%perm)
-      write (fileind,*) CM % perm(i)
-    end do
-    close(fileind)
-    open(unit=fileind, file='invperm_before_'//trim(i2s(parEnv % MyPe)), action='write')
-    do i = 1,size(cm%invperm)
-      write (fileind,*) CM % invperm(i)
-    end do
-    close(fileind)
-  END IF
-  ! print *, parEnv % MyPe, '-NOF ROWS-', CM % NumberOfRows
+    CM % rows => R
+    CM % cols => C
+    CM % values => V
+    CM % RHS => RHS
+    CM % NumberOfRows = size(R,1)-1
 
-  deallocate(CM % Rows)
-  deallocate(CM % Cols)
-  deallocate(CM % Values)
-  deallocate(cm % rhs)
-  if(ASSOCIATED(CM % InvPerm)) THEN
-    DEALLOCATE(CM % InvPerm)
-    CM % InvPerm => InvPerm
-  END IF
-  IF(ASSOCIATED(CM % Perm)) THEN 
-    DEALLOCATE(CM % Perm)
-    CM % Perm => Perm
-  END IF
+  !-------------------------------------------------------------------------------
+  END SUBROUTINE PackEdgeRows
+  !-------------------------------------------------------------------------------
 
-  CM % rows => R
-  CM % cols => C
-  CM % values => V
-  CM % RHS => RHS
-  CM % NumberOfRows = size(R,1)-1
-
-  IF ( ASSOCIATED(CM % Perm) .and. ASSOCIATED(CM % InvPerm)) THEN ! DEBUG
-    open(unit=fileind, file='perm_after_'//trim(i2s(parEnv % MyPe)), action='write')
-    do i = 1,size(cm%perm)
-      write (fileind,*) CM % perm(i)
-    end do
-    close(fileind)
-    open(unit=fileind, file='invperm_after_'//trim(i2s(parEnv % MyPe)), action='write')
-    do i = 1,size(cm%invperm)
-      write (fileind,*) CM % invperm(i)
-    end do
-    close(fileind)
-  end if
-  
-  !print *, parEnv % MyPe, '-perm-', CM % perm
-  !print *, parEnv % MyPe, '-invperm-', CM % invperm
-  ! print *, parEnv % MyPe, '-nof rows-', CM % NumberOfRows
-
-!-------------------------------------------------------------------------------
-END SUBROUTINE PackEdgeRows
-!-------------------------------------------------------------------------------
 END MODULE MagnetoDynamicsUtils
 
 !> \ingroup Solvers
@@ -661,6 +631,16 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
+  IF(SteadyGauge) THEN
+    CALL Info("WhitneyAVSolver_init0", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
+  END IF
+
+  IF(GetLogical(SolverParams, 'Transient Lagrange Gauge', Found)) THEN
+    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in transient computation")
+    IF (ListCheckPresentAnyBC(Model, 'Mortar boundary')) THEN
+      CALL Fatal("WhitneyAVSolver_init0", "Gauging in transient case with mortar boundaries present is not supported.") 
+    END IF
+  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
 !------------------------------------------------------------------------------
@@ -784,16 +764,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         'Tree Gauge cannot be used in conjuction with Piola transformation')
   END IF
 
-  IF(SteadyGauge) THEN
-    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
-  END IF
-
-  IF(TransientGauge) THEN
-    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in transient computation")
-    CALL Warn("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
-    ! TODO: Check if there is mortar boundaries and report the above in that case only.
-  END IF
-
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
@@ -838,6 +808,11 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      END IF
 
      NULLIFY( Cwrk )
+
+     IF (TransientGauge) THEN
+       A => GetMatrix()
+       IF (.NOT. TransientGaugeCollected) CM => AddConstraintFromBulk(A, Solver % Matrix % ConstraintMatrix)
+     END IF
 
      AllocationsDone = .TRUE.
   END IF
@@ -953,6 +928,7 @@ CONTAINS
   !-----------------
 
   A => GetMatrix()
+  IF (TransientGauge) Constraintvalues => CM % Values
 
 300 CONTINUE
 
@@ -1057,9 +1033,9 @@ CONTAINS
      !Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
      IF (Transient) CALL DefaultUpdateMass(MASS)
-     CALL DefaultUpdateEquations(STIFF,FORCE)
 
-
+     ! Collect weak diverence constraint.
+     !-----------------------------------------------------------------
      IF (Transient .AND. TransientGauge .AND. .NOT. TransientGaugeCollected) THEN
        CALL LocalConstraintMatrix( DConstr, Element, n, nd+nb, PiolaVersion, SecondOrder)
        SaveValues => Solver % Matrix % MassValues
@@ -1067,6 +1043,8 @@ CONTAINS
        CALL DefaultUpdateMassR(DConstr)
        Solver % Matrix % MassValues => SaveValues
      END IF
+
+     CALL DefaultUpdateEquations(STIFF,FORCE)
   END DO
 
   CALL DefaultFinishBulkAssembly(BulkUpdate=ConstantBulk)
@@ -1159,6 +1137,46 @@ CONTAINS
   ! Dirichlet BCs in terms of vector potential A:
   ! ---------------------------------------------
   CALL DefaultDirichletBCs()
+
+  ! Apply dirichlet BCs associated with weak divergence dofs
+  IF (TransientGauge .AND. .NOT. TransientGaugeCollected) THEN
+    CALL Info("WhitneyAVSolver", "Handling weak div boundary.", level=10)
+    Active = GetNOFBoundaryElements()
+    ELEMENT_LOOP: DO t = 1, Active
+      Element => GetBoundaryElement(t)
+      IF (.NOT. ActiveBoundaryElement(UElement=Element)) THEN
+        CYCLE ELEMENT_LOOP
+      END IF
+      BC => GetBC()
+      IF (.NOT. ASSOCIATED(BC)) THEN
+        CYCLE ELEMENT_LOOP
+      END IF
+      IF (GetLogical ( BC, 'weak div dirichlet boundary', Found)) THEN
+        n = GetElementNOFNodes(Element)
+        DO i = 1, n
+          j = Solver % Variable % Perm(Element % NodeIndexes(i))
+          DO k=CM % Rows(j),CM % Rows(j+1)-1
+            CM % Values(k) = 0.0_dp
+            IF (CM % Cols(k) == j + A % NumberOfRows) CM % Values(k) = 1.0_dp
+          END DO
+
+          CM % RHS(j) = 0.0_dp
+
+          k = CM % Diag(j)
+          IF (k>0) THEN
+            CM % Values(k) = 1.0_dp
+          ELSE
+            CALL Warn("WhitneyAVSolver", "there is no diagonal entry in constraint matrix.. Why is that?")
+          END IF
+        END DO
+      END IF
+    END DO ELEMENT_LOOP
+    CALL Info("WhitneyAVSolver", "Done setting weak div dirichlet boundary.", level=10)
+
+    CALL PackEdgeRows(CM, Model)
+    CALL Info("WhitneyAVSolver", "Done removing unused constraints.", level=10)
+    TransientGaugeCollected = .TRUE.
+  END IF
 
   ! Dirichlet BCs in terms of magnetic flux density B:
   ! --------------------------------------------------
