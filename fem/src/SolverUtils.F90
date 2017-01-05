@@ -11605,7 +11605,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EliminateDiscont, &
-              EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
+              NonEmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
               SkipConstraints
   SAVE MultiplierValues, SolverPointer
 
@@ -11763,7 +11763,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           CALL AddToMatrixElement( CollectionMatrix,k,k+1,0._dp )
         END IF
       END IF
-      EmptyRow = .TRUE.
+      NonEmptyRow = .FALSE.
 
       rowsum = 0._dp
       l = -1
@@ -11791,12 +11791,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             IF( ABS(RestMatrix % Values(j)) < EPSILON(1._dp)*rowsum ) CYCLE
           END IF
 
-          EmptyRow = .FALSE.
-
           IF (EnforceDirichlet .AND. RestMatrix % Cols(j) <= StiffMatrix % NumberOfRows) &
                   Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
 
-          IF(Found) THEN
+         IF(Found) THEN
             IF (ASSOCIATED(RestMatrix % TValues)) THEN
               CALL AddToMatrixElement( CollectionMatrix, &
                  RestMatrix % Cols(j), k, RestMatrix % TValues(j))
@@ -11804,34 +11802,33 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
               CALL AddToMatrixElement( CollectionMatrix, &
                  RestMatrix % Cols(j), k, RestMatrix % Values(j))
             END IF
+
+            IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
+              CALL AddToMatrixElement( CollectionMatrix, &
+                       k, RestMatrix % Cols(j), RestMatrix % TValues(j))
+              NonEmptyRow = NonEmptyRow .OR. RestMatrix % TValues(j) /= 0
+            ELSE
+              CALL AddToMatrixElement( CollectionMatrix, &
+                      k, RestMatrix % Cols(j), RestMatrix % Values(j))
+              NonEmptyRow = NonEmptyRow .OR. RestMatrix % Values(j) /= 0
+            END IF
+          ELSE
+            IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
+              CollectionVector(k) = CollectionVector(k) - &
+                        RestMatrix % TValues(j) * ForceVector(RestMatrix % Cols(j)) / &
+                           StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+            ELSE
+              CollectionVector(k) = CollectionVector(k) - &
+                        RestMatrix % Values(j) * ForceVector(RestMatrix % Cols(j)) / &
+                           StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+            END IF
           END IF
 
-          IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
-            CALL AddToMatrixElement( CollectionMatrix, &
-                     k, RestMatrix % Cols(j), RestMatrix % TValues(j))
-          ELSE
-            CALL AddToMatrixElement( CollectionMatrix, &
-                    k, RestMatrix % Cols(j), RestMatrix % Values(j))
-          END IF
         END DO
       END IF
 
-      IF (EnforceDirichlet) THEN
-        IF(ASSOCIATED(RestMatrix % InvPerm)) THEN
-          l = RestMatrix % InvPerm(i)
-          IF(l>0) THEN
-            l = MOD(l-1,StiffMatrix % NumberOfRows)+1
-            IF(StiffMatrix % ConstrainedDOF(l)) THEN
-              CollectionVector(k) = 0
-              CALL ZeroRow(CollectionMatrix,k)
-              CALL SetMatrixElement(CollectionMatrix,k,k,1._dp)
-            END IF
-          END IF
-        END IF
-      END IF
-      
       ! If there is no matrix entry, there can be no non-zero r.h.s.
-      IF( EmptyRow ) THEN
+      IF( .NOT.NonEmptyRow ) THEN
         NoEmptyRows = NoEmptyRows + 1
         CollectionVector(k) = 0._dp
 !        might not be the right thing to do in parallel!!
