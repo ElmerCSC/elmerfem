@@ -11834,7 +11834,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 !        might not be the right thing to do in parallel!!
 !       CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
       ELSE
-        IF( ASSOCIATED( RestVector ) ) CollectionVector(k) = RestVector(i)
+        IF( ASSOCIATED( RestVector ) ) CollectionVector(k) = CollectionVector(k) + RestVector(i)
       END IF
     END DO
 
