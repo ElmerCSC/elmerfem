@@ -317,5 +317,5 @@ Boundary Condition 8
 End 
 
 Solver 2 :: Reference Norm = 0.47008150E-01
-Solver 3 :: Reference Norm = 0.34068862
+Solver 3 :: Reference Norm = 3.40783290E-01
 Solver 6 :: Reference Norm = 0.7831444436
