@@ -42,6 +42,10 @@
 #include <iostream>
 #include "projectio.h"
 
+#if WITH_QT5
+#include <QtWidgets>
+#endif
+
 using namespace std;
 
 ProjectIO::ProjectIO(QWidget *parent)
@@ -58,7 +62,7 @@ void ProjectIO::appendToProject(QDomDocument *projectDoc, QDomElement *item)
 {
   // Radio buttons:
   //----------------
-  QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(); 
+  QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(QString()); 
   
   for(int i = 0; i < allRadioButtons.size(); i++) {
     QRadioButton *rb = allRadioButtons.at(i);
@@ -89,7 +93,7 @@ void ProjectIO::appendToProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Check boxes:
   //--------------
-  QList<QCheckBox *> allCheckBoxes = parentWidget->findChildren<QCheckBox *>(); 
+  QList<QCheckBox *> allCheckBoxes = parentWidget->findChildren<QCheckBox *>(QString()); 
   
   for(int i = 0; i < allCheckBoxes.size(); i++) {
     QCheckBox *cb = allCheckBoxes.at(i);
@@ -120,7 +124,7 @@ void ProjectIO::appendToProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Line edits:
   //-------------
-  QList<QLineEdit *> allLineEdits = parentWidget->findChildren<QLineEdit *>();
+  QList<QLineEdit *> allLineEdits = parentWidget->findChildren<QLineEdit *>(QString());
   
   for(int i = 0; i < allLineEdits.size(); i++) {
     QLineEdit *le = allLineEdits.at(i);
@@ -182,7 +186,7 @@ void ProjectIO::appendToProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Combo boxes:
   //--------------
-  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(); 
+  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(QString()); 
   
   for(int i = 0; i < allComboBoxes.size(); i++) {
     QComboBox *cx = allComboBoxes.at(i);
@@ -216,7 +220,7 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 {
   // Radio buttons:
   //----------------
-  QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(); 
+  QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(QString()); 
 
   QList<QString> rbObjectNames;
   for(int i = 0; i < allRadioButtons.size(); i++) 
@@ -240,7 +244,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: RadioButton: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 
@@ -250,7 +258,7 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Check boxes:
   //--------------
-  QList<QCheckBox *> allCheckBoxes = parentWidget->findChildren<QCheckBox *>(); 
+  QList<QCheckBox *> allCheckBoxes = parentWidget->findChildren<QCheckBox *>(QString()); 
 
   QList<QString> cbObjectNames;
   for(int i = 0; i < allCheckBoxes.size(); i++)
@@ -274,7 +282,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: Check box: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 
@@ -284,7 +296,7 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Line edits:
   //-------------
-  QList<QLineEdit *> allLineEdits = parentWidget->findChildren<QLineEdit *>(); 
+  QList<QLineEdit *> allLineEdits = parentWidget->findChildren<QLineEdit *>(QString()); 
 
   QList<QString> leObjectNames;
   for(int i = 0; i < allLineEdits.size(); i++)
@@ -308,7 +320,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: LineEdit: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 
@@ -318,7 +334,7 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Text edits:
   //-------------
-  QList<QTextEdit *> allTextEdits = parentWidget->findChildren<QTextEdit *>(); 
+  QList<QTextEdit *> allTextEdits = parentWidget->findChildren<QTextEdit *>(QString()); 
 
   QList<QString> teObjectNames;
 
@@ -343,7 +359,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: TextEdit: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 
@@ -354,7 +374,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Combo boxes:
   //--------------
-  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(); 
+#if WITH_QT5
+  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(QString()); 
+#else
+  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(QString()); 
+#endif
 
   QList<QString> cxObjectNames;
   for(int i = 0; i < allComboBoxes.size(); i++)
@@ -378,7 +402,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: Combo box: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 

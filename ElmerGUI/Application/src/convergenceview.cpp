@@ -321,7 +321,11 @@ void ConvergenceView::savePictureSlot()
   QString suffix = fi.suffix();
   suffix.toUpper();
 
+#if WITH_QT5
+  bool ok = pixmap.save(fileName, suffix.toLatin1(), 95); // fixed quality
+#else
   bool ok = pixmap.save(fileName, suffix.toAscii(), 95); // fixed quality
+#endif
 
   if(!ok) {
     cout << "Failed writing picture" << endl;

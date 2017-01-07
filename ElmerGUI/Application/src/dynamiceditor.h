@@ -55,11 +55,20 @@ enum MatTypes {
   MAT_DELETE
 };
 
+#ifndef WITH_QT5
 #include <QWidget>
 #include <QtGui>
 #include <QIcon>
 #include <QDomDocument>
 #include <QLayout>
+#else
+#include <QtWidgets>
+#include <QtGui>
+#include <QIcon>
+#include <QDomDocument>
+#include <QLayout>
+#endif
+
 
 class QTabWidget;
 class QPushButton;
