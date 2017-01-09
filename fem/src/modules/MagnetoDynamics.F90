@@ -489,7 +489,7 @@ CONTAINS
     R(1) = 1
     DO i = 2, CM % NumberOfRows+1
       IF(.not. emptyrow(i-1)) THEN
-        IF(ASSOCIATED(CM%InvPerm)) InvPerm(k-1) = CM % InvPerm(i-1)
+        IF(ASSOCIATED(CM%InvPerm)) InvPerm(k-1) = CM % InvPerm(i-1)  !< TODO: This might be nonsense
         IF(ASSOCIATED(CM%Perm)) Perm(k-1) = CM % Perm(i-1)
         R(k) = R(k-1) + CM % Rows(i) - CM % rows(i-1)
 
@@ -625,7 +625,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       END IF
     END IF
   END IF
-  
+ 
   CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.) 
 
   ! This is for internal communication with the saving routines
