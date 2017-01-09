@@ -606,7 +606,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     CASE (b_Transient, &
          b_Transient + b_Lorentz, &
-         b_Lorentz)
+         b_Lorentz, &
+         b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
 
     CASE (b_empty)
@@ -747,6 +748,11 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TransientGauge = GetLogical(GetSolverParams(), 'Transient Lagrange Gauge', Found)
   gauge_penalize_c = GetCReal(GetSolverParams(), 'Gauge System Penalization Coefficient', HasStabC)
 
+  IF (HasStabC) THEN
+    WRITE (Message, *), 'Gauge system penalization coefficient', gauge_penalize_c
+    call Info('WhitneyAVSolver', message)
+  END IF
+
   ! Gauge tree, if requested or using direct solver:
   ! ------------------------------------------------
   TG = GetLogical(SolverParams,'Use tree gauge', Found)
@@ -861,7 +867,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   ! Not refactorizing seems to break things
   IF (SteadyGauge) THEN
-    CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
+    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+      CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
+    END IF
   END IF
 
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
