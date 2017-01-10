@@ -748,6 +748,16 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TransientGauge = GetLogical(GetSolverParams(), 'Transient Lagrange Gauge', Found)
   gauge_penalize_c = GetCReal(GetSolverParams(), 'Gauge System Penalization Coefficient', HasStabC)
 
+  IF (SteadyGauge) THEN
+    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
+  END IF
+
+  IF(TransientGauge) THEN
+    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in transient computation")
+    CALL Warn("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
+    ! TODO: Check if there is mortar boundaries and report the above in that case only.
+  END IF
+
   IF (HasStabC) THEN
     WRITE (Message, *), 'Gauge system penalization coefficient', gauge_penalize_c
     call Info('WhitneyAVSolver', message)
@@ -2137,7 +2147,7 @@ SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondO
         END DO
         DO i = 1, np
           s = i
-          DConstr(r,s) = DConstr(r,s) - gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP%s(t)
+          DConstr(r,s) = DConstr(r,s) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP%s(t)
         END DO
       END DO
     END IF
@@ -2492,7 +2502,7 @@ END SUBROUTINE LocalConstraintMatrix
              q = j
              DO i = 1, np
                p = i
-               STIFF(p,q) = STIFF(p,q) - gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
              END DO
            END DO
          END IF
