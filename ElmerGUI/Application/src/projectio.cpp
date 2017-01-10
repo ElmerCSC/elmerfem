@@ -62,7 +62,7 @@ void ProjectIO::appendToProject(QDomDocument *projectDoc, QDomElement *item)
 {
   // Radio buttons:
   //----------------
-  QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(QString()); 
+  QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(); 
   
   for(int i = 0; i < allRadioButtons.size(); i++) {
     QRadioButton *rb = allRadioButtons.at(i);
@@ -93,7 +93,7 @@ void ProjectIO::appendToProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Check boxes:
   //--------------
-  QList<QCheckBox *> allCheckBoxes = parentWidget->findChildren<QCheckBox *>(QString()); 
+  QList<QCheckBox *> allCheckBoxes = parentWidget->findChildren<QCheckBox *>(); 
   
   for(int i = 0; i < allCheckBoxes.size(); i++) {
     QCheckBox *cb = allCheckBoxes.at(i);
@@ -124,7 +124,7 @@ void ProjectIO::appendToProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Line edits:
   //-------------
-  QList<QLineEdit *> allLineEdits = parentWidget->findChildren<QLineEdit *>(QString());
+  QList<QLineEdit *> allLineEdits = parentWidget->findChildren<QLineEdit *>();
   
   for(int i = 0; i < allLineEdits.size(); i++) {
     QLineEdit *le = allLineEdits.at(i);
@@ -186,7 +186,7 @@ void ProjectIO::appendToProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Combo boxes:
   //--------------
-  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(QString()); 
+  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(); 
   
   for(int i = 0; i < allComboBoxes.size(); i++) {
     QComboBox *cx = allComboBoxes.at(i);
@@ -258,7 +258,7 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Check boxes:
   //--------------
-  QList<QCheckBox *> allCheckBoxes = parentWidget->findChildren<QCheckBox *>(QString()); 
+  QList<QCheckBox *> allCheckBoxes = parentWidget->findChildren<QCheckBox *>(); 
 
   QList<QString> cbObjectNames;
   for(int i = 0; i < allCheckBoxes.size(); i++)
@@ -296,7 +296,7 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Line edits:
   //-------------
-  QList<QLineEdit *> allLineEdits = parentWidget->findChildren<QLineEdit *>(QString()); 
+  QList<QLineEdit *> allLineEdits = parentWidget->findChildren<QLineEdit *>(); 
 
   QList<QString> leObjectNames;
   for(int i = 0; i < allLineEdits.size(); i++)
@@ -334,7 +334,7 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Text edits:
   //-------------
-  QList<QTextEdit *> allTextEdits = parentWidget->findChildren<QTextEdit *>(QString()); 
+  QList<QTextEdit *> allTextEdits = parentWidget->findChildren<QTextEdit *>(); 
 
   QList<QString> teObjectNames;
 
