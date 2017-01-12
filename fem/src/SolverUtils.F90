@@ -13655,7 +13655,7 @@ CONTAINS
      TYPE(Solver_t) :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,mcount,bcount
+     INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,mcount,bcount,kk
      TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
      LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent, Found, &
          SetDof, SomeSet, SomeSkip, SumProjectors, NewRow
@@ -13666,7 +13666,7 @@ CONTAINS
      REAL(KIND=dp) :: wsum, Scale
      INTEGER :: rowoffset, arows, sumrow, EliminatedRows, NeglectedRows
      CHARACTER(LEN=MAX_NAME_LEN) :: Str
-     LOGICAL :: ThisIsMortar
+     LOGICAL :: ThisIsMortar, Reorder
      LOGICAL :: AnyPriority
      INTEGER :: Priority, PrevPriority
      INTEGER, ALLOCATABLE :: BCOrdering(:), BCPriority(:)
@@ -13831,7 +13831,9 @@ CONTAINS
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
          Ctmp => Ctmp % ConstraintMatrix
          IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
-           CALL Warn('GenerateConstraintMatrix','InvPerm is required!')
+           IF(.NOT. AllocationsDone ) THEN
+             CALL Warn('GenerateConstraintMatrix','InvPerm is expected, using unity!')
+           END IF
          END IF
        ELSE
          ThisIsMortar = .TRUE.
@@ -13907,6 +13909,8 @@ CONTAINS
          CALL Fatal('GenerateConstraintMatrix','It is impossible to sum up nodal projectors!')
        END IF
 
+       Reorder = ThisIsMortar
+       
        
        IF( Dofs == 1 ) THEN         
 
@@ -13927,10 +13931,19 @@ CONTAINS
            END IF
              
            ! Node does not have an active dof to be constrained
-           k = Atmp % InvPerm(i)
-           IF( k == 0 ) CYCLE
-           IF( Perm(k) == 0 ) CYCLE
-
+           IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
+             k = Atmp % InvPerm(i)
+             IF( k == 0 ) CYCLE
+           ELSE
+             k = i
+           END IF
+           IF( Reorder ) THEN
+             kk = Perm(k) 
+             IF( kk == 0 ) CYCLE
+           ELSE
+             kk = k
+           END IF
+             
            IF( SumProjectors ) THEN
              NewRow = ( SumPerm(k) == 0 )
              IF( NewRow ) THEN
@@ -13959,7 +13972,7 @@ CONTAINS
            END IF
 
            IF( AllocationsDone ) THEN
-             Btmp % InvPerm(row) = rowoffset + Perm( k ) 
+             Btmp % InvPerm(row) = rowoffset + kk
            END IF
 
            
@@ -13968,15 +13981,19 @@ CONTAINS
            DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1
              
              col = Atmp % Cols(k) 
-             
-             IF( col <= permsize ) THEN
-               col2 = Perm(col)
-               IF( col2 == 0 ) CYCLE
-             ELSE 
-               PRINT *,'col too large',col,permsize
-               CYCLE
+
+             IF( Reorder ) THEN
+               IF( col <= permsize ) THEN
+                 col2 = Perm(col)
+                 IF( col2 == 0 ) CYCLE
+               ELSE 
+                 PRINT *,'col too large',col,permsize
+                 CYCLE
+               END IF
+             ELSE
+               col2 = col
              END IF
-             
+               
              IF( AllocationsDone ) THEN
                ! By Default there is no scaling
                Scale = 1.0_dp
@@ -14053,7 +14070,7 @@ CONTAINS
 
                    IF( col > permsize ) CYCLE
                    col2 = Perm(col)
-
+                     
                    IF( CreateSelf ) THEN
                      Scale = -MortarBC % MasterScale
                    ELSE 
@@ -14114,10 +14131,20 @@ CONTAINS
                  IF( .NOT. MortarBC % Active(Dofs*(i-1)+j) ) CYCLE
                END IF
              END IF
-                          
-             k = Atmp % InvPerm(i)
-             IF( k == 0 ) CYCLE
-             IF( Perm(k) == 0 ) CYCLE
+
+             IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
+               k = Atmp % InvPerm(i)
+               IF( k == 0 ) CYCLE
+             ELSE
+               k = i
+             END IF
+
+             IF( Reorder ) THEN
+               kk = Perm(k)
+               IF( kk == 0 ) CYCLE
+             ELSE
+               kk = k
+             END IF
 
              IF( SumProjectors ) THEN
                NewRow = ( SumPerm(Dofs*(k-1)+j) == 0 )
@@ -14146,7 +14173,7 @@ CONTAINS
              END IF
 
              IF( AllocationsDone ) THEN
-               Btmp % InvPerm(row) = rowoffset + Dofs * ( Perm( k ) - 1 ) + j
+               Btmp % InvPerm(row) = rowoffset + Dofs * ( kk - 1 ) + j
              END IF
 
              
@@ -14155,15 +14182,20 @@ CONTAINS
              DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1             
 
                col = Atmp % Cols(k)                
-               
-               IF( col <= permsize ) THEN
-                 col2 = Perm(col)
-                 IF( col2 == 0 ) CYCLE
-               ELSE 
-                 PRINT *,'col too large',col,permsize
-                 CYCLE
-               END IF              
-               
+
+               IF( Reorder ) THEN                 
+                 IF( col <= permsize ) THEN
+                   col2 = Perm(col)
+                   IF( col2 == 0 ) CYCLE
+                 ELSE 
+                   PRINT *,'col too large',col,permsize
+                   CYCLE
+                 END IF
+               ELSE
+                 col2 = col
+               END IF
+
+                 
                IF( AllocationsDone ) THEN
                  Scale = 1.0_dp
                  IF( ThisIsMortar ) THEN
@@ -14221,12 +14253,16 @@ CONTAINS
                DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1             
 
                  col = Atmp % Cols(k)                
-                 
-                 IF( col <= permsize ) THEN
-                   col2 = Perm(col)
-                   IF( col2 == 0 ) CYCLE
+
+                 IF( Reorder ) THEN
+                   IF( col <= permsize ) THEN
+                     col2 = Perm(col)
+                     IF( col2 == 0 ) CYCLE
+                   END IF
+                 ELSE
+                   col2 = col
                  END IF
-                 
+                   
                  k2 = k2 + 1
                  IF( AllocationsDone ) THEN
                    Btmp % Cols(k2) = Dofs * ( col2 - 1) + j2
