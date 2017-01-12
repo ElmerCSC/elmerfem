@@ -11660,8 +11660,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     DEALLOCATE(CollectionMatrix % RHS)
     CollectionMatrix % Values = 0.0_dp
   END IF
-  IF(NotExplicit) CollectionMatrix % ConstraintMatrix => StiffMatrix % ConstraintMatrix
-
+  IF(NotExplicit) CollectionMatrix % ConstraintMatrix => StiffMatrix % ConstraintMatrix  
+  
   NumberOfRows = StiffMatrix % NumberOfRows
   IF(ASSOCIATED(AddMatrix)) NumberOfRows = MAX(NumberOfRows,AddMatrix % NumberOfRows)
   EliminateConstraints = ListGetLogical( Solver % Values, 'Eliminate Linear Constraints', Found)
@@ -11739,8 +11739,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(ASSOCIATED(RestMatrix).AND..NOT.EliminateConstraints) THEN
 
     CALL Info('SolveWithLinearRestriction',&
-        'Adding ConstraintMatrix into CollectionMatrix',Level=10)
-
+        'Adding ConstraintMatrix into CollectionMatrix',Level=8)
+    CALL Info('SolveWithLinearRestriction',&
+        'Number of Rows in constraint matrix: '&
+        //TRIM(I2S(RestMatrix % NumberOfRows)),Level=12)
+    CALL Info('SolveWithLinearRestriction',&
+        'Number of Nofs in constraint matrix: '&
+        //TRIM(I2S(SIZE(RestMatrix % Values))),Level=12)
 
     NoEmptyRows = 0
     ConstraintScaling = ListGetLogical(Solver % Values, 'Constraint Scaling',Found)
@@ -13667,8 +13672,6 @@ CONTAINS
      LOGICAL :: NeedToGenerate 
      
 
-     CALL Info('GenerateConstraintMatrix','Building constraint matrix',Level=12)
-
      ! Should we genarete the matrix
      NeedToGenerate = Solver % MortarBCsChanged
      
@@ -13683,8 +13686,13 @@ CONTAINS
        Solver % ConstraintMatrixVisited = .TRUE.
      END IF
      
-     IF( .NOT. NeedToGenerate ) RETURN
-     
+     IF( NeedToGenerate ) THEN
+       CALL Info('GenerateConstraintMatrix','Building constraint matrix',Level=12)
+     ELSE     
+       CALL Info('GenerateConstraintMatrix','Nothing to do for now',Level=12)
+       RETURN
+     END IF
+       
      
      ! Compute the number and size of initial constraint matrices
      !-----------------------------------------------------------
@@ -13830,8 +13838,10 @@ CONTAINS
          Atmp => MortarBC % Projector
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
 
-         CALL Info('GenerateConstraintMatrix','Adding projector for BC: '//TRIM(I2S(bc_ind)),Level=8)
-
+         IF(.NOT. AllocationsDone ) THEN
+           CALL Info('GenerateConstraintMatrix','Adding projector for BC: '//TRIM(I2S(bc_ind)),Level=8)
+         END IF
+           
          IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
            CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
          END IF
