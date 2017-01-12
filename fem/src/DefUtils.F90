@@ -2844,22 +2844,9 @@ CONTAINS
     END IF
 
     ! Combine the individual projectors into one massive projector
-    IF(.NOT.ASSOCIATED(Solver % Matrix % ConstraintMatrix)) &
-      Solver % MortarBCsOnly = .TRUE.
-    Ctmp => Solver % Matrix % ConstraintMatrix
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
-
-    IF(.NOT. Solver % MortarBCsOnly) THEN
-      IF(ASSOCIATED(Ctmp).OR.ASSOCIATED(Solver % Matrix % ConstraintMatrix)) THEN
-        IF(.NOT.ASSOCIATED(Ctmp, Solver % Matrix % ConstraintMatrix)) THEN
-          CALL FreeMatrix(Solver % Matrix % ConstraintMatrix)
-          Solver % Matrix % ConstraintMatrix => Ctmp
-          IF (ASSOCIATED(Solver % MortarBCs)) Solver % MortarBCsChanged = .TRUE.
-        END IF
-      END IF
-    END IF
 
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
