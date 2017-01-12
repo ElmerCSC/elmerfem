@@ -1996,7 +1996,7 @@ CONTAINS
        CALL Info('DetermineContact','Set contact for boundary: '&
            //TRIM(I2S(bc_ind)),Level=8)
        Model % Solver % MortarBCsChanged = .TRUE.
-
+       
        FlatProjector = ListGetLogical( BC, 'Flat Projector',Found ) 
        PlaneProjector = ListGetLogical( BC, 'Plane Projector',Found )
        RotationalProjector = ListGetLogical( BC, 'Rotational Projector',Found ) .OR. &
@@ -5644,7 +5644,7 @@ CONTAINS
        IF( .NOT. (AddCoeff .OR. AddRes .OR. AddRhs) ) CYCLE
 
        Model % Solver % MortarBCsChanged = .TRUE.
-
+       
        IF( .NOT. ASSOCIATED( Projector % InvPerm ) ) THEN
          CALL Fatal('SetWeightedProjectorJump','The > Projector % InvPerm < is really needed here!')
        END IF
@@ -11660,8 +11660,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     DEALLOCATE(CollectionMatrix % RHS)
     CollectionMatrix % Values = 0.0_dp
   END IF
-  IF(NotExplicit) CollectionMatrix % ConstraintMatrix => StiffMatrix % ConstraintMatrix
-
+  IF(NotExplicit) CollectionMatrix % ConstraintMatrix => StiffMatrix % ConstraintMatrix  
+  
   NumberOfRows = StiffMatrix % NumberOfRows
   IF(ASSOCIATED(AddMatrix)) NumberOfRows = MAX(NumberOfRows,AddMatrix % NumberOfRows)
   EliminateConstraints = ListGetLogical( Solver % Values, 'Eliminate Linear Constraints', Found)
@@ -11739,8 +11739,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(ASSOCIATED(RestMatrix).AND..NOT.EliminateConstraints) THEN
 
     CALL Info('SolveWithLinearRestriction',&
-        'Adding ConstraintMatrix into CollectionMatrix',Level=10)
-
+        'Adding ConstraintMatrix into CollectionMatrix',Level=8)
+    CALL Info('SolveWithLinearRestriction',&
+        'Number of Rows in constraint matrix: '&
+        //TRIM(I2S(RestMatrix % NumberOfRows)),Level=12)
+    CALL Info('SolveWithLinearRestriction',&
+        'Number of Nofs in constraint matrix: '&
+        //TRIM(I2S(SIZE(RestMatrix % Values))),Level=12)
 
     NoEmptyRows = 0
     ConstraintScaling = ListGetLogical(Solver % Values, 'Constraint Scaling',Found)
@@ -13665,42 +13670,82 @@ CONTAINS
      LOGICAL :: AnyPriority
      INTEGER :: Priority, PrevPriority
      INTEGER, ALLOCATABLE :: BCOrdering(:), BCPriority(:)
+     LOGICAL :: NeedToGenerate 
+     
 
-
-     CALL Info('GenerateConstraintMatrix','Building constraint matrix',Level=12)
-
-     IF( Solver % MortarBCsOnly .AND. .NOT. Solver % MortarBCsChanged ) THEN
-       CALL Info('GenerateConstraintMatrix','Nothing to do!',Level=12)
-       RETURN
-     ELSE IF ( Solver % MortarBCsOnly ) THEN
-      CALL Info('GenerateConstraintMatrix','Releasing constraint matrix',Level=15)
-      CALL ReleaseConstraintMatrix(Solver)
+     ! Should we genarete the matrix
+     NeedToGenerate = Solver % MortarBCsChanged
+     
+     ! Set pointers to save the initial constraint matrix
+     IF(.NOT. Solver % ConstraintMatrixVisited ) THEN       
+       IF( ASSOCIATED( Solver % Matrix % ConstraintMatrix ) ) THEN
+         CALL Info('GenerateConstraintMatrix','Saving initial constraint matrix to Solver',Level=12)
+         Solver % ConstraintMatrix => Solver % Matrix % ConstraintMatrix
+         Solver % Matrix % ConstraintMatrix => NULL()
+         NeedToGenerate = .TRUE. 
+       END IF
+       Solver % ConstraintMatrixVisited = .TRUE.
      END IF
      
-     ! Compute the size of the initial boundary matrices.
-     !------------------------------------------------------
+     IF( NeedToGenerate ) THEN
+       CALL Info('GenerateConstraintMatrix','Building constraint matrix',Level=12)
+     ELSE     
+       CALL Info('GenerateConstraintMatrix','Nothing to do for now',Level=12)
+       RETURN
+     END IF
+       
+     
+     ! Compute the number and size of initial constraint matrices
+     !-----------------------------------------------------------
      row    = 0
      mcount = 0
      bcount = 0
-     IF(.NOT. Solver % MortarBcsOnly) THEN
-       Ctmp => Solver % Matrix % ConstraintMatrix
+     Ctmp => Solver % ConstraintMatrix
+     IF( ASSOCIATED( Ctmp ) ) THEN
        DO WHILE(ASSOCIATED(Ctmp))
          mcount = mcount + 1
          row = row + Ctmp % NumberOfRows
          Ctmp => Ctmp % ConstraintMatrix
        END DO
+       CALL Info('GenerateConstraintMatrix',&
+           'Number of initial constraint matrices: '//TRIM(I2S(mcount)),Level=12)       
      END IF
-
-     IF(Solver % MortarBCsChanged) THEN
+       
+     
+     ! Compute the number and size of mortar matrices
+     !-----------------------------------------------
+     IF( ASSOCIATED( Solver % MortarBCs ) ) THEN
        DO bc_ind=1,Model % NumberOFBCs
          Atmp => Solver % MortarBCs(bc_ind) % Projector
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
          bcount = bcount + 1
          row = row + Atmp % NumberOfRows
        END DO
+       CALL Info('GenerateConstraintMatrix',&
+           'Number of mortar matrices: '//TRIM(I2S(bcount)),Level=12)       
      END IF
 
-     IF( row==0 .OR. bcount==0 .AND. mcount<=1 )  RETURN
+
+     
+     IF( row==0 .OR. bcount==0 .AND. mcount<=1 ) THEN
+       CALL Info('GenerateConstraintMatrix',&
+           'Nothing to do since there are no constrained dofs!',Level=12)       
+       RETURN
+     END IF
+       
+     IF( mcount == 1 .AND. bcount == 0 ) THEN
+       CALL Info('GenerateConstraintMatrix','Reusing old constraint matrix',Level=12)       
+       Solver % Matrix % ConstraintMatrix => Solver % ConstraintMatrix
+       RETURN
+     END IF
+
+     ! Now we are generating something more complex and different than last time
+     IF( ASSOCIATED( Solver % Matrix % ConstraintMatrix ) ) THEN
+       CALL Info('GenerateConstraintMatrix','Releasing previous constraint matrix',Level=12)
+       CALL FreeMatrix(Solver % Matrix % ConstraintMatrix)
+       Solver % Matrix % ConstraintMatrix => NULL()
+     END IF
+       
      
      SumProjectors = ListGetLogical( Solver % Values,&
          'Mortar BCs Additive', Found )
@@ -13733,7 +13778,7 @@ CONTAINS
        SumCount = 0
      END IF
 
-
+     
      ComplexMatrix = Solver % Matrix % Complex
      IF( ComplexMatrix ) THEN
        IF( MODULO( Dofs,2 ) /= 0 ) CALL Fatal('GenerateConstraintMatrix',&
@@ -13775,7 +13820,7 @@ CONTAINS
      TransposePresent = .FALSE.
      Ctmp => Solver % ConstraintMatrix
 
-     DO constraint_ind=Model % NumberOFBCs+mcount,1,-1
+     DO constraint_ind = Model % NumberOFBCs+mcount,1,-1
        
        ! This is the default i.e. all components are applied mortar BCs
        ActiveComponents = .TRUE.
@@ -13790,7 +13835,6 @@ CONTAINS
          END IF
        ELSE
          ThisIsMortar = .TRUE.
-         
          IF( AnyPriority ) THEN
            bc_ind = BCOrdering(constraint_ind)
          ELSE
@@ -13801,8 +13845,10 @@ CONTAINS
          Atmp => MortarBC % Projector
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
 
-         CALL Info('GenerateConstraintMatrix','Adding projector for BC: '//TRIM(I2S(bc_ind)),Level=8)
-
+         IF(.NOT. AllocationsDone ) THEN
+           CALL Info('GenerateConstraintMatrix','Adding projector for BC: '//TRIM(I2S(bc_ind)),Level=8)
+         END IF
+           
          IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
            CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
          END IF
@@ -13911,11 +13957,12 @@ CONTAINS
              sumrow = sumrow + 1
              row = sumrow
            END IF
-           
+
            IF( AllocationsDone ) THEN
              Btmp % InvPerm(row) = rowoffset + Perm( k ) 
            END IF
 
+           
            wsum = 0.0_dp
 
            DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1
@@ -14102,6 +14149,7 @@ CONTAINS
                Btmp % InvPerm(row) = rowoffset + Dofs * ( Perm( k ) - 1 ) + j
              END IF
 
+             
              wsum = 0.0_dp
 
              DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1             
@@ -14309,10 +14357,9 @@ CONTAINS
            //TRIM(I2S(NeglectedRows)))
      END IF
 
-     Solver % Matrix % ConstraintMatrix => Btmp
-     
+     Solver % Matrix % ConstraintMatrix => Btmp     
      Solver % MortarBCsChanged = .FALSE.
-
+     
      CALL Info('GenerateConstraintMatrix','Finished creating constraint matrix',Level=12)
 
    END SUBROUTINE GenerateConstraintMatrix
@@ -14322,7 +14369,7 @@ CONTAINS
      TYPE(Solver_t) :: Solver
 
      CALL FreeMatrix(Solver % Matrix % ConstraintMatrix)
-     Solver % Matrix % ConstraintMatrix => Null()
+     Solver % Matrix % ConstraintMatrix => NULL()
 
    END SUBROUTINE ReleaseConstraintMatrix
 

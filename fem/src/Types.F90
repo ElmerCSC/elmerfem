@@ -745,8 +745,9 @@ END INTERFACE
       TYPE(Matrix_t),   POINTER :: Matrix => NULL()
       TYPE(Variable_t), POINTER :: Variable => NULL()
 
+      TYPE(Matrix_t), POINTER :: ConstraintMatrix => NULL()
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
-      LOGICAL :: MortarBCsChanged = .FALSE., MortarBCsOnly=.FALSE.
+      LOGICAL :: MortarBCsChanged = .FALSE., ConstraintMatrixVisited = .FALSE.
       INTEGER(KIND=AddrInt) :: MortarProc
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
