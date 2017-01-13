@@ -1779,7 +1779,6 @@ CONTAINS
 
        ! Compute the cofactor matrix of the deformation gradient from the previous step:
        ! --------------------------------------------------------------------------------
-       Grad = 0.0d0
        DefG = 0.0d0
        Grad = MATMUL(LocalDisplacement(:,1:pntot),PdBasisdx)
        DefG = Identity + Grad
@@ -2083,8 +2082,7 @@ CONTAINS
           stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx ) 
           Weight = Weight * detJ
 
-          Grad = 0.0d0
-          Grad = MATMUL( LocalDisplacement(1:dim,1:nd), dBasisdx(1:nd,1:dim) )
+          Grad = MATMUL( LocalDisplacement(:,1:nd), dBasisdx(1:nd,:) )
           IF (AxialSymmetry) THEN
              r = SUM(Basis(1:n) * Nodes % x(1:n))
              Grad(3,3) = 1.0d0/r * SUM(LocalDisplacement(1,1:nd) * Basis(1:nd))
@@ -2737,8 +2735,7 @@ CONTAINS
              END IF
           END IF
 
-          Grad = 0.0d0
-          Grad = MATMUL( LocalDisplacement(1:cdim,1:nd), dBasisdx(1:nd,1:cdim) )
+          Grad = MATMUL( LocalDisplacement(:,1:nd), dBasisdx(1:nd,:) )
           IF (AxialSymmetry) THEN
              r = SUM(Basis(1:n) * Nodes % x(1:n))
              Grad(3,3) = 1.0d0/r * SUM(LocalDisplacement(1,1:nd) * Basis(1:nd))

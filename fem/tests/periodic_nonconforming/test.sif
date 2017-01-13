@@ -87,6 +87,4 @@ Boundary Condition 4
 End
 
 Solver 1 :: Reference Norm = Real 3.75473557189614573E-002
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=3.75473557189614573E-002\n");

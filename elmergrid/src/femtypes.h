@@ -171,6 +171,8 @@ struct FemType {
   int created,     /* is the structure created? */
     noknots,       /* number of knots */
     noelements,    /* number of elements */
+    nodepermexist, /* are the nodes permutated at the start */
+    *nodeperm,    /* Inverse node permutation to save */
     coordsystem,   /* coordsystem flag */
     nocells,       /* number of subcells */
     maxnodes,      /* maximum number of nodes */
@@ -347,6 +349,7 @@ struct ElmergridType {
     reducemat1,
     reducemat2,
     findsides,
+    vtuone, 
     saveboundaries,
     nodes3d,
     elements3d,
@@ -365,6 +368,7 @@ struct ElmergridType {
     parthypre, /* renumber for hypre */
     partdual, 
     partbcz,
+    partbcr, 
     partbcmetis,
     partbclayers,
     nofilesin,

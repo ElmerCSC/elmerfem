@@ -1972,19 +1972,30 @@ CONTAINS
 
 !> Copies an entry from 'ptr' to an entry in *different* list with the same content.
 !-----------------------------------------------------------------------------------
-   SUBROUTINE ListCopyItem( ptr, list )
+   SUBROUTINE ListCopyItem( ptr, list, name )
 
      TYPE(ValueListEntry_t), POINTER :: ptr
      TYPE(ValueList_t), POINTER :: list
+     CHARACTER(LEN=*), OPTIONAL :: name
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptrb, ptrnext
 
-     ptrb => ListAdd( List, ptr % Name ) 
-
+     IF( PRESENT( name ) ) THEN
+       ptrb => ListAdd( List, name ) 
+     ELSE
+       ptrb => ListAdd( List, ptr % Name ) 
+     END IF
+       
      ptrnext => ptrb % next
      ptrb = ptr
      ptrb % next => ptrnext
 
+     ! If name is given then we have to revert the stuff from previous lines
+     IF( PRESENT( name ) ) THEN
+       ptrb % Name = name
+       ptrb % Namelen = lentrim( name )
+     END IF
+     
    END SUBROUTINE ListCopyItem
 
 
@@ -2021,6 +2032,47 @@ CONTAINS
      Found = .TRUE.
 
    END SUBROUTINE ListCompareAndCopy
+ 
+
+!> Goes through one list and checks whether it includes any keywords with give prefix.
+!> All keywords found are copied to the 2nd list without the prefix.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListCopyPrefixedKeywords( list, listb, prefix )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list, listb
+     CHARACTER(LEN=*) :: prefix
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     CHARACTER(LEN=LEN_TRIM(prefix)) :: str
+     INTEGER :: k, l, n, ncopy
+
+     k = StringToLowerCase( str,prefix,.TRUE. )
+     ncopy = 0
+     
+     ! Find the keyword from the 1st list 
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF( n > k ) THEN
+         IF( ptr % Name(1:k) == str(1:k) ) THEN
+           l = k+1
+           ! Remove the extra blanco after prefix if present
+           ! Here we just assume one possible blanco as that is most often the case
+           IF( ptr % Name(l:l) == ' ') l = l+1
+           CALL Info('ListCopyPrefixedKeywords','Copying keyword: '//TRIM(ptr % Name(l:n)),Level=12)
+           CALL ListCopyItem( ptr, listb, ptr % Name(l:n) )
+           ncopy = ncopy + 1
+         END IF
+       END IF
+       ptr => ptr % Next
+     END DO
+
+     IF( ncopy > 0 ) THEN
+       CALL Info('ListCopyPrefixedKeywords',&
+           'Copied '//TRIM(I2S(ncopy))//' keywords with prefix: '//TRIM(prefix),Level=6)
+     END IF
+     
+   END SUBROUTINE ListCopyPrefixedKeywords
  
   
 !------------------------------------------------------------------------------
@@ -2303,6 +2355,12 @@ CONTAINS
 
      ALLOCATE( ptr % FValues(1,1,n),ptr % TValues(n) )
 
+     ! The (x,y) table should be such that values of x are increasing in size
+     IF( .NOT. CheckMonotone( n, TValues ) ) THEN
+       CALL Fatal('ListAddDepReal',&
+           'Values x in > '//TRIM(Name)//' < not monotonically ordered!')
+     END IF
+     
      ptr % TValues = TValues(1:n)
      ptr % FValues(1,1,:) = FValues(1:n)
      ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR

@@ -1,4 +1,0 @@
-Thu Oct 20 22:38:34 EEST 2005
-	- Compiles with gcc 4.0.x and hopefully on FreeBSD as well. 
-	- Commented out min/max macros and did some minor changes on the
-	class files regarding to how ecif_modelOutputManager.h is included.

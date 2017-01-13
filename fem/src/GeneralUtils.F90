@@ -1247,6 +1247,23 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 
 
+    FUNCTION CheckMonotone(n,x) RESULT ( Monotone )
+      REAL(KIND=dp), INTENT(in) :: x(:)
+      INTEGER, INTENT(in) :: n
+      LOGICAL :: Monotone
+      
+      INTEGER :: i
+      
+      Monotone = .TRUE.
+      DO i=1,n-1
+        IF( x(i+1) <= x(i) ) THEN
+          Monotone = .FALSE.
+          EXIT
+        END IF
+      END DO           
+      
+    END FUNCTION CheckMonotone
+
 !------------------------------------------------------------------------------
 !> Solver for the coefficients of a cubic spline.
 !------------------------------------------------------------------------------
@@ -1375,7 +1392,7 @@ END FUNCTION ComponentNameVar
           IF  ( tval(i) <= t .AND. tval(i+1)>t ) EXIT
 
           IF ( tval(i) >  t ) THEN
-            n1 = i-1
+            n1 = i-1 
           ELSE
             n0 = i+1
           END IF
@@ -1383,6 +1400,7 @@ END FUNCTION ComponentNameVar
         END DO
       END IF
       IF(i>n-1) i=n-1
+      
 !------------------------------------------------------------------------------
    END FUNCTION SearchInterval
 !------------------------------------------------------------------------------
@@ -1895,7 +1913,7 @@ INCLUDE "mpif.h"
       Matrix % Solver => NULL()
 
       Matrix % DGMatrix = .FALSE.
-      Matrix % Comm = MPI_COMM_WORLD
+      Matrix % Comm = ELMER_COMM_WORLD
 
    END SUBROUTINE ClearMatrix
 

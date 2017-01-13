@@ -755,5 +755,103 @@ CONTAINS
     ep = -Snn -Pext
       
   END FUNCTION EffectivePressure
-  
+
 END FUNCTION Sliding_Budd
+
+
+! ******************************************************************************
+! *
+! *  Authors: Rupert Gladstone, Fabien Gillet-Chaulet
+! *  Email:   RupertGladstone1972@gmail.com
+! *  Web: 
+! *
+! *  Original Date: 
+! *   2016/12/06
+! *****************************************************************************
+!> USF_Sliding.f90, function FreeSlipShelves
+!> 
+!> Sets the basal drag to zero according to a grounded mask.  Intended for use 
+!> when aplying inverse methods in the presence of floating ice shelves.
+!> 
+!> For the .sif (bottom boundary):
+!>  Slip Coefficient 2  = Variable beta
+!>      Real Procedure "ElmerIceUSF" "FreeSlipShelves"
+!>  Slip Coefficient 3  = Variable beta
+!>      Real Procedure "ElmerIceUSF" "FreeSlipShelves"
+!>  FreeSlipShelves mask name = Name of mask variable to use to set slip coef 
+!> to zero (default is GroundedMask)
+!>  FreeSlipShelves beta formulation = Power or Beta2 (same meaning as 
+!> described in DJDBeta_Adjoint solver)
+!>  
+FUNCTION FreeSlipShelves (Model, nodenumber, BetaIn) RESULT(BetaOut)
+  
+  USE DefUtils
+
+  IMPLICIT NONE
+  
+  TYPE(Model_t)  :: Model
+  REAL (KIND=dp) :: BetaIn
+  INTEGER        :: nodenumber
+  
+  REAL (KIND=dp) :: BetaOut, mask
+  LOGICAL        :: FirstTime = .TRUE., GotIt
+  
+  CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName = 'FreeSlipShelves', BetaForm, MaskName
+  TYPE(ValueList_t), POINTER  :: BC => NULL()
+  TYPE(Variable_t), POINTER   :: PointerToMask => NULL()
+  REAL(KIND=dp), POINTER      :: MaskValues(:) => NULL()
+  INTEGER, POINTER            :: MaskPerm(:) => NULL()
+  
+  SAVE FirstTime, MaskName, BetaForm
+  
+  IF (FirstTime) THEN
+     
+     BC => GetBC(Model % CurrentElement)
+     IF (.NOT.ASSOCIATED(BC))THEN
+        CALL Fatal(FunctionName, 'No BC Found')
+     END IF
+     
+     MaskName = GetString( BC, 'FreeSlipShelves mask name', GotIt)
+     IF (.Not.GotIt) THEN
+        CALL WARN(FunctionName,'Keyword >FreeSlipShelves mask name< not found in boundary condition')
+        CALL WARN(FunctionName,'Taking default value >GroundedMask<')
+        WRITE(MaskName,'(A)') 'GroundedMask'
+     END IF
+     
+     BetaForm = GetString( BC, 'FreeSlipShelves beta formulation', GotIt)
+     IF (.NOT.GotIt) THEN
+        WRITE(Message,'(A)') 'Need >FreeSlipShelves beta formulation< (e.g. Power or Beta2)'
+        CALL FATAL(FunctionName,Message)
+     END IF
+     
+     FirstTime = .FALSE.
+     NULLIFY(BC)
+  END IF
+  
+  ! Obtain the value of the mask variable at the current node.
+  PointerToMask => VariableGet( Model % Variables, MaskName, UnFoundFatal=.TRUE.)
+  MaskValues => PointerToMask % Values
+  MaskPerm => PointerToMask % Perm
+  mask = MaskValues(MaskPerm(nodenumber))
+  NULLIFY(PointerToMask)
+  NULLIFY(MaskValues)
+  NULLIFY(MaskPerm)
+  
+  ! We assume mask value is zero or higher for grounded ice, and strictly below zero 
+  ! for floating ice.
+  IF (mask.LT.0.0_dp) THEN
+     BetaOut = 0.0_dp
+  ELSE
+     SELECT CASE (BetaForm)
+     CASE("Power")
+        BetaOut = 10.0_dp**BetaIn
+     CASE("Beta2")
+        BetaOut = BetaIn*BetaIn
+     CASE DEFAULT
+        WRITE(Message,'(A)') 'beta formulation not recognised'
+        CALL FATAL(FunctionName,Message)
+     END SELECT
+  END IF
+    
+END FUNCTION FreeSlipShelves
+

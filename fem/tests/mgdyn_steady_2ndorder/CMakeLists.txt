@@ -1,9 +1,8 @@
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( ZCurrent.sif ZCurrent.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO testcube.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_steady_2ndorder)
-ADD_ELMER_LABEL(mgdyn_steady_2ndorder quick)
+ADD_ELMER_TEST(mgdyn_steady_2ndorder LABELS whitney quick)

@@ -113,10 +113,10 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       Side, SaveNodes, SaveNodes2, node, NoResults, LocalNodes, NoVar, &
       No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, NoFaces, &
       NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, FluxBody, istat, &
-      i1, i2, NoTests, NormInd
+      i1, i2, NoTests, NormInd, Comps
   INTEGER, POINTER :: NodeIndexes(:), SavePerm(:), InvPerm(:), BoundaryIndex(:), IsosurfPerm(:), NoDivisions(:)
   TYPE(Solver_t), POINTER :: ParSolver
-  TYPE(Variable_t), POINTER :: Var, IsosurfVar
+  TYPE(Variable_t), POINTER :: Var, Var2, Var3, IsosurfVar
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: Material, Params
   TYPE(Nodes_t) :: ElementNodes, LineNodes
@@ -199,7 +199,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   NoVar = 0
   NoResults = 0
   DO ivar = 1,99
-    Var => VariableGetN( ivar )
+    Var => VariableGetN( ivar, Comps )
     IF ( .NOT. ASSOCIATED( Var ) )  EXIT
     NoVar = ivar
     IF (ASSOCIATED (Var % EigenVectors)) THEN
@@ -213,9 +213,9 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       IF( EdgeBasis ) THEN
         NoResults = NoResults + 3
       ELSE
-        NoResults = NoResults + Var % Dofs
-      END IF
-    END IF
+        NoResults = NoResults + MAX( Var % Dofs, Comps ) 
+     END IF
+   END IF
   END DO
 
   IF ( CalculateFlux ) NoResults = NoResults + 3
@@ -266,6 +266,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
   IF( NormInd > 0 ) THEN
     Solver % Variable % Values = Norm
+    Solver % Variable % Norm = Norm
   END IF
 
 
@@ -277,11 +278,15 @@ CONTAINS
   ! Get the Nth variable. The coordinate is a cludge since 
   ! the coordinate is not in the automated variable list. 
   !---------------------------------------------------------------
-  FUNCTION VariableGetN(i) RESULT ( Var )
-    INTEGER :: i
+  FUNCTION VariableGetN(i,NoComponents,Component) RESULT ( Var )
     TYPE(Variable_t), POINTER :: Var
+    INTEGER, OPTIONAL :: NoComponents
+    INTEGER, OPTIONAL :: Component
+
+    INTEGER :: i,j,k
     CHARACTER(LEN=MAX_NAME_LEN) :: Name, VarName
     LOGICAL :: Found
+    TYPE(Variable_t), POINTER :: Var2
 
     NULLIFY(Var)
     
@@ -292,13 +297,35 @@ CONTAINS
       WRITE (Name,'(A,I0)') 'Variable ',i
       VarName = GetString( Params, Name, Found )
     END IF
+
+    k = 0
+    IF(.NOT. Found ) THEN
+      IF( PRESENT( NoComponents ) ) NoComponents = k
+      RETURN
+    END IF
       
-    IF( Found ) THEN
-      Var => VariableGet( Model % Variables, VarName )
-      IF(.NOT. ASSOCIATED( Var ) ) THEN
+    IF( PRESENT( Component ) ) THEN
+      VarName = TRIM(VarName)//' '//TRIM(I2S(Component))
+    END IF
+      
+    Var => VariableGet( Model % Variables, VarName )
+    IF(.NOT. ASSOCIATED( Var ) ) THEN
+      Var => VariableGet( Model % Variables, TRIM(VarName)//' 1' )
+      IF( ASSOCIATED( Var ) ) THEN
+        DO j=2,99
+          Var2 => VariableGet( Model % Variables, TRIM(VarName)//' '//TRIM(I2S(j)) )
+          IF(ASSOCIATED( Var2 ) ) THEN
+            k = j
+          ELSE
+            EXIT
+          END IF
+        END DO
+      ELSE
         CALL Warn('VariableGetN','Variable given but not found: '//TRIM(VarName))
       END IF
     END IF
+
+    IF( PRESENT( NoComponents ) ) NoComponents = k
 
   END FUNCTION VariableGetN
 
@@ -578,6 +605,7 @@ CONTAINS
 
     UseGivenNode = .FALSE.
     IF( PRESENT( UseNode ) ) UseGivenNode = UseNode
+
     IF( UseGivenNode ) THEN
       n = 1
       NodeIndex(1) = node_id
@@ -592,14 +620,19 @@ CONTAINS
       SecondOrder = .FALSE.
     END IF
 
-
     No = 0
     Values = 0.0d0
 
 
     DO ivar = -2,NoVar
-      Var => VariableGetN( ivar ) 
-
+      Var => VariableGetN( ivar, comps ) 
+      IF( comps >= 2 ) THEN
+        Var2 => VariableGetN( ivar, component = 2 ) 
+      END IF
+      IF( comps >= 3 ) THEN
+        Var3 => VariableGetN( ivar, component = 3 ) 
+      END IF
+        
       IF( PRESENT( LocalCoord ) ) THEN
         
         CALL GetElementNodes(Nodes, Element) 
@@ -663,41 +696,57 @@ CONTAINS
       IF( EdgeBasis ) THEN
         DO j=1,3
           No = No + 1
-          DO k=1,nd-n
-            l = PtoIndexes(n+k)
-            IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-            IF(l > 0) Values(No) = Values(No) + WBasis(k,j) * Var % Values(l)
-          END DO
+          IF( ASSOCIATED( PtoIndexes ) ) THEN
+            DO k=1,nd-n
+              l = PtoIndexes(n+k)
+              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+              IF(l > 0) Values(No) = Values(No) + WBasis(k,j) * Var % Values(l)
+            END DO
+          END IF
         END DO
 
       ELSE IF (ASSOCIATED (Var % EigenVectors)) THEN
         NoEigenValues = SIZE(Var % EigenValues) 
-        DO j=1,NoEigenValues
-          DO k=1,nd
-            l = PtoIndexes(k)
-            IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-            IF(l > 0) THEN 
-              DO ii=1,Var % DOFs
-                Values(No+(j-1)*Var%Dofs+ii) = Values(No+(j-1)*Var%Dofs+ii) + &
-                    PtoBasis(k) * (Var % EigenVectors(j,Var%Dofs*(l-1)+ii))
-              END DO
-            END IF
+        IF( ASSOCIATED( PtoIndexes ) ) THEN
+          DO j=1,NoEigenValues          
+            DO k=1,nd
+              l = PtoIndexes(k)
+              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+              IF(l > 0) THEN 
+                DO ii=1,Var % DOFs
+                  Values(No+(j-1)*Var%Dofs+ii) = Values(No+(j-1)*Var%Dofs+ii) + &
+                      PtoBasis(k) * (Var % EigenVectors(j,Var%Dofs*(l-1)+ii))
+                END DO
+              END IF
+            END DO
           END DO
-        END DO
+        END IF
         No = No + Var % Dofs * NoEigenValues
       ELSE                  
-        DO k=1,n
-          l = PtoIndexes(k)
-          IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-          IF(l > 0) THEN
-            DO ii=1,Var % Dofs
-              Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
-                  Var % Values(Var%Dofs*(l-1)+ii)
-            END DO
-          END IF
-        END DO
-        No = No + Var % Dofs
-      END IF
+        IF( ASSOCIATED( PtoIndexes ) ) THEN
+          DO k=1,n
+            l = PtoIndexes(k)
+            IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+            IF(l > 0) THEN
+              DO ii=1,Var % Dofs
+                Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
+                    Var % Values(Var%Dofs*(l-1)+ii)
+              END DO
+
+              IF( comps >= 2 ) THEN
+                Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
+                    Var2 % Values(l)
+              END IF
+              IF( comps >= 3 ) THEN
+                Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
+                    Var3 % Values(l)
+              END IF
+                
+            END IF
+          END DO
+        END IF
+        No = No + MAX( Var % Dofs, comps )
+     END IF
     END DO
 
     IF( CalculateFlux ) THEN
@@ -713,10 +762,12 @@ CONTAINS
     END DO
     WRITE(10,'(ES20.11E3)') Values(NoResults)
 
+    
     IF( NormInd > n0 ) THEN
       Norm = Norm + Values(NormInd-n0)
     END IF
 
+    
   END SUBROUTINE WriteFieldsAtElement
     
 
@@ -1134,12 +1185,13 @@ CONTAINS
     GotDivisions = .FALSE.
     IF( NoLines > 0 ) THEN
       NoDivisions => ListGetIntegerArray( Params,'Polyline Divisions',GotDivisions)
-      IF( SIZE( NoDivisions ) < NoLines + COUNT(SaveAxis) ) THEN
-        CALL Fatal('SaveLine','Polyline divisions size too small!')
+      IF( GotDivisions ) THEN
+        IF( SIZE( NoDivisions ) < NoLines + COUNT(SaveAxis) ) THEN
+          CALL Fatal('SaveLine','Polyline divisions size too small!')
+        END IF
       END IF
     END IF
-
-
+    
 
     SaveNodes2 = 0  
     IF( NoLines > 0  .OR. ANY(SaveAxis(1:DIM) ) ) THEN
@@ -1655,7 +1707,7 @@ CONTAINS
 
       No = 0
       DO ivar = -2,NoVar
-        Var => VariableGetN( ivar ) 
+        Var => VariableGetN( ivar, comps ) 
 
         IF (ASSOCIATED (Var % EigenVectors)) THEN
           NoEigenValues = SIZE(Var % EigenValues) 
@@ -1682,6 +1734,19 @@ CONTAINS
             ValueNames(No+2) = TRIM(Var % Name)//' {e} 2'
             ValueNames(No+3) = TRIM(Var % Name)//' {e} 3'         
             No = No + 3
+          ELSE IF( comps > 1 ) THEN
+            No = No + 1
+            ValueNames(No) = TRIM(Var % Name)             
+            IF( comps >= 2 ) THEN
+              Var => VariableGetN( ivar, component = 2 ) 
+              No = No + 1
+              ValueNames(No) = TRIM(Var % Name)                           
+            END IF
+            IF( comps >= 3 ) THEN
+              Var => VariableGetN( ivar, component = 3 ) 
+              No = No + 1
+              ValueNames(No) = TRIM(Var % Name)                           
+            END IF
           ELSE IF( Var % Dofs == 1 ) THEN
             No = No + 1
             ValueNames(No) = TRIM(Var % Name)
@@ -1714,6 +1779,17 @@ CONTAINS
       END IF
       WRITE(10,'(A,A)') 'Variables in file: ',TRIM(SideFile)
 
+      DateStr = GetVersion()
+      WRITE( 10,'(A)') 'Elmer version: '//TRIM(DateStr)     
+      DateStr = GetRevision( GotIt )
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Elmer revision: '//TRIM(DateStr)
+      END IF        
+      DateStr = GetCompilationDate( GotIt )
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
+      END IF
+      
       DateStr = FormatDate()
       WRITE( 10,'(A,A)') 'File started at: ',TRIM(DateStr)
 

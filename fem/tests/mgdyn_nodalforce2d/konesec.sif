@@ -18,7 +18,6 @@ Simulation
 
   Mesh Levels = 1
   Mesh Keep = 1
-  !Post File = fields_b.vtu
   Use Mesh Names = Logical True
 End
 
@@ -262,7 +261,7 @@ Solver 5
   Expression 1 = Variable time,timestep size  ! save rotation angle 
     Real MATC "omega*(tx(0)-tx(1))"
   show norm index = integer 15
-  reference norm = real 39.846422
+  reference norm = real 3.98418112E+01
 End
 
 ! Periodic boundary, stator part

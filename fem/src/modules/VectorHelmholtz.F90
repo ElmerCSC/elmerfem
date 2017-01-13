@@ -565,7 +565,7 @@ CONTAINS
 
        Load(2,1:n) = GetReal( BC, 'Magnetic Boundary Load 2', Found )
        Load(2,1:n) = CMPLX( REAL(Load(2,1:n)), &
-          GetReal(BC, 'Magnetic Boundary Load  im 2', Found), KIND=dp)
+          GetReal(BC, 'Magnetic Boundary Load im 2', Found), KIND=dp)
 
        Load(3,1:n) = GetReal( BC, 'Magnetic Boundary Load 3', Found )
        Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &

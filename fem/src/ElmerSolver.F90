@@ -188,7 +188,8 @@ END INTERFACE
 #endif
          END IF
        END IF
-
+       ParEnv % NumberOfThreads = nthreads
+       
 
        IF( .NOT. Silent ) THEN
          CALL Info( 'MAIN', ' ')
@@ -821,11 +822,13 @@ END INTERFACE
        TYPE(Solver_t), POINTER :: ABC(:), PSolver
        CHARACTER(LEN=MAX_NAME_LEN) :: str
        INTEGER :: i,j,j2,j3,k,n
-       TYPE(ValueList_t), POINTER :: Params
-       LOGICAL :: gotIt, VtuFormat
+       TYPE(ValueList_t), POINTER :: Params, Simu
+       LOGICAL :: Found, VtuFormat
 
-       str = ListGetString( CurrentModel % Simulation,'Post File',GotIt) 
-       IF(.NOT. GotIt) RETURN
+       Simu => CurrentModel % Simulation
+       str = ListGetString( Simu,'Post File',Found) 
+       IF(.NOT. Found) RETURN
+
        k = INDEX( str,'.vtu' )
        VtuFormat = ( k /= 0 ) 
 
@@ -833,8 +836,8 @@ END INTERFACE
        
        CALL Info('AddVtuOutputSolverHack','Adding ResultOutputSolver to write VTU output in file: '&
            //TRIM(str(1:k-1)))
-     
-       CALL ListRemove( CurrentModel % Simulation,'Post File')
+       
+       CALL ListRemove( Simu,'Post File')
        n = CurrentModel % NumberOfSolvers+1
        ALLOCATE( ABC(n) )
        DO i=1,n-1
@@ -875,14 +878,19 @@ END INTERFACE
        
        ! Add some keywords to the list
        CurrentModel % Solvers(n) % Values => ListAllocate()
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,&
+       Params => CurrentModel % Solvers(n) % Values
+       CALL ListAddString( Params,&
            'Procedure', 'ResultOutputSolve ResultOutputSolver',.FALSE.)
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,'Output Format','vtu')
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,'Output File Name',str(1:k-1))
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,'Exec Solver','after saving')
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,'Equation','InternalVtuOutputSolver')
-       CALL ListAddLogical(CurrentModel % Solvers(n) % Values,'Save Geometry IDs',.TRUE.)
+       CALL ListAddString(Params,'Output Format','vtu')
+       CALL ListAddString(Params,'Output File Name',str(1:k-1))
+       CALL ListAddString(Params,'Exec Solver','after saving')
+       CALL ListAddString(Params,'Equation','InternalVtuOutputSolver')
+       CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
+       CALL ListAddLogical(Params,'Check Simulation Keywords',.TRUE.)
 
+       ! Add a few often needed keywords also if they are given in simulation section
+       CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
+       
      END SUBROUTINE AddVtuOutputSolverHack
 
 

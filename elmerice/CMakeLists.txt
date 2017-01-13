@@ -1,5 +1,6 @@
 INCLUDE(CheckIncludeFiles)
 
+SET(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${PROJECT_SOURCE_DIR}/elmerice/cmake/Modules")
 #TODO: is this proper way of choosing shared library API?
 IF(WIN32)
   UNSET(HAVE_DLOPEN_API)

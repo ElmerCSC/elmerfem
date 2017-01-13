@@ -805,8 +805,11 @@ CONTAINS
         End Subroutine R2Ro
 
         Subroutine OPILGGE_ai_nl(a2,Angle,etaI,eta36)
-         USE Types
-         REAL(KIND=dp) :: a2(3), Angle(3),EtaI(:),Eta36(6,6)
+          USE Types
+          REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: a2
+          REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: Angle
+          REAL(kind=dp), INTENT(in),  DIMENSION(:)   :: etaI
+          REAL(kind=dp), INTENT(out), DIMENSION(6,6) :: eta36
         END SUBROUTINE OPILGGE_ai_nl
         
       END INTERFACE

@@ -53,7 +53,7 @@
 
       <Parameter Widget="CheckBox">
         <Name> Save Geometry Ids </Name>  
-        <DefaultValue> False </DefaultValue>
+        <DefaultValue> True </DefaultValue>
         <Whatis> Save number of geometric entities when available (vtu). </Whatis>
       </Parameter>
 

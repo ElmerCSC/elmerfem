@@ -139,6 +139,4 @@ End
 Solver 2 :: Reference Norm = Real 1.41535
 Solver 2 :: Reference Norm Tolerance = Real 1.0E-4
 Solver 3 :: Reference Norm = Real 9.162083E-01
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=1.41535,EPS=1.0E-4\n" );

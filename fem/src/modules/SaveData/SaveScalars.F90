@@ -144,6 +144,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   DIM = CoordinateSystemDimension()
   Params => GetSolverParams()	
 
+  MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
+
  
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN    
@@ -292,7 +294,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
 
   ComplexEigenVectors = ListGetLogical(Params,'Complex Eigen Vectors',GotIt)
-  MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
   
     
    
@@ -466,6 +467,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CASE ('bounding box')
       CASE ('area')
       CASE ('volume')
+      CASE ('threads')
 
       CASE DEFAULT
         IF( .NOT. (GotVar .OR. GotOldVar ) ) THEN
@@ -488,6 +490,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CASE ('partitions')
         Val = 1.0_dp * ParEnv % PEs 
         SaveName = 'value: number of partitions'
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
+
+      CASE ('threads')
+        Val = 1.0_dp * ParEnv % NumberOfThreads 
+        SaveName = 'value: number of threads'
         CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
 
       CASE ('partition checksum')
@@ -617,7 +624,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         
       CASE('boundary sum','boundary dofs','boundary max','boundary max abs','boundary min',&
           'boundary min abs','boundary mean')
-
+        
         IF( .NOT. ANY( ActiveBC ) ) THEN
           CALL Error('SaveScalars','No flag > '//TRIM(MaskName)// &
               ' < active for operator: '// TRIM(Oper))
@@ -633,7 +640,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         DO j=1,Model % NumberOfBCs
           IF( ActiveBC(j) ) THEN
             IF( TRIM(Oper) == 'boundary mean' ) THEN
-              IF( BoundaryHits(j) > 0 ) THEN
+              IF( ParEnv % PEs > 1 .AND. ParallelReduce ) THEN
+                CALL Warn('SaveScalars','Operator > boundary mean < not implemented in parallel!')
+              ELSE IF( BoundaryHits(j) > 0 ) THEN
                 BoundaryFluxes(j) = BoundaryFluxes(j) / BoundaryHits(j)
               END IF
             END IF
@@ -660,7 +669,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           DO j=1,Model % NumberOfBCs
             IF( ActiveBC(j) ) THEN
               IF( TRIM(Oper) == 'boundary int mean' ) THEN
-                IF( BoundaryAreas(j) > 0.0 ) THEN
+                IF( ParEnv % PEs > 1 .AND. ParallelReduce ) THEN
+                  CALL Warn('SaveScalars','Operator > boundary int mean < not implemented in parallel!')
+                ELSE IF( BoundaryAreas(j) > 0.0 ) THEN
                   BoundaryFluxes(j) = BoundaryFluxes(j) / BoundaryAreas(j)
                 END IF
               END IF
@@ -1090,7 +1101,19 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF( GotIt ) THEN
         WRITE(10,'(A)') TRIM(Message)
       END IF
-      DateStr = FormatDate()
+
+      DateStr = GetVersion()
+      WRITE( 10,'(A)') 'Elmer version: '//TRIM(DateStr)     
+      DateStr = GetRevision( GotIt )
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Elmer revision: '//TRIM(DateStr)
+      END IF        
+      DateStr = GetCompilationDate( GotIt )
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
+      END IF
+
+      DateStr = FormatDate()      
       WRITE( 10,'(A)') 'File started at: '//TRIM(DateStr)
 
       WRITE(10,'(A)') ' '
@@ -1274,7 +1297,7 @@ CONTAINS
 
       ! These operators should already be more of less parallel
     CASE('partitions','cpu time','wall time','cpu memory','norm','nonlin change','steady state change',&
-	'nonlin iter','nonlin converged','steady converged')
+	'nonlin iter','nonlin converged','steady converged','threads')
       ParOper = 'none'
 
     CASE DEFAULT
@@ -1386,7 +1409,7 @@ CONTAINS
         
         IF( MPIOper > 0 ) THEN
           CALL MPI_ALLREDUCE(Val,ParVal,1,&
-              MPI_DOUBLE_PRECISION,MPIOper,MPI_COMM_WORLD,ierr)
+              MPI_DOUBLE_PRECISION,MPIOper,ELMER_COMM_WORLD,ierr)
           Values(n) = ParVal
           IF( MPIOper == MPI_MIN ) THEN
             WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_min'
@@ -1491,17 +1514,20 @@ CONTAINS
     REAL(KIND=dp) :: Minimum, Maximum, AbsMinimum, AbsMaximum, &
         Mean, Variance, sumx, sumxx, sumabsx, x, Variance2
     INTEGER :: Nonodes, i, j, k, l, NoDofs, sumi
-    LOGICAL :: Initialized 
     TYPE(NeighbourList_t), POINTER :: nlist(:)
 
     CALL Info('SaveScalars','Computing operator: '//TRIM(OperName),Level=12)
 
-    Initialized = .FALSE.
     sumi = 0
     sumx = 0.0
     sumxx = 0.0
     sumabsx = 0.0
 
+    Maximum = -HUGE(x)
+    Minimum = HUGE(x)
+    AbsMaximum = -HUGE(x)
+    AbsMinimum = HUGE(x)
+    
     NoDofs = Var % Dofs
     IF(ASSOCIATED (Var % Perm)) THEN
       Nonodes = SIZE(Var % Perm) 
@@ -1550,17 +1576,12 @@ CONTAINS
           END DO
           x = SQRT(x)
         END IF
-        IF(.NOT. Initialized) THEN
-          Initialized = .TRUE.
-          Maximum = x
-          Minimum = x
-          AbsMaximum = x
-          AbsMinimum = x
-        END IF
+
         sumi = sumi + 1
         sumx = sumx + x
         sumxx = sumxx + x*x
         sumabsx = sumabsx + ABS( x )
+
         Maximum = MAX(x,Maximum)
         Minimum = MIN(x,Minimum)
         IF(ABS(x) > ABS(AbsMaximum) ) AbsMaximum = x
@@ -2369,7 +2390,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     CHARACTER(LEN=MAX_NAME_LEN) :: OperName, CoeffName
     LOGICAL :: GotCoeff, FindMinMax
-    REAL(KIND=dp) :: fluxes(:)
+    REAL(KIND=dp) :: fluxes(:), val
     INTEGER :: fluxescomputed(:)
     LOGICAL, ALLOCATABLE :: nodescomputed(:)    
     TYPE(Element_t), POINTER :: Element, Parent    
@@ -2383,32 +2404,28 @@ CONTAINS
 	
     NodesComputed = .FALSE.
     hits = 0
-
+    
     NoDofs = Var % Dofs
     Permutated = ASSOCIATED(Var % Perm)
     FindMinMax = .FALSE.
-
+    
     SELECT CASE(OperName)
       
     CASE('boundary sum','boundary dofs','boundary mean') 
-      IF(NoDofs /= 1) THEN
-        CALL Warn('SaveScalars','boundary sum & NoDofs /= 1?')
-        RETURN
-      END IF
+      fluxes = 0.0_dp
 
-    CASE('boundary min','boundary max','boundary min abs','boundary max abs') 
-      IF(NoDofs /= 1) THEN
-        CALL Warn('SaveScalars','boundary sum & NoDofs /= 1?')
-        RETURN
-      END IF
+    CASE('boundary min','boundary min abs')
+      fluxes = HUGE( val )
+      FindMinMax = .TRUE.
+      
+    CASE('boundary max','boundary max abs') 
+      fluxes = -HUGE( val )
       FindMinMax = .TRUE.
       
     CASE DEFAULT 
-      CALL Warn('SaveScalars','Unknown statistical OPERATOR')
+      CALL Warn('SaveScalars','Unknown statistical operator')
       
     END SELECT
-
-    fluxes = 0.0d0
 
 
     DO t = Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements &
@@ -2438,25 +2455,38 @@ CONTAINS
           
           IF( j == 0) CYCLE            
           IF( nodescomputed(j) ) CYCLE
-
-          IF(FindMinMax) THEN
-            IF(fluxescomputed(bc) == 0) THEN
-              fluxes(bc) = Var % Values(j)
-            ELSE
-              SELECT CASE(OperName)              
-              CASE('boundary min')
-                fluxes(bc) = MIN( Var % Values(j), fluxes(bc) )
-              CASE('boundary max')
-                fluxes(bc) = MAX( Var % Values(j), fluxes(bc) )
-              CASE('boundary min abs')
-                IF(ABS(fluxes(bc)) < ABS( Var % Values(j))) fluxes(bc) = Var % Values(j)
-              CASE('boundary max abs')
-                IF(ABS(fluxes(bc)) > ABS( Var % Values(j))) fluxes(bc) = Var % Values(j)
-              END SELECT
-            END IF
+          
+          IF( NoDofs == 1 ) THEN
+            val = Var % Values(j)
           ELSE
-            fluxes(bc) = fluxes(bc) + Var % Values(j)
+            val = 0.0_dp
+            DO k=1,NoDofs
+              val = val + Var % Values(NoDofs*(j-1)+k)
+            END DO
+            val = SQRT( val )
           END IF
+            
+          
+          IF(FindMinMax) THEN
+            SELECT CASE(OperName)              
+
+            CASE('boundary min')
+              fluxes(bc) = MIN( val, fluxes(bc) )
+
+            CASE('boundary max')
+              fluxes(bc) = MAX( val, fluxes(bc) )
+
+            CASE('boundary min abs')
+              IF(ABS(fluxes(bc)) < ABS( val )) fluxes(bc) = val
+
+            CASE('boundary max abs')
+              IF(ABS(fluxes(bc)) > ABS( val )) fluxes(bc) = val
+
+            END SELECT
+          ELSE
+            fluxes(bc) = fluxes(bc) + val
+          END IF
+
           nodescomputed(j) = .TRUE.         
           fluxescomputed(bc) = fluxescomputed(bc) + 1          
         END DO        
@@ -2466,7 +2496,6 @@ CONTAINS
 
     SELECT CASE(OperName)
       
-    CASE('boundary sum','boundary mean')             
     CASE('boundary dofs') 
       fluxes = 1.0 * fluxescomputed
       

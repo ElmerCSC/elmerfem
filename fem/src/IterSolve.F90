@@ -408,8 +408,8 @@ CONTAINS
         'Linear System Convergence Tolerance' )
     
     HUTI_MAXTOLERANCE = ListGetCReal( Params, &
-        'Linear System Divergence Tolerance', GotIt)
-    IF(.NOT. GotIt) HUTI_MAXTOLERANCE = HUGE(HUTI_MAXTOLERANCE) 
+        'Linear System Divergence Limit', GotIt)
+    IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20
     
     
 !------------------------------------------------------------------------------
