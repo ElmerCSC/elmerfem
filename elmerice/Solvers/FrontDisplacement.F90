@@ -20,6 +20,7 @@
 ! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
+!
 !/******************************************************************************
 ! *
 ! *  Slightly modified version of MeshSolve.F90 for computing mesh update for
@@ -113,12 +114,11 @@ END SUBROUTINE FDMeshSolver_Init
   TYPE(Nodes_t),POINTER :: Nodes0
   REAL(KIND=dp) :: RelativeChange, UNorm, PrevUNorm,  maxu
 
-  TYPE(Variable_t), POINTER :: StressSol, MeshSol, UpdateSol
+  TYPE(Variable_t), POINTER :: MeshSol, InitXVar, InitYVar
 
-  REAL(KIND=dp), POINTER :: MeshUpdate(:),Displacement(:), &
-       MeshVelocity(:), UpdateValues(:)
+  REAL(KIND=dp), POINTER :: MeshUpdate(:), MeshVelocity(:)
 
-  INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:), UpdatePerm(:)
+  INTEGER, POINTER :: MeshPerm(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
        GotForceBC, Found, ComputeMeshVelocity, FirstTime = .TRUE.
@@ -126,10 +126,9 @@ END SUBROUTINE FDMeshSolver_Init
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
        Alpha(:,:), Beta(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: MUVarName
 
   SAVE STIFF, LOAD, FORCE, MeshVelocity, AllocationsDone, &
-       ElasticModulus, PoissonRatio, TPerm, Alpha, Beta, FirstTime, &
+       ElasticModulus, PoissonRatio, Alpha, Beta, FirstTime, &
        Mesh0, Nodes0
 
 !------------------------------------------------------------------------------
@@ -164,69 +163,24 @@ END SUBROUTINE FDMeshSolver_Init
 
 !------------------------------------------------------------------------------
 
-  StressSol => VariableGet( Solver % Mesh % Variables, 'Displacement' )
-  IF( ListGetLogical( Solver % Values,'Ignore Displacement',Found) ) THEN
-    NULLIFY( StressSol )
-  END IF
-
-
-  IF ( ASSOCIATED( StressSol ) )  THEN
-     StressPerm   => StressSol % Perm
-     STDOFs       =  StressSol % DOFs
-     Displacement => StressSol % Values
-
-     IF( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
-        IF ( AllocationsDone ) DEALLOCATE( TPerm )
-
-        ALLOCATE( TPerm( SIZE(MeshPerm) ), STAT=istat )
-        IF ( istat /= 0 ) THEN
-           CALL Fatal( 'MeshSolve', 'Memory allocation error.' )
-        END IF
-     END IF
-
-     TPerm = MeshPerm
-     DO i=1,SIZE( MeshPerm )
-        IF ( StressPerm(i) /= 0 .AND. MeshPerm(i) /= 0 ) TPerm(i) = 0
-     END DO
-!TEST
-!     IF ( AllocationsDone ) THEN
-!        CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, TPerm,   STDOFs )
-!     END IF
-!     CALL DisplaceMesh( Solver % Mesh, Displacement,  -1, StressPerm, STDOFs )
-  ELSE
-!     IF ( AllocationsDone ) THEN
-!        CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, MeshPerm, STDOFs )
-!     END IF
-  END IF
-
-!------------------------------------------------------------------------------
-
   UNorm = Solver % Variable % Norm
 
-!TEST
   IF(FirstTime) THEN
      FirstTime = .FALSE.
 
-     MUVarName = ListGetString(Solver % Values, "Advance MU Var", Found)
-     IF(.NOT. Found) THEN
-       MUVarName = "Long Mesh Update"
-       CALL Warn("FrontDisplacement", "No 'Advance MU Var' found, assuming 'Long Mesh Update'")
-     END IF
-
-     UpdateSol => VariableGet( Solver % Mesh % Variables, MUVarName, UnfoundFatal=.TRUE.)
-     UpdateValues => UpdateSol % Values
-     UpdatePerm => UpdateSol % Perm
+     InitXVar => VariableGet( Solver % Mesh % Variables, "InitX", UnfoundFatal=.TRUE.)
+     InitYVar => VariableGet( Solver % Mesh % Variables, "InitY", UnfoundFatal=.TRUE.)
 
      NoNodes = SIZE(Solver % Mesh % Nodes % x)
      ALLOCATE( Nodes0 )
      ALLOCATE( Nodes0 % x(NoNodes), Nodes0 % y(NoNodes),Nodes0 % z(NoNodes))
      DO i=1,NoNodes
-        k = UpdatePerm(i)
-        IF(k>0) THEN
-           k = 2 * (k-1)
-           Nodes0 % x(i) = Solver % Mesh % Nodes % x(i) - UpdateValues(k+1)
-           Nodes0 % y(i) = Solver % Mesh % Nodes % y(i) - UpdateValues(k+2)
-        END IF
+       Nodes0 % x(i) = Solver % Mesh % Nodes % x(i)
+       Nodes0 % y(i) = Solver % Mesh % Nodes % y(i)
+
+       !Save initial coordinates to variables too, for dirichlet condition
+       InitXVar % Values(InitXVar % Perm(i)) = Solver % Mesh % Nodes % x(i)
+       InitYVar % Values(InitYVar % Perm(i)) = Solver % Mesh % Nodes % y(i)
      END DO
 
      Mesh0 => AllocateMesh()
@@ -435,14 +389,6 @@ END SUBROUTINE FDMeshSolver_Init
       MeshVelocity = 0.0d0
     END IF
   END IF
-
-!TEST
-!  IF ( ASSOCIATED( StressSol ) ) THEN
-!    CALL DisplaceMesh( Solver % Mesh, MeshUpdate,   1, TPerm,      STDOFs )
-!    CALL DisplaceMesh( Solver % Mesh, Displacement, 1, StressPerm, STDOFs, .FALSE.)
-!  ELSE
-!    CALL DisplaceMesh( Solver % Mesh, MeshUpdate,   1, MeshPerm,   STDOFs )
-!  END IF
 
   Solver % Mesh => Model % Mesh
   NoNodes = SIZE(Solver % Mesh % Nodes % x)
