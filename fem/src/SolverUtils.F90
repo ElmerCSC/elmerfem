@@ -13676,8 +13676,12 @@ CONTAINS
      INTEGER :: Priority, PrevPriority
      INTEGER, ALLOCATABLE :: BCOrdering(:), BCPriority(:)
      LOGICAL :: NeedToGenerate 
-     
 
+     LOGICAL :: HaveMortarDiag, LumpedDiag
+     REAL(KIND=dp) :: MortarDiag
+
+
+     
      ! Should we genarete the matrix
      NeedToGenerate = Solver % MortarBCsChanged
      
@@ -13816,6 +13820,9 @@ CONTAINS
      END IF
      NeglectedRows = 0
 
+     MortarDiag = ListGetCReal( Solver % Values,'Mortar Diag',HaveMortarDiag )
+     LumpedDiag = ListGetLogical( Solver % Values,'Lumped Diag',Found )
+
 
 100  sumrow = 0
      k2 = 0
@@ -13833,7 +13840,7 @@ CONTAINS
        ! This is the default i.e. all components are applied mortar BCs
        ActiveComponents = .TRUE.
        
-       IF(constraint_ind>Model % NumberOfBCs) THEN
+       IF(constraint_ind > Model % NumberOfBCs) THEN
          ThisIsMortar = .FALSE.
          SumThis = .FALSE.
          Atmp => Ctmp
@@ -13844,6 +13851,8 @@ CONTAINS
              CALL Warn('GenerateConstraintMatrix','InvPerm is expected, using identity!')
            END IF
          END IF
+         CALL Info('GenerateConstraintMatrix','Adding initial constraint matrix: '&
+             //TRIM(I2S(constraint_ind - Model % NumberOfBCs)),Level=8)         
        ELSE
          ThisIsMortar = .TRUE.
          SumThis = SumProjectors
@@ -13855,6 +13864,7 @@ CONTAINS
 
          MortarBC => Solver % MortarBCs(bc_ind) 
          Atmp => MortarBC % Projector
+
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
 
          IF(.NOT. AllocationsDone ) THEN
@@ -13912,7 +13922,7 @@ CONTAINS
        END IF
 
        ! If the projector is of type x_s=P*x_m then generate a constraint matrix
-       ! of type [D-P]x=0.
+       ! of type [D-P]x=0 where D is diagonal unit matrix. 
        CreateSelf = ( Atmp % ProjectorType == PROJECTOR_TYPE_NODAL ) 
        
        IF( SumThis .AND. CreateSelf ) THEN
@@ -13942,9 +13952,10 @@ CONTAINS
              END IF
            END IF
              
-           ! Node does not have an active dof to be constrained
+           ! Use InvPerm if it is present
            IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
              k = Atmp % InvPerm(i)
+             ! Node does not have an active dof to be constrained
              IF( k == 0 ) CYCLE
            ELSE
              k = i
@@ -14065,8 +14076,13 @@ CONTAINS
            ! Add a diagonal entry if requested. When this is done at the final stage
            ! all the hazzle with the right column index is easier. 
            IF( ThisIsMortar ) THEN
-             IF( ASSOCIATED( MortarBC % Diag ) ) THEN
-               IF( MortarBC % LumpedDiag ) THEN
+             IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) THEN
+               IF( .NOT. HaveMortarDiag ) THEN
+                 MortarDiag = MortarBC % Diag(i)
+                 LumpedDiag = MortarBC % LumpedDiag
+               END IF
+                                
+               IF( LumpedDiag ) THEN
                  k2 = k2 + 1             
                  IF( AllocationsDone ) THEN
                    Btmp % Cols(k2) = row + arows 
@@ -14074,7 +14090,7 @@ CONTAINS
                    ! contribution is summed twice, 2nd time as transpose
                    ! For Nodal projector the entry is 1/(weight*coeff)
                    ! For Galerkin projector the is weight/coeff 
-                   Btmp % Values(k2) = -0.5_dp * MortarBC % Diag(i) * wsum
+                   Btmp % Values(k2) = -0.5_dp * MortarDiag * wsum
                  END IF
                ELSE
                  DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
@@ -14096,8 +14112,7 @@ CONTAINS
                    k2 = k2 + 1
                    IF( AllocationsDone ) THEN                   
                      Btmp % Cols(k2) = MortarBC % Perm( col ) + arows + rowoffset
-                     Btmp % Values(k2) = -0.5_dp * Atmp % Values(k) * &
-                         MortarBC % Diag(i) 
+                     Btmp % Values(k2) = -0.5_dp * Atmp % Values(k) * MortarDiag
                    END IF
                  END DO
                END IF
@@ -14159,6 +14174,9 @@ CONTAINS
              END IF
 
              IF( SumThis ) THEN
+               IF( Dofs*(k-1)+j > SIZE(SumPerm) ) THEN
+                 PRINT *,'bad1'
+               END IF
                NewRow = ( SumPerm(Dofs*(k-1)+j) == 0 )
                IF( NewRow ) THEN
                  sumrow = sumrow + 1                
@@ -14274,10 +14292,22 @@ CONTAINS
                  ELSE
                    col2 = col
                  END IF
-                   
-                 k2 = k2 + 1
+
                  IF( AllocationsDone ) THEN
+                   IF( SumThis ) THEN
+                     k2 = Btmp % Rows(row)
+                     DO WHILE( Btmp % Cols(k2) > 0 )
+                       k2 = k2 + 1
+                     END DO
+                   ELSE
+                     k2 = k2 + 1
+                   END IF
                    Btmp % Cols(k2) = Dofs * ( col2 - 1) + j2
+                 ELSE
+                   k2 = k2 + 1
+                   IF( SumThis ) THEN
+                     SumCount(row) = SumCount(row) + 1
+                   END IF
                  END IF
                END DO
 
@@ -14291,12 +14321,17 @@ CONTAINS
 
 
              IF( ThisIsMortar ) THEN
-               IF( ASSOCIATED( MortarBC % Diag ) ) THEN
-                 IF( MortarBC % LumpedDiag ) THEN
+               IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) THEN
+                 IF( .NOT. HaveMortarDiag ) THEN
+                   MortarDiag = MortarBC % Diag(Dofs*(i-1)+j)
+                   LumpedDiag = MortarBC % LumpedDiag
+                 END IF
+
+                 IF( LumpedDiag ) THEN
                    k2 = k2 + 1
                    IF( AllocationsDone ) THEN
                      Btmp % Cols(k2) = row + arows
-                     Btmp % Values(k2) = -0.5_dp * wsum * MortarBC % Diag(Dofs*(i-1)+j)
+                     Btmp % Values(k2) = -0.5_dp * wsum * MortarDiag
                    END IF
                  ELSE
                    DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
@@ -14318,8 +14353,7 @@ CONTAINS
                      k2 = k2 + 1
                      IF( AllocationsDone ) THEN                   
                        Btmp % Cols(k2) = Dofs*(MortarBC % Perm( col )-1)+j + arows + rowoffset
-                       Btmp % Values(k2) = -0.5_dp * Atmp % Values(k) * &
-                           MortarBC % Diag(i) 
+                       Btmp % Values(k2) = -0.5_dp * Atmp % Values(k) * MortarDiag
                      END IF
                    END DO
                  END IF
