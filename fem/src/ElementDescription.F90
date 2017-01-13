@@ -53,7 +53,7 @@ MODULE ElementDescription
    USE PElementMaps
    USE PElementBase
    ! Vectorized P element basis functions
-   USE H1ElementBasisFunctions
+   USE H1Basis
 
    IMPLICIT NONE
 
@@ -3582,15 +3582,14 @@ END IF
 !------------------------------------------------------------------------------
    FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, Basis, dBasisdx ) RESULT(retval)
 !------------------------------------------------------------------------------
-     USE H1ElementBasisFunctions
      IMPLICIT NONE
 
      TYPE(Element_t), TARGET :: Element    !< Element structure
      TYPE(Nodes_t)   :: Nodes              !< Element nodal coordinates.
      INTEGER, INTENT(IN) :: nc             !< Number of local coordinates to compute values of the basis function
-     REAL(KIND=dp) CONTIG, INTENT(IN) :: u(:)  !< 1st local coordinates at which to calculate the basis function.
-     REAL(KIND=dp) CONTIG, INTENT(IN) :: v(:)  !< 2nd local coordinates.
-     REAL(KIND=dp) CONTIG, INTENT(IN) :: w(:)  !< 3rd local coordinates.
+     REAL(KIND=dp), POINTER CONTIG :: u(:)  !< 1st local coordinates at which to calculate the basis function.
+     REAL(KIND=dp), POINTER CONTIG :: v(:)  !< 2nd local coordinates.
+     REAL(KIND=dp), POINTER CONTIG :: w(:)  !< 3rd local coordinates.
      REAL(KIND=dp) CONTIG, INTENT(OUT) :: detJ(:) !< Square roots of determinants of element coordinate system metric at coordinates
      REAL(KIND=dp) CONTIG :: Basis(:,:)    !< Basis function values at (u,v,w)
      REAL(KIND=dp) CONTIG, OPTIONAL :: dBasisdx(:,:,:)    !< Global first derivatives of basis functions at (u,v,w)
@@ -3600,6 +3599,11 @@ END IF
      !------------------------------------------------------------------------------
      INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, &
              nb, nbc, nbp, nbdxp, allocstat, ncpad
+     INTEGER :: EdgeDegree(12), FaceDegree(6), EdgeDirection(2,12), FaceDirection(4,6)
+!DIR$ ATTRIBUTES ALIGN:64::EdgeDegree, FaceDegree, EdgeDirection, FaceDirection
+
+     TYPE(Element_t), POINTER :: MeshEdges(:)
+     INTEGER, POINTER :: ElementMap(:,:)
      LOGICAL :: elem
      !------------------------------------------------------------------------------
      retval = .TRUE.
@@ -3645,9 +3649,9 @@ END IF
          ! Element: LINE
        CASE (202)
          ! Compute nodal basis
-         CALL H1LineNodalBasisVec(ncl, uWrk, BasisWrk)
+         CALL H1Basis_LineNodal(ncl, uWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dLineNodalBasisVec(ncl, uWrk, dBasisdxWrk)
+         CALL H1Basis_dLineNodal(ncl, uWrk, dBasisdxWrk)
          nbc = 2
          nbp = 2
          nbdxp = 2
@@ -3660,22 +3664,38 @@ END IF
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
            ! TODO: Implement direction for surface elements
-           CALL H1LineBubblePBasisVec(ncl, uWrk, P, nbp, BasisWrk)
-           CALL H1dLineBubblePBasisVec(ncl, uWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_LineBubbleP(ncl, uWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dLineBubbleP(ncl, uWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! Element: TRIANGLE
        CASE (303)
          ! Compute nodal basis
-         CALL H1TriangleNodalPBasisVec(ncl, uWrk, vWrk, BasisWrk)
+         CALL H1Basis_TriangleNodalP(ncl, uWrk, vWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dTriangleNodalPBasisVec(ncl, uWrk, vWrk, dBasisdxWrk)
+         CALL H1Basis_dTriangleNodalP(ncl, uWrk, vWrk, dBasisdxWrk)
          nbc = 3
          nbp = 3
          nbdxp = 3
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
-           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             ! Get polynomial degree of each edge
+             DO i=1,3
+               EdgeDegree(i) = CurrentModel % Solver % &
+                       Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
+             END DO
+           
+             CALL H1Basis_GetEdgeDirection(303, 3, Element % NodeIndexes, EdgeDirection)
+           END IF
+
+           ! Compute basis function values
+           CALL H1Basis_TriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbp, BasisWrk, &
+                   EdgeDirection)
+           CALL H1Basis_dTriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+                   EdgeDirection)
          END IF
 
          ! Element bubble functions
@@ -3686,22 +3706,38 @@ END IF
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
            ! TODO: Implement direction for surface elements
-           CALL H1TriangleBubblePBasisVec(ncl, uWrk, vWrk, P, nbp, BasisWrk)
-           CALL H1dTriangleBubblePBasisVec(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_TriangleBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dTriangleBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! QUADRILATERAL
        CASE (404)
          ! Compute nodal basis
-         CALL H1QuadNodalBasisVec(ncl, uWrk, vWrk, BasisWrk)
+         CALL H1Basis_QuadNodal(ncl, uWrk, vWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dQuadNodalBasisVec(ncl, uWrk, vWrk, dBasisdxWrk)
+         CALL H1Basis_dQuadNodal(ncl, uWrk, vWrk, dBasisdxWrk)
          nbc = 4
          nbp = 4
          nbdxp = 4
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
-           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             ! Get polynomial degree of each edge
+             DO i=1,4
+               EdgeDegree(i) = CurrentModel % Solver % &
+                       Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
+             END DO
+           
+             CALL H1Basis_GetEdgeDirection(404, 4, Element % NodeIndexes, EdgeDirection)
+           END IF
+
+           ! Compute basis function values
+           CALL H1Basis_QuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbp, BasisWrk, &
+                   EdgeDirection)
+           CALL H1Basis_dQuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+                   EdgeDirection)
          END IF
 
          ! Element bubble functions
@@ -3712,16 +3748,16 @@ END IF
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
            ! TODO: Implement direction for surface elements
-           CALL H1QuadBubblePBasisVec(ncl, uWrk, vWrk, P, nbp, BasisWrk)
-           CALL H1dQuadBubblePBasisVec(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! TETRAHEDRON
        CASE (504)
          ! Compute nodal basis
-         CALL H1TetraNodalPBasisVec(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         CALL H1Basis_TetraNodalP(ncl, uWrk, vWrk, wWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dTetraNodalPBasisVec(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
+         CALL H1Basis_dTetraNodalP(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
          nbc = 4
          nbp = 4
          nbdxp = 4
@@ -3741,16 +3777,16 @@ END IF
 
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
-           CALL H1TetraBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
-           CALL H1dTetraBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_TetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dTetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! WEDGE
        CASE (706)
          ! Compute nodal basis
-         CALL H1WedgeNodalPBasisVec(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         CALL H1Basis_WedgeNodalP(ncl, uWrk, vWrk, wWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dWedgeNodalPBasisVec(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
+         CALL H1Basis_dWedgeNodalP(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
          nbc = 6
          nbp = 6
          nbdxp = 6
@@ -3770,16 +3806,16 @@ END IF
 
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
-           CALL H1WedgeBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
-           CALL H1dWedgeBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_WedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dWedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! HEXAHEDRON
        CASE (808)
          ! Compute local basis
-         CALL H1BrickNodalBasisVec(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         CALL H1Basis_BrickNodal(ncl, uWrk, vWrk, wWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dBrickNodalBasisVec(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
+         CALL H1Basis_dBrickNodal(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
          nbc = 8
          nbp = 8
          nbdxp = 8
@@ -3792,13 +3828,13 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
-           P=NINT(1/3d0*(81*nb + &
-                   3*SQRT(-3d0+729*nb**2))**(1/3d0) + &
-                   1d0/(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+           P=NINT(1/3d0*(81*Element % BDOFS + &
+                   3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
+                   1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
 
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
-           CALL H1BrickBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
-           CALL H1dBrickBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
        CASE DEFAULT
@@ -3806,8 +3842,7 @@ END IF
                  Element % TYPE % ElementCode, ' not implemented.'
          CALL Error( 'ElementInfoVec', Message )
          CALL Fatal( 'ElementInfoVec', 'ElementInfoVec is still experimental.' )
-       END SELECT
-
+       END SELECT 
        ! Set the final number of basis functions 
        nbc = nbp     
 
@@ -9350,7 +9385,7 @@ END IF
      REAL(KIND=dp) :: s
      INTEGER :: cdim,dim,i,j,k,l,n,ip, jj, kk
      INTEGER :: ldbasis, ldxyz, utind
-!DIR$ ASSUME_ALIGNED dlBasisdx:64, LtoGMap:64
+!DIR$ ASSUME_ALIGNED dlBasisdx:64, LtoGMap:64, DetJ:64
      !------------------------------------------------------------------------------
      AllSuccess = .TRUE.
 
