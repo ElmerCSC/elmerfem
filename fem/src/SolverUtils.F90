@@ -7846,8 +7846,7 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: UpdateComponents(:)
 
     SolverParams => Solver % Values
-    
-  
+
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) RETURN
@@ -7890,7 +7889,7 @@ END FUNCTION SearchNodeL
       IterNo = iterV % Values(1)
       Solver % Variable % NonlinIter = iterV % Values(1)
       iterV % Values(1) = iterV % Values(1) + 1 
-
+      
       Skip = ListGetLogical( SolverParams,'Skip Compute Nonlinear Change',Stat)
       IF(Skip) RETURN
 
@@ -11623,7 +11622,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 !------------------------------------------------------------------------------
   CALL Info( 'SolveWithLinearRestriction ', ' ', Level=5 )
   SolverPointer => Solver
-
+ 
+  
   Parallel = (ParEnv % PEs > 1 )
 
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
@@ -11641,15 +11641,20 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     AddVector => AddMatrix % RHS
 
   NumberOfRows = StiffMatrix % NumberOfRows
-
+  
   CollectionMatrix => StiffMatrix % CollectionMatrix
   Refactorize = ListGetLogical(Solver % Values,'Linear System Refactorize',Found)
   IF(.NOT.Found) Refactorize = .TRUE.
 
-  IF(Refactorize.AND..NOT.NotExplicit) THEN
-    IF(ASSOCIATED(CollectionMatrix)) THEN
+  IF(ASSOCIATED(CollectionMatrix)) THEN
+    IF(Refactorize.AND..NOT.NotExplicit) THEN
+      CALL Info( 'SolveWithLinearRestriction', &
+          'Freeing previous collection matrix structures',Level=10)
       CALL FreeMatrix(CollectionMatrix)
       CollectionMatrix => NULL()
+    ELSE
+      CALL Info( 'SolveWithLinearRestriction', &
+          'Keeping previous collection matrix structures',Level=10)
     END IF
   END IF
 
@@ -13658,13 +13663,13 @@ CONTAINS
      INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,mcount,bcount,kk
      TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
      LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent, Found, &
-         SetDof, SomeSet, SomeSkip, SumProjectors, NewRow
+         SetDof, SomeSet, SomeSkip, SumProjectors, NewRow, SumThis
      INTEGER, ALLOCATABLE :: SumPerm(:),SumCount(:)
      LOGICAL, ALLOCATABLE :: ActiveComponents(:), SetDefined(:)
      TYPE(ValueList_t), POINTER :: BC
      TYPE(MortarBC_t), POINTER :: MortarBC
      REAL(KIND=dp) :: wsum, Scale
-     INTEGER :: rowoffset, arows, sumrow, EliminatedRows, NeglectedRows
+     INTEGER :: rowoffset, arows, sumrow, EliminatedRows, NeglectedRows, sumrow0, k20
      CHARACTER(LEN=MAX_NAME_LEN) :: Str
      LOGICAL :: ThisIsMortar, Reorder
      LOGICAL :: AnyPriority
@@ -13677,6 +13682,7 @@ CONTAINS
      NeedToGenerate = Solver % MortarBCsChanged
      
      ! Set pointers to save the initial constraint matrix
+     ! We assume that the given ConstraintMatrix is constant but we have consider it the 1st time
      IF(.NOT. Solver % ConstraintMatrixVisited ) THEN       
        IF( ASSOCIATED( Solver % Matrix % ConstraintMatrix ) ) THEN
          CALL Info('GenerateConstraintMatrix','Saving initial constraint matrix to Solver',Level=12)
@@ -13816,7 +13822,9 @@ CONTAINS
      rowoffset = 0
      Priority = -1
      PrevPriority = -1
-    
+     sumrow0 = 0
+     k20 = 0
+     
      TransposePresent = .FALSE.
      Ctmp => Solver % ConstraintMatrix
 
@@ -13827,16 +13835,18 @@ CONTAINS
        
        IF(constraint_ind>Model % NumberOfBCs) THEN
          ThisIsMortar = .FALSE.
+         SumThis = .FALSE.
          Atmp => Ctmp
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
          Ctmp => Ctmp % ConstraintMatrix
          IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
            IF(.NOT. AllocationsDone ) THEN
-             CALL Warn('GenerateConstraintMatrix','InvPerm is expected, using unity!')
+             CALL Warn('GenerateConstraintMatrix','InvPerm is expected, using identity!')
            END IF
          END IF
        ELSE
          ThisIsMortar = .TRUE.
+         SumThis = SumProjectors
          IF( AnyPriority ) THEN
            bc_ind = BCOrdering(constraint_ind)
          ELSE
@@ -13905,10 +13915,12 @@ CONTAINS
        ! of type [D-P]x=0.
        CreateSelf = ( Atmp % ProjectorType == PROJECTOR_TYPE_NODAL ) 
        
-       IF( SumProjectors .AND. CreateSelf ) THEN
+       IF( SumThis .AND. CreateSelf ) THEN
          CALL Fatal('GenerateConstraintMatrix','It is impossible to sum up nodal projectors!')
        END IF
 
+       ! Assume the mortar matrices refer to unordered mesh dofs
+       ! and existing ConstraintMatrix to already ordered entities. 
        Reorder = ThisIsMortar
        
        
@@ -13944,7 +13956,7 @@ CONTAINS
              kk = k
            END IF
              
-           IF( SumProjectors ) THEN
+           IF( SumThis ) THEN
              NewRow = ( SumPerm(k) == 0 )
              IF( NewRow ) THEN
                sumrow = sumrow + 1                
@@ -14014,7 +14026,7 @@ CONTAINS
                END IF
 
                ! Add a new column index to the summed up row
-               IF( SumProjectors ) THEN
+               IF( SumThis ) THEN
                  k2 = Btmp % Rows(row)
                  DO WHILE( Btmp % Cols(k2) > 0 )
                    k2 = k2 + 1
@@ -14034,7 +14046,7 @@ CONTAINS
                END IF
              ELSE
                k2 = k2 + 1
-               IF( SumProjectors ) THEN
+               IF( SumThis ) THEN
                  SumCount(row) = SumCount(row) + 1
                END IF
              END IF
@@ -14098,7 +14110,7 @@ CONTAINS
                  Btmp % Rhs(row) = Btmp % Rhs(row) + wsum * MortarBC % rhs(i)
                END IF
              END IF
-             IF( .NOT. SumProjectors ) THEN
+             IF( .NOT. SumThis ) THEN
                Btmp % Rows(row+1) = k2 + 1
              END IF
            END IF
@@ -14146,7 +14158,7 @@ CONTAINS
                kk = k
              END IF
 
-             IF( SumProjectors ) THEN
+             IF( SumThis ) THEN
                NewRow = ( SumPerm(Dofs*(k-1)+j) == 0 )
                IF( NewRow ) THEN
                  sumrow = sumrow + 1                
@@ -14212,7 +14224,7 @@ CONTAINS
                    END IF
                  END IF
 
-                 IF( SumProjectors ) THEN
+                 IF( SumThis ) THEN
                    k2 = Btmp % Rows(row)
                    DO WHILE( Btmp % Cols(k2) > 0 )
                      k2 = k2 + 1
@@ -14232,7 +14244,7 @@ CONTAINS
                  END IF
                ELSE
                  k2 = k2 + 1 
-                 IF( SumProjectors ) THEN
+                 IF( SumThis ) THEN
                    SumCount(row) = SumCount(row) + 1
                  END IF                 
                END IF
@@ -14321,7 +14333,7 @@ CONTAINS
                    Btmp % Rhs(row) = wsum * MortarBC % rhs(Dofs*(i-1)+j)
                  END IF
                END IF
-               IF(.NOT. SumProjectors ) THEN
+               IF(.NOT. SumThis ) THEN
                  Btmp % Rows(row+1) = k2 + 1
                END IF
              END IF
@@ -14330,10 +14342,16 @@ CONTAINS
          END DO
        END IF ! dofs > 1
        
-       IF( .NOT. SumProjectors ) THEN
+       IF( .NOT. SumThis ) THEN
          rowoffset = rowoffset + Arows
+         IF( SumProjectors ) THEN
+           CALL Info('GenerateConstraintMatrix','Not summed up size is ' &
+           //TRIM(I2S(sumrow))//' rows and '//TRIM(I2S(k2))//' nonzeros',Level=8)
+           sumrow0 = sumrow
+           k20 = k2
+         END IF
        END IF
-
+         
        PrevPriority = Priority 
      END DO
 
@@ -14369,7 +14387,8 @@ CONTAINS
        END IF
 
        IF( SumProjectors ) THEN
-         DO i=2,sumrow+1
+         Btmp % Rows(sumrow0+1) = k20+1 
+         DO i=sumrow0+2,sumrow+1
            Btmp % Rows(i) = Btmp % Rows(i-1) + SumCount(i-1)
          END DO
          SumPerm = 0
