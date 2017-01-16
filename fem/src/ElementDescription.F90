@@ -4837,7 +4837,7 @@ END IF
        ! If they are available, this function is used primarily to obtain the Piola transformation.
        !--------------------------------------------------------------------------------------------
        UsePretabulatedBasis = .FALSE.
-       IF ( PRESENT(ReadyEdgeBasis) .AND. PRESENT(ReadyEdgeBasis) ) UsePretabulatedBasis = .TRUE.
+       IF ( PRESENT(ReadyEdgeBasis) .AND. PRESENT(ReadyRotBasis) ) UsePretabulatedBasis = .TRUE.
        !------------------------------------------------------------------------------------------
        ! Check whether the Nedelec basis functions of the second kind or higher order basis
        ! functions should be created and whether the Piola transform is already applied within 
@@ -5022,7 +5022,11 @@ END IF
          END IF
 
          IF (n==13) THEN
-           CALL Fatal('EdgeElementInfo', '13-node (pyramid) background elements are not yet supported')
+           ! Here the background mesh is supposed to be of type 613. The difference between the standard
+           ! reference element and the p-reference element can be taken into account by a simple scaling:
+           CALL NodalBasisFunctions3D(Basis, Element, u, v, sqrt(2.0d0)*w)
+           CALL NodalFirstDerivatives(n, dLBasisdx, Element, u, v, sqrt(2.0d0)*w)
+           dLBasisdx(1:n,3) = sqrt(2.0d0) * dLBasisdx(1:n,3)
          ELSE
            ! Background mesh elements of the type 605:
            DO q=1,n
@@ -8923,7 +8927,8 @@ END IF
 !>  compatibility with the convention for defining global DOFs is attained.
 !>  If n basis function value have already been tabulated in the default order
 !>  as BasisArray(1:n,:), then SignVec(1:n) * BasisArray(PermVec(1:n),:) gives
-!>  the basis vector values corresponding to the global DOFs.  
+!>  the basis vector values corresponding to the global DOFs.
+!>  TO DO: support for second-order basis functions, triangles and quads missing
 !------------------------------------------------------------------------------------
      SUBROUTINE ReorderingAndSignReversionsData(Element,Nodes,PermVec,SignVec)
 !-------------------------------------------------------------------------------------
