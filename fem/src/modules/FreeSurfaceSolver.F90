@@ -245,7 +245,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        NeedOldValues, LimitDisp,  Bubbles = .TRUE.,&
        NormalFlux = .TRUE., SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE.,&
-       RotateFS
+       RotateFS, ReAllocate=.TRUE.
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
@@ -272,12 +272,12 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: ForceVector(:), FreeSurf(:), PreFreeSurf(:,:), &
        FlowSolution(:), PrevFlowSol(:,:), PointerToResidualVector(:)
 
-  REAL(KIND=dp), ALLOCATABLE :: ResidualVector(:), OldFreeSurf(:), &
+  REAL(KIND=dp), ALLOCATABLE :: ResidualVector(:), &
        STIFF(:,:),SourceFunc(:),FORCE(:), TimeForce(:), &
        MASS(:,:), Velo(:,:), Flux(:,:), LowerLimit(:), UpperLimit(:), &
        OldValues(:), OldRHS(:),StiffVector(:),MeshVelocity(:,:), ElemFreeSurf(:)
 
-  CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, EquationName, FlowSolName,ConvectionFlag, StabilizeFlag
+  CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, FlowSolName,ConvectionFlag, StabilizeFlag
 
   TYPE(Nodes_t)   :: ElementNodes
   TYPE(Element_t),POINTER :: CurrentElement
@@ -288,7 +288,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !      remember these variables
   !----------------------------------------------------------------------------- 
   SAVE STIFF, MASS, SourceFunc, FORCE, &
-       ElementNodes, AllocationsDone, Velo, OldFreeSurf, TimeForce, &
+       ElementNodes, AllocationsDone, ReAllocate, Velo, TimeForce, &
        ElemFreeSurf, Flux, SubstantialSurface, NormalFlux,&
        UseBodyForce, LimitedSolution, LowerLimit, &
        UpperLimit, ActiveNode, OldValues, OldRHS, &
@@ -300,12 +300,18 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   IF (.NOT.ASSOCIATED(FreeSurf)) CALL Fatal(SolverName,'Variable values not associated')
   FreeSurfPerm => Solver % Variable % Perm       ! Permutations for free surface displacement
   PreFreeSurf  => Solver % Variable % PrevValues ! Nodal values for free surface displacement
-
   !------------------------------------------------------------------------------
   !    Get variabel/solver name
   !------------------------------------------------------------------------------
-  VariableName = TRIM(Solver % Variable % Name)
+  IF (VariableName .NE. TRIM(Solver % Variable % Name)) THEN
+    VariableName = TRIM(Solver % Variable % Name)
+    ReAllocate = .TRUE.
+  ELSE
+    Reallocate = .FALSE.
+  END IF
+    
   SolverName = 'FreeSurfaceSolver ('// TRIM(Solver % Variable % Name) // ')'
+  
   !------------------------------------------------------------------------------
   !    if this partition (or the serial problem) has no free surface,
   !    then nothing to be doneGet variabel/solver name
@@ -375,7 +381,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   ELSE
      CALL Info(SolverName, 'Using horizontal Eulerian Formulation',Level=6 )
   END IF
-
+  
   StabilizeFlag = GetString( SolverParams, &
        'Stabilization Method',Found )
   SELECT CASE(StabilizeFlag)
@@ -412,7 +418,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !    Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
 
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed) THEN
+  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed .OR. ReAllocate) THEN
      NMAX = Model % MaxElementNodes
      MMAX = Model % Mesh % NumberOfNodes 
      K = SIZE( SystemMatrix % Values )
@@ -443,7 +449,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
               OldRHS)
         END IF
 
-        IF( NeedOldValues ) DEALLOCATE( OldFreeSurf ) 
+        !IF( NeedOldValues ) DEALLOCATE( OldFreeSurf ) 
      END IF
 
 
@@ -473,7 +479,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      ElemFreeSurf = 0._dp
 
      IF(NeedOldValues) THEN
-        ALLOCATE(OldFreeSurf(SIZE(FreeSurf)), STAT=istat)
+        !ALLOCATE(OldFreeSurf(SIZE(FreeSurf)), STAT=istat)
 
         IF ( istat /= 0 ) THEN
            CALL Fatal(SolverName,'Memory allocation error 2, Aborting.')
@@ -503,9 +509,9 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 
 
   !   from previous timestep
-  IF( NeedOldValues) THEN
-     OldFreeSurf = FreeSurf
-  END IF
+  !IF( NeedOldValues) THEN
+  !   OldFreeSurf = FreeSurf
+  !END IF
 
   !------------------------------------------------------------------------------
   !    Get variables for the residual
@@ -903,7 +909,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
          DO i=1, Model % NumberOfNodes
            j = FreeSurfPerm(i)
            IF(j > 0) THEN
-             maxdh = MAX(maxdh, ABS(FreeSurf(j)-OldFreeSurf(j)))
+             maxdh = MAX(maxdh, ABS(FreeSurf(j)-PreFreeSurf(j,1)))
            END IF
          END DO
          maxdh = ParallelReduction(maxdh,2)
@@ -918,7 +924,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        DO i=1, Model % NumberOfNodes
          j = FreeSurfPerm(i)
          IF(j > 0) THEN
-           FreeSurf(j) = Relax * FreeSurf(j) + (1-Relax) * OldFreeSurf(j)
+           FreeSurf(j) = Relax * FreeSurf(j) + (1-Relax) * PreFreeSurf(j,1)
          END IF
        END DO
      END IF
