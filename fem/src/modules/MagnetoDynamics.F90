@@ -392,7 +392,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       IF ( Transient .OR. LorentzConductivity ) THEN
         IF (SecondOrder) THEN
           CALL ListAddString( SolverParams, &
-              "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
+              "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )  
         ELSE
           CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
         END IF
@@ -401,7 +401,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
         CALL ListAddLogical( SolverParams,'Variable Output',.FALSE. )
         IF (SecondOrder) THEN
           CALL ListAddString( SolverParams, "Element", &
-              "n:0 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
+              "n:0 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )  
         ELSE
           CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
         END IF
@@ -3123,7 +3123,7 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
     IF (PiolaVersion) THEN    
        IF (SecondOrder) THEN
           CALL ListAddString( SolverParams, &
-              "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
+              "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
        ELSE
           CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
        END IF
