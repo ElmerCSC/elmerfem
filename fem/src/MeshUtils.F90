@@ -3064,9 +3064,23 @@ END SUBROUTINE GetMaxDefs
  END SUBROUTINE ReadTargetNames
 
 
-
+!------------------------------------------------------------------------------
+!> This subroutine reads elementwise input data from the file mesh.elements.data 
+!> and inserts the data into the structured data variable 
+!> Mesh % Elements(element_id) % PropertyData. The contents of the file should
+!> be arranged as
+!> 
+!> element: element_id_1
+!> data_set_name_1: a_1 a_2 ... a_n
+!> data_set_name_2: b_1 b_2 ... b_m
+!> data_set_name_3: ...
+!> end
+!> element: ...
+!> ...
+!> end
 !------------------------------------------------------------------------------
   SUBROUTINE ReadElementPropertyFile(FileName,Mesh)
+!------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: FileName
      TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
@@ -3077,7 +3091,7 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: x
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementData_t), POINTER :: PD,PD1
-
+!------------------------------------------------------------------------------
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
 
     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', ERR=10 )
@@ -3087,7 +3101,7 @@ END SUBROUTINE GetMaxDefs
       IF ( i < 0 .OR. i > Mesh % NumberOFBulkElements ) THEN
         CALL Fatal( 'ReadElementProperties', 'Element id out of range.' )
       END IF
-      
+
       IF ( SEQL( str, 'element:') ) THEN
         Element => Mesh % Elements(i)
         PD => Element % PropertyData

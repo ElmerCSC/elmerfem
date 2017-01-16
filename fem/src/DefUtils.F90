@@ -1124,7 +1124,8 @@ CONTAINS
   END SUBROUTINE GetComplexVector
 
 
-!> Set some property elementwise to the active element
+!> Set a named elementwise property (real-valued) to the active element or
+!> given element
   SUBROUTINE SetElementProperty( Name, Values, UElement )
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp) :: Values(:)
@@ -1160,7 +1161,8 @@ CONTAINS
     END IF
   END SUBROUTINE SetElementProperty
 
-!> Get some property elementwise from the active element
+!> Get a named elementwise property (real-valued) from the active element or 
+!> from a given element
   FUNCTION GetElementProperty( Name, UElement ) RESULT(Values)
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp), POINTER :: Values(:)
