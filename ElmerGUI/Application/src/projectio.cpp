@@ -220,7 +220,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 {
   // Radio buttons:
   //----------------
+#if WITH_QT5 
   QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(QString()); 
+#else
+  QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(); 
+#endif
 
   QList<QString> rbObjectNames;
   for(int i = 0; i < allRadioButtons.size(); i++) 
