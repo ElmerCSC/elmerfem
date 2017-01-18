@@ -603,12 +603,12 @@ CONTAINS
 
   
   SUBROUTINE CRS_GlueLocalMatrixVec(Gmtr, N, NDOFs, Indices, Lmtr, MCAssembly)
-    TYPE(Matrix_t) :: Gmtr               !< Global matrix
-    INTEGER, INTENT(IN) :: N             !< Number of nodes in element
-    INTEGER, INTENT(IN) :: NDOFs         !< Number of degrees of freedom for one node
-    INTEGER, INTENT(IN) :: Indices(:)    !< Maps element node numbers to global (or partition) node numbers
-    REAL(KIND=dp), INTENT(IN) :: Lmtr(:,:)  !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added
-    LOGICAL :: MCAssembly                !< Is the assembly multicolored or not (free of race conditions)
+    TYPE(Matrix_t) :: Gmtr                   !< Global matrix
+    INTEGER, INTENT(IN) :: N                 !< Number of nodes in element
+    INTEGER, INTENT(IN) :: NDOFs             !< Number of degrees of freedom for one node
+    INTEGER, INTENT(IN) CONTIG :: Indices(:) !< Maps element node numbers to global (or partition) node numbers
+    REAL(KIND=dp), INTENT(IN) :: Lmtr(:,:)   !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added
+    LOGICAL :: MCAssembly                    !< Is the assembly multicolored or not (free of race conditions)
 
     ! Local storage
     INTEGER :: Lind((N*NDOFs)*(N*NDOFs))
@@ -773,7 +773,7 @@ CONTAINS
     PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
       IMPLICIT NONE
 
-      INTEGER, INTENT(IN) :: arr(:)
+      INTEGER, INTENT(IN) CONTIG :: arr(:)
       INTEGER, INTENT(IN) :: key, lind, tind
 
       INTEGER, PARAMETER :: LINSEARCHTHRESH = 8

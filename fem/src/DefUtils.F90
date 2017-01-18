@@ -2945,7 +2945,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
-     REAL(KIND=dp)   :: G(:,:), f(:)
+     REAL(KIND=dp)  :: G(:,:), f(:)
      LOGICAL, OPTIONAL :: BulkUpdate, VecAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
