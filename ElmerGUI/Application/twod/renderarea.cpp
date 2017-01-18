@@ -536,7 +536,11 @@ void RenderArea::readSlot(QString fileName)
 	points.clear();
 	splines.clear();
 	bodies.clear();
+#if WITH_QT5
+	cout << message.toLatin1().data() << endl;
+#else
 	cout << message.toAscii().data() << endl;
+#endif
 	emit(statusMessage(message));
 	return;
       }
@@ -562,7 +566,11 @@ void RenderArea::readSlot(QString fileName)
 
   if(!correctVersion) {
     QString message = "Unsupported format (splinecurve2dv2 is required)";
+    #if WITH_QT5
+    cout << message.toLatin1().data() << endl;
+    #else
     cout << message.toAscii().data() << endl;
+    #endif
     points.clear();
     splines.clear();
     curveEditor->clearAll();

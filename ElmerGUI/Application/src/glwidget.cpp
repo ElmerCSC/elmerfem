@@ -1823,7 +1823,11 @@ void GLWidget::drawBgImage()
   GLint viewport[4];
 
   if(!bgTexture) {
+#if WITH_QT5
+    cout << "Bind texture " << string(bgImageFileName.toLatin1()) << "... ";
+#else
     cout << "Bind texture " << string(bgImageFileName.toAscii()) << "... ";
+#endif
     QPixmap pixmap(bgImageFileName);
     bgSizeX = pixmap.width();
     bgSizeY = pixmap.height();
