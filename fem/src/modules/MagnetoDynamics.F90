@@ -549,7 +549,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion, SecondOrder, SteadyGauge, LorentzConductivity
+  LOGICAL :: Found, PiolaVersion, SecondOrder, LagrangeGauge, LorentzConductivity
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(ValueListEntry_t), POINTER :: VariablePtr
   INTEGER, PARAMETER :: b_empty = b'0', b_Piola = b'1', &
@@ -569,11 +569,11 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     PiolaVersion = GetLogical(SolverParams, &
         'Use Piola Transform', Found )   
     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
-    SteadyGauge = GetLogical(SolverParams, 'Steady State Lagrange Gauge', Found)
+    LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
 
     IF (PiolaVersion) Paramlist = Paramlist + b_Piola
     IF (SecondOrder) Paramlist = Paramlist + b_Secondorder
-    IF (SteadyGauge) Paramlist = Paramlist + b_Gauge
+    IF (LagrangeGauge) Paramlist = Paramlist + b_Gauge
     IF (Transient) Paramlist = Paramlist + b_Transient
     IF (LorentzConductivity) Paramlist = Paramlist + b_Lorentz
 
@@ -584,7 +584,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
            "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
 
     CASE (b_Piola + b_Transient, &
-         b_Piola + b_Transient + b_Lorentz)
+         b_Piola + b_Transient + b_Lorentz, &
+         b_Piola + b_Transient + b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
 
     CASE (b_Piola + b_Gauge + b_Secondorder)
@@ -607,6 +608,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     CASE (b_Transient, &
          b_Transient + b_Lorentz, &
          b_Lorentz, &
+         b_Gauge + b_Transient, &
          b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
 
@@ -632,16 +634,6 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
-  IF(SteadyGauge) THEN
-    CALL Info("WhitneyAVSolver_init0", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
-  END IF
-
-  IF(GetLogical(SolverParams, 'Transient Lagrange Gauge', Found)) THEN
-    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in transient computation")
-    IF (ListCheckPresentAnyBC(Model, 'Mortar boundary')) THEN
-      CALL Fatal("WhitneyAVSolver_init0", "Gauging in transient case with mortar boundaries present is not supported.") 
-    END IF
-  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
 !------------------------------------------------------------------------------
@@ -744,9 +736,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         'Using quadratic approximation, pyramidical elements are not yet available',Level=4)
   END IF
 
-  SteadyGauge = GetLogical(GetSolverParams(), 'Steady State Lagrange Gauge', Found)
-  TransientGauge = GetLogical(GetSolverParams(), 'Transient Lagrange Gauge', Found)
-  gauge_penalize_c = GetCReal(GetSolverParams(), 'Gauge System Penalization Coefficient', HasStabC)
+  SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
+  TransientGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. Transient
+  gauge_penalize_c = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient', HasStabC)
 
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
@@ -758,8 +750,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
   END IF
 
-  IF (HasStabC) THEN
-    WRITE (Message, *), 'Gauge system penalization coefficient', gauge_penalize_c
+  IF (HasStabC .and. (SteadyGauge .or. TransientGauge)) THEN
+    WRITE (Message, *), 'Lagrange Gauge penalization coefficient', gauge_penalize_c
     call Info('WhitneyAVSolver', message)
   END IF
 
