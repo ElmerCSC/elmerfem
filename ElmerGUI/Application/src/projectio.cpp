@@ -381,7 +381,7 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 #if WITH_QT5
   QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(QString()); 
 #else
-  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(QString()); 
+  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(); 
 #endif
 
   QList<QString> cxObjectNames;
