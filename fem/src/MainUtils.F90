@@ -861,8 +861,12 @@ CONTAINS
           Solver % Order = ListGetInteger( CurrentModel % &
               Simulation, 'Runge-Kutta Order', Found, minv=2, maxv=4 )
           IF ( .NOT.Found ) Solver % Order = 2
+        ELSE IF( str(1:5)=='adams') THEN
+           Solver % Order = ListGetInteger( CurrentModel % &
+              Simulation, 'Adams Order', Found, minv=1, maxv=2 )
+          IF ( .NOT.Found ) Solver % Order = 2          
         END IF
-        CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=12)
+        CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=10)
      ELSE
         CALL Warn( 'AddEquation', '> Timestepping method < defaulted to > Implicit Euler <' )
         CALL ListAddString( SolverParams, 'Timestepping Method', 'Implicit Euler' )

@@ -129,15 +129,15 @@ CONTAINS
 !> the correspoding forcing terms.
 !------------------------------------------------------------------------------
    SUBROUTINE AdamsBashforth( N, dt, MassMatrix, StiffMatrix, &
-       Force, PrevSolution, theta, adaptiveOrder)
+       Force, PrevSolution, theta, Order)
 !------------------------------------------------------------------------------
      INTEGER :: N    ! Size of the unknowns
      REAL(KIND=dp) :: Force(:),PrevSolution(:),dt, theta
      REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:)
      TYPE(Element_t), POINTER :: Element
      TYPE(elementdata_t), POINTER :: tempRes
-     LOGICAL  :: firstTime, GotIt
-     INTEGER :: adaptiveOrder
+     LOGICAL  :: GotIt
+     INTEGER :: Order
 
 !------------------------------------------------------------------------------
      INTEGER :: i,j,NB1,NB2
@@ -146,15 +146,11 @@ CONTAINS
 !------------------------------------------------------------------------------
      NB1 = SIZE( StiffMatrix,1 )
      NB2 = SIZE( StiffMatrix,2 ) 
-     firstTime = .FALSE.
 
      Element => CurrentModel % CurrentElement
      IF (.NOT. ASSOCIATED(Element % propertydata)) THEN
        ALLOCATE( Element % propertydata )
        ALLOCATE( Element % propertydata % values(NB1*2) )  
-       firstTime = .TRUE.
-     ELSE      
-       firstTime = .FALSE.
      END IF
 
 
@@ -168,8 +164,8 @@ CONTAINS
 
        curr_res = - s_curr
 
-       IF (firstTime .OR. adaptiveOrder == 1) THEN
-         residual =  curr_res
+       IF ( Order == 1 ) THEN
+         residual = curr_res
          preForce = Force(i)
        ELSE
          residual = Element % propertydata % values(i)
@@ -182,11 +178,10 @@ CONTAINS
            0.5_dp * theta * (curr_res - residual)
 
        DO j=1,NB2
-         StiffMatrix(i,j) =   (1/dt) * MassMatrix(i,j)
+         StiffMatrix(i,j) = (1/dt) * MassMatrix(i,j)
        END DO
 
      END DO
-
 
 !------------------------------------------------------------------------------
    END SUBROUTINE AdamsBashforth
@@ -198,21 +193,19 @@ CONTAINS
 !>
 !> A two steps method with second order accuracy in time.
 !> This method is only used in the correction phase of adaptive timestepping,
-!> PrevSolution -- the true solution from previous correction step H^{n-1}
-!> CurrSolution -- the corrector \tilde{H^n}
+!> PrevSolution(:,2) -- the true solution from previous correction step H^{n-1}
+!> PrevSolution(:,1) -- the corrector \tilde{H^n}
 !>
 !> This method can only be used in the corrector phase of Adaptive time stepping method
 !> and just after AB2 method, otherwise the residual at n-1 step will be incorrect.
 !------------------------------------------------------------------------------
-
    SUBROUTINE AdamsMoulton( N, dt, MassMatrix, StiffMatrix, &
-       Force, PrevSolution, CurrSolution, firstFlag, adaptiveOrder)
+       Force, PrevSolution, Order)
 !------------------------------------------------------------------------------
      INTEGER :: N
-     REAL(KIND=dp) :: Force(:),PrevSolution(:),dt
-     REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:),CurrSolution(:)
-     LOGICAL :: firstFlag
-     INTEGER :: adaptiveOrder
+     REAL(KIND=dp) :: Force(:),PrevSolution(:,:),dt
+     REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:)
+     INTEGER :: Order
 !------------------------------------------------------------------------------
      INTEGER :: i,j,NB1,NB2
      TYPE(Element_t), POINTER :: Element
@@ -233,17 +226,17 @@ CONTAINS
        s_curr = 0.0_dp
        m_curr = 0.0_dp
        DO j=1,n
-         s_curr = s_curr + StiffMatrix(i,j) * CurrSolution(j) 
-         m_curr = m_curr + (1/dt) * MassMatrix(i,j) * PrevSolution(j) 
+         s_curr = s_curr + StiffMatrix(i,j) * PrevSolution(j,1) 
+         m_curr = m_curr + (1/dt) * MassMatrix(i,j) * PrevSolution(j,2) 
        END DO
-
+         
        DO j=1,NB2
          StiffMatrix(i,j) =   (1/dt) * MassMatrix(i,j)
        END DO
 
        residual = Element % propertydata % values(i)
        preForce = Element % propertydata % values(i+NB1)        
-       IF (firstFlag .OR. adaptiveOrder == 1) THEN
+       IF ( Order == 1 ) THEN
          Force(i) =  Force(i) + m_curr - s_curr  
        ELSE
          Force(i) =  0.5_dp * (Force(i) + preForce) + m_curr + 0.5_dp * (-s_curr + residual)

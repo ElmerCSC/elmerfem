@@ -709,7 +709,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      LOGICAL :: GotIt
      INTEGER :: i,j,k,l,m,Order
-     REAL(KIND=dp) :: s, t
+     REAL(KIND=dp) :: s, t, theta
      CHARACTER(LEN=MAX_NAME_LEN) :: Method
      REAL(KIND=dp) :: PrevSol(DOFs*n,Solver % Order), CurSol(DOFs*n), LForce(n*DOFs)
      TYPE(Variable_t), POINTER :: DtVar
@@ -813,6 +813,16 @@ CONTAINS
        CALL RungeKutta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                 PrevSol(:,1), CurSol )
 
+     ! Time stepping method added by CG 20170116
+     CASE('adams predictor')
+       theta = ListGetConstReal(Solver % Values, 'Adams Zeta',GotIt)
+       CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+           PrevSol(:,1), theta, Order)
+
+     CASE('adams corrector')
+        CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+                PrevSol, Order)      
+       
      CASE DEFAULT
        CALL NewmarkBeta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                  PrevSol(:,1), Solver % Beta )
