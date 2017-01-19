@@ -4315,6 +4315,33 @@ CONTAINS
    END FUNCTION ListGetLogicalAnyBody
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is true in any body.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetCRealAnyBody( Model, Name, Found ) RESULT( F )
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp) :: F
+     
+     INTEGER :: body
+     LOGICAL :: GotIt
+     
+     F = 0.0_dp
+     GotIt = .FALSE.
+     DO body = 1,Model % NumberOfBodies
+       F = ListGetCReal( Model % Bodies(body) % Values, Name, GotIt )
+       IF( GotIt ) EXIT
+     END DO
+
+     IF( PRESENT( Found ) ) Found = GotIt
+     
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetCRealAnyBody
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any body force.
 !------------------------------------------------------------------------------

@@ -1128,7 +1128,7 @@ CONTAINS
      REAL(KIND=dp) :: Lvec(:)                !< The global RHS vector.
      INTEGER :: n                            !< Number of nodes.
      INTEGER :: NDOFs                        !< Number of degrees of free per node.
-     INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping.
+     INTEGER CONTIG :: NodeIndexes(:)               !< Element node to global node numbering mapping.
      LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
      TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
      LOGICAL, OPTIONAL :: MCAssembly   !< Assembly process is multicoloured and guaranteed race condition free 

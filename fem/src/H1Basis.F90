@@ -1,14 +1,68 @@
-MODULE H1ElementBasisFunctions
-  USE Types, ONLY : dp
+MODULE H1Basis
+  USE Types, ONLY : dp, VECTOR_BLOCK_LENGTH
+  USE Messages
   ! USE ieee_arithmetic, only : ieee_value, ieee_quiet_nan
   
   ! Module contains vectorized version of FE basis
   ! functions for selected elements
   ! REAL(KIND=dp), SAVE :: nanval = TRANSFER(ieee_value(x, ieee_quiet_nan), value)
 
+#if _OPENMP>=201511
+#define LINEAR_REF(var) LINEAR(REF(var))
+#else
+#define LINEAR_REF(var)
+#endif
+
 CONTAINS
+
+  SUBROUTINE H1Basis_GetEdgeDirection(ecode, nedges, globalind, direction)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: ecode, nedges
+    INTEGER, DIMENSION(:), POINTER CONTIG, INTENT(IN) :: globalind
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(INOUT) :: direction
+    INTEGER :: i, ekey, tmp
+
+    CALL H1Basis_GetEdgeMap(ecode, direction)
+
+!DIR$ LOOP COUNT MAX=12
+    DO i=1,nedges
+      ! Swap local indices if needed to set the global direction (increasing)
+      IF (globalind(direction(2,i))<globalind(direction(1,i))) THEN
+        tmp = direction(1,i)
+        direction(1,i)=direction(2,i)
+        direction(2,i)=tmp
+      END IF
+    END DO
+  END SUBROUTINE H1Basis_GetEdgeDirection
   
-  SUBROUTINE H1LineNodalBasisVec(nvec, u, fval)
+  PURE SUBROUTINE H1Basis_GetEdgeMap(ecode, map)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: ecode
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(INOUT) :: map
+    
+    SELECT CASE (ecode)
+    CASE(202)
+      ! Line edge mappings
+      map(:,1) = [ 1,2 ]
+    CASE(303)
+      ! Triangle edge mappings
+      map(:,1) = [ 1,2 ]
+      map(:,2) = [ 2,3 ]
+      map(:,3) = [ 3,1 ]
+    CASE(404)
+      ! Quad edge mappings
+      map(:,1) = [ 1,2 ]
+      map(:,2) = [ 2,3 ]
+      map(:,3) = [ 4,3 ]
+      map(:,4) = [ 1,4 ]
+    CASE DEFAULT
+      ! WRITE (*,*) 'H1Basis_InitEdgeMap: Not fully implemented yet!'
+      ! STOP
+    END SELECT
+  END SUBROUTINE H1Basis_GetEdgeMap
+
+  SUBROUTINE H1Basis_LineNodal(nvec, u, fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -18,6 +72,7 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
     REAL(Kind=dp), PARAMETER :: c = 1D0/2D0
     INTEGER :: j
+!DIR$ ASSUME_ALIGNED u:64, fval:64
 
     !$OMP SIMD
     DO j=1,nvec
@@ -27,9 +82,9 @@ CONTAINS
       fval(j,2) = c*(1+u(j))
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1LineNodalBasisVec
+  END SUBROUTINE H1Basis_LineNodal
 
-  SUBROUTINE H1dLineNodalBasisVec(nvec, u, grad)
+  SUBROUTINE H1Basis_dLineNodal(nvec, u, grad)
     IMPLICIT NONE
 
     ! Parameters
@@ -39,6 +94,7 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
     REAL(Kind=dp), PARAMETER :: c = 1D0/2D0
     INTEGER :: j
+!DIR$ ASSUME_ALIGNED u:64, grad:64
 
     ! First coordinate (xi)
     !$OMP SIMD
@@ -47,9 +103,9 @@ CONTAINS
       grad(j,2,1) = c
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1dLineNodalBasisVec
+  END SUBROUTINE H1Basis_dLineNodal
 
-  SUBROUTINE H1LineBubblePBasisVec(nvec, u, pmax, nbasis, fval, invertEdge)
+  SUBROUTINE H1Basis_LineBubbleP(nvec, u, pmax, nbasis, fval, invertEdge)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -62,6 +118,7 @@ CONTAINS
     ! Local variables
     LOGICAL :: invert
     INTEGER :: p, j
+!DIR$ ASSUME_ALIGNED u:64, fval:64
 
     ! Check if line basis has been inverted (not by default)
     invert = .FALSE.
@@ -71,7 +128,7 @@ CONTAINS
       DO p=2,pmax
         !$OMP SIMD 
         DO j=1,nvec
-           fval(j,nbasis+p-1) = Phi(p,-u(j))
+           fval(j,nbasis+p-1) = H1Basis_Phi(p,-u(j))
         END DO
         !$END OMP SIMD
       END DO
@@ -79,7 +136,7 @@ CONTAINS
       DO p=2,pmax
         !$OMP SIMD 
         DO j=1,nvec
-          fval(j,nbasis+p-1) = Phi(p,u(j))
+          fval(j,nbasis+p-1) = H1Basis_Phi(p,u(j))
         END DO
         !$END OMP SIMD
       END DO
@@ -87,9 +144,9 @@ CONTAINS
 
     ! nbasis = nbasis+(pmax-2)+1
     nbasis = nbasis+pmax-1
-  END SUBROUTINE H1LineBubblePBasisVec
+  END SUBROUTINE H1Basis_LineBubbleP
 
-  SUBROUTINE H1dLineBubblePBasisVec(nvec, u, pmax, nbasis, grad, invertEdge)
+  SUBROUTINE H1Basis_dLineBubbleP(nvec, u, pmax, nbasis, grad, invertEdge)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -102,6 +159,7 @@ CONTAINS
     ! Local variables
     LOGICAL :: invert
     INTEGER :: p, j
+!DIR$ ASSUME_ALIGNED u:64, grad:64
 
     ! Check if line basis has been inverted (not by default)
     invert = .FALSE.
@@ -112,7 +170,7 @@ CONTAINS
         ! First coordinate (xi)
         !$OMP SIMD
         DO j=1,nvec
-          grad(j,nbasis+p-1,1) = dPhi(p,-u(j))
+          grad(j,nbasis+p-1,1) = H1Basis_dPhi(p,-u(j))
         END DO
         !$END OMP SIMD
       END DO
@@ -121,7 +179,7 @@ CONTAINS
         ! First coordinate (xi)
         !$OMP SIMD
         DO j=1,nvec
-          grad(j,nbasis+p-1,1) = dPhi(p,u(j))
+          grad(j,nbasis+p-1,1) = H1Basis_dPhi(p,u(j))
         END DO
         !$END OMP SIMD
       END DO
@@ -129,78 +187,9 @@ CONTAINS
 
     ! nbasis = nbasis+(pmax-2)+1
     nbasis = nbasis+pmax-1
-  END SUBROUTINE H1dLineBubblePBasisVec
+  END SUBROUTINE H1Basis_dLineBubbleP
 
-  ! WARNING: this is not a barycentric triangle
-  SUBROUTINE H1TriangleNodalBasisVec(nvec, u, v, fval)
-    IMPLICIT NONE
-
-    ! Parameters
-    INTEGER, INTENT(IN) :: nvec
-    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v
-    ! Variables
-    REAL(Kind=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
-    INTEGER :: j
-
-    !$OMP SIMD
-    DO j=1,nvec
-      ! Node 1
-      fval(j,1) = 1-u(j)-v(j)
-      ! Node 2
-      fval(j,2) = u(j)
-      ! Node 3
-      fval(j,3) = v(j)
-    END DO
-    !$END OMP SIMD
-  END SUBROUTINE H1TriangleNodalBasisVec
-
-  ! WARNING: this is not a barycentric triangle
-  SUBROUTINE H1dTriangleNodalBasisVec(nvec, u, v, grad)
-    IMPLICIT NONE
-
-    ! Parameters
-    INTEGER, INTENT(IN) :: nvec
-    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v
-    ! Variables
-    REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
-    INTEGER :: j
-
-    ! First coordinate (xi)
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,1,1) = -1D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,2,1) = 1D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,3,1) = 0D0
-    END DO
-    !$END OMP SIMD
-
-    ! Second coordinate (eta)
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,1,2) = -1D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,2,2) = 0D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,3,2) = 1D0
-    END DO
-    !$END OMP SIMD
-  END SUBROUTINE H1dTriangleNodalBasisVec
-
-  SUBROUTINE H1TriangleNodalPBasisVec(nvec, u, v, fval)
+  SUBROUTINE H1Basis_TriangleNodalP(nvec, u, v, fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -211,6 +200,7 @@ CONTAINS
 
     INTEGER :: j
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
+!DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
 
     !$OMP SIMD
     DO j=1,nvec
@@ -219,9 +209,9 @@ CONTAINS
       fval(j,3) = d*v(j)
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1TriangleNodalPBasisVec
+  END SUBROUTINE H1Basis_TriangleNodalP
 
-  FUNCTION TriangleL(node, u, v) RESULT(fval)
+  FUNCTION H1Basis_TriangleL(node, u, v) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters 
@@ -230,7 +220,8 @@ CONTAINS
     ! Result
     REAL(KIND=dp) :: fval
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
-    !$OMP DECLARE SIMD(TriangleL) UNIFORM(node) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_TriangleL) UNIFORM(node) &
+    !$OMP LINEAR_REF(u) LINEAR_REF(v) NOTINBRANCH
 
     SELECT CASE(node)
     CASE(1)
@@ -240,9 +231,9 @@ CONTAINS
     CASE(3)
       fval = d*v
     END SELECT
-  END FUNCTION TriangleL
+  END FUNCTION H1Basis_TriangleL
 
-  SUBROUTINE H1dTriangleNodalPBasisVec(nvec, u, v, grad)
+  SUBROUTINE H1Basis_dTriangleNodalP(nvec, u, v, grad)
     IMPLICIT NONE
 
     ! Parameters
@@ -251,6 +242,7 @@ CONTAINS
     ! Variables
     REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
     INTEGER :: j
+!DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
 
     ! First coordinate (xi)
     !$OMP SIMD
@@ -283,9 +275,104 @@ CONTAINS
       grad(j,3,2) = SQRT(3d0)/3
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1dTriangleNodalPBasisVec
+  END SUBROUTINE H1Basis_dTriangleNodalP
   
-  SUBROUTINE H1TriangleBubblePBasisVec(nvec, u, v, pmax, nbasis, fval)
+  FUNCTION H1Basis_dTriangleL(node) RESULT(grad)
+    IMPLICIT NONE
+
+    ! Parameters 
+    INTEGER, INTENT(IN) :: node
+    ! REAL(KIND=dp), INTENT(IN) :: u,v
+    ! Result
+    REAL(KIND=dp) :: grad(2)
+    REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
+    !$OMP DECLARE SIMD(H1Basis_dTriangleL) UNIFORM(node) NOTINBRANCH
+
+    SELECT CASE(node)
+    CASE(1)
+      grad = c*[REAL(-1,dp), REAL(-d,dp)]
+    CASE(2)
+      grad = c*[REAL(1,dp), REAL(-d,dp)]
+    CASE(3)
+      grad = [REAL(0,dp), REAL(d,dp)]
+    END SELECT
+  END FUNCTION H1Basis_dTriangleL
+  
+  SUBROUTINE H1Basis_TriangleEdgeP(nvec, u, v, pmax, nbasis, fval, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u, v
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(INOUT) :: nbasis
+    REAL(KIND=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+
+    REAL(KIND=dp) :: La, Lb
+    INTEGER :: i,j,k
+!DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
+
+    ! For each edge
+    DO i=1,3
+      DO j=2,pmax(i)
+        !$OMP SIMD PRIVATE(La, Lb)
+        DO k=1,nvec
+          La = H1Basis_TriangleL(edgedir(1,i),u(k),v(k))
+          Lb = H1Basis_TriangleL(edgedir(2,i),u(k),v(k))
+
+          fval(k, nbasis+j-1) = La*Lb*H1Basis_varPhi(j,Lb-La)
+        END DO
+        !$OMP END SIMD
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+
+  END SUBROUTINE H1Basis_TriangleEdgeP
+
+  SUBROUTINE H1Basis_dTriangleEdgeP(nvec, u, v, pmax, nbasis, grad, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u, v
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(INOUT) :: nbasis
+    REAL(KIND=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+
+    REAL(KIND=dp) :: La, Lb, vPhi, dVPhi, dLa(2), dLb(2)
+    INTEGER :: i,j,k
+!DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
+
+    ! For each edge
+    DO i=1,3
+      dLa = H1Basis_dTriangleL(edgedir(1,i))
+      dLb = H1Basis_dTriangleL(edgedir(2,i))
+
+      DO j=2,pmax(i)
+        !$OMP SIMD PRIVATE(La, Lb, vPhi)
+        DO k=1,nvec
+          La = H1Basis_TriangleL(edgedir(1,i),u(k),v(k))
+          Lb = H1Basis_TriangleL(edgedir(2,i),u(k),v(k))
+          vPhi = H1Basis_varPhi(j,Lb-La)
+          dVPhi = H1Basis_dVarPhi(j,Lb-La)
+
+          grad(k, nbasis+j-1, 1) = dLa(1)*Lb*vPhi+ &
+                  La*dLb(1)*vPhi +&
+                  La*Lb*dVPhi*(dLb(1)-dLa(1))
+          grad(k, nbasis+j-1, 2) = dLa(2)*Lb*vPhi+ &
+                  La*dLb(2)*vPhi +&
+                  La*Lb*dVPhi*(dLb(2)-dLa(2))
+        END DO
+        !$OMP END SIMD
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+
+  END SUBROUTINE H1Basis_dTriangleEdgeP
+
+  SUBROUTINE H1Basis_TriangleBubbleP(nvec, u, v, pmax, nbasis, fval)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -297,25 +384,27 @@ CONTAINS
     ! Variables
     INTEGER :: i,j,k
     REAL (KIND=dp) :: La, Lb, Lc
+!DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
 
     DO i = 0,pmax-3
       DO j = 0,pmax-i-3
         !$OMP SIMD PRIVATE(La, Lb, Lc)
         DO k=1,nvec
-          La = TriangleL(1,u(k),v(k))
-          Lb = TriangleL(2,u(k),v(k))
-          Lc = TriangleL(3,u(k),v(k))
+          La = H1Basis_TriangleL(1,u(k),v(k))
+          Lb = H1Basis_TriangleL(2,u(k),v(k))
+          Lc = H1Basis_TriangleL(3,u(k),v(k))
           
-          fval(k,nbasis+j+1) = La*Lb*Lc*((Lb-La)**i)*((2D0*Lc-1)**j)
+          fval(k,nbasis+j+1) = La*Lb*Lc*(H1Basis_PowInt((Lb-La),i))*&
+                  H1Basis_PowInt((2D0*Lc-1),j)
         END DO
         !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax-i-3) + 1
       nbasis = nbasis + pmax-i-2
     END DO
-  END SUBROUTINE H1TriangleBubblePBasisVec
+  END SUBROUTINE H1Basis_TriangleBubbleP
 
-  SUBROUTINE H1dTriangleBubblePBasisVec(nvec, u, v, pmax, nbasis, grad)
+  SUBROUTINE H1Basis_dTriangleBubbleP(nvec, u, v, pmax, nbasis, grad)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -325,37 +414,53 @@ CONTAINS
     REAL(KIND=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
 
     ! Variables
-    REAL (KIND=dp) :: La, Lb, Lc, Lc_1, Lb_Laj, Lc_1n
+    REAL (KIND=dp) :: La, Lb, Lc, Lc_1, Lb_Lai, Lc_1n
     INTEGER :: i,j,k
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = -SQRT(3D0)/6, e = SQRT(3D0)/3
-
+!DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
 
     DO i = 0,pmax-3
       DO j = 0,pmax-i-3
-        !$OMP SIMD PRIVATE(La, Lb, Lc, Lb_Laj, Lc_1n)
+        !$OMP SIMD PRIVATE(La, Lb, Lc, Lb_Lai, Lc_1n)
         DO k=1,nvec
-          La = TriangleL(1,u(k),v(k))
-          Lb = TriangleL(2,u(k),v(k))
-          Lc = TriangleL(3,u(k),v(k))
+          La = H1Basis_TriangleL(1,u(k),v(k))
+          Lb = H1Basis_TriangleL(2,u(k),v(k))
+          Lc = H1Basis_TriangleL(3,u(k),v(k))
     
-          Lb_Laj = (Lb-La)**i
-          Lc_1n = (2D0*Lc-1)**j
+          Lb_Lai = H1Basis_PowInt((Lb-La), i)
+          Lc_1n = H1Basis_PowInt((2D0*Lc-1), j)
 
           ! Calculate value of function from general form
-          grad(k,nbasis+j+1,1) = -c*Lb*Lc*Lb_Laj*Lc_1n + La*c*Lc*Lb_Laj*Lc_1n + &
-                  La*Lb*Lc*i*((Lb-La)**(i-1))*Lc_1n
-          grad(k,nbasis+j+1,2) = d*Lb*Lc*Lb_Laj*Lc_1n + La*d*Lc*Lb_Laj*Lc_1n + &
-                  La*Lb*e*Lb_Laj*Lc_1n + &
-                  La*Lb*Lc*Lb_Laj*j*((2D0*Lc-1)**(j-1))*2D0*e
+          grad(k,nbasis+j+1,1) = -c*Lb*Lc*Lb_Lai*Lc_1n + La*c*Lc*Lb_Lai*Lc_1n + &
+                  La*Lb*Lc*i*(H1Basis_PowInt((Lb-La),i-1))*Lc_1n
+          grad(k,nbasis+j+1,2) = d*Lb*Lc*Lb_Lai*Lc_1n + La*d*Lc*Lb_Lai*Lc_1n + &
+                  La*Lb*e*Lb_Lai*Lc_1n + &
+                  La*Lb*Lc*Lb_Lai*j*(H1Basis_PowInt((2D0*Lc-1),j-1))*2D0*e
         END DO
         !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax-i-3) + 1
       nbasis = nbasis + pmax-i-2
     END DO
-  END SUBROUTINE H1dTriangleBubblePBasisVec
+  END SUBROUTINE H1Basis_dTriangleBubbleP
 
-  SUBROUTINE H1QuadNodalBasisVec(nvec, u, v, fval)
+  FUNCTION H1Basis_PowInt(x,j) RESULT(powi)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: x
+    INTEGER, INTENT(IN) :: j
+    
+    INTEGER :: i
+    REAL(KIND=dp) :: powi
+    !$OMP DECLARE SIMD(H1Basis_PowInt) LINEAR_REF(x) UNIFORM(j) NOTINBRANCH
+
+    powi=REAL(1,dp)
+    DO i=1,j
+      powi=powi*x
+    END DO
+
+  END FUNCTION H1Basis_PowInt
+
+  SUBROUTINE H1Basis_QuadNodal(nvec, u, v, fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -365,6 +470,7 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
     REAL(Kind=dp), PARAMETER :: c = 1D0/4D0
     INTEGER :: j
+!DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
 
     !$OMP SIMD
     DO j=1,nvec
@@ -378,9 +484,9 @@ CONTAINS
       fval(j,4) = c*(1-u(j))*(1+v(j))
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1QuadNodalBasisVec
+  END SUBROUTINE H1Basis_QuadNodal
 
-  SUBROUTINE H1dQuadNodalBasisVec(nvec, u, v, grad)
+  SUBROUTINE H1Basis_dQuadNodal(nvec, u, v, grad)
     IMPLICIT NONE
 
     ! Parameters
@@ -390,6 +496,7 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
     REAL(Kind=dp), PARAMETER :: c = 1D0/4D0
     INTEGER :: j
+!DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
 
     ! First coordinate (xi)
     !$OMP SIMD
@@ -410,9 +517,82 @@ CONTAINS
       grad(j,4,2) = c*(1-u(j))
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1dQuadNodalBasisVec
+  END SUBROUTINE H1Basis_dQuadNodal
 
-  SUBROUTINE H1QuadBubblePBasisVec(nvec, u, v, pmax, nbasis, fval, localNumbers)
+  SUBROUTINE H1Basis_QuadEdgeP(nvec, u, v, pmax, nbasis, fval, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u, v
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(INOUT) :: nbasis
+    REAL(KIND=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+    REAL(KIND=dp), PARAMETER :: c = 1/2D0
+
+    REAL(KIND=dp) :: La, Lb
+    INTEGER :: i,j,k
+!DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
+
+    ! For each edge
+    DO i=1,4
+      DO j=2,pmax(i)
+        !$OMP SIMD PRIVATE(La, Lb)
+        DO k=1,nvec
+          La = H1Basis_QuadL(edgedir(1,i), u(k), v(k))
+          Lb = H1Basis_QuadL(edgedir(2,i), u(k), v(k))
+
+          fval(k, nbasis+j-1) = c*(La+Lb-1)*H1Basis_Phi(j, Lb-La)
+        END DO
+        !$OMP END SIMD
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+  END SUBROUTINE H1Basis_QuadEdgeP
+
+  SUBROUTINE H1Basis_dQuadEdgeP(nvec, u, v, pmax, nbasis, grad, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u, v
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(INOUT) :: nbasis
+    REAL(KIND=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+
+    REAL(KIND=dp) :: La, Lb, Phi, dPhi, dLa(2), dLb(2)
+    REAL(KIND=dp), PARAMETER :: c = 1/2D0
+    INTEGER :: i,j,k
+!DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
+    
+    ! For each edge
+    DO i=1,4
+      dLa = H1Basis_dQuadL(edgedir(1,i))
+      dLb = H1Basis_dQuadL(edgedir(2,i))
+
+      DO j=2,pmax(i)
+        !$OMP SIMD PRIVATE(La, Lb, Phi, dPhi)
+        DO k=1,nvec
+          La = H1Basis_QuadL(edgedir(1,i), u(k), v(k))
+          Lb = H1Basis_QuadL(edgedir(2,i), u(k), v(k))
+          
+          Phi = H1Basis_Phi(j, Lb-La)
+          dPhi = H1Basis_dPhi(j,Lb-La)
+
+          grad(k, nbasis+j-1, 1) = c*((dLa(1)+dLb(1))*Phi + &
+                  (La+Lb-1)*dPhi*(dLb(1)-dLa(1)))
+          grad(k, nbasis+j-1, 2) = c*((dLa(2)+dLb(2))*Phi + &
+                  (La+Lb-1)*dPhi*(dLb(2)-dLa(2)))
+        END DO
+        !$OMP END SIMD
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+  END SUBROUTINE H1Basis_dQuadEdgeP
+
+  SUBROUTINE H1Basis_QuadBubbleP(nvec, u, v, pmax, nbasis, fval, localNumbers)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -424,6 +604,7 @@ CONTAINS
 
     INTEGER :: i,j,k
     REAL(KIND=dp) :: La, Lb, Lc
+!DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
 
     ! Calculate value of function without direction and return
     ! if local numbering not present
@@ -432,7 +613,7 @@ CONTAINS
         DO j=2,(pmax-i)
           !$OMP SIMD
           DO k=1,nvec
-            fval(k,nbasis+j-1) = Phi(i,u(k))*Phi(j,v(k))
+            fval(k,nbasis+j-1) = H1Basis_Phi(i,u(k))*H1Basis_Phi(j,v(k))
           END DO
           !$END OMP SIMD
         END DO
@@ -444,22 +625,22 @@ CONTAINS
           !$OMP SIMD PRIVATE(La,Lb,Lc)
           DO k=1,nvec
             ! Directed quad bubbles
-            La = QuadL(localNumbers(1),u(k),v(k))
-            Lb = QuadL(localNumbers(2),u(k),v(k))
-            Lc = QuadL(localNumbers(4),u(k),v(k))
+            La = H1Basis_QuadL(localNumbers(1),u(k),v(k))
+            Lb = H1Basis_QuadL(localNumbers(2),u(k),v(k))
+            Lc = H1Basis_QuadL(localNumbers(4),u(k),v(k))
 
             ! Calculate value of function from the general form
-            fval(k,nbasis+j-1) = Phi(i,Lb-La)*Phi(j,Lc-La)
+            fval(k,nbasis+j-1) = H1Basis_Phi(i,Lb-La)*H1Basis_Phi(j,Lc-La)
           END DO
           !$END OMP SIMD
         END DO
         nbasis = nbasis+pmax-i-1
       END DO
     END IF
-  END SUBROUTINE H1QuadBubblePBasisVec
+  END SUBROUTINE H1Basis_QuadBubbleP
 
 
-  SUBROUTINE H1dQuadBubblePBasisVec(nvec, u, v, pmax, nbasis, grad, localNumbers)
+  SUBROUTINE H1Basis_dQuadBubbleP(nvec, u, v, pmax, nbasis, grad, localNumbers)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -472,6 +653,7 @@ CONTAINS
     INTEGER :: i,j,k
     REAL(KIND=dp) :: La, Lb, Lc
     REAL(Kind=dp), DIMENSION(2) :: dLa, dLb, dLc, dLbdLa, dLcdLa
+!DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
 
     IF (.NOT. PRESENT(localNumbers)) THEN
       DO i=2,(pmax-2)
@@ -479,9 +661,9 @@ CONTAINS
           !$OMP SIMD
           DO k=1,nvec
             ! First coordinate (Xi)
-            grad(k,nbasis+j-1,1) = dPhi(i,u(k))*Phi(j,v(k))
+            grad(k,nbasis+j-1,1) = H1Basis_dPhi(i,u(k))*H1Basis_Phi(j,v(k))
             ! Second coordinate (Eta)
-            grad(k,nbasis+j-1,2) = Phi(i,u(k))*dPhi(j,v(k))
+            grad(k,nbasis+j-1,2) = H1Basis_Phi(i,u(k))*H1Basis_dPhi(j,v(k))
           END DO
           !$END OMP SIMD
         END DO
@@ -489,9 +671,9 @@ CONTAINS
       END DO
     ELSE
       ! Numbering present, so use it
-      dLa = dQuadL(localNumbers(1))
-      dLb = dQuadL(localNumbers(2))
-      dLc = dQuadL(localNumbers(4))
+      dLa = H1Basis_dQuadL(localNumbers(1))
+      dLb = H1Basis_dQuadL(localNumbers(2))
+      dLc = H1Basis_dQuadL(localNumbers(4))
 
       dLBdLa = dLb-dLa
       dLcdLa = dLc-dLa
@@ -500,30 +682,31 @@ CONTAINS
         DO j=2,(pmax-i)
           !$OMP SIMD PRIVATE(La,Lb,Lc)
           DO k=1,nvec
-            La = QuadL(localNumbers(1),u(k),v(k))
-            Lb = QuadL(localNumbers(2),u(k),v(k))
-            Lc = QuadL(localNumbers(4),u(k),v(k))
+            La = H1Basis_QuadL(localNumbers(1),u(k),v(k))
+            Lb = H1Basis_QuadL(localNumbers(2),u(k),v(k))
+            Lc = H1Basis_QuadL(localNumbers(4),u(k),v(k))
 
-            grad(k,nbasis+j-1,1) = dPhi(i,Lb-La)*(dLbdLa(1))*Phi(j,Lc-La) + &
-                    Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLcdLa(1))
-            grad(k,nbasis+j-1,2) = dPhi(i,Lb-La)*(dLbdLa(2))*Phi(j,Lc-La) + &
-                    Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLcdLa(2))
+            grad(k,nbasis+j-1,1) = H1Basis_dPhi(i,Lb-La)*(dLbdLa(1))*H1Basis_Phi(j,Lc-La) + &
+                    H1Basis_Phi(i,Lb-La)*H1Basis_dPhi(j,Lc-La)*(dLcdLa(1))
+            grad(k,nbasis+j-1,2) = H1Basis_dPhi(i,Lb-La)*(dLbdLa(2))*H1Basis_Phi(j,Lc-La) + &
+                    H1Basis_Phi(i,Lb-La)*H1Basis_dPhi(j,Lc-La)*(dLcdLa(2))
           END DO
           !$END OMP SIMD
         END DO
         nbasis = nbasis+(pmax-i)-1
       END DO
     END IF
-  END SUBROUTINE H1dQuadBubblePBasisVec
+  END SUBROUTINE H1Basis_dQuadBubbleP
 
-  FUNCTION QuadL(node, u, v) RESULT(fval)
+  FUNCTION H1Basis_QuadL(node, u, v) RESULT(fval)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: node
     REAL(KIND=dp), INTENT(IN) :: u, v
     REAL(KIND=dp) :: fval
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
-    !$OMP DECLARE SIMD(QuadL) UNIFORM(node) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_QuadL) UNIFORM(node) &
+    !$OMP LINEAR_REF(u) LINEAR_REF(v) NOTINBRANCH
 
     SELECT CASE (node)
     CASE (1)
@@ -535,16 +718,16 @@ CONTAINS
     CASE (4)
       fval = c*(2d0-u+v)
     END SELECT
-  END FUNCTION QuadL
+  END FUNCTION H1Basis_QuadL
 
-  FUNCTION dQuadL(node) RESULT(grad)
+  FUNCTION H1Basis_dQuadL(node) RESULT(grad)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: node
     ! REAL(KIND=dp), INTENT(IN) :: u, v
     REAL(KIND=dp) :: grad(2)
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
-    !$OMP DECLARE SIMD(dQuadL) UNIFORM(node) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_dQuadL) UNIFORM(node) NOTINBRANCH
 
     SELECT CASE(node)
     CASE (1)
@@ -556,112 +739,9 @@ CONTAINS
     CASE (4)
       grad(1:2) = c*[-1, 1 ]
     END SELECT
-  END FUNCTION dQuadL
+  END FUNCTION H1Basis_dQuadL
 
-  ! WARNING: this is not a barycentric tetra
-  SUBROUTINE H1TetraNodalBasisVec(nvec, u, v, w, fval)
-    IMPLICIT NONE
-
-    ! Parameters
-    INTEGER, INTENT(IN) :: nvec
-    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v,w
-    ! Variables
-    REAL(Kind=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
-    INTEGER :: j
-
-    !$OMP SIMD
-    DO j=1,nvec
-      ! Node 1
-      fval(j,1) = 1-u(j)-v(j)-w(j)
-      ! Node 2
-      fval(j,2) = u(j)
-      ! Node 3
-      fval(j,3) = v(j)
-      ! Node 4
-      fval(j,4) = w(j)
-    END DO
-    !$END OMP SIMD
-  END SUBROUTINE H1TetraNodalBasisVec
-
-  ! WARNING: this is not a barycentric tetra
-  SUBROUTINE H1dTetraNodalBasisVec(nvec, u, v, w, grad)
-    IMPLICIT NONE
-
-    ! Parameters
-    INTEGER, INTENT(IN) :: nvec
-    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v,w
-    ! Variables
-    REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
-    INTEGER :: j
-
-    ! First coordinate (xi)
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,1,1) = -1D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,2,1) = 1D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,3,1) = 0D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,4,1) = 0D0
-    END DO
-    !$END OMP SIMD
-
-    ! Second coordinate (eta)
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,1,2) = -1D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,2,2) = 0D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,3,2) = 1D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,4,2) = 0D0
-    END DO
-    !$END OMP SIMD
-
-    ! Third coordinate (zeta)
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,1,3) = -1D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,2,3) = 0D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,3,3) = 0D0
-    END DO
-    !$END OMP SIMD
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,4,3) = 1D0
-    END DO
-    !$END OMP SIMD
-  END SUBROUTINE H1dTetraNodalBasisVec
-
-  SUBROUTINE H1TetraNodalPBasisVec(nvec, u, v, w, fval)
+  SUBROUTINE H1Basis_TetraNodalP(nvec, u, v, w, fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -673,6 +753,7 @@ CONTAINS
 
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0), &
             e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0)
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
     !$OMP SIMD
     DO j=1,nvec
@@ -686,9 +767,9 @@ CONTAINS
       fval(j,4) = SQRT(3d0/8d0)*w(j)
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1TetraNodalPBasisVec
+  END SUBROUTINE H1Basis_TetraNodalP
 
-  SUBROUTINE H1dTetraNodalPBasisVec(nvec, u, v, w, grad)
+  SUBROUTINE H1Basis_dTetraNodalP(nvec, u, v, w, grad)
     IMPLICIT NONE
 
     ! Parameters
@@ -697,6 +778,7 @@ CONTAINS
     ! Variables
     REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
     INTEGER :: j
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
     ! First coordinate (xi)
     !$OMP SIMD
@@ -763,9 +845,9 @@ CONTAINS
       grad(j,4,3)=SQRT(6d0)/4
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1dTetraNodalPBasisVec
+  END SUBROUTINE H1Basis_dTetraNodalP
 
-  FUNCTION TetraL(node, u, v, w) RESULT(fval)
+  FUNCTION H1Basis_TetraL(node, u, v, w) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters 
@@ -775,7 +857,8 @@ CONTAINS
     REAL(KIND=dp) :: fval
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0), &
             e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0)
-    !$OMP DECLARE SIMD(TetraL) UNIFORM(node) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_TetraL) UNIFORM(node) &
+    !$OMP LINEAR_REF(u) LINEAR_REF(v) LINEAR_REF(w) NOTINBRANCH
 
     SELECT CASE(node)
     CASE(1)
@@ -787,9 +870,9 @@ CONTAINS
     CASE(4)
       fval = SQRT(3d0/8d0)*w      
     END SELECT
-  END FUNCTION TetraL
+  END FUNCTION H1Basis_TetraL
 
-  SUBROUTINE H1TetraBubblePBasisVec(nvec, u, v, w, pmax, nbasis, fval)
+  SUBROUTINE H1Basis_TetraBubbleP(nvec, u, v, w, pmax, nbasis, fval)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -802,24 +885,25 @@ CONTAINS
     INTEGER :: i, j, k, l
     ! Variables
     REAL(KIND=dp) :: L1, L2, L3, L4, L2_L1, L3_1, L4_1
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
     DO i=0,pmax-4
       DO j=0,pmax-i-4
         DO k=0,pmax-i-j-4
           !$OMP SIMD PRIVATE(L1,L2,L3,L4,L2_L1,L3_1,L4_1)
           DO l=1,nvec
-            L1 = TetraL(1,u(l),v(l),w(l))
-            L2 = TetraL(2,u(l),v(l),w(l))
-            L3 = TetraL(3,u(l),v(l),w(l))
-            L4 = TetraL(4,u(l),v(l),w(l))
+            L1 = H1Basis_TetraL(1,u(l),v(l),w(l))
+            L2 = H1Basis_TetraL(2,u(l),v(l),w(l))
+            L3 = H1Basis_TetraL(3,u(l),v(l),w(l))
+            L4 = H1Basis_TetraL(4,u(l),v(l),w(l))
             L2_L1 = L2-L1
             L3_1 = 2*L3-1
             L4_1 = 2*L4-1
 
             fval(l,nbasis+k+1) = L1*L2*L3*L4*&
-                    LegendreP(i,L2_L1)*&
-                    LegendreP(j,L3_1)*&
-                    LegendreP(k,L4_1)
+                    H1Basis_LegendreP(i,L2_L1)*&
+                    H1Basis_LegendreP(j,L3_1)*&
+                    H1Basis_LegendreP(k,L4_1)
           END DO
           !$END OMP SIMD
         END DO
@@ -827,9 +911,9 @@ CONTAINS
         nbasis = nbasis + pmax-i-j-3
       END DO
     END DO
-  END SUBROUTINE H1TetraBubblePBasisVec
+  END SUBROUTINE H1Basis_TetraBubbleP
 
-  SUBROUTINE H1dTetraBubblePBasisVec(nvec, u, v, w, pmax, nbasis, grad)
+  SUBROUTINE H1Basis_dTetraBubbleP(nvec, u, v, w, pmax, nbasis, grad)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -841,37 +925,38 @@ CONTAINS
     ! Variables
     INTEGER :: i, j, k, l
     REAL(KIND=dp) :: L1, L2, L3, L4, L2_L1, L3_1, L4_1, a, b, c 
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
     DO i=0,pmax-4
       DO j=0,pmax-i-4
         DO k=0,pmax-i-j-4
           !$OMP SIMD PRIVATE(L1,L2,L3,L4,L2_L1,L3_1,L4_1,a,b,c)
           DO l=1,nvec
-            L1 = TetraL(1,u(l),v(l),w(l))
-            L2 = TetraL(2,u(l),v(l),w(l))
-            L3 = TetraL(3,u(l),v(l),w(l))
-            L4 = TetraL(4,u(l),v(l),w(l))
+            L1 = H1Basis_TetraL(1,u(l),v(l),w(l))
+            L2 = H1Basis_TetraL(2,u(l),v(l),w(l))
+            L3 = H1Basis_TetraL(3,u(l),v(l),w(l))
+            L4 = H1Basis_TetraL(4,u(l),v(l),w(l))
             L2_L1 = L2 - L1
             L3_1 = 2*L3 - 1
             L4_1 = 2*L4 - 1
-            a = LegendreP(i,L2_L1)
-            b = LegendreP(j,L3_1)
-            c = LegendreP(k,L4_1)
+            a = H1Basis_LegendreP(i,L2_L1)
+            b = H1Basis_LegendreP(j,L3_1)
+            c = H1Basis_LegendreP(k,L4_1)
 
             ! Gradients of tetrahedral bubble basis functions 
             grad(l,nbasis+k+1,1) = -1d0/2*L2*L3*L4*a*b*c + &
                     1d0/2*L1*L3*L4*a*b*c + &
-                    L1*L2*L3*L4*dLegendreP(i,L2_L1)*b*c
+                    L1*L2*L3*L4*H1Basis_dLegendreP(i,L2_L1)*b*c
             grad(l,nbasis+k+1,2) = -SQRT(3d0)/6*L2*L3*L4*a*b*c - &
                     SQRT(3d0)/6*L1*L3*L4*a*b*c + &
                     SQRT(3d0)/3*L1*L2*L4*a*b*c &
-                    + 2*SQRT(3d0)/3*L1*L2*L3*L4*a*dLegendreP(j,L3_1)*c
+                    + 2*SQRT(3d0)/3*L1*L2*L3*L4*a*H1Basis_dLegendreP(j,L3_1)*c
             grad(l,nbasis+k+1,3) = -SQRT(6d0)/12*L2*L3*L4*a*b*c - &
                     SQRT(6d0)/12*L1*L3*L4*a*b*c - &
                     SQRT(6d0)/12*L1*L2*L4*a*b*c &
                     + SQRT(6d0)/4*L1*L2*L3*a*b*c - &
-                    SQRT(6d0)/6*L1*L2*L3*L4*a*dLegendreP(j,L3_1)*c &
-                    + SQRT(6d0)/2*L1*L2*L3*L4*a*b*dLegendreP(k,L4_1)
+                    SQRT(6d0)/6*L1*L2*L3*L4*a*H1Basis_dLegendreP(j,L3_1)*c &
+                    + SQRT(6d0)/2*L1*L2*L3*L4*a*b*H1Basis_dLegendreP(k,L4_1)
           END DO
           !$END OMP SIMD
         END DO
@@ -879,88 +964,9 @@ CONTAINS
         nbasis = nbasis + pmax-i-j-3
       END DO
     END DO
-  END SUBROUTINE H1dTetraBubblePBasisVec
+  END SUBROUTINE H1Basis_dTetraBubbleP
 
-  ! WARNING: this is not a barycentric wedge
-  SUBROUTINE H1WedgeNodalBasisVec(nvec, u, v, w, fval)
-    IMPLICIT NONE
-
-    ! Parameters
-    INTEGER, INTENT(IN) :: nvec
-    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v,w
-    ! Variables
-    REAL(Kind=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
-    REAL(Kind=dp), PARAMETER :: c = 1D0/2D0
-    INTEGER :: j
-
-    !$OMP SIMD
-    DO j=1,nvec
-      ! Node 1
-      fval(j,1) = c*(1-u(j)-v(j))*(1-w(j))
-      ! Node 2
-      fval(j,2) = c*u(j)*(1-w(j))
-      ! Node 3
-      fval(j,3) = c*v(j)*(1-w(j))
-      ! Node 4
-      fval(j,4) = c*(1-u(j)-v(j))*(1+w(j))
-      ! Node 5
-      fval(j,5) = c*u(j)*(1+w(j))
-      ! Node 6
-      fval(j,6) = c*v(j)*(1+w(j))
-    END DO
-    !$END OMP SIMD
-  END SUBROUTINE H1WedgeNodalBasisVec
-
-  ! WARNING: this is not a barycentric wedge
-  SUBROUTINE H1dWedgeNodalBasisVec(nvec, u, v, w, grad)
-    IMPLICIT NONE
-
-    ! Parameters
-    INTEGER, INTENT(IN) :: nvec
-    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v,w
-    ! Variables
-    REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
-    REAL(Kind=dp), PARAMETER :: c = 1D0/2D0
-    INTEGER :: j
-
-    ! First coordinate (xi)
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,1,1) = -c*(1-w(j))
-      grad(j,2,1) = c*(1-w(j))
-      grad(j,3,1) = 0D0
-      grad(j,4,1) = -c*(1+w(j))
-      grad(j,5,1) = c*(1+w(j))
-      grad(j,6,1) = 0D0
-    END DO
-    !$END OMP SIMD
-
-    ! Second coordinate (eta)
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,1,2) = -c*(1-w(j))
-      grad(j,2,2) = 0D0
-      grad(j,3,2) = c*(1-w(j))
-      grad(j,4,2) = -c*(1+w(j))
-      grad(j,5,2) = 0D0
-      grad(j,6,2) = c*(1+w(j))
-    END DO
-    !$END OMP SIMD
-
-    ! Third coordinate (zeta)
-    !$OMP SIMD
-    DO j=1,nvec
-      grad(j,1,3) = -c*(1-u(j)-v(j))
-      grad(j,2,3) = -c*u(j)
-      grad(j,3,3) = -c*v(j)
-      grad(j,4,3) = c*(1-u(j)-v(j))
-      grad(j,5,3) = c*u(j)
-      grad(j,6,3) = c*v(j)
-    END DO
-    !$END OMP SIMD
-  END SUBROUTINE H1dWedgeNodalBasisVec
-
-  SUBROUTINE H1WedgeNodalPBasisVec(nvec, u, v, w, fval)
+  SUBROUTINE H1Basis_WedgeNodalP(nvec, u, v, w, fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -972,6 +978,7 @@ CONTAINS
 
     REAL(KIND=dp), PARAMETER :: c = 1D0/4D0, d = 1D0/SQRT(3D0), &
             e = SQRT(3d0)/6D0
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
     !$OMP SIMD
     DO j=1,nvec
@@ -989,9 +996,9 @@ CONTAINS
       fval(j,6) = e*v(j)*(1+w(j))
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1WedgeNodalPBasisVec
+  END SUBROUTINE H1Basis_WedgeNodalP
 
-  SUBROUTINE H1dWedgeNodalPBasisVec(nvec, u, v, w, grad)
+  SUBROUTINE H1Basis_dWedgeNodalP(nvec, u, v, w, grad)
     IMPLICIT NONE
 
     ! Parameters
@@ -1003,6 +1010,7 @@ CONTAINS
     INTEGER :: j
     REAL(KIND=dp), PARAMETER :: c = 1D0/4D0, d = 1D0/SQRT(3D0), &
             e = SQRT(3d0)/6D0, f = SQRT(3d0)/12D0
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
     ! First coordinate (xi)
     !$OMP SIMD
@@ -1039,9 +1047,9 @@ CONTAINS
       grad(j,6,3) = e*v(j)
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1dWedgeNodalPBasisVec
+  END SUBROUTINE H1Basis_dWedgeNodalP
 
-  FUNCTION WedgeL(node, u, v) RESULT(fval)
+  FUNCTION H1Basis_WedgeL(node, u, v) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -1049,7 +1057,8 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: u,v
     ! Result
     REAL(KIND=dp) :: fval
-    !$OMP DECLARE SIMD(WedgeL) UNIFORM(node) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_WedgeL) UNIFORM(node) &
+    !$OMP LINEAR_REF(u) LINEAR_REF(v) NOTINBRANCH
     
     SELECT CASE(node)
     CASE (1,4)
@@ -1059,9 +1068,9 @@ CONTAINS
     CASE (3,6)
       fval = SQRT(3d0)/3*v
     END SELECT
-  END FUNCTION WedgeL
+  END FUNCTION H1Basis_WedgeL
   
-  SUBROUTINE H1WedgeBubblePBasisVec(nvec, u, v, w, pmax, nbasis, fval)
+  SUBROUTINE H1Basis_WedgeBubbleP(nvec, u, v, w, pmax, nbasis, fval)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -1072,29 +1081,31 @@ CONTAINS
 
     INTEGER :: i, j, k, l
     REAL(KIND=dp) :: L1, L2, L3, L2_L1, L3_1
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
     DO i=0,pmax-5
       DO j=0,pmax-5-i
         DO k=2,pmax-3-i-j
           !$OMP SIMD PRIVATE(L1, L2, L3, L2_L1, L3_1)
           DO l=1,nvec
-            L1 = WedgeL(1,u(l),v(l))
-            L2 = WedgeL(2,u(l),v(l))
-            L3 = WedgeL(3,u(l),v(l))
+            L1 = H1Basis_WedgeL(1,u(l),v(l))
+            L2 = H1Basis_WedgeL(2,u(l),v(l))
+            L3 = H1Basis_WedgeL(3,u(l),v(l))
             L2_L1 = L2-L1
             L3_1 = 2d0*L3-1
 
             ! Get value of bubble function
-            fval(l,nbasis+k-1) = L1*L2*L3*LegendreP(i,L2_L1)*LegendreP(j,L3_1)*Phi(k,w(l))
+            fval(l,nbasis+k-1) = L1*L2*L3*H1Basis_LegendreP(i,L2_L1)*&
+                    H1Basis_LegendreP(j,L3_1)*H1Basis_Phi(k,w(l))
           END DO
         END DO
         ! nbasis = nbasis + (pmax-3-i-j)-2+1
         nbasis = nbasis + pmax-4-i-j
       END DO
     END DO
-  END SUBROUTINE H1WedgeBubblePBasisVec
+  END SUBROUTINE H1Basis_WedgeBubbleP
 
-  SUBROUTINE H1dWedgeBubblePBasisVec(nvec, u, v, w, pmax, nbasis, grad)
+  SUBROUTINE H1Basis_dWedgeBubbleP(nvec, u, v, w, pmax, nbasis, grad)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -1107,7 +1118,8 @@ CONTAINS
     INTEGER :: i,j,k,l
     ! Variables
     REAL(KIND=dp) :: L1,L2,L3,Legi,Legj,phiW,L2_L1,L3_1
-      
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64      
+
     DO i=0,pmax-5
       DO j=0,pmax-5-i
         DO k=2,pmax-3-i-j
@@ -1115,34 +1127,34 @@ CONTAINS
           DO l=1,nvec
 
             ! Values of function L
-            L1 = WedgeL(1,u(l),v(l))
-            L2 = WedgeL(2,u(l),v(l))
-            L3 = WedgeL(3,u(l),v(l))
+            L1 = H1Basis_WedgeL(1,u(l),v(l))
+            L2 = H1Basis_WedgeL(2,u(l),v(l))
+            L3 = H1Basis_WedgeL(3,u(l),v(l))
             
             L2_L1 = L2-L1
             L3_1 = 2d0*L3-1
 
-            Legi = LegendreP(i,L2_L1)
-            Legj = LegendreP(j,L3_1)
-            phiW = Phi(k,w(l))
+            Legi = H1Basis_LegendreP(i,L2_L1)
+            Legj = H1Basis_LegendreP(j,L3_1)
+            phiW = H1Basis_Phi(k,w(l))
             
             grad(l,nbasis+k-1,1) = ((-1d0/2)*L2*L3*Legi*Legj + &
                     L1*(1d0/2)*L3*Legi*Legj +&
-                    L1*L2*L3*dLegendreP(i,L2_L1)*Legj)*phiW
+                    L1*L2*L3*H1Basis_dLegendreP(i,L2_L1)*Legj)*phiW
             grad(l,nbasis+k-1,2) = ((-SQRT(3d0)/6)*L2*L3*Legi*Legj + &
                     L1*(-SQRT(3d0)/6)*L3*Legi*Legj +&
                     L1*L2*(SQRT(3D0)/3)*Legi*Legj + &
-                    L1*L2*L3*Legi*dLegendreP(j,L3_1)*(2d0*SQRT(3D0)/3))*phiW 
-            grad(l,nbasis+k-1,3) = L1*L2*L3*Legi*Legj*dPhi(k,w(l))
+                    L1*L2*L3*Legi*H1Basis_dLegendreP(j,L3_1)*(2d0*SQRT(3D0)/3))*phiW 
+            grad(l,nbasis+k-1,3) = L1*L2*L3*Legi*Legj*H1Basis_dPhi(k,w(l))
           END DO
         END DO
         ! nbasis = nbasis + (pmax-3-i-j)-2+1
         nbasis = nbasis + pmax-4-i-j
       END DO
     END DO
-  END SUBROUTINE H1dWedgeBubblePBasisVec
+  END SUBROUTINE H1Basis_dWedgeBubbleP
 
-  SUBROUTINE H1BrickNodalBasisVec(nvec, u, v, w, fval)
+  SUBROUTINE H1Basis_BrickNodal(nvec, u, v, w, fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -1152,6 +1164,7 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
     REAL(Kind=dp), PARAMETER :: c = 1D0/8D0
     INTEGER :: j
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
     !$OMP SIMD
     DO j=1,nvec
@@ -1173,9 +1186,9 @@ CONTAINS
       fval(j,8) = c*(1-u(j))*(1+v(j))*(1+w(j))
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1BrickNodalBasisVec
+  END SUBROUTINE H1Basis_BrickNodal
 
-  SUBROUTINE H1dBrickNodalBasisVec(nvec, u, v, w, grad)
+  SUBROUTINE H1Basis_dBrickNodal(nvec, u, v, w, grad)
     IMPLICIT NONE
 
     ! Parameters
@@ -1185,6 +1198,7 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
     REAL(Kind=dp), PARAMETER :: c = 1D0/8D0
     INTEGER :: j
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
     ! First coordinate (xi)
     !$OMP SIMD
@@ -1227,9 +1241,9 @@ CONTAINS
       grad(j,8,3) = c*(1-u(j))*(1+v(j))
     END DO
     !$END OMP SIMD
-  END SUBROUTINE H1dBrickNodalBasisVec
+  END SUBROUTINE H1Basis_dBrickNodal
 
-  SUBROUTINE H1BrickBubblePBasisVec(nvec, u, v, w, pmax, nbasis, fval)
+  SUBROUTINE H1Basis_BrickBubbleP(nvec, u, v, w, pmax, nbasis, fval)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -1239,6 +1253,7 @@ CONTAINS
     REAL(KIND=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
 
     INTEGER :: i, j, k, l
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
     ! For each bubble calculate value of basis function and its derivative
     ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
@@ -1247,16 +1262,16 @@ CONTAINS
         DO k=2,pmax-i-j
           !$OMP SIMD
           DO l=1,nvec
-            fval(l,nbasis+k-1) = Phi(i,u(l))*Phi(j,v(l))*Phi(k,w(l))
+            fval(l,nbasis+k-1) = H1Basis_Phi(i,u(l))*H1Basis_Phi(j,v(l))*H1Basis_Phi(k,w(l))
           END DO
           !$END OMP SIMD
         END DO
         nbasis = nbasis+pmax-i-j-1
       END DO
     END DO
-  END SUBROUTINE H1BrickBubblePBasisVec
+  END SUBROUTINE H1Basis_BrickBubbleP
 
-  SUBROUTINE H1dBrickBubblePBasisVec(nvec, u, v, w, pmax, nbasis, grad)
+  SUBROUTINE H1Basis_dBrickBubbleP(nvec, u, v, w, pmax, nbasis, grad)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -1268,6 +1283,7 @@ CONTAINS
     ! Variables
     INTEGER :: i, j, k, l
     REAL(KIND=dp) :: phiU, phiV, phiW
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
     ! For each bubble calculate value of basis function and its derivative
     ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
@@ -1276,21 +1292,21 @@ CONTAINS
         DO k=2,pmax-i-j
           !$OMP SIMD PRIVATE(phiU, phiV, phiW)
           DO l=1,nvec
-            phiU = Phi(i,u(l))
-            phiV = Phi(j,v(l))
-            phiW = Phi(k,w(l))
-            grad(l,nbasis+k-1,1) = dPhi(i,u(l))*phiV*phiW
-            grad(l,nbasis+k-1,2) = phiU*dPhi(j,v(l))*phiW
-            grad(l,nbasis+k-1,3) = phiU*phiV*dPhi(k,w(l))
+            phiU = H1Basis_Phi(i,u(l))
+            phiV = H1Basis_Phi(j,v(l))
+            phiW = H1Basis_Phi(k,w(l))
+            grad(l,nbasis+k-1,1) = H1Basis_dPhi(i,u(l))*phiV*phiW
+            grad(l,nbasis+k-1,2) = phiU*H1Basis_dPhi(j,v(l))*phiW
+            grad(l,nbasis+k-1,3) = phiU*phiV*H1Basis_dPhi(k,w(l))
           END DO
           !$END OMP SIMD
         END DO
         nbasis = nbasis+pmax-i-j-1
       END DO
     END DO
-  END SUBROUTINE H1dBrickBubblePBasisVec
+  END SUBROUTINE H1Basis_dBrickBubbleP
 
-  FUNCTION Phi(k, x) RESULT(fval)
+  FUNCTION H1Basis_Phi(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -1298,7 +1314,7 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(Phi) UNIFORM(k) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_Phi) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
 
     ! Phi function values (autogenerated to Horner form)
     SELECT CASE(k)
@@ -1405,9 +1421,9 @@ CONTAINS
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
-  END FUNCTION Phi
+  END FUNCTION H1Basis_Phi
 
-  FUNCTION dPhi(k, x) RESULT(fval)
+  FUNCTION H1Basis_dPhi(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -1415,7 +1431,7 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(dPhi) UNIFORM(k) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_dPhi) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
 
     ! Phi function values (autogenerated to Horner form)
     SELECT CASE(k)
@@ -1486,9 +1502,9 @@ CONTAINS
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
-  END FUNCTION dPhi
+  END FUNCTION H1Basis_dPhi
 
-  FUNCTION VarPhi(k, x) RESULT(fval)
+  FUNCTION H1Basis_VarPhi(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -1496,7 +1512,7 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(VarPhi) UNIFORM(k) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_VarPhi) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
 
     SELECT CASE(k)
     CASE(2)
@@ -1565,9 +1581,9 @@ CONTAINS
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
-  END FUNCTION VarPhi
+  END FUNCTION H1Basis_VarPhi
 
-  FUNCTION dVarPhi(k, x) RESULT(fval)
+  FUNCTION H1Basis_dVarPhi(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -1575,7 +1591,7 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(dVarPhi) UNIFORM(k) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_dVarPhi) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
 
     SELECT CASE(k)
     CASE(2)
@@ -1641,9 +1657,9 @@ CONTAINS
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
-  END FUNCTION dVarPhi
+  END FUNCTION H1Basis_dVarPhi
 
-  FUNCTION LegendreP(k, x) RESULT(fval)
+  FUNCTION H1Basis_LegendreP(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -1651,7 +1667,7 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(LegendreP) UNIFORM(k) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_LegendreP) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
 
     SELECT CASE(k)
     CASE(0)
@@ -1751,9 +1767,9 @@ CONTAINS
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
-  END FUNCTION LegendreP
+  END FUNCTION H1Basis_LegendreP
 
-  FUNCTION dLegendreP(k, x) RESULT(fval)
+  FUNCTION H1Basis_dLegendreP(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -1761,7 +1777,7 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(dLegendreP) UNIFORM(k) NOTINBRANCH
+    !$OMP DECLARE SIMD(H1Basis_dLegendreP) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
 
     SELECT CASE(k)
     CASE(0)
@@ -1839,6 +1855,259 @@ CONTAINS
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
-  END FUNCTION dLegendreP
+  END FUNCTION H1Basis_dLegendreP
 
-END MODULE H1ElementBasisFunctions
+  ! To be deprecated
+  
+  ! WARNING: this is not a barycentric triangle
+  SUBROUTINE H1Basis_TriangleNodal(nvec, u, v, fval)
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER, INTENT(IN) :: nvec
+    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v
+    ! Variables
+    REAL(Kind=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
+    INTEGER :: j
+
+    !$OMP SIMD
+    DO j=1,nvec
+      ! Node 1
+      fval(j,1) = 1-u(j)-v(j)
+      ! Node 2
+      fval(j,2) = u(j)
+      ! Node 3
+      fval(j,3) = v(j)
+    END DO
+    !$END OMP SIMD
+  END SUBROUTINE H1Basis_TriangleNodal
+
+  ! WARNING: this is not a barycentric triangle
+  SUBROUTINE H1Basis_dTriangleNodal(nvec, u, v, grad)
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER, INTENT(IN) :: nvec
+    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v
+    ! Variables
+    REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
+    INTEGER :: j
+
+    ! First coordinate (xi)
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,1,1) = -1D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,2,1) = 1D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,3,1) = 0D0
+    END DO
+    !$END OMP SIMD
+
+    ! Second coordinate (eta)
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,1,2) = -1D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,2,2) = 0D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,3,2) = 1D0
+    END DO
+    !$END OMP SIMD
+  END SUBROUTINE H1Basis_dTriangleNodal
+  
+  ! WARNING: this is not a barycentric tetra
+  SUBROUTINE H1Basis_TetraNodal(nvec, u, v, w, fval)
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER, INTENT(IN) :: nvec
+    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v,w
+    ! Variables
+    REAL(Kind=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
+    INTEGER :: j
+
+    !$OMP SIMD
+    DO j=1,nvec
+      ! Node 1
+      fval(j,1) = 1-u(j)-v(j)-w(j)
+      ! Node 2
+      fval(j,2) = u(j)
+      ! Node 3
+      fval(j,3) = v(j)
+      ! Node 4
+      fval(j,4) = w(j)
+    END DO
+    !$END OMP SIMD
+  END SUBROUTINE H1Basis_TetraNodal
+
+  ! WARNING: this is not a barycentric tetra
+  SUBROUTINE H1Basis_dTetraNodal(nvec, u, v, w, grad)
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER, INTENT(IN) :: nvec
+    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v,w
+    ! Variables
+    REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
+    INTEGER :: j
+
+    ! First coordinate (xi)
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,1,1) = -1D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,2,1) = 1D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,3,1) = 0D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,4,1) = 0D0
+    END DO
+    !$END OMP SIMD
+
+    ! Second coordinate (eta)
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,1,2) = -1D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,2,2) = 0D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,3,2) = 1D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,4,2) = 0D0
+    END DO
+    !$END OMP SIMD
+
+    ! Third coordinate (zeta)
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,1,3) = -1D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,2,3) = 0D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,3,3) = 0D0
+    END DO
+    !$END OMP SIMD
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,4,3) = 1D0
+    END DO
+    !$END OMP SIMD
+  END SUBROUTINE H1Basis_dTetraNodal
+
+  ! WARNING: this is not a barycentric wedge
+  SUBROUTINE H1Basis_WedgeNodal(nvec, u, v, w, fval)
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER, INTENT(IN) :: nvec
+    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v,w
+    ! Variables
+    REAL(Kind=dp), DIMENSION(:,:) CONTIG, INTENT(INOUT) :: fval
+    REAL(Kind=dp), PARAMETER :: c = 1D0/2D0
+    INTEGER :: j
+
+    !$OMP SIMD
+    DO j=1,nvec
+      ! Node 1
+      fval(j,1) = c*(1-u(j)-v(j))*(1-w(j))
+      ! Node 2
+      fval(j,2) = c*u(j)*(1-w(j))
+      ! Node 3
+      fval(j,3) = c*v(j)*(1-w(j))
+      ! Node 4
+      fval(j,4) = c*(1-u(j)-v(j))*(1+w(j))
+      ! Node 5
+      fval(j,5) = c*u(j)*(1+w(j))
+      ! Node 6
+      fval(j,6) = c*v(j)*(1+w(j))
+    END DO
+    !$END OMP SIMD
+  END SUBROUTINE H1Basis_WedgeNodal
+
+  ! WARNING: this is not a barycentric wedge
+  SUBROUTINE H1Basis_dWedgeNodal(nvec, u, v, w, grad)
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER, INTENT(IN) :: nvec
+    REAL(Kind=dp), DIMENSION(:) CONTIG, INTENT(IN) :: u,v,w
+    ! Variables
+    REAL(Kind=dp), DIMENSION(:,:,:) CONTIG, INTENT(INOUT) :: grad
+    REAL(Kind=dp), PARAMETER :: c = 1D0/2D0
+    INTEGER :: j
+
+    ! First coordinate (xi)
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,1,1) = -c*(1-w(j))
+      grad(j,2,1) = c*(1-w(j))
+      grad(j,3,1) = 0D0
+      grad(j,4,1) = -c*(1+w(j))
+      grad(j,5,1) = c*(1+w(j))
+      grad(j,6,1) = 0D0
+    END DO
+    !$END OMP SIMD
+
+    ! Second coordinate (eta)
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,1,2) = -c*(1-w(j))
+      grad(j,2,2) = 0D0
+      grad(j,3,2) = c*(1-w(j))
+      grad(j,4,2) = -c*(1+w(j))
+      grad(j,5,2) = 0D0
+      grad(j,6,2) = c*(1+w(j))
+    END DO
+    !$END OMP SIMD
+
+    ! Third coordinate (zeta)
+    !$OMP SIMD
+    DO j=1,nvec
+      grad(j,1,3) = -c*(1-u(j)-v(j))
+      grad(j,2,3) = -c*u(j)
+      grad(j,3,3) = -c*v(j)
+      grad(j,4,3) = c*(1-u(j)-v(j))
+      grad(j,5,3) = c*u(j)
+      grad(j,6,3) = c*v(j)
+    END DO
+    !$END OMP SIMD
+  END SUBROUTINE H1Basis_dWedgeNodal
+
+END MODULE H1Basis

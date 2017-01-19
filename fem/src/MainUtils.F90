@@ -829,6 +829,14 @@ CONTAINS
     ! Set up time-stepping strategies for transient problems
     !------------------------------------------------------------------------------
     IF ( Transient ) THEN
+      str = ListGetString( SolverParams, 'Predictor Method',Found )
+      IF ( .NOT. Found ) THEN
+        str = ListGetString( CurrentModel % Simulation, 'Predictor Method',Found )
+        IF ( Found ) THEN
+          CALL ListAddString( SolverParams, 'Predictor Method', str )
+        END IF
+      END IF
+
       str = ListGetString( SolverParams, 'Timestepping Method',Found )
       IF ( .NOT. Found ) THEN
         str = ListGetString( CurrentModel % Simulation, 'Timestepping Method',Found )
@@ -1229,45 +1237,53 @@ CONTAINS
 
     Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
 
-    SELECT CASE( ListGetString( SolverParams, 'Exec Solver', Found )  )
+    str = ListGetString( SolverParams, 'Exec Solver', Found )
+
+    IF( Found ) THEN    
+      SELECT CASE( TRIM(str) )
       CASE( 'never' )
-      Solver % SolverExecWhen = SOLVER_EXEC_NEVER
+        Solver % SolverExecWhen = SOLVER_EXEC_NEVER
       CASE( 'always' )
-      Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+        Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
       CASE( 'after simulation', 'after all' )
-      Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
       CASE( 'before simulation', 'before all' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
       CASE( 'before timestep' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
       CASE( 'after timestep' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
       CASE( 'before saving' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
       CASE( 'after saving' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
+      CASE( 'predictor-corrector' )
+        Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
       CASE DEFAULT
-         Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
-    END SELECT
-
-    IF ( ListGetLogical( SolverParams, 'Before All', Found ) ) THEN
-       Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
-    ELSE IF ( ListGetLogical( SolverParams, 'Before Simulation', Found ) ) THEN
-       Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
-    ELSE IF ( ListGetLogical( SolverParams, 'After All', Found ) ) THEN
-       Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
-    ELSE IF ( ListGetLogical( SolverParams, 'After Simulation', Found ) ) THEN
-       Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
-    ELSE IF ( ListGetLogical( SolverParams, 'Before Timestep', Found ) ) THEN
-       Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
-    ELSE IF ( ListGetLogical( SolverParams, 'After Timestep', Found ) ) THEN
-       Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
-    ELSE IF ( ListGetLogical( SolverParams, 'Before Saving', Found ) ) THEN
-       Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
-    ELSE IF ( ListGetLogical( SolverParams, 'After Saving', Found ) ) THEN
-       Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
+        Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+      END SELECT      
+    ELSE      
+      IF ( ListGetLogical( SolverParams, 'Before All', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+      ELSE IF ( ListGetLogical( SolverParams, 'Before Simulation', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+      ELSE IF ( ListGetLogical( SolverParams, 'After All', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+      ELSE IF ( ListGetLogical( SolverParams, 'After Simulation', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+      ELSE IF ( ListGetLogical( SolverParams, 'Before Timestep', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
+      ELSE IF ( ListGetLogical( SolverParams, 'After Timestep', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
+      ELSE IF ( ListGetLogical( SolverParams, 'Before Saving', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
+      ELSE IF ( ListGetLogical( SolverParams, 'After Saving', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
+      ELSE IF ( ListGetLogical( SolverParams, 'Predictor-Corrector', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
+      END IF
     END IF
-
+     
     Solver % LinBeforeProc = 0
     str = ListGetString( Solver % Values, 'Before Linsolve', Found )
     IF ( Found ) Solver % LinBeforeProc = GetProcAddr( str )
@@ -1774,7 +1790,7 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Mesh_t),   POINTER :: Mesh
-    CHARACTER(LEN=max_name_len) :: When
+    CHARACTER(LEN=max_name_len) :: When, TimeStepMethod
     TYPE(Variable_t), POINTER :: IterV, TimestepV
     REAL(KIND=dp), POINTER :: steadyIt,nonlnIt
     REAL(KIND=dp), POINTER :: k1(:), k2(:), k3(:), k4(:), sTime
@@ -1812,17 +1828,22 @@ CONTAINS
     DO k=1,nSolvers
       Solver => Model % Solvers(k)
       IF ( Solver % PROCEDURE==0 ) CYCLE
-
-      when  = ListGetString( Solver % Values, 'Exec Solver', Found )
-      IF ( Found ) THEN
-        IF ( When == 'before timestep' ) THEN
-          CALL SolverActivate( Model,Solver,dt,TransientSimulation )
-          CALL ParallelBarrier
+      IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_TIME .OR. &
+          Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+        IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+          CALL Info('SolveEquations','Switching time-stepping method to predictor method',Level=7)
+          TimeStepMethod = ListGetString( Solver % Values, 'Timestepping Method', Found )
+          CALL ListAddString( Solver % Values, 'Timestepping Method', &
+             ListGetString( Solver % Values, 'Predictor Method',Found) )
+          IF(.NOT. Found ) THEN
+            CALL Fatal('SolveEquations','Predictor-corrector schemes require > Predictor Method <')
+          END IF
+          CALL ListAddLogical( Solver % Values,'Predictor Phase',.TRUE.)
         END IF
-      ELSE
-        IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_TIME ) THEN
-          CALL SolverActivate( Model,Solver,dt,TransientSimulation )
-          CALL ParallelBarrier
+        CALL SolverActivate( Model,Solver,dt,TransientSimulation )
+        CALL ParallelBarrier
+        IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+          CALL ListAddString( Solver % Values, 'Timestepping Method', TimeStepMethod )
         END IF
       END IF
     END DO
@@ -1951,18 +1972,13 @@ CONTAINS
     DO k=1,nSolvers
       Solver => Model % Solvers(k)
       IF ( Solver % PROCEDURE==0 ) CYCLE
-
-      When = ListGetString( Solver % Values, 'Exec Solver', Found )
-      IF (  Found ) THEN
-         IF ( When == 'after timestep' ) THEN
-           CALL SolverActivate( Model,Solver,dt,TransientSimulation )
-           CALL ParallelBarrier
-         END IF
-      ELSE
-         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_TIME ) THEN
-           CALL SolverActivate( Model,Solver,dt,TransientSimulation )
-           CALL ParallelBarrier
-         END IF
+      IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_TIME .OR. &
+          Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+        IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+          CALL ListAddLogical( Solver % Values,'Predictor Phase',.FALSE.)
+        END IF
+        CALL SolverActivate( Model,Solver,dt,TransientSimulation )
+        CALL ParallelBarrier
       END IF
     END DO
 
@@ -2018,17 +2034,9 @@ CONTAINS
             END IF
           END IF
 
-          When = ListGetString( Solver % Values, 'Exec Solver', Found )
-          IF ( Found ) THEN
-            IF ( When /= 'always' ) THEN
-              DoneThis(k) = .TRUE.
-              CYCLE
-            END IF
-          ELSE
-            IF ( Solver % SolverExecWhen /= SOLVER_EXEC_ALWAYS ) THEN
-              DoneThis(k) = .TRUE.
-              CYCLE
-            END IF
+          IF ( Solver % SolverExecWhen /= SOLVER_EXEC_ALWAYS ) THEN
+            DoneThis(k) = .TRUE.
+            CYCLE
           END IF
 
           IF ( AfterConverged(k) .AND. .NOT. ALL(AfterConverged .OR. DoneThis) ) CYCLE
