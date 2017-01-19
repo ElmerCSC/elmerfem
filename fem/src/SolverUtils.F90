@@ -13734,17 +13734,15 @@ CONTAINS
        CALL Info('GenerateConstraintMatrix',&
            'Number of mortar matrices: '//TRIM(I2S(bcount)),Level=12)       
      END IF
-
-
      
-     IF( row==0 .OR. bcount==0 .AND. mcount<=1 ) THEN
+     IF( row==0 ) THEN
        CALL Info('GenerateConstraintMatrix',&
            'Nothing to do since there are no constrained dofs!',Level=12)       
        RETURN
      END IF
        
      IF( mcount == 1 .AND. bcount == 0 ) THEN
-       CALL Info('GenerateConstraintMatrix','Reusing old constraint matrix',Level=12)       
+       CALL Info('GenerateConstraintMatrix','Using initial constraint matrix',Level=12)       
        Solver % Matrix % ConstraintMatrix => Solver % ConstraintMatrix
        RETURN
      END IF
