@@ -5459,8 +5459,13 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
       CALL ListAddString( DGSolverParams, "Exported Variable "//TRIM(i2s(i)), &
         "Nodal Force E[Nodal Force E:3]" )
     ELSE
+      i = i + 1
+      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        "Nodal Force[Nodal Force:3]" )
       CALL Warn('MagnetcDynamicsCalcFields',&
-        'Nodal Forces are available only for real systems!')
+        'Calculating experimental average nodal forces. Use at own risk.')
+      !CALL Warn('MagnetcDynamicsCalcFields',&
+        !'Nodal Forces are available only for real systems!')
     END IF
   END IF
 
@@ -5681,8 +5686,11 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
         "Nodal Force[Nodal Force:3]" )
     ELSE
+      i = i + 1
+      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        "Nodal Force[Nodal Force:3]" )
       CALL Warn('MagnetcDynamicsCalcFields',&
-        'Nodal Forces are available only for real systems!')
+        'Calculating experimental average nodal forces. Use at own risk.')
     END IF
   END IF
 
@@ -5889,10 +5897,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      EL_FWP => VariableGet( Mesh % Variables, 'Winding Voltage E' )
    END IF
 
-   IF( RealField ) THEN
+   !IF( RealField ) THEN
      NF => VariableGet( Mesh % Variables, 'Nodal Force') 
      EL_NF => VariableGet( Mesh % Variables, 'Nodal Force E')
-   END IF
+   !END IF
 
    CD => VariableGet( Mesh % Variables, 'Current Density' )
    EL_CD => VariableGet( Mesh % Variables, 'Current Density E' )
@@ -5922,8 +5930,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(EF)  ) DOFs=DOFs+3
    IF ( ASSOCIATED(JXB) ) DOFs=DOFs+3
    IF ( ASSOCIATED(MST) ) DOFs=DOFs+6
-   DOFs = DOFs*vDOFs
    IF ( ASSOCIATED(NF)  ) DOFs=DOFs+3
+   DOFs = DOFs*vDOFs
    IF ( ASSOCIATED(JH) ) DOFs=DOFs+1
    IF ( ASSOCIATED(ML) ) DOFs=DOFs+1
    IF ( ASSOCIATED(ML2) ) DOFs=DOFs+1
@@ -5941,6 +5949,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      IF ( ASSOCIATED(EL_EF)  ) DOFs=DOFs+3
      IF ( ASSOCIATED(EL_JXB) ) DOFs=DOFs+3
      IF ( ASSOCIATED(EL_MST) ) DOFs=DOFs+6
+     IF ( ASSOCIATED(EL_NF) ) DOFs=DOFs+3 
      DOFs = DOFs*vDOFs
      IF ( ASSOCIATED(EL_NF) ) DOFs=DOFs+3 
      IF ( ASSOCIATED(EL_JH) ) DOFs=DOFs+1
@@ -6484,6 +6493,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              NF_ip(k,l) = NF_ip(k,l) + (R_ip*B2-w_dens)*dBasisdx(k,l)
            END DO
          END DO
+
+         IF (.NOT. RealField) THEN
+           DO k=1,n
+             DO l=1,3
+               DO m=1,3
+                 NF_ip(k,l) = NF_ip(k,l) - (R_ip*(B(2,l)*B(2,m)))*dBasisdx(k,m)
+               END DO
+             END DO
+           END DO
+         END IF
        END IF
 
        s = IP % s(j) * detJ
@@ -6694,7 +6713,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
          END IF
          IF (ASSOCIATED(NF).OR.ASSOCIATED(EL_NF)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s*NF_ip(p,1:3)
+           IF(RealField) THEN
+             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s*NF_ip(p,1:3)
+           ELSE
+             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + 0.5*s*NF_ip(p,1:3)
+           END IF
            k = k + 3
          END IF
        END DO ! p
