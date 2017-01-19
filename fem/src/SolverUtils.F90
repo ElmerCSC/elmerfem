@@ -7225,6 +7225,12 @@ END FUNCTION SearchNodeL
          CASE('fs')
            Solver % Beta = 0.5d0
 
+         CASE('adams predictor')
+           Solver % Beta = 0.0d0
+
+         CASE('adams corrector')
+           Solver % Beta = 1.0d0
+
          CASE('newmark')
            Solver % Beta = ListGetConstReal( Solver % Values, 'Newmark Beta', GotIt )
            IF ( .NOT. GotIt ) THEN
