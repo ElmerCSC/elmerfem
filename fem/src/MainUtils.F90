@@ -4257,6 +4257,117 @@ CONTAINS
    END SUBROUTINE SolverActivate
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!  The adaptive controller for Adaptive TimeStepping
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+    SUBROUTINE TimeStepController(dt, zeta, timestep, AdaptiveOrder, epsilon, beta1, beta2)
+!------------------------------------------------------------------------------
+
+
+      REAL(KIND=dp), INTENT(INOUT):: dt, zeta, epsilon, beta1, beta2     
+      REAL(KIND=dp) :: eta, gfactor
+      REAL(KIND=dp) :: timeError, timeErrorMax, timeError2Norm 
+      INTEGER, INTENT(IN) :: timestep, AdaptiveOrder
+      INTEGER :: i
+      LOGICAL ::  Found
+
+      TYPE(Solver_t), POINTER :: Solver
+
+      REAL(KIND=dp), SAVE:: etaOld, dtOld
+
+
+      !> \tilde{H}^n is in Solver % Variable % PrevValues(:,1),
+      !> H^n is in Solver % Variable % Values(:)
+      timeErrorMax = 0.0
+      timeError2Norm = 0.0
+
+      DO i=1,CurrentModel % NumberOFSolvers
+        Solver => CurrentModel % Solvers(i)
+        !> Find the Solver for adaptive predictor, there should be only one solver as predictor
+        IF (ListGetLogical( Solver % Values,'Adaptive Predictor', Found) ) THEN
+
+          !> Compute the error  (H-\tilde{H)
+          timeErrorMax  =  MAXVAL( ABS(Solver % Variable % Values(:) - Solver % Variable % PrevValues(:,1)))
+          timeError2Norm  =  NORM2( (Solver % Variable % Values(:) - Solver % Variable % PrevValues(:,1)))
+        END IF 
+      END DO
+
+      timeError = timeErrorMax
+      ! Choose norm: inf-norm or 2-norm
+      IF (ListGetLogical( CurrentModel % Simulation,'Adaptive Error 2 Norm', Found) ) THEN
+        timeError = timeError2Norm
+      END IF
+
+      !> estimate the local truncation error eta
+      IF (timestep > 1) THEN
+        IF (AdaptiveOrder == 1) THEN
+          eta = timeError / dt / 2.0_dp
+        ELSE
+          !> Compute zeta 
+          eta = timeError * zeta / dt / (zeta + 1.0_dp) / 3.0_dp
+        END IF
+      ELSE
+        eta = timeError / dt / 2.0_dp
+        etaOld = eta
+      END IF
+
+      !> Update the next time step and eta
+      dtOld = dt
+
+      IF ((eta .NE. 0.0_dp) .AND. (etaOld .NE. 0.0_dp)) THEN 
+        gfactor = ((epsilon/eta)**beta1) * ((epsilon/etaOld)**beta2)
+        CALL TimeStepLimiter(dtOld, dt, gfactor)
+      ELSE 
+        dt = dtOld
+      END IF
+      etaOld = eta
+      zeta = dt / dtOld
+
+      ! Overwrite step size for the whole simulation
+      CALL ListAddConstReal( CurrentModel % Simulation, 'Timestep Size', dt)
+      ! sSize(1) = dt
+
+      !> Save the time errors!                         
+      OPEN (unit=135, file="ErrorAdaptive.dat", POSITION='APPEND')
+      WRITE(135, *) dtOld, eta, timeError                                                
+      CLOSE(135)
+
+      !> Output
+      CALL Info('TimeStepping', "============ Adaptive ============", Level=3)
+      WRITE (Message,*) "current dt=", dtOld, "next dt=",  dt
+      CALL Info('TimeStepping', Message, Level=3)
+      WRITE (Message,*) "zeta=", zeta, "eta=",  eta
+      CALL Info('TimeStepping', Message, Level=4)
+
+!------------------------------------------------------------------------------
+    END  SUBROUTINE TimeStepController
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!  Time step limiter for Adaptive TimeStepping
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+    SUBROUTINE TimeStepLimiter(dtOld, dt, gfactor, k)
+!------------------------------------------------------------------------------
+      REAL(KIND=dp), INTENT(IN) :: dtOld, gfactor
+      REAL(KIND=dp), INTENT(OUT) :: dt
+      REAL(KIND=dp) :: xfactor
+      INTEGER, OPTIONAL :: k 
+
+      IF( PRESENT(k) ) THEN
+        xfactor = 1.0 + k * ATAN((gfactor-1)/k)
+      ELSE
+        xfactor = 1.0 + 2.0 * ATAN((gfactor-1)*0.5)
+      END IF 
+
+      dt = dtOld * xfactor
+!------------------------------------------------------------------------------
+    END SUBROUTINE TimeStepLimiter
+!------------------------------------------------------------------------------
+
+
 END MODULE MainUtils
 
 !> \} ElmerLib
