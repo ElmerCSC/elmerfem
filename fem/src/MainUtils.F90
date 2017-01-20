@@ -1817,7 +1817,10 @@ CONTAINS
     IF ( TransientSimulation ) THEN
        DO k=1,nSolvers
           Solver => Model % Solvers(k)
-          IF ( Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
+          ! Initialize for predictor-corrector solver only
+          IF ( (Solver % PROCEDURE /= 0) .AND. & 
+               (Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR) ) &
+                 CALL InitializeTimestep(Solver)
        END DO
     END IF
 
@@ -1858,6 +1861,16 @@ CONTAINS
         END IF
       END IF
     END DO
+
+    ! Initialization for all the solvers
+    IF ( TransientSimulation ) THEN
+       DO k=1,nSolvers
+          Solver => Model % Solvers(k)
+          IF ( Solver % PROCEDURE /= 0 ) THEN 
+            CALL InitializeTimestep(Solver)
+          END IF
+       END DO
+    END IF
 
 !------------------------------------------------------------------------------
 
