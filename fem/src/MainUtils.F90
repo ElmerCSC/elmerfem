@@ -862,9 +862,7 @@ CONTAINS
               Simulation, 'Runge-Kutta Order', Found, minv=2, maxv=4 )
           IF ( .NOT.Found ) Solver % Order = 2
         ELSE IF( str(1:5)=='adams') THEN
-           Solver % Order = ListGetInteger( CurrentModel % &
-              Simulation, 'Adams Order', Found, minv=1, maxv=2 )
-          IF ( .NOT.Found ) Solver % Order = 2          
+          Solver % Order = 2          
         END IF
         CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=10)
      ELSE

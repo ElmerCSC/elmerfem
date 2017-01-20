@@ -709,7 +709,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      LOGICAL :: GotIt
      INTEGER :: i,j,k,l,m,Order
-     REAL(KIND=dp) :: s, t, theta
+     REAL(KIND=dp) :: s, t, zeta
      CHARACTER(LEN=MAX_NAME_LEN) :: Method
      REAL(KIND=dp) :: PrevSol(DOFs*n,Solver % Order), CurSol(DOFs*n), LForce(n*DOFs)
      TYPE(Variable_t), POINTER :: DtVar
@@ -717,7 +717,7 @@ CONTAINS
      LOGICAL :: ConstantDt
      TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-
+     INTEGER :: PredCorrOrder = 2       !< Order of predictor-corrector scheme
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE
@@ -786,6 +786,11 @@ CONTAINS
 !PrevSol(:,Order) needed for BDF
      Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
 
+     PredCorrOrder = ListGetInteger( Solver % Values, &
+                    'Predictor Corrector Scheme Order', GotIt)
+      IF (.NOT. GotIt) THEN
+        PredCorrOrder = 2
+      END IF 
      SELECT CASE( Method )
      CASE( 'fs' ) 
        CALL FractionalStep( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
@@ -815,13 +820,13 @@ CONTAINS
 
      ! Time stepping method added by CG 20170116
      CASE('adams predictor')
-       theta = ListGetConstReal(Solver % Values, 'Adams Zeta',GotIt)
+       zeta = ListGetConstReal(Solver % Values, 'Adams Zeta',GotIt)
        CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
-           PrevSol(:,1), theta, Order)
+           PrevSol(:,1), zeta, PredCorrOrder)
 
      CASE('adams corrector')
         CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
-                PrevSol, Order)      
+                PrevSol, PredCorrOrder)      
        
      CASE DEFAULT
        CALL NewmarkBeta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &

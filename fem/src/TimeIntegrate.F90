@@ -129,15 +129,15 @@ CONTAINS
 !> the correspoding forcing terms.
 !------------------------------------------------------------------------------
    SUBROUTINE AdamsBashforth( N, dt, MassMatrix, StiffMatrix, &
-                   Force, PrevSolution, zeta, Order)
+                   Force, PrevSolution, zeta, PredCorrOrder)
 !------------------------------------------------------------------------------
      INTEGER :: N    ! Size of the unknowns
     REAL(KIND=dp) :: Force(:),PrevSolution(:),dt, zeta
      REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:)
      TYPE(Element_t), POINTER :: Element
      TYPE(elementdata_t), POINTER :: tempRes
-     LOGICAL  :: GotIt
-     INTEGER :: Order
+    LOGICAL  :: firstTime, GotIt
+    INTEGER :: PredCorrOrder
 
 !------------------------------------------------------------------------------
      INTEGER :: i,j,NB1,NB2
@@ -146,11 +146,16 @@ CONTAINS
 !------------------------------------------------------------------------------
      NB1 = SIZE( StiffMatrix,1 )
      NB2 = SIZE( StiffMatrix,2 ) 
+    firstTime = .FALSE.
 
      Element => CurrentModel % CurrentElement
      IF (.NOT. ASSOCIATED(Element % propertydata)) THEN
        ALLOCATE( Element % propertydata )
        ALLOCATE( Element % propertydata % values(NB1*2) )  
+
+       firstTime = .TRUE.
+     ELSE      
+       firstTime = .FALSE.
      END IF
 
 
@@ -164,7 +169,7 @@ CONTAINS
 
        curr_res = - s_curr
 
-       IF ( Order == 1 ) THEN
+       IF ( firstTime .OR. PredCorrOrder == 1 ) THEN
          residual = curr_res
          preForce = Force(i)
        ELSE
@@ -200,12 +205,12 @@ CONTAINS
 !> and just after AB2 method, otherwise the residual at n-1 step will be incorrect.
 !------------------------------------------------------------------------------
    SUBROUTINE AdamsMoulton( N, dt, MassMatrix, StiffMatrix, &
-       Force, PrevSolution, Order)
+       Force, PrevSolution, PredCorrOrder)
 !------------------------------------------------------------------------------
      INTEGER :: N
      REAL(KIND=dp) :: Force(:),PrevSolution(:,:),dt
      REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:)
-     INTEGER :: Order
+     INTEGER :: PredCorrOrder
 !------------------------------------------------------------------------------
      INTEGER :: i,j,NB1,NB2
      TYPE(Element_t), POINTER :: Element
@@ -236,7 +241,7 @@ CONTAINS
 
        residual = Element % propertydata % values(i)
        preForce = Element % propertydata % values(i+NB1)        
-       IF ( Order == 1 ) THEN
+       IF ( PredCorrOrder == 1 ) THEN
          Force(i) =  Force(i) + m_curr - s_curr  
        ELSE
          Force(i) =  0.5_dp * (Force(i) + preForce) + m_curr + 0.5_dp * (-s_curr + residual)
