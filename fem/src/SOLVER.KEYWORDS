@@ -1536,5 +1536,7 @@ simulation:logical:  'use contact names'
 simulation:logical:  'use mortar names'
 solver:logical:      'skip nodal fields'
 solver:logical:      'skip elemental fields'
-
-
+solver:logical:      'skip first timestep'
+solver:string:       'predictor method'
+solver:string:       'corrector method'
+solver:logical:      'predictor-corrector'

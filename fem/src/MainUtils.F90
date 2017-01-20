@@ -1834,6 +1834,13 @@ CONTAINS
       IF ( Solver % PROCEDURE==0 ) CYCLE
       IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_TIME .OR. &
           Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+
+        IF( PRESENT( RealTimeStep ) ) THEN
+          IF( RealTimeStep == 1 ) THEN
+            IF( ListGetLogical( Solver % Values,'Skip First Timestep',Found ) ) CYCLE
+          END IF
+        END IF
+          
         IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
           CALL Info('SolveEquations','Switching time-stepping method to predictor method',Level=7)
           TimeStepMethod = ListGetString( Solver % Values, 'Timestepping Method', Found )
@@ -1844,8 +1851,10 @@ CONTAINS
           END IF
           CALL ListAddLogical( Solver % Values,'Predictor Phase',.TRUE.)
         END IF
+
         CALL SolverActivate( Model,Solver,dt,TransientSimulation )
         CALL ParallelBarrier
+
         IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
           CALL ListAddString( Solver % Values, 'Timestepping Method', TimeStepMethod )
         END IF
@@ -1872,6 +1881,8 @@ CONTAINS
     CALL SolveCoupled()
     IF(RungeKutta) sTime = sTime + dt
 
+    ! Perform Runge-Kutta steps
+    !---------------------------------------------------------------
     DO i=1,nSolvers
       Solver => Model % Solvers(i)
       IF ( Solver % PROCEDURE==0 ) CYCLE
@@ -1978,9 +1989,17 @@ CONTAINS
       IF ( Solver % PROCEDURE==0 ) CYCLE
       IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_TIME .OR. &
           Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+
+        IF( PRESENT( RealTimeStep ) ) THEN
+          IF( RealTimeStep == 1 ) THEN
+            IF( ListGetLogical( Solver % Values,'Skip First Timestep',Found ) ) CYCLE
+          END IF
+        END IF
+          
         IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
           CALL ListAddLogical( Solver % Values,'Predictor Phase',.FALSE.)
         END IF
+
         CALL SolverActivate( Model,Solver,dt,TransientSimulation )
         CALL ParallelBarrier
       END IF
@@ -2038,6 +2057,15 @@ CONTAINS
             END IF
           END IF
 
+          IF( PRESENT( RealTimeStep ) ) THEN
+            IF( RealTimeStep == 1 ) THEN
+              IF( ListGetLogical( Solver % Values,'Skip First Timestep',Found ) ) THEN
+                DoneThis(k) = .TRUE.
+                CYCLE
+              END IF
+            END IF
+          END IF
+            
           IF ( Solver % SolverExecWhen /= SOLVER_EXEC_ALWAYS ) THEN
             DoneThis(k) = .TRUE.
             CYCLE
