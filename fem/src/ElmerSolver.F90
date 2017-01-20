@@ -1680,10 +1680,10 @@ END INTERFACE
                sStep(1) = ddt / 2
                sTime(1) = s + CumTime + ddt/2
                CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                  CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
+                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
                sTime(1) = s + CumTime + ddt
                CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                  CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
+                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
 
                MaxErr = ABS( MaxErr - ListGetConstReal( CurrentModel % Simulation, &
                            'Adaptive Error Measure', GotIt ) )
