@@ -4,24 +4,12 @@
 !-------------------------------
 #
 echo off
-
-!! conductivity
-$ function conductivity(T)  { _conductivity=9.828*exp(-5.7E-03*T)}
-!! capacity
-$ function capacity(T) { _capacity=146.3+(7.253*T)}
-
-!! pressuremeltingpoint
-$ function pressuremeltingpoint(PIN) {\
-  P = PIN;\
-  if (P<0.0) P=0.0;\
-  beta=9.8E-08*1.0E06;\
-  _pressuremeltingpoint=273.15-(beta*P);\
-}
-
 check keywords warn
 
 $namerun = "Calving3D"
 $restart = "Seasonal_Spinup_Last"
+
+$bed_func = "bedrockfunction_3D"
 
 $yearinsec = 365.25*24*60*60
 
@@ -29,35 +17,6 @@ $Rho = 9.03760022565934E-019   !  Ice - 900.0  kg/m3
 $RhoFW = 1.00417780285104E-018 !Fresh - 1000.0 kg/m3
 $RhoWS = 1.03430313693657E-018 !  Sea - 1030.0 kg/m3
 $g = 9.76960357522560E015 !9.81 * yearinsec^2
-
-!Forcing switches
-$sikmode = "binary" !"off"
-$basalmeltmode = "seasonal" !"off"
-$bgmeltmode = "seasonal" !"off"
-$plmeltmode = "seasonal" !"off"
-
-!Melt
-$BasalMeltSummer = 1516.66 * 0.1 !Alun: 2061.19 * 0.1
-$BasalMeltWinter = 853.48 * 0.1 !Alun: 1199.01 * 0.1
-$MeltSummerStart = 0.4164
-$MeltSummerStop = 0.6658
-
-!For Glens
-$GlenN = 3.0
-
-!sikussak stuff
-$Sik_mag = 0.12 !<-Toberg, Walter: 0.045
-$Sik = Sik_mag*-1.0*470.0
-$SikThick = 140 !<-Toberg, Walter: 75.0
-
-!31st Jan (Howat et al)
-$sikstart = 0.0849315
-!Annual day 149 (Howat et al)
-$sikstop = 0.408219
-
-!Calving  -  Dw is depth of water in crevasse (for hydrofracturing)
-$Dw = 5.0
-$FreeC = 2000.0
 
 $SL = 0.0
 
@@ -69,14 +28,13 @@ Header
 End
 
 Constants
-  Water Depth = Real $Dw
   Rho = Real $Rho
   RhoWS = Real $RhoWS
   RhoWF = Real $RhoFW
   g = Real $g
 
   !TODO
-  Buoyancy Use Basal Melt = Logical True
+  Buoyancy Use Basal Melt = Logical False
   Bottom Surface Name = String "Zs Bottom"
   Water Density = Real $RhoWS
 End
@@ -96,7 +54,7 @@ Simulation
   ! Restart Position = 0
   ! !Restart Time = 0.0
   ! Restart Before Initial Conditions = Logical True !because need beta
-  ! Initialize Dirichlet Conditions = Logical False !True
+  Initialize Dirichlet Conditions = Logical False !<- important, FrontExtent...
   ! Include "restart_var_list"
 
   Steady State Max Iterations = 1 !20
@@ -153,14 +111,6 @@ Body 5
   Initial Condition = 1
 End
 
-Body 6
-  name = "Inflow"
-  Equation = 6
-  Body Force = 4
-  Material = 1
-  Initial Condition = 4
-End
-
 
 Material 1
 
@@ -182,11 +132,6 @@ Material 1
   Activation Energy 2 = Real 139e3
   Glen Enhancement Factor = Real 1.0
 
-! the variable taken to evaluate the Arrhenius law
-! in general this should be the temperature relative
-! to pressure melting point. The suggestion below plugs
-! in the correct value obtained with TemperateIceSolver
-  Temperature Field Variable = String "Temp Homologous"
 ! the temperature to switch between the
 ! two regimes in the flow law
   Limit Temperature = Real -10.0
@@ -194,22 +139,6 @@ Material 1
   Constant Temperature = Real -10.0
   Critical Shear Rate = Real 1.0E-10
 
-  ! the heat capacity as a MATC function of temperature itself
-  !-----------------------------------------------------------
-  Temp Heat Capacity = Variable Temp
-  Real MATC "capacity(tx)*(31556926.0)^2"
-  ! the heat conductivity as a MATC function of temperature itself
-  !--------------------------------------------------------------
-  Temp Heat Conductivity = Variable Temp
-   Real MATC "conductivity(tx)*(31556926.0)*1.0E-06"
-  ! Upper limit - pressure melting point
-  !  as a MATC function of the pressure (what else?)
-  !-------------------------------------------------
-  Temp Upper Limit = Variable Pressure
-   Real MATC "pressuremeltingpoint(tx)"
-  ! lower limit (to be save) as 0 K
-  !--------------------------------
-  Temp Lower Limit = Real 0.0
   Sea level = Real $SL
 
   Cauchy = Logical True
@@ -219,11 +148,9 @@ Material 1
   Min Zs Top = Variable Coordinate 3, Elevation
       Real MATC "tx(0) - tx(1) + 10.0"
 
-  ! Min Zs Bottom = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_Grid2DInterpolator" "BedInterp"
+  Min Zs Bottom = Variable Coordinate 1, Coordinate 2
+    Real Procedure "./"$bed_func" ""initbedrock"
 
-  Min Zs Bottom = Real -500.0
-  Sea level = Real $SL
 End
 
 !!!!! SOLVERS
@@ -234,9 +161,6 @@ Solver 1
   Exec Solver = "Before Simulation" !If we restart from Output Coordinates = True, don't need this
   Active Coordinate = Integer 3
   Mesh Velocity First Zero = Logical True
-
-  Top Surface Level = Real 100.0
-  Bottom Surface Level = Real -500.0
 End
 
 Solver 2
@@ -298,7 +222,7 @@ Solver 4
   Linear System Preconditioning = "ILU2"
   Linear System Residual Output = 1
 
-  Nonlinear System Max Iterations = 50
+  Nonlinear System Max Iterations = 100
   Nonlinear System Convergence Tolerance = 1.0E-5
   Nonlinear System Newton After Iterations = 100
   Nonlinear System Newton After Tolerance = 0.5E-3
@@ -311,9 +235,7 @@ Solver 4
   Update Exported Variables = Logical True
   Nonlinear Update Exported Variables = Logical True
 
-! Define  some usefull Variables
   Exported Variable 1 = Flow Solution Loads[Fx:1 Fy:1 Fz:1 CEQ Residual:1]
-  Exported Variable 2 = "Temp Homologous"
 End
 
 Solver 5
@@ -323,46 +245,19 @@ Solver 5
   Flow Solver Name = String "Flow Solution"
   Maximum Flow Solution Divergence = Real 1.3
   Maximum Velocity Magnitude = Real 1.0E6
-  First Time Max Expected Velocity = Real 8.0E3
+  First Time Max Expected Velocity = Real 8.0E4
 
-  Switch Off Equation 1 = String "StrainSolver"
-  Switch Off Equation 2 = String "StressSolver"
-  Switch Off Equation 3 = String "3D Calving"
-  Switch Off Equation 4 = String "EigenSR"
-  Switch Off Equation 5 = String "Free Surface Top"
-  Switch Off Equation 6 = String "Free Surface Bottom"
-  Switch Off Equation 7 = String "Front Advance"
-  Switch Off Equation 8 = String "Longitudinal Mesh Update"
-  Switch Off Equation 9 = String "Vertical Mesh Update"
-  Switch Off Equation 10 = String "Homologous Temperature Equation"
-  Switch Off Equation 11 = String "DeformationalHeat"
-  Switch Off Equation 12 = String "Plume"
-  Switch Off Equation 13 = String "Basal Melt"
+  !list of solvers to skip this time if NS fails to converge
+  Switch Off Equation 1 = String "StressSolver"
+  Switch Off Equation 2 = String "3D Calving"
+  Switch Off Equation 3 = String "Free Surface Top"
+  Switch Off Equation 4 = String "Free Surface Bottom"
+  Switch Off Equation 5 = String "Front Advance"
+  Switch Off Equation 6 = String "Longitudinal Mesh Update"
+  Switch Off Equation 7 = String "Vertical Mesh Update"
 End
 
 Solver 6
-  Equation = String "StrainSolver"
-  Procedure =  File "ElmerIceSolvers" "ComputeStrainRate"
-  Variable = -nooutput "Eij"
-  Variable DOFs = 1
-  Solver Timing = Logical True
-  Exec Intervals = 10
-
-  Exported Variable 1 = "StrainRate"
-  Exported Variable 1 DOFs = 7
-
-  Flow Solver Name = String "Flow Solution"
-
-  Linear System Solver = "Iterative"
-  Linear System Iterative Method = "BiCGStab"
-  Linear System Max Iterations = 300
-  Linear System Convergence Tolerance = 1.0E-09
-  Linear System Abort Not Converged = False
-  Linear System Preconditioning = "ILU0"
-  Linear System Residual Output = 0
-End
-
-Solver 7
   Equation = String "StressSolver"
   Procedure =  File "ElmerIceSolvers" "ComputeDevStress"
   Solver Timing = Logical True
@@ -387,7 +282,7 @@ Solver 7
   Linear System Residual Output = 0
 End
 
-Solver 8
+Solver 7
    Equation = "Normal vector"
    Variable = "Normal Vector[normal:3]"
    Exec Solver = Before Timestep
@@ -401,17 +296,7 @@ Solver 8
    ComputeAll = Logical False
 End
 
-Solver 9
-!  Exec Solver = "Never"
-  Equation = "Save BC Params"
-  Procedure = "SaveData" "SaveBoundaryValues"
-  Parameter 1 = String "External Pressure"
-  Parameter 2 = String "Slip Coefficient 1"
-  Parameter 3 = String "Slip Coefficient 2"
-  Parameter 4 = String "Slip Coefficient 3"
-End
-
-Solver 27
+Solver 19
   Equation = "3D Calving"
   Exec Solver = "After Timestep"
   Procedure = "./bin/Calving3D" "Find_Calving3D"
@@ -432,7 +317,7 @@ Solver 27
   Calving Append Name = String "$namerun"" !"
   Calving Move Mesh Dir = String "./results/"
 
-  Front Orientation(3) = Real -0.9008556490535132 -0.43411876205523897 0.0
+  Front Orientation(3) = Real -1.0 0.0 0.0
   Project Calving Equation Name = String "CalvingProjection"
   Isosurface Equation Name = String "Calving Isosurface"
   Crevasse Penetration Threshold = Real 0.2 !this is the upper limit of average intact ice
@@ -447,30 +332,7 @@ Solver 27
   Linear System Abort Not Converged = False
 End
 
-Solver 11
-  Equation = "EigenSR"
-  Variable = -nooutput dumy
-  Variable DOFs = 1
-  Solver Timing = Logical True
-
-  Procedure = "ElmerIceSolvers" "ComputeEigenValues"
-
-! 3 Eigenvalues
-  Exported Variable 1 = "EigenStress"
-  EigenValue Variable Name = String "EigenStress"
-  Tensor Variable Name = String "Stress"
-  Exported Variable 1 DOFS = 3
-
-! Principal vectors (optional)
-  Exported Variable 2 = EigenVector1
-  Exported Variable 2 DOFS = 3
-  Exported Variable 3 = EigenVector2
-  Exported Variable 3 DOFS =  3
-  Exported Variable 4 = EigenVector3
-  Exported Variable 4 DOFS = 3
-End
-
-Solver 12
+Solver 8
   Equation = Distance
   Exec Solver = "Before Timestep"
   Procedure = "DistanceSolve" "DistanceSolver1"
@@ -484,10 +346,10 @@ Solver 12
   Steady State Convergence Tolerance = 1.0e-4
 End
 
-Solver 14
+Solver 10
   Equation = "CalvingResultOutput"
   Procedure = File "ResultOutputSolve2" "ResultOutputSolver"
-  Exec Solver = "Never"
+  Exec Solver = "Never" !auxiliary solver called by Calving3D
 
   Output File Name  = "plane_$namerun"_" !"
   Vtu Format = logical true
@@ -498,10 +360,10 @@ Solver 14
 !  Scalar Field 1 = "ave_cindex"
 End
 
-Solver 15
+Solver 11
   Equation = "CalvingProjection"
   Procedure = File "./bin/ProjectCalving" "ProjectCalving"
-  Exec Solver = "Never"
+  Exec Solver = "Never" !auxiliary solver called by Calving3D
   Solver Timing = Logical True
 
   Basal Crevasse Model = Logical True
@@ -512,7 +374,7 @@ Solver 15
   Volume Permutation(3) = Integer 1 3 2
 End
 
-Solver 19
+Solver 14
   Equation = "Free Surface Top"
   Variable = "Zs Top"
   Exec Solver = "After Timestep"
@@ -555,7 +417,7 @@ Solver 19
   Calculate Loads = Logical True
 End
 
-Solver 21
+Solver 15
   Equation = "Free Surface Bottom"
   Variable = "Zs Bottom"
   Exec Solver = "After Timestep"
@@ -596,7 +458,7 @@ Solver 21
   Calculate Loads = Logical True
 End
 
-Solver 17
+Solver 12
   Equation = "Front Advance"
   Procedure =  File "./bin/FrontAdvance3D" "FrontAdvance3D"
   Exec Solver = "After Timestep"
@@ -604,7 +466,6 @@ Solver 17
 
   Normal Vector Variable Name = String "Front Normal Vector"
   Flow Solution Variable Name = String "Flow Solution"
-  Melt Variable Name = String "MeltRate"
 
   !regions exceeding this gradient will be modified/checked
   Front Gradient Threshold = Real 5.0
@@ -612,12 +473,12 @@ Solver 17
   Column Max Longitudinal Range = Real 350.0
   Maximum Node Displacement = Real 1.0E4
 
-  Front Orientation(3) = Real -0.9008556490535132 -0.43411876205523897 0.0
+  Front Orientation(3) = Real -1.0 0.0 0.0
 
   Exported Variable 1 = "Tangled"
 End
 
-Solver 18
+Solver 13
   Equation = "Longitudinal Mesh Update"
   ! usually, the solver is executed only after the thermo-mechanical
   ! problem has obtained a solution on the time-level
@@ -638,7 +499,7 @@ Solver 18
 End
 
 
-Solver 22
+Solver 16
   Equation = "Vertical Mesh Update"
   ! usually, the solver is executed only after the thermo-mechanical
   ! problem has obtained a solution on the time-level
@@ -658,7 +519,7 @@ Solver 22
   Nonlinear System Convergence Tolerance = 1.0e-06
 End
 
-Solver 24
+Solver 18
   Exec Solver = Before All
   Equation = "GroundedMask Initialization"
   Variable = "GroundedMask"
@@ -674,7 +535,7 @@ Solver 24
   ! Bedrock Material = String "Min Zb"
 End
 
-Solver 23
+Solver 17
   Exec Solver = "After Timestep"
   Equation = "GroundedMask"
   Variable = "GroundedMask"
@@ -691,7 +552,7 @@ Solver 23
 End
 
 !This turns the BC 'External Pressure' into hydrostatic loads
-Solver 13
+Solver 9
   Equation = Fw
   Procedure = "ElmerIceSolvers" "GetHydrostaticLoads"
   Exec Solver = "Before Timestep"
@@ -699,92 +560,13 @@ Solver 13
   Variable DOFs = 3
 End
 
-Solver 20
-  Equation = "Initialize Rotated FreeSurface"
-  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver_RotInit"
-  Variable = "Reference Zs Front"
-  Exec Solver = "Never"
-!  No Matrix = Logical True
-
-  Free Surface Variable Name = String "Zs Front"
-  Zs Front Orientation(3) = Real -0.9008556490535132 -0.43411876205523897 0.0
-End
-
-Solver 26
-  Exec Solver = String "Never"
-  Equation = String "Homologous Temperature Equation"
-  Procedure =  File "ElmerIceSolvers" "TemperateIceSolver"
-  Loop While Unconstrained Nodes = Logical True
-  Solver Timing = Logical True
-
-  ! Comment next line in parallel, as EliminateDirichlet does
-  ! not work in parallel
-  !------------------------------------------------------------
-!  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
-  Variable = String "Temp"
-  Variable DOFs = 1
-  Linear System Solver = "Iterative"
-  Linear System Iterative Method = "BiCGStab"
-!  BiCGStabl Polynomial Degree = 4
-  Linear System Max Iterations = 500
-  Linear System Convergence Tolerance = 1.0E-07
-  Linear System Abort Not Converged = False
-  Linear System Preconditioning = ILU2
-  Linear System Residual Output = 1
-  Steady State Convergence Tolerance = 1.0E-04
-  Nonlinear System Convergence Tolerance = 1.0E-05
-  Nonlinear System Max Iterations = 50
-  Nonlinear System Relaxation Factor = Real 9.999E-01
-  ! uses the contact algorithm (aka Dirichlet algorithm)
-  !-----------------------------------------------------
-  Apply Dirichlet = Logical True
-  Stabilize = True
-  VectH = Logical True
-
-  Flow Solver Name = String "Flow Solution"
-  Flow Loads Name = String "Flow Solution Loads"
-  ! those two variables are needed in order to store
-  ! the relative or homologous temperature as well
-  ! as the residual
-  !-------------------------------------------------
-  Exported Variable 1 = String "Temp Homologous"
-  Exported Variable 1 DOFs = 1
-  Exported Variable 2 = String "Temp Residual"
-  Exported Variable 2 DOFs = 1
-End
-
-Solver 25
-  Equation = DeformationalHeat
-  Exec Solver = "Never"
-  Variable = W
-  Variable DOFs = 1
-  Solver Timing = Logical True
-
-  procedure =  "ElmerIceSolvers" "DeformationalHeatSolver"
-
-  Linear System Solver = Iterative
-
-  Flow Solver Name = String "Flow Solution"
-End
-
-Solver 37
-  Exec Solver = String "After Timestep"
-  Equation = "Save Mesh"
-  Procedure = "SaveMesh" "SaveMesh"
-  Variable = "-global -nooutput SaveMeshDummy"
-  Save Mesh = Logical True
-  Mesh Name = "$namerun"_out" !"
-  Save Mesh Directory = String "./results/"
-  Save All Timesteps = Logical True
-End
-
-Solver 32
+Solver 24
   Exec Solver = after timestep
   Procedure = File "SaveData" "SaveMaterials"
   Parameter 1 = String Min Zs Bottom
 End
 
-Solver 29
+Solver 21
    Equation = "Remesh"
    Procedure = "./bin/Remesh" "Remesher"
    Exec Solver = "After Timestep"
@@ -794,7 +576,7 @@ Solver 29
    Non-Vertical Face Name = String "Calving Front"
    Mesh Update Helper Variable = String "Remesh Update"
    Map Coordinate Equation Name = String "Remesh Map Coordinate"
-   Front Orientation(3) = Real -0.9008556490535132 -0.43411876205523897 0.0
+   Front Orientation(3) = Real -1.0 0.0 0.0
    Remesh Vertical Stretch = Real 10000.0
    Vertical Front Computation = String "midrange"
    Metis Algorithm = Integer 1
@@ -827,24 +609,21 @@ Solver 29
    Remesh Move Mesh Dir = String "./results/"
 
    !We need to mess with these solvers if there's a calving event
+   !because we pause time
    Mesh Update Variable 1 = String "Vertical Mesh Update"
    Mesh Update Variable 2 = String "Longitudinal Mesh Update"
-
    FreeSurface Variable 1 = String "Zs Top"
    FreeSurface Variable 2 = String "Zs Bottom"
-   ! FreeSurface Variable 3 = String "Zs Front"
-   ! FreeSurface Variable 3 Rotated = Logical True
+   !Any time dependent solvers:
+   Switch Off Equation 1 = String "Front Advance"
 
-   Switch Off Equation 1 = String "Homologous Temperature Equation"
-   Switch Off Equation 2 = String "Plume"
-   Switch Off Equation 3 = String "Basal Melt"
-   Switch Off Equation 4 = String "Front Advance"
+   !Exported Variable 1 = "FrontExtent"
 End
 
-Solver 30
+Solver 22
   Equation = "Remesh Mesh Update"
   Procedure = File "MeshSolve2" "MeshSolver"
-  Exec Solver = "Never" !we don't want it called automatically
+  Exec Solver = "Never" !auxiliary solver called by Remesh
   Solver Timing = Logical True
 
   Variable = Remesh Update
@@ -865,53 +644,18 @@ Solver 30
   Ignore Displacement = Logical True
 End
 
-Solver 31
+Solver 23
   Equation = "Remesh Map Coordinate"
   Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
-  Exec Solver = "Never"
+  Exec Solver = "Never" !auxiliary solver called by Remesh
   Auxiliary Solver = Logical True
   Active Coordinate = Integer 3
   Mesh Velocity First Zero = Logical True
   Always Detect Structure = Logical True
 End
 
-Solver 38
-  Equation = "ResultOutput"
-  Procedure = File "ResultOutputSolve3" "ResultOutputSolver"
-  Exec Solver = "After Timestep"
-
-  Output File Name  = "$namerun"_" !"
-  Vtu Format = logical true
-  Binary Output = True
-  Single Precision = True
-  Save Geometry IDs = True
-
-  Vector Field 1 = "Velocity"
-  Vector Field 2 = "Normal Vector"
-  Vector Field 3 = "Stress"
-  Vector Field 4 = "StrainRate"
-  Vector Field 5 = "Flow Solution Loads"
-
-  Scalar Field 1 = "beta"
-  Scalar Field 2 = "Distance"
-  Scalar Field 3 = "Pressure"
-  Scalar Field 4 = "GroundedMask"
-  Scalar Field 5 = "Fw"
-  Scalar Field 6 = "Temp"
-  Scalar Field 7 = "Temp Homologous"
-  Scalar Field 8 = "Slip Coefficient 1"
-  Scalar Field 9 = "Slip Coefficient 2"
-  Scalar Field 10 = "Slip Coefficient 3"
-  Scalar Field 11 = "Zs Bottom"
-  Scalar Field 12 = "Reference Zs Bottom"
-  Scalar Field 13 = "Zs Front"
-  Scalar Field 14 = "Reference Zs Front"
-  Scalar Field 15 = "External Pressure"
-
-End
-
-Solver 33
-  Exec Solver = "Never"
+Solver 25
+  Exec Solver = "Never" !auxiliary solver called by Calving3D
   Equation = "Calving Isosurface"
   Procedure = File "Isosurface" "IsosurfaceSolver"
 
@@ -919,7 +663,7 @@ Solver 33
   Isosurface Value = Real 0.0
 End
 
-Solver 28
+Solver 20
   Equation = "ResultOutputPreCalve"
   Procedure = File "ResultOutputSolve1" "ResultOutputSolver"
   Exec Solver = "After Timestep"
@@ -930,215 +674,9 @@ Solver 28
   Binary Output = True
   Single Precision = True
   Save Geometry IDs = True
-
-  Vector Field 1 = "Velocity"
-  Vector Field 2 = "Normal Vector"
-  Vector Field 3 = "Stress"
-  Vector Field 4 = "EigenStress"
-  Vector Field 5 = "StrainRate"
-  Vector Field 6 = "Flow Solution Loads"
-  Vector Field 7 = "Mesh Velocity"
-  Vector Field 8 = "Longitudinal Mesh Update"
-  Vector Field 9 = "Calving"
-  Vector Field 10 = "Front Normal Vector"
-  Vector Field 11 = "FrontAdvance"
-
-  Scalar Field 1 = "beta"
-  Scalar Field 2 = "Distance"
-  Scalar Field 3 = "Pressure"
-  Scalar Field 4 = "GroundedMask"
-  Scalar Field 5 = "Fw"
-  Scalar Field 6 = "Temp"
-  Scalar Field 7 = "Temp Homologous"
-  Scalar Field 8 = "Slip Coefficient 1"
-  Scalar Field 9 = "Slip Coefficient 2"
-  Scalar Field 10 = "Slip Coefficient 3"
-  Scalar Field 11 = "Reference Zs Bottom"
-  Scalar Field 12 = "Zs Bottom"
-  Scalar Field 13 = "smb"
-  Scalar Field 14 = "Reference Zs Front"
-  Scalar Field 15 = "Zs Front"
-  Scalar Field 16 = "Vertical Mesh Update 3"
-  Scalar Field 17 = "MeltRate"
-  Scalar Field 18 = "Depth"
-  Scalar Field 19 = "Elevation"
-  Scalar Field 20 = "External Pressure"
-  Scalar Field 21 = String "BasalMeltRate"
-  Scalar Field 22 = String "Tangled"
-  Scalar Field 23 = String "Toe Calving"
 End
 
-Solver 34
-  Equation = Reader
-  Exec Solver = String "Before Timestep"
-  Procedure = "GridDataReader" "GridDataReader"
-  Solver Timing = Logical True
-
-  !---- NOTE: File is case sensitive, String is not!
-  Filename = File "./annual_velocity.nc"
-
-  X Dim Name = String "x"
-  Y Dim Name = String "y"
-
-  X Var Name = String "x"
-  Y Var Name = String "y"
-
-  !--- Interpolation variables
-  X Epsilon = Real 1.0e-2
-  Y Epsilon = Real 1.0e-2
-
-  Interpolation Bias = Real 0.0
-  Interpolation Multiplier = Real 1.0
-
-  Variable 1 = vx
-  Variable 2 = vy
-  Variable 3 = vmag
-
-  Enable Scaling = Logical False ! Scales the Elmer grid to match the NetCDF grid
-
-End
-
-Solver 35
-  Equation = Reader2
-  Exec Solver = String "Before Timestep"
-  Procedure = "GridDataReader2" "GridDataReader"
-  Solver Timing = Logical True
-
-  !---- NOTE: File is case sensitive, String is not!
-  Filename = File "./body_temp.nc"
-
-  X Dim Name = String "x"
-  Y Dim Name = String "y"
-  Z Dim Name = String "z"
-
-  X Var Name = String "x"
-  Y Var Name = String "y"
-  Z Var Name = String "z"
-
-  !--- Interpolation variables
-  X Epsilon = Real 1.0e-2
-  Y Epsilon = Real 1.0e-2
-  Z Epsilon = Real 1.0e-2
-
-  Interpolation Bias = Real 0.0
-  Interpolation Multiplier = Real 1.0
-  Out Of Bounds Retain Previous Value = Logical True
-
-  Variable 1 = "temperature"
-  Target Variable 1 = "Temp"
-  Enable Scaling = Logical False ! Scales the Elmer grid to match the NetCDF grid
-End
-
-Solver 36
-  Equation = Reader3
-  Exec Solver = String "Before Timestep"
-  Procedure = "GridDataReader3" "GridDataReader"
-  Solver Timing = Logical True
-
-  !---- NOTE: File is case sensitive, String is not!
-  Filename = File "./seasonal_beta.nc"
-
-  X Dim Name = String "x"
-  Y Dim Name = String "y"
-  Time Dim Name = String "time"
-
-  X Var Name = String "x"
-  Y Var Name = String "y"
-  Time Var Name = String "time"
-
-  !--- Interpolation variables
-  X Epsilon = Real 1.0e-2
-  Y Epsilon = Real 1.0e-2
-  Time Epsilon = Real 1.0e-10
-
-  Interpolation Bias = Real 0.0
-  Interpolation Multiplier = Real 1.0
-
-  Time Point = Variable Time
-    Real MATC "((tx - floor(tx)) * 20.0) + 1.0"
-!  Is Time Counter = Logical True
-  Is Time Index = Logical True
-
-  Variable 1 = "beta"
-
-  Enable Scaling = Logical False ! Scales the Elmer grid to match the NetCDF grid
-End
-
-!REMOVE
-Solver 10
-  Equation = "Plume"
-  Procedure = File "./bin/Plume" "Plume"
-  Exec Solver = "After Timestep"
-
-  Variable = "MeltRate"
-  Front Orientation(3) = Real -0.9008556490535132 -0.43411876205523897 0.0
-
-  Melt Stats File = String "$namerun"_meltstats.txt" !"
-
-  Force Toe Calving = Logical True
-  Exported Variable 1 = "Toe Calving"
-
-  Background Melt Mode = String $bgmeltmode
-  Background Melt From File = Logical True
-  !NB: can be seasonally constant, just point to the same file twice...
-  !NB2: should be melt rate in time units (in this case, years)
-  !NB3: if changing these files, change basal melt too!
-  Background Melt Summer Input File = File "bmelt_summer_profile.dat"
-  Background Melt Winter Input File = File "bmelt_winter_profile.dat"
-  Background Melt Summer Start = Real $MeltSummerStart
-  Background Melt Summer Stop = Real $MeltSummerStop
-
-  ! Background Melt Max = Real $BGMelt
-  ! Background Melt Max Melt Elevation = Real $BGMME
-  ! Background Melt DmDz = Real $BGDmDz
-
-  Plume Melt Mode = String $plmeltmode
-  Plume Count = Integer 2
-  Plumes From File = Logical True
-
-  Plume 1 X = Real -209926.0
-  Plume 1 Y = Real -2134749.0
-  Plume 1 Input File = File "conical_plume_profile.dat"
-  Plume 1 Start Times(1) = Real $MeltSummerStart
-  Plume 1 Stop Times(1) = Real $MeltSummerStop
-  ! Plume 1 DwDz = Real 0.249
-  ! Plume 1 Initial Width = Real 10.0
-  ! Plume 1 DmDz = Real $P1_dmdz
-  ! Plume 1 Max Melt Rate = Real $P1_MMR
-  ! Plume 1 Max Melt Elevation = Real 75.0
-
-  Plume 2 X = Real -208633.0
-  Plume 2 Y = Real -2136276.0
-  Plume 2 Input File = File "conical_plume_profile.dat"
-  Plume 2 Start Times(1) = Real $MeltSummerStart
-  Plume 2 Stop Times(1) = Real $MeltSummerStop
-  ! Plume 2 DwDz = Real 0.249
-  ! Plume 2 Initial Width = Real 10.0
-  ! Plume 2 DmDz = Real $P2_dmdz
-  ! Plume 2 Max Melt Rate = Real $P2_MMR
-  ! Plume 2 Max Melt Elevation = Real 75.0
-End
-
-!Remove
-Solver 16
-  Equation = "Basal Melt"
-  Procedure = File "./bin/BasalMelt3D" "BasalMelt3D"
-  Exec Solver = "After Timestep"
-
-  Variable = "BasalMeltRate"
-  Basal Melt Stats File = String "$namerun"_basalmeltstats.txt" !"
-  GroundedMask Variable = String "GroundedMask"
-  !NOTE: These are set as the max value in the planar melt rate files
-  !If these files were updated, these values should be too.
-  Basal Melt Mode = String $basalmeltmode
-  Basal Melt Summer Rate = Real $BasalMeltSummer
-  Basal Melt Winter Rate = Real $BasalMeltWinter
-  Basal Melt Summer Start = Real $MeltSummerStart
-  Basal Melt Summer Stop = Real $MeltSummerStop
-End
-
-!Remove??
-Solver 39
+Solver 26
   Equation = "Front Normal"
   Procedure =  File "./bin/FrontComputeNormal" "FrontComputeNormalSolver"
   Exec Solver = "Before Timestep"
@@ -1149,72 +687,53 @@ End
 !!!!! EQUATION
 
 Equation 1 !Main body
-   Active Solvers (24) = 1 2 3 4 5 6 7 8 9 11 12 28 14 18 25 26 29 22 37 30 31 38 32 35
+   Active Solvers (16) = 1 2 3 4 5 6 7 8 20 10 13 21 16 22 23 24
    Convection = Computed
    Flow Solution Name = String "Flow Solution"
 End
 
 Equation 2 !Bed
-   Active Solvers(6) = 13 16 21 23 24 36
+   Active Solvers(4) = 9 15 17 18
    Convection = Computed
    Flow Solution Name = String "Flow Solution"
 End
 
 Equation 3 !Upper Surface
-   Active Solvers(1) = 19
+   Active Solvers(1) = 14
    Element = "p:%-"
    Convection = Computed
    Flow Solution Name = String "Flow Solution"
 End
 
 Equation 4 !Calving front
-   Active Solvers(5) = 10 17 20 27 39
+   Active Solvers(3) = 12 19 26
    Convection = Computed
    Flow Solution Name = String "Flow Solution"
 End
 
 Equation 5 !cmesh - the planar mesh used by 3D calving solver
-   Active Solvers(2) = 15 33
+   Active Solvers(2) = 11 25
    Convection = Computed
-End
-
-Equation 6
-  Active Solvers = 34
 End
 !!!!! BOUNDARY CONDITIONS
 
 Boundary Condition 1
   name = "Calving Front"
   Calving Front Mask = Logical True
-  Target Boundaries = 1
+  Target Boundaries = 4
   Body ID = 4
 
   Distance = Real 0.0
   Flow Force BC = Logical True
 
-  !Gives the total of sea pressure + sikussak when applicable
   External Pressure = Variable Coordinate 1 !dummy
     Real Procedure "ElmerIceUSF" "SeaPressure"
-
-  Sikussak Mode = String $sikmode !Constant, Seasonal, Binary, Off
-  Sikussak Backstress = Real $Sik
-  Sikussak Thickness = Real $SikThick
-
-  Sikussak Form Season = Real $sikstart
-  Sikussak Clear Season = Real $sikstop
-
-  !These mesh update values are zeroed internally by Remesh
-  !So their value is *not* cumulative
-  ! Longitudinal Mesh Update 1 = Variable Zs Front, Reference Zs Front
-  !    Real Procedure "FreeSurfaceSolver" "FreeSurfaceToMeshUpdate1"
-  ! Longitudinal Mesh Update 2 = Variable Zs Front, Reference Zs Front
-  !    Real Procedure "FreeSurfaceSolver" "FreeSurfaceToMeshUpdate2"
 
   Longitudinal Mesh Update 1 = Equals FrontAdvance 1
   Longitudinal Mesh Update 2 = Equals FrontAdvance 2
   Longitudinal Mesh Update 3 = Equals FrontAdvance 3
 
-  !Not physically important, internal to Remeshing
+  !Not physically important, internal to Remeshing (required Init Dirich = F)
   Remesh Update 3 = Variable Coordinate 3, FrontExtent
     Real MATC "tx(1) - tx(0)"
 End
@@ -1222,18 +741,15 @@ End
 Boundary Condition 2
   name = "Inflow"
   Inflow Mask = Logical True
-  Target Boundaries = 3
-
-  Body ID = 6
+  Target Boundaries = 2
 
   Flow Force BC = Logical True
 
-  Velocity 1 = Equals vx
-  Velocity 2 = Equals vy
+  Normal-Tangential Velocity = Logical True
+  Normal-Tangential Flow Solution = Logical True
 
-  ! Temp = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_Grid2DInterpolator" "TempInterp"
-  ! Include "temp.xyz.header"
+  Velocity 1 = Real -1000.0
+  Velocity 2 = Real 0.0
 
   Longitudinal Mesh Update 1 = Real 0.0
   Longitudinal Mesh Update 2 = Real 0.0
@@ -1249,7 +765,7 @@ Boundary Condition 3
 
   name = "Sidewalls"
   Right Sidewall Mask = Logical True
-  Target Boundaries = 2
+  Target Boundaries = 1
   Flow Force BC = Logical True
 
   Normal-Tangential Velocity = Logical True
@@ -1269,15 +785,8 @@ Boundary Condition 3
   Velocity 3 Condition = Variable Elevation
     Real MATC "-(tx-1.0)"
 
-  Slip Coefficient 2 = Variable Coordinate 1
-      Real MATC "if(tx>-197086){1.0e-3}else{1.0e-2}"
-
-  Slip Coefficient 3 = Variable Coordinate 1
-      Real MATC "if(tx>-197086){1.0e-3}else{1.0e-2}"
-
-  ! Temp = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_Grid2DInterpolator" "TempInterp"
-  ! Include "temp.xyz.header"
+  Slip Coefficient 2 = Real 1.0e-3
+  Slip Coefficient 3 = Real 1.0e-3
 
   Longitudinal Mesh Update 1 = Real 0.0
   Longitudinal Mesh Update 2 = Real 0.0
@@ -1293,7 +802,7 @@ Boundary Condition 4
 
   name = "Sidewalls"
   Left Sidewall Mask = Logical True
-  Target Boundaries = 4
+  Target Boundaries = 3
   Flow Force BC = Logical True
 
   Normal-Tangential Velocity = Logical True
@@ -1313,15 +822,8 @@ Boundary Condition 4
   Velocity 3 Condition = Variable Elevation
     Real MATC "-(tx-1.0)"
 
-  Slip Coefficient 2 = Variable Coordinate 1
-      Real MATC "if(tx>-180986){1.0e-3}else{1.0e-2}"
-
-  Slip Coefficient 3 = Variable Coordinate 1
-      Real MATC "if(tx>-180986){1.0e-3}else{1.0e-2}"
-
-  ! Temp = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_Grid2DInterpolator" "TempInterp"
-  ! Include "temp.xyz.header"
+  Slip Coefficient 2 = Real 1.0e-3
+  Slip Coefficient 3 = Real 1.0e-3
 
   Longitudinal Mesh Update 1 = Real 0.0
   Longitudinal Mesh Update 2 = Real 0.0
@@ -1338,15 +840,17 @@ Boundary Condition 5
   Target Boundaries = 5
   Bottom Surface Mask = Logical True
 
+  !TODO ???
+  Bottom Surface = Variable Coordinate 1, Coordinate 2
+    Real Procedure "./"$bed_func" ""initbedrock"
+
   !This has been changed for calving remesh
   !it'd be a problem if we were still using
   !structuredmeshmapper, but we restart with
   !coords from spinup (adjoint)
-  Bottom Surface = Equals RemeshBottomSurf
-  ! Bottom Surface = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_Grid2DInterpolator" "BedInterp"
-
+  ! Bottom Surface = Equals RemeshBottomSurf
   ! Include "bed.xyz.header"
+
   Body ID = 2
 
   Flow Force BC = Logical True
@@ -1368,10 +872,16 @@ Boundary Condition 5
     Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
   Slip Coefficient 3 = Variable Coordinate 1
     Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
-
   Test Contact Tolerance = Real 1.0E-2
-  Sliding Law = String "prescribed power"
-  Friction Variable Name = String "beta"
+
+  Sliding Law = String "Weertman"  ! Alternative is "Coulomb"
+  Weertman Friction Coefficient = Real 1.0e-1
+  Weertman Exponent = Real $(1.0/3.0)
+  Weertman Linear Velocity = Real 1.0
+
+  ! Sliding Law = String "prescribed power"
+  ! Friction Variable Name = String "beta"
+
   ComputeNormal Condition = Variable GroundedMask
     Real MATC "tx + 0.5"
   External Pressure = Variable Coordinate 3 !dummy
@@ -1380,13 +890,6 @@ Boundary Condition 5
     Real Procedure "ElmerIceUSF" "SeaSpring"
   Compute Sea Pressure = Logical True
   Compute Sea Spring = Logical True
-
-  ! Temp Load = Variable Velocity 1
-  !     Real Procedure  "ElmerIceUSF" "getFrictionLoads"
-
-  ! Temp Flux BC = Logical True !(needed when geothermal flux is used)
-  ! Temp Heat Flux = Variable Coordinate 1
-  !	Real MATC "0.075*(31556926.0)*1.0E-06" !75mW/m2 !TODO was 40 previously
 
 !   Mesh Update 1 = Real 0.0
 !   Mesh Update 2 = Real 0.0
@@ -1397,10 +900,8 @@ Boundary Condition 5
 
   Longitudinal Mesh Update 3 = Real 0.0
 
-  ! Zs Bottom = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_Grid2DInterpolator" "BedInterp"
-
-  Zs Bottom = Real -500.0
+  Zs Bottom = Variable Coordinate 1, Coordinate 2
+    Real Procedure "./"$bed_func" ""initbedrock"
 
   Zs Bottom Condition = Variable GroundedMask
     Real MATC "tx + 0.5"
@@ -1413,31 +914,17 @@ Boundary Condition 6
   Top Surface Mask = Logical True
   Target Boundaries = 6
 
-  !This has been changed for calving remesh
-  !it'd be a problem if we were still using
-  !structuredmeshmapper, but we restart with
-  !coords from spinup (adjoint)
-  Top Surface = Equals RemeshTopSurf
-  ! Top Surface = Equals Zs Top
+  Top Surface = Variable Coordinate 1, Coordinate 2
+    Real Procedure "./"$bed_func" ""initsurface"
 
   Body ID = 3
 
-  Normal-Tangential V = Logical True
   Normal-Tangential Velocity = Logical True
   Normal-Tangential Flow Solution = Logical True
 
   Depth = Real 0.0
   Flow Force BC = Logical True
 
-  ! Temp = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_Grid2DInterpolator" "TempInterp"
-  ! Include "temp.xyz.header"
-  ! Include "smb.xyz.header"
-
-!   Mesh Update 1 = Real 0.0
-!   Mesh Update 2 = Real 0.0
-  ! Vertical Mesh Update 3 = Variable Zs Top
-  !   Real Procedure "ElmerIceUSF" "ZsTopMzsIni"
   Vertical Mesh Update 3 = Variable Zs Top, Reference Zs Top
     Real MATC "tx(0) - tx(1)"
 
@@ -1450,10 +937,6 @@ Body Force 1
   Flow BodyForce 2 = Real 0.0
   Flow BodyForce 3 = Real $-g
 
-  ! ! Temp Volume Source = Equals W ! The volumetric heat source
-  ! Temp Homologous = Variable Temp
-  !   Real Procedure "./bin/USF_BCs" "TempHom"
-
   Vertical Mesh Update 2 = Real 0.0
   Vertical Mesh Update 1 = Real 0.0
 
@@ -1462,55 +945,37 @@ Body Force 1
 End
 
 Body Force 2
-  !! melting/accretion under ice/shelf
-  !! positive for melting
-  !! negative for accretion
-
-  Zs Bottom Accumulation = Variable BasalMeltRate
-    Real MATC "tx"
 End
 
 Body Force 3
-  ! smb = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_Grid2DInterpolator" "SmbInterp"
-  ! Zs Top Accumulation Flux 3 = Variable smb
-  !   Real MATC "tx(0) * (RhoFW/Rho)"
 End
 
 Body Force 4
 End
 
 Initial Condition 1
-!   Depth = Real 0.0
-!   Height = Real 0.0
+  Depth = Real 0.0
+  Height = Real 0.0
 
-!   Pressure = Real 0.0
-!   Velocity 1 = Real 0.0
-!   Velocity 2 = Real 0.0
-!   Velocity 3 = Real 0.0
-
-!   ! Flow Solution 1 = Real 0.0
-!   ! Flow Solution 2 = Real 0.0
-!   ! Flow Solution 3 = Real 0.0
+  Pressure = Real 0.0
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Velocity 3 = Real 0.0
 End
 
 Initial Condition 2
- ! Zs Bottom = Variable Coordinate 1
- !    Real Procedure "./bin/USF_Grid2DInterpolator" "BedInterp"
-
- ! Reference Zs Bottom = Variable Coordinate 1
- !    Real Procedure "./bin/USF_Grid2DInterpolator" "BedInterp"
-
- Zs Bottom = Equals Coordinate 3
- Reference Zs Bottom = Equals Coordinate 3
+  Zs Bottom = Variable Coordinate 1, Coordinate 2
+    Real Procedure "./"$bed_func" ""initbedrock"
+  Reference Zs Bottom = Variable Coordinate 1, Coordinate 2
+    Real Procedure "./"$bed_func" ""initbedrock"
 End
 
 Initial Condition 3
-  Zs Top = Equals Coordinate 3
-  Reference Zs Top = Equals Coordinate 3
+  Zs Top = Variable Coordinate 1, Coordinate 2
+    Real Procedure "./"$bed_func" ""initsurface"
+  Reference Zs Top = Variable Coordinate 1, Coordinate 2
+    Real Procedure "./"$bed_func" ""initsurface"
 End
 
 Initial Condition 4
-   !The initial value of FreeSurface and 'Reference FreeSurface'
-   !are set by FreeSurfaceSolver_RefInit.
 End
