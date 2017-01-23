@@ -411,7 +411,7 @@ void SetElementDivision(struct GridType *grid,Real relh,int info)
    elements is the desired one. The added element
    is always set to the subcell having the sparsest mesh.
    Also numbers the cells taking into consideration only 
-   materials that have indeces in interval [firstmat,lastmat]. 
+   materials that have Indices in interval [firstmat,lastmat]. 
    */
 {
   int i,j,nx,ny,nxmax = 0,nymax = 0;

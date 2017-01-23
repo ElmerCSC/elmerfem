@@ -139,7 +139,7 @@ struct CellType {
     ylinear,
     material,   /* material flag */
     xind, yind; /* Indexes of the cell */
-  int boundary[8], /* material indeces of neighbouring cells */
+  int boundary[8], /* material Indices of neighbouring cells */
     neighbour[8];  /* number of neighbouring cells */
   Real xwidth,  /* size of the subcell */
     ywidth,

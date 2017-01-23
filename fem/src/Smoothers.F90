@@ -1096,7 +1096,7 @@ CONTAINS
               END IF
               IF( ABS( dlayer ) > 20 ) THEN
 	        PRINT *,'dlayer',dlayer
-                CALL Fatal('Direct1dSmoother','Offset in indeces too big!')
+                CALL Fatal('Direct1dSmoother','Offset in Indices too big!')
               END IF
               klayer( dlayer ) = kb
               kb = kb + 1
@@ -1119,7 +1119,7 @@ CONTAINS
 
             IF( ABS( dlayer ) > 20 ) THEN
 	      PRINT *,'dlayer:',dlayer
-              CALL Fatal('Direct1dSmoother','Offset in indeces too big2!')
+              CALL Fatal('Direct1dSmoother','Offset in Indices too big2!')
             END IF
             kc = klayer( dlayer )
             ValuesB(kc) = ValuesB(kc) + Values(k)

@@ -261,11 +261,11 @@ CONTAINS
     WRITE(10,'(I0)') NoConstraintModes
     CLOSE(10)
 
-    FileName = 'ReductionIndeces.dat'
-    CALL Info('CraigBamptonSolver','Saving Constraint Modes Indeces to: '//TRIM(FileName),Level=7)
+    FileName = 'ReductionIndices.dat'
+    CALL Info('CraigBamptonSolver','Saving Constraint Modes Indices to: '//TRIM(FileName),Level=7)
     OPEN (10, FILE=FileName )
     DO i=1,A % NumberOfRows
-      j = Evar % ConstraintModesIndeces(i)
+      j = Evar % ConstraintModesIndices(i)
       IF( j == 0 ) CYCLE
       WRITE(10,'(I0)') i 
     END DO

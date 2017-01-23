@@ -81,7 +81,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: NodeIndexes(:), FlowPerm(:)
   INTEGER :: i, j, k, m, n, t, istat, LocalNodes, Dofs, VelocityComponents, &
       VelocityDofs, CoordSys, pn, AcousticI, MaxNodesOnBoundary, np, nlen, nb
-  INTEGER, ALLOCATABLE :: Bndries(:), BemElementIndeces(:), AcousticInterfaceNodes(:), &
+  INTEGER, ALLOCATABLE :: Bndries(:), BemElementIndices(:), AcousticInterfaceNodes(:), &
       NodesOnBoundary(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Bubbles, MiniBubbles, GotIt, GotIt2, stat, &
@@ -120,7 +120,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       AcousticInterfaceResults(:,:), TotalForce(:,:), TotalMoment(:,:), TotalArea(:)
   INTEGER, ALLOCATABLE :: GapIndexes(:)
 
-  SAVE BemElementIndeces, AcousticInterfaceNodes, AcousticInterfaceResults, NodesOnBoundary
+  SAVE BemElementIndices, AcousticInterfaceNodes, AcousticInterfaceResults, NodesOnBoundary
   SAVE LocalStiffMatrix, temp, Load, HeatSource,  LocalForce, ElementNodes, ParentNodes, &
        SpecificHeat, HeatRatio, Density, Pressure, &
        Temperature, Conductivity, Viscosity, Lambda, BulkViscosity, &
@@ -489,7 +489,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   !---------------------------------------------------------------------------------
-  ! Create the array which contains the indeces of the nodes located on the boundary. 
+  ! Create the array which contains the Indices of the nodes located on the boundary. 
   ! This is for testing an explicit stabilisation technique 
   !---------------------------------------------------------------------------------
   IF (.FALSE.) THEN
@@ -1567,16 +1567,16 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     
     IF (FirstVisit) THEN
       !----------------------------------------------
-      ! Create an array for boundary element indeces 
+      ! Create an array for boundary element Indices 
       !----------------------------------------------
-      ALLOCATE( BemElementIndeces(Solver % Mesh % NumberOfBoundaryElements), &
+      ALLOCATE( BemElementIndices(Solver % Mesh % NumberOfBoundaryElements), &
           STAT=istat )
       IF ( istat /= 0 ) CALL Fatal( 'AcousticsSolver', 'Memory allocation error.' )
  
       OPEN( 10, FILE = 'mesh.boundary', status='OLD')
       DO t = 1, Solver % Mesh % NumberOfBoundaryElements    
         READ( 10, *) j
-        BemElementIndeces(t) = j
+        BemElementIndices(t) = j
       END DO
       CLOSE(10)
     END IF
@@ -1655,7 +1655,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
               AverVel = AverVel * CMPLX(0.0d0, -1.0d0 * AngularFrequency * Density(1), kind=dp )
               AverVel = CONJG(AverVel)
 
-              WRITE( 10, '(I9,6e23.15)',ADVANCE='NO') BemElementIndeces( CurrentElement % ElementIndex - &
+              WRITE( 10, '(I9,6e23.15)',ADVANCE='NO') BemElementIndices( CurrentElement % ElementIndex - &
                   Solver % Mesh % NumberOfBulkElements ), 0.0d+0, 0.0d+0, 1.0d+0, 0.0d+0, &
                   REAL(AverVel), AIMAG(AverVel)
               WRITE( 10,* ) ''             
@@ -1677,7 +1677,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
               Load(6,1:n) = ListGetReal( Model % BCs(i) % Values, &
                   'Im c', n, NodeIndexes, GotIt )             
               
-              WRITE( 10, '(I9,6e23.15)',ADVANCE='NO') BemElementIndeces( CurrentElement % ElementIndex - &
+              WRITE( 10, '(I9,6e23.15)',ADVANCE='NO') BemElementIndices( CurrentElement % ElementIndex - &
                   Solver % Mesh % NumberOfBulkElements ), Load(1,1), Load(2,1), Load(3,1), Load(4,1), & 
                   Load(5,1), Load(6,1)
               WRITE( 10,* ) ''   
