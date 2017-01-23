@@ -2113,6 +2113,8 @@ CONTAINS
       CoilType = ''
       CompParams => GetComponentParams( Element )
       StrandedHomogenization = .FALSE.
+      InPlaneProximity = .FALSE.
+      LaminateModelPowerCompute = .FALSE.
       IF (ASSOCIATED(CompParams)) THEN    
         CoilType = GetString(CompParams, 'Coil Type', Found)
         
@@ -2330,12 +2332,12 @@ CONTAINS
         END IF
         
         IF (LaminateModelPowerCompute) THEN
-          ! This assumes linear reluctivity
-          skindepth = sqrt(2._dp/(omega * CondAtIp * mu0))
+          ! This assumes linear reluctivity, and real conductivity
+          skindepth = sqrt(2._dp/(omega * REAL(CondAtIp) * mu0))
           Lambda = LaminateThickness/skindepth
           Fsk = 3/Lambda * (SINH(Lambda) - SIN(Lambda))/(COSH(Lambda)-COS(Lambda))
           ! This is in W/m**3
-          LaminatePowerDensity = 1_dp/24_dp * CondAtIp * &
+          LaminatePowerDensity = 1._dp/24._dp * REAL(CondAtIp) * &
                 (LaminateThickness * Omega * BMagnAtIP)**2._dp * Fsk
           TotalHeating = TotalHeating + Weight * ModelDepth * LaminatePowerDensity
         END IF
