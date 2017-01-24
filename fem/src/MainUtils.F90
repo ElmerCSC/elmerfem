@@ -4304,7 +4304,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       TYPE(Solver_t), POINTER :: Solver
       TYPE(ValueList_t), POINTER :: SolverParams
-      INTEGER :: PredCorrOrder, i, predcorrIndex = 0
+      INTEGER :: PredCorrOrder, i, predcorrIndex = 0, counter
       REAL(KIND=dp) :: epsilon, beta1, beta2
       LOGICAL :: Found
 
@@ -4333,11 +4333,25 @@ CONTAINS
           dt = 0.0_dp
           zeta = 1.0_dp
         ELSE IF (RealTimestep == 2) THEN
-        ! Use the initial time step  
+        ! Use the initial time step, force to use first order time schemes 
           dt = dtOld
           zeta = 1.0_dp
+          CALL ListAddInteger( SolverParams,  &
+                        'Predictor Corrector Counter', 1 )
+
         ELSE IF (RealTimestep > 2) THEN
         ! Use local error estimate and PI control 
+
+          ! Set counter += 1
+          counter = ListGetInteger( SolverParams,  &
+                        'Predictor Corrector Counter', Found )
+          IF ( .NOT. Found ) THEN
+            counter = 2
+          ELSE
+            counter = counter + 1
+          END IF
+          CALL ListAddInteger( SolverParams,  &
+                        'Predictor Corrector Counter', counter )
 
           ! Read in the settings
           CALL ReadPredCorrParams( Model, SolverParams, PredCorrOrder, epsilon, beta1, beta2 )
@@ -4348,12 +4362,10 @@ CONTAINS
 
           dtOld = dt
 
-          ! 1st order error estimate and control for the first control step
+          ! 1st order error estimate for the first control step
           IF (RealTimestep == 3 ) THEN 
             PredCorrOrder = 1
           END IF
-
-          ! Default estimate and control  
 
           ! Estimate local truncation error use old zeta
           CALL PredCorrErrorEstimate( eta, dt, PredCorrOrder, timeError, zeta )
@@ -4365,7 +4377,7 @@ CONTAINS
           ! Compute new zeta and for predictor time scheme
           zeta = dt / dtOld
           CALL ListAddConstReal(Solver % Values, 'Adams Zeta', zeta)
-
+          ! Save old eta
           etaOld = eta
 
 
@@ -4458,7 +4470,7 @@ CONTAINS
           eta = timeError / dt / 2.0_dp
         END IF
       ELSE 
-        CALL wARN('Predictor-Corrector','Time Step is 0 in Local error estimate!')        
+        CALL WARN('Predictor-Corrector','Time Step is 0 in Local error estimate!')        
         eta =0.0_dp
       END IF
      

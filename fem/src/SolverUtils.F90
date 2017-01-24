@@ -718,6 +718,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
      INTEGER :: PredCorrOrder = 2       !< Order of predictor-corrector scheme
+     INTEGER :: PredCorrCounter = 0       !< Order of predictor-corrector scheme
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE
@@ -791,6 +792,13 @@ CONTAINS
       IF (.NOT. GotIt) THEN
         PredCorrOrder = 2
       END IF 
+     PredCorrCounter = ListGetInteger( Solver % Values, &
+                    'Predictor Corrector Counter', GotIt)
+      IF (.NOT. GotIt) THEN
+        PredCorrCounter = 0
+      END IF 
+      PredCorrOrder = MIN(PredCorrOrder, PredCorrCounter)
+
      SELECT CASE( Method )
      CASE( 'fs' ) 
        CALL FractionalStep( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
@@ -821,6 +829,7 @@ CONTAINS
      ! Time stepping method added by CG 20170116
      CASE('adams predictor')
        zeta = ListGetConstReal( Solver % Values, 'Adams Zeta', GotIt )
+       IF ( .NOT. Gotit) zeta = 1.0_dp
        CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol(:,1), zeta, PredCorrOrder)
 
