@@ -1821,9 +1821,7 @@ CONTAINS
        DO k=1,nSolvers
           Solver => Model % Solvers(k)
           ! Initialize for predictor-corrector solver only
-          IF ( (Solver % PROCEDURE /= 0) .AND. & 
-               (Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR) ) &
-                 CALL InitializeTimestep(Solver)
+          IF ( Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
        END DO
     END IF
 
