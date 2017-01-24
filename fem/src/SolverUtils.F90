@@ -820,13 +820,13 @@ CONTAINS
 
      ! Time stepping method added by CG 20170116
      CASE('adams predictor')
-       zeta = ListGetConstReal(Solver % Values, 'Adams Zeta',GotIt)
+       zeta = ListGetConstReal( Solver % Values, 'Adams Zeta', GotIt )
        CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol(:,1), zeta, PredCorrOrder)
 
      CASE('adams corrector')
         CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
-                PrevSol, PredCorrOrder)      
+                PrevSol, PredCorrOrder )      
        
      CASE DEFAULT
        CALL NewmarkBeta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &

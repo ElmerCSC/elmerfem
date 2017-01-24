@@ -630,7 +630,6 @@ CONTAINS
     TYPE(GraphColour_t) :: GraphColouring
     LOGICAL :: ConsistentColours
     
-
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
     SolverParams => ListGetSolverParams(Solver)
@@ -835,6 +834,10 @@ CONTAINS
         IF ( Found ) THEN
           CALL ListAddString( SolverParams, 'Predictor Method', str )
         END IF
+      END IF
+          
+      IF ( Found ) THEN
+        CALL ReadPredCorrParams( CurrentModel, SolverParams )
       END IF
 
       str = ListGetString( SolverParams, 'Timestepping Method',Found )
@@ -1862,16 +1865,6 @@ CONTAINS
       END IF
     END DO
 
-    ! Initialization for all the solvers
-    IF ( TransientSimulation ) THEN
-       DO k=1,nSolvers
-          Solver => Model % Solvers(k)
-          IF ( Solver % PROCEDURE /= 0 ) THEN 
-            CALL InitializeTimestep(Solver)
-          END IF
-       END DO
-    END IF
-
 !------------------------------------------------------------------------------
 
     ALLOCATE( DoneThis(nSolvers), AfterConverged(nSolvers) )
@@ -2008,6 +2001,7 @@ CONTAINS
         END IF
           
         IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+          CALL InitializeTimestep(Solver)
           CALL ListAddLogical( Solver % Values,'Predictor Phase',.FALSE.)
         END IF
 
@@ -4298,62 +4292,120 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!  The adaptive controller for Adaptive TimeStepping
+!  The predictor-corrector scheme to change dt
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
-    SUBROUTINE TimeStepController(dt, zeta, timestep, AdaptiveOrder, epsilon, beta1, beta2)
+    SUBROUTINE PredictorCorrectorControl( Model, dt, RealTimestep )
 !------------------------------------------------------------------------------
-
-
-      REAL(KIND=dp), INTENT(INOUT):: dt, zeta, epsilon, beta1, beta2     
-      REAL(KIND=dp) :: eta, gfactor
-      REAL(KIND=dp) :: timeError, timeErrorMax, timeError2Norm 
-      INTEGER, INTENT(IN) :: timestep, AdaptiveOrder
-      INTEGER :: i
-      LOGICAL ::  Found
-
+      
+      TYPE(Model_t), INTENT(IN) :: Model
+      REAL(KIND=dp), INTENT(INOUT) :: dt
+      INTEGER, OPTIONAL :: RealTimestep
+!------------------------------------------------------------------------------
       TYPE(Solver_t), POINTER :: Solver
+      TYPE(ValueList_t), POINTER :: SolverParams
+      INTEGER :: PredCorrOrder, i, predcorrIndex = 0
+      REAL(KIND=dp) :: epsilon, beta1, beta2
+      LOGICAL :: Found
 
-      REAL(KIND=dp), SAVE:: etaOld, dtOld
+      REAL(KIND=dp) :: timeError, timeErrorMax, timeError2Norm, eta
+
+      REAL(KIND=dp), SAVE:: dtOld, etaOld, zeta
 
 
-      !> \tilde{H}^n is in Solver % Variable % PrevValues(:,1),
-      !> H^n is in Solver % Variable % Values(:)
-      timeErrorMax = 0.0
-      timeError2Norm = 0.0
-
-      DO i=1,CurrentModel % NumberOFSolvers
-        Solver => CurrentModel % Solvers(i)
+      DO i=1,Model % NumberOFSolvers
+        Solver => Model % Solvers(i)
         !> Find the Solver for adaptive predictor, there should be only one solver as predictor
-        IF (ListGetLogical( Solver % Values,'Adaptive Predictor', Found) ) THEN
-
-          !> Compute the error  (H-\tilde{H)
-          timeErrorMax  =  MAXVAL( ABS(Solver % Variable % Values(:) - Solver % Variable % PrevValues(:,1)))
-          timeError2Norm  =  NORM2( (Solver % Variable % Values(:) - Solver % Variable % PrevValues(:,1)))
+        IF (Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR) THEN
+          predcorrIndex = i
         END IF 
       END DO
 
-      timeError = timeErrorMax
-      ! Choose norm: inf-norm or 2-norm
-      IF (ListGetLogical( CurrentModel % Simulation,'Adaptive Error 2 Norm', Found) ) THEN
-        timeError = timeError2Norm
+      IF ( predcorrIndex > 0) THEN 
+
+        ! Do Predictor-Corrector
+        Solver => Model % Solvers(predcorrIndex)
+        SolverParams => ListGetSolverParams(Solver)
+
+        IF (RealTimestep == 1) THEN 
+        ! Do nothing on the first step
+          dtOld = dt
+          dt = 0.0_dp
+          zeta = 1.0_dp
+        ELSE IF (RealTimestep == 2) THEN
+        ! Use the initial time step  
+          dt = dtOld
+          zeta = 1.0_dp
+        ELSE IF (RealTimestep > 2) THEN
+        ! Use local error estimate and PI control 
+
+          ! Read in the settings
+          CALL ReadPredCorrParams( Model, SolverParams, PredCorrOrder, epsilon, beta1, beta2 )
+
+          ! Compute the error  |H-\tilde{H}|_inf
+          timeErrorMax  =  MAXVAL( ABS(Solver % Variable % Values(:) - Solver % Variable % PrevValues(:,1)))
+          timeError = timeErrorMax
+
+          dtOld = dt
+
+          ! 1st order error estimate and control for the first control step
+          IF (RealTimestep == 3 ) THEN 
+            PredCorrOrder = 1
+          END IF
+
+          ! Default estimate and control  
+
+          ! Estimate local truncation error use old zeta
+          CALL PredCorrErrorEstimate( eta, dt, PredCorrOrder, timeError, zeta )
+          IF (RealTimestep == 3 ) THEN 
+            etaOld =eta
+          END IF
+          ! PI controller
+          CALL TimeStepController( dt, dtOld, eta, etaOld, epsilon, beta1, beta2 )
+          ! Compute new zeta and for predictor time scheme
+          zeta = dt / dtOld
+          CALL ListAddConstReal(Solver % Values, 'Adams Zeta', zeta)
+
+          etaOld = eta
+
+
+          !> Save the time errors!                         
+          OPEN (unit=135, file="ErrorAdaptive.dat", POSITION='APPEND')
+          WRITE(135, *) dtOld, eta, timeError                                                
+          CLOSE(135)
+
+          !> Output
+          CALL Info('TimeStepping', "============ Adaptive ============", Level=3)
+          WRITE (Message,*) "current dt=", dtOld, "next dt=",  dt
+          CALL Info('TimeStepping', Message, Level=3)
+          WRITE (Message,*) "zeta=", zeta, "eta=",  eta, "terr=", timeError
+          CALL Info('TimeStepping', Message, Level=3)
+        END IF 
+
+
+
       END IF
 
-      !> estimate the local truncation error eta
-      IF (timestep > 1) THEN
-        IF (AdaptiveOrder == 1) THEN
-          eta = timeError / dt / 2.0_dp
-        ELSE
-          !> Compute zeta 
-          eta = timeError * zeta / dt / (zeta + 1.0_dp) / 3.0_dp
-        END IF
-      ELSE
-        eta = timeError / dt / 2.0_dp
-        etaOld = eta
-      END IF
 
-      !> Update the next time step and eta
-      dtOld = dt
+
+
+
+!------------------------------------------------------------------------------
+    END SUBROUTINE PredictorCorrectorControl
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!  The adaptive controller for the predictor-corrector scheme
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+    SUBROUTINE TimeStepController( dt, dtOld, eta, etaOld, epsilon, beta1, beta2 )
+!------------------------------------------------------------------------------
+
+      REAL(KIND=dp), INTENT(INOUT):: dt  
+      REAL(KIND=dp), INTENT(IN):: dtOld, eta, etaOld, epsilon, beta1, beta2     
+
+      REAL(KIND=dp) :: gfactor
 
       IF ((eta .NE. 0.0_dp) .AND. (etaOld .NE. 0.0_dp)) THEN 
         gfactor = ((epsilon/eta)**beta1) * ((epsilon/etaOld)**beta2)
@@ -4361,24 +4413,6 @@ CONTAINS
       ELSE 
         dt = dtOld
       END IF
-      etaOld = eta
-      zeta = dt / dtOld
-
-      ! Overwrite step size for the whole simulation
-      CALL ListAddConstReal( CurrentModel % Simulation, 'Timestep Size', dt)
-      ! sSize(1) = dt
-
-      !> Save the time errors!                         
-      OPEN (unit=135, file="ErrorAdaptive.dat", POSITION='APPEND')
-      WRITE(135, *) dtOld, eta, timeError                                                
-      CLOSE(135)
-
-      !> Output
-      CALL Info('TimeStepping', "============ Adaptive ============", Level=3)
-      WRITE (Message,*) "current dt=", dtOld, "next dt=",  dt
-      CALL Info('TimeStepping', Message, Level=3)
-      WRITE (Message,*) "zeta=", zeta, "eta=",  eta
-      CALL Info('TimeStepping', Message, Level=4)
 
 !------------------------------------------------------------------------------
     END  SUBROUTINE TimeStepController
@@ -4405,6 +4439,111 @@ CONTAINS
 !------------------------------------------------------------------------------
     END SUBROUTINE TimeStepLimiter
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!  Local truncation error for AB-AM 1st and 2nd order methods
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+    SUBROUTINE  PredCorrErrorEstimate(eta, dt, PredCorrOrder, timeError, zeta)
+!------------------------------------------------------------------------------
+      REAL(KIND=dp), INTENT(IN) :: dt, timeError, zeta
+      INTEGER, INTENT(IN) :: PredCorrOrder
+      REAL(KIND=dp), INTENT(OUT) :: eta
+    
+      IF (dt > 0.0_dp) THEN
+        IF (PredCorrOrder == 2) THEN
+          eta = timeError * zeta / dt / (zeta + 1.0_dp) / 3.0_dp
+        ELSE
+          eta = timeError / dt / 2.0_dp
+        END IF
+      ELSE 
+        CALL wARN('Predictor-Corrector','Time Step is 0 in Local error estimate!')        
+        eta =0.0_dp
+      END IF
+     
+!------------------------------------------------------------------------------
+    END SUBROUTINE PredCorrErrorEstimate
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+!  Set Default / Read in the settings for predictor corrector scheme
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+    SUBROUTINE ReadPredCorrParams(Model, SolverParams, outOrder, outEps, outB1, outB2)
+
+      TYPE(Model_t), INTENT(IN) :: Model
+      TYPE(ValueList_t), POINTER, INTENT(INOUT):: SolverParams
+      INTEGER, OPTIONAL, INTENT(OUT) :: outOrder
+      REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: outEps, outB1, outB2
+
+      INTEGER :: PredCorrOrder
+      REAL(KIND=dp) :: epsilon, beta1, beta2
+
+      LOGICAL :: Found
+
+
+      PredCorrOrder = ListGetInteger( SolverParams,  &
+                      'Predictor Corrector Scheme Order', Found)
+      IF ( .NOT. Found ) THEN
+        PredCorrOrder = ListGetInteger( Model % Simulation,  &
+                        'Predictor Corrector Scheme Order', Found)
+        IF ( .NOT. Found ) THEN
+          PredCorrOrder = 2
+        END IF
+        CALL ListAddInteger( SolverParams,  &
+                        'Predictor Corrector Scheme Order', PredCorrOrder )
+      END IF
+
+      epsilon = ListGetCReal( SolverParams, &
+                        'Predictor Corrector Control Tolerance', Found )
+      IF ( .NOT. Found ) THEN
+        epsilon = ListGetCReal( Model % Simulation,  &
+                        'Predictor Corrector Control Tolerance', Found )
+        IF ( .NOT. Found ) THEN
+          epsilon = 1.0e-6
+        END IF
+        CALL ListAddConstReal( SolverParams, &
+                        'Predictor Corrector Control Tolerance', epsilon )
+      END IF
+
+      beta1 = ListGetCReal( SolverParams, &
+                        'Predictor Corrector Control Beta 1', Found )
+      IF ( .NOT. Found ) THEN
+        beta1 = ListGetCReal( Model % Simulation,  &
+                        'Predictor Corrector Control Beta 1', Found )
+        IF ( .NOT. Found ) THEN
+          beta1 = 0.6_dp / ( PredCorrOrder + 1.0_dp )
+        END IF
+        CALL ListAddConstReal( SolverParams, &
+                        'Predictor Corrector Control Beta 1', beta1 )
+      END IF
+
+      beta2 = ListGetCReal( SolverParams, &
+                        'Predictor Corrector Control Beta 2', Found )
+      IF ( .NOT. Found ) THEN
+        beta2 = ListGetCReal( Model % Simulation,  &
+                        'Predictor Corrector Control Beta 2', Found )
+        IF ( .NOT. Found ) THEN
+          beta2 = -0.2_dp / ( PredCorrOrder + 1.0_dp )
+        END IF
+        CALL ListAddConstReal( SolverParams, &
+                        'Predictor Corrector Control Beta 2', beta2 )
+      END IF
+
+      ! Output if required
+      IF ( PRESENT( outOrder ) ) outOrder = PredCorrOrder
+      IF ( PRESENT( outEps ) ) outEps = epsilon
+      IF ( PRESENT( outB1 ) ) outB1 = beta1
+      IF ( PRESENT( outB2 ) ) outB2 = beta2
+!------------------------------------------------------------------------------
+    END  SUBROUTINE ReadPredCorrParams
+!------------------------------------------------------------------------------
+
+
+
 
 
 END MODULE MainUtils
