@@ -693,7 +693,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
        HasStabC
 
-  REAL(KIND=dp) :: Relax, gauge_penalize_c
+  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
@@ -739,6 +739,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
   TransientGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. Transient
   gauge_penalize_c = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient', HasStabC)
+  gauge_penalize_m = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient mass', Found)
+  HasStabC = HasStabC .OR. Found
 
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
@@ -752,6 +754,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   IF (HasStabC .and. (SteadyGauge .or. TransientGauge)) THEN
     WRITE (Message, *), 'Lagrange Gauge penalization coefficient', gauge_penalize_c
+    WRITE (Message, *), 'Lagrange Gauge penalization coefficient mass', gauge_penalize_m
     call Info('WhitneyAVSolver', message)
   END IF
 
@@ -2139,7 +2142,8 @@ SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondO
         END DO
         DO i = 1, np
           s = i
-          DConstr(r,s) = DConstr(r,s) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP%s(t)
+          DConstr(r,s) = DConstr(r,s) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP%s(t) &
+               + gauge_penalize_m*Basis(j)*Basis(i)*detJ*IP%s(t)
         END DO
       END DO
     END IF
@@ -2494,7 +2498,8 @@ END SUBROUTINE LocalConstraintMatrix
              q = j
              DO i = 1, np
                p = i
-               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP % s(t) &
+                     + gauge_penalize_m*Basis(j)*Basis(i)*detJ*IP%s(t)
              END DO
            END DO
          END IF
