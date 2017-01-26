@@ -34,7 +34,7 @@ Solver 1
   Equation = "MGDynamics"
   Variable = "P"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
-  Element = "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2"
+  Element = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2"
   Use Piola Transform = Logical True
   Quadratic Approximation = True
 

@@ -1128,7 +1128,7 @@ CONTAINS
      REAL(KIND=dp) :: Lvec(:)                !< The global RHS vector.
      INTEGER :: n                            !< Number of nodes.
      INTEGER :: NDOFs                        !< Number of degrees of free per node.
-     INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping.
+     INTEGER CONTIG :: NodeIndexes(:)               !< Element node to global node numbering mapping.
      LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
      TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
      LOGICAL, OPTIONAL :: MCAssembly   !< Assembly process is multicoloured and guaranteed race condition free 
@@ -10179,6 +10179,178 @@ END FUNCTION SearchNodeL
   END SUBROUTINE CalculateLoads
 
 
+
+
+
+  ! Create a boundary matrix and at calculate step compute the boundary loads
+  ! for one given body. This is not called by default but the user needs to
+  ! include it in the code, both at assembly and after solution.
+  !-----------------------------------------------------------------------------
+  SUBROUTINE BCLoadsAssembly( Solver, Element, LocalMatrix, LocalRhs )
+
+    TYPE(Solver_t) :: Solver
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: LocalMatrix(:,:)
+    REAL(KIND=dp) :: LocalRhs(:)
+
+    LOGICAL :: FirstStep
+    INTEGER :: i,j,k,l,n,Row,Col,Dofs,ElemNo,TargetBody=-1
+    TYPE(Matrix_t), POINTER :: BCMat
+    REAL(KIND=dp) :: Val
+    LOGICAL :: Found
+    INTEGER, POINTER :: Perm(:), BCPerm(:)
+    CHARACTER(MAX_NAME_LEN) :: Name   
+    TYPE(Variable_t), POINTER :: BCVar
+
+
+    SAVE :: BCMat, TargetBody, BCPerm, Perm, Dofs
+
+
+    FirstStep = ( Solver % ActiveElements(1) == Element % ElementIndex )
+
+    IF( FirstStep ) THEN
+      CALL Info('BCLoadsAssembly','Visiting first element')
+ 
+      BCMat => Solver % Matrix % EMatrix
+      IF(.NOT. ASSOCIATED( BCMat ) ) THEN
+        TargetBody = ListGetInteger( Solver % Values,'Boundary Loads Target Body',Found )
+        IF( Found ) THEN
+          CALL Info('BCLoadsAssembly','Target body set to: '//TRIM(I2S(TargetBody)))       
+        ELSE
+          TargetBody = -1
+          RETURN
+        END IF
+
+        CALL Info('BCLoadsAssembly','Allocating structures for load computation')
+        IF ( ParEnv % PEs > 1 ) THEN
+          CALL Warn('BCLoadsAssembly','Not implemented in parallel')
+        END IF
+
+        ! Mark the active nodes
+        ALLOCATE( BCPerm( Solver % Mesh % NumberOfNodes ) )
+        BCPerm = 0
+
+        ElemNo = 0
+        k = Solver % Mesh % NumberOfBulkElements
+        DO i = k+1,k + Solver % Mesh % NumberOfBoundaryElements
+          Element => Solver % Mesh % Elements(i)
+          Found = .FALSE.             
+          IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
+            Found = ( Element % BoundaryInfo % Left % BodyId == TargetBody )
+          END IF
+          IF(.NOT. Found ) THEN
+            IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+              Found = ( Element % BoundaryInfo % Right % BodyId == TargetBody )
+            END IF
+          END IF
+          IF( Found ) THEN
+            ElemNo = ElemNo + 1
+            BCPerm( Element % NodeIndexes ) = 1
+          END IF
+        END DO
+
+        CALL Info('BCLoadsAssembly','Number of related boundary elements: '//TRIM(I2S(ElemNo)))
+
+        n = 0
+        DO i=1,Solver % Mesh % NumberOfNodes
+          IF( BCPerm(i) > 0 ) THEN
+            n = n + 1
+            BCPerm(i) = n
+          END IF
+        END DO
+        CALL Info('BCLoadsAssembly','Number of active nodes: '//TRIM(I2S(n)))
+
+        ! Create the list matrix 
+        BCMat => AllocateMatrix()
+        BCMat % Format = MATRIX_LIST           
+        CALL AddToMatrixElement( BCMat, n, n, 0.0_dp )
+        Solver % Matrix % EMatrix => BCMat
+
+        ALLOCATE( BCMat % Rhs(n) )
+        BCMat % Rhs = 0.0_dp
+      END IF
+
+      ! When visiting the routine after the 1st iteration the matrix for is already CRS 
+      IF( BCMat % Format == MATRIX_CRS ) THEN
+        BCMat % Values = 0.0_dp
+        BCMat % Rhs = 0.0_dp
+      END IF
+
+      Dofs = Solver % Variable % Dofs
+      Perm => Solver % Variable % Perm
+
+      Name = TRIM(Solver % Variable % Name)//' BCLoads'
+      BCVar => VariableGet( Solver % Mesh % Variables, TRIM( Name ) )
+      IF(.NOT. ASSOCIATED( BCVar ) ) THEN
+        CALL Info('CalculateBCLoads','Creating variable: '//TRIM(Name))
+        CALL VariableAddVector( Solver % Mesh % Variables,&
+            Solver % Mesh, Solver, Name, DOFs, Perm = BCPerm )
+      END IF
+      
+    END IF
+
+    IF( Element % BodyId == TargetBody ) THEN       
+      n = Element % TYPE % NumberOfNodes
+      DO i=1,n
+        IF ( BCPerm( Element % NodeIndexes(i) ) == 0 ) CYCLE
+        DO k=0,Dofs-1
+          Row = Dofs * BCPerm( Element % NodeIndexes(i) ) - k
+          BCMat % rhs(Row) = BCMat % rhs(Row) + LocalRhs(Dofs*i-k)
+          DO j=1,n
+            DO l=0,Dofs-1
+              Col = Dofs * Perm( Element % NodeIndexes(j) ) - l
+              Val = LocalMatrix(Dofs*i-k,Dofs*j-l)
+              CALL AddToMatrixElement(BCMat,Row,Col,Val)
+            END DO
+          END DO
+        END DO
+      END DO
+    END IF
+
+
+  END SUBROUTINE BCLoadsAssembly
+
+
+  ! Calculate the boundary loads resulting from the action of boundary matrix.
+  !-----------------------------------------------------------------------------
+  SUBROUTINE BCLoadsComputation( Solver )
+
+    TYPE(Solver_t) :: Solver
+
+    TYPE(Matrix_t), POINTER :: BCMat
+    CHARACTER(MAX_NAME_LEN) :: Name   
+    TYPE(Variable_t), POINTER :: BCVar
+
+
+    BCMat => Solver % Matrix % EMatrix
+    IF(.NOT. ASSOCIATED( BCMat ) ) THEN
+      CALL Fatal('BCLoadsComputation','We should have the boundary matrix!')
+    END IF
+        
+    CALL Info('CalculateBCLoads','Computing boundary loads')
+    IF( BCMat % FORMAT == MATRIX_LIST ) THEN
+      CALL List_ToCRSMatrix( BCMat )
+      CALL Info('CalculateBCLoads','Matrix format changed to CRS')
+    END IF
+
+    Name = TRIM(Solver % Variable % Name)//' BCLoads'
+    BCVar => VariableGet( Solver % Mesh % Variables, TRIM( Name ) )
+    IF(.NOT. ASSOCIATED( BCVar ) ) THEN
+      CALL Fatal('CalculateBCLoads','Variable not present: '//TRIM(Name))
+    END IF
+    
+    CALL MatrixVectorMultiply( BCMat, Solver % Variable % Values, BCVar % Values )
+    BCVar % Values = BCVar % Values - BCMat % rhs
+
+    CALL Info('CalculateBCLoads','All done')
+
+  END SUBROUTINE BCLoadsComputation
+
+
+
+
+  
+  
 !------------------------------------------------------------------------------
 !> Prints the values of the CRS matrix to standard output.
 !------------------------------------------------------------------------------

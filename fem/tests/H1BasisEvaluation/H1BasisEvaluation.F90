@@ -1,4 +1,4 @@
-SUBROUTINE H1Basis( Model,Solver,dt,TransientSimulation )
+SUBROUTINE H1BasisEvaluation( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
@@ -40,39 +40,39 @@ SUBROUTINE H1Basis( Model,Solver,dt,TransientSimulation )
     ! 1D tests
     netest = TestLineElement(Solver, tol1d)
     IF (netest /= 0) THEN
-      CALL Warn('H1Basis','Line element contained errors')
+      CALL Warn('H1BasisEvaluation','Line element contained errors')
     END IF
     nerror = nerror + netest
     
     ! 2D tests 
     netest = TestTriangleElement(Solver, tol1d)
     IF (netest /= 0) THEN
-      CALL Warn('H1Basis','Triangle element contained errors')
+      CALL Warn('H1BasisEvaluation','Triangle element contained errors')
     END IF
     nerror = nerror + netest
 
     netest = TestQuadElement(Solver, tol1d)
     IF (netest /= 0) THEN
-      CALL Warn('H1Basis','Quad element contained errors')
+      CALL Warn('H1BasisEvaluation','Quad element contained errors')
     END IF
     nerror = nerror + netest
 
     ! 3D tests
     netest = TestTetraElement(Solver, tol3d)
     IF (netest /= 0) THEN
-      CALL Warn('H1Basis','Tetra element contained errors')
+      CALL Warn('H1BasisEvaluation','Tetra element contained errors')
     END IF
     nerror = nerror + netest
 
     netest = TestWedgeElement(Solver, tol3d)
     IF (netest /= 0) THEN
-      CALL Warn('H1Basis','Wedge element contained errors')
+      CALL Warn('H1BasisEvaluation','Wedge element contained errors')
     END IF
     nerror = nerror + netest
 
     netest = TestBrickElement(Solver, tol3d)
     IF (netest /= 0) THEN
-      CALL Warn('H1Basis','Brick element contained errors')
+      CALL Warn('H1BasisEvaluation','Brick element contained errors')
     END IF
     nerror = nerror + netest
 
@@ -91,14 +91,15 @@ CONTAINS
     TYPE( GaussIntegrationPoints_t ) :: GP
     REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), &
             BasisVec(:,:), dBasisdxVec(:,:,:)
-!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     INTEGER :: i, j, ngp, nerror, nbasis, nndof, nbdof, allocstat, &
-            nbasisvec, ndbasisdxvec, rep, dim
-    INTEGER, PARAMETER :: P = 6, NREP = 100
+            nbasisvec, ndbasisdxvec, rep, dim, perm, q
+    INTEGER, PARAMETER :: P = 6, NREP = 100, BubblePerm = 2
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
             t_tot_b, t_totvec_b
+    LOGICAL :: Invert(BubblePerm)
+!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     nerror = 0
     Element => AllocatePElement(Solver % Mesh, 202, P)
@@ -106,7 +107,7 @@ CONTAINS
 
     nndof = Element % Type % NumberOfNodes
     nbdof = Element % BDofs
-    nbasis = nndof + nbdof 
+    nbasis = nndof + nbdof * BubblePerm
     ngp = GP % N
 
     ! Reserve workspace for finite element basis
@@ -114,14 +115,15 @@ CONTAINS
             BasisVec(ngp,nbasis), dBasisdxVec(ngp,nbasis,3), &
             STAT=allocstat)
     IF (allocstat /= 0) THEN
-      CALL Fatal('H1Basis',&
+      CALL Fatal('H1BasisEvaluation',&
               'Storage allocation for local element basis failed')
     END IF
 
     ! Initialize arrays
     Basis = 0
     dBasisdx = 0
-    
+    Invert(1:2) = [.FALSE., .TRUE.]
+
     t_tot_n = REAL(0,dp)
     t_tot_b = REAL(0,dp)
     t_start = ftimer()
@@ -134,12 +136,16 @@ CONTAINS
       END DO
       t_tot_n=t_tot_n+(ftimer()-t_start_tmp)
 
-      ! Bubble basis 
+      ! Bubble basis (with and without inversion)
+      q = 2
       t_start_tmp=ftimer()
-      DO j=1, Element % BDOFs
-        DO i=1,ngp
-          Basis(i,j+2) = LineBubblePBasis(j+1, GP % U(i),.FALSE.)
-          dBasisdx(i,j+2,1) = dLineBubblePBasis(j+1, GP % U(i), .FALSE.)
+      DO perm=1,BubblePerm
+        DO j=1, Element % BDOFs
+          q = q + 1
+          DO i=1,ngp
+            Basis(i,q) = LineBubblePBasis(j+1, GP % U(i),Invert(perm))
+            dBasisdx(i,q,1) = dLineBubblePBasis(j+1, GP % U(i), Invert(perm))
+          END DO
         END DO
       END DO
       t_tot_b=t_tot_b+(ftimer()-t_start_tmp)
@@ -155,15 +161,17 @@ CONTAINS
     t_startvec = ftimer()
     DO rep=1,NREP
       t_start_tmp=ftimer()
-      CALL H1LineNodalBasisVec(ngp, GP % U, BasisVec)
-      CALL H1dLineNodalBasisVec(ngp, GP % U, dBasisdxVec)
+      CALL H1Basis_LineNodal(ngp, GP % U, BasisVec)
+      CALL H1Basis_dLineNodal(ngp, GP % U, dBasisdxVec)
       t_totvec_n=t_totvec_n+(ftimer()-t_start_tmp)
-      nbasisvec = 2
       t_start_tmp=ftimer()
-      CALL H1LineBubblePBasisVec(ngp, GP % U, P, nbasisvec, BasisVec, .FALSE.)
+      nbasisvec = 2
       ndbasisdxvec = 2
-      CALL H1dLineBubblePBasisVec(ngp, GP % U, P, ndbasisdxvec, dBasisdxVec, &
-              .FALSE.)
+      DO perm=1,BubblePerm
+        CALL H1Basis_LineBubbleP(ngp, GP % U, P, nbasisvec, BasisVec, Invert(perm))
+        CALL H1Basis_dLineBubbleP(ngp, GP % U, P, ndbasisdxvec, dBasisdxVec, &
+              Invert(perm))
+      END DO
       t_totvec_b=t_totvec_b+(ftimer()-t_start_tmp)
     END DO
     t_endvec = ftimer()
@@ -188,23 +196,25 @@ CONTAINS
     TYPE( GaussIntegrationPoints_t ) :: GP
     REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), &
             BasisVec(:,:), dBasisdxVec(:,:,:)
-!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
-    INTEGER :: i, j, k, l, q, ndof, ngp, nerror, nbasis, nndof, nbdof, allocstat, &
-            nbasisvec, ndbasisdxvec, rep, dim
-    INTEGER, PARAMETER :: P = 6, NREP = 100
+    INTEGER :: i, j, k, l, q, ndof, ngp, nerror, nbasis, nndof, nedof, nbdof, allocstat, &
+            nbasisvec, ndbasisdxvec, rep, dim, perm
+    INTEGER, PARAMETER :: P = 6, NREP = 100, EdgePerm = 2
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
-            t_start_tmp, t_tot_n, t_totvec_n, &
+            t_start_tmp, t_tot_n, t_totvec_n, t_tot_e, t_totvec_e, &
             t_tot_b, t_totvec_b
-    
+    INTEGER :: EdgeDir(2,3,EdgePerm), EdgeP(3)
+    LOGICAL :: InvertEdge(3, EdgePerm)
+!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     nerror = 0
     Element => AllocatePElement(Solver % Mesh, 303, P)
     GP = GaussPoints(Element)
     
     nndof = Element % Type % NumberOfNodes
+    nedof = GetEdgeDOFs( Element, P )
     nbdof = Element % BDofs
-    nbasis = nndof + nbdof 
+    nbasis = nndof + 3*nedof*EdgePerm + nbdof
     ngp = GP % N
 
     ! Reserve workspace for finite element basis
@@ -212,19 +222,30 @@ CONTAINS
             BasisVec(ngp,nbasis), dBasisdxVec(ngp,nbasis,3), &
             STAT=allocstat)
     IF (allocstat /= 0) THEN
-      CALL Fatal('H1Basis',&
+      CALL Fatal('H1BasisEvaluation',&
               'Storage allocation for local element basis failed')
     END IF
 
     ! Initialize arrays
     Basis = 0
     dBasisdx = 0
-    
+    DO i=1,3
+      EdgeDir(1:2,i,1)=getTriangleEdgeMap(i)
+    END DO
+    ! Invert direction
+    DO i=1,3
+      EdgeDir(2:1:-1,i,2)=EdgeDir(1:2,i,1)
+    END DO
+    InvertEdge(:,1) = .FALSE.
+    InvertEdge(:,2) = .TRUE.
+    EdgeP = P
+
     t_tot_n = REAL(0,dp)
+    t_tot_e = REAL(0,dp)
     t_tot_b = REAL(0,dp)
     t_start = ftimer()
     DO rep=1,NREP
-      ! Nodal basis 
+      ! Nodal basis
       t_start_tmp=ftimer()
       DO ndof=1,nndof
         DO i=1,ngp
@@ -234,9 +255,24 @@ CONTAINS
       END Do
       t_tot_n=t_tot_n+(ftimer()-t_start_tmp)
 
-      ! Bubble basis 
       t_start_tmp=ftimer()
       q = 3
+      DO perm=1,EdgePerm
+        DO i=1,3
+          DO ndof=1,nedof
+            q=q+1
+            DO k=1,ngp
+              Basis(k,q) = TriangleEdgePBasis(i, ndof+1, GP % U(k), GP % V(k), InvertEdge(i,perm))
+              dBasisdx(k,q,1:2) = dTriangleEdgePBasis(i, ndof+1, GP % U(k), GP % V(k), InvertEdge(i,perm))
+            END DO
+          END DO
+        END DO
+      END DO
+      t_tot_e=t_tot_e+(ftimer()-t_start_tmp)
+        
+      ! Bubble basis 
+      t_start_tmp=ftimer()
+      q = 3 + nedof * 3 * EdgePerm
       DO i = 0,p-3
         DO j = 0,p-i-3
           q = q + 1
@@ -245,9 +281,9 @@ CONTAINS
             dBasisdx(k, q, 1:2) = dTriangleBubblePBasis(i,j,GP % u(k), GP % v(k))  
           END DO
         END DO
-        t_tot_b=t_tot_b+(ftimer()-t_start_tmp)
       END DO
-    END DO
+      t_tot_b=t_tot_b+(ftimer()-t_start_tmp)
+    END DO ! NREP
     t_end = ftimer()
     
     ! Initialize arrays
@@ -255,27 +291,36 @@ CONTAINS
     dBasisdxVec = 0
 
     t_totvec_n = REAL(0,dp)
+    t_totvec_e = REAL(0,dp)
     t_totvec_b = REAL(0,dp)
     t_startvec = ftimer()
     DO rep=1,NREP
       t_start_tmp=ftimer()
-      CALL H1TriangleNodalPBasisVec(ngp, GP % U, GP % V, BasisVec)
-      CALL H1dTriangleNodalPBasisVec(ngp, GP % U, GP % V, dBasisdxVec)
+      CALL H1Basis_TriangleNodalP(ngp, GP % U, GP % V, BasisVec)
+      CALL H1Basis_dTriangleNodalP(ngp, GP % U, GP % V, dBasisdxVec)
       t_totvec_n=t_totvec_n+(ftimer()-t_start_tmp)
       nbasisvec = 3
-      t_start_tmp=ftimer()
-      CALL H1TriangleBubblePBasisVec(ngp, GP % U, GP % V, P, &
-              nbasisvec, BasisVec)
       ndbasisdxvec = 3
-      CALL H1dTriangleBubblePBasisVec(ngp, GP % U, GP % V, P, &
+      t_start_tmp=ftimer()
+      DO perm=1,EdgePerm
+        CALL H1Basis_TriangleEdgeP(ngp, GP % U, GP % V, EdgeP, &
+                nbasisvec, BasisVec, EdgeDir(:,:,perm))
+        CALL H1Basis_dTriangleEdgeP(ngp, GP % U, GP % V, EdgeP, &
+                ndbasisdxvec, dBasisdxVec, EdgeDir(:,:,perm))
+      END DO
+      t_totvec_e=t_totvec_e+(ftimer()-t_start_tmp)
+      t_start_tmp=ftimer()
+      CALL H1Basis_TriangleBubbleP(ngp, GP % U, GP % V, P, &
+              nbasisvec, BasisVec)
+      CALL H1Basis_dTriangleBubbleP(ngp, GP % U, GP % V, P, &
               ndbasisdxvec, dBasisdxVec)
       t_totvec_b=t_totvec_b+(ftimer()-t_start_tmp)
     END DO
     t_endvec = ftimer()
     
     CALL PrintTestData(Element, ngp, nrep, &
-            t_tot_n, t_tot_b, t_end-t_start, &
-            t_totvec_n, t_totvec_b, t_endvec-t_startvec)
+            t_tot_n, t_tot_e+t_tot_b, t_end-t_start, &
+            t_totvec_n, t_totvec_e+t_totvec_b, t_endvec-t_startvec)
 
     nerror = TestBasis(ngp, nbasis, Element % TYPE % DIMENSION, Basis, BasisVec, &
             dBasisdx, dBasisdxVec, tol)
@@ -293,23 +338,25 @@ CONTAINS
     TYPE( GaussIntegrationPoints_t ) :: GP
     REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), &
             BasisVec(:,:), dBasisdxVec(:,:,:)
-!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
-    INTEGER :: i, j, k, l, q, ndof, ngp, nerror, nbasis, nndof, nbdof, allocstat, &
-            nbasisvec, ndbasisdxvec, rep, dim
-    INTEGER, PARAMETER :: P = 6, NREP = 100
+    INTEGER :: i, j, k, l, q, ndof, ngp, nerror, nbasis, nndof, nedof, nbdof, allocstat, &
+            nbasisvec, ndbasisdxvec, rep, dim, perm
+    INTEGER, PARAMETER :: P = 6, NREP = 100, EdgePerm = 2
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
-            t_tot_b, t_totvec_b
-    
+            t_tot_e, t_totvec_e, t_tot_b, t_totvec_b
+    INTEGER :: EdgeDir(2,4,EdgePerm), EdgeP(4)
+    LOGICAL :: InvertEdge(4, EdgePerm)
+!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     nerror = 0
     Element => AllocatePElement(Solver % Mesh, 404, P)
     GP = GaussPoints(Element)
     
     nndof = Element % Type % NumberOfNodes
+    nedof = getEdgeDOFs( Element, P )
     nbdof = Element % BDofs
-    nbasis = nndof + nbdof 
+    nbasis = nndof + 4*nedof*EdgePerm + nbdof
     ngp = GP % N
 
     ! Reserve workspace for finite element basis
@@ -317,15 +364,27 @@ CONTAINS
             BasisVec(ngp,nbasis), dBasisdxVec(ngp,nbasis,3), &
             STAT=allocstat)
     IF (allocstat /= 0) THEN
-      CALL Fatal('H1Basis',&
+      CALL Fatal('H1BasisEvaluation',&
               'Storage allocation for local element basis failed')
     END IF
 
     ! Initialize arrays
     Basis = 0
     dBasisdx = 0
+    DO i=1,4
+      EdgeDir(1:2,i,1)=getQuadEdgeMap(i)
+    END DO
+    ! Invert direction
+    DO i=1,4
+      EdgeDir(2:1:-1,i,2)=EdgeDir(1:2,i,1)
+    END DO
+    InvertEdge(:,1) = .FALSE.
+    InvertEdge(:,2) = .TRUE.
+    EdgeP = P
+
     
     t_tot_n = REAL(0,dp)
+    t_tot_e = REAL(0,dp)
     t_tot_b = REAL(0,dp)
     t_start = ftimer()
     DO rep=1,NREP
@@ -336,10 +395,25 @@ CONTAINS
         CALL NodalFirstDerivatives2D( dBasisdx(i,1:nndof,1:3), Element, GP % U(i), GP % V(i))
       END DO
       t_tot_n=t_tot_n+(ftimer()-t_start_tmp)
-    
+
+      ! Edge basis
+      t_start_tmp=ftimer()
+      q = 4
+      DO perm=1,EdgePerm
+        DO i=1,4
+          DO ndof=1,nedof
+            q=q+1
+            DO k=1,ngp
+              Basis(k,q) = QuadEdgePBasis(i, ndof+1, GP % U(k), GP % V(k), InvertEdge(i,perm))
+              dBasisdx(k,q,1:2) = dQuadEdgePBasis(i, ndof+1, GP % U(k), GP % V(k), InvertEdge(i,perm))
+            END DO
+          END DO
+        END DO
+      END DO
+      t_tot_e=t_tot_e+(ftimer()-t_start_tmp)
+
       ! Bubble basis 
       t_start_tmp=ftimer()
-      q=4
       DO i=2,(p-2)
         DO j=2,(p-i)
           q = q + 1
@@ -358,27 +432,40 @@ CONTAINS
     dBasisdxVec = 0
 
     t_totvec_n = REAL(0,dp)
+    t_totvec_e = REAL(0,dp)
     t_totvec_b = REAL(0,dp)
     t_startvec = ftimer()
     DO rep=1,NREP
       t_start_tmp=ftimer()
-      CALL H1QuadNodalBasisVec(ngp, GP % U, GP % V, BasisVec)
-      CALL H1dQuadNodalBasisVec(ngp, GP % U, GP % V, dBasisdxVec)
+      CALL H1Basis_QuadNodal(ngp, GP % U, GP % V, BasisVec)
+      CALL H1Basis_dQuadNodal(ngp, GP % U, GP % V, dBasisdxVec)
       t_totvec_n=t_totvec_n+(ftimer()-t_start_tmp)
       nbasisvec = 4
-      t_start_tmp=ftimer()
-      CALL H1QuadBubblePBasisVec(ngp, GP % U, GP % V, P, &
-              nbasisvec, BasisVec)
       ndbasisdxvec = 4
-      CALL H1dQuadBubblePBasisVec(ngp, GP % U, GP % V, P, &
+      
+      ! Edge basis
+      t_start_tmp=ftimer()
+      DO perm=1,EdgePerm
+        CALL H1Basis_QuadEdgeP(ngp, GP % U, GP % V, EdgeP, &
+                nbasisvec, BasisVec, EdgeDir(:,:,perm))
+        CALL H1Basis_dQuadEdgeP(ngp, GP % U, GP % V, EdgeP, &
+                ndbasisdxvec, dBasisdxVec, EdgeDir(:,:,perm))
+      END DO
+      t_totvec_e=t_totvec_e+(ftimer()-t_start_tmp)
+    
+      t_start_tmp=ftimer()
+      CALL H1Basis_QuadBubbleP(ngp, GP % U, GP % V, P, &
+              nbasisvec, BasisVec)
+    
+      CALL H1Basis_dQuadBubbleP(ngp, GP % U, GP % V, P, &
               ndbasisdxvec, dBasisdxVec)
       t_totvec_b=t_totvec_b+(ftimer()-t_start_tmp)
     END DO
     t_endvec = ftimer()
     
     CALL PrintTestData(Element, ngp, nrep, &
-            t_tot_n, t_tot_b, t_end-t_start, &
-            t_totvec_n, t_totvec_b, t_endvec-t_startvec)
+            t_tot_n, t_tot_e+t_tot_b, t_end-t_start, &
+            t_totvec_n, t_totvec_e+t_totvec_b, t_endvec-t_startvec)
 
     nerror = TestBasis(ngp, nbasis, Element % TYPE % DIMENSION, Basis, BasisVec, &
             dBasisdx, dBasisdxVec, tol)
@@ -396,7 +483,6 @@ CONTAINS
     TYPE( GaussIntegrationPoints_t ) :: GP
     REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), &
             BasisVec(:,:), dBasisdxVec(:,:,:)
-!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     INTEGER :: i, j, k, l, q, ndof, ngp, nerror, nbasis, nndof, nbdof, allocstat, &
             nbasisvec, ndbasisdxvec, rep, dim
@@ -404,7 +490,7 @@ CONTAINS
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
             t_tot_b, t_totvec_b
-    
+!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     nerror = 0
     Element => AllocatePElement(Solver % Mesh, 504, P)
@@ -420,7 +506,7 @@ CONTAINS
             BasisVec(ngp,nbasis), dBasisdxVec(ngp,nbasis,3), &
             STAT=allocstat)
     IF (allocstat /= 0) THEN
-      CALL Fatal('H1Basis',&
+      CALL Fatal('H1BasisEvaluation',&
               'Storage allocation for local element basis failed')
     END IF
 
@@ -469,15 +555,15 @@ CONTAINS
     t_startvec = ftimer()
     DO rep=1,NREP
       t_start_tmp=ftimer()
-      CALL H1TetraNodalPBasisVec(ngp, GP % U, GP % V, GP % W, BasisVec)
-      CALL H1dTetraNodalPBasisVec(ngp, GP % U, GP % V, GP % W, dBasisdxVec)
+      CALL H1Basis_TetraNodalP(ngp, GP % U, GP % V, GP % W, BasisVec)
+      CALL H1Basis_dTetraNodalP(ngp, GP % U, GP % V, GP % W, dBasisdxVec)
       t_totvec_n=t_totvec_n+(ftimer()-t_start_tmp)
       nbasisvec = 4
       t_start_tmp=ftimer()
-      CALL H1TetraBubblePBasisVec(ngp, GP % U, GP % V, GP % W, P, &
+      CALL H1Basis_TetraBubbleP(ngp, GP % U, GP % V, GP % W, P, &
               nbasisvec, BasisVec)
       ndbasisdxvec = 4
-      CALL H1dTetraBubblePBasisVec(ngp, GP % U, GP % V, GP % W, P, &
+      CALL H1Basis_dTetraBubbleP(ngp, GP % U, GP % V, GP % W, P, &
               ndbasisdxvec, dBasisdxVec)
       t_totvec_b=t_totvec_b+(ftimer()-t_start_tmp)
     END DO
@@ -504,15 +590,14 @@ CONTAINS
     TYPE( GaussIntegrationPoints_t ) :: GP
     REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), &
             BasisVec(:,:), dBasisdxVec(:,:,:)
-!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     INTEGER :: i, j, k, l, q, ndof, ngp, nerror, nbasis, nndof, nbdof, allocstat, &
             nbasisvec, ndbasisdxvec, rep, dim
-    INTEGER, PARAMETER :: P = 5, NREP = 100
+    INTEGER, PARAMETER :: P = 6, NREP = 100
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
             t_tot_b, t_totvec_b
-    
+!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     nerror = 0
     Element => AllocatePElement(Solver % Mesh, 706, P)
@@ -528,7 +613,7 @@ CONTAINS
             BasisVec(ngp,nbasis), dBasisdxVec(ngp,nbasis,3), &
             STAT=allocstat)
     IF (allocstat /= 0) THEN
-      CALL Fatal('H1Basis',&
+      CALL Fatal('H1BasisEvaluation',&
               'Storage allocation for local element basis failed')
     END IF
 
@@ -577,15 +662,15 @@ CONTAINS
     t_startvec = ftimer()
     DO rep=1,NREP
       t_start_tmp=ftimer()
-      CALL H1WedgeNodalPBasisVec(ngp, GP % U, GP % V, GP % W, BasisVec)
-      CALL H1dWedgeNodalPBasisVec(ngp, GP % U, GP % V, GP % W, dBasisdxVec)
+      CALL H1Basis_WedgeNodalP(ngp, GP % U, GP % V, GP % W, BasisVec)
+      CALL H1Basis_dWedgeNodalP(ngp, GP % U, GP % V, GP % W, dBasisdxVec)
       t_totvec_n=t_totvec_n+(ftimer()-t_start_tmp)
       nbasisvec = 6
       t_start_tmp=ftimer()
-      CALL H1WedgeBubblePBasisVec(ngp, GP % U, GP % V, GP % W, P, &
+      CALL H1Basis_WedgeBubbleP(ngp, GP % U, GP % V, GP % W, P, &
               nbasisvec, BasisVec)
       ndbasisdxvec = 6
-      CALL H1dWedgeBubblePBasisVec(ngp, GP % U, GP % V, GP % W, P, &
+      CALL H1Basis_dWedgeBubbleP(ngp, GP % U, GP % V, GP % W, P, &
               ndbasisdxvec, dBasisdxVec)
       t_totvec_b=t_totvec_b+(ftimer()-t_start_tmp)
     END DO
@@ -611,15 +696,14 @@ CONTAINS
     TYPE( GaussIntegrationPoints_t ) :: GP
     REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), &
             BasisVec(:,:), dBasisdxVec(:,:,:)
-!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     INTEGER :: i, j, k, l, q, ngp, nerror, nbasis, nndof, nbdof, allocstat, &
             nbasisvec, ndbasisdxvec, rep, dim
-    INTEGER, PARAMETER :: P = 7, NREP = 100
+    INTEGER, PARAMETER :: P = 6, NREP = 100
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
             t_tot_b, t_totvec_b
-    
+!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec
 
     nerror = 0
     Element => AllocatePElement(Solver % Mesh, 808, P)
@@ -635,7 +719,7 @@ CONTAINS
             BasisVec(ngp,nbasis), dBasisdxVec(ngp,nbasis,3), &
             STAT=allocstat)
     IF (allocstat /= 0) THEN
-      CALL Fatal('H1Basis',&
+      CALL Fatal('H1BasisEvaluation',&
               'Storage allocation for local element basis failed')
     END IF
 
@@ -686,15 +770,15 @@ CONTAINS
     t_startvec = ftimer()
     DO rep=1,NREP
       t_start_tmp=ftimer()
-      CALL H1BrickNodalBasisVec(ngp, GP % U, GP % V, GP % W, BasisVec)
-      CALL H1dBrickNodalBasisVec(ngp, GP % U, GP % V, GP % W, dBasisdxVec)
+      CALL H1Basis_BrickNodal(ngp, GP % U, GP % V, GP % W, BasisVec)
+      CALL H1Basis_dBrickNodal(ngp, GP % U, GP % V, GP % W, dBasisdxVec)
       t_totvec_n=t_totvec_n+(ftimer()-t_start_tmp)
       nbasisvec = 8
       t_start_tmp=ftimer()
-      CALL H1BrickBubblePBasisVec(ngp, GP % U, GP % V, GP % W, P, &
+      CALL H1Basis_BrickBubbleP(ngp, GP % U, GP % V, GP % W, P, &
               nbasisvec, BasisVec)
       ndbasisdxvec = 8
-      CALL H1dBrickBubblePBasisVec(ngp, GP % U, GP % V, GP % W, P, &
+      CALL H1Basis_dBrickBubbleP(ngp, GP % U, GP % V, GP % W, P, &
               ndbasisdxvec, dBasisdxVec)
       t_totvec_b=t_totvec_b+(ftimer()-t_start_tmp)
     END DO
@@ -722,6 +806,10 @@ CONTAINS
 
     INTEGER :: i, j, dim
 
+    WRITE (*,'(A)') 'TestBasis: Testing basis functions versus reference implementation.'
+    WRITE (*,'(3(A,I0))') 'TestBasis: ngp=', ngp, ', nbasis=', nbasis, &
+            ', ndim=', ndim
+
     nerror = 0
     ! Test basis
     DO j=1,nbasis
@@ -743,6 +831,12 @@ CONTAINS
         END DO
       END DO
     END DO
+
+    IF (nerror == 0) THEN
+      WRITE (*,'(A,ES12.3)') 'TestBasis: Passed without errors, tol=', tol
+    ELSE
+      WRITE (*,'(A,ES12.3)') 'TestBasis: Failed with errors, tol=', tol
+    END IF
   END FUNCTION TestBasis
 
   SUBROUTINE PrintTestData(Element, ngp, nrep, t_n1, t_b1, t_tot1, &
@@ -776,10 +870,12 @@ CONTAINS
     INTEGER, INTENT(IN) :: ElementCode, P
     TYPE(Element_t), POINTER :: PElement
 
+
     ! Construct P element
     PElement => AllocateElement()
     PElement % Type => GetElementType( ElementCode )
     CALL AllocatePDefinitions(PElement)
+
     PElement % BDofs = GetBubbleDofs( PElement, P )
     PElement % PDefs % P = P
     PElement % PDefs % GaussPoints = GetNumberOfGaussPoints(PElement, &
@@ -800,16 +896,16 @@ CONTAINS
     IMPLICIT NONE
     
     REAL(KIND=dp) :: timerval
-    INTEGER :: t, rate
+    INTEGER(KIND=8) :: t, rate
     
 #ifdef _OPENMP
     timerval = OMP_GET_WTIME()
 #else
     CALL SYSTEM_CLOCK(t,count_rate=rate)
-    timerval = REAL(t,KIND(dp))/REAL(rate,KIND(dp))
+    timerval = REAL(t,dp)/rate
 #endif
   END FUNCTION ftimer
 
 !------------------------------------------------------------------------------
-END SUBROUTINE H1Basis
+END SUBROUTINE H1BasisEvaluation
 !------------------------------------------------------------------------------

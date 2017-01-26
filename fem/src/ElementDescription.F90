@@ -53,7 +53,7 @@ MODULE ElementDescription
    USE PElementMaps
    USE PElementBase
    ! Vectorized P element basis functions
-   USE H1ElementBasisFunctions
+   USE H1Basis
 
    IMPLICIT NONE
 
@@ -3582,15 +3582,14 @@ END IF
 !------------------------------------------------------------------------------
    FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, Basis, dBasisdx ) RESULT(retval)
 !------------------------------------------------------------------------------
-     USE H1ElementBasisFunctions
      IMPLICIT NONE
 
      TYPE(Element_t), TARGET :: Element    !< Element structure
      TYPE(Nodes_t)   :: Nodes              !< Element nodal coordinates.
      INTEGER, INTENT(IN) :: nc             !< Number of local coordinates to compute values of the basis function
-     REAL(KIND=dp) CONTIG, INTENT(IN) :: u(:)  !< 1st local coordinates at which to calculate the basis function.
-     REAL(KIND=dp) CONTIG, INTENT(IN) :: v(:)  !< 2nd local coordinates.
-     REAL(KIND=dp) CONTIG, INTENT(IN) :: w(:)  !< 3rd local coordinates.
+     REAL(KIND=dp), POINTER CONTIG :: u(:)  !< 1st local coordinates at which to calculate the basis function.
+     REAL(KIND=dp), POINTER CONTIG :: v(:)  !< 2nd local coordinates.
+     REAL(KIND=dp), POINTER CONTIG :: w(:)  !< 3rd local coordinates.
      REAL(KIND=dp) CONTIG, INTENT(OUT) :: detJ(:) !< Square roots of determinants of element coordinate system metric at coordinates
      REAL(KIND=dp) CONTIG :: Basis(:,:)    !< Basis function values at (u,v,w)
      REAL(KIND=dp) CONTIG, OPTIONAL :: dBasisdx(:,:,:)    !< Global first derivatives of basis functions at (u,v,w)
@@ -3600,6 +3599,11 @@ END IF
      !------------------------------------------------------------------------------
      INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, &
              nb, nbc, nbp, nbdxp, allocstat, ncpad
+     INTEGER :: EdgeDegree(12), FaceDegree(6), EdgeDirection(2,12), FaceDirection(4,6)
+!DIR$ ATTRIBUTES ALIGN:64::EdgeDegree, FaceDegree, EdgeDirection, FaceDirection
+
+     TYPE(Element_t), POINTER :: MeshEdges(:)
+     INTEGER, POINTER :: ElementMap(:,:)
      LOGICAL :: elem
      !------------------------------------------------------------------------------
      retval = .TRUE.
@@ -3645,9 +3649,9 @@ END IF
          ! Element: LINE
        CASE (202)
          ! Compute nodal basis
-         CALL H1LineNodalBasisVec(ncl, uWrk, BasisWrk)
+         CALL H1Basis_LineNodal(ncl, uWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dLineNodalBasisVec(ncl, uWrk, dBasisdxWrk)
+         CALL H1Basis_dLineNodal(ncl, uWrk, dBasisdxWrk)
          nbc = 2
          nbp = 2
          nbdxp = 2
@@ -3660,22 +3664,38 @@ END IF
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
            ! TODO: Implement direction for surface elements
-           CALL H1LineBubblePBasisVec(ncl, uWrk, P, nbp, BasisWrk)
-           CALL H1dLineBubblePBasisVec(ncl, uWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_LineBubbleP(ncl, uWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dLineBubbleP(ncl, uWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! Element: TRIANGLE
        CASE (303)
          ! Compute nodal basis
-         CALL H1TriangleNodalPBasisVec(ncl, uWrk, vWrk, BasisWrk)
+         CALL H1Basis_TriangleNodalP(ncl, uWrk, vWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dTriangleNodalPBasisVec(ncl, uWrk, vWrk, dBasisdxWrk)
+         CALL H1Basis_dTriangleNodalP(ncl, uWrk, vWrk, dBasisdxWrk)
          nbc = 3
          nbp = 3
          nbdxp = 3
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
-           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             ! Get polynomial degree of each edge
+             DO i=1,3
+               EdgeDegree(i) = CurrentModel % Solver % &
+                       Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
+             END DO
+           
+             CALL H1Basis_GetEdgeDirection(303, 3, Element % NodeIndexes, EdgeDirection)
+           END IF
+
+           ! Compute basis function values
+           CALL H1Basis_TriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbp, BasisWrk, &
+                   EdgeDirection)
+           CALL H1Basis_dTriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+                   EdgeDirection)
          END IF
 
          ! Element bubble functions
@@ -3686,22 +3706,38 @@ END IF
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
            ! TODO: Implement direction for surface elements
-           CALL H1TriangleBubblePBasisVec(ncl, uWrk, vWrk, P, nbp, BasisWrk)
-           CALL H1dTriangleBubblePBasisVec(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_TriangleBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dTriangleBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! QUADRILATERAL
        CASE (404)
          ! Compute nodal basis
-         CALL H1QuadNodalBasisVec(ncl, uWrk, vWrk, BasisWrk)
+         CALL H1Basis_QuadNodal(ncl, uWrk, vWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dQuadNodalBasisVec(ncl, uWrk, vWrk, dBasisdxWrk)
+         CALL H1Basis_dQuadNodal(ncl, uWrk, vWrk, dBasisdxWrk)
          nbc = 4
          nbp = 4
          nbdxp = 4
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
-           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             ! Get polynomial degree of each edge
+             DO i=1,4
+               EdgeDegree(i) = CurrentModel % Solver % &
+                       Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
+             END DO
+           
+             CALL H1Basis_GetEdgeDirection(404, 4, Element % NodeIndexes, EdgeDirection)
+           END IF
+
+           ! Compute basis function values
+           CALL H1Basis_QuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbp, BasisWrk, &
+                   EdgeDirection)
+           CALL H1Basis_dQuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+                   EdgeDirection)
          END IF
 
          ! Element bubble functions
@@ -3712,16 +3748,16 @@ END IF
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
            ! TODO: Implement direction for surface elements
-           CALL H1QuadBubblePBasisVec(ncl, uWrk, vWrk, P, nbp, BasisWrk)
-           CALL H1dQuadBubblePBasisVec(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! TETRAHEDRON
        CASE (504)
          ! Compute nodal basis
-         CALL H1TetraNodalPBasisVec(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         CALL H1Basis_TetraNodalP(ncl, uWrk, vWrk, wWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dTetraNodalPBasisVec(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
+         CALL H1Basis_dTetraNodalP(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
          nbc = 4
          nbp = 4
          nbdxp = 4
@@ -3741,16 +3777,16 @@ END IF
 
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
-           CALL H1TetraBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
-           CALL H1dTetraBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_TetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dTetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! WEDGE
        CASE (706)
          ! Compute nodal basis
-         CALL H1WedgeNodalPBasisVec(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         CALL H1Basis_WedgeNodalP(ncl, uWrk, vWrk, wWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dWedgeNodalPBasisVec(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
+         CALL H1Basis_dWedgeNodalP(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
          nbc = 6
          nbp = 6
          nbdxp = 6
@@ -3770,16 +3806,16 @@ END IF
 
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
-           CALL H1WedgeBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
-           CALL H1dWedgeBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_WedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dWedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
          ! HEXAHEDRON
        CASE (808)
          ! Compute local basis
-         CALL H1BrickNodalBasisVec(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         CALL H1Basis_BrickNodal(ncl, uWrk, vWrk, wWrk, BasisWrk)
          ! Compute local first derivatives
-         CALL H1dBrickNodalBasisVec(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
+         CALL H1Basis_dBrickNodal(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
          nbc = 8
          nbp = 8
          nbdxp = 8
@@ -3792,13 +3828,13 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
-           P=NINT(1/3d0*(81*nb + &
-                   3*SQRT(-3d0+729*nb**2))**(1/3d0) + &
-                   1d0/(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+           P=NINT(1/3d0*(81*Element % BDOFS + &
+                   3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
+                   1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
 
            ! TODO: Check the size of Basis and dBasisdxWrk before the call
-           CALL H1BrickBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
-           CALL H1dBrickBubblePBasisVec(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
+           CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
          END IF
 
        CASE DEFAULT
@@ -3806,8 +3842,7 @@ END IF
                  Element % TYPE % ElementCode, ' not implemented.'
          CALL Error( 'ElementInfoVec', Message )
          CALL Fatal( 'ElementInfoVec', 'ElementInfoVec is still experimental.' )
-       END SELECT
-
+       END SELECT 
        ! Set the final number of basis functions 
        nbc = nbp     
 
@@ -4771,11 +4806,17 @@ END IF
 !>     With giving the optional argument ApplyPiolaTransform = .TRUE., this function
 !>  also performs the Piola transform, so that the basis functions and their spatial
 !>  curl as defined on the physical element are returned.
+!>     In the lowest-order case this function returns the basis functions belonging
+!>  to the optimal family which is not subject to degradation of convergence on
+!>  meshes consting of non-affine physical elements. The second-order elements
+!>  are members of the Nedelec's first family and are constructed in a hierarchic
+!>  fashion (the lowest-order basis functions give a partial construction of
+!>  the second-order basis).
 !---------------------------------------------------------------------------------
      FUNCTION EdgeElementInfo( Element, Nodes, u, v, w, F, G, detF, &
           Basis, EdgeBasis, RotBasis, dBasisdx, SecondFamily, BasisDegree, &
           ApplyPiolaTransform, ReadyEdgeBasis, ReadyRotBasis, &
-          HierarchicBasis, TangentialTrMapping) RESULT(stat)
+          TangentialTrMapping) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
@@ -4791,15 +4832,14 @@ END IF
        REAL(KIND=dp) :: EdgeBasis(:,:)           !< The basis functions b spanning the reference element space
        REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)  !< The Curl of the edge basis functions with respect to the local coordinates
        REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)  !< The first derivatives of the H1-conforming basis functions at (u,v,w)
-       LOGICAL, OPTIONAL :: SecondFamily         !< If .TRUE., a Nedelec basis of the second kind is returned
-       INTEGER, OPTIONAL :: BasisDegree          !< The approximation degree 2 is also supported (except for pyramid) 
+       LOGICAL, OPTIONAL :: SecondFamily         !< If .TRUE., a Nedelec basis of the second kind is returned (only simplicial elements)
+       INTEGER, OPTIONAL :: BasisDegree          !< The approximation degree 2 is also supported
        LOGICAL, OPTIONAL :: ApplyPiolaTransform  !< If  .TRUE., perform the Piola transform so that, instead of b
                                                  !< and Curl b, return  B(f(p)) and (curl B)(f(p)) with B(x) the basis 
                                                  !< functions on the physical element and curl the spatial curl operator.
                                                  !< In this case the absolute value of detF is returned.
        REAL(KIND=dp), OPTIONAL :: ReadyEdgeBasis(:,:) !< A pretabulated edge basis function can be given
        REAL(KIND=dp), OPTIONAL :: ReadyRotBasis(:,:)  !< The preretabulated Curl of the edge basis function
-       LOGICAL, OPTIONAL :: HierarchicBasis      !< If .TRUE., return a hierachic basis (if available)
        LOGICAL, OPTIONAL :: TangentialTrMapping  !< To return b x n, with n=(0,0,1) the normal to the 2D reference element.
                                                  !< The Piola transform is then the usual div-conforming version.    
        LOGICAL :: Stat                           !< .FALSE. for a degenerate element
@@ -4812,8 +4852,9 @@ END IF
        REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3), LG(3,3), LF(3,3)
        REAL(KIND=dp) :: ElmMetric(3,3), detJ, CurlBasis(54,3)
        REAL(KIND=dp) :: t(3), s(3), v1, v2, v3, h1, h2, h3, dh1, dh2, dh3, grad(2)
+       REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes), Beta(4), EdgeSign(16)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
-       LOGICAL :: SecondOrder, Hierarchic, ApplyTraceMapping
+       LOGICAL :: SecondOrder, ApplyTraceMapping
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs
 !----------------------------------------------------------------------------------------------------------
@@ -4831,7 +4872,7 @@ END IF
        ! If they are available, this function is used primarily to obtain the Piola transformation.
        !--------------------------------------------------------------------------------------------
        UsePretabulatedBasis = .FALSE.
-       IF ( PRESENT(ReadyEdgeBasis) .AND. PRESENT(ReadyEdgeBasis) ) UsePretabulatedBasis = .TRUE.
+       IF ( PRESENT(ReadyEdgeBasis) .AND. PRESENT(ReadyRotBasis) ) UsePretabulatedBasis = .TRUE.
        !------------------------------------------------------------------------------------------
        ! Check whether the Nedelec basis functions of the second kind or higher order basis
        ! functions should be created and whether the Piola transform is already applied within 
@@ -4845,8 +4886,6 @@ END IF
        END IF
        PerformPiolaTransform = .FALSE.
        IF ( PRESENT(ApplyPiolaTransform) ) PerformPiolaTransform = ApplyPiolaTransform
-       Hierarchic = .TRUE. ! .TRUE. to automate the compatibility of the bases for different element shapes 
-       IF ( PRESENT(HierarchicBasis) ) Hierarchic = HierarchicBasis
 
        ApplyTraceMapping = .FALSE.
        IF ( PRESENT(TangentialTrMapping) ) ApplyTraceMapping = TangentialTrMapping
@@ -5009,11 +5048,28 @@ END IF
            END IF
          END IF
        CASE(6)
-         DO q=1,n
-           Basis(q) = PyramidNodalPBasis(q, u, v, w)
-           dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
-         END DO
-         DOFs = 10
+         IF (SecondOrder) THEN
+           ! The second-order pyramid from the Nedelec's first family
+           DOFs = 31
+         ELSE
+           ! The lowest-order pyramid from the optimal family
+           DOFs = 10
+         END IF
+
+         IF (n==13) THEN
+           ! Here the background mesh is supposed to be of type 613. The difference between the standard
+           ! reference element and the p-reference element can be taken into account by a simple scaling:
+           CALL NodalBasisFunctions3D(Basis, Element, u, v, sqrt(2.0d0)*w)
+           CALL NodalFirstDerivatives(n, dLBasisdx, Element, u, v, sqrt(2.0d0)*w)
+           dLBasisdx(1:n,3) = sqrt(2.0d0) * dLBasisdx(1:n,3)
+         ELSE
+           ! Background mesh elements of the type 605:
+           DO q=1,n
+             Basis(q) = PyramidNodalPBasis(q, u, v, w)
+             dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
+           END DO
+         END IF
+
        CASE(7)
          IF (SecondOrder) THEN
            ! The second-order prism from the Nedelec's first family: affine physical elements may be needed
@@ -5283,73 +5339,83 @@ END IF
              END IF
 
            ELSE
-             IF ( SecondOrder .AND. (.NOT. Hierarchic) ) THEN
-               !----------------------------------------------------------------------
-               ! The second-order Nedelec basis functions of the first kind;
-               ! the original implementation - nowadays an alternate hierarchic basis
-               ! is also available
-               !---------------------------------------------------------------------
-
-               !----------------------------------------------------
-               ! first two basis functions defined on the edge 12:
-               !----------------------------------------------------
-               i = EdgeMap(1,1)
-               j = EdgeMap(1,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(1,1) = (-3.0d0 + Sqrt(3.0d0)*v)**2/18.0d0
-               EdgeBasis(1,2) = (u*(Sqrt(3.0d0) - v))/6.0d0
-               CurlBasis(1,3) = (Sqrt(3.0d0) - v)/2.0d0
+             
+             !------------------------------------------------------------
+             ! The optimal/Nedelec basis functions of the first kind. We employ
+             ! a hierarchic basis, so the lowest-order basis functions are
+             ! also utilized in the construction of the second-order basis. 
+             ! First the edge 12 ...
+             !------------------------------------------------------------
+             i = EdgeMap(1,1)
+             j = EdgeMap(1,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0
+             EdgeBasis(1,2) = u/(2.0d0*Sqrt(3.0d0))
+             CurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
+             IF (nj<ni) THEN
+               EdgeBasis(1,:) = -EdgeBasis(1,:)
+               CurlBasis(1,3) = -CurlBasis(1,3)
+             END IF
+             IF (SecondOrder) THEN
                EdgeBasis(2,1) = -(u*(-3.0d0 + Sqrt(3.0d0)*v))/2.0d0
                EdgeBasis(2,2) = (Sqrt(3.0d0)*u**2)/2.0d0
-               CurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0
-               IF (nj<ni) THEN
-                 EdgeBasis(1,:) = -EdgeBasis(1,:)
-                 CurlBasis(1,3) = -CurlBasis(1,3)
-               END IF
+               CurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0                     
+             END IF
 
-               !-------------------------------------------------
-               ! Two basis functions defined on the edge 23:
-               !-------------------------------------------------
-               i = EdgeMap(2,1)
-               j = EdgeMap(2,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(3,1) = -(v*(Sqrt(3.0d0) + Sqrt(3.0d0)*u + v))/12.0d0
-               EdgeBasis(3,2) = ((1.0d0 + u)*(3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
-               CurlBasis(3,3) = (Sqrt(3.0d0) + Sqrt(3.0d0)*u + v)/4.0d0
+             !-------------------------------------------------
+             ! Basis functions associated with the edge 23:
+             !-------------------------------------------------
+             IF (SecondOrder) THEN
+               k = 3
                EdgeBasis(4,1) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*v)/4.0d0
                EdgeBasis(4,2) = (Sqrt(3.0d0)*(1.0d0 + u)*(-1.0d0 - u + Sqrt(3.0d0)*v))/4.0d0
                CurlBasis(4,3) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/4.0d0
-               IF (nj<ni) THEN
-                 EdgeBasis(3,:) = -EdgeBasis(3,:)
-                 CurlBasis(3,3) = -CurlBasis(3,3)
-               END IF
+             ELSE
+               k = 2
+             END IF
+             i = EdgeMap(2,1)
+             j = EdgeMap(2,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(k,1) = -v/(2.0d0*Sqrt(3.0d0))
+             EdgeBasis(k,2) = (1 + u)/(2.0d0*Sqrt(3.0d0))
+             CurlBasis(k,3) =  1.0d0/Sqrt(3.0d0)
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,3) = -CurlBasis(k,3)
+             END IF
 
-               !-------------------------------------------------
-               ! Two basis functions defined on the edge 31:
-               !-------------------------------------------------
-               i = EdgeMap(3,1)
-               j = EdgeMap(3,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(5,1) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u - v)*v)/12.0d0
-               EdgeBasis(5,2) = ((-1.0d0 + u)*(3.0d0 - 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
-               CurlBasis(5,3) = (Sqrt(3.0d0) - Sqrt(3.0d0)*u + v)/4.0d0
+             !-------------------------------------------------
+             ! Basis functions associated with the edge 31:
+             !-------------------------------------------------
+             IF (SecondOrder) THEN
+               k = 5
                EdgeBasis(6,1) = (v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0
                EdgeBasis(6,2) = -(Sqrt(3.0d0)*(-1.0d0 + u)*(-1.0d0 + u + Sqrt(3.0d0)*v))/4.0d0
-               CurlBasis(6,3) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0
-               IF (nj<ni) THEN
-                 EdgeBasis(5,:) = -EdgeBasis(5,:)
-                 CurlBasis(5,3) = -CurlBasis(5,3)
-               END IF
+               CurlBasis(6,3) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0                     
+             ELSE
+               k = 3
+             END IF
+             i = EdgeMap(3,1)
+             j = EdgeMap(3,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(k,1) = -v/(2.0d0*Sqrt(3.0d0))
+             EdgeBasis(k,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0))
+             CurlBasis(k,3) = 1.0d0/Sqrt(3.0d0)
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,3) = -CurlBasis(k,3)
+             END IF
 
+             IF (SecondOrder) THEN
                !-------------------------------------------------
                ! Two basis functions defined on the face 123:
                !-------------------------------------------------
@@ -5381,114 +5447,6 @@ END IF
                EdgeBasis(8,:) = D2 * WorkBasis(I2,:)
                CurlBasis(8,3) = D2 * WorkCurlBasis(I2,3)  
 
-             ELSE
-               !------------------------------------------------------------
-               ! The Nedelec basis functions of the first kind. We employ
-               ! a hierarchic basis, so the lowest-order basis functions are
-               ! also utilized in the construction of the second-order basis. 
-               ! First the edge 12 ...
-               !------------------------------------------------------------
-               i = EdgeMap(1,1)
-               j = EdgeMap(1,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0
-               EdgeBasis(1,2) = u/(2.0d0*Sqrt(3.0d0))
-               CurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
-               IF (nj<ni) THEN
-                 EdgeBasis(1,:) = -EdgeBasis(1,:)
-                 CurlBasis(1,3) = -CurlBasis(1,3)
-               END IF
-               IF (SecondOrder) THEN
-                 EdgeBasis(2,1) = -(u*(-3.0d0 + Sqrt(3.0d0)*v))/2.0d0
-                 EdgeBasis(2,2) = (Sqrt(3.0d0)*u**2)/2.0d0
-                 CurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0                     
-               END IF
-
-               !-------------------------------------------------
-               ! Basis functions associated with the edge 23:
-               !-------------------------------------------------
-               IF (SecondOrder) THEN
-                 k = 3
-                 EdgeBasis(4,1) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*v)/4.0d0
-                 EdgeBasis(4,2) = (Sqrt(3.0d0)*(1.0d0 + u)*(-1.0d0 - u + Sqrt(3.0d0)*v))/4.0d0
-                 CurlBasis(4,3) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/4.0d0
-               ELSE
-                 k = 2
-               END IF
-               i = EdgeMap(2,1)
-               j = EdgeMap(2,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(k,1) = -v/(2.0d0*Sqrt(3.0d0))
-               EdgeBasis(k,2) = (1 + u)/(2.0d0*Sqrt(3.0d0))
-               CurlBasis(k,3) =  1.0d0/Sqrt(3.0d0)
-               IF (nj<ni) THEN
-                 EdgeBasis(k,:) = -EdgeBasis(k,:)
-                 CurlBasis(k,3) = -CurlBasis(k,3)
-               END IF
-
-               !-------------------------------------------------
-               ! Basis functions associated with the edge 31:
-               !-------------------------------------------------
-               IF (SecondOrder) THEN
-                 k = 5
-                 EdgeBasis(6,1) = (v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0
-                 EdgeBasis(6,2) = -(Sqrt(3.0d0)*(-1.0d0 + u)*(-1.0d0 + u + Sqrt(3.0d0)*v))/4.0d0
-                 CurlBasis(6,3) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0                     
-               ELSE
-                 k = 3
-               END IF
-               i = EdgeMap(3,1)
-               j = EdgeMap(3,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(k,1) = -v/(2.0d0*Sqrt(3.0d0))
-               EdgeBasis(k,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0))
-               CurlBasis(k,3) = 1.0d0/Sqrt(3.0d0)
-               IF (nj<ni) THEN
-                 EdgeBasis(k,:) = -EdgeBasis(k,:)
-                 CurlBasis(k,3) = -CurlBasis(k,3)
-               END IF
-
-               IF (SecondOrder) THEN
-                 !-------------------------------------------------
-                 ! Two basis functions defined on the face 123:
-                 !-------------------------------------------------
-                 TriangleFaceMap(:) = (/ 1,2,3 /)          
-                 Ind => Element % Nodeindexes
-
-                 DO j=1,3
-                   FaceIndeces(j) = Ind(TriangleFaceMap(j))
-                 END DO
-                 IF (Parallel) THEN
-                   DO j=1,3
-                     FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
-                   END DO
-                 END IF
-                 CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
-
-                 WorkBasis(1,1) = ((Sqrt(3.0d0) - v)*v)/6.0d0
-                 WorkBasis(1,2) = (u*v)/6.0d0
-                 WorkCurlBasis(1,3) = (-Sqrt(3.0d0) + 3.0d0*v)/6.0d0
-                 WorkBasis(2,1) = (v*(1.0d0 + u - v/Sqrt(3.0d0)))/(4.0d0*Sqrt(3.0d0))
-                 WorkBasis(2,2) = ((-1.0d0 + u)*(-3.0d0 - 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
-                 WorkCurlBasis(2,3) =(-Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u + 3.0d0*v)/12.0d0
-                 WorkBasis(3,1) = (v*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
-                 WorkBasis(3,2) = -((1.0d0 + u)*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
-                 WorkCurlBasis(3,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0
-
-                 EdgeBasis(7,:) = D1 * WorkBasis(I1,:)
-                 CurlBasis(7,3) = D1 * WorkCurlBasis(I1,3)
-                 EdgeBasis(8,:) = D2 * WorkBasis(I2,:)
-                 CurlBasis(8,3) = D2 * WorkCurlBasis(I2,3)  
-               END IF
              END IF
            END IF
 
@@ -5993,53 +5951,43 @@ END IF
              END IF
 
            ELSE
-             IF ( SecondOrder .AND. (.NOT. Hierarchic) ) THEN
-               !----------------------------------------------------------------------
-               ! The second-order Nedelec basis functions of the first kind;
-               ! the original implementation - nowadays an alternate hierarchic basis
-               ! is also available
-               !---------------------------------------------------------------------
-               i = EdgeMap(1,1)
-               j = EdgeMap(1,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(1,1) = (-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)**2/72.0d0
-               EdgeBasis(1,2) = -(u*(-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(12.0d0*Sqrt(3.0d0))
-               EdgeBasis(1,3) = -(u*(-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(12.0d0*Sqrt(6.0d0))
-               CurlBasis(1,1) = 0.0d0
-               CurlBasis(1,2) = (-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/(4.0d0*Sqrt(6.0d0))
-               CurlBasis(1,3) = (2.0d0*Sqrt(3.0d0) - 2.0d0*v - Sqrt(2.0d0)*w)/4.0d0
-
+             
+             !-------------------------------------------------------------
+             ! The optimal/Nedelec basis functions of the first kind. We employ
+             ! a hierarchic basis, so the lowest-order basis functions are
+             ! also utilized in the construction of the second-order basis. 
+             ! The first the edge ...
+             !-------------------------------------------------------------
+             i = EdgeMap(1,1)
+             j = EdgeMap(1,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(1,1) = (6.0d0 - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/24.0d0
+             EdgeBasis(1,2) = u/(4.0d0*Sqrt(3.0d0))
+             EdgeBasis(1,3) = u/(4.0d0*Sqrt(6.0d0))            
+             CurlBasis(1,1) = 0.0d0
+             CurlBasis(1,2) = -1.0d0/(2.0d0*Sqrt(6.0d0))
+             CurlBasis(1,3) = 1.0d0/(2.0d0*Sqrt(3.0d0))
+             IF (nj<ni) THEN
+               EdgeBasis(1,:) = -EdgeBasis(1,:)
+               CurlBasis(1,:) = -CurlBasis(1,:)
+             END IF
+             IF (SecondOrder) THEN
                EdgeBasis(2,1) = -(u*(-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/4.0d0
                EdgeBasis(2,2) = (Sqrt(3.0d0)*u**2)/2.0d0
                EdgeBasis(2,3) = (Sqrt(1.5d0)*u**2)/2.0d0
                CurlBasis(2,1) = 0.0d0
                CurlBasis(2,2) = (-3.0d0*Sqrt(1.5d0)*u)/2.0d0
-               CurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0
+               CurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0                   
+             END IF
 
-               IF (nj<ni) THEN
-                 EdgeBasis(1,:) = -EdgeBasis(1,:)
-                 CurlBasis(1,:) = -CurlBasis(1,:)
-               END IF
-
-               i = EdgeMap(2,1)
-               j = EdgeMap(2,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(3,1) = -((Sqrt(3.0d0) + Sqrt(3.0d0)*u + v - Sqrt(2.0d0)*w)*&
-                   (4.0d0*v - Sqrt(2.0d0)*w))/48.0d0
-               EdgeBasis(3,2) = ((4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - 3.0d0*Sqrt(2.0d0)*w)*&
-                   (3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v - Sqrt(6.0d0)*w))/144.0d0
-               EdgeBasis(3,3) = -((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*&
-                   (3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v - Sqrt(6.0d0)*w))/(72.0d0*Sqrt(2.0d0))
-               CurlBasis(3,1) = (3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/(8.0d0*Sqrt(2.0d0))
-               CurlBasis(3,2) = (Sqrt(3.0d0) + Sqrt(3.0d0)*u + v - Sqrt(2.0d0)*w)/(8.0d0*Sqrt(2.0d0))
-               CurlBasis(3,3) = (Sqrt(3.0d0) + Sqrt(3.0d0)*u + v - Sqrt(2.0d0)*w)/4.0d0
-
+             !-------------------------------------------------
+             ! Basis functions associated with the second edge:
+             !-------------------------------------------------
+             IF (SecondOrder) THEN
+               k = 3
                EdgeBasis(4,1) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*(4.0d0*v - Sqrt(2.0d0)*w))/16.0d0
                EdgeBasis(4,2) = -((1.0d0 + u - Sqrt(3.0d0)*v)*&
                    (4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - 3.0d0*Sqrt(2.0d0)*w))/16.0d0
@@ -6048,27 +5996,32 @@ END IF
                CurlBasis(4,1) = (-9.0d0*(1.0d0 + u - Sqrt(3.0d0)*v))/(8.0d0*Sqrt(2.0d0))
                CurlBasis(4,2) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/(8.0d0*Sqrt(2.0d0))
                CurlBasis(4,3) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/4.0d0
-               IF (nj<ni) THEN
-                 EdgeBasis(3,:) = -EdgeBasis(3,:)
-                 CurlBasis(3,:) = -CurlBasis(3,:)
-               END IF
+             ELSE
+               k = 2
+             END IF
 
-               i = EdgeMap(3,1)
-               j = EdgeMap(3,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(5,1) = -((Sqrt(3.0d0) - Sqrt(3.0d0)*u + v - Sqrt(2.0d0)*w)*&
-                   (4.0d0*v - Sqrt(2.0d0)*w))/48.0d0
-               EdgeBasis(5,2) = ((-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + 3.0d0*Sqrt(2.0d0)*w)*&
-                   (3.0d0 - 3.0d0*u + Sqrt(3.0d0)*v - Sqrt(6.0d0)*w))/144.0d0
-               EdgeBasis(5,3) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v)*&
-                   (-3.0d0 + 3.0d0*u - Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(72.0d0*Sqrt(2.0d0))
-               CurlBasis(5,1) = (-3.0d0 + 3.0d0*u - Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/(8.0d0*Sqrt(2.0d0))
-               CurlBasis(5,2) = (Sqrt(3.0d0) - Sqrt(3.0d0)*u + v - Sqrt(2.0d0)*w)/(8.0d0*Sqrt(2.0d0))
-               CurlBasis(5,3) = (Sqrt(3.0d0) - Sqrt(3.0d0)*u + v - Sqrt(2.0d0)*w)/4.0d0
+             i = EdgeMap(2,1)
+             j = EdgeMap(2,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(k,1) = (-4.0d0*v + Sqrt(2.0d0)*w)/(16.0d0*Sqrt(3.0d0))
+             EdgeBasis(k,2) = (4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - 3.0d0*Sqrt(2.0d0)*w)/48.0d0
+             EdgeBasis(k,3) = -(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)/(24.0d0*Sqrt(2.0d0))
+             CurlBasis(k,1) = 1.0d0/(4.0d0*Sqrt(2.0d0))
+             CurlBasis(k,2) = 1.0d0/(4.0d0*Sqrt(6.0d0))
+             CurlBasis(k,3) = 1.0d0/(2.0d0*Sqrt(3.0d0))
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+             END IF
 
+             !-------------------------------------------------
+             ! Basis functions associated with the third edge:
+             !-------------------------------------------------
+             IF (SecondOrder) THEN
+               k = 5
                EdgeBasis(6,1) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v)*&
                    (4.0d0*v - Sqrt(2.0d0)*w))/16.0d0
                EdgeBasis(6,2) = -((-1.0d0 + u + Sqrt(3.0d0)*v)*&
@@ -6078,28 +6031,32 @@ END IF
                CurlBasis(6,1) = (9.0d0*(-1.0d0 + u + Sqrt(3.0d0)*v))/(8.0d0*Sqrt(2.0d0))
                CurlBasis(6,2) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/(8.0d0*Sqrt(2.0d0))
                CurlBasis(6,3) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0
+             ELSE
+               k = 3
+             END IF
 
-               IF (nj<ni) THEN
-                 EdgeBasis(5,:) = -EdgeBasis(5,:)
-                 CurlBasis(5,:) = -CurlBasis(5,:)
-               END IF
+             i = EdgeMap(3,1)
+             j = EdgeMap(3,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(k,1) = (-4.0d0*v + Sqrt(2.0d0)*w)/(16.0d0*Sqrt(3.0d0))
+             EdgeBasis(k,2) = (-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + 3.0d0*Sqrt(2.0d0)*w)/48.0d0
+             EdgeBasis(k,3) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 3.0d0*Sqrt(2.0d0)*v)/48.0d0
+             CurlBasis(k,1) = -1.0d0/(4.0d0*Sqrt(2.0d0))
+             CurlBasis(k,2) = 1.0d0/(4.0d0*Sqrt(6.0d0))
+             CurlBasis(k,3) = 1.0d0/(2.0d0*Sqrt(3.0d0))
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+             END IF
 
-               i = EdgeMap(4,1)
-               j = EdgeMap(4,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(7,1) = (w*(Sqrt(6.0d0) - Sqrt(6.0d0)*u - Sqrt(2.0d0)*v + 2.0d0*w))/16.0d0
-               EdgeBasis(7,2) = (w*(3.0d0*Sqrt(2.0d0) - 3.0d0*Sqrt(2.0d0)*u - Sqrt(6.0d0)*v + &
-                   2.0d0*Sqrt(3.0d0)*w))/48.0d0
-               EdgeBasis(7,3) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v)*&
-                   (-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v - Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
-               CurlBasis(7,1) = (-3.0d0*Sqrt(2.0d0) + 3.0d0*Sqrt(2.0d0)*u + Sqrt(6.0d0)*v - &
-                   2.0d0*Sqrt(3.0d0)*w)/16.0d0
-               CurlBasis(7,2) = (-3.0d0*(-Sqrt(6.0d0) + Sqrt(6.0d0)*u + Sqrt(2.0d0)*v - 2.0d0*w))/16.0d0
-               CurlBasis(7,3) = 0.0d0
-
+             !-------------------------------------------------
+             ! Basis functions associated with the fourth edge:
+             !-------------------------------------------------
+             IF (SecondOrder) THEN
+               k = 7
                EdgeBasis(8,1) = (3.0d0*w*(-Sqrt(6.0d0) + Sqrt(6.0d0)*u + Sqrt(2.0d0)*v + 4.0d0*w))/16.0d0
                EdgeBasis(8,2) = (w*(-3.0d0*Sqrt(2.0d0) + 3.0d0*Sqrt(2.0d0)*u + Sqrt(6.0d0)*v + &
                    4.0d0*Sqrt(3.0d0)*w))/16.0d0
@@ -6109,28 +6066,32 @@ END IF
                    Sqrt(6.0d0)*v + 4.0d0*Sqrt(3.0d0)*w))/16.0d0
                CurlBasis(8,2) = (9.0d0*(-Sqrt(6.0d0) + Sqrt(6.0d0)*u + Sqrt(2.0d0)*v + 4.0d0*w))/16.0d0
                CurlBasis(8,3) = 0.0d0
+             ELSE
+               k = 4
+             END IF
 
-               IF (nj<ni) THEN
-                 EdgeBasis(7,:) = -EdgeBasis(7,:)
-                 CurlBasis(7,:) = -CurlBasis(7,:)
-               END IF
+             i = EdgeMap(4,1)
+             j = EdgeMap(4,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(k,1) = (Sqrt(1.5d0)*w)/8.0d0
+             EdgeBasis(k,2) = w/(8.0d0*Sqrt(2.0d0))
+             EdgeBasis(k,3) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)/16.0d0
+             CurlBasis(k,1) = -1.0d0/(4.0d0*Sqrt(2.0d0))
+             CurlBasis(k,2) = Sqrt(1.5d0)/4.0d0
+             CurlBasis(k,3) = 0.0d0
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+             END IF
 
-               i = EdgeMap(5,1)
-               j = EdgeMap(5,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(9,1) = -(w*(Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v + 2.0d0*w))/16.0d0
-               EdgeBasis(9,2) = (w*(3.0d0*Sqrt(2.0d0) + 3.0d0*Sqrt(2.0d0)*u - &
-                   Sqrt(6.0d0)*v + 2.0d0*Sqrt(3.0d0)*w))/48.0d0
-               EdgeBasis(9,3) = ((Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)*&
-                   (3.0d0 + 3.0d0*u - Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/48.0d0
-               CurlBasis(9,1) = (-3.0d0*Sqrt(2.0d0) - 3.0d0*Sqrt(2.0d0)*u + &
-                   Sqrt(6.0d0)*v - 2.0d0*Sqrt(3.0d0)*w)/16.0d0
-               CurlBasis(9,2) = (-3.0d0*(Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v + 2.0d0*w))/16.0d0
-               CurlBasis(9,3) = 0.0d0
-
+             !-------------------------------------------------
+             ! Basis functions associated with the fifth edge:
+             !-------------------------------------------------
+             IF (SecondOrder) THEN
+               k = 9
                EdgeBasis(10,1) = (3.0d0*(Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - 4.0d0*w)*w)/16.0d0
                EdgeBasis(10,2) = (w*(-3.0d0*Sqrt(2.0d0) - 3.0d0*Sqrt(2.0d0)*u + &
                    Sqrt(6.0d0)*v + 4.0d0*Sqrt(3.0d0)*w))/16.0d0
@@ -6140,35 +6101,76 @@ END IF
                    Sqrt(6.0d0)*v - 4.0d0*Sqrt(3.0d0)*w))/16.0d0
                CurlBasis(10,2) = (9.0d0*(Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - 4.0d0*w))/16.0d0
                CurlBasis(10,3) = 0.0d0
-               IF (nj<ni) THEN
-                 EdgeBasis(9,:) = -EdgeBasis(9,:)
-                 CurlBasis(9,:) = -CurlBasis(9,:)
-               END IF
+             ELSE
+               k = 5
+             END IF
 
-               i = EdgeMap(6,1)
-               j = EdgeMap(6,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(11,1) = 0.0d0
-               EdgeBasis(11,2) = -(w*(Sqrt(2.0d0)*v + w))/(4.0d0*Sqrt(3.0d0))
-               EdgeBasis(11,3) = (v*(2.0d0*v + Sqrt(2.0d0)*w))/(4.0d0*Sqrt(6.0d0))
-               CurlBasis(11,1) = (Sqrt(3.0d0)*(Sqrt(2.0d0)*v + w))/4.0d0
-               CurlBasis(11,2) = 0.0d0
-               CurlBasis(11,3) = 0.0d0
+             i = EdgeMap(5,1)
+             j = EdgeMap(5,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(k,1) = -(Sqrt(1.5d0)*w)/8.0d0
+             EdgeBasis(k,2) = w/(8.0d0*Sqrt(2.0d0))
+             EdgeBasis(k,3) = (Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)/16.0d0
+             CurlBasis(k,1) = -1.0d0/(4.0d0*Sqrt(2.0d0))
+             CurlBasis(k,2) = -Sqrt(1.5d0)/4.0d0
+             CurlBasis(k,3) = 0.0d0
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+             END IF
 
+             !-------------------------------------------------
+             ! Basis functions associated with the sixth edge:
+             !-------------------------------------------------
+             IF (SecondOrder) THEN
+               k = 11
                EdgeBasis(12,1) = 0.0d0
                EdgeBasis(12,2) = (Sqrt(3.0d0)*(Sqrt(2.0d0)*v - 2.0d0*w)*w)/4.0d0
                EdgeBasis(12,3) = (Sqrt(1.5d0)*v*(-v + Sqrt(2.0d0)*w))/2.0d0
                CurlBasis(12,1) = (-3.0d0*(Sqrt(6.0d0)*v - 2.0d0*Sqrt(3.0d0)*w))/4.0d0
                CurlBasis(12,2) = 0.0d0
                CurlBasis(12,3) = 0.0d0
-               IF (nj<ni) THEN
-                 EdgeBasis(11,:) = -EdgeBasis(11,:)
-                 CurlBasis(11,:) = -CurlBasis(11,:)
-               END IF
+             ELSE
+               k = 6
+             END IF
 
+             i = EdgeMap(6,1)
+             j = EdgeMap(6,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(k,1) = 0.0d0
+             EdgeBasis(k,2) = -w/(4.0d0*Sqrt(2.0d0))
+             EdgeBasis(k,3) = v/(4.0d0*Sqrt(2.0d0))
+             CurlBasis(k,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
+             CurlBasis(k,2) = 0.0d0
+             CurlBasis(k,3) = 0.0d0
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+             END IF
+
+             ! -------------------------------------------------------------
+             ! Finally scale the lowest-order basis functions so that 
+             ! (b,t) = 1 when the integration is done over the element edge.
+             ! -------------------------------------------------------------
+             IF (SecondOrder) THEN
+               DO k=1,6
+                 EdgeBasis(2*(k-1)+1,:) = 2.0d0 * EdgeBasis(2*(k-1)+1,:)
+                 CurlBasis(2*(k-1)+1,:) = 2.0d0 * CurlBasis(2*(k-1)+1,:)
+               END DO
+             ELSE
+               DO k=1,6
+                 EdgeBasis(k,:) = 2.0d0 * EdgeBasis(k,:)
+                 CurlBasis(k,:) = 2.0d0 * CurlBasis(k,:)
+               END DO
+             END IF
+
+             IF (SecondOrder) THEN
                !-------------------------------------------------
                ! Two basis functions defined on the face 213:
                !-------------------------------------------------
@@ -6355,616 +6357,830 @@ END IF
                EdgeBasis(19,:) = D1 * WorkBasis(I1,:)
                CurlBasis(19,:) = D1 * WorkCurlBasis(I1,:)
                EdgeBasis(20,:) = D2 * WorkBasis(I2,:)
-               CurlBasis(20,:) = D2 * WorkCurlBasis(I2,:)  
-
-             ELSE
-               !-------------------------------------------------------------
-               ! The Nedelec basis functions of the first kind. We employ
-               ! a hierarchic basis, so the lowest-order basis functions are
-               ! also utilized in the construction of the second-order basis. 
-               ! The first the edge ...
-               !-------------------------------------------------------------
-               i = EdgeMap(1,1)
-               j = EdgeMap(1,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(1,1) = (6.0d0 - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/24.0d0
-               EdgeBasis(1,2) = u/(4.0d0*Sqrt(3.0d0))
-               EdgeBasis(1,3) = u/(4.0d0*Sqrt(6.0d0))            
-               CurlBasis(1,1) = 0.0d0
-               CurlBasis(1,2) = -1.0d0/(2.0d0*Sqrt(6.0d0))
-               CurlBasis(1,3) = 1.0d0/(2.0d0*Sqrt(3.0d0))
-               IF (nj<ni) THEN
-                 EdgeBasis(1,:) = -EdgeBasis(1,:)
-                 CurlBasis(1,:) = -CurlBasis(1,:)
-               END IF
-               IF (SecondOrder) THEN
-                 EdgeBasis(2,1) = -(u*(-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/4.0d0
-                 EdgeBasis(2,2) = (Sqrt(3.0d0)*u**2)/2.0d0
-                 EdgeBasis(2,3) = (Sqrt(1.5d0)*u**2)/2.0d0
-                 CurlBasis(2,1) = 0.0d0
-                 CurlBasis(2,2) = (-3.0d0*Sqrt(1.5d0)*u)/2.0d0
-                 CurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0                   
-               END IF
-
-               !-------------------------------------------------
-               ! Basis functions associated with the second edge:
-               !-------------------------------------------------
-               IF (SecondOrder) THEN
-                 k = 3
-                 EdgeBasis(4,1) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*(4.0d0*v - Sqrt(2.0d0)*w))/16.0d0
-                 EdgeBasis(4,2) = -((1.0d0 + u - Sqrt(3.0d0)*v)*&
-                     (4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - 3.0d0*Sqrt(2.0d0)*w))/16.0d0
-                 EdgeBasis(4,3) = -((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*&
-                     (-1.0d0 - u + Sqrt(3.0d0)*v))/(8.0d0*Sqrt(2.0d0))
-                 CurlBasis(4,1) = (-9.0d0*(1.0d0 + u - Sqrt(3.0d0)*v))/(8.0d0*Sqrt(2.0d0))
-                 CurlBasis(4,2) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/(8.0d0*Sqrt(2.0d0))
-                 CurlBasis(4,3) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/4.0d0
-               ELSE
-                 k = 2
-               END IF
-
-               i = EdgeMap(2,1)
-               j = EdgeMap(2,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(k,1) = (-4.0d0*v + Sqrt(2.0d0)*w)/(16.0d0*Sqrt(3.0d0))
-               EdgeBasis(k,2) = (4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - 3.0d0*Sqrt(2.0d0)*w)/48.0d0
-               EdgeBasis(k,3) = -(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)/(24.0d0*Sqrt(2.0d0))
-               CurlBasis(k,1) = 1.0d0/(4.0d0*Sqrt(2.0d0))
-               CurlBasis(k,2) = 1.0d0/(4.0d0*Sqrt(6.0d0))
-               CurlBasis(k,3) = 1.0d0/(2.0d0*Sqrt(3.0d0))
-               IF (nj<ni) THEN
-                 EdgeBasis(k,:) = -EdgeBasis(k,:)
-                 CurlBasis(k,:) = -CurlBasis(k,:)
-               END IF
-
-               !-------------------------------------------------
-               ! Basis functions associated with the third edge:
-               !-------------------------------------------------
-               IF (SecondOrder) THEN
-                 k = 5
-                 EdgeBasis(6,1) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v)*&
-                     (4.0d0*v - Sqrt(2.0d0)*w))/16.0d0
-                 EdgeBasis(6,2) = -((-1.0d0 + u + Sqrt(3.0d0)*v)*&
-                     (-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + 3.0d0*Sqrt(2.0d0)*w))/16.0d0
-                 EdgeBasis(6,3) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v)*&
-                     (-1.0d0 + u + Sqrt(3.0d0)*v))/(8.0d0*Sqrt(2.0d0))
-                 CurlBasis(6,1) = (9.0d0*(-1.0d0 + u + Sqrt(3.0d0)*v))/(8.0d0*Sqrt(2.0d0))
-                 CurlBasis(6,2) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/(8.0d0*Sqrt(2.0d0))
-                 CurlBasis(6,3) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0
-               ELSE
-                 k = 3
-               END IF
-
-               i = EdgeMap(3,1)
-               j = EdgeMap(3,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(k,1) = (-4.0d0*v + Sqrt(2.0d0)*w)/(16.0d0*Sqrt(3.0d0))
-               EdgeBasis(k,2) = (-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + 3.0d0*Sqrt(2.0d0)*w)/48.0d0
-               EdgeBasis(k,3) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 3.0d0*Sqrt(2.0d0)*v)/48.0d0
-               CurlBasis(k,1) = -1.0d0/(4.0d0*Sqrt(2.0d0))
-               CurlBasis(k,2) = 1.0d0/(4.0d0*Sqrt(6.0d0))
-               CurlBasis(k,3) = 1.0d0/(2.0d0*Sqrt(3.0d0))
-               IF (nj<ni) THEN
-                 EdgeBasis(k,:) = -EdgeBasis(k,:)
-                 CurlBasis(k,:) = -CurlBasis(k,:)
-               END IF
-
-               !-------------------------------------------------
-               ! Basis functions associated with the fourth edge:
-               !-------------------------------------------------
-               IF (SecondOrder) THEN
-                 k = 7
-                 EdgeBasis(8,1) = (3.0d0*w*(-Sqrt(6.0d0) + Sqrt(6.0d0)*u + Sqrt(2.0d0)*v + 4.0d0*w))/16.0d0
-                 EdgeBasis(8,2) = (w*(-3.0d0*Sqrt(2.0d0) + 3.0d0*Sqrt(2.0d0)*u + Sqrt(6.0d0)*v + &
-                     4.0d0*Sqrt(3.0d0)*w))/16.0d0
-                 EdgeBasis(8,3) = -((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v)*&
-                     (-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v + 2.0d0*Sqrt(6.0d0)*w))/(8.0d0*Sqrt(2.0d0))
-                 CurlBasis(8,1) = (-3.0d0*(-3.0d0*Sqrt(2.0d0) + 3.0d0*Sqrt(2.0d0)*u + &
-                     Sqrt(6.0d0)*v + 4.0d0*Sqrt(3.0d0)*w))/16.0d0
-                 CurlBasis(8,2) = (9.0d0*(-Sqrt(6.0d0) + Sqrt(6.0d0)*u + Sqrt(2.0d0)*v + 4.0d0*w))/16.0d0
-                 CurlBasis(8,3) = 0.0d0
-               ELSE
-                 k = 4
-               END IF
-
-               i = EdgeMap(4,1)
-               j = EdgeMap(4,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(k,1) = (Sqrt(1.5d0)*w)/8.0d0
-               EdgeBasis(k,2) = w/(8.0d0*Sqrt(2.0d0))
-               EdgeBasis(k,3) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)/16.0d0
-               CurlBasis(k,1) = -1.0d0/(4.0d0*Sqrt(2.0d0))
-               CurlBasis(k,2) = Sqrt(1.5d0)/4.0d0
-               CurlBasis(k,3) = 0.0d0
-               IF (nj<ni) THEN
-                 EdgeBasis(k,:) = -EdgeBasis(k,:)
-                 CurlBasis(k,:) = -CurlBasis(k,:)
-               END IF
-
-               !-------------------------------------------------
-               ! Basis functions associated with the fifth edge:
-               !-------------------------------------------------
-               IF (SecondOrder) THEN
-                 k = 9
-                 EdgeBasis(10,1) = (3.0d0*(Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - 4.0d0*w)*w)/16.0d0
-                 EdgeBasis(10,2) = (w*(-3.0d0*Sqrt(2.0d0) - 3.0d0*Sqrt(2.0d0)*u + &
-                     Sqrt(6.0d0)*v + 4.0d0*Sqrt(3.0d0)*w))/16.0d0
-                 EdgeBasis(10,3) = ((Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)*&
-                     (-3.0d0 - 3.0d0*u + Sqrt(3.0d0)*v + 2.0d0*Sqrt(6.0d0)*w))/16.0d0
-                 CurlBasis(10,1) = (3.0d0*(3.0d0*Sqrt(2.0d0) + 3.0d0*Sqrt(2.0d0)*u - &
-                     Sqrt(6.0d0)*v - 4.0d0*Sqrt(3.0d0)*w))/16.0d0
-                 CurlBasis(10,2) = (9.0d0*(Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - 4.0d0*w))/16.0d0
-                 CurlBasis(10,3) = 0.0d0
-               ELSE
-                 k = 5
-               END IF
-
-               i = EdgeMap(5,1)
-               j = EdgeMap(5,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(k,1) = -(Sqrt(1.5d0)*w)/8.0d0
-               EdgeBasis(k,2) = w/(8.0d0*Sqrt(2.0d0))
-               EdgeBasis(k,3) = (Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)/16.0d0
-               CurlBasis(k,1) = -1.0d0/(4.0d0*Sqrt(2.0d0))
-               CurlBasis(k,2) = -Sqrt(1.5d0)/4.0d0
-               CurlBasis(k,3) = 0.0d0
-               IF (nj<ni) THEN
-                 EdgeBasis(k,:) = -EdgeBasis(k,:)
-                 CurlBasis(k,:) = -CurlBasis(k,:)
-               END IF
-
-               !-------------------------------------------------
-               ! Basis functions associated with the sixth edge:
-               !-------------------------------------------------
-               IF (SecondOrder) THEN
-                 k = 11
-                 EdgeBasis(12,1) = 0.0d0
-                 EdgeBasis(12,2) = (Sqrt(3.0d0)*(Sqrt(2.0d0)*v - 2.0d0*w)*w)/4.0d0
-                 EdgeBasis(12,3) = (Sqrt(1.5d0)*v*(-v + Sqrt(2.0d0)*w))/2.0d0
-                 CurlBasis(12,1) = (-3.0d0*(Sqrt(6.0d0)*v - 2.0d0*Sqrt(3.0d0)*w))/4.0d0
-                 CurlBasis(12,2) = 0.0d0
-                 CurlBasis(12,3) = 0.0d0
-               ELSE
-                 k = 6
-               END IF
-
-               i = EdgeMap(6,1)
-               j = EdgeMap(6,2)
-               ni = Element % NodeIndexes(i)
-               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-               nj = Element % NodeIndexes(j)
-               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-               EdgeBasis(k,1) = 0.0d0
-               EdgeBasis(k,2) = -w/(4.0d0*Sqrt(2.0d0))
-               EdgeBasis(k,3) = v/(4.0d0*Sqrt(2.0d0))
-               CurlBasis(k,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(k,2) = 0.0d0
-               CurlBasis(k,3) = 0.0d0
-               IF (nj<ni) THEN
-                 EdgeBasis(k,:) = -EdgeBasis(k,:)
-                 CurlBasis(k,:) = -CurlBasis(k,:)
-               END IF
-
-               ! -------------------------------------------------------------
-               ! Finally scale the lowest-order basis functions so that 
-               ! (b,t) = 1 when the integration is done over the element edge.
-               ! -------------------------------------------------------------
-               IF (SecondOrder) THEN
-                 DO k=1,6
-                   EdgeBasis(2*(k-1)+1,:) = 2.0d0 * EdgeBasis(2*(k-1)+1,:)
-                   CurlBasis(2*(k-1)+1,:) = 2.0d0 * CurlBasis(2*(k-1)+1,:)
-                 END DO
-               ELSE
-                 DO k=1,6
-                   EdgeBasis(k,:) = 2.0d0 * EdgeBasis(k,:)
-                   CurlBasis(k,:) = 2.0d0 * CurlBasis(k,:)
-                 END DO
-               END IF
-
-               IF (SecondOrder) THEN
-                 !-------------------------------------------------
-                 ! Two basis functions defined on the face 213:
-                 !-------------------------------------------------
-                 TriangleFaceMap(:) = (/ 2,1,3 /)          
-                 Ind => Element % Nodeindexes
-
-                 DO j=1,3
-                   FaceIndeces(j) = Ind(TriangleFaceMap(j))
-                 END DO
-                 IF (Parallel) THEN
-                   DO j=1,3
-                     FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
-                   END DO
-                 END IF
-                 CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
-
-                 WorkBasis(1,1) = ((4.0d0*v - Sqrt(2.0d0)*w)*&
-                     (-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(3.0d0))
-                 WorkBasis(1,2) = -(u*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
-                 WorkBasis(1,3) = (u*(-2.0d0*Sqrt(2.0d0)*v + w))/24.0d0
-                 WorkCurlBasis(1,1) = -u/(4.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(1,2) = (Sqrt(6.0d0) + 3.0d0*Sqrt(2.0d0)*v - 3.0d0*w)/24.0d0
-                 WorkCurlBasis(1,3) = (Sqrt(3.0d0) - 3.0d0*v)/6.0d0
-
-                 WorkBasis(2,1) = ((4.0d0*v - Sqrt(2.0d0)*w)*(-6.0d0 + 6.0d0*u + &
-                     2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(96.0d0*Sqrt(3.0d0))
-                 WorkBasis(2,2) = -((4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - 3.0d0*Sqrt(2.0d0)*w)*&
-                     (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/288.0d0
-                 WorkBasis(2,3) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*&
-                     (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(144.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(2,1) = -(-6.0d0 + 2.0d0*u + 2.0d0*Sqrt(3.0d0)*v + &
-                     Sqrt(6.0d0)*w)/(16.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(2,2) = (2.0d0*Sqrt(3.0d0) - 6.0d0*Sqrt(3.0d0)*u + &
-                     6.0d0*v - 3.0d0*Sqrt(2.0d0)*w)/(48.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(2,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0
-
-                 WorkBasis(3,1) = -((4.0d0*v - Sqrt(2.0d0)*w)*(-6.0d0 - 6.0d0*u + &
-                     2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(96.0d0*Sqrt(3.0d0))
-                 WorkBasis(3,2) = ((-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + 3.0d0*Sqrt(2.0d0)*w)* &
-                     (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/288.0d0
-                 WorkBasis(3,3) = -((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v)* &
-                     (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(144.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(3,1) = -(-6.0d0 - 2.0d0*u + 2.0d0*Sqrt(3.0d0)*v + &
-                     Sqrt(6.0d0)*w)/(16.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(3,2) = (-2.0d0*Sqrt(3.0d0) - 6.0d0*Sqrt(3.0d0)*u - 6.0d0*v + &
-                     3.0d0*Sqrt(2.0d0)*w)/(48.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(3,3) = (-Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u + 3.0d0*v)/12.0d0
-
-                 EdgeBasis(13,:) = D1 * WorkBasis(I1,:)
-                 CurlBasis(13,:) = D1 * WorkCurlBasis(I1,:)
-                 EdgeBasis(14,:) = D2 * WorkBasis(I2,:)
-                 CurlBasis(14,:) = D2 * WorkCurlBasis(I2,:)  
-
-                 !-------------------------------------------------
-                 ! Two basis functions defined on the face 124:
-                 !-------------------------------------------------
-                 TriangleFaceMap(:) = (/ 1,2,4 /)          
-                 Ind => Element % Nodeindexes
-
-                 DO j=1,3
-                   FaceIndeces(j) = Ind(TriangleFaceMap(j))
-                 END DO
-                 IF (Parallel) THEN
-                   DO j=1,3
-                     FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
-                   END DO
-                 END IF
-                 CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
-
-                 WorkBasis(1,1) = -(w*(-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(8.0d0*Sqrt(6.0d0))
-                 WorkBasis(1,2) = (u*w)/(4.0d0*Sqrt(2.0d0))
-                 WorkBasis(1,3) = (u*w)/8.0d0
-                 WorkCurlBasis(1,1) = -u/(4.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(1,2) = (Sqrt(6.0d0) - Sqrt(2.0d0)*v - 3.0d0*w)/8.0d0
-                 WorkCurlBasis(1,3) = w/(2.0d0*Sqrt(2.0d0))
-
-                 WorkBasis(2,1) = -(w*(-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + &
-                     Sqrt(6.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-                 WorkBasis(2,2) = (w*(1.0d0 + u - v/Sqrt(3.0d0) - w/Sqrt(6.0d0)))/(8.0d0*Sqrt(2.0d0))
-                 WorkBasis(2,3) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v)* &
-                     (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(2,1) = (-3.0d0*Sqrt(2.0d0) - Sqrt(2.0d0)*u + Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
-                 WorkCurlBasis(2,2) = (Sqrt(6.0d0) + 3.0d0*Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - 3.0d0*w)/16.0d0
-                 WorkCurlBasis(2,3) =  w/(4.0d0*Sqrt(2.0d0))
-
-                 WorkBasis(3,1) = (w*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-                 WorkBasis(3,2) = -(w*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(2.0d0))
-                 WorkBasis(3,3) = -((Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)*&
-                     (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/96.0d0
-                 WorkCurlBasis(3,1) = (-3.0d0*Sqrt(2.0d0) + Sqrt(2.0d0)*u + Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
-                 WorkCurlBasis(3,2) = (-Sqrt(6.0d0) + 3.0d0*Sqrt(6.0d0)*u + Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
-                 WorkCurlBasis(3,3) = -w/(4.0d0*Sqrt(2.0d0))
-
-                 EdgeBasis(15,:) = D1 * WorkBasis(I1,:)
-                 CurlBasis(15,:) = D1 * WorkCurlBasis(I1,:)
-                 EdgeBasis(16,:) = D2 * WorkBasis(I2,:)
-                 CurlBasis(16,:) = D2 * WorkCurlBasis(I2,:)  
-
-                 !-------------------------------------------------
-                 ! Two basis functions defined on the face 234:
-                 !-------------------------------------------------
-                 TriangleFaceMap(:) = (/ 2,3,4 /)          
-                 Ind => Element % Nodeindexes
-
-                 DO j=1,3
-                   FaceIndeces(j) = Ind(TriangleFaceMap(j))
-                 END DO
-                 IF (Parallel) THEN
-                   DO j=1,3
-                     FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
-                   END DO
-                 END IF
-                 CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
-
-                 WorkBasis(1,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
-                 WorkBasis(1,2) = (w*(4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - &
-                     3.0d0*Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-                 WorkBasis(1,3) = -((1.0d0 + u - Sqrt(3.0d0)*v)*w)/16.0d0
-                 WorkCurlBasis(1,1) = (-2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u + 3.0d0*Sqrt(3.0d0)*w)/16.0d0
-                 WorkCurlBasis(1,2) = (-2.0d0*Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
-                 WorkCurlBasis(1,3) = w/(2.0d0*Sqrt(2.0d0))
-
-                 WorkBasis(2,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
-                 WorkBasis(2,2) = -(w*(-4.0d0*v + Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-                 WorkBasis(2,3) = -((Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)*&
-                     (-4.0d0*v + Sqrt(2.0d0)*w))/(32.0d0*Sqrt(3.0d0))
-                 WorkCurlBasis(2,1) = (2.0d0*Sqrt(2.0d0) + 2.0d0*Sqrt(2.0d0)*u - &
-                     2.0d0*Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
-                 WorkCurlBasis(2,2) = (-4.0d0*Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
-                 WorkCurlBasis(2,3) = w/(4.0d0*Sqrt(2.0d0))
-
-                 WorkBasis(3,1) = 0.0d0
-                 WorkBasis(3,2) = (w*(-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
-                 WorkBasis(3,3) = -(v*(-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(3,1) = (2.0d0*Sqrt(2.0d0) + 2.0d0*Sqrt(2.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/8.0d0
-                 WorkCurlBasis(3,2) = -v/(4.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(3,3) = -w/(4.0d0*Sqrt(2.0d0))
-
-                 EdgeBasis(17,:) = D1 * WorkBasis(I1,:)
-                 CurlBasis(17,:) = D1 * WorkCurlBasis(I1,:)
-                 EdgeBasis(18,:) = D2 * WorkBasis(I2,:)
-                 CurlBasis(18,:) = D2 * WorkCurlBasis(I2,:)  
-
-                 !-------------------------------------------------
-                 ! Two basis functions defined on the face 314:
-                 !-------------------------------------------------
-                 TriangleFaceMap(:) = (/ 3,1,4 /)          
-                 Ind => Element % Nodeindexes
-
-                 DO j=1,3
-                   FaceIndeces(j) = Ind(TriangleFaceMap(j))
-                 END DO
-                 IF (Parallel) THEN
-                   DO j=1,3
-                     FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
-                   END DO
-                 END IF
-                 CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
-
-                 WorkBasis(1,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
-                 WorkBasis(1,2) = (w*(-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + &
-                     3.0d0*Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-                 WorkBasis(1,3) = -((-1.0d0 + u + Sqrt(3.0d0)*v)*w)/16.0d0
-                 WorkCurlBasis(1,1) = (2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u - 3.0d0*Sqrt(3.0d0)*w)/16.0d0
-                 WorkCurlBasis(1,2) = (-2.0d0*Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
-                 WorkCurlBasis(1,3) = w/(2.0d0*Sqrt(2.0d0))
-
-                 WorkBasis(2,1) = 0.0d0
-                 WorkBasis(2,2) = (w*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
-                 WorkBasis(2,3) = -(v*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(2,1) = (2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/8.0d0
-                 WorkCurlBasis(2,2) = v/(4.0d0*Sqrt(2.0d0))
-                 WorkCurlBasis(2,3) =  w/(4.0d0*Sqrt(2.0d0))
-
-                 WorkBasis(3,1) = ((2.0d0*Sqrt(2.0d0)*v - w)*w)/16.0d0
-                 WorkBasis(3,2) = -(w*(-4.0d0*v + Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-                 WorkBasis(3,3) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v)*&
-                     (-4.0d0*v + Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-                 WorkCurlBasis(3,1) = (2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u - &
-                     2.0d0*Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
-                 WorkCurlBasis(3,2) = (4.0d0*Sqrt(2.0d0)*v - 3.0d0*w)/16.0d0
-                 WorkCurlBasis(3,3) =  -w/(4.0d0*Sqrt(2.0d0))
-
-                 EdgeBasis(19,:) = D1 * WorkBasis(I1,:)
-                 CurlBasis(19,:) = D1 * WorkCurlBasis(I1,:)
-                 EdgeBasis(20,:) = D2 * WorkBasis(I2,:)
-                 CurlBasis(20,:) = D2 * WorkCurlBasis(I2,:)                  
-               END IF
+               CurlBasis(20,:) = D2 * WorkCurlBasis(I2,:)                  
              END IF
            END IF
-
+           
          CASE(6)
            !--------------------------------------------------------------
            ! This branch is for handling pyramidic elements
-           !--------------------------------------------------------------          
+           !--------------------------------------------------------------         
            EdgeMap => LGetEdgeMap(6)
            Ind => Element % Nodeindexes
 
-           i = EdgeMap(1,1)
-           j = EdgeMap(1,2)
-           ni = Element % NodeIndexes(i)
-           IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-           nj = Element % NodeIndexes(j)
-           IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-           EdgeBasis(1,1) = (v*(-1 + (2*v)/(2 - Sqrt(2.0d0)*w)))/4.0d0
-           EdgeBasis(1,2) = 0.0d0
-           EdgeBasis(1,3) = (u*v*(-Sqrt(2.0d0) + Sqrt(2.0d0)*v + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(1,1) = (u*(-Sqrt(2.0d0) + 2*Sqrt(2.0d0)*v + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(1,2) = (v*(Sqrt(2.0d0) - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(1,3) = (-2 + 4*v + Sqrt(2.0d0)*w)/(-8 + 4*Sqrt(2.0d0)*w)
-           IF (nj<ni) THEN
-             EdgeBasis(1,:) = -EdgeBasis(1,:)
-             CurlBasis(1,:) = -CurlBasis(1,:)
-           END IF
+           IF (SecondOrder) THEN
+             EdgeSign = 1.0d0
 
-           i = EdgeMap(2,1)
-           j = EdgeMap(2,2)
-           ni = Element % NodeIndexes(i)
-           IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-           nj = Element % NodeIndexes(j)
-           IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-           EdgeBasis(2,1) = 0.0d0
-           EdgeBasis(2,2) = (u*(1 + (2*u)/(2 - Sqrt(2.0d0)*w)))/4.0d0
-           EdgeBasis(2,3) = (u*v*(Sqrt(2.0d0) + Sqrt(2.0d0)*u - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(2,1) = (u*(Sqrt(2.0d0) - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(2,2) = -(v*(Sqrt(2.0d0) + 2*Sqrt(2.0d0)*u - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(2,3) = (2 + 4*u - Sqrt(2.0d0)*w)/(8 - 4*Sqrt(2.0d0)*w)
-           IF (nj<ni) THEN
-             EdgeBasis(2,:) = -EdgeBasis(2,:)
-             CurlBasis(2,:) = -CurlBasis(2,:)
-           END IF
+             LBasis(1) = 0.1D1 / 0.4D1 - u / 0.4D1 - v / 0.4D1 - w * sqrt(0.2D1) / 0.8D1 + &
+                 u * v / ( (0.1D1 - w * sqrt(0.2D1) / 0.2D1) * 0.4D1 )
+             LBasis(2) = 0.1D1 / 0.4D1 + u / 0.4D1 - v / 0.4D1 - w * sqrt(0.2D1) / 0.8D1 - &
+                 u * v / ( (0.1D1 - w * sqrt(0.2D1) / 0.2D1) * 0.4D1 )
+             LBasis(3) = 0.1D1 / 0.4D1 + u / 0.4D1 + v / 0.4D1 - w * sqrt(0.2D1) / 0.8D1 + &
+                 u * v / ( (0.1D1 - w * sqrt(0.2D1) / 0.2D1) * 0.4D1 )
+             LBasis(4) = 0.1D1 / 0.4D1 - u / 0.4D1 + v / 0.4D1 - w * sqrt(0.2D1) / 0.8D1 - &
+                 u * v / ( (0.1D1 - w * sqrt(0.2D1) / 0.2D1) * 0.4D1 )
+             LBasis(5) = w * sqrt(0.2D1) / 0.2D1
 
-           i = EdgeMap(3,1)
-           j = EdgeMap(3,2)
-           ni = Element % NodeIndexes(i)
-           IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-           nj = Element % NodeIndexes(j)
-           IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-           EdgeBasis(3,1) = (v*(1 + (2*v)/(2 - Sqrt(2.0d0)*w)))/4.0d0
-           EdgeBasis(3,2) = 0.0d0
-           EdgeBasis(3,3) = (u*v*(Sqrt(2.0d0) + Sqrt(2.0d0)*v - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(3,1) = (u*(Sqrt(2.0d0) + 2*Sqrt(2.0d0)*v - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(3,2) = (v*(-Sqrt(2.0d0) + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(3,3) = (2 + 4*v - Sqrt(2.0d0)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
-           IF (nj<ni) THEN
-             EdgeBasis(3,:) = -EdgeBasis(3,:)
-             CurlBasis(3,:) = -CurlBasis(3,:)
-           END IF
+             Beta(1) = 0.1D1 / 0.2D1 - u / 0.2D1 - w * sqrt(0.2D1) / 0.4D1
+             Beta(2) = 0.1D1 / 0.2D1 - v / 0.2D1 - w * sqrt(0.2D1) / 0.4D1
+             Beta(3) = 0.1D1 / 0.2D1 + u / 0.2D1 - w * sqrt(0.2D1) / 0.4D1
+             Beta(4) = 0.1D1 / 0.2D1 + v / 0.2D1 - w * sqrt(0.2D1) / 0.4D1
 
-           i = EdgeMap(4,1)
-           j = EdgeMap(4,2)
-           ni = Element % NodeIndexes(i)
-           IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-           nj = Element % NodeIndexes(j)
-           IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-           EdgeBasis(4,1) = 0.0d0
-           EdgeBasis(4,2) = (u*(-1 + (2*u)/(2 - Sqrt(2.0d0)*w)))/4.0d0
-           EdgeBasis(4,3) = (u*v*(-Sqrt(2.0d0) + Sqrt(2.0d0)*u + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(4,1) = (u*(-Sqrt(2.0d0) + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(4,2) = -(v*(-Sqrt(2.0d0) + 2*Sqrt(2.0d0)*u + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(4,3) = (2 - 4*u - Sqrt(2.0d0)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
-           IF (nj<ni) THEN
-             EdgeBasis(4,:) = -EdgeBasis(4,:)
-             CurlBasis(4,:) = -CurlBasis(4,:)
-           END IF
+             ! Edge 12:
+             !--------------------------------------------------------------
+             i = EdgeMap(1,1)
+             j = EdgeMap(1,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(1,1) = 0.1D1 / 0.4D1 - v / 0.4D1 - w * sqrt(0.2D1) / 0.8D1
+             EdgeBasis(1,2) = 0.0d0
+             EdgeBasis(1,3) = sqrt(0.2D1) * u * (w * sqrt(0.2D1) + 2.0D0 * v - 0.2D1) / &
+                 ((w * sqrt(0.2D1) - 0.2D1) * 0.8D1)
+             CurlBasis(1,1) = sqrt(0.2D1) * u / ((w * sqrt(0.2D1) - 0.2D1) * 0.4D1)
+             CurlBasis(1,2) = -sqrt(0.2D1) / 0.8D1 - sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * v - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+             CurlBasis(1,3) = 0.1D1 / 0.4D1
+             IF (nj<ni) THEN
+               EdgeBasis(1,:) = -EdgeBasis(1,:)
+               CurlBasis(1,:) = -CurlBasis(1,:)
+               EdgeSign(1) = -1.0d0
+             END IF
 
-           i = EdgeMap(5,1)
-           j = EdgeMap(5,2)
-           ni = Element % NodeIndexes(i)
-           IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-           nj = Element % NodeIndexes(j)
-           IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-           EdgeBasis(5,1) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*v + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
-           EdgeBasis(5,2) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*u + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
-           EdgeBasis(5,3) = (u*(-2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - 2*w) + 4*w - Sqrt(2.0d0)*w**2) - &
-               (-1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2))/(4.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(5,1) = (-2*Sqrt(2.0d0) + 2*u*(Sqrt(2.0d0) - w) + 4*w - Sqrt(2.0d0)*w**2)/ &
-               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(5,2) = (2*Sqrt(2.0d0) - 2*Sqrt(2.0d0)*v - 4*w + 2*v*w + Sqrt(2.0d0)*w**2)/ &
-               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(5,3) = 0.0d0
-           IF (nj<ni) THEN
-             EdgeBasis(5,:) = -EdgeBasis(5,:)
-             CurlBasis(5,:) = -CurlBasis(5,:)
-           END IF
+             EdgeBasis(2,1:3) = 3.0d0 * u * EdgeBasis(1,1:3)
+             CurlBasis(2,1) = 0.3D1 / 0.4D1 * u ** 2 * sqrt(0.2D1) / (w * sqrt(0.2D1) - 0.2D1)
+             CurlBasis(2,2) = -0.3D1 / 0.8D1 * u * sqrt(0.2D1) * (0.3D1 * w * sqrt(0.2D1) + &
+                 4.0D0 * v - 0.6D1) / (w * sqrt(0.2D1) - 0.2D1)
+             CurlBasis(2,3) = 0.3D1 / 0.4D1 * u
 
-           i = EdgeMap(6,1)
-           j = EdgeMap(6,2)
-           ni = Element % NodeIndexes(i)
-           IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-           nj = Element % NodeIndexes(j)
-           IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-           EdgeBasis(6,1) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*v + w))/(8.0d0 - 4*Sqrt(2.0d0)*w)
-           EdgeBasis(6,2) = (w*(-Sqrt(2.0d0) - Sqrt(2.0d0)*u + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
-           EdgeBasis(6,3) = (-((-1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2)) + & 
-               u*(2*Sqrt(2.0d0) - 2*Sqrt(2.0d0)*v - 4*w + 4*v*w + Sqrt(2.0d0)*w**2))/ &
-               (4.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(6,1) = -(2*Sqrt(2.0d0) + 2*u*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
-               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(6,2) = (-2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - w) + 4*w - Sqrt(2.0d0)*w**2)/ &
-               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2) 
-           CurlBasis(6,3) = 0.0d0
-           IF (nj<ni) THEN
-             EdgeBasis(6,:) = -EdgeBasis(6,:)
-             CurlBasis(6,:) = -CurlBasis(6,:)
-           END IF
+             ! Edge 23:
+             !--------------------------------------------------------------
+             k = 3 ! k=2 for first-order
+             i = EdgeMap(2,1)
+             j = EdgeMap(2,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
 
-           i = EdgeMap(7,1)
-           j = EdgeMap(7,2)
-           ni = Element % NodeIndexes(i)
-           IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-           nj = Element % NodeIndexes(j)
-           IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-           EdgeBasis(7,1) = ((Sqrt(2.0d0) + Sqrt(2.0d0)*v - w)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
-           EdgeBasis(7,2) = ((Sqrt(2.0d0) + Sqrt(2.0d0)*u - w)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
-           EdgeBasis(7,3) = ((1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2) + &
-               u*(2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - 2*w) - 4*w + Sqrt(2.0d0)*w**2))/ &
-               (4.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(7,1) = (2*Sqrt(2.0d0) + 2*u*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
-               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(7,2) = -(2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
-               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(7,3) = 0.0d0
-           IF (nj<ni) THEN
-             EdgeBasis(7,:) = -EdgeBasis(7,:)
-             CurlBasis(7,:) = -CurlBasis(7,:)
-           END IF
+             EdgeBasis(k,1) = 0.0d0
+             EdgeBasis(k,2) = 0.1D1 / 0.4D1 + u / 0.4D1 - w * sqrt(0.2D1) / 0.8D1
+             EdgeBasis(k,3) = sqrt(0.2D1) * v * (w * sqrt(0.2D1) - 2.0D0 * u - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+             CurlBasis(k,1) = sqrt(0.2D1) * (w * sqrt(0.2D1) - 2.0D0 * u - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 ) + sqrt(0.2D1) /  0.8D1
+             CurlBasis(k,2) = sqrt(0.2D1) * v / ( (w * sqrt(0.2D1) - 0.2D1) * 0.4D1 )
+             CurlBasis(k,3) = 0.1D1 / 0.4D1
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+               EdgeSign(k) = -1.0d0
+             END IF
 
-           i = EdgeMap(8,1)
-           j = EdgeMap(8,2)
-           ni = Element % NodeIndexes(i)
-           IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-           nj = Element % NodeIndexes(j)
-           IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-           EdgeBasis(8,1) = (w*(-Sqrt(2.0d0) - Sqrt(2.0d0)*v + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
-           EdgeBasis(8,2) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*u + w))/(8.0d0 - 4*Sqrt(2.0d0)*w)
-           EdgeBasis(8,3) = ((1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2) - &
-               u*(2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - 2*w) - 4*w + Sqrt(2.0d0)*w**2))/ &
-               (4.0d0*(-2.0d0 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(8,1) = (2*Sqrt(2.0d0) - 2*Sqrt(2.0d0)*u - 4*w + 2*u*w + Sqrt(2.0d0)*w**2)/ &
-               (2.0d0*(-2.0d0 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(8,2) = (2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
-               (2.0d0*(-2.0d0 + Sqrt(2.0d0)*w)**2)
-           CurlBasis(8,3) = 0.0d0
-           IF (nj<ni) THEN
-             EdgeBasis(8,:) = -EdgeBasis(8,:)
-             CurlBasis(8,:) = -CurlBasis(8,:)
-           END IF
+             EdgeBasis(k+1,1:3) = 3.0d0 * v * EdgeBasis(k,1:3)
+             CurlBasis(k+1,1) = 0.3D1 / 0.8D1 * v * sqrt(0.2D1) * (0.3D1 * w * sqrt(0.2D1) - & 
+                 4.0D0 * u - 0.6D1) / (w * sqrt(0.2D1) - 0.2D1)
+             CurlBasis(k+1,2) = 0.3D1 / 0.4D1 * v ** 2 * sqrt(0.2D1) / (w * sqrt(0.2D1) - 0.2D1)
+             CurlBasis(k+1,3) = 0.3D1 / 0.4D1 * v
 
-           ! ------------------------------------------------------------------
-           ! The last two basis functions are associated with the square face.
-           ! We first create the basis function in the default order without
-           ! sign reversions.
-           ! ------------------------------------------------------------------
-           SquareFaceMap(:) = (/ 1,2,3,4 /)
-           Ind => Element % Nodeindexes          
+             ! Edge 43:
+             !--------------------------------------------------------------
+             k = 5 ! k=3 for first-order
+             i = EdgeMap(3,1)
+             j = EdgeMap(3,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
 
-           WorkBasis(1,1) = (2.0d0 - 2*v**2 - 2*Sqrt(2.0d0)*w + w**2)/(4.0d0 - 2*Sqrt(2.0d0)*w)
-           WorkBasis(1,2) = 0.0d0
-           WorkBasis(1,3) = (u*(1.0d0 - (4*v**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2))/(2.0d0*Sqrt(2.0d0))
-           WorkCurlBasis(1,1) = (-2*Sqrt(2.0d0)*u*v)/(-2.0d0 + Sqrt(2.0d0)*w)**2
-           WorkCurlBasis(1,2) = (-2*Sqrt(2.0d0) + 4*w - Sqrt(2.0d0)*w**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2
-           WorkCurlBasis(1,3) = (2.0d0*v)/(2.0d0 - Sqrt(2.0d0)*w)
+             EdgeBasis(k,1) = 0.1D1 / 0.4D1 + v / 0.4D1 - w * sqrt(0.2D1) / 0.8D1
+             EdgeBasis(k,2) = 0.0d0
+             EdgeBasis(k,3) = sqrt(0.2D1) * u * (w * sqrt(0.2D1) - 2.0D0 * v - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
 
-           WorkBasis(2,1) = 0.0d0
-           WorkBasis(2,2) = (2.0d0 - 2*u**2 - 2*Sqrt(2.0d0)*w + w**2)/(4.0d0 - 2*Sqrt(2.0d0)*w)
-           WorkBasis(2,3) = (v*(1.0d0 - (4*u**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2))/(2.0d0*Sqrt(2.0d0))
-           WorkCurlBasis(2,1) = (2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2
-           WorkCurlBasis(2,2) = (2*Sqrt(2.0d0)*u*v)/(-2.0d0 + Sqrt(2.0d0)*w)**2
-           WorkCurlBasis(2,3) = (2*u)/(-2.0d0 + Sqrt(2.0d0)*w)
+             CurlBasis(k,1) = -sqrt(0.2D1) * u / ( (w * sqrt(0.2D1) - 0.2D1) * 0.4D1 )
+             CurlBasis(k,2) = -sqrt(0.2D1) / 0.8D1 - sqrt(0.2D1) * (w * sqrt(0.2D1) - &
+                 2.0D0 * v - 0.2D1) / ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+             CurlBasis(k,3) = -0.1D1 / 0.4D1
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+               EdgeSign(k) = -1.0d0
+             END IF
 
-           ! -------------------------------------------------------------------
-           ! Finally apply an order change and sign reversions if needed. 
-           ! -------------------------------------------------------------------
-           DO j=1,4
-             FaceIndeces(j) = Ind(SquareFaceMap(j))
-           END DO
-           IF (Parallel) THEN
+             EdgeBasis(k+1,1:3) = 3.0d0 * u * EdgeBasis(k,1:3)
+             CurlBasis(k+1,1) = -0.3D1 / 0.4D1 * u ** 2 * sqrt(0.2D1) / (w * sqrt(0.2D1) - 0.2D1)
+             CurlBasis(k+1,2) = -0.3D1 / 0.8D1 * u * sqrt(0.2D1) * (0.3D1 * w * sqrt(0.2D1) - &
+                 4.0D0 * v - 0.6D1) / (w * sqrt(0.2D1) - 0.2D1)
+             CurlBasis(k+1,3) = -0.3D1 / 0.4D1 * u
+
+
+             ! Edge 14:
+             !--------------------------------------------------------------
+             k = 7 ! k=4 for first-order
+             i = EdgeMap(4,1)
+             j = EdgeMap(4,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+
+             EdgeBasis(k,1) = 0.0d0 
+             EdgeBasis(k,2) = 0.1D1 / 0.4D1 - u / 0.4D1 - w * sqrt(0.2D1) / 0.8D1
+             EdgeBasis(k,3) = sqrt(0.2D1) * v * (w * sqrt(0.2D1) + 2.0D0 * u - 0.2D1) / & 
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+
+             CurlBasis(k,1) = sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * u - 0.2D1) / ( (w * &
+                 sqrt(0.2D1) - 0.2D1) * 0.8D1 ) + sqrt(0.2D1) / 0.8D1
+             CurlBasis(k,2) = -sqrt(0.2D1) * v / ( (w * sqrt(0.2D1) - 0.2D1) * 0.4D1 )
+             CurlBasis(k,3) = -0.1D1 / 0.4D1
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+               EdgeSign(k) = -1.0d0
+             END IF
+
+             EdgeBasis(k+1,1:3) = 3.0d0 * v * EdgeBasis(k,1:3)
+             CurlBasis(k+1,1) = 0.3D1 / 0.8D1 * v * sqrt(0.2D1) * (0.3D1 * w * sqrt(0.2D1) + &
+                 4.0D0 * u - 0.6D1) / (w * sqrt(0.2D1) - 0.2D1)
+             CurlBasis(k+1,2) = -0.3D1 / 0.4D1 * v ** 2 * sqrt(0.2D1) / (w * sqrt(0.2D1) - 0.2D1)
+             CurlBasis(k+1,3) = -0.3D1 / 0.4D1 * v
+
+
+             ! Edge 15:
+             !--------------------------------------------------------------
+             k = 9 ! k=5 for first-order             
+             i = EdgeMap(5,1)
+             j = EdgeMap(5,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+
+             EdgeBasis(k,1) = w * sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * v - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+             EdgeBasis(k,2) = w * sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * u - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+             EdgeBasis(k,3) = -sqrt(0.2D1)/ 0.4D1 * (0.2D1 * sqrt(0.2D1) * u * v * w - &
+                 0.2D1 * sqrt(0.2D1) * u * w - &
+                 0.2D1 * sqrt(0.2D1) * v * w + u * w ** 2 + v * w ** 2 + 0.2D1 * w * sqrt(0.2D1) - &
+                 0.2D1 * u * v - w ** 2 + 0.2D1 * u + 0.2D1 * v - 0.2D1) / (w * sqrt(0.2D1) - 0.2D1) ** 2 
+
+             CurlBasis(k,1) = (-sqrt(0.2D1) * w ** 2 + 0.2D1 * u * sqrt(0.2D1) - 0.2D1 * &
+                 u * w - 0.2D1 * sqrt(0.2D1) + 0.4D1 * w) / ( (w * sqrt(0.2D1) - 0.2D1) ** 2 * 0.2D1 )
+             CurlBasis(k,2) = -(-sqrt(0.2D1) * w ** 2 + 0.2D1 * v * sqrt(0.2D1) - 0.2D1 * &
+                 v * w - 0.2D1 * sqrt(0.2D1) + 0.4D1 * w) / ( (w * sqrt(0.2D1) - 0.2D1) ** 2 * 0.2D1 )
+             CurlBasis(k,3) = 0.0d0 
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+               EdgeSign(k) = -1.0d0
+             END IF
+
+             EdgeBasis(k+1,1:3) = 3.0d0 * EdgeSign(k) * EdgeBasis(k,1:3) * ( LBasis(5)-LBasis(1)+LBasis(3) )
+
+             CurlBasis(k+1,1) = 0.3D1 / 0.8D1 * (-0.9D1 * sqrt(0.2D1) * u * w ** 2 - &
+                 0.3D1 * sqrt(0.2D1) * v * w ** 2 + 0.4D1 * sqrt(0.2D1) * u ** 2 + &
+                 0.6D1 * u * v * sqrt(0.2D1) + 0.13D2 * sqrt(0.2D1) * w ** 2 - 0.4D1 * u ** 2 * w - &
+                 0.8D1 * u * v * w - 0.6D1 * w ** 3 - 0.6D1 * u * sqrt(0.2D1) - 0.6D1 * v * sqrt(0.2D1) + &
+                 0.24D2 * u * w + 0.12D2 * v * w + 0.2D1 * sqrt(0.2D1) - 0.16D2 * w) / &
+                 (w * sqrt(0.2D1) - 0.2D1)**2
+             CurlBasis(k+1,2) = -0.3D1 / 0.8D1 * (-0.3D1 * sqrt(0.2D1) * u * w ** 2 - &
+                 0.9D1 * sqrt(0.2D1) * v * w ** 2 + 0.6D1 * u * v * sqrt(0.2D1) + &
+                 0.4D1 * sqrt(0.2D1) * v ** 2 + 0.13D2 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u* v * w - &
+                 0.4D1 * v ** 2 * w - 0.6D1 * w ** 3 - 0.6D1 * u * sqrt(0.2D1) - 0.6D1 * v * sqrt(0.2D1) + &
+                 0.12D2 * u * w + 0.24D2 * v * w + 0.2D1 * sqrt(0.2D1) - 0.16D2 * w) / &
+                 (w * sqrt(0.2D1) - 0.2D1)**2
+             CurlBasis(k+1,3) = 0.3D1 / 0.8D1 * w * sqrt(0.2D1) * (u - v) / (w * sqrt(0.2D1) - 0.2D1)
+
+
+             ! Edge 25:
+             !--------------------------------------------------------------
+             k = 11 ! k=6 for first-order  
+             i = EdgeMap(6,1)
+             j = EdgeMap(6,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+
+             EdgeBasis(k,1) = -w * sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * v - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+             EdgeBasis(k,2) = w * sqrt(0.2D1) * (w * sqrt(0.2D1) - 2.0D0 * u - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+             EdgeBasis(k,3) = sqrt(0.2D1)/ 0.4D1 * (0.2D1 * sqrt(0.2D1) * u * v * w - 0.2D1 * &
+                 sqrt(0.2D1) * u * w + 0.2D1 * sqrt(0.2D1) * v * w + u * w ** 2 - v * w ** 2 - &
+                 0.2D1 * w * sqrt(0.2D1) - 0.2D1 * u * v + w ** 2 + 0.2D1 * u - 0.2D1 * v + 0.2D1) / &
+                 (w * sqrt(0.2D1) - 0.2D1) ** 2 
+             CurlBasis(k,1) = -(sqrt(0.2D1) * w ** 2 + 0.2D1 * u * sqrt(0.2D1) - 0.2D1 * u * w + &
+                 0.2D1 * sqrt(0.2D1) - 0.4D1 * w) / ( (w * sqrt(0.2D1) - 0.2D1) ** 2 * 0.2D1 )
+             CurlBasis(k,2) = (-sqrt(0.2D1) * w ** 2 + 0.2D1 * v * sqrt(0.2D1) - 0.2D1 * & 
+                 v * w - 0.2D1 * sqrt(0.2D1) + 0.4D1 * w) / ( (w * sqrt(0.2D1) - 0.2D1) ** 2 * 0.2D1 )
+             CurlBasis(k,3) = 0.0d0 
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+               EdgeSign(k) = -1.0d0
+             END IF
+
+             EdgeBasis(k+1,1:3) = 3.0d0 * EdgeSign(k) * EdgeBasis(k,1:3) * ( LBasis(5)-LBasis(2)+LBasis(4) )
+
+             CurlBasis(k+1,1) = 0.3D1 / 0.8D1 * (0.9D1 * sqrt(0.2D1) * u * w ** 2 - &
+                 0.3D1 * sqrt(0.2D1) * v * w ** 2 + 0.4D1 * sqrt(0.2D1) * u ** 2 - &
+                 0.6D1 * u * v * sqrt(0.2D1) + 0.13D2 * sqrt(0.2D1) * w ** 2 - 0.4D1 * u** 2 * w + &
+                 0.8D1 * u * v * w - 0.6D1 * w ** 3 + 0.6D1 * u * sqrt(0.2D1) - &
+                 0.6D1 * v * sqrt(0.2D1) - 0.24D2 * u * w + 0.12D2 * v * w + 0.2D1 * sqrt(0.2D1) - &
+                 0.16D2 * w) / (w * sqrt(0.2D1) - 0.2D1)**2
+             CurlBasis(k+1,2) = -0.3D1 / 0.8D1 * (-0.3D1 * sqrt(0.2D1) * u * w ** 2 + &
+                 0.9D1 * sqrt(0.2D1) * v * w ** 2 + 0.6D1 * u * v * sqrt(0.2D1) - &
+                 0.4D1 * sqrt(0.2D1) * v ** 2 - 0.13D2 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u * v * w + &
+                 0.4D1 * v ** 2 * w + 0.6D1 * w ** 3 - 0.6D1 * u * sqrt(0.2D1) + &
+                 0.6D1 * v * sqrt(0.2D1) + 0.12D2 * u * w - 0.24D2 * v * w - 0.2D1 * sqrt(0.2D1) + &
+                 0.16D2 * w) / (w * sqrt(0.2D1) - 0.2D1)** 2
+             CurlBasis(k+1,3) = 0.3D1 / 0.8D1 * w * sqrt(0.2D1) * (u + v) / (w * sqrt(0.2D1) - 0.2D1)
+
+
+             ! Edge 35:
+             !--------------------------------------------------------------
+             k = 13 ! k=7 for first-order  
+             i = EdgeMap(7,1)
+             j = EdgeMap(7,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+
+             EdgeBasis(k,1) = -w * sqrt(0.2D1)/ 0.8D1 * (w * sqrt(0.2D1) - 2.0D0 * v - 0.2D1) / &
+                 (w * sqrt(0.2D1) - 0.2D1) 
+             EdgeBasis(k,2) = -w * sqrt(0.2D1) / 0.8D1 * (w * sqrt(0.2D1) - 2.0D0 * u - 0.2D1) / & 
+                 (w * sqrt(0.2D1) - 0.2D1)
+             EdgeBasis(k,3) = -sqrt(0.2D1)/ 0.4D1 * (0.2D1 * sqrt(0.2D1) * u * v * w + 0.2D1 * &
+                 sqrt(0.2D1) * u * w + 0.2D1 * sqrt(0.2D1) * v * w - u * w ** 2 - v * w ** 2 + &
+                 0.2D1 * w * sqrt(0.2D1) - 0.2D1 * u * v - w ** 2 - 0.2D1 * u - 0.2D1 * v - 0.2D1) / &
+                 (w * sqrt(0.2D1) - 0.2D1) ** 2 
+             CurlBasis(k,1) = (sqrt(0.2D1) * w ** 2 + 0.2D1 * u * sqrt(0.2D1) - 0.2D1 * u * w + &
+                 0.2D1 * sqrt(0.2D1) - 0.4D1 * w) / ( (w * sqrt(0.2D1) - 0.2D1) ** 2 * 0.2D1 )
+             CurlBasis(k,2) = -(sqrt(0.2D1) * w ** 2 + 0.2D1 * v * sqrt(0.2D1) - 0.2D1 * &
+                 v * w + 0.2D1 * sqrt(0.2D1) - 0.4D1 * w) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) ** 2 * 0.2D1 )
+             CurlBasis(k,3) = 0.0d0 
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+               EdgeSign(k) = -1.0d0
+             END IF
+
+             EdgeBasis(k+1,1:3) = 3.0d0 * EdgeSign(k) * EdgeBasis(k,1:3) * ( LBasis(5)-LBasis(3)+LBasis(1) )
+
+             CurlBasis(k+1,1) = -0.3D1 / 0.8D1 * (0.9D1 * sqrt(0.2D1) * u * w ** 2 + &
+                 0.3D1 * sqrt(0.2D1) * v * w ** 2 + 0.4D1 * sqrt(0.2D1) * u ** 2 + &
+                 0.6D1 * u * v * sqrt(0.2D1) + 0.13D2 * sqrt(0.2D1) * w ** 2 - 0.4D1 * u ** 2 * w - &
+                 0.8D1 * u * v * w - 0.6D1 * w ** 3 + 0.6D1 * u * sqrt(0.2D1) + &
+                 0.6D1 * v * sqrt(0.2D1) - 0.24D2 * u * w - 0.12D2 * v * w + 0.2D1 * sqrt(0.2D1) - &
+                 0.16D2 * w) / (w * sqrt(0.2D1) - 0.2D1)**2
+             CurlBasis(k+1,2) = 0.3D1 / 0.8D1 * (0.3D1 * sqrt(0.2D1) * u * w ** 2 + &
+                 0.9D1 * sqrt(0.2D1) * v * w ** 2 + 0.6D1 * u * v * sqrt(0.2D1) + &
+                 0.4D1 * sqrt(0.2D1) * v ** 2 + 0.13D2 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u *v * w - &
+                 0.4D1 * v ** 2 * w - 0.6D1 * w ** 3 + 0.6D1 * u * sqrt(0.2D1) + 0.6D1 * v * sqrt(0.2D1) - &
+                 0.12D2 * u * w - 0.24D2 * v * w + 0.2D1 * sqrt(0.2D1) - 0.16D2 * w) / &
+                 (w * sqrt(0.2D1) - 0.2D1) ** 2
+             CurlBasis(k+1,3) = -0.3D1 / 0.8D1 * w * sqrt(0.2D1) * (u - v) / (w * sqrt(0.2D1) - 0.2D1)
+
+
+             ! Edge 45:
+             !--------------------------------------------------------------
+             k = 15 ! k=8 for first-order  
+             i = EdgeMap(8,1)
+             j = EdgeMap(8,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+
+             EdgeBasis(k,1) = w * sqrt(0.2D1) / 0.8D1 * (w * sqrt(0.2D1) - 2.0D0 * v - 0.2D1) / &
+                 (w * sqrt(0.2D1) - 0.2D1) 
+             EdgeBasis(k,2) = -w * sqrt(0.2D1) / 0.8D1 * (w * sqrt(0.2D1) + 2.0D0 * u - 0.2D1) / &
+                 (w * sqrt(0.2D1) - 0.2D1)
+             EdgeBasis(k,3) = sqrt(0.2D1) / 0.4D1 * (0.2D1 * sqrt(0.2D1) * u * v * w + &
+                 0.2D1 * sqrt(0.2D1) * u * w - 0.2D1 * sqrt(0.2D1) * v * w - u * w ** 2 + v * w ** 2 - &
+                 0.2D1 * w * sqrt(0.2D1) - 0.2D1 * u * v + w ** 2 - 0.2D1 * u + 0.2D1 * v + 0.2D1) / &
+                 (w * sqrt(0.2D1) - 0.2D1) ** 2 
+             CurlBasis(k,1) = -(-sqrt(0.2D1) * w ** 2 + 0.2D1 * u * sqrt(0.2D1) - 0.2D1 * u * w - &
+                 0.2D1 * sqrt(0.2D1) + 0.4D1 * w) / ( (w * sqrt(0.2D1) - 0.2D1)** 2 * 0.2D1 )
+             CurlBasis(k,2) = (sqrt(0.2D1) * w ** 2 + 0.2D1 * v * sqrt(0.2D1) - 0.2D1 * v * w + &
+                 0.2D1 * sqrt(0.2D1) - 0.4D1 * w) / ( (w * sqrt(0.2D1) - 0.2D1)** 2 * 0.2D1 )
+             CurlBasis(k,3) = 0.0d0 
+             IF (nj<ni) THEN
+               EdgeBasis(k,:) = -EdgeBasis(k,:)
+               CurlBasis(k,:) = -CurlBasis(k,:)
+               EdgeSign(k) = -1.0d0
+             END IF
+
+             EdgeBasis(k+1,1:3) = 3.0d0 * EdgeSign(k) * EdgeBasis(k,1:3) * ( LBasis(5)-LBasis(4)+LBasis(2) )
+
+             CurlBasis(k+1,1) = -0.3D1 / 0.8D1 * (-0.9D1 * sqrt(0.2D1) * u * w ** 2 + &
+                 0.3D1 * sqrt(0.2D1) * v * w ** 2 + 0.4D1 * sqrt(0.2D1) * u ** 2 - &
+                 0.6D1 * u * v * sqrt(0.2D1) + 0.13D2 * sqrt(0.2D1) * w ** 2 - 0.4D1 * u** 2 * w + &
+                 0.8D1 * u * v * w - 0.6D1 * w ** 3 - 0.6D1 * u * sqrt(0.2D1) + &
+                 0.6D1 * v * sqrt(0.2D1) + 0.24D2 * u * w - 0.12D2 * v * w + 0.2D1 * sqrt(0.2D1) - &
+                 0.16D2 * w) / (w * sqrt(0.2D1) - 0.2D1) ** 2
+             CurlBasis(k+1,2) = 0.3D1 / 0.8D1 * (0.3D1 * sqrt(0.2D1) * u * w ** 2 - &
+                 0.9D1 * sqrt(0.2D1) * v * w ** 2 + 0.6D1 * u * v * sqrt(0.2D1) - &
+                 0.4D1 * sqrt(0.2D1) * v ** 2 - 0.13D2 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u *v * w + &
+                 0.4D1 * v ** 2 * w + 0.6D1 * w ** 3 + 0.6D1 * u * sqrt(0.2D1) - &
+                 0.6D1 * v * sqrt(0.2D1) - 0.12D2 * u * w + 0.24D2 * v * w - 0.2D1 * sqrt(0.2D1) + &
+                 0.16D2 * w) / (w * sqrt(0.2D1) - 0.2D1)**2
+             CurlBasis(k+1,3) = -0.3D1 / 0.8D1 * w * sqrt(0.2D1) * (u + v) / (w * sqrt(0.2D1) - 0.2D1)
+
+
+             ! Square face:
+             ! ------------------------------------------------------------------
+             SquareFaceMap(:) = (/ 1,2,3,4 /)
+
+             WorkBasis(1,1:3) = 2.0d0 * ( EdgeSign(1) * EdgeBasis(1,1:3) * Beta(4) + &
+                 EdgeSign(5) * EdgeBasis(5,1:3) * Beta(2) ) / (1.0d0 - LBasis(5))
+             WorkCurlBasis(1,1) = -0.2D1 * u * v * sqrt(0.2D1) / (w * sqrt(0.2D1) - 0.2D1) ** 2
+             WorkCurlBasis(1,2) = -(sqrt(0.2D1) * w ** 2 + 0.2D1 * sqrt(0.2D1) - 0.4D1 * w) / & 
+                 (w * sqrt(0.2D1) - 0.2D1) ** 2
+             WorkCurlBasis(1,3) = -0.2D1 * v / (w * sqrt(0.2D1) - 0.2D1)
+
+             WorkBasis(2,1:3) = 3.0d0 * WorkBasis(1,1:3) * u
+             WorkCurlBasis(2,1) = -0.6D1 * u ** 2 * sqrt(0.2D1) * v / (w * sqrt(0.2D1) - 0.2D1)** 2
+             WorkCurlBasis(2,2) = 0.3D1 / 0.2D1 * u * (0.2D1 * sqrt(0.2D1) * v ** 2 - &
+                 0.3D1 * sqrt(0.2D1) * w ** 2 - 0.6D1 * sqrt(0.2D1) + 0.12D2 * w) / &
+                 (w * sqrt(0.2D1) - 0.2D1) ** 2
+             WorkCurlBasis(2,3) = -0.6D1 * u * v / (w * sqrt(0.2D1) - 0.2D1)
+
+             WorkBasis(3,1:3) = 2.0d0 * ( EdgeSign(3) * EdgeBasis(3,1:3) * Beta(1) + &
+                 EdgeSign(7) * EdgeBasis(7,1:3) * Beta(3) ) / (1.0d0 - LBasis(5))
+             WorkCurlBasis(3,1) = (sqrt(0.2D1) * w ** 2 + 0.2D1 * sqrt(0.2D1) - 0.4D1 * w) / &
+                 (w * sqrt(0.2D1) - 0.2D1) ** 2
+             WorkCurlBasis(3,2) = 0.2D1 * u * v * sqrt(0.2D1) / (w * sqrt(0.2D1) - 0.2D1) ** 2
+             WorkCurlBasis(3,3) = 0.2D1 * u / (w * sqrt(0.2D1) - 0.2D1)
+
+             WorkBasis(4,1:3) = 3.0d0 * WorkBasis(3,1:3) * v
+             WorkCurlBasis(4,1) = -0.3D1 / 0.2D1 * v * (0.2D1 * sqrt(0.2D1) * u ** 2 - &
+                 0.3D1 * sqrt(0.2D1) * w ** 2 - 0.6D1 * sqrt(0.2D1) + 0.12D2 * w) / &
+                 (w * sqrt(0.2D1) - 0.2D1) ** 2
+             WorkCurlBasis(4,2) = 0.6D1 * sqrt(0.2D1) * v ** 2 * u / (w * sqrt(0.2D1) - 0.2D1)**2
+             WorkCurlBasis(4,3) = 0.6D1 * u * v / (w * sqrt(0.2D1) - 0.2D1)
+
+             ! -------------------------------------------------------------------
+             ! Finally apply an order change and sign reversions if needed. 
+             ! -------------------------------------------------------------------
              DO j=1,4
-               FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+               FaceIndeces(j) = Ind(SquareFaceMap(j))
              END DO
-           END IF
-           CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             IF (Parallel) THEN
+               DO j=1,4
+                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+               END DO
+             END IF
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
 
-           EdgeBasis(9,:) = D1 * WorkBasis(I1,:)
-           CurlBasis(9,:) = D1 * WorkCurlBasis(I1,:)
-           EdgeBasis(10,:) = D2 * WorkBasis(I2,:)
-           CurlBasis(10,:) = D2 * WorkCurlBasis(I2,:)          
+             EdgeBasis(17,:) = D1 * WorkBasis(2*(I1-1)+1,:)
+             CurlBasis(17,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
+             EdgeBasis(18,:) = WorkBasis(2*(I1-1)+2,:)
+             CurlBasis(18,:) = WorkCurlBasis(2*(I1-1)+2,:)
+             EdgeBasis(19,:) = D2 * WorkBasis(2*(I2-1)+1,:)
+             CurlBasis(19,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
+             EdgeBasis(20,:) = WorkBasis(2*(I2-1)+2,:)
+             CurlBasis(20,:) = WorkCurlBasis(2*(I2-1)+2,:) 
+
+             
+             !-------------------------------------------------
+             ! Two basis functions defined on the face 125:
+             !-------------------------------------------------
+             TriangleFaceMap(:) = (/ 1,2,5 /)          
+ 
+             DO j=1,3
+               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+             END DO
+             IF (Parallel) THEN
+               DO j=1,3
+                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+               END DO
+             END IF
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+             WorkBasis(1,1:3) = LBasis(5) * EdgeSign(1) * EdgeBasis(1,1:3)
+             WorkCurlBasis(1,1) = w * u / (w * sqrt(0.2D1) - 0.2D1) / 0.4D1
+             WorkCurlBasis(1,2) = (-0.3D1 * sqrt(0.2D1) * w ** 2 + 0.2D1 * v * sqrt(0.2D1) - & 
+                 0.4D1 * v * w - 0.2D1 * sqrt(0.2D1) + 0.8D1 * w) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+             WorkCurlBasis(1,3) = w * sqrt(0.2D1) / 0.8D1
+
+             WorkBasis(2,1:3) = Beta(3) * EdgeSign(9) * EdgeBasis(9,1:3)
+             WorkCurlBasis(2,1) = (sqrt(0.2D1) * u * w ** 2 + 0.4D1 * sqrt(0.2D1) * u ** 2 - &
+                 0.8D1 * sqrt(0.2D1) * w ** 2 - 0.4D1 * u ** 2 * w + 0.3D1 * w ** 3 - &
+                 0.2D1 * u * w - 0.4D1 * sqrt(0.2D1) + 0.14D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(2,2) = -(-0.3D1 * sqrt(0.2D1) * u * w ** 2 + 0.2D1 * sqrt(0.2D1) * &
+                 v * w ** 2 + 0.6D1 * u * v * sqrt(0.2D1) - 0.7D1 * sqrt(0.2D1) * w ** 2 - &
+                 0.8D1 * u * v * w + 0.3D1 * w ** 3 - 0.6D1 * u * sqrt(0.2D1) + 0.2D1 * v * sqrt(0.2D1) + &
+                 0.12D2 * u * w - 0.6D1 * v * w - 0.2D1 * sqrt(0.2D1) + 0.10D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1)**2 )
+             WorkCurlBasis(2,3) = w * sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * u - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.16D2 )
+
+             WorkBasis(3,1:3) = Beta(1) * EdgeSign(11) * EdgeBasis(11,1:3)
+             WorkCurlBasis(3,1) = (-sqrt(0.2D1) * u * w ** 2 + 0.4D1 * sqrt(0.2D1) * u ** 2 - &
+                 0.8D1 * sqrt(0.2D1) * w ** 2 - 0.4D1 * u ** 2 * w + 0.3D1 * w ** 3 + &
+                 0.2D1 * u * w - 0.4D1 * sqrt(0.2D1) + 0.14D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1)** 2 ) 
+             WorkCurlBasis(3,2) = -(-0.3D1 * sqrt(0.2D1) * u * w ** 2 - 0.2D1 * sqrt(0.2D1) * v * w ** 2 + &
+                 0.6D1 * u * v * sqrt(0.2D1) + 0.7D1 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u * v * w - &
+                 0.3D1 * w ** 3 - 0.6D1 * u * sqrt(0.2D1) - 0.2D1 * v * sqrt(0.2D1) + 0.12D2 * u * w + &
+                 0.6D1 * v * w + 0.2D1 * sqrt(0.2D1) - 0.10D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1)**2 ) 
+             WorkCurlBasis(3,3) = -w * sqrt(0.2D1) * (w * sqrt(0.2D1) - 2.0D0 * u - 0.2D1) / &
+                 (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
+
+             EdgeBasis(21,:) = D1 * WorkBasis(I1,:)
+             CurlBasis(21,:) = D1 * WorkCurlBasis(I1,:)
+             EdgeBasis(22,:) = D2 * WorkBasis(I2,:)
+             CurlBasis(22,:) = D2 * WorkCurlBasis(I2,:)              
+
+             !-------------------------------------------------
+             ! Two basis functions defined on the face 235:
+             !-------------------------------------------------
+             TriangleFaceMap(:) = (/ 2,3,5 /)          
+ 
+             DO j=1,3
+               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+             END DO
+             IF (Parallel) THEN
+               DO j=1,3
+                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+               END DO
+             END IF
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+             WorkBasis(1,1:3) = LBasis(5) * EdgeSign(3) * EdgeBasis(3,1:3)
+             WorkCurlBasis(1,1) = (0.3D1 * sqrt(0.2D1) * w ** 2 + 0.2D1 * u * sqrt(0.2D1) - 0.4D1 * u * w + &
+                 0.2D1 * sqrt(0.2D1) - 0.8D1 * w) / ( (w * sqrt(0.2D1) - 0.2D1) * 0.8D1 )
+             WorkCurlBasis(1,2) = w * v / (w * sqrt(0.2D1) - 0.2D1) / 0.4D1
+             WorkCurlBasis(1,3) = w * sqrt(0.2D1) / 0.8D1
+
+             WorkBasis(2,1:3) = Beta(4) * EdgeSign(11) * EdgeBasis(11,1:3)
+             WorkCurlBasis(2,1) = -(0.2D1 * sqrt(0.2D1) * u * w ** 2 + 0.3D1 * sqrt(0.2D1) * v * w ** 2 + &
+                 0.6D1 * sqrt(0.2D1) * u * v + 0.7D1 * sqrt(0.2D1) * w** 2 - 0.8D1 * u * v * w - &
+                 0.3D1 * w ** 3 + 0.2D1 * u * sqrt(0.2D1) + 0.6D1 * v * sqrt(0.2D1) - 0.6D1 * u * w - &
+                 0.12D2 * w * v + 0.2D1 * sqrt(0.2D1) - 0.10D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2) 
+             WorkCurlBasis(2,2) = (sqrt(0.2D1) * v * w ** 2 + 0.4D1 * sqrt(0.2D1) * v ** 2 - &
+                 0.8D1 * sqrt(0.2D1) * w ** 2 - 0.4D1 * v ** 2 * w + 0.3D1 * w ** 3 - 0.2D1 * w * v - &
+                 0.4D1 * sqrt(0.2D1) + 0.14D2 * w) / (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 )
+             WorkCurlBasis(2,3) = w * sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * v - 0.2D1) / &
+                 (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
+
+             WorkBasis(3,1:3) = Beta(2) * EdgeSign(13) * EdgeBasis(13,1:3)
+             WorkCurlBasis(3,1) = -(-0.2D1 * sqrt(0.2D1) * u * w ** 2 + 0.3D1 * sqrt(0.2D1) * v * w ** 2 + &
+                 0.6D1 * sqrt(0.2D1) * u * v - 0.7D1 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u * v * w + &
+                 0.3D1 * w ** 3 - 0.2D1 * u * sqrt(0.2D1) + 0.6D1 * v * sqrt(0.2D1) + 0.6D1 * u * w - &
+                 0.12D2 * w * v - 0.2D1 * sqrt(0.2D1) + 0.10D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(3,2) = (-sqrt(0.2D1) * v * w ** 2 + 0.4D1 * sqrt(0.2D1) * v ** 2 - &
+                 0.8D1 * sqrt(0.2D1) * w ** 2 - 0.4D1 * v ** 2 * w + 0.3D1 * w ** 3 + 0.2D1 * w * v - &
+                 0.4D1 * sqrt(0.2D1) + 0.14D2 * w) / (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(3,3) = -w * sqrt(0.2D1) * (w * sqrt(0.2D1) - 2.0D0 * v - 0.2D1) / &
+                 ( (w * sqrt(0.2D1) - 0.2D1) * 0.16D2 )
+
+             EdgeBasis(23,:) = D1 * WorkBasis(I1,:)
+             CurlBasis(23,:) = D1 * WorkCurlBasis(I1,:)
+             EdgeBasis(24,:) = D2 * WorkBasis(I2,:)
+             CurlBasis(24,:) = D2 * WorkCurlBasis(I2,:)              
+
+             !-------------------------------------------------
+             ! Two basis functions defined on the face 345:
+             !-------------------------------------------------
+             TriangleFaceMap(:) = (/ 3,4,5 /)          
+ 
+             DO j=1,3
+               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+             END DO
+             IF (Parallel) THEN
+               DO j=1,3
+                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+               END DO
+             END IF
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+             WorkBasis(1,1:3) = -LBasis(5) * EdgeSign(5) * EdgeBasis(5,1:3)
+             WorkCurlBasis(1,1) = w * u / (w * sqrt(0.2D1) - 0.2D1) / 0.4D1
+             WorkCurlBasis(1,2) = (0.3D1 * sqrt(0.2D1) * w ** 2 + 0.2D1 * v * sqrt(0.2D1) - 0.4D1 * w * v + &
+                 0.2D1 * sqrt(0.2D1) - 0.8D1 * w) / (0.8D1 * (w * sqrt(0.2D1)- 0.2D1) )
+             WorkCurlBasis(1,3) = w * sqrt(0.2D1) / 0.8D1
+
+             WorkBasis(2,1:3) = Beta(1) * EdgeSign(13) * EdgeBasis(13,1:3)
+             WorkCurlBasis(2,1) = -(-sqrt(0.2D1) * u * w ** 2 + 0.4D1 * sqrt(0.2D1) * u ** 2 - &
+                 0.8D1 * sqrt(0.2D1) * w ** 2 - 0.4D1 * u ** 2 * w + 0.3D1 * w ** 3 + 0.2D1 * u * w - &
+                 0.4D1 * sqrt(0.2D1) + 0.14D2 * w) / (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(2,2) = (0.3D1 * sqrt(0.2D1) * u * w ** 2 - 0.2D1 * sqrt(0.2D1) * v * w ** 2 + &
+                 0.6D1 * sqrt(0.2D1) * u * v - 0.7D1 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u * v * w + &
+                 0.3D1 * w ** 3 + 0.6D1 * u * sqrt(0.2D1) - 0.2D1 * v * sqrt(0.2D1) - 0.12D2 * u * w + &
+                 0.6D1 * w * v - 0.2D1 * sqrt(0.2D1) + 0.10D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(2,3) = w * sqrt(0.2D1) * (w * sqrt(0.2D1) - 2.0D0 * u - 0.2D1) / &
+                 (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
+
+             WorkBasis(3,1:3) = Beta(3) * EdgeSign(15) * EdgeBasis(15,1:3)
+             WorkCurlBasis(3,1) = -(sqrt(0.2D1) * u * w ** 2 + 0.4D1 * sqrt(0.2D1) * u ** 2 - &
+                 0.8D1 * sqrt(0.2D1) * w ** 2 - 0.4D1 * u ** 2 * w + 0.3D1 * w ** 3 - 0.2D1 * u * w - &
+                 0.4D1 * sqrt(0.2D1) + 0.14D2 * w) / (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(3,2) = (0.3D1 * sqrt(0.2D1) * u * w ** 2 + 0.2D1 * sqrt(0.2D1) * v * w ** 2 + &
+                 0.6D1 * sqrt(0.2D1) * u * v + 0.7D1 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u * v * w - &
+                 0.3D1 * w ** 3 + 0.6D1 * u * sqrt(0.2D1) + 0.2D1 * v * sqrt(0.2D1) - 0.12D2 * u * w - &
+                 0.6D1 * w * v + 0.2D1 * sqrt(0.2D1) - 0.10D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(3,3) = -w * sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * u - 0.2D1) / &
+                 (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
+
+             EdgeBasis(25,:) = D1 * WorkBasis(I1,:)
+             CurlBasis(25,:) = D1 * WorkCurlBasis(I1,:)
+             EdgeBasis(26,:) = D2 * WorkBasis(I2,:)
+             CurlBasis(26,:) = D2 * WorkCurlBasis(I2,:)              
+
+             !-------------------------------------------------
+             ! Two basis functions defined on the face 415:
+             !-------------------------------------------------
+             TriangleFaceMap(:) = (/ 4,1,5 /)          
+ 
+             DO j=1,3
+               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+             END DO
+             IF (Parallel) THEN
+               DO j=1,3
+                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+               END DO
+             END IF
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+             WorkBasis(1,1:3) = -LBasis(5) * EdgeSign(7) * EdgeBasis(7,1:3)
+             WorkCurlBasis(1,1) = (-0.3D1 * sqrt(0.2D1) * w ** 2 + 0.2D1 * u * sqrt(0.2D1) - &
+                 0.4D1 * u * w - 0.2D1 * sqrt(0.2D1) + 0.8D1 * w) / (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) )
+             WorkCurlBasis(1,2) = w * v / (w * sqrt(0.2D1) - 0.2D1) / 0.4D1
+             WorkCurlBasis(1,3) = w * sqrt(0.2D1) / 0.8D1
+
+             WorkBasis(2,1:3) = Beta(2) * EdgeSign(15) * EdgeBasis(15,1:3)
+             WorkCurlBasis(2,1) = (-0.2D1 * sqrt(0.2D1) * u * w ** 2 - 0.3D1 * sqrt(0.2D1) * v * w ** 2 + &
+                 0.6D1 * sqrt(0.2D1) * u * v + 0.7D1 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u * v * w - &
+                 0.3D1 * w ** 3 - 0.2D1 * u * sqrt(0.2D1) - 0.6D1 * v * sqrt(0.2D1) + 0.6D1 * u * w + &
+                 0.12D2 * w * v + 0.2D1 * sqrt(0.2D1) - 0.10D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 )
+             WorkCurlBasis(2,2) = -(-sqrt(0.2D1) * v * w ** 2 + 0.4D1 * sqrt(0.2D1) * v ** 2 - &
+                 0.8D1 * sqrt(0.2D1) * w ** 2 - 0.4D1 * v ** 2 * w + 0.3D1 * w ** 3 + 0.2D1 * w * v - &
+                 0.4D1 * sqrt(0.2D1) + 0.14D2 * w) / (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(2,3) = w * sqrt(0.2D1) * (w * sqrt(0.2D1) - 2.0D0 * v - 0.2D1) / &
+                 (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
+
+             WorkBasis(3,1:3) = Beta(4) * EdgeSign(9) * EdgeBasis(9,1:3)
+             WorkCurlBasis(3,1) = (0.2D1 * sqrt(0.2D1) * u * w ** 2 - 0.3D1 * sqrt(0.2D1) * v * w ** 2 + &
+                 0.6D1 * sqrt(0.2D1) * u * v - 0.7D1 * sqrt(0.2D1) * w ** 2 - 0.8D1 * u * v * w + &
+                 0.3D1 * w ** 3 + 0.2D1 * u * sqrt(0.2D1) - 0.6D1 * v * sqrt(0.2D1) - 0.6D1 * u * w + &
+                 0.12D2 * w * v - 0.2D1 * sqrt(0.2D1) + 0.10D2 * w) / &
+                 (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(3,2) = -(sqrt(0.2D1) * v * w ** 2 + 0.4D1 * sqrt(0.2D1) * v ** 2 - &
+                 0.8D1 * sqrt(0.2D1) * w ** 2 - 0.4D1 * v ** 2 * w + 0.3D1 * w ** 3 - 0.2D1 * w * v - &
+                 0.4D1 * sqrt(0.2D1) + 0.14D2 * w) / (0.8D1 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             WorkCurlBasis(3,3) = -w * sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * v - 0.2D1) / &
+                 (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
+
+             EdgeBasis(27,:) = D1 * WorkBasis(I1,:)
+             CurlBasis(27,:) = D1 * WorkCurlBasis(I1,:)
+             EdgeBasis(28,:) = D2 * WorkBasis(I2,:)
+             CurlBasis(28,:) = D2 * WorkCurlBasis(I2,:)              
+
+
+             ! Finally three interior basis functions:
+             ! -----------------------------------------------------------------------------------
+             EdgeBasis(29,1:3) = LBasis(5) * Beta(4) * EdgeSign(1) * EdgeBasis(1,1:3)
+             CurlBasis(29,1) = u * v * w / (0.4D1 * (w * sqrt(0.2D1) - 0.2D1) ) 
+             CurlBasis(29,2) = (0.2D1 * sqrt(0.2D1) * v ** 2 - 0.9D1 * sqrt(0.2D1) * w ** 2 - &
+                 0.4D1 * v ** 2 * w + 0.4D1 * w ** 3 - 0.2D1 * sqrt(0.2D1) + 0.12D2 * w) / &
+                 (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
+             CurlBasis(29,3) = sqrt(0.2D1) * v * w / 0.8D1
+
+             EdgeBasis(30,1:3) = LBasis(5) * Beta(3) * EdgeSign(7) * EdgeBasis(7,1:3)
+             CurlBasis(30,1) = -(0.2D1 * sqrt(0.2D1) * u ** 2 - 0.9D1 * sqrt(0.2D1) * w **2 - &
+                 0.4D1 * u ** 2 * w + 0.4D1 * w ** 3 - 0.2D1 * sqrt(0.2D1) + 0.12D2 * w) / &
+                 (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
+             CurlBasis(30,2) = -u * v * w / (0.4D1* (w * sqrt(0.2D1) - 0.2D1) ) 
+             CurlBasis(30,3) = -sqrt(0.2D1) * u * w / 0.8D1
+
+             EdgeBasis(31,1:3) = Beta(3) * Beta(4) * EdgeSign(9) * EdgeBasis(9,1:3)
+             CurlBasis(31,1) = (0.2D1 * sqrt(0.2D1) * u ** 2 * w ** 2 + 0.2D1 * sqrt(0.2D1) * u * v * w ** 2 -&
+                 0.2D1 * sqrt(0.2D1) * w ** 4 + 0.6D1 * sqrt(0.2D1) * u ** 2 * v - &
+                 0.11D2 * sqrt(0.2D1) * v * w ** 2 - 0.8D1 * u ** 2 * v * w + 0.4D1 * v * w ** 3 + &
+                 0.2D1 * sqrt(0.2D1) * u ** 2 - 0.15D2 * sqrt(0.2D1) * w ** 2 - 0.6D1 * u ** 2 * w - &
+                 0.4D1 * u * v * w + 0.13D2 * w ** 3 - 0.6D1 * v * sqrt(0.2D1) + 0.20D2 * w * v - &
+                 0.2D1 * sqrt(0.2D1) + 0.14D2 * w) / (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             CurlBasis(31,2) = -(0.2D1 * sqrt(0.2D1) * u * v * w ** 2 + 0.2D1 * sqrt(0.2D1) * v ** 2 * w**2 - &
+                 0.2D1 * sqrt(0.2D1) * w ** 4 + 0.6D1 * sqrt(0.2D1) * u * v ** 2 - &
+                 0.11D2 * sqrt(0.2D1) * u * w ** 2 - 0.8D1 * u * v ** 2 * w + 0.4D1 * u * w ** 3 + &
+                 0.2D1 * sqrt(0.2D1) * v ** 2 - 0.15D2 * sqrt(0.2D1) * w ** 2 - 0.4D1 * u * v * w - &
+                 0.6D1 * v ** 2 * w + 0.13D2 * w ** 3 - 0.6D1 * u * sqrt(0.2D1) + 0.20D2 * u *w - &
+                 0.2D1 * sqrt(0.2D1) + 0.14D2 * w) / (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
+             CurlBasis(31,3) = -(u - v) * w * sqrt(0.2D1) / 0.16D2
+
+           ELSE
+             !-----------------------------------------------------------------------------------------
+             ! The lowest-order pyramid from the optimal family. Now these basis functions are 
+             ! also contained in the set of hierarchic basis functions, so this branch could be
+             ! removed by making some code modifications (to do?).
+             !-----------------------------------------------------------------------------------------
+             i = EdgeMap(1,1)
+             j = EdgeMap(1,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(1,1) = (v*(-1 + (2*v)/(2 - Sqrt(2.0d0)*w)))/4.0d0
+             EdgeBasis(1,2) = 0.0d0
+             EdgeBasis(1,3) = (u*v*(-Sqrt(2.0d0) + Sqrt(2.0d0)*v + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(1,1) = (u*(-Sqrt(2.0d0) + 2*Sqrt(2.0d0)*v + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(1,2) = (v*(Sqrt(2.0d0) - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(1,3) = (-2 + 4*v + Sqrt(2.0d0)*w)/(-8 + 4*Sqrt(2.0d0)*w)
+             IF (nj<ni) THEN
+               EdgeBasis(1,:) = -EdgeBasis(1,:)
+               CurlBasis(1,:) = -CurlBasis(1,:)
+             END IF
+
+             i = EdgeMap(2,1)
+             j = EdgeMap(2,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(2,1) = 0.0d0
+             EdgeBasis(2,2) = (u*(1 + (2*u)/(2 - Sqrt(2.0d0)*w)))/4.0d0
+             EdgeBasis(2,3) = (u*v*(Sqrt(2.0d0) + Sqrt(2.0d0)*u - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(2,1) = (u*(Sqrt(2.0d0) - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(2,2) = -(v*(Sqrt(2.0d0) + 2*Sqrt(2.0d0)*u - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(2,3) = (2 + 4*u - Sqrt(2.0d0)*w)/(8 - 4*Sqrt(2.0d0)*w)
+             IF (nj<ni) THEN
+               EdgeBasis(2,:) = -EdgeBasis(2,:)
+               CurlBasis(2,:) = -CurlBasis(2,:)
+             END IF
+
+             i = EdgeMap(3,1)
+             j = EdgeMap(3,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(3,1) = (v*(1 + (2*v)/(2 - Sqrt(2.0d0)*w)))/4.0d0
+             EdgeBasis(3,2) = 0.0d0
+             EdgeBasis(3,3) = (u*v*(Sqrt(2.0d0) + Sqrt(2.0d0)*v - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(3,1) = (u*(Sqrt(2.0d0) + 2*Sqrt(2.0d0)*v - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(3,2) = (v*(-Sqrt(2.0d0) + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(3,3) = (2 + 4*v - Sqrt(2.0d0)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+             IF (nj<ni) THEN
+               EdgeBasis(3,:) = -EdgeBasis(3,:)
+               CurlBasis(3,:) = -CurlBasis(3,:)
+             END IF
+
+             i = EdgeMap(4,1)
+             j = EdgeMap(4,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(4,1) = 0.0d0
+             EdgeBasis(4,2) = (u*(-1 + (2*u)/(2 - Sqrt(2.0d0)*w)))/4.0d0
+             EdgeBasis(4,3) = (u*v*(-Sqrt(2.0d0) + Sqrt(2.0d0)*u + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(4,1) = (u*(-Sqrt(2.0d0) + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(4,2) = -(v*(-Sqrt(2.0d0) + 2*Sqrt(2.0d0)*u + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(4,3) = (2 - 4*u - Sqrt(2.0d0)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+             IF (nj<ni) THEN
+               EdgeBasis(4,:) = -EdgeBasis(4,:)
+               CurlBasis(4,:) = -CurlBasis(4,:)
+             END IF
+
+             i = EdgeMap(5,1)
+             j = EdgeMap(5,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(5,1) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*v + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+             EdgeBasis(5,2) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*u + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+             EdgeBasis(5,3) = (u*(-2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - 2*w) + 4*w - Sqrt(2.0d0)*w**2) - &
+                 (-1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2))/(4.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(5,1) = (-2*Sqrt(2.0d0) + 2*u*(Sqrt(2.0d0) - w) + 4*w - Sqrt(2.0d0)*w**2)/ &
+                 (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(5,2) = (2*Sqrt(2.0d0) - 2*Sqrt(2.0d0)*v - 4*w + 2*v*w + Sqrt(2.0d0)*w**2)/ &
+                 (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(5,3) = 0.0d0
+             IF (nj<ni) THEN
+               EdgeBasis(5,:) = -EdgeBasis(5,:)
+               CurlBasis(5,:) = -CurlBasis(5,:)
+             END IF
+
+             i = EdgeMap(6,1)
+             j = EdgeMap(6,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(6,1) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*v + w))/(8.0d0 - 4*Sqrt(2.0d0)*w)
+             EdgeBasis(6,2) = (w*(-Sqrt(2.0d0) - Sqrt(2.0d0)*u + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+             EdgeBasis(6,3) = (-((-1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2)) + & 
+                 u*(2*Sqrt(2.0d0) - 2*Sqrt(2.0d0)*v - 4*w + 4*v*w + Sqrt(2.0d0)*w**2))/ &
+                 (4.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(6,1) = -(2*Sqrt(2.0d0) + 2*u*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
+                 (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(6,2) = (-2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - w) + 4*w - Sqrt(2.0d0)*w**2)/ &
+                 (2.0d0*(-2 + Sqrt(2.0d0)*w)**2) 
+             CurlBasis(6,3) = 0.0d0
+             IF (nj<ni) THEN
+               EdgeBasis(6,:) = -EdgeBasis(6,:)
+               CurlBasis(6,:) = -CurlBasis(6,:)
+             END IF
+
+             i = EdgeMap(7,1)
+             j = EdgeMap(7,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(7,1) = ((Sqrt(2.0d0) + Sqrt(2.0d0)*v - w)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+             EdgeBasis(7,2) = ((Sqrt(2.0d0) + Sqrt(2.0d0)*u - w)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+             EdgeBasis(7,3) = ((1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2) + &
+                 u*(2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - 2*w) - 4*w + Sqrt(2.0d0)*w**2))/ &
+                 (4.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(7,1) = (2*Sqrt(2.0d0) + 2*u*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
+                 (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(7,2) = -(2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
+                 (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(7,3) = 0.0d0
+             IF (nj<ni) THEN
+               EdgeBasis(7,:) = -EdgeBasis(7,:)
+               CurlBasis(7,:) = -CurlBasis(7,:)
+             END IF
+
+             i = EdgeMap(8,1)
+             j = EdgeMap(8,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             EdgeBasis(8,1) = (w*(-Sqrt(2.0d0) - Sqrt(2.0d0)*v + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+             EdgeBasis(8,2) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*u + w))/(8.0d0 - 4*Sqrt(2.0d0)*w)
+             EdgeBasis(8,3) = ((1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2) - &
+                 u*(2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - 2*w) - 4*w + Sqrt(2.0d0)*w**2))/ &
+                 (4.0d0*(-2.0d0 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(8,1) = (2*Sqrt(2.0d0) - 2*Sqrt(2.0d0)*u - 4*w + 2*u*w + Sqrt(2.0d0)*w**2)/ &
+                 (2.0d0*(-2.0d0 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(8,2) = (2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
+                 (2.0d0*(-2.0d0 + Sqrt(2.0d0)*w)**2)
+             CurlBasis(8,3) = 0.0d0
+             IF (nj<ni) THEN
+               EdgeBasis(8,:) = -EdgeBasis(8,:)
+               CurlBasis(8,:) = -CurlBasis(8,:)
+             END IF
+
+             ! ------------------------------------------------------------------
+             ! The last two basis functions are associated with the square face.
+             ! We first create the basis function in the default order without
+             ! sign reversions.
+             ! ------------------------------------------------------------------
+             SquareFaceMap(:) = (/ 1,2,3,4 /)
+             Ind => Element % Nodeindexes          
+
+             WorkBasis(1,1) = (2.0d0 - 2*v**2 - 2*Sqrt(2.0d0)*w + w**2)/(4.0d0 - 2*Sqrt(2.0d0)*w)
+             WorkBasis(1,2) = 0.0d0
+             WorkBasis(1,3) = (u*(1.0d0 - (4*v**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2))/(2.0d0*Sqrt(2.0d0))
+             WorkCurlBasis(1,1) = (-2*Sqrt(2.0d0)*u*v)/(-2.0d0 + Sqrt(2.0d0)*w)**2
+             WorkCurlBasis(1,2) = (-2*Sqrt(2.0d0) + 4*w - Sqrt(2.0d0)*w**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2
+             WorkCurlBasis(1,3) = (2.0d0*v)/(2.0d0 - Sqrt(2.0d0)*w)
+
+             WorkBasis(2,1) = 0.0d0
+             WorkBasis(2,2) = (2.0d0 - 2*u**2 - 2*Sqrt(2.0d0)*w + w**2)/(4.0d0 - 2*Sqrt(2.0d0)*w)
+             WorkBasis(2,3) = (v*(1.0d0 - (4*u**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2))/(2.0d0*Sqrt(2.0d0))
+             WorkCurlBasis(2,1) = (2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2
+             WorkCurlBasis(2,2) = (2*Sqrt(2.0d0)*u*v)/(-2.0d0 + Sqrt(2.0d0)*w)**2
+             WorkCurlBasis(2,3) = (2*u)/(-2.0d0 + Sqrt(2.0d0)*w)
+
+             ! -------------------------------------------------------------------
+             ! Finally apply an order change and sign reversions if needed. 
+             ! -------------------------------------------------------------------
+             DO j=1,4
+               FaceIndeces(j) = Ind(SquareFaceMap(j))
+             END DO
+             IF (Parallel) THEN
+               DO j=1,4
+                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+               END DO
+             END IF
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+             EdgeBasis(9,:) = D1 * WorkBasis(I1,:)
+             CurlBasis(9,:) = D1 * WorkCurlBasis(I1,:)
+             EdgeBasis(10,:) = D2 * WorkBasis(I2,:)
+             CurlBasis(10,:) = D2 * WorkCurlBasis(I2,:)          
+           END IF
 
          CASE(7)
            !--------------------------------------------------------------
@@ -8746,7 +8962,8 @@ END IF
 !>  compatibility with the convention for defining global DOFs is attained.
 !>  If n basis function value have already been tabulated in the default order
 !>  as BasisArray(1:n,:), then SignVec(1:n) * BasisArray(PermVec(1:n),:) gives
-!>  the basis vector values corresponding to the global DOFs.  
+!>  the basis vector values corresponding to the global DOFs.
+!>  TO DO: support for second-order basis functions, triangles and quads missing
 !------------------------------------------------------------------------------------
      SUBROUTINE ReorderingAndSignReversionsData(Element,Nodes,PermVec,SignVec)
 !-------------------------------------------------------------------------------------
@@ -9350,7 +9567,7 @@ END IF
      REAL(KIND=dp) :: s
      INTEGER :: cdim,dim,i,j,k,l,n,ip, jj, kk
      INTEGER :: ldbasis, ldxyz, utind
-!DIR$ ASSUME_ALIGNED dlBasisdx:64, LtoGMap:64
+!DIR$ ASSUME_ALIGNED dlBasisdx:64, LtoGMap:64, DetJ:64
      !------------------------------------------------------------------------------
      AllSuccess = .TRUE.
 
