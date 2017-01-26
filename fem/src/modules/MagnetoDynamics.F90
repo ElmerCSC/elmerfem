@@ -6568,13 +6568,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               k = k+3
            ELSE
               DO l=1,3
-                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) - &
-                  s * SUM( AIMAG(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*REAL(BodyForceCurrDens_ip(l))*Basis(p)
+                JatIp(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) - &
+                             SUM( AIMAG(CMat_ip(l,1:3)) * E(2,1:3) ) + REAL(BodyForceCurrDens_ip(l))
+                FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
               DO l=1,3
-                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( AIMAG(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) + &
-                  s * SUM( REAL(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*AIMAG(BodyForceCurrDens_ip(l))*Basis(p)
+                JatIp(2,l) = SUM( AIMAG(CMat_ip(l,1:3)) * E(1,1:3) ) + &
+                             SUM( REAL(CMat_ip(l,1:3)) * E(2,1:3) ) + AIMAG(BodyForceCurrDens_ip(l))
+                FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(2,l)*Basis(p)
               END DO
               k = k+3
            END IF
@@ -6588,6 +6590,25 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                JXBatIP(1,:) = crossproduct(JatIP(1,:),B(1,:))
                DO l=1,dim
                  FORCE(p,k+l) = FORCE(p,k+l)+s*JXBatIP(1,l)*Basis(p)
+               END DO
+               k = k+3
+             ELSE
+               JXBatIP(1,1) =   JatIP(2,2)*B(2,3) - JatIP(2,3)*B(2,2) + JatIP(1,2)*B(1,3) - JatIP(1,3)*B(1,2)
+               JXBatIP(1,2) = - JatIP(2,1)*B(2,3) + JatIP(2,3)*B(2,1) - JatIP(1,1)*B(1,3) + JatIP(1,3)*B(1,1)
+               JXBatIP(1,3) =   JatIP(2,1)*B(2,2) - JatIP(2,2)*B(2,1) + JatIP(1,1)*B(1,2) - JatIP(1,2)*B(1,1)
+
+               JXBatIP(2,1) =   JatIP(2,2)*B(1,3) - JatIP(2,3)*B(1,2) - JatIP(1,2)*B(2,3) + JatIP(1,3)*B(2,2)
+               JXBatIP(2,2) = - JatIP(2,1)*B(1,3) + JatIP(2,3)*B(1,1) + JatIP(1,1)*B(2,3) - JatIP(1,3)*B(2,1)
+               JXBatIP(2,3) =   JatIP(2,1)*B(1,2) - JatIP(2,2)*B(1,1) - JatIP(1,1)*B(2,2) + JatIP(1,2)*B(2,1)
+
+               JXBatIP = 0.5_dp*JXBatIP
+
+               DO l=1,dim
+                 FORCE(p,k+l) = FORCE(p,k+l)+s*JXBatIP(1,l)*Basis(p)
+               END DO
+               k = k+3
+               DO l=1,dim
+                 FORCE(p,k+l) = FORCE(p,k+l)+s*JXBatIP(2,l)*Basis(p)
                END DO
                k = k+3
              END IF
