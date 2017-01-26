@@ -2002,6 +2002,10 @@ CONTAINS
 
     REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
 
+    LOGICAL :: LaminateModelPowerCompute=.FALSE., InPlaneProximity=.FALSE.
+    REAL(KIND=dp) :: LaminatePowerDensity, BMagnAtIP, Fsk, Lambda, LaminateThickness, &
+                     mu0=4d-7*PI, skindepth
+    
     SAVE Nodes
 
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
@@ -2109,6 +2113,8 @@ CONTAINS
       CoilType = ''
       CompParams => GetComponentParams( Element )
       StrandedHomogenization = .FALSE.
+      InPlaneProximity = .FALSE.
+      LaminateModelPowerCompute = .FALSE.
       IF (ASSOCIATED(CompParams)) THEN    
         CoilType = GetString(CompParams, 'Coil Type', Found)
         
@@ -2178,6 +2184,11 @@ CONTAINS
  
           VvarDofs = GetInteger (CompParams, 'Circuit Voltage Variable dofs', Found)
           IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
+          InPlaneProximity = GetLogical(CompParams, 'Foil In Plane Proximity', Found)
+          IF (InPlaneProximity) THEN
+             LaminateThickness = coilthickness/nofturns
+             LaminateModelPowerCompute = .TRUE.
+          END IF
  
         CASE DEFAULT
           CALL Fatal ('BSolver', 'Non existent Coil Type Chosen!')
@@ -2315,12 +2326,27 @@ CONTAINS
           imag_value = CondAtIp * (PotAtIp(1) + im * PotAtIp(2))
           BAtIp(7) = REAL(imag_value)
           BAtIp(8) = AIMAG(imag_value)
-
+          imag_value = CMPLX(BatIp(1), BatIp(3), KIND=dp)
+          imag_value2 = CMPLX(BatIp(2), BatIp(4), KIND=dp)
+          BMagnAtIP = SQRT(ABS(imag_value**2._dp) + ABS(imag_value2**2._dp))
         END IF
         
+        IF (LaminateModelPowerCompute) THEN
+          ! This assumes linear reluctivity, and real conductivity
+          skindepth = sqrt(2._dp/(omega * REAL(CondAtIp) * mu0))
+          Lambda = LaminateThickness/skindepth
+          Fsk = 3/Lambda * (SINH(Lambda) - SIN(Lambda))/(COSH(Lambda)-COS(Lambda))
+          ! This is in W/m**3
+          LaminatePowerDensity = 1._dp/24._dp * REAL(CondAtIp) * &
+                (LaminateThickness * Omega * BMagnAtIP)**2._dp * Fsk
+          TotalHeating = TotalHeating + Weight * ModelDepth * LaminatePowerDensity
+        END IF
+
         IF( LossEstimation ) THEN
           IF ( EddyLoss ) THEN
             BodyLoss(BodyId) = BodyLoss(BodyId) + ModelDepth * Weight * BAtIp(6)
+            IF (LaminateModelPowerCompute) & 
+            BodyLoss(BodyId) = BodyLoss(BodyId) + ModelDepth * Weight * LaminatePowerDensity
           ELSE
             DO i=1,2
               ValAtIP = SUM( BAtIP(2*i-1:2*i) ** 2 )
@@ -2338,30 +2364,18 @@ CONTAINS
           MuAtIp = SUM( Basis(1:n) * mu(1:n) )
 
           IF ( ABS(CondAtIp) > TINY(Weight) ) THEN
-            cmplx_power = cmplx_power + ModelDepth * Weight * imag_value**2._dp / CondAtIp 
+            cmplx_power = cmplx_power + ModelDepth * Weight * ABS(imag_value)**2._dp / CondAtIp 
           END IF
 
           imag_value = CMPLX(BatIp(1), BatIp(3), KIND=dp)
           imag_value2 = CMPLX(BatIp(2), BatIp(4), KIND=dp)
-          cmplx_power = cmplx_power + im * ModelDepth * Weight * Omega/MuAtIp * (imag_value**2._dp+imag_value2**2._dp)
+          cmplx_power = cmplx_power + im * ModelDepth * Weight * Omega/MuAtIp * (ABS(imag_value)**2._dp+ABS(imag_value2)**2._dp)
+
+          IF (LaminateModelPowerCompute) cmplx_power = cmplx_power + ModelDepth * Weight * LaminatePowerDensity
 
           BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) +  REAL(cmplx_power)
           BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + AIMAG(cmplx_power)
-        END IF
-
-        IF (BodyVolumesCompute) THEN
-          BodyVolumes(BodyId) = BodyVolumes(BodyId) + Weight * ModelDepth
-        END IF
-
-        IF (AverageBCompute) THEN
-          IF (BodyAverageBCompute(BodyId)) THEN
-            BodyAvBre(1,BodyId) = BodyAvBre(1,BodyId) + Weight * BAtIp(1)
-            BodyAvBre(2,BodyId) = BodyAvBre(2,BodyId) + Weight * BAtIp(2)
-            IF (Fluxdofs==4) THEN
-              BodyAvBim(1,BodyId) = BodyAvBim(1,BodyId) + Weight * BAtIp(3)
-              BodyAvBim(2,BodyId) = BodyAvBim(2,BodyId) + Weight * BAtIp(4)
-            END IF
-          END IF
+ 
         END IF
 
         IF (BodyICompute) THEN
@@ -2685,7 +2699,7 @@ CONTAINS
                          ComplexPower(2), &
                          KIND=dp)
       I = CMPLX(Current(1), Current(2))
-      imag_value = imag_value*Volume/I**2._dp
+      imag_value = imag_value*Volume/ABS(I)**2._dp
       imag_value2 = 1._dp/imag_value
       SkinCond(1) = REAL(imag_value2) 
       SkinCond(2) = AIMAG(imag_value2) 
@@ -2702,7 +2716,7 @@ CONTAINS
       imag_value = CMPLX(ComplexPower(1), &
                          ComplexPower(2), &
                          KIND=dp)
-      imag_value = imag_value / im / Volume / Omega / (Bav(1)**2._dp+Bav(2)**2._dp)
+      imag_value = imag_value / im / Volume / Omega / (ABS(Bav(1))**2._dp+ABS(Bav(2))**2._dp)
 
       ProxNu(1) = REAL(imag_value) 
       ProxNu(2) = AIMAG(imag_value) 
