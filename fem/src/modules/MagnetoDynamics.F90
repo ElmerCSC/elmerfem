@@ -571,7 +571,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
         'Use Piola Transform', Found )   
     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
     IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("WhitneyAVSolver_Init0", "Requested Quadratic Approximation without Piola Transform. Setting Use Piola Transform = True.")
+      CALL Warn("WhitneyAVSolver_Init0", &
+           "Requested Quadratic Approximation without Piola Transform. Setting Use Piola Transform = True.")
       PiolaVersion = .TRUE.
       CALL ListAddLogical( SolverParams, 'Use Piola Transform', .TRUE. )
     END IF
