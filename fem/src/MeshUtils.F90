@@ -6538,7 +6538,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
           MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, &
-          Centeri, CenteriM, AllocStat
+          Centeri, CenteriM, CenterJ, CenterJM, AllocStat, NrangeAve
       TYPE(Element_t), POINTER :: Element, ElementM, ElementP
       INTEGER :: ElemCode, LinCode, ElemCodeM, LinCodeM
       TYPE(Element_t) :: ElementT
@@ -6557,13 +6557,13 @@ END SUBROUTINE GetMaxDefs
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       REAL(KIND=dp), POINTER :: Alpha(:), AlphaM(:)
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
-      LOGICAL :: LeftCircle, Stat, CornerFound(4), CornerFoundM(4)
+      LOGICAL :: LeftCircle, Stat, CornerFound(4), CornerFoundM(4), PosAngle
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Variable_t), POINTER :: TimestepVar
 
       ! These are used temporarely for debugging purposes
       INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, Nslave, Nmaster
-      LOGICAL :: SaveElem, DebugElem
+      LOGICAL :: SaveElem, DebugElem, SaveErr
       CHARACTER(LEN=20) :: FileName
 
       REAL(KIND=dp) :: Area
@@ -6575,11 +6575,17 @@ END SUBROUTINE GetMaxDefs
 
       SaveInd = ListGetInteger( BC,'Level Projector Save Element Index',Found )
       DebugInd = ListGetInteger( BC,'Level Projector Debug Element Index',Found )
+      SaveErr = ListGetLogical( BC,'Level Projector Save Fraction',Found)
 
+      
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
 
-      
+      IF( SaveErr ) THEN
+        FileName = 'frac_'//TRIM(I2S(TimeStep))//'.dat'
+        OPEN( 11,FILE=Filename)
+      END IF
+     
       n = Mesh % MaxElementNodes
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
           NodesM % x(n), NodesM % y(n), NodesM % z(n), &
@@ -6644,6 +6650,8 @@ END SUBROUTINE GetMaxDefs
       ! of the other angles in the element. 
       CenterI = 0
       CenterIM = 0
+      CenterJ = 0
+      CenterJM = 0
       IF( Naxial > 1 ) THEN
         DO i=1,BMesh1 % NumberOfNodes
           IF( BMesh1 % Nodes % x(i)**2 + BMesh1 % Nodes % y(i)**2 < 1.0e-20 ) THEN
@@ -6711,17 +6719,19 @@ END SUBROUTINE GetMaxDefs
             rmin2 = MIN( rmin2, val )
           END DO
 
-          ! Calculate the angle, and its [min,max] range
+          ! Calculate the angle, and its [-180,180] range
           DO j=1,ne
             alpha(j) = ( 180.0_dp / PI ) * ATAN2( Nodes % y(j), Nodes % x(j)  ) 
           END DO
 
           ! If we have origin replace it with the average           
           IF( CenterI > 0 ) THEN
+            CenterJ = 0
             DO j=1,ne
               IF( Indexes(j) == CenterI ) THEN
                 alpha(j) = 0.0_dp
                 alpha(j) = SUM( Alpha(1:ne) ) / ( ne - 1 ) 
+                CenterJ = j
                 EXIT
               END IF
             END DO
@@ -6729,12 +6739,20 @@ END SUBROUTINE GetMaxDefs
             
           amin = MINVAL( Alpha(1:ne) )
           amax = MAXVAL( Alpha(1:ne) )
-          IF( amax - amin > 180.0_dp ) THEN
+          IF( amax - amin < 180.0_dp ) THEN
+            PosAngle = .FALSE.
+          ELSE
+            PosAngle = .TRUE.
+            ! Map the angle to [0,360]
             DO j=1,ne
               IF( Alpha(j) < 0.0 ) Alpha(j) = Alpha(j) + 360.0_dp
             END DO
+            IF( CenterJ > 0 ) THEN
+              alpha(CenterJ) = 0.0_dp
+              alpha(CenterJ) = SUM( Alpha(1:ne) ) / ( ne - 1 ) 
+            END IF
             amin = MINVAL( Alpha(1:ne) )
-            amax = MAXVAL( Alpha(1:ne) )            
+            amax = MAXVAL( Alpha(1:ne) )                        
           END IF
         END IF ! Naxial > 1
 
@@ -6874,16 +6892,19 @@ END SUBROUTINE GetMaxDefs
             END DO
             IF( rmin2m > rmax2 ) CYCLE
            
+            ! Angle in [-180,180] or [0,360] depending where the slave angle is mapped
             DO j=1,neM
               alphaM(j) = ( 180.0_dp / PI ) * ATAN2( NodesM % y(j), NodesM % x(j)  ) 
             END DO
             
             ! If we have origin replace it with the average 
             IF( CenterIM > 0 ) THEN
+              CenterJm = 0
               DO j=1,neM
                 IF( IndexesM(j) == CenterIM ) THEN
+                  CenterJM = j
                   alphaM(j) = 0.0_dp
-                  alphaM(j) = SUM( Alpha(1:ne) ) / ( ne - 1 ) 
+                  alphaM(j) = SUM( AlphaM(1:neM) ) / ( neM - 1 ) 
                   EXIT
                 END IF
               END DO
@@ -6892,14 +6913,17 @@ END SUBROUTINE GetMaxDefs
             aminm = MINVAL( AlphaM(1:neM) )
             amaxm = MAXVAL( AlphaM(1:neM) )
 
-            ! Check that the discrepancy in angle is not located for this element.
-            ! It it is, move it over by adding 360 degs to negative angles. 
             IF( amaxm - aminm > 180.0_dp ) THEN
+              ! Map the angle to [0,360]
               DO j=1,neM
                 IF( AlphaM(j) < 0.0 ) AlphaM(j) = AlphaM(j) + 360.0_dp
               END DO
+              IF( CenterJM > 0 ) THEN
+                alphaM(CenterJM) = 0.0_dp
+                alphaM(CenterJM) = SUM( AlphaM(1:ne) ) / ( ne - 1 ) 
+              END IF
               aminm = MINVAL( AlphaM(1:neM) )
-              amaxm = MAXVAL( AlphaM(1:neM) )            
+              amaxm = MAXVAL( AlphaM(1:neM) )                        
             END IF
           END IF
 
@@ -6907,7 +6931,7 @@ END SUBROUTINE GetMaxDefs
           IF( LeftCircle ) THEN
             ! Omit the element if it is definately on the right circle
             IF( ALL( ABS( AlphaM(1:neM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
-            DO j=1,nM
+            DO j=1,neM
               IF( AlphaM(j) < 0.0_dp ) AlphaM(j) = AlphaM(j) + ArcCoeff * 360.0_dp
             END DO
           END IF
@@ -6917,9 +6941,13 @@ END SUBROUTINE GetMaxDefs
             IF( Naxial > 1 ) THEN
               Nrange1 = FLOOR( Naxial * (amaxm-amin+RelTolX) / 360.0 )
               Nrange2 = FLOOR( Naxial * (amax-aminm+RelTolX) / 360.0 )
-
+              
               ! The two ranges could have just offset of 2*PI, eliminate that
-              IF( MODULO( Nrange1 - Nrange2, Naxial ) == 0 ) THEN
+              !Nrange2 = Nrange2 + ((Nrange1 - Nrange2)/Naxial) * Naxial
+              !  Nrange2 = Nrange1
+              !END IF
+
+              IF( MODULO( Nrange1 - Nrange2, Naxial ) == 0 )  THEN
                 Nrange2 = Nrange1
               END IF
               
@@ -6932,6 +6960,12 @@ END SUBROUTINE GetMaxDefs
                   NodesM % y(i) = SIN(dAlpha) * x0 + COS(dAlpha) * y0
                 END DO
               END IF
+                
+              !IF( Nrange2 > Nrange1 + Naxial / 2 ) THEN
+              !  Nrange2 = Nrange2 - Naxial
+              !ELSE IF( Nrange2 < Nrange1 - Naxial / 2 ) THEN
+              !  Nrange2 = Nrange2 + Naxial
+              !END IF
 
               IF( DebugElem) THEN
                 PRINT *,'axial:',ind,indM,amin,aminm,Nrange1,Nrange2
@@ -7538,12 +7572,14 @@ END SUBROUTINE GetMaxDefs
 
 100       IF( Repeating ) THEN
             IF( NRange /= NRange2 ) THEN
-              Nrange = Nrange2
-
               ! Rotate the sector to a new position for axial case
               ! Or just some up the angle in the radial/2D case
               IF( Naxial > 1 ) THEN
-                dAlpha = (Nrange2 - Nrange1) * 2.0_dp * PI / Naxial
+
+                IF( Nrange /= Nrange2 ) THEN
+                  dAlpha = 2.0_dp * PI * (Nrange2 - Nrange ) / Naxial
+                  Nrange = Nrange2
+                END IF
              
                 DO i=1,nM
                   x0 = NodesM % x(i)
@@ -7552,6 +7588,7 @@ END SUBROUTINE GetMaxDefs
                   NodesM % y(i) = SIN(dAlpha) * x0 + COS(dAlpha) * y0
                 END DO
               ELSE
+                Nrange = Nrange2
                 NodesM % x(1:n) = NodesM % x(1:n) + ArcRange  * (Nrange2 - Nrange1)
               END IF
               xminm = MINVAL( NodesM % x(1:neM))
@@ -7585,8 +7622,17 @@ END SUBROUTINE GetMaxDefs
           MinErr = Err
           MinErrInd = ind
         END IF
+
+        IF( SaveErr ) THEN
+          WRITE( 11, * ) ind,SUM( Nodes % x(1:ne))/ne, SUM( Nodes % y(1:ne))/ne, Err
+        END IF
+
+        
       END DO
 
+      IF( SaveErr ) CLOSE(11)
+      
+        
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
           NodesM % x, NodesM % y, NodesM % z, &
           NodesT % x, NodesT % y, NodesT % z, &
