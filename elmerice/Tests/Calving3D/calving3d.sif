@@ -46,21 +46,16 @@ Simulation
   Timestepping Method = "bdf"
   BDF Order = 1
 
-  Timestep Intervals(1) = 10000
+  Timestep Intervals(1) = 30
   Output Intervals(1) = 1
-  Timestep Sizes(1) = Real 0.01 !$1.0/365.0 !day step
+  Timestep Sizes(1) = Real $1.0/365.0 !day step
 
-  ! Restart File = "$restart".result" !"
-  ! Restart Position = 0
-  ! !Restart Time = 0.0
-  ! Restart Before Initial Conditions = Logical True !because need beta
   Initialize Dirichlet Conditions = Logical False !<- important, FrontExtent...
-  ! Include "restart_var_list"
 
   Steady State Max Iterations = 1 !20
   Steady State Min Iterations = 1
   Set Dirichlet BCs By BC Numbering = Logical True
-  max output level = 24
+  max output level = 6
   Output Intervals = 1
   Output File = "$namerun".result" !"
   Output Coordinates = Logical True
@@ -136,7 +131,7 @@ Material 1
 ! two regimes in the flow law
   Limit Temperature = Real -10.0
 ! In case there is no temperature variable
-  Constant Temperature = Real -10.0
+  Constant Temperature = Real -20.0
   Critical Shear Rate = Real 1.0E-10
 
   Sea level = Real $SL
@@ -225,7 +220,7 @@ Solver 4
   Nonlinear System Max Iterations = 100
   Nonlinear System Convergence Tolerance = 1.0E-5
   Nonlinear System Newton After Iterations = 100
-  Nonlinear System Newton After Tolerance = 0.5E-3
+  Nonlinear System Newton After Tolerance = 1.0E-6 !never
   Nonlinear System Newton Max Tolerance = Real 1.0e-2
   Nonlinear System Newton Max Iterations = Integer 15 !Give up newton
   Nonlinear System Reset Newton = Logical True
@@ -317,7 +312,7 @@ Solver 19
   Calving Append Name = String "$namerun"" !"
   Calving Move Mesh Dir = String "./results/"
 
-  Front Orientation(3) = Real -1.0 0.0 0.0
+  Front Orientation(3) = Real 1.0E-10 -1.0 0.0
   Project Calving Equation Name = String "CalvingProjection"
   Isosurface Equation Name = String "Calving Isosurface"
   Crevasse Penetration Threshold = Real 0.2 !this is the upper limit of average intact ice
@@ -473,7 +468,7 @@ Solver 12
   Column Max Longitudinal Range = Real 350.0
   Maximum Node Displacement = Real 1.0E4
 
-  Front Orientation(3) = Real -1.0 0.0 0.0
+  Front Orientation(3) = Real 1.0E-10 -1.0 0.0
 
   Exported Variable 1 = "Tangled"
 End
@@ -576,7 +571,7 @@ Solver 21
    Non-Vertical Face Name = String "Calving Front"
    Mesh Update Helper Variable = String "Remesh Update"
    Map Coordinate Equation Name = String "Remesh Map Coordinate"
-   Front Orientation(3) = Real -1.0 0.0 0.0
+   Front Orientation(3) = Real 1.0E-10 -1.0 0.0
    Remesh Vertical Stretch = Real 10000.0
    Vertical Front Computation = String "midrange"
    Metis Algorithm = Integer 1
@@ -773,26 +768,13 @@ Boundary Condition 3
   Mass Consistent Normals = Logical True
 
   Velocity 1 = Real 0.0
-  ! Velocity 1 Condition = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_BCs" "checkBCCount"
-  ! Check Other Boundaries(1) = Integer 2
-
   Velocity 2 = Real 0.0
-  Velocity 2 Condition = Variable Elevation
-    Real MATC "-(tx-1.0)"
-
   Velocity 3 = Real 0.0
-  Velocity 3 Condition = Variable Elevation
-    Real MATC "-(tx-1.0)"
-
-  Slip Coefficient 2 = Real 1.0e-3
-  Slip Coefficient 3 = Real 1.0e-3
 
   Longitudinal Mesh Update 1 = Real 0.0
   Longitudinal Mesh Update 2 = Real 0.0
   Longitudinal Mesh Update 3 = Real 0.0
 
-!   Zs Top = Equals Reference Zs Top
   Zs Bottom = Equals Reference Zs Bottom
 
   Remesh Update 3 = Real 0.0
@@ -810,26 +792,13 @@ Boundary Condition 4
   Mass Consistent Normals = Logical True
 
   Velocity 1 = Real 0.0
-  ! Velocity 1 Condition = Variable Coordinate 1
-  !   Real Procedure "./bin/USF_BCs" "checkBCCount"
-  ! Check Other Boundaries(1) = Integer 2
-
   Velocity 2 = Real 0.0
-  Velocity 2 Condition = Variable Elevation
-    Real MATC "-(tx-1.0)"
-
   Velocity 3 = Real 0.0
-  Velocity 3 Condition = Variable Elevation
-    Real MATC "-(tx-1.0)"
-
-  Slip Coefficient 2 = Real 1.0e-3
-  Slip Coefficient 3 = Real 1.0e-3
 
   Longitudinal Mesh Update 1 = Real 0.0
   Longitudinal Mesh Update 2 = Real 0.0
   Longitudinal Mesh Update 3 = Real 0.0
 
-!   Zs Top = Equals Reference Zs Top
   Zs Bottom = Equals Reference Zs Bottom
 
   Remesh Update 3 = Real 0.0
@@ -840,7 +809,6 @@ Boundary Condition 5
   Target Boundaries = 5
   Bottom Surface Mask = Logical True
 
-  !TODO ???
   Bottom Surface = Variable Coordinate 1, Coordinate 2
     Real Procedure "./"$bed_func" ""initbedrock"
 
@@ -872,15 +840,28 @@ Boundary Condition 5
     Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
   Slip Coefficient 3 = Variable Coordinate 1
     Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
-  Test Contact Tolerance = Real 1.0E-2
+  Test Contact Tolerance = Real 1.0E-3
 
   Sliding Law = String "Weertman"  ! Alternative is "Coulomb"
   Weertman Friction Coefficient = Real 1.0e-1
   Weertman Exponent = Real $(1.0/3.0)
   Weertman Linear Velocity = Real 1.0
 
-  ! Sliding Law = String "prescribed power"
-  ! Friction Variable Name = String "beta"
+  ! Sliding Law = String "coulomb"
+  ! Friction Law Sliding Coefficient = Real 1.0E5
+  ! Friction Law Post-Peak Exponent = Real 1.0
+  ! Friction Law Maximum Value = Real 1.0
+  ! Friction Law Linear Velocity = Real 0.01
+  ! Friction Law PowerLaw Exponent = Real 3
+
+  ! Sliding Law = String "budd"
+  ! Budd Friction Coefficient = Real 1.0E-5
+  ! Budd Velocity Exponent = Real $1.0/3.0
+  ! Budd Zab Exponent = Real 1.0 !2.0
+  ! Budd Linear Velocity = Real 0.1
+  ! Budd Gravity = Real $g 
+  ! Budd Ocean Density = Real $RhoWS
+  ! Budd Floatation = Logical True
 
   ComputeNormal Condition = Variable GroundedMask
     Real MATC "tx + 0.5"
