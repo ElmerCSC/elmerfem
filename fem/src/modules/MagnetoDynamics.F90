@@ -570,6 +570,11 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     PiolaVersion = GetLogical(SolverParams, &
         'Use Piola Transform', Found )   
     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
+    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
+      CALL Warn("WhitneyAVSolver_Init0", "Requested Quadratic Approximation without Piola Transform. Setting Use Piola Transform = True.")
+      PiolaVersion = .TRUE.
+      CALL ListAddLogical( SolverParams, 'Use Piola Transform', .TRUE. )
+    END IF
     LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
 
     IF (PiolaVersion) Paramlist = Paramlist + b_Piola
@@ -591,14 +596,14 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     CASE (b_Piola + b_Gauge + b_Secondorder)
       CALL ListAddString( SolverParams, &
-           "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
+           "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
 
     CASE (b_Piola + b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
 
     CASE (b_Piola + b_Secondorder)
       CALL ListAddString( SolverParams, "Element", &
-           "n:0 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
+           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
 
     CASE (b_Piola)
       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
