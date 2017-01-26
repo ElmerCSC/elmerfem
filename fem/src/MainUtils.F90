@@ -630,6 +630,7 @@ CONTAINS
     TYPE(GraphColour_t) :: GraphColouring
     LOGICAL :: ConsistentColours
     
+
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
     SolverParams => ListGetSolverParams(Solver)
@@ -4288,7 +4289,6 @@ CONTAINS
    END SUBROUTINE SolverActivate
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
 !  The predictor-corrector scheme to change dt
 !------------------------------------------------------------------------------
@@ -4391,15 +4391,8 @@ CONTAINS
           WRITE (Message,*) "zeta=", zeta, "eta=",  eta, "terr=", timeError
           CALL Info('TimeStepping', Message, Level=3)
         END IF 
-
-
-
       END IF
-
-
-
-
-
+      
 !------------------------------------------------------------------------------
     END SUBROUTINE PredictorCorrectorControl
 !------------------------------------------------------------------------------
@@ -4551,10 +4544,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     END  SUBROUTINE ReadPredCorrParams
 !------------------------------------------------------------------------------
-
-
-
-
 
 END MODULE MainUtils
 

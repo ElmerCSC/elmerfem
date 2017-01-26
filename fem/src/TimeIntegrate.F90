@@ -119,7 +119,7 @@ CONTAINS
    END SUBROUTINE NewmarkBeta
 !------------------------------------------------------------------------------
 
-   
+
 !------------------------------------------------------------------------------   
 ! Adams-Bashforth and Adams-Moulton time-integration schemes implemented
 ! by Gong Cheng, 2017. 
@@ -191,7 +191,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    END SUBROUTINE AdamsBashforth
 !------------------------------------------------------------------------------
-
 
 
 !> Apply Adams-Moulton(Correction) method to local matrix equation.

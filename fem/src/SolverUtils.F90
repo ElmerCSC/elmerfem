@@ -718,7 +718,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
      INTEGER :: PredCorrOrder = 2       !< Order of predictor-corrector scheme
-     INTEGER :: PredCorrCounter = 0       !< Order of predictor-corrector scheme
+     INTEGER :: PredCorrCounter = 0       !< Counter of predictor-corrector scheme
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE
@@ -826,7 +826,6 @@ CONTAINS
        CALL RungeKutta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                 PrevSol(:,1), CurSol )
 
-     ! Time stepping method added by CG 20170116
      CASE('adams predictor')
        zeta = ListGetConstReal( Solver % Values, 'Adams Zeta', GotIt )
        IF ( .NOT. Gotit) zeta = 1.0_dp
