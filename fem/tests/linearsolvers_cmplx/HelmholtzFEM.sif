@@ -13,7 +13,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 10
   Angular Frequency = $w
 
   Coordinate System = "Cartesian"
@@ -150,5 +150,10 @@ Solver 1 :: Linear System Iterative Method = BiCGStabL
 Boundary Condition 1 :: Wave Flux 1 = 12
 RUN
 
+Solver 1 :: Reference Norm = Real 1.66813651E-01
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = idrs
+Boundary Condition 1 :: Wave Flux 1 = 13
+RUN
 
 !End Of File
