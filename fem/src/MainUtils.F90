@@ -4359,6 +4359,8 @@ CONTAINS
           ! Compute the error  |H-\tilde{H}|_inf
 
           timeErrorMax  =  MAXVAL( ABS(Solver % Variable % Values(:) - Solver % Variable % PrevValues(:,1)))
+          timeErrorMax = ParallelReduction(timeErrorMax,2)
+
           timeError = timeErrorMax
 
           dtOld = dt
