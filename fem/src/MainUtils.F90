@@ -4304,7 +4304,7 @@ CONTAINS
       TYPE(ValueList_t), POINTER :: SolverParams
       INTEGER :: PredCorrOrder, i, predcorrIndex = 0
       REAL(KIND=dp) :: epsilon, beta1, beta2
-      LOGICAL :: Found
+      LOGICAL :: Found, OutputFlag = .FALSE.
 
       REAL(KIND=dp) :: timeError, timeErrorMax, timeError2Norm, eta
 
@@ -4367,16 +4367,21 @@ CONTAINS
           etaOld = eta
 
 
-          !> Save the time errors!                         
-          OPEN (unit=135, file="ErrorPredictorCorrector.dat", POSITION='APPEND')
-          WRITE(135, *) dtOld, eta, timeError                                                
-          CLOSE(135)
+          !> Save the time errors!     
+          OutputFlag = ListGetLogical(SolverParams, 'Predictor-Corrector Save Error', Found)   
+          IF ( OutputFlag ) THEN                 
+            OPEN (unit=135, file="ErrorPredictorCorrector.dat", POSITION='APPEND')
+            WRITE(135, *) dtOld, eta, timeError                                                
+            CLOSE(135)
+          END IF
 
           !> Output
+          WRITE (Message,*) "---------------- Predictor-Corrector Control ----------------------"
+          CALL Info('Predictor-Corrector', Message, Level=3)
           WRITE (Message,*) "current dt=", dtOld, "next dt=",  dt
           CALL Info('Predictor-Corrector', Message, Level=3)
           WRITE (Message,*) "zeta=", zeta, "eta=",  eta, "terr=", timeError
-          CALL Info('Predictor-Corrector', Message, Level=4)
+          CALL Info('Predictor-Corrector', Message, Level=6)
         END IF 
       END IF
       

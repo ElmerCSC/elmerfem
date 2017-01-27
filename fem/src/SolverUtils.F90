@@ -821,13 +821,13 @@ CONTAINS
        CALL RungeKutta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                 PrevSol(:,1), CurSol )
 
-     CASE('adams predictor')
+     CASE('adams-bashforth')
        zeta = ListGetConstReal( Solver % Values, 'Adams Zeta', GotIt )
        IF ( .NOT. Gotit) zeta = 1.0_dp
        CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol(:,1), zeta, PredCorrOrder)
 
-     CASE('adams corrector')
+     CASE('adams-moulton')
         CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                 PrevSol, PredCorrOrder )      
        
@@ -7233,10 +7233,10 @@ END FUNCTION SearchNodeL
          CASE('fs')
            Solver % Beta = 0.5d0
 
-         CASE('adams predictor')
+         CASE('adams-bashforth')
            Solver % Beta = 0.0d0
 
-         CASE('adams corrector')
+         CASE('adams-moulton')
            Solver % Beta = 1.0d0
 
          CASE('newmark')
