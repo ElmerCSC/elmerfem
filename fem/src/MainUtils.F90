@@ -836,9 +836,18 @@ CONTAINS
           CALL ListAddString( SolverParams, 'Predictor Method', str )
         END IF
       END IF
-          
+
+      str = ListGetString( SolverParams, 'Corrector Method',Found )
+      IF ( .NOT. Found ) THEN
+        str = ListGetString( CurrentModel % Simulation, 'Corrector Method',Found )
+        IF ( Found ) THEN
+          CALL ListAddString( SolverParams, 'Corrector Method', str )
+        END IF
+      END IF
+
       IF ( Found ) THEN
         CALL ReadPredCorrParams( CurrentModel, SolverParams )
+        CALL ListAddString( SolverParams, 'Timestepping Method', str )  
       END IF
 
       str = ListGetString( SolverParams, 'Timestepping Method',Found )
@@ -869,7 +878,7 @@ CONTAINS
           Solver % Order = 2          
         END IF
         CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=10)
-     ELSE
+      ELSE
         CALL Warn( 'AddEquation', '> Timestepping method < defaulted to > Implicit Euler <' )
         CALL ListAddString( SolverParams, 'Timestepping Method', 'Implicit Euler' )
       END IF
@@ -1796,7 +1805,7 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Mesh_t),   POINTER :: Mesh
-    CHARACTER(LEN=max_name_len) :: When, TimeStepMethod
+    CHARACTER(LEN=max_name_len) :: When
     TYPE(Variable_t), POINTER :: IterV, TimestepV
     REAL(KIND=dp), POINTER :: steadyIt,nonlnIt
     REAL(KIND=dp), POINTER :: k1(:), k2(:), k3(:), k4(:), sTime
@@ -1844,9 +1853,9 @@ CONTAINS
           END IF
         END IF
           
+        ! Use predictor method
         IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
           CALL Info('SolveEquations','Switching time-stepping method to predictor method',Level=7)
-          TimeStepMethod = ListGetString( Solver % Values, 'Timestepping Method', Found )
           CALL ListAddString( Solver % Values, 'Timestepping Method', &
              ListGetString( Solver % Values, 'Predictor Method',Found) )
           IF(.NOT. Found ) THEN
@@ -1858,9 +1867,15 @@ CONTAINS
         CALL SolverActivate( Model,Solver,dt,TransientSimulation )
         CALL ParallelBarrier
 
+        ! Use Corrector method
         IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
-          CALL ListAddString( Solver % Values, 'Timestepping Method', TimeStepMethod )
-        END IF
+          CALL Info('SolveEquations','Switching time-stepping method to corrector method',Level=7)
+          CALL ListAddString( Solver % Values, 'Timestepping Method', &
+             ListGetString( Solver % Values, 'Corrector Method',Found) )
+          IF(.NOT. Found ) THEN
+            CALL Fatal('SolveEquations','Predictor-corrector schemes require > Corrector Method <')
+          END IF
+        END IF        
       END IF
     END DO
 
