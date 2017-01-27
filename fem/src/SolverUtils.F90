@@ -824,11 +824,11 @@ CONTAINS
      CASE('adams predictor')
        zeta = ListGetConstReal( Solver % Values, 'Adams Zeta', GotIt )
        IF ( .NOT. Gotit) zeta = 1.0_dp
-       CALL AdamsPredictor( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+       CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol(:,1), zeta, PredCorrOrder)
 
      CASE('adams corrector')
-        CALL AdamsCorrector( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+        CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                 PrevSol, PredCorrOrder )      
        
      CASE DEFAULT

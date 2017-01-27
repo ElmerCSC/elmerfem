@@ -124,11 +124,13 @@ CONTAINS
 ! Adams-Bashforth and Adams-Moulton time-integration schemes implemented
 ! by Gong Cheng, 2017. 
 !   
-!> Apply Adams-Bashforth(Predictor) method to local matrix equation.
+!> Apply Adams-Bashforth method to local matrix equation.
 !> This method stores prev_stiff*prevSol in Element % propertydata and 
 !> the correspoding forcing terms.
+!> PredCorrOrder=1, Explicit Euler
+!> PredCorrOrder=2, 2nd order Adams-Bashforth
 !------------------------------------------------------------------------------
-   SUBROUTINE AdamsPredictor( N, dt, MassMatrix, StiffMatrix, &
+   SUBROUTINE AdamsBashforth( N, dt, MassMatrix, StiffMatrix, &
                    Force, PrevSolution, zeta, PredCorrOrder)
 !------------------------------------------------------------------------------
     INTEGER :: N    ! Size of the unknowns
@@ -136,7 +138,7 @@ CONTAINS
     REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:)
     TYPE(Element_t), POINTER :: Element
     TYPE(elementdata_t), POINTER :: tempRes
-    LOGICAL  :: firstTime, GotIt
+    LOGICAL :: GotIt
     INTEGER :: PredCorrOrder
 
 !------------------------------------------------------------------------------
@@ -146,16 +148,11 @@ CONTAINS
 !------------------------------------------------------------------------------
      NB1 = SIZE( StiffMatrix,1 )
      NB2 = SIZE( StiffMatrix,2 ) 
-    firstTime = .FALSE.
 
      Element => CurrentModel % CurrentElement
      IF (.NOT. ASSOCIATED(Element % propertydata)) THEN
        ALLOCATE( Element % propertydata )
        ALLOCATE( Element % propertydata % values(NB1*2) )  
-
-       firstTime = .TRUE.
-     ELSE      
-       firstTime = .FALSE.
      END IF
 
 
@@ -169,7 +166,7 @@ CONTAINS
 
        curr_res = - s_curr
 
-       IF ( firstTime .OR. PredCorrOrder == 1 ) THEN
+       IF ( PredCorrOrder == 1 ) THEN
          residual = curr_res
          preForce = Force(i)
        ELSE
@@ -189,7 +186,7 @@ CONTAINS
      END DO
 
 !------------------------------------------------------------------------------
-   END SUBROUTINE AdamsPredictor
+   END SUBROUTINE AdamsBashforth
 !------------------------------------------------------------------------------
 
 
@@ -200,10 +197,14 @@ CONTAINS
 !> PrevSolution(:,2) -- the true solution from previous correction step H^{n-1}
 !> PrevSolution(:,1) -- the corrector \tilde{H^n}
 !>
-!> This method can only be used in the corrector phase of Adaptive time stepping method
-!> and just after AB2 method, otherwise the residual at n-1 step will be incorrect.
+!> This method can only be used in the corrector phase of Predictor-Corrector 
+!> scheme and just after Adams-Bashforth method with the same order, otherwise
+!> the residual at n-1 step will be incorrect.
+!> PredCorrOrder=1, Implicit Euler
+!> PredCorrOrder=2, 2nd order Adams-Moulton
+
 !------------------------------------------------------------------------------
-   SUBROUTINE AdamsCorrector( N, dt, MassMatrix, StiffMatrix, &
+   SUBROUTINE AdamsMoulton( N, dt, MassMatrix, StiffMatrix, &
        Force, PrevSolution, PredCorrOrder)
 !------------------------------------------------------------------------------
      INTEGER :: N
@@ -249,7 +250,7 @@ CONTAINS
      END DO
 
 !------------------------------------------------------------------------------
-   END SUBROUTINE AdamsCorrector
+   END SUBROUTINE AdamsMoulton
 !------------------------------------------------------------------------------
 
 
