@@ -128,14 +128,14 @@ CONTAINS
 !> This method stores prev_stiff*prevSol in Element % propertydata and 
 !> the correspoding forcing terms.
 !------------------------------------------------------------------------------
-   SUBROUTINE AdamsBashforth( N, dt, MassMatrix, StiffMatrix, &
+   SUBROUTINE AdamsPredictor( N, dt, MassMatrix, StiffMatrix, &
                    Force, PrevSolution, zeta, PredCorrOrder)
 !------------------------------------------------------------------------------
-     INTEGER :: N    ! Size of the unknowns
+    INTEGER :: N    ! Size of the unknowns
     REAL(KIND=dp) :: Force(:),PrevSolution(:),dt, zeta
-     REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:)
-     TYPE(Element_t), POINTER :: Element
-     TYPE(elementdata_t), POINTER :: tempRes
+    REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(elementdata_t), POINTER :: tempRes
     LOGICAL  :: firstTime, GotIt
     INTEGER :: PredCorrOrder
 
@@ -189,11 +189,11 @@ CONTAINS
      END DO
 
 !------------------------------------------------------------------------------
-   END SUBROUTINE AdamsBashforth
+   END SUBROUTINE AdamsPredictor
 !------------------------------------------------------------------------------
 
 
-!> Apply Adams-Moulton(Correction) method to local matrix equation.
+!> Apply Adams-Moulton(Corrector) method to local matrix equation.
 !>
 !> A two steps method with second order accuracy in time.
 !> This method is only used in the correction phase of adaptive timestepping,
@@ -203,7 +203,7 @@ CONTAINS
 !> This method can only be used in the corrector phase of Adaptive time stepping method
 !> and just after AB2 method, otherwise the residual at n-1 step will be incorrect.
 !------------------------------------------------------------------------------
-   SUBROUTINE AdamsMoulton( N, dt, MassMatrix, StiffMatrix, &
+   SUBROUTINE AdamsCorrector( N, dt, MassMatrix, StiffMatrix, &
        Force, PrevSolution, PredCorrOrder)
 !------------------------------------------------------------------------------
      INTEGER :: N
@@ -249,7 +249,7 @@ CONTAINS
      END DO
 
 !------------------------------------------------------------------------------
-   END SUBROUTINE AdamsMoulton
+   END SUBROUTINE AdamsCorrector
 !------------------------------------------------------------------------------
 
 

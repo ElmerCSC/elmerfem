@@ -718,7 +718,6 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
      INTEGER :: PredCorrOrder = 2       !< Order of predictor-corrector scheme
-     INTEGER :: PredCorrCounter = 0       !< Counter of predictor-corrector scheme
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE
@@ -788,16 +787,12 @@ CONTAINS
      Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
 
      PredCorrOrder = ListGetInteger( Solver % Values, &
-                    'Predictor Corrector Scheme Order', GotIt)
+                    'Predictor-Corrector Scheme Order', GotIt)
       IF (.NOT. GotIt) THEN
         PredCorrOrder = 2
       END IF 
-     PredCorrCounter = ListGetInteger( Solver % Values, &
-                    'Predictor Corrector Counter', GotIt)
-      IF (.NOT. GotIt) THEN
-        PredCorrCounter = 0
-      END IF 
-      PredCorrOrder = MIN(PredCorrOrder, PredCorrCounter)
+
+      PredCorrOrder = MIN(PredCorrOrder, Solver % DoneTime /2)
 
      SELECT CASE( Method )
      CASE( 'fs' ) 
@@ -829,11 +824,11 @@ CONTAINS
      CASE('adams predictor')
        zeta = ListGetConstReal( Solver % Values, 'Adams Zeta', GotIt )
        IF ( .NOT. Gotit) zeta = 1.0_dp
-       CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+       CALL AdamsPredictor( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol(:,1), zeta, PredCorrOrder)
 
      CASE('adams corrector')
-        CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+        CALL AdamsCorrector( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                 PrevSol, PredCorrOrder )      
        
      CASE DEFAULT

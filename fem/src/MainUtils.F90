@@ -4302,7 +4302,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       TYPE(Solver_t), POINTER :: Solver
       TYPE(ValueList_t), POINTER :: SolverParams
-      INTEGER :: PredCorrOrder, i, predcorrIndex = 0, counter
+      INTEGER :: PredCorrOrder, i, predcorrIndex = 0
       REAL(KIND=dp) :: epsilon, beta1, beta2
       LOGICAL :: Found
 
@@ -4319,8 +4319,9 @@ CONTAINS
         END IF 
       END DO
 
-      IF ( predcorrIndex > 0) THEN 
-
+      IF ( predcorrIndex == 0) THEN 
+        CALL Fatal('Predictor-Corrector Control','Predictor-Corrector Solver is not found!')
+      ELSE
         ! Do Predictor-Corrector
         Solver => Model % Solvers(predcorrIndex)
         SolverParams => ListGetSolverParams(Solver)
@@ -4334,27 +4335,14 @@ CONTAINS
         ! Use the initial time step, force to use first order time schemes 
           dt = dtOld
           zeta = 1.0_dp
-          CALL ListAddInteger( SolverParams,  &
-                        'Predictor Corrector Counter', 1 )
-
         ELSE IF (RealTimestep > 2) THEN
         ! Use local error estimate and PI control 
-
-          ! Set counter += 1
-          counter = ListGetInteger( SolverParams,  &
-                        'Predictor Corrector Counter', Found )
-          IF ( .NOT. Found ) THEN
-            counter = 2
-          ELSE
-            counter = counter + 1
-          END IF
-          CALL ListAddInteger( SolverParams,  &
-                        'Predictor Corrector Counter', counter )
 
           ! Read in the settings
           CALL ReadPredCorrParams( Model, SolverParams, PredCorrOrder, epsilon, beta1, beta2 )
 
           ! Compute the error  |H-\tilde{H}|_inf
+
           timeErrorMax  =  MAXVAL( ABS(Solver % Variable % Values(:) - Solver % Variable % PrevValues(:,1)))
           timeError = timeErrorMax
 
@@ -4385,11 +4373,10 @@ CONTAINS
           CLOSE(135)
 
           !> Output
-          CALL Info('TimeStepping', "============ Adaptive ============", Level=3)
           WRITE (Message,*) "current dt=", dtOld, "next dt=",  dt
-          CALL Info('TimeStepping', Message, Level=3)
+          CALL Info('Predictor-Corrector', Message, Level=3)
           WRITE (Message,*) "zeta=", zeta, "eta=",  eta, "terr=", timeError
-          CALL Info('TimeStepping', Message, Level=3)
+          CALL Info('Predictor-Corrector', Message, Level=4)
         END IF 
       END IF
       
@@ -4472,7 +4459,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!  Set Default / Read in the settings for predictor corrector scheme
+!  Set Default / Read in the settings for Predictor-Corrector scheme
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
     SUBROUTINE ReadPredCorrParams(Model, SolverParams, outOrder, outEps, outB1, outB2)
@@ -4489,51 +4476,51 @@ CONTAINS
 
 
       PredCorrOrder = ListGetInteger( SolverParams,  &
-                      'Predictor Corrector Scheme Order', Found)
+                      'Predictor-Corrector Scheme Order', Found)
       IF ( .NOT. Found ) THEN
         PredCorrOrder = ListGetInteger( Model % Simulation,  &
-                        'Predictor Corrector Scheme Order', Found)
+                        'Predictor-Corrector Scheme Order', Found)
         IF ( .NOT. Found ) THEN
           PredCorrOrder = 2
         END IF
         CALL ListAddInteger( SolverParams,  &
-                        'Predictor Corrector Scheme Order', PredCorrOrder )
+                        'Predictor-Corrector Scheme Order', PredCorrOrder )
       END IF
 
       epsilon = ListGetCReal( SolverParams, &
-                        'Predictor Corrector Control Tolerance', Found )
+                        'Predictor-Corrector Control Tolerance', Found )
       IF ( .NOT. Found ) THEN
         epsilon = ListGetCReal( Model % Simulation,  &
-                        'Predictor Corrector Control Tolerance', Found )
+                        'Predictor-Corrector Control Tolerance', Found )
         IF ( .NOT. Found ) THEN
           epsilon = 1.0e-6
         END IF
         CALL ListAddConstReal( SolverParams, &
-                        'Predictor Corrector Control Tolerance', epsilon )
+                        'Predictor-Corrector Control Tolerance', epsilon )
       END IF
 
       beta1 = ListGetCReal( SolverParams, &
-                        'Predictor Corrector Control Beta 1', Found )
+                        'Predictor-Corrector Control Beta 1', Found )
       IF ( .NOT. Found ) THEN
         beta1 = ListGetCReal( Model % Simulation,  &
-                        'Predictor Corrector Control Beta 1', Found )
+                        'Predictor-Corrector Control Beta 1', Found )
         IF ( .NOT. Found ) THEN
           beta1 = 0.6_dp / ( PredCorrOrder + 1.0_dp )
         END IF
         CALL ListAddConstReal( SolverParams, &
-                        'Predictor Corrector Control Beta 1', beta1 )
+                        'Predictor-Corrector Control Beta 1', beta1 )
       END IF
 
       beta2 = ListGetCReal( SolverParams, &
-                        'Predictor Corrector Control Beta 2', Found )
+                        'Predictor-Corrector Control Beta 2', Found )
       IF ( .NOT. Found ) THEN
         beta2 = ListGetCReal( Model % Simulation,  &
-                        'Predictor Corrector Control Beta 2', Found )
+                        'Predictor-Corrector Control Beta 2', Found )
         IF ( .NOT. Found ) THEN
           beta2 = -0.2_dp / ( PredCorrOrder + 1.0_dp )
         END IF
         CALL ListAddConstReal( SolverParams, &
-                        'Predictor Corrector Control Beta 2', beta2 )
+                        'Predictor-Corrector Control Beta 2', beta2 )
       END IF
 
       ! Output if required
