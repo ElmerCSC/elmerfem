@@ -2662,19 +2662,19 @@ CONTAINS
       Tol = ListGetConstReal( Model % Simulation,&
           'Mortar BCs Rotational Tolerance',Found )
       IF(.NOT. Found ) Tol = 1.0e-6
-      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 4 )
+      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 4, .TRUE. )
     END IF
     IF( ListGetLogical( Model % Simulation,'Mortar BCs Radial',Found ) ) THEN
       Tol = ListGetConstReal( Model % Simulation,&
           'Mortar BCs Radial Tolerance',Found )
       IF(.NOT. Found ) Tol = 1.0e-3
-      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 5 )     
+      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 5, .FALSE. )     
     END IF
     IF( ListGetLogical( Model % Simulation,'Mortar BCs Axial',Found ) ) THEN
       Tol = ListGetConstReal( Model % Simulation,&
           'Mortar BCs Axial Tolerance',Found )
       IF(.NOT. Found ) Tol = 1.0e-6
-      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 3 )           
+      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 3, .TRUE. )           
     END IF
       
     

@@ -3518,22 +3518,24 @@ END SUBROUTINE GetMaxDefs
   !------------------------------------------------------------------------------
   !> Find axial, radial or rotational mortar boundary pairs.
   !------------------------------------------------------------------------------
-  SUBROUTINE DetectMortarPairs( Model, Mesh, Tol, BCMode )
+  SUBROUTINE DetectMortarPairs( Model, Mesh, Tol, BCMode, SameCoordinate )
     !------------------------------------------------------------------------------    
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: Tol
     INTEGER :: BcMode
+    LOGICAL :: SameCoordinate
     !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,n,MinBC,MaxBC,BC,ElemCode
     TYPE(Element_t), POINTER :: Element, Parent, Left, Right, Elements(:)
     INTEGER, POINTER :: NodeIndexes(:)
     LOGICAL :: Found 
     LOGICAL, ALLOCATABLE :: BCSet(:), BCPos(:), BCNeg(:), BCNot(:)
+    INTEGER, ALLOCATABLE :: BCCount(:)
     REAL(KIND=dp) :: x,y,z,f
     REAL(KIND=dp), ALLOCATABLE :: BCVal(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: str
-    LOGICAL :: Debug = .FALSE.
+    LOGICAL :: Debug = .FALSE., Hit
     
     ! The code can detect pairs to be glued in different coordinate systems
     SELECT CASE( BCMode )
@@ -3590,13 +3592,15 @@ END SUBROUTINE GetMaxDefs
     ALLOCATE( BCNot( MinBC:MaxBC ) )
     ALLOCATE( BCPos( MinBC:MaxBC ) )
     ALLOCATE( BCNeg( MinBC:MaxBC ) )
+    ALLOCATE( BCCount( MinBC:MaxBC ) )
 
     BCVal = 0.0_dp
     BCSet = .FALSE.
     BCNot = .FALSE.
     BCPos = .FALSE.
     BCNeg = .FALSE.
-
+    BCCount = 0
+    
 
     DO i=1, Mesh % NumberOfBoundaryElements
       Element => Elements(i)
@@ -3700,26 +3704,130 @@ END SUBROUTINE GetMaxDefs
       END IF
     END DO ! Number of boundary elements
 
+    IF( BCMode == 5 ) THEN
+      BCVal = 180 * BCVal / PI
+    END IF
+    
     j = COUNT( BCPos )
-    IF( j > 0 ) THEN
-      PRINT *,'Positive constant levels: ',j
-      DO i=MinBC,MaxBC
-        IF( BCPos(i) ) PRINT *,'BC:',i,BCVal(i)
-      END DO
-    ELSE
-      PRINT *,'Could not find any BC on positive side'
+    IF( Debug ) THEN
+      IF( j > 0 ) THEN
+        IF( Debug ) PRINT *,'Positive constant levels: ',j
+        DO i=MinBC,MaxBC
+          IF( BCPos(i) ) PRINT *,'BC:',i,BCVal(i)
+        END DO
+      END IF
     END IF
       
-    j = COUNT( BCNeg )
-    IF( j > 0 ) THEN
-      PRINT *,'Negative constant levels: ',j
-      DO i=MinBC,MaxBC
-        IF( BCNeg(i) ) PRINT *,'BC:',i,BCVal(i)
-      END DO
-    ELSE
-      PRINT *,'Could not find any BC on negative side'
+    k = COUNT( BCNeg )
+    IF( Debug ) THEN
+      IF( k > 0 ) THEN
+        PRINT *,'Negative constant levels: ',k
+        DO i=MinBC,MaxBC
+          IF( BCNeg(i) ) PRINT *,'BC:',i,BCVal(i)
+        END DO
+      END IF
+    END IF
+      
+    IF( j * k == 0 ) THEN
+      PRINT *,'Not enough candidate sides found'
+      RETURN
     END IF
 
+    IF( SameCoordinate ) THEN
+      DO i=MinBC,MaxBC
+        Hit = .FALSE.
+        IF( BCPos(i) ) THEN
+          DO j=MinBC,MaxBC
+            IF ( BCNeg(j) ) THEN
+              IF( ABS( BCVal(i) - BCVal(j)) < Tol ) THEN
+                Hit = .TRUE.
+                EXIT
+              END IF
+            END IF
+          END DO
+          IF( .NOT. Hit ) THEN
+            BCPos(i) = .FALSE.
+            IF( Debug ) PRINT *,'Removing potential positive hit:',i
+          END IF
+        END IF
+        IF( BCNeg(i) ) THEN
+          Hit = .FALSE.
+          DO j=MinBC,MaxBC
+            IF ( BCPos(j) ) THEN
+              IF( ABS( BCVal(i) - BCVal(j)) < Tol ) THEN
+                Hit = .TRUE.
+                EXIT
+              END IF
+            END IF
+          END DO
+          IF( .NOT. Hit ) THEN
+            BCNeg(i) = .FALSE.
+            IF( Debug ) PRINT *,'Removing potential negative hit:',i
+          END IF
+        END IF
+      END DO
+
+      IF( .NOT. ANY( BCPos ) ) THEN 
+        PRINT *,'No possible pairs found at same location'
+        RETURN
+      END IF
+    END IF
+
+
+    k = 0
+    DO i=MinBC,MaxBC
+      IF( BCPos(i) ) THEN
+        Hit = .FALSE.
+        DO j=MinBC,i-1
+          IF( BCPos(j) ) THEN
+            IF( ABS( BCVal(i) - BCVal(j) ) < Tol ) THEN
+              Hit = .TRUE.
+              EXIT
+            END IF
+          END IF
+        END DO
+        IF(Hit ) THEN
+          BCCount(i) = BCCount(j)
+        ELSE
+          k = k + 1
+          BCCount(i) = k
+        END IF
+      END IF
+    END DO
+    PRINT *,'Found number of positive levels:',k
+
+
+    k = 0
+    DO i=MinBC,MaxBC
+      IF( BCNeg(i) ) THEN
+        Hit = .FALSE.
+        DO j=MinBC,i-1
+          IF( BCNeg(j) ) THEN
+            IF( ABS( BCVal(i) - BCVal(j) ) < Tol ) THEN
+              Hit = .TRUE.
+              EXIT
+            END IF
+          END IF
+        END DO
+        IF(Hit ) THEN
+          BCCount(i) = BCCount(j)
+        ELSE
+          k = k + 1
+          BCCount(i) = -k
+        END IF
+      END IF
+    END DO
+    PRINT *,'Found number of negative levels:',k
+
+    PRINT *,'Slave BCs: '
+    DO i=MinBC,MaxBC
+      IF( BCPos(i) ) PRINT *,'BC:',i,BCVal(i)
+    END DO
+    PRINT *,'Master BCs: '
+    DO i=MinBC,MaxBC
+      IF( BCNeg(i) ) PRINT *,'BC:',i,BCVal(i)
+    END DO
+    
   END SUBROUTINE DetectMortarPairs
 
   
