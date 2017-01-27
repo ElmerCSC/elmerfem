@@ -2652,11 +2652,32 @@ CONTAINS
     INTEGER :: i,j,k,n,nb
     LOGICAL :: Found, Flag
     CHARACTER(LEN=MAX_NAME_LEN) :: Name, NameB
-   
-    CALL Info('CompleteModelKeywords','Completing default keywords for master sides',Level=12)
+    REAL(KIND=dp) :: Tol = 1.0e-8
+    
+    CALL Info('CompleteModelKeywords','Completing keywords for mortar BCs',Level=12)
 
     Model => CurrentModel 
 
+    IF( ListGetLogical( Model % Simulation,'Mortar BCs Rotational',Found ) ) THEN     
+      Tol = ListGetConstReal( Model % Simulation,&
+          'Mortar BCs Rotational Tolerance',Found )
+      IF(.NOT. Found ) Tol = 1.0e-6
+      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 4 )
+    END IF
+    IF( ListGetLogical( Model % Simulation,'Mortar BCs Radial',Found ) ) THEN
+      Tol = ListGetConstReal( Model % Simulation,&
+          'Mortar BCs Radial Tolerance',Found )
+      IF(.NOT. Found ) Tol = 1.0e-3
+      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 5 )     
+    END IF
+    IF( ListGetLogical( Model % Simulation,'Mortar BCs Axial',Found ) ) THEN
+      Tol = ListGetConstReal( Model % Simulation,&
+          'Mortar BCs Axial Tolerance',Found )
+      IF(.NOT. Found ) Tol = 1.0e-6
+      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 3 )           
+    END IF
+      
+    
     IF( ListGetLogical( Model % Simulation,'Use Mortar Names',Found ) ) THEN
       DO i=1,Model % NumberOfBCs
         List => Model % BCs(i) % Values
