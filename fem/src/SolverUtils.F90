@@ -709,7 +709,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      LOGICAL :: GotIt
      INTEGER :: i,j,k,l,m,Order
-     REAL(KIND=dp) :: s, t
+     REAL(KIND=dp) :: s, t, zeta
      CHARACTER(LEN=MAX_NAME_LEN) :: Method
      REAL(KIND=dp) :: PrevSol(DOFs*n,Solver % Order), CurSol(DOFs*n), LForce(n*DOFs)
      TYPE(Variable_t), POINTER :: DtVar
@@ -717,7 +717,7 @@ CONTAINS
      LOGICAL :: ConstantDt
      TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-
+     INTEGER :: PredCorrOrder = 2       !< Order of predictor-corrector scheme
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE
@@ -786,6 +786,14 @@ CONTAINS
 !PrevSol(:,Order) needed for BDF
      Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
 
+     PredCorrOrder = ListGetInteger( Solver % Values, &
+                    'Predictor-Corrector Scheme Order', GotIt)
+      IF (.NOT. GotIt) THEN
+        PredCorrOrder = 2
+      END IF 
+
+      PredCorrOrder = MIN(PredCorrOrder, Solver % DoneTime /2)
+
      SELECT CASE( Method )
      CASE( 'fs' ) 
        CALL FractionalStep( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
@@ -813,6 +821,16 @@ CONTAINS
        CALL RungeKutta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                 PrevSol(:,1), CurSol )
 
+     CASE('adams-bashforth')
+       zeta = ListGetConstReal( Solver % Values, 'Adams Zeta', GotIt )
+       IF ( .NOT. Gotit) zeta = 1.0_dp
+       CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+           PrevSol(:,1), zeta, PredCorrOrder)
+
+     CASE('adams-moulton')
+        CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+                PrevSol, PredCorrOrder )      
+       
      CASE DEFAULT
        CALL NewmarkBeta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                  PrevSol(:,1), Solver % Beta )
@@ -7214,6 +7232,12 @@ END FUNCTION SearchNodeL
 
          CASE('fs')
            Solver % Beta = 0.5d0
+
+         CASE('adams-bashforth')
+           Solver % Beta = 0.0d0
+
+         CASE('adams-moulton')
+           Solver % Beta = 1.0d0
 
          CASE('newmark')
            Solver % Beta = ListGetConstReal( Solver % Values, 'Newmark Beta', GotIt )

@@ -1525,7 +1525,12 @@ END INTERFACE
                   'Timestep Size', gotIt)
          END IF
          IF(GotIt) dt = dtfunc
-
+!------------------------------------------------------------------------------
+         ! Predictor-Corrector time stepping control 
+         IF ( ListGetLogical( CurrentModel % Simulation, &
+                  'Predictor-Corrector Control', gotIt) )  THEN
+            CALL PredictorCorrectorControl( CurrentModel, dt, timestep )
+         END IF
 !------------------------------------------------------------------------------
          sTime(1) = sTime(1) + dt
          sPeriodic(1) = sTime(1)
