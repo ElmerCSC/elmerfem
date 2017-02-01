@@ -5166,55 +5166,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------
-!> This routine may be used to either inform user or terminate following
-!> convergence/numerical issues, based on a flag in the SIF. Default
-!> behaviour terminates execution.
-!-----------------------------------------------------------------------
-   SUBROUTINE NumericalError( Caller, String, Fatal )
-!-----------------------------------------------------------------------
-     CHARACTER(LEN=*) :: Caller, String
-     LOGICAL, OPTIONAL :: Fatal
-!-----------------------------------------------------------------------
-     LOGICAL :: GlobalNumFatal, SolverNumFatal, IsFatal, Found
-!-----------------------------------------------------------------------
-
-     !Fatality logic:
-     ! 1) Respect calling routine's wishes if present
-     ! 2) Respect solver specific option if present
-     ! 3) Respect global abort flag if present
-     ! 4) Otherwise fatal (backwards compatibility)
-
-     IF(PRESENT(Fatal)) THEN
-       IsFatal = Fatal
-     ELSE
-       SolverNumFatal = ListGetLogical( CurrentModel % Solver % Values, &
-            'Linear System Abort Not Converged', Found)
-       IF(Found) THEN
-         IsFatal = SolverNumFatal
-       ELSE
-         GlobalNumFatal = ListGetLogical(CurrentModel % Simulation,&
-            'Global Abort Not Converged',Found)
-         IF(Found) THEN
-           IsFatal = GlobalNumFatal
-         ELSE
-           IsFatal = .TRUE.
-         END IF
-       END IF
-     END IF
-
-     IF ( OutputLevelMask(0) ) THEN
-       WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
-            'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
-       CALL FLUSH(6)
-     END IF
-
-     IF(IsFatal) STOP
-
-!-----------------------------------------------------------------------
-   END SUBROUTINE NumericalError
-!-----------------------------------------------------------------------
-
-!-----------------------------------------------------------------------
 !> This routine may be used to terminate the program in the case of an error.
 !-----------------------------------------------------------------------
    SUBROUTINE Assert(Condition, Caller, ErrorMessage)

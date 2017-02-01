@@ -52,6 +52,7 @@ MODULE SParIterSolve
   USE SParIterGlobals
   USE SParIterComm
   USE SParIterPrecond
+  USE IterSolve, ONLY : NumericalError
 
   USE CRSMatrix
 
@@ -1875,13 +1876,8 @@ INTEGER::inside
         CALL Fatal('SParIterSolver',&
                'Linear system solve using Trilinos caused an error');
       ELSE IF (ierr>0) THEN
-        IF (ListGetLogical(Solver%Values,'Linear System Abort Not Converged',Found)) THEN
-          CALL Fatal('SParIterSolver', &
-                'Linear system solve using Trilinos issued a warning');
-        ELSE
-          CALL Error('SParIterSolver', &
-                'Linear system solve using Trilinos issued a warning');
-        END IF
+        CALL NumericalError('SParIterSolver',&
+             'Linear system solve using Trilinos issued a warning')
       END IF
       
       ALLOCATE( VecEPerNB( ParEnv % PEs ) )
