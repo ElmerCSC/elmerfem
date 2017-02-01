@@ -40,8 +40,10 @@ SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
 SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
+SET(WITH_SuperLU FALSE CACHE BOOL "Use SuperLU sparse direct solver")
 
 MARK_AS_ADVANCED(WITH_ELMERPOST)
+MARK_AS_ADVANCED(WITH_SuperLU)
 
 if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
   CMAKE_POLICY(SET CMP0022 OLD)
@@ -149,6 +151,12 @@ IF(WITH_Trilinos)
   IF(ML_DIR)
     ADD_DEFINITIONS(-DHAVE_TRILINOS)
   ENDIF()
+ENDIF()
+
+
+IF(WITH_SuperLU)
+  FIND_PACKAGE(SuperLU REQUIRED)
+  SET(HAVE_SUPERLU TRUE)
 ENDIF()
 
 # MPI and LAPACK
@@ -336,6 +344,13 @@ IF(WITH_MPI)
     MESSAGE(STATUS "------------------------------------------------")
   ENDIF(WITH_Hypre)
 ENDIF(WITH_MPI)
+
+IF(WITH_SuperLU)
+  MESSAGE(STATUS "  SuperLU:             " "${SuperLU_FOUND}")
+  MESSAGE(STATUS "  SuperLU include:     " "${SuperLU_INCLUDE_DIR}")
+  MESSAGE(STATUS "  SuperLU libraries:   " "${SuperLU_LIBRARIES}")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(WITH_SuperLU)
 
 IF(WITH_Trilinos)
   MESSAGE(STATUS "  Trilinos:           " "${Trilinos_FOUND}")

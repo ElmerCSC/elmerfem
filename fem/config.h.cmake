@@ -132,6 +132,9 @@
 /* Trilinos */
 #cmakedefine HAVE_TRILINOS
 
+/* SuperLU */
+#cmakedefine HAVE_SUPERLU
+
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1
 

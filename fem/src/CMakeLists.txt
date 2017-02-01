@@ -210,6 +210,11 @@ IF(WITH_Trilinos)
   TARGET_LINK_LIBRARIES(elmersolver "${Trilinos_LIBRARIES};${ML_LIBRARIES};${Epetra_LIBRARIES};${Teuchos_LIBRARIES}")
 ENDIF()
 
+IF(WITH_SuperLU)
+  TARGET_LINK_LIBRARIES(elmersolver ${SuperLU_LIBRARIES})
+  INCLUDE_DIRECTORIES(${SuperLU_INCLUDE_DIR})
+ENDIF()
+
 # elmersolver -library
 #TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES})
 
