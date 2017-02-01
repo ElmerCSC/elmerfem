@@ -171,7 +171,7 @@ CONTAINS
     INTEGER :: i,j,k,N,ipar(HUTI_IPAR_DFLTSIZE),wsize,istat,IterType,PCondType,ILUn,Blocks
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
-    LOGICAL :: Condition,GotIt,AbortNotConverged, Refactorize,Found,GotDiagFactor
+    LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor
 
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
@@ -672,12 +672,6 @@ CONTAINS
     A % SolveCount = A % SolveCount + 1
 !------------------------------------------------------------------------------
 
-    AbortNotConverged = ListGetLogical( Params, &
-        'Linear System Abort Not Converged', GotIt )
-    IF ( .NOT. GotIt ) AbortNotConverged = .TRUE.
-
-!------------------------------------------------------------------------------
-    
     IF ( PRESENT(MatvecF) ) THEN
       mvProc = MatvecF
     ELSE
@@ -872,11 +866,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     IF ( HUTI_INFO /= HUTI_CONVERGENCE .AND. ParEnv % myPE==0 ) THEN
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
-        CALL Fatal( 'IterSolve', 'System diverged over tolerance.' )
-      ELSE IF ( AbortNotConverged ) THEN
-        CALL Fatal( 'IterSolve', 'Failed convergence tolerances.' )
+        CALL NumericalError( 'IterSolve', 'System diverged over tolerance.')
       ELSE
-        CALL Error( 'IterSolve', 'Failed convergence tolerances.' )
+        CALL NumericalError( 'IterSolve', 'Failed convergence tolerances.')
       END IF
     END IF
 !------------------------------------------------------------------------------
@@ -893,6 +885,55 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE IterSolver
 !------------------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+!> This routine may be used to either inform user or terminate following
+!> convergence/numerical issues, based on a flag in the SIF. Default
+!> behaviour terminates execution.
+!-----------------------------------------------------------------------
+   SUBROUTINE NumericalError( Caller, String, Fatal )
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*) :: Caller, String
+     LOGICAL, OPTIONAL :: Fatal
+!-----------------------------------------------------------------------
+     LOGICAL :: GlobalNumFatal, SolverNumFatal, IsFatal, Found
+!-----------------------------------------------------------------------
+
+     !Fatality logic:
+     ! 1) Respect calling routine's wishes if present
+     ! 2) Respect solver specific option if present
+     ! 3) Respect global abort flag if present
+     ! 4) Otherwise fatal (backwards compatibility)
+
+     IF(PRESENT(Fatal)) THEN
+       IsFatal = Fatal
+     ELSE
+       SolverNumFatal = ListGetLogical( CurrentModel % Solver % Values, &
+            'Linear System Abort Not Converged', Found)
+       IF(Found) THEN
+         IsFatal = SolverNumFatal
+       ELSE
+         GlobalNumFatal = ListGetLogical(CurrentModel % Simulation,&
+            'Global Abort Not Converged',Found)
+         IF(Found) THEN
+           IsFatal = GlobalNumFatal
+         ELSE
+           IsFatal = .TRUE.
+         END IF
+       END IF
+     END IF
+
+     IF ( OutputLevelMask(0) ) THEN
+       WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+            'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
+       CALL FLUSH(6)
+     END IF
+
+     IF(IsFatal) STOP
+
+!-----------------------------------------------------------------------
+   END SUBROUTINE NumericalError
+!-----------------------------------------------------------------------
 
 END MODULE IterSolve
 

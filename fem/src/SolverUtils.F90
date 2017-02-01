@@ -7894,7 +7894,7 @@ END FUNCTION SearchNodeL
     !--------------------------------------------------------------------------
 !   IF( ISNAN(Norm) ) THEN ! ISNAN not avaiable in all compilers
     IF( Norm /= Norm ) THEN
-      CALL Fatal('ComputeChange','Norm of solution appears to be NaN')
+      CALL NumericalError('ComputeChange','Norm of solution appears to be NaN')
     END IF
 
     MaxNorm = ListGetCReal( SolverParams, &
@@ -7904,7 +7904,7 @@ END FUNCTION SearchNodeL
     IF(  Norm > MaxNorm ) THEN
       WRITE( Message, *) 'Computed Norm:',Norm
       CALL Info('ComputeChange',Message)
-      CALL Fatal('ComputeChange','Norm of solution exceeded given bounds')
+      CALL NumericalError('ComputeChange','Norm of solution exceeded given bounds')
     END IF
       
     SELECT CASE( ConvergenceType )
