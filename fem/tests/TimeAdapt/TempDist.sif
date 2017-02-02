@@ -26,9 +26,7 @@ Simulation
   Adaptive Min Timestep  = 1.0e-6
   Adaptive Max Timestep  = Real 0.01
 
-! Output File = "TempDist.dat"
-  Post File = "TempDist.ep"
-  Solver Input File = "TempDist.sif"
+  Post File = "TempDist.vtu"
 End
 
 Constants
