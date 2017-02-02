@@ -7848,11 +7848,11 @@ END FUNCTION SearchNodeL
     INTEGER, OPTIONAL :: nsize
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:), RHS(:)
 !------------------------------------------------------------------------------
-    INTEGER :: i, n, nn, RelaxAfter, IterNo
+    INTEGER :: i, n, nn, RelaxAfter, IterNo, MinIter
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
     REAL(KIND=dp), POINTER :: x0(:)
-    REAL(KIND=dp) :: Norm, PrevNorm, rNorm, bNorm, Change, Relaxation, tmp(1),dt, &
+    REAL(KIND=dp) :: Norm, PrevNorm, rNorm, bNorm, Change, PrevChange, Relaxation, tmp(1),dt, &
         Tolerance, MaxNorm, eps, Ctarget
     CHARACTER(LEN=MAX_NAME_LEN) :: ConvergenceType
     INTEGER, TARGET  ::  Dnodes(1)
@@ -8020,11 +8020,14 @@ END FUNCTION SearchNodeL
       CALL Fatal('ComputeChange','Norm of solution appears to be NaN')
     END IF
 
-    MaxNorm = ListGetCReal( SolverParams, &
-        'Nonlinear System Max Norm', Stat )
-    IF( .NOT. Stat) MaxNorm = HUGE( Norm )
-
-    IF(  Norm > MaxNorm ) THEN
+    IF( SteadyState ) THEN
+      MaxNorm = ListGetCReal( SolverParams, &
+          'Steady State Max Norm', Stat )
+    ELSE
+      MaxNorm = ListGetCReal( SolverParams, &
+          'Nonlinear System Max Norm', Stat )
+    END IF    
+    IF( Stat ) THEN
       WRITE( Message, *) 'Computed Norm:',Norm
       CALL Info('ComputeChange',Message)
       CALL Fatal('ComputeChange','Norm of solution exceeded given bounds')
@@ -8162,6 +8165,7 @@ END FUNCTION SearchNodeL
     ! Check for convergence: 0/1
     !--------------------------------------------------------------------------
     IF(SteadyState) THEN
+      PrevChange = Solver % Variable % SteadyChange
       Solver % Variable % SteadyChange = Change
       Tolerance = ListGetCReal( SolverParams,'Steady State Convergence Tolerance',Stat)
       IF( Stat ) THEN
@@ -8171,20 +8175,47 @@ END FUNCTION SearchNodeL
           Solver % Variable % SteadyConverged = 0
         END IF          
       END IF
+      Tolerance = ListGetCReal( SolverParams,'Steady State Divergence Limit',Stat)
+      IF( Stat .AND. Change > Tolerance ) THEN
+        IF( IterNo > 1 .AND. Change > PrevChange ) THEN
+          CALL Info('ComputeChange','Steady state iteration diverged over tolerance')
+          Solver % Variable % SteadyConverged = 2
+        END IF
+      END IF
+      Tolerance = ListGetCReal( SolverParams,'Steady State Exit Condition',Stat)
+      IF( Stat .AND. Tolerance > 0.0 ) THEN
+        CALL Info('ComputeChange','Nonlinear iteration condition enforced by exit condition')
+        Solver % Variable % SteadyConverged = 3
+      END IF
+
     ELSE
+      PrevChange = Solver % Variable % NonlinChange 
       Solver % Variable % NonlinChange = Change
+      Solver % Variable % NonlinConverged = 0
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Convergence Tolerance',Stat)
       IF( Stat ) THEN
         IF( Change <= Tolerance ) THEN
           Solver % Variable % NonlinConverged = 1
-        ELSE
-          Solver % Variable % NonlinConverged = 0
         END IF          
+      END IF
+      Tolerance = ListGetCReal( SolverParams,'Nonlinear System Diverence Limit',Stat)
+      IF( Stat .AND. Change > Tolerance ) THEN
+        IF( IterNo > 1 .AND. Change > PrevChange ) THEN
+          CALL Info('ComputeChange','Nonlinear iteration diverged over tolerance')
+          Solver % Variable % NonlinConverged = 2
+        END IF
       END IF
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Exit Condition',Stat)
       IF( Stat .AND. Tolerance > 0.0 ) THEN
         CALL Info('ComputeChange','Nonlinear iteration condition enforced by exit condition')
-        Solver % Variable % NonlinConverged = 1
+        Solver % Variable % NonlinConverged = 3
+      END IF
+      IF( Solver % Variable % NonlinConverged > 1 ) THEN
+        MinIter = ListGetInteger( SolverParams,'Nonlinear System Min Iterations',Stat)
+        IF( Stat .AND. IterNo < MinIter ) THEN
+          CALL Info('ComputeChange','Enforcing continuation of iteration')
+          Solver % Variable % NonlinConverged = 0
+        END IF
       END IF
     END IF
 

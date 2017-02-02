@@ -606,7 +606,7 @@ CONTAINS
     INTEGER(KIND=AddrInt) :: InitProc, AssProc
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs
-    INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim
+    INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim, AllocStat
 
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
     MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
@@ -1066,8 +1066,9 @@ CONTAINS
         CALL CheckLinearSolverOptions( Solver )
 
         CALL Info('AddEquationBasics','Maximum size of permutation vector is: '//TRIM(I2S(Ndeg)),Level=12)
-        ALLOCATE( Perm(Ndeg) )
-
+        ALLOCATE( Perm(Ndeg), STAT=AllocStat )
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Perm')
+        
         Perm = 0
         MatrixFormat = MATRIX_CRS
 
@@ -1094,7 +1095,9 @@ CONTAINS
        
         IF (Nrows>0) THEN
           CALL Info('AddEquationBasics','Creating solver variable',Level=12)
-          ALLOCATE(Solution(Nrows))
+          ALLOCATE(Solution(Nrows),STAT=AllocStat)
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Solution')
+
           Solution = InitValue
           
           CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver, &
@@ -1134,7 +1137,9 @@ CONTAINS
           CALL Graph_Deallocate(DualGraph)
           
           ! Construct colour lists
-          ALLOCATE( Solver % ColourIndexList )
+          ALLOCATE( Solver % ColourIndexList, STAT=AllocStat )
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for ColourIndexList')
+          
           CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
           CALL Colouring_Deallocate(GraphColouring)          
         END IF
@@ -1214,7 +1219,9 @@ CONTAINS
           Perm => Solver % Variable % Perm
         END IF
         
-        ALLOCATE( Solution(nSize) )
+        ALLOCATE( Solution(nSize), STAT = AllocStat )
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Solution')
+        
         Solution = 0.0d0
         IF( ASSOCIATED(Perm) ) THEN
           CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
@@ -1332,12 +1339,12 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
     CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name, tmpname
-    INTEGER :: i,j,k,n,nrows,DOFs
+    INTEGER :: i,j,k,n,m,nrows,DOFs
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
     LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal, EigAnal, &
          VariableOutput, MGAlgebraic,MultigridActive
-    INTEGER :: MgLevels
+    INTEGER :: MgLevels, AllocStat
     REAL(KIND=dp), POINTER :: Component(:)
     REAL(KIND=dp), POINTER :: freqv(:,:)
     REAL(KIND=dp) :: Freq
@@ -1365,7 +1372,9 @@ CONTAINS
       Var_name = GetVarName(Solver % Variable) // ' Loads'
       Var => VariableGet( Solver % Mesh % Variables, var_name )
       IF ( .NOT. ASSOCIATED(Var) ) THEN
-        ALLOCATE( Solution(SIZE(Solver % Variable % Values)) )
+        ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat )
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Loads')
+
         DOFs = Solver % Variable % DOFs
         Solution = 0.0d0
         nrows = SIZE( Solution ) 
@@ -1396,7 +1405,9 @@ CONTAINS
       Var_name = GetVarName(Solver % Variable) // ' Contact Load'
       Var => VariableGet( Solver % Mesh % Variables, var_name )
       IF ( .NOT. ASSOCIATED(Var) ) THEN
-        ALLOCATE( Solution(SIZE(Solver % Variable % Values)) )
+        ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat)
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Contact Loads')
+
         DOFs = Solver % Variable % DOFs
         Solution = 0.0d0
         nrows = SIZE( Solution ) 
@@ -1431,12 +1442,14 @@ CONTAINS
     
     IF ( ASSOCIATED( Solver % Matrix ) ) THEN
       IF(.NOT. ASSOCIATED(Solver % Matrix % RHS)) THEN
-        ALLOCATE( Solver % Matrix % RHS(Solver % Matrix % NumberOFRows) )
+        ALLOCATE( Solver % Matrix % RHS(Solver % Matrix % NumberOFRows), STAT=AllocStat )
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Rhs')
         Solver % Matrix % RHS = 0.0d0
         
         Solver % Matrix % RHS_im => NULL()
         IF ( HarmonicAnal ) THEN
-          ALLOCATE( Solver % Matrix % RHS_im(Solver % Matrix % NumberOFRows) )
+          ALLOCATE( Solver % Matrix % RHS_im(Solver % Matrix % NumberOFRows), STAT=AllocStat)
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Rhs_im')                  
           Solver % Matrix % RHS_im = 0.0d0
         END IF
       END IF
@@ -1453,52 +1466,56 @@ CONTAINS
       
       IF ( ASSOCIATED( Solver % Matrix ) ) THEN
         ALLOCATE( Solver % Matrix % Force(Solver % Matrix % NumberOFRows, &
-            Solver % TimeOrder+1) )
+            Solver % TimeOrder+1), STAT=AllocStat)
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Force')
         Solver % Matrix % Force = 0.0d0
       END IF
       
       IF ( .NOT. ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+
+        n = SIZE(Solver % Variable % Values)
         IF ( Solver % TimeOrder == 2 ) THEN
-          ALLOCATE( Solver % Variable % PrevValues( &
-              SIZE(Solver % Variable % Values),5) )
-        ELSE IF ( Solver % Order > Solver % TimeOrder ) THEN
-          ALLOCATE(Solver % Variable % PrevValues( &
-              SIZE(Solver % Variable % Values), Solver % Order))
-        ELSE
-          ALLOCATE(Solver % Variable % PrevValues( &
-              SIZE(Solver % Variable % Values), Solver % TimeOrder))
+          m = 5
+        ELSE 
+          m = MAX( Solver % Order, Solver % TimeOrder )
         END IF
-        Solver % Variable % PrevValues = 0.0d0
-        
-        IF ( Solver % Variable % DOFs > 1 ) THEN
-          IF ( GetVarName( Solver % Variable ) == 'flow solution' ) THEN
-            DO k=1,Solver % Variable % DOFs-1
-              str = 'Velocity ' // CHAR(k+ICHAR('0'))
-              Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+
+        IF( m > 0 ) THEN
+          ALLOCATE(Solver % Variable % PrevValues( n, m ), STAT=AllocStat )
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for PrevValues')
+          Solver % Variable % PrevValues = 0.0d0
+          
+          IF ( Solver % Variable % DOFs > 1 ) THEN
+            IF ( GetVarName( Solver % Variable ) == 'flow solution' ) THEN
+              DO k=1,Solver % Variable % DOFs-1
+                str = 'Velocity ' // CHAR(k+ICHAR('0'))
+                Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+                IF(.NOT. ASSOCIATED(Var)) THEN
+                  CALL Fatal("AddEquationSolution",&
+                      "Failed to get variable: "//TRIM(str)//". Try specifying Variable =&
+                      & Flow Solution[velocity:DIM pressure:1] in .sif")
+                END IF
+                Var % PrevValues =>  &
+                    Solver % Variable % PrevValues(k::Solver % Variable % DOFs,:)
+              END DO
+              Var => VariableGet( Solver % Mesh % Variables, 'Pressure', .TRUE. )
               IF(.NOT. ASSOCIATED(Var)) THEN
-                 WRITE (Message, '(a,a,a)')  "Failed to get variable:&
-                      & ",TRIM(str), ". Try specifying Variable =&
-                      & Flow Solution[velocity:DIM pressure:1] in .SIF"
-                 CALL Fatal("AddEquationSolution",Message)
+                CALL Fatal("AddEquationSolution","Failed to get variable: &
+                    &pressure. Try specifying Variable = Flow Solution &
+                    &[velocity:DIM pressure:1] in .SIF")
               END IF
               Var % PrevValues =>  &
                   Solver % Variable % PrevValues(k::Solver % Variable % DOFs,:)
-            END DO
-            Var => VariableGet( Solver % Mesh % Variables, 'Pressure', .TRUE. )
-            IF(.NOT. ASSOCIATED(Var)) THEN
-               CALL Fatal("AddEquationSolution","Failed to get variable: &
-                    &pressure. Try specifying Variable = Flow Solution &
-                    &[velocity:DIM pressure:1] in .SIF")
+            ELSE
+              DO k=1,Solver % Variable % DOFs
+                str = ComponentName( Solver % Variable % Name, k ) 
+                Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+                IF( ASSOCIATED( Var ) ) THEN
+                  Var % PrevValues =>  &
+                      Solver % Variable % PrevValues(k::Solver % Variable % DOFs,:)
+                END IF
+              END DO
             END IF
-            Var % PrevValues =>  &
-                Solver % Variable % PrevValues(k::Solver % Variable % DOFs,:)
-          ELSE
-            DO k=1,Solver % Variable % DOFs
-              str = ComponentName( Solver % Variable % Name, k ) 
-              Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
-              Var % PrevValues =>  &
-                  Solver % Variable % PrevValues(k::Solver % Variable % DOFs,:)
-            END DO
           END IF
         END IF
       END IF
@@ -1571,8 +1588,9 @@ CONTAINS
           IF ( .NOT. ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
             ALLOCATE( Solver % Variable % EigenValues(n) )
             ALLOCATE( Solver % Variable % EigenVectors(n, &
-                SIZE( Solver % Variable % Values ) ) )
-            
+                SIZE( Solver % Variable % Values ) ), STAT=AllocStat)
+            IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for EigenValues')
+           
             Solver % Variable % EigenValues  = 0.0d0
             Solver % Variable % EigenVectors = 0.0d0
             
@@ -1581,16 +1599,15 @@ CONTAINS
               Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
               IF ( ASSOCIATED( Var ) ) THEN
                 Var % EigenValues => Solver % Variable % EigenValues
-                !IF ( ComplexFlag ) THEN
-                !  Var % EigenVectors => Solver % Variable % EigenVectors
-                !ELSE
                 Var % EigenVectors =>  & 
                      Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
-                !END IF
               END IF
             END DO
           END IF
-          ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)) )
+
+          ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
+          
           Solver % Matrix % MassValues = 0.0d0
         END IF
       ELSE IF ( HarmonicAnal ) THEN
@@ -1613,8 +1630,9 @@ CONTAINS
         IF ( .NOT. ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
           ALLOCATE( Solver % Variable % EigenValues(n) )
           ALLOCATE( Solver % Variable % EigenVectors(n, &
-              SIZE( Solver % Variable % Values ) ) )
-          
+              SIZE( Solver % Variable % Values ) ), STAT=AllocStat)
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for EigenValues')
+           
           Solver % Variable % EigenValues  = 0.0d0
           Solver % Variable % EigenVectors = 0.0d0
           
@@ -1628,7 +1646,9 @@ CONTAINS
             END IF
           END DO
         END IF
-        ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)) )
+        
+        ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
         Solver % Matrix % MassValues = 0.0d0
       END IF
     END IF
@@ -1801,7 +1821,7 @@ CONTAINS
     REAL(KIND=dp) :: RelativeChange, Tolerance, PrevDT = 0.0d0, Relaxation, SSCond
     INTEGER :: i,j,k,l,n,ierr,istat,Visited=0, RKorder=0, nSolvers
     LOGICAL :: Found, Stat, AbsNorm, Scanning, Convergence, RungeKutta, MeActive, &
-       NeedSol, CalculateDerivative, TestConvergence
+       NeedSol, CalculateDerivative, TestConvergence, TestDivergence, DivergenceExit
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Mesh_t),   POINTER :: Mesh
@@ -1824,15 +1844,19 @@ CONTAINS
 !------------------------------------------------------------------------------
     nSolvers = Model % NumberOfSolvers
 
+
     Scanning = &
       ListGetString( CurrentModel % Simulation, 'Simulation Type', Found ) == 'scanning'
 
+    TestDivergence = .FALSE.
+    DivergenceExit = .FALSE.
+    
     IF ( TransientSimulation ) THEN
-       DO k=1,nSolvers
-          Solver => Model % Solvers(k)
-          ! Initialize for predictor-corrector solver only
-          IF ( Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
-       END DO
+      TestDivergence = ListGetLogical( CurrentModel % Simulation, 'Check Divergence', Found ) 
+      DO k=1,nSolvers
+        Solver => Model % Solvers(k)
+        IF ( Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
+      END DO
     END IF
 
     IF( TransientSimulation .OR. Scanning ) THEN
@@ -1841,6 +1865,7 @@ CONTAINS
     END IF
 !------------------------------------------------------------------------------
 
+    CALL Info('SolveEquations','Solvers before timestep',Level=12)
     DO k=1,nSolvers
       Solver => Model % Solvers(k)
       IF ( Solver % PROCEDURE==0 ) CYCLE
@@ -1875,7 +1900,7 @@ CONTAINS
           IF(.NOT. Found ) THEN
             CALL Fatal('SolveEquations','Predictor-corrector schemes require > Corrector Method <')
           END IF
-        END IF        
+        END IF
       END IF
     END DO
 
@@ -1890,54 +1915,77 @@ CONTAINS
     END DO
 
 !------------------------------------------------------------------------------
-    RungeKutta = ListGetString( Model % Simulation, &
-           'Timestepping Method', Found ) == 'runge-kutta'
+    CALL Info('SolveEquations','Solvers in main iteration loop',Level=12)
 
     TimeVar => VariableGet( Model % Variables, 'Time')
     sTime => TimeVar % Values(1)
-    IF(RungeKutta) sTime = sTime - dt
-    CALL SolveCoupled()
-    IF(RungeKutta) sTime = sTime + dt
 
-    ! Perform Runge-Kutta steps
-    !---------------------------------------------------------------
-    DO i=1,nSolvers
-      Solver => Model % Solvers(i)
-      IF ( Solver % PROCEDURE==0 ) CYCLE
+    RungeKutta = ListGetString( Model % Simulation, &
+           'Timestepping Method', Found ) == 'runge-kutta'
 
-      RungeKutta = .FALSE.
-      IF ( TransientSimulation .AND. Solver % TimeOrder == 1 ) THEN
+    IF( .NOT. RungeKutta ) THEN
+      ! Without Runge-Kutta the cycling over equations is pretty easy
+      CALL SolveCoupled()
+    ELSE
+      CALL Info('SolveEquations','Using Runge-Kutta time-stepping',Level=12)
+
+      CALL Info('SolveEquations','Runge-Kutta predictor step',Level=12)
+      sTime = sTime - dt
+      CALL SolveCoupled()
+      
+      ! Perform Runge-Kutta steps for ru
+      !---------------------------------------------------------------
+
+      DO i=1,nSolvers
+        Solver => Model % Solvers(i)
+
+        IF ( Solver % PROCEDURE==0 ) CYCLE
+        IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+        
+        RungeKutta = .FALSE.
+        IF ( TransientSimulation .AND. Solver % TimeOrder == 1 ) THEN
           RungeKutta = ListGetString( Solver % Values, &
               'Timestepping Method', Found ) == 'runge-kutta'
+        END IF
+        
+        IF ( .NOT. RungeKutta ) CYCLE
+
+        CALL Info('SolveEquations','Solver '//TRIM(I2S(i))//' is Runge-Kutta Solver',Level=12)
+        IF ( .NOT. ALLOCATED(RKCoeff) ) THEN
+          ALLOCATE(RKCoeff(nSolvers), RK2_ErrorEstimate(nSolvers))
+        END IF
+
+        n = SIZE(Solver % Variable % Values)
+        ALLOCATE(RKCoeff(i) % k1(n), RKCoeff(i) % k2(n), RKCoeff(i) % k3(n), &
+            RKCoeff(i) % k4(n) )
+        
+        RKorder = Solver % Order
+        k1 => RKCoeff(i) % k1
+        k1 = Solver % Variable % Values-Solver % Variable % PrevValues(:,1)
+        Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + 2*k1/RKorder
+      END DO
+            
+      IF ( .NOT. ALLOCATED(RKCoeff) ) THEN        
+        CALL Fatal('SolveEquations','No Runge-Kutta after all in any Solver?')
       END IF
-      IF ( .NOT. RungeKutta ) CYCLE
 
-      IF ( .NOT. ALLOCATED(RKCoeff) ) THEN
-        ALLOCATE(RKCoeff(nSolvers), RK2_ErrorEstimate(nSolvers))
-      END IF
+      
+      CALL Info('SolveEquations','Using Runge-Kutta Order: '//TRIM(I2S(RKOrder)),Level=12)
 
-      n = SIZE(Solver % Variable % Values)
-      ALLOCATE(RKCoeff(i) % k1(n), RKCoeff(i) % k2(n), RKCoeff(i) % k3(n), &
-                RKCoeff(i) % k4(n) )
-
-      RKorder = Solver % Order
-      k1 => RKCoeff(i) % k1
-      k1 = Solver % Variable % Values-Solver % Variable % PrevValues(:,1)
-      Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + 2*k1/RKorder
-    END DO
-
-    IF ( ALLOCATED(RKCoeff) ) THEN
       IF(RKorder==4) THEN
         dt = dt / 2
-        sTime = sTime - dt
+        sTime = sTime + dt
+      ELSE
+        sTime = sTime + dt
       END IF
       CALL SolveCoupled()
 
       RK2_ErrorEstimate = 0._dp
+      RK2_err = 0.0_dp
       DO i=1,nSolvers
         Solver => Model % Solvers(i)
         IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
-
+          
         k1 => RKCoeff(i) % k1
         k2 => RKCoeff(i) % k2
         k2 = Solver % Variable % Values - Solver % Variable % PrevValues(:,1)
@@ -1945,28 +1993,29 @@ CONTAINS
         CASE(2)
           Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + (k1+k2)/2
           RK2_Errorestimate(i) = SUM(((k2-k1)/2)**2)
+          RK2_ErrorEstimate(i) = SQRT( ParallelReduction(RK2_ErrorEstimate(i)) ) / &
+              Solver % Variable % Norm
+          RK2_err = MAX(RK2_err, RK2_ErrorEstimate(i) )
         CASE(4)
           Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k2
           k2 = 2*k2
         END SELECT
       END DO
 
-      IF ( RKorder==2 ) THEN
-        ! Provide error measure for adaptive timestepping = ||RK2 (Heun) - Explicit Euler|| !
-        RK2_err = 0._dp
-        DO i=1,nSolvers
-          RK2_ErrorEstimate(i) = SQRT( ParallelReduction(RK2_ErrorEstimate(i)) )
-          RK2_err = MAX(RK2_err, RK2_ErrorEstimate(i) )
-        END DO 
-        CALL ListAddConstReal( Model % Simulation, 'Adaptive Error Measure', &
-                   RK2_err / Solver % Variable % Norm )
-      ELSE ! RK4
+      ! Provide error measure for adaptive timestepping = ||RK2 (Heun) - Explicit Euler|| !
+      IF ( RKorder == 2 ) THEN
+        CALL ListAddConstReal( Model % Simulation, 'Adaptive Error Measure', RK2_err )
+      END IF
+
+
+      ! For 4th order R-K we don't have error estimate but we have more steps to do
+      IF( RKOrder == 4 ) THEN
         CALL SolveCoupled()
 
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
           IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
-
+          
           k3 => RKCoeff(i) % k3
           k3 = 2*(Solver % Variable % Values - Solver % Variable % PrevValues(:,1))
           Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k3
@@ -1979,7 +2028,7 @@ CONTAINS
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
           IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
-
+          
           k1 => RKCoeff(i) % k1
           k2 => RKCoeff(i) % k2
           k3 => RKCoeff(i) % k3
@@ -1987,21 +2036,26 @@ CONTAINS
           k4 = Solver % Variable % Values - Solver % Variable % PrevValues(:,1)
 
           Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + &
-                             ( k1 + 2*k2 + 2*k3 + k4 ) / 6
+              ( k1 + 2*k2 + 2*k3 + k4 ) / 6
         END DO
       END IF
-        
+
       DO i=1,nSolvers
         Solver => Model % Solvers(i)
         IF ( ALLOCATED(RKCoeff(i) % k1) ) THEN
           DEALLOCATE(RKCoeff(i) % k1, RKCoeff(i) % k2, RKCoeff(i) % k3, RKCoeff(i) % k4)
         END IF
-        Solver % Variable % Norm = ComputeNorm(Solver, n, Solver % Variable % Values)
+
+        IF( ASSOCIATED( Solver % Variable ) ) THEN
+          Solver % Variable % Norm = ComputeNorm(Solver, &
+              SIZE( Solver % Variable % Values), Solver % Variable % Values)
+        END IF
       END DO
       DEALLOCATE(RKCoeff)
     END IF
 !------------------------------------------------------------------------------
 
+    CALL Info('SolveEquations','Solvers after timestep',Level=12)
     DO k=1,nSolvers
       Solver => Model % Solvers(k)
       IF ( Solver % PROCEDURE==0 ) CYCLE
@@ -2146,7 +2200,12 @@ CONTAINS
           END IF
 
           CALL SolverActivate(Model,Solver,dt,TransientSolver)
-
+          
+          IF( TestDivergence ) THEN
+            DivergenceExit = ( Solver % Variable % NonlinConverged > 1 )
+            EXIT
+          END IF
+            
           IF ( ASSOCIATED(Solver % Variable) ) THEN
             IF ( ASSOCIATED(Solver % Variable % Values) ) &
                 n = SIZE(Solver % Variable % Values)
@@ -2179,7 +2238,7 @@ CONTAINS
            IF( TestConvergence ) THEN
              DoneThis(k) = ( Solver % Variable % SteadyConverged /= 0 ) 
            END IF
-          
+           
            CALL ParallelAllReduceAnd( DoneThis(k) )
            IF( ALL(DoneThis) ) EXIT
 !------------------------------------------------------------------------------
@@ -2187,8 +2246,11 @@ CONTAINS
 !------------------------------------------------------------------------------
          CALL ListPopNamespace()
          Model % Mesh % Changed = .FALSE.
-        IF ( ALL(DoneThis) ) EXIT
-    END DO
+
+         IF( DivergenceExit ) EXIT
+
+         IF ( ALL(DoneThis) ) EXIT
+      END DO
 
     IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
        IF ( ListGetLogical( Model % Simulation,  &
@@ -2197,11 +2259,6 @@ CONTAINS
           WRITE( Message, * ) 'Coupled system iteration: ', i
           CALL Error( 'SolveEquations', Message )
           CALL Fatal( 'SolveEquations', ' ' )
-       ELSE
-!         CALL Error( 'SolveEquations', ' ' )
-!         WRITE( Message, * ) 'Coupled system iteration: ', i
-!         CALL Error( 'SolveEquations', Message )
-!         CALL Error( 'SolveEquations', ' ' )
        END IF
     END IF
 
@@ -2582,7 +2639,7 @@ CONTAINS
           IF( IsCoupledSolver ) CALL CoupledToSingleVector()
           GOTO 100
         ELSE
-          IF(Solver % Variable % NonlinConverged == 1) EXIT
+          IF(Solver % Variable % NonlinConverged > 0) EXIT
         END IF
       END IF
 
@@ -3899,7 +3956,7 @@ CONTAINS
 
       Norm = DefaultSolve( Solver )
       
-      IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+      IF( Solver % Variable % NonlinConverged > 0 ) EXIT
     END DO
 
     SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
