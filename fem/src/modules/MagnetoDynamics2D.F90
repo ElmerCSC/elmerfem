@@ -170,7 +170,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
     CALL SetMagneticFluxDensityBC()
     Norm = DefaultSolve()
  
-    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
   END DO
 
   ! For cylindrical symmetry the model lumping has not been implemented

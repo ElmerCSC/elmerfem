@@ -514,7 +514,7 @@ END SUBROUTINE StatCurrentSolver_Init
          IF ( CalculateCurrent )  VolCurrent = ControlScaling * VolCurrent
        END IF
 
-       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+       IF( Solver % Variable % NonlinConverged > 0 ) EXIT
 
      END DO
 
