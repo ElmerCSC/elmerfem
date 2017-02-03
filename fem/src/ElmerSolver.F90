@@ -1449,16 +1449,16 @@ END INTERFACE
 
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
            AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
-     INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1
+     INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
      LOGICAL :: AdaptiveTime = .TRUE., Found
      INTEGER :: AllocStat
 
      TYPE(Solver_t), POINTER :: Solver    
-     TYPE VariableTable_t 
+     TYPE AdaptiveVariables_t 
        TYPE(Variable_t) :: Var
        REAL(KIND=dp) :: Norm
-     END TYPE VariableTable_t
-     TYPE(VariableTable_t), ALLOCATABLE, SAVE :: VarTable(:)
+     END TYPE AdaptiveVariables_t
+     TYPE(AdaptiveVariables_t), ALLOCATABLE, SAVE :: AdaptVars(:)
      
 #ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
@@ -1470,7 +1470,8 @@ END INTERFACE
 !$   IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit
 !$omp end parallel
 
-     DO i=1,CurrentModel % NumberOfSolvers
+     nSolvers = CurrentModel % NumberOfSolvers
+     DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE==0 ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
@@ -1654,30 +1655,28 @@ END INTERFACE
             AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
                        'Adaptive Keep Smallest', GotIt, minv=0  )
 
-            n = CurrentModel % NumberOfSolvers
 
-            IF(.NOT. ALLOCATED( VarTable ) ) THEN
-              ALLOCATE( VarTable( n ), STAT = AllocStat )
-              IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for VarTable')
+            IF(.NOT. ALLOCATED( AdaptVars ) ) THEN
+              ALLOCATE( AdaptVars( nSolvers ), STAT = AllocStat )
+              IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for AdaptVars')
               
-              n = CurrentModel % NumberOfSolvers
-              DO i=1,n
+              DO i=1,nSolvers
                 Solver => CurrentModel % Solvers(i)
 
-                NULLIFY( VarTable(i) % Var % Values )
-                NULLIFY( VarTable(i) % Var % PrevValues )
+                NULLIFY( AdaptVars(i) % Var % Values )
+                NULLIFY( AdaptVars(i) % Var % PrevValues )
 
                 IF( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
                 IF( .NOT. ASSOCIATED( Solver % Variable  % Values ) ) CYCLE
                 CALL Info('ExecSimulation','Allocating adaptive work space for: '//TRIM(I2S(i)),Level=12)
                 j = SIZE( Solver % Variable % Values )
-                ALLOCATE( VarTable(i) % Var % Values( j ), STAT=AllocStat )
-                IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error VarTable Values')
+                ALLOCATE( AdaptVars(i) % Var % Values( j ), STAT=AllocStat )
+                IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error AdaptVars Values')
 
                 IF( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
                   k = SIZE( Solver % Variable % PrevValues, 2 )
-                  ALLOCATE( VarTable(i) % Var % PrevValues( j, k ), STAT=AllocStat)
-                  IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for VarTable PrevValues')
+                  ALLOCATE( AdaptVars(i) % Var % PrevValues( j, k ), STAT=AllocStat)
+                  IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for AdaptVars PrevValues')
                 END IF
               END DO
             END IF
@@ -1690,14 +1689,14 @@ END INTERFACE
             DO WHILE( CumTime < dt-1.0d-12 )
                ddt = MIN( dt - CumTime, ddt )
                
-               DO i=1,CurrentModel % NumberOFSolvers
+               DO i=1,nSolvers
                  Solver => CurrentModel % Solvers(i)
                  IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
                  IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
-                 VarTable(i) % Var % Values = Solver % Variable % Values
-                 VarTable(i) % Var % Norm = Solver % Variable % Norm
+                 AdaptVars(i) % Var % Values = Solver % Variable % Values
+                 AdaptVars(i) % Var % Norm = Solver % Variable % Norm
                  IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                   VarTable(i) % Var % PrevValues = Solver % Variable % PrevValues
+                   AdaptVars(i) % Var % PrevValues = Solver % Variable % PrevValues
                  END IF
                END DO
                
@@ -1710,14 +1709,14 @@ END INTERFACE
                MaxErr = ListGetConstReal( CurrentModel % Simulation, &
                           'Adaptive Error Measure', GotIt )
 
-               DO i=1,CurrentModel % NumberOFSolvers
+               DO i=1,nSolvers
                  Solver => CurrentModel % Solvers(i)
                  IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE 
                  IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
-                 Solver % Variable % Values = VarTable(i) % Var % Values 
-                 VarTable(i) % Norm = Solver % Variable % Norm
+                 Solver % Variable % Values = AdaptVars(i) % Var % Values 
+                 AdaptVars(i) % Norm = Solver % Variable % Norm
                  IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                   Solver % Variable % PrevValues = VarTable(i) % Var % PrevValues 
+                   Solver % Variable % PrevValues = AdaptVars(i) % Var % PrevValues 
                  END IF
                END DO
 
@@ -1734,13 +1733,13 @@ END INTERFACE
 
                IF ( .NOT. GotIt ) THEN
                  MaxErr = 0.0d0
-                 DO i=1,CurrentModel % NumberOFSolvers
+                 DO i=1,nSolvers
                    Solver => CurrentModel % Solvers(i)
                    IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
                    IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
-                   IF ( VarTable(i) % norm /= Solver % Variable % Norm ) THEN
-                     Maxerr = MAX(Maxerr,ABS(VarTable(i) % norm - Solver % Variable % Norm)/&
-                         VarTable(i) % norm )
+                   IF ( AdaptVars(i) % norm /= Solver % Variable % Norm ) THEN
+                     Maxerr = MAX(Maxerr,ABS(AdaptVars(i) % norm - Solver % Variable % Norm)/&
+                         AdaptVars(i) % norm )
                    END IF
                  END DO
                END IF
@@ -1757,14 +1756,14 @@ END INTERFACE
                    SmallestCount = SmallestCount + 1
                  END IF
                ELSE
-                 DO i=1,CurrentModel % NumberOFSolvers
+                 DO i=1,nSolvers
                    Solver => CurrentModel % Solvers(i)
                    IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
                    IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
-                   Solver % Variable % Norm = VarTable(i) % Var % Norm 
-                   Solver % Variable % Values = VarTable(i) % Var % Values 
+                   Solver % Variable % Norm = AdaptVars(i) % Var % Norm 
+                   Solver % Variable % Values = AdaptVars(i) % Var % Values 
                    IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                     Solver % Variable % PrevValues = VarTable(i) % Var % PrevValues
+                     Solver % Variable % PrevValues = AdaptVars(i) % Var % PrevValues
                    END IF
                  END DO
                  ddt = ddt / 2
@@ -1777,12 +1776,13 @@ END INTERFACE
             sTime(1) = s + dt
 
           ELSE IF( DivergenceControl ) THEN
+            ! This is still tentative 
             DO j=1,10
               CALL SolveEquations( CurrentModel, ddt, Transient, &
                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
 
               HaveDivergence = .FALSE.
-              DO i=1,CurrentModel % NumberOFSolvers
+              DO i=1,nSolvers
                 Solver => CurrentModel % Solvers(i) 
                 IF( ASSOCIATED( Solver % Variable ) ) THEN
                   IF( Solver % Variable % NonlinConverged > 1 ) THEN
@@ -1799,7 +1799,7 @@ END INTERFACE
               sSize(1) = dt
               
               CALL Info('ExecSimulation','Reverting to previous timestep as initial guess')
-              DO i=1,CurrentModel % NumberOFSolvers
+              DO i=1,nSolvers
                 Solver => CurrentModel % Solvers(i)
                 IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
                   IF( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
@@ -1827,7 +1827,7 @@ END INTERFACE
            k = MOD( Timestep-1, OutputIntervals(Interval) )
            IF ( k == 0 .OR. SteadyStateReached ) THEN
             
-             DO i=1,CurrentModel % NumberOfSolvers
+             DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
                IF ( Solver % PROCEDURE == 0 ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
@@ -1839,7 +1839,7 @@ END INTERFACE
              CALL SaveCurrent(Timestep)
              LastSaved = .TRUE.
 
-             DO i=1,CurrentModel % NumberOfSolvers
+             DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
                IF ( Solver % PROCEDURE == 0 ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_SAVE)
@@ -1883,7 +1883,7 @@ END INTERFACE
 
      CALL ListPopNamespace()
 
-     DO i=1,CurrentModel % NumberOfSolvers
+     DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE == 0 ) CYCLE
         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
@@ -1901,7 +1901,7 @@ END INTERFACE
      END DO
 
      IF( .NOT. LastSaved ) THEN
-        DO i=1,CurrentModel % NumberOfSolvers
+        DO i=1,nSolvers
            Solver => CurrentModel % Solvers(i)
            IF ( Solver % PROCEDURE == 0 ) CYCLE
            ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
