@@ -1767,8 +1767,9 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    
    TYPE(Solver_t), POINTER :: ASolver
    TYPE(Component_t), POINTER :: Comp
+   TYPE(ValueList_t), POINTER :: CompParams
 
-   CHARACTER(LEN=MAX_NAME_LEN) :: dofnumber
+   CHARACTER(LEN=MAX_NAME_LEN) :: dofnumber, VariableName
    INTEGER :: i,p,jj,j
    TYPE(CircuitVariable_t), POINTER :: CVar
 
@@ -1776,11 +1777,17 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
    TYPE(Circuit_t), POINTER :: Circuits(:)
 
+   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+   COMPLEX(KIND=dp) :: Current 
+   REAL(KIND=dp) :: CompRealPower, p_dc_component
+
+   LOGICAL :: Found
+
    Circuit_tot_n => Model%Circuit_tot_n
    n_Circuits => Model%n_Circuits
    CM => Model%CircuitMatrix
    Circuits => Model%Circuits
-   
+
    ! Look for the solver we attach the circuit equations to:
    ! -------------------------------------------------------
    ASolver => CurrentModel % Asolver
@@ -1812,7 +1819,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    ! -----------------------------------------------------
 
    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
-   
+
+   CALL Info('CircuitsOutput', 'Writing Circuit Variable Results', Level=3) 
    DO p=1,n_Circuits
      DO i=1,Circuits(p) % n
        Cvar => Circuits(p) % CircuitVariables(i)
@@ -1842,18 +1850,65 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          END IF
        END IF
 
-       DO j = 1, SIZE(Circuits(p) % Components)
+     END DO
+
+     CALL Info('CircuitsOutput', 'Outputing Component Variables', Level=3) 
+     DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
              Comp % Resistance = 1._dp / Comp % Conductance
          CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
            TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
-!         CALL ListAddConstReal( GetSimulation(), 'res: inductance('//&
-!           TRIM(i2s(Comp % ComponentId))//'):', Comp % Inductance)
-       END DO  
 
-     END DO
+         Current = 0._dp + im * 0._dp
+         Current = ip(Comp % ivar % ValueId) 
+         IF ( Circuits(p) % Harmonic ) Current = Current + im * ip(Comp % ivar % ImValueId) 
+              
+         CompParams => CurrentModel % Components (Comp % ComponentId) % Values
+         IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('CircuitsOutput', &
+           'Component parameters not found!')
+
+         print *, "Comp % ComponentId", Comp % ComponentId
+         print *, "ABS(Current)", ABS(Current)
+         print *, "Resistance", Comp % Resistance 
+
+         p_dc_component = ABS(Current)**2._dp * Comp % Resistance
+         VariableName = 'p_dc_component('//TRIM(i2s(Comp % ComponentId))//')'
+         CALL ListAddAndOutputReal(VariableName, p_dc_component, Level=8) 
+
+         CompRealPower = GetConstReal( Model % Simulation, 'res: Power re & 
+                 in Component '//TRIM(i2s(Comp % ComponentId)), Found)
+         IF (Found .AND. ABS(Current) > TINY(CompRealPower)) THEN
+           print *, "AC Resistance", CompRealPower/ABS(Current)**2._dp
+         END IF
+!         CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
+!         TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
+          
+       END DO  
    END DO
+
+CONTAINS
+
+!-------------------------------------------------------------------
+  SUBROUTINE ListAddAndOutputReal(VariableName, VariableValue, Level)
+!-------------------------------------------------------------------
+  IMPLICIT NONE
+  CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, VarVal
+  REAL(KIND=dp) :: VariableValue
+  INTEGER, OPTIONAL :: Level 
+  INTEGER :: LevelVal = 3
+
+  IF (PRESENT(Level)) LevelVal = Level
+
+  WRITE(VarVal,'(ES15.4)') VariableValue
+  CALL Info('CircuitsOutput', TRIM(VariableName)//' '//&
+    TRIM(VarVal), Level=LevelVal)
+
+!  CALL ListAddConstReal(GetSimulation(),TRIM(VariableName), VariableValue)
+  CALL ListAddConstReal(GetSimulation(),'res: '//TRIM(VariableName), VariableValue)
+!-------------------------------------------------------------------
+  END SUBROUTINE ListAddAndOutputReal
+!-------------------------------------------------------------------
 
 
 END SUBROUTINE CircuitsOutput
