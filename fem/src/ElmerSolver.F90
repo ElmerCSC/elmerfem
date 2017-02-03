@@ -1460,10 +1460,9 @@ END INTERFACE
      END TYPE AdaptiveVariables_t
      TYPE(AdaptiveVariables_t), ALLOCATABLE, SAVE :: AdaptVars(:)
      
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
-#else
-     REAL(KIND=dp) :: RealTime, newtime, prevtime=0, maxtime, exitcond
+#ifndef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: RealTime
 #endif
      
 !$omp parallel
