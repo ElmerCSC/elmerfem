@@ -1820,8 +1820,12 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
 
-   CALL Info('CircuitsOutput', 'Writing Circuit Variable Results', Level=3) 
+   CALL Info('CircuitsOutput', 'Writing Circuit Results', Level=3) 
    DO p=1,n_Circuits
+     CALL Info('CircuitsOutput', 'Writing Circuit Variables for &
+       Circuit '//TRIM(i2s(p)), Level=3) 
+     CALL Info('CircuitsOutput', 'There are '//TRIM(i2s(Circuits(p)%n))//&
+       'Circuit Variables', Level=3)
      DO i=1,Circuits(p) % n
        Cvar => Circuits(p) % CircuitVariables(i)
        
@@ -1852,8 +1856,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
      END DO
 
-     CALL Info('CircuitsOutput', 'Outputing Component Variables for &
-       circuit '//TRIM(i2s(p)), Level=3) 
+     CALL Info('CircuitsOutput', 'Writing Component Variables for &
+       Circuit '//TRIM(i2s(p)), Level=3) 
      DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
