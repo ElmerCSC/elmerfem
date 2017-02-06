@@ -1769,7 +1769,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    TYPE(Component_t), POINTER :: Comp
    TYPE(ValueList_t), POINTER :: CompParams
 
-   CHARACTER(LEN=MAX_NAME_LEN) :: dofnumber, VariableName
+   CHARACTER(LEN=MAX_NAME_LEN) :: dofnumber, CompName 
    INTEGER :: i,p,jj,j
    TYPE(CircuitVariable_t), POINTER :: CVar
 
@@ -1852,13 +1852,17 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
      END DO
 
-     CALL Info('CircuitsOutput', 'Outputing Component Variables', Level=3) 
+     CALL Info('CircuitsOutput', 'Outputing Component Variables for &
+       circuit '//TRIM(i2s(p)), Level=3) 
      DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
              Comp % Resistance = 1._dp / Comp % Conductance
 !         CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
 !           TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
+
+         CALL ListAddAndOutputConstReal('r_component('//&
+           TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance, Level=8) 
 
          Current = 0._dp + im * 0._dp
          Current = ip(Comp % ivar % ValueId) 
@@ -1873,13 +1877,14 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 !         print *, "Resistance", Comp % Resistance 
 
          p_dc_component = ABS(Current)**2._dp * Comp % Resistance
-         VariableName = 'p_dc_component('//TRIM(i2s(Comp % ComponentId))//')'
-         CALL ListAddAndOutputReal(VariableName, p_dc_component, Level=8) 
+         CALL ListAddAndOutputConstReal('p_dc_component('//TRIM(i2s(Comp % ComponentId))//')',&
+           p_dc_component, Level=8) 
 
          CompRealPower = GetConstReal( Model % Simulation, 'res: Power re & 
                  in Component '//TRIM(i2s(Comp % ComponentId)), Found)
          IF (Found .AND. ABS(Current) > TINY(CompRealPower)) THEN
-           print *, "AC Resistance", CompRealPower/ABS(Current)**2._dp
+           CALL ListAddAndOutputConstReal('r_ac_component('//TRIM(i2s(Comp % ComponentId))//')',&
+           CompRealPower/ABS(Current)**2._dp, Level=8)
          END IF
 !         CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
 !         TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
@@ -1890,10 +1895,11 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 CONTAINS
 
 !-------------------------------------------------------------------
-  SUBROUTINE ListAddAndOutputReal(VariableName, VariableValue, Level)
+  SUBROUTINE ListAddAndOutputConstReal(VariableName, VariableValue, Level)
 !-------------------------------------------------------------------
   IMPLICIT NONE
-  CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, VarVal
+  CHARACTER(LEN=MAX_NAME_LEN) :: VarVal
+  CHARACTER(LEN=*) :: VariableName
   REAL(KIND=dp) :: VariableValue
   INTEGER, OPTIONAL :: Level 
   INTEGER :: LevelVal = 3
@@ -1907,7 +1913,7 @@ CONTAINS
 !  CALL ListAddConstReal(GetSimulation(),TRIM(VariableName), VariableValue)
   CALL ListAddConstReal(GetSimulation(),'res: '//TRIM(VariableName), VariableValue)
 !-------------------------------------------------------------------
-  END SUBROUTINE ListAddAndOutputReal
+  END SUBROUTINE ListAddAndOutputConstReal
 !-------------------------------------------------------------------
 
 
