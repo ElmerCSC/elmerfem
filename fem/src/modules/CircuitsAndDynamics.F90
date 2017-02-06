@@ -1863,7 +1863,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
              Comp % Resistance = 1._dp / Comp % Conductance
 
-         CALL ListAddAndOutputConstReal('r_component('//&
+         CALL SimListAddAndOutputConstReal('r_component('//&
            TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance, Level=8) 
 
          Current = 0._dp + im * 0._dp
@@ -1875,13 +1875,13 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
            'Component parameters not found!')
 
          p_dc_component = ABS(Current)**2._dp * Comp % Resistance
-         CALL ListAddAndOutputConstReal('p_dc_component('//TRIM(i2s(Comp % ComponentId))//')',&
+         CALL SimListAddAndOutputConstReal('p_dc_component('//TRIM(i2s(Comp % ComponentId))//')',&
            p_dc_component, Level=8) 
 
          CompRealPower = GetConstReal( Model % Simulation, 'res: Power re & 
                  in Component '//TRIM(i2s(Comp % ComponentId)), Found)
          IF (Found .AND. ABS(Current) > TINY(CompRealPower)) THEN
-           CALL ListAddAndOutputConstReal('r_ac_component('//TRIM(i2s(Comp % ComponentId))//')',&
+           CALL SimListAddAndOutputConstReal('r_ac_component('//TRIM(i2s(Comp % ComponentId))//')',&
            CompRealPower/ABS(Current)**2._dp, Level=8)
          END IF
           
@@ -1891,7 +1891,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 CONTAINS
 
 !-------------------------------------------------------------------
-  SUBROUTINE ListAddAndOutputConstReal(VariableName, VariableValue, Level)
+  SUBROUTINE SimListAddAndOutputConstReal(VariableName, VariableValue, Level)
 !-------------------------------------------------------------------
   IMPLICIT NONE
   CHARACTER(LEN=MAX_NAME_LEN) :: VarVal
@@ -1909,7 +1909,7 @@ CONTAINS
 !  CALL ListAddConstReal(GetSimulation(),TRIM(VariableName), VariableValue)
   CALL ListAddConstReal(GetSimulation(),'res: '//TRIM(VariableName), VariableValue)
 !-------------------------------------------------------------------
-  END SUBROUTINE ListAddAndOutputConstReal
+  END SUBROUTINE SimListAddAndOutputConstReal
 !-------------------------------------------------------------------
 
 
