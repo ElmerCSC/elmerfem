@@ -1858,8 +1858,6 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          Comp => Circuits(p) % Components(j)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
              Comp % Resistance = 1._dp / Comp % Conductance
-!         CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
-!           TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
 
          CALL ListAddAndOutputConstReal('r_component('//&
            TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance, Level=8) 
@@ -1872,10 +1870,6 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('CircuitsOutput', &
            'Component parameters not found!')
 
-!         print *, "Comp % ComponentId", Comp % ComponentId
-!         print *, "ABS(Current)", ABS(Current)
-!         print *, "Resistance", Comp % Resistance 
-
          p_dc_component = ABS(Current)**2._dp * Comp % Resistance
          CALL ListAddAndOutputConstReal('p_dc_component('//TRIM(i2s(Comp % ComponentId))//')',&
            p_dc_component, Level=8) 
@@ -1886,8 +1880,6 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
            CALL ListAddAndOutputConstReal('r_ac_component('//TRIM(i2s(Comp % ComponentId))//')',&
            CompRealPower/ABS(Current)**2._dp, Level=8)
          END IF
-!         CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
-!         TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
           
        END DO  
    END DO
