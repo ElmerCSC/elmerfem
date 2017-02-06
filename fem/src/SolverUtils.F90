@@ -11988,11 +11988,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           END IF
         END IF
 
-
-        IF( EnforceDirichlet) THEN
-          IF ( StiffMatrix % ConstrainedDof(RestMatrix % InvPerm(i)) ) CYCLE
-        END IF
-
         DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
           Found = .TRUE.
 
@@ -12036,6 +12031,20 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           END IF
 
         END DO
+      END IF
+
+      IF (EnforceDirichlet) THEN
+        IF(ASSOCIATED(RestMatrix % InvPerm)) THEN
+          l = RestMatrix % InvPerm(i)
+          IF(l>0) THEN
+            l = MOD(l-1,StiffMatrix % NumberOfRows)+1
+            IF(StiffMatrix % ConstrainedDOF(l)) THEN
+              CollectionVector(k) = 0
+              CALL ZeroRow(CollectionMatrix,k)
+              CALL SetMatrixElement(CollectionMatrix,k,k,1._dp)
+            END IF
+          END IF
+        END IF
       END IF
 
       ! If there is no matrix entry, there can be no non-zero r.h.s.
