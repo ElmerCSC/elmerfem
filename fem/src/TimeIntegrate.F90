@@ -120,6 +120,141 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------   
+! Adams-Bashforth and Adams-Moulton time-integration schemes implemented
+! by Gong Cheng, 2017. 
+!   
+!> Apply Adams-Bashforth method to local matrix equation.
+!> This method stores prev_stiff*prevSol in Element % propertydata and 
+!> the correspoding forcing terms.
+!> PredCorrOrder=1, Explicit Euler
+!> PredCorrOrder=2, 2nd order Adams-Bashforth
+!------------------------------------------------------------------------------
+   SUBROUTINE AdamsBashforth( N, dt, MassMatrix, StiffMatrix, &
+                   Force, PrevSolution, zeta, PredCorrOrder)
+!------------------------------------------------------------------------------
+    INTEGER :: N    ! Size of the unknowns
+    REAL(KIND=dp) :: Force(:),PrevSolution(:),dt, zeta
+    REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(elementdata_t), POINTER :: tempRes
+    LOGICAL :: GotIt
+    INTEGER :: PredCorrOrder
+
+!------------------------------------------------------------------------------
+     INTEGER :: i,j,NB1,NB2
+
+     REAL(KIND=dp) :: s_curr, m_curr, residual, curr_res, preForce
+!------------------------------------------------------------------------------
+     NB1 = SIZE( StiffMatrix,1 )
+     NB2 = SIZE( StiffMatrix,2 ) 
+
+     Element => CurrentModel % CurrentElement
+     IF (.NOT. ASSOCIATED(Element % propertydata)) THEN
+       ALLOCATE( Element % propertydata )
+       ALLOCATE( Element % propertydata % values(NB1*2) )  
+     END IF
+
+
+     DO i=1,NB1
+       s_curr = 0.0_dp
+       m_curr = 0.0_dp
+       DO j=1,n
+         s_curr = s_curr + StiffMatrix(i,j) * PrevSolution(j) 
+         m_curr = m_curr + (1/dt) * MassMatrix(i,j) * PrevSolution(j) 
+       END DO
+
+       curr_res = - s_curr
+
+       IF ( PredCorrOrder == 1 ) THEN
+         residual = curr_res
+         preForce = Force(i)
+       ELSE
+         residual = Element % propertydata % values(i)
+         preForce = Element % propertydata % values(i+NB1)        
+       END IF
+       Element % propertydata % values(i) = curr_res
+       Element % propertydata % values(i+NB1) = Force(i)
+
+      Force(i) = Force(i) - s_curr  + m_curr + 0.5_dp * zeta * (Force(i) - preForce) + &
+                      0.5_dp * zeta * (curr_res - residual)
+
+       DO j=1,NB2
+         StiffMatrix(i,j) = (1/dt) * MassMatrix(i,j)
+       END DO
+
+     END DO
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE AdamsBashforth
+!------------------------------------------------------------------------------
+
+
+!> Apply Adams-Moulton(Corrector) method to local matrix equation.
+!>
+!> A two steps method with second order accuracy in time.
+!> This method is only used in the correction phase of adaptive timestepping,
+!> PrevSolution(:,2) -- the true solution from previous correction step H^{n-1}
+!> PrevSolution(:,1) -- the corrector \tilde{H^n}
+!>
+!> This method can only be used in the corrector phase of Predictor-Corrector 
+!> scheme and just after Adams-Bashforth method with the same order, otherwise
+!> the residual at n-1 step will be incorrect.
+!> PredCorrOrder=1, Implicit Euler
+!> PredCorrOrder=2, 2nd order Adams-Moulton
+
+!------------------------------------------------------------------------------
+   SUBROUTINE AdamsMoulton( N, dt, MassMatrix, StiffMatrix, &
+       Force, PrevSolution, PredCorrOrder)
+!------------------------------------------------------------------------------
+     INTEGER :: N
+     REAL(KIND=dp) :: Force(:),PrevSolution(:,:),dt
+     REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:)
+     INTEGER :: PredCorrOrder
+!------------------------------------------------------------------------------
+     INTEGER :: i,j,NB1,NB2
+     TYPE(Element_t), POINTER :: Element
+
+     REAL(KIND=dp) :: s_curr, m_curr, residual, preForce
+!------------------------------------------------------------------------------
+     NB1 = SIZE( StiffMatrix,1 )
+     NB2 = SIZE( StiffMatrix,2 ) 
+
+     Element => CurrentModel % CurrentElement
+
+     IF (.NOT. ASSOCIATED(Element % propertydata)) THEN
+       CALL Fatal( 'AdamsMoulton', &
+           'Adams-Moulton method must be executed after Adams-Bashforth method!')
+     END IF
+
+     DO i=1,NB1
+       s_curr = 0.0_dp
+       m_curr = 0.0_dp
+       DO j=1,n
+         s_curr = s_curr + StiffMatrix(i,j) * PrevSolution(j,1) 
+         m_curr = m_curr + (1/dt) * MassMatrix(i,j) * PrevSolution(j,2) 
+       END DO
+         
+       DO j=1,NB2
+         StiffMatrix(i,j) =   (1/dt) * MassMatrix(i,j)
+       END DO
+
+       residual = Element % propertydata % values(i)
+       preForce = Element % propertydata % values(i+NB1)        
+       IF ( PredCorrOrder == 1 ) THEN
+         Force(i) =  Force(i) + m_curr - s_curr  
+       ELSE
+         Force(i) =  0.5_dp * (Force(i) + preForce) + m_curr + 0.5_dp * (-s_curr + residual)
+       END IF
+
+     END DO
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE AdamsMoulton
+!------------------------------------------------------------------------------
+
+
+
 !------------------------------------------------------------------------------
 !> Apply constant timestep BDF integration scheme to elementwise matrix entry.
 !------------------------------------------------------------------------------

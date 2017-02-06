@@ -641,6 +641,11 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
+  IF (LagrangeGauge .AND. Transient .AND. &
+       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
+    CALL Info("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
+    END IF
+
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
 !------------------------------------------------------------------------------
@@ -745,24 +750,42 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
   TransientGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. Transient
-  gauge_penalize_c = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient', HasStabC)
-  gauge_penalize_m = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient mass', Found)
-  HasStabC = HasStabC .OR. Found
 
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
+    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+      CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
+    END IF
   END IF
 
   IF(TransientGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in transient computation")
-    CALL Warn("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
+    IF (.NOT. ListCheckPresent( SolverParams, "enforce exact dirichlet bcs" ) ) THEN
+      CALL ListAddLogical(SolverParams,"enforce exact dirichlet bcs",.FALSE.)
+      CALL Info("WhitneyAVSolver", "Setting 'enforce exact dirichlet bcs = Logical False'")
+    END IF
+    IF (.NOT. ListCheckPresent( SolverParams, "optimize bandwidth" ) ) THEN
+      CALL ListAddLogical(SolverParams,"optimize bandwidth",.FALSE.)
+      CALL Info("WhitneyAVSolver", "Setting 'Optimize Bandwidth = Logical False'") 
+    ELSEIF (ListGetLogical(SolverParams, "Optimize bandwidth")) THEN
+      CALL Warn("WhitneyAVSolver", &
+           "Optimize bandwidth and use lagrange gauge in transient is known not to work. ")
+    END IF
+    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+      CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
+    END IF
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
   END IF
 
+  gauge_penalize_c = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient', HasStabC)
+  gauge_penalize_m = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient mass', Found)
+  HasStabC = HasStabC .OR. Found
+
   IF (HasStabC .and. (SteadyGauge .or. TransientGauge)) THEN
     WRITE (Message, *), 'Lagrange Gauge penalization coefficient', gauge_penalize_c
+    CALL Info('WhitneyAVSolver', message)
     WRITE (Message, *), 'Lagrange Gauge penalization coefficient mass', gauge_penalize_m
-    call Info('WhitneyAVSolver', message)
+    CALL Info('WhitneyAVSolver', message)
   END IF
 
   ! Gauge tree, if requested or using direct solver:
@@ -877,12 +900,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       'Nonlinear System Newton After Tolerance',Found )
 
 
-  ! Not refactorizing seems to break things
-  IF (SteadyGauge) THEN
-    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
-      CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
-    END IF
-  END IF
+! Not refactorizing seems to break things with gauges
+  ! IF (SteadyGauge) THEN
+  !   IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+  !     CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
+  !   END IF
+  ! END IF
 
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
   IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN

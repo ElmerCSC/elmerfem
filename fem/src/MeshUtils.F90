@@ -3515,6 +3515,323 @@ END SUBROUTINE GetMaxDefs
 
 
 
+  !------------------------------------------------------------------------------
+  !> Find axial, radial or rotational mortar boundary pairs.
+  !------------------------------------------------------------------------------
+  SUBROUTINE DetectMortarPairs( Model, Mesh, Tol, BCMode, SameCoordinate )
+    !------------------------------------------------------------------------------    
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: Tol
+    INTEGER :: BcMode
+    LOGICAL :: SameCoordinate
+    !------------------------------------------------------------------------------
+    INTEGER :: i,j,k,l,n,MinBC,MaxBC,BC,ElemCode
+    TYPE(Element_t), POINTER :: Element, Parent, Left, Right, Elements(:)
+    INTEGER, POINTER :: NodeIndexes(:)
+    LOGICAL :: Found 
+    LOGICAL, ALLOCATABLE :: BCSet(:), BCPos(:), BCNeg(:), BCNot(:)
+    INTEGER, ALLOCATABLE :: BCCount(:)
+    REAL(KIND=dp) :: x,y,z,f
+    REAL(KIND=dp), ALLOCATABLE :: BCVal(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    LOGICAL :: Debug = .FALSE., Hit
+    
+    ! The code can detect pairs to be glued in different coordinate systems
+    SELECT CASE( BCMode )
+    CASE( 1 )
+      str = 'x-coordinate'
+    CASE( 2 )
+      str = 'y-coordinate'
+    CASE( 3 )
+      str = 'z-coordinate'
+    CASE( 4 ) 
+      str = 'radius'
+    CASE( 5 )
+      str = 'angle'
+    CASE DEFAULT
+      CALL Fatal('DetectMortarPairs','Invalid BCMode: '//TRIM(I2S(BCMode)))
+    END SELECT
+
+    CALL Info('DetectMortarPairs','Trying to find pairs in: '//TRIM(str),Level=6)
+
+    IF(.NOT. ASSOCIATED( Mesh ) ) THEN
+      CALL Fatal('DetectMortarPairs','Mesh not associated!')
+    END IF
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Warn('DetectMortarPairs','Not implemented in parallel yet, be careful!')
+    END IF
+      
+    
+    ! Interface meshes consist of boundary elements only    
+    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
+
+    ! Find out the min and max constraint 
+    MinBC = HUGE( MinBC )
+    MaxBC = 0
+    DO i=1, Mesh % NumberOfBoundaryElements
+      Element => Elements(i)
+      ElemCode = Element % Type % ElementCode 
+      IF (ElemCode<=200) CYCLE
+
+      BC = Element % BoundaryInfo % Constraint
+      MinBC = MIN( MinBC, BC )
+      MaxBC = MAX( MaxBC, BC )
+    END DO
+
+    CALL Info('DetectMortarParis','Minimum Constraint index: '//TRIM(I2S(MinBC)),Level=8)
+    CALL Info('DetectMortarParis','Maximum Constraint index: '//TRIM(I2S(MaxBC)),Level=8)    
+    IF( MaxBC - MinBC < 1 ) THEN
+      CALL Warn('DetectMortarPairs','Needs at least two different BC indexes to create mortar pair!')
+      RETURN
+    END IF
+
+    ALLOCATE( BCVal( MinBC:MaxBC ) )
+    ALLOCATE( BCSet( MinBC:MaxBC ) )
+    ALLOCATE( BCNot( MinBC:MaxBC ) )
+    ALLOCATE( BCPos( MinBC:MaxBC ) )
+    ALLOCATE( BCNeg( MinBC:MaxBC ) )
+    ALLOCATE( BCCount( MinBC:MaxBC ) )
+
+    BCVal = 0.0_dp
+    BCSet = .FALSE.
+    BCNot = .FALSE.
+    BCPos = .FALSE.
+    BCNeg = .FALSE.
+    BCCount = 0
+    
+
+    DO i=1, Mesh % NumberOfBoundaryElements
+      Element => Elements(i)
+      ElemCode = Element % Type % ElementCode 
+      IF (ElemCode<=200) CYCLE
+
+      BC = Element % BoundaryInfo % Constraint
+
+      ! This boundary is already deemed not to be a good candidate
+      IF( BCNot( BC ) ) CYCLE
+
+      n = Element % Type % NumberOfNodes
+
+      DO j=1,n
+        k = Element % NodeIndexes(j)
+        x = Mesh % Nodes % x(k)
+        y = Mesh % Nodes % y(k)
+        z = Mesh % Nodes % z(k)
+
+        ! Here f is a measure: x, y, z, radius, or angle 
+        SELECT CASE( BCMode )
+        CASE( 1 )
+          f = x
+        CASE( 2 )
+          f = y
+        CASE( 3 )
+          f = z
+        CASE( 4 ) 
+          f = SQRT( x**2 + y**2 )
+        CASE( 5 )
+          f = ATAN2( y, x )
+        END SELECT
+
+        ! If the BC is not set then let the first be the one to compare againts
+        IF( .NOT. BCSet( BC ) ) THEN
+          BCVal( BC ) = f         
+          BCSet( BC ) = .TRUE.
+          IF( Debug ) PRINT *,'Compareing BC '//TRIM(I2S(BC))//' against:',f
+        ELSE
+          ! In consecutive rounds check that the level is consistent
+          IF( ABS( f - BCVal(BC) ) > Tol ) THEN
+            IF( Debug ) PRINT *,'Failing BC '//TRIM(I2S(BC))//' with:',f-BCVal(BC)
+            BCNot( BC ) = .TRUE.
+            EXIT
+          END IF
+        END IF
+      END DO
+
+      IF( BCNot( BC ) ) CYCLE
+
+      Parent => Element % BoundaryInfo % Left
+      IF( .NOT. ASSOCIATED( Parent ) ) THEN
+        Parent => Element % BoundaryInfo % Right
+      ELSE
+        ! If there are two parents this is an internal BC
+        IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+          IF( Debug ) PRINT *,'Failing internal BC:',BC
+          BCNot( BC ) = .TRUE.
+          CYCLE
+        END IF
+      END IF
+
+      ! To define whether the boundar is on positive or negative side of the master element
+      ! study the center point of the master element
+      n = Parent % TYPE % NumberOfNodes
+      x = SUM( Mesh % Nodes % x( Parent % NodeIndexes) ) / n
+      y = SUM( Mesh % Nodes % y( Parent % NodeIndexes) ) / n
+      z = SUM( Mesh % Nodes % z( Parent % NodeIndexes) ) / n
+
+
+      SELECT CASE( BCMode )
+      CASE( 1 )
+        f = x
+      CASE( 2 )
+        f = y
+      CASE( 3 )
+        f = z
+      CASE( 4 ) 
+        f = SQRT( x**2 + y**2 )
+      CASE( 5 )
+        f = ATAN2( y, x )
+      END SELECT
+
+      ! If the parent element is on alternating sides then this cannot be a proper boundary
+      IF( f > BCVal( BC ) ) THEN
+        IF( BCNeg( BC ) ) THEN
+          IF( Debug ) PRINT *,'Failing inconsistent negative BC:',BC
+          BCNot( BC ) = .TRUE.
+          BCNeg( BC ) = .FALSE.
+          CYCLE
+        END IF
+        BCPos( BC ) = .TRUE.
+      ELSE
+        IF( BCPos( BC ) ) THEN
+          IF( Debug ) PRINT *,'Failing inconsistent positive BC:',BC
+          BCNot( BC ) = .TRUE.
+          BCPos( BC ) = .FALSE.
+          CYCLE
+        END IF
+        BCNeg( BC ) = .TRUE.
+      END IF
+    END DO ! Number of boundary elements
+
+    IF( BCMode == 5 ) THEN
+      BCVal = 180 * BCVal / PI
+    END IF
+    
+    j = COUNT( BCPos )
+    IF( Debug ) THEN
+      IF( j > 0 ) THEN
+        IF( Debug ) PRINT *,'Positive constant levels: ',j
+        DO i=MinBC,MaxBC
+          IF( BCPos(i) ) PRINT *,'BC:',i,BCVal(i)
+        END DO
+      END IF
+    END IF
+      
+    k = COUNT( BCNeg )
+    IF( Debug ) THEN
+      IF( k > 0 ) THEN
+        PRINT *,'Negative constant levels: ',k
+        DO i=MinBC,MaxBC
+          IF( BCNeg(i) ) PRINT *,'BC:',i,BCVal(i)
+        END DO
+      END IF
+    END IF
+      
+    IF( j * k == 0 ) THEN
+      PRINT *,'Not enough candidate sides found'
+      RETURN
+    END IF
+
+    IF( SameCoordinate ) THEN
+      DO i=MinBC,MaxBC
+        Hit = .FALSE.
+        IF( BCPos(i) ) THEN
+          DO j=MinBC,MaxBC
+            IF ( BCNeg(j) ) THEN
+              IF( ABS( BCVal(i) - BCVal(j)) < Tol ) THEN
+                Hit = .TRUE.
+                EXIT
+              END IF
+            END IF
+          END DO
+          IF( .NOT. Hit ) THEN
+            BCPos(i) = .FALSE.
+            IF( Debug ) PRINT *,'Removing potential positive hit:',i
+          END IF
+        END IF
+        IF( BCNeg(i) ) THEN
+          Hit = .FALSE.
+          DO j=MinBC,MaxBC
+            IF ( BCPos(j) ) THEN
+              IF( ABS( BCVal(i) - BCVal(j)) < Tol ) THEN
+                Hit = .TRUE.
+                EXIT
+              END IF
+            END IF
+          END DO
+          IF( .NOT. Hit ) THEN
+            BCNeg(i) = .FALSE.
+            IF( Debug ) PRINT *,'Removing potential negative hit:',i
+          END IF
+        END IF
+      END DO
+
+      IF( .NOT. ANY( BCPos ) ) THEN 
+        PRINT *,'No possible pairs found at same location'
+        RETURN
+      END IF
+    END IF
+
+
+    k = 0
+    DO i=MinBC,MaxBC
+      IF( BCPos(i) ) THEN
+        Hit = .FALSE.
+        DO j=MinBC,i-1
+          IF( BCPos(j) ) THEN
+            IF( ABS( BCVal(i) - BCVal(j) ) < Tol ) THEN
+              Hit = .TRUE.
+              EXIT
+            END IF
+          END IF
+        END DO
+        IF(Hit ) THEN
+          BCCount(i) = BCCount(j)
+        ELSE
+          k = k + 1
+          BCCount(i) = k
+        END IF
+      END IF
+    END DO
+    PRINT *,'Found number of positive levels:',k
+
+
+    k = 0
+    DO i=MinBC,MaxBC
+      IF( BCNeg(i) ) THEN
+        Hit = .FALSE.
+        DO j=MinBC,i-1
+          IF( BCNeg(j) ) THEN
+            IF( ABS( BCVal(i) - BCVal(j) ) < Tol ) THEN
+              Hit = .TRUE.
+              EXIT
+            END IF
+          END IF
+        END DO
+        IF(Hit ) THEN
+          BCCount(i) = BCCount(j)
+        ELSE
+          k = k + 1
+          BCCount(i) = -k
+        END IF
+      END IF
+    END DO
+    PRINT *,'Found number of negative levels:',k
+
+    PRINT *,'Slave BCs: '
+    DO i=MinBC,MaxBC
+      IF( BCPos(i) ) PRINT *,'BC:',i,BCVal(i)
+    END DO
+    PRINT *,'Master BCs: '
+    DO i=MinBC,MaxBC
+      IF( BCNeg(i) ) PRINT *,'BC:',i,BCVal(i)
+    END DO
+    
+  END SUBROUTINE DetectMortarPairs
+
+  
+
 !------------------------------------------------------------------------------
 !> Create master and slave mesh for the interface in order to at a later 
 !> stage create projector matrix to implement periodicity or mortar elements.
