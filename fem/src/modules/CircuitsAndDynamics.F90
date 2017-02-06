@@ -1825,31 +1825,37 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
      CALL Info('CircuitsOutput', 'Writing Circuit Variables for &
        Circuit '//TRIM(i2s(p)), Level=3) 
      CALL Info('CircuitsOutput', 'There are '//TRIM(i2s(Circuits(p)%n))//&
-       'Circuit Variables', Level=3)
+       ' Circuit Variables', Level=3)
      DO i=1,Circuits(p) % n
        Cvar => Circuits(p) % CircuitVariables(i)
        
        IF (Circuits(p) % Harmonic) THEN 
-         CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' re', ip(Cvar % ValueId))
-         CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId))
+         CALL SimListAddAndOutputConstReal(&
+           TRIM(Circuits(p) % names(i))//' re', ip(Cvar % ValueId), Level=10)
+         CALL SimListAddAndOutputConstReal(&
+           TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId), Level=10)
 
          IF (Cvar % pdofs /= 0 ) THEN
            DO jj = 1, Cvar % pdofs
              write (dofnumber, "(I2)") jj
-             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                    //'re dof '//TRIM(dofnumber), ip(Cvar % ValueId + ReIndex(jj)))
-             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                    //'im dof '//TRIM(dofnumber), ip(Cvar % ValueId + ImIndex(jj)))
+             CALL SimListAddAndOutputConstReal(&
+               TRIM(Circuits(p) % names(i))&
+               //'re dof '//TRIM(dofnumber), ip(Cvar % ValueId + ReIndex(jj)), Level=10)
+             CALL SimListAddAndOutputConstReal(&
+               TRIM(Circuits(p) % names(i))&
+               //'im dof '//TRIM(dofnumber), ip(Cvar % ValueId + ImIndex(jj)), Level=10)
            END DO
          END IF
        ELSE
-         CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i)), ip(Cvar % ValueId))
+         CALL SimListAddAndOutputConstReal(&
+           TRIM(Circuits(p) % names(i)), ip(Cvar % ValueId), Level=10)
          
          IF (Cvar % pdofs /= 0 ) THEN
            DO jj = 1, Cvar % pdofs
              write (dofnumber, "(I2)") jj
-             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                    //'dof '//TRIM(dofnumber), ip(Cvar % ValueId + jj))
+             CALL SimListAddAndOutputConstReal(&
+               TRIM(Circuits(p) % names(i))&
+               //'dof '//TRIM(dofnumber), ip(Cvar % ValueId + jj), Level=10)
            END DO
          END IF
        END IF
@@ -1906,7 +1912,6 @@ CONTAINS
   CALL Info('CircuitsOutput', TRIM(VariableName)//' '//&
     TRIM(VarVal), Level=LevelVal)
 
-!  CALL ListAddConstReal(GetSimulation(),TRIM(VariableName), VariableValue)
   CALL ListAddConstReal(GetSimulation(),'res: '//TRIM(VariableName), VariableValue)
 !-------------------------------------------------------------------
   END SUBROUTINE SimListAddAndOutputConstReal
