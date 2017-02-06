@@ -1887,8 +1887,10 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          CompRealPower = GetConstReal( Model % Simulation, 'res: Power re & 
                  in Component '//TRIM(i2s(Comp % ComponentId)), Found)
          IF (Found .AND. ABS(Current) > TINY(CompRealPower)) THEN
-           CALL SimListAddAndOutputConstReal('r_ac_component('//TRIM(i2s(Comp % ComponentId))//')',&
-           CompRealPower/ABS(Current)**2._dp, Level=8)
+           CALL SimListAddAndOutputConstReal('r_ac_component('//&
+             TRIM(i2s(Comp % ComponentId))//')', CompRealPower/ABS(Current)**2._dp, Level=8)
+           CALL SimListAddAndOutputConstReal('AC to DC of component '&
+             //TRIM(i2s(Comp % ComponentId)), CompRealPower/p_dc_component, Level=8)
          END IF
           
        END DO  
