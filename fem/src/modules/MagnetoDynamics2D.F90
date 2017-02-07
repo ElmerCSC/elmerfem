@@ -2360,8 +2360,10 @@ CONTAINS
           Bx = CMPLX(BatIp(1), BatIp(3), KIND=dp)
           By = CMPLX(BatIp(2), BatIp(4), KIND=dp)
           Jz = CMPLX(BatIp(7), BatIp(8), KIND=dp)
-          LorentzForceDensX = ModelDepth * Weight * Jz * By
-          LorentzForceDensY = -ModelDepth * Weight * Jz * Bx
+          IF (CSymmetry) Jz = -Jz
+
+          LorentzForceDensX = ModelDepth * Weight * By / Jz * ABS(Jz)**2._dp
+          LorentzForceDensY = -ModelDepth * Weight * Bx / Jz * ABS(Jz)**2._dp
           BodyLorentzForcesRe(1, BodyId) = BodyLorentzForcesRe(1, BodyId) + &
             REAL(LorentzForceDensX)
           BodyLorentzForcesRe(2, BodyId) = BodyLorentzForcesRe(2, BodyId) + &
