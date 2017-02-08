@@ -982,6 +982,8 @@ CONTAINS
     IF ( ConstantSystem  ) GOTO 200
   END IF
 
+  ! Timing
+  CALL ResetTimer('MGDynAssembly')
   CALL DefaultInitialize()
   Active = GetNOFActive()
   DO t=1,active
@@ -1142,6 +1144,9 @@ CONTAINS
   CALL DefaultFinishBoundaryAssembly(BulkUpdate=ConstantSystem)
 
   DoneAssembly = .TRUE.
+
+  ! Check the timer
+  CALL CheckTimer('MGDynAssembly', Delete=.TRUE.)
 
 200 CONTINUE
 
