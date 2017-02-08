@@ -7848,7 +7848,7 @@ END FUNCTION SearchNodeL
     INTEGER, OPTIONAL :: nsize
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:), RHS(:)
 !------------------------------------------------------------------------------
-    INTEGER :: i, n, nn, RelaxAfter, IterNo, MinIter
+    INTEGER :: i, n, nn, RelaxAfter, IterNo, MinIter, MaxIter
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
     REAL(KIND=dp), POINTER :: x0(:)
@@ -8198,18 +8198,27 @@ END FUNCTION SearchNodeL
           Solver % Variable % NonlinConverged = 1
         END IF          
       END IF
-      Tolerance = ListGetCReal( SolverParams,'Nonlinear System Diverence Limit',Stat)
+
+      Tolerance = ListGetCReal( SolverParams,'Nonlinear System Divergence Limit',Stat)
       IF( Stat .AND. Change > Tolerance ) THEN
         IF( IterNo > 1 .AND. Change > PrevChange ) THEN
           CALL Info('ComputeChange','Nonlinear iteration diverged over tolerance')
           Solver % Variable % NonlinConverged = 2
+        ELSE 
+          MaxIter = ListGetInteger( SolverParams,'Nonlinear System Max Iterations',Stat)
+          IF( IterNo >= MaxIter ) THEN
+            Solver % Variable % NonlinConverged = 2
+            CALL Info('ComputeChange','Nonlinear iteration did not converge to tolerance')
+          END IF
         END IF
       END IF
+
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Exit Condition',Stat)
       IF( Stat .AND. Tolerance > 0.0 ) THEN
         CALL Info('ComputeChange','Nonlinear iteration condition enforced by exit condition')
         Solver % Variable % NonlinConverged = 3
       END IF
+      
       IF( Solver % Variable % NonlinConverged > 1 ) THEN
         MinIter = ListGetInteger( SolverParams,'Nonlinear System Min Iterations',Stat)
         IF( Stat .AND. IterNo < MinIter ) THEN

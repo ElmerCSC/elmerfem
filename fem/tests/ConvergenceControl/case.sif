@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------
-! Divergence control test case
+! Convergence control test case
 !
 ! This is a simple case where the nonlinear iteration is only
 ! conditionally stable. With time the nonlinear source term increases and
@@ -13,7 +13,7 @@
 ! dt=0.01 -> 0.46 s
 ! dt=0.02 -> 0.51 s
 !
-! With divergence control we decrease the timestep when control is lost
+! With convergence control we decrease the timestep when control is lost
 ! Compared to adaptive timestepping this is more primitive since we
 ! just look at divergence vs. convergence.
 !
@@ -45,8 +45,8 @@ Simulation
 
 !  Post File = "case.vtu"
 
-! Set divergence control on
-  Divergence Control = Logical True
+! Set convergence control on
+  Convergence Control = Logical True
 
 ! The timestep multipliers in case of convergence and divergence
   Adaptive Increase Coefficient = Real 1.1

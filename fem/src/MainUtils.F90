@@ -1810,18 +1810,22 @@ CONTAINS
 !> Solve the equations one-by-one. 
 !------------------------------------------------------------------------------
   SUBROUTINE SolveEquations( Model, dt, TransientSimulation, &
-      CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
+      CoupledMinIter, CoupledMaxIter, SteadyStateReached, &
+      RealTimestep, BeforeTime, AtTime, AfterTime )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     REAL(KIND=dp) :: dt
     INTEGER, OPTIONAL :: RealTimestep
     INTEGER :: CoupledMinIter, CoupledMaxIter
     LOGICAL :: TransientSimulation, SteadyStateReached, TransientSolver
+    LOGICAL, OPTIONAL :: BeforeTime, AtTime, AfterTime
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: RelativeChange, Tolerance, PrevDT = 0.0d0, Relaxation, SSCond
     INTEGER :: i,j,k,l,n,ierr,istat,Visited=0, RKorder=0, nSolvers
     LOGICAL :: Found, Stat, AbsNorm, Scanning, Convergence, RungeKutta, MeActive, &
-       NeedSol, CalculateDerivative, TestConvergence, TestDivergence, DivergenceExit
+        NeedSol, CalculateDerivative, TestConvergence, TestDivergence, DivergenceExit, &
+        ExecSlot
+    
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Mesh_t),   POINTER :: Mesh
@@ -1852,7 +1856,6 @@ CONTAINS
     DivergenceExit = .FALSE.
     
     IF ( TransientSimulation ) THEN
-      TestDivergence = ListGetLogical( CurrentModel % Simulation, 'Check Divergence', Found ) 
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
         IF ( Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
@@ -1865,224 +1868,251 @@ CONTAINS
     END IF
 !------------------------------------------------------------------------------
 
-    CALL Info('SolveEquations','Solvers before timestep',Level=12)
-    DO k=1,nSolvers
-      Solver => Model % Solvers(k)
-      IF ( Solver % PROCEDURE==0 ) CYCLE
-      IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_TIME .OR. &
-          Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
-
-        IF( PRESENT( RealTimeStep ) ) THEN
-          IF( RealTimeStep == 1 ) THEN
-            IF( ListGetLogical( Solver % Values,'Skip First Timestep',Found ) ) CYCLE
-          END IF
-        END IF
-          
-        ! Use predictor method
-        IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
-          CALL Info('SolveEquations','Switching time-stepping method to predictor method',Level=7)
-          CALL ListAddString( Solver % Values, 'Timestepping Method', &
-             ListGetString( Solver % Values, 'Predictor Method',Found) )
-          IF(.NOT. Found ) THEN
-            CALL Fatal('SolveEquations','Predictor-corrector schemes require > Predictor Method <')
-          END IF
-          CALL ListAddLogical( Solver % Values,'Predictor Phase',.TRUE.)
-        END IF
-
-        CALL SolverActivate( Model,Solver,dt,TransientSimulation )
-        CALL ParallelBarrier
-
-        ! Use Corrector method
-        IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
-          CALL Info('SolveEquations','Switching time-stepping method to corrector method',Level=7)
-          CALL ListAddString( Solver % Values, 'Timestepping Method', &
-             ListGetString( Solver % Values, 'Corrector Method',Found) )
-          IF(.NOT. Found ) THEN
-            CALL Fatal('SolveEquations','Predictor-corrector schemes require > Corrector Method <')
-          END IF
-        END IF
-      END IF
-    END DO
-
-!------------------------------------------------------------------------------
-
-    ALLOCATE( DoneThis(nSolvers), AfterConverged(nSolvers) )
-
-    DO i=1,nSolvers
-      Solver => Model % Solvers(i)
-      AfterConverged(i) = ListGetLogical( Solver % Values, &
-             'Coupled System After Others Converged', Found )
-    END DO
-
-!------------------------------------------------------------------------------
-    CALL Info('SolveEquations','Solvers in main iteration loop',Level=12)
-
-    TimeVar => VariableGet( Model % Variables, 'Time')
-    sTime => TimeVar % Values(1)
-
-    RungeKutta = ListGetString( Model % Simulation, &
-           'Timestepping Method', Found ) == 'runge-kutta'
-
-    IF( .NOT. RungeKutta ) THEN
-      ! Without Runge-Kutta the cycling over equations is pretty easy
-      CALL SolveCoupled()
+    IF( PRESENT( BeforeTime ) ) THEN
+      ExecSlot = BeforeTime
     ELSE
-      CALL Info('SolveEquations','Using Runge-Kutta time-stepping',Level=12)
+      ExecSlot = .TRUE.
+    END IF
 
-      CALL Info('SolveEquations','Runge-Kutta predictor step',Level=12)
-      sTime = sTime - dt
-      CALL SolveCoupled()
-      
-      ! Perform Runge-Kutta steps for ru
-      !---------------------------------------------------------------
-
-      DO i=1,nSolvers
-        Solver => Model % Solvers(i)
-
+    IF( ExecSlot ) THEN
+      CALL Info('SolveEquations','Solvers before timestep',Level=12)
+      DO k=1,nSolvers
+        Solver => Model % Solvers(k)
         IF ( Solver % PROCEDURE==0 ) CYCLE
-        IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
-        
-        RungeKutta = .FALSE.
-        IF ( TransientSimulation .AND. Solver % TimeOrder == 1 ) THEN
-          RungeKutta = ListGetString( Solver % Values, &
-              'Timestepping Method', Found ) == 'runge-kutta'
-        END IF
-        
-        IF ( .NOT. RungeKutta ) CYCLE
+        IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_TIME .OR. &
+            Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
 
-        CALL Info('SolveEquations','Solver '//TRIM(I2S(i))//' is Runge-Kutta Solver',Level=12)
-        IF ( .NOT. ALLOCATED(RKCoeff) ) THEN
-          ALLOCATE(RKCoeff(nSolvers), RK2_ErrorEstimate(nSolvers))
-        END IF
+          IF( PRESENT( RealTimeStep ) ) THEN
+            IF( RealTimeStep == 1 ) THEN
+              IF( ListGetLogical( Solver % Values,'Skip First Timestep',Found ) ) CYCLE
+            END IF
+          END IF
 
-        n = SIZE(Solver % Variable % Values)
-        ALLOCATE(RKCoeff(i) % k1(n), RKCoeff(i) % k2(n), RKCoeff(i) % k3(n), &
-            RKCoeff(i) % k4(n) )
-        
-        RKorder = Solver % Order
-        k1 => RKCoeff(i) % k1
-        k1 = Solver % Variable % Values-Solver % Variable % PrevValues(:,1)
-        Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + 2*k1/RKorder
+          ! Use predictor method
+          IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+            CALL Info('SolveEquations','Switching time-stepping method to predictor method',Level=7)
+            CALL ListAddString( Solver % Values, 'Timestepping Method', &
+                ListGetString( Solver % Values, 'Predictor Method',Found) )
+            IF(.NOT. Found ) THEN
+              CALL Fatal('SolveEquations','Predictor-corrector schemes require > Predictor Method <')
+            END IF
+            CALL ListAddLogical( Solver % Values,'Predictor Phase',.TRUE.)
+          END IF
+          
+          CALL SolverActivate( Model,Solver,dt,TransientSimulation )
+          CALL ParallelBarrier
+          
+          ! Use Corrector method
+          IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+            CALL Info('SolveEquations','Switching time-stepping method to corrector method',Level=7)
+            CALL ListAddString( Solver % Values, 'Timestepping Method', &
+                ListGetString( Solver % Values, 'Corrector Method',Found) )
+            IF(.NOT. Found ) THEN
+              CALL Fatal('SolveEquations','Predictor-corrector schemes require > Corrector Method <')
+            END IF
+          END IF
+        END IF
       END DO
-            
-      IF ( .NOT. ALLOCATED(RKCoeff) ) THEN        
-        CALL Fatal('SolveEquations','No Runge-Kutta after all in any Solver?')
-      END IF
+    END IF 
 
       
-      CALL Info('SolveEquations','Using Runge-Kutta Order: '//TRIM(I2S(RKOrder)),Level=12)
+!------------------------------------------------------------------------------
+    IF( PRESENT( AtTime ) ) THEN
+      ExecSlot = AtTime
+    ELSE
+      ExecSlot = .TRUE.
+    END IF
 
-      IF(RKorder==4) THEN
-        dt = dt / 2
-        sTime = sTime + dt
-      ELSE
-        sTime = sTime + dt
-      END IF
-      CALL SolveCoupled()
-
-      RK2_ErrorEstimate = 0._dp
-      RK2_err = 0.0_dp
+    IF( ExecSlot ) THEN
+      TestDivergence = ListGetLogical( CurrentModel % Simulation, &
+          'Convergence Control Within Iterations', Found ) 
+      
+      ALLOCATE( DoneThis(nSolvers), AfterConverged(nSolvers) )
+      
       DO i=1,nSolvers
         Solver => Model % Solvers(i)
-        IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
-          
-        k1 => RKCoeff(i) % k1
-        k2 => RKCoeff(i) % k2
-        k2 = Solver % Variable % Values - Solver % Variable % PrevValues(:,1)
-        SELECT CASE(RKorder)
-        CASE(2)
-          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + (k1+k2)/2
-          RK2_Errorestimate(i) = SUM(((k2-k1)/2)**2)
-          RK2_ErrorEstimate(i) = SQRT( ParallelReduction(RK2_ErrorEstimate(i)) ) / &
-              Solver % Variable % Norm
-          RK2_err = MAX(RK2_err, RK2_ErrorEstimate(i) )
-        CASE(4)
-          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k2
-          k2 = 2*k2
-        END SELECT
+        AfterConverged(i) = ListGetLogical( Solver % Values, &
+            'Coupled System After Others Converged', Found )
       END DO
 
-      ! Provide error measure for adaptive timestepping = ||RK2 (Heun) - Explicit Euler|| !
-      IF ( RKorder == 2 ) THEN
-        CALL ListAddConstReal( Model % Simulation, 'Adaptive Error Measure', RK2_err )
-      END IF
+!------------------------------------------------------------------------------
+      CALL Info('SolveEquations','Solvers in main iteration loop',Level=12)
 
+      TimeVar => VariableGet( Model % Variables, 'Time')
+      sTime => TimeVar % Values(1)
 
-      ! For 4th order R-K we don't have error estimate but we have more steps to do
-      IF( RKOrder == 4 ) THEN
+      RungeKutta = ListGetString( Model % Simulation, &
+          'Timestepping Method', Found ) == 'runge-kutta'
+
+      IF( .NOT. RungeKutta ) THEN
+        ! Without Runge-Kutta the cycling over equations is pretty easy
         CALL SolveCoupled()
+      ELSE
+        CALL Info('SolveEquations','Using Runge-Kutta time-stepping',Level=12)
+
+        CALL Info('SolveEquations','Runge-Kutta predictor step',Level=12)
+        sTime = sTime - dt
+        CALL SolveCoupled()
+
+        ! Perform Runge-Kutta steps for ru
+        !---------------------------------------------------------------
 
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
-          IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
-          
-          k3 => RKCoeff(i) % k3
-          k3 = 2*(Solver % Variable % Values - Solver % Variable % PrevValues(:,1))
-          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k3
+
+          IF ( Solver % PROCEDURE==0 ) CYCLE
+          IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+
+          RungeKutta = .FALSE.
+          IF ( TransientSimulation .AND. Solver % TimeOrder == 1 ) THEN
+            RungeKutta = ListGetString( Solver % Values, &
+                'Timestepping Method', Found ) == 'runge-kutta'
+          END IF
+
+          IF ( .NOT. RungeKutta ) CYCLE
+
+          CALL Info('SolveEquations','Solver '//TRIM(I2S(i))//' is Runge-Kutta Solver',Level=12)
+          IF ( .NOT. ALLOCATED(RKCoeff) ) THEN
+            ALLOCATE(RKCoeff(nSolvers), RK2_ErrorEstimate(nSolvers))
+          END IF
+
+          n = SIZE(Solver % Variable % Values)
+          ALLOCATE(RKCoeff(i) % k1(n), RKCoeff(i) % k2(n), RKCoeff(i) % k3(n), &
+              RKCoeff(i) % k4(n) )
+
+          RKorder = Solver % Order
+          k1 => RKCoeff(i) % k1
+          k1 = Solver % Variable % Values-Solver % Variable % PrevValues(:,1)
+          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + 2*k1/RKorder
         END DO
 
-        sTime = sTime + dt
-        dt = 2 * dt
+        IF ( .NOT. ALLOCATED(RKCoeff) ) THEN        
+          CALL Fatal('SolveEquations','No Runge-Kutta after all in any Solver?')
+        END IF
+
+
+        CALL Info('SolveEquations','Using Runge-Kutta Order: '//TRIM(I2S(RKOrder)),Level=12)
+
+        IF(RKorder==4) THEN
+          dt = dt / 2
+          sTime = sTime + dt
+        ELSE
+          sTime = sTime + dt
+        END IF
         CALL SolveCoupled()
 
+        RK2_ErrorEstimate = 0._dp
+        RK2_err = 0.0_dp
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
           IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
-          
+
           k1 => RKCoeff(i) % k1
           k2 => RKCoeff(i) % k2
-          k3 => RKCoeff(i) % k3
-          k4 => RKCoeff(i) % k4
-          k4 = Solver % Variable % Values - Solver % Variable % PrevValues(:,1)
-
-          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + &
-              ( k1 + 2*k2 + 2*k3 + k4 ) / 6
+          k2 = Solver % Variable % Values - Solver % Variable % PrevValues(:,1)
+          SELECT CASE(RKorder)
+          CASE(2)
+            Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + (k1+k2)/2
+            RK2_Errorestimate(i) = SUM(((k2-k1)/2)**2)
+            RK2_ErrorEstimate(i) = SQRT( ParallelReduction(RK2_ErrorEstimate(i)) ) / &
+                Solver % Variable % Norm
+            RK2_err = MAX(RK2_err, RK2_ErrorEstimate(i) )
+          CASE(4)
+            Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k2
+            k2 = 2*k2
+          END SELECT
         END DO
-      END IF
 
-      DO i=1,nSolvers
-        Solver => Model % Solvers(i)
-        IF ( ALLOCATED(RKCoeff(i) % k1) ) THEN
-          DEALLOCATE(RKCoeff(i) % k1, RKCoeff(i) % k2, RKCoeff(i) % k3, RKCoeff(i) % k4)
+        ! Provide error measure for adaptive timestepping = ||RK2 (Heun) - Explicit Euler|| !
+        IF ( RKorder == 2 ) THEN
+          CALL ListAddConstReal( Model % Simulation, 'Adaptive Error Measure', RK2_err )
         END IF
 
-        IF( ASSOCIATED( Solver % Variable ) ) THEN
-          Solver % Variable % Norm = ComputeNorm(Solver, &
-              SIZE( Solver % Variable % Values), Solver % Variable % Values)
+
+        ! For 4th order R-K we don't have error estimate but we have more steps to do
+        IF( RKOrder == 4 ) THEN
+          CALL SolveCoupled()
+
+          DO i=1,nSolvers
+            Solver => Model % Solvers(i)
+            IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
+
+            k3 => RKCoeff(i) % k3
+            k3 = 2*(Solver % Variable % Values - Solver % Variable % PrevValues(:,1))
+            Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k3
+          END DO
+
+          sTime = sTime + dt
+          dt = 2 * dt
+          CALL SolveCoupled()
+
+          DO i=1,nSolvers
+            Solver => Model % Solvers(i)
+            IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
+
+            k1 => RKCoeff(i) % k1
+            k2 => RKCoeff(i) % k2
+            k3 => RKCoeff(i) % k3
+            k4 => RKCoeff(i) % k4
+            k4 = Solver % Variable % Values - Solver % Variable % PrevValues(:,1)
+
+            Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + &
+                ( k1 + 2*k2 + 2*k3 + k4 ) / 6
+          END DO
+        END IF
+
+        DO i=1,nSolvers
+          Solver => Model % Solvers(i)
+          IF ( ALLOCATED(RKCoeff(i) % k1) ) THEN
+            DEALLOCATE(RKCoeff(i) % k1, RKCoeff(i) % k2, RKCoeff(i) % k3, RKCoeff(i) % k4)
+          END IF
+
+          IF( ASSOCIATED( Solver % Variable ) ) THEN
+            Solver % Variable % Norm = ComputeNorm(Solver, &
+                SIZE( Solver % Variable % Values), Solver % Variable % Values)
+          END IF
+        END DO
+        DEALLOCATE(RKCoeff)
+      END IF
+
+      IF ( .NOT.TransientSimulation ) SteadyStateReached = ALL(DoneThis)
+      DEALLOCATE( DoneThis, AfterConverged )
+    END IF
+!------------------------------------------------------------------------------      
+
+    
+!------------------------------------------------------------------------------
+    IF( PRESENT( AfterTime ) ) THEN
+      ExecSlot = AfterTime
+    ELSE
+      ExecSlot = .TRUE.
+    END IF
+
+    IF( ExecSlot ) THEN
+      CALL Info('SolveEquations','Solvers after timestep',Level=12)
+      DO k=1,nSolvers
+        Solver => Model % Solvers(k)
+        IF ( Solver % PROCEDURE==0 ) CYCLE
+        IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_TIME .OR. &
+            Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+
+          IF( PRESENT( RealTimeStep ) ) THEN
+            IF( RealTimeStep == 1 ) THEN
+              IF( ListGetLogical( Solver % Values,'Skip First Timestep',Found ) ) CYCLE
+            END IF
+          END IF
+
+          IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
+            CALL InitializeTimestep(Solver)
+            CALL ListAddLogical( Solver % Values,'Predictor Phase',.FALSE.)
+          END IF
+
+          CALL SolverActivate( Model,Solver,dt,TransientSimulation )
+          CALL ParallelBarrier
         END IF
       END DO
-      DEALLOCATE(RKCoeff)
     END IF
-!------------------------------------------------------------------------------
-
-    CALL Info('SolveEquations','Solvers after timestep',Level=12)
-    DO k=1,nSolvers
-      Solver => Model % Solvers(k)
-      IF ( Solver % PROCEDURE==0 ) CYCLE
-      IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_TIME .OR. &
-          Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
-
-        IF( PRESENT( RealTimeStep ) ) THEN
-          IF( RealTimeStep == 1 ) THEN
-            IF( ListGetLogical( Solver % Values,'Skip First Timestep',Found ) ) CYCLE
-          END IF
-        END IF
-          
-        IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
-          CALL InitializeTimestep(Solver)
-          CALL ListAddLogical( Solver % Values,'Predictor Phase',.FALSE.)
-        END IF
-
-        CALL SolverActivate( Model,Solver,dt,TransientSimulation )
-        CALL ParallelBarrier
-      END IF
-    END DO
-
-!------------------------------------------------------------------------------
-    IF ( .NOT.TransientSimulation ) SteadyStateReached = ALL(DoneThis)
-!------------------------------------------------------------------------------
-    DEALLOCATE( DoneThis, AfterConverged )
-!------------------------------------------------------------------------------
+      
 
 CONTAINS
 
