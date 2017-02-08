@@ -5699,6 +5699,39 @@ CONTAINS
   END SUBROUTINE GetParentUVW
 !------------------------------------------------------------------------------
 
+!-----------------------------------------------------------------------
+!> This routine may be used to terminate the program in the case of an error.
+!-----------------------------------------------------------------------
+   SUBROUTINE Assert(Condition, Caller, ErrorMessage)
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
+     LOGICAL :: Condition
+!-----------------------------------------------------------------------
+     IF ( .NOT. OutputLevelMask(0) ) STOP
+
+     IF(Condition) RETURN !Assertion passed
+
+     WRITE( Message, '(A)') 'ASSERTION ERROR'
+
+     IF(PRESENT(Caller)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(Caller)
+     END IF
+
+     IF(PRESENT(ErrorMessage)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(ErrorMessage)
+     END IF
+
+     WRITE( *, '(A)', ADVANCE='YES' ) Message
+
+     !Provide a stack trace if no caller info provided
+     IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
+
+     STOP
+
+     CALL FLUSH(6)
+!-----------------------------------------------------------------------
+   END SUBROUTINE Assert
+!-----------------------------------------------------------------------
 
   FUNCTION GetNOFColours(USolver) RESULT( ncolours ) 
     IMPLICIT NONE

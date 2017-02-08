@@ -45,6 +45,7 @@ MODULE MainUtils
 
 !------------------------------------------------------------------------------
   Use BlockSolve
+  USE IterSolve, ONLY : NumericalError
 #ifdef USE_ISO_C_BINDINGS
   USE LoadMod
 #endif
@@ -1824,8 +1825,7 @@ CONTAINS
     INTEGER :: i,j,k,l,n,ierr,istat,Visited=0, RKorder=0, nSolvers
     LOGICAL :: Found, Stat, AbsNorm, Scanning, Convergence, RungeKutta, MeActive, &
         NeedSol, CalculateDerivative, TestConvergence, TestDivergence, DivergenceExit, &
-        ExecSlot
-    
+        ExecSlot, CoupledAbort
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Mesh_t),   POINTER :: Mesh
@@ -2283,13 +2283,10 @@ CONTAINS
       END DO
 
     IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
-       IF ( ListGetLogical( Model % Simulation,  &
-               'Coupled System Abort Not Converged', Found ) ) THEN
-          CALL Error( 'SolveEquations', ' ' )
-          WRITE( Message, * ) 'Coupled system iteration: ', i
-          CALL Error( 'SolveEquations', Message )
-          CALL Fatal( 'SolveEquations', ' ' )
-       END IF
+      CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(i)),Level=4)
+      CoupledAbort = ListGetLogical( Model % Simulation,  &
+           'Coupled System Abort Not Converged', Found )
+      CALL NumericalError('SolveEquations','Coupled system did not converge',CoupledAbort)
     END IF
 
     END SUBROUTINE SolveCoupled
