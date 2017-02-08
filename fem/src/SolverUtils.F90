@@ -12020,13 +12020,19 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             END IF
           ELSE
             IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
-              CollectionVector(k) = CollectionVector(k) - &
-                        RestMatrix % TValues(j) * ForceVector(RestMatrix % Cols(j)) / &
-                           StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+!             CollectionVector(k) = CollectionVector(k) - &
+!                       RestMatrix % TValues(j) * ForceVector(RestMatrix % Cols(j)) / &
+!                          StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+             CALL AddToMatrixElement( CollectionMatrix, &
+                  k, RestMatrix % Cols(j), RestMatrix % TValues(j) )
+             NonEmptyRow = NonEmptyRow .OR. RestMatrix % TValues(j) /= 0
             ELSE
-              CollectionVector(k) = CollectionVector(k) - &
-                        RestMatrix % Values(j) * ForceVector(RestMatrix % Cols(j)) / &
-                           StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+!             CollectionVector(k) = CollectionVector(k) - &
+!                       RestMatrix % Values(j) * ForceVector(RestMatrix % Cols(j)) / &
+!                          StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+              CALL AddToMatrixElement( CollectionMatrix, &
+                  k, RestMatrix % Cols(j), RestMatrix % Values(j) )
+              NonEmptyRow = NonEmptyRow .OR. RestMatrix % Values(j) /= 0
             END IF
           END IF
 
