@@ -261,7 +261,7 @@ Solver 5
   Expression 1 = Variable time,timestep size  ! save rotation angle 
     Real MATC "omega*(tx(0)-tx(1))"
   show norm index = integer 15
-  reference norm = real 3.98418112E+01
+  reference norm = 3.98464218E+01
 End
 
 ! Periodic boundary, stator part
