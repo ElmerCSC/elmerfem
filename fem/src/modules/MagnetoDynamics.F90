@@ -1788,7 +1788,7 @@ CONTAINS
       BC => GetBC()
       IF (.NOT.ASSOCIATED(BC)) CYCLE
       IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
-                 TRIM(Solver % Variable % Name)//' {e}')) CYCLE
+                 TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
  
       j=1; k=GetBoundaryEdgeIndex(Boundary,j)
       DO WHILE(k>0)
@@ -4471,7 +4471,7 @@ CONTAINS
       BC => GetBC()
       IF (.NOT.ASSOCIATED(BC)) CYCLE
       IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
-                 TRIM(Solver % Variable % Name)//' {e}')) CYCLE
+                 TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
  
       j=1; k=GetBoundaryEdgeIndex(Boundary,j)
       DO WHILE(k>0)
