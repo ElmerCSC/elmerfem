@@ -114,7 +114,7 @@
 
      INTEGER :: iargc, NoArgs
 
-     INTEGER :: ExtrudeLevels, MeshIndex
+     INTEGER :: ExtrudeLayers, MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
 #ifdef HAVE_TRILINOS
@@ -325,14 +325,18 @@ END INTERFACE
 
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
-         ExtrudeLevels=GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
+         ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found) - 1 
+         IF( .NOT. Found ) THEN
+           ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Layers',Found)
+         END IF
+           
          IF (Found) THEN
-            IF(ExtrudeLevels>1) THEN
+            IF(ExtrudeLayers > 1) THEN
                ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
                IF (Found) THEN
-                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2, ExtrudedMeshName)
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1, ExtrudedMeshName)
                ELSE
-                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
                END IF
                DO i=1,CurrentModel % NumberOfSolvers
                   IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &

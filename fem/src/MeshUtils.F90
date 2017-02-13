@@ -10794,12 +10794,12 @@ END SUBROUTINE GetMaxDefs
     IF( GotRatio ) THEN
       CALL Info('UnitSegmentDivision','Creating geometric division',Level=5)
 
-      h1 = (1-q**(1.0_dp/n))/(1-q)
+      h1 = (1-q**(1.0_dp/(n-1)))/(1-q)
       w(0) = 0.0_dp
       hn = h1;
       DO i=1,n-1
         w(i) = w(i-1) + hn;
-        hn = hn * ( q**(1.0_dp/n) )
+        hn = hn * ( q**(1.0_dp/(n-1)) )
       END DO
       w(n) = 1.0_dp
 
