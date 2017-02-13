@@ -4447,15 +4447,13 @@ CONTAINS
 
           timeError = timeErrorMax
 
-          dtOld = dt
-
           ! 1st order error estimate for the first control step
           IF (RealTimestep == 3 ) THEN 
             PredCorrOrder = 1
           END IF
 
           ! Estimate local truncation error use old zeta
-          CALL PredCorrErrorEstimate( eta, dt, PredCorrOrder, timeError, zeta )
+          CALL PredCorrErrorEstimate( eta, dtOld, PredCorrOrder, timeError, zeta )
           IF (RealTimestep == 3 ) THEN 
             etaOld =eta
           END IF
@@ -4483,6 +4481,7 @@ CONTAINS
           CALL Info('Predictor-Corrector', Message, Level=3)
           WRITE (Message,*) "zeta=", zeta, "eta=",  eta, "terr=", timeError
           CALL Info('Predictor-Corrector', Message, Level=6)
+          dtOld = dt
         END IF 
       END IF
       
