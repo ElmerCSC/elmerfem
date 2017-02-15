@@ -72,22 +72,22 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t), SAVE :: Nodes
   TYPE(GaussIntegrationPoints_t) :: IP
 
-  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat
+  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat, bedPComputed = .FALSE.
 
-  INTEGER :: i, j, n, m, t, p, Nn, istat, DIM
+  INTEGER :: i, j, n, m, t, p, Nn, istat, DIM, HydroDIM
   INTEGER, POINTER :: Permutation(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
-  REAL(KIND=dp) :: Norm, Normal(3), PwVector(3), pwi, s
+  REAL(KIND=dp) :: Norm, Normal(3), PwVector(3), PbVector(3), pwi, pbi, s
   REAL(KIND=dp) :: detJ                                    
 
-  REAL(KIND=dp), ALLOCATABLE :: pwt(:), Basis(:), dBasisdx(:,:), &
+  REAL(KIND=dp), ALLOCATABLE :: pwt(:), pbt(:), Basis(:), dBasisdx(:,:), &
                                 ddBasisddx(:,:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
        
 
-  SAVE AllocationsDone, DIM, SolverName, pwt
+  SAVE AllocationsDone, DIM, SolverName, pwt, pbt, bedPComputed, HydroDIM
   SAVE Basis, dBasisdx, ddBasisddx
   
   !------------------------------------------------------------------------------
@@ -103,12 +103,21 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed  ) THEN
 
     DIM = CoordinateSystemDimension()
+    ! Check if bed pressure is required
+    IF (DIM == PointerToVariable % dofs) THEN
+      HydroDIM = DIM
+      bedPComputed = .FALSE.
+    ELSE 
+      HydroDIM = 2*DIM
+      bedPComputed = .TRUE.
+    END IF
+
     WRITE(SolverName, '(A)') 'GetHydrostaticLoads'
     n = Solver % Mesh % MaxElementNodes ! just big enough for elemental arrays
     m = Model % Mesh % NumberOfNodes
-    IF (AllocationsDone) DEALLOCATE(pwt, Basis, dBasisdx, ddBasisddx)
+    IF (AllocationsDone) DEALLOCATE(pwt, pbt, Basis, dBasisdx, ddBasisddx)
 
-    ALLOCATE(pwt(n), Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), STAT=istat )
+    ALLOCATE(pwt(n), pbt(n), Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), STAT=istat )
          
     IF ( istat /= 0 ) THEN
       CALL FATAL( SolverName, 'Memory allocation error.' )
@@ -133,7 +142,9 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
     BC => GetBC( Element ) 
     pwt(1:n) =  -1.0 * ListGetReal(BC, 'External Pressure', n, &
                     Element % NodeIndexes , GotIt)
-!
+    pbt(1:n) =  -1.0 * ListGetReal(BC, 'Bedrock Pressure', n, &
+                    Element % NodeIndexes , GotIt)
+
 ! Integration
 ! 
     CALL GetElementNodes( Nodes )
@@ -149,16 +160,25 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 !  Value of pwt at integration point
 !
       pwi = SUM(pwt(1:n)*Basis(1:n))
+      pbi = SUM(pbt(1:n)*Basis(1:n))
 !
 ! Compute pw_x, pw_y, pw_z
 !
       PwVector(1:DIM) = pwi * Normal(1:DIM)
+      PbVector(1:DIM) = pbi * Normal(1:DIM)
 
       DO i = 1, n
         Nn = Permutation(Element % NodeIndexes(i))
         DO j = 1, DIM
-          VariableValues(DIM*(Nn-1)+j) = VariableValues(DIM*(Nn-1)+j) + PwVector(j) * s * Basis(i)
-        END DO
+!           VariableValues(DIM*(Nn-1)+j) = VariableValues(DIM*(Nn-1)+j) + PwVector(j) * s * Basis(i)
+          VariableValues(HydroDIM*(Nn-1)+j) = VariableValues(HydroDIM*(Nn-1)+j) + PwVector(j) * s * Basis(i)
+        END DO        
+        IF (bedPComputed) THEN
+          DO j = 1, DIM
+            VariableValues(HydroDIM*(Nn-1)+j+DIM) = VariableValues(HydroDIM*(Nn-1)+j+DIM) + PbVector(j) * s * Basis(i)
+          END DO
+        END IF
+
       END DO
 
     END DO
