@@ -1039,21 +1039,9 @@ int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
 
   if(info) printf("Saving %d node coordinates.\n",noknots);
   
-  if(data->dim == 1) {
-    sprintf(outstyle,"%%.%dg 0.0 0.0\n",decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,data->x[i]);
-  }
-  else if(data->dim == 2) {
-    sprintf(outstyle,"%%.%dg %%.%dg 0.0\n",decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,data->x[i],data->y[i]);
-  }
-  else if(data->dim == 3) {
-    sprintf(outstyle,"%%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,data->x[i],data->y[i],data->z[i]);      
-  }
+  sprintf(outstyle,"%%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
+  for(i=1; i <= noknots; i++) 
+    fprintf(out,outstyle,data->x[i],data->y[i],data->z[i]);      
 
   printf("Saving %d bulk element topologies.\n",bulkelems);
 
@@ -1205,22 +1193,9 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     return(2);
   }
 
-  
-  if(data->dim == 1) {
-    sprintf(outstyle,"%%d %%d %%.%dg 0.0 0.0\n",decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i]);
-  }
-  if(data->dim == 2) {
-    sprintf(outstyle,"%%d %%d %%.%dg %%.%dg 0.0\n",decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i],data->y[i]);
-  }
-  else if(data->dim == 3) {
-    sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
-  }
+  sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
+  for(i=1; i <= noknots; i++) 
+    fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
 
   fclose(out);
 
@@ -1488,21 +1463,9 @@ int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
     return(2);
   }
 
-  if(data->dim == 1) {
-    sprintf(outstyle,"%%d %%d %%.%dg 0.0 0.0\n",decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i]);
-  }
-  if(data->dim == 2) {
-    sprintf(outstyle,"%%d %%d %%.%dg %%.%dg 0.0\n",decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i],data->y[i]);
-  }
-  else if(data->dim == 3) {
-    sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
-  }
+  sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
+  for(i=1; i <= noknots; i++) 
+    fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
   fclose(out);
 
 
@@ -2189,7 +2152,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
 	k = data->topology[j][i];
 	x += data->x[k];
 	y += data->y[k];
-	if(data->dim==3) z += data->z[k];
+	z += data->z[k];
       }
       arrange[j] = (cx*x + cy*y + cz*z) / nonodes;
     }
@@ -2221,7 +2184,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
 	k = data->topology[j][i];
 	x += data->x[k];
 	y += data->y[k];
-	if(data->dim==3) z += data->z[k];
+	z += data->z[k];
       }
       arrange[j] = (-cy*x + cx*y + cz*z) / nonodes;
     }
@@ -2263,7 +2226,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
 	k = data->topology[j][i];
 	x += data->x[k];
 	y += data->y[k];
-	if(data->dim==3) z += data->z[k];
+	z += data->z[k];
       }
       arrange[j] = (-cz*x - cy*y + cx*z) / nonodes;
     }
@@ -2429,15 +2392,12 @@ int PartitionSimpleElementsNonRecursive(struct FemType *data,int dimpart[],int d
 
   MaxX = MinX = data->x[1];
   MaxY = MinY = data->y[1];
-  if( data->dim == 3 ) 
-    MaxZ = MinZ = data->z[1];
-  else 
-    MaxZ = MinZ = 0.0;
+  MaxZ = MinZ = data->z[1];
 
   for(i=1;i<=noknots;i++) {
     x = data->x[i];
     y = data->y[i];
-    if(data->dim==3) z = data->z[i];
+    z = data->z[i];
     
     MaxX = MAX( MaxX, x);
     MinX = MIN( MinX, x);
@@ -2459,7 +2419,7 @@ int PartitionSimpleElementsNonRecursive(struct FemType *data,int dimpart[],int d
       k = data->topology[j][i];
       x += data->x[k];
       y += data->y[k];
-      if(data->dim==3) z += data->z[k];
+      z += data->z[k];
     }
     x = x / nonodes;
     y = y / nonodes;
@@ -2574,22 +2534,19 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
 
   x = data->x[1];
   y = data->y[1];
-  if(dim==3) z = data->z[1];
+  z = data->z[1];
 
   r = sqrt(x*x+y*y);
   f = 180 * atan2(y,x)/FM_PI;
   if( f < 0.0 ) f = f + 360.0;    
   MaxR = MinR = r;
   MaxF = MinF = f;
-  if(dim == 3) 
-    MaxZ = MinZ = z;
-  else
-    MaxZ = MinZ = 0.0;
+  MaxZ = MinZ = z;
 
   for(i=1;i<=noknots;i++) {
     x = data->x[i];
     y = data->y[i];
-    if(dim==3) z = data->z[i];
+    z = data->z[i];
 
     r = sqrt(x*x+y*y);
     f = 180 * atan2(y,x)/FM_PI;
@@ -2599,16 +2556,14 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
     MinR = MIN( MinR, r);
     MaxF = MAX( MaxF, f);
     MinF = MIN( MinF, f);
-    if( dim == 3 ) {
-      MaxZ = MAX( MaxZ, z);
-      MinZ = MIN( MinZ, z);
-    }
+    MaxZ = MAX( MaxZ, z);
+    MinZ = MIN( MinZ, z);
   }
 
   if( info ) {
     printf("Range in r-direction: %12.5e %12.5e\n",MinR,MaxR);
     printf("Range in f-direction: %12.5e %12.5e\n",MinF,MaxF);
-    if(dim==3) printf("Range in z-direction: %12.5e %12.5e\n",MinZ,MaxZ);
+    printf("Range in z-direction: %12.5e %12.5e\n",MinZ,MaxZ);
   }
   if( MaxF - MinF > 180.0 ) {
     MaxF = 360.0;
@@ -2632,11 +2587,11 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
       k = data->topology[j][i];
       x += data->x[k];
       y += data->y[k];
-      if(dim==3) z += data->z[k];
+      z += data->z[k];
     }
     x = x / nonodes;
     y = y / nonodes;
-    if(dim==3) z = z / nonodes;
+    z = z / nonodes;
     
     r = sqrt(x*x+y*y);
     f = 180 * atan2(y,x)/FM_PI;
@@ -2689,11 +2644,11 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
       k = data->topology[j][i];
       x += data->x[k];
       y += data->y[k];
-      if(dim==3) z += data->z[k];
+      z += data->z[k];
     }
     x = x / nonodes;
     y = y / nonodes;
-    if(dim==3) z = z / nonodes;
+    z = z / nonodes;
     
     r = sqrt(x*x+y*y);
     f = 180 * atan2(y,x)/FM_PI;
@@ -3545,7 +3500,7 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
     for(j=1;j<=noknots;j++) {
       x = data->x[j];
       y = data->y[j];
-      if(data->dim==3) z = data->z[j];
+      z = data->z[j];
       arrange[j] = cx*x + cy*y + cz*z;
     }
     SortIndex(noknots,arrange,indx);
@@ -3563,7 +3518,7 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
     for(j=1;j<=noknots;j++) {
       x = data->x[j];
       y = data->y[j];
-      if(data->dim==3) z = data->z[j];
+      z = data->z[j];
       arrange[j] = -cy*x + cx*y + cz*z;
     }
     SortIndex(noknots,arrange,indx);
@@ -3604,7 +3559,7 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
     for(j=1;j<=noknots;j++) {
       x = data->x[j];
       y = data->y[j];
-      if(data->dim==3) z = data->z[j];
+      z = data->z[j];
       arrange[j] = -cz*x - cy*y + cx*z;
     }
     SortIndex(noknots,arrange,indx);
@@ -6292,21 +6247,21 @@ int ReorderElementsMetis(struct FemType *data,int info)
   if(info) printf("Moving knots to new positions\n");
   newx = Rvector(1,data->noknots);
   newy = Rvector(1,data->noknots);
-  if(data->dim == 3) newz = Rvector(1,data->noknots);
+  newz = Rvector(1,data->noknots);
 
   for(i=1;i<=data->noknots;i++) {
     newx[i] = data->x[perm[i-1]+1];
     newy[i] = data->y[perm[i-1]+1];
-    if(data->dim == 3) newz[i] = data->z[perm[i-1]+1];
+    newz[i] = data->z[perm[i-1]+1];
   }
 
   free_Rvector(data->x,1,data->noknots);
   free_Rvector(data->y,1,data->noknots);
-  if(data->dim == 3) free_Rvector(data->z,1,data->noknots);
+  free_Rvector(data->z,1,data->noknots);
 
   data->x = newx;
   data->y = newy;
-  if(data->dim == 3) data->z = newz;
+  data->z = newz;
 
 
   if(info) printf("Chanching the element topology\n");

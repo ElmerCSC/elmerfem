@@ -5023,8 +5023,8 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 	next_int(&cp);              //3 internal elemnt type description
 	matind = next_int(&cp);     //4 number of the belonging region
 	dimplusone = next_int(&cp); //5 dimensiality 4-3D 3-2D
-  next_int(&cp);              //6 zero here always
-  next_int(&cp);              //7 internal elemnt type description
+	next_int(&cp);              //6 zero here always
+	next_int(&cp);              //7 internal elemnt type description
 	nonodes = next_int(&cp);    //8 number of nodes
 		
 	elmertype = FluxToElmerType3D( nonodes, dimplusone-1 );
@@ -5033,7 +5033,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 
 	Getrow(line,in,FALSE);
 	cp = line;
-  nodecnt = 0;
+	nodecnt = 0;
 	for(k=0;k<nonodes;k++) {
 
 	  if(nodecnt >= maxlinenodes) {
