@@ -8271,7 +8271,6 @@ omstart:
   newy = Rvector(1,noknots);
   newz = Rvector(1,noknots);
   for(i=1;i<=noknots;i++) newz[i] = 0.0;
-  }
 
   elemwidth = Rvector(1,nonewelements);
   for(i=1;i<=nonewelements;i++) elemwidth[i] = 0.0;

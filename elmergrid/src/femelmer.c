@@ -754,7 +754,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
     
     iostat = fscanf(in,"%d",&dummyint);
     if( iostat < 1 ) {
-      printf("LoadElmerInput: Failed reading boundary element line %k, reducing size of element table to %d!\n",i);
+      printf("LoadElmerInput: Failed reading boundary element line %d, reducing size of element table to %d!\n",k,i);
       bound->nosides = nosides = i;
       break;
     }      
