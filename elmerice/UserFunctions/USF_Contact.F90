@@ -59,7 +59,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), GroundedMaskPerm(:), HydroPerm(:), DistancePerm(:)
   INTEGER :: nodenumber, ii, DIM, GL_retreat, n, tt, Nn, jj, MSum, ZSum
 
-  LOGICAL :: FirstTime = .TRUE., GotIt, Yeschange, GLmoves, Friction,UnFoundFatal=.TRUE.
+  LOGICAL :: FirstTime = .TRUE., GotIt, Yeschange, GLmoves, Friction,UnFoundFatal=.TRUE., checkContactEveryIter=.FALSE.
 
   REAL (KIND=dp) ::  y, relChange, relChangeOld, Sliding_Budd, Sliding_Weertman, Friction_Coulomb
 
@@ -150,6 +150,11 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
      ELSE
         CALL INFO( USF_Name, 'far inland nodes will not detach', level=3)
      END IF
+
+     checkContactEveryIter = GetLogical( BC, 'Compute Contact in every Nonlinear iteration', GotIt ) 
+     IF (.NOT.GotIt) THEN
+       checkContactEveryIter = .FALSE.
+     END IF
   ENDIF
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -184,7 +189,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   IF ( (relChange.NE.relChangeOld) .AND. (relchange.GT.0.0_dp) .AND. & 
        &            (relchange.LT.TestContact) .AND. (yesChange) .AND. GLmoves ) THEN
      ! Change the basal condition just once per timestep
-     yesChange = .FALSE.
+     yesChange = checkContactEveryIter
 
      CALL Info(USF_name,'FLOW SOLVER HAS SLIGHTLY CONVERGED: look for new basal conditions', Level=3)
 
