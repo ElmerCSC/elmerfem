@@ -22,7 +22,8 @@ SET(ElmerIce_SRC AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     ./AdjointSSA/AdjointSSA_AdjointSolver.F90 ./AdjointSSA/AdjointSSA_CostDiscSolver.F90
     ./AdjointSSA/AdjointSSA_CostRegSolver.F90 ./AdjointSSA/AdjointSSA_SSASolver.F90
     ./AdjointSSA/AdjointSSA_CostContSolver.F90 ./AdjointSSA/AdjointSSA_CostFluxDivSolver.F90
-    ./AdjointSSA/AdjointSSA_GradientSolver.F90)
+    ./AdjointSSA/AdjointSSA_GradientSolver.F90
+    GroundingLineParaSolver.F90)
 
 ADD_LIBRARY(ElmerIceSolvers SHARED ${ElmerIce_SRC})
 
