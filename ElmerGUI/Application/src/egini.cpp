@@ -69,7 +69,11 @@ EgIni::EgIni(QWidget *parent)
   
   // Load initialization file:
   //---------------------------
+#if WITH_QT5
+  cout << "Load " << string(iniFileName.toLatin1()) << "...";
+#else
   cout << "Load " << string(iniFileName.toAscii()) << "...";
+#endif
   cout.flush();
   
   QFile file(iniFileName);

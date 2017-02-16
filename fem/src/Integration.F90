@@ -57,7 +57,7 @@ MODULE Integration
    TYPE GaussIntegrationPoints_t
       INTEGER :: N
 !DIR$ ATTRIBUTES ALIGN:64 :: u, v, w, s
-      REAL(KIND=dp), ALLOCATABLE :: u(:),v(:),w(:),s(:)
+      REAL(KIND=dp), POINTER CONTIG :: u(:),v(:),w(:),s(:)
    END TYPE GaussIntegrationPoints_t
 
    TYPE(GaussIntegrationPoints_t), TARGET, PRIVATE, SAVE :: IntegStuff

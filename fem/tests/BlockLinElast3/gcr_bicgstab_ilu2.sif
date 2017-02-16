@@ -106,6 +106,4 @@ Boundary Condition 1
 End
 
 
-$fprintf( stderr, "TEST CASE 1\n")
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.23581335\n");

@@ -1,0 +1,4 @@
+INCLUDE(test_macros)
+CONFIGURE_FILE(case.sif case.sif COPYONLY)
+file(COPY ELMERSOLVER_STARTINFO mesh_tet HB DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+ADD_ELMER_TEST(mgdyn_bh_gauge NPROCS 1 2 LABELS whitney gauge)

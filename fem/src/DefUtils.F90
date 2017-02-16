@@ -1124,7 +1124,8 @@ CONTAINS
   END SUBROUTINE GetComplexVector
 
 
-!> Set some property elementwise to the active element
+!> Set a named elementwise property (real-valued) to the active element or
+!> given element
   SUBROUTINE SetElementProperty( Name, Values, UElement )
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp) :: Values(:)
@@ -1160,7 +1161,8 @@ CONTAINS
     END IF
   END SUBROUTINE SetElementProperty
 
-!> Get some property elementwise from the active element
+!> Get a named elementwise property (real-valued) from the active element or 
+!> from a given element
   FUNCTION GetElementProperty( Name, UElement ) RESULT(Values)
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp), POINTER :: Values(:)
@@ -2844,22 +2846,9 @@ CONTAINS
     END IF
 
     ! Combine the individual projectors into one massive projector
-    IF(.NOT.ASSOCIATED(Solver % Matrix % ConstraintMatrix)) &
-      Solver % MortarBCsOnly = .TRUE.
-    Ctmp => Solver % Matrix % ConstraintMatrix
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
-
-    IF(.NOT. Solver % MortarBCsOnly) THEN
-      IF(ASSOCIATED(Ctmp).OR.ASSOCIATED(Solver % Matrix % ConstraintMatrix)) THEN
-        IF(.NOT.ASSOCIATED(Ctmp, Solver % Matrix % ConstraintMatrix)) THEN
-          CALL FreeMatrix(Solver % Matrix % ConstraintMatrix)
-          Solver % Matrix % ConstraintMatrix => Ctmp
-          IF (ASSOCIATED(Solver % MortarBCs)) Solver % MortarBCsChanged = .TRUE.
-        END IF
-      END IF
-    END IF
 
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN

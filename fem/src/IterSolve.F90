@@ -73,6 +73,7 @@ MODULE IterSolve
    INTEGER, PARAMETER, PRIVATE :: ITER_RICHARDSON   =           391
    INTEGER, PARAMETER, PRIVATE :: ITER_BICGSTABL    =           400
    INTEGER, PARAMETER, PRIVATE :: ITER_GCR          =           410
+   INTEGER, PARAMETER, PRIVATE :: ITER_IDRS         =           420
 
    !/*
    ! * Preconditioning type code
@@ -107,6 +108,9 @@ CONTAINS
 #endif
 #ifndef HUTI_GCR_RESTART
 #define HUTI_GCR_RESTART ipar(17)
+#endif
+#ifndef HUTI_IDRS_S
+#define HUTI_IDRS_S ipar(18)
 #endif
 
 !------------------------------------------------------------------------------
@@ -277,6 +281,8 @@ CONTAINS
       IterType = ITER_richardson
     CASE('gcr')
       IterType = ITER_GCR
+    CASE('idrs')
+      IterType = ITER_IDRS
     CASE DEFAULT
       IterType = ITER_BiCGStab
     END SELECT
@@ -337,6 +343,12 @@ CONTAINS
       HUTI_BICGSTABL_L = ListGetInteger( Params,'BiCGstabl polynomial degree',&
           GotIt,minv=2)
       IF(.NOT. GotIt) HUTI_BICGSTABL_L = 2
+      Internal = .TRUE.
+
+    CASE (ITER_IDRS)
+      HUTI_WRKDIM = 1
+      HUTI_IDRS_S = ListGetInteger( Params,'IDRS parameter',GotIt,minv=1)
+      IF(.NOT. GotIt) HUTI_IDRS_S = 4
       Internal = .TRUE.
       
     END SELECT
@@ -742,7 +754,7 @@ CONTAINS
     IF ( .NOT. A % COMPLEX ) THEN
       SELECT CASE ( IterType )
 
-       ! Solvers from HUTiter libdary 
+       ! Solvers from HUTiter library 
        !-------------------------------------------------------       
       CASE (ITER_BiCGStab)
         iterProc = AddrFunc( HUTI_D_BICGSTAB )
@@ -769,6 +781,8 @@ CONTAINS
         iterProc = AddrFunc( itermethod_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_bicgstabl )
+      CASE (ITER_IDRS)
+        iterProc = AddrFunc( itermethod_idrs )
         
       END SELECT
       
@@ -782,7 +796,7 @@ CONTAINS
       HUTI_NDIM = HUTI_NDIM / 2
       SELECT CASE ( IterType )
 
-        ! Solvers from HUTiter libdary 
+        ! Solvers from HUTiter library 
         !-------------------------------------------------------       
       CASE (ITER_BiCGStab)
         iterProc = AddrFunc( HUTI_Z_BICGSTAB )
@@ -803,6 +817,9 @@ CONTAINS
         iterProc = AddrFunc( itermethod_z_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_z_bicgstabl )
+      CASE (ITER_IDRS)
+        iterProc = AddrFunc( itermethod_z_idrs )
+
       END SELECT
       
       IF( Internal ) THEN

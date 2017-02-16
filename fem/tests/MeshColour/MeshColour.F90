@@ -126,13 +126,13 @@ CONTAINS
     IMPLICIT NONE
     
     REAL(KIND=dp) :: timerval
-    INTEGER :: t, rate
+    INTEGER(KIND=8) :: t, rate
     
 #ifdef _OPENMP
     timerval = OMP_GET_WTIME()
 #else
     CALL SYSTEM_CLOCK(t,count_rate=rate)
-    timerval = REAL(t,KIND(dp))/REAL(rate,KIND(dp))
+    timerval = REAL(t,dp)/rate
 #endif
   END FUNCTION ftimer
 

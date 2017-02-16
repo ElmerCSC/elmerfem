@@ -79,7 +79,8 @@ MODULE Types
                         SOLVER_EXEC_AFTER_ALL  =  3, &
                         SOLVER_EXEC_AFTER_TIME =  4, &
                         SOLVER_EXEC_AHEAD_SAVE =  5, &
-                        SOLVER_EXEC_AFTER_SAVE =  6
+                        SOLVER_EXEC_AFTER_SAVE =  6, &
+                        SOLVER_EXEC_PREDCORR = 7
 
   INTEGER, PARAMETER :: SOLVER_MODE_DEFAULT = 0, &    ! normal pde
 	                SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
@@ -745,8 +746,9 @@ END INTERFACE
       TYPE(Matrix_t),   POINTER :: Matrix => NULL()
       TYPE(Variable_t), POINTER :: Variable => NULL()
 
+      TYPE(Matrix_t), POINTER :: ConstraintMatrix => NULL()
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
-      LOGICAL :: MortarBCsChanged = .FALSE., MortarBCsOnly=.FALSE.
+      LOGICAL :: MortarBCsChanged = .FALSE., ConstraintMatrixVisited = .FALSE.
       INTEGER(KIND=AddrInt) :: MortarProc
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL()

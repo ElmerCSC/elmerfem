@@ -2281,7 +2281,7 @@ RETURN
     ! Use a simple bounding box for initializatin
     ! By default a local bounding box is used...
     !-------------------------------------------------------------------------  
-    IF( InitMethod == 'box') THEN
+    IF( InitMethod(1:3) == 'box') THEN
       Eps = GetCReal( Params,'Wall Particle Radius',GotIt)
       IF(.NOT. GotIt) eps = 1.0d-8
       
@@ -2321,10 +2321,6 @@ RETURN
       ELSE
         nz = 1
       END IF
-      
-      PRINT *,'n:',nx,ny,nz,nx*ny*nz
-      PRINT *,'Min:',MinCoord
-      PRINT *,'Max:',MaxCoord
     END IF
     
     
@@ -2405,6 +2401,9 @@ RETURN
     SELECT CASE ( InitMethod ) 
       
     CASE ('nodal ordered')
+      CALL Info('InitializeParticles',&
+          'Initializing particles evenly among nodes',Level=10)
+
       Particles % NumberOfParticles = NewParticles
 !      PRINT *,'Initializing particles in nodes:',NewParticles,nonodes
       DO i=1,NewParticles
@@ -2455,6 +2454,8 @@ RETURN
 
 
     CASE ('elemental random')
+      CALL Info('InitializeParticles',&
+          'Initializing particles randomly within elements',Level=10)
 
       n = Mesh % MaxElementNodes 
       ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
@@ -2585,6 +2586,9 @@ RETURN
       !PRINT *,'done init'
 
     CASE ('elemental ordered')
+      CALL Info('InitializeParticles',&
+          'Initializing particles evenly among elements',Level=10)
+
       NewParticles = MIN(NoElements,NewParticles)
       Particles % NumberOfParticles = NewParticles
       PRINT *,'Initializing particles in elements:',NewParticles,noelements
@@ -2612,6 +2616,9 @@ RETURN
 
       
     CASE ('sphere random')
+      CALL Info('InitializeParticles',&
+          'Initializing particles randomly within a sphere',Level=10)
+
       Diam = GetCReal( Params,'Initial Sphere Radius')
       rWork => ListGetConstRealArray( Params,'Initial Sphere Center')
       IF ( ASSOCIATED(rwork) ) THEN
@@ -2644,6 +2651,9 @@ RETURN
       END DO
       
     CASE ('box random cubic')
+      CALL Info('InitializeParticles',&
+          'Initializing particles randomly in a grid',Level=10)
+
       nmax = nx * ny * nz
       IF( nmax < NewParticles ) THEN
         CALL Fatal('InitializeParticles','More particles than places in unit cell')
@@ -2701,8 +2711,10 @@ RETURN
       DEALLOCATE( DoneParticle ) 
       
       
-    CASE DEFAULT 
-      
+    CASE DEFAULT       
+      CALL Info('InitializeParticles',&
+          'Initializing particles using given coordinates',Level=10)
+
       InitialValues => ListGetConstRealArray(Params,'Initial Coordinate',gotIt)    
       IF(gotIt) THEN
         IF( SIZE(InitialValues,2) /= dim ) THEN
@@ -2761,7 +2773,9 @@ RETURN
     SELECT CASE ( InitMethod ) 
 
     CASE ('nodal velocity')
-
+      CALL Info('InitializeParticles',&
+          'Initializing velocities from the corresponding nodal velocity',Level=10)
+      
       VariableName = ListGetString( Params,'Velocity Variable Name',GotIt )
       IF(.NOT. GotIt) VariableName = 'Flow Solution'
       Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
@@ -2780,7 +2794,9 @@ RETURN
       END IF
 
     CASE ('thermal random')  
-      
+       CALL Info('InitializeParticles',&
+          'Initializing velocities from a thermal distribution',Level=10)
+     
       IF(.NOT. GotIt) THEN
         mass = ListGetConstReal( Params,'Particle Mass')
         temp = ListGetConstReal( Params,'Particle Temperature')
@@ -2797,6 +2813,9 @@ RETURN
       END DO
 
     CASE ('even random')
+      CALL Info('InitializeParticles',&
+          'Initializing velocities from a even distribution',Level=10)
+      
       DO i=1,NewParticles
         k = Offset + i
         DO j=1,dim
@@ -2806,6 +2825,9 @@ RETURN
       END DO
 
     CASE ('constant random')
+      CALL Info('InitializeParticles',&
+          'Initializing constant velocities with random direction',Level=10)
+      
       DO i=1,NewParticles
         k = Offset + i
         DO j=1,dim
