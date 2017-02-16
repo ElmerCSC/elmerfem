@@ -426,6 +426,30 @@ CONTAINS
      END SELECT
 !------------------------------------------------------------------------------
    END SUBROUTINE MatrixVectorMultiply
+
+
+!------------------------------------------------------------------------------
+!> Matrix vector multiplication of sparse matrices.
+!------------------------------------------------------------------------------
+   SUBROUTINE MaskedMatrixVectorMultiply( A,u,v,ActiveRow,ActiveCol )
+!------------------------------------------------------------------------------
+     TYPE(Matrix_t) :: A
+     INTEGER :: n
+     REAL(KIND=dp), DIMENSION(:) CONTIG :: u,v
+     LOGICAL, DIMENSION(:) :: ActiveRow
+     LOGICAL, DIMENSION(:) :: ActiveCol
+!------------------------------------------------------------------------------
+
+     SELECT CASE( A % FORMAT )
+     CASE( MATRIX_CRS )
+       CALL CRS_MaskedMatrixVectorMultiply( A,u,v,ActiveRow, ActiveCol )
+
+     CASE DEFAULT
+       CALL Fatal('MaskedMatrixVectorMultiply','Not implemented for List matrix type')
+
+     END SELECT
+!------------------------------------------------------------------------------
+   END SUBROUTINE MaskedMatrixVectorMultiply
 !------------------------------------------------------------------------------
 
 
@@ -10861,6 +10885,10 @@ END FUNCTION SearchNodeL
       DEALLOCATE( TempVector )
     END IF
 
+    IF( ListGetLogical( Params,'Linear System Nullify Guess',GotIt ) ) THEN
+      x(1:n) = 0.0_dp
+    END IF
+
     Method = ListGetString(Params,'Linear System Solver',GotIt)
     IF (Method=='multigrid' .OR. Method=='iterative' ) THEN
       Prec = ListGetString(Params,'Linear System Preconditioning',GotIt)
@@ -11016,6 +11044,51 @@ END FUNCTION SearchNodeL
   END SUBROUTINE LinearSystemResidual
 
 
+
+!------------------------------------------------------------------------------
+!> Given a linear system Ax=b make a change of variables such that we will 
+!> be solving for the residual Adx=b-Ax0 where dx=x-x0.
+!------------------------------------------------------------------------------
+  FUNCTION LinearSystemMaskedResidualNorm( A, b, x, ActiveRow, ActiveCol ) RESULT ( Nrm )
+
+    REAL(KIND=dp) CONTIG :: b(:)   
+    REAL(KIND=dp) CONTIG :: x(:)   
+    TYPE(Matrix_t), POINTER :: A
+    LOGICAL, DIMENSION(:) :: ActiveRow(:), ActiveCol(:)
+    REAL(KIND=dp) :: Nrm
+    
+    REAL(KIND=dp), ALLOCATABLE :: r(:)
+    INTEGER :: i,n,totn
+    REAL(KIND=dp) :: r2sum
+
+    n = A % NumberOfRows 
+
+    ALLOCATE(r(n))
+   
+    IF (Parenv % Pes>1) THEN
+      CALL Fatal('LinearSystemMaskedResidualNorm','Not implemented in parallel yet!')
+!      CALL ParallelMatrixVector(A, x, r, .TRUE.)
+    ELSE
+      CALL MaskedMatrixVectorMultiply( A, x, r, ActiveRow, ActiveCol )
+    END IF
+
+    DO i=1,n
+      IF( ActiveRow(i) ) THEN
+        r(i) = b(i) - r(i)
+      END IF
+    END DO
+
+    totn = NINT( ParallelReduction(1.0_dp * n) )
+
+    r2sum = SUM( r**2 )
+    Nrm = SQRT( ParallelReduction(r2sum) / totn )
+
+    DEALLOCATE( r ) 
+    
+  END FUNCTION LinearSystemMaskedResidualNorm
+
+
+  
 !------------------------------------------------------------------------------
 !> Solve a system. Various additional utilities are included and 
 !> naturally a call to the linear system solver.
@@ -11854,7 +11927,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(ListMatrix_t), POINTER :: Lmat(:)
   LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
-
+  LOGICAL, ALLOCATABLE :: TrueDof(:)
+  
 !------------------------------------------------------------------------------
   CALL Info( 'SolveWithLinearRestriction ', ' ', Level=5 )
   SolverPointer => Solver
@@ -12590,7 +12664,49 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
 
+  
+  !-------------------------------------------------------------------------------
+  ! For restricted systems study the norm without some block components.
+  ! For example, excluding gauge constraints may give valuable information
+  ! of the real accuracy of the unconstrained system. Currently just for info.
+  !-------------------------------------------------------------------------------
+  IF( ListGetLogical( Solver % Values,'Restricted System Norm',Found ) ) THEN
+    ALLOCATE( TrueDof( CollectionMatrix % NumberOfRows ) )
+    TrueDof = .TRUE.
+    
+    Norm = LinearSystemMaskedResidualNorm( CollectionMatrix, CollectionVector, &
+        CollectionSolution, TrueDof, TrueDof )
+    
+    WRITE( Message,'(A,ES13.6)') 'Residual norm of the original system:',Norm
+    CALL Info('SolveWithLinearRestriction',Message, Level = 5 )
+    
+    IF( ListGetLogical( Solver % Values,'Restricted System Norm Skip Nodes',Found ) ) THEN
+      i = 1
+      j = MAXVAL( Solver % Variable % Perm(1:Solver % Mesh % NumberOfNodes) )
+      CALL Info('SolveWithLinearRestriction','Skipping nodal dof range: '&
+          //TRIM(I2S(i))//'-'//TRIM(I2S(j)),Level=8)
+      TrueDof(i:j) = .FALSE.
+    END IF
 
+    IF( ListGetLogical( Solver % Values,'Restricted System Norm Skip Constraints',Found ) ) THEN
+      i = StiffMatrix % NumberOfRows + 1
+      j = CollectionMatrix % NumberOfRows      
+      CALL Info('SolveWithLinearRestriction','Skipping constraints dof range: '&
+          //TRIM(I2S(i))//'-'//TRIM(I2S(j)),Level=8)
+      TrueDof(i:j) = .FALSE.
+    END IF
+    
+    Norm = LinearSystemMaskedResidualNorm( CollectionMatrix, CollectionVector, &
+        CollectionSolution, TrueDof, TrueDof )
+    
+    WRITE( Message,'(A,ES13.6)') 'Residual norm of the masked system:',Norm
+    CALL Info('SolveWithLinearRestriction',Message, Level = 5 )
+    
+    DEALLOCATE( TrueDof )
+  END IF
+    
+
+  
 !------------------------------------------------------------------------------
 ! Separate the solution from CollectionSolution
 !------------------------------------------------------------------------------
@@ -14076,7 +14192,7 @@ CONTAINS
 
      MortarDiag = ListGetCReal( Solver % Values,'Mortar Diag',HaveMortarDiag )
      LumpedDiag = ListGetLogical( Solver % Values,'Lumped Diag',Found )
-
+          
 
 100  sumrow = 0
      k2 = 0
@@ -14254,7 +14370,7 @@ CONTAINS
 
            
            wsum = 0.0_dp
-
+           
            DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1
              
              col = Atmp % Cols(k) 
@@ -14287,6 +14403,8 @@ CONTAINS
                    ELSE
                      Scale = MortarBC % MasterScale
                    END IF
+                 ELSE
+                   wsum = wsum + Atmp % Values(k)
                  END IF
                END IF
 
@@ -14335,7 +14453,8 @@ CONTAINS
                  MortarDiag = MortarBC % Diag(i)
                  LumpedDiag = MortarBC % LumpedDiag
                END IF
-                                
+
+               
                IF( LumpedDiag ) THEN
                  k2 = k2 + 1             
                  IF( AllocationsDone ) THEN
@@ -14347,6 +14466,10 @@ CONTAINS
                    Btmp % Values(k2) = -0.5_dp * MortarDiag * wsum
                  END IF
                ELSE
+                 IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN
+                   CALL Fatal('GenerateConstraintMarix','MortarBC % Perm required, try lumped')
+                 END IF
+
                  DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
                    col = Atmp % Cols(k) 
 
@@ -14355,7 +14478,7 @@ CONTAINS
                      
                    IF( CreateSelf ) THEN
                      Scale = -MortarBC % MasterScale
-                   ELSE 
+                   ELSE
                      IF( MortarBC % Perm( col ) > 0 ) THEN
                        Scale = MortarBC % SlaveScale 
                      ELSE

@@ -1176,7 +1176,50 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   END SUBROUTINE CRS_MatrixVectorMultiply
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Matrix vector product (v = Au) for a matrix given in CRS format
+!> This one only applies to the active elements of u. The idea is that
+!> we may look at the partial matrix norm, for example. 
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_MaskedMatrixVectorMultiply( A,u,v,ActiveRow, ActiveCol )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
+    REAL(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< Result vector
+    TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
+    LOGICAL, DIMENSION(*), INTENT(IN) :: ActiveRow(:) !< Vector giving the active rows
+    LOGICAL, DIMENSION(*), INTENT(IN) :: ActiveCol(:) !< Vector giving the active columns
+    !------------------------------------------------------------------------------
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    INTEGER :: i,j,k,n
+    REAL(KIND=dp) :: rsum
 
+    !------------------------------------------------------------------------------
+
+    n = A % NumberOfRows
+    Rows   => A % Rows
+    Cols   => A % Cols
+    Values => A % Values
+
+    DO i=1,n
+      IF( ActiveRow(i) ) THEN
+        rsum = 0.0d0
+        DO j=Rows(i),Rows(i+1)-1
+          k = Cols(j)
+          IF( ActiveCol(k) ) THEN
+            rsum = rsum + u(k) * Values(j)
+          END IF
+        END DO
+        v(i) = rsum
+      ELSE
+        v(i) = 0.0_dp
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE CRS_MaskedMatrixVectorMultiply
+!------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
 !>  Matrix-vector product v = |A|u with A a matrix in the CRS format and
 !>  |.| the matrix function giving the absolute values of the argument 
