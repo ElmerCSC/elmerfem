@@ -1,7 +1,7 @@
 
 ! Fortran preprocessor definitons for HUTIter library
 !
-! $Id: huti_fdefs.h,v 1.1.1.1 1998/07/31 10:19:12 jim Exp $
+! $Id: huti_fdefs.h,v 1.1.1.1 2005/04/15 10:31:18 vierinen Exp $
 
 #ifndef _H_HUTI_FDEFS
 #define _H_HUTI_FDEFS
@@ -28,7 +28,7 @@
 #define HUTI_QMR_EPSILON 12
 #define HUTI_QMR_BETA 13
 #define HUTI_QMR_GAMMA 14
- 
+
 ! CG method
 
 #define HUTI_CG_RHO 20
@@ -116,13 +116,18 @@
 #define HUTI_PCOND ipar(13)
 #define HUTI_INITIALX ipar(14)
 #define HUTI_GMRES_RESTART ipar(15)
+#define HUTI_BICGSTABL_L ipar(16)
+#define HUTI_GCR_RESTART ipar(17)
+#define HUTI_IDRS_S ipar(18)
 
 ! Parallel environment parameters (20-29)
-
 #define HUTI_MYPROC ipar(20)
 #define HUTI_PROCS ipar(21)
 
-!
+! Robust methods
+#define HUTI_ROBUST ipar(26)
+#define HUTI_ROBUST_MAXBADIT ipar(27)
+  
 ! Output parameters (30-39)
 !
 
@@ -139,7 +144,9 @@
 
 #define HUTI_TOLERANCE dpar(1)
 #define HUTI_MAXTOLERANCE dpar(2)
-
+#define HUTI_ROBUST_TOLERANCE dpar(3)
+#define HUTI_ROBUST_STEPSIZE dpar(4)
+#define HUTI_ROBUST_MAXTOLERANCE dpar(5)  
 !  
 ! End of definitions
 !
