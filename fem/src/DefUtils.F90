@@ -5724,7 +5724,9 @@ CONTAINS
      WRITE( *, '(A)', ADVANCE='YES' ) Message
 
      !Provide a stack trace if no caller info provided
+#ifdef __GFORTRAN__
      IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
+#endif
 
      STOP
 
