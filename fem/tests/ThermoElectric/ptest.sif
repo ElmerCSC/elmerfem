@@ -66,6 +66,4 @@ End
 
 
 Solver 1 :: Reference Norm = Real 221.28738
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=221.28738\n" );

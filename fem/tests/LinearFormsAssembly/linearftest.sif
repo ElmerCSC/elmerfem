@@ -21,7 +21,7 @@ Body Force 1 :: Source = Real 1
 Equation 1 :: Active Solvers(1) = 1
 
 Solver 1
-  Equation = "H1Basis"
+  Equation = "LinearFormsAssembly"
 
   Variable = -global "Variable"
   Variable DOFs = 1

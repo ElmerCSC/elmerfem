@@ -74,7 +74,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: NodeIndexes(:), PressurePerm(:)
 
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
-      UseVelocity, SideCorrection, Bubbles, Converged, ApplyLimiter
+      UseVelocity, SideCorrection, Bubbles, ApplyLimiter
   REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, HeatRatio, BulkModulus, &
       mfp0, Pres, Dens
@@ -185,8 +185,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 !    ---------------------------------
     Norm = DefaultSolve()
 
-    Converged = ( Solver % Variable % NonlinConverged == 1 )
-    IF( Converged ) EXIT
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
   END DO
   
   IF( ListGetLogical( Params,'Gap Sensitivity', GotIt ) ) THEN

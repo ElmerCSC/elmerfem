@@ -134,6 +134,4 @@ End
 
 
 Solver 2 :: Reference Norm = Real 4.41315423602793785E-002
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=4.41315423602793785E-002\n");

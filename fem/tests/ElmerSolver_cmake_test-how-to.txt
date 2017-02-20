@@ -1,17 +1,14 @@
 ElmerSolver cmake test case how-to 
 ==================================
-Juhani Kataja / CSC, 2014/11
+Juhani Kataja / CSC, 2014/11, updated 2017/1
 
 
 The aim of this document is to describe how to create a minimalistic test
-problem using cmake/ctest. There are two ways of creating a test case utilizing
-ctest: from scratch or converting an existing traditional Elmer test. However,
-the latter method is experimental and the resulting test might not work out of
-the box.
+problem using cmake/ctest. 
 
 
-A. The Instructions for creating a ctest from scratch
------------------------------------------------------
+Quick the Instructions for creating a ctest from scratch
+--------------------------------------------------------
 
 1)    Create a subdirectory in "fem/tests/<testname>" named after the test
 
@@ -33,16 +30,15 @@ Solver N :: Reference Norm Tolerance = Real <tol>
       may be used.
       
 
-3)    Create CMakeLists.txt file in the test directory containing
+3)    Create CMakeLists.txt file in the test directory containing. 
 ################################################################################
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
-INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+INCLUDE(test_macros)
 
 CONFIGURE_FILE(<sifname>.sif <sifname>.sif COPYONLY)
 
 ADD_ELMERTEST_MODULE(<testname> <modulename> <modulesource.f90>)
 
-file(COPY ELMERSOLVER_STARTINFO <file2> <file2> ... DESTINATION
+file(COPY ELMERSOLVER_STARTINFO <file_1> <file_2> ... <file_n> DESTINATION
 "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(<testname>)
@@ -59,21 +55,18 @@ RUN_ELMER_TEST()
       directory (This will run all test matching <testname>)
 
 
-B. Instructions for converting traditional Elmer test case (experimental)
--------------------------------------------------------------------------
+Parallel tests and labels
+-------------------------
 
-######### Warning. This method is experimental. #########
+The command ADD_ELMER_TEST() accepts following optional arguments
 
-It is also possible to convert a traditional Elmer test case to utilize ctest
-with the python script "convert_tests.py" residing in "fem/tests". To that
-end, execute
+ADD_ELMER_TEST(<testname> NPROC <n> LABELS <label_1> <label_2> ... <label_m>)
 
-$ python ./convert_tests.py <testname>
+where n is the number of MPI processes and <label_i> is a label associated with the tests.
 
-in the "fem/tests" directory.
+Having parallel test requires partitioned mesh as well. That can be automatically done in
+the runtest.cmake file with the `execute_process` cmake command:
 
-The script assumes that the Solver 1 is tested and modifies the sif-file
-accordingly. If some other solver is to be tested the sif-file must be manually
-edited (see A.2).
+execute_process(COMMAND ${ELMERGRID_BIN} 2 2 <meshdir> -partition <...> -nooverwrite)
 
-
+This will execute ElmerGrid with arguments "2 2 <meshdir> -partition <...> -nooverwrite".

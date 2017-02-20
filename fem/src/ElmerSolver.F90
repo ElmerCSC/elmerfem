@@ -114,7 +114,7 @@
 
      INTEGER :: iargc, NoArgs
 
-     INTEGER :: ExtrudeLevels, MeshIndex
+     INTEGER :: ExtrudeLayers, MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
 #ifdef HAVE_TRILINOS
@@ -325,14 +325,18 @@ END INTERFACE
 
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
-         ExtrudeLevels=GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
+         ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found) - 1 
+         IF( .NOT. Found ) THEN
+           ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Layers',Found)
+         END IF
+           
          IF (Found) THEN
-            IF(ExtrudeLevels>1) THEN
+            IF(ExtrudeLayers > 1) THEN
                ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
                IF (Found) THEN
-                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2, ExtrudedMeshName)
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1, ExtrudedMeshName)
                ELSE
-                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
                END IF
                DO i=1,CurrentModel % NumberOfSolvers
                   IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
@@ -515,8 +519,7 @@ END INTERFACE
        ! Initial Conditions:
        ! -------------------
        IF ( FirstLoad ) CALL SetInitialConditions()
-
-
+       
        ! Compute the total number of steps that will be saved to the files
        ! Particularly look if the last step will be saved, or if it has
        ! to be saved separately.
@@ -824,7 +827,8 @@ END INTERFACE
        INTEGER :: i,j,j2,j3,k,n
        TYPE(ValueList_t), POINTER :: Params, Simu
        LOGICAL :: Found, VtuFormat
-
+       INTEGER :: AllocStat
+       
        Simu => CurrentModel % Simulation
        str = ListGetString( Simu,'Post File',Found) 
        IF(.NOT. Found) RETURN
@@ -839,14 +843,19 @@ END INTERFACE
        
        CALL ListRemove( Simu,'Post File')
        n = CurrentModel % NumberOfSolvers+1
-       ALLOCATE( ABC(n) )
+       ALLOCATE( ABC(n), STAT = AllocStat )
+       IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 1')
+       
+       CALL Info('AddVtuOutputSolverHanck','Increasing number of solver to: '&
+           //TRIM(I2S(n)),Level=8)
        DO i=1,n-1
          ! Def_Dofs is the only allocatable structure within Solver_t:
          IF( ALLOCATED( CurrentModel % Solvers(i) % Def_Dofs ) ) THEN
            j = SIZE(CurrentModel % Solvers(i) % Def_Dofs,1)
            j2 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,2)
            j3 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,3)
-           ALLOCATE( ABC(i) % Def_Dofs(j,j2,j3) )
+           ALLOCATE( ABC(i) % Def_Dofs(j,j2,j3), STAT = AllocStat )
+           IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 2')           
          END IF
 
          ! Copy the content of the Solver structure
@@ -873,7 +882,8 @@ END INTERFACE
        NULLIFY( CurrentModel % Solvers(n) % ActiveElements )
        CurrentModel % Solvers(n) % NumberOfActiveElements = 0
        j = CurrentModel % NumberOfBodies
-       ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6))
+       ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
+       IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 3')
        CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
        
        ! Add some keywords to the list
@@ -890,6 +900,8 @@ END INTERFACE
 
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
+
+       CALL Info('AddVtuOutputSolverHack','Finished appeding VTU output solver',Level=12)
        
      END SUBROUTINE AddVtuOutputSolverHack
 
@@ -1436,27 +1448,35 @@ END INTERFACE
      REAL(KIND=dp) :: dt, ddt, dtfunc, timeleft
      INTEGER :: cum_timestep
      INTEGER, SAVE ::  stepcount=0, RealTimestep
-     LOGICAL :: ExecThis,SteadyStateReached=.FALSE.
+     LOGICAL :: ExecThis,SteadyStateReached=.FALSE.,PredCorrControl, &
+         DivergenceControl, HaveDivergence
 
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
            AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
-     INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1
-     LOGICAL :: AdaptiveTime = .TRUE., Found
+     INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
+     LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found
+     INTEGER :: AllocStat
 
-     TYPE(Solver_t), POINTER :: Solver
-
-#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: AdaptiveIncrease, AdaptiveDecrease
+     
+     TYPE(Solver_t), POINTER :: Solver    
+     TYPE AdaptiveVariables_t 
+       TYPE(Variable_t) :: Var
+       REAL(KIND=dp) :: Norm
+     END TYPE AdaptiveVariables_t
+     TYPE(AdaptiveVariables_t), ALLOCATABLE, SAVE :: AdaptVars(:)
+     
      REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
-#else
-     REAL(KIND=dp) :: RealTime, newtime, prevtime=0, maxtime, exitcond
+#ifndef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: RealTime
 #endif
-     REAL(KIND=dp), ALLOCATABLE :: xx(:,:), xxnrm(:), yynrm(:), PrevXX(:,:,:)
-
+     
 !$omp parallel
 !$   IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit
 !$omp end parallel
 
-     DO i=1,CurrentModel % NumberOfSolvers
+     nSolvers = CurrentModel % NumberOfSolvers
+     DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE==0 ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
@@ -1468,22 +1488,27 @@ END INTERFACE
      IF( ListGetLogical( CurrentModel % Simulation,'Calculate Mesh Pieces',Found ) ) THEN
        CALL CalculateMeshPieces( CurrentModel % Mesh ) 
      END IF
-     
 
+     ! Predictor-Corrector time stepping control 
+     PredCorrControl = ListGetLogical( CurrentModel % Simulation, &
+         'Predictor-Corrector Control', gotIt)
+
+     ! Divergence control 
+     DivergenceControl = ListGetLogical( CurrentModel % Simulation, &
+         'Convergence Control', gotIt)     
+
+     AdaptiveTime = ListGetLogical( CurrentModel % Simulation, &
+         'Adaptive Timestepping', GotIt )
+     
      DO interval = 1, TimeIntervals
         stepcount = stepcount + Timesteps(interval)
      END DO 
 
+     dt = 1.0_dp
      cum_Timestep = 0
-     ddt = 0.0d0
+     ddt = -1.0_dp  
      DO interval = 1,TimeIntervals
 
-!------------------------------------------------------------------------------
-       IF ( Transient .OR. Scanning ) THEN
-         dt = TimestepSizes(interval,1)
-       ELSE
-         dt = 1
-       END IF
 !------------------------------------------------------------------------------
 !      go trough number of timesteps within an interval
 !------------------------------------------------------------------------------
@@ -1516,16 +1541,71 @@ END INTERFACE
            END IF
          END IF
 
-         dtfunc = ListGetConstReal( CurrentModel % Simulation, &
-                  'Timestep Function', gotIt)
-         IF(GotIt) THEN
-	   CALL Warn('ExecSimulation','Obsolite keyword > Timestep Function < , use > Timestep Size < instead')
-         ELSE	
-           dtfunc = ListGetCReal( CurrentModel % Simulation, &
-                  'Timestep Size', gotIt)
+         IF ( Transient .OR. Scanning ) THEN
+           dtfunc = ListGetConstReal( CurrentModel % Simulation, &
+               'Timestep Function', gotIt)
+           IF(GotIt) THEN
+             CALL Warn('ExecSimulation','Obsolite keyword > Timestep Function < , use > Timestep Size < instead')
+           ELSE	
+             dtfunc = ListGetCReal( CurrentModel % Simulation, &
+                 'Timestep Size', gotIt)
+           END IF
+           IF(GotIt) THEN
+             dt = dtfunc
+           ELSE
+             dt = TimestepSizes(interval,1)
+           END IF
          END IF
-         IF(GotIt) dt = dtfunc
+           
 
+!------------------------------------------------------------------------------
+         ! Predictor-Corrector time stepping control 
+         IF ( PredCorrControl ) THEN
+           CALL PredictorCorrectorControl( CurrentModel, dt, timestep )
+         END IF
+
+!------------------------------------------------------------------------------
+         
+         IF( AdaptiveTime ) THEN
+           AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Time Error', GotIt )       
+           IF ( .NOT. GotIt ) THEN 
+             CALL Fatal('ElmerSolver','Adaptive Time Limit must be given for ' // &
+                 'adaptive stepping scheme.')
+           END IF
+           AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
+               'Adaptive Keep Smallest', GotIt, minv=0  )         
+        END IF
+         
+         IF( AdaptiveTime .OR. DivergenceControl ) THEN
+           AdaptiveMaxTimestep = ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Max Timestep', GotIt )
+           IF ( GotIt ) THEN
+             AdaptiveMaxTimestep =  MIN(AdaptiveMaxTimeStep, dt)
+           ELSE
+             AdaptiveMaxTimestep =  dt
+           END IF
+                        
+           AdaptiveMinTimestep = ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Min Timestep', GotIt )
+           IF(.NOT. GotIt) AdaptiveMinTimestep = 1.0e-8 * AdaptiveMaxTimestep
+           
+           AdaptiveIncrease =  ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Increase Coefficient', GotIt )
+           IF(.NOT. GotIt) AdaptiveIncrease = 2.0_dp
+           
+           AdaptiveDecrease =  ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Decrease Coefficient', GotIt )
+           IF(.NOT. GotIt) AdaptiveDecrease = 0.5_dp
+           
+           AdaptiveRough = ListGetLogical( CurrentModel % Simulation, &
+               'Adaptive Rough Timestep', GotIt )           
+
+           AdaptiveSmart = ListGetLogical( CurrentModel % Simulation, &
+               'Adaptive Smart Timestep', GotIt )           
+         END IF
+
+         
 !------------------------------------------------------------------------------
          sTime(1) = sTime(1) + dt
          sPeriodic(1) = sTime(1)
@@ -1594,147 +1674,239 @@ END INTERFACE
 !------------------------------------------------------------------------------
 !        Solve any and all governing equations in the system
 !------------------------------------------------------------------------------
-         AdaptiveTime = ListGetLogical( CurrentModel % Simulation, &
-                  'Adaptive Timestepping', GotIt )
 
          IF ( Transient .AND. AdaptiveTime ) THEN 
-            AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
-                        'Adaptive Time Error', GotIt )
- 
-            IF ( .NOT. GotIt ) THEN 
-               WRITE( Message, * ) 'Adaptive Time Limit must be given for' // &
-                        'adaptive stepping scheme.'
-               CALL Fatal( 'ElmerSolver', Message )
+
+            IF(.NOT. ALLOCATED( AdaptVars ) ) THEN
+              ALLOCATE( AdaptVars( nSolvers ), STAT = AllocStat )
+              IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for AdaptVars')
+              
+              DO i=1,nSolvers
+                Solver => CurrentModel % Solvers(i)
+
+                NULLIFY( AdaptVars(i) % Var % Values )
+                NULLIFY( AdaptVars(i) % Var % PrevValues )
+
+                IF( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+                IF( .NOT. ASSOCIATED( Solver % Variable  % Values ) ) CYCLE
+                CALL Info('ExecSimulation','Allocating adaptive work space for: '//TRIM(I2S(i)),Level=12)
+                j = SIZE( Solver % Variable % Values )
+                ALLOCATE( AdaptVars(i) % Var % Values( j ), STAT=AllocStat )
+                IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error AdaptVars Values')
+
+                IF( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                  k = SIZE( Solver % Variable % PrevValues, 2 )
+                  ALLOCATE( AdaptVars(i) % Var % PrevValues( j, k ), STAT=AllocStat)
+                  IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for AdaptVars PrevValues')
+                END IF
+              END DO
             END IF
-
-            AdaptiveMaxTimestep = ListGetConstReal( CurrentModel % Simulation, &
-                     'Adaptive Max Timestep', GotIt )
-            IF ( .NOT. GotIt ) AdaptiveMaxTimestep =  dt
-            AdaptiveMaxTimestep =  MIN(AdaptiveMaxTimeStep, dt)
-
-            AdaptiveMinTimestep = ListGetConstReal( CurrentModel % Simulation, &
-                     'Adaptive Min Timestep', GotIt )
-
-            AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
-                       'Adaptive Keep Smallest', GotIt, minv=0  )
-
-            n = CurrentModel % NumberOfSolvers
-            j = 0
-            k = 0
-            DO i=1,n
-               Solver => CurrentModel % Solvers(i)
-               IF ( ASSOCIATED( Solver % Variable  % Values ) ) THEN
-                  IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                     j = MAX( j, SIZE( Solver % Variable % PrevValues,2 ) )
-                  END IF
-                  k = MAX( k, SIZE( Solver % Variable % Values ) )
-               END IF
-            END DO
-            ALLOCATE( xx(n,k), yynrm(n), xxnrm(n), prevxx( n,k,j ) )
-
+            
             CumTime = 0.0d0
-            IF ( ddt == 0.0d0 .OR. ddt > AdaptiveMaxTimestep ) ddt = AdaptiveMaxTimestep
-
+            IF ( ddt < 0.0_dp .OR. ddt > AdaptiveMaxTimestep ) ddt = AdaptiveMaxTimestep
+            
             s = sTime(1) - dt
             SmallestCount = 0
             DO WHILE( CumTime < dt-1.0d-12 )
-               ddt = MIN( dt - CumTime, ddt )
-
-               DO i=1,CurrentModel % NumberOFSolvers
-                  Solver => CurrentModel % Solvers(i)
-                  IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-                     n = SIZE( Solver % Variable % Values )
-                     xx(i,1:n) = Solver % Variable % Values
-                     xxnrm(i) = Solver % Variable % Norm
-                     IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                        DO j=1,SIZE( Solver % Variable % PrevValues,2 )
-                           prevxx(i,1:n,j) = Solver % Variable % PrevValues(:,j)
-                        END DO
-                     END IF
+              IF( .NOT. AdaptiveRough ) THEN
+                ddt = MIN( dt - CumTime, ddt )
+                IF( AdaptiveSmart ) THEN
+                  ! If the next timestep will not get us home but the next one would
+                  ! then split the timestep equally into two parts.
+                  IF( dt - CumTime - ddt > 1.0d-12 ) THEN
+                    CALL Info('ExecSimulation','Splitted timestep into two equal parts',Level=12)
+                    ddt = MIN( ddt, ( dt - CumTime ) / 2.0_dp )
                   END IF
+                END IF
+                
+              END IF
+                
+               ! Store the initial values before the start of the step
+               DO i=1,nSolvers
+                 Solver => CurrentModel % Solvers(i)
+                 IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+                 IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
+                 AdaptVars(i) % Var % Values = Solver % Variable % Values
+                 AdaptVars(i) % Var % Norm = Solver % Variable % Norm
+                 IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                   AdaptVars(i) % Var % PrevValues = Solver % Variable % PrevValues
+                 END IF
                END DO
-
+               
                sTime(1) = s + CumTime + ddt
                sSize(1) = ddt
+
+               ! Solve with full timestep
                CALL SolveEquations( CurrentModel, ddt, Transient, &
-                 CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
+                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                   BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)           
 
-
+               ! External adaptive error given 
                MaxErr = ListGetConstReal( CurrentModel % Simulation, &
-                          'Adaptive Error Measure', GotIt )
+                   'Adaptive Error Measure', GotIt )
 
-               DO i=1,CurrentModel % NumberOFSolvers
-                  Solver => CurrentModel % Solvers(i)
-                  IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-                     n = SIZE(Solver % Variable % Values)
-                     yynrm(i) = Solver % Variable % Norm
-                     Solver % Variable % Values = xx(i,1:n)
-                     IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                        DO j=1,SIZE( Solver % Variable % PrevValues,2 )
-                           Solver % Variable % PrevValues(:,j) = prevxx(i,1:n,j)
-                        END DO
-                     END IF
-                  END IF
+               DO i=1,nSolvers
+                 Solver => CurrentModel % Solvers(i)
+                 IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE 
+                 IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
+                 Solver % Variable % Values = AdaptVars(i) % Var % Values 
+                 AdaptVars(i) % Norm = Solver % Variable % Norm
+                 IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                   Solver % Variable % PrevValues = AdaptVars(i) % Var % PrevValues 
+                 END IF
                END DO
 
+               ! Test the error for half the timestep
                sStep(1) = ddt / 2
                sTime(1) = s + CumTime + ddt/2
                CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                  CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
+                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                   BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)           
+
                sTime(1) = s + CumTime + ddt
                CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                  CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
+                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                   BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)           
 
                MaxErr = ABS( MaxErr - ListGetConstReal( CurrentModel % Simulation, &
-                           'Adaptive Error Measure', GotIt ) )
+                   'Adaptive Error Measure', GotIt ) )
 
+               ! If not measure given then use the maximum change in norm as the measure
                IF ( .NOT. GotIt ) THEN
-                  MaxErr = 0.0d0
-                  DO i=1,CurrentModel % NumberOFSolvers
-                     Solver => CurrentModel % Solvers(i)
-                     IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-                        IF ( yynrm(i) /= Solver % Variable % Norm ) THEN
-                           Maxerr = MAX(Maxerr,ABS(yynrm(i)-Solver % Variable % Norm)/yynrm(i))
-                        END IF
-                     END IF
-                  END DO
+                 MaxErr = 0.0d0
+                 DO i=1,nSolvers
+                   Solver => CurrentModel % Solvers(i)
+                   IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+                   IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
+                   IF ( AdaptVars(i) % norm /= Solver % Variable % Norm ) THEN
+                     Maxerr = MAX(Maxerr,ABS(AdaptVars(i) % norm - Solver % Variable % Norm)/&
+                         AdaptVars(i) % norm )
+                   END IF
+                 END DO
                END IF
-
+               
+               ! We have a success no need to redo this step
                IF ( MaxErr < AdaptiveLimit .OR. ddt <= AdaptiveMinTimestep ) THEN
                  CumTime = CumTime + ddt
                  RealTimestep = RealTimestep+1
                  IF ( SmallestCount >= AdaptiveKeepSmallest .OR. StepControl > 0 ) THEN
-                    ddt = MIN( 2*ddt, AdaptiveMaxTimeStep )
-                    StepControl   = 1
-                    SmallestCount = 0
-                  ELSE
-                    StepControl   = 0
-                    SmallestCount = SmallestCount + 1
-                  END IF
+                   ddt = MIN( AdaptiveIncrease * ddt, AdaptiveMaxTimeStep )
+                   StepControl   = 1
+                   SmallestCount = 0
+                 ELSE
+                   StepControl   = 0
+                   SmallestCount = SmallestCount + 1
+                 END IF
+
+                 ! Finally solve only the postprocessing solver after the timestep has been accepted
+                 CALL SolveEquations( CurrentModel, ddt/2, Transient, &
+                     CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                     BeforeTime = .FALSE., AtTime = .FALSE., AfterTime = .TRUE.)           
                ELSE
-                  DO i=1,CurrentModel % NumberOFSolvers
-                     Solver => CurrentModel % Solvers(i)
-                     IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-                        n = SIZE(Solver % Variable % Values)
-                        Solver % Variable % Norm = xxnrm(i)
-                        Solver % Variable % Values = xx(i,1:n)
-                        IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                           DO j=1,SIZE( Solver % Variable % PrevValues,2 )
-                              Solver % Variable % PrevValues(:,j) = prevxx(i,1:n,j)
-                           END DO
-                        END IF
-                     END IF
-                  END DO
-                  ddt = ddt / 2
-                  StepControl = -1
+                 DO i=1,nSolvers
+                   Solver => CurrentModel % Solvers(i)
+                   IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+                   IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
+                   Solver % Variable % Norm = AdaptVars(i) % Var % Norm 
+                   Solver % Variable % Values = AdaptVars(i) % Var % Values 
+                   IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                     Solver % Variable % PrevValues = AdaptVars(i) % Var % PrevValues
+                   END IF
+                 END DO
+                 ddt = AdaptiveDecrease * ddt 
+                 StepControl = -1
                END IF
+
                WRITE(*,'(a,3e20.12)') 'Adaptive(cum,ddt,err): ', cumtime, ddt, maxerr
-            END DO
+             END DO
             sSize(1) = dt
             sTime(1) = s + dt
-  
-            DEALLOCATE( xx, xxnrm, yynrm, prevxx )
-         ELSE ! Adaptive timestepping
+
+          ELSE IF( DivergenceControl ) THEN
+            ! This is still tentative 
+            CALL Info('ExecSimulation','Solving equations with divergence control',Level=6)
+            
+            CumTime = 0.0d0
+            ddt = AdaptiveIncrease * ddt
+            IF ( ddt < 0.0_dp .OR. ddt > AdaptiveMaxTimestep ) ddt = AdaptiveMaxTimestep            
+            s = sTime(1) - dt
+            !StepControl = 0
+            
+            DO WHILE( CumTime < dt-1.0d-12 )              
+
+              IF( .NOT. AdaptiveRough ) THEN
+                ddt = MIN( dt - CumTime, ddt )
+                IF( AdaptiveSmart ) THEN
+                  IF( dt - CumTime - ddt > 1.0d-12 ) THEN
+                    CALL Info('ExecSimulation','Splitted timestep into two equal parts',Level=12)
+                    ddt = MIN( ddt, ( dt - CumTime ) / 2.0_dp )
+                  END IF
+                END IF
+              END IF
+
+              sTime(1) = s + CumTime + ddt
+              sSize(1) = ddt
+
+              CALL SolveEquations( CurrentModel, ddt, Transient, &
+                  CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                  BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+
+              HaveDivergence = .FALSE.
+              DO i=1,nSolvers
+                Solver => CurrentModel % Solvers(i) 
+                IF( ASSOCIATED( Solver % Variable ) ) THEN
+                  IF( Solver % Variable % NonlinConverged > 1 ) THEN
+                    CALL Info('ExecSimulation','Solver '//TRIM(I2S(i))//' has diverged',Level=8)
+                    HaveDivergence = .TRUE.
+                    EXIT
+                  END IF
+                END IF
+              END DO
+              
+              IF( .NOT. HaveDivergence ) THEN
+                CALL Info('ExecSimulation','No solver has diverged',Level=8)
+
+                ! Finally solve only the postprocessing solver after the timestep has been accepted
+                CALL SolveEquations( CurrentModel, ddt, Transient, &
+                    CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                    BeforeTime = .FALSE., AtTime = .FALSE., AfterTime = .TRUE.)           
+                
+                ! If step control was active for this interval then we can
+                ! again start to increase timestep, otherwise not
+
+                CumTime = CumTime + ddt
+                RealTimestep = RealTimestep+1
+                
+                !IF ( StepControl > 0 ) THEN
+                  ddt = AdaptiveIncrease * ddt
+                  IF( ddt > AdaptiveMaxTimestep ) THEN
+                    ddt = AdaptiveMaxTimestep
+                    StepControl = 0
+                  END IF
+                !END IF
+             ELSE
+               IF( ddt < AdaptiveMinTimestep * (1+1.0e-8) ) THEN
+                 CALL Fatal('ExecSimulation','Could not find stable timestep above given minimum')
+               END IF
+
+               CALL Info('ExecSimulation','Reducing timestep due to divergence problems!',Level=6)
+
+               ddt = MAX( AdaptiveDecrease * ddt, AdaptiveMinTimestep ) 
+               StepControl = 1
+
+               CALL Info('ExecSimulation','Reverting to previous timestep as initial guess',Level=8)
+               DO i=1,nSolvers
+                 Solver => CurrentModel % Solvers(i)
+                 IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
+                   IF( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                     Solver % Variable % Values = Solver % Variable % PrevValues(:,1)
+                     Solver % Variable % Norm = Solver % Variable % PrevNorm 
+                   END IF
+                 END IF
+               END DO
+             END IF
+            END DO
+          ELSE
             CALL SolveEquations( CurrentModel, dt, Transient, &
               CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
             RealTimestep = RealTimestep+1
@@ -1744,13 +1916,14 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
          LastSaved = .FALSE.
+         
          IF( OutputIntervals(Interval) /= 0 ) THEN
 
            CALL SaveToPost(0)
            k = MOD( Timestep-1, OutputIntervals(Interval) )
            IF ( k == 0 .OR. SteadyStateReached ) THEN
             
-             DO i=1,CurrentModel % NumberOfSolvers
+             DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
                IF ( Solver % PROCEDURE == 0 ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
@@ -1762,7 +1935,7 @@ END INTERFACE
              CALL SaveCurrent(Timestep)
              LastSaved = .TRUE.
 
-             DO i=1,CurrentModel % NumberOfSolvers
+             DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
                IF ( Solver % PROCEDURE == 0 ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_SAVE)
@@ -1806,7 +1979,7 @@ END INTERFACE
 
      CALL ListPopNamespace()
 
-     DO i=1,CurrentModel % NumberOfSolvers
+     DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE == 0 ) CYCLE
         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
@@ -1824,7 +1997,7 @@ END INTERFACE
      END DO
 
      IF( .NOT. LastSaved ) THEN
-        DO i=1,CurrentModel % NumberOfSolvers
+        DO i=1,nSolvers
            Solver => CurrentModel % Solvers(i)
            IF ( Solver % PROCEDURE == 0 ) CYCLE
            ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)

@@ -42,6 +42,10 @@
 #include <iostream>
 #include "parallel.h"
 
+#if WITH_QT5
+#include <QtWidgets>
+#endif
+
 using namespace std;
 
 Parallel::Parallel(QWidget *parent)

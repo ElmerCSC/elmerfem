@@ -91,17 +91,14 @@ End
 Solver 2 :: Show Norm Index = Integer 1
 Solver 2 :: Reference Norm = Real 100.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
 
 Solver 2 :: Show Norm Index = Integer 4
 Solver 2 :: Reference Norm = Real 41.0
-$fprintf( stderr, "TEST CASE 2\n");
 RUN
 
 Solver 2 :: Show Norm Index = Integer 7
 Solver 2 :: Reference Norm = Real 5.39451247
-$fprintf( stderr, "TEST CASE 3\n");
 RUN
 
 !End Of File

@@ -64,7 +64,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     !--------------------
     Norm = DefaultSolve()
 
-    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
 
   END DO
 

@@ -154,14 +154,15 @@ CONTAINS
     INTEGER, INTENT(IN) :: ecode
     REAL(kind=dp), INTENT(IN) :: tol
 
-    TYPE(Element_t), POINTER :: Element    
+    TYPE(Element_t), POINTER :: Element, SingleElement
+    TYPE(Mesh_t), POINTER :: NewMesh, OldMesh
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
             STIFFvec(:,:), FORCEvec(:)
 
-    INTEGER :: i, j, k, l, q, nerror, nbasis, nndof, nbdof, allocstat, tag, &
+    INTEGER :: i, j, k, l, q, nerror, nbasis, nndof, allocstat, tag, &
             nbasisvec, ndbasisdxvec, rep, dim, lm_eval, lm_eval_vec, NumGP
 
-    INTEGER, PARAMETER :: P = 1, NREP = 100, NumGP1D = 8
+    INTEGER, PARAMETER :: P = 6, NREP = 100, NumGP1D = 8
     REAL(kind=dp) :: t_start, t_end, t_tot, t_startvec, t_endvec, t_tot_vec
     
     nerror = 0
@@ -170,27 +171,32 @@ CONTAINS
     t_tot = REAL(0,dp)
     t_tot_vec = REAL(0,dp)
 
-    ! Insert P element definitions to Solver mapping
+    ! Create a mesh with a single element
+    OldMesh => Solver % Mesh
+    NewMesh => NULL()
+    CALL AllocateMeshAndPElement(NewMesh, ecode, P, SingleElement)
+    Solver % Mesh => NewMesh
+    NumGP = NumGP1D ** SingleElement % Type % Dimension
+
+    ! Insert P element definitions to Solver mapping (sets P elements as "active")
     IF (ALLOCATED(Solver % Def_Dofs)) THEN
       tag = ecode / 100
-      Solver % Def_Dofs(tag,1,6) = 1
+      Solver % Def_Dofs(tag,1,6) = P
     END IF
 
-    !$OMP PARALLEL SHARED(Solver, ecode, tol) &
+    !$OMP PARALLEL SHARED(Solver, SingleElement, ecode, tol, NumGP) &
     !$OMP PRIVATE(STIFF, FORCE, STIFFvec, FORCEvec, &
-    !$OMP         LOAD, Element, nndof, nbdof, nbasis, &
-    !$OMP         NumGP, allocstat, rep, t_start, t_end, &
+    !$OMP         LOAD, Element, nndof, nbasis, &
+    !$OMP         allocstat, rep, t_start, t_end, &
     !$OMP         t_startvec, t_endvec) &
     !$OMP REDUCTION(+:nerror,t_tot,t_tot_vec,lm_eval,lm_eval_vec) &
     !$OMP DEFAULT(NONE)
-
-    Element => AllocatePElement(Solver, ecode, P)
-
-    NumGP = NumGP1D ** Element % Type % Dimension
     
+    ! Construct a temporary element based on the one created previously
+    Element => ClonePElement(SingleElement)
+
     nndof = Element % Type % NumberOfNodes
-    nbdof = Element % BDofs
-    nbasis = nndof + nbdof 
+    nbasis = Solver % Mesh % MaxElementDOFs
 
     ! Reserve workspace
     ALLOCATE(STIFF(nbasis, nbasis), FORCE(nbasis), &
@@ -241,11 +247,12 @@ CONTAINS
     !$OMP END PARALLEL
 
     ! Normalize the times / thread
-    Element => AllocatePElement(Solver, ecode, P)
-    NumGP = NumGP1D ** Element % Type % Dimension
-    CALL PrintTestData(Element, NumGP, t_tot, lm_eval, &
+    CALL PrintTestData(SingleElement, NumGP, t_tot, lm_eval, &
             t_tot_vec, lm_eval_vec)
-    CALL DeallocatePElement(Element)
+
+    CALL DeallocateTemporaryMesh(NewMesh)
+    Solver % Mesh => OldMesh
+    CALL DeallocatePElement(SingleElement)
   END FUNCTION TestElement
   
   SUBROUTINE LocalMatrix( STIFF, FORCE, LOAD, Element, n, nd, NumGP )
@@ -254,11 +261,11 @@ CONTAINS
     REAL(KIND=dp) CONTIG, INTENT(IN) :: LOAD(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    INTEGER, OPTIONAL :: NumGP
+    INTEGER :: NumGP
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     LOGICAL :: Stat
-    INTEGER :: i,t
+    INTEGER :: i,j,t
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
@@ -270,11 +277,7 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IF (PRESENT(NumGP)) THEN
-      IP = GaussPoints( Element, NumGP )
-    ELSE
-      IP = GaussPoints( Element )
-    END IF
+    IP = GaussPoints( Element, NumGP )
 
     DO t=1,IP % n
 
@@ -302,10 +305,10 @@ CONTAINS
     REAL(KIND=dp) CONTIG, INTENT(IN) :: LOAD(:)
     INTEGER, INTENT(IN) :: n, nd
     TYPE(Element_t), POINTER :: Element
-    INTEGER, OPTIONAL :: NumGP
+    INTEGER :: NumGP
 !------------------------------------------------------------------------------
     LOGICAL :: Stat
-    INTEGER :: i, ngp, allocstat
+    INTEGER :: i, j, ngp, allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
@@ -319,12 +322,7 @@ CONTAINS
     FORCE = REAL(0, dp)
 
     ! Get integration points
-    IF (PRESENT(NumGP)) THEN
-      IP = GaussPoints( Element, NumGP )
-    ELSE
-      IP = GaussPoints( Element )
-    END IF
-
+    IP = GaussPoints( Element, NumGP )
     ngp = IP % n
 
     ! Reserve workspace
@@ -348,7 +346,7 @@ CONTAINS
     ! Compute values of all basis functions at all integration points
     stat = ElementInfoVec( Element, Nodes, ngp, &
             IP % U, IP % V, IP % W, DetJ, Basis, dBasisdx )
-    
+
     ! Compute actual integration weights (recycle memory space of DetJ)
     DO i=1,ngp
        DetJ(i) = Ip % s(i)*Detj(i)
@@ -483,44 +481,224 @@ CONTAINS
 
   END SUBROUTINE PrintTestData
   
-  FUNCTION AllocatePElement(Solver, ElementCode, P) RESULT(PElement)
+  SUBROUTINE AllocateMeshAndPElement(Mesh, ElementCode, P, PElement)
     IMPLICIT NONE
     
-    TYPE(Solver_t) :: Solver
+    TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, INTENT(IN) :: ElementCode, P
     TYPE(Element_t), POINTER :: PElement
-    
+    INTEGER :: node, edge, face, astat
+
+    ! Allocate a mesh with a single element
+    Mesh => AllocateMesh()
+    ALLOCATE(Mesh % Elements(1), STAT=astat)
+    IF (astat /= 0) THEN
+      CALL Fatal('AllocateMeshAndElement','Allocation of mesh element failed')
+    END IF
+    Mesh % NumberOfBulkElements = 1
+
     ! Construct P element
     PElement => AllocateElement()
+    PElement % ElementIndex = 1
     PElement % Type => GetElementType( ElementCode )
     CALL AllocatePDefinitions(PElement)
+
+    ! Add element node indexes to element
+    ALLOCATE(PElement % NodeIndexes(PElement % Type % NumberOfNodes), STAT=astat)
+    IF (astat /= 0) THEN
+      CALL Fatal('AllocateMeshAndElement','Allocation of node indices failed')
+    END IF
+    PElement % NodeIndexes(:) = [(node, node=1,PElement % Type % NumberOfNodes)]
+
+    ! Temporarily disable creation of edges for 3D elements (not implemented yet)
+    IF (PElement % Type % Dimension < 3) THEN
+      ! Add element edge indexes to element
+      ALLOCATE(PElement % EdgeIndexes(PElement % Type % NumberOfEdges), STAT=astat)
+      IF (astat /= 0) THEN
+        CALL Fatal('AllocateMeshAndElement','Allocation of edge indices failed')
+      END IF
+      PElement % EdgeIndexes(:) = [(edge, edge=1,PElement % Type % NumberOfEdges)]
+      
+      ! Add all element edges to mesh
+      ALLOCATE(Mesh % Edges(PElement % Type % NumberOfEdges), STAT=astat)
+      IF (astat /= 0) THEN
+        CALL Fatal('AllocateMeshAndElement','Allocation of mesh edges failed')
+      END IF
+      Mesh % NumberOfEdges = PElement % Type % NumberOfEdges
+      Mesh % MaxEdgeDofs = 0
+      DO edge=1,PElement % Type % NumberOfEdges
+        CALL InitializePElement(Mesh % Edges(edge))
+        ! Allocate edge element (always 202, even in 3D)
+        Mesh % Edges(edge) % Type => GetElementType(202, .FALSE.)
+        CALL AllocatePDefinitions(Mesh % Edges(edge))
+        Mesh % Edges(edge) % PDefs % P = P
+        Mesh % Edges(edge) % PDefs % isEdge = .TRUE.
+        Mesh % Edges(edge) % PDefs % GaussPoints = 0
+        Mesh % Edges(edge) % PDefs % LocalNumber = edge
+        Mesh % Edges(edge) % BDOFs = GetBubbleDofs(Mesh % Edges(edge), P)
+        Mesh % MaxEdgeDofs = MAX(Mesh % MaxEdgeDofs, Mesh % Edges(edge) % BDOFs)
+      END DO
+      
+      ! Add element face indexes to element
+      ALLOCATE(PElement % FaceIndexes(PElement % Type % NumberOfFaces))
+      IF (astat /= 0) THEN
+        CALL Fatal('AllocateMeshAndElement','Allocation of face indices failed')
+      END IF
+      PElement % FaceIndexes(:) = [(face, face=1,PElement % Type % NumberOfFaces)]
+      
+      ! Add element faces to mesh
+      ALLOCATE(Mesh % Faces(PElement % Type % NumberOfFaces), STAT=astat)
+      IF (astat /= 0) THEN
+        CALL Fatal('AllocateMeshAndElement','Allocation of mesh faces failed')
+      END IF
+      Mesh % NumberOfFaces = PElement % Type % NumberOfFaces
+      Mesh % MaxFaceDofs = 0
+      DO face=1,PElement % Type % NumberOfFaces
+        CALL InitializePElement(Mesh % Faces(face))
+        ! Allocate edge element (always 303 or 404, depending on element)
+        SELECT CASE (ElementCode/100)
+        CASE(5)
+          Mesh % Faces(face) % Type => GetElementType(303, .FALSE.)
+        CASE(6)
+          IF ( face == 1 ) THEN
+            Mesh % Faces(Face) % Type => GetElementType( 404, .FALSE. )
+          ELSE
+            Mesh % Faces(Face) % Type => GetElementType( 303, .FALSE. )
+          END IF
+        CASE(7)
+          IF ( face <= 2 ) THEN
+            Mesh % Faces(Face) % Type => GetElementType( 303, .FALSE. )
+          ELSE
+            Mesh % Faces(Face) % Type => GetElementType( 404, .FALSE. )
+          END IF
+        CASE(8)
+          Mesh % Faces(Face) % Type => GetElementType( 404, .FALSE.)
+        CASE DEFAULT
+          CALL Fatal('AllocateMeshAndElement','Unknown element type')
+        END SELECT
+        CALL AllocatePDefinitions(Mesh % Faces(face))
+        Mesh % Faces(face) % PDefs % P = P
+        Mesh % Faces(face) % PDefs % isEdge = .TRUE.
+        Mesh % Faces(face) % PDefs % GaussPoints = 0
+        Mesh % Faces(face) % PDefs % LocalNumber = face
+        Mesh % Faces(face) % BDOFs = GetBubbleDofs(Mesh % Faces(face), P)
+        Mesh % MaxFaceDofs = MAX(Mesh % MaxFaceDofs, Mesh % Faces(face) % BDOFs)
+      END DO
+    END IF ! Dimensionality check
+
     PElement % BDofs = GetBubbleDofs( PElement, P )
     PElement % PDefs % P = P
-    PElement % PDefs % GaussPoints = GetNumberOfGaussPoints(PElement, &
-            Solver % Mesh)
-  END FUNCTION AllocatePElement
+    ! Set max element dofs to mesh
+    Mesh % MaxElementDOFs = PElement % Type % NumberOfNodes + &
+           PElement % Type % NumberOfEdges * Mesh % MaxEdgeDOFs + &
+           PElement % Type % NumberOfFaces * Mesh % MaxFaceDOFs + &
+           PElement % BDOFs
+
+    PElement % PDefs % GaussPoints = 0
+  END SUBROUTINE AllocateMeshAndPElement
+
+  SUBROUTINE InitializePElement(Element)
+    IMPLICIT NONE
+    TYPE(Element_t) :: Element
+
+    Element % BDOFs    =  0
+    Element % NDOFs    =  0
+    Element % BodyId   = -1
+    Element % Splitted =  0
+    Element % hK = 0
+    Element % ElementIndex = 0
+    Element % StabilizationMk = 0
+    NULLIFY( Element % TYPE )
+    NULLIFY( Element % PDefs )
+    NULLIFY( Element % BubbleIndexes )
+    NULLIFY( Element % DGIndexes )
+    NULLIFY( Element % NodeIndexes )
+    NULLIFY( Element % EdgeIndexes )
+    NULLIFY( Element % FaceIndexes )
+    NULLIFY( Element % BoundaryInfo )
+  END SUBROUTINE InitializePElement
+
+  FUNCTION ClonePElement(Element) RESULT(ClonedElement)
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element, ClonedElement
+    
+    ALLOCATE(ClonedElement)
+    CALL InitializePElement(ClonedElement)
+    ClonedElement % BDOFs = Element % BDOFs
+    ClonedElement % NDOFs =  Element % NDOFs
+    ClonedElement % BodyId = Element % BodyId
+    ClonedElement % Splitted = Element % Splitted 
+    ClonedElement % hK = Element % hK
+    ClonedElement % ElementIndex = Element % ElementIndex
+    ClonedElement % StabilizationMk = Element % StabilizationMk
+    ClonedElement % Type => Element % Type
+    IF (ASSOCIATED(Element % PDefs)) THEN
+      CALL AllocatePDefinitions(ClonedElement)
+      ClonedElement % PDefs % P = Element % PDefs % P
+      ClonedElement % PDefs % TetraType = Element % PDefs % TetraType
+      ClonedElement % PDefs % isEdge = Element % PDefs % isEdge
+      ClonedElement % PDefs % GaussPoints = Element % PDefs % GaussPoints
+      ClonedElement % PDefs % pyramidQuadEdge = Element % PDefs % pyramidQuadEdge
+      ClonedElement % PDefs % localNumber = Element % PDefs % localNumber
+    END IF
+    IF (ASSOCIATED( Element % NodeIndexes )) THEN
+      ALLOCATE(ClonedElement % NodeIndexes( SIZE(Element % NodeIndexes)))
+      ClonedElement % NodeIndexes(:) = Element % NodeIndexes(:)
+    END IF
+    IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+      ALLOCATE(ClonedElement % EdgeIndexes( SIZE(Element % EdgeIndexes)))
+      ClonedElement % EdgeIndexes(:) = Element % EdgeIndexes(:)
+    END IF
+    IF (ASSOCIATED( Element % FaceIndexes )) THEN
+      ALLOCATE(ClonedElement % FaceIndexes( SIZE(Element % FaceIndexes)))
+      ClonedElement % FaceIndexes(:) = Element % FaceIndexes(:)
+    END IF
+  END FUNCTION ClonePElement
   
   SUBROUTINE DeallocatePElement(PElement)
     IMPLICIT NONE
     
     TYPE(Element_t), POINTER :: PElement
 
-    DEALLOCATE(PElement % PDefs)
+    IF (ASSOCIATED(PElement % PDefs)) DEALLOCATE(PElement % PDefs)
+    IF (ASSOCIATED(PElement % NodeIndexes)) DEALLOCATE(PElement % NodeIndexes)
+    IF (ASSOCIATED(PElement % EdgeIndexes)) DEALLOCATE(PElement % EdgeIndexes)
+    IF (ASSOCIATED(PElement % FaceIndexes)) DEALLOCATE(PElement % FaceIndexes)
     DEALLOCATE(PElement)
   END SUBROUTINE DeallocatePElement
 
+  SUBROUTINE DeallocateTemporaryMesh(Mesh)
+    IMPLICIT NONE
+ 
+     TYPE(Mesh_t), POINTER :: Mesh
+     INTEGER :: edge, face
+
+     IF (ASSOCIATED(Mesh % Elements)) DEALLOCATE(Mesh % Elements)
+     DO edge=1,Mesh % NumberOfEdges
+       IF (ASSOCIATED(Mesh % Edges(edge) % PDefs)) DEALLOCATE(Mesh % Edges(edge) % PDefs)
+     END DO
+     IF (ASSOCIATED(Mesh % Edges)) DEALLOCATE(Mesh % Edges)
+     DO face=1,Mesh % NumberOfFaces
+       IF (ASSOCIATED(Mesh % Faces(face) % PDefs)) DEALLOCATE(Mesh % Faces(face) % PDefs)
+     END DO
+     IF (ASSOCIATED(Mesh % Faces)) DEALLOCATE(Mesh % Faces)
+
+     DEALLOCATE( Mesh % Nodes )
+     DEALLOCATE( Mesh ) 
+  END SUBROUTINE DeallocateTemporaryMesh
+  
   ! Portable wall-clock timer
   FUNCTION ftimer() RESULT(timerval)
     IMPLICIT NONE
     
     REAL(KIND=dp) :: timerval
-    INTEGER :: t, rate
+    INTEGER(KIND=8) :: t, rate
     
 #ifdef _OPENMP
     timerval = OMP_GET_WTIME()
 #else
     CALL SYSTEM_CLOCK(t,count_rate=rate)
-    timerval = REAL(t,KIND(dp))/REAL(rate,KIND(dp))
+    timerval = REAL(t,dp)/rate
 #endif
   END FUNCTION ftimer
 

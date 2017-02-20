@@ -156,7 +156,5 @@ Boundary Condition 3
 End
 
 Solver 3 :: Reference Norm = Real 0.10283408
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=0.10283408\n");
 
