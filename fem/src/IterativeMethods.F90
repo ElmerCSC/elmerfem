@@ -1245,8 +1245,9 @@ CONTAINS
     INTEGER :: BestIter,BadIterCount,MaxBadIter
     REAL(KIND=dp) :: BestNorm,RobustStep,RobustTol,RobustMaxTol
     REAL(KIND=dp), ALLOCATABLE :: Bestx(:)
-    
-      
+
+    LOGICAL :: Smoothing 
+
     A => GlobalMatrix
     CM => A % ConstraintMatrix
     Constrained = ASSOCIATED(CM)
@@ -1287,7 +1288,10 @@ CONTAINS
       BestIter = 0      
       ALLOCATE( BestX(ndim))
     END IF
-          
+
+    Smoothing = ( HUTI_SMOOTHING == 1) 
+
+    
     CALL RealIDRS(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
          Converged, Diverged, OutputInterval, s )
 
@@ -1339,6 +1343,9 @@ CONTAINS
       REAL(kind=dp) :: om, tr
       REAL(kind=dp) :: nr, nt, rho, kappa
 
+      REAL(kind=dp), ALLOCATABLE :: r_s(:), x_s(:)
+      REAL(kind=dp) :: theta
+      
       INTEGER :: iter                         ! number of iterations
       INTEGER :: ii                           ! inner iterations index
       INTEGER :: jj                           ! G-space index
@@ -1347,12 +1354,21 @@ CONTAINS
 !----------------------------------------------------------------------------------- 
       U = 0.0d0
 
+
+      
       ! Compute initial residual, set absolute tolerance
       normb = normfun(n,b,1)
       CALL C_matvec( x, t, ipar, matvecsubr )
       r = b - t
       normr = normfun(n,r,1)
+      
+      IF( Smoothing ) THEN
+        ALLOCATE( r_s(n), x_s(n) )
+        x_s = x
+        r_s = r 
+      END IF
 
+      
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
@@ -1460,14 +1476,23 @@ CONTAINS
           beta(k) = f(k)/M(k,k)
           r = r - beta(k)*G(:,k)
           x = x + beta(k)*U(:,k)
-
+          
           ! New f = P'*r (first k  components are zero)
           IF ( k < s ) THEN
             f(k+1:s)   = f(k+1:s) - beta(k)*M(k+1:s,k)
           END IF
 
+          IF( .NOT. Smoothing ) THEN
+            normr = normfun(n,r,1)
+          ELSE
+            t = r_s - r
+            theta = SUM(t*r_s)/SUM(t*t)
+            r_s = r_s - theta * t
+            x_s = x_s - theta * (x_s - x)
+            normr = normfun(n,r_s,1)
+          END IF
+
           ! Check for convergence
-          normr = normfun(n,r,1)
           iter = iter + 1
           errorind = normr/normb
 
@@ -1519,12 +1544,22 @@ CONTAINS
         ! Update solution and residual
         r = r - om*t
         x = x + om*v
+        
+        IF( .NOT. Smoothing ) THEN
+          normr = normfun(n,r,1)
+        ELSE
+          t = r_s - r
+          theta = SUM(t*r_s)/SUM(t*t)
+          r_s = r_s - theta * t
+          x_s = x_s - theta * (x_s - x)
+          normr = normfun(n,r_s,1)
+        END IF
 
         ! Check for convergence
-        normr = normfun(n,r,1)
         iter = iter + 1
         errorind = normr/normb
 
+        
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
         END IF
@@ -1553,6 +1588,8 @@ CONTAINS
         IF (iter == MaxRounds) EXIT
       END DO ! end of while loop
 
+      IF( Smoothing ) x = x_s
+      
       IF( Robust ) THEN
         IF( BestNorm < RobustTol ) THEN
           Converged = .TRUE.

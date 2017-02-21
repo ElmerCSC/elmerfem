@@ -127,6 +127,7 @@
 ! Robust methods
 #define HUTI_ROBUST ipar(26)
 #define HUTI_ROBUST_MAXBADIT ipar(27)
+#define HUTI_SMOOTHING ipar(28)
   
 ! Output parameters (30-39)
 !
