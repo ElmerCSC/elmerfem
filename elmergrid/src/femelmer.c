@@ -5053,7 +5053,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
   if(info) {
     printf("Saving Elmer mesh in partitioned format\n");
-    if( halomode ) printf("Saving halo elements in mode %d\n",halomode);
+    if( halomode ) printf("Saving halo elements in mode: %d\n",halomode);
     if( subparts ) printf("There are %d subpartitions\n",subparts);
   }
 
@@ -5279,14 +5279,15 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     /* If there is no halo we are done */
     if(halomode != 1 && halomode != 2 ) continue;
 
-    /* The face can be shared only if there are enough shared nodes */
+    /* The face can be shared only if there are enough shared nodes among different partitions */
     otherpart = 0;
     for(j=0;j < nodesd2;j++) {
       ind = data->topology[i][j];
       if(neededtimes[ind] > 1) otherpart++;
     }
     if(!otherpart) continue;
-
+    
+    
     if( halomode == 1) {
       /* If the saving of halo is requested check it for elements which have at least 
 	 two nodes in shared partitions. First make this quick test. */
@@ -5294,6 +5295,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       if(elemsides == 8) {
 	if(otherpart < 4) continue;
 	elemsides = 6;
+      }
+      else if(elemsides == 7) {
+	if(otherpart < 3) continue;
+	elemsides = 5;
       }
       else if(elemsides == 6) {
 	if(otherpart < 3) continue;
@@ -5305,16 +5310,21 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       }      
       else 
 	if(otherpart < 2) continue;
-	
+
+      
       /* In order for the halo to be present the element should have a boundary 
 	 fully immersed in the other partition. This test takes more time. */
 	
       for(side=0;side<elemsides;side++) {
 
 	GetElementSide(i,side,1,data,&sideind[0],&sideelemtype);
-	  
+
+	/* Because every node must be on the boundary use the 1st index as the 
+	   first test */
 	for(l=1;l<=neededtimes[sideind[0]];l++) {
 	  part2 = data->partitiontable[l][sideind[0]];
+
+	  /* We did already save this in partition part */
 	  if(part2 == part) continue;
 	    
 	  sidehits = 1;
@@ -5346,8 +5356,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    bulktypes[part2][elemtype] += 1;
 	    elementsinpart[part2] += 1;	
 
-	    /* Add the halo on-the-fly */
-	    
+	    /* Add the halo on-the-fly to the partitiontable of the nodes */	    
 	    for(j=0;j < nodesd2;j++) {
 	      ind = data->topology[i][j];
 	      hit = FALSE;
@@ -5721,11 +5730,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    }
 	    else if( halomode == 1 || halomode == 2 ) {
 	      /* Halo elements ensure that both parents exist even if they are not trueparents */
-	      if( bcneeded == 0 ) continue; 
-	      if( bcneeded2 < nodesd1 ) {
-		printf("Warning: side element %d of type %d is halo but nodes are not in partition: %d %d\n",
-		       i,sideelemtype,bcneeded2,nodesd1);
-	      }
+	      if( bcneeded2 < nodesd1 ) continue;
 	      haloelem = TRUE;
 	      halobcs += 1;
 	    }
@@ -5803,6 +5808,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    }
 	  }
 
+	  /* Here we save nodes that do not make up a full boundary element. 
+	     Hence they are saved as single nodes of type 101 undepending of the original type. 
+	     Such conditions may only be given dirichlet conditions */
 	  else if( step == 2 ) {
 	    if(bcneeded == 0 ) continue;
 	    if( bcelemsaved[i] ) continue;
