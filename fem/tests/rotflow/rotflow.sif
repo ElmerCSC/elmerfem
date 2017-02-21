@@ -17,7 +17,7 @@ End
 
 Simulation
   Min Output Level = 0
-  Max Output Level = 31
+  Max Output Level = 5
   Output Caller = Logical True
   Coordinate System = Cylindric Symmetric
   Coordinate Mapping(3) = 1 2 3

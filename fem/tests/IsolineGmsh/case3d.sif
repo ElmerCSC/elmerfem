@@ -14,7 +14,7 @@ End
 Simulation
   Extruded Mesh Levels = 4
 
-  Max Output Level = 32
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3

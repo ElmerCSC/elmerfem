@@ -28,7 +28,7 @@ Simulation
   Binary Output = Logical True
 
   Output Version Numbers = Logical True
-  Max Output Level = 32
+  Max Output Level = 5
 End
 
 
