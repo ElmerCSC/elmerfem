@@ -248,7 +248,7 @@ CONTAINS
 
     ! Normalize the times / thread
     nthr = 1
-    !$ omp_get_max_threads()
+    !$ nthr = omp_get_max_threads()
     t_tot = t_tot / nthr
     t_tot_vec = t_tot_vec / nthr
     CALL PrintTestData(SingleElement, NumGP, t_tot, lm_eval, &
