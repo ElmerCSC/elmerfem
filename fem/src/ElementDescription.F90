@@ -3578,7 +3578,9 @@ END IF
    END SUBROUTINE ElementInfo_FreeWork
 
 
-! ElementInfoVec uses only P element definitions for basis functions, even for purely nodal elements
+! ElementInfoVec currently uses only P element definitions for basis
+! functions, even for purely nodal elements. Support for standard nodal elements
+! will be implemented in the future. 
 !------------------------------------------------------------------------------
    FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, Basis, dBasisdx ) RESULT(retval)
 !------------------------------------------------------------------------------
@@ -3598,13 +3600,16 @@ END IF
      !    Local variables
      !------------------------------------------------------------------------------
      INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, &
-             nb, nbc, nbp, nbdxp, allocstat, ncpad
-     INTEGER :: EdgeDegree(12), FaceDegree(6), EdgeDirection(2,12), FaceDirection(4,6)
+             nb, nbp, nbdxp, allocstat, ncpad
+     INTEGER :: EdgeDegree(H1Basis_MaxPElementEdges), &
+             FaceDegree(H1Basis_MaxPElementFaces), &
+             EdgeDirection(H1Basis_MaxPElementEdgeNodes,H1Basis_MaxPElementEdges), &
+             FaceDirection(H1Basis_MaxPElementFaceNodes,H1Basis_MaxPElementFaces)
 !DIR$ ATTRIBUTES ALIGN:64::EdgeDegree, FaceDegree, EdgeDirection, FaceDirection
 
      TYPE(Element_t), POINTER :: MeshEdges(:)
      INTEGER, POINTER :: ElementMap(:,:)
-     LOGICAL :: elem
+     LOGICAL :: invertBubble, elem
      !------------------------------------------------------------------------------
      retval = .TRUE.
      n    = Element % TYPE % NumberOfNodes
@@ -3612,7 +3617,8 @@ END IF
      dim  = Element % TYPE % DIMENSION
      cdim = CoordinateSystemDimension()
 
-     ! Set up workspace
+     ! Set up workspace arrays BasisWrk, dBasisdxWrk, LtoGMapsWrk,
+     !  DetJWrk, uWrk, vWrk and  wWrk
      CALL ElementInfo_InitWork(VECTOR_BLOCK_LENGTH, nb)
      IF ( nb < Element % TYPE % NumberOfNodes ) THEN
        CALL Fatal('ElementInfoVec','Not enough storage to compute local element basis')
@@ -3635,6 +3641,10 @@ END IF
        lln = MIN(ll+VECTOR_BLOCK_LENGTH-1,nc)
        ncl = lln-ll+1
 
+       ! Set number of computed basis functions
+       nbp = 0
+       nbdxp = 0
+       
        ! Block copy input
        uWrk(1:ncl) = u(ll:lln)
        IF (cdim > 1) THEN
@@ -3644,51 +3654,50 @@ END IF
          wWrk(1:ncl) = w(ll:lln)
        END IF
 
+       ! TODO: Check the size of Basis and dBasisdxWrk before calls to compute
+       !       values of basis functions
+
        ! Compute local nodal basis
        SELECT CASE (Element % Type % ElementCode)
          ! Element: LINE
        CASE (202)
          ! Compute nodal basis
-         CALL H1Basis_LineNodal(ncl, uWrk, BasisWrk)
+         CALL H1Basis_LineNodal(ncl, uWrk, nbp, BasisWrk)
          ! Compute local first derivatives
-         CALL H1Basis_dLineNodal(ncl, uWrk, dBasisdxWrk)
-         nbc = 2
-         nbp = 2
-         nbdxp = 2
+         CALL H1Basis_dLineNodal(ncl, uWrk, nbdxp, dBasisdxWrk)
 
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
-           ! Compute P from bubble dofs
-           P = Element % BDOFS + 1
+           ! For first round of blocked loop, compute edge direction
+           IF (ll==1) THEN
+             ! Compute P from bubble dofs
+             P = Element % BDOFS + 1
 
-           ! TODO: Check the size of Basis and dBasisdxWrk before the call
-
-           ! TODO: Implement direction for surface elements
-           CALL H1Basis_LineBubbleP(ncl, uWrk, P, nbp, BasisWrk)
-           CALL H1Basis_dLineBubbleP(ncl, uWrk, P, nbdxp, dBasisdxWrk)
+             IF (Element % PDefs % isEdge .AND. &
+                 Element % NodeIndexes(1)> Element % NodeIndexes(2)) THEN
+               invertBubble = .TRUE.
+             ELSE
+               invertBubble = .FALSE.
+             END IF
+           END IF
+             
+           CALL H1Basis_LineBubbleP(ncl, uWrk, P, nbp, BasisWrk, invertBubble)
+           CALL H1Basis_dLineBubbleP(ncl, uWrk, P, nbdxp, dBasisdxWrk, invertBubble)
          END IF
 
          ! Element: TRIANGLE
        CASE (303)
          ! Compute nodal basis
-         CALL H1Basis_TriangleNodalP(ncl, uWrk, vWrk, BasisWrk)
+         CALL H1Basis_TriangleNodalP(ncl, uWrk, vWrk, nbp, BasisWrk)
          ! Compute local first derivatives
-         CALL H1Basis_dTriangleNodalP(ncl, uWrk, vWrk, dBasisdxWrk)
-         nbc = 3
-         nbp = 3
-         nbdxp = 3
+         CALL H1Basis_dTriangleNodalP(ncl, uWrk, vWrk, nbdxp, dBasisdxWrk)
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
-             ! Get polynomial degree of each edge
-             DO i=1,3
-               EdgeDegree(i) = CurrentModel % Solver % &
-                       Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
-             END DO
-           
-             CALL H1Basis_GetEdgeDirection(303, 3, Element % NodeIndexes, EdgeDirection)
+             CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
+                     Element, EdgeDegree, EdgeDirection)
            END IF
 
            ! Compute basis function values
@@ -3700,37 +3709,44 @@ END IF
 
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
-           ! Compute P from bubble dofs
-           P = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             ! Compute P from bubble dofs
+             P = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
-           ! TODO: Check the size of Basis and dBasisdxWrk before the call
-
-           ! TODO: Implement direction for surface elements
-           CALL H1Basis_TriangleBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
-           CALL H1Basis_dTriangleBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+             IF (Element % PDefs % isEdge) THEN
+               ! Get 2D face direction
+               CALL H1Basis_GetFaceDirection(Element % Type % ElementCode, &
+                                             1, &
+                                             Element % NodeIndexes, &
+                                             FaceDirection)
+             END IF
+           END IF
+           IF (Element % PDefs % isEdge) THEN
+             CALL H1Basis_TriangleBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk, &
+                                          FaceDirection(1:3,1))
+             CALL H1Basis_dTriangleBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk, &
+                                          FaceDirection(1:3,1))
+           ELSE
+             CALL H1Basis_TriangleBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
+             CALL H1Basis_dTriangleBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+           END IF
          END IF
 
          ! QUADRILATERAL
        CASE (404)
          ! Compute nodal basis
-         CALL H1Basis_QuadNodal(ncl, uWrk, vWrk, BasisWrk)
+         CALL H1Basis_QuadNodal(ncl, uWrk, vWrk, nbp, BasisWrk)
          ! Compute local first derivatives
-         CALL H1Basis_dQuadNodal(ncl, uWrk, vWrk, dBasisdxWrk)
-         nbc = 4
-         nbp = 4
-         nbdxp = 4
+         CALL H1Basis_dQuadNodal(ncl, uWrk, vWrk, nbdxp, dBasisdxWrk)
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
-             ! Get polynomial degree of each edge
-             DO i=1,4
-               EdgeDegree(i) = CurrentModel % Solver % &
-                       Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
-             END DO
-           
-             CALL H1Basis_GetEdgeDirection(404, 4, Element % NodeIndexes, EdgeDirection)
+             CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
+                     Element, EdgeDegree, EdgeDirection)
            END IF
 
            ! Compute basis function values
@@ -3742,29 +3758,84 @@ END IF
 
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
-           ! Compute P from bubble dofs
-           p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             ! Compute P from bubble dofs
+             P = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
-           ! TODO: Check the size of Basis and dBasisdxWrk before the call
-
-           ! TODO: Implement direction for surface elements
-           CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
-           CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+             IF (Element % PDefs % isEdge) THEN
+               ! Get 2D face direction
+               CALL H1Basis_GetFaceDirection(Element % Type % ElementCode, &
+                                             1, &
+                                             Element % NodeIndexes, &
+                                             FaceDirection)
+             END IF
+           END IF
+           
+           IF (Element % PDefs % isEdge) THEN
+             CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk, &
+                                      FaceDirection(1:4,1))
+             CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk, &
+                                       FaceDirection(1:4,1))
+           ELSE
+             CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
+             CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+           END IF
          END IF
 
          ! TETRAHEDRON
        CASE (504)
          ! Compute nodal basis
-         CALL H1Basis_TetraNodalP(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         CALL H1Basis_TetraNodalP(ncl, uWrk, vWrk, wWrk, nbp, BasisWrk)
          ! Compute local first derivatives
-         CALL H1Basis_dTetraNodalP(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
-         nbc = 4
-         nbp = 4
-         nbdxp = 4
+         CALL H1Basis_dTetraNodalP(ncl, uWrk, vWrk, wWrk, nbdxp, dBasisdxWrk)
 
-         IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
-                 ASSOCIATED( Element % FaceIndexes )) THEN
-           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+         IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             ! Get polynomial degree of each edge
+             DO i=1,6
+               EdgeDegree(i) = CurrentModel % Solver % &
+                       Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
+             END DO
+
+             ! Tetrahedral directions are enforced by tetra element types
+             CALL H1Basis_GetTetraEdgeDirection(Element % PDefs % TetraType, EdgeDirection)
+           END IF
+
+           ! Compute basis function values
+           CALL H1Basis_TetraEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbp, BasisWrk, &
+                   EdgeDirection)
+           CALL H1Basis_dTetraEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+                   EdgeDirection)
+         END IF
+         
+         IF (ASSOCIATED( Element % FaceIndexes )) THEN
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! face directions
+           IF (ll==1) THEN
+             ! Get polynomial degree of each face
+             DO i=1,4
+               IF (CurrentModel % Solver % Mesh % &
+                       Faces( Element % FaceIndexes(i) ) % BDOFs /= 0) THEN
+                 FaceDegree(i) = CurrentModel % Solver % Mesh % &
+                         Faces( Element % FaceIndexes(i) ) % PDefs % P
+               ELSE
+                 FaceDegree(i) = 0
+               END IF
+             END DO
+
+             ! Tetrahedral directions are enforced by tetra element types
+             CALL H1Basis_GetTetraFaceDirection(Element % PDefs % TetraType, FaceDirection)
+           END IF
+
+           ! Compute basis function values
+           CALL H1Basis_TetraFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbp, BasisWrk, &
+                   FaceDirection)
+           CALL H1Basis_dTetraFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbdxp, dBasisdxWrk, &
+                   FaceDirection)
          END IF
 
          ! Element bubble functions
@@ -3775,8 +3846,6 @@ END IF
                    1d0/(81*(Element % BDOFS)+ &
                    3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
 
-           ! TODO: Check the size of Basis and dBasisdxWrk before the call
-
            CALL H1Basis_TetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
            CALL H1Basis_dTetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
          END IF
@@ -3784,27 +3853,47 @@ END IF
          ! WEDGE
        CASE (706)
          ! Compute nodal basis
-         CALL H1Basis_WedgeNodalP(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         CALL H1Basis_WedgeNodalP(ncl, uWrk, vWrk, wWrk, nbp, BasisWrk)
          ! Compute local first derivatives
-         CALL H1Basis_dWedgeNodalP(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
-         nbc = 6
-         nbp = 6
-         nbdxp = 6
+         CALL H1Basis_dWedgeNodalP(ncl, uWrk, vWrk, wWrk, nbdxp, dBasisdxWrk)
+         
+         IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
+                     Element, EdgeDegree, EdgeDirection)
+           END IF
 
-         IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
-                 ASSOCIATED( Element % FaceIndexes )) THEN
-           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+           ! Compute basis function values
+           CALL H1Basis_WedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbp, BasisWrk, &
+                   EdgeDirection)
+           CALL H1Basis_dWedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+                   EdgeDirection)
+         END IF
+         
+         IF (ASSOCIATED( Element % FaceIndexes )) THEN
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! face directions
+           IF (ll==1) THEN
+             CALL GetElementMeshFaceInfo(CurrentModel % Solver % Mesh, &
+                     Element, FaceDegree, FaceDirection)
+           END IF
+
+           ! Compute basis function values
+           CALL H1Basis_WedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbp, BasisWrk, &
+                   FaceDirection)
+           CALL H1Basis_dWedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbdxp, dBasisdxWrk, &
+                   FaceDirection)
          END IF
 
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
-           p=NINT(1/3d0*(81*(Element % BDOFS) + &
+           P=NINT(1/3d0*(81*(Element % BDOFS) + &
                    3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
                    1d0/(81*(Element % BDOFS)+ &
                    3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
-
-           ! TODO: Check the size of Basis and dBasisdxWrk before the call
 
            CALL H1Basis_WedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
            CALL H1Basis_dWedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
@@ -3813,16 +3902,38 @@ END IF
          ! HEXAHEDRON
        CASE (808)
          ! Compute local basis
-         CALL H1Basis_BrickNodal(ncl, uWrk, vWrk, wWrk, BasisWrk)
+         CALL H1Basis_BrickNodal(ncl, uWrk, vWrk, wWrk, nbp, BasisWrk)
          ! Compute local first derivatives
-         CALL H1Basis_dBrickNodal(ncl, uWrk, vWrk, wWrk, dBasisdxWrk)
-         nbc = 8
-         nbp = 8
-         nbdxp = 8
+         CALL H1Basis_dBrickNodal(ncl, uWrk, vWrk, wWrk, nbdxp, dBasisdxWrk)
 
-         IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
-                 ASSOCIATED( Element % FaceIndexes )) THEN
-           CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+         IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
+                     Element, EdgeDegree, EdgeDirection)
+           END IF
+
+           ! Compute basis function values
+           CALL H1Basis_BrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbp, BasisWrk, &
+                   EdgeDirection)
+           CALL H1Basis_dBrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+                   EdgeDirection)
+         END IF
+         
+         IF (ASSOCIATED( Element % FaceIndexes )) THEN
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! face directions
+           IF (ll==1) THEN
+             CALL GetElementMeshFaceInfo(CurrentModel % Solver % Mesh, &
+                     Element, FaceDegree, FaceDirection)
+           END IF
+           
+           ! Compute basis function values
+           CALL H1Basis_BrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbp, BasisWrk, &
+                   FaceDirection)
+           CALL H1Basis_dBrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbdxp, dBasisdxWrk, &
+                   FaceDirection)
          END IF
 
          ! Element bubble functions
@@ -3832,7 +3943,6 @@ END IF
                    3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
                    1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
 
-           ! TODO: Check the size of Basis and dBasisdxWrk before the call
            CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
            CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
          END IF
@@ -3841,13 +3951,11 @@ END IF
          WRITE( Message, '(a,i4,a)' ) 'Vectorized basis for element: ', &
                  Element % TYPE % ElementCode, ' not implemented.'
          CALL Error( 'ElementInfoVec', Message )
-         CALL Fatal( 'ElementInfoVec', 'ElementInfoVec is still experimental.' )
+         CALL Fatal( 'ElementInfoVec', 'ElementInfoVec is still does not include pyramids.' )
        END SELECT 
-       ! Set the final number of basis functions 
-       nbc = nbp     
-
+       
        ! Copy basis function values to global array
-       DO j=1,nbc
+       DO j=1,nbp
          !$OMP SIMD
          DO i=ll,lln
            Basis(i,j)=BasisWrk(i-ll+1,j)
@@ -3857,7 +3965,7 @@ END IF
        !--------------------------------------------------------------
        ! Element (contravariant) metric and square root of determinant
        !--------------------------------------------------------------
-       elem = ElementMetricVec( nbc, Element, Nodes, ncl, DetJWrk, dBasisdxWrk, LtoGMapsWrk )
+       elem = ElementMetricVec( nbp, Element, Nodes, ncl, DetJWrk, dBasisdxWrk, LtoGMapsWrk )
        IF (.NOT. elem) THEN
          retval = .FALSE.
          RETURN
@@ -3874,7 +3982,7 @@ END IF
        IF (PRESENT(dBasisdx)) THEN
          !DIR$ LOOP COUNT MAX=3
          DO j=1,cdim
-           DO i=1,nbc
+           DO i=1,nbp
              SELECT CASE (dim)
              CASE(1)
                !$OMP SIMD
@@ -3906,6 +4014,59 @@ END IF
        END IF
 
      END DO ! Block over Gauss points
+
+   CONTAINS
+
+     SUBROUTINE GetElementMeshEdgeInfo(Mesh, Element, EdgeDegree, EdgeDirection)
+       IMPLICIT NONE
+       
+       TYPE(Mesh_t), INTENT(IN) :: Mesh
+       TYPE(Element_t), INTENT(IN) :: Element
+       INTEGER, INTENT(OUT) :: EdgeDegree(H1Basis_MaxPElementEdges), &
+               EdgeDirection(H1Basis_MaxPElementEdgeNodes,H1Basis_MaxPElementEdges)
+       INTEGER :: i
+
+       ! Get polynomial degree of each edge
+!DIR$ LOOP COUNT MAX=12
+       DO i=1,Element % Type % NumberOfEdges
+         EdgeDegree(i) = CurrentModel % Solver % &
+                 Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
+       END DO
+       
+       ! Get edge directions
+       CALL H1Basis_GetEdgeDirection(Element % Type % ElementCode, &
+                                     Element % Type % NumberOfEdges, &
+                                     Element % NodeIndexes, &
+                                     EdgeDirection)
+     END SUBROUTINE GetElementMeshEdgeInfo
+     
+     SUBROUTINE GetElementMeshFaceInfo(Mesh, Element, FaceDegree, FaceDirection)
+       IMPLICIT NONE
+       
+       TYPE(Mesh_t), INTENT(IN) :: Mesh
+       TYPE(Element_t), INTENT(IN) :: Element
+       INTEGER, INTENT(OUT) :: FaceDegree(H1Basis_MaxPElementFaces), &
+               FaceDirection(H1Basis_MaxPElementFaceNodes,H1Basis_MaxPElementFaces)
+       INTEGER :: i
+
+       ! Get polynomial degree of each face
+!DIR$ LOOP COUNT MAX=6
+       DO i=1,Element % Type % NumberOfFaces
+         IF (Mesh % Faces( Element % FaceIndexes(i) ) % BDOFs /= 0) THEN
+           FaceDegree(i) = CurrentModel % Solver % Mesh % &
+                   Faces( Element % FaceIndexes(i) ) % PDefs % P
+         ELSE
+           FaceDegree(i) = 0
+         END IF
+       END DO
+
+       ! Get face directions
+       CALL H1Basis_GetFaceDirection(Element % Type % ElementCode, &
+                                     Element % Type % NumberOfFaces, &
+                                     Element % NodeIndexes, &
+                                     FaceDirection)
+     END SUBROUTINE GetElementMeshFaceInfo
+
 !------------------------------------------------------------------------------
    END FUNCTION ElementInfoVec
 !------------------------------------------------------------------------------
