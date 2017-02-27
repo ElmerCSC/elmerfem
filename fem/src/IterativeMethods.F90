@@ -1340,7 +1340,7 @@ CONTAINS
       REAL(kind=dp) :: M(s,s), f(s), mu(s)
       REAL(kind=dp) :: alpha(s), beta(s), gamma(s)
 
-      REAL(kind=dp) :: om, tr
+      REAL(kind=dp) :: om, tr, tr_s, tt
       REAL(kind=dp) :: nr, nt, rho, kappa
 
       REAL(kind=dp), ALLOCATABLE :: r_s(:), x_s(:)
@@ -1378,10 +1378,24 @@ CONTAINS
 
       IF ( Converged .OR. Diverged ) RETURN
 
-      ! Define P and kappa
+      ! Define P(n,s) and kappa
+#if 1
       CALL RANDOM_SEED
       CALL RANDOM_NUMBER(P)
-
+#else
+      ! this is alternative generation of initial basis vectors
+      ! it is deterministic but not as good...
+      l = 0
+      k = 2        
+      DO j=1,s
+        DO i=1,n
+          P(i,j) = MODULO(i+l,k) / (1.0*(k-1)) 
+        END DO
+        l = k
+        k = 2*k + 1
+      END DO
+#endif
+              
       DO j = 1,s
         DO k = 1,j-1
           alpha(k) = dotprodfun(n, P(:,k), 1, P(:,j), 1 )
@@ -1486,7 +1500,10 @@ CONTAINS
             normr = normfun(n,r,1)
           ELSE
             t = r_s - r
-            theta = SUM(t*r_s)/SUM(t*t)
+            tr_s = dotprodfun(n, t, 1, r_s, 1 )
+            tt = dotprodfun(n, t, 1, t, 1 )
+            theta = tr_s / tt
+            
             r_s = r_s - theta * t
             x_s = x_s - theta * (x_s - x)
             normr = normfun(n,r_s,1)
@@ -1549,7 +1566,9 @@ CONTAINS
           normr = normfun(n,r,1)
         ELSE
           t = r_s - r
-          theta = SUM(t*r_s)/SUM(t*t)
+          tr_s = dotprodfun(n, t, 1, r_s, 1 )
+          tt = dotprodfun(n, t, 1, t, 1 )
+          theta = tr_s / tt
           r_s = r_s - theta * t
           x_s = x_s - theta * (x_s - x)
           normr = normfun(n,r_s,1)
