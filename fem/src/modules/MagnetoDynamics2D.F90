@@ -2013,6 +2013,8 @@ CONTAINS
     REAL(KIND=dp) :: LaminatePowerDensity, BMagnAtIP, Fsk, Lambda, LaminateThickness, &
                      mu0=4d-7*PI, skindepth
     
+    REAL(KIND=dp) :: PotSignMult
+
     SAVE Nodes
 
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
@@ -2314,15 +2316,19 @@ CONTAINS
           END IF
 
           localV=0._dp
+          ! Cylindrical coordinates have different sign convention
+          PotSignMult = 1
+          IF( CSymmetry ) PotSignMult = -1
+
           SELECT CASE (CoilType)
           CASE ('stranded')
             imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
             IF (i_multiplier /= 0._dp) THEN
-              PotAtIp(1) = PotAtIp(1)+REAL(i_multiplier * imag_value * N_j / CondAtIp)
-              PotAtIp(2) = PotAtIp(2)+AIMAG(i_multiplier * imag_value * N_j / CondAtIp)
+              PotAtIp(1) = PotAtIp(1)+PotSignMult * REAL(i_multiplier * imag_value * N_j / CondAtIp)
+              PotAtIp(2) = PotAtIp(2)+PotSignMult * AIMAG(i_multiplier * imag_value * N_j / CondAtIp)
             ELSE
-              PotAtIp(1) = PotAtIp(1)+REAL(imag_value * N_j / CondAtIp)
-              PotAtIp(2) = PotAtIp(2)+AIMAG(imag_value * N_j / CondAtIp)
+              PotAtIp(1) = PotAtIp(1)+PotSignMult * REAL(imag_value * N_j / CondAtIp)
+              PotAtIp(2) = PotAtIp(2)+PotSignMult * AIMAG(imag_value * N_j / CondAtIp)
             END IF            
           CASE ('massive')
             localV(1) = localV(1) + LagrangeVar % Values(VvarId)
