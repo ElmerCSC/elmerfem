@@ -442,11 +442,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
-        w = [0._dp, 0._dp, -1._dp]
+        w = [0._dp, 0._dp, 1._dp]
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          w = [0._dp, 0._dp, 1._dp]
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
@@ -1309,11 +1308,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
-        w = [0._dp, 0._dp, -1._dp]
+        w = [0._dp, 0._dp, 1._dp]
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          w = [0._dp, 0._dp, 1._dp]
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
