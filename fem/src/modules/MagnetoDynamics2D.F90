@@ -2261,7 +2261,7 @@ CONTAINS
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
         
         Weight = IntegStuff % s(t) * detJ
-        grads_coeff = 1._dp/GetCircuitModelDepth()
+        grads_coeff = -1._dp/GetCircuitModelDepth()
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:n) * Nodes % x(1:n) )
           Weight = Weight * x
@@ -2316,9 +2316,11 @@ CONTAINS
           END IF
 
           localV=0._dp
-          ! Cylindrical coordinates have different sign convention
-          PotSignMult = 1
-          IF( CSymmetry ) PotSignMult = -1
+          ! Cylindrical coordinates have different sign convention (This 
+          ! is also taken into account in the massive and Foil winding
+          ! via the grads_coeff)
+          PotSignMult = -1
+          IF( CSymmetry ) PotSignMult = 1
 
           SELECT CASE (CoilType)
           CASE ('stranded')
