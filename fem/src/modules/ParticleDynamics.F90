@@ -1354,7 +1354,7 @@ CONTAINS
      
      SAVE Visited, dim, Rad, Mass, Mesh, VeloVar, AnyInteraction, BoundaryNodes, &
          TrueCollision, WallVelo, Coeff, Velo, Coord, Spring, WallTrace, &
-         WallVar, Basis, dBasisdx, GotVeloVar, Solver
+         WallVar, Basis, dBasisdx, GotVeloVar, Solver, Params
      
      IF( .NOT. Visited ) THEN
        Mesh => GetMesh()
