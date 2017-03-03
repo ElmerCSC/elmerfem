@@ -91,6 +91,16 @@ double func_abs(arg)
   return abs(arg);
 }
 
+double func_mod(x,y)
+     double x,y;
+{
+  int ix, iy;
+
+  ix = x + 0.5;
+  iy = y + 0.5;
+  return (double)(ix % iy);
+}
+
 VARIABLE *mtr_sum(A) VARIABLE *A;
 {
    VARIABLE *C;
@@ -548,6 +558,7 @@ void mtr_com_init()
   com_init( "ceil"   , TRUE,  TRUE,  (VARIABLE *(*)())ceil   , 1, 1, "r=ceil(x)\nSmallest integer not less than x." );
   com_init( "floor"  , TRUE,  TRUE,  (VARIABLE *(*)())floor  , 1, 1, "r=floor(x)\nLargest integer not more than x." );
   com_init( "abs"    , TRUE,  TRUE,  (VARIABLE *(*)())func_abs   , 1, 1,"r=abs(x)");
+  com_init( "mod"    , TRUE,  TRUE,  (VARIABLE *(*)())func_mod   , 2, 2,"r=mod(x,y)");
   com_init( "pow"    , FALSE, TRUE,  mtr_pow,     2, 2, "r=pow(x,y)" );
   com_init( "min"    , FALSE, TRUE,  mtr_min,     1, 1, minHelp    );
   com_init( "max"    , FALSE, TRUE,  mtr_max,     1, 1, maxHelp    );
