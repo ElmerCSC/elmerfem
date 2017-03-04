@@ -2625,7 +2625,8 @@ CONTAINS
          SlaveSolverStr,Found )
      IF(.NOT. Found ) RETURN
 
-     CALL Info('DefaultSlaveSolvers','Executing slave solvers',Level=5)
+     CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
+         TRIM(SlaveSolverStr),Level=5)
      
      dt = GetTimeStep()
      Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
@@ -2696,7 +2697,7 @@ CONTAINS
      END IF
 
      CALL DefaultSlaveSolvers(Solver,'Slave Solvers') ! this is the initial name of the slot
-     CALL DefaultSlaveSolvers(Solver,'Nonlin Pre Solvers')     
+     CALL DefaultSlaveSolvers(Solver,'Nonlinear Pre Solvers')     
      
      IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
        CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
@@ -2724,12 +2725,12 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
      
+     CALL Info('DefaultStart','Starting solver: '//&
+        TRIM(ListGetString(Solver % Values,'Equation')),Level=10)
+     
      ! One can run preprocessing solver in this slot.
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Pre Solvers')
-     
-     CALL Info('DefaultFinish','Starting solver: '//&
-         TRIM(ListGetString(Solver % Values,'Equation')),Level=10)
      
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultStart
@@ -2845,7 +2846,7 @@ CONTAINS
 
     ! One can run postprocessing solver in this slot in every nonlinear iteration.
     !-----------------------------------------------------------------------------
-    CALL DefaultSlaveSolvers(Solver,'Nonlin Post Solvers')
+    CALL DefaultSlaveSolvers(Solver,'Nonlinear Post Solvers')
 
     
 !------------------------------------------------------------------------------
