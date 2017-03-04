@@ -75,7 +75,7 @@
      REAL(KIND=dp) :: s,dt,dtfunc
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
      REAL(KIND=dp), POINTER, SAVE :: sTime(:), sStep(:), sInterval(:), sSize(:), &
-           steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sPar(:)
+           steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sScan(:),sPar(:)
 
      TYPE(Element_t),POINTER :: CurrentElement
 
@@ -473,14 +473,16 @@ END INTERFACE
 
        IF ( FirstLoad ) &
          ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
-             steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), sPar(1) )
+         steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), &
+         sPar(1), sScan(1) )
 
        dt   = 0._dp
 
        sTime = 0._dp
        sStep = 0
        sPeriodic = 0._dp
-
+       sScan = 0._dp
+       
        sSize = dt
        sPrevSizes = 0_dp
 
@@ -1010,6 +1012,10 @@ END INTERFACE
        CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
                'coupled iter', 1, steadyIt )
 
+       IF( ListCheckPresentAnySolver( CurrentModel,'Scanning Loops') ) THEN
+         CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'scan', 1, sScan )
+       END IF
+               
        sPar(1) = 1.0_dp * ParEnv % MyPe 
        CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Partition', 1, sPar ) 
 

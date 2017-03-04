@@ -554,7 +554,7 @@ CONTAINS
 
      V => VariableGet( M1 % Variables, 'Periodic Time' )
      CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
-
+     
      V => VariableGet( M1 % Variables, 'Timestep' )
      CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep', 1, V % Values )
 
@@ -579,6 +579,13 @@ CONTAINS
 
      V => VariableGet( M1 % Variables, 'partition' )
      CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
+     
+     V => VariableGet( M1 % Variables, 'scan' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'scan', 1, V % Values)
+     END IF
+       
+     
 !------------------------------------------------------------------------------
     END SUBROUTINE AddCoordAndTime
 !------------------------------------------------------------------------------
@@ -3951,6 +3958,8 @@ CONTAINS
     CALL Info('ExecSolverInSteps','Performing solution in steps',Level=5)
     ProcName = ListGetString( Solver % Values,'Procedure', Found )
 
+    CALL DefaultStart( Solver )
+    
     MaxIter = ListGetInteger( Solver % Values,'Nonlinear System Max Iterations', Found ) 
     IF( .NOT. Found ) MaxIter = 1
 
@@ -3990,7 +3999,8 @@ CONTAINS
     IF( SolverAddr /= 0 ) THEN
       CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
     END IF
-    
+
+    CALL DefaultFinish( Solver )
 
   END SUBROUTINE ExecSolverInSteps
 
@@ -4001,12 +4011,13 @@ CONTAINS
 !> point of view this misses some opportunities to have control of the nonlinear
 !> system. 
 !------------------------------------------------------------------------------
-  SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
+  SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation, ScanningLoop )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t),POINTER :: Solver
      LOGICAL :: TransientSimulation
      REAL(KIND=dp) :: dt
+     LOGICAL, OPTIONAL :: ScanningLoop
 !------------------------------------------------------------------------------
      LOGICAL :: stat, Found, GB, MeActive, GotIt
      INTEGER :: i, j, k, l, col, row, n, BDOFs, maxdim, dsize, size0
@@ -4023,6 +4034,12 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
 
 !------------------------------------------------------------------------------
+
+     IF( PRESENT( ScanningLoop ) ) THEN
+       IF( ScanningLoop ) GOTO 100
+     END IF
+
+
      IF ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
@@ -4150,13 +4167,15 @@ CONTAINS
         CALL INFO("SingleSolver", Message, level=5)
      END IF
 
+100  CONTINUE
+     
      IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
        CALL ExecSolverinSteps( Model, Solver, dt, TransientSimulation)
      ELSE
        SolverAddr = Solver % PROCEDURE
        CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
      END IF
-
+       
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
@@ -4189,6 +4208,10 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params
      INTEGER, POINTER :: UpdateComponents(:)
 
+     INTEGER :: ScanningLoops, scan
+     LOGICAL :: GotLoops
+     TYPE(Variable_t), POINTER :: ScanVar
+     
      SAVE TimeVar
 !------------------------------------------------------------------------------
      CALL SetCurrentMesh( Model, Solver % Mesh )
@@ -4260,35 +4283,36 @@ CONTAINS
        rt0 = RealTime()
      END IF
 
+!------------------------------------------------------------------------------
+! Toggle with time dependency 
+!------------------------------------------------------------------------------
      Solver % Mesh % OutputActive = .TRUE.
      TimeDerivativeActive = TransientSimulation
-
-!----------------------------------------------------------------------
-! This is to avoid resetting of certain info that could be interesting
-! when saving data i.e. using an auxiliary solver.
-!----------------------------------------------------------------------
-     IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
-       DTScal = ListGetConstReal( Params, 'Timestep Scale', Found )
-       IF ( .NOT. Found ) DTScal = 1.0_dp
-       Solver % dt = DtScal * dt 
-
-       IF ( TransientSimulation ) THEN
-         TimeDerivativeActive = &
+     DtScal = 1.0_dp
+     
+     IF ( TransientSimulation ) THEN         
+       TimeDerivativeActive = &
            ListGetLogical( Params, 'Time Derivative Active', Found )
-
-         IF ( .NOT. Found ) THEN
-           TimeDerivativeActive = .TRUE.
-           tcond = ListGetCReal(Params,'Time Derivative Condition',Found)
-           IF ( Found ) TimeDerivativeActive = TimeDerivativeActive .AND. tcond>0
-         END IF
+       IF(.NOT. Found ) TimeDerivativeActive = .TRUE.
+       
+       IF ( .NOT. Found ) THEN
+         tcond = ListGetCReal(Params,'Time Derivative Condition',Found)
+         IF ( Found ) TimeDerivativeActive = tcond > 0
        END IF
-
-       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-       iterV % Values(1) = 1
-
-       str = ListGetString( Params, 'Namespace', NamespaceFound )
-       IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
      END IF
+
+     IF( TimeDerivativeActive ) THEN
+       DTScal = ListGetConstReal( Params, 'Timestep Scale', Found )
+       IF( Found ) THEN
+         dt = DtScal * dt
+         Solver % dt = dt
+       ELSE
+         DtScal = 1.0_dp
+       END IF       
+     END IF
+     
+     str = ListGetString( Params, 'Namespace', NamespaceFound )
+     IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
 
  !------------------------------------------------------------------------------
  ! Check for passive-active boundaries
@@ -4308,38 +4332,69 @@ CONTAINS
        WRITE(Message, '(A,I0,A,I0,A)' ) &
            'Passive element BC no. ',j, ' assigned to BC-ID no. ', &
            PassiveBcId
-       CALL INFO('MainUtils',Message,Level=5)
+       CALL Info('MainUtils',Message,Level=5)
      END IF
 
  !---------------------------------------------------------------------
  ! Call the correct type of solver: standard (single), coupled or block
  ! This is where everything really happens!
+ ! There is an additional looping around the solvers to enable parametric
+ ! studies within solvers, for example. 
  !---------------------------------------------------------------------
-     IF( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
-         Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
-       CALL CoupledSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
-     ELSE IF( Solver % SolverMode == SOLVER_MODE_BLOCK ) THEN
-       CALL BlockSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
-     ELSE 
-       CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
-     END IF
+     
+     ScanningLoops = ListGetInteger( Params,'Scanning Loops',GotLoops)
+     IF( GotLoops ) THEN
+       ScanVar => VariableGet( Solver % Mesh % Variables,'scan')
+       IF(.NOT. ASSOCIATED( ScanVar ) ) THEN
+         CALL Fatal('SolverActivate','For scanning we should have scanning variable!')
+       END IF
+     ELSE
+       ScanningLoops = 1
+     END IF     
 
-     IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
-       IF(NamespaceFound) CALL ListPopNamespace()
+     DO scan = 1, ScanningLoops        
+       !----------------------------------------------------------------------
+       ! This is to avoid resetting iteration that may be interesting and we
+       ! don't want to override it.
+       !----------------------------------------------------------------------
+       IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
+         iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+         iterV % Values(1) = 1
+       END IF
+
+       IF( GotLoops ) THEN
+         ScanVar % Values = scan
+         CALL Info('SolverActivate','---------------------------------------------',Level=6)
+         CALL Info('SolverActivate','Performing scanning loop: '//TRIM(I2S(scan)),Level=5)
+       END IF
+       
+       IF( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
+           Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
+         CALL CoupledSolver( Model, Solver, dt, TimeDerivativeActive )
+       ELSE IF( Solver % SolverMode == SOLVER_MODE_BLOCK ) THEN
+         CALL BlockSolver( Model, Solver, dt, TimeDerivativeActive )
+       ELSE 
+         CALL SingleSolver( Model, Solver, dt, TimeDerivativeActive, scan > 1 )
+       END IF
+       
+       Solver % TimesVisited = Solver % TimesVisited + 1
+     END DO
+       
+     IF(NamespaceFound) CALL ListPopNamespace()
+     
+     IF( TimeDerivativeActive ) THEN
+       dt = dt / dtScal 
+       Solver % dt = dt
      END IF
-     Solver % dt = dt
-     Solver % TimesVisited = Solver % TimesVisited + 1
 
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
 
-
 !---------------------------------------------------------------------
 ! After each solver one may do some special derived fields etc. 
 !---------------------------------------------------------------------
      
-
      ! Update the variables that depend on this solver
      IF( ListGetLogical( Params,&
            'Update Exported Variables', Found) ) THEN
@@ -4352,7 +4407,6 @@ CONTAINS
          'Update Components', Found )   
      IF( Found ) CALL UpdateDependentComponents( UpdateComponents )	
      
-
 
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested
