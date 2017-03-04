@@ -54,7 +54,7 @@ Solver 1
   Exec Solver = never ! call only as slave solver!
   Equation = "CountSolver"
   Variable = -global Count
-  Procedure = "CountSolver" "CountSolver"
+  Procedure = "CountSolver2" "CountSolver"
 End 
 
 

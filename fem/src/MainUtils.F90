@@ -4035,6 +4035,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
+     ! If this is a scannig loop we can skip the unnecessary initializations already done
      IF( PRESENT( ScanningLoop ) ) THEN
        IF( ScanningLoop ) GOTO 100
      END IF

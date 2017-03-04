@@ -4488,7 +4488,7 @@ CONTAINS
        IF( Found ) EXIT
      END DO
 !------------------------------------------------------------------------------
-   END FUNCTION ListGetLogicalAnyMaterial
+   END FUNCTION ListGetLogicalAnySolver
 !------------------------------------------------------------------------------
 
 
