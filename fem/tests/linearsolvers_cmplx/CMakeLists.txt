@@ -5,4 +5,4 @@ CONFIGURE_FILE( HelmholtzFEM.sif HelmholtzFEM.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO CircleInBox.mif MeshFiles DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(linearsolvers_cmplx)
+ADD_ELMER_TEST(linearsolvers_cmplx LABELS quick)

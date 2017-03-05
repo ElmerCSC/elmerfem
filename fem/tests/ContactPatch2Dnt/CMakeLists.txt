@@ -5,5 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO squares.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ContactPatch2Dnt)
-ADD_ELMER_LABEL(ContactPatch2Dnt contact)
+ADD_ELMER_TEST(ContactPatch2Dnt LABELS contact quick)
