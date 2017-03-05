@@ -576,6 +576,13 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: x(:),b(:)
 
+    ! Variables related to robust mode
+    LOGICAL :: Robust 
+    INTEGER :: BestIter,BadIterCount,MaxBadIter
+    REAL(KIND=dp) :: BestNorm,RobustStep,RobustTol,RobustMaxTol
+    REAL(KIND=dp), ALLOCATABLE :: Bestx(:)
+
+    
     A => GlobalMatrix
     CM => A % ConstraintMatrix
     Constrained = ASSOCIATED(CM)
@@ -605,6 +612,18 @@ CONTAINS
     PolynomialDegree = HUTI_BICGSTABL_L 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
+    Robust = ( HUTI_ROBUST == 1 )
+    IF( Robust ) THEN
+      RobustTol = HUTI_ROBUST_TOLERANCE
+      RobustStep = HUTI_ROBUST_STEPSIZE
+      RobustMaxTol = HUTI_ROBUST_MAXTOLERANCE
+      MaxBadIter = HUTI_ROBUST_MAXBADIT
+      BestNorm = SQRT(HUGE(BestNorm))
+      BadIterCount = 0
+      BestIter = 0      
+      ALLOCATE( BestX(ndim))
+    END IF
+    
     CALL RealBiCGStabl(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
          Converged, Diverged, OutputInterval, PolynomialDegree )
 
@@ -614,7 +633,11 @@ CONTAINS
       CM % extraVals = x(ndim+1:ndim+nc)
       DEALLOCATE(x,b)
     END IF
-
+    
+    IF( Robust ) THEN
+      DEALLOCATE( BestX )
+    END IF
+      
     IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
     IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
@@ -884,7 +907,23 @@ CONTAINS
         IF( MOD(Round,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
         END IF
-    
+        
+        IF( Robust ) THEN
+          IF( errorInd < RobustStep * BestNorm ) THEN
+            BestIter = Round
+            BestNorm = errorInd
+            Bestx = x
+            BadIterCount = 0
+          ELSE
+            BadIterCount = BadIterCount + 1
+          END IF
+
+          IF( BestNorm <  RobustTol .AND. &
+              ( errorInd > RobustMaxTol .OR. BadIterCount > MaxBadIter ) ) THEN
+            EXIT
+          END IF
+        END IF
+               
         Converged = (errorind < Tol) 
         Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
         IF( Converged .OR. Diverged) EXIT    
@@ -893,7 +932,18 @@ CONTAINS
       IF(OutputInterval /= HUGE(OutputInterval)) THEN
         WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
       END IF
-    
+
+      IF( Robust ) THEN
+        IF( BestNorm < RobustTol ) THEN
+          Converged = .TRUE.
+        END IF
+        IF( BestNorm < errorInd ) THEN
+          WRITE(*,*) 'Best norm better than final one: ',&
+              BestIter,BestNorm,errorInd,Round
+          x = Bestx
+        END IF
+      END IF
+            
       !------------------------------------------------------------
       ! We have solved z = P*x, with P the preconditioner, so finally 
       ! solve the true unknown x
@@ -1190,6 +1240,14 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: x(:),b(:)
 
+    ! Variables related to robust mode
+    LOGICAL :: Robust 
+    INTEGER :: BestIter,BadIterCount,MaxBadIter
+    REAL(KIND=dp) :: BestNorm,RobustStep,RobustTol,RobustMaxTol
+    REAL(KIND=dp), ALLOCATABLE :: Bestx(:)
+
+    LOGICAL :: Smoothing 
+
     A => GlobalMatrix
     CM => A % ConstraintMatrix
     Constrained = ASSOCIATED(CM)
@@ -1218,7 +1276,22 @@ CONTAINS
     OutputInterval = HUTI_DBUGLVL 
     s = HUTI_IDRS_S
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
+    
+    Robust = ( HUTI_ROBUST == 1 )
+    IF( Robust ) THEN
+      RobustTol = HUTI_ROBUST_TOLERANCE
+      RobustStep = HUTI_ROBUST_STEPSIZE
+      RobustMaxTol = HUTI_ROBUST_MAXTOLERANCE
+      MaxBadIter = HUTI_ROBUST_MAXBADIT
+      BestNorm = SQRT(HUGE(BestNorm))
+      BadIterCount = 0
+      BestIter = 0      
+      ALLOCATE( BestX(ndim))
+    END IF
 
+    Smoothing = ( HUTI_SMOOTHING == 1) 
+
+    
     CALL RealIDRS(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
          Converged, Diverged, OutputInterval, s )
 
@@ -1228,6 +1301,11 @@ CONTAINS
       CM % extraVals = x(ndim+1:ndim+nc)
       DEALLOCATE(x,b)
     END IF
+
+    IF( Robust ) THEN
+      DEALLOCATE( BestX )
+    END IF
+    
 
     IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
@@ -1262,9 +1340,12 @@ CONTAINS
       REAL(kind=dp) :: M(s,s), f(s), mu(s)
       REAL(kind=dp) :: alpha(s), beta(s), gamma(s)
 
-      REAL(kind=dp) :: om, tr
+      REAL(kind=dp) :: om, tr, tr_s, tt
       REAL(kind=dp) :: nr, nt, rho, kappa
 
+      REAL(kind=dp), ALLOCATABLE :: r_s(:), x_s(:)
+      REAL(kind=dp) :: theta
+      
       INTEGER :: iter                         ! number of iterations
       INTEGER :: ii                           ! inner iterations index
       INTEGER :: jj                           ! G-space index
@@ -1273,12 +1354,21 @@ CONTAINS
 !----------------------------------------------------------------------------------- 
       U = 0.0d0
 
+
+      
       ! Compute initial residual, set absolute tolerance
       normb = normfun(n,b,1)
       CALL C_matvec( x, t, ipar, matvecsubr )
       r = b - t
       normr = normfun(n,r,1)
+      
+      IF( Smoothing ) THEN
+        ALLOCATE( r_s(n), x_s(n) )
+        x_s = x
+        r_s = r 
+      END IF
 
+      
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
@@ -1288,10 +1378,24 @@ CONTAINS
 
       IF ( Converged .OR. Diverged ) RETURN
 
-      ! Define P and kappa
+      ! Define P(n,s) and kappa
+#if 1
       CALL RANDOM_SEED
       CALL RANDOM_NUMBER(P)
-
+#else
+      ! this is alternative generation of initial basis vectors
+      ! it is deterministic but not as good...
+      l = 0
+      k = 2        
+      DO j=1,s
+        DO i=1,n
+          P(i,j) = MODULO(i+l,k) / (1.0*(k-1)) 
+        END DO
+        l = k
+        k = 2*k + 1
+      END DO
+#endif
+              
       DO j = 1,s
         DO k = 1,j-1
           alpha(k) = dotprodfun(n, P(:,k), 1, P(:,j), 1 )
@@ -1307,8 +1411,10 @@ CONTAINS
       iter = 0
       jj = 0
       ii = 0
-      ! This concludes the initialisation phase
 
+      
+      ! This concludes the initialisation phase    
+      
       ! Main iteration loop, build G-spaces:
       DO WHILE ( (.NOT. Converged) .AND. (.NOT. Diverged) ) 
 
@@ -1384,14 +1490,26 @@ CONTAINS
           beta(k) = f(k)/M(k,k)
           r = r - beta(k)*G(:,k)
           x = x + beta(k)*U(:,k)
-
+          
           ! New f = P'*r (first k  components are zero)
           IF ( k < s ) THEN
             f(k+1:s)   = f(k+1:s) - beta(k)*M(k+1:s,k)
           END IF
 
+          IF( .NOT. Smoothing ) THEN
+            normr = normfun(n,r,1)
+          ELSE
+            t = r_s - r
+            tr_s = dotprodfun(n, t, 1, r_s, 1 )
+            tt = dotprodfun(n, t, 1, t, 1 )
+            theta = tr_s / tt
+            
+            r_s = r_s - theta * t
+            x_s = x_s - theta * (x_s - x)
+            normr = normfun(n,r_s,1)
+          END IF
+
           ! Check for convergence
-          normr = normfun(n,r,1)
           iter = iter + 1
           errorind = normr/normb
 
@@ -1403,7 +1521,8 @@ CONTAINS
           Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
           IF ( Converged .OR. Diverged ) EXIT
           IF (iter == MaxRounds) EXIT
-
+          
+         
         END DO ! Now we have computed s+1 vectors in G_j
         IF ( Converged .OR. Diverged ) EXIT
         IF (iter == MaxRounds) EXIT
@@ -1442,21 +1561,65 @@ CONTAINS
         ! Update solution and residual
         r = r - om*t
         x = x + om*v
+        
+        IF( .NOT. Smoothing ) THEN
+          normr = normfun(n,r,1)
+        ELSE
+          t = r_s - r
+          tr_s = dotprodfun(n, t, 1, r_s, 1 )
+          tt = dotprodfun(n, t, 1, t, 1 )
+          theta = tr_s / tt
+          r_s = r_s - theta * t
+          x_s = x_s - theta * (x_s - x)
+          normr = normfun(n,r_s,1)
+        END IF
 
         ! Check for convergence
-        normr = normfun(n,r,1)
         iter = iter + 1
         errorind = normr/normb
 
+        
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
         END IF
 
+        IF( Robust ) THEN
+          ! Always store the best solution so far (with some small margin)
+          IF( errorInd < RobustStep * BestNorm ) THEN
+            BestIter = iter
+            BestNorm = errorInd
+            Bestx = x
+            BadIterCount = 0
+          ELSE
+            BadIterCount = BadIterCount + 1
+          END IF
+
+          ! If we have diverged too much and have found already a good candidate, then take it
+          IF( BestNorm <  RobustTol .AND. &
+              ( errorInd > RobustMaxTol .OR. BadIterCount > MaxBadIter ) ) THEN
+            EXIT
+          END IF
+          
+        END IF
+                        
         Converged = (errorind < Tol)
         Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
         IF (iter == MaxRounds) EXIT
       END DO ! end of while loop
 
+      IF( Smoothing ) x = x_s
+      
+      IF( Robust ) THEN
+        IF( BestNorm < RobustTol ) THEN
+          Converged = .TRUE.
+        END IF
+        IF( BestNorm < errorInd ) THEN
+          WRITE(*,*) 'Best norm better than final one: ',&
+              BestIter,BestNorm,errorInd,iter
+          x = Bestx
+        END IF
+      END IF
+      
     !----------------------------------------------------------
     END SUBROUTINE RealIDRS
     !----------------------------------------------------------
@@ -1867,7 +2030,7 @@ CONTAINS
          DO k=1,l
             rho1 = dotprodfun(n, work(1:n,rr), 1, work(1:n,r+k-1), 1)
             IF (rho0 == zzero) THEN
-               CALL Fatal( 'ComplexBiCGStab(l)', 'Breakdown error.' )
+               CALL Fatal( 'ComplexBiCGStab(l)', 'Breakdown error 1.' )
             ENDIF
             beta = alpha*(rho1/rho0)
             rho0 = rho1
@@ -1879,7 +2042,7 @@ CONTAINS
 
             sigma = dotprodfun(n, work(1:n,rr), 1, work(1:n,u+k), 1)
             IF (sigma == zzero) THEN
-               CALL Fatal( 'ComplexBiCGStab(l)', 'Breakdown error.' )
+               CALL Fatal( 'ComplexBiCGStab(l)', 'Breakdown error 2.' )
             ENDIF
             alpha = rho1/sigma
             x(1:n) = x(1:n) + alpha * work(1:n,u)

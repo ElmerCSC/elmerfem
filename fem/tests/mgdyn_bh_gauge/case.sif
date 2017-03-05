@@ -5,7 +5,7 @@ Header
 end
 
 Simulation
-  max output level = 7
+  max output level = 5
   coordinate system = cartesian 3D
   coordinate mapping(3) = 1 2 3
   simulation type = steady state

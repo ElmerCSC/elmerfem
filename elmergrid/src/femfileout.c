@@ -36,7 +36,6 @@
 #include "nrutil.h"
 #include "common.h"
 #include "femdef.h"
-#include "femtools.h"
 #include "femtypes.h"
 #include "femknot.h"
 #include "femfileout.h"

@@ -579,6 +579,7 @@ END INTERFACE
          NodeIndexes => NULL(), EdgeIndexes   => NULL(), &
          FaceIndexes => NULL(), BubbleIndexes => NULL(), &
          DGIndexes   => NULL()
+!DIR$ ATTRIBUTES ALIGN:64::NodeIndexes, EdgeIndexes, FaceIndexes, BubbleIndexes, DGIndexes
 
      TYPE(PElementDefs_t), POINTER :: PDefs=>NULL()
      TYPE(ElementData_t),  POINTER :: PropertyData=>NULL()

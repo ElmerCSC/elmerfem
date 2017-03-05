@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
   Coordinate System = "Cartesian 1D"
   Simulation Type = Transient
   Timestepping Method = BDF

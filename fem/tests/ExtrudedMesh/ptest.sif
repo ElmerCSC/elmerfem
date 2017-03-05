@@ -10,7 +10,7 @@ Simulation
 
   Extruded Mesh Layers = 3
 
-  Max Output Level = 9
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1

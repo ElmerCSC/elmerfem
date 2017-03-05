@@ -12,7 +12,7 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 
-  Max Output Level = 7
+  Max Output Level = 5
 
 ! Post File   = "ptest.ep"
 ! Output File = "ptest.dat"

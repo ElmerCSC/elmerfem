@@ -159,7 +159,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
             STIFFvec(:,:), FORCEvec(:)
 
-    INTEGER :: i, j, k, l, q, nerror, nbasis, nndof, allocstat, tag, &
+    INTEGER :: i, j, k, l, q, nerror, nbasis, nndof, allocstat, tag, nthr, &
             nbasisvec, ndbasisdxvec, rep, dim, lm_eval, lm_eval_vec, NumGP
 
     INTEGER, PARAMETER :: P = 6, NREP = 100, NumGP1D = 8
@@ -247,6 +247,10 @@ CONTAINS
     !$OMP END PARALLEL
 
     ! Normalize the times / thread
+    nthr = 1
+    !$ nthr = omp_get_max_threads()
+    t_tot = t_tot / nthr
+    t_tot_vec = t_tot_vec / nthr
     CALL PrintTestData(SingleElement, NumGP, t_tot, lm_eval, &
             t_tot_vec, lm_eval_vec)
 
@@ -510,8 +514,7 @@ CONTAINS
     END IF
     PElement % NodeIndexes(:) = [(node, node=1,PElement % Type % NumberOfNodes)]
 
-    ! Temporarily disable creation of edges for 3D elements (not implemented yet)
-    IF (PElement % Type % Dimension < 3) THEN
+    IF (PElement % Type % Dimension > 1) THEN
       ! Add element edge indexes to element
       ALLOCATE(PElement % EdgeIndexes(PElement % Type % NumberOfEdges), STAT=astat)
       IF (astat /= 0) THEN
@@ -538,7 +541,9 @@ CONTAINS
         Mesh % Edges(edge) % BDOFs = GetBubbleDofs(Mesh % Edges(edge), P)
         Mesh % MaxEdgeDofs = MAX(Mesh % MaxEdgeDofs, Mesh % Edges(edge) % BDOFs)
       END DO
-      
+    END IF
+
+    IF (PElement % Type % Dimension > 2) THEN
       ! Add element face indexes to element
       ALLOCATE(PElement % FaceIndexes(PElement % Type % NumberOfFaces))
       IF (astat /= 0) THEN
@@ -584,10 +589,16 @@ CONTAINS
         Mesh % Faces(face) % BDOFs = GetBubbleDofs(Mesh % Faces(face), P)
         Mesh % MaxFaceDofs = MAX(Mesh % MaxFaceDofs, Mesh % Faces(face) % BDOFs)
       END DO
-    END IF ! Dimensionality check
+    END IF 
 
     PElement % BDofs = GetBubbleDofs( PElement, P )
     PElement % PDefs % P = P
+    IF (ElementCode == 504) THEN
+      PElement % PDefs % TetraType = 1
+    ELSE
+      PElement % PDefs % TetraType = 0
+    END IF
+    PElement % PDefs % isEdge = .FALSE.
     ! Set max element dofs to mesh
     Mesh % MaxElementDOFs = PElement % Type % NumberOfNodes + &
            PElement % Type % NumberOfEdges * Mesh % MaxEdgeDOFs + &

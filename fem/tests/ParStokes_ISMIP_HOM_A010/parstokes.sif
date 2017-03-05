@@ -27,7 +27,7 @@ Simulation
   Steady State Max Iterations = 1
   Steady State Min Iterations = 1
 !  Post File = "ismip_A010_.vtu"
-  Max Output Level = 6
+  Max Output Level = 5
 End
 
 ! the ice core (3d)

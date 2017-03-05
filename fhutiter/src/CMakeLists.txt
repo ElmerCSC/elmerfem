@@ -9,7 +9,6 @@ SET(LIBSRC
 	huti_intdefs.h 
 	huti_qmr.F90 
 	huti_tfqmr.F90 
-	huti_defs.h 
 	huti_interfaces.F90
 	huti_sfe.F90) 
 

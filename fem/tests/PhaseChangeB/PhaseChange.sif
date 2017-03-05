@@ -7,7 +7,7 @@ End
 
 Simulation
   Coordinate System = Cartesian
-  Max Output Level = 10
+  Max Output Level = 5
 
   Simulation Type = Transient
   Timestep sizes = 50

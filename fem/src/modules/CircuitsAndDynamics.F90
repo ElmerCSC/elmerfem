@@ -442,12 +442,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        w = [0._dp, 0._dp, 1._dp]
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
-        w = [0._dp, 0._dp, 1._dp]
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
@@ -472,7 +472,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           ! ( d/dt a,w )        
 
           IF ( TransientSimulation ) THEN 
-            IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt
+            IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt*w(3)
             IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
  !          localL = value
 !          Comp % Inductance = Comp % Inductance + localL
@@ -485,7 +485,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           ! (J, rot a'), where
           ! J = w*I, thus I*(w, rot a'):
           ! ----------------------------         
-          IF (dim == 2) value = -Comp % N_j*IP % s(t)*detJ*Basis(j)
+          IF (dim == 2) value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
           IF (dim == 3) value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
           CALL AddToMatrixElement(CM,PS(Indexes(q)), IvarId, value)
 
@@ -565,7 +565,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
       
-      grads_coeff = 1._dp
+      grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
@@ -696,7 +696,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
 
-      grads_coeff = 1._dp
+      grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
@@ -1308,12 +1308,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        w = [0._dp, 0._dp, 1._dp]
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
-        w = [0._dp, 0._dp, 1._dp]
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
@@ -1340,7 +1340,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
           IF (dim == 2) cmplx_value = im * Omega * Comp % N_j &
-                  * IP % s(t)*detJ*Basis(j)*circ_eq_coeff
+                  * IP % s(t)*detJ*Basis(j)*circ_eq_coeff*w(3)
           IF (dim == 3) cmplx_value = im * Omega * Comp % N_j &
                   * IP % s(t)*detJ*SUM(WBasis(j,:)*w)
 
@@ -1350,7 +1350,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(q))), &
                  REAL(cmplx_value), AIMAG(cmplx_value))
           
-          IF (dim == 2) cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(j)
+          IF (dim == 2) cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
           IF (dim == 3) cmplx_value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
           IF (i_multiplier /= 0._dp) cmplx_value = i_multiplier*cmplx_value
           
@@ -1429,7 +1429,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
 
-      grads_coeff = 1._dp
+      grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
@@ -1552,7 +1552,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
 
-      grads_coeff = 1._dp
+      grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)

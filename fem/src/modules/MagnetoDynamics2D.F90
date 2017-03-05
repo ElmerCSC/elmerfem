@@ -2259,7 +2259,7 @@ CONTAINS
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
         
         Weight = IntegStuff % s(t) * detJ
-        grads_coeff = 1._dp/GetCircuitModelDepth()
+        grads_coeff = -1._dp/GetCircuitModelDepth()
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:n) * Nodes % x(1:n) )
           Weight = Weight * x

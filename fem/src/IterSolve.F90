@@ -175,7 +175,7 @@ CONTAINS
     INTEGER :: i,j,k,N,ipar(HUTI_IPAR_DFLTSIZE),wsize,istat,IterType,PCondType,ILUn,Blocks
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
-    LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor
+    LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
 
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
@@ -423,6 +423,27 @@ CONTAINS
         'Linear System Divergence Limit', GotIt)
     IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20
     
+    IF( ListGetLogical( Params,'Linear System Robust',GotIt) ) THEN
+      HUTI_ROBUST = 1
+      HUTI_ROBUST_TOLERANCE = ListGetCReal( Params,'Linear System Robust Tolerance',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_TOLERANCE = HUTI_TOLERANCE**(2.0/3.0)
+      HUTI_ROBUST_MAXTOLERANCE = ListGetCReal( Params,'Linear System Robust Limit',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_MAXTOLERANCE = SQRT( HUTI_TOLERANCE )      
+      HUTI_ROBUST_STEPSIZE = ListGetCReal( Params,'Linear System Robust Margin',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_STEPSIZE = 1.1_dp
+      HUTI_ROBUST_MAXBADIT = ListGetInteger( Params,'Linear System Robust Max Iterations',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_MAXBADIT = HUTI_MAXIT / 2
+    ELSE
+      HUTI_ROBUST = 0
+    END IF
+
+
+    IF( ListGetLogical( Params,'IDRS Smoothing',GotIt) ) THEN
+      HUTI_SMOOTHING = 1
+    ELSE
+      HUTI_SMOOTHING = 0
+    END IF
+      
     
 !------------------------------------------------------------------------------
 
@@ -438,12 +459,15 @@ CONTAINS
       ILUn = -1
       IF ( str == 'none' ) THEN
         PCondType = PRECOND_NONE
+
       ELSE IF ( str == 'diagonal' ) THEN
         PCondType = PRECOND_DIAGONAL
+
       ELSE IF ( str == 'ilut' ) THEN
         ILUT_TOL = ListGetCReal( Params, &
             'Linear System ILUT Tolerance',GotIt )
         PCondType = PRECOND_ILUT
+
       ELSE IF ( SEQL(str, 'ilu') ) THEN
         ILUn = NINT(ListGetCReal( Params, &
             'Linear System ILU Order', gotit ))
@@ -451,6 +475,7 @@ CONTAINS
             ILUn = ICHAR(str(4:4)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         PCondType = PRECOND_ILUn
+
       ELSE IF ( SEQL(str, 'bilu') ) THEN
         ILUn = ICHAR(str(5:5)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
@@ -460,14 +485,18 @@ CONTAINS
         ELSE
           PCondType = PRECOND_BILUn
         END IF
+
       ELSE IF ( str == 'multigrid' ) THEN
         PCondType = PRECOND_MG
+
       ELSE IF ( str == 'vanka' ) THEN
         PCondType = PRECOND_VANKA
+
       ELSE IF ( str == 'circuit' ) THEN
         ILUn = ListGetInteger( Params, 'Linear System ILU Order', gotit )
         IF(.NOT.Gotit ) ILUn=-1
         PCondType = PRECOND_Circuit
+
       ELSE
         PCondType = PRECOND_NONE
         CALL Warn( 'IterSolve', 'Unknown preconditioner type, feature disabled.' )
@@ -731,7 +760,7 @@ CONTAINS
         ELSE
           pcondProc = AddrFunc( CRS_ComplexLUPrecondition )
         END IF
-        
+
       CASE (PRECOND_MG)
         pcondProc = AddrFunc( MultiGridPrec )
         
