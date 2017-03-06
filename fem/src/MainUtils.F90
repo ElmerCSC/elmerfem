@@ -579,6 +579,12 @@ CONTAINS
 
      V => VariableGet( M1 % Variables, 'partition' )
      CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'scan' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'scan', 1, V % Values)
+     END IF
+     
 !------------------------------------------------------------------------------
     END SUBROUTINE AddCoordAndTime
 !------------------------------------------------------------------------------
@@ -4029,24 +4035,39 @@ CONTAINS
 
        IF ( Found ) THEN
           IF ( ASSOCIATED(Solver % ActiveElements)) DEALLOCATE( Solver % ActiveElements )
-          ALLOCATE( Solver % ActiveElements( Solver % Mesh % NumberOfBulkElements + &
-                       Solver % Mesh % NumberOFBoundaryElements ) )
 
+          ! Count the number of active elements and maximum element dimension 
           Maxdim = 0
+          n = 0
           DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
              CurrentElement => Solver % Mesh % Elements(i)
              IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
              IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
-                Solver % NumberOfActiveElements = Solver % NumberOFActiveElements + 1
-                Solver % ActiveElements( Solver % NumberOFActiveElements ) = i
-                Maxdim = MAX( CurrentElement % TYPE % DIMENSION, Maxdim )
+               n = n + 1
+               Maxdim = MAX( CurrentElement % TYPE % DIMENSION, Maxdim )
              END IF
           END DO
+          Solver % NumberOfActiveElements = n
           CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
 
+          ! Create list of active elements
+          ALLOCATE( Solver % ActiveElements( n ) )
+          n = 0
+          DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
+            CurrentElement => Solver % Mesh % Elements(i)
+            IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
+            IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
+              n = n + 1
+              Solver % ActiveElements( n ) = i
+            END IF
+          END DO
+
+          ! Calculate accumulated integration weights for bulk if requested          
           IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
             CALL CalculateNodalWeights(Solver,.FALSE.)
           END IF
+
+          ! Calculate weight for boundary 
           IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
             CALL CalculateNodalWeights(Solver,.TRUE.) 
           END IF
@@ -4189,6 +4210,10 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params
      INTEGER, POINTER :: UpdateComponents(:)
 
+     INTEGER :: ScanningLoops, scan
+     LOGICAL :: GotLoops
+     TYPE(Variable_t), POINTER :: ScanVar
+        
      SAVE TimeVar
 !------------------------------------------------------------------------------
      CALL SetCurrentMesh( Model, Solver % Mesh )
@@ -4283,9 +4308,6 @@ CONTAINS
          END IF
        END IF
 
-       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-       iterV % Values(1) = 1
-
        str = ListGetString( Params, 'Namespace', NamespaceFound )
        IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
      END IF
@@ -4311,24 +4333,50 @@ CONTAINS
        CALL INFO('MainUtils',Message,Level=5)
      END IF
 
- !---------------------------------------------------------------------
- ! Call the correct type of solver: standard (single), coupled or block
- ! This is where everything really happens!
- !---------------------------------------------------------------------
-     IF( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
-         Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
-       CALL CoupledSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
-     ELSE IF( Solver % SolverMode == SOLVER_MODE_BLOCK ) THEN
-       CALL BlockSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
-     ELSE 
-       CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
+     ScanningLoops = ListGetInteger( Params,'Scanning Loops',GotLoops)
+     IF( GotLoops ) THEN
+       ScanVar => VariableGet( Solver % Mesh % Variables,'scan')
+       IF(.NOT. ASSOCIATED( ScanVar ) ) THEN
+         CALL Fatal('SolverActivate','For scanning we should have scanning variable!')
+       END IF
+     ELSE
+       ScanningLoops = 1
      END IF
 
+     DO scan = 1, ScanningLoops        
+       !----------------------------------------------------------------------
+       ! This is to avoid resetting iteration that may be interesting and we
+       ! don't want to override it.
+       !----------------------------------------------------------------------
+       IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
+         iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+         iterV % Values(1) = 1
+       END IF
+
+       IF( GotLoops ) THEN
+         ScanVar % Values(1) = scan
+       END IF
+       
+       !---------------------------------------------------------------------
+       ! Call the correct type of solver: standard (single), coupled or block
+       ! This is where everything really happens!
+       !---------------------------------------------------------------------
+       IF( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
+           Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
+         CALL CoupledSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
+       ELSE IF( Solver % SolverMode == SOLVER_MODE_BLOCK ) THEN
+         CALL BlockSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
+       ELSE 
+         CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
+       END IF
+
+       Solver % TimesVisited = Solver % TimesVisited + 1
+     END DO
+       
      IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
        IF(NamespaceFound) CALL ListPopNamespace()
      END IF
      Solver % dt = dt
-     Solver % TimesVisited = Solver % TimesVisited + 1
 
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )

@@ -5,4 +5,4 @@ CONFIGURE_FILE(konesec.sif konesec.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO konesec DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_nodalforce2d)
+ADD_ELMER_TEST(mgdyn_nodalforce2d LABELS quick)

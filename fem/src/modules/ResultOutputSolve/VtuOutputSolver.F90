@@ -69,7 +69,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       WriteIds, SaveBoundariesOnly, SaveBulkOnly, SaveLinear, &
       GotMaskName, NoPermutation, SaveElemental, SaveNodal, GotMaskCond
   LOGICAL, ALLOCATABLE :: ActiveElem(:)
-  INTEGER, ALLOCATABLE :: BodyVisited(:)
+  INTEGER, ALLOCATABLE :: BodyVisited(:),GeometryBodyMap(:),GeometryBCMap(:)
   REAL(KIND=dp), ALLOCATABLE :: MaskCond(:)
 
 ! Parameters for buffered binary output
@@ -543,16 +543,56 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   BcOffset = 0
   WriteIds = GetLogical( Params,'Save Geometry Ids',GotIt)  
   IF( WriteIds ) THEN
-    IF( ElemFirst <= Mesh % NumberOfBulkElements ) THEN
-      BCOffset = 100
-      DO WHILE( BCOffset <= Model % NumberOfBodies ) 
-        BCOffset = 10 * BCOffset
+    ! Create the mapping for body ids, default is unity mapping
+    ALLOCATE( GeometryBodyMap( CurrentModel % NumberOfBodies ) )
+    j = ListGetInteger( Params,'Default Body Id',GotIt )
+    IF( GotIt ) THEN
+      GeometryBodyMap = j
+    ELSE
+      DO i=1,CurrentModel % NumberOfBodies
+        GeometryBodyMap(i) = i
       END DO
-      CALL Info('VtuOutputSolver','Setting offset for boundary entities: '&
-          //TRIM(I2S(BCOffset)),Level=6)
     END IF
+
+    ! User given mapping
+    DO i=1,CurrentModel % NumberOfBodies
+      j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Geometry Id',GotIt)
+      IF( GotIt ) GeometryBodyMap(i) = j
+    END DO
+    !PRINT *,'GeometryBodyMap:',GeometryBodyMap
+
+    ! Create mapping for bc ids, default is unity mapping with offset
+    ALLOCATE( GeometryBCMap( CurrentModel % NumberOfBCs ) )
+    j = ListGetInteger( Params,'Default BC Id',GotIt )
+    IF( GotIt ) THEN
+      GeometryBCMap = j
+    ELSE
+      ! Determine a default offset
+      BCOffset = ListGetInteger( Params,'BC Id Offset',GotIt )
+      IF( .NOT. GotIt ) THEN
+        IF( ElemFirst <= Mesh % NumberOfBulkElements ) THEN
+          BCOffset = 100
+          DO WHILE( BCOffset <= Model % NumberOfBodies ) 
+            BCOffset = 10 * BCOffset
+          END DO
+          CALL Info('VtuOutputSolver','Setting offset for boundary entities: '&
+              //TRIM(I2S(BCOffset)),Level=6)
+        END IF
+      END IF
+      DO i=1,CurrentModel % NumberOfBCs
+        GeometryBCMap(i) = i + BCOffSet
+      END DO
+    END IF
+
+    ! User given bc mapping
+    DO i=1,CurrentModel % NumberOfBCs
+      j = ListGetInteger( CurrentModel % BCs(i) % Values,'Geometry Id',GotIt)
+      IF( GotIt ) GeometryBCMap(i) = j
+    END DO
+    !PRINT *,'GeometryBcMap:',GeometryBcMap
+
   END IF
-    
+  
 
  100   CONTINUE
 
@@ -627,6 +667,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     DEALLOCATE( ActiveElem ) 
   END IF
 
+  IF( WriteIds ) THEN  
+    DEALLOCATE( GeometryBodyMap, GeometryBcMap )
+  END IF
+ 
+  
   CALL Info('VtuOutputSolver','All done for now',Level=10)     
 
 
@@ -1525,9 +1570,11 @@ CONTAINS
           CurrentElement => Model % Elements(i)
 
           IF( i <= Mesh % NumberOfBulkElements ) THEN
-            j = CurrentElement % BodyId
+            j = CurrentElement % BodyId 
+            j = GeometryBodyMap( j )
           ELSE
-            j = GetBCId( CurrentElement ) + BCOffset
+            j = GetBCId( CurrentElement ) 
+            j = GeometryBCMap( j )
           END IF
 
           CALL AscBinIntegerWrite( j )
