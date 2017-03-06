@@ -913,6 +913,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   END IF
   EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
 
+  CALL DefaultStart()
+  
   DO i=1,NoIterationsMax
     ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( NoIterationsMax > 1 ) THEN
@@ -942,6 +944,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     END DO
   END IF
 
+  CALL DefaultFinish()
+  
   CALL Info('WhitneyAVSolver','All done',Level=8 )
   CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
 
@@ -3740,6 +3744,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
   EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
+
+  CALL DefaultStart()
+
   DO i=1,NoIterationsMax
     ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( DoSolve(i) ) THEN
@@ -3750,6 +3757,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
   CALL CalculateLumped(Model % NumberOfBodyForces)
+
+  CALL DefaultFinish()
 
   
 CONTAINS

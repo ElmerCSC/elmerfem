@@ -98,10 +98,12 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   END IF
   CALL Info('ReynoldsSolver','---------------------------------------',Level=5)
 
+  CALL DefaultStart()
+  
 !------------------------------------------------------------------------------
 ! Get variables needed for solution
 !------------------------------------------------------------------------------
-
+  
   Params => GetSolverParams()
   Bubbles = GetLogical( Params, 'Bubbles', GotIt )
 
@@ -217,8 +219,8 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .TRUE. ) 
   END IF
 
-
   CALL DefaultFinish() 
+
   CALL Info('ReynoldsSolver','-------------------------------------------------',Level=5)
   
 CONTAINS  

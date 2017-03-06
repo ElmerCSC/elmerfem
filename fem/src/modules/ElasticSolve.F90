@@ -570,6 +570,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LinearModel = ListGetLogical( SolverParams, &
        'Elasticity Solver Linear', GotIt )
 
+  
+  CALL DefaultStart()
+  
   DO iter=1,NonlinearIter
 
      at  = CPUTime()
@@ -1054,6 +1057,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   DEALLOCATE( PrevSOL )
 
+  CALL DefaultFinish()
+  
   CALL Info('ElasticSolver','All done',Level=4)
   CALL Info('ElasticSolver','------------------------------------------',Level=4)
 

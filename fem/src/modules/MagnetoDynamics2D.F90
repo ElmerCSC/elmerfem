@@ -112,7 +112,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
   CALL Info( 'MagnetoDynamics2D', 'Solving equation for magnetic vector potential', Level=4 )
   CALL Info( 'MagnetoDynamics2D','------------------------------------------------', Level=4 )
 
-
+  CALL DefaultStart()
+  
   ! Allocate some permanent storage, this is done first time only:
   ! --------------------------------------------------------------
   NULLIFY(BC)
@@ -188,6 +189,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
     END DO
   END IF
 
+  CALL DefaultFinish()
+  
 CONTAINS
 
 !------------------------------------------------------------------------------

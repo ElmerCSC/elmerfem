@@ -273,6 +273,8 @@ END SUBROUTINE StatCurrentSolver_Init
      CALL Info( 'StatCurrentSolve', 'STAT CURRENT SOLVER:  ', Level=4 )
      CALL Info( 'StatCurrentSolve', '-------------------------------------',Level=4 )
 
+     CALL DefaultStart()
+     
      DO iter = 1, NonlinearIter
        at  = CPUTime()
        at0 = RealTime()
@@ -554,6 +556,8 @@ END SUBROUTINE StatCurrentSolver_Init
       CALL InvalidateVariable( Model % Meshes, Solver % Mesh, &
           'Nodal Joule Heating')
     END IF
+
+    CALL DefaultFinish()
     
 
 !------------------------------------------------------------------------------
