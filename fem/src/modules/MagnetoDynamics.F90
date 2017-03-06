@@ -7835,7 +7835,7 @@ CONTAINS
             IF ( CSymmetry ) THEN
               B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
               B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
-                + SUM( SOL(1,1:nd) * Basis(1:nd) ) / xcoord
+                + SUM( SOL(k,1:nd) * Basis(1:nd) ) / xcoord
               B(k,3) = 0._dp
             ELSE
               B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
