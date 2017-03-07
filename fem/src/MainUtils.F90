@@ -4370,6 +4370,20 @@ CONTAINS
          CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
        END IF
 
+       IF( GotLoops ) THEN
+         IF( ListGetLogical( Params,'Save Scanning Modes',Found ) ) THEN
+           n = SIZE( Solver % Variable % Values )
+           IF ( .NOT. ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
+             CALL Info('MainUtils','Creating modes over scanned fields',Level=8)
+             ALLOCATE( Solver % Variable % EigenValues(ScanningLoops) )
+             ALLOCATE( Solver % Variable % EigenVectors(ScanningLoops,n) )
+           END IF
+           Solver % Variable % EigenValues(scan) = 1.0_dp * scan
+           Solver % Variable % EigenVectors(scan,:) = Solver % Variable % Values
+         END IF         
+       END IF
+
+       
        Solver % TimesVisited = Solver % TimesVisited + 1
      END DO
        

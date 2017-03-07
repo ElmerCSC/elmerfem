@@ -510,6 +510,10 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
             GetInteger( Model % Solvers(i) % Values,'Eigen System Values', GotIt ) )
         MaxModes = MAX( MaxModes, &
             GetInteger( Model % Solvers(i) % Values,'Harmonic System Values', GotIt ) )       
+        IF( ListGetLogical( Model % Solvers(i) % Values,'Save Scanning Modes',GotIt ) ) THEN
+          MaxModes = MAX( MaxModes, &
+              GetInteger( Model % Solvers(i) % Values,'Scanning Loops', GotIt ) )
+        END IF
       END DO
     END IF     
   END IF
