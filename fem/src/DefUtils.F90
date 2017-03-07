@@ -2639,6 +2639,8 @@ CONTAINS
        k = SlaveSolverIndexes(j)
        SlaveSolver => CurrentModel % Solvers(k)
 
+       CALL Info('DefaultSlaveSolvers','Calling slave solver: '//TRIM(I2S(k)),Level=8)
+       
        IF(ParEnv % PEs>1) THEN
          IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
              CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
