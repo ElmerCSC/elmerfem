@@ -933,6 +933,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
 !------------------------------------------------------------------------------
 
+  CALL DefaultStart()
+
   IF (First) THEN
     First = .FALSE.
     
@@ -1012,6 +1014,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   ELSE
      ASolver % Matrix % AddMatrix => Null()
   END IF
+
+  CALL DefaultFinish()
 
   CONTAINS
 
@@ -1783,6 +1787,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    LOGICAL :: Found
 
+   CALL DefaultStart()
+
    Circuit_tot_n => Model%Circuit_tot_n
    n_Circuits => Model%n_Circuits
    CM => Model%CircuitMatrix
@@ -1897,6 +1903,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
           
        END DO  
    END DO
+
+   CALL DefaultFinish()
 
 CONTAINS
 
