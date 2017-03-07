@@ -1,0 +1,150 @@
+! Variation of the HelmholtzPlaneWaves test case.
+!
+! Scan over a few different frequencies in the Helmholtz equation using "Scanning Loops".
+! and save the values as eigenmodes to vtu file. Also after each scanning loop register the
+! min/max value of the absolute pressure.
+!
+! P.R. 7.3.2017
+
+
+$ c = 340
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 10
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "fluid"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Body Force 1 
+  Ptot = Variable Pressure
+    Real MATC "sqrt(tx(0)^2+tx(1)^2)"
+End 
+
+
+Solver 1
+  Equation = "Helmholtz"
+  Variable = "Pressure"
+  Variable Dofs = 2
+
+  Procedure = "HelmholtzSolve" "HelmholtzSolver" 
+
+  Linear System Solver = Direct
+!Iterative
+  Linear System Direct Method = umfpack
+
+  Bubbles = False
+
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgstabl Polynomial Degree = 2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU2"
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Max Iterations = 1
+
+  Nonlinear Update Exported Variables = Logical True
+  Exported Variable 1 = Ptot
+
+! Activate scannig modes
+  Scanning Loops = 5
+
+! Scan over frequency
+  Frequency = Variable "scan"
+    Real MATC "1000*tx"
+
+! save the scanned modes
+  Save Scanning Modes = Logical True
+
+! get the min/max pressure
+  Post Solvers = 2
+End
+
+
+Solver 2
+  Exec Solver = never
+
+  Equation = "SaveScalars"
+!  Filename = minmax.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Pressure 
+  Operator 1 = min
+  Operator 2 = max 
+
+  Show Norm Index = 1
+End
+
+
+Material 1
+  Name = "Fluid"
+  Density = 1.224
+  Sound Speed = $ c
+End
+
+
+Boundary Condition 1
+  Name = "Bc_Bottom"
+  Target Boundaries = 1
+  Save Line = True
+End 
+
+Boundary Condition 2
+  Name = "Bc_Right"
+  Target Boundaries = 2
+  Wave Impedance 1 = Real $ c
+End 
+
+Boundary Condition 3
+  Name = "Bc_Top"
+  Target Boundaries = 3
+End
+
+Boundary Condition 4
+  Name = "Bc_Left"
+  Target Boundaries = 4
+!  Wave Flux 1 = 1.0
+!  Wave Flux 2 = 1.0
+  Pressure 1 = 1.0
+  Pressure 2 = 0.0
+End 
+
+
+Solver 2 :: Reference Norm = Real 0.99967001
+RUN
+
