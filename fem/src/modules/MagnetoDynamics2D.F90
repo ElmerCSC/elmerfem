@@ -948,6 +948,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
       'Nonlinear system max iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
 
+  CALL DefaultStart()
+  
   DO iter=1,NonlinIter
 
     IF(Iter>1) NewtonRaphson=.TRUE.
@@ -1005,7 +1007,9 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
        CoordVar % Values(j+3) = Mesh % Nodes % z(i)
      END DO
    END IF
-
+   
+   CALL DefaultFinish()
+   
 CONTAINS
 
 !------------------------------------------------------------------------------
