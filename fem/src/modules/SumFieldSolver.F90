@@ -87,12 +87,6 @@ SUBROUTINE SumFieldSolver( Model,Solver,dt,TransientSimulation )
   IF (.NOT. ASSOCIATED(ScanVar)) CALL Fatal('SumFieldSolver', 'Scan variable not found.')
   ScanInt = INT( ScanVar % Values(1) ) 
 
-  PRINT *, "SumFieldVar % DOFs", SumFieldVar % DOFs
-  PRINT *, "FieldVar % DOFs", FieldVar % DOFs
-  PRINT *, "SIZE(SumFieldVar % Values)", 
-  PRINT *, "SIZE(FieldVar % Values)", 
-  PRINT *, "ScanInt", ScanInt 
-
   IF (SIZE(SumFieldVar % Values) == SIZE(FieldVar % Values)) &
     CALL Fatal('SumFieldSolver','Summed fields are of different size than &
     the defined Sum Field Variable.')
