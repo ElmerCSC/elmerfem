@@ -61,7 +61,7 @@ SUBROUTINE SumFieldSolver( Model,Solver,dt,TransientSimulation )
  
   TYPE(ValueList_t), POINTER :: SolverParam
 
-  SAVE FieldVar, SumFieldVar
+  SAVE FieldVar, SumFieldVar, FieldName
 !------------------------------------------------------------------------------
  
   IF (First) THEN
@@ -83,11 +83,16 @@ SUBROUTINE SumFieldSolver( Model,Solver,dt,TransientSimulation )
 
   END IF
  
+  CALL Info('SumFieldSolver','-------------------------------------------',Level=6)
+  CALL Info('SumFieldSolver','Computing the sum of field solutions for',Level=5)
+  CALL Info('SumFieldSolver','Field '//TRIM(FieldName)//'.',Level=5)
+  CALL Info('SumFieldSolver','-------------------------------------------',Level=6)
+
   ScanVar => VariableGet(Solver % Mesh % Variables, 'scan')
   IF (.NOT. ASSOCIATED(ScanVar)) CALL Fatal('SumFieldSolver', 'Scan variable not found.')
   ScanInt = INT( ScanVar % Values(1) ) 
 
-  IF (SIZE(SumFieldVar % Values) == SIZE(FieldVar % Values)) &
+  IF (SIZE(SumFieldVar % Values) .NE. SIZE(FieldVar % Values)) &
     CALL Fatal('SumFieldSolver','Summed fields are of different size than &
     the defined Sum Field Variable.')
 
