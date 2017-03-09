@@ -54,11 +54,14 @@ SUBROUTINE SumFieldSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t), POINTER :: Element
   TYPE(Variable_t), POINTER :: SumFieldVar, FieldVar, ScanVar
   TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Solver_t), POINTER :: ASolver => NULL()
   INTEGER :: N, ScanInt
   LOGICAL :: Found, First=.TRUE.
   CHARACTER(LEN=MAX_NAME_LEN) :: FieldName
  
   TYPE(ValueList_t), POINTER :: SolverParam
+
+  SAVE FieldVar, SumFieldVar
 !------------------------------------------------------------------------------
  
   IF (First) THEN
@@ -66,7 +69,7 @@ SUBROUTINE SumFieldSolver( Model,Solver,dt,TransientSimulation )
  
     Mesh => Model % Mesh
     N = Mesh % MaxElementDOFs
- 
+
     SumFieldVar => VariableGet( Mesh % Variables, Solver % Variable % Name )
     IF(.NOT. ASSOCIATED(SumFieldVar)) THEN
       CALL Fatal('FieldSumSolver',TRIM(Solver % Variable % Name)//' not associated!')
@@ -80,9 +83,19 @@ SUBROUTINE SumFieldSolver( Model,Solver,dt,TransientSimulation )
 
   END IF
  
-  ScanVar => VariableGet(Mesh % Variables, 'scan', Found)
-  IF (.NOT. Found) CALL Fatal('FieldSumSolver', 'Scan variable not found.')
-  ScanInt = NINT( ScanVar % Values(1) ) 
+  ScanVar => VariableGet(Solver % Mesh % Variables, 'scan')
+  IF (.NOT. ASSOCIATED(ScanVar)) CALL Fatal('SumFieldSolver', 'Scan variable not found.')
+  ScanInt = INT( ScanVar % Values(1) ) 
+
+  PRINT *, "SumFieldVar % DOFs", SumFieldVar % DOFs
+  PRINT *, "FieldVar % DOFs", FieldVar % DOFs
+  PRINT *, "SIZE(SumFieldVar % Values)", 
+  PRINT *, "SIZE(FieldVar % Values)", 
+  PRINT *, "ScanInt", ScanInt 
+
+  IF (SIZE(SumFieldVar % Values) == SIZE(FieldVar % Values)) &
+    CALL Fatal('SumFieldSolver','Summed fields are of different size than &
+    the defined Sum Field Variable.')
 
   IF( ScanInt == 1 ) THEN
     SumFieldVar % Values = FieldVar % Values
