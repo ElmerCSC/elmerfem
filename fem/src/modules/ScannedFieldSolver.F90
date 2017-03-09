@@ -49,7 +49,7 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
   LOGICAL :: TransientSimulation !< Steady state or transient simulation
 !------------------------------------------------------------------------------
-  INTEGER :: i, ScanMax, ScanInt, ScanSolverInt
+  INTEGER :: i, ScanMax, ScanInt, ScanSolverInt, NofFields
   TYPE(ValueList_t), POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: FieldName
   LOGICAL :: Found
@@ -63,6 +63,13 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
     i = i + 1
   END DO
 
+  NofFields=0
+  DO WHILE(.TRUE.)
+    IF ( .NOT.ListCheckPresent(SolverParams, &
+          "Field Name"//TRIM(i2s(NofFields))) ) EXIT
+    NofFields = NofFields + 1
+  END DO
+
   CALL ListAddString( SolverParams, 'Variable', '-nooutput SF_dummy' )
 
   FieldName = GetString(SolverParams,'Field Name',Found) 
@@ -73,6 +80,7 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
 
   ScanMax = GetInteger(Model % Solvers(ScanSolverInt) % Values, 'Scanning Loops', Found)
   IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Scan Loops not found.')
+
 
   DO ScanInt = 1, ScanMax 
     CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
