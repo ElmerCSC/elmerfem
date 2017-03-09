@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  A Module for computing the sum of scanned fields.
+! *  A Module for treating scanned field solutions.
 ! *
 ! *  Author:  Eelis Takala
 ! *  Email:   eelis.takala@gmail.com
@@ -39,7 +39,49 @@
 !> \ingroup Solvers
 !> \{
 !------------------------------------------------------------------------------
-SUBROUTINE SumFieldSolver( Model,Solver,dt,TransientSimulation )
+SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
+  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
+  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
+  LOGICAL :: TransientSimulation !< Steady state or transient simulation
+!------------------------------------------------------------------------------
+  INTEGER :: i, ScanMax, ScanInt
+  TYPE(ValueList_t), POINTER :: SolverParams
+  CHARACTER(LEN=MAX_NAME_LEN) :: FieldName
+  LOGICAL :: Found
+
+  SolverParams => GetSolverParams()
+
+  i=1
+  DO WHILE(.TRUE.)
+    IF ( .NOT.ListCheckPresent(SolverParams, &
+          "Exported Variable "//TRIM(i2s(i))) ) EXIT
+    i = i + 1
+  END DO
+
+  CALL ListAddString( SolverParams, 'Variable', '-nooutput SF_dummy' )
+
+  FieldName = GetString(SolverParams,'Field Name',Found) 
+  IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Field Name not found.')
+
+  ScanMax = 4
+  DO ScanInt = 1, ScanMax 
+    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      TRIM(FieldName)//' Scan '//TRIM(i2s(ScanInt)))
+    i=i+1
+  END DO
+
+!------------------------------------------------------------------------------
+END SUBROUTINE ScannedFieldSolver_Init
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -83,17 +125,17 @@ SUBROUTINE SumFieldSolver( Model,Solver,dt,TransientSimulation )
 
   END IF
  
-  CALL Info('SumFieldSolver','-------------------------------------------',Level=6)
-  CALL Info('SumFieldSolver','Computing the sum of field solutions for',Level=5)
-  CALL Info('SumFieldSolver','Field '//TRIM(FieldName)//'.',Level=5)
-  CALL Info('SumFieldSolver','-------------------------------------------',Level=6)
+  CALL Info('ScannedFieldSolver','-------------------------------------------',Level=6)
+  CALL Info('ScannedFieldSolver','Computing the sum of field solutions for',Level=5)
+  CALL Info('ScannedFieldSolver','Field '//TRIM(FieldName)//'.',Level=5)
+  CALL Info('ScannedFieldSolver','-------------------------------------------',Level=6)
 
   ScanVar => VariableGet(Solver % Mesh % Variables, 'scan')
-  IF (.NOT. ASSOCIATED(ScanVar)) CALL Fatal('SumFieldSolver', 'Scan variable not found.')
+  IF (.NOT. ASSOCIATED(ScanVar)) CALL Fatal('ScannedFieldSolver', 'Scan variable not found.')
   ScanInt = INT( ScanVar % Values(1) ) 
 
   IF (SIZE(SumFieldVar % Values) .NE. SIZE(FieldVar % Values)) &
-    CALL Fatal('SumFieldSolver','Summed fields are of different size than &
+    CALL Fatal('ScannedFieldSolver','Summed fields are of different size than &
     the defined Sum Field Variable.')
 
   IF( ScanInt == 1 ) THEN
@@ -103,5 +145,5 @@ SUBROUTINE SumFieldSolver( Model,Solver,dt,TransientSimulation )
   END IF 
 
 !------------------------------------------------------------------------------
-END SUBROUTINE SumFieldSolver
+END SUBROUTINE ScannedFieldSolver
 !------------------------------------------------------------------------------
