@@ -72,6 +72,7 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
   NofFields = NofFields - 1
 
   CALL ListAddString( SolverParams, 'Variable', '-nooutput SF_dummy' )
+  CALL ListAddInteger( SolverParams, 'Number of Fields', NofFields)
 
   ScanSolverInt = GetInteger(SolverParams,'Scan Solver',Found) 
   IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Scan Solver not found.')
@@ -109,16 +110,17 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Element_t), POINTER :: Element
-  TYPE(Variable_t), POINTER :: SumFieldVar, FieldVar, ScanVar
+  TYPE(Variable_t), POINTER :: SumFieldVar, ScanVar
+  TYPE(Variable_t), ALLOCATABLE :: FieldVars(:)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Solver_t), POINTER :: ASolver => NULL()
-  INTEGER :: N, ScanInt
+  INTEGER :: N, ScanInt, istat, NofFields, FieldInt
   LOGICAL :: Found, First=.TRUE.
-  CHARACTER(LEN=MAX_NAME_LEN) :: FieldName
+  CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: FieldNames(:)
  
   TYPE(ValueList_t), POINTER :: SolverParam
 
-  SAVE FieldVar, SumFieldVar, FieldName
+  SAVE FieldVars, SumFieldVar, FieldNames, NofFields
 !------------------------------------------------------------------------------
  
   IF (First) THEN
@@ -131,12 +133,19 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
     IF(.NOT. ASSOCIATED(SumFieldVar)) THEN
       CALL Fatal('ScannedFieldSolver',TRIM(Solver % Variable % Name)//' not associated!')
     END IF
+
+    NofFields = ListGetInteger(GetSolverParams(), 'Number of Fields')
+
+    ALLOCATE(FieldNames(NofFields), FieldVars(NofFields), STAT=istat)
+    IF ( istat /= 0 ) CALL Fatal('ScannedFieldSolver','Memory allocation error')
     
-    FieldName = ListGetString(GetSolverParams(), 'Field Name 1')
-    FieldVar => VariableGet( Mesh % Variables, FieldName)
-    IF(.NOT. ASSOCIATED(FieldVar)) THEN
-      CALL Fatal('ScannedFieldSolver',TRIM(FieldName)//' not associated!')
-    END IF
+    DO FieldInt = 1, NofFields
+      FieldNames(FieldInt) = ListGetString(GetSolverParams(), 'Field Name 'TRIM(i2s(FieldInt)))
+      FieldVars(FieldInt) => VariableGet( Mesh % Variables, FieldNames(FieldInt))
+      IF(.NOT. ASSOCIATED(FieldVars(FieldInt))) THEN
+        CALL Fatal('ScannedFieldSolver',TRIM(FieldNames(NofFields))//' not associated!')
+      END IF
+    END DO
 
   END IF
  
