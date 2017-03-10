@@ -49,7 +49,7 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
   LOGICAL :: TransientSimulation !< Steady state or transient simulation
 !------------------------------------------------------------------------------
-  INTEGER :: i, ScanMax, ScanInt, ScanSolverInt, NofFields
+  INTEGER :: i, FieldInt, ScanMax, ScanInt, ScanSolverInt, NofFields, istat
   TYPE(ValueList_t), POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: FieldName
   LOGICAL :: Found
@@ -63,17 +63,15 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
     i = i + 1
   END DO
 
-  NofFields=0
+  NofFields = 1
   DO WHILE(.TRUE.)
     IF ( .NOT.ListCheckPresent(SolverParams, &
-          "Field Name"//TRIM(i2s(NofFields))) ) EXIT
+          "Field Name "//TRIM(i2s(NofFields))) ) EXIT
     NofFields = NofFields + 1
   END DO
+  NofFields = NofFields - 1
 
   CALL ListAddString( SolverParams, 'Variable', '-nooutput SF_dummy' )
-
-  FieldName = GetString(SolverParams,'Field Name',Found) 
-  IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Field Name not found.')
 
   ScanSolverInt = GetInteger(SolverParams,'Scan Solver',Found) 
   IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Scan Solver not found.')
@@ -81,11 +79,15 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
   ScanMax = GetInteger(Model % Solvers(ScanSolverInt) % Values, 'Scanning Loops', Found)
   IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Scan Loops not found.')
 
+  DO FieldInt = 1, NofFields
+    FieldName = GetString(SolverParams,'Field Name '//TRIM(i2s(FieldInt)),Found) 
+    IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Field Name '//TRIM(i2s(FieldInt))//' not found.')
 
-  DO ScanInt = 1, ScanMax 
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-      TRIM(FieldName)//' Scan '//TRIM(i2s(ScanInt)))
-    i=i+1
+    DO ScanInt = 1, ScanMax 
+      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        TRIM(FieldName)//' Scan '//TRIM(i2s(ScanInt)))
+      i=i+1
+    END DO
   END DO
 
 !------------------------------------------------------------------------------
@@ -127,13 +129,13 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
 
     SumFieldVar => VariableGet( Mesh % Variables, Solver % Variable % Name )
     IF(.NOT. ASSOCIATED(SumFieldVar)) THEN
-      CALL Fatal('FieldSumSolver',TRIM(Solver % Variable % Name)//' not associated!')
+      CALL Fatal('ScannedFieldSolver',TRIM(Solver % Variable % Name)//' not associated!')
     END IF
     
-    FieldName = ListGetString(GetSolverParams(), 'Field Name')
+    FieldName = ListGetString(GetSolverParams(), 'Field Name 1')
     FieldVar => VariableGet( Mesh % Variables, FieldName)
     IF(.NOT. ASSOCIATED(FieldVar)) THEN
-      CALL Fatal('FieldSumSolver',TRIM(FieldName)//' not associated!')
+      CALL Fatal('ScannedFieldSolver',TRIM(FieldName)//' not associated!')
     END IF
 
   END IF
