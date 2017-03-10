@@ -6686,7 +6686,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
 
 
-       grads_coeff = 1._dp/GetCircuitModelDepth()
+       grads_coeff = -1._dp/GetCircuitModelDepth()
        IF( CSymmetry ) THEN
          xcoord = SUM( Basis(1:n) * Nodes % x(1:n) )
          grads_coeff = grads_coeff/xcoord
