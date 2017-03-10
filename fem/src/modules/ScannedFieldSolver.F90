@@ -80,6 +80,8 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
   ScanMax = GetInteger(Model % Solvers(ScanSolverInt) % Values, 'Scanning Loops', Found)
   IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Scan Loops not found.')
 
+  CALL ListAddInteger(SolverParams, 'Scan Max', ScanMax)
+
   DO FieldInt = 1, NofFields
     FieldName = GetString(SolverParams,'Field Name '//TRIM(i2s(FieldInt)),Found) 
     IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Field Name '//TRIM(i2s(FieldInt))//' not found.')
@@ -89,6 +91,11 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
         TRIM(FieldName)//' Scan '//TRIM(i2s(ScanInt)))
       i=i+1
     END DO
+
+    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      '-nooutput '//TRIM(FieldName)//' Dummy')
+    i=i+1
+ 
   END DO
 
 !------------------------------------------------------------------------------
@@ -117,10 +124,10 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
   TYPE(VariablePtr_t), POINTER :: FieldVars(:)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Solver_t), POINTER :: ASolver => NULL()
-  INTEGER :: N, ScanInt, istat, NofFields, FieldInt
+  INTEGER :: N, ScanInt, istat, NofFields, FieldInt, ScanMax 
   LOGICAL :: Found, First=.TRUE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: FieldNames(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: ScanFieldName
+  CHARACTER(LEN=MAX_NAME_LEN) :: ScanFieldName, SumFieldName 
  
   TYPE(ValueList_t), POINTER :: SolverParam
 
@@ -156,25 +163,43 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
   IF (.NOT. ASSOCIATED(ScanVar)) CALL Fatal('ScannedFieldSolver', 'Scan variable not found.')
   ScanInt = INT( ScanVar % Values(1) ) 
 
+  ScanMax = GetInteger(GetSolverParams(), 'Scan Max', Found)
+  IF (.NOT. Found) CALL Fatal('ScannedFieldSolver', 'The maximum number of scan loops not found.')
+
   DO FieldInt = 1, NofFields
     FieldVar => FieldVars(FieldInt) % Var 
     CALL Info('ScannedFieldSolver','Field '//TRIM(FieldNames(FieldInt))//'.',Level=5)
     ScanFieldName = TRIM(FieldNames(FieldInt))//' scan '//TRIM(i2s(ScanInt))
     ScanFieldVar => VariableGet( Mesh % Variables, ScanFieldName)
     IF(.NOT. ASSOCIATED(ScanFieldVar)) THEN
-      CALL Fatal('ScannedFieldSolver',TRIM(Solver % Variable % Name)//' not associated!')
+      CALL Fatal('ScannedFieldSolver', TRIM(ScanFieldName)//' not associated!')
     END IF
 
     IF (SIZE(ScanFieldVar % Values) .NE. SIZE(FieldVar % Values)) &
+      CALL Fatal('ScannedFieldSolver','Scanned fields are of different size than &
+      the defined Scan Field Variable.')
+
+    SumFieldName = TRIM(FieldNames(FieldInt))//' Dummy'
+    SumFieldVar => VariableGet( Mesh % Variables, SumFieldName)
+    IF(.NOT. ASSOCIATED(ScanFieldVar)) THEN
+      CALL Fatal('ScannedFieldSolver', TRIM(SumFieldName)//' not associated')
+    END IF
+
+    IF (SIZE(ScanFieldVar % Values) .NE. SIZE(SumFieldVar % Values)) &
       CALL Fatal('ScannedFieldSolver','Summed fields are of different size than &
       the defined Sum Field Variable.')
 
     ScanFieldVar % Values = FieldVar % Values
     IF( ScanInt == 1 ) THEN
-!      SumFieldVar % Values = FieldVars(FieldInt) % Values
-    ELSE 
-!      SumFieldVar % Values = FieldVars(FieldInt) % Values + SumFieldVar % Values
+      SumFieldVar % Values = FieldVar % Values
+    ELSE
+      SumFieldVar % Values = FieldVar % Values + SumFieldVar % Values
     END IF 
+
+    IF ( ScanInt == ScanMax ) THEN
+      ScanFieldVar % Values = SumFieldVar % Values
+    END IF
+
   END DO
 
 !------------------------------------------------------------------------------
