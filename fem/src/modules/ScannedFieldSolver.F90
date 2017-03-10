@@ -110,17 +110,21 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Element_t), POINTER :: Element
-  TYPE(Variable_t), POINTER :: SumFieldVar, ScanVar
-  TYPE(Variable_t), ALLOCATABLE :: FieldVars(:)
+  TYPE(Variable_t), POINTER :: SumFieldVar, ScanVar, ScanFieldVar, FieldVar
+  TYPE VariablePtr_t
+    TYPE(Variable_t), POINTER :: Var
+  END TYPE VariablePtr_t
+  TYPE(VariablePtr_t), POINTER :: FieldVars(:)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Solver_t), POINTER :: ASolver => NULL()
   INTEGER :: N, ScanInt, istat, NofFields, FieldInt
   LOGICAL :: Found, First=.TRUE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: FieldNames(:)
+  CHARACTER(LEN=MAX_NAME_LEN) :: ScanFieldName
  
   TYPE(ValueList_t), POINTER :: SolverParam
 
-  SAVE FieldVars, SumFieldVar, FieldNames, NofFields
+  SAVE FieldVars, FieldNames, NofFields, Mesh
 !------------------------------------------------------------------------------
  
   IF (First) THEN
@@ -129,44 +133,49 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
     Mesh => Model % Mesh
     N = Mesh % MaxElementDOFs
 
-    SumFieldVar => VariableGet( Mesh % Variables, Solver % Variable % Name )
-    IF(.NOT. ASSOCIATED(SumFieldVar)) THEN
-      CALL Fatal('ScannedFieldSolver',TRIM(Solver % Variable % Name)//' not associated!')
-    END IF
-
     NofFields = ListGetInteger(GetSolverParams(), 'Number of Fields')
 
     ALLOCATE(FieldNames(NofFields), FieldVars(NofFields), STAT=istat)
     IF ( istat /= 0 ) CALL Fatal('ScannedFieldSolver','Memory allocation error')
     
     DO FieldInt = 1, NofFields
-      FieldNames(FieldInt) = ListGetString(GetSolverParams(), 'Field Name 'TRIM(i2s(FieldInt)))
-      FieldVars(FieldInt) => VariableGet( Mesh % Variables, FieldNames(FieldInt))
-      IF(.NOT. ASSOCIATED(FieldVars(FieldInt))) THEN
-        CALL Fatal('ScannedFieldSolver',TRIM(FieldNames(NofFields))//' not associated!')
+      FieldNames(FieldInt) = ListGetString(GetSolverParams(), 'Field Name '//TRIM(i2s(FieldInt)))
+      FieldVars(FieldInt) % Var => VariableGet( Mesh % Variables, FieldNames(FieldInt))
+      IF(.NOT. ASSOCIATED(FieldVars(FieldInt) % Var)) THEN
+        CALL Fatal('ScannedFieldSolver',TRIM(FieldNames(FieldInt))//' not associated!')
       END IF
     END DO
 
   END IF
  
   CALL Info('ScannedFieldSolver','-------------------------------------------',Level=6)
-  CALL Info('ScannedFieldSolver','Computing the sum of field solutions for',Level=5)
-  CALL Info('ScannedFieldSolver','Field '//TRIM(FieldName)//'.',Level=5)
+  CALL Info('ScannedFieldSolver','Computing the scan field solutions. ',Level=5)
   CALL Info('ScannedFieldSolver','-------------------------------------------',Level=6)
 
   ScanVar => VariableGet(Solver % Mesh % Variables, 'scan')
   IF (.NOT. ASSOCIATED(ScanVar)) CALL Fatal('ScannedFieldSolver', 'Scan variable not found.')
   ScanInt = INT( ScanVar % Values(1) ) 
 
-  IF (SIZE(SumFieldVar % Values) .NE. SIZE(FieldVar % Values)) &
-    CALL Fatal('ScannedFieldSolver','Summed fields are of different size than &
-    the defined Sum Field Variable.')
+  DO FieldInt = 1, NofFields
+    FieldVar => FieldVars(FieldInt) % Var 
+    CALL Info('ScannedFieldSolver','Field '//TRIM(FieldNames(FieldInt))//'.',Level=5)
+    ScanFieldName = TRIM(FieldNames(FieldInt))//' scan '//TRIM(i2s(ScanInt))
+    ScanFieldVar => VariableGet( Mesh % Variables, ScanFieldName)
+    IF(.NOT. ASSOCIATED(ScanFieldVar)) THEN
+      CALL Fatal('ScannedFieldSolver',TRIM(Solver % Variable % Name)//' not associated!')
+    END IF
 
-  IF( ScanInt == 1 ) THEN
-    SumFieldVar % Values = FieldVar % Values
-  ELSE 
-    SumFieldVar % Values = FieldVar % Values + SumFieldVar % Values
-  END IF 
+    IF (SIZE(ScanFieldVar % Values) .NE. SIZE(FieldVar % Values)) &
+      CALL Fatal('ScannedFieldSolver','Summed fields are of different size than &
+      the defined Sum Field Variable.')
+
+    ScanFieldVar % Values = FieldVar % Values
+    IF( ScanInt == 1 ) THEN
+!      SumFieldVar % Values = FieldVars(FieldInt) % Values
+    ELSE 
+!      SumFieldVar % Values = FieldVars(FieldInt) % Values + SumFieldVar % Values
+    END IF 
+  END DO
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ScannedFieldSolver
