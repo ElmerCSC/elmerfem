@@ -649,6 +649,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
     INTEGER, POINTER, OPTIONAL :: TargetBodies(:)
 
+    REAL(KIND=dp), POINTER :: HelperArray(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s,CoilTangentTmp(3)
     INTEGER :: e,t,i,j,n,Active
@@ -669,7 +670,21 @@ CONTAINS
       CoilTangent2 = 0.0_dp; CoilTangent2(2) = 1.0_dp
       RETURN
     END IF
- 
+
+    HelperArray => ListGetConstRealArray( Params, 'Coil normal', Found)
+    HAS_NORMAL : IF(Found) THEN
+      CoilNormal(1:3) = HelperArray(1:3,1)
+      HelperArray => ListGetConstRealArray( Params, 'Coil Tangent', Found)
+      IF(.NOT. Found) THEN
+        CALL Warn('DefineCoilParameters', 'Found Coil normal but no tangent. Discarding given values.')
+        EXIT HAS_NORMAL
+      ELSE
+        CoilTangent2(1:3) = HelperArray(1:3,1)
+        CoilTangent1 = CrossProduct(CoilTangent2, CoilNormal)
+        RETURN
+      END IF
+    END IF HAS_NORMAL
+
     CALL Info('DefineCoilParametes','Fitting the coil by maximizing inertia',Level=7)
 
     n = Mesh % MaxElementNodes
