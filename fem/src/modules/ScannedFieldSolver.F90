@@ -88,7 +88,7 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
 
     DO ScanInt = 1, ScanMax 
       CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-        TRIM(FieldName)//' Scan '//TRIM(i2s(ScanInt)))
+        'Scan '//TRIM(i2s(ScanInt))//" "//TRIM(FieldName))
       i=i+1
     END DO
 
@@ -169,7 +169,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
   DO FieldInt = 1, NofFields
     FieldVar => FieldVars(FieldInt) % Var 
     CALL Info('ScannedFieldSolver','Field '//TRIM(FieldNames(FieldInt))//'.',Level=5)
-    ScanFieldName = TRIM(FieldNames(FieldInt))//' scan '//TRIM(i2s(ScanInt))
+    ScanFieldName = 'scan '//TRIM(i2s(ScanInt))//" "//TRIM(FieldNames(FieldInt))
     ScanFieldVar => VariableGet( Mesh % Variables, ScanFieldName)
     IF(.NOT. ASSOCIATED(ScanFieldVar)) THEN
       CALL Fatal('ScannedFieldSolver', TRIM(ScanFieldName)//' not associated!')
