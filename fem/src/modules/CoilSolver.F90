@@ -664,26 +664,17 @@ CONTAINS
     FitCoil = GetLogical( Params,'Fit Coil',Found )
     IF(.NOT. Found ) FitCoil = .TRUE. 
 
-    IF(.NOT. FitCoil ) THEN
-      CoilNormal   = 0.0_dp; CoilNormal(3)   = 1.0_dp
-      CoilTangent1 = 0.0_dp; CoilTangent1(1) = 1.0_dp
-      CoilTangent2 = 0.0_dp; CoilTangent2(2) = 1.0_dp
+    HelperArray => ListGetConstRealArray( Params, 'Coil normal', Found)
+    IF(.NOT. FitCoil .or. Found) THEN
+      IF(Found) THEN
+        CoilNormal(1:3) = HelperArray(1:3,1)
+      ELSE
+        CoilNormal = 0.0_dp
+        CoilNormal(3) = 1.0_dp
+      END IF
+      CALL TangentDirections(CoilNormal, CoilTangent1, CoilTangent2)
       RETURN
     END IF
-
-    HelperArray => ListGetConstRealArray( Params, 'Coil normal', Found)
-    HAS_NORMAL : IF(Found) THEN
-      CoilNormal(1:3) = HelperArray(1:3,1)
-      HelperArray => ListGetConstRealArray( Params, 'Coil Tangent', Found)
-      IF(.NOT. Found) THEN
-        CALL Warn('DefineCoilParameters', 'Found Coil normal but no tangent. Discarding given values.')
-        EXIT HAS_NORMAL
-      ELSE
-        CoilTangent2(1:3) = HelperArray(1:3,1)
-        CoilTangent1 = CrossProduct(CoilTangent2, CoilNormal)
-        RETURN
-      END IF
-    END IF HAS_NORMAL
 
     CALL Info('DefineCoilParametes','Fitting the coil by maximizing inertia',Level=7)
 
