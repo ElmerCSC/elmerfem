@@ -175,6 +175,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
       CALL Fatal('ScannedFieldSolver', TRIM(ScanFieldName)//' not associated!')
     END IF
 
+    CALL MakeVarSimilarToModelVar(ScanFieldVar, FieldVar) 
     IF (SIZE(ScanFieldVar % Values) .NE. SIZE(FieldVar % Values)) &
       CALL Fatal('ScannedFieldSolver','Scanned fields are of different size than &
       the defined Scan Field Variable.')
@@ -185,6 +186,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
       CALL Fatal('ScannedFieldSolver', TRIM(SumFieldName)//' not associated')
     END IF
 
+    CALL MakeVarSimilarToModelVar(SumFieldVar, FieldVar) 
     IF (SIZE(ScanFieldVar % Values) .NE. SIZE(SumFieldVar % Values)) &
       CALL Fatal('ScannedFieldSolver','Summed fields are of different size than &
       the defined Sum Field Variable.')
@@ -202,6 +204,24 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
 
   END DO
 
+CONTAINS
+
+  SUBROUTINE MakeVarSimilarToModelVar(Var, ModelVar) 
+    TYPE(Variable_t), POINTER :: Var, ModelVar
+    INTEGER :: istat
+
+    IF (SIZE(Var % Values) .NE. SIZE(ModelVar % Values)) THEN
+      DEALLOCATE(Var % Values)
+      ALLOCATE(Var % Values(SIZE(ModelVar % Values)), STAT=istat)
+      IF ( istat /= 0 ) CALL Fatal('MakeVarSimilarToModelVar','Memory allocation error')
+    END IF
+
+    IF (.NOT. ASSOCIATED(Var % Perm,  ModelVar % Perm)) Var % Perm => ModelVar % Perm
+    IF ( Var % DOFs .NE. ModelVar % DOFs) Var % DOFs = ModelVar % DOFs
+    IF ( Var % TYPE .NE. ModelVar % TYPE ) Var % TYPE = ModelVar % TYPE
+
+  END SUBROUTINE MakeVarSimilarToModelVar
+ 
 !------------------------------------------------------------------------------
 END SUBROUTINE ScannedFieldSolver
 !------------------------------------------------------------------------------
