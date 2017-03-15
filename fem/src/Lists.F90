@@ -2073,8 +2073,35 @@ CONTAINS
      END IF
      
    END SUBROUTINE ListCopyPrefixedKeywords
+
+
+!> Goes through one list and copies all keywords to a second list.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListCopyAllKeywords( list, listb )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list, listb
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     INTEGER :: ncopy
+
+     ncopy = 0
+     
+     ! Find the keyword from the 1st list 
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       CALL ListCopyItem( ptr, listb, ptr % Name )
+       ncopy = ncopy + 1
+       ptr => ptr % Next
+     END DO
+     
+     IF( ncopy > 0 ) THEN
+       CALL Info('ListCopyAllKeywords',&
+           'Copied '//TRIM(I2S(ncopy))//' keywords to new list',Level=6)
+     END IF
+     
+   END SUBROUTINE ListCopyAllKeywords
  
-  
+ 
 !------------------------------------------------------------------------------
 !> Just checks if a entry is present in the list.
 !------------------------------------------------------------------------------
@@ -2224,7 +2251,7 @@ CONTAINS
     END SUBROUTINE ListAddString
 !------------------------------------------------------------------------------
 
-
+    
 !------------------------------------------------------------------------------
 !> Adds a logical entry to the list.
 !------------------------------------------------------------------------------
@@ -2463,6 +2490,85 @@ CONTAINS
    END SUBROUTINE ListAddDepRealArray
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Adds a logical entry to the list if it does not exist previously.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListAddNewLogical( List,Name,LValue )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: LValue
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     IF( ListCheckPresent( List, Name ) ) RETURN
+
+     CALL ListAddLogical( List,Name,LValue )
+
+   END SUBROUTINE ListAddNewLogical
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Adds an integer to the list when not present previously.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListAddNewInteger( List,Name,IValue,Proc )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      INTEGER :: IValue
+      INTEGER(Kind=AddrInt), OPTIONAL :: Proc
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+      IF( ListCheckPresent( List, Name ) ) RETURN
+
+      CALL ListAddInteger( List,Name,IValue,Proc )
+
+    END SUBROUTINE ListAddNewInteger
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Adds a constant real value to the list if not present.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListAddNewConstReal( List,Name,FValue,Proc,CValue )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      CHARACTER(LEN=*), OPTIONAL :: Cvalue
+      REAL(KIND=dp) :: FValue
+      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+      IF( ListCheckPresent( List, Name ) ) RETURN
+
+      CALL ListAddConstReal( List,Name,FValue,Proc,CValue )
+
+    END SUBROUTINE ListAddNewConstReal
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+!> Add a string value to the list if not present.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListAddNewString( List,Name,CValue,CaseConversion )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      CHARACTER(LEN=*) :: CValue
+      LOGICAL, OPTIONAL :: CaseConversion
+      
+      IF( ListCheckPresent( List, Name ) ) RETURN
+
+      CALL ListAddString( List,Name,CValue,CaseConversion )
+
+    END SUBROUTINE ListAddNewString
+!------------------------------------------------------------------------------
+      
 
 !------------------------------------------------------------------------------
 !> Gets a integer value from the list.
