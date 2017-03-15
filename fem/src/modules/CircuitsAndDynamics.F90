@@ -100,6 +100,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   
   REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)    
   TYPE(Variable_t), POINTER :: LagrangeVar
+  INTEGER, SAVE :: Tstep=-1
 !------------------------------------------------------------------------------
 
   IF (First) THEN
