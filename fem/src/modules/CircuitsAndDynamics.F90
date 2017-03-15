@@ -91,7 +91,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
-  INTEGER :: p, n, istat, max_element_dofs, tstep
+  INTEGER :: p, n, istat, max_element_dofs
   TYPE(Mesh_t), POINTER :: Mesh  
 
   TYPE(Matrix_t), POINTER :: CM
