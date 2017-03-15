@@ -1814,6 +1814,134 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Generate a similar solver instance as for the parent solver.
+!> The number of dofs may vary but the basis functions and permutation is reused.
+!> If also the number of dofs is the same also matrix topology is reused.
+!------------------------------------------------------------------------------
+   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix, ChildOutput ) &
+       RESULT ( ChildSolver )
+     TYPE(Solver_t) :: ParentSolver
+     CHARACTER(LEN=*) :: ChildVarName
+     INTEGER, OPTIONAL :: ChildDofs
+     CHARACTER(LEN=*), OPTIONAL :: ChildPrefix
+     LOGICAL, OPTIONAL :: ChildOutput 
+     TYPE(Solver_t), POINTER :: ChildSolver
+
+     INTEGER :: ParentDofs 
+     TYPE(Solver_t), POINTER :: Solver
+     REAL(KIND=dp), POINTER :: ChildVarValues(:)
+     INTEGER, POINTER :: ChildVarPerm(:)
+     TYPE(Variable_t), POINTER :: ChildVar
+     TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
+     INTEGER :: n,m,dofs
+
+     CALL Info('CreateChildSolver','Creating solver for variable: '//TRIM(ChildVarName),Level=5)
+
+     NULLIFY( Solver ) 
+     ALLOCATE( Solver )
+     ChildSolver => Solver
+
+     CALL ListAddString(Solver % Values,'Equation',TRIM(ChildVarName)//' solver' )
+
+     IF( PRESENT( ChildPrefix ) ) THEN
+       CALL Info('CreateChildSolver','Copying keywords with prefix: '//TRIM(ChildPrefix),Level=8)
+       CALL ListCopyPrefixedKeywords( ParentSolver % Values, Solver % Values, &
+           ChildPrefix )
+     ELSE
+       CALL Info('CreateChildSolver','Copying all keywords',Level=8)
+       CALL ListCopyAllKeywords( ParentSolver % Values, Solver % Values )
+     END IF
+
+     IF( .NOT. ASSOCIATED( ParentSolver % Mesh ) ) THEN
+       CALL Fatal('CreateChildSolver','Parent solver is missing mesh!')
+     END IF
+     Solver % Mesh => ParentSolver % Mesh
+     Solver % Def_Dofs = ParentSolver % Def_Dofs
+
+     IF( .NOT. ASSOCIATED( ParentSolver % Variable ) ) THEN
+       CALL Fatal('CreateChildSolver','Parent solver is missing variable!')
+     END IF
+
+     ParentDofs = ParentSolver % Variable % Dofs
+     IF( PRESENT( ChildDofs ) ) THEN
+       Dofs = ChildDofs
+     ELSE
+       Dofs = ParentDofs
+     END IF
+
+     CALL Info('CreateChildSolver','Creating variable with dofs: '//TRIM(I2S(Dofs)),Level=8)    
+     n = ( SIZE( ParentSolver % Variable % Values ) ) / &
+         ParentSolver % Variable % Dofs
+
+     ALLOCATE( ChildVarValues( n * Dofs ) )
+     ChildVarValues = 0.0_dp
+     ChildVarPerm => ParentSolver % Variable % Perm
+
+     CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, &
+         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm )
+
+
+     ChildVar => VariableGet( Solver % Mesh % Variables, ChildVarName )      
+     IF(.NOT. ASSOCIATED( ChildVar ) ) THEN
+       CALL Fatal('CreateChildSolver','Could not generate child variable!')
+     END IF
+
+     ChildVar % TYPE = ParentSolver % Variable % TYPE
+     Solver % Variable => ChildVar
+
+     IF( PRESENT( ChildOutput ) ) THEN
+       ChildVar % Output = ChildOutput
+     END IF
+     
+     CALL Info('CreateChildSolver','Creating matrix for variable solver',Level=8)    
+     Solver % Matrix => AllocateMatrix()
+     ChildMat => Solver % Matrix
+
+     ParentMat => ParentSolver % Matrix
+     IF( .NOT. ASSOCIATED( ParentMat ) ) THEN
+       CALL Warn('CreateChildSolver','Parent matrix needed for child matrix!')
+       Solver % Matrix => NULL()
+     ELSE
+       Solver % Matrix => AllocateMatrix()
+       ChildMat => Solver % Matrix
+       IF( Dofs == ParentDofs ) THEN
+         CALL Info('CreateChildSolver','Reusing initial matrix topology',Level=8)    
+
+         ChildMat % Cols => ParentMat % Cols
+         ChildMat % Rows => ParentMat % Rows
+         ChildMat % Diag => ParentMat % Diag
+
+         ChildMat % NumberOfRows = ParentMat % NumberOfRows
+
+         m = SIZE( ParentMat % Values )
+         ALLOCATE( ChildMat % Values(m) )
+         ChildMat % Values = 0.0_dp
+
+         ALLOCATE( ChildMat % rhs(n) )
+         ChildMat % rhs = 0.0_dp
+       ELSE
+         CALL Info('CreateChildSolver','Multiplying initial matrix topology',Level=8)    
+         CALL Fatal('CreateChildSolver','Not implemented for different dofs')
+       END IF
+     END IF
+
+     IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
+       Solver % ActiveElements => ParentSolver % ActiveElements
+       Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
+     END IF
+
+     Solver % SolverExecWhen = SOLVER_EXEC_NEVER
+     Solver % LinBeforeProc = 0
+     Solver % LinAfterProc = 0
+     Solver % MortarProc = 0
+     
+     CALL Info('CreateChildSolver','All done for now!',Level=8)    
+   END FUNCTION CreateChildSolver
+!------------------------------------------------------------------------------
+
+   
+   
+!------------------------------------------------------------------------------
 !> Solve the equations one-by-one. 
 !------------------------------------------------------------------------------
   SUBROUTINE SolveEquations( Model, dt, TransientSimulation, &
