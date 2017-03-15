@@ -7,10 +7,10 @@ Header
 End
 
 Simulation
-  Max Output Level = integer 10
-  Coordinate System = string Cartesian
-  Simulation Type = string steady state
-  Use Mesh Names = Logical False
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = steady state
+  Use Mesh Names = False
 End
 
 Material 1 ! Air

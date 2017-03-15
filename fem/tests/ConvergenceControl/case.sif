@@ -1,0 +1,161 @@
+!------------------------------------------------------------------------
+! Convergence control test case
+!
+! This is a simple case where the nonlinear iteration is only
+! conditionally stable. With time the nonlinear source term increases and
+! hence at some point we loose convergence.
+!
+! The type of control here is quite primitive one only measuring wheather
+! we have convergence or not. So it is not any fancy timestep control system.
+!
+! Without any tricks the convergence is lost with
+! dt=0.1 -> 0.4 s
+! dt=0.01 -> 0.46 s
+! dt=0.02 -> 0.51 s
+!
+! With convergence control we decrease the timestep when control is lost
+! Compared to adaptive timestepping this is more primitive since we
+! just look at divergence vs. convergence.
+!
+! P.R. 8.2.2017
+!------------------------------------------------------------------------
+$alpha=10.0
+$nsteps=7
+$dt=0.1
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Transient"
+  Steady State Max Iterations = 1
+  Timestepping Method = Implicit Euler
+
+  Timestep Intervals(1) = $nsteps
+  Timestep Sizes(1) = $dt
+  Output Intervals(1) = 1 
+
+!  Post File = "case.vtu"
+
+! Set convergence control on
+  Convergence Control = Logical True
+
+! The timestep multipliers in case of convergence and divergence
+  Adaptive Increase Coefficient = Real 1.1
+  Adaptive Decrease Coefficient = Real 0.5
+
+! This stepping strategy does not honor the outer large timestep 
+  Adaptive Rough Timestep = Logical False
+
+! Smart timestep avoids short timestep needed to have exact fit for the large step
+  Adaptive Smart Timestep = Logical True
+! After this minimum the divergence control is deemed impossible
+  Adaptive Min Timestep = Real 1.0e-3
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Equation = "HeatEq"
+
+  Variable = "Temperature"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = Real 1.0
+
+! This plays together with the divergence limit
+  Nonlinear System Max Iterations = Integer 10
+  Nonlinear System Convergence Tolerance = Real 1.0e-5
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = bicgstab
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU1
+
+! When is the solver deemed to have diverged
+! This is the limit after all nonlinear iterations,
+! or in case of nonmonotonic iterations after any number iterations
+  Nonlinear System Divergence Limit = Real 1.0e-3
+End  
+
+Solver 2
+! Choose the exec slot depending what kind of info you need
+! After timestep is executed after each accepted timestep
+! After saving only after each proper full timestep 
+
+  Exec Solver = after timestep 
+  !Exec Solver = after saving  
+ 
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = time
+  Variable 2 = timestep size
+  Variable 3 = Temperature
+  Operator 3 = min
+  Variable 4 = Temperature
+  Operator 4 = max
+  Variable 5 = Temperature
+  Operator 5 = nonlin converged
+  Variable 6 = timestep
+End 
+
+Body Force 1
+! This becomes harder and harder with time
+  Heat Source = Variable Temperature, time
+    Real MATC "1.0-alpha*tx(0)*tx(1)"
+End 
+
+Material 1
+  Name = "Material1"
+
+  Heat Conductivity = 1.0
+  Density = 1.0
+  Heat Capacity = 1.0e-3
+End
+
+
+Boundary Condition 1
+  Name = "BCs"
+  Target Boundaries(2) = 1 2
+  Temperature = Real 0
+End
+
+
+Solver 1 :: Reference Norm = Real 4.59726036E-02
+RUN
+
+
+

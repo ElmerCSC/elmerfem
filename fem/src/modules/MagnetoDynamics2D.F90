@@ -112,7 +112,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
   CALL Info( 'MagnetoDynamics2D', 'Solving equation for magnetic vector potential', Level=4 )
   CALL Info( 'MagnetoDynamics2D','------------------------------------------------', Level=4 )
 
-
+  CALL DefaultStart()
+  
   ! Allocate some permanent storage, this is done first time only:
   ! --------------------------------------------------------------
   NULLIFY(BC)
@@ -170,7 +171,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
     CALL SetMagneticFluxDensityBC()
     Norm = DefaultSolve()
  
-    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
   END DO
 
   ! For cylindrical symmetry the model lumping has not been implemented
@@ -188,6 +189,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
     END DO
   END IF
 
+  CALL DefaultFinish()
+  
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -945,6 +948,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
       'Nonlinear system max iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
 
+  CALL DefaultStart()
+  
   DO iter=1,NonlinIter
 
     IF(Iter>1) NewtonRaphson=.TRUE.
@@ -1002,7 +1007,9 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
        CoordVar % Values(j+3) = Mesh % Nodes % z(i)
      END DO
    END IF
-
+   
+   CALL DefaultFinish()
+   
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -1804,7 +1811,8 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
               AverageBCompute, BodyICompute, BodyVolumesCompute = .FALSE., &
-              CirCompVolumesCompute = .FALSE., HomogenizationParamCompute
+              CirCompVolumesCompute = .FALSE., HomogenizationParamCompute, &
+              LorentzForceCompute = .FALSE.
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
   
@@ -1908,6 +1916,9 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   BodyICompute = GetLogical(SolverParams, 'Calculate Body Current', GotIt)
   IF (.NOT. GotIt ) BodyICompute = .FALSE.
 
+  LorentzForceCompute = GetLogical(SolverParams, 'Calculate Component Lorentz Force', GotIt)
+  IF (.NOT. GotIt ) LorentzForceCompute = .FALSE.
+
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),TotDOFs))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
@@ -1971,7 +1982,9 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:), mu(:)
     REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:), BodyCurrent(:,:), &
-                                  CirCompComplexPower(:,:), CirCompCurrent(:,:)
+                                  CirCompComplexPower(:,:), CirCompCurrent(:,:), &
+                                  BodyLorentzForcesRe(:,:), BodyLorentzForcesIm(:,:), &
+                                  ComponentLorenzForcesRe(:,:), ComponentLorenzForcesIm(:,:)
     COMPLEX(KIND=dp) :: cmplx_power 
     REAL(KIND=dp), ALLOCATABLE :: BodyVolumes(:), BodyAvBim(:,:), BodyAvBre(:,:), &
                                   BodySkinCond(:,:), BodyProxNu(:,:), &
@@ -1990,7 +2003,8 @@ CONTAINS
     INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
     REAL(KIND=DP) :: grads_coeff, nofturns
     REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im, ModelDepth
-    COMPLEX(KIND=dp) :: i_multiplier
+    COMPLEX(KIND=dp) :: i_multiplier, Bx, By, Jz, LorentzForceDensX, &
+                        LorentzForceDensY
     REAL(KIND=dp) :: ValueNorm
 
     INTEGER :: NofComponents=0, bid
@@ -2067,6 +2081,18 @@ CONTAINS
       ALLOCATE(CirCompCurrent(2, Model % NumberOfBodies))
       BodyCurrent = 0.0_dp
       CirCompCurrent = 0.0_dp
+    END IF
+
+    IF (LorentzForceCompute) THEN
+      NofComponents = SIZE(Model % Components)
+      ALLOCATE(BodyLorentzForcesRe(2, Model % NumberOfBodies))
+      ALLOCATE(BodyLorentzForcesIm(2, Model % NumberOfBodies))
+      ALLOCATE(ComponentLorenzForcesRe(2, NofComponents))
+      ALLOCATE(ComponentLorenzForcesIm(2, NofComponents))
+      BodyLorentzForcesRe = 0.0_dp
+      BodyLorentzForcesIm = 0.0_dp
+      ComponentLorenzForcesRe = 0.0_dp
+      ComponentLorenzForcesIm = 0.0_dp
     END IF
 
     IF ( AverageBCompute ) THEN
@@ -2233,12 +2259,14 @@ CONTAINS
         IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
       END IF
 
+      IF (LorentzForceCompute) BodyId = GetBody()
+
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
         
         Weight = IntegStuff % s(t) * detJ
-        grads_coeff = 1._dp/GetCircuitModelDepth()
+        grads_coeff = -1._dp/GetCircuitModelDepth()
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:n) * Nodes % x(1:n) )
           Weight = Weight * x
@@ -2331,6 +2359,27 @@ CONTAINS
           BMagnAtIP = SQRT(ABS(imag_value**2._dp) + ABS(imag_value2**2._dp))
         END IF
         
+        IF (LorentzForceCompute) THEN
+          BodyId = GetBody()
+          ! Let's compute the JxB for all the bodies and 
+          ! then we sum from these for the components which are outputed.
+
+          Bx = CMPLX(BatIp(1), BatIp(3), KIND=dp)
+          By = CMPLX(BatIp(2), BatIp(4), KIND=dp)
+          Jz = CMPLX(BatIp(7), BatIp(8), KIND=dp)
+
+          LorentzForceDensX = ModelDepth * Weight * By / Jz * ABS(Jz)**2._dp
+          LorentzForceDensY = -ModelDepth * Weight * Bx / Jz * ABS(Jz)**2._dp
+          BodyLorentzForcesRe(1, BodyId) = BodyLorentzForcesRe(1, BodyId) + &
+            REAL(LorentzForceDensX)
+          BodyLorentzForcesRe(2, BodyId) = BodyLorentzForcesRe(2, BodyId) + &
+            REAL(LorentzForceDensY) 
+          BodyLorentzForcesIm(1, BodyId) = BodyLorentzForcesIm(1, BodyId) + &
+            AIMAG(LorentzForceDensX)
+          BodyLorentzForcesIm(2, BodyId) = BodyLorentzForcesIm(2, BodyId) + &
+            AIMAG(LorentzForceDensY) 
+        END IF
+
         IF (LaminateModelPowerCompute) THEN
           ! This assumes linear reluctivity, and real conductivity
           skindepth = sqrt(2._dp/(omega * REAL(CondAtIp) * mu0))
@@ -2473,6 +2522,63 @@ CONTAINS
       END DO
 
       DEALLOCATE( BodyLoss )
+    END IF
+
+    IF (LorentzForceCompute) THEN
+       DO j=1,Model % NumberOfBodies
+         DO i = 1, 2
+           BodyLorentzForcesRe(i,j) = ParallelReduction(BodyLorentzForcesRe(i,j))
+           BodyLorentzForcesIm(i,j) = ParallelReduction(BodyLorentzForcesIm(i,j))
+         END DO
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesRe(1, j)
+         WRITE (bodyNumber, "(I0)") j
+         CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 re in Body '&
+              //TRIM(bodyNumber)//':', BodyLorentzForcesRe(1,j) )
+         CALL Info('Lorentz Force 1 re', Message, Level=6 )
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesRe(2, j)
+         CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 re in Body '&
+              //TRIM(bodyNumber)//':', BodyLorentzForcesRe(2,j) )
+         CALL Info('Lorentz Force 2 re', Message, Level=6 )
+
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesIm(1, j)
+         CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 im in Body '&
+              //TRIM(bodyNumber)//':', BodyLorentzForcesIm(1,j) )
+         CALL Info('Lorentz Force 1 im', Message, Level=6 )
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesIm(2, j)
+         CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 im in Body '&
+              //TRIM(bodyNumber)//':', BodyLorentzForcesIm(2,j) )
+         CALL Info('Lorentz Force 2 im', Message, Level=6 )
+       END DO
+
+       DO j = 1, NofComponents
+         BodyIds => GetComponentBodyIds(j) 
+
+         IF (ASSOCIATED(BodyIds)) THEN
+           DO i = 1, 2
+             DO k = 1, SIZE(BodyIds)
+               bid = BodyIds(k)
+               ComponentLorenzForcesRe(i,j) = ComponentLorenzForcesRe(i,j) &
+                 + BodyLorentzForcesRe(i,bid)
+               ComponentLorenzForcesIm(i,j) = ComponentLorenzForcesIm(i,j) &
+                 + BodyLorentzForcesIm(i,bid)
+             END DO
+           END DO
+  
+           CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 re & 
+                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesRe(1,j) )
+                         
+           CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 re & 
+                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesRe(2,j) )
+
+           CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 im & 
+                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesIm(1,j) )
+                         
+           CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 im & 
+                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesIm(2,j) )
+
+         END IF
+       END DO
+
     END IF
 
     IF (ComplexPowerCompute) THEN
@@ -2676,6 +2782,12 @@ CONTAINS
                                             BodyProxNu       ,  & 
                                             CirCompSkinCond,  & 
                                             CirCompProxNu      )
+    IF (LorentzForceCompute)        DEALLOCATE(BodyLorentzForcesRe, &
+                                               BodyLorentzForcesIm, &
+                                               ComponentLorenzForcesRe, &
+                                               ComponentLorenzForcesIm)
+      
+
 
     DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond, sigma_33, sigmaim_33 )
 

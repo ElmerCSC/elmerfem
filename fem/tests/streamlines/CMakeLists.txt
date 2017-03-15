@@ -5,4 +5,4 @@ CONFIGURE_FILE( streamlines.sif streamlines.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO step.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(streamlines)
+ADD_ELMER_TEST(streamlines LABELS quick)

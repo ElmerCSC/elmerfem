@@ -58,6 +58,71 @@ MODULE MagnetoDynamicsUtils
 
 CONTAINS
 
+  RECURSIVE FUNCTION AddConstraintFromBulk(A, M0) RESULT (M)
+    USE DefUtils
+    TYPE(Matrix_t), INTENT(IN) :: A
+    TYPE(Matrix_t), POINTER, INTENT(INOUT) :: M0
+    TYPE(Matrix_t), POINTER :: M
+
+    integer :: n, n1
+
+    IF(.NOT. A % FORMAT == MATRIX_CRS) CALL Fatal("AddConstraintFromBulk", "Matrix A is not a CRS matrix")
+
+    IF (.NOT. ASSOCIATED(M0)) THEN
+      CALL info("AddConstraintFromBulk", "M0 not associated, creating now.", level=10)
+      M => AllocateMatrix()
+      ! Rowdata copy
+      n = A % NumberOfRows
+      ALLOCATE(M % RHS(size(A % RHS)))
+      ALLOCATE(M % Rows(size(A%rows)))
+      ALLOCATE(M % ConstrainedDof(size(M % Rows))) 
+      ALLOCATE(M % Diag(size(A % Diag)))
+
+      M % RHS(:) = 0.0_dp
+      M % ConstrainedDOF(:) = .FALSE.
+
+      M % ListMatrix => NULL()
+      M % NumberOfRows = A % NumberOfRows
+
+      DO n1 = 1, SIZE(M % Rows)
+        M % Rows(n1) = A % Rows(n1)
+      END DO
+
+      DO n1 = 1,SIZE(M % diag)
+        M % Diag(n1) = A % Diag(n1) 
+        IF (M % diag(n1) == 0) THEN
+          write (*,*), 'diag', n1, 'is zero'
+        end if
+      END DO
+
+      ! Columndata copy
+      n = size(A % Values)
+      ALLOCATE(M % Values(n), M % DValues(n), M % Cols(n))
+      M % Cols = A % Cols
+      M % DValues = 0.0_dp
+      M % Values = 0.0_dp
+
+      !! Permutation copy
+      IF(ASSOCIATED(A % Perm)) THEN
+        CALL info("AddConstraintFromBulk", "Copying perm.", level=3)
+        ALLOCATE(M % perm(size(A%perm)))
+        M % perm = A % perm
+     END IF
+
+      !! Inverse Permutation copy
+      IF(ASSOCIATED(A % InvPerm)) THEN
+        CALL info("AddConstraintFromBulk", "Copying inverse perm.", level=3)
+        ALLOCATE(M % InvPerm(size(A%Invperm)))
+        M % InvPerm = A % InvPerm 
+      END IF
+
+      M % FORMAT = A % FORMAT
+      M0 => M
+    ELSE
+      CALL info("AddConstraintFromBulk", "M0 is associated, recursing...", level=10)
+      M => AddConstraintFromBulk(A, M0 % ConstraintMatrix)
+    END IF
+  END FUNCTION AddConstraintFromBulk
 !------------------------------------------------------------------------------
   FUNCTION GetBoundaryEdgeIndex(Boundary,nedge) RESULT(n)
 !------------------------------------------------------------------------------
@@ -355,6 +420,119 @@ CONTAINS
   END SUBROUTINE GetPermittivity
 !------------------------------------------------------------------------------
 
+  !-------------------------------------------------------------------------------
+  !> Packs rows associated with edge dofs from constraint matrix and
+  !> adds ColOffset to column indices of (1,1) block.
+  !> If CM % ConstrainedDOF(i) is true then the ith row is treted empty.
+  !! @param ColOffset add to column index of that correspond to nodal dofs
+  !!                   by this amount 
+  !-------------------------------------------------------------------------------
+  SUBROUTINE PackEdgeRows(CM, Model, ColOffset)
+    !-------------------------------------------------------------------------------
+    TYPE(Matrix_t), INTENT(INOUT), POINTER :: CM 
+    TYPE(Model_t), INTENT(IN) :: Model
+    INTEGER, OPTIONAL :: ColOffset
+    !-------------------------------------------------------------------------------
+    LOGICAL, ALLOCATABLE :: Emptyrow(:)
+    INTEGER :: ColOffsetF
+    REAL(KIND=dp), POINTER CONTIG :: V(:), RHS(:)
+    INTEGER, POINTER CONTIG :: R(:), C(:), InvPerm(:), Perm(:)
+    INTEGER :: i, j, numempty, k, fileind
+
+    ALLOCATE(EmptyRow(CM % NumberOfRows))
+    EmptyRow = .TRUE.
+
+    IF (.NOT. PRESENT(ColOffset)) THEN
+      ColOffsetF = CM % NumberOfRows
+    ELSE
+      ColOffsetF = ColOffset
+    END IF
+
+    DO j = 1, CM % NumberOfRows
+      DO i = CM % Rows(j), CM % Rows(j+1)-1
+        IF (CM % Cols(i) <= Model % NumberOfNodes) &
+             CM % Cols(i) = CM % Cols(i) + ColOffsetF
+      END DO
+    END DO
+
+    numempty = 0
+    ROW_LOOP: DO i = 1, CM % NumberOfRows
+      ! If CM % ConstrainedDOF(i) is true, then this must be a row corresponding to
+      ! edge dof so it must tbe zero. 
+      IF ( CM % ConstrainedDOF(i) ) THEN
+        Emptyrow(i) = .TRUE.
+      ELSE ! Otherwise the row might correspond with dirichlet scalar dof
+        ! Such row must not be packed but diagonal entry of the final matrix
+        ! must be set to 1. (Done later?)
+        COL_LOOP : DO j = CM % Rows(i), CM % Rows(i+1)-1
+          IF (abs(CM % values(j)) >= 1e-12_dp) THEN
+            EmptyRow(i) = .FALSE.
+            EXIT COL_LOOP
+          END IF
+        END DO COL_LOOP
+      END IF
+
+      IF (EmptyRow(i)) THEN
+        CM % RHS(i) = 0.0_dp
+        IF (CM % Constraineddof(i)) numempty = numempty + 1
+      END IF
+    END DO ROW_LOOP
+
+
+    ! Pack empty rows
+    ALLOCATE(R(CM % NumberOfRows-numempty+1))
+    ALLOCATE(InvPerm(CM % NumberOfRows-numempty))
+    ALLOCATE(Perm(CM % NumberOfRows-numempty))
+    ALLOCATE(RHS(CM % NumberOfRows-numempty))
+    RHS(:) = 0.0_dp
+    k = 2
+    R(1) = 1
+    DO i = 2, CM % NumberOfRows+1
+      IF(.not. emptyrow(i-1)) THEN
+        IF(ASSOCIATED(CM%InvPerm)) InvPerm(k-1) = CM % InvPerm(i-1)  !< TODO: This might be nonsense
+        IF(ASSOCIATED(CM%Perm)) Perm(k-1) = CM % Perm(i-1)
+        R(k) = R(k-1) + CM % Rows(i) - CM % rows(i-1)
+
+        k = k + 1
+      END IF
+    END DO
+    k = size(R)
+    ALLOCATE(C(R(k)-1), V(R(k)-1))
+
+    k = 1
+    DO i = 2, CM % NumberOfRows+1
+      IF (.not. EmptyRow(i-1)) THEN
+        DO j = 0, R(k+1)-R(k)-1
+          C(R(k)+j) = CM % cols(CM % rows(i-1)+j)
+          V(R(k)+j) = CM % Values(CM % rows(i-1)+j)
+        END DO
+        k = k+1
+      END IF
+    END DO
+
+    deallocate(CM % Rows)
+    deallocate(CM % Cols)
+    deallocate(CM % Values)
+    deallocate(cm % rhs)
+    if(ASSOCIATED(CM % InvPerm)) THEN
+      DEALLOCATE(CM % InvPerm)
+      CM % InvPerm => InvPerm
+    END IF
+    IF(ASSOCIATED(CM % Perm)) THEN 
+      DEALLOCATE(CM % Perm)
+      CM % Perm => Perm
+    END IF
+
+    CM % rows => R
+    CM % cols => C
+    CM % values => V
+    CM % RHS => RHS
+    CM % NumberOfRows = size(R,1)-1
+
+  !-------------------------------------------------------------------------------
+  END SUBROUTINE PackEdgeRows
+  !-------------------------------------------------------------------------------
+
 END MODULE MagnetoDynamicsUtils
 
 
@@ -363,6 +541,7 @@ END MODULE MagnetoDynamicsUtils
 SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
+
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -371,61 +550,101 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion, SecondOrder, LorentzConductivity
+  LOGICAL :: Found, PiolaVersion, SecondOrder, LagrangeGauge, LorentzConductivity
   TYPE(ValueList_t), POINTER :: SolverParams
- 
-  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
-    ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
-  IF(LorentzConductivity) CALL INFO("WhitneyAVSolver_Init0", "Material is moving: has Lorentz force present")
+  TYPE(ValueListEntry_t), POINTER :: VariablePtr
+  INTEGER, PARAMETER :: b_empty = b'0', b_Piola = b'1', &
+       b_Secondorder = b'10', b_Gauge = b'100', &
+       b_Transient = b'1000', b_Lorentz = b'10000'
+
+  integer :: Paramlist
+  Paramlist = 0
+
+  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
+       ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
+  IF(LorentzConductivity) &
+       CALL INFO("WhitneyAVSolver_Init0", "Material is moving: has Lorentz force present")
 
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
+    PiolaVersion = GetLogical(SolverParams, &
+        'Use Piola Transform', Found )   
     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
-    IF( SecondOrder ) THEN
+    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
+      CALL Warn("WhitneyAVSolver_Init0", &
+           "Requested Quadratic Approximation without Piola Transform. Setting Use Piola Transform = True.")
       PiolaVersion = .TRUE.
-    ELSE
-      PiolaVersion = GetLogical(SolverParams, &
-          'Use Piola Transform', Found )   
+      CALL ListAddLogical( SolverParams, 'Use Piola Transform', .TRUE. )
     END IF
+    LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
 
-    IF (PiolaVersion) THEN
-      IF ( Transient .OR. LorentzConductivity ) THEN
-        IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, &
-              "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )  
-        ELSE
-          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
-        END IF
-      ELSE
-        ! No use to save nodal field as it does not exist!
-        CALL ListAddLogical( SolverParams,'Variable Output',.FALSE. )
-        IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, "Element", &
-              "n:0 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )  
-        ELSE
-          CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
-        END IF
-      END IF
-    ELSE
-      IF ( Transient .OR. LorentzConductivity ) THEN
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
-      ELSE
-        ! No use to save nodal field as it does not exist!
-        CALL ListAddLogical( SolverParams,'Variable Output',.FALSE. )
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
-      END IF
+    IF (PiolaVersion) Paramlist = Paramlist + b_Piola
+    IF (SecondOrder) Paramlist = Paramlist + b_Secondorder
+    IF (LagrangeGauge) Paramlist = Paramlist + b_Gauge
+    IF (Transient) Paramlist = Paramlist + b_Transient
+    IF (LorentzConductivity) Paramlist = Paramlist + b_Lorentz
 
+    SELECT CASE (Paramlist)
+    CASE (b_Piola + b_Transient + b_Secondorder, &
+         b_Piola + b_Transient + b_Secondorder + b_Lorentz )
+      CALL ListAddString( SolverParams, &
+           "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
+
+    CASE (b_Piola + b_Transient, &
+         b_Piola + b_Transient + b_Lorentz, &
+         b_Piola + b_Transient + b_Gauge)
+      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+
+    CASE (b_Piola + b_Gauge + b_Secondorder)
+      CALL ListAddString( SolverParams, &
+           "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
+
+    CASE (b_Piola + b_Gauge)
+      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+
+    CASE (b_Piola + b_Secondorder)
+      CALL ListAddString( SolverParams, "Element", &
+           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+
+    CASE (b_Piola)
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+
+    CASE (b_Piola + b_Lorentz)
+      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+
+    CASE (b_Transient, &
+         b_Transient + b_Lorentz, &
+         b_Lorentz, &
+         b_Gauge + b_Transient, &
+         b_Gauge)
+      CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+
+    CASE (b_empty)
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+
+    CASE default
+      WRITE (Message,*), 'Unsupported degree-gauge-transient combination', Paramlist
+      CALL Fatal('WhitneyAVSolver_Init0', Message)
+
+    END SELECT
+
+    IF (.NOT. PiolaVersion) THEN
       IF(GetString(SolverParams,'Linear System Solver')=='block') THEN
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
         CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
       END IF
     END IF
   END IF
-  
+ 
   CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.) 
 
-! This is for internal communication with the saving routines
+  ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
+
+  IF (LagrangeGauge .AND. Transient .AND. &
+       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
+    CALL Info("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
+    END IF
 
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
@@ -471,7 +690,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:), &
                                 GapLength(:), AirGapMu(:), LamThick(:), &
                                 LamCond(:), Wbase(:), RotM(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), PrevSol(:)
+  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), PrevSol(:), DConstr(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
   LOGICAL :: LaminateStack, CoilBody
@@ -483,8 +702,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
          SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
          PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis, &
          HasTensorReluctivity
+  LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
+       HasStabC
 
-  REAL(KIND=dp) :: Relax
+  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
@@ -494,6 +715,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
   TYPE(ValueList_t), POINTER :: CompParams
+  TYPE(Matrix_t), POINTER :: CM=>NULL()
   
   INTEGER :: n_n, n_e
   INTEGER, POINTER :: Vperm(:), Aperm(:)
@@ -501,7 +723,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
-       Acoef_t
+       Acoef_t, DConstr
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN	
 
@@ -526,14 +748,55 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         'Using quadratic approximation, pyramidical elements are not yet available',Level=4)
   END IF
 
+  SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
+  TransientGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. Transient
+
+  IF (SteadyGauge) THEN
+    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
+    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+      CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
+    END IF
+  END IF
+
+  IF(TransientGauge) THEN
+    CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in transient computation")
+    IF (.NOT. ListCheckPresent( SolverParams, "enforce exact dirichlet bcs" ) ) THEN
+      CALL ListAddLogical(SolverParams,"enforce exact dirichlet bcs",.FALSE.)
+      CALL Info("WhitneyAVSolver", "Setting 'enforce exact dirichlet bcs = Logical False'")
+    END IF
+    IF (.NOT. ListCheckPresent( SolverParams, "optimize bandwidth" ) ) THEN
+      CALL ListAddLogical(SolverParams,"optimize bandwidth",.FALSE.)
+      CALL Info("WhitneyAVSolver", "Setting 'Optimize Bandwidth = Logical False'") 
+    ELSEIF (ListGetLogical(SolverParams, "Optimize bandwidth")) THEN
+      CALL Warn("WhitneyAVSolver", &
+           "Optimize bandwidth and use lagrange gauge in transient is known not to work. ")
+    END IF
+    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+      CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
+    END IF
+    ! TODO: Check if there is mortar boundaries and report the above in that case only.
+  END IF
+
+  gauge_penalize_c = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient', HasStabC)
+  gauge_penalize_m = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient mass', Found)
+  HasStabC = HasStabC .OR. Found
+
+  IF (HasStabC .and. (SteadyGauge .or. TransientGauge)) THEN
+    WRITE (Message, *), 'Lagrange Gauge penalization coefficient', gauge_penalize_c
+    CALL Info('WhitneyAVSolver', message)
+    WRITE (Message, *), 'Lagrange Gauge penalization coefficient mass', gauge_penalize_m
+    CALL Info('WhitneyAVSolver', message)
+  END IF
 
   ! Gauge tree, if requested or using direct solver:
   ! ------------------------------------------------
   TG = GetLogical(SolverParams,'Use tree gauge', Found)
   IF (.NOT. Found) THEN
-    IF( GetString(SolverParams,'Linear System Solver',Found)=='direct') THEN
-      CALL Info('WhitneyAVSolver','Defaulting to tree gauge when using direct solver')
-      TG = .TRUE.
+    IF (.NOT. (SteadyGauge .OR. TransientGauge)) THEN
+      IF( GetString(SolverParams,'Linear System Solver',Found)=='direct') THEN
+        CALL Info('WhitneyAVSolver','Defaulting to tree gauge when using direct solver')
+        TG = .TRUE.
+      END IF
     END IF
   END IF
 
@@ -556,7 +819,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
           LamCond(N), Wbase(N), RotM(3,3,N), Cwrk(3,3,N), &
-          Acoef_t(3,3,N), STAT=istat )
+          DConstr(N,N), Acoef_t(3,3,N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
      END IF
@@ -586,6 +849,11 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      END IF
 
      NULLIFY( Cwrk )
+
+     IF (TransientGauge) THEN
+       A => GetMatrix()
+       IF (.NOT. TransientGaugeCollected) CM => AddConstraintFromBulk(A, Solver % Matrix % ConstraintMatrix)
+     END IF
 
      AllocationsDone = .TRUE.
   END IF
@@ -632,12 +900,21 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       'Nonlinear System Newton After Tolerance',Found )
 
 
+! Not refactorizing seems to break things with gauges
+  ! IF (SteadyGauge) THEN
+  !   IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+  !     CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
+  !   END IF
+  ! END IF
+
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
   IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN
     CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
   END IF
   EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
 
+  CALL DefaultStart()
+  
   DO i=1,NoIterationsMax
     ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( NoIterationsMax > 1 ) THEN
@@ -667,6 +944,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     END DO
   END IF
 
+  CALL DefaultFinish()
+  
   CALL Info('WhitneyAVSolver','All done',Level=8 )
   CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
 
@@ -688,6 +967,7 @@ CONTAINS
    REAL(KIND=dp), POINTER :: Mx(:), Mb(:), Mr(:)
    REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpRVec, TmpRHSVec   
    CHARACTER(LEN=MAX_NAME_LEN) :: ConvergenceType
+   REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:), ConstraintValues(:)
 
    SAVE TmpRHSVec, TmpRVec
   !-----------------
@@ -695,6 +975,7 @@ CONTAINS
   !-----------------
 
   A => GetMatrix()
+  IF (TransientGauge) Constraintvalues => CM % Values
 
 300 CONTINUE
 
@@ -705,6 +986,8 @@ CONTAINS
     IF ( ConstantSystem  ) GOTO 200
   END IF
 
+  ! Timing
+  CALL ResetTimer('MGDynAssembly')
   CALL DefaultInitialize()
   Active = GetNOFActive()
   DO t=1,active
@@ -717,11 +1000,11 @@ CONTAINS
      BodyForce => GetBodyForce()
      FoundMagnetization = .FALSE.
      IF ( ASSOCIATED(BodyForce) ) THEN
-
+       
        CALL GetRealVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
        CALL GetRealVector( BodyForce, Load(4:6,1:n), &
                 'Magnetization', FoundMagnetization )
-	Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
+       Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
      END IF
 
      Material => GetMaterial( Element )
@@ -730,7 +1013,7 @@ CONTAINS
        CALL GetRealVector( Material, Load(4:6,1:n), &
                 'Magnetization', FoundMagnetization )
      END IF
-     
+
      CoilBody = .FALSE.
      CompParams => GetComponentParams( Element )
      CoilType = ''
@@ -799,6 +1082,17 @@ CONTAINS
      !Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
      IF (Transient) CALL DefaultUpdateMass(MASS)
+
+     ! Collect weak diverence constraint.
+     !-----------------------------------------------------------------
+     IF (Transient .AND. TransientGauge .AND. .NOT. TransientGaugeCollected) THEN
+       CALL LocalConstraintMatrix( DConstr, Element, n, nd+nb, PiolaVersion, SecondOrder)
+       SaveValues => Solver % Matrix % MassValues
+       Solver % Matrix % MassValues => ConstraintValues
+       CALL DefaultUpdateMassR(DConstr)
+       Solver % Matrix % MassValues => SaveValues
+     END IF
+
      CALL DefaultUpdateEquations(STIFF,FORCE)
   END DO
 
@@ -814,7 +1108,7 @@ CONTAINS
      Element => GetBoundaryElement(t)
      BC=>GetBC()
      IF (.NOT. ASSOCIATED(BC) ) CYCLE
-     
+
      SELECT CASE(GetElementFamily())
      CASE(1)
        CYCLE
@@ -855,6 +1149,9 @@ CONTAINS
 
   DoneAssembly = .TRUE.
 
+  ! Check the timer
+  CALL CheckTimer('MGDynAssembly', Delete=.TRUE.)
+
 200 CONTINUE
 
   ! This is now automatically invoked as the time integration is set gloabl in the Solver_init
@@ -892,6 +1189,46 @@ CONTAINS
   ! Dirichlet BCs in terms of vector potential A:
   ! ---------------------------------------------
   CALL DefaultDirichletBCs()
+
+  ! Apply dirichlet BCs associated with weak divergence dofs
+  IF (TransientGauge .AND. .NOT. TransientGaugeCollected) THEN
+    CALL Info("WhitneyAVSolver", "Handling weak div boundary.", level=10)
+    Active = GetNOFBoundaryElements()
+    ELEMENT_LOOP: DO t = 1, Active
+      Element => GetBoundaryElement(t)
+      IF (.NOT. ActiveBoundaryElement(UElement=Element)) THEN
+        CYCLE ELEMENT_LOOP
+      END IF
+      BC => GetBC()
+      IF (.NOT. ASSOCIATED(BC)) THEN
+        CYCLE ELEMENT_LOOP
+      END IF
+      IF (GetLogical ( BC, 'weak div dirichlet boundary', Found)) THEN
+        n = GetElementNOFNodes(Element)
+        DO i = 1, n
+          j = Solver % Variable % Perm(Element % NodeIndexes(i))
+          DO k=CM % Rows(j),CM % Rows(j+1)-1
+            CM % Values(k) = 0.0_dp
+            IF (CM % Cols(k) == j + A % NumberOfRows) CM % Values(k) = 1.0_dp
+          END DO
+
+          CM % RHS(j) = 0.0_dp
+
+          k = CM % Diag(j)
+          IF (k>0) THEN
+            CM % Values(k) = 1.0_dp
+          ELSE
+            CALL Warn("WhitneyAVSolver", "there is no diagonal entry in constraint matrix.. Why is that?")
+          END IF
+        END DO
+      END IF
+    END DO ELEMENT_LOOP
+    CALL Info("WhitneyAVSolver", "Done setting weak div dirichlet boundary.", level=10)
+
+    CALL PackEdgeRows(CM, Model)
+    CALL Info("WhitneyAVSolver", "Done removing unused constraints.", level=10)
+    TransientGaugeCollected = .TRUE.
+  END IF
 
   ! Dirichlet BCs in terms of magnetic flux density B:
   ! --------------------------------------------------
@@ -1454,8 +1791,8 @@ CONTAINS
 
       BC => GetBC()
       IF (.NOT.ASSOCIATED(BC)) CYCLE
-      IF (.NOT.ListCheckPresent( BC, &
-           TRIM(Solver % Variable % Name)//' {e}')) CYCLE
+      IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
+                 TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
  
       j=1; k=GetBoundaryEdgeIndex(Boundary,j)
       DO WHILE(k>0)
@@ -1786,6 +2123,78 @@ CONTAINS
   END SUBROUTINE DepthFirstSearch
 !------------------------------------------------------------------------------
 
+SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondOrder )
+
+  REAL(KIND=dp) :: Dconstr(:,:)
+  INTEGER :: n, nd
+  TYPE(Element_t), POINTER :: Element
+  LOGICAL :: PiolaVersion, SecondOrder
+
+  ! FE-Basis stuff
+  REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
+    RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), lorentz_velo(3,n)
+  REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), FixJPot(nd)
+
+  INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree, r, s, Indexes(1:nd)
+  TYPE(GaussIntegrationPoints_t) :: IP
+
+  TYPE(Nodes_t), SAVE :: Nodes
+
+  TYPE(ValueListEntry_t), POINTER :: Lst
+  !------------------------------------------------------------------------------
+  IF (SecondOrder) THEN
+    EdgeBasisDegree = 2
+  ELSE
+    EdgeBasisDegree = 1
+  END IF
+
+  CALL GetElementNodes( Nodes )
+
+  DConstr = 0.0_dp
+
+  !Numerical integration:
+  !----------------------
+  IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+    EdgeBasisDegree=EdgeBasisDegree )
+
+  np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+  DO t=1,IP % n
+    IF (PiolaVersion) THEN
+      stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+        IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+        RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+        BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+    ELSE
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+        IP % W(t), detJ, Basis, dBasisdx )
+
+      CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+    END IF
+
+
+    IF ( TransientGauge ) THEN
+      DO j = 1, np
+        r = j
+        DO i = 1,nd-np
+          s = i+np
+          DConstr(r,s) = DConstr(r,s) + SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+        END DO
+        DO i = 1, np
+          s = i
+          DConstr(r,s) = DConstr(r,s) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP%s(t) &
+               + gauge_penalize_m*Basis(j)*Basis(i)*detJ*IP%s(t)
+        END DO
+      END DO
+    END IF
+  END DO
+
+  p = GetElementDOFs(Indexes)
+  DO j = 1, nd-np
+    s = j+np
+    CM % ConstrainedDOF(Solver % Variable % Perm(indexes(s))) = .TRUE.
+  END DO
+
+END SUBROUTINE LocalConstraintMatrix
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
@@ -2075,9 +2484,10 @@ CONTAINS
            STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t) 
 
            ! Aniostropic part
-           IF(HasTensorReluctivity) & 
+           IF(HasTensorReluctivity) THEN
              STIFF(p,q) = STIFF(p,q) &
-             + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
+                  + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
+           END IF
            IF( HasVelocity ) THEN
              STIFF(p,q) = STIFF(p,q) &
                  - SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
@@ -2091,8 +2501,9 @@ CONTAINS
            ! mass matrix (anisotropy taken into account)
            ! This is not used in the case of stranded coil:
            ! ----------------------------------------------
-           IF (CoilType /= 'stranded') MASS(p,q) = MASS(p,q) + & 
-               SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
+           IF (CoilType /= 'stranded') THEN
+             MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
+           END IF
 
            ! Compute the low frequency eddy term for laminate stack model.
            ! Note that the conductivity term <C A, eta> above can be used to 
@@ -2107,6 +2518,33 @@ CONTAINS
 
          END DO
        END DO
+
+       ! In steady state we can utilize the scalar variable
+       ! for Gauging the vector potential.
+       IF ( SteadyGauge ) THEN
+
+         DO j = 1, np
+           q = j
+           DO i = 1,nd-np
+             p = i+np
+             STIFF(q,p) = STIFF(q,p) + SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+             STIFF(p,q) = STIFF(p,q) + SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+           END DO
+         END DO
+
+         IF ( HasStabC ) THEN
+           DO j = 1, np
+             q = j
+             DO i = 1, np
+               p = i
+               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP % s(t) &
+                     + gauge_penalize_m*Basis(j)*Basis(i)*detJ*IP%s(t)
+             END DO
+           END DO
+         END IF
+
+       END IF
+
     END DO
 
     IF ( Newton ) THEN
@@ -3306,6 +3744,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
   EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
+
+  CALL DefaultStart()
+
   DO i=1,NoIterationsMax
     ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( DoSolve(i) ) THEN
@@ -3316,6 +3757,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
   CALL CalculateLumped(Model % NumberOfBodyForces)
+
+  CALL DefaultFinish()
 
   
 CONTAINS
@@ -4036,8 +4479,8 @@ CONTAINS
 
       BC => GetBC()
       IF (.NOT.ASSOCIATED(BC)) CYCLE
-      IF (.NOT.ListCheckPresent( BC, &
-           TRIM(Solver % Variable % Name)//' {e}')) CYCLE
+      IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
+                 TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
  
       j=1; k=GetBoundaryEdgeIndex(Boundary,j)
       DO WHILE(k>0)
@@ -5680,6 +6123,12 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     END IF
   END IF
 
+  IF ( GetLogical( SolverParams, 'Calculate Nodal Heating', Found ) ) THEN
+    i = i + 1
+    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        "Nodal Joule Heating" )
+  END IF
+    
   IF (GetLogical(SolverParams, 'Calculate Nodal Forces', Found) ) THEN
     IF( RealField ) THEN
       i = i + 1
@@ -5745,7 +6194,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
    TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, EF, MST, &
-                                JH, VP, FWP, JXB, ML, ML2, LagrangeVar, NF
+                                JH, NJH, VP, FWP, JXB, ML, ML2, LagrangeVar, NF
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
                                 EL_MST, EL_JH, EL_VP, EL_FWP, EL_JXB, EL_ML, EL_ML2, &
                                 EL_NF
@@ -5888,7 +6337,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ML  => NULL(); EL_ML => NULL();
    ML2 => NULL(); EL_ML2 => NULL();
    NF => NULL(); EL_NF => NULL();
-
+   NJH => NULL()
+   
    IF ( Transient .OR. .NOT. RealField .OR. LorentzConductivity ) THEN
      EF => VariableGet( Mesh % Variables, 'Electric Field' )
      FWP => VariableGet( Mesh % Variables, 'Winding Voltage' )
@@ -5908,6 +6358,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    JH => VariableGet( Mesh % Variables, 'Joule Heating' )
    EL_JH => VariableGet( Mesh % Variables, 'Joule Heating E' )
 
+   NJH => VariableGet( Mesh % Variables, 'Nodal Joule Heating' )
+   
    IF(.NOT. RealField ) THEN
      ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear')
      EL_ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear E')
@@ -5932,10 +6384,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(MST) ) DOFs=DOFs+6
    IF ( ASSOCIATED(NF)  ) DOFs=DOFs+3
    DOFs = DOFs*vDOFs
-   IF ( ASSOCIATED(JH) ) DOFs=DOFs+1
+   IF ( ASSOCIATED(JH) .OR. ASSOCIATED(NJH)) DOFs=DOFs+1
    IF ( ASSOCIATED(ML) ) DOFs=DOFs+1
    IF ( ASSOCIATED(ML2) ) DOFs=DOFs+1
-   NodalFields = DOFs>0
+   NodalFields = DOFs > 0
 
    IF(NodalFields) THEN
      ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),DOFs)); Gforce=0._dp
@@ -6234,7 +6686,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
 
 
-       grads_coeff = 1._dp/GetCircuitModelDepth()
+       grads_coeff = -1._dp/GetCircuitModelDepth()
        IF( CSymmetry ) THEN
          xcoord = SUM( Basis(1:n) * Nodes % x(1:n) )
          grads_coeff = grads_coeff/xcoord
@@ -6248,7 +6700,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
             IF ( CSymmetry ) THEN
               B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
               B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
-                       + SUM( SOL(1,1:nd) * Basis(1:nd) ) / xcoord
+                       + SUM( SOL(k,1:nd) * Basis(1:nd) ) / xcoord
               B(k,3) = 0._dp
             ELSE
               B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
@@ -6568,13 +7020,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               k = k+3
            ELSE
               DO l=1,3
-                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) - &
-                  s * SUM( AIMAG(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*REAL(BodyForceCurrDens_ip(l))*Basis(p)
+                JatIp(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) - &
+                             SUM( AIMAG(CMat_ip(l,1:3)) * E(2,1:3) ) + REAL(BodyForceCurrDens_ip(l))
+                FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
               DO l=1,3
-                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( AIMAG(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) + &
-                  s * SUM( REAL(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*AIMAG(BodyForceCurrDens_ip(l))*Basis(p)
+                JatIp(2,l) = SUM( AIMAG(CMat_ip(l,1:3)) * E(1,1:3) ) + &
+                             SUM( REAL(CMat_ip(l,1:3)) * E(2,1:3) ) + AIMAG(BodyForceCurrDens_ip(l))
+                FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(2,l)*Basis(p)
               END DO
               k = k+3
            END IF
@@ -6588,6 +7042,36 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                JXBatIP(1,:) = crossproduct(JatIP(1,:),B(1,:))
                DO l=1,dim
                  FORCE(p,k+l) = FORCE(p,k+l)+s*JXBatIP(1,l)*Basis(p)
+               END DO
+               k = k+3
+             ELSE
+               IF( CSymmetry ) THEN
+                 ! TODO: Have to figure out why cylindrical coords have opposite sign
+                 JXBatIP(1,1) =   JatIP(2,3)*B(2,2) + JatIP(1,3)*B(1,2)
+                 JXBatIP(1,2) = - JatIP(2,3)*B(2,1) - JatIP(1,3)*B(1,1)
+                 JXBatIP(1,3) =   0.0_dp
+
+                 JXBatIP(2,1) =   JatIP(2,3)*B(1,2) - JatIP(1,3)*B(2,2)
+                 JXBatIP(2,2) = - JatIP(2,3)*B(1,1) + JatIP(1,3)*B(2,1)
+                 JXBatIP(2,3) =   0.0_dp
+               ELSE
+                 JXBatIP(1,1) =   JatIP(2,2)*B(2,3) - JatIP(2,3)*B(2,2) + JatIP(1,2)*B(1,3) - JatIP(1,3)*B(1,2)
+                 JXBatIP(1,2) =   JatIP(2,3)*B(2,1) - JatIP(2,1)*B(2,3) + JatIP(1,3)*B(1,1) - JatIP(1,1)*B(1,3)
+                 JXBatIP(1,3) =   JatIP(2,1)*B(2,2) - JatIP(2,2)*B(2,1) + JatIP(1,1)*B(1,2) - JatIP(1,2)*B(1,1)
+
+                 JXBatIP(2,1) =   JatIP(2,2)*B(1,3) - JatIP(2,3)*B(1,2) - JatIP(1,2)*B(2,3) + JatIP(1,3)*B(2,2)
+                 JXBatIP(2,2) =   JatIP(2,3)*B(1,1) - JatIP(2,1)*B(1,3) - JatIP(1,3)*B(2,1) + JatIP(1,1)*B(2,3)
+                 JXBatIP(2,3) =   JatIP(2,1)*B(1,2) - JatIP(2,2)*B(1,1) - JatIP(1,1)*B(2,2) + JatIP(1,2)*B(2,1)
+               END IF
+
+               JXBatIP = 0.5_dp*JXBatIP
+
+               DO l=1,dim
+                 FORCE(p,k+l) = FORCE(p,k+l)+s*JXBatIP(1,l)*Basis(p)
+               END DO
+               k = k+3
+               DO l=1,dim
+                 FORCE(p,k+l) = FORCE(p,k+l)+s*JXBatIP(2,l)*Basis(p)
                END DO
                k = k+3
              END IF
@@ -6639,11 +7123,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
          IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
          Power = Power + Coeff
-         IF ( ASSOCIATED(JH).OR.ASSOCIATED(EL_JH) ) THEN
+         IF ( ASSOCIATED(JH) .OR. ASSOCIATED(EL_JH) .OR. ASSOCIATED(NJH) ) THEN
            FORCE(p,k+1) = FORCE(p,k+1) + Coeff
            k = k+1
          END IF
-
+         
+         
 
          !-------------------------------------------------
          ! Compute a loss estimate for cos and sin modes:
@@ -6794,11 +7279,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GlobalSol(CD,   3*vdofs, Gforce, Dofs)
      CALL GlobalSol(JXB,  3*vdofs, Gforce, Dofs)
      CALL GlobalSol(FWP,  1*vdofs, Gforce, Dofs)
+     
+     ! Nodal heating directly uses the loads 
+     IF (ASSOCIATED(NJH)) THEN
+       NJH % Values = Gforce(:,dofs+1)
+       ! Update the dofs only if it not used as the r.h.s. for the following field
+       IF(.NOT. ASSOCIATED(JH) ) dofs = dofs + 1
+     END IF
      CALL GlobalSol(JH ,  1      , Gforce, Dofs)
+
      CALL GlobalSol(ML ,  1      , Gforce, Dofs)
      CALL GlobalSol(ML2,  1      , Gforce, Dofs)
      CALL GlobalSol(MST,  6*vdofs, Gforce, Dofs)
-     !CALL GlobalSol(NF,   3,       Gforce, Dofs)
      IF (ASSOCIATED(NF)) THEN
        DO i=1,3
          dofs = dofs + 1
@@ -7343,7 +7835,7 @@ CONTAINS
             IF ( CSymmetry ) THEN
               B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
               B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
-                + SUM( SOL(1,1:nd) * Basis(1:nd) ) / xcoord
+                + SUM( SOL(k,1:nd) * Basis(1:nd) ) / xcoord
               B(k,3) = 0._dp
             ELSE
               B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )

@@ -1124,7 +1124,8 @@ CONTAINS
   END SUBROUTINE GetComplexVector
 
 
-!> Set some property elementwise to the active element
+!> Set a named elementwise property (real-valued) to the active element or
+!> given element
   SUBROUTINE SetElementProperty( Name, Values, UElement )
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp) :: Values(:)
@@ -1160,7 +1161,8 @@ CONTAINS
     END IF
   END SUBROUTINE SetElementProperty
 
-!> Get some property elementwise from the active element
+!> Get a named elementwise property (real-valued) from the active element or 
+!> from a given element
   FUNCTION GetElementProperty( Name, UElement ) RESULT(Values)
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp), POINTER :: Values(:)
@@ -2589,15 +2591,19 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-
-
-!> Performs initialization for matrix equation related to the active solver
-!------------------------------------------------------------------------------
-  SUBROUTINE DefaultInitialize( USolver )
-!------------------------------------------------------------------------------
-     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
-
-     TYPE(Solver_t), POINTER :: Solver, SlaveSolver
+!--------------------------------------------------------------------------------
+!> One can enforce weak coupling by calling a dependent solver a.k.a. slave solver
+!> at different stages of the master solver: e.g. before and after the solver.
+!> The strategy can be particularly efficient for nonlinear problems when the
+!> slave solver is cheap and a stepsize control is applied
+!> Also one can easily make postprocessing steps just at the correct slot.
+!-----------------------------------------------------------------------------
+  SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
+!------------------------------------------------------------------------------  
+     TYPE(Solver_t), POINTER :: Solver     
+     CHARACTER(LEN=*) :: SlaveSolverStr 
+     
+     TYPE(Solver_t), POINTER :: SlaveSolver
      TYPE(ValueList_t), POINTER :: Params
      TYPE(Variable_t), POINTER :: iterV
      INTEGER, POINTER :: SlaveSolverIndexes(:)
@@ -2606,14 +2612,85 @@ CONTAINS
      LOGICAL :: Transient, Found, alloc_parenv
 
      INTERFACE
-        SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
-          USE Types
-          TYPE(Model_t)::Model
-          TYPE(Solver_t),POINTER::Solver
-          REAL(KIND=dp) :: dt
-          LOGICAL :: Transient
-        END SUBROUTINE SolverActivate_x
+       SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
+         USE Types
+         TYPE(Model_t)::Model
+         TYPE(Solver_t),POINTER::Solver
+         REAL(KIND=dp) :: dt
+         LOGICAL :: Transient
+       END SUBROUTINE SolverActivate_x
      END INTERFACE
+
+     SlaveSolverIndexes =>  ListGetIntegerArray( Solver % Values,&
+         SlaveSolverStr,Found )
+     IF(.NOT. Found ) RETURN
+
+     CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
+         TRIM(SlaveSolverStr),Level=5)
+     
+     dt = GetTimeStep()
+     Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
+
+     ! store the nonlinear iteration at the outer loop
+     iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+     iter = NINT(iterV % Values(1))
+
+     DO j=1,SIZE(SlaveSolverIndexes)
+       k = SlaveSolverIndexes(j)
+       SlaveSolver => CurrentModel % Solvers(k)
+
+       CALL Info('DefaultSlaveSolvers','Calling slave solver: '//TRIM(I2S(k)),Level=8)
+       
+       IF(ParEnv % PEs>1) THEN
+         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
+             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
+
+         alloc_parenv = .FALSE.
+         IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
+           IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
+             ParEnv = SlaveSolver % Matrix % ParMatrix % ParEnv
+           ELSE
+             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+           END IF
+         ELSE
+           ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+         END IF
+         ParEnv % ActiveComm = Solver % Matrix % Comm
+       END IF
+
+       CurrentModel % Solver => SlaveSolver
+       CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
+
+       IF(ParEnv % PEs>1) THEN
+         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
+             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .FALSE.)
+
+         IF(alloc_parenv) THEN
+           DEALLOCATE(ParEnv % Active)
+           ParEnv % Active => NULL()
+         END IF
+
+         IF(ASSOCIATED(Solver % Matrix)) THEN
+           IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
+               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+         END IF
+       END IF
+     END DO
+     CurrentModel % Solver => Solver
+     iterV % Values = iter       
+
+   END SUBROUTINE DefaultSlaveSolvers
+!------------------------------------------------------------------------------
+ 
+  
+
+!> Performs initialization for matrix equation related to the active solver
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultInitialize( USolver )
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
+
+     TYPE(Solver_t), POINTER :: Solver
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -2621,64 +2698,9 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
 
-     ! One can enforce weak coupling by calling a dependent solver at the start of 
-     ! initialization of the master solver. The strategy will be particularly 
-     ! efficient when the slave solver is cheap and a stepsize control is applied
-     ! to the master solver.
-     !-----------------------------------------------------------------------------
-     SlaveSolverIndexes =>  ListGetIntegerArray( Solver % Values,'Slave Solvers',Found )
-     IF( Found ) THEN
-       dt = GetTimeStep()
-       Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
-
-       ! store the nonlinear iteration at the outer loop
-       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-       iter = NINT(iterV % Values(1))
-
-
-       DO j=1,SIZE(SlaveSolverIndexes)
-         k = SlaveSolverIndexes(j)
-         SlaveSolver => CurrentModel % Solvers(k)
-
-         IF(ParEnv % PEs>1) THEN
-           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
-
-           alloc_parenv = .FALSE.
-           IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
-             IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
-               ParEnv = SlaveSolver % Matrix % ParMatrix % ParEnv
-             ELSE
-               ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
-             END IF
-           ELSE
-             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
-           END IF
-           ParEnv % ActiveComm = Solver % Matrix % Comm
-         END IF
-
-         CurrentModel % Solver => SlaveSolver
-         CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
-
-         IF(ParEnv % PEs>1) THEN
-           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .FALSE.)
-
-           IF(alloc_parenv) THEN
-             DEALLOCATE(ParEnv % Active)
-             ParEnv % Active => NULL()
-           END IF
-
-           IF(ASSOCIATED(Solver % Matrix)) THEN
-             IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
-               ParEnv = Solver % Matrix % ParMatrix % ParEnv
-           END IF
-         END IF
-       END DO
-       CurrentModel % Solver => Solver
-       iterV % Values = iter       
-     END IF
-
+     CALL DefaultSlaveSolvers(Solver,'Slave Solvers') ! this is the initial name of the slot
+     CALL DefaultSlaveSolvers(Solver,'Nonlinear Pre Solvers')     
+     
      IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
        CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
      END IF
@@ -2693,27 +2715,38 @@ CONTAINS
 
 !> Performs finilizing steps related to the the active solver
 !------------------------------------------------------------------------------
+  SUBROUTINE DefaultStart( USolver )
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
+     
+     TYPE(Solver_t), POINTER :: Solver
+
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+     
+     CALL Info('DefaultStart','Starting solver: '//&
+        TRIM(ListGetString(Solver % Values,'Equation')),Level=10)
+     
+     ! One can run preprocessing solver in this slot.
+     !-----------------------------------------------------------------------------
+     CALL DefaultSlaveSolvers(Solver,'Pre Solvers')
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE DefaultStart
+!------------------------------------------------------------------------------
+
+
+  
+!> Performs finilizing steps related to the the active solver
+!------------------------------------------------------------------------------
   SUBROUTINE DefaultFinish( USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
 
-     TYPE(Solver_t), POINTER :: Solver, PostSolver
-     TYPE(ValueList_t), POINTER :: Params
-     TYPE(Variable_t), POINTER :: iterV
-     INTEGER, POINTER :: PostSolverIndexes(:)
-     INTEGER :: j,k,iter
-     REAL(KIND=dp) :: dt
-     LOGICAL :: Transient, Found, alloc_parenv
-
-     INTERFACE
-        SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
-          USE Types
-          TYPE(Model_t)::Model
-          TYPE(Solver_t),POINTER::Solver
-          REAL(KIND=dp) :: dt
-          LOGICAL :: Transient
-        END SUBROUTINE SolverActivate_x
-     END INTERFACE
+     TYPE(Solver_t), POINTER :: Solver
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -2723,59 +2756,10 @@ CONTAINS
 
      ! One can run postprocessing solver in this slot.
      !-----------------------------------------------------------------------------
-     PostSolverIndexes =>  ListGetIntegerArray( Solver % Values,'Post Solvers',Found )
-     IF( Found ) THEN
-       dt = GetTimeStep()
-       Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
-
-       ! store the nonlinear iteration at the outer loop
-       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-       iter = NINT(iterV % Values(1))
-
-       DO j=1,SIZE(PostSolverIndexes)
-         k = PostSolverIndexes(j)
-         PostSolver => CurrentModel % Solvers(k)
-
-         IF(ParEnv % PEs>1) THEN
-           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-             CALL ListAddLogical( PostSolver % Values, 'Post not parallel', .TRUE.)
-
-           alloc_parenv = .FALSE.
-           IF(ASSOCIATED(PostSolver % Matrix)) THEN
-             IF(ASSOCIATED(PostSolver % Matrix % ParMatrix) ) THEN
-               ParEnv = PostSolver % Matrix % ParMatrix % ParEnv
-             ELSE
-               ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
-             END IF
-           ELSE
-             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
-           END IF
-         END IF
-
-         CurrentModel % Solver => PostSolver
-         CALL SolverActivate_x( CurrentModel,PostSolver,dt,Transient)
-
-         IF(ParEnv % PEs>1) THEN
-           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-             CALL ListAddLogical( PostSolver % Values, 'Post not parallel', .FALSE.)
-
-           IF(alloc_parenv) THEN
-             DEALLOCATE(ParEnv % Active)
-             ParEnv % Active => NULL()
-           END IF
-
-           IF(ASSOCIATED(Solver % Matrix)) THEN
-             IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
-               ParEnv = Solver % Matrix % ParMatrix % ParEnv
-           END IF
-         END IF
-       END DO
-       CurrentModel % Solver => Solver
-       iterV % Values = iter       
-     END IF
+     CALL DefaultSlaveSolvers(Solver,'Post Solvers')
 
      CALL Info('DefaultFinish','Finished solver: '//&
-         TRIM(ListGetString(Solver % Values,'Equation')),Level=5)
+         TRIM(ListGetString(Solver % Values,'Equation')),Level=8)
 
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish
@@ -2862,6 +2846,11 @@ CONTAINS
 
     IF( NameSpaceI > 0 ) CALL ListPopNamespace()
 
+    ! One can run postprocessing solver in this slot in every nonlinear iteration.
+    !-----------------------------------------------------------------------------
+    CALL DefaultSlaveSolvers(Solver,'Nonlinear Post Solvers')
+
+    
 !------------------------------------------------------------------------------
   END FUNCTION DefaultSolve
 !------------------------------------------------------------------------------
@@ -2945,7 +2934,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
-     REAL(KIND=dp)  :: G(:,:), f(:)
+     REAL(KIND=dp)   :: G(:,:), f(:)
      LOGICAL, OPTIONAL :: BulkUpdate, VecAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
@@ -5697,6 +5686,41 @@ CONTAINS
   END SUBROUTINE GetParentUVW
 !------------------------------------------------------------------------------
 
+!-----------------------------------------------------------------------
+!> This routine may be used to terminate the program in the case of an error.
+!-----------------------------------------------------------------------
+   SUBROUTINE Assert(Condition, Caller, ErrorMessage)
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
+     LOGICAL :: Condition
+!-----------------------------------------------------------------------
+     IF ( .NOT. OutputLevelMask(0) ) STOP
+
+     IF(Condition) RETURN !Assertion passed
+
+     WRITE( Message, '(A)') 'ASSERTION ERROR'
+
+     IF(PRESENT(Caller)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(Caller)
+     END IF
+
+     IF(PRESENT(ErrorMessage)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(ErrorMessage)
+     END IF
+
+     WRITE( *, '(A)', ADVANCE='YES' ) Message
+
+     !Provide a stack trace if no caller info provided
+#ifdef __GFORTRAN__
+     IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
+#endif
+
+     STOP
+
+     CALL FLUSH(6)
+!-----------------------------------------------------------------------
+   END SUBROUTINE Assert
+!-----------------------------------------------------------------------
 
   FUNCTION GetNOFColours(USolver) RESULT( ncolours ) 
     IMPLICIT NONE

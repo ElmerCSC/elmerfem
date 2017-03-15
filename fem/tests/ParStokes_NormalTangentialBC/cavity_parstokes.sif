@@ -15,7 +15,7 @@ End
 
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System  = Cartesian 2D 
   
   Set Dirichlet BCs by BC Numbering = Logical True

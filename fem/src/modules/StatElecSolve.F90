@@ -399,6 +399,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   CALL Info( 'StatElecSolve', 'STATELEC SOLVER:  ', Level=4 )
   CALL Info( 'StatElecSolve', '-------------------------------------',Level=4 )
 
+  CALL DefaultStart()
+
+  
   DO iter = 1, NonlinearIter
      at  = CPUTime()
      at0 = RealTime()
@@ -590,6 +593,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
    IF ( CalculateEnergy ) THEN
      CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Energy Density')
    END IF
+
+   CALL DefaultFinish()
+
    
 !------------------------------------------------------------------------------
  

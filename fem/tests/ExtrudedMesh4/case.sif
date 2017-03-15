@@ -24,7 +24,7 @@ Simulation
       1.0 1.0 
     End 
   
-  Max Output Level = 9
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1

@@ -173,12 +173,15 @@
         END FUNCTION HeatInsideResidual
      END INTERFACE
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-     REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
+#ifndef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: CPUTime,RealTime
 #endif
 
+
+     CALL Info('HeatSolver','-------------------------------------------',Level=6)
+     CALL Info('HeatSolver','Solving the energy equation for temperature',Level=5)
+     
 !------------------------------------------------------------------------------
 !    The View and Gebhardt factors may change. If this is necessary, this is 
 !    done within this subroutine. The routine is called in the
@@ -536,7 +539,7 @@
            DoneTime = Solver % DoneTime
         END IF
      END IF
-    
+
      IF( IntegralHeaterControl) THEN
         CALL Info( 'HeatSolve', 'Using Integral Heater Control')       
         IntegralHeaters = .FALSE.
@@ -560,6 +563,7 @@
 
 !------------------------------------------------------------------------------
      FirstTime = .TRUE.
+
      ALLOCATE(PrevSolution(LocalNodes))
      
      DO WHILE( CumulativeTime < Timestep-1.0d-12 .OR. .NOT. TransientSimulation )
@@ -577,12 +581,15 @@
        PrevTemperature => Solver % Variable % PrevValues(:,1)
      END IF
 !------------------------------------------------------------------------------
-
+     
      totat = 0.0d0
      totst = 0.0d0
 
      Norm = Solver % Variable % Norm
 
+     CALL DefaultStart()
+     
+     
      DO iter=1,NonlinearIter
        at  = CPUTime()
        at0 = RealTime()
@@ -663,7 +670,7 @@
        NofActive = GetNOFActive()
 
        DO t=1,NofActive
-
+         
          CALL AdvanceOutput(t,NofActive)
 !------------------------------------------------------------------------------
 !        Check if this element belongs to a body where temperature 
@@ -1008,7 +1015,7 @@
 !------------------------------------------------------------------------------
       END DO     !  Bulk elements
 !------------------------------------------------------------------------------
-
+      
       CALL DefaultFinishBulkAssembly()
 
 
@@ -1098,7 +1105,7 @@
               Solver % Matrix % RHS, YY, Norm, 1, Solver )
 
           CALL ListAddLogical(SolverParams,'Skip Compute Nonlinear Change',.FALSE.)
-        ELSE          
+        ELSE                    
           CALL SolveSystem( Solver % Matrix, ParMatrix, &
               Solver % Matrix % RHS, Temperature, Norm, 1, Solver )
           YY = Temperature
@@ -1240,7 +1247,7 @@
 
       IF ( RelativeChange < NewtonTol .OR. iter >= NewtonIter ) &
                NewtonLinearization = .TRUE.
-      Converged =  ( Solver % Variable % NonlinConverged == 1 ) .AND. &
+      Converged =  ( Solver % Variable % NonlinConverged > 0 ) .AND. &
           ( .NOT. SmartHeaterControl .OR. SmartTolReached )
       IF( Converged ) EXIT
 
@@ -1277,6 +1284,8 @@
    END DO ! time interval
    Solver % dt = Timestep
 
+   CALL DefaultFinish()
+   
 !------------------------------------------------------------------------------
    CALL  ListAddConstReal( Solver % Values,  &
         'Nonlinear System Relaxation Factor', SaveRelax )

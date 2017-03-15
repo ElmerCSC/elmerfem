@@ -3064,9 +3064,23 @@ END SUBROUTINE GetMaxDefs
  END SUBROUTINE ReadTargetNames
 
 
-
+!------------------------------------------------------------------------------
+!> This subroutine reads elementwise input data from the file mesh.elements.data 
+!> and inserts the data into the structured data variable 
+!> Mesh % Elements(element_id) % PropertyData. The contents of the file should
+!> be arranged as
+!> 
+!> element: element_id_1
+!> data_set_name_1: a_1 a_2 ... a_n
+!> data_set_name_2: b_1 b_2 ... b_m
+!> data_set_name_3: ...
+!> end
+!> element: ...
+!> ...
+!> end
 !------------------------------------------------------------------------------
   SUBROUTINE ReadElementPropertyFile(FileName,Mesh)
+!------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: FileName
      TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
@@ -3077,7 +3091,7 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: x
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementData_t), POINTER :: PD,PD1
-
+!------------------------------------------------------------------------------
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
 
     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', ERR=10 )
@@ -3087,7 +3101,7 @@ END SUBROUTINE GetMaxDefs
       IF ( i < 0 .OR. i > Mesh % NumberOFBulkElements ) THEN
         CALL Fatal( 'ReadElementProperties', 'Element id out of range.' )
       END IF
-      
+
       IF ( SEQL( str, 'element:') ) THEN
         Element => Mesh % Elements(i)
         PD => Element % PropertyData
@@ -3500,6 +3514,323 @@ END SUBROUTINE GetMaxDefs
   END SUBROUTINE InspectQuadraticMesh
 
 
+
+  !------------------------------------------------------------------------------
+  !> Find axial, radial or rotational mortar boundary pairs.
+  !------------------------------------------------------------------------------
+  SUBROUTINE DetectMortarPairs( Model, Mesh, Tol, BCMode, SameCoordinate )
+    !------------------------------------------------------------------------------    
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: Tol
+    INTEGER :: BcMode
+    LOGICAL :: SameCoordinate
+    !------------------------------------------------------------------------------
+    INTEGER :: i,j,k,l,n,MinBC,MaxBC,BC,ElemCode
+    TYPE(Element_t), POINTER :: Element, Parent, Left, Right, Elements(:)
+    INTEGER, POINTER :: NodeIndexes(:)
+    LOGICAL :: Found 
+    LOGICAL, ALLOCATABLE :: BCSet(:), BCPos(:), BCNeg(:), BCNot(:)
+    INTEGER, ALLOCATABLE :: BCCount(:)
+    REAL(KIND=dp) :: x,y,z,f
+    REAL(KIND=dp), ALLOCATABLE :: BCVal(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    LOGICAL :: Debug = .FALSE., Hit
+    
+    ! The code can detect pairs to be glued in different coordinate systems
+    SELECT CASE( BCMode )
+    CASE( 1 )
+      str = 'x-coordinate'
+    CASE( 2 )
+      str = 'y-coordinate'
+    CASE( 3 )
+      str = 'z-coordinate'
+    CASE( 4 ) 
+      str = 'radius'
+    CASE( 5 )
+      str = 'angle'
+    CASE DEFAULT
+      CALL Fatal('DetectMortarPairs','Invalid BCMode: '//TRIM(I2S(BCMode)))
+    END SELECT
+
+    CALL Info('DetectMortarPairs','Trying to find pairs in: '//TRIM(str),Level=6)
+
+    IF(.NOT. ASSOCIATED( Mesh ) ) THEN
+      CALL Fatal('DetectMortarPairs','Mesh not associated!')
+    END IF
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Warn('DetectMortarPairs','Not implemented in parallel yet, be careful!')
+    END IF
+      
+    
+    ! Interface meshes consist of boundary elements only    
+    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
+
+    ! Find out the min and max constraint 
+    MinBC = HUGE( MinBC )
+    MaxBC = 0
+    DO i=1, Mesh % NumberOfBoundaryElements
+      Element => Elements(i)
+      ElemCode = Element % Type % ElementCode 
+      IF (ElemCode<=200) CYCLE
+
+      BC = Element % BoundaryInfo % Constraint
+      MinBC = MIN( MinBC, BC )
+      MaxBC = MAX( MaxBC, BC )
+    END DO
+
+    CALL Info('DetectMortarParis','Minimum Constraint index: '//TRIM(I2S(MinBC)),Level=8)
+    CALL Info('DetectMortarParis','Maximum Constraint index: '//TRIM(I2S(MaxBC)),Level=8)    
+    IF( MaxBC - MinBC < 1 ) THEN
+      CALL Warn('DetectMortarPairs','Needs at least two different BC indexes to create mortar pair!')
+      RETURN
+    END IF
+
+    ALLOCATE( BCVal( MinBC:MaxBC ) )
+    ALLOCATE( BCSet( MinBC:MaxBC ) )
+    ALLOCATE( BCNot( MinBC:MaxBC ) )
+    ALLOCATE( BCPos( MinBC:MaxBC ) )
+    ALLOCATE( BCNeg( MinBC:MaxBC ) )
+    ALLOCATE( BCCount( MinBC:MaxBC ) )
+
+    BCVal = 0.0_dp
+    BCSet = .FALSE.
+    BCNot = .FALSE.
+    BCPos = .FALSE.
+    BCNeg = .FALSE.
+    BCCount = 0
+    
+
+    DO i=1, Mesh % NumberOfBoundaryElements
+      Element => Elements(i)
+      ElemCode = Element % Type % ElementCode 
+      IF (ElemCode<=200) CYCLE
+
+      BC = Element % BoundaryInfo % Constraint
+
+      ! This boundary is already deemed not to be a good candidate
+      IF( BCNot( BC ) ) CYCLE
+
+      n = Element % Type % NumberOfNodes
+
+      DO j=1,n
+        k = Element % NodeIndexes(j)
+        x = Mesh % Nodes % x(k)
+        y = Mesh % Nodes % y(k)
+        z = Mesh % Nodes % z(k)
+
+        ! Here f is a measure: x, y, z, radius, or angle 
+        SELECT CASE( BCMode )
+        CASE( 1 )
+          f = x
+        CASE( 2 )
+          f = y
+        CASE( 3 )
+          f = z
+        CASE( 4 ) 
+          f = SQRT( x**2 + y**2 )
+        CASE( 5 )
+          f = ATAN2( y, x )
+        END SELECT
+
+        ! If the BC is not set then let the first be the one to compare againts
+        IF( .NOT. BCSet( BC ) ) THEN
+          BCVal( BC ) = f         
+          BCSet( BC ) = .TRUE.
+          IF( Debug ) PRINT *,'Compareing BC '//TRIM(I2S(BC))//' against:',f
+        ELSE
+          ! In consecutive rounds check that the level is consistent
+          IF( ABS( f - BCVal(BC) ) > Tol ) THEN
+            IF( Debug ) PRINT *,'Failing BC '//TRIM(I2S(BC))//' with:',f-BCVal(BC)
+            BCNot( BC ) = .TRUE.
+            EXIT
+          END IF
+        END IF
+      END DO
+
+      IF( BCNot( BC ) ) CYCLE
+
+      Parent => Element % BoundaryInfo % Left
+      IF( .NOT. ASSOCIATED( Parent ) ) THEN
+        Parent => Element % BoundaryInfo % Right
+      ELSE
+        ! If there are two parents this is an internal BC
+        IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+          IF( Debug ) PRINT *,'Failing internal BC:',BC
+          BCNot( BC ) = .TRUE.
+          CYCLE
+        END IF
+      END IF
+
+      ! To define whether the boundar is on positive or negative side of the master element
+      ! study the center point of the master element
+      n = Parent % TYPE % NumberOfNodes
+      x = SUM( Mesh % Nodes % x( Parent % NodeIndexes) ) / n
+      y = SUM( Mesh % Nodes % y( Parent % NodeIndexes) ) / n
+      z = SUM( Mesh % Nodes % z( Parent % NodeIndexes) ) / n
+
+
+      SELECT CASE( BCMode )
+      CASE( 1 )
+        f = x
+      CASE( 2 )
+        f = y
+      CASE( 3 )
+        f = z
+      CASE( 4 ) 
+        f = SQRT( x**2 + y**2 )
+      CASE( 5 )
+        f = ATAN2( y, x )
+      END SELECT
+
+      ! If the parent element is on alternating sides then this cannot be a proper boundary
+      IF( f > BCVal( BC ) ) THEN
+        IF( BCNeg( BC ) ) THEN
+          IF( Debug ) PRINT *,'Failing inconsistent negative BC:',BC
+          BCNot( BC ) = .TRUE.
+          BCNeg( BC ) = .FALSE.
+          CYCLE
+        END IF
+        BCPos( BC ) = .TRUE.
+      ELSE
+        IF( BCPos( BC ) ) THEN
+          IF( Debug ) PRINT *,'Failing inconsistent positive BC:',BC
+          BCNot( BC ) = .TRUE.
+          BCPos( BC ) = .FALSE.
+          CYCLE
+        END IF
+        BCNeg( BC ) = .TRUE.
+      END IF
+    END DO ! Number of boundary elements
+
+    IF( BCMode == 5 ) THEN
+      BCVal = 180 * BCVal / PI
+    END IF
+    
+    j = COUNT( BCPos )
+    IF( Debug ) THEN
+      IF( j > 0 ) THEN
+        IF( Debug ) PRINT *,'Positive constant levels: ',j
+        DO i=MinBC,MaxBC
+          IF( BCPos(i) ) PRINT *,'BC:',i,BCVal(i)
+        END DO
+      END IF
+    END IF
+      
+    k = COUNT( BCNeg )
+    IF( Debug ) THEN
+      IF( k > 0 ) THEN
+        PRINT *,'Negative constant levels: ',k
+        DO i=MinBC,MaxBC
+          IF( BCNeg(i) ) PRINT *,'BC:',i,BCVal(i)
+        END DO
+      END IF
+    END IF
+      
+    IF( j * k == 0 ) THEN
+      PRINT *,'Not enough candidate sides found'
+      RETURN
+    END IF
+
+    IF( SameCoordinate ) THEN
+      DO i=MinBC,MaxBC
+        Hit = .FALSE.
+        IF( BCPos(i) ) THEN
+          DO j=MinBC,MaxBC
+            IF ( BCNeg(j) ) THEN
+              IF( ABS( BCVal(i) - BCVal(j)) < Tol ) THEN
+                Hit = .TRUE.
+                EXIT
+              END IF
+            END IF
+          END DO
+          IF( .NOT. Hit ) THEN
+            BCPos(i) = .FALSE.
+            IF( Debug ) PRINT *,'Removing potential positive hit:',i
+          END IF
+        END IF
+        IF( BCNeg(i) ) THEN
+          Hit = .FALSE.
+          DO j=MinBC,MaxBC
+            IF ( BCPos(j) ) THEN
+              IF( ABS( BCVal(i) - BCVal(j)) < Tol ) THEN
+                Hit = .TRUE.
+                EXIT
+              END IF
+            END IF
+          END DO
+          IF( .NOT. Hit ) THEN
+            BCNeg(i) = .FALSE.
+            IF( Debug ) PRINT *,'Removing potential negative hit:',i
+          END IF
+        END IF
+      END DO
+
+      IF( .NOT. ANY( BCPos ) ) THEN 
+        PRINT *,'No possible pairs found at same location'
+        RETURN
+      END IF
+    END IF
+
+
+    k = 0
+    DO i=MinBC,MaxBC
+      IF( BCPos(i) ) THEN
+        Hit = .FALSE.
+        DO j=MinBC,i-1
+          IF( BCPos(j) ) THEN
+            IF( ABS( BCVal(i) - BCVal(j) ) < Tol ) THEN
+              Hit = .TRUE.
+              EXIT
+            END IF
+          END IF
+        END DO
+        IF(Hit ) THEN
+          BCCount(i) = BCCount(j)
+        ELSE
+          k = k + 1
+          BCCount(i) = k
+        END IF
+      END IF
+    END DO
+    PRINT *,'Found number of positive levels:',k
+
+
+    k = 0
+    DO i=MinBC,MaxBC
+      IF( BCNeg(i) ) THEN
+        Hit = .FALSE.
+        DO j=MinBC,i-1
+          IF( BCNeg(j) ) THEN
+            IF( ABS( BCVal(i) - BCVal(j) ) < Tol ) THEN
+              Hit = .TRUE.
+              EXIT
+            END IF
+          END IF
+        END DO
+        IF(Hit ) THEN
+          BCCount(i) = BCCount(j)
+        ELSE
+          k = k + 1
+          BCCount(i) = -k
+        END IF
+      END IF
+    END DO
+    PRINT *,'Found number of negative levels:',k
+
+    PRINT *,'Slave BCs: '
+    DO i=MinBC,MaxBC
+      IF( BCPos(i) ) PRINT *,'BC:',i,BCVal(i)
+    END DO
+    PRINT *,'Master BCs: '
+    DO i=MinBC,MaxBC
+      IF( BCNeg(i) ) PRINT *,'BC:',i,BCVal(i)
+    END DO
+    
+  END SUBROUTINE DetectMortarPairs
+
+  
 
 !------------------------------------------------------------------------------
 !> Create master and slave mesh for the interface in order to at a later 
@@ -6538,7 +6869,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
           MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, &
-          Centeri, CenteriM, AllocStat
+          Centeri, CenteriM, CenterJ, CenterJM, AllocStat, NrangeAve
       TYPE(Element_t), POINTER :: Element, ElementM, ElementP
       INTEGER :: ElemCode, LinCode, ElemCodeM, LinCodeM
       TYPE(Element_t) :: ElementT
@@ -6557,13 +6888,13 @@ END SUBROUTINE GetMaxDefs
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       REAL(KIND=dp), POINTER :: Alpha(:), AlphaM(:)
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
-      LOGICAL :: LeftCircle, Stat, CornerFound(4), CornerFoundM(4)
+      LOGICAL :: LeftCircle, Stat, CornerFound(4), CornerFoundM(4), PosAngle
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Variable_t), POINTER :: TimestepVar
 
       ! These are used temporarely for debugging purposes
       INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, Nslave, Nmaster
-      LOGICAL :: SaveElem, DebugElem
+      LOGICAL :: SaveElem, DebugElem, SaveErr
       CHARACTER(LEN=20) :: FileName
 
       REAL(KIND=dp) :: Area
@@ -6575,11 +6906,17 @@ END SUBROUTINE GetMaxDefs
 
       SaveInd = ListGetInteger( BC,'Level Projector Save Element Index',Found )
       DebugInd = ListGetInteger( BC,'Level Projector Debug Element Index',Found )
+      SaveErr = ListGetLogical( BC,'Level Projector Save Fraction',Found)
 
+      
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
 
-      
+      IF( SaveErr ) THEN
+        FileName = 'frac_'//TRIM(I2S(TimeStep))//'.dat'
+        OPEN( 11,FILE=Filename)
+      END IF
+     
       n = Mesh % MaxElementNodes
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
           NodesM % x(n), NodesM % y(n), NodesM % z(n), &
@@ -6644,6 +6981,8 @@ END SUBROUTINE GetMaxDefs
       ! of the other angles in the element. 
       CenterI = 0
       CenterIM = 0
+      CenterJ = 0
+      CenterJM = 0
       IF( Naxial > 1 ) THEN
         DO i=1,BMesh1 % NumberOfNodes
           IF( BMesh1 % Nodes % x(i)**2 + BMesh1 % Nodes % y(i)**2 < 1.0e-20 ) THEN
@@ -6711,17 +7050,19 @@ END SUBROUTINE GetMaxDefs
             rmin2 = MIN( rmin2, val )
           END DO
 
-          ! Calculate the angle, and its [min,max] range
+          ! Calculate the angle, and its [-180,180] range
           DO j=1,ne
             alpha(j) = ( 180.0_dp / PI ) * ATAN2( Nodes % y(j), Nodes % x(j)  ) 
           END DO
 
           ! If we have origin replace it with the average           
           IF( CenterI > 0 ) THEN
+            CenterJ = 0
             DO j=1,ne
               IF( Indexes(j) == CenterI ) THEN
                 alpha(j) = 0.0_dp
                 alpha(j) = SUM( Alpha(1:ne) ) / ( ne - 1 ) 
+                CenterJ = j
                 EXIT
               END IF
             END DO
@@ -6729,12 +7070,20 @@ END SUBROUTINE GetMaxDefs
             
           amin = MINVAL( Alpha(1:ne) )
           amax = MAXVAL( Alpha(1:ne) )
-          IF( amax - amin > 180.0_dp ) THEN
+          IF( amax - amin < 180.0_dp ) THEN
+            PosAngle = .FALSE.
+          ELSE
+            PosAngle = .TRUE.
+            ! Map the angle to [0,360]
             DO j=1,ne
               IF( Alpha(j) < 0.0 ) Alpha(j) = Alpha(j) + 360.0_dp
             END DO
+            IF( CenterJ > 0 ) THEN
+              alpha(CenterJ) = 0.0_dp
+              alpha(CenterJ) = SUM( Alpha(1:ne) ) / ( ne - 1 ) 
+            END IF
             amin = MINVAL( Alpha(1:ne) )
-            amax = MAXVAL( Alpha(1:ne) )            
+            amax = MAXVAL( Alpha(1:ne) )                        
           END IF
         END IF ! Naxial > 1
 
@@ -6874,16 +7223,19 @@ END SUBROUTINE GetMaxDefs
             END DO
             IF( rmin2m > rmax2 ) CYCLE
            
+            ! Angle in [-180,180] or [0,360] depending where the slave angle is mapped
             DO j=1,neM
               alphaM(j) = ( 180.0_dp / PI ) * ATAN2( NodesM % y(j), NodesM % x(j)  ) 
             END DO
             
             ! If we have origin replace it with the average 
             IF( CenterIM > 0 ) THEN
+              CenterJm = 0
               DO j=1,neM
                 IF( IndexesM(j) == CenterIM ) THEN
+                  CenterJM = j
                   alphaM(j) = 0.0_dp
-                  alphaM(j) = SUM( Alpha(1:ne) ) / ( ne - 1 ) 
+                  alphaM(j) = SUM( AlphaM(1:neM) ) / ( neM - 1 ) 
                   EXIT
                 END IF
               END DO
@@ -6892,14 +7244,17 @@ END SUBROUTINE GetMaxDefs
             aminm = MINVAL( AlphaM(1:neM) )
             amaxm = MAXVAL( AlphaM(1:neM) )
 
-            ! Check that the discrepancy in angle is not located for this element.
-            ! It it is, move it over by adding 360 degs to negative angles. 
             IF( amaxm - aminm > 180.0_dp ) THEN
+              ! Map the angle to [0,360]
               DO j=1,neM
                 IF( AlphaM(j) < 0.0 ) AlphaM(j) = AlphaM(j) + 360.0_dp
               END DO
+              IF( CenterJM > 0 ) THEN
+                alphaM(CenterJM) = 0.0_dp
+                alphaM(CenterJM) = SUM( AlphaM(1:ne) ) / ( ne - 1 ) 
+              END IF
               aminm = MINVAL( AlphaM(1:neM) )
-              amaxm = MAXVAL( AlphaM(1:neM) )            
+              amaxm = MAXVAL( AlphaM(1:neM) )                        
             END IF
           END IF
 
@@ -6907,7 +7262,7 @@ END SUBROUTINE GetMaxDefs
           IF( LeftCircle ) THEN
             ! Omit the element if it is definately on the right circle
             IF( ALL( ABS( AlphaM(1:neM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
-            DO j=1,nM
+            DO j=1,neM
               IF( AlphaM(j) < 0.0_dp ) AlphaM(j) = AlphaM(j) + ArcCoeff * 360.0_dp
             END DO
           END IF
@@ -6917,9 +7272,13 @@ END SUBROUTINE GetMaxDefs
             IF( Naxial > 1 ) THEN
               Nrange1 = FLOOR( Naxial * (amaxm-amin+RelTolX) / 360.0 )
               Nrange2 = FLOOR( Naxial * (amax-aminm+RelTolX) / 360.0 )
-
+              
               ! The two ranges could have just offset of 2*PI, eliminate that
-              IF( MODULO( Nrange1 - Nrange2, Naxial ) == 0 ) THEN
+              !Nrange2 = Nrange2 + ((Nrange1 - Nrange2)/Naxial) * Naxial
+              !  Nrange2 = Nrange1
+              !END IF
+
+              IF( MODULO( Nrange1 - Nrange2, Naxial ) == 0 )  THEN
                 Nrange2 = Nrange1
               END IF
               
@@ -6932,6 +7291,12 @@ END SUBROUTINE GetMaxDefs
                   NodesM % y(i) = SIN(dAlpha) * x0 + COS(dAlpha) * y0
                 END DO
               END IF
+                
+              !IF( Nrange2 > Nrange1 + Naxial / 2 ) THEN
+              !  Nrange2 = Nrange2 - Naxial
+              !ELSE IF( Nrange2 < Nrange1 - Naxial / 2 ) THEN
+              !  Nrange2 = Nrange2 + Naxial
+              !END IF
 
               IF( DebugElem) THEN
                 PRINT *,'axial:',ind,indM,amin,aminm,Nrange1,Nrange2
@@ -7538,12 +7903,14 @@ END SUBROUTINE GetMaxDefs
 
 100       IF( Repeating ) THEN
             IF( NRange /= NRange2 ) THEN
-              Nrange = Nrange2
-
               ! Rotate the sector to a new position for axial case
               ! Or just some up the angle in the radial/2D case
               IF( Naxial > 1 ) THEN
-                dAlpha = (Nrange2 - Nrange1) * 2.0_dp * PI / Naxial
+
+                IF( Nrange /= Nrange2 ) THEN
+                  dAlpha = 2.0_dp * PI * (Nrange2 - Nrange ) / Naxial
+                  Nrange = Nrange2
+                END IF
              
                 DO i=1,nM
                   x0 = NodesM % x(i)
@@ -7552,6 +7919,7 @@ END SUBROUTINE GetMaxDefs
                   NodesM % y(i) = SIN(dAlpha) * x0 + COS(dAlpha) * y0
                 END DO
               ELSE
+                Nrange = Nrange2
                 NodesM % x(1:n) = NodesM % x(1:n) + ArcRange  * (Nrange2 - Nrange1)
               END IF
               xminm = MINVAL( NodesM % x(1:neM))
@@ -7585,8 +7953,17 @@ END SUBROUTINE GetMaxDefs
           MinErr = Err
           MinErrInd = ind
         END IF
+
+        IF( SaveErr ) THEN
+          WRITE( 11, * ) ind,SUM( Nodes % x(1:ne))/ne, SUM( Nodes % y(1:ne))/ne, Err
+        END IF
+
+        
       END DO
 
+      IF( SaveErr ) CLOSE(11)
+      
+        
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
           NodesM % x, NodesM % y, NodesM % z, &
           NodesT % x, NodesT % y, NodesT % z, &
@@ -10417,12 +10794,12 @@ END SUBROUTINE GetMaxDefs
     IF( GotRatio ) THEN
       CALL Info('UnitSegmentDivision','Creating geometric division',Level=5)
 
-      h1 = (1-q**(1.0_dp/n))/(1-q)
+      h1 = (1-q**(1.0_dp/(n-1)))/(1-q)
       w(0) = 0.0_dp
       hn = h1;
       DO i=1,n-1
         w(i) = w(i-1) + hn;
-        hn = hn * ( q**(1.0_dp/n) )
+        hn = hn * ( q**(1.0_dp/(n-1)) )
       END DO
       w(n) = 1.0_dp
 

@@ -9,7 +9,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
 
-  Max Output Level = 7
+  Max Output Level = 5
 End
 
 Body 1

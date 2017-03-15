@@ -4401,6 +4401,27 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Check if the keyword is present in any solver.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPresentAnySolver( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: ind
+     
+     Found = .FALSE.
+     DO ind = 1,Model % NumberOfSolvers
+       Found = ListCheckPresent( Model % Solvers(ind) % Values, Name )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPresentAnySolver
+!------------------------------------------------------------------------------
+
+   
+
+!------------------------------------------------------------------------------
 !> Check if the keyword in any material is defined as an array
 !------------------------------------------------------------------------------
    FUNCTION ListCheckAnyMaterialIsArray( Model, Name ) RESULT(IsArray)
@@ -4449,6 +4470,27 @@ CONTAINS
 !------------------------------------------------------------------------------
    END FUNCTION ListGetLogicalAnyMaterial
 !------------------------------------------------------------------------------
+
+   
+!------------------------------------------------------------------------------
+!> Check if the keyword is True in any solver.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetLogicalAnySolver( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found, GotIt
+     INTEGER :: ind
+     
+     Found = .FALSE.
+     DO ind = 1,Model % NumberOfSolvers
+       Found = ListGetLogical( Model % Solvers(ind) % Values, Name, GotIt )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetLogicalAnySolver
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any equation.

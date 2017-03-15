@@ -459,7 +459,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->order = TRUE;
 	eg->corder[0] = atof(argv[arg+1]);
 	eg->corder[1] = atof(argv[arg+2]);
-	if(dim==3) eg->corder[2] = atof(argv[arg+3]);
+	eg->corder[2] = atof(argv[arg+3]);
       }
     }
 
@@ -497,7 +497,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->scale = TRUE;
 	eg->cscale[0] = atof(argv[arg+1]);
 	eg->cscale[1] = atof(argv[arg+2]);
-	if(dim==3) eg->cscale[2] = atof(argv[arg+3]);
+	eg->cscale[2] = atof(argv[arg+3]);
       }
     }
 
@@ -510,7 +510,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->translate = TRUE;
 	eg->ctranslate[0] = atof(argv[arg+1]);
 	eg->ctranslate[1] = atof(argv[arg+2]);
-	if(dim == 3) eg->ctranslate[2] = atof(argv[arg+3]);
+	eg->ctranslate[2] = atof(argv[arg+3]);
       }
     }
 

@@ -486,7 +486,7 @@ CONTAINS
           ELSE IF( LocalDiffuse ) THEN            
             DO j=1,n
               STIFF(i,j) = STIFF(i,j) + IP % s(k) * DetJ * &
-                  SUM(MATMUL(DiffMatrix, dBasisdx(j,:)) * dBasisdx(i,:)) 
+                  SUM(MATMUL(DiffMatrix(1:dim,1:dim), dBasisdx(j,1:dim)) * dBasisdx(i,1:dim)) 
             END DO
           END IF
 
