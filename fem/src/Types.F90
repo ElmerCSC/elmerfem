@@ -94,6 +94,9 @@ MODULE Types
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
                         PROJECTOR_TYPE_GALERKIN = 2    ! Galerkin projector
+
+  INTEGER, PARAMETER :: DIRECT_NORMAL = 0, & ! Normal direct method
+                        DIRECT_PERMON = 1    ! Permon direct method
   
 !------------------------------------------------------------------------------
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
@@ -754,6 +757,8 @@ END INTERFACE
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
       INTEGER :: CurrentColour = 0
+      INTEGER :: DirectMethod = DIRECT_NORMAL
+      LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
