@@ -1833,7 +1833,7 @@ CONTAINS
      INTEGER, POINTER :: ChildVarPerm(:)
      TYPE(Variable_t), POINTER :: ChildVar
      TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
-     INTEGER :: n,m,dofs
+     INTEGER :: n,m,dofs, i,j,k,l,ii, jj, nn
 
      CALL Info('CreateChildSolver','Creating solver for variable: '//TRIM(ChildVarName),Level=5)
 
@@ -1870,8 +1870,7 @@ CONTAINS
      END IF
 
      CALL Info('CreateChildSolver','Creating variable with dofs: '//TRIM(I2S(Dofs)),Level=8)    
-     n = ( SIZE( ParentSolver % Variable % Values ) ) / &
-         ParentSolver % Variable % Dofs
+     n = ( SIZE( ParentSolver % Variable % Values ) ) / ParentDofs
 
      ALLOCATE( ChildVarValues( n * Dofs ) )
      ChildVarValues = 0.0_dp
@@ -1917,12 +1916,49 @@ CONTAINS
          ALLOCATE( ChildMat % Values(m) )
          ChildMat % Values = 0.0_dp
 
-         ALLOCATE( ChildMat % rhs(n) )
-         ChildMat % rhs = 0.0_dp
        ELSE
          CALL Info('CreateChildSolver','Multiplying initial matrix topology',Level=8)    
-         CALL Fatal('CreateChildSolver','Not implemented for different dofs')
+
+         m = Dofs / ParentDofs
+         ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * m*m) )
+         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * m) )
+         ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1)*m + 1 ) )
+
+         ChildMat % NumberOfRows = ParentMat % NumberOfRows * m
+
+         ii = 0
+         jj = 0
+         ChildMat % Rows(1) = 1
+         DO i=1, ParentMat % NumberOFRows, ParentDOFs
+           DO k=1,Dofs
+             ii = ii + 1
+             DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1, ParentDOFs
+               nn = (ParentMat % Cols(j)-1) / ParentDofs + 1
+               DO l=1,Dofs
+                 jj = jj + 1
+                 ChildMat % Cols(jj) = Dofs*(nn-1) + l
+               END DO
+             END DO
+             ChildMat % Rows(ii+1) = jj+1
+           END DO
+         END DO
+
+         DO i=1,ChildMat % NumberOfRows
+           DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
+             IF (ChildMat % Cols(j) == i) THEN
+               ChildMat % Diag(i) = j
+               EXIT
+             END IF
+           END DO
+         END DO
+
+         m = SIZE(ParentMat % Values)
+         ALLOCATE( ChildMat % Values(m*Dofs/ParentDofs) )
+         ChildMat % Values = 0.0_dp
        END IF
+
+       ALLOCATE( ChildMat % rhs(Dofs*n) )
+       ChildMat % rhs = 0.0_dp
      END IF
 
      IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
