@@ -1919,13 +1919,12 @@ CONTAINS
        ELSE
          CALL Info('CreateChildSolver','Multiplying initial matrix topology',Level=8)    
 
-         m = Dofs / ParentDofs
-         ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * m*m) )
-         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * m) )
-         ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1)*m + 1 ) )
+         ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs**2 / ParentDofs**2 ) )
+         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )
+         ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
 
-         ChildMat % NumberOfRows = ParentMat % NumberOfRows * m
-
+         ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
+           
          ii = 0
          jj = 0
          ChildMat % Rows(1) = 1
@@ -1942,7 +1941,10 @@ CONTAINS
              ChildMat % Rows(ii+1) = jj+1
            END DO
          END DO
-
+         
+         ALLOCATE( ChildMat % Values(jj) )
+         ChildMat % Values = 0.0_dp
+         
          DO i=1,ChildMat % NumberOfRows
            DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
              IF (ChildMat % Cols(j) == i) THEN
@@ -1951,10 +1953,6 @@ CONTAINS
              END IF
            END DO
          END DO
-
-         m = SIZE(ParentMat % Values)
-         ALLOCATE( ChildMat % Values(m*Dofs/ParentDofs) )
-         ChildMat % Values = 0.0_dp
        END IF
 
        ALLOCATE( ChildMat % rhs(Dofs*n) )
