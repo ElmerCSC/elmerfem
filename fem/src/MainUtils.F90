@@ -4440,6 +4440,29 @@ CONTAINS
        IF( MOD( timestep-1-timei0, ExecIntervals(timei)) /= 0 ) RETURN
      END IF
 
+!-------------------------------------------------------------------------------
+! Set solver parameters to avoid list operations during assembly
+!-------------------------------------------------------------------------------
+     Solver % DG = ListGetLogical(Params, 'Discontinuous Galerkin', Found)
+     Solver % GlobalBubbles = ListGetLogical(Params, 'Bubbles in Global System', Found)
+     IF(GetString(Params, 'Linear System Direct Method', Found) == 'permon') THEN
+       Solver % DirectMethod = DIRECT_PERMON
+     END IF
+     
+     str = ListGetString( Params, 'Boundary Element Procedure', Found)
+     IF(Found) THEN
+       Solver % BoundaryElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
+     ELSE
+       Solver % BoundaryElementProcedure = 0
+     END IF
+
+     str = ListGetString( Params, 'Bulk Element Procedure', Found)
+     IF(Found) THEN
+       Solver % BulkElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
+     ELSE
+       Solver % BulkElementProcedure = 0
+     END IF
+
 !------------------------------------------------------------------------------
 ! If solver timing is requested start the watches
 !------------------------------------------------------------------------------

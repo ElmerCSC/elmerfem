@@ -2988,21 +2988,17 @@ CONTAINS
        VecAsm = VecAssembly
      END IF
 
-     ! IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
-     !   str = ListGetString( Solver % Values, 'Boundary Element Procedure', Found )
-     ! ELSE
-     !   str = ListGetString( Solver % Values, 'Bulk Element Procedure', Found )
-     ! END IF
-     !
-     ! IF ( Found ) THEN
-     !   Proc = GetProcAddr( str, abort=.FALSE.,quiet=.TRUE. )
-     !   IF ( Proc /= 0 ) THEN
-     !     n  = GetElementNOFNodes( Element )
-     !     nd = GetElementNOFDOFs( Element, Solver )
-     !     CALL ExecLocalProc( Proc, CurrentModel, Solver, &
-     !            G, F, Element, n, nd )
-     !   END IF
-     ! END IF
+     IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+       Proc = Solver % BoundaryElementProcedure
+     ELSE
+       Proc = Solver % BulkElementProcedure
+     END IF
+     IF ( Proc /= 0 ) THEN
+       n  = GetElementNOFNodes( Element )
+       nd = GetElementNOFDOFs( Element, Solver )
+       CALL ExecLocalProc( Proc, CurrentModel, Solver, &
+           G, F, Element, n, nd )
+     END IF
 
      IF ( ParEnv % PEs > 1 ) THEN
        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
@@ -3056,18 +3052,14 @@ CONTAINS
        Indexes => GetIndexStore()
        n = GetElementDOFs( Indexes, Element, Solver )
 
-       ! IF(Solver % DirectMethod == DIRECT_PERMON) THEN
-       !   CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-       !                        x % Perm(Indexes(1:n)), UElement=Element )
-       !   CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
-       ! ! IF(GetString(Solver % Values, 'Linear System Direct Method',Found)=='permon') THEN
-       !   CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-       !                        x % Perm(Indexes(1:n)), UElement=Element )
-       !   CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
-       ! ELSE
+       IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
-       ! END IF
+         CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
+       ELSE
+         CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
+                              x % Perm(Indexes(1:n)), UElement=Element )
+       END IF
      END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
