@@ -1968,7 +1968,11 @@ CONTAINS
      Solver % LinBeforeProc = 0
      Solver % LinAfterProc = 0
      Solver % MortarProc = 0
-     
+
+     IF ( Parenv  % PEs >1 ) THEN
+       CALL ParallelInitMatrix( Solver, Solver % Matrix )
+     END IF
+
      CALL Info('CreateChildSolver','All done for now!',Level=8)    
    END FUNCTION CreateChildSolver
 !------------------------------------------------------------------------------
