@@ -1531,9 +1531,7 @@ CONTAINS
         END DO
      END IF
 
-     ! GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
      GB = Solver % GlobalBubbles 
-     IF (.NOT.Found) GB = .TRUE.
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
        Parent => Element % BoundaryInfo % Left
