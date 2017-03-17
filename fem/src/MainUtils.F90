@@ -4445,6 +4445,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      Solver % DG = ListGetLogical(Params, 'Discontinuous Galerkin', Found)
      Solver % GlobalBubbles = ListGetLogical(Params, 'Bubbles in Global System', Found)
+     IF(.NOT. Found) Solver % GlobalBubbles = .TRUE.
      IF(GetString(Params, 'Linear System Direct Method', Found) == 'permon') THEN
        Solver % DirectMethod = DIRECT_PERMON
      END IF
