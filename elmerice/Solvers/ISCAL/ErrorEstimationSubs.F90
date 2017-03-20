@@ -271,7 +271,7 @@ CONTAINS
     ! INITIALIZATIONS AND ALLOCATIONS
     !----------------------------------------------------------------
 
-    WRITE( Message, * ) 'Computing the Error'
+    WRITE( Message, * ) 'Computing the Error According to Functional'
     CALL Info( 'FlowSolve', Message, Level=4 )
 
     FlowSol => Solver % Variable
@@ -279,11 +279,13 @@ CONTAINS
     FlowPerm       => FlowSol % Perm
     FlowSolution   => FlowSol % Values
 
+WRITE(*,*) '1'
+
     A => Solver % Matrix
 
     AT => AllocateMatrix()  !Will be transponate of A
     AT % Format = MATRIX_LIST
-
+WRITE(*,*) '2'
     IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
        IF( AllocationsDone ) THEN
           DEALLOCATE(                               &
@@ -296,6 +298,7 @@ CONTAINS
                Ax, &
                STAT=istat )
        END IF
+WRITE(*,*) '3'
        ALLOCATE( &
             NodeWiseError(  Model % Mesh % NumberOfNodes ), &  
             AT % Rows(SIZE(A % Rows)), &
@@ -307,7 +310,7 @@ CONTAINS
             STAT=istat)
        AllocationsDone = .TRUE.
     END IF
-
+WRITE(*,*) '4'
     NodeType2Variable => VariableGet( Solver % Mesh % Variables, 'ApproximationLevel' )
     IF ( ASSOCIATED( NodeType2Variable ) ) THEN
        NodeType2Perm    => NodeType2Variable % Perm
@@ -315,7 +318,7 @@ CONTAINS
     ELSE
        CALL Fatal( 'FlowSolveSIAFS','Cannot find variable <ApproximationLevel>' )
     END IF
-
+WRITE(*,*) '5'
     NodeWiseErrorVariable => VariableGet( Solver % Mesh % Variables, 'SIAError' )
     IF ( ASSOCIATED(  NodeWiseErrorVariable ) ) THEN
        NodeWiseErrorPerm     => NodeWiseErrorVariable  % Perm
@@ -323,7 +326,7 @@ CONTAINS
     ELSE
        CALL Fatal( 'FlowSolveSIAFS','Cannot find variable <SIAError>' )
     END IF
-
+WRITE(*,*) '6'
     TimeVar => VariableGet( Solver % Mesh % Variables, 'Timestep')
     Timestep = NINT(Timevar % Values(1))
 
@@ -337,19 +340,25 @@ CONTAINS
     !-----------------------------------------------------------------------------
     !   GET TRANSPONATE OF SYSTEM MATRIX A^T, and the functional
     !-----------------------------------------------------------------------------
-
+WRITE(*,*) '7'
     !First copy A to AT
-    AT = A
-
+    !AT = A
+WRITE(*,*) '7.5'
     !Transpose AT
-    AT = CRS_Transpose(AT)
 
+    WRITE(*,*) SIZE(A % Values)
+
+
+    AT = CRS_TransposeF(A)
+
+    WRITE(*,*) SIZE(AT % Values)
+WRITE(*,*) '8'
     !Allocate the right hand side
     ALLOCATE(AT % RHS(SIZE(A % RHS)))
 
     functional = 0.0
     functionalpointer => functional
-
+WRITE(*,*) '9'
     !Get the functional  
     SELECT CASE(FunctionalName)
     CASE('flux across point') 
@@ -361,6 +370,7 @@ CONTAINS
     CASE DEFAULT
        Call FATAL('Error Estimation', 'No valid functional chosen')
     END SELECT
+WRITE(*,*) '10'
 
     AT % RHS = functional
 
@@ -450,13 +460,6 @@ CONTAINS
     !   Sort Nodes
     !-----------------------------------------------------------------------------
 
-    open (unit=135, file="FunctionalStuff.dat",POSITION='APPEND')
-    WRITE(135,*)  Timestep
-
-    WRITE(135,*)  adv
-    WRITE(135,*)  av
-    WRITE(135,*)  xdf
-    WRITE(135,*)  xf
 
     ErrorBound = GetConstReal( Solver % Values, 'Nodewise limit for dual problem', gotIt )    
     IF (.NOT. gotIt) THEN
@@ -480,20 +483,77 @@ CONTAINS
           NodeType2Values(NodeType2Perm(i))=REAL(NodeType2(i))
        END IF
 
-       WRITE(135,*) i,NodeWiseErrorValues(NodeWiseErrorPerm(i))
-
     END DO
-
-    WRITE(135,*) '***************************************************************'
-    WRITE(135,*) '                                                               '
-
-    close(135)  
 
     DEALLOCATE(AT % RHS)
 
   END SUBROUTINE FunctionalErrorEstimate
 
 
+!------------------------------------------------------------------------------
+!>  Calculate transpose of A in CRS format: B = A^T
+!------------------------------------------------------------------------------
+     FUNCTION CRS_TransposeF( A ) RESULT(B)
+!------------------------------------------------------------------------------
+       IMPLICIT NONE
+       
+       TYPE(Matrix_t), POINTER :: A, B
+       
+       INTEGER, ALLOCATABLE :: Row(:)
+       INTEGER :: NVals
+       INTEGER :: i,j,k,istat,n
+
+WRITE(*,*) 'a'
+       B => AllocateMatrix()
+WRITE(*,*) 'b'
+       
+       NVals = SIZE( A % Values )
+       B % NumberOfRows = MAXVAL( A % Cols )
+
+       ALLOCATE( B % Rows( B % NumberOfRows +1 ), B % Cols( NVals ), &
+           B % Values( Nvals ), B % Diag( B % NumberOfRows ), Row( B % NumberOfRows ), &
+           STAT=istat )
+       IF ( istat /= 0 )  CALL Fatal( 'CRS_Transpose', &
+           'Memory allocation error.' )
+
+       B % Diag = 0
+       Row = 0       
+       DO i = 1, NVals
+         Row( A % Cols(i) ) = Row( A % Cols(i) ) + 1
+       END DO
+       
+       B % Rows(1) = 1
+       DO i = 1, B % NumberOfRows
+         B % Rows(i+1) = B % Rows(i) + Row(i)
+       END DO
+       B % Cols = 0
+       
+       DO i = 1, B % NumberOfRows
+         Row(i) = B % Rows(i)
+       END DO
+      
+       DO i = 1, A % NumberOfRows
+
+         DO j = A % Rows(i), A % Rows(i+1) - 1
+           k = A % Cols(j)
+
+           IF ( Row(k) < B % Rows(k+1) ) THEN 
+             B % Cols( Row(k) ) = i
+             B % Values( Row(k) ) = A % Values(j)
+             Row(k) = Row(k) + 1
+           ELSE
+             WRITE( Message, * ) 'Trying to access non-existent column', i,k,j
+             CALL Error( 'CRS_Transpose', Message )
+             RETURN
+           END IF
+         END DO
+       END DO
+
+       DEALLOCATE( Row )
+
+!------------------------------------------------------------------------------
+     END FUNCTION CRS_TransposeF
+!------------------------------------------------------------------------------
   !-------------------------------------------------------------------
 
   SUBROUTINE ResidualEstimate( Model,Solver,dt,TransientSimulation, &

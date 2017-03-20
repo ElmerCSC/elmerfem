@@ -142,8 +142,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
        PseudoPressureExists, PseudoCompressible, Bubbles, &
        Porous =.FALSE., PotentialForce=.FALSE., Hydrostatic=.FALSE., &
        MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate,  CouplApprox, &
-       OnlyHorizontalError, SIAasInitial, REALLOCATE_Josefin = .FALSE., TimeStuff=.FALSE., &
-       OldApproximation, ErrorStuff =.FALSE.
+       OnlyHorizontalError, SIAasInitial, REALLOCATE_Josefin = .FALSE.,&
+       OldApproximation
 
 
   REAL(KIND=dp),ALLOCATABLE :: MASS(:,:),STIFF(:,:), LoadVector(:,:), &
@@ -166,9 +166,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
        ElementApproximation(:), FSPerm(:),PFSPerm(:)
 
   REAL(KIND=dp) :: at,at0,at1,totat,st,totst!,CPUTime,RealTime
-  REAL(KIND=dp) :: errortime, setupsys, totaltime, sorttime,gluetime
-  REAL(KIND=dp) :: setupsyserror, sorttimeerror,gluetimeerror, aterror,sterror
-  REAL(KIND=dp) :: setupsysmean, sorttimemean,gluetimemean,atmean,stmean
+  REAL(KIND=dp) :: errortime
+  REAL(KIND=dp) :: aterror,sterror
+  REAL(KIND=dp) :: atmean,stmean
 
   INTEGER, SAVE :: numberofiter, FirstReorder
 
@@ -255,15 +255,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   sterror=0
   atmean=0
   aterror=0
-  setupsys=0
-  setupsysmean=0
-  setupsyserror=0
-  gluetime=0
-  gluetimemean=0
-  gluetimeerror=0
   errortime=0
-  sorttime=0
-  totaltime=CPUTime()
+
+
 
   !------------------------------------------------------------------------------
   !    Get variables needed for solving the system
@@ -343,10 +337,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   CouplApprox = GetLogical( Solver % Values, 'Couple Approximations', gotIt )      
   SIAasInitial= GetLogical( Solver % Values, 'SIA as initial condition', gotIt ) 
 
-  TimeStuff = GetLogical( Solver % Values, 'Do Timing', gotIt ) 
-  IF (TimeStuff) THEN
-     TimeFileName=GetString( Solver % Values, 'Time File Name', gotIt )
-  END IF
+
 
   MeshSol => VariableGet( Solver % Mesh % Variables, 'Mesh Velocity')
   NULLIFY( MeshVelocity )
@@ -674,8 +665,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      ELSE
         CALL Fatal( 'FlowSolve','SIA-solution not available, Aborting.' )
      END IF
-   WRITE(*,*) MAXVAL(SIAVel)
-   WRITE(*,*) MINVAL(SIAVel)
  
   END IF !CouplApprox .or. (siaasinital and timestep==1)
 
@@ -742,21 +731,11 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   END IF !siaasinital and timestep ==1
 
 
-  IF (TimeStuff) THEN
-     open (unit=134, file=TimeFileName,POSITION='APPEND')
-
-     WRITE(134,*) '***************************************************************'
-     WRITE(134,*)  'At realtime ', RealTime(), ' Timestep = ', Timestep
-     WRITE(134,*) '***************************************************************'
-     WRITE(134,*)   NumberOfFSNodes !'Number of FS Nodes: ',
-     WRITE(134,*)   NumberOfSIANodes !'Number of SIA Nodes: ', 
-     close(134)
-  END IF
 
   IF (CouplApprox .AND. .NOT. KeepFix ) THEN
      IF ((MOD((Timestep-FirstReorder)-1,ReorderTimeInterval)==0 &
           .AND.Timestep .GE. FirstReorder  ) .OR. Timestep==1) THEN !Rearrange elements coz previous timestep the error was estimated
-        sorttime=CPUTime()      
+
 
         REALLOCATE_Josefin = .TRUE. !need to reallocate stuff since sorting will change
 
@@ -834,8 +813,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            Solver % ActiveElements(t) = AssembleElements(t)
         END DO
 
-        sorttime=CPUTime()-sorttime
-
      ELSE !timestep is not a resort timestep
         Solver % NumberOfActiveElements = NOFAssembleElements
         DO t = 1,GetNOFActive()
@@ -882,7 +859,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            END DO
         END DO
         SIAVelPermuted = FlowSolution
-        WRITE(*,*) 'B'
+
      END IF !siaasinital and timestep ==1
 
      !Message about error estimation
@@ -908,7 +885,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
   DO iter=1,NonlinearIter   !Begin Nonlinear iterations
 
-     gluetime=0
+
 
      IF (.NOT. DoingErrorEstimation) THEN
         numberofiter=numberofiter+1
@@ -1609,40 +1586,38 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
              'Pressure', NSDOFs, NSDOFs, FlowPerm )
      END IF
 
-     WRITE(*,*) 'finishing assembly'
+
      CALL FinishAssembly( Solver, ForceVector )
-     WRITE(*,*) 'finished assembly'
+
      !------------------------------------------------------------------------------
      !     Dirichlet boundary conditions
      !------------------------------------------------------------------------------
      IF ( VarName  == 'flow solution' ) THEN
-     WRITE(*,*) 'setting dirichlets velo'
+
         CALL SetDirichletBoundaries( Model, A, ForceVector, & 
              'Velocity', -1, NSDOFs, FlowPerm )
-     WRITE(*,*) 'setting dirichlets velo 1'
+
         CALL SetDirichletBoundaries( Model, A, ForceVector, & 
              'Velocity 1', 1, NSDOFs, FlowPerm )
-     WRITE(*,*) 'setting dirichlets velo 2'
+
         CALL SetDirichletBoundaries( Model, A, ForceVector, & 
              'Velocity 2', 2, NSDOFs, FlowPerm )
         IF ( NSDOFs > 3 ) THEN
-             WRITE(*,*) 'setting dirichlets velo 3'
+
            CALL SetDirichletBoundaries( Model, A, ForceVector, & 
                 'Velocity 3', 3, NSDOFs, FlowPerm )
         END IF
-             WRITE(*,*) 'setting dirichlets pressure'
+
         CALL SetDirichletBoundaries( Model, A, ForceVector, & 
              'Pressure', NSDOFs, NSDOFs, FlowPerm )
      END IF
      
-     WRITE(*,*) 'default dirichlet bc:s'
+
      CALL DefaultDirichletBCs()
      CALL Info( 'FlowSolve', 'Dirichlet conditions done', Level=4 )
-     WRITE(*,*) 'did default diriclet bc:s'
+
      !------------------------------------------------------------------------
      IF (CouplApprox .AND. .NOT. DoingErrorEstimation ) THEN 
-
-        setupsys=CPUTime()
 
         IF (iter==1 .AND. REALLOCATE_Josefin) THEN !did error estimation before
            WRITE( Message, * ) 'Getting matrix structure' 
@@ -1778,7 +1753,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            END IF
         END DO
         
-        setupsys=CPUTime()-setupsys
 
      END IF !Coupling approx .AND. .NOT. DoingErrorEstimation
 
@@ -1844,7 +1818,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         WRITE( Message, * ) 'Glue FS-solution and SIA-solution together' 
         CALL Info( 'FlowSolve',Message, Level=4 )
 
-        gluetime=CPUTime()
+
 
         AFSrow=0;j=0;ASIArow=0
         DO i = 1, SIZE(FlowSolution)/NSDOFs !goes through rows in flowsolution
@@ -1862,7 +1836,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            END IF
         END DO
 
-        gluetime=CPUTime()-gluetime
+
 
      ELSE IF (.NOT. CouplApprox) THEN
         UNorm = DefaultSolve() !UNorm
@@ -1937,7 +1911,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
      atmean=atmean+at
      stmean=stmean+st
-     gluetimemean=gluetimemean+gluetime  
+
 
      !------------------------------------------------------------------------------
 !TORSDAG!!!
@@ -2006,11 +1980,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   IF (CouplApprox .AND. DoingErrorEstimation) THEN 
      aterror=at
      sterror=st
-     setupsyserror=setupsys
-     gluetimeerror=gluetime       
 
-     WRITE( Message, * ) 'Timestep is ', & 
-          Timestep, ' and MOD(Timestep,ReorderTimeInterval)=',MOD(Timestep,ReorderTimeInterval)
      CALL Info( 'FlowSolve', Message, Level=4 )
 
      IF ((MOD(Timestep-FirstReorder,ReorderTimeInterval)==0 .AND. Timestep .GE. FirstReorder ).OR. Timestep==FirstReorder) THEN !the timestep before rearranging elements 
@@ -2073,41 +2043,12 @@ END IF !Coupl approx
      Model % DIMENSION = ModelDim
   END IF
 
-  !-------------------------------------------------------------------------
-  ! Write timings to file
-  !-------------------------------------------------------------------------
 
-  totaltime=CPUTime()-totaltime
+
 
 
   functional = 0.0
   functionalpointer => functional 
-
-
-  IF (TimeStuff) THEN
-     open (unit=134, file=TimeFileName,POSITION='APPEND')
-
-     WRITE(134,*)   NOFSIAElements!, 'Number of SIA elements: '
-     WRITE(134,*)   NOFFSElements!, 'Number of FS elements: '
-     WRITE(134,*)   NOFAssembleElements!, 'Number of Assemble-elements: '
-     WRITE(134,*)   totaltime!, 'Total time for FlowSolve: '
-     WRITE(134,*)   numberofiter!, 'Number of Non-linear iterations '
-     WRITE(134,*)   sorttime!,  'Sort Elements, reduce NOF active Elemts etc: '
-     WRITE(134,*)   setupsys!,  'Rearranging matrix: ' 
-     WRITE(134,*)   atmean/numberofiter!,   'assemblytime (including rearranging) '
-     WRITE(134,*)   stmean/numberofiter!,   'solutiontime (including gluing): '
-     WRITE(134,*)   gluetimemean/numberofiter!,   'Gluing together solution: '
-     WRITE(134,*)   aterror!,  'assemblytime  errorest '
-     WRITE(134,*)   sterror!, 'solutiontime errorest: '
-     WRITE(134,*)   errortime!,  'Errorestimation: '
-
-     WRITE(134,*) '***************************************************************'
-     WRITE(134,*) '                                                               '
-
-     close(134)  
-  END IF !timestuff
-
-  ErrorStuff = GetLogical( Solver % Values, 'Save Error Data', gotIt ) 
 
  
 CONTAINS

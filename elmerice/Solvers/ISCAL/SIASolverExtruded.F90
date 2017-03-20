@@ -130,7 +130,7 @@ SUBROUTINE SIASolverExtruded( Model,Solver,dt,TransientSimulation )
 
   SAVE  AllocationsDone, DIM, SolverName
 
-  REAL(KIND=dp) :: g, rho, nGlen, nGleninv, siatime
+  REAL(KIND=dp) :: g, rho, nGlen, nGleninv
 
   REAL(KIND=dp) :: Temp, R, Tlimit, A1, A2, Q1, Q2, vx, vy, vz
 
@@ -172,7 +172,6 @@ SUBROUTINE SIASolverExtruded( Model,Solver,dt,TransientSimulation )
 
 	SolverName = "SIA_Solver"
 
-  siatime=CPUTime()
 
   !------------------------------------------------------------------------------
   PointerToVariable => Solver % Variable
@@ -804,8 +803,7 @@ WRITE(*,*)  'sia active elements',Solver % NumberOfActiveElements
   !------------------------------------------------------------------------------
   ! Add sliding and save the solution on the right variable
   !------------------------------------------------------------------------------
-  open(unit=119, file='dhdx.txt',STATUS='REPLACE')
-  open(unit=120, file='viskositetsia.txt',STATUS='REPLACE')
+
 
 
   IF (dim == 2) THEN
@@ -822,13 +820,12 @@ WRITE(*,*)  'sia active elements',Solver % NumberOfActiveElements
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 2) = vy
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 3) = SIApressure(i)
 
-           WRITE(119,*) SurfGrad1
 
            Surf= Model % Nodes % y(TopPointer(i))
            Position =  Model % Nodes % y(i)
 
 
-           WRITE(120,*) 1.0/(2.0*ArrheniusFactor(i)*(rho*g*(Surf - Position)*ABS(SurfGrad1))**2.0)
+
         END IF
      END DO
 
@@ -939,7 +936,6 @@ WRITE(*,*)  'sia active elements',Solver % NumberOfActiveElements
 
            Position =  Model % Nodes % z(i)
 
-           WRITE(120,*) 1.0/(2.0*ArrheniusFactor(i)*(rho*g*(Surf - Position)*SQRT(SurfGrad1**2.0+SurfGrad2**2.0))**2.0)
 
 
         END IF
@@ -947,22 +943,7 @@ WRITE(*,*)  'sia active elements',Solver % NumberOfActiveElements
 
   END IF
   
-   
-
-  siatime=CPUTime()-siatime
-
-  open (unit=135, file="TimingSIA.dat",POSITION='APPEND')
-
-  WRITE(135,*)  'At ', RealTime(), ' ******** Timestep = ', Timestep, ' ********'
-
-  WRITE(135,*)  'SIA Solver time: ', siatime
-  WRITE(135,*) '***************************************************************'
-  WRITE(135,*) '                                                               '
-
-  close(135)
-
-
-  close(119)
+ 
 
 
   !------------------------------------------------------------------------------
