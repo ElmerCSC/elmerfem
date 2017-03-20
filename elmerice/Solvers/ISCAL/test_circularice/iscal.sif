@@ -1,0 +1,548 @@
+$name = "iscal"
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! HEADER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! MATC stuff
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+!! dgetdArrheniusFactordT
+$ function dgetArrheniusFactordT(Th){ \
+    if (Th<-10) {_dgetArrheniusFactordT=(60.0E03/(8.314 * (273.16 + Th)^2.0))*3.985E-13 * exp( -60.0E03/(8.314 * (273.16 + Th)));}\
+    else {\
+       if (Th>0) _dgetArrheniusFactordT=0.0;\
+            else _dgetArrheniusFactordT=(139.0E03/(8.314 *  (273.16 + Th)^2.0))*1.916E03 * exp( -139.0E03/(8.314 *  (273.16 + Th)));}\
+}
+
+!! glen
+$ function glen(Th) {\
+   EF = 3.0;\
+   AF = getArrheniusFactor(Th);\
+   _glen = (2.0*EF*AF)^(-1.0/3.0);\
+}
+
+!! part
+$ function part(tx) {\
+x=tx(0);\
+y=tx(1);\
+r=sqrt(x^2+y^2);\
+_part=700000-r;\
+}
+
+
+!! Convert to Kelvin
+$ function convertTemp(th) {\
+   _convertTemp=th+273.15;\
+}
+
+
+!$ function surface(xin) {\
+!x = xin(0);\
+!y = xin(1);\
+!eps=100;\
+!r=(x^2+y^2)^0.5;\
+!L = 600000.0;\
+!h_0=3575.1;\
+!n=3;\
+!if (r < L) {\
+!     _surface=h_0*(1-(r/L)^((n+1)/n))^(n/(2*n+2))+eps;\
+!   }else {_surface = eps;}\
+!}
+
+!$ function surface(xin) {\
+!x = xin(0);\
+!y = xin(1);\
+!eps=100;\
+!r=(x^2+y^2)^0.5;\
+!L = 760000.0;\
+!h_0=3575.1;\
+!n=3;\
+!back=10000;\
+!hL=h_0*(1-((L-back)/L)^(4/3))^(3/7)+2*eps;\
+!if (r < L-back) {\
+!     _surface=h_0*(1-(r/L)^(4/3))^(3/7)+2*eps;\
+!}else {\
+!	lambda=exp(-6*(r-(L-back))/100000);\
+!	if (lambda>1) lambda=1;\
+!	_surface = lambda*hL+(1-lambda)*eps;}\
+!}
+
+$ function surface(xin) {\
+x = xin(0);\
+y = xin(1);\
+eps=100;\
+r=(x^2+y^2)^0.5;\
+L = 750000.0;\
+h_0=3575.1;\
+n=3;\
+if (r < L) {\
+     _surface=h_0*(1-(r/L)^((n+1)/n))^(n/(2*n+2))+eps;\
+   }else {_surface = eps;}\
+}
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! CONSTANTS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  Gas Constant = Real 8.314D00 ! in m-k-s
+  Stefan Boltzmann = Real 6.78E-08
+  Gravity (4) = 0 -1 0  9.81
+  $yearinsec = 365.25*24*60*60
+  $rhoi = 910.0/(1.0e6*yearinsec^2)
+  $gravity = -9.81*yearinsec^2
+  $n = 3.0
+  $eta = (2.0*100.0)^(-1.0/n)
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SIMULATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation 
+  Coordinate System  = "Cartesian 3D"
+ !Coordinate Mapping(3) = Integer 1 2 3
+
+  Simulation Type = Transient 
+  Timestepping Method = "BDF"
+  BDF Order = 1
+  Timestep Intervals = 10
+  Timestep Sizes =  0.0833333333    !1 month = 0.0833333333 year
+   
+  Extruded Mesh Levels=10
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  
+  Output File = $name$.result
+  Post File = $name$.ep
+  Output Intervals = 1
+
+  max output level = 11
+
+  Simulation Timing = Logical True
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SOLVER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+Solver 1
+  !Exec Solver = Never
+  Equation = "MapCoordinate"
+  Active Coordinate = Integer 3
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  !Dot Product Tolerance = Real 0.0001
+  !Minimum Mesh Height = Real 100.0
+End 
+
+Solver 2
+  !Exec Solver = Never
+  Equation = "StructuredProjectToPlane"
+  Active Coordinate = Integer 3
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Operator 1 = height
+  Operator 2 = depth
+  Operator 3 = thickness
+  Operator 4 = int
+  Variable 4 = Velocity 1
+End 
+
+Solver 3
+  !Exec Solver = Never
+  Equation = "StructuredProjectToPlane2"
+  Active Coordinate = Integer 3
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Operator 1 = int
+  Variable 1 = Velocity 2
+End 
+
+Solver 4
+  !Exec Solver = Never
+  Equation = "Normal vector"
+  Variable = "Normal Vector"
+  Variable DOFs = 3
+  Optimize Bandwidth = Logical False   
+  Procedure = "ElmerIceSolvers" "ComputeNormalSolver"
+  ComputeAll = Logical False
+End
+
+Solver 5
+  !Exec Solver = Never
+  Equation = ComputeFlux2
+  Procedure = "FluxSolver" "FluxSolver"
+  Calculate Grad = Logical True
+  Target Variable = String "H"
+  Linear System Solver = "Direct"
+  Linear System Direct Method = umfpack
+  Variable = -nooutput flux0
+  Solver Timing = Logical True  
+  Solver Timing Cumulative = Logical True
+End
+
+Solver 6
+ ! Exec Solver = Never
+  Equation = ComputeFlux3
+  Procedure = "FluxSolver" "FluxSolver"
+  Calculate Grad = Logical True
+  Target Variable = String "H grad 1"
+  Linear System Solver = "Direct"
+  Linear System Direct Method = umfpack
+  Variable = -nooutput flux1  
+  Solver Timing = Logical True  
+  Solver Timing Cumulative = Logical True
+End
+
+Solver 7
+  !Exec Solver = Never
+  Equation = ComputeFlux4
+  Procedure = "FluxSolver" "FluxSolver"
+  Calculate Grad = Logical True
+  Target Variable = String "H grad 2"
+  Linear System Solver = "Direct"
+  Linear System Direct Method = umfpack
+  Variable = -nooutput flux1  
+  Solver Timing = Logical True  
+  Solver Timing Cumulative = Logical True
+End
+
+Solver 8 !I dont use it for this flat bedrock
+  !Exec Solver = Never
+  Equation = ComputeFlux5
+  Procedure = "FluxSolver" "FluxSolver"
+  Calculate Grad = Logical True
+  Target Variable = String "BedrockElevation"
+  Linear System Solver = "Direct"
+  Linear System Direct Method = umfpack
+  Variable = -nooutput flux3  
+  Solver Timing = Logical True  
+  Solver Timing Cumulative = Logical True
+End
+
+!*******************************************
+Solver 9
+  !Exec Solver = Never
+  Equation = "SIA"
+  Procedure = File "ElmerIceSolvers" "SIASolverExtruded"
+  Variable = -nooutput "SIAvar2"
+  Variable DOFs = 1
+  Exported Variable 1 = SIAFlow[VelocitySIA:3 PressureSIA:1]
+  Exported Variable 1 DOFs = 4
+  
+  Velocity Cutoff = Real 50000
+
+  Active Coordinate = 3
+
+  Bedrock Data = Logical False !if false bedrock is zero
+  Bedrock Name = String BedrockElevation
+
+  Hybrid Solution = Logical False
+  
+  Surface Name = String H
+End
+
+Solver 10
+  !Exec Solver = Never
+  Equation = "Navier-Stokes"
+  Procedure = "ElmerIceSolvers" "FlowSolverSIAFS"
+
+  Linear System Solver = Iterative
+  Linear System Direct Method = umfpack
+  mumps percentage increase working space = Integer 60
+
+  Linear System Iterative Method="gcr" !BiCGStabl
+  Linear System Max Iterations=1000
+  Linear System Preconditioning=ilu0
+  Linear System Convergence Tolerance=1e-6
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-4
+  Nonlinear System Newton After Iterations = 300
+  Nonlinear System Newton After Tolerance = 1.0e-06
+  Nonlinear System Relaxation Factor = 1.00
+  Nonlinear System Reset Newton = Logical True
+
+  Steady State Convergence Tolerance = Real 1.0e-4
+
+  Stabilization Method = String Stabilized
+  Stabilize = True
+  
+  !To neglect both convection and time derivative terms
+  Flow Model = String "Stokes"
+
+
+  Exported Variable 1 = -dofs 1 "dSdt"
+  Exported Variable 2 = -dofs 1 "dS"
+  Exported Variable 3 = String "ApproximationLevel"
+  Exported Variable 3 DOFs = 1
+  Exported Variable 4 = String "SIAError"
+  Exported Variable 4 DOFs = 1
+  Exported Variable 5 = String "ApproximationHybrid"
+  Exported Variable 5 DOFs = 1
+  
+  Update Exported Variables = Logical True
+
+  Calculate Loads = False
+  
+ !*********** ISCAL specific things ***************
+  Stabilization Scaling Factor = Real 1.0
+  Couple Approximations = Logical True
+  SIA as initial condition = Logical True
+  
+  Error Estimation Method = String "solution"
+ 
+  Error Estimation Intervals = Integer 1
+ 
+  Relative Error Allowed In Percent = Real 5
+  Absolute Error Allowed = Real 1.0!m/a
+
+ 
+ 
+End
+
+
+Solver 11
+   !Exec Solver = Never
+   Equation = "Thickness"
+   Variable = -dofs 1 "H"
+
+   Exported Variable 1 = -dofs 1 "H Residual"
+
+!! To compute dh/dt
+   Exported Variable 2 = -dofs 1 "dHdt"
+   Compute dHdT = Logical True
+
+  Procedure = "ElmerIceSolvers" "ThicknessSolver"
+   Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+   Linear System Solver = Direct
+   Linear System Max Iterations = 1500
+   Linear System Iterative Method = BiCGStab
+   Linear System Preconditioning = ILU0
+   Linear System Convergence Tolerance = Real 1.0e-12
+   Linear System Abort Not Converged = False
+   Linear System Residual Output = 1500
+
+! equation is linear if no min/max
+   Nonlinear System Max Iterations = 50
+   Nonlinear System Convergence Tolerance  = 1.0e-6
+   Nonlinear System Relaxation Factor = 1.00
+
+! stabilisation method: [stabilized\bubbles]
+  Stabilization Method = stabilized
+  
+!! to apply Min/Max limiters
+  Apply Dirichlet = Logical True
+
+!! to use horizontal ALE formulation
+   ALE Formulation = Logical True
+
+!! To get the mean horizontal velocity
+
+!!  either give the name of the variable
+  !   Flow Solution Name = String "FlowSolution"
+     
+!!!!! or give the dimension of the problem using:
+ Convection Dimension = Integer 2
+End
+
+
+Solver 12
+Exec Solver = Always
+Equation = "result output"
+Procedure = "ResultOutputSolve" "ResultOutputSolver"
+Output File Name = $name$
+Vtu Format = Logical True
+Binary Output = Logical True ! binary format is the default
+Single Precision = Logical False ! double precision is the default
+! In the Vtu format all fields are saved if the user does not list them explicitely.
+End
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BODIES (i.e., domains to compute on)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Name = "ice"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name= "free surface"
+  Equation = 2
+  Material = 2
+  Body Force = 2
+  Initial Condition = 2
+End
+
+Body 3
+  Name= "bedrock"
+  Equation = 3
+  Material = 1
+  Body Force = 2
+  Initial Condition = 2
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! EQUATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+ Active Solvers(7) = 1 2 3 4 9 10 12 
+ Convection = String "computed"
+ Flow Solution Name = String "Flow Solution"
+ NS Convect = False
+End
+
+Equation 2
+ Active Solvers(4) = 5 6 7 11
+ Flow Solution Name = String "Flow Solution"
+ Convection = "computed"
+End
+
+Equation 3
+ Active Solvers(1) = 8
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! INITIAL CONDITIONS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+ Velocity 1 = Real 0.0
+ Velocity 2 = Real 0.0
+ Velocity 3 = Real 0.0
+ Pressure =   Real 0.0
+End
+
+Initial Condition 2
+ H = Variable Coordinate 1, Coordinate 2
+ Real MATC "surface(tx)"
+
+ dHdt = Real 0.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!BODY FORCES
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = 0.0
+  Flow BodyForce 2 = 0.0
+  Flow BodyForce 3 = MATC "-9.81*(31556926.0)^(2.0)"
+End
+
+!! accumulation flux in m/year
+Body Force 2
+  !FS Accumulation Flux 1 = Real 0.0e0
+  !FS Accumulation Flux 2 = Real 0.0e0
+
+  Top Surface Accumulation = Variable Timestep, Coordinate 1, Coordinate 2
+    REAL MATC "sin(2*pi*tx(0)/5)*min((0.5) (1.0e-5*(450.0e3-sqrt(tx(0)^2+tx(1)^2))))"
+  Bottom Surface Accumulation = Real 0.0
+
+  Convection Velocity 1 = Variable int Velocity 1, thickness
+    REAL MATC "tx(0)/tx(1)" 
+  Convection Velocity 2 = Variable int Velocity 2, thickness
+    REAL MATC "tx(0)/tx(1)" 
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! MATERIAL
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+ Critical Shear Rate = Real 1.0E-10
+ Viscosity Model = String "power law"
+ Viscosity Exponent = $(1.0/3.0)
+ Density = Real MATC "910.0*1.0E-06*(31556926.0)^(-2.0)"
+ Cauchy = Logical True
+  Bottom Surface Elevation = Real 0.0
+
+! non-linear, thermo-mechanical
+  Isothermal = Logical True
+ 
+ Viscosity = Real MATC "(2.0*100.0)^(-1.0/3.0)"
+
+! 0-th step, linear rheology
+! Viscosity = Real MATC "1.0E15*1.0E-06*(31556926.0)^(-1.0)"
+
+! 1st step, non-linear iso-thermal 
+! Viscosity =  Real MATC "glen(-10.0)*(31556926.0)^(-1.0/3.0)*1.0E-06"
+
+ dArrheniusFactordT= Real 0.0
+ Previous ApproximationLevel = Logical False
+ SIA node = Real -1.0!Variable Coordinate 1, Coordinate 2
+!Real MATC "part(tx)"
+
+
+ Min H = Real 100.0
+ Max H = Real 4000.0
+End
+
+Material 2
+ Min FS = Real 100.0
+ !Min FS =  Variable height, Coordinate 2
+ !   Real MATC "tx(1) - tx(0) + 10.0"
+ Max FS = Real 4000.0
+ Min H = Real 100.0
+ Max H = Real 4000.0
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BOUNDARY CONDITIONS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+Boundary Condition 1
+  Target Boundaries = 1 !right??
+  Name = "Outflow"
+  ComputeNormal = Logical False
+  !Normal-Tangential Velocity = Logical False
+  !Flow Force BC = Logical False
+  !H = Real 100.0
+  !Velocity 3 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Name = "Bottom"
+  Bottom Surface = Real 0.0
+  Body Id = 3
+  !Mass Consistent Normals = Logical False!True
+  !Normal-Tangential Velocity = Logical False!True
+  !Flow Force BC = Logical True
+  !Slip Coefficient 2  = Real 1.0e3 !Equals Beta
+  !Slip Coefficient 3  = Real 1.0e3 !Equals Beta
+  ComputeNormal = Logical True
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Velocity 3 = Real 0.0
+  Integrated Velocity 1 = Equals Velocity 1
+  Integrated Velocity 2 = Equals Velocity 2
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Name = "Surface"
+  Top Surface = Variable Timestep, H, Coordinate 1, Coordinate 2
+     Real Procedure "./linkFS" "linkFS"
+  !Top Surface = Variable Coordinate 1, Coordinate 2 
+  !Real MATC "surface(tx)"
+  Body Id = 2
+  Pressure = Real 0.0
+  ComputeNormal = Logical False
+  !Flow Force BC = True
+  External Pressure = 0.0    
+  Save Scalars = Logical True
+  Save Line = Logical True
+End
+
