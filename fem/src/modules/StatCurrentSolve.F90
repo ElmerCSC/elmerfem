@@ -137,7 +137,7 @@ END SUBROUTINE StatCurrentSolver_Init
           ElementNodes, CalculateCurrent, CalculateHeating, &
           AllocationsDone, VolCurrent, Heating, Conductivity, &
           CalculateField, ConstantWeights, &
-          Cwrk, ControlScaling
+          Cwrk, ControlScaling, CalculateNodalHeating
      
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
