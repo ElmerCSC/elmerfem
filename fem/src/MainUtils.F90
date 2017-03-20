@@ -1818,13 +1818,12 @@ CONTAINS
 !> The number of dofs may vary but the basis functions and permutation is reused.
 !> If also the number of dofs is the same also matrix topology is reused.
 !------------------------------------------------------------------------------
-   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix, ChildOutput ) &
+   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix ) &
        RESULT ( ChildSolver )
      TYPE(Solver_t) :: ParentSolver
      CHARACTER(LEN=*) :: ChildVarName
      INTEGER, OPTIONAL :: ChildDofs
      CHARACTER(LEN=*), OPTIONAL :: ChildPrefix
-     LOGICAL, OPTIONAL :: ChildOutput 
      TYPE(Solver_t), POINTER :: ChildSolver
 
      INTEGER :: ParentDofs 
@@ -1834,7 +1833,8 @@ CONTAINS
      TYPE(Variable_t), POINTER :: ChildVar
      TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
      INTEGER :: n,m,dofs, i,j,k,l,ii, jj, nn
-
+     LOGICAL :: Found
+     
      CALL Info('CreateChildSolver','Creating solver for variable: '//TRIM(ChildVarName),Level=5)
 
      NULLIFY( Solver ) 
@@ -1888,9 +1888,9 @@ CONTAINS
      ChildVar % TYPE = ParentSolver % Variable % TYPE
      Solver % Variable => ChildVar
 
-     IF( PRESENT( ChildOutput ) ) THEN
-       ChildVar % Output = ChildOutput
-     END IF
+     ChildVar % Output = ListGetLogical( Solver % Values,'Variable Output', Found )
+     IF(.NOT. Found ) ChildVar % Output = ParentSolver % Variable % Output 
+     
      
      CALL Info('CreateChildSolver','Creating matrix for variable solver',Level=8)    
      Solver % Matrix => AllocateMatrix()
@@ -1911,7 +1911,7 @@ CONTAINS
          ChildMat % Diag => ParentMat % Diag
 
          ChildMat % NumberOfRows = ParentMat % NumberOfRows
-
+         
          m = SIZE( ParentMat % Values )
          ALLOCATE( ChildMat % Values(m) )
          ChildMat % Values = 0.0_dp
@@ -1959,6 +1959,11 @@ CONTAINS
        ChildMat % rhs = 0.0_dp
      END IF
 
+
+     ChildMat % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex',Found )
+     IF(.NOT. Found ) ChildMat % Complex = ParentMat % Complex
+
+     
      IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
        Solver % ActiveElements => ParentSolver % ActiveElements
        Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
