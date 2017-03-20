@@ -4560,26 +4560,28 @@ SUBROUTINE SParActiveSUM(tsum, oper)
    INTEGER :: oper
    REAL(KIND=dp) :: tsum
 !*********************************************************************
-   INTEGER :: ierr
+   INTEGER :: ierr, comm
    REAL(KIND=dp) :: ssum
 
-   IF ( COUNT(ParEnv % Active)<= 1 ) RETURN
+   comm = ParEnv % ActiveComm
+   IF ( COUNT(ParEnv % Active)<= 1 ) comm = ELMER_COMM_WORLD
 
    ssum = tsum
    SELECT CASE(oper)
    CASE(0)
      CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_PRECISION, &
-            MPI_SUM, ParEnv % ActiveComm, ierr )
+            MPI_SUM, comm, ierr )
    CASE(1)
      CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_PRECISION, &
-            MPI_MIN, ParEnv % ActiveComm, ierr )
+            MPI_MIN, comm, ierr )
    CASE(2)
      CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_PRECISION, &
-            MPI_MAX, ParEnv % ActiveComm, ierr )
+            MPI_MAX, comm, ierr )
    END SELECT
 !*********************************************************************
 END SUBROUTINE SParActiveSUM
 !*********************************************************************
+
 
 
 !*********************************************************************
