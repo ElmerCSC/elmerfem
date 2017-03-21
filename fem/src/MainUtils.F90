@@ -1856,6 +1856,10 @@ CONTAINS
        CALL Fatal('CreateChildSolver','Parent solver is missing mesh!')
      END IF
      Solver % Mesh => ParentSolver % Mesh
+     i = SIZE(ParentSolver % Def_Dofs,1)
+     j = SIZE(ParentSolver % Def_Dofs,2)
+     k = SIZE(ParentSolver % Def_Dofs,3)
+     ALLOCATE(Solver % Def_Dofs(i,j,k))
      Solver % Def_Dofs = ParentSolver % Def_Dofs
 
      IF( .NOT. ASSOCIATED( ParentSolver % Variable ) ) THEN
