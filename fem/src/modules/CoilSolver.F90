@@ -649,6 +649,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
     INTEGER, POINTER, OPTIONAL :: TargetBodies(:)
 
+    REAL(KIND=dp), POINTER :: HelperArray(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s,CoilTangentTmp(3)
     INTEGER :: e,t,i,j,n,Active
@@ -663,13 +664,18 @@ CONTAINS
     FitCoil = GetLogical( Params,'Fit Coil',Found )
     IF(.NOT. Found ) FitCoil = .TRUE. 
 
-    IF(.NOT. FitCoil ) THEN
-      CoilNormal   = 0.0_dp; CoilNormal(3)   = 1.0_dp
-      CoilTangent1 = 0.0_dp; CoilTangent1(1) = 1.0_dp
-      CoilTangent2 = 0.0_dp; CoilTangent2(2) = 1.0_dp
+    HelperArray => ListGetConstRealArray( Params, 'Coil normal', Found)
+    IF(.NOT. FitCoil .or. Found) THEN
+      IF(Found) THEN
+        CoilNormal(1:3) = HelperArray(1:3,1)
+      ELSE
+        CoilNormal = 0.0_dp
+        CoilNormal(3) = 1.0_dp
+      END IF
+      CALL TangentDirections(CoilNormal, CoilTangent1, CoilTangent2)
       RETURN
     END IF
- 
+
     CALL Info('DefineCoilParametes','Fitting the coil by maximizing inertia',Level=7)
 
     n = Mesh % MaxElementNodes
