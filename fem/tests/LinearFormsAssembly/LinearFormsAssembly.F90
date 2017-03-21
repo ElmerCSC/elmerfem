@@ -196,7 +196,7 @@ CONTAINS
     Element => ClonePElement(SingleElement)
 
     nndof = Element % Type % NumberOfNodes
-    nbasis = Solver % Mesh % MaxElementDOFs
+    nbasis = nndof + GetElementNOFDOFs( Element )
 
     ! Reserve workspace
     ALLOCATE(STIFF(nbasis, nbasis), FORCE(nbasis), &
@@ -257,6 +257,11 @@ CONTAINS
     CALL DeallocateTemporaryMesh(NewMesh)
     Solver % Mesh => OldMesh
     CALL DeallocatePElement(SingleElement)
+
+    IF (ALLOCATED(Solver % Def_Dofs)) THEN
+      tag = ecode / 100
+      Solver % Def_Dofs(tag,1,6) = 0
+    END IF
   END FUNCTION TestElement
   
   SUBROUTINE LocalMatrix( STIFF, FORCE, LOAD, Element, n, nd, NumGP )
@@ -504,6 +509,7 @@ CONTAINS
     ! Construct P element
     PElement => AllocateElement()
     PElement % ElementIndex = 1
+    PElement % BodyId = 1
     PElement % Type => GetElementType( ElementCode )
     CALL AllocatePDefinitions(PElement)
 
@@ -614,7 +620,7 @@ CONTAINS
 
     Element % BDOFs    =  0
     Element % NDOFs    =  0
-    Element % BodyId   = -1
+    Element % BodyId   = 1
     Element % Splitted =  0
     Element % hK = 0
     Element % ElementIndex = 0
