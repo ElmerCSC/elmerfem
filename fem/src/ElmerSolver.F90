@@ -581,6 +581,14 @@ CONTAINS
     IF ( .NOT.LastSaved ) TotalTimesteps = TotalTimesteps + 1
     IF( TotalTimesteps == 0 ) TotalTimesteps = 1
     
+    DO ii=1,CurrentModel % NumberOfSolvers
+       Solver => CurrentModel % Solvers(ii)
+       IF ( Solver % PROCEDURE==0 ) CYCLE
+       IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
+          CALL SolverActivate( CurrentModel,Solver,dt,Transient )
+       END IF
+    END DO
+    
     CALL ListAddLogical( CurrentModel % Simulation,  &
          'Initialization Phase', .FALSE. )
     
@@ -1467,14 +1475,6 @@ CONTAINS
 !$omp parallel
 !$   IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit
 !$omp end parallel
-
-     DO ii=1,CurrentModel % NumberOfSolvers
-        Solver => CurrentModel % Solvers(ii)
-        IF ( Solver % PROCEDURE==0 ) CYCLE
-        IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
-           CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-        END IF
-     END DO
 
      DO interval = 1, TimeIntervals
         stepcount = stepcount + Timesteps(interval)

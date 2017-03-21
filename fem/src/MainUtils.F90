@@ -1181,24 +1181,24 @@ CONTAINS
     Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
 
     SELECT CASE( ListGetString( SolverParams, 'Exec Solver', Found )  )
-      CASE( 'never' )
-      Solver % SolverExecWhen = SOLVER_EXEC_NEVER
-      CASE( 'always' )
-      Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
-      CASE( 'after simulation', 'after all' )
-      Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
-      CASE( 'before simulation', 'before all' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
-      CASE( 'before timestep' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
-      CASE( 'after timestep' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
-      CASE( 'before saving' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
-      CASE( 'after saving' )
-         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
-      CASE DEFAULT
-         Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+    CASE( 'never' )
+       Solver % SolverExecWhen = SOLVER_EXEC_NEVER
+    CASE( 'always' )
+       Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+    CASE( 'after simulation', 'after all' )
+       Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+    CASE( 'before simulation', 'before all' )
+       Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+    CASE( 'before timestep' )
+       Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
+    CASE( 'after timestep' )
+       Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
+    CASE( 'before saving' )
+       Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
+    CASE( 'after saving' )
+       Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
+    CASE DEFAULT
+       Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
     END SELECT
 
     IF ( ListGetLogical( SolverParams, 'Before All', Found ) ) THEN
