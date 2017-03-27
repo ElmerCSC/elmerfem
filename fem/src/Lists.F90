@@ -42,6 +42,8 @@
 !> and later accessed from it repeatedly. Therefore these subroutines are 
 !> essential in Elmer programming.
 !------------------------------------------------------------------------------
+#include "../config.h"
+
 MODULE Lists
 
    USE Messages
@@ -1418,6 +1420,12 @@ CONTAINS
      ELSE
        List % Head => NEW
      END IF
+
+#ifdef DEBUG_LISTCOUNTER
+     IF( ASSOCIATED( new ) ) new % Counter = new % Counter + 1
+#endif
+
+
 !------------------------------------------------------------------------------
    END FUNCTION ListAdd
 !------------------------------------------------------------------------------
@@ -1613,6 +1621,14 @@ CONTAINS
        END DO
      END IF
 
+#ifdef DEBUG_LISTCOUNTER
+     IF( ASSOCIATED( ptr ) ) THEN
+       ptr % Counter = ptr % Counter + 1
+     ELSE IF( INDEX( name,'not found' ) == 0 ) THEN
+       CALL ListAddNewLogical( CurrentModel % Simulation, TRIM(name)//' not found',.TRUE.) 
+     END IF
+#endif
+     
      IF ( PRESENT(Found) ) THEN
        Found = ASSOCIATED(ptr)
      ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
@@ -5205,8 +5221,91 @@ CONTAINS
 !------------------------------------------------------------------------------
    END FUNCTION ListGetSolverParams
 !------------------------------------------------------------------------------
+   
+#ifdef DEBUG_LISTCOUNTER
+   
+   !------------------------------------------------------------------------------
+   !> Go through the lists and for each lists show call counts.
+   !------------------------------------------------------------------------------
+   SUBROUTINE ReportListCounters( Model ) 
+     TYPE(Model_t) :: Model
+
+     INTEGER :: i
+
+     CALL Info('ReportListCounters','Printing ListGet operations count')
+     
+     CALL ReportList('Simulation', Model % Simulation )
+     CALL ReportList('Constants', Model % Constants )
+     DO i=1,Model % NumberOfEquations
+       CALL ReportList('Equation '//TRIM(I2S(i)), Model % Equations(i) % Values)
+     END DO
+     DO i=1,Model % NumberOfComponents
+       CALL ReportList('Component '//TRIM(I2S(i)), Model % Components(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfBodyForces
+       CALL ReportList('Body Force '//TRIM(I2S(i)), Model % BodyForces(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfICs
+       CALL ReportList('Initial Condition '//TRIM(I2S(i)), Model % ICs(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfBCs
+       CALL ReportList('Boundary Condition '//TRIM(I2S(i)), Model % BCs(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfMaterials
+       CALL ReportList('Material '//TRIM(I2S(i)), Model % Materials(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfBoundaries
+       CALL ReportList('Boundary '//TRIM(I2S(i)), Model % Boundaries(i) % Values )
+     END DO     
+     DO i=1,Model % NumberOfSolvers
+       CALL ReportList('Solver '//TRIM(I2S(i)), Model % Solvers(i) % Values )
+     END DO
+     CALL Info('ReportListCounters','All done')
 
 
+   CONTAINS
+
+     
+     !------------------------------------------------------------------------------
+     ! Plot the number of times that the list entries have been called.
+     !------------------------------------------------------------------------------
+     SUBROUTINE ReportList( SectionName, List )
+       TYPE(ValueList_t), POINTER :: List
+       CHARACTER(LEN=*) :: SectionName
+       !------------------------------------------------------------------------------
+       TYPE(ValueListEntry_t), POINTER :: ptr
+       INTEGER :: n
+
+       IF(.NOT.ASSOCIATED(List)) RETURN
+
+       Ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+
+         WRITE( Message,'(I0,T10,A,T35,A)') &
+             ptr % Counter, TRIM(SectionName),ptr % Name(1:n)
+         PRINT *,TRIM(Message)
+         ptr => ptr % Next
+       END DO
+
+     END SUBROUTINE ReportList
+     !------------------------------------------------------------------------------    
+     
+   END SUBROUTINE ReportListCounters
+  !------------------------------------------------------------------------------
+
+#else
+
+   SUBROUTINE ReportListCounters( Model ) 
+     TYPE(Model_t) :: Model
+
+     CALL Info('ReportListCounter','List counters are not activated!')
+   END SUBROUTINE ReportListCounters
+      
+#endif
+
+
+   
 
 END MODULE Lists
 

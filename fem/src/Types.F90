@@ -99,6 +99,9 @@ MODULE Types
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
 !------------------------------------------------------------------------------
 
+
+
+  
 #ifndef USE_ISO_C_BINDINGS
 INTERFACE
   SUBROUTINE Envir(a,b,len)
@@ -398,6 +401,11 @@ END INTERFACE
 
      INTEGER :: NameLen,DepNameLen
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
+
+#ifdef DEBUG_LISTCOUNTER 
+     INTEGER :: Counter = 0
+#endif
+     
    END TYPE ValueListEntry_t
 
    TYPE ValueList_t
