@@ -1624,8 +1624,10 @@ CONTAINS
 #ifdef DEBUG_LISTCOUNTER
      IF( ASSOCIATED( ptr ) ) THEN
        ptr % Counter = ptr % Counter + 1
-     ELSE IF( INDEX( name,'not found' ) == 0 ) THEN
-       CALL ListAddNewLogical( CurrentModel % Simulation, TRIM(name)//' not found',.TRUE.) 
+     ELSE IF( INDEX( name,': not found' ) == 0 ) THEN
+       CALL ListAddNewLogical( CurrentModel % Simulation, TRIM(name)//': not found',.TRUE.) 
+       ! This seems to cause problems so we use the one above
+       !       CALL ListAddNewLogical( List, TRIM(name)//': not found',.TRUE.) 
      END IF
 #endif
      
@@ -5230,9 +5232,17 @@ CONTAINS
    SUBROUTINE ReportListCounters( Model ) 
      TYPE(Model_t) :: Model
 
-     INTEGER :: i
+     INTEGER :: i, totcount     
 
      CALL Info('ReportListCounters','Printing ListGet operations count')
+
+     OPEN(10,FILE="listcounter.dat")
+
+     totcount = 0
+
+     ! These are only for reference
+     WRITE(10,'(I0,T10,A)') Model % Mesh % NumberOfBulkElements,"Number Of Bulk Elements"
+     WRITE(10,'(I0,T10,A)') Model % Mesh % NumberOfBoundaryElements,"Number Of Boundary Elements"
      
      CALL ReportList('Simulation', Model % Simulation )
      CALL ReportList('Constants', Model % Constants )
@@ -5260,6 +5270,11 @@ CONTAINS
      DO i=1,Model % NumberOfSolvers
        CALL ReportList('Solver '//TRIM(I2S(i)), Model % Solvers(i) % Values )
      END DO
+     
+     WRITE(10,'(I0,T10,A,F8.3,A)') totcount,"List operations total (",&
+         1.0_dp * totcount / Model % Mesh % NumberOfBulkElements," per element )"
+     CLOSE(10)
+     
      CALL Info('ReportListCounters','All done')
 
 
@@ -5274,17 +5289,18 @@ CONTAINS
        CHARACTER(LEN=*) :: SectionName
        !------------------------------------------------------------------------------
        TYPE(ValueListEntry_t), POINTER :: ptr
-       INTEGER :: n
+       INTEGER :: n, m
 
        IF(.NOT.ASSOCIATED(List)) RETURN
 
        Ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
          n = ptr % NameLen
-
-         WRITE( Message,'(I0,T10,A,T35,A)') &
-             ptr % Counter, TRIM(SectionName),ptr % Name(1:n)
-         PRINT *,TRIM(Message)
+         m = ptr % Counter 
+         
+         WRITE( 10,'(I0,T10,A,T35,A)') &
+             m, TRIM(SectionName),ptr % Name(1:n)
+         totcount = totcount + m 
          ptr => ptr % Next
        END DO
 
