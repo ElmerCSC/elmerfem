@@ -1818,13 +1818,12 @@ CONTAINS
 !> The number of dofs may vary but the basis functions and permutation is reused.
 !> If also the number of dofs is the same also matrix topology is reused.
 !------------------------------------------------------------------------------
-   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix, ChildOutput ) &
+   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix ) &
        RESULT ( ChildSolver )
      TYPE(Solver_t) :: ParentSolver
      CHARACTER(LEN=*) :: ChildVarName
      INTEGER, OPTIONAL :: ChildDofs
      CHARACTER(LEN=*), OPTIONAL :: ChildPrefix
-     LOGICAL, OPTIONAL :: ChildOutput 
      TYPE(Solver_t), POINTER :: ChildSolver
 
      INTEGER :: ParentDofs 
@@ -1834,7 +1833,8 @@ CONTAINS
      TYPE(Variable_t), POINTER :: ChildVar
      TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
      INTEGER :: n,m,dofs, i,j,k,l,ii, jj, nn
-
+     LOGICAL :: Found
+     
      CALL Info('CreateChildSolver','Creating solver for variable: '//TRIM(ChildVarName),Level=5)
 
      NULLIFY( Solver ) 
@@ -1856,6 +1856,10 @@ CONTAINS
        CALL Fatal('CreateChildSolver','Parent solver is missing mesh!')
      END IF
      Solver % Mesh => ParentSolver % Mesh
+     i = SIZE(ParentSolver % Def_Dofs,1)
+     j = SIZE(ParentSolver % Def_Dofs,2)
+     k = SIZE(ParentSolver % Def_Dofs,3)
+     ALLOCATE(Solver % Def_Dofs(i,j,k))
      Solver % Def_Dofs = ParentSolver % Def_Dofs
 
      IF( .NOT. ASSOCIATED( ParentSolver % Variable ) ) THEN
@@ -1888,9 +1892,9 @@ CONTAINS
      ChildVar % TYPE = ParentSolver % Variable % TYPE
      Solver % Variable => ChildVar
 
-     IF( PRESENT( ChildOutput ) ) THEN
-       ChildVar % Output = ChildOutput
-     END IF
+     ChildVar % Output = ListGetLogical( Solver % Values,'Variable Output', Found )
+     IF(.NOT. Found ) ChildVar % Output = ParentSolver % Variable % Output 
+     
      
      CALL Info('CreateChildSolver','Creating matrix for variable solver',Level=8)    
      Solver % Matrix => AllocateMatrix()
@@ -1911,7 +1915,7 @@ CONTAINS
          ChildMat % Diag => ParentMat % Diag
 
          ChildMat % NumberOfRows = ParentMat % NumberOfRows
-
+         
          m = SIZE( ParentMat % Values )
          ALLOCATE( ChildMat % Values(m) )
          ChildMat % Values = 0.0_dp
@@ -1919,13 +1923,12 @@ CONTAINS
        ELSE
          CALL Info('CreateChildSolver','Multiplying initial matrix topology',Level=8)    
 
-         m = Dofs / ParentDofs
-         ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * m*m) )
-         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * m) )
-         ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1)*m + 1 ) )
+         ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs**2 / ParentDofs**2 ) )
+         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )
+         ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
 
-         ChildMat % NumberOfRows = ParentMat % NumberOfRows * m
-
+         ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
+           
          ii = 0
          jj = 0
          ChildMat % Rows(1) = 1
@@ -1942,7 +1945,10 @@ CONTAINS
              ChildMat % Rows(ii+1) = jj+1
            END DO
          END DO
-
+         
+         ALLOCATE( ChildMat % Values(jj) )
+         ChildMat % Values = 0.0_dp
+         
          DO i=1,ChildMat % NumberOfRows
            DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
              IF (ChildMat % Cols(j) == i) THEN
@@ -1951,16 +1957,17 @@ CONTAINS
              END IF
            END DO
          END DO
-
-         m = SIZE(ParentMat % Values)
-         ALLOCATE( ChildMat % Values(m*Dofs/ParentDofs) )
-         ChildMat % Values = 0.0_dp
        END IF
 
        ALLOCATE( ChildMat % rhs(Dofs*n) )
        ChildMat % rhs = 0.0_dp
      END IF
 
+
+     ChildMat % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex',Found )
+     IF(.NOT. Found ) ChildMat % Complex = ParentMat % Complex
+
+     
      IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
        Solver % ActiveElements => ParentSolver % ActiveElements
        Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
@@ -1970,7 +1977,11 @@ CONTAINS
      Solver % LinBeforeProc = 0
      Solver % LinAfterProc = 0
      Solver % MortarProc = 0
-     
+
+     IF ( Parenv  % PEs >1 ) THEN
+       CALL ParallelInitMatrix( Solver, Solver % Matrix )
+     END IF
+
      CALL Info('CreateChildSolver','All done for now!',Level=8)    
    END FUNCTION CreateChildSolver
 !------------------------------------------------------------------------------

@@ -291,18 +291,24 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       vvarId = Comp % vvar % ValueId + nm
       IvarId = Comp % ivar % ValueId + nm
 
+      CompParams => CurrentModel % Components(CompInd) % Values
+      IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
+      IF (Comp % CoilType == 'stranded') THEN
+        Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
+        IF (Found) THEN
+          Comp % UseCoilResistance = .TRUE.
+        ELSE
+          Comp % UseCoilResistance = .FALSE.
+        END IF
+      END IF
+
       IF ( Cvar % Owner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          CompParams => CurrentModel % Components(CompInd) % Values
-          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
-          Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
-          IF (Found) THEN
+          IF (Comp % UseCoilResistance) THEN
             CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
-            Comp % UseCoilResistance = .TRUE.
             CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
           ELSE
-            Comp % UseCoilResistance = .FALSE.
             Comp % Resistance = 0._dp
           END IF
           CALL AddToMatrixElement(CM, VvarId, VvarId, -1._dp)
@@ -1133,18 +1139,24 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       vvarId = Comp % vvar % ValueId + nm
       IvarId = Comp % ivar % ValueId + nm
 
+      CompParams => CurrentModel % Components(CompInd) % Values
+      IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
+      IF (Comp % CoilType == 'stranded') THEN
+        Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
+        IF (Found) THEN
+          Comp % UseCoilResistance = .TRUE.
+        ELSE
+          Comp % UseCoilResistance = .FALSE.
+        END IF
+      END IF
+
       IF ( Cvar % Owner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          CompParams => CurrentModel % Components(CompInd) % Values
-          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
-          Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
-          IF (Found) THEN
+          IF (Comp % UseCoilResistance) THEN
             CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
-            Comp % UseCoilResistance = .TRUE.
             CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, Comp % Resistance, 0._dp)
           ELSE
-            Comp % UseCoilResistance = .FALSE.
             Comp % Resistance = 0._dp
           END IF
  

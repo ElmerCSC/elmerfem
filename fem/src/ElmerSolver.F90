@@ -57,8 +57,9 @@
    SUBROUTINE ElmerSolver(initialize)
 !------------------------------------------------------------------------------
 
+     USE Lists
      USE MainUtils
-
+     
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -612,6 +613,14 @@ END INTERFACE
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
 
 
+#ifdef DEBUG_LISTCOUNTER
+     CALL Info('ElmerSolver','Reporting list counters for code optimization purposes only!')
+     CALL Info('ElmerSolver','If you get these lines with production code undefine > LISTCOUNTER < !')
+     CALL ReportListCounters( CurrentModel )
+#endif
+     
+
+     
 !------------------------------------------------------------------------------
 !    THIS IS THE END (...,at last, the end, my friend,...)
 !------------------------------------------------------------------------------
