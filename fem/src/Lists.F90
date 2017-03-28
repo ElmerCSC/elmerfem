@@ -317,6 +317,7 @@ CONTAINS
      n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
      t = 1
      DO WHILE( t <= n )
+
        DO WHILE( t<=n )
          Element => Mesh % Elements(t)
          IF ( CheckElementEquation( Model, Element, Equation ) ) EXIT
@@ -466,20 +467,34 @@ CONTAINS
       TYPE(Element_t), POINTER :: Element
       TYPE(Model_t) :: Model
       CHARACTER(LEN=*) :: Equation
+      CHARACTER(LEN=MAX_NAME_LEN) :: PrevEquation
+      
+      LOGICAL :: Flag,Found,PrevFlag
 
-      LOGICAL :: Flag,Found
-
-      INTEGER :: k,body_id
-       
-      Flag = .FALSE.
+      INTEGER :: k,body_id,prev_body_id = -1
+      
+      SAVE Prev_body_id, PrevEquation, PrevFlag
+      
       body_id = Element % BodyId
+
+      IF( body_id == prev_body_id .AND. Equation == PrevEquation ) THEN
+        Flag = PrevFlag
+        RETURN
+      ELSE
+        prev_body_id = body_id
+        PrevEquation = Equation
+      END IF
+              
+      Flag = .FALSE.      
       IF ( body_id > 0 .AND. body_id <= Model % NumberOfBodies ) THEN
          k = ListGetInteger( Model % Bodies(body_id) % Values, 'Equation', &
                  minv=1, maxv=Model % NumberOFEquations )
          IF ( k > 0 ) THEN
            Flag = ListGetLogical(Model % Equations(k) % Values,Equation,Found)
          END IF
-      END IF
+       END IF
+       PrevFlag = Flag
+       
 !---------------------------------------------------------------------------
    END FUNCTION CheckElementEquation
 !---------------------------------------------------------------------------
