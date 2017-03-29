@@ -1393,8 +1393,9 @@ CONTAINS
      END IF
 
      n = 0
-     IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found )) THEN
-        n = Element % DGDOFs
+     !IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found )) THEN
+     IF( Solver % DG ) THEN
+       n = Element % DGDOFs
         IF ( n>0 ) RETURN
      END IF
 
@@ -1424,8 +1425,10 @@ CONTAINS
         END DO
      END IF
 
-     GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-     IF (.NOT.Found) GB = .TRUE.
+     !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
+     !IF (.NOT.Found) GB = .TRUE.
+     GB = Solver % GlobalBubbles
+     
      IF ( GB .OR. ASSOCIATED(Element % BoundaryInfo) ) n=n+MAX(0,Element % BDOFs)
   END FUNCTION GetElementNOFDOFs
 
@@ -1620,9 +1623,9 @@ CONTAINS
        Solver => CurrentModel % Solver
     END IF
 
-    GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-    IF (.NOT.Found) GB = .TRUE.
-
+    !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
+    !IF (.NOT.Found) GB = .TRUE.
+    GB = Solver % GlobalBubbles
 
     n = 0
     IF ( .NOT. GB ) THEN
