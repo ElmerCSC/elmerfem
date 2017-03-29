@@ -1056,7 +1056,8 @@ END INTERFACE
      LOGICAL :: nt_boundary
      TYPE(Element_t), POINTER :: Element
      TYPE(Variable_t), POINTER :: var, vect_var
-
+     LOGICAL :: AnyNameSpace
+     
      CALL Info('SetInitialConditions','Setting up initial conditions (if any)',Level=10)
 
 
@@ -1070,6 +1071,7 @@ END INTERFACE
        CALL Restart
      END IF
 
+         
 !------------------------------------------------------------------------------
 !    Make sure that initial values at boundaries are set correctly.
 !    NOTE: This overrides the initial condition setting for field variables!!!!
@@ -1078,6 +1080,9 @@ END INTERFACE
             'Initialize Dirichlet Conditions', GotIt ) 
      IF ( .NOT. GotIt ) InitDirichlet = .TRUE.
 
+     AnyNameSpace = ListCheckPresentAnySolver( CurrentModel,'Namespace')
+     NamespaceFound = .FALSE.
+     
      vect_var => NULL()
      IF ( InitDirichlet ) THEN
        Mesh => CurrentModel % Meshes
@@ -1104,9 +1109,10 @@ END INTERFACE
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
-             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
-             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
-
+             IF( AnyNameSpace ) THEN
+               str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+               IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
+             END IF               
 
              IF ( Var % DOFs <= 1 ) THEN
                Work(1:n) = GetReal( BC,Var % Name, gotIt )
@@ -1236,7 +1242,7 @@ END INTERFACE
      TYPE(Element_t), POINTER :: Edge
      INTEGER :: DOFs,i,j,k,l
      CHARACTER(LEN=MAX_NAME_LEN) :: str
-     LOGICAL :: Found, ThingsToDO, NamespaceFound
+     LOGICAL :: Found, ThingsToDO, NamespaceFound, AnyNameSpace
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, ALLOCATABLE :: Indexes(:)
      REAL(KIND=dp) :: Val
@@ -1244,6 +1250,9 @@ END INTERFACE
      TYPE(ValueList_t), POINTER :: IC
 !------------------------------------------------------------------------------
 
+     AnyNameSpace = ListCheckPresentAnySolver( CurrentModel,'namespace')
+     NameSpaceFound = .FALSE.
+     
      Mesh => CurrentModel % Meshes
      DO WHILE( ASSOCIATED( Mesh ) )
        ALLOCATE( Indexes(Mesh % MaxElementDOFs), Work(Mesh % MaxElementDOFs) )
@@ -1260,10 +1269,12 @@ END INTERFACE
            
            Solver => Var % Solver
            IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
-           
-           str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
-           IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
-           
+
+           IF( AnyNameSpace ) THEN
+             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
+           END IF
+             
            ! global variable
            IF( SIZE( Var % Values ) == Var % DOFs ) THEN
              Val = ListGetCReal( IC, Var % Name, GotIt )
@@ -1313,9 +1324,11 @@ END INTERFACE
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
-             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
-             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
-             
+             IF( AnyNameSpace ) THEN
+               str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+               IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
+             END IF
+               
              ! global variables were already set
              IF( SIZE( Var % Values ) == Var % DOFs ) THEN
                CONTINUE
