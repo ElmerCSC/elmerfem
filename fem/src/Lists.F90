@@ -5248,17 +5248,18 @@ CONTAINS
    SUBROUTINE ReportListCounters( Model ) 
      TYPE(Model_t) :: Model
 
-     INTEGER :: i, totcount     
+     INTEGER :: i, totcount, nelem     
 
-     CALL Info('ReportListCounters','Printing ListGet operations count')
+     CALL Info('ReportListCounters','Saving ListGet operations count per bulk elements')
 
-     OPEN(10,FILE="listcounter.dat")
+     ! OPEN(10,FILE="listcounter.dat")
+     OPEN( 10,File='../listcounter.dat',&
+         STATUS='UNKNOWN',POSITION='APPEND' )
 
      totcount = 0
 
      ! These are only for reference
-     WRITE(10,'(I0,T10,A)') Model % Mesh % NumberOfBulkElements,"Number Of Bulk Elements"
-     WRITE(10,'(I0,T10,A)') Model % Mesh % NumberOfBoundaryElements,"Number Of Boundary Elements"
+     nelem = Model % Mesh % NumberOfBulkElements
      
      CALL ReportList('Simulation', Model % Simulation )
      CALL ReportList('Constants', Model % Constants )
@@ -5286,13 +5287,12 @@ CONTAINS
      DO i=1,Model % NumberOfSolvers
        CALL ReportList('Solver '//TRIM(I2S(i)), Model % Solvers(i) % Values )
      END DO
-     
-     WRITE(10,'(I0,T10,A,F8.3,A)') totcount,"List operations total (",&
-         1.0_dp * totcount / Model % Mesh % NumberOfBulkElements," per element )"
      CLOSE(10)
      
-     CALL Info('ReportListCounters','All done')
-
+     WRITE(Message,'(I0,T10,A,F8.3,A)') totcount,"List operations total (",&
+         1.0_dp * totcount / Model % Mesh % NumberOfBulkElements," per element )"
+     CALL Info('ReportListCounters',Message)
+     
 
    CONTAINS
 
@@ -5314,8 +5314,8 @@ CONTAINS
          n = ptr % NameLen
          m = ptr % Counter 
          
-         WRITE( 10,'(I0,T10,A,T35,A)') &
-             m, TRIM(SectionName),ptr % Name(1:n)
+         WRITE( 10,'(F10.5,T12,A,T35,A)') &
+             1.0*m / nelem, TRIM(SectionName),ptr % Name(1:n)
          totcount = totcount + m 
          ptr => ptr % Next
        END DO

@@ -1354,7 +1354,7 @@ CONTAINS
             ! This is intended to be activated when new keywords are checked 
             ! Generally it can be set false
             !---------------------------------------------------------------
-#ifdef DEBUG_KEYWORDSMISSES
+#ifdef DEBUG_KEYWORDMISSES
             OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
                 STATUS='UNKNOWN',POSITION='APPEND' )
             WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
