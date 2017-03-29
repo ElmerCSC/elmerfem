@@ -1046,10 +1046,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       IF ( .NOT.ASSOCIATED( Tmp ) ) THEN
-         GlobalBubbles = ListGetLogical(Pvar % Solver % Values, &
-               'Bubbles in Global System', Found)
-         IF (.NOT.Found) GlobalBubbles=.TRUE.
-
+         !GlobalBubbles = ListGetLogical(Pvar % Solver % Values, &
+         !      'Bubbles in Global System', Found)
+         !IF (.NOT.Found) GlobalBubbles=.TRUE.
+        GlobalBubbles = Pvar % Solver % GlobalBubbles
+        
          DOFs = CurrentModel % Mesh % NumberOfNodes * PVar % DOFs
          IF ( GlobalBubbles ) DOFs = DOFs + CurrentModel % Mesh % MaxBDOFs * &
               CurrentModel % Mesh % NumberOfBulkElements * PVar % DOFs
