@@ -356,7 +356,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 
   Relax = GetCReal( SolverParams, 'Relaxation Factor', Found)
   IF(.NOT. Found) Relax = 1.0_dp
-  NeedOldValues = Found .OR. LimitDisp 
+  NeedOldValues = (Found .AND. (Relax < 1.0_dp)) .OR. LimitDisp 
 
   ApplyDirichlet = GetLogical( SolverParams, &
        'Apply Dirichlet', Found)
