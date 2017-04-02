@@ -10,67 +10,6 @@ End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-!! dgetdArrheniusFactordT
-$ function dgetArrheniusFactordT(Th){ \
-    if (Th<-10) {_dgetArrheniusFactordT=(60.0E03/(8.314 * (273.16 + Th)^2.0))*3.985E-13 * exp( -60.0E03/(8.314 * (273.16 + Th)));}\
-    else {\
-       if (Th>0) _dgetArrheniusFactordT=0.0;\
-            else _dgetArrheniusFactordT=(139.0E03/(8.314 *  (273.16 + Th)^2.0))*1.916E03 * exp( -139.0E03/(8.314 *  (273.16 + Th)));}\
-}
-
-!! glen
-$ function glen(Th) {\
-   EF = 3.0;\
-   AF = getArrheniusFactor(Th);\
-   _glen = (2.0*EF*AF)^(-1.0/3.0);\
-}
-
-!! part
-$ function part(tx) {\
-x=tx(0);\
-y=tx(1);\
-r=sqrt(x^2+y^2);\
-_part=700000-r;\
-}
-
-
-!! Convert to Kelvin
-$ function convertTemp(th) {\
-   _convertTemp=th+273.15;\
-}
-
-
-!$ function surface(xin) {\
-!x = xin(0);\
-!y = xin(1);\
-!eps=100;\
-!r=(x^2+y^2)^0.5;\
-!L = 600000.0;\
-!h_0=3575.1;\
-!n=3;\
-!if (r < L) {\
-!     _surface=h_0*(1-(r/L)^((n+1)/n))^(n/(2*n+2))+eps;\
-!   }else {_surface = eps;}\
-!}
-
-!$ function surface(xin) {\
-!x = xin(0);\
-!y = xin(1);\
-!eps=100;\
-!r=(x^2+y^2)^0.5;\
-!L = 760000.0;\
-!h_0=3575.1;\
-!n=3;\
-!back=10000;\
-!hL=h_0*(1-((L-back)/L)^(4/3))^(3/7)+2*eps;\
-!if (r < L-back) {\
-!     _surface=h_0*(1-(r/L)^(4/3))^(3/7)+2*eps;\
-!}else {\
-!	lambda=exp(-6*(r-(L-back))/100000);\
-!	if (lambda>1) lambda=1;\
-!	_surface = lambda*hL+(1-lambda)*eps;}\
-!}
-
 $ function surface(xin) {\
 x = xin(0);\
 y = xin(1);\
@@ -251,8 +190,6 @@ Solver 10
   Procedure = "ElmerIceSolvers" "FlowSolverSIAFS"
 
   Linear System Solver = Iterative
-  Linear System Direct Method = umfpack
-  mumps percentage increase working space = Integer 60
 
   Linear System Iterative Method="gcr" !BiCGStabl
   Linear System Max Iterations=1000
@@ -312,14 +249,13 @@ Solver 11
 
    Exported Variable 1 = -dofs 1 "H Residual"
 
-!! To compute dh/dt
    Exported Variable 2 = -dofs 1 "dHdt"
    Compute dHdT = Logical True
 
   Procedure = "ElmerIceSolvers" "ThicknessSolver"
    Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
-   Linear System Solver = Direct
+   Linear System Solver = Iterative
    Linear System Max Iterations = 1500
    Linear System Iterative Method = BiCGStab
    Linear System Preconditioning = ILU0
@@ -332,22 +268,10 @@ Solver 11
    Nonlinear System Convergence Tolerance  = 1.0e-6
    Nonlinear System Relaxation Factor = 1.00
 
-! stabilisation method: [stabilized\bubbles]
   Stabilization Method = stabilized
-  
-!! to apply Min/Max limiters
   Apply Dirichlet = Logical True
-
-!! to use horizontal ALE formulation
-   ALE Formulation = Logical True
-
-!! To get the mean horizontal velocity
-
-!!  either give the name of the variable
-  !   Flow Solution Name = String "FlowSolution"
-     
-!!!!! or give the dimension of the problem using:
- Convection Dimension = Integer 2
+  ALE Formulation = Logical True
+  Convection Dimension = Integer 2
 End
 
 
@@ -445,7 +369,7 @@ Body Force 2
   !FS Accumulation Flux 2 = Real 0.0e0
 
   Top Surface Accumulation = Variable Timestep, Coordinate 1, Coordinate 2
-    REAL MATC "sin(2*pi*tx(0)/5)*min((0.5) (1.0e-5*(450.0e3-sqrt(tx(0)^2+tx(1)^2))))"
+    REAL MATC "min((0.5) (1.0e-5*(450.0e3-sqrt(tx(1)^2+tx(2)^2))))"
   Bottom Surface Accumulation = Real 0.0
 
   Convection Velocity 1 = Variable int Velocity 1, thickness
@@ -471,26 +395,15 @@ Material 1
  
  Viscosity = Real MATC "(2.0*100.0)^(-1.0/3.0)"
 
-! 0-th step, linear rheology
-! Viscosity = Real MATC "1.0E15*1.0E-06*(31556926.0)^(-1.0)"
-
-! 1st step, non-linear iso-thermal 
-! Viscosity =  Real MATC "glen(-10.0)*(31556926.0)^(-1.0/3.0)*1.0E-06"
-
  dArrheniusFactordT= Real 0.0
  Previous ApproximationLevel = Logical False
- SIA node = Real -1.0!Variable Coordinate 1, Coordinate 2
-!Real MATC "part(tx)"
+ SIA node = Real -1.0
 
 
- Min H = Real 100.0
- Max H = Real 4000.0
 End
 
 Material 2
  Min FS = Real 100.0
- !Min FS =  Variable height, Coordinate 2
- !   Real MATC "tx(1) - tx(0) + 10.0"
  Max FS = Real 4000.0
  Min H = Real 100.0
  Max H = Real 4000.0
@@ -506,10 +419,6 @@ Boundary Condition 1
   Target Boundaries = 1 !right??
   Name = "Outflow"
   ComputeNormal = Logical False
-  !Normal-Tangential Velocity = Logical False
-  !Flow Force BC = Logical False
-  !H = Real 100.0
-  !Velocity 3 = Real 0.0
 End
 
 Boundary Condition 2
@@ -517,11 +426,6 @@ Boundary Condition 2
   Name = "Bottom"
   Bottom Surface = Real 0.0
   Body Id = 3
-  !Mass Consistent Normals = Logical False!True
-  !Normal-Tangential Velocity = Logical False!True
-  !Flow Force BC = Logical True
-  !Slip Coefficient 2  = Real 1.0e3 !Equals Beta
-  !Slip Coefficient 3  = Real 1.0e3 !Equals Beta
   ComputeNormal = Logical True
   Velocity 1 = Real 0.0
   Velocity 2 = Real 0.0
@@ -535,10 +439,7 @@ Boundary Condition 3
   Name = "Surface"
   Top Surface = Variable Timestep, H, Coordinate 1, Coordinate 2
      Real Procedure "./linkFS" "linkFS"
-  !Top Surface = Variable Coordinate 1, Coordinate 2 
-  !Real MATC "surface(tx)"
   Body Id = 2
-  Pressure = Real 0.0
   ComputeNormal = Logical False
   !Flow Force BC = True
   External Pressure = 0.0    
