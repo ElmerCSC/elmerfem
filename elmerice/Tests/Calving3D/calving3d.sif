@@ -554,7 +554,7 @@ Solver 9
   Variable DOFs = 3
 End
 
-Solver 24
+Solver 23
   Exec Solver = after timestep
   Procedure = File "SaveData" "SaveMaterials"
   Parameter 1 = String Min Zs Bottom
@@ -569,7 +569,6 @@ Solver 21
 
    Non-Vertical Face Name = String "Calving Front"
    Mesh Update Helper Variable = String "Remesh Update"
-   Map Coordinate Equation Name = String "Remesh Map Coordinate"
    Remesh Vertical Stretch = Real 10000.0
    Vertical Front Computation = String "midrange"
    Metis Algorithm = Integer 1
@@ -637,17 +636,7 @@ Solver 22
   Ignore Displacement = Logical True
 End
 
-Solver 23
-  Equation = "Remesh Map Coordinate"
-  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
-  Exec Solver = "Never" !auxiliary solver called by Remesh
-  Auxiliary Solver = Logical True
-  Active Coordinate = Integer 3
-  Mesh Velocity First Zero = Logical True
-  Always Detect Structure = Logical True
-End
-
-Solver 25
+Solver 24
   Exec Solver = "Never" !auxiliary solver called by Calving3D
   Equation = "Calving Isosurface"
   Procedure = File "Isosurface" "IsosurfaceSolver"
@@ -669,7 +658,7 @@ Solver 20
   Save Geometry IDs = True
 End
 
-Solver 26
+Solver 25
   Equation = "Front Normal"
   Procedure =  File "./bin/FrontComputeNormal" "FrontComputeNormalSolver"
   Exec Solver = "Before Timestep"
@@ -677,10 +666,23 @@ Solver 26
   Variable = -dofs 3 "Front Normal Vector"
 End
 
+Solver 26
+  Equation = "ResultOutputPostCalve"
+  Procedure = File "ResultOutputSolve3" "ResultOutputSolver"
+  Exec Solver = "After Timestep"
+!  Exec Solver = "Never"
+
+  Output File Name  = "$namerun"_postcalve" !"
+  Vtu Format = logical true
+  Binary Output = True
+  Single Precision = True
+  Save Geometry IDs = True
+End
+
 !!!!! EQUATION
 
 Equation 1 !Main body
-   Active Solvers (16) = 1 2 3 4 5 6 7 8 20 10 13 21 16 22 23 24
+   Active Solvers (16) = 1 2 3 4 5 6 7 8 20 10 13 21 16 22 23 26
    Convection = Computed
    Flow Solution Name = String "Flow Solution"
 End
@@ -699,13 +701,13 @@ Equation 3 !Upper Surface
 End
 
 Equation 4 !Calving front
-   Active Solvers(3) = 12 19 26
+   Active Solvers(3) = 12 19 25
    Convection = Computed
    Flow Solution Name = String "Flow Solution"
 End
 
 Equation 5 !cmesh - the planar mesh used by 3D calving solver
-   Active Solvers(2) = 11 25
+   Active Solvers(2) = 11 24
    Convection = Computed
 End
 !!!!! BOUNDARY CONDITIONS
@@ -809,13 +811,6 @@ Boundary Condition 5
 
   Bottom Surface = Variable Coordinate 1, Coordinate 2
     Real Procedure "./"$bed_func" ""initbedrock"
-
-  !This has been changed for calving remesh
-  !it'd be a problem if we were still using
-  !structuredmeshmapper, but we restart with
-  !coords from spinup (adjoint)
-  ! Bottom Surface = Equals RemeshBottomSurf
-  ! Include "bed.xyz.header"
 
   Body ID = 2
 
