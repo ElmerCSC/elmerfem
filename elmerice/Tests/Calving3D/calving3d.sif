@@ -37,6 +37,8 @@ Constants
   Buoyancy Use Basal Melt = Logical False
   Bottom Surface Name = String "Zs Bottom"
   Water Density = Real $RhoWS
+
+  Front Orientation(3) = Real 0 -1.0 0.0
 End
 
 Simulation
@@ -312,7 +314,6 @@ Solver 19
   Calving Append Name = String "$namerun"" !"
   Calving Move Mesh Dir = String "./results/"
 
-  Front Orientation(3) = Real 1.0E-10 -1.0 0.0
   Project Calving Equation Name = String "CalvingProjection"
   Isosurface Equation Name = String "Calving Isosurface"
   Crevasse Penetration Threshold = Real 0.2 !this is the upper limit of average intact ice
@@ -468,8 +469,6 @@ Solver 12
   Column Max Longitudinal Range = Real 350.0
   Maximum Node Displacement = Real 1.0E4
 
-  Front Orientation(3) = Real 1.0E-10 -1.0 0.0
-
   Exported Variable 1 = "Tangled"
 End
 
@@ -571,7 +570,6 @@ Solver 21
    Non-Vertical Face Name = String "Calving Front"
    Mesh Update Helper Variable = String "Remesh Update"
    Map Coordinate Equation Name = String "Remesh Map Coordinate"
-   Front Orientation(3) = Real 1.0E-10 -1.0 0.0
    Remesh Vertical Stretch = Real 10000.0
    Vertical Front Computation = String "midrange"
    Metis Algorithm = Integer 1
