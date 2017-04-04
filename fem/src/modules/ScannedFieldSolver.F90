@@ -199,7 +199,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
     END IF 
 
     IF ( ScanInt == ScanMax ) THEN
-      ScanFieldVar % Values = SumFieldVar % Values
+      FieldVar % Values = SumFieldVar % Values
     END IF
 
   END DO
