@@ -240,7 +240,7 @@ End
 
 Solver 5
   Equation = String "Check NS"
-  Procedure = File "./bin/Remesh" "CheckFlowConvergence"
+  Procedure = File "ElmerIceSolvers" "CheckFlowConvergence"
 
   Flow Solver Name = String "Flow Solution"
   Maximum Flow Solution Divergence = Real 1.3
@@ -299,7 +299,7 @@ End
 Solver 19
   Equation = "3D Calving"
   Exec Solver = "After Timestep"
-  Procedure = "./bin/Calving3D" "Find_Calving3D"
+  Procedure = "ElmerIceSolvers" "Find_Calving3D"
   Solver Timing = Logical True
 
   Variable = String "Calving"
@@ -361,7 +361,7 @@ End
 
 Solver 11
   Equation = "CalvingProjection"
-  Procedure = File "./bin/ProjectCalving" "ProjectCalving"
+  Procedure = File "ElmerIceSolvers" "ProjectCalving"
   Exec Solver = "Never" !auxiliary solver called by Calving3D
   Solver Timing = Logical True
 
@@ -459,7 +459,7 @@ End
 
 Solver 12
   Equation = "Front Advance"
-  Procedure =  File "./bin/FrontAdvance3D" "FrontAdvance3D"
+  Procedure =  File "ElmerIceSolvers" "FrontAdvance3D"
   Exec Solver = "After Timestep"
   Variable = -dofs 3 "FrontAdvance"
 
@@ -565,7 +565,7 @@ End
 
 Solver 21
    Equation = "Remesh"
-   Procedure = "./bin/Remesh" "Remesher"
+   Procedure = "ElmerIceSolvers" "Remesher"
    Exec Solver = "After Timestep"
    Solver Timing = Logical True
    Variable = "RemeshHeight"
@@ -663,7 +663,7 @@ End
 
 Solver 25
   Equation = "Front Normal"
-  Procedure =  File "./bin/FrontComputeNormal" "FrontComputeNormalSolver"
+  Procedure =  File "ElmerIceSolvers" "ComputeCalvingNormalSolver"
   Exec Solver = "Before Timestep"
 
   Variable = -dofs 3 "Front Normal Vector"
