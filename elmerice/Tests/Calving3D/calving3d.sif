@@ -48,7 +48,7 @@ Simulation
   Timestepping Method = "bdf"
   BDF Order = 1
 
-  Timestep Intervals(1) = 30
+  Timestep Intervals(1) = 2 !30
   Output Intervals(1) = 1
   Timestep Sizes(1) = Real $1.0/365.0 !day step
 
@@ -57,7 +57,7 @@ Simulation
   Steady State Max Iterations = 1 !20
   Steady State Min Iterations = 1
   Set Dirichlet BCs By BC Numbering = Logical True
-  max output level = 6
+  max output level = 40
   Output Intervals = 1
   Output File = "$namerun".result" !"
   Output Coordinates = Logical True
@@ -66,6 +66,9 @@ Simulation
   Remesh Extruded Mesh Levels = Integer 10
   ! Extruded Mesh Density = Variable Coordinate 1
   !   Real MATC "0.2+sin(tx*(pi*0.5))"
+
+  !TODO fix code so this isn't necessary!
+  Gmsh Path = File "/usr/local/bin/gmsh"
 End
 
 Body 1
@@ -679,10 +682,24 @@ Solver 26
   Save Geometry IDs = True
 End
 
+Solver 27
+  Equation = DistanceTest
+  Exec Solver = "After Simulation"
+  Procedure = "DistanceSolve" "DistanceSolver1"
+  Variable = "DistanceTest"
+  Solver Timing = Logical True
+
+  Nonlinear System Max Iterations = 200
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Linear System Solver = Iterative
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
 !!!!! EQUATION
 
 Equation 1 !Main body
-   Active Solvers (16) = 1 2 3 4 5 6 7 8 20 10 13 21 16 22 23 26
+   Active Solvers (17) = 1 2 3 4 5 6 7 8 20 10 13 21 16 22 23 26 27
    Convection = Computed
    Flow Solution Name = String "Flow Solution"
 End
@@ -719,6 +736,8 @@ Boundary Condition 1
   Body ID = 4
 
   Distance = Real 0.0
+  DistanceTest = Real 0.0
+
   Flow Force BC = Logical True
 
   External Pressure = Variable Coordinate 1 !dummy
@@ -953,3 +972,9 @@ End
 
 Initial Condition 4
 End
+
+Solver 27 :: Reference Norm = Real 7.749743E+4
+Solver 27 :: Reference Norm Tolerance = Real 1E-05
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=7.749743E+4,EPS=1E-05\n" );
