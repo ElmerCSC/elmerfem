@@ -2025,7 +2025,6 @@ CONTAINS
        
      ptrnext => ptrb % next
      ptrb = ptr
-     if ( present(name)) ptrb % name = name
 
      ptrb % tvalues => null()
      if(associated(ptr % tvalues)) then
@@ -2050,8 +2049,8 @@ CONTAINS
 
      ptrb % cumulative => null()
      if(associated(ptr % cumulative)) then
-       allocate( ptrb % ivalues(size(ptr % ivalues)) )
-       ptrb % ivalues = ptr % ivalues
+       allocate( ptrb % cumulative(size(ptr % cumulative)) )
+       ptrb % cumulative = ptr % cumulative
      end if
      ptrb % next => ptrnext
 
