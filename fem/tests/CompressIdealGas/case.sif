@@ -13,7 +13,7 @@ End
 
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Transient
   Steady State Max Iterations = 50
@@ -211,6 +211,4 @@ End
 
 
 Solver 3 :: Reference Norm = Real 0.206857940
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.206857940\n");

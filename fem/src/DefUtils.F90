@@ -99,15 +99,16 @@ MODULE DefUtils
    END INTERFACE
 
    INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
-   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: Store(:)
+   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: ValueStore(:)
+   !$OMP THREADPRIVATE(IndexStore, VecIndexStore, ValueStore)
+
+   TYPE(Element_t), POINTER :: CurrentElementThread => NULL()
+   !$OMP THREADPRIVATE(CurrentElementThread)
+   
    ! TODO: Get actual values for these from mesh
    INTEGER, PARAMETER, PRIVATE :: ISTORE_MAX_SIZE = 1024
-   INTEGER, PARAMETER, PRIVATE :: STORE_MAX_SIZE = 1024
-   ! SAVE IndexStore, Store
-
-   !$OMP THREADPRIVATE(IndexStore, VecIndexStore, Store)
-   PRIVATE :: GetIndexStore, GetVecIndexStore, GetStore
-
+   INTEGER, PARAMETER, PRIVATE :: VSTORE_MAX_SIZE = 1024
+   PRIVATE :: GetIndexStore, GetVecIndexStore, GetValueStore
 CONTAINS
 
 
@@ -116,135 +117,74 @@ CONTAINS
      ch = VERSION
    END FUNCTION GetVersion
 
-   FUNCTION GetRevision() RESULT(ch)
+   FUNCTION GetRevision(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
+     LOGICAL, OPTIONAL :: Found
 #ifdef REVISION
      ch = REVISION
+     IF(PRESENT(Found)) Found = .TRUE.
 #else
      ch = "unknown"
+     IF(PRESENT(Found)) Found = .FALSE.
 #endif
    END FUNCTION GetRevision
 
-   FUNCTION GetCompilationDate() RESULT(ch)
+   FUNCTION GetCompilationDate(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
+     LOGICAL, OPTIONAL :: Found
 #ifdef COMPILATIONDATE
      ch = COMPILATIONDATE
+     IF(PRESENT(Found)) Found = .TRUE.
 #else
      ch = "unknown"
+     IF(PRESENT(Found)) Found = .FALSE.
 #endif
    END FUNCTION GetCompilationDate
-
-
-!
-!  FUNCTION GetIndexStore() RESULT(ind)
-!    INTEGER, POINTER :: Ind(:)
-!    INTEGER :: thread, nthreads, istat
-!    INTEGER :: omp_get_max_threads, omp_get_thread_num
-!
-!    IF ( .NOT.ALLOCATED(IndexStore) ) THEN
-! !$omp barrier
-! !$omp critical(get_index)
-!      IF ( .NOT.ALLOCATED(IndexStore) ) THEN
-!        nthreads = 1
-! !$      nthreads = omp_get_max_threads()
-!        ALLOCATE( IndexStore(nthreads,512), STAT=istat )
-!        IF ( Istat /= 0 ) &
-!           CALL Fatal( 'GetIndexStore', 'Memory allocation error.' )
-!      END IF
-! !$omp end critical(get_index)
-!    END IF
-!
-!10  thread = 1
-! !$  thread=omp_get_thread_num()+1
-!    ind => IndexStore( thread, : )
-!  END FUNCTION GetIndexStore
-
-
-!  FUNCTION GetStore(n) RESULT(val)
-!    REAL(KIND=dp), POINTER :: val(:)
-!    INTEGER :: n,thread, nthreads, istat
-!    INTEGER :: omp_get_max_threads, omp_get_thread_num
-!
-!    IF ( .NOT.ALLOCATED(Store) ) THEN
-! !$omp barrier
-! !$omp critical(get_store)
-!       IF ( .NOT.ALLOCATED(Store) ) THEN
-!         nthreads = 1
-! !$      nthreads = omp_get_max_threads()
-!         ALLOCATE( Store(nthreads*MAX_ELEMENT_NODES), STAT=istat )
-!         IF ( Istat /= 0 ) &
-!            CALL Fatal( 'GetStore', 'Memory allocation error.' )
-!       END IF
-! !$omp end critical(get_store)
-!      END IF
-!
-!      thread = 0
-! !$   thread=omp_get_thread_num()
-!      val => Store( thread*MAX_ELEMENT_NODES+1:thread*MAX_ELEMENT_NODES+n )
-!   END FUNCTION GetStore
-  
-  SUBROUTINE getElementNodeIndex(i, Element, n, FOUND)
-    IMPLICIT None
- 
-    ! variables in function header
-    INTEGER :: i, n
-    TYPE(Element_t), POINTER :: Element
-    Logical :: FOUND
-        
-    DO i=1, SIZE(Element%NodeIndexes)
-    IF (n == Element%NodeIndexes(i)) THEN
-      FOUND=.TRUE.
-      EXIT
-    END IF
-  END DO
-  
-  END SUBROUTINE getElementNodeIndex
-  
   
   FUNCTION GetIndexStore() RESULT(ind)
-    INTEGER, POINTER CONTIG :: Ind(:)
+    IMPLICIT NONE
+    INTEGER, POINTER CONTIG :: ind(:)
     INTEGER :: istat
 
     IF ( .NOT. ALLOCATED(IndexStore) ) THEN
         ALLOCATE( IndexStore(ISTORE_MAX_SIZE), STAT=istat )
         IndexStore = 0
-        IF ( Istat /= 0 ) CALL Fatal( 'GetIndexStore', 'Memory allocation error.' )
+        IF ( Istat /= 0 ) CALL Fatal( 'GetIndexStore', &
+                'Memory allocation error.' )
     END IF
-
-    ind => IndexStore( : )
+    ind => IndexStore
   END FUNCTION GetIndexStore
 
   FUNCTION GetVecIndexStore() RESULT(ind)
     IMPLICIT NONE
-    INTEGER, POINTER CONTIG :: Ind(:)
+    INTEGER, POINTER CONTIG :: ind(:)
     INTEGER :: istat
      
     IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
       ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE), STAT=istat )
       VecIndexStore = 0
-      IF ( istat /= 0 ) CALL Fatal( 'GetVecIndexStore', 'Memory allocation error.' )
+      IF ( istat /= 0 ) CALL Fatal( 'GetVecIndexStore', &
+              'Memory allocation error.' )
     END IF
-    
-    ind => VecIndexStore( : )
+    ind => VecIndexStore
   END FUNCTION GetVecIndexStore
 
-  FUNCTION GetStore(n) RESULT(val)
+  FUNCTION GetValueStore(n) RESULT(val)
+    IMPLICIT NONE
     REAL(KIND=dp), POINTER CONTIG :: val(:)
     INTEGER :: n, istat
 
-    IF ( .NOT.ALLOCATED(Store) ) THEN
-        ALLOCATE( Store(STORE_MAX_SIZE), STAT=istat )
-        Store = 0D0
-        IF ( Istat /= 0 ) CALL Fatal( 'GetStore', 'Memory allocation error.' )
+    IF ( .NOT.ALLOCATED(ValueStore) ) THEN
+      ALLOCATE( ValueStore(VSTORE_MAX_SIZE), STAT=istat )
+      ValueStore = REAL(0, dp)
+      IF ( Istat /= 0 ) CALL Fatal( 'GetValueStore', &
+              'Memory allocation error.' )
     END IF
-
-    IF (n > STORE_MAX_SIZE) THEN
-        CALL Fatal( 'GetStore', 'Not enough memory allocated for store.' )
+    IF (n > VSTORE_MAX_SIZE) THEN
+      CALL Fatal( 'GetValueStore', 'Not enough memory allocated for store.' )
     END IF
-
-    val => Store( 1:n )
-  END FUNCTION GetStore
-
+    val => ValueStore(1:n)
+  END FUNCTION GetValueStore
 
 !> Returns handle to the active solver
   FUNCTION GetSolver() RESULT( Solver )
@@ -278,25 +218,74 @@ CONTAINS
 
 !> Returns handle to the active element
   FUNCTION GetCurrentElement(Element) RESULT(Ret_Element)
-    TYPE(Element_t), POINTER :: Ret_Element
+    IMPLICIT NONE
     TYPE(Element_t), OPTIONAL, TARGET :: Element
+    TYPE(Element_t), POINTER :: Ret_Element
 
     IF (PRESENT(Element)) THEN
       Ret_Element=>Element
     ELSE
-      Ret_Element=>CurrentModel % CurrentElement
+#ifdef _OPENMP
+      IF (omp_in_parallel()) THEN
+        Ret_Element=>CurrentElementThread
+      ELSE
+        Ret_Element=>CurrentModel % CurrentElement
+      END IF
+#else
+      Ret_Element => CurrentModel % CurrentElement
+#endif
     END IF
   END FUNCTION GetCurrentElement
 
+!> Sets handle to the active element of the current thread. 
+!> Old handle is given as a return value as what would be returned
+!> by a call to GetCurrentElement
+  FUNCTION SetCurrentElement(Element) RESULT(OldElement)
+    IMPLICIT NONE
+    TYPE(Element_t), TARGET :: Element
+    TYPE(Element_t), POINTER :: OldElement
+
+#ifdef _OPENMP
+    IF (omp_in_parallel()) THEN
+      OldElement => CurrentElementThread
+    ELSE
+      OldElement => CurrentModel % CurrentElement
+    END IF
+#else
+    OldElement => CurrentModel % CurrentElement
+#endif
+
+    CurrentElementThread => Element
+    !$omp critical(CurrentElementAssign)
+    CurrentModel % CurrentElement => Element
+    !$omp end critical(CurrentElementAssign)
+  END FUNCTION SetCurrentElement
+
 !> Returns handle to the index of the current element
   FUNCTION GetElementIndex(Element) RESULT(Indx)
-     TYPE(Element_t), OPTIONAL :: Element
-     INTEGER :: Indx
-     TYPE(Element_t), POINTER :: CurrElement
-
-     CurrElement => GetCurrentElement(Element)
-     Indx = CurrElement % ElementIndex
+    TYPE(Element_t), OPTIONAL :: Element
+    INTEGER :: Indx
+    TYPE(Element_t), POINTER :: CurrElement
+    
+    CurrElement => GetCurrentElement(Element)
+    Indx = CurrElement % ElementIndex
   END FUNCTION GetElementIndex
+
+  SUBROUTINE GetElementNodeIndex(i, Element, n, FOUND)
+    IMPLICIT None
+ 
+    ! variables in function header
+    INTEGER :: i, n
+    TYPE(Element_t), POINTER :: Element
+    Logical :: FOUND
+    
+    DO i=1, SIZE(Element%NodeIndexes)
+      IF (n == Element%NodeIndexes(i)) THEN
+        FOUND=.TRUE.
+        EXIT
+      END IF
+    END DO
+  END SUBROUTINE GetElementNodeIndex
 
 !> Returns the number of active elements for the current solver
   FUNCTION GetNOFActive( USolver ) RESULT(n)
@@ -311,15 +300,15 @@ CONTAINS
      END IF
 
      IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
-       CurrentColour = CurrentColour + 1
-       n = Solver % ColourIndexList % ptr(CurrentColour+1)-1 &
-           - Solver % ColourIndexList % ptr(CurrentColour)
+       Solver % CurrentColour = Solver % CurrentColour + 1
+       n = Solver % ColourIndexList % ptr(Solver % CurrentColour+1)-1 &
+           - Solver % ColourIndexList % ptr(Solver % CurrentColour)
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n))//' in colour '//TRIM(I2S(CurrentColour)),Level=12)
+           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=22)
      ELSE
        n = Solver % NumberOfActiveElements
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n)),Level=12)
+           //TRIM(I2S(n)),Level=22)
      END IF
 
   END FUNCTION GetNOFActive
@@ -879,7 +868,7 @@ CONTAINS
      INTEGER, POINTER :: NodeIndexes(:)
 
      REAL(KIND=dp) :: s
-     REAL(KIND=dp), POINTER :: x(:)
+     REAL(KIND=dp), POINTER CONTIG :: x(:)
      TYPE(Element_t), POINTER :: Element
 
      INTEGER :: n, nthreads, thread, istat
@@ -890,8 +879,8 @@ CONTAINS
      n = 1
      NodeIndexes(n) = 1
 
-     x => GetStore(n)
-     x = 0.0d0
+     x => GetValueStore(n)
+     x(1:n) = REAL(0, dp)
      IF( ASSOCIATED(List) ) THEN
        IF ( ASSOCIATED(List % Head) ) THEN
           IF ( PRESENT( Found ) ) THEN
@@ -907,6 +896,7 @@ CONTAINS
 
 !> Returns a real by its name if found in the list structure, and in the active element. 
   RECURSIVE FUNCTION GetReal( List, Name, Found, UElement ) RESULT(x)
+    IMPLICIT NONE
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      LOGICAL, OPTIONAL :: Found
@@ -914,10 +904,10 @@ CONTAINS
      INTEGER, POINTER :: NodeIndexes(:)
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
-     REAL(KIND=dp), POINTER :: x(:)
+     REAL(KIND=dp), POINTER CONTIG :: x(:)
      TYPE(Element_t), POINTER :: Element
 
-     INTEGER :: n, nthreads, thread, istat
+     INTEGER :: n, istat
 
      IF ( PRESENT( Found ) ) Found = .FALSE.
 
@@ -932,8 +922,8 @@ CONTAINS
        NodeIndexes(1) = 1
      END IF
 
-     x => GetStore(n)
-     x = 0.0_dp
+     x => GetValueStore(n)
+     x(1:n) = REAL(0, dp)
      IF( ASSOCIATED(List) ) THEN
        IF ( ASSOCIATED(List % Head) ) THEN
          x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
@@ -941,6 +931,39 @@ CONTAINS
      END IF
   END FUNCTION GetReal
 
+  RECURSIVE SUBROUTINE GetRealValues( List, Name, Values, Found, UElement )
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: List
+    CHARACTER(LEN=*) :: Name
+    REAL(KIND=dp) CONTIG :: Values(:)
+    LOGICAL, OPTIONAL :: Found
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
+    
+    ! Variables
+    INTEGER, TARGET :: Dnodes(1)
+    INTEGER, POINTER CONTIG :: NodeIndexes(:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, istat
+
+    IF ( PRESENT( Found ) ) Found = .FALSE.
+    
+    Element => GetCurrentElement(UElement)
+    
+    IF ( ASSOCIATED(Element) ) THEN
+      n = GetElementNOFNodes(Element)
+      NodeIndexes => Element % NodeIndexes
+    ELSE
+      n = 1
+      NodeIndexes => Dnodes
+      NodeIndexes(1) = 1
+    END IF
+    
+    IF( ASSOCIATED(List) ) THEN
+      IF ( ASSOCIATED(List % Head) ) THEN
+        Values(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
+      END IF
+    END IF
+  END SUBROUTINE GetRealValues
 
 !> Returns a material property from either of the parents of the current boundary element
   RECURSIVE FUNCTION GetParentMatProp( Name, UElement, Found, UParent ) RESULT(x)
@@ -949,7 +972,7 @@ CONTAINS
     LOGICAL, OPTIONAL :: Found
     TYPE(Element_t), OPTIONAL, POINTER :: UParent
 
-    REAL(KIND=dp), POINTER :: x(:)    
+    REAL(KIND=dp), POINTER CONTIG :: x(:)
     INTEGER, POINTER :: Indexes(:)
     LOGICAL :: GotIt
     INTEGER :: n, leftright
@@ -963,8 +986,8 @@ CONTAINS
     n = GetElementNOFNodes(Element)
     Indexes => Element % NodeIndexes
 
-    x => GetStore(n)
-    x = 0._dp
+    x => GetValueStore(n)
+    x(1:n) = REAL(0, dp)
 
     Gotit = .FALSE.
     DO leftright = 1, 2
@@ -1101,7 +1124,8 @@ CONTAINS
   END SUBROUTINE GetComplexVector
 
 
-!> Set some property elementwise to the active element
+!> Set a named elementwise property (real-valued) to the active element or
+!> given element
   SUBROUTINE SetElementProperty( Name, Values, UElement )
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp) :: Values(:)
@@ -1137,7 +1161,8 @@ CONTAINS
     END IF
   END SUBROUTINE SetElementProperty
 
-!> Get some property elementwise from the active element
+!> Get a named elementwise property (real-valued) from the active element or 
+!> from a given element
   FUNCTION GetElementProperty( Name, UElement ) RESULT(Values)
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp), POINTER :: Values(:)
@@ -1175,18 +1200,25 @@ CONTAINS
      IF ( PRESENT( USolver ) ) Solver => USolver
 
      IF ( t > 0 .AND. t <= Solver % NumberOfActiveElements ) THEN
-       IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+       ! Check if colouring is really used by the solver
+       IF( Solver % CurrentColour > 0 .AND. &
+               ASSOCIATED( Solver % ColourIndexList ) ) THEN
          ind = Solver % ActiveElements( &
-             Solver % ColourIndexList % ind(&
-             Solver % ColourIndexList % ptr(CurrentColour)+(t-1) ) )
+                 Solver % ColourIndexList % ind(&
+                 Solver % ColourIndexList % ptr(Solver % CurrentColour)+(t-1) ) )
        ELSE
          ind = Solver % ActiveElements(t)
        END IF
+
        Element => Solver % Mesh % Elements( ind )
 
-       !$omp critical(GetActiveElementCurrentElement)
-       CurrentModel % CurrentElement => Element ! may be used by user functions
-       !$omp end critical(GetActiveElementCurrentElement)
+       !$omp critical(CurrentElementAssign)
+       ! May be used by user functions, not thread safe
+       CurrentModel % CurrentElement => Element 
+       !$omp end critical(CurrentElementAssign)
+
+       ! May be used by user functions, thread safe
+       CurrentElementThread => Element
      ELSE
        WRITE( Message, * ) 'Invalid element number requested: ', t
        CALL Fatal( 'GetActiveElement', Message )
@@ -1206,9 +1238,13 @@ CONTAINS
 
      IF ( t > 0 .AND. t <= Solver % Mesh % NumberOfBoundaryElements ) THEN
         Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements+t )
-        !$omp critical(GetBoundaryElementCurrentElement)
-        CurrentModel % CurrentElement => Element ! may be used be user functions
-        !$omp end critical(GetBoundaryElementCurrentElement)
+        !$omp critical(CurrentElementAssign)
+        ! May be used be user functions, not thread safe
+        CurrentModel % CurrentElement => Element
+        !$omp end critical(CurrentElementAssign)
+
+        ! May be used by user functions, thread safe
+        CurrentElementThread => Element
      ELSE
         WRITE( Message, * ) 'Invalid element number requested: ', t
         CALL Fatal( 'GetBoundaryElement', Message )
@@ -1687,6 +1723,10 @@ CONTAINS
         ! padn=NBytePad(n,STORAGE_SIZE(REAL(1,dp))/8,64)
         
         IF (.NOT. ALLOCATED( ElementNodes % xyz)) THEN
+            IF (ASSOCIATED(ElementNodes % x)) DEALLOCATE(ElementNodes % x) 
+            IF (ASSOCIATED(ElementNodes % y)) DEALLOCATE(ElementNodes % y) 
+            IF (ASSOCIATED(ElementNodes % z)) DEALLOCATE(ElementNodes % z) 
+          
             ALLOCATE(ElementNodes % xyz(padn,3))
             ElementNodes % xyz = REAL(0,dp)
             ElementNodes % x => ElementNodes % xyz(1:n,1)
@@ -2551,15 +2591,19 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-
-
-!> Performs initialization for matrix equation related to the active solver
-!------------------------------------------------------------------------------
-  SUBROUTINE DefaultInitialize( USolver )
-!------------------------------------------------------------------------------
-     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
-
-     TYPE(Solver_t), POINTER :: Solver, SlaveSolver
+!--------------------------------------------------------------------------------
+!> One can enforce weak coupling by calling a dependent solver a.k.a. slave solver
+!> at different stages of the master solver: e.g. before and after the solver.
+!> The strategy can be particularly efficient for nonlinear problems when the
+!> slave solver is cheap and a stepsize control is applied
+!> Also one can easily make postprocessing steps just at the correct slot.
+!-----------------------------------------------------------------------------
+  SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
+!------------------------------------------------------------------------------  
+     TYPE(Solver_t), POINTER :: Solver     
+     CHARACTER(LEN=*) :: SlaveSolverStr 
+     
+     TYPE(Solver_t), POINTER :: SlaveSolver
      TYPE(ValueList_t), POINTER :: Params
      TYPE(Variable_t), POINTER :: iterV
      INTEGER, POINTER :: SlaveSolverIndexes(:)
@@ -2568,14 +2612,83 @@ CONTAINS
      LOGICAL :: Transient, Found, alloc_parenv
 
      INTERFACE
-        SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
-          USE Types
-          TYPE(Model_t)::Model
-          TYPE(Solver_t),POINTER::Solver
-          REAL(KIND=dp) :: dt
-          LOGICAL :: Transient
-        END SUBROUTINE SolverActivate_x
+       SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
+         USE Types
+         TYPE(Model_t)::Model
+         TYPE(Solver_t),POINTER::Solver
+         REAL(KIND=dp) :: dt
+         LOGICAL :: Transient
+       END SUBROUTINE SolverActivate_x
      END INTERFACE
+
+     SlaveSolverIndexes =>  ListGetIntegerArray( Solver % Values,&
+         SlaveSolverStr,Found )
+     IF(.NOT. Found ) RETURN
+
+     CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
+         TRIM(SlaveSolverStr),Level=5)
+     
+     dt = GetTimeStep()
+     Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
+
+     ! store the nonlinear iteration at the outer loop
+     iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+     iter = NINT(iterV % Values(1))
+
+     DO j=1,SIZE(SlaveSolverIndexes)
+       k = SlaveSolverIndexes(j)
+       SlaveSolver => CurrentModel % Solvers(k)
+
+       IF(ParEnv % PEs>1) THEN
+         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
+             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
+
+         alloc_parenv = .FALSE.
+         IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
+           IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
+             ParEnv = SlaveSolver % Matrix % ParMatrix % ParEnv
+           ELSE
+             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+           END IF
+         ELSE
+           ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+         END IF
+         ParEnv % ActiveComm = Solver % Matrix % Comm
+       END IF
+
+       CurrentModel % Solver => SlaveSolver
+       CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
+
+       IF(ParEnv % PEs>1) THEN
+         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
+             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .FALSE.)
+
+         IF(alloc_parenv) THEN
+           DEALLOCATE(ParEnv % Active)
+           ParEnv % Active => NULL()
+         END IF
+
+         IF(ASSOCIATED(Solver % Matrix)) THEN
+           IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
+               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+         END IF
+       END IF
+     END DO
+     CurrentModel % Solver => Solver
+     iterV % Values = iter       
+
+   END SUBROUTINE DefaultSlaveSolvers
+!------------------------------------------------------------------------------
+ 
+  
+
+!> Performs initialization for matrix equation related to the active solver
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultInitialize( USolver )
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
+
+     TYPE(Solver_t), POINTER :: Solver
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -2583,64 +2696,9 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
 
-     ! One can enforce weak coupling by calling a dependent solver at the start of 
-     ! initialization of the master solver. The strategy will be particularly 
-     ! efficient when the slave solver is cheap and a stepsize control is applied
-     ! to the master solver.
-     !-----------------------------------------------------------------------------
-     SlaveSolverIndexes =>  ListGetIntegerArray( Solver % Values,'Slave Solvers',Found )
-     IF( Found ) THEN
-       dt = GetTimeStep()
-       Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
-
-       ! store the nonlinear iteration at the outer loop
-       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-       iter = NINT(iterV % Values(1))
-
-
-       DO j=1,SIZE(SlaveSolverIndexes)
-         k = SlaveSolverIndexes(j)
-         SlaveSolver => CurrentModel % Solvers(k)
-
-         IF(ParEnv % PEs>1) THEN
-           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
-             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
-
-           alloc_parenv = .FALSE.
-           IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
-             IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
-               ParEnv = SlaveSolver % Matrix % ParMatrix % ParEnv
-             ELSE
-               ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
-             END IF
-           ELSE
-             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
-           END IF
-           ParEnv % ActiveComm = Solver % Matrix % Comm
-         END IF
-
-         CurrentModel % Solver => SlaveSolver
-         CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
-
-         IF(ParEnv % PEs>1) THEN
-           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
-             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .FALSE.)
-
-           IF(alloc_parenv) THEN
-             DEALLOCATE(ParEnv % Active)
-             ParEnv % Active => NULL()
-           END IF
-
-           IF(ASSOCIATED(Solver % Matrix)) THEN
-             IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
-               ParEnv = Solver % Matrix % ParMatrix % ParEnv
-           END IF
-         END IF
-       END DO
-       CurrentModel % Solver => Solver
-       iterV % Values = iter       
-     END IF
-
+     CALL DefaultSlaveSolvers(Solver,'Slave Solvers') ! this is the initial name of the slot
+     CALL DefaultSlaveSolvers(Solver,'Nonlinear Pre Solvers')     
+     
      IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
        CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
      END IF
@@ -2655,27 +2713,38 @@ CONTAINS
 
 !> Performs finilizing steps related to the the active solver
 !------------------------------------------------------------------------------
+  SUBROUTINE DefaultStart( USolver )
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
+     
+     TYPE(Solver_t), POINTER :: Solver
+
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+     
+     CALL Info('DefaultStart','Starting solver: '//&
+        TRIM(ListGetString(Solver % Values,'Equation')),Level=10)
+     
+     ! One can run preprocessing solver in this slot.
+     !-----------------------------------------------------------------------------
+     CALL DefaultSlaveSolvers(Solver,'Pre Solvers')
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE DefaultStart
+!------------------------------------------------------------------------------
+
+
+  
+!> Performs finilizing steps related to the the active solver
+!------------------------------------------------------------------------------
   SUBROUTINE DefaultFinish( USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
 
-     TYPE(Solver_t), POINTER :: Solver, PostSolver
-     TYPE(ValueList_t), POINTER :: Params
-     TYPE(Variable_t), POINTER :: iterV
-     INTEGER, POINTER :: PostSolverIndexes(:)
-     INTEGER :: j,k,iter
-     REAL(KIND=dp) :: dt
-     LOGICAL :: Transient, Found, alloc_parenv
-
-     INTERFACE
-        SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
-          USE Types
-          TYPE(Model_t)::Model
-          TYPE(Solver_t),POINTER::Solver
-          REAL(KIND=dp) :: dt
-          LOGICAL :: Transient
-        END SUBROUTINE SolverActivate_x
-     END INTERFACE
+     TYPE(Solver_t), POINTER :: Solver
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -2685,59 +2754,10 @@ CONTAINS
 
      ! One can run postprocessing solver in this slot.
      !-----------------------------------------------------------------------------
-     PostSolverIndexes =>  ListGetIntegerArray( Solver % Values,'Post Solvers',Found )
-     IF( Found ) THEN
-       dt = GetTimeStep()
-       Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
-
-       ! store the nonlinear iteration at the outer loop
-       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-       iter = NINT(iterV % Values(1))
-
-       DO j=1,SIZE(PostSolverIndexes)
-         k = PostSolverIndexes(j)
-         PostSolver => CurrentModel % Solvers(k)
-
-         IF(ParEnv % PEs>1) THEN
-           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
-             CALL ListAddLogical( PostSolver % Values, 'Post not parallel', .TRUE.)
-
-           alloc_parenv = .FALSE.
-           IF(ASSOCIATED(PostSolver % Matrix)) THEN
-             IF(ASSOCIATED(PostSolver % Matrix % ParMatrix) ) THEN
-               ParEnv = PostSolver % Matrix % ParMatrix % ParEnv
-             ELSE
-               ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
-             END IF
-           ELSE
-             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
-           END IF
-         END IF
-
-         CurrentModel % Solver => PostSolver
-         CALL SolverActivate_x( CurrentModel,PostSolver,dt,Transient)
-
-         IF(ParEnv % PEs>1) THEN
-           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
-             CALL ListAddLogical( PostSolver % Values, 'Post not parallel', .FALSE.)
-
-           IF(alloc_parenv) THEN
-             DEALLOCATE(ParEnv % Active)
-             ParEnv % Active => NULL()
-           END IF
-
-           IF(ASSOCIATED(Solver % Matrix)) THEN
-             IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
-               ParEnv = Solver % Matrix % ParMatrix % ParEnv
-           END IF
-         END IF
-       END DO
-       CurrentModel % Solver => Solver
-       iterV % Values = iter       
-     END IF
+     CALL DefaultSlaveSolvers(Solver,'Post Solvers')
 
      CALL Info('DefaultFinish','Finished solver: '//&
-         TRIM(ListGetString(Solver % Values,'Equation')),Level=5)
+         TRIM(ListGetString(Solver % Values,'Equation')),Level=8)
 
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish
@@ -2806,22 +2826,9 @@ CONTAINS
     END IF
 
     ! Combine the individual projectors into one massive projector
-    IF(.NOT.ASSOCIATED(Solver % Matrix % ConstraintMatrix)) &
-      Solver % MortarBCsOnly = .TRUE.
-    Ctmp => Solver % Matrix % ConstraintMatrix
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
-
-    IF(.NOT. Solver % MortarBCsOnly) THEN
-      IF(ASSOCIATED(Ctmp).OR.ASSOCIATED(Solver % Matrix % ConstraintMatrix)) THEN
-        IF(.NOT.ASSOCIATED(Ctmp, Solver % Matrix % ConstraintMatrix)) THEN
-          CALL FreeMatrix(Solver % Matrix % ConstraintMatrix)
-          Solver % Matrix % ConstraintMatrix => Ctmp
-          IF (ASSOCIATED(Solver % MortarBCs)) Solver % MortarBCsChanged = .TRUE.
-        END IF
-      END IF
-    END IF
 
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
@@ -2837,6 +2844,11 @@ CONTAINS
 
     IF( NameSpaceI > 0 ) CALL ListPopNamespace()
 
+    ! One can run postprocessing solver in this slot in every nonlinear iteration.
+    !-----------------------------------------------------------------------------
+    CALL DefaultSlaveSolvers(Solver,'Nonlinear Post Solvers')
+
+    
 !------------------------------------------------------------------------------
   END FUNCTION DefaultSolve
 !------------------------------------------------------------------------------
@@ -3016,8 +3028,9 @@ CONTAINS
        IF (OMP_GET_NUM_THREADS() == 1) THEN
          MCAsm = .TRUE.
        ELSE
-         MCAsm = ListGetLogical( Solver % Values, 'Mesh Colouring', Found )
-         MCAsm = MCAsm .AND. Found
+         ! Check if multicoloured assembly is in use
+         MCAsm = (Solver % CurrentColour > 0) .AND. &
+                 ASSOCIATED(Solver % ColourIndexList)
        END IF
 #else
        MCAsm = .TRUE.
@@ -3067,6 +3080,7 @@ CONTAINS
   REAL(KIND=C_DOUBLE), ALLOCATABLE :: vals(:)
   INTEGER, POINTER :: ptr
   INTEGER :: i,j,k,l,k1,k2
+  INTEGER :: matrixType, eType
   INTEGER(C_INT), ALLOCATABLE :: ind(:)
 
 #ifdef HAVE_FETI4I
@@ -3089,7 +3103,9 @@ CONTAINS
   IF(.NOT.C_ASSOCIATED(A % PermonMatrix)) THEN
     A % NoDirichlet = .TRUE.
     !! A % PermonMatrix = Permon_InitMatrix(A % NumberOFRows)
-    CALL FETI4ICreateStiffnessMatrix(A % PermonMatrix, 1) !TODO add number of rows A % NumberOFRows
+     !! TODO: get correct matrix type 
+    matrixType = 0  !! symmetric positive definite (for other types see feti4i.h)
+    CALL FETI4ICreateStiffnessMatrix(A % PermonMatrix, matrixType, 1) !TODO add number of rows A % NumberOFRows
   END IF
 
   ALLOCATE(vals(n*n*dofs*dofs), ind(n*dofs))
@@ -3107,7 +3123,11 @@ CONTAINS
   END DO
 
   !CALL Permon_UpdateMatrix( A % PermonMatrix, n*dofs, ind, vals )
-  CALL FETI4IAddElement(A % PermonMatrix, n*dofs, ind, vals)
+
+  eType = ElementDim( CurrentModel % CurrentElement )
+  ! type of the element is the same as its dimension
+
+  CALL FETI4IAddElement(A % PermonMatrix, eType, n, nInd, n*dofs, ind, vals)
 
 #endif
     
@@ -5664,28 +5684,61 @@ CONTAINS
   END SUBROUTINE GetParentUVW
 !------------------------------------------------------------------------------
 
+!-----------------------------------------------------------------------
+!> This routine may be used to terminate the program in the case of an error.
+!-----------------------------------------------------------------------
+   SUBROUTINE Assert(Condition, Caller, ErrorMessage)
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
+     LOGICAL :: Condition
+!-----------------------------------------------------------------------
+     IF ( .NOT. OutputLevelMask(0) ) STOP
+
+     IF(Condition) RETURN !Assertion passed
+
+     WRITE( Message, '(A)') 'ASSERTION ERROR'
+
+     IF(PRESENT(Caller)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(Caller)
+     END IF
+
+     IF(PRESENT(ErrorMessage)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(ErrorMessage)
+     END IF
+
+     WRITE( *, '(A)', ADVANCE='YES' ) Message
+
+     !Provide a stack trace if no caller info provided
+#ifdef __GFORTRAN__
+     IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
+#endif
+
+     STOP
+
+     CALL FLUSH(6)
+!-----------------------------------------------------------------------
+   END SUBROUTINE Assert
+!-----------------------------------------------------------------------
 
   FUNCTION GetNOFColours(USolver) RESULT( ncolours ) 
+    IMPLICIT NONE
     TYPE(Solver_t), TARGET, OPTIONAL :: USolver
     INTEGER :: ncolours
 
     ncolours = 1
     IF ( PRESENT( USolver ) ) THEN
       IF( ASSOCIATED( USolver % ColourIndexList ) ) THEN
-        ncolours = USolver % ColourIndexList % n 
+        ncolours = USolver % ColourIndexList % n
+        USolver % CurrentColour = 0
       END IF
     ELSE
       IF( ASSOCIATED( CurrentModel % Solver % ColourIndexList ) ) THEN
         ncolours = CurrentModel % Solver % ColourIndexList % n 
+        CurrentModel % Solver % CurrentColour = 0
       END IF
     END IF
 
     CALL Info('GetNOFColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
-
-    
-! Initialize the current color to one assuming that this is called at start of multicolor assembly loop
-    CurrentColour = 0
-    
   END FUNCTION GetNOFColours
 
 

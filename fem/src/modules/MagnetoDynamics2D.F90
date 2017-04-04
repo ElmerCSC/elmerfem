@@ -170,7 +170,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
     CALL SetMagneticFluxDensityBC()
     Norm = DefaultSolve()
  
-    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
   END DO
 
   ! For cylindrical symmetry the model lumping has not been implemented
@@ -195,19 +195,22 @@ CONTAINS
 !------------------------------------------------------------------------------
    INTEGER::nbf
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: torq,a(nbf),u(nbf),IMoment,IA
+   REAL(KIND=dp) :: torq,TorqArea,a(nbf),u(nbf),IMoment,IA, &
+       rinner,router,ctorq
    INTEGER :: i,bfid,n,nd
    LOGICAL :: Found
    TYPE(ValueList_t),POINTER::Params
 !------------------------------------------------------------------------------
 
-   U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0
+   CALL Info('MagnetoDynamics2D','Calculating lumped parameters',Level=8)
+   
+   U=0._dp; a=0._dp; torq=0._dp; TorqArea = 0._dp; IMoment=0._dp;IA=0
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
      nd = GetElementNOFDOFs(Element)
      n  = GetElementNOFNodes(Element)
 
-     CALL Torque(Torq,Element,n,nd)
+     CALL Torque(Torq,TorqArea,Element,n,nd)
 
      Params=>GetBodyForce(Element)
      IF(ASSOCIATED(Params)) THEN
@@ -229,8 +232,19 @@ CONTAINS
    END DO
    IMoment = ParallelReduction(IMoment)
    IA = ParallelReduction(IA)
-   Torq = ParallelReduction(Torq)
 
+   Torq = ParallelReduction(Torq)
+   WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
+   CALL Info('MagnetoDynamics2D',Message,Level=8)
+
+   TorqArea = ParallelReduction(TorqArea)
+   rinner = ListGetCRealAnyBody( Model,'r inner',Found )
+   router = ListGetCRealAnyBody( Model,'r outer',Found )
+   Ctorq = PI*(router**2-rinner**2) / TorqArea
+   WRITE(Message,'(A,ES15.4)') 'Air gap correction:', cTorq
+   CALL Info('MagnetoDynamics2D',Message,Level=8)
+   Torq = Ctorq * Torq
+   
    DO i=1,nbf
      IF(a(i)>0) THEN
        CALL ListAddConstReal(Model % Simulation,'res: Potential / bodyforce ' &
@@ -239,10 +253,18 @@ CONTAINS
                      //TRIM(i2s(i)),a(i))
      END IF
    END DO
-   CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque', Torq)
-   CALL ListAddConstReal(Model % Simulation,'res: Inertial Volume', IA)
-   CALL ListAddConstReal(Model % Simulation,'res: Inertial Moment', IMoment)
+   CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
+   CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
+   CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
+   
 
+   WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
+   CALL Info('MagnetoDynamics2D',Message,Level=7)
+   WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
+   CALL Info('MagnetoDynamics2D',Message,Level=7)
+   WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
+   CALL Info('MagnetoDynamics2D',Message,Level=7)
+   
 !------------------------------------------------------------------------------
  END SUBROUTINE CalculateLumped
 !------------------------------------------------------------------------------
@@ -287,10 +309,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Torque(U,Element,n,nd)
+  SUBROUTINE Torque(U,Area,Element,n,nd)
 !------------------------------------------------------------------------------
     INTEGER :: n,nd
-    REAL(KIND=dp)::U
+    REAL(KIND=dp)::U,Area
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: dBasisdx(nd,3),Basis(nd), DetJ, &
@@ -332,6 +354,7 @@ CONTAINS
       Br =  x/r*Bx + y/r*By
       Bp = -y/r*Bx + x/r*By
       U = U + IP % s(t)*detJ*r*Br*Bp/(PI*4.0d-7*(r1-r0))
+      Area = Area + IP % s(t)*detJ
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE Torque
@@ -987,19 +1010,20 @@ CONTAINS
 !------------------------------------------------------------------------------
    INTEGER::nbf
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: a(nbf),IMoment,IA
-   COMPLEX(KIND=dp)::u(nbf),torq
+   REAL(KIND=dp) :: a(nbf),IMoment,IA,TorqArea,rinner,router,ctorq, &
+       xRe, xIm, torq
+   COMPLEX(KIND=dp)::u(nbf)
    INTEGER :: i,bfid,n,nd
    TYPE(ValueList_t),POINTER::Params
 !------------------------------------------------------------------------------
 
-   U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0
+   U=0._dp; a=0._dp; torq=0._dp; TorqArea=0._dp; IMoment=0._dp;IA=0
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
      nd = GetElementNOFDOFs(Element)
      n  = GetElementNOFNodes(Element)
 
-     CALL Torque(Torq,Element,n,nd)
+     CALL Torque(Torq,TorqArea,Element,n,nd)
 
      Params=>GetBodyForce(Element)
      IF(ASSOCIATED(Params)) THEN
@@ -1016,6 +1040,29 @@ CONTAINS
    END DO
 
    DO i=1,nbf
+     a(i) = ParallelReduction(a(i))
+     xRe = REAL( u(i) ); xIm = AIMAG( u(i) )
+     xRe = ParallelReduction(xRe)
+     xIm = ParallelReduction(xIm)
+     u(i) = CMPLX( xRe, xIm )
+   END DO
+   IMoment = ParallelReduction(IMoment)
+   IA = ParallelReduction(IA)
+   Torq = ParallelReduction(Torq)
+
+   
+   WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
+   CALL Info('MagnetoDynamics2D',Message,Level=8)
+
+   TorqArea = ParallelReduction(TorqArea)
+   rinner = ListGetCRealAnyBody( Model,'r inner',Found )
+   router = ListGetCRealAnyBody( Model,'r outer',Found )
+   Ctorq = PI*(router**2-rinner**2) / TorqArea
+   WRITE(Message,'(A,ES15.4)') 'Air gap correction:', cTorq
+   CALL Info('MagnetoDynamics2D',Message,Level=8)
+   Torq = Ctorq * Torq
+   
+   DO i=1,nbf
      IF(a(i)>0) THEN
        CALL ListAddConstReal(Model % Simulation,'res: Potential re / bodyforce ' &
                      //TRIM(i2s(i)),REAL(u(i))/a(i))
@@ -1023,10 +1070,16 @@ CONTAINS
                      //TRIM(i2s(i)),AIMAG(u(i))/a(i))
      END IF
    END DO
-   CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque re', REAL(Torq))
-   CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque im', AIMAG(Torq))
-   CALL ListAddConstReal(Model % Simulation,'res: Inertial Volume', IA)
-   CALL ListAddConstReal(Model % Simulation,'res: Inertial Moment', IMoment)
+   CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
+   CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
+   CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
+
+   WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
+   CALL Info('MagnetoDynamics2D',Message,Level=7)
+   WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
+   CALL Info('MagnetoDynamics2D',Message,Level=7)
+   WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
+   CALL Info('MagnetoDynamics2D',Message,Level=7)
 !------------------------------------------------------------------------------
  END SUBROUTINE CalculateLumped
 !------------------------------------------------------------------------------
@@ -1071,15 +1124,17 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Torque(U,Element,n,nd)
+  SUBROUTINE Torque(U,Area,Element,n,nd)
 !------------------------------------------------------------------------------
     INTEGER :: n,nd
-    COMPLEX(KIND=dp)::U
+    REAL(KIND=dp) :: Area
+    REAL(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: dBasisdx(nd,3),Basis(nd), DetJ, &
              POT(2,nd),x,y,r,r0,r1
     COMPLEX(KIND=dp)::POTC(nd),Br,Bp,Bx,By
+    REAL(KIND=dp)::BrRe,BpRe,BrIm,BpIm
     INTEGER :: t
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
@@ -1117,7 +1172,12 @@ CONTAINS
       By = -SUM(POTC*dBasisdx(:,1))
       Br =  x/r*Bx + y/r*By
       Bp = -y/r*Bx + x/r*By
-      U = U + IP % s(t)*detJ*r*Br*Bp/(PI*4.0d-7*(r1-r0))
+      BrRe = REAL( Br ); BrIm = AIMAG( Br )
+      BpRe = REAL( Bp ); BpIm = AIMAG( Bp )
+
+
+      U = U + IP % s(t)*detJ*r*(BrRe*BpRe+BrIm*BpIm)/(2*PI*4.0d-7*(r1-r0))
+      Area = Area + IP % s(t)*detJ
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE Torque
@@ -1408,7 +1468,7 @@ CONTAINS
         DO p=1,nd
           DO q=1,nd
             JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
-              muder/babs*SUM(B_ip(:)*Bt(q,:))*SUM(B_ip*Bt(p,:))
+              muder/babs*SUM(B_ip*Bt(q,:))*SUM(CONJG(B_ip)*Bt(p,:))
           END DO
         END DO
       END IF
@@ -1744,7 +1804,8 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
               AverageBCompute, BodyICompute, BodyVolumesCompute = .FALSE., &
-              CirCompVolumesCompute = .FALSE., HomogenizationParamCompute
+              CirCompVolumesCompute = .FALSE., HomogenizationParamCompute, &
+              LorentzForceCompute = .FALSE.
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
   
@@ -1848,6 +1909,9 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   BodyICompute = GetLogical(SolverParams, 'Calculate Body Current', GotIt)
   IF (.NOT. GotIt ) BodyICompute = .FALSE.
 
+  LorentzForceCompute = GetLogical(SolverParams, 'Calculate Component Lorentz Force', GotIt)
+  IF (.NOT. GotIt ) LorentzForceCompute = .FALSE.
+
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),TotDOFs))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
@@ -1911,7 +1975,9 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:), mu(:)
     REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:), BodyCurrent(:,:), &
-                                  CirCompComplexPower(:,:), CirCompCurrent(:,:)
+                                  CirCompComplexPower(:,:), CirCompCurrent(:,:), &
+                                  BodyLorentzForcesRe(:,:), BodyLorentzForcesIm(:,:), &
+                                  ComponentLorenzForcesRe(:,:), ComponentLorenzForcesIm(:,:)
     COMPLEX(KIND=dp) :: cmplx_power 
     REAL(KIND=dp), ALLOCATABLE :: BodyVolumes(:), BodyAvBim(:,:), BodyAvBre(:,:), &
                                   BodySkinCond(:,:), BodyProxNu(:,:), &
@@ -1930,7 +1996,8 @@ CONTAINS
     INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
     REAL(KIND=DP) :: grads_coeff, nofturns
     REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im, ModelDepth
-    COMPLEX(KIND=dp) :: i_multiplier
+    COMPLEX(KIND=dp) :: i_multiplier, Bx, By, Jz, LorentzForceDensX, &
+                        LorentzForceDensY
     REAL(KIND=dp) :: ValueNorm
 
     INTEGER :: NofComponents=0, bid
@@ -1942,6 +2009,10 @@ CONTAINS
 
     REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
 
+    LOGICAL :: LaminateModelPowerCompute=.FALSE., InPlaneProximity=.FALSE.
+    REAL(KIND=dp) :: LaminatePowerDensity, BMagnAtIP, Fsk, Lambda, LaminateThickness, &
+                     mu0=4d-7*PI, skindepth
+    
     SAVE Nodes
 
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
@@ -2005,6 +2076,18 @@ CONTAINS
       CirCompCurrent = 0.0_dp
     END IF
 
+    IF (LorentzForceCompute) THEN
+      NofComponents = SIZE(Model % Components)
+      ALLOCATE(BodyLorentzForcesRe(2, Model % NumberOfBodies))
+      ALLOCATE(BodyLorentzForcesIm(2, Model % NumberOfBodies))
+      ALLOCATE(ComponentLorenzForcesRe(2, NofComponents))
+      ALLOCATE(ComponentLorenzForcesIm(2, NofComponents))
+      BodyLorentzForcesRe = 0.0_dp
+      BodyLorentzForcesIm = 0.0_dp
+      ComponentLorenzForcesRe = 0.0_dp
+      ComponentLorenzForcesIm = 0.0_dp
+    END IF
+
     IF ( AverageBCompute ) THEN
       NofComponents = SIZE(Model % Components)
       ALLOCATE( BodyAvBre(2,Model % NumberOfBodies), &
@@ -2049,6 +2132,8 @@ CONTAINS
       CoilType = ''
       CompParams => GetComponentParams( Element )
       StrandedHomogenization = .FALSE.
+      InPlaneProximity = .FALSE.
+      LaminateModelPowerCompute = .FALSE.
       IF (ASSOCIATED(CompParams)) THEN    
         CoilType = GetString(CompParams, 'Coil Type', Found)
         
@@ -2118,6 +2203,11 @@ CONTAINS
  
           VvarDofs = GetInteger (CompParams, 'Circuit Voltage Variable dofs', Found)
           IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
+          InPlaneProximity = GetLogical(CompParams, 'Foil In Plane Proximity', Found)
+          IF (InPlaneProximity) THEN
+             LaminateThickness = coilthickness/nofturns
+             LaminateModelPowerCompute = .TRUE.
+          END IF
  
         CASE DEFAULT
           CALL Fatal ('BSolver', 'Non existent Coil Type Chosen!')
@@ -2162,12 +2252,14 @@ CONTAINS
         IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
       END IF
 
+      IF (LorentzForceCompute) BodyId = GetBody()
+
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
         
         Weight = IntegStuff % s(t) * detJ
-        grads_coeff = 1._dp/GetCircuitModelDepth()
+        grads_coeff = -1._dp/GetCircuitModelDepth()
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:n) * Nodes % x(1:n) )
           Weight = Weight * x
@@ -2255,12 +2347,48 @@ CONTAINS
           imag_value = CondAtIp * (PotAtIp(1) + im * PotAtIp(2))
           BAtIp(7) = REAL(imag_value)
           BAtIp(8) = AIMAG(imag_value)
-
+          imag_value = CMPLX(BatIp(1), BatIp(3), KIND=dp)
+          imag_value2 = CMPLX(BatIp(2), BatIp(4), KIND=dp)
+          BMagnAtIP = SQRT(ABS(imag_value**2._dp) + ABS(imag_value2**2._dp))
         END IF
         
+        IF (LorentzForceCompute) THEN
+          BodyId = GetBody()
+          ! Let's compute the JxB for all the bodies and 
+          ! then we sum from these for the components which are outputed.
+
+          Bx = CMPLX(BatIp(1), BatIp(3), KIND=dp)
+          By = CMPLX(BatIp(2), BatIp(4), KIND=dp)
+          Jz = CMPLX(BatIp(7), BatIp(8), KIND=dp)
+
+          LorentzForceDensX = ModelDepth * Weight * By / Jz * ABS(Jz)**2._dp
+          LorentzForceDensY = -ModelDepth * Weight * Bx / Jz * ABS(Jz)**2._dp
+          BodyLorentzForcesRe(1, BodyId) = BodyLorentzForcesRe(1, BodyId) + &
+            REAL(LorentzForceDensX)
+          BodyLorentzForcesRe(2, BodyId) = BodyLorentzForcesRe(2, BodyId) + &
+            REAL(LorentzForceDensY) 
+          BodyLorentzForcesIm(1, BodyId) = BodyLorentzForcesIm(1, BodyId) + &
+            AIMAG(LorentzForceDensX)
+          BodyLorentzForcesIm(2, BodyId) = BodyLorentzForcesIm(2, BodyId) + &
+            AIMAG(LorentzForceDensY) 
+        END IF
+
+        IF (LaminateModelPowerCompute) THEN
+          ! This assumes linear reluctivity, and real conductivity
+          skindepth = sqrt(2._dp/(omega * REAL(CondAtIp) * mu0))
+          Lambda = LaminateThickness/skindepth
+          Fsk = 3/Lambda * (SINH(Lambda) - SIN(Lambda))/(COSH(Lambda)-COS(Lambda))
+          ! This is in W/m**3
+          LaminatePowerDensity = 1._dp/24._dp * REAL(CondAtIp) * &
+                (LaminateThickness * Omega * BMagnAtIP)**2._dp * Fsk
+          TotalHeating = TotalHeating + Weight * ModelDepth * LaminatePowerDensity
+        END IF
+
         IF( LossEstimation ) THEN
           IF ( EddyLoss ) THEN
             BodyLoss(BodyId) = BodyLoss(BodyId) + ModelDepth * Weight * BAtIp(6)
+            IF (LaminateModelPowerCompute) & 
+            BodyLoss(BodyId) = BodyLoss(BodyId) + ModelDepth * Weight * LaminatePowerDensity
           ELSE
             DO i=1,2
               ValAtIP = SUM( BAtIP(2*i-1:2*i) ** 2 )
@@ -2278,30 +2406,18 @@ CONTAINS
           MuAtIp = SUM( Basis(1:n) * mu(1:n) )
 
           IF ( ABS(CondAtIp) > TINY(Weight) ) THEN
-            cmplx_power = cmplx_power + ModelDepth * Weight * imag_value**2._dp / CondAtIp 
+            cmplx_power = cmplx_power + ModelDepth * Weight * ABS(imag_value)**2._dp / CondAtIp 
           END IF
 
           imag_value = CMPLX(BatIp(1), BatIp(3), KIND=dp)
           imag_value2 = CMPLX(BatIp(2), BatIp(4), KIND=dp)
-          cmplx_power = cmplx_power + im * ModelDepth * Weight * Omega/MuAtIp * (imag_value**2._dp+imag_value2**2._dp)
+          cmplx_power = cmplx_power + im * ModelDepth * Weight * Omega/MuAtIp * (ABS(imag_value)**2._dp+ABS(imag_value2)**2._dp)
+
+          IF (LaminateModelPowerCompute) cmplx_power = cmplx_power + ModelDepth * Weight * LaminatePowerDensity
 
           BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) +  REAL(cmplx_power)
           BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + AIMAG(cmplx_power)
-        END IF
-
-        IF (BodyVolumesCompute) THEN
-          BodyVolumes(BodyId) = BodyVolumes(BodyId) + Weight * ModelDepth
-        END IF
-
-        IF (AverageBCompute) THEN
-          IF (BodyAverageBCompute(BodyId)) THEN
-            BodyAvBre(1,BodyId) = BodyAvBre(1,BodyId) + Weight * BAtIp(1)
-            BodyAvBre(2,BodyId) = BodyAvBre(2,BodyId) + Weight * BAtIp(2)
-            IF (Fluxdofs==4) THEN
-              BodyAvBim(1,BodyId) = BodyAvBim(1,BodyId) + Weight * BAtIp(3)
-              BodyAvBim(2,BodyId) = BodyAvBim(2,BodyId) + Weight * BAtIp(4)
-            END IF
-          END IF
+ 
         END IF
 
         IF (BodyICompute) THEN
@@ -2401,6 +2517,63 @@ CONTAINS
       DEALLOCATE( BodyLoss )
     END IF
 
+    IF (LorentzForceCompute) THEN
+       DO j=1,Model % NumberOfBodies
+         DO i = 1, 2
+           BodyLorentzForcesRe(i,j) = ParallelReduction(BodyLorentzForcesRe(i,j))
+           BodyLorentzForcesIm(i,j) = ParallelReduction(BodyLorentzForcesIm(i,j))
+         END DO
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesRe(1, j)
+         WRITE (bodyNumber, "(I0)") j
+         CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 re in Body '&
+              //TRIM(bodyNumber)//':', BodyLorentzForcesRe(1,j) )
+         CALL Info('Lorentz Force 1 re', Message, Level=6 )
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesRe(2, j)
+         CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 re in Body '&
+              //TRIM(bodyNumber)//':', BodyLorentzForcesRe(2,j) )
+         CALL Info('Lorentz Force 2 re', Message, Level=6 )
+
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesIm(1, j)
+         CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 im in Body '&
+              //TRIM(bodyNumber)//':', BodyLorentzForcesIm(1,j) )
+         CALL Info('Lorentz Force 1 im', Message, Level=6 )
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesIm(2, j)
+         CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 im in Body '&
+              //TRIM(bodyNumber)//':', BodyLorentzForcesIm(2,j) )
+         CALL Info('Lorentz Force 2 im', Message, Level=6 )
+       END DO
+
+       DO j = 1, NofComponents
+         BodyIds => GetComponentBodyIds(j) 
+
+         IF (ASSOCIATED(BodyIds)) THEN
+           DO i = 1, 2
+             DO k = 1, SIZE(BodyIds)
+               bid = BodyIds(k)
+               ComponentLorenzForcesRe(i,j) = ComponentLorenzForcesRe(i,j) &
+                 + BodyLorentzForcesRe(i,bid)
+               ComponentLorenzForcesIm(i,j) = ComponentLorenzForcesIm(i,j) &
+                 + BodyLorentzForcesIm(i,bid)
+             END DO
+           END DO
+  
+           CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 re & 
+                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesRe(1,j) )
+                         
+           CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 re & 
+                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesRe(2,j) )
+
+           CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 im & 
+                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesIm(1,j) )
+                         
+           CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 im & 
+                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesIm(2,j) )
+
+         END IF
+       END DO
+
+    END IF
+
     IF (ComplexPowerCompute) THEN
        DO j=1,Model % NumberOfBodies
          DO i = 1, 2
@@ -2429,10 +2602,11 @@ CONTAINS
              END DO
            END DO
   
-           CALL ListAddConstReal( Model % Simulation,'res: p_component(' &
-                         //TRIM(i2s(j))//') re ', CirCompComplexPower(1,j) )
-           CALL ListAddConstReal( Model % Simulation,'res: p_component(' &
-                         //TRIM(i2s(j))//') im ', CirCompComplexPower(2,j) )
+           CALL ListAddConstReal( Model % Simulation,'res: Power re & 
+                 in Component '//TRIM(i2s(j)), CirCompComplexPower(1,j) )
+                         
+           CALL ListAddConstReal( Model % Simulation,'res: Power im & 
+                 in Component '//TRIM(i2s(j)), CirCompComplexPower(2,j) )
          END IF
        END DO
     END IF
@@ -2601,6 +2775,12 @@ CONTAINS
                                             BodyProxNu       ,  & 
                                             CirCompSkinCond,  & 
                                             CirCompProxNu      )
+    IF (LorentzForceCompute)        DEALLOCATE(BodyLorentzForcesRe, &
+                                               BodyLorentzForcesIm, &
+                                               ComponentLorenzForcesRe, &
+                                               ComponentLorenzForcesIm)
+      
+
 
     DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond, sigma_33, sigmaim_33 )
 
@@ -2624,7 +2804,7 @@ CONTAINS
                          ComplexPower(2), &
                          KIND=dp)
       I = CMPLX(Current(1), Current(2))
-      imag_value = imag_value*Volume/I**2._dp
+      imag_value = imag_value*Volume/ABS(I)**2._dp
       imag_value2 = 1._dp/imag_value
       SkinCond(1) = REAL(imag_value2) 
       SkinCond(2) = AIMAG(imag_value2) 
@@ -2641,7 +2821,7 @@ CONTAINS
       imag_value = CMPLX(ComplexPower(1), &
                          ComplexPower(2), &
                          KIND=dp)
-      imag_value = imag_value / im / Volume / Omega / (Bav(1)**2._dp+Bav(2)**2._dp)
+      imag_value = imag_value / im / Volume / Omega / (ABS(Bav(1))**2._dp+ABS(Bav(2))**2._dp)
 
       ProxNu(1) = REAL(imag_value) 
       ProxNu(2) = AIMAG(imag_value) 

@@ -35,7 +35,7 @@ Header
 End
  
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -317,5 +317,5 @@ Boundary Condition 8
 End 
 
 Solver 2 :: Reference Norm = 0.47008150E-01
-Solver 3 :: Reference Norm = 0.34068862
+Solver 3 :: Reference Norm = 3.40688620E-01
 Solver 6 :: Reference Norm = 0.7831444436

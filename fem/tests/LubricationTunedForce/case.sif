@@ -7,7 +7,7 @@ End
 
 Simulation
 ! to increase verbosity increase the value
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian 
   Simulation Type = scanning
 
@@ -179,9 +179,7 @@ End
 
 
 Solver 3 :: Reference Norm = Real 3.71242647492795591E-002
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=3.71242647492795591E-002\n");
 
 
 

@@ -509,11 +509,11 @@ INCLUDE "mpif.h"
 !        
       D = 0.0d0
       IF ( A % Symmetric ) THEN
-         CALL pDSEUPD ( MPI_COMM_WORLD, .TRUE., 'A', Choose, D, V, PN, SigmaR,  &
+         CALL pDSEUPD ( ELMER_COMM_WORLD, .TRUE., 'A', Choose, D, V, PN, SigmaR,  &
             BMAT, PN, Which, NEIG, TOL, RESID, NCV, V, PN, &
             IPARAM, IPNTR, WORKD, WORKL, lWORKL, IERR )
       ELSE
-         CALL pDNEUPD ( MPI_COMM_WORLD, .TRUE., 'A', Choose, D, D(1,2), &
+         CALL pDNEUPD ( ELMER_COMM_WORLD, .TRUE., 'A', Choose, D, D(1,2), &
             V, PN, SigmaR, SigmaI, WORKEV, BMAT, PN, &
             Which, NEIG, TOL, RESID, NCV, V, PN, &
             IPARAM, IPNTR, WORKD, WORKL, lWORKL, IERR )

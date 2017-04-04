@@ -21,7 +21,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 10
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -342,7 +342,5 @@ End
  
 
 Solver 2 :: Reference Norm = Real 0.41206705E-02
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.41206705E-02\n");
 

@@ -73,6 +73,7 @@ MODULE IterSolve
    INTEGER, PARAMETER, PRIVATE :: ITER_RICHARDSON   =           391
    INTEGER, PARAMETER, PRIVATE :: ITER_BICGSTABL    =           400
    INTEGER, PARAMETER, PRIVATE :: ITER_GCR          =           410
+   INTEGER, PARAMETER, PRIVATE :: ITER_IDRS         =           420
 
    !/*
    ! * Preconditioning type code
@@ -107,6 +108,9 @@ CONTAINS
 #endif
 #ifndef HUTI_GCR_RESTART
 #define HUTI_GCR_RESTART ipar(17)
+#endif
+#ifndef HUTI_IDRS_S
+#define HUTI_IDRS_S ipar(18)
 #endif
 
 !------------------------------------------------------------------------------
@@ -171,7 +175,7 @@ CONTAINS
     INTEGER :: i,j,k,N,ipar(HUTI_IPAR_DFLTSIZE),wsize,istat,IterType,PCondType,ILUn,Blocks
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
-    LOGICAL :: Condition,GotIt,AbortNotConverged, Refactorize,Found,GotDiagFactor
+    LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
 
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
@@ -277,6 +281,8 @@ CONTAINS
       IterType = ITER_richardson
     CASE('gcr')
       IterType = ITER_GCR
+    CASE('idrs')
+      IterType = ITER_IDRS
     CASE DEFAULT
       IterType = ITER_BiCGStab
     END SELECT
@@ -337,6 +343,12 @@ CONTAINS
       HUTI_BICGSTABL_L = ListGetInteger( Params,'BiCGstabl polynomial degree',&
           GotIt,minv=2)
       IF(.NOT. GotIt) HUTI_BICGSTABL_L = 2
+      Internal = .TRUE.
+
+    CASE (ITER_IDRS)
+      HUTI_WRKDIM = 1
+      HUTI_IDRS_S = ListGetInteger( Params,'IDRS parameter',GotIt,minv=1)
+      IF(.NOT. GotIt) HUTI_IDRS_S = 4
       Internal = .TRUE.
       
     END SELECT
@@ -408,9 +420,30 @@ CONTAINS
         'Linear System Convergence Tolerance' )
     
     HUTI_MAXTOLERANCE = ListGetCReal( Params, &
-        'Linear System Divergence Tolerance', GotIt)
-    IF(.NOT. GotIt) HUTI_MAXTOLERANCE = HUGE(HUTI_MAXTOLERANCE) 
+        'Linear System Divergence Limit', GotIt)
+    IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20
     
+    IF( ListGetLogical( Params,'Linear System Robust',GotIt) ) THEN
+      HUTI_ROBUST = 1
+      HUTI_ROBUST_TOLERANCE = ListGetCReal( Params,'Linear System Robust Tolerance',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_TOLERANCE = HUTI_TOLERANCE**(2.0/3.0)
+      HUTI_ROBUST_MAXTOLERANCE = ListGetCReal( Params,'Linear System Robust Limit',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_MAXTOLERANCE = SQRT( HUTI_TOLERANCE )      
+      HUTI_ROBUST_STEPSIZE = ListGetCReal( Params,'Linear System Robust Margin',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_STEPSIZE = 1.1_dp
+      HUTI_ROBUST_MAXBADIT = ListGetInteger( Params,'Linear System Robust Max Iterations',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_MAXBADIT = HUTI_MAXIT / 2
+    ELSE
+      HUTI_ROBUST = 0
+    END IF
+
+
+    IF( ListGetLogical( Params,'IDRS Smoothing',GotIt) ) THEN
+      HUTI_SMOOTHING = 1
+    ELSE
+      HUTI_SMOOTHING = 0
+    END IF
+      
     
 !------------------------------------------------------------------------------
 
@@ -426,12 +459,15 @@ CONTAINS
       ILUn = -1
       IF ( str == 'none' ) THEN
         PCondType = PRECOND_NONE
+
       ELSE IF ( str == 'diagonal' ) THEN
         PCondType = PRECOND_DIAGONAL
+
       ELSE IF ( str == 'ilut' ) THEN
         ILUT_TOL = ListGetCReal( Params, &
             'Linear System ILUT Tolerance',GotIt )
         PCondType = PRECOND_ILUT
+
       ELSE IF ( SEQL(str, 'ilu') ) THEN
         ILUn = NINT(ListGetCReal( Params, &
             'Linear System ILU Order', gotit ))
@@ -439,6 +475,7 @@ CONTAINS
             ILUn = ICHAR(str(4:4)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         PCondType = PRECOND_ILUn
+
       ELSE IF ( SEQL(str, 'bilu') ) THEN
         ILUn = ICHAR(str(5:5)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
@@ -448,14 +485,18 @@ CONTAINS
         ELSE
           PCondType = PRECOND_BILUn
         END IF
+
       ELSE IF ( str == 'multigrid' ) THEN
         PCondType = PRECOND_MG
+
       ELSE IF ( str == 'vanka' ) THEN
         PCondType = PRECOND_VANKA
+
       ELSE IF ( str == 'circuit' ) THEN
         ILUn = ListGetInteger( Params, 'Linear System ILU Order', gotit )
         IF(.NOT.Gotit ) ILUn=-1
         PCondType = PRECOND_Circuit
+
       ELSE
         PCondType = PRECOND_NONE
         CALL Warn( 'IterSolve', 'Unknown preconditioner type, feature disabled.' )
@@ -672,12 +713,6 @@ CONTAINS
     A % SolveCount = A % SolveCount + 1
 !------------------------------------------------------------------------------
 
-    AbortNotConverged = ListGetLogical( Params, &
-        'Linear System Abort Not Converged', GotIt )
-    IF ( .NOT. GotIt ) AbortNotConverged = .TRUE.
-
-!------------------------------------------------------------------------------
-    
     IF ( PRESENT(MatvecF) ) THEN
       mvProc = MatvecF
     ELSE
@@ -725,7 +760,7 @@ CONTAINS
         ELSE
           pcondProc = AddrFunc( CRS_ComplexLUPrecondition )
         END IF
-        
+
       CASE (PRECOND_MG)
         pcondProc = AddrFunc( MultiGridPrec )
         
@@ -748,7 +783,7 @@ CONTAINS
     IF ( .NOT. A % COMPLEX ) THEN
       SELECT CASE ( IterType )
 
-       ! Solvers from HUTiter libdary 
+       ! Solvers from HUTiter library 
        !-------------------------------------------------------       
       CASE (ITER_BiCGStab)
         iterProc = AddrFunc( HUTI_D_BICGSTAB )
@@ -775,6 +810,8 @@ CONTAINS
         iterProc = AddrFunc( itermethod_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_bicgstabl )
+      CASE (ITER_IDRS)
+        iterProc = AddrFunc( itermethod_idrs )
         
       END SELECT
       
@@ -788,7 +825,7 @@ CONTAINS
       HUTI_NDIM = HUTI_NDIM / 2
       SELECT CASE ( IterType )
 
-        ! Solvers from HUTiter libdary 
+        ! Solvers from HUTiter library 
         !-------------------------------------------------------       
       CASE (ITER_BiCGStab)
         iterProc = AddrFunc( HUTI_Z_BICGSTAB )
@@ -809,6 +846,9 @@ CONTAINS
         iterProc = AddrFunc( itermethod_z_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_z_bicgstabl )
+      CASE (ITER_IDRS)
+        iterProc = AddrFunc( itermethod_z_idrs )
+
       END SELECT
       
       IF( Internal ) THEN
@@ -872,11 +912,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     IF ( HUTI_INFO /= HUTI_CONVERGENCE .AND. ParEnv % myPE==0 ) THEN
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
-        CALL Fatal( 'IterSolve', 'System diverged over tolerance.' )
-      ELSE IF ( AbortNotConverged ) THEN
-        CALL Fatal( 'IterSolve', 'Failed convergence tolerances.' )
+        CALL NumericalError( 'IterSolve', 'System diverged over tolerance.')
       ELSE
-        CALL Error( 'IterSolve', 'Failed convergence tolerances.' )
+        CALL NumericalError( 'IterSolve', 'Failed convergence tolerances.')
       END IF
     END IF
 !------------------------------------------------------------------------------
@@ -893,6 +931,55 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE IterSolver
 !------------------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+!> This routine may be used to either inform user or terminate following
+!> convergence/numerical issues, based on a flag in the SIF. Default
+!> behaviour terminates execution.
+!-----------------------------------------------------------------------
+   SUBROUTINE NumericalError( Caller, String, Fatal )
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*) :: Caller, String
+     LOGICAL, OPTIONAL :: Fatal
+!-----------------------------------------------------------------------
+     LOGICAL :: GlobalNumFatal, SolverNumFatal, IsFatal, Found
+!-----------------------------------------------------------------------
+
+     !Fatality logic:
+     ! 1) Respect calling routine's wishes if present
+     ! 2) Respect solver specific option if present
+     ! 3) Respect global abort flag if present
+     ! 4) Otherwise fatal (backwards compatibility)
+
+     IF(PRESENT(Fatal)) THEN
+       IsFatal = Fatal
+     ELSE
+       SolverNumFatal = ListGetLogical( CurrentModel % Solver % Values, &
+            'Linear System Abort Not Converged', Found)
+       IF(Found) THEN
+         IsFatal = SolverNumFatal
+       ELSE
+         GlobalNumFatal = ListGetLogical(CurrentModel % Simulation,&
+            'Global Abort Not Converged',Found)
+         IF(Found) THEN
+           IsFatal = GlobalNumFatal
+         ELSE
+           IsFatal = .TRUE.
+         END IF
+       END IF
+     END IF
+
+     IF ( OutputLevelMask(0) ) THEN
+       WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+            'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
+       CALL FLUSH(6)
+     END IF
+
+     IF(IsFatal) STOP
+
+!-----------------------------------------------------------------------
+   END SUBROUTINE NumericalError
+!-----------------------------------------------------------------------
 
 END MODULE IterSolve
 

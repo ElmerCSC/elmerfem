@@ -442,12 +442,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        w = [0._dp, 0._dp, 1._dp]
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
-        w = [0._dp, 0._dp, 1._dp]
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
@@ -472,7 +472,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           ! ( d/dt a,w )        
 
           IF ( TransientSimulation ) THEN 
-            IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt
+            IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt*w(3)
             IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
  !          localL = value
 !          Comp % Inductance = Comp % Inductance + localL
@@ -485,7 +485,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           ! (J, rot a'), where
           ! J = w*I, thus I*(w, rot a'):
           ! ----------------------------         
-          IF (dim == 2) value = -Comp % N_j*IP % s(t)*detJ*Basis(j)
+          IF (dim == 2) value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
           IF (dim == 3) value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
           CALL AddToMatrixElement(CM,PS(Indexes(q)), IvarId, value)
 
@@ -565,7 +565,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
       
-      grads_coeff = 1._dp
+      grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
@@ -696,7 +696,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
 
-      grads_coeff = 1._dp
+      grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
@@ -1308,12 +1308,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        w = [0._dp, 0._dp, 1._dp]
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
-        w = [0._dp, 0._dp, 1._dp]
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
@@ -1340,7 +1340,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
           IF (dim == 2) cmplx_value = im * Omega * Comp % N_j &
-                  * IP % s(t)*detJ*Basis(j)*circ_eq_coeff
+                  * IP % s(t)*detJ*Basis(j)*circ_eq_coeff*w(3)
           IF (dim == 3) cmplx_value = im * Omega * Comp % N_j &
                   * IP % s(t)*detJ*SUM(WBasis(j,:)*w)
 
@@ -1350,7 +1350,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(q))), &
                  REAL(cmplx_value), AIMAG(cmplx_value))
           
-          IF (dim == 2) cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(j)
+          IF (dim == 2) cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
           IF (dim == 3) cmplx_value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
           IF (i_multiplier /= 0._dp) cmplx_value = i_multiplier*cmplx_value
           
@@ -1429,7 +1429,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
 
-      grads_coeff = 1._dp
+      grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
@@ -1552,7 +1552,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
 
-      grads_coeff = 1._dp
+      grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
@@ -1767,8 +1767,9 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    
    TYPE(Solver_t), POINTER :: ASolver
    TYPE(Component_t), POINTER :: Comp
+   TYPE(ValueList_t), POINTER :: CompParams
 
-   CHARACTER(LEN=MAX_NAME_LEN) :: dofnumber
+   CHARACTER(LEN=MAX_NAME_LEN) :: dofnumber, CompName 
    INTEGER :: i,p,jj,j
    TYPE(CircuitVariable_t), POINTER :: CVar
 
@@ -1776,11 +1777,17 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
    TYPE(Circuit_t), POINTER :: Circuits(:)
 
+   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+   COMPLEX(KIND=dp) :: Current 
+   REAL(KIND=dp) :: CompRealPower, p_dc_component
+
+   LOGICAL :: Found
+
    Circuit_tot_n => Model%Circuit_tot_n
    n_Circuits => Model%n_Circuits
    CM => Model%CircuitMatrix
    Circuits => Model%Circuits
-   
+
    ! Look for the solver we attach the circuit equations to:
    ! -------------------------------------------------------
    ASolver => CurrentModel % Asolver
@@ -1812,48 +1819,107 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    ! -----------------------------------------------------
 
    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
-   
+
+   CALL Info('CircuitsOutput', 'Writing Circuit Results', Level=3) 
    DO p=1,n_Circuits
+     CALL Info('CircuitsOutput', 'Writing Circuit Variables for &
+       Circuit '//TRIM(i2s(p)), Level=3) 
+     CALL Info('CircuitsOutput', 'There are '//TRIM(i2s(Circuits(p)%n))//&
+       ' Circuit Variables', Level=3)
      DO i=1,Circuits(p) % n
        Cvar => Circuits(p) % CircuitVariables(i)
        
        IF (Circuits(p) % Harmonic) THEN 
-         CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' re', ip(Cvar % ValueId))
-         CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId))
+         CALL SimListAddAndOutputConstReal(&
+           TRIM(Circuits(p) % names(i))//' re', ip(Cvar % ValueId), Level=10)
+         CALL SimListAddAndOutputConstReal(&
+           TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId), Level=10)
 
          IF (Cvar % pdofs /= 0 ) THEN
            DO jj = 1, Cvar % pdofs
              write (dofnumber, "(I2)") jj
-             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                    //'re dof '//TRIM(dofnumber), ip(Cvar % ValueId + ReIndex(jj)))
-             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                    //'im dof '//TRIM(dofnumber), ip(Cvar % ValueId + ImIndex(jj)))
+             CALL SimListAddAndOutputConstReal(&
+               TRIM(Circuits(p) % names(i))&
+               //'re dof '//TRIM(dofnumber), ip(Cvar % ValueId + ReIndex(jj)), Level=10)
+             CALL SimListAddAndOutputConstReal(&
+               TRIM(Circuits(p) % names(i))&
+               //'im dof '//TRIM(dofnumber), ip(Cvar % ValueId + ImIndex(jj)), Level=10)
            END DO
          END IF
        ELSE
-         CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i)), ip(Cvar % ValueId))
+         CALL SimListAddAndOutputConstReal(&
+           TRIM(Circuits(p) % names(i)), ip(Cvar % ValueId), Level=10)
          
          IF (Cvar % pdofs /= 0 ) THEN
            DO jj = 1, Cvar % pdofs
              write (dofnumber, "(I2)") jj
-             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                    //'dof '//TRIM(dofnumber), ip(Cvar % ValueId + jj))
+             CALL SimListAddAndOutputConstReal(&
+               TRIM(Circuits(p) % names(i))&
+               //'dof '//TRIM(dofnumber), ip(Cvar % ValueId + jj), Level=10)
            END DO
          END IF
        END IF
 
-       DO j = 1, SIZE(Circuits(p) % Components)
+     END DO
+
+     CALL Info('CircuitsOutput', 'Writing Component Variables for &
+       Circuit '//TRIM(i2s(p)), Level=3) 
+     DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
              Comp % Resistance = 1._dp / Comp % Conductance
-         CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
-           TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
-!         CALL ListAddConstReal( GetSimulation(), 'res: inductance('//&
-!           TRIM(i2s(Comp % ComponentId))//'):', Comp % Inductance)
-       END DO  
 
-     END DO
+         CALL SimListAddAndOutputConstReal('r_component('//&
+           TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance, Level=8) 
+
+         Current = 0._dp + im * 0._dp
+         Current = ip(Comp % ivar % ValueId) 
+         IF ( Circuits(p) % Harmonic ) Current = Current + im * ip(Comp % ivar % ImValueId) 
+              
+         CompParams => CurrentModel % Components (Comp % ComponentId) % Values
+         IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('CircuitsOutput', &
+           'Component parameters not found!')
+
+         p_dc_component = ABS(Current)**2._dp * Comp % Resistance
+         CALL SimListAddAndOutputConstReal('p_dc_component('//TRIM(i2s(Comp % ComponentId))//')',&
+           p_dc_component, Level=8) 
+
+         CompRealPower = GetConstReal( Model % Simulation, 'res: Power re & 
+                 in Component '//TRIM(i2s(Comp % ComponentId)), Found)
+         IF (Found .AND. ABS(Current) > TINY(CompRealPower)) THEN
+           CALL SimListAddAndOutputConstReal('p_ac_component('//&
+             TRIM(i2s(Comp % ComponentId))//')', CompRealPower, Level=8)
+           CALL SimListAddAndOutputConstReal('r_ac_component('//&
+             TRIM(i2s(Comp % ComponentId))//')', CompRealPower/ABS(Current)**2._dp, Level=8)
+           CALL SimListAddAndOutputConstReal('AC to DC of component '&
+             //TRIM(i2s(Comp % ComponentId)), CompRealPower/p_dc_component, Level=8)
+         END IF
+          
+       END DO  
    END DO
+
+CONTAINS
+
+!-------------------------------------------------------------------
+  SUBROUTINE SimListAddAndOutputConstReal(VariableName, VariableValue, Level)
+!-------------------------------------------------------------------
+  IMPLICIT NONE
+  CHARACTER(LEN=MAX_NAME_LEN) :: VarVal
+  CHARACTER(LEN=*) :: VariableName
+  REAL(KIND=dp) :: VariableValue
+  INTEGER, OPTIONAL :: Level 
+  INTEGER :: LevelVal = 3
+
+  IF (PRESENT(Level)) LevelVal = Level
+
+  WRITE(VarVal,'(ES15.4)') VariableValue
+  CALL Info('CircuitsOutput', TRIM(VariableName)//' '//&
+    TRIM(VarVal), Level=LevelVal)
+
+  CALL ListAddConstReal(GetSimulation(),'res: '//TRIM(VariableName), VariableValue)
+!-------------------------------------------------------------------
+  END SUBROUTINE SimListAddAndOutputConstReal
+!-------------------------------------------------------------------
 
 
 END SUBROUTINE CircuitsOutput

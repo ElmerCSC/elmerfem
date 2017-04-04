@@ -52,6 +52,7 @@ MODULE SParIterSolve
   USE SParIterGlobals
   USE SParIterComm
   USE SParIterPrecond
+  USE IterSolve, ONLY : NumericalError
 
   USE CRSMatrix
 
@@ -1237,7 +1238,7 @@ END SUBROUTINE ZeroSplittedMatrix
          IF ( ParEnv % Active(prev_id+1) ) EXIT
        END DO
        CALL MPI_RECV( gind, 1, MPI_INTEGER, &
-           prev_id, 801, MPI_COMM_WORLD, status, ierr )
+           prev_id, 801, ELMER_COMM_WORLD, status, ierr )
      END IF
 
      ! give a number to dofs owned by us:
@@ -1261,7 +1262,7 @@ END SUBROUTINE ZeroSplittedMatrix
          IF ( ParEnv % Active(next_id+1) ) EXIT
        END DO
        CALL MPI_BSEND( gind, 1, MPI_INTEGER, &
-          next_id, 801, MPI_COMM_WORLD, ierr )
+          next_id, 801, ELMER_COMM_WORLD, ierr )
      END IF
 
      ! the rest is to communicate the numbering of shared dofs
@@ -1326,10 +1327,10 @@ END SUBROUTINE ZeroSplittedMatrix
          active_neighbours = active_neighbours+1
          k = neigh(i)
          ssz = sz(k)
-         CALL MPI_BSEND( ssz,1,MPI_INTEGER,i-1,802,MPI_COMM_WORLD,ierr )
+         CALL MPI_BSEND( ssz,1,MPI_INTEGER,i-1,802,ELMER_COMM_WORLD,ierr )
          IF ( ssz>0 ) THEN
-           CALL MPI_BSEND( buf_a(1:ssz,k),ssz,MPI_INTEGER,i-1,803,MPI_COMM_WORLD,ierr )
-           CALL MPI_BSEND( buf_g(1:ssz,k),ssz,MPI_INTEGER,i-1,804,MPI_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf_a(1:ssz,k),ssz,MPI_INTEGER,i-1,803,ELMER_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf_g(1:ssz,k),ssz,MPI_INTEGER,i-1,804,ELMER_COMM_WORLD,ierr )
          END IF
        END IF
      END DO 
@@ -1337,13 +1338,13 @@ END SUBROUTINE ZeroSplittedMatrix
      DEALLOCATE( buf_a, buf_g, neigh, sz )
 
      DO i=1,active_neighbours
-       CALL MPI_RECV( ssz,1,MPI_INTEGER,MPI_ANY_SOURCE,802,MPI_COMM_WORLD,status,ierr )
+       CALL MPI_RECV( ssz,1,MPI_INTEGER,MPI_ANY_SOURCE,802,ELMER_COMM_WORLD,status,ierr )
        IF ( ssz>0 ) THEN
          src = status(MPI_SOURCE)
          ALLOCATE( buf_aa(ssz), buf_gg(ssz) )
 
-         CALL MPI_RECV( buf_aa,ssz,MPI_INTEGER,src,803,MPI_COMM_WORLD,status,ierr )
-         CALL MPI_RECV( buf_gg,ssz,MPI_INTEGER,src,804,MPI_COMM_WORLD,status,ierr )
+         CALL MPI_RECV( buf_aa,ssz,MPI_INTEGER,src,803,ELMER_COMM_WORLD,status,ierr )
+         CALL MPI_RECV( buf_gg,ssz,MPI_INTEGER,src,804,ELMER_COMM_WORLD,status,ierr )
 
          DO j=1,ssz
            k = SearchIAItem( nob, g_nownbuf, buf_gg(j), i_nownbuf )
@@ -1880,13 +1881,8 @@ INTEGER::inside
         CALL Fatal('SParIterSolver',&
                'Linear system solve using Trilinos caused an error');
       ELSE IF (ierr>0) THEN
-        IF (ListGetLogical(Solver%Values,'Linear System Abort Not Converged',Found)) THEN
-          CALL Fatal('SParIterSolver', &
-                'Linear system solve using Trilinos issued a warning');
-        ELSE
-          CALL Error('SParIterSolver', &
-                'Linear system solve using Trilinos issued a warning');
-        END IF
+        CALL NumericalError('SParIterSolver',&
+             'Linear system solve using Trilinos issued a warning')
       END IF
       
       ALLOCATE( VecEPerNB( ParEnv % PEs ) )

@@ -8,7 +8,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Simulation Type = Steady
   Steady State Max Iterations = 1
@@ -34,7 +34,7 @@ Solver 1
   Equation = "MGDynamics"
   Variable = "P"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
-  Element = "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2"
+  Element = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2"
   Use Piola Transform = Logical True
   Quadratic Approximation = True
 
@@ -122,6 +122,4 @@ Boundary Condition 3
 End
 
 Solver 1 :: Reference Norm = Real 0.12595495E-01
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.12595495E-01\n" );

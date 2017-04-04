@@ -1933,11 +1933,11 @@ CONTAINS
       DO i=2,Partitions
         IF( i == Part + 1 ) THEN
           CALL MPI_SEND(ThisActive, 1, MPI_LOGICAL, &
-	       0, 1000, MPI_COMM_WORLD, ierr )
+	       0, 1000, ELMER_COMM_WORLD, ierr )
         END IF
         IF( Part == 0 ) THEN
           CALL MPI_RECV( ActivePartition(i), 1, MPI_LOGICAL, &
-	       i-1, 1000, MPI_COMM_WORLD, status, ierr )
+	       i-1, 1000, ELMER_COMM_WORLD, status, ierr )
         END IF
       END DO
     END IF

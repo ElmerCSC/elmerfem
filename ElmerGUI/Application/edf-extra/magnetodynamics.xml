@@ -30,6 +30,11 @@
 	  <Whatis> Give the relative permeability compared to vacuum. </Whatis>
 	</Parameter>
 	<Parameter Widget="Edit" >
+	  <Name> Relative Permittivity </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the relative permittivity compared to vacuum. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
 	  <Name> Electric Conductivity </Name>
 	  <Type> String </Type>
 	  <Whatis> Give the electric conductivity. </Whatis>
@@ -266,7 +271,32 @@
 	  <Type> Logical </Type>
 	  <Whatis> Compute the heating resulting from the induced currents.</Whatis>
 	</Parameter>
-    </Solver>
+	<Parameter Widget="CheckBox">
+	  <Name> Calculate Nodal Forces </Name>
+	  <Type> Logical </Type>
+	  <Whatis> Compute nodal forces to be used as loads in structural analysis.</Whatis>
+	</Parameter>
+
+	<Parameter Widget="Label" > <Name> Specify what kind of fields to compute  </Name> </Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Skip Elemental Fields </Name>
+	  <DefaultValue>False</DefaultValue>
+	  <Type> Logical </Type>
+	  <Whatis>Skip computation of elemental fields in postprocessing. Appropriate when there are no material discontinuities. Otherwise elemental fields are preferable over nodal ones.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Skip Nodal Fields </Name>
+	  <DefaultValue>True</DefaultValue>
+	  <Type> Logical </Type>
+	  <Whatis>Skip computation of nodal fields in postprocessing. This is set True when elemental fields are still computed.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Discontinuous Galerkin </Name>
+	  <Type> Logical </Type>
+	  <Whatis>Enforce continuity of solution already at the linear system level using Discontinuous Galerkin method. This is very expensive! Makes nodal fields to be computed elementwise.</Whatis>
+	</Parameter>
+
+      </Solver>
    </PDE>
 
 </edf>

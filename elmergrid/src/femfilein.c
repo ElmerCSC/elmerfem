@@ -38,7 +38,6 @@
 #include "nrutil.h"
 #include "common.h"
 #include "femdef.h"
-#include "femtools.h"
 #include "femtypes.h"
 #include "femknot.h"
 #include "femfilein.h"
@@ -3506,11 +3505,11 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     printf("Format chosen using the first line: %s",line);
   }
 
-  if(strstr(line,"$MeshFormat")) 
+  if(strstr(line,"$")) 
     errno = LoadGmshInput2(data,bound,filename,info);
   else {
     printf("*****************************************************\n");
-    printf("The $MeshFormat was not given, assuming Gmsh 1 format\n");
+    printf("The first line did not start with $, assuming Gmsh 1 format\n");
     printf("This version of Gmsh format is no longer supported\n");
     printf("Please use Gsmh 2 version for output\n");
     printf("*****************************************************\n");
@@ -5023,8 +5022,8 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 	next_int(&cp);              //3 internal elemnt type description
 	matind = next_int(&cp);     //4 number of the belonging region
 	dimplusone = next_int(&cp); //5 dimensiality 4-3D 3-2D
-  next_int(&cp);              //6 zero here always
-  next_int(&cp);              //7 internal elemnt type description
+	next_int(&cp);              //6 zero here always
+	next_int(&cp);              //7 internal elemnt type description
 	nonodes = next_int(&cp);    //8 number of nodes
 		
 	elmertype = FluxToElmerType3D( nonodes, dimplusone-1 );
@@ -5033,7 +5032,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 
 	Getrow(line,in,FALSE);
 	cp = line;
-  nodecnt = 0;
+	nodecnt = 0;
 	for(k=0;k<nonodes;k++) {
 
 	  if(nodecnt >= maxlinenodes) {

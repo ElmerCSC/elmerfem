@@ -26,6 +26,12 @@ SUBROUTINE mpi_comm_rank(comm, rank, ierr)
   ierr = 0
 END SUBROUTINE mpi_comm_rank
 
+SUBROUTINE mpi_comm_split(comm, color, key, newcomm, ierr)
+  INTEGER :: comm, color, key, newcomm, ierr
+  newcomm = comm
+  ierr = 0
+END SUBROUTINE mpi_comm_split
+
 SUBROUTINE mpi_allreduce
   RETURN
 END SUBROUTINE mpi_allreduce

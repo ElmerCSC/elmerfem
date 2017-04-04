@@ -9,7 +9,7 @@ Header
 End
 
 Simulation
-!  Max Output Level = 4
+!  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -146,7 +146,5 @@ Boundary Condition 3
 End
 
 Solver 1 :: Reference Norm = Real 51.067018
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=51.067018\n");
 

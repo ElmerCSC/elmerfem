@@ -60,6 +60,10 @@ SUBROUTINE StatCurrentSolver_Init( Model,Solver,dt,TransientSimulation)
     IF (ListGetLogical(Params,'Calculate Joule Heating',Found)) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Joule Heating' )
+
+    IF (ListGetLogical(Params,'Calculate Nodal Heating',Found)) &
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Nodal Joule Heating' )
     
     Calculate = ListGetLogical(Params,'Calculate Volume Current',Found)
     IF( Calculate ) THEN
@@ -99,7 +103,7 @@ END SUBROUTINE StatCurrentSolver_Init
 
      REAL (KIND=DP), POINTER :: ForceVector(:), Potential(:)
      REAL (KIND=DP), POINTER :: ElField(:), VolCurrent(:)
-     REAL (KIND=DP), POINTER :: Heating(:)
+     REAL (KIND=DP), POINTER :: Heating(:), NodalHeating(:)
      REAL (KIND=DP), POINTER :: EleC(:)
      REAL (KIND=DP), POINTER :: Cwrk(:,:,:)
      REAL (KIND=DP), ALLOCATABLE ::  Conductivity(:,:,:), &
@@ -120,7 +124,7 @@ END SUBROUTINE StatCurrentSolver_Init
  
      LOGICAL :: AllocationsDone = .FALSE., gotIt, FluxBC
      LOGICAL :: CalculateField = .FALSE., ConstantWeights
-     LOGICAL :: CalculateCurrent, CalculateHeating
+     LOGICAL :: CalculateCurrent, CalculateHeating, CalculateNodalHeating
      LOGICAL :: ControlPower, ControlCurrent, Control
 
      TYPE(ValueList_t), POINTER :: Params
@@ -225,6 +229,19 @@ END SUBROUTINE StatCurrentSolver_Init
          END IF
        END IF
 
+       CalculateNodalHeating = ListGetLogical( Params, &
+           'Calculate Nodal Heating', GotIt )
+       IF ( CalculateNodalHeating ) THEN
+         Var => VariableGet( Solver % Mesh % Variables,'Nodal Joule Heating')
+         IF( ASSOCIATED( Var) ) THEN
+           NodalHeating => Var % Values
+         ELSE
+           CALL Fatal('StatCurrentSolver','Nodal Joule Heating does not exist')
+         END IF
+       END IF
+
+
+       
        ConstantWeights = ListGetLogical( Params, &
            'Constant Weights', GotIt )
 
@@ -466,7 +483,8 @@ END SUBROUTINE StatCurrentSolver_Init
 !    Compute the Joule heating: H,tot = Integral (E . D)dV
 !------------------------------------------------------------------------------
        
-       IF ( Control .OR. CalculateCurrent .OR. CalculateHeating ) THEN 
+       IF ( Control .OR. CalculateCurrent .OR. CalculateHeating .OR. &
+           CalculateNodalHeating ) THEN 
          CALL GeneralCurrent( Model, Potential, PotentialPerm )
 
          WRITE( Message, * ) 'Total Heating Power   :', Heatingtot
@@ -510,11 +528,12 @@ END SUBROUTINE StatCurrentSolver_Init
          Potential = ControlScaling * Potential
 !         Solver % Variable % Norm = ControlScaling * Solver % Variable % Norm
 
-         IF ( CalculateHeating )  Heating = ControlScaling**2 * Heating
+         IF ( CalculateHeating .OR. CalculateNodalHeating)  &
+             Heating = ControlScaling**2 * Heating
          IF ( CalculateCurrent )  VolCurrent = ControlScaling * VolCurrent
        END IF
 
-       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+       IF( Solver % Variable % NonlinConverged > 0 ) EXIT
 
      END DO
 
@@ -529,6 +548,11 @@ END SUBROUTINE StatCurrentSolver_Init
     
     IF ( CalculateHeating ) THEN
       CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Joule Heating')
+    END IF
+
+    IF ( CalculateNodalHeating ) THEN
+      CALL InvalidateVariable( Model % Meshes, Solver % Mesh, &
+          'Nodal Joule Heating')
     END IF
     
 
@@ -554,7 +578,7 @@ END SUBROUTINE StatCurrentSolver_Init
     REAL(KIND=dp) :: Conductivity(3,3,Model % MaxElementNodes)
     REAL(KIND=dp) :: Basis(Model % MaxElementNodes)
     REAL(KIND=dp) :: dBasisdx(Model % MaxElementNodes,3)
-    REAL(KIND=DP) :: SqrtElementMetric, ECond, ElemVol
+    REAL(KIND=DP) :: SqrtElementMetric, ElemVol
     REAL(KIND=dp) :: ElementPot(Model % MaxElementNodes)
     REAL(KIND=dp) :: Current(3)
     REAL(KIND=dp) :: s, ug, vg, wg, Grad(3), EpsGrad(3)
@@ -577,7 +601,7 @@ END SUBROUTINE StatCurrentSolver_Init
 
     HeatingTot = 0.0d0
     VolTot = 0.0d0
-    IF ( CalculateHeating )  Heating = 0.0d0
+    IF ( CalculateHeating .OR. CalculateNodalHeating)  Heating = 0.0d0
     IF ( CalculateCurrent )  VolCurrent = 0.0d0
 
 !------------------------------------------------------------------------------
@@ -646,7 +670,6 @@ END SUBROUTINE StatCurrentSolver_Init
 
        HeatingDensity = 0.0d0
        Current = 0.0d0
-       ECond = 0.0d0
        ElemVol = 0.0d0
 
 
@@ -692,13 +715,12 @@ END SUBROUTINE StatCurrentSolver_Init
           HeatingTot = HeatingTot + &
                s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) )
 
-          IF( CalculateHeating .OR. CalculateCurrent ) THEN
+          IF( CalculateHeating .OR. CalculateCurrent .OR. CalculateNodalHeating ) THEN
             HeatingDensity = HeatingDensity + &
                 s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) ) 
             DO j = 1,DIM
               Current(j) = Current(j) - EpsGrad(j) * s
             END DO
-            ECond = ECond + SUM( Conductivity(1,1,1:n) * Basis(1:n) ) * s
             
             ElemVol = ElemVol + s
           END IF
@@ -713,51 +735,54 @@ END SUBROUTINE StatCurrentSolver_Init
          IF ( ConstantWeights ) THEN
            HeatingDensity = HeatingDensity / ElemVol
            Current(1:Dim) = Current(1:Dim) / ElemVol
-           ECond = Econd / ElemVol
            SumOfWeights( Reorder( NodeIndexes(1:n) ) ) = &
                SumOfWeights( Reorder( NodeIndexes(1:n) ) ) + 1
          ELSE
            SumOfWeights( Reorder( NodeIndexes(1:n) ) ) = &
                SumOfWeights( Reorder( NodeIndexes(1:n) ) ) + ElemVol
          END IF
-
-         IF ( CalculateHeating ) THEN
-           Heating( Reorder(NodeIndexes(1:n)) ) = &
-               Heating( Reorder(NodeIndexes(1:n)) ) + HeatingDensity
-         END IF
+       END IF
          
-         IF ( CalculateCurrent ) THEN
-           DO j=1,DIM 
-             VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) = &
-                 VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) + &
-                 Current(j)
-           END DO
-         END IF
+       IF ( CalculateHeating ) THEN
+         Heating( Reorder(NodeIndexes(1:n)) ) = &
+             Heating( Reorder(NodeIndexes(1:n)) ) + HeatingDensity
+       END IF
+       
+       IF ( CalculateNodalHeating ) THEN
+         NodalHeating( Reorder(NodeIndexes(1:n)) ) = &
+             NodalHeating( Reorder(NodeIndexes(1:n)) ) + HeatingDensity
+       END IF
+         
+       IF ( CalculateCurrent ) THEN
+         DO j=1,DIM 
+           VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) = &
+               VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) + &
+               Current(j)
+         END DO
        END IF
 
     END DO! of the bulk elements
 
-    IF ( ParEnv % PEs > 1) THEN
-      VolTot     = ParallelReduction(VolTot)
-      HeatingTot = ParallelReduction(HeatingTot)
-
-      IF ( CalculateCurrent) THEN
-        ALLOCATE(tmp(SIZE(VolCurrent)/dim))
-        DO i=1,dim
-          tmp = VolCurrent(i::dim)
-          CALL ParallelSumVector(Solver % Matrix, tmp)
-          Volcurrent(i::dim) = tmp
-        END DO
+    IF ( CalculateHeating .OR. CalculateCurrent) THEN
+      IF ( ParEnv % PEs > 1) THEN
+        VolTot     = ParallelReduction(VolTot)
+        HeatingTot = ParallelReduction(HeatingTot)
+        
+        IF ( CalculateCurrent) THEN
+          ALLOCATE(tmp(SIZE(VolCurrent)/dim))
+          DO i=1,dim
+            tmp = VolCurrent(i::dim)
+            CALL ParallelSumVector(Solver % Matrix, tmp)
+            Volcurrent(i::dim) = tmp
+          END DO
+        END IF
+        IF (CalculateHeating ) CALL ParallelSumVector(Solver % Matrix, Heating)
+        CALL ParallelSumVector(Solver % Matrix, SumOfWeights)
       END IF
-      IF (CalculateHeating ) CALL ParallelSumVector(Solver % Matrix, Heating)
-      CALL ParallelSumVector(Solver % Matrix, SumOfWeights)
-    END IF
-
+      
 !------------------------------------------------------------------------------
 !   Finally, compute average of the fluxes at nodes
 !------------------------------------------------------------------------------
-
-    IF( CalculateHeating .OR. CalculateCurrent ) THEN
       DO i = 1, Model % NumberOfNodes
         IF ( ABS( SumOfWeights(i) ) > 0.0D0 ) THEN
           IF ( CalculateHeating )  Heating(i) = Heating(i) / SumOfWeights(i)
@@ -769,7 +794,7 @@ END SUBROUTINE StatCurrentSolver_Init
       END DO
       DEALLOCATE( SumOfWeights ) 
     END IF
-
+      
     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
 
 !------------------------------------------------------------------------------

@@ -19,7 +19,7 @@ Header
 End
 
 Simulation 
-  Max Output Level = 4 ! For verbosity
+  Max Output Level = 5 ! For verbosity
   coordinate system = "Cartesian 2D"
   coordinate mapping(3) = 1 2 3
 
@@ -225,7 +225,5 @@ Boundary Condition 4
 End
 
 Solver 4 :: Reference Norm = Real 0.48944762E-01
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.48944762E-01\n");
 

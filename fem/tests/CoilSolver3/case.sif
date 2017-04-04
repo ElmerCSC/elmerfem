@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 9
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1
@@ -139,7 +139,9 @@ Simulation :: Post File = "Curve_Fit2_Iso.vtu"
 Solver 1 
   Normalize Coil Current = Logical False
   Coil Anisotropic = Logical False
-  Nonlinear System Max Iterations = 2  
+  Coil Conductivity Fix = Logical True
 End 
 
-Solver 3 :: Reference Norm = 6.9418580156860074E-002
+Solver 1 :: Reference Norm = 6.09974197
+Solver 2 :: Reference Norm = 8.81329821E-01
+Solver 3 :: Reference Norm = 6.94185802E-02

@@ -603,12 +603,12 @@ CONTAINS
 
   
   SUBROUTINE CRS_GlueLocalMatrixVec(Gmtr, N, NDOFs, Indices, Lmtr, MCAssembly)
-    TYPE(Matrix_t) :: Gmtr               !< Global matrix
-    INTEGER, INTENT(IN) :: N             !< Number of nodes in element
-    INTEGER, INTENT(IN) :: NDOFs         !< Number of degrees of freedom for one node
-    INTEGER, INTENT(IN) :: Indices(:)    !< Maps element node numbers to global (or partition) node numbers
-    REAL(KIND=dp), INTENT(IN) :: Lmtr(:,:)  !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added
-    LOGICAL :: MCAssembly                !< Is the assembly multicolored or not (free of race conditions)
+    TYPE(Matrix_t) :: Gmtr                   !< Global matrix
+    INTEGER, INTENT(IN) :: N                 !< Number of nodes in element
+    INTEGER, INTENT(IN) :: NDOFs             !< Number of degrees of freedom for one node
+    INTEGER, INTENT(IN) CONTIG :: Indices(:) !< Maps element node numbers to global (or partition) node numbers
+    REAL(KIND=dp), INTENT(IN) :: Lmtr(:,:)   !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added
+    LOGICAL :: MCAssembly                    !< Is the assembly multicolored or not (free of race conditions)
 
     ! Local storage
     INTEGER :: Lind((N*NDOFs)*(N*NDOFs))
@@ -773,7 +773,7 @@ CONTAINS
     PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
       IMPLICIT NONE
 
-      INTEGER, INTENT(IN) :: arr(:)
+      INTEGER, INTENT(IN) CONTIG :: arr(:)
       INTEGER, INTENT(IN) :: key, lind, tind
 
       INTEGER, PARAMETER :: LINSEARCHTHRESH = 8
@@ -1061,20 +1061,23 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     ALLOCATE( A % Rows(n+1),A % Diag(n),STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix topology.' )
+      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix topology of size: '&
+          //TRIM(I2S(n)))
     END IF
 
     k = Ndeg*Ndeg*Total
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix with nofs: '//TRIM(I2S(k)),Level=14)
     ALLOCATE( A % Cols(k),STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix cols.' )
+      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix cols of size: '&
+          //TRIM(I2S(k)) )
     END IF
 
     IF ( AllocValues ) THEN
       ALLOCATE( A % Values(k), STAT=istat )
       IF ( istat /= 0 ) THEN
-        CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix values.' )
+        CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix values of size: '&
+            //TRIM(I2S(k)) )
       END IF
     END IF
 
@@ -1173,7 +1176,50 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   END SUBROUTINE CRS_MatrixVectorMultiply
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Matrix vector product (v = Au) for a matrix given in CRS format
+!> This one only applies to the active elements of u. The idea is that
+!> we may look at the partial matrix norm, for example. 
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_MaskedMatrixVectorMultiply( A,u,v,ActiveRow, ActiveCol )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
+    REAL(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< Result vector
+    TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
+    LOGICAL, DIMENSION(*), INTENT(IN) :: ActiveRow(:) !< Vector giving the active rows
+    LOGICAL, DIMENSION(*), INTENT(IN) :: ActiveCol(:) !< Vector giving the active columns
+    !------------------------------------------------------------------------------
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    INTEGER :: i,j,k,n
+    REAL(KIND=dp) :: rsum
 
+    !------------------------------------------------------------------------------
+
+    n = A % NumberOfRows
+    Rows   => A % Rows
+    Cols   => A % Cols
+    Values => A % Values
+
+    DO i=1,n
+      IF( ActiveRow(i) ) THEN
+        rsum = 0.0d0
+        DO j=Rows(i),Rows(i+1)-1
+          k = Cols(j)
+          IF( ActiveCol(k) ) THEN
+            rsum = rsum + u(k) * Values(j)
+          END IF
+        END DO
+        v(i) = rsum
+      ELSE
+        v(i) = 0.0_dp
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE CRS_MaskedMatrixVectorMultiply
+!------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
 !>  Matrix-vector product v = |A|u with A a matrix in the CRS format and
 !>  |.| the matrix function giving the absolute values of the argument 

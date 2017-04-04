@@ -42,6 +42,12 @@
 #include <iostream>
 #include "sifwindow.h"
 
+#if WITH_QT5
+#include <QtWidgets>
+#include <QPrinter>
+#include <QPrintDialog>
+#endif
+
 using namespace std;
 
 SifWindow::SifWindow(QWidget *parent)

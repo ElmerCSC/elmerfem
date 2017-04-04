@@ -22,6 +22,8 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: iter, maxiter
   LOGICAL :: Found
 !------------------------------------------------------------------------------
+
+  CALL DefaultStart()
   
   maxiter = ListGetInteger( GetSolverParams(),&
       'Nonlinear System Max Iterations',Found,minv=1)
@@ -64,10 +66,12 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     !--------------------
     Norm = DefaultSolve()
 
-    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
 
   END DO
 
+  CALL DefaultFinish()
+  
 CONTAINS
 
 ! Assembly of the matrix entries arising from the bulk elements

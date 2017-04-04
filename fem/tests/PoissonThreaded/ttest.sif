@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1
@@ -42,7 +42,9 @@ Solver 1
   Linear System Residual Output = 20
   Optimize Bandwidth = True
   Steady State Convergence Tolerance = 1e-09
-  Mesh Colouring = Logical True
+
+  MultiColour Solver = Logical True
+  MultiColour Consistent = Logical True
 End
 
 Boundary Condition 1

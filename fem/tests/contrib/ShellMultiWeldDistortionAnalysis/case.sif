@@ -1,0 +1,1457 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "PanelFull"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = case.vtu
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Body 2"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 3
+  Target Bodies(1) = 3
+  Name = "Body 3"
+  Equation = 1
+  Material = 1
+  Body Force = 14
+End
+
+Body 4
+  Target Bodies(1) = 4
+  Name = "Body 4"
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 5
+  Target Bodies(1) = 5
+  Name = "Body 5"
+  Equation = 1
+  Material = 1
+  Body Force = 12
+End
+
+Body 6
+  Target Bodies(1) = 6
+  Name = "Body 6"
+  Equation = 1
+  Material = 1
+  Body Force = 15
+End
+
+Body 7
+  Target Bodies(1) = 7
+  Name = "Body 7"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 8
+  Target Bodies(1) = 8
+  Name = "Body 8"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 9
+  Target Bodies(1) = 9
+  Name = "Body 9"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 10
+  Target Bodies(1) = 10
+  Name = "Body 10"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 11
+  Target Bodies(1) = 11
+  Name = "Body 11"
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 12
+  Target Bodies(1) = 12
+  Name = "Body 12"
+  Equation = 1
+  Material = 1
+  Body Force = 12
+End
+
+Body 13
+  Target Bodies(1) = 13
+  Name = "Body 13"
+  Equation = 1
+  Material = 1
+  Body Force = 16
+End
+
+Body 14
+  Target Bodies(1) = 14
+  Name = "Body 14"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 15
+  Target Bodies(1) = 15
+  Name = "Body 15"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 16
+  Target Bodies(1) = 16
+  Name = "Body 16"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 17
+  Target Bodies(1) = 17
+  Name = "Body 17"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 18
+  Target Bodies(1) = 18
+  Name = "Body 18"
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 19
+  Target Bodies(1) = 19
+  Name = "Body 19"
+  Equation = 1
+  Material = 1
+  Body Force = 11
+End
+
+Body 20
+  Target Bodies(1) = 20
+  Name = "Body 20"
+  Equation = 1
+  Material = 1
+  Body Force = 15
+End
+
+Body 21
+  Target Bodies(1) = 21
+  Name = "Body 21"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 22
+  Target Bodies(1) = 22
+  Name = "Body 22"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 23
+  Target Bodies(1) = 23
+  Name = "Body 23"
+  Equation = 1
+  Material = 1
+  Body Force = 14
+End
+
+Body 24
+  Target Bodies(1) = 24
+  Name = "Body 24"
+  Equation = 1
+  Material = 1
+  Body Force = 7
+End
+
+Body 25
+  Target Bodies(1) = 25
+  Name = "Body 25"
+  Equation = 1
+  Material = 1
+  Body Force = 9
+End
+
+Body 26
+  Target Bodies(1) = 26
+  Name = "Body 26"
+  Equation = 1
+  Material = 1
+  Body Force = 18
+End
+
+Body 27
+  Target Bodies(1) = 27
+  Name = "Body 27"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 28
+  Target Bodies(1) = 28
+  Name = "Body 28"
+  Equation = 1
+  Material = 1
+  Body Force = 10
+End
+
+Body 29
+  Target Bodies(1) = 29
+  Name = "Body 29"
+  Equation = 1
+  Material = 1
+  Body Force = 7
+End
+
+Body 30
+  Target Bodies(1) = 30
+  Name = "Body 30"
+  Equation = 1
+  Material = 1
+  Body Force = 10
+End
+
+Body 31
+  Target Bodies(1) = 31
+  Name = "Body 31"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 32
+  Target Bodies(1) = 32
+  Name = "Body 32"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 33
+  Target Bodies(1) = 33
+  Name = "Body 33"
+  Equation = 1
+  Material = 1
+  Body Force = 9
+End
+
+Body 34
+  Target Bodies(1) = 34
+  Name = "Body 34"
+  Equation = 1
+  Material = 1
+  Body Force = 7
+End
+
+Body 35
+  Target Bodies(1) = 35
+  Name = "Body 35"
+  Equation = 1
+  Material = 1
+  Body Force = 10
+End
+
+Body 36
+  Target Bodies(1) = 36
+  Name = "Body 36"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 37
+  Target Bodies(1) = 37
+  Name = "Body 37"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 38
+  Target Bodies(1) = 38
+  Name = "Body 38"
+  Equation = 1
+  Material = 1
+  Body Force = 10
+End
+
+Body 39
+  Target Bodies(1) = 39
+  Name = "Body 39"
+  Equation = 1
+  Material = 1
+  Body Force = 8
+End
+
+Body 40
+  Target Bodies(1) = 40
+  Name = "Body 40"
+  Equation = 1
+  Material = 1
+  Body Force = 18
+End
+
+Body 41
+  Target Bodies(1) = 41
+  Name = "Body 41"
+  Equation = 1
+  Material = 1
+  Body Force = 18
+End
+
+Body 42
+  Target Bodies(1) = 42
+  Name = "Body 42"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 43
+  Target Bodies(1) = 43
+  Name = "Body 43"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 44
+  Target Bodies(1) = 44
+  Name = "Body 44"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 45
+  Target Bodies(1) = 45
+  Name = "Body 45"
+  Equation = 1
+  Material = 1
+  Body Force = 11
+End
+
+Body 46
+  Target Bodies(1) = 46
+  Name = "Body 46"
+  Equation = 1
+  Material = 1
+  Body Force = 3
+End
+
+Body 47
+  Target Bodies(1) = 47
+  Name = "Body 47"
+  Equation = 1
+  Material = 1
+  Body Force = 15
+End
+
+Body 48
+  Target Bodies(1) = 48
+  Name = "Body 48"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 49
+  Target Bodies(1) = 49
+  Name = "Body 49"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 50
+  Target Bodies(1) = 50
+  Name = "Body 50"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 51
+  Target Bodies(1) = 51
+  Name = "Body 51"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 52
+  Target Bodies(1) = 52
+  Name = "Body 52"
+  Equation = 1
+  Material = 1
+  Body Force = 11
+End
+
+Body 53
+  Target Bodies(1) = 53
+  Name = "Body 53"
+  Equation = 1
+  Material = 1
+  Body Force = 3
+End
+
+Body 54
+  Target Bodies(1) = 54
+  Name = "Body 54"
+  Equation = 1
+  Material = 1
+  Body Force = 15
+End
+
+Body 55
+  Target Bodies(1) = 55
+  Name = "Body 55"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 56
+  Target Bodies(1) = 56
+  Name = "Body 56"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 57
+  Target Bodies(1) = 57
+  Name = "Body 57"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 58
+  Target Bodies(1) = 58
+  Name = "Body 58"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 59
+  Target Bodies(1) = 59
+  Name = "Body 59"
+  Equation = 1
+  Material = 1
+  Body Force = 12
+End
+
+Body 60
+  Target Bodies(1) = 60
+  Name = "Body 60"
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 61
+  Target Bodies(1) = 61
+  Name = "Body 61"
+  Equation = 1
+  Material = 1
+  Body Force = 16
+End
+
+Body 62
+  Target Bodies(1) = 62
+  Name = "Body 62"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 63
+  Target Bodies(1) = 63
+  Name = "Body 63"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 64
+  Target Bodies(1) = 64
+  Name = "Body 64"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 65
+  Target Bodies(1) = 65
+  Name = "Body 65"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 66
+  Target Bodies(1) = 66
+  Name = "Body 66"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 67
+  Target Bodies(1) = 67
+  Name = "Body 67"
+  Equation = 1
+  Material = 1
+  Body Force = 14
+End
+
+Body 68
+  Target Bodies(1) = 68
+  Name = "Body 68"
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 69
+  Target Bodies(1) = 69
+  Name = "Body 69"
+  Equation = 1
+  Material = 1
+  Body Force = 12
+End
+
+Body 70
+  Target Bodies(1) = 70
+  Name = "Body 70"
+  Equation = 1
+  Material = 1
+  Body Force = 15
+End
+
+Body 71
+  Target Bodies(1) = 71
+  Name = "Body 71"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 72
+  Target Bodies(1) = 72
+  Name = "Body 72"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 73
+  Target Bodies(1) = 73
+  Name = "Body 73"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 74
+  Target Bodies(1) = 74
+  Name = "Body 74"
+  Equation = 1
+  Material = 1
+  Body Force = 14
+End
+
+Body 75
+  Target Bodies(1) = 75
+  Name = "Body 75"
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 76
+  Target Bodies(1) = 76
+  Name = "Body 76"
+  Equation = 1
+  Material = 1
+  Body Force = 12
+End
+
+Body 77
+  Target Bodies(1) = 77
+  Name = "Body 77"
+  Equation = 1
+  Material = 1
+  Body Force = 16
+End
+
+Body 78
+  Target Bodies(1) = 78
+  Name = "Body 78"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 79
+  Target Bodies(1) = 79
+  Name = "Body 79"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 80
+  Target Bodies(1) = 80
+  Name = "Body 80"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 81
+  Target Bodies(1) = 81
+  Name = "Body 81"
+  Equation = 1
+  Material = 1
+  Body Force = 14
+End
+
+Body 82
+  Target Bodies(1) = 82
+  Name = "Body 82"
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 83
+  Target Bodies(1) = 83
+  Name = "Body 83"
+  Equation = 1
+  Material = 1
+  Body Force = 12
+End
+
+Body 84
+  Target Bodies(1) = 84
+  Name = "Body 84"
+  Equation = 1
+  Material = 1
+  Body Force = 16
+End
+
+Body 85
+  Target Bodies(1) = 85
+  Name = "Body 85"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 86
+  Target Bodies(1) = 86
+  Name = "Body 86"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 87
+  Target Bodies(1) = 87
+  Name = "Body 87"
+  Equation = 1
+  Material = 1
+  Body Force = 14
+End
+
+Body 88
+  Target Bodies(1) = 88
+  Name = "Body 88"
+  Equation = 1
+  Material = 1
+  Body Force = 7
+End
+
+Body 89
+  Target Bodies(1) = 89
+  Name = "Body 89"
+  Equation = 1
+  Material = 1
+  Body Force = 10
+End
+
+Body 90
+  Target Bodies(1) = 90
+  Name = "Body 90"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 91
+  Target Bodies(1) = 91
+  Name = "Body 91"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 92
+  Target Bodies(1) = 92
+  Name = "Body 92"
+  Equation = 1
+  Material = 1
+  Body Force = 9
+End
+
+Body 93
+  Target Bodies(1) = 93
+  Name = "Body 93"
+  Equation = 1
+  Material = 1
+  Body Force = 7
+End
+
+Body 94
+  Target Bodies(1) = 94
+  Name = "Body 94"
+  Equation = 1
+  Material = 1
+  Body Force = 9
+End
+
+Body 95
+  Target Bodies(1) = 95
+  Name = "Body 95"
+  Equation = 1
+  Material = 1
+  Body Force = 18
+End
+
+Body 96
+  Target Bodies(1) = 96
+  Name = "Body 96"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 97
+  Target Bodies(1) = 97
+  Name = "Body 97"
+  Equation = 1
+  Material = 1
+  Body Force = 9
+End
+
+Body 98
+  Target Bodies(1) = 98
+  Name = "Body 98"
+  Equation = 1
+  Material = 1
+  Body Force = 7
+End
+
+Body 99
+  Target Bodies(1) = 99
+  Name = "Body 99"
+  Equation = 1
+  Material = 1
+  Body Force = 9
+End
+
+Body 100
+  Target Bodies(1) = 100
+  Name = "Body 100"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 101
+  Target Bodies(1) = 101
+  Name = "Body 101"
+  Equation = 1
+  Material = 1
+  Body Force = 18
+End
+
+Body 102
+  Target Bodies(1) = 102
+  Name = "Body 102"
+  Equation = 1
+  Material = 1
+  Body Force = 9
+End
+
+Body 103
+  Target Bodies(1) = 103
+  Name = "Body 103"
+  Equation = 1
+  Material = 1
+  Body Force = 7
+End
+
+Body 104
+  Target Bodies(1) = 104
+  Name = "Body 104"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 105
+  Target Bodies(1) = 105
+  Name = "Body 105"
+  Equation = 1
+  Material = 1
+  Body Force = 17
+End
+
+Body 106
+  Target Bodies(1) = 106
+  Name = "Body 106"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 107
+  Target Bodies(1) = 107
+  Name = "Body 107"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 108
+  Target Bodies(1) = 108
+  Name = "Body 108"
+  Equation = 1
+  Material = 1
+  Body Force = 14
+End
+
+Body 109
+  Target Bodies(1) = 109
+  Name = "Body 109"
+  Equation = 1
+  Material = 1
+  Body Force = 11
+End
+
+Body 110
+  Target Bodies(1) = 110
+  Name = "Body 110"
+  Equation = 1
+  Material = 1
+  Body Force = 3
+End
+
+Body 111
+  Target Bodies(1) = 111
+  Name = "Body 111"
+  Equation = 1
+  Material = 1
+  Body Force = 15
+End
+
+Body 112
+  Target Bodies(1) = 112
+  Name = "Body 112"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 113
+  Target Bodies(1) = 113
+  Name = "Body 113"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 114
+  Target Bodies(1) = 114
+  Name = "Body 114"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 115
+  Target Bodies(1) = 115
+  Name = "Body 115"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 116
+  Target Bodies(1) = 116
+  Name = "Body 116"
+  Equation = 1
+  Material = 1
+  Body Force = 12
+End
+
+Body 117
+  Target Bodies(1) = 117
+  Name = "Body 117"
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 118
+  Target Bodies(1) = 118
+  Name = "Body 118"
+  Equation = 1
+  Material = 1
+  Body Force = 16
+End
+
+Body 119
+  Target Bodies(1) = 119
+  Name = "Body 119"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 120
+  Target Bodies(1) = 120
+  Name = "Body 120"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 121
+  Target Bodies(1) = 121
+  Name = "Body 121"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 122
+  Target Bodies(1) = 122
+  Name = "Body 122"
+  Equation = 1
+  Material = 1
+  Body Force = 14
+End
+
+Body 123
+  Target Bodies(1) = 123
+  Name = "Body 123"
+  Equation = 1
+  Material = 1
+  Body Force = 12
+End
+
+Body 124
+  Target Bodies(1) = 124
+  Name = "Body 124"
+  Equation = 1
+  Material = 1
+  Body Force = 3
+End
+
+Body 125
+  Target Bodies(1) = 125
+  Name = "Body 125"
+  Equation = 1
+  Material = 1
+  Body Force = 16
+End
+
+Body 126
+  Target Bodies(1) = 126
+  Name = "Body 126"
+  Equation = 1
+  Material = 1
+  Body Force = 6
+End
+
+Body 127
+  Target Bodies(1) = 127
+  Name = "Body 127"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 128
+  Target Bodies(1) = 128
+  Name = "Body 128"
+  Equation = 1
+  Material = 1
+  Body Force = 14
+End
+
+Body 129
+  Target Bodies(1) = 129
+  Name = "Body 129"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 130
+  Target Bodies(1) = 130
+  Name = "Body 130"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 131
+  Target Bodies(1) = 131
+  Name = "Body 131"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 132
+  Target Bodies(1) = 132
+  Name = "Body 132"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Body 133
+  Target Bodies(1) = 133
+  Name = "Body 133"
+  Equation = 1
+  Material = 1
+  Body Force = 13
+End
+
+Solver 1
+  Equation = Shell Solver
+  Procedure = "ShellMultiSolver" "ShellSolver"
+  Linear System Solver = Iterative	! Iterative solver used because it gave memory allocation error with Direct solver
+  Linear System Max Iterations = 10000	!Added for iterative solver
+  Linear System Iterative Method = CG
+  !BiCGStabl	!Added for iterative solver
+  BiCGStabl Polynomial Degree = 6
+  Linear System Residual Output = 50
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-10
+  Nonlinear System Newton After Tolerance = 1.0e-8
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Shear Stabilization Parameter = Real 0.0
+  Drilling Stabilization Parameter = Real 1.0
+  Calculate Stresses = Logical TRUE
+  !Compute Membrane Stress = Logical TRUE
+  Compute Total Stress = Logical TRUE
+  !Compute Bending Stress = Logical TRUE
+  Top Side Stress = Logical FALSE
+  Bottom Side Stress = Logical TRUE
+  Membrane Only = Logical FALSE
+  Use DKT Triangle = Logical TRUE
+  Use SMITC Element = Logical FALSE
+  Use MITC3 Element = Logical FALSE
+  Use RMITC3 Element = Logical FALSE
+  Integration Points = Integer 3
+End
+
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+
+Material 1
+  Name = "Steel (carbon - generic)"
+  Density = 7850.0
+  Poisson ratio = 0.285
+  Youngs modulus = 200.0e9
+End
+
+Body Force 1
+  Name = "BodyForce 1"
+  ! L-S flange
+  Direction Of Outward Normal = Real 1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.5
+  Point2 2= Real 0.0
+  Point2 3= Real 0.0
+  Alfa 1= Real 0.68046e-05
+  Alfa 2= Real 3.124e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real 0.30 
+  Initial Bending 2 = Real 0.9970
+  Thickness = Real 0.009
+end
+
+Body Force 2
+  Name = "BodyForce 2"
+  ! L-S flange- negative normal
+  Direction Of Outward Normal = Real -1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.5
+  Point2 2= Real 0.0
+  Point2 3= Real 0.0
+  Alfa 1= Real 0.68046e-05
+  Alfa 2= Real 3.124e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real 0.30 
+  Initial Bending 2 = Real 0.9970
+  Thickness = Real 0.009
+End
+
+Body Force 3
+  Name = "BodyForce 3"
+  ! L-S web
+  Direction Of Outward Normal = Real 1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.5
+  Point2 2= Real 0.0
+  Point2 3= Real 0.0
+  Alfa 1= Real 0.5104e-05
+  Alfa 2= Real 2.347e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real -0.0 
+  Initial Bending 2 = Real -0.0
+  Thickness = Real 0.012
+End
+
+Body Force 4
+  Name = "BodyForce 4"
+  ! L-S web-negative normal
+  Direction Of Outward Normal = Real -1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.5
+  Point2 2= Real 0.0
+  Point2 3= Real 0.0
+  Alfa 1= Real 0.5104e-05
+  Alfa 2= Real 2.347e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real -0.0
+  Initial Bending 2 = Real -0.0
+  Thickness = Real 0.012
+End
+
+
+Body Force 5
+  Name = "BodyForce 5"
+  ! T-S flange
+  Direction Of Outward Normal = Real 1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.0
+  Point2 2= Real 0.5
+  Point2 3= Real 0.0
+  Alfa 1= Real 0.68046e-05
+  Alfa 2= Real 3.124e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real 0.30 
+  Initial Bending 2 = Real 1.198
+  Thickness = Real 0.009
+End
+
+Body Force 6
+  Name = "BodyForce 6"
+  ! T-S flange-negative normal
+  Direction Of Outward Normal = Real -1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.0
+  Point2 2= Real 0.5
+  Point2 3= Real 0.0
+  Alfa 1= Real 0.68046e-05
+  Alfa 2= Real 3.124e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real 0.30 
+  Initial Bending 2 = Real 1.198
+  Thickness = Real 0.009
+End
+
+
+Body Force 7
+  Name = "BodyForce 7"
+  ! T-S web
+  Direction Of Outward Normal = Real 1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.0
+  Point2 2= Real 0.5
+  Point2 3= Real 0.0
+  Alfa 1= Real 0.68046e-05
+  Alfa 2= Real 3.124e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real -0 
+  Initial Bending 2 = Real -0
+  Thickness = Real 0.009
+End
+
+Body Force 8
+  Name = "BodyForce 8"
+  ! T-S web-negative normal
+  Direction Of Outward Normal = Real -1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.0
+  Point2 2= Real 0.5
+  Point2 3= Real 0.0
+  Alfa 1= Real 0.68046e-05
+  Alfa 2= Real 3.124e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real -0 
+  Initial Bending 2 = Real -0
+  Thickness = Real 0.009
+End
+
+
+Body Force 9
+  Name = "BodyForce 9"
+  ! L-T flange
+  Direction Of Outward Normal = Real 1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.0
+  Point2 2= Real 0.0
+  Point2 3= Real 0.5
+  Alfa 1= Real 0.84876e-05
+  Alfa 2= Real 3.893e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real -0 
+  Initial Bending 2 = Real -0
+  Thickness = Real 0.009
+End
+
+Body Force 10
+  Name = "BodyForce 10"
+  ! L-T flange-negative normal
+  Direction Of Outward Normal = Real -1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.0
+  Point2 2= Real 0.0
+  Point2 3= Real 0.5
+  Alfa 1= Real 0.84876e-05
+  Alfa 2= Real 3.893e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real -0 
+  Initial Bending 2 = Real -0
+  Thickness = Real 0.009
+End
+
+Body Force 11
+  Name = "BodyForce 11"
+  ! L-T web
+  Direction Of Outward Normal = Real 1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.0
+  Point2 2= Real 0.0
+  Point2 3= Real 0.5
+  Alfa 1= Real 0.31856e-05
+  Alfa 2= Real 1.463e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real -0.0 
+  Initial Bending 2 = Real -0.0
+  Thickness = Real 0.012
+End
+
+Body Force 12
+  Name = "BodyForce 12"
+  ! L-T web-negative normal
+  Direction Of Outward Normal = Real -1.0
+  Weld Distortion Simulation = Logical TRUE
+  Thermal Anisotropy = string "cartesian"
+  Point1 1= Real 0.0
+  Point1 2= Real 0.0
+  Point1 3= Real 0.0
+  Point2 1= Real 0.0
+  Point2 2= Real 0.0
+  Point2 3= Real 0.5
+  Alfa 1= Real 0.31856e-05
+  Alfa 2= Real 1.463e-05
+  Temperature = Real -100.0
+  Initial Bending 1 = Real -0.0 
+  Initial Bending 2 = Real -0.0
+  Thickness = Real 0.012
+End
+
+Body Force 13
+  Name = "BodyForce 13"
+  ! Skin general
+  Direction Of Outward Normal = Real 1.0
+  Thickness = Real 0.009
+End
+
+Body Force 14
+  Name = "BodyForce 14"
+  ! Skin general-negative normal
+  Direction Of Outward Normal = Real -1.0
+  Thickness = Real 0.009
+End
+
+Body Force 15
+  Name = "BodyForce 15"
+  ! Longitudinal member general
+  Direction Of Outward Normal = Real 1.0
+  Thickness = Real 0.012
+End
+
+Body Force 16
+  Name = "BodyForce 16"
+  ! Longitudinal member general-negative normal
+  Direction Of Outward Normal = Real -1.0
+  Thickness = Real 0.012
+End
+
+
+Body Force 17
+  Name = "BodyForce 17"
+  ! Transverse member generall
+  Direction Of Outward Normal = Real 1.0
+  Thickness = Real 0.009
+End
+
+Body Force 18
+  Name = "BodyForce 18"
+  ! Transverse member general-negative normal
+  Direction Of Outward Normal = Real -1.0
+  Thickness = Real 0.009
+End
+
+! Boundary conditions involve all displacements zero at the center
+! and disp y and Rot x zero alog x axis and disp x and Rot y zero along y axis.
+
+Boundary Condition 1
+  Target Boundaries(3) = 289 290 291
+  ! constraint triangle at center
+  Name = "BoundaryCondition 1"
+  Deflection 1 = 0.0
+  Deflection 2 = 0.0
+  Deflection 3 = 0.0
+  Deflection 4 =0.0
+  Deflection 5 =0.0
+  Deflection 6 =0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(4) = 23 114 172 253
+!  constraint along x axis
+  Name = "BoundaryCondition 2"
+  Deflection 2 = 0.0
+  Deflection 4 = 0.0
+  !Deflection 6 = 0.0
+End
+
+Boundary Condition 3
+  Target Boundaries(4) = 101 116 135 150
+! constraint along y axis	
+  Name = "BoundaryCondition 3"
+  Deflection 1 = 0.0
+  Deflection 5 = 0.0
+  !Deflection 6 = 0.0
+End
+
+Solver 1 :: Reference Norm = 8.14965375E-03
