@@ -2013,6 +2013,7 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: list
      CHARACTER(LEN=*), OPTIONAL :: name
 !------------------------------------------------------------------------------
+     INTEGER :: i,j,k
      TYPE(ValueListEntry_t), POINTER :: ptrb, ptrnext
 
      IF( PRESENT( name ) ) THEN
@@ -2020,9 +2021,38 @@ CONTAINS
      ELSE
        ptrb => ListAdd( List, ptr % Name ) 
      END IF
+
        
      ptrnext => ptrb % next
      ptrb = ptr
+     if ( present(name)) ptrb % name = name
+
+     ptrb % tvalues => null()
+     if(associated(ptr % tvalues)) then
+       allocate( ptrb % tvalues(size(ptr % tvalues)) )
+       ptrb % tvalues = ptr % tvalues
+     end if
+
+     ptrb % fvalues => null()
+     if(associated(ptr % fvalues)) then
+       i = size(ptr % fvalues,1)
+       j = size(ptr % fvalues,2)
+       k = size(ptr % fvalues,3)
+       allocate( ptrb % fvalues(i,j,k) )
+       ptrb % fvalues = ptr % fvalues
+     end if
+
+     ptrb % ivalues => null()
+     if(associated(ptr % ivalues)) then
+       allocate( ptrb % ivalues(size(ptr % ivalues)) )
+       ptrb % ivalues = ptr % ivalues
+     end if
+
+     ptrb % cumulative => null()
+     if(associated(ptr % cumulative)) then
+       allocate( ptrb % ivalues(size(ptr % ivalues)) )
+       ptrb % ivalues = ptr % ivalues
+     end if
      ptrb % next => ptrnext
 
      ! If name is given then we have to revert the stuff from previous lines

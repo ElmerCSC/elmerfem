@@ -1841,6 +1841,7 @@ CONTAINS
      ALLOCATE( Solver )
      ChildSolver => Solver
 
+     Solver % Values => Null()
      CALL ListAddString(Solver % Values,'Equation',TRIM(ChildVarName)//' solver' )
 
      IF( PRESENT( ChildPrefix ) ) THEN
