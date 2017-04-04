@@ -5764,6 +5764,9 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   Solvers(n+1) % Values => ListAllocate()
   DGSolverParams => Solvers(n+1) % Values
   CALL ListAddLogical( DGSolverParams, 'Discontinuous Galerkin', .TRUE. )
+  ! Set this consistently as they are duplicated for efficiency 
+  Solvers(n+1) % DG = .TRUE.
+  
   Solvers(n+1) % PROCEDURE = 0
   Solvers(n+1) % ActiveElements => NULL()
   CALL ListAddString( DGSolverParams, 'Exec Solver', 'never' )

@@ -648,12 +648,27 @@ CONTAINS
      REAL(KIND=dp), ALLOCATABLE :: Passive(:)
      INTEGER :: body_id, bf_id, nlen, NbrNodes,PassNodes, LimitNodes
      LOGICAL :: Found
-     CHARACTER(LEN=MAX_NAME_LEN) :: PassName
-
-     SAVE Passive
+     CHARACTER(LEN=MAX_NAME_LEN) :: PassName, PrevPassName
+     LOGICAL :: NoPassiveElements = .FALSE.
+     
+     SAVE Passive, PrevPassName, NoPassiveElements
 !------------------------------------------------------------------------------
      IsPassive = .FALSE.
 
+
+     nlen = CurrentModel % Solver % Variable % NameLen
+     PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'     
+
+     IF( PassName(1:nlen) == PrevPassName(1:nlen) ) THEN
+       IF( NoPassiveElements ) RETURN
+     ELSE
+       NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce( CurrentModel, PassName )
+       PrevPassName = PassName
+       IF( NoPassiveElements ) RETURN       
+     END IF
+
+
+     
      IF ( PRESENT( UElement ) ) THEN
        Element => UElement
      ELSE
@@ -666,9 +681,6 @@ CONTAINS
      bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
          'Body Force', Found, minv=1,maxv=CurrentModel % NumberOfBodyForces )
      IF ( .NOT. Found )  RETURN
-
-     nlen = CurrentModel % Solver % Variable % NameLen
-     PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'
 
      IF ( ListCheckPresent(CurrentModel % BodyForces(bf_id) % Values, PassName) ) THEN
        NbrNodes = Element % TYPE % NumberOfNodes

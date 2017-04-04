@@ -94,11 +94,17 @@ MODULE Types
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
                         PROJECTOR_TYPE_GALERKIN = 2    ! Galerkin projector
+
+  INTEGER, PARAMETER :: DIRECT_NORMAL = 0, & ! Normal direct method
+                        DIRECT_PERMON = 1    ! Permon direct method
   
 !------------------------------------------------------------------------------
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
 !------------------------------------------------------------------------------
 
+
+
+  
 #ifndef USE_ISO_C_BINDINGS
 INTERFACE
   SUBROUTINE Envir(a,b,len)
@@ -398,6 +404,11 @@ END INTERFACE
 
      INTEGER :: NameLen,DepNameLen
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
+
+#ifdef DEBUG_LISTCOUNTER 
+     INTEGER :: Counter = 0
+#endif
+     
    END TYPE ValueListEntry_t
 
    TYPE ValueList_t
@@ -750,10 +761,13 @@ END INTERFACE
       TYPE(Matrix_t), POINTER :: ConstraintMatrix => NULL()
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
       LOGICAL :: MortarBCsChanged = .FALSE., ConstraintMatrixVisited = .FALSE.
-      INTEGER(KIND=AddrInt) :: MortarProc
+      INTEGER(KIND=AddrInt) :: MortarProc, &
+          BoundaryElementProcedure=0, BulkElementProcedure=0
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
       INTEGER :: CurrentColour = 0
+      INTEGER :: DirectMethod = DIRECT_NORMAL
+      LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------

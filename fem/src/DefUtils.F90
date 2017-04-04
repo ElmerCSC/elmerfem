@@ -1393,8 +1393,9 @@ CONTAINS
      END IF
 
      n = 0
-     IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found )) THEN
-        n = Element % DGDOFs
+     !IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found )) THEN
+     IF( Solver % DG ) THEN
+       n = Element % DGDOFs
         IF ( n>0 ) RETURN
      END IF
 
@@ -1424,8 +1425,10 @@ CONTAINS
         END DO
      END IF
 
-     GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-     IF (.NOT.Found) GB = .TRUE.
+     !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
+     !IF (.NOT.Found) GB = .TRUE.
+     GB = Solver % GlobalBubbles
+     
      IF ( GB .OR. ASSOCIATED(Element % BoundaryInfo) ) n=n+MAX(0,Element % BDOFs)
   END FUNCTION GetElementNOFDOFs
 
@@ -1456,7 +1459,8 @@ CONTAINS
      DGDisable=.FALSE.
      IF (PRESENT(NotDG)) DGDisable=NotDG
 
-     IF ( .NOT.DGDisable .AND. ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found ) ) THEN
+     ! IF ( .NOT.DGDisable .AND. ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found ) ) THEN
+     IF ( .NOT.DGDisable .AND. Solver % DG ) THEN
         DO i=1,Element % DGDOFs
            NB = NB + 1
            Indexes(NB) = Element % DGIndexes(i)
@@ -1530,8 +1534,7 @@ CONTAINS
         END DO
      END IF
 
-     GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-     IF (.NOT.Found) GB = .TRUE.
+     GB = Solver % GlobalBubbles 
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
        Parent => Element % BoundaryInfo % Left
@@ -1620,9 +1623,9 @@ CONTAINS
        Solver => CurrentModel % Solver
     END IF
 
-    GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-    IF (.NOT.Found) GB = .TRUE.
-
+    !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
+    !IF (.NOT.Found) GB = .TRUE.
+    GB = Solver % GlobalBubbles
 
     n = 0
     IF ( .NOT. GB ) THEN
@@ -2987,19 +2990,15 @@ CONTAINS
      END IF
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
-       str = ListGetString( Solver % Values, 'Boundary Element Procedure', Found )
+       Proc = Solver % BoundaryElementProcedure
      ELSE
-       str = ListGetString( Solver % Values, 'Bulk Element Procedure', Found )
+       Proc = Solver % BulkElementProcedure
      END IF
-
-     IF ( Found ) THEN
-       Proc = GetProcAddr( str, abort=.FALSE.,quiet=.TRUE. )
-       IF ( Proc /= 0 ) THEN
-         n  = GetElementNOFNodes( Element )
-         nd = GetElementNOFDOFs( Element, Solver )
-         CALL ExecLocalProc( Proc, CurrentModel, Solver, &
-                G, F, Element, n, nd )
-       END IF
+     IF ( Proc /= 0 ) THEN
+       n  = GetElementNOFNodes( Element )
+       nd = GetElementNOFDOFs( Element, Solver )
+       CALL ExecLocalProc( Proc, CurrentModel, Solver, &
+           G, F, Element, n, nd )
      END IF
 
      IF ( ParEnv % PEs > 1 ) THEN
@@ -3054,13 +3053,13 @@ CONTAINS
        Indexes => GetIndexStore()
        n = GetElementDOFs( Indexes, Element, Solver )
 
-       IF(GetString(Solver % Values, 'Linear System Direct Method',Found)=='permon') THEN
+       IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
          CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
        ELSE
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-                            x % Perm(Indexes(1:n)), UElement=Element )
+                              x % Perm(Indexes(1:n)), UElement=Element )
        END IF
      END IF
 !------------------------------------------------------------------------------

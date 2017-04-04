@@ -1818,13 +1818,12 @@ CONTAINS
 !> The number of dofs may vary but the basis functions and permutation is reused.
 !> If also the number of dofs is the same also matrix topology is reused.
 !------------------------------------------------------------------------------
-   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix, ChildOutput ) &
+   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix ) &
        RESULT ( ChildSolver )
      TYPE(Solver_t) :: ParentSolver
      CHARACTER(LEN=*) :: ChildVarName
      INTEGER, OPTIONAL :: ChildDofs
      CHARACTER(LEN=*), OPTIONAL :: ChildPrefix
-     LOGICAL, OPTIONAL :: ChildOutput 
      TYPE(Solver_t), POINTER :: ChildSolver
 
      INTEGER :: ParentDofs 
@@ -1834,13 +1833,15 @@ CONTAINS
      TYPE(Variable_t), POINTER :: ChildVar
      TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
      INTEGER :: n,m,dofs, i,j,k,l,ii, jj, nn
-
+     LOGICAL :: Found
+     
      CALL Info('CreateChildSolver','Creating solver for variable: '//TRIM(ChildVarName),Level=5)
 
      NULLIFY( Solver ) 
      ALLOCATE( Solver )
      ChildSolver => Solver
 
+     Solver % Values => Null()
      CALL ListAddString(Solver % Values,'Equation',TRIM(ChildVarName)//' solver' )
 
      IF( PRESENT( ChildPrefix ) ) THEN
@@ -1856,6 +1857,10 @@ CONTAINS
        CALL Fatal('CreateChildSolver','Parent solver is missing mesh!')
      END IF
      Solver % Mesh => ParentSolver % Mesh
+     i = SIZE(ParentSolver % Def_Dofs,1)
+     j = SIZE(ParentSolver % Def_Dofs,2)
+     k = SIZE(ParentSolver % Def_Dofs,3)
+     ALLOCATE(Solver % Def_Dofs(i,j,k))
      Solver % Def_Dofs = ParentSolver % Def_Dofs
 
      IF( .NOT. ASSOCIATED( ParentSolver % Variable ) ) THEN
@@ -1888,9 +1893,9 @@ CONTAINS
      ChildVar % TYPE = ParentSolver % Variable % TYPE
      Solver % Variable => ChildVar
 
-     IF( PRESENT( ChildOutput ) ) THEN
-       ChildVar % Output = ChildOutput
-     END IF
+     ChildVar % Output = ListGetLogical( Solver % Values,'Variable Output', Found )
+     IF(.NOT. Found ) ChildVar % Output = ParentSolver % Variable % Output 
+     
      
      CALL Info('CreateChildSolver','Creating matrix for variable solver',Level=8)    
      Solver % Matrix => AllocateMatrix()
@@ -1911,7 +1916,7 @@ CONTAINS
          ChildMat % Diag => ParentMat % Diag
 
          ChildMat % NumberOfRows = ParentMat % NumberOfRows
-
+         
          m = SIZE( ParentMat % Values )
          ALLOCATE( ChildMat % Values(m) )
          ChildMat % Values = 0.0_dp
@@ -1959,6 +1964,11 @@ CONTAINS
        ChildMat % rhs = 0.0_dp
      END IF
 
+
+     ChildMat % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex',Found )
+     IF(.NOT. Found ) ChildMat % Complex = ParentMat % Complex
+
+     
      IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
        Solver % ActiveElements => ParentSolver % ActiveElements
        Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
@@ -4440,6 +4450,30 @@ CONTAINS
        END IF
 
        IF( MOD( timestep-1-timei0, ExecIntervals(timei)) /= 0 ) RETURN
+     END IF
+
+!-------------------------------------------------------------------------------
+! Set solver parameters to avoid list operations during assembly
+!-------------------------------------------------------------------------------
+     Solver % DG = ListGetLogical(Params, 'Discontinuous Galerkin', Found)
+     Solver % GlobalBubbles = ListGetLogical(Params, 'Bubbles in Global System', Found)
+     IF(.NOT. Found) Solver % GlobalBubbles = .TRUE.
+     IF(GetString(Params, 'Linear System Direct Method', Found) == 'permon') THEN
+       Solver % DirectMethod = DIRECT_PERMON
+     END IF
+     
+     str = ListGetString( Params, 'Boundary Element Procedure', Found)
+     IF(Found) THEN
+       Solver % BoundaryElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
+     ELSE
+       Solver % BoundaryElementProcedure = 0
+     END IF
+
+     str = ListGetString( Params, 'Bulk Element Procedure', Found)
+     IF(Found) THEN
+       Solver % BulkElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
+     ELSE
+       Solver % BulkElementProcedure = 0
      END IF
 
 !------------------------------------------------------------------------------
