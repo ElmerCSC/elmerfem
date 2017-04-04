@@ -6,5 +6,7 @@ ADD_ELMERICETEST_MODULE(Calving2D bedrockfunction_flat ./PROG/bedrockfunction_fl
 
 FILE(COPY ELMERSOLVER_STARTINFO block_helheim.msh PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
+FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Results/block_helheim")
+
 ADD_ELMERICE_TEST(Calving2D)
 ADD_ELMER_LABEL(Calving2D slow)

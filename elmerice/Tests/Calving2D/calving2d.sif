@@ -47,8 +47,7 @@ $sl0 = 0.0
 !$C = 3.0e-05
 ! the timestep
 $dt = 6.0/(24.0 * 365.25) ! 6 hours
-$tspan = 4 * 24 * 7 ! 24 weeks
-!$tspan = 1
+$tspan = 2
 $tout = 1 !12.0              ! 1 day
 
 $bed_func = "bedrockfunction_flat"
@@ -816,3 +815,9 @@ Boundary Condition 4
 
   ComputeNormal = Logical False
 End
+
+Solver 16 :: Reference Norm = Real 18.000909
+Solver 16 :: Reference Norm Tolerance = Real 1E-05
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=18.000909,EPS=1E-05\n" );
