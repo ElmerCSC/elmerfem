@@ -1,7 +1,9 @@
 Test Case for 3D Calving
 ====
 
-This is a simple test case for the 3D calving model.
+More detailed documentation on Elmer's 2D Calving can be found at:
+
+http://elmerice.elmerfem.org/wiki/doku.php?id=problems:calving
 
 
 What to do if this test fails
