@@ -112,7 +112,7 @@ Simulation
   Steady State Min Iterations = 1
 
   Output File = "$namerun".result" !"
-  max output level = 40
+  max output level = 20
 End
 
 !---------------------------------------------------
@@ -377,7 +377,7 @@ Solver 8
   Linear System Direct Method = umfpack
 
   Nonlinear System Max Iterations = 50
-  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Convergence Tolerance  = 1.0e-6
   Nonlinear System Newton After Iterations = 50
   Nonlinear System Newton After Tolerance = 1.0e-05
   Nonlinear System Relaxation Factor = 1.00
@@ -816,8 +816,8 @@ Boundary Condition 4
   ComputeNormal = Logical False
 End
 
-Solver 16 :: Reference Norm = Real 18.000909
-Solver 16 :: Reference Norm Tolerance = Real 1E-05
+Solver 16 :: Reference Norm = Real 1.79613790E+01
+Solver 16 :: Reference Norm Tolerance = Real 1E-04
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=18.000909,EPS=1E-05\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1.79613790E+01,EPS=1E-04\n" );
