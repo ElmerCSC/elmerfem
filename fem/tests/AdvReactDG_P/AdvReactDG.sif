@@ -16,7 +16,7 @@ $ function dx(c)  { x=c(0); y=c(1); _dx = pi*y^2*cos(pi*x*y^2) }
 $ function dy(c)  { x=c(0); y=c(1); _dy = pi*x*2*y*cos(pi*x*y^2) }
 
 Simulation
-! Max Output Level = 3
+! Max Output Level = 5
   Coordinate System = "Cartesian 2D"
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady
@@ -81,6 +81,4 @@ End
 
 Solver 1 :: Reference Norm = Real 0.81556055
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-3
-$ fprintf( stderr, "TEST CASE 1\n" );
 RUN
-$ fprintf( stderr, "END TEST CASE 1, Target NRM=0.81556055, EPS=1.0e-3\n" );

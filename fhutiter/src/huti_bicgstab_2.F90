@@ -291,6 +291,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+    
     U = U - omega1 * V - omega2 * W
 
     !
@@ -536,6 +541,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+    
     U = U - omega1 * V - omega2 * W
 
     !
@@ -781,6 +791,13 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+
+
+    
     U = U - omega1 * V - omega2 * W
 
     !
@@ -1026,6 +1043,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+    
     U = U - omega1 * V - omega2 * W
 
     !

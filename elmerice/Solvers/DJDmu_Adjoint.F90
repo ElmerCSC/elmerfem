@@ -105,7 +105,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag
 
   logical :: SquareFormulation
-  Logical ::  Firsttime=.true.,Found,stat,gotit
+  Logical ::  Firsttime=.true.,Found,stat,gotit,UnFoundFatal=.TRUE.
 
 
   save Firsttime,DIM
@@ -174,40 +174,21 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
 
  ! Get variables needed by the Solver
 
-        GradVariable => VariableGet( Solver % Mesh % Variables, GradSolName )
-           IF (ASSOCIATED(GradVariable)) THEN
-              GradValues => GradVariable % Values
-              GradPerm => GradVariable % Perm
-           ELSE
-              WRITE(Message,'(A,A,A)') 'No variable >',GradSolName,'< found'
-             CALL FATAL(SolverName,Message)
-           END IF
-        Variable => VariableGet( Solver % Mesh % Variables, VarSolName )
-           IF (ASSOCIATED(Variable)) THEN
-                Values => Variable % Values
-                Perm => Variable % Perm
-           ELSE
-                WRITE(Message,'(A,A,A)') 'No variable >',VarSolName,'< found'
-                CALL FATAL(SolverName,Message)
-           END IF
-        VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName )
-           IF ( ASSOCIATED( VeloSolN ) ) THEN
-             VelocityN => VeloSolN % Values
-             VeloNPerm => VeloSolN % Perm
-           ELSE
-              WRITE(Message,'(A,A,A)') &
-                   'No variable >',NeumannSolName,'< found'
-              CALL FATAL(SolverName,Message)              
-           END IF
-         VeloSolD => VariableGet( Solver % Mesh % Variables, DirichletSolName )
-          IF (ASSOCIATED(veloSolD)) THEN
-             VelocityD => VeloSolD % Values
-             VeloDPerm => VeloSolD % Perm
-          ELSE
-              WRITE(Message,'(A,A,A)') &
-                   'No variable >',DirichletSolName,'< found'
-              CALL FATAL(SolverName,Message)              
-           END IF
+        GradVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
+        GradValues => GradVariable % Values
+        GradPerm => GradVariable % Perm
+
+        Variable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
+        Values => Variable % Values
+        Perm => Variable % Perm
+
+        VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName,UnFoundFatal=UnFoundFatal)
+        VelocityN => VeloSolN % Values
+        VeloNPerm => VeloSolN % Perm
+
+        VeloSolD => VariableGet( Solver % Mesh % Variables, DirichletSolName,UnFoundFatal=UnFoundFatal)
+        VelocityD => VeloSolD % Values
+        VeloDPerm => VeloSolD % Perm
 
 
     VisitedNode=0.0_dp
@@ -263,11 +244,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
                  End Do !q
               End Do !p
 
-              ViscosityFlag = ListGetString( Material,'Viscosity Model', GotIt)
-
-              If (.NOT.Gotit) THEN
-                 CALL FATAL(SolverName,'Viscosity Model Not Found')
-              End IF
+              ViscosityFlag = ListGetString( Material,'Viscosity Model', GotIt,UnFoundFatal)
 
               SELECT CASE( ViscosityFlag )
                 CASE('power law')

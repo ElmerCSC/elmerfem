@@ -16,7 +16,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -24,8 +24,6 @@ Simulation
   Simulation Type = "Steady State"
   Steady State Max Iterations = 1
   Output Intervals = 1
-
-  Post File = "discont.vtu"
 
 ! Normally we dont want to apply this
   Discontinuous Bulk Greedy = Logical False
@@ -87,7 +85,7 @@ Solver 1
 
   Apply Mortar BCs = Logical True  
 
-  
+  Nonlinear System Consistent Norm = True  
 
   Linear System Abort Not Converged = False
 !  Optimize Bandwidth = False
@@ -115,6 +113,21 @@ Solver 2
 !  Optimize Bandwidth = False
 End
 
+Solver 3
+  Exec Solver = after all
+
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = a
+
+!  Save Bulk Only = Logical True
+  Skip Halo Elements = Logical True
+
+  Vtu Format = Logical True
+  Binary Output = Logical True
+  Single Precision = Logical True
+End
+
 
 Material 1
   Name = "Material"
@@ -140,6 +153,7 @@ Boundary Condition 3
   Target Boundaries(1) = 3 
 
 ! This activates the discontinuous boundary creation
+  Discontinuous Target Bodies = Integer 3
   Discontinuous Boundary = Logical True
   Mortar BC = 0
 End
@@ -168,7 +182,5 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.54992101
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.54992101\n");
 !End Of File

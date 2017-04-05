@@ -46,6 +46,8 @@ Solver 1
   Linear System Residual Output = 10
 
   Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Consistent Norm = True
 End
 
 
@@ -76,9 +78,7 @@ Boundary Condition 3
 End
 
 Solver 1 :: Reference Norm = Real 7.2516458862548916
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=7.2516458862548916\n");
 
 
 !End Of File

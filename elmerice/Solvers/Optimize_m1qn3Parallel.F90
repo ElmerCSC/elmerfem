@@ -76,7 +76,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   integer,allocatable :: NewNode(:)
   integer, allocatable :: LocalToGlobalPerm(:),nodePerm(:),TestPerm(:)
 
-  Logical :: FirstVisit=.true.,Firsttime=.true.,Found,UseMask,ComputeNormG=.False.
+  Logical :: FirstVisit=.true.,Firsttime=.true.,Found,UseMask,ComputeNormG=.False.,UnFoundFatal=.TRUE.
   logical,allocatable :: VisitedNode(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,NormM1QN3,MaskVarName,NormFile
@@ -116,7 +116,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
        ! Check we have a parallel run
           IF(.NOT.ASSOCIATED(Solver %  Matrix % ParMatrix)) Then
-             CALL FATAL(SolverName,'ParMatrix not associated! Ths solver for paralle only!!')
+             CALL FATAL(SolverName,'ParMatrix not associated! This solver for parallel only!!')
           End if
 
             SolverParams => GetSolverParams()
@@ -142,14 +142,9 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
           MaskVarName = GetString( SolverParams,'Optimisation Mask Variable',UseMask)
             IF (UseMask) Then
-                MaskVar => VariableGet( Solver % Mesh % Variables, MaskVarName ) 
-                IF (ASSOCIATED(MaskVar)) THEN 
-                   MaskValues => MaskVar % Values 
-                   MaskPerm => MaskVar % Perm 
-               ELSE 
-                   WRITE(Message,'(A,A,A)') 'No variable >',MaskVarName,'< found' 
-                   CALL FATAL(SolverName,Message) 
-               ENDIF
+                MaskVar => VariableGet( Solver % Mesh % Variables, MaskVarName,UnFoundFatal=UnFoundFatal) 
+                MaskValues => MaskVar % Values 
+                MaskPerm => MaskVar % Perm 
             ENDIF
 
            If (ParEnv % MyPe.EQ.0) then
@@ -210,14 +205,9 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                    CALL WARN(SolverName,'Taking default value >0.2<')
                    df1=0.2
                 End if
-                CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
-                IF (ASSOCIATED(CostVar)) THEN
-                    CostValues => CostVar % Values
-                 ELSE
-                     WRITE(Message,'(A,A,A)') 'No variable >',CostSolName,'< found'
-                     CALL FATAL(SolverName,Message)
-                 ENDIF
-                 df1=CostValues(1)*df1
+                CostVar => VariableGet( Solver % Mesh % Variables, CostSolName,UnFoundFatal=UnFoundFatal)
+                CostValues => CostVar % Values
+                df1=CostValues(1)*df1
              NormM1QN3 = GetString( SolverParams,'M1QN3 normtype', Found)
                  IF((.NOT.Found).AND.((NormM1QN3(1:3).ne.'dfn').OR.(NormM1QN3(1:3).ne.'sup') &
                      .OR.(NormM1QN3(1:3).ne.'two'))) THEN
@@ -270,32 +260,17 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
      End if
 
 !  Get Variables CostValue, Beta and DJDBeta
-     CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
-     IF (ASSOCIATED(CostVar)) THEN 
-             CostValues => CostVar % Values 
-     ELSE
-            WRITE(Message,'(A,A,A)') 'No variable >',CostSolName,'< found' 
-            CALL FATAL(SolverName,Message) 
-    ENDIF 
+    CostVar => VariableGet( Solver % Mesh % Variables, CostSolName,UnFoundFatal=UnFoundFatal)
+    CostValues => CostVar % Values 
     f=CostValues(1)
 
-     BetaVar => VariableGet( Solver % Mesh % Variables, VarSolName ) 
-     IF (ASSOCIATED(BetaVar)) THEN 
-             BetaValues => BetaVar % Values 
-             BetaPerm => BetaVar % Perm 
-     ELSE 
-             WRITE(Message,'(A,A,A)') 'No variable >',VarSolName,'< found' 
-             CALL FATAL(SolverName,Message) 
-     ENDIF
+     BetaVar => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal) 
+     BetaValues => BetaVar % Values 
+     BetaPerm => BetaVar % Perm 
 
-     GradVar => VariableGet( Solver % Mesh % Variables, GradSolName) 
-     IF (ASSOCIATED(GradVar)) THEN 
-             GradValues   => GradVar % Values 
-             GradPerm => GradVar % Perm 
-     ELSE 
-             WRITE(Message,'(A,A,A)') 'No variable >',GradSolName,'< found' 
-             CALL FATAL(SolverName,Message)    
-     END IF
+     GradVar => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal) 
+     GradValues   => GradVar % Values 
+     GradPerm => GradVar % Perm 
 
 ! Do some allocation etc if first iteration
   If (Firsttime) then 

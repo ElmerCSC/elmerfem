@@ -1,0 +1,311 @@
+!--------------------------------------------------------!!
+!  EISMINT 2D spin up SETUP
+!  Using Predictor-corrector time scheme
+!!--------------------------------------------------------!!
+
+
+$Step = "eismint"
+
+! Time stepping
+$dt = 100
+$numberofsteps = 50
+$adapTol = 1.0e-5
+
+! Spacial domain
+$L = 1.0e6
+
+! Physical Parameters
+$yearinsec = 365.25*24*60*60
+$rhoi = 910.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+
+$Hm = 100.0 
+
+
+! Accumulation rate
+$function topAcc(x){ \
+	Rel = 200.0e3; \
+	acBase = 1.0e-5; \
+	L = 1.0e6; \
+	tempCenter = x-L/2.0; \
+	temp = acBase*(Rel-abs(tempCenter)); \
+	if (temp < 0.0) _topAcc = 0.0;\
+	else { \
+		if (temp > 0.5) _topAcc = 0.5;\
+		else _topAcc = temp;\
+	} \
+} 
+
+
+! ----------------------------------------------
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+! No constant Needed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Transient     
+
+  Output Intervals =  5
+  ! Use predictor-corrector scheme
+  Predictor-Corrector Control = Logical True
+  ! Number of steps
+  Timestep Intervals =  $numberofsteps
+  ! Initial time step
+  Timestep Sizes = $dt
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "$Step$_thickness_dt$dt$_.vtu"
+
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+! The Free Surface
+Body 2
+  Equation = 2
+  Body Force = 2
+  Material = 1
+  Initial Condition = 1
+End
+
+! The Bottom
+Body 3
+  Equation = 3
+  Body Force = 3
+  Material = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Pressure = Real 0.0
+
+  H = Real $Hm
+  Zs = Real $Hm
+  Zb = Real 0.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real $gravity 
+
+End
+
+Body Force 2
+  !Top Surface Accumulation = Real 0.0
+  Zs Accumulation = Real 0.0
+  Top Surface Accumulation = Variable Coordinate 1
+     REAL MATC "topAcc(tx)"
+  Convection Velocity 1 = Variable int Velocity 1, H
+     REAL MATC "tx(0)/tx(1)"
+  Zs = Equals H
+End
+
+Body Force 3
+  Zb Accumulation = Real 0.0
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+
+  Density = Real $rhoi 
+  Viscosity Model = String "power law"
+  Viscosity = Real $eta                       
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 1.0e-16
+  Isothermal = Logical True  
+End
+
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Thickness solver for predictor corrector
+!! This solver has to be place at the lowest index
+Solver 1
+  Exec Solver = "Predictor-Corrector"
+  Equation = "Thickness"
+  Procedure = "ElmerIceSolvers" "ThicknessSolver"
+  Variable = -dofs 1 "H"
+
+  Exported Variable 1 = -dofs 1 "H Residual"
+
+  Exported Variable 2 = -dofs 1 "dHdt"
+
+  Compute dHdT = Logical True
+
+  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-12
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1500
+
+  ! Predictor-Corrector Scheme
+  Predictor method = String "Adams-Bashforth"
+  Corrector method = String "Adams-Moulton"
+  Skip First Timestep = Logical True
+  Predictor-Corrector Scheme Order = Integer 2
+  Predictor-Corrector Control Tolerance = Real $adapTol
+
+  ! To save dt, eta and errors in time, put this to True
+  Predictor-Corrector Save Error = Logical False
+
+  Stabilization Method = bubbles
+  Apply Dirichlet = Logical False
+
+  Convection Dimension = Integer 1
+End
+
+Solver 2
+  Exec Solver = "before TimeStep"
+  Equation = "UpdateExportZs"
+  Procedure = "ElmerIceSolvers" "UpdateExport"
+  Variable = -nooutput "dumy1"
+  Exported Variable 1 = -dofs 1 "Zs"
+End
+
+Solver 3
+  Exec Solver = "before TimeStep"
+  Equation = "UpdateExportZb"
+  Procedure = "ElmerIceSolvers" "UpdateExport"
+  Variable = -nooutput "dumy2"
+  Exported Variable 1 = -dofs 1 "Zb"
+End
+
+Solver 4
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 2
+  Top Surface Variable Name = String "Zs"
+  Bottom Surface Variable Name = String "Zb"
+
+  Mesh Velocity First Zero = Logical True
+  Displacement Mode = Logical False 
+
+End
+
+Solver 5
+  Equation = Navier-Stokes
+
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  
+  Stabilization Method = String Stabilized
+
+  Steady State Convergence Tolerance = 1.0e-3
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 40
+  Nonlinear System Newton After Iterations = 41
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Reset Newton = Logical True
+
+ 
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = GCR
+  Linear System Preconditioning = ILU1
+  Linear System Convergence Tolerance = Real 1.0e-8
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1500
+
+
+  Flow Model = String "Stokes"
+End
+
+Solver 6
+  Equation = "HeightDepth"
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 2
+
+  Operator 1 = depth
+  Operator 2 = height
+  Operator 3 = thickness
+
+  !! compute the integrated horizontal Viscosity and Density
+  Variable 4 = Velocity 1
+  Operator 4 = int
+End
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Name = "Equation1"
+   Active Solvers(2) = 4 5
+End
+
+Equation 2
+  Name = "Equation2"
+  Active Solvers(3) =  1 2 6
+End
+
+Equation 3
+  Name = "Equation3"
+   Active Solvers(1) = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BC Bedrock
+Boundary Condition 1
+  Target Boundaries = 1
+  Body Id = 3
+
+!  Normal-Tangential Velocity = Logical True
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+
+  ComputeNormal = Logical True !needed for ComputeNormal
+End
+
+! BC outflow right
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Pressure  = Logical True
+  
+  H = REAL 100.0
+End
+
+! BC Free Surface Top
+Boundary Condition 3
+  Target Boundaries = 3
+  Body Id = 2
+  Pressure = Real 0.0
+End
+
+! BC inflow left
+Boundary Condition 4
+  Target Boundaries = 4
+  H = REAL 100.0
+End
+
+Solver 1 :: Reference Norm = Real 355.14018
+Solver 1 :: Reference Norm Tolerance = Real 1E-03
+Solver 5 :: Reference Norm = Real 0.16594928
+Solver 5 :: Reference Norm Tolerance = Real 1E-03
+RUN
+

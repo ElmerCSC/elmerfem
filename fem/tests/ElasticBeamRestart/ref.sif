@@ -1,0 +1,109 @@
+! Test case for transient 2nd order PDE and restart
+! This is the reference
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam2d"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Transient"
+  Steady State Max Iterations = 1
+
+  Timestepping Method = BDF
+  BDF Order = 2
+
+! To obtain the Reference norm set steps to 100 !
+  Timestep Intervals(1) = 50
+  Timestep Sizes(1) = 0.001
+  Output Intervals(1) = 0
+
+  Output File = "old.result"
+  Binary Output = Logical True
+!  Post File = "ref.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Body Force 1 
+  Name = "Gravity"
+  Stress Bodyforce 2 = $ -9.81*1000
+End 
+
+Equation 1
+  Name = "Equation1"
+
+  Stress Analysis = True
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Variable = -dofs 2 "Displacement"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Max Iterations = Integer 1
+
+  Time Derivative Order = 2
+
+!  Calculate Velocity = Logical True
+  Transient Restart = Logical True
+End
+
+
+Material 1
+  Name = "Material1"
+
+  Youngs Modulus = 1.0e9
+  Poisson Ratio = 0.3
+  Density = 1000.0
+End
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries(1) = 1
+End
+
+Boundary Condition 2
+  Name = "RightEnd"
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries(1) = 3
+End
+
+Boundary Condition 4
+  Name = "LeftEnd"
+  Target Boundaries(1) = 4
+
+! The beam is fixed at the one end
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+
+Solver 1 :: Reference Norm = 0.24606097E-01

@@ -3,7 +3,7 @@ Check Keywords "Warn"
 Header:: Mesh DB "." "square"
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
 
   Coordinate System = Cartesian
   Simulation Type = Steady
@@ -98,6 +98,4 @@ Boundary Condition 2
 End
 
 Solver 3 :: Reference Norm = Real 0.11769191
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.11769191\n" );

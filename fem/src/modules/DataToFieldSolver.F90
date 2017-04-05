@@ -64,9 +64,9 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: Var 
   REAL(KIND=dp), POINTER :: WeightVector(:),ForceVector(:),MaskVector(:),FieldVector(:)
   INTEGER, POINTER :: WeightPerm(:),ForcePerm(:),MaskPerm(:),FieldPerm(:)
-  REAL(KIND=dp) :: Norm, MinMaskVal, MaxMaskVal
+  REAL(KIND=dp) :: Norm, MinMaskVal, MaxMaskVal, GlobalWeight
   LOGICAL :: GivenNormalize, NodalNormalize, Found, Found2, Mask, MaskDiffusion, &
-      ConstantWeightSum, UseLogScale, RevertLogScale, ContinueWithBC
+      ConstantWeightSum, UseLogScale, RevertLogScale, ContinueWithBC, GlobalNormalize
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, FileName
 
 
@@ -77,6 +77,7 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   Var => Solver % Variable
   FieldVector => Var % Values
   FieldPerm => Var % Perm 
+  CALL Info('DataToFieldSolver','Fitting to variable: '//TRIM(Var % Name),Level=6)
 
   ! The variable containing the field contributions
   !------------------------------------------------------------------------
@@ -97,6 +98,8 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
 
   ! If normalization is requested then need the vector of weights as well
   !------------------------------------------------------------------------
+  GlobalWeight = GetCReal( Params,'Weight Coefficient',GlobalNormalize )
+
   GivenNormalize = GetLogical( Params,'Normalize by Given Weight',Found)
   IF(.NOT. GivenNormalize ) THEN
     GivenNormalize = GetLogical( Params,'Normalize Data by Weight',Found)
@@ -179,7 +182,7 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   IF( ContinueWithBC ) THEN
     CALL Info('DataToFieldSolver','Using boundary assembly to continue the solution at BCs',Level=6)
   END IF
-
+  
 
   ! Create the matrix equation with r.h.s. data and regularization
   !------------------------------------------------------------------------
@@ -225,7 +228,7 @@ CONTAINS
   !-------------------------------------------------------------------------
   SUBROUTINE AsciiPointsToMesh()
     
-    INTEGER :: i,j,n,dim,No,NoPoints,ElementIndex=0
+    INTEGER :: i,j,n,dim,No,ElementIndex=0
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp) :: SqrtElementMetric, Weight,u,v,w,LocalCoords(3),val,InputData(4)
     REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
@@ -234,7 +237,8 @@ CONTAINS
     REAL(KIND=dp) :: GlobalCoords(3)
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: CurrentElement
-    
+    INTEGER :: Success, DataColumn
+
 
     SAVE :: AllocationsDone, ElementIndex, Basis, dBasisdx, ElementNodes
     
@@ -245,22 +249,37 @@ CONTAINS
         Basis(n), dBasisdx(n,3) )
 
     
-    NoPoints = ListGetInteger( Params,'Number Of Points' ) 
     GlobalCoords(3) = 0.0_dp
-    dim = Mesh % MeshDim
+    dim = CoordinateSystemDimension()
+    
+    DataColumn = ListGetInteger(Params,'Point Data Column',Found )
+    IF( .NOT. Found ) DataColumn = dim + 1
 
-    OPEN(10,FILE = Filename)
-     
-    DO No=1, NoPoints     
-      READ(10,*) InputData(1:dim+1)
+    OPEN(10,FILE = Filename, IOSTAT=Success)
+    IF( Success /= 0 ) THEN
+      CALL Fatal('DataToFieldSolver','Could not open file for reading: '//TRIM(FileName))
+    ELSE
+      CALL Info('DataToFieldSolver','Reading data points from file: '//TRIM(FileName),Level=6)
+    END IF
 
-      val = InputData(3)
+    No = 0 
+    DO WHILE(.TRUE.) 
+      READ(10,*,IOSTAT=Success) InputData(1:DataColumn)
+      IF( Success /= 0 ) THEN
+        CALL Info('DataToFieldSolver','End of file after '//TRIM(I2S(No))//' values')
+        IF( No == 0 ) CALL Fatal('DataToFieldSolver','Could not read any points from file!')
+        EXIT
+      END IF
+
+      No = No + 1
+
       GlobalCoords(1:dim) = InputData(1:dim)
-      val = InputData(dim+1)
+      val = InputData(DataColumn)
 
       CALL LocateParticleInMeshOctree( ElementIndex, GlobalCoords, LocalCoords )
+
       IF( ElementIndex == 0 ) CYCLE
-    
+
       CurrentElement => Mesh % Elements( ElementIndex )
       n = CurrentElement % TYPE % NumberOfNodes
       NodeIndexes => CurrentElement % NodeIndexes
@@ -284,12 +303,17 @@ CONTAINS
         !-------------------------------------------------------------------------
         weight = Basis(i)
         
-        WeightVector( j ) = WeightVector( j ) + weight  
         ForceVector( j ) = ForceVector( j ) + weight * val
+        IF( GivenNormalize ) THEN
+          WeightVector( j ) = WeightVector( j ) + weight  
+        END IF
+
       END DO      
     END DO
 
     CLOSE(10) 
+
+    CALL Info('DataToFieldSolver','Done reading data points',Level=12)
 
   END SUBROUTINE AsciiPointsToMesh
    
@@ -301,26 +325,35 @@ CONTAINS
   SUBROUTINE BulkAssembly()
     
     INTEGER, POINTER :: BoundaryPerm(:), Indexes(:)
-    INTEGER :: i,j,j2,j3,k,t,n,istat,active,BoundaryNodes,dim,MaskActive
+    INTEGER :: i,j,p,q,j2,j3,k,t,n,istat,active,BoundaryNodes,dim,MaskActive
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t) :: IP
-    CHARACTER(LEN=MAX_NAME_LEN) :: BoundaryName
+    CHARACTER(LEN=MAX_NAME_LEN) :: BoundaryName, DiffusivityName
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), NodalWeight(:)
     REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
-    REAL(KIND=dp) :: Coeff, detJ, WeightCorr, val, Wrhs, Wmat
+    REAL(KIND=dp) :: Coeff, detJ, WeightCorr, val, Wrhs, Wmat, DiffMatrix(3,3)
     REAL(KIND=dp), POINTER :: MatValues(:), MatRhs(:)
+    REAL(KIND=dp), POINTER :: Hwrk(:,:,:) => Null()
+    REAL(KIND=dp), POINTER :: DataDiffusivity(:,:,:)
     INTEGER, POINTER :: MatDiag(:)
     TYPE(Matrix_t), POINTER :: StiffMatrix 
-    LOGICAL :: stat, Visited = .FALSE.
+    LOGICAL :: stat, GlobalDiffuse, LocalDiffuse, Visited = .FALSE.
+    TYPE(ValueList_t), POINTER :: Material
     
     
-    SAVE Visited, Nodes, STIFF, FORCE, Basis, dBasisdx, NodalWeight
-    SAVE BoundaryPerm, BoundaryNodes
+    SAVE Visited, Nodes, STIFF, FORCE, Basis, dBasisdx, NodalWeight, &
+        BoundaryPerm, BoundaryNodes, DataDiffusivity
 
     ! Assembly the diffusion part used for regularization
     !----------------------------------------------------------
-    Coeff = GetCReal( Solver % Values,'Diffusion Coefficient')
+    Coeff = GetCReal( Solver % Values,'Diffusion Coefficient',GlobalDiffuse)
+    LocalDiffuse = .FALSE.
+
+    DiffusivityName = GetString( Solver % Values,'Diffusivity Name',Found )
+    IF(.NOT. Found ) DiffusivityName = 'Data Diffusivity'
+    LocalDiffuse = .FALSE.
+
     active = GetNOFActive()
     StiffMatrix => Solver % Matrix
     MatValues => StiffMatrix % Values
@@ -330,14 +363,15 @@ CONTAINS
       CALL Fatal('DataToFieldSolver','StiffMatrix not associated!')
     END IF
 
-    dim = Solver % Mesh % MeshDim
+    dim = CoordinateSystemDimension()
 
     IF(.NOT. Visited) THEN
       Visited = .TRUE.
       N = Solver % Mesh % MaxElementNodes 
-      ALLOCATE( Basis(n), dBasisdx(n, 3), FORCE(N), STIFF(N,N), STAT=istat )
+      ALLOCATE( Basis(n), dBasisdx(n, 3), FORCE(N), STIFF(N,N), &
+          DataDiffusivity( 3,3,N ), STAT=istat )
       IF( istat /= 0) CALL Fatal('DataToFieldSolver','Allocation error 1 in BulkAssembly!')
-
+      
       n = StiffMatrix % NumberOfRows
       ALLOCATE( NodalWeight( n ), STAT=istat )
       IF( istat /= 0) CALL Fatal('DataToFieldSolver','Allocation error 2 in BulkAssembly!')
@@ -371,6 +405,30 @@ CONTAINS
       STIFF = 0.0d0
       FORCE = 0.0d0
       
+      IF( .NOT. GlobalDiffuse ) THEN
+        Material => GetMaterial()
+        CALL ListGetRealArray( Material,DiffusivityName,Hwrk,n,Indexes,LocalDiffuse)
+        IF( LocalDiffuse ) THEN
+          DataDiffusivity = 0.0d0
+          IF ( SIZE(Hwrk,1) == 1 ) THEN
+            DO i=1,3
+              DataDiffusivity( i,i,1:n ) = Hwrk( 1,1,1:n )
+            END DO
+          ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
+            DO i=1,MIN(3,SIZE(Hwrk,1))
+              DataDiffusivity(i,i,1:n) = Hwrk(i,1,1:n)
+            END DO
+          ELSE
+            DO i=1,MIN(3,SIZE(Hwrk,1))
+              DO j=1,MIN(3,SIZE(Hwrk,2))
+                DataDiffusivity( i,j,1:n ) = Hwrk(i,j,1:n)
+              END DO
+            END DO
+          END IF
+        END IF
+      END IF
+
+      
       ! Numerical integration:
       !----------------------
       IP = GaussPoints( Element )
@@ -384,11 +442,26 @@ CONTAINS
         !----------------------------------------
         DO i=1,n
 
+          IF( .NOT. ContinueWithBC .AND. BoundaryNodes > 0 ) THEN
+            IF( BoundaryPerm( Indexes(i) ) > 0 ) CYCLE
+          END IF
+          
           ! Compute the rowsum that is used in the normalization
           !-----------------------------------------------------
           val = IP % s(k) * DetJ * Basis(i)        
           j = Indexes(i)
           NodalWeight( j ) = NodalWeight( j ) + val
+
+
+          ! Compute the local conductivity tensor
+          ! -------------------------------
+          IF( LocalDiffuse ) THEN
+            DO p=1,dim
+              DO q=1,dim
+                DiffMatrix(p,q) = SUM( DataDiffusivity(p,q,1:n) * Basis(1:n) )
+              END DO
+            END DO            
+          END IF
 
           ! This condition should remove the diffusion for proper data, and 
           ! use it only for outlier data.
@@ -404,14 +477,18 @@ CONTAINS
           ! try to fix the normal gradient of the field to zero.
           ! Does not seem to work though...
           !--------------------------------------------------------------------
-          IF( .NOT. ContinueWithBC .AND. BoundaryNodes > 0 ) THEN
-            IF( BoundaryPerm( Indexes(i) ) > 0 ) CYCLE
-          END IF
 
-          DO j=1,n
-            STIFF(i,j) = STIFF(i,j) + IP % s(k) * Coeff * DetJ * &
-                SUM( dBasisdx(i,1:dim) * dBasisdx(j,1:dim) ) 
-          END DO
+          IF( GlobalDiffuse ) THEN
+            DO j=1,n
+              STIFF(i,j) = STIFF(i,j) + IP % s(k) * DetJ * &
+                  Coeff * SUM( dBasisdx(i,1:dim) * dBasisdx(j,1:dim) ) 
+            END DO
+          ELSE IF( LocalDiffuse ) THEN            
+            DO j=1,n
+              STIFF(i,j) = STIFF(i,j) + IP % s(k) * DetJ * &
+                  SUM(MATMUL(DiffMatrix, dBasisdx(j,:)) * dBasisdx(i,:)) 
+            END DO
+          END IF
 
         END DO
       END DO
@@ -472,7 +549,7 @@ CONTAINS
           Wmat = 0.0_dp
         END IF
         Wrhs = WeightCorr * val
-
+        
       ELSE IF( NodalNormalize ) THEN
         Wmat = NodalWeight(i)        
         Wrhs = val
@@ -481,7 +558,12 @@ CONTAINS
         Wmat = NodalWeight(i)
         Wrhs = NodalWeight(i) * val
       END IF
-           
+
+      IF( GlobalNormalize ) THEN
+        Wmat = GlobalWeight * Wmat
+        Wrhs = GlobalWeight * Wrhs
+      END IF
+
       k = MatDiag(j) 
       MatValues( k ) = MatValues( k ) + Wmat
       MatRhs(j) = MatRhs(j) + Wrhs
@@ -495,7 +577,9 @@ CONTAINS
     END IF
 
   END SUBROUTINE BulkAssembly
+!------------------------------------------------------------------------------
   
+
 !------------------------------------------------------------------------------
   SUBROUTINE BoundaryAssembly()
 !------------------------------------------------------------------------------
@@ -533,6 +617,7 @@ CONTAINS
   END SUBROUTINE BoundaryAssembly
 !------------------------------------------------------------------------------
 
+
 !------------------------------------------------------------------------------
   SUBROUTINE BoundaryLocalMatrix( Element, ParentElement, n, np )
 !------------------------------------------------------------------------------
@@ -542,22 +627,51 @@ CONTAINS
     REAL(KIND=dp), TARGET :: STIFF(np,np), FORCE(np)
     REAL(KIND=dp), POINTER :: A(:,:),M(:,:)    
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), s, DetJ,u,v,w
-    REAL(KIND=dp) :: ParentBasis(np),ParentdBasisdx(np,3)
+    REAL(KIND=dp) :: ParentBasis(np),ParentdBasisdx(np,3),DiffMatrix(3,3)
     REAL(KIND=dp) :: Nrm(3),Coeff
+    REAL(KIND=dp) :: DataDiffusivity(3,3,np)
+    REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
     LOGICAL :: Stat,Found
     INTEGER :: i,j,p,q,t,dim
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes, ParentNodes
+    LOGICAL :: LocalDiffuse, GlobalDiffuse
+    TYPE(ValueList_t), POINTER :: Material
 !------------------------------------------------------------------------------
-    dim = Solver % Mesh % MeshDim
+    dim = CoordinateSystemDimension()    
     
-    Coeff = GetCReal( Solver % Values,'Diffusion Coefficient')
+    Coeff = GetCReal( Solver % Values,'Diffusion Coefficient',GlobalDiffuse)
+    LocalDiffuse = .FALSE.
 
     CALL GetElementNodes( Nodes,Element )
     CALL GetElementNodes( ParentNodes,ParentElement )
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
+    
+    IF( .NOT. GlobalDiffuse ) THEN
+      Material => GetMaterial( ParentElement )
+      CALL ListGetRealArray( Material,'Data Diffusivity',Hwrk,np,&
+          ParentElement % NodeIndexes,LocalDiffuse)
+      IF( LocalDiffuse ) THEN
+        DataDiffusivity = 0.0d0
+        IF ( SIZE(Hwrk,1) == 1 ) THEN
+          DO i=1,3
+            DataDiffusivity( i,i,1:np ) = Hwrk( 1,1,1:np )
+          END DO
+        ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
+          DO i=1,MIN(3,SIZE(Hwrk,1))
+            DataDiffusivity(i,i,1:np) = Hwrk(i,1,1:np)
+          END DO
+        ELSE
+          DO i=1,MIN(3,SIZE(Hwrk,1))
+            DO j=1,MIN(3,SIZE(Hwrk,2))
+              DataDiffusivity( i,j,1:np ) = Hwrk(i,j,1:np)
+            END DO
+          END DO
+        END IF
+      END IF
+    END IF
 
     !Numerical integration:
     !----------------------
@@ -577,10 +691,27 @@ CONTAINS
       stat = ElementInfo(ParentElement, ParentNodes, U, V, W, detJ, &
           ParentBasis, ParentdBasisdx)
 
+
+      ! Compute the local conductivity tensor
+      ! -------------------------------
+      IF( LocalDiffuse ) THEN
+        DO p=1,dim
+          DO q=1,dim
+            DiffMatrix(p,q) = SUM( DataDiffusivity(p,q,1:np) * ParentBasis(1:np) )
+          END DO
+        END DO
+      END IF
+      
+
       DO p=1,np
         DO q=1,np
-          STIFF(p,q) = STIFF(p,q) - s * Coeff * ParentBasis(p)* &
-              SUM( ParentdBasisDx(q,1:dim) * Nrm(1:dim) )
+          IF( GlobalDiffuse ) THEN
+            STIFF(p,q) = STIFF(p,q) - s * ParentBasis(p)* &
+                Coeff * SUM( ParentdBasisDx(q,1:dim) * Nrm(1:dim) )
+          ELSE IF( LocalDiffuse ) THEN
+            STIFF(p,q) = STIFF(p,q) - s * ParentBasis(p) * &
+                SUM( MATMUL(DiffMatrix, dBasisdx(q,:)) * Nrm(1:dim) )
+          END IF
         END DO
       END DO
     END DO
@@ -592,6 +723,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 END SUBROUTINE DataToFieldSolver
+
+
 
 !-------------------------------------------------------------------
 !> Default initialization for the primary solver.

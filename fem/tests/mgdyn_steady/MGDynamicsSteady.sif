@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 9
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady
@@ -86,6 +86,12 @@ Solver 2
   Linear System Convergence Tolerance = 1.0e-8
 End
 
+Solver 3
+  Equation = "scalars"
+  procedure = "SaveData" "SaveScalars"
+  show norm index = 2
+End
+
 
 Body Force 1
   Current Density 1 = Real -3
@@ -132,6 +138,5 @@ End
 
 Solver 2 :: Reference Norm = Real 1.41535
 Solver 2 :: Reference Norm Tolerance = Real 1.0E-4
-$fprintf( stderr, "TEST CASE 1\n");
+Solver 3 :: Reference Norm = Real 9.162083E-01
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=1.41535,EPS=1.0E-4\n" );

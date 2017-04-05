@@ -8,7 +8,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
 
   Coordinate System = "Cartesian 2D"
   Coordinate Mapping(3) = 1 2 3
@@ -169,13 +169,9 @@ Boundary Condition 4
 End 
 
 Solver 2 :: Reference Norm = Real 23152.284
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=23152.284\n");
 
 Solver 2 :: Reference Norm = Real 28132.083
-$fprintf( stderr, "TEST CASE 2\n");
 Material 1 :: Convection Velocity 1 = $ 0.2*c
 Material 1 :: Convection Velocity 2 = $ 0.1*c
 RUN
-$fprintf( stderr, "END TEST CASE 2: Target NRM=28132.083\n");

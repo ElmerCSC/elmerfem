@@ -47,13 +47,14 @@
 !-------------------------------------------------------------------------------
        INTERFACE
          SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm)
            USE Types
            TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
            TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
            LOGICAL, OPTIONAL :: UseQuadrantTree,FoundNodes(:)
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+           INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 !-------------------------------------------------------------------------------
@@ -106,11 +107,11 @@
         IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
         proc = i-1
         CALL MPI_BSEND( myBB, 6, MPI_DOUBLE_PRECISION, proc, &
-                 999, MPI_COMM_WORLD, ierr )
+                 999, ELMER_COMM_WORLD, ierr )
       END DO
       DO i=1,COUNT(ParEnv % Active)-1
         CALL MPI_RECV( myBB, 6, MPI_DOUBLE_PRECISION, MPI_ANY_SOURCE, &
-                 999, MPI_COMM_WORLD, status, ierr )
+                 999, ELMER_COMM_WORLD, status, ierr )
         proc = status(MPI_SOURCE)
         BB(:,proc+1) = myBB
       END DO
@@ -123,7 +124,7 @@
           IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
           proc = i-1
           CALL MPI_BSEND( n, 1, MPI_INTEGER, proc, &
-                1001, MPI_COMM_WORLD, ierr )
+                1001, ELMER_COMM_WORLD, ierr )
         END DO
       ELSE
         ! Extract nodes that we didn't find from our own partition...
@@ -177,18 +178,18 @@
           ! send count...
           ! -------------
           CALL MPI_BSEND( npart, 1, MPI_INTEGER, proc, &
-                  1001, MPI_COMM_WORLD, ierr )
+                  1001, ELMER_COMM_WORLD, ierr )
 
           IF ( npart==0 ) CYCLE
 
           ! ...and points
           ! -------------
           CALL MPI_BSEND( xpart, npart, MPI_DOUBLE_PRECISION, proc, &
-                  1002, MPI_COMM_WORLD, ierr )
+                  1002, ELMER_COMM_WORLD, ierr )
           CALL MPI_BSEND( ypart, npart, MPI_DOUBLE_PRECISION, proc, &
-                  1003, MPI_COMM_WORLD, ierr )
+                  1003, ELMER_COMM_WORLD, ierr )
           CALL MPI_BSEND( zpart, npart, MPI_DOUBLE_PRECISION, proc, &
-                  1004, MPI_COMM_WORLD, ierr )
+                  1004, ELMER_COMM_WORLD, ierr )
 
           DEALLOCATE(xpart,ypart,zpart)
         END DO
@@ -201,7 +202,7 @@
       ALLOCATE(ProcRecv(Parenv % Pes))
       DO i=1,COUNT(ParEnv % Active)-1
         CALL MPI_RECV( n, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-              1001, MPI_COMM_WORLD, status, ierr )
+              1001, ELMER_COMM_WORLD, status, ierr )
 
         proc = status(MPI_SOURCE)
         ProcRecv(proc+1) % n = n
@@ -212,11 +213,11 @@
               ProcRecv(proc+1) % Nodes_y(n),ProcRecv(proc+1) % Nodes_z(n))
 
         CALL MPI_RECV( ProcRecv(proc+1) % nodes_x, n, MPI_DOUBLE_PRECISION, proc, &
-               1002, MPI_COMM_WORLD, status, ierr )
+               1002, ELMER_COMM_WORLD, status, ierr )
         CALL MPI_RECV( ProcRecv(proc+1) % nodes_y, n, MPI_DOUBLE_PRECISION, proc, &
-               1003, MPI_COMM_WORLD, status, ierr )
+               1003, ELMER_COMM_WORLD, status, ierr )
         CALL MPI_RECV( ProcRecv(proc+1) % nodes_z, n, MPI_DOUBLE_PRECISION, proc, &
-               1004, MPI_COMM_WORLD, status, ierr )
+               1004, ELMER_COMM_WORLD, status, ierr )
       END DO
 
       ! Count variables and received nodes, and check MPI buffer is 
@@ -249,7 +250,7 @@
 
         IF ( n==0 ) THEN
           CALL MPI_BSEND( n, 1, MPI_INTEGER, proc, &
-                2001, MPI_COMM_WORLD, ierr )
+                2001, ELMER_COMM_WORLD, ierr )
           CYCLE
         END IF
       
@@ -293,7 +294,7 @@
         nfound = COUNT(FoundNodes)
 
         CALL MPI_BSEND( nfound, 1, MPI_INTEGER, proc, &
-                2001, MPI_COMM_WORLD, ierr )
+                2001, ELMER_COMM_WORLD, ierr )
 
         ! send interpolated values back to the owner:
         ! -------------------------------------------
@@ -323,11 +324,11 @@
           END DO
 
           CALL MPI_BSEND( vperm, nfound, MPI_INTEGER, proc, &
-                2002, MPI_COMM_WORLD, status, ierr )
+                2002, ELMER_COMM_WORLD, status, ierr )
 
           DO j=1,nvars
             CALL MPI_BSEND( vstore(:,j), nfound,MPI_DOUBLE_PRECISION, proc, &
-                       2002+j, MPI_COMM_WORLD,ierr )
+                       2002+j, ELMER_COMM_WORLD,ierr )
           END DO
 
           DEALLOCATE(vstore, vperm)
@@ -350,7 +351,7 @@
         ! recv count:
         ! -----------
         CALL MPI_RECV( n, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-              2001, MPI_COMM_WORLD, status, ierr )
+              2001, ELMER_COMM_WORLD, status, ierr )
 
         proc = status(MPI_SOURCE)
         IF ( n<=0 ) THEN
@@ -367,7 +368,7 @@
         ! points the partition found are):
         ! --------------------------------------------------
         CALL MPI_RECV( vperm, n, MPI_INTEGER, proc, &
-              2002, MPI_COMM_WORLD, status, ierr )
+              2002, ELMER_COMM_WORLD, status, ierr )
 
         !Mark nodes as found if requested
         IF(PRESENT(UnfoundNodes)) THEN
@@ -386,7 +387,7 @@
 
             nvars=nvars+1
             CALL MPI_RECV( astore, n, MPI_DOUBLE_PRECISION, proc, &
-                2002+nvars, MPI_COMM_WORLD, status, ierr )
+                2002+nvars, ELMER_COMM_WORLD, status, ierr )
 
             Nvar => VariableGet( NewMesh % Variables,Var % Name,ThisOnly=.TRUE.)
 
@@ -402,7 +403,7 @@
               DO l=1,SIZE(Var % PrevValues,2)
                 nvars=nvars+1
                 CALL MPI_RECV( astore, n, MPI_DOUBLE_PRECISION, proc, &
-                    2002+nvars, MPI_COMM_WORLD, status, ierr )
+                    2002+nvars, ELMER_COMM_WORLD, status, ierr )
 
                 IF ( ASSOCIATED(Nvar) ) THEN
                   DO j=1,n
@@ -492,7 +493,7 @@ CONTAINS
 !>    the old model to the mesh of the new model.
 !------------------------------------------------------------------------------
      SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm )
 !------------------------------------------------------------------------------
        USE DefUtils
 !-------------------------------------------------------------------------------
@@ -504,10 +505,11 @@ CONTAINS
        TYPE(Projector_t), POINTER, OPTIONAL :: Projector  !< Use projector between meshes for interpolation, if available
        CHARACTER(LEN=*),OPTIONAL :: MaskName  !< Mask the old variable set by the given MaskName when trying to define the interpolation.
        LOGICAL, OPTIONAL :: FoundNodes(:)     !< List of nodes where the interpolation was a success
+       INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
 !------------------------------------------------------------------------------
        INTEGER :: dim
        TYPE(Nodes_t) :: ElementNodes
-       INTEGER :: nBulk, i, j, k, l, n, np, bf_id, QTreeFails, TotFails
+       INTEGER :: nBulk, i, j, k, l, n, np, bf_id, QTreeFails, TotFails, FoundCnt
        REAL(KIND=dp), DIMENSION(3) :: Point
        INTEGER, POINTER :: Indexes(:)
        REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
@@ -521,7 +523,7 @@ CONTAINS
                           RotWBasis(:,:), WBasis(:,:)
        REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum, F(3,3), G(3,3)
        
-       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel
+       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel, TryLinear
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
        INTEGER, POINTER   :: Rows(:), Cols(:), Diag(:)
@@ -534,7 +536,7 @@ CONTAINS
        
        INTEGER, ALLOCATABLE:: RInd(:)
        LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, ProjectorAllocated
-       INTEGER :: eps_tries, nrow
+       INTEGER :: eps_tries, nrow, PassiveCoordinate
        REAL(KIND=dp) :: eps1 = 0.1, eps2, eps_global, eps_local, eps_basis,eps_numeric
        REAL(KIND=dp), POINTER :: Values(:), LocalU(:), LocalV(:), LocalW(:)
 
@@ -625,6 +627,9 @@ CONTAINS
            'Interpolation Numeric Epsilon', Stat)
        IF(.NOT. Stat) eps_numeric = 1.0e-10
 
+       PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
+           'Interpolation Passive Coordinate', Stat ) 
+
        QTreeFails = 0
        TotFails = 0
 
@@ -637,14 +642,28 @@ CONTAINS
          PiolaT = ListGetLogical(CurrentModel % Solver % Values,'Use Piola Transform',Found)
        END IF
 
+       TryLinear = ListGetLogical( CurrentModel % Simulation, 'Try Linear Search If Qtree Fails', Found)
+       IF(.NOT.Found) TryLinear = .TRUE.
+
+       FoundCnt = 0
 !------------------------------------------------------------------------------
 ! Loop over all nodes in the new mesh
 !------------------------------------------------------------------------------
        DO i=1,NewMesh % NumberOfNodes
 !------------------------------------------------------------------------------
+
+         ! Only get the variable for the requested nodes
+         IF( PRESENT( NewMaskPerm ) ) THEN
+           IF( NewMaskPerm(i) == 0 ) CYCLE
+         END IF
+
          Point(1) = NewMesh % Nodes % x(i)
          Point(2) = NewMesh % Nodes % y(i)
          Point(3) = NewMesh % Nodes % z(i)
+
+         IF( PassiveCoordinate /= 0 ) THEN
+           Point(PassiveCoordinate) = 0.0_dp
+         END IF
 
 !------------------------------------------------------------------------------
 ! Find in which old mesh bulk element the point belongs to
@@ -699,8 +718,7 @@ CONTAINS
            END IF
          END IF
 
-         IF( .NOT. TryQTree .OR. &
-             (.NOT. Found .AND. .NOT. Parallel ) ) THEN
+         IF( .NOT. TryQTree .OR. (.NOT. Found .AND. .NOT. Parallel .AND. TryLinear ) ) THEN
            !------------------------------------------------------------------------------
            ! Go through all old mesh bulk elements
            !------------------------------------------------------------------------------
@@ -739,6 +757,7 @@ CONTAINS
 !         Found Element in OldModel:
 !         ---------------------------------
           IF ( PRESENT(Projector) ) THEN
+             FoundCnt = FoundCnt + 1
              ElemPtrs(i) % Element => Element
              LocalU(i) = LocalCoordinates(1)
              LocalV(i) = LocalCoordinates(2)

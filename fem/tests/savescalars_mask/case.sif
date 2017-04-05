@@ -1,0 +1,141 @@
+! Test different operators of SaveScalars on a simple heat equation 
+! For this purpose the SaveScalars includes a tailored output feature
+!
+! Test case for masking operators in body, body force, and materials sections.
+!
+! P.R. 14.8.2015
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2D"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Solver Input File = "TempDist.sif"
+  Post File = "TempDist.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+  cold body = Logical True
+End
+
+Body 2
+  Name = "Body2"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+  hot body = Logical True
+End
+
+Body 3
+  Name = "Body3"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+  Heat Equation = True
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 2 
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+
+  Show Norm = True
+  Show Norm Index = 4
+
+  Variable 1 = Temperature
+  Operator 1 = body force volume
+  Mask Name 1 = cooling
+
+  Variable 2 = Temperature
+  Operator 2 = body max
+  Mask Name 2 = hot body
+
+  Variable 3 = Temperature
+  Operator 3 = body max
+  Mask Name 3 = cold body
+
+  Variable 4 = Temperature
+  Operator 4 = body int
+  Mask Name 4 = hot body
+
+  Variable 5 = Temperature
+  Operator 5 = body int
+  Mask Name 5 = cold body
+
+  Variable 6 = Temperature
+  Operator 6 = int
+! no mask
+
+End
+
+ 
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 1.0
+End
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 20
+End
+
+Body Force 2 
+  Name = "Cooling"
+  Heat Source = -10
+  cooling = Logical True
+End 
+
+ 
+Boundary Condition 1
+  Name = "Zero"
+  Target Boundaries(1) = 1
+  Temperature = 1
+End
+
+
+Solver 1 :: Reference Norm = 1.3276451
+Solver 2 :: Reference Norm = 1.973707

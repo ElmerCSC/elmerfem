@@ -13,7 +13,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -97,19 +97,12 @@ End
 Boundary Condition 2
   Target Boundaries(1) = 2 
 
-  Force 2 = -30.0
+  Force 2 = -10.0
   Force 2 Normalize By Area = Logical True
   Displacement 2 Constant = Logical True
 
-!  Displacement 
-
-!  Temperature Constant = Logical True
   Save Scalars = True
 End
 
-Solver 1 :: Reference Norm = Real 0.28573541E-01
-$fprintf( stderr, "TEST CASE 1\n")$
-RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=0.28535304E-01\n");
-
+Solver 1 :: Reference Norm = Real $ 7.74550915E-03
 

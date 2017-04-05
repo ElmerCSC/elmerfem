@@ -1,0 +1,75 @@
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Steady State Max Iterations = 1
+  Simulation Type = Steady
+  Output Intervals = 1
+  Post File = case.vtu
+  Max Output Level = 4
+ 
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Material 1
+End
+
+Solver 1
+  Equation = Reader
+  Procedure = "GridDataReader" "GridDataReader"
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "./MyFile.nc"
+  !Time Dim Name = String "time"
+  X Dim Name = String "x1" 
+  Y Dim Name = String "y1"
+
+  !Time Var Name = String "time"
+  X Var Name = String "x1"
+  Y Var Name = String "y1"
+
+  !--- Interpolation variables
+  Epsilon X = Real 1.0e-2 
+  Epsilon Y = Real 1.0e-2 
+  Epsilon Time = Real 0.01
+
+  Interpolation Bias = Real 0.0 
+  Interpolation Multiplier = Real 1.0 
+
+  Is Time Counter = Logical True
+
+  Variable 1 = File "temp"
+
+  Enable Scaling = Logical False ! Scales the Elmer grid to match the NetCDF grid 
+End
+
+Solver 2
+  Equation = String SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  FileName = File "temp.dat"
+  Show Norm = True
+  Show Norm Index = 1
+
+  Variable 1 = String "temp"
+  Operator 1 = String mean
+End
+
+
+Solver 2 :: Reference Norm = Real 3.31694136E+01
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=3.31694136E+01,EPS=1E-06\n" );
+
+

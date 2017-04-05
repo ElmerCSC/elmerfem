@@ -1,4 +1,4 @@
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( case.sif case.sif COPYONLY)
@@ -7,3 +7,4 @@ file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_D
 
 ADD_ELMER_TEST(ParticleFalling)
 ADD_ELMER_LABEL(ParticleFalling quick)
+ADD_ELMER_LABEL(ParticleFalling particle)

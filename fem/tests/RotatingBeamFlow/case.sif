@@ -1,0 +1,220 @@
+!----------------------------------------------------------------------------
+! A test case for mortar BCs and drag compuation of rotating beam.
+! The idea is to scan over drag angle.
+!
+! P.R. 30.9.2016
+!-------------------------------------------------------------------------
+
+! Now we scan just two angles in [0,28], modify this to real scannig
+$angle=28.0
+$steps=2
+$vrelax=1.0
+$dangle=angle/(steps-1)
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "BeamFlow"
+  Include Path ""
+  Results Directory ""
+End
+ 
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Scanning
+
+  Timestep Intervals = $steps
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = case.vtu
+
+  Initialize Dirichlet Conditions = False
+  Coordinate Scaling = 0.01
+
+
+!  Save Averaged Normals = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Beam"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Circle"
+  Equation = 2
+  Material = 1
+  Body Force = 1
+End
+
+Body 3
+  Target Bodies(1) = 3
+  Name = "Box"
+  Equation = 2
+  Material = 1
+End
+
+Body Force 1
+  Name = "Rotate"
+  Mesh Rotate 3 = Variable time
+    Real MATC "dangle*(tx-1)"
+End
+
+
+! Rotate the rotor & compute the mesh velocity for ALE
+Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+  Translate Before Rotate = Logical True
+End
+
+
+! Solve the flow between the rotor and stator
+Solver 2
+  Equation = N-S
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Stabilize = False
+  Bubbles = True
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-3
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = $ vrelax
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = Bicgstabl
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 50
+
+  Apply Mortar BCs = Logical True
+  Calculate Loads = True
+  Update Components(1) = 1
+End
+
+
+Solver 3 
+  Name = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Save Components Results = Logical True
+  Show Norm Index = 1
+
+! use same expression as for angle
+  Expression 1 = Variable time
+    Real MATC "dangle*(tx-1)"
+End 
+
+
+Component 1 
+  Name = String "Drag over beam"
+  Master Boundaries(1) = Integer 3
+  Variable 1 = String "Flow Solution Loads 1"
+  Operator 1 = String "sum"
+  Variable 2 = String "Flow Solution Loads 2"
+  Operator 2 = String "sum"
+End 
+
+
+Equation 1
+  Name = "Nothing"
+End
+
+Equation 2
+  Name = "Flow"
+  Active Solvers(1) = 2
+End
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Viscosity = 1.0e-3
+End
+
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Name = "Interface"
+
+  Mortar BC = 2
+  Level Projector = Logical True
+  Galerkin Projector = Logical True
+  Rotational Projector = Logical True
+
+  Normal-Tangential Velocity = True
+  Mortar BC Velocity 1 = Logical True
+  Mortar BC Velocity 2 = Logical True
+
+! This ensures consistent normals 
+  Rotational Normals = Logical True
+End
+
+
+Boundary Condition 2
+  Target Boundaries(4) = 5 6 7 8 
+  Name = "Interface-master"
+! Added automatically for master side if given for slave
+!  Normal-Tangential Velocity = True
+!  Rotational Normals = Logical True
+End 
+
+
+Boundary Condition 3
+  Target Boundaries(4) = 9 10 11 12
+  Name = "BeamSides"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 13 
+  Name = "BoxTop"
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 5
+  Target Boundaries(1) = 14
+  Name = "BoxRight"
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 6
+  Target Boundaries(1) = 15
+  Name = "BoxBottom"
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 7
+  Target Boundaries(1) = 16
+  Name = "BoxLeft"
+  Velocity 1 = 1.0
+  Velocity 2 = 0.0
+End
+
+
+Solver 2 :: Reference Norm = 6.66786763E-01
+Solver 3 :: Reference Norm = 1.68531536E-02
+

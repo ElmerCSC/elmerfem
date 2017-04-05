@@ -15,7 +15,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -23,8 +23,6 @@ Simulation
   Simulation Type = "Steady State"
   Steady State Max Iterations = 1
   Output Intervals = 1
-
-!  Post File = "discont.vtu"
 
 ! Normally we dont want to apply this
 !  Discontinuous Boundaries Greedy = Logical True
@@ -87,6 +85,7 @@ Solver 1
 !  Linear System Scaling = False
 !  Linear System Dirichlet Scaling = Logical False
 !  Optimize Bandwidth = False
+  Nonlinear System Consistent Norm = Logical True
 
   Linear System Abort Not Converged = False
   Apply Mortar BCs = True
@@ -103,6 +102,21 @@ End
 
  
 
+Solver 3
+  Exec Solver = after all
+
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = b
+
+!  Save Bulk Only = Logical True
+  Skip Halo Elements = Logical True
+
+  Vtu Format = Logical True
+  Binary Output = Logical True
+  Single Precision = Logical True
+End
+
 Material 1
   Name = "Material"
   Density = 1
@@ -118,11 +132,16 @@ Boundary Condition 1
 
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
+  Discontinuous Target Bodies = Integer 2
 
 ! If this keyword is nonzero then two BCs are created and
 ! standard mortar projector is used.
   Mortar BC = 10 
   Mortar BC Coefficient Temperature = Real 1.0
+
+  Mortar BC Diag = Logical True
+  Galerkin Projector = Logical True
+  Plane Projector = Logical True
 End
 
 
@@ -147,7 +166,5 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.61010021
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=  0.61010021\n");
 !End Of File

@@ -17,7 +17,7 @@ End
 
 Simulation
   Min Output Level = 0
-  Max Output Level = 31
+  Max Output Level = 5
   Output Caller = Logical True
   Coordinate System = Cylindric Symmetric
   Coordinate Mapping(3) = 1 2 3
@@ -106,7 +106,5 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.172138
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.172138\n" );
 !End Of File

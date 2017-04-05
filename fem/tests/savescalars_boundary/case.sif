@@ -8,7 +8,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
   Coordinate System = "Cartesian"
 
   Simulation Type = "Steady State"
@@ -108,31 +108,23 @@ End
 
 Solver 2 :: Reference Norm = Real 1.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=1.0, EPS=1e-4\n" );
 
 Solver 2 :: Reference Norm = Real 4.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 2\n");
 Solver 2 :: Operator 1 = Area
 RUN
-$fprintf( stderr, "END TEST CASE 2: Target NRM=4.0, EPS=1e-4\n" );
 
 Solver 2 :: Reference Norm = Real 1.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 3\n");
 Solver 2 :: Operator 1 = Area
 Solver 2 :: Mask Name 1 = String "Upper"
 RUN
-$fprintf( stderr, "END TEST CASE 3: Target NRM=1.0, EPS=1e-4\n" );
 
 Solver 2 :: Reference Norm = Real 0.69637759E-01
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 4\n");
 Solver 2 :: Operator 1 = max
 Solver 2 :: Mask Name 1 = String "Upper"
 RUN
-$fprintf( stderr, "END TEST CASE 3: Target NRM=0.69637759E-01, EPS=1e-4\n" );
 
 !End Of File

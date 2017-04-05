@@ -1,0 +1,141 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "Curve"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+!  Filename Numbering = Logical True
+  Post File = "Curve.vtu"
+
+! Increase mesh density
+  Mesh Levels = 2
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 2
+End
+
+Equation 1 
+  Name = "CoilCurrent"
+  Active Solvers(3) = 1 2 3
+End 
+
+Equation 2
+  Name = "NoEquations"
+End 
+
+
+
+Solver 1
+  Equation = "CoilSolver"
+
+  Procedure = "CoilSolver" "CoilSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ilu1
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Iterative Method = BiCGStabL
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1e-06
+
+! It is not sensible to perform too many iterations because the 
+! iterative system actually does not most often have a solution
+! Trying to find it will result to numerical problems. 
+! Only 2 or 3 iterations could be optimal. 
+! 1 iteration uses constant conductivity. 
+
+  Desired Coil Current = Real 1.0
+
+! In principle this could work to ensure smoothness of
+! the conductivity field but in practice it does not. 
+!  Cfix Diffusion = Real 1.0e-4
+
+!  Optimize Bandwidth = False
+
+! The fitting can be either isotropic or unisotropic.
+! In the unisotropic model the conductivity is aligned like the 
+! previous gradient of the solution.
+!  Coil Unisotropic = Logical True
+  Nonlinear System Consistent Norm = True
+End
+
+
+Solver 2
+  Equation = ComputeFlux
+  Procedure = "FluxSolver" "FluxSolver"
+
+  Calculate Grad = Logical True
+  Target Variable = String CoilPot
+
+! these are taken care by the defaults
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "bicgstab"
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+  Linear System Max Iterations = Integer 500
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Linear System Abort Not Converged = False
+  Nonlinear System Consistent Norm = True
+End
+
+
+
+! Compute divergence field: it should be zero
+Solver 3
+  Equation = Divergence Solver
+  Procedure = "DivergenceSolver" "DivergenceSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = none
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 0
+  Steady State Convergence Tolerance = 1.0e-4
+
+!  Variable = Divergence
+
+  Divergence Variable = String "CoilCurrent"
+  Nonlinear System Consistent Norm = True
+End
+
+
+
+
+Material 1
+  Density = 1.0
+End
+
+Boundary Condition 1
+  Name = "Start of coil loop"
+  Target Boundaries = 4
+  Coil Start = Logical True
+End
+
+Boundary Condition 2
+  Name = "End of coil loop"
+  Target Boundaries = 1
+  Coil End = Logical True
+End
+
+
+! the basic model, potential set to [0,1], no postprocessing
+Simulation :: Post File = "Curve_Nofit_Iso.vtu"
+
+Solver 1 :: Reference Norm =  6.10796241
+Solver 2 :: Reference Norm =  0.88041592
+Solver 3 :: Reference Norm =  0.10142836605212778

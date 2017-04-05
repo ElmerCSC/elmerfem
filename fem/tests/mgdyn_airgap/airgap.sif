@@ -6,7 +6,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 9
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady
@@ -87,7 +87,13 @@ Solver 2
    Linear System Convergence Tolerance = 1.0e-8
 End
 
-!Solver 3
+Solver 3
+  Equation = "scalars"
+  procedure = "SaveData" "SaveScalars"
+  show norm index = 2
+End
+
+!Solver 4
 !  Exec Solver = after all
 !  Equation = "ResultOutput"
 !  Procedure = "ResultOutputSolve" "ResultOutputSolver"
@@ -99,6 +105,7 @@ End
 !  Vector Field 2 = String "Magnetic Flux Density E"
 !  Vector Field 3 = String "Magnetic Field Strength E"
 !End
+
 
 Equation 1
   Name = "Coupled Equations"
@@ -176,9 +183,8 @@ Boundary Condition 5
 End
 
 Solver 2 :: Reference Norm = Real 3063.3440
-$fprintf( stderr, "TEST CASE 1\n");
+Solver 3 :: Reference Norm = Real 9.922767E-02
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=3063.3440\n" );
 
 
 

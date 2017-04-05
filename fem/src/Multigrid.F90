@@ -188,10 +188,11 @@ CONTAINS
           CALL Info('GMGSolve', Message, Level=12 )
        ELSE IF ( Level <= 1 ) THEN
 
-          CALL ListAddLogical( Params,'Linear System Free Factorization', .FALSE. )
-          CALL ListAddLogical( Params,'Linear System Refactorize', NewLinearSystem )
 
           CALL ListPushNamespace('mglowest:')
+
+          CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
+          CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', NewLinearSystem )
 
           LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
           IF ( .NOT. Found ) THEN
@@ -924,14 +925,6 @@ CONTAINS
           IF ( PRESENT( NewSystem ) ) THEN
              NewLinearSystem = NewLinearSystem .AND. NewSystem
           END IF
-       ELSE IF ( Level <= 1 ) THEN
-          CALL ListAddLogical( Params,'Linear System Free Factorization', .FALSE. )
-          IF ( NewLinearSystem ) THEN
-            CALL ListAddLogical( Params,'Linear System Refactorize', .TRUE. )
-          ELSE
-            CALL ListAddLogical( Params,'Linear System Refactorize', .FALSE. )
-          END IF
-          NewLinearSystem = .FALSE.
        END IF
 
 !---------------------------------------------------------------------
@@ -941,6 +934,14 @@ CONTAINS
        IF ( Level <= 1 ) THEN
 
           CALL ListPushNamespace('mglowest:')
+
+          CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
+          IF ( NewLinearSystem ) THEN
+            CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', .TRUE. )
+          ELSE
+            CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', .FALSE. )
+          END IF
+          NewLinearSystem = .FALSE.
 
           LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
           IF ( .NOT. Found ) THEN
@@ -6043,7 +6044,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows>0)
      CALL ParallelActive( MeActive )
 
-     IF ( ASSOCIATED(Solver % Matrix) ) Solver % Matrix % Comm = MPI_COMM_WORLD
+     IF ( ASSOCIATED(Solver % Matrix) ) Solver % Matrix % Comm = ELMER_COMM_WORLD
 
      IF ( ParEnv % PEs>1 ) THEN
        DO i=1,ParEnv % PEs
@@ -6057,7 +6058,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
 
        n = COUNT(ParEnv % Active)
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
-         CALL MPI_Comm_group( MPI_COMM_WORLD, group_world, ierr )
+         CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
          ALLOCATE(memb(n))
          n = 0
          DO i=1,ParEnv % PEs
@@ -6068,7 +6069,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
          END DO
          CALL MPI_Group_incl( group_world, n, memb, group_active, ierr)
          DEALLOCATE(memb)
-         CALL MPI_Comm_create( MPI_COMM_WORLD, group_active, &
+         CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, &
                  comm_active, ierr)
          Solver % Matrix % Comm = comm_active
        END IF
@@ -6092,7 +6093,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
 
      IF(NamespaceFound) CALL ListPopNamespace()
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
-       IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+       IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
           CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
      END IF
 

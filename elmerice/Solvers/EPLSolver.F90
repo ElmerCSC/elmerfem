@@ -115,7 +115,7 @@ RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
        body_id, material_id, bf_id, bc_id
 
   LOGICAL, ALLOCATABLE :: ActiveEPL(:)
-  LOGICAL :: Found = .FALSE., &
+  LOGICAL :: Found = .FALSE.,UnFoundFatal=.TRUE., &
        Stabilize = .TRUE. ,&
        UseBubbles = .FALSE., &
        AllocationsDone = .FALSE., &
@@ -341,34 +341,19 @@ RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
      CALL INFO(SolverName,Message,Level=12)
   END IF
   
-  IDSRes => VariableGet( Model % Mesh % Variables,IDSResName )
-  IF (ASSOCIATED(IDSRes)) THEN
-     IDSResInput => IDSRes % Values
-     IDSResPerm => IDSRes % Perm
-  ELSE
-     WRITE(Message,'(A,A)') IDSResName, 'Residual from Inefficient Drainage System layer not associated'
-     CALL FATAL( SolverName, Message)
-  END IF
+  IDSRes => VariableGet( Model % Mesh % Variables,IDSResName,UnFoundFatal=UnFoundFatal)
+  IDSResInput => IDSRes % Values
+  IDSResPerm => IDSRes % Perm
 
-  VarEPLHead => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Homologous' )
-  IF (ASSOCIATED(VarEPLHead)) THEN
-     EPLHeadHomologous => VarEPLHead % Values
-     HomolPerm => VarEPLHead % Perm
-  ELSE
-     WRITE(Message,'(A)') TRIM(Solver % Variable % Name) // ' VarEPLHead not associated'
-     CALL FATAL( SolverName, Message)
-  END IF
+  VarEPLHead => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Homologous',UnFoundFatal=UnFoundFatal)
+  EPLHeadHomologous => VarEPLHead % Values
+  HomolPerm => VarEPLHead % Perm
 
   !Mask Variable
   !----------------------------------------
-  Piping => VariableGet( Model % Mesh % Variables,'Open EPL' )
-  IF (ASSOCIATED(Piping)) THEN
-     PipingPerm  => Piping % Perm
-     OpenEPL => Piping % Values
-  ELSE
-     WRITE(Message,'(A)') '>Open EPL< not associated'
-     CALL FATAL( SolverName, Message)
-  END IF
+  Piping => VariableGet( Model % Mesh % Variables,'Open EPL',UnFoundFatal=UnFoundFatal)
+  PipingPerm  => Piping % Perm
+  OpenEPL => Piping % Values
 
   !------------------------------------------------------------------------------
   !       Do we use limiters
@@ -490,21 +475,13 @@ RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
         !------------------------------------------------------------------------------
         ! Get element material parameters
         !------------------------------------------------------------------------------              
-        EPLComp(1:N) = listGetReal( Material,'EPL Compressibility', N, Element % NodeIndexes, Found )
-        IF (.NOT.Found) THEN
-           EPLComp(1:N) = 1.0D-2
-           WRITE(Message,'(a,a,a,i5,a,i5,a)') 'Keyword >', ' EPL Compressibility', &
-                '< not found for element ', t, ' material ', material_id
-           CALL INFO(SolverName,Message,Level=4)
-        END IF
+        EPLComp(1:N) = listGetReal( Material,'EPL Compressibility', N, Element % NodeIndexes, Found,&
+              UnFoundFatal=UnFoundFatal)
+        ! Previous default value: EPLComp(1:N) = 1.0D-2
 
-        Porosity(1:N) = listGetReal( Material,'EPL Porosity', N, Element % NodeIndexes, Found )
-        IF (.NOT.Found) THEN
-           Porosity(1:N) = 0.4D00
-           WRITE(Message,'(a,a,a,i5,a,i5,a)') 'Keyword >', ' EPL Porosity', &
-                '< not found for element ', t, ' material ', material_id
-           CALL INFO(SolverName,Message,Level=4)
-        END IF
+        Porosity(1:N) = listGetReal( Material,'EPL Porosity', N, Element % NodeIndexes, Found,&
+              UnFoundFatal=UnFoundFatal)
+        ! Previous default value: Porosity(1:N) = 0.4D00
 
         BodyForce => GetBodyForce()
         IF ( ASSOCIATED( BodyForce ) ) THEN
@@ -516,21 +493,13 @@ RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
            Gravity(1:N) = SQRT(SUM(g**2.0/N))
         END IF
 
-        EPLThick(1:N) = listGetReal( Material,'EPL Thickness', N, Element % NodeIndexes, Found )
-        IF (.NOT.Found) THEN
-           EPLThick(1:N) = 1.0D00
-           WRITE(Message,'(a,a,a,i5,a,i5,a)') 'Keyword >', ' EPL Thickness', &
-                '< not found for element ', t, ' material ', material_id
-           CALL INFO(SolverName,Message,Level=4)
-        END IF
+        EPLThick(1:N) = listGetReal( Material,'EPL Thickness', N, Element % NodeIndexes, Found,&
+              UnFoundFatal=UnFoundFatal)
+        ! Previous default value: EPLThick(1:N) = 1.0D00
 
-        Density(1:N) = ListGetReal( Material, 'Water Density',  N, Element % NodeIndexes, Found )
-        IF (.NOT.Found) THEN
-           Density(1:N) = 1.0055D-18
-           WRITE(Message,'(a,i5,a,i5,a)') 'Keyword >Water Density< not found for element ',&
-                t, ' material ', material_id
-           CALL INFO(SolverName,Message,Level=4)
-        END IF
+        Density(1:N) = ListGetReal( Material, 'Water Density',  N, Element % NodeIndexes, Found,&
+              UnFoundFatal=UnFoundFatal)
+        ! Previous default value: Density(1:N) = 1.0055D-18
 
         !-----------------------------------------------------------------------------
         ! Get Upper limit:
@@ -552,13 +521,8 @@ RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
         IF (ASSOCIATED(BodyForce)) THEN
            bf_id = GetBodyForceId()
            EPLToIDS(1:N) = ListGetReal( BodyForce, 'EPLToIDS Transfer', &
-                N, Element % NodeIndexes(1:N),Found ) 
-           IF (.NOT.Found) THEN
-              WRITE(Message,'(a,a,a,i5,a,i5,a)') 'Keyword >', 'EPLToIDS Transfer', &
-                   '< not found for element ', t, ' Body Force ', bf_id
-              CALL INFO(SolverName,Message,Level=4)
-              EPLToIDS(1:N) = 0.0 
-           END IF
+                N, Element % NodeIndexes(1:N),Found,UnFoundFatal=UnFoundFatal)
+        ! Previous default value: EPLToIDS(1:N) = 0.0 
         END IF
 
         LOAD(1:N) = - EPLToIDS(1:N)

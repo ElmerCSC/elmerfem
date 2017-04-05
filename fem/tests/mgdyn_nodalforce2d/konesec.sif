@@ -1,0 +1,296 @@
+Header
+  Mesh DB "." "konesec"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = steady state
+
+  Timestep Sizes = 0.00101
+  Timestep Intervals = 1
+
+  Timestepping Method = BDF
+  BDF Order = 1
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+
+  Mesh Levels = 1
+  Mesh Keep = 1
+  Use Mesh Names = Logical True
+End
+
+! Air in between rotor PMs
+Body 1
+  Name = "rotor_air"
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 2
+  Name = "axelsteel"
+  Equation = 1
+  Material = 2
+  Body Force = 4
+End
+
+Body 3
+  Name = "rotorcoreplating"
+  Equation = 1
+  Material = 2
+  Body Force = 4
+End
+
+Body 6
+  Name = "statorcoreplating"
+  Equation = 1
+  Material = 6
+  Calculate torque over body = logical true
+End
+
+Body 4
+  Name = "airgap"
+  Equation = 1
+  Material = 1
+  R Inner = Real 0.0982
+  R Outer = Real 0.1000
+End
+
+Body 5
+  Name = "rotor_pm"
+  Equation = 1
+  Material = 4
+  Body Force = 4
+End
+
+Body 7
+  Name = "winding_a"
+  Equation = 1
+  Material = 3
+  Body Force = 1
+  Calculate torque over body = logical true
+End
+
+Body 8
+  Name = "winding_b"
+  Equation = 1
+  Material = 3
+  Body Force = 2
+  Calculate torque over body = logical true
+End
+
+Body 9
+  Name = "winding_c"
+  Equation = 1
+  Material = 3
+  Body Force = 3
+  Calculate torque over body = logical true
+End
+
+Body 10
+  Name = "cutout_stator"
+  Equation = 1
+  Material = 1
+  Calculate torque over body = logical true
+End
+
+! for winding_a
+Body Force 1
+  Current Density = 3e6
+  Calculate Potential = Logical True
+End
+
+! for winding_b
+Body Force 2:: Calculate Potential = Logical True
+
+! for winding_c
+Body Force 3:: Calculate Potential = Logical True
+
+
+! Rotate rotor at 25 Hz frequency. At first timestep step theta=0
+Body Force 4
+$omega = 2*pi*25*180/pi
+  Mesh Rotate 3 = Variable time,timestep size
+    Real MATC "omega*(tx(0)-tx(1))"
+End
+
+! Air
+Material 1
+  Name = "Air"
+  Relative Permeability = 1
+  Relative Permittivity = 1
+End 
+
+
+! core plating / axel steel
+Material 2
+ Name = "Iron"
+ !H-B Curve = Variable coupled iter
+ !Real Cubic
+ !   Include BH
+ ! End
+ !Electric Conductivity = 0
+  Relative Permeability = 1000
+  Relative Permittivity = 1
+  Electric Conductivity = Real 1e5
+End
+
+! Kupari
+Material 3
+  Electric Conductivity = 60e6
+  Relative Permittivity = 1
+  Relative Permeability = 1
+End
+
+! Radiaalisen magnetointivektorin koordinaattisuuntainen komponentti
+$function mx(tx) { r=sqrt(sum(tx^2)); _mx=tx(0)/r; }
+
+! Kestomagneetti
+Material 4
+  Relative Permeability = 1
+  Relative Permittivity = 1
+  $ mag = -8e5
+  Magnetization 1 = Variable Coordinate
+    Real MATC "mag*mx(tx(0) tx(1))"
+
+  Magnetization 2 = Variable Coordinate
+    Real MATC "mag*mx(tx(1) tx(0))"
+End
+
+! nonlinear iron
+Material 5
+ Name = "Iron"
+ Relative Permittivity = 1
+ !H-B Curve = Variable coupled iter
+ !Real Cubic
+    !Include BH
+  !End
+  Relative Permeability = 1000
+End
+
+! linear iron
+Material 6
+  Name = "Iron"
+  !Electric Conductivity = 0
+  Relative Permeability = 1000
+  Electric Conductivity = Real 1e5
+  Relative Permittivity = 1
+End
+
+
+Equation 1 :: Active Solvers(5) = 1 2 3 4 5
+
+! Roottorin pyöritys joka aika-askeleen aluksi
+Solver 1
+  Exec Solver = Before timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+End
+
+Solver 4
+!  exec solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Output Directory = konesec
+  Save Geometry IDs = Logical True
+  Vtu Format = Logical True
+
+!  Save Bulk Only = Logical True
+  Discontinuous Bodies = Logical True
+End 
+
+Solver 2
+  Equation = "Mag"
+
+  Variable = "A"
+  Procedure = "MagnetoDynamics2D" "MagnetoDynamics2D"
+
+! save coordinates
+  Exported Variable 1 = Coordinates[Coordinates:3]
+
+  Linear System Solver = Iterative
+  Linear System Symmetric=True
+  Linear System Convergence Tolerance = 1.e-10
+  Linear System Max Iterations=1000
+  Linear System Residual Output=10
+  Linear System Abort not Converged=False
+  Linear System preconditioning=ilu0
+  Linear System Iterative Method = gcr
+
+  Steady State Convergence Tolerance = 1e-06
+  Apply Mortar BCs = Logical True
+End
+
+! Use the post processing routines from 3D magnetodynamics
+Solver 3
+  Equation = ComputeB
+
+  Potential Variable="A"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Calculate Current Density = Logical True ! \sigma = 0 every where so no induced current density
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Magnetic Vector Potential = Logical True
+  Calculate Nodal Forces = Logical True
+
+  Calculate Nodal Fields = Logical True
+  Calculate Elemental Fields = Logical True
+  !Calculate Maxwell Stress = Logical True
+  !Apply Mortar BCs = Logical True
+  !Optimize Bandwidth = False
+ 
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BicgstabL
+  Linear System Symmetric = True
+  Linear System Max Iterations = 100
+  Linear System Preconditioning = ILU2
+  Linear System Convergence Tolerance = 1.0e-8
+  Impose Body Force Current = Logical True
+End
+
+! Save voltages and torque
+Solver 5
+!  Exec Solver = never
+  Procedure = "SaveData" "SaveScalars"
+  !Filename = f_b.dat
+  Variable 1 = time
+  Expression 1 = Variable time,timestep size  ! save rotation angle 
+    Real MATC "omega*(tx(0)-tx(1))"
+  show norm index = integer 15
+  reference norm = 3.98464218E+01
+End
+
+! Periodic boundary, stator part
+Boundary Condition 3
+  Name = "periodic_stator_bottom"
+
+  Mortar BC = 4
+
+  ! Only compute once 
+  Mortar BC Static = Logical True
+  Anti Radial Projector = Logical True
+  !Level Projector = Logical True
+  Galerkin Projector = Logical True
+End
+Boundary Condition 4:: Name = "periodic_stator_left"
+
+! Periodic boundary, rotor part
+Boundary Condition 5
+  Name = "periodic_rotor_bottom"
+  Mortar BC = 6
+
+  Mortar BC Static = Logical True
+  Anti Radial Projector = Logical True    
+  !Level Projector = Logical True
+  Galerkin Projector = Logical True
+End
+Boundary Condition 6:: Name = "periodic_rotor_left"
+
+Boundary Condition 7
+  Name = "stator_ext"
+  A = Real 0
+End

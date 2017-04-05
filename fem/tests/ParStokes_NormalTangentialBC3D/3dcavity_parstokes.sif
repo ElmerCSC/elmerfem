@@ -1,0 +1,119 @@
+! 3-D Stokes flow:  
+! Here the solution is done with the special (ParStokes) solver for the Stokes 
+! equations. The solution is done iteratively by applying block preconditioning
+! to the Stokes system discretized by using Q2-Q1 approximation. 
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "sinus03d"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+!  Post File = tube3d.vtu
+  Set Dirichlet BCs by BC Numbering=True
+End
+
+Constants
+
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = "Velocity Preconditioning"
+  Procedure = "VelocityPrecond" "VelocityPrecond"
+  Variable = "V"
+  Variable Dofs = 3
+  Linear System Row Equilibration = True
+End
+
+Solver 2
+  Equation = "Pressure Preconditioning"
+  Procedure = "PressurePrecond" "PressurePrecond"
+  Variable = "P"
+  Variable Dofs = 1
+  Linear System Row Equilibration = True
+End
+
+Solver 3
+  Equation = "Stokes eqs"
+  Procedure = "ParStokes" "StokesSolver"  
+  Variable = FlowVar	
+  Variable DOFs = 4
+
+  P2-P1 Approximation = Logical True
+  Block Preconditioning = Logical True
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+End
+
+Equation 1
+ Active Solvers(3) = 1 2 3
+End
+
+Material 1
+  Density = 1
+  Viscosity = 1
+End
+
+
+! Periodicity on vertical sides:
+!--------------------------------------------
+Boundary Condition 1
+  Target Boundaries = 2
+  Periodic BC = 2
+  Periodic BC FlowVar 1 = Logical True
+  Periodic BC FlowVar 2 = Logical True
+  Periodic BC V 1 = Logical True
+  Periodic BC V 2 = Logical True
+End
+
+! Periodicity on vertical sides:
+!--------------------------------------------
+Boundary Condition 2
+  Target Boundaries = 4
+End
+
+! Top: 
+!--------------------------------------------
+Boundary Condition 3
+  Target Boundaries = 3
+  Pressure 2 = Real 0.0
+  FlowVar 1 = Real 0.1
+  V 1 = Real 0.1
+  Flow Force BC = Logical True
+End
+
+! Curved bottom: no-penetration
+!--------------------------------------------
+Boundary Condition 4
+  Target Boundaries = 1
+  Normal-Tangential FlowVar = Logical True
+  FlowVar 1 = Real 0.0
+  Normal-Tangential V = Logical True
+  V 1 = Real 0.0  
+End
+
+! No shear on extruded surfaces:
+!--------------------------------------------
+Boundary Condition 5
+  Target Boundaries(2) = 5 6
+  FlowVar 3 = Real 0.0
+  V 3 = Real 0.0
+End
+
+Solver 3 :: Reference Norm = Real 0.51752969E-01 
+Solver 3 :: Reference Norm Tolerance = Real 1.0E-6

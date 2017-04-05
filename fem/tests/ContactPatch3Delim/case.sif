@@ -35,7 +35,7 @@ End
 $fileid="a"
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
@@ -115,7 +115,8 @@ Solver 1
 ! Calculate Boundary Weights = Logical True
 
 ! Do not include constraints when analyzing the convergence and norm of a solution
-  Nonlinear System Convergence Without Constraints = Logical True
+!  Nonlinear System Convergence Without Constraints = Logical True
+  Nonlinear System Consistent Norm = Logical True
 
 ! Eliminate linear constraint for better linear solver performance
   Eliminate Linear Constraints = Logical True

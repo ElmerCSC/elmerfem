@@ -77,7 +77,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp),POINTER :: ForceVector(:)
   integer :: t,n,NSDOFs,NVals,SolverInd
   REAL(KIND=dp),ALLOCATABLE :: STIFF(:,:),FORCE(:),ExtPressure(:),LoadVector(:,:),Alpha(:),Beta(:),SlipCoeff(:,:),w(:)
-  Logical :: Gotit,GotForceBC,NormalTangential,Firsttime=.true.
+  Logical :: Gotit,GotForceBC,NormalTangential,Firsttime=.true.,UnFoundFatal=.TRUE.
   INTEGER, POINTER :: NodeIndexes(:),Perm(:)
   integer :: p,q,dim,c
 
@@ -136,15 +136,10 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
          InitMat % Cols => NSSolver % Matrix % Cols
 
 
-         VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb'  )
-         IF ( ASSOCIATED( VelocitybSol ) ) THEN
-            Vb => VelocitybSol % Values
-            VbPerm => VelocitybSol % Perm
-         ELSE
-            WRITE(Message,'(A)') &
-                               'No variable > Velocityb < found'
-            CALL FATAL(SolverName,Message)
-         END IF  
+         VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb',UnFoundFatal=UnFoundFatal )
+         Vb => VelocitybSol % Values
+         VbPerm => VelocitybSol % Perm
+
          IF (VelocitybSol % DOFs.NE.(dim+1)) then
            WRITE(Message,'(A,I1,A,I1)') &
             'Variable Velocityb has ',VelocitybSol % DOFs,' DOFs, should be',dim+1
@@ -158,6 +153,10 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
         CALL FreeMatrix( InitMat )
 
         CALL CRS_SortMatrix( TransMat , .true. )
+
+        IF ( SIZE(StiffMatrix % Values) .NE. SIZE(TransMat % Values) ) THEN
+              CALL WARN(SolverName,'StiffMatrix different size to TransMat. Is this the correct the body?')
+        END IF
 
         StiffMatrix % Values = TransMat % Values
         StiffMatrix % Rows = TransMat % Rows

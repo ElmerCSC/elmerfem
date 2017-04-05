@@ -22,7 +22,7 @@ Header
 End
  
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
   Coordinate System = Cartesian 
   Simulation Type = Steady State
   Steady State Max Iterations = 1
@@ -78,7 +78,7 @@ Solver 1
   Linear System Preconditioning = none
   Linear System Residual Output = 50
   Linear System Abort Not Converged = True
-
+ 
 ! reserve space of the "data" and "mask" variables
 ! that are used to perform the fitting. 
   Exported Variable 1 = data
@@ -90,7 +90,7 @@ Solver 2
 !  Exec Solver = never
   Equation = "ResultOutput"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = "case" 
+  Output File Name = "case_b" 
   Output Format = "vtu"
 End
 
@@ -133,6 +133,3 @@ End
 
 
 Solver 1 :: Reference Norm = Real 2.5877452
-$fprintf( stderr, "TEST CASE 1\n")$
-RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=2.5877452\n");

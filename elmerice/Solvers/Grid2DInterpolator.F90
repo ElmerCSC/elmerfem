@@ -79,7 +79,7 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
    CHARACTER(LEN=MAX_NAME_LEN) :: Name, FName, ParaName
    CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='Grid2DInterpolator'
 
-   LOGICAL :: GotVar, Found, InvertOrder, FillIn
+   LOGICAL :: GotVar, Found, InvertOrder, FillIn, UnFoundFatal=.TRUE.
 
    NULLIFY(Params,Var,Values,Perm)
 
@@ -96,64 +96,30 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
       VariableName = ListGetString( Params, TRIM(Name), GotVar )
       IF (.NOT.GotVar) EXIT
 
-      Var => VariableGet(Model %  Mesh % Variables, VariableName )
-      IF(.NOT.ASSOCIATED(Var)) THEN
-         WRITE(message,'(A,A,A)') &
-                        'Variable <',Trim(VariableName),'> not found'
-         CALL FATAL(Trim(SolverName),Trim(message))
-      ELSE
-         Values => Var % Values
-         Perm => Var % Perm
-      END IF
+      Var => VariableGet(Model %  Mesh % Variables, VariableName,UnFoundFatal=UnFoundFatal )
+      Values => Var % Values
+      Perm => Var % Perm
 
       WRITE (FName,'(A,I0,A)') 'Variable ',NoVar,' Data File'
-      DataF = ListGetString( Params, TRIM(FName), Found )
-      IF (.NOT.Found) then
-         WRITE(message,'(A,A,A)')'Keyword <',Trim(Fname),'> not found'
-         CALL FATAL(Trim(SolverName),Trim(message))
-      END IF
+      DataF = ListGetString( Params, TRIM(FName), Found, UnFoundFatal )
 
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' x0'
-      x0 = ListGetConstReal( Params, TRIM(ParaName), Found )
-      IF (.NOT.Found) then
-         WRITE(message,'(A,A,A)')'Keyword <',Trim(ParaName),'> not found'
-         CALL FATAL(Trim(SolverName),Trim(message))
-      END IF
+      x0 = ListGetConstReal( Params, TRIM(ParaName), Found,UnFoundFatal=UnFoundFatal)
 
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' y0'
-      y0 = ListGetConstReal( Params, TRIM(ParaName), Found )
-      IF (.NOT.Found) then
-         WRITE(message,'(A,A,A)')'Keyword <',Trim(ParaName),'> not found'
-         CALL FATAL(Trim(SolverName),Trim(message))
-      END IF
+      y0 = ListGetConstReal( Params, TRIM(ParaName), Found,UnFoundFatal=UnFoundFatal )
             
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' lx'
-      lx = ListGetConstReal( Params, TRIM(ParaName), Found )
-      IF (.NOT.Found) then
-         WRITE(message,'(A,A,A)')'Keyword <',Trim(ParaName),'> not found'
-         CALL FATAL(Trim(SolverName),Trim(message))
-      END IF
+      lx = ListGetConstReal( Params, TRIM(ParaName), Found,UnFoundFatal=UnFoundFatal )
             
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' ly'
-      ly = ListGetConstReal( Params, TRIM(ParaName), Found )
-      IF (.NOT.Found) then
-         WRITE(message,'(A,A,A)')'Keyword <',Trim(ParaName),'> not found'
-         CALL FATAL(Trim(SolverName),Trim(message))
-      END IF
+      ly = ListGetConstReal( Params, TRIM(ParaName), Found,UnFoundFatal=UnFoundFatal )
 
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' Nx'
-      Nx = ListGetInteger( Params, TRIM(ParaName), Found )
-      IF (.NOT.Found) then
-         WRITE(message,'(A,A,A)')'Keyword <',Trim(ParaName),'> not found'
-         CALL FATAL(Trim(SolverName),Trim(message))
-      END IF
+      Nx = ListGetInteger( Params, TRIM(ParaName), Found ,UnFoundFatal=UnFoundFatal)
 
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' Ny'
-      Ny = ListGetInteger( Params, TRIM(ParaName), Found )
-      IF (.NOT.Found) then
-         WRITE(message,'(A,A,A)')'Keyword <',Trim(ParaName),'> not found'
-         CALL FATAL(Trim(SolverName),Trim(message))
-      END IF
+      Ny = ListGetInteger( Params, TRIM(ParaName), Found ,UnFoundFatal=UnFoundFatal)
 
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' Invert'
       InvertOrder = GetLogical( Params, TRIM(ParaName), Found )

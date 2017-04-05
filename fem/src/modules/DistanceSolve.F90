@@ -283,13 +283,15 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
 
   TYPE(ValueList_t), POINTER :: SolverParams, BC, BodyForce
 
-  INTEGER :: n, nb, nnb, nd, t, i,j,k,istat, active, MaxIter, maxnode,comm
+  INTEGER :: n, m, nb, nnb, nd, t, i,j,k,istat, active, MaxIter, maxnode,comm
   REAL(KIND=dp) :: Pnorm,Norm,RelaxDT,TOL,x0,y0,z0,dist
   TYPE(Mesh_t), POINTER :: Mesh
 
-  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), buf(:) ,xp(:),yp(:),zp(:),bdist(:),bd(:),condition(:)
+  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), buf(:) ,xp(:),yp(:),zp(:),bdist(:),bd(:),&
+      condition(:), work(:)
   REAL(KIND=dp), POINTER :: distance(:)
   INTEGER, POINTER :: gPerm(:), ibuf(:), aperm(:),bperm(:),cperm(:)
+  LOGICAL :: DummyDistance 
 
   SAVE STIFF, FORCE
 !------------------------------------------------------------------------------
@@ -300,10 +302,24 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
   CALL ResetTimer('DistanceSolver1')
 
   Mesh => GetMesh()
+
+  CALL Info('DistanceSolver1','Working with mesh: '&
+      //TRIM(Mesh % Name),Level=10)
+  CALL Info('DistanceSolver1','Solving for variable: '&
+      //TRIM(Solver % variable % Name ),Level=10)
+
   n = Mesh % NumberOfNodes
-  ALLOCATE( aperm(n), bperm(n), bdist(n) ); aperm = 0; bperm = 0; bdist=0
-  ALLOCATE( condition(Solver % Mesh % MaxElementNodes)); condition = -1.0_dp
+  ALLOCATE( aperm(n), bperm(n), bdist(n) )
+  aperm = 0; bperm = 0; bdist=0
+
+  m = Mesh % MaxElementNodes
+  ALLOCATE( condition(m), Work(m) )
+  condition = -1.0_dp; Work = 0.0_dp
+
   SolverParams => GetSolverParams()
+
+  DummyDistance = GetLogical( SolverParams,'Dummy Distance Computation',Found ) 
+
 
   nb = 0
   DO t=1,Solver % NumberOfActiveElements
@@ -312,47 +328,54 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
 
      BodyForce => GetBodyForce()
      IF(ASSOCIATED(BodyForce)) THEN
-       dist = GetCReal(BodyForce, Solver % Variable % Name, Found )
+       nd = GetElementNOFNodes(Element)
+       Work(1:nd) = ListGetReal(BodyForce, TRIM(Solver % Variable % Name), &
+           nd, Element % NodeIndexes, Found )
        IF ( Found) THEN
-          nd = GetElementNOFNodes()
           condition(1:nd) = GetReal(BodyForce, TRIM(Solver % Variable % Name) // " Condition", Found )        
-          DO i=1,nd
-             IF (condition(i) < 0.0) CYCLE
+          DO i=1,nd             
              j = Element % NodeIndexes(i)
+
+             IF (Found .AND. condition(i) < 0.0) CYCLE
+
              IF ( bperm(j) == 0 ) THEN
                 nb = nb + 1
                 aperm(nb) = j
                 bperm(j)  = nb
-                bdist(j) = dist
+                bdist(j) = work(i)
              END IF
           END DO
        END IF
      END IF
   END DO
 
+
   DO t=1,Mesh % NumberOfBoundaryElements
     Element => GetBoundaryElement(t)
-    IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
-    BC => GetBC()
-    dist = GetCReal(BC, Solver % Variable % Name, Found )
+    IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
+    BC => GetBC(Element)
+    nd = GetElementNOFNodes(Element)
+
+    work(1:nd) = GetReal(BC, Solver % Variable % Name, Found )
     IF ( Found .OR. GetLogical( BC, 'Noslip Wall BC', Found1 ) ) THEN
-      nd = GetElementNOFNodes()
       DO i=1,nd
         j = Element % NodeIndexes(i)
         IF ( bperm(j) == 0 ) THEN
           nb = nb + 1
           aperm(nb) = j
           bperm(j)  = nb
-          bdist(j) = dist
+          bdist(j) = work(i)
         END IF
       END DO
     END IF
   END DO
+
   
   IF( ParEnv % PEs == 1 ) THEN
     IF( nb == 0 ) THEN
-      CALL Fatal('DistanceSolver1','No known distances given for the distance solver!')
+      CALL Warn('DistanceSolver1','No known distances given for the distance solver!')
+      RETURN
     ELSE 
       WRITE( Message,'(A,I0)') 'Number of fixed nodes on bulk: ',nb
       CALL Info('DistanceSolver1',Message,Level=8)
@@ -406,6 +429,7 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
     DEALLOCATE(ibuf,buf,cperm)
   ELSE
     ALLOCATE( xp(nb),yp(nb),zp(nb),bd(nb) )
+
     DO i=1,nb
       xp(i) = Solver % Mesh % Nodes % x(aperm(i))
       yp(i) = Solver % Mesh % Nodes % y(aperm(i))
@@ -416,11 +440,11 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
 
   distance => Solver % Variable % Values
 
-! CALL ResetTimer('DistanceSolver0')
-! CALL distcomp0
-! CALL CheckTimer('DistanceSolver0',Delete=.TRUE.)
-
-  CALL distcomp()
+  IF( DummyDistance ) THEN
+    CALL distcomp0()
+  ELSE
+    CALL distcomp()
+  END IF
 
   IF( ParEnv % PEs == 1 ) THEN
     WRITE( Message,'(A,ES12.3)') 'Maximum distance from given nodes: ',MAXVAL(distance)
@@ -540,7 +564,9 @@ CONTAINS
             minl = l; dist=ldist
           END IF
         END DO
+
         distance(k) = SQRT(dist)+bd(minl)
+
       END  IF
     END DO
     DEALLOCATE( xxp, yyp, zzp, d, dperm, near, dd, bbd )

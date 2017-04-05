@@ -63,7 +63,7 @@ SUBROUTINE DJDBeta_Robin( Model,Solver,dt,TransientSimulation )
   TYPE(GaussIntegrationPoints_t) :: IntegStuff
   REAL(KIND=dp), POINTER ::  VariableValues(:),VelocityN(:),VelocityD(:),BetaValues(:)
   INTEGER, POINTER :: Permutation(:), VeloNPerm(:),VeloDPerm(:),BetaPerm(:),NodeIndexes(:)
-  Logical ::  Firsttime=.true.,Found,stat
+  Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal=.TRUE.
   integer :: i,j,t,n,NMAX,NActiveNodes,DIM
   real(kind=dp),allocatable :: VisitedNode(:),db(:),Basis(:),dBasisdx(:,:)
   real(kind=dp),allocatable :: NodeDJ(:)
@@ -151,40 +151,21 @@ SUBROUTINE DJDBeta_Robin( Model,Solver,dt,TransientSimulation )
 
  ! Get variables needed by the Solver
 
-        PointerToVariable => VariableGet( Solver % Mesh % Variables, GradSolName )
-           IF (ASSOCIATED(PointerToVariable)) THEN
-              VariableValues => PointerToVariable % Values
-              Permutation => PointerToVariable % Perm
-           ELSE
-              WRITE(Message,'(A,A,A)') 'No variable >',GradSolName,'< found'
-             CALL FATAL(SolverName,Message)
-           END IF
-        BetaVariable => VariableGet( Solver % Mesh % Variables, VarSolName )
-           IF (ASSOCIATED(BetaVariable)) THEN
-                BetaValues => BetaVariable % Values
-                BetaPerm => BetaVariable % Perm
-           ELSE
-                WRITE(Message,'(A,A,A)') 'No variable >',VarSolName,'< found'
-                CALL FATAL(SolverName,Message)
-           END IF
-        VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName )
-           IF ( ASSOCIATED( VeloSolN ) ) THEN
-             VelocityN => VeloSolN % Values
-             VeloNPerm => VeloSolN % Perm
-           ELSE
-              WRITE(Message,'(A,A,A)') &
-                   'No variable >',NeumannSolName,'< found'
-              CALL FATAL(SolverName,Message)              
-           END IF
-         VeloSolD => VariableGet( Solver % Mesh % Variables, DirichletSolName )
-          IF (ASSOCIATED(veloSolD)) THEN
-             VelocityD => VeloSolD % Values
-             VeloDPerm => VeloSolD % Perm
-          ELSE
-              WRITE(Message,'(A,A,A)') &
-                   'No variable >',DirichletSolName,'< found'
-              CALL FATAL(SolverName,Message)              
-           END IF
+        PointerToVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
+        VariableValues => PointerToVariable % Values
+        Permutation => PointerToVariable % Perm
+
+        BetaVariable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
+        BetaValues => BetaVariable % Values
+        BetaPerm => BetaVariable % Perm
+
+        VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName,UnFoundFatal=UnFoundFatal)
+        VelocityN => VeloSolN % Values
+        VeloNPerm => VeloSolN % Perm
+
+        VeloSolD => VariableGet( Solver % Mesh % Variables, DirichletSolName,UnFoundFatal=UnFoundFatal)
+        VelocityD => VeloSolD % Values
+        VeloDPerm => VeloSolD % Perm
 
 
     VisitedNode=0.0_dp

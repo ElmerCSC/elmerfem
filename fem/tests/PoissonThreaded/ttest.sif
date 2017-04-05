@@ -1,0 +1,56 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "cube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+  Post File   = "ttest.vtu"
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 1
+  Body Force = 1
+End
+
+Body Force 1 :: Source = Real 1
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Poisson"
+
+  Variable = "Potential"
+  Variable DOFs = 1
+  Procedure = "Poisson" "PoissonSolver"
+
+  Linear System Symmetric = True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = Cg
+  Linear System Convergence Tolerance = 1e-6
+  Linear System Preconditioning = None
+  Linear System Max Iterations = 200
+  Linear System Residual Output = 20
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1e-09
+
+  MultiColour Solver = Logical True
+  MultiColour Consistent = Logical True
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Potential = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 0.24103925E-01
+Solver 1 :: Reference Norm Tolerance = Real 1E-05

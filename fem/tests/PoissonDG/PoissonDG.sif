@@ -4,7 +4,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = "Steady State"
@@ -17,6 +17,12 @@ Constants
 End
 
 Body 1
+  Equation = 1
+  Material = 1
+  Body force = 1
+End
+
+Body 2
   Equation = 1
   Material = 1
   Body force = 1
@@ -46,21 +52,33 @@ Solver 1
   Linear System Preconditioning = ILUT
   Linear System ILUT Tolerance  = 0.005
   Linear System Convergence Tolerance = 1.0e-6
+  Linear System Residual Output = 20
   Optimize Bandwidth = True
 End
+
+
+Solver 2
+!  exec solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case_e
+  Save Geometry IDs = Logical False
+  Vtu Format = Logical True
+
+!  Save Bulk Only = Logical True
+!  Discontinuous Bodies = Logical True
+  Discontinuous Galerkin = Logical True
+End 
+
 
 Body Force 1
   Source = Real 1.0
 End
 
 Boundary Condition 1
-  Target Boundaries(4) = 1 2 3 4
+  Target Boundaries(2) = 1 2 
   g = Real 0
   e = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.412624027258E-01
-Solver 1 :: Reference Norm Tolerance = Real 1.0e-2
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.412624027258E-01, EPS=1.0e-2\n" );
+Solver 1 :: Reference Norm = 4.12514868E-02

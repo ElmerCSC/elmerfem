@@ -1446,9 +1446,9 @@ GLuint GLWidget::generateSurfaceList(int index, QColor qColor)
       glColor3d(R, G, B);
 
       if(stateBcColors && (surface->getNature() == PDE_BOUNDARY)) {
-	glColor3d(0.5 + 0.5 * sin(1.0 * index),
-		  0.5 + 0.5 * cos(2.0 * index),
-		  0.5 + 0.5 * cos(3.0 * index));
+        double c[3];
+        indexColors(c, index);
+        glColor3d(c[0], c[1], c[2]);
       } 
 	
       if(stateBodyColors) {
@@ -1458,9 +1458,9 @@ GLuint GLWidget::generateSurfaceList(int index, QColor qColor)
 	  element_t *parent = mesh->getElement(parentIndex);
 	  bodyIndex = parent->getIndex();
 	}
-	glColor3d(0.5 + 0.5 * sin(1.0 * bodyIndex),
-		  0.5 + 0.5 * cos(2.0 * bodyIndex),
-		  0.5 + 0.5 * cos(3.0 * bodyIndex));
+        double c[3];
+        indexColors(c, bodyIndex);
+        glColor3d(c[0], c[1], c[2]);
       } 
       
       // change normal direction:
@@ -1511,9 +1511,9 @@ GLuint GLWidget::generateSurfaceList(int index, QColor qColor)
       glColor3d(R, G, B);
 
       if(stateBcColors && (surface->getNature() == PDE_BOUNDARY)) {
-	glColor3d(0.5 + 0.5 * sin(1.0 * index),
-		  0.5 + 0.5 * cos(2.0 * index),
-		  0.5 + 0.5 * cos(3.0 * index));
+        double c[3];
+        indexColors(c, index);
+        glColor3d(c[0], c[1], c[2]);
       }
 
       if(stateBodyColors) {
@@ -1523,9 +1523,9 @@ GLuint GLWidget::generateSurfaceList(int index, QColor qColor)
 	  element_t *parent = mesh->getElement(parentIndex);
 	  bodyIndex = parent->getIndex();
 	}
-	glColor3d(0.5 + 0.5 * sin(1.0 * bodyIndex),
-		  0.5 + 0.5 * cos(2.0 * bodyIndex),
-		  0.5 + 0.5 * cos(3.0 * bodyIndex));
+        double c[3];
+        indexColors(c, bodyIndex);
+        glColor3d(c[0], c[1], c[2]);
       } 
 
       // change normal direction:
@@ -1823,7 +1823,11 @@ void GLWidget::drawBgImage()
   GLint viewport[4];
 
   if(!bgTexture) {
+#if WITH_QT5
+    cout << "Bind texture " << string(bgImageFileName.toLatin1()) << "... ";
+#else
     cout << "Bind texture " << string(bgImageFileName.toAscii()) << "... ";
+#endif
     QPixmap pixmap(bgImageFileName);
     bgSizeX = pixmap.width();
     bgSizeY = pixmap.height();
@@ -1908,4 +1912,21 @@ list_t* GLWidget::getList(int i) const
 int GLWidget::getLists() const
 {
   return list.count();
+}
+
+// Set 'c' to an RGB color corresponding to index 'i'.
+// 'c' should be pre-allocated to a length of at least 3.
+void GLWidget::indexColors(double *c, int i)
+{
+  c[0] = 0.5 + 0.5 * sin(1.0 * i);
+  c[1] = 0.5 + 0.5 * cos(2.0 * i);
+  c[2] = 0.5 + 0.5 * cos(3.0 * i); 
+}
+
+void GLWidget::indexColors(int *c, int i)
+{
+  double tmp[3];
+
+  indexColors(tmp, i);
+  for (int j = 0; j < 3; j++) c[j] = int(tmp[j]*255 + 0.5);
 }

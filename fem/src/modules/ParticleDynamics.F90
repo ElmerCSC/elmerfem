@@ -1354,7 +1354,7 @@ CONTAINS
      
      SAVE Visited, dim, Rad, Mass, Mesh, VeloVar, AnyInteraction, BoundaryNodes, &
          TrueCollision, WallVelo, Coeff, Velo, Coord, Spring, WallTrace, &
-         WallVar, Basis, dBasisdx, GotVeloVar, Solver
+         WallVar, Basis, dBasisdx, GotVeloVar, Solver, Params
      
      IF( .NOT. Visited ) THEN
        Mesh => GetMesh()
@@ -1487,13 +1487,13 @@ CONTAINS
        val = 0.0_dp
        
        Status = Particles % Status(No) 
-       IF( Status >= PARTICLE_LOST ) RETURN
-       IF( Status < PARTICLE_INITIATED ) RETURN
+       IF( Status >= PARTICLE_LOST ) CYCLE
+       IF( Status < PARTICLE_INITIATED ) CYCLE
        
        ElementIndex = Particles % ElementIndex( No ) 
-       IF( ElementIndex == 0 ) RETURN
+       IF( ElementIndex == 0 ) CYCLE
        
-       IF( Particles % InternalElements(  ElementIndex ) ) RETURN
+       IF( Particles % InternalElements(  ElementIndex ) ) CYCLE
        
        BulkElement => Mesh % Elements( ElementIndex )
        

@@ -1,0 +1,118 @@
+!----------------------------------------------------------------
+! Test on the effect of hydrostatic pressure on an elastic steel tank.
+! 
+!
+!
+! Reference results, mesh and the problem setting all benchmark from 
+! Code_Aster documentation. For complete original documentation see
+! http://www.code-aster.org/V2/doc/default/en/man_u/u1/u1.05.00.pdf
+!
+! The reference results are not applicable, Code_Aster produces a 
+! different systematic error to the calculation, so the results
+! are not really comparable for test purposes.
+!
+! Homewer it does give feedback on the overall precision of Elmer.
+!
+! J.K / 28.08.2015
+!-----------------------------------------------------------------
+
+! A bit more thorough commenting here.
+! Sorry for possible clutter!
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "tank" ! Declares that mesh is found in directory tank/
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Axi Symmetric ! Simplifies the case to 2D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  
+  Post File = case2.vtu
+End
+
+
+Body 1
+  Target Bodies(1) = 6
+  Name = "Body 1" ! The tank wall
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Displacement
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+   ! Direct solvers preferred for small problems
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+End
+
+
+!Solver 2
+!  Exec Solver = After Simulation
+!  Equation = SaveScalars
+!  Procedure = "SaveData" "SaveScalars"
+!  Filename = "displacement.dat"
+!  Save Coordinates (4,2) = 1 0 1.1 0 1.1 4 1 4
+!End
+
+
+
+
+Equation 1
+  Name = "Elasticity"
+  Calculate Stresses = True
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Material 1" ! Corresponds to steel
+  Youngs modulus = 2.1e11
+  Density = 1
+  Poisson ratio = 0.3
+End
+
+
+   ! Hydrostatic pressure from a really dense fluid.
+Boundary Condition 1
+  Target Boundaries(1) = 4 
+  Name = "Pressure"
+  Force 1 = Variable Coordinate 2; Real MATC "(1-tx/4)*200000"
+  Displacement 3 = 0
+  Save Line = Logical True ! Saves the line for comparison.
+End
+
+  ! Stops the container from moving vertically at its bottom.
+Boundary Condition 2
+  Target Boundaries(1) = 5 
+  Name = "bottom"
+  Displacement 3 = 0
+  Displacement 2 = 0
+End
+
+  ! Stops movement in the z-direction.
+  ! The Axi-symmetry should actually render this obsolete
+Boundary Condition 3
+  Target Boundaries(1) = 6 
+  Name = "walls"
+  Displacement 3 = 0
+End
+
+
+Solver 1 :: Reference Norm = Real 0.50108202E-05
+Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
+RUN
+

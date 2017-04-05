@@ -56,7 +56,8 @@ MODULE Integration
 !------------------------------------------------------------------------------
    TYPE GaussIntegrationPoints_t
       INTEGER :: N
-      REAL(KIND=dp), POINTER :: u(:),v(:),w(:),s(:)
+!DIR$ ATTRIBUTES ALIGN:64 :: u, v, w, s
+      REAL(KIND=dp), POINTER CONTIG :: u(:),v(:),w(:),s(:)
    END TYPE GaussIntegrationPoints_t
 
    TYPE(GaussIntegrationPoints_t), TARGET, PRIVATE, SAVE :: IntegStuff
@@ -1557,7 +1558,12 @@ END FUNCTION GaussPointsPTetra
        END IF  
      ELSE
        IF (pElement) THEN
-         n = elm % PDefs % GaussPoints
+         IF( ASSOCIATED( elm % PDefs ) ) THEN
+           n = elm % PDefs % GaussPoints
+         ELSE
+           n = elmt % GaussPoints
+         END IF
+         IF( n == 0 ) n = elmt % GaussPoints
        ELSE
          n = elmt % GaussPoints
        END IF

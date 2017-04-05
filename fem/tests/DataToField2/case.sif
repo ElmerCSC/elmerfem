@@ -1,0 +1,84 @@
+!---------------------------------------------------------------------------------------------
+! Fitting to noicy or missing data by DataToFieldSolver.
+!
+! Example shows how to create a continuous field of a data that has missing or unusable values.
+! The initial signal is a linear model f=x+2y given at random points. 
+!
+! Case created 14.10.2015 / P.R.
+!---------------------------------------------------------------------------------------------
+
+Check Keywords Warn
+ 
+
+Header
+  Mesh DB "." "square"
+End
+ 
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+End
+
+Constants
+  Permittivity Of Vacuum = 1.0
+  Gravity(4) = 0 -1 0 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2 
+End
+
+
+Solver 1
+  Equation = String "FitData"
+  Procedure = File "DataToFieldSolver" "DataToFieldSolver"
+  Variable = Fit
+
+! Optional parameters not applicable to this case:
+!  Normalize by Given Weight = Logical True
+!  Normalize by Nodal Weight = Logical True
+  Normalize Data by Weight = Logical True
+     
+  Point Data Filename = File vals.dat
+  Point Data Column = Integer 4
+  
+! Linear system options
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = none
+  Linear System Residual Output = 50
+  Linear System Abort Not Converged = True
+End
+
+
+
+Solver 2
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "holes" 
+  Output Format = "vtu"
+End
+
+
+Material 1
+  Name = "Ideal"
+  Data Diffusivity(3) = Real 0.1 0.1 0.0
+End
+
+Boundary Condition 1
+  Name = "Free"
+  Target Boundaries(4) = 1 2 3 4
+End
+
+
+Solver 1 :: Reference Norm = Real 1.612285E+00

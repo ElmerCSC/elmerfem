@@ -639,7 +639,7 @@ if (!success)
    if (print_vectors)
    {
 #ifdef DEBUG_TRILINOS_INTERFACE   
-   string filebase = params->get("Filename Base","Trilinos");
+   std::string filebase = params->get("Filename Base","Trilinos");
    EpetraExt::MultiVectorToMatrixMarketFile((filebase+"Rhs.txt").c_str(),*b);
    EpetraExt::MultiVectorToMatrixMarketFile((filebase+"Sol.txt").c_str(),*x);
 #else
@@ -850,14 +850,14 @@ Teuchos::RCP<Epetra_Operator> createIfpackPreconditioner(
   {
   int ierr;
   Teuchos::RCP<Epetra_Operator> prec = Teuchos::null;
-  string type = "None";
+  std::string type = "None";
   type=params.get("Preconditioner",type);
   
   if (type=="Ifpack")
     {
     Teuchos::RCP<Ifpack_Preconditioner> ifPrec;
     Teuchos::ParameterList& ifpackList = params.sublist("Ifpack");
-    string ifpackType = "Amesos";
+    std::string ifpackType = "Amesos";
     ifpackType=params.get("Ifpack Preconditioner",ifpackType);
     OUT(ifpackType);
     int OverlapLevel = params.get("Ifpack Overlap Level",0); 
@@ -937,7 +937,7 @@ Teuchos::RCP<Epetra_Operator> createMLPreconditioner(
     int NumSmoo = mlParams.get("smoother: sweeps",1);
     int NumCycles = mlParams.get("cycle applications",1);
     int NumPre=0, NumPost=0;
-    string PreOrPost = mlParams.get("smoother: pre or post","both");
+    std::string PreOrPost = mlParams.get("smoother: pre or post","both");
     if ((PreOrPost=="pre")||(PreOrPost=="both"))
       {
       NumPre=NumCycles;
@@ -1004,7 +1004,7 @@ Teuchos::RCP<Belos::SolverManager<ST,MV,OP> > createSolver
   //! Belos linear problem interface
   Teuchos::RCP<Belos::LinearProblem<ST,MV,OP> > belosProblemPtr;
 
-  string linearSolver=params.get("Iterative Solver","GMRES");
+  std::string linearSolver=params.get("Iterative Solver","GMRES");
   if (linearSolver=="None")
     {
     return Teuchos::null;

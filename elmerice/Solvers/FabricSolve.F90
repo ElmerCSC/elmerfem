@@ -100,7 +100,7 @@
      REAL(KIND=dp) :: a2(6)
      REAL(KIND=dp) :: ai(3), Angle(3)
 
-     LOGICAL :: GotForceBC,GotIt,NewtonLinearization = .FALSE.
+     LOGICAL :: GotForceBC,GotIt,NewtonLinearization = .FALSE.,UnFoundFatal=.TRUE.
 
      INTEGER :: body_id,bf_id,eq_id, comp, Indexes(128)
 !
@@ -146,16 +146,10 @@
 !  Read constants from constants section of SIF file
 !------------------------------------------------------------------------------
          
-      Wn(7) = ListGetConstReal( Model % Constants, 'Gas Constant', GotIt )
-      IF (.NOT.GotIt) THEN
-        WRITE(Message,'(A)')'VariableGas Constant not found. &
-                                     &Setting to 8.314'
-        CALL INFO('FabricSolve',Message,Level=4)
-        Wn(7) = 8.314
-      ELSE
-        WRITE(Message,'(A,F10.4)')'Gas Constant =',Wn(7)
-        CALL INFO('FabricSolve',Message,Level=4)
-      END IF  
+      Wn(7) = ListGetConstReal( Model % Constants, 'Gas Constant', GotIt,UnFoundFatal=UnFoundFatal )
+      !Previous default value: Wn(7) = 8.314
+      WRITE(Message,'(A,F10.4)')'Gas Constant =',Wn(7)
+      CALL INFO('FabricSolve',Message,Level=4)
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
@@ -347,13 +341,9 @@
          END IF
       
          LocalFluidity(1:n) = ListGetReal( Material, &
-                         'Fluidity Parameter', n, NodeIndexes, GotIt )
-        IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Fluidity Parameter not found. &
-                            &Setting to 1.0'
-         CALL INFO('AIFlowSolve', Message, Level = 4)
-         LocalFluidity(1:n) = 1.0
-        END IF
+                         'Fluidity Parameter', n, NodeIndexes, GotIt,&
+                         UnFoundFatal=UnFoundFatal)
+         !Previous default value: LocalFluidity(1:n) = 1.0
 !------------------------------------------------------------------------------
 !        Get element local stiffness & mass matrices
 !------------------------------------------------------------------------------
@@ -697,19 +687,13 @@ CONTAINS
 
       SUBROUTINE GetMaterialDefs()
 
-      viscosityFile = ListGetString( Material ,'Viscosity File',GotIt )
-      IF (.NOT.GotIt) THEN
-          WRITE(Message,'(3A)') &
-                      'Viscosity File ', viscosityFile, ' not found'
-         CALL FATAL('AIFlowSolve',Message)
-      ELSE
-         OPEN( 1, File = viscosityFile)
-         DO i=1,813
-            READ( 1, '(6(e14.8))' ) FabricGrid( 6*(i-1)+1:6*(i-1)+6 )
-         END DO
-         READ(1 , '(e14.8)' ) FabricGrid(4879)
-         CLOSE(1)
-      END IF
+      viscosityFile = ListGetString( Material ,'Viscosity File',GotIt, UnFoundFatal)
+      OPEN( 1, File = viscosityFile)
+      DO i=1,813
+         READ( 1, '(6(e14.8))' ) FabricGrid( 6*(i-1)+1:6*(i-1)+6 )
+      END DO
+      READ(1 , '(e14.8)' ) FabricGrid(4879)
+      CLOSE(1)
 
        rho = ListGetConstReal(Material, 'Interaction Parameter', GotIt )
        IF (.NOT.GotIt) THEN
@@ -722,70 +706,35 @@ CONTAINS
            CALL INFO('AIFlowSolve', Message, Level = 20)
        END IF
 
-       lambda = ListGetConstReal( Material, 'Diffusion Parameter', GotIt )
-       IF (.NOT.GotIt) THEN
-           WRITE(Message,'(A)') 'Diffusion  Parameter not found. &
-                                 &Setting to 0'
-           CALL INFO('AIFlowSolve', Message, Level = 20)
-           lambda = 0.0_dp
-       ELSE
-           WRITE(Message,'(A,F10.4)') 'Diffusion Parameter = ', lambda
-           CALL INFO('AIFlowSolve', Message, Level = 20)
-       END IF
-      Wn(2) = ListGetConstReal( Material , 'Powerlaw Exponent', GotIt )
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable  Powerlaw Exponent not found. &
-                                    & Setting to 1.0'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(2) = 1.0
-      ELSE
-       WRITE(Message,'(A,F10.4)') 'Powerlaw Exponent = ',   Wn(2)
-       CALL INFO('AIFlowSolve', Message, Level = 20)
-       END IF
+       lambda = ListGetConstReal( Material, 'Diffusion Parameter', GotIt,UnFoundFatal=UnFoundFatal)
+           !Previous default value: lambda = 0.0_dp
+      WRITE(Message,'(A,F10.4)') 'Diffusion Parameter = ', lambda
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 
-      Wn(3) = ListGetConstReal( Material, 'Activation Energy 1', GotIt )
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Activation Energy 1 not found.&
-                            & Setting to 1.0'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(3) = 1.0
-      ELSE
-         WRITE(Message,'(A,F10.4)') 'Activation Energy 1 = ',   Wn(3)
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-      END IF
+      Wn(2) = ListGetConstReal( Material , 'Powerlaw Exponent', GotIt,UnFoundFatal=UnFoundFatal)
+           !Previous default value: Wn(2) = 1.0
+      WRITE(Message,'(A,F10.4)') 'Powerlaw Exponent = ',   Wn(2)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 
-      Wn(4) = ListGetConstReal( Material, 'Activation Energy 2', GotIt )
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Activation Energy 2 not found. &
-                               &Setting to 1.0'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(4) = 1.0
-      ELSE
-         WRITE(Message,'(A,F10.4)') 'Activation Energy 2 = ',   Wn(4)
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-      END IF
+      Wn(3) = ListGetConstReal( Material, 'Activation Energy 1', GotIt,UnFoundFatal=UnFoundFatal)
+           !Previous default value: Wn(3) = 1.0
+      WRITE(Message,'(A,F10.4)') 'Activation Energy 1 = ',   Wn(3)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 
-      Wn(5) = ListGetConstReal(Material, 'Reference Temperature', GotIt)
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Reference Temperature not found. &
-                               &Setting to -10.0 (Celsius)'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(5) = -10.0
-      ELSE
-         WRITE(Message,'(A,F10.4)') 'Reference Temperature = ',   Wn(5)
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-      END IF
+      Wn(4) = ListGetConstReal( Material, 'Activation Energy 2', GotIt,UnFoundFatal=UnFoundFatal)
+           !Previous default value: Wn(4) = 1.0
+      WRITE(Message,'(A,F10.4)') 'Activation Energy 2 = ',   Wn(4)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 
-      Wn(6) = ListGetConstReal( Material, 'Limit Temperature', GotIt )
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Limit Temperature not found. &
-                               &Setting to -10.0 (Celsius)'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(6) = -10.0
-      ELSE
-         WRITE(Message,'(A,F10.4)') 'Limit Temperature = ',   Wn(6)
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-      END IF
+      Wn(5) = ListGetConstReal(Material, 'Reference Temperature', GotIt,UnFoundFatal=UnFoundFatal)
+           !Previous default value: Wn(5) = -10.0
+      WRITE(Message,'(A,F10.4)') 'Reference Temperature = ',   Wn(5)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
+
+      Wn(6) = ListGetConstReal( Material, 'Limit Temperature', GotIt,UnFoundFatal=UnFoundFatal)
+           !Previous default value: Wn(6) = -10.0
+      WRITE(Message,'(A,F10.4)') 'Limit Temperature = ',   Wn(6)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 !------------------------------------------------------------------------------
       END SUBROUTINE GetMaterialDefs
 !------------------------------------------------------------------------------
@@ -856,8 +805,11 @@ CONTAINS
         End Subroutine R2Ro
 
         Subroutine OPILGGE_ai_nl(a2,Angle,etaI,eta36)
-         USE Types
-         REAL(KIND=dp) :: a2(3), Angle(3),EtaI(:),Eta36(6,6)
+          USE Types
+          REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: a2
+          REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: Angle
+          REAL(kind=dp), INTENT(in),  DIMENSION(:)   :: etaI
+          REAL(kind=dp), INTENT(out), DIMENSION(6,6) :: eta36
         END SUBROUTINE OPILGGE_ai_nl
         
       END INTERFACE

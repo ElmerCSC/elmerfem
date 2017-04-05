@@ -12,7 +12,7 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 
-  Max Output Level = 3
+  Max Output Level = 5
 
 ! Post File   = "ptest.ep"
 ! Output File = "ptest.dat"
@@ -21,6 +21,7 @@ End
 Body 1
   Equation = 1
   Initial Condition = 1
+  Material = 1
 End
 
 Initial Condition 1
@@ -30,6 +31,11 @@ End
 Equation 1
   Active Solvers(1) = 1
 End
+
+Material 1
+  Name = "Ideal"
+  Wave Speed = Real 1.0
+End 
 
 Solver 1
   Equation = "Poisson"
@@ -50,7 +56,4 @@ Boundary Condition 1
   Potential Velocity = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.815834703788E-01
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.815834703788E-01\n" );
+Solver 1 :: Reference Norm = 0.815834703788E-01

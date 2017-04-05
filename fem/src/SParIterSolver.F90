@@ -619,12 +619,13 @@ st = realtime()
 
   ! Sync neighbour information, if changed by the above ^:
   ! ------------------------------------------------------
-  ALLOCATE(isNeighbour(ParEnv % PEs))
-  isNeighbour = Parenv % IsNeighbour
-  CALL MPI_ALLREDUCE( isNeighbour, Parenv % IsNeighbour, Parenv % Pes, &
-      MPI_LOGICAL, MPI_LOR, SourceMatrix % Comm, i )
-  Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
-  Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
+! ALLOCATE(isNeighbour(ParEnv % PEs))
+! isNeighbour = Parenv % IsNeighbour
+! CALL MPI_ALLREDUCE( isNeighbour, Parenv % IsNeighbour, Parenv % Pes, &
+!     MPI_LOGICAL, MPI_LOR, SourceMatrix % Comm, i )
+! Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
+! Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
+  CALL SyncNeighbours(ParEnv)
 
   ! -
   ALLOCATE(SplittedMatrix % IfLCols(ParEnv % PEs))
@@ -1188,12 +1189,13 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 !> Create continuous numbering for the dofs expected by some linear solvers.
 !----------------------------------------------------------------------
-  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin,Mesh )
+  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin,Mesh, nOwn )
 !--------------------------------------------------------------------
      INTEGER :: Mperm(:), Aperm(:), Owner(:)
      TYPE(Mesh_t), OPTIONAL :: Mesh
      INTEGER, OPTIONAL :: nin
      TYPE(ParallelInfo_t) :: ParallelInfo
+     INTEGER, OPTIONAL :: nOwn
 
      INTEGER, ALLOCATABLE :: neigh(:), sz(:),buf_a(:,:),buf_g(:,:), &
                   buf_aa(:), buf_gg(:)
@@ -1201,7 +1203,7 @@ END SUBROUTINE ZeroSplittedMatrix
      INTEGER, POINTER :: nb(:)
      LOGICAL, POINTER :: isNeighbour(:)
      INTEGER :: min_id,max_id,my_id,next_id,prev_id, active_neighbours
-     INTEGER :: i,j,k,src,n,nob,gind,ssz,status(MPI_STATUS_SIZE),ierr,nneigh
+     INTEGER :: i,j,k,src,n,nob,gind,gindp,ssz,status(MPI_STATUS_SIZE),ierr,nneigh
 
      Owner = 0; Aperm = 0;
      IF(PRESENT(nin)) THEN
@@ -1236,11 +1238,12 @@ END SUBROUTINE ZeroSplittedMatrix
          IF ( ParEnv % Active(prev_id+1) ) EXIT
        END DO
        CALL MPI_RECV( gind, 1, MPI_INTEGER, &
-           prev_id, 801, MPI_COMM_WORLD, status, ierr )
+           prev_id, 801, ELMER_COMM_WORLD, status, ierr )
      END IF
 
      ! give a number to dofs owned by us:
      ! -----------------------------------
+     gindp = gind
      DO i=1,n
        nb => ParallelInfo % NeighbourList(i) % Neighbours
        IF ( nb(1)==my_id ) THEN
@@ -1249,6 +1252,8 @@ END SUBROUTINE ZeroSplittedMatrix
          Aperm(i) = gind
        END IF
      END DO
+     ! Compute the number of dofs owned                                         
+     IF (PRESENT(nOwn)) nOwn = gind - gindp
 
      ! next pe in line needs it's base:
      ! --------------------------------
@@ -1257,7 +1262,7 @@ END SUBROUTINE ZeroSplittedMatrix
          IF ( ParEnv % Active(next_id+1) ) EXIT
        END DO
        CALL MPI_BSEND( gind, 1, MPI_INTEGER, &
-          next_id, 801, MPI_COMM_WORLD, ierr )
+          next_id, 801, ELMER_COMM_WORLD, ierr )
      END IF
 
      ! the rest is to communicate the numbering of shared dofs
@@ -1322,10 +1327,10 @@ END SUBROUTINE ZeroSplittedMatrix
          active_neighbours = active_neighbours+1
          k = neigh(i)
          ssz = sz(k)
-         CALL MPI_BSEND( ssz,1,MPI_INTEGER,i-1,802,MPI_COMM_WORLD,ierr )
+         CALL MPI_BSEND( ssz,1,MPI_INTEGER,i-1,802,ELMER_COMM_WORLD,ierr )
          IF ( ssz>0 ) THEN
-           CALL MPI_BSEND( buf_a(1:ssz,k),ssz,MPI_INTEGER,i-1,803,MPI_COMM_WORLD,ierr )
-           CALL MPI_BSEND( buf_g(1:ssz,k),ssz,MPI_INTEGER,i-1,804,MPI_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf_a(1:ssz,k),ssz,MPI_INTEGER,i-1,803,ELMER_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf_g(1:ssz,k),ssz,MPI_INTEGER,i-1,804,ELMER_COMM_WORLD,ierr )
          END IF
        END IF
      END DO 
@@ -1333,13 +1338,13 @@ END SUBROUTINE ZeroSplittedMatrix
      DEALLOCATE( buf_a, buf_g, neigh, sz )
 
      DO i=1,active_neighbours
-       CALL MPI_RECV( ssz,1,MPI_INTEGER,MPI_ANY_SOURCE,802,MPI_COMM_WORLD,status,ierr )
+       CALL MPI_RECV( ssz,1,MPI_INTEGER,MPI_ANY_SOURCE,802,ELMER_COMM_WORLD,status,ierr )
        IF ( ssz>0 ) THEN
          src = status(MPI_SOURCE)
          ALLOCATE( buf_aa(ssz), buf_gg(ssz) )
 
-         CALL MPI_RECV( buf_aa,ssz,MPI_INTEGER,src,803,MPI_COMM_WORLD,status,ierr )
-         CALL MPI_RECV( buf_gg,ssz,MPI_INTEGER,src,804,MPI_COMM_WORLD,status,ierr )
+         CALL MPI_RECV( buf_aa,ssz,MPI_INTEGER,src,803,ELMER_COMM_WORLD,status,ierr )
+         CALL MPI_RECV( buf_gg,ssz,MPI_INTEGER,src,804,ELMER_COMM_WORLD,status,ierr )
 
          DO j=1,ssz
            k = SearchIAItem( nob, g_nownbuf, buf_gg(j), i_nownbuf )

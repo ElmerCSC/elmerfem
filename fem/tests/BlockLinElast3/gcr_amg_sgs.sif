@@ -10,7 +10,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -18,6 +18,8 @@ Simulation
   Steady State Max Iterations = 1
   Steady State Min Iterations = 1
   Output Intervals = 1
+
+  Additive Namespaces = Logical True
 
 !  Post File = "case.ep"
 End
@@ -75,29 +77,27 @@ Solver 1
 
 ! Linear system solver for blocks
 !-----------------------------------------
-  Linear System Solver = multigrid	
-  Linear System Convergence Tolerance = 1.0e-05
-  Multigrid Levels = Integer 10
-  MG Algebraic = Logical True
-  MG Pre Smoothing Iterations = 1
-  MG Post Smoothing Iterations = 1
-  MG Lowest Linear Solver Iterative = Logical False
-  MG Lowest Linear Solver Limit = Integer 50
-  MG Lowest Linear Solver Unsolve = Logical True 
-  MG Smoother = String sgs
-  MG Preconditioning = diagonal
-  MG Max Iterations = Integer 1
+  Block: Linear System Solver = multigrid	
+  Block: Linear System Convergence Tolerance = 1.0e-05
+  Block: Multigrid Levels = Integer 10
+  Block: MG Algebraic = Logical True
+  Block: MG Pre Smoothing Iterations = 1
+  Block: MG Post Smoothing Iterations = 1
+  Block: MG Lowest Linear Solver Iterative = Logical False
+  Block: MG Lowest Linear Solver Limit = Integer 50
+  Block: MG Lowest Linear Solver Unsolve = Logical True 
+  Block: MG Smoother = String sgs
+  Block: MG Preconditioning = diagonal
+  Block: MG Max Iterations = Integer 1
 
-  MG Direct Interpolate = Logical True
-  MG Strong Connection Limit = Real 0.06
-  MG Positive Connection Limit = Real 1.0
-  MG Boundary Priority = Integer 1
-  MG Coarsening Mode = Integer 3
-  MG Projection Limit = Real 0.4
-  MG Eliminate Dirichlet = Logical True
-  MG Eliminate Dirichlet Limit = Real 1.0e-8
-
-
+  Block: MG Direct Interpolate = Logical True
+  Block: MG Strong Connection Limit = Real 0.06
+  Block: MG Positive Connection Limit = Real 1.0
+  Block: MG Boundary Priority = Integer 1
+  Block: MG Coarsening Mode = Integer 3
+  Block: MG Projection Limit = Real 0.4
+  Block: MG Eliminate Dirichlet = Logical True
+  Block: MG Eliminate Dirichlet Limit = Real 1.0e-8
 End  
 
 Material 1
@@ -124,6 +124,4 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.23581335
-$fprintf( stderr, "TEST CASE 1\n")
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.23581335\n");

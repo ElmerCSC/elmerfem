@@ -1,0 +1,181 @@
+! This test case shows how one could couple heat equation with a diffusion equation.
+! The parameters do not reflect any real case. One-directional coupling between
+! heat equation and diffusion equation is created by having the heat conductivity depend
+! on the moisture content. 
+!
+! P.R. / 13.4.2016
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady State
+!  Simulation Type = Transient
+!  Timestepping Method = BDF
+!  BDF Order = 2
+!  Timestep Sizes = 1.0
+!  Timestep Intervals = 10
+  Output Intervals = 1
+  Steady State Max Iterations = 10
+
+  Output Intervals = 1
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Wall"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Left"
+  Body Force = 1
+  Equation = 2
+  Material = 2
+End
+
+Body 3
+  Name = "Right"
+  Body Force = 1
+  Equation = 2
+  Material = 2
+End
+
+
+Equation 1
+  Name = "Conductive Equations and flux"
+  Active Solvers(3) = 1 2 3 
+End
+
+Equation 2 
+  Name = "Conductive Equations"
+  Active Solvers(2) = 1 2 
+End
+
+Initial Condition 1
+  Name = "InitialState"
+  Moisture = Real 0.75
+  Temperature = 0.0
+End
+
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 2
+  Equation = Advection Diffusion
+  Variable = Moisture
+  Procedure = "AdvectionDiffusion" "AdvectionDiffusionSolver"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-03
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+! Stabilize = False  ! this is default
+  Bubbles = False
+End
+
+
+Solver 3
+  Equation = ComputeFlux
+  Procedure = "FluxSolver" "FluxSolver"
+  Exec Solver = after timestep
+
+  Calculate Flux = Logical True
+  Target Variable = String Temperature
+  Flux Coefficient = String "Heat Conductivity"
+
+! these are taken care by the defaults
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "cg"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = Integer 500
+  Linear System Convergence Tolerance = 1.0e-10
+End
+
+
+Material 1
+  Name = "Wall"
+  Density = 1
+  Heat Conductivity = Variable "Moisture"
+    Real MATC "0.01*(1+tx)"
+  Heat Capacity = 1.0
+  Moisture Diffusivity = Real 0.1
+End
+
+Material 2
+  Name = "Air"
+  Density = 1
+  Heat Conductivity = 1.0
+  Heat Capacity = 1.0
+  Moisture Diffusivity = Real 1.0
+End
+
+
+Body Force 1
+  Name = "Left"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "LeftBC"
+  Target Boundaries(1) = 1 
+  Temperature = -20.0
+  Moisture = Real 1.0
+End
+
+Boundary Condition 2
+  Name = "RightBC"
+  Target Boundaries(1) = 2 
+  Temperature = 20.0
+  Moisture = Real 0.5
+End
+
+
+
+Solver 1 :: Reference Norm = Real 17.345918
+Solver 2 :: Reference Norm = Real 0.77466187 

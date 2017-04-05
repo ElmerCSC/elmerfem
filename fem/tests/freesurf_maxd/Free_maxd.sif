@@ -1,0 +1,131 @@
+Header
+  Mesh DB "." "Mesh"
+End
+
+Constants
+  Gravity(4)=  0 1 0 9.81
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type ="Transient"
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = $31556926.0/52.0
+  Timestep Intervals = 30
+  !Post File   = "Free_maxd.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 2
+End
+
+Body 2
+  Equation  = 2
+  Material  = 1
+  Body Force = 1
+  Initial Condition = 2
+End
+
+
+Solver 1
+  Equation = Free
+  Variable = FreeSurface
+  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0E-07
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Min Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-06
+  Nonlinear System Consistent Norm = True
+  Steady State Convergence Tolerance = 1.0e-6
+  Exported Variable 1 = Freesurface Residual
+  Exported Variable 1 DOFs = 1
+  Stabilization Method = Stabilized
+  Apply Dirichlet = Logical False
+  Maximum Displacement = Real 0.01
+End
+
+Solver 2
+  Equation = Mesh Update
+  Linear System Solver =  Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0E-07
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+Equation 1
+  Active Solvers(1) = 2
+  Convection = "constant"
+End
+
+Equation 2
+  Active Solvers(1) = 1
+  Convection = "constant"
+End
+
+Body Force 1
+   FreeSurface Accumulation Flux 1 = Real 0.0
+   FreeSurface Accumulation Flux 2 = Variable Coordinate 1
+      Real MATC "1.0*(4.0 - sqrt((tx-5.0)*(tx-5.0)))/(31556926.0)"
+End
+
+Material 1
+  Viscosity = 1.0E12
+  Density = 918.0
+  Convection Velocity 1 = Variable Coordinate
+         Real MATC "(tx(0) - 5.0)*tx(1)/(31556926.0)"
+  Convection Velocity 2 = Variable Coordinate
+         Real MATC "((5.0 - abs(tx(0) - 5.0))*tx(1)/10.0)/(31556926.0)"
+  Youngs Modulus = 1
+  Poisson Ratio = 0.3
+End
+
+Initial Condition 1
+  Mesh Update 1 = 0.0
+  Mesh Update 2 = 0.0
+  FreeSurface = Equals Coordinate 2
+End
+
+Initial Condition 2
+  FreeSurface = Equals Coordinate 2
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Name = "Bed"
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Mesh Update 1 = 0
+  Mesh Update 2 = 0
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 3
+  Name = "Free"
+  Body Id = 2
+  Mesh Update 2 = Variable FreeSurface
+     Real MATC "tx - 0.4"
+  Mesh Update 1 = 0
+End
+
+
+Boundary Condition 3
+  Target Boundaries(2) = 2 4
+  Name = "sides" 
+  Mesh Update 1 = 0
+End
+
+Solver 1 :: Reference Norm = Real 6.60230883E-01
+Solver 1 :: Reference Norm Tolerance = Real 0.001
+

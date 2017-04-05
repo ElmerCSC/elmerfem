@@ -229,7 +229,7 @@ MODULE NavierStokes
      NBasis    = n
      Bubbles   = .FALSE.
      PBubbles  = .FALSE.
-     P2P1      = .FALSE.
+     P2P1 = .FALSE.
      VMS =  StabilizeFlag == 'vms'
 
      Material => GetMaterial()
@@ -266,7 +266,7 @@ MODULE NavierStokes
           NBasis    = 2 * n
           Bubbles   = .TRUE.
        ELSE
-          P2P1 = .TRUE.
+          P2P1 = StabilizeFlag == 'p2/p1' .OR. StabilizeFlag == 'p2p1'
        END IF
        Stabilize = .FALSE.
      END IF
@@ -788,13 +788,22 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
  
          ! Pressure terms:
-         ! --------------- 
-         IF ( gradPDiscretization  ) THEN
-            A(i,c) = A(i,c) + s * dBasisdx(q,i) * Basis(p)
+         ! ---------------
+         IF (P2P1) THEN
+           IF (q <= LinearBasis) THEN
+             IF ( gradPDiscretization  ) THEN
+               A(i,c) = A(i,c) + s * PdBasisdx(q,i) * Basis(p)
+             ELSE
+               A(i,c) = A(i,c) - s * PBasis(q) * dBasisdx(p,i)
+             END IF
+           END IF
          ELSE
-            A(i,c) = A(i,c) - s * Basis(q) * dBasisdx(p,i)
+           IF ( gradPDiscretization  ) THEN
+             A(i,c) = A(i,c) + s * dBasisdx(q,i) * Basis(p)
+           ELSE
+             A(i,c) = A(i,c) - s * Basis(q) * dBasisdx(p,i)
+           END IF
          END IF
-
 
          ! Continuity equation:
          !---------------------
@@ -987,7 +996,11 @@ MODULE NavierStokes
      FORCEvector(1:p)=Forcevector(1:p)+MATMUL(JacM(1:p,1:p),SOL(1:p))
    END IF
 
-   IF (  P2P1 ) THEN
+   ! Original P2P1 implementation: Now commented out and replaced by an alternate
+   ! implementation since this appears to produce numerical oscillations. To be
+   ! removed?
+   IF (.FALSE.) THEN
+   !IF (  P2P1 ) THEN
      j = GetElementFamily()
      EdgeMap => GetEdgeMap(j)
 
@@ -1000,6 +1013,20 @@ MODULE NavierStokes
        StiffMatrix( c*i, c*i ) =  1._dp
        StiffMatrix( c*i, c*p ) = -0.5_dp
        StiffMatrix( c*i, c*q ) = -0.5_dp
+     END DO
+   END IF
+   
+   ! Produce zero values for pressure at the nodes which are not needed
+   ! in the lowest-order pressure interpolation. We shall return consistent
+   ! values after the nonlinear iteration has terminated:
+   IF (P2P1) THEN
+      DO i=LinearBasis+1,nBasis
+        StiffMatrix( c*i, : ) = 0._dp
+        MassMatrix(  c*i, : ) = 0._dp
+        StiffMatrix( :, c*i ) = 0._dp
+        MassMatrix(  :, c*i ) = 0._dp
+        ForceVector( c*i ) = 0._dp
+        StiffMatrix( c*i, c*i ) = 1._dp
      END DO
    END IF
 

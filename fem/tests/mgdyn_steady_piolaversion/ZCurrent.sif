@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 9
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Simulation Type = Steady
   Steady State Max Iterations = 1
@@ -89,7 +89,6 @@ Boundary Condition 1
   P {e} 1 = Real 0
   P {e} 2 = Real 0
   P {e} 3 = Real 0
-  P {f} = Real 0
 End
 
 Boundary Condition 2
@@ -99,7 +98,6 @@ Boundary Condition 2
   P {e} 1 = Real 0
   P {e} 2 = Real 0
   P {e} 3 = Real 0
-  P {f} = Real 0
 End
 
 Boundary Condition 3
@@ -109,10 +107,7 @@ Boundary Condition 3
   P {e} 1 = Real 0
   P {e} 2 = Real 0
   P {e} 3 = Real 0
-  P {f} = Real 0
 End
 
 Solver 1 :: Reference Norm = Real 0.14519433E-01
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.14519433E-01\n" );

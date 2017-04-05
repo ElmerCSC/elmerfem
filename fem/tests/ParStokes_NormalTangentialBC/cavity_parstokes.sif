@@ -1,0 +1,118 @@
+! This case repeats the solution of the other test case NormalTangentialBC, but
+! here the solution is done with the special (ParStokes) solver for the Stokes 
+! equations. The solution is done iteratively by applying block preconditioning.
+! The Stokes system is discretized by using Q2-Q1 approximation. 
+
+check keywords warn
+
+Header
+  Mesh DB "." "sinus0"
+End
+
+Constants
+
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System  = Cartesian 2D 
+  
+  Set Dirichlet BCs by BC Numbering = Logical True
+
+  Simulation Type ="Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+!  Post File = "sinus_mesh.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  FlowVar 1 = Real 0.0
+  FlowVar 2 = Real 0.0
+  FlowVar 3 = Real 0.0
+End
+
+Material 1
+  Density = Real 1.0
+  Viscosity = Real 1.0
+End
+
+Solver 1
+  Equation = "Velocity Preconditioning"
+  Procedure = "VelocityPrecond" "VelocityPrecond"
+  Variable = "V"
+  Variable Dofs = 2
+  Linear System Row Equilibration = True
+End
+
+Solver 2
+  Equation = "Pressure Preconditioning"
+  Procedure = "PressurePrecond" "PressurePrecond"
+  Variable = "P"
+  Variable Dofs = 1
+  Linear System Row Equilibration = True
+End
+
+Solver 3
+  Equation = "Stokes"
+  Procedure = "ParStokes" "StokesSolver"
+  Variable = FlowVar
+  Variable Dofs = 3
+  P2-P1 Approximation = Logical True 
+  Block Preconditioning = Logical True
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Nonlinear System Max Iterations = 1
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+! Curved bottom: no-penetration
+!--------------------------------------------
+Boundary Condition 1
+  Target Boundaries = 1
+  Normal-Tangential FlowVar = Logical True
+  FlowVar 1 = Real 0.0
+  Normal-Tangential V = Logical True
+  V 1 = Real 0.0  
+End
+
+! Periodicity on vertical sides:
+!--------------------------------------------
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4
+  Periodic BC FlowVar 1 = Logical True
+  Periodic BC FlowVar 2 = Logical True
+  Periodic BC FlowVar 3 = Logical True
+  Periodic BC V 1 = Logical True
+  Periodic BC V 2 = Logical True
+  Periodic BC P = Logical True
+End
+
+! Top: 
+!--------------------------------------------
+Boundary Condition 3
+  Target Boundaries = 3
+  Pressure 2 = Real 0.0
+  FlowVar 1 = Real 0.1
+  V 1 = Real 0.1
+  Flow Force BC = Logical True
+End
+
+!Periodicity on vertical sides:
+!--------------------------------------------
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+Solver 3 :: Reference Norm = Real 5.966727E-02
+Solver 3 :: Reference Norm Tolerance = Real 1.0E-6

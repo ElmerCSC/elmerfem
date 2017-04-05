@@ -1,4 +1,4 @@
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( case.sif case.sif COPYONLY)
@@ -6,3 +6,5 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO mesh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(ParticleAdvector2)
+ADD_ELMER_LABEL(ParticleAdvector2 particle)
+

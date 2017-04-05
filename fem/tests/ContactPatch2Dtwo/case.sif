@@ -1,0 +1,190 @@
+!------------------------------------------------------------------
+!
+! 2d patch test
+!
+! - Two different "tie contact" settings
+!   One with Normal-Tangential and one with cartesian conditions.
+! - Rotation of 10 degrees used to make the solution nontrivial.
+!   Comparison to reference solution without rotation.
+!
+! P.R. /  14.8.2015
+!
+!------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "squares"
+  Include Path ""
+  Results Directory ""
+End
+
+$fileid="c"
+$phi = -10.0
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+! Lets not save this big file
+  Post File = case_$fileid$.vtu
+
+! The ElasticSolver does not really like the Dirichlet conditions at the start 
+! of the nonlinear iteration. 
+  Initialize Dirichlet Conditions = False
+End
+
+Equation 1
+  Name = "Deformation"
+  Active Solvers(1) = 2
+  Plane Stress = Logical True
+End
+
+Body 1
+  Name = "Lower block"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Upper block"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 3
+  Name = "Upper block"
+  Target Bodies(1) = 3
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Youngs modulus = 90.0
+  Density = 10.0
+  Poisson ratio = 0.25
+End
+
+Solver 1
+!  Exec Solver = Before all
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+End
+
+Solver 2
+  Equation = "Nonlinear elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 2 Displacement
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 200
+  BiCGStabl Polynomial Degree = 4
+  Linear System Convergence Tolerance = 1.0e-10
+
+  Apply Contact BCs = Logical True
+  Linear System Residual Mode = Logical True
+  Elasticity Solver Linear = Logical True
+  Calculate Stresses = Logical True
+  Optimize Bandwidth = False
+  Displace Mesh = Logical True
+  Nonlinear System Convergence Without Constraints = Logical True
+
+!  Eliminate Linear Constraints = Logical True
+!  Eliminate Slave = Logical True
+End
+
+Solver 3
+  Exec Solver = never
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = f_$fileid$.dat
+End
+
+
+Body Force 1
+  Name = "Rotate"
+  Mesh Rotate 3 = $phi
+End 
+
+
+Boundary Condition 1
+  Name = "Support"
+  Target Boundaries(1) = 1
+  Displacement 1 = 0.0 
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 2
+  Name = "Upper surface of lower block"
+  Target Boundaries(1) = 3
+
+  Contact BC = Integer 3
+  Tie Contact = Logical True
+  Plane Projector = Logical True
+  Galerkin Projector = Logical True
+!  Use Biorthogonal Basis = Logical True
+!  Normal-Tangential Displacement = Logical True
+!  Mass Consistent Normals = Logical True
+End
+
+Boundary Condition 3
+  Name = "Lower surface of mid block"
+  Target Boundaries(1) = 5
+!  Normal-Tangential Displacement = Logical True
+End
+
+Boundary Condition 4
+  Name = "Upper surface of mid block"
+  Target Boundaries(1) = 7
+
+  Contact BC = Integer 5
+  Tie Contact = Logical True
+  Plane Projector = Logical True
+  Galerkin Projector = Logical True
+!  Use Biorthogonal Basis = Logical True
+
+  Normal-Tangential Displacement = Logical True
+  Mass Consistent Normals = Logical True
+End
+
+Boundary Condition 5
+  Name = "Lower surface of upper block"
+  Target Boundaries(1) = 9
+  Normal-Tangential Displacement = Logical True
+End
+
+Boundary Condition 6
+  Name = "Upper surface of the upper block"
+  Target Boundaries(1) = 11
+  Displacement 1 = $0.3*cos(pi*phi/180)
+  Displacement 2 = $0.3*sin(pi*phi/180)
+End
+
+Boundary Condition 7
+  Name = "Sides"
+  Target Boundaries(6) = 2 4 6 8 10 12
+End
+
+Solver 2 :: Reference Norm = 1.277470E-01 
+Solver 2 :: Reference Norm Tolerance = 1.0e-5
+

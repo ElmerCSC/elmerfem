@@ -705,6 +705,10 @@ at = CPUTime()
        HUTI_TOLERANCE = ListGetConstReal( Solver % Values, &
             'Linear System Convergence Tolerance' )
 
+       HUTI_MAXTOLERANCE = ListGetConstReal( Solver % Values, &
+            'Linear System Divergence Limit', GotIt )
+       IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20       
+       
        HUTI_MAXIT = ListGetInteger( Solver % Values, &
             'Linear System Max Iterations' )
 

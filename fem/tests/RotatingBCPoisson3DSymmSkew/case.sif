@@ -16,7 +16,7 @@ End
 $prefix="g"
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient

@@ -83,7 +83,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       IF( CalcStressAll ) CALL ListAddLogical( SolverParams,'Calculate Stresses',.TRUE.)
     END IF
 
-
     IF ( CalcStressAll ) THEN
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable ',SolverParams), &
@@ -119,6 +118,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       END IF
     END IF
 
+    CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE StressSolver_Init
@@ -759,6 +759,116 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
            END DO
          END DO
+
+       ELSE IF ( HarmonicAnalysis ) THEN
+
+         nsize = SIZE(Solver % Variable % EigenVectors,2)/STDOFs
+         nomodes = Solver % NOFEigenValues
+
+         DO i=1,nomodes
+
+           WRITE (Message,'(A,I0)') 'Computing stresses for eigenmode: ',i 
+           CALL INfo('StressSolver', Message ) 
+
+           DO l=1,2
+            IF ( l==1 ) THEN
+              Displacement = REAL( Solver % Variable % EigenVectors(i,:) )
+            ELSE
+              Displacement = AIMAG( Solver % Variable % EigenVectors(i,:) )
+            END IF
+
+            CALL ComputeStress( Displacement, NodalStress,  &
+               VonMises, DisplPerm, StressPerm, &
+               NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle )
+
+
+           DO j=1,7               
+             SELECT CASE ( j )
+             CASE(1) 
+               VarName = 'Stress'
+             CASE(2) 
+               VarName = 'vonMises'
+             CASE(3) 
+               VarName = 'Principal Stress'
+             CASE(4) 
+               VarName = 'Strain'
+             CASE(5) 
+               VarName = 'Principal Strain'
+             CASE(6) 
+               VarName = 'Principal Angle'
+             CASE(7) 
+               VarName = 'Tresca'                 
+             END SELECT
+             
+             Var => VariableGet( Mesh % Variables, VarName )
+             IF(.NOT. ASSOCIATED(Var) ) CYCLE
+             dofs = Var % Dofs
+            
+             IF( i == 1 ) THEN               
+               IF( .NOT. ASSOCIATED( Var % EigenVectors ) ) THEN
+                 ALLOCATE( Var % EigenVectors(nomodes, dofs * nsize ) )             
+                 Var % EigenVectors = 0.0_dp
+               END IF
+               IF( .NOT. ASSOCIATED( Var % EigenValues ) ) THEN                 
+                 ALLOCATE( Var % EigenValues(nomodes) )
+                 Var % EigenValues = 0._dp
+               END IF
+
+               Var % EigenValues = Solver % Variable % EigenValues 
+               IF( dofs > 1 ) THEN
+                 DO k=1,dofs
+                   iVar => VariableGet( Mesh % Variables,ComponentName(Var % Name,k) )
+                   IF( ASSOCIATED( iVar ) ) THEN
+                     iVar % EigenValues => Var % EigenValues
+                     iVar % Eigenvectors => Var % EigenVectors(:,k::dofs)
+                   ELSE
+                     CALL Fatal('StressSolver','No variable associated: '//&
+                         ComponentName( Var % Name,k ) )
+                   END IF
+                 END DO
+               END IF
+             END IF
+
+
+             IF ( l==1 ) THEN
+               SELECT CASE ( j )
+               CASE(1) 
+                 Var % EigenVectors(i,:) = NodalStress
+               CASE(2) 
+                 Var % EigenVectors(i,:) = VonMises
+               CASE(3) 
+                 Var % EigenVectors(i,:) = PrincipalStress
+               CASE(4) 
+                 Var % EigenVectors(i,:) = NodalStrain
+               CASE(5) 
+                 Var % EigenVectors(i,:) = PrincipalStrain
+               CASE(6) 
+                 Var % EigenVectors(i,:) = PrincipalAngle
+               CASE(7) 
+                 Var % EigenVectors(i,:) = Tresca
+               END SELECT
+             ELSE
+               SELECT CASE ( j )
+               CASE(1) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,NodalStress,KIND=dp)
+               CASE(2) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,VonMises,KIND=dp)
+               CASE(3) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,PrincipalStress,KIND=dp)
+               CASE(4) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,NodalStrain,KIND=dp)
+               CASE(5) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,PrincipalStrain,KIND=dp)
+               CASE(6) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,PrincipalAngle,KIND=dp)
+               CASE(7) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,Tresca,KIND=dp)
+               END SELECT
+             END IF
+           END DO
+           END DO
+         END DO
+
        ELSE
          CALL ComputeStress( Displacement, NodalStress,  &
              VonMises, DisplPerm, StressPerm, &
@@ -1332,7 +1442,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 
      INTEGER :: i,j,k,l,p,q, t, dim,sdim,elem, IND(9), BodyId,EqId
-     LOGICAL :: stat, CSymmetry, Isotropic(2), UseMask
+     LOGICAL :: stat, CSymmetry, Isotropic(2), UseMask, ContactOn
      INTEGER, POINTER :: Visited(:), Indexes(:), Permutation(:)
      REAL(KIND=dp) :: u,v,w,x,y,z,Strain(3,3),Stress(3,3),LGrad(3,3),detJ, &
           Young, Poisson, Ident(3,3), C(6,6), S(6), weight, st, Work(9), Principal(3), Relax
@@ -1343,7 +1453,7 @@ CONTAINS
 
      LOGICAL :: FirstTime = .TRUE., OptimizeBW, GlobalBubbles, &
           Factorize, FoundFactorize, FreeFactorize, FoundFreeFactorize, &
-          LimiterOn
+          LimiterOn, SkipChange, FoundSkipChange
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      CHARACTER(LEN=MAX_NAME_LEN) :: eqname
@@ -1360,7 +1470,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
-     
+
      CALL Info('StressSolver','------------------------------------------',Level=5)
      CALL Info('StressSolver','Starting Stress Computation',Level=5)
 
@@ -1370,6 +1480,10 @@ CONTAINS
      LimiterOn = ListGetLogical( SolverParams,'Apply Limiter',Found)
      IF( LimiterOn ) THEN
        CALL ListAddLogical( SolverParams,'Apply Limiter',.FALSE.) 
+     END IF
+     ContactOn = ListGetLogical( SolverParams,'Apply Contact BCs',Found)
+     IF( ContactOn ) THEN
+       CALL ListAddLogical( SolverParams,'Apply Contact BCs',.FALSE.) 
      END IF
 
      CALL ListSetNameSpace('stress:')
@@ -1431,6 +1545,9 @@ CONTAINS
      Model % Solver => StSolver
      IF ( EigenAnalysis ) &
        CALL ListAddLogical( SolverParams, 'Eigen Analysis', .FALSE. )
+
+     IF( HarmonicAnalysis ) &
+       CALL ListAddLogical( SolverParams, 'Harmonic Analysis', .FALSE. )
 
      StSolver % NOFEigenValues=0
 
@@ -1554,10 +1671,13 @@ CONTAINS
 
       Factorize = GetLogical( SolverParams, 'Linear System Refactorize', FoundFactorize )
       FreeFactorize = GetLogical( SolverParams, &
-              'Linear System Free Factorization', FoundFreeFactorize )
+          'Linear System Free Factorization', FoundFreeFactorize )
+      SkipChange = GetLogical( SolverParams, &
+          'Skip Compute Nonlinear Change', FoundSkipChange )
 
       CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .FALSE. )
       CALL ListAddLogical( SolverParams, 'Linear System Free Factorization', .FALSE. )
+      CALL ListAddLogical( SolverParams, 'Skip Compute Nonlinear Change', .TRUE. )
 
       DO i=1,3
         DO j=i,3
@@ -1607,10 +1727,16 @@ CONTAINS
         CALL ListRemove( SolverParams, 'Linear System Refactorize' )
       END IF
 
-      IF ( .NOT. FoundFreeFactorize ) THEN
-        CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
-      ELSE
+      IF ( FoundFreeFactorize ) THEN
         CALL ListAddLogical( SolverParams, 'Linear System Free Factorization', FreeFactorize )
+      ELSE
+        CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
+      END IF
+
+      IF( FoundSkipChange ) THEN
+        CALL ListAddLogical( SolverParams, 'Skip Compute Nonlinear Change',SkipChange )
+      ELSE
+        CALL ListRemove( SolverParams, 'Skip Compute Nonlinear Change' )
       END IF
 
       ! Von Mises stress from the component nodal values:
@@ -1753,12 +1879,18 @@ CONTAINS
 
       IF ( EigenAnalysis ) &
         CALL ListAddLogical( SolverParams, 'Eigen Analysis', .TRUE. )
+      IF ( HarmonicAnalysis ) &
+        CALL ListAddLogical( SolverParams, 'Harmonic Analysis', .TRUE. )
       CALL ListAddConstReal( SolverParams,'Nonlinear System Relaxation Factor', Relax )
+
 
       Model % Solver => Solver
 
       IF( LimiterOn ) THEN
         CALL ListAddLogical( SolverParams,'Apply Limiter',.TRUE.) 
+      END IF
+      IF( ContactOn ) THEN
+        CALL ListAddLogical( SolverParams,'Apply Contact BCs',.TRUE.) 
       END IF
 
       CALL Info('StressSolver','Finished Stress Computation',Level=5)

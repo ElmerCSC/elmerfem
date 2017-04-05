@@ -27,10 +27,10 @@ Header
   Results Directory ""
 End
 
-$fileid="b"
+$fileid="c"
 
 Simulation
-  Max Output Level = 20
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
@@ -46,6 +46,8 @@ Simulation
 ! The ElasticSolver does not really like the Dirichlet conditions at the start 
 ! of the nonlinear iteration. 
   Initialize Dirichlet Conditions = False
+
+!  Max Output Partition = Integer 8
 End
 
 !Constants
@@ -80,38 +82,45 @@ Material 1
 End
 
 Solver 1
-  Equation = "Nonlinear elasticity"
+  Equation = "Elasticity"
   Procedure = "ElasticSolve" "ElasticSolver"
+!  Procedure = "StressSolve" "StressSolver"
   Variable = -dofs 3 Displacement
 
-  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-7
   Nonlinear System Max Iterations = 10
   Nonlinear System Relaxation Factor = 1.0
 
   Linear System Solver = "Iterative"
-  Linear System Iterative Method = "BiCGStab"
+  Linear System Iterative Method = GCR 
   Linear System Abort Not Converged = True
-  Linear System Preconditioning = "ILU2"
+  Linear System Preconditioning = "ILU0"
   Linear System Residual Output = 100
   Linear System Max Iterations = 5000
   BiCGStabl Polynomial Degree = 4
   
-  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Mode = True
 
   Apply Contact BCs = Logical True
-! Save Contact = Logical True
+!  Save Contact = Logical True
 
 ! Restore the linear solution
 ! Elasticity Solver Linear = Logical True
 
   Calculate Stresses = Logical True
-! Optimize Bandwidth = False
+!  Optimize Bandwidth = False
+!  Linear System Scaling = False
+!  debug normals = Logical True
 
+!  Nonlinear System Compute Change in Scaled System = Logical True
   Displace Mesh = Logical True
 ! Calculate Boundary Weights = Logical True
 
 ! Do not include constraints when analyzing the convergence and norm of a solution
-  Nonlinear System Convergence Without Constraints = Logical True
+!  Nonlinear System Convergence Without Constraints = Logical True
+
+  Nonlinear System Consistent Norm = True
 End
 
 Solver 2
@@ -132,8 +141,8 @@ Boundary Condition 2
   Target Boundaries(1) = 58
 
   Mortar BC = Integer 3
-  Mortar BC Nonlinear = Logical True
-  Contact Depth Offset Initial = Real 1.0e-3
+  !Mortar BC Nonlinear = Logical True
+  !Contact Depth Offset Initial = Real 1.0e-3
   !Contact Active Set Minimum = Integer 1
   !Contact No-Slip = Logical True
 
@@ -141,25 +150,32 @@ Boundary Condition 2
   Plane Projector = Logical True
 
 ! a) Use weak projector or not
-  Galerkin Projector = Logical False
+  Galerkin Projector = Logical True
   Normal-Tangential Displacement = Logical True
+  Mass Consistant Normals = Logical True
 
+  Tie Contact = Logical True
 
 ! b) Use more tailored projector able to do accurate integration
-  Level Projector = Logical True
-  Level Projector Generic = True
+!  Level Projector = Logical True
+!  Level Projector Generic = True
 End
 
 Boundary Condition 3
   Name = "Upper surface of lower block"
   Target Boundaries(1) = 59
-  Normal-Tangential Displacement = Logical True
+!  Normal-Tangential Displacement = Logical True
 End
 
 Boundary Condition 4
   Name = "Pressure load the upper surface of upper block"
   Target Boundaries(1) = 60
+
+! for ElasticSolver
   Normal Surface Traction = -1.0
+
+! for StressSolver
+!  Normal Force = -1.0
 End
 
 Boundary Condition 5
@@ -175,5 +191,5 @@ Boundary Condition 6
 End
 
 
-Solver 1 :: Reference Norm = 0.66961642E-02
+Solver 1 :: Reference Norm = 6.693448E-03
 Solver 1 :: Reference Norm Tolerance = 1.0e-6

@@ -71,7 +71,7 @@ SUBROUTINE IntegrateVertically( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, IVVariable, HeightSol
 
   LOGICAL :: AllocationsDone = .FALSE., Found, OnSurface = .True., &
-             ComputeMean = .FALSE.
+             ComputeMean = .FALSE.,UnFoundFatal=.TRUE.
 
   INTEGER :: i, n, m, t, istat, DIM, COMP, other_body_id, k   
   INTEGER, POINTER :: Permutation(:), NodeIndexes(:), &
@@ -103,21 +103,13 @@ SUBROUTINE IntegrateVertically( Model,Solver,dt,TransientSimulation )
   
   IF (ComputeMean) THEN
     IF (OnSurface) THEN
-       HeightSol => VariableGet( Solver % Mesh % Variables, 'Height' )
-       IF (ASSOCIATED(HeightSol)) THEN
-           Height => HeightSol % Values
-           HeightPerm => HeightSol % Perm
-       ELSE
-           CALL FATAL(SolverName,'Could not find variable >Height<')
-       END IF
+       HeightSol => VariableGet( Solver % Mesh % Variables, 'Height',UnFoundFatal=UnFoundFatal)
+       Height => HeightSol % Values
+       HeightPerm => HeightSol % Perm
     ELSE
-       HeightSol => VariableGet( Solver % Mesh % Variables, 'Depth' )
-       IF (ASSOCIATED(HeightSol)) THEN
-           Height => HeightSol % Values
-           HeightPerm => HeightSol % Perm
-       ELSE
-           CALL FATAL(SolverName,'Could not find variable >Depth<')
-       END IF
+       HeightSol => VariableGet( Solver % Mesh % Variables, 'Depth',UnFoundFatal=UnFoundFatal)
+       Height => HeightSol % Values
+       HeightPerm => HeightSol % Perm
     END IF
   END IF
   

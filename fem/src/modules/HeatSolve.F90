@@ -94,7 +94,7 @@
         PhaseChange=.FALSE., CheckLatentHeatRelease=.FALSE., FirstTime, &
         SmartHeaterControl, IntegralHeaterControl, HeaterControlLocal, SmartTolReached=.FALSE., &
         TransientHeaterControl, SmartHeaterAverage, ConstantBulk, SaveBulk, &
-	TransientAssembly, Converged
+	TransientAssembly, Converged, AnyMultiply
      LOGICAL, POINTER :: SmartHeaters(:), IntegralHeaters(:)
 
      TYPE(Variable_t), POINTER :: TempSol,FlowSol,HeatSol,CurrentSol, MeshSol, DensitySol
@@ -103,11 +103,11 @@
      INTEGER, POINTER :: TempPerm(:),FlowPerm(:),CurrentPerm(:),MeshPerm(:)
 
      INTEGER :: NSDOFs,NewtonIter,NonlinearIter,MDOFs, &
-         SmartHeaterBC, SmartHeaterNode, DoneTime=0
+         SmartHeaterBC, SmartHeaterNode, DoneTime=0, NOFactive
      REAL(KIND=dp) :: NonlinearTol,NewtonTol,SmartTol,Relax, &
             SaveRelax,dt,dt0,CumulativeTime, VisibleFraction, PowerScaling=1.0, PrevPowerScaling=1.0, &
             PowerRelax, PowerTimeScale, PowerSensitivity, xave, yave, Normal(3), &
-	    dist, mindist, ControlPoint(3)
+	    dist, mindist, ControlPoint(3), HeatTransferMultiplier
 
      REAL(KIND=dp), POINTER :: Temperature(:),PrevTemperature(:),FlowSolution(:), &
        ElectricCurrent(:), PhaseChangeIntervals(:,:),ForceVector(:), &
@@ -123,7 +123,7 @@
        STIFF(:,:), LOAD(:), HeatConductivity(:,:,:), &
        FORCE(:), U(:), V(:), W(:), MU(:,:),TimeForce(:), &
        Density(:), LatentHeat(:), HeatTransferCoeff(:), &
-       HeatCapacity(:), Enthalpy(:), Viscosity(:), LocalTemperature(:), &
+       HeatCapacity(:), Enthalpy(:), EnthalpyFraction(:), Viscosity(:), LocalTemperature(:), &
        NodalEmissivity(:), ElectricConductivity(:), Permeability(:), Work(:), C0(:), &
        Pressure(:), dPressuredt(:), GasConstant(:),AText(:), HeaterArea(:), &
        HeaterTarget(:), HeaterScaling(:), HeaterDensity(:), HeaterSource(:), &
@@ -133,7 +133,7 @@
 
      SAVE U, V, W, MU, MASS, STIFF, LOAD, PressureCoeff, &
        FORCE, ElementNodes, HeatConductivity, HeatCapacity, HeatTransferCoeff, &
-       Enthalpy, Density, LatentHeat, PhaseVelocity, AllocationsDone, Viscosity, TimeForce, &
+       Enthalpy, EnthalpyFraction, Density, LatentHeat, PhaseVelocity, AllocationsDone, Viscosity, TimeForce, &
        LocalNodes, LocalTemperature, Work, ElectricConductivity, &
        NodalEmissivity, Permeability, C0, dPressuredt, Pressure, &
        GasConstant,AText,Hwrk, XX, YY, ForceHeater, Power, HeaterArea, HeaterTarget, &
@@ -173,12 +173,15 @@
         END FUNCTION HeatInsideResidual
      END INTERFACE
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-     REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
+#ifndef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: CPUTime,RealTime
 #endif
 
+
+     CALL Info('HeatSolver','-------------------------------------------',Level=6)
+     CALL Info('HeatSolver','Solving the energy equation for temperature',Level=5)
+     
 !------------------------------------------------------------------------------
 !    The View and Gebhardt factors may change. If this is necessary, this is 
 !    done within this subroutine. The routine is called in the
@@ -255,6 +258,7 @@
                  MASS,       &
                  LocalTemperature,      &
                  HeatCapacity,Enthalpy, &
+                 EnthalpyFraction,      &
                  NodalEmissivity,       &
                  GasConstant, AText,    &
                  HeatConductivity,      &
@@ -290,6 +294,7 @@
                  MASS(  2*N,2*N ),                     &
                  LocalTemperature( N ),                &
                  HeatCapacity( N ),Enthalpy( N ),      &
+                 EnthalpyFraction( N ),                &
                  NodalEmissivity( N ),                 &
                  GasConstant( N ),AText( N ),          &
                  HeatConductivity( 3,3,N ),            &
@@ -396,6 +401,8 @@
 
      IF(Found .AND. dt > dt0) TransientAssembly = .FALSE.
 
+     
+     AnyMultiply = ListCheckPresentAnyMaterial( Model, 'Heat Transfer Multiplier' ) 
 
 !------------------------------------------------------------------------------
 
@@ -532,7 +539,7 @@
            DoneTime = Solver % DoneTime
         END IF
      END IF
-    
+
      IF( IntegralHeaterControl) THEN
         CALL Info( 'HeatSolve', 'Using Integral Heater Control')       
         IntegralHeaters = .FALSE.
@@ -552,9 +559,11 @@
 
      SaveRelax = Relax
      CumulativeTime = 0.0d0
+     HeaterControlLocal = .FALSE.
 
 !------------------------------------------------------------------------------
      FirstTime = .TRUE.
+
      ALLOCATE(PrevSolution(LocalNodes))
      
      DO WHILE( CumulativeTime < Timestep-1.0d-12 .OR. .NOT. TransientSimulation )
@@ -572,7 +581,7 @@
        PrevTemperature => Solver % Variable % PrevValues(:,1)
      END IF
 !------------------------------------------------------------------------------
-
+     
      totat = 0.0d0
      totst = 0.0d0
 
@@ -655,9 +664,11 @@
 !      Bulk elements
 !------------------------------------------------------------------------------
        CALL StartAdvanceOutput( 'HeatSolve', 'Assembly:' )
-       DO t=1,Solver % NumberOfActiveElements
+       NofActive = GetNOFActive()
 
-         CALL AdvanceOutput(t,GetNOFActive())
+       DO t=1,NofActive
+         
+         CALL AdvanceOutput(t,NofActive)
 !------------------------------------------------------------------------------
 !        Check if this element belongs to a body where temperature 
 !        should be calculated
@@ -714,7 +725,6 @@
 !        Get element material parameters
 !------------------------------------------------------------------------------
          HeatCapacity(1:n) = GetReal( Material, 'Heat Capacity', Found )
-
 
          CALL ListGetRealArray( Material,'Heat Conductivity',Hwrk,n, &
                       Element % NodeIndexes )
@@ -858,14 +868,15 @@
          ELSE
            IF ( ALL(MU==0) ) C1 = 0.0D0 
          END IF
+
+         HeatCapacity(1:n) = Density(1:n) * HeatCapacity(1:n)
+ 
 !------------------------------------------------------------------------------
 !        Check if modelling Phase Change with Eulerian approach 
 !------------------------------------------------------------------------------
          PhaseSpatial = .FALSE.
          IF (  PhaseChange ) THEN
            CALL EffectiveHeatCapacity()
-         ELSE
-           HeatCapacity(1:n) = Density(1:n) * HeatCapacity(1:n)
          END IF
 
          Viscosity = 0.0d0
@@ -951,6 +962,19 @@
          END IF
 !------------------------------------------------------------------------------
 
+         ! The heat equation may have lower dimensional elements active also.
+         ! For example, heat transfer through a pipe could be expressed by 1d elements.
+         ! Then the multiplier should be the area of the pipe when included in 3D mesh.
+         IF( AnyMultiply ) THEN
+           HeatTransferMultiplier = GetCReal( Material, 'Heat Transfer Multiplier', Found )
+           IF( Found ) THEN
+             MASS = HeatTransferMultiplier * MASS
+             STIFF = HeatTransferMultiplier * STIFF
+             FORCE = HeatTransferMultiplier * FORCE
+           END IF
+         END IF
+
+
          IF ( HeaterControlLocal .AND. .NOT. TransientHeaterControl) THEN
 
            IF ( TransientAssembly .AND. .NOT. ConstantBulk ) THEN
@@ -988,11 +1012,13 @@
 !------------------------------------------------------------------------------
       END DO     !  Bulk elements
 !------------------------------------------------------------------------------
-
+      
       CALL DefaultFinishBulkAssembly()
 
 
 1000  CONTINUE
+
+     
 
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
@@ -1076,7 +1102,7 @@
               Solver % Matrix % RHS, YY, Norm, 1, Solver )
 
           CALL ListAddLogical(SolverParams,'Skip Compute Nonlinear Change',.FALSE.)
-        ELSE          
+        ELSE                    
           CALL SolveSystem( Solver % Matrix, ParMatrix, &
               Solver % Matrix % RHS, Temperature, Norm, 1, Solver )
           YY = Temperature
@@ -1218,7 +1244,7 @@
 
       IF ( RelativeChange < NewtonTol .OR. iter >= NewtonIter ) &
                NewtonLinearization = .TRUE.
-      Converged =  ( Solver % Variable % NonlinConverged == 1 ) .AND. &
+      Converged =  ( Solver % Variable % NonlinConverged > 0 ) .AND. &
           ( .NOT. SmartHeaterControl .OR. SmartTolReached )
       IF( Converged ) EXIT
 
@@ -1585,8 +1611,9 @@ CONTAINS
 
 !------------------------------------------------------------------------------
     SUBROUTINE EffectiveHeatCapacity()
-      LOGICAL :: Found, Specific
+      LOGICAL :: Found, Specific, GotFraction
       REAL(KIND=dp), ALLOCATABLE :: dT(:)
+      REAL(KIND=dp) :: dT0
 
 !------------------------------------------------------------------------------
 !     See if temperature gradient indside the element is large enough 
@@ -1642,6 +1669,10 @@ CONTAINS
       PhaseSpatial = ( PhaseChangeModel == PHASE_SPATIAL_2 )
       Specific = ListCheckPresent( Material,'Specific Enthalpy')
 
+      EnthalpyFraction(1:n) = ListGetReal(Material,'Enthalpy Fraction',&
+          n,Element % NodeIndexes,GotFraction)          
+ 
+
 !-----------------------------------------------------------------------------
       SELECT CASE( PhaseChangeModel )
 
@@ -1650,17 +1681,26 @@ CONTAINS
 ! that have an implemented analytical derivation rule.
 !-----------------------------------------------------------------------------
       CASE( PHASE_SPATIAL_1 )
-        HeatCapacity(1:n) = ListGetReal( Material, &
-             'Effective Heat Capacity', n,Element % NodeIndexes, Found )
+
+        Work(1:n) = ListGetReal( Material, &
+            'Effective Heat Capacity', n,Element % NodeIndexes, Found )
         IF ( .NOT. Found ) THEN
+          dT0 = ListGetCReal( Material,'Enthalpy Temperature Differential',Found )
+          IF(.NOT. Found) dT0 = 1.0d-3
           IF( Specific ) THEN
-            HeatCapacity(1:n) = ListGetDerivValue( Material, &
-                'Specific Enthalpy', n,Element % NodeIndexes )
-            HeatCapacity(1:n) = Density(1:n) * HeatCapacity(1:n)
+            Work(1:n) = ListGetDerivValue( Material, &
+                'Specific Enthalpy', n,Element % NodeIndexes, dT0 )
+            Work(1:n) = Density(1:n) * Work(1:n)
           ELSE
-            HeatCapacity(1:n) = ListGetDerivValue( Material, &
-                'Enthalpy', n,Element % NodeIndexes )            
+            Work(1:n) = ListGetDerivValue( Material, &
+                'Enthalpy', n,Element % NodeIndexes, dT0 )
           END IF
+        END IF
+
+        IF( GotFraction ) THEN
+          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n) 
+        ELSE
+          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n) 
         END IF
           
 !---------------------------------------------------------------------------------------
@@ -1674,6 +1714,12 @@ CONTAINS
         ELSE
           Enthalpy(1:n) = ListGetReal(Material,'Enthalpy',n,Element % NodeIndexes)          
         END IF
+        
+        IF( GotFraction ) THEN
+          CALL Warn('EffectiveHeatCapacity',&
+              '> Enthalpy Fraction < not treated yet by spatial 2 phase change')
+        END IF
+
           
 !------------------------------------------------------------------------------
       CASE( PHASE_TEMPORAL )
@@ -1695,19 +1741,27 @@ CONTAINS
         IF( Specific ) THEN
           Work(1:n) = Work(1:n) - ListGetReal( Material,'Specific Enthalpy', &
               n,Element % NodeIndexes )          
-          HeatCapacity(1:n) = Density(1:n) * Work(1:n) / dT(1:n)
-       ELSE
+          Work(1:n) = Density(1:n) * Work(1:n) / dT(1:n)
+        ELSE
           Work(1:n) = Work(1:n) - ListGetReal( Material,'Enthalpy', &
               n,Element % NodeIndexes )
-          HeatCapacity(1:n) = Work(1:n) / dT(1:n)
+          Work(1:n) = Work(1:n) / dT(1:n)
         END IF
+
+        IF( GotFraction ) THEN
+          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n) 
+        ELSE
+          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n) 
+        END IF
+
 
         ! Revert to current temperature
         Temperature(TempPerm(Element % NodeIndexes)) = & 
-            PrevTemperature(TempPerm(Element % NodeIndexes)) + dT(1:n)
+            PrevTemperature(TempPerm(Element % NodeIndexes)) + dT(1:n)        
 
 !------------------------------------------------------------------------------
       END SELECT
+
 !------------------------------------------------------------------------------
     END SUBROUTINE EffectiveHeatCapacity
 !------------------------------------------------------------------------------

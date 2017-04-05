@@ -1,0 +1,321 @@
+!----------------------------------------------------------------------------
+! A test case for mortar BCs in a case when there is hierarchically coupled
+! Navier-Stokes and heat equations. It is assumed that we have an airgap
+! between rotating "rotor" at the inside and "stator" at the outside.
+!
+! In between there is a rotationally symmetric interface where continuity
+! should be achieved with mortar BCs. Only a quarter of the symmetry is 
+! modelled which results to two additional mortar BCs. 
+!
+! The periodic BCs for Navier-Stokes are only set for pressure since 
+! for velocity is not continuous component-wise. For the N-T system we use
+! "rotational normals" which are easily consistent between stator and rotor.
+!
+! In each timestep the temperature and nodal heat fluxes are everaged 
+! and also lumped fluxes are computed. 
+!
+! P.R. 17.4.2015 & 2.6.2016
+!-------------------------------------------------------------------------
+
+$cycles=2.00
+$time=8.0
+$steps=800
+$fileid="case"
+$vrelax=1.0
+
+$angle=cycles*360
+$omega=angle/time
+$dt=time/steps
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "teeth"
+  Include Path ""
+  Results Directory ""
+End
+ 
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+!  Timestep Intervals = $steps
+! This is chaneged for the test only
+  Timestep Intervals = 2
+  Timestep Sizes = $dt
+  Steady State Max Iterations = 1
+  Output Intervals = 2
+  Timestepping Method = BDF
+  BDF Order = 1
+!  Post File = $fileid$.vtu
+
+  Coordinate Scaling = 0.1
+  Initialize Dirichlet Conditions = False
+
+!  Save Averaged Normals = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "InnerBody"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "OuterBody"
+  Equation = 1
+  Material = 1
+End
+
+Body Force 1
+  Name = "Rotate"
+  Mesh Rotate 3 = Variable time
+    Real MATC "tx*omega"
+End
+
+Initial Condition 1
+  Name = "Guess"
+  Temperature = 0.5
+End 
+
+
+! Rotate the rotor & compute the mesh velocity for ALE
+Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+  Translate Before Rotate = Logical True
+  Calculate Mesh Velocity = Logical True
+End
+
+
+! Solve the flow between the rotor and stator
+Solver 2
+  Equation = N-S
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Stabilize = False
+  Bubbles = True
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-3
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = $ vrelax
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = Bicgstabl
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 50
+
+  Apply Mortar BCs = Logical True
+End
+
+
+! Solve the heat equation with convection and conduction
+Solver 3
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  BiCGstabl polynomial degree = 2
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 50
+  Linear System Precondition Recompute = 1
+
+  Apply Mortar BCs = Logical True
+  Calculate Loads = Logical True
+
+  Update Components(2) = Integer 1 2 
+End
+
+
+! Calculate temperature gradient 
+Solver 4
+  Equation = ComputeFlux
+  Procedure = "FluxSolver" "FluxSolver"
+
+  Calculate Grad = Logical True
+  Target Variable = String Temperature
+
+! these are taken care by the defaults
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "cg"
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 50
+  Linear System Max Iterations = Integer 500
+  Linear System Convergence Tolerance = 1.0e-10
+
+! Don't ask continuity since component-wise this is not!
+!  Apply Mortar BCs = Logical True
+End
+
+
+! Average field quantities over time
+Solver 5
+  Procedure = "FilterTimeSeries" "FilterTimeSeries"
+
+  Variable 1 = "Temperature"
+  Start Time 1 = Real $ 0.0
+  Stop Time 1 = Real $ time
+
+  Variable 2 = "Temperature Loads"
+  Start Time 2 = Real $ 0.0
+  Stop Time 2 = Real $ time
+End 
+
+Solver 6 
+  Exec Solver = After timestep
+  Name = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = g.dat
+  Save Components Results = Logical True
+  Show Norm Index = 1
+End 
+
+
+Component 1 
+  Name = String "InsideHT"
+  Master Boundaries(1) = Integer 1
+  Variable 1 = String "Temperature Loads"
+  Operator 1 = String "sum"
+End 
+
+Component 2 
+  Name = String "OutsideHT"
+  Master Boundaries(1) = Integer 2
+  Variable 1 = String "Temperature Loads"
+  Operator 1 = String "sum"
+End 
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(4) = 1 2 3 4 
+  Convection = computed
+End
+
+
+Material 1
+  Name = "Air (room temperature)"
+  Heat Conductivity = 0.0257
+  Heat Capacity = 1005.0
+  Density = 1.205e-1
+  Relative Permittivity = 1.00059
+  Viscosity = 1.983e-5
+  Sound speed = 343.0
+  Heat expansion Coefficient = 3.43e-3
+End
+
+Boundary Condition 1
+  Target Boundaries(13) = 1 2 3 4 5 6 7 18 20 22 24 26 28 
+  Name = "Inside"
+  Temperature = -0.5
+  Velocity 1 = Equals "Mesh Velocity 1"
+  Velocity 2 = Equals "Mesh Velocity 2"
+End
+
+Boundary Condition 2
+  Target Boundaries(13) = 8 9 10 11 12 13 14 19 21 23 25 27 29 
+  Name = "Outside"
+  Temperature = 0.5
+  Velocity 1 = Equals "Mesh Velocity 1"
+  Velocity 2 = Equals "Mesh Velocity 2"
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 15 
+  Name = "Interface"
+
+  Discontinuous Boundary = Logical True
+  Mortar BC = 8
+  Level Projector = Logical True
+  Galerkin Projector = Logical True
+  Rotational Projector = Logical True
+
+  Normal-Tangential Velocity = True
+  Mortar BC Velocity 1 = Logical True
+  Mortar BC Velocity 2 = Logical True
+
+! This ensures consistent normals 
+  Rotational Normals = Logical True
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 16 
+  Name = "InnerStart"
+  Mortar BC = 6
+  Mortar BC Static = Logical True
+  Radial Projector = Logical True
+  Level Projector = Logical True
+  Galerkin Projector = Logical True
+
+  Mortar BC Pressure = Logical True
+End
+
+Boundary Condition 5
+  Target Boundaries(1) = 17 
+  Name = "OuterStart"
+
+  Mortar BC = 7
+  Mortar BC Static = Logical True
+  Radial Projector = Logical True
+  Level Projector = Logical True
+  Galerkin Projector = Logical True
+
+  Mortar BC Pressure = Logical True
+End
+
+Boundary Condition 6
+  Target Boundaries(1) = 30 
+  Name = "InnerEnd"
+End
+
+Boundary Condition 7
+  Target Boundaries(1) = 31 
+  Name = "OuterEnd"
+End
+
+Boundary Condition 8
+  Name = "Interface-master"
+! Added automatically for master side if given for slave
+!  Normal-Tangential Velocity = True
+!  Rotational Normals = Logical True
+End 
+
+Solver 2 :: Reference Norm = 0.47008150E-01
+Solver 3 :: Reference Norm = 3.40688620E-01
+Solver 6 :: Reference Norm = 0.7831444436

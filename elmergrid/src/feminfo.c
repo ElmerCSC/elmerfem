@@ -54,8 +54,8 @@
 
 int matcactive=FALSE, iodebug=FALSE;
 
-
-char *IOmethods[] = {
+int MAXINMETHODS = 15;
+char *InMethods[] = {
   /*0*/ "EG",
   /*1*/ "ELMERGRID",
   /*2*/ "ELMERSOLVER",
@@ -64,7 +64,7 @@ char *IOmethods[] = {
   /*5*/ "IDEAS",
   /*6*/ "ABAQUS",
   /*7*/ "FIDAP",
-  /*8*/ "EASYMESH",
+  /*8*/ "UNV",
   /*9*/ "COMSOL",
   /*10*/ "FIELDVIEW",
   /*11*/ "TRIANGLE",
@@ -72,9 +72,16 @@ char *IOmethods[] = {
   /*13*/ "GID",
   /*14*/ "GMSH",
   /*15*/ "PARTITIONED",
-  /*16*/ "UNV",
-  /*17*/ "NASTRAN",
-  /*18*/ "FASTCAP"
+};
+
+int MAXOUTMETHODS = 5;
+char *OutMethods[] = {
+  /*0*/ "EG",
+  /*1*/ "ELMERGRID",
+  /*2*/ "ELMERSOLVER",
+  /*3*/ "ELMERPOST",
+  /*4*/ "GMSH",
+  /*5*/ "VTU",
 };
 
 
@@ -266,7 +273,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->rotate = FALSE;
   eg->polar = FALSE;
   eg->cylinder = FALSE;
-  eg->usenames = FALSE;
+  eg->usenames = TRUE;
   eg->layers = 0;
   eg->layereps = 0.0;
   eg->layermove = 0;
@@ -299,12 +306,15 @@ void InitParameters(struct ElmergridType *eg)
   eg->parthypre = FALSE;
   eg->partdual = FALSE;
   eg->partbcz = 0;
+  eg->partbcr = 0;
   eg->partbclayers = 1;
   eg->partbcmetis = 0;
   eg->partbw = FALSE;
   eg->saveboundaries = TRUE;
+  eg->vtuone = FALSE;
   eg->timeron = FALSE;
   eg->nosave = FALSE;
+  eg->nooverwrite = FALSE;
   eg->merge = FALSE;
   eg->bcoffset = FALSE;
   eg->periodic = 0;
@@ -318,6 +328,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->coordinatemap[0] = eg->coordinatemap[1] = eg->coordinatemap[2] = 0;
   eg->clone[0] = eg->clone[1] = eg->clone[2] = 0;
   eg->mirror[0] = eg->mirror[1] = eg->mirror[2] = 0;
+  eg->cloneinds = FALSE;
   eg->mirrorbc = 0;
   eg->decimals = 12;
   eg->discont = 0;
@@ -348,25 +359,25 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
   /* Type of input file */
   strcpy(command,argv[1]);
   for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
-  for(i=0;i<=MAXMETHODS;i++) {
-    if(strstr(command,IOmethods[i])) {
+  for(i=0;i<=MAXINMETHODS;i++) {
+    if(strstr(command,InMethods[i])) {
       eg->inmethod = i;
       break;
     }
   }
-  if(i>MAXMETHODS) eg->inmethod = atoi(argv[1]);
+  if(i>MAXINMETHODS) eg->inmethod = atoi(argv[1]);
 
 
   /* Type of output file (fewer options) */
   strcpy(command,argv[2]);
   for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
-  for(i=1;i<=MAXMETHODS;i++) {
-    if(strstr(command,IOmethods[i])) {
+  for(i=1;i<=MAXOUTMETHODS;i++) {
+    if(strstr(command,OutMethods[i])) {
       eg->outmethod = i;
       break;
     }
   }
-  if(i>MAXMETHODS) eg->outmethod = atoi(argv[2]);
+  if(i>MAXOUTMETHODS) eg->outmethod = atoi(argv[2]);
  
 
   /* Default names of output file are derived from input file name */
@@ -378,6 +389,8 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
   /* The optional inline parameters */
 
   for(arg=4;arg <argc; arg++) {
+
+
 
     if(strcmp(argv[arg],"-in") ==0 ) {
       if(arg+1 >= argc) {
@@ -446,7 +459,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->order = TRUE;
 	eg->corder[0] = atof(argv[arg+1]);
 	eg->corder[1] = atof(argv[arg+2]);
-	if(dim==3) eg->corder[2] = atof(argv[arg+3]);
+	eg->corder[2] = atof(argv[arg+3]);
       }
     }
 
@@ -463,7 +476,10 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-haloz") == 0) {
       eg->partitionhalo = 3;
     }
-     if(strcmp(argv[arg],"-indirect") == 0) {
+    if(strcmp(argv[arg],"-halor") == 0) {
+      eg->partitionhalo = 3;
+    }
+    if(strcmp(argv[arg],"-indirect") == 0) {
       eg->partitionindirect = TRUE;
     }
     if(strcmp(argv[arg],"-metisorder") == 0) {
@@ -481,7 +497,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->scale = TRUE;
 	eg->cscale[0] = atof(argv[arg+1]);
 	eg->cscale[1] = atof(argv[arg+2]);
-	if(dim==3) eg->cscale[2] = atof(argv[arg+3]);
+	eg->cscale[2] = atof(argv[arg+3]);
       }
     }
 
@@ -494,7 +510,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->translate = TRUE;
 	eg->ctranslate[0] = atof(argv[arg+1]);
 	eg->ctranslate[1] = atof(argv[arg+2]);
-	if(dim == 3) eg->ctranslate[2] = atof(argv[arg+3]);
+	eg->ctranslate[2] = atof(argv[arg+3]);
       }
     }
 
@@ -545,7 +561,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	if(dim == 3) eg->clonesize[2] = atof(argv[arg+3]);
       }
     }
-
+    if(strcmp(argv[arg],"-cloneinds") == 0) {
+      eg->cloneinds = TRUE;
+    }
     if(strcmp(argv[arg],"-mirror") == 0) {
       if(arg+dim >= argc) {
 	printf("Give the symmetry of the coordinate directions, eg. 1 1 0\n");
@@ -571,9 +589,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       printf("The meshes will be united.\n");
     }   
 
-    if(strcmp(argv[arg],"-names") == 0) {
-      eg->usenames = TRUE;
-      printf("Names will be conserved when possible\n");
+    if(strcmp(argv[arg],"-nonames") == 0) {
+      eg->usenames = FALSE;
+      printf("Names will be omitted even if they would exist\n");
     }   
 
     if(strcmp(argv[arg],"-removelowdim") == 0) {
@@ -715,7 +733,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 
     if(strcmp(argv[arg],"-partjoin") == 0) {
       if(arg+1 >= argc) {
-	printf("The number of partitions is required as a parameter\n");
+	printf("The number of partitions is required as a parameter!\n");
 	return(15);
       }
       else {
@@ -724,14 +742,25 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
     }
 
-    if(strcmp(argv[arg],"-partconnect") == 0 ) {
+    if(strcmp(argv[arg],"-partconnect") == 0 || strcmp(argv[arg],"-partzbc") == 0 ) {
       if(arg+1 >= argc) {
-	printf("The number of 1D partitions is required as a parameter\n");
+	printf("The number of 1D partitions is required as a parameter!\n");
 	return(15);
       }
       else {
 	eg->partbcz = atoi(argv[arg+1]);
-	printf("The connected BCs will be partitioned to %d partitions in 1D.\n",eg->partbcz);
+	printf("The connected BCs will be partitioned to %d partitions in Z.\n",eg->partbcz);
+      }
+    }
+
+    if(strcmp(argv[arg],"-partrbc") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The number of 1D partitions is required as a parameter!\n");
+	return(15);
+      }
+      else {
+	eg->partbcr = atoi(argv[arg+1]);
+	printf("The connected BCs will be partitioned to %d partitions in R.\n",eg->partbcr);
       }
     }
 
@@ -742,11 +771,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
       else {
 	eg->partbclayers = atoi(argv[arg+1]);
-	printf("The boundary partitioning will be extended by %d layers.\n",eg->partbcz);
+	printf("The boundary partitioning will be extended by %d layers.\n",eg->partbclayers);
       }
     }
 
-    if(strcmp(argv[arg],"-metisconnect") == 0) {
+    if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of Metis partitions is required as a parameter\n");
 	return(15);
@@ -914,8 +943,14 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-nobound") == 0) {
       eg->saveboundaries = FALSE;
     }
+    if(strcmp(argv[arg],"-vtuone") == 0) {
+      eg->vtuone = TRUE;
+    }
     if(strcmp(argv[arg],"-nosave") == 0) {
       eg->nosave = TRUE;
+    }
+    if(strcmp(argv[arg],"-nooverwrite") == 0) {
+      eg->nooverwrite = TRUE;
     }
     if(strcmp(argv[arg],"-timer") == 0) {
       eg->timeron = TRUE;
@@ -1007,7 +1042,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else 
       return(2);
   }
-  if(mode == 1) { 
+  else if(mode == 1) { 
     AddExtension(prefix,filename,"eg");
     if ((in = fopen(filename,"r")) == NULL) {
       printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
@@ -1047,26 +1082,26 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       else if(strstr(command,"INPUT MODE")) {
 	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
 	
-	for(i=0;i<=MAXMETHODS;i++) {
-	  if(strstr(params,IOmethods[i])) {
+	for(i=0;i<=MAXINMETHODS;i++) {
+	  if(strstr(params,InMethods[i])) {
 	    eg->inmethod = i;
 	    break;
 	  }
 	}
-	if(i>MAXMETHODS) sscanf(params,"%d",&eg->inmethod);
+	if(i>MAXINMETHODS) sscanf(params,"%d",&eg->inmethod);
       }
 
       else if(strstr(command,"OUTPUT MODE")) {
 	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
 	
 	/* Type of output file (fewer options) */
-	for(i=1;i<=MAXMETHODS;i++) {
-	  if(strstr(params,IOmethods[i])) {
+	for(i=1;i<=MAXOUTMETHODS;i++) {
+	  if(strstr(params,OutMethods[i])) {
 	    eg->outmethod = i;
 	    break;
 	  }
 	}
-	if(i>MAXMETHODS) sscanf(params,"%d",&eg->outmethod);	
+	if(i>MAXOUTMETHODS) sscanf(params,"%d",&eg->outmethod);	
       }
     }    
     /* End of command file specific part */
@@ -1074,6 +1109,9 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
     if(strstr(command,"DECIMALS")) {
       sscanf(params,"%d",&eg->decimals);
+    }
+    else if(strstr(command,"BOUNDARY OFFSET")) {
+      sscanf(params,"%d",&eg->bcoffset);
     }
     else if(strstr(command,"TRIANGLES CRITICAL ANGLE")) {
       sscanf(params,"%le",&eg->triangleangle);
@@ -1339,6 +1377,10 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else if(strstr(command,"REMOVE UNUSED NODES")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->removeunused = TRUE; 
+    }
+    else if(strstr(command,"NO MESH NAMES")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->usenames = FALSE; 
     }
     else if(strstr(command,"REORDER MATERIAL")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);

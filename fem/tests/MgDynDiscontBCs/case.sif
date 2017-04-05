@@ -1,0 +1,190 @@
+Header
+  Mesh DB "." "geom/cylinder-ok"
+End
+
+Simulation
+  Max Output Level = 5
+  Simulation Type =transient
+  Timestep Intervals(1) =1
+  Timestep Sizes(1) = 1
+End
+
+Initial Condition 1
+  AV {e} 2 = Variable Coordinate 1
+    REAL MATC "0.5*tx"
+  AV {e} 1 = Variable Coordinate 2
+    REAL MATC "-0.5*tx"
+  AV = Real 0
+End
+
+Solver 1
+  Exec Solver = Always
+  Equation = "mgdyn"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Variable = "AV"
+
+  Fix Input Current Density = Logical false
+  Use Piola Transform = Logical true
+  Use Tree Gauge = Logical False
+
+  Linear System Solver = iterative
+  Linear System Direct Method = UMFPACK
+  Linear System Preconditioning = ilu0
+  Linear System Iterative Method = bicgstabl !
+  bicgstabl polynomial degree = 4
+
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 2500
+  Linear System GCR Restart = 600
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1e-9
+
+  Linear System Normwise Backward Error = Logical true
+
+  Edge Basis = Logical True
+  Apply Mortar BCs = Logical true
+  Mortar BCs Additive = Logical true 
+  Projector Skip Nodes = Logical false 
+End 
+
+Solver 2
+  Exec Solver = never
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+  Potential Variable = String "AV"
+  Use Piola Transform = Logical true
+
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Magnetic Vector Potential = Logical True
+  Calculate Magnetic Flux Density = Logical True
+  Calculate Field Energy = Logical True
+  Calculate Elemental Fields = Logical True
+  Calculate Joule Heating = Logical True
+  Calculate Nodal Forces = Logical True
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+  Edge basis = Logical True
+End
+
+Solver 3
+  Exec Solver = never
+  Procedure = "SaveData" "SaveScalars"
+  Filename = scalars.dat
+End
+
+Solver 4
+ Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Save Geometry IDs = Logical True
+  Output File Name = case
+  Output Directory = results
+  Vtu Format = Logical True
+End
+
+Material 1
+  Relative Permeability = Real 1
+  Relative Permittivity = Real 1
+  Electric Conductivity = Real 1e5
+End
+
+Material 2
+  Relative Permeability = Real 1
+  Relative Permittivity = Real 1
+  Electric Conductivity = Real 0
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 2
+End
+  
+
+Body 3
+  Target Bodies(1) = 3
+  Equation = 1
+  Material = 2
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 7
+  AV = Real 0
+  AV {e} 2 = Variable Coordinate 1
+    REAL MATC "0.5*tx"
+  AV {e} 1 = Variable Coordinate 2
+    REAL MATC "-0.5*tx"
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 1
+  name = "cyl_bottom"
+  discontinuous target bodies(1) = integer 3
+  mortar bc = 5
+  Discontinuous Boundary = True
+  discontinuous bc = 5
+  galerkin projector = logical true
+  level projector = logical true
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 2
+  name = "cyl_top"
+  mortar bc = 6
+  discontinuous target bodies(1) = integer 3
+  Discontinuous Boundary = True
+  discontinuous bc = 6
+  galerkin projector = logical true
+  level projector = logical true
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 3
+  name = "cyl_wheel"
+  mortar bc = 7
+  discontinuous target bodies(1) = integer 3
+  Discontinuous boundary = True
+  Discontinuous bc = 7
+  galerkin projector = logical true
+  cylindrical projector = Logical True
+  level projector = logical true
+End
+
+! Discontinuous boundaries
+
+Boundary Condition 5
+  Target Boundaries(1) = 8
+End
+
+Boundary Condition 6
+  Target Boundaries(1) = 9
+End
+
+Boundary Condition 7
+  Target Boundaries(1) = 10
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1 :: Reference Norm = Real 2.066869E-04
+Solver 1 :: Reference Norm Tolerance = Real 2e-3

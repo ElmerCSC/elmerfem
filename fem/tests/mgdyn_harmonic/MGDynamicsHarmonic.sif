@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 9
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady
@@ -14,7 +14,7 @@ Simulation
   Timestep Intervals = 10
   Steady State Max Iterations = 1
 
-! Post File = MGDynamics.ep
+  Post File = MGDynamics.vtu
   Output Intervals(1) = 1
 End
 
@@ -22,13 +22,8 @@ Body 1
   Equation = 1
   Material = 1
   Body Force = 1
-  Initial Condition = 1
 End
 
-Initial Condition 1
-! Pre = Variable coordinate
-!  Real MATC "rand(1)"
-End
 
 Material 1
   Reluctivity  = Real 1
@@ -60,7 +55,7 @@ Solver 1
   Linear System Residual Output = 10
   Linear System Max Iterations = 5000
   Linear System Iterative Method = CG
-  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Convergence Tolerance = 1.0e-8
 
 ! USE Tree Gauge = Logical FALSE
 ! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
@@ -86,7 +81,7 @@ Solver 2
   Linear System Residual Output = 0
   Linear System Max Iterations = 5000
   Linear System Iterative Method = CG
-  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Convergence Tolerance = 1.0e-7
 End
 
 
@@ -123,8 +118,6 @@ Boundary Condition 3
   P im {e} = Real 0
 End
 
-Solver 2 :: Reference Norm = Real 1
-Solver 2 :: Reference Norm Tolerance = Real 1e-3
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=1,EPS=1e-3\n" );
+Solver 1 :: Reference Norm = 1.58974294E-01
+Solver 2 :: Reference Norm = 9.98652213E-01
+Solver 2 :: Reference Norm Tolerance = 1.0e-3

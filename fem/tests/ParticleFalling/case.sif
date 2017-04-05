@@ -7,13 +7,14 @@
 
 Check Keywords Warn
 
+$nopart = 100
 
 Header
   Mesh DB "." "square"
 End
  
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian 
   Simulation Type = transient
   Steady State Max Iterations = 1
@@ -41,7 +42,6 @@ Solver 1
   Equation = ParticleDynamics
   Procedure = "ParticleDynamics" "ParticleDynamics"
 
-$ nopart = 100
   Number of Particles = Integer $ nopart
   Coordinate Initialization Method = String "box random"
   Initial Velocity(1,2) = Real 0.0 0.0
@@ -128,6 +128,4 @@ Boundary Condition 1
 End
 
 Solver 2 :: Reference Norm = Real 0.5
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=0.5\n");

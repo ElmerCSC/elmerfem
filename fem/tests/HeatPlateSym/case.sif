@@ -1,0 +1,129 @@
+!----------------------------------------------------------------
+! A plate with different temperatures on its sides is bent due to
+! thermal expansion. Due to symmetry, we only model one half of the
+! square plate, unlike in the benchmark.
+!
+! Reference results, mesh and the problem setting all benchmark from 
+! Code_Aster documentation. For complete original documentation see
+! http://www.code-aster.org/V2/doc/v11/en/man_v/v3/v3.02.116.pdf
+!
+! The results between Elmer and Aster differ a little. 
+! Aster seems to suffer a bit less from locking, propably due to
+! beneficial approximations. Using higher p- elements counters 
+! this problem.
+!
+! J.K / 24.8.2015
+!-----------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "sym"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Timestepping Method = BDF
+  BDF Order = 1
+  Solver Input File = case.sif
+  Post File = case.vtu
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(2) = 1 2
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Name = "InitialField"
+  Temperature = Variable Coordinate 3
+    Real MATC "((2*tx/0.0025)-1)*50"
+End 
+
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+  Linear System Solver = Direct
+  Linear System Direct Method = Umfpack
+
+  Exported Variable 1 = Temperature
+End
+
+
+!Solver 2
+!Exec Solver = After Simulation
+!Equation = SaveLine
+!Procedure = "SaveData" "SaveLine"
+!Filename = "line.dat"
+!End
+
+
+Equation 1
+  Name = "Elast"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Material"
+  Heat Conductivity = 0
+  Youngs modulus = 30e10
+  Density = 1
+  Poisson ratio = 0.3
+  Heat expansion Coefficient = 6.5e-6
+End
+
+
+Boundary Condition 1
+  Target Boundaries(2) = 6 9 
+  Name = "Symmetry"
+  Displacement 1 = 0
+  Normal-Tangential Displacement = True
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 5 
+  Name = "Yput"
+  Displacement 2 = 0
+  Save Line = Logical True
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 8 
+  Name = "Zput"
+  Displacement 3 = 0
+End
+
+Solver 1 :: Reference Norm = 7.549444E-05
+Solver 1 :: Reference Norm Tolerance = 1.0E-5
+

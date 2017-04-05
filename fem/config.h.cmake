@@ -1,3 +1,5 @@
+/* Don't use multiline c-style comments */
+
 #ifndef CONFIG_H_FEM
 #define CONFIG_H_FEM
 
@@ -31,8 +33,8 @@
 /* Define to 1 if you have the `dlopen' function. */
 #define HAVE_DLOPEN
 
-/* Define if your system has dlopen, dlsym, dlerror, and dlclose for dynamic
-   linking */
+/* Define if your system has dlopen, dlsym, dlerror, and dlclose for dynamic */
+/* linking */
 #cmakedefine HAVE_DLOPEN_API
 
 /* Define if your system has LoadLibrary API (e.g. WIN32)*/
@@ -44,8 +46,6 @@
 /* Define if your system has dyld for dynamic linking */
 #cmakedefine HAVE_DYLD_API
 
-/* Define if you have a EIOF library. */
-#define HAVE_EIOF
 /* Define to 1 if you have the `fseeko' function. */
 #define HAVE_FSEEKO
 
@@ -67,6 +67,9 @@
 
 /* Define if you have a MKL library */
 #cmakedefine HAVE_MKL
+
+/* Define if you have a CPardiso solver from MKL */
+#cmakedefine HAVE_CPARDISO
 
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK
@@ -128,9 +131,6 @@
 
 /* Trilinos */
 #cmakedefine HAVE_TRILINOS
-
-/* This remove calls to EIO library */
-#cmakedefine HAVE_EIO
 
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1

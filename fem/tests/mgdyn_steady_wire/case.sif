@@ -1,0 +1,213 @@
+! This test case computes the magnetic field induced by a cylindrical wire
+! The field outside the wire should be |B|=\mu*I/(2*pi*r).
+! If I=1 A and r=0.01 m then |B|=2.0e-4.
+! The computed result is 1.974e-4 i.e. error of around 1%.
+!
+! P.R. 22.9.2016
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "wire"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+
+  Coordinate Scaling = 1.0e-3
+End
+
+Body 1
+  Name = "Wire"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Air"
+  Equation = 2
+  Material = 2
+End
+
+Material 1
+  Name = "Cu"
+  Relative Permittivity = 1
+  Relative Permeability = 1
+  Electric Conductivity = 58e6
+End
+
+Material 2
+  Name = "Air"
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+  Electric Conductivity = 0.0
+End 
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Equation 2
+  Active Solvers(2) = 2 3
+End
+
+
+
+Solver 1
+  Equation = "CoilSolver"
+  Procedure = "CoilSolver" "CoilSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ilu1
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Iterative Method = BiCGStabL
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1e-06
+
+  Desired Coil Current = Real 1.0
+  Nonlinear System Consistent Norm = True
+End
+
+
+
+Solver 2
+  Equation = "MGDynamics"
+
+  Variable = "AV"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Linear System Symmetric = True
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1.0e-8
+  BicgStabl Polynomial Degree = 4
+End
+
+
+Solver 3
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential Variable = String "AV"
+
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Joule Heating = True
+
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+
+
+  Calculate Nodal Fields = Logical False
+  Impose Body Force Potential = Logical True
+  Impose Body Force Current = Logical True
+
+  Discontinuous Bodies = True
+End
+
+
+Solver 4
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = wire
+  Vtu format = Logical True
+  Discontinuous Bodies = Logical True
+End
+
+Solver 5
+  Exec Solver = after all
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  FileName = f.dat
+
+  Polyline Coordinates(2,3) = -5.0e-3 0.0 5.0e-3 5.0e-3 0.0 5.0e-3
+  Polyline Divisions(1) = 100
+End
+
+
+
+
+Body Force 1
+! a) Give current density
+!  Current Density 1 = Equals "CoilCurrent 1"
+!  Current Density 2 = Equals "CoilCurrent 2"
+!  Current Density 3 = Equals "CoilCurrent 3"
+
+! b) Give the driving external potential
+ Electric Potential = Equals "CoilPot"
+End
+
+
+Boundary Condition 1
+  Name = "WireStart"
+  Target Boundaries(1) = 1 
+
+  Coil Start = Logical True
+
+  AV {e} 1 = Real 0.0
+  AV {e} 2 = Real 0.0
+  AV = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "WireSurface"
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Name = "WireEnd"
+  Target Boundaries(1) = 3
+
+  Coil End = Logical True
+
+  AV {e} 1 = Real 0.0
+  AV {e} 2 = Real 0.0
+  AV = Real 0.0
+End
+
+Boundary Condition 4
+  Name = "AirStart"
+  Target Boundaries(1) = 4
+
+  AV {e} 1 = Real 0.0
+  AV {e} 2 = Real 0.0
+End
+
+
+Boundary Condition 5
+  Name = "AirSurface"
+  Target Boundaries(1) = 5
+
+  AV {e} 1 = Real 0.0
+  AV {e} 2 = Real 0.0
+End
+
+Boundary Condition 6
+  Name = "AirEnd"
+  Target Boundaries(1) = 6
+
+  AV {e} 1 = Real 0.0
+  AV {e} 2 = Real 0.0
+End
+
+
+Solver 1 :: Reference Norm = 3.26776127E-05
+Solver 2 :: Reference Norm = 1.68332777E-10

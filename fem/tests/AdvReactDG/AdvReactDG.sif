@@ -16,8 +16,8 @@ $ function dx(c)  { x=c(0); y=c(1); _dx = pi*y^2*cos(pi*x*y^2) }
 $ function dy(c)  { x=c(0); y=c(1); _dy = pi*x*2*y*cos(pi*x*y^2) }
 
 Simulation
-  Max Output Level = 3
-  Coordinate System = "Cartesian 2D"
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady
   Steady State Max Iterations = 1
@@ -62,6 +62,8 @@ Solver 1
   Linear System Max Iterations  = 1000
   Linear System Preconditioning = ILU0
   Linear System Convergence Tolerance = 1.0e-6
+
+  Nonlinear System Consistent Norm = True
 End
 
 Body Force 1
@@ -78,6 +80,4 @@ End
 
 Solver 1 :: Reference Norm = Real 1.41411703815
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-3
-$ fprintf( stderr, "TEST CASE 1\n" );
-RUN
-$ fprintf( stderr, "END TEST CASE 1, Target NRM=1.41411703815, EPS=1.0e-3\n" );
+

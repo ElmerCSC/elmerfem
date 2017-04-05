@@ -270,7 +270,7 @@ End
 
 Solver 8
   Equation = "Free Surface Sea/Shelf"
-  Procedure =  "./MyFreeSurfaceSolver" "FreeSurfaceSolver"
+  Procedure =  "FreeSurfaceSolver" "FreeSurfaceSolver"
   Variable = "Zb"
   Variable DOFS =  1
   Exported Variable 1 = "Zb Residual"

@@ -15,7 +15,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -88,6 +88,8 @@ Solver 1
 !  Linear System Dirichlet Scaling = Logical False
 !  Optimize Bandwidth = False
 
+  Nonlinear System Consistent Norm = Logical True
+
   Linear System Abort Not Converged = False
   Apply Mortar BCs = True
 End
@@ -118,6 +120,7 @@ Boundary Condition 1
 
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
+  Discontinuous Target Bodies = Integer 2 
 
 ! If this keyword is zero then the BC refers to itself.
   Mortar BC = 0 
@@ -146,7 +149,5 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.61010021
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=  0.61010021\n");
 !End Of File

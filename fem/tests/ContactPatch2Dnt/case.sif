@@ -1,0 +1,184 @@
+!------------------------------------------------------------------
+!
+! 2d patch test
+!
+! Based on the 3D patch test by Jukka Aho.
+!
+! Pressure in y direction.
+!
+! Added rotation and normal-tangential coordinate system. 
+! Due to symmetry the rotation only works with 0 and 180 degs 
+! but this is no limitation of the N-T system.
+!
+! Peter Råback /  10.6.2015
+!
+!------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "squares"
+  Include Path ""
+  Results Directory ""
+End
+
+$fileid="a"
+$phi=180.0
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = case_$fileid$.vtu
+  Save Geometry Ids = Logical True
+
+! The ElasticSolver does not really like the Dirichlet conditions at the start 
+! of the nonlinear iteration. 
+  Initialize Dirichlet Conditions = False
+End
+
+Equation 1
+  Name = "Deformation"
+  Active Solvers(1) = 2
+  Plane Stress = Logical True
+End
+
+Body Force 1
+  Name = "Rotate"
+  Mesh Rotate 3 = $phi
+End 
+
+
+Body 1
+  Name = "Lower block"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Upper block"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Youngs modulus = 90.0
+  Density = 10.0
+  Poisson ratio = 0.25
+End
+
+Solver 1
+!  Exec Solver = Before all
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+End
+
+
+Solver 2
+  Equation = "Nonlinear elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 2 Displacement
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU2"
+  Linear System Residual Output = 100
+  Linear System Max Iterations = 5000
+  BiCGStabl Polynomial Degree = 4
+  
+  Linear System Convergence Tolerance = 1.0e-10
+
+  Apply Contact BCs = Logical True
+! Save Contact = Logical True
+
+! Restore the linear solution
+! Elasticity Solver Linear = Logical True
+
+  Calculate Stresses = Logical True
+! Optimize Bandwidth = False
+
+  Displace Mesh = Logical True
+
+! Do not include constraints when analyzing the convergence and norm of a solution
+  Nonlinear System Convergence Without Constraints = Logical True
+End
+
+Solver 3
+  Exec Solver = never
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = f_$fileid$.dat
+End
+
+Boundary Condition 1
+  Name = "Support"
+  Target Boundaries(1) = 1
+
+  Normal-Tangential Displacement = Logical True
+  Displacement 1 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Lower surface of upper block"
+  Target Boundaries(1) = 5
+
+  Mortar BC = Integer 3
+  Mortar BC Nonlinear = Logical True
+
+  Normal-Tangential Displacement = Logical True
+  Mass Consistent Normals = Logical True
+
+  Contact Depth Offset Initial = Real 1.0e-3
+  !Contact Active Set Minimum = Integer 1
+  !Contact No-Slip = Logical True
+
+! Create a strong projector for the line setting y-coordinate to zero
+  Flat Projector = Logical True
+
+! a) Use weak projector or not
+  Galerkin Projector = Logical True
+
+! b) Use more tailored projector able to do accurate integration
+  Level Projector = Logical True
+  Level Projector Generic = True
+End
+
+Boundary Condition 3
+  Name = "Upper surface of lower block"
+  Target Boundaries(1) = 3
+
+  Normal-Tangential Displacement = Logical True
+  Mass Consistent Normals = Logical True
+End
+
+Boundary Condition 4
+  Name = "Pressure load the upper surface of upper block"
+  Target Boundaries(1) = 7
+  Normal Surface Traction = -1.0
+End
+
+Boundary Condition 5
+  Name = "Symmetry"
+  Target Boundaries(2) = 4 8
+  Displacement 1 = 0.0
+End
+
+Solver 2 :: Reference Norm = 9.860621E-03 
+Solver 2 :: Reference Norm Tolerance = 1.0e-5
+

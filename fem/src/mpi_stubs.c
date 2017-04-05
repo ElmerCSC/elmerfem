@@ -171,6 +171,8 @@ void MPI_Group_incl(){}
 void MPI_Pack(){}
 void MPI_Init(){}
 
+void STDCALLBULL FC_FUNC_(mpi_init_thread,MPI_INIT_THREAD)(int *r, int *p, int *ierr) {*p = *r;}
+
 #endif
 
 void hpmp_flinteroperate() {}

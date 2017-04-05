@@ -1,0 +1,118 @@
+! Test case for capacitance matrix computation using 
+! library functionality.
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "plates"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Constants
+!  Permittivity Of Vacuum = 8.8542e-12
+!  This one is changed to one to allow easier verification
+  Permittivity Of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Calculate Electric Energy = True
+End
+
+Solver 1
+  Equation = Stat Elec Solver
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatElecSolve" "StatElecSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-07
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-03
+
+!  Linear System Scaling = False
+
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Constraint Modes Analysis = Logical True
+  Constraint Modes Lumped = Logical True
+
+! In this case computes a symmetric capacitance matrix
+  Constraint Modes Fluxes = Logical True
+  Constraint Modes Fluxes Symmetric = Logical True
+End
+
+Solver 2
+  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+
+! This enforces the constraints to be written to individual files 
+  Constraint Modes Analysis = Logical True
+End
+
+
+
+Material 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Potential = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+  Constraint Modes Potential = Logical True
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+
+  Constraint Modes Potential = Logical True
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+
+  Constraint Modes Potential = Logical True
+End
+
+Boundary Condition 5
+  Target Boundaries = 5
+
+  Constraint Modes Potential = Logical True
+End
+
+Boundary Condition 6
+  Target Boundaries = 6
+
+  Constraint Modes Potential = Logical True
+End
+
+Solver 1 :: Reference Norm = Real 0.27012654
+

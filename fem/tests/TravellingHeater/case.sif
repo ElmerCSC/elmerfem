@@ -1,0 +1,126 @@
+! A travelling heater - really moving
+! P.R. / 20.9.2016
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "slab"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Transient"
+
+! Tavels back and forth one time in 1s
+  Timestep Sizes = 0.02
+  Timestep Intervals = 100
+
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "a.vtu"
+
+! Parameters for the TravellingHeatSource
+  Heat Source Width = Real 0.01
+  Heat Source Coefficient = Real 1.0
+  Heat Source Speed = Real 1.0
+  Heat Source Distance = Real 0.5
+  Heat Source Initial Position = Real 0.0
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+!  Linear System Solver = "Iterative"
+
+  Linear System Solver = direct
+  Linear System Direct Method = "umfpack"
+
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 2
+  Exec Solver = never
+
+  Equation = SaveLine
+  Procedure = "SaveData" "SaveLine"
+
+  Filename = f.dat
+End
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1.0
+  Heat Capacity = 10.0  
+End
+
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries(1) = 1 
+
+  External Temperature = 0.0
+  Heat Transfer Coefficient = 1.0
+End
+
+Boundary Condition 2
+  Name = "Right"
+  Target Boundaries(1) = 2 
+  Temperature = 0
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries(1) = 3
+
+  Heat Flux = Variable time
+    Real Procedure "HeatSource" "TravellingHeatSource"
+
+  Save Line = True
+End
+
+Boundary Condition 4
+  Name = "Left"
+  Target Boundaries(1) = 4
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = Real 1.00021886E-02
+!End Of File

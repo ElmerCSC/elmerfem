@@ -160,6 +160,8 @@ MODULE Lists
    TYPE(ValueList_t), POINTER, SAVE, PRIVATE  :: TimerList => NULL()
    LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerResults
 
+   LOGICAL, PRIVATE :: DoNamespaceCheck = .FALSE.
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -915,13 +917,14 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTERFACE
          SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm)
            USE Types
            TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
            TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
            LOGICAL, OPTIONAL :: UseQuadrantTree,FoundNodes(:)
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+           INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 
@@ -1315,6 +1318,7 @@ CONTAINS
      ptr % CValue = ' '
      ptr % LValue = .FALSE.
      NULLIFY( ptr % CubicCoeff )
+     NULLIFY( ptr % Cumulative )
      NULLIFY( ptr % Next )
      NULLIFY( ptr % FValues )
      NULLIFY( ptr % TValues )
@@ -1332,6 +1336,7 @@ CONTAINS
      TYPE(ValueListEntry_t), POINTER :: ptr
 
      IF ( ASSOCIATED(ptr % CubicCoeff) ) DEALLOCATE(ptr % CubicCoeff)
+     IF ( ASSOCIATED(ptr % Cumulative) ) DEALLOCATE(ptr % Cumulative)
      IF ( ASSOCIATED(ptr % FValues) ) DEALLOCATE(ptr % FValues)
      IF ( ASSOCIATED(ptr % TValues) ) DEALLOCATE(ptr % TValues)
      IF ( ASSOCIATED(ptr % IValues) ) DEALLOCATE(ptr % IValues)
@@ -1554,6 +1559,26 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+   SUBROUTINE SetNamespaceCheck(L)
+!------------------------------------------------------------------------------
+     LOGICAL :: L
+!------------------------------------------------------------------------------
+     DoNamespaceCheck = L
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetNamespaceCheck
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   FUNCTION GetNamespaceCheck() RESULT(L)
+!------------------------------------------------------------------------------
+     LOGICAL :: L
+!------------------------------------------------------------------------------
+     L = DoNameSpaceCheck
+!------------------------------------------------------------------------------
+   END FUNCTION GetNamespaceCheck
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
 !------------------------------------------------------------------------------
    FUNCTION ListFind( list, name, Found) RESULT(ptr)
@@ -1563,6 +1588,7 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1574,16 +1600,25 @@ CONTAINS
 
      k = StringToLowerCase( str,Name,.TRUE. )
 
-     IF ( ListGetNamespace(strn) ) THEN
-       strn = strn //' '//str(1:k)
-       k1 = LEN(strn)
-       ptr => List % Head
-       DO WHILE( ASSOCIATED(ptr) )
-          n = ptr % NameLen
-          IF ( n==k1 ) THEN
-            IF ( ptr % Name(1:n) == strn ) EXIT
-          END IF
-          ptr => ptr % Next
+     IF( ListGetnamespace(strn) ) THEN
+       stack => Namespace_stack
+       DO WHILE(.TRUE.)
+         strn = TRIM(strn) //' '//str(1:k)
+         k1 = LEN(strn)
+         ptr => List % Head
+         DO WHILE( ASSOCIATED(ptr) )
+            n = ptr % NameLen
+            IF ( n==k1 ) THEN
+              IF ( ptr % Name(1:n) == strn ) EXIT
+            END IF
+            ptr => ptr % Next
+         END DO
+         IF(.NOT.DoNamespaceCheck) EXIT
+
+         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
+         IF(stack % name=='') EXIT
+         strn = char(stack % name)
+         stack => stack % next
        END DO
      END IF
 
@@ -1622,6 +1657,7 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1632,15 +1668,24 @@ CONTAINS
 
      k = StringToLowerCase( str,Name,.TRUE. )
      IF ( ListGetNamespace(strn) ) THEN
-       strn = strn //' '//str(1:k)
-       k1 = LEN(strn)
-       ptr => List % Head
-       DO WHILE( ASSOCIATED(ptr) )
-          n = ptr % NameLen
-          IF ( n >= k1 ) THEN
-            IF ( ptr % Name(1:k1) == strn ) EXIT
-          END IF
-          ptr => ptr % Next
+       stack => Namespace_stack
+       DO WHILE(.TRUE.)
+         strn = TRIM(strn) //' '//str(1:k)
+         k1 = LEN(strn)
+         ptr => List % Head
+         DO WHILE( ASSOCIATED(ptr) )
+            n = ptr % NameLen
+            IF ( n >= k1 ) THEN
+              IF ( ptr % Name(1:k1) == strn ) EXIT
+            END IF
+            ptr => ptr % Next
+         END DO
+         IF(.NOT.DoNamespaceCheck) EXIT
+
+         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
+         IF(stack % name=='') EXIT
+         strn = char(stack % name)
+         stack => stack % next
        END DO
      END IF
 
@@ -1822,6 +1867,7 @@ CONTAINS
      LOGICAL :: ComponentWise
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1833,23 +1879,32 @@ CONTAINS
      k = StringToLowerCase( str,Name,.TRUE. )
 
      IF ( ListGetNamespace(strn) ) THEN
-       strn = strn //' '//str(1:k)
-       k1 = LEN(strn)
-       ptr => List % Head
-       DO WHILE( ASSOCIATED(ptr) )
-          n = ptr % NameLen
-          IF ( n == k1 ) THEN
-            IF ( ptr % Name(1:k1) == strn ) THEN
-              ComponentWise = .FALSE.
-              EXIT
+       stack => Namespace_stack
+       DO WHILE(.TRUE.)
+         strn = TRIM(strn) //' '//str(1:k)
+         k1 = LEN(strn)
+         ptr => List % Head
+         DO WHILE( ASSOCIATED(ptr) )
+            n = ptr % NameLen
+            IF ( n == k1 ) THEN
+              IF ( ptr % Name(1:k1) == strn ) THEN
+                ComponentWise = .FALSE.
+                EXIT
+              END IF
+            ELSE IF( n == k1 + 2 ) THEN
+              IF ( ptr % Name(1:k1+1) == strn//' ' ) THEN
+                ComponentWise = .TRUE.
+                EXIT
+              END IF
             END IF
-          ELSE IF( n == k1 + 2 ) THEN
-            IF ( ptr % Name(1:k1+1) == strn//' ' ) THEN
-              ComponentWise = .TRUE.
-              EXIT
-            END IF
-          END IF
-          ptr => ptr % Next
+            ptr => ptr % Next
+         END DO
+         IF(.NOT.DoNamespaceCheck) EXIT
+
+         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
+         IF(stack % name=='') EXIT
+         strn = char(stack % name)
+         stack => stack % next
        END DO
      END IF
 
@@ -1938,19 +1993,30 @@ CONTAINS
 
 !> Copies an entry from 'ptr' to an entry in *different* list with the same content.
 !-----------------------------------------------------------------------------------
-   SUBROUTINE ListCopyItem( ptr, list )
+   SUBROUTINE ListCopyItem( ptr, list, name )
 
      TYPE(ValueListEntry_t), POINTER :: ptr
      TYPE(ValueList_t), POINTER :: list
+     CHARACTER(LEN=*), OPTIONAL :: name
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptrb, ptrnext
 
-     ptrb => ListAdd( List, ptr % Name ) 
-
+     IF( PRESENT( name ) ) THEN
+       ptrb => ListAdd( List, name ) 
+     ELSE
+       ptrb => ListAdd( List, ptr % Name ) 
+     END IF
+       
      ptrnext => ptrb % next
      ptrb = ptr
      ptrb % next => ptrnext
 
+     ! If name is given then we have to revert the stuff from previous lines
+     IF( PRESENT( name ) ) THEN
+       ptrb % Name = name
+       ptrb % Namelen = lentrim( name )
+     END IF
+     
    END SUBROUTINE ListCopyItem
 
 
@@ -1987,6 +2053,47 @@ CONTAINS
      Found = .TRUE.
 
    END SUBROUTINE ListCompareAndCopy
+ 
+
+!> Goes through one list and checks whether it includes any keywords with give prefix.
+!> All keywords found are copied to the 2nd list without the prefix.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListCopyPrefixedKeywords( list, listb, prefix )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list, listb
+     CHARACTER(LEN=*) :: prefix
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     CHARACTER(LEN=LEN_TRIM(prefix)) :: str
+     INTEGER :: k, l, n, ncopy
+
+     k = StringToLowerCase( str,prefix,.TRUE. )
+     ncopy = 0
+     
+     ! Find the keyword from the 1st list 
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF( n > k ) THEN
+         IF( ptr % Name(1:k) == str(1:k) ) THEN
+           l = k+1
+           ! Remove the extra blanco after prefix if present
+           ! Here we just assume one possible blanco as that is most often the case
+           IF( ptr % Name(l:l) == ' ') l = l+1
+           CALL Info('ListCopyPrefixedKeywords','Copying keyword: '//TRIM(ptr % Name(l:n)),Level=12)
+           CALL ListCopyItem( ptr, listb, ptr % Name(l:n) )
+           ncopy = ncopy + 1
+         END IF
+       END IF
+       ptr => ptr % Next
+     END DO
+
+     IF( ncopy > 0 ) THEN
+       CALL Info('ListCopyPrefixedKeywords',&
+           'Copied '//TRIM(I2S(ncopy))//' keywords with prefix: '//TRIM(prefix),Level=6)
+     END IF
+     
+   END SUBROUTINE ListCopyPrefixedKeywords
  
   
 !------------------------------------------------------------------------------
@@ -2269,6 +2376,12 @@ CONTAINS
 
      ALLOCATE( ptr % FValues(1,1,n),ptr % TValues(n) )
 
+     ! The (x,y) table should be such that values of x are increasing in size
+     IF( .NOT. CheckMonotone( n, TValues ) ) THEN
+       CALL Fatal('ListAddDepReal',&
+           'Values x in > '//TRIM(Name)//' < not monotonically ordered!')
+     END IF
+     
      ptr % TValues = TValues(1:n)
      ptr % FValues(1,1,:) = FValues(1:n)
      ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
@@ -2280,6 +2393,10 @@ CONTAINS
                     Ptr % CubicCoeff, Monotone )
        END IF
      END IF
+
+     ALLOCATE(ptr % Cumulative(n))
+     CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
+          Ptr % CubicCoeff, Ptr % Cumulative )
 
      ptr % NameLen = StringToLowerCase( ptr % Name,Name )
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DependName )
@@ -2419,7 +2536,7 @@ CONTAINS
      IF ( PRESENT( maxv ) ) THEN
         IF ( L > maxv ) THEN
           WRITE( Message, '(A,I0,A,I0)') 'Given value ',L,' for property: ['//TRIM(Name)//& 
-              '] larger than given minimum: ', minv
+              '] larger than given maximum: ', maxv
           CALL Fatal( 'ListGetInteger', Message )
         END IF
      END IF
@@ -2934,8 +3051,7 @@ CONTAINS
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            IF ( ptr % PROCEDURE /= 0 ) THEN
              F(i) = ptr % Coeff * &
-                 ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
-                          NodeIndexes(i), T )
+                 ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T )
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
                WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -4041,46 +4157,80 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a real derivative from. This is only available for tables with dependencies.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetDerivValue(List,Name,N,NodeIndexes) RESULT(F)
+   RECURSIVE FUNCTION ListGetDerivValue(List,Name,N,NodeIndexes,dT) RESULT(F)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER ::  List
      CHARACTER(LEN=*) :: Name
      INTEGER :: N,NodeIndexes(:)
+     REAL(KIND=dp), OPTIONAL :: dT
      REAL(KIND=dp) :: F(N)
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER :: i,k,l
-     REAL(KIND=dp) :: T
+     REAL(KIND=dp) :: T,T1(1),T2(1),F1,F2
 !------------------------------------------------------------------------------
+
      F = 0.0D0
      ptr => ListFind(List,Name)
+
+
      IF ( .NOT.ASSOCIATED(ptr) ) RETURN
 
-     IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-       CALL Fatal( 'ListGetDerivValue', &
-           'Value type for property > '// TRIM(Name) // '< not used consistently.')
-     END IF
 
      SELECT CASE(ptr % TYPE)
        CASE( LIST_TYPE_VARIABLE_SCALAR )
-         Variable => VariableGet( CurrentModel % Variables,ptr % DependName ) 
-         DO i=1,n
-           k = NodeIndexes(i)
-           IF ( ASSOCIATED(Variable % Perm) ) k = Variable % Perm(K)
-           IF ( k > 0 ) THEN
-             T = Variable % Values(k)
-             F(i) = ptr % Coeff * &
-                 DerivateCurve(ptr % TValues,ptr % FValues(1,1,:), &
-                 T, ptr % CubicCoeff )
+         
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           IF( .NOT. PRESENT( dT ) ) THEN
+             CALL Fatal('ListGetDerivValue','Numerical derivative of function requires dT')
            END IF
-         END DO
+           Variable => VariableGet( CurrentModel % Variables,ptr % DependName ) 
+           IF( .NOT. ASSOCIATED( Variable ) ) THEN
+             CALL Fatal('ListGetDeriveValue','Cannot derivate with variable: '//TRIM(ptr % DependName))
+           END IF
+
+           DO i=1,n
+             k = NodeIndexes(i)            
+             IF ( ASSOCIATED(Variable % Perm) ) k = Variable % Perm(k)
+             IF ( k > 0 ) THEN
+               T = Variable % Values(k) 
+               T1(1) = T + 0.5_dp * dT
+               T2(1) = T - 0.5_dp * dT 
+               F1 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, NodeIndexes(i), T1 )
+               F2 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, NodeIndexes(i), T2 )
+               F(i) = ptr % Coeff * ( F1 - F2 ) / dT
+             END IF
+           END DO
+
+         ELSE
+           IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+             CALL Fatal( 'ListGetDerivValue', &
+                 'Value type for property > '// TRIM(Name) // '< not used consistently.')
+           END IF
+           Variable => VariableGet( CurrentModel % Variables,ptr % DependName ) 
+           IF( .NOT. ASSOCIATED( Variable ) ) THEN
+             CALL Fatal('ListGetDeriveValue','Cannot derivate with variable: '//TRIM(ptr % DependName))
+           END IF
+           DO i=1,n
+             k = NodeIndexes(i)
+             IF ( ASSOCIATED(Variable % Perm) ) k = Variable % Perm(k)
+             IF ( k > 0 ) THEN
+               T = Variable % Values(k)
+               F(i) = ptr % Coeff * &
+                   DerivateCurve(ptr % TValues,ptr % FValues(1,1,:), &
+                   T, ptr % CubicCoeff )
+             END IF
+           END DO
+         END IF
+
 
        CASE DEFAULT 
          CALL Fatal( 'ListGetDerivValue', &
              'No automated derivation possible for > '//TRIM(Name)//' <' )
 
      END SELECT
+
 
    END FUNCTION ListGetDerivValue
 !------------------------------------------------------------------------------
@@ -4184,6 +4334,33 @@ CONTAINS
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListGetLogicalAnyBody
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is true in any body.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetCRealAnyBody( Model, Name, Found ) RESULT( F )
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp) :: F
+     
+     INTEGER :: body
+     LOGICAL :: GotIt
+     
+     F = 0.0_dp
+     GotIt = .FALSE.
+     DO body = 1,Model % NumberOfBodies
+       F = ListGetCReal( Model % Bodies(body) % Values, Name, GotIt )
+       IF( GotIt ) EXIT
+     END DO
+
+     IF( PRESENT( Found ) ) Found = GotIt
+     
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetCRealAnyBody
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -4339,7 +4516,8 @@ CONTAINS
 !> by two quite separate ways. This subroutine tries to make the definition of
 !> variables for saving more straight-forward.
 !------------------------------------------------------------------------------
-  SUBROUTINE CreateListForSaving( Model, List, ShowVariables, ClearList )
+  SUBROUTINE CreateListForSaving( Model, List, ShowVariables, ClearList, &
+      UseGenericKeyword )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -4347,12 +4525,13 @@ CONTAINS
     TYPE(ValueList_t), POINTER  :: List
     LOGICAL :: ShowVariables
     LOGICAL, OPTIONAL :: ClearList
+    LOGICAL, OPTIONAL :: UseGenericKeyword
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,LoopDim, VarDim,FullDim,DOFs,dim,Comp
     TYPE(Variable_t), POINTER :: Variables, Var, Var1
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, VarStr, VarStrComp, VarStrExt, str
     LOGICAL :: IsVector, Set, GotIt, ComponentVector, ThisOnly, IsIndex, &
-        EnforceVectors
+        EnforceVectors, UseGeneric
     INTEGER :: Nvector, Nscalar
     TYPE(ValueList_t), POINTER :: Params
 
@@ -4363,34 +4542,52 @@ CONTAINS
       CALL Warn('CreateListForSaving','Mesh does not include any variables!')
       RETURN
     END IF
+    
+    UseGeneric = .FALSE.
+    IF( PRESENT( UseGenericKeyword ) ) THEN
+      UseGeneric = UseGenericKeyword 
+    END IF
+    
 
 !------------------------------------------------------------------------------
 ! Sometimes the list must be cleared in order to use it for a different mesh
 !-----------------------------------------------------------------------------
     IF( PRESENT( ClearList ) ) THEN
       IF( ClearList ) THEN
-        DO i=1,999
-          WRITE(VarStr,'(A,I0)') 'Scalar Field ',i
-          IF( ListCheckPresent( List, VarStr ) ) THEN
-            CALL ListRemove( List, VarStr )
-          ELSE
-            EXIT
-          END IF
-        END DO
-
-        DO i=1,999
-          WRITE(VarStr,'(A,I0)') 'Vector Field ',i
-          IF( ListCheckPresent( List, VarStr ) ) THEN
-            CALL ListRemove( List, VarStr )
-          ELSE
-            EXIT
-          END IF
-
-          WRITE(VarStr,'(A,I0,A)') 'Vector Field ',i,' Component'
-          IF( ListCheckPresent( List, VarStr ) ) THEN
-            CALL ListRemove( List, VarStr )
-          END IF
-        END DO
+        IF( UseGeneric ) THEN
+          DO i=1,999
+            WRITE(VarStr,'(A,I0)') 'Variable ',i
+            IF( ListCheckPresent( List, VarStr ) ) THEN
+              CALL ListRemove( List, VarStr )
+            ELSE
+              EXIT
+            END IF
+          END DO
+        ELSE
+          DO i=1,999
+            WRITE(VarStr,'(A,I0)') 'Scalar Field ',i
+            IF( ListCheckPresent( List, VarStr ) ) THEN
+              CALL ListRemove( List, VarStr )
+            ELSE
+              EXIT
+            END IF
+          END DO
+          
+          DO i=1,999
+            WRITE(VarStr,'(A,I0)') 'Vector Field ',i
+            IF( ListCheckPresent( List, VarStr ) ) THEN
+              CALL ListRemove( List, VarStr )
+            ELSE
+              EXIT
+            END IF
+            
+            WRITE(VarStr,'(A,I0,A)') 'Vector Field ',i,' Complement'
+            IF( ListCheckPresent( List, VarStr ) ) THEN
+              CALL ListRemove( List, VarStr )
+            END IF
+          END DO
+          
+        END IF
       END IF
     END IF
     
@@ -4398,16 +4595,23 @@ CONTAINS
     ! First check that there is a need to create the list i.e. it is not
     ! already manually defined
     !-------------------------------------------------------------------
-    IF( ListCheckPresent( List,'Scalar Field 1' ) ) THEN
-      CALL Info('CreateListForSaving','Scalar Field 1 exists, creating no list!',Level=10)
-      RETURN
+    IF( UseGeneric ) THEN
+      IF( ListCheckPresent( List,'Variable 1' ) ) THEN
+        CALL Info('CreateListForSaving','Variable 1 exists, creating no list!',Level=10)
+        RETURN
+      END IF
+    ELSE
+      IF( ListCheckPresent( List,'Scalar Field 1' ) ) THEN
+        CALL Info('CreateListForSaving','Scalar Field 1 exists, creating no list!',Level=10)
+        RETURN
+      END IF
+      
+      IF( ListCheckPresent( List,'Vector Field 1' ) ) THEN
+        CALL Info('CreateListForSaving','Vector Field 1 exists, creating no list!',Level=10)
+        RETURN
+      END IF
     END IF
-
-    IF( ListCheckPresent( List,'Vector Field 1' ) ) THEN
-      CALL Info('CreateListForSaving','Vector Field 1 exists, creating no list!',Level=10)
-      RETURN
-    END IF
-
+    
     Nscalar = 0
     Nvector = 0
 
@@ -4417,7 +4621,6 @@ CONTAINS
 
     EnforceVectors = ListGetLogical( Params,'Enforce Vectors',GotIt)
     IF(.NOT. GotIt ) EnforceVectors = .TRUE.
-
     
     Var => Variables
 
@@ -4466,14 +4669,14 @@ CONTAINS
 
       CASE( 'mesh update' )
         ! Mesh update is treated separately because its special connection to displacement
-
-        Var1 => Variables
-        DO WHILE( ASSOCIATED( Var1 ) )
-          IF ( TRIM(Var1 % Name) == 'displacement' ) EXIT
-          Var1 => Var1 % Next
-        END DO
-        IF ( .NOT. ASSOCIATED( Var1 ) ) THEN
-          Set = .TRUE.
+        Set = .TRUE.
+        IF(.NOT. UseGeneric ) THEN
+          Var1 => Variables
+          DO WHILE( ASSOCIATED( Var1 ) )
+            IF ( TRIM(Var1 % Name) == 'displacement' ) EXIT
+            Var1 => Var1 % Next
+          END DO
+          IF ( ASSOCIATED( Var1 ) ) Set = .FALSE.
         END IF
         
       CASE('mesh update 1','mesh update 2', 'mesh update 3' )
@@ -4481,16 +4684,19 @@ CONTAINS
       CASE( 'displacement' )
         Set = .TRUE.
         ! mesh update is by default the complement to displacement 
-        Var1 => Variables
-        DO WHILE( ASSOCIATED( Var1 ) )
-          IF ( TRIM(Var1 % Name) == 'mesh update' ) EXIT
-          Var1 => Var1 % Next
-        END DO
-        IF ( ASSOCIATED( Var1 ) ) THEN
-          WRITE(VarStrComp,'(A,I0,A)') 'Vector Field ',Nvector+1,' Complement'
-          CALL ListAddString( List ,TRIM(VarStrComp),'mesh update')
+        ! However, for generic variablelist the complement is not active
+        IF(.NOT. UseGeneric ) THEN
+          Var1 => Variables
+          DO WHILE( ASSOCIATED( Var1 ) )
+            IF ( TRIM(Var1 % Name) == 'mesh update' ) EXIT
+            Var1 => Var1 % Next
+          END DO
+          IF ( ASSOCIATED( Var1 ) ) THEN
+            WRITE(VarStrComp,'(A,I0,A)') 'Vector Field ',Nvector+1,' Complement'
+            CALL ListAddString( List ,TRIM(VarStrComp),'mesh update')
+          END IF
         END IF
-        
+
       CASE( 'displacement 1','displacement 2','displacement 3')
         
 
@@ -4561,7 +4767,10 @@ CONTAINS
       ! Set the default variable names that have not been set
       !------------------------------------------------------------------------
       IF( Set ) THEN
-        IF( IsVector ) THEN          
+        IF( UseGeneric ) THEN
+          Nscalar = Nscalar + 1
+          WRITE(VarStr,'(A,I0)') 'Variable ',Nscalar          
+        ELSE IF( IsVector ) THEN          
           Nvector = Nvector + 1
           WRITE(VarStr,'(A,I0)') 'Vector Field ',Nvector
         ELSE
@@ -4577,32 +4786,43 @@ CONTAINS
 
     IF( ShowVariables ) THEN
       CALL Info('CreateListForSaving','Field Variables for Saving')
-      DO i=1,Nscalar
-        WRITE(VarStr,'(A,I0)') 'Scalar Field ',i
-        VarName = ListGetString( List, VarStr,GotIt )
-        IF( GotIt ) THEN
-          WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
-          CALL Info('CreateListForSaving',Message)
-        END IF
-      END DO
-
-      DO i=1,Nvector
-        WRITE(VarStr,'(A,I0)') 'Vector Field ',i
-        VarName = ListGetString( List, VarStr,GotIt )
-        IF( GotIt ) THEN
-          WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
-          CALL Info('CreateListForSaving',Message)
-        END IF
-      END DO
-
-      DO i=1,Nvector
-        WRITE(VarStr,'(A,I0,A)') 'Vector Field ',i,' Complement'
-        VarName = ListGetString( List, VarStr, GotIt )
-        IF( GotIt ) THEN
-          WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
-          CALL Info('CreateListForSaving',Message)
-        END IF
-      END DO
+      IF( UseGeneric ) THEN
+        DO i=1,Nscalar
+          WRITE(VarStr,'(A,I0)') 'Variable ',i
+          VarName = ListGetString( List, VarStr,GotIt )
+          IF( GotIt ) THEN
+            WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
+            CALL Info('CreateListForSaving',Message,Level=6)
+          END IF
+        END DO
+      ELSE
+        DO i=1,Nscalar
+          WRITE(VarStr,'(A,I0)') 'Scalar Field ',i
+          VarName = ListGetString( List, VarStr,GotIt )
+          IF( GotIt ) THEN
+            WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
+            CALL Info('CreateListForSaving',Message,Level=6)
+          END IF
+        END DO
+        
+        DO i=1,Nvector
+          WRITE(VarStr,'(A,I0)') 'Vector Field ',i
+          VarName = ListGetString( List, VarStr,GotIt )
+          IF( GotIt ) THEN
+            WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
+            CALL Info('CreateListForSaving',Message,Level=6)
+          END IF
+        END DO
+        
+        DO i=1,Nvector
+          WRITE(VarStr,'(A,I0,A)') 'Vector Field ',i,' Complement'
+          VarName = ListGetString( List, VarStr, GotIt )
+          IF( GotIt ) THEN
+            WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
+            CALL Info('CreateListForSaving',Message,Level=6)
+          END IF
+        END DO
+      END IF
     END IF
 
   END SUBROUTINE CreateListForSaving

@@ -6,7 +6,7 @@ Header
 End
 
 Simulation
-   Max Output Level = 7
+   Max Output Level = 5
    Coordinate System = "Cartesian 3D"
    Coordinate Mapping(3) = 1 2 3 
    Simulation Type = Steady state
@@ -88,6 +88,13 @@ Solver 4
   Vector Field 3 = String "Magnetic Field Strength E"
 End
 
+Solver 5
+  Equation = "scalars"
+  procedure = "SaveData" "SaveScalars"
+  !variable 1 = res: magnetic field energy
+  show norm index = integer 2
+End
+
 
 Equation 1
   Name = "Coupled Equations"
@@ -108,9 +115,11 @@ Material 1
   Name = "Air"
   Electric Conductivity = 0.0
   Relative Permeability = 1.0
+  relative Permittivity = 1.0
 End
 
 Material 2
+  relative Permittivity = 1.0
   Name = "Iron"
   Electric Conductivity = 0.0
   Relative Permeability = 1000.
@@ -120,6 +129,7 @@ Material 2
 End
 
 Material 3
+  relative Permittivity = 1.0
   Name = "Copper"
   Electric Conductivity = 58.14e6
   Relative Permeability = 1.0
@@ -197,7 +207,6 @@ Body Force 1
 End
 
 Solver 3 :: Reference Norm = Real 17.869450
-$fprintf( stderr, "TEST CASE 1\n");
+Solver 5 :: reference norm = real 2.204993E-05
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=17.869450\n ");
 !End Of File

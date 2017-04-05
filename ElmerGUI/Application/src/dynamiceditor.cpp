@@ -334,7 +334,11 @@ void DynLineEdit::editSlot()
 {
   QLineEdit *q =  lineEdit;
   QString s = q->text();
+#if WITH_QT5
+  cout << string(s.toLatin1()) << endl;
+#else
   cout << string(s.toAscii()) << endl;
+#endif
 
   if ( frame ) {
     frame->show();
@@ -697,7 +701,11 @@ void DynamicEditor::populateHash(QDomElement *item)
     }
     
     if(!match_found) {
+#if WITH_QT5
+      cout << "Error: Unable to set menu entry: key: " << key.toLatin1().data() << endl;
+#else
       cout << "Error: Unable to set menu entry: key: " << key.toAscii().data() << endl;
+#endif
       cout.flush();
     }
   }

@@ -1,0 +1,210 @@
+!------------------------------------------------------------------
+! Test case for contact 
+! - 2D case weak projector (surface-to-surface)
+! - Using normal-tangential coordinate system for contact
+! - Only one steady-state contact searched for
+! - Residual mode for displacements
+! - First step slip, then stick
+! - Biorthogonal projector matrix 
+! - Elimination of constraint equations
+!
+! P.R. / 6.8.2015
+!------------------------------------------------------------------
+ 
+$dy = 0.3
+$dx = 0.1
+$fileid = "a"
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+  Mesh Levels = 1
+
+  Timestep Intervals = 3 
+  Timestep Sizes = 1.0
+
+! The ElasticSolver does not really like the Dirichlet conditions at the start 
+! of the nonlinear iteration. 
+  Initialize Dirichlet Conditions = False
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+End
+
+Body 1
+  Name = "Blunt"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+End
+
+
+Body 2
+  Name = "Base"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 2
+End
+
+Solver 1
+  Equation = "NonlinElast"
+
+  Procedure = "ElasticSolve" "ElasticSolver"
+!  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Displacement
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 30
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = Ilu0
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = GCR !Bicgstab
+  Linear System Convergence Tolerance = 1.0e-5
+
+  Calculate Stresses = Logical True
+
+  Apply Contact BCs = Logical True
+  Apply Contact Velocity = Logical True
+  Linear System Residual Mode = Logical True
+
+  Nonlinear System Convergence Without Constraints = Logical True
+!  Eliminate Linear Constraints = Logical True
+!  Eliminate Slave = Logical True
+
+!! unused tricks for testing etc. 
+!  Elasticity Solver Linear = Logical True
+!  Apply Limiter Conservative Remove After Iterations = Integer 5
+!  Apply Limiter Conservative Add After Iterations = Integer 5
+!  Optimize Bandwidth = False
+!  Linear System Scaling = False
+End
+
+
+Solver 2
+  Equation = "SaveLine"
+  Exec Solver = never
+  Procedure = "SaveData" "SaveLine"
+  Filename = f$fileid$.dat
+End 
+
+
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case_$fileid$
+  Vtu Format = Logical True
+  Displace Mesh = Logical False
+  Single Precision = Logical False
+End
+
+
+Equation 1
+  Name = "Deformation"
+  Active Solvers(1) = 1 
+End
+
+
+Material 1
+  Name = "BluntMat"
+  Youngs modulus = 2.0e3
+  Density = 0.0
+  Poisson ratio = 0.3
+End
+
+Material 2
+  Name = "BaseMat"
+  Youngs modulus = 1.0e3
+  Density = 0.0
+  Poisson ratio = 0.3
+End
+
+
+Boundary Condition 1
+  Name = "Contact"
+  Target Boundaries(2) = 1 2
+
+  Mortar BC = 5
+  Mortar BC Nonlinear = Logical True
+  Mortar BC Initial Contact Depth = Real $ dy/2
+
+
+  Stick Contact = Logical True
+  Initial Contact Friction = Logical False
+
+!  Contact Active Set Minimum = Integer 10
+!  Create Dual Projector = Logical True
+! Note: if this is activated then the elimination fails for some reason!
+!  Projector Max Distance = Real $0.7*dy
+
+! Flatten the interfaces to enable 1D projection
+  Plane Projector = Logical True
+  Galerkin Projector = Logical True
+
+! Use N-T conditions which allow friction for generic cases be set
+  Normal-Tangential Displacement = Logical True
+  Mass Consistent Normals = Logical True
+
+!  Use Biorthogonal Basis = Logical True
+
+!  Save projector = Logical True
+  Save line = Logical True
+
+!  Save Contact = Logical True
+!  No-Slip Displacement = Logical True
+End
+
+Boundary Condition 2
+  Name = "Top"
+  Target Boundaries(1) = 4
+
+  Displacement 1 = Variable time 
+   Real MATC "(tx-1.5)*dx"
+  Displacement 2 = $-dy 
+End
+
+Boundary Condition 3 
+  Name = "Sides"
+  Target Boundaries(2) = 3 5
+End
+
+
+Boundary Condition 4 
+  Name = "BaseBottom"
+  Target Boundaries(1) = 7
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+  
+Boundary Condition 5
+  Name = "BaseTop"
+  Target Boundaries(1) = 9
+
+  Normal-Tangential Displacement = Logical True
+  Mass Consistent Normals = Logical True
+End
+
+Boundary Condition 6
+  Name = "BaseRight"
+  Target Boundaries(1) = 8 
+End
+
+Boundary Condition 7
+  Name = "BaseLeft"
+  Target Boundaries(1) = 10
+End
+
+Solver 1 :: Reference Norm = 1.449358E-01
