@@ -1,0 +1,71 @@
+! Purpose of this case is just to ensure that when a solver
+! is in all the slave solver slots it is called correct amount of times.
+! Here four times for four slots, two scanning iterations, two nonlinear
+! iterations i.e. 12 times all-in-all.
+!
+! Compared to test case SlaveSolverSlots the order of solver indexes is changed.
+
+Check Keywords "Warn"
+
+Header :: Mesh DB "." "square"
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  diffusion coefficient = 1.0
+End
+
+Body Force 1 :: Field Source = Equals "scan"
+
+Equation 1 :: Active Solvers(1) = 2
+
+Solver 2
+  Equation = "ModelPDE"
+  Variable = "Field"
+  Procedure = "ModelPDE" "AdvDiffSolver"
+  Linear System Solver = Direct
+  Steady State Convergence Tolerance = 1e-9
+
+! these ensure two nonlinear iterations
+  Nonlinear System Min Iterations = 2
+  Nonlinear System Max Iterations = 2
+  Nonlinear System Convergence Tolerance = 1.0e-6
+
+  Scanning Loops = Integer 2
+
+! All possible slave solver slots
+  Pre Solvers(1) = 1
+  Nonlinear Pre Solvers(1) = 1
+  Nonlinear Post Solvers(1) = 1
+  Post Solvers(1) = 1
+End
+
+Solver 1
+  Exec Solver = never ! call only as slave solver!
+  Equation = "CountSolver"
+  Variable = -global Count
+  Procedure = "CountSolver2" "CountSolver"
+End 
+
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Field = Real 0.0
+  !Equals "nonlin iter"
+End
+
+
+Solver 2 :: Reference Norm = 0.78755807E-01
+Solver 1 :: Reference Norm = 12

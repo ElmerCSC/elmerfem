@@ -161,12 +161,17 @@ MODULE DiffuseConvective
 
      LOGICAL :: Vms, Found, Transient, stat,Convection,ConvectAndStabilize,Bubbles, &
           FrictionHeat, PBubbles
-     TYPE(ValueList_t), POINTER :: BodyForce
-
+     TYPE(ValueList_t), POINTER :: BodyForce, Material
+     LOGICAL :: GotCondModel
+     
 !------------------------------------------------------------------------------
 
      StabilizeFlag = GetString( GetSolverParams(),'Stabilization Method',Found )
      Vms = StabilizeFlag == 'vms'
+
+     Material => GetMaterial()
+     GotCondModel = ListCheckPresent( Material,'Heat Conductivity Model')
+
 
      dim = CoordinateSystemDimension()
      c = dim + 1
@@ -254,8 +259,8 @@ MODULE DiffuseConvective
          END IF
        END IF
 
-       expc = GetCReal(GetMaterial(),'Heat Expansion Coefficient',Found)
-       reft = GetCReal(GetMaterial(),'Reference Temperature',Found)
+       expc = GetCReal(Material,'Heat Expansion Coefficient',Found)
+       reft = GetCReal(Material,'Reference Temperature',Found)
        CALL GetConstRealArray( GetConstants(), gWrk, 'Grav',Found )
        IF ( Found ) THEN
          grav = gWrk(1:3,1)*gWrk(4,1)
@@ -349,10 +354,13 @@ MODULE DiffuseConvective
          END DO
        END DO
 
-       DO i=1,dim
-          C2(i,i) = EffectiveConductivity( C2(i,i), rho, Element, &
-                 NodalTemperature, UX,UY,UZ, Nodes, n, n, u, v, w )
-       END DO
+       IF( GotCondModel ) THEN       
+         DO i=1,dim
+           C2(i,i) = EffectiveConductivity( C2(i,i), rho, Element, &
+               NodalTemperature, UX,UY,UZ, Nodes, n, n, u, v, w )
+         END DO
+       END IF
+         
 !------------------------------------------------------------------------------
 !      If there's no convection term we don't need the velocities, and
 !      also no need for stabilization
@@ -386,7 +394,7 @@ MODULE DiffuseConvective
 
 
           IF ( Vms ) THEN
-            mu = GetCReal( GetMaterial(), 'Viscosity', Found )
+            mu = GetCReal( Material, 'Viscosity', Found )
             mu = EffectiveViscosity( mu, rho, Ux, Uy, Uz, &
                    Element, Nodes, n, n, u,v,w )
 

@@ -111,6 +111,7 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   Solvers(n+1) % Values => ListAllocate()
   DGSolverParams => Solvers(n+1) % Values
   CALL ListAddLogical( DGSolverParams, 'Discontinuous Galerkin', .TRUE. )
+  Solvers(n+1) % DG = .TRUE.
   Solvers(n+1) % PROCEDURE = 0
   Solvers(n+1) % ActiveElements => NULL()
   DEALLOCATE(Model % Solvers)

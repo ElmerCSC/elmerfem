@@ -67,6 +67,12 @@ MODULE PElementMaps
        PyramidEdgeMap(8,2), PyramidFaceMap(5,4), PyramidFaceEdgeMap(5,4)
 
   LOGICAL, SAVE :: MInit = .FALSE.
+  !$OMP THREADPRIVATE(MInit, QuadEdgeMap, TriangleEdgeMap, &
+  !$OMP&              TetraEdgeMap1, TetraFaceMap1, TetraFaceEdgeMap1, &
+  !$OMP&              TetraEdgeMap2, TetraFaceMap2, TetraFaceEdgeMap2,&
+  !$OMP&              BrickEdgeMap, BrickFaceMap, BrickFaceEdgeMap, &
+  !$OMP&              WedgeEdgeMap, WedgeFaceMap, WedgeFaceEdgeMap, &
+  !$OMP&              PyramidEdgeMap, PyramidFaceMap, PyramidFaceEdgeMap)
 CONTAINS
 
   ! MAPPINGS
