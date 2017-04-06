@@ -1674,6 +1674,235 @@ MODULE NavierStokes
  END SUBROUTINE NavierStokesWallLaw
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!>  Return element local matrices and RHS vector for Navier-Stokes-equations
+!>  boundary conditions in cartesian coordinates.
+!------------------------------------------------------------------------------
+ SUBROUTINE NavierStokesBoundaryPara( BoundaryMatrix,BoundaryVector,LoadVector,   &
+    NodalAlpha, NodalBeta, NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, &
+     n, Nodes, nIntegration, ratio )
+             
+!------------------------------------------------------------------------------
+!     Assemble boundary matrix and RHS for slip boundary conditions
+!     with GL parameterization of slip Coefficients beta. Beta stays
+!     on higher space than the velocities. 
+!
+!
+! OUTPUT: 
+!    BoundaryMatrix(:) - time derivative coefficient matrix
+!    BoundaryVector(:) - RHS vector
+!
+!  INPUT:
+!    LoadVector(:,:)   - Nodal values force in coordinate directions
+!    NodalAlpha(:,:)   - Nodal values of force in normal direction
+!    NodalBeta(:,:)    - Nodal values of something which will be taken derivative in
+!                        tangential direction and added to force...
+!    Element           - Structure describing the element (dimension,nof nodes,
+!                        interpolation degree, etc...)
+!    n                 - Number of boundary element nodes
+!    Nodes             - Element node coordinates
+!    nIntegration      - Number integration points within one element for SlipCoeff
+!    ratio             - ratio of GL parameterization in [0,1]
+!------------------------------------------------------------------------------
+   USE ElementUtils
+!------------------------------------------------------------------------------
+   IMPLICIT NONE
+
+   REAL(KIND=dp), INTENT(INOUT)         :: BoundaryMatrix(:,:), BoundaryVector(:)
+   REAL(KIND=dp), INTENT(IN)            :: LoadVector(:,:), NodalAlpha(:),NodalBeta(:)
+   REAL(KIND=dp), INTENT(IN)            :: NodalSlipCoeff(:,:), NodalExtPressure(:)
+   INTEGER, INTENT(IN)                  :: n, nIntegration
+   TYPE(Element_t),POINTER, INTENT(IN)  :: Element
+   TYPE(Nodes_t), INTENT(IN)            :: Nodes
+   LOGICAL, INTENT(IN)                  :: NormalTangential
+   REAL(KIND=dp), INTENT(IN)            :: ratio
+!------------------------------------------------------------------------------
+!  Local variables
+!------------------------------------------------------------------------------
+   TYPE(Element_t),POINTER :: Parent
+   TYPE(Nodes_t) :: ParentNodes
+
+   REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
+   REAL(KIND=dp) :: detJ,FlowStress(3,3),SlipCoeff
+
+   REAL(KIND=dp) :: u,v,w,ParentU,ParentV,ParentW,s,x(n),y(n),z(n)
+   REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
+   REAL(KIND=dp) :: TangentForce(3),Force(3),Normal(3),Tangent(3),Tangent2(3), &
+               Vect(3), Alpha, mu,Grad(3,3),Velo(3)
+
+   REAL(KIND=dp) :: xx, yy, ydot, ydotdot, MassFlux, heaveSide
+
+   INTEGER :: i,j,k,l,k1,k2,t,q,p,c,dim,N_Integ,np
+
+   LOGICAL :: stat, Found
+
+   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+
+!------------------------------------------------------------------------------
+
+   dim = CoordinateSystemDimension()
+   c = dim + 1
+!
+!------------------------------------------------------------------------------
+!  Integration stuff
+!------------------------------------------------------------------------------
+   IntegStuff = GaussPoints( Element, nIntegration )
+   U_Integ => IntegStuff % u
+   V_Integ => IntegStuff % v
+   W_Integ => IntegStuff % w
+   S_Integ => IntegStuff % s
+   N_Integ =  IntegStuff % n
+
+!------------------------------------------------------------------------------
+!  Now we start integrating
+!------------------------------------------------------------------------------
+   DO t=1,N_Integ
+
+     u = U_Integ(t)
+     v = V_Integ(t)
+     w = W_Integ(t)
+     heaveSide = 1.0
+
+     IF ( (ratio < 1.0) .AND. (ratio > 0.0) ) THEN
+
+      IF (u .LE. (2.0*ratio -1.0)) THEN
+        heaveSide = 1.0
+      ELSE 
+        heaveSide = 0.0
+      END IF
+      ! WRITE ( *, * ) '==================== x=', u, 'heaveSide =', heaveSide, &
+      !                'and the ratio is ', ratio
+     END IF 
+!------------------------------------------------------------------------------
+!    Basis function values & derivatives at the integration point
+!------------------------------------------------------------------------------
+     stat = ElementInfo( Element,Nodes,u,v,w,detJ, &
+                 Basis, dBasisdx )
+
+     s = detJ * S_Integ(t)
+!------------------------------------------------------------------------------
+!    Add to load: tangetial derivative of something
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       TangentForce(i) = SUM(NodalBeta(1:n)*dBasisdx(1:n,i))
+     END DO
+
+!------------------------------------------------------------------------------
+!    Add to load: given force in coordinate directions
+!------------------------------------------------------------------------------
+     Force = 0.0d0
+     DO i=1,dim
+       Force(i) = Force(i) + SUM( LoadVector(i,1:n)*Basis )
+     END DO
+
+!------------------------------------------------------------------------------
+!    Add to load: given force in normal direction
+!------------------------------------------------------------------------------
+     Normal = NormalVector( Element, Nodes, u,v,.TRUE. )
+
+     Alpha = SUM( NodalExtPressure(1:n) * Basis )
+     IF ( NormalTangential ) THEN
+       Force(1) = Force(1) + Alpha
+     ELSE
+        DO i=1,dim
+           Force(i) = Force(i) + Alpha * Normal(i)
+        END DO
+     END IF
+
+!------------------------------------------------------------------------------
+
+     Alpha = SUM( NodalAlpha(1:n) * Basis )
+     MassFlux = SUM( Loadvector(4,1:n) * Basis(1:n) )
+
+!------------------------------------------------------------------------------
+
+
+    ! WRITE(*,*) u,v,w,s
+
+     SELECT CASE( Element % TYPE % DIMENSION )
+     CASE(1)
+        Tangent(1) =  Normal(2)
+        Tangent(2) = -Normal(1)
+        Tangent(3) =  0.0_dp
+        Tangent2   =  0.0_dp
+     CASE(2)
+        CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+     END SELECT
+
+     IF ( ANY( NodalSlipCoeff(:,:) /= 0.0d0 ) ) THEN
+       DO p=1,n
+         DO q=1,n
+           DO i=1,dim
+             IF (i == 1) THEN
+              SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) )
+             ELSE
+              SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) ) * heaveSide
+             END IF
+
+             IF ( NormalTangential ) THEN
+                SELECT CASE(i)
+                   CASE(1)
+                     Vect = Normal
+                   CASE(2)
+                     Vect = Tangent
+                   CASE(3)
+                     Vect = Tangent2
+                END SELECT
+
+                DO j=1,dim
+                   DO k=1,dim
+                      BoundaryMatrix( (p-1)*c+j,(q-1)*c+k ) = &
+                         BoundaryMatrix( (p-1)*c+j,(q-1)*c+k ) + &
+                          s * SlipCoeff * Basis(q) * Basis(p) * Vect(j) * Vect(k)
+                   END DO
+                END DO
+             ELSE
+                 BoundaryMatrix( (p-1)*c+i,(q-1)*c+i ) = &
+                     BoundaryMatrix( (p-1)*c+i,(q-1)*c+i ) + &
+                          s * SlipCoeff * Basis(q) * Basis(p)
+             END IF
+           END DO
+         END DO
+       END DO
+     END IF
+
+     DO q=1,n
+       DO i=1,dim
+         k = (q-1)*c + i
+         IF ( NormalTangential ) THEN
+            SELECT CASE(i)
+               CASE(1)
+                 Vect = Normal
+               CASE(2)
+                 Vect = Tangent
+               CASE(3)
+                 Vect = Tangent2
+            END SELECT
+
+            DO j=1,dim
+               l = (q-1)*c + j
+               BoundaryVector(l) = BoundaryVector(l) + &
+                 s * Basis(q) * Force(i) * Vect(j)
+            END DO
+         ELSE
+            BoundaryVector(k) = BoundaryVector(k) + s*Basis(q)*Force(i)
+         END IF
+         BoundaryVector(k) = BoundaryVector(k) - s * Alpha * dBasisdx(q,i)
+         BoundaryVector(k) = BoundaryVector(k) + s * TangentForce(i)*Basis(q)
+       END DO
+       BoundaryVector(q*c) = BoundaryVector(q*c) + s * MassFlux * Basis(q)
+     END DO
+
+   END DO
+!------------------------------------------------------------------------------
+ END SUBROUTINE NavierStokesBoundaryPara
+!------------------------------------------------------------------------------
+
+
+
+
+
 END MODULE NavierStokes
 
 !> \}
