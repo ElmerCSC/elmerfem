@@ -646,6 +646,8 @@ CONTAINS
     IF(.NOT.ASSOCIATED(Parent)) THEN
       Parent=>Element % BoundaryInfo % Right
     END IF
+    IF(.NOT.ASSOCIATED(Parent)) RETURN
+
     Material => GetMaterial(Parent)
     CALL GetReluctivity(Material,R,n,Parent)
 
@@ -1530,6 +1532,8 @@ CONTAINS
     IF(.NOT.ASSOCIATED(Parent)) THEN
       Parent=>Element % BoundaryInfo % Right
     END IF
+    IF(.NOT.ASSOCIATED(Parent)) RETURN
+
     Material => GetMaterial(Parent)
     CALL GetReluctivity(Material,R,n,Parent)
 
