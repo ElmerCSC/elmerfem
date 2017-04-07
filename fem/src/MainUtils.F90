@@ -4317,6 +4317,9 @@ CONTAINS
            M => M % Parent
          END DO
        END IF
+     ELSE
+       OutputPE = -1
+       IF(ParEnv % myPE == 0 ) OutputPE=0
      END IF
 
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
@@ -4386,12 +4389,14 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params
      INTEGER, POINTER :: UpdateComponents(:)
 
-     INTEGER :: ScanningLoops, scan
+     INTEGER :: ScanningLoops, scan, sOutputPE
      LOGICAL :: GotLoops
      TYPE(Variable_t), POINTER :: ScanVar
         
      SAVE TimeVar
 !------------------------------------------------------------------------------
+     sOutputPE = OutputPE
+
      CALL SetCurrentMesh( Model, Solver % Mesh )
      Model % Solver => Solver
      Params => ListGetSolverParams(Solver)
@@ -4645,6 +4650,8 @@ CONTAINS
               //TRIM(str),rst)
         END IF 
       END IF
+
+      OutputPE = sOutputPE
 
 !------------------------------------------------------------------------------
    END SUBROUTINE SolverActivate
