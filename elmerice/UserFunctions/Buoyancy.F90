@@ -753,15 +753,15 @@ FUNCTION BedPressure ( Model, nodenumber, y) RESULT(pw)
             NULLIFY(bedrockPerm)
             NULLIFY(bedrockVar)
          CASE (MATERIAL_NAMED)
-!             Material => GetMaterial( BCElement )
-!             S = ListGetReal( Material,bedrockName, NumberOfNodesOnBoundary , & 
-!                  BCElement % NodeIndexes, GotIt )
-!             IF (.NOT. GotIt) CALL FATAL('BedPressure',"Could not find bedrock material")
+            Material => GetMaterial( CurElement )
+            S = ListGetReal( Material, bedrockName, NumberOfNodesOnBoundary , & 
+                 CurElement % NodeIndexes, GotIt )
+            IF (.NOT. GotIt) CALL FATAL('BedPressure',"Could not find bedrock material")
          CASE (MATERIAL_DEFAULT)
-!             Material => GetMaterial( BCElement )
-!             S = ListGetReal( Material,'Min Zs Bottom',NumberOfNodesOnBoundary , & 
-!                  BCElement % NodeIndexes, GotIt )
-!             IF (.NOT. GotIt) CALL FATAL('BedPressure',"Could not find bedrock material")
+            Material => GetMaterial( CurElement )
+            S = ListGetReal( Material,'Min Zs Bottom',NumberOfNodesOnBoundary , & 
+                 CurElement % NodeIndexes, GotIt )
+            IF (.NOT. GotIt) CALL FATAL('BedPressure',"Could not find bedrock material")
          END SELECT
 
       END IF  
