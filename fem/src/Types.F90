@@ -417,9 +417,13 @@ END INTERFACE
 
 
    ! This is a tentative data type to speed up the retrieval of parameters
-   ! at Gaussian points.
+   ! at elements.
    !----------------------------------------------------------------------
    TYPE ValueHandle_t
+     INTEGER :: ValueType = -1
+     INTEGER :: BodyId
+     TYPE(BoundaryInfo_t),  POINTER :: BoundaryInfo => NULL()
+     LOGICAL :: BulkElement
      TYPE(Element_t), POINTER :: Element => NULL()
      TYPE(ValueList_t), POINTER :: List => Null()
      TYPE(ValueList_t), POINTER :: Ptr  => Null()
@@ -429,13 +433,17 @@ END INTERFACE
      REAL(KIND=dp), POINTER :: Values(:) => NULL()
      REAL(KIND=dp), POINTER :: ParValues(:,:) => NULL()
      INTEGER :: ParNo = 0
-     REAL(KIND=dp) :: ConstantValue      
+     REAL(KIND=dp) :: ConstantReal
+     LOGICAL :: LogicalVal
+     LOGICAL :: Found
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
      LOGICAL :: Initialized = .FALSE.
      LOGICAL :: AllocationsDone = .FALSE.
      LOGICAL :: ConstantEverywhere = .FALSE.
      LOGICAL :: ConstantInList = .FALSE.
      LOGICAL :: EvaluateAtIP = .FALSE.
+     LOGICAL :: NotPresentAnywhere = .FALSE.
+
    END TYPE ValueHandle_t
 
 !------------------------------------------------------------------------------

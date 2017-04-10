@@ -3866,6 +3866,772 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+
+!------------------------------------------------------------------------------
+!> Gets a real valued parameter in the Gaussian integration point defined 
+!> by the local basis function. To speed up things there is a handle associated
+!> to the given keyword (Name). Here the values are first evaluated at the 
+!> nodal points and then using basis functions estimated at the 
+!> gaussian integration points. 
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetElementReal( Handle,Basis,Element,Found,&
+       Element,minv,maxv ) RESULT(val)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     TYPE(ValueList_t), POINTER :: List
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     CHARACTER(LEN=*), OPTIONAL  :: Name
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     REAL(KIND=dp), OPTIONAL :: minv,maxv
+     REAL(KIND=dp)  :: val
+!------------------------------------------------------------------------------
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     INTEGER, POINTER :: NodeIndexes(:)
+     REAL(KIND=dp) :: T(MAX_FNC),x,y,z
+     REAL(KIND=dp), POINTER :: F(:)
+     REAL(KIND=dp), POINTER :: ParF(:,:)
+     INTEGER :: i,j,k,k1,l,l0,l1,lsize,n
+     CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
+     LOGICAL :: AllGlobal, GotIt
+     TYPE(Element_t), POINTER :: PElement
+!------------------------------------------------------------------------------
+
+
+     ! If value is not present anywhere then return False
+     IF( Handle % NotPresentAnywhere ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       val = 0.0_dp
+       RETURN
+     END IF
+     
+     ! If the value is known to be globally constant return it asap.
+     IF( Handle % ConstantEverywhere ) THEN
+       IF(PRESENT(Found)) Found = .TRUE.
+       val = Handle % RealValue
+       RETURN
+     END IF
+
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PEelement => CurrentModel % CurrentElement
+     END IF
+     
+     ! Set the default value 
+     val = 0.0_dp
+     ListFound = .FALSE.
+     ListSame = .FALSE.
+     
+
+     ! We know by initialization the list entry type that the keyword has
+     ! Find the correct list to look the keyword in.
+     ! Bulk and boundary elements are treated separately.
+     IF( Handle % BulkElement ) THEN     
+       BodyId = PElement % BodyId
+
+       IF( BodyId == 0 ) THEN
+         CALL Warn('ListGetElementLogical','Bulk handle called for boundary?')
+       END IF
+       
+       IF( Handle % BodyId == BodyId ) THEN
+         ListSame = .TRUE.
+       ELSE       
+         SELECT CASE ( Handle % SectionType )
+
+         CASE( SECTION_BODY )
+           List => CurrentModel % Bodies(id) % Values
+           ListFound = .TRUE.
+
+         CASE( SECTION_BF )
+           id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+               'Body Force', ListFound )         
+           IF( ListFound ) List => CurrentModel % BodyForces(id) % Values
+
+         CASE( SECTION_IC )
+           id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+               'Initial Condition', ListFound )         
+           IF(ListFound) List => CurrentModel % ICs(id) % Values
+
+         CASE( SECTION_MATERIAL ) 
+           id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+               'Material', ListFound )         
+           IF(ListFound) List => CurrentModel % Materials(id) % Values
+
+         CASE DEFAULT 
+           CALL Fatal('ListGetElementLogical','Unknown section type!')
+
+         END SELECT
+       END IF
+         
+     ELSE  ! Boundary element
+       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
+         IF( Handle % BoundaryInfo == Element % BoundaryInfo ) THEN
+           ListSame = .TRUE.
+         ELSE
+           DO bc_id=1,CurrentModel % NumberOfBCs
+             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) THEN
+               List => CurrentModel % BCs(bc_id) % Values
+               ListFound = .TRUE.
+               EXIT
+             END IF
+           END DO
+         END IF
+       END IF
+     END IF
+
+
+
+     ! If the provided list is the same as last time, also the keyword will
+     ! be sitting at the same place, otherwise find it in the new list
+     IF( ListFound ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RETURN
+     ELSE IF( .NOT. ASSOCIATED( List % Head ) ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RETURN
+     ELSE IF( ASSOCIATED( Handle % List, List ) ) THEN
+       ptr => Handle % ptr % head
+       IF(PRESENT(Found)) Found = .TRUE.
+       IF( Handle % ConstantInList ) THEN
+         val = Handle % Values(1)
+         RETURN
+       END IF
+     ELSE 
+       IF( PRESENT( Name ) ) THEN
+         ptr => ListFind(List,Name,Found)
+       ELSE IF(.NOT. Handle % Initialized ) THEN
+         CALL Fatal('ListGetElementReal','Handle must be initialized if name is not given!')
+       ELSE
+         ptr => ListFind(List,Handle % Name,Found)
+       END IF
+  
+       Handle % List => List
+       IF(.NOT.ASSOCIATED(Handle % Ptr)) &
+           Handle % Ptr => ListAllocate()
+       Handle % Ptr % Head => ptr
+       
+       ! Check whether the keyword should be evaluated at integration point directly
+       IF( ListGetLogical( List, TRIM( Name )//' At IP',GotIt ) ) THEN
+         CALL Info('ListGetElementReal','Evaluating at ip: '//TRIM(Name),Level=10 )
+
+         ! It does not make sense to evaluate global variables at IP
+         IF( PRESENT( Name ) ) THEN
+           Handle % EvaluateAtIp = .NOT. &
+               ListCheckAllGlobal(  Handle % Ptr, Name )
+         ELSE 
+           Handle % EvaluateAtIp = .NOT. &
+               ListCheckAllGlobal(  Handle % Ptr, Handle % Name )
+         END IF
+         IF( .NOT. Handle % EvaluateAtIp ) THEN
+           CALL Info('ListGetElementReal','Evaluation at ip not needed!',Level=10)
+         END IF
+       ELSE
+         Handle % EvaluateAtIp = .FALSE.
+       END IF
+
+       IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+       Handle % ConstantInList = .FALSE.
+     END IF
+
+     ! If there is no pointer return default value zero
+     IF ( .NOT. ASSOCIATED(ptr) ) RETURN
+
+     ! Get the pointer to the element
+     IF( PRESENT( Element) ) THEN
+       PElement => Element
+     ELSE
+       PElement => CurrentModel % CurrentElement
+     END IF
+
+
+     ! Either evaluate parameter directly at IP, 
+     ! or first at nodes and then using basis functions at IP.
+     ! The later is the default. 
+     !------------------------------------------------------------------
+     IF( Handle % EvaluateAtIp ) THEN
+
+       IF(.NOT. PRESENT(Basis)) THEN
+         CALL Fatal('ListGetElementReal','Parameter > Basis < is required!')
+       END IF
+       
+       ! If we get back to the same element than last time use the data already 
+       ! retrieved. If the element is new then get the data in every node of the 
+       ! current element, or only in the 1st node if it is constant. 
+       
+       IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
+         n = Handle % Element % TYPE % NumberOfNodes 
+         NodeIndexes => PElement % NodeIndexes
+         ParF => Handle % ParValues
+       ELSE
+         
+         IF( .NOT. Handle % AllocationsDone ) THEN
+           n = CurrentModel % Mesh % MaxElementNodes
+           ALLOCATE( Handle % Values(n) )
+           Handle % Values = 0.0_dp
+           ALLOCATE( Handle % ParValues(MAX_FNC,n) )
+           Handle % ParValues = 0.0_dp
+           Handle % AllocationsDone = .TRUE.
+         END IF
+         
+         Handle % Element => PElement
+         n = PElement % TYPE % NumberOfNodes 
+         NodeIndexes => PElement % NodeIndexes
+         
+         IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
+             ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
+
+           ! These might not have been initialized if this is has mixed evaluation strategies           
+           IF(.NOT. ASSOCIATED( Handle % ParValues )) THEN
+             ALLOCATE( Handle % ParValues(MAX_FNC,CurrentModel % Mesh % MaxElementNodes) )
+             Handle % ParValues = 0.0_dp
+           END IF
+           
+           DO i=1,n
+             k = NodeIndexes(i)
+             CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
+             
+             IF( AllGlobal ) THEN
+               CALL Fatal('ListGetElementReal','Constant lists should not need to be here')
+             END IF
+             
+             Handle % ParNo = j 
+             Handle % ParValues(1:j,i) = T(1:j)
+           END DO
+         END IF
+
+         ParF => Handle % ParValues         
+       END IF
+
+
+       SELECT CASE(ptr % TYPE)
+         
+       CASE( LIST_TYPE_VARIABLE_SCALAR )
+         
+         DO j=1,Handle % ParNo 
+           T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
+         END DO
+         
+         ! there is no node index, so use zero
+         j = 0 
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           CALL ListPushActiveName(name)
+           val = ExecRealFunction( ptr % PROCEDURE,CurrentModel, j, T )
+           CALL ListPopActiveName()
+         ELSE
+           val = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
+               T(1), ptr % CubicCoeff )
+         END IF
+         
+       CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+         DO j=1,Handle % ParNo 
+           T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
+         END DO
+         ! there is no node index, so use zero
+         j = 0 
+         
+         TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+         WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
+         k = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k )
+         
+         DO l=1,Handle % ParNo
+           WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+         END DO
+         
+         cmd = ptr % CValue
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         READ( tmp_str(1:k1), * ) val
+         
+       CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           x = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % x( NodeIndexes(1:n) ) )
+           y = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n) ) )
+           z = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n) ) )
+
+           CALL ListPushActiveName(name)
+           val = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,x,y,z)
+           CALL ListPopActiveName()
+         ELSE
+           CALL Fatal('ListGetElementReal','Constant scalar evaluation failed at ip!')
+         END IF
+           
+       CASE DEFAULT
+         
+         CALL Fatal('ListGetElementReal','Unknown case for avaluation at ip')
+         
+       END SELECT
+     
+     ELSE
+
+       ! If we get back to the same element than last time use the data already 
+       ! retrieved. If the element is new then get the data in every node of the 
+       ! current element, or only in the 1st node if it is constant. 
+       
+       IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
+         n = Handle % Element % TYPE % NumberOfNodes 
+         F => Handle % Values       
+       ELSE
+         
+         IF( .NOT. Handle % AllocationsDone ) THEN
+           n = CurrentModel % Mesh % MaxElementNodes
+           ALLOCATE( Handle % Values(n) )
+           Handle % Values = 0.0_dp
+           Handle % AllocationsDone = .TRUE.
+         END IF
+         
+         Handle % Element => PElement
+         n = PElement % TYPE % NumberOfNodes 
+         NodeIndexes => PElement % NodeIndexes
+         F => Handle % Values
+         
+         SELECT CASE(ptr % TYPE)
+           
+         CASE( LIST_TYPE_CONSTANT_SCALAR )
+           
+           Handle % ConstantInList = .TRUE.                      
+           IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+             WRITE(Message,*) 'Value type for property [', TRIM(Name), &
+                 '] not used consistently.'
+             CALL Fatal( 'ListGetElementReal', Message )
+             RETURN
+           END IF
+           F(1) = ptr % Coeff * ptr % Fvalues(1,1,1)
+
+
+         CASE( LIST_TYPE_VARIABLE_SCALAR )
+           CALL ListPushActiveName(name)
+           DO i=1,n
+             k = NodeIndexes(i)
+             CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
+             
+             IF ( .NOT. ANY( T(1:j) == HUGE(1.0_dp) ) ) THEN
+               IF ( ptr % PROCEDURE /= 0 ) THEN
+                 F(i) = ptr % Coeff * &
+                     ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
+                     NodeIndexes(i), T )              
+               ELSE
+                 IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+                   WRITE(Message,*) 'Value type for property [', TRIM(Name), &
+                       '] not used consistently.'
+                   CALL Fatal( 'ListGetElementReal', Message )
+                   RETURN
+                 END IF
+                 F(i) = ptr % Coeff * &
+                     InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
+                     T(1), ptr % CubicCoeff )
+                 
+                 ! If the dependency table includes just global values (such as time) 
+                 ! the values will be the same for all element entries.
+                 IF( AllGlobal ) THEN
+                   Handle % ConstantInList = .TRUE.
+                   EXIT
+                 END IF
+                 
+               END IF
+             END IF
+           END DO
+           CALL ListPopActiveName()
+           
+         CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
+           Handle % ConstantInList = .TRUE.
+           
+           TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+           WRITE( cmd, '(a,e15.8)' ) 'st = ', TVar % Values(1)
+           k = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k )
+           
+           cmd = ptr % CValue
+           k = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k )
+           READ( tmp_str(1:k), * ) F(1)
+           F(1) = ptr % Coeff * F(1) 
+
+         CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+           TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+           WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
+           k = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k )
+           
+           DO i=1,n
+             k = NodeIndexes(i)
+             CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
+             IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
+               DO l=1,j
+                 WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+                 k1 = LEN_TRIM(cmd)
+                 CALL matc( cmd, tmp_str, k1 )
+               END DO
+               
+               cmd = ptr % CValue
+               k1 = LEN_TRIM(cmd)
+               CALL matc( cmd, tmp_str, k1 )
+               READ( tmp_str(1:k1), * ) F(i)
+               F(i) = ptr % Coeff * F(i)
+             END IF
+             
+             IF( AllGlobal ) THEN
+               Handle % ConstantInList = .TRUE.
+               EXIT
+             END IF            
+           END DO
+
+         CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+           IF ( ptr % PROCEDURE == 0 ) THEN
+             WRITE(Message,*) 'Value type for property [', TRIM(Name), &
+                 '] not used consistently.'
+             CALL Fatal( 'ListGetElementReal', Message )
+             RETURN
+           END IF
+           
+           CALL ListPushActiveName(name)
+           DO i=1,n
+             F(i) = ptr % Coeff * &
+                 ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
+                 CurrentModel % Mesh % Nodes % x( NodeIndexes(i) ), &
+                 CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
+                 CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
+           END DO
+           CALL ListPopActiveName()
+           
+         END SELECT
+       END IF
+       
+       IF( Handle % ConstantInList ) THEN
+         val = F(1)
+       ELSE
+         IF(.NOT. PRESENT(Basis)) THEN
+           CALL Fatal('ListGetElementReal','Parameter > Basis < is required!')
+         ELSE
+           val = SUM( Basis(1:n) * F(1:n) )
+         END IF
+       END IF
+     END IF
+
+
+     IF ( PRESENT( minv ) ) THEN
+       IF ( val < minv ) THEN
+         WRITE( Message,*) 'Given value ',val, ' for property: ', '[', TRIM(Name),']', &
+             ' smaller than given minimum: ', minv
+         CALL Fatal( 'ListGetElementReal', Message )
+       END IF
+     END IF
+       
+     IF ( PRESENT( maxv ) ) THEN
+       IF ( val > maxv ) THEN
+         WRITE( Message,*) 'Given value ',val, ' for property: ', '[', TRIM(Name),']', &
+             ' larger than given maximum ', maxv
+         CALL Fatal( 'ListGetElementReal', Message )
+       END IF
+     END IF
+
+
+   END FUNCTION ListGetElementReal
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+!> Initializes the handle to save just a little bit for constant valued.
+!> This is not mandatory but may still be used. 
+!------------------------------------------------------------------------------
+   RECURSIVE SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     CHARACTER(LEN=*)  :: Section,Name
+     REAL(KIND=dp), OPTIONAL :: minv,maxv
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     INTEGER :: i, n, NoVal
+     TYPE(Model_t), POINTER :: Model
+     REAL(KIND=dp)  :: val
+     LOGICAL :: ConstantEverywhere, NotPresentAnywhere, Found
+     REAL(KIND=dp), POINTER :: Basis(:)
+     INTEGER, POINTER :: NodeIndexes(:)
+     TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+
+
+     SELECT CASE ( Section ) 
+
+     CASE('Body')
+       Handle % SectionType = SECTION_TYPE_BODY
+
+     CASE('Material')
+       Handle % SectionType = SECTION_TYPE_MATERIAL
+         
+     CASE('Body Force')
+       Handle % SectionType = SECTION_TYPE_BF
+       
+     CASE('Initial Condition')
+       Handle % SectionType = SECTION_TYPE_IC
+       
+     CASE('Boundary Condition')
+       Handle % SectionType = SECTION_TYPE_BC
+
+     CASE('Component')
+       Handle % SectionType = SECTION_TYPE_COMPONENT
+
+     CASE('Simulation')
+       Handle % SectionType = SECTION_TYPE_SIMULATION
+       
+     CASE DEFAULT
+       CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(Section))
+         
+     END SELECT
+
+
+
+    DO WHILE(.TRUE.) 
+       i = i + 1
+
+       SELECT CASE ( Handle % SectionType ) 
+        CASE( SECTION_TYPE_MATERIAL )
+         IF(i > Model % NumberOfMaterials) EXIT
+         List => Model % Materials(i) % Values
+        
+
+       CASE( SECTION_TYPE_MATERIAL )
+         IF(i > Model % NumberOfMaterials) EXIT
+         List => Model % Materials(i) % Values
+         
+       CASE( SECTION_TYPE_BF )
+         IF(i > Model % NumberOfBodyForces) EXIT        
+         List => Model % BodyForces(i) % Values
+         
+       CASE( SECTION_TYPE_IC )
+         IF( i > Model % NumberOfICs) EXIT
+         List => Model % ICs(i) % Values
+
+       CASE( SECTION_TYPE_BC )
+         IF( i > Model % NumberOfBCs ) EXIT        
+         List => Model % BCs(i) % Values
+
+       CASE DEFAULT
+         CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(Section))
+         
+       END SELECT
+       
+       ! If the parameter is not defined in some list we cannot really be sure
+       ! that it is intentionally used as a zero. Hence we cannot assume that the
+       ! keyword is constant. 
+       ptr => ListFind(List,Name,Found)
+
+
+       IF( FirstItem ) THEN
+         FirstItem = .FALSE.
+         IF( ptr % type 
+
+
+
+       IF ( .NOT.ASSOCIATED(ptr) ) THEN
+         ConstantEverywhere = .FALSE.
+         EXIT
+       END IF
+
+       
+
+
+       ! The value must be constant in each list and
+       Handle % ConstantInList = .FALSE.
+       val = ListGetRealAtIp( Handle,List,Basis,Name,minv=minv,maxv=maxv)
+       IF( .NOT. Handle % ConstantInList ) THEN
+         ConstantEverywhere = .FALSE.
+         EXIT
+       END IF
+       
+       ! and each list must have the same constant value
+       NoVal = NoVal + 1
+       IF( NoVal == 1 ) THEN
+         Handle % ConstantValue = val
+       ELSE IF( ABS ( Handle % ConstantValue - val ) > TINY( val ) ) THEN
+         ConstantEverywhere = .FALSE.
+         EXIT
+       END IF
+     END DO
+
+
+     
+     NoVal = 0
+     ConstantEverywhere = .TRUE.
+     NotPresentAnywhere = .TRUE.
+     Model => CurrentModel
+     Handle % Name = Name 
+     Handle % Initialized = .TRUE.
+
+
+     
+     ! Allocate space for temporal values
+     IF(.NOT. Handle % AllocationsDone ) THEN
+       n = CurrentModel % Mesh % MaxElementNodes
+       ALLOCATE( Handle % Values(n) )
+       Handle % Values = 0.0_dp
+       Handle % AllocationsDone = .TRUE.
+     END IF
+
+     ! Loop over the full lists and check whether the keyword is constant in all of them
+     ! Unfortunately only keywords that are present in all lists can be deduced to be 
+     ! truly constant. This is a conservative estimate, but best we can do without 
+     ! involving the active elements into the picture.
+     i = 0
+     Element => CurrentModel % Mesh % Elements(1)
+     CurrentModel % CurrentElement => CurrentModel % Mesh % Elements(1)
+     n = Element % TYPE % NumberOfNodes 
+     ALLOCATE( Basis(n) )
+     Basis = 0.0_dp
+     FirstItem = .TRUE.
+
+     
+ 
+     
+     IF( ConstantEverywhere ) THEN       
+       WRITE( Message,'(A)') 'Constant keyword: '//TRIM(Name)
+       CALL Info('ListInitRealAtIp',Message,Level=8)
+       WRITE( Message,'(A,ES15.4)') 'Constant value:',val
+       CALL Info('ListInitRealAtIp',Message,Level=8)
+     END IF
+
+     Handle % ConstantEverywhere = ConstantEverywhere 
+
+   END SUBROUTINE ListInitRealAtIp
+
+   
+
+   
+!------------------------------------------------------------------------------
+!> Gets a logical valued parameter in elements.
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetElementLogical( Handle, Element, Found ) RESULT(val)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     LOGICAL, OPTIONAL :: Found
+     LOGICAL  :: val
+!------------------------------------------------------------------------------     
+     TYPE(ValueList_t), POINTER :: List
+     TYPE(Element_t), POINTER :: PElement
+!------------------------------------------------------------------------------
+
+     ! If value is not present anywhere then return False
+     IF( Handle % NotPresentAnywhere ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       val = .FALSE.
+       RETURN
+     END IF
+     
+     ! If the value is known to be globally constant return it asap.
+     IF( Handle % ConstantEverywhere ) THEN
+       IF(PRESENT(Found)) Found = .TRUE.
+       val = Handle % LogicalVal
+       RETURN
+     END IF
+
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PEelement => CurrentModel % CurrentElement
+     END IF
+
+     ListSame = .FALSE.
+     ListFound = .FALSE.
+     
+     ! We know by initialization the list entry type that the keyword has
+     ! Find the correct list to look the keyword in.
+     ! Bulk and boundary elements are treated separately.
+     IF( Handle % BulkElement ) THEN     
+       BodyId = PElement % BodyId
+
+       IF( BodyId == 0 ) THEN
+         CALL Warn('ListGetElementLogical','Bulk handle called for boundary?')
+       END IF
+       
+       IF( Handle % BodyId == BodyId ) THEN
+         ListSame = .TRUE.
+       ELSE       
+         SELECT CASE ( Handle % SectionType )
+
+         CASE( SECTION_BODY )
+           List => CurrentModel % Bodies(id) % Values
+           ListFound = .TRUE.
+
+         CASE( SECTION_BF )
+           id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+               'Body Force', ListFound )         
+           IF( ListFound ) List => CurrentModel % BodyForces(id) % Values
+
+         CASE( SECTION_IC )
+           id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+               'Initial Condition', ListFound )         
+           IF(ListFound) List => CurrentModel % ICs(id) % Values
+
+         CASE( SECTION_MATERIAL ) 
+           id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+               'Material', ListFound )         
+           IF(ListFound) List => CurrentModel % Materials(id) % Values
+
+         CASE DEFAULT 
+           CALL Fatal('ListGetElementLogical','Unknown section type!')
+
+         END SELECT
+       END IF
+         
+     ELSE  ! Boundary element
+       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
+         IF( Handle % BoundaryInfo == Element % BoundaryInfo ) THEN
+           ListSame = .TRUE.
+         ELSE
+           DO bc_id=1,CurrentModel % NumberOfBCs
+             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) THEN
+               List => CurrentModel % BCs(bc_id) % Values
+               ListFound = .TRUE.
+               EXIT
+             END IF
+           END DO
+         END IF
+       END IF
+     END IF
+
+
+     IF( ListSame ) THEN
+       IF( PRESENT( Found ) ) Found = Handle % Found 
+       val = Handle % LogicalVal
+     ELSE IF( ListFound ) THEN
+       val = ListGetLogical( List, Handle % Name, Found )
+       Handle % LogicalVal = Val
+       IF(PRESENT(Found)) Handle % Found = Found 
+       IF( Handle % BulkElement ) THEN       
+         Handle % BodyId = BodyId
+       ELSE
+         Handle % BoundaryInfo => ElementBoundaryInfo
+       END IF
+     ELSE     
+       val = .FALSE
+       IF( PRESENT(Found) ) THEN
+         Found = .FALSE.
+         Handle % Found = .FALSE.
+       END IF
+       IF( Handle % BulkElement ) THEN       
+         Handle % BodyId = BodyId
+       END IF
+     END IF
+              
+     
+   END FUNCTION ListGetElementLogical
+!------------------------------------------------------------------------------
+
+
+
+
+   
 !------------------------------------------------------------------------------
 !> Initializes the handle to save just a little bit for constant valued.
 !> This is not mandatory but may still be used. 
