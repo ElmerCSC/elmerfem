@@ -1393,8 +1393,9 @@ CONTAINS
      END IF
 
      n = 0
-     IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found )) THEN
-        n = Element % DGDOFs
+     !IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found )) THEN
+     IF( Solver % DG ) THEN
+       n = Element % DGDOFs
         IF ( n>0 ) RETURN
      END IF
 
@@ -1424,8 +1425,10 @@ CONTAINS
         END DO
      END IF
 
-     GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-     IF (.NOT.Found) GB = .TRUE.
+     !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
+     !IF (.NOT.Found) GB = .TRUE.
+     GB = Solver % GlobalBubbles
+     
      IF ( GB .OR. ASSOCIATED(Element % BoundaryInfo) ) n=n+MAX(0,Element % BDOFs)
   END FUNCTION GetElementNOFDOFs
 
@@ -1456,7 +1459,8 @@ CONTAINS
      DGDisable=.FALSE.
      IF (PRESENT(NotDG)) DGDisable=NotDG
 
-     IF ( .NOT.DGDisable .AND. ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found ) ) THEN
+     ! IF ( .NOT.DGDisable .AND. ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found ) ) THEN
+     IF ( .NOT.DGDisable .AND. Solver % DG ) THEN
         DO i=1,Element % DGDOFs
            NB = NB + 1
            Indexes(NB) = Element % DGIndexes(i)
@@ -1530,8 +1534,7 @@ CONTAINS
         END DO
      END IF
 
-     GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-     IF (.NOT.Found) GB = .TRUE.
+     GB = Solver % GlobalBubbles 
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
        Parent => Element % BoundaryInfo % Left
@@ -1620,9 +1623,9 @@ CONTAINS
        Solver => CurrentModel % Solver
     END IF
 
-    GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-    IF (.NOT.Found) GB = .TRUE.
-
+    !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
+    !IF (.NOT.Found) GB = .TRUE.
+    GB = Solver % GlobalBubbles
 
     n = 0
     IF ( .NOT. GB ) THEN
@@ -2611,6 +2614,8 @@ CONTAINS
      REAL(KIND=dp) :: dt
      LOGICAL :: Transient, Found, alloc_parenv
 
+     TYPE(ParEnv_t) :: SParEnv
+
      INTERFACE
        SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
          USE Types
@@ -2642,42 +2647,28 @@ CONTAINS
        CALL Info('DefaultSlaveSolvers','Calling slave solver: '//TRIM(I2S(k)),Level=8)
        
        IF(ParEnv % PEs>1) THEN
-         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
+         SParEnv = ParEnv
 
-         alloc_parenv = .FALSE.
          IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
            IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
              ParEnv = SlaveSolver % Matrix % ParMatrix % ParEnv
            ELSE
-             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+             ParEnv % ActiveComm = SlaveSolver % Matrix % Comm
            END IF
          ELSE
-           ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+           CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
          END IF
-         ParEnv % ActiveComm = Solver % Matrix % Comm
        END IF
 
        CurrentModel % Solver => SlaveSolver
        CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
 
        IF(ParEnv % PEs>1) THEN
-         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .FALSE.)
-
-         IF(alloc_parenv) THEN
-           DEALLOCATE(ParEnv % Active)
-           ParEnv % Active => NULL()
-         END IF
-
-         IF(ASSOCIATED(Solver % Matrix)) THEN
-           IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
-               ParEnv = Solver % Matrix % ParMatrix % ParEnv
-         END IF
+         ParEnv = SParEnv
        END IF
      END DO
-     CurrentModel % Solver => Solver
      iterV % Values = iter       
+     CurrentModel % Solver => Solver
 
    END SUBROUTINE DefaultSlaveSolvers
 !------------------------------------------------------------------------------
@@ -2987,19 +2978,15 @@ CONTAINS
      END IF
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
-       str = ListGetString( Solver % Values, 'Boundary Element Procedure', Found )
+       Proc = Solver % BoundaryElementProcedure
      ELSE
-       str = ListGetString( Solver % Values, 'Bulk Element Procedure', Found )
+       Proc = Solver % BulkElementProcedure
      END IF
-
-     IF ( Found ) THEN
-       Proc = GetProcAddr( str, abort=.FALSE.,quiet=.TRUE. )
-       IF ( Proc /= 0 ) THEN
-         n  = GetElementNOFNodes( Element )
-         nd = GetElementNOFDOFs( Element, Solver )
-         CALL ExecLocalProc( Proc, CurrentModel, Solver, &
-                G, F, Element, n, nd )
-       END IF
+     IF ( Proc /= 0 ) THEN
+       n  = GetElementNOFNodes( Element )
+       nd = GetElementNOFDOFs( Element, Solver )
+       CALL ExecLocalProc( Proc, CurrentModel, Solver, &
+           G, F, Element, n, nd )
      END IF
 
      IF ( ParEnv % PEs > 1 ) THEN
@@ -3054,13 +3041,13 @@ CONTAINS
        Indexes => GetIndexStore()
        n = GetElementDOFs( Indexes, Element, Solver )
 
-       IF(GetString(Solver % Values, 'Linear System Direct Method',Found)=='permon') THEN
+       IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
          CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
        ELSE
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-                            x % Perm(Indexes(1:n)), UElement=Element )
+                              x % Perm(Indexes(1:n)), UElement=Element )
        END IF
      END IF
 !------------------------------------------------------------------------------

@@ -137,7 +137,7 @@ END SUBROUTINE StatCurrentSolver_Init
           ElementNodes, CalculateCurrent, CalculateHeating, &
           AllocationsDone, VolCurrent, Heating, Conductivity, &
           CalculateField, ConstantWeights, &
-          Cwrk, ControlScaling
+          Cwrk, ControlScaling, CalculateNodalHeating
      
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -530,8 +530,9 @@ END SUBROUTINE StatCurrentSolver_Init
          Potential = ControlScaling * Potential
 !         Solver % Variable % Norm = ControlScaling * Solver % Variable % Norm
 
-         IF ( CalculateHeating .OR. CalculateNodalHeating)  &
-             Heating = ControlScaling**2 * Heating
+         IF ( CalculateHeating )  Heating = ControlScaling**2 * Heating
+         IF ( CalculateNodalHeating)  &
+             NodalHeating = ControlScaling**2 * NodalHeating
          IF ( CalculateCurrent )  VolCurrent = ControlScaling * VolCurrent
        END IF
 
@@ -605,7 +606,8 @@ END SUBROUTINE StatCurrentSolver_Init
 
     HeatingTot = 0.0d0
     VolTot = 0.0d0
-    IF ( CalculateHeating .OR. CalculateNodalHeating)  Heating = 0.0d0
+    IF ( CalculateHeating )  Heating = 0.0d0
+    IF ( CalculateNodalHeating)  NodalHeating = 0.0d0
     IF ( CalculateCurrent )  VolCurrent = 0.0d0
 
 !------------------------------------------------------------------------------
