@@ -24,19 +24,6 @@ if (r < L) {\
 }
 
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! CONSTANTS
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-Constants
-  Gas Constant = Real 8.314D00 ! in m-k-s
-  Stefan Boltzmann = Real 6.78E-08
-  Gravity (4) = 0 -1 0  9.81
-  $yearinsec = 365.25*24*60*60
-  $rhoi = 910.0/(1.0e6*yearinsec^2)
-  $gravity = -9.81*yearinsec^2
-  $n = 3.0
-  $eta = (2.0*100.0)^(-1.0/n)
-End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! SIMULATION
@@ -416,7 +403,7 @@ End
 
 
 Boundary Condition 1
-  Target Boundaries = 1 !right??
+  Target Boundaries = 1 
   Name = "Outflow"
   ComputeNormal = Logical False
 End
