@@ -10620,14 +10620,14 @@ END IF
 
        CASE DEFAULT
          EdgeMap => LGetEdgeMap(Family)
-         hK = -1.0 * HUGE(1.0_dp)
+         hK = HUGE(1.0_dp)
          DO i=1,SIZE(EdgeMap,1)
            j=EdgeMap(i,1)
            k=EdgeMap(i,2)
            x0 = X(j) - X(k)
            y0 = Y(j) - Y(k)
            z0 = Z(j) - Z(k)
-           hk = MAX(hK, x0**2 + y0**2 + z0**2)
+           hk = MIN(hK, x0**2 + y0**2 + z0**2)
          END DO
      END SELECT
 
@@ -11813,11 +11813,6 @@ END FUNCTION PointFaceDistance
 
     MaxIndex = MAXLOC(ABS(ez),1)
     MinIndex = MINLOC(ABS(ez),1)
-
-    !Special case when calving front perfectly aligned to either
-    ! x or y axis. In this case, make minindex = 3 (ex points upwards)
-    IF(ABS(ez(3)) == ABS(ez(2)) .OR. ABS(ez(3)) == ABS(ez(1))) &
-         MinIndex = 3
 
     DO i=1,3
        IF(i == MaxIndex .OR. i == MinIndex) CYCLE
