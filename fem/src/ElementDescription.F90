@@ -11814,6 +11814,11 @@ END FUNCTION PointFaceDistance
     MaxIndex = MAXLOC(ABS(ez),1)
     MinIndex = MINLOC(ABS(ez),1)
 
+    !Special case when calving front perfectly aligned to either
+    ! x or y axis. In this case, make minindex = 3 (ex points upwards)
+    IF(ABS(ez(3)) == ABS(ez(2)) .OR. ABS(ez(3)) == ABS(ez(1))) &
+         MinIndex = 3
+
     DO i=1,3
        IF(i == MaxIndex .OR. i == MinIndex) CYCLE
        MidIndex = i
