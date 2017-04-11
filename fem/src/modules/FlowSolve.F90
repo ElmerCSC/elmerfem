@@ -1585,7 +1585,9 @@
         ! Go for GL&FF element 
         IF (GLFFElementIndex > 0) THEN
           Element => GetBoundaryElement(GLFFElementIndex)
-          WRITE(134, *) Time, GLFFElementIndex, GroundingLinePara( GroundingLineParaPerm(Element % NodeIndexes) )
+          WRITE(134, *) Time, GLFFElementIndex, GLPosition, &
+                GroundedMask(GroundedMaskPerm(Element % NodeIndexes)), &
+                GroundingLinePara( GroundingLineParaPerm(Element % NodeIndexes) )
           ! IF (ASSOCIATED(Element % propertydata)) THEN           
           !   FFParaData => Element % propertydata % values
           ! END IF
