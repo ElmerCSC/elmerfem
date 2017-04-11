@@ -76,7 +76,7 @@
    ! Initialisation
    !-----------------------------------------------
 
-   Debug = .TRUE.
+   Debug = .FALSE.
    Parallel = (ParEnv % PEs > 1)
    Boss = ParEnv % MyPE == 0
 

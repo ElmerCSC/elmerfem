@@ -643,7 +643,7 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
          FarNode(:), DeleteNode(:), Constriction(:)
 
-    Debug = .TRUE.
+    Debug = .FALSE.
     Snakey = .TRUE.
 
     RotationMatrix = ComputeRotationMatrix(FrontOrientation)

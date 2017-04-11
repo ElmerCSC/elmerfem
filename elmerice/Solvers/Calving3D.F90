@@ -1720,7 +1720,7 @@ CONTAINS
 
    SAVE :: Visited
 
-   Debug = .TRUE.
+   Debug = .FALSE.
    MaxBergVol = 0.0_dp
 
    !Boss has:
