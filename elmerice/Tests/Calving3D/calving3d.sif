@@ -64,6 +64,7 @@ Simulation
 
   Extruded Mesh Levels = Integer 10
   Remesh Extruded Mesh Levels = Integer 10
+  Stabilization Use Longest Element Edge = Logical True
   ! Extruded Mesh Density = Variable Coordinate 1
   !   Real MATC "0.2+sin(tx*(pi*0.5))"
 
@@ -161,6 +162,7 @@ Solver 1
   Exec Solver = "Before Simulation" !If we restart from Output Coordinates = True, don't need this
   Active Coordinate = Integer 3
   Mesh Velocity First Zero = Logical True
+  Recompute Stabilization = Logical True
 End
 
 Solver 2

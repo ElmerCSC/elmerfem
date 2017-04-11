@@ -616,7 +616,7 @@ CONTAINS
 !
 !> L = (\nablda^2 u,\nabla^ w), G = (\nabla u,\nabla w)
 !------------------------------------------------------------------------------
-   SUBROUTINE StabParam(Element,Nodes,n,mK,hK)
+   SUBROUTINE StabParam(Element,Nodes,n,mK,hK,UseLongEdge)
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
@@ -625,6 +625,7 @@ CONTAINS
       TYPE(Nodes_t) :: Nodes
       REAL(KIND=dp) :: mK
       REAL(KIND=dp), OPTIONAL :: hK
+      LOGICAL, OPTIONAL :: UseLongEdge
 !------------------------------------------------------------------------------
       INTEGER :: info,p,q,i,j,t,dim
       REAL(KIND=dp) :: EIGR(n),EIGI(n),Beta(n),s,ddp(3),ddq(3),dNodalBasisdx(n,n,3)
@@ -641,7 +642,7 @@ CONTAINS
            CASE( 808 )
               mK = 1.0d0 / 6.0d0
          END SELECT
-         IF ( PRESENT( hK ) ) hK = ElementDiameter( Element, Nodes )
+         IF ( PRESENT( hK ) ) hK = ElementDiameter( Element, Nodes, UseLongEdge)
          RETURN
       END IF
 
@@ -685,7 +686,7 @@ CONTAINS
       IF ( ALL(ABS(L) < AEPS) ) THEN
         mK = 1.0d0 / 3.0d0
         IF ( PRESENT(hK) ) THEN
-          hK = ElementDiameter( Element,Nodes )
+          hK = ElementDiameter( Element,Nodes,UseLongEdge)
         END IF
         RETURN
       END IF
@@ -697,7 +698,7 @@ CONTAINS
       IF ( mK < 10*AEPS ) THEN
         mK = 1.0d0 / 3.0d0
         IF ( PRESENT(hK) ) THEN
-          hK = ElementDiameter( Element,Nodes )
+          hK = ElementDiameter( Element,Nodes,UseLongEdge )
         END IF
         RETURN
       END IF
@@ -10548,7 +10549,7 @@ END IF
 !------------------------------------------------------------------------------
 !>    Figure out element diameter parameter for stablization.
 !------------------------------------------------------------------------------
-   FUNCTION ElementDiameter( elm, nodes, longedge ) RESULT(hK)
+   FUNCTION ElementDiameter( elm, nodes, UseLongEdge ) RESULT(hK)
 !------------------------------------------------------------------------------
 !
 !  ARGUMENTS:
@@ -10564,7 +10565,7 @@ END IF
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: elm
      TYPE(Nodes_t) :: nodes
-     LOGICAL, OPTIONAL :: longedge
+     LOGICAL, OPTIONAL :: UseLongEdge
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -10573,10 +10574,10 @@ END IF
      INTEGER, POINTER :: EdgeMap(:,:)
      REAL(KIND=dp) :: x0,y0,z0,hK,A,S,CX,CY,CZ
      REAL(KIND=dp) :: J11,J12,J13,J21,J22,J23,G11,G12,G21,G22
-     LOGICAL :: UseLongEdge=.FALSE.
+     LOGICAL :: LongEdge=.FALSE.
 !------------------------------------------------------------------------------
 
-     IF(PRESENT(longedge)) UseLongEdge = longedge
+     IF(PRESENT(UseLongEdge)) LongEdge = UseLongEdge
 
      X => Nodes % x
      Y => Nodes % y
@@ -10624,7 +10625,7 @@ END IF
        CASE DEFAULT
          EdgeMap => LGetEdgeMap(Family)
 
-         IF(UseLongEdge) THEN
+         IF(LongEdge) THEN
            hK = -1.0 * HUGE(1.0_dp)
          ELSE
            hK = HUGE(1.0_dp)
@@ -10636,7 +10637,7 @@ END IF
            x0 = X(j) - X(k)
            y0 = Y(j) - Y(k)
            z0 = Z(j) - Z(k)
-           IF(UseLongEdge) THEN
+           IF(LongEdge) THEN
              hk = MAX(hK, x0**2 + y0**2 + z0**2)
            ELSE
              hk = MIN(hK, x0**2 + y0**2 + z0**2)
