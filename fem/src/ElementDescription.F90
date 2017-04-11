@@ -10548,7 +10548,7 @@ END IF
 !------------------------------------------------------------------------------
 !>    Figure out element diameter parameter for stablization.
 !------------------------------------------------------------------------------
-   FUNCTION ElementDiameter( elm, nodes ) RESULT(hK)
+   FUNCTION ElementDiameter( elm, nodes, longedge ) RESULT(hK)
 !------------------------------------------------------------------------------
 !
 !  ARGUMENTS:
@@ -10564,7 +10564,7 @@ END IF
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: elm
      TYPE(Nodes_t) :: nodes
-
+     LOGICAL, OPTIONAL :: longedge
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -10573,7 +10573,10 @@ END IF
      INTEGER, POINTER :: EdgeMap(:,:)
      REAL(KIND=dp) :: x0,y0,z0,hK,A,S,CX,CY,CZ
      REAL(KIND=dp) :: J11,J12,J13,J21,J22,J23,G11,G12,G21,G22
+     LOGICAL :: UseLongEdge=.FALSE.
 !------------------------------------------------------------------------------
+
+     IF(PRESENT(longedge)) UseLongEdge = longedge
 
      X => Nodes % x
      Y => Nodes % y
@@ -10620,14 +10623,24 @@ END IF
 
        CASE DEFAULT
          EdgeMap => LGetEdgeMap(Family)
-         hK = HUGE(1.0_dp)
+
+         IF(UseLongEdge) THEN
+           hK = -1.0 * HUGE(1.0_dp)
+         ELSE
+           hK = HUGE(1.0_dp)
+         END IF
+
          DO i=1,SIZE(EdgeMap,1)
            j=EdgeMap(i,1)
            k=EdgeMap(i,2)
            x0 = X(j) - X(k)
            y0 = Y(j) - Y(k)
            z0 = Z(j) - Z(k)
-           hk = MIN(hK, x0**2 + y0**2 + z0**2)
+           IF(UseLongEdge) THEN
+             hk = MAX(hK, x0**2 + y0**2 + z0**2)
+           ELSE
+             hk = MIN(hK, x0**2 + y0**2 + z0**2)
+           END IF
          END DO
      END SELECT
 
