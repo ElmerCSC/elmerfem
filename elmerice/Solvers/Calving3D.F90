@@ -273,7 +273,7 @@
      END IF
    END IF
 
-   IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+   IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
    IF(Boss) THEN
       !Remove Left and Right nodes beyond the calving search distance
@@ -334,7 +334,7 @@
 
        Me = ParEnv % MyPe
        PEs = ParEnv % PEs
-       comm = MPI_COMM_WORLD
+       comm = ELMER_COMM_WORLD
 
        !Send node COUNT
        IF(Boss) ALLOCATE(PFaceNodeCount(PEs))
@@ -430,7 +430,7 @@
        !the maximum global node number
        CALL MPI_AllReduce(MAXVAL(Mesh % ParallelInfo % GlobalDOFs), TotalNodes, &
             1, MPI_INTEGER, MPI_MAX, comm,ierr)
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     ELSE
        TotalNodes = NoNodes
@@ -706,7 +706,7 @@
 
 
     END IF !Boss only
-    IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
@@ -726,7 +726,7 @@
          PRINT *, 'Time taken to load mesh: ', rt
     rt0 = RealTime()
 
-    IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     IF(Boss) THEN
       ! clear up mesh files
@@ -826,7 +826,7 @@
 
     Model % Solver => PCSolver
     CALL SingleSolver( Model, PCSolver, PCSolver % dt, .FALSE. )
-    IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
@@ -1078,7 +1078,7 @@
     ALLOCATE(InterpDim(2)); InterpDim = (/1,3/);
     CALL ParallelActive(.TRUE.)
     CALL InterpolateVarToVarReduced(IsoMesh, Mesh, "CalvingHeight", InterpDim, UnfoundNodes)
-    CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     HeightVar => VariableGet(Mesh % Variables, "CalvingHeight", .TRUE.)
 
@@ -1185,10 +1185,10 @@
       ! in response to the increasing parallelness of the nodes w.r.t
       ! the front direction.
 
-       CALL MPI_BCAST(FrontLineCount , 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+       CALL MPI_BCAST(FrontLineCount , 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
        IF(.NOT. Boss) ALLOCATE(FrontNodeNums(FrontLineCount))
-       CALL MPI_BCAST(FrontNodeNums , FrontLineCount, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+       CALL MPI_BCAST(FrontNodeNums , FrontLineCount, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
        ALLOCATE(FrontColumnList(FrontLineCount))
        FrontColumnList = MOD(FrontNodeNums, NodesPerLevel)
@@ -1221,14 +1221,14 @@
 
          !Pass to other partitions
          CALL MPI_AllReduce(MPI_IN_PLACE, Rot_y_coords(i,1), &
-              1, MPI_DOUBLE_PRECISION, MPI_MIN, MPI_COMM_WORLD,ierr)
+              1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD,ierr)
          CALL MPI_AllReduce(MPI_IN_PLACE, Rot_y_coords(i,2), &
-              1, MPI_DOUBLE_PRECISION, MPI_MAX, MPI_COMM_WORLD,ierr)
+              1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD,ierr)
 
          CALL MPI_AllReduce(MPI_IN_PLACE, Rot_z_coords(i,1), &
-              1, MPI_DOUBLE_PRECISION, MPI_MIN, MPI_COMM_WORLD,ierr)
+              1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD,ierr)
          CALL MPI_AllReduce(MPI_IN_PLACE, Rot_z_coords(i,2), &
-              1, MPI_DOUBLE_PRECISION, MPI_MAX, MPI_COMM_WORLD,ierr)
+              1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD,ierr)
 
          IF(Boss .AND. Debug) PRINT *,'Debug, rot_y_coords: ',i,rot_y_coords(i,:)
          IF(Boss .AND. Debug) PRINT *,'Debug, rot_z_coords: ',i,rot_z_coords(i,:)
@@ -1590,7 +1590,7 @@
        END DO
 
        DEALLOCATE(HeightDirich, FNColumns)
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     END IF !CalvingOccurs
 
@@ -1691,7 +1691,7 @@
 
     END IF
 
-    IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
 CONTAINS
 
@@ -1720,7 +1720,7 @@ CONTAINS
 
    SAVE :: Visited
 
-   Debug = .TRUE.
+   Debug = .FALSE.
    MaxBergVol = 0.0_dp
 
    !Boss has:
@@ -1802,7 +1802,7 @@ CONTAINS
 
    IF(sendcount > 0) THEN
       CALL MPI_BSEND(MyOrderedCalvingValues,sendcount, MPI_DOUBLE_PRECISION,0,&
-           1000+ParEnv % MyPE, MPI_COMM_WORLD, ierr)
+           1000+ParEnv % MyPE, ELMER_COMM_WORLD, ierr)
    END IF
 
    IF(BOSS) THEN
@@ -1816,11 +1816,11 @@ CONTAINS
 
          CALL MPI_RECV(WorkReal(start:fin), &
               PFaceNodeCount(i)*DOFs, MPI_DOUBLE_PRECISION, i-1, &
-              1000+i-1, MPI_COMM_WORLD, status, ierr)
+              1000+i-1, ELMER_COMM_WORLD, status, ierr)
       END DO
    END IF
 
-   CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+   CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
    IF(Boss) THEN
       !Remove duplicates, using previously computed duplicate positions

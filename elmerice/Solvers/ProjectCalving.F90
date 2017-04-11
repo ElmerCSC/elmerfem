@@ -629,13 +629,13 @@ CONTAINS
         END DO
       END IF
       CALL MPI_BSEND( cm_int, peNodes, MPI_INTEGER, pe, &
-                100, MPI_COMM_WORLD, ierr )
+                100, ELMER_COMM_WORLD, ierr )
       IF (totcount>0 ) THEN
         CALL MPI_BSEND( cm_values, DOFs_3D*totcount, &
-           MPI_DOUBLE_PRECISION, pe, 101, MPI_COMM_WORLD, ierr )
+           MPI_DOUBLE_PRECISION, pe, 101, ELMER_COMM_WORLD, ierr )
 
         CALL MPI_BSEND( cm_extent, totcount, &
-           MPI_DOUBLE_PRECISION, pe, 102, MPI_COMM_WORLD, ierr )
+           MPI_DOUBLE_PRECISION, pe, 102, ELMER_COMM_WORLD, ierr )
         DEALLOCATE( cm_values, cm_extent)
       END IF
       DEALLOCATE(cm_int )
@@ -655,7 +655,7 @@ CONTAINS
       IF ( pe==Parenv % mype ) CYCLE
 
       CALL MPI_RECV( cm_int, myNodes, MPI_INTEGER, pe, &
-             100, MPI_COMM_WORLD, status, ierr )
+             100, ELMER_COMM_WORLD, status, ierr )
 
       totcount=SUM(cm_int(1:myNodes))
 
@@ -663,10 +663,10 @@ CONTAINS
         ALLOCATE( cm_values(DOFs_3D*totcount), cm_extent(totcount) )
 
         CALL MPI_RECV( cm_values, DOFs_3D*totcount, &
-          MPI_DOUBLE_PRECISION, pe, 101, MPI_COMM_WORLD, status, ierr )
+          MPI_DOUBLE_PRECISION, pe, 101, ELMER_COMM_WORLD, status, ierr )
 
         CALL MPI_RECV( cm_extent, totcount, &
-          MPI_DOUBLE_PRECISION, pe, 102, MPI_COMM_WORLD, status, ierr )
+          MPI_DOUBLE_PRECISION, pe, 102, ELMER_COMM_WORLD, status, ierr )
 
         j = 0
         totcount = 0
@@ -918,7 +918,7 @@ CONTAINS
         k = j+peNodes-1
         DO l=1,DOFs_2D
           CALL MPI_RECV( ValueTable2D(l) % Values(j:k), peNodes, &
-            MPI_DOUBLE_PRECISION, pe, 104, MPI_COMM_WORLD, status, ierr )
+            MPI_DOUBLE_PRECISION, pe, 104, ELMER_COMM_WORLD, status, ierr )
         END DO
       END DO
     ELSE
@@ -926,11 +926,11 @@ CONTAINS
       k = j+myNodes-1
       DO l=1,DOFs_2D
         CALL MPI_BSEND( ValueTable2D(l) % Values(j:k), myNodes, &
-            MPI_DOUBLE_PRECISION, 0, 104, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, 0, 104, ELMER_COMM_WORLD, ierr )
       END DO
       Mesh2d % OutputActive = .FALSE.
     END IF
-    CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 !------------------------------------------------------------------------------
   END SUBROUTINE GatherResults
 !------------------------------------------------------------------------------

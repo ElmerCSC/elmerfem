@@ -131,7 +131,7 @@ SUBROUTINE TwoMeshes( Model,Solver,dt,TransientSimulation )
 
 !------------------------------------------------------------------------------
   
-  Debug = .TRUE.
+  Debug = .FALSE.
   SolverName = "TwoMeshes"
 
   CALL Info( SolverName, '-----------------------------------' )

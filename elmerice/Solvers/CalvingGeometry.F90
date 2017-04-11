@@ -643,7 +643,7 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
          FarNode(:), DeleteNode(:), Constriction(:)
 
-    Debug = .TRUE.
+    Debug = .FALSE.
     Snakey = .TRUE.
 
     RotationMatrix = ComputeRotationMatrix(FrontOrientation)
@@ -1806,7 +1806,7 @@ CONTAINS
     NoNodes = SIZE(TopPerm) !total number of nodes in domain/partition
 
     IF(Parallel) THEN
-       comm = MPI_COMM_WORLD
+       comm = ELMER_COMM_WORLD
        Boss = (ParEnv % MyPE == 0)
     ELSE
        Boss = .TRUE. !only one part in serial, so it's in charge of computation
@@ -1885,7 +1885,7 @@ CONTAINS
     ALLOCATE(POrphanCounts(ParEnv % PEs),disps(ParEnv % PEs))
 
     CALL MPI_AllGather(SIZE(MyOrphans), 1, MPI_INTEGER, POrphanCounts, &
-         1, MPI_INTEGER, MPI_COMM_WORLD, ierr)
+         1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
     disps(1) = 0
     DO i=2, ParEnv % PEs
@@ -1897,7 +1897,7 @@ CONTAINS
     !gather orphans
     CALL MPI_AllGatherV(MyOrphans, SIZE(MyOrphans), MPI_INTEGER, &
          GlobalOrphans, POrphanCounts, disps, MPI_INTEGER, &
-         MPI_COMM_WORLD, ierr)
+         ELMER_COMM_WORLD, ierr)
 
     !note which partition sent each orphan node
     counter = 1
@@ -2113,7 +2113,7 @@ CONTAINS
        CALL MPI_GATHER(NoNodesOnEdge, 1, MPI_INTEGER, PartNodesOnEdge, &
             1, MPI_INTEGER, 0, comm ,ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        IF(Debug .AND. Boss) THEN
           PRINT *, 'boss size(SegStarts_Gather): ', SIZE(SegStarts_Gather)
@@ -2129,7 +2129,7 @@ CONTAINS
        CALL MPI_GATHERV(NewSegStart, MAX(Segments-1,0), MPI_INTEGER, SegStarts_Gather, &
             WorkInt, disps, MPI_INTEGER, 0, comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        IF(Boss) THEN
           ALLOCATE(PartSegStarts(ParEnv % PEs))
@@ -2155,7 +2155,7 @@ CONTAINS
        CALL MPI_GATHERV(MyNeighbourParts, Segments*2, MPI_INTEGER, NeighbourPartsList, &
             WorkInt, disps, MPI_INTEGER, 0, comm ,ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        IF(Debug .AND. Boss) PRINT *, 'DEBUG, NewSegStart: ', NewSegStart
 
@@ -2201,7 +2201,7 @@ CONTAINS
             UOGlobalNodeNums,PartNodesOnEdge,&
             nodenum_disps,MPI_INTEGER,0,comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        !X coords
        CALL MPI_GATHERV(Mesh % Nodes % x(OrderedNodeNums),&
@@ -2209,7 +2209,7 @@ CONTAINS
             UnorderedNodes % x,PartNodesOnEdge,&
             nodenum_disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        !Y coords
        CALL MPI_GATHERV(Mesh % Nodes % y(OrderedNodeNums),&
@@ -2217,7 +2217,7 @@ CONTAINS
             UnorderedNodes % y,PartNodesOnEdge,&
             nodenum_disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        !Z coords
        CALL MPI_GATHERV(Mesh % Nodes % z(OrderedNodeNums),&
@@ -2225,7 +2225,7 @@ CONTAINS
             UnorderedNodes % z,PartNodesOnEdge,&
             nodenum_disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        !-----------------------------------------------------------
        ! Determine order of partitions by linking neighbours and
@@ -2834,9 +2834,9 @@ CONTAINS
          AllSharedNewGlobal(2*ParEnv % PEs))
 
     CALL MPI_ALLGATHER(SharedExGlobal,2,MPI_INTEGER,&
-         AllSharedExGlobal,2,MPI_INTEGER, MPI_COMM_WORLD, ierr)
+         AllSharedExGlobal,2,MPI_INTEGER, ELMER_COMM_WORLD, ierr)
     CALL MPI_ALLGATHER(SharedNewGlobal,2,MPI_INTEGER,&
-         AllSharedNewGlobal,2,MPI_INTEGER, MPI_COMM_WORLD, ierr)
+         AllSharedNewGlobal,2,MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
     DO i=1,Mesh % NumberOfNodes
        IF(FrontPerm(i) <= 0) CYCLE
