@@ -1194,7 +1194,7 @@
                   GLparaIndex = GroundingLineParaPerm(tempNodeIndex)
                   IF (GLparaIndex == 0) CYCLE
 
-                  IF ( cond == 0 ) THEN
+                  IF ( cond >= 0 ) THEN
                     GLstressSum = GLstressSum + GroundingLinePara(GLparaIndex)
                   ELSE IF ( cond < 0) THEN
                     FFstressSum = FFstressSum + GroundingLinePara(GLparaIndex)

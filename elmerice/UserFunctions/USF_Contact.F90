@@ -862,7 +862,9 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
         cond = GroundedMask(GroundedMaskPerm(nodenumber))
         IF (cond > -0.5) THEN 
           ! WRITE (*,*) nodenumber,'====', GLstressSum, FFstressSum, ratio, GLBdrag
-          WRITE (*,*) nodenumber,'====', BoundaryElement % propertydata % values(:)
+          WRITE (Message, *) nodenumber,'====', BoundaryElement % propertydata % values(:)
+          CALL Info(USF_Name, Message, Level=5)
+
           Bdrag = GLBdrag
         ELSE 
           Bdrag = 0.0
