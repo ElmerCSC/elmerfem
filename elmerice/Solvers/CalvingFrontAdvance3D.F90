@@ -161,7 +161,7 @@
    !-------------------------------------------
    ! Find FNColumns
    CALL MPI_AllReduce(MAXVAL(Mesh % ParallelInfo % GlobalDOFs), TotalNodes, &
-        1, MPI_INTEGER, MPI_MAX, MPI_COMM_WORLD,ierr)
+        1, MPI_INTEGER, MPI_MAX, ELMER_COMM_WORLD,ierr)
 
    ExtrudedLevels = ListGetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
    IF(.NOT. Found) ExtrudedLevels = &
@@ -188,7 +188,7 @@
 
    !Pass FrontNodeNums to all CPUs
    IF(Boss) FrontLineCount = SIZE(FrontNodeNums)
-   CALL MPI_BCAST(FrontLineCount , 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+   CALL MPI_BCAST(FrontLineCount , 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
    !Determine whether front columns are arranged
    !left to right, and reorder if not
@@ -218,7 +218,7 @@
    END IF
 
    IF(.NOT. Boss) ALLOCATE(FrontNodeNums(FrontLineCount))
-   CALL MPI_BCAST(FrontNodeNums , FrontLineCount, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+   CALL MPI_BCAST(FrontNodeNums , FrontLineCount, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
    !FrontNodeNums is the GlobalDOFs of the nodes on the front
    !So this can be easily converted into a FNColumn like list
@@ -572,14 +572,14 @@
    !Gather rotated y coord of all columns
    DO i=1,FrontLineCount
      CALL MPI_AllReduce(MPI_IN_PLACE, Rot_y_coords(i,1), &
-          1, MPI_DOUBLE_PRECISION, MPI_MIN, MPI_COMM_WORLD,ierr)
+          1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD,ierr)
      CALL MPI_AllReduce(MPI_IN_PLACE, Rot_y_coords(i,2), &
-          1, MPI_DOUBLE_PRECISION, MPI_MAX, MPI_COMM_WORLD,ierr)
+          1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD,ierr)
 
      CALL MPI_AllReduce(MPI_IN_PLACE, Rot_z_coords(i,1), &
-          1, MPI_DOUBLE_PRECISION, MPI_MIN, MPI_COMM_WORLD,ierr)
+          1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD,ierr)
      CALL MPI_AllReduce(MPI_IN_PLACE, Rot_z_coords(i,2), &
-          1, MPI_DOUBLE_PRECISION, MPI_MAX, MPI_COMM_WORLD,ierr)
+          1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD,ierr)
 
      IF(Boss) PRINT *,'Debug, rot_y_coords: ',i,rot_y_coords(i,:)
      IF(Boss) PRINT *,'Debug, rot_z_coords: ',i,rot_z_coords(i,:)

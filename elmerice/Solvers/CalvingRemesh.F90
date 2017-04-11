@@ -145,7 +145,7 @@ SUBROUTINE CheckFlowConvergence( Model, Solver, dt, Transient )
       FlowMax = MAX(FlowMax, Mag)
     END DO
 
-    CALL MPI_AllReduce(MPI_IN_PLACE, FlowMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, MPI_COMM_WORLD, ierr)
+    CALL MPI_AllReduce(MPI_IN_PLACE, FlowMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
   END IF
 
   IF(CheckFlowDiverge) THEN
@@ -920,7 +920,7 @@ CONTAINS
     IF(Boss .AND. Debug) PRINT *, 'Debug CalvingRemesh, BackLineNodeNums: ',BackLineNodeNums
     IF(Boss .AND. Debug) PRINT *, 'Debug CalvingRemesh, LeftLineNodeNums: ',LeftLineNodeNums
 
-    IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
@@ -1104,7 +1104,7 @@ CONTAINS
        !the maximum global node number
        CALL MPI_Reduce(MAXVAL(OldMesh % ParallelInfo % GlobalDOFs), TotalNodes, &
             1, MPI_INTEGER, MPI_MAX, 0,comm,ierr)
-       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     ELSE
        TotalNodes = NoNodes
@@ -1855,7 +1855,7 @@ CONTAINS
     END IF !Boss only
 
     !Ensure all partitions wait until boss has remeshed
-    IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     !------------------------------------------------------------
     ! Read in our section of footprint mesh
@@ -1873,7 +1873,7 @@ CONTAINS
     FootprintMesh % OutputActive = .TRUE.
     FootprintMesh % Changed = .TRUE. 
 
-    IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
@@ -1943,7 +1943,7 @@ CONTAINS
        END IF
 
        CALL MPI_Scatter(AllFail, 1, MPI_LOGICAL, &
-            AllFailCatch, 1, MPI_LOGICAL,0,MPI_COMM_WORLD, ierr)
+            AllFailCatch, 1, MPI_LOGICAL,0,ELMER_COMM_WORLD, ierr)
 
        IF(AllFailCatch) THEN
           GO TO 1280
@@ -1952,7 +1952,7 @@ CONTAINS
        END IF
     END IF !bad mesh
 
-    IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     !Check to ensure no nodes are within the region of tangled
     !columns - if they are, shift them!
@@ -2809,7 +2809,7 @@ CONTAINS
             !MPI Gather count in each part
             IF(Boss) ALLOCATE(PartCountDegenerate(ParEnv % PEs))
             CALL MPI_GATHER(COUNT(Degenerate),1,MPI_INTEGER,PartCountDegenerate,&
-                 1,MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+                 1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
 
             !MPI GatherV degenerate coords
@@ -2825,12 +2825,12 @@ CONTAINS
             CALL MPI_GATHERV(MyDegenerateCoords(:,1),&
                  counter,MPI_DOUBLE_PRECISION,&
                  DegenerateCoords(:,1),PartCountDegenerate,&
-                 disps,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD, ierr)
+                 disps,MPI_DOUBLE_PRECISION,0,ELMER_COMM_WORLD, ierr)
 
             CALL MPI_GATHERV(MyDegenerateCoords(:,2),&
                  counter,MPI_DOUBLE_PRECISION,&
                  DegenerateCoords(:,2),PartCountDegenerate,&
-                 disps,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD, ierr)
+                 disps,MPI_DOUBLE_PRECISION,0,ELMER_COMM_WORLD, ierr)
           ELSE
             ALLOCATE(DegenerateCoords(SIZE(MyDegenerateCoords,1),2))
             DegenerateCoords = MyDegenerateCoords
@@ -2937,7 +2937,7 @@ CONTAINS
     !---------------------------------------------------------------
 
     FirstTime = .FALSE.
-    IF(Parallel) CALL MPI_BARRIER(MPI_COMM_WORLD, ierr) !Wait for the boss
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr) !Wait for the boss
 
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
@@ -3092,7 +3092,7 @@ CONTAINS
                      GlobalBubbles = GlobalBubbles )
 
                 IF(ASSOCIATED(WorkMatrix)) THEN
-                   WorkMatrix % Comm = MPI_COMM_WORLD
+                   WorkMatrix % Comm = ELMER_COMM_WORLD
 
                    WorkMatrix % Symmetric = ListGetLogical( WorkSolver % Values, &
                         'Linear System Symmetric', Found )

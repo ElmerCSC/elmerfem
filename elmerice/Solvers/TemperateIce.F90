@@ -405,7 +405,7 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
      FirstTime = .FALSE.
      IF ( ParEnv % PEs > 1 ) THEN
         CALL MPI_ALLREDUCE(UnconstrainedNodesExist,GlobalUnconstrainedNodesExist,1, &
-             MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+             MPI_LOGICAL,MPI_LOR,ELMER_COMM_WORLD,ierr)
      ELSE
         GlobalUnconstrainedNodesExist = UnconstrainedNodesExist
      END IF
