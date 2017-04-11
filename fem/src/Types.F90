@@ -421,6 +421,7 @@ END INTERFACE
    !----------------------------------------------------------------------
    TYPE ValueHandle_t
      INTEGER :: ValueType = -1
+     INTEGER :: SectionType = -1
      INTEGER :: BodyId
      TYPE(BoundaryInfo_t),  POINTER :: BoundaryInfo => NULL()
      LOGICAL :: BulkElement
@@ -433,14 +434,18 @@ END INTERFACE
      REAL(KIND=dp), POINTER :: Values(:) => NULL()
      REAL(KIND=dp), POINTER :: ParValues(:,:) => NULL()
      INTEGER :: ParNo = 0
-     REAL(KIND=dp) :: ConstantReal
-     LOGICAL :: LogicalVal
+     INTEGER :: IValue
+     REAL(KIND=dp) :: RValue
+     LOGICAL :: LValue
+     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+     INTEGER :: CValueLen
      LOGICAL :: Found
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
      LOGICAL :: Initialized = .FALSE.
      LOGICAL :: AllocationsDone = .FALSE.
      LOGICAL :: ConstantEverywhere = .FALSE.
-     LOGICAL :: ConstantInList = .FALSE.
+     LOGICAL :: GlobalEverywhere = .FALSE.
+     LOGICAL :: GlobalInList = .FALSE.
      LOGICAL :: EvaluateAtIP = .FALSE.
      LOGICAL :: NotPresentAnywhere = .FALSE.
 
