@@ -5,11 +5,6 @@ echo on
 !
 ! THIS IS THE PARAMATER SPACE:
 !-----------------------------
-! the height
-$H0 = 680.0
-! floatation
-$dwdf= 0.99
-
 ! the inflow velocity at X=0 in m/a
 $U0 = 8000.0
 ! the ablation (in m/a i.e.)
@@ -25,6 +20,7 @@ $rhow = 1030.0/(1.0e6*yearinsec^2)
 $rhof = 1000.0/(1.0e6*yearinsec^2)
 
 !Calving  -  Dw is depth of water in crevasse (for hydrofracturing)
+!These are not used in this test case
 $Dw = 0.0
 $DwStart = 1.0
 $DwStop = 1.0
@@ -38,7 +34,6 @@ $n = 3.0
 $eta = 1.0/(2.0*A)^(1.0/n)
 $gravity = -9.81*yearinsec^2
 $slope = 1.0/40.0
-!$C = (rhoi * gravity * H0 * slope)/U0 ! driving stress is 149 kPa
 $C = 5.0e-05
 $Ccoul = 1.0e-52
 ! sea level
@@ -545,7 +540,7 @@ Solver 15
   Basal Crevasse Model = Logical True !Look for surface crevasses meeting waterline
   Old Way = Logical False
 
-  Yield Stress = Real 0.05 !0.1 !MPa (usually...)
+  Yield Stress = Real 0.05 !MPa (usually...)
   Basal FreeSurface = Logical True
   Basal FreeSurface Variable Name = String "Zs Bottom"
 
@@ -717,23 +712,8 @@ Boundary Condition 1
   !!Weertman Exponent = Real $(1.0/n)
   Weertman Exponent = Real 1.0
   Weertman Linear Velocity = Real 0.001
- !COULOMB
-  !Sliding Law = String "Coulomb"
-  !Friction Law Sliding Coefficient = Variable Coordinate 1
-  !    Real MATC "sliding(tx)"
-  !Friction Law Sliding Coefficient = Real $Ccoul
-  !Friction Law Post-Peak Exponent = Real 2.0
-  !Friction Law Linear Velocity = Real 0.001
-  !Friction Law Maximum Value = Real 1.0
-  !Friction Law PowerLaw Exponent = Real 3.0
-  !External Pressure = Variable Coordinate 2
-  !      Real MATC "-basalpressure(tx)"
 
-
-  ! Options are 'Last Grounded' (default), 'First Floating' or 'Discontinuous'
-  ! Grounding Line Definition = String "Last Grounded"
-    Grounding Line Definition = String "Discontinuous"
-  !Grounding Line Definition = String "First Floating"
+  Grounding Line Definition = String "Discontinuous"
   Test Contact Tolerance = real 1.0e-3
 
   Velocity 1 = Real 0.0

@@ -23,8 +23,11 @@
 !
 !/******************************************************************************
 ! *
-! *  This solver may be used to map the field variables of a strecthed mesh
-! *  to the unstreched initial configuarion of the same mesh. In addition
+! *  Mesh adaptation & variable interpolation for 2D calving model. Original
+! *  notes from Peter below: 
+! *
+! *  This solver may be used to map the field variables of a stretched mesh
+! *  to the unstretched initial configuarion of the same mesh. In addition
 ! *  the vertical size of the mesh is accomodated so that the height of 
 ! *  the mesh stays fixed. All-in-all two different mapping stages and 
 ! *  one solution of Laplace equation is needed for the mapping.
@@ -34,6 +37,7 @@
 ! *  Notes: 
 ! *  ----------
 ! *  This solver is currently only implemented for the 2D flowline case.
+! *  For 3D calving, see the Calving3D test case.
 ! *  In places, the code would appear to permit 3D, but these haven't been 
 ! *  properly implemented or tested.
 ! *
@@ -47,7 +51,7 @@
 ! *  this routine.
 ! *  
 ! *  In addition to dealing with the mesh manipulation required for a calving 
-! *  event, this subroutine (in conjunction with Calving.f90), can also modify
+! *  event, this subroutine (in conjunction with Calving.F90), can also modify
 ! *  the mesh when a frontal melting overhang becomes so severe as to force 
 ! *  'calving front' nodes below 'bed' nodes.  This is done via the 'RemeshOccurs'
 ! *  switch.
@@ -135,7 +139,7 @@ SUBROUTINE TwoMeshes( Model,Solver,dt,TransientSimulation )
   SolverName = "TwoMeshes"
 
   CALL Info( SolverName, '-----------------------------------' )
-  CALL Info( SolverName, ' Projecting solution to itself' )
+  CALL Info( SolverName, ' Adapting the calving mesh...' )
   CALL Info( SolverName, '-----------------------------------' )
 
   dim = CoordinateSystemDimension()
@@ -579,7 +583,6 @@ SUBROUTINE TwoMeshes( Model,Solver,dt,TransientSimulation )
   ! using the two end values from MeshA and B to guide the deformation
   ! This is necessary for situations where the calving front is not 
   ! vertical, as the nodes will tend towards the outwardmost end otherwise
-  ! NB: This bit won't work in 3D!
   !----------------------------------------------------------
 
   H = Nodes0 % y(TopCornerIndex) - Nodes0 % y(BotCornerIndex)

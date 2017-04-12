@@ -65,8 +65,6 @@ Simulation
   Extruded Mesh Levels = Integer 10
   Remesh Extruded Mesh Levels = Integer 10
   Stabilization Use Longest Element Edge = Logical True
-  ! Extruded Mesh Density = Variable Coordinate 1
-  !   Real MATC "0.2+sin(tx*(pi*0.5))"
 
   !TODO fix code so this isn't necessary!
   Gmsh Path = File "/usr/local/bin/gmsh"

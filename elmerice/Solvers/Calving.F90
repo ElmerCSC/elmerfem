@@ -574,7 +574,6 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
               (NodeDepth * g * Rho) + (WaterDepth * RhoWF * g) - YieldStress
          CalvingBasalIndex = (  BTuningParam * 2.0 * sign * Te ) - &
               (NodeDepth * g * Rho) + NodeWPressure - YieldStress
-         !Last term appears if you split the brackets on the last term in C_Basal from Faezeh
        END IF
 
      END IF
@@ -598,7 +597,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
    IF(BasalCrevasseModel) THEN
      CrevasseGroupValues = 0
 
-     !Find groups of nodes which have surfaec crevasses
+     !Find groups of nodes which have surface crevasses
      CIndexValues => CSurfIndexValues
      CIndexPerm => CSurfIndexPerm
      CALL FindCrevasseGroups(SurfaceCrevasseGroups,.TRUE., TopPerm)
@@ -615,7 +614,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
 
      !This dictates the resolution of the mesh for interpolating calving index
      !Only relevant for surface crevasse mode, as opposed to surf and basal
-     !Unhardcode this
+     !TODO: Unhardcode this
      EvalResolution = 1.0_dp
 
      !Create the points (at the waterline) at which Calving Index will be evaluated
@@ -762,7 +761,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
    !Get normal vector:
    CALL GetElementNodes(CornerElementNodes, CornerElement)
    CornerNormal = NormalVector(CornerElement, CornerElementNodes)
-   !TEST
+
    IF(Debug) PRINT *, 'Debug Calving, corner normal is: ' , &
         CornerNormal(1), CornerNormal(2), CornerNormal(3)
 
@@ -833,7 +832,6 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
          END DO
       END DO
 
-      !TEST - ListAddLogical this and hook it up to TwoMeshes:
       RemeshOccurs = .TRUE.
    ELSE
       county = 0
@@ -953,10 +951,6 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
       !Calving 1 = Diff X  (New % x - Old % x)
       !Calving 2 = Diff Y  (New % y - Old % y)
 
-      !change this to output Calving Vector
-!      Calving1Values(Permutation(BotCornerIndex)) = Mesh % Nodes % x(BotSecondIndex) - &
-!           Mesh % Nodes % x(BotCornerIndex)
-
       DO i=1,FrontNodes
          Calving1Values(Permutation(InvFrontPerm(OrderPerm(i)))) = TargetNodes % x(i) &
               - Mesh % Nodes % x(InvFrontPerm(OrderPerm(i)))
@@ -965,7 +959,8 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
               - Mesh % Nodes % y(InvFrontPerm(OrderPerm(i)))
 
          IF(Debug) THEN
-            PRINT *,'Debug Calving: Node: ',InvFrontPerm(OrderPerm(i)),' pos x: ',Mesh % nodes % x(InvFrontPerm(OrderPerm(i))),&
+            PRINT *,'Debug Calving: Node: ',InvFrontPerm(OrderPerm(i)),' pos x: ',&
+                 Mesh % nodes % x(InvFrontPerm(OrderPerm(i))),&
                  ' pos y: ',Mesh % nodes % y(InvFrontPerm(OrderPerm(i)))
             PRINT *,'Moving to: x: ',TargetNodes % x(i),' y: ',TargetNodes % y(i)
             PRINT *,'Displacement 1: ',Calving1Values(Permutation(InvFrontPerm(OrderPerm(i)))),&
@@ -973,21 +968,6 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
          END IF
        END DO
      END IF
-
-   !Potential to track time since last calving event and
-   !create a 'dummy' event to force remeshing.  Not used in the end.
-
-   ! IF(.NOT. (RemeshOccurs .OR. CalvingOccurs)) THEN
-   !    TimeSinceLast = TimeSinceLast + 1
-   !    IF(TimeSinceLast .GT. 0) THEN
-   !       CalvingOccurs = .TRUE.
-   !       Calving1Values = -0.01_dp
-   !       Calving2Values = 0.0_dp
-   !    END IF
-   ! ELSE
-   !    TimeSinceLast = 0
-   ! END IF
-
 
    CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
    CALL ListAddLogical( Model % Simulation, 'RemeshOccurs', RemeshOccurs )
