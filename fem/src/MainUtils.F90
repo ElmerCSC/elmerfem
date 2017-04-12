@@ -1813,6 +1813,91 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+   FUNCTION CreateChildMatrix( ParentMat, ParentDofs, Dofs, ColDofs, CreateRhs ) RESULT ( ChildMat )
+     TYPE(Matrix_t) :: ParentMat
+     INTEGER :: ParentDofs
+     INTEGER :: Dofs
+     TYPE(Matrix_t), POINTER :: ChildMat
+     INTEGER, OPTIONAL :: ColDofs
+     LOGICAL, OPTIONAL :: CreateRhs
+     INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
+
+     
+     ChildMat => AllocateMatrix()
+
+     IF( PRESENT( ColDofs ) ) THEN
+       CDofs = ColDofs
+     ELSE
+       CDofs = Dofs
+     END IF
+       
+
+     
+     IF( Dofs == ParentDofs .AND. CDofs == ParentDofs ) THEN
+       CALL Info('CreateChildMatrix','Reusing initial matrix topology',Level=8)    
+       
+       ChildMat % Cols => ParentMat % Cols
+       ChildMat % Rows => ParentMat % Rows
+       ChildMat % Diag => ParentMat % Diag
+       
+       ChildMat % NumberOfRows = ParentMat % NumberOfRows
+       
+       m = SIZE( ParentMat % Values )
+       ALLOCATE( ChildMat % Values(m) )
+       ChildMat % Values = 0.0_dp
+         
+     ELSE
+       CALL Info('CreateChildMatrix','Multiplying initial matrix topology',Level=8)    
+       
+       ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs * CDofs / ParentDofs**2 ) )
+       ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
+       
+       ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
+       
+       ii = 0
+       jj = 0
+       ChildMat % Rows(1) = 1
+       DO i=1, ParentMat % NumberOFRows, ParentDOFs
+         DO k=1,Dofs
+           ii = ii + 1
+           DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1, ParentDOFs
+             nn = (ParentMat % Cols(j)-1) / ParentDofs + 1
+             DO l=1,CDofs
+               jj = jj + 1
+               ChildMat % Cols(jj) = Dofs*(nn-1) + l
+             END DO
+           END DO
+           ChildMat % Rows(ii+1) = jj+1
+         END DO
+       END DO
+       
+       ALLOCATE( ChildMat % Values(jj) )
+       ChildMat % Values = 0.0_dp
+       
+       IF( Dofs == CDofs ) THEN
+         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )      
+         DO i=1,ChildMat % NumberOfRows
+           DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
+             IF (ChildMat % Cols(j) == i) THEN
+               ChildMat % Diag(i) = j
+               EXIT
+             END IF
+           END DO
+         END DO
+       END IF
+     END IF
+
+     IF( PRESENT( CreateRhs ) ) THEN
+       IF( CreateRhs ) THEN
+         ALLOCATE( ChildMat % rhs(ChildMat % NumberOfRows ) )
+         ChildMat % rhs = 0.0_dp
+       END IF
+     END IF
+         
+     
+   END FUNCTION CreateChildMatrix
+   
+
 !------------------------------------------------------------------------------
 !> Generate a similar solver instance as for the parent solver.
 !> The number of dofs may vary but the basis functions and permutation is reused.
@@ -1906,68 +1991,12 @@ CONTAINS
        CALL Warn('CreateChildSolver','Parent matrix needed for child matrix!')
        Solver % Matrix => NULL()
      ELSE
-       Solver % Matrix => AllocateMatrix()
-       ChildMat => Solver % Matrix
-       IF( Dofs == ParentDofs ) THEN
-         CALL Info('CreateChildSolver','Reusing initial matrix topology',Level=8)    
-
-         ChildMat % Cols => ParentMat % Cols
-         ChildMat % Rows => ParentMat % Rows
-         ChildMat % Diag => ParentMat % Diag
-
-         ChildMat % NumberOfRows = ParentMat % NumberOfRows
-         
-         m = SIZE( ParentMat % Values )
-         ALLOCATE( ChildMat % Values(m) )
-         ChildMat % Values = 0.0_dp
-
-       ELSE
-         CALL Info('CreateChildSolver','Multiplying initial matrix topology',Level=8)    
-
-         ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs**2 / ParentDofs**2 ) )
-         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )
-         ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
-
-         ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
-           
-         ii = 0
-         jj = 0
-         ChildMat % Rows(1) = 1
-         DO i=1, ParentMat % NumberOFRows, ParentDOFs
-           DO k=1,Dofs
-             ii = ii + 1
-             DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1, ParentDOFs
-               nn = (ParentMat % Cols(j)-1) / ParentDofs + 1
-               DO l=1,Dofs
-                 jj = jj + 1
-                 ChildMat % Cols(jj) = Dofs*(nn-1) + l
-               END DO
-             END DO
-             ChildMat % Rows(ii+1) = jj+1
-           END DO
-         END DO
-         
-         ALLOCATE( ChildMat % Values(jj) )
-         ChildMat % Values = 0.0_dp
-         
-         DO i=1,ChildMat % NumberOfRows
-           DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
-             IF (ChildMat % Cols(j) == i) THEN
-               ChildMat % Diag(i) = j
-               EXIT
-             END IF
-           END DO
-         END DO
-       END IF
-
-       ALLOCATE( ChildMat % rhs(Dofs*n) )
-       ChildMat % rhs = 0.0_dp
+       ChildMat => CreateChildMatrix( ParentMat, ParentDofs, Dofs, Dofs, .TRUE. )
+       Solver % Matrix => ChildMat
      END IF
-
 
      ChildMat % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex',Found )
      IF(.NOT. Found ) ChildMat % Complex = ParentMat % Complex
-
      
      IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
        Solver % ActiveElements => ParentSolver % ActiveElements
