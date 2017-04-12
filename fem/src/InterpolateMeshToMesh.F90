@@ -237,7 +237,7 @@
       
       !For each node, we send a single integer perm and 
       !a real(dp) per variable. Also sending two counts
-      CALL CheckBuffer(maxrecv * ((2 * nvars) + 1) + 2) 
+      CALL CheckBuffer(SIZE(ProcRecv) * maxrecv * ((2 * nvars) + 1) + 2)
 
       ! Check the received points and extract values for the to-be-interpolated-
       ! variables, if we have the points within our domain: 

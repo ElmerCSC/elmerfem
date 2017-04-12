@@ -96,7 +96,7 @@
        ReferencePressure=0.0, SpecificHeatRatio, &
        PseudoCompressibilityScale=1.0, NonlinearRelax, FreeSTol, res
 
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter,FreeSIter
+     INTEGER :: NSDOFs,NewtonIter,NewtonMaxIter,NonlinearIter,FreeSIter
 
      TYPE(Variable_t), POINTER :: DensitySol, TimeVar
      TYPE(Variable_t), POINTER :: FlowSol, TempSol, MeshSol
@@ -441,6 +441,10 @@
         'Nonlinear System Newton After Iterations', minv=0 )
      IF ( NewtonIter == 0 ) NewtonLinearization = .TRUE.
 
+     !Option to switch back to picard after NewtonMaxIter iterations
+     NewtonMaxIter = ListGetInteger( Solver % Values, &
+        'Nonlinear System Newton Max Iterations', GotIt )
+     RecheckNewton = RecheckNewton .OR. GotIt
 
      IF (GetLogical( GetSolverParams(), &
          'Nonlinear System Reset Newton',  GotIt)) NewtonLinearization=.FALSE.
@@ -1298,6 +1302,16 @@
 
       IF ( RelativeChange < NewtonTol .OR. &
              iter > NewtonIter ) NewtonLinearization = .TRUE.
+
+      IF ( RecheckNewton .AND. NewtonLinearization .AND. (RelativeChange > NewtonUBound)) THEN
+        NewtonLinearization = .FALSE.
+	CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
+      END IF
+
+      IF ( RecheckNewton .AND. NewtonLinearization .AND. (iter >= NewtonMaxIter)) THEN
+        NewtonLinearization = .FALSE.
+	CALL Info('FlowSolve', 'Newton iteration limit exceeded, switching back to picard', Level=6)
+      END IF
 
       IF ( RecheckNewton .AND. (RelativeChange > NewtonUBound) .AND. NewtonLinearization ) THEN
         NewtonLinearization = .FALSE.

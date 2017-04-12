@@ -119,7 +119,7 @@ MODULE DiffuseConvective
        NodaldPressureDt(:),NodalPressure(:),NodalPressureCoeff(:),Nodalrho(:)
      REAL(KIND=dp) :: NodalC0(:),NodalC1(:),NodalCT(:),NodalC2(:,:,:)
 
-     LOGICAL :: UseBubbles,PhaseChange,Compressible,Stabilize
+     LOGICAL :: UseBubbles,PhaseChange,Compressible,Stabilize, VectH
 
      INTEGER :: n
 
@@ -153,7 +153,7 @@ MODULE DiffuseConvective
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      REAL(KIND=dp) :: s,u,v,w,dEnth,dTemp,mu,DivVelo,Pressure,rho,&
-                      Pcoeff, minl, maxl
+                      Pcoeff, minl, maxl, SSCond
 
      REAL(KIND=dp) :: C0,C00,C1,CT,CL,C2(3,3),dC2dx(3,3,3),SU(n),SW(n)
 
@@ -165,6 +165,9 @@ MODULE DiffuseConvective
      LOGICAL :: GotCondModel
      
 !------------------------------------------------------------------------------
+
+     VectH = GetLogical( GetSolverParams(), 'VectH', Found )
+     IF(.NOT. Found)  VectH = .FALSE.
 
      StabilizeFlag = GetString( GetSolverParams(),'Stabilization Method',Found )
      Vms = StabilizeFlag == 'vms'
@@ -221,7 +224,7 @@ MODULE DiffuseConvective
      mK = element % StabilizationMK
 
      ConvectAndStabilize = .FALSE.
-     IF  ( Vms ) THEN
+     IF  ( Vms .OR. VectH ) THEN
        NodalVelo(1,1:n) = Ux(1:n)
        NodalVelo(2,1:n) = Uy(1:n)
        NodalVelo(3,1:n) = Uz(1:n)
@@ -244,6 +247,9 @@ MODULE DiffuseConvective
 
        ! transient flag only needed for vms
        Transient = GetString(GetSimulation(),'Simulation type',Found)=='transient'
+       SSCond = ListGetConstReal(GetSolverParams(), "Steady State Condition", Found)
+       IF(Found .AND. SSCond > 0.0_dp) Transient = .FALSE.
+
        IF ( Transient ) THEN
          dt = CurrentModel % Solver % dt
          Order = MIN(CurrentModel % Solver % DoneTime,CurrentModel % Solver % Order)
@@ -393,7 +399,7 @@ MODULE DiffuseConvective
           END IF
 
 
-          IF ( Vms ) THEN
+          IF ( Vms .OR. VectH ) THEN
             mu = GetCReal( Material, 'Viscosity', Found )
             mu = EffectiveViscosity( mu, rho, Ux, Uy, Uz, &
                    Element, Nodes, n, n, u,v,w )
@@ -412,7 +418,6 @@ MODULE DiffuseConvective
               GradP(i) = SUM( NodalPressure(1:n)*dBasisdx(1:n,i) )
             END DO
 
-
             Gmat = 0._dp
             Gvec = 0._dp
             DO i=1,dim
@@ -426,40 +431,39 @@ MODULE DiffuseConvective
             END DO
 
             IF ( Transient ) THEN
-              Tau_M = 1._dp / SQRT( SUM(Velo*MATMUL(Gmat,Velo)) + &
-                    LC1**2 * (mu/rho)**2*SUM(Gmat*Gmat)/dim + 4/dt**2 )
+              Tau_M = 1._dp / SQRT( SUM(C1*Velo*MATMUL(Gmat,C1*Velo)) + &
+                    C2(1,1)**2 * LC1**2*SUM(Gmat*Gmat)/dim + C1**2*4/dt**2 )
             ELSE
-              Tau_M = 1._dp / SQRT( SUM(Velo*MATMUL(Gmat,Velo)) + &
-                    LC1**2 * (mu/rho)**2 * SUM(Gmat*Gmat)/dim )
+              Tau_M = 1._dp / SQRT( SUM(C1*Velo*MATMUL(Gmat,C1*Velo)) + &
+                    C2(1,1)**2 * LC1**2 * SUM(Gmat*Gmat)/dim )
             END IF
 
-            Pe  = MIN( 1.0_dp, mK*hK*C1*VNorm/(2*ABS(C2(1,1))) )
-            IF ( VNorm /= 0.0 ) THEN
-               Tau = hK * Pe / (2 * C1 * VNorm)
-            END IF
-
-            RM = 0._dp
-            DO p=1,n
-              RM(p) = C0 * Basis(p)
-              DO i=1,dim
-                RM(p) = RM(p) + C1 * Velo(i) * dBasisdx(p,i)
-                DO j=1,dim
-                  RM(p) = RM(p) - C2(i,j)*SUM(dNodalBasisdx(p,1:n,i)*dBasisdx(1:n,j))
+            IF(Vms) THEN
+              RM = 0._dp
+              DO p=1,n
+                RM(p) = C0 * Basis(p)
+                DO i=1,dim
+                  RM(p) = RM(p) + C1 * Velo(i) * dBasisdx(p,i)
+                  DO j=1,dim
+                    RM(p) = RM(p) - C2(i,j)*SUM(dNodalBasisdx(p,1:n,i)*dBasisdx(1:n,j))
+                  END DO
                 END DO
               END DO
-            END DO
 
-            VRM = 0._dp
-            DO i=1,dim
-              VRM(i) = SUM(NodalPVelo(i,1:n)*Basis(1:n))
-              DO j=1,dim
-                VRM(i) = VRM(i) + Velo(j) * Grad(i,j)
-                VRM(i) = VRM(i) - (mu/rho)*SUM(GradNodal(1:n,i,j)*dBasisdx(1:n,j))
+              VRM = 0._dp
+              DO i=1,dim
+                VRM(i) = SUM(NodalPVelo(i,1:n)*Basis(1:n))
+                DO j=1,dim
+                  VRM(i) = VRM(i) + Velo(j) * Grad(i,j)
+                  VRM(i) = VRM(i) - (mu/rho)*SUM(GradNodal(1:n,i,j)*dBasisdx(1:n,j))
+                END DO
+                VRM(i) = VRM(i) + GradP(i)
+                VRM(i) = VRM(i) + Grav(i)*ExpC*( Temperature - RefT )
               END DO
-              VRM(i) = VRM(i) + GradP(i)
-              VRM(i) = VRM(i) + Grav(i)*ExpC*( Temperature - RefT )
-            END DO
-          ELSE IF ( Stabilize ) THEN
+            END IF
+          END IF
+
+          IF ( .NOT.Vms.AND.Stabilize ) THEN
 !------------------------------------------------------------------------------
 !           Stabilization parameter Tau
 !------------------------------------------------------------------------------
@@ -471,6 +475,8 @@ MODULE DiffuseConvective
             IF ( VNorm /= 0.0 ) THEN
                Tau = hK * Pe / (2 * C1 * VNorm)
             END IF
+
+            IF (VectH) Tau = 2*Tau_M
 #else
             C00 = C0
             IF ( DT /= 0.0d0 ) C00 = C0+CT/DT

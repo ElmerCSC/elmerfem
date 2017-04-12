@@ -70,7 +70,7 @@ MODULE ModelDescription
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
 
-    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 100
+    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000
 
 CONTAINS
 

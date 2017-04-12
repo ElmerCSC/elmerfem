@@ -2030,6 +2030,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     nSolvers = Model % NumberOfSolvers
 
+    IF(TransientSimulation) THEN
+       CoupledMinIter = ListGetInteger( Model % Simulation, &
+            'Steady State Min Iterations', Found )
+
+       CoupledMaxIter = ListGetInteger( Model % Simulation, &
+            'Steady State Max Iterations', Found, minv=1 )
+       IF ( .NOT. Found ) CoupledMaxIter = 1
+    END IF
 
     Scanning = &
       ListGetString( CurrentModel % Simulation, 'Simulation Type', Found ) == 'scanning'
@@ -2457,7 +2465,7 @@ CONTAINS
          END DO
 !------------------------------------------------------------------------------
          CALL ListPopNamespace()
-         Model % Mesh % Changed = .FALSE.
+         !Model % Mesh % Changed = .FALSE.
 
          IF( DivergenceExit ) EXIT
 

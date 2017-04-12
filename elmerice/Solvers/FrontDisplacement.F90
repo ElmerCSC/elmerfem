@@ -23,7 +23,16 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen
+! *  Slightly modified version of MeshSolve.F90 for computing mesh update for
+! *  2D calving simulations. The main difference is that this solver stores 
+! *  the initial model mesh (Mesh0) and computes displacements relative to this
+! *  mesh, to avoid the progressive mesh degeneracy associated with repeated 
+! *  calls to Mesh Update.
+! *  
+
+!/******************************************************************************
+! *
+! *  Authors: Juha Ruokolainen, Joe Todd
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -37,13 +46,13 @@
 !------------------------------------------------------------------------------
 !> Initialization for the primary solver i.e. MeshSolver.
 !------------------------------------------------------------------------------
- SUBROUTINE MeshSolver_Init( Model,Solver,dt,TransientSimulation )
+ SUBROUTINE FDMeshSolver_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   LOGICAL ::  TransientSimulation
   REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
@@ -51,10 +60,10 @@
   INTEGER :: dim
   LOGICAL :: Found, Calculate
 
-  Params => GetSolverParams()
+  Params => Solver % Values
   dim = CoordinateSystemDimension()
 
-  Calculate = ListGetLogical( Params,'Compute Mesh Velocity',Found ) 
+  Calculate = ListGetLogical( Params,'Compute Front Displacement Velocity',Found ) 
   IF(.NOT. Found ) Calculate = .TRUE.
 
   IF( Calculate ) THEN
@@ -62,16 +71,16 @@
       IF( dim == 2 ) THEN
         CALL ListAddString( Params,&
             NextFreeKeyword('Exported Variable',Params),&
-            '-dofs 2 Mesh Velocity')        
+            '-dofs 2 Front Displacement Velocity')        
       ELSE
         CALL ListAddString( Params,&
             NextFreeKeyword('Exported Variable',Params),&
-            '-dofs 3 Mesh Velocity')                  
+            '-dofs 3 Front Displacement Velocity')                  
       END IF
     END IF    
   END IF
 
-END SUBROUTINE MeshSolver_Init
+END SUBROUTINE FDMeshSolver_Init
 
 
 !------------------------------------------------------------------------------
@@ -81,46 +90,46 @@ END SUBROUTINE MeshSolver_Init
 !> This is a dynamically loaded solver with a standard interface.
 !> May be also loaded internally to mimic the old static implementation. 
 !> \ingroup Solvers
+
+!This has been modified by Joe Todd as a secondary mesh displacement solver for
+!calving events.
 !------------------------------------------------------------------------------
- SUBROUTINE MeshSolver( Model,Solver,dt,TransientSimulation )
+ SUBROUTINE FDMeshSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   LOGICAL ::  TransientSimulation
   REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: i,j,k,l,m,n,nd,nb,t,DOFs,STDOFs,LocalNodes,istat
+  INTEGER :: i,j,k,n,nd,nb,t,STDOFs,LocalNodes,istat,NoNodes
 
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t),POINTER :: Material, BC
-
+  TYPE(Mesh_t),POINTER :: Mesh0 => Null()
+  TYPE(Nodes_t),POINTER :: Nodes0
   REAL(KIND=dp) :: RelativeChange, UNorm, PrevUNorm,  maxu
 
-  TYPE(Variable_t), POINTER :: StressSol, MeshSol
+  TYPE(Variable_t), POINTER :: MeshSol, InitXVar, InitYVar
 
-  REAL(KIND=dp), POINTER :: MeshUpdate(:),Displacement(:), &
-       MeshVelocity(:)
+  REAL(KIND=dp), POINTER :: MeshUpdate(:), MeshVelocity(:)
 
-  INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:), MeshVeloPerm(:)
+  INTEGER, POINTER :: MeshPerm(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
-            GotForceBC, Found, ComputeMeshVelocity, DisplaceFirst, &
-            SkipFirstMeshVelocity = .FALSE., FirstTime = .TRUE., &
-            SkipDisplace 
+       GotForceBC, Found, ComputeMeshVelocity, FirstTime = .TRUE.
+
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
        Alpha(:,:), Beta(:)
 
-  INTEGER :: dim
-  
-  SAVE STIFF, LOAD, FORCE, MeshVelocity, MeshVeloPerm, AllocationsDone, &
-       ElasticModulus, PoissonRatio, TPerm, Alpha, Beta, &
-       SkipFirstMeshVelocity, FirstTime
+  SAVE STIFF, LOAD, FORCE, MeshVelocity, AllocationsDone, &
+       ElasticModulus, PoissonRatio, Alpha, Beta, FirstTime, &
+       Mesh0, Nodes0
 
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
@@ -138,13 +147,12 @@ END SUBROUTINE MeshSolver_Init
 
   NULLIFY( MeshVelocity ) 
   IF ( TransientSimulation ) THEN
-    MeshSol      => VariableGet( Solver % Mesh % Variables, 'Mesh Velocity' )
+    MeshSol      => VariableGet( Solver % Mesh % Variables, 'Front Displacement Velocity' )
     IF( ASSOCIATED( MeshSol ) ) THEN
       MeshVelocity => MeshSol % Values
-      MeshVeloPerm => MeshSol % Perm
     END IF
   END IF
-
+  
   MeshSol => Solver % Variable
   MeshPerm      => MeshSol % Perm
   STDOFs        =  MeshSol % DOFs
@@ -153,59 +161,38 @@ END SUBROUTINE MeshSolver_Init
   LocalNodes = COUNT( MeshPerm > 0 )
   IF ( LocalNodes <= 0 ) RETURN
 
-  dim = CoordinateSystemDimension()
-  IF( STDOFs < dim ) THEN
-    CALL Warn('MeshSolve','Displacement dofs smaller than dim, assuming reduced dimension!')
-
-    ! We can solve the equation also on a DIM-1 dimensional boundary of DIM dimensional object
-    dim = STDOFs
-  END IF
-    
-  
-!------------------------------------------------------------------------------
-
-  StressSol => VariableGet( Solver % Mesh % Variables, 'Displacement' )
-  IF( ListGetLogical( Solver % Values,'Ignore Displacement',Found) ) THEN
-    NULLIFY( StressSol )
-  END IF
-
-  DisplaceFirst = ListGetLogical( Solver % Values,'First Time Non-Zero', Found)
-  SkipDisplace = ListGetLogical( Solver % Values,'Skip Displace Mesh',Found )
-  
-  IF( SkipDisplace ) THEN
-    CALL Info('MeshSolver','Skipping the displacement of mesh!',Level=5)
-  ELSE IF ( ASSOCIATED( StressSol ) )  THEN
-     StressPerm   => StressSol % Perm
-     STDOFs       =  StressSol % DOFs
-     Displacement => StressSol % Values
-
-     IF( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
-        IF ( AllocationsDone ) DEALLOCATE( TPerm )
-
-        ALLOCATE( TPerm( SIZE(MeshPerm) ), STAT=istat )
-        IF ( istat /= 0 ) THEN
-           CALL Fatal( 'MeshSolve', 'Memory allocation error.' )
-        END IF
-     END IF
-
-     TPerm = MeshPerm
-     DO i=1,SIZE( MeshPerm )
-        IF ( StressPerm(i) /= 0 .AND. MeshPerm(i) /= 0 ) TPerm(i) = 0
-     END DO
-
-     IF ( AllocationsDone .OR. DisplaceFirst ) THEN
-        CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, TPerm,   STDOFs )
-     END IF
-     CALL DisplaceMesh( Solver % Mesh, Displacement,  -1, StressPerm, STDOFs )
-  ELSE
-     IF ( AllocationsDone .OR. DisplaceFirst ) THEN
-        CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, MeshPerm, STDOFs )
-     END IF
-  END IF
-
 !------------------------------------------------------------------------------
 
   UNorm = Solver % Variable % Norm
+
+  IF(FirstTime) THEN
+     FirstTime = .FALSE.
+
+     InitXVar => VariableGet( Solver % Mesh % Variables, "InitX", UnfoundFatal=.TRUE.)
+     InitYVar => VariableGet( Solver % Mesh % Variables, "InitY", UnfoundFatal=.TRUE.)
+
+     NoNodes = SIZE(Solver % Mesh % Nodes % x)
+     ALLOCATE( Nodes0 )
+     ALLOCATE( Nodes0 % x(NoNodes), Nodes0 % y(NoNodes),Nodes0 % z(NoNodes))
+     DO i=1,NoNodes
+       Nodes0 % x(i) = Solver % Mesh % Nodes % x(i)
+       Nodes0 % y(i) = Solver % Mesh % Nodes % y(i)
+
+       !Save initial coordinates to variables too, for dirichlet condition
+       InitXVar % Values(InitXVar % Perm(i)) = Solver % Mesh % Nodes % x(i)
+       InitYVar % Values(InitYVar % Perm(i)) = Solver % Mesh % Nodes % y(i)
+     END DO
+
+     Mesh0 => AllocateMesh()
+     Mesh0 = Solver % Mesh
+     Mesh0 % Nodes => Nodes0
+     Mesh0 % Name = TRIM(Solver % Mesh % Name)//'_reference'
+
+     CALL INFO('FrontDisplacement','Saved the initial mesh for remeshing')
+  END IF
+  Solver % Mesh => Mesh0
+
+
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -232,7 +219,6 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
   END IF
 !------------------------------------------------------------------------------
-
 !------------------------------------------------------------------------------
 ! Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
@@ -248,8 +234,6 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
   CALL DefaultInitialize()
 !------------------------------------------------------------------------------
-
-  
   DO t=1,Solver % NumberOfActiveElements
 
      IF ( RealTime() - at0 > 1.0 ) THEN
@@ -296,7 +280,6 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
      CALL DefaultUpdateEquations( STIFF, FORCE )
   END DO
-  CALL DefaultFinishBulkAssembly()
 
 
 !------------------------------------------------------------------------------
@@ -306,9 +289,7 @@ END SUBROUTINE MeshSolver_Init
 
     Element => GetBoundaryElement(t)
     IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-
-    ! Check that the dimension of element is suitable for fluxes
-    IF( .NOT. PossibleFluxElement(Element) ) CYCLE
+    IF ( GetElementFamily() == 1 ) CYCLE
 
     BC => GetBC()
     IF ( .NOT. ASSOCIATED(BC) ) CYCLE
@@ -375,74 +356,56 @@ END SUBROUTINE MeshSolver_Init
 
   
   IF ( TransientSimulation ) THEN
-    ComputeMeshVelocity = ListGetLogical( Solver % Values, 'Compute Mesh Velocity', Found )
+    ComputeMeshVelocity = ListGetLogical( Solver % Values, 'Compute Front Displacment Velocity', Found )
     IF ( .NOT. Found ) ComputeMeshVelocity = .TRUE.
-    SkipFirstMeshVelocity = .FALSE.
-    IF (ComputeMeshVelocity .AND. FirstTime) THEN
-       SkipFirstMeshVelocity = ListGetLogical( Solver % Values, 'Skip First Mesh Velocity', Found )
-       IF (.NOT. Found ) THEN 
-          SkipFirstMeshVelocity = .FALSE.
-       ELSE
-          CALL INFO('MeshSolve', 'Skipping computation of initial Mesh Velocity', Level=3)
-       END IF
-       FirstTime = .FALSE.
-    END IF
     
-    IF ( ComputeMeshVelocity .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN
+    IF ( ComputeMeshVelocity ) THEN
       k = MIN( SIZE(Solver % Variable % PrevValues,2), Solver % DoneTime )
       
-      j = ListGetInteger( Solver % Values,'Compute Mesh Velocity Order', Found)
+      j = ListGetInteger( Solver % Values,'Compute Front Displacement Velocity Order', Found)
       IF( Found ) THEN
         k = MIN( k, j )        
       ELSE
         k = 1
       END IF
       
-      DOFs = MeshSol % DOFs
+      SELECT CASE(k)
+      CASE(0)
+        MeshVelocity = 0._dp
+      CASE(1)
+        MeshVelocity = ( MeshUpdate - Solver % Variable % PrevValues(:,1) ) / dt
+      CASE(2)
+        MeshVelocity = ( &
+            MeshUpdate - (4.0d0/3.0d0)*Solver % Variable % PrevValues(:,1) &
+            + (1.0d0/3.0d0)*Solver % Variable % PrevValues(:,2) ) / dt
+      CASE DEFAULT
+        MeshVelocity = ( &
+            MeshUpdate - (18.0d0/11.0d0)*Solver % Variable % PrevValues(:,1) &
+            + ( 9.0d0/11.0d0)*Solver % Variable % PrevValues(:,2) &
+            - ( 2.0d0/11.0d0)*Solver % Variable % PrevValues(:,3) ) / dt
+      END SELECT
 
-      DO i=1,Solver % Mesh % NumberOfNodes
-         IF(MeshVeloPerm(i) <= 0) CYCLE
-
-         j = MeshPerm(i)*DOFs
-         l = MeshVeloPerm(i)*DOFs
-
-         SELECT CASE(k)
-         CASE(0)
-            MeshVelocity = 0._dp
-         CASE(1)
-            DO m=0,DOFs-1
-               MeshVelocity(l-m) = ( MeshUpdate(j-m) - &
-                    Solver % Variable % PrevValues(j-m,1) ) / dt
-            END DO
-         CASE(2)
-            DO m=0,DOFs-1
-               MeshVelocity(l-m) = ( &
-                    MeshUpdate(j-m) - (4.0d0/3.0d0)*Solver % Variable % PrevValues(j-m,1) &
-                    + (1.0d0/3.0d0)*Solver % Variable % PrevValues(j-m,2) ) / dt
-            END DO
-         CASE DEFAULT
-            DO m=0,DOFs-1
-               MeshVelocity(l-m) = ( &
-                    MeshUpdate(j-m) - (18.0d0/11.0d0)*Solver % Variable % PrevValues(j-m,1) &
-                    + ( 9.0d0/11.0d0)*Solver % Variable % PrevValues(j-m,2) &
-                    - ( 2.0d0/11.0d0)*Solver % Variable % PrevValues(j-m,3) ) / dt
-            END DO
-         END SELECT
-      END DO
-    ELSE IF( ASSOCIATED( MeshVelocity ) .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN 
+    ELSE IF( ASSOCIATED( MeshVelocity ) ) THEN 
       MeshVelocity = 0.0d0
     END IF
   END IF
 
+  Solver % Mesh => Model % Mesh
+  NoNodes = SIZE(Solver % Mesh % Nodes % x)
 
-  IF( SkipDisplace ) THEN
-    CONTINUE
-  ELSE IF ( ASSOCIATED( StressSol ) ) THEN
-    CALL DisplaceMesh( Solver % Mesh, MeshUpdate,   1, TPerm,      STDOFs )
-    CALL DisplaceMesh( Solver % Mesh, Displacement, 1, StressPerm, STDOFs, .FALSE.)
-  ELSE
-    CALL DisplaceMesh( Solver % Mesh, MeshUpdate,   1, MeshPerm,   STDOFs )
-  END IF
+  DO i=1,NoNodes
+     k = MeshPerm(i)
+     IF(k>0) THEN
+        k = 2 * (k-1)
+        MeshUpdate(k+1) = Mesh0 % Nodes % x(i) - Solver % Mesh % Nodes % x(i) + MeshUpdate(k+1)
+        MeshUpdate(k+1) = MIN(MeshUpdate(k+1),0.0_dp) !Ensure <= 0 (epsilon issues)
+
+        MeshUpdate(k+2) = Mesh0 % Nodes % y(i) - Solver % Mesh % Nodes % y(i) + MeshUpdate(k+2)
+     ELSE
+        CALL FATAL('Front Displacement','This is almost certainly a permutation error')
+     END IF
+  END DO
+
 
   CONTAINS
 
@@ -469,7 +432,7 @@ END SUBROUTINE MeshSolver_Init
 
      REAL(KIND=dp), POINTER :: A(:,:)
      REAL(KIND=dp) :: s,u,v,w
-     INTEGER :: i,j,k,p,q,t
+     INTEGER :: i,j,k,p,q,t,dim
   
      LOGICAL :: stat
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -479,7 +442,8 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 
      CALL GetElementNodes( Nodes )
-     
+     dim = CoordinateSystemDimension()
+
      IF ( PlaneStress ) THEN
         NodalLame1(1:n) = NodalYoung(1,1,1:n) * NodalPoisson(1:n) / &
                ((1.0d0 - NodalPoisson(1:n)**2))
@@ -571,7 +535,7 @@ END SUBROUTINE MeshSolver_Init
    REAL(KIND=dp) :: u,v,w,s
    REAL(KIND=dp) :: Alpha(3),Beta,Normal(3),LoadAtIP(3)
 
-   INTEGER :: i,t,q,p
+   INTEGER :: i,t,q,p,dim
 
    LOGICAL :: stat
 
@@ -581,6 +545,7 @@ END SUBROUTINE MeshSolver_Init
    SAVE Nodes
 !------------------------------------------------------------------------------
 
+   dim = Element % TYPE % DIMENSION + 1
    CALL GetElementNodes( Nodes )
 
    FORCE = 0.0D0
@@ -651,5 +616,5 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-END SUBROUTINE MeshSolver
+END SUBROUTINE FDMeshSolver
 !------------------------------------------------------------------------------

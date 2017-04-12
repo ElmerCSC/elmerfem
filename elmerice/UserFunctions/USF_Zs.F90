@@ -33,6 +33,7 @@
 !> ZsTopMZsIni for variable Zs Top         
 !> ZsBottomMZsIni for variable Zs Bottom
 !> DyMDyIni for any FS variable name           
+!> *Calving for 2D calving simulations
 FUNCTION ZsIni ( Model, nodenumber, x) RESULT(Zs)
    USE types
    USE CoordinateSystems
@@ -355,4 +356,179 @@ FUNCTION DyMDyIni ( Model, nodenumber, Zs) RESULT(mu)
        mu = Zs - Zs0(nodenumber)
 
 END FUNCTION DyMDyIni
+
+FUNCTION ZsBottomMzsIniCalving ( Model, nodenumber, Zs) RESULT(mu)
+   USE types
+   USE CoordinateSystems
+   USE SolverUtils
+   USE ElementDescription
+   USE DefUtils
+   IMPLICIT NONE
+   TYPE(Variable_t), POINTER :: ZsSol, Timevar
+   INTEGER, POINTER :: ZsPerm(:)
+   TYPE(Model_t) :: Model
+   TYPE(Solver_t), TARGET :: Solver
+   INTEGER :: nodenumber,  NMAX, i, dim
+   REAL(KIND=dp) :: mu, Zs, t, told
+   REAL(KIND=dp), ALLOCATABLE :: Zs0(:), ZsPrev(:)
+   LOGICAL :: FirstTime=.True., NewTime=.TRUE., CalvingOccurs, &
+        RemeshOccurs, Found, Debug=.FALSE.
+
+   SAVE FirstTime, told, NewTime
+   SAVE Zs0, ZsPrev, ZsPerm, NMAX, dim
+
+   Debug = .FALSE.
+   ! Real time import
+   Timevar => VariableGet( Model % Variables,'Time')
+   t = TimeVar % Values(1)
+
+   ZsSol => VariableGet( Model % Variables, 'Zs Bottom')
+   IF (ASSOCIATED(ZsSol)) THEN
+        ZsPerm => ZsSol % Perm
+   ELSE
+        CALL FATAL('ZsTopMZsIni','Could not find variable >Zs Bottom<')
+   END IF
+
+   IF (FirstTime) THEN
+        FirstTime = .False.
+        Newtime = .TRUE.
+        told = t
+        dim = CoordinateSystemDimension()
+        NMAX = COUNT( ZsPerm > 0 )
+        ALLOCATE(Zs0(NMAX),ZsPrev(NMAX))
+        DO i = 1, Model % NumberOfNodes
+          IF (ZsPerm(i)==0) CYCLE
+          IF (dim==2) THEN
+             Zs0(ZsPerm(i)) = Model % Nodes % y (i)
+          ELSE
+             Zs0(ZsPerm(i)) = Model % Nodes % z (i)
+          END IF
+        END DO
+   END IF
+
+   IF(t>told) Newtime = .TRUE.
+
+   CalvingOccurs = ListGetLogical( Model % Simulation, 'CalvingOccurs', Found)
+   IF(.NOT. Found) THEN
+      IF(Debug) CALL INFO("USF_Zs","Can't find CalvingOccurs Logical, assuming false")
+      CalvingOccurs = .FALSE.
+   END IF
+
+   RemeshOccurs = ListGetLogical( Model % Simulation, 'RemeshOccurs', Found)
+   IF(.NOT. Found) THEN
+      IF(Debug) CALL WARN("ZsBottomMZsIni","Can't find RemeshCondition Logical, assuming false!")
+      RemeshOccurs = .FALSE.
+   END IF
+
+   IF(Newtime) THEN
+      PRINT *, 'USF_Zs: New time, saving previous Zs values!'
+      told = t
+      Newtime = .FALSE.
+      DO i = 1, Model % NumberOfNodes
+         IF (ZsPerm(i)==0) CYCLE
+         IF (dim==2) THEN
+            ZsPrev(ZsPerm(i)) = Model % Nodes % y (i)
+         ELSE
+            ZsPrev(ZsPerm(i)) = Model % Nodes % z (i)
+         END IF
+      END DO
+   END IF
+
+   IF(CalvingOccurs .OR. RemeshOccurs) THEN
+      Zs0 = ZsPrev
+   END IF
+
+   mu =  Zs -  Zs0(ZsPerm(nodenumber))
+   !TEST
+   IF((CalvingOccurs .OR. RemeshOccurs) .AND. Debug) THEN
+      PRINT *, 'USF_Zs: At point ',Model % Nodes % x(nodenumber),' Zs is ',Zs,' and Zs0 is ',Zs0(ZsPerm(nodenumber))
+   END IF
+
+
+END FUNCTION ZsBottomMZsIniCalving
+
+FUNCTION ZsTopMzsIniCalving ( Model, nodenumber, Zs) RESULT(mu)
+   USE types
+   USE CoordinateSystems
+   USE SolverUtils
+   USE ElementDescription
+   USE DefUtils
+   IMPLICIT NONE
+   TYPE(Variable_t), POINTER :: ZsSol, Timevar
+   INTEGER, POINTER :: ZsPerm(:)
+   TYPE(Model_t) :: Model
+   TYPE(Solver_t), TARGET :: Solver
+   INTEGER :: nodenumber,  NMAX, i, dim
+   REAL(KIND=dp) :: mu, Zs, t, told
+   REAL(KIND=dp), ALLOCATABLE :: Zs0(:), ZsPrev(:)
+   LOGICAL :: FirstTime=.True., NewTime=.TRUE., CalvingOccurs, &
+        RemeshOccurs, Found, Debug = .FALSE.
+
+   SAVE FirstTime, told, NewTime
+   SAVE Zs0, ZsPrev, ZsPerm, NMAX, dim
+
+   Debug = .FALSE.
+   ! Real time import
+   Timevar => VariableGet( Model % Variables,'Time')
+   t = TimeVar % Values(1)
+
+   ZsSol => VariableGet( Model % Variables, 'Zs Top')
+   IF (ASSOCIATED(ZsSol)) THEN
+        ZsPerm => ZsSol % Perm
+   ELSE
+        CALL FATAL('ZsTopMZsIni','Could not find variable >Zs Top<')
+   END IF
+
+   IF (FirstTime) THEN
+        FirstTime = .False.
+        Newtime = .TRUE.
+        told = t
+        dim = CoordinateSystemDimension()
+        NMAX = COUNT( ZsPerm > 0 )
+        ALLOCATE(Zs0(NMAX),ZsPrev(NMAX))
+        DO i = 1, Model % NumberOfNodes
+          IF (ZsPerm(i)==0) CYCLE
+          IF (dim==2) THEN
+             Zs0(ZsPerm(i)) = Model % Nodes % y (i)
+          ELSE
+             Zs0(ZsPerm(i)) = Model % Nodes % z (i)
+          END IF
+        END DO
+   END IF
+
+   IF(t>told) Newtime = .TRUE.
+
+   CalvingOccurs = ListGetLogical( Model % Simulation, 'CalvingOccurs', Found)
+   IF(.NOT. Found) THEN
+      IF(Debug) CALL INFO("ZsTopMZsIni","Can't find CalvingOccurs Logical, assuming false")
+      CalvingOccurs = .FALSE.
+   END IF
+
+   RemeshOccurs = ListGetLogical( Model % Simulation, 'RemeshOccurs', Found)
+   IF(.NOT. Found) THEN
+      IF(Debug) CALL WARN("ZsTopMZsIni","Can't find RemeshCondition Logical, assuming false!")
+      RemeshOccurs = .FALSE.
+   END IF
+
+   IF(Newtime) THEN
+      PRINT *, 'USF_Zs: New time, saving previous Zs values!'
+      told = t
+      Newtime = .FALSE.
+      DO i = 1, Model % NumberOfNodes
+         IF (ZsPerm(i)==0) CYCLE
+         IF (dim==2) THEN
+            ZsPrev(ZsPerm(i)) = Model % Nodes % y (i)
+         ELSE
+            ZsPrev(ZsPerm(i)) = Model % Nodes % z (i)
+         END IF
+      END DO
+   END IF
+
+   IF(CalvingOccurs .OR. RemeshOccurs) THEN
+      Zs0 = ZsPrev
+   END IF
+
+   mu =  Zs -  Zs0(ZsPerm(nodenumber))
+
+END FUNCTION ZsTopMZsIniCalving
 

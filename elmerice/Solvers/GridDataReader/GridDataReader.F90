@@ -23,7 +23,7 @@
 !
 ! ******************************************************************************
 ! *
-! *  Authors: Peter Råback, Vili Forsell, Juha Ruokolainen
+! *  Authors: Peter Rï¿½back, Vili Forsell, Juha Ruokolainen
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -37,7 +37,7 @@
 ! *  uniform coordinate variables in the netcdf file (netcdf cells should be
 ! *  rectangular)
 ! *
-! *  18.3.2013 / Peter Råback
+! *  18.3.2013 / Peter Rï¿½back
 ! *  Improved possibility to deal with missing or errorness values.
 ! *
 ! ****************************************************************************
@@ -493,7 +493,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
   TYPE(array3D) :: coordVar(3)
   INTEGER :: n,k,node,MeshDim, NetDim,iTime,nTime
   INTEGER, POINTER :: FieldPerm(:)
-  REAL(KIND=dp), POINTER :: Field(:)
+  REAL(KIND=dp), POINTER :: Field(:), FieldOldValues(:)=>NULL()
   REAL(KIND=dp) :: x(3),dx(3),x0(3),x1(3),u1(3),u2(3),dt,t0,val,&
                    Eps(3),Time,x0e(3),x1e(3),pTime,EpsTime,q,r
   INTEGER :: DimSize(3), CoordVarNDims(3), i
@@ -505,7 +505,8 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
   REAL(KIND=dp) :: Coeff, InterpMultiplier, InterpBias, TimeIndex, acc, MinMaxVals(2), &
       MissingVal
   LOGICAL :: Found, IsTime, DoCoordinateTransformation, DoCoordMapping, &
-      DoScaling, DoBoundingBox, DoPeriodic, UniformCoords, HaveMinMax, DoNuInterpolation
+      DoScaling, DoBoundingBox, DoPeriodic, UniformCoords, HaveMinMax, DoNuInterpolation,&
+      KeepOld
   INTEGER, POINTER :: CoordMapping(:), PeriodicDir(:)
 
   ! General initializations
@@ -545,6 +546,9 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
 
   PeriodicDir => ListGetIntegerArray( Params,'Periodic Directions',&
       DoPeriodic )
+
+  KeepOld = ListGetLogical( Params, 'Out Of Bounds Retain Previous Value', Found)
+  IF(.NOT. Found) KeepOld = .FALSE.
 
   !------------------------------------------------------------------------------
   ! Initialize NetCDF data locations, sizes and resolution
@@ -756,9 +760,11 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     IF( .NOT. ASSOCIATED( FieldVar ) ) THEN
       WRITE( str,'(A,I0)') 'Mask Name ',NoVar
       MaskName = GetString( Params,str, Found )
+
+      NULLIFY(FieldPerm)
+      ALLOCATE( FieldPerm( Mesh % NumberOfNodes ) )
+
       IF( Found ) THEN
-        NULLIFY(FieldPerm)
-        ALLOCATE( FieldPerm( Mesh % NumberOfNodes ) )
         CALL MakePermUsingMask( Model, Solver, Mesh, MaskName,.FALSE.,FieldPerm,&
             MaskNodes,RequireLogical=.TRUE.)
         IF( MaskNodes == 0 ) THEN
@@ -774,13 +780,21 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
         FieldVar => VariableGet( Mesh % Variables,TargetName )
         NULLIFY(FieldPerm)
       ELSE
-        CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,1)
+         FieldPerm = [(i,i=1,Mesh % NumberOfNodes)]
+         CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,1, Perm=FieldPerm)
         FieldVar => VariableGet( Mesh % Variables,TargetName )
       END IF
     END IF
     Field => FieldVar % Values
     FieldPerm => FieldVar % Perm
 
+    !In case the user wants unfound values to retain their previous values
+    !(i.e. advection out of domain)
+    IF(KeepOld) THEN
+       IF(ASSOCIATED(FieldOldValues)) DEALLOCATE(FieldOldValues)
+       ALLOCATE(FieldOldValues(SIZE(Field)))
+       FieldOldValues = Field
+    END IF
 
     ! Set a constant background to the field. This can be done a priori
     ! since it does not interfere with the interpolation.
@@ -920,10 +934,15 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
         END IF
 
         Field(k) = Field(k) + Coeff * val
+
+        IF(KeepOld .AND. (InterpStatus == 2)) Field(k) = FieldOldValues(k)
+
         StatusCount(InterpStatus) = StatusCount(InterpStatus) + 1
 
       END DO
     END DO
+
+    IF(KeepOld) DEALLOCATE(FieldOldValues)
 
     IF( StatusCount(1) > 0) THEN
       WRITE( Message,'(A,I0)')'Number of proper mappings  : ',StatusCount(1)

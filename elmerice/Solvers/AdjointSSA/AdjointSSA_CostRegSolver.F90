@@ -346,7 +346,7 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
 
     IF (Parallel) THEN
            CALL MPI_ALLREDUCE(Cost,Cost_S,1,&
-                  MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)  
+                  MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
           CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
           IF (ASSOCIATED(CostVar)) THEN
                IF (Reset) then
