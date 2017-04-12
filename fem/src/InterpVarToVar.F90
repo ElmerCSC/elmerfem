@@ -151,7 +151,8 @@ CONTAINS
       END IF
 
       IF(PointLocalDistance(i) == 0.0_dp) CYCLE
-      PRINT *,ParEnv % MyPE,'Debug, point ',i,' found with local dist: ',PointLocalDistance(i)
+      IF(Debug) PRINT *,ParEnv % MyPE,'Debug, point ',&
+           i,' found with local dist: ',PointLocalDistance(i)
     END DO
 
     !Sum up unfound nodes, and those where point wasn't exactly in element

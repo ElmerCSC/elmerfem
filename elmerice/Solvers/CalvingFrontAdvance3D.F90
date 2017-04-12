@@ -549,8 +549,8 @@
               Advance((Perm(j)-1)*DOFs + 1) + Displace(1)
          Advance((Perm(j)-1)*DOFs + 2) = &
               Advance((Perm(j)-1)*DOFs + 2) + Displace(2)
-         PRINT *,ParEnv % MyPE,' Debug, limiting node range: col ',i,' node ',j,&
-              ' limit: ',LimitZ,' displace: ',Displace
+         IF(Debug) PRINT *,ParEnv % MyPE,' Debug, limiting node range: col ',&
+              i,' node ',j,' limit: ',LimitZ,' displace: ',Displace
        END DO
 
      END IF
@@ -581,8 +581,8 @@
      CALL MPI_AllReduce(MPI_IN_PLACE, Rot_z_coords(i,2), &
           1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD,ierr)
 
-     IF(Boss) PRINT *,'Debug, rot_y_coords: ',i,rot_y_coords(i,:)
-     IF(Boss) PRINT *,'Debug, rot_z_coords: ',i,rot_z_coords(i,:)
+     IF(Boss .AND. Debug) PRINT *,'Debug, rot_y_coords: ',i,rot_y_coords(i,:)
+     IF(Boss .AND. Debug) PRINT *,'Debug, rot_z_coords: ',i,rot_z_coords(i,:)
    END DO
 
    ALLOCATE(UpdatedColumn(FrontLineCount), &

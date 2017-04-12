@@ -960,9 +960,12 @@
 
        PRINT *, 'debug, size of workelements: ', SIZE(WorkElements)
 
-       DO i=1, SIZE(WorkElements)
-          PRINT *, 'Workelements', i, ' nodeindexes: ', WorkElements(i) % NodeIndexes
-       END DO
+       IF(Debug) THEN
+         DO i=1, SIZE(WorkElements)
+           PRINT *, 'Workelements', i, ' nodeindexes: ', &
+                WorkElements(i) % NodeIndexes
+         END DO
+       END IF
 
        DO i=1, IsoMesh % NumberOfBulkElements
           IF(DeleteMe(i)) CALL DeallocateElement(IsoMesh % Elements(i))
@@ -1253,7 +1256,7 @@
                 (Rot_z_coords(i,2) - Rot_z_coords(i-1,1)))
            dzdy = dz/dy
 
-           PRINT *,ParEnv % MyPE,'nodes: ',i-1,i,' dzdy: ',dzdy
+           IF(Debug) PRINT *,ParEnv % MyPE,'nodes: ',i-1,i,' dzdy: ',dzdy
            IF(dzdy > gradLimit) THEN
 
              IF( (i /= 2) .AND. (i /= FrontLineCount)) CALL Warn(SolverName, &
