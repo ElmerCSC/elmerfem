@@ -2614,6 +2614,8 @@ CONTAINS
      REAL(KIND=dp) :: dt
      LOGICAL :: Transient, Found, alloc_parenv
 
+     TYPE(ParEnv_t) :: SParEnv
+
      INTERFACE
        SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
          USE Types
@@ -2645,42 +2647,28 @@ CONTAINS
        CALL Info('DefaultSlaveSolvers','Calling slave solver: '//TRIM(I2S(k)),Level=8)
        
        IF(ParEnv % PEs>1) THEN
-         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
+         SParEnv = ParEnv
 
-         alloc_parenv = .FALSE.
          IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
            IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
              ParEnv = SlaveSolver % Matrix % ParMatrix % ParEnv
            ELSE
-             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+             ParEnv % ActiveComm = SlaveSolver % Matrix % Comm
            END IF
          ELSE
-           ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+           CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
          END IF
-         ParEnv % ActiveComm = Solver % Matrix % Comm
        END IF
 
        CurrentModel % Solver => SlaveSolver
        CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
 
        IF(ParEnv % PEs>1) THEN
-         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .FALSE.)
-
-         IF(alloc_parenv) THEN
-           DEALLOCATE(ParEnv % Active)
-           ParEnv % Active => NULL()
-         END IF
-
-         IF(ASSOCIATED(Solver % Matrix)) THEN
-           IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
-               ParEnv = Solver % Matrix % ParMatrix % ParEnv
-         END IF
+         ParEnv = SParEnv
        END IF
      END DO
-     CurrentModel % Solver => Solver
      iterV % Values = iter       
+     CurrentModel % Solver => Solver
 
    END SUBROUTINE DefaultSlaveSolvers
 !------------------------------------------------------------------------------
