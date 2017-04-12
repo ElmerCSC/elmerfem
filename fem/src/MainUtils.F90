@@ -2307,6 +2307,17 @@ CONTAINS
 CONTAINS
 
     SUBROUTINE SolveCoupled()
+
+    TYPE(Mesh_t), POINTER, SAVE :: PrevMesh
+    INTEGER, SAVE :: PrevMeshNoNodes
+    LOGICAL, SAVE :: FirstTime=.TRUE.
+
+    IF(FirstTime) THEN
+      PrevMesh => Model % Mesh
+      PrevMeshNoNodes = Model % Mesh % NumberOfNodes
+      FirstTime = .FALSE.
+    END IF
+
 !------------------------------------------------------------------------------
     DO i=1,CoupledMaxIter
        IF ( TransientSimulation .OR. Scanning ) THEN
@@ -2465,7 +2476,16 @@ CONTAINS
          END DO
 !------------------------------------------------------------------------------
          CALL ListPopNamespace()
-         !Model % Mesh % Changed = .FALSE.
+
+         !Check if the mesh changed - should do this elsewhere too?
+         IF(ASSOCIATED(Model % Mesh, PrevMesh) .AND. &
+              Model % Mesh % NumberOfNodes == PrevMeshNoNodes) THEN
+           Model % Mesh % Changed = .FALSE.
+         ELSE
+           PrevMesh => Model % Mesh
+           PrevMeshNoNodes = Model % Mesh % NumberOfNodes
+           Model % Mesh % Changed = .TRUE.
+         END IF
 
          IF( DivergenceExit ) EXIT
 
