@@ -12,7 +12,7 @@ $ablation = -1.0
 !-----------------------------
 !
 ! derived parameter
-! working units are MPa, a, mfixed constants
+! working units are MPa, a, m
 !
 $yearinsec = 365.25*24.0*60.0*60.0
 $rhoi = 910.0/(1.0e6*yearinsec^2)
@@ -29,17 +29,12 @@ $FreeC = 2000.0
 $SCTune = 1.0
 $BCTune = 1.0
 
-$A = 4.6416e-25*yearinsec*1.0e18
-$n = 3.0
-$eta = 1.0/(2.0*A)^(1.0/n)
 $gravity = -9.81*yearinsec^2
-$slope = 1.0/40.0
 $C = 5.0e-05
 $Ccoul = 1.0e-52
 ! sea level
 $sl0 = 0.0
 
-!$C = 3.0e-05
 ! the timestep
 $dt = 6.0/(24.0 * 365.25) ! 6 hours
 $tspan = 2
@@ -85,7 +80,6 @@ Constants
 
   Surface Crevasse Tuning Parameter = Real $SCTune
   Basal Crevasse Tuning Parameter = Real $BCTune
-
 End
 
 !---------------------------------------------------
@@ -209,10 +203,6 @@ End
 !! ice material properties in MPa - m - a system
 Material 1
   Density = Real $rhoi
-!  Viscosity Model = String "power law"
-!  Viscosity = Real $eta
-!  Viscosity Exponent = Real $1.0/n
-!  Critical Shear Rate = Real 1.0e-15
 
   Viscosity Model = String "Glen"
   ! Viscosity has to be set to a dummy value
@@ -228,19 +218,9 @@ Material 1
   Activation Energy 1 = Real 60e3
   Activation Energy 2 = Real 139e3
   Glen Enhancement Factor = Real 1.0
-  ! the variable taken to evaluate the Arrhenius law
-  ! in general this should be the temperature relative
-  ! to pressure melting point. The suggestion below plugs
-  ! in the correct value obtained with TemperateIceSolver
-  !Temperature Field Variable = String "Temp"
   Constant Temperature = Real 0.0
-  ! the temperature to switch between the
-  ! two regimes in the flow law
-  Limit Temperature = Real -10.0
 
   Sea Level = Real $sl0
-!  Sea Level = Variable Coordinate 1
-!    Real MATC "sealevel(tx)"
 
   Min Zs Top = Variable "Zs Bottom"
     Real MATC "tx + 10.0"
@@ -689,10 +669,6 @@ Boundary Condition 1
   Zs Bottom Condition = Variable GroundedMask
     Real MATC "tx + 0.5"
 
-  ! Mesh Update 1 = Variable Mesh Update 1, weight, Velocity 1
-  !      Real MATC "tangentialupdate(tx)"
-  ! Mesh Update 2 = Variable Reference Zs Bottom, Zs Bottom
-  !   Real MATC "tx(1) - tx(0)"
   Vert Mesh Update 2 = Variable Zs Bottom
     Real Procedure "ElmerIceUSF" "ZsBottomMzsIniCalving"
 !
@@ -700,16 +676,11 @@ Boundary Condition 1
 !
   Slip Coefficient 2 = Variable Coordinate 1
     Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
- ! WEERTMAN
+
+ ! Using Weertman sliding law to prescribe linear slip coeff
   Sliding Law = String "Weertman"
-  !Weertman Friction Coefficient = Real $C
   Weertman Friction Coefficient = Variable Coordinate 1
     Real MATC "getslipcoeff(tx)"
-  !!Weertman Friction Coefficient = Variable Coordinate 1
-  !!   Real MATC "0.00013 + 0.00013 * (2000 - tx(0))/2000.0" ! 214 kPa
-  !!Weertman Friction Coefficient = Variable Coordinate 1
-  !!    Real MATC "0.1 - (tx > 2000.0) * 0.099"
-  !!Weertman Exponent = Real $(1.0/n)
   Weertman Exponent = Real 1.0
   Weertman Linear Velocity = Real 0.001
 
@@ -772,8 +743,6 @@ Boundary Condition 3
 
   Depth = Real 0.0
   ComputeNormal = Logical False
-  ! Mesh Update 1 = Variable Mesh Update 1, weight, Velocity 1
-  !      Real MATC "tangentialupdate(tx)"
   Vert Mesh Update 2 = Variable Zs Top
     Real Procedure "ElmerIceUSF" "ZsTopMzsIniCalving"
   ! Top Surface = Variable Coordinate 1

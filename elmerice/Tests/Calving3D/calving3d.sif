@@ -843,8 +843,6 @@ Boundary Condition 5
     Real MATC "tx + 0.5"
 
   Grounding Line Definition = String "discontinuous"
-  !TODO USF_Contact (homemade) for zero friction under floating
-  !Need to modify USF_Contact to read from variable
   !SeaSpring currently works by checking ComputeNormal condition
   !Shouldn't it just check for the groundedmask < 0?
 
@@ -884,10 +882,6 @@ Boundary Condition 5
   Compute Sea Pressure = Logical True
   Compute Sea Spring = Logical True
 
-!   Mesh Update 1 = Real 0.0
-!   Mesh Update 2 = Real 0.0
-  ! Vertical Mesh Update 3 = Variable Zs Bottom
-  !   Real Procedure "ElmerIceUSF" "ZsBottomMzsIni"
   Vertical Mesh Update 3 = Variable Zs Bottom, Reference Zs Bottom
     Real MATC "tx(0) - tx(1)"
 
