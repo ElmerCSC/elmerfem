@@ -3099,11 +3099,11 @@ CONTAINS
      AllGlobal = .TRUE.
 
      IF(.NOT.ASSOCIATED(List)) RETURN
+
      ptr => List % Head
      IF(.NOT.ASSOCIATED(ptr)) RETURN
 
-     slen = ptr % DepNameLen
-
+     
      IF( ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR_STR ) THEN
        RETURN
 
@@ -3111,20 +3111,28 @@ CONTAINS
          ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
          ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
 
+
+       IF ( ptr % PROCEDURE /= 0 ) THEN
+         AllGlobal = .FALSE.
+         RETURN
+       END IF
+
+       slen = ptr % DepNameLen
+
        l0 = 1
        DO WHILE( .TRUE. )
          DO WHILE( ptr % DependName(l0:l0) == ' ' )
            l0 = l0 + 1
          END DO
          IF ( l0 > slen ) EXIT
-         
+
          l1 = INDEX( ptr % DependName(l0:slen),',')
          IF ( l1 > 0 ) THEN
            l1=l0+l1-2
          ELSE
            l1=slen
          END IF
-         
+
          IF ( ptr % DependName(l0:l1) /= 'coordinate' ) THEN
            Variable => VariableGet( CurrentModel % Variables,TRIM(ptr % DependName(l0:l1)) )
            IF ( .NOT. ASSOCIATED( Variable ) ) THEN
@@ -3147,9 +3155,9 @@ CONTAINS
          IF ( l0 > slen ) EXIT
 
        END DO
-
+       
      ELSE
-       CALL Fatal('ListCheckAllGlobal','Unknown type: '//TRIM(I2S(ptr % TYPE)))
+       CALL Fatal('ListCheckAllGlobal','Unknown type for >'//TRIM(ptr % name)//'<: '//TRIM(I2S(ptr % TYPE)))
      END IF
 
 !------------------------------------------------------------------------------
@@ -3883,6 +3891,251 @@ CONTAINS
 
 
 
+
+
+!------------------------------------------------------------------------------
+!> Initializes the handle to save just a little bit for constant valued.
+!> This is not mandatory but may still be used. 
+!------------------------------------------------------------------------------
+   RECURSIVE SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     CHARACTER(LEN=*)  :: Section,Name
+     REAL(KIND=dp), OPTIONAL :: minv,maxv
+     !------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     INTEGER :: i, n, NoVal, ValueType, IValue
+     TYPE(Model_t), POINTER :: Model
+     REAL(KIND=dp)  :: val, Rvalue
+     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+     LOGICAL :: ConstantEverywhere, NotPresentAnywhere, Lvalue, FirstList, Found
+     REAL(KIND=dp), POINTER :: Basis(:)
+     INTEGER, POINTER :: NodeIndexes(:)
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: Debug, GotIt
+     !------------------------------------------------------------------------------
+
+     Debug = .TRUE.
+
+
+     CALL Info('ListInitElementKeyword','Treating keyword: '//TRIM(Name),Level=10)
+
+     Model => CurrentModel
+     Handle % BulkElement = .TRUE.
+
+     SELECT CASE ( Section ) 
+
+     CASE('Body')
+       Handle % SectionType = SECTION_TYPE_BODY
+
+     CASE('Material')
+       Handle % SectionType = SECTION_TYPE_MATERIAL
+       
+     CASE('Body Force')
+       Handle % SectionType = SECTION_TYPE_BF
+
+     CASE('Initial Condition')
+       Handle % SectionType = SECTION_TYPE_IC
+
+     CASE('Boundary Condition')
+       Handle % SectionType = SECTION_TYPE_BC
+       Handle % BulkElement = .FALSE.
+       
+     CASE('Component')
+       Handle % SectionType = SECTION_TYPE_COMPONENT
+
+     CASE('Simulation')
+       Handle % SectionType = SECTION_TYPE_SIMULATION
+
+     CASE DEFAULT
+       CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(Section))
+
+     END SELECT
+
+
+     ! Initialize the handle entries because it may be that the list stucture was altered,
+     ! or the same handle is used for different keyword.
+     Handle % ConstantEverywhere = .TRUE.
+     Handle % GlobalInList = .FALSE.
+     Handle % NotPresentAnywhere = .TRUE.
+     Handle % SomewhereEvaluateAtIP = .FALSE.
+     Handle % GlobalEverywhere = .TRUE.
+     Handle % Name = Name 
+     Handle % BodyId = -1
+     Handle % BoundaryInfo => NULL()
+     Handle % EvaluateAtIp = .FALSE.       
+     Handle % BoundaryInfo => NULL()
+     Handle % List => NULL()
+     Handle % Element => NULL()
+     IF(.NOT. ASSOCIATED( Ptr ) ) THEN
+       Handle % Ptr => ListAllocate()
+     END IF
+
+     Handle % Initialized = .TRUE.
+     
+     FirstList = .TRUE.
+
+
+     DO WHILE(.TRUE.) 
+       i = i + 1
+       
+       SELECT CASE ( Handle % SectionType ) 
+       CASE( SECTION_TYPE_BODY )
+         IF(i > Model % NumberOfMaterials ) EXIT
+         List => Model % Bodies(i) % Values
+
+       CASE( SECTION_TYPE_MATERIAL )
+         IF(i > Model % NumberOfMaterials ) EXIT
+         List => Model % Materials(i) % Values
+
+       CASE( SECTION_TYPE_BF )
+         IF(i > Model % NumberOfBodyForces ) EXIT        
+         List => Model % BodyForces(i) % Values
+
+       CASE( SECTION_TYPE_IC )
+         IF( i > Model % NumberOfICs ) EXIT
+         List => Model % ICs(i) % Values
+
+       CASE( SECTION_TYPE_BC )
+         IF( i > Model % NumberOfBCs ) EXIT        
+         List => Model % BCs(i) % Values
+
+       CASE DEFAULT
+         CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(I2S(Handle % SectionType)))
+
+       END SELECT
+
+       
+       ! If the parameter is not defined in some list we cannot really be sure
+       ! that it is intentionally used as a zero. Hence we cannot assume that the
+       ! keyword is constant. 
+       ptr => ListFind(List,Name,Found)
+       Handle % ptr % Head => ptr
+
+       IF ( .NOT.ASSOCIATED(ptr) ) THEN
+         Handle % ConstantEverywhere = .FALSE.
+         CYCLE
+       ELSE IF( FirstList ) THEN
+         Handle % NotPresentAnywhere = .FALSE.
+         Handle % ValueType = ptr % Type
+       END IF
+
+       ValueType = ptr % TYPE 
+
+       IF( ValueType == LIST_TYPE_LOGICAL ) THEN
+         Lvalue = ptr % Lvalue
+
+         IF( FirstList ) THEN
+           Handle % LValue = LValue
+         ELSE
+           IF( XOR( Handle % LValue, LValue ) ) THEN
+             Handle % ConstantEverywhere = .FALSE.
+             EXIT
+           END IF
+         END IF
+
+       ELSE IF( ValueType == LIST_TYPE_STRING ) THEN
+         Cvalue = ptr % Cvalue
+         IF( FirstList ) THEN
+           Handle % CValue = Cvalue
+           Handle % CValueLen = len_trim(CValue)
+         ELSE IF( Handle % CValue(1:Handle % CValueLen) /= Cvalue ) THEN
+           Handle % ConstantEverywhere = .FALSE.
+           EXIT
+         END IF
+
+       ELSE IF( ValueType == LIST_TYPE_INTEGER ) THEN
+         Ivalue = ptr % Ivalues(1)           
+         IF( FirstList ) THEN
+           Handle % IValue = Ivalue
+         ELSE IF( Handle % IValue /= Ivalue ) THEN
+           Handle % ConstantEverywhere = .FALSE.
+           EXIT
+         END IF
+
+       ELSE IF( ValueType >= LIST_TYPE_CONSTANT_SCALAR .AND. &
+           ValueType <= List_TYPE_CONSTANT_SCALAR_PROC ) THEN         
+         IF(.NOT. ListCheckAllGlobal( Handle % ptr, name ) ) THEN
+           Handle % GlobalEverywhere = .FALSE.
+           Handle % ConstantEverywhere = .FALSE.           
+           IF( ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt ) ) THEN
+             Handle % SomewhereEvaluateAtIp = .TRUE.
+             EXIT
+           END IF
+         END IF
+
+         IF( Handle % ConstantEverywhere ) THEN
+           Rvalue = ListGetCReal( List,Name)
+           ! and each list must have the same constant value
+           IF( FirstList ) THEN
+             Handle % RValue = Rvalue
+           ELSE IF( ABS( Handle % RValue - Rvalue ) > TINY( RValue ) ) THEN
+             Handle % ConstantEverywhere = .FALSE.
+           END IF
+         END IF
+       END IF
+
+       FirstList = .FALSE.
+     END DO
+
+     CALL Info('ListInitElementKeyword',&
+         'Initiated handle for: '//TRIM(Handle % Name)//' type '// &
+         TRIM(I2S(Handle % ValueType)),Level=10)
+     !PRINT *,'Constants:',Handle % NotPresentAnywhere, &
+     !    Handle % ConstantEverywhere, Handle % GlobalEverywhere, &
+     !    Handle % SomewhereEvaluateAtIp
+
+   END SUBROUTINE ListInitElementKeyword
+!------------------------------------------------------------------------------
+
+
+   FUNCTION BulkElementList( BodyId, Handle ) RESULT( List )
+
+     INTEGER :: BodyId     
+     TYPE(ValueHandle_t) :: Handle
+     TYPE(ValueList_t), POINTER :: List
+     
+     
+     LOGICAL :: ListFound
+     INTEGER :: id
+     
+     List => NULL()
+     
+     
+     SELECT CASE ( Handle % SectionType )
+       
+     CASE( SECTION_TYPE_BODY )
+       List => CurrentModel % Bodies(BodyId) % Values
+       ListFound = .TRUE.
+       
+     CASE( SECTION_TYPE_BF )
+       id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
+           'Body Force', ListFound )         
+       IF( ListFound ) List => CurrentModel % BodyForces(id) % Values
+       
+     CASE( SECTION_TYPE_IC )
+       id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
+           'Initial Condition', ListFound )         
+       IF(ListFound) List => CurrentModel % ICs(id) % Values
+       
+     CASE( SECTION_TYPE_MATERIAL ) 
+       id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
+           'Material', ListFound )         
+       IF(ListFound) List => CurrentModel % Materials(id) % Values
+           
+     CASE( -1 )
+       CALL Fatal('BulkElementList','Handle not initialized!')
+
+     CASE DEFAULT 
+       CALL Fatal('ListGetBulkElementList','Unknown section type!')
+       
+     END SELECT
+     
+   END FUNCTION BulkElementList
+
+  
+
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in the Gaussian integration point defined 
 !> by the local basis function. To speed up things there is a handle associated
@@ -3909,11 +4162,10 @@ CONTAINS
      REAL(KIND=dp), POINTER :: ParF(:,:)
      INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
-     LOGICAL :: AllGlobal, ListSame, ListFound, GotIt
+     LOGICAL :: AllGlobal, ListSame, ListFound, GotIt, IntFound
      TYPE(Element_t), POINTER :: PElement
 !------------------------------------------------------------------------------
-
-
+     
      ! If value is not present anywhere then return False
      IF( Handle % NotPresentAnywhere ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
@@ -3927,7 +4179,7 @@ CONTAINS
        RValue = Handle % RValue
        RETURN
      END IF
-
+     
 
      IF(.NOT. Handle % Initialized ) THEN
        CALL Fatal('','Handle must be initialized')
@@ -3946,47 +4198,27 @@ CONTAINS
      ListFound = .FALSE.
      ListSame = .FALSE.
      
-
+     
      ! We know by initialization the list entry type that the keyword has
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
-     IF( Handle % BulkElement ) THEN     
+     IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
+       ListSame = .TRUE.
+       
+     ELSE IF( Handle % BulkElement ) THEN     
        BodyId = PElement % BodyId
-
+       
        IF( BodyId == 0 ) THEN
-         CALL Warn('ListGetElementLogical','Bulk handle called for boundary?')
+         CALL Warn('ListGetElementReal','Bulk handle called for boundary?')
        END IF
        
        IF( Handle % BodyId == BodyId ) THEN
          ListSame = .TRUE.
        ELSE       
-         SELECT CASE ( Handle % SectionType )
-           
-         CASE( SECTION_TYPE_BODY )
-           List => CurrentModel % Bodies(id) % Values
-           ListFound = .TRUE.
-
-         CASE( SECTION_TYPE_BF )
-           id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
-               'Body Force', ListFound )         
-           IF( ListFound ) List => CurrentModel % BodyForces(id) % Values
-
-         CASE( SECTION_TYPE_IC )
-           id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
-               'Initial Condition', ListFound )         
-           IF(ListFound) List => CurrentModel % ICs(id) % Values
-
-         CASE( SECTION_TYPE_MATERIAL ) 
-           id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
-               'Material', ListFound )         
-           IF(ListFound) List => CurrentModel % Materials(id) % Values
-
-         CASE DEFAULT 
-           CALL Fatal('ListGetElementLogical','Unknown section type!')
-
-         END SELECT
+         List => BulkElementList( BodyId, Handle )
+         ListFound = ASSOCIATED( List ) 
        END IF
-         
+       
      ELSE  ! Boundary element
        IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
          IF( ASSOCIATED( Handle % BoundaryInfo, Element % BoundaryInfo ) ) THEN
@@ -4002,58 +4234,42 @@ CONTAINS
          END IF
        END IF
      END IF
-
+     
 
      ! If the provided list is the same as last time, also the keyword will
      ! be sitting at the same place, otherwise find it in the new list
-     IF( ListFound ) THEN
-       IF(PRESENT(Found)) Found = .FALSE.
-       RETURN
-     ELSE IF( .NOT. ASSOCIATED( List % Head ) ) THEN
-       IF(PRESENT(Found)) Found = .FALSE.
-       RETURN
-     ELSE IF( ASSOCIATED( Handle % List, List ) ) THEN
-       ptr => Handle % ptr % head
-       IF(PRESENT(Found)) Found = .TRUE.
+     IF( ListSame ) THEN
+       IF( PRESENT( Found ) ) Found = Handle % Found       
+       IF( .NOT. Handle % Found ) RETURN
        IF( Handle % GlobalInList ) THEN
          Rvalue = Handle % Values(1)
          RETURN
-       END IF
-     ELSE 
-       ptr => ListFind(List,Handle % Name,Found)
-
-       Handle % Ptr % Head => ptr
-       Handle % List => List
-       
-       ! Check whether the keyword should be evaluated at integration point directly
-       IF( ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt ) ) THEN
-         CALL Info('ListGetElementReal','Evaluating at ip: '//TRIM(Handle % Name),Level=10 )
-
-         ! It does not make sense to evaluate global variables at IP
-         Handle % EvaluateAtIp = .NOT. &
-             ListCheckAllGlobal(  Handle % Ptr, Handle % Name )
-         IF( .NOT. Handle % EvaluateAtIp ) THEN
-           CALL Info('ListGetElementReal','Evaluation at ip not needed!',Level=10)
-         END IF
        ELSE
-         Handle % EvaluateAtIp = .FALSE.
+         ptr => Handle % ptr % head        
        END IF
-
-       IF ( .NOT.ASSOCIATED(ptr) ) RETURN
-       Handle % GlobalInList = .FALSE.
+     ELSE IF( ListFound ) THEN
+       ptr => ListFind(List,Handle % Name,IntFound)
+       IF(PRESENT(Found)) Found = IntFound
+       Handle % Found = IntFound
+       IF( Handle % BulkElement ) THEN       
+         Handle % BodyId = BodyId
+       ELSE
+         Handle % BoundaryInfo => Element % BoundaryInfo
+       END IF
+       IF(.NOT. IntFound ) RETURN
+       Handle % Ptr % Head => ptr
+       
+       ! It does not make sense to evaluate global variables at IP
+       IF( Handle % SomewhereEvaluateAtIp ) THEN
+         ! Check whether the keyword should be evaluated at integration point directly
+         IF( ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt ) ) THEN
+           Handle % EvaluateAtIp = .TRUE.
+         ELSE
+           Handle % EvaluateAtIp = .FALSE.
+         END IF
+       END IF
      END IF
-
-     ! If there is no pointer return default value zero
-     IF ( .NOT. ASSOCIATED(ptr) ) RETURN
-
-     ! Get the pointer to the element
-     IF( PRESENT( Element) ) THEN
-       PElement => Element
-     ELSE
-       PElement => CurrentModel % CurrentElement
-     END IF
-
-
+       
      ! Either evaluate parameter directly at IP, 
      ! or first at nodes and then using basis functions at IP.
      ! The later is the default. 
@@ -4073,7 +4289,6 @@ CONTAINS
          NodeIndexes => PElement % NodeIndexes
          ParF => Handle % ParValues
        ELSE
-         
          IF( .NOT. Handle % AllocationsDone ) THEN
            n = CurrentModel % Mesh % MaxElementNodes
            ALLOCATE( Handle % Values(n) )
@@ -4109,7 +4324,6 @@ CONTAINS
              Handle % ParValues(1:j,i) = T(1:j)
            END DO
          END IF
-
          ParF => Handle % ParValues         
        END IF
 
@@ -4345,235 +4559,7 @@ CONTAINS
    END FUNCTION ListGetElementReal
 !------------------------------------------------------------------------------
 
-
-
-!------------------------------------------------------------------------------
-!> Initializes the handle to save just a little bit for constant valued.
-!> This is not mandatory but may still be used. 
-!------------------------------------------------------------------------------
-   RECURSIVE SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv)
-!------------------------------------------------------------------------------
-     TYPE(ValueHandle_t) :: Handle
-     CHARACTER(LEN=*)  :: Section,Name
-     REAL(KIND=dp), OPTIONAL :: minv,maxv
-     !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List
-     TYPE(ValueListEntry_t), POINTER :: ptr
-     INTEGER :: i, n, NoVal, ValueType, IValue
-     TYPE(Model_t), POINTER :: Model
-     REAL(KIND=dp)  :: val, Rvalue
-     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
-     LOGICAL :: ConstantEverywhere, NotPresentAnywhere, Lvalue, FirstList, Found
-     REAL(KIND=dp), POINTER :: Basis(:)
-     INTEGER, POINTER :: NodeIndexes(:)
-     TYPE(Element_t), POINTER :: Element
-     LOGICAL :: Debug 
-     !------------------------------------------------------------------------------
-
-     Debug = .TRUE.
-     
-
-     Model => CurrentModel
-     Handle % BulkElement = .TRUE.
-
-     SELECT CASE ( Section ) 
-
-     CASE('Body')
-       Handle % SectionType = SECTION_TYPE_BODY
-
-     CASE('Material')
-       Handle % SectionType = SECTION_TYPE_MATERIAL
-
-     CASE('Body Force')
-       Handle % SectionType = SECTION_TYPE_BF
-
-     CASE('Initial Condition')
-       Handle % SectionType = SECTION_TYPE_IC
-
-     CASE('Boundary Condition')
-       Handle % SectionType = SECTION_TYPE_BC
-       Handle % BulkElement = .FALSE.
-       
-     CASE('Component')
-       Handle % SectionType = SECTION_TYPE_COMPONENT
-
-     CASE('Simulation')
-       Handle % SectionType = SECTION_TYPE_SIMULATION
-
-     CASE DEFAULT
-       CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(Section))
-
-     END SELECT
-
-
-     Handle % ConstantEverywhere = .TRUE.
-     Handle % NotPresentAnywhere = .TRUE.
-     Handle % GlobalEverywhere = .TRUE.
-     Handle % Name = Name 
-     Handle % Initialized = .TRUE.
-     Handle % Ptr => ListAllocate()
-     Handle % BodyId = -1
-     Handle % BoundaryInfo => NULL()
-     
-     FirstList = .TRUE.
-
-
-     DO WHILE(.TRUE.) 
-       i = i + 1
-
-       SELECT CASE ( Handle % SectionType ) 
-       CASE( SECTION_TYPE_BODY )
-         IF(i > Model % NumberOfMaterials ) EXIT
-         List => Model % Bodies(i) % Values
-
-       CASE( SECTION_TYPE_MATERIAL )
-         IF(i > Model % NumberOfMaterials ) EXIT
-         List => Model % Materials(i) % Values
-
-       CASE( SECTION_TYPE_BF )
-         IF(i > Model % NumberOfBodyForces ) EXIT        
-         List => Model % BodyForces(i) % Values
-
-       CASE( SECTION_TYPE_IC )
-         IF( i > Model % NumberOfICs ) EXIT
-         List => Model % ICs(i) % Values
-
-       CASE( SECTION_TYPE_BC )
-         IF( i > Model % NumberOfBCs ) EXIT        
-         List => Model % BCs(i) % Values
-
-       CASE DEFAULT
-         CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(Section))
-
-       END SELECT
-
-
-       ! If the parameter is not defined in some list we cannot really be sure
-       ! that it is intentionally used as a zero. Hence we cannot assume that the
-       ! keyword is constant. 
-       ptr => ListFind(List,Name,Found)
-
-
-       IF ( .NOT.ASSOCIATED(ptr) ) THEN
-         Handle % ConstantEverywhere = .FALSE.
-         CYCLE
-       ELSE IF( FirstList ) THEN
-         Handle % NotPresentAnywhere = .FALSE.
-         Handle % ValueType = ptr % Type
-       END IF
-
-       ValueType = ptr % TYPE 
-
-       IF( ValueType == LIST_TYPE_LOGICAL ) THEN
-         Lvalue = ptr % Lvalue
-
-         IF( FirstList ) THEN
-           Handle % LValue = LValue
-         ELSE
-           IF( XOR( Handle % LValue, LValue ) ) THEN
-             Handle % ConstantEverywhere = .FALSE.
-             EXIT
-           END IF
-         END IF
-
-       ELSE IF( ValueType == LIST_TYPE_STRING ) THEN
-         Cvalue = ptr % Cvalue
-         IF( FirstList ) THEN
-           Handle % CValue = Cvalue
-           Handle % CValueLen = len_trim(CValue)
-         ELSE IF( Handle % CValue(1:Handle % CValueLen) /= Cvalue ) THEN
-           Handle % ConstantEverywhere = .FALSE.
-           EXIT
-         END IF
-
-       ELSE IF( ValueType == LIST_TYPE_INTEGER ) THEN
-         Ivalue = ptr % Ivalues(1)           
-         IF( FirstList ) THEN
-           Handle % IValue = Ivalue
-         ELSE IF( Handle % IValue /= Ivalue ) THEN
-           Handle % ConstantEverywhere = .FALSE.
-           EXIT
-         END IF
-
-       ELSE IF( ValueType >= LIST_TYPE_CONSTANT_SCALAR .AND. &
-           ValueType <= List_TYPE_CONSTANT_SCALAR_PROC ) THEN
-
-         IF(.NOT. ListCheckAllGlobal( List, name ) ) THEN
-           Handle % GlobalEverywhere = .FALSE.
-           Handle % ConstantEverywhere = .FALSE.
-           EXIT
-         END IF
-
-         Rvalue = ListGetCReal( List,Name)
-
-         ! and each list must have the same constant value
-         IF( FirstList ) THEN
-           Handle % RValue = Rvalue
-         ELSE IF( ABS( Handle % RValue - Rvalue ) > TINY( RValue ) ) THEN
-           Handle % ConstantEverywhere = .FALSE.
-           EXIT
-         END IF
-       END IF
-
-       FirstList = .FALSE.
-     END DO
-
-     CALL Info('ListInitElementKeyword',&
-         'Initiated handle for: '//TRIM(Handle % Name)//' type '// &
-         TRIM(I2S(Handle % ValueType)),Level=10)
-     !PRINT *,'Constants:',Handle % NotPresentAnywhere, &
-     !    Handle % ConstantEverywhere, Handle % GlobalEverywhere
-
-   END SUBROUTINE ListInitElementKeyword
-!------------------------------------------------------------------------------
-
-
-   FUNCTION BulkElementList( BodyId, Handle ) RESULT( List )
-
-     INTEGER :: BodyId     
-     TYPE(ValueHandle_t) :: Handle
-     TYPE(ValueList_t), POINTER :: List
-     
-     
-     LOGICAL :: ListFound
-     INTEGER :: id
-     
-     List => NULL()
-     
-     
-     SELECT CASE ( Handle % SectionType )
-       
-     CASE( SECTION_TYPE_BODY )
-       List => CurrentModel % Bodies(BodyId) % Values
-       ListFound = .TRUE.
-       
-     CASE( SECTION_TYPE_BF )
-       id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
-           'Body Force', ListFound )         
-       IF( ListFound ) List => CurrentModel % BodyForces(id) % Values
-       
-     CASE( SECTION_TYPE_IC )
-       id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
-           'Initial Condition', ListFound )         
-       IF(ListFound) List => CurrentModel % ICs(id) % Values
-       
-     CASE( SECTION_TYPE_MATERIAL ) 
-       id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
-           'Material', ListFound )         
-       IF(ListFound) List => CurrentModel % Materials(id) % Values
-           
-     CASE( -1 )
-       CALL Fatal('BulkElementList','Handle not initialized!')
-
-     CASE DEFAULT 
-       CALL Fatal('ListGetBulkElementList','Unknown section type!')
-       
-     END SELECT
-     
-   END FUNCTION BulkElementList
-
-  
-
+   
    
 !------------------------------------------------------------------------------
 !> Gets a logical valued parameter in elements.

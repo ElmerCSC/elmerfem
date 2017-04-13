@@ -402,7 +402,7 @@ END INTERFACE
      REAL(KIND=dp) :: Coeff = 1.0_dp
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
 
-     INTEGER :: NameLen,DepNameLen
+     INTEGER :: NameLen,DepNameLen = 0
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
 
 #ifdef DEBUG_LISTCOUNTER 
@@ -447,6 +447,7 @@ END INTERFACE
      LOGICAL :: GlobalEverywhere = .FALSE.
      LOGICAL :: GlobalInList = .FALSE.
      LOGICAL :: EvaluateAtIP = .FALSE.
+     LOGICAL :: SomewhereEvaluateAtIP = .FALSE.
      LOGICAL :: NotPresentAnywhere = .FALSE.
 
    END TYPE ValueHandle_t
