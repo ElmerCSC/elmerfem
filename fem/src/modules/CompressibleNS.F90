@@ -70,14 +70,11 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: OuterIterationMethod, NonlinearIterationMethod
   INTEGER :: i,j,k,n, nb, nd, t, istat, dim, m, p, q, &
        MaxIterations, NumberOfNormalTractionNodes, BDOFs=0, NormalDir
-#ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: Norm = 0, PrevNorm, RelC, Tolerance, ToleranceRatio, &
+  REAL(KIND=dp) :: Norm = 0, PrevNorm, Tolerance, ToleranceRatio, &
        atime, stime, at0, SlipCoefficient, &
        gamma, cv, kcoeff, rho0, T0, lambda, bulkvisc
-#else
-  REAL(KIND=dp) :: Norm = 0, PrevNorm, RelC, Tolerance, ToleranceRatio, &
-       atime, stime, CPUTime, RealTime, at0, SlipCoefficient, &
-       gamma, cv, kcoeff, rho0, T0, lambda, bulkvisc
+#ifndef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: CPUTime, RealTime
 #endif
 
   TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
@@ -171,6 +168,8 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
   NonlinearTol = ListGetConstReal( Solver % Values, &
        'Nonlinear System Convergence Tolerance',minv=0.0d0 )
 
+  
+  CALL DefaultStart()
 
   DO iter=1, NonlinearIter
      ! Initialize the system matrices and vectrors...
@@ -284,19 +283,8 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
      !---------------------------------------------------------------------------
      stime = CPUTime()
      PrevNorm = Norm
-     !Print *, 'PrevNorm and Norm = ', PrevNorm, Norm
 
      Norm = DefaultSolve()
-
-     !Print *, 'PrevNorm and NewNorm = ', PrevNorm, Norm    
-     !print *, 'RELC = ', 2.0d0 * ABS(PrevNorm - Norm) / (PrevNorm + Norm)
-
-     !RELC = 2.0d0 * ABS(PrevNorm - Norm) / (PrevNorm + Norm)
-     RELC = Solver % Variable % NonlinChange
-     
-     !IF ( RELC < 1.0d-2 ) Newton = .TRUE.
-     WRITE(Message, '(a,E12.4)') 'Relative change of solution: ', RELC
-     CALL Info( 'NavierStokesSolver', Message, Level=4)
 
      stime = CPUTime() - stime
      WRITE(Message, '(a,F8.2)') ' Assembly:  (s)', atime
@@ -304,10 +292,12 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
      WRITE(Message, '(a,F8.2)') ' Solution:  (s)', stime    
      CALL Info( 'NavierStokesSolver', Message, Level=4)
 
-     IF ( RELC < NonLinearTol .AND. Iter < NonlinearIter ) EXIT
+     IF ( Solver % Variable % NonlinConverged > 0 ) EXIT
 
   END DO
 
+  CALL DefaultFinish()
+  
   
 CONTAINS
 

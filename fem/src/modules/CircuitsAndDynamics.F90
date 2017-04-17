@@ -91,7 +91,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
-  INTEGER :: p, n, istat, max_element_dofs, tstep
+  INTEGER :: p, n, istat, max_element_dofs
   TYPE(Mesh_t), POINTER :: Mesh  
 
   TYPE(Matrix_t), POINTER :: CM
@@ -100,6 +100,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   
   REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)    
   TYPE(Variable_t), POINTER :: LagrangeVar
+  INTEGER, SAVE :: Tstep=-1
 !------------------------------------------------------------------------------
 
   IF (First) THEN
@@ -290,18 +291,24 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       vvarId = Comp % vvar % ValueId + nm
       IvarId = Comp % ivar % ValueId + nm
 
+      CompParams => CurrentModel % Components(CompInd) % Values
+      IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
+      IF (Comp % CoilType == 'stranded') THEN
+        Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
+        IF (Found) THEN
+          Comp % UseCoilResistance = .TRUE.
+        ELSE
+          Comp % UseCoilResistance = .FALSE.
+        END IF
+      END IF
+
       IF ( Cvar % Owner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          CompParams => CurrentModel % Components(CompInd) % Values
-          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
-          Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
-          IF (Found) THEN
+          IF (Comp % UseCoilResistance) THEN
             CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
-            Comp % UseCoilResistance = .TRUE.
             CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
           ELSE
-            Comp % UseCoilResistance = .FALSE.
             Comp % Resistance = 0._dp
           END IF
           CALL AddToMatrixElement(CM, VvarId, VvarId, -1._dp)
@@ -933,6 +940,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
 !------------------------------------------------------------------------------
 
+  CALL DefaultStart()
+
   IF (First) THEN
     First = .FALSE.
     
@@ -1012,6 +1021,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   ELSE
      ASolver % Matrix % AddMatrix => Null()
   END IF
+
+  CALL DefaultFinish()
 
   CONTAINS
 
@@ -1128,18 +1139,24 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       vvarId = Comp % vvar % ValueId + nm
       IvarId = Comp % ivar % ValueId + nm
 
+      CompParams => CurrentModel % Components(CompInd) % Values
+      IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
+      IF (Comp % CoilType == 'stranded') THEN
+        Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
+        IF (Found) THEN
+          Comp % UseCoilResistance = .TRUE.
+        ELSE
+          Comp % UseCoilResistance = .FALSE.
+        END IF
+      END IF
+
       IF ( Cvar % Owner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          CompParams => CurrentModel % Components(CompInd) % Values
-          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
-          Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
-          IF (Found) THEN
+          IF (Comp % UseCoilResistance) THEN
             CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
-            Comp % UseCoilResistance = .TRUE.
             CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, Comp % Resistance, 0._dp)
           ELSE
-            Comp % UseCoilResistance = .FALSE.
             Comp % Resistance = 0._dp
           END IF
  
@@ -1783,6 +1800,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    LOGICAL :: Found
 
+   CALL DefaultStart()
+
    Circuit_tot_n => Model%Circuit_tot_n
    n_Circuits => Model%n_Circuits
    CM => Model%CircuitMatrix
@@ -1897,6 +1916,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
           
        END DO  
    END DO
+
+   CALL DefaultFinish()
 
 CONTAINS
 

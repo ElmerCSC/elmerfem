@@ -70,7 +70,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
        DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
        MidLayerExists, WriteMappedMeshToDisk = .FALSE., GotBaseVar, &
-       BaseDisplaceFirst
+       BaseDisplaceFirst, RecompStab
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, MidVal, ElemVector(3),DotPro,Eps,Length, MinHeight
   REAL(KIND=dp) :: at0,at1,at2,Heps
@@ -104,6 +104,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   
   Reinitialize = ListGetLogical(SolverParams, "Always Detect Structure", Found)
   IF(.NOT. Found) Reinitialize = .FALSE.
+
+  RecompStab = ListGetLogical(SolverParams, "Recompute Stabilization", Found)
+  IF(.NOT. Found) RecompStab = .FALSE.
 
   IF( (.NOT. Initialized) .OR. Reinitialize ) THEN
     IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
@@ -516,6 +519,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   Visited = .TRUE.
 
+  IF(RecompStab) CALL MeshStabParams(Mesh)
 
 CONTAINS
 

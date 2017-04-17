@@ -587,6 +587,9 @@
 
      Norm = Solver % Variable % Norm
 
+     CALL DefaultStart()
+     
+     
      DO iter=1,NonlinearIter
        at  = CPUTime()
        at0 = RealTime()
@@ -1281,6 +1284,8 @@
    END DO ! time interval
    Solver % dt = Timestep
 
+   CALL DefaultFinish()
+   
 !------------------------------------------------------------------------------
    CALL  ListAddConstReal( Solver % Values,  &
         'Nonlinear System Relaxation Factor', SaveRelax )

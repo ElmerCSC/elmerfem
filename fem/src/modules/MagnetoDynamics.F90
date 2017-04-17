@@ -913,6 +913,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   END IF
   EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
 
+  CALL DefaultStart()
+  
   DO i=1,NoIterationsMax
     ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( NoIterationsMax > 1 ) THEN
@@ -942,6 +944,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     END DO
   END IF
 
+  CALL DefaultFinish()
+  
   CALL Info('WhitneyAVSolver','All done',Level=8 )
   CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
 
@@ -3740,6 +3744,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
   EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
+
+  CALL DefaultStart()
+
   DO i=1,NoIterationsMax
     ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( DoSolve(i) ) THEN
@@ -3750,6 +3757,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
   CALL CalculateLumped(Model % NumberOfBodyForces)
+
+  CALL DefaultFinish()
 
   
 CONTAINS
@@ -5755,6 +5764,9 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   Solvers(n+1) % Values => ListAllocate()
   DGSolverParams => Solvers(n+1) % Values
   CALL ListAddLogical( DGSolverParams, 'Discontinuous Galerkin', .TRUE. )
+  ! Set this consistently as they are duplicated for efficiency 
+  Solvers(n+1) % DG = .TRUE.
+  
   Solvers(n+1) % PROCEDURE = 0
   Solvers(n+1) % ActiveElements => NULL()
   CALL ListAddString( DGSolverParams, 'Exec Solver', 'never' )
@@ -6114,6 +6126,12 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     END IF
   END IF
 
+  IF ( GetLogical( SolverParams, 'Calculate Nodal Heating', Found ) ) THEN
+    i = i + 1
+    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        "Nodal Joule Heating" )
+  END IF
+    
   IF (GetLogical(SolverParams, 'Calculate Nodal Forces', Found) ) THEN
     IF( RealField ) THEN
       i = i + 1
@@ -6179,7 +6197,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
    TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, EF, MST, &
-                                JH, VP, FWP, JXB, ML, ML2, LagrangeVar, NF
+                                JH, NJH, VP, FWP, JXB, ML, ML2, LagrangeVar, NF
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
                                 EL_MST, EL_JH, EL_VP, EL_FWP, EL_JXB, EL_ML, EL_ML2, &
                                 EL_NF
@@ -6322,7 +6340,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ML  => NULL(); EL_ML => NULL();
    ML2 => NULL(); EL_ML2 => NULL();
    NF => NULL(); EL_NF => NULL();
-
+   NJH => NULL()
+   
    IF ( Transient .OR. .NOT. RealField .OR. LorentzConductivity ) THEN
      EF => VariableGet( Mesh % Variables, 'Electric Field' )
      FWP => VariableGet( Mesh % Variables, 'Winding Voltage' )
@@ -6342,6 +6361,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    JH => VariableGet( Mesh % Variables, 'Joule Heating' )
    EL_JH => VariableGet( Mesh % Variables, 'Joule Heating E' )
 
+   NJH => VariableGet( Mesh % Variables, 'Nodal Joule Heating' )
+   
    IF(.NOT. RealField ) THEN
      ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear')
      EL_ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear E')
@@ -6366,10 +6387,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(MST) ) DOFs=DOFs+6
    IF ( ASSOCIATED(NF)  ) DOFs=DOFs+3
    DOFs = DOFs*vDOFs
-   IF ( ASSOCIATED(JH) ) DOFs=DOFs+1
+   IF ( ASSOCIATED(JH) .OR. ASSOCIATED(NJH)) DOFs=DOFs+1
    IF ( ASSOCIATED(ML) ) DOFs=DOFs+1
    IF ( ASSOCIATED(ML2) ) DOFs=DOFs+1
-   NodalFields = DOFs>0
+   NodalFields = DOFs > 0
 
    IF(NodalFields) THEN
      ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),DOFs)); Gforce=0._dp
@@ -6668,7 +6689,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
 
 
-       grads_coeff = 1._dp/GetCircuitModelDepth()
+       grads_coeff = -1._dp/GetCircuitModelDepth()
        IF( CSymmetry ) THEN
          xcoord = SUM( Basis(1:n) * Nodes % x(1:n) )
          grads_coeff = grads_coeff/xcoord
@@ -6682,7 +6703,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
             IF ( CSymmetry ) THEN
               B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
               B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
-                       + SUM( SOL(1,1:nd) * Basis(1:nd) ) / xcoord
+                       + SUM( SOL(k,1:nd) * Basis(1:nd) ) / xcoord
               B(k,3) = 0._dp
             ELSE
               B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
@@ -7027,13 +7048,24 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                END DO
                k = k+3
              ELSE
-               JXBatIP(1,1) =   JatIP(2,2)*B(2,3) - JatIP(2,3)*B(2,2) + JatIP(1,2)*B(1,3) - JatIP(1,3)*B(1,2)
-               JXBatIP(1,2) = - JatIP(2,1)*B(2,3) + JatIP(2,3)*B(2,1) - JatIP(1,1)*B(1,3) + JatIP(1,3)*B(1,1)
-               JXBatIP(1,3) =   JatIP(2,1)*B(2,2) - JatIP(2,2)*B(2,1) + JatIP(1,1)*B(1,2) - JatIP(1,2)*B(1,1)
+               IF( CSymmetry ) THEN
+                 ! TODO: Have to figure out why cylindrical coords have opposite sign
+                 JXBatIP(1,1) =   JatIP(2,3)*B(2,2) + JatIP(1,3)*B(1,2)
+                 JXBatIP(1,2) = - JatIP(2,3)*B(2,1) - JatIP(1,3)*B(1,1)
+                 JXBatIP(1,3) =   0.0_dp
 
-               JXBatIP(2,1) =   JatIP(2,2)*B(1,3) - JatIP(2,3)*B(1,2) - JatIP(1,2)*B(2,3) + JatIP(1,3)*B(2,2)
-               JXBatIP(2,2) = - JatIP(2,1)*B(1,3) + JatIP(2,3)*B(1,1) + JatIP(1,1)*B(2,3) - JatIP(1,3)*B(2,1)
-               JXBatIP(2,3) =   JatIP(2,1)*B(1,2) - JatIP(2,2)*B(1,1) - JatIP(1,1)*B(2,2) + JatIP(1,2)*B(2,1)
+                 JXBatIP(2,1) =   JatIP(2,3)*B(1,2) - JatIP(1,3)*B(2,2)
+                 JXBatIP(2,2) = - JatIP(2,3)*B(1,1) + JatIP(1,3)*B(2,1)
+                 JXBatIP(2,3) =   0.0_dp
+               ELSE
+                 JXBatIP(1,1) =   JatIP(2,2)*B(2,3) - JatIP(2,3)*B(2,2) + JatIP(1,2)*B(1,3) - JatIP(1,3)*B(1,2)
+                 JXBatIP(1,2) =   JatIP(2,3)*B(2,1) - JatIP(2,1)*B(2,3) + JatIP(1,3)*B(1,1) - JatIP(1,1)*B(1,3)
+                 JXBatIP(1,3) =   JatIP(2,1)*B(2,2) - JatIP(2,2)*B(2,1) + JatIP(1,1)*B(1,2) - JatIP(1,2)*B(1,1)
+
+                 JXBatIP(2,1) =   JatIP(2,2)*B(1,3) - JatIP(2,3)*B(1,2) - JatIP(1,2)*B(2,3) + JatIP(1,3)*B(2,2)
+                 JXBatIP(2,2) =   JatIP(2,3)*B(1,1) - JatIP(2,1)*B(1,3) - JatIP(1,3)*B(2,1) + JatIP(1,1)*B(2,3)
+                 JXBatIP(2,3) =   JatIP(2,1)*B(1,2) - JatIP(2,2)*B(1,1) - JatIP(1,1)*B(2,2) + JatIP(1,2)*B(2,1)
+               END IF
 
                JXBatIP = 0.5_dp*JXBatIP
 
@@ -7094,11 +7126,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
          IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
          Power = Power + Coeff
-         IF ( ASSOCIATED(JH).OR.ASSOCIATED(EL_JH) ) THEN
+         IF ( ASSOCIATED(JH) .OR. ASSOCIATED(EL_JH) .OR. ASSOCIATED(NJH) ) THEN
            FORCE(p,k+1) = FORCE(p,k+1) + Coeff
            k = k+1
          END IF
-
+         
+         
 
          !-------------------------------------------------
          ! Compute a loss estimate for cos and sin modes:
@@ -7249,11 +7282,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GlobalSol(CD,   3*vdofs, Gforce, Dofs)
      CALL GlobalSol(JXB,  3*vdofs, Gforce, Dofs)
      CALL GlobalSol(FWP,  1*vdofs, Gforce, Dofs)
+     
+     ! Nodal heating directly uses the loads 
+     IF (ASSOCIATED(NJH)) THEN
+       NJH % Values = Gforce(:,dofs+1)
+       ! Update the dofs only if it not used as the r.h.s. for the following field
+       IF(.NOT. ASSOCIATED(JH) ) dofs = dofs + 1
+     END IF
      CALL GlobalSol(JH ,  1      , Gforce, Dofs)
+
      CALL GlobalSol(ML ,  1      , Gforce, Dofs)
      CALL GlobalSol(ML2,  1      , Gforce, Dofs)
      CALL GlobalSol(MST,  6*vdofs, Gforce, Dofs)
-     !CALL GlobalSol(NF,   3,       Gforce, Dofs)
      IF (ASSOCIATED(NF)) THEN
        DO i=1,3
          dofs = dofs + 1
@@ -7798,7 +7838,7 @@ CONTAINS
             IF ( CSymmetry ) THEN
               B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
               B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
-                + SUM( SOL(1,1:nd) * Basis(1:nd) ) / xcoord
+                + SUM( SOL(k,1:nd) * Basis(1:nd) ) / xcoord
               B(k,3) = 0._dp
             ELSE
               B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )

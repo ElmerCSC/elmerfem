@@ -70,7 +70,7 @@ MODULE ModelDescription
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
 
-    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 100
+    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000
 
 CONTAINS
 
@@ -1354,18 +1354,18 @@ CONTAINS
             ! This is intended to be activated when new keywords are checked 
             ! Generally it can be set false
             !---------------------------------------------------------------
-            IF(.FALSE.) THEN
-              OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
-                  STATUS='UNKNOWN',POSITION='APPEND' )
-              WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
-              CLOSE(10)
+#ifdef DEBUG_KEYWORDMISSES
+            OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
+                STATUS='UNKNOWN',POSITION='APPEND' )
+            WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
+            CLOSE(10)
 
-              i = INDEX( str,':' )
-              OPEN( 10,File='../SOLVER.KEYWORDS.bysection',&
-                  STATUS='UNKNOWN',POSITION='APPEND' )
-              WRITE( 10,'(A,T22,A)') str(1:i)//TRIM(TYPE)//':',"'"//TRIM(Name)//"'"
-              CLOSE(10 )
-            END IF
+            i = INDEX( str,':' )
+            OPEN( 10,File='../SOLVER.KEYWORDS.bysection',&
+                STATUS='UNKNOWN',POSITION='APPEND' )
+            WRITE( 10,'(A,T22,A)') str(1:i)//TRIM(TYPE)//':',"'"//TRIM(Name)//"'"
+            CLOSE(10 )
+#endif
           END IF
        ELSE IF ( ASSOCIATED( Val ) ) THEN
          ! Difference between types 'string' and 'file' is just that 

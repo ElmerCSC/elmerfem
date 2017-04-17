@@ -579,6 +579,12 @@ CONTAINS
 
      V => VariableGet( M1 % Variables, 'partition' )
      CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'scan' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'scan', 1, V % Values)
+     END IF
+     
 !------------------------------------------------------------------------------
     END SUBROUTINE AddCoordAndTime
 !------------------------------------------------------------------------------
@@ -1808,6 +1814,182 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Generate a similar solver instance as for the parent solver.
+!> The number of dofs may vary but the basis functions and permutation is reused.
+!> If also the number of dofs is the same also matrix topology is reused.
+!------------------------------------------------------------------------------
+   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix ) &
+       RESULT ( ChildSolver )
+     TYPE(Solver_t) :: ParentSolver
+     CHARACTER(LEN=*) :: ChildVarName
+     INTEGER, OPTIONAL :: ChildDofs
+     CHARACTER(LEN=*), OPTIONAL :: ChildPrefix
+     TYPE(Solver_t), POINTER :: ChildSolver
+
+     INTEGER :: ParentDofs 
+     TYPE(Solver_t), POINTER :: Solver
+     REAL(KIND=dp), POINTER :: ChildVarValues(:)
+     INTEGER, POINTER :: ChildVarPerm(:)
+     TYPE(Variable_t), POINTER :: ChildVar
+     TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
+     INTEGER :: n,m,dofs, i,j,k,l,ii, jj, nn
+     LOGICAL :: Found
+     
+     CALL Info('CreateChildSolver','Creating solver for variable: '//TRIM(ChildVarName),Level=5)
+
+     NULLIFY( Solver ) 
+     ALLOCATE( Solver )
+     ChildSolver => Solver
+
+     Solver % Values => Null()
+     CALL ListAddString(Solver % Values,'Equation',TRIM(ChildVarName)//' solver' )
+
+     IF( PRESENT( ChildPrefix ) ) THEN
+       CALL Info('CreateChildSolver','Copying keywords with prefix: '//TRIM(ChildPrefix),Level=8)
+       CALL ListCopyPrefixedKeywords( ParentSolver % Values, Solver % Values, &
+           ChildPrefix )
+     ELSE
+       CALL Info('CreateChildSolver','Copying all keywords',Level=8)
+       CALL ListCopyAllKeywords( ParentSolver % Values, Solver % Values )
+     END IF
+
+     IF( .NOT. ASSOCIATED( ParentSolver % Mesh ) ) THEN
+       CALL Fatal('CreateChildSolver','Parent solver is missing mesh!')
+     END IF
+     Solver % Mesh => ParentSolver % Mesh
+     i = SIZE(ParentSolver % Def_Dofs,1)
+     j = SIZE(ParentSolver % Def_Dofs,2)
+     k = SIZE(ParentSolver % Def_Dofs,3)
+     ALLOCATE(Solver % Def_Dofs(i,j,k))
+     Solver % Def_Dofs = ParentSolver % Def_Dofs
+
+     IF( .NOT. ASSOCIATED( ParentSolver % Variable ) ) THEN
+       CALL Fatal('CreateChildSolver','Parent solver is missing variable!')
+     END IF
+
+     ParentDofs = ParentSolver % Variable % Dofs
+     IF( PRESENT( ChildDofs ) ) THEN
+       Dofs = ChildDofs
+     ELSE
+       Dofs = ParentDofs
+     END IF
+
+     CALL Info('CreateChildSolver','Creating variable with dofs: '//TRIM(I2S(Dofs)),Level=8)    
+     n = ( SIZE( ParentSolver % Variable % Values ) ) / ParentDofs
+
+     ALLOCATE( ChildVarValues( n * Dofs ) )
+     ChildVarValues = 0.0_dp
+     ChildVarPerm => ParentSolver % Variable % Perm
+
+     CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, &
+         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm )
+
+
+     ChildVar => VariableGet( Solver % Mesh % Variables, ChildVarName )      
+     IF(.NOT. ASSOCIATED( ChildVar ) ) THEN
+       CALL Fatal('CreateChildSolver','Could not generate child variable!')
+     END IF
+
+     ChildVar % TYPE = ParentSolver % Variable % TYPE
+     Solver % Variable => ChildVar
+
+     ChildVar % Output = ListGetLogical( Solver % Values,'Variable Output', Found )
+     IF(.NOT. Found ) ChildVar % Output = ParentSolver % Variable % Output 
+     
+     
+     CALL Info('CreateChildSolver','Creating matrix for variable solver',Level=8)    
+     Solver % Matrix => AllocateMatrix()
+     ChildMat => Solver % Matrix
+
+     ParentMat => ParentSolver % Matrix
+     IF( .NOT. ASSOCIATED( ParentMat ) ) THEN
+       CALL Warn('CreateChildSolver','Parent matrix needed for child matrix!')
+       Solver % Matrix => NULL()
+     ELSE
+       Solver % Matrix => AllocateMatrix()
+       ChildMat => Solver % Matrix
+       IF( Dofs == ParentDofs ) THEN
+         CALL Info('CreateChildSolver','Reusing initial matrix topology',Level=8)    
+
+         ChildMat % Cols => ParentMat % Cols
+         ChildMat % Rows => ParentMat % Rows
+         ChildMat % Diag => ParentMat % Diag
+
+         ChildMat % NumberOfRows = ParentMat % NumberOfRows
+         
+         m = SIZE( ParentMat % Values )
+         ALLOCATE( ChildMat % Values(m) )
+         ChildMat % Values = 0.0_dp
+
+       ELSE
+         CALL Info('CreateChildSolver','Multiplying initial matrix topology',Level=8)    
+
+         ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs**2 / ParentDofs**2 ) )
+         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )
+         ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
+
+         ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
+           
+         ii = 0
+         jj = 0
+         ChildMat % Rows(1) = 1
+         DO i=1, ParentMat % NumberOFRows, ParentDOFs
+           DO k=1,Dofs
+             ii = ii + 1
+             DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1, ParentDOFs
+               nn = (ParentMat % Cols(j)-1) / ParentDofs + 1
+               DO l=1,Dofs
+                 jj = jj + 1
+                 ChildMat % Cols(jj) = Dofs*(nn-1) + l
+               END DO
+             END DO
+             ChildMat % Rows(ii+1) = jj+1
+           END DO
+         END DO
+         
+         ALLOCATE( ChildMat % Values(jj) )
+         ChildMat % Values = 0.0_dp
+         
+         DO i=1,ChildMat % NumberOfRows
+           DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
+             IF (ChildMat % Cols(j) == i) THEN
+               ChildMat % Diag(i) = j
+               EXIT
+             END IF
+           END DO
+         END DO
+       END IF
+
+       ALLOCATE( ChildMat % rhs(Dofs*n) )
+       ChildMat % rhs = 0.0_dp
+     END IF
+
+
+     ChildMat % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex',Found )
+     IF(.NOT. Found ) ChildMat % Complex = ParentMat % Complex
+
+     
+     IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
+       Solver % ActiveElements => ParentSolver % ActiveElements
+       Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
+     END IF
+
+     Solver % SolverExecWhen = SOLVER_EXEC_NEVER
+     Solver % LinBeforeProc = 0
+     Solver % LinAfterProc = 0
+     Solver % MortarProc = 0
+
+     IF ( Parenv  % PEs >1 ) THEN
+       CALL ParallelInitMatrix( Solver, Solver % Matrix )
+     END IF
+
+     CALL Info('CreateChildSolver','All done for now!',Level=8)    
+   END FUNCTION CreateChildSolver
+!------------------------------------------------------------------------------
+
+   
+   
+!------------------------------------------------------------------------------
 !> Solve the equations one-by-one. 
 !------------------------------------------------------------------------------
   SUBROUTINE SolveEquations( Model, dt, TransientSimulation, &
@@ -1848,6 +2030,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     nSolvers = Model % NumberOfSolvers
 
+    IF(TransientSimulation) THEN
+       CoupledMinIter = ListGetInteger( Model % Simulation, &
+            'Steady State Min Iterations', Found )
+
+       CoupledMaxIter = ListGetInteger( Model % Simulation, &
+            'Steady State Max Iterations', Found, minv=1 )
+       IF ( .NOT. Found ) CoupledMaxIter = 1
+    END IF
 
     Scanning = &
       ListGetString( CurrentModel % Simulation, 'Simulation Type', Found ) == 'scanning'
@@ -2117,6 +2307,17 @@ CONTAINS
 CONTAINS
 
     SUBROUTINE SolveCoupled()
+
+    TYPE(Mesh_t), POINTER, SAVE :: PrevMesh
+    INTEGER, SAVE :: PrevMeshNoNodes
+    LOGICAL, SAVE :: FirstTime=.TRUE.
+
+    IF(FirstTime) THEN
+      PrevMesh => Model % Mesh
+      PrevMeshNoNodes = Model % Mesh % NumberOfNodes
+      FirstTime = .FALSE.
+    END IF
+
 !------------------------------------------------------------------------------
     DO i=1,CoupledMaxIter
        IF ( TransientSimulation .OR. Scanning ) THEN
@@ -2275,7 +2476,16 @@ CONTAINS
          END DO
 !------------------------------------------------------------------------------
          CALL ListPopNamespace()
-         Model % Mesh % Changed = .FALSE.
+
+         !Check if the mesh changed - should do this elsewhere too?
+         IF(ASSOCIATED(Model % Mesh, PrevMesh) .AND. &
+              Model % Mesh % NumberOfNodes == PrevMeshNoNodes) THEN
+           Model % Mesh % Changed = .FALSE.
+         ELSE
+           PrevMesh => Model % Mesh
+           PrevMeshNoNodes = Model % Mesh % NumberOfNodes
+           Model % Mesh % Changed = .TRUE.
+         END IF
 
          IF( DivergenceExit ) EXIT
 
@@ -4029,24 +4239,39 @@ CONTAINS
 
        IF ( Found ) THEN
           IF ( ASSOCIATED(Solver % ActiveElements)) DEALLOCATE( Solver % ActiveElements )
-          ALLOCATE( Solver % ActiveElements( Solver % Mesh % NumberOfBulkElements + &
-                       Solver % Mesh % NumberOFBoundaryElements ) )
 
+          ! Count the number of active elements and maximum element dimension 
           Maxdim = 0
+          n = 0
           DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
              CurrentElement => Solver % Mesh % Elements(i)
              IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
              IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
-                Solver % NumberOfActiveElements = Solver % NumberOFActiveElements + 1
-                Solver % ActiveElements( Solver % NumberOFActiveElements ) = i
-                Maxdim = MAX( CurrentElement % TYPE % DIMENSION, Maxdim )
+               n = n + 1
+               Maxdim = MAX( CurrentElement % TYPE % DIMENSION, Maxdim )
              END IF
           END DO
+          Solver % NumberOfActiveElements = n
           CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
 
+          ! Create list of active elements
+          ALLOCATE( Solver % ActiveElements( n ) )
+          n = 0
+          DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
+            CurrentElement => Solver % Mesh % Elements(i)
+            IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
+            IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
+              n = n + 1
+              Solver % ActiveElements( n ) = i
+            END IF
+          END DO
+
+          ! Calculate accumulated integration weights for bulk if requested          
           IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
             CALL CalculateNodalWeights(Solver,.FALSE.)
           END IF
+
+          ! Calculate weight for boundary 
           IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
             CALL CalculateNodalWeights(Solver,.TRUE.) 
           END IF
@@ -4120,6 +4345,9 @@ CONTAINS
            M => M % Parent
          END DO
        END IF
+     ELSE
+       OutputPE = -1
+       IF(ParEnv % myPE == 0 ) OutputPE=0
      END IF
 
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
@@ -4189,8 +4417,14 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params
      INTEGER, POINTER :: UpdateComponents(:)
 
+     INTEGER :: ScanningLoops, scan, sOutputPE
+     LOGICAL :: GotLoops
+     TYPE(Variable_t), POINTER :: ScanVar
+        
      SAVE TimeVar
 !------------------------------------------------------------------------------
+     sOutputPE = OutputPE
+
      CALL SetCurrentMesh( Model, Solver % Mesh )
      Model % Solver => Solver
      Params => ListGetSolverParams(Solver)
@@ -4251,6 +4485,30 @@ CONTAINS
        IF( MOD( timestep-1-timei0, ExecIntervals(timei)) /= 0 ) RETURN
      END IF
 
+!-------------------------------------------------------------------------------
+! Set solver parameters to avoid list operations during assembly
+!-------------------------------------------------------------------------------
+     Solver % DG = ListGetLogical(Params, 'Discontinuous Galerkin', Found)
+     Solver % GlobalBubbles = ListGetLogical(Params, 'Bubbles in Global System', Found)
+     IF(.NOT. Found) Solver % GlobalBubbles = .TRUE.
+     IF(GetString(Params, 'Linear System Direct Method', Found) == 'permon') THEN
+       Solver % DirectMethod = DIRECT_PERMON
+     END IF
+     
+     str = ListGetString( Params, 'Boundary Element Procedure', Found)
+     IF(Found) THEN
+       Solver % BoundaryElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
+     ELSE
+       Solver % BoundaryElementProcedure = 0
+     END IF
+
+     str = ListGetString( Params, 'Bulk Element Procedure', Found)
+     IF(Found) THEN
+       Solver % BulkElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
+     ELSE
+       Solver % BulkElementProcedure = 0
+     END IF
+
 !------------------------------------------------------------------------------
 ! If solver timing is requested start the watches
 !------------------------------------------------------------------------------
@@ -4283,9 +4541,6 @@ CONTAINS
          END IF
        END IF
 
-       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-       iterV % Values(1) = 1
-
        str = ListGetString( Params, 'Namespace', NamespaceFound )
        IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
      END IF
@@ -4311,24 +4566,64 @@ CONTAINS
        CALL INFO('MainUtils',Message,Level=5)
      END IF
 
- !---------------------------------------------------------------------
- ! Call the correct type of solver: standard (single), coupled or block
- ! This is where everything really happens!
- !---------------------------------------------------------------------
-     IF( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
-         Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
-       CALL CoupledSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
-     ELSE IF( Solver % SolverMode == SOLVER_MODE_BLOCK ) THEN
-       CALL BlockSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
-     ELSE 
-       CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
+     ScanningLoops = ListGetInteger( Params,'Scanning Loops',GotLoops)
+     IF( GotLoops ) THEN
+       ScanVar => VariableGet( Solver % Mesh % Variables,'scan')
+       IF(.NOT. ASSOCIATED( ScanVar ) ) THEN
+         CALL Fatal('SolverActivate','For scanning we should have scanning variable!')
+       END IF
+     ELSE
+       ScanningLoops = 1
      END IF
 
+     DO scan = 1, ScanningLoops        
+       !----------------------------------------------------------------------
+       ! This is to avoid resetting iteration that may be interesting and we
+       ! don't want to override it.
+       !----------------------------------------------------------------------
+       IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
+         iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+         iterV % Values(1) = 1
+       END IF
+
+       IF( GotLoops ) THEN
+         ScanVar % Values(1) = scan
+       END IF
+       
+       !---------------------------------------------------------------------
+       ! Call the correct type of solver: standard (single), coupled or block
+       ! This is where everything really happens!
+       !---------------------------------------------------------------------
+       IF( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
+           Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
+         CALL CoupledSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
+       ELSE IF( Solver % SolverMode == SOLVER_MODE_BLOCK ) THEN
+         CALL BlockSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
+       ELSE 
+         CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
+       END IF
+
+       IF( GotLoops ) THEN
+         IF( ListGetLogical( Params,'Save Scanning Modes',Found ) ) THEN
+           n = SIZE( Solver % Variable % Values )
+           IF ( .NOT. ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
+             CALL Info('MainUtils','Creating modes over scanned fields',Level=8)
+             ALLOCATE( Solver % Variable % EigenValues(ScanningLoops) )
+             ALLOCATE( Solver % Variable % EigenVectors(ScanningLoops,n) )
+           END IF
+           Solver % Variable % EigenValues(scan) = 1.0_dp * scan
+           Solver % Variable % EigenVectors(scan,:) = Solver % Variable % Values
+         END IF         
+       END IF
+
+       
+       Solver % TimesVisited = Solver % TimesVisited + 1
+     END DO
+       
      IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
        IF(NamespaceFound) CALL ListPopNamespace()
      END IF
      Solver % dt = dt
-     Solver % TimesVisited = Solver % TimesVisited + 1
 
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
@@ -4383,6 +4678,8 @@ CONTAINS
               //TRIM(str),rst)
         END IF 
       END IF
+
+      OutputPE = sOutputPE
 
 !------------------------------------------------------------------------------
    END SUBROUTINE SolverActivate

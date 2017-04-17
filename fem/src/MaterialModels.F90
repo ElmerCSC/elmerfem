@@ -280,7 +280,7 @@ this ise not in USE
      ! This is the square of shearrate which results to 1/2 in exponent 
      ! Also the derivative is taken with respect to the square
      !-------------------------------------------------------------------
-     ss = SecondInvariant(Velo,dVelodx,Metric,Symb)/2
+     ss = 0.5_dp * SecondInvariant(Velo,dVelodx,Metric,Symb)
 
 
      SELECT CASE( ViscosityFlag )

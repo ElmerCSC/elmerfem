@@ -42,6 +42,8 @@
 !> and later accessed from it repeatedly. Therefore these subroutines are 
 !> essential in Elmer programming.
 !------------------------------------------------------------------------------
+#include "../config.h"
+
 MODULE Lists
 
    USE Messages
@@ -158,7 +160,8 @@ MODULE Lists
    !$OMP THREADPRIVATE(Activename_stack)
 
    TYPE(ValueList_t), POINTER, SAVE, PRIVATE  :: TimerList => NULL()
-   LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerResults
+   LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerResults, TimerCumulative, &
+       TimerRealTime, TimerCPUTime
 
    LOGICAL, PRIVATE :: DoNamespaceCheck = .FALSE.
 
@@ -314,6 +317,7 @@ CONTAINS
      n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
      t = 1
      DO WHILE( t <= n )
+
        DO WHILE( t<=n )
          Element => Mesh % Elements(t)
          IF ( CheckElementEquation( Model, Element, Equation ) ) EXIT
@@ -463,20 +467,34 @@ CONTAINS
       TYPE(Element_t), POINTER :: Element
       TYPE(Model_t) :: Model
       CHARACTER(LEN=*) :: Equation
+      CHARACTER(LEN=MAX_NAME_LEN) :: PrevEquation
+      
+      LOGICAL :: Flag,Found,PrevFlag
 
-      LOGICAL :: Flag,Found
-
-      INTEGER :: k,body_id
-       
-      Flag = .FALSE.
+      INTEGER :: k,body_id,prev_body_id = -1
+      
+      SAVE Prev_body_id, PrevEquation, PrevFlag
+      
       body_id = Element % BodyId
+
+      IF( body_id == prev_body_id .AND. Equation == PrevEquation ) THEN
+        Flag = PrevFlag
+        RETURN
+      ELSE
+        prev_body_id = body_id
+        PrevEquation = Equation
+      END IF
+              
+      Flag = .FALSE.      
       IF ( body_id > 0 .AND. body_id <= Model % NumberOfBodies ) THEN
          k = ListGetInteger( Model % Bodies(body_id) % Values, 'Equation', &
                  minv=1, maxv=Model % NumberOFEquations )
          IF ( k > 0 ) THEN
            Flag = ListGetLogical(Model % Equations(k) % Values,Equation,Found)
          END IF
-      END IF
+       END IF
+       PrevFlag = Flag
+       
 !---------------------------------------------------------------------------
    END FUNCTION CheckElementEquation
 !---------------------------------------------------------------------------
@@ -803,6 +821,27 @@ CONTAINS
 
     RmVar % Next => NULL()
 
+    !cycle other variables to check for Perm association
+    IF (ASSOCIATED(RmVar % Perm)) THEN
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+        IF(ASSOCIATED(RmVar, Var)) &
+             CALL Fatal("VariableRemove", "Programming Error - Variable appears twice in list?")
+        IF (ASSOCIATED(Var % Perm,RmVar % Perm)) THEN
+          RmVar % Perm => NULL()
+          EXIT
+        END IF
+        Var => Var % Next
+      END DO
+
+      !ASSOCIATION between zero-length arrays cannot be tested
+      !so nullify it anyway, just to be safe. Technically results
+      !in a memory leak (of size zero??)
+      IF(SIZE(RmVar % Perm) == 0) RmVar % Perm => NULL()
+    END IF
+
+
+
     !ReleaseVariableList was intended to deallocate an entire list of variables,
     !but by nullifying RmVar % Next, we have effectively isolated RmVar in 
     !its own variable list.
@@ -1028,10 +1067,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       IF ( .NOT.ASSOCIATED( Tmp ) ) THEN
-         GlobalBubbles = ListGetLogical(Pvar % Solver % Values, &
-               'Bubbles in Global System', Found)
-         IF (.NOT.Found) GlobalBubbles=.TRUE.
-
+         !GlobalBubbles = ListGetLogical(Pvar % Solver % Values, &
+         !      'Bubbles in Global System', Found)
+         !IF (.NOT.Found) GlobalBubbles=.TRUE.
+        GlobalBubbles = Pvar % Solver % GlobalBubbles
+        
          DOFs = CurrentModel % Mesh % NumberOfNodes * PVar % DOFs
          IF ( GlobalBubbles ) DOFs = DOFs + CurrentModel % Mesh % MaxBDOFs * &
               CurrentModel % Mesh % NumberOfBulkElements * PVar % DOFs
@@ -1417,6 +1457,12 @@ CONTAINS
      ELSE
        List % Head => NEW
      END IF
+
+#ifdef DEBUG_LISTCOUNTER
+     IF( ASSOCIATED( new ) ) new % Counter = new % Counter + 1
+#endif
+
+
 !------------------------------------------------------------------------------
    END FUNCTION ListAdd
 !------------------------------------------------------------------------------
@@ -1612,6 +1658,16 @@ CONTAINS
        END DO
      END IF
 
+#ifdef DEBUG_LISTCOUNTER
+     IF( ASSOCIATED( ptr ) ) THEN
+       ptr % Counter = ptr % Counter + 1
+     ELSE IF( INDEX( name,': not found' ) == 0 ) THEN
+       CALL ListAddNewLogical( CurrentModel % Simulation, TRIM(name)//': not found',.TRUE.) 
+       ! This seems to cause problems so we use the one above
+       !       CALL ListAddNewLogical( List, TRIM(name)//': not found',.TRUE.) 
+     END IF
+#endif
+     
      IF ( PRESENT(Found) ) THEN
        Found = ASSOCIATED(ptr)
      ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
@@ -1625,7 +1681,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-!------------------------------------------------------------------------------
+!-----------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
 !> This one just finds a keyword with the same start as specified by 'name'.
 !------------------------------------------------------------------------------
@@ -1978,6 +2034,7 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: list
      CHARACTER(LEN=*), OPTIONAL :: name
 !------------------------------------------------------------------------------
+     INTEGER :: i,j,k
      TYPE(ValueListEntry_t), POINTER :: ptrb, ptrnext
 
      IF( PRESENT( name ) ) THEN
@@ -1985,9 +2042,37 @@ CONTAINS
      ELSE
        ptrb => ListAdd( List, ptr % Name ) 
      END IF
+
        
      ptrnext => ptrb % next
      ptrb = ptr
+
+     ptrb % tvalues => null()
+     if(associated(ptr % tvalues)) then
+       allocate( ptrb % tvalues(size(ptr % tvalues)) )
+       ptrb % tvalues = ptr % tvalues
+     end if
+
+     ptrb % fvalues => null()
+     if(associated(ptr % fvalues)) then
+       i = size(ptr % fvalues,1)
+       j = size(ptr % fvalues,2)
+       k = size(ptr % fvalues,3)
+       allocate( ptrb % fvalues(i,j,k) )
+       ptrb % fvalues = ptr % fvalues
+     end if
+
+     ptrb % ivalues => null()
+     if(associated(ptr % ivalues)) then
+       allocate( ptrb % ivalues(size(ptr % ivalues)) )
+       ptrb % ivalues = ptr % ivalues
+     end if
+
+     ptrb % cumulative => null()
+     if(associated(ptr % cumulative)) then
+       allocate( ptrb % cumulative(size(ptr % cumulative)) )
+       ptrb % cumulative = ptr % cumulative
+     end if
      ptrb % next => ptrnext
 
      ! If name is given then we have to revert the stuff from previous lines
@@ -2059,7 +2144,8 @@ CONTAINS
            ! Remove the extra blanco after prefix if present
            ! Here we just assume one possible blanco as that is most often the case
            IF( ptr % Name(l:l) == ' ') l = l+1
-           CALL Info('ListCopyPrefixedKeywords','Copying keyword: '//TRIM(ptr % Name(l:n)),Level=12)
+           CALL Info('ListCopyPrefixedKeywords',&
+               'Prefix: '//TRIM(prefix)// ' Keyword: '//TRIM(ptr % Name(l:n)),Level=12)
            CALL ListCopyItem( ptr, listb, ptr % Name(l:n) )
            ncopy = ncopy + 1
          END IF
@@ -2073,8 +2159,35 @@ CONTAINS
      END IF
      
    END SUBROUTINE ListCopyPrefixedKeywords
+
+
+!> Goes through one list and copies all keywords to a second list.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListCopyAllKeywords( list, listb )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list, listb
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     INTEGER :: ncopy
+
+     ncopy = 0
+     
+     ! Find the keyword from the 1st list 
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       CALL ListCopyItem( ptr, listb, ptr % Name )
+       ncopy = ncopy + 1
+       ptr => ptr % Next
+     END DO
+     
+     IF( ncopy > 0 ) THEN
+       CALL Info('ListCopyAllKeywords',&
+           'Copied '//TRIM(I2S(ncopy))//' keywords to new list',Level=6)
+     END IF
+     
+   END SUBROUTINE ListCopyAllKeywords
  
-  
+ 
 !------------------------------------------------------------------------------
 !> Just checks if a entry is present in the list.
 !------------------------------------------------------------------------------
@@ -2224,7 +2337,7 @@ CONTAINS
     END SUBROUTINE ListAddString
 !------------------------------------------------------------------------------
 
-
+    
 !------------------------------------------------------------------------------
 !> Adds a logical entry to the list.
 !------------------------------------------------------------------------------
@@ -2463,6 +2576,85 @@ CONTAINS
    END SUBROUTINE ListAddDepRealArray
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Adds a logical entry to the list if it does not exist previously.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListAddNewLogical( List,Name,LValue )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: LValue
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     IF( ListCheckPresent( List, Name ) ) RETURN
+
+     CALL ListAddLogical( List,Name,LValue )
+
+   END SUBROUTINE ListAddNewLogical
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Adds an integer to the list when not present previously.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListAddNewInteger( List,Name,IValue,Proc )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      INTEGER :: IValue
+      INTEGER(Kind=AddrInt), OPTIONAL :: Proc
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+      IF( ListCheckPresent( List, Name ) ) RETURN
+
+      CALL ListAddInteger( List,Name,IValue,Proc )
+
+    END SUBROUTINE ListAddNewInteger
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Adds a constant real value to the list if not present.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListAddNewConstReal( List,Name,FValue,Proc,CValue )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      CHARACTER(LEN=*), OPTIONAL :: Cvalue
+      REAL(KIND=dp) :: FValue
+      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+      IF( ListCheckPresent( List, Name ) ) RETURN
+
+      CALL ListAddConstReal( List,Name,FValue,Proc,CValue )
+
+    END SUBROUTINE ListAddNewConstReal
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+!> Add a string value to the list if not present.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListAddNewString( List,Name,CValue,CaseConversion )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      CHARACTER(LEN=*) :: CValue
+      LOGICAL, OPTIONAL :: CaseConversion
+      
+      IF( ListCheckPresent( List, Name ) ) RETURN
+
+      CALL ListAddString( List,Name,CValue,CaseConversion )
+
+    END SUBROUTINE ListAddNewString
+!------------------------------------------------------------------------------
+      
 
 !------------------------------------------------------------------------------
 !> Gets a integer value from the list.
@@ -4401,6 +4593,27 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Check if the keyword is present in any solver.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPresentAnySolver( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: ind
+     
+     Found = .FALSE.
+     DO ind = 1,Model % NumberOfSolvers
+       Found = ListCheckPresent( Model % Solvers(ind) % Values, Name )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPresentAnySolver
+!------------------------------------------------------------------------------
+
+   
+
+!------------------------------------------------------------------------------
 !> Check if the keyword in any material is defined as an array
 !------------------------------------------------------------------------------
    FUNCTION ListCheckAnyMaterialIsArray( Model, Name ) RESULT(IsArray)
@@ -4449,6 +4662,27 @@ CONTAINS
 !------------------------------------------------------------------------------
    END FUNCTION ListGetLogicalAnyMaterial
 !------------------------------------------------------------------------------
+
+   
+!------------------------------------------------------------------------------
+!> Check if the keyword is True in any solver.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetLogicalAnySolver( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found, GotIt
+     INTEGER :: ind
+     
+     Found = .FALSE.
+     DO ind = 1,Model % NumberOfSolvers
+       Found = ListGetLogical( Model % Solvers(ind) % Values, Name, GotIt )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetLogicalAnySolver
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any equation.
@@ -4825,16 +5059,24 @@ CONTAINS
       FirstTime=.FALSE.
       TimerPassive = ListGetLogical( CurrentModel % Simulation,'Timer Passive',Found)
       TimerResults = ListGetLogical( CurrentModel % Simulation,'Timer Results',Found)      
+      TimerCumulative = ListGetLogical( CurrentModel % Simulation,'Timer Cumulative',Found)      
+      TimerRealTime = ListGetLogical( CurrentModel % Simulation,'Timer Real Time',Found)      
+      TimerCPUTime = ListGetLogical( CurrentModel % Simulation,'Timer CPU Time',Found)            
+      IF( .NOT. (TimerRealTime .OR. TimerCPUTime ) ) TimerRealTime = .TRUE.
     END IF
 
     IF( TimerPassive ) RETURN
 
-    ct = CPUTime()
-    rt = RealTime()
+    IF( TimerCPUTime ) THEN
+      ct = CPUTime()
+      CALL ListAddConstReal( TimerList,TRIM(TimerName)//' cpu time',ct )
+    END IF
 
-    CALL ListAddConstReal( TimerList,TRIM(TimerName)//' cpu time',ct )
-    CALL ListAddConstReal( TimerList,TRIM(TimerName)//' real time',rt )
-
+    IF( TimerRealTime ) THEN
+      rt = RealTime()
+      CALL ListAddConstReal( TimerList,TRIM(TimerName)//' real time',rt )
+    END IF
+      
   END SUBROUTINE ResetTimer
 
   
@@ -4846,9 +5088,14 @@ CONTAINS
     
     IF( TimerPassive ) RETURN
 
-    CALL ListRemove( TimerList, TRIM(TimerName)//' cpu time' ) 
-    CALL ListRemove( TimerList, TRIM(TimerName)//' real time' ) 
+    IF( TimerCPUTime ) THEN
+      CALL ListRemove( TimerList, TRIM(TimerName)//' cpu time' ) 
+    END IF
 
+    IF( TimerRealTime ) THEN
+      CALL ListRemove( TimerList, TRIM(TimerName)//' real time' ) 
+    END IF
+      
   END SUBROUTINE DeleteTimer
  
 !-----------------------------------------------------------------------------
@@ -4859,7 +5106,7 @@ CONTAINS
     INTEGER, OPTIONAL :: Level
     LOGICAL, OPTIONAL :: Reset, Delete
     
-    REAL(KIND=dp) :: ct0,rt0,ct, rt
+    REAL(KIND=dp) :: ct0,rt0,ct, rt, cumct, cumrt
 #ifndef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: RealTime, CPUTime
 #endif
@@ -4867,20 +5114,49 @@ CONTAINS
 
     IF( TimerPassive ) RETURN
 
-    ct0 = ListGetConstReal( TimerList,TRIM(TimerName)//' cpu time',Found) 
-    IF( Found ) THEN
-      rt0 = ListGetConstReal( TimerList,TRIM(TimerName)//' real time')
-      ct = CPUTime() - ct0
-      rt = RealTime() - rt0 
-      
-      WRITE(Message,'(a,2f10.4,a)') 'Elapsed time (CPU,REAL): ',ct,rt,' (s)'
-      CALL Info(TRIM(TimerName),Message,Level=Level)          
+    IF( TimerCPUTime ) THEN
+      ct0 = ListGetConstReal( TimerList,TRIM(TimerName)//' cpu time',Found) 
+      IF( Found ) THEN
+        ct = CPUTime() - ct0
+        WRITE(Message,'(a,f10.4,a)') 'Elapsed CPU time: ',ct,' (s)'
+        CALL Info(TRIM(TimerName),Message,Level=Level)          
+      END IF
+    END IF
 
-      IF( TimerResults ) THEN
-        CALL ListAddConstReal(CurrentModel % Simulation,&
-            'res: '//TRIM(TimerName)//' cpu time',ct)
-        CALL ListAddConstReal(CurrentModel % Simulation,&
-            'res: '//TRIM(TimerName)//' real time',rt)
+    IF( TimerRealTime ) THEN
+      rt0 = ListGetConstReal( TimerList,TRIM(TimerName)//' real time',Found)
+      IF( Found ) THEN
+        rt = RealTime() - rt0       
+        WRITE(Message,'(a,f10.4,a)') 'Elapsed REAL time: ',rt,' (s)'
+        CALL Info(TRIM(TimerName),Message,Level=Level)          
+      END IF
+    END IF
+    
+    
+    IF( TimerResults ) THEN
+      IF( TimerCumulative ) THEN
+        IF( TimerCPUTime ) THEN
+          cumct = ListGetConstReal(CurrentModel % Simulation,&
+            'res: '//TRIM(TimerName)//' cpu time',Found)
+          IF( Found ) THEN
+            ct = ct + cumct
+            WRITE(Message,'(a,f10.4,a)') 'Elapsed CPU time cumulative: ',ct,' (s)'
+            CALL Info(TRIM(TimerName),Message,Level=Level)          
+          END IF
+          CALL ListAddConstReal(CurrentModel % Simulation,&
+              'res: '//TRIM(TimerName)//' cpu time',ct)
+        END IF
+        IF( TimerRealTime ) THEN
+          cumrt = ListGetConstReal(CurrentModel % Simulation,&
+              'res: '//TRIM(TimerName)//' real time',Found)
+          IF( Found ) THEN
+            rt = rt + cumrt            
+            WRITE(Message,'(a,f10.4,a)') 'Elapsed REAL time cumulative: ',rt,' (s)'
+            CALL Info(TRIM(TimerName),Message,Level=Level)          
+          END IF
+          CALL ListAddConstReal(CurrentModel % Simulation,&
+              'res: '//TRIM(TimerName)//' real time',rt)
+        END IF
       END IF
     ELSE
       CALL Warn('CheckTimer',&
@@ -4889,8 +5165,12 @@ CONTAINS
 
     IF( PRESENT( Reset ) ) THEN
       IF( Reset ) THEN
-        CALL ListAddConstReal( TimerList,TRIM(TimerName)//' cpu time',ct )
-        CALL ListAddConstReal( TimerList,TRIM(TimerName)//' real time',rt )
+        IF( TimerCPUTime ) THEN
+          CALL ListAddConstReal( TimerList,TRIM(TimerName)//' cpu time',ct )
+        END IF
+        IF( TimerRealTime ) THEN
+          CALL ListAddConstReal( TimerList,TRIM(TimerName)//' real time',rt )
+        END IF
       END IF
     END IF
 
@@ -5009,8 +5289,105 @@ CONTAINS
 !------------------------------------------------------------------------------
    END FUNCTION ListGetSolverParams
 !------------------------------------------------------------------------------
+   
+#ifdef DEBUG_LISTCOUNTER
+   
+   !------------------------------------------------------------------------------
+   !> Go through the lists and for each lists show call counts.
+   !------------------------------------------------------------------------------
+   SUBROUTINE ReportListCounters( Model ) 
+     TYPE(Model_t) :: Model
+
+     INTEGER :: i, totcount, nelem     
+
+     CALL Info('ReportListCounters','Saving ListGet operations count per bulk elements')
+
+     ! OPEN(10,FILE="listcounter.dat")
+     OPEN( 10,File='../listcounter.dat',&
+         STATUS='UNKNOWN',POSITION='APPEND' )
+
+     totcount = 0
+
+     ! These are only for reference
+     nelem = Model % Mesh % NumberOfBulkElements
+     
+     CALL ReportList('Simulation', Model % Simulation )
+     CALL ReportList('Constants', Model % Constants )
+     DO i=1,Model % NumberOfEquations
+       CALL ReportList('Equation '//TRIM(I2S(i)), Model % Equations(i) % Values)
+     END DO
+     DO i=1,Model % NumberOfComponents
+       CALL ReportList('Component '//TRIM(I2S(i)), Model % Components(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfBodyForces
+       CALL ReportList('Body Force '//TRIM(I2S(i)), Model % BodyForces(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfICs
+       CALL ReportList('Initial Condition '//TRIM(I2S(i)), Model % ICs(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfBCs
+       CALL ReportList('Boundary Condition '//TRIM(I2S(i)), Model % BCs(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfMaterials
+       CALL ReportList('Material '//TRIM(I2S(i)), Model % Materials(i) % Values )
+     END DO
+     DO i=1,Model % NumberOfBoundaries
+       CALL ReportList('Boundary '//TRIM(I2S(i)), Model % Boundaries(i) % Values )
+     END DO     
+     DO i=1,Model % NumberOfSolvers
+       CALL ReportList('Solver '//TRIM(I2S(i)), Model % Solvers(i) % Values )
+     END DO
+     CLOSE(10)
+     
+     WRITE(Message,'(I0,T10,A,F8.3,A)') totcount,"List operations total (",&
+         1.0_dp * totcount / Model % Mesh % NumberOfBulkElements," per element )"
+     CALL Info('ReportListCounters',Message)
+     
+
+   CONTAINS
+
+     
+     !------------------------------------------------------------------------------
+     ! Plot the number of times that the list entries have been called.
+     !------------------------------------------------------------------------------
+     SUBROUTINE ReportList( SectionName, List )
+       TYPE(ValueList_t), POINTER :: List
+       CHARACTER(LEN=*) :: SectionName
+       !------------------------------------------------------------------------------
+       TYPE(ValueListEntry_t), POINTER :: ptr
+       INTEGER :: n, m
+
+       IF(.NOT.ASSOCIATED(List)) RETURN
+
+       Ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         m = ptr % Counter 
+         
+         WRITE( 10,'(F10.5,T12,A,T35,A)') &
+             1.0*m / nelem, TRIM(SectionName),ptr % Name(1:n)
+         totcount = totcount + m 
+         ptr => ptr % Next
+       END DO
+
+     END SUBROUTINE ReportList
+     !------------------------------------------------------------------------------    
+     
+   END SUBROUTINE ReportListCounters
+  !------------------------------------------------------------------------------
+
+#else
+
+   SUBROUTINE ReportListCounters( Model ) 
+     TYPE(Model_t) :: Model
+
+     CALL Info('ReportListCounter','List counters are not activated!')
+   END SUBROUTINE ReportListCounters
+      
+#endif
 
 
+   
 
 END MODULE Lists
 

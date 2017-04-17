@@ -261,7 +261,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      CALL Info( 'StressSolve', '--------------------------------------------------',Level=4 )
      CALL Info( 'StressSolve', 'Solving displacements from linear elasticity model',Level=4 )     
      CALL Info( 'StressSolve', '--------------------------------------------------',Level=4 )
- 
+
+     CALL DefaultStart()
+     
      DIM = CoordinateSystemDimension()
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -920,7 +922,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
          END IF
        END DO
      END IF
-
+     
+     CALL DefaultFinish()
+     
      CALL Info('StressSolver','All done',Level=4)
      CALL Info('StressSolver','------------------------------------------',Level=4)
 

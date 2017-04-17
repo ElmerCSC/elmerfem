@@ -1,0 +1,153 @@
+! Test case for Elmer2OpenFOAM coupling via file I/O.
+!
+! OpenFOAM is assumed to write cell centers into a file "C" for each
+! multi or single block mesh directory. Elmer projects the requested field
+! to those points and writes the source terms for OpenFOAM to use.
+!
+! This case is just simple static current conduction case where Joule heating
+! is used as a source term in consecutive OpenFOAM simulations.
+! Here only minimal OpenFOAM file structure is used.
+!
+! P.R. 8.3.2017
+
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "wire"
+End
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = Cartesian 
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+!  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+
+Body 1
+  Name = "Wire"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Air"
+  Equation = 2
+  Material = 2
+End
+
+
+Equation 1
+  Name = "WireSolvers"
+  Active Solvers(1) = 1
+End
+
+Equation 2
+  Name = "AirSolvers"
+End 
+
+
+Solver 1
+  Equation = Static Current
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+
+  Linear System Solver = Iterative 
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 1000
+  Linear System Residual Output = 20
+  Linear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Calculate Joule Heating = True
+
+! Lets set the desired heating power 
+  Power Control = Real 100.0
+End
+
+
+Solver 2
+  Equation = ElmerToOpenFOAM
+  Procedure = "Elmer2OpenFoamIO" "Elmer2OpenFoamWrite"
+
+! The variable to be mapped
+  Target Variable = joule heating
+
+! The OpenFOAM project directory containing the mesh etc. 
+  OpenFOAM Directory = FILE "ofdir"
+
+! The file to write the OpenFOAM sources to.
+  OpenFOAM File = File "fieldSolidHS.dat"
+
+! Just save Elmer centers for debugging in OF style
+! Center Filename = File xyz.dat
+End 
+
+Material 1
+  Name = "Cu"
+  Relative Permittivity = 1
+  Relative Permeability = 1
+  Electric Conductivity = 58.0e6
+End
+
+Material 2
+  Name = "Air"
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+  Electric Conductivity = 0.0
+End 
+
+
+Boundary Condition 1
+  Name = "WireStart"
+  Target Boundaries(1) = 1 
+
+  Potential = 0.0
+End
+
+Boundary Condition 2
+  Name = "WireSurface"
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Name = "WireEnd"
+  Target Boundaries(1) = 3
+
+  Potential = 1.0
+End
+
+Boundary Condition 4
+  Name = "AirStart"
+  Target Boundaries(1) = 4
+End
+
+
+Boundary Condition 5
+  Name = "AirSurface"
+  Target Boundaries(1) = 5
+End
+
+Boundary Condition 6
+  Name = "AirEnd"
+  Target Boundaries(1) = 6
+End
+
+
+Solver 1 :: Reference Norm = 1.39040615E-03
+Solver 2 :: Reference Norm = 2.33960458E+00

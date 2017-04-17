@@ -6,4 +6,4 @@ ADD_ELMERTEST_MODULE(CountSolver CountSolver CountSolver.F90)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO CountSolver.F90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(SlaveSolverSlots)
+ADD_ELMER_TEST(SlaveSolverSlots LABELS quick)
