@@ -92,7 +92,7 @@
         CIndexVarName, filename_root, filename,MaskName,&
         FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName, &
         MeshDir, PC_EqName, Iso_EqName, VTUSolverName, NameSuffix,&
-        MoveMeshDir,MoveMeshFullPath, gmsh_loc
+        MoveMeshDir,MoveMeshFullPath
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
         SaveParallelActive, InGroup, PauseSolvers, LeftToRight, MovedOne, ShiftSecond, &
         MoveMesh=.FALSE.
@@ -104,7 +104,7 @@
 
    SAVE :: FirstTime, SolverName, Params, Parallel, Boss, dim, Debug, &
         DistVarName, CIndexVarName, PC_EqName, Iso_EqName, &
-        MinCalvingSize, PauseVolumeThresh, gradLimit, MoveMesh, gmsh_loc
+        MinCalvingSize, PauseVolumeThresh, gradLimit, MoveMesh
 
 !---------------Get Variables and Parameters for Solution-----------
 
@@ -142,8 +142,6 @@
       gradLimit = ListGetConstReal(Params, "Front Gradient Limit", Found)
       IF(.NOT. Found) gradLimit = 100.0_dp
 
-      gmsh_loc = ListGetString(Model % Simulation,"Gmsh Path",Found)
-      IF(.NOT. Found) gmsh_loc = "gmsh"
    END IF !FirstTime
 
    Mesh => Model % Mesh
@@ -683,7 +681,9 @@
        rt0 = RealTime()
 
        !-----------system call gmsh------------------
-       CALL EXECUTE_COMMAND_LINE( gmsh_loc//" -2 "// filename, .TRUE., ierr )
+       !'env -i' obscures all environment variables, so gmsh doesn't see any
+       !MPI stuff and break down.
+       CALL EXECUTE_COMMAND_LINE( "env -i gmsh -2 "// filename, .TRUE., ierr )
 
        IF(ierr > 1) THEN
           WRITE(Message, '(A,i0)') "Error executing gmsh, error code: ",ierr

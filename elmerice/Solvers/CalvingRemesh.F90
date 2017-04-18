@@ -726,7 +726,7 @@ CONTAINS
          FrontCalving1Values(:), MyDegenerateCoords(:,:), DegenerateCoords(:,:)
     CHARACTER(MAX_NAME_LEN) :: SolverName, Str, NonVertBCName, MeshDir, MeshName, filename, &
          filename_root, MaskName, MuVarName, TopVarName, BottomVarName,&
-         NameSuffix, FrontLineMethod, GLVarName, VarName, MoveMeshDir,MoveMeshFullPath, gmsh_loc
+         NameSuffix, FrontLineMethod, GLVarName, VarName, MoveMeshDir,MoveMeshFullPath
     INTEGER :: i,j,k,n, counter, NoNodes, dummyint, FaceNodeCount, &
          ExtrudedLevels, ExtrudeLevels, NodesPerLevel, start, fin, stride, next, WriteNodeCount, &
          MeshBC,col, dim, MetisMethod, MetisMethodDefault, active, NextBasalPerm, &
@@ -833,9 +833,6 @@ CONTAINS
        CALL Info(SolverName, "No 'Grounding Line Variable Name' found, assuming GroundedMask")
        GLVarName = "GroundedMask"
     END IF
-
-    gmsh_loc = ListGetString(Model % Simulation,"Gmsh Path",Found)
-    IF(.NOT. Found) gmsh_loc = "gmsh"
 
     !Return here if new mesh has degenerate elements
 8989 CONTINUE
@@ -1817,7 +1814,9 @@ CONTAINS
        rt0 = RealTime()
 
        !-----------system call gmsh------------------
-       CALL EXECUTE_COMMAND_LINE( gmsh_loc//" -2 "// filename, .TRUE., ierr )
+       !'env -i' obscures all environment variables, so gmsh doesn't see any
+       !MPI stuff and break down.
+       CALL EXECUTE_COMMAND_LINE( "env -i gmsh -2 "// filename, .TRUE., ierr )
        IF(ierr > 1) THEN
           WRITE(Message, '(A,i0)') "Error executing gmsh, error code: ",ierr
           CALL Fatal(SolverName,Message)

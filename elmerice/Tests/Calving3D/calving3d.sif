@@ -65,9 +65,6 @@ Simulation
   Extruded Mesh Levels = Integer 10
   Remesh Extruded Mesh Levels = Integer 10
   Stabilization Use Longest Element Edge = Logical True
-
-  !TODO fix code so this isn't necessary!
-  Gmsh Path = File "/usr/local/bin/gmsh"
 End
 
 Body 1
@@ -683,17 +680,10 @@ Solver 26
 End
 
 Solver 27
-  Equation = DistanceTest
+  Equation = Test3DCalving
   Exec Solver = "After Simulation"
-  Procedure = "DistanceSolve" "DistanceSolver1"
-  Variable = "DistanceTest"
-  Solver Timing = Logical True
-
-  Nonlinear System Max Iterations = 200
-  Nonlinear System Convergence Tolerance = 1.0e-5
-
-  Linear System Solver = Iterative
-  Steady State Convergence Tolerance = 1.0e-4
+  Procedure = "./DummySolver" "DummySolver"
+  Variable = -global -nooutput "CalvingTest"
 End
 
 !!!!! EQUATION
@@ -967,8 +957,8 @@ End
 Initial Condition 4
 End
 
-Solver 27 :: Reference Norm = Real 7.749743E+4
+Solver 27 :: Reference Norm = Real 1
 Solver 27 :: Reference Norm Tolerance = Real 1E-05
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=7.749743E+4,EPS=1E-05\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1,EPS=1E-05\n" );
