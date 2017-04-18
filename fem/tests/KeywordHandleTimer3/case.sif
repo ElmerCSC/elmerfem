@@ -121,11 +121,11 @@ Material 2
   Float Value 7 At Ip = Logical True
  
   Float Value 8 = Variable time
-    Real Procedure "RealFunctionTests" "FunA"
+    Real Procedure "RealVecFunctionTests" "FunA"
   Float Value 9 = Variable time
-    Real Procedure "RealFunctionTests" "FunB"
+    Real Procedure "RealVecFunctionTests" "FunB"
   Float Value 10 = Variable Coordinate
-    Real Procedure "RealFunctionTests" "FunC"
+    Real Procedure "RealVecFunctionTests" "FunC"
 End
 
 
@@ -145,11 +145,11 @@ Material 3
   Float Value 7 At Ip = Logical True
  
   Float Value 8 = Variable time
-    Real Procedure "RealFunctionTests" "FunA"
+    Real Procedure "RealVecFunctionTests" "FunA"
   Float Value 9 = Variable time
-    Real Procedure "RealFunctionTests" "FunB"
+    Real Procedure "RealVecFunctionTests" "FunB"
   Float Value 10 = Variable Coordinate
-    Real Procedure "RealFunctionTests" "FunC"
+    Real Procedure "RealVecFunctionTests" "FunC"
 End 
 
 
