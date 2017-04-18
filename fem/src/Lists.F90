@@ -3641,7 +3641,8 @@ CONTAINS
              ALLOCATE( Handle % ParValues(MAX_FNC,CurrentModel % Mesh % MaxElementNodes) )
              Handle % ParValues = 0.0_dp
            END IF
-           
+
+           ! Get the dependent parameter values at each node 
            DO i=1,n
              k = NodeIndexes(i)
              CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
@@ -3972,6 +3973,13 @@ CONTAINS
        Handle % Ptr => ListAllocate()
      END IF
 
+     ! Deallocate stuff that may change in size, or is used as a marker for first element
+     IF( Handle % nValuesVec > 0 ) THEN
+       DEALLOCATE( Handle % ValuesVec )
+       Handle % nValuesVec = 0
+     END IF
+     
+     
      Handle % Initialized = .TRUE.
      
      FirstList = .TRUE.
@@ -4182,7 +4190,7 @@ CONTAINS
      
 
      IF(.NOT. Handle % Initialized ) THEN
-       CALL Fatal('','Handle must be initialized')
+       CALL Fatal('ListGetElementReal','Handle must be initialized')
      END IF
        
      
@@ -4477,6 +4485,8 @@ CONTAINS
            F(1) = ptr % Coeff * F(1) 
 
          CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+           Handle % GlobalInList = .FALSE.
+
            TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
            WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
            k = LEN_TRIM(cmd)
@@ -4507,6 +4517,8 @@ CONTAINS
            END DO
 
          CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+           Handle % GlobalInList = .FALSE.
+           
            IF ( ptr % PROCEDURE == 0 ) THEN
              WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
                  '] not used consistently.'
@@ -4560,6 +4572,462 @@ CONTAINS
 !------------------------------------------------------------------------------
 
    
+
+!------------------------------------------------------------------------------
+!> Gets a real valued parameter in all the Gaussian integration points.
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetElementRealVec( Handle,ngp,BasisVec,Element,Found ) RESULT( Rvalues )
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     INTEGER :: ngp
+     REAL(KIND=dp), OPTIONAL :: BasisVec(:,:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     REAL(KIND=dp), POINTER  :: Rvalues(:)
+!------------------------------------------------------------------------------
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     INTEGER, POINTER :: NodeIndexes(:)
+     REAL(KIND=dp) :: T(MAX_FNC),x,y,z, RValue
+     REAL(KIND=dp), POINTER :: F(:)
+     REAL(KIND=dp), POINTER :: ParF(:,:)
+     INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,node,gp
+     CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
+     LOGICAL :: AllGlobal, ListSame, ListFound, GotIt, IntFound
+     TYPE(Element_t), POINTER :: PElement
+     TYPE(ValueList_t), POINTER :: List
+!------------------------------------------------------------------------------
+
+     IF( Handle % nValuesVec < ngp ) THEN
+       IF( Handle % nValuesVec > 0 ) THEN
+         DEALLOCATE( Handle % ValuesVec )
+       END IF
+       ALLOCATE( Handle % ValuesVec(ngp) )
+       Handle % ValuesVec = 0.0_dp
+       Handle % nValuesVec = ngp       
+
+       IF( Handle % ConstantEverywhere ) THEN
+         Handle % ValuesVec(1:ngp) = Handle % Rvalue
+       END IF
+     END IF
+
+     ! The results are always returned from the Handle % Values
+     Rvalues => Handle % ValuesVec
+
+     ! If value is not present anywhere then return False
+     IF( Handle % NotPresentAnywhere ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RETURN
+     END IF
+
+     ! If the value is known to be globally constant return it asap.
+     IF( Handle % ConstantEverywhere ) THEN
+       IF(PRESENT(Found)) Found = .TRUE.
+       RETURN
+     END IF
+     
+     IF(.NOT. Handle % Initialized ) THEN
+       CALL Fatal('ListGetElementRealVec','Handle must be initialized')
+     END IF
+
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PElement => CurrentModel % CurrentElement
+     END IF
+
+     ! We know by initialization the list entry type that the keyword has
+     ! Find the correct list to look the keyword in.
+     ! Bulk and boundary elements are treated separately.
+     IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
+       IF( PRESENT( Found ) ) Found = Handle % Found       
+       CALL Warn('ListGetElementRealVec','This routine shoudl get all the IPs at once so why same element?')
+       RETURN
+     END IF
+
+
+     ! Set the default value 
+     ListFound = .FALSE.
+     ListSame = .FALSE.
+
+
+     IF( Handle % BulkElement ) THEN     
+       BodyId = PElement % BodyId
+
+       IF( BodyId == 0 ) THEN
+         CALL Warn('ListGetElementRealVec','Bulk handle called for boundary?')
+       END IF
+
+       IF( Handle % BodyId == BodyId ) THEN
+         ListSame = .TRUE.
+       ELSE       
+         List => BulkElementList( BodyId, Handle )
+         ListFound = ASSOCIATED( List ) 
+       END IF
+
+     ELSE  ! Boundary element
+       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
+         IF( ASSOCIATED( Handle % BoundaryInfo, Element % BoundaryInfo ) ) THEN
+           ListSame = .TRUE.
+         ELSE
+           DO id=1,CurrentModel % NumberOfBCs
+             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(id) % Tag ) THEN
+               List => CurrentModel % BCs(id) % Values
+               ListFound = .TRUE.
+               EXIT
+             END IF
+           END DO
+         END IF
+       END IF
+     END IF
+
+     
+     ! If the provided list is the same as last time, also the keyword will
+     ! be sitting at the same place, otherwise find it in the new list
+     IF( ListSame ) THEN
+       IF( PRESENT( Found ) ) Found = Handle % Found       
+       IF( .NOT. Handle % Found ) RETURN
+       IF( Handle % GlobalInList ) THEN
+         RETURN
+       ELSE
+         ptr => Handle % ptr % head        
+       END IF
+     ELSE IF( ListFound ) THEN
+
+       ptr => ListFind(List,Handle % Name,IntFound)
+       IF(PRESENT(Found)) Found = IntFound
+       Handle % Found = IntFound
+       IF( Handle % BulkElement ) THEN       
+         Handle % BodyId = BodyId
+       ELSE
+         Handle % BoundaryInfo => Element % BoundaryInfo
+       END IF
+       
+       IF(.NOT. IntFound ) THEN
+         Handle % ValuesVec = 0.0_dp
+         RETURN
+       END IF
+         
+       Handle % Ptr % Head => ptr
+
+       
+       ! It does not make sense to evaluate global variables at IP
+       IF( Handle % SomewhereEvaluateAtIp ) THEN
+         ! Check whether the keyword should be evaluated at integration point directly
+         IF( ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt ) ) THEN
+           Handle % EvaluateAtIp = .TRUE.
+         ELSE
+           Handle % EvaluateAtIp = .FALSE.
+         END IF
+       END IF
+     END IF
+
+     
+     ! Either evaluate parameter directly at IP, 
+     ! or first at nodes and then using basis functions at IP.
+     ! The later is the default. 
+     !------------------------------------------------------------------
+     IF( Handle % EvaluateAtIp ) THEN
+
+       IF(.NOT. PRESENT(BasisVec)) THEN
+         CALL Fatal('ListGetElementRealVec','Parameter > Basis < is required!')
+       END IF
+
+       IF( .NOT. Handle % AllocationsDone ) THEN
+         n = CurrentModel % Mesh % MaxElementNodes
+         ALLOCATE( Handle % Values(n) )
+         Handle % Values = 0.0_dp
+         ALLOCATE( Handle % ParValues(MAX_FNC,n) )
+         Handle % ParValues = 0.0_dp
+         Handle % AllocationsDone = .TRUE.
+       END IF
+
+       Handle % Element => PElement
+       n = PElement % TYPE % NumberOfNodes 
+       NodeIndexes => PElement % NodeIndexes
+
+       
+       IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
+           ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
+
+         ! These might not have been initialized if this is has mixed evaluation strategies           
+         IF(.NOT. ASSOCIATED( Handle % ParValues )) THEN
+           ALLOCATE( Handle % ParValues(MAX_FNC,CurrentModel % Mesh % MaxElementNodes) )
+           Handle % ParValues = 0.0_dp
+         END IF
+
+         ! Get the dependent parameter values at each node 
+         DO i=1,n
+           node = NodeIndexes(i)
+           CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, node, &
+               Handle % Name, T, j, AllGlobal)
+
+           IF( AllGlobal ) THEN
+             CALL Warn('ListGetElementRealVec','Constant expression need not be evaluated at IPs!')
+           END IF
+
+           Handle % ParNo = j 
+           Handle % ParValues(1:j,i) = T(1:j)
+         END DO
+
+         Handle % GlobalInList = .FALSE.
+         ParF => Handle % ParValues         
+       END IF
+
+
+       SELECT CASE(ptr % TYPE)
+
+       CASE( LIST_TYPE_VARIABLE_SCALAR )
+
+         ! there is no node index, so use zero
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           CALL ListPushActiveName(Handle % name)
+           node = 0 
+
+           DO gp = 1, ngp          
+             DO j=1,Handle % ParNo 
+               T(j) = SUM( BasisVec(gp,1:n) *  ParF(j,1:n) )
+             END DO
+             Rvalue = ExecRealFunction( ptr % PROCEDURE,CurrentModel, node, T )
+             Handle % ValuesVec(gp) = RValue
+           END DO
+           CALL ListPopActiveName()
+         ELSE
+           DO gp = 1, ngp          
+             DO j=1,Handle % ParNo 
+               T(j) = SUM( BasisVec(gp,1:n) *  ParF(j,1:n) )
+             END DO
+             RValue = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
+                 T(1), ptr % CubicCoeff )
+             Handle % ValuesVec(gp) = RValue
+           END DO
+         END IF
+
+       CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+
+
+         ! there is no node index, so use zero
+         node = 0 
+         TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+
+         WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
+         k = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k )         
+         
+         DO gp = 1, ngp          
+           DO j=1,Handle % ParNo 
+             T(j) = SUM( BasisVec(gp,1:n) *  Handle % ParValues(j,1:n) )
+           END DO
+
+           DO l=1,Handle % ParNo
+             WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+           END DO
+
+           cmd = ptr % CValue
+           k1 = LEN_TRIM(cmd)
+
+           CALL matc( cmd, tmp_str, k1 )
+           READ( tmp_str(1:k1), * ) RValue
+           
+           Handle % ValuesVec(gp) = RValue
+         END DO
+
+
+       CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           CALL ListPushActiveName(Handle % name)
+
+           DO gp = 1, ngp          
+
+             x = SUM( BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % x( NodeIndexes(1:n) ) )
+             y = SUM( BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n) ) )
+             z = SUM( BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n) ) )
+
+             RValue = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,x,y,z)
+             Handle % ValuesVec(gp) = RValue
+           END DO
+           CALL ListPopActiveName()
+
+         ELSE
+           CALL Fatal('ListGetElementRealVec','Constant scalar evaluation failed at ip!')
+         END IF
+
+       CASE DEFAULT
+
+         CALL Fatal('ListGetElementRealVec','Unknown case for avaluation at ip')
+
+       END SELECT
+
+     ELSE
+
+       IF( .NOT. Handle % AllocationsDone ) THEN
+         n = CurrentModel % Mesh % MaxElementNodes
+         ALLOCATE( Handle % Values(n) )
+         Handle % Values = 0.0_dp
+         Handle % AllocationsDone = .TRUE.
+       END IF
+
+       Handle % Element => PElement
+       n = PElement % TYPE % NumberOfNodes 
+       NodeIndexes => PElement % NodeIndexes
+       F => Handle % Values
+
+       SELECT CASE(ptr % TYPE)
+
+       CASE( LIST_TYPE_CONSTANT_SCALAR )
+
+         Handle % GlobalInList = .TRUE.                      
+         IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+           WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
+               '] not used consistently.'
+           CALL Fatal( 'ListGetElementRealVec', Message )
+           RETURN
+         END IF
+         F(1) = ptr % Coeff * ptr % Fvalues(1,1,1)
+         RValues(1:ngp) = F(1)
+
+
+       CASE( LIST_TYPE_VARIABLE_SCALAR )
+         Handle % GlobalInList = .FALSE.
+
+         CALL ListPushActiveName(Handle % name)
+
+         DO i=1,n
+           node = NodeIndexes(i)
+           CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, node, &
+               Handle % Name, T, j, AllGlobal)
+
+           IF ( ptr % PROCEDURE /= 0 ) THEN
+             F(i) = ptr % Coeff * &
+                 ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
+                 NodeIndexes(i), T )              
+           ELSE
+             IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+               WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
+                   '] not used consistently.'
+               CALL Fatal( 'ListGetElementRealVec', Message )
+               RETURN
+             END IF
+             F(i) = ptr % Coeff * &
+                 InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
+                 T(1), ptr % CubicCoeff )
+
+             ! If the dependency table includes just global values (such as time) 
+             ! the values will be the same for all element entries.
+             IF( AllGlobal ) THEN
+               Handle % GlobalInList = .TRUE.
+               EXIT
+             END IF
+           END IF
+         END DO
+         
+         IF( Handle % GlobalInList ) THEN
+           Handle % ValuesVec(1:ngp) = F(1)
+         ELSE
+           DO gp=1,ngp
+             Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
+           END DO
+         END IF
+         CALL ListPopActiveName()
+
+
+
+       CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
+
+         Handle % GlobalInList = .TRUE.
+
+         TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+         WRITE( cmd, '(a,e15.8)' ) 'st = ', TVar % Values(1)
+         k = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k )
+
+         cmd = ptr % CValue
+         k = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k )
+         READ( tmp_str(1:k), * ) F(1)
+         F(1) = ptr % Coeff * F(1) 
+
+         Handle % ValuesVec(1:ngp) = F(1)
+
+
+       CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+
+         Handle % GlobalInList = .FALSE.
+
+
+         TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+         WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
+         k = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k )
+
+         DO i=1,n
+           k = NodeIndexes(i)
+           CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, &
+               Handle % Name, T, j, AllGlobal)
+           IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
+             DO l=1,j
+               WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+               k1 = LEN_TRIM(cmd)
+               CALL matc( cmd, tmp_str, k1 )
+             END DO
+
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) F(i)
+             F(i) = ptr % Coeff * F(i)
+           END IF
+
+           IF( AllGlobal ) THEN
+             Handle % GlobalInList = .TRUE.
+             EXIT
+           END IF
+         END DO
+
+         IF( AllGlobal ) THEN
+           Handle % ValuesVec(1:ngp) = F(1)
+         ELSE
+           DO gp=1,ngp
+             Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
+           END DO
+         END IF
+
+
+       CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+         IF ( ptr % PROCEDURE == 0 ) THEN
+           WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
+               '] not used consistently.'
+           CALL Fatal( 'ListGetElementRealVec', Message )
+           RETURN
+         END IF
+
+         CALL ListPushActiveName(Handle % name)
+         DO i=1,n
+           F(i) = ptr % Coeff * &
+               ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
+               CurrentModel % Mesh % Nodes % x( NodeIndexes(i) ), &
+               CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
+               CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
+         END DO
+         CALL ListPopActiveName()
+
+         DO gp=1,ngp
+           Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
+         END DO
+
+       END SELECT
+
+     END IF
+     
+   END FUNCTION ListGetElementRealVec
+!------------------------------------------------------------------------------
+
+
+
    
 !------------------------------------------------------------------------------
 !> Gets a logical valued parameter in elements.

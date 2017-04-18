@@ -430,7 +430,9 @@ END INTERFACE
      TYPE(ValueList_t), POINTER :: Ptr  => Null()
      TYPE(Nodes_t), POINTER :: Nodes
      INTEGER, POINTER :: Indexes
-     INTEGER :: n 
+     INTEGER :: n
+     INTEGER :: nValuesVec = 0
+     REAL(KIND=dp), POINTER :: ValuesVec(:) => NULL()
      REAL(KIND=dp), POINTER :: Values(:) => NULL()
      REAL(KIND=dp), POINTER :: ParValues(:,:) => NULL()
      INTEGER :: ParNo = 0
