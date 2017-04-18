@@ -3502,7 +3502,7 @@ CONTAINS
 !> Initializes the handle to save just a little bit for constant valued.
 !> This is not mandatory but may still be used. 
 !------------------------------------------------------------------------------
-   RECURSIVE SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv)
+   SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      CHARACTER(LEN=*)  :: Section,Name
@@ -3698,6 +3698,16 @@ CONTAINS
      !    Handle % ConstantEverywhere, Handle % GlobalEverywhere, &
      !    Handle % SomewhereEvaluateAtIp
 
+     IF( PRESENT( minv ) ) THEN
+       Handle % GotMinv = .TRUE.
+       Handle % minv = minv
+     END IF
+
+     IF( PRESENT( maxv ) ) THEN
+       Handle % GotMaxv = .TRUE.
+       Handle % maxv = maxv
+     END IF
+     
    END SUBROUTINE ListInitElementKeyword
 !------------------------------------------------------------------------------
 
@@ -3755,15 +3765,13 @@ CONTAINS
 !> nodal points and then using basis functions estimated at the 
 !> gaussian integration points. 
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetElementReal( Handle,Basis,Element,Found,&
-       minv,maxv ) RESULT(Rvalue)
+   FUNCTION ListGetElementReal( Handle,Basis,Element,Found) RESULT(Rvalue)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      TYPE(ValueList_t), POINTER :: List
      REAL(KIND=dp), OPTIONAL :: Basis(:)
      LOGICAL, OPTIONAL :: Found
      TYPE(Element_t), POINTER, OPTIONAL :: Element
-     REAL(KIND=dp), OPTIONAL :: minv,maxv
      REAL(KIND=dp)  :: Rvalue
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
@@ -4155,18 +4163,18 @@ CONTAINS
      END IF
 
 
-     IF ( PRESENT( minv ) ) THEN
-       IF ( RValue < minv ) THEN
+     IF ( Handle % GotMinv ) THEN
+       IF ( RValue < Handle % minv ) THEN
          WRITE( Message,*) 'Given value ',RValue, ' for property: ', '[', TRIM(Handle % Name),']', &
-             ' smaller than given minimum: ', minv
+             ' smaller than given minimum: ', Handle % minv
          CALL Fatal( 'ListGetElementReal', Message )
        END IF
      END IF
        
-     IF ( PRESENT( maxv ) ) THEN
-       IF ( RValue > maxv ) THEN
+     IF ( Handle % GotMaxv ) THEN
+       IF ( RValue > Handle % maxv ) THEN
          WRITE( Message,*) 'Given value ',RValue, ' for property: ', '[', TRIM(Handle % Name),']', &
-             ' larger than given maximum ', maxv
+             ' larger than given maximum ', Handle % maxv
          CALL Fatal( 'ListGetElementReal', Message )
        END IF
      END IF
@@ -4180,7 +4188,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in all the Gaussian integration points.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetElementRealVec( Handle,ngp,BasisVec,Element,Found ) RESULT( Rvalues )
+   FUNCTION ListGetElementRealVec( Handle,ngp,BasisVec,Element,Found ) RESULT( Rvalues )
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      INTEGER :: ngp
@@ -4636,7 +4644,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a logical valued parameter in elements.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetElementLogical( Handle, Element, Found ) RESULT(Lvalue)
+   FUNCTION ListGetElementLogical( Handle, Element, Found ) RESULT(Lvalue)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      TYPE(Element_t), POINTER, OPTIONAL :: Element
@@ -4739,7 +4747,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a integer valued parameter in elements.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetElementInteger( Handle, Element, Found ) RESULT(Ivalue)
+   FUNCTION ListGetElementInteger( Handle, Element, Found ) RESULT(Ivalue)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      TYPE(Element_t), POINTER, OPTIONAL :: Element

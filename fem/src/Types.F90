@@ -451,7 +451,10 @@ END INTERFACE
      LOGICAL :: EvaluateAtIP = .FALSE.
      LOGICAL :: SomewhereEvaluateAtIP = .FALSE.
      LOGICAL :: NotPresentAnywhere = .FALSE.
+     REAL(KIND=dp) :: minv, maxv
+     LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
 
+     
    END TYPE ValueHandle_t
 
 !------------------------------------------------------------------------------
