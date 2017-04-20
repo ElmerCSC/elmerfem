@@ -686,8 +686,11 @@
        CALL EXECUTE_COMMAND_LINE( "env -i gmsh -2 "// filename, .TRUE., ierr )
 
        IF(ierr > 1) THEN
-          WRITE(Message, '(A,i0)') "Error executing gmsh, error code: ",ierr
-          CALL Fatal(SolverName,Message)
+         IF(ierr == 127) THEN
+           CALL Fatal(SolverName, "The 3D Calving implementation depends on GMSH, but this has not been found.")
+         END IF
+         WRITE(Message, '(A,i0)') "Error executing gmsh, error code: ",ierr
+         CALL Fatal(SolverName,Message)
        END IF
 
        rt = RealTime() - rt0
