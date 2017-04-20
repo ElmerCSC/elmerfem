@@ -22,4 +22,17 @@ FILE(RENAME ResultOutputSolve${SHLEXT} ResultOutputSolve2${SHLEXT})
 FILE(COPY ${BINARY_DIR}/fem/src/modules/ResultOutputSolve${SHLEXT} DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 FILE(RENAME ResultOutputSolve${SHLEXT} ResultOutputSolve3${SHLEXT})
 
+#Calving3D depends on ElmerGrid - point to the just-built copy
+SET(old_path "$ENV{PATH}")
+IF(WIN32)
+  SET(ENV{PATH} "${BINARY_DIR}/elmergrid/src;$ENV{PATH}")
+ENDIF(WIN32)
+IF(NOT(WIN32))
+  SET(ENV{PATH} "${BINARY_DIR}/elmergrid/src:$ENV{PATH}")
+ENDIF(NOT(WIN32))
+
+
 RUN_ELMERICE_TEST(WITH_MPI)
+
+#reset PATH
+SET(ENV{PATH} "${old_path}")
