@@ -1586,6 +1586,7 @@
         IF (GLFFElementIndex > 0) THEN
           Element => GetBoundaryElement(GLFFElementIndex)
           WRITE(134, *) Time, GLFFElementIndex, GLPosition, &
+                Element % NodeIndexes, &
                 GroundedMask(GroundedMaskPerm(Element % NodeIndexes)), &
                 GroundingLinePara( GroundingLineParaPerm(Element % NodeIndexes) )
           ! IF (ASSOCIATED(Element % propertydata)) THEN           
