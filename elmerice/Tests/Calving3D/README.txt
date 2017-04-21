@@ -5,10 +5,4 @@ More detailed documentation on Elmer/Ice Calving can be found at:
 
 http://elmerice.elmerfem.org/wiki/doku.php?id=problems:calving
 
-
-What to do if this test fails
-====
-
-It's very likely that this test is failing due to gmsh dependency. Build gmsh without MPI support and then put the following in the simulation section of your sif:
-
-Gmsh Path = String "/your/new/gmsh/installation/gmsh"
+The tested norm of DummySolver will be 1 if calving occurred in the last timestep (it should have) and 0 otherwise.
