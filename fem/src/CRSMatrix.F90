@@ -1176,6 +1176,48 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   END SUBROUTINE CRS_MatrixVectorMultiply
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Matrix-vector multiply without initializing v to zero.
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_AdditiveMatrixVectorMultiply( A,u,v,c )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
+    REAL(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< Result vector
+    TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
+    REAL(KIND=dp), OPTIONAL :: c                   !< multiplier    
+    !------------------------------------------------------------------------------
+     INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+     REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+     INTEGER :: i,j,n
+     REAL(KIND=dp) :: rsum
+
+!------------------------------------------------------------------------------
+
+     n = A % NumberOfRows
+     Rows   => A % Rows
+     Cols   => A % Cols
+     Values => A % Values
+
+     !$omp parallel do private(j,rsum)
+     DO i=1,n
+       rsum = 0.0d0
+       !DIR$ IVDEP
+       DO j=Rows(i),Rows(i+1)-1
+         rsum = rsum + u(Cols(j)) * Values(j)
+       END DO
+       
+       IF( PRESENT(c) ) THEN
+         v(i) = v(i) + c * rsum
+       ELSE
+         v(i) = v(i) + rsum
+       END IF
+     END DO
+     !$omp end parallel do
+!------------------------------------------------------------------------------
+   END SUBROUTINE CRS_AdditiveMatrixVectorMultiply
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
 !> Matrix vector product (v = Au) for a matrix given in CRS format
 !> This one only applies to the active elements of u. The idea is that
