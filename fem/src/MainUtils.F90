@@ -2003,6 +2003,11 @@ CONTAINS
        Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
      END IF
 
+
+     Solver % TimeOrder = ListGetInteger( Solver % values,'Time Derivative Order',Found )
+     IF(.NOT. Found ) Solver % TimeOrder = ParentSolver % TimeOrder
+     
+     Solver % MultigridTotal = 0
      Solver % SolverExecWhen = SOLVER_EXEC_NEVER
      Solver % LinBeforeProc = 0
      Solver % LinAfterProc = 0
