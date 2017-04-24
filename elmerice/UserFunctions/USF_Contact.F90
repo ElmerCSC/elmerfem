@@ -381,6 +381,10 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
   REAL(KIND=dp), ALLOCATABLE :: GLstress(:), FFstress(:)
   INTEGER :: countGL, countFF
 !=============================================================  
+  TYPE(variable_t), POINTER :: GroundingLineParaVar
+  REAL(KIND=dp), POINTER :: GroundingLinePara(:)
+   INTEGER, POINTER :: GroundingLineParaPerm(:)
+!=============================================================  
   INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), GroundedMaskPerm(:), HydroPerm(:), DistancePerm(:)
   INTEGER :: nodenumber, ii, DIM, GL_retreat, n, tt, Nn, jj, MSum, ZSum
 
@@ -408,6 +412,12 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
   GroundedMask => GroundedMaskVar % Values
   GroundedMaskPerm => GroundedMaskVar % Perm
   
+!=============================================================  
+  GroundingLineParaVar => VariableGet( Model % Mesh % Variables, 'GroundingLinePara', UnFoundFatal=UnFoundFatal)
+  GroundingLinePara => GroundingLineParaVar % Values
+  GroundingLineParaPerm => GroundingLineParaVar % Perm
+!=============================================================  
+
   relchange = Model % Solver % Variable % NonLinChange
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -566,117 +576,117 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
      GL_retreat = 0
 
      CurElement => Model % CurrentElement
-     DO tt = 1, Model % NumberOfBoundaryElements
+!      DO tt = 1, Model % NumberOfBoundaryElements
 
-        Element => GetBoundaryElement(tt)
-        IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
-        n = GetElementNOFNodes(Element)
+!         Element => GetBoundaryElement(tt)
+!         IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+!         n = GetElementNOFNodes(Element)
 
-        CALL GetElementNodes(Nodes, Element)
+!         CALL GetElementNodes(Nodes, Element)
 
-        IF (ANY(GroundedMaskPerm(Element % NodeIndexes(1:n))==0)) CYCLE
-        DO ii = 1,n
+!         IF (ANY(GroundedMaskPerm(Element % NodeIndexes(1:n))==0)) CYCLE
+!         DO ii = 1,n
 
-           Nn = GroundedMaskPerm(Element % NodeIndexes(ii))
-           ! the grounded mask is not defined here
-           IF (Nn==0) CYCLE
-!            IF (GroundedMask(Nn) < -0.5_dp) CYCLE
-           IF (ALL(GroundedMask(GroundedMaskPerm(Element % NodeIndexes))<-0.5)) CYCLE
+!            Nn = GroundedMaskPerm(Element % NodeIndexes(ii))
+!            ! the grounded mask is not defined here
+!            IF (Nn==0) CYCLE
+! !            IF (GroundedMask(Nn) < -0.5_dp) CYCLE
+!            IF (ALL(GroundedMask(GroundedMaskPerm(Element % NodeIndexes))<-0.5)) CYCLE
            
-           jj = Element % NodeIndexes(ii)
+!            jj = Element % NodeIndexes(ii)
            
-           ! comparison between water load and reaction
+!            ! comparison between water load and reaction
            
-           Normal = NormalValues(DIM*(NormalPerm(jj)-1)+1 : DIM*NormalPerm(jj))
-           Fwater = Hydro(HydroDIM*(HydroPerm(jj)-1)+1 : HydroDIM*(HydroPerm(jj)-1)+DIM )
-           Fbase = ResidValues((DIM+1)*(ResidPerm(jj)-1)+1 : (DIM+1)*ResidPerm(jj)-1)
+!            Normal = NormalValues(DIM*(NormalPerm(jj)-1)+1 : DIM*NormalPerm(jj))
+!            Fwater = Hydro(HydroDIM*(HydroPerm(jj)-1)+1 : HydroDIM*(HydroPerm(jj)-1)+DIM )
+!            Fbase = ResidValues((DIM+1)*(ResidPerm(jj)-1)+1 : (DIM+1)*ResidPerm(jj)-1)
 
-           ! comparison between water pressure and bed action
-           comp = ABS( SUM( Fwater * Normal ) ) - ABS( SUM( Fbase * Normal ) )
-!=================================================
-          compB = comp
-          IF (bedPComputed) THEN
-             Fbwater = Hydro(HydroDIM*(HydroPerm(jj)-1)+DIM+1 : HydroDIM*HydroPerm(jj))
-             compB = ABS( SUM( Fbwater * Normal ) ) - ABS( SUM( Fbase * Normal ) )
-          END IF
-         !  WRITE(*,*) tt, ii, Fwater,Fbwater,Fbase,Normal, compB
+!            ! comparison between water pressure and bed action
+!            comp = ABS( SUM( Fwater * Normal ) ) - ABS( SUM( Fbase * Normal ) )
+! !=================================================
+!           compB = comp
+!           IF (bedPComputed) THEN
+!              Fbwater = Hydro(HydroDIM*(HydroPerm(jj)-1)+DIM+1 : HydroDIM*HydroPerm(jj))
+!              compB = ABS( SUM( Fbwater * Normal ) ) - ABS( SUM( Fbase * Normal ) )
+!           END IF
+!          !  WRITE(*,*) tt, ii, Fwater,Fbwater,Fbase,Normal, compB
 
-          IF (.NOT. ASSOCIATED(Element % propertydata)) THEN
-            ALLOCATE( Element % propertydata )
-            ALLOCATE( Element % propertydata % values(n*3) )   
-            Element % propertydata % values(:) = 0.0_dp
-          END IF     
-          Element % propertydata % values(ii) = compB
-          Element % propertydata % values(ii+n) = comp
-          Element % propertydata % values(ii+2*n) = Nodes % x(ii)
+!           IF (.NOT. ASSOCIATED(Element % propertydata)) THEN
+!             ALLOCATE( Element % propertydata )
+!             ALLOCATE( Element % propertydata % values(n*3) )   
+!             Element % propertydata % values(:) = 0.0_dp
+!           END IF     
+!           Element % propertydata % values(ii) = compB
+!           Element % propertydata % values(ii+n) = comp
+!           Element % propertydata % values(ii+2*n) = Nodes % x(ii)
 
-          IF (GroundedMask(Nn) < -0.5_dp) CYCLE
+!           IF (GroundedMask(Nn) < -0.5_dp) CYCLE
 
-!=================================================
+! !=================================================
                       
            
-           IF (comp .GE. 0.0_dp) THEN
-              IF (thresh.LE.0.0_dp) THEN
-                 GroundedMask(Nn) = -1.0_dp
-                 GL_retreat = GL_retreat + 1
-                 PRINT *, 'Retreat of the Grounding Line : '
-                 PRINT *, Nodes % x(ii), Nodes % y(ii), Nodes % z(ii)
-              ELSE
-                 IF ( Distance(DistancePerm(Element % NodeIndexes(ii))).LE.thresh ) THEN
-                    GroundedMask(Nn) = -1.0_dp
-                    GL_retreat = GL_retreat + 1
-                    PRINT *, 'Retreat of the Grounding Line : '
-                    PRINT *, Nodes % x(ii), Nodes % y(ii), Nodes % z(ii)
-                 END IF
-              END IF
-           END IF
-        END DO
+!            IF (comp .GE. 0.0_dp) THEN
+!               IF (thresh.LE.0.0_dp) THEN
+!                  GroundedMask(Nn) = -1.0_dp
+!                  GL_retreat = GL_retreat + 1
+!                  PRINT *, 'Retreat of the Grounding Line : '
+!                  PRINT *, Nodes % x(ii), Nodes % y(ii), Nodes % z(ii)
+!               ELSE
+!                  IF ( Distance(DistancePerm(Element % NodeIndexes(ii))).LE.thresh ) THEN
+!                     GroundedMask(Nn) = -1.0_dp
+!                     GL_retreat = GL_retreat + 1
+!                     PRINT *, 'Retreat of the Grounding Line : '
+!                     PRINT *, Nodes % x(ii), Nodes % y(ii), Nodes % z(ii)
+!                  END IF
+!               END IF
+!            END IF
+!         END DO
         
-     END DO
+!      END DO
      Model % CurrentElement => CurElement
      
      ! with the previous step
      ! Some 0 (Grounding line) may have been replaced by -1 (floating nodes)
      ! here replacement of some 1 by 0's
      
-     IF (GL_retreat.GT.0) THEN
-        CurElement => Model % CurrentElement
-        DO tt = 1, Model % NumberOfBoundaryElements
+     ! IF (GL_retreat.GT.0) THEN
+     !    CurElement => Model % CurrentElement
+     !    DO tt = 1, Model % NumberOfBoundaryElements
            
-           Element => GetBoundaryElement(tt)
-           IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
-           n = GetElementNOFNodes(Element)
+     !       Element => GetBoundaryElement(tt)
+     !       IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+     !       n = GetElementNOFNodes(Element)
            
-           CALL GetElementNodes(Nodes, Element)
-           MSum = 0
-           ZSum = 0
+     !       CALL GetElementNodes(Nodes, Element)
+     !       MSum = 0
+     !       ZSum = 0
            
-           IF (ANY(GroundedMaskPerm(Element % NodeIndexes(1:n))==0)) CYCLE
-           DO ii = 1,n
+     !       IF (ANY(GroundedMaskPerm(Element % NodeIndexes(1:n))==0)) CYCLE
+     !       DO ii = 1,n
               
-              Nn = GroundedMaskPerm(Element % NodeIndexes(ii))
-              ! the grounded mask is not defined here
-              IF (Nn==0) CYCLE
-              MSum = MSum + INT(GroundedMask(Nn))
-              IF (GroundedMask(Nn)==0.0_dp) ZSum = ZSum + 1
+     !          Nn = GroundedMaskPerm(Element % NodeIndexes(ii))
+     !          ! the grounded mask is not defined here
+     !          IF (Nn==0) CYCLE
+     !          MSum = MSum + INT(GroundedMask(Nn))
+     !          IF (GroundedMask(Nn)==0.0_dp) ZSum = ZSum + 1
               
-           END DO
+     !       END DO
            
-           IF (MSum+ZSum .LT. n) THEN
-              DO ii=1,n
-                 Nn = GroundedMaskPerm(Element % NodeIndexes(ii))
-                 IF (Nn==0) CYCLE
+     !       IF (MSum+ZSum .LT. n) THEN
+     !          DO ii=1,n
+     !             Nn = GroundedMaskPerm(Element % NodeIndexes(ii))
+     !             IF (Nn==0) CYCLE
                  
-                 IF (GroundedMask(Nn)==1.0_dp) THEN
-                    GroundedMask(Nn)=0.0_dp
-                 END IF
+     !             IF (GroundedMask(Nn)==1.0_dp) THEN
+     !                GroundedMask(Nn)=0.0_dp
+     !             END IF
 
-              END DO
-           END IF
+     !          END DO
+     !       END IF
            
-        END DO
-        Model % CurrentElement => CurElement
-     END IF
+     !    END DO
+     !    Model % CurrentElement => CurElement
+     ! END IF
 
 
 
@@ -704,10 +714,10 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
             cond = GroundedMask(GroundedMaskPerm(GLnodenumber))
             ! Check for GL nodes
             IF (cond == 0) THEN 
-              GLstressSum = GLstressSum + Element % propertydata % values(ii)
+              GLstressSum = GLstressSum + GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
               GLNodeX = Nodes % x(ii)
             ELSE IF (cond < 0) THEN
-              FFstressSum = FFstressSum + Element % propertydata % values(ii)
+              FFstressSum = FFstressSum + GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
               FFNodeX = Nodes % x(ii)
             END IF
           END DO
@@ -820,11 +830,11 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
           ! Check for GL nodes
           IF (cond == 0) THEN 
             countGL = countGL + 1
-            GLstress(countGL) = BoundaryElement % propertydata % values(ii)
+            GLstress(countGL) = GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
             betaSum = betaSum + Sliding_weertman(Model, GLnodenumber, y)
           ELSE IF (cond < 0) THEN
             countFF = countFF + 1
-            FFstress(countFF) = BoundaryElement % propertydata % values(ii)
+            FFstress(countFF) = GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
           END IF
         END DO
 
@@ -862,7 +872,7 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
         cond = GroundedMask(GroundedMaskPerm(nodenumber))
         IF (cond > -0.5) THEN 
           ! WRITE (*,*) nodenumber,'====', GLstressSum, FFstressSum, ratio, GLBdrag
-          WRITE (Message, *) nodenumber,'====', BoundaryElement % propertydata % values(:)
+          WRITE (Message, *) nodenumber,'====', GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
           CALL Info(USF_Name, Message, Level=5)
 
           Bdrag = GLBdrag

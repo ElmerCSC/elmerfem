@@ -63,12 +63,13 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: VariableValues(:), GroundedMask(:)
   REAL(KIND=dp), POINTER :: NormalValues(:), ResidValues(:), HydroValues(:)
   REAL(KIND=dp), ALLOCATABLE :: Normal(:), Fwater(:), Fbwater(:), Fbase(:)
-  REAL(KIND=dp) :: comp
+  REAL(KIND=dp) :: comp, GLNodeX, FFNodeX, GLstressSum, FFstressSum, cond
+  REAL(KIND=dp) :: GLParaPosition, ratio
 
   INTEGER, POINTER :: Permutation(:), GroundedMaskPerm(:)
   INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), HydroPerm(:)
 
-  INTEGER :: DIM, HydroDIM, tt, ii, jj, n
+  INTEGER :: DIM, HydroDIM, tt, ii, jj, n, GLnodenumber
 
   LOGICAL:: FirstTime = .TRUE., bedPComputed = .FALSE., UnFoundFatal
 
@@ -172,7 +173,66 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
   END DO
 
   IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues, 1 )
+
  
+!======================= Compute parameterized GL position ==========================
+! currently only work for 2D problem
+!====================================================================================
+      GLNodeX = 0.0
+      FFNodeX = 0.0
+
+      DO tt = 1, Model % NumberOfBoundaryElements
+        Element => GetBoundaryElement(tt)
+        CALL GetElementNodes(Nodes, Element)
+
+      ! For GL element which contains GL and FF nodes
+        IF (((ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) >= 0))) .AND. &
+            ((ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes))<-0.5)))) THEN
+          n = GetElementNOFNodes(Element)
+          ! Total stress on the elment
+          GLstressSum = 0.0_dp
+          FFstressSum = 0.0_dp
+          DO ii = 1, n
+            GLnodenumber = Element % NodeIndexes(ii)
+            cond = GroundedMask(GroundedMaskPerm(GLnodenumber))
+            ! Check for GL nodes
+            IF (cond >= 0) THEN 
+              GLstressSum = GLstressSum + VariableValues(Permutation(GLnodenumber))
+              GLNodeX = Nodes % x(ii)
+            ! Floating Nodes
+            ELSE IF (cond < 0) THEN
+              FFstressSum = FFstressSum + VariableValues(Permutation(GLnodenumber))
+              FFNodeX = Nodes % x(ii)
+            END IF
+          END DO
+
+
+          ! No stress at GL
+          IF (GLstressSum == 0) THEN
+            GLParaPosition = GLNodeX
+          ! both float
+          ELSE IF ((GLstressSum > 0.0) .AND. (FFstressSum .GE. 0.0)) THEN 
+            GLParaPosition = GLNodeX
+          ! both 'grounded'
+          ELSE IF ((GLstressSum < 0.0) .AND. (FFstressSum .LE. 0.0)) THEN
+            GLParaPosition = FFNodeX
+          ! One is grounded, the other is floating
+          ELSE IF ( (GLstressSum*FFstressSum) < 0.0 ) THEN
+            ratio =  ABS(GLstressSum) / ( ABS(GLstressSum) + ABS(FFstressSum) )
+            GLParaPosition = GLNodeX + ratio * ABS(FFNodeX - GLNodeX)
+            WRITE (Message, *) '============== GL parameterization position at x =', GLParaPosition
+            CALL Info(SolverName, Message, Level=3)
+            CALL ListAddConstReal( Model % Constants, 'GroundingLine Position', GLParaPosition )
+
+          ELSE
+            CALL Fatal(SolverName, 'GL parameterization error')
+          END IF
+
+        END IF
+      END DO
+
+!====================================================================================
+
   CALL INFO( SolverName , 'Done')
  
 
