@@ -402,7 +402,7 @@ END INTERFACE
      REAL(KIND=dp) :: Coeff = 1.0_dp
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
 
-     INTEGER :: NameLen,DepNameLen
+     INTEGER :: NameLen,DepNameLen = 0
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
 
 #ifdef DEBUG_LISTCOUNTER 
@@ -417,25 +417,44 @@ END INTERFACE
 
 
    ! This is a tentative data type to speed up the retrieval of parameters
-   ! at Gaussian points.
+   ! at elements.
    !----------------------------------------------------------------------
    TYPE ValueHandle_t
+     INTEGER :: ValueType = -1
+     INTEGER :: SectionType = -1
+     INTEGER :: BodyId
+     TYPE(BoundaryInfo_t),  POINTER :: BoundaryInfo => NULL()
+     LOGICAL :: BulkElement
      TYPE(Element_t), POINTER :: Element => NULL()
      TYPE(ValueList_t), POINTER :: List => Null()
      TYPE(ValueList_t), POINTER :: Ptr  => Null()
      TYPE(Nodes_t), POINTER :: Nodes
      INTEGER, POINTER :: Indexes
-     INTEGER :: n 
+     INTEGER :: n
+     INTEGER :: nValuesVec = 0
+     REAL(KIND=dp), POINTER :: ValuesVec(:) => NULL()
      REAL(KIND=dp), POINTER :: Values(:) => NULL()
      REAL(KIND=dp), POINTER :: ParValues(:,:) => NULL()
      INTEGER :: ParNo = 0
-     REAL(KIND=dp) :: ConstantValue      
+     INTEGER :: IValue
+     REAL(KIND=dp) :: RValue
+     LOGICAL :: LValue
+     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+     INTEGER :: CValueLen
+     LOGICAL :: Found
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
      LOGICAL :: Initialized = .FALSE.
      LOGICAL :: AllocationsDone = .FALSE.
      LOGICAL :: ConstantEverywhere = .FALSE.
-     LOGICAL :: ConstantInList = .FALSE.
+     LOGICAL :: GlobalEverywhere = .FALSE.
+     LOGICAL :: GlobalInList = .FALSE.
      LOGICAL :: EvaluateAtIP = .FALSE.
+     LOGICAL :: SomewhereEvaluateAtIP = .FALSE.
+     LOGICAL :: NotPresentAnywhere = .FALSE.
+     REAL(KIND=dp) :: minv, maxv
+     LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
+
+     
    END TYPE ValueHandle_t
 
 !------------------------------------------------------------------------------
