@@ -4874,7 +4874,8 @@ CONTAINS
 
     IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
 
-    CALL Info('SetDirichletBoundaries','Number of dofs set: '//TRIM(I2S(DirCount)))
+    CALL Info('SetDirichletBoundaries','Number of dofs set: '&
+        //TRIM(I2S(DirCount)),Level=12)
 
     
 !------------------------------------------------------------------------------
