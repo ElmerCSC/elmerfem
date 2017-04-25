@@ -754,12 +754,6 @@ END INTERFACE
                WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
                    'Solver ',solver_id,' FAILED:  Norm =',Norm,'  RefNorm =',RefNorm
                CALL Warn('CompareToReferenceSolution',Message)
-               IF( AbsoluteErr ) THEN
-                 WRITE( Message,'(A,ES13.6)') 'Absolute Error to reference norm:',Err
-               ELSE
-                 WRITE( Message,'(A,ES13.6)') 'Relative Error to reference norm:',Err
-               END IF
-               CALL Info('CompareToReferenceSolution',Message, Level = 4 )
              END IF
              Success = .FALSE.
            ELSE         
@@ -767,6 +761,13 @@ END INTERFACE
                  'Solver ',solver_id,' PASSED:  Norm =',Norm,'  RefNorm =',RefNorm
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
+           IF( AbsoluteErr ) THEN
+             WRITE( Message,'(A,ES13.6)') 'Absolute Error to reference norm:',Err
+           ELSE
+             WRITE( Message,'(A,ES13.6)') 'Relative Error to reference norm:',Err
+           END IF
+           CALL Info('CompareToReferenceSolution',Message, Level = 4 )
+
          END IF
 
          IF( CompareSolution ) THEN
