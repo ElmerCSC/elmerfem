@@ -1835,7 +1835,11 @@ MODULE NavierStokes
          DO q=1,n
            DO i=1,dim
              IF (i == 1) THEN
-              SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) )
+              IF ( heaveSide > 0.5 )  THEN
+                SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) )
+              ELSE
+                SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) )
+              END IF
              ELSE
               SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) ) * heaveSide
              END IF

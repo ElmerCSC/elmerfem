@@ -540,42 +540,42 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
   Fbwater = 0.0_dp
   Fbase = 0.0_dp
 
-  IF ( (relChange.NE.relChangeOld) .AND. (relchange.GT.0.0_dp) .AND. & 
-       &            (relchange.LT.TestContact) .AND. (yesChange) .AND. GLmoves ) THEN
-     ! Change the basal condition just once per timestep
-     yesChange = checkContactEveryIter
+!   IF ( (relChange.NE.relChangeOld) .AND. (relchange.GT.0.0_dp) .AND. & 
+!        &            (relchange.LT.TestContact) .AND. (yesChange) .AND. GLmoves ) THEN
+!      ! Change the basal condition just once per timestep
+!      yesChange = checkContactEveryIter
 
-     CALL Info(USF_name,'FLOW SOLVER HAS SLIGHTLY CONVERGED: look for new basal conditions', Level=3)
+!      CALL Info(USF_name,'FLOW SOLVER HAS SLIGHTLY CONVERGED: look for new basal conditions', Level=3)
 
-     VarSurfResidual => VariableGet( Model % Mesh % Variables, 'Flow Solution Loads',UnFoundFatal=UnFoundFatal)
-     ResidPerm => VarSurfResidual  % Perm
-     ResidValues => VarSurfResidual % Values
+!      VarSurfResidual => VariableGet( Model % Mesh % Variables, 'Flow Solution Loads',UnFoundFatal=UnFoundFatal)
+!      ResidPerm => VarSurfResidual  % Perm
+!      ResidValues => VarSurfResidual % Values
 
-     NormalVar => VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=UnFoundFatal)
-     NormalPerm => NormalVar % Perm
-     NormalValues => NormalVar % Values
+!      NormalVar => VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=UnFoundFatal)
+!      NormalPerm => NormalVar % Perm
+!      NormalValues => NormalVar % Values
      
-     !Force exerted by the water, computed for each good boundary nodes (whatever on the bed or floating)
-     !From GetHydrostaticLoads
+!      !Force exerted by the water, computed for each good boundary nodes (whatever on the bed or floating)
+!      !From GetHydrostaticLoads
      
-     HydroVar => VariableGet( Model % Mesh % Variables, 'Fw',UnFoundFatal=UnFoundFatal)
-     Hydro => HydroVar % Values
-     HydroPerm => HydroVar % Perm
+!      HydroVar => VariableGet( Model % Mesh % Variables, 'Fw',UnFoundFatal=UnFoundFatal)
+!      Hydro => HydroVar % Values
+!      HydroPerm => HydroVar % Perm
      
-!================================================================
-    IF (((2*DIM) == HydroVar % dofs) .OR. (bedPComputed) ) THEN
-      HydroDIM = 2 * DIM
-      bedPComputed = .TRUE.
-    ELSE 
-      HydroDIM = DIM
-      bedPComputed = .FALSE.
-    END IF
-!================================================================
+! !================================================================
+!     IF (((2*DIM) == HydroVar % dofs) .OR. (bedPComputed) ) THEN
+!       HydroDIM = 2 * DIM
+!       bedPComputed = .TRUE.
+!     ELSE 
+!       HydroDIM = DIM
+!       bedPComputed = .FALSE.
+!     END IF
+! !================================================================
 
-     ! Retreat of the Grounding line if Hydro loads higher than residual values
-     GL_retreat = 0
+!      ! Retreat of the Grounding line if Hydro loads higher than residual values
+!      GL_retreat = 0
 
-     CurElement => Model % CurrentElement
+!      CurElement => Model % CurrentElement
 !      DO tt = 1, Model % NumberOfBoundaryElements
 
 !         Element => GetBoundaryElement(tt)
@@ -643,7 +643,7 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
 !         END DO
         
 !      END DO
-     Model % CurrentElement => CurElement
+     ! Model % CurrentElement => CurElement
      
      ! with the previous step
      ! Some 0 (Grounding line) may have been replaced by -1 (floating nodes)
@@ -692,60 +692,60 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
 
 
 !======================= Patch for Smoothing Beta at GL ==========================
-      GLNodeX = 0.0
-      FFNodeX = 0.0
-      CurElement => Model % CurrentElement
+      ! GLNodeX = 0.0
+      ! FFNodeX = 0.0
+      ! CurElement => Model % CurrentElement
 
-      DO tt = 1, Model % NumberOfBoundaryElements
-        Element => GetBoundaryElement(tt)
-        CALL GetElementNodes(Nodes, Element)
+      ! DO tt = 1, Model % NumberOfBoundaryElements
+      !   Element => GetBoundaryElement(tt)
+      !   CALL GetElementNodes(Nodes, Element)
 
-      ! For GL element which contains GL and FF nodes
-        IF (((ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) == 0))) .AND. &
-            ((ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes))<-0.5)))) THEN
-          n = GetElementNOFNodes(Element)
-          ! Total stress on the elment
-          GLBdrag = 0.0_dp
+      ! ! For GL element which contains GL and FF nodes
+      !   IF (((ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) == 0))) .AND. &
+      !       ((ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes))<-0.5)))) THEN
+      !     n = GetElementNOFNodes(Element)
+      !     ! Total stress on the elment
+      !     GLBdrag = 0.0_dp
 
-          GLstressSum = 0.0_dp
-          FFstressSum = 0.0_dp
-          DO ii = 1, n
-            GLnodenumber = Element % NodeIndexes(ii)
-            cond = GroundedMask(GroundedMaskPerm(GLnodenumber))
-            ! Check for GL nodes
-            IF (cond == 0) THEN 
-              GLstressSum = GLstressSum + GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
-              GLNodeX = Nodes % x(ii)
-            ELSE IF (cond < 0) THEN
-              FFstressSum = FFstressSum + GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
-              FFNodeX = Nodes % x(ii)
-            END IF
-          END DO
+      !     GLstressSum = 0.0_dp
+      !     FFstressSum = 0.0_dp
+      !     DO ii = 1, n
+      !       GLnodenumber = Element % NodeIndexes(ii)
+      !       cond = GroundedMask(GroundedMaskPerm(GLnodenumber))
+      !       ! Check for GL nodes
+      !       IF (cond == 0) THEN 
+      !         GLstressSum = GLstressSum + GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
+      !         GLNodeX = Nodes % x(ii)
+      !       ELSE IF (cond < 0) THEN
+      !         FFstressSum = FFstressSum + GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
+      !         FFNodeX = Nodes % x(ii)
+      !       END IF
+      !     END DO
 
 
-          ! No stress at GL
-          IF (GLstressSum == 0) THEN
-            GLParaPosition = GLNodeX
-          ! both floating
-          ELSE IF ((GLstressSum > 0.0) .AND. (FFstressSum .GE. 0.0)) THEN 
-            GLParaPosition = GLNodeX
-          ! both 'grounded'
-          ELSE IF ((GLstressSum < 0.0) .AND. (FFstressSum .LE. 0.0)) THEN
-            GLParaPosition = FFNodeX
-          ! One is grounded, the other is floating
-          ELSE IF ( (GLstressSum*FFstressSum) < 0.0 ) THEN
-            ratio =  ABS(GLstressSum) / ( ABS(GLstressSum) + ABS(FFstressSum) )
-            GLParaPosition = GLNodeX + ratio * ABS(FFNodeX - GLNodeX)
-            WRITE (Message, *) '============== GL parameterization position at x =', GLParaPosition
-            CALL Info(USF_Name, Message, Level=3)
-            CALL ListAddConstReal( Model % Constants, 'GroundingLine Position', GLParaPosition )
+      !     ! No stress at GL
+      !     IF (GLstressSum == 0) THEN
+      !       GLParaPosition = GLNodeX
+      !     ! both floating
+      !     ELSE IF ((GLstressSum > 0.0) .AND. (FFstressSum .GE. 0.0)) THEN 
+      !       GLParaPosition = GLNodeX
+      !     ! both 'grounded'
+      !     ELSE IF ((GLstressSum < 0.0) .AND. (FFstressSum .LE. 0.0)) THEN
+      !       GLParaPosition = FFNodeX
+      !     ! One is grounded, the other is floating
+      !     ELSE IF ( (GLstressSum*FFstressSum) < 0.0 ) THEN
+      !       ratio =  ABS(GLstressSum) / ( ABS(GLstressSum) + ABS(FFstressSum) )
+      !       GLParaPosition = GLNodeX + ratio * ABS(FFNodeX - GLNodeX)
+      !       WRITE (Message, *) '============== GL parameterization position at x =', GLParaPosition
+      !       CALL Info(USF_Name, Message, Level=3)
+      !       CALL ListAddConstReal( Model % Constants, 'GroundingLine Position', GLParaPosition )
 
-          ELSE
-            CALL Fatal(USF_Name, 'GL parameterization error')
-          END IF
+      !     ELSE
+      !       CALL Fatal(USF_Name, 'GL parameterization error')
+      !     END IF
 
-        END IF
-      END DO
+      !   END IF
+      ! END DO
 
       ! IF (ratio .LE. 0.0) THEN
 
@@ -754,11 +754,11 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
       ! END IF
 
 
-      Model % CurrentElement => CurElement
-!=================================================================================
-  END IF
+!       Model % CurrentElement => CurElement
+! !=================================================================================
+!   END IF
   
-  relChangeOld = relChange  
+!   relChangeOld = relChange  
   
   
   IF (GroundedMaskPerm(nodenumber) > 0) THEN
@@ -876,7 +876,7 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
           WRITE (Message, *) nodenumber,'====', GroundingLinePara(GroundingLineParaPerm(GLnodenumber))
           CALL Info(USF_Name, Message, Level=5)
 
-          Bdrag = GLBdrag
+          Bdrag = Sliding_weertman(Model, nodenumber, y)
         ELSE 
           Bdrag = 0.0
         END IF

@@ -189,10 +189,14 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
         ! (plus the tolerance)?  Note: zb includes tolerance.
         IF (z > zb(i)) THEN
            VariableValues(Nn) = -1.0_dp
-        ! ELSE IF (GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes(i))) > 0 ) THEN
-        !    VariableValues(Nn) = -1.0_dp 
+           IF (GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes(i))) < 0 ) THEN
+             VariableValues(Nn) = 1.0_dp 
+           END IF
         ELSE
            VariableValues(Nn) = 1.0_dp
+           IF (GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes(i))) > 0 ) THEN
+             VariableValues(Nn) = -1.0_dp 
+           END IF
         END IF
      END DO
   END DO
