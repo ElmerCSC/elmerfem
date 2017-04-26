@@ -1920,7 +1920,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: ChildVar
      TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
      INTEGER :: n,m,dofs, i,j,k,l,ii, jj, nn
-     LOGICAL :: Found
+     LOGICAL :: Found, OutputActive
 
      ParentDofs = ParentSolver % Variable % Dofs
      IF( PRESENT( ChildDofs ) ) THEN
@@ -1968,8 +1968,11 @@ CONTAINS
      ChildVarValues = 0.0_dp
      ChildVarPerm => ParentSolver % Variable % Perm
 
+     OutputActive = ListGetLogical( Solver % Values,'Variable Output', Found )
+     IF(.NOT. Found ) OutputActive = ParentSolver % Variable % Output 
+          
      CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, &
-         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm )
+         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm, OutputActive )
 
 
      ChildVar => VariableGet( Solver % Mesh % Variables, ChildVarName )      
@@ -1980,9 +1983,6 @@ CONTAINS
      ChildVar % TYPE = ParentSolver % Variable % TYPE
      Solver % Variable => ChildVar
 
-     ChildVar % Output = ListGetLogical( Solver % Values,'Variable Output', Found )
-     IF(.NOT. Found ) ChildVar % Output = ParentSolver % Variable % Output 
-     
      
      CALL Info('CreateChildSolver','Creating matrix for solver variable',Level=8)    
      Solver % Matrix => AllocateMatrix()
