@@ -857,7 +857,8 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
 
           ! Typical GL parameterization
           ! IF (GLstressSum < 0) THEN
-            GLBdrag =  ratio * Sliding_weertman(Model, nodenumber, y)
+            ! GLBdrag =  ratio * Sliding_weertman(Model, nodenumber, y)
+            GLBdrag =  Sliding_weertman(Model, nodenumber, y)
           ! ELSE
           !   GLBdrag =  (1.0-ratio) * Sliding_weertman(Model, nodenumber, y)
           ! END IF
