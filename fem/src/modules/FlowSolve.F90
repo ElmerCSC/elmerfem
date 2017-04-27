@@ -1173,10 +1173,10 @@
               nIntegration = 2
             END IF
 
-            IF ( ALL(GroundedMaskPerm(Element % NodeIndexes) > 0) ) THEN
+            IF ( ALL(GroundingLineParaPerm(Element % NodeIndexes) > 0) ) THEN
             ! Find GL&FF element
-              IF ( ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) == 0)  .AND. &
-                   ALL(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) <= 0)) THEN
+              IF ( ANY(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) >= 0)  .AND. &
+                   ANY(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) < 0)) THEN
 
                 FFstressSum = 0.0_dp
                 GLstressSum = 0.0_dp
@@ -1186,17 +1186,19 @@
                 DO jj = 1, n
                   tempNodeIndex = Element % NodeIndexes(jj)
 
-                  GLMaskIndex = GroundedMaskPerm(tempNodeIndex)
-                  IF (GLMaskIndex == 0) CYCLE
+                  ! GLMaskIndex = GroundedMaskPerm(tempNodeIndex)
+                  ! IF (GLMaskIndex == 0) CYCLE
 
-                  cond = GroundedMask(GLMaskIndex)
                   
                   GLparaIndex = GroundingLineParaPerm(tempNodeIndex)
                   IF (GLparaIndex == 0) CYCLE
 
-                  IF ( cond >= 0 ) THEN
+                  cond = GroundingLinePara(GLparaIndex)
+
+
+                  IF ( cond < 0 ) THEN
                     GLstressSum = GLstressSum + GroundingLinePara(GLparaIndex)
-                  ELSE IF ( cond < 0) THEN
+                  ELSE IF ( cond >= 0) THEN
                     FFstressSum = FFstressSum + GroundingLinePara(GLparaIndex)
                   END IF
                 END DO
@@ -1587,8 +1589,7 @@
           Element => GetBoundaryElement(GLFFElementIndex)
           n = GetElementNOFNodes(Element)
           CALL GetElementNodes( ElementNodes )
-          WRITE(134, *) Time, Element % NodeIndexes,  ElementNodes % x(1:n), GLPosition, &
-                GroundedMask(GroundedMaskPerm(Element % NodeIndexes)), &
+          WRITE(134, *) Time, Element % NodeIndexes,  GLPosition, &
                 GroundingLinePara( GroundingLineParaPerm(Element % NodeIndexes) )
           ! IF (ASSOCIATED(Element % propertydata)) THEN           
           !   FFParaData => Element % propertydata % values
