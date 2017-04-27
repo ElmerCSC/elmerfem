@@ -186,48 +186,55 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
         CALL GetElementNodes(Nodes, Element)
 
       ! For GL element which contains GL and FF nodes
-        IF (((ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) >= 0))) .AND. &
-            ((ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes))<-0.5)))) THEN
-          n = GetElementNOFNodes(Element)
-          ! Total stress on the elment
-          GLstressSum = 0.0_dp
-          FFstressSum = 0.0_dp
-          DO ii = 1, n
-            GLnodenumber = Element % NodeIndexes(ii)
-            cond = GroundedMask(GroundedMaskPerm(GLnodenumber))
-            ! Check for GL nodes
-            IF (cond >= 0) THEN 
-              GLstressSum = GLstressSum + VariableValues(Permutation(GLnodenumber))
-              GLNodeX = Nodes % x(ii)
-            ! Floating Nodes
-            ELSE IF (cond < 0) THEN
-              FFstressSum = FFstressSum + VariableValues(Permutation(GLnodenumber))
-              FFNodeX = Nodes % x(ii)
+        IF ( ALL(Permutation(Element % NodeIndexes) > 0) ) THEN
+          IF (((ANY(VariableValues(Permutation(Element % NodeIndexes)) >= 0))) .AND. &
+              ((ANY(VariableValues(Permutation(Element % NodeIndexes)) < 0)))) THEN
+            n = GetElementNOFNodes(Element)
+            ! Total stress on the elment
+            GLstressSum = 0.0_dp
+            FFstressSum = 0.0_dp
+            DO ii = 1, n           
+              GLnodenumber = Permutation(Element % NodeIndexes(ii))
+
+              IF (GLnodenumber == 0) CYCLE
+
+
+              cond = VariableValues(GLnodenumber)
+              ! Check for GL nodes
+              IF (cond < 0) THEN 
+                GLstressSum = GLstressSum + VariableValues(GLnodenumber)
+                GLNodeX = Nodes % x(ii)
+              ! Floating Nodes
+              ELSE IF (cond >= 0) THEN
+                FFstressSum = FFstressSum + VariableValues(GLnodenumber)
+                FFNodeX = Nodes % x(ii)
+              END IF
+            END DO
+
+
+            ! ! No stress at GL
+            ! IF (GLstressSum == 0) THEN
+            !   GLParaPosition = GLNodeX
+            ! ! both float
+            ! ELSE IF ((GLstressSum > 0.0) .AND. (FFstressSum .GE. 0.0)) THEN 
+            !   GLParaPosition = GLNodeX
+            ! ! both 'grounded'
+            ! ELSE IF ((GLstressSum < 0.0) .AND. (FFstressSum .LE. 0.0)) THEN
+            !   GLParaPosition = FFNodeX
+            ! ! One is grounded, the other is floating
+            ! ELSE 
+
+            IF ( (GLstressSum*FFstressSum) < 0.0 ) THEN
+              ratio =  ABS(GLstressSum) / ( ABS(GLstressSum) + ABS(FFstressSum) )
+              GLParaPosition = GLNodeX + ratio * ABS(FFNodeX - GLNodeX)
+              WRITE (Message, *) '============== GL parameterization position at x =', GLParaPosition
+              CALL Info(SolverName, Message, Level=3)
+              CALL ListAddConstReal( Model % Constants, 'GroundingLine Position', GLParaPosition )
+
+            ELSE
+              CALL Fatal(SolverName, 'GL parameterization error!')
             END IF
-          END DO
-
-
-          ! No stress at GL
-          IF (GLstressSum == 0) THEN
-            GLParaPosition = GLNodeX
-          ! both float
-          ELSE IF ((GLstressSum > 0.0) .AND. (FFstressSum .GE. 0.0)) THEN 
-            GLParaPosition = GLNodeX
-          ! both 'grounded'
-          ELSE IF ((GLstressSum < 0.0) .AND. (FFstressSum .LE. 0.0)) THEN
-            GLParaPosition = FFNodeX
-          ! One is grounded, the other is floating
-          ELSE IF ( (GLstressSum*FFstressSum) < 0.0 ) THEN
-            ratio =  ABS(GLstressSum) / ( ABS(GLstressSum) + ABS(FFstressSum) )
-            GLParaPosition = GLNodeX + ratio * ABS(FFNodeX - GLNodeX)
-            WRITE (Message, *) '============== GL parameterization position at x =', GLParaPosition
-            CALL Info(SolverName, Message, Level=3)
-            CALL ListAddConstReal( Model % Constants, 'GroundingLine Position', GLParaPosition )
-
-          ELSE
-            CALL Fatal(SolverName, 'GL parameterization error')
           END IF
-
         END IF
       END DO
 
