@@ -1,4 +1,4 @@
-!/*****************************************************************************/
+!*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -171,6 +171,8 @@ CONTAINS
 
      Mesh % InvPerm => NULL()
 
+     Mesh % MinFaceDOFs = 1000
+     Mesh % MinEdgeDOFs = 1000
      Mesh % MaxFaceDOFs = 0
      Mesh % MaxEdgeDOFs = 0
      Mesh % MaxBDOFs = 0
@@ -2069,6 +2071,8 @@ END SUBROUTINE GetMaxDefs
      IF ( BoundariesOnly ) Mesh % NumberOfBulkElements = 0
 
      Mesh % MaxElementDOFs  = 0
+     Mesh % MinEdgeDOFs     = 1000
+     Mesh % MinFaceDOFs     = 1000
      Mesh % MaxEdgeDOFs     = 0
      Mesh % MaxFaceDOFs     = 0
      Mesh % MaxBDOFs        = 0
@@ -2731,14 +2735,18 @@ END SUBROUTINE GetMaxDefs
      ! Create parallel numbering of faces
      CALL SParFaceNumbering(Mesh)
      DO i=1,Mesh % NumberOfFaces
+       Mesh % MinFaceDOFs = MIN(Mesh % MinFaceDOFs,Mesh % Faces(i) % BDOFs)
        Mesh % MaxFaceDOFs = MAX(Mesh % MaxFaceDOFs,Mesh % Faces(i) % BDOFs)
      END DO
+     IF(Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs) Mesh % MinFaceDOFs = Mesh % MaxFaceDOFs
 
      ! Create parallel numbering for edges
      CALL SParEdgeNumbering(Mesh)
      DO i=1,Mesh % NumberOfEdges
+       Mesh % MinEdgeDOFs = MIN(Mesh % MinEdgeDOFs,Mesh % Edges(i) % BDOFs)
        Mesh % MaxEdgeDOFs = MAX(Mesh % MaxEdgeDOFs,Mesh % Edges(i) % BDOFs)
      END DO
+     IF(Mesh % MinEdgeDOFs > Mesh % MaxEdgeDOFs) Mesh % MinEdgeDOFs = Mesh % MaxEdgeDOFs
 
      ! Set max element dofs here (because element size may have changed
      ! when edges and faces have been set). This is the absolute worst case.
@@ -2860,8 +2868,10 @@ END SUBROUTINE GetMaxDefs
           END IF
 
           ! Get maximum dof for edges
+          Mesh % MinEdgeDOFs = MIN(Edge % BDOFs, Mesh % MinEdgeDOFs)
           Mesh % MaxEdgeDOFs = MAX(Edge % BDOFs, Mesh % MaxEdgeDOFs)
        END DO
+       IF ( Mesh % MinEdgeDOFs > Mesh % MaxEdgeDOFs ) Mesh % MinEdgeDOFs = MEsh % MaxEdgeDOFs
 
        ! Iterate each face of element
        DO j=1,Element % TYPE % NumberOfFaces
@@ -2887,9 +2897,11 @@ END SUBROUTINE GetMaxDefs
           END IF
              
           ! Get maximum dof for faces
+          Mesh % MinFaceDOFs = MIN(Face % BDOFs, Mesh % MinFaceDOFs)
           Mesh % MaxFaceDOFs = MAX(Face % BDOFs, Mesh % MaxFaceDOFs)
        END DO
     END DO
+    IF ( Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs ) Mesh % MinFaceDOFs = MEsh % MaxFaceDOFs
 
     ! Set local edges for boundary elements
     DO i=Mesh % NumberOfBulkElements + 1, &
@@ -13271,6 +13283,8 @@ END SUBROUTINE FindNeighbourNodes
     NewMesh % NumberOfEdges = 0
     NewMesh % NumberOfFaces = 0
     NewMesh % MaxBDOFs = Mesh % MaxBDOFs
+    NewMesh % MinEdgeDOFs = Mesh % MinEdgeDOFs
+    NewMesh % MinFaceDOFs = Mesh % MinFaceDOFs
     NewMesh % MaxEdgeDOFs = Mesh % MaxEdgeDOFs
     NewMesh % MaxFaceDOFs = Mesh % MaxFaceDOFs
     NewMesh % MaxElementDOFs = Mesh % MaxElementDOFs

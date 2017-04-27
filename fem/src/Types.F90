@@ -715,6 +715,7 @@ END INTERFACE
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim, PassBCcnt=0
+     INTEGER :: MinEdgeDOFs, MinFaceDOFs
      INTEGER :: MaxElementNodes, MaxElementDOFs, MaxEdgeDOFs, MaxFaceDOFs, MaxBDOFs
 
      LOGICAL :: EntityWeightsComputed 

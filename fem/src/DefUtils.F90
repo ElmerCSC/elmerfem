@@ -1414,15 +1414,23 @@ CONTAINS
      IF ( ALL(Solver % Def_Dofs(GetElementFamily(Element),id,2:)<0) ) RETURN
 
      IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-        DO j=1,Element % TYPE % NumberOFEdges
-           n =  n + Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
-        END DO
+        IF ( Solver % Mesh % MaxEdgeDOFs == Solver % Mesh % MinEdgeDOFs ) THEN
+           n =  n + Element % Type % NumberOfEdges * Solver % Mesh % MaxEdgeDOFs
+        ELSE
+          DO j=1,Element % Type % NumberOFEdges
+             n =  n + Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
+          END DO
+       END IF
      END IF
 
      IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-        DO j=1,Element % TYPE % NumberOFFaces
-           n = n + Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
-        END DO
+        IF ( Solver % Mesh % MaxFaceDOFs == Solver % Mesh % MinFaceDOFs ) THEN
+           n =  n + Element % Type % NumberOfFaces * Solver % Mesh % MaxFaceDOFs
+        ELSE
+          DO j=1,Element % Type % NumberOFFaces
+             n = n + Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
+          END DO
+        END IF
      END IF
 
      !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
