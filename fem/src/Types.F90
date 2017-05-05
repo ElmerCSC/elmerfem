@@ -436,9 +436,9 @@ END INTERFACE
      REAL(KIND=dp), POINTER :: Values(:) => NULL()
      REAL(KIND=dp), POINTER :: ParValues(:,:) => NULL()
      INTEGER :: ParNo = 0
-     INTEGER :: IValue
-     REAL(KIND=dp) :: RValue
-     LOGICAL :: LValue
+     INTEGER :: IValue, DefIValue = 0
+     REAL(KIND=dp) :: RValue, DefRValue = 0.0_dp
+     LOGICAL :: LValue, DefLValue = .FALSE.
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
      INTEGER :: CValueLen
      LOGICAL :: Found
@@ -451,6 +451,7 @@ END INTERFACE
      LOGICAL :: EvaluateAtIP = .FALSE.
      LOGICAL :: SomewhereEvaluateAtIP = .FALSE.
      LOGICAL :: NotPresentAnywhere = .FALSE.
+     LOGICAL :: UnfoundFatal = .FALSE.
      REAL(KIND=dp) :: minv, maxv
      LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
 
