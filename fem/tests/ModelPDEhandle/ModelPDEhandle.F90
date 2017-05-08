@@ -23,9 +23,9 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found
 !------------------------------------------------------------------------------
   TYPE(ValueHandle_t) :: Load_h, FieldSource_h, DiffCoeff_h, ReactCoeff_h, ConvCoeff_h, &
-      TimeCoeff_h, ConvVelo1_h, ConvVelo2_h, ConvVelo3_h
-
-
+      TimeCoeff_h, ConvVelo1_h, ConvVelo2_h, ConvVelo3_h, &
+      BCFlux_h, BCCoeff_h, BCExt_h
+      
   CALL ListInitElementKeyword( Load_h,'Body Force','Field Source')
   CALL ListInitElementKeyword( DiffCoeff_h,'Material','Diffusion Coefficient')
   CALL ListInitElementKeyword( ReactCoeff_h,'Material','Reaction Coefficient')
@@ -35,7 +35,9 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   CALL ListInitElementKeyword( ConvVelo2_h,'Material','Convection Velocity 2')
   CALL ListInitElementKeyword( ConvVelo3_h,'Material','Convection Velocity 3')
 
-
+  CALL ListInitElementKeyword( BCFlux_h,'Boundary Condition','Field Flux')
+  CALL ListInitElementKeyword( BCCoeff_h,'Boundary Condition','Robin Coefficient')
+  CALL ListInitElementKeyword( BCExt_h,'Boundary Condition','External Field')
   
   CALL DefaultStart()
   
@@ -99,10 +101,9 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: diff_coeff(n), conv_coeff(n),react_coeff(n), &
-                     time_coeff(n), D,C,R, rho,Velo(3,n),a(3), Weight
+    REAL(KIND=dp) :: D,C,R, rho,Velo(3,n),a(3), Weight
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
-    REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
+    REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd)
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -116,7 +117,6 @@ CONTAINS
     MASS  = 0._dp
     STIFF = 0._dp
     FORCE = 0._dp
-    LOAD = 0._dp
     a = 0.0_dp
     
     ! Numerical integration:
@@ -185,9 +185,9 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Flux(n), Coeff(n), Ext_t(n), F,C,Ext, Weight
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
-    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
+    REAL(KIND=dp) :: Flux(n), Coeff(n), F,C,Ext, Weight
+    REAL(KIND=dp) :: Basis(nd),DetJ,LoadAtIP
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -200,16 +200,9 @@ CONTAINS
     BC => GetBC()
     IF (.NOT.ASSOCIATED(BC) ) RETURN
 
-    dim = CoordinateSystemDimension()
-
     CALL GetElementNodes( Nodes )
     STIFF = 0._dp
     FORCE = 0._dp
-    LOAD = 0._dp
-
-    Flux(1:n)  = GetReal( BC,'field flux', Found )
-    Coeff(1:n) = GetReal( BC,'robin coefficient', Found )
-    Ext_t(1:n) = GetReal( BC,'external field', Found )
 
     ! Numerical integration:
     !-----------------------
@@ -218,7 +211,7 @@ CONTAINS
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, Basis, dBasisdx )
+              IP % W(t), detJ, Basis )
 
       Weight = IP % s(t) * DetJ
 
@@ -227,12 +220,12 @@ CONTAINS
 
       ! Given flux:
       ! -----------
-      F = SUM(Basis(1:n)*flux(1:n))
+      F = ListGetElementReal( BCFlux_h, Basis, Element, Found ) 
 
       ! Robin condition (C*(u-u_0)):
       ! ---------------------------
-      C = SUM(Basis(1:n)*coeff(1:n))
-      Ext = SUM(Basis(1:n)*ext_t(1:n))
+      C = ListGetElementReal( BCCoeff_h, Basis, Element, Found ) 
+      Ext = ListGetElementReal( BCExt_h, Basis, Element, Found ) 
 
       DO p=1,nd
         DO q=1,nd
