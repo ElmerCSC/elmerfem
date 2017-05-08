@@ -3839,6 +3839,54 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+   FUNCTION ListGetElementRealParent( Handle, Basis, Element, Found ) RESULT( RValue ) 
+     
+     TYPE(ValueHandle_t) :: Handle
+     TYPE(Element_t), OPTIONAL, POINTER :: Element
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp) :: RValue
+     
+     LOGICAL :: IntFound
+     LOGICAL :: lefttest = .TRUE. ! first start with left test 1st
+     TYPE(Element_t), POINTER :: Parent, PElement
+
+     SAVE lefttest
+
+
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PElement => CurrentModel % CurrentElement
+     END IF
+
+          
+     IntFound = .FALSE.
+     IF( lefttest) THEN
+       Parent => PElement % BoundaryInfo % Left
+     ELSE 
+       Parent => PElement % BoundaryInfo % Right
+     END IF
+     RValue = ListGetElementReal( Handle, Basis, Parent, IntFound, PElement % NodeIndexes )
+
+     ! If not found do the same thing with the other parent
+     IF(.NOT. IntFound ) THEN
+       IF( lefttest) THEN
+         Parent => PElement % BoundaryInfo % Right
+       ELSE
+         Parent => PElement % BoundaryInfo % Left
+       END IF
+       RValue = ListGetElementReal( Handle, Basis, Parent, IntFound, PElement % NodeIndexes )
+
+       ! reverse the order in which left and right parent are tested
+       IF( IntFound ) lefttest = .NOT. lefttest
+     END IF
+       
+     IF( PRESENT( Found ) ) Found = IntFound
+     
+   END FUNCTION ListGetElementRealParent
      
 
 !------------------------------------------------------------------------------
@@ -3848,13 +3896,14 @@ CONTAINS
 !> nodal points and then using basis functions estimated at the 
 !> gaussian integration points. 
 !------------------------------------------------------------------------------
-   FUNCTION ListGetElementReal( Handle,Basis,Element,Found) RESULT(Rvalue)
+   FUNCTION ListGetElementReal( Handle,Basis,Element,Found,Indexes) RESULT(Rvalue)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      TYPE(ValueList_t), POINTER :: List
      REAL(KIND=dp), OPTIONAL :: Basis(:)
      LOGICAL, OPTIONAL :: Found
      TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
      REAL(KIND=dp)  :: Rvalue
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
@@ -3881,8 +3930,7 @@ CONTAINS
        IF(PRESENT(Found)) Found = .TRUE.
        RValue = Handle % RValue
        RETURN
-     END IF     
-     
+     END IF          
 
      ! Find the pointer to the element, if not given
      IF( PRESENT( Element ) ) THEN
@@ -3890,6 +3938,7 @@ CONTAINS
      ELSE
        PElement => CurrentModel % CurrentElement
      END IF
+
      
      ! Set the default value 
      Rvalue = Handle % DefRValue
@@ -3964,8 +4013,14 @@ CONTAINS
        ! current element, or only in the 1st node if it is constant. 
        
        IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
-         n = Handle % Element % TYPE % NumberOfNodes 
-         NodeIndexes => PElement % NodeIndexes
+         IF( PRESENT( Indexes ) ) THEN
+           n = SIZE( Indexes )
+           NodeIndexes => Indexes
+         ELSE
+           n = Handle % Element % TYPE % NumberOfNodes 
+           NodeIndexes => PElement % NodeIndexes
+         END IF
+           
          ParF => Handle % ParValues
        ELSE
          IF( .NOT. Handle % AllocationsDone ) THEN
@@ -3978,9 +4033,14 @@ CONTAINS
          END IF
          
          Handle % Element => PElement
-         n = PElement % TYPE % NumberOfNodes 
-         NodeIndexes => PElement % NodeIndexes
-         
+         IF( PRESENT( Indexes ) ) THEN
+           n = SIZE( Indexes )
+           NodeIndexes => Indexes
+         ELSE
+           n = PElement % TYPE % NumberOfNodes 
+           NodeIndexes => PElement % NodeIndexes
+         END IF
+           
          IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
              ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
 
@@ -4077,8 +4137,15 @@ CONTAINS
 
        
        IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
-         n = Handle % Element % TYPE % NumberOfNodes 
+         IF( PRESENT( Indexes ) ) THEN
+           n = SIZE( Indexes )
+           NodeIndexes => Indexes
+         ELSE
+           n = Handle % Element % TYPE % NumberOfNodes 
+           NodeIndexes => PElement % NodeIndexes
+         END IF
          F => Handle % Values       
+
        ELSE         
          IF( .NOT. Handle % AllocationsDone ) THEN
            n = CurrentModel % Mesh % MaxElementNodes
@@ -4092,10 +4159,16 @@ CONTAINS
          END IF
          
          Handle % Element => PElement
-         n = PElement % TYPE % NumberOfNodes 
-         NodeIndexes => PElement % NodeIndexes
          F => Handle % Values
-         
+
+         IF( PRESENT( Indexes ) ) THEN
+           n = SIZE( Indexes ) 
+           NodeIndexes => Indexes 
+         ELSE
+           n = PElement % TYPE % NumberOfNodes 
+           NodeIndexes => PElement % NodeIndexes
+         END IF
+           
          SELECT CASE(ptr % TYPE)
            
          CASE( LIST_TYPE_CONSTANT_SCALAR )
