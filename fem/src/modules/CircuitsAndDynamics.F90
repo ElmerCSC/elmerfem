@@ -257,6 +257,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn, dt)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils
     IMPLICIT NONE
     INTEGER :: p, CompInd, nm, nn, nd
     TYPE(Solver_t), POINTER :: ASolver
@@ -348,7 +349,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           
           nn = GetElementNOFNodes(Element)
           nd = GetElementNOFDOFs(Element,ASolver)
-          CALL GetConductivity(Element, Tcoef, nn)
+!          CALL GetConductivity(Element, Tcoef, nn)
+          Tcoef = GetElectricConductivityTensor(Element, nn, 're', .TRUE., CoilType)
           SELECT CASE(CoilType)
           CASE ('stranded')
             CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt)
