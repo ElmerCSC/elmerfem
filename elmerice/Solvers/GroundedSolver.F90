@@ -146,9 +146,9 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
 !======== Check stress&water pressure to switch grounded <-> floating ========
-  GroundingLineParaVar => VariableGet( Model % Mesh % Variables, 'GroundingLinePara', UnFoundFatal=UnFoundFatal)
-  GroundingLinePara => GroundingLineParaVar % Values
-  GroundingLineParaPerm => GroundingLineParaVar % Perm
+  ! GroundingLineParaVar => VariableGet( Model % Mesh % Variables, 'GroundingLinePara', UnFoundFatal=UnFoundFatal)
+  ! GroundingLinePara => GroundingLineParaVar % Values
+  ! GroundingLineParaPerm => GroundingLineParaVar % Perm
     
   !--------------------------------------------------------------
   ! Grounded/floating loop based on height of base above bedrock.
