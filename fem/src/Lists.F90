@@ -3570,10 +3570,8 @@ CONTAINS
      Handle % SomewhereEvaluateAtIP = .FALSE.
      Handle % GlobalEverywhere = .TRUE.
      Handle % Name = Name 
-     Handle % BodyId = -1
-     Handle % BoundaryInfo => NULL()
+     Handle % ListId = -1
      Handle % EvaluateAtIp = .FALSE.       
-     Handle % BoundaryInfo => NULL()
      Handle % List => NULL()
      Handle % Element => NULL()
      IF(.NOT. ASSOCIATED( Ptr ) ) THEN
@@ -3741,51 +3739,107 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-   FUNCTION BulkElementList( BodyId, Handle ) RESULT( List )
+!------------------------------------------------------------------------------
+!> Given a pointer to the element and the correct handle for the keyword find
+!> the list where the keyword valued should be found in. 
+!------------------------------------------------------------------------------
+   FUNCTION ElementHandleList( Element, Handle, ListSame, ListFound ) RESULT( List )
 
-     INTEGER :: BodyId     
+     TYPE(Element_t), POINTER :: Element     
      TYPE(ValueHandle_t) :: Handle
-     TYPE(ValueList_t), POINTER :: List
-     
-     
-     LOGICAL :: ListFound
-     INTEGER :: id
+     TYPE(ValueList_t), POINTER :: List          
+     LOGICAL :: ListSame, ListFound
+!------------------------------------------------------------------------------     
+     INTEGER :: ListId, id
      
      List => NULL()
      
+     ListSame = .FALSE.
+     ListFound = .FALSE.
+
+      
+     ! We are looking for the same element as previous time
+     IF( ASSOCIATED( Element, Handle % Element ) ) THEN
+       ListSame = .TRUE.
+       List => Handle % List
+       RETURN
+     END IF
+
+
+     ! Ok, not the same element, get the index that determines the list
+     IF( Handle % BulkElement ) THEN     
+       ListId = Element % BodyId       
+     ELSE
+       ListId = 0
+       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+         ListId = Element % BoundaryInfo % Constraint 
+       END IF
+     END IF
      
+     ! We are looking at the same list as previous time
+     IF( Handle % ListId == ListId ) THEN
+       ListSame = .TRUE.
+       List => Handle % List
+       RETURN
+     ELSE
+       Handle % ListId = ListId
+       IF( ListId <= 0 ) RETURN
+     END IF
+
+     ! Ok, we cannot use previous list, lets find the new list    
      SELECT CASE ( Handle % SectionType )
        
      CASE( SECTION_TYPE_BODY )
-       List => CurrentModel % Bodies(BodyId) % Values
+       List => CurrentModel % Bodies(ListId) % Values
        ListFound = .TRUE.
        
      CASE( SECTION_TYPE_BF )
-       id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
            'Body Force', ListFound )         
        IF( ListFound ) List => CurrentModel % BodyForces(id) % Values
        
      CASE( SECTION_TYPE_IC )
-       id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
            'Initial Condition', ListFound )         
        IF(ListFound) List => CurrentModel % ICs(id) % Values
        
      CASE( SECTION_TYPE_MATERIAL ) 
-       id = ListGetInteger( CurrentModel % Bodies(BodyId) % Values, &
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
            'Material', ListFound )         
        IF(ListFound) List => CurrentModel % Materials(id) % Values
-           
+       
+     CASE( SECTION_TYPE_BC )      
+       IF( ListId <= 0 .OR. ListId > CurrentModel % NumberOfBCs ) RETURN
+       IF( CurrentModel % BCs(ListId) % Tag == ListId ) THEN
+         List => CurrentModel % BCs(ListId) % Values
+         ListFound = .TRUE.
+       END IF
+       
      CASE( -1 )
-       CALL Fatal('BulkElementList','Handle not initialized!')
+       CALL Fatal('ElementHandleList','Handle not initialized!')
 
      CASE DEFAULT 
-       CALL Fatal('ListGetBulkElementList','Unknown section type!')
+       CALL Fatal('ElementHandleList','Unknown section type!')
        
      END SELECT
+       
+     IF( ListFound ) THEN
+       ! We still have chance that this is the same list
+       IF( ASSOCIATED( List, Handle % List ) ) THEN
+         ListSame = .TRUE.
+       ELSE
+         Handle % List => List
+       END IF
+     ELSE
+       Handle % List => NULL()
+     END IF     
      
-   END FUNCTION BulkElementList
+     
+   END FUNCTION ElementHandleList
+!------------------------------------------------------------------------------
 
-  
+
+     
 
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in the Gaussian integration point defined 
@@ -3828,12 +3882,8 @@ CONTAINS
        RValue = Handle % RValue
        RETURN
      END IF     
-
-     IF(.NOT. Handle % Initialized ) THEN
-       CALL Fatal('ListGetElementReal','Handle must be initialized')
-     END IF
-       
      
+
      ! Find the pointer to the element, if not given
      IF( PRESENT( Element ) ) THEN
        PElement => Element
@@ -3843,65 +3893,12 @@ CONTAINS
      
      ! Set the default value 
      Rvalue = Handle % DefRValue
-     ListFound = .FALSE.
-     ListSame = .FALSE.
      
      
      ! We know by initialization the list entry type that the keyword has
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
-     IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
-       ListSame = .TRUE.
-       
-     ELSE IF( Handle % BulkElement ) THEN     
-       BodyId = PElement % BodyId
-       
-       IF( BodyId == 0 ) THEN
-         CALL Warn('ListGetElementReal','Bulk handle called for boundary?')
-       END IF
-       
-       IF( Handle % BodyId == BodyId ) THEN
-         ListSame = .TRUE.
-       ELSE       
-         Handle % BodyId = BodyId
-         List => BulkElementList( BodyId, Handle )
-         IF( ASSOCIATED( List ) ) THEN
-           ListFound = .TRUE. 
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-         ELSE
-           Handle % List => NULL()
-         END IF
-         Handle % BodyId = BodyId
-       END IF
-       
-     ELSE  ! Boundary element
-       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
-         IF( ASSOCIATED( Handle % BoundaryInfo, Element % BoundaryInfo ) ) THEN
-           ListSame = .TRUE.
-         ELSE
-           Handle % BoundaryInfo => Element % BoundaryInfo
-           DO id=1,CurrentModel % NumberOfBCs
-             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(id) % Tag ) THEN
-               List => CurrentModel % BCs(id) % Values
-               ListFound = .TRUE.
-               EXIT
-             END IF
-           END DO
-           IF( ListFound ) THEN
-             IF( ASSOCIATED( List, Handle % List ) ) THEN
-               ListSame = .TRUE.
-             ELSE
-               Handle % List => List
-             END IF
-             Handle % BoundaryInfo => Element % BoundaryInfo
-           END IF
-         END IF
-       END IF
-     END IF
+     List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
      
 
      ! If the provided list is the same as last time, also the keyword will
@@ -3951,7 +3948,7 @@ CONTAINS
        END IF
        RETURN
      END IF
-
+     
      ! Either evaluate parameter directly at IP, 
      ! or first at nodes and then using basis functions at IP.
      ! The later is the default. 
@@ -4073,16 +4070,16 @@ CONTAINS
        END SELECT
      
      ELSE
-
+       
        ! If we get back to the same element than last time use the data already 
        ! retrieved. If the element is new then get the data in every node of the 
        ! current element, or only in the 1st node if it is constant. 
+
        
        IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
          n = Handle % Element % TYPE % NumberOfNodes 
          F => Handle % Values       
-       ELSE
-         
+       ELSE         
          IF( .NOT. Handle % AllocationsDone ) THEN
            n = CurrentModel % Mesh % MaxElementNodes
            ALLOCATE( Handle % Values(n) )
@@ -4228,7 +4225,7 @@ CONTAINS
        END IF
      END IF
 
-
+     
      IF ( Handle % GotMinv ) THEN
        IF ( RValue < Handle % minv ) THEN
          WRITE( Message,*) 'Given value ',RValue, ' for property: ', '[', TRIM(Handle % Name),']', &
@@ -4303,11 +4300,7 @@ CONTAINS
      IF( Handle % ConstantEverywhere ) THEN
        IF(PRESENT(Found)) Found = .TRUE.
        RETURN
-     END IF
-     
-     IF(.NOT. Handle % Initialized ) THEN
-       CALL Fatal('ListGetElementRealVec','Handle must be initialized')
-     END IF
+     END IF     
 
      ! Find the pointer to the element, if not given
      IF( PRESENT( Element ) ) THEN
@@ -4319,63 +4312,7 @@ CONTAINS
      ! We know by initialization the list entry type that the keyword has
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
-     IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
-       IF( PRESENT( Found ) ) Found = Handle % Found       
-       CALL Warn('ListGetElementRealVec','This routine should get all the IPs at once so why same element?')
-       RETURN
-     END IF
-
-
-     ! Set the default value 
-     ListFound = .FALSE.
-     ListSame = .FALSE.
-
-
-     IF( Handle % BulkElement ) THEN     
-       BodyId = PElement % BodyId
-
-       IF( BodyId == 0 ) THEN
-         CALL Warn('ListGetElementRealVec','Bulk handle called for boundary?')
-       END IF
-
-       IF( Handle % BodyId == BodyId ) THEN
-         ListSame = .TRUE.
-       ELSE       
-         List => BulkElementList( BodyId, Handle )
-         IF( ASSOCIATED( List ) ) THEN
-           ListFound = .TRUE. 
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-         END IF
-         Handle % BodyId = BodyId
-       END IF
-     ELSE  ! Boundary element
-       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
-         IF( ASSOCIATED( Handle % BoundaryInfo, Element % BoundaryInfo ) ) THEN
-           ListSame = .TRUE.
-         ELSE
-           DO id=1,CurrentModel % NumberOfBCs
-             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(id) % Tag ) THEN
-               List => CurrentModel % BCs(id) % Values
-               ListFound = .TRUE.
-               EXIT
-             END IF
-           END DO
-         END IF
-         IF( ListFound ) THEN
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-           Handle % BoundaryInfo => Element % BoundaryInfo
-         END IF
-         
-       END IF
-     END IF
+     List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
 
      
      ! If the provided list is the same as last time, also the keyword will
@@ -4780,62 +4717,11 @@ CONTAINS
      ELSE
        PElement => CurrentModel % CurrentElement
      END IF
-
-     ListSame = .FALSE.
-     ListFound = .FALSE.
      
      ! We know by initialization the list entry type that the keyword has
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
-     IF( Handle % BulkElement ) THEN     
-       BodyId = PElement % BodyId
-
-       IF( BodyId == 0 ) THEN
-         CALL Warn('ListGetElementLogical','Bulk handle called for boundary?')
-       END IF
-       
-       IF( Handle % BodyId == BodyId ) THEN
-         ListSame = .TRUE.
-       ELSE       
-         List => BulkElementList( BodyId, Handle )
-         IF( ASSOCIATED( List ) ) THEN
-           ListFound = .TRUE. 
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-         ELSE
-           Handle % List => NULL()
-         END IF
-         Handle % BodyId = BodyId
-       END IF
-         
-     ELSE  ! Boundary element
-
-       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
-         IF( ASSOCIATED( Handle % BoundaryInfo, Element % BoundaryInfo ) ) THEN
-           ListSame = .TRUE.
-         ELSE
-           DO id=1,CurrentModel % NumberOfBCs
-             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(id) % Tag ) THEN
-               List => CurrentModel % BCs(id) % Values
-               ListFound = .TRUE.
-               EXIT
-             END IF
-           END DO
-           IF( ListFound ) THEN
-             IF( ASSOCIATED( List, Handle % List ) ) THEN
-               ListSame = .TRUE.
-             ELSE
-               Handle % List => List
-             END IF
-             Handle % BoundaryInfo => Element % BoundaryInfo
-           END IF
-         END IF
-       END IF
-     END IF
-
+     List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
      
      IF( ListSame ) THEN
        IF( PRESENT( Found ) ) Found = Handle % Found 
@@ -4898,61 +4784,11 @@ CONTAINS
      ELSE
        PElement => CurrentModel % CurrentElement
      END IF
-
-     ListSame = .FALSE.
-     ListFound = .FALSE.
      
      ! We know by initialization the list entry type that the keyword has
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
-     IF( Handle % BulkElement ) THEN     
-       BodyId = PElement % BodyId
-
-       IF( BodyId == 0 ) THEN
-         CALL Warn('ListGetElementLogical','Bulk handle called for boundary?')
-       END IF
-       
-       IF( Handle % BodyId == BodyId ) THEN
-         ListSame = .TRUE.
-       ELSE       
-         List => BulkElementList( BodyId, Handle )
-         IF( ASSOCIATED( List ) ) THEN
-           ListFound = .TRUE. 
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-         ELSE
-           Handle % List => NULL()
-         END IF
-         Handle % BodyId = BodyId
-       END IF
-         
-     ELSE  ! Boundary element
-
-       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
-         IF( ASSOCIATED( Handle % BoundaryInfo, Element % BoundaryInfo ) ) THEN
-           ListSame = .TRUE.
-         ELSE
-           DO id=1,CurrentModel % NumberOfBCs
-             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(id) % Tag ) THEN
-               List => CurrentModel % BCs(id) % Values
-               ListFound = .TRUE.
-               EXIT
-             END IF
-           END DO
-         END IF
-         IF( ListFound ) THEN
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-           Handle % BoundaryInfo => Element % BoundaryInfo
-          END IF
-       END IF
-     END IF
+     List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
 
      IF( ListSame ) THEN
        IF( PRESENT( Found ) ) Found = Handle % Found 
@@ -5015,61 +4851,11 @@ CONTAINS
      ELSE
        PElement => CurrentModel % CurrentElement
      END IF
-
-     ListSame = .FALSE.
-     ListFound = .FALSE.
      
      ! We know by initialization the list entry type that the keyword has
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
-     IF( Handle % BulkElement ) THEN     
-       BodyId = PElement % BodyId
-
-       IF( BodyId == 0 ) THEN
-         CALL Warn('ListGetElementLogical','Bulk handle called for boundary?')
-       END IF
-       
-       IF( Handle % BodyId == BodyId ) THEN
-         ListSame = .TRUE.
-       ELSE       
-         List => BulkElementList( BodyId, Handle )
-         IF( ASSOCIATED( List ) ) THEN
-           ListFound = .TRUE. 
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-         ELSE
-           Handle % List => NULL()
-         END IF
-         Handle % BodyId = BodyId
-       END IF
-         
-     ELSE  ! Boundary element
-       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
-         IF( ASSOCIATED( Handle % BoundaryInfo, Element % BoundaryInfo ) ) THEN
-           ListSame = .TRUE.
-         ELSE
-           DO id=1,CurrentModel % NumberOfBCs
-             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(id) % Tag ) THEN
-               List => CurrentModel % BCs(id) % Values
-               ListFound = .TRUE.
-               EXIT
-             END IF
-           END DO
-         END IF
-         IF( ListFound ) THEN
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-           Handle % BoundaryInfo => Element % BoundaryInfo
-         END IF
-       END IF
-     END IF
-
+     List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
 
      IF( ListSame ) THEN
        IF( PRESENT( Found ) ) Found = Handle % Found 
@@ -5143,54 +4929,7 @@ CONTAINS
      ! We know by initialization the list entry type that the keyword has
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
-     IF( Handle % BulkElement ) THEN     
-       BodyId = PElement % BodyId
-
-       IF( BodyId == 0 ) THEN
-         CALL Warn('ListGetElementLogical','Bulk handle called for boundary?')
-       END IF
-       
-       IF( Handle % BodyId == BodyId ) THEN
-         ListSame = .TRUE.
-       ELSE       
-         List => BulkElementList( BodyId, Handle )
-         IF( ASSOCIATED( List ) ) THEN
-           ListFound = .TRUE. 
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-         ELSE
-           Handle % List => NULL()
-         END IF
-         Handle % BodyId = BodyId
-       END IF
-         
-     ELSE  ! Boundary element
-       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN                  
-         IF( ASSOCIATED( Handle % BoundaryInfo, Element % BoundaryInfo ) ) THEN
-           ListSame = .TRUE.
-         ELSE
-           DO id=1,CurrentModel % NumberOfBCs
-             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(id) % Tag ) THEN
-               List => CurrentModel % BCs(id) % Values
-               ListFound = .TRUE.
-               EXIT
-             END IF
-           END DO
-         END IF
-         IF( ListFound ) THEN
-           IF( ASSOCIATED( List, Handle % List ) ) THEN
-             ListSame = .TRUE.
-           ELSE
-             Handle % List => List
-           END IF
-           Handle % BoundaryInfo => Element % BoundaryInfo
-         END IF
-       END IF
-     END IF
-
+     List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
 
      IF( ListSame ) THEN
        IF( PRESENT( Found ) ) Found = Handle % Found 

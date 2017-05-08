@@ -422,8 +422,7 @@ END INTERFACE
    TYPE ValueHandle_t
      INTEGER :: ValueType = -1
      INTEGER :: SectionType = -1
-     INTEGER :: BodyId
-     TYPE(BoundaryInfo_t),  POINTER :: BoundaryInfo => NULL()
+     INTEGER :: ListId = -1
      LOGICAL :: BulkElement
      TYPE(Element_t), POINTER :: Element => NULL()
      TYPE(ValueList_t), POINTER :: List => Null()
