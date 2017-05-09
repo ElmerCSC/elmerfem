@@ -716,7 +716,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
         grads_coeff = grads_coeff/circ_eq_coeff
-        C(1,1) = SUM( Tcoef(1,1,1:nn) * Basis(1:nn) )
+        C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
