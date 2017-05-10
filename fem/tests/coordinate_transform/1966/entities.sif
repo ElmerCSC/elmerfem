@@ -1,0 +1,90 @@
+!------ Skeleton for body section -----
+Body 1
+  Name = core
+End
+
+Body 2
+  Name = air
+End
+
+Body 3
+  Name = L2
+End
+
+Body 4
+  Name = L1
+End
+
+!------ Skeleton for boundary section -----
+Boundary Condition 1
+  Name = L2_alpha0
+End
+
+Boundary Condition 2
+  Name = L2_alpha1
+End
+
+Boundary Condition 3
+  Name = L1_gamma0
+End
+
+Boundary Condition 4
+  Name = L1_gamma1
+End
+
+Boundary Condition 5
+  Name = xy0
+End
+
+Boundary Condition 6
+  Name = coreface_xy
+End
+
+Boundary Condition 7
+  Name = L1_alpha1
+End
+
+Boundary Condition 8
+  Name = L1_alpha0
+End
+
+Boundary Condition 9
+  Name = L2_beta1
+End
+
+Boundary Condition 10
+  Name = L2_gamma0
+End
+
+Boundary Condition 11
+  Name = L2_beta0
+End
+
+Boundary Condition 12
+  Name = cylinder_lateral_surface
+End
+
+Boundary Condition 13
+  Name = L2_gamma1
+End
+
+Boundary Condition 14
+  Name = L1_beta0
+End
+
+Boundary Condition 15
+  Name = L1_beta1
+End
+
+Boundary Condition 16
+  Name = infinity_xz1
+End
+
+Boundary Condition 17
+  Name = infinity_xz0
+End
+
+Boundary Condition 18
+  Name = bnry22
+End
+

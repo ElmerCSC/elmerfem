@@ -1,0 +1,29 @@
+File started at: 2015/10/29 07:04:57
+ 
+Variables in columns of matrix: ./1966/dat/1966.dat
+   1: res: eddy current power
+   2: res: magnetic field energy
+   3: res: harmonic loss linear
+   4: res: harmonic loss quadratic
+   5: res: joule loss
+   6: res: time
+   7: res: i_testsource re
+   8: res: i_testsource im
+   9: res: v_testsource re
+  10: res: v_testsource im
+  11: res: i_component(1) re
+  12: res: i_component(1) im
+  13: res: v_component(1) re
+  14: res: v_component(1) im
+  15: res: v_component(1)re dof  1
+  16: res: v_component(1)im dof  1
+  17: res: v_component(1)re dof  2
+  18: res: v_component(1)im dof  2
+  19: res: i_component(2) re
+  20: res: i_component(2) im
+  21: res: v_component(2) re
+  22: res: v_component(2) im
+  23: res: v_component(2)re dof  1
+  24: res: v_component(2)im dof  1
+  25: res: v_component(2)re dof  2
+  26: res: v_component(2)im dof  2
