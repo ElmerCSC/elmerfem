@@ -204,7 +204,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     IF(.NOT. Found) MaxNonlinIter = 1
     
     Coeff = GetCReal( SolverParams,'Nonlinear Conductivity Coeffient',Found)
-    Source = GetCReal( SolverParams,'MeshRelax Source',Found)
+    Source = GetCReal( SolverParams,'Mesh Relax Source',Found)
 
 
     
@@ -227,13 +227,11 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
     END DO
 
-    IF( ListGetLogical(SolverParams,'MeshRelax Normalize') ) THEN
+    IF( ListGetLogical(SolverParams,'Mesh Relax Normalize') ) THEN
       MaxDeform = MAXVAL( ABS( Solver % Variable % Values ) )
-      PRINT *,'Normalizing deformation by:',MaxDeform
-      PRINT *,'min:',MINVAL( Solver % Variable % Values )
-      PRINT *,'ave:',SUM( Solver % Variable % Values ) / &
-          SIZE( Solver % Variable % Values ) 
-
+      MaxDeform = ParallelReduction( MaxDeform, 2 )      
+      WRITE(Message,'(A,ES12.3)') 'Normalizing deformation by:',MaxDeform
+      CALL Info('RigidMeshMapper',Message,Level=6)
       Solver % Variable % Values = Solver % Variable % Values / MaxDeform
     END IF
     

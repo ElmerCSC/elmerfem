@@ -730,7 +730,7 @@ CONTAINS
      TYPE(ListMatrixEntry_t), POINTER :: CList
      CHARACTER(LEN=MAX_NAME_LEN) :: Eq, str
      LOGICAL :: GotIt, DG, GB, UseOptimized, Found
-     INTEGER i,j,k,l,k1,t,n, p,m, EDOFs, FDOFs, BDOFs, cols, istat
+     INTEGER i,j,k,l,k1,t,n, p,m, minDOFs, maxDOFs, BDOFs, cols, istat
      INTEGER, POINTER :: Ivals(:)
      INTEGER, ALLOCATABLE :: InvInitialReorder(:)
 
@@ -744,17 +744,33 @@ CONTAINS
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) )  GB=GlobalBubbles
 
-     EDOFs = 0
+     maxDOFs = 0
+     minDOFs = 1000
      DO i=1,Mesh % NumberOfEdges
-        EDOFs = MAX( EDOFs, Mesh % Edges(i) % BDOFs )
+        minDOFs = MIN( minDOFs, Mesh % Edges(i) % BDOFs )
+        maxDOFs = MAX( maxDOFs, Mesh % Edges(i) % BDOFs )
      END DO
-     Mesh % MaxEdgeDOFs = EDOFs
+     Mesh % MaxEdgeDOFs = maxDOFs
 
-     FDOFs = 0
+     IF(minEDOFs <= maxDOFs ) THEN
+       Mesh % MinEdgeDOFs = minDOFs
+     ELSE
+       Mesh % MinEdgeDOFs = maxDOFs
+     END IF
+
+     minDOFs = 1000
+     maxDOFs = 0
      DO i=1,Mesh % NumberOfFaces
-        FDOFs = MAX( FDOFs, Mesh % Faces(i) % BDOFs )
+        minDOFs = MIN( minDOFs, Mesh % Faces(i) % BDOFs )
+        maxDOFs = MAX( maxDOFs, Mesh % Faces(i) % BDOFs )
      END DO
-     Mesh % MaxFaceDOFs = FDOFs
+     Mesh % MaxFaceDOFs = maxDOFs
+
+     IF(minDOFs <= maxDOFs ) THEN
+       Mesh % MinFaceDOFs = minDOFs
+     ELSE
+       Mesh % MinFaceDOFs = maxDOFs
+     END IF
 
      BDOFs = 0
      DO i=1,Mesh % NumberOfBulkElements
