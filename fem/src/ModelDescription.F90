@@ -2138,8 +2138,7 @@ CONTAINS
       ElementDef = ListGetString( Solver % Values, 'Element', stat )
    
       IF ( .NOT. stat ) THEN
-        IF ( ListGetLogical( Solver % Values, &
-             'Discontinuous Galerkin', stat ) ) THEN
+        IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
            Solver % Def_Dofs(:,:,4) = 0
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
@@ -2399,10 +2398,10 @@ CONTAINS
 
         IF ( Single ) THEN
           Model % Solvers(s) % Mesh => &
-              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
+              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs, s )
         ELSE
           Model % Solvers(s) % Mesh => &
-              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs )
+              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs, s )
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 

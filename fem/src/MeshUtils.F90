@@ -1875,7 +1875,7 @@ END SUBROUTINE GetMaxDefs
  !> Function to load mesh from disk.
  !------------------------------------------------------------------------------
  FUNCTION LoadMesh2( Model, MeshDirPar, MeshNamePar,&
-     BoundariesOnly, NumProcs,MyPE, Def_Dofs ) RESULT( Mesh )
+     BoundariesOnly, NumProcs,MyPE, Def_Dofs, mySolver ) RESULT( Mesh )
    !------------------------------------------------------------------------------
    USE PElementMaps, ONLY : GetRefPElementNodes
 
@@ -1883,7 +1883,7 @@ END SUBROUTINE GetMaxDefs
 
    CHARACTER(LEN=*) :: MeshDirPar,MeshNamePar
    LOGICAL :: BoundariesOnly    
-   INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:,:)
+   INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:,:), mySolver
    TYPE(Mesh_t),  POINTER :: Mesh
    TYPE(Model_t) :: Model
    !------------------------------------------------------------------------------    
@@ -2419,6 +2419,13 @@ END SUBROUTINE GetMaxDefs
           IF(FoundEqDefs) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
 
           DO solver_id=1,Model % NumberOfSolvers
+
+            IF(PRESENT(mySolver)) THEN
+              IF ( Solver_id /= mySolver ) CYCLE
+            ELSE
+              IF (ListCheckPresent(Model % Solvers(Solver_id) % Values, 'Mesh')) CYCLE
+            END IF
+
             FoundDef = .FALSE.
             IF(FoundSolverDefs(solver_id)) &
                 ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
@@ -2462,6 +2469,12 @@ END SUBROUTINE GetMaxDefs
            IF( FoundEqDefs.AND.body_id/=body_id0 ) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
 
            DO solver_id=1,Model % NumberOfSolvers
+             IF(PRESENT(mySolver)) THEN
+               IF ( Solver_id /= mySolver ) CYCLE
+             ELSE
+               IF (ListCheckPresent(Model % Solvers(Solver_id) % Values, 'Mesh')) CYCLE
+             END IF
+
              FoundDef = .FALSE.
              IF (FoundSolverDefs(solver_id)) &
                 ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
