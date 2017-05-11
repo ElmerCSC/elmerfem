@@ -112,7 +112,8 @@
      LOGICAL :: Stabilize,NewtonLinearization = .FALSE., GotForceBC, GotIt, &
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
-                  Transient, Rotating, AnyRotating, RecheckNewton=.FALSE.
+                  Transient, Rotating, AnyRotating, OutOfPlaneFlow=.FALSE.,&
+                  RecheckNewton=.FALSE.
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
@@ -627,10 +628,7 @@
                AngularVelocity = 0.0_dp
              END IF
            END IF
-
-
          END IF
-
 !------------------------------------------------------------------------------
 
          n = GetElementNOFNodes()
@@ -643,8 +641,9 @@
            CASE(3)
              U(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-2)
              V(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-1)
-             W(1:nd) = 0.0d0
-
+             W(1:nd)  = ListGetReal( BodyForce,'Out Of Plane Velocity',&
+                  nd, Indexes, OutOfPlaneFlow)
+             IF (.NOT.OutOfPlaneFlow) W(1:nd) = 0.0_dp
            CASE(4)
              U(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-3)
              V(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-2)
@@ -670,7 +669,7 @@
                END IF
             END SELECT
          END IF
-
+         
          LocalTemperature = 0.0d0
          LocalTempPrev    = 0.0d0
          IF ( ASSOCIATED( TempSol ) ) THEN
