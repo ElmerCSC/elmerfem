@@ -559,13 +559,7 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
           ! For the GL Element
           IF ( ANY(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) >= 0)  .AND. &
                ANY(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) < 0)) THEN
-            ! GL Node
-            IF (GroundingLinePara(GroundingLineParaPerm(nodenumber)) < 0)  THEN
               Friction = .TRUE.
-            ! FF Node
-            ELSE
-              Friction = .FALSE.
-            END IF
           END IF
         END IF
 !=============================================================

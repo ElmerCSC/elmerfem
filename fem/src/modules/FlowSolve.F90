@@ -143,7 +143,7 @@
     INTEGER :: GLLGElementIndex, GLFFElementIndex, nIntegration, tempNodeIndex, jj, GLparaIndex, GLMaskIndex
     REAL(KIND=dp) :: Time, GLPosition, FFstressSum, GLstressSum, cond, ratio
 
-    LOGICAL :: GLparaSaveData = .FALSE., GLParaFlag, GLElement
+    LOGICAL :: GLparaSaveData = .FALSE., GLParaFlag
     CHARACTER(LEN=MAX_NAME_LEN) :: Format
     CHARACTER(LEN=MAX_NAME_LEN) :: GLParaFileName='GLPressureData.dat'
     REAL(KIND=dp), POINTER :: LGParaData(:), FFParaData(:), GroundedMask(:), GroundingLinePara(:)
@@ -1162,8 +1162,8 @@
 
 
 !================================ GL parameterization ===========================  
-          GLElement = .FALSE.
-
+          ratio = 1.0_dp
+          
           IF ( GLParaFlag ) THEN
             GLParam = GetLogical( BC, 'High Order Integration', GotIt)
             IF ( GLParam ) THEN
@@ -1174,14 +1174,13 @@
             END IF
 
             IF ( ALL(GroundingLineParaPerm(Element % NodeIndexes) > 0) ) THEN
-            ! Find GL&FF element
+            ! Find GL element
               IF ( ANY(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) >= 0)  .AND. &
                    ANY(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) < 0)) THEN
 
                 FFstressSum = 0.0_dp
                 GLstressSum = 0.0_dp
                 ratio = 0.0_dp
-                GLElement =.TRUE.
 
                 DO jj = 1, n
                   tempNodeIndex = Element % NodeIndexes(jj)
@@ -1197,9 +1196,9 @@
 
 
                   IF ( cond < 0 ) THEN
-                    GLstressSum = GLstressSum + GroundingLinePara(GLparaIndex)
+                    GLstressSum = GLstressSum + cond
                   ELSE IF ( cond >= 0) THEN
-                    FFstressSum = FFstressSum + GroundingLinePara(GLparaIndex)
+                    FFstressSum = FFstressSum + cond
                   END IF
                 END DO
    
@@ -1213,8 +1212,6 @@
               END IF
             END IF
           END IF
-
-          IF ( .NOT. GLElement) ratio = 1.0_dp
 !===============================================================================
 
 
