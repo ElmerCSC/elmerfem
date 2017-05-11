@@ -2249,6 +2249,7 @@ CONTAINS
       
       IF (BodyVolumesCompute) THEN
         BodyId = GetBody()
+        BodyVolumes(BodyId) = 0._dp
       END IF
 
       IF (ComplexPowerCompute) THEN
@@ -2435,6 +2436,19 @@ CONTAINS
           BodyCurrent(1,BodyId) = BodyCurrent(1,BodyId) + Weight * BatIp(7)
           IF (Fluxdofs==4) THEN
             BodyCurrent(2,BodyId) = BodyCurrent(2,BodyId) + Weight * BatIp(8)
+          END IF
+        END IF
+
+        IF (BodyVolumesCompute) BodyVolumes(BodyId) = BodyVolumes(BodyId) + Weight * ModelDepth
+       
+        IF (AverageBCompute) THEN
+          IF (BodyAverageBCompute(BodyId)) THEN
+             BodyAvBre(1,BodyId) = BodyAvBre(1,BodyId) + Weight * BAtIp(1)
+             BodyAvBre(2,BodyId) = BodyAvBre(2,BodyId) + Weight * BAtIp(2)
+             IF (Fluxdofs==4) THEN
+               BodyAvBim(1,BodyId) = BodyAvBim(1,BodyId) + Weight * BAtIp(3)
+               BodyAvBim(2,BodyId) = BodyAvBim(2,BodyId) + Weight * BAtIp(4)
+             END IF
           END IF
         END IF
 

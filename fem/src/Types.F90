@@ -422,8 +422,7 @@ END INTERFACE
    TYPE ValueHandle_t
      INTEGER :: ValueType = -1
      INTEGER :: SectionType = -1
-     INTEGER :: BodyId
-     TYPE(BoundaryInfo_t),  POINTER :: BoundaryInfo => NULL()
+     INTEGER :: ListId = -1
      LOGICAL :: BulkElement
      TYPE(Element_t), POINTER :: Element => NULL()
      TYPE(ValueList_t), POINTER :: List => Null()
@@ -436,9 +435,9 @@ END INTERFACE
      REAL(KIND=dp), POINTER :: Values(:) => NULL()
      REAL(KIND=dp), POINTER :: ParValues(:,:) => NULL()
      INTEGER :: ParNo = 0
-     INTEGER :: IValue
-     REAL(KIND=dp) :: RValue
-     LOGICAL :: LValue
+     INTEGER :: IValue, DefIValue = 0
+     REAL(KIND=dp) :: RValue, DefRValue = 0.0_dp
+     LOGICAL :: LValue, DefLValue = .FALSE.
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
      INTEGER :: CValueLen
      LOGICAL :: Found
@@ -451,6 +450,7 @@ END INTERFACE
      LOGICAL :: EvaluateAtIP = .FALSE.
      LOGICAL :: SomewhereEvaluateAtIP = .FALSE.
      LOGICAL :: NotPresentAnywhere = .FALSE.
+     LOGICAL :: UnfoundFatal = .FALSE.
      REAL(KIND=dp) :: minv, maxv
      LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
 

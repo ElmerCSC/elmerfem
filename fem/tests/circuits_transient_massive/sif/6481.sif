@@ -1,0 +1,209 @@
+! Simple case for testing the massive coil in transient 3D simulation.
+! Author: Eelis Takala, Trafotek Oy
+! Original date: May 2017
+! eelis.takala@gmail.com
+Check Keywords "Warn"
+INCLUDE sif/6481-circuits.definitions
+INCLUDE 6481/mesh.names
+
+Header 1
+   Mesh DB "." "6481"
+End
+
+Constants 1
+   Permittivity of Vacuum = 8.8542e-12
+End
+
+Initial Condition 1
+   A {e} = Real 0
+   A  = Real 0
+End
+
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian 3D
+   Coordinate Mapping(3) = 1 2 3
+   Coordinate Scaling = 0.001
+   Simulation Type = Transient
+   Timestepping Method = BDF
+   BDF Order = 1
+   Timestep intervals = 3
+   Timestep Sizes = 0.0015
+   Steady State Max Iterations = 1
+   Output Intervals = 1
+End
+
+Solver 1  !---- WPotentialSolver, Wsolve
+   Exec Solver = Before All
+   Procedure = "WPotentialSolver" "Wsolve"
+   Equation = "Wire direction"
+   Variable = W
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 5000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+End
+
+Solver 2  !---- CircuitsAndDynamics, CircuitsAndDynamics
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamics"
+End
+
+Solver 3  !---- MagnetoDynamics, WhitneyAVSolver
+   Exec Solver = Always
+   Equation = "MGDynamics"
+   Variable = "A"
+   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System preconditioning = none
+   Linear System Convergence Tolerance = 1.e-8
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 1000
+   Linear System ILUT Tolerance=1e-8
+   BicgstabL polynomial degree = 6
+   Steady State Convergence Tolerance = 1e-08
+End
+
+Solver 4  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
+   Exec Solver = Always
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "A"
+   Calculate Current Density = Logical True
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 1000
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+
+Solver 5  !---- CircuitsAndDynamics, CircuitsOutput
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+Solver 6  !---- ResultOutputSolve, ResultOutputSolver
+   Exec Solver = Never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 6481-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+
+Solver 7  !---- SaveData, SaveScalars
+   Exec Solver = After timestep
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = 6481/dat/6481.dat
+End
+
+Equation 1
+   Active Solvers(2) = 3 4
+End
+
+Equation 2
+   Active Solvers(5) = 1 2 3 4 5
+                       
+End
+
+Material 1  !---- iron: generic
+   Name = iron
+   Electric Conductivity = 0
+   Relative Permeability = 2000
+End
+
+Material 2  !---- air: generic
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+End
+
+Material 3  !---- aluminium: generic
+   Name = aluminium
+   Relative Permeability = 1
+   Electric Conductivity = 36e6
+End
+
+Body 1  !---- core
+   Name = core
+   Target Bodies(1) = $ core
+   Equation = 1
+   Material = 1
+   Initial Condition = 1
+End
+
+Body 2  !---- air
+   Name = air
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 2
+   Initial Condition = 1
+End
+
+Body 3  !---- A1
+   Name = A1
+   Target Bodies(1) = $ A1
+   Equation = 2
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+End
+
+Component 1  !---- A1
+   Name = String A1
+   Master Bodies = Integer 3
+   Coil Type = String Massive
+   Foil Winding Voltage Polynomial Order = Integer 1
+End
+
+Body Force 1  !---- Circuit
+   Name = "Circuit"
+   S1: Frequency = Real 50.0
+   S1: Phase = Real 0.0
+   S1: Harmonic Content (1,2) = Real
+   INCLUDE sif/S1Harmonic.dat
+   S1 = Variable time
+     Real Procedure "HarmonicSignals" "Source"
+End
+
+Boundary Condition 1  !---- BCn Flux Parallel
+   Name = BCn Flux Parallel
+   Target Boundaries(2) = $ coreface_xy xy0
+   A {e} = Real 0
+End
+
+Boundary Condition 2  !---- ground
+   Name = ground
+   Target Boundaries = $ A1_gamma1
+   W = Real 0
+   A {e} = Real 0
+End
+
+Boundary Condition 3  !---- current in foil winding
+   Name = current in foil winding
+   Target Boundaries = $ A1_gamma0
+   W = Real 1
+   A {e} = Real 0
+End
+   
+Solver 3 :: Reference Norm = Real 2.63574035E-04
+Solver 3 :: Reference Norm Tolerance = Real 1E-03
+Solver 4 :: Reference Norm = Real 1.47320559E+04
+Solver 4 :: Reference Norm Tolerance = Real 1E-03
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

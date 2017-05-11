@@ -1,0 +1,8 @@
+File started at: 2015/10/27 14:18:45
+ 
+Variables in columns of matrix: ./1962/dat/1962.dat
+   1: res: eddy current power
+   2: res: magnetic field energy
+   3: res: harmonic loss linear
+   4: res: harmonic loss quadratic
+   5: res: joule loss
