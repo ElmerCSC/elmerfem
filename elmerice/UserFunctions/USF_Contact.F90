@@ -377,7 +377,7 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
   INTEGER :: GLnodenumber, FFnodenumber, HydroDIM
 
   REAL(KIND=dp) :: BedPressure, SeaPressure, bpressure, compB, ratio, GLNodeX, FFNodeX, GLParaPosition
-  LOGICAL:: bedPComputed = .FALSE. , checkContactEveryIter=.FALSE.
+  LOGICAL::  checkContactEveryIter=.FALSE.
   REAL(KIND=dp), ALLOCATABLE :: GLstress(:), FFstress(:)
   INTEGER :: countGL, countFF
 !=============================================================  
@@ -398,7 +398,7 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
   SAVE FirstTime, yeschange, told, GLmoves, thresh, GLtype, TestContact
   SAVE DIM, USF_Name, Normal, Fwater, Fbwater, Fbase, relChangeOld, Sl_Law
 !=============================================================
-  SAVE HydroDIM, bedPComputed 
+  SAVE HydroDIM 
 !=============================================================
 
 !----------------------------------------------------------------------------
@@ -483,12 +483,6 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
         CALL INFO( USF_Name, 'far inland nodes will not detach', level=3)
      END IF
 
-!=================================================
-      bedPComputed = GetLogical( BC, 'Compute Bed Pressure', GotIt )
-      IF (.NOT.GotIt) THEN
-          bedPComputed = .FALSE.
-      END IF
-!=================================================
      checkContactEveryIter = GetLogical( BC, 'Compute Contact in every Nonlinear iteration', GotIt ) 
      IF (.NOT.GotIt) THEN
        checkContactEveryIter = .FALSE.

@@ -133,28 +133,16 @@
          MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate, &
          GLParam =.FALSE.
 
-
 !=========================================================================
-    TYPE(Nodes_t) :: tempElementNodes
-    TYPE(Variable_t), POINTER :: CurrentTimeVar
-    TYPE(variable_t), POINTER :: GroundedMaskVar, GroundingLineVar
+    TYPE(variable_t), POINTER :: GroundingLineVar
 
-    INTEGER, POINTER :: GroundedMaskPerm(:), GroundingLineParaPerm(:)
-    INTEGER :: GLLGElementIndex, GLFFElementIndex, nIntegration, tempNodeIndex, jj, GLparaIndex, GLMaskIndex
-    REAL(KIND=dp) :: Time, GLPosition, FFstressSum, GLstressSum, cond, ratio
+    INTEGER, POINTER :: GroundingLineParaPerm(:)
+    INTEGER :: nIntegration, tempNodeIndex, jj, GLparaIndex
+    REAL(KIND=dp) :: Time, FFstressSum, GLstressSum, cond, ratio
 
-    LOGICAL :: GLparaSaveData = .FALSE., GLParaFlag
-    CHARACTER(LEN=MAX_NAME_LEN) :: Format
-    CHARACTER(LEN=MAX_NAME_LEN) :: GLParaFileName='GLPressureData.dat'
-    REAL(KIND=dp), POINTER :: LGParaData(:), FFParaData(:), GroundedMask(:), GroundingLinePara(:)
-
-
-
-
-
-
+    LOGICAL :: GLParaFlag
+    REAL(KIND=dp), POINTER :: GroundingLinePara(:)
 !=========================================================================
-
 
      REAL(KIND=dp),ALLOCATABLE :: MASS(:,:),STIFF(:,:), LoadVector(:,:), &
        Viscosity(:),FORCE(:), TimeForce(:), PrevDensity(:),Density(:),   &
@@ -512,9 +500,9 @@
       GLParaFlag = ListGetLogical( Solver % Values, 'GroundingLine Parameterization', GotIt )
       IF ( GLParaFlag ) THEN
         ! GroundedMask import
-        GroundedMaskVar => VariableGet( Model % Mesh % Variables, 'GroundedMask')
-        GroundedMask => GroundedMaskVar % Values
-        GroundedMaskPerm => GroundedMaskVar % Perm
+        ! GroundedMaskVar => VariableGet( Model % Mesh % Variables, 'GroundedMask')
+        ! GroundedMask => GroundedMaskVar % Values
+        ! GroundedMaskPerm => GroundedMaskVar % Perm
 
         GroundingLineVar => VariableGet( Model % Mesh % Variables, 'GroundingLinePara')
         GroundingLinePara => GroundingLineVar % Values
@@ -1163,7 +1151,7 @@
 
 !================================ GL parameterization ===========================  
           ratio = 1.0_dp
-          
+
           IF ( GLParaFlag ) THEN
             GLParam = GetLogical( BC, 'High Order Integration', GotIt)
             IF ( GLParam ) THEN
@@ -1184,10 +1172,6 @@
 
                 DO jj = 1, n
                   tempNodeIndex = Element % NodeIndexes(jj)
-
-                  ! GLMaskIndex = GroundedMaskPerm(tempNodeIndex)
-                  ! IF (GLMaskIndex == 0) CYCLE
-
                   
                   GLparaIndex = GroundingLineParaPerm(tempNodeIndex)
                   IF (GLparaIndex == 0) CYCLE
@@ -1206,7 +1190,7 @@
                   ratio =  ABS(GLstressSum) / ( ABS(GLstressSum) + ABS(FFstressSum) )
                 END IF
 
-                WRITE ( Message, * ) 'GL & FF element found with index =', t, 'ratio is ', ratio
+                WRITE ( Message, '(A,I0,A,g15.6)' ) 'GL & FF element found with index =', t, 'ratio is ', ratio
                 CALL Info( 'FlowSolve', Message, Level=6 )
 
               END IF
@@ -1518,105 +1502,6 @@
        Coordinates = ModelCoords
        Model % DIMENSION = ModelDim
     END IF
-
-!=====================================================================================  
-! Look for GL position and save pressure differences at GL element
-    IF ( GLParaFlag ) THEN
-
-      GLparaSaveData = ListGetLogical( Solver % Values, &
-                      'Save Data for GL Parameterization', GotIt )
-      IF ( .NOT. GotIt ) GLparaSaveData = .FALSE.
-
-      GLPosition = ListGetConstReal(Model % Constants, 'GroundingLine Position', GotIt)
-      IF ( GotIt ) THEN
-        WRITE (Message, *) '============== GL parameterization position at x =', GLPosition
-        CALL Info('FlowSolve', Message, Level=3)
-      END IF
-
-      IF (GLparaSaveData) THEN
-        ! Initialize Element Indices
-        GLLGElementIndex = 0
-        GLFFElementIndex = 0
-        
-        ! Get the current Time
-        CurrentTimeVar => VariableGet( Solver % Mesh % Variables, 'Time')
-        Time = CurrentTimeVar % Values(1) 
-            
-        ! Look for GL elements, mark GL&FF element and GL&LG element respectively
-        DO t = 1,GetNOFBoundaryElements()
-          Element => GetBoundaryElement(t)
-          IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
-          ! Find GL node
-          IF ( ANY(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) == 0) ) THEN
-            ! GL&LG element
-            IF ( ALL(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) >= 0) ) THEN
-              WRITE (Message, *) 'GL & LG element found with index =', t
-              CALL Info('FlowSolve', Message, Level=3)
-              GLLGElementIndex = t
-
-            ! GL&FF element
-            ELSE IF ( ALL(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) <= 0) ) THEN
-              WRITE (Message, *) 'GL & FF element found with index =', t
-              CALL Info('FlowSolve', Message, Level=3)
-              GLFFElementIndex = t
-            END IF
-          END IF
-        END DO
-
-        ! 
-        Format = ''
-        Message = ''
-
-
-        OPEN(unit=134, file=GLParaFileName, POSITION='APPEND')
-
-        ! Go for GL&LG element 
-        IF (GLLGElementIndex > 0) THEN
-
-          Element => GetBoundaryElement(GLLGElementIndex)
-          ! WRITE(134, *) Time, GLLGElementIndex,GroundingLinePara( GroundingLineParaPerm(Element % NodeIndexes) )
-          ! IF (ASSOCIATED(Element % propertydata)) THEN           
-          !   LGParaData => Element % propertydata % values
-          ! END IF
-        END IF
-
-        ! Go for GL&FF element 
-        IF (GLFFElementIndex > 0) THEN
-          Element => GetBoundaryElement(GLFFElementIndex)
-          n = GetElementNOFNodes(Element)
-          CALL GetElementNodes( ElementNodes )
-          WRITE(134, *) Time, Element % NodeIndexes,  GLPosition, &
-                GroundingLinePara( GroundingLineParaPerm(Element % NodeIndexes) )
-          ! IF (ASSOCIATED(Element % propertydata)) THEN           
-          !   FFParaData => Element % propertydata % values
-          ! END IF
-        END IF
-
-        ! Write to data file
-        ! WRITE(134, *) Time, GLLGElementIndex, LGParaData(:), GLFFElementIndex, FFParaData(:)
-        CLOSE(134)
-
-
-          ! n = GetElementNOFNodes(Element)
-          ! ! Find the GL element
-          ! IF (ASSOCIATED(Element % propertydata)) THEN
-          !   IF ( ) THEN
-                
-          !       CALL GetElementNodes( tempElementNodes, Element, Solver)
-                
-          !       ! Get the current Time
-          !       CurrentTimeVar => VariableGet( Solver % Mesh % Variables, 'Time')
-          !       Time = CurrentTimeVar % Values(1) 
-
-
-          !       ! CALL Info('FlowSolve', Message, Level=3)
-
-      END IF
-    END IF
-      
-!=====================================================================================
-
 
 CONTAINS
 !------------------------------------------------------------------------------

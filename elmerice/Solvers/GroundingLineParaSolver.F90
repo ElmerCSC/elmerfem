@@ -74,6 +74,21 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL:: FirstTime = .TRUE., bedPComputed = .FALSE., UnFoundFatal
 
 
+!=========================================================================
+    ! TYPE(Nodes_t) :: tempElementNodes
+    TYPE(Variable_t), POINTER :: CurrentTimeVar
+    ! TYPE(variable_t), POINTER :: GroundedMaskVar, GroundingLineVar
+
+    ! INTEGER, POINTER :: GroundedMaskPerm(:), GroundingLineParaPerm(:)
+    INTEGER :: GLNodeIndex, FFNodeIndex
+    REAL(KIND=dp) :: Time 
+
+    LOGICAL :: GLparaSaveData = .FALSE., GotIt
+    ! CHARACTER(LEN=MAX_NAME_LEN) :: Format
+    CHARACTER(LEN=MAX_NAME_LEN) :: GLParaFileName='GLPressureData.dat'
+    ! REAL(KIND=dp), POINTER :: LGParaData(:), FFParaData(:), GroundedMask(:), GroundingLinePara(:)
+!=========================================================================
+
   SAVE HydroDIM, bedPComputed, DIM, FirstTime
   SAVE Normal, Fwater, Fbwater, Fbase
   !------------------------------------------------------------------------------
@@ -180,6 +195,9 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
 !====================================================================================
       GLNodeX = 0.0
       FFNodeX = 0.0
+      GLNodeIndex = 0
+      FFNodeIndex = 0
+      GLParaPosition = 0.0
 
       DO tt = 1, Model % NumberOfBoundaryElements
         Element => GetBoundaryElement(tt)
@@ -203,31 +221,20 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
               ! Check for GL nodes
               IF (cond < 0) THEN 
                 GLstressSum = GLstressSum + VariableValues(GLnodenumber)
+                GLNodeIndex = Element % NodeIndexes(ii)
                 GLNodeX = Nodes % x(ii)
               ! Floating Nodes
               ELSE IF (cond >= 0) THEN
                 FFstressSum = FFstressSum + VariableValues(GLnodenumber)
+                FFNodeIndex = Element % NodeIndexes(ii)
                 FFNodeX = Nodes % x(ii)
               END IF
             END DO
 
-
-            ! ! No stress at GL
-            ! IF (GLstressSum == 0) THEN
-            !   GLParaPosition = GLNodeX
-            ! ! both float
-            ! ELSE IF ((GLstressSum > 0.0) .AND. (FFstressSum .GE. 0.0)) THEN 
-            !   GLParaPosition = GLNodeX
-            ! ! both 'grounded'
-            ! ELSE IF ((GLstressSum < 0.0) .AND. (FFstressSum .LE. 0.0)) THEN
-            !   GLParaPosition = FFNodeX
-            ! ! One is grounded, the other is floating
-            ! ELSE 
-
             IF ( (GLstressSum*FFstressSum) < 0.0 ) THEN
               ratio =  ABS(GLstressSum) / ( ABS(GLstressSum) + ABS(FFstressSum) )
               GLParaPosition = GLNodeX + ratio * ABS(FFNodeX - GLNodeX)
-              WRITE (Message, *) '============== GL parameterization position at x =', GLParaPosition
+              WRITE (Message, '(A, g15.10)') '============== GL parameterization position at x =', GLParaPosition
               CALL Info(SolverName, Message, Level=3)
               CALL ListAddConstReal( Model % Constants, 'GroundingLine Position', GLParaPosition )
 
@@ -238,7 +245,34 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
 
-!====================================================================================
+    ! Save pressure differences at GL element
+    GLparaSaveData = ListGetLogical( Solver % Values, &
+                      'Save Data for GL Parameterization', GotIt )
+    IF ( .NOT. GotIt ) GLparaSaveData = .FALSE.
+
+    IF (GLparaSaveData) THEN
+      ! Get File name
+      GLParaFileName= ListgetString( Solver % Values, 'Save Data File Name', GotIt )
+      IF ( .NOT. GotIt ) GLParaFileName='GLPressureData.dat'
+      
+      ! Get the current Time
+      CurrentTimeVar => VariableGet( Solver % Mesh % Variables, 'Time')
+      Time = CurrentTimeVar % Values(1) 
+          
+      ! Save Data
+      OPEN(unit=134, file=GLParaFileName, POSITION='APPEND')
+
+      WRITE(134, *) Time, FFNodeIndex, GLNodeIndex, GLParaPosition, &
+            VariableValues(Permutation(FFNodeIndex)), VariableValues(Permutation(GLNodeIndex))
+
+      CLOSE(134)
+    END IF
+      
+!=====================================================================================
+
+
+
+
 
   CALL INFO( SolverName , 'Done')
  
