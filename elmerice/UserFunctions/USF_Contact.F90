@@ -544,7 +544,7 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
 !=============================================================  
         BoundaryElement => Model % CurrentElement
         ! Pure Grounded Element
-        IF (ALL(GroundedMask(GroundedMaskPerm(BoundaryElement % NodeIndexes))> 0.5 )) Friction = .TRUE. 
+        IF (ALL(GroundedMask(GroundedMaskPerm(BoundaryElement % NodeIndexes))> -0.5 )) Friction = .TRUE. 
 
         IF ( GroundingLineParaPerm(nodenumber) > 0) THEN
           IF ( GroundingLinePara(GroundingLineParaPerm(nodenumber)) < 0 ) Friction = .TRUE.
