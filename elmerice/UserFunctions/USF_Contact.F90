@@ -544,17 +544,23 @@ FUNCTION SlidCoef_Contact_Para ( Model, nodenumber, y) RESULT(Bdrag)
 !=============================================================  
         BoundaryElement => Model % CurrentElement
         ! Pure Grounded Element
-        IF (ALL(GroundedMask(GroundedMaskPerm(BoundaryElement % NodeIndexes))>-0.5)) Friction = .TRUE. 
+        IF (ALL(GroundedMask(GroundedMaskPerm(BoundaryElement % NodeIndexes))> 0.5 )) Friction = .TRUE. 
 
         IF ( GroundingLineParaPerm(nodenumber) > 0) THEN
-          ! Pure Floating Element
-          IF (ALL(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) > 0)) Friction = .FALSE.
+          IF ( GroundingLinePara(GroundingLineParaPerm(nodenumber)) < 0 ) Friction = .TRUE.
+          IF ( GroundingLinePara(GroundingLineParaPerm(nodenumber)) > 0 ) Friction = .FALSE.
 
-          ! For the GL Element
-          IF ( ANY(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) >= 0)  .AND. &
-               ANY(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) < 0)) THEN
-              Friction = .TRUE.
-          END IF
+
+
+          ! Pure Floating Element
+          ! IF (ALL(GroundingLinePara(GroundingLineParaPerm(BoundaryElement % NodeIndexes)) > 0)) Friction = .FALSE.
+
+          ! ! For the GL Element
+          ! IF ( ANY(GroundingLinePara(GroundingLineParaPerm(BoundaryElement % NodeIndexes)) >= 0)  .AND. &
+          !      ANY(GroundingLinePara(GroundingLineParaPerm(BoundaryElement % NodeIndexes)) < 0)) THEN
+              
+          !     Friction = .TRUE.
+          ! END IF
         END IF
 !=============================================================
      CASE DEFAULT

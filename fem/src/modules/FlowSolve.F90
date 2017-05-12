@@ -1168,7 +1168,6 @@
 
                 FFstressSum = 0.0_dp
                 GLstressSum = 0.0_dp
-                ratio = 0.0_dp
 
                 DO jj = 1, n
                   tempNodeIndex = Element % NodeIndexes(jj)
