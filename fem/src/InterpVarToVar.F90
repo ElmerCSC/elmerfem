@@ -621,8 +621,9 @@ CONTAINS
     TYPE(Variable_t), POINTER, OPTIONAL :: Variables
     CHARACTER(LEN=*) :: HeightName
     INTEGER, POINTER :: HeightDimensions(:)
-    LOGICAL, OPTIONAL :: FoundNodes(:), OldNodeMask(:), &
+    LOGICAL, POINTER, OPTIONAL :: OldNodeMask(:), &
          NewNodeMask(:), OldElemMask(:)
+    LOGICAL, ALLOCATABLE, OPTIONAL :: FoundNodes(:)
     REAL(KIND=dp), OPTIONAL :: GlobalEps, LocalEps, NumericalEps
     REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: LocalDistances(:)
     !------------------------------------------------------------------------------
