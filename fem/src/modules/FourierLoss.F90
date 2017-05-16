@@ -165,10 +165,10 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
     CALL ListAddString( DGSolverParams, 'Exported Variable 1','Fourier Loss Quadratic e')
   ELSE
     IF( SeparateComponents ) THEN
-      CALL ListAddString( DGSolverParams,'Variable','Fourier Loss 1 e' )
+      CALL ListAddString( DGSolverParams,'Variable','Fourier Loss 1e' )
       DO i=2, NComp
         CALL ListAddString( DGSolverParams,'Exported Variable '//TRIM(I2S(i-1)),&
-            'Fourier Loss '//TRIM(I2S(i))//' e' )
+            'Fourier Loss '//TRIM(I2S(i))//'e' )
       END DO
     ELSE
       CALL ListAddString( DGSolverParams,'Variable','Fourier Loss e' )
@@ -226,18 +226,18 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   INTEGER :: dim, Nsize, FourierDofs, i, nlen, mlen, icomp
   LOGICAL :: Found
   INTEGER :: TimesVisited = 0
-  INTEGER, POINTER :: FourierPerm(:)
+  INTEGER, POINTER :: FourierPerm(:), EPerm(:)
   REAL(KIND=dp) :: Norm, Omega
-  REAL(KIND=dp), ALLOCATABLE :: TotalLoss(:)
   REAL(KIND=dp), POINTER :: FourierField(:)
   REAL(KIND=dp) :: at0,at1,at2,at3
 #ifndef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: CPUTime,RealTime
 #endif
-  REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), ComponentLoss(:,:)
-  TYPE(Variable_t), POINTER :: TargetVar, LossVarE, LossVar, NodalLossVar
+  REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), SeriesLoss(:,:), CompLoss(:)
+  TYPE(Variable_t), POINTER :: TargetVar, LossVar, NodalLossVar
   REAL(KIND=dp), POINTER :: TargetField(:), PrevTargetField(:,:), SaveRhs(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: OtherRhs(:,:)
+  REAL(KIND=dp) :: TotalLoss
   LOGICAL :: EndCycle, FourierOutput, SimpsonsRule, ExactIntegration, &
       ElementalField, AvField, DirectField
   TYPE(Solver_t), POINTER :: TargetSolverPtr
@@ -248,7 +248,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
 
 
   
-  SAVE TimesVisited, TotalLoss, CompVars, CompVarsE, ComponentLoss, BodyLoss
+  SAVE TimesVisited, CompLoss, CompVars, CompVarsE, SeriesLoss, BodyLoss
   !-------------------------------------------------------------------------------
 
   CALL Info( 'FourierLossSolver', '-------------------------------------',Level=4 )
@@ -257,7 +257,9 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
 
   TimesVisited = TimesVisited + 1
   dim = CoordinateSystemDimension()
-
+  SolverParams => GetSolverParams()
+  LossVar => Solver % Variable
+  
   at0 = RealTime()
 
 
@@ -287,8 +289,9 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
     SeparateComponents = .TRUE.
   ELSE
     SeparateComponents = ListGetLogical( SolverParams,'Separate Loss Components',Found )
-  END IF
+  END IF 
   SumComponents = .NOT. SeparateComponents 
+
   
   IF( SumComponents ) THEN
     Nvar = 1
@@ -296,8 +299,8 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
     NVar = Ncomp
   END IF
 
-  IF(.NOT. ALLOCATED( TotalLoss) ) ALLOCATE( TotalLoss(Ncomp) )
-  TotalLoss = 0.0_dp
+  IF(.NOT. ALLOCATED( CompLoss) ) ALLOCATE( CompLoss(Ncomp) )
+  CompLoss = 0.0_dp
   
   
   ! Get the fields for the nodal results
@@ -361,7 +364,6 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
     CALL Fatal('FourierLossSolver','Solver has no matrix associated')
   END IF
   IF ( COUNT( Solver % Variable % Perm > 0 ) <= 0 ) RETURN  
-  SolverParams => GetSolverParams()
 
   ! Fetch the target field, e.g. magnetic vector potential
   !--------------------------------------------------------------------------
@@ -460,8 +462,8 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   END IF
   FourierPerm => TargetVar % Perm 
 
-  IF(.NOT. ALLOCATED( ComponentLoss) ) THEN
-    ALLOCATE( ComponentLoss(Ncomp,FourierDofs), &
+  IF(.NOT. ALLOCATED( SeriesLoss) ) THEN
+    ALLOCATE( SeriesLoss(Ncomp,FourierDofs), &
         BodyLoss(Ncomp,Model % NumberOfBodies) )
   END IF
     
@@ -519,7 +521,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   IF( NVar > 1 ) THEN
     CALL Info('FourierLossSolver','Allocating multiple r.h.s. vectors',Level=12)
     IF(.NOT. ALLOCATED( OtherRhs ) ) THEN
-      ALLOCATE( OtherRhs ( NVar-1, SIZE( Solver % Matrix % Rhs ) ) )
+      ALLOCATE( OtherRhs ( SIZE( Solver % Matrix % Rhs ), NVar - 1) )
     END IF
     OtherRhs = 0.0_dp
     SaveRhs => Solver % Matrix % Rhs   
@@ -544,11 +546,11 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   IF( SeparateComponents ) THEN
     ! Solver other components first, so that the values are saved to Solver % Var % Values
     DO icomp=2, Ncomp
-      Solver % Matrix % Rhs => OtherRhs(icomp-1,:)
+      Solver % Matrix % Rhs => OtherRhs(:,icomp-1)
       Norm = DefaultSolve()
       CompVars(icomp) % Var % Values = LossVar % Values
     END DO
-    Solver % Matrix % Rhs => SaveRhs
+    Solver % Matrix % Rhs => SaveRhs    
     IF(Nvar > 1) DEALLOCATE( OtherRhs ) 
   END IF
   
@@ -909,9 +911,9 @@ CONTAINS
     END IF
 
     ! Sum over the loss for each frequency, each body, and for the combined effect
-    ComponentLoss = 0.0_dp
+    SeriesLoss = 0.0_dp
     BodyLoss = 0.0_dp
-    TotalLoss = 0.0_dp
+    CompLoss = 0.0_dp
 
     ! Assemble the matrix equation for computing the losses
     !------------------------------------------------------------------
@@ -1051,8 +1053,9 @@ CONTAINS
             ELSE
               nsum = icomp
             END IF
+
             FORCE(nsum,1:nd) = FORCE(nsum, 1:nd) + Coeff * Basis(1:nd)          
-            ComponentLoss(icomp,j) = ComponentLoss(icomp,j) + Coeff 
+            SeriesLoss(icomp,j) = SeriesLoss(icomp,j) + Coeff 
             BodyLoss(icomp,BodyId) = BodyLoss(icomp,BodyId) + Coeff
           END DO
 
@@ -1073,7 +1076,7 @@ CONTAINS
         IF( icomp == 1 ) THEN
           CALL DefaultUpdateEquations( STIFF, FORCE(icomp,1:nd) )
         ELSE
-          Solver % Matrix % Rhs => OtherRhs(icomp-1,:)
+          Solver % Matrix % Rhs => OtherRhs(:,icomp-1)
           CALL DefaultUpdateForce( FORCE(icomp,1:nd) )
           Solver % Matrix % Rhs => SaveRhs
         END IF
@@ -1081,10 +1084,11 @@ CONTAINS
         
       ! After this the STIFF and FORCE are corrupted 
       IF( ElementalField ) THEN
+        EPerm => CompVarsE(1) % Var % Perm
         DO icomp = 1, Nsum
           CALL LUdecomp(STIFF,n,pivot)
           CALL LUSolve(n,STIFF,FORCE(icomp,:),pivot)
-          CompVarsE(icomp) % Var % Values(LossVarE % Perm(Element % DGIndexes(1:n))) = FORCE(icomp,1:n)
+          CompVarsE(icomp) % Var % Values(EPerm(Element % DGIndexes(1:n))) = FORCE(icomp,1:n)
         END DO
       END IF
   
@@ -1106,7 +1110,7 @@ CONTAINS
     IF( NodalLosses ) THEN
       NodalLossVar % Values = Solver % Matrix % rhs
       DO icomp = 2, Nsum
-        NodalLossVar % Values = NodalLossVar % Values + OtherRhs(icomp-1,:)
+        NodalLossVar % Values = NodalLossVar % Values + OtherRhs(:,icomp-1)
       END DO
     END IF
 
@@ -1127,25 +1131,28 @@ CONTAINS
 
     INTEGER :: i,j,k
     CHARACTER(LEN=MAX_NAME_LEN) :: LossesFile
-
+    
     DO k=1,Ncomp
       DO j=1,FourierDofs
-        ComponentLoss(k,j) = ParallelReduction(ComponentLoss(k,j)) 
+        SeriesLoss(k,j) = ParallelReduction(SeriesLoss(k,j)) 
       END DO
 
       DO j=1,Model % NumberOfBodies
         BodyLoss(k,j) = ParallelReduction(BodyLoss(k,j))
       END DO
 
-      TotalLoss(k) = SUM( ComponentLoss(k,:) )
+      CompLoss(k) = SUM( SeriesLoss(k,:) )
     END DO
+    TotalLoss = SUM( CompLoss )
 
+    
+    CALL ListAddConstReal( Model % Simulation,'res: fourier loss total',TotalLoss )
     IF( OldKeywordStyle ) THEN
-      CALL ListAddConstReal( Model % Simulation,'res: fourier loss linear',TotalLoss(1) )
-      CALL ListAddConstReal( Model % Simulation,'res: fourier loss quadratic',TotalLoss(2) )
+      CALL ListAddConstReal( Model % Simulation,'res: fourier loss linear',CompLoss(1) )
+      CALL ListAddConstReal( Model % Simulation,'res: fourier loss quadratic',CompLoss(2) )
     ELSE
       DO k=1,Ncomp
-        CALL ListAddConstReal( Model % Simulation,'res: fourier loss '//TRIM(I2S(k)),TotalLoss(k) )
+        CALL ListAddConstReal( Model % Simulation,'res: fourier loss '//TRIM(I2S(k)),CompLoss(k) )
       END DO
     END IF
       
@@ -1164,15 +1171,15 @@ CONTAINS
       
       DO j=1,FourierDofs 
         IF( j == 1 ) THEN
-          WRITE( Message,'(A,ES12.3)') 'CONST : ',ComponentLoss(k,j)
+          WRITE( Message,'(A,ES12.3)') 'CONST : ',SeriesLoss(k,j)
           CALL Info('FourierLossSolver', Message, Level=6 )
         ELSE
           i = j/2
           IF( MODULO( j,2 ) == 0 ) THEN
-            WRITE( Message,'(A,I0,A,ES12.3)') 'COS_',i,' : ',ComponentLoss(k,j)
+            WRITE( Message,'(A,I0,A,ES12.3)') 'COS_',i,' : ',SeriesLoss(k,j)
             CALL Info('FourierLossSolver', Message, Level=6 )
           ELSE
-            WRITE( Message,'(A,I0,A,ES12.3)') 'SIN_',i,' : ',ComponentLoss(k,j)
+            WRITE( Message,'(A,I0,A,ES12.3)') 'SIN_',i,' : ',SeriesLoss(k,j)
             CALL Info('FourierLossSolver', Message, Level=6 )
           END IF
         END IF
@@ -1189,15 +1196,19 @@ CONTAINS
       END IF
 
       DO j=1,Model % NumberOfBodies
-        IF( BodyLoss(k,j) < TINY( TotalLoss(k) ) ) CYCLE
+        IF( BodyLoss(k,j) < TINY( CompLoss(k) ) ) CYCLE
         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLoss(k,j)
         CALL Info('FourierLossSolver', Message, Level=6 )
       END DO
       
-      WRITE( Message,'(A,ES12.3)') 'Total loss: ',TotalLoss(k)
+      WRITE( Message,'(A,ES12.3)') 'Total component loss: ',CompLoss(k)
       CALL Info('FourierLossSolver',Message, Level=5 )
     END DO
-      
+    
+    WRITE( Message,'(A,ES12.3)') 'Total loss: ',TotalLoss
+    CALL Info('FourierLossSolver',Message, Level=5 )
+    
+    
     IF( Parenv % MyPe == 0 ) THEN
       LossesFile = ListGetString(SolverParams,'Fourier Loss Filename',Found )
       IF( Found ) THEN
@@ -1212,13 +1223,22 @@ CONTAINS
       END IF
     END IF
 
-    DO i=1,FourierDofs
-      PRINT *,'f range:',i,&
-          MINVAL(FourierVars(i) % Var % Values ), &
-          MAXVAL(FourierVars(i) % Var % Values )
-   END DO
-
-
+    ! For debugging
+    IF( .FALSE. ) THEN
+      DO i=1,FourierDofs
+        PRINT *,'fourier range:',i,&
+            MINVAL(FourierVars(i) % Var % Values ), &
+            MAXVAL(FourierVars(i) % Var % Values )
+      END DO
+      
+      ! For debugging
+      DO i=1,NComp
+        PRINT *,'loss component range:',i,&
+            MINVAL(CompVars(i) % Var % Values ), &
+            MAXVAL(CompVars(i) % Var % Values )
+      END DO
+    END IF
+      
     
     !------------------------------------------------------------------------------
   END SUBROUTINE CommunicateLosess
