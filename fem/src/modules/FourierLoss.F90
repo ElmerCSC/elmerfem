@@ -338,10 +338,15 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
       CompVarsE(2) % Var => VariableGet( Solver % Mesh % Variables,&
           'Fourier Loss Quadratic e' )
     ELSE
-      DO icomp = 1, Nvar
-        CompVarsE(icomp) % Var => VariableGet( Solver % Mesh % Variables,&
-            'Fourier Loss '//TRIM(I2S(icomp))//' e' )        
-      END DO
+      IF( Nvar == 1 ) THEN
+          CompVarsE(1) % Var => VariableGet( Solver % Mesh % Variables,&
+              'Fourier Loss e' )                
+      ELSE
+        DO icomp = 1, Nvar
+          CompVarsE(icomp) % Var => VariableGet( Solver % Mesh % Variables,&
+              'Fourier Loss '//TRIM(I2S(icomp))//'e' )        
+        END DO
+      END IF
     END IF
 
     DO icomp = 1, NVar
@@ -500,6 +505,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
       CALL ListAddConstReal( Model % Simulation,'res: fourier loss',0.0_dp )
       CALL ListAddConstReal( Model % Simulation,'res: fourier loss quadratic',0.0_dp )
     ELSE
+      CALL ListAddConstReal( Model % Simulation,'res: fourier loss total',0.0_dp )
       DO icomp=1, Ncomp
         CALL ListAddConstReal( Model % Simulation,'res: fourier loss '//TRIM(I2S(icomp)),0.0_dp )       
       END DO
@@ -1146,11 +1152,11 @@ CONTAINS
     TotalLoss = SUM( CompLoss )
 
     
-    CALL ListAddConstReal( Model % Simulation,'res: fourier loss total',TotalLoss )
     IF( OldKeywordStyle ) THEN
       CALL ListAddConstReal( Model % Simulation,'res: fourier loss linear',CompLoss(1) )
       CALL ListAddConstReal( Model % Simulation,'res: fourier loss quadratic',CompLoss(2) )
     ELSE
+      CALL ListAddConstReal( Model % Simulation,'res: fourier loss total',TotalLoss )
       DO k=1,Ncomp
         CALL ListAddConstReal( Model % Simulation,'res: fourier loss '//TRIM(I2S(k)),CompLoss(k) )
       END DO

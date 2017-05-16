@@ -31,7 +31,7 @@ Simulation
   Timestep Sizes(1) = 0.02
   Output Intervals(1) = 50
   Steady State Max Iterations = 1
-  Post File = case_b.vtu
+  Post File = case.vtu
 
   Frequency = 1.0
 End
@@ -90,6 +90,9 @@ Solver 2
 
 ! Save the series or not?
   Fourier Series Output = Logical True
+
+! Should also elemental (discontinuous) fields be computed?
+!  Calculate Elemental Fields = Logical True
 
 ! Optionally apply Simpsons's rule
   Inexact Integration = Logical False
