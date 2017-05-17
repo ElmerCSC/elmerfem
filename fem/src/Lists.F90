@@ -1448,7 +1448,7 @@ CONTAINS
        List % Head => NEW
      END IF
 
-#ifdef DEBUG_LISTCOUNTER
+#ifdef DEVEL_LISTCOUNTER
      IF( ASSOCIATED( new ) ) new % Counter = new % Counter + 1
 #endif
 
@@ -1648,7 +1648,7 @@ CONTAINS
        END DO
      END IF
 
-#ifdef DEBUG_LISTCOUNTER
+#ifdef DEVEL_LISTCOUNTER
      IF( ASSOCIATED( ptr ) ) THEN
        ptr % Counter = ptr % Counter + 1
      ELSE IF( INDEX( name,': not found' ) == 0 ) THEN
@@ -6323,7 +6323,7 @@ CONTAINS
    END FUNCTION ListGetSolverParams
 !------------------------------------------------------------------------------
    
-#ifdef DEBUG_LISTCOUNTER
+#ifdef DEVEL_LISTCOUNTER
    
    !------------------------------------------------------------------------------
    !> Go through the lists and for each lists show call counts.

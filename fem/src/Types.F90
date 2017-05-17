@@ -405,7 +405,7 @@ END INTERFACE
      INTEGER :: NameLen,DepNameLen = 0
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
 
-#ifdef DEBUG_LISTCOUNTER 
+#ifdef DEVEL_LISTCOUNTER 
      INTEGER :: Counter = 0
 #endif
      
