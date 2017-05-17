@@ -196,10 +196,10 @@ These are improvements related to different solver modules, or completely new on
   o Solver can use eigen modes and constrained modes to perform model reduction.
   o Undocumented solver. 
 
-- SumFieldSolver (new)
+- ScannedFieldSolver (new)
   o Outputs the scanned fields with a prefix "Scan i" and
     sums up the fields in the original field name
-  o Undocumented solver. 
+  o Undocumented solver. (test: circuits2D_scan_harmonics)
 
 - PartitionMeshSolver (new):
   o Firsts steps for an internal ElmerSolver routine to perform partitioning.
