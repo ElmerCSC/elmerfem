@@ -683,7 +683,7 @@
        !-----------system call gmsh------------------
        !'env -i' obscures all environment variables, so gmsh doesn't see any
        !MPI stuff and break down.
-       CALL EXECUTE_COMMAND_LINE( "env -i gmsh -2 "// filename, .TRUE., ierr )
+       CALL EXECUTE_COMMAND_LINE( "env -i PATH=$PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH gmsh -2 "// filename, .TRUE., ierr )
 
        IF(ierr > 1) THEN
          IF(ierr == 127) THEN
