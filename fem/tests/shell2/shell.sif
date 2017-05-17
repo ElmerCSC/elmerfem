@@ -1,3 +1,6 @@
+! This test case uses a facet shell model to approximate shell deformation.
+! For shell modeling consider using the module ShellSolver instead! 
+
 Header
   Mesh DB "." "cylinder"
 End
@@ -34,7 +37,7 @@ End
 
 Solver 1
   Equation = Shell Solver
-  Procedure = "ShellSolve" "ShellSolver"
+  Procedure = "FacetShellSolve" "ShellSolver"
   Linear System Solver = Iterative
   Linear System Max Iterations = 500
   Linear System Iterative Method = BiCGStab
