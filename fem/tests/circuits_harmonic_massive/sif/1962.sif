@@ -30,7 +30,7 @@ End
 
 Solver 1
    Exec Solver = Before All
-   Procedure = "Wsolver" "Wsolve"
+   Procedure = "WPotentialSolver" "Wsolve"
    Equation = "Wire direction"
    Variable = W
    Linear System Solver = Iterative
