@@ -51,8 +51,7 @@ FUNCTION initsurface(Model, nodenumber, inputarray) RESULT(elevation)
 
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
-  REAL (KIND=dp) :: inputarray(*),x,y, elevation, elevation_y, slope, z0,&
-       obs_length, obs_height, elevation_obstacle
+  REAL (KIND=dp) :: inputarray(*),x,y, elevation, elevation_y, slope, z0
 
   x = inputarray(1)
   y = inputarray(2)
@@ -62,12 +61,7 @@ FUNCTION initsurface(Model, nodenumber, inputarray) RESULT(elevation)
 
   !longitudinal component of bed function
   slope = 1.0_dp/40.0
-  z0 = 200.0_dp
+  z0 = 50.0_dp
   elevation_y = z0 + slope*y
-
-  obs_length = 1000.0_dp
-  obs_height = 35.0_dp
-  elevation_obstacle = obs_height * EXP(-(y/obs_length)**2.0)
-  
-  elevation = elevation_y + elevation_obstacle
+  elevation = elevation_y
 END FUNCTION initsurface

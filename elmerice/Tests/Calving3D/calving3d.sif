@@ -732,6 +732,7 @@ Boundary Condition 1
 
   External Pressure = Variable Coordinate 1 !dummy
     Real Procedure "ElmerIceUSF" "SeaPressure"
+  Compute Sea Pressure = Logical True
 
   Longitudinal Mesh Update 1 = Equals FrontAdvance 1
   Longitudinal Mesh Update 2 = Equals FrontAdvance 2
@@ -843,7 +844,7 @@ Boundary Condition 5
   Test Contact Tolerance = Real 1.0E-3
 
   Sliding Law = String "Weertman"  ! Alternative is "Coulomb"
-  Weertman Friction Coefficient = Real 1.0e-1
+  Weertman Friction Coefficient = Real 1.0e-4
   Weertman Exponent = Real $(1.0/3.0)
   Weertman Linear Velocity = Real 1.0
 
