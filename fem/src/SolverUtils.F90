@@ -11896,6 +11896,7 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
 !------------------------------------------------------------------------------
 
 
+
 !------------------------------------------------------------------------------
 !>  This subroutine will solve the system with some linear restriction.
 !>  The restriction matrix is assumed to be in the ConstraintMatrix-field of 
@@ -11941,6 +11942,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
   LOGICAL, ALLOCATABLE :: TrueDof(:)
+
+  INTEGER, ALLOCATABLE :: Iperm(:)
   
 !------------------------------------------------------------------------------
   CALL Info( 'SolveWithLinearRestriction ', ' ', Level=5 )
@@ -12082,6 +12085,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       IF(Found) RestMatrix % Values = RestMatrix % Values * rowsum
     END IF
 
+    ALLOCATE( iperm(SIZE(Solver % Variable % Perm)) )
+    iperm = 0
+    DO i=1,SIZE(Solver % Variable % Perm)
+      IF ( Solver % Variable % Perm(i)>0) Iperm(Solver % Variable % Perm(i))=i
+    END DO
+
     DO i=RestMatrix % NumberOfRows,1,-1
 
       k=StiffMatrix % NumberOfRows
@@ -12147,47 +12156,54 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             END IF
           ELSE
             IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
-!             CollectionVector(k) = CollectionVector(k) - &
-!                       RestMatrix % TValues(j) * ForceVector(RestMatrix % Cols(j)) / &
-!                          StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
-             CALL AddToMatrixElement( CollectionMatrix, &
-                  k, RestMatrix % Cols(j), RestMatrix % TValues(j) )
-             NonEmptyRow = NonEmptyRow .OR. RestMatrix % TValues(j) /= 0
+              CollectionVector(k) = CollectionVector(k) - &
+                        RestMatrix % TValues(j) * ForceVector(RestMatrix % Cols(j)) / &
+                           StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+!            CALL AddToMatrixElement( CollectionMatrix, &
+!                 k, RestMatrix % Cols(j), RestMatrix % TValues(j) )
+!            NonEmptyRow = NonEmptyRow .OR. RestMatrix % TValues(j) /= 0
             ELSE
-!             CollectionVector(k) = CollectionVector(k) - &
-!                       RestMatrix % Values(j) * ForceVector(RestMatrix % Cols(j)) / &
-!                          StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
-              CALL AddToMatrixElement( CollectionMatrix, &
-                  k, RestMatrix % Cols(j), RestMatrix % Values(j) )
-              NonEmptyRow = NonEmptyRow .OR. RestMatrix % Values(j) /= 0
+              CollectionVector(k) = CollectionVector(k) - &
+                        RestMatrix % Values(j) * ForceVector(RestMatrix % Cols(j)) / &
+                           StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+!             CALL AddToMatrixElement( CollectionMatrix, &
+!                 k, RestMatrix % Cols(j), RestMatrix % Values(j) )
+!             NonEmptyRow = NonEmptyRow .OR. RestMatrix % Values(j) /= 0
             END IF
           END IF
 
         END DO
       END IF
-
+ 
+      Found = .TRUE.
       IF (EnforceDirichlet) THEN
         IF(ASSOCIATED(RestMatrix % InvPerm)) THEN
           l = RestMatrix % InvPerm(i)
           IF(l>0) THEN
             l = MOD(l-1,StiffMatrix % NumberOfRows)+1
             IF(StiffMatrix % ConstrainedDOF(l)) THEN
-              CollectionVector(k) = 0
-              CALL ZeroRow(CollectionMatrix,k)
-              CALL SetMatrixElement(CollectionMatrix,k,k,1._dp)
+              l = iperm((l-1)/Solver % Variable % DOFs+1) 
+              IF (l<=Solver % Mesh % NumberOfNodes) THEN
+                Found = .FALSE.
+                CALL ZeroRow(CollectionMatrix,k)
+                CollectionVector(k) = 0
+                CALL SetMatrixElement(CollectionMatrix,k,k,1._dp)
+              END IF
             END IF
           END IF
         END IF
       END IF
 
       ! If there is no matrix entry, there can be no non-zero r.h.s.
-      IF( .NOT.NonEmptyRow ) THEN
-        NoEmptyRows = NoEmptyRows + 1
-        CollectionVector(k) = 0._dp
-!        might not be the right thing to do in parallel!!
-!       CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
-      ELSE
-        IF( ASSOCIATED( RestVector ) ) CollectionVector(k) = CollectionVector(k) + RestVector(i)
+      IF ( Found ) THEN
+        IF( .NOT.NonEmptyRow ) THEN
+          NoEmptyRows = NoEmptyRows + 1
+          CollectionVector(k) = 0._dp
+!          might not be the right thing to do in parallel!!
+!         CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
+        ELSE
+          IF( ASSOCIATED( RestVector ) ) CollectionVector(k) = CollectionVector(k) + RestVector(i)
+        END IF
       END IF
     END DO
 
