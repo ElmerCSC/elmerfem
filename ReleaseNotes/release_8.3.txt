@@ -2,7 +2,8 @@ Elmer Release Notes for version 8.3
 ===================================
 
 Previous release: 8.2
-Period covered: 12 March 2016 -
+Period covered: 12 March 2016 - 18 May 2017
+Number of commits: 605
 
 
 ElmerSolver library functionality
@@ -144,7 +145,6 @@ These are improvements related to different solver modules, or completely new on
   o Proximity effect due to in plane magnetic field in foil windings
   o Complex power computation for circuit components
   o Lorentz force computation
-  o 6 new tests
 
 - CoilSolver
   o Let user to explicitly define coilsolver normal
@@ -206,6 +206,7 @@ These are improvements related to different solver modules, or completely new on
   o The idea is that it is easier to consider the constraints of physics with access to the whole case.
   o Various geometric strategies implemented.
   o Partitioning may be done in several groups enabling minimal communication between constacts, for example. 
+  o Undocumented solver. 
 
 - ElementStats (new):
   o Solver gives information on the mesh including element size, skewness, edge ratio.
@@ -239,11 +240,18 @@ Build system
 - Added travis integration that builds and runs tests with `quick` label.
 
 
+Tests
+-----
+- There are currently 532 tests which is a significant increase from the
+  403 of the previous release.
+  This is without the Elmer/ICE specific tests. 
+
+
 Acknowledgements
 ----------------
 Apart from the core Elmer team at CSC we have had contributions at least from 
 Mikko Byckling, Eelis Takala, Pavel Ponomarev, Erik Edelmann, Joe Todd, Cheng Gong,
-Laure Tavard, Erik Edelmann, Rupert Gladstone, J Vencels. This listing is not complete
+Laure Tavard, Erik Edelmann, Rupert Gladstone, Juris Vencels. This listing is not complete
 since there are developments in various application areas (particularly Elmer/Ice) that are not
 covered by the release notes, and code that has been passed on means other than git. 
 
