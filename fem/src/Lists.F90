@@ -5644,7 +5644,49 @@ CONTAINS
    END FUNCTION ListCheckPresentAnySolver
 !------------------------------------------------------------------------------
 
-   
+
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is present in any component.
+!------------------------------------------------------------------------------
+  FUNCTION ListCheckPresentAnyComponent( Model, Name ) RESULT( Found )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    TYPE(Model_t) :: Model
+    CHARACTER(LEN=*) :: Name
+    LOGICAL :: Found
+    INTEGER :: ind
+        
+    Found = .FALSE.
+    DO ind=1, Model % NumberOfComponents
+      Found = ListCheckPresent( Model % Components(ind) % Values, Name )
+      IF( Found ) EXIT
+    END DO   
+!------------------------------------------------------------------------------
+  END FUNCTION ListCheckPresentAnyComponent
+!------------------------------------------------------------------------------  
+
+  !------------------------------------------------------------------------------
+!> Check if the keyword is true in any component.
+!------------------------------------------------------------------------------
+  FUNCTION ListGetLogicalAnyComponent( Model, Name ) RESULT( Found )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    TYPE(Model_t) :: Model
+    CHARACTER(LEN=*) :: Name
+    LOGICAL :: Found, GotIt
+    INTEGER :: ind
+        
+    Found = .FALSE.
+    DO ind=1, Model % NumberOfComponents
+      Found = ListGetLogical( Model % Components(ind) % Values, Name, GotIt )
+      IF( Found ) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION ListGetLogicalAnyComponent
+!------------------------------------------------------------------------------  
 
 !------------------------------------------------------------------------------
 !> Check if the keyword in any material is defined as an array
