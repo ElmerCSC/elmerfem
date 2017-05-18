@@ -2343,7 +2343,8 @@ CONTAINS
 
     SUBROUTINE SolveCoupled()
 !------------------------------------------------------------------------------
-    DO i=1,CoupledMaxIter
+
+     DO i=1,CoupledMaxIter
        IF ( TransientSimulation .OR. Scanning ) THEN
          IF( CoupledMaxIter > 1 ) THEN
            CALL Info( 'SolveEquations', '-------------------------------------', Level=3 )
@@ -2507,13 +2508,15 @@ CONTAINS
          IF ( ALL(DoneThis) ) EXIT
       END DO
 
-    IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
-      CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(i)),Level=4)
-      CoupledAbort = ListGetLogical( Model % Simulation,  &
-           'Coupled System Abort Not Converged', Found )
-      CALL NumericalError('SolveEquations','Coupled system did not converge',CoupledAbort)
-    END IF
-
+      IF( TestConvergence ) THEN
+        IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
+          CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(i)),Level=4)
+          CoupledAbort = ListGetLogical( Model % Simulation,  &
+              'Coupled System Abort Not Converged', Found )
+          CALL NumericalError('SolveEquations','Coupled system did not converge',CoupledAbort)
+        END IF
+      END IF
+        
     END SUBROUTINE SolveCoupled
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveEquations
