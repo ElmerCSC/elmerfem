@@ -4908,6 +4908,7 @@ CONTAINS
       END IF
     END IF
 
+    StrandedHomogenization = .FALSE.
     IF (CoilType == 'stranded') THEN 
        CompParams => GetComponentParams( Element )
        StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
