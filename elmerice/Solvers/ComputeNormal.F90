@@ -86,7 +86,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp) :: Bu, Bv, Normal(3), NormalCond(4)
 
   LOGICAL :: CompAll = .TRUE., CompBC = .TRUE., Found, Parallel, &
-       FirstTime = .TRUE.,UnFoundFatal
+       FirstTime = .TRUE.,UnFoundFatal=.TRUE.
   LOGICAL, ALLOCATABLE :: Hit(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'ComputeNormalSolver'
@@ -104,6 +104,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   NormalSolution => VariableGet( Solver % Mesh % Variables, 'Normal Vector',UnFoundFatal=UnFoundFatal)
   Nvector => NormalSolution % Values
   Permutation => NormalSolution % Perm
+  NVector = 0.0_dp
 
   CALL INFO(SolverName, 'Computing Normal Vector for Nodes', level=3)
 

@@ -3,7 +3,7 @@ Header
   Mesh DB "." "1d"
 End
 Simulation
-  Max Output Level = 30
+  Max Output Level = 5
   Coordinate System = "Cartesian 1D"
   Simulation Type = Transient
   Timestepping Method = BDF
@@ -43,7 +43,5 @@ Boundary Condition 1
 End
 Solver 1 :: Reference Norm = Real 1.40257362810
 Solver 1 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 1\n")$
 Solver 1 :: Reference Norm = Real 1.40257362810
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=1.40257362810, EPS=1e-4\n");

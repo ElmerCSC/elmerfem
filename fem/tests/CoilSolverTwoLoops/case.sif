@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 8
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1
@@ -156,6 +156,6 @@ End
 
 
 
-Solver 1 :: Reference Norm = 8.19652353E-01
+Solver 1 :: Reference Norm = 7.78974718
 Solver 2 :: Reference Norm = 1.21160884E+00
 Solver 3 :: Reference Norm = 1.51574579E-01

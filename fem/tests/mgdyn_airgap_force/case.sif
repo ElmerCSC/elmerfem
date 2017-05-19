@@ -10,7 +10,7 @@ Header
   Mesh DB "." "umagnet"
 End
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
   Simulation type = steady state
   mesh levels = 1
 End
@@ -64,6 +64,7 @@ Solver 3 ! resultoutput
     Equation = "Result Output"
     Procedure = "ResultOutputSolve" "ResultOutputSolver"
     Save Geometry IDs = Logical True
+    discontinuous bodies = logical true
     Output File Name = "case"
     output directory = "umagnet"
     Output Format = vtu
@@ -75,7 +76,8 @@ Solver 4 ! savescalars
   save component results = logical true
 End
 Equation 1
-  Active Solvers(3) = 1 2 3
+  !Active Solvers(4) = 1 2 3 4
+  Active Solvers(3) = 1 2 4
 End
 Body 1 ! magnet
   Target bodies(2) = $ uparm downarm

@@ -124,6 +124,7 @@ MODULE DiffuseConvectiveGeneral
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t), POINTER :: Element
 
+     
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -154,13 +155,16 @@ MODULE DiffuseConvectiveGeneral
 
      LOGICAL :: stat,CylindricSymmetry,Convection,ConvectAndStabilize,Bubbles, &
                FrictionHeat, Found
-     TYPE(ValueList_t), POINTER :: BodyForce
+     TYPE(ValueList_t), POINTER :: BodyForce, Material
 
+     LOGICAL :: GotCondModel
+   
 !------------------------------------------------------------------------------
 
      CylindricSymmetry = (CurrentCoordinateSystem() == CylindricSymmetric .OR. &
                   CurrentCoordinateSystem() == AxisSymmetric)
 
+     
      IF ( CylindricSymmetry ) THEN
        dim = 3
      ELSE
@@ -180,6 +184,9 @@ MODULE DiffuseConvectiveGeneral
         NBasis = 2*n
         Bubbles = .TRUE.
      END IF
+     
+     Material => GetMaterial()
+     GotCondModel = ListCheckPresent( Material,'Heat Conductivity Model')
      
 !------------------------------------------------------------------------------
 !    Integration stuff
@@ -280,11 +287,13 @@ MODULE DiffuseConvectiveGeneral
                 SUM( NodalC2(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
- 
-       DO i=1,dim
-          C2(i,i) = EffectiveConductivity( C2(i,i), Density, Element, &
-                 Temperature, UX,UY,UZ, Nodes, n, n, u, v, w )
-       END DO
+
+       IF( GotCondModel ) THEN
+         DO i=1,dim
+           C2(i,i) = EffectiveConductivity( C2(i,i), Density, Element, &
+               Temperature, UX,UY,UZ, Nodes, n, n, u, v, w )
+         END DO
+       END IF
 !------------------------------------------------------------------------------
 !      If there's no convection term we don't need the velocities, and
 !      also no need for stabilization

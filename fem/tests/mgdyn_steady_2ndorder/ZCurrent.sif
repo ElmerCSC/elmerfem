@@ -1,0 +1,125 @@
+!------------------------------------------------------------------------------
+! Solve A-V problem with the second-order elements
+!------------------------------------------------------------------------------
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "testcube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Material 1
+  Reluctivity  = Real 1
+  Electric Conductivity = Real 1
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Solver 1
+  Equation = "MGDynamics"
+  Variable = "P"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Element = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2"
+  Use Piola Transform = Logical True
+  Quadratic Approximation = True
+
+  Bubbles in Global System = Logical True
+  Fix Input Current Density = Logical False
+  Linear System Row Equilibration = Logical True
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = none
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = gcr
+  Linear System GCR Restart = 100
+  Linear System Convergence Tolerance = 1.0e-10
+
+! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "MGDynamicsCalc"
+  Use Piola Transform = Logical True
+  Quadratic Approximation = True
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential Variable = String "P"
+
+  Calculate Current Density = Logical True
+!  Calculate Electric Field = Logical True
+!  Calculate Magnetic Field Strength = Logical True
+!  Calculate Magnetic Vector Potential = Logical True
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+End
+
+Solver 3
+  Exec Solver = Never  
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = zcurrent
+  Vtu format = Logical True
+!  Ascii Output = False
+  Discontinuous Galerkin = Logical True
+  Save Geometry Ids = Logical True
+End
+
+Body Force 1
+  Current Density 1 = Real 0
+  Current Density 2 = Real 0
+  Current Density 3 = Real 0
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  P {e} = Real 0
+  P {e} 1 = Real 0
+  P {e} 2 = Real 0
+  P {e} 3 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 5
+  P = Real 2.0
+  P {e} = Real 0
+  P {e} 1 = Real 0
+  P {e} 2 = Real 0
+  P {e} 3 = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 6
+  P = Real 0.0
+  P {e} = Real 0
+  P {e} 1 = Real 0
+  P {e} 2 = Real 0
+  P {e} 3 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 0.12595495E-01
+RUN

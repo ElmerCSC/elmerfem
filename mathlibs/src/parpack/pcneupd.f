@@ -518,7 +518,7 @@ c        %-------------------------------------%
 c
          np     = ncv - nev
          ishift = 0
-         call cngets(comm, ishift, which     ,
+         call pcngets(comm, ishift, which     ,
      &               nev , np    , workl(irz),
      &               workl(bounds))
 c

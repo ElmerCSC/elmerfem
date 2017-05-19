@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 9
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1
@@ -136,6 +136,6 @@ End
 ! the basic model, potential set to [0,1], no postprocessing
 Simulation :: Post File = "Curve_Nofit_Iso.vtu"
 
-Solver 1 :: Reference Norm =  0.88041592
+Solver 1 :: Reference Norm =  6.10796241
 Solver 2 :: Reference Norm =  0.88041592
 Solver 3 :: Reference Norm =  0.10142836605212778

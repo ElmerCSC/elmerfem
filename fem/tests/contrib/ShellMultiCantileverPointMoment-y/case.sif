@@ -1,0 +1,117 @@
+! Test case for ShellMultiSolver defined by Dr. Gupta
+
+Header
+  Mesh DB "." "FlatPlate"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = "case.vtu"
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body Property 1"
+  Equation = 1
+  Material = 1
+  Body Force = 2	!Required for input of thickness
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Body Property 2"
+  Equation = 1
+  Material = 1
+  Body Force = 2	!Required for input of thickness
+End
+Body 3
+  Target Bodies(1) = 3
+  Name = "Body Property 3"
+  Equation = 1
+  Material = 1
+  Body Force = 2	!Required for input of thickness
+End
+Body 4
+  Target Bodies(1) = 4
+  Name = "Body Property 4"
+  Equation = 1
+  Material = 1
+  Body Force = 2	!Required for input of thickness
+End
+
+
+
+
+Material 1
+   Density = 7800
+   Youngs Modulus = 70e9
+   Poisson Ratio = 0.3
+End
+
+Body Force 2
+  Name = "BodyForce 2"
+  Thickness = Real 0.01
+  Point Load (1,9) = Real 0.5 0.05 0.0 0.0 0.0 0.0 0.0 100.0 0.0	!Both loads could also be specified as part of one Body Force
+End
+
+
+
+Body Force 3
+  Name = "BodyForce 3"
+  Point Load (1,9) = Real 0.5 0.0 0.0 0.0 0.0 0.0 0.0 100.0 0.0 
+  Thickness = Real 0.01	
+End
+
+Solver 1
+  Equation = Shell Solver
+  Procedure = "ShellMultiSolver" "ShellSolver"
+  Linear System Solver = Direct
+!  Linear System Max Iterations = 10000
+!  Linear System Iterative Method = BiCGStab
+!  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-10
+  Nonlinear System Newton After Tolerance = 1.0e-8
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Shear Stabilization Parameter = Real 0.0
+  Drilling Stabilization Parameter = Real 1.0
+  Calculate Stresses = Logical TRUE
+  !Compute Membrane Stress = Logical TRUE
+  Compute Total Stress = Logical TRUE
+  !Compute Bending Stress = Logical TRUE
+  Membrane Only = Logical FALSE
+  Use DKT Triangle = Logical TRUE
+  Use SMITC Element = Logical FALSE
+  Use MITC3 Element = Logical FALSE
+  Use RMITC3 Element = Logical FALSE
+  Integration Points = Integer 3
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "BoundaryCondition 1"
+  Deflection 1 = 0.0
+  Deflection 2 = 0.0
+  Deflection 3 = 0.0
+  Deflection 4 = 0.0
+  Deflection 5 = 0.0
+  Deflection 6 = 0.0
+End
+
+Solver 1 :: Reference Norm = 8.30551597E-02
+

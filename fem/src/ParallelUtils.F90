@@ -42,7 +42,6 @@
 !------------------------------------------------------------------------------
 
 MODULE ParallelUtils
-
      USE SparIterSolve
 
      IMPLICIT NONE

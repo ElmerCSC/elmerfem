@@ -37,7 +37,32 @@
 
 
 !------------------------------------------------------------------------------
-!> Initialization for the primary solver: ElasticSolver. 
+!> Initializations for the primary solver: ElasticSolver 
+!------------------------------------------------------------------------------
+SUBROUTINE ElasticSolver_Init0( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+
+  TYPE(Model_t)  :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+  LOGICAL :: MixedFormulation, Found
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  MixedFormulation = GetLogical(SolverParams, 'Mixed Formulation', Found) .AND. &
+      GetLogical(SolverParams, 'Neo-Hookean Material', Found)
+
+  IF (MixedFormulation .AND. (.NOT. ListCheckPresent(SolverParams,'Element'))) THEN
+    CALL ListAddString( SolverParams, "Element", "p:2" )
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE ElasticSolver_Init0
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
 SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
@@ -50,22 +75,36 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  INTEGER :: dim, i
-  LOGICAL :: Found, AxialSymmetry
+  INTEGER :: dim, i, DOFs
+  LOGICAL :: Found, AxialSymmetry, MixedFormulation
   LOGICAL :: CalculateStrains, CalculateStresses
   LOGICAL :: CalcPrincipalAngle, CalcPrincipal
   LOGICAL :: CalcPrincipalStress, CalcPrincipalStrain
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
-  AxialSymmetry =  CurrentCoordinateSystem() == AxisSymmetric
+  AxialSymmetry = CurrentCoordinateSystem() == AxisSymmetric
+  MixedFormulation = GetLogical(SolverParams, 'Mixed Formulation', Found) .AND. &
+      GetLogical(SolverParams, 'Neo-Hookean Material', Found)
 
-  IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-     dim = CoordinateSystemDimension()
-     CALL ListAddInteger( SolverParams, 'Variable DOFs', dim )
-     CALL ListAddString( SolverParams, 'Variable', 'Displacement' )
+  IF ( .NOT. ListCheckPresent( SolverParams, 'Variable') ) THEN
+    dim = CoordinateSystemDimension()
+    IF (MixedFormulation) THEN
+      DOFs = dim + 1
+      SELECT CASE(dim)
+      CASE(2)
+        CALL ListAddString( SolverParams, 'Variable', 'MixedSol[Disp:2 Pres:1]' )
+      CASE(3)
+        CALL ListAddString( SolverParams, 'Variable', 'MixedSol[Disp:3 Pres:1]' )
+      END SELECT
+    ELSE
+      DOFs = dim
+      CALL ListAddString( SolverParams, 'Variable', 'Displacement' )
+    END IF
+
+    CALL ListAddInteger( SolverParams, 'Variable DOFs', DOFs )
   END IF
-  CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
+  CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
   CALL ListAddLogical( SolverParams,'Bubbles in Global System',.TRUE.)
 
   IF( .NOT. ListCheckPresent( SolverParams,'Displace Mesh At Init') ) THEN
@@ -188,6 +227,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: GotForceBC, GotFSIBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
        CauchyResponseFunction  = .FALSE., UseUMAT = .FALSE., AxialSymmetry
+  LOGICAL :: MixedFormulation
   LOGICAL :: PseudoTraction, GlobalPseudoTraction
   LOGICAL :: PlaneStress, CalculateStrains, CalculateStresses
   LOGICAL :: CalcPrincipalAngle, CalcPrincipal
@@ -314,7 +354,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   IF ( .NOT. GotIt ) MeshDisplacementActive = .TRUE.
 
   IF ( AllocationsDone .AND. MeshDisplacementActive ) THEN
-     CALL DisplaceMesh( Mesh, Displacement, -1, StressPerm, STDOFs )
+     CALL DisplaceMesh( Mesh, Displacement, -1, StressPerm, STDOFs, UpdateDirs=dim )
   END IF
 
   !-------------------------------------------------------------------------
@@ -326,9 +366,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      Isotropic = .FALSE.
   END IF
 
-  NeoHookeanMaterial = ListGetLogical( SolverParams, &
-       'Neo-Hookean Material', GotIt )
+  NeoHookeanMaterial = ListGetLogical( SolverParams, 'Neo-Hookean Material', GotIt )
   IF (NeoHookeanMaterial) Isotropic = .TRUE.
+  MixedFormulation = NeoHookeanMaterial .AND. &
+      ListGetLogical( SolverParams, 'Mixed Formulation', GotIt )
+  IF (MixedFormulation .AND. (STDOFs /= (dim + 1))) CALL Fatal('ElasticSolve', &
+      'With mixed formulation variable DOFs should equal to space dimensions + 1')
 
   GlobalPseudoTraction = GetLogical( SolverParams, 'Pseudo-Traction', GotIt)
 
@@ -372,8 +415,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
           LocalStiffMatrix( STDOFs*N,STDOFs*N ),  &
           LocalDampMatrix( STDOFs*N,STDOFs*N ),  &
           LoadVector( 4,N ), InertialLoad(3,N), Alpha( 3,N ), Beta( N ), &
-          LocalDisplacement( 3,N ), &
-          PrevLocalDisplacement( 3,N ), &
+          LocalDisplacement( 4,N ), &
+          PrevLocalDisplacement( 4,N ), &
           SpringCoeff( N,3,3 ), &
           Indeces(N), &
           STAT=istat )
@@ -457,14 +500,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         StressPerm  => Var % Perm
         NodalStress => Var % Values
      ELSE  
-        CALL Fatal('StressSolver','Variable > Stress < does not exits!')
+        CALL Fatal('ElasticSolver','Variable > Stress < does not exits!')
      END IF
 
      Var => VariableGet( Mesh % Variables, 'VonMises',.TRUE. )
      IF ( ASSOCIATED( Var ) ) THEN
         VonMises => Var % Values
      ELSE
-        CALL Fatal('StressSolver','Variable > vonMises < does not exits!')
+        CALL Fatal('ElasticSolver','Variable > vonMises < does not exits!')
      END IF
 
      IF (CalcPrincipalStress) THEN
@@ -472,14 +515,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         IF ( ASSOCIATED( Var ) ) THEN
            PrincipalStress => Var % Values
         ELSE                 
-           CALL Fatal('StressSolver','Variable > Principal Stress < does not exits!')
+           CALL Fatal('ElasticSolver','Variable > Principal Stress < does not exits!')
         END IF
 
         Var => VariableGet( Mesh % Variables, 'Tresca',.TRUE. )
         IF ( ASSOCIATED( Var ) ) THEN
            Tresca => Var % Values
         ELSE
-           CALL Fatal('StressSolver','Variable > Tresca < does not exits!')
+           CALL Fatal('ElasticSolver','Variable > Tresca < does not exits!')
         END IF
 
         IF (CalcPrincipalAngle) THEN
@@ -487,7 +530,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            IF ( ASSOCIATED( Var ) ) THEN
               PrincipalAngle => Var % Values
            ELSE
-              CALL Fatal('StressSolver','Variable > Principal Angle < does not exits!')
+              CALL Fatal('ElasticSolver','Variable > Principal Angle < does not exits!')
            END IF
         END IF
      END IF
@@ -498,14 +541,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      IF ( ASSOCIATED( Var ) ) THEN
         NodalStrain => Var % Values
      ELSE
-        CALL Fatal('StressSolver','Variable > Strain < does not exits!')
+        CALL Fatal('ElasticSolver','Variable > Strain < does not exits!')
      END IF
      IF (CalcPrincipalStrain) THEN
         Var => VariableGet( Mesh % Variables, 'Principal Strain' )
         IF ( ASSOCIATED( Var ) ) THEN
            PrincipalStrain => Var % Values
         ELSE
-           CALL Fatal('StressSolver','Variable > Principal Strain < does not exits!')
+           CALL Fatal('ElasticSolver','Variable > Principal Strain < does not exits!')
         END IF
      END IF
   END IF
@@ -527,6 +570,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LinearModel = ListGetLogical( SolverParams, &
        'Elasticity Solver Linear', GotIt )
 
+  
+  CALL DefaultStart()
+  
   DO iter=1,NonlinearIter
 
      at  = CPUTime()
@@ -639,14 +685,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         IF ( ASSOCIATED(BodyForce) ) THEN
            LoadVector(1,1:n) = GetReal( BodyForce, 'Stress Bodyforce 1', GotIt )
            LoadVector(2,1:n) = GetReal( BodyForce, 'Stress Bodyforce 2', GotIt )
-           IF ( STDOFs > 2 ) THEN
+           IF ( dim > 2 ) THEN
               LoadVector(3,1:n) = GetReal( BodyForce, 'Stress Bodyforce 3', GotIt )
            END IF
 
            InertialLoad(1,1:n) = GetReal( BodyForce, 'Inertial Bodyforce 1', GotIt )
            InertialLoad(2,1:n) = GetReal( BodyForce, 'Inertial Bodyforce 2', GotIt )
 
-           IF ( STDOFs > 2 ) THEN
+           IF ( dim > 2 ) THEN
               InertialLoad(3,1:n) = GetReal(  BodyForce, 'Inertial Bodyforce 3', GotIt )
            END IF
         END IF
@@ -723,7 +769,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                  CALL NeoHookeanLocalMatrix( LocalMassMatrix, LocalDampMatrix, &
                       LocalStiffMatrix, LocalForce, LoadVector, InertialLoad, ElasticModulus, &
                       PoissonRatio,Density,Damping,AxialSymmetry,PlaneStress,HeatExpansionCoeff, &
-                      LocalTemperature,CurrentElement,n,ntot,ElementNodes,LocalDisplacement )
+                      LocalTemperature,CurrentElement,n,ntot,ElementNodes,LocalDisplacement, &
+                      MixedFormulation)
               ELSE
                  CALL LocalMatrix( LocalMassMatrix, LocalDampMatrix, &
                       LocalStiffMatrix,LocalForce, LoadVector, InertialLoad, ElasticModulus, &
@@ -917,7 +964,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                    n, ntot, ParentElement, ParentElement % TYPE % NumberOfNodes, &
                    nd, ParentNodes, FlowElement, FlowNOFNodes, FlowNodes, Velocity,  &
                    Pressure, Viscosity, Density, CompressibilityDefined, AxialSymmetry, &
-                   NormalTangential, PseudoTraction)
+                   NormalTangential, PseudoTraction, MixedFormulation)
            ELSE
               CALL Fatal('ElasticSolve', 'Unsupported coordinate system')
            END IF
@@ -982,7 +1029,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      ELSE
         CALL ComputeStressAndStrain( Displacement, NodalStrain, NodalStress, VonMises, StressPerm, &
              PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, AxialSymmetry, NeoHookeanMaterial, &
-             CalculateStrains, CalculateStresses, CalcPrincipal, CalcPrincipalAngle)
+             CalculateStrains, CalculateStresses, CalcPrincipal, CalcPrincipalAngle, MixedFormulation)
      END IF
   END IF
 
@@ -1005,12 +1052,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   IF ( MeshDisplacementActive ) THEN
      CALL Info('ElasticSolve','Displacing the mesh with computed displacement field')
-     CALL DisplaceMesh( Model % Mesh, Displacement, 1, &
-          StressPerm, STDOFs, .FALSE. )
+     CALL DisplaceMesh( Mesh, Displacement, 1, StressPerm, STDOFs, .FALSE., dim )
   END IF
 
   DEALLOCATE( PrevSOL )
 
+  CALL DefaultFinish()
+  
   CALL Info('ElasticSolver','All done',Level=4)
   CALL Info('ElasticSolver','------------------------------------------',Level=4)
 
@@ -1149,15 +1197,15 @@ CONTAINS
           !------------------------------------------------------------------
           ! Deformation gradient etc. evaluated using the current solution:
           !------------------------------------------------------------------
+          Grad = 0.0d0
           IF (AxialSymmetry) THEN
-             Grad = 0.0d0
              Grad(1,1) = SUM( LocalDisplacement(1,1:ntot) * dBasisdx(1:ntot,1) )
              Grad(1,3) = SUM( LocalDisplacement(1,1:ntot) * dBasisdx(1:ntot,2) ) 
              Grad(2,2) = 1.0d0/r * SUM( LocalDisplacement(1,1:ntot) * Basis(1:ntot) )
              Grad(3,1) = SUM( LocalDisplacement(2,1:ntot) * dBasisdx(1:ntot,1) )
              Grad(3,3) = SUM( LocalDisplacement(2,1:ntot) * dBasisdx(1:ntot,2) )
           ELSE           
-             Grad = MATMUL(LocalDisplacement(:,1:ntot),dBasisdx)
+             Grad(1:dim,1:dim) = MATMUL(LocalDisplacement(1:dim,1:ntot),dBasisdx(1:ntot,1:dim))
           END IF
           DefG = Identity + Grad
           Strain = (TRANSPOSE(Grad)+Grad+MATMUL(TRANSPOSE(Grad),Grad))/2.0D0
@@ -1393,7 +1441,7 @@ CONTAINS
   SUBROUTINE NeoHookeanLocalMatrix( MassMatrix,DampMatrix,StiffMatrix,ForceVector, &
        LoadVector, InertialLoad, NodalYoung, NodalPoisson, NodalDensity, NodalDamping, &
        AxialSymmetry, PlaneStress, NodalHeatExpansion, NodalTemperature, Element, n, ntot, &
-       Nodes, LocalDisplacement )
+       Nodes, LocalDisplacement, MixedFormulation )
 !------------------------------------------------------------------------------
 
     REAL(KIND=dp) :: StiffMatrix(:,:),MassMatrix(:,:),DampMatrix(:,:), &
@@ -1403,7 +1451,7 @@ CONTAINS
     REAL(KIND=dp) :: LocalDisplacement(:,:)
     REAL(KIND=dp), DIMENSION(:) :: ForceVector,NodalPoisson
 
-    LOGICAL :: AxialSymmetry, PlaneStress
+    LOGICAL :: AxialSymmetry, PlaneStress, MixedFormulation
 
     TYPE(Element_t) :: Element
     TYPE(Nodes_t) :: Nodes
@@ -1415,7 +1463,7 @@ CONTAINS
     REAL(KIND=dp) :: dBasisdx(ntot,3),SqrtElementMetric
 
     REAL(KIND=dp) :: Force(3), InertialForce(3), NodalLame1(n),NodalLame2(n),Density, &
-         Damping,Lame1,Lame2
+         Damping,Lame1,Lame2,NodalPressure(ntot),Pressure,NodalPressurePar(n),PressurePar
     REAL(KIND=dp) :: Grad(3,3),InvC(3,3),Identity(3,3),DetDefG,CofG(3,3),TrueForce(3)
     REAL(KIND=dp) :: DefG(3,3), InvDefG(3,3),Strain(3,3), Stress2(3,3), Stress1(3,3)
     REAL(KIND=dp) :: dDefG(3,3),dStrain(3,3),dStress2(3,3),dStress1(3,3)
@@ -1425,7 +1473,7 @@ CONTAINS
     REAL(KIND=dp), DIMENSION(3,3) :: HeatExpansion
     REAL(KIND=dp) :: s,u,v,w,r
 
-    INTEGER :: i,j,k,l,p,q,t,dim,cdim
+    INTEGER :: i,j,k,l,p,q,t,dim,cdim,DOFs
 
     INTEGER :: N_Integ
 
@@ -1444,12 +1492,39 @@ CONTAINS
        dim = cdim
     END IF
 
-    IF ( PlaneStress ) THEN
-       NodalLame1(1:n) = NodalYoung(1,1,1:n) * NodalPoisson(1:n) /  &
-            ( (1.0d0 - NodalPoisson(1:n)**2) )
+    !------------------------------------------------------------------------------
+    ! If the mixed formulation is employed, the auxiliary variable is used to
+    ! handle the terms that would grow without a limit as the Poisson ratio approaches
+    ! the value 1/2. The code used in the standard case is reused by redefining 
+    ! the Lame parameter mu and adding remaining terms afterwards.
+    !------------------------------------------------------------------------------
+    IF (MixedFormulation) THEN
+
+      IF (PlaneStress) CALL Warn( 'ElasticSolve',  &
+          'Mixed formulation does not support plane stress: plane strain assumed instead' )
+
+      DOFs = cdim + 1
+      ! To reuse the code, set the lambda parameter to zero and instead
+      ! introduce the epsilon parameter = 1/lambda:
+      NodalLame1(1:n) = 0.0d0
+      IF ( ALL( ABS(NodalPoisson(1:n)) < AEPS ) ) THEN
+        CALL Fatal( 'ElasticSolve',  &
+            'Mixed formulation with the zero Poisson ratio is not allowed' )
+      ELSE
+        NodalPressurePar(1:n) = (1.0d0 + NodalPoisson(1:n)) * (1.0d0 - 2.0d0*NodalPoisson(1:n)) / &
+            ( NodalYoung(1,1,1:n) * NodalPoisson(1:n)  )
+      END IF
+       
     ELSE
-       NodalLame1(1:n) = NodalYoung(1,1,1:n) * NodalPoisson(1:n) /  &
+      DOFs = cdim
+
+      IF ( PlaneStress ) THEN
+        NodalLame1(1:n) = NodalYoung(1,1,1:n) * NodalPoisson(1:n) /  &
+            ( (1.0d0 - NodalPoisson(1:n)**2) )
+      ELSE
+        NodalLame1(1:n) = NodalYoung(1,1,1:n) * NodalPoisson(1:n) /  &
             (  (1.0d0 + NodalPoisson(1:n)) * (1.0d0 - 2.0d0*NodalPoisson(1:n)) )
+      END IF
     END IF
 
     NodalLame2(1:n) = NodalYoung(1,1,1:n)  / ( 2* (1.0d0 + NodalPoisson(1:n)) )
@@ -1481,7 +1556,7 @@ CONTAINS
        !------------------------------------------------------------------------------
        !     Basis function values & derivatives at the integration point
        !------------------------------------------------------------------------------
-       stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric, Basis,dBasisdx )
+       stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis,dBasisdx )
 
        s = SqrtElementMetric * S_Integ(t)
        IF (AxialSymmetry) THEN
@@ -1502,21 +1577,26 @@ CONTAINS
        !-----------------------------------------------------------------------
        Lame1 = SUM( NodalLame1(1:n)*Basis(1:n) )
        Lame2 = SUM( NodalLame2(1:n)*Basis(1:n) )
+       IF (MixedFormulation) THEN
+         Pressure = SUM( LocalDisplacement(DOFs,1:n) * Basis(1:n) )   
+         Lame2 = Lame2 + Pressure
+       END IF
+
        Density = SUM( NodalDensity(1:n)*Basis(1:n) )
        Damping = SUM( NodalDamping(1:n)*Basis(1:n) )
 
        !--------------------------------------------------------------------
        ! Compute the formulation variables for the current solution iterate
        !--------------------------------------------------------------------
+       Grad = 0.0d0
        IF (AxialSymmetry) THEN
-          Grad = 0.0d0
           Grad(1,1) = SUM( LocalDisplacement(1,1:ntot) * dBasisdx(1:ntot,1) )
           Grad(1,3) = SUM( LocalDisplacement(1,1:ntot) * dBasisdx(1:ntot,2) ) 
           Grad(2,2) = 1.0d0/r * SUM( LocalDisplacement(1,1:ntot) * Basis(1:ntot) )
           Grad(3,1) = SUM( LocalDisplacement(2,1:ntot) * dBasisdx(1:ntot,1) )
           Grad(3,3) = SUM( LocalDisplacement(2,1:ntot) * dBasisdx(1:ntot,2) )
        ELSE           
-          Grad = MATMUL(LocalDisplacement(:,1:ntot),dBasisdx)
+          Grad(1:dim,1:dim) = MATMUL(LocalDisplacement(1:dim,1:ntot),dBasisdx(1:ntot,1:dim))
        END IF
        DefG = Identity + Grad
 
@@ -1609,7 +1689,7 @@ CONTAINS
              dStress1 = MATMUL(Grad,Stress2) + MATMUL(DefG,dStress2)
 
              IF (AxialSymmetry) THEN
-                ForceVector(cdim*(p-1)+i) = ForceVector(cdim*(p-1)+i) &
+                ForceVector(DOFs*(p-1)+i) = ForceVector(DOFs*(p-1)+i) &
                      +(Basis(p)*Force(i)*DetDefG &
                      +Basis(p)*InertialForce(i)*Density &
                      -DDOT_PRODUCT(Grad,Stress1,dim) &
@@ -1619,19 +1699,19 @@ CONTAINS
                    DO j = 1,cdim
                       SELECT CASE(j)
                       CASE(1)
-                         StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
-                              = StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
+                         StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
+                              = StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
                               + (dBasisdx(q,1)*dStress1(1,1) + dBasisdx(q,2)*dStress1(1,3) &
                               + 1.0d0/r*Basis(q)*dStress1(2,2))*s
                       CASE(2)
-                         StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
-                              = StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
+                         StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
+                              = StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
                               + (dBasisdx(q,1)*dStress1(3,1) + dBasisdx(q,2)*dStress1(3,3) ) * s
                       END SELECT
                    END DO
                 END DO
              ELSE               
-                ForceVector(dim*(p-1)+i) = ForceVector(dim*(p-1)+i) &
+                ForceVector(DOFs*(p-1)+i) = ForceVector(DOFs*(p-1)+i) &
                      +(Basis(p)*Force(i)*DetDefG &
                      +Basis(p)*InertialForce(i)*Density &
                      -DOT_PRODUCT(dBasisdx(p,:),Stress1(i,:)) &
@@ -1639,8 +1719,8 @@ CONTAINS
 
                 DO q = 1,ntot
                    DO j = 1,dim
-                      StiffMatrix(dim*(p-1)+i,dim*(q-1)+j) &
-                           = StiffMatrix(dim*(p-1)+i,dim*(q-1)+j) &
+                      StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
+                           = StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
                            + DOT_PRODUCT(dBasisdx(q,:),dStress1(j,:))*s
                    END DO
                 END DO
@@ -1654,8 +1734,8 @@ CONTAINS
        DO p = 1,ntot
           DO q = 1,ntot
              DO i = 1,cdim
-                MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
-                     = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                MassMatrix(DOFs*(p-1)+i,DOFs*(q-1)+i) &
+                     = MassMatrix(DOFs*(p-1)+i,DOFs*(q-1)+i) &
                      + Basis(p)*Basis(q)*Density*s
              END DO
           END DO
@@ -1665,10 +1745,130 @@ CONTAINS
        !      Utilize the Rayleigh damping:
        !-------------------------------------
        DampMatrix = Damping * MassMatrix
+       
+       !-------------------------------------------------------------------------------
+       ! Add remaining terms which relate to having the pressure variable as an unknown: 
+       !-------------------------------------------------------------------------------
+       IF (MixedFormulation) THEN 
 
-    END DO
+         PressurePar = SUM( NodalPressurePar(1:n)*Basis(1:n) )
+         Grad = DefG - Identity
+
+         !-------------------------------------------------------------
+         ! The constraint equation to determine the pressure variable:
+         !-------------------------------------------------------------
+         DO p = 1,n
+           ! Use Newton's method:
+           ForceVector(DOFs*p) = ForceVector(DOFs*p) - 0.5d0 * (DetDefG**2 - 1.0d0) * Basis(p) * s + &
+               DetDefG**2 * TRACE(MATMUL(Grad,InvDefG),dim) * Basis(p) * s
+
+           DO q = 1,ntot
+             DO i = 1,cdim
+               IF (AxialSymmetry) THEN
+                 SELECT CASE(i)
+                 CASE(1)
+                   StiffMatrix(DOFs*p,DOFs*(q-1)+i) = StiffMatrix(DOFs*p,DOFs*(q-1)+i) + &
+                       DetDefG**2 * ( dBasisdx(q,1) * InvDefG(1,1) + dBasisdx(q,2) * InvDefG(3,1) + &
+                       Basis(q)/r * InvDefG(2,2) ) *  Basis(p) * s
+                 CASE(2)
+                   StiffMatrix(DOFs*p,DOFs*(q-1)+i) = StiffMatrix(DOFs*p,DOFs*(q-1)+i) + &
+                       DetDefG**2 * ( dBasisdx(q,1) * InvDefG(1,3) + dBasisdx(q,2) * InvDefG(3,3) ) * &
+                       Basis(p) * s                  
+                 END SELECT
+               ELSE
+                 ! Use Newton's method:
+                 StiffMatrix(DOFs*p,DOFs*(q-1)+i) = StiffMatrix(DOFs*p,DOFs*(q-1)+i) + DetDefG**2 * &
+                     SUM( dBasisdx(q,1:cdim) * InvDefG(1:cdim,i) ) *  Basis(p) * s
+               END IF
+             END DO
+
+             IF (q > n) CYCLE
+             StiffMatrix(DOFs*p,DOFs*q) = StiffMatrix(DOFs*p,DOFs*q) + PressurePar * Basis(p) * Basis(q) * s
+
+           END DO
+         END DO
+
+         !-------------------------------------------------------------
+         ! Modify rows corresponding to the displacements:
+         !-------------------------------------------------------------
+         DO p = 1,ntot
+           DO i = 1,cdim
+             !------------------------------------------------------------------------
+             ! Grad will now be the velocity gradient corresponding to the velocity
+             ! test function
+             ! -----------------------------------------------------------------------
+             Grad = 0.0d0
+
+             IF (AxialSymmetry) THEN
+               SELECT CASE(i)
+               CASE (1)
+                 Grad(1,1) = dBasisdx(p,1)
+                 Grad(1,3) = dBasisdx(p,2)
+                 Grad(2,2) = 1.0d0/r * Basis(p)
+               CASE (2)
+                 Grad(3,1) = dBasisdx(p,1)
+                 Grad(3,3) = dBasisdx(p,2)                   
+               END SELECT
+
+             ELSE
+               Grad(i,:) = dBasisdx(p,:)
+             END IF
+
+             ForceVector(DOFs*(p-1)+i) = ForceVector(DOFs*(p-1)+i) &
+                 + Pressure * dBasisdx(p,i) * s &
+                 - Pressure * DDOT_PRODUCT(TRANSPOSE(InvDefG),Grad,dim) * s
+
+             IF ( AxialSymmetry .AND. (i==1) ) ForceVector(DOFs*(p-1)+i) = &
+                 ForceVector(DOFs*(p-1)+i) + Pressure * Basis(p)/r * s
+
+             DO q = 1,ntot
+               DO j = 1,cdim
+                 IF (AxialSymmetry) THEN
+                   SELECT CASE(j)
+                   CASE(1)
+                     StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
+                         = StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
+                         - Pressure * ( dBasisdx(q,1) * Grad(1,1) &
+                         + dBasisdx(q,2) * Grad(1,3) &
+                         + Basis(q)/r * Grad(2,2) ) * s 
+                   CASE(2)
+                     StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
+                         = StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
+                         - Pressure * ( dBasisdx(q,1) * Grad(3,1) &
+                         + dBasisdx(q,2) * Grad(3,3) ) * s 
+                   END SELECT
+                 ELSE
+                   StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
+                       = StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+j) &
+                       - Pressure * DOT_PRODUCT(dBasisdx(q,:),Grad(j,:))*s
+                 END IF
+               END DO
+
+               IF (q <= n) THEN
+                 StiffMatrix(DOFs*(p-1)+i,DOFs*q) &
+                     = StiffMatrix(DOFs*(p-1)+i,DOFs*q) - Basis(q) * &
+                     DDOT_PRODUCT(TRANSPOSE(InvDefG),Grad,dim) * s 
+               END IF
+
+             END DO
+           END DO
+         END DO
+       END IF
+     END DO
+
+     IF (MixedFormulation) THEN 
+        ! Use just the lowest-order basis for the pressure variable:
+        DO p = n+1,ntot
+           i = DOFs * p
+           ForceVector(i)   = 0.0d0
+           StiffMatrix(i,:) = 0.0d0
+           StiffMatrix(:,i) = 0.0d0       
+           StiffMatrix(i,i) = 1.0d0
+        END DO
+     END IF
+
 !------------------------------------------------------------------------------
-  END SUBROUTINE NeoHookeanLocalMatrix
+   END SUBROUTINE NeoHookeanLocalMatrix
 !------------------------------------------------------------------------------
 
 
@@ -1677,7 +1877,7 @@ CONTAINS
        NodalSpringCoeff,NormalSpring,NodalAlpha,NodalBeta,LocalDisplacement,Element,n,ntot, &
        Parent,pn,pntot,ParentNodes,Flow,fn,FlowNodes,Velocity,Pressure,NodalViscosity, &
        NodalDensity, CompressibilityDefined, AxialSymmetry, NormalTangential, &
-       PseudoTraction)
+       PseudoTraction, MixedFormulation)
 !------------------------------------------------------------------------------
     USE Integration
     USE LinearAlgebra
@@ -1689,7 +1889,7 @@ CONTAINS
     TYPE(Nodes_t) :: ParentNodes,FlowNodes
     INTEGER :: n,ntot,pn,pntot,fn
     LOGICAL :: NormalSpring, CompressibilityDefined, AxialSymmetry, NormalTangential
-    LOGICAL :: PseudoTraction
+    LOGICAL :: PseudoTraction, MixedFormulation
 !----------------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(ntot)
     REAL(KIND=dp) :: dBasisdx(ntot,3),SqrtElementMetric, MetricTerm
@@ -1708,7 +1908,7 @@ CONTAINS
     REAL(KIND=dp) :: SpringCoeff(3,3)
     REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
 
-    INTEGER :: i,j,t,q,p,dim,N_Integ
+    INTEGER :: i,j,t,q,p,dim,N_Integ,DOFs
 
     LOGICAL :: stat,pstat
 
@@ -1720,6 +1920,11 @@ CONTAINS
     CALL GetElementNodes( Nodes )
 
     dim = CoordinateSystemDimension()
+    IF (MixedFormulation) THEN
+      DOFs = dim + 1
+    ELSE
+      DOFs = dim
+    END IF
 
     Identity = 0.0D0
     DO i = 1,dim
@@ -1781,7 +1986,7 @@ CONTAINS
        ! --------------------------------------------------------------------------------
        Grad = 0.0d0
        DefG = 0.0d0
-       Grad = MATMUL(LocalDisplacement(:,1:pntot),PdBasisdx)
+       Grad(1:dim,1:dim) = MATMUL(LocalDisplacement(1:dim,1:pntot),PdBasisdx(1:pntot,1:dim))
        DefG = Identity + Grad
 
        SELECT CASE( dim )
@@ -1852,7 +2057,7 @@ CONTAINS
        END IF
        DO q=1,ntot
           DO i=1,dim
-             BoundaryVector((q-1)*dim+i) = BoundaryVector((q-1)*dim+i) + &
+             BoundaryVector((q-1)*DOFs+i) = BoundaryVector((q-1)*DOFs+i) + &
                   s * Basis(q) * Force(i)
           END DO
        END DO
@@ -1868,7 +2073,7 @@ CONTAINS
           ! ----------------------------------------------------------------------------
           DO q=1,ntot
              DO i=1,dim
-                BoundaryVector((q-1)*dim+i) = BoundaryVector((q-1)*dim+i) + &
+                BoundaryVector((q-1)*DOFs+i) = BoundaryVector((q-1)*DOFs+i) + &
                      s * Basis(q) * Force(i)
              END DO
           END DO
@@ -1881,7 +2086,7 @@ CONTAINS
           ! ---------------------------------------------------------------------------------------
           DO q=1,ntot
              DO i=1,dim
-                BoundaryVector((q-1)*dim+i) = BoundaryVector((q-1)*dim+i) + &
+                BoundaryVector((q-1)*DOFs+i) = BoundaryVector((q-1)*DOFs+i) + &
                      s * Basis(q) * Force(i) * MetricTerm
              END DO
           END DO
@@ -1897,7 +2102,7 @@ CONTAINS
              DO i=1,dim 
                 DO q=1,ntot
                    DO j=1,dim 
-                      BoundaryMatrix((p-1)*dim+i,(q-1)*dim+j) = BoundaryMatrix((p-1)*dim+i,(q-1)*dim+j) + &
+                      BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) = BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) + &
                            SpringCoeff(1,1) * Basis(q) * RefNormal(j) * Basis(p) * RefNormal(i) * s
                    END DO
                 END DO
@@ -1914,7 +2119,7 @@ CONTAINS
              DO i=1,dim 
                 DO q=1,ntot
                    DO j=1,dim 
-                      BoundaryMatrix((p-1)*dim+i,(q-1)*dim+j) = BoundaryMatrix((p-1)*dim+i,(q-1)*dim+j) + &
+                      BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) = BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) + &
                            SpringCoeff(i,j) * Basis(q) * Basis(p) * s
                    END DO
                 END DO
@@ -1933,8 +2138,8 @@ CONTAINS
           DO p=1,ntot
              DO q=1,ntot
                 DO i=1,dim
-                   BoundaryMatrix((p-1)*dim+i,(q-1)*dim+i) =  &
-                        BoundaryMatrix((p-1)*dim+i,(q-1)*dim+i) + &
+                   BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+i) =  &
+                        BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+i) + &
                         s * Alpha(i) * Basis(q) * Basis(p)
                 END DO
              END DO
@@ -2083,8 +2288,7 @@ CONTAINS
           stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx ) 
           Weight = Weight * detJ
 
-          Grad = 0.0d0
-          Grad = MATMUL( LocalDisplacement(1:dim,1:nd), dBasisdx(1:nd,1:dim) )
+          Grad = MATMUL( LocalDisplacement(:,1:nd), dBasisdx(1:nd,:) )
           IF (AxialSymmetry) THEN
              r = SUM(Basis(1:n) * Nodes % x(1:n))
              Grad(3,3) = 1.0d0/r * SUM(LocalDisplacement(1,1:nd) * Basis(1:nd))
@@ -2463,13 +2667,14 @@ CONTAINS
 !----------------------------------------------------------------------------------------------
   SUBROUTINE ComputeStressAndStrain( Displacement, NodalStrain, NodalStress, VonMises, Perm, &
        PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, AxialSymmetry, &
-       NeoHookeanMaterial, CalculateStrains, CalculateStresses, CalcPrincipal, CalcPrincipalAngle)
+       NeoHookeanMaterial, CalculateStrains, CalculateStresses, CalcPrincipal, &
+       CalcPrincipalAngle, MixedFormulation)
 !--------------------------------------------------------------------------------
     REAL(KIND=dp) :: Displacement(:), NodalStrain(:), NodalStress(:), VonMises(:), &
          PrincipalStress(:), PrincipalStrain(:), Tresca(:), PrincipalAngle(:) 
     INTEGER, POINTER :: Perm(:)
     LOGICAL :: CalculateStrains, CalculateStresses, CalcPrincipal, CalcPrincipalAngle, &
-         NeoHookeanMaterial, AxialSymmetry
+         NeoHookeanMaterial, AxialSymmetry, MixedFormulation
 !--------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: StSolver
     TYPE(Nodes_t) :: Nodes
@@ -2479,7 +2684,7 @@ CONTAINS
 
     INTEGER, POINTER :: Permutation(:), Indeces(:)
 
-    INTEGER :: dim, cdim, n, nd, elem, i, j, k, l, p, q, t, Ind(9), StrainDim
+    INTEGER :: dim, cdim, n, nd, elem, i, j, k, l, p, q, t, Ind(9), StrainDim, DOFs
 
     REAL(KIND=dp), POINTER :: StressTemp(:)
     REAL(KIND=dp), ALLOCATABLE :: ForceG(:), SForceG(:), LocalDisplacement(:,:), &
@@ -2488,7 +2693,7 @@ CONTAINS
 
     REAL(KIND=dp) :: Strain(3,3), Stress(3,3), Stress2(3,3), Grad(3,3), DefG(3,3), Identity(3,3), &
          InvC(3,3), InvDefG(3,3), u, v, w, Weight, detJ, res, Lame1, Lame2, nu, DetDefG, G(6,6), r, &
-         ScalePar
+         ScalePar, Pres
 
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, &
          Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize, PlaneStress, &
@@ -2515,9 +2720,15 @@ CONTAINS
        dim = cdim
     END IF
 
+    IF (MixedFormulation) THEN
+      DOFs = cdim + 1 
+    ELSE
+      DOFs = cdim
+    END IF
+
     n = Solver % Mesh % MaxElementDOFs
     ALLOCATE( Indeces(n), &
-         LocalDisplacement(3,n), &
+         LocalDisplacement(4,n), &
          Mass(n,n), &
          Force(6*n), &
          SForce(6*n), &
@@ -2604,7 +2815,7 @@ CONTAINS
     END IF
     CALL DefaultInitialize()
 
-        !------------------------------------------------------------------------
+    !------------------------------------------------------------------------
     ! Assembly loop 
     !------------------------------------------------------------------------
     DO elem = 1, Solver % NumberOfActiveElements
@@ -2678,21 +2889,25 @@ CONTAINS
 
        PoissonRatio = 0.0d0
        IF (Isotropic) THEN
-          PoissonRatio(1:n) = ListGetReal( Material, &
-               'Poisson Ratio', n, Indeces )
-          !-----------------------------------------------------------------------------------
-          ! In the case of plane stress alter the definition of the Lame (lambda) parameter
-          ! so that the plane stress components are directly obtained in terms of the
-          ! plane strain components. The strain E_33 can then be expressed as
-          ! E_33 = -nu/(1-nu)(E_11 + E_22).
-          !-----------------------------------------------------------------------------------
-          PlaneStress = GetLogical( Equation, 'Plane Stress', Found )
-          IF ( PlaneStress ) THEN
-             NodalLame1(1:n) = ElasticModulus(1,1,1:n) * PoissonRatio(1:n) /  &
-                  ( (1.0d0 - PoissonRatio(1:n)**2) )
+          PoissonRatio(1:n) = ListGetReal( Material, 'Poisson Ratio', n, Indeces )
+          IF (MixedFormulation) THEN
+            NodalLame1(1:n) = 0.0d0
+            PlaneStress = .FALSE.
           ELSE
-             NodalLame1(1:n) = ElasticModulus(1,1,1:n) * PoissonRatio(1:n) /  &
+            !-----------------------------------------------------------------------------------
+            ! In the case of plane stress alter the definition of the Lame (lambda) parameter
+            ! so that the plane stress components are directly obtained in terms of the
+            ! plane strain components. The strain E_33 can then be expressed as
+            ! E_33 = -nu/(1-nu)(E_11 + E_22).
+            !-----------------------------------------------------------------------------------
+            PlaneStress = GetLogical( Equation, 'Plane Stress', Found )
+            IF ( PlaneStress ) THEN
+              NodalLame1(1:n) = ElasticModulus(1,1,1:n) * PoissonRatio(1:n) /  &
+                  ( (1.0d0 - PoissonRatio(1:n)**2) )
+            ELSE
+              NodalLame1(1:n) = ElasticModulus(1,1,1:n) * PoissonRatio(1:n) /  &
                   (  (1.0d0 + PoissonRatio(1:n)) * (1.0d0 - 2.0d0*PoissonRatio(1:n)) )
+            END IF
           END IF
           NodalLame2(1:n) = ElasticModulus(1,1,1:n)  / ( 2* (1.0d0 + PoissonRatio(1:n)) )
        END IF
@@ -2738,7 +2953,7 @@ CONTAINS
           END IF
 
           Grad = 0.0d0
-          Grad = MATMUL( LocalDisplacement(1:cdim,1:nd), dBasisdx(1:nd,1:cdim) )
+          Grad(1:cdim,1:cdim) = MATMUL( LocalDisplacement(1:cdim,1:nd), dBasisdx(1:nd,1:cdim) )
           IF (AxialSymmetry) THEN
              r = SUM(Basis(1:n) * Nodes % x(1:n))
              Grad(3,3) = 1.0d0/r * SUM(LocalDisplacement(1,1:nd) * Basis(1:nd))
@@ -2761,6 +2976,11 @@ CONTAINS
                Strain(3,3) = -nu/(1.0d0-nu)*(Strain(1,1)+Strain(2,2))
 
           IF (NeoHookeanMaterial) THEN
+             IF (MixedFormulation) THEN
+               Pres = -SUM(LocalDisplacement(DOFs,1:n) * Basis(1:n))
+             ELSE
+               Pres = Lame1/2.0d0 * (DetDefG - 1.0d0) * (DetDefG + 1.0d0)
+             END IF
              InvC = MATMUL( TRANSPOSE(DefG), DefG )
              InvDefG = DefG
              !-------------------------------------------------------------
@@ -2771,8 +2991,7 @@ CONTAINS
              !-------------------------------------------------------------
              ! The second Piola-Kirchhoff stress for the current iterate
              !--------------------------------------------------------------
-             Stress2 = Lame1/2.0d0 * (DetDefG - 1.0d0) * (DetDefG + 1.0d0) * InvC + &
-                  Lame2 * (Identity - InvC)
+             Stress2 =  Pres * InvC + Lame2 * (Identity - InvC)
           ELSE
              IF (.NOT. Isotropic) THEN
                 CALL Strain2Stress(Stress2, Strain, G, dim, .FALSE.) 

@@ -39,7 +39,6 @@ Simulation
   Timestep Sizes = 0.001 
   TimeStep Intervals = 2 !300 
   Output Intervals = 1
-  Post File = "case.vtu"
 
   Simulation Timing = Logical True
 End
@@ -190,6 +189,19 @@ Solver 5
   Variable 1 = coupled iter 
 End  
 
+
+Solver 6
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+
+  Output File Name = case
+  Vtu format = Logical True
+  Save Geometry IDs = True
+
+! Supress saving of lines
+  Minimum Mesh Dimension = Integer 2
+End
+
 Equation 1
   Navier-Stokes = True
   Mesh Update = True
@@ -307,7 +319,5 @@ End
 Solver 4 :: Reference Norm = Real 0.14981507E-05
 Solver 4 :: Reference Norm Tolerance = Real 1.0e-4
 
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.14981507E-05,EPS=5.0E-5\n");
 

@@ -11,7 +11,7 @@ $ intervals = 20
 $ tsize = 1/(f*intervals)
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
 
@@ -181,7 +181,5 @@ End
 
 Solver 2 :: Reference Norm = Real 0.52693342E-01
 Solver 2 :: Reference Norm Tolerance = Real 1e-3
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.52693342E-01,EPS=1e-3\n" );
 

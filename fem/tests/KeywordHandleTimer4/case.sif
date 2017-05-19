@@ -1,0 +1,118 @@
+! Test case for handles that make code simpler
+! Test case is compared against legacy advection-diffusion equation
+! This is a steady state case.
+! The version where the handles are initialized.
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = Cartesian
+  Simulation Type = Steady State 
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = "case.ep"
+
+  Simulation Timing = Logical True
+  Timer Results = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 3
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+
+Solver 1
+!  Exec Solver = never
+
+  Equation = KeywordTimer
+  Variable = ConsB
+  Variable DOFs = 1
+  Procedure = "./KeywordCompareBC" "KeywordCompare"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+! Stabilize = False  ! this is default
+
+  Solver Timing = True
+  Timer Sweeps = Integer 100
+End
+
+
+Body Force 1 
+  Name = "BodyForce" 
+
+  Logical Value D = Logical True  
+  Integer Value D = Integer 1  
+End 
+
+Material 1
+  Name = "Material"
+End
+
+
+Boundary Condition 1
+  Name = "BC1"
+  Target Boundaries = 1
+  Logical Value A = Logical True
+  Integer Value B = Integer 1
+  Float Value C = Real 1.0
+  String Value D = String "string target d"
+End
+
+Boundary Condition 2
+  Name = "BC2"
+  Target Boundaries = 2
+  Logical Value A = Logical False
+  Integer Value B = Integer 2
+  Float Value C = Real 2.0
+  String Value D = String "string target something else"
+End
+
+Boundary Condition 3
+  Name = "BC3"
+  Target Boundaries = 3
+End
+
+
+
+
+Solver 1 :: Reference Norm = Real 1.0
+
+
+!End Of File
+

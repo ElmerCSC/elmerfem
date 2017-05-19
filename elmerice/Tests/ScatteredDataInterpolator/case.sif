@@ -1,0 +1,199 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! Test case for the Scattered2DDataInterpolator
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+echo off
+$Lx = 200.0e3
+$Ly = 50.0e03
+
+
+$ function zs(tx) {\
+  Lx = 200.0e3;\
+  Ly = 50.0e03;\
+  _zs=500.0-1.0e-03*tx(0)+20.0*(sin(3.0*pi*tx(0)/Lx)*sin(2.0*pi*tx(1)/Ly));\
+}
+
+
+Header
+  Mesh DB "." "mesh2D"
+End
+
+
+Constants
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+!  Output File = "Reference.result"
+  Post File = "Reference.vtu"
+  max output level = 4
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+!!! The true variable
+  TZs = Variable Coordinate 1, Coordinate 2
+     REAL MATC "zs(tx)"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+!!!! solver just here to create the variables via Exported Variable...
+  Exec Solver = never
+  Equation = "Navier-Stokes"
+  
+  !Stabilization Method = String Bubbles
+
+  Stabilize = logical True
+  flow model = Stokes
+
+
+  Exported Variable 1 = TZs
+  Exported Variable 1 DOFS = 1
+
+  Exported Variable 2 = ZsNNI
+  Exported Variable 2 DOFS = 1
+
+  Exported Variable 3 = ZsNNIW
+  Exported Variable 3 DOFS = 1
+  
+  Exported Variable 4 = ZsNNINS
+  Exported Variable 4 DOFS = 1
+
+  Exported Variable 5 = ZsLin
+  Exported Variable 5 DOFS = 1
+
+  Exported Variable 6 = ZsFlight
+  Exported Variable 6 DOFS = 1
+
+  Exported Variable 7 = ZsCS
+  Exported Variable 7 DOFS = 1
+End
+
+Solver 2
+  Exec Solver = Before simulation
+
+  Equation = "ScatteredInter"
+
+  procedure = "Scattered2DDataInterpolator" "Scattered2DDataInterpolator"
+
+  CheckNaN = Logical True ! Default True; check is interpolation method gives NaN 
+	! By default replace NaN by nearest available value
+	! We can replace NaNs by Real value with following flag
+  !Replace NaN by = Real -9999999 
+
+!!!!! NNI or linear (nn-c library)
+
+ ! Default Sibson interpolation
+  Variable 1 = String "ZsNNI"
+  Variable 1 data file = File "Rand200.txt"
+
+  Variable 2 = String "ZsNNIW"
+  Variable 2 data file = File "Rand200.txt"
+  Variable 2 W = Real 0.
+! W restricts extrapolation by assigning minimal allowed
+!    weight for a vertex (normally "-1" or so; lower
+!    values correspond to lower reliability; "0" means
+!    no extrapolation)
+! Default W=-HUGE(RealNumber);i.e. extrapolation allowed
+
+
+  Variable 3 = String "ZsNNINS"
+  Variable 3 data file = File "Rand200.txt"
+  Variable 3 method = String "ns"
+ ! method Non-Sibsonian interpolation (nn-c); W can be applied here too
+  
+  Variable 4 = String "ZsLin"
+  Variable 4 data file = File "Rand200.txt"
+  Variable 4 method = String "li"
+ ! method linear interpolation (nn-c); W no effect here
+
+  Variable 5 = String "ZsFlight"
+  Variable 5 data file = File "FlightLines.txt"
+
+
+!!!!! Cubic spline (csa-c library)
+  Variable 6 = String "ZsCS"
+  Variable 6 data file = File "Rand200.txt"
+  Variable 6 method = String "cs"
+ ! method cubic spline (csa)
+  Variable 6 nppc = integer 5
+!set the average number of points per cell (default = 5,
+!works best for uniform data. Decrease to get smaller
+!               cells or increase to get larger cells)
+  Variable 6 k = integer 140
+! set the spline sensitivity (default = 140, reduce to get
+!                     smoother results)
+End
+
+Solver 3
+  Equation = SaveScalars
+  Procedure =  "SaveData" "SaveScalars"
+  Filename = f.dat
+  Show Norm Index = Integer 1
+  Variable 1 = String "ZsNNI"
+  Operator 1 = mean
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(2) = 1  2 3
+  NS Convect = Logical False
+End
+
+
+Solver 3 :: Reference Norm = Real 3.99292792E+02
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=3.99292792E+02,EPS:1E-06\n" );
+
+Solver 3 :: Reference Norm = Real 3.99776706E+02
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 2\n");
+Solver 3 :: Variable 1 = String "ZsNNIW"
+RUN
+$fprintf( stderr, "END TEST CASE 2: Target NRM=3.99776706E+02,EPS=1E-06\n" );
+
+Solver 3 :: Reference Norm = Real 3.99535167E+02
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 3\n");
+Solver 3 :: Variable 1 = String "ZsNNINS"
+RUN
+$fprintf( stderr, "END TEST CASE 3: Target NRM=3.99535167E+02,EPS=1E-06\n" );
+
+Solver 3 :: Reference Norm = Real 3.99802063E+02
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 4\n");
+Solver 3 :: Variable 1 = String "ZsLin"
+RUN
+$fprintf( stderr, "END TEST CASE 4: Target NRM=3.99802063E+02,EPS=1E-06\n" );
+
+Solver 3 :: Reference Norm = Real 4.00443274E+02
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 5\n");
+Solver 3 :: Variable 1 = String "ZsFlight"
+RUN
+$fprintf( stderr, "END TEST CASE 5: Target NRM=4.00443274E+02,EPS=1E-06\n" );
+
+Solver 3 :: Reference Norm = Real 3.99996794E+02
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 6\n");
+Solver 3 :: Variable 1 = String "ZsCS"
+RUN
+$fprintf( stderr, "END TEST CASE 6: Target NRM=3.99996794E+02,EPS=1E-06\n" );

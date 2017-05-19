@@ -1,0 +1,181 @@
+! This test case demonstrates the use of nonlinear timestepping
+! with cranck nicolsen. You may try to commit out the "nonlinear timestepping" 
+! and notice significant worsening in convergence. 
+!
+! Here instead of using Boussinesq approximation the linear thermal law
+! for flow is used. 
+!
+! Test case added because user problems on forum
+! P.R. 14.12.2016
+
+$ relax = 0.666
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 30
+  Timestepping Method = newmark
+  Newmark Beta = 0.5
+  Timestep intervals(1) = 10
+  Timestep Sizes(1) = 10.0
+  Output Intervals(1) = 0 
+
+  Post File = case.vtu
+
+!  Output File = case.result
+!  Binary Output = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial condition = 1
+End
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = -dofs 1 Temperature
+  Stabilize = False
+  Bubbles = True
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-3
+
+  Nonlinear Timestepping = Logical True
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 10003
+  Nonlinear System Newton After Tolerance = 0.0e-3
+  Nonlinear System Relaxation Factor = $ relax
+
+  Linear System Symmetric = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+End
+
+Solver 2
+  Equation = N-S
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Stabilize = False
+  Bubbles = True
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-3
+
+  Nonlinear Timestepping = Logical True
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 10000
+  Nonlinear System Newton After Tolerance = 0.0e-3
+  Nonlinear System Relaxation Factor = $ relax
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = Bicgstabl
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU2
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 10
+End
+
+Equation 1
+  Name = "Natural Convection"
+  Convection = Computed
+  Active Solvers(2) = 1 2
+End
+
+$t0=295.0
+Material 1
+  Name = "Water (room temperature)"
+  Heat Conductivity = 0.58
+  Heat Capacity = 4183.0
+  Density = 998.3
+  Viscosity = 1.002e-3
+  Sound speed = 1497.0
+  Compressibility Model = Thermal
+  Reference Temperature = $t0
+  Heat Expansion Coefficient = 0.207e-3
+End
+
+Body Force 1
+  Name = "Bouancy"
+  Flow Bodyforce 2 = $-9.82
+  ! Fix pressure at one node
+  Pressure Single Node = Real 0.0
+!  Boussinesq = True
+End
+ 
+Initial Condition 1
+  Name = "Initial Guess"
+  Velocity 2 = 0.0
+  Velocity 1 = 1.0e-9
+  Temperature = $t0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "Bottom"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = "Right"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Temperature = $t0+2.0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name = "Top"
+!  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 4
+  Name = "Left"
+  Velocity 1 = 0.0 
+  Velocity 2 = 0.0
+  Temperature = $t0-2.0
+End
+
+! Without this the pressure level seems to be undefined
+! This is alternative fixing the node at center
+!Boundary Condition 5
+!  Name = "SinglePoint"
+!  Target Coordinates(1,2) = 0.005 0.005
+!  Pressure = 0.0
+!End 
+
+Solver 1 :: Reference Norm = 294.97430
+Solver 2 :: Reference Norm = 0.27861941E-03

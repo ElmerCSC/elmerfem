@@ -533,7 +533,6 @@ CONTAINS
     Active = GetNOFBoundaryElements()
     DO t=1,Active
        Element => GetBoundaryElement(t)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
      
@@ -545,6 +544,7 @@ CONTAINS
        CASE(3,4)
          k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
        END SELECT
+       IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
        nd = GetElementNOFDOFs(Element)
        n  = GetElementNOFNodes(Element)
@@ -565,7 +565,7 @@ CONTAINS
 
        Load(2,1:n) = GetReal( BC, 'Magnetic Boundary Load 2', Found )
        Load(2,1:n) = CMPLX( REAL(Load(2,1:n)), &
-          GetReal(BC, 'Magnetic Boundary Load  im 2', Found), KIND=dp)
+          GetReal(BC, 'Magnetic Boundary Load im 2', Found), KIND=dp)
 
        Load(3,1:n) = GetReal( BC, 'Magnetic Boundary Load 3', Found )
        Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
@@ -881,6 +881,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   Solvers(1:n) = Model % Solvers
   SolverParams => NULL()
   CALL ListAddLogical( SolverParams, 'Discontinuous Galerkin', .TRUE. )
+  Solvers(n+1) % DG = .TRUE.
   Solvers(n+1) % Values => SolverParams
   Solvers(n+1) % PROCEDURE = 0
   Solvers(n+1) % ActiveElements => NULL()

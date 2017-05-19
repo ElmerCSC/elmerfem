@@ -13,7 +13,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -22,7 +22,10 @@ Simulation
   Steady State Min Iterations = 1
   Output Intervals = 1
 
-  Post File = "case.ep"
+  Post File = "case.vtu"
+
+! required currently by the block solver strategy
+  Additive Namespaces = Logical True
 End
 
 Constants
@@ -58,8 +61,8 @@ Solver 1
   Calculate Stresses = False
   Displace Mesh = Logical False
 
-!  Dump system matrix = String a1.dat
-!  Dump system rhs = String f1.dat
+! Dump system matrix = String a1.dat
+! Dump system rhs = String f1.dat
 
 
   Steady State Convergence Tolerance = 1.0e-05
@@ -76,17 +79,14 @@ Solver 1
 
   Linear System Solver = string "block"
 
-  Block 11: Linear System Solver = string "iterative"
-  Block 22: Linear System Solver = string "iterative"
-
-  Linear System Refactorize = Logical False
-  Linear System Convergence Tolerance = real 0.1e-7
-  Linear System Iterative Method = string bicgstab
-  Linear System Max Iterations = integer 500
-!  Linear System Symmetric = Logical True 
-  Linear System Residual Output = integer 20
-!  Linear System Timing = True
-  Linear System Preconditioning = String ILU0
+  Block: Linear System Solver = string "iterative"
+  Block: Linear System Refactorize = Logical False
+  Block: Linear System Convergence Tolerance = real 0.1e-2
+  Block: Linear System Iterative Method = string bicgstab
+  Block: Linear System Max Iterations = integer 500
+  Block: Linear System Symmetric = Logical True 
+  Block: Linear System Residual Output = integer 20
+  Block: Linear System Preconditioning = String ILU0
 
   Linear System Block Method = String "other"
   Outer: Linear System Solver = string "Iterative"
@@ -121,6 +121,4 @@ End
 
 
 Solver 1 :: Reference Norm = Real 6.0902829
-$fprintf( stderr, "TEST CASE 1\n")
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 6.0902829\n");

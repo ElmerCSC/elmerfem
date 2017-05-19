@@ -45,7 +45,6 @@
 #include "nrutil.h"
 #include "common.h"
 #include "femdef.h"
-#include "femtools.h"
 #include "femtypes.h"
 #include "femknot.h"
 #include "femsolve.h"
@@ -378,19 +377,22 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
   int i,j,sideelemtype2,elemind,parent,normal,elemtype;
   int elemsides,side,sidenodes,nohits,hit,hit1,hit2;
   int sideind2[MAXNODESD1];
-
+  int debug;
+  
   hit = FALSE;
   elemsides = 0;
   elemtype = 0;
   hit1 = FALSE;
   hit2 = FALSE;
 
+  debug = FALSE;
+  
   for(parent=1;parent<=2;parent++) {
     if(parent == 1) 
       elemind = bound->parent[sideelem];
     else
       elemind = bound->parent2[sideelem];
-
+    
     if(elemind > 0) {
       elemtype = data->elementtypes[elemind];
       elemsides = elemtype / 100;
@@ -404,17 +406,19 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 
 	for(side=0;side<elemsides;side++) {
 
-	  if(0) printf("elem = %d %d %d %d\n",elemind,elemsides,normal,side);
+	  if(debug) printf("elem = %d %d %d %d\n",elemind,elemsides,normal,side);
 
 	  GetElementSide(elemind,side,normal,data,&sideind2[0],&sideelemtype2);
-
+	  
 	  if(sideelemtype2 < 300 && sideelemtype > 300) break;	
 	  if(sideelemtype2 < 200 && sideelemtype > 200) break;		
 	  if(sideelemtype != sideelemtype2) continue;
 
-	  sidenodes = sideelemtype % 100;
+	  sidenodes = sideelemtype / 100;
 
 	  for(j=0;j<sidenodes;j++) {
+	    if(debug) printf("sidenode: %d %d %d\n",j,sideind[j],sideind2[j]);
+
 	    hit = TRUE;
 	    for(i=0;i<sidenodes;i++) 
 	      if(sideind[(i+j)%sidenodes] != sideind2[i]) hit = FALSE;
@@ -433,7 +437,7 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 	    }
 	  }
 	}
-      }	
+      }
 
       
       /* this finding of sides does not guarantee that normals are oriented correctly */
@@ -474,14 +478,16 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 
     skip:  
       if(!hit) {
-	printf("FindParentSide: cannot locate BC element in given bulk element\n");
-	printf("BC elem of type %d with indexes: ",sideelemtype);
-	for(i=0;i<sideelemtype%100;i++)
+	printf("FindParentSide: cannot locate BC element in parent %d: %d\n",parent,elemind);
+	printf("BC elem %d of type %d with corner indexes: ",sideelem,sideelemtype);
+	for(i=0;i<sideelemtype/100;i++)
 	  printf(" %d ",sideind[i]);
 	printf("\n");
 
-	printf("Bulk elem %d of type %d with indexes: ",elemind,elemtype);
-	for(i=0;i<elemtype/100;i++)
+	printf("Bulk elem %d of type %d with corner indexes: ",elemind,elemtype);
+	j = elemtype/100;
+	if( j >= 5 && j<=7 ) j = j-1;
+	for(i=0;i<j;i++)
 	  printf(" %d ",data->topology[elemind][i]);
 	printf("\n");             
       }
@@ -495,19 +501,38 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 }
 
 
+static int Getnamerow(char *line,FILE *io,int upper) 
+{
+  int i,isend;
+  char *charend;
+
+
+  charend = fgets(line,MAXLINESIZE,io);
+  isend = (charend == NULL);
+
+  if(isend) 
+    return(1);
+  else
+    return(0);
+}
+
 
 
 int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int info)
+		   char *prefix,int nonames, int info)
 /* This procedure reads the mesh assuming ElmerSolver format.
    */
 {
-  int noknots,noelements,nosides,maxelemtype;
+  int noknots,noelements,nosides,maxelemtype,maxnodes,nonodes;
   int sideind[MAXNODESD1],tottypes,elementtype;
   int i,j,k,l,dummyint,cdstat,fail;
   int falseparents,noparents,bctopocreated;
+  int activeperm,activeelemperm,mini,maxi,minelem,maxelem,p1,p2;
+  int *nodeperm,*elemperm,*invperm,*invelemperm;
+  int iostat,noelements0;
   FILE *in;
-  char line[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
+  char line[MAXLINESIZE],line2[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
+  char *ptr1,*ptr2;
 
 
   sprintf(directoryname,"%s",prefix);
@@ -538,19 +563,23 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   sscanf(line,"%d",&tottypes);
 
   maxelemtype = 0;
+  maxnodes = 0;
   for(i=1;i<=tottypes;i++) {   
     getline;
     sscanf(line,"%d",&dummyint);
-    if(dummyint > maxelemtype) maxelemtype = dummyint;
+    maxelemtype = MAX( dummyint, maxelemtype );
+    j = maxelemtype % 100;
+    maxnodes = MAX( j, maxnodes );
   }
   printf("Maximum elementtype index is: %d\n",maxelemtype);
+  printf("Maximum number of nodes in element is: %d\n",maxnodes);
   fclose(in);
 
   data->dim = GetElementDimension(maxelemtype);
 
-  data->maxnodes = maxelemtype % 100;
+  data->maxnodes = maxnodes;
   data->noknots = noknots;
-  data->noelements = noelements;
+  data->noelements = noelements0 = noelements;
 
 
   if(info) printf("Allocating for %d knots and %d elements.\n",
@@ -562,48 +591,142 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     if(info) printf("LoadElmerInput: The opening of the nodes-file %s failed!\n",
 		    filename);
-    return(2);
+    bigerror("Cannot continue without nodes file!\n");
   }
   else 
     printf("Loading %d Elmer nodes from %s\n",noknots,filename);
 
+  activeperm = FALSE;
   for(i=1; i <= noknots; i++) {
     getline;
     sscanf(line,"%d %d %le %le %le",
 	   &j, &dummyint, &(data->x[i]),&(data->y[i]),&(data->z[i]));
-    if(j != i) printf("LoadElmerInput: nodes i=%d j=%d\n",i,j);
+    if(j != i && !activeperm) {
+      printf("LoadElmerInput: The node number (%d) at node %d is not compact, creating permutation\n",j,i);
+      activeperm = TRUE;
+      nodeperm = Ivector(1,noknots);
+      for(k=1;k<i;k++) nodeperm[k] = k;
+    }
+    if(activeperm) nodeperm[i] = j;
   }
   fclose(in);
 
 
+  /* Create inverse permutation for nodes */
+  if(activeperm) {
+    for(i=1;i<=noknots;i++) {
+      if(i==1) {
+	mini = nodeperm[i];
+	maxi = nodeperm[i];
+      }
+      else {
+	mini = MIN(nodeperm[i],mini);
+	maxi = MAX(nodeperm[i],maxi);
+      }
+    }
+    if(info) printf("LoadElmerInput: Node index range is: [%d %d]\n",mini,maxi);
+    invperm = Ivector(mini,maxi);
+    for(i=mini;i<=maxi;i++)
+      invperm[i] = -1;
+    for(i=1;i<=noknots;i++) {
+      j = nodeperm[i];
+      if( invperm[j] > 0 ) 
+	printf("LoadElmerInput: Node %d is redundant which may be problematic!\n",j);      
+      else
+	invperm[j] = i;
+    }
+  }
+  else {
+    mini = 1;
+    maxi = noknots;
+  }
+  
+  
+  activeelemperm = FALSE;
   sprintf(filename,"%s","mesh.elements");
   if ((in = fopen(filename,"r")) == NULL) {
     printf("LoadElmerInput: The opening of the element-file %s failed!\n",
 	   filename);
-    return(3);
+    bigerror("Cannot continue without element file!\n");
   }
   else 
     if(info) printf("Loading %d bulk elements from %s\n",noelements,filename);
-
+  
   for(i=1; i <= noelements; i++) {
-    fscanf(in,"%d",&j);
-    if(0 && i != j) printf("LoadElmerInput: i=%d element=%d\n",i,dummyint);
-    fscanf(in,"%d",&(data->material[j]));
-    fscanf(in,"%d",&elementtype);
+    iostat = fscanf(in,"%d",&j);
+    if(iostat <= 0 ) {
+      printf("LoadElmerInput: Failed reading element line %d, reducing size of element table to %d!\n",i,i-1);
+      data->noelements = noelements = i-1;
+      break;
+    }
+    
+    if(i != j && !activeelemperm) {
+      printf("LoadElmerInput: The element numbering (%d) at element %d is not compact, creating permutation\n",j,i);
+      activeelemperm = TRUE;
+      elemperm = Ivector(1,noelements0);
+      for(k=1; k < i; k++)
+	elemperm[k] = k;
+    }
+    if( activeelemperm ) elemperm[i] = j;
+    iostat = fscanf(in,"%d %d",&(data->material[i]),&elementtype);
+    if( iostat < 2 ) {
+      printf("LoadElmerInput: Failed reading definitions for bulk element %d\n",j);
+      bigerror("Cannot continue without this data!\n");
+    }
     if(elementtype > maxelemtype ) {
       printf("Invalid bulk elementtype: %d\n",elementtype);
       bigerror("Cannot continue with invalid elements");
     }
-    data->elementtypes[j] = elementtype;
-    for(k=0;k< elementtype%100 ;k++) {
+    data->elementtypes[i] = elementtype;
+    nonodes = elementtype % 100;
+    if( nonodes > maxnodes ) {
+      printf("Number of nodes %d in element %d is greater than allocated maximum %d\n",nonodes,j,maxnodes);
+      bigerror("Cannot continue with invalid elements");
+    }
+    for(k=0;k<nonodes;k++) {
       fscanf(in,"%d",&l);
-      data->topology[j][k] = l;
-      if(l < 0 || l > noknots ) {
-	printf("node out of range: %d %d %d %d %d\n",i,j,elementtype,k,l);
+      if( l < mini || l > maxi ) {
+	printf("Node %d in element %d is out of range: %d\n",k+1,j,l);
+	bigerror("Cannot continue with this node numbering");
       }
+      if( activeperm )
+	data->topology[i][k] = invperm[l];
+      else
+	data->topology[i][k] = l;
     }
   }
   fclose(in);
+ 
+
+  /* Create inverse permutation for bulk elements */
+  if(activeelemperm) {
+    for(i=1;i<=noelements;i++) {
+      if(i==1) {
+	minelem = elemperm[i];
+	maxelem = elemperm[i];
+      }
+      else {
+	minelem = MIN(elemperm[i],minelem);
+	maxelem = MAX(elemperm[i],maxelem);
+      }
+    }
+    if(info) printf("LoadElmerInput: Element index range is: [%d %d]\n",minelem,maxelem);
+    invelemperm = Ivector(minelem,maxelem);
+    for(i=minelem;i<=maxelem;i++)
+      invelemperm[i] = -1;
+    for(i=1;i<=noelements;i++) {
+      j = elemperm[i];
+      if( invelemperm[j] > 0 )
+	printf("LoadElmerInput: Element %d is redundant which may be problematic!\n",j);      
+      else	
+	invelemperm[j] = i;
+    }
+  }
+  else {
+    minelem = 1;
+    maxelem = noelements;
+  }
+
 
 
   falseparents = 0;
@@ -623,40 +746,71 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   if( nosides > 0 ) {
     AllocateBoundary(bound,nosides);
     data->noboundaries = 1;
-  }
+  };
 
   i = 0;
   for(k=1; k <= nosides; k++) {
-
+    
+    iostat = fscanf(in,"%d",&dummyint);
+    if( iostat < 1 ) {
+      printf("LoadElmerInput: Failed reading boundary element line %d, reducing size of element table to %d!\n",k,i);
+      bound->nosides = nosides = i;
+      break;
+    }      
     i++;
-    fscanf(in,"%d",&dummyint);
 
-#if 0
-    if(k != dummyint) printf("LoadElmerInput: k=%d side=%d\n",k,dummyint);
-#endif
-    fscanf(in,"%d",&(bound->types[i]));
-    fscanf(in,"%d",&(bound->parent[i]));
-    fscanf(in,"%d",&(bound->parent2[i]));
-    fscanf(in,"%d",&elementtype);
-
+    iostat = fscanf(in,"%d %d %d %d",&(bound->types[i]),&p1,&p2,&elementtype);
+    if(iostat < 4 ) {
+      printf("LoadElmerInput: Failed reading definitions for boundary element %d\n",k);
+      bigerror("Cannot continue without this data!\n"); 
+    }    
+    if( p1 > 0 && (p1 < minelem || p1 > maxelem ) ) {
+      printf("Parent in boundary element %d out of range: %d\n",k,p1);    
+      bigerror("Cannot continue with bad parents");
+    }
+    if( p2 > 0 && (p2 < minelem || p2 > maxelem ) ) {
+      printf("Parent in boundary element %d out of range: %d\n",k,p2);
+      bigerror("Cannot continue with bad parents");
+    }
+      
+    if(activeelemperm) {
+      if( p1 > 0 ) p1 = invelemperm[p1];
+      if( p2 > 0 ) p2 = invelemperm[p2];
+    }
+    
     if(elementtype > maxelemtype ) {
       printf("Invalid boundary elementtype: %d\n",elementtype);
       bigerror("Cannot continue with invalid elements");
     }
-    for(j=0;j< elementtype%100 ;j++) 
-      fscanf(in,"%d",&(sideind[j]));
-
-    if(bound->parent[i] == 0 && bound->parent2[i] != 0) {
-      bound->parent[i] = bound->parent2[i];
-      bound->parent2[i] = 0;
+    nonodes = elementtype % 100;
+    if( nonodes > maxnodes ) {
+      printf("Number of nodes %d in side element %d is greater than allocated maximum %d\n",nonodes,dummyint,maxnodes);
+      bigerror("Cannot continue with invalid elements");
     }
-
+    
+    for(j=0;j< nonodes ;j++) { 
+      fscanf(in,"%d",&l);
+      if(activeperm) 
+	sideind[j] = invperm[l];
+      else
+	sideind[j] = l;
+    }
+          
+    if( p1 == 0 && p2 != 0 ) {
+      bound->parent[i] = p2;
+      bound->parent2[i] = p1;
+    }
+    else {
+      bound->parent[i] = p1;
+      bound->parent2[i] = p2;
+    }
+    
     if(bound->parent[i] > 0) {
       fail = FindParentSide(data,bound,i,elementtype,sideind);
       if(fail) falseparents++;      
     }
     else {
-#if 1
+#if 0
       printf("Parents not specified for side %d with inds: ",dummyint);
       for(j=0;j< elementtype%100 ;j++) 
 	printf("%d ",sideind[j]);
@@ -669,7 +823,6 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	bound->topology = Imatrix(1,nosides,0,data->maxnodes-1);
 	bctopocreated = TRUE;
       }
-
       for(j=0;j< elementtype%100 ;j++) 
 	bound->topology[i][j] = sideind[j];
       bound->elementtypes[i] = elementtype;
@@ -688,6 +841,114 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   bound->nosides = i;
   fclose(in); 
+  
+  /* Save node permutation for later use */
+  data->nodepermexist = activeperm;
+  if(activeperm) {
+    data->nodeperm = nodeperm;
+    free_Ivector(invperm,mini,maxi);
+  }
+  
+  /* Element permutation is irrelevant probably for practical purposes (?) and hence it is forgotten. */
+  if(activeelemperm) {
+    free_Ivector(invelemperm,minelem,maxelem);
+    free_Ivector(elemperm,1,noelements0);
+  }
+  
+
+
+  sprintf(filename,"%s","mesh.names");
+  if (in = fopen(filename,"r") ) {
+    int isbody,started,nameproblem;
+    
+    isbody = TRUE;
+    nameproblem = FALSE;
+
+    if( nonames ) {
+      printf("Ignoring > mesh.names < because it was explicitely requested!\n");
+      goto namesend;
+    }
+
+    if(info) printf("Loading names for mesh parts from file %s\n",filename);
+
+    for(;;) {
+      if(Getnamerow(line,in,FALSE)) goto namesend;
+
+      if(strstr(line,"names for boundaries")) {
+	if(info) printf("Reading names for mesh boundaries\n");
+	isbody = FALSE;
+	continue;
+      }
+      else if(strstr(line,"names for bodies")) {
+	if(info) printf("Reading names for mesh bodies\n");	
+	isbody = TRUE;
+	continue;
+      }
+
+      /* get position for entity name */
+      ptr1 = strchr( line,'$');
+      if(!ptr1) continue;
+      ptr1++;
+
+      /* get position for entity index and read it */
+      ptr2 = strchr( line,'=');
+      if(!ptr2) continue;
+      ptr2++;      
+      j = next_int(&ptr2);
+
+      /* Initialize the entity name by white spaces */
+      for(i=0;i<MAXLINESIZE;i++) 
+	line2[i] = ' ';
+
+      started = FALSE;
+      k = 0;
+      for(i=0;i<MAXLINESIZE;i++) {
+	if( ptr1[0] == '=' ) {
+	  /* remove possible trailing white space */
+	  if(line2[k-1] == ' ') k--;	    
+	  line2[k] = NULL;
+	  break;
+	}
+	if(started || ptr1[0] != ' ') {
+	  /* remove possible leading white space */
+	  line2[k] = ptr1[0];
+	  started = TRUE;
+	  k++;
+	}
+	ptr1++;
+      }
+     
+      /* Copy the entityname to mesh structure */
+      if( isbody ) {
+	if(j < 0 || j > MAXBODIES ) {
+	  printf("Cannot treat names for body %d\n",j);
+	  nameproblem = TRUE;
+	}
+	else {
+	  strcpy(data->bodyname[j],line2);	
+	  data->bodynamesexist = TRUE;
+	}
+      }
+      else {
+	if(j < 0 || j > MAXBOUNDARIES ) {
+	  printf("Cannot treat names for boundary %d\n",j);
+	  nameproblem = TRUE;
+	}
+	else {
+	  strcpy(data->boundaryname[j],line2);	
+	  data->boundarynamesexist = TRUE;
+	}
+      }
+    }
+    namesend:
+
+    if( nameproblem ) {
+      data->boundarynamesexist = FALSE;
+      data->bodynamesexist = FALSE;
+      printf("Warning: omitting use of names because the indexes are beyond range, code some more...\n");
+    }
+  }
+
 
   if(!cdstat) chdir("..");
 
@@ -777,21 +1038,9 @@ int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
 
   if(info) printf("Saving %d node coordinates.\n",noknots);
   
-  if(data->dim == 1) {
-    sprintf(outstyle,"%%.%dg 0.0 0.0\n",decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,data->x[i]);
-  }
-  else if(data->dim == 2) {
-    sprintf(outstyle,"%%.%dg %%.%dg 0.0\n",decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,data->x[i],data->y[i]);
-  }
-  else if(data->dim == 3) {
-    sprintf(outstyle,"%%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,data->x[i],data->y[i],data->z[i]);      
-  }
+  sprintf(outstyle,"%%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
+  for(i=1; i <= noknots; i++) 
+    fprintf(out,outstyle,data->x[i],data->y[i],data->z[i]);      
 
   printf("Saving %d bulk element topologies.\n",bulkelems);
 
@@ -943,22 +1192,9 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     return(2);
   }
 
-  
-  if(data->dim == 1) {
-    sprintf(outstyle,"%%d %%d %%.%dg 0.0 0.0\n",decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i]);
-  }
-  if(data->dim == 2) {
-    sprintf(outstyle,"%%d %%d %%.%dg %%.%dg 0.0\n",decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i],data->y[i]);
-  }
-  else if(data->dim == 3) {
-    sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
-  }
+  sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
+  for(i=1; i <= noknots; i++) 
+    fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
 
   fclose(out);
 
@@ -1003,7 +1239,6 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     if(bound[j].nosides == 0) continue;
     
     for(i=1; i <= bound[j].nosides; i++) {
-
       GetBoundaryElement(i,&bound[j],data,ind,&sideelemtype); 
       sumsides++;
       
@@ -1107,10 +1342,22 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
       }
     }
     fclose(out);
-
-
   }
   
+  if(data->nodepermexist) {
+    sprintf(filename,"%s","mesh.nodeperm");
+    out = fopen(filename,"w");
+
+    if(info) printf("Saving initial node permutation to %s.\n",filename);  
+    if(out == NULL) {
+      printf("opening of file was not successful\n");
+      return(3);
+    }
+    for(i=1; i <= noknots; i++) 
+      fprintf(out,"%d %d\n",i,data->nodeperm[i]);
+  }
+
+
   chdir("..");
   
   return(0);
@@ -1215,21 +1462,9 @@ int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
     return(2);
   }
 
-  if(data->dim == 1) {
-    sprintf(outstyle,"%%d %%d %%.%dg 0.0 0.0\n",decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i]);
-  }
-  if(data->dim == 2) {
-    sprintf(outstyle,"%%d %%d %%.%dg %%.%dg 0.0\n",decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i],data->y[i]);
-  }
-  else if(data->dim == 3) {
-    sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
-    for(i=1; i <= noknots; i++) 
-      fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
-  }
+  sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
+  for(i=1; i <= noknots; i++) 
+    fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
   fclose(out);
 
 
@@ -1653,7 +1888,6 @@ static int PartitionNodesByElements(struct FemType *data,int info)
 
   CreateInverseTopology(data, info);
 
-
   invrow = data->invtopo.rows;
   invcol = data->invtopo.cols;
 
@@ -1661,6 +1895,8 @@ static int PartitionNodesByElements(struct FemType *data,int info)
   nopartitions = data->nopartitions;
   elempart = data->elempart;
   nodepart = data->nodepart;
+
+  if(info) printf("Number of nodal partitions: %d\n",nopartitions);
 
   nodesinpart = Ivector(1,nopartitions);
   cuminpart = Ivector(1,nopartitions);
@@ -1674,7 +1910,7 @@ static int PartitionNodesByElements(struct FemType *data,int info)
       knows[i][j] = cumknows[i][j] = 0;
 
   set = FALSE;
-  
+
  omstart:
 
   for(i=1;i<=noknots;i++) {
@@ -1682,49 +1918,70 @@ static int PartitionNodesByElements(struct FemType *data,int info)
     for(j=1;j<=nopartitions;j++) 
       nodesinpart[j] = 0;
 
+    /* Tag the number of ownder partitions */
     for(j=invrow[i-1];j<invrow[i];j++) {
       k = invcol[j]+1;
       part = elempart[k];
-      nodesinpart[part] += 1;
+      if( part > 0 ) nodesinpart[part] += 1;
     }
 
     /* Find the partition with maximum number of hits */
-    maxpart = maxpart2 = 1;
+    maxpart = maxpart2 = 0;
     for(j=1;j<=nopartitions;j++) 
-      if(nodesinpart[j] > nodesinpart[maxpart]) maxpart = j;
-
+      if(nodesinpart[j] > 0 ) {
+	if(!maxpart) {
+	  maxpart = j;
+	} 
+	else if(nodesinpart[j] > nodesinpart[maxpart]) {
+	  maxpart = j;
+	}
+      }
+  
     /* Find the partition with 2nd largest number of hits */
-    if(maxpart == 1) maxpart2 = 2;
-    for(j=1;j<=nopartitions;j++) {
-      if(j == maxpart) continue;
-      if(nodesinpart[j] > nodesinpart[maxpart2]) maxpart2 = j;
-    }
+    for(j=1;j<=nopartitions;j++) 
+      if(nodesinpart[j] > 0 ) {
+	if(j == maxpart) continue;
+	if(!maxpart2) {
+	  maxpart2 = j;
+	} 
+	else if(nodesinpart[j] > nodesinpart[maxpart2]) {
+	  maxpart2 = j;
+	}
+      }
 
     /* If there is a clear dominator use that */
-    if(nodesinpart[maxpart] > nodesinpart[maxpart2]) {
-      if(set) 
-	nodepart[i] = maxpart;    
-      else
-	cuminpart[maxpart] += 1;
+    if(!maxpart && !maxpart2)
+      printf("Node is not included in any partition: %d\n",i);
+    else if(!maxpart2) {
+      nodepart[i] = maxpart;
+      cuminpart[maxpart] += 1;
     }
+     else
+      if(nodesinpart[maxpart] > nodesinpart[maxpart2]) {
+	if(set) 
+	  nodepart[i] = maxpart;    
+	else
+	  cuminpart[maxpart] += 1;
+      }
 
     /* Otherwise make a half and half split betwen the major owners */
-    else {
-      if(set) {
-	cumknows[maxpart][maxpart2] += 1;
-	if( cumknows[maxpart][maxpart2] > knows[maxpart][maxpart2] / 2) {
-	  nodepart[i] = maxpart2;
-	  cuminpart[maxpart2] += 1;
-	}
+      else {
+	if(set) {
+	  cumknows[maxpart][maxpart2] += 1;
+	  if( cumknows[maxpart][maxpart2] > knows[maxpart][maxpart2] / 2) {
+	    nodepart[i] = maxpart2;
+	    cuminpart[maxpart2] += 1;
+	  }
+	  else {
+	    nodepart[i] = maxpart;
+	    cuminpart[maxpart] += 1;
+	  }
+	}	
 	else {
-	  nodepart[i] = maxpart;
-	  cuminpart[maxpart] += 1;
+	  knows[maxpart][maxpart2] += 1;
 	}
-      }	
-      else
-	knows[maxpart][maxpart2] += 1;
-    }
-  }    
+      }
+  }
   
   if(!set) {
     set = TRUE;
@@ -1777,7 +2034,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   if(data->dim < 3) partitions3 = 1;
   partitions = partitions1 * partitions2 * partitions3;
 
-  if(partitions1 < 2 && partitions2 < 2 && partitions3 < 2) {
+  if(partitions1 < 2 && partitions2 < 2 && partitions3 < 2 && !eg->connect) {
     printf("Some of the divisions must be larger than one: %d %d %d\n",
 	   partitions1, partitions2, partitions3 );
     bigerror("Partitioning not performed");
@@ -1789,10 +2046,13 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
     bigerror("Partitioning not performed");
   }
     
-  if( eg->partbcz > 1 ) 
+  if( eg->partbcz > 1 || eg->partbcr ) 
     PartitionConnectedElements1D(data,bound,eg,info);
   else if( eg->partbcmetis > 1 ) 
     PartitionConnectedElementsMetis(data,bound,eg->partbcmetis,3,info); 
+  else if( eg->connect ) 
+   PartitionConnectedElementsStraight(data,bound,eg,info);
+     
 
   if( data->nodeconnectexist ) 
     ExtendBoundaryPartitioning(data,bound,eg->partbclayers,info);
@@ -1809,9 +2069,11 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   vpartitions2 = partitions2;
   vpartitions3 = partitions3;
 
+  printf("connect: %d %d\n",data->elemconnectexist,data->nodeconnectexist);
+
   noparts0 = 0;
   noelements0 = 0;
-  if( data->elemconnectexist ) {
+  if( data->elemconnectexist || data->nodeconnectexist) {
     elemconnect = data->elemconnect;  
     noparts0 = 0;
     for(i=1;i<=data->noelements;i++) {
@@ -1823,6 +2085,10 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   }
   noelements1 = noelements - noelements0; 
 
+  vpartitions1 = partitions1;
+  vpartitions2 = partitions2;
+  vpartitions3 = partitions3;
+
   periodic = dimper[0] || dimper[1] || dimper[2];
   if(periodic) {
     if(dimper[0] && partitions1 > 1) vpartitions1 *= 2;
@@ -1831,6 +2097,19 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   }
   vpartitions = vpartitions1 * vpartitions2 * vpartitions3;
   nopart = Ivector(1,vpartitions+noparts0);
+
+  if( vpartitions == 1 && data->elemconnectexist ) {
+    if(info) printf("Only one regular partitions requested, skipping 2nd part of hybrid partitioning\n");
+    for(j=1;j<=noelements;j++) {
+      if( elemconnect[j] > 0 ) 
+	inpart[j] = elemconnect[j];
+      else
+	inpart[j] = noparts0 + 1;
+    }
+    partitions = noparts0 + 1;
+    data->nopartitions = partitions;
+    goto skippart;
+  }
 
 
 
@@ -1872,7 +2151,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
 	k = data->topology[j][i];
 	x += data->x[k];
 	y += data->y[k];
-	if(data->dim==3) z += data->z[k];
+	z += data->z[k];
       }
       arrange[j] = (cx*x + cy*y + cz*z) / nonodes;
     }
@@ -1904,7 +2183,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
 	k = data->topology[j][i];
 	x += data->x[k];
 	y += data->y[k];
-	if(data->dim==3) z += data->z[k];
+	z += data->z[k];
       }
       arrange[j] = (-cy*x + cx*y + cz*z) / nonodes;
     }
@@ -1946,7 +2225,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
 	k = data->topology[j][i];
 	x += data->x[k];
 	y += data->y[k];
-	if(data->dim==3) z += data->z[k];
+	z += data->z[k];
       }
       arrange[j] = (-cz*x - cy*y + cx*z) / nonodes;
     }
@@ -1970,6 +2249,10 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
       inpart[ind] = (inpart[ind]-1)*vpartitions3 + j;
     }
   }
+
+  free_Rvector(arrange,1,noelements);
+  free_Ivector(indx,1,noelements);
+
 
   if( data->elemconnectexist ) {
     for(j=1;j<=noelements;j++) {
@@ -2029,6 +2312,8 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
     free_Ivector(partmap,1,vpartitions);
   }
 
+ skippart:
+
   for(i=1;i<=partitions;i++)
     nopart[i] = 0;
   for(i=1;i<=noelements;i++) 
@@ -2040,10 +2325,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
     maxpart = MAX( nopart[i], maxpart );
   }
 
-  free_Rvector(arrange,1,noelements);
   free_Ivector(nopart,1,vpartitions);
-  free_Ivector(indx,1,noelements);
-
   PartitionNodesByElements(data,info);
 
   if(info) printf("Successfully made a partitioning with %d to %d elements.\n",minpart,maxpart);
@@ -2109,15 +2391,12 @@ int PartitionSimpleElementsNonRecursive(struct FemType *data,int dimpart[],int d
 
   MaxX = MinX = data->x[1];
   MaxY = MinY = data->y[1];
-  if( data->dim == 3 ) 
-    MaxZ = MinZ = data->z[1];
-  else 
-    MaxZ = MinZ = 0.0;
+  MaxZ = MinZ = data->z[1];
 
   for(i=1;i<=noknots;i++) {
     x = data->x[i];
     y = data->y[i];
-    if(data->dim==3) z = data->z[i];
+    z = data->z[i];
     
     MaxX = MAX( MaxX, x);
     MinX = MIN( MinX, x);
@@ -2139,7 +2418,7 @@ int PartitionSimpleElementsNonRecursive(struct FemType *data,int dimpart[],int d
       k = data->topology[j][i];
       x += data->x[k];
       y += data->y[k];
-      if(data->dim==3) z += data->z[k];
+      z += data->z[k];
     }
     x = x / nonodes;
     y = y / nonodes;
@@ -2254,22 +2533,19 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
 
   x = data->x[1];
   y = data->y[1];
-  if(dim==3) z = data->z[1];
+  z = data->z[1];
 
   r = sqrt(x*x+y*y);
   f = 180 * atan2(y,x)/FM_PI;
   if( f < 0.0 ) f = f + 360.0;    
   MaxR = MinR = r;
   MaxF = MinF = f;
-  if(dim == 3) 
-    MaxZ = MinZ = z;
-  else
-    MaxZ = MinZ = 0.0;
+  MaxZ = MinZ = z;
 
   for(i=1;i<=noknots;i++) {
     x = data->x[i];
     y = data->y[i];
-    if(dim==3) z = data->z[i];
+    z = data->z[i];
 
     r = sqrt(x*x+y*y);
     f = 180 * atan2(y,x)/FM_PI;
@@ -2279,16 +2555,14 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
     MinR = MIN( MinR, r);
     MaxF = MAX( MaxF, f);
     MinF = MIN( MinF, f);
-    if( dim == 3 ) {
-      MaxZ = MAX( MaxZ, z);
-      MinZ = MIN( MinZ, z);
-    }
+    MaxZ = MAX( MaxZ, z);
+    MinZ = MIN( MinZ, z);
   }
 
   if( info ) {
     printf("Range in r-direction: %12.5e %12.5e\n",MinR,MaxR);
     printf("Range in f-direction: %12.5e %12.5e\n",MinF,MaxF);
-    if(dim==3) printf("Range in z-direction: %12.5e %12.5e\n",MinZ,MaxZ);
+    printf("Range in z-direction: %12.5e %12.5e\n",MinZ,MaxZ);
   }
   if( MaxF - MinF > 180.0 ) {
     MaxF = 360.0;
@@ -2312,11 +2586,11 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
       k = data->topology[j][i];
       x += data->x[k];
       y += data->y[k];
-      if(dim==3) z += data->z[k];
+      z += data->z[k];
     }
     x = x / nonodes;
     y = y / nonodes;
-    if(dim==3) z = z / nonodes;
+    z = z / nonodes;
     
     r = sqrt(x*x+y*y);
     f = 180 * atan2(y,x)/FM_PI;
@@ -2369,11 +2643,11 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
       k = data->topology[j][i];
       x += data->x[k];
       y += data->y[k];
-      if(dim==3) z += data->z[k];
+      z += data->z[k];
     }
     x = x / nonodes;
     y = y / nonodes;
-    if(dim==3) z = z / nonodes;
+    z = z / nonodes;
     
     r = sqrt(x*x+y*y);
     f = 180 * atan2(y,x)/FM_PI;
@@ -2457,8 +2731,8 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
 
 
 
-int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound,
-				 struct ElmergridType *eg, int info) {
+int PartitionConnectedElementsStraight(struct FemType *data,struct BoundaryType *bound,
+				       struct ElmergridType *eg, int info) {
   int i,j,k,l,dim,allocated,debug,partz,hit,bctype;
   int noknots, noelements,bcelem,bc,maxbcelem;
   int IndZ,noconnect,totpartelems,sideelemtype,sidenodes,sidehits,nohits;
@@ -2469,12 +2743,98 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 
   debug = FALSE;
 
-  partz = eg->partbcz;
-  if( partz == 0 ) return(0);
+  if(info) {
+    printf("Link the connected set directly to the partition\n");
+  }
 
+  if(!data->nodeconnectexist) {
+    printf("There are no connected boundary nodes?\n");
+    return(1);
+  }
+  nodeconnect = data->nodeconnect;
+  noknots = data->noknots;
+  noelements = data->noelements;
+  totpartelems = 0;
+
+  bcelem = 0;  
+  data->elemconnect = Ivector(1,noelements);
+  elemconnect = data->elemconnect;
+  for(i=1;i<=noelements;i++) elemconnect[i] = 0;
+
+  for(bc=0;bc<MAXBOUNDARIES;bc++) {    
+    if(bound[bc].created == FALSE) continue;
+    if(bound[bc].nosides == 0) continue;
+    
+    for(i=1;i<=bound[bc].nosides;i++) {
+      
+      GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+		     data,sideind,&sideelemtype);
+
+      sidenodes = sideelemtype % 100;
+
+      hit = FALSE;
+      
+      for(k=1;k<=eg->connect;k++) {
+	bctype = eg->connectbounds[k-1];
+	hit = (bound[bc].types[i] == bctype);
+	if(hit) break;
+      }	
+      if(!hit) continue;
+      bcelem += 1;
+
+      k = bound[bc].parent[i];      
+      l = bound[bc].parent2[i];
+      if(k) {
+	if(!elemconnect[k]) {
+	  elemconnect[k] = 1;
+	  totpartelems += 1;
+	}
+      }
+      if(l) {
+	if(!elemconnect[l]) {
+	  elemconnect[l] = 1;
+	  totpartelems += 1;
+	}
+      }
+    }	
+  }
+
+  data->elemconnectexist = totpartelems;  
+  
+  if(info) printf("Number of constrained boundary elements = %d\n",bcelem);   
+  if(info) printf("Number of constrained bulk elements = %d\n",totpartelems);   
+  if(info) printf("Successfully made connected elements to a partiotion\n");
+
+  return(0);
+}
+
+
+
+
+int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound,
+				 struct ElmergridType *eg, int info) {
+  int i,j,k,l,dim,allocated,debug,partz,partr,parts,hit,bctype;
+  int noknots, noelements,bcelem,bc,maxbcelem;
+  int IndZ,noconnect,totpartelems,sideelemtype,sidenodes,sidehits,nohits;
+  int *cumz,*elemconnect,*partelems,*nodeconnect;
+  int sideind[MAXNODESD2];
+  Real val,z,MaxZ,MinZ; 
+
+
+  debug = FALSE;
+
+  partz = eg->partbcz;
+  partr = eg->partbcr;
+  
+  if( partz == 0 && partr == 0) return(0);
+
+  parts = MAX( partz, partr ); 
 
   if(info) {
-    printf("Making a simple 1D partitioing in z for the connected elements only\n");
+    if( partz )
+      printf("Making a simple 1D partitioing in z for the connected elements only\n");
+    else
+      printf("Making a simple 1D partitioing in r for the connected elements only\n");     
   }
 
   if(!data->nodeconnectexist) {
@@ -2493,15 +2853,25 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
   noelements = data->noelements;
   totpartelems = 0;
 
-  MaxZ = MinZ = data->z[1];
-  for(i=1;i<=noknots;i++) {
-    z = data->z[i];
+  /* Because we don't want to change the code too much use 'z' for the 
+     coordinate also in the radial case. */ 
+  if( partr )
+    z = sqrt( data->x[1] * data->z[1] + data->y[1] * data->y[1]);
+  else
+    z = data->z[1];
+  MaxZ = MinZ = z;
+  
+  for(i=1;i<=noknots;i++) {    
+    if( partr )
+      z = sqrt( data->x[i] * data->x[i] + data->y[i] * data->y[i]);
+    else
+      z = data->z[i];
     MaxZ = MAX( MaxZ, z);
     MinZ = MIN( MinZ, z);
   }
 
   if( info ) {
-    printf("Range in z-direction: %12.5e %12.5e\n",MinZ,MaxZ);
+    printf("Range in coordinate extent: %12.5e %12.5e\n",MinZ,MaxZ);
   }
 
   /* Zero is the 1st value so that recursive algos can be used. */ 
@@ -2524,21 +2894,6 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 		     data,sideind,&sideelemtype);
 
       sidenodes = sideelemtype % 100;
-#if 0
-      /* This method of going through the connected BC elements was not really 
-	 robust enough since there can be elements that are not on the boundary 
-	 but still past the test if all their nodes are on the boundary. */
-      nohits = 0;      
-      z = 0.0; 
-      for(j=0;j<sidenodes;j++) {
-	k = sideind[j];
-	if( nodeconnect[k] ) {
-	  nohits++;
-	  z += data->z[k];
-	}
-      }
-      if( nohits < sidenodes ) continue;
-#else     
       hit = FALSE;
       
       for(k=1;k<=eg->connect;k++) {
@@ -2562,9 +2917,12 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
       z = 0.0; 
       for(j=0;j<sidenodes;j++) {
 	k = sideind[j];
-	z += data->z[k];
+	if( partr )
+	  val = sqrt( data->x[k]*data->x[k] + data->y[k]*data->y[k]);
+	else
+	  val = data->z[k];
+	z += val;
       }
-#endif
 
       z = z / sidenodes;
       IndZ = ceil( MAXCATEGORY * ( z - MinZ ) / ( MaxZ - MinZ ) );
@@ -2625,7 +2983,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
     
     noconnect = bcelem;
     for(i=1;i<=MAXCATEGORY;i++) 
-      cumz[i] = ceil( 1.0 * partz * cumz[i] / noconnect );
+      cumz[i] = ceil( 1.0 * parts * cumz[i] / noconnect );
     
     if( debug ) {
       printf("Partition categories\n");
@@ -3013,6 +3371,7 @@ int ExtendBoundaryPartitioning(struct FemType *data,struct BoundaryType *bound,
       n++;
     }
 
+    /* Revert to positive indexes at the end */
     for(j=1;j<=noelements;j++)
       elemconnect[j] = abs( elemconnect[j] );
 
@@ -3140,7 +3499,7 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
     for(j=1;j<=noknots;j++) {
       x = data->x[j];
       y = data->y[j];
-      if(data->dim==3) z = data->z[j];
+      z = data->z[j];
       arrange[j] = cx*x + cy*y + cz*z;
     }
     SortIndex(noknots,arrange,indx);
@@ -3158,7 +3517,7 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
     for(j=1;j<=noknots;j++) {
       x = data->x[j];
       y = data->y[j];
-      if(data->dim==3) z = data->z[j];
+      z = data->z[j];
       arrange[j] = -cy*x + cx*y + cz*z;
     }
     SortIndex(noknots,arrange,indx);
@@ -3199,7 +3558,7 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
     for(j=1;j<=noknots;j++) {
       x = data->x[j];
       y = data->y[j];
-      if(data->dim==3) z = data->z[j];
+      z = data->z[j];
       arrange[j] = -cz*x - cy*y + cx*z;
     }
     SortIndex(noknots,arrange,indx);
@@ -3450,7 +3809,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
     PartitionNodesByElements(data,info);
   }
   else {
-    /* Set the partition given by Metis for each node. */
+    if(info) printf("Set the partition given by Metis for each node\n");
     for(i=1;i<=noknots;i++) {
       if(periodic) 
 	j = neededby[indxper[i]];
@@ -3492,7 +3851,9 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 
   if(info) printf("Making a Metis partitioning for %d nodes in %d-dimensions.\n",
 		  data->noknots,data->dim);
-  if(partitions < 2 ) bigerror("There should be at least two partitions for partitioning!");
+  if(partitions < 2 ) {
+    bigerror("There should be at least two partitions for partitioning!");
+  }
 
   noknots = data->noknots;
   noelements = data->noelements;
@@ -3506,13 +3867,29 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 
   nparts = partitions;
   if( dual ) {
-    if( eg->partbcz > 1 ) 
+    if( eg->partbcz > 1 || eg->partbcr ) 
       PartitionConnectedElements1D(data,bound,eg,info);
     else if( eg->partbcmetis > 1 ) 
       PartitionConnectedElementsMetis(data,bound,eg->partbcmetis,metisopt,info);
+    else if( eg->connect ) {
+      PartitionConnectedElementsStraight(data,bound,eg,info);
+    }    
 
     if( data->nodeconnectexist ) 
       ExtendBoundaryPartitioning(data,bound,eg->partbclayers,info);
+
+    /* Find the number of partitions already used for connected elements */
+    if( data->elemconnectexist ) {
+      maxconset = 0;
+      for(i=1;i<=noelements;i++)
+	maxconset = MAX( maxconset, data->elemconnect[i] );
+      nparts -= maxconset;
+    }
+
+    if( nparts == 1 ) {
+      if(info) printf("Just one partition left, skipping 2nd part of hybrid partitioning!\n");
+      goto skippart;
+    }
 
     CreateDualGraph(data,TRUE,info);
 
@@ -3523,15 +3900,6 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     xadj = dualgraph->rows;
     adjncy = dualgraph->cols;
     totcon = dualgraph->colsize;
-
-    /* Find the number of partitions already used for connected elements */
-    if( data->elemconnectexist ) {
-      maxconset = 0;
-      for(i=1;i<=noelements;i++)
-	maxconset = MIN( maxconset, data->elemconnect[i] );
-      maxconset = -maxconset;
-      nparts -= maxconset;
-    }
   }
   else {
     CreateNodalGraph(data,TRUE,info);
@@ -3568,7 +3936,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     xadj[nn] = totcon;
   }
 
-  printf("There are %d connections alltogether in the graph.\n",totcon);
+  if(info) printf("There are %d connections alltogether in the graph.\n",totcon);
 
   /* Parameters for Metis */
   numflag = 0;
@@ -3654,11 +4022,6 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
   } /* !dual */    
 
 
-  if( nparts == 1 ) {
-    if(info) printf("There is just one free partition, no partitioning needed.\n");      
-    for(i=0;i<nn;i++)
-      npart[i] = 0;
-  }
   if(metisopt == 2) {
     if(info) printf("Starting graph partitioning METIS_PartGraphRecursive.\n");  
     METIS_PartGraphRecursive(&nn,xadj,adjncy,vwgt,adjwgt,&wgtflag,
@@ -3682,7 +4045,10 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 
 
   free_Ivector(adjncy,0,totcon-1);
+  free_Ivector(xadj,0,nn);
   if(wgtflag == 1)  free_Ivector(adjwgt,0,totcon-1);
+
+ skippart:
 
   if(!data->partitionexist) {
     data->partitionexist = TRUE;
@@ -3696,11 +4062,16 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     if( data->elemconnectexist ) {
       for(i=1;i<=noelements;i++) {
 	j = data->elemconnect[i];
-	if(j < 0) {
-	  data->elempart[i] = -j;
-	}
-	else {
-	  data->elempart[i] = npart[j-1]+1+maxconset;  
+	if( nparts == 1 ) {
+	  if(j) 
+	    data->elempart[i] = j;
+	  else 
+	    data->elempart[i] = maxconset+1;
+	} else {
+	  if(j < 0) 
+	    data->elempart[i] = -j;	  
+	  else
+	    data->elempart[i] = npart[j-1]+1+maxconset;  
 	}
       }
     }
@@ -3714,59 +4085,59 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     for(i=1;i<=nn;i++) 
       data->nodepart[i] = npart[i-1]+1;
     PartitionElementsByNodes(data,info);
-  }
 
+    /* Finally check that the constraint is really honored */
+    if(!eg->connect) {
+      int con,bc,bctype,sideelemtype,sidenodes,par;
+      int ind,sideind[MAXNODESD1];
+      int *sidehits,sidepartitions;
 
-  /* Finally check that the constraint is really honored */
-  if(!dual && eg->connect) {
-    int con,bc,bctype,sideelemtype,sidenodes,par;
-    int ind,sideind[MAXNODESD1];
-    int *sidehits,sidepartitions;
+      printf("Checking connection integrity\n");
+      sidehits = Ivector(1,partitions);
 
-    printf("Checking connection integrity\n");
-    sidehits = Ivector(1,partitions);
+      for(con=1;con<=eg->connect;con++) {
+	bctype = eg->connectbounds[con-1];
 
-    for(con=1;con<=eg->connect;con++) {
-      bctype = eg->connectbounds[con-1];
+	for(i=1;i<=partitions;i++)
+	  sidehits[i] = 0;
 
-      for(i=1;i<=partitions;i++)
-	sidehits[i] = 0;
-
-      for(bc=0;bc<MAXBOUNDARIES;bc++) {    
-	if(bound[bc].created == FALSE) continue;
-	if(bound[bc].nosides == 0) continue;
+	for(bc=0;bc<MAXBOUNDARIES;bc++) {    
+	  if(bound[bc].created == FALSE) continue;
+	  if(bound[bc].nosides == 0) continue;
 	
-	for(i=1;i<=bound[bc].nosides;i++) {
-	  if(bound[bc].types[i] != bctype) continue;
+	  for(i=1;i<=bound[bc].nosides;i++) {
+	    if(bound[bc].types[i] != bctype) continue;
 	  
-	  if(1)
-	    GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
-	  else
-	    GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
-			   data,sideind,&sideelemtype);
-	  sidenodes = sideelemtype%100;
+	    if(1)
+	      GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
+	    else
+	      GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+			     data,sideind,&sideelemtype);
+	    sidenodes = sideelemtype%100;
       
-	  for(j=0;j<sidenodes;j++) {
-	    ind = sideind[j];
-	    par = data->nodepart[ind];
-	    sidehits[par] += 1;
-	  }
-	}   
-      }
+	    for(j=0;j<sidenodes;j++) {
+	      ind = sideind[j];
+	      par = data->nodepart[ind];
+	      sidehits[par] += 1;
+	    }
+	  }   
+	}
 
-      sidepartitions = 0;
-      for(i=1;i<=partitions;i++)
-	if( sidehits[i] ) sidepartitions += 1;
+	sidepartitions = 0;
+	for(i=1;i<=partitions;i++)
+	  if( sidehits[i] ) sidepartitions += 1;
 
-      if(sidepartitions != 1) {
-	printf("PartitionMetisGraph: side %d belongs to %d partitions\n",bctype,sidepartitions);
-	bigerror("Parallel constraints might not be set!");
+	if(sidepartitions != 1) {
+	  printf("PartitionMetisGraph: side %d belongs to %d partitions\n",bctype,sidepartitions);
+	  bigerror("Parallel constraints might not be set!");
+	}
       }
     }
   }
 
-  free_Ivector(npart,0,nn-1);
-  free_Ivector(xadj,0,nn);
+  if( nparts > 1 ) {
+    free_Ivector(npart,0,nn-1);
+  }
 
   if(info) {
     if( dual ) 
@@ -4682,7 +5053,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
   if(info) {
     printf("Saving Elmer mesh in partitioned format\n");
-    if( halomode ) printf("Saving halo elements in mode %d\n",halomode);
+    if( halomode ) printf("Saving halo elements in mode: %d\n",halomode);
     if( subparts ) printf("There are %d subpartitions\n",subparts);
   }
 
@@ -4908,14 +5279,15 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     /* If there is no halo we are done */
     if(halomode != 1 && halomode != 2 ) continue;
 
-    /* The face can be shared only if there are enough shared nodes */
+    /* The face can be shared only if there are enough shared nodes among different partitions */
     otherpart = 0;
     for(j=0;j < nodesd2;j++) {
       ind = data->topology[i][j];
       if(neededtimes[ind] > 1) otherpart++;
     }
     if(!otherpart) continue;
-
+    
+    
     if( halomode == 1) {
       /* If the saving of halo is requested check it for elements which have at least 
 	 two nodes in shared partitions. First make this quick test. */
@@ -4923,6 +5295,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       if(elemsides == 8) {
 	if(otherpart < 4) continue;
 	elemsides = 6;
+      }
+      else if(elemsides == 7) {
+	if(otherpart < 3) continue;
+	elemsides = 5;
       }
       else if(elemsides == 6) {
 	if(otherpart < 3) continue;
@@ -4934,16 +5310,21 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       }      
       else 
 	if(otherpart < 2) continue;
-	
+
+      
       /* In order for the halo to be present the element should have a boundary 
 	 fully immersed in the other partition. This test takes more time. */
 	
       for(side=0;side<elemsides;side++) {
 
 	GetElementSide(i,side,1,data,&sideind[0],&sideelemtype);
-	  
+
+	/* Because every node must be on the boundary use the 1st index as the 
+	   first test */
 	for(l=1;l<=neededtimes[sideind[0]];l++) {
 	  part2 = data->partitiontable[l][sideind[0]];
+
+	  /* We did already save this in partition part */
 	  if(part2 == part) continue;
 	    
 	  sidehits = 1;
@@ -4975,8 +5356,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    bulktypes[part2][elemtype] += 1;
 	    elementsinpart[part2] += 1;	
 
-	    /* Add the halo on-the-fly */
-	    
+	    /* Add the halo on-the-fly to the partitiontable of the nodes */	    
 	    for(j=0;j < nodesd2;j++) {
 	      ind = data->topology[i][j];
 	      hit = FALSE;
@@ -5350,11 +5730,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    }
 	    else if( halomode == 1 || halomode == 2 ) {
 	      /* Halo elements ensure that both parents exist even if they are not trueparents */
-	      if( bcneeded == 0 ) continue; 
-	      if( bcneeded2 < nodesd1 ) {
-		printf("Warning: side element %d of type %d is halo but nodes are not in partition: %d %d\n",
-		       i,sideelemtype,bcneeded2,nodesd1);
-	      }
+	      if( bcneeded2 < nodesd1 ) continue;
 	      haloelem = TRUE;
 	      halobcs += 1;
 	    }
@@ -5432,6 +5808,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    }
 	  }
 
+	  /* Here we save nodes that do not make up a full boundary element. 
+	     Hence they are saved as single nodes of type 101 undepending of the original type. 
+	     Such conditions may only be given dirichlet conditions */
 	  else if( step == 2 ) {
 	    if(bcneeded == 0 ) continue;
 	    if( bcelemsaved[i] ) continue;
@@ -5875,21 +6254,21 @@ int ReorderElementsMetis(struct FemType *data,int info)
   if(info) printf("Moving knots to new positions\n");
   newx = Rvector(1,data->noknots);
   newy = Rvector(1,data->noknots);
-  if(data->dim == 3) newz = Rvector(1,data->noknots);
+  newz = Rvector(1,data->noknots);
 
   for(i=1;i<=data->noknots;i++) {
     newx[i] = data->x[perm[i-1]+1];
     newy[i] = data->y[perm[i-1]+1];
-    if(data->dim == 3) newz[i] = data->z[perm[i-1]+1];
+    newz[i] = data->z[perm[i-1]+1];
   }
 
   free_Rvector(data->x,1,data->noknots);
   free_Rvector(data->y,1,data->noknots);
-  if(data->dim == 3) free_Rvector(data->z,1,data->noknots);
+  free_Rvector(data->z,1,data->noknots);
 
   data->x = newx;
   data->y = newy;
-  if(data->dim == 3) data->z = newz;
+  data->z = newz;
 
 
   if(info) printf("Chanching the element topology\n");

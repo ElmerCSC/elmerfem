@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
   Coordinate System =  Cartesian
 !  coordinate system = axi symmetric
   Coordinate Mapping(3) = 1 2 3
@@ -95,6 +95,4 @@ End
 
 Solver 1 :: Reference Norm = Real 0.117158
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-3
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.117158, EPS=1.0e-3\n" );

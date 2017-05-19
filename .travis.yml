@@ -1,0 +1,11 @@
+services: docker
+before_install:
+- docker build -t elmertest/xenial -f ci/Dockerfile-build .
+- docker ps -a
+script:
+- docker run elmertest/xenial /bin/sh -c 'cmake -C ../opts-ubuntu-xenial.cmake ../elmerfem
+  && make -j$(nproc) && ctest -L quick'
+notifications:
+  email: change
+  flowdock:
+    secure: "lu9jDOsW8lSOJr/d/7VGxU9nG1AAhc4kPKgfiOnLsBp2CJXVPAmbyaFMmaMfdJdHgM7pGW6fnoJSBtwyYfsB/GmXtmX9vKGwiKfAAGeUIGS15wzllHKjRQm3hDQ/MnO5wmj6r7dcSPjfLhy5ZFuiihoOSsBd9LpcMOetEsg99tA="

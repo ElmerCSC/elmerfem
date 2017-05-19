@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-!  Max Output Level = 3
+!  Max Output Level = 5
 !  Coordinate System = "Cartesian 2D"
   Coordinate System = String Axi Symmetric
   Simulation Type = Transient
@@ -139,7 +139,5 @@ End
 
 Solver 1 :: Reference Norm = Real 0.78248274E-04
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.78248274E-04,EPS=1.0E-5\n" );
 

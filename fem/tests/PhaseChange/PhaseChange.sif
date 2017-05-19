@@ -7,7 +7,7 @@ End
 
 Simulation
   Coordinate System = Cartesian
-  Max Output Level = 3
+  Max Output Level = 5
 
   Simulation Type = Transient
   Timestep sizes = 50
@@ -98,9 +98,7 @@ Boundary Condition 2
 End
 
 Solver 1 :: Reference Norm = Real 0.380124683198
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.380124683198\n" );
 
 !End Of File
 

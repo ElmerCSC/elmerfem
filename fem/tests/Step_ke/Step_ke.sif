@@ -6,7 +6,7 @@ End
 
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
   Coordinate System = Cartesian 2D
 
   Simulation Type = Steady
@@ -151,6 +151,4 @@ End
 
 Solver 2 :: Reference Norm = Real 0.23583018
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.23583018,EPS=1.0e-3\n" );

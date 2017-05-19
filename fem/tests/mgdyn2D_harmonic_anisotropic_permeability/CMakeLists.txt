@@ -1,0 +1,10 @@
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+CONFIGURE_FILE(sif/7557.sif sif/7557.sif COPYONLY) 
+file(COPY ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+file(COPY sif/7557-circuits.definitions DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/sif")
+file(COPY 7557/mesh.boundary 7557/mesh.header 7557/mesh.nodes 7557/mesh.elements 7557/mesh.names DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/7557")
+ADD_ELMER_TEST(mgdyn2D_harmonic_anisotropic_permeability)
+ADD_ELMER_LABEL(mgdyn2D_harmonic_anisotropic_permeability mgdyn)
+ADD_ELMER_LABEL(mgdyn2D_harmonic_anisotropic_permeability 2D)
+ADD_ELMER_LABEL(mgdyn2D_harmonic_anisotropic_permeability harmonic)
+

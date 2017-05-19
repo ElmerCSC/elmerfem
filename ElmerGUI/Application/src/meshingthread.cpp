@@ -116,14 +116,22 @@ void MeshingThread::run()
   if(generatorType == GEN_TETLIB) {
     
     cout << "tetlib: control string: " 
+#if WITH_QT5
+	 << string(tetgenControlString.toLatin1()) << endl;
+#else
 	 << string(tetgenControlString.toAscii()) << endl;
+#endif
     cout << "tetlib: input points: " << in->numberofpoints << endl;
     cout.flush();
     
     out->deinitialize();
     out->initialize();
     
+#if WITH_QT5
+    sprintf(ss, "%s", (const char*)(tetgenControlString.toLatin1()));
+#else
     sprintf(ss, "%s", (const char*)(tetgenControlString.toAscii()));
+#endif
     
     if(delegate_tetrahedralize) 
       delegate_tetrahedralize(1, NULL, ss, in, out, NULL, NULL);      

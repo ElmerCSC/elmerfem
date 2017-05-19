@@ -15,7 +15,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -123,8 +123,6 @@ End
 
 
 
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=0.28535304E-01\n");
 
 

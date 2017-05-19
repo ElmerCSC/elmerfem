@@ -8,7 +8,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady state
@@ -98,7 +98,6 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.30416297
-$ fprintf( stderr, "\n\nTEST CASE 1 (Fixed coordinates)\n");
 Boundary Condition 1 
   Velocity 1 = Variable Coordinate 2
     Real MATC "-Omega*tx"
@@ -106,11 +105,9 @@ Boundary Condition 1
     Real MATC "Omega*tx"
 End   
 RUN
-$ fprintf( stderr, "END TEST CASE 1: Target NRM=0.30416297\n ");
 
 
 Solver 1 :: Reference Norm = Real 0.30416081
-$ fprintf( stderr, "\n\nTEST CASE 2 (Rotating coordinates)\n");
 Boundary Condition 1 
   Velocity 1 = 0.0
   Velocity 2 = 0.0
@@ -119,6 +116,5 @@ Body Force 1
   Angular Velocity(3) = Real 0.0 0.0 $Omega$
 End
 RUN
-$ fprintf( stderr, "END TEST CASE 2: Target NRM=0.30416081\n ");
 
 

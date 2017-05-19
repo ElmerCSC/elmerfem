@@ -142,11 +142,11 @@ CONTAINS
     
 
     IF( NoParticles <= Particles % MaxNumberOfParticles ) THEN
-      ! CALL Info('AllocateParticles','There are already enough particles')
+      CALL Info('AllocateParticles','There are already enough particles',Level=12)
       RETURN
     ELSE
-      !WRITE(Message,*) 'Allocating number of particles:',NoParticles
-      !CALL Info('AllocateParticles',Message)    
+      CALL Info('AllocateParticles','Allocating number of particles: '// &
+          TRIM(I2S(NoParticles)),Level=12)    
     END IF
     
     dim = Particles % dim 
@@ -160,6 +160,8 @@ CONTAINS
       Particles % Coordinate = 0.0_dp
       Particles % uvw = 0.0_dp
       Particles % ElementIndex = 0
+      Particles % Status = PARTICLE_ALLOCATED
+
       Particles % MaxNumberOfParticles = NoParticles
     ELSE
       Coordinate => Particles % Coordinate
@@ -210,7 +212,7 @@ CONTAINS
 
     n = Particles % NumberOfParticles 
     IF( n == Particles % MaxNumberOfParticles ) THEN
-      m = MAX( 100, n / 10 ) 
+      m = MAX( 1000, n / 2 ) 
       CALL AllocateGridParticles( Particles, n + m )
     END IF
     
@@ -242,7 +244,7 @@ CONTAINS
     INTEGER, POINTER :: MaskPerm(:)
     INTEGER :: t,i,j,k,n,nx,ny,nz,imin,imax,jmin,jmax,kmin,kmax, &
         imintot,imaxtot,jmintot,jmaxtot,kmintot,kmaxtot,&
-        meshdim, griddim, ActiveCoordinate
+        meshdim, griddim, ActiveCoordinate,ntot
     INTEGER :: ioff,joff,koff,cands1, cands2, ierr, totcount(3),tmpcount(3)
     INTEGER :: ParallelNodes, NumberOfNodes
     TYPE(Nodes_t) :: Nodes
@@ -287,7 +289,7 @@ CONTAINS
         LowerDimensional = .NOT. MaskOnBulk
       END IF
     END IF
-
+    
     IF( LowerDimensional ) THEN
       griddim = meshdim - 1
       ElemStart = Mesh % NumberOfBulkElements + 1
@@ -393,20 +395,22 @@ CONTAINS
       kmaxtot = 0
     END IF
 
-    !PRINT *,'MinCoord: ',MinCoord
-    !PRINT *,'MaxCoord: ',MaxCoord
-    !PRINT *,'dX: ',dX
-    !PRINT *,'Indexes: ',imintot,imaxtot,jmintot,jmaxtot,kmintot,kmaxtot
+    CALL Info('SaveGridData','Index i range: '&
+        //TRIM(I2S(imintot))//' - '//TRIM(I2S(imaxtot)),Level=12)
+    CALL Info('SaveGridData','Index j range: '&
+        //TRIM(I2S(jmintot))//' - '//TRIM(I2S(jmaxtot)),Level=12)
+    CALL Info('SaveGridData','Index k range: '&
+        //TRIM(I2S(kmintot))//' - '//TRIM(I2S(kmaxtot)),Level=12)
 
+    ioff = imintot-1
+    joff = jmintot-1
+    koff = kmintot-1
+    
     ! Create a table for checking active gridpoints
     !----------------------------------------------------------------------------
     CheckForDuplicates = Structured .OR. GetLogical( Params,'Check for Duplicates')   
 
     IF( CheckForDuplicates ) THEN
-      ioff = imintot-1
-      joff = jmintot-1
-      koff = kmintot-1
-
       ALLOCATE( GridPointActive(imaxtot-ioff,jmaxtot-joff,kmaxtot-koff) )
       GridPointActive = .FALSE.
 
@@ -414,6 +418,13 @@ CONTAINS
         ALLOCATE( GridIndex(imaxtot-ioff,jmaxtot-joff,kmaxtot-koff) )
         GridIndex = 0
       END IF
+    END IF
+
+    ! It is most convenient to allocate enough at the start but this could 
+    ! mean excessive memory usage 
+    IF( .NOT. ListGetLogical( Params,'Adaptive Allocation',Found ) ) THEN
+      ntot = (imaxtot-ioff)*(jmaxtot-joff)*(kmaxtot-koff)
+      CALL AllocateGridParticles( Particles, ntot )
     END IF
 
 
@@ -424,6 +435,7 @@ CONTAINS
     Extent(5) = kmintot
     Extent(6) = kmaxtot
 
+    
 
     ! Create particles in the uniform grid
     !----------------------------------------------------------------------------
@@ -441,6 +453,10 @@ CONTAINS
       IF( MaskExist ) THEN
         IF( ANY( MaskPerm( Element % NodeIndexes ) == 0 ) ) CYCLE
       END IF
+
+      ! Only use the correct dimensional elements for interpolation!
+      IF( GetElementDim(Element) /= griddim ) CYCLE
+
 
       imin = CEILING( ( MINVAL( Nodes % x(1:n) ) - Origin(1) ) / dx(1) )
       imax = FLOOR( ( MAXVAL( Nodes % x(1:n) ) - Origin(1) ) / dx(1) )
@@ -532,15 +548,15 @@ CONTAINS
     IF( ParEnv % PEs > 1 ) THEN
       tmpcount = totcount
       CALL MPI_ALLREDUCE( tmpcount, totcount, 3, MPI_INTEGER, &
-          MPI_SUM, MPI_COMM_WORLD, ierr ) 
+          MPI_SUM, ELMER_COMM_WORLD, ierr ) 
     END IF
 
     WRITE( Message,'(A,I8)') 'Number of candidate nodes:',totcount(1)
-    CALL Info('CreateGridParticles',Message,Level=5)
+    CALL Info('CreateGridParticles',Message,Level=6)
        
     IF( CheckForDuplicates ) THEN
       WRITE( Message,'(A,I8)') 'Number of duplicate nodes:',totcount(1)-totcount(2)
-      CALL Info('CreateGridParticles',Message,Level=5)
+      CALL Info('CreateGridParticles',Message,Level=6)
     END IF
 
     WRITE( Message,'(A,I8)') 'Number of created nodes:',totcount(3)
@@ -548,7 +564,7 @@ CONTAINS
     
     IF( totcount(3) > 0 ) THEN
       WRITE( Message,'(A,F8.2)') 'Search hit fraction:',1.0_dp * totcount(3) / totcount(1)
-      CALL Info('CreateGridParticles',Message,Level=5)
+      CALL Info('CreateGridParticles',Message,Level=6)
     END IF
 
 

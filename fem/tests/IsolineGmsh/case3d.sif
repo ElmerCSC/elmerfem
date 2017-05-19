@@ -14,7 +14,7 @@ End
 Simulation
   Extruded Mesh Levels = 4
 
-  Max Output Level = 32
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -119,7 +119,5 @@ End
 
 
 
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.198814065076\n");
 !End Of File

@@ -1,0 +1,14 @@
+Input File = sector
+Output File = sector3d
+Input Mode = ElmerSolver
+Output Mode = ElmerSolver
+Extruded Divisions = 3
+Extruded Structure
+ 1 1 1
+ 0 0 0
+ 1 1 2
+End
+Extruded Sizes = 0.2 0.0 0.2
+Extruded Ratios = 1 1 1 
+Extruded Elements = 5 0 5
+!Extruded BC Offset = 100

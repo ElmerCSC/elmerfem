@@ -43,6 +43,7 @@
 MODULE CircuitUtils
 
     USE DefUtils
+    IMPLICIT NONE
 
 CONTAINS
 
@@ -98,6 +99,17 @@ CONTAINS
   END FUNCTION GetComponentParams
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE GetWPotential(Wbase)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp) :: Wbase(:)
+
+    CALL GetLocalSolution(Wbase,'W Potential')
+    IF(.NOT. ANY(Wbase/=0._dp)) CALL GetLocalSolution(Wbase,'W')
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetWPotential
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddComponentsToBodyLists()
@@ -106,30 +118,35 @@ CONTAINS
     
     LOGICAL :: Found
     INTEGER :: i, j, k
-    
+    LOGICAL, SAVE :: Visited=.FALSE.
     ! Components and Bodies:
     ! ----------------------  
     INTEGER :: BodyId
     INTEGER, POINTER :: BodyAssociations(:) => Null()
     TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
-        
+     
+    IF (Visited) RETURN
+
+    Visited = .TRUE.
     DO i = 1, SIZE(CurrentModel % Components)
       ComponentParams => CurrentModel % Components(i) % Values
       
-      IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+      IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('AddComponentsToBodyList', &
                                                          'Component parameters not found!')
       BodyAssociations => ListGetIntegerArray(ComponentParams, 'Body', Found)
+
+      IF (.NOT. Found) BodyAssociations => ListGetIntegerArray(ComponentParams, 'Master Bodies', Found)
       
       IF (.NOT. Found) CYCLE
 
       DO j = 1, SIZE(BodyAssociations)
         BodyId = BodyAssociations(j)
         BodyParams => CurrentModel % Bodies(BodyId) % Values
-        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
                                                       'Body parameters not found!')
         k = GetInteger(BodyParams, 'Component', Found)
-        IF (Found) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
-                               'Body '//TRIM(i2s(BodyId))//' associated to two components!')
+        IF (Found) CALL Fatal ('AddComponentsToBodyList', &
+                              'Body '//TRIM(i2s(BodyId))//' associated to two components!')
         CALL listAddInteger(BodyParams, 'Component', i)
         BodyParams => Null()
       END DO
@@ -137,13 +154,13 @@ CONTAINS
 
     DO i = 1, SIZE(CurrentModel % Bodies)
       BodyParams => CurrentModel % Bodies(i) % Values
-      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
-                                                    'Body parameters not found!')
+      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
+                                                   'Body parameters not found!')
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
       WRITE(Message,'(A,I2,A,I2)') 'Body',i,' associated to Component', j
-      CALL Info('CircuitsAndDynamicsHarmonic',Message,Level=3)
+      CALL Info('AddComponentsToBodyList',Message,Level=3)
       BodyParams => Null()
     END DO
 !------------------------------------------------------------------------------
@@ -162,13 +179,35 @@ CONTAINS
     
     ComponentParams => CurrentModel % Components(Id) % Values
     
-    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentBodyIds', &
                                                          'Component parameters not found!')
     BodyIds => ListGetIntegerArray(ComponentParams, 'Body', Found)
+    IF (.NOT. Found) BodyIds => ListGetIntegerArray(ComponentParams, 'Master Bodies', Found)
     IF (.NOT. Found) BodyIds => Null()
     
 !------------------------------------------------------------------------------
   END FUNCTION GetComponentBodyIds
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentHomogenizationBodyIds(Id) RESULT (BodyIds)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    LOGICAL :: Found
+    INTEGER :: Id
+    INTEGER, POINTER :: BodyIds(:)
+    TYPE(Valuelist_t), POINTER :: ComponentParams
+    
+    ComponentParams => CurrentModel % Components(Id) % Values
+    
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentHomogenizationBodyIds', &
+                                                         'Component parameters not found!')
+    BodyIds => ListGetIntegerArray(ComponentParams, 'Homogenization Parameters Body', Found)
+    IF (.NOT. Found) BodyIds => GetComponentBodyIds(Id)
+
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentHomogenizationBodyIds
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -205,6 +244,7 @@ END MODULE CircuitUtils
 MODULE CircuitsMod
 
   USE DefUtils
+  IMPLICIT NONE
 
 CONTAINS 
 
@@ -400,6 +440,51 @@ CONTAINS
   END SUBROUTINE AllocateCircuit
 !------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------
+ SUBROUTINE SetBoundaryAreasToValueLists()
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Valuelist_t), POINTER :: BC
+    REAL(KIND=dp) :: BoundaryAreas(CurrentModel % NumberOFBCs)
+    INTEGER :: Active, t, i, BCid, n
+    LOGICAL :: Found
+
+    BoundaryAreas = 0._dp
+    Mesh => CurrentModel % Mesh
+
+    DO i=1, CurrentModel % NumberOfBcs
+       BC => CurrentModel % BCs(i) % Values
+       IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('SetBoundaryAreasToValueLists', 'Boundary not found!')
+       CALL ListAddInteger(BC, 'Boundary Id', i)
+    END DO
+    
+    Active = GetNOFBoundaryElements()
+    DO t=1,Active
+       Element => GetBoundaryElement(t)
+!       IF (.NOT. ActiveBoundaryElement()) CYCLE
+       
+       BC=>GetBC()
+       IF (.NOT. ASSOCIATED(BC) ) CYCLE
+     
+       BCid = GetInteger(BC, 'Boundary Id', Found)
+       n = GetElementNOFNodes() 
+       BoundaryAreas(BCid) = BoundaryAreas(BCid) + ElementAreaNoAxisTreatment(Mesh, Element, n) 
+    END DO
+
+    DO i=1, CurrentModel % NumberOfBcs
+       BC => CurrentModel % BCs(i) % Values
+       IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeCoilBoundaryAreas', 'Boundary not found!')
+       BCid = GetInteger(BC, 'Boundary Id', Found)
+       BoundaryAreas(BCid) = ParallelReduction(BoundaryAreas(BCid))
+       CALL ListAddConstReal(BC, 'Area', BoundaryAreas(BCid))
+    END DO
+    
+!-------------------------------------------------------------------
+ END SUBROUTINE SetBoundaryAreasToValueLists
+!-------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE ReadComponents(CId)
@@ -411,7 +496,7 @@ CONTAINS
     TYPE(Component_t), POINTER :: Comp
     TYPE(Valuelist_t), POINTER :: CompParams
     LOGICAL :: Found
-    
+
     Circuit => CurrentModel%Circuits(CId)
     
     Circuit % CvarDofs = 0
@@ -437,25 +522,17 @@ CONTAINS
       IF (.NOT. Found) Comp % i_multiplier_re = 0._dp
       Comp % i_multiplier_im = GetConstReal(CompParams, 'Current Multiplier im', Found)
       IF (.NOT. Found) Comp % i_multiplier_im = 0._dp
+
+      Comp % ElBoundaries => ListGetIntegerArray(CompParams, 'Electrode Boundaries', Found)
       
       SELECT CASE (Comp % CoilType) 
       CASE ('stranded')
         Comp % nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
         IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
 
-        Comp % ElBoundary = GetInteger(CompParams, 'Electrode Boundary 1', Found)
-        IF (.NOT. Found) THEN 
-          Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
-          IF (.NOT. Found) THEN
-            CALL Fatal('Circuits_Init','Electrode Boundary 1 or Electrode Area not found!')
-          END IF
-        ELSE
-          ! Compute Electrode Area Automatically:
-          ! -------------------------------------
-!              DO t=1,GetNOFBoundaryElements()
-!              Element => GetBoundaryElement(t)
-        END IF
-        
+        Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
+        IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
+
         Comp % N_j = Comp % nofturns / Comp % ElArea
 
         ! Stranded coil has current and voltage 
@@ -501,6 +578,11 @@ CONTAINS
         Comp % nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
         IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
 
+        Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
+        IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
+
+        Comp % N_j = Comp % nofturns / Comp % ElArea
+
       END SELECT
       CALL AddVariableToCircuit(Circuit, Comp % ivar, CId)
       CALL AddVariableToCircuit(Circuit, Comp % vvar, CId)
@@ -508,6 +590,121 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadComponents
 !------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+ SUBROUTINE ComputeElectrodeArea(Comp, CompParams)
+!-------------------------------------------------------------------
+  USE ElementUtils
+  IMPLICIT NONE
+  TYPE(Component_t), POINTER :: Comp
+  TYPE(ValueList_t), POINTER :: CompParams, BC
+  TYPE(Element_t), POINTER :: Element
+  TYPE(Mesh_t), POINTER :: Mesh
+  INTEGER :: t, n, BCid
+  LOGICAL :: Found
+  
+  Mesh => CurrentModel % Mesh
+  Comp % ElArea = 0._dp
+
+  IF (CoordinateSystemDimension() == 2) THEN
+    DO t=1,GetNOFActive()
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes() 
+      IF (ElAssocToComp(Element, Comp)) THEN
+        Comp % ElArea = Comp % ElArea + ElementAreaNoAxisTreatment(Mesh, Element, n) 
+      END IF
+    END DO
+    Comp % ElArea = ParallelReduction(Comp % ElArea)
+  ELSE
+    IF (.NOT. ASSOCIATED(Comp % ElBoundaries)) &
+      CALL Fatal('ComputeElectrodeArea','Electrode Boundaries not found')
+
+    BCid = Comp % ElBoundaries(1)
+    BC => CurrentModel % BCs(BCid) % Values
+    IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeElectrodeArea', 'Boundary not found!')
+
+    Comp % ElArea = GetConstReal(BC, 'Area', Found)
+    IF (.NOT. Found) CALL Fatal('ComputeElectrodeArea', 'Area not found!')
+    
+  END IF
+!-------------------------------------------------------------------
+ END SUBROUTINE ComputeElectrodeArea
+!-------------------------------------------------------------------
+
+! This function is originally from ElementUtils. However, there is 
+! some kind of treatment regarding axisymmetric cases which fails 
+! here since we don't want that.
+!------------------------------------------------------------------------------
+   FUNCTION ElementAreaNoAxisTreatment( Mesh,Element,N ) RESULT(A)
+!------------------------------------------------------------------------------
+     TYPE(Mesh_t), POINTER :: Mesh
+     INTEGER :: N
+     TYPE(Element_t) :: Element
+!------------------------------------------------------------------------------
+
+     REAL(KIND=dp), TARGET :: NX(N),NY(N),NZ(N)
+
+     REAL(KIND=dp) :: A
+
+     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+     INTEGER :: N_Integ,t
+
+     REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3), &
+              SqrtMetric,SqrtElementMetric
+
+     TYPE(Nodes_t) :: Nodes
+
+     LOGICAL :: stat
+
+     REAL(KIND=dp) :: Basis(n),u,v,w,x,y,z
+     REAL(KIND=dp) :: dBasisdx(n,3)
+
+     REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
+!------------------------------------------------------------------------------
+ 
+     Nodes % x => NX
+     Nodes % y => NY
+     Nodes % z => NZ
+
+     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
+     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
+     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
+
+     IntegStuff = GaussPoints( element )
+     U_Integ => IntegStuff % u
+     V_Integ => IntegStuff % v
+     W_Integ => IntegStuff % w
+     S_Integ => IntegStuff % s
+     N_Integ  = IntegStuff % n
+!
+!------------------------------------------------------------------------------
+!   Now we start integrating
+!------------------------------------------------------------------------------
+!
+       A = 0.0
+       DO t=1,N_Integ
+!
+!        Integration stuff
+!
+         u = U_Integ(t)
+         v = V_Integ(t)
+         w = W_Integ(t)
+!
+!------------------------------------------------------------------------------
+!        Basis function values & derivatives at the integration point
+!------------------------------------------------------------------------------
+         stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric, &
+                    Basis,dBasisdx )
+!------------------------------------------------------------------------------
+!        Coordinatesystem dependent info
+!------------------------------------------------------------------------------
+           A =  A + SqrtElementMetric * S_Integ(t)
+       END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ElementAreaNoAxisTreatment
+!------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddVariableToCircuit(Circuit, Variable, k)
@@ -622,11 +819,16 @@ variable % owner = ParEnv % PEs-1
     CALL matc_get_array('C.'//TRIM(i2s(CId))//'.A'//CHAR(0),Circuit % A,n,n)
     CALL matc_get_array('C.'//TRIM(i2s(CId))//'.B'//CHAR(0),Circuit % B,n,n)
     
-    ! Complex multiplier matrix is used for:
-    ! B = times(M,B), where B times is the element-wise product
-    ! ---------------------------------------------------------
-    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mre'//CHAR(0),Circuit % Mre,n,n)
-    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mim'//CHAR(0),Circuit % Mim,n,n)
+    IF (Circuit % Harmonic) THEN
+      ! Complex multiplier matrix is used for:
+      ! B = times(M,B), where B times is the element-wise product
+      ! ---------------------------------------------------------
+      CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mre'//CHAR(0),Circuit % Mre,n,n)
+      CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mim'//CHAR(0),Circuit % Mim,n,n)
+    ELSE
+      Circuit % Mre = 0._dp
+      Circuit % Mim = 0._dp
+    END IF
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadCoefficientMatrices
@@ -766,18 +968,68 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION ReIndex(Ind)
+  FUNCTION AddIndex(Ind, Harmonic)
 !------------------------------------------------------------------------------
-    Integer :: Ind, ReIndex
+    IMPLICIT NONE
+    Integer :: Ind, AddIndex
+    LOGICAL, OPTIONAL :: Harmonic
+    LOGICAL :: harm
+    
+    IF (.NOT. PRESENT(Harmonic)) THEN
+      harm = CurrentModel % HarmonicCircuits
+    ELSE
+      harm = Harmonic
+    END IF
+ 
+    IF (harm) THEN
+      AddIndex = 2 * Ind
+    ELSE
+      AddIndex = Ind
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION AddIndex 
+!------------------------------------------------------------------------------
 
-    ReIndex = 2 * Ind - 1
 !------------------------------------------------------------------------------
-  END FUNCTION ReIndex
+  FUNCTION AddImIndex(Ind)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: Ind
+    Integer :: AddImIndex
+    IF ( .NOT. CurrentModel % HarmonicCircuits ) CALL Fatal ('AddImIndex','Model is not of harmonic type!')
+    
+    AddImIndex = 2 * Ind + 1
+!------------------------------------------------------------------------------
+  END FUNCTION AddImIndex 
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION ReIndex(Ind, Harmonic)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: Ind, ReIndex
+    LOGICAL, OPTIONAL :: Harmonic
+    LOGICAL :: harm
+    
+    IF (.NOT. PRESENT(Harmonic)) THEN
+      harm = CurrentModel % HarmonicCircuits
+    ELSE
+      harm = Harmonic
+    END IF
+ 
+    IF (harm) THEN
+      ReIndex = 2 * Ind - 1
+    ELSE
+      ReIndex = Ind
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION ReIndex 
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   FUNCTION ImIndex(Ind)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     Integer :: Ind, ImIndex
 
     ImIndex = 2 * Ind
@@ -814,8 +1066,8 @@ END MODULE CircuitsMod
 
 MODULE CircMatInitMod
 
-  USE DefUtils
   USE CircuitsMod
+  IMPLICIT NONE
 
 CONTAINS
 
@@ -871,23 +1123,23 @@ CONTAINS
         
         IF (Circuits(p) % Harmonic) THEN
           DO j=1,Cvar % Dofs
-            IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+ReIndex(j)-1)%Neighbours)) THEN
-              ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+ReIndex(j)-1) % Neighbours(nn))
-              ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+ImIndex(j)-1) % Neighbours(nn))
+            IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1))%Neighbours)) THEN
+              ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(nn))
+              ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(nn))
             END IF
-            CM % ParallelInfo % NeighbourList(RowId+ReIndex(j)-1) % Neighbours(1)   = CVar % Owner
-            CM % ParallelInfo % NeighbourList(RowId+ImIndex(j)-1) % Neighbours(1) = CVar % Owner
+            CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(1)   = CVar % Owner
+            CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(1) = CVar % Owner
             l = 1
             DO k=0,ParEnv % PEs-1
               IF(k==CVar % Owner) CYCLE
               IF(r_cnt(k+1)>0) THEN
                 l = l + 1
-                CM % ParallelInfo % NeighbourList(RowId+ReIndex(j)-1) % Neighbours(l) = k
-                CM % ParallelInfo % NeighbourList(RowId+ImIndex(j)-1) % Neighbours(l) = k
+                CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(l) = k
+                CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(l) = k
               END IF
             END DO
-            CM % RowOwner(RowId + ReIndex(j)-1) = Cvar % Owner
-            CM % RowOwner(RowId + ImIndex(j)-1) = Cvar % Owner
+            CM % RowOwner(RowId + AddIndex(j-1)) = Cvar % Owner
+            CM % RowOwner(RowId + AddImIndex(j-1)) = Cvar % Owner
           END DO
         ELSE
           DO j=1,Cvar % Dofs
@@ -954,7 +1206,7 @@ CONTAINS
     LOGICAL :: harm
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1015,7 +1267,7 @@ CONTAINS
     LOGICAL :: harm
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1055,7 +1307,7 @@ CONTAINS
         RowId = Cvar % ValueId + nm
         DO j=1,Circuits(p) % n
           IF(Cvar % A(j)/=0._dp.OR.Cvar % B(j)/=0._dp) &
-             CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
+             CALL CountMatElement(Rows, Cnts, RowId, 1)
         END DO
       END DO
     END DO
@@ -1087,7 +1339,7 @@ CONTAINS
         DO j=1,Circuits(p) % n
           IF(Cvar % A(j)/=0._dp .OR. Cvar % B(j)/=0._dp) THEN
             ColId = Circuits(p) % CircuitVariables(j) % ValueId + nm
-            CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId, Harmonic=Circuits(p)%Harmonic)
+            CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
           END IF
         END DO
       END DO
@@ -1126,27 +1378,21 @@ CONTAINS
         ColId = Cvar % ValueId + nm
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-             CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
-             CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
-          END IF
+           CALL CountMatElement(Rows, Cnts, RowId, 1)
+           CALL CountMatElement(Rows, Cnts, RowId, 1)
         CASE('massive')
-          IF (CVar % Owner == ParEnv % myPE) THEN
-            CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
-            CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
-          END IF
+           CALL CountMatElement(Rows, Cnts, RowId, 1)
+           CALL CountMatElement(Rows, Cnts, RowId, 1)
         CASE('foil winding')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-            ! V = V0 + V1*alpha + V2*alpha^2 + ...
-            CALL CountMatElement(Rows, Cnts, RowId, Cvar % dofs, Harmonic=Circuits(p)%Harmonic)
+          ! V = V0 + V1*alpha + V2*alpha^2 + ...
+          CALL CountMatElement(Rows, Cnts, RowId, Cvar % dofs)
 
-            ! Circuit eqns for the pdofs:
-            ! I(Vj) - I = 0
-              ! ------------------------------------
-            DO j=1, Cvar % pdofs
-              CALL CountMatElement(Rows, Cnts, RowId + 2*j, Cvar % dofs, Harmonic=Circuits(p)%Harmonic)
-            END DO
-          END IF
+          ! Circuit eqns for the pdofs:
+          ! I(Vj) - I = 0
+          ! ------------------------------------
+          DO j=1, Cvar % pdofs
+            CALL CountMatElement(Rows, Cnts, RowId + AddIndex(j), Cvar % dofs)
+          END DO
         END SELECT
 
 !        temp = SUM(Cnts)
@@ -1158,17 +1404,13 @@ CONTAINS
             nd = GetElementNOFDOFs(Element,ASolver)
             SELECT CASE (Comp % CoilType)
             CASE('stranded')           
-              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows,Harmonic=Circuits(p)%Harmonic)
+              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows)
             CASE('massive')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows,Harmonic=Circuits(p)%Harmonic)
-            CASE('foil winding')
+              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows)
+           CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              DO j = 1, Cvar % pdofs
-                dofsdone = ( j==Cvar%pdofs )   
-                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,Done,dofsdone,&
-                                                         Rows,Harmonic=Circuits(p)%Harmonic)
-              END DO
+              CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows)
             END SELECT
           END IF
         END DO
@@ -1211,29 +1453,23 @@ CONTAINS
 
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId, Harmonic=Circuits(p)%Harmonic)
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId, Harmonic=Circuits(p)%Harmonic)
-          END IF
+          CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
+          CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
         CASE('massive')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId, Harmonic=Circuits(p)%Harmonic)
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId, Harmonic=Circuits(p)%Harmonic)
-          END IF
+          CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
+          CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
         CASE('foil winding')
           DO j=0, Cvar % pdofs
-            IF (Cvar % Owner == ParEnv % mype) THEN
-              ! V = V0 + V1*alpha + V2*alpha^2 + ...
-              CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId + 2*j, Harmonic=Circuits(p)%Harmonic)
-              IF (j/=0) THEN
-                ! Circuit eqns for the pdofs:
-                ! I(Vi) - I = 0
-                ! ------------------------------------
-                CALL CreateMatElement(Rows, Cols, Cnts, VvarId + 2*j, IvarId, Harmonic=Circuits(p)%Harmonic)
-                DO jj = 1, Cvar % pdofs
-                    CALL CreateMatElement(Rows, Cols, Cnts, VvarId + 2*j, VvarId + 2*jj, Harmonic=Circuits(p)%Harmonic)
-                END DO
-              END IF
+            ! V = V0 + V1*alpha + V2*alpha^2 + ...
+            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId + AddIndex(j))
+            IF (j/=0) THEN
+              ! Circuit eqns for the pdofs:
+              ! I(Vi) - I = 0
+              ! ------------------------------------
+              CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), IvarId)
+              DO jj = 1, Cvar % pdofs
+                  CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), VvarId + AddIndex(j))
+              END DO
             END IF
           END DO
         END SELECT
@@ -1247,17 +1483,13 @@ CONTAINS
             nd = GetElementNOFDOFs(Element,ASolver)
             SELECT CASE (Comp % CoilType)
             CASE('stranded')
-              CALL CountAndCreateStranded(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols,IvarId,Harmonic=Circuits(p)%Harmonic)
+              CALL CountAndCreateStranded(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols,IvarId)
             CASE('massive')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols,Harmonic=Circuits(p)%Harmonic)
-            CASE('foil winding')
+              CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols)
+           CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE   
-              DO j = 1, Cvar % pdofs
-                dofsdone = ( j==Cvar%pdofs )
-                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+VvarId,Cnts,Done,dofsdone,Rows,&
-                                                          Cols=Cols,Harmonic=Circuits(p)%Harmonic)
-              END DO
+              CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows,Cols=Cols)
             END SELECT
           END IF
         END DO
@@ -1295,7 +1527,7 @@ CONTAINS
     END IF
 
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1316,7 +1548,8 @@ CONTAINS
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
-        IF (harm) j = ReIndex(PS(j))
+        j = PS(j)
+        IF (harm) j = ReIndex(j)
         IF(PRESENT(Cols)) THEN
           CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm) 
           CALL CreateMatElement(Rows, Cols, Cnts, j, Jsind, harm)
@@ -1354,7 +1587,7 @@ CONTAINS
     END IF
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1373,7 +1606,8 @@ CONTAINS
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
-        IF (harm) j = ReIndex(PS(j))
+        j = PS(j)
+        IF (harm) j = ReIndex(j)
         IF(PRESENT(Cols)) THEN
           CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm)
           CALL CreateMatElement(Rows, Cols, Cnts, j, i, harm)
@@ -1388,14 +1622,17 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,i,Cnts,Done,dofsdone,Rows,Cols,Harmonic)
+    SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows,Cols,Harmonic)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element
-    INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
+    TYPE(Component_t), POINTER :: Comp
+    INTEGER :: nn, nd, ncdofs, dim
     OPTIONAL :: Cols
     INTEGER :: Rows(:), Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
+    INTEGER :: Indexes(nd)
+    INTEGER :: p,j,q,vpolord,vpolordtest,vpolord_tot,&
+      dofId,dofIdtest,vvarId, nm
     LOGICAL :: dofsdone, First=.TRUE.
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
@@ -1409,7 +1646,7 @@ CONTAINS
     END IF
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1417,26 +1654,51 @@ CONTAINS
     IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateFoilWinding','ASolver not found!')
     PS => CurrentModel % Asolver % Variable % Perm
     nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
-    IF(dim==2) THEN
-      ncdofs1=1
-      ncdofs2=nd
-    ELSE IF(dim==3) THEN
-      ncdofs1=nn
-      ncdofs2=nd
-    END IF
-    DO p=ncdofs1,ncdofs2
-      j = Indexes(p)
-      IF(.NOT.Done(j)) THEN
-        Done(j) = dofsdone
-        IF (harm) j = ReIndex(PS(j))
-        IF(PRESENT(Cols)) THEN
-          CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm)
-          CALL CreateMatElement(Rows, Cols, Cnts, j, i, harm)
+    nm = CurrentModel % ASolver % Matrix % NumberOfRows
+
+    ncdofs=nd
+    IF (dim == 3) ncdofs=nd-nn
+
+    vvarId = Comp % vvar % ValueId
+    vpolord_tot = Comp % vvar % pdofs - 1
+
+    DO vpolordtest=0,vpolord_tot ! V'(alpha)
+      dofIdtest = AddIndex(vpolordtest + 1) + vvarId
+      DO vpolord = 0, vpolord_tot ! V(alpha)
+        dofId = AddIndex(vpolord + 1) + vvarId
+        IF (PRESENT(Cols)) THEN  
+          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, dofId+nm, harm)
         ELSE
-          CALL CountMatElement(Rows, Cnts, i, 1, harm)
-          CALL CountMatElement(Rows, Cnts, j, 1, harm)
+          CALL CountMatElement(Rows, Cnts, dofIdtest+nm, 1, harm)
         END IF
-      END IF
+      END DO
+
+      DO j=1,ncdofs
+        q=j
+        IF (dim == 3) q=q+nn
+        IF (PRESENT(Cols)) THEN  
+          q = PS(Indexes(q))
+          IF (harm) q = ReIndex(q)
+          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, q, harm)
+        ELSE
+          CALL CountMatElement(Rows, Cnts, dofIdtest+nm, 1, harm)
+        END IF
+      END DO
+    END DO
+
+    DO vpolord = 0, vpolord_tot ! V(alpha)
+      dofId = AddIndex(vpolord + 1) + vvarId
+      DO j=1,ncdofs
+        q=j
+        IF (dim == 3) q=q+nn
+        q = PS(Indexes(q))
+        IF (harm) q = ReIndex(q)
+        IF (PRESENT(Cols)) THEN  
+          CALL CreateMatElement(Rows, Cols, Cnts, q, dofId+nm, harm)
+        ELSE
+          CALL CountMatElement(Rows, Cnts, q, 1, harm)
+        END IF
+      END DO
     END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE CountAndCreateFoilWinding
@@ -1467,7 +1729,7 @@ CONTAINS
     CurrentModel%CircuitMatrix=>CM
     
     CM % Format = MATRIX_CRS
-    Asolver %  Matrix % AddMatrix => CM
+    Asolver % Matrix % AddMatrix => CM
     ALLOCATE(CM % RHS(nm + Circuit_tot_n)); CM % RHS=0._dp
 
     CM % NumberOfRows = nm + Circuit_tot_n
@@ -1491,7 +1753,10 @@ CONTAINS
 
     IF (n<=0) THEN
       CM % NUmberOfRows = 0
-      DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null(); RETURN
+      DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null()
+      Asolver %  Matrix % AddMatrix => CM
+      CurrentModel%CircuitMatrix=>CM
+      RETURN 
     END IF
 
     ALLOCATE(Cols(n+1), Values(n+1))

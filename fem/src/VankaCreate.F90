@@ -171,16 +171,16 @@
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN
            CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, &
-               i, 7001, MPI_COMM_WORLD, status, ierr )
+               i, 7001, ELMER_COMM_WORLD, status, ierr )
            IF ( cnt(i)>0 ) THEN
              CALL MPI_BSEND( Buf(i) % grow, cnt(i), MPI_INTEGER, &
-                 i, 7002, MPI_COMM_WORLD, status, ierr )
+                 i, 7002, ELMER_COMM_WORLD, status, ierr )
 
              CALL MPI_BSEND( Buf(i) % gcol, cnt(i), MPI_INTEGER, &
-                 i, 7003, MPI_COMM_WORLD, status, ierr )
+                 i, 7003, ELMER_COMM_WORLD, status, ierr )
 
              CALL MPI_BSEND( Buf(i) % gval, cnt(i), MPI_DOUBLE_PRECISION, &
-                 i, 7004, MPI_COMM_WORLD, status, ierr )
+                 i, 7004, ELMER_COMM_WORLD, status, ierr )
            END IF
          END IF
        END DO
@@ -196,18 +196,18 @@
 
        DO i=1,ParEnv % NumOfNeighbours
          CALL MPI_RECV( rcnt, 1, MPI_INTEGER, &
-           MPI_ANY_SOURCE, 7001, MPI_COMM_WORLD, status, ierr )
+           MPI_ANY_SOURCE, 7001, ELMER_COMM_WORLD, status, ierr )
 
          IF ( rcnt>0 ) THEN
            proc = status(MPI_SOURCE)
            CALL MPI_RECV( rrow, rcnt, MPI_INTEGER, &
-              proc, 7002, MPI_COMM_WORLD, status, ierr )
+              proc, 7002, ELMER_COMM_WORLD, status, ierr )
 
            CALL MPI_RECV( rcol, rcnt, MPI_INTEGER, &
-              proc, 7003, MPI_COMM_WORLD, status, ierr )
+              proc, 7003, ELMER_COMM_WORLD, status, ierr )
 
            CALL MPI_RECV( rval, rcnt, MPI_DOUBLE_PRECISION, &
-              proc, 7004, MPI_COMM_WORLD, status, ierr )
+              proc, 7004, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,rcnt
              l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)
@@ -449,16 +449,16 @@
 
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN
-           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, MPI_COMM_WORLD, status, ierr )
+           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, ELMER_COMM_WORLD, status, ierr )
            IF ( cnt(i)>0 ) THEN
              CALL MPI_BSEND( Buf(i) % grow, cnt(i), MPI_INTEGER, &
-                 i, 7002, MPI_COMM_WORLD, status, ierr )
+                 i, 7002, ELMER_COMM_WORLD, status, ierr )
 
              CALL MPI_BSEND( Buf(i) % gcol, cnt(i), MPI_INTEGER, &
-                 i, 7003, MPI_COMM_WORLD, status, ierr )
+                 i, 7003, ELMER_COMM_WORLD, status, ierr )
 
              CALL MPI_BSEND( Buf(i) % gval, cnt(i), MPI_DOUBLE_PRECISION, &
-                 i, 7004, MPI_COMM_WORLD, status, ierr )
+                 i, 7004, ELMER_COMM_WORLD, status, ierr )
            END IF
          END IF
        END DO
@@ -471,7 +471,7 @@
 
        DO i=1,ParEnv % NumOfNeighbours
          CALL MPI_RECV( rcnt, 1, MPI_INTEGER, &
-           MPI_ANY_SOURCE, 7001, MPI_COMM_WORLD, status, ierr )
+           MPI_ANY_SOURCE, 7001, ELMER_COMM_WORLD, status, ierr )
 
          IF ( rcnt>0 ) THEN
            IF(.NOT.ALLOCATED(rrow)) THEN
@@ -483,13 +483,13 @@
 
            proc = status(MPI_SOURCE)
            CALL MPI_RECV( rrow, rcnt, MPI_INTEGER, &
-              proc, 7002, MPI_COMM_WORLD, status, ierr )
+              proc, 7002, ELMER_COMM_WORLD, status, ierr )
 
            CALL MPI_RECV( rcol, rcnt, MPI_INTEGER, &
-              proc, 7003, MPI_COMM_WORLD, status, ierr )
+              proc, 7003, ELMER_COMM_WORLD, status, ierr )
 
            CALL MPI_RECV( rval, rcnt, MPI_DOUBLE_PRECISION, &
-              proc, 7004, MPI_COMM_WORLD, status, ierr )
+              proc, 7004, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,rcnt
              l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)

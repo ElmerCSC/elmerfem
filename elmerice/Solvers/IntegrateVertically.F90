@@ -71,7 +71,7 @@ SUBROUTINE IntegrateVertically( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, IVVariable, HeightSol
 
   LOGICAL :: AllocationsDone = .FALSE., Found, OnSurface = .True., &
-             ComputeMean = .FALSE.,UnFoundFatal
+             ComputeMean = .FALSE.,UnFoundFatal=.TRUE.
 
   INTEGER :: i, n, m, t, istat, DIM, COMP, other_body_id, k   
   INTEGER, POINTER :: Permutation(:), NodeIndexes(:), &

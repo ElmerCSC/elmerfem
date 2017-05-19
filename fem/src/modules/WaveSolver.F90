@@ -60,7 +60,9 @@ SUBROUTINE WaveSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: n, nb, nd, t, active
   LOGICAL :: Found
 !------------------------------------------------------------------------------
-
+  
+  CALL DefaultStart()
+  
    !System assembly:
    !----------------
    CALL DefaultInitialize()
@@ -102,6 +104,8 @@ SUBROUTINE WaveSolver( Model,Solver,dt,TransientSimulation )
      Solver % Variable % Values = Solver % Variable % Values - 0.5 * Pave
    END IF
 
+   CALL DefaultFinish()
+   
 
 CONTAINS
 

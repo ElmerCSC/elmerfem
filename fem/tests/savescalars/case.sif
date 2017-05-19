@@ -7,7 +7,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
   Coordinate System = "Cartesian 2D"
 
   Simulation Type = "Steady State"
@@ -92,51 +92,37 @@ End
 
 Solver 2 :: Reference Norm = Real 3.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=3.0, EPS=1e-4\n" );
 
 Solver 2 :: Reference Norm = Real 8.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 2\n");
 Solver 2 :: Operator 1 = Area
 RUN
-$fprintf( stderr, "END TEST CASE 2: Target NRM=8.0, EPS=1e-4\n" );
 
 Solver 2 :: Reference Norm = Real 1.1489581
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 3\n");
 Solver 2 :: Operator 1 = max
 RUN
-$fprintf( stderr, "END TEST CASE 3: Target NRM=1.1489581, EPS=1e-4\n" );
 
 Solver 2 :: Reference Norm = Real 1.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 4\n");
 Solver 2 :: Operator 1 = min
 RUN
-$fprintf( stderr, "END TEST CASE 4: Target NRM=1.0, EPS=1e-4\n" );
 
 Solver 2 :: Reference Norm = Real 1.0712569
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 5\n");
 Solver 2 :: Operator 1 = int mean
 RUN
-$fprintf( stderr, "END TEST CASE 5: Target NRM=1.0712569, EPS=1e-4\n" );
 
 Solver 2 :: Reference Norm = Real 981.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 6\n");
 Solver 2 :: Operator 1 = dofs
 RUN
-$fprintf( stderr, "END TEST CASE 6: Target NRM=981.0, EPS=1e-4\n" );
 
 Solver 2 :: Reference Norm = Real 2.9582406
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 7\n");
 Solver 2 :: Operator 1 = diffusive flux
 RUN
-$fprintf( stderr, "END TEST CASE 7: Target NRM=2.9582406, EPS=1e-4\n" );
 
 
 !End Of File

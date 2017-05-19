@@ -10,7 +10,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -72,27 +72,22 @@ Solver 1
 !  Nonlinear System Linesearch = Logical True
 !  Nonlinear System Linesearch Linear = Logical True
 
-  Linear System Solver = string "iterative"
-  Linear System Direct Method = Umfpack
-  Linear System Refactorize = Logical False
-  Linear System Convergence Tolerance = real 0.1e-7
-  Linear System Iterative Method = string bicgstab
-  Linear System Max Iterations = integer 500
-!  Linear System Symmetric = Logical True 
-  Linear System Residual Output = integer 20
-!  Linear System Timing = True
-  Linear System Preconditioning = String Ilu0
+  Linear System Solver = "iterative"
+  Linear System Refactorize = False
+  Linear System Convergence Tolerance = 1e-2
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Residual Output = 20
+  Linear System Preconditioning = Ilu0
 
-  Linear System Block Method = String "other"
-!  Linear System Block Method = String "jacobi"
-!  Linear System Block Method = String "gauss-seidel"
-  Outer: Linear System Solver = string "Iterative"
-  Outer: Linear System Convergence Tolerance = real 1e-7
-  Outer: Linear System Iterative Method = string GCR
-  Outer: Linear System Symmetric = Logical True
-  Outer: Linear System GCR Restart = Integer 25
-  Outer: Linear System Residual Output = integer 1
-  Outer: Linear System Max Iterations = integer 500
+  Linear System Block Method = "other"
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-7
+  Outer: Linear System Iterative Method = GCR
+  Outer: Linear System Symmetric = True
+  Outer: Linear System GCR Restart = 25
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System Max Iterations = 500
 End  
 
 Material 1
@@ -118,6 +113,4 @@ End
 
 
 Solver 1 :: Reference Norm = Real 6.0902829
-$fprintf( stderr, "TEST CASE 1\n")
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 6.0902829\n");

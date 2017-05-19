@@ -1,0 +1,9 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( case.sif case.sif COPYONLY)
+ADD_ELMERTEST_MODULE(CountSolver2 CountSolver2 CountSolver2.F90)
+
+file(COPY square.grd ELMERSOLVER_STARTINFO CountSolver2.F90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(SlaveSolverSlotsScan LABELS quick)
