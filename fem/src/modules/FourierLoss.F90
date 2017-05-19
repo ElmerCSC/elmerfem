@@ -248,7 +248,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
 
 
   
-  SAVE TimesVisited, CompLoss, CompVars, CompVarsE, SeriesLoss, BodyLoss
+  SAVE TimesVisited, CompLoss, CompVars, FourierVars, CompVarsE, SeriesLoss, BodyLoss
   !-------------------------------------------------------------------------------
 
   CALL Info( 'FourierLossSolver', '-------------------------------------',Level=4 )
