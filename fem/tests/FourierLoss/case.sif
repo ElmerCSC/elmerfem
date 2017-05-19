@@ -1,0 +1,181 @@
+!---------------------------------------------------------------------
+! This is a working case for a FourierLosses solver.
+! The idea of the solver is to make a Fourier decomposition on-the-fly
+! and when the integration cycle has ended compute the losses
+! given the loss coefficient for each component. The target field
+! may be operated by different operators {none,abs,grad,curl} and the 
+! resulting field may be taken to any power.
+!
+! So far the initial field is initiated by a sinusoidally varying  
+! potential field but the idea is to apply it to something more physical. 
+!
+! P.R. / 22.4.2013
+!--------------------------------------------------------------------
+
+
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = Cartesian
+
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Intervals(1) = 200
+  Timestep Sizes(1) = 0.02
+  Output Intervals(1) = 50
+  Steady State Max Iterations = 1
+  Post File = case.vtu
+
+  Frequency = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Equation 1 
+  Name = "Solvers" 
+  Active Solvers(2) = 1 2
+End 
+
+
+Solver 1
+  Equation = "Poisson"
+
+  Variable = "Potential"
+  Variable DOFs = 1
+  Procedure = "ModelPDE" "AdvDiffSolver"
+
+!  Element = "p:2"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStabL
+  Linear System Residual Output = Integer 20
+End
+
+Solver 2
+  Equation = "Fourier"
+
+  Procedure = "FourierLoss" "FourierLossSolver"
+
+!  Element = "p:2"
+
+! Name of the variable that Fourier transform is operating on
+  Target Variable = String Potential
+
+! Use directly the field, do not take curl!
+  Target Variable Direct = Logical True
+
+! Number of sin and cos terms in Fourier transform
+  Fourier Series Components = Integer 3
+
+! Save the series or not?
+  Fourier Series Output = Logical True
+
+! Should also elemental (discontinuous) fields be computed?
+!  Calculate Elemental Fields = Logical True
+
+! Optionally apply Simpsons's rule
+  Inexact Integration = Logical False
+  Simpsons Rule = Logical True
+
+  Calculate Nodal Losses = Logical True
+
+  Separate Loss Components = Logical False
+
+
+  Harmonic Loss Frequency Exponent(3) = Real 0.0 0.0 0.0
+! Harmonic Loss Frequency Exponent 1 = Real 1.0
+!  Harmonic Loss Frequency Exponent 2 = Real 1.0
+!  Harmonic Loss Frequency Exponent 3 = Real 1.0
+  
+  Harmonic Loss Field Exponent(3) = Real 1.0 1.0 1.0
+!  Harmonic Loss Field Exponent 1 = Real 1.0
+!  Harmonic Loss Field Exponent 2 = Real 1.0
+!  Harmonic Loss Field Exponent 3 = Real 1.0
+
+! How many empty cycles to integrate
+  Fourier Start Cycles = Integer 1 
+
+! Alternative ways to define the start
+!  Fourier Start Time = Real 
+!  Fourier Start Timestep = Integer
+
+! This sets how many cycles to take after resetting the fourier series
+  Fourier Integrate Cycles = Integer 1
+
+
+! Linear solvers for the loss computation. This is a mass matrix so anything simple will do. 
+  Linear System Solver = "direct" !Iterative"
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 1000
+  Linear System Residual Output = 20
+  Linear System Convergence Tolerance=1e-8
+  Linear System Iterative Method = BiCGStabL
+End
+
+
+
+
+Material 1
+ time derivative coefficient = Real 0.0
+ diffusion coefficient = Real 1.0
+
+! Note that only the functional form is used i.e. there does not need to 
+! be the actual variable "frequency" as normally.
+  Harmonic Loss Coefficient 1 = Variable frequency
+    Real 
+      0.0 1.0
+      1.0 1.0
+    End
+
+  Harmonic Loss Coefficient 2 = Variable frequency
+    Real 
+      0.0 2.0
+      1.0 2.0
+    End
+
+  Harmonic Loss Coefficient 3 = Variable frequency
+    Real 
+      0.0 0.5
+      1.0 0.5
+    End
+
+End
+
+Body Force 1 
+  Name = "Source"
+  Field Source = Real 0.0
+END 
+
+
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Potential = Real 0
+
+! with frequency 1.0 these are the three first cosine terms
+  Potential = Variable time
+    Real MATC "2+cos(2*pi*tx)+0.5*cos(2*2*pi*tx)+0.25*cos(3*2*pi*tx)+0.4*sin(2*pi*tx)+0.2*sin(2*2*pi*tx)+0.1*sin(3*2*pi*tx)"
+End
+
+Solver 2 :: Reference Norm = 1.55412463E+01
