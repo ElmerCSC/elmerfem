@@ -10,7 +10,7 @@ ElmerSolver library functionality
 --------------------------------
 This is functionality that can be controlled by the user by choose of keywords.
 
-- IDR(s): New linear solver "IDR(s)" implemented i Elmer in built-in. This is a contribution
+- IDR(s): New linear solver "IDR(s)" implemented. This is a contribution
   from Martin van Gijzen. It is called by setting > Linear System Iterative Method = "idrs".
   The s-parameter is set by "Idrs Parameter = 4", for example. The method is quite robust and
   may often provide the best available strategy for nonsymmetric matrices.
@@ -167,6 +167,13 @@ These are improvements related to different solver modules, or completely new on
   o Nonlinear elasticity solver can now handle incompressible neo-Hookean
     materials via a mixed FE formulation
 
+- ShellSolver (new)
+  o First version of a new solver for elastic shell equations based on a kinematic assumption of 
+    Reissner-Naghdi type, see the section "Shell Equations of Linear Elasticity" in 
+    Elmer Models Manual
+  o The solver is still under development and strain reduction operators needed in practice
+    have been worked out only for the lowest-order elements (a 3-node triangle or 4-node quadrilateral)
+    
 - RigidMeshMapper
   o Enable source term >Mesh Relax Source< to relaxation field solver, and
     enable normalization to unity of this field.
