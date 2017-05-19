@@ -3,7 +3,7 @@ Elmer Release Notes for version 8.3
 
 Previous release: 8.2
 Period covered: 12 March 2016 - 18 May 2017
-Number of commits: 605
+Number of commits: 620
 
 
 ElmerSolver library functionality
@@ -242,9 +242,8 @@ Build system
 
 Tests
 -----
-- There are currently 532 tests which is a significant increase from the
-  403 of the previous release.
-  This is without the Elmer/ICE specific tests. 
+- There are currently 533 tests which is a significant increase from the
+  403 of the previous release. This is without the Elmer/ICE specific tests. 
 
 
 Acknowledgements
@@ -252,7 +251,7 @@ Acknowledgements
 Apart from the core Elmer team at CSC we have had contributions at least from 
 Mikko Byckling, Eelis Takala, Pavel Ponomarev, Erik Edelmann, Joe Todd, Cheng Gong,
 Laure Tavard, Erik Edelmann, Rupert Gladstone, Juris Vencels. This listing is not complete
-since there are developments in various application areas (particularly Elmer/Ice) that are not
+since there are developments in various development branches (particularly Elmer/Ice) that are not
 covered by the release notes, and code that has been passed on means other than git. 
 
 
