@@ -219,6 +219,18 @@ These are improvements related to different solver modules, or completely new on
   o Solver gives information on the mesh including element size, skewness, edge ratio.
   o The results are reported in a range but also as a distrubution. 
 
+- DirectionSolver
+  o Computes body wise direction potentials for coils
+  o Undocumented solver
+  
+- RotMSolver
+  o Computes Rotation matrix based on direction potentials
+  o Undocumented solver
+  
+- WPotentialSolver
+  o Computes Wire Direction potential for coils based on rotation matrix and conductivity
+  o Undocumented solver
+
 - ShellMultiSolver (new):
   o Contributed solver provided by prof. Gupta.
     This is placed under "modules/contrib" (as for contributed modules) as is compiled optionally. 
