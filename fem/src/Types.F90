@@ -788,6 +788,9 @@ END INTERFACE
       INTEGER :: CurrentColour = 0
       INTEGER :: DirectMethod = DIRECT_NORMAL
       LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
+#ifdef USE_ISO_C_BINDINGS
+      TYPE(C_PTR) :: CWrap = C_NULL_PTR
+#endif
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
