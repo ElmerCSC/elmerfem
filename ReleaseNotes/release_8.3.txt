@@ -94,6 +94,21 @@ These are features that only affect those writing new code.
   to ELMER_COMM_WORLD. The idea is that Elmer may be coupled with other codes (e.g. OpenFOAM)
   using MPI such that both codes have their own internal communicator. 
 
+- Multithreading and vectorization
+  o Added OpenMP SIMD implementation of high-order H^1 elements for Line,
+    Triangle, Quadrilateral, Tetrahedral, Prismatic and Hexahedral elements.
+  o Added MultiColour Consistent (Logical) keyword for creating consistent mesh colorings
+    when requested (serial computation).
+  o GetCurrentElement and SetCurrentElement modified to give correct return values when
+    called from within OpenMP parallel regions.
+  o Added GetRealValues routine having the same functionality as GetReal but without having
+    to use an additional intermediate buffer.
+
+- Keyword Optimization: the excessive retrieving of some keywords was reduced by
+  replacaing some commonly fetched keywords with hard-coded variables (e.g. DG and
+  Bubble flags). Also some operations where masked behind ListCheckPresentAnyBC
+  type of keywords. 
+
 - New more effective ListGet operations that are intended for element loops.
   The ideas is that each keyword has a handle that helps to retrieve its value
   with minimal effort. The speedup of the new routines is in the range from 1 to
@@ -120,10 +135,6 @@ These are features that only affect those writing new code.
   is false. E.g. CALL Assert(Mesh % NumberOfNodes > 0). The second and third arguments are
   optional strings which specify the calling routine and the error message."
 
-- Keyword Optimization: the excessive retrieving of some keywords was reduced by
-  replacaing some commonly fetched keywords with hard-coded variables (e.g. DG and
-  Bubble flags). Also some operations where masked behind ListCheckPresentAnyBC
-  type of keywords. 
 
 
 
