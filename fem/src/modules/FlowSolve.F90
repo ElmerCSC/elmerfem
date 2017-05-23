@@ -641,9 +641,12 @@
            CASE(3)
              U(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-2)
              V(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-1)
-             W(1:nd)  = ListGetReal( BodyForce,'Out Of Plane Velocity',&
-                  nd, Indexes, OutOfPlaneFlow)
-             IF (.NOT.OutOfPlaneFlow) W(1:nd) = 0.0_dp
+             W(1:nd) = 0.0_dp
+             IF (bf_id > 0 ) THEN
+               W(1:n)  = ListGetReal(BodyForce,'Out Of Plane Velocity',&
+                    n, NodeIndexes(1:n))
+               IF (.NOT.OutOfPlaneFlow) W(1:n) = 0.0_dp
+             END IF
            CASE(4)
              U(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-3)
              V(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-2)
