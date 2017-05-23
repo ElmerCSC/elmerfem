@@ -272,7 +272,7 @@ SUBROUTINE SSAWeights( Model,Solver,dt,TransientSimulation )
   VariableValues => PointerToVariable % Values
   MaskVar => VariableGet(Model % Mesh % Variables,MaskName,UnFoundFatal=UnFoundFatal)
   IF (.NOT.ASSOCIATED(MaskVar)) THEN
-    WRITE(Message,'(AA)') TRIM(MaskName),' not found'
+    WRITE(Message,'(A,A)') TRIM(MaskName),' not found'
     CALL FATAL(SolverName,Message)
   END IF
   MaskVal  => MaskVar % Values
