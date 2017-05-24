@@ -752,7 +752,7 @@ CONTAINS
      END DO
      Mesh % MaxEdgeDOFs = maxDOFs
 
-     IF(minEDOFs <= maxDOFs ) THEN
+     IF(minDOFs <= maxDOFs ) THEN
        Mesh % MinEdgeDOFs = minDOFs
      ELSE
        Mesh % MinEdgeDOFs = maxDOFs
