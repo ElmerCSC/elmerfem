@@ -3401,7 +3401,7 @@ CONTAINS
         ! This is commented out as this gives poor results.
         !IF (Bubbles .AND. ReductionMethod == DoubleReduction) THEN
         !  CALL ReductionOperatorBubbleDofs(Element, Nodes, ReductionDOFsArray(1:2,2*nd+1:2*nd+2), &
-        !      ReducedStrainDim, 1, CurlKernel, StretchParMat5)
+        !      ReducedStrainDim, 1, Family, CurlKernel, StretchParMat5)
         !
         !  DO j=1,ReducedStrainDim
         !    BM(1,nd*m+3) = BM(1,nd*m+3) - ReductionDOFsArray(j,2*nd+1) * StrainBasis(j,1)
@@ -3484,7 +3484,7 @@ CONTAINS
         ! This is commented out as this gives poor results.
         !IF (Bubbles .AND. ReductionMethod == DoubleReduction) THEN
         !  CALL ReductionOperatorBubbleDofs(Element, Nodes, ReductionDOFsArray(1:2,2*nd+1:2*nd+2), &
-        !      ReducedStrainDim, 1, CurlKernel, StretchParMat6)
+        !      ReducedStrainDim, 1, Family, CurlKernel, StretchParMat6)
         !
         !  DO j=1,ReducedStrainDim
         !    BM(3,nd*m+3) = BM(3,nd*m+3) - ReductionDOFsArray(j,2*nd+2) * StrainBasis(j,1)
@@ -3571,7 +3571,7 @@ CONTAINS
         ! If rotations are augmented with bubbles, we need to compute an augmented DOFs array
         IF (UseBubbles .AND. ReductionMethod == DoubleReduction) THEN
           CALL ReductionOperatorBubbleDofs(Element, Nodes, ReductionDOFsArray(1:2,2*nd+1:2*nd+2), &
-              ReducedStrainDim, 1, CurlKernel)
+              ReducedStrainDim, 1, Family, CurlKernel)
 
           DO j=1,ReducedStrainDim
             BS(1:2,nd*m+1) = BS(1:2,nd*m+1) - ReductionDOFsArray(j,2*nd+1) * StrainBasis(j,1:2)
@@ -4402,7 +4402,7 @@ CONTAINS
 !  Currently, just one bubble function (cf. the size of Basis array) and the kernel 
 !  version of strain reduction are supported currently. 
 !------------------------------------------------------------------------------
-  SUBROUTINE ReductionOperatorBubbleDofs(Element, Nodes, A, nd, nb, ReductionMethod, &
+  SUBROUTINE ReductionOperatorBubbleDofs(Element, Nodes, A, nd, nb, n, ReductionMethod, &
       ModelPars)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -4411,6 +4411,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: A(nd,2*nb)                !< Coefficients for expressing the DOFs 
     INTEGER, INTENT(IN) :: nd                               !< The dimension of the strain reduction space X(K)
     INTEGER, INTENT(IN) :: nb                               !< The number of the H1-conforming bubble functions
+    INTEGER, INTENT(IN) :: n                                !< The number of the BG element nodes
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: ModelPars(2,2,n) !< To include the effect of additional model parameters
 !---------------------------------------------------------------------------------
@@ -4418,7 +4419,7 @@ CONTAINS
 
     LOGICAL :: stat, UseParameters, PRefElement
 
-    INTEGER :: Family, i, j, k, n, t
+    INTEGER :: Family, i, j, k, t
 
     REAL(KIND=dp) :: StrainBasis(4,3)         ! The basis functions for the strain reduction space X(K)
     REAL(KIND=dp) :: DOFWeigths(3,2)          ! The auxiliary functions to evaluate the interpolant in X(K)
@@ -4430,7 +4431,6 @@ CONTAINS
 
     Family = GetElementFamily(Element)
  
-    n = Family ! The number of nodes for the lowest-order element
     A = 0.0d0
 
     UseParameters = PRESENT(ModelPars)
