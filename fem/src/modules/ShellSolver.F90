@@ -528,7 +528,21 @@ CONTAINS
     IF (PRESENT(ElementwiseDirectorData)) THEN
       ReadNodalDirectors = .NOT. ElementwiseDirectorData
     ELSE
-      ReadNodalDirectors = .TRUE.
+      ! Check whether mesh.elements.data exists:
+      n = LEN_TRIM(MeshName)
+      DirectorFile(1:n) = MeshName(1:n)
+      DirectorFile(n+1:n+1) = '/'
+      DirectorFile(n+2:n+19) = 'mesh.elements.data'
+      DirectorFile(n+20:n+20) = CHAR(0)
+      OPEN( 10, FILE = DirectorFile(1:n+20), status='OLD', IOSTAT = iostat )
+      IF ( iostat /= 0 ) THEN    
+        ReadNodalDirectors = .TRUE.
+      ELSE
+        ReadNodalDirectors = .FALSE.
+        CALL Info('ReadSurfaceDirector', 'shell director data is read from mesh.elements.data file', &
+            Level=8)
+      END IF
+      CLOSE(10)
     END IF
 
     IF (ReadNodalDirectors) THEN
@@ -549,6 +563,7 @@ CONTAINS
           NodalDirector(i,2) = d(2)/Norm
           NodalDirector(i,3) = d(3)/Norm
         END DO
+        CLOSE(10)
       END IF
 
       ! ---------------------------------------------------------------------
