@@ -79,7 +79,6 @@ MODULE SolverUtils
    SAVE BoundaryReorder, NormalTangentialNOFNodes, BoundaryNormals, &
               BoundaryTangent1, BoundaryTangent2, NormalTangentialName
 
-
 CONTAINS
 
 !> Initialize matrix structure and vector to zero initial value.
@@ -652,6 +651,7 @@ CONTAINS
      LOGICAL :: NoPassiveElements = .FALSE.
      
      SAVE Passive, PrevPassName, NoPassiveElements
+     !$OMP THREADPRIVATE(Passive, PrevPassName, NoPassiveElements)
 !------------------------------------------------------------------------------
      IsPassive = .FALSE.
 
@@ -667,14 +667,18 @@ CONTAINS
        IF( NoPassiveElements ) RETURN       
      END IF
 
-
-     
-     IF ( PRESENT( UElement ) ) THEN
+     IF (PRESENT(UElement)) THEN
        Element => UElement
      ELSE
+#ifdef _OPENMP
+       IF (omp_in_parallel()) THEN
+         CALL Fatal('CheckPassiveElement', &
+                    'Need an element to update inside a threaded region')
+       END IF
+#endif
        Element => CurrentModel % CurrentElement
      END IF
-
+       
      body_id = Element % BodyId 
      IF ( body_id <= 0 )  RETURN   ! body_id == 0 for boundary elements
 
@@ -1177,9 +1181,9 @@ CONTAINS
    SUBROUTINE UpdateGlobalEquationsVec( Gmtr, Lmtr, Gvec, Lvec, n, &
            NDOFs, NodeIndexes, RotateNT, UElement, MCAssembly )
      TYPE(Matrix_t), POINTER :: Gmtr         !< The global matrix
-     REAL(KIND=dp) :: Lmtr(:,:)              !< Local matrix to be added to the global matrix.
-     REAL(KIND=dp) :: Gvec(:)                !< Element local force vector.
-     REAL(KIND=dp) :: Lvec(:)                !< The global RHS vector.
+     REAL(KIND=dp) CONTIG :: Lmtr(:,:)              !< Local matrix to be added to the global matrix.
+     REAL(KIND=dp) CONTIG :: Gvec(:)                !< Element local force vector.
+     REAL(KIND=dp) CONTIG :: Lvec(:)                !< The global RHS vector.
      INTEGER :: n                            !< Number of nodes.
      INTEGER :: NDOFs                        !< Number of degrees of free per node.
      INTEGER CONTIG :: NodeIndexes(:)               !< Element node to global node numbering mapping.
@@ -1195,7 +1199,7 @@ CONTAINS
 
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: Rotate
-     LOGICAL :: ColouredAssembly
+     LOGICAL :: ColouredAssembly, NeedMasking
 
      IF (PRESENT(UElement)) THEN
        Element => UElement
@@ -1220,28 +1224,35 @@ CONTAINS
      ! TODO: See that RotateMatrix is vectorized
      ! CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
      !                    Ind, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
-     IF (Rotate .AND. ndofs >= dim) THEN
+     IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
        CALL Fatal('UpdateGlobalEquationsVec', &
                'Normal or tangential boundary conditions not supported yet!')
      END IF
+
+     NeedMasking = .FALSE.
+     DO i=1,n
+       IF (NodeIndexes(i)<=0) THEN
+         NeedMasking = .TRUE.
+         EXIT
+       END IF
+     END DO
      
      IF ( ASSOCIATED( Gmtr ) ) THEN
        SELECT CASE( Gmtr % FORMAT )
        CASE( MATRIX_CRS )
-         CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr, ColouredAssembly)
+         CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr, ColouredAssembly, NeedMasking)
        CASE DEFAULT
          CALL Fatal('UpdateGlobalEquationsVec','Not implemented for given matrix type')
        END SELECT
      END IF
      
      ! Check for multicolored assembly
-     IF (ColouredAssembly) THEN 
-       IF (ANY(NodeIndexes<=0)) THEN
+     IF (ColouredAssembly) THEN
+       IF (NeedMasking) THEN
          ! Vector masking needed, no ATOMIC needed
+         !$OMP SIMD PRIVATE(j,k)
          DO i=1,n
            IF (NodeIndexes(i)>0) THEN
-!DIR$ LOOP COUNT MIN=1, AVG=3
-!DIR$ IVDEP
              DO j=1,NDOFs
                k = NDOFs*(NodeIndexes(i)-1) + j
                Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
@@ -1250,21 +1261,26 @@ CONTAINS
          END DO
        ELSE
          ! No vector masking needed, no ATOMIC needed
-         DO i=1,n
-!DIR$ LOOP COUNT MIN=1, AVG=3
-!DIR$ IVDEP
-           DO j=1,NDOFs
-             k = NDOFs*(NodeIndexes(i)-1) + j
-             Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+         IF (NDOFS>1) THEN
+           !$OMP SIMD PRIVATE(j,k)
+           DO i=1,n
+             DO j=1,NDOFs
+               k = NDOFs*(NodeIndexes(i)-1) + j
+               Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+             END DO
            END DO
-         END DO
+         ELSE
+           !$OMP SIMD
+           DO i=1,n
+             Gvec(NodeIndexes(i)) = Gvec(NodeIndexes(i)) + Lvec(i)
+           END DO
+         END IF
        END IF ! Vector masking
      ELSE
-       IF (ANY(NodeIndexes<=0)) THEN
+       IF (NeedMasking) THEN
          ! Vector masking needed, ATOMIC needed
          DO i=1,n
            IF (NodeIndexes(i)>0) THEN
-!DIR$ LOOP COUNT MIN=1, AVG=3
 !DIR$ IVDEP
              DO j=1,NDOFs
                k = NDOFs*(NodeIndexes(i)-1) + j
@@ -1276,7 +1292,6 @@ CONTAINS
        ELSE
          ! No vector masking needed, ATOMIC needed
          DO i=1,n
-!DIR$ LOOP COUNT MIN=1, AVG=3
 !DIR$ IVDEP
            DO j=1,NDOFs
              k = NDOFs*(NodeIndexes(i)-1) + j
@@ -10632,7 +10647,7 @@ END FUNCTION SearchNodeL
 
        SUBROUTINE CircuitPrecCreate(A,Solver)
           USE Types
-          TYPE(Matrix_t) :: A
+          TYPE(Matrix_t), TARGET :: A
           TYPE(Solver_t) :: Solver
        END SUBROUTINE CircuitPrecCreate
 

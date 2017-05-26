@@ -73,6 +73,9 @@ CONTAINS
 !-------------------------------------------------------------------------------
      IF ( .NOT. ASSOCIATED(List) ) RETURN
 
+     !$OMP PARALLEL DO &
+     !$OMP SHARED(List,N) &
+     !$OMP PRIVATE(p, p1) DEFAULT(NONE)
      DO i=1,N
        p => List(i) % Head
        DO WHILE( ASSOCIATED(p) )
@@ -81,6 +84,7 @@ CONTAINS
          p => p1 
        END DO
      END DO
+     !$OMP END PARALLEL DO
      DEALLOCATE( List )
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_FreeMatrix
@@ -327,6 +331,103 @@ CONTAINS
    END FUNCTION List_GetMatrixIndex
 !-------------------------------------------------------------------------------
 
+   SUBROUTINE List_AddMatrixIndexes(List,k1,nk2,Ind,Pind)
+     IMPLICIT NONE
+     TYPE(ListMatrix_t), POINTER :: List(:)
+     INTEGER, INTENT(IN) :: k1, nk2
+     INTEGER, INTENT(IN) :: Ind(nk2), Pind(nk2)
+
+     TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, Entry
+!-------------------------------------------------------------------------------
+     INTEGER :: i,k2,k2i,j
+
+     IF (k1>SIZE(List)) THEN
+       CALL Fatal('List_AddMatrixIndexes','Row index out of bounds')
+     END IF
+     
+     ! Add each element in Ind to the row list
+     RowPtr => List(k1) % Head
+    
+     ! First element needs special treatment as it may modify 
+     ! the list starting point
+     IF (.NOT. ASSOCIATED(RowPtr)) THEN
+       Entry => GetListMatrixEntry(Ind(Pind(1)),NULL())
+       List(k1) % Degree = 1
+       List(k1) % Head => Entry
+       k2i = 2
+     ELSE IF (RowPtr % INDEX > Ind(Pind(1))) THEN
+         Entry => GetListMatrixEntry(Ind(Pind(1)),RowPtr)
+         List(k1) % Degree = List(k1) % Degree + 1
+         List(k1) % Head => Entry
+         k2i = 2
+     ELSE IF (RowPtr % INDEX == Ind(Pind(1))) THEN
+         k2i = 2
+     ELSE
+       k2i = 1
+     END IF
+
+     PrevPtr => List(k1) % Head
+     RowPtr => List(k1) % Head % Next
+     DO i=k2i,nk2
+       k2=Ind(Pind(i))
+
+       ! Find a correct place place to add index to
+       DO WHILE( ASSOCIATED(RowPtr) )
+         IF (RowPtr % INDEX >= k2) EXIT
+         PrevPtr => RowPtr
+         RowPtr => RowPtr % Next
+       END DO
+       
+       IF (ASSOCIATED(RowPtr)) THEN
+         ! Do not add duplicates
+         IF (RowPtr % INDEX /= k2) THEN
+           ! Create new element between PrevPtr and RowPtr
+           Entry => GetListMatrixEntry(k2,RowPtr)
+           PrevPtr % Next => Entry
+           List(k1) % Degree = List(k1) % Degree + 1
+
+           ! Advance to next element in list
+           PrevPtr => Entry
+           RowPtr => Entry % Next
+         ELSE
+           ! Advance to next element in list
+           PrevPtr => RowPtr
+           RowPtr => RowPtr % Next
+         END IF
+       ELSE
+         EXIT
+       END IF
+     END DO
+
+     ! Add rest of the entries in Ind to list (if any)
+     DO j=i,nk2
+       k2=Ind(Pind(j))
+       Entry => GetListMatrixEntry(k2,NULL())
+       PrevPtr % Next => Entry
+       PrevPtr => Entry
+       List(k1) % Degree = List(k1) % Degree + 1
+     END DO
+   CONTAINS 
+     FUNCTION GetListMatrixEntry(ind, next) RESULT(ListEntry)
+       IMPLICIT NONE
+
+       INTEGER, INTENT(IN) :: ind
+       TYPE(ListMatrixEntry_t), POINTER, INTENT(IN) :: next
+       TYPE(ListMatrixEntry_t), POINTER :: ListEntry
+
+       INTEGER :: istat
+
+       ALLOCATE(ListEntry, STAT=istat)
+       IF( istat /= 0 ) THEN
+         CALL Fatal('List_AddMatrixIndexes','Could not allocate entry!')
+       END IF
+
+       ListEntry % Value = REAL(0,dp)
+       ListEntry % INDEX = ind
+       ListEntry % Next => next
+     END FUNCTION GetListMatrixEntry
+
+   END SUBROUTINE List_AddMatrixIndexes
 
 !-------------------------------------------------------------------------------
    SUBROUTINE List_DeleteMatrixElement(List,k1,k2)

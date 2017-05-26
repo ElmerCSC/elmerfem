@@ -108,7 +108,19 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A  !< Structure holding the matrix
 !------------------------------------------------------------------------------
+    INTEGER :: i, j
+#ifdef _OPENMP
+    ! First touch matrix values with similar access pattern as in sparse dgemv
+    !$OMP PARALLEL DO SHARED(A) PRIVATE(j) DEFAULT(NONE)
+    DO i=1,A % NumberOfRows
+      DO j=A % Rows(i),A % Rows(i+1)-1
+        A % Values(j) = REAL(0, dp)
+      END DO
+    END DO
+    !$OMP END PARALLEL DO
+#else
     A % Values = 0.0d0
+#endif
   END SUBROUTINE CRS_ZeroMatrix
 !------------------------------------------------------------------------------
 
@@ -191,7 +203,7 @@ CONTAINS
 
     IF ( .NOT. A % Ordered ) THEN
       IF ( SortValues ) THEN
-        !$OMP PARALLEL DO SCHEDULE(DYNAMIC) DEFAULT(NONE) &
+        !$OMP PARALLEL DO DEFAULT(NONE) &
         !$OMP SHARED(Rows, Cols, Values, N) &
         !$OMP PRIVATE(i)
         DO i=1,N
@@ -199,7 +211,7 @@ CONTAINS
         END DO
         !$OMP END PARALLEL DO
       ELSE
-        !$OMP PARALLEL DO SCHEDULE(DYNAMIC) DEFAULT(NONE) &
+        !$OMP PARALLEL DO DEFAULT(NONE) &
         !$OMP SHARED(Rows, Cols, N) &
         !$OMP PRIVATE(i)
         DO i=1,N
@@ -209,7 +221,7 @@ CONTAINS
       END IF
 
       IF ( ASSOCIATED(Diag) ) THEN
-        !$OMP PARALLEL DO SCHEDULE(DYNAMIC) DEFAULT(NONE) &
+        !$OMP PARALLEL DO DEFAULT(NONE) &
         !$OMP SHARED(Diag, Rows, Cols, N) &
         !$OMP PRIVATE(i,j)
         DO i=1,N
@@ -602,22 +614,22 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   
-  SUBROUTINE CRS_GlueLocalMatrixVec(Gmtr, N, NDOFs, Indices, Lmtr, MCAssembly)
+  SUBROUTINE CRS_GlueLocalMatrixVec(Gmtr, N, NDOFs, Indices, Lmtr, MCAssembly, MaskedAssembly)
     TYPE(Matrix_t) :: Gmtr                   !< Global matrix
     INTEGER, INTENT(IN) :: N                 !< Number of nodes in element
     INTEGER, INTENT(IN) :: NDOFs             !< Number of degrees of freedom for one node
     INTEGER, INTENT(IN) CONTIG :: Indices(:) !< Maps element node numbers to global (or partition) node numbers
-    REAL(KIND=dp), INTENT(IN) :: Lmtr(:,:)   !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added
+    REAL(KIND=dp), INTENT(IN) CONTIG :: Lmtr(:,:)   !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added
     LOGICAL :: MCAssembly                    !< Is the assembly multicolored or not (free of race conditions)
+    LOGICAL :: MaskedAssembly                !< Does the assembly need masking for indices
 
     ! Local storage
     INTEGER :: Lind((N*NDOFs)*(N*NDOFs))
     REAL(KIND=dp) :: Lvals((N*NDOFs)*(N*NDOFs))
+    INTEGER :: pind(N)
 
     INTEGER :: i,j, nzind
-    INTEGER :: ci, ri, rli, rti, rdof, cdof
-
-    LOGICAL :: needMasking
+    INTEGER :: ci, ri, rli, rti, rdof, cdof, nidx, pnidx
 
     INTEGER, POINTER CONTIG :: gia(:), gja(:)
     REAL(KIND=dp), POINTER CONTIG :: gval(:)
@@ -627,40 +639,45 @@ CONTAINS
     gia  => Gmtr % Rows
     gja   => Gmtr % Cols
     gval => Gmtr % Values
-
-    needMasking = .FALSE.
-    DO i=1,N
-      IF (Indices(i)<=0) THEN
-        needMasking = .TRUE.
-        EXIT
-      END IF
-    END DO
+    
+    pnidx = -8
+    
+    ! Get permutation such that Indices(pind(1:N)) is sorted
+!DIR$ INLINE
+    CALL InsertionSort(N, Indices, pind)
 
     ! Check if vector masking is needed
-    IF (needMasking) THEN
+    IF (MaskedAssembly) THEN
       ! Masking and counting needed in the assignment (slower)
       IF (NDOFs == 1) THEN
         ! Separate case for only 1 DOF per node
 
         ! Construct index array
         nzind = 0
-!DIR$ LOOP COUNT MIN=1, AVG=6
         DO i=1,N
-          IF (Indices(i) > 0) THEN
+          IF (Indices(pind(i)) > 0) THEN
             ! Row index
-            ri = Indices(i)
+            ri = Indices(pind(i))
 
             ! Get row pointers
             rli = gia(ri)
             rti = gia(ri+1)-1
-!DIR$ LOOP COUNT MIN=1, AVG=6
             DO j=1,N
               ! Get global matrix index for entry (ri,Indices(j)).
-              IF (Indices(j) > 0) THEN
+              IF (Indices(pind(j)) > 0) THEN
                 nzind = nzind + 1
+                ! Get global matrix index for entry (ri,Indices(j)).
 !DIR$ INLINE
-                Lind(nzind)=BinarySearch(gja, Indices(j), rli, rti)
-                Lvals(nzind)=Lmtr(i,j)
+                nidx = GetNextIndex(gja,Indices(pind(j)), rli, rti)
+                Lind(nzind)=nidx
+                Lvals(nzind)=Lmtr(pind(i),pind(j))
+#ifdef __INTEL_COMPILER
+                ! Issue prefetch for every new cache line of gval(nidx)
+                IF (nidx > pnidx+8) THEN
+                  CALL MM_PREFETCH(gval(nidx),2)
+                  pnidx = nidx
+                END IF
+#endif
               END IF
             END DO
           END IF
@@ -669,27 +686,32 @@ CONTAINS
         ! More than 1 DOF per node
         ! Construct index array
         nzind = 0
-!DIR$ LOOP COUNT MIN=1, AVG=6
         DO i=1,N
-          IF (Indices(i) > 0) THEN
-!DIR$ LOOP COUNT MIN=2, AVG=3
+          IF (Indices(pind(i)) > 0) THEN
             DO rdof=1,NDOFs
               ! Row index
-              ri = NDOFs*(Indices(i)-1)+rdof
+              ri = NDOFs*(Indices(pind(i))-1)+rdof
 
               ! Get row pointers
               rli = gia(ri)
               rti = gia(ri+1)-1
-!DIR$ LOOP COUNT MIN=1, AVG=6
               DO j=1,N
-                IF (Indices(j) > 0) THEN
-!DIR$ LOOP COUNT MIN=2, AVG=3
+                IF (Indices(pind(j)) > 0) THEN
                   DO cdof=1,NDOFs
-                    ci = NDOFs*(Indices(j)-1)+cdof
+                    ci = NDOFs*(Indices(pind(j))-1)+cdof
                     ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
-                    Lind(nzind+cdof)=BinarySearch(gja, ci, rli, rti)
-                    Lvals(nzind+cdof)=Lmtr(NDOFs*(i-1)+rdof,NDOFs*(j-1)+cdof)
+                    nidx=GetNextIndex(gja, ci, rli, rti)
+                    Lind(nzind+cdof)=nidx
+                    Lvals(nzind+cdof)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
+                                           NDOFs*(pind(j)-1)+cdof)
+#ifdef __INTEL_COMPILER
+                    ! Issue prefetch for every new cache line of gval(nidx)
+                    IF (nidx > pnidx+8) THEN
+                      CALL MM_PREFETCH(gval(nidx),2)
+                      pnidx = nidx
+                    END IF
+#endif
                   END DO
                   nzind = nzind + cdof
                 END IF
@@ -705,20 +727,26 @@ CONTAINS
         ! Separate case for only 1 DOF per node
 
         ! Construct index array
-!DIR$ LOOP COUNT MIN=1, AVG=6
         DO i=1,N
           ! Row index
-          ri = Indices(i)
+          ri = Indices(pind(i))
 
           ! Get row pointers
           rli = gia(ri)
           rti = gia(ri+1)-1
-!DIR$ LOOP COUNT MIN=1, AVG=6
           DO j=1,N
             ! Get global matrix index for entry (ri,Indices(j)).
 !DIR$ INLINE
-            Lind(N*(i-1)+j)=BinarySearch(gja, Indices(j), rli, rti)
-            Lvals(N*(i-1)+j)=Lmtr(i,j)
+            nidx=GetNextIndex(gja,Indices(pind(j)), rli, rti)
+            Lind(N*(i-1)+j)=nidx
+            Lvals(N*(i-1)+j)=Lmtr(pind(i),pind(j))
+#ifdef __INTEL_COMPILER
+            ! Issue prefetch for every new cache line of gval(nidx)
+            IF (nidx > pnidx+8) THEN
+              CALL MM_PREFETCH(gval(nidx),2)
+              pnidx = nidx
+            END IF
+#endif
           END DO
         END DO
         nzind = N*N
@@ -726,25 +754,30 @@ CONTAINS
         ! More than 1 DOF per node
 
         ! Construct index array
-!DIR$ LOOP COUNT MIN=1, AVG=6
         DO i=1,N
-!DIR$ LOOP COUNT MIN=2, AVG=3
           DO rdof=1,NDOFs
             ! Row index
-            ri = NDOFs*(Indices(i)-1)+rdof
+            ri = NDOFs*(Indices(pind(i))-1)+rdof
 
             ! Get row pointers
             rli = gia(ri)
             rti = gia(ri+1)-1
-!DIR$ LOOP COUNT MIN=1, AVG=6
             DO j=1,N
-!DIR$ LOOP COUNT MIN=2, AVG=3
               DO cdof=1,NDOFs
-                ci = NDOFs*(Indices(j)-1)+cdof
+                ci = NDOFs*(Indices(pind(j))-1)+cdof
                 ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
-                Lind((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=BinarySearch(gja, ci, rli, rti)
-                Lvals((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=Lmtr(NDOFs*(i-1)+rdof,NDOFs*(j-1)+cdof)
+                nidx = GetNextIndex(gja, ci, rli, rti)
+                Lind((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=nidx
+                Lvals((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
+                                                             NDOFs*(pind(j)-1)+cdof)
+#ifdef __INTEL_COMPILER
+                ! Issue prefetch for every new cache line of gval(nidx)
+                IF (nidx > pnidx+8) THEN
+                  CALL MM_PREFETCH(gval(nidx),2)
+                  pnidx = nidx
+                END IF
+#endif
               END DO
             END DO
           END DO
@@ -769,7 +802,7 @@ CONTAINS
     END IF
 
   CONTAINS
-
+    
     PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
       IMPLICIT NONE
 
@@ -804,8 +837,49 @@ CONTAINS
         keyloc = 0
       END IF
     END FUNCTION BinarySearch
+    
+    ! Find index matching key from arr(lind:tind). lind is set to location of 
+    ! arr(keyloc))=key, i.e., keyloc once the search ends
+    FUNCTION GetNextIndex(arr, key, lind, tind) RESULT(keyloc)
+      IMPLICIT NONE
+
+      INTEGER, INTENT(IN) CONTIG :: arr(:)
+      INTEGER, INTENT(IN) :: key
+      INTEGER, INTENT(INOUT) :: lind
+      INTEGER, INTENT(IN) :: tind
+      INTEGER :: keyloc
+
+      INTEGER :: ci
+
+!DIR$ NOVECTOR
+      DO ci=lind,tind
+         IF (arr(ci)==key) EXIT
+      END DO
+      keyloc = ci
+      lind = keyloc
+    END FUNCTION GetNextIndex
 
   END SUBROUTINE CRS_GlueLocalMatrixVec
+
+  SUBROUTINE InsertionSort(N, val, ind)
+    IMPLICIT NONE
+    INTEGER, INTENT(in) :: N, val(N)
+    INTEGER, INTENT(inout) :: ind(N)
+    INTEGER :: tmp, i, j
+    
+    ind(1)=1
+    DO i=2,N
+      tmp=i
+      ! Make room to move val(ind(i)) to its final place
+      ! in the sorted sequence val(ind(1)) ... val(ind(i-1))
+      DO j=i-1,1,-1
+        IF (val(ind(j))<=val(tmp)) EXIT
+        ind(j+1)=ind(j)
+      END DO
+
+      ind(j+1)=tmp
+    END DO
+  END SUBROUTINE InsertionSort
 
 !------------------------------------------------------------------------------
 !>    Add a set of values (.i.e. element stiffness matrix) to a CRS format
@@ -1052,7 +1126,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     TYPE(Matrix_t), POINTER :: A  !>  Pointer to the created Matrix_t structure.
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,istat
-    INTEGER, POINTER :: InvPerm(:)
+    INTEGER, POINTER CONTIG :: InvPerm(:)
 !------------------------------------------------------------------------------
 
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix of size: '//TRIM(I2S(n)),Level=12)
@@ -1093,19 +1167,51 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        END IF
     END DO
 
+    !$OMP PARALLEL SHARED(A, k, N, Ndeg, RowNonzeros, InvPerm) &
+    !$OMP PRIVATE(j) DEFAULT(NONE)
+
+#ifdef _OPENMP
+    IF (omp_get_num_threads() > 1) THEN
+      ! First touch matrix values with similar access pattern as in sparse dgemv
+      !$OMP DO
+      DO i=1,N+1
+        A % Rows(i) = REAL(0,dp)
+      END DO
+      !$OMP END DO
+    END IF
+#endif
+
+    !$OMP SINGLE
     A % NumberOfRows = N
     A % Rows(1) = 1
-    DO i=2,n
+    DO i=2,N
        j = InvPerm((i-2)/Ndeg+1)
        A % Rows(i) = A % Rows(i-1) + Ndeg*RowNonzeros(j)
     END DO
-
-    j = InvPerm((n-1)/ndeg+1)
-    A % Rows(n+1) = A % Rows(n)  +  Ndeg*RowNonzeros(j)
-
+    j = InvPerm((N-1)/ndeg+1)
+    A % Rows(N+1) = A % Rows(N)  +  Ndeg*RowNonzeros(j)
+    !$OMP END SINGLE
+    
+#ifdef _OPENMP
+    ! First touch matrix values with similar access pattern as in sparse dgemv
+    !$OMP DO
+    DO i=1,A % NumberOfRows
+      DO j=A % Rows(i), A % Rows(i+1)-1
+        A % Cols(j) = REAL(0,dp)
+      END DO
+    END DO
+    !$OMP END DO NOWAIT
+    !$OMP DO
+    DO i=1,n
+      A % Diag(i) = REAL(0,dp)
+    END DO
+    !$OMP END DO
+#else
     A % Cols = 0
     A % Diag = 0
-
+#endif
+    !$OMP END PARALLEL
+    
     A % Ordered = .FALSE.
 
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix finished',Level=14)

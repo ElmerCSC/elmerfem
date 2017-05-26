@@ -388,7 +388,7 @@
      INTEGER :: status(MPI_STATUS_SIZE)
      REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
      INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:), perm(:)
-     INTEGER :: i,j,k,l,m,ii,jj,proc,rcnt,nn, dof, dofs, Active, n, nm
+     INTEGER :: i,j,k,l,m,ii,jj,proc,rcnt,nn, dof, dofs, Active, n, nm, ierr
 
      TYPE Buf_t
         REAL(KIND=dp), ALLOCATABLE :: gval(:)
@@ -406,8 +406,13 @@
 
      nm = A % NumberOfRows - A % ExtraDOFs
      n  = A % ParallelDOFs
+     
+     m = SIZE(A % Values)
+     ALLOCATE(TotValues(m))
 
-     ALLOCATE(TotValues(SIZE(A % Values))); TotValues=A % Values
+     DO i=1,m
+       TotValues(i)=A % Values(i)
+     END DO
      IF (ParEnv  % PEs>1 ) THEN
        ALLOCATE(cnt(0:ParEnv % PEs-1))
        cnt = 0

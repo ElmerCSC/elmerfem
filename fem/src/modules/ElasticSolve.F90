@@ -2701,7 +2701,7 @@ CONTAINS
 
     CHARACTER(LEN=MAX_NAME_LEN) :: eqname
 
-    SAVE StSolver, Permutation, FirstTime, ForceG, SForceG, Nodes, StressTemp, Eqname, StrainDim
+    SAVE StSolver, Permutation, FirstTime, ForceG, SForceG, Nodes, StressTemp, Eqname, StrainDim, UseMask
     !---------------------------------------------------------------------------------------------
     ! These variables are needed for Principal stress calculation;
     ! they are quite small and allocated even if principal stress calculation

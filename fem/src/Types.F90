@@ -55,6 +55,8 @@ MODULE Types
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
    ! Parameter for internal blocking
    INTEGER, PARAMETER :: VECTOR_BLOCK_LENGTH = 128
+   ! Parameter for internally avoiding calls to BLAS
+   INTEGER, PARAMETER :: VECTOR_SMALL_THRESH = 9
 
 #if defined(ARCH_32_BITS)
    INTEGER, PARAMETER :: AddrInt = SELECTED_INT_KIND(9)
@@ -383,7 +385,7 @@ END INTERFACE
                                                     ! interpolation type
 
      TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
-     REAL(KIND=dp), DIMENSION(:), POINTER :: NodeU, NodeV, NodeW
+     REAL(KIND=dp), DIMENSION(:), POINTER CONTIG :: NodeU, NodeV, NodeW
    END TYPE ElementType_t
 
 !------------------------------------------------------------------------------
@@ -644,6 +646,7 @@ END INTERFACE
      REAL(KIND=dp), POINTER CONTIG :: x(:)=>NULL()
      REAL(KIND=dp), POINTER CONTIG :: y(:)=>NULL()
      REAL(KIND=dp), POINTER CONTIG :: z(:)=>NULL()
+!DIR$ ATTRIBUTES ALIGN:64::x,y,z,xyz
    END TYPE Nodes_t
 
 !------------------------------------------------------------------------------
