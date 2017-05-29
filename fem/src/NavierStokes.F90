@@ -188,7 +188,7 @@ MODULE NavierStokes
 
      LOGICAL :: Found, Transient, stat, Bubbles, PBubbles, Stabilize, &
                 VMS, P2P1, Isotropic, drhodp_found, Compressible, ViscNewtonLin, &
-                ViscNonnewtonian, LaplaceDiscretization
+                ViscNonnewtonian, LaplaceDiscretization,OutOfPlaneFlow
 
 !------------------------------------------------------------------------------
 
@@ -197,6 +197,9 @@ MODULE NavierStokes
 
      hScale = GetCReal( Params, 'H scale', Found )
      IF ( .NOT. Found )  hScale = 1._dp
+
+     OutOfPlaneFlow = GetLogical( Params, 'Out of Plane flow', Found)
+     IF ( .NOT. Found ) OutOfPlaneFlow = .FALSE.
 
 !#ifdef LES
 !     LESVar => VariableGet( CurrentModel % Variables, 'LES' )
@@ -422,13 +425,13 @@ MODULE NavierStokes
       Velo = 0.0_dp
       Velo(1) = SUM( (Ux(1:n)-MUx(1:n))*Basis(1:n) )
       Velo(2) = SUM( (Uy(1:n)-MUy(1:n))*Basis(1:n) )
-      IF ( DIM > 2 ) Velo(3) = SUM( (Uz(1:n)-MUz(1:n))*Basis(1:n) )
+      IF ( DIM > 2 .OR. OutOfPlaneFlow ) Velo(3) = SUM( (Uz(1:n)-MUz(1:n))*Basis(1:n) )
 
       Grad = 0.0_dp
       DO i=1,3
         Grad(1,i) = SUM( Ux(1:n) * dBasisdx(1:n,i) )
         Grad(2,i) = SUM( Uy(1:n) * dBasisdx(1:n,i) )
-        IF ( DIM > 2 ) Grad(3,i) = SUM( Uz(1:n) * dBasisdx(1:n,i) )
+        IF ( DIM > 2 .OR. OutOfPlaneFlow ) Grad(3,i) = SUM( Uz(1:n) * dBasisdx(1:n,i) )
       END DO
 !------------------------------------------------------------------------------
 !     Force at integration point
@@ -487,7 +490,7 @@ MODULE NavierStokes
         Uvelo = 0.0_dp
         Uvelo(1) = SUM( Basis(1:n) * Ux(1:n) )
         Uvelo(2) = SUM( Basis(1:n) * Uy(1:n) )
-        IF ( DIM > 2 ) Uvelo(3) = SUM( Basis(1:n) * Uz(1:n) )
+        IF ( DIM > 2 .OR. OutOfPlaneFlow) Uvelo(3) = SUM( Basis(1:n) * Uz(1:n) )
 
         DO i=1,dim
           DO j=1,dim
@@ -990,7 +993,7 @@ MODULE NavierStokes
      SOL=0._dp
      SOL(1:c*n:c) = Ux(1:n)
      SOL(2:c*n:c) = Uy(1:n)
-     IF ( dim>2 ) SOL(3:c*n:c) = Uz(1:n)
+     IF ( dim>2 .OR. OutOfPlaneFlow ) SOL(3:c*n:c) = Uz(1:n)
      p = c*nBasis
      StiffMatrix(1:p,1:p) = StiffMatrix(1:p,1:p)+JacM(1:p,1:p)
      FORCEvector(1:p)=Forcevector(1:p)+MATMUL(JacM(1:p,1:p),SOL(1:p))
