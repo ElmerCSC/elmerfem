@@ -108,6 +108,17 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
     bedPComputed = GetLogical( SolverParams, 'Compute Bed Pressure' )
   END IF
 
+  ! Save pressure differences at GL element
+  GLparaSaveData = ListGetLogical( Solver % Values, &
+                      'Save Data for GL Parameterization', GotIt )
+  IF ( .NOT. GotIt ) GLparaSaveData = .FALSE.
+
+  IF (GLparaSaveData) THEN
+    ! Get File name
+    GLParaFileName= ListgetString( Solver % Values, 'Save Data File Name', GotIt )
+    IF ( .NOT. GotIt ) GLParaFileName='GLPressureData.dat'
+  END IF
+
   ! Initialize temp arrays
   Normal = 0.0_dp
   Fwater = 0.0_dp
@@ -201,6 +212,8 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
 
       DO tt = 1, Model % NumberOfBoundaryElements
         Element => GetBoundaryElement(tt)
+        IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+
         CALL GetElementNodes(Nodes, Element)
 
       ! For GL element which contains GL and FF nodes
@@ -237,7 +250,20 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
               WRITE (Message, '(A, g15.10)') '============== GL parameterization position at x =', GLParaPosition
               CALL Info(SolverName, Message, Level=3)
               CALL ListAddConstReal( Model % Constants, 'GroundingLine Position', GLParaPosition )
+          
+              IF (GLparaSaveData) THEN
+                ! Get the current Time
+                CurrentTimeVar => VariableGet( Solver % Mesh % Variables, 'Time')
+                Time = CurrentTimeVar % Values(1) 
+                    
+                ! Save Data
+                OPEN(unit=134, file=GLParaFileName, POSITION='APPEND')
 
+                WRITE(134, *) Time, FFNodeIndex, GLNodeIndex, GLParaPosition, &
+                      VariableValues(Permutation(FFNodeIndex)), VariableValues(Permutation(GLNodeIndex))
+
+                CLOSE(134)
+              END IF
             ELSE
               CALL Fatal(SolverName, 'GL parameterization error!')
             END IF
@@ -245,28 +271,7 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
 
-    ! Save pressure differences at GL element
-    GLparaSaveData = ListGetLogical( Solver % Values, &
-                      'Save Data for GL Parameterization', GotIt )
-    IF ( .NOT. GotIt ) GLparaSaveData = .FALSE.
 
-    IF (GLparaSaveData) THEN
-      ! Get File name
-      GLParaFileName= ListgetString( Solver % Values, 'Save Data File Name', GotIt )
-      IF ( .NOT. GotIt ) GLParaFileName='GLPressureData.dat'
-      
-      ! Get the current Time
-      CurrentTimeVar => VariableGet( Solver % Mesh % Variables, 'Time')
-      Time = CurrentTimeVar % Values(1) 
-          
-      ! Save Data
-      OPEN(unit=134, file=GLParaFileName, POSITION='APPEND')
-
-      WRITE(134, *) Time, FFNodeIndex, GLNodeIndex, GLParaPosition, &
-            VariableValues(Permutation(FFNodeIndex)), VariableValues(Permutation(GLNodeIndex))
-
-      CLOSE(134)
-    END IF
       
 !=====================================================================================
 
