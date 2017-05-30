@@ -167,6 +167,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: Found
   LOGICAL :: CurveDataOutput, SavePrincipalAxes, ComputeShellArea
+  LOGICAL :: WriteElementalDirector
   LOGICAL :: MacroElements, QuadraticApproximation = .FALSE.
   LOGICAL :: PlateBody, PlanarPoint, UmbilicalPoint
   LOGICAL :: Bubbles, ApplyBubbles
@@ -245,8 +246,9 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! property 'director' corresponding to the data, if not already available
   ! via reading the director data from the file mesh.elements.data.
   !----------------------------------------------------------------------------------
+  WriteElementalDirector = GetLogical(SolverPars, 'Write Elemental Director', Found)
   CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, &
-      CheckSurfaceOrientation=.TRUE.)
+      CheckSurfaceOrientation=.TRUE., WriteElementwiseDirector = WriteElementalDirector)
 
   ! --------------------------------------------------------------------------------
   ! PART II:
@@ -495,12 +497,14 @@ CONTAINS
 ! avoided and just the orientation check may be performed under the assumption that
 ! the elementwise property 'director' has already been created (Elmer creates 
 ! this data provided the file mesh.elements.data contains 'director' property).
-!  
+! With WriteElementwiseDirector = .TRUE. the file mesh.elements.data corresponding
+! to the contents of the mesh.director file can be written.
+! 
 ! TO DO: Implement parallel version of file reading (mesh.elements.data and
 !        mesh.director).
 !------------------------------------------------------------------------------
   SUBROUTINE ReadSurfaceDirector( MeshName, NumberOfNodes, &
-      ElementwiseDirectorData, CheckSurfaceOrientation)
+      ElementwiseDirectorData, CheckSurfaceOrientation, WriteElementwiseDirector)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -508,17 +512,18 @@ CONTAINS
     INTEGER, INTENT(IN) :: NumberOfNodes
     LOGICAL, OPTIONAL, INTENT(IN) :: ElementwiseDirectorData  ! mesh.elements.data available
     LOGICAL, OPTIONAL, INTENT(IN) :: CheckSurfaceOrientation
+    LOGICAL, OPTIONAL, INTENT(IN) :: WriteElementwiseDirector
     !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
-    LOGICAL :: ReadNodalDirectors, DirectorDataCheck
+    LOGICAL :: ReadNodalDirectors, DirectorDataCheck, WriteElementsData, Found
     INTEGER :: n, iostat, i, j, k, i0, Active, Family
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: d(3), d1(3), d2(3), d3(3), Norm, X1(3), X2(3)
     REAL(KIND=dp) :: e1(3), e2(3), e3(3)
     REAL(KIND=dp) :: ElementDirectors(3*MaxBGElementNodes)
-    CHARACTER(LEN=MAX_NAME_LEN) :: DirectorFile
+    CHARACTER(LEN=MAX_NAME_LEN) :: DirectorFile, FormatString
     !------------------------------------------------------------------------------
 
     CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
@@ -534,15 +539,15 @@ CONTAINS
       DirectorFile(n+1:n+1) = '/'
       DirectorFile(n+2:n+19) = 'mesh.elements.data'
       DirectorFile(n+20:n+20) = CHAR(0)
-      OPEN( 10, FILE = DirectorFile(1:n+20), status='OLD', IOSTAT = iostat )
-      IF ( iostat /= 0 ) THEN    
+
+      INQUIRE(FILE = DirectorFile(1:n+20), EXIST = Found)
+      IF ( .NOT. Found ) THEN    
         ReadNodalDirectors = .TRUE.
       ELSE
         ReadNodalDirectors = .FALSE.
         CALL Info('ReadSurfaceDirector', 'shell director data is read from mesh.elements.data file', &
             Level=8)
       END IF
-      CLOSE(10)
     END IF
 
     IF (ReadNodalDirectors) THEN
@@ -660,6 +665,64 @@ CONTAINS
           END IF
         END DO
       END DO
+    END IF
+
+    IF (PRESENT(WriteElementwiseDirector)) THEN
+      WriteElementsData = WriteElementwiseDirector
+    ELSE
+      WriteElementsData = .FALSE.
+    END IF
+    IF (WriteElementsData) THEN
+      ! ---------------------------------------------------------------------
+      ! Create a file mesh.elements.data and write the director property
+      ! there provided that the file does not exist already. 
+      ! ---------------------------------------------------------------------
+      n = LEN_TRIM(MeshName)
+      DirectorFile(1:n) = MeshName(1:n)
+      DirectorFile(n+1:n+1) = '/'
+      DirectorFile(n+2:n+19) = 'mesh.elements.data'
+      DirectorFile(n+20:n+20) = CHAR(0)
+      INQUIRE(FILE = DirectorFile(1:n+20), EXIST = Found)
+      IF (Found) THEN
+        CALL Info('ReadSurfaceDirector', 'mesh.elements.data file exists: write rejected', &
+            Level=5)
+      ELSE
+        OPEN( 10, FILE = DirectorFile(1:n+20), status='NEW', IOSTAT = iostat )        
+        IF ( iostat /= 0 ) CALL Fatal( 'ReadSurfaceDirector', &
+            'Opening mesh.elements.data file failed.')
+
+        Active = GetNOFActive()
+        DO k=1,Active
+          Element => GetActiveElement(k)
+          DirectorValues => GetElementProperty('director', Element)
+
+          IF (ASSOCIATED(DirectorValues)) THEN
+            n  = GetElementNOFNodes()
+            IF (SIZE(DirectorValues) < 3*n) CALL Fatal('ReadSurfaceDirector', &
+                'Elemental director data is not associated with all nodes')
+ 
+            WRITE(FormatString(1:1),'(A1)') '('
+            IF (3*n < 10) THEN
+              WRITE(FormatString(2:2),'(A1)') TRIM(I2S(3*n))
+              i0 = 2
+            ELSE
+              WRITE(FormatString(2:3),'(A2)') TRIM(I2S(3*n))
+              i0 = 3
+            END IF
+            WRITE(FormatString(i0+1:i0+1),'(A1)') '('
+            WRITE(FormatString(i0+2:i0+10),'(A9)') '2x,E22.15'
+            WRITE(FormatString(i0+11:i0+12),'(A2)') '))'
+
+            WRITE(10,'(A8,I0)') 'element:', k
+            WRITE(10,'(A9)',ADVANCE='NO') 'director:'
+            WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
+            WRITE(10,'(A3)') 'end'
+          ELSE
+            CALL Fatal( 'ReadSurfaceDirector', 'Elemental director data is not associated')
+          END IF
+        END DO
+        CLOSE(10)
+      END IF
     END IF
 
     DEALLOCATE(NodalDirector)
