@@ -4232,7 +4232,7 @@ CONTAINS
 !> point of view this misses some opportunities to have control of the nonlinear
 !> system. 
 !------------------------------------------------------------------------------
-  SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
+  RECURSIVE SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t),POINTER :: Solver
@@ -4417,7 +4417,7 @@ CONTAINS
 !> how the matrices may be assembled and solved: standard (single), coupled and
 !> block. 
 !------------------------------------------------------------------------------
-  SUBROUTINE SolverActivate( Model, Solver, dt, TransientSimulation )
+  RECURSIVE SUBROUTINE SolverActivate( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t),POINTER :: Solver

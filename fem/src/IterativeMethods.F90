@@ -506,7 +506,7 @@ CONTAINS
 
 
 !-----------------------------------------------------------------------------------
-    SUBROUTINE C_lpcond(u,v,ipar,pcondlsubr)
+    RECURSIVE SUBROUTINE C_lpcond(u,v,ipar,pcondlsubr)
 !-----------------------------------------------------------------------------------
 #ifdef USE_ISO_C_BINDINGS
       USE huti_interfaces
@@ -670,6 +670,7 @@ CONTAINS
       LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
       CHARACTER(LEN=MAX_NAME_LEN) :: str
       REAL(KIND=dp), ALLOCATABLE :: work(:,:), rwork(:,:)
+      REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
 !------------------------------------------------------------------------------
     
       IF ( l < 2) CALL Fatal( 'RealBiCGStabl', 'Polynomial degree < 2' )
@@ -821,21 +822,32 @@ CONTAINS
         END DO
           
         rwork(1:l+1,zz:zz+l) = rwork(1:l+1,z:z+l)
-        CALL dgetrf (l-1, l-1, rwork(2:l,zz+1:zz+l-1), l-1, &
-            iwork, stat)
+        tmpmtr(1:l-1,1:l-1) = rwork(2:l,zz+1:zz+l-1)
+        ! CALL dgetrf (l-1, l-1, rwork(2:l,zz+1:zz+l-1), l-1, &
+        !     iwork, stat)
+        CALL dgetrf (l-1, l-1, tmpmtr, l-1, &
+             iwork, stat)
       
         ! --- tilde r0 and tilde rl (small vectors)
       
         rwork(1,y0) = -one
         rwork(2:l,y0) = rwork(2:l,z) 
-        CALL dgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
-            rwork(2:l,y0), l-1, stat)
+        tmpvec(1:l-1) = rwork(2:l,y0)
+        ! CALL dgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
+        !     rwork(2:l,y0), l-1, stat)
+        CALL dgetrs('n', l-1, 1, tmpmtr, l-1, iwork, &
+             tmpvec, l-1, stat)
+        rwork(2:l,y0) = tmpvec(1:l-1)
         rwork(l+1,y0) = zero
         
         rwork(1,yl) = zero
-        rwork(2:l,yl) = rwork(2:l,z+l) 
-        CALL dgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
-            rwork(2:l,yl), l-1, stat)
+        rwork(2:l,yl) = rwork(2:l,z+l)
+        tmpvec(1:l-1) = rwork(2:l,yl)
+        ! CALL dgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
+        !     rwork(2:l,yl), l-1, stat)
+        CALL dgetrs ('n', l-1, 1, tmpmtr, l-1, iwork, &
+             tmpvec, l-1, stat)
+        rwork(2:l,yl) = tmpvec(1:l-1)
         rwork(l+1,yl) = -one
       
         ! --- Convex combination

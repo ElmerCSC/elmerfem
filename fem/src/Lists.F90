@@ -1491,10 +1491,12 @@ CONTAINS
     LOGICAL :: l 
     CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
-    l = .FALSE.
     IF (ALLOCATED(Namespace)) THEN
       l = .TRUE.
       str = Namespace
+    ELSE
+      l = .FALSE.
+      str = ''
     END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListGetNamespace
@@ -1578,9 +1580,6 @@ CONTAINS
     IF (ALLOCATED(ActiveListName)) THEN
       str = ActiveListName
     ELSE
-      ! TODO: What do we actually want to return
-      ! when there is no current name? Could also return without allocation
-      ! here
       str = ''
     END IF
 !------------------------------------------------------------------------------

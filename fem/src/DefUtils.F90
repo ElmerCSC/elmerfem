@@ -2608,7 +2608,7 @@ CONTAINS
 !> slave solver is cheap and a stepsize control is applied
 !> Also one can easily make postprocessing steps just at the correct slot.
 !-----------------------------------------------------------------------------
-  SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
+  RECURSIVE SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
 !------------------------------------------------------------------------------  
      TYPE(Solver_t), POINTER :: Solver     
      CHARACTER(LEN=*) :: SlaveSolverStr 
@@ -2684,7 +2684,7 @@ CONTAINS
 
 !> Performs initialization for matrix equation related to the active solver
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultInitialize( USolver )
+  RECURSIVE SUBROUTINE DefaultInitialize( USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
 
@@ -2932,7 +2932,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
-     REAL(KIND=dp) CONTIG :: G(:,:), f(:)
+     REAL(KIND=dp) :: G(:,:), f(:)
      LOGICAL, OPTIONAL :: BulkUpdate, VecAssembly
 
      TYPE(Solver_t), POINTER   :: Solver

@@ -561,7 +561,6 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   Paramlist = 0
 
   LagrangeGauge = .FALSE.
-  Transient = .FALSE.
   
   LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
        ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
