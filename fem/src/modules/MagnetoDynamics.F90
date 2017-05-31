@@ -1761,8 +1761,9 @@ CONTAINS
     TYPE(ListMatrixEntry_t), POINTER :: Aentry
     TYPE(ListMatrix_t), POINTER :: Alist(:)
     INTEGER :: i,j,k,l,n,Start
-    LOGICAL, ALLOCATABLE :: Done(:)
+    LOGICAL, ALLOCATABLE :: Done(:), CondReg(:)
     TYPE(ValueList_t), POINTER :: BC
+    REAL(KIND=dp) :: Cond1
     TYPE(Element_t), POINTER :: Edge, Boundary, Element
 !------------------------------------------------------------------------------
 
@@ -1801,6 +1802,22 @@ CONTAINS
         j=j+1; k=GetBoundaryEdgeIndex(Boundary,j)
       END DO
     END DO
+
+    IF( Transient ) THEN
+      IF ( GetLogical( GetSolverParams(), 'Gauge Tree Skip Conducting Regions', Found) ) THEN
+        ! Skip conducting regions:
+        ! -------------------------
+        ALLOCATE(CondReg(Mesh % NumberOfNodes))
+        condReg = .TRUE.
+        DO i=1,GetNOFActive()
+          Element => GetActiveElement(i)
+          Cond1 = GetCReal(GetMaterial(), 'Electric Conductivity',Found)
+          IF (cond1==0) condReg(Element % NodeIndexes) = .FALSE.
+        END DO
+        Done = Done.OR.CondReg
+        DEALLOCATE(CondReg)
+      END IF
+    END IF
 
     ! 
     ! Skip Dirichlet BCs in terms of B:
@@ -4450,7 +4467,9 @@ CONTAINS
     TYPE(ListMatrixEntry_t), POINTER :: Aentry
     TYPE(ListMatrix_t), POINTER :: Alist(:)
     INTEGER :: i,j,k,l,n,Start
-    LOGICAL, ALLOCATABLE :: Done(:)
+    LOGICAL, ALLOCATABLE :: Done(:), CondReg(:)
+    LOGICAL :: Found
+    REAL(KIND=dp) :: Cond1
     TYPE(Element_t), POINTER :: Edge, Boundary, Element
 !------------------------------------------------------------------------------
 
@@ -4489,6 +4508,21 @@ CONTAINS
         j=j+1; k=GetBoundaryEdgeIndex(Boundary,j)
       END DO
     END DO
+
+
+    IF ( GetLogical( GetSolverParams(), 'Gauge Tree Skip Conducting Regions', Found) ) THEN
+      ! Skip conducting regions:
+      ! -------------------------
+      ALLOCATE(CondReg(Mesh % NumberOfNodes))
+      condReg = .TRUE.
+      DO i=1,GetNOFActive()
+        Element => GetActiveElement(i)
+        Cond1 = GetCReal(GetMaterial(), 'Electric Conductivity',Found)
+        IF (cond1==0) condReg(Element % NodeIndexes) = .FALSE.
+      END DO
+      Done = Done.OR.CondReg
+      DEALLOCATE(CondReg)
+    END IF
 
     ! 
     ! Skip Dirichlet BCs in terms of B:
