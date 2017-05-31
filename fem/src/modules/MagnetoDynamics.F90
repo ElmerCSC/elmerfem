@@ -229,6 +229,7 @@ CONTAINS
     Mesh => GetMesh(Solver)
     n = Solver % Variable % Perm(k+Mesh % NumberOfNodes)
     A => GetMatrix()
+
     CALL CRS_SetSymmDirichlet(A,A % RHS,2*(n-1)+1,REAL(VALUE))
     CALL CRS_SetSymmDirichlet(A,A % RHS,2*(n-1)+2,AIMAG(VALUE))
 !------------------------------------------------------------------------------
@@ -1188,6 +1189,11 @@ CONTAINS
   !
   ! Dirichlet BCs in terms of vector potential A:
   ! ---------------------------------------------
+  IF ( TG ) THEN
+    ! temporary fix to some scaling problem (to be resolved)...
+    CALL ListAddLogical( GetSolverParams(), 'Linear System Dirichlet Scaling', .FALSE.) 
+  END IF
+
   CALL DefaultDirichletBCs()
 
   ! Apply dirichlet BCs associated with weak divergence dofs
@@ -1768,8 +1774,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
-      ALLOCATE(TreeEdges(Mesh % NumberOfEdges)); TreeEdges = .FALSE.
+      ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
     END IF
+    TreeEdges = .FALSE.
 
     n = Mesh % NumberOfNodes
     ALLOCATE(Done(n)); Done=.FALSE.
@@ -1795,12 +1802,7 @@ CONTAINS
       IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
                  TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
  
-      j=1; k=GetBoundaryEdgeIndex(Boundary,j)
-      DO WHILE(k>0)
-        Edge => Mesh % Edges(k)
-        Done(Edge % NodeIndexes) = .TRUE.
-        j=j+1; k=GetBoundaryEdgeIndex(Boundary,j)
-      END DO
+      Done(Element % NodeIndexes) = .TRUE.
     END DO
 
     IF( Transient ) THEN
@@ -3953,8 +3955,20 @@ CONTAINS
     CALL DefaultFinishAssembly()
 
     !
+    ! Check for tree gauge, if requested or using direct solver:
+    ! ------------------------------------------------------------
+    TG=GetLogical(SolverParams, 'Use tree gauge', Found)
+    IF (.NOT. Found) TG=GetString(GetSolverParams(), &
+        'Linear System Solver',Found)=='direct'
+
+    !
     ! Dirichlet BCs in terms of vector potential A:
     ! ---------------------------------------------
+    IF ( TG ) THEN
+      ! temporary fix to some scaling problem (to be resolved)...
+      CALL ListAddLogical( GetSolverParams(), 'Linear System Dirichlet Scaling', .FALSE.) 
+    END IF
+
     CALL DefaultDirichletBCs()
 
     !
@@ -3962,13 +3976,8 @@ CONTAINS
     ! --------------------------------------------------
     CALL DirichletAfromB()
 
-    !
-    ! Gauge tree, if requested or using direct solver:
-    ! ------------------------------------------------
-    TG=GetLogical(SolverParams, 'Use tree gauge', Found)
-    IF (.NOT. Found) TG=GetString(GetSolverParams(), &
-        'Linear System Solver',Found)=='direct'
 
+    A => GetMatrix()
     IF (TG) THEN
       CALL GaugeTree()
       WRITE(Message,*) 'Volume tree edges: ', &
@@ -3980,7 +3989,6 @@ CONTAINS
     !
     ! Fix unused potential DOFs:
     ! --------------------------
-    A => GetMatrix()
     CALL ConstrainUnused(A)
 
     !
@@ -4474,8 +4482,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
-      ALLOCATE(TreeEdges(Mesh % NumberOfEdges)); TreeEdges=.FALSE.
+      ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
     END IF
+    TreeEdges = .FALSE.
 
     n = Mesh % NumberOfNodes
     ALLOCATE(Done(n)); Done=.FALSE.
@@ -4501,12 +4510,7 @@ CONTAINS
       IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
                  TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
  
-      j=1; k=GetBoundaryEdgeIndex(Boundary,j)
-      DO WHILE(k>0)
-        Edge => Mesh % Edges(k)
-        Done(Edge % NodeIndexes) = .TRUE.
-        j=j+1; k=GetBoundaryEdgeIndex(Boundary,j)
-      END DO
+      Done(Element % NodeIndexes) = .TRUE.
     END DO
 
 
