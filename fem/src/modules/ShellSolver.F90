@@ -185,6 +185,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2), ZNodes(MaxPatchNodes), TaylorParams(6)
   REAL(KIND=dp) :: BlendingSurfaceArea, ShellModelArea, MappedMeshArea, RefArea
 
+  CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile
+
   ! Variables for development version: 
   REAL(KIND=dp) :: TotalErr
   REAL(KIND=dp) :: RefWork, Work
@@ -247,8 +249,16 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! via reading the director data from the file mesh.elements.data.
   !----------------------------------------------------------------------------------
   WriteElementalDirector = GetLogical(SolverPars, 'Write Elemental Director', Found)
+  IF (WriteElementalDirector) THEN
+    OutputFile = GetString(SolverPars, 'Elemental Director Output File', Found)
+    IF (.NOT. Found) THEN
+      OutputFile(1:18) = 'mesh.elements.data'
+      OutputFile(19:19) = CHAR(0)
+    END IF
+  END IF
   CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, &
-      CheckSurfaceOrientation=.TRUE., WriteElementwiseDirector = WriteElementalDirector)
+      CheckSurfaceOrientation=.TRUE., WriteElementwiseDirector = WriteElementalDirector, &
+      ElementwiseDirectorFile = OutputFile)
 
   ! --------------------------------------------------------------------------------
   ! PART II:
@@ -504,7 +514,8 @@ CONTAINS
 !        mesh.director).
 !------------------------------------------------------------------------------
   SUBROUTINE ReadSurfaceDirector( MeshName, NumberOfNodes, &
-      ElementwiseDirectorData, CheckSurfaceOrientation, WriteElementwiseDirector)
+      ElementwiseDirectorData, CheckSurfaceOrientation, WriteElementwiseDirector, &
+      ElementwiseDirectorFile)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -513,6 +524,7 @@ CONTAINS
     LOGICAL, OPTIONAL, INTENT(IN) :: ElementwiseDirectorData  ! mesh.elements.data available
     LOGICAL, OPTIONAL, INTENT(IN) :: CheckSurfaceOrientation
     LOGICAL, OPTIONAL, INTENT(IN) :: WriteElementwiseDirector
+    CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL, INTENT(IN) :: ElementwiseDirectorFile
     !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
@@ -674,22 +686,33 @@ CONTAINS
     END IF
     IF (WriteElementsData) THEN
       ! ---------------------------------------------------------------------
-      ! Create a file mesh.elements.data and write the director property
-      ! there provided that the file does not exist already. 
+      ! Write the director data as elementwise property to a file whose
+      ! format conforms with a file mesh.elements.data. By default
+      ! the file name mesh.elements.data is used. This never overwrites
+      ! an existing file.
       ! ---------------------------------------------------------------------
       n = LEN_TRIM(MeshName)
       DirectorFile(1:n) = MeshName(1:n)
       DirectorFile(n+1:n+1) = '/'
-      DirectorFile(n+2:n+19) = 'mesh.elements.data'
-      DirectorFile(n+20:n+20) = CHAR(0)
-      INQUIRE(FILE = DirectorFile(1:n+20), EXIST = Found)
-      IF (Found) THEN
-        CALL Info('ReadSurfaceDirector', 'mesh.elements.data file exists: write rejected', &
-            Level=5)
+      IF ( PRESENT(ElementwiseDirectorFile) ) THEN
+        j = LEN_TRIM(ElementwiseDirectorFile)
+        DirectorFile(n+2:n+1+j) = ElementwiseDirectorFile(1:j)
+        DirectorFile(n+2+j:n+2+j) = CHAR(0)
+        n = n+2+j
       ELSE
-        OPEN( 10, FILE = DirectorFile(1:n+20), status='NEW', IOSTAT = iostat )        
+        DirectorFile(n+2:n+19) = 'mesh.elements.data'
+        DirectorFile(n+20:n+20) = CHAR(0)
+        n = n+20
+      END IF
+
+      INQUIRE(FILE = DirectorFile(1:n), EXIST = Found)
+      IF (Found) THEN
+        CALL Info('ReadSurfaceDirector', &
+            'a file for director output exists: write rejected', Level=5)
+      ELSE
+        OPEN( 10, FILE = DirectorFile(1:n), status='NEW', IOSTAT = iostat )        
         IF ( iostat /= 0 ) CALL Fatal( 'ReadSurfaceDirector', &
-            'Opening mesh.elements.data file failed.')
+            'Opening a file for elementwise director output failed.')
 
         Active = GetNOFActive()
         DO k=1,Active
