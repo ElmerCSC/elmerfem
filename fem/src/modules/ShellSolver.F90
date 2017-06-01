@@ -493,7 +493,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
 CONTAINS
 
 ! ---------------------------------------------------------------------------------
-! By default this subroutine reads mesh.director file arranged as
+! This subroutine reads mesh.director file arranged as
 !
 !    node_id1 d_x d_y d_z
 !    ...
@@ -502,26 +502,25 @@ CONTAINS
 ! to obtain the shell director data at nodes and creates an elementwise property 
 ! 'director' corresponding to this data. With the optional argument 
 ! CheckSurfaceOrientation = .TRUE. the integrity of director data is checked 
-! (a consistent orientation of the surface over the element). With the optional 
-! argument ElementwiseDirectorData = .TRUE. reading the file mesh.director can be 
-! avoided and just the orientation check may be performed under the assumption that
-! the elementwise property 'director' has already been created (Elmer creates 
-! this data provided the file mesh.elements.data contains 'director' property).
-! With WriteElementwiseDirector = .TRUE. the file mesh.elements.data corresponding
-! to the contents of the mesh.director file can be written.
+! (a consistent orientation of the surface over the element). If the file
+! mesh.elements.data has been used to specify the director as an elementwise
+! property 'director', this subroutine may be used just to perform the orientation 
+! check. If both the files exist, the director obtained from mesh.elements.data
+! is used. With WriteElementwiseDirector = .TRUE. the director data is written
+! as elementwise property to a file whose format conforms with a file 
+! mesh.elements.data (this is the default name for the output file, so this
+! option can be used to convert mesh.director into mesh.elements.data format).
 ! 
 ! TO DO: Implement parallel version of file reading (mesh.elements.data and
-!        mesh.director).
+!        mesh.director). Allow arbitrary indexing of nodes.
 !------------------------------------------------------------------------------
   SUBROUTINE ReadSurfaceDirector( MeshName, NumberOfNodes, &
-      ElementwiseDirectorData, CheckSurfaceOrientation, WriteElementwiseDirector, &
-      ElementwiseDirectorFile)
+      CheckSurfaceOrientation, WriteElementwiseDirector, ElementwiseDirectorFile)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
-    LOGICAL, OPTIONAL, INTENT(IN) :: ElementwiseDirectorData  ! mesh.elements.data available
     LOGICAL, OPTIONAL, INTENT(IN) :: CheckSurfaceOrientation
     LOGICAL, OPTIONAL, INTENT(IN) :: WriteElementwiseDirector
     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL, INTENT(IN) :: ElementwiseDirectorFile
@@ -538,43 +537,37 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: DirectorFile, FormatString
     !------------------------------------------------------------------------------
 
-    CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
-        'NodalDirector array could not be allocated')
+    ! -----------------------------------------------------------------------------
+    ! Check whether mesh.director is read:
+    ! -----------------------------------------------------------------------------
+    n = LEN_TRIM(MeshName)
+    DirectorFile(1:n) = MeshName(1:n)
+    DirectorFile(n+1:n+1) = '/'
+    DirectorFile(n+2:n+14) = 'mesh.director'
+    DirectorFile(n+15:n+15) = CHAR(0)
 
-    ! Check whether mesh.director or mesh.elements.data file is used to specify the director:
-    IF (PRESENT(ElementwiseDirectorData)) THEN
-      ReadNodalDirectors = .NOT. ElementwiseDirectorData
+    INQUIRE(FILE = DirectorFile(1:n+15), EXIST = Found)
+    IF ( Found ) THEN    
+      ReadNodalDirectors = .TRUE.
+      CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
+          'NodalDirector array could not be allocated')
     ELSE
-      ! Check whether mesh.elements.data exists:
-      n = LEN_TRIM(MeshName)
-      DirectorFile(1:n) = MeshName(1:n)
-      DirectorFile(n+1:n+1) = '/'
-      DirectorFile(n+2:n+19) = 'mesh.elements.data'
-      DirectorFile(n+20:n+20) = CHAR(0)
-
-      INQUIRE(FILE = DirectorFile(1:n+20), EXIST = Found)
-      IF ( .NOT. Found ) THEN    
-        ReadNodalDirectors = .TRUE.
-      ELSE
-        ReadNodalDirectors = .FALSE.
-        CALL Info('ReadSurfaceDirector', 'shell director data is read from mesh.elements.data file', &
-            Level=8)
-      END IF
+      ReadNodalDirectors = .FALSE.
+      CALL Info('ReadSurfaceDirector', 'shell director data is read from mesh.elements.data file', &
+          Level=8)
     END IF
 
     IF (ReadNodalDirectors) THEN
-      n = LEN_TRIM(MeshName)
-      DirectorFile(1:n) = MeshName(1:n)
-      DirectorFile(n+1:n+1) = '/'
-      DirectorFile(n+2:n+14) = 'mesh.director'
-      DirectorFile(n+15:n+15) = CHAR(0)
-
       OPEN( 10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat )
       IF ( iostat /= 0 ) THEN
         CALL Fatal( 'ReadSurfaceDirector', 'Opening mesh.director file failed.')     
       ELSE
         DO i=1,NumberOfNodes
           READ( 10,*,IOSTAT=iostat) k, d
+
+          IF (k /= i) CALL Fatal('mesh.director', &
+              'Trivial correspondence between rows and node numbers assumed currently')
+
           Norm = SQRT(SUM(d(1:3)**2))
           NodalDirector(i,1) = d(1)/Norm
           NodalDirector(i,2) = d(2)/Norm
@@ -589,6 +582,12 @@ CONTAINS
       Active = GetNOFActive()
       DO k=1,Active
         Element => GetActiveElement(k)
+        ! -------------------------------------------------------------------
+        ! If mesh.elements.data has defined the director, respect that data:
+        ! -------------------------------------------------------------------
+        DirectorValues => GetElementProperty('director', Element)
+        IF (ASSOCIATED(DirectorValues)) CYCLE
+
         n  = GetElementNOFNodes()     
         DO i=1,n
           i0 = (i-1)*3
@@ -679,18 +678,18 @@ CONTAINS
       END DO
     END IF
 
+    ! ---------------------------------------------------------------------
+    ! Write the director data as elementwise property to a file whose
+    ! format conforms with a file mesh.elements.data. By default
+    ! the file name mesh.elements.data is used. This never overwrites
+    ! an existing file.
+    ! ---------------------------------------------------------------------
     IF (PRESENT(WriteElementwiseDirector)) THEN
       WriteElementsData = WriteElementwiseDirector
     ELSE
       WriteElementsData = .FALSE.
     END IF
     IF (WriteElementsData) THEN
-      ! ---------------------------------------------------------------------
-      ! Write the director data as elementwise property to a file whose
-      ! format conforms with a file mesh.elements.data. By default
-      ! the file name mesh.elements.data is used. This never overwrites
-      ! an existing file.
-      ! ---------------------------------------------------------------------
       n = LEN_TRIM(MeshName)
       DirectorFile(1:n) = MeshName(1:n)
       DirectorFile(n+1:n+1) = '/'
@@ -748,7 +747,7 @@ CONTAINS
       END IF
     END IF
 
-    DEALLOCATE(NodalDirector)
+    IF (ReadNodalDirectors) DEALLOCATE(NodalDirector)
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadSurfaceDirector
 !------------------------------------------------------------------------------
