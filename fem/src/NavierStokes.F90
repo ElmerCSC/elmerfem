@@ -1767,9 +1767,9 @@ MODULE NavierStokes
      IF ( (ratio < 1.0) .AND. (ratio > 0.0) ) THEN
 
       IF (u .LE. (2.0*ratio -1.0)) THEN
-        heaveSide = 1.0
-      ELSE 
         heaveSide = 0.0
+      ELSE 
+        heaveSide = 1.0
       END IF
       ! WRITE ( *, * ) '==================== x=', u, 'heaveSide =', heaveSide, &
       !                'and the ratio is ', ratio
@@ -1800,6 +1800,13 @@ MODULE NavierStokes
 !    Add to load: given force in normal direction
 !------------------------------------------------------------------------------
      Normal = NormalVector( Element, Nodes, u,v,.TRUE. )
+
+      IF ( heaveSide > 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
+        WRITE (*,*) '+++++++++++++++++',Normal, t, u, v
+      END IF
+      IF ( heaveSide < 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
+        WRITE (*,*) '=================',Normal, t, u, v
+      END IF
 
      Alpha = SUM( NodalExtPressure(1:n) * Basis )
      IF ( NormalTangential ) THEN
