@@ -1681,7 +1681,7 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesBoundaryPara( BoundaryMatrix,BoundaryVector,LoadVector,   &
     NodalAlpha, NodalBeta, NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, &
-     n, Nodes, nIntegration, ratio )
+     n, Nodes, nIntegration, ratio, bslope )
              
 !------------------------------------------------------------------------------
 !     Assemble boundary matrix and RHS for slip boundary conditions
@@ -1704,6 +1704,7 @@ MODULE NavierStokes
 !    Nodes             - Element node coordinates
 !    nIntegration      - Number integration points within one element for SlipCoeff
 !    ratio             - ratio of GL parameterization in [0,1]
+!    bslope             - Slope of the bedrock below the current element
 !------------------------------------------------------------------------------
    USE ElementUtils
 !------------------------------------------------------------------------------
@@ -1717,6 +1718,7 @@ MODULE NavierStokes
    TYPE(Nodes_t), INTENT(IN)            :: Nodes
    LOGICAL, INTENT(IN)                  :: NormalTangential
    REAL(KIND=dp), INTENT(IN)            :: ratio
+   REAL(KIND=dp), INTENT(IN)            :: bslope
 !------------------------------------------------------------------------------
 !  Local variables
 !------------------------------------------------------------------------------
@@ -1731,7 +1733,7 @@ MODULE NavierStokes
    REAL(KIND=dp) :: TangentForce(3),Force(3),Normal(3),Tangent(3),Tangent2(3), &
                Vect(3), Alpha, mu,Grad(3,3),Velo(3)
 
-   REAL(KIND=dp) :: xx, yy, ydot, ydotdot, MassFlux, heaveSide
+   REAL(KIND=dp) :: xx, yy, ydot, ydotdot, MassFlux, heaveSide, tanAlpha, tanTheta
 
    INTEGER :: i,j,k,l,k1,k2,t,q,p,c,dim,N_Integ,np
 
@@ -1767,12 +1769,10 @@ MODULE NavierStokes
      IF ( (ratio < 1.0) .AND. (ratio > 0.0) ) THEN
 
       IF (u .LE. (2.0*ratio -1.0)) THEN
-        heaveSide = 0.0
-      ELSE 
         heaveSide = 1.0
+      ELSE 
+        heaveSide = 0.0
       END IF
-      ! WRITE ( *, * ) '==================== x=', u, 'heaveSide =', heaveSide, &
-      !                'and the ratio is ', ratio
      END IF 
 !------------------------------------------------------------------------------
 !    Basis function values & derivatives at the integration point
@@ -1801,11 +1801,21 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
      Normal = NormalVector( Element, Nodes, u,v,.TRUE. )
 
+      tanAlpha = Normal(1) / Normal(2)
       IF ( heaveSide > 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
-        WRITE (*,*) '+++++++++++++++++',Normal, t, u, v
-      END IF
-      IF ( heaveSide < 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
-        WRITE (*,*) '=================',Normal, t, u, v
+        ! Grounded
+
+        Normal(2) = - 1.0 / SQRT(bslope**2.0+1.0)
+        Normal(1) = -Normal(2) * bslope
+        ! WRITE (*,*) '+++++++++++++++++', Normal, ratio, t, u
+
+      ELSE IF ( heaveSide < 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
+        ! Floating
+        tanTheta = (tanAlpha - ratio*bslope) / (1-ratio)
+        Normal(2) = - 1.0 / SQRT(tanTheta**2.0+1.0)
+        Normal(1) = -Normal(2) * tanTheta
+
+        ! WRITE (*,*) '=================',Normal, ratio,  t, u
       END IF
 
      Alpha = SUM( NodalExtPressure(1:n) * Basis )

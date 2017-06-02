@@ -138,7 +138,7 @@
 
     INTEGER, POINTER :: GroundingLineParaPerm(:)
     INTEGER :: nIntegration, tempNodeIndex, jj, GLparaIndex
-    REAL(KIND=dp) :: Time, FFstressSum, GLstressSum, cond, ratio
+    REAL(KIND=dp) :: Time, FFstressSum, GLstressSum, cond, ratio, bslope
 
     LOGICAL :: GLParaFlag
     REAL(KIND=dp), POINTER :: GroundingLinePara(:)
@@ -1195,6 +1195,13 @@
               END IF
             END IF
           END IF
+
+          ! Get corresponding bedrock slop at the current element
+
+          !!!!!!!! Need to be implemented !!!!!!!! 
+          bslope = 778.5/750.0e3
+          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
+
 !===============================================================================
 
 
@@ -1205,7 +1212,7 @@
             IF ( GLParam ) THEN
               CALL NavierStokesBoundaryPara(  STIFF, FORCE, &
                LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
-                  Element, n, ElementNodes, nIntegration, ratio)
+                  Element, n, ElementNodes, nIntegration, ratio, bslope)
             ELSE
             CALL NavierStokesBoundary(  STIFF, FORCE, &
              LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
