@@ -1681,7 +1681,7 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesBoundaryPara( BoundaryMatrix,BoundaryVector,LoadVector,   &
     NodalAlpha, NodalBeta, NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, &
-     n, Nodes, nIntegration, ratio, bslope )
+     n, Nodes, nIntegration, ratio, bslope, outputFlag )
              
 !------------------------------------------------------------------------------
 !     Assemble boundary matrix and RHS for slip boundary conditions
@@ -1719,6 +1719,7 @@ MODULE NavierStokes
    LOGICAL, INTENT(IN)                  :: NormalTangential
    REAL(KIND=dp), INTENT(IN)            :: ratio
    REAL(KIND=dp), INTENT(IN)            :: bslope
+   LOGICAL, INTENT(IN)                  :: outputFlag
 !------------------------------------------------------------------------------
 !  Local variables
 !------------------------------------------------------------------------------
@@ -1804,18 +1805,20 @@ MODULE NavierStokes
       tanAlpha = Normal(1) / Normal(2)
       IF ( heaveSide > 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
         ! Grounded
+        CALL tan2Normal2D(bslope, Normal)
 
-        Normal(2) = - 1.0 / SQRT(bslope**2.0+1.0)
-        Normal(1) = -Normal(2) * bslope
-        ! WRITE (*,*) '+++++++++++++++++', Normal, ratio, t, u
+        IF (outputFlag) THEN
+          WRITE (*,*) '+++++++++++++++++', Normal, ratio, t, u
+        END IF
 
       ELSE IF ( heaveSide < 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
         ! Floating
         tanTheta = (tanAlpha - ratio*bslope) / (1-ratio)
-        Normal(2) = - 1.0 / SQRT(tanTheta**2.0+1.0)
-        Normal(1) = -Normal(2) * tanTheta
+        CALL tan2Normal2D(tanTheta, Normal)   
 
-        ! WRITE (*,*) '=================',Normal, ratio,  t, u
+        IF (outputFlag) THEN
+          WRITE (*,*) '=================',Normal, ratio,  t, u
+        END IF
       END IF
 
      Alpha = SUM( NodalExtPressure(1:n) * Basis )
@@ -1920,6 +1923,22 @@ MODULE NavierStokes
  END SUBROUTINE NavierStokesBoundaryPara
 !------------------------------------------------------------------------------
 
+
+
+
+SUBROUTINE tan2Normal2D ( tanAlpha, normalV )
+  REAL(KIND=dp), INTENT(IN) :: tanAlpha
+  REAL(KIND=dp), INTENT(OUT) :: normalV(3)
+  REAL(KIND=dp) :: x, y
+  ! y always pointing downward
+  y = - 1.0 / SQRT(1.0+tanAlpha**2)
+  x = - y * tanAlpha
+
+  normalV(1) = x
+  normalV(2) = y
+  normalV(3) = 0.0
+
+END SUBROUTINE
 
 
 
