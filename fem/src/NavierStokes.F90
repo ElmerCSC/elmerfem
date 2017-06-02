@@ -1813,8 +1813,8 @@ MODULE NavierStokes
 
       ELSE IF ( heaveSide < 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
         ! Floating
-        tanTheta = (tanAlpha - ratio*bslope) / (1-ratio)
-        CALL tan2Normal2D(tanTheta, Normal)   
+        ! tanTheta = (tanAlpha - ratio*bslope) / (1-ratio)
+        ! CALL tan2Normal2D(tanTheta, Normal)   
 
         IF (outputFlag) THEN
           WRITE (*,*) '=================',Normal, ratio,  t, u
