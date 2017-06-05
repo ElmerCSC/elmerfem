@@ -720,13 +720,14 @@ CONTAINS
 #endif
 
     REAL(KIND=dp), POINTER :: TopVarValues(:), BottomVarValues(:), ZeroOneHeight(:),&
-         ActualHeight(:), WorkReal(:), ForceVector(:),Basis(:)
+         ActualHeight(:), WorkReal(:), WorkReal2(:), ForceVector(:),Basis(:)
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), BedHeight(:), RemovalDeviation(:),&
          RemovalDistance(:), ColumnRange(:),TangledZone(:,:),LocalCalvingVar(:),&
          FrontCalving1Values(:), MyDegenerateCoords(:,:), DegenerateCoords(:,:)
     CHARACTER(MAX_NAME_LEN) :: SolverName, Str, NonVertBCName, MeshDir, MeshName, filename, &
          filename_root, MaskName, MuVarName, TopVarName, BottomVarName,&
-         NameSuffix, FrontLineMethod, GLVarName, VarName, MoveMeshDir,MoveMeshFullPath
+         NameSuffix, FrontLineMethod, GLVarName, VarName, MoveMeshDir,MoveMeshFullPath,&
+         WorkName
     INTEGER :: i,j,k,n, counter, NoNodes, dummyint, FaceNodeCount, &
          ExtrudedLevels, ExtrudeLevels, NodesPerLevel, start, fin, stride, next, WriteNodeCount, &
          MeshBC,col, dim, MetisMethod, MetisMethodDefault, active, NextBasalPerm, &
@@ -1691,6 +1692,8 @@ CONTAINS
           IF(n /= SIZE(NodeNums)) CALL Fatal("CalvingRemesh","Size mismatch in perm size")
 
           !Determine order
+          !TODO - MMigrate issue here with providing all but last node from each boundary
+          ! however, this isn't the root cause...
           IF(i==1) THEN !left edge, find which end neighbours calving front
              IF(ANY(FrontLineNodeNums == LeftLineNodeNums(1))) THEN
                 start=1;fin=n-1;stride=1
@@ -2045,6 +2048,7 @@ CONTAINS
     CALL RotateMesh(ExtrudedMesh, RotationMatrix)
 
     n = ExtrudedMesh % NumberOfNodes
+    NULLIFY(WorkReal, WorkPerm)
     ALLOCATE(WorkReal(n), WorkPerm(n))
 
     WorkPerm = ExtrudedFrontPerm
@@ -2067,21 +2071,45 @@ CONTAINS
 
     ! --- Add Calving variable so we can determine which nodes on --- !
     ! ---       the new front can be shifted vertically           --- !
-    
-    ALLOCATE(WorkReal(n), WorkPerm(n))
-
+    ALLOCATE(WorkPerm(n))
     WorkPerm = ExtrudedFrontPerm
+
+    IF(COUNT(WorkPerm > 0) > 0) THEN
+      ALLOCATE(WorkReal(COUNT(WorkPerm>0)*3))
+    ELSE
+      ALLOCATE(WorkReal(SIZE(WorkPerm)*3))
+    END IF
     WorkReal = 0.0_dp
 
-    WRITE(VarName,'(A,A)') TRIM(CalvingVarName)," 1" !Only need to check one component
+    VarName = TRIM(CalvingVarName)
 
     CALL VariableAdd(ExtrudedMesh % Variables, ExtrudedMesh, Solver, VarName, &
          CalvingVar % DOFs, WorkReal, WorkPerm, .FALSE.)
-    NULLIFY(WorkReal, WorkPerm)
     
     Var => VariableGet(ExtrudedMesh % Variables,VarName,.TRUE.)
-    ALLOCATE(Var % PrevValues(n,SIZE(CalvingVar % PrevValues, 2)))
+    ALLOCATE(Var % PrevValues(SIZE(WorkReal),SIZE(CalvingVar % PrevValues, 2)))
     Var % PrevValues = 0.0_dp
+
+    DO i=1,3 !add each calving DOF
+      WorkReal2 => WorkReal( i::3 )
+      WorkName = ComponentName(TRIM(Var % Name),i)
+
+      NULLIFY(WorkPerm); ALLOCATE(WorkPerm(SIZE(ExtrudedFrontPerm)))
+      WorkPerm = ExtrudedFrontPerm
+
+      CALL VariableAdd( ExtrudedMesh % Variables, ExtrudedMesh, &
+           Solver, WorkName, &
+           1, WorkReal2, WorkPerm, .FALSE.)
+
+      WorkVar => VariableGet( ExtrudedMesh % Variables, WorkName, .TRUE. )
+      IF(.NOT. ASSOCIATED(WorkVar)) CALL Fatal(SolverName, &
+           "Error allocating calving PrevValues.")
+
+      NULLIFY(WorkVar % PrevValues)
+      WorkVar % PrevValues => Var % PrevValues( i::3, : )
+    END DO
+
+    NULLIFY(WorkReal, WorkPerm)
     
     !Add rotated front height as var to both
     !InterpVarToVarReduced
@@ -2135,9 +2163,9 @@ CONTAINS
     IsCalvingNode = .FALSE.
     DO i=1,ExtrudedMesh % NumberOfNodes
        IF(Var % Perm(i) <= 0) CYCLE
-       !TODO: a glacier front orientation could conceivably result in
-       !0.0 in just the x direction... should check all 3
-       IF(Var % Values(Var % Perm(i)) /= 0.0_dp) IsCalvingNode(i) = .TRUE.
+       IF(ANY(Var % Values((Var % Perm(i)*3)-2:(Var % Perm(i)*3)) /= 0.0_dp)) THEN
+         IsCalvingNode(i) = .TRUE.
+       END IF
     END DO
 
     ! ---------------------------------------------------
@@ -2883,7 +2911,6 @@ CONTAINS
     DEALLOCATE(FootprintMesh)
 
     !Remove variables from NewMesh
-
     CALL ReleaseVariableList(NewMesh % Variables)
     NULLIFY(NewMesh % Variables)
 
