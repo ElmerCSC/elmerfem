@@ -1052,8 +1052,8 @@ CONTAINS
     interpedValue = 0.0_dp
     DO i=1,NoSuppNodes
       SuppPoint(1) = Mesh % Nodes % x(SuppNodes(i))
-      SuppPoint(1) = Mesh % Nodes % y(SuppNodes(i))
-      SuppPoint(1) = Mesh % Nodes % z(SuppNodes(i))
+      SuppPoint(2) = Mesh % Nodes % y(SuppNodes(i))
+      SuppPoint(3) = Mesh % Nodes % z(SuppNodes(i))
       SuppPoint(HeightDimensions) = 0.0_dp
 
       distance = 0.0_dp
