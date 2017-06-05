@@ -9583,7 +9583,8 @@ END IF
 
      REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s
      REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
-
+     INTEGER :: GeomId
+     
      INTEGER :: cdim,dim,i,j,k,n
 !------------------------------------------------------------------------------
      success = .TRUE.
@@ -9684,8 +9685,14 @@ END IF
 100  Success = .FALSE.
      WRITE( Message,'(A,I0,A,I0)') 'Degenerate ',dim,'D element: ',Elm % ElementIndex
      CALL Error( 'ElementMetric', Message )
-     WRITE( Message,'(A,ES12.3)') 'DetG:',DetG
+     
+     IF( ASSOCIATED( Elm % BoundaryInfo ) ) THEN
+       WRITE( Message,'(A,I0,A,ES12.3)') 'Boundary Id: ',Elm % BoundaryInfo % Constraint,' DetG:',DetG
+     ELSE
+       WRITE( Message,'(A,I0,A,ES12.3)') 'Body Id: ',Elm % BodyId,' DetG:',DetG
+     END IF
      CALL Info( 'ElementMetric', Message, Level=3 )
+
      DO i=1,n
        WRITE( Message,'(A,I0,A,3ES12.3)') 'Node: ',i,' Coord:',x(i),y(i),z(i)       
        CALL Info( 'ElementMetric', Message, Level=3 )
