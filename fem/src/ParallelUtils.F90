@@ -747,6 +747,68 @@ CONTAINS
     END SUBROUTINE ParallelMatrixVector
 !-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelMatrixVectorC( Matrix, x, b, Update, UseMassVals,ZeroNotOwned )
+!-------------------------------------------------------------------------------
+      COMPLEX(KIND=dp) CONTIG :: x(:), b(:)
+      TYPE(Matrix_t), POINTER :: Matrix
+      LOGICAL, OPTIONAL :: Update, UseMassVals,ZeroNotOwned
+!-------------------------------------------------------------------------------
+      INTEGER :: i,ipar(1)
+      REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mr(:), Mb(:), r(:)
+
+      TYPE(Matrix_t), POINTER :: SaveMatrix
+      TYPE(SplittedMatrixT), POINTER :: SP
+      TYPE(Matrix_t), POINTER :: SavePtrIN
+      TYPE(BasicMatrix_t), POINTER :: SavePtrIF(:), SavePtrNB(:)
+!-------------------------------------------------------------------------------
+#ifdef PARALLEL_FOR_REAL
+      GlobalData => Matrix % ParMatrix
+      SaveMatrix  => GlobalMatrix
+      GlobalMatrix => Matrix
+      ParEnv = GlobalData % ParEnv
+      ParEnv % ActiveComm = Matrix % Comm
+      IF ( PRESENT( Update ) ) THEN
+        CALL Fatal('ParallelMatrixVectorC','Cannot handle parameter > Update <')
+      END IF
+        
+      IF ( PRESENT( UseMassVals ) ) THEN
+        CALL Fatal('ParallelMatrixVectorC','Cannot handle parameter > UseMassVals <')
+      END IF
+
+      CALL SParCMatrixVector( x, b, ipar )
+
+      GlobalMatrix => SaveMatrix
+#endif
+!-------------------------------------------------------------------------------
+    END SUBROUTINE ParallelMatrixVectorC
+!-------------------------------------------------------------------------------
+
+    
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelVectorC(A, vec_out, vec_in)
+!-------------------------------------------------------------------------------
+      TYPE(Matrix_t), INTENT(in) :: A
+      COMPLEX(KIND=dp), INTENT(inout) :: vec_out(:)
+      COMPLEX(KIND=dp), INTENT(in), OPTIONAL :: vec_in(:)
+!-------------------------------------------------------------------------------
+      INTEGER :: i,j,k
+!-------------------------------------------------------------------------------
+      j = 0
+      DO i=1,A % NumberOfRows
+        IF ( A % ParallelInfo % Neighbourlist(i) % &
+                   Neighbours(1)==Parenv % Mype ) THEN
+          j=j+1
+          IF(PRESENT(vec_in)) THEN
+            vec_out(j) = vec_in(i)
+          ELSE
+            vec_out(j) = vec_out(i)
+          END IF
+        END IF
+      END DO
+!-------------------------------------------------------------------------------
+    END SUBROUTINE ParallelVectorC
+!-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelVector(A, vec_out, vec_in)
@@ -773,7 +835,7 @@ CONTAINS
     END SUBROUTINE ParallelVector
 !-------------------------------------------------------------------------------
 
-
+    
 !-------------------------------------------------------------------------------
     SUBROUTINE PartitionVector(A, vec_out, vec_in)
 !-------------------------------------------------------------------------------
@@ -860,6 +922,20 @@ CONTAINS
     END FUNCTION ParallelNorm
 !-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelCNorm( n, x ) RESULT(s)
+!-------------------------------------------------------------------------------
+      INTEGER :: n
+      REAL(KIND=dp) :: s
+      COMPLEX(KIND=dp) CONTIG :: x(:)
+!-------------------------------------------------------------------------------
+      s = 0.0d0
+#ifdef PARALLEL_FOR_REAL
+      s = SParCNorm( n, x, 1 )
+#endif
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelCNorm
+!-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
     FUNCTION ParallelDOT( n, x, y ) RESULT(s)

@@ -1973,13 +1973,15 @@ CONTAINS
           
      CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, &
          Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm, OutputActive )
-
+     
 
      ChildVar => VariableGet( Solver % Mesh % Variables, ChildVarName )      
      IF(.NOT. ASSOCIATED( ChildVar ) ) THEN
        CALL Fatal('CreateChildSolver','Could not generate child variable!')
      END IF
 
+     ChildVar % Solver => Solver
+     
      ChildVar % TYPE = ParentSolver % Variable % TYPE
      Solver % Variable => ChildVar
 
@@ -1994,6 +1996,7 @@ CONTAINS
        Solver % Matrix => NULL()
      ELSE
        ChildMat => CreateChildMatrix( ParentMat, ParentDofs, Dofs, Dofs, .TRUE. )
+       ChildMat % Solver => Solver
        Solver % Matrix => ChildMat
      END IF
 
