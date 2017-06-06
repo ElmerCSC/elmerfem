@@ -2015,7 +2015,10 @@ CONTAINS
        Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
      END IF
 
-
+     IF( ASSOCIATED( ParentSolver % ColourIndexList ) ) THEN
+       Solver % ColourIndexList => ParentSolver % ColourIndexList
+     END IF
+       
      Solver % TimeOrder = ListGetInteger( Solver % values,'Time Derivative Order',Found )
      IF(.NOT. Found ) Solver % TimeOrder = ParentSolver % TimeOrder
      
