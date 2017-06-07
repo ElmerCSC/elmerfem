@@ -490,14 +490,14 @@ CONTAINS
       body_id = Element % BodyId
 
       IF( body_id == prev_body_id) THEN
-        IF (Equation == PrevEquation) THEN
-          Flag = PrevFlag
-          RETURN
-        END IF
-      ELSE
-        prev_body_id = body_id
-        PrevEquation = Equation
+         IF (Equation == PrevEquation) THEN
+            Flag = PrevFlag
+            RETURN
+         END IF
       END IF
+
+      prev_body_id = body_id
+      PrevEquation = Equation
               
       Flag = .FALSE.      
       IF ( body_id > 0 .AND. body_id <= Model % NumberOfBodies ) THEN
