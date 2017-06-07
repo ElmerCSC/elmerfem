@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter Rï¿½back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -51,6 +51,7 @@
 #include "femelmer.h"
 #include "../config.h"
 
+#include "../metis-5.1.0/include/metis.h"
 
 #define getline fgets(line,MAXLINESIZE,in) 
 
@@ -3022,7 +3023,8 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
   int *bcdualgraph[MAXCONNECTIONS],*bcinvtopo[MAXCONNECTIONS];
   int sideind[MAXNODESD1];
   
-  int nn,options[5];
+  int nn;
+  idx_t options[METIS_NOPTIONS];
   int *xadj,*adjncy,*vwgt,*adjwgt,wgtflag,*npart;
   int numflag,edgecut;
   int *nodepart;
@@ -3184,11 +3186,15 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
   nn = maxbcelem;
   npart = Ivector(0,nn-1);
   wgtflag = 0;
-  options[0] = 0;
-  options[1] = 3;
-  options[2] = 1;
-  options[3] = 3;
-  options[4] = 0;
+
+  METIS_SetDefaultOptions(options);
+  /* options[1] = 3; */
+  options[METIS_OPTION_CTYPE] = METIS_CTYPE_SHEM;
+  /* options[2] = 1; */
+  options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_METISRB;
+  /* options[3] = 3; */
+  options[METIS_OPTION_RTYPE] = METIS_RTYPE_GREEDY;
+  /* options[4] = 0; */
 
   /* Optional weights */
   vwgt = NULL;
@@ -3196,19 +3202,20 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
 
   if(0) printf("Calling Metis routine for boundary partitioning\n");
   if(metisopt == 2) {
-    if(info) printf("Starting graph partitioning METIS_PartGraphRecursive.\n");  
+    if(info) printf("Starting graph partitioning METIS_PartGraphRecursive.\n");
     METIS_PartGraphRecursive(&nn,xadj,adjncy,vwgt,adjwgt,&wgtflag,
-			     &numflag,&nparts,&options[0],&edgecut,npart);
+			     &numflag,&nparts,NULL,NULL,&options[0],&edgecut,npart);
   }
   else if(metisopt == 4) {
     if(info) printf("Starting graph partitioning METIS_PartGraphVKway.\n");      
-    METIS_PartGraphVKway(&nn,xadj,adjncy,vwgt,adjwgt,&wgtflag,
-			&numflag,&nparts,&options[0],&edgecut,npart);
+    options[METIS_OPTION_MINCONN] = 1;
+    METIS_PartGraphKway(&nn,xadj,adjncy,vwgt,adjwgt,&wgtflag,
+			&numflag,&nparts,NULL,NULL,&options[0],&edgecut,npart);
   }
   else {
     if(info) printf("Starting graph partitioning METIS_PartGraphKway.\n");      
     METIS_PartGraphKway(&nn,xadj,adjncy,vwgt,adjwgt,&wgtflag,
-			&numflag,&nparts,&options[0],&edgecut,npart);
+			&numflag,&nparts,NULL,NULL,&options[0],&edgecut,npart);
   }
   if(0) printf("Finished Metis routine for boundary partitioning\n");
 
@@ -3608,27 +3615,27 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
     for(p1=1;p1<=vpartitions1;p1++) {
       q1 = p1;
       if(dimper[0] && vpartitions1 > 1) {
-	if(q1==vpartitions1) q1 = 0;
-	q1 = q1/2 + 1;
+        if(q1==vpartitions1) q1 = 0;
+        q1 = q1/2 + 1;
       }
       for(p2=1;p2<=vpartitions2;p2++) {
-	q2 = p2;
-	if(dimper[1] && vpartitions2 > 1) {
-	  if(q2==vpartitions2) q2 = 0;
-	  q2 = q2/2 + 1;
-	}
-	for(p3=1;p3<=vpartitions3;p3++) {
-	  q3 = p3;
-	  if(dimper[2] && vpartitions3 > 1) {
-	    if(q3==vpartitions3) q3 = 0;
-	    q3 = q3/2 + 1;
-	  }
+        q2 = p2;
+        if(dimper[1] && vpartitions2 > 1) {
+          if(q2==vpartitions2) q2 = 0;
+          q2 = q2/2 + 1;
+        }
+        for(p3=1;p3<=vpartitions3;p3++) {
+          q3 = p3;
+          if(dimper[2] && vpartitions3 > 1) {
+            if(q3==vpartitions3) q3 = 0;
+            q3 = q3/2 + 1;
+          }
 	  
-	  P = vpartitions3 * vpartitions2 * (p1 - 1) + vpartitions3 * (p2-1) + p3;
-	  Q = partitions3 * partitions2 * (q1 - 1) + partitions3 * (q2-1) + q3;
+          P = vpartitions3 * vpartitions2 * (p1 - 1) + vpartitions3 * (p2-1) + p3;
+          Q = partitions3 * partitions2 * (q1 - 1) + partitions3 * (q2-1) + q3;
 
-	  partmap[P] = Q;
-	}
+          partmap[P] = Q;
+        }
       }
     }
     for(i=1;i<=noknots;i++)
@@ -3668,9 +3675,13 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
    used. If the elements are higher order nodal elements then use only the linear basis. */
 {
   int i,j,periodic, highorder, noelements, noknots, ne, nn, sides;
-  int nodesd2, etype, numflag, nparts, edgecut;
-  int *neededby,*metistopo;
+  int nodesd2, etype, numflag, nparts, edgecut, ncommon;
+  int *neededby,*metistopo, *eptr;
   int *indxper,*inpart,*epart,*npart;
+  idx_t options[METIS_NOPTIONS];
+
+  METIS_SetDefaultOptions(options);
+  options[METIS_OPTION_NUMBERING] = 0;
 
   if(info) printf("Making a Metis partitioning for %d elements in %d-dimensions.\n",
 		  data->noelements,data->dim);
@@ -3684,7 +3695,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
     if(sides != data->elementtypes[i]/100) {
       printf("Elemental Metis partition requires that all the elements are of the same type!\n");
       printf("1st element: %d, %d:th element: %d\n",
-	     data->elementtypes[1],i,data->elementtypes[i]);
+        data->elementtypes[1],i,data->elementtypes[i]);
       printf("Use Metis algorithms based on the nodal graph\n");
       bigerror("Partitioning not performed");
     }
@@ -3700,21 +3711,25 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
     if (info) printf("The mesh seems to consist of triangles\n");
     nodesd2 = 3;
     etype = 1;
+    ncommon = 2;
   }
   else if(sides == 4)  {
     if(info) printf("The mesh seems to consist of quadrilaterals\n");
     nodesd2 = 4;
     etype = 4;
+    ncommon = 2;
   }
   else if(sides == 5) {
     if(info) printf("The mesh seems to consist of tetrahedra\n");
     nodesd2 = 4;
     etype = 2;
+    ncommon = 3;
   }
   else if(sides == 8) {
     if(info) printf("The mesh seems to consist of bricks\n");
     nodesd2 = 8;
     etype = 3;
+    ncommon = 4;
   }
   else {
     printf("Elemental Metis partition only for triangles, quads, tets and bricks!\n");
@@ -3750,21 +3765,28 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   neededby = Ivector(1,noknots);
   metistopo = Ivector(0,noelements*nodesd2-1);
   epart = Ivector(0,noelements-1);
+  eptr = Ivector(0,noelements+1);
 
   numflag = 0;
   nparts = partitions;
   
+  eptr[0] = 0;
+  for(i=1;i<ne;i++) {
+    eptr[i] = eptr[i-1] + nodesd2;
+  }
+  eptr[ne] = 0;
+
   for(i=1;i<=noknots;i++) 
     neededby[i] = 0;
   if(periodic) {
     for(i=1;i<=noelements;i++) 
       for(j=0;j<nodesd2;j++) 
-	neededby[indxper[data->topology[i][j]]] = 1;
+        neededby[indxper[data->topology[i][j]]] = 1;
   }
   else {
     for(i=1;i<=noelements;i++) 
       for(j=0;j<nodesd2;j++) 
-	neededby[data->topology[i][j]] = 1;
+        neededby[data->topology[i][j]] = 1;
   }
 
   j = 0;
@@ -3777,25 +3799,25 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   if(periodic) {
     for(i=0;i<noelements;i++) 
       for(j=0;j<nodesd2;j++) 
-	metistopo[nodesd2*i+j] = neededby[indxper[data->topology[i+1][j]]]-1;
+        metistopo[nodesd2*i+j] = neededby[indxper[data->topology[i+1][j]]]-1;
   }    
   else {
     for(i=0;i<noelements;i++) 
       for(j=0;j<nodesd2;j++) 
-	metistopo[nodesd2*i+j] = neededby[data->topology[i+1][j]]-1;    
+        metistopo[nodesd2*i+j] = neededby[data->topology[i+1][j]]-1;    
   }
 
   if(info) printf("Using %d nodes of %d possible nodes in the Metis graph\n",nn,noknots);
 
   if(dual) {
     if(info) printf("Starting graph partitioning METIS_PartMeshDual.\n");  
-    METIS_PartMeshDual(&ne,&nn,metistopo,&etype,
-		       &numflag,&nparts,&edgecut,epart,npart);
+    METIS_PartMeshDual(&ne,&nn,eptr,metistopo,NULL,NULL,&ncommon,
+		       &nparts,NULL,options,&edgecut,epart,npart);
   }
   else {
     if(info) printf("Starting graph partitioning METIS_PartMeshNodal.\n");  
-    METIS_PartMeshNodal(&ne,&nn,metistopo,&etype,
-			&numflag,&nparts,&edgecut,epart,npart);
+    METIS_PartMeshNodal(&ne,&nn,eptr,metistopo,NULL,NULL,
+			&nparts,NULL,options,&edgecut,epart,npart);
   }
 
   /* Set the partition given by Metis for each element. */
@@ -3818,7 +3840,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
       if(!j) printf("Cant set partitioning for node %d\n",i);
       data->nodepart[i] = npart[j-1]+1;
       if(data->nodepart[i] < 1 || data->nodepart[i] > partitions) 
-	printf("Invalid partition %d for node %d\n",data->nodepart[i],i);
+        printf("Invalid partition %d for node %d\n",data->nodepart[i],i);
     }
   }
 
@@ -3826,6 +3848,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   free_Ivector(metistopo,0,noelements*nodesd2-1);
   free_Ivector(epart,0,noelements-1);
   free_Ivector(npart,0,nn-1);
+  free_Ivector(eptr,0,noelements+1);
 
   if(info) printf("Successfully made a Metis partition using the element mesh.\n");
 
@@ -3844,16 +3867,20 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
    the ownership of the nodes will follow. The latter is optimal for Elmer. */
 {
   int i,j,k,noelements,noknots;
-  int nn,con,maxcon,totcon,options[5];
+  int nn,ncon,con,maxcon,totcon;
   int *xadj,*adjncy,*vwgt,*adjwgt,wgtflag,*npart,**graph;
   int numflag,nparts,edgecut,maxconset;
   struct CRSType *dualgraph;
+  idx_t options[METIS_NOPTIONS];
 
   if(info) printf("Making a Metis partitioning for %d nodes in %d-dimensions.\n",
 		  data->noknots,data->dim);
   if(partitions < 2 ) {
     bigerror("There should be at least two partitions for partitioning!");
   }
+
+  METIS_SetDefaultOptions(options);
+  options[METIS_OPTION_NUMBERING] = 0;
 
   noknots = data->noknots;
   noelements = data->noelements;
@@ -3911,8 +3938,8 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     totcon = 0;
     for(i=1;i<=nn;i++) {
       for(j=0;j<maxcon;j++) {
-	con = graph[j][i];
-	if(con) totcon++;
+        con = graph[j][i];
+        if(con) totcon++;
       }
     }
     
@@ -3926,11 +3953,11 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     for(i=1;i<=nn;i++) {
       xadj[i-1] = totcon;
       for(j=0;j<maxcon;j++) {
-	con = graph[j][i];
-	if(con) {
-	  adjncy[totcon] = con-1;
-	  totcon++;
-	}
+        con = graph[j][i];
+        if(con) {
+          adjncy[totcon] = con-1;
+          totcon++;
+        }
       }
     }
     xadj[nn] = totcon;
@@ -3942,11 +3969,17 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
   numflag = 0;
   npart = Ivector(0,nn-1);
   wgtflag = 0;
-  options[0] = 0;
-  options[1] = 3;
-  options[2] = 1;
-  options[3] = 3;
-  options[4] = 0;
+  ncon = 1;
+  /* 
+    options[0] = 0;
+    options[1] = 3;
+    options[2] = 1;
+    options[3] = 3;
+    options[4] = 0;
+  */
+  options[METIS_OPTION_CTYPE] = METIS_CTYPE_SHEM;
+  options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_METISRB;
+  options[METIS_OPTION_RTYPE] = METIS_RTYPE_GREEDY;
 
   /* Optional weights */
   vwgt = NULL;
@@ -3959,11 +3992,11 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
       wgtflag = 1;
       adjwgt = Ivector(0,totcon-1);
       for(i=0;i<totcon;i++)
-	adjwgt[i] = 1;
+        adjwgt[i] = 1;
       
       if(metisopt != 3) {
-	printf("For weighted partitioning Metis subroutine METIS_PartGraphKway is enforced\n");
-	metisopt = 3;
+        printf("For weighted partitioning Metis subroutine METIS_PartGraphKway is enforced\n");
+        metisopt = 3;
       }
     }
     
@@ -3971,10 +4004,10 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     if(data->periodicexist) {
       if(info) printf("Setting periodic connections to dominate %d\n",totcon);
       for(i=0;i<noknots;i++) {
-	j = data->periodic[i+1]-1;
-	if(j == i) continue;
-	for(k=xadj[i];k<xadj[i+1];k++) 
-	  if(adjncy[k] == j) adjwgt[k] = maxcon;
+        j = data->periodic[i+1]-1;
+        if(j == i) continue;
+        for(k=xadj[i];k<xadj[i+1];k++) 
+          if(adjncy[k] == j) adjwgt[k] = maxcon;
       }
     }
     
@@ -3989,14 +4022,14 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
       printf("Adding weight of %d for constrained nodes\n",maxweight);
       
       for(con=1;con<=eg->connect;con++) {
-	bctype = eg->connectbounds[con-1];
+        bctype = eg->connectbounds[con-1];
 	
-	for(bc=0;bc<MAXBOUNDARIES;bc++) {    
-	  if(bound[bc].created == FALSE) continue;
-	  if(bound[bc].nosides == 0) continue;
+        for(bc=0;bc<MAXBOUNDARIES;bc++) {    
+          if(bound[bc].created == FALSE) continue;
+          if(bound[bc].nosides == 0) continue;
 	  
-	  for(i=1;i<=bound[bc].nosides;i++) {
-	    if(bound[bc].types[i] != bctype) continue;
+          for(i=1;i<=bound[bc].nosides;i++) {
+            if(bound[bc].types[i] != bctype) continue;
 	    
 	    GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
 	    /* GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
@@ -4004,19 +4037,19 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 
 	    sidenodes = sideelemtype%100;
 	    
-	    for(j=0;j<sidenodes;j++) {
-	      for(j2=0;j2<sidenodes;j2++) {
-		if(j==j2) continue;
+            for(j=0;j<sidenodes;j++) {
+              for(j2=0;j2<sidenodes;j2++) {
+                if(j==j2) continue;
 		
-		ind = sideind[j]-1;
-		ind2 = sideind[j2]-1;
+                ind = sideind[j]-1;
+                ind2 = sideind[j2]-1;
 		
-		for(k=xadj[ind];k<xadj[ind+1];k++) 
-		  if(adjncy[k] == ind2) adjwgt[k] = maxweight;
-	      }
-	    }
-	  }
-	}
+                for(k=xadj[ind];k<xadj[ind+1];k++) 
+                  if(adjncy[k] == ind2) adjwgt[k] = maxweight;
+              }
+            }
+          }
+        }
       }
     }
   } /* !dual */    
@@ -4024,18 +4057,19 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 
   if(metisopt == 2) {
     if(info) printf("Starting graph partitioning METIS_PartGraphRecursive.\n");  
-    METIS_PartGraphRecursive(&nn,xadj,adjncy,vwgt,adjwgt,&wgtflag,
-			     &numflag,&nparts,&options[0],&edgecut,npart);
+    METIS_PartGraphRecursive(&nn,&ncon,xadj,adjncy,NULL,NULL,NULL,
+			     &nparts,NULL,NULL,options,&edgecut,npart);
   }
   else if(metisopt == 3) {
     if(info) printf("Starting graph partitioning METIS_PartGraphKway.\n");      
-    METIS_PartGraphKway(&nn,xadj,adjncy,vwgt,adjwgt,&wgtflag,
-			&numflag,&nparts,&options[0],&edgecut,npart);
-  }
+    METIS_PartGraphKway(&nn,&ncon,xadj,adjncy,vwgt,adjwgt,&wgtflag,
+			&nparts,NULL,NULL,options,&edgecut,npart);
+  } 
   else if(metisopt == 4) {
     if(info) printf("Starting graph partitioning METIS_PartGraphVKway.\n");      
-    METIS_PartGraphVKway(&nn,xadj,adjncy,vwgt,adjwgt,&wgtflag,
-			&numflag,&nparts,&options[0],&edgecut,npart);
+    options[METIS_OPTION_MINCONN] = 1;
+    METIS_PartGraphKway(&nn,xadj,adjncy,vwgt,adjwgt,&wgtflag,
+			&numflag,&nparts,NULL,NULL,options,&edgecut,npart);
   }
   else {
     printf("Unknown Metis option %d\n",metisopt);

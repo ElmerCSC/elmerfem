@@ -12,7 +12,7 @@ IF(CMAKE_CROSSCOMPILING)
   ENDIF()
 ENDIF()
 
-ADD_SUBDIRECTORY(metis)
+ADD_SUBDIRECTORY(metis-5.1.0)
 
 SET(elmergrid_SRCS common.h femdef.h femelmer.h femfilein.h
   femfileout.h feminfo.h femknot.h femmesh.h femsolve.h 
