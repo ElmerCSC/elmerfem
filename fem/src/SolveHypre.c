@@ -849,13 +849,13 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
      /* Set the LGMRES preconditioner */
      if ( hypre_pre  == 0) {
-       HYPRE_ParCSRLGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_EuclidSolve,
+       HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_EuclidSolve,
 			   (HYPRE_PtrToSolverFcn) HYPRE_EuclidSetup, precond);
      } else if ( hypre_pre == 1) { 
-       HYPRE_ParCSRLGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
+       HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
 			   (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      } else if( hypre_pre == 2){
-       HYPRE_ParCSRLGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
+       HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
 			   (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      }
      /* compute the preconditioner */
@@ -882,6 +882,47 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    }
    
 } /* SolveHypre1 - matrix conversion and solver setup */
+
+
+/* Update the stopping tolerance of a previously constructed solver */
+void STDCALLBULL FC_FUNC(updatehypre,UPDATEHYPRE)
+     ( double *TOL,  int *hypre_method,  int** ContainerPtr )
+{
+  HYPRE_Solver solver;
+  ElmerHypreContainer *Container;
+  int hypre_sol;
+
+  Container = (ElmerHypreContainer*)(*ContainerPtr);
+  solver = Container->solver;
+
+  hypre_sol = *hypre_method / 10;
+
+  if ( hypre_sol == 0) { /* BiGSTAB method */
+    HYPRE_ParCSRBiCGSTABSetTol(solver, *TOL);
+  }
+  else if ( hypre_sol == 1 ) { /* boomer AMG */
+    HYPRE_BoomerAMGSetTol(solver, *TOL);
+  }
+  else if ( hypre_sol == 2) { /* CG */
+    HYPRE_ParCSRPCGSetTol(solver, *TOL);
+  }
+  else if ( hypre_sol == 3) { /* GMRES */
+    HYPRE_GMRESSetTol(solver, *TOL);
+  }
+#if HAVE_GMRES
+  else if ( hypre_sol == 4) { /* FlexGMRes */
+    HYPRE_ParCSRFlexGMRESSetTol(solver, *TOL);
+  }
+  else if ( hypre_sol == 5) { /* LGMRes */
+    HYPRE_ParCSRLGMRESSetTol(solver, *TOL);
+  }
+#endif
+  else {
+    fprintf( stderr,"Hypre solver method not implemented\n");
+    exit(EXIT_FAILURE);
+  }
+}
+
 
 /*////////////////////////////////////////////////////////////////////////////////////////////////*/
 

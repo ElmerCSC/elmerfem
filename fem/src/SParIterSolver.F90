@@ -1403,7 +1403,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   INTEGER, POINTER :: nb(:), Rows(:), Cols(:)
 
   LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, Found
-  LOGICAL :: NewSetup
+  LOGICAL :: NewSetup, UpdateTolerance
   INTEGER :: verbosity
   
   INTEGER :: nrows, ncols, nnz
@@ -1477,6 +1477,13 @@ INTEGER::inside
                             hypre_dppara(5), Gvals(*), xx_d(*), yy_d(*), zz_d(*)
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPREAMS
+
+      SUBROUTINE UpdateHypre(TOL, hypremethod, hypreContainer) BIND(C,name="updatehypre")
+        USE, INTRINSIC :: iso_c_binding
+        REAL(KIND=c_double) :: TOL
+        INTEGER(KIND=c_int) :: hypremethod
+        INTEGER(KIND=C_INTPTR_T) :: hypreContainer
+      END SUBROUTINE UpdateHypre
 
     END INTERFACE
 #endif
@@ -1721,6 +1728,14 @@ INTEGER::inside
           CALL SolveHYPRE1( SourceMatrix % NumberOfRows, Rows, Cols, Vals, Precond, &
               PrecVals, Aperm, Owner,  ILUn, BILU, hypremethod,hypre_intpara, hypre_dppara,&
               rounds, TOL, verbosity, SourceMatrix % Hypre, SourceMatrix % Comm)
+        END IF
+
+        ! In some cases the stopping tolerance is adapted during the solution procedure.
+        ! Make an update if needed:
+        UpdateTolerance = ListGetLogical( Params, 'Linear System Adaptive Tolerance', Found )
+        IF (UpdateTolerance) THEN
+           !PRINT *, 'Setting tolerance to:', TOL
+           CALL UpdateHypre( TOL, hypremethod, SourceMatrix % Hypre)
         END IF
 
         ! solve using previously computed HYPRE data structures.
