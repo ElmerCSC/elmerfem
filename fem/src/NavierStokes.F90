@@ -1732,7 +1732,7 @@ MODULE NavierStokes
    REAL(KIND=dp) :: u,v,w,ParentU,ParentV,ParentW,s,x(n),y(n),z(n)
    REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
    REAL(KIND=dp) :: TangentForce(3),Force(3),Normal(3),Tangent(3),Tangent2(3), &
-               Vect(3), Alpha, mu,Grad(3,3),Velo(3)
+               Vect(3), Alpha, mu,Grad(3,3),Velo(3), tempNormal(3)
 
    REAL(KIND=dp) :: xx, yy, ydot, ydotdot, MassFlux, heaveSide, tanAlpha, tanTheta
 
@@ -1802,26 +1802,34 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
      Normal = NormalVector( Element, Nodes, u,v,.TRUE. )
 
-      tanAlpha = Normal(1) / Normal(2)
+      tanAlpha = - Normal(1) / Normal(2)
       IF ( heaveSide > 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
         ! Grounded
-        CALL tan2Normal2D(bslope, Normal)
+        CALL tan2Normal2D(bslope, tempNormal)
 
         IF (outputFlag) THEN
-          WRITE (*,*) '+++++++++++++++++', Normal, ratio, t, u
+          WRITE (*,*) '+++++++++++++++++', Normal(1:2), tempNormal(1:2), ratio
         END IF
+        Normal = tempNormal
 
       ELSE IF ( heaveSide < 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
         ! Floating
-        ! tanTheta = (tanAlpha - ratio*bslope) / (1-ratio)
-        ! CALL tan2Normal2D(tanTheta, Normal)   
+        tanTheta = (tanAlpha - ratio*bslope) / (1.0-ratio)
+        CALL tan2Normal2D(tanTheta, tempNormal)   
 
         IF (outputFlag) THEN
-          WRITE (*,*) '=================',Normal, ratio,  t, u
+          WRITE (*,*) '=================', Normal(1:2), tempNormal(1:2), ratio
         END IF
+        Normal = tempNormal
       END IF
 
-     Alpha = SUM( NodalExtPressure(1:n) * Basis )
+     ! Only put sea pressure on floating part
+     IF ( (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
+       Alpha = SUM( NodalExtPressure(1:n) * Basis )  
+     ELSE
+       Alpha = SUM( NodalExtPressure(1:n) * Basis )
+     END IF
+
      IF ( NormalTangential ) THEN
        Force(1) = Force(1) + Alpha
      ELSE
@@ -1855,8 +1863,8 @@ MODULE NavierStokes
          DO q=1,n
            DO i=1,dim
              IF (i == 1) THEN
-              IF ( heaveSide > 0.5 .AND. (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
-                SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) )
+              IF ( (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
+                SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) ) * ( 1.0-heaveSide )
               ELSE
                 SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) )
               END IF
