@@ -1206,14 +1206,13 @@ CONTAINS
         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLoss(k,j)
         CALL Info('FourierLossSolver', Message, Level=6 )
       END DO
-      
+
       WRITE( Message,'(A,ES12.3)') 'Total component loss: ',CompLoss(k)
       CALL Info('FourierLossSolver',Message, Level=5 )
     END DO
     
     WRITE( Message,'(A,ES12.3)') 'Total loss: ',TotalLoss
     CALL Info('FourierLossSolver',Message, Level=5 )
-    
     
     IF( Parenv % MyPe == 0 ) THEN
       LossesFile = ListGetString(SolverParams,'Fourier Loss Filename',Found )

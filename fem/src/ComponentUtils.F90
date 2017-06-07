@@ -497,7 +497,9 @@ MODULE ComponentUtils
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
 
      OperX = 0.0_dp
-
+     vol = 0.0_dp
+     integral = 0.0_dp
+     
      BcMode = .FALSE.
      MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
      IF( .NOT. Found ) THEN

@@ -692,7 +692,7 @@
       CALL Info('PartitionMesh','Creating neighbour list for parallel saving')
 
       n = Mesh % NumberOfNodes
-      ALLOCATE( NeighbourList(n) ) 
+      ALLOCATE( NeighbourList(n) , STAT=allocstat ) 
       IF( allocstat /= 0 ) THEN
         CALL Fatal('PartitionMesh','Allocation error for NeighbourList')
       END IF

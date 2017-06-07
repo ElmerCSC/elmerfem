@@ -123,7 +123,7 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
         
         ! Compute values of all basis functions at all integration points
         stat = ElementInfoVec( Element, Nodes, ngp, &
-            IP % U, IP % V, IP % W, DetJVec, BasisVec )
+            IP % U, IP % V, IP % W, DetJVec, n, BasisVec )
         
         RealValVec => ListGetElementRealVec( RealVal_h, ngp, BasisVec, Element, Found ) 
         NewCounter(key) = NewCounter(key) + SUM( RealValVec(1:ngp) * IP % s(1:ngp) )

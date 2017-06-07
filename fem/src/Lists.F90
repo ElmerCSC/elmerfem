@@ -485,16 +485,19 @@ CONTAINS
       INTEGER :: k,body_id,prev_body_id = -1
       
       SAVE Prev_body_id, PrevEquation, PrevFlag
-      
+!$OMP THREADPRIVATE(Prev_body_id, PrevEquation, PrevFlag)
+
       body_id = Element % BodyId
 
-      IF( body_id == prev_body_id .AND. Equation == PrevEquation ) THEN
-        Flag = PrevFlag
-        RETURN
-      ELSE
-        prev_body_id = body_id
-        PrevEquation = Equation
+      IF( body_id == prev_body_id) THEN
+         IF (Equation == PrevEquation) THEN
+            Flag = PrevFlag
+            RETURN
+         END IF
       END IF
+
+      prev_body_id = body_id
+      PrevEquation = Equation
               
       Flag = .FALSE.      
       IF ( body_id > 0 .AND. body_id <= Model % NumberOfBodies ) THEN
@@ -558,7 +561,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       TYPE(Mesh_t),   TARGET :: Mesh
-      TYPE(Solver_t), TARGET :: Solver
+      TYPE(Solver_t), TARGET, OPTIONAL :: Solver
       CHARACTER(LEN=*) :: Name
       INTEGER :: DOFs
       INTEGER, OPTIONAL :: TYPE
@@ -569,8 +572,12 @@ CONTAINS
 !------------------------------------------------------------------------------
       LOGICAL :: stat
       TYPE(Variable_t), POINTER :: ptr,ptr1,ptr2
+      TYPE(Solver_t), POINTER :: VSolver
 !------------------------------------------------------------------------------
 
+      NULLIFY(VSolver)
+      IF (PRESENT(Solver)) VSolver => Solver
+      
       IF ( .NOT.ASSOCIATED(Variables) ) THEN
         ALLOCATE(Variables)
         ptr => Variables
@@ -612,7 +619,7 @@ CONTAINS
       ptr % NonlinValues => NULL(); ptr % SteadyValues => NULL()
       ptr % NonlinIter = 0
 
-      ptr % Solver => Solver
+      ptr % Solver => VSolver
       ptr % PrimaryMesh => Mesh
 
       ptr % Valid  = .TRUE.
@@ -852,7 +859,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       TYPE(Mesh_t),   TARGET :: Mesh
-      TYPE(Solver_t), TARGET :: Solver
+      TYPE(Solver_t), TARGET, OPTIONAL :: Solver
       CHARACTER(LEN=*) :: Name
       INTEGER, OPTIONAL :: DOFs
       REAL(KIND=dp), OPTIONAL, POINTER :: Values(:)
@@ -1484,10 +1491,12 @@ CONTAINS
     LOGICAL :: l 
     CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
-    l = .FALSE.
-    IF ( Namespace /= '' ) THEN
+    IF (ALLOCATED(Namespace)) THEN
       l = .TRUE.
       str = Namespace
+    ELSE
+      l = .FALSE.
+      str = ''
     END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListGetNamespace
@@ -1568,7 +1577,11 @@ CONTAINS
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
-    str = ActiveListName
+    IF (ALLOCATED(ActiveListName)) THEN
+      str = ActiveListName
+    ELSE
+      str = ''
+    END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListGetActiveName
 !------------------------------------------------------------------------------
@@ -3529,12 +3542,13 @@ CONTAINS
 
      Debug = .TRUE.
 
-
+     
      CALL Info('ListInitElementKeyword','Treating keyword: '//TRIM(Name),Level=10)
 
      Model => CurrentModel
      Handle % BulkElement = .TRUE.
-
+     NULLIFY(ptr)
+     
      SELECT CASE ( Section ) 
 
      CASE('Body')
@@ -3574,7 +3588,7 @@ CONTAINS
      Handle % EvaluateAtIp = .FALSE.       
      Handle % List => NULL()
      Handle % Element => NULL()
-     IF(.NOT. ASSOCIATED( Ptr ) ) THEN
+     IF (.NOT. ASSOCIATED( Ptr ) ) THEN
        Handle % Ptr => ListAllocate()
      END IF
 
@@ -3589,7 +3603,7 @@ CONTAINS
      
      FirstList = .TRUE.
 
-
+     i = 0
      DO WHILE(.TRUE.) 
        i = i + 1
 

@@ -2354,6 +2354,7 @@ END SUBROUTINE GetMaxDefs
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
                 FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), FirstOrderElements
      TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(10,6)
      CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
@@ -2431,12 +2432,12 @@ END SUBROUTINE GetMaxDefs
                 ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
  
             IF ( FoundDef ) THEN
-              CALL GetMaxDefs( Model, Mesh, Element, ElementDef, solver_id, body_id, Indofs )
+              CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef, solver_id, body_id, Indofs )
             ELSE
               IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) &
                  ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
 
-              CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
+              CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef0, solver_id, body_id, Indofs )
 
               IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
             END IF

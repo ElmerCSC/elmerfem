@@ -423,7 +423,7 @@ MODULE LoadMod
             CALL pptr(model, node, val, arr)
         END SUBROUTINE execrealvectorfunction
 
-        SUBROUTINE execsolver(fptr, model, solver, dt, transient)
+        RECURSIVE SUBROUTINE execsolver(fptr, model, solver, dt, transient)
             IMPLICIT NONE
             INTEGER(KIND=AddrInt) :: fptr
             TYPE(Model_t) :: model

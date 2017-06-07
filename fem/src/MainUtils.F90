@@ -636,7 +636,8 @@ CONTAINS
     TYPE(Graph_t) :: DualGraph
     TYPE(GraphColour_t) :: GraphColouring
     LOGICAL :: ConsistentColours
-    
+
+    LOGICAL :: ThreadedStartup
 
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
@@ -1075,16 +1076,45 @@ CONTAINS
         CALL Info('AddEquationBasics','Maximum size of permutation vector is: '//TRIM(I2S(Ndeg)),Level=12)
         ALLOCATE( Perm(Ndeg), STAT=AllocStat )
         IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Perm')
-        
         Perm = 0
         MatrixFormat = MATRIX_CRS
+        
+        IF( ListGetLogical( SolverParams,'MultiColour Solver',Found ) ) THEN
+          CALL Info('AddEquationBasics','Creating structures for mesh colouring')
+          ConsistentColours = .FALSE.
+          IF ( ListGetLogical(SolverParams,'MultiColour Consistent', Found) ) THEN
+            CALL Info('AddEquationBasics','Creating consistent colouring')
+            ConsistentColours = .TRUE.
+          END IF
 
+          ! Construct the dual graph from Elmer mesh
+          CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
+          
+          ! Colour the dual graph
+          CALL ElmerGraphColour(DualGraph, GraphColouring, ConsistentColours)
+          
+          ! Deallocate dual graph as it is no longer needed
+          CALL Graph_Deallocate(DualGraph)
+          
+          ! Construct colour lists
+          ALLOCATE( Solver % ColourIndexList, STAT=AllocStat )
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for ColourIndexList')
+          
+          CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
+          CALL Colouring_Deallocate(GraphColouring)          
+        END IF
 
+        ThreadedStartup = .FALSE.
+        IF( ListGetLogical( SolverParams,'Multithreaded Startup',Found ) ) THEN
+          CALL Info('AddEquationBasics','Using multithreaded startup')
+          ThreadedStartup = .TRUE.
+        END IF
+        
         CALL Info('AddEquationBasics','Creating solver matrix topology',Level=12)
         Solver % Matrix => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
             Perm, DOFs, MatrixFormat, BandwidthOptimize, eq(1:LEN_TRIM(eq)), &
             ListGetLogical( SolverParams,'Discontinuous Galerkin', Found ), &
-            GlobalBubbles=GlobalBubbles )          
+            GlobalBubbles=GlobalBubbles, ThreadedStartup=ThreadedStartup )
         Nrows = DOFs * Ndeg
         IF (ASSOCIATED(Solver % Matrix)) THEN
           Nrows = Solver % Matrix % NumberOfRows
@@ -1124,33 +1154,6 @@ CONTAINS
         IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = ELMER_COMM_WORLD
         IF ( ListGetLogical( SolverParams, 'Discontinuous Galerkin', Found) ) &
           Solver % Variable % TYPE = Variable_on_nodes_on_elements
-
-
-        IF( ListGetLogical( SolverParams,'MultiColour Solver',Found ) ) THEN
-          CALL Info('AddEquationBasics','Creating structures for mesh colouring')
-          ConsistentColours = .FALSE.
-          IF ( ListGetLogical(SolverParams,'MultiColour Consistent', Found) ) THEN
-            CALL Info('AddEquationBasics','Creating consistent colouring')
-            ConsistentColours = .TRUE.
-          END IF
-
-          ! Construct the dual graph from Elmer mesh
-          CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
-          
-          ! Colour the dual graph
-          CALL ElmerGraphColour(DualGraph, GraphColouring, ConsistentColours)
-          
-          ! Deallocate dual graph as it is no longer needed
-          CALL Graph_Deallocate(DualGraph)
-          
-          ! Construct colour lists
-          ALLOCATE( Solver % ColourIndexList, STAT=AllocStat )
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for ColourIndexList')
-          
-          CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
-          CALL Colouring_Deallocate(GraphColouring)          
-        END IF
-
 
       END IF
       !------------------------------------------------------------------------------
@@ -4235,7 +4238,7 @@ CONTAINS
 !> point of view this misses some opportunities to have control of the nonlinear
 !> system. 
 !------------------------------------------------------------------------------
-  SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
+  RECURSIVE SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t),POINTER :: Solver
@@ -4420,7 +4423,7 @@ CONTAINS
 !> how the matrices may be assembled and solved: standard (single), coupled and
 !> block. 
 !------------------------------------------------------------------------------
-  SUBROUTINE SolverActivate( Model, Solver, dt, TransientSimulation )
+  RECURSIVE SUBROUTINE SolverActivate( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t),POINTER :: Solver

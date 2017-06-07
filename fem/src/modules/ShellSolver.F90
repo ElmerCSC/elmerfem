@@ -658,7 +658,7 @@ CONTAINS
           IF (SIZE(DirectorValues) < 3*n) CALL Fatal('ReadSurfaceDirector', &
               'Elemental director data is not associated with all nodes')
           d1(1:3) = DirectorValues(1:3)
-          c = LDot(d1,e3)
+          c = DOT_PRODUCT(d1,e3)
         ELSE
           CALL Fatal( 'ReadSurfaceDirector', 'Elemental director data is not associated')
         END IF
@@ -666,7 +666,7 @@ CONTAINS
         DO j=2,n
           i0 = (j-1)*3
           d2(1:3) = DirectorValues(i0+1:i0+3)
-          IF ( (c * LDot(d2,e3)) < 0.0d0 ) THEN
+          IF ( (c * DOT_PRODUCT(d2,e3)) < 0.0d0 ) THEN
             PRINT *, 'Element indices=', Element % NodeIndexes(1:n)
             PRINT *, 'Reference normal =', e3(:)
             PRINT *, 'Node Index = ', j, Element % NodeIndexes(j)
@@ -994,29 +994,29 @@ CONTAINS
       ez(1:3) = 1.0d0/Norm * d3(1:3) 
 
       v21(:) = X2(:) - X1(:)
-      b(:) = v21(:) - LDot(v21,ez)*ez(:)
+      b(:) = v21(:) - DOT_PRODUCT(v21,ez)*ez(:)
       Norm = SQRT(SUM(b(1:3)**2))
       ex(1:3) = 1.0d0/Norm * b(1:3)     
       ey(:) = CrossProduct(ez,ex)
 
-      cpars(1) = LDot(v21,ex)
+      cpars(1) = DOT_PRODUCT(v21,ex)
       IF (cpars(1) < 0.0d0) &
           CALL Fatal('EdgeFrame','Negative edge length obtained')
 
       r1(:) = X1(:) - X0(:)
       r2(:) = X2(:) - X0(:)
 
-      cpars(2) = LDot(r1,ey)               ! The y-coordinate of the vertex X1
-      cpars(3) = LDot(r2,ey)               ! The y-coordinate of the vertex X2
-      cpars(4) = LDot(r1,ez)               ! The z-coordinate of the vertex X1
-      cpars(5) = LDot(r2,ez)               ! The z-coordinate of the vertex X2      
+      cpars(2) = DOT_PRODUCT(r1,ey)               ! The y-coordinate of the vertex X1
+      cpars(3) = DOT_PRODUCT(r2,ey)               ! The y-coordinate of the vertex X2
+      cpars(4) = DOT_PRODUCT(r1,ez)               ! The z-coordinate of the vertex X1
+      cpars(5) = DOT_PRODUCT(r2,ez)               ! The z-coordinate of the vertex X2      
       
       t1(:) = CrossProduct(ey,d1)
       t2(:) = CrossProduct(ey,d2)
       t3(:) = CrossProduct(ey,d3)
       
-      cpars(6) = LDot(t1,ez)/LDot(t1,ex);  ! The angle parameter for z(x) at the vertex X1
-      cpars(7) = LDot(t2,ez)/LDot(t2,ex);  ! The angle parameter for z(x) at the vertex X2      
+      cpars(6) = DOT_PRODUCT(t1,ez)/DOT_PRODUCT(t1,ex);  ! The angle parameter for z(x) at the vertex X1
+      cpars(7) = DOT_PRODUCT(t2,ez)/DOT_PRODUCT(t2,ex);  ! The angle parameter for z(x) at the vertex X2      
 
     ELSE
 
@@ -1025,24 +1025,24 @@ CONTAINS
       ez(1:3) = 1.0d0/Norm * d(1:3) 
 
       v21(:) = X2(:) - X1(:)
-      b(:) = v21(:) - LDot(v21,ez)*ez(:)
+      b(:) = v21(:) - DOT_PRODUCT(v21,ez)*ez(:)
       Norm = SQRT(SUM(b(1:3)**2))
       ex(1:3) = 1.0d0/Norm * b(1:3)     
       ey(:) = CrossProduct(ez,ex)
 
       X0(:) = 0.5d0 * ( X1(1:3) + X2(1:3) )
-      cpars(1) = LDot(v21,ex)
+      cpars(1) = DOT_PRODUCT(v21,ex)
       IF (cpars(1) < 0.0d0) &
           CALL Fatal('EdgeFrame','Negative edge length obtained')
 
       r1(:) = X1(:) - X0(:)
       r2(:) = X2(:) - X0(:)
-      cpars(2) = LDot(r1,ez)               ! The z-coordinate of the vertex X1
-      cpars(3) = LDot(r2,ez)               ! The z-coordinate of the vertex X2
+      cpars(2) = DOT_PRODUCT(r1,ez)               ! The z-coordinate of the vertex X1
+      cpars(3) = DOT_PRODUCT(r2,ez)               ! The z-coordinate of the vertex X2
       t1(:) = CrossProduct(ey,d1)
       t2(:) = CrossProduct(ey,d2)
-      cpars(4) = LDot(t1,ez)/LDot(t1,ex);  ! The angle parameter for z(x) at the vertex X1
-      cpars(5) = LDot(t2,ez)/LDot(t2,ex);  ! The angle parameter for z(x) at the vertex X2
+      cpars(4) = DOT_PRODUCT(t1,ez)/DOT_PRODUCT(t1,ex);  ! The angle parameter for z(x) at the vertex X1
+      cpars(5) = DOT_PRODUCT(t2,ez)/DOT_PRODUCT(t2,ex);  ! The angle parameter for z(x) at the vertex X2
     END IF
 
     A(1:3,1) = ex(1:3)
@@ -1719,10 +1719,10 @@ CONTAINS
     !--------------------------------------------------------------------
     ! The metric surface tensor and its determinant
     !--------------------------------------------------------------------
-    a(1,1) = LDot(a1,a1)
-    a(1,2) = LDot(a1,a2)
+    a(1,1) = DOT_PRODUCT(a1,a1)
+    a(1,2) = DOT_PRODUCT(a1,a2)
     a(2,1) = a(1,2)
-    a(2,2) = LDot(a2,a2)
+    a(2,2) = DOT_PRODUCT(a2,a2)
     deta = a(1,1)*a(2,2)-a(1,2)*a(2,1)
 
     !--------------------------------------------------------------------
@@ -1733,10 +1733,10 @@ CONTAINS
     a3(:) = CrossProduct(a1,a2)
     Norm = SQRT(SUM(a3(1:3)**2))
     a3(:) = 1/Norm * a3(:) 
-    b(1,1) = LDot(a3,d1a1)
-    b(1,2) = LDot(a3,d2a1)
+    b(1,1) = DOT_PRODUCT(a3,d1a1)
+    b(1,2) = DOT_PRODUCT(a3,d2a1)
     b(2,1) = b(1,2)
-    b(2,2) = LDot(a3,d2a2)
+    b(2,2) = DOT_PRODUCT(a3,d2a2)
 
     stat = .TRUE.
 !----------------------------------------------------------------------------
@@ -2121,7 +2121,7 @@ CONTAINS
       ! not unique. Select one of the possibilities:
       ! ------------------------------------------------------------------------
       GlobPDir1(1:3) = 1.0d0/SQRT(SUM(a1(1:3)**2)) * a1(1:3)
-      GlobPDir2(:) = a2(:) - LDot(a2,GlobPDir1)*GlobPDir1(:)
+      GlobPDir2(:) = a2(:) - DOT_PRODUCT(a2,GlobPDir1)*GlobPDir1(:)
       GlobPDir2(1:3) = 1.0d0/SQRT(SUM(GlobPDir2(1:3)**2)) * GlobPDir2(1:3)
     ELSE
       Id = 0.0d0
@@ -2173,7 +2173,7 @@ CONTAINS
     ! right-handed and the normal agrees with the input data.
     !-----------------------------------------------------------------------
     IF (CheckOrientation) THEN
-      IF ( LDot(d, CrossProduct(GlobPDir1,GlobPDir2)) < 0.0d0 ) &
+      IF ( DOT_PRODUCT(d, CrossProduct(GlobPDir1,GlobPDir2)) < 0.0d0 ) &
           GlobPDir2(:) = -1.0d0 * GlobPDir2(:)
     END IF
     GlobPDir3 = CrossProduct(GlobPDir1,GlobPDir2)
@@ -2230,9 +2230,9 @@ CONTAINS
           p(3) = Nodes % z(j)
         END IF
         p = p - X0
-        LagrangeNodes(j,1) = LDot(p,GlobPDir1)
-        LagrangeNodes(j,2) = LDot(p,GlobPDir2)
-        LagrangeNodes(j,3) = LDot(p,GlobPDir3)
+        LagrangeNodes(j,1) = DOT_PRODUCT(p,GlobPDir1)
+        LagrangeNodes(j,2) = DOT_PRODUCT(p,GlobPDir2)
+        LagrangeNodes(j,3) = DOT_PRODUCT(p,GlobPDir3)
       END DO
     END IF
 
@@ -2295,8 +2295,8 @@ CONTAINS
       x1(2) = x1(1) + hk/3.0d0
       x1(3) = x1(2) + hk/3.0d0
       x1(4) = hk/2.0d0
-      p0(1) = LDot(X0,GlobPDir1)
-      p0(2) = LDot(X0,GlobPDir2)
+      p0(1) = DOT_PRODUCT(X0,GlobPDir1)
+      p0(2) = DOT_PRODUCT(X0,GlobPDir2)
       GridPoint = 0
       DO j=1,4
         ! An initial guess for iteration:
@@ -2333,8 +2333,8 @@ CONTAINS
               stat = BlendingSurfaceInfo( Element, Nodes, uk, vk, &
                   deta, a1, a2, a3, a, b, pk)             
             END IF
-            r(1) = p0(1) + ptarget(1) - LDot(pk,GlobPDir1)
-            r(2) = p0(2) + ptarget(2) - LDot(pk,GlobPDir2)
+            r(1) = p0(1) + ptarget(1) - DOT_PRODUCT(pk,GlobPDir1)
+            r(2) = p0(2) + ptarget(2) - DOT_PRODUCT(pk,GlobPDir2)
             err = SQRT(SUM(r(:)**2))
 
             IF ( err < GeometryEpsilon*hK ) THEN
@@ -2342,10 +2342,10 @@ CONTAINS
               EXIT
             END IF
 
-            DerMat(1,1) = LDot(a1,GlobPDir1)
-            DerMat(1,2) = LDot(a2,GlobPDir1)
-            DerMat(2,1) = LDot(a1,GlobPDir2)
-            DerMat(2,2) = LDot(a2,GlobPDir2)
+            DerMat(1,1) = DOT_PRODUCT(a1,GlobPDir1)
+            DerMat(1,2) = DOT_PRODUCT(a2,GlobPDir1)
+            DerMat(2,1) = DOT_PRODUCT(a1,GlobPDir2)
+            DerMat(2,2) = DOT_PRODUCT(a2,GlobPDir2)
 
             CALL SolveLinSys2x2(DerMat,delta,r)
 
@@ -2368,7 +2368,7 @@ CONTAINS
           END SELECT
 
           ! The third coordinate of the point on the blending surface:
-          z(GridPoint) = LDot(pk - X0,GlobPDir3)
+          z(GridPoint) = DOT_PRODUCT(pk - X0,GlobPDir3)
         END DO
       END DO
 
@@ -2814,8 +2814,8 @@ CONTAINS
     ! ----------------------------------------------------------------------------
     ! The metric surface tensor, with a12 = O(h^3):
     ! ----------------------------------------------------------------------------
-    a11 = LDot(a1,a1)
-    a22 = LDot(a2,a2)
+    a11 = DOT_PRODUCT(a1,a1)
+    a22 = DOT_PRODUCT(a2,a2)
     SqrtDetA = SQRT(a11*a22)
 
     ! ----------------------------------------------------------------------------
@@ -3430,12 +3430,12 @@ CONTAINS
         !------------------------------------------------------------------------------------------
         IF (ReductionMethod == DoubleReduction) THEN
           ! First, get DOFs for the RT interpolant ...
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:3,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               3, nd, MITC, StretchParMat1)
           ! and then apply a second round of reductions:
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:ReducedStrainDim,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               ReducedStrainDim, nd, ReductionMethod, StretchParMat1)
         END IF
         DO p=1,nd
@@ -3455,11 +3455,11 @@ CONTAINS
 
         ! Apply strain reduction to vector (C112 u2, C211 u1). Notice the order of components.
         IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:3,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               3, nd, MITC, StretchParMat2)
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:ReducedStrainDim,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               ReducedStrainDim, nd, ReductionMethod, StretchParMat2)
         END IF
         DO p=1,nd
@@ -3479,11 +3479,11 @@ CONTAINS
 
         ! Apply strain reduction to vector (B11 u3, 0):
         IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:3,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               3, nd, MITC, StretchParMat5)
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:ReducedStrainDim,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               ReducedStrainDim, nd, ReductionMethod, StretchParMat5)
         END IF
         DO p=1,nd
@@ -3514,11 +3514,11 @@ CONTAINS
 
         ! Apply strain reduction to vector (C211 u1, C222 u2):
         IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:3,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               3, nd, MITC, StretchParMat3)
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:ReducedStrainDim,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               ReducedStrainDim, nd, ReductionMethod, StretchParMat3)
         END IF
         DO p=1,nd
@@ -3538,11 +3538,11 @@ CONTAINS
 
         ! Apply strain reduction to vector (C212 u2, C221 u1). Notice the order of components.
         IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:3,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               3, nd, MITC, StretchParMat4)
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:ReducedStrainDim,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               ReducedStrainDim, nd, ReductionMethod, StretchParMat4)
         END IF
         DO p=1,nd
@@ -3562,11 +3562,11 @@ CONTAINS
 
         ! Apply strain reduction to vector (0, B22 u3):
         IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:3,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               3, nd, MITC, StretchParMat6)
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:ReducedStrainDim,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               ReducedStrainDim, nd, ReductionMethod, StretchParMat6)
         END IF
         DO p=1,nd
@@ -3639,7 +3639,7 @@ CONTAINS
         END DO
       END IF
 
-      CALL StrainEnergyDensity(Stiff(1:DOFs,1:DOFs), CMat(1:csize,1:csize), BM(1:csize,1:DOFs), &
+      CALL StrainEnergyDensity(Stiff, CMat, BM, &
           csize, DOFs, Weight)
 
       !---------------------------------------------------------------
@@ -3652,12 +3652,12 @@ CONTAINS
         !---------------------------------------------------------------
         IF (ReductionMethod == DoubleReduction) THEN
           ! First, get DOFs for the RT interpolant ...
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:3,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               3, nd, MITC)
           ! and then apply a second round of reductions:
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:ReducedStrainDim,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               ReducedStrainDim, nd, ReductionMethod)
         END IF
 
@@ -3683,11 +3683,11 @@ CONTAINS
         ! The reduction for the terms depending also on the curvature and derivatives:
         !------------------------------------------------------------------------------
         IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:3,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               3, nd, MITC, ShearParMat)
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray(1:ReducedStrainDim,1:2*nd), &
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               ReducedStrainDim, nd, ReductionMethod, ShearParMat)
         END IF
         DO p=1,nd
@@ -3718,7 +3718,7 @@ CONTAINS
         END IF
       END IF
 
-      CALL StrainEnergyDensity(Stiff(1:DOFs,1:DOFs), GMat, BS(1:2,1:DOFs), &
+      CALL StrainEnergyDensity(Stiff, GMat, BS, &
           2, DOFs, Kappa*Weight)
 
 
@@ -3750,7 +3750,7 @@ CONTAINS
         BB(3,nd*m+2) = dBasis(nd+1,1) - 2.0d0 * C212 * Basis(nd+1)
       END IF
 
-      CALL StrainEnergyDensity(Stiff(1:DOFs,1:DOFs), CMat(1:3,1:3), BB(1:3,1:DOFs), &
+      CALL StrainEnergyDensity(Stiff, CMat, BB, &
           3, DOFs, Weight)
 
       IF (NoNormalStress) THEN
@@ -3861,10 +3861,10 @@ CONTAINS
 
     IF(TransientSimulation) THEN
       Mass(1:k,1:k) = MATMUL(TRANSPOSE(Q(1:k,1:k)),MATMUL(Mass(1:k,1:k),Q(1:k,1:k)))
-      CALL Default2ndOrderTime(MASS(1:k,1:k),DAMP(1:k,1:k),STIFF(1:k,1:k),FORCE(1:k))
+      CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
     END IF
 
-    CALL DefaultUpdateEquations(STIFF(1:k,1:k),FORCE(1:k))  
+    CALL DefaultUpdateEquations(STIFF,FORCE)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ShellLocalMatrix
@@ -3971,12 +3971,12 @@ CONTAINS
   SUBROUTINE StrainEnergyDensity(A, B, C, m, n, s)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(INOUT) :: A(n,n)
-    REAL(KIND=dp), INTENT(IN) :: B(m,m), C(m,n)
+    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)
+    REAL(KIND=dp), INTENT(IN) :: B(:,:), C(:,:)
     INTEGER, INTENT(IN) :: m, n
     REAL(KIND=dp), INTENT(IN) :: s
 !------------------------------------------------------------------------------
-    A = A + s * MATMUL(TRANSPOSE(C),MATMUL(B,C)) 
+    A(1:n,1:n) = A(1:n,1:n) + s * MATMUL(TRANSPOSE(C(1:m,1:n)),MATMUL(B(1:m,1:m),C(1:m,1:n))) 
 !------------------------------------------------------------------------------
   END SUBROUTINE StrainEnergyDensity
 !------------------------------------------------------------------------------
@@ -4231,7 +4231,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE(Element_t), INTENT(IN), TARGET :: Element          !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                      !< Nodes structure
-    REAL(KIND=dp), INTENT(OUT) :: A(nd,2*n)                 !< Coefficients for expressing the DOFs 
+    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)                 !< Coefficients for expressing the DOFs 
     INTEGER, INTENT(IN) :: nd                               !< The dimension of the strain reduction space X(K)
     INTEGER, INTENT(IN) :: n                                !< The number of the H1-conforming basis functions
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
@@ -4253,7 +4253,8 @@ CONTAINS
 !---------------------------------------------------------------------------------
     Family = GetElementFamily(Element)
 
-    A = 0.0d0
+    ! Clear upper left corner of A
+    A(1:nd,1:2*n) = 0.0d0
 
     UseParameters = PRESENT(ModelPars) 
     IF (.NOT. UseParameters) THEN
@@ -4508,7 +4509,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE(Element_t), INTENT(IN), TARGET :: Element          !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                      !< Nodes structure
-    REAL(KIND=dp), INTENT(OUT) :: A(nd,2*nb)                !< Coefficients for expressing the DOFs 
+    REAL(KIND=dp), INTENT(INOUT) :: A(nd,2*nb)                !< Coefficients for expressing the DOFs 
     INTEGER, INTENT(IN) :: nd                               !< The dimension of the strain reduction space X(K)
     INTEGER, INTENT(IN) :: nb                               !< The number of the H1-conforming bubble functions
     INTEGER, INTENT(IN) :: n                                !< The number of the BG element nodes

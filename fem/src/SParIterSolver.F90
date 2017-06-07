@@ -2388,31 +2388,7 @@ END SUBROUTINE Solve
   ! Compute the local part
   !
   !----------------------------------------------------------------------
-
-  Rows => InsideMatrix % Rows
-  Cols => InsideMatrix % Cols
-  Vals => InsideMatrix % Values
-
-  IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
-    CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,Vals,u,v,0)
-#else
-    CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,Vals,u,v,0)
-#endif
-  ELSE
-!$omp parallel do private(j,rsum)
-    DO i = 1, n
-      rsum = 0._dp
-      DO j = Rows(i), Rows(i+1) - 1
-        rsum = rsum + Vals(j) * u(Cols(j))
-      END DO
-      v(i)=v(i)+rsum
-    END DO
-!omp end parallel do
-  END IF
-
+  CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v )
 
   CALL Recv_LocIf_Wait( GlobalData % SplittedMatrix, n, v,  &
        nneigh, neigh, recv_size, requests, buffer )
