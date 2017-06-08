@@ -795,8 +795,13 @@ CONTAINS
       INTEGER :: i,j,k
 !-------------------------------------------------------------------------------
       j = 0
-      DO i=1,A % NumberOfRows
-        IF ( A % ParallelInfo % Neighbourlist(i) % &
+
+      ! We have a complex valued vector but a real valued matrix.
+      ! We use the even (complex) component to check the ownership of the dof.
+      ! We could as well use the odd (real) component.
+  
+      DO i=1,A % NumberOfRows / 2
+        IF ( A % ParallelInfo % Neighbourlist(2*i) % &
                    Neighbours(1)==Parenv % Mype ) THEN
           j=j+1
           IF(PRESENT(vec_in)) THEN
