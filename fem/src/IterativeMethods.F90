@@ -612,6 +612,9 @@ CONTAINS
     PolynomialDegree = HUTI_BICGSTABL_L 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    
     Robust = ( HUTI_ROBUST == 1 )
     IF( Robust ) THEN
       RobustTol = HUTI_ROBUST_TOLERANCE
@@ -1025,6 +1028,9 @@ CONTAINS
     RestartN = HUTI_GCR_RESTART 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    
     x => xvec
     b => rhsvec
     nc = 0
@@ -1081,9 +1087,6 @@ CONTAINS
       INTEGER :: i,j,k
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
 !------------------------------------------------------------------------------
-      
-      Converged = .FALSE.
-      Diverged = .FALSE.
       
       ALLOCATE( R(n), T1(n), T2(n),TT(n) )
       IF ( m > 1 ) THEN
@@ -1303,6 +1306,8 @@ CONTAINS
 
     Smoothing = ( HUTI_SMOOTHING == 1) 
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
     
     CALL RealIDRS(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
          Converged, Diverged, OutputInterval, s )
@@ -1691,6 +1696,9 @@ CONTAINS
     OutputInterval = HUTI_DBUGLVL
     RestartN = HUTI_GCR_RESTART 
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    
     !----------------------------------------------------------------------------
     ! Transform the solution vector and the right-hand side vector to 
     ! complex-valued vectors y and f
@@ -1753,10 +1761,7 @@ CONTAINS
       REAL(KIND=dp) :: alpha, trueresnorm, normerr
       COMPLEX(KIND=dp) :: trueres(n)
 !------------------------------------------------------------------------------
-      
-      Converged = .FALSE.
-      Diverged = .FALSE.
-      
+            
       ALLOCATE( R(n), T1(n), T2(n) )
       IF ( m > 1 ) THEN
          ALLOCATE( S(n,m-1), V(n,m-1) )
