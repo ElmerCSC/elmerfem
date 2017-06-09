@@ -1203,9 +1203,6 @@
           outputFlag = .FALSE.
           IF ( iter == 1) outputFlag = .TRUE.
           !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
-
-          ! Test Nonlinear function of ratio
-          ratio = ratio ** 2
 !===============================================================================
 
 
