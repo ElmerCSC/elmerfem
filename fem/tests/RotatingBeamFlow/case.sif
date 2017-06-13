@@ -93,7 +93,7 @@ Solver 2
   Stabilize = False
   Bubbles = True
   Optimize Bandwidth = True
-  Steady State Convergence Tolerance = 1.0e-3
+!  Steady State Convergence Tolerance = 1.0e-3
 
   Nonlinear System Convergence Tolerance = 1.0e-4
   Nonlinear System Max Iterations = 30
@@ -215,6 +215,6 @@ Boundary Condition 7
 End
 
 
-Solver 2 :: Reference Norm = 6.66786763E-01
+Solver 2 :: Reference Norm = 6.70999485E-01
 Solver 3 :: Reference Norm = 1.68531536E-02
 
