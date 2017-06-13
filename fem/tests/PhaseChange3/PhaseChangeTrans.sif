@@ -254,5 +254,4 @@ Boundary Condition 6
   Target Boundaries = 6
 End
 
-Solver 3 :: Reference Norm = Real 0.96975646
-RUN
+Solver 3 :: Reference Norm = 1.94623870E-01
