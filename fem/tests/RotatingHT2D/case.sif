@@ -109,7 +109,7 @@ Solver 2
   Stabilize = False
   Bubbles = True
   Optimize Bandwidth = True
-  Steady State Convergence Tolerance = 1.0e-3
+!  Steady State Convergence Tolerance = 1.0e-3
 
   Nonlinear System Convergence Tolerance = 1.0e-4
   Nonlinear System Max Iterations = 30
@@ -139,7 +139,7 @@ Solver 3
   Bubbles = False
   Lumped Mass Matrix = False
   Optimize Bandwidth = True
-  Steady State Convergence Tolerance = 1.0e-5
+!  Steady State Convergence Tolerance = 1.0e-5
   Nonlinear System Convergence Tolerance = 1.0e-7
   Nonlinear System Max Iterations = 1
   Nonlinear System Newton After Iterations = 3
@@ -316,6 +316,6 @@ Boundary Condition 8
 !  Rotational Normals = Logical True
 End 
 
-Solver 2 :: Reference Norm = 0.47008150E-01
-Solver 3 :: Reference Norm = 3.40688620E-01
-Solver 6 :: Reference Norm = 0.7831444436
+Solver 2 :: Reference Norm = 4.82772895E-02
+Solver 3 :: Reference Norm = 2.58993039E-01
+Solver 6 :: Reference Norm = 7.83144436E-01
