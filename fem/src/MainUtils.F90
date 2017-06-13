@@ -2480,7 +2480,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
            IF ( Scanning .OR. TransientSimulation ) THEN             
-             TestConvergence = ( i >= CoupledMinIter .AND. i /= CoupledMaxIter )
+             IF( CoupledMaxIter == 1 ) THEN
+               TestConvergence = ListCheckPresent( Solver % Values,'Reference Norm' )
+             ELSE
+               TestConvergence = ( i >= CoupledMinIter )
+             END IF
            ELSE    ! Steady-state
              TestConvergence = .TRUE.
            END IF
