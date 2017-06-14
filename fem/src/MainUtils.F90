@@ -2481,7 +2481,11 @@ CONTAINS
 
            IF ( Scanning .OR. TransientSimulation ) THEN             
              IF( CoupledMaxIter == 1 ) THEN
-               TestConvergence = ListCheckPresent( Solver % Values,'Reference Norm' )
+               TestConvergence = .FALSE.
+               ! This means that the nonlinear system norm has not been computed
+               IF( Solver % Variable % NonlinConverged < 0 )  THEN
+                 TestConvergence = ListCheckPresent( Solver % Values,'Reference Norm' )
+               END IF
              ELSE
                TestConvergence = ( i >= CoupledMinIter )
              END IF

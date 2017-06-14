@@ -248,7 +248,5 @@ Boundary Condition 1
    Coupled 2: Magnetic Flux Density 2 = Real 1
 End
 
-Solver 3 :: Reference Norm = Real 3.151267E-02
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
+Solver 3 :: Reference Norm = 0.57521435E-07
 

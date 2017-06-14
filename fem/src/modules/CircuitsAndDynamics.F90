@@ -64,6 +64,8 @@ SUBROUTINE CircuitsAndDynamics_init( Model,Solver,dt,TransientSimulation )
       '-global Rotor Angle')
   CALL ListAddString( Params,'Exported Variable 2',&
       '-global Rotor Velo')
+  CALL ListAddLogical( Params,'No Matrix',.TRUE.)
+
   Solver % Values => Params
 
 !------------------------------------------------------------------------------
