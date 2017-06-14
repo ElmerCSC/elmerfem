@@ -54,7 +54,7 @@ Solver 1
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Newton After Iterations = 10
   Nonlinear System Relaxation Factor = 1
-!  Steady State Convergence Tolerance = 1.0e-4
+  Steady State Convergence Tolerance = 1.0e-4
 
 ! Look good on paper, but in practice not particularly good performance
 !  fct: Linear System Iterative Method = richardson
@@ -138,7 +138,8 @@ Boundary Condition 1
   Cons = Real 0.0
 End
 
-Solver 1 :: Reference Norm = 2.60580233E-01
+Solver 1 :: Reference Norm = Real 0.258982
+RUN
 
 !End Of File
 
