@@ -703,7 +703,7 @@ CONTAINS
          Pw1, Pw2, PW_base, CIndex1, CIndex2, Stress1, Stress2, BContour, SContour, &
          ZeroContour, myEps
 
-    LOGICAL :: Found
+    LOGICAL :: Found,Waterline,Crevasseline
 
     myEps = 1.0E-10
 
@@ -838,8 +838,10 @@ CONTAINS
          END IF
 
          !Passing zero contour or passing the waterline
-         IF((CIndex2 < 0.0_dp) .OR. &
-              ((Pw2 <= 0.0_dp) .AND. (Pw1 > 0.0_dp))) THEN
+         Waterline = ((Pw2 <= 0.0_dp) .AND. (Pw1 > 0.0_dp))
+         Crevasseline = CIndex2 < 0.0_dp
+
+         IF(Crevasseline .OR. Waterline) THEN
 
             !stress gradient through depth
             dsigma_dz = (Stress1 - Stress2) / (IntExtent(j) - IntExtent(j-1))
@@ -854,10 +856,29 @@ CONTAINS
 
             dz_dcindex = 1.0/dcindex_dz
 
-            ZeroContour = IntExtent(j) - (dz_dcindex * CIndex1)
+            IF(dz_dcindex < 0.0) THEN !Usual case
+              ZeroContour = IntExtent(j) - (dz_dcindex * CIndex1)
+            ELSE !cindex increasing in z direction, rare
+              IF(CrevasseLine) THEN
+                ZeroContour = IntExtent(j-1) !crevasse contour at upper node height
+              ELSE
+                CYCLE !no crevasse contour yet
+              END IF
+            END IF
 
-            !full penetration between these two nodes
-            IF((dz_dcindex > 0.0) .OR. (ZeroContour > IntExtent(j-1))) CYCLE
+            !apparent full penetration between these two nodes
+            !this happens because water pressure gradient may
+            !not exactly correspond to values if PwFromVar
+            IF(ZeroContour > IntExtent(j-1)) THEN
+              IF(Crevasseline) THEN
+                !ZeroContour slightly overestimated due to assumed Pw gradient
+                !Set to upper node height
+                ZeroContour = IntExtent(j-1)
+              ELSE
+                !full penetration between these nodes, continue looking
+                CYCLE
+              END IF
+            END IF
 
             BContour = ZeroContour
             Found = .TRUE.
