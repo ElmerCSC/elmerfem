@@ -86,11 +86,13 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
     LOGICAL :: GLparaSaveData = .FALSE., GotIt
     ! CHARACTER(LEN=MAX_NAME_LEN) :: Format
     CHARACTER(LEN=MAX_NAME_LEN) :: GLParaFileName='GLPressureData.dat'
+
+    REAL(KIND=dp) :: pParamRatio = 0.8
     ! REAL(KIND=dp), POINTER :: LGParaData(:), FFParaData(:), GroundedMask(:), GroundingLinePara(:)
 !=========================================================================
 
   SAVE HydroDIM, bedPComputed, DIM, FirstTime
-  SAVE Normal, Fwater, Fbwater, Fbase
+  SAVE Normal, Fwater, Fbwater, Fbase, pParamRatio
   !------------------------------------------------------------------------------
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! First time step for the First time
@@ -106,6 +108,10 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
     ALLOCATE( Normal(DIM), Fwater(DIM), Fbwater(DIM), Fbase(DIM) )
 
     bedPComputed = GetLogical( SolverParams, 'Compute Bed Pressure' )
+
+    ! TEST !!!!
+    pParamRatio = GetConstReal( SolverParams, 'Pressure Parameterization ratio', GotIt )
+    IF ( .NOT. GotIt ) pParamRatio = 0.8
   END IF
 
   ! Save pressure differences at GL element
@@ -188,8 +194,8 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
       ! Compute water pressure at the bedrock, it could be different from Fwater as
       ! the node is floating
       IF (bedPComputed) THEN
-        Fbwater = HydroValues(HydroDIM*(HydroPerm(jj)-1)+DIM+1 : HydroDIM*HydroPerm(jj))
-        comp = ABS( SUM( Fbwater * Normal ) ) - ABS( SUM( Fbase * Normal ) )
+        Fbwater =  (1.0-pParamRatio)*Fbwater +  pParamRatio*HydroValues(HydroDIM*(HydroPerm(jj)-1)+DIM+1 : HydroDIM*HydroPerm(jj))
+        comp = ABS(SUM( Fbwater * Normal ) ) - ABS( SUM( Fbase * Normal ) )
       END IF
       ! Save the difference of loads
       VariableValues( Permutation(Element % NodeIndexes(ii)) ) = comp
