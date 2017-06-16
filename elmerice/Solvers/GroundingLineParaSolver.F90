@@ -87,7 +87,7 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
     ! CHARACTER(LEN=MAX_NAME_LEN) :: Format
     CHARACTER(LEN=MAX_NAME_LEN) :: GLParaFileName='GLPressureData.dat'
 
-    REAL(KIND=dp) :: pParamRatio = 0.8
+    REAL(KIND=dp) :: pParamRatio = 1.0
     ! REAL(KIND=dp), POINTER :: LGParaData(:), FFParaData(:), GroundedMask(:), GroundingLinePara(:)
 !=========================================================================
 
@@ -111,7 +111,7 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
 
     ! TEST !!!!
     pParamRatio = GetConstReal( SolverParams, 'Pressure Parameterization ratio', GotIt )
-    IF ( .NOT. GotIt ) pParamRatio = 0.8
+    IF ( .NOT. GotIt ) pParamRatio = 1.0
   END IF
 
   ! Save pressure differences at GL element
