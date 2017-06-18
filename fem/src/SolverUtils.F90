@@ -9865,6 +9865,18 @@ END FUNCTION SearchNodeL
       END DO
       f(i) = Diag(i) * f(i)
     END DO
+
+
+    IF ( ASSOCIATED( A % PrecValues ) ) THEN
+      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+        DO i=1,n
+          DO j=A % Rows(i), A % Rows(i+1)-1
+            A % PrecValues(j) = A % PrecValues(j) * Diag(i) 
+          END DO
+        END DO
+      END IF
+    END IF
+
     
     WRITE( Message, * ) 'Unscaled matrix norm: ', norm    
     CALL Info( 'OptimalMatrixScaling', Message, Level=5 )
@@ -10023,6 +10035,17 @@ END FUNCTION SearchNodeL
       END DO
     END DO
 
+    IF ( ASSOCIATED( A % PrecValues ) ) THEN
+      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+        DO i=1,n
+          DO j=A % Rows(i), A % Rows(i+1)-1
+            A % PrecValues(j) = A % PrecValues(j) / Diag(i) 
+          END DO
+        END DO
+      END IF
+    END IF
+
+    
     DEALLOCATE(A % DiagScaling)
     A % DiagScaling => NULL()
 
