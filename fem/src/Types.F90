@@ -530,30 +530,33 @@ END INTERFACE
 
    TYPE Variable_t
      TYPE(Variable_t), POINTER   :: Next => NULL()
-     INTEGER :: NameLen
+     INTEGER :: NameLen = 0
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
 
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t), POINTER :: Solver => NULL()
      LOGICAL :: Valid, Output
-     TYPE(Mesh_t), POINTER :: PrimaryMesh
+     TYPE(Mesh_t), POINTER :: PrimaryMesh => NULL()
 
-     LOGICAL :: ValuesChanged
+     LOGICAL :: ValuesChanged = .FALSE.
 
 ! Some variables are created from pointers to the primary variables
-     LOGICAL :: Secondary
+     LOGICAL :: Secondary = .FALSE.
 
      INTEGER :: TYPE = Variable_on_nodes
 
-     INTEGER :: DOFs
-     INTEGER, POINTER          :: Perm(:)
+     INTEGER :: DOFs = 0
+     INTEGER, POINTER          :: Perm(:) => NULL()
      REAL(KIND=dp)             :: Norm=0, PrevNorm=0,NonlinChange=0, SteadyChange=0
-     INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter
-     COMPLEX(KIND=dp), POINTER :: EigenValues(:),EigenVectors(:,:)
+     INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter=-1
+     COMPLEX(KIND=dp), POINTER :: EigenValues(:) => NULL(), &
+          EigenVectors(:,:) => NULL()
      REAL(KIND=dp), POINTER :: ConstraintModes(:,:) => NULL()
      INTEGER, POINTER :: ConstraintModesIndeces(:) => NULL()
      INTEGER :: NumberOfConstraintModes = 0
-     REAL(KIND=dp),    POINTER :: Values(:),PrevValues(:,:),PValues(:),&
-       NonlinValues(:), SteadyValues(:)
+     REAL(KIND=dp), POINTER :: Values(:) => NULL() ,&
+          PrevValues(:,:) => NULL(), &
+          PValues(:) => NULL(), NonlinValues(:) => NULL(), &
+          SteadyValues(:) => NULL()
      LOGICAL, POINTER :: UpperLimitActive(:) => NULL(), LowerLimitActive(:) => NULL()
      COMPLEX(KIND=dp), POINTER :: CValues(:) => NULL()
    END TYPE Variable_t

@@ -2302,8 +2302,11 @@ CONTAINS
           END IF
 
           IF( ASSOCIATED( Solver % Variable ) ) THEN
-            Solver % Variable % Norm = ComputeNorm(Solver, &
-                SIZE( Solver % Variable % Values), Solver % Variable % Values)
+            IF(ASSOCIATED(Solver % Variable % Values)) THEN
+              n = SIZE(Solver % Variable % Values)
+              IF(n>0) &
+                Solver % Variable % Norm = ComputeNorm( Solver, n, Solver % Variable % Values)
+            END IF
           END IF
         END DO
         DEALLOCATE(RKCoeff)

@@ -207,7 +207,12 @@ CONTAINS
 
    CALL Info('MagnetoDynamics2D','Calculating lumped parameters',Level=8)
    
-   U=0._dp; a=0._dp; torq=0._dp; TorqArea = 0._dp; IMoment=0._dp;IA=0
+   U=0._dp
+   a=0._dp
+   torq=0._dp
+   TorqArea=0._dp
+   IMoment=0._dp
+   IA=0
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
      nd = GetElementNOFDOFs(Element)
@@ -243,7 +248,11 @@ CONTAINS
    TorqArea = ParallelReduction(TorqArea)
    rinner = ListGetCRealAnyBody( Model,'r inner',Found )
    router = ListGetCRealAnyBody( Model,'r outer',Found )
-   Ctorq = PI*(router**2-rinner**2) / TorqArea
+   IF (TorqArea /= 0) THEN
+      Ctorq = PI*(router**2-rinner**2) / TorqArea
+   ELSE
+      Ctorq = 0.0_dp
+   END IF
    WRITE(Message,'(A,ES15.4)') 'Air gap correction:', cTorq
    CALL Info('MagnetoDynamics2D',Message,Level=8)
    Torq = Ctorq * Torq
@@ -1066,7 +1075,11 @@ CONTAINS
    TorqArea = ParallelReduction(TorqArea)
    rinner = ListGetCRealAnyBody( Model,'r inner',Found )
    router = ListGetCRealAnyBody( Model,'r outer',Found )
-   Ctorq = PI*(router**2-rinner**2) / TorqArea
+   IF (TorqArea /= 0) THEN
+      Ctorq = PI*(router**2-rinner**2) / TorqArea
+   ELSE
+      Ctorq = 0.0_dp
+   END IF
    WRITE(Message,'(A,ES15.4)') 'Air gap correction:', cTorq
    CALL Info('MagnetoDynamics2D',Message,Level=8)
    Torq = Ctorq * Torq

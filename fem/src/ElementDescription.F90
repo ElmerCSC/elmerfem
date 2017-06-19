@@ -5150,6 +5150,7 @@ END IF
        stat = .TRUE.
        Basis = 0.0d0
        EdgeBasis = 0.0d0
+       WorkBasis = 0.0d0
        CurlBasis = 0.0d0
        LG = 0.0d0
        !--------------------------------------------------------------------------------------------
@@ -11708,7 +11709,7 @@ END FUNCTION PointFaceDistance
               delta(1) = r
               delta(2) = s
               delta(3) = t
-              delta = MATMUL( TRANSPOSE(J), delta )
+              delta(1:2) = MATMUL( TRANSPOSE(J(1:3,1:2)), delta )
               r = delta(1)
               s = delta(2)
 

@@ -327,6 +327,10 @@ MODULE ComponentUtils
      sumx = 0.0_dp
      sumxx = 0.0_dp
      sumabsx = 0.0_dp
+     Maximum = 0.0_dp
+     Minimum = 0.0_dp
+     AbsMaximum = 0.0_dp
+     AbsMinimum = 0.0_dp
 
      DO t=FirstElem,LastElem
        Element => Mesh % Elements(t)

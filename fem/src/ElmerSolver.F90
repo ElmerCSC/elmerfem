@@ -1510,7 +1510,8 @@ END INTERFACE
         IF ( Solver % PROCEDURE==0 ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
           ! solver to be called prior to time looping can never be transient
-           CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
+          dt = 1.0_dp
+          CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
         END IF
      END DO
 
