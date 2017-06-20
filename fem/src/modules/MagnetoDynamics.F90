@@ -3235,7 +3235,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
 
-  Norm = DefaultSolve()
+! Norm = DefaultSolve()
+  CALL SolveLinearSystem( A, A % RHS, FixJPot % Values, Norm, DOFs, Solver )
 
   Solver % Matrix => B
   Solver % Variable => svar
