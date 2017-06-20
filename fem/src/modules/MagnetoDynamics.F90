@@ -5948,7 +5948,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     ELSE
       i = i + 1
       CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-        "Nodal Force[Nodal Force:3]" )
+        "Nodal Force E[Nodal Force E:3]" )
       CALL Warn('MagnetcDynamicsCalcFields',&
         'Calculating experimental average nodal forces. Use at own risk.')
       !CALL Warn('MagnetcDynamicsCalcFields',&
