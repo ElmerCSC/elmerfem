@@ -1227,6 +1227,7 @@ CONTAINS
           Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
 
           LOAD_im=0._dp
+          Beta_im=0._dp
           IF ( HarmonicAnalysis ) THEN
             LOAD_im(1,1:n) = GetReal( BC, 'Force 1 im',Found )
             LOAD_im(2,1:n) = GetReal( BC, 'Force 2 im',Found )

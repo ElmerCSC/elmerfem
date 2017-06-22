@@ -18,6 +18,7 @@
 *     ..
 *     .. Local Arrays ..
       REAL               TARRAY( 2 )
+      DATA TARRAY / 2 * 0.0 /
 *     ..
 *     .. External Functions ..
       REAL               ETIME

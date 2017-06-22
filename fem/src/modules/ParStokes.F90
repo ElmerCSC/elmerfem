@@ -372,6 +372,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         SkipPowerlaw = .FALSE.
      END IF
 
+     CALL StartAdvanceOutput( 'StokesSolver', 'Assembly:' )
      DO t=1,Active
         CALL AdvanceOutput(t, Active)        
 

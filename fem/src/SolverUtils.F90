@@ -3302,11 +3302,15 @@ CONTAINS
          END IF
        END DO
 
-       IF( MaxDist - MinDist >= 0.0_dp ) THEN
-         PRINT *,'NormalContactSet Dist:',MinDist,MaxDist
+       IF ( -HUGE(MaxDist) /= MaxDist ) THEN
+          IF( MaxDist - MinDist >= 0.0_dp ) THEN
+             PRINT *,'NormalContactSet Dist:',MinDist,MaxDist
+          END IF
        END IF
-       IF( MaxLoad - MinLoad >= 0.0_dp ) THEN
-         PRINT *,'NormalContactSet Load:',MinLoad,MaxLoad
+       IF ( -HUGE(MaxLoad) /= MaxLoad) THEN
+          IF( MaxLoad - MinLoad >= 0.0_dp ) THEN
+             PRINT *,'NormalContactSet Load:',MinLoad,MaxLoad
+          END IF
        END IF
 
        IF(added > 0) THEN
@@ -7741,6 +7745,7 @@ END FUNCTION SearchNodeL
     END IF
  
     n = nin
+    totn = 0
 
     IF( ParEnv % PEs > 1 ) THEN
       ConsistentNorm = ListGetLogical(Solver % Values,'Nonlinear System Consistent Norm',Stat)
@@ -7863,20 +7868,31 @@ END FUNCTION SearchNodeL
         Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
       END SELECT
       
-    ELSE
-      totn = NINT( ParallelReduction(1._dp*n) )
-      nscale = 1.0_dp * totn
-
-      SELECT CASE(NormDim)
-      CASE(0)
-        Norm = ParallelReduction(MAXVAL(ABS(x(1:n))),2)
-      CASE(1)
-        Norm = ParallelReduction(SUM(ABS(x(1:n))))/nscale
-      CASE(2)
-        Norm = SQRT(ParallelReduction(SUM(x(1:n)**2))/nscale)
-      CASE DEFAULT
-        Norm = (ParallelReduction(SUM(x(1:n)**NormDim))/nscale)**(1.0d0/NormDim)
-      END SELECT
+    ELSE      
+      val = ParallelReduction(1.0_dp*n)
+      totn = NINT( val )
+      IF (totn == 0) THEN
+         CALL Warn('ComputeNorm','Requested norm of a variable with no Dofs')
+         Norm = 0.0_dp
+      ELSE
+         nscale = 1.0_dp * totn
+         
+         val = 0.0_dp
+         SELECT CASE(NormDim)
+         CASE(0)
+            IF (n>0) val = MAXVAL(ABS(x(1:n)))
+            Norm = ParallelReduction(val,2)
+         CASE(1)
+            IF (n>0) val = SUM(ABS(x(1:n)))
+            Norm = ParallelReduction(val)/nscale
+         CASE(2)
+            IF (n>0) val = SUM(x(1:n)**2)
+            Norm = SQRT(ParallelReduction(val)/nscale)
+         CASE DEFAULT
+            IF (n>0) val = SUM(x(1:n)**NormDim)
+            Norm = (ParallelReduction(val)/nscale)**(1.0d0/NormDim)
+         END SELECT
+      END IF
     END IF
 
     IF( ComponentsAllocated ) THEN
@@ -9865,6 +9881,18 @@ END FUNCTION SearchNodeL
       END DO
       f(i) = Diag(i) * f(i)
     END DO
+
+
+    IF ( ASSOCIATED( A % PrecValues ) ) THEN
+      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+        DO i=1,n
+          DO j=A % Rows(i), A % Rows(i+1)-1
+            A % PrecValues(j) = A % PrecValues(j) * Diag(i) 
+          END DO
+        END DO
+      END IF
+    END IF
+
     
     WRITE( Message, * ) 'Unscaled matrix norm: ', norm    
     CALL Info( 'OptimalMatrixScaling', Message, Level=5 )
@@ -10023,6 +10051,17 @@ END FUNCTION SearchNodeL
       END DO
     END DO
 
+    IF ( ASSOCIATED( A % PrecValues ) ) THEN
+      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+        DO i=1,n
+          DO j=A % Rows(i), A % Rows(i+1)-1
+            A % PrecValues(j) = A % PrecValues(j) / Diag(i) 
+          END DO
+        END DO
+      END IF
+    END IF
+
+    
     DEALLOCATE(A % DiagScaling)
     A % DiagScaling => NULL()
 

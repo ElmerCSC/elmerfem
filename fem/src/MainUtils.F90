@@ -2302,8 +2302,11 @@ CONTAINS
           END IF
 
           IF( ASSOCIATED( Solver % Variable ) ) THEN
-            Solver % Variable % Norm = ComputeNorm(Solver, &
-                SIZE( Solver % Variable % Values), Solver % Variable % Values)
+            IF(ASSOCIATED(Solver % Variable % Values)) THEN
+              n = SIZE(Solver % Variable % Values)
+              IF(n>0) &
+                Solver % Variable % Norm = ComputeNorm( Solver, n, Solver % Variable % Values)
+            END IF
           END IF
         END DO
         DEALLOCATE(RKCoeff)
@@ -2480,7 +2483,15 @@ CONTAINS
 !------------------------------------------------------------------------------
 
            IF ( Scanning .OR. TransientSimulation ) THEN             
-             TestConvergence = ( i >= CoupledMinIter .AND. i /= CoupledMaxIter )
+             IF( CoupledMaxIter == 1 ) THEN
+               TestConvergence = .FALSE.
+               ! This means that the nonlinear system norm has not been computed
+               IF( Solver % Variable % NonlinConverged < 0 )  THEN
+                 TestConvergence = ListCheckPresent( Solver % Values,'Reference Norm' )
+               END IF
+             ELSE
+               TestConvergence = ( i >= CoupledMinIter )
+             END IF
            ELSE    ! Steady-state
              TestConvergence = .TRUE.
            END IF
