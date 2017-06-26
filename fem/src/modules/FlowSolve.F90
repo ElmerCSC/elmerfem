@@ -131,7 +131,7 @@
          PseudoPressureExists, PseudoCompressible, Bubbles, P2P1, &
          Porous =.FALSE., PotentialForce=.FALSE., Hydrostatic=.FALSE., &
          MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate, &
-         GLParam =.FALSE.
+         HighOrderGLInt =.FALSE.
 
 !=========================================================================
     TYPE(variable_t), POINTER :: GroundingLineVar
@@ -1158,8 +1158,8 @@
           ratio = 1.0_dp
 
           IF ( GLParaFlag ) THEN
-            GLParam = GetLogical( BC, 'High Order Integration', GotIt)
-            IF ( GLParam ) THEN
+            HighOrderGLInt = GetLogical( BC, 'High Order Integration', GotIt)
+            IF ( HighOrderGLInt ) THEN
               nIntegration = GetInteger( BC, 'Order of Slip Coefficient', GotIt)
               IF ( .NOT. GotIt ) nIntegration = 2
             ELSE 
@@ -1215,7 +1215,7 @@
 !------------------------------------------------------------------------------
           SELECT CASE( CurrentCoordinateSystem() )
           CASE( Cartesian )
-            IF ( GLParam ) THEN
+            IF ( GLParaFlag ) THEN
               CALL NavierStokesBoundaryPara(  STIFF, FORCE, LoadVector, &
                   Alpha, Beta, ExtPressure, bedPressure, SlipCoeff, NormalTangential, &
                   Element, n, ElementNodes, nIntegration, ratio, bslope, outputFlag)
