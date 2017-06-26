@@ -266,8 +266,8 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
                 OPEN(unit=134, file=GLParaFileName, POSITION='APPEND')
 
                 WRITE(134, *) Time, FFNodeIndex, GLNodeIndex, GLParaPosition, &
-                      VariableValues(Permutation(FFNodeIndex)), VariableValues(Permutation(GLNodeIndex))
-
+                      VariableValues(Permutation(FFNodeIndex)), VariableValues(Permutation(GLNodeIndex)), &
+                      ResidValues((DIM+1)*(ResidPerm(FFNodeIndex)-1)+1 : (DIM+1)*ResidPerm(FFNodeIndex)-1)
                 CLOSE(134)
               END IF
             ELSE

@@ -152,7 +152,7 @@
        LocalTemperature(:), GasConstant(:), HeatCapacity(:),             &
        LocalTempPrev(:),SlipCoeff(:,:), PseudoCompressibility(:),        &
        PseudoPressure(:), PSolution(:), Drag(:,:), PotentialField(:),    &
-       PotentialCoefficient(:)
+       PotentialCoefficient(:), bedPressure(:)
 
      SAVE U,V,W,MASS,STIFF,LoadVector,Viscosity, TimeForce,FORCE,ElementNodes,  &
        Alpha,Beta,ExtPressure,Pressure,PrevPressure, PrevDensity,Density,       &
@@ -161,7 +161,7 @@
        LocalTemperature, GasConstant, HeatCapacity, LocalTempPrev,MU,MV,MW,     &
        PseudoCompressibilityScale, PseudoCompressibility, PseudoPressure,       &
        PseudoPressureExists, PSolution, Drag, PotentialField, PotentialCoefficient, &
-       ComputeFree, Indexes
+       ComputeFree, Indexes, bedPressure
 
 #ifdef USE_ISO_C_BINDINGS
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
@@ -320,7 +320,7 @@
                LocalTempPrev, LocalTemperature,     &
                PotentialField, PotentialCoefficient, &
                PSolution, LoadVector, Alpha, Beta, &
-               ExtPressure, STAT=istat )
+               ExtPressure, bedPressure, STAT=istat )
        END IF
 
        ALLOCATE( U(N),  V(N),  W(N),                     &
@@ -346,7 +346,7 @@
                  PSolution( SIZE( FlowSolution ) ),      &
                  PotentialField( N ), PotentialCoefficient( N ), &
                  LoadVector( 4,N ), Alpha( N ), Beta( N ), &
-                 ExtPressure( N ), STAT=istat )
+                 ExtPressure( N ), bedPressure( N ), STAT=istat )
 
        Drag = 0.0d0
        NULLIFY(Pwrk) 
@@ -1084,6 +1084,7 @@
           LoadVector  = 0.0d0
           Alpha       = 0.0d0
           ExtPressure = 0.0d0
+          bedPressure = 0.0d0
           Beta        = 0.0d0
           SlipCoeff   = 0.0d0
           STIFF = 0.0d0
@@ -1102,6 +1103,10 @@
 
           ExtPressure(1:n) = GetReal( BC, 'External Pressure', GotForceBC )
           IF(.NOT. GotForceBC) ExtPressure(1:n) = GetReal( BC, 'Normal Pressure', GotForceBC )
+
+          bedPressure(1:n) = GetReal( BC, 'bedrock Pressure', GotForceBC )
+          IF(.NOT. GotForceBC) bedPressure(1:n) = ExtPressure(1:n)
+
 !------------------------------------------------------------------------------
 !         tangential force BC:
 !         \tau\cdot n = @\beta/@t (tangential derivative of something)
@@ -1211,8 +1216,8 @@
           SELECT CASE( CurrentCoordinateSystem() )
           CASE( Cartesian )
             IF ( GLParam ) THEN
-              CALL NavierStokesBoundaryPara(  STIFF, FORCE, &
-               LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
+              CALL NavierStokesBoundaryPara(  STIFF, FORCE, LoadVector, &
+                  Alpha, Beta, ExtPressure, bedPressure, SlipCoeff, NormalTangential, &
                   Element, n, ElementNodes, nIntegration, ratio, bslope, outputFlag)
             ELSE
             CALL NavierStokesBoundary(  STIFF, FORCE, &

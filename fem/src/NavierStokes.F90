@@ -1680,8 +1680,8 @@ MODULE NavierStokes
 !>  boundary conditions in cartesian coordinates.
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesBoundaryPara( BoundaryMatrix,BoundaryVector,LoadVector,   &
-    NodalAlpha, NodalBeta, NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, &
-     n, Nodes, nIntegration, ratio, bslope, outputFlag )
+    NodalAlpha, NodalBeta, NodalExtPressure, NodalBedPressure, NodalSlipCoeff, NormalTangential, &
+    Element, n, Nodes, nIntegration, ratio, bslope, outputFlag )
              
 !------------------------------------------------------------------------------
 !     Assemble boundary matrix and RHS for slip boundary conditions
@@ -1712,7 +1712,7 @@ MODULE NavierStokes
 
    REAL(KIND=dp), INTENT(INOUT)         :: BoundaryMatrix(:,:), BoundaryVector(:)
    REAL(KIND=dp), INTENT(IN)            :: LoadVector(:,:), NodalAlpha(:),NodalBeta(:)
-   REAL(KIND=dp), INTENT(IN)            :: NodalSlipCoeff(:,:), NodalExtPressure(:)
+   REAL(KIND=dp), INTENT(IN)            :: NodalSlipCoeff(:,:), NodalExtPressure(:), NodalBedPressure(:)
    INTEGER, INTENT(IN)                  :: n, nIntegration
    TYPE(Element_t),POINTER, INTENT(IN)  :: Element
    TYPE(Nodes_t), INTENT(IN)            :: Nodes
@@ -1732,7 +1732,7 @@ MODULE NavierStokes
    REAL(KIND=dp) :: u,v,w,ParentU,ParentV,ParentW,s,x(n),y(n),z(n)
    REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
    REAL(KIND=dp) :: TangentForce(3),Force(3),Normal(3),Tangent(3),Tangent2(3), &
-               Vect(3), Alpha, mu,Grad(3,3),Velo(3), tempNormal(3)
+               Vect(3), Alpha, mu,Grad(3,3),Velo(3), tempNormal(3), tempPressure(n)
 
    REAL(KIND=dp) :: xx, yy, ydot, ydotdot, MassFlux, heaveSide, tanAlpha, tanTheta
 
@@ -1769,7 +1769,7 @@ MODULE NavierStokes
 
      IF ( (ratio < 1.0) .AND. (ratio > 0.0) ) THEN
 
-      IF (u .LE. (2.0*ratio -1.0)) THEN
+      IF (-u .LE. (2.0*ratio -1.0)) THEN
         heaveSide = 1.0
       ELSE 
         heaveSide = 0.0
@@ -1797,6 +1797,27 @@ MODULE NavierStokes
        Force(i) = Force(i) + SUM( LoadVector(i,1:n)*Basis )
      END DO
 
+     ! Special treatment for pressure on GL element
+     IF ( (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
+        IF ( heaveSide > 0.5 ) THEN
+          ! Grounded use bedrock pressure 
+          Alpha = SUM( NodalBedPressure(1:n) * Basis )  
+        ELSE
+          ! Floating
+          ! ii = 1 for grounded node
+          tempPressure(1:n) = NodalExtPressure(1:n)
+          If ( ABS(NodalBedPressure(1)-NodalExtPressure(1))< ABS(NodalBedPressure(2)-NodalExtPressure(2))) THEN
+           tempPressure(1) = NodalBedPressure(1)+(NodalBedPressure(2)-NodalExtPressure(2))*ratio/(1.0-ratio)
+          ELSE
+           tempPressure(2) = NodalBedPressure(2)+(NodalBedPressure(1)-NodalExtPressure(1))*ratio/(1.0-ratio)
+          END IF
+
+          Alpha = SUM( tempPressure(1:n) * Basis )  
+        END IF
+     ELSE
+       Alpha = SUM( NodalExtPressure(1:n) * Basis )
+     END IF
+
 !------------------------------------------------------------------------------
 !    Add to load: given force in normal direction
 !------------------------------------------------------------------------------
@@ -1808,7 +1829,7 @@ MODULE NavierStokes
         CALL tan2Normal2D(bslope, tempNormal)
 
         IF (outputFlag) THEN
-          WRITE (*,*) '+++++++++++++++++', Normal(1:2), tempNormal(1:2), ratio
+          WRITE (*,*) '+++++++++++++++++', NodalExtPressure(1:n), NodalBedPressure(1:n), Alpha, u
         END IF
         Normal = tempNormal
 
@@ -1818,17 +1839,14 @@ MODULE NavierStokes
         CALL tan2Normal2D(tanTheta, tempNormal)   
 
         IF (outputFlag) THEN
-          WRITE (*,*) '=================', Normal(1:2), tempNormal(1:2), ratio
+          WRITE (*,*) '=================', NodalExtPressure(1:n), NodalBedPressure(1:n), Alpha, u
         END IF
         Normal = tempNormal
       END IF
 
-     ! Only put sea pressure on floating part
-     IF ( (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
-       Alpha = SUM( NodalExtPressure(1:n) * Basis )  
-     ELSE
-       Alpha = SUM( NodalExtPressure(1:n) * Basis )
-     END IF
+
+
+
 
      IF ( NormalTangential ) THEN
        Force(1) = Force(1) + Alpha
