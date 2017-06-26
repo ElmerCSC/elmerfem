@@ -553,7 +553,7 @@
           END SELECT
 
           n = WriteNodes % NumberOfNodes
-          IF(n /= SIZE(NodeNums)) CALL Fatal("CalvingRemesh","Size mismatch in perm size")
+          IF(n /= SIZE(NodeNums)) CALL Fatal("Calving3D","Size mismatch in perm size")
 
           !Determine order
           IF(i==1) THEN !left edge, find which end neighbours calving front
@@ -632,7 +632,7 @@
              END IF
           END DO
           IF(Debug) THEN
-             PRINT *, 'Debug CalvingRemesh, BC number for ',TRIM(MaskName),' is: ',MeshBC
+             PRINT *, 'Debug Calving3D, BC number for ',TRIM(MaskName),' is: ',MeshBC
           END IF
 
           WRITE(GeoUnit,'(A,i0,A)') 'Physical Line(',MeshBC,') = {'
