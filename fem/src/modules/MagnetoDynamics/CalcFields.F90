@@ -2379,7 +2379,7 @@ CONTAINS
      ALLOCATE(axes(num_axes, size(omegas, 2)))
      axes = omegas
      DO k = 1, num_axes
-       nrm = NORM2(axes(k,:))
+       nrm = sqrt(sum(axes(k,:)*axes(k,:))) 
        IF (nrm .EQ. 0._dp) THEN
          WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")'), k
          CALL Warn('MagnetoDynamicsCalcFields',Message)
