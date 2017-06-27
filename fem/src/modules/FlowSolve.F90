@@ -140,7 +140,7 @@
     INTEGER :: nIntegration, tempNodeIndex, jj, GLparaIndex
     REAL(KIND=dp) :: Time, FFstressSum, GLstressSum, cond, ratio, bslope
 
-    LOGICAL :: GLParaFlag, outputFlag = .FALSE.
+    LOGICAL :: GLParaFlag, outputFlag = .FALSE., PressureParamFlag = .FALSE.
     REAL(KIND=dp), POINTER :: GroundingLinePara(:)
 !=========================================================================
 
@@ -1166,6 +1166,8 @@
               nIntegration = 2
             END IF
 
+            PressureParamFlag = GetLogical( BC, 'Parameterize Pressure', GotIt)
+
             IF ( ALL(GroundingLineParaPerm(Element % NodeIndexes) > 0) ) THEN
             ! Find GL element
               IF ( ANY(GroundingLinePara(GroundingLineParaPerm(Element % NodeIndexes)) >= 0)  .AND. &
@@ -1218,7 +1220,8 @@
             IF ( GLParaFlag ) THEN
               CALL NavierStokesBoundaryPara(  STIFF, FORCE, LoadVector, &
                   Alpha, Beta, ExtPressure, bedPressure, SlipCoeff, NormalTangential, &
-                  Element, n, ElementNodes, nIntegration, ratio, bslope, outputFlag)
+                  Element, n, ElementNodes, nIntegration, ratio, bslope, outputFlag , &
+                  PressureParamFlag )
             ELSE
             CALL NavierStokesBoundary(  STIFF, FORCE, &
              LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &

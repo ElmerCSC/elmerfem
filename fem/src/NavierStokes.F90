@@ -1681,7 +1681,7 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesBoundaryPara( BoundaryMatrix,BoundaryVector,LoadVector,   &
     NodalAlpha, NodalBeta, NodalExtPressure, NodalBedPressure, NodalSlipCoeff, NormalTangential, &
-    Element, n, Nodes, nIntegration, ratio, bslope, outputFlag )
+    Element, n, Nodes, nIntegration, ratio, bslope, outputFlag , PressureParamFlag)
              
 !------------------------------------------------------------------------------
 !     Assemble boundary matrix and RHS for slip boundary conditions
@@ -1720,6 +1720,7 @@ MODULE NavierStokes
    REAL(KIND=dp), INTENT(IN)            :: ratio
    REAL(KIND=dp), INTENT(IN)            :: bslope
    LOGICAL, INTENT(IN)                  :: outputFlag
+   LOGICAL, INTENT(IN)                  :: PressureParamFlag
 !------------------------------------------------------------------------------
 !  Local variables
 !------------------------------------------------------------------------------
@@ -1798,7 +1799,7 @@ MODULE NavierStokes
      END DO
 
      ! Special treatment for pressure on GL element
-     IF ( (ratio < 1.0) .AND. (ratio > 0.0) )  THEN
+     IF ( (ratio < 1.0) .AND. (ratio > 0.0) .AND. PressureParamFlag)  THEN
         IF ( heaveSide > 0.5 ) THEN
           ! Grounded use bedrock pressure 
           Alpha = SUM( NodalBedPressure(1:n) * Basis )  
