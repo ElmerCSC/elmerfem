@@ -1769,11 +1769,18 @@ MODULE NavierStokes
      heaveSide = 1.0
 
      IF ( (ratio < 1.0) .AND. (ratio > 0.0) ) THEN
-
-      IF (-u .LE. (2.0*ratio -1.0)) THEN
-        heaveSide = 1.0
-      ELSE 
-        heaveSide = 0.0
+      IF ( Nodes % x(1) >  Nodes % x(n) ) THEN
+        IF (-u .LE. (2.0*ratio -1.0)) THEN
+          heaveSide = 1.0
+        ELSE 
+          heaveSide = 0.0
+        END IF
+      ELSE
+        IF (u .LE. (2.0*ratio -1.0)) THEN
+          heaveSide = 1.0
+        ELSE 
+          heaveSide = 0.0
+        END IF
       END IF
      END IF 
 !------------------------------------------------------------------------------
