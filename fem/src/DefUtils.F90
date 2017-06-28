@@ -1258,11 +1258,12 @@ CONTAINS
 
 
 !> Check if the boundary element is active in the current solve 
-  FUNCTION ActiveBoundaryElement(UElement,USolver) RESULT(l)
+  FUNCTION ActiveBoundaryElement(UElement,USolver,DGBoundary) RESULT(l)
      TYPE(Element_t), OPTIONAL,  TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL,  TARGET :: USolver
+     LOGICAL, OPTIONAL :: DGBoundary
 
-     LOGICAL :: l
+     LOGICAL :: l, DGb
      INTEGER :: n, n2
      INTEGER, POINTER :: Indexes(:)
 
@@ -1277,7 +1278,10 @@ CONTAINS
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
 
-     IF (Solver % DG) THEN
+     DGb = Solver % DG .AND. PRESENT(DGboundary)
+     IF(DGb) DGb = DGboundary
+
+     IF (DGb) THEN
        P1 => Element % BoundaryInfo % Left
        P2 => Element % BoundaryInfo % Right
        IF ( ASSOCIATED(P1).AND.ASSOCIATED(P2) ) THEN
@@ -1294,7 +1298,6 @@ CONTAINS
        IF (isActivePElement(Element)) n=GetElementNOFNOdes(Element)
        l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
      END IF
-
   END FUNCTION ActiveBoundaryElement
 
 
