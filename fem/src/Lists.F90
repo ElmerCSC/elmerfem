@@ -3628,6 +3628,10 @@ CONTAINS
          IF( i > Model % NumberOfBCs ) EXIT        
          List => Model % BCs(i) % Values
 
+         ! It is more difficult to make sure that the BC list is given for all BC elements.
+         ! Therefore set this to .FALSE. always for BCs. 
+         Handle % ConstantEverywhere = .FALSE.
+         
        CASE DEFAULT
          CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(I2S(Handle % SectionType)))
 
@@ -3640,7 +3644,7 @@ CONTAINS
        ptr => ListFind(List,Name,Found)
        Handle % ptr % Head => ptr
 
-       IF ( .NOT.ASSOCIATED(ptr) ) THEN
+       IF ( .NOT. ASSOCIATED(ptr) ) THEN
          Handle % ConstantEverywhere = .FALSE.
          CYCLE
        ELSE IF( FirstList ) THEN
@@ -3707,7 +3711,7 @@ CONTAINS
      END DO
 
      CALL Info('ListInitElementKeyword',&
-         'Initiated handle for: '//TRIM(Handle % Name)//' type '// &
+         'Initiated handle for: > '//TRIM(Handle % Name)//' < of type: '// &
          TRIM(I2S(Handle % ValueType)),Level=10)
      !PRINT *,'Constants:',Handle % NotPresentAnywhere, &
      !    Handle % ConstantEverywhere, Handle % GlobalEverywhere, &
@@ -4829,8 +4833,7 @@ CONTAINS
          Handle % Found = .FALSE.
        END IF
      END IF
-              
-     
+                   
    END FUNCTION ListGetElementLogical
 !------------------------------------------------------------------------------
 
