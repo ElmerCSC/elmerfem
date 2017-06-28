@@ -1263,11 +1263,11 @@ CONTAINS
      TYPE(Solver_t),  OPTIONAL,  TARGET :: USolver
 
      LOGICAL :: l
-     INTEGER :: n
+     INTEGER :: n, n2
      INTEGER, POINTER :: Indexes(:)
 
-     TYPE(Element_t), POINTER :: Element
      TYPE( Solver_t ), POINTER :: Solver
+     TYPE(Element_t), POINTER :: Element, P1, P2
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
@@ -1276,9 +1276,25 @@ CONTAINS
 
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
-     IF (isActivePElement(Element)) n=GetElementNOFNOdes(Element)
 
-     l = ALL( Solver % Variable % Perm(Indexes(1:n)) > 0)
+     IF (Solver % DG) THEN
+       P1 => Element % BoundaryInfo % Left
+       P2 => Element % BoundaryInfo % Right
+       IF ( ASSOCIATED(P1).AND.ASSOCIATED(P2) ) THEN
+         n = P1 % Type % NumberOfNodes
+         l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
+         IF (.NOT.l) THEN
+           n2 = P2 % Type % NumberOfNodes
+           l = ALL(Solver % Variable % Perm(Indexes(n+1:n+n2)) > 0)
+          END IF
+       ELSE
+         l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
+       END IF
+     ELSE
+       IF (isActivePElement(Element)) n=GetElementNOFNOdes(Element)
+       l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
+     END IF
+
   END FUNCTION ActiveBoundaryElement
 
 
