@@ -160,6 +160,7 @@ static void FindPointParents(struct FemType *data,struct BoundaryType *bound,
     printf("Boundary types are in interval [%d, %d]\n",minboundary,maxboundary);
     printf("Boundary nodes are in interval [%d, %d]\n",minnode,maxnode);
   }
+
   indx = Ivector(1,data->noknots);
 
   printf("Allocating hit table of size: %d\n",data->noknots);
@@ -318,10 +319,10 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
    results in ABAQUS format.
    */
 {
-  int noknots,noelements,elemcode,maxnodes,material;
+  int noknots,noelements,elemcode,maxnodes,material,maxelem;
   int mode,allocated,nvalue,nvalue2,maxknot,nosides,elemnodes,ncum;
   int boundarytype,boundarynodes,elsetactive,cont;
-  int *nodeindx=NULL,*boundindx=NULL,*materials;
+  int *nodeindx=NULL,*boundindx=NULL,*materials=NULL,*elemindx=NULL;
   char filename[MAXFILESIZE];
   char line[MAXLINESIZE];
   int i,j,k,*ind=NULL;
@@ -345,6 +346,7 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
 
   allocated = FALSE;
   maxknot = 0;
+  maxelem = 0;
   elsetactive = FALSE;
 
   /* Because the file format doesn't provide the number of elements
@@ -473,13 +475,18 @@ omstart:
 	noelements++;
 	
 	nvalue = StringToIntegerNoZero(line,ivalues,elemnodes+1,',');
-	  
+       	
 	if(allocated) {
+	  elemindx[noelements] = ivalues[0];
 	  data->elementtypes[noelements] = elemcode;
 	  data->material[noelements] = material;
 	  for(i=0;i<nvalue-1;i++) 
 	    data->topology[noelements][i] = ivalues[i+1];	  
 	}
+	else {
+	  if( maxelem < ivalues[0] ) maxelem = ivalues[0];
+	}
+	  
 	ncum = nvalue-1;
 	
 	/* Read 2nd line if needed */
@@ -601,7 +608,6 @@ omstart:
 	}
       }
       printf("There are %d positive and %d non-positive indexes in elements!\n",okcount,errcount);
-
       
       if(info) printf("Renumbering %d nodes in node sets\n",boundarynodes);
       errcount = 0;
@@ -620,18 +626,22 @@ omstart:
       printf("There are %d positive and %d non-positive indexes in node sets!\n",okcount,errcount);
     }
 
-   
-    FindPointParents(data,bound,boundarynodes,nodeindx,boundindx,info);
-  
-    
-    if(0) ElementsToBoundaryConditions(data,bound,FALSE,info);
+    if(elsetactive) {
+      for(i=1;i<=noelements;i++) {
+	j = elemindx[i];
+	data->material[i] = materials[j];
+      }
+    }
+      
+    ElementsToBoundaryConditions(data,bound,FALSE,info);
     
     printf("Number of nodes in boundary sets: %d\n",boundarynodes);
     free_ivector(ind,1,maxknot);
-    free_ivector(materials,1,maxknot);
+    free_ivector(materials,1,maxelem);
     free_Ivector(nodeindx,1,boundarynodes);
     free_Ivector(boundindx,1,boundarynodes);
-
+    free_Ivector(elemindx,1,noelements);
+    
     fclose(in);
 
     return(0);
@@ -647,15 +657,21 @@ omstart:
 		  noknots,noelements,maxnodes);
   AllocateKnots(data);
 
-  nosides = 4*boundarynodes;
-  printf("There are %d boundary nodes, thus allocating %d elements\n",
-	 boundarynodes,nosides);
-  AllocateBoundary(bound,nosides);
+  elemindx = Ivector(1,noelements);
+  for(i=1;i<=noelements;i++)
+    elemindx[i] = 0;
+
+  if(0) {
+    nosides = 4*boundarynodes;
+    printf("There are %d boundary nodes, thus allocating %d elements\n",
+	   boundarynodes,nosides);
+    AllocateBoundary(bound,nosides);
+  }
   nodeindx = Ivector(1,boundarynodes);
   boundindx = Ivector(1,boundarynodes);
-
-  materials = ivector(1,maxknot);
-  for(i=1;i<=maxknot;i++)
+  
+  materials = ivector(1,maxelem);
+  for(i=1;i<=maxelem;i++)
     materials[i] = 0;
  
   ind = ivector(1,maxknot);
