@@ -4243,6 +4243,59 @@ CONTAINS
   END SUBROUTINE ExecSolverInSteps
 
 
+  ! Create list of active elements for more speedy operation
+  !-------------------------------------------------------------
+  SUBROUTINE SetActiveElementsTable( Model, Solver, MaxDim )
+    TYPE(Model_t)  :: Model
+    TYPE(Solver_t),POINTER :: Solver
+    INTEGER, OPTIONAL :: MaxDim
+    
+    INTEGER :: i, n, Sweep, MeshDim 
+    CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: Found
+    
+    IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
+
+    IF( ASSOCIATED( Solver % ActiveElements ) ) THEN
+      DEALLOCATE( Solver % ActiveElements )
+    END IF
+
+    
+    EquationName = ListGetString( Solver % Values, 'Equation', Found)
+    IF( .NOT. Found ) THEN
+      CALL Fatal('SetActiveElementsTable','Equation not present!')
+    END IF
+
+    
+    MeshDim = 0 
+    
+    DO Sweep = 0, 1    
+      n = 0
+      DO i=1,Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOFBoundaryElements
+        Element => Solver % Mesh % Elements(i)
+        IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
+        IF ( CheckElementEquation( Model, Element, EquationName ) ) THEN
+          n = n + 1
+          IF( Sweep == 0 ) THEN
+            MeshDim = MAX( Element % TYPE % DIMENSION, MeshDim )
+          ELSE
+            Solver % ActiveElements(n) = i
+          END IF
+        END IF
+      END DO
+      
+      IF( Sweep == 0 ) THEN
+        Solver % NumberOfActiveElements = n
+        ALLOCATE( Solver % ActiveElements( n ) )
+      END IF
+    END DO
+
+    IF( PRESENT( MaxDim ) ) MaxDim = MeshDim 
+    
+  END SUBROUTINE SetActiveElementsTable
+
+  
 !------------------------------------------------------------------------------
 !> This executes the original line of solvers (legacy solvers) where each solver 
 !> includes looping over elements and the convergence control. From generality
@@ -4276,43 +4329,18 @@ CONTAINS
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
 
        IF ( Found ) THEN
-          IF ( ASSOCIATED(Solver % ActiveElements)) DEALLOCATE( Solver % ActiveElements )
+         CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 
+         CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
 
-          ! Count the number of active elements and maximum element dimension 
-          Maxdim = 0
-          n = 0
-          DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
-             CurrentElement => Solver % Mesh % Elements(i)
-             IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
-             IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
-               n = n + 1
-               Maxdim = MAX( CurrentElement % TYPE % DIMENSION, Maxdim )
-             END IF
-          END DO
-          Solver % NumberOfActiveElements = n
-          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
+         ! Calculate accumulated integration weights for bulk if requested          
+         IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
+           CALL CalculateNodalWeights(Solver,.FALSE.)
+         END IF
 
-          ! Create list of active elements
-          ALLOCATE( Solver % ActiveElements( n ) )
-          n = 0
-          DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
-            CurrentElement => Solver % Mesh % Elements(i)
-            IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
-            IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
-              n = n + 1
-              Solver % ActiveElements( n ) = i
-            END IF
-          END DO
-
-          ! Calculate accumulated integration weights for bulk if requested          
-          IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
-            CALL CalculateNodalWeights(Solver,.FALSE.)
-          END IF
-
-          ! Calculate weight for boundary 
-          IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
-            CALL CalculateNodalWeights(Solver,.TRUE.) 
-          END IF
+         ! Calculate weight for boundary 
+         IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
+           CALL CalculateNodalWeights(Solver,.TRUE.) 
+         END IF
        END IF
      END IF
 !------------------------------------------------------------------------------
