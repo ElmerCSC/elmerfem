@@ -42,9 +42,11 @@
 #include "femknot.h"
 #include "femfilein.h"
 
-#define GETLINE fgets(line,MAXLINESIZE,in) 
+#define GETLINE getlineptr=fgets(line,MAXLINESIZE,in) 
 
 static int linenumber;
+static char *getlineptr;
+
 
 static int Getrow(char *line1,FILE *io,int upper) 
 {
@@ -140,6 +142,7 @@ static void FindPointParents(struct FemType *data,struct BoundaryType *bound,
   int sideind[MAXNODESD1],elemsides,side,sidenodes,hit,nohits;
   int *elemhits;
 
+  
   info = TRUE;
 
   sideelem = 0;
@@ -159,18 +162,20 @@ static void FindPointParents(struct FemType *data,struct BoundaryType *bound,
   }
   indx = Ivector(1,data->noknots);
 
+  printf("Allocating hit table of size: %d\n",data->noknots);
   elemhits = Ivector(1,data->noknots);
   for(i=1;i<=data->noknots;i++) elemhits[i] = 0;
 
+  
   for(elemind=1;elemind<=data->noelements;elemind++) {
     elemtype = data->elementtypes[elemind];
     elemsides = elemtype % 100;
-
+    
     for(i=0;i<elemsides;i++) {
-      elemhits[data->topology[elemind][i]] += 1;
+      j = data->topology[elemind][i];
+      elemhits[j] += 1;
     }
   }
-
 
   for(boundarytype=minboundary;boundarytype <= maxboundary;boundarytype++) {
     int boundfirst,bchits,bcsame,sideelemtype2;
@@ -192,17 +197,13 @@ static void FindPointParents(struct FemType *data,struct BoundaryType *bound,
       elemsides = elemtype / 100;
       if(elemsides == 8) elemsides = 6;
       else if(elemsides == 5) elemsides = 4;
-      else if(elemsides == 6) elemsides = 5;
-      
-      if(0) printf("ind=%d  type=%d  sides=%d\n",elemind,elemtype,elemsides);
- 
+      else if(elemsides == 6 || elemsides == 7) elemsides = 5;
+            
       /* Check whether the bc nodes occupy every node in the selected side */
       for(side=0;side<elemsides;side++) {
 	GetElementSide(elemind,side,1,data,&sideind[0],&sideelemtype);
 	sidenodes = sideelemtype%100;
-	
-	if(0) printf("sidenodes=%d  side=%d\n",sidenodes,side);
-	
+		
 	hit = TRUE;
 	nohits = 0;
 	for(i=0;i<sidenodes;i++) {
@@ -318,12 +319,12 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
    */
 {
   int noknots,noelements,elemcode,maxnodes,material;
-  int mode,allocated,nvalue,nvalue2,maxknot,nosides;
-  int boundarytype,boundarynodes,elsetactive;
-  int *nodeindx=NULL,*boundindx=NULL;
+  int mode,allocated,nvalue,nvalue2,maxknot,nosides,elemnodes,ncum;
+  int boundarytype,boundarynodes,elsetactive,cont;
+  int *nodeindx=NULL,*boundindx=NULL,*materials;
   char filename[MAXFILESIZE];
   char line[MAXLINESIZE];
-  int i,j,*ind=NULL;
+  int i,j,k,*ind=NULL;
   FILE *in;
   Real rvalues[MAXDOFS];
   int ivalues[MAXDOFS],ivalues0[MAXDOFS];
@@ -386,12 +387,12 @@ omstart:
       }
       else if(strstr(line,"ELEMENT")) {
 	if(!elsetactive) material++;
-	if(strstr(line,"S3R") || strstr(line,"STRI3"))
+	if(strstr(line,"S3") || strstr(line,"STRI3"))
 	  elemcode = 303;
 	else if(strstr(line,"2D4") || strstr(line,"SP4") || strstr(line,"AX4") 
 		|| strstr(line,"S4") || strstr(line,"CPE4")) 
 	  elemcode = 404;
-	else if(strstr(line,"2D8") || strstr(line,"AX8"))
+	else if(strstr(line,"2D8") || strstr(line,"AX8") || strstr(line,"DS8") )
 	  elemcode = 408;
 	else if(strstr(line,"3D4"))
 	  elemcode = 504;
@@ -399,16 +400,19 @@ omstart:
 	  elemcode = 605;
 	else if(strstr(line,"3D6"))
 	  elemcode = 706;
+	else if(strstr(line,"3D15"))
+	  elemcode = 715;
 	else if(strstr(line,"3D8"))
 	  elemcode = 808;
 	else if(strstr(line,"3D20"))
 	  elemcode = 820;
 	else 
 	  printf("Unknown element code: %s\n",line);
-	
-	if(maxnodes < elemcode%100) maxnodes = elemcode%100;
+
+	elemnodes = elemcode % 100;
+	maxnodes = MAX( maxnodes, elemnodes);
 	mode = 3;
-	if(1) printf("Loading elements of type %d starting from element %d.\n",
+	if(allocated) printf("Loading elements of type %d starting from element %d.\n",
 			elemcode,noelements);
       }
       else if(strstr(line,"BOUNDARY") || strstr(line,"CLOAD")) {
@@ -418,11 +422,15 @@ omstart:
       else if(strstr(line,"NSET")) {
 	boundarytype++;
 	mode = 5;
+
+	if(allocated) printf("Loading node set for boundary %d\n",boundarytype);
       }
       else if(strstr(line,"ELSET")) {
 	elsetactive = TRUE;
 	material += 1;
 	mode = 6;
+
+	if(allocated) printf("Loading element set %d\n",material);
       }
       else {
 	if(!allocated) printf("unknown command: %s",line);
@@ -437,47 +445,84 @@ omstart:
 	if(info) printf("Loading Abacus input file:\n%s",line);
 	break;
 	
-      case 2:
+      case 2: /* NODE */
 	nvalue = StringToReal(line,rvalues,MAXNODESD2+1,',');
+
+	if(nvalue != 4) printf("Invalid nvalue = %d\n",nvalue);
+
 	i = (int)(rvalues[0]+0.5);
-	if(i == 0) continue;
+	
 	noknots++;
 	if(allocated) {
-	  ind[i] = noknots;
-	  data->x[noknots] = rvalues[1];
-	  data->y[noknots] = rvalues[2];
-	  data->z[noknots] = rvalues[3];
+	  if(i <= 0 || i > maxknot) {
+	    printf("Invalid node index = %d\n",i);
+	  }
+	  else {
+	    ind[i] = noknots;
+	    data->x[noknots] = rvalues[1];
+	    data->y[noknots] = rvalues[2];
+	    data->z[noknots] = rvalues[3];
+	  }
 	}
 	else {
 	  if(maxknot < i) maxknot = i;
 	}
 	break;
 	
-      case 3:
+      case 3: /* ELEMENT */
 	noelements++;
-
-	nvalue = StringToInteger(line,ivalues,MAXNODESD2+1,',');
 	
+	nvalue = StringToIntegerNoZero(line,ivalues,elemnodes+1,',');
+	  
 	if(allocated) {
 	  data->elementtypes[noelements] = elemcode;
 	  data->material[noelements] = material;
 	  for(i=0;i<nvalue-1;i++) 
 	    data->topology[noelements][i] = ivalues[i+1];	  
 	}
+	ncum = nvalue-1;
 	
-	if(nvalue < elemcode % 100) {
+	/* Read 2nd line if needed */
+	if(ncum < elemnodes ) {
 	  Getrow(line,in,TRUE);
+	  nvalue = StringToIntegerNoZero(line,ivalues,elemnodes-ncum,',');
 	  if(allocated) {
-	    if(ivalues[nvalue-1] == 0) nvalue--;	      
-	    nvalue2 = StringToInteger(line,ivalues,MAXNODESD2+1,',');
-	    for(i=0;i<nvalue2;i++) 
-	      data->topology[noelements][nvalue-1+i] = ivalues[i];	  	    
+	    for(i=0;i<nvalue;i++) 
+	      data->topology[noelements][ncum+i] = ivalues[i];	  	    
+	  }
+	  ncum = ncum + nvalue;
+	}
+
+	/* Be prepared for 3rd line as well */
+	if(ncum < elemnodes ) {
+	  Getrow(line,in,TRUE);
+	  nvalue = StringToIntegerNoZero(line,ivalues,elemnodes-ncum,',');
+	  if(allocated) {
+	    for(i=0;i<nvalue;i++) 
+	      data->topology[noelements][ncum+i] = ivalues[i];	  	    
+	  }
+	  ncum = ncum + nvalue;
+	}
+	if(ncum != elemnodes) printf("ncum = %d vs. %d\n",ncum,elemnodes);
+
+	if( allocated ) {
+	  j = FALSE;
+	  for(i=0;i<elemnodes;i++)
+	    if(!data->topology[noelements][i]) j = TRUE;
+
+	  if(j) {
+	    printf("zero in this element\n");
+	    printf("element = %d %d\n",noelements,elemnodes);
+	    for(i=0;i<elemnodes;i++)
+	      printf("%d ",data->topology[noelements][i]);
+	    printf("\n");
 	  }
 	}
+	 	
 	break;
 
       case 4:
-	nvalue = StringToInteger(line,ivalues,MAXNODESD2+1,',');
+	nvalue = StringToInteger(line,ivalues,2,',');
 
 	if(ivalues[0] == ivalues0[0] && ivalues[1] != ivalues0[1]) continue;
 	ivalues0[0] = ivalues[0];
@@ -490,8 +535,8 @@ omstart:
 	}
 	break;
 
-      case 5:
-	nvalue = StringToInteger(line,ivalues,10,',');
+      case 5: /* NSET */
+	nvalue = StringToIntegerNoZero(line,ivalues,10,',');
 
 	if(allocated) {
 	  for(i=0;i<nvalue;i++) {
@@ -504,13 +549,13 @@ omstart:
 	  boundarynodes += nvalue;
 	break;
 
-      case 6:
-	nvalue = StringToInteger(line,ivalues,10,',');
+      case 6: /* ELSET */
+	nvalue = StringToIntegerNoZero(line,ivalues,10,',');
 
 	if(allocated) {
 	  for(i=0;i<nvalue;i++) {
 	    j = ivalues[i];
-	    data->material[j] = material;
+	    materials[j] = material;
 	  }
 	}
 	break;
@@ -525,10 +570,11 @@ omstart:
 
 
   if(allocated == TRUE) {
+    int errcount,okcount;
+
     if(info) printf("The mesh was loaded from file %s.\n",filename);
 
-    FindPointParents(data,bound,boundarynodes,nodeindx,boundindx,info);
-
+    
     /* ABAQUS format does not expect that all numbers are used
        when numbering the elements. Therefore the nodes must
        be renumberred from 1 to noknots. */
@@ -536,17 +582,58 @@ omstart:
     if(noknots != maxknot) {
       if(info) printf("There are %d nodes but maximum index is %d.\n",
 		      noknots,maxknot);
-      if(info) printf("Renumbering elements\n");
-      for(j=1;j<=noelements;j++) 
-	for(i=0;i < data->elementtypes[j]%100;i++) 
-	  data->topology[j][i] = ind[data->topology[j][i]];
+      if(info) printf("Renumbering %d elements\n",noelements);
+      errcount = 0;
+      okcount = 0;
+      for(j=1;j<=noelements;j++) {
+	elemcode = data->elementtypes[j];
+	elemnodes = elemcode % 100;
+	for(i=0;i < elemnodes;i++)  {
+	  k = data->topology[j][i];
+	  if(k<=0) {
+	    printf("err elem ind: %d %d %d %d\n",j,elemcode,i,k);
+	    errcount++;
+	  }
+	  else {
+	    data->topology[j][i] = ind[k];
+	    okcount++;
+	  }
+	}
+      }
+      printf("There are %d positive and %d non-positive indexes in elements!\n",okcount,errcount);
+
+      
+      if(info) printf("Renumbering %d nodes in node sets\n",boundarynodes);
+      errcount = 0;
+      okcount = 0;
+      for(j=1;j<=boundarynodes;j++) {
+	k = nodeindx[j];
+	if(k<=0 || k > maxknot) {
+	  printf("err node set ind: %d %d\n",j,k);
+	  errcount++;
+	}
+	else {
+	  nodeindx[j] = ind[k];
+	  okcount++;
+	}
+      }
+      printf("There are %d positive and %d non-positive indexes in node sets!\n",okcount,errcount);
     }
 
+   
+    FindPointParents(data,bound,boundarynodes,nodeindx,boundindx,info);
+  
+    
+    if(0) ElementsToBoundaryConditions(data,bound,FALSE,info);
+    
+    printf("Number of nodes in boundary sets: %d\n",boundarynodes);
     free_ivector(ind,1,maxknot);
+    free_ivector(materials,1,maxknot);
     free_Ivector(nodeindx,1,boundarynodes);
     free_Ivector(boundindx,1,boundarynodes);
 
     fclose(in);
+
     return(0);
   }
 
@@ -554,7 +641,7 @@ omstart:
   data->noknots = noknots;
   data->noelements = noelements;
   data->maxnodes = maxnodes;
-  data->dim = 3;
+  data->dim = 3; 
   
   if(info) printf("Allocating for %d knots and %d %d-node elements.\n",
 		  noknots,noelements,maxnodes);
@@ -567,6 +654,10 @@ omstart:
   nodeindx = Ivector(1,boundarynodes);
   boundindx = Ivector(1,boundarynodes);
 
+  materials = ivector(1,maxknot);
+  for(i=1;i<=maxknot;i++)
+    materials[i] = 0;
+ 
   ind = ivector(1,maxknot);
   for(i=1;i<=maxknot;i++)
     ind[i] = 0;
@@ -2400,7 +2491,7 @@ int LoadGidInput(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"msh");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadAbaqusInput: opening of the GID-file '%s' wasn't succesfull !\n",
+      printf("LoadGidInput: opening of the GID-file '%s' wasn't succesfull !\n",
 	     filename);
       return(1);
     }
