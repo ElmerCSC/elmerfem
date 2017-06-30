@@ -323,6 +323,7 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
   int mode,allocated,nvalue,nvalue2,maxknot,nosides,elemnodes,ncum;
   int boundarytype,boundarynodes,elsetactive,cont;
   int *nodeindx=NULL,*boundindx=NULL,*materials=NULL,*elemindx=NULL;
+  char *pstr;
   char filename[MAXFILESIZE];
   char line[MAXLINESIZE];
   int i,j,k,*ind=NULL;
@@ -374,11 +375,26 @@ omstart:
     /* if(!line) goto end; */
     /* if(strstr(line,"END")) goto end; */
 
-    if(strstr(line,"**")) {
-      if(info && !allocated) printf("comment: %s",line);
-    }
-    else if(strrchr(line,'*')) {
-      if(strstr(line,"HEAD")) {
+
+    if(strrchr(line,'*')) {
+      if( strstr(line,"**HWCOLOR") ) {
+	static int hwcolorstat = FALSE;
+	if( !hwcolorstat ) {
+	  printf("Omitting keywords HWCOLOR in Abaqus format!\n");
+	  hwcolorstat = TRUE;
+	}
+      }
+      else if( strstr(line,"**HMASSEM") ) {
+	static int hmassemstat = FALSE;
+	if( !hmassemstat ) {
+	  printf("Omitting keywords HMASSEM in Abaqus format!\n");
+	  hmassemstat = TRUE;
+	}
+      }
+      else if( strstr(line,"**") ) {
+	if(info && !allocated) printf("comment: %s",line);
+      }
+      else if(strstr(line,"HEAD")) {
 	mode = 1;
       }
       else if(strstr(line,"NODE")) {
@@ -417,22 +433,37 @@ omstart:
 	if(allocated) printf("Loading elements of type %d starting from element %d.\n",
 			elemcode,noelements);
       }
-      else if(strstr(line,"BOUNDARY") || strstr(line,"CLOAD")) {
+      else if( strstr(line,"BOUNDARY") ) {
 	boundarytype++;
 	mode = 4;
+	if(allocated) {
+	  printf("Treating keyword BOUNDARY\n");
+	}
       }
-      else if(strstr(line,"NSET")) {
+      else if( strstr(line,"CLOAD") ) {
+	
+	boundarytype++;
+	mode = 4;
+	if(allocated) {
+	  printf("Treating keyword CLOAD\n");
+	}
+      }
+      else if(pstr = strstr(line,"NSET=")) {
 	boundarytype++;
 	mode = 5;
 
-	if(allocated) printf("Loading node set for boundary %d\n",boundarytype);
+	if(allocated) {
+	  printf("Loading boundary node set %d from: %s",boundarytype,pstr+5);
+	}
       }
-      else if(strstr(line,"ELSET")) {
+      else if(pstr = strstr(line,"ELSET=")) {
 	elsetactive = TRUE;
 	material += 1;
 	mode = 6;
 
-	if(allocated) printf("Loading element set %d\n",material);
+	if(allocated) {
+	  printf("Loading element set %d from %s",material,pstr+6);
+	}
       }
       else {
 	if(!allocated) printf("unknown command: %s",line);
@@ -444,7 +475,7 @@ omstart:
       switch (mode) {
 	
       case 1:
-	if(info) printf("Loading Abacus input file:\n%s",line);
+	if(info) printf("Loading Abaqus input file:\n%s",line);
 	break;
 	
       case 2: /* NODE */
@@ -661,12 +692,6 @@ omstart:
   for(i=1;i<=noelements;i++)
     elemindx[i] = 0;
 
-  if(0) {
-    nosides = 4*boundarynodes;
-    printf("There are %d boundary nodes, thus allocating %d elements\n",
-	   boundarynodes,nosides);
-    AllocateBoundary(bound,nosides);
-  }
   nodeindx = Ivector(1,boundarynodes);
   boundindx = Ivector(1,boundarynodes);
   
