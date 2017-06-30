@@ -1217,15 +1217,15 @@
 !------------------------------------------------------------------------------
           SELECT CASE( CurrentCoordinateSystem() )
           CASE( Cartesian )
-            IF ( GLParaFlag ) THEN
+            IF ( GLParaFlag .AND. (ratio < 1.0_dp) ) THEN
               CALL NavierStokesBoundaryPara(  STIFF, FORCE, LoadVector, &
                   Alpha, Beta, ExtPressure, bedPressure, SlipCoeff, NormalTangential, &
                   Element, n, ElementNodes, nIntegration, ratio, bslope, outputFlag , &
                   PressureParamFlag )
             ELSE
-            CALL NavierStokesBoundary(  STIFF, FORCE, &
-             LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
-                Element, n, ElementNodes )
+              CALL NavierStokesBoundary(  STIFF, FORCE, &
+               LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
+                  Element, n, ElementNodes )
             END IF
          CASE( Cylindric, CylindricSymmetric,  AxisSymmetric )
 
