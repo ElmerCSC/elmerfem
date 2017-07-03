@@ -302,11 +302,11 @@ CONTAINS
        n = Solver % ColourIndexList % ptr(Solver % CurrentColour+1)-1 &
            - Solver % ColourIndexList % ptr(Solver % CurrentColour)
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=22)
+           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=32)
      ELSE
        n = Solver % NumberOfActiveElements
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n)),Level=22)
+           //TRIM(I2S(n)),Level=32)
      END IF
 
   END FUNCTION GetNOFActive
