@@ -4230,13 +4230,17 @@ omstart:
 	Getrow(line,in,FALSE);
 	if( !allocated ) {
 	  cp = line;
+	  if(!cp) printf("Problem reading line %i for coordinate system\n");
 	  for(j=1;j<= 3;j++) {
 	    coeff = next_real(&cp);
 	    if( i == j ) {
 	      scaling[i] = coeff;
-	      if( fabs(coeff-1.0) > 1.0e-20) {
+	      if( fabs(coeff) < 1.0e-20) {
+		printf("Scaling for component %d too small %le\n",i,coeff);
+	      }
+	      else if( fabs(coeff-1.0) ) {
 		doscaling = TRUE;
-		printf("Scaling component %d by %e\n",i,coeff);
+		printf("Scaling component %d by %le\n",i,coeff);
 	      }
 	    }
 	    else {
