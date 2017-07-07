@@ -55,7 +55,7 @@ MODULE ParticleUtils
   TYPE Particle_t
     INTEGER :: Dim, NumberOfParticles=0, MaxNumberOfParticles=0, &
                NumberOfMovingParticles = 0, &
-               TimeOrder = 0, FirstGhost = 0
+               TimeOrder = 0, FirstGhost = 0, NumberOfGroups = 1
     TYPE(Variable_t), POINTER :: Variables => NULL()	
     
     REAL(KIND=dp) :: time, dtime
@@ -74,6 +74,7 @@ MODULE ParticleUtils
     INTEGER, POINTER :: ElementIndex(:) => NULL()
     INTEGER, POINTER :: NodeIndex(:) => NULL()
     INTEGER, POINTER :: Partition(:) => NULL()
+    INTEGER, POINTER :: Group(:) => NULL()
     
     ! Data structure for the particle-particle interaction 
     INTEGER :: MaxClosestParticles
@@ -159,12 +160,13 @@ CONTAINS
       WRITE(Message,'(A,T18,I0)') TRIM(StatusString(i))//': ',k
       CALL Info('ParticleStatusCount',Message,Level=8)
     END DO
+    
   END SUBROUTINE ParticleStatusCount
 
 
 
   !---------------------------------------------------------
-  !The following subroutines make the data structure 
+  ! The following subroutines make the data structure 
   ! transparent in the user subrouines and thereby make
   ! them more recilient to time.
   !> Returns coordinates of the particle.
@@ -181,8 +183,9 @@ CONTAINS
     Coord(1:dim) = Particles % Coordinate(no,:)
   END FUNCTION GetParticleCoord
 
-!> Returns velocity of the particle.
-    FUNCTION GetParticleVelo(Particles,No) RESULT ( Coord )
+  !> Returns velocity of the particle.
+  !---------------------------------------------------------
+  FUNCTION GetParticleVelo(Particles,No) RESULT ( Coord )
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
     REAL(KIND=dp) :: Coord(3) 
@@ -194,7 +197,8 @@ CONTAINS
     Coord(1:dim) = Particles % Velocity(no,:)
   END FUNCTION GetParticleVelo
 
-!> Returns force acting on the particle.
+  !> Returns force acting on the particle.
+  !-------------------------------------------------------
   FUNCTION GetParticleForce(Particles,No) RESULT ( Coord )
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -207,7 +211,8 @@ CONTAINS
     Coord(1:dim) = Particles % Force(no,:)
   END FUNCTION GetParticleForce
 
-!> Sets the particle coordinates.
+  !> Sets the particle coordinates.
+  !--------------------------------------------------------
   SUBROUTINE SetParticleCoord(Particles,No,Coord)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -219,6 +224,7 @@ CONTAINS
   END SUBROUTINE SetParticleCoord
 
   !> Sets the particle velocity.
+  !-------------------------------------------------------
   SUBROUTINE SetParticleVelo(Particles,No,Velo)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -230,6 +236,7 @@ CONTAINS
   END SUBROUTINE SetParticleVelo
 
   !> Sets the particle force.
+  !-------------------------------------------------------
   SUBROUTINE SetParticleForce(Particles,No,Force)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -242,6 +249,7 @@ CONTAINS
 
 
   !> Gets the previous particle coordinate.
+  !-----------------------------------------------------------
   FUNCTION GetParticlePrevCoord(Particles,No) RESULT ( Coord )
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -256,7 +264,8 @@ CONTAINS
 
   END FUNCTION GetParticlePrevCoord
  
-!> Gets the local coordinates of the element of the given particle.
+  !> Gets the local coordinates of the element of the given particle.
+  !-------------------------------------------------------------------
   SUBROUTINE GetParticleUVW(Particles,No, u, v, w )
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -277,7 +286,8 @@ CONTAINS
     END IF
   END SUBROUTINE GetParticleUVW
   
-!> Sets the local coordinates of the element of the given particle.
+  !> Sets the local coordinates of the element of the given particle.
+  !------------------------------------------------------------------
   SUBROUTINE SetParticleUVW(Particles,No,u,v,w)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -297,7 +307,8 @@ CONTAINS
     END IF
   END SUBROUTINE SetParticleUVW
 
-!> Adds a displacement to the particle coordinates.  
+  !> Adds a displacement to the particle coordinates.
+  !------------------------------------------------------------------
   SUBROUTINE AddParticleCoord(Particles,No,Coord)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No, DerOrder
@@ -308,7 +319,8 @@ CONTAINS
         Particles % Coordinate(no,:) + Coord(1:dim)
   END SUBROUTINE AddParticleCoord
   
-!> Adds a velocity difference to the particle velocity.  
+  !> Adds a velocity difference to the particle velocity.
+  !-------------------------------------------------------------------
   SUBROUTINE AddParticleVelo(Particles,No,Coord)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No, DerOrder
@@ -319,7 +331,8 @@ CONTAINS
         Particles % Velocity(no,:) + Coord(1:dim)
   END SUBROUTINE AddParticleVelo
  
-!> Adds to the force acting on the particle.
+  !> Adds to the force acting on the particle.
+  !-------------------------------------------------------------------
    SUBROUTINE AddParticleForce(Particles,No,Force)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No, DerOrder
@@ -330,7 +343,8 @@ CONTAINS
         Particles % Force(no,:) + Force(1:dim)
   END SUBROUTINE AddParticleForce
 
-!> Gets the status of the particle.  
+  !> Gets the status of the particle.
+  !-------------------------------------------------------------------
   FUNCTION GetParticleStatus(Particles,No) RESULT ( Status )
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -339,7 +353,8 @@ CONTAINS
     Status = Particles % Status(No)
   END FUNCTION GetParticleStatus
   
-!> Sets the status of the particle.  
+  !> Sets the status of the particle.
+  !-------------------------------------------------------------------
   SUBROUTINE SetParticleStatus(Particles,No,Status )
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -348,7 +363,8 @@ CONTAINS
     Particles % Status(No) = Status
   END SUBROUTINE SetParticleStatus
   
-!> Gets the elements where the particle is located in, or was located last time.  
+  !> Gets the elements where the particle is located in, or was located last time.  
+  !-------------------------------------------------------------------------------
   FUNCTION GetParticleElement(Particles,No) RESULT ( Index ) 
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -357,7 +373,8 @@ CONTAINS
     Index = Particles % ElementIndex(No)
   END FUNCTION GetParticleElement
   
-!> Sets the element where the particle is located.   
+  !> Sets the element where the particle is located.
+  !-------------------------------------------------------------------------------
   SUBROUTINE SetParticleElement(Particles,No,Index )
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -366,7 +383,8 @@ CONTAINS
     Particles % ElementIndex(No) = Index
   END SUBROUTINE SetParticleElement
   
-!> Gets the closest node related to the particle.  
+  !> Gets the closest node related to the particle.
+  !-------------------------------------------------------------------------------
   FUNCTION GetParticleNode(Particles,No) RESULT ( Index ) 
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -375,7 +393,8 @@ CONTAINS
     Index = Particles % NodeIndex(No)
   END FUNCTION GetParticleNode
   
-!> Sets the closest node related to the particle.  
+  !> Sets the closest node related to the particle.
+  !--------------------------------------------------------------------------------
   SUBROUTINE SetParticleNode(Particles,No,Index )
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
@@ -384,7 +403,36 @@ CONTAINS
     Particles % NodeIndex(No) = Index
   END SUBROUTINE SetParticleNode
  
+  !> Get the group in which the particle belongs to
+  !--------------------------------------------------------------------------------
+  FUNCTION GetParticleGroup(Particles,No) RESULT ( Index ) 
+    TYPE(Particle_t), POINTER :: Particles
+    INTEGER :: No
+    INTEGER :: Index
 
+    IF( Particles % NumberOfGroups > 1 ) THEN
+      Index = Particles % Group(No)
+    ELSE
+      Index = 0
+    END IF
+      
+  END FUNCTION GetParticleGroup
+  
+  !> Sets the group in which the particle belongs to 
+  !--------------------------------------------------------------------------------
+  SUBROUTINE SetParticleGroup(Particles,No,Index )
+    TYPE(Particle_t), POINTER :: Particles
+    INTEGER :: No
+    INTEGER :: Index
+
+    IF( Particles % NumberOfGroups > 1 ) THEN
+      Particles % Group(No) = Index
+    ELSE
+      CALL Warn('SetParticleGroup','Cannot set particle because there is only one group!')
+    END IF
+    
+  END SUBROUTINE SetParticleGroup
+ 
   !---------------------------------------------------------
   !> The subroutine marks the elements which are not on the 
   !> boundary, either internal or external one. 
@@ -580,7 +628,6 @@ CONTAINS
   END SUBROUTINE SetParticlePreliminaries
 
 
-
   !---------------------------------------------------------
   !> Subroutine allocate particles before launching them.
   !---------------------------------------------------------
@@ -746,7 +793,6 @@ CONTAINS
     END IF
 
   END SUBROUTINE AllocateParticles
-  
 
   !----------------------------------------------------
   !> Subroutine deletes lost particles. The reason for losing
@@ -804,7 +850,10 @@ CONTAINS
         Particles % NodeIndex(n1:n2) = Particles % NodeIndex(Perm(n1:n2))
     IF ( ASSOCIATED(Particles % Partition) ) &
         Particles % Partition(n1:n2) = Particles % Partition(Perm(n1:n2))
-
+    
+    IF( Particles % NumberOfGroups > 1 ) &
+        Particles % Group(n1:n2) = Particles % Group(Perm(n1:n2))
+    
     Particles % NumberOfParticles = n2
     
     IF ( n2 < PrevNoParticles ) THEN
@@ -825,9 +874,12 @@ CONTAINS
           Particles % NodeIndex(n2+1:PrevNoParticles) = 0
        IF ( ASSOCIATED(Particles % Partition) ) &
            Particles % Partition(n2+1:PrevNoParticles) = 0      
+       IF ( Particles % NumberOfGroups > 1 ) &
+           Particles % Group(n2+1:PrevNoParticles) = 0      
     END IF
 
-    ! Rorders the variables accordingly to Perm, no resize is needed since number of particles is not changed
+    ! Rorders the variables accordingly to Perm, no resize is needed since number of
+    ! particles is not changed.
     CALL ParticleVariablesResize( Particles, PrevNoParticles, PrevNoParticles, Perm )
 
 
@@ -918,7 +970,7 @@ RETURN
     ! --------------------------------------------
     Maxn = Particles % NumberOfParticles+NoParticles
     IF ( Maxn > Particles % MaxNumberOfParticles ) &
-        CALL AllocateParticles( Particles,Maxn )
+        CALL AllocateParticles( Particles, Maxn )
     
   END SUBROUTINE IncreaseParticles
   
@@ -947,7 +999,10 @@ RETURN
 
     IF ( ASSOCIATED(Particles % Partition) ) &
         DEALLOCATE( Particles % Partition )
-    
+
+    IF ( Particles % NumberOfGroups > 1 ) &
+        DEALLOCATE( Particles % Group )
+
     IF( ASSOCIATED( Particles % Coordinate ) ) &
         DEALLOCATE( Particles % Coordinate ) 
 
@@ -2128,11 +2183,12 @@ RETURN
   !> Initialize particle positions and velocities with a number of different
   !> methods, both random and uniform.
   !-------------------------------------------------------------------------
-  SUBROUTINE InitializeParticles( Particles, InitParticles, AppendParticles ) 
+  SUBROUTINE InitializeParticles( Particles, InitParticles, AppendParticles, Group ) 
     
     TYPE(Particle_t), POINTER :: Particles
     INTEGER, OPTIONAL :: InitParticles
     LOGICAL, OPTIONAL :: AppendParticles
+    INTEGER, OPTIONAL :: Group
     
     TYPE(ValueList_t), POINTER :: Params, BodyForce 
     TYPE(Variable_t), POINTER :: Var
@@ -2197,16 +2253,16 @@ RETURN
       VariableName = ListGetString( Params,'Initialization Mask Variable',GotIt )
       RequirePositivity = .FALSE.
     END IF
-    
+
     IF(GotIt) THEN
       Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
       IF( .NOT. ASSOCIATED( Var ) ) THEN
         CALL Fatal('InitializeParticles','Mask / Condition variable does not exist!')
       END IF
-      
+
       MaskPerm => Var % Perm
       MaskVal => Var % Values
-      
+
       IF(.NOT. ( ASSOCIATED( MaskPerm ) .AND. ASSOCIATED(MaskVal)) ) THEN
         CALL Warn('InitializeParticles','Initialization variable does not exist?')
       ELSE IF( MAXVAL( MaskPerm ) == 0 ) THEN
@@ -2230,36 +2286,36 @@ RETURN
             InvPerm(j) = i
           END DO
           nonodes = j
-          
+
           PRINT *,'Total nodes vs. masked',Mesh % NumberOfNodes,nonodes
         ELSE IF( InitMethod == 'elemental') THEN
           ALLOCATE( InvPerm( MAX( Mesh % NumberOfBulkElements, Mesh % NumberOfBoundaryElements ) ) ) 
           InvPerm = 0
-          
+
           j = 0
           DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
             CurrentElement => Mesh % Elements(i)
             NodeIndexes =>  CurrentElement % NodeIndexes
             n = CurrentElement % TYPE % NumberOfNodes
-            
+
             IF( i == Mesh % NumberOfBulkElements ) THEN
               IF( j > 0 ) EXIT
             END IF
-            
+
             IF( ANY( MaskPerm( NodeIndexes ) == 0 ) ) CYCLE
-            
+
             IF( RequirePositivity ) THEN
               meanval = SUM( MaskVal( MaskPerm( NodeIndexes ) ) ) 
               IF( meanval < 0.0_dp ) CYCLE
             END IF
-            
+
             ! If some of bulk elements have been found avtive
             j = j + 1
             InvPerm(j) = i
-            
+
           END DO
           noelements = j
-          
+
           PRINT *,'Total elements vs. masked',Mesh % NumberOfBulkElements,noelements
         END IF
       END IF
@@ -2391,7 +2447,14 @@ RETURN
     ! Allocate particles
     !-------------------------------------------------------------------------    
     CALL AllocateParticles( Particles, LastParticle )
-    
+
+    IF( Particles % NumberOfGroups > 1 ) THEN
+      IF( .NOT. PRESENT( Group ) ) THEN
+        CALL Fatal('InitializeParticles','Group used inconsistently!')
+      END IF
+      Particles % Group(Offset+1:LastParticle) = Group
+    END IF
+      
     Particles % NumberOfParticles = LastParticle
     
     Velocity => Particles % Velocity

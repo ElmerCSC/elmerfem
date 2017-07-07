@@ -77,9 +77,12 @@ CONTAINS
     LOGICAL :: Found, Visited = .FALSE.
     
     SAVE :: Rad, Mass, Spring, Damping, Friction, Visited
-    
-    
+
+     
     IF( .NOT. Visited ) THEN
+      IF( GlobalParticles % NumberOfGroups > 1 ) THEN
+        CALL Fatal('ParticleParticleContact','Implemented only for one particle type')
+      END IF
       Params => GetSolverParams()
       Rad = GetCReal(Params,'Particle Radius')
       Mass = GetCReal(Params,'Particle Mass')         
@@ -178,6 +181,10 @@ CONTAINS
         TrueCollision
     
     IF(.NOT. Visited ) THEN
+      IF( GlobalParticles % NumberOfGroups > 1 ) THEN
+        CALL Fatal('ParticleParticleCollision','Implemented only for one particle type')
+      END IF
+      
       Params => GetSolverParams()
       Rad1 = GetCReal(Params,'Particle Radius',Found)
       IF(.NOT. Found) THEN
@@ -466,7 +473,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,n,dim,NoParticles = 0,&
        ElementIndex, VisitedTimes = 0, nstep, istep, OutputInterval, &
        TimeOrder, TimeStepsTaken=0,estindexes(6),&
-       ParticleStepsTaken=0
+       ParticleStepsTaken=0, Group, NoGroups = 1
   REAL(KIND=dp) :: dtime, tottime = 0.0
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: cput1,cput2,dcput
@@ -503,6 +510,10 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     TimeOrder = GetInteger( Params,'Time Order',Found)
     IF(.NOT. Found) TimeOrder = 2
 
+    NoGroups = GetInteger( Params,'Number Of Particle Groups',Found )
+    IF(.NOT. Found) NoGroups = 1
+    Particles % NumberOfGroups = NoGroups 
+    
     CALL SetParticlePreliminaries( Particles, dim, TimeOrder )
 
     i = GetInteger( Params,'Random Seed',Found ) 
@@ -540,7 +551,17 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   !-------------------------------------------------------------------------
   IF( VisitedTimes == 1 .OR. &
       GetLogical( Params,'Reinitialize Particles',Found) ) THEN
-    CALL InitializeParticles( Particles ) 
+
+    IF( NoGroups > 1 ) THEN
+      DO Group = 1, NoGroups
+        CALL ListPushNameSpace('group'//TRIM(I2S(Group))//':')
+        CALL InitializeParticles( Particles, AppendParticles = .TRUE.,Group = Group )
+        CALL ListPopNameSpace()
+      END DO
+    ELSE
+      CALL InitializeParticles( Particles )
+    END IF
+    
     ParticlesLocated = .FALSE.
     IF( GetLogical( Params,'Particle Distance',Found) ) THEN
       CALL ParticleVariableCreate( Particles,'Particle Distance' )
