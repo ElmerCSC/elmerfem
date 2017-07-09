@@ -1005,12 +1005,12 @@
                     ThickSolution(k) = MAX(ThickPrev(k,1)/(1.0_dp + dt*Vvar(j)) , 0.0)
                  END IF   
               CASE('explicit')
-                 ThickSolution(k) = MAX(ThickPrev(k,1) - ThickSolution(k)*dt*(Vvar(j)+ublr(j)) + dt*ublr(j)*hr2(j), 0.0)
+                 ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - dt*(Vvar(j)+ublr(j))) + dt*ublr(j)*hr2(j), 0.0)
                  IF (ThickSolution(k) > hr2(j)) THEN 
-                    ThickSolution(k) = MAX(ThickPrev(k,1) - ThickSolution(k)*dt*Vvar(j) , 0.0)
+                    ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - dt*Vvar(j)) , 0.0)
                  END IF   
               CASE('crank-nicholson')
-                 ThickSolution(k) = MAX((ThickPrev(k,1)*(1.0_dp -0.5*dt*(Vvar(j)+ublr(j)) + dt*ublr(j)*hr2(j))) & 
+                 ThickSolution(k) = MAX((ThickPrev(k,1)*(1.0_dp - 0.5*dt*(Vvar(j)+ublr(j))) + dt*ublr(j)*hr2(j)) & 
                                 & /(1.0_dp + 0.5*dt*(Vvar(j)+ublr(j))) , 0.0)
                  IF (ThickSolution(k) > hr2(j)) THEN 
                     ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - 0.5*dt*Vvar(j))/(1.0_dp + 0.5*dt*Vvar(j)) , 0.0)
@@ -1150,9 +1150,9 @@
                  CASE('implicit') 
                     AreaSolution(k) = (AreaPrev(k,1) + dt*BETA)/(1.0_dp - dt*ALPHA)
                  CASE('explicit')
-                    AreaSolution(k) = AreaPrev(k,1)+ AreaSolution(k)*dt*ALPHA + dt*BETA 
+                    AreaSolution(k) = AreaPrev(k,1)*(1.0_dp + dt*ALPHA) + dt*BETA 
                  CASE('crank-nicholson')
-                    AreaSolution(k) = (AreaPrev(k,1)*(1.0 + 0.5*ALPHA*dt) + dt*BETA)/(1.0_dp - 0.5*dt*ALPHA)
+                    AreaSolution(k) = (AreaPrev(k,1)*(1.0_dp + 0.5*ALPHA*dt) + dt*BETA)/(1.0_dp - 0.5*dt*ALPHA)
                  END SELECT 
 
 
