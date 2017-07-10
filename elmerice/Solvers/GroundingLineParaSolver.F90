@@ -56,18 +56,18 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t), POINTER :: Element
   TYPE(ValueList_t), POINTER :: Material, SolverParams
   TYPE(Variable_t), POINTER :: PointerToVariable
-  TYPE(variable_t), POINTER :: NormalVar, VarSurfResidual, GroundedMaskVar, HydroVar
+  TYPE(variable_t), POINTER :: NormalVar, VarSurfResidual, GroundedMaskVar, HydroVar, VarSurfResidualWeight
   TYPE(Nodes_t), SAVE :: Nodes
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundingLinePara'
   REAL(KIND=dp), POINTER :: VariableValues(:), GroundedMask(:)
-  REAL(KIND=dp), POINTER :: NormalValues(:), ResidValues(:), HydroValues(:)
+  REAL(KIND=dp), POINTER :: NormalValues(:), ResidValues(:), HydroValues(:), ResidValuesWeight(:)
   REAL(KIND=dp), ALLOCATABLE :: Normal(:), Fwater(:), Fbwater(:), Fbase(:)
   REAL(KIND=dp) :: comp, GLNodeX, FFNodeX, GLstressSum, FFstressSum, cond
   REAL(KIND=dp) :: GLParaPosition, ratio
 
   INTEGER, POINTER :: Permutation(:), GroundedMaskPerm(:)
-  INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), HydroPerm(:)
+  INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), HydroPerm(:), ResidPermWeight(:)
 
   INTEGER :: DIM, HydroDIM, tt, ii, jj, n, GLnodenumber
 
@@ -89,6 +89,9 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
 
     REAL(KIND=dp) :: pParamRatio = 1.0
     ! REAL(KIND=dp), POINTER :: LGParaData(:), FFParaData(:), GroundedMask(:), GroundingLinePara(:)
+
+    TYPE(ValueList_t),POINTER :: BC
+    REAL(KIND=dp) :: ExtPressure(2)
 !=========================================================================
 
   SAVE HydroDIM, bedPComputed, DIM, FirstTime
@@ -145,6 +148,12 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
   VarSurfResidual => VariableGet( Model % Mesh % Variables, 'Flow Solution Loads',UnFoundFatal=UnFoundFatal)
   ResidPerm => VarSurfResidual  % Perm
   ResidValues => VarSurfResidual % Values
+
+  ! Load from flow solver
+  VarSurfResidualWeight => VariableGet( Model % Mesh % Variables, 'Flow Solution Weights',UnFoundFatal=UnFoundFatal)
+  ResidPermWeight => VarSurfResidualWeight  % Perm
+  ResidValuesWeight => VarSurfResidualWeight % Values
+
 
   ! Normal Vector
   NormalVar => VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=UnFoundFatal)
@@ -222,6 +231,14 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
 
         CALL GetElementNodes(Nodes, Element)
 
+
+        BC => GetBC()
+        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
+
+        ExtPressure(1:2) = GetReal( BC, 'bedrock Pressure', GotIt )
+
+
+
       ! For GL element which contains GL and FF nodes
         IF ( ALL(Permutation(Element % NodeIndexes) > 0) ) THEN
           IF (((ANY(VariableValues(Permutation(Element % NodeIndexes)) >= 0))) .AND. &
@@ -267,7 +284,14 @@ SUBROUTINE GroundingLineParaSolver( Model,Solver,dt,TransientSimulation )
 
                 WRITE(134, *) Time, FFNodeIndex, GLNodeIndex, GLParaPosition, &
                       VariableValues(Permutation(FFNodeIndex)), VariableValues(Permutation(GLNodeIndex)), &
-                      ResidValues((DIM+1)*(ResidPerm(FFNodeIndex)-1)+1 : (DIM+1)*ResidPerm(FFNodeIndex)-1)
+                      ResidValues((DIM+1)*(ResidPerm(FFNodeIndex)-1)+1 : (DIM+1)*ResidPerm(FFNodeIndex)-1), &
+                      NormalValues(DIM*(NormalPerm(FFNodeIndex)-1)+1 : DIM*NormalPerm(FFNodeIndex)), &
+                      HydroValues(HydroDIM*(HydroPerm(FFNodeIndex)-1)+DIM+1 : HydroDIM*(HydroPerm(FFNodeIndex))), &
+                      ResidValues((DIM+1)*(ResidPerm(GLNodeIndex)-1)+1 : (DIM+1)*ResidPerm(GLNodeIndex)-1), &
+                      NormalValues(DIM*(NormalPerm(GLNodeIndex)-1)+1 : DIM*NormalPerm(GLNodeIndex)), &
+                      HydroValues(HydroDIM*(HydroPerm(GLNodeIndex)-1)+DIM+1 : HydroDIM*(HydroPerm(GLNodeIndex))) ,&
+                      ExtPressure(1:2), ResidValuesWeight(ResidPermWeight(FFNodeIndex)), &
+                      ResidValuesWeight(ResidPermWeight(GLNodeIndex))
                 CLOSE(134)
               END IF
             ELSE
