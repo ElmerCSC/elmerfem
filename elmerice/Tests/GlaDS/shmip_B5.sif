@@ -207,9 +207,9 @@ Solver 1
   Activate Melt from Channels = Logical True
   Neglect Sheet Thickness in Potential = Logical True
 
-  ! choices are EXPLICT, CRANK-NICHOLSON, IMPLICIT
-  Channels Integration method = String "Crank-Nicholson"
-  Sheet Integration method = String "Crank-Nicholson"
+  ! choices are EXPLICT, CRANK-NICOLSON, IMPLICIT
+  Channels Integration method = String "Crank-Nicolson"
+  Sheet Integration method = String "Crank-Nicolson"
 
   Exported Variable 1 = -dofs 1 "Vclose"
   Exported Variable 2 = -dofs 1 "Wopen"

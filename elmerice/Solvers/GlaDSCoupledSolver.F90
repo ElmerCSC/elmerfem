@@ -340,8 +340,8 @@
      IF(.NOT.Found) THEN        
         CALL FATAL(SolverName, 'No >Sheet Integration Methods< found')
      ELSE
-        IF ((methodSheet.NE.'explicit').AND.(methodSheet.NE.'implicit').AND.(methodSheet.NE.'crank-nicholson')) THEN
-           CALL FATAL(SolverName, 'Sheet Integration Method: Implicit, Explicit or Crank-Nicholson')
+        IF ((methodSheet.NE.'explicit').AND.(methodSheet.NE.'implicit').AND.(methodSheet.NE.'crank-nicolson')) THEN
+           CALL FATAL(SolverName, 'Sheet Integration Method: Implicit, Explicit or Crank-Nicolson')
         END IF 
      END IF
 
@@ -358,8 +358,8 @@
         IF(.NOT.Found) THEN        
            CALL FATAL(SolverName, 'No >Channels Integration Methods< found')
         ELSE
-           IF ((methodChannels.NE.'explicit').AND.(methodChannels.NE.'implicit').AND.(methodChannels.NE.'crank-nicholson')) THEN
-              CALL FATAL(SolverName, 'Channels Integration Method: Implicit, Explicit or Crank-Nicholson')
+           IF ((methodChannels.NE.'explicit').AND.(methodChannels.NE.'implicit').AND.(methodChannels.NE.'crank-nicolson')) THEN
+              CALL FATAL(SolverName, 'Channels Integration Method: Implicit, Explicit or Crank-Nicolson')
            END IF 
         END IF
      END IF
@@ -1009,7 +1009,7 @@
                  IF (ThickSolution(k) > hr2(j)) THEN 
                     ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - dt*Vvar(j)) , 0.0)
                  END IF   
-              CASE('crank-nicholson')
+              CASE('crank-nicolson')
                  ThickSolution(k) = MAX((ThickPrev(k,1)*(1.0_dp - 0.5*dt*(Vvar(j)+ublr(j))) + dt*ublr(j)*hr2(j)) & 
                                 & /(1.0_dp + 0.5*dt*(Vvar(j)+ublr(j))) , 0.0)
                  IF (ThickSolution(k) > hr2(j)) THEN 
@@ -1151,7 +1151,7 @@
                     AreaSolution(k) = (AreaPrev(k,1) + dt*BETA)/(1.0_dp - dt*ALPHA)
                  CASE('explicit')
                     AreaSolution(k) = AreaPrev(k,1)*(1.0_dp + dt*ALPHA) + dt*BETA 
-                 CASE('crank-nicholson')
+                 CASE('crank-nicolson')
                     AreaSolution(k) = (AreaPrev(k,1)*(1.0_dp + 0.5*ALPHA*dt) + dt*BETA)/(1.0_dp - 0.5*dt*ALPHA)
                  END SELECT 
 
