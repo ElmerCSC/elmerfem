@@ -1,0 +1,94 @@
+!------------------------------------------------------------------
+! Isotropic mesh adaptation: 
+!   refine the mesh near the line x=0.
+!   The metric is of size 1 and is directly the required element size
+!------------------------------------------------------------------
+
+Header
+  Mesh DB "." "square"
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady
+
+  Steady State Min Iterations = 2
+  Steady State Max Iterations = 2
+
+  max output level = 3
+  Post File = "case_iso.vtu"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  ElementSize = Variable Coordinate 1
+     REAL MATC "0.01+0.2*abs(tx)"
+End 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "Initialise fn"
+   Variable = -nooutput dumy
+
+    Procedure = "ElmerIceSolvers" "UpdateExport"
+
+    Optimize Bandwidth = False
+
+    Exported Variable 1 = ElementSize
+End
+
+Solver 2
+!! mandatory else Model % Mesh % Changed reset to .FALSE. in coupled simulations
+  Exec Solver = after timestep
+
+  Equation = "MMG"
+  Variable = -nooutput dumy
+  Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
+
+  Optimize Bandwidth = False
+
+  Output file name = "square_iso"
+  Metric Variable Name = String "ElementSize"
+
+End
+
+Solver 3
+  Exec Solver = after timestep
+  Equation = SaveScalars
+   Procedure =  "SaveData" "SaveScalars"
+  Filename = f.dat
+  Show Norm Index = Integer 1
+  Operator 1 = nodes
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 1
+End
+Boundary Condition 2
+  Target Boundaries = 2
+End
+Boundary Condition 3
+  Target Boundaries = 3
+End
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+Solver 3 :: Reference Norm = Real 2417.0
+Solver 3 :: Reference Norm Tolerance = Real 1E-01
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=2417,EPS=1E-01\n" );
