@@ -117,7 +117,7 @@
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
      CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel
-     INTEGER :: CompressibilityModel, ModelCoords, ModelDim
+     INTEGER :: CompressibilityModel, ModelCoords, ModelDim, NoActive
      INTEGER :: body_id,bf_id,eq_id,DIM
      INTEGER :: MidEdgeNodes(12), BrickFaceMap(6,4)
      INTEGER, POINTER :: NodeIndexes(:), Indexes(:)
@@ -535,9 +535,11 @@
        body_id = -1
 
        CALL StartAdvanceOutput( 'FlowSolve', 'Assembly: ' )
-       DO t = 1,GetNOFActive()
+       NoActive = GetNOFActive()
+       
+       DO t = 1,NoActive
 
-         CALL AdvanceOutput( t,GetNOFActive() )
+         CALL AdvanceOutput( t, NoActive )
 !
          Element => GetActiveElement(t)
          NodeIndexes => Element % NodeIndexes
@@ -1033,7 +1035,9 @@
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
-      DO t = 1,GetNOFBoundaryElements()
+      NoActive = GetNOFBoundaryElements()
+      
+      DO t = 1,NoActive
 
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -1332,7 +1336,9 @@
       ! Replace the zero pressure solution at the nodes which are not needed in the linear
       ! pressure approximation by the interpolated values for right visualization:
       !----------------------------------------------------------------------------------------
-      DO t=1,GetNOFActive()
+      NoActive = GetNOFActive()
+
+      DO t=1,NoActive
         ! First the midedge nodes:
         Element => GetActiveElement(t)
         IF ( Element % TYPE % BasisFunctionDegree <= 1 ) CYCLE

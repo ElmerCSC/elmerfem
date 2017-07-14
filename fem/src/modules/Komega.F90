@@ -65,7 +65,7 @@
 
      INTEGER, POINTER :: KinPerm(:)
 
-     INTEGER :: NewtonIter,NonlinearIter
+     INTEGER :: NewtonIter,NonlinearIter,NoActive
      REAL(KIND=dp) :: NewtonTol
 
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
@@ -161,9 +161,11 @@
 !------------------------------------------------------------------------------
        body_id = -1
        CALL StartAdvanceOutput( 'Komega', 'Assembly:')
-       DO t=1,Solver % NumberOfActiveElements
+       NoActive = GetNOFActive()
 
-         CALL AdvanceOutput(t,GetNOFActive() )
+       DO t=1,NoActive
+
+         CALL AdvanceOutput(t,NoActive)
 !------------------------------------------------------------------------------
 !        Check if this element belongs to a body where kinetic energy
 !        should be calculated
