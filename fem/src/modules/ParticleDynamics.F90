@@ -473,7 +473,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,n,dim,NoParticles = 0,&
        ElementIndex, VisitedTimes = 0, nstep, istep, OutputInterval, &
        TimeOrder, TimeStepsTaken=0,estindexes(6),&
-       ParticleStepsTaken=0, Group, NoGroups = 1
+       ParticleStepsTaken=0, Group, NoGroups = 0
   REAL(KIND=dp) :: dtime, tottime = 0.0
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: cput1,cput2,dcput
@@ -483,7 +483,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: WeightVector(:),TmpValues(:)
   TYPE(Particle_t), POINTER :: Particles
 
-  SAVE CollisionInteraction, ContactInteraction, &
+  SAVE CollisionInteraction, ContactInteraction, NoGroups, &
       ParticleToField, OutputInterval, Nstep, VisitedTimes, &
       WeightVector, TimeOrder, ParticleInBox, &
       tottime, TimeStepsTaken, ParticleStepsTaken,ParticleWall,StatInfo, &
@@ -511,9 +511,14 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     IF(.NOT. Found) TimeOrder = 2
 
     NoGroups = GetInteger( Params,'Number Of Particle Groups',Found )
-    IF(.NOT. Found) NoGroups = 1
-    Particles % NumberOfGroups = NoGroups 
-    
+    IF( Found ) THEN
+      Particles % NumberOfGroups = NoGroups 
+    ELSE
+      ! This means that group concept is passive
+      ! We want one group to be already a test case for the group concept
+      NoGroups = 0
+    END IF
+      
     CALL SetParticlePreliminaries( Particles, dim, TimeOrder )
 
     i = GetInteger( Params,'Random Seed',Found ) 
@@ -552,7 +557,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   IF( VisitedTimes == 1 .OR. &
       GetLogical( Params,'Reinitialize Particles',Found) ) THEN
 
-    IF( NoGroups > 1 ) THEN
+    IF( NoGroups > 0 ) THEN
       DO Group = 1, NoGroups
         CALL ListPushNameSpace('group'//TRIM(I2S(Group))//':')
         CALL InitializeParticles( Particles, AppendParticles = .TRUE.,Group = Group )

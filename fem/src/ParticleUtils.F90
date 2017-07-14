@@ -55,7 +55,7 @@ MODULE ParticleUtils
   TYPE Particle_t
     INTEGER :: Dim, NumberOfParticles=0, MaxNumberOfParticles=0, &
                NumberOfMovingParticles = 0, &
-               TimeOrder = 0, FirstGhost = 0, NumberOfGroups = 1
+               TimeOrder = 0, FirstGhost = 0, NumberOfGroups = 0
     TYPE(Variable_t), POINTER :: Variables => NULL()	
     
     REAL(KIND=dp) :: time, dtime
@@ -410,7 +410,7 @@ CONTAINS
     INTEGER :: No
     INTEGER :: Index
 
-    IF( Particles % NumberOfGroups > 1 ) THEN
+    IF( Particles % NumberOfGroups > 0 ) THEN
       Index = Particles % Group(No)
     ELSE
       Index = 0
@@ -425,7 +425,7 @@ CONTAINS
     INTEGER :: No
     INTEGER :: Index
 
-    IF( Particles % NumberOfGroups > 1 ) THEN
+    IF( Particles % NumberOfGroups > 0 ) THEN
       Particles % Group(No) = Index
     ELSE
       CALL Warn('SetParticleGroup','Cannot set particle because there is only one group!')
@@ -851,7 +851,7 @@ CONTAINS
     IF ( ASSOCIATED(Particles % Partition) ) &
         Particles % Partition(n1:n2) = Particles % Partition(Perm(n1:n2))
     
-    IF( Particles % NumberOfGroups > 1 ) &
+    IF( Particles % NumberOfGroups > 0 ) &
         Particles % Group(n1:n2) = Particles % Group(Perm(n1:n2))
     
     Particles % NumberOfParticles = n2
@@ -874,7 +874,7 @@ CONTAINS
           Particles % NodeIndex(n2+1:PrevNoParticles) = 0
        IF ( ASSOCIATED(Particles % Partition) ) &
            Particles % Partition(n2+1:PrevNoParticles) = 0      
-       IF ( Particles % NumberOfGroups > 1 ) &
+       IF ( Particles % NumberOfGroups > 0 ) &
            Particles % Group(n2+1:PrevNoParticles) = 0      
     END IF
 
@@ -1000,7 +1000,7 @@ RETURN
     IF ( ASSOCIATED(Particles % Partition) ) &
         DEALLOCATE( Particles % Partition )
 
-    IF ( Particles % NumberOfGroups > 1 ) &
+    IF ( Particles % NumberOfGroups > 0 ) &
         DEALLOCATE( Particles % Group )
 
     IF( ASSOCIATED( Particles % Coordinate ) ) &
@@ -2448,7 +2448,7 @@ RETURN
     !-------------------------------------------------------------------------    
     CALL AllocateParticles( Particles, LastParticle )
 
-    IF( Particles % NumberOfGroups > 1 ) THEN
+    IF( Particles % NumberOfGroups > 0 ) THEN
       IF( .NOT. PRESENT( Group ) ) THEN
         CALL Fatal('InitializeParticles','Group used inconsistently!')
       END IF
