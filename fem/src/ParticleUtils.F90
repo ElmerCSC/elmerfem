@@ -639,7 +639,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Velocity(:,:), Force(:,:), &
         Coordinate(:,:), PrevCoordinate(:,:), PrevVelocity(:,:)
     INTEGER, POINTER :: Status(:), ElementIndex(:), FaceIndex(:), NodeIndex(:), &
-	Closest(:),Partition(:)
+	Closest(:),Partition(:),Group(:)
     INTEGER :: PrevNoParticles, dofs, No, n, dim, TimeOrder, n1, n2
     INTEGER, ALLOCATABLE :: Perm(:)
     
@@ -669,7 +669,8 @@ CONTAINS
     ElementIndex => Particles % ElementIndex
     NodeIndex => Particles % NodeIndex
     Partition => Particles % Partition
-
+    Group => Particles % Group
+    
     ! Allocate the desired number of particles
     ALLOCATE( Particles % Coordinate(NoParticles,dofs))
     ALLOCATE( Particles % Velocity(NoParticles,dofs))
@@ -687,6 +688,10 @@ CONTAINS
     IF( Particles % NeighbourTable ) THEN
       Closest => Particles % ClosestNode        
       ALLOCATE( Particles % ClosestNode(NoParticles) )
+    END IF
+    
+    IF( Particles % NumberOfGroups > 0 ) THEN
+      ALLOCATE( Particles % Group( NoParticles ) )
     END IF
     
     IF( ASSOCIATED( NodeIndex ) ) THEN
@@ -741,18 +746,22 @@ CONTAINS
           Particles % NodeIndex(n1:n2) = NodeIndex(Perm(n1:n2))
       IF ( ASSOCIATED(Partition) ) &
           Particles % Partition(n1:n2) = Partition(Perm(n1:n2))
-            
+
+      IF ( ASSOCIATED(Group) ) &
+          Particles % Group(n1:n2) = Group(Perm(n1:n2))      
+
       PrevNoParticles = n
       Particles % NumberOfParticles = n
       
       ! Deallocate the old stuff
-      DEALLOCATE(Coordinate, Velocity, Force, PrevCoordinate )
+      DEALLOCATE( Coordinate, Velocity, Force, PrevCoordinate )
       DEALLOCATE( Status, FaceIndex, ElementIndex ) 
 
       IF( ASSOCIATED( PrevVelocity ) ) DEALLOCATE( PrevVelocity )
       IF( Particles % NeighbourTable ) DEALLOCATE(Closest)
       IF ( ASSOCIATED(NodeIndex) ) DEALLOCATE(NodeIndex)
       IF ( ASSOCIATED(Partition) ) DEALLOCATE(Partition)
+      IF( ASSOCIATED( Group ) ) DEALLOCATE( Group ) 
     END IF
 
     ! Initialize the newly allocated particles with default values
@@ -781,6 +790,10 @@ CONTAINS
     IF( ASSOCIATED( Particles % Partition) ) &
         Particles % Partition(n1:n2) = ParEnv % MyPe + 1
 
+    IF( ASSOCIATED( Particles % Group ) ) &
+        Particles % Group(n1:n2) = 0
+
+    
     Particles % MaxNumberOfParticles = NoParticles
 
     ! Finally resize the generic variables related to the particles

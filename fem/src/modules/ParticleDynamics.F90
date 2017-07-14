@@ -559,6 +559,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
 
     IF( NoGroups > 0 ) THEN
       DO Group = 1, NoGroups
+        CALL Info('ParticleDynamics','Initializing particles in group '//TRIM(I2S(group)),Level=5)
         CALL ListPushNameSpace('group'//TRIM(I2S(Group))//':')
         CALL InitializeParticles( Particles, AppendParticles = .TRUE.,Group = Group )
         CALL ListPopNameSpace()
