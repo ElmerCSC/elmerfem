@@ -3576,7 +3576,7 @@ CONTAINS
      END SELECT
 
 
-     ! Initialize the handle entries because it may be that the list stucture was altered,
+     ! Initialize the handle entries because it may be that the list structure was altered,
      ! or the same handle is used for different keyword.
      Handle % ConstantEverywhere = .TRUE.
      Handle % GlobalInList = .FALSE.

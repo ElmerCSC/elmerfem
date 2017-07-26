@@ -302,7 +302,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   IF( PiolaVersion .AND. TG ) THEN
     CALL Fatal('WhitneyAVSolver', &
-        'Tree Gauge cannot be used in conjuction with Piola transformation')
+        'Tree Gauge cannot be used in conjunction with Piola transformation')
   END IF
 
 
@@ -2027,7 +2027,7 @@ END SUBROUTINE LocalConstraintMatrix
            ! Note that the conductivity term <C A, eta> above can be used to 
            ! introduce the anisotropic effect in the laminate stack. However, 
            ! in classical approach of the Low-Frequency model it is set 
-           ! to zero (this is left to the user to deside).
+           ! to zero (this is left to the user to decide).
            ! -------------------------------------------------------------------
            IF (LaminateStackModel=='low-frequency model') THEN
                MASS(p,q) = MASS(p,q) + LocalLamCond * LocalLamthick**2/12d0 * & 

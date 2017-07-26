@@ -581,7 +581,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
            END DO
         END IF
 
-        ! set coords of highest occuring dimension to zero (to get correct path element)
+        ! set coords of highest occurring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
         ElementNodes % z(1:n) = 0.0_dp
         IF (DIM == 2) THEN

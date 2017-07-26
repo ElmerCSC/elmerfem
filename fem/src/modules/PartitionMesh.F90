@@ -120,7 +120,7 @@
    CONTAINS
 
      ! Inherit partition from a boundary partition.
-     ! In case of conflict the 1st occurance prevails.
+     ! In case of conflict the 1st occurrence prevails.
      !-----------------------------------------------------
      SUBROUTINE InheritBoundaryPart()
        

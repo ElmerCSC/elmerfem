@@ -1962,7 +1962,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
 !> Removes zeros from the matrix structure.
 !> This might be done in order to save memory, or to speed up the matrix 
-!> operations. One must be carefull since the fact the an entry is zero
+!> operations. One must be careful since the fact the an entry is zero
 !> does not always imply that it would be zero throughout the simulation.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_RemoveZeros( A  )

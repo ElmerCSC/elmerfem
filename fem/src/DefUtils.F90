@@ -5326,7 +5326,7 @@ CONTAINS
      ! Nodal indexes
      Indexes(1:n) = Element % NodeIndexes(1:n)
 
-     ! Assign rest of indexes if neccessary
+     ! Assign rest of indexes if necessary
      SELECT CASE(Parent % TYPE % DIMENSION)
      CASE (1)
        indSize = n 
