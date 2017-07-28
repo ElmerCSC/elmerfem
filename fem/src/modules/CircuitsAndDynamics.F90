@@ -92,21 +92,35 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   LOGICAL :: First=.TRUE.
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
+  TYPE(ValueList_t), POINTER :: SolverParams
 
   INTEGER :: p, n, istat, max_element_dofs
+  
+  LOGICAL :: EEC
+  REAL :: EEC_freq, EEC_time_0
+  
   TYPE(Mesh_t), POINTER :: Mesh  
 
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)
   
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)    
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)   
+  REAL(KIND=dp), ALLOCATABLE :: A0(:,:)	!< Init field for EEC
+   
   TYPE(Variable_t), POINTER :: LagrangeVar
   INTEGER, SAVE :: Tstep=-1
 !------------------------------------------------------------------------------
 
   IF (First) THEN
     First = .FALSE.
+    SolverParams => GetSolverParams(Solver)
+    EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
+    IF (EEC) THEN
+      CALL Info('CircuitsAndDynamics', "Using EEC steady state forcing.", Level=1)
+	  WRITE( Message,'(A,3ES15.2)') 'EEC signal frequency: ', EEC_freq
+      CALL Info('CircuitsAndDynamics', Message, Level=1)
+    END IF
     
     Model % HarmonicCircuits = .FALSE.
     CALL AddComponentsToBodyLists()
