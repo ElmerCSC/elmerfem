@@ -775,7 +775,7 @@
               IF (other_body_id < 1) THEN ! only one body in calculation
                  ParentElement => Element % BoundaryInfo % Right
                  IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => Element % BoundaryInfo % Left
-              ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+              ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
                  ParentElement => Element % BoundaryInfo % Right
                  IF (.NOT.ASSOCIATED(ParentElement) ) THEN ! boundary is declared in input file, but does not xist
                     ParentElement => Element % BoundaryInfo % Left 

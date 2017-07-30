@@ -161,7 +161,7 @@ Solver 2
 
   Steady State Convergence Tolerance = Real 1.0e-12
 
-! Define  some usefull Variables
+! Define  some useful Variables
   Exported Variable 1 = BetaS
   Exported Variable 1 DOFS = 1
   Exported Variable 2 = MuS
