@@ -2245,7 +2245,7 @@ CONTAINS
       rK = HUGE(rK)
       SELECT CASE(Family)
       CASE(3)
-        ! Estimate the lenght of the longest edge:
+        ! Estimate the length of the longest edge:
         p0(1) = LagrangeNodes(2,1) - LagrangeNodes(1,1)
         p0(2) = LagrangeNodes(2,2) - LagrangeNodes(1,2)
         rK = MIN(rK,SQRT(SUM(p0(:)**2)))
@@ -3064,7 +3064,7 @@ CONTAINS
     ! ------------------------------------------------------------------------------
     ! The following parameter defines how the normal strain variable is handled.
     ! With NoNormalStress = .TRUE. the traditional condition of vanishing normal
-    ! stress is enforced a priori. Otherwise the energy priciple is used to determine
+    ! stress is enforced a priori. Otherwise the energy principle is used to determine
     ! the normal strain variable.
     ! ------------------------------------------------------------------------------
     NoNormalStress = .FALSE. ! The choice .TRUE. does not work anymore if membrabe

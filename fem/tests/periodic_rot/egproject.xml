@@ -6773,8 +6773,8 @@
             <value>0</value>
          </widget>
          <widget type="Label" >
-            <key>/Linear elasticity/Material/Material pricipal directions/0</key>
-            <value>Material pricipal directions</value>
+            <key>/Linear elasticity/Material/Material principal directions/0</key>
+            <value>Material principal directions</value>
          </widget>
          <widget type="Edit" >
             <key>/Linear elasticity/Material/Poisson ratio/0</key>

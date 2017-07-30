@@ -3876,7 +3876,7 @@ CONTAINS
 
 !-----------------------------------------------------------------------------
 !>     A pseudo geometric version of the previous
-!>     Here the stregth of connections is assumed to be inversily proportional
+!>     Here the strength of connections is assumed to be inversily proportional
 !>     to the distance between nodes. 
 !------------------------------------------------------------------------------
      FUNCTION InterpolateF2CDistance( Fmat, CF, DOFs) RESULT (Projector)

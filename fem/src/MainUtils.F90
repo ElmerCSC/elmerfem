@@ -1122,7 +1122,7 @@ CONTAINS
         END IF
 
         ! Basically the solver could be matrix free but still the matrix
-        ! is used here temperarily since it is needed when making the 
+        ! is used here temporarily since it is needed when making the 
         ! permutation vector
         !-----------------------------------------------------------------
         IF( ListGetLogical( SolverParams, 'No Matrix', Found ) ) THEN
@@ -2078,7 +2078,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!   Intialize equation solvers for new timestep
+!   Initialize equation solvers for new timestep
 !------------------------------------------------------------------------------
     nSolvers = Model % NumberOfSolvers
 

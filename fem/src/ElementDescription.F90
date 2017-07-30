@@ -2474,7 +2474,7 @@ END IF
                  IF ( q >= SIZE(BasisDegree) ) CYCLE
                  q = q + 1
 
-                 ! Use basis compatible with pyramid if neccessary
+                 ! Use basis compatible with pyramid if necessary
                  ! @todo Correct this!
                  IF (Edge % PDefs % pyramidQuadEdge) THEN
                     CALL Fatal('ElementInfo','Pyramid compatible wedge edge basis NIY!')
@@ -3113,7 +3113,7 @@ END IF
                  IF ( q >= SIZE(Basis) ) CYCLE
                  q = q + 1
 
-                 ! Use basis compatible with pyramid if neccessary
+                 ! Use basis compatible with pyramid if necessary
                  ! @todo Correct this!
                  IF (Edge % PDefs % pyramidQuadEdge) THEN
                     CALL Fatal('ElementInfo','Pyramid compatible wedge edge basis NIY!')

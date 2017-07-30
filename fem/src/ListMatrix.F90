@@ -160,7 +160,7 @@ CONTAINS
 
 !-------------------------------------------------------------------------------
 !> Transfer the flexible list matrix to the more efficient CRS matrix that is 
-!> used in most places of the code. The matrix structure can accomodate both forms.
+!> used in most places of the code. The matrix structure can accommodate both forms.
 !-------------------------------------------------------------------------------
   SUBROUTINE List_ToCRSMatrix(A)
 !-------------------------------------------------------------------------------

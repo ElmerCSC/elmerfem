@@ -204,7 +204,7 @@ MODULE DiffuseConvectiveGeneral
  
 !------------------------------------------------------------------------------
 !    Stabilization parameters: hK, mK (take a look at Franca et.al.)
-!    If there is no convection term we dont need stabilization.
+!    If there is no convection term we don't need stabilization.
 !------------------------------------------------------------------------------
      ConvectAndStabilize = .FALSE.
      IF ( Stabilize .AND. ANY(NodalC1 /= 0.0D0) ) THEN

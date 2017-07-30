@@ -574,7 +574,7 @@ INCLUDE "mpif.h"
       CALL Info( 'EigenSolve', 'Computed Eigen Values: ', Level=3 )
       CALL Info( 'EigenSolve', '--------------------------------', Level=3 )
 
-      ! Restore matrix values, if modifed when using shift:
+      ! Restore matrix values, if modified when using shift:
       ! ---------------------------------------------------
       IF ( SigmaR /= 0.0d0 ) THEN
          A % Values = A % Values + SigmaR * A % MassValues
@@ -1193,7 +1193,7 @@ INCLUDE "mpif.h"
       CALL Info( 'EigenSolve', 'Computed Eigen Values: ', Level=3 )
       CALL Info( 'EigenSolve', '--------------------------------', Level=3 )
 
-      ! Restore matrix values, if modifed when using shift:
+      ! Restore matrix values, if modified when using shift:
       ! ---------------------------------------------------
       IF ( Sigma /= 0._dp ) THEN
         DO i=1,Matrix % NumberOfRows,2

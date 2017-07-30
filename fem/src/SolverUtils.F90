@@ -2261,7 +2261,7 @@ CONTAINS
        !------------------------------------------------------------------
        CALL NormalContactSet()
 
-       ! i) If requested ensure a minumum number of contact nodes
+       ! i) If requested ensure a minimum number of contact nodes
        !-------------------------------------------------------------------
        LimitedMin = ListGetInteger( BC,'Contact Active Set Minimum',Found)
        IF( Found ) CALL IncreaseContactSet( LimitedMin )
@@ -8338,7 +8338,7 @@ END FUNCTION SearchNodeL
 
 
     ! Optional a posteriori scaling for the computed fields
-    ! May be usefull for some floating systems where one want to impose some intergral 
+    ! May be useful for some floating systems where one want to impose some intergral 
     ! constraints without actually using them. Then first use just one Dirichlet point
     ! and then fix the level a posteriori using this condition. 
     !----------------------------------------------------------------------------------
@@ -9359,7 +9359,7 @@ END FUNCTION SearchNodeL
         PiecePerm(j) = NoPieces 
       END IF
     END DO
-    CALL Info('CalculateMeshPieces','Number of seperate pieces in mesh is '//TRIM(I2S(NoPieces)))
+    CALL Info('CalculateMeshPieces','Number of separate pieces in mesh is '//TRIM(I2S(NoPieces)))
 
 
     ! Save the mesh piece field to > mesh piece < 
@@ -13560,7 +13560,7 @@ CONTAINS
 
 
 !---------------------------------------------------------------------------------
-!> Set the diagonal entry to given minumum.
+!> Set the diagonal entry to given minimum.
 !----------------------------------------------------------------------------------
   SUBROUTINE LinearSystemMinDiagonal( Solver )
 !----------------------------------------------------------------------------------    

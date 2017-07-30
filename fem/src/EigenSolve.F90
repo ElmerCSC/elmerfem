@@ -528,7 +528,7 @@ CONTAINS
          CALL Info( 'EigenSolve',Message, Level=4 )
          CALL Info( 'EigenSolve', '--------------------------------', Level=4 )
 
-         ! Restore matrix values, if modifed when using shift:
+         ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
          IF ( SigmaR /= 0.0d0 ) THEN
            Matrix % Values = Matrix % Values + SigmaR * Matrix % MassValues
@@ -1411,7 +1411,7 @@ END SUBROUTINE CheckResiduals
          CALL Info( 'EigenSolveComplex', 'Computed Eigen Values: ', Level=4 )
          CALL Info( 'EigenSolveComplex', '--------------------------------', Level=4 )
 
-         ! Restore matrix values, if modifed when using shift:
+         ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
          IF ( Sigma /= 0._dp ) THEN
            Matrix % Values = Matrix % Values + Sigma * Matrix % MassValues
@@ -1730,7 +1730,7 @@ END SUBROUTINE CheckResidualsComplex
            IF ( ILU  < 0 .OR. ILU > 9 ) ILU = 0
          ELSE
            ILU = 0
-           CALL Warn( 'DampedEigenSolve','Unknown preconditioner type, useing ILU0' )
+           CALL Warn( 'DampedEigenSolve','Unknown preconditioner type, using ILU0' )
          END IF
       END IF
 
