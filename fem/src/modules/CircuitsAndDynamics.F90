@@ -94,16 +94,13 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
   INTEGER :: p, n, istat, max_element_dofs
-  
   TYPE(Mesh_t), POINTER :: Mesh  
 
   TYPE(Matrix_t), POINTER :: CM
-  
   INTEGER, POINTER :: n_Circuits => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)
   
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)   
-  
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)     
   TYPE(Variable_t), POINTER :: LagrangeVar
   INTEGER, SAVE :: Tstep=-1
 !------------------------------------------------------------------------------
@@ -167,10 +164,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       IF(SIZE(LagrangeVar % Values)>=Model%Circuit_tot_n) ip=LagrangeVar % Values(1:Model%Circuit_tot_n)
     END IF
   END IF
-  
- 
 
-  
   max_element_dofs = Model % Mesh % MaxElementDOFs
   Circuits => Model%Circuits
   n_Circuits => Model%n_Circuits
@@ -1812,13 +1806,16 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 ! EEC variables
 !------------------------------------------------------------------------------
   LOGICAL, SAVE :: EEC, First =.TRUE.
+  LOGICAL :: EEC_lim
   REAL, SAVE :: EEC_freq, EEC_time_0
+  INTEGER, SAVE :: EEC_max, EEC_cnt = 0
   REAL :: TTime
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Variable_t), POINTER :: AzVar
   REAL (KIND=dp), POINTER :: Az(:)
   REAL (KIND=dp), ALLOCATABLE, SAVE :: Az0(:)
   REAL (KIND=dp), POINTER :: Acorr(:)
+  
 !------------------------------------------------------------------------------  
   
    CALL DefaultStart()
@@ -1835,14 +1832,23 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
       
    nm =  Asolver % Matrix % NumberOfRows
 
+
   IF (First) THEN
     SolverParams => GetSolverParams(Solver)
+    ! Reading parameter for supply frequency
     EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
     IF (EEC) THEN
       CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=1)
 	    WRITE( Message,'(A,4G10.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
       CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
-      EEC_time_0 = 0._dp
+      
+          
+      EEC_max = GetInteger( SolverParams, 'EEC Steps', EEC_lim)
+      IF (.NOT. EEC_lim) EEC_max = 5 !Typically 5 correections is enough
+      WRITE( Message,'(A,I5,A)') 'Applying ', EEC_max, ' halfperiod corrections'
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      
+      EEC_time_0 = 0.0
       
       ! Reserve memory for storing current MVP solution
       ALLOCATE(Az0(nm))
@@ -1859,18 +1865,18 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
   END IF
 
 
-  
-  IF (EEC) THEN
+  IF (EEC .AND. (EEC_cnt .LT. EEC_max)) THEN
+    
     TTime = GetTime()
-    IF(TTime >= EEC_time_0 + 0.5/EEC_freq) THEN
-      CALL Info('CircuitsAndDynamicsEEC', "Performing EEC at half-period.", Level=1)
-      WRITE( Message,'(A,4G10.4,A,2G10.4)') 'Half-period: ', 0.5/EEC_freq,', current time-step: ', TTime
+    IF(TTime .GE. (EEC_time_0 + 0.5/EEC_freq)) THEN
+      EEC_cnt = EEC_cnt + 1
+      WRITE( Message,'(A,4G10.4)') 'Performing EEC #', EEC_cnt
       CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
       
       EEC_time_0 = EEC_time_0 + 0.5/EEC_freq
-      
-      
+
       AzVar => VariableGet( Asolver % Mesh % Variables, 'A')
+      
       IF(ASSOCIATED( AzVar)) THEN
         Az => AzVar % Values
         
@@ -1885,7 +1891,6 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
       END IF
     END IF
   END IF
-
 
 
    ! Circuit variable values from previous timestep:
