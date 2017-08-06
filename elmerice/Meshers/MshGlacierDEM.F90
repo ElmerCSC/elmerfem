@@ -31,7 +31,7 @@
 ! *****************************************************************************
 !> Create a 3D mesh given by its bed and surface topography 
 !> given as structued Grid DEMs (x, y, z)
-!> Add some testing to ensure the file stucture does correspond to what is 
+!> Add some testing to ensure the file structure does correspond to what is 
 !> indicated in mesh_input.dat
 ! *****************************************************************************
 PROGRAM  MshGlacierDEM 
@@ -231,7 +231,7 @@ DO k = 1, Np
 
       IF ((zi(1,1)<-9990.0).OR.(zi(1,2)<-9990.0).OR.(zi(2,1)<-9990.0).OR.(zi(2,2)<-9990.0)) THEN
          IF ((zi(1,1)<-9990.0).AND.(zi(1,2)<-9990.0).AND.(zi(2,1)<-9990.0).AND.(zi(2,2)<-9990.0)) THEN
-            ! Find the nearest point avalable
+            ! Find the nearest point available
             Rmin = 9999.0
             DO i=1, Nb
                IF (zb(i)>-9990.0) THEN
@@ -246,7 +246,7 @@ DO k = 1, Np
             WRITE(*,*)'No data in the DEM cell ',ix,iy,' . Using the closest point at distance ', Rmin, zbed 
             
          ELSE
-            ! Mean value over the avalable data
+            ! Mean value over the available data
             zbed = 0.0
             Npt = 0
             DO i=1, 2
@@ -283,7 +283,7 @@ DO k = 1, Np
         
       IF ((zi(1,1)<-9990.0).OR.(zi(1,2)<-9990.0).OR.(zi(2,1)<-9990.0).OR.(zi(2,2)<-9990.0)) THEN
          IF ((zi(1,1)<-9990.0).AND.(zi(1,2)<-9990.0).AND.(zi(2,1)<-9990.0).AND.(zi(2,2)<-9990.0)) THEN
-            ! Find the nearest point avalable
+            ! Find the nearest point available
             Rmin = 9999.0
             DO i=1, Ns
                IF (zs(i)>-9990.0) THEN

@@ -100,7 +100,7 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
   REAL (KIND=dp)              :: iceBaseOffset, iceBaseRef, iceBaseFactor
   LOGICAL                     :: iceBaseScaling
 
-  ! truely local variables!
+  ! truly local variables!
   TYPE(ValueList_t), POINTER :: SolverParams
   REAL (KIND=dp) :: wct             ! water column thickness
   REAL (KIND=dp) :: meltScaling, meltRate 

@@ -37,7 +37,7 @@ FUNCTION InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby) RESULT(
         
         IF ((zi(1,1)<-9990.0).OR.(zi(1,2)<-9990.0).OR.(zi(2,1)<-9990.0).OR.(zi(2,2)<-9990.0)) THEN
            IF ((zi(1,1)<-9990.0).AND.(zi(1,2)<-9990.0).AND.(zi(2,1)<-9990.0).AND.(zi(2,2)<-9990.0)) THEN
-           ! Find the nearest point avalable
+           ! Find the nearest point available
              Rmin = 9999.0
              DO i=1, Nb
                IF (zb(i)>0.0) THEN
@@ -51,7 +51,7 @@ FUNCTION InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby) RESULT(
             zbed = zb(imin)
                         
            ELSE
-            ! Mean value over the avalable data
+            ! Mean value over the available data
              zbed = 0.0
              Npt = 0
              DO i=1, 2

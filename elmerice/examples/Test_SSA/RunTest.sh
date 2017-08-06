@@ -2,7 +2,7 @@
 ElmerGrid 1 2 rectangle
 
 
-#UpdateExport.f90: is a solver used to update auxilliary variables
+#UpdateExport.f90: is a solver used to update auxiliary variables
 #declared as "Exported Variable" in the solver section; accorded to their definition in the body Force.
 #E.G. Here surface Elevation is a variable computed as Zs=Zb+H where H is solution of the thickness evolution equation.
 
