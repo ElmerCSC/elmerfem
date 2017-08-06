@@ -1958,34 +1958,38 @@ END SUBROUTINE LocalConstraintMatrix
                  ! ------------------------------------------------
                  STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
                END DO
-               IF ( HasVelocity ) THEN
-                 DO j=1,nd-np
-                   q = j+np
-#ifndef __INTEL_COMPILER
-                   STIFF(p,q) = STIFF(p,q) - &
-                        SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(i,:))*detJ*IP % s(t)
-#else
-                   ! Ifort workaround
-                   RotWJ(1:3) = RotWBasis(j,1:3)
-                   ! VeloCrossW(1:3) = CrossProduct(velo(1:3), RotWJ(1:3))
-                   ! CVelo(1:3)=MATMUL(C(1:3,1:3),VeloCrossW(1:3))
-                   CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
-                   CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
-                   CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
-                   CVeloSum = REAL(0,dp)
-                   DO k=1,3
-                      CVeloSum = CVeloSum + CVelo(k)*dBasisdx(i,k)
-                   END DO
-                   STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
-#endif
-                 END DO
-               END IF
              END DO
            END IF
          END IF
+         
 
        END IF ! (.NOT. CoilBody)
 
+       IF ( HasVelocity ) THEN
+         DO i=1,np
+           p = i
+           DO j=1,nd-np
+             q = j+np
+#ifndef __INTEL_COMPILER
+             STIFF(p,q) = STIFF(p,q) - &
+                 SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(i,:))*detJ*IP % s(t)
+#else
+             ! Ifort workaround
+             RotWJ(1:3) = RotWBasis(j,1:3)
+             ! VeloCrossW(1:3) = CrossProduct(velo(1:3), RotWJ(1:3))
+             ! CVelo(1:3)=MATMUL(C(1:3,1:3),VeloCrossW(1:3))
+             CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
+             CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
+             CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
+             CVeloSum = REAL(0,dp)
+             DO k=1,3
+               CVeloSum = CVeloSum + CVelo(k)*dBasisdx(i,k)
+             END DO
+             STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
+#endif
+           END DO
+         END DO
+       END IF
        !-----------------------------------------------------------------
        ! The equations for the H(curl)-conforming part, i.e. the equation 
        ! for the vector potential
