@@ -100,7 +100,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: n_Circuits => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)
   
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)    
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)     
   TYPE(Variable_t), POINTER :: LagrangeVar
   INTEGER, SAVE :: Tstep=-1
 !------------------------------------------------------------------------------
@@ -164,7 +164,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       IF(SIZE(LagrangeVar % Values)>=Model%Circuit_tot_n) ip=LagrangeVar % Values(1:Model%Circuit_tot_n)
     END IF
   END IF
-  
+
   max_element_dofs = Model % Mesh % MaxElementDOFs
   Circuits => Model%Circuits
   n_Circuits => Model%n_Circuits
@@ -1771,16 +1771,15 @@ END SUBROUTINE CircuitsAndDynamicsHarmonic
 !------------------------------------------------------------------------------
 SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
-   
    USE DefUtils
    USE CircuitsMod
-
    IMPLICIT NONE
-   
+!------------------------------------------------------------------------------   
    TYPE(Model_t) :: Model
    TYPE(Solver_t) :: Solver
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
+!------------------------------------------------------------------------------
 
    TYPE(Variable_t), POINTER :: LagrangeVar
    REAL(KIND=dp), ALLOCATABLE  :: ip(:), ipt(:)
@@ -1803,7 +1802,22 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    REAL(KIND=dp) :: CompRealPower, p_dc_component
 
    LOGICAL :: Found
-
+!------------------------------------------------------------------------------
+! EEC variables
+!------------------------------------------------------------------------------
+  LOGICAL, SAVE :: EEC, First =.TRUE.
+  LOGICAL :: EEC_lim
+  REAL, SAVE :: EEC_freq, EEC_time_0
+  INTEGER, SAVE :: EEC_max, EEC_cnt = 0
+  REAL :: TTime
+  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(Variable_t), POINTER :: AzVar
+  REAL (KIND=dp), POINTER :: Az(:)
+  REAL (KIND=dp), ALLOCATABLE, SAVE :: Az0(:)
+  REAL (KIND=dp), POINTER :: Acorr(:)
+  
+!------------------------------------------------------------------------------  
+  
    CALL DefaultStart()
 
    Circuit_tot_n => Model%Circuit_tot_n
@@ -1815,8 +1829,69 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    ! -------------------------------------------------------
    ASolver => CurrentModel % Asolver
    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CircuitsOutput','ASolver not found!')
-   
+      
    nm =  Asolver % Matrix % NumberOfRows
+
+
+  IF (First) THEN
+    SolverParams => GetSolverParams(Solver)
+    ! Reading parameter for supply frequency
+    EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
+    IF (EEC) THEN
+      CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=1)
+	    WRITE( Message,'(A,4G10.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      
+          
+      EEC_max = GetInteger( SolverParams, 'EEC Steps', EEC_lim)
+      IF (.NOT. EEC_lim) EEC_max = 5 !Typically 5 correections is enough
+      WRITE( Message,'(A,I5,A)') 'Applying ', EEC_max, ' halfperiod corrections'
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      
+      EEC_time_0 = 0.0
+      
+      ! Reserve memory for storing current MVP solution
+      ALLOCATE(Az0(nm))
+      
+      ! Store MVP solution at t=0
+      AzVar => VariableGet( Asolver % Mesh % Variables, 'A')
+      IF(ASSOCIATED( AzVar)) THEN
+        Az => AzVar % Values
+        Az0 = Az
+      END IF
+      
+    END IF
+    First = .FALSE.
+  END IF
+
+
+  IF (EEC .AND. (EEC_cnt .LT. EEC_max)) THEN
+    
+    TTime = GetTime()
+    IF(TTime .GE. (EEC_time_0 + 0.5/EEC_freq)) THEN
+      EEC_cnt = EEC_cnt + 1
+      WRITE( Message,'(A,4G10.4)') 'Performing EEC #', EEC_cnt
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      
+      EEC_time_0 = EEC_time_0 + 0.5/EEC_freq
+
+      AzVar => VariableGet( Asolver % Mesh % Variables, 'A')
+      
+      IF(ASSOCIATED( AzVar)) THEN
+        Az => AzVar % Values
+        
+        !calculate correction
+        ALLOCATE(Acorr(nm))
+        Acorr = -0.5*(Az0+Az)
+        Az = Az+Acorr
+        DEALLOCATE(Acorr)
+        
+        !Store corrected half-period solution
+        Az0 = Az
+      END IF
+    END IF
+  END IF
+
 
    ! Circuit variable values from previous timestep:
    ! -----------------------------------------------
