@@ -9906,12 +9906,13 @@ END FUNCTION SearchNodeL
 !--------------------------------------------------------------
 !>  Scale the system back to original.
 !--------------------------------------------------------------
-  SUBROUTINE BackScaleLinearSystem(Solver,A,b,x,DiagScaling,ConstraintScaling) 
+  SUBROUTINE BackScaleLinearSystem( Solver,A,b,x,DiagScaling,&
+      ConstraintScaling, EigenScaling ) 
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp), OPTIONAL :: b(:),x(:)
-    LOGICAL, OPTIONAL :: ConstraintScaling
+    LOGICAL, OPTIONAL :: ConstraintScaling, EigenScaling
     REAL(KIND=dp), OPTIONAL, TARGET :: DiagScaling(:)
 
     REAL(KIND=dp), POINTER :: Diag(:)
@@ -9949,19 +9950,23 @@ END FUNCTION SearchNodeL
       b(1:n) = b(1:n) / Diag(1:n) * bnorm
     END IF
     
-    DO i=1,Solver % NOFEigenValues
-      !
-      !           Solve x:  INV(D)x = y
-      !           --------------------------
-      IF ( Solver % Matrix % COMPLEX ) THEN
-        Solver % Variable % EigenVectors(i,1:n/2) = &
-            Solver % Variable % EigenVectors(i,1:n/2) * Diag(1:n:2)
-      ELSE
-        Solver % Variable % EigenVectors(i,1:n) = &
-            Solver % Variable % EigenVectors(i,1:n) * Diag(1:n)
+    IF( PRESENT( EigenScaling ) ) THEN
+      IF( EigenScaling ) THEN
+        DO i=1,Solver % NOFEigenValues
+          !
+          !           Solve x:  INV(D)x = y
+          !           --------------------------
+          IF ( Solver % Matrix % COMPLEX ) THEN
+            Solver % Variable % EigenVectors(i,1:n/2) = &
+                Solver % Variable % EigenVectors(i,1:n/2) * Diag(1:n:2)
+          ELSE
+            Solver % Variable % EigenVectors(i,1:n) = &
+                Solver % Variable % EigenVectors(i,1:n) * Diag(1:n)
+          END IF
+        END DO
       END IF
-    END DO
-    
+    END IF
+      
     DO i=1,n
       DO j=A % Rows(i), A % Rows(i+1)-1
         A % Values(j) = A % Values(j) / (Diag(i) * Diag(A % Cols(j)))
@@ -10652,6 +10657,8 @@ END FUNCTION SearchNodeL
   RECURSIVE SUBROUTINE SolveLinearSystem( A, b, &
        x, Norm, DOFs, Solver, BulkMatrix )
 !------------------------------------------------------------------------------
+    USE EigenSolve
+
     REAL(KIND=dp) CONTIG :: b(:), x(:)
     REAL(KIND=dp) :: Norm
     TYPE(Matrix_t), POINTER :: A
@@ -10676,7 +10683,8 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t), POINTER :: Aaid, Projector, MP
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
-
+    LOGICAL :: NormalizeToUnity
+    
     INTERFACE 
        SUBROUTINE VankaCreate(A,Solver)
           USE Types
@@ -10837,11 +10845,17 @@ END FUNCTION SearchNodeL
           Solver % Variable % EigenValues,       &
           Solver % Variable % EigenVectors, Solver )
       
-      IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A ) 
+      IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A, EigenScaling = .TRUE. ) 
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
 
       Norm = ComputeNorm(Solver,n,x)
       Solver % Variable % Norm = Norm
+
+      NormalizeToUnity = ListGetLogical( Solver % Values, &
+          'Eigen System Normalize To Unity',Stat)         
+      CALL ScaleEigenVectors( A, Solver % Variable % EigenVectors, &
+          SIZE(Solver % Variable % EigenValues), A % NumberOfRows, &
+          NormalizeToUnity ) 
       
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
@@ -10861,7 +10875,8 @@ END FUNCTION SearchNodeL
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
     END IF
-
+   
+    
     ! We have solved {harmonic,eigen,constraint} system and no need to continue further
     IF( RecursiveAnalysis ) THEN
       IF( HarmonicAnalysis ) CALL ListAddLogical( Solver % Values,'Harmonic Analysis',.TRUE.)
@@ -11401,7 +11416,8 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
                 EigenValues, EigenVectors )
       END IF
     END IF
-
+   
+    
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
