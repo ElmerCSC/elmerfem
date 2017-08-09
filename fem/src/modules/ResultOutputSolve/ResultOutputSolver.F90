@@ -45,14 +45,14 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,nInterval=1, nstep=0, OutputCount = 0, MeshDim,MeshLevel,nlen
   INTEGER, POINTER :: OutputIntervals(:), TimeSteps(:)
 
-  TYPE(Mesh_t), POINTER :: Mesh, iMesh, ListMesh, MyMesh
+  TYPE(Mesh_t), POINTER :: Mesh, iMesh, MyMesh
   CHARACTER(10) :: OutputFormat
-  CHARACTER(LEN=MAX_NAME_LEN) :: FilePrefix, MeshName, iMeshName
+  CHARACTER(LEN=MAX_NAME_LEN) :: FilePrefix, MeshName, iMeshName, ListMeshName
   LOGICAL :: SubroutineVisited=.FALSE.,Found, SaveThisMesh
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: ModelVariables
     
-  SAVE SubroutineVisited, OutputCount, ListSet, MeshDim, ListMesh
+  SAVE SubroutineVisited, OutputCount, ListSet, MeshDim, ListMeshName
 
   INTERFACE
     RECURSIVE SUBROUTINE ElmerPostOutputSolver( Model, Solver,dt,TransientSimulation,ONOEfound )
@@ -169,9 +169,9 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
     ! Optionally skip the writing of given meshes 
     !---------------------------------------------------------------    
+    nlen = StringToLowerCase( iMeshName, iMesh % Name ) 
     MeshName = GetString( Params,'Mesh Name',Found )
     IF(Found) THEN
-      nlen = StringToLowerCase( iMeshName, iMesh % Name ) 
       nlen = LEN_TRIM(MeshName)
       IF( MeshName(1:nlen) /= iMeshName(1:nlen) ) THEN
         iMesh => iMesh % next
@@ -187,13 +187,13 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       CALL Info('ResultOutputSolver','Creating list for saving - if not present')
       CALL CreateListForSaving( Model, Params,.TRUE. )    
       ListSet = .TRUE.
-    ELSE IF( MeshDim /= Model % Mesh % MeshDim .OR. .NOT. ASSOCIATED(iMesh, ListMesh)) THEN
+    ELSE IF( MeshDim /= Model % Mesh % MeshDim .OR. (iMeshName(1:nlen) /= ListMeshName(1:nlen))) THEN
       CALL Info('ResultOutputSolver','Recreating list for saving')
       CALL CreateListForSaving( Model, Params,.TRUE.,.TRUE.)
     END IF
 
     MeshDim = Model % Mesh % MeshDim
-    ListMesh => iMesh
+    nlen = StringToLowerCase( ListMeshName, iMesh % Name)
 
     ! In case there are multiple mesh levels one may also save coarser ones
     !----------------------------------------------------------------------

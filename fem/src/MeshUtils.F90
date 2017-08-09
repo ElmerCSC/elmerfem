@@ -3205,7 +3205,7 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: Solver
     INTEGER :: i,n, istat
-    LOGICAL :: stat
+    LOGICAL :: stat, UseLongEdge
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
@@ -3232,6 +3232,9 @@ END SUBROUTINE GetMaxDefs
     CALL AllocateVector( Nodes % y, Mesh % MaxElementNodes )
     CALL AllocateVector( Nodes % z, Mesh % MaxElementNodes )
 
+    UseLongEdge = ListGetLogical(CurrentModel % Simulation, &
+         "Stabilization Use Longest Element Edge")
+
     DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
        n = Element % TYPE % NumberOfNodes
@@ -3240,9 +3243,9 @@ END SUBROUTINE GetMaxDefs
        Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
        IF ( Mesh % Stabilize ) THEN
           CALL StabParam( Element, Nodes,n, &
-              Element % StabilizationMK, Element % hK )
+              Element % StabilizationMK, Element % hK, UseLongEdge=UseLongEdge)
        ELSE
-          Element % hK = ElementDiameter( Element, Nodes )
+          Element % hK = ElementDiameter( Element, Nodes, UseLongEdge=UseLongEdge)
        END IF
     END DO
  
@@ -11394,6 +11397,7 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % Name=Mesh_in % Name
     Mesh_out % DiscontMesh = Mesh_in % DiscontMesh
     Mesh_out % MaxElementDOFs  = Mesh_out % MaxElementNodes
+    Mesh_out % Stabilize = Mesh_in % Stabilize
     Mesh_out % MeshDim = 3
     CurrentModel % DIMENSION = 3
 

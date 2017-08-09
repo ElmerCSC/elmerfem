@@ -977,8 +977,13 @@ CONTAINS
      END IF
 
      IF ( OutputLevelMask(0) ) THEN
-       WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
-            'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
+       IF(IsFatal) THEN
+         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+              'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
+       ELSE
+         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+              'NUMERICAL WARNING:: ', TRIM(Caller), ': ', TRIM(String)
+       END IF
        CALL FLUSH(6)
      END IF
 

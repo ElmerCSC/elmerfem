@@ -839,6 +839,27 @@ CONTAINS
 
     RmVar % Next => NULL()
 
+    !cycle other variables to check for Perm association
+    IF (ASSOCIATED(RmVar % Perm)) THEN
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+        IF(ASSOCIATED(RmVar, Var)) &
+             CALL Fatal("VariableRemove", "Programming Error - Variable appears twice in list?")
+        IF (ASSOCIATED(Var % Perm,RmVar % Perm)) THEN
+          RmVar % Perm => NULL()
+          EXIT
+        END IF
+        Var => Var % Next
+      END DO
+
+      !ASSOCIATION between zero-length arrays cannot be tested
+      !so nullify it anyway, just to be safe. Technically results
+      !in a memory leak (of size zero??)
+      IF(SIZE(RmVar % Perm) == 0) RmVar % Perm => NULL()
+    END IF
+
+
+
     !ReleaseVariableList was intended to deallocate an entire list of variables,
     !but by nullifying RmVar % Next, we have effectively isolated RmVar in 
     !its own variable list.
