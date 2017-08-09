@@ -137,7 +137,7 @@
         CALL Fatal('StatMagSolver','In 3D there must be three components for the vector potential!')
         CalculateJouleHeating = .FALSE.      
       END IF
-      CALL Warn('StatMagSolver','This solver does not really fulfill teh Coulomb gauge, use Whitney solver in 3D!')
+      CALL Warn('StatMagSolver','This solver does not really fulfill the Coulomb gauge, use Whitney solver in 3D!')
     ELSE
       IF(HarmonicSimulation) THEN
         IF( dofs /= 2 ) THEN

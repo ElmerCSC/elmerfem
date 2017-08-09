@@ -574,12 +574,40 @@ int StringToInteger(const char *buf,int *dest,int maxcnt,char separator)
 {
   int cnt = 0;
   char *ptr1 = (char *)buf, *ptr2;
-
+  int ival;
+  
   if (!buf[0]) return 0;
   do {
+    
     ptr2 = strchr(ptr1,separator);
     if (ptr2) ptr2[0] = '\0';
-    dest[cnt++] = atoi(ptr1);
+    ival = atoi(ptr1);
+
+    dest[cnt++] = ival;
+    
+    if (ptr2) ptr1 = ptr2+1;
+  } while (cnt < maxcnt && ptr2 != NULL);
+
+  return cnt;
+}
+
+int StringToIntegerNoZero(const char *buf,int *dest,int maxcnt,char separator)
+{
+  int cnt = 0;
+  char *ptr1 = (char *)buf, *ptr2;
+  int ival;
+  
+  if (!buf[0]) return 0;
+  do {
+    
+    ptr2 = strchr(ptr1,separator);
+    if (ptr2) ptr2[0] = '\0';
+    ival = atoi(ptr1);
+
+    if(ival == 0) break;
+      
+    dest[cnt++] = ival;      
+
     if (ptr2) ptr1 = ptr2+1;
   } while (cnt < maxcnt && ptr2 != NULL);
 

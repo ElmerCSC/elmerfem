@@ -273,7 +273,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       IF(.NOT. ListCheckPresent( CoilList,'Coil Type' ) ) CYCLE      
       TargetBodies => ListGetIntegerArray( CoilList,'Master Bodies',Found )
       IF( .NOT. Found ) TargetBodies => ListGetIntegerArray( CoilList,'Body',Found )
-      IF( .NOT. Found ) CALL Fatal('CoilSolver','Coil fitting requires > Target Bodies <') 
+      IF( .NOT. Found ) CALL Fatal('CoilSolver','Coil fitting requires > Master Bodies <') 
 
       CALL Info('CoilSolver','Treating coil in Component: '//TRIM(I2S(i)),Level=7)
 
@@ -555,6 +555,7 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp) :: Volume,Center(3),SerTmp(4),ParTmp(4),ierr
+    REAL(KIND=dp), POINTER :: HelperArray(:,:)
 
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n) )
@@ -571,12 +572,18 @@ CONTAINS
       END DO
     END IF
 
-    Center(1) = ListGetCReal( Params,'Coil x0',CoilCenterSet)
-    Center(2) = ListGetCReal( Params,'Coil y0',Found)
-    CoilCenterSet = CoilCenterSet .OR. Found
-    Center(3) = ListGetCReal( Params,'Coil z0',Found)
-    CoilCenterSet = CoilCenterSet .OR. Found
 
+    HelperArray => ListGetConstRealArray( Params, 'Coil Center', CoilCenterSet)
+    IF( CoilCenterSet ) THEN
+      Center(1:3) = HelperArray(1:3,1)
+    ELSE
+      Center(1) = ListGetCReal( Params,'Coil x0',CoilCenterSet)
+      Center(2) = ListGetCReal( Params,'Coil y0',Found)
+      CoilCenterSet = CoilCenterSet .OR. Found
+      Center(3) = ListGetCReal( Params,'Coil z0',Found)
+      CoilCenterSet = CoilCenterSet .OR. Found
+    END IF
+      
     IF( CoilCenterSet ) THEN
       CoilCenter = Center
       CALL Info('CoilSolver','Coil center defined by user',Level=20)
@@ -792,8 +799,9 @@ CONTAINS
 
     ! The angle of acceptable nodes 
     ! 90 degs effectively chooses the right half
-    dfii = ListGetCReal( Params,'Coil dfii',Found)
-    IF(.NOT. Found ) dfii = 90.0
+    ! Not used currently 
+    !dfii = ListGetCReal( Params,'Coil dfii',Found)
+    !IF(.NOT. Found ) dfii = 90.0
 
     ! The maximum coordinate difference for an acceptable node
     ! The larger the value the more there will be nodes in the set.

@@ -1,0 +1,83 @@
+Elmer version: 8.2
+Elmer revision: b6deb67
+Elmer compilation date: 2017-05-09
+File started at: 2017/05/09 10:50:55
+ 
+Variables in columns of matrix: ./6801/dat/6801.dat
+   1: res: air gap torque
+   2: res: inertial volume
+   3: res: inertial moment
+   4: res: joule heating
+   5: res: average magnetic flux density 1 in body 1:
+   6: res: average magnetic flux density 1 im in body 1:
+   7: res: average magnetic flux density 2 in body 1:
+   8: res: average magnetic flux density 2 im in body 1:
+   9: res: average magnetic flux density 1 in body 2:
+  10: res: average magnetic flux density 1 im in body 2:
+  11: res: average magnetic flux density 2 in body 2:
+  12: res: average magnetic flux density 2 im in body 2:
+  13: res: average magnetic flux density 1 in body 3:
+  14: res: average magnetic flux density 1 im in body 3:
+  15: res: average magnetic flux density 2 in body 3:
+  16: res: average magnetic flux density 2 im in body 3:
+  17: res: average magnetic flux density 1 in body 4:
+  18: res: average magnetic flux density 1 im in body 4:
+  19: res: average magnetic flux density 2 in body 4:
+  20: res: average magnetic flux density 2 im in body 4:
+  21: res: average magnetic flux density 1 in body 5:
+  22: res: average magnetic flux density 1 im in body 5:
+  23: res: average magnetic flux density 2 in body 5:
+  24: res: average magnetic flux density 2 im in body 5:
+  25: res: average magnetic flux density 1 in body 6:
+  26: res: average magnetic flux density 1 im in body 6:
+  27: res: average magnetic flux density 2 in body 6:
+  28: res: average magnetic flux density 2 im in body 6:
+  29: res: average magnetic flux density 1 in body 7:
+  30: res: average magnetic flux density 1 im in body 7:
+  31: res: average magnetic flux density 2 in body 7:
+  32: res: average magnetic flux density 2 im in body 7:
+  33: res: time
+  34: res: i_s1 re
+  35: res: i_s1 im
+  36: res: v_s1 re
+  37: res: v_s1 im
+  38: res: i_component(1) re
+  39: res: i_component(1) im
+  40: res: v_component(1) re
+  41: res: v_component(1) im
+  42: res: i_component(2) re
+  43: res: i_component(2) im
+  44: res: v_component(2) re
+  45: res: v_component(2) im
+  46: res: i_component(3) re
+  47: res: i_component(3) im
+  48: res: v_component(3) re
+  49: res: v_component(3) im
+  50: res: i_component(4) re
+  51: res: i_component(4) im
+  52: res: v_component(4) re
+  53: res: v_component(4) im
+  54: res: i_component(5) re
+  55: res: i_component(5) im
+  56: res: v_component(5) re
+  57: res: v_component(5) im
+  58: res: i_component(6) re
+  59: res: i_component(6) im
+  60: res: v_component(6) re
+  61: res: v_component(6) im
+  62: res: i_wp1 re
+  63: res: i_wp1 im
+  64: res: v_wp1 re
+  65: res: v_wp1 im
+  66: res: r_component(1)
+  67: res: p_dc_component(1)
+  68: res: r_component(2)
+  69: res: p_dc_component(2)
+  70: res: r_component(3)
+  71: res: p_dc_component(3)
+  72: res: r_component(4)
+  73: res: p_dc_component(4)
+  74: res: r_component(5)
+  75: res: p_dc_component(5)
+  76: res: r_component(6)
+  77: res: p_dc_component(6)

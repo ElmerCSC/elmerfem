@@ -935,19 +935,21 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-    INTEGER :: RelIntegOrder 
-
+    INTEGER :: RelIntegOrder, NoActive 
+    
+    
 
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
      body_id = -1
 
      RelIntegOrder = ListGetInteger( SolverParams,'Relative Integration Order',Found)
 
+     NoActive = GetNOFActive()
 
-     DO t=1,Solver % NumberOFActiveElements
+     DO t=1,NoActive
 
 !------------------------------------------------------------------------------
-       CALL AdvanceOutput(t,GetNOFActive())
+       CALL AdvanceOutput(t,NoActive)
 !------------------------------------------------------------------------------
 
        Element => GetActiveElement(t)
@@ -1227,6 +1229,7 @@ CONTAINS
           Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
 
           LOAD_im=0._dp
+          Beta_im=0._dp
           IF ( HarmonicAnalysis ) THEN
             LOAD_im(1,1:n) = GetReal( BC, 'Force 1 im',Found )
             LOAD_im(2,1:n) = GetReal( BC, 'Force 2 im',Found )

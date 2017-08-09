@@ -131,7 +131,7 @@ END FUNCTION getFrictionHeat
 ! *
 ! *  Module containing a functions for friction heat based
 ! *       on residuals from (Navier-)Stokes solver
-! *  This function should be preferrably used to compute the heat production
+! *  This function should be preferably used to compute the heat production
 ! *  at the base, as it utilizes the natural way to couple the flow
 ! *  and temperature solution
 ! *

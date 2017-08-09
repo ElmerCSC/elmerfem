@@ -636,7 +636,8 @@ CONTAINS
     TYPE(Graph_t) :: DualGraph
     TYPE(GraphColour_t) :: GraphColouring
     LOGICAL :: ConsistentColours
-    
+
+    LOGICAL :: ThreadedStartup
 
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
@@ -1075,16 +1076,45 @@ CONTAINS
         CALL Info('AddEquationBasics','Maximum size of permutation vector is: '//TRIM(I2S(Ndeg)),Level=12)
         ALLOCATE( Perm(Ndeg), STAT=AllocStat )
         IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Perm')
-        
         Perm = 0
         MatrixFormat = MATRIX_CRS
+        
+        IF( ListGetLogical( SolverParams,'MultiColour Solver',Found ) ) THEN
+          CALL Info('AddEquationBasics','Creating structures for mesh colouring')
+          ConsistentColours = .FALSE.
+          IF ( ListGetLogical(SolverParams,'MultiColour Consistent', Found) ) THEN
+            CALL Info('AddEquationBasics','Creating consistent colouring')
+            ConsistentColours = .TRUE.
+          END IF
 
+          ! Construct the dual graph from Elmer mesh
+          CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
+          
+          ! Colour the dual graph
+          CALL ElmerGraphColour(DualGraph, GraphColouring, ConsistentColours)
+          
+          ! Deallocate dual graph as it is no longer needed
+          CALL Graph_Deallocate(DualGraph)
+          
+          ! Construct colour lists
+          ALLOCATE( Solver % ColourIndexList, STAT=AllocStat )
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for ColourIndexList')
+          
+          CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
+          CALL Colouring_Deallocate(GraphColouring)          
+        END IF
 
+        ThreadedStartup = .FALSE.
+        IF( ListGetLogical( SolverParams,'Multithreaded Startup',Found ) ) THEN
+          CALL Info('AddEquationBasics','Using multithreaded startup')
+          ThreadedStartup = .TRUE.
+        END IF
+        
         CALL Info('AddEquationBasics','Creating solver matrix topology',Level=12)
         Solver % Matrix => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
             Perm, DOFs, MatrixFormat, BandwidthOptimize, eq(1:LEN_TRIM(eq)), &
             ListGetLogical( SolverParams,'Discontinuous Galerkin', Found ), &
-            GlobalBubbles=GlobalBubbles )          
+            GlobalBubbles=GlobalBubbles, ThreadedStartup=ThreadedStartup )
         Nrows = DOFs * Ndeg
         IF (ASSOCIATED(Solver % Matrix)) THEN
           Nrows = Solver % Matrix % NumberOfRows
@@ -1092,7 +1122,7 @@ CONTAINS
         END IF
 
         ! Basically the solver could be matrix free but still the matrix
-        ! is used here temperarily since it is needed when making the 
+        ! is used here temporarily since it is needed when making the 
         ! permutation vector
         !-----------------------------------------------------------------
         IF( ListGetLogical( SolverParams, 'No Matrix', Found ) ) THEN
@@ -1124,33 +1154,6 @@ CONTAINS
         IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = ELMER_COMM_WORLD
         IF ( ListGetLogical( SolverParams, 'Discontinuous Galerkin', Found) ) &
           Solver % Variable % TYPE = Variable_on_nodes_on_elements
-
-
-        IF( ListGetLogical( SolverParams,'MultiColour Solver',Found ) ) THEN
-          CALL Info('AddEquationBasics','Creating structures for mesh colouring')
-          ConsistentColours = .FALSE.
-          IF ( ListGetLogical(SolverParams,'MultiColour Consistent', Found) ) THEN
-            CALL Info('AddEquationBasics','Creating consistent colouring')
-            ConsistentColours = .TRUE.
-          END IF
-
-          ! Construct the dual graph from Elmer mesh
-          CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
-          
-          ! Colour the dual graph
-          CALL ElmerGraphColour(DualGraph, GraphColouring, ConsistentColours)
-          
-          ! Deallocate dual graph as it is no longer needed
-          CALL Graph_Deallocate(DualGraph)
-          
-          ! Construct colour lists
-          ALLOCATE( Solver % ColourIndexList, STAT=AllocStat )
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for ColourIndexList')
-          
-          CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
-          CALL Colouring_Deallocate(GraphColouring)          
-        END IF
-
 
       END IF
       !------------------------------------------------------------------------------
@@ -1813,6 +1816,93 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+   FUNCTION CreateChildMatrix( ParentMat, ParentDofs, Dofs, ColDofs, CreateRhs ) RESULT ( ChildMat )
+     TYPE(Matrix_t) :: ParentMat
+     INTEGER :: ParentDofs
+     INTEGER :: Dofs
+     TYPE(Matrix_t), POINTER :: ChildMat
+     INTEGER, OPTIONAL :: ColDofs
+     LOGICAL, OPTIONAL :: CreateRhs
+     INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
+
+     
+     ChildMat => AllocateMatrix()
+
+     IF( PRESENT( ColDofs ) ) THEN
+       CDofs = ColDofs
+     ELSE
+       CDofs = Dofs
+     END IF
+       
+     
+     IF( Dofs == ParentDofs .AND. CDofs == ParentDofs ) THEN
+       CALL Info('CreateChildMatrix','Reusing initial matrix topology',Level=8)    
+       
+       ChildMat % Cols => ParentMat % Cols
+       ChildMat % Rows => ParentMat % Rows
+       ChildMat % Diag => ParentMat % Diag
+       
+       ChildMat % NumberOfRows = ParentMat % NumberOfRows
+       
+       m = SIZE( ParentMat % Values )
+       ALLOCATE( ChildMat % Values(m) )
+       ChildMat % Values = 0.0_dp
+         
+     ELSE
+       CALL Info('CreateChildMatrix','Multiplying initial matrix topology',Level=8)    
+       
+       ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs * CDofs / ParentDofs**2 ) )
+       ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
+       
+       ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
+       
+       ii = 0
+       jj = 0
+       ChildMat % Rows(1) = 1
+       DO i=1, ParentMat % NumberOFRows, ParentDOFs
+         DO k=1,Dofs
+           ii = ii + 1
+           DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1, ParentDOFs
+             nn = (ParentMat % Cols(j)-1) / ParentDofs + 1
+             DO l=1,CDofs
+               jj = jj + 1
+               ChildMat % Cols(jj) = Dofs*(nn-1) + l
+             END DO
+           END DO
+           ChildMat % Rows(ii+1) = jj+1
+         END DO
+       END DO
+       
+       ALLOCATE( ChildMat % Values(jj) )
+       ChildMat % Values = 0.0_dp
+       
+       IF( Dofs == CDofs ) THEN
+         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )      
+         DO i=1,ChildMat % NumberOfRows
+           DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
+             IF (ChildMat % Cols(j) == i) THEN
+               ChildMat % Diag(i) = j
+               EXIT
+             END IF
+           END DO
+         END DO
+       END IF
+     END IF
+
+     IF( PRESENT( CreateRhs ) ) THEN
+       IF( CreateRhs ) THEN
+         ALLOCATE( ChildMat % rhs(ChildMat % NumberOfRows ) )
+         ChildMat % rhs = 0.0_dp
+       END IF
+     END IF
+
+     CALL Info('CreateChildMatrix','Created matrix with rows: '&
+         //TRIM(I2S( ChildMat % NumberOfRows)),Level=10 )
+     
+     
+   END FUNCTION CreateChildMatrix
+   
+
 !------------------------------------------------------------------------------
 !> Generate a similar solver instance as for the parent solver.
 !> The number of dofs may vary but the basis functions and permutation is reused.
@@ -1833,9 +1923,17 @@ CONTAINS
      TYPE(Variable_t), POINTER :: ChildVar
      TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
      INTEGER :: n,m,dofs, i,j,k,l,ii, jj, nn
-     LOGICAL :: Found
-     
-     CALL Info('CreateChildSolver','Creating solver for variable: '//TRIM(ChildVarName),Level=5)
+     LOGICAL :: Found, OutputActive
+
+     ParentDofs = ParentSolver % Variable % Dofs
+     IF( PRESENT( ChildDofs ) ) THEN
+       Dofs = ChildDofs
+     ELSE
+       Dofs = ParentDofs
+     END IF
+
+     CALL Info('CreateChildSolver','Creating solver of size '//TRIM(I2S(Dofs))//' for variable: &
+         '//TRIM(ChildVarName),Level=5)
 
      NULLIFY( Solver ) 
      ALLOCATE( Solver )
@@ -1867,37 +1965,31 @@ CONTAINS
        CALL Fatal('CreateChildSolver','Parent solver is missing variable!')
      END IF
 
-     ParentDofs = ParentSolver % Variable % Dofs
-     IF( PRESENT( ChildDofs ) ) THEN
-       Dofs = ChildDofs
-     ELSE
-       Dofs = ParentDofs
-     END IF
-
-     CALL Info('CreateChildSolver','Creating variable with dofs: '//TRIM(I2S(Dofs)),Level=8)    
-     n = ( SIZE( ParentSolver % Variable % Values ) ) / ParentDofs
-
+     n = ( SIZE( ParentSolver % Variable % Values ) ) / ParentDofs    
+     
      ALLOCATE( ChildVarValues( n * Dofs ) )
      ChildVarValues = 0.0_dp
      ChildVarPerm => ParentSolver % Variable % Perm
 
+     OutputActive = ListGetLogical( Solver % Values,'Variable Output', Found )
+     IF(.NOT. Found ) OutputActive = ParentSolver % Variable % Output 
+          
      CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, &
-         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm )
-
+         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm, OutputActive )
+     
 
      ChildVar => VariableGet( Solver % Mesh % Variables, ChildVarName )      
      IF(.NOT. ASSOCIATED( ChildVar ) ) THEN
        CALL Fatal('CreateChildSolver','Could not generate child variable!')
      END IF
 
+     ChildVar % Solver => Solver
+     
      ChildVar % TYPE = ParentSolver % Variable % TYPE
      Solver % Variable => ChildVar
 
-     ChildVar % Output = ListGetLogical( Solver % Values,'Variable Output', Found )
-     IF(.NOT. Found ) ChildVar % Output = ParentSolver % Variable % Output 
      
-     
-     CALL Info('CreateChildSolver','Creating matrix for variable solver',Level=8)    
+     CALL Info('CreateChildSolver','Creating matrix for solver variable',Level=8)    
      Solver % Matrix => AllocateMatrix()
      ChildMat => Solver % Matrix
 
@@ -1906,74 +1998,34 @@ CONTAINS
        CALL Warn('CreateChildSolver','Parent matrix needed for child matrix!')
        Solver % Matrix => NULL()
      ELSE
-       Solver % Matrix => AllocateMatrix()
-       ChildMat => Solver % Matrix
-       IF( Dofs == ParentDofs ) THEN
-         CALL Info('CreateChildSolver','Reusing initial matrix topology',Level=8)    
-
-         ChildMat % Cols => ParentMat % Cols
-         ChildMat % Rows => ParentMat % Rows
-         ChildMat % Diag => ParentMat % Diag
-
-         ChildMat % NumberOfRows = ParentMat % NumberOfRows
-         
-         m = SIZE( ParentMat % Values )
-         ALLOCATE( ChildMat % Values(m) )
-         ChildMat % Values = 0.0_dp
-
-       ELSE
-         CALL Info('CreateChildSolver','Multiplying initial matrix topology',Level=8)    
-
-         ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs**2 / ParentDofs**2 ) )
-         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )
-         ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
-
-         ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
-           
-         ii = 0
-         jj = 0
-         ChildMat % Rows(1) = 1
-         DO i=1, ParentMat % NumberOFRows, ParentDOFs
-           DO k=1,Dofs
-             ii = ii + 1
-             DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1, ParentDOFs
-               nn = (ParentMat % Cols(j)-1) / ParentDofs + 1
-               DO l=1,Dofs
-                 jj = jj + 1
-                 ChildMat % Cols(jj) = Dofs*(nn-1) + l
-               END DO
-             END DO
-             ChildMat % Rows(ii+1) = jj+1
-           END DO
-         END DO
-         
-         ALLOCATE( ChildMat % Values(jj) )
-         ChildMat % Values = 0.0_dp
-         
-         DO i=1,ChildMat % NumberOfRows
-           DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
-             IF (ChildMat % Cols(j) == i) THEN
-               ChildMat % Diag(i) = j
-               EXIT
-             END IF
-           END DO
-         END DO
-       END IF
-
-       ALLOCATE( ChildMat % rhs(Dofs*n) )
-       ChildMat % rhs = 0.0_dp
+       ChildMat => CreateChildMatrix( ParentMat, ParentDofs, Dofs, Dofs, .TRUE. )
+       ChildMat % Solver => Solver
+       Solver % Matrix => ChildMat
      END IF
 
-
      ChildMat % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex',Found )
-     IF(.NOT. Found ) ChildMat % Complex = ParentMat % Complex
 
-     
+     IF(.NOT. Found ) THEN
+       IF( MODULO( ChildDofs, 2 ) == 0 ) THEN
+         ChildMat % COMPLEX = ParentMat % COMPLEX
+        ELSE
+         ChildMat % COMPLEX = .FALSE.
+        END IF
+     END IF
+         
      IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
        Solver % ActiveElements => ParentSolver % ActiveElements
        Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
      END IF
 
+     IF( ASSOCIATED( ParentSolver % ColourIndexList ) ) THEN
+       Solver % ColourIndexList => ParentSolver % ColourIndexList
+     END IF
+       
+     Solver % TimeOrder = ListGetInteger( Solver % values,'Time Derivative Order',Found )
+     IF(.NOT. Found ) Solver % TimeOrder = ParentSolver % TimeOrder
+     
+     Solver % MultigridTotal = 0
      Solver % SolverExecWhen = SOLVER_EXEC_NEVER
      Solver % LinBeforeProc = 0
      Solver % LinAfterProc = 0
@@ -1982,7 +2034,7 @@ CONTAINS
      IF ( Parenv  % PEs >1 ) THEN
        CALL ParallelInitMatrix( Solver, Solver % Matrix )
      END IF
-
+     
      CALL Info('CreateChildSolver','All done for now!',Level=8)    
    END FUNCTION CreateChildSolver
 !------------------------------------------------------------------------------
@@ -2026,7 +2078,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!   Intialize equation solvers for new timestep
+!   Initialize equation solvers for new timestep
 !------------------------------------------------------------------------------
     nSolvers = Model % NumberOfSolvers
 
@@ -2258,8 +2310,11 @@ CONTAINS
           END IF
 
           IF( ASSOCIATED( Solver % Variable ) ) THEN
-            Solver % Variable % Norm = ComputeNorm(Solver, &
-                SIZE( Solver % Variable % Values), Solver % Variable % Values)
+            IF(ASSOCIATED(Solver % Variable % Values)) THEN
+              n = SIZE(Solver % Variable % Values)
+              IF(n>0) &
+                Solver % Variable % Norm = ComputeNorm( Solver, n, Solver % Variable % Values)
+            END IF
           END IF
         END DO
         DEALLOCATE(RKCoeff)
@@ -2319,7 +2374,8 @@ CONTAINS
     END IF
 
 !------------------------------------------------------------------------------
-    DO i=1,CoupledMaxIter
+
+     DO i=1,CoupledMaxIter
        IF ( TransientSimulation .OR. Scanning ) THEN
          IF( CoupledMaxIter > 1 ) THEN
            CALL Info( 'SolveEquations', '-------------------------------------', Level=3 )
@@ -2446,7 +2502,15 @@ CONTAINS
 !------------------------------------------------------------------------------
 
            IF ( Scanning .OR. TransientSimulation ) THEN             
-             TestConvergence = ( i >= CoupledMinIter .AND. i /= CoupledMaxIter )
+             IF( CoupledMaxIter == 1 ) THEN
+               TestConvergence = .FALSE.
+               ! This means that the nonlinear system norm has not been computed
+               IF( Solver % Variable % NonlinConverged < 0 )  THEN
+                 TestConvergence = ListCheckPresent( Solver % Values,'Reference Norm' )
+               END IF
+             ELSE
+               TestConvergence = ( i >= CoupledMinIter )
+             END IF
            ELSE    ! Steady-state
              TestConvergence = .TRUE.
            END IF
@@ -2492,13 +2556,15 @@ CONTAINS
          IF ( ALL(DoneThis) ) EXIT
       END DO
 
-    IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
-      CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(i)),Level=4)
-      CoupledAbort = ListGetLogical( Model % Simulation,  &
-           'Coupled System Abort Not Converged', Found )
-      CALL NumericalError('SolveEquations','Coupled system did not converge',CoupledAbort)
-    END IF
-
+      IF( TestConvergence ) THEN
+        IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
+          CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(i)),Level=4)
+          CoupledAbort = ListGetLogical( Model % Simulation,  &
+              'Coupled System Abort Not Converged', Found )
+          CALL NumericalError('SolveEquations','Coupled system did not converge',CoupledAbort)
+        END IF
+      END IF
+        
     END SUBROUTINE SolveCoupled
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveEquations
@@ -4205,13 +4271,66 @@ CONTAINS
   END SUBROUTINE ExecSolverInSteps
 
 
+  ! Create list of active elements for more speedy operation
+  !-------------------------------------------------------------
+  SUBROUTINE SetActiveElementsTable( Model, Solver, MaxDim )
+    TYPE(Model_t)  :: Model
+    TYPE(Solver_t),POINTER :: Solver
+    INTEGER, OPTIONAL :: MaxDim
+    
+    INTEGER :: i, n, Sweep, MeshDim 
+    CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: Found
+    
+    IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
+
+    IF( ASSOCIATED( Solver % ActiveElements ) ) THEN
+      DEALLOCATE( Solver % ActiveElements )
+    END IF
+
+    
+    EquationName = ListGetString( Solver % Values, 'Equation', Found)
+    IF( .NOT. Found ) THEN
+      CALL Fatal('SetActiveElementsTable','Equation not present!')
+    END IF
+
+    
+    MeshDim = 0 
+    
+    DO Sweep = 0, 1    
+      n = 0
+      DO i=1,Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOFBoundaryElements
+        Element => Solver % Mesh % Elements(i)
+        IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
+        IF ( CheckElementEquation( Model, Element, EquationName ) ) THEN
+          n = n + 1
+          IF( Sweep == 0 ) THEN
+            MeshDim = MAX( Element % TYPE % DIMENSION, MeshDim )
+          ELSE
+            Solver % ActiveElements(n) = i
+          END IF
+        END IF
+      END DO
+      
+      IF( Sweep == 0 ) THEN
+        Solver % NumberOfActiveElements = n
+        ALLOCATE( Solver % ActiveElements( n ) )
+      END IF
+    END DO
+
+    IF( PRESENT( MaxDim ) ) MaxDim = MeshDim 
+    
+  END SUBROUTINE SetActiveElementsTable
+
+  
 !------------------------------------------------------------------------------
 !> This executes the original line of solvers (legacy solvers) where each solver 
 !> includes looping over elements and the convergence control. From generality
 !> point of view this misses some opportunities to have control of the nonlinear
 !> system. 
 !------------------------------------------------------------------------------
-  SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
+  RECURSIVE SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t),POINTER :: Solver
@@ -4238,43 +4357,18 @@ CONTAINS
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
 
        IF ( Found ) THEN
-          IF ( ASSOCIATED(Solver % ActiveElements)) DEALLOCATE( Solver % ActiveElements )
+         CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 
+         CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
 
-          ! Count the number of active elements and maximum element dimension 
-          Maxdim = 0
-          n = 0
-          DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
-             CurrentElement => Solver % Mesh % Elements(i)
-             IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
-             IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
-               n = n + 1
-               Maxdim = MAX( CurrentElement % TYPE % DIMENSION, Maxdim )
-             END IF
-          END DO
-          Solver % NumberOfActiveElements = n
-          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
+         ! Calculate accumulated integration weights for bulk if requested          
+         IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
+           CALL CalculateNodalWeights(Solver,.FALSE.)
+         END IF
 
-          ! Create list of active elements
-          ALLOCATE( Solver % ActiveElements( n ) )
-          n = 0
-          DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
-            CurrentElement => Solver % Mesh % Elements(i)
-            IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
-            IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
-              n = n + 1
-              Solver % ActiveElements( n ) = i
-            END IF
-          END DO
-
-          ! Calculate accumulated integration weights for bulk if requested          
-          IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
-            CALL CalculateNodalWeights(Solver,.FALSE.)
-          END IF
-
-          ! Calculate weight for boundary 
-          IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
-            CALL CalculateNodalWeights(Solver,.TRUE.) 
-          END IF
+         ! Calculate weight for boundary 
+         IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
+           CALL CalculateNodalWeights(Solver,.TRUE.) 
+         END IF
        END IF
      END IF
 !------------------------------------------------------------------------------
@@ -4396,7 +4490,7 @@ CONTAINS
 !> how the matrices may be assembled and solved: standard (single), coupled and
 !> block. 
 !------------------------------------------------------------------------------
-  SUBROUTINE SolverActivate( Model, Solver, dt, TransientSimulation )
+  RECURSIVE SUBROUTINE SolverActivate( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t),POINTER :: Solver

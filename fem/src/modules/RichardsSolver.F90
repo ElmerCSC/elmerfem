@@ -562,7 +562,7 @@ END MODULE PorousMaterials
 
 !------------------------------------------------------------------------------------
 !> The water content derivative is computed using the real differential. This way the 
-!> differential of water content with time will be consistant.
+!> differential of water content with time will be consistent.
 !------------------------------------------------------------------------------------
     FUNCTION WaterContentDerivative( Element, Material, Basis, elemMatric, elemPrevMatric ) RESULT ( dtetadmatric )
       

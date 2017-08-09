@@ -247,18 +247,16 @@ CONTAINS
 
 #ifdef _OPENMP
     IF (omp_in_parallel()) THEN
+      CurrentElementThread => Element
       OldElement => CurrentElementThread
     ELSE
       OldElement => CurrentModel % CurrentElement
+      CurrentModel % CurrentElement => Element
     END IF
 #else
     OldElement => CurrentModel % CurrentElement
-#endif
-
-    CurrentElementThread => Element
-    !$omp critical(CurrentElementAssign)
     CurrentModel % CurrentElement => Element
-    !$omp end critical(CurrentElementAssign)
+#endif
   END FUNCTION SetCurrentElement
 
 !> Returns handle to the index of the current element
@@ -304,11 +302,11 @@ CONTAINS
        n = Solver % ColourIndexList % ptr(Solver % CurrentColour+1)-1 &
            - Solver % ColourIndexList % ptr(Solver % CurrentColour)
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=22)
+           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=20)
      ELSE
        n = Solver % NumberOfActiveElements
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n)),Level=22)
+           //TRIM(I2S(n)),Level=20)
      END IF
 
   END FUNCTION GetNOFActive
@@ -1211,14 +1209,18 @@ CONTAINS
        END IF
 
        Element => Solver % Mesh % Elements( ind )
-
-       !$omp critical(CurrentElementAssign)
+ 
+#ifdef _OPENMP
+       IF (omp_in_parallel()) THEN
+         CurrentElementThread => Element
+       ELSE
+         ! May be used by user functions, not thread safe
+         CurrentModel % CurrentElement => Element 
+       END IF
+#else
        ! May be used by user functions, not thread safe
        CurrentModel % CurrentElement => Element 
-       !$omp end critical(CurrentElementAssign)
-
-       ! May be used by user functions, thread safe
-       CurrentElementThread => Element
+#endif
      ELSE
        WRITE( Message, * ) 'Invalid element number requested: ', t
        CALL Fatal( 'GetActiveElement', Message )
@@ -1238,13 +1240,16 @@ CONTAINS
 
      IF ( t > 0 .AND. t <= Solver % Mesh % NumberOfBoundaryElements ) THEN
         Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements+t )
-        !$omp critical(CurrentElementAssign)
-        ! May be used be user functions, not thread safe
+#ifdef _OPENMP
+        IF (omp_in_parallel()) THEN
+          ! May be used by user functions, thread safe
+          CurrentElementThread => Element
+        ELSE
+          CurrentModel % CurrentElement => Element
+        END IF
+#else
         CurrentModel % CurrentElement => Element
-        !$omp end critical(CurrentElementAssign)
-
-        ! May be used by user functions, thread safe
-        CurrentElementThread => Element
+#endif
      ELSE
         WRITE( Message, * ) 'Invalid element number requested: ', t
         CALL Fatal( 'GetBoundaryElement', Message )
@@ -1253,16 +1258,17 @@ CONTAINS
 
 
 !> Check if the boundary element is active in the current solve 
-  FUNCTION ActiveBoundaryElement(UElement,USolver) RESULT(l)
+  FUNCTION ActiveBoundaryElement(UElement,USolver,DGBoundary) RESULT(l)
      TYPE(Element_t), OPTIONAL,  TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL,  TARGET :: USolver
+     LOGICAL, OPTIONAL :: DGBoundary
 
-     LOGICAL :: l
-     INTEGER :: n
+     LOGICAL :: l, DGb
+     INTEGER :: n, n2
      INTEGER, POINTER :: Indexes(:)
 
-     TYPE(Element_t), POINTER :: Element
      TYPE( Solver_t ), POINTER :: Solver
+     TYPE(Element_t), POINTER :: Element, P1, P2
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
@@ -1271,9 +1277,27 @@ CONTAINS
 
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
-     IF (isActivePElement(Element)) n=GetElementNOFNOdes(Element)
 
-     l = ALL( Solver % Variable % Perm(Indexes(1:n)) > 0)
+     DGb = Solver % DG .AND. PRESENT(DGboundary)
+     IF(DGb) DGb = DGboundary
+
+     IF (DGb) THEN
+       P1 => Element % BoundaryInfo % Left
+       P2 => Element % BoundaryInfo % Right
+       IF ( ASSOCIATED(P1).AND.ASSOCIATED(P2) ) THEN
+         n = P1 % Type % NumberOfNodes
+         l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
+         IF (.NOT.l) THEN
+           n2 = P2 % Type % NumberOfNodes
+           l = ALL(Solver % Variable % Perm(Indexes(n+1:n+n2)) > 0)
+          END IF
+       ELSE
+         l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
+       END IF
+     ELSE
+       IF (isActivePElement(Element)) n=GetElementNOFNOdes(Element)
+       l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
+     END IF
   END FUNCTION ActiveBoundaryElement
 
 
@@ -1377,14 +1401,11 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      TYPE(Solver_t),  POINTER :: Solver
 
-     INTEGER :: i,j, id
-     LOGICAL :: Found, GB
+     INTEGER :: i,j, id, ElemFamily
+     LOGICAL :: Found, GB, NeedEdges
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement )
+     ElemFamily = GetElementFamily(Element)
 
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
@@ -1410,19 +1431,37 @@ CONTAINS
      END IF
      IF ( Id==0 ) id=1
 
-     IF ( Solver % Def_Dofs(GetElementFamily(Element),id,1)>0 ) n = Element % NDOFs
-     IF ( ALL(Solver % Def_Dofs(GetElementFamily(Element),id,2:)<0) ) RETURN
+     IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) n = Element % NDOFs
+
+     NeedEdges = .FALSE.
+     DO i=2,SIZE(Solver % Def_Dofs,3)
+       IF (Solver % Def_Dofs(ElemFamily, id, i)>=0) THEN
+         NeedEdges = .TRUE.
+         EXIT
+       END IF
+     END DO
+     IF ( .NOT. NeedEdges ) RETURN
 
      IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-        DO j=1,Element % TYPE % NumberOFEdges
-           n =  n + Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
-        END DO
+        IF ( Solver % Mesh % MaxEdgeDOFs == Solver % Mesh % MinEdgeDOFs ) THEN
+           n =  n + Element % Type % NumberOfEdges * Solver % Mesh % MaxEdgeDOFs
+        ELSE
+!DIR$ IVDEP
+          DO j=1,Element % Type % NumberOFEdges
+             n =  n + Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
+          END DO
+       END IF
      END IF
 
      IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-        DO j=1,Element % TYPE % NumberOFFaces
-           n = n + Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
-        END DO
+        IF ( Solver % Mesh % MaxFaceDOFs == Solver % Mesh % MinFaceDOFs ) THEN
+           n =  n + Element % Type % NumberOfFaces * Solver % Mesh % MaxFaceDOFs
+        ELSE
+!DIR$ IVDEP
+          DO j=1,Element % Type % NumberOFFaces
+             n = n + Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
+          END DO
+        END IF
      END IF
 
      !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
@@ -1443,11 +1482,12 @@ CONTAINS
      TYPE(Solver_t),  POINTER :: Solver
      TYPE(Element_t), POINTER :: Element, Parent, Edge, Face
 
-     LOGICAL :: Found, GB, DGdisable
-     INTEGER :: nb,i,j,k,id,EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs, Ind
+     LOGICAL :: Found, GB, DGdisable, NeedEdges
+     INTEGER :: nb,i,j,k,id,EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs, Ind, ElemFamily
 
      Element => GetCurrentElement(UElement)
-
+     ElemFamily = GetElementFamily(Element)
+     
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
      ELSE
@@ -1494,7 +1534,7 @@ CONTAINS
      END IF
      IF ( id == 0 ) id=1
 
-     IF ( Solver % Def_Dofs(GetElementFamily(Element),id,1)>0 ) THEN
+     IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN
        DO i=1,Element % NDOFs
           NB = NB + 1
           Indexes(NB) = Element % NodeIndexes(i)
@@ -1506,7 +1546,14 @@ CONTAINS
      IF(.NOT.ASSOCIATED(Solver)) RETURN
      IF(.NOT.ASSOCIATED(Solver % Mesh)) RETURN
 
-     IF ( ALL(Solver % Def_Dofs(GetElementFamily(Element),id,2:)<0) ) RETURN
+     NeedEdges = .FALSE.
+     DO i=2,SIZE(Solver % Def_Dofs,3)
+       IF (Solver % Def_Dofs(ElemFamily, id, i)>=0) THEN
+         NeedEdges = .TRUE.
+         EXIT
+       END IF
+     END DO
+     IF ( .NOT. NeedEdges ) RETURN
 
      FaceDOFs   = Solver % Mesh % MaxFaceDOFs
      EdgeDOFs   = Solver % Mesh % MaxEdgeDOFs
@@ -2045,11 +2092,7 @@ CONTAINS
 
      TYPE(Element_t), POINTER :: Element
 
-	 IF ( PRESENT(UElement) ) THEN
-	 	Element => UElement
-	 ELSE
-	 	Element => CurrentModel % CurrentElement
-	 END IF
+     Element => GetCurrentElement( UElement )
 
      DO bc_id=1,CurrentModel % NumberOfBCs
         IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
@@ -2071,12 +2114,8 @@ CONTAINS
 
      TYPE(Element_t), POINTER :: Element
 
-     IF ( PRESENT(Uelement) ) THEN
-        Element => UElement
-     ELSE
-       Element => CurrentModel % CurrentElement
-     END IF
-
+     Element => GetCurrentElement( UElement )
+     
      BC => Null()
      bc_id = GetBCId( Element )
      IF ( bc_id > 0 )  BC => CurrentModel % BCs(bc_id) % Values
@@ -2092,13 +2131,11 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      TYPE(Element_t), OPTIONAL :: Element
 
+     TYPE(Element_t), POINTER :: CElement
      INTEGER :: ic_id, body_id
 
-     IF ( PRESENT( Element ) ) THEN
-        body_id = Element % BodyId 
-     ELSE
-        body_id = CurrentModel % CurrentElement % BodyId 
-     END IF
+     CElement => GetCurrentElement( Element )
+     body_id = CElement % BodyId
 
      IF ( PRESENT( Found ) ) THEN
         ic_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
@@ -2168,11 +2205,7 @@ CONTAINS
       RETURN
     END IF
 
-    IF ( PRESENT(UElement) ) THEN
-      Element => UElement
-    ELSE
-      Element => CurrentModel % CurrentElement
-    END IF
+    Element => GetCurrentElement( UElement )
 
     x => Solver % Variable
 
@@ -2220,11 +2253,7 @@ CONTAINS
       RETURN
     END IF
 
-    IF ( PRESENT(UElement) ) THEN
-      Element => UElement
-    ELSE
-      Element => CurrentModel % CurrentElement
-    END IF
+    Element => GetCurrentElement( UElement ) 
 
     x => Solver % Variable
 
@@ -2326,7 +2355,6 @@ CONTAINS
          Solver % dt, Solver )
      RETURN
    END IF
-
 
    ! The rest of the code in this subroutine is obsolite 
    IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
@@ -2498,8 +2526,7 @@ CONTAINS
       RETURN
     END IF
 
-    Element => CurrentModel % CurrentElement
-    IF ( PRESENT(UElement) ) Element => UElement
+    Element => GetCurrentElement( UElement ) 
 
     x => Solver % Variable
 
@@ -2545,9 +2572,8 @@ CONTAINS
       RETURN
     END IF
 
-    Element => CurrentModel % CurrentElement
-    IF ( PRESENT(UElement) ) Element => UElement
-
+    Element => GetCurrentElement( UElement ) 
+    
     x => Solver % Variable
 
     dt = Solver % dt
@@ -2601,7 +2627,7 @@ CONTAINS
 !> slave solver is cheap and a stepsize control is applied
 !> Also one can easily make postprocessing steps just at the correct slot.
 !-----------------------------------------------------------------------------
-  SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
+  RECURSIVE SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
 !------------------------------------------------------------------------------  
      TYPE(Solver_t), POINTER :: Solver     
      CHARACTER(LEN=*) :: SlaveSolverStr 
@@ -2677,7 +2703,7 @@ CONTAINS
 
 !> Performs initialization for matrix equation related to the active solver
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultInitialize( USolver )
+  RECURSIVE SUBROUTINE DefaultInitialize( USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
 
@@ -2925,7 +2951,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
-     REAL(KIND=dp)   :: G(:,:), f(:)
+     REAL(KIND=dp) :: G(:,:), f(:)
      LOGICAL, OPTIONAL :: BulkUpdate, VecAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
@@ -2966,11 +2992,7 @@ CONTAINS
      x => Solver % Variable
      b => A % RHS
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement )
      
      VecAsm = .FALSE.
      IF ( PRESENT( VecAssembly )) THEN
@@ -3072,6 +3094,8 @@ CONTAINS
   INTEGER :: matrixType, eType
   INTEGER(C_INT), ALLOCATABLE :: ind(:)
 
+  TYPE(Element_t), POINTER :: CElement
+  
 #ifdef HAVE_FETI4I
 !!$  INTERFACE
 !!$     FUNCTION Permon_InitMatrix(n) RESULT(handle) BIND(C,Name="permon_init")
@@ -3113,7 +3137,8 @@ CONTAINS
 
   !CALL Permon_UpdateMatrix( A % PermonMatrix, n*dofs, ind, vals )
 
-  eType = ElementDim( CurrentModel % CurrentElement )
+  CElement => GetCurrentElement()
+  eType = ElementDim( CElement )
   ! type of the element is the same as its dimension
 
   CALL FETI4IAddElement(A % PermonMatrix, eType, n, nInd, n*dofs, ind, vals)
@@ -3155,11 +3180,7 @@ CONTAINS
      x => Solver % Variable
      b => A % RHS
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement )
 
      DOFs = x % DOFs
      Indexes => GetIndexStore()
@@ -3228,8 +3249,7 @@ CONTAINS
     Solver => CurrentModel % Solver
     IF ( PRESENT(USolver) ) Solver => USolver
 
-    Element => CurrentModel % CurrentElement
-    IF ( PRESENT(UElement) ) Element => UElement
+    Element => GetCurrentElement( UElement ) 
 
     x => Solver % Variable
     Indexes => GetIndexStore()
@@ -3283,8 +3303,7 @@ CONTAINS
     Solver => CurrentModel % Solver
     IF ( PRESENT(USolver) ) Solver => USolver
 
-    Element => CurrentModel % CurrentElement
-    IF ( PRESENT(UElement) ) Element => UElement
+    Element => GetCurrentElement( UElement ) 
 
     x => Solver % Variable
     DOFs = x % DOFs
@@ -3344,8 +3363,7 @@ CONTAINS
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
 
-     Element => CurrentModel % CurrentElement
-     IF ( PRESENT(UElement) ) Element => UElement
+     Element => GetCurrentElement( UElement ) 
 
      x => Solver % Variable
      Indexes => GetIndexStore()
@@ -3398,8 +3416,7 @@ CONTAINS
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
 
-      Element => CurrentModel % CurrentElement
-      IF ( PRESENT(UElement) ) Element => UElement
+     Element => GetCurrentElement( UElement ) 
 
       x => Solver % Variable
       DOFs = x % DOFs
@@ -3469,11 +3486,7 @@ CONTAINS
         x => Solver % Variable
      END IF
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement ) 
 
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
@@ -3539,11 +3552,7 @@ CONTAINS
         x => Solver % Variable
      END IF
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement ) 
 
      DOFs = x % DOFs
      Indexes => GetIndexStore()
@@ -3618,11 +3627,7 @@ CONTAINS
         x => Solver % Variable
      END IF
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement ) 
 
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
@@ -3684,11 +3689,7 @@ CONTAINS
         x => Solver % Variable
      END IF
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement ) 
 
      DOFs = x % DOFs
      Indexes => GetIndexStore()
@@ -3763,11 +3764,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement ) 
 
      Indexes => GetIndexStore()
      n =  GetElementDOFs( Indexes, Element, Solver )
@@ -3835,11 +3832,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement ) 
 
      DOFs = x % DOFs
      Indexes => GetIndexStore()
@@ -3917,11 +3910,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement ) 
 
      Indexes => GetIndexStore()
      n =  GetElementDOFs( Indexes, Element, Solver )
@@ -3996,11 +3985,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     IF ( PRESENT( UElement ) ) THEN
-        Element => UElement 
-     ELSE
-        Element => CurrentModel % CurrentElement
-     END IF
+     Element => GetCurrentElement( UElement ) 
 
      DOFs = x % DOFs
      Indexes => GetIndexStore()
@@ -4188,8 +4173,8 @@ CONTAINS
         name = x % name
         IF ( x % DOFs > 1 ) name = ComponentName(name,DOF)
         
-        ! Clearing for p-approximation dofs associated with faces & edges: 
-        SaveElement => CurrentModel % CurrentElement
+        ! Clearing for p-approximation dofs associated with faces & edges:
+        SaveElement => GetCurrentElement() 
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
            IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -4236,8 +4221,9 @@ CONTAINS
               ! To do: Check whether BCs for edge/face elements must be set via L2 projection.
              CYCLE 
            END IF
-        END DO
-        CurrentModel % CurrentElement => SaveElement
+         END DO
+         
+         SaveElement => SetCurrentElement(SaveElement)
      END DO
  
 
@@ -4259,7 +4245,7 @@ CONTAINS
         ! Set Dirichlet BCs for edge and face dofs which come from approximating with
         ! p-elements:
         ! ----------------------------------------------------------------------------
-        SaveElement => CurrentModel % CurrentElement
+        SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
            IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -4419,8 +4405,9 @@ CONTAINS
                  END DO
               END DO
            END SELECT
-        END DO
-        CurrentModel % CurrentElement => SaveElement
+         END DO
+         
+         SaveElement => SetCurrentElement(SaveElement)
      END DO
 
      ! ----------------------------------------------------------------------------
@@ -4433,7 +4420,7 @@ CONTAINS
         name = x % name
         IF (x % DOFs>1) name=ComponentName(name,DOF)
 
-        SaveElement => CurrentModel % CurrentElement
+        SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
 
@@ -4594,7 +4581,7 @@ CONTAINS
            END IF
 
          END DO
-        CurrentModel % CurrentElement => SaveElement
+         SaveElement => SetCurrentElement(SaveElement)
       END DO
 
      Found = .NOT. A % NoDirichlet
@@ -5184,8 +5171,9 @@ CONTAINS
      TYPE(Element_t) :: mapElement
      TYPE(Element_t), POINTER :: RefElement
      INTEGER :: i, n, eCode, bMap(4)
-     REAL(KIND=dp) :: x(4), y(4), z(4)
-
+     REAL(KIND=dp), TARGET :: x(4), y(4), z(4)
+     REAL(KIND=dp), POINTER CONTIG :: xP(:), yP(:), zP(:)
+     
      SELECT CASE(Element % TYPE % ElementCode / 100)
      ! Triangle and Quadrilateral
      CASE (3,4)
@@ -5227,7 +5215,10 @@ CONTAINS
      ! Get element boundary map
      bMap(1:4) = getElementBoundaryMap(Element, boundary)
      ! Get ref nodes for element
-     CALL GetRefPElementNodes( Element,x,y,z )
+     xP => x
+     yP => y
+     zP => z
+     CALL GetRefPElementNodes( Element,xP,yP,zP )
      ALLOCATE(bNodes % x(n), bNodes % y(n), bNodes % z(n))
         
      ! Set coordinate points of destination
@@ -5335,7 +5326,7 @@ CONTAINS
      ! Nodal indexes
      Indexes(1:n) = Element % NodeIndexes(1:n)
 
-     ! Assign rest of indexes if neccessary
+     ! Assign rest of indexes if necessary
      SELECT CASE(Parent % TYPE % DIMENSION)
      CASE (1)
        indSize = n 

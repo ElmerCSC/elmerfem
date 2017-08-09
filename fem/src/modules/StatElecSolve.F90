@@ -1388,7 +1388,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
            Force(p) = Force(p) + S*L*Basis(p)
 
            IF ( PiezoMaterial ) THEN
-             PiezoForce(p) = PiezoForce(p) + S * SUM( dBasisdx(p,1:3) * PiezoLoad(1:3) )
+             PiezoForce(p) = PiezoForce(p) + S * SUM( dBasisdx(p,1:Dim) * PiezoLoad(1:Dim) )
            END IF
 
         END DO

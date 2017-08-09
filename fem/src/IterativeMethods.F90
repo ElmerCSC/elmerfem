@@ -506,7 +506,7 @@ CONTAINS
 
 
 !-----------------------------------------------------------------------------------
-    SUBROUTINE C_lpcond(u,v,ipar,pcondlsubr)
+    RECURSIVE SUBROUTINE C_lpcond(u,v,ipar,pcondlsubr)
 !-----------------------------------------------------------------------------------
 #ifdef USE_ISO_C_BINDINGS
       USE huti_interfaces
@@ -612,6 +612,9 @@ CONTAINS
     PolynomialDegree = HUTI_BICGSTABL_L 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    
     Robust = ( HUTI_ROBUST == 1 )
     IF( Robust ) THEN
       RobustTol = HUTI_ROBUST_TOLERANCE
@@ -670,6 +673,7 @@ CONTAINS
       LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
       CHARACTER(LEN=MAX_NAME_LEN) :: str
       REAL(KIND=dp), ALLOCATABLE :: work(:,:), rwork(:,:)
+      REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
 !------------------------------------------------------------------------------
     
       IF ( l < 2) CALL Fatal( 'RealBiCGStabl', 'Polynomial degree < 2' )
@@ -821,21 +825,32 @@ CONTAINS
         END DO
           
         rwork(1:l+1,zz:zz+l) = rwork(1:l+1,z:z+l)
-        CALL dgetrf (l-1, l-1, rwork(2:l,zz+1:zz+l-1), l-1, &
-            iwork, stat)
+        tmpmtr(1:l-1,1:l-1) = rwork(2:l,zz+1:zz+l-1)
+        ! CALL dgetrf (l-1, l-1, rwork(2:l,zz+1:zz+l-1), l-1, &
+        !     iwork, stat)
+        CALL dgetrf (l-1, l-1, tmpmtr, l-1, &
+             iwork, stat)
       
         ! --- tilde r0 and tilde rl (small vectors)
       
         rwork(1,y0) = -one
         rwork(2:l,y0) = rwork(2:l,z) 
-        CALL dgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
-            rwork(2:l,y0), l-1, stat)
+        tmpvec(1:l-1) = rwork(2:l,y0)
+        ! CALL dgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
+        !     rwork(2:l,y0), l-1, stat)
+        CALL dgetrs('n', l-1, 1, tmpmtr, l-1, iwork, &
+             tmpvec, l-1, stat)
+        rwork(2:l,y0) = tmpvec(1:l-1)
         rwork(l+1,y0) = zero
         
         rwork(1,yl) = zero
-        rwork(2:l,yl) = rwork(2:l,z+l) 
-        CALL dgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
-            rwork(2:l,yl), l-1, stat)
+        rwork(2:l,yl) = rwork(2:l,z+l)
+        tmpvec(1:l-1) = rwork(2:l,yl)
+        ! CALL dgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
+        !     rwork(2:l,yl), l-1, stat)
+        CALL dgetrs ('n', l-1, 1, tmpmtr, l-1, iwork, &
+             tmpvec, l-1, stat)
+        rwork(2:l,yl) = tmpvec(1:l-1)
         rwork(l+1,yl) = -one
       
         ! --- Convex combination
@@ -1013,6 +1028,9 @@ CONTAINS
     RestartN = HUTI_GCR_RESTART 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    
     x => xvec
     b => rhsvec
     nc = 0
@@ -1069,9 +1087,6 @@ CONTAINS
       INTEGER :: i,j,k
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
 !------------------------------------------------------------------------------
-      
-      Converged = .FALSE.
-      Diverged = .FALSE.
       
       ALLOCATE( R(n), T1(n), T2(n),TT(n) )
       IF ( m > 1 ) THEN
@@ -1291,6 +1306,8 @@ CONTAINS
 
     Smoothing = ( HUTI_SMOOTHING == 1) 
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
     
     CALL RealIDRS(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
          Converged, Diverged, OutputInterval, s )
@@ -1679,6 +1696,9 @@ CONTAINS
     OutputInterval = HUTI_DBUGLVL
     RestartN = HUTI_GCR_RESTART 
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    
     !----------------------------------------------------------------------------
     ! Transform the solution vector and the right-hand side vector to 
     ! complex-valued vectors y and f
@@ -1741,10 +1761,7 @@ CONTAINS
       REAL(KIND=dp) :: alpha, trueresnorm, normerr
       COMPLEX(KIND=dp) :: trueres(n)
 !------------------------------------------------------------------------------
-      
-      Converged = .FALSE.
-      Diverged = .FALSE.
-      
+            
       ALLOCATE( R(n), T1(n), T2(n) )
       IF ( m > 1 ) THEN
          ALLOCATE( S(n,m-1), V(n,m-1) )

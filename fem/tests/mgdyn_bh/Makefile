@@ -1,4 +1,4 @@
-# Magneto statics exmaple with nonlinear B-H curve
+# Magneto statics example with nonlinear B-H curve
 #
 run:
 	$(ELMER_SOLVER)

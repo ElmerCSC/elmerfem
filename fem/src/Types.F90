@@ -55,6 +55,8 @@ MODULE Types
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
    ! Parameter for internal blocking
    INTEGER, PARAMETER :: VECTOR_BLOCK_LENGTH = 128
+   ! Parameter for internally avoiding calls to BLAS
+   INTEGER, PARAMETER :: VECTOR_SMALL_THRESH = 9
 
 #if defined(ARCH_32_BITS)
    INTEGER, PARAMETER :: AddrInt = SELECTED_INT_KIND(9)
@@ -383,7 +385,7 @@ END INTERFACE
                                                     ! interpolation type
 
      TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
-     REAL(KIND=dp), DIMENSION(:), POINTER :: NodeU, NodeV, NodeW
+     REAL(KIND=dp), DIMENSION(:), POINTER CONTIG :: NodeU, NodeV, NodeW
    END TYPE ElementType_t
 
 !------------------------------------------------------------------------------
@@ -402,10 +404,10 @@ END INTERFACE
      REAL(KIND=dp) :: Coeff = 1.0_dp
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
 
-     INTEGER :: NameLen,DepNameLen
+     INTEGER :: NameLen,DepNameLen = 0
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
 
-#ifdef DEBUG_LISTCOUNTER 
+#ifdef DEVEL_LISTCOUNTER 
      INTEGER :: Counter = 0
 #endif
      
@@ -417,25 +419,44 @@ END INTERFACE
 
 
    ! This is a tentative data type to speed up the retrieval of parameters
-   ! at Gaussian points.
+   ! at elements.
    !----------------------------------------------------------------------
    TYPE ValueHandle_t
+     INTEGER :: ValueType = -1
+     INTEGER :: SectionType = -1
+     INTEGER :: ListId = -1
+     LOGICAL :: BulkElement
      TYPE(Element_t), POINTER :: Element => NULL()
      TYPE(ValueList_t), POINTER :: List => Null()
      TYPE(ValueList_t), POINTER :: Ptr  => Null()
      TYPE(Nodes_t), POINTER :: Nodes
      INTEGER, POINTER :: Indexes
-     INTEGER :: n 
+     INTEGER :: n
+     INTEGER :: nValuesVec = 0
+     REAL(KIND=dp), POINTER :: ValuesVec(:) => NULL()
      REAL(KIND=dp), POINTER :: Values(:) => NULL()
      REAL(KIND=dp), POINTER :: ParValues(:,:) => NULL()
      INTEGER :: ParNo = 0
-     REAL(KIND=dp) :: ConstantValue      
+     INTEGER :: IValue, DefIValue = 0
+     REAL(KIND=dp) :: RValue, DefRValue = 0.0_dp
+     LOGICAL :: LValue, DefLValue = .FALSE.
+     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+     INTEGER :: CValueLen
+     LOGICAL :: Found
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
      LOGICAL :: Initialized = .FALSE.
      LOGICAL :: AllocationsDone = .FALSE.
      LOGICAL :: ConstantEverywhere = .FALSE.
-     LOGICAL :: ConstantInList = .FALSE.
+     LOGICAL :: GlobalEverywhere = .FALSE.
+     LOGICAL :: GlobalInList = .FALSE.
      LOGICAL :: EvaluateAtIP = .FALSE.
+     LOGICAL :: SomewhereEvaluateAtIP = .FALSE.
+     LOGICAL :: NotPresentAnywhere = .FALSE.
+     LOGICAL :: UnfoundFatal = .FALSE.
+     REAL(KIND=dp) :: minv, maxv
+     LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
+
+     
    END TYPE ValueHandle_t
 
 !------------------------------------------------------------------------------
@@ -509,30 +530,33 @@ END INTERFACE
 
    TYPE Variable_t
      TYPE(Variable_t), POINTER   :: Next => NULL()
-     INTEGER :: NameLen
+     INTEGER :: NameLen = 0
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
 
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t), POINTER :: Solver => NULL()
      LOGICAL :: Valid, Output
-     TYPE(Mesh_t), POINTER :: PrimaryMesh
+     TYPE(Mesh_t), POINTER :: PrimaryMesh => NULL()
 
-     LOGICAL :: ValuesChanged
+     LOGICAL :: ValuesChanged = .FALSE.
 
 ! Some variables are created from pointers to the primary variables
-     LOGICAL :: Secondary
+     LOGICAL :: Secondary = .FALSE.
 
      INTEGER :: TYPE = Variable_on_nodes
 
-     INTEGER :: DOFs
-     INTEGER, POINTER          :: Perm(:)
+     INTEGER :: DOFs = 0
+     INTEGER, POINTER          :: Perm(:) => NULL()
      REAL(KIND=dp)             :: Norm=0, PrevNorm=0,NonlinChange=0, SteadyChange=0
-     INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter
-     COMPLEX(KIND=dp), POINTER :: EigenValues(:),EigenVectors(:,:)
+     INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter=-1
+     COMPLEX(KIND=dp), POINTER :: EigenValues(:) => NULL(), &
+          EigenVectors(:,:) => NULL()
      REAL(KIND=dp), POINTER :: ConstraintModes(:,:) => NULL()
      INTEGER, POINTER :: ConstraintModesIndeces(:) => NULL()
      INTEGER :: NumberOfConstraintModes = 0
-     REAL(KIND=dp),    POINTER :: Values(:),PrevValues(:,:),PValues(:),&
-       NonlinValues(:), SteadyValues(:)
+     REAL(KIND=dp), POINTER :: Values(:) => NULL() ,&
+          PrevValues(:,:) => NULL(), &
+          PValues(:) => NULL(), NonlinValues(:) => NULL(), &
+          SteadyValues(:) => NULL()
      LOGICAL, POINTER :: UpperLimitActive(:) => NULL(), LowerLimitActive(:) => NULL()
      COMPLEX(KIND=dp), POINTER :: CValues(:) => NULL()
    END TYPE Variable_t
@@ -625,6 +649,7 @@ END INTERFACE
      REAL(KIND=dp), POINTER CONTIG :: x(:)=>NULL()
      REAL(KIND=dp), POINTER CONTIG :: y(:)=>NULL()
      REAL(KIND=dp), POINTER CONTIG :: z(:)=>NULL()
+!DIR$ ATTRIBUTES ALIGN:64::x,y,z,xyz
    END TYPE Nodes_t
 
 !------------------------------------------------------------------------------
@@ -696,6 +721,7 @@ END INTERFACE
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim, PassBCcnt=0
+     INTEGER :: MinEdgeDOFs, MinFaceDOFs
      INTEGER :: MaxElementNodes, MaxElementDOFs, MaxEdgeDOFs, MaxFaceDOFs, MaxBDOFs
 
      LOGICAL :: EntityWeightsComputed 
@@ -768,6 +794,9 @@ END INTERFACE
       INTEGER :: CurrentColour = 0
       INTEGER :: DirectMethod = DIRECT_NORMAL
       LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
+#ifdef USE_ISO_C_BINDINGS
+      TYPE(C_PTR) :: CWrap = C_NULL_PTR
+#endif
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------

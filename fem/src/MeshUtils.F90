@@ -1,4 +1,4 @@
-!/*****************************************************************************/
+!*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -171,6 +171,8 @@ CONTAINS
 
      Mesh % InvPerm => NULL()
 
+     Mesh % MinFaceDOFs = 1000
+     Mesh % MinEdgeDOFs = 1000
      Mesh % MaxFaceDOFs = 0
      Mesh % MaxEdgeDOFs = 0
      Mesh % MaxBDOFs = 0
@@ -680,7 +682,7 @@ END SUBROUTINE GetMaxDefs
 
      IF( TargetBody(1) > 0 ) THEN
        CALL Info('CreateDiscontMesh',&
-           'There seems to be a consistant discontinuous body: '&
+           'There seems to be a consistent discontinuous body: '&
            //TRIM(I2S(TargetBody(1))),Level=8)
        UseConsistantBody = .TRUE.
        TargetBodies => TargetBody
@@ -1873,7 +1875,7 @@ END SUBROUTINE GetMaxDefs
  !> Function to load mesh from disk.
  !------------------------------------------------------------------------------
  FUNCTION LoadMesh2( Model, MeshDirPar, MeshNamePar,&
-     BoundariesOnly, NumProcs,MyPE, Def_Dofs ) RESULT( Mesh )
+     BoundariesOnly, NumProcs,MyPE, Def_Dofs, mySolver ) RESULT( Mesh )
    !------------------------------------------------------------------------------
    USE PElementMaps, ONLY : GetRefPElementNodes
 
@@ -1881,7 +1883,7 @@ END SUBROUTINE GetMaxDefs
 
    CHARACTER(LEN=*) :: MeshDirPar,MeshNamePar
    LOGICAL :: BoundariesOnly    
-   INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:,:)
+   INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:,:), mySolver
    TYPE(Mesh_t),  POINTER :: Mesh
    TYPE(Model_t) :: Model
    !------------------------------------------------------------------------------    
@@ -1928,7 +1930,7 @@ END SUBROUTINE GetMaxDefs
    !--------------------------------------------------------------------
    CALL LoadMeshStep( 1, Mesh, MeshNamePar, mype, Parallel ) 
 
-   ! Initilize and allocate mesh stuctures
+   ! Initialize and allocate mesh stuctures
    !---------------------------------------------------------------------
    CALL InitializeMesh()
 
@@ -2069,6 +2071,8 @@ END SUBROUTINE GetMaxDefs
      IF ( BoundariesOnly ) Mesh % NumberOfBulkElements = 0
 
      Mesh % MaxElementDOFs  = 0
+     Mesh % MinEdgeDOFs     = 1000
+     Mesh % MinFaceDOFs     = 1000
      Mesh % MaxEdgeDOFs     = 0
      Mesh % MaxFaceDOFs     = 0
      Mesh % MaxBDOFs        = 0
@@ -2350,6 +2354,7 @@ END SUBROUTINE GetMaxDefs
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
                 FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), FirstOrderElements
      TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(10,6)
      CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
@@ -2415,17 +2420,24 @@ END SUBROUTINE GetMaxDefs
           IF(FoundEqDefs) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
 
           DO solver_id=1,Model % NumberOfSolvers
+
+            IF(PRESENT(mySolver)) THEN
+              IF ( Solver_id /= mySolver ) CYCLE
+            ELSE
+              IF (ListCheckPresent(Model % Solvers(Solver_id) % Values, 'Mesh')) CYCLE
+            END IF
+
             FoundDef = .FALSE.
             IF(FoundSolverDefs(solver_id)) &
                 ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
  
             IF ( FoundDef ) THEN
-              CALL GetMaxDefs( Model, Mesh, Element, ElementDef, solver_id, body_id, Indofs )
+              CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef, solver_id, body_id, Indofs )
             ELSE
               IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) &
                  ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
 
-              CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
+              CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef0, solver_id, body_id, Indofs )
 
               IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
             END IF
@@ -2458,6 +2470,12 @@ END SUBROUTINE GetMaxDefs
            IF( FoundEqDefs.AND.body_id/=body_id0 ) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
 
            DO solver_id=1,Model % NumberOfSolvers
+             IF(PRESENT(mySolver)) THEN
+               IF ( Solver_id /= mySolver ) CYCLE
+             ELSE
+               IF (ListCheckPresent(Model % Solvers(Solver_id) % Values, 'Mesh')) CYCLE
+             END IF
+
              FoundDef = .FALSE.
              IF (FoundSolverDefs(solver_id)) &
                 ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
@@ -2731,14 +2749,18 @@ END SUBROUTINE GetMaxDefs
      ! Create parallel numbering of faces
      CALL SParFaceNumbering(Mesh)
      DO i=1,Mesh % NumberOfFaces
+       Mesh % MinFaceDOFs = MIN(Mesh % MinFaceDOFs,Mesh % Faces(i) % BDOFs)
        Mesh % MaxFaceDOFs = MAX(Mesh % MaxFaceDOFs,Mesh % Faces(i) % BDOFs)
      END DO
+     IF(Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs) Mesh % MinFaceDOFs = Mesh % MaxFaceDOFs
 
      ! Create parallel numbering for edges
      CALL SParEdgeNumbering(Mesh)
      DO i=1,Mesh % NumberOfEdges
+       Mesh % MinEdgeDOFs = MIN(Mesh % MinEdgeDOFs,Mesh % Edges(i) % BDOFs)
        Mesh % MaxEdgeDOFs = MAX(Mesh % MaxEdgeDOFs,Mesh % Edges(i) % BDOFs)
      END DO
+     IF(Mesh % MinEdgeDOFs > Mesh % MaxEdgeDOFs) Mesh % MinEdgeDOFs = Mesh % MaxEdgeDOFs
 
      ! Set max element dofs here (because element size may have changed
      ! when edges and faces have been set). This is the absolute worst case.
@@ -2860,8 +2882,10 @@ END SUBROUTINE GetMaxDefs
           END IF
 
           ! Get maximum dof for edges
+          Mesh % MinEdgeDOFs = MIN(Edge % BDOFs, Mesh % MinEdgeDOFs)
           Mesh % MaxEdgeDOFs = MAX(Edge % BDOFs, Mesh % MaxEdgeDOFs)
        END DO
+       IF ( Mesh % MinEdgeDOFs > Mesh % MaxEdgeDOFs ) Mesh % MinEdgeDOFs = MEsh % MaxEdgeDOFs
 
        ! Iterate each face of element
        DO j=1,Element % TYPE % NumberOfFaces
@@ -2887,9 +2911,11 @@ END SUBROUTINE GetMaxDefs
           END IF
              
           ! Get maximum dof for faces
+          Mesh % MinFaceDOFs = MIN(Face % BDOFs, Mesh % MinFaceDOFs)
           Mesh % MaxFaceDOFs = MAX(Face % BDOFs, Mesh % MaxFaceDOFs)
        END DO
     END DO
+    IF ( Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs ) Mesh % MinFaceDOFs = MEsh % MaxFaceDOFs
 
     ! Set local edges for boundary elements
     DO i=Mesh % NumberOfBulkElements + 1, &
@@ -5655,7 +5681,7 @@ END SUBROUTINE GetMaxDefs
           END IF
           
           ! Ok, the last check, this might fail if the element had skew even though the 
-          ! quick test is successfull! Then the left and right edge may have different range.
+          ! quick test is successful! Then the left and right edge may have different range.
           Dist = MAX( x1-xm2, xm1-x1 )
           IF( Dist > Xtol ) CYCLE
 
@@ -6246,7 +6272,7 @@ END SUBROUTINE GetMaxDefs
                   coeff(ncoeff) = cskew * (MIN(xmaxm,xmax)-MAX(xminm,xmin))/(xmax-xmin)
                 END IF
 
-                ! this sets the sign which should be consistant 
+                ! this sets the sign which should be consistent 
                 IF( (x1-x2)*(xm1-xm2)*(k1-k2)*(km1-km2) > 0.0_dp ) THEN
                   signs(ncoeff) = sgn0
                 ELSE
@@ -6580,7 +6606,7 @@ END SUBROUTINE GetMaxDefs
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
-            ! Omit the element if it is definately on the right circle
+            ! Omit the element if it is definitely on the right circle
             IF( ALL( ABS( NodesM % x(1:n) ) - 90.0 < Xtol ) ) CYCLE
             DO j=1,n
               IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = NodesM % x(j) + 360.0_dp
@@ -7263,7 +7289,7 @@ END SUBROUTINE GetMaxDefs
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
-            ! Omit the element if it is definately on the right circle
+            ! Omit the element if it is definitely on the right circle
             IF( ALL( ABS( AlphaM(1:neM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
             DO j=1,neM
               IF( AlphaM(j) < 0.0_dp ) AlphaM(j) = AlphaM(j) + ArcCoeff * 360.0_dp
@@ -8197,7 +8223,7 @@ END SUBROUTINE GetMaxDefs
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
-            ! Omit the element if it is definately on the right circle
+            ! Omit the element if it is definitely on the right circle
             IF( ALL( ABS( NodesM % x(1:nM) ) - 90.0 < XTol ) ) CYCLE
             DO j=1,nM
               IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = &
@@ -10821,7 +10847,7 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( wold(0:n),h(1:n))
       wold = w
 
-      ! paramaters that determine the accuracy of the iteration
+      ! parameters that determine the accuracy of the iteration
       maxiter = 10000
       err_eps = 1.0e-6
 
@@ -10857,7 +10883,7 @@ END SUBROUTINE GetMaxDefs
           w(i) = (w(i-1)*h(i+1)+w(i+1)*h(i))/(h(i)+h(i+1))
         END DO
         
-        ! If the maximum error is small compared to the minumum elementsize then exit
+        ! If the maximum error is small compared to the minimum elementsize then exit
         !-----------------------------------------------------------------------------
         err = MAXVAL( ABS(w-wold))/minhn
 
@@ -12838,7 +12864,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Finds neigbours of the nodes in given direction.
+!> Finds neighbours of the nodes in given direction.
 !> The algorithm finds the neighbour that within 45 degrees of the 
 !> given direction has the smallest distance.
 !------------------------------------------------------------------------------
@@ -12858,7 +12884,7 @@ CONTAINS
   INTEGER :: i,j,k,n,t,DIM,istat
 
   IF(SIZE(Neighbours) < Mesh % NumberOfNodes) THEN
-    CALL Warn('FindNeigbourNodes','SIZE of Neigbours should equal Number of Nodes!')
+    CALL Warn('FindNeigbourNodes','SIZE of Neighbours should equal Number of Nodes!')
     RETURN
   END IF
 
@@ -13275,6 +13301,8 @@ END SUBROUTINE FindNeighbourNodes
     NewMesh % NumberOfEdges = 0
     NewMesh % NumberOfFaces = 0
     NewMesh % MaxBDOFs = Mesh % MaxBDOFs
+    NewMesh % MinEdgeDOFs = Mesh % MinEdgeDOFs
+    NewMesh % MinFaceDOFs = Mesh % MinFaceDOFs
     NewMesh % MaxEdgeDOFs = Mesh % MaxEdgeDOFs
     NewMesh % MaxFaceDOFs = Mesh % MaxFaceDOFs
     NewMesh % MaxElementDOFs = Mesh % MaxElementDOFs
@@ -16620,7 +16648,7 @@ CONTAINS
       IF( FirstTime ) THEN
         IF( ListGetLogical(Params,'Coordinate Transformation Save',Found ) ) THEN
           CALL Info('CoordinateTranformation',&
-              'Creating variables for > Tranformed Coordinate < ')
+              'Creating variables for > Transformed Coordinate < ')
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
               'Transformed Coordinate 1',1,x1) 
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&

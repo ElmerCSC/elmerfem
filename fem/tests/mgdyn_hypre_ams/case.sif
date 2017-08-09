@@ -26,7 +26,7 @@ Material 2 ! magnetic material
   Electric conductivity = real 3000
 End
 
-Material 3 ! slighly magnetic material
+Material 3 ! slightly magnetic material
   name = "PM"
   relative permeability = $ mu_pm
   relative permittivity = 1

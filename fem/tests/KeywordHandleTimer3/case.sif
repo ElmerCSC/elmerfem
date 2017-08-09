@@ -1,0 +1,165 @@
+! Test case for handles that make code simpler
+! Test case is compared against legacy advection-diffusion equation
+! This is a steady state case.
+! The version where the handles are initialized.
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State 
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Simulation Timing = Logical True
+  Timer Results = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+End
+
+Body 3
+  Equation = 1
+  Material = 3
+End
+
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+
+Solver 1
+!  Exec Solver = never
+
+  Equation = KeywordTimer
+  Variable = ConsB
+  Variable DOFs = 1
+  Procedure = "./KeywordCompareRealVec" "KeywordCompare"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+! Stabilize = False  ! this is default
+
+  Solver Timing = True
+  Timer Sweeps = Integer 1
+End
+
+
+
+Material 1
+  Name = "Material1"
+
+  just a test = Real 1.0
+
+! Basis material definitions
+  Float Value 1 = Real 1.0
+  Float Value 2 = Real 1.0
+
+  Float Value 3 = Variable "time"
+    Real MATC "1+sin(tx)"
+  Float Value 4 = Variable "time"
+    Real MATC "1+sin(tx)"
+
+  Float Value 5 = Variable "Coordinate"
+    Real MATC "tx(0)+tx(1)"
+  Float Value 6 = Variable "Coordinate"
+    Real MATC "tx(0)^2+tx(1)^2"
+  Float Value 7 = Variable "Coordinate"
+    Real MATC "tx(0)+tx(1)"
+  Float Value 7 At Ip = Logical True
+ 
+  Float Value 8 = Variable time
+    Real Procedure "RealVecFunctionTests" "FunA"
+  Float Value 9 = Variable time
+    Real Procedure "RealVecFunctionTests" "FunB"
+  Float Value 10 = Variable Coordinate
+    Real Procedure "RealVecFunctionTests" "FunC"
+End
+
+
+Material 2
+! Material 2 includes the same test except with small variation
+  Name = "Material2"
+  Float Value 1 = Real 1.0
+  Float Value 2 = Real 2.0
+
+  Float Value 3 = Variable "time"
+    Real MATC "1+sin(tx)"
+  Float Value 4 = Variable "time"
+    Real MATC "1+sin(tx)"
+
+  Float Value 5 = Variable "Coordinate"
+    Real MATC "tx(0)+tx(1)"
+  Float Value 6 = Variable "Coordinate"
+    Real MATC "tx(0)^2+tx(1)^2"
+  Float Value 7 = Variable "Coordinate"
+    Real MATC "tx(0)+tx(1)"
+  Float Value 7 At Ip = Logical True
+ 
+  Float Value 8 = Variable time
+    Real Procedure "RealVecFunctionTests" "FunA"
+  Float Value 9 = Variable time
+    Real Procedure "RealVecFunctionTests" "FunB"
+  Float Value 10 = Variable Coordinate
+    Real Procedure "RealVecFunctionTests" "FunC"
+End
+
+
+Material 3
+! Material 3 includes the same tests except the 2nd always missing
+  Name = "Material3"
+  Float Value 1 = Real 1.0
+  Float Value 3 = Variable "time"
+    Real MATC "1+0*sin(tx)"
+
+  Float Value 5 = Variable "Coordinate"
+    Real MATC "tx(0)+tx(1)"
+  Float Value 6 = Variable "Coordinate"
+    Real MATC "tx(0)^2+tx(1)^2"
+  Float Value 7 = Variable "Coordinate"
+    Real MATC "tx(0)+tx(1)"
+  Float Value 7 At Ip = Logical True
+ 
+  Float Value 8 = Variable time
+    Real Procedure "RealVecFunctionTests" "FunA"
+  Float Value 9 = Variable time
+    Real Procedure "RealVecFunctionTests" "FunB"
+  Float Value 10 = Variable Coordinate
+    Real Procedure "RealVecFunctionTests" "FunC"
+End 
+
+
+Boundary Condition 1
+  Name = "BCs" 
+  Target Boundaries = 1
+End
+
+Solver 1 :: Reference Norm = 1.0000000000000211
+
+
+!End Of File
+

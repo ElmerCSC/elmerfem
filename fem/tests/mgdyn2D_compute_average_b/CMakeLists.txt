@@ -1,0 +1,11 @@
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+CONFIGURE_FILE(sif/6801.sif sif/6801.sif COPYONLY) 
+file(COPY ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+file(COPY sif/6801-circuits.definitions DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/sif")
+file(COPY 6801/mesh.boundary 6801/mesh.header 6801/mesh.nodes 6801/mesh.elements 6801/mesh.names DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/6801")
+file(COPY 6801/dat/gittrack DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/6801/dat")
+ADD_ELMER_TEST(mgdyn2D_compute_average_b)
+ADD_ELMER_LABEL(mgdyn2D_compute_average_b mgdyn)
+ADD_ELMER_LABEL(mgdyn2D_compute_average_b 2D)
+ADD_ELMER_LABEL(mgdyn2D_compute_average_b harmonic)
+

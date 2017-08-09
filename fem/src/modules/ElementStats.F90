@@ -1,7 +1,38 @@
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
+!
+!/******************************************************************************
+! *
+! *  Module Authors: Peter Råback
+! *  Email:          Peter.Raback@csc.fi
+! *  Web:            http://www.csc.fi/elmer
+! *  Address:        CSC - IT Center for Science Ltd.
+! *
+! *  Original Date: 2.8.2016
+! *
+! *****************************************************************************/
 !-----------------------------------------------------------------------------
-!> A prototype solver for advection-diffusion-reaction equation,
-!> This equation is generic and intended for education purposes
-!> but may also serve as a starting point for more complex solvers.
+!> A solver that reports the staticstics of the finite element mesh.
 !------------------------------------------------------------------------------
 SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -37,9 +68,9 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
   Mesh => GetMesh()
 
   ! Do cohorst only if requested
-  DoCohorts = GetLogical( Params,'Show Cohorts',Found ) 
+  DoCohorts = GetLogical( Params,'Create Histogram',Found ) 
   IF( DoCohorts ) THEN
-    NoCohorts = GetInteger( Params,'Number of Cohorts',Found ) 
+    NoCohorts = GetInteger( Params,'Histogram Intervals',Found ) 
     IF( .NOT. Found ) NoCohorts = 10 
     ALLOCATE( CohortCount( NoCohorts, 3 ) )
     CohortCount = 0

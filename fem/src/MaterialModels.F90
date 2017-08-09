@@ -404,7 +404,13 @@ this ise not in USE
         c2 = SUM( Basis(1:n) * c2n(1:n) )
 
         s = ss
-        IF (PRESENT(muder)) muder = Viscosity * (c2-1)/2 * s**((c2-1)/2-1)
+        IF (PRESENT(muder)) THEN
+           IF (s /= 0) THEN
+              muder = Viscosity * (c2-1)/2 * s**((c2-1)/2-1)
+           ELSE
+              muder = 0.0_dp
+           END IF
+        END IF
 
         c3n = ListGetReal( Material, 'Critical Shear Rate',n, Element % NodeIndexes,gotIt )
         IF (GotIt) THEN

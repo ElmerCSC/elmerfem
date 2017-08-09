@@ -105,7 +105,7 @@ End
 
 Body Force 2
 !! accumulation flux in m/year
-!! postive number
+!! positive number
   Zs Top Accumulation Flux 1 = Real 0.0e0
   Zs Top Accumulation Flux 2 = Real 0.5e0
 End
@@ -343,7 +343,7 @@ Boundary Condition 3
     Real MATC "tx(0)-tx(1)"
 End
 
-!! Symetry axis
+!! Symmetry axis
 Boundary Condition 4
   Name = "back"
   Target Boundaries = 4
