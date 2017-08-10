@@ -81,7 +81,7 @@ CONTAINS
      
     IF( .NOT. Visited ) THEN
       IF( GlobalParticles % NumberOfGroups > 1 ) THEN
-        CALL Fatal('ParticleParticleContact','Implemented only for one particle type')
+        CALL Fatal('ParticleParticleContact','Implemented only for one particle type!')
       END IF
       Params => GetSolverParams()
       Rad = GetCReal(Params,'Particle Radius')
@@ -480,12 +480,12 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
 #else
   REAL(KIND=dp) :: cput1,cput2,dcput,CPUTime
 #endif
-  REAL(KIND=dp), POINTER :: WeightVector(:),TmpValues(:)
+  REAL(KIND=dp), POINTER :: TmpValues(:)
   TYPE(Particle_t), POINTER :: Particles
 
   SAVE CollisionInteraction, ContactInteraction, NoGroups, &
       ParticleToField, OutputInterval, Nstep, VisitedTimes, &
-      WeightVector, TimeOrder, ParticleInBox, &
+      TimeOrder, ParticleInBox, &
       tottime, TimeStepsTaken, ParticleStepsTaken,ParticleWall,StatInfo, &
       ParticleInfo, TimeInfo, TrueCollision, FieldReset, &
       ParticlesLocated,DoParticleScattering
@@ -637,11 +637,11 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     ! and / or cumpulate the r.h.s. of matrix equation with data 
     !------------------------------------------------------------------
     CALL ParticleFieldInteraction( Particles, dtime, .TRUE. , AssemblyLoop ) 
-
+    
     NoParticles = Particles % NumberOfParticles
     ParticleStepsTaken = ParticleStepsTaken + NoParticles
     TimeStepsTaken = TimeStepsTaken + 1
-
+    
     ! Interaction with the walls
     !---------------------------------------------------------------
     IF( ParticleInBox ) THEN
@@ -653,7 +653,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
       !---------------------------------------------------------------
       CALL ParticleWallContact( Particles, dtime )
     END IF
-
+    
     ! If there is either collisions or contacts between particles
     ! create the structures for closest neighbours
     !------------------------------------------------------------
@@ -680,18 +680,17 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
       CALL DestroyGhostParticles( Particles ) 
     END IF
 
-
     ! Do the update for particle velocities and positions
     ! v = v0 + at, r = r0 + vt
     !---------------------------------------------------------------
     CALL ParticleAdvanceTimestep( Particles )
-
+    
     ! Do particle scattering from the bulk, for example acoustic scattering
     !----------------------------------------------------------------------
     IF( DoParticleScattering ) THEN
       CALL ParticleScattering( Particles ) 
     END IF
-
+    
     ! If there are periodic BCs apply them just before locating the particles
     !------------------------------------------------------------------------
     CALL ParticleBoxPeriodic( Particles )
@@ -846,7 +845,7 @@ CONTAINS
        TYPE(Variable_t), POINTER :: Var
      END TYPE VarPointer_t
 
-#define MAXPARFIELDS 8
+#define MAXPARFIELDS 20
      TYPE(VarPointer_t) :: ActiveVars(MAXPARFIELDS)
      TYPE(Element_t), POINTER :: BulkElement
      INTEGER :: No, Status
@@ -859,32 +858,35 @@ CONTAINS
          GradVeloAtPoint(3,3)
      LOGICAL :: Stat, UseGradVelo, CoordCond, VeloCond, Visited = .FALSE., &
          GotIt, GotPot, GotPot2, GotVelo
-     INTEGER :: i,j,k,l,n,dim,TimeOrder
+     INTEGER :: i,j,k,l,n,dim,TimeOrder,NoGroups, MaxField, PrevGroup, CurrGroup
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: SqrtElementMetric, Weight, TimeDecay, DistDecay, Dist, &
-         ParticleVolume, FluidDensity, Rad, VolumeFraction,UserCoeff,&
+         ParticleVolume, FluidDensity, VolumeFraction,UserCoeff,&
          Cchar,Tchar,Prevdtime
      REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
-     REAL(KIND=dp) :: mass, charge, dragcoeff, val, ValCoeff
-     REAL(KIND=dp) :: damping, Gravity(3)
-     REAL(KIND=dp) :: sumf, sumw
+     REAL(KIND=dp) :: val, ValCoeff, Gravity(3), sumf, sumw
      REAL(KIND=dp), POINTER :: gWork(:,:), ForceVector(:)
      INTEGER, POINTER :: ForcePerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, DensityName, FieldMode, FieldWeight, str
+     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, DensityName, FieldMode, FieldWeight, GroupName, str
      TYPE(Variable_t), POINTER :: VeloVar, PotVar, PotVar2, VeloCondVar, CoordCondVar, WeightVar
-     LOGICAL :: GotGravity, GotDamping, GotBuoyancy, GotField, GotMass, &
+     LOGICAL :: GotGravity, GotBuoyancy, GotField, &
          GotTimeDecay, GotDistDecay, GotFieldMode, GotFieldWeight, &
-         ActiveOpers(MAXPARFIELDS),NormalizedVars(MAXPARFIELDS)
+         NormalizedVars(MAXPARFIELDS)
+     INTEGER :: ActiveOpers(MAXPARFIELDS),ActiveGroups(MAXPARFIELDS)
      TYPE(Variable_t), POINTER :: DistVar
      
-
-     SAVE :: Visited, dim, Basis, dBasisdx, mass, charge, dragcoeff, &
+     REAL(KIND=dp) :: mass, damping, charge, dragcoeff, rad
+     REAL(KIND=dp), POINTER :: massv(:), dampingv(:), chargev(:), dragcoeffv(:), radv(:)
+     LOGICAL :: GotMass, GotDamping, GotCharge, GotDrag, GotRad
+     
+     SAVE :: Visited, dim, Basis, dBasisdx, &
          FieldMode, FieldWeight, TimeDecay, DistDecay, UseGradVelo, TimeOrder, &
          GotFieldMode, GotFieldWeight, GotGravity, GotDamping, GotTimeDecay, GotDistDecay, &
          GotPot, GotPot2, GotVelo, Gravity, Damping, VeloCond, CoordCond, GotBuoyancy, &
-         ParticleVolume, GotField, Rad, CoordCondVar, VeloCondVar, DensityName, &
+         ParticleVolume, GotField, CoordCondVar, VeloCondVar, DensityName, &
          PotVar, PotVar2, VeloVar, Mesh, PrevDtime, DistVar, &
-         ActiveVars, ActiveOpers, NormalizedVars
+         ActiveVars, ActiveOpers, ActiveGroups, NormalizedVars, MaxField, NoGroups
+
 
 
      Params => GetSolverParams()
@@ -894,21 +896,9 @@ CONTAINS
        dim = Mesh % MeshDim
        n = Mesh % MaxElementNodes
        ALLOCATE( Basis(n), dBasisdx(n, 3) )
-       
-       ! These physical parameters could basically vary from call to call
-       !-------------------------------------------------------------------------
-       mass = GetCReal( Params,'Particle Mass',GotMass)
-       damping = GetCReal( Params,'Particle Damping',GotDamping)
 
+         
        GotBuoyancy = GetLogical( Params,'Particle Lift',Found)
-       IF( GotBuoyancy ) THEN
-         Rad = GetCReal(Params,'Particle Radius')
-         IF( dim == 2 ) THEN
-           ParticleVolume = PI * Rad ** 2
-         ELSE
-           ParticleVolume = (4.0_dp/3) * PI * Rad ** 3
-         END IF
-       END IF
 
        GotGravity = GotBuoyancy .OR. ListGetLogical( Params,'Particle Gravity',Found)
        IF( GotGravity ) THEN
@@ -920,23 +910,14 @@ CONTAINS
          END IF
        END IF
 
-       IF( GotGravity .AND. .NOT. GotMass ) THEN
-         CALL Warn('ParticleFieldInteraction','No > Particle Mass < was given even if gravity is!')
-       END IF
-
        VariableName = ListGetString(Params,'Potential Variable Name',GotPot)
        IF( GotPot ) THEN
          PotVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( PotVar ) ) THEN
            CALL Fatal('ParticleFieldInteraction','Potential field variable does not exist: '//TRIM(VariableName))           
          END IF
-         charge = GetCReal( Params,'Particle Charge',Found)
-         IF(.NOT. Found) CALL Fatal('ParticleFieldInteraction',&
-             '> Particle Charge < not given!')
-       ELSE
-         Charge = 0.0_dp
        END IF
-
+       
        VariableName = ListGetString(Params,'Secondary Potential Variable Name',GotPot2)
        IF( GotPot2 ) THEN
          PotVar2 => VariableGet( Mesh % Variables, TRIM(VariableName) )
@@ -945,15 +926,12 @@ CONTAINS
          END IF
        END IF
 
-       dragcoeff = GetCReal( Params,'Particle Drag Coefficient',Found)
        VariableName = ListGetString(Params,'Velocity Variable Name',GotVelo)
        IF( GotVelo ) THEN
          VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
            CALL Fatal('ParticleFieldInteraction','Velocity field variable does not exist: '//TRIM(VariableName))           
          END IF         
-         IF(.NOT. Found) CALL Fatal('ParticleFieldInteraction',&
-             '> Particle Drag Coefficient < not given!')        
          UseGradVelo = GetLogical( Params,'Velocity Gradient Correction',Found)
        ELSE
          UseGradVelo = .FALSE.
@@ -981,49 +959,67 @@ CONTAINS
          FieldWeight = GetString( Params,'Particle To Field Weight',GotFieldWeight)
          DistDecay = GetCReal( Params,'Particle Decay Distance',GotDistDecay)
          TimeDecay = GetCReal( Params,'Particle Decay Time',GotTimeDecay)         
-         FieldMode = GetString( Params,'Particle To Field Mode',GotFieldMode)
 
-         ActiveOpers = .FALSE.
+         FieldMode = GetString( Params,'Particle To Field Mode',GotFieldMode)
+         IF( GotFieldMode ) THEN
+           CALL Fatal('ParticleFieldInteraction','> Particle to Field Mode < is obsolite. Use > Field 1 < instaed!')
+         END IF
+           
+         ActiveOpers = 0
+         ActiveGroups = 0
          NormalizedVars = .FALSE.
 
-         i = -1
-         DO WHILE( .TRUE. ) 
+         i = 0
+         DO i=1,MAXPARFIELDS
 
-           IF( i == -1 ) THEN
-             IF( .NOT. GotFieldMode ) THEN
-               i = i+1
-               CYCLE
-             END IF
-           ELSE IF( i == 0) THEN
-             FieldMode = 'weight'
-           ELSE             
-             WRITE( str,'(A,I0)') 'Field ',i
-             FieldMode = ListGetString( Params, str, GotIt )
-             IF( .NOT. GotIt ) EXIT
+           WRITE( str,'(A,I0)') 'Field ',i
+           FieldMode = ListGetString( Params, str, GotIt )
+           IF( .NOT. GotIt ) THEN
+             MaxField = i - 1             
+             EXIT          
            END IF
-           
-           IF( FieldMode == 'weight') THEN
+
+           SELECT CASE( FieldMode ) 
+
+           CASE ('weight')             
              j = 1
-           ELSE IF( FieldMode == 'energy') THEN
+           CASE ('energy') 
              j = 2
-           ELSE IF( FieldMode == 'kinetic energy') THEN
+           CASE ('kinetic energy')
              j = 3
-           ELSE IF( FieldMode == 'potential energy') THEN
+           CASE ('potential energy')
              j = 4
-           ELSE IF( FieldMode == 'electrostatic energy') THEN
+           CASE ('electrostatic energy')
              j = 5
-           ELSE IF( FieldMode == 'charge') THEN
+           CASE('charge')
              j = 6
-           ELSE IF( FieldMode == 'speed') THEN
+           CASE ('speed') 
              j = 7
-           ELSE IF( FieldMode == 'force') THEN
+           CASE ('force') 
              j = 8
-           ELSE
+           CASE DEFAULT
              CALL Fatal('ParticleFieldInteraction','Unknown field mode: '//TRIM(FieldMode))
-           END IF
-           ActiveOpers(j) = .TRUE.
 
-           VariableName = 'Particle '//TRIM(FieldMode)
+           END SELECT
+
+           ActiveOpers(i) = j
+
+           j = 0
+           IF( Particles % NumberOfGroups > 0 ) THEN
+             WRITE( str,'(A,I0)') 'Group ',i
+             j = ListGetInteger( Params, str, GotIt )             
+             ActiveGroups(i) = j
+           END IF
+
+           IF( j > 0 ) THEN
+             WRITE( str,'(A,I0)') 'Group Name ',i
+             GroupName = ListGetString( Params, str, GotIt)
+             IF( .NOT. GotIt ) CALL Fatal('ParticleDynamics','Unfound keyword: '//TRIM(str))
+             VariableName = 'Particle '//TRIM(FieldMode)//' '//TRIM(GroupName)
+           ELSE
+             VariableName = 'Particle '//TRIM(FieldMode)
+           END IF
+             
            Var => VariableGet( Mesh % Variables,VariableName )
            IF(.NOT. ASSOCIATED(Var)) THEN
              CALL Info('ParticleDynamics','Creating variable: '//VariableName ) 
@@ -1031,16 +1027,15 @@ CONTAINS
              Var => VariableGet( Mesh % Variables,VariableName)      
            END IF
 
-           ActiveVars(j) % Var => Var
-           IF( j == 1 ) WeightVector => Var % Values
+           ActiveVars(i) % Var => Var
 
            WRITE( str,'(A,I0)') 'Field Normalize ',i         
-           NormalizedVars(j) = ListGetLogical( Params, str, GotIt )
-
-           i = i + 1
+           NormalizedVars(i) = ListGetLogical( Params, str, GotIt )
          END DO
-       END IF
 
+         CALL Info('ParticleDynamics','Number of particle fields: '//TRIM(I2S(MaxField)),Level=6)
+       END IF
+       
        DensityName = 'Density'
 
        IF( GotDistDecay ) THEN
@@ -1065,31 +1060,80 @@ CONTAINS
        Tchar = GetCReal( Params,'Field Decay Time',Found)
        IF( Found ) THEN
          Cchar = EXP( -dtime / Tchar ) 
-         WeightVector = Cchar * WeightVector 
-         DO i=1,MAXPARFIELDS
-           IF( ActiveOpers(i) ) THEN
-             ActiveVars(i) % Var % Values = Cchar * ActiveVars(i) % Var % Values
-           END IF
+         DO i=1,MaxField
+           ActiveVars(i) % Var % Values = Cchar * ActiveVars(i) % Var % Values
          END DO
        END IF
               
        IF( FieldReset ) THEN
-         DO i=1,MAXPARFIELDS
-           IF( ActiveOpers(i) ) THEN
-             ActiveVars(i) % Var % Values = 0.0_dp
-           END IF
+         DO i=1,MaxField
+           ActiveVars(i) % Var % Values = 0.0_dp
          END DO
        END IF
      END IF
 
      NoParticles = Particles % NumberOfParticles
+     NoGroups = Particles % NumberOfGroups     
+     PrevGroup = -1
+
+
+     ! The many groups case is treated separately since it adds limitation to the keywords being
+     ! constant. For one group the parameters could depend on global parameters such as time. 
+     !------------------------------------------------------------------------------------------
+     IF( NoGroups > 1 ) THEN
+       massv => ListGetConstRealArray1( Params,'Particle Mass',GotMass)
+       mass = 0.0_dp
+       dampingv => ListGetConstRealArray1( Params,'Particle Damping',GotDamping)
+       damping = 0.0_dp
+       Radv => ListGetConstRealArray1(Params,'Particle Radius',GotRad )
+       rad = 0.0_dp
+       chargev => ListGetConstRealArray1( Params,'Particle Charge',GotCharge)
+       charge = 0.0_dp
+       dragcoeffv => ListGetConstRealArray1( Params,'Particle Drag Coefficient',GotDrag)
+       dragcoeff = 0.0_dp
+     ELSE
+       mass = GetCReal( Params,'Particle Mass',GotMass)
+       damping = GetCReal( Params,'Particle Damping',GotDamping)         
+       Rad = GetCReal(Params,'Particle Radius',GotRad)
+       charge = GetCReal( Params,'Particle Charge',GotCharge)
+       dragcoeff = GetCReal( Params,'Particle Drag Coefficient',GotDrag)
+     END IF
+         
+     IF( GotBuoyancy .AND. .NOT. GotRad ) THEN
+       CALL Fatal('ParticleFieldInteraction','> Particle Radius < is needed for buoyancy!')
+     END IF
+     
+     IF( GotGravity .AND. .NOT. GotMass ) THEN
+       CALL Warn('ParticleFieldInteraction','> Particle Mass < is needed by gravity!')
+     END IF
+
+     IF( GotPot .AND. .NOT. GotCharge) THEN
+       CALL Fatal('ParticleFieldInteraction',&
+           '> Particle Charge < is needed by external field!')
+     END IF
+      
+     IF( GotVelo .AND. .NOT. GotDrag ) THEN
+       CALL Fatal('ParticleFieldInteraction','> Particle Drag Coefficient < required with velocity!')        
+     END IF
+
+     IF( GotBuoyancy ) THEN
+       IF( dim == 2 ) THEN
+         ParticleVolume = PI * Rad ** 2
+       ELSE
+         ParticleVolume = (4.0_dp/3) * PI * Rad ** 3
+       END IF
+     END IF
+       
+     
      
      DO No = 1, NoParticles
 
        Status = GetParticleStatus( Particles, No )
 
+       
        IF( Status >= PARTICLE_LOST ) CYCLE
        IF( Status <= PARTICLE_INITIATED ) CYCLE
+
        
        ElementIndex = GetParticleElement( Particles, No )
 
@@ -1101,17 +1145,36 @@ CONTAINS
        Coord = GetParticleCoord( Particles, No )
        Velo = GetParticleVelo( Particles, No )
        Force = 0.0_dp       
+       
+       IF( NoGroups > 1 ) THEN
+         CurrGroup = GetParticleGroup( Particles, No )        
+         
+         IF( CurrGroup /= PrevGroup ) THEN
+           IF(GotMass) mass = massv(MIN(SIZE(massv),CurrGroup))
+           IF(GotDamping) damping = dampingv(MIN(SIZE(dampingv),CurrGroup))
+           IF(GotRad) rad = radv(MIN(SIZE(radv),CurrGroup))
+           IF(GotCharge) charge = chargev(MIN(SIZE(chargev),CurrGroup))
+           IF(GotDrag) dragcoeff = dragcoeffv(MIN(SIZE(dragcoeffv),CurrGroup))
 
-
-       ! PRINT *,'No',No,ElementIndex,Coord
-
+           IF( GotBuoyancy ) THEN
+             IF( dim == 2 ) THEN
+               ParticleVolume = PI * Rad ** 2
+             ELSE
+               ParticleVolume = (4.0_dp/3) * PI * Rad ** 3
+             END IF
+           END IF
+           
+           PrevGroup = CurrGroup
+         END IF
+       END IF
+              
        !-------------------------------------------------------------------------
        ! Add constant fields i.e. gravity and constant damping force
        !-------------------------------------------------------------------------
        IF( GotGravity ) THEN
          Force = Force + Gravity * Mass
        END IF
-       
+
        ! For 1st order models the velocity is solved implicitely, when drag is known
        ! Therefore it is a explicit force only for 2nd order models.
        !----------------------------------------------------------------------------
@@ -1163,6 +1226,7 @@ CONTAINS
            ELSE
              CALL GetVectorFieldInMesh(VeloVar, BulkElement, Basis, VeloAtPoint )
            END IF
+           
            IF( TimeOrder == 2 ) THEN
              Force = Force + dragcoeff * ( VeloAtPoint - Velo )  
            ELSE     
@@ -1183,7 +1247,6 @@ CONTAINS
            Force = Force - charge * GradPotAtPoint 
          END IF
 
-
          IF( GotBuoyancy ) THEN
            IF( GetParticleElementIntersection( Particles, BulkElement, Basis, Coord, &
                Rad, BulkElement2, VolumeFraction ) ) THEN
@@ -1194,15 +1257,6 @@ CONTAINS
            END IF
            Force = Force - Gravity * ParticleVolume * FluidDensity
          END IF
-         
-         !     IF( ANY( ISNAN( Force ) ) ) THEN
-         !       PRINT *,'Gravity',Gravity,ParticleVolume,FluidDensity
-         !       PRINT *,'charge',GradPotAtPoint
-         !       PRINT *,'dragcoeff',dragcoeff
-         !       PRINT *,'Basis',Basis
-         !       PRINT *,'VeloAtPoint',VeloAtPoint
-         !       IF( UseGradVelo) PRINT *,'GradVelo',GradVeloAtPoint
-         !     END IF
          
          !-------------------------------------------------------------------------
          ! the value at point is obtained from a property of the particles
@@ -1254,31 +1308,44 @@ CONTAINS
          !---------------------------------------------------
          ValCoeff = UserCoeff * ValCoeff
 
-         DO k=1,MAXPARFIELDS
-           IF( .NOT. ActiveOpers(k) ) CYCLE
-
+         DO k=1,MaxField
+           l = ActiveGroups(k)
+           IF( l > 0 ) THEN
+             IF( CurrGroup /= l ) CYCLE
+           END IF
+          
            ! physical weight dependent of the particle configuration
            !--------------------------------------------------------
-           IF( k == 1 ) THEN
+           SELECT CASE( ActiveOpers(k) ) 
+
+           CASE( 1 ) 
              val = 1.0_dp
-           ELSE IF( k == 2 ) THEN
+
+           CASE( 2 )
              ! ( kinetic + potential + electrostatic ) energy
-             val = Mass * ( 0.5 * SUM( Velo(1:dim)**2 ) + &
-                 SUM( Gravity(1:dim) * Coord(1:dim) ) ) + &
+             val = 0.5 * Mass * SUM( Velo(1:dim)**2 ) + &
+                 Mass * SUM( Gravity(1:dim) * Coord(1:dim) ) + &
                  Charge * PotAtPoint
-           ELSE IF( k == 3 ) THEN
+
+           CASE( 3 )
              val = 0.5 * Mass * SUM( Velo ** 2 ) 
-           ELSE IF( k == 4 ) THEN         
+
+           CASE( 4 ) 
              val = Mass * SUM( Gravity(1:dim) * Coord(1:dim) )
-           ELSE IF( k == 5 ) THEN
+
+           CASE( 5 )
              val = Charge * PotAtPoint
-           ELSE IF( k == 6 ) THEN              
+
+           CASE( 6 ) 
              val = Charge 
-           ELSE IF( k == 7 ) THEN             
+
+           CASE( 7 )
              val = SQRT( SUM( VeloAtPoint ** 2 ) )
-           ELSE IF( k == 8 ) THEN
+
+           CASE( 8 ) 
              val = SQRT( SUM( Force(1:dim) ** 2 ) )
-           END IF
+
+           END SELECT
 
            val = val * ValCoeff 
            Var => ActiveVars(k) % Var
@@ -1340,7 +1407,7 @@ CONTAINS
      END IF
 
      PrevDtime = dtime
-
+     
 
    END SUBROUTINE ParticleFieldInteraction
    
@@ -1484,16 +1551,15 @@ CONTAINS
            CALL MakePermUsingMask(Model,Solver,Mesh,VariableName,.FALSE.,&
                WallPerm,WallNodes )
 
-           PRINT *,'WallNodes:',WallNodes
+           !PRINT *,'WallNodes:',WallNodes
            IF( WallNodes > 0 ) THEN
              CALL VariableAddVector( Mesh % Variables, Mesh, Solver, VariableName, Perm = WallPerm )
            END IF
          END IF
          WallVar => VariableGet( Mesh % Variables,VariableName)
        END IF
-       
-              
-       PRINT *,'Flags:',Contact,Collision,GotVeloVar,MovingWall, Accumulation, AccumulationLimit, WallTrace
+                     
+       !PRINT *,'Flags:',Contact,Collision,GotVeloVar,MovingWall, Accumulation, AccumulationLimit, WallTrace
        
        AnyInteraction = Contact .OR. Collision
        

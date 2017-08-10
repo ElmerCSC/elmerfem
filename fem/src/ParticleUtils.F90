@@ -956,7 +956,7 @@ RETURN
       CumDeleted = CumDeleted + DeletedParticles
       
       IF( CumDeleted > LimDeleted ) THEN
-        PRINT *,'Number of deleted particles:',CumDeleted, DeletedParticles, LimDeleted
+        !PRINT *,'Number of deleted particles:',CumDeleted, DeletedParticles, LimDeleted
         CALL DeleteLostParticles( Particles ) 
         CumDeleted = 0
       END IF
@@ -2659,7 +2659,6 @@ RETURN
         IF( i == NewParticles ) EXIT
       END DO
       DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
-      !PRINT *,'done init'
 
     CASE ('elemental ordered')
       CALL Info('InitializeParticles',&
@@ -2667,7 +2666,7 @@ RETURN
 
       NewParticles = MIN(NoElements,NewParticles)
       Particles % NumberOfParticles = NewParticles
-      PRINT *,'Initializing particles in elements:',NewParticles,noelements
+
       DO i=1,NewParticles
         k = Offset + i
         j = (NoElements-1)*(i-1)/(NewParticles-1)+1
@@ -3758,8 +3757,8 @@ RETURN
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
 
-! print *,'Locating Particles'
-    
+    CALL Info('LocateParticles','Locating particles in mesh',Level=10)
+
     Params => ListGetSolverParams()
     Mesh => GetMesh()
     dim = Particles % dim      
@@ -3826,7 +3825,7 @@ RETURN
       IF( .NOT. AccurateNow ) THEN
         AccurateNow = AccurateAtFace .AND. FaceIndex > 0
 
-if ( debug ) print*,accuratenow, accurateatface, faceindex > 0
+        IF ( debug ) PRINT*,accuratenow, accurateatface, faceindex > 0
 
         IF( AccurateNow ) THEN
           FaceIndex0 = FaceIndex
@@ -4845,30 +4844,25 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
     REAL(KIND=dp) :: dtime
     TYPE(Variable_t), POINTER :: Var, TimeVar, DistVar, DtVar
     LOGICAL :: GotVar, GotTimeVar, GotDistVar, MovingMesh
-    REAL(KIND=dp) :: Drag, Mass, ds, dCoord(3),Coord(3),Velo(3),Speed0,Speed
+    REAL(KIND=dp) :: ds, dCoord(3),Coord(3),Velo(3),Speed0,Speed
     INTEGER :: dim, Status, TimeOrder, No, NoMoving
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: NoParticles
     LOGICAL :: Found, Visited = .FALSE.,RK2,HaveSpeed0
+
+    REAL(KIND=dp) :: mass, drag
+    REAL(KIND=dp), POINTER :: massv(:), dragv(:)
+    LOGICAL :: GotMass, GotDrag
+    INTEGER :: CurrGroup, PrevGroup, NoGroups
     
     SAVE TimeOrder, dim, Mass, Drag, Visited, dCoord, Coord, GotTimeVar, &
-	GotDistVar, TimeVar, DtVar, DistVar, MovingMesh,Speed0,HaveSpeed0
+	GotDistVar, TimeVar, DtVar, DistVar, MovingMesh,Speed0,HaveSpeed0, Params
 
     
     IF(.NOT. Visited ) THEN
       Params => ListGetSolverParams()
       TimeOrder = Particles % TimeOrder
       dim = Particles % dim
-      
-      IF( TimeOrder == 2 ) THEN
-        Mass = ListGetConstReal( Params,'Particle Mass',Found)
-        IF(.NOT. Found) CALL Fatal('ParticleAdvanceTime',&
-            '> Particle Mass < should be given!')
-      ELSE IF( TimeOrder == 1 ) THEN
-        Drag = ListGetConstReal( Params,'Particle Drag Coefficient',Found)
-        IF(.NOT. Found) CALL Fatal('ParticleAdvanceTime',&
-            '> Particle Drag Coefficient < should be given!')
-      END IF
       
       dCoord = 0.0_dp
       Coord = 0.0_dp
@@ -4894,6 +4888,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
     END IF
 
     NoParticles = Particles % NumberOfParticles
+    NoGroups = Particles % NumberOfGroups     
     NoMoving = 0
     RK2 = Particles % RK2
 
@@ -4907,7 +4902,31 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       dtime = Particles % DtSign * Particles % dTime
     END IF
 
+    GotMass = .FALSE.
+    GotDrag = .FALSE.
+    IF( TimeOrder == 2 ) THEN      
+      IF( NoGroups > 1 ) THEN
+        massv => ListGetConstRealArray1( Params,'Particle Mass',GotMass)
+        Mass = 0.0_dp
+      ELSE
+        Mass = ListGetConstReal( Params,'Particle Mass',GotMass)
+      END IF
+      IF(.NOT. GotMass) CALL Fatal('ParticleAdvanceTime',&
+          '> Particle Mass < should be given!')
+    ELSE IF( TimeOrder == 1 ) THEN
+      IF( NoGroups > 1 ) THEN
+        dragv => ListGetConstRealArray1( Params,'Particle Drag Coefficient',GotDrag)
+        Drag = 0.0_dp
+      ELSE
+        Drag = ListGetConstReal( Params,'Particle Drag Coefficient',GotDrag)
+      END IF
+      IF(.NOT. GotDrag) CALL Fatal('ParticleAdvanceTime',&
+          '> Particle Drag Coefficient < should be given!')
+    END IF
+    PrevGroup = -1 
 
+    
+    
     ! Now move the particles
     !---------------------------
     DO No=1, NoParticles
@@ -4927,6 +4946,17 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
         TimeVar % Values(No) = TimeVar % Values(No) + Particles % dTime         
       END IF
 
+      IF( NoGroups > 1 ) THEN
+        CurrGroup = GetParticleGroup(Particles,No)
+        IF( CurrGroup /= PrevGroup ) THEN
+          IF(GotMass) THEN
+            mass = massv(MIN(SIZE(massv),CurrGroup)) 
+          END IF
+          IF(GotDrag) drag = dragv(MIN(SIZE(dragv),CurrGroup))
+        END IF
+        PrevGroup = CurrGroup
+      END IF
+      
       IF ( Status == PARTICLE_FIXEDCOORD ) THEN
         Particles % Velocity(No,:) = 0.0_dp
 	CYCLE
@@ -4971,15 +5001,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       NoMoving = NoMoving + 1
 
       Particles % Status(No) = PARTICLE_READY
-!if ( particles % partition(no)==2 .AND. particles % nodeindex(no) == 325 )then
-!print*,parenv % mype, particles % status(no), ' xxxxx 1 ', dcoord(1:dim),  particles%coordinate(no,:); flush(6)
-!endif
       Particles % Coordinate(No,:) = Particles % Coordinate(No,:) + dCoord(1:dim)
-
-!if ( particles % partition(no)==2 .AND. particles % nodeindex(no) == 325 )then
-!print*,parenv % mype, particles % status(no), ' xxxxx ', dcoord(1:dim),  particles%coordinate(no,:); flush(6)
-!endif
-
 
       IF( GotDistVar ) THEN
         ds = SQRT( SUM( dCoord(1:dim)**2 ) )
