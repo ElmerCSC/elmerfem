@@ -3,22 +3,22 @@
 ! The information is used to constract a continuous velocity field from the data
 ! with the help of an auxiliary solver that utilizes the r.h.s. created by the particle solver.
 ! Periodic BCs are enforced on the particles. 
+!
+! This only has two dummy particle tests instead of default of one. 
 !---------------------------------------------------------------------------------------------
 
 Check Keywords Warn
 
-$nopart = 100
 
 Header
   Mesh DB "." "square"
 End
  
 Simulation
-  Max Output Level = 20
+  Max Output Level = 10
   Coordinate System = Cartesian 
   Simulation Type = transient
   Steady State Max Iterations = 1
-!  Post File = "square.vtu"
   Timestep Intervals = 10
   Output Intervals = 1
   Timestep Sizes = 0.1
@@ -42,13 +42,21 @@ Solver 1
   Equation = ParticleDynamics
   Procedure = "ParticleDynamics" "ParticleDynamics"
 
-  Number of Particles = Integer $ nopart
-  Coordinate Initialization Method = String "box random"
-  Initial Velocity(1,2) = Real 0.0 0.0
-
   Simulation Timestep Sizes = Logical True
   Max Timestep Intervals = Integer 10
   Time Order = Integer 2
+
+! Initialize one group of particles - just as a test
+  Number of Particle Groups = Integer 2
+
+! Namespace is used for the test
+  group1: Number of Particles = Integer 70
+  group1: Coordinate Initialization Method = String "box random"
+  group1: Initial Velocity(1,2) = Real 0.0 0.0
+
+  group2: Number of Particles = Integer 30
+  group2: Coordinate Initialization Method = String "box random"
+  group2: Initial Velocity(1,2) = Real 0.0 0.0
 
   Particle Gravity = Logical True
   Particle Mass = Real 1.0
@@ -58,14 +66,14 @@ Solver 1
   Particle Accurate Always = Logical True
 
   Particle To Field = Logical True
-!  Particle To Field Mode = String "kinetic energy"
+
   Field 1 = String "weight"
   Field 2 = String "kinetic energy"
 
 ! do not cumulate the particles
   Particle To Field Reset = Logical True
 
-  Statistical Info = Logical True
+  Statistical Info = Logical False
   Particle Info = Logical True
 End 
 
@@ -98,22 +106,6 @@ Solver 2
 End
 
 
-Solver 3
-!  Exec Solver = never
-  Equation = "ResultOutput"
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = "fields" 
-  Output Format = "vtu"
-End
-
-Solver 4
-  Exec Solver = never
-  Equation = String "ParticleOutput"
-  Procedure = File "SaveGridData" "ParticleOutputSolver"
-  Filename Prefix = String "particles" 
-  Output Format = String "vtu"
-End
-
 
 
 Material 1
@@ -129,4 +121,3 @@ Boundary Condition 1
 End
 
 Solver 2 :: Reference Norm = Real 0.5
-RUN
