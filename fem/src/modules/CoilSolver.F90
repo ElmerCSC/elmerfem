@@ -150,7 +150,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: CoilCrossSection,InitialCurrent, Coeff, val, x0
   REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
-      NormalizeCurrent, FitCoil, SelectNodes, CalcCurr
+      NormalizeCurrent, FitCoil, SelectNodes, CalcCurr, NarrowInterface
   LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:)
   REAL(KIND=dp) :: CoilCenter(3), CoilNormal(3), CoilTangent1(3), CoilTangent2(3), &
       MinCurr(3),MaxCurr(3),TmpCurr(3)
@@ -203,6 +203,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     CoilParts = 1
   END IF
 
+  NarrowInterface = GetLogical( Params,'Narrow Interface',Found )
+  
   CalcCurr = GetLogical( Params,'Calculate Coil Current',Found )
   IF( .NOT. Found ) CalcCurr = .TRUE.
 
@@ -296,14 +298,21 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
     ! Choose nodes where the Dirichlet values are set. 
     IF( CoilClosed ) THEN
-      Set => SetA
-      CALL ChooseFixedBulkNodes(Set,1,SelectNodes)
-      Set => SetB
-      CALL ChooseFixedBulkNodes(Set,2,SelectNodes)
+      IF( NarrowInterface ) THEN
+        Set => SetA
+        CALL ChooseFixedBulkNodesNarrow(Set,1,SelectNodes)
+        Set => SetB
+        CALL ChooseFixedBulkNodesNarrow(Set,2,SelectNodes)
+      ELSE
+        Set => SetA
+        CALL ChooseFixedBulkNodes(Set,1,SelectNodes)
+        Set => SetB
+        CALL ChooseFixedBulkNodes(Set,2,SelectNodes)
+      END IF
     ELSE
       Set => SetA
       CALL ChooseFixedEndNodes(Set)
-    END IF   
+    END IF
 
     DesiredCoilCurrent(NoCoils) = ListGetCReal( CoilList,'Desired Coil Current',Found )
     IF(.NOT. Found ) DesiredCoilCurrent(NoCoils) = 1.0_dp
@@ -409,6 +418,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL SetMatrixElement( StiffMatrix,i,i,1.0d0*s )     
       END DO
       
+      IF( NarrowInterface ) THEN
+        CALL CutInterfaceConnections( StiffMatrix, Set, .TRUE. )
+      END IF
+
+
       ! Solve the potential field
       !--------------------------
       CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.FALSE.) 
@@ -425,9 +439,13 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
         CALL Fatal('CoilSolver','> '//TRIM(SolVar % Name)//' < Loads not associated!')
       END IF
-      
-      CALL ScalePotential()
-      
+
+      IF( NarrowInterface ) THEN
+        CALL ScalePotentialNarrow()
+      ELSE
+        CALL ScalePotential()
+      END IF
+        
     END DO
   END DO
 
@@ -435,6 +453,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   ! Compute the current
   !---------------------------------
   IF( CalcCurr ) THEN
+    CALL ListAddLogical( Params,'Calculate Loads',.FALSE.)
+
     MinCurr = 0.0_dp
     MaxCurr = 0.0_dp
 
@@ -491,6 +511,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     IF( NormalizeCurrent ) THEN
       CALL NormalizeCurrentDensity() 
     END IF
+    CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
   END IF
     
 
@@ -536,6 +557,56 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
  
 
 CONTAINS 
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE CutInterfaceConnections( A, Set, CutBulkValues )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A             
+    INTEGER, POINTER :: Set(:)
+    LOGICAL :: CutBulkValues
+!------------------------------------------------------------------------------
+     INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+     REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+
+     INTEGER :: i,j,k,n,cnt,s1,s2
+
+
+!------------------------------------------------------------------------------
+     
+     n = A % NumberOfRows
+     Rows   => A % Rows
+     Cols   => A % Cols
+     Values => A % Values
+
+     cnt = 0
+
+     IF( CutBulkValues ) THEN
+       IF(.NOT. ASSOCIATED( A % BulkValues ) ) THEN
+         CALL Fatal('CutInterfaceConnections','Dont have bulk values!')
+       END IF
+     END IF
+     
+     DO i=1,n
+       s1 = Set(i)
+       IF( s1 == 0 ) CYCLE
+       DO j=Rows(i),Rows(i+1)-1
+         k = Cols(j)
+         s2 = Set(k)
+         IF( s1 * s2 < 0 ) THEN
+           Values(j) = 0.0_dp
+           IF( CutBulkValues ) A % BulkValues(j) = 0.0_dp
+           cnt = cnt + 1
+         END IF
+       END DO
+     END DO
+     
+     CALL Info('CutInterfaceConnections','Number of connections cut: '//TRIM(I2S(cnt)),Level=7)
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE CutInterfaceConnections
+!------------------------------------------------------------------------------
+
 
   
 
@@ -853,6 +924,7 @@ CONTAINS
     END IF
 
 
+    
     DO i=1,Mesh % NumberOfNodes
 
       IF( SelectNodes ) THEN
@@ -907,6 +979,163 @@ CONTAINS
 
 
 
+
+  ! Chooses bulk nodes which are used to set the artificial boundary conditions
+  ! in the middle of the coil. Narrow version.
+  !----------------------------------------------------------------------------  
+  SUBROUTINE ChooseFixedBulkNodesNarrow( Set, SetNo, SelectNodes )
+    
+    INTEGER :: SetNo
+    INTEGER, POINTER :: Set(:)
+    LOGICAL :: SelectNodes
+
+    LOGICAL :: Mirror 
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: x,y,z,x0,y0,rad2deg,fii,dfii,dy
+    REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3),ierr, &
+        MinCut, MaxCut, CutDist(27)
+    INTEGER :: t,i,j,k,n,ioffset
+    LOGICAL :: Found, Hit
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: Indexes(:)
+
+
+    CALL Info('CoilSolver','Choosing fixing nodes for set: '//TRIM(I2S(SetNo)))
+
+    Mirror = ( SetNo == 2 )
+
+    rad2deg = 180.0_dp / PI
+
+    Mesh => Solver % Mesh
+
+    ! The angle of acceptable nodes 
+    ! 90 degs effectively chooses the right half
+    ! Not used currently 
+    !dfii = ListGetCReal( Params,'Coil dfii',Found)
+    !IF(.NOT. Found ) dfii = 90.0
+
+    ! The maximum coordinate difference for an acceptable node
+    ! The larger the value the more there will be nodes in the set.
+    ! There should be enough nodes so that the BC is good one,
+    ! but not too many either. 
+
+    MinCoord = HUGE( MinCoord )
+    MaxCoord = -HUGE( MaxCoord )
+    ioffset = 10 * NoCoils 
+
+
+    DO i=1,Mesh % NumberOfNodes
+      IF( Perm(i) == 0 ) CYCLE
+
+      IF( SelectNodes ) THEN
+        IF( CoilIndex(i) /= NoCoils ) CYCLE
+      END IF
+
+      r(1) = Mesh % Nodes % x(i)
+      r(2) = Mesh % Nodes % y(i)
+      r(3) = Mesh % Nodes % z(i)
+
+      ! Move to coil origin
+      r = r - CoilCenter
+
+      IF( mirror ) r = -r
+
+      ! Coordinate projected to coil coordinates
+      rp(1) = SUM( CoilTangent1 * r ) 
+      rp(2) = SUM( CoilTangent2 * r ) 
+      rp(3) = SUM( CoilNormal * r ) 
+
+      DO j=1,3
+        MinCoord(j) = MIN( MinCoord(j), rp(j) )
+        MaxCoord(j) = MAX( MaxCoord(j), rp(j) ) 
+      END DO
+    END DO
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL MPI_ALLREDUCE(MinCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
+      MinCoord = ParTmp
+      CALL MPI_ALLREDUCE(MaxCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+      MaxCoord = ParTmp
+    END IF
+
+    dy = ListGetCReal( Params,'Coil Bandwidth',Found)
+    IF(.NOT. Found ) THEN
+      dy = 0.2 * ( MaxCoord(2) - MinCoord(2) )
+    END IF
+
+
+
+    DO t=1,Mesh % NumberOfBulkElements
+
+      Element => Mesh % Elements(t)
+      Indexes => Element % NodeIndexes
+      n = Element % Type % NumberOfNodes
+
+      IF( SelectNodes ) THEN
+        IF( ANY( CoilIndex(Indexes) /= NoCoils ) ) CYCLE
+      END IF
+
+
+      Hit = .TRUE.
+
+      DO k = 1, n
+        i = Indexes(k)
+
+        j = Perm(i)
+        IF( j == 0 ) THEN
+          Hit = .FALSE.
+          CYCLE
+        END IF
+          
+        r(1) = Mesh % Nodes % x(i)
+        r(2) = Mesh % Nodes % y(i)
+        r(3) = Mesh % Nodes % z(i)
+
+        r = r - CoilCenter
+        IF( mirror ) r = -r
+
+        ! Coordinate projected to coil coordinates
+        rp(1) = SUM( CoilTangent1 * r ) 
+        rp(2) = SUM( CoilTangent2 * r ) 
+        rp(3) = SUM( CoilNormal * r ) 
+
+        IF( SetNo == 1 ) THEN
+          ! This is used to determine "left" and "right" side of the coil
+          PotSelect % Values( PotSelect % Perm(i) ) = rp(1)
+        END IF
+
+        ! This element can not be an the interface as it is on the wrong side
+        IF( rp(1) < 0 ) THEN
+          Hit = .FALSE.
+          CYCLE
+        END IF
+
+        CutDist(k) = rp(2)
+      END DO
+      
+      IF(.NOT. Hit) CYCLE
+
+      MaxCut = MAXVAL( CutDist(1:n) )
+      MinCut = MINVAL( CutDist(1:n) )
+
+      IF( MaxCut >= -EPSILON( MaxCut) .AND. MinCut <= EPSILON( MinCut)  ) THEN
+        DO k=1,n
+          i = Indexes(k)
+          j = Perm(i)
+          IF( CutDist(k) > 0.0_dp ) THEN
+            Set(j) = 2 + ioffset
+          ELSE
+            Set(j) = -2 - ioffset
+          END IF
+        END DO
+      END IF
+    END DO
+
+
+  END SUBROUTINE ChooseFixedBulkNodesNarrow
+
+
+  
 
   ! Choose end nodes as assingled by "Coil Start" and "Coil End" flags.
   ! The result of this imitate the previous routine in order to be able
@@ -1365,6 +1594,12 @@ CONTAINS
         possum = ParallelReduction( possum ) 
         negsum = ParallelReduction( negsum ) 
       END IF
+
+      WRITE (Message,'(A,I6,ES12.4)') 'Positive coil currents:',posi,possum
+      CALL Info('CoilSolver',Message,Level=12)
+
+      WRITE (Message,'(A,I6,ES12.4)') 'Negative coil currents:',negi,negsum
+      CALL Info('CoilSolver',Message,Level=12)
     
       IF( ABS( possum ) < EPSILON( possum ) ) THEN
         CALL Fatal('CoilSolver','No positive current sources on coil end!')
@@ -1411,6 +1646,126 @@ CONTAINS
   END SUBROUTINE ScalePotential
 
 
+! Scale the potential such that the total current is the desired one.
+! The scaling uses the feature where the nodal current is computed from
+! r=Ax-b where the components of r are the nodal currents corresponding to
+! the enforces Dirichlet conditions.
+!----------------------------------------------------------------------------- 
+  SUBROUTINE ScalePotentialNarrow() 
+    
+    REAL(KIND=dp) :: InitialCurrent,possum, negsum, sumerr
+    INTEGER :: i,j,k,l,Coil,nsize,posi,negi
+    TYPE(Matrix_t), POINTER :: A
+    
+    CALL Info('CoilSolver','Scaling potential with narrow strategy',Level=10)
+
+    
+    nsize = SIZE( LoadVar % Perm ) 
+    A => Solver % Matrix
+
+    
+    DO Coil = 1, NoCoils 
+
+      ! Evaluate the positive and negative currents
+      ! As the total current vanishes these should be roughly the same 
+      ! but with different signs. 
+      possum = 0.0_dp
+      negsum = 0.0_dp
+      posi = 0
+      negi = 0
+
+      DO i=1,nsize
+        j = LoadVar % Perm(i) 
+        IF( j == 0 ) CYCLE
+
+        IF( ParEnv % PEs > 1 ) THEN
+          IF( A % ParallelInfo % Neighbourlist(j) % Neighbours(1) &
+              /= ParEnv % MyPe ) CYCLE
+        END IF
+        
+        IF( NoCoils > 1 ) THEN
+          IF( CoilIndex(i) /= Coil ) CYCLE
+        END IF
+
+        ! Note that the narrow part of the gap is omitted and here only 
+        ! currents related to the outher parts of the gap (with |sgn|=2) 
+        ! are accounted for. 
+        sgn = Set(j)
+        IF( sgn /= 0 ) CYCLE
+
+        DO k=A % Rows(j),A % Rows(j+1)-1
+          l = A % Cols(k)
+          sgn = Set(l)
+          IF( sgn == 0 ) CYCLE
+
+          IF( MODULO(sgn,10) == 2  ) THEN
+            possum = possum + LoadVar % Values(j)
+            posi = posi + 1
+          ELSE IF( MODULO(sgn,10)-10 == -2 ) THEN
+            negsum = negsum + LoadVar % Values(j)
+            negi = negi + 1
+          END IF
+
+          EXIT
+        END DO
+      END DO
+        
+      IF( ParEnv % PEs > 1 ) THEN
+        possum = ParallelReduction( possum ) 
+        negsum = ParallelReduction( negsum ) 
+      END IF
+
+      WRITE (Message,'(A,I6,ES12.4)') 'Positive coil currents:',posi,possum
+      CALL Info('CoilSolver',Message,Level=12)
+
+      WRITE (Message,'(A,I6,ES12.4)') 'Negative coil currents:',negi,negsum
+      CALL Info('CoilSolver',Message,Level=12)
+    
+      IF( ABS( possum ) < EPSILON( possum ) ) THEN
+        CALL Fatal('CoilSolver','No positive current sources on coil end!')
+      END IF
+      IF( ABS( negsum ) < EPSILON( negsum ) ) THEN
+        CALL Fatal('CoilSolver','No negative current sources on coil end!')
+      END IF            
+      
+      sumerr = 2.0 * ABS( ABS( possum ) - ABS( negsum ) )  / (ABS( possum ) + ABS( negsum ) ) 
+      WRITE (Message,'(A,ES12.4)') 'Discrepancy of start and end coil currents: ',sumerr 
+      CALL Info('CoilSolver',Message,Level=7)
+
+      IF( sumerr > 0.5 ) THEN
+        CALL Warn('CoilSolver','Positive and negative sums differ too much!')
+      END IF
+
+      InitialCurrent = ( possum - negsum ) / 2.0
+      
+      WRITE( Message,'(A,ES12.4)') 'Initial coil current for coil '&
+          //TRIM(I2S(Coil))//':',InitialCurrent
+      CALL Info('CoilSolver',Message,Level=5)
+    
+
+      ! Scale the potential such that the current is as desired
+      ! The current scales linearly with the potential.
+      Coeff = DesiredCoilCurrent(Coil) / InitialCurrent
+
+      WRITE( Message,'(A,ES12.4)') 'Coil potential multiplier:',Coeff
+      CALL Info('CoilSolver',Message,Level=5)
+
+      IF( NoCoils == 1 ) THEN
+        PotVar % Values = Coeff * PotVar % Values     
+      ELSE
+        DO i=1,nsize
+          IF( CoilIndex(i) == Coil ) THEN
+            j = PotVar % Perm(i) 
+            IF( j == 0 ) CYCLE            
+            PotVar % Values( j ) = Coeff * PotVar % Values( j )
+          END IF
+        END DO
+      END IF
+    END DO
+
+  END SUBROUTINE ScalePotentialNarrow
+
+  
 
 ! Normalize the current density to a given length
 ! When using this feature the potential can no longer be used

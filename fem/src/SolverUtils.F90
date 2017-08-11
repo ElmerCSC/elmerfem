@@ -10671,7 +10671,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
                SkipZeroRhs, ComplexSystem, ComputeChangeScaled, ConstraintModesAnalysis, &
-               RecursiveAnalysis
+               RecursiveAnalysis, CalcLoads
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
@@ -11032,8 +11032,14 @@ END FUNCTION SearchNodeL
     NodalLoads => VariableGet( Solver % Mesh % Variables, &
         GetVarName(Solver % Variable) // ' Loads' )
     IF( ASSOCIATED( NodalLoads ) ) THEN
-      CALL Info('SolveLinearSystem','Calculating nodal loads',Level=6)
-      CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
+      ! Nodal loads may be allocated but the user may have toggled
+      ! the 'calculate loads' flag such that no load computation should be performed.
+      CalcLoads = ListGetLogical( Solver % Values,'Calculate Loads',GotIt )
+      IF( .NOT. GotIt ) CalcLoads = .TRUE.
+      IF( CalcLoads ) THEN
+        CALL Info('SolveLinearSystem','Calculating nodal loads',Level=6)
+        CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
+      END IF
     END IF
 
     IF (BackRotation) THEN
