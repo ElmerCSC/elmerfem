@@ -203,7 +203,7 @@ this ise not in USE
           Symb(3,3,3), dSymb(3,3,3,3)
 
      INTEGER :: i,j,k
-     LOGICAL :: stat,GotIt,UseEStar=.FALSE.,UseEUsrf=.FALSE.
+     LOGICAL :: stat,GotIt,UseEUsrf=.FALSE.
 
      CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag, TemperatureName, EnhcmntFactFlag
      TYPE(ValueList_t), POINTER :: Material
@@ -358,26 +358,15 @@ this ise not in USE
           END IF
         END IF
         Ehf = 1.0_dp
-        UseEStar = GetLogical( Material, "Use Estar Enhancementfactor", GotIt)
-        IF (.NOT.GotIt) THEN
-          UseEStar = .FALSE.
-        ELSE
-          UseEStar = .TRUE.
-        END IF
         EnhcmntFactFlag = ListGetString( Material,'Glen Enhancement Factor Function', UseEUsrf )
-        IF (UseEUsrf .AND. .NOT.UseEStar) THEN
-          Fnc = GetProcAddr( str, Quiet=.TRUE. )
-          !EhF = EnhancementFactorUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
-          !     Basis, dBasisdx, Viscosity, Velo, dVelodx )
+        IF (UseEUsrf) THEN
+          Fnc = GetProcAddr( EnhcmntFactFlag, Quiet=.TRUE. )
           EhF = MaterialUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
                Basis, dBasisdx, Viscosity, Velo, dVelodx )
-        ELSE IF( .NOT.UseEStar) THEN
+        ELSE
           NodalEhF(1:n) =  ListGetReal( Material, 'Glen Enhancement Factor', n, Element % NodeIndexes, GotIt )
           IF (GotIt) &
                EhF = SUM(Basis(1:n) * NodalEhF(1:n))
-        ELSE
-          EhF = EStarEnhancementFactor(CurrentModel,Element,Nodes,n,nd, &
-               Basis,dBasisdx,Viscosity,Velo, dVelodx )
         END IF
         
         IF (PRESENT(muder)) muder = 0.5_dp * (  EhF * ArrheniusFactor)**(-1.0_dp/c2) &
@@ -642,23 +631,6 @@ this ise not in USE
    END FUNCTION EffectiveViscosity
 !------------------------------------------------------------------------------
 
-   FUNCTION EStarEnhancementFactor(Model,Element,Nodes,n,nd, &
-             Basis,dBasisdx,Viscosity,Velo, dVelodx ) RESULT(Ehf)
-          USE Types
-          TYPE(Model_t) :: Model
-          TYPE(Nodes_t) :: Nodes
-          TYPE(Element_t), POINTER :: Element
-          INTEGER :: n,nd
-          REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
-               Velo(:), dVelodx(:,:), Ehf
-          !
-          REAL(KIND=dp) :: StrainRateTensor(3,3)
-
-          Ehf = 1.0_dp ! will be replaced
-          
-          !PRINT *,"Ehf",Ehf
-     
-   END FUNCTION EStarEnhancementFactor
 
 !------------------------------------------------------------------------------
 !> Returns effective heat conductivity mainly related to turbulence models.

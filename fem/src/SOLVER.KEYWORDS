@@ -1584,3 +1584,13 @@ solver:logical:      'linear system save perm'
 solver:logical:      'loss estimation'
 solver:logical:      'no matrix'
 solver:logical:      'parallel append'
+Simulation:Logical:  'Restart Error Continue'
+Material:Real:       'Arrhenius Factor'
+Material:Real:       'Rate Factor 1'
+Material:Real:       'Rate Factor 2'
+Material:Real:       'Activation Energy 1'
+Material:Real:       'Activation Energy 2'
+Material:String:     'Glen Enhancement Factor Function'
+Material:Real:       'Glen Enhancement Factor'
+
+
