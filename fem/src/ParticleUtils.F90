@@ -1975,7 +1975,7 @@ RETURN
     IF ( ParEnv % mype==0 ) THEN
       WRITE (Message,'(A,T22,I12)') 'Active particles:',TotNoParticles
       CALL Info('ParticleInformation',Message)
-      WRITE (Message,'(A,T22,F12.2)') 'Elapsed time:',tottime
+      WRITE (Message,'(A,T22,ES12.2)') 'Elapsed time:',tottime
       CALL Info('ParticleInformation',Message)
       WRITE (Message,'(A,T22,I12)') 'Time steps taken:',TimeStepsTaken
       CALL Info('ParticleInformation',Message)
@@ -2374,8 +2374,11 @@ RETURN
     END IF
     
     
-    IF( InitMethod == 'box random cubic') THEN
+    IF( InitMethod == 'box random cubic' .OR. InitMethod == 'box uniform cubic') THEN
       Diam = 2 * GetCReal( Params,'Particle Cell Radius',GotIt)
+      IF(.NOT. GotIt ) THEN
+        Diam = GetCReal( Params,'Particle Cell Size',GotIt)
+      END IF
       IF(.NOT. GotIt ) THEN
         Diam = 2 * GetCReal( Params,'Particle Radius',GotIt)
       END IF
@@ -2405,7 +2408,11 @@ RETURN
     IF( PRESENT( InitParticles ) ) THEN
       NewParticles = InitParticles
     ELSE
-      NewParticles = GetInteger( Params,'Number of Particles',GotIt) 
+      IF( InitMethod == 'box uniform cubic') THEN
+        NewParticles = nx * ny * nz
+      ELSE
+        NewParticles = GetInteger( Params,'Number of Particles',GotIt) 
+      END IF
       IF(.NOT. GotIt ) THEN
         frac = GetCReal( Params,'Particle Node Fraction',GotIt)      
         IF( GotIt ) THEN
@@ -2481,7 +2488,6 @@ RETURN
           'Initializing particles evenly among nodes',Level=10)
 
       Particles % NumberOfParticles = NewParticles
-!      PRINT *,'Initializing particles in nodes:',NewParticles,nonodes
       DO i=1,NewParticles
         k = Offset + i
         j = (nonodes-1)*(i-1)/(NewParticles-1)+1
@@ -2537,7 +2543,6 @@ RETURN
       ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
 
       Particles % NumberOfParticles = NewParticles
-      !PRINT *,'Initializing particles in elements:',NewParticles,noelements
 
       MaxDetJ = 0.0_dp
       MinDetJ = HUGE( MinDetJ )
@@ -2785,7 +2790,32 @@ RETURN
       END DO
       DEALLOCATE( DoneParticle ) 
       
+    CASE ('box uniform cubic')
+      CALL Info('InitializeParticles',&
+          'Initializing particles in a grid',Level=10)
+
+      nmax = nx * ny * nz
+      IF( nmax /= NewParticles ) THEN
+        CALL Fatal('InitializeParticles','Wrong number of particles')
+      END IF
       
+      ! set the coordinates 
+      i = 0
+      DO ix = 1, nx
+        DO iy = 1, ny
+          DO iz = 1, nz
+            ind = nx*ny*(iz-1) + nx*(iy-1) + ix
+            i = i + 1
+            k = Offset + i
+            Coordinate(k,1) = MinCoord(1) + ( 1.0_dp*ix - 0.5) * Diam 
+            Coordinate(k,2) = MinCoord(2) + ( 1.0_dp*iy - 0.5) * Diam 
+            IF( dim == 3 ) THEN
+              Coordinate(k,3) = MinCoord(3) + ( 1.0_dp*iz - 0.5) * Diam 
+            END IF
+          END DO
+        END DO
+      END DO
+     
     CASE DEFAULT       
       CALL Info('InitializeParticles',&
           'Initializing particles using given coordinates',Level=10)
@@ -3836,7 +3866,7 @@ RETURN
           ElementIndex = GetParticleElement( Particles, No )
           Rfin(1:dim) = GetParticleCoord( Particles, No )
           Velo(1:dim) = GetParticleVelo( Particles, No )      
-if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
+          IF ( debug ) PRINT*,parenv % mype, 'go 200 '; FLUSH(6)
           GOTO 200
         END IF
       END IF
@@ -4308,8 +4338,6 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
     END IF
     
     Property = VolumeFraction * Property2 + (1-VolumeFraction) * Property
-    !     PRINT *,'VolumeFraction:',VolumeFraction, Property
-    RETURN
     
   END FUNCTION GetMaterialPropertyInMesh
 

@@ -558,12 +558,29 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
       GetLogical( Params,'Reinitialize Particles',Found) ) THEN
 
     IF( NoGroups > 0 ) THEN
-      DO Group = 1, NoGroups
-        CALL Info('ParticleDynamics','Initializing particles in group '//TRIM(I2S(group)),Level=5)
-        CALL ListPushNameSpace('group'//TRIM(I2S(Group))//':')
-        CALL InitializeParticles( Particles, AppendParticles = .TRUE.,Group = Group )
-        CALL ListPopNameSpace()
-      END DO
+      IF( ListGetLogical( Params,'Set Particle Group By Domain',Found ) ) THEN
+        CALL InitializeParticles( Particles, Group = 1 )
+        CALL Info('ParticleDynamics','Setting particle group by domain',Level=9)
+        DO i=1, Particles % NumberOfParticles
+          j = Particles % ElementIndex(i)
+          IF( j == 0 ) THEN
+            CALL LocateParticles(Particles, ParticleWallProc ) 
+            j = Particles % ElementIndex(i)
+          END IF
+          Particles % Group(i) = Mesh % Elements(j) % BodyId 
+        END DO
+        DO Group = 1, NoGroups
+          j = COUNT( Particles % Group == Group )
+          CALL Info('ParticleDynamics','Group '//TRIM(I2S(Group))//' particles: '//TRIM(I2S(j)),Level=9)
+        END DO
+      ELSE
+        DO Group = 1, NoGroups
+          CALL Info('ParticleDynamics','Initializing particles in group '//TRIM(I2S(group)),Level=5)
+          CALL ListPushNameSpace('group'//TRIM(I2S(Group))//':')
+          CALL InitializeParticles( Particles, AppendParticles = .TRUE.,Group = Group )
+          CALL ListPopNameSpace()
+        END DO
+      END IF
     ELSE
       CALL InitializeParticles( Particles )
     END IF
@@ -931,7 +948,7 @@ CONTAINS
          VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
            CALL Fatal('ParticleFieldInteraction','Velocity field variable does not exist: '//TRIM(VariableName))           
-         END IF         
+         END IF
          UseGradVelo = GetLogical( Params,'Velocity Gradient Correction',Found)
        ELSE
          UseGradVelo = .FALSE.
