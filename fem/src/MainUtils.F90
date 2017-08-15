@@ -1389,8 +1389,10 @@ CONTAINS
         Solution = 0.0d0
         nrows = SIZE( Solution ) 
         Perm => Solver % Variable % Perm
-        VariableOutput = Solver % Variable % Output
 
+        VariableOutput = ListGetLogical( Solver % Values,'Save Loads',Found )
+        IF( .NOT. Found ) VariableOutput = Solver % Variable % Output
+        
         CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
             var_name, Solver % Variable % DOFs, Solution, &
             Solver % Variable % Perm, Output=VariableOutput )
