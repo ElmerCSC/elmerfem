@@ -854,7 +854,7 @@ CONTAINS
 
     LOGICAL :: Mirror 
     TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp) :: x,y,z,x0,y0,rad2deg,fii,dfii,dy
+    REAL(KIND=dp) :: x,y,z,x0,y0,dy
     REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3),ierr
     INTEGER :: i,j,k,ioffset
     LOGICAL :: Found
@@ -863,15 +863,7 @@ CONTAINS
 
     Mirror = ( SetNo == 2 )
 
-    rad2deg = 180.0_dp / PI
-
     Mesh => Solver % Mesh
-
-    ! The angle of acceptable nodes 
-    ! 90 degs effectively chooses the right half
-    ! Not used currently 
-    !dfii = ListGetCReal( Params,'Coil dfii',Found)
-    !IF(.NOT. Found ) dfii = 90.0
 
     ! The maximum coordinate difference for an acceptable node
     ! The larger the value the more there will be nodes in the set.
@@ -950,12 +942,7 @@ CONTAINS
         PotSelect % Values( PotSelect % Perm(i) ) = rp(1)
       END IF
 
-      !fii = rad2deg * ATAN2( rp(1), rp(2) )
-      !IF( fii > 180.0 ) fii = fii - 360.0
-      
-      !IF( ABS( fii ) > dfii ) CYCLE
       IF( ABS( rp(2) ) > dy ) CYCLE
-      !IF( rp(1) > 0.0 ) CYCLE
 
       ! Values with abs 1 indicate the narrow band that is omitted when computing the currents
       ! Values with abs 2 indicate the wide band
@@ -990,9 +977,8 @@ CONTAINS
 
     LOGICAL :: Mirror 
     TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp) :: x,y,z,x0,y0,rad2deg,fii,dfii,dy
-    REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3),ierr, &
-        MinCut, MaxCut, CutDist(27)
+    REAL(KIND=dp) :: x,y,z,x0,y0
+    REAL(KIND=dp) :: r(3),rp(3),MinCut, MaxCut, CutDist(27)
     INTEGER :: t,i,j,k,n,ioffset
     LOGICAL :: Found, Hit
     TYPE(Element_t), POINTER :: Element
@@ -1003,65 +989,9 @@ CONTAINS
 
     Mirror = ( SetNo == 2 )
 
-    rad2deg = 180.0_dp / PI
-
     Mesh => Solver % Mesh
 
-    ! The angle of acceptable nodes 
-    ! 90 degs effectively chooses the right half
-    ! Not used currently 
-    !dfii = ListGetCReal( Params,'Coil dfii',Found)
-    !IF(.NOT. Found ) dfii = 90.0
-
-    ! The maximum coordinate difference for an acceptable node
-    ! The larger the value the more there will be nodes in the set.
-    ! There should be enough nodes so that the BC is good one,
-    ! but not too many either. 
-
-    MinCoord = HUGE( MinCoord )
-    MaxCoord = -HUGE( MaxCoord )
     ioffset = 10 * NoCoils 
-
-
-    DO i=1,Mesh % NumberOfNodes
-      IF( Perm(i) == 0 ) CYCLE
-
-      IF( SelectNodes ) THEN
-        IF( CoilIndex(i) /= NoCoils ) CYCLE
-      END IF
-
-      r(1) = Mesh % Nodes % x(i)
-      r(2) = Mesh % Nodes % y(i)
-      r(3) = Mesh % Nodes % z(i)
-
-      ! Move to coil origin
-      r = r - CoilCenter
-
-      IF( mirror ) r = -r
-
-      ! Coordinate projected to coil coordinates
-      rp(1) = SUM( CoilTangent1 * r ) 
-      rp(2) = SUM( CoilTangent2 * r ) 
-      rp(3) = SUM( CoilNormal * r ) 
-
-      DO j=1,3
-        MinCoord(j) = MIN( MinCoord(j), rp(j) )
-        MaxCoord(j) = MAX( MaxCoord(j), rp(j) ) 
-      END DO
-    END DO
-
-    IF( ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(MinCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
-      MinCoord = ParTmp
-      CALL MPI_ALLREDUCE(MaxCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
-      MaxCoord = ParTmp
-    END IF
-
-    dy = ListGetCReal( Params,'Coil Bandwidth',Found)
-    IF(.NOT. Found ) THEN
-      dy = 0.2 * ( MaxCoord(2) - MinCoord(2) )
-    END IF
-
 
 
     DO t=1,Mesh % NumberOfBulkElements
@@ -1070,6 +1000,7 @@ CONTAINS
       Indexes => Element % NodeIndexes
       n = Element % Type % NumberOfNodes
 
+      ! Study the elements belonging to the coil under study
       IF( SelectNodes ) THEN
         IF( ANY( CoilIndex(Indexes) /= NoCoils ) ) CYCLE
       END IF
@@ -1129,7 +1060,6 @@ CONTAINS
         END DO
       END IF
     END DO
-
 
   END SUBROUTINE ChooseFixedBulkNodesNarrow
 
