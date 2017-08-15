@@ -56,6 +56,7 @@ int main(int argc, char *argv[])
 
   char executablePath[MAXPATHLENGTH] = {0};
   uint32_t len = MAXPATHLENGTH;
+  
   if(! _NSGetExecutablePath( (char*) executablePath, &len)){
     // remove executable name from path:
     *(strrchr(executablePath,'/'))='\0';
@@ -111,6 +112,9 @@ int main(int argc, char *argv[])
     return 0;
   }
 
+  // Borrow locale from C
+  QLocale::setDefault(QLocale::c());
+  
   MainWindow mainWindow;
   mainWindow.parseCmdLine();
 
