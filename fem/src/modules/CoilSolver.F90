@@ -340,6 +340,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
   CALL Info('CoilSolver','Coil system consists of '//TRIM(I2S(NoCoils))//' coils',Level=7)
 
+
+  ! Count the fixing nodes just for information 
   Set => SetA
   CALL CountFixingNodes(Set,1)
   IF( CoilClosed ) THEN
@@ -399,7 +401,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       ! Bulk values are needed to compute the currents
       CALL DefaultFinishBulkAssembly()
       CALL DefaultFinishAssembly()
-      
+
       ! Set the potential values on the nodes
       ! Values 0/1 are used as the potential is later scaled. 
       DO i = 1,nsize
@@ -418,8 +420,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL SetMatrixElement( StiffMatrix,i,i,1.0d0*s )     
       END DO
       
+      ! If we use narrow strategy we need to cut the connections in the bulk values
+      ! between the two different Dirichlet conditions. Otherwise the load computation
+      ! will produce crap.
       IF( NarrowInterface ) THEN
-        CALL CutInterfaceConnections( StiffMatrix, Set, .TRUE. )
+        CALL CutInterfaceConnections( StiffMatrix, Set )
       END IF
 
 
@@ -440,11 +445,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL Fatal('CoilSolver','> '//TRIM(SolVar % Name)//' < Loads not associated!')
       END IF
 
-      IF( NarrowInterface ) THEN
-        CALL ScalePotentialNarrow()
-      ELSE
-        CALL ScalePotential()
-      END IF
+      CALL ScalePotential()
         
     END DO
   END DO
@@ -560,42 +561,40 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE CutInterfaceConnections( A, Set, CutBulkValues )
+  SUBROUTINE CutInterfaceConnections( A, Set )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A             
     INTEGER, POINTER :: Set(:)
-    LOGICAL :: CutBulkValues
 !------------------------------------------------------------------------------
-     INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
-     REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
 
-     INTEGER :: i,j,k,n,cnt,s1,s2
+    INTEGER :: i,j,k,n,cnt,s1,s2,dia
 
-
-!------------------------------------------------------------------------------
-     
+!------------------------------------------------------------------------------     
      n = A % NumberOfRows
      Rows   => A % Rows
      Cols   => A % Cols
-     Values => A % Values
+
+     IF(.NOT. ASSOCIATED( A % BulkValues ) ) THEN
+       CALL Fatal('CutInterfaceConnections','Dont have bulk values!')
+     END IF
+     Values => A % BulkValues
 
      cnt = 0
-
-     IF( CutBulkValues ) THEN
-       IF(.NOT. ASSOCIATED( A % BulkValues ) ) THEN
-         CALL Fatal('CutInterfaceConnections','Dont have bulk values!')
-       END IF
-     END IF
      
      DO i=1,n
        s1 = Set(i)
        IF( s1 == 0 ) CYCLE
+       dia = A % Diag(i)
        DO j=Rows(i),Rows(i+1)-1
          k = Cols(j)
          s2 = Set(k)
          IF( s1 * s2 < 0 ) THEN
-           Values(j) = 0.0_dp
-           IF( CutBulkValues ) A % BulkValues(j) = 0.0_dp
+           ! The diagonal needs also to be compensated for the cutted connections.
+           ! For Laplace operator the row sum is known to be zero. 
+           A % BulkValues(dia) = A % BulkValues(dia) + A % BulkValues(j)
+           A % BulkValues(j) = 0.0_dp
            cnt = cnt + 1
          END IF
        END DO
@@ -1646,127 +1645,7 @@ CONTAINS
   END SUBROUTINE ScalePotential
 
 
-! Scale the potential such that the total current is the desired one.
-! The scaling uses the feature where the nodal current is computed from
-! r=Ax-b where the components of r are the nodal currents corresponding to
-! the enforces Dirichlet conditions.
-!----------------------------------------------------------------------------- 
-  SUBROUTINE ScalePotentialNarrow() 
-    
-    REAL(KIND=dp) :: InitialCurrent,possum, negsum, sumerr
-    INTEGER :: i,j,k,l,Coil,nsize,posi,negi
-    TYPE(Matrix_t), POINTER :: A
-    
-    CALL Info('CoilSolver','Scaling potential with narrow strategy',Level=10)
-
-    
-    nsize = SIZE( LoadVar % Perm ) 
-    A => Solver % Matrix
-
-    
-    DO Coil = 1, NoCoils 
-
-      ! Evaluate the positive and negative currents
-      ! As the total current vanishes these should be roughly the same 
-      ! but with different signs. 
-      possum = 0.0_dp
-      negsum = 0.0_dp
-      posi = 0
-      negi = 0
-
-      DO i=1,nsize
-        j = LoadVar % Perm(i) 
-        IF( j == 0 ) CYCLE
-
-        IF( ParEnv % PEs > 1 ) THEN
-          IF( A % ParallelInfo % Neighbourlist(j) % Neighbours(1) &
-              /= ParEnv % MyPe ) CYCLE
-        END IF
-        
-        IF( NoCoils > 1 ) THEN
-          IF( CoilIndex(i) /= Coil ) CYCLE
-        END IF
-
-        ! Note that the narrow part of the gap is omitted and here only 
-        ! currents related to the outher parts of the gap (with |sgn|=2) 
-        ! are accounted for. 
-        sgn = Set(j)
-        IF( sgn /= 0 ) CYCLE
-
-        DO k=A % Rows(j),A % Rows(j+1)-1
-          l = A % Cols(k)
-          sgn = Set(l)
-          IF( sgn == 0 ) CYCLE
-
-          IF( MODULO(sgn,10) == 2  ) THEN
-            possum = possum + LoadVar % Values(j)
-            posi = posi + 1
-          ELSE IF( MODULO(sgn,10)-10 == -2 ) THEN
-            negsum = negsum + LoadVar % Values(j)
-            negi = negi + 1
-          END IF
-
-          EXIT
-        END DO
-      END DO
-        
-      IF( ParEnv % PEs > 1 ) THEN
-        possum = ParallelReduction( possum ) 
-        negsum = ParallelReduction( negsum ) 
-      END IF
-
-      WRITE (Message,'(A,I6,ES12.4)') 'Positive coil currents:',posi,possum
-      CALL Info('CoilSolver',Message,Level=12)
-
-      WRITE (Message,'(A,I6,ES12.4)') 'Negative coil currents:',negi,negsum
-      CALL Info('CoilSolver',Message,Level=12)
-    
-      IF( ABS( possum ) < EPSILON( possum ) ) THEN
-        CALL Fatal('CoilSolver','No positive current sources on coil end!')
-      END IF
-      IF( ABS( negsum ) < EPSILON( negsum ) ) THEN
-        CALL Fatal('CoilSolver','No negative current sources on coil end!')
-      END IF            
-      
-      sumerr = 2.0 * ABS( ABS( possum ) - ABS( negsum ) )  / (ABS( possum ) + ABS( negsum ) ) 
-      WRITE (Message,'(A,ES12.4)') 'Discrepancy of start and end coil currents: ',sumerr 
-      CALL Info('CoilSolver',Message,Level=7)
-
-      IF( sumerr > 0.5 ) THEN
-        CALL Warn('CoilSolver','Positive and negative sums differ too much!')
-      END IF
-
-      InitialCurrent = ( possum - negsum ) / 2.0
-      
-      WRITE( Message,'(A,ES12.4)') 'Initial coil current for coil '&
-          //TRIM(I2S(Coil))//':',InitialCurrent
-      CALL Info('CoilSolver',Message,Level=5)
-    
-
-      ! Scale the potential such that the current is as desired
-      ! The current scales linearly with the potential.
-      Coeff = DesiredCoilCurrent(Coil) / InitialCurrent
-
-      WRITE( Message,'(A,ES12.4)') 'Coil potential multiplier:',Coeff
-      CALL Info('CoilSolver',Message,Level=5)
-
-      IF( NoCoils == 1 ) THEN
-        PotVar % Values = Coeff * PotVar % Values     
-      ELSE
-        DO i=1,nsize
-          IF( CoilIndex(i) == Coil ) THEN
-            j = PotVar % Perm(i) 
-            IF( j == 0 ) CYCLE            
-            PotVar % Values( j ) = Coeff * PotVar % Values( j )
-          END IF
-        END DO
-      END IF
-    END DO
-
-  END SUBROUTINE ScalePotentialNarrow
-
   
-
 ! Normalize the current density to a given length
 ! When using this feature the potential can no longer be used
 ! to obtain the same effective current.   
