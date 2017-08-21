@@ -138,7 +138,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
-  LOGICAL, ALLOCATABLE :: TreeEdges(:)
+  LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
 
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
