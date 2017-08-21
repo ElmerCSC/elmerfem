@@ -3193,7 +3193,9 @@ static void GmshToElmerIndx(int elemtype,int *topology)
   int order614[]={0,1,2,3,4,5,8,10,6,7,9,11,12,13};
   int order718[]={0,1,2,3,4,5,6,9,7,8,10,11,12,14,13,15,17,16};
   int order820[]={0,1,2,3,4,5,6,7,8,11,13,9,10,12,14,15,16,18,19,17};
-
+  int order827[]={0,1,2,3,4,5,6,7,8,11,13,9,10,12,14,15,16,18,19,17,21,23,24,22,20,25,26};
+  /*             {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26}; */
+  
 
   reorder = FALSE;
 
@@ -3220,7 +3222,11 @@ static void GmshToElmerIndx(int elemtype,int *topology)
     reorder = TRUE;
     porder = &order820[0];
     break;
-
+    
+  case 827:        
+    reorder = TRUE;
+    porder = &order827[0];
+    break;
   }
 
   if( reorder ) {
@@ -4230,7 +4236,7 @@ omstart:
 	Getrow(line,in,FALSE);
 	if( !allocated ) {
 	  cp = line;
-	  if(!cp) printf("Problem reading line %i for coordinate system\n");
+	  if(!cp) printf("Problem reading line %d for coordinate system\n",i);
 	  for(j=1;j<= 3;j++) {
 	    coeff = next_real(&cp);
 	    if( i == j ) {
