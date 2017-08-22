@@ -240,6 +240,17 @@ this ise not in USE
           REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
                Velo(:), dVelodx(:,:), s
         END FUNCTION MaterialUserFunction
+        FUNCTION EnhancementFactorUserFunction( Proc,Model,Element,Nodes,n,nd, &
+             Basis,dBasisdx,Viscosity,Velo,dVelodx,SecondInvariantSqr ) RESULT(Ehf)
+          USE Types
+          INTEGER(KIND=AddrInt) :: Proc
+          TYPE(Model_t) :: Model
+          TYPE(Nodes_t) :: Nodes
+          TYPE(Element_t), POINTER :: Element
+          INTEGER :: n,nd
+          REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
+               Velo(:), dVelodx(:,:), SecondInvariantSqr, Ehf
+        END FUNCTION EnhancementFactorUserFunction
      END INTERFACE     
 #endif
      !------------------------------------------------------------------------------
@@ -344,27 +355,30 @@ this ise not in USE
            END IF
         
            IF (Temp.LE. Tlimit) THEN
-              ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15 + Temp)))
+              ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15_dp + Temp)))
            ELSE IF((Tlimit<Temp) .AND. (Temp .LE. 0.0_dp)) THEN
-              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15 + Temp)))
+              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp + Temp)))
            ELSE
-              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15)))
-              CALL INFO('EffectiveViscosity','Positive Temperature detected in Glen - limiting to zero!', Level = 5)
+              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp)))
+              CALL INFO('EffectiveViscosity',&
+                   'Positive Temperature detected in Glen - limiting to zero!', Level = 5)
            END IF
         ELSE
           ArrheniusFactor = GetConstReal(Material,'Arrhenius Factor', GotIt)
           IF (.NOT.(GotIt)) THEN 
-            CALL FATAL('EffectiveViscosity','<Set Arrhenius Factor> is TRUE, but no value <Arrhenius Factor> found')
+            CALL FATAL('EffectiveViscosity',&
+                 '<Set Arrhenius Factor> is TRUE, but no value <Arrhenius Factor> found')
           END IF
         END IF
         Ehf = 1.0_dp
         EnhcmntFactFlag = ListGetString( Material,'Glen Enhancement Factor Function', UseEUsrf )
         IF (UseEUsrf) THEN
           Fnc = GetProcAddr( EnhcmntFactFlag, Quiet=.TRUE. )
-          EhF = MaterialUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
-               Basis, dBasisdx, Viscosity, Velo, dVelodx )
+          EhF = EnhancementFactorUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
+               Basis, dBasisdx, Viscosity, Velo, dVelodx, s )
         ELSE
-          NodalEhF(1:n) =  ListGetReal( Material, 'Glen Enhancement Factor', n, Element % NodeIndexes, GotIt )
+          NodalEhF(1:n) =  ListGetReal( Material, 'Glen Enhancement Factor',&
+               n, Element % NodeIndexes, GotIt )
           IF (GotIt) &
                EhF = SUM(Basis(1:n) * NodalEhF(1:n))
         END IF
