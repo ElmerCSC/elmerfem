@@ -3934,6 +3934,8 @@ static void UnvToElmerIndx(int elemtype,int *topology)
   int i=0,nodes=0,oldtopology[MAXNODESD2];
   int reorder, *porder;
 
+  int order203[]={1,3,2};
+  int order306[]={1,3,5,2,4,6};
   int order510[]={1,3,5,10,2,4,6,7,8,9};
   int order408[]={1,3,5,7,2,4,6,8};
   int order820[]={1,3,5,7,13,15,17,19,2,4,6,8,9,10,11,12,14,16,18,20};
@@ -3943,6 +3945,16 @@ static void UnvToElmerIndx(int elemtype,int *topology)
 
   switch (elemtype) {
       
+  case 203:        
+    reorder = TRUE;
+    porder = &order203[0];
+    break;
+
+  case 306:        
+    reorder = TRUE;
+    porder = &order306[0];
+    break;
+
   case 510:        
     reorder = TRUE;
     porder = &order510[0];
@@ -4508,6 +4520,7 @@ end:
   /* Elmer likes that node indexes are given so that no integers are missed.
      If this is not the case we need to do renumbering of nodes. */
   if(reordernodes) {
+    printf("Reordering nodes continuously\n");
     for(j=1;j<=noelements;j++)
       for(i=0;i<data->elementtypes[j]%100;i++)
 	data->topology[j][i] = u2eind[data->topology[j][i]];
@@ -4535,6 +4548,17 @@ end:
     }
   }
 
+  /* This is here for debugging of the nodal order */
+  if(FALSE) for(j=1;j<=noelements;j++) {
+    int elemtype = data->elementtypes[j];
+    printf("element = %d\n",j);
+    for(i=0;elemtype%100;i++) {
+      k = data->topology[j][i];
+      printf("node i=%d %.3le %.3le %.3le\n",i,data->x[k],data->z[k],data->y[k]);
+    }
+  }
+      
+  
   /* Until this far all elements have been listed as bulk elements. 
      Now separate the lower dimensional elements to be boundary elements. */
   ElementsToBoundaryConditions(data,bound,TRUE,info);
