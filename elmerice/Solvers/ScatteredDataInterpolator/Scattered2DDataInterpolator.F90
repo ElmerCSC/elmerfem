@@ -33,9 +33,9 @@
 !
 !  Interpolate scattered 2D data readed from an ASCII file (x y Value)
 !    in the mesh nodes using:
-!     - nn-c libary (http://code.google.com/p/nn-c/): linear and Natural
+!     - nn-c library (http://code.google.com/p/nn-c/): linear and Natural
 !               Neighbours interpolation
-!     - csa-c libary (http://code.google.com/p/csa-c): cubic spline approximation
+!     - csa-c library (http://code.google.com/p/csa-c): cubic spline approximation
 !
 ! TODO: - add possibility to prescibe std for csa method
 !
@@ -197,7 +197,7 @@
           
                allocate(pin(nin))
 
-               ! comes back to begining of file
+               ! comes back to beginning of file
                rewind(unit=io,iostat=ok)
 
                ! read datas

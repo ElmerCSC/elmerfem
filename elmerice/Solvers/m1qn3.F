@@ -100,7 +100,7 @@ c     The variable 'reentry' is used to know where to jump when entering
 c     the subroutine in reverse commnunication (it is better than using
 c     'reverse', which is known outside m1qn3 and could be changed by
 c     the user):
-c     = 0: no jump, start at the begining of the subroutine
+c     = 0: no jump, start at the beginning of the subroutine
 c     = 1: jump inside m1qn3a, where the simulator was called with
 c          indic=1
 c     = 2: jump inside m1qn3a/mlis3, where the simulator was called with

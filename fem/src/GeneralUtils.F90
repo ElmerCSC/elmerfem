@@ -383,7 +383,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Sort an interger array a, together with an another integer array.
+!> Sort an integer array a, together with an another integer array.
 !------------------------------------------------------------------------------
    PURE SUBROUTINE SortI( n,a,b )
 !------------------------------------------------------------------------------
@@ -1259,6 +1259,8 @@ END FUNCTION ComponentNameVar
       DO i=1,n-1
         IF( x(i+1) <= x(i) ) THEN
           Monotone = .FALSE.
+          WRITE (Message,'(E14.7,A,E14.7)')  x(i),'>=',x(i+1)
+          CALL WARN('CheckMonotone', Message)
           EXIT
         END IF
       END DO           

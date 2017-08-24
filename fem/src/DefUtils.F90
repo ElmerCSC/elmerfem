@@ -302,11 +302,11 @@ CONTAINS
        n = Solver % ColourIndexList % ptr(Solver % CurrentColour+1)-1 &
            - Solver % ColourIndexList % ptr(Solver % CurrentColour)
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=22)
+           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=20)
      ELSE
        n = Solver % NumberOfActiveElements
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n)),Level=22)
+           //TRIM(I2S(n)),Level=20)
      END IF
 
   END FUNCTION GetNOFActive
@@ -1258,16 +1258,17 @@ CONTAINS
 
 
 !> Check if the boundary element is active in the current solve 
-  FUNCTION ActiveBoundaryElement(UElement,USolver) RESULT(l)
+  FUNCTION ActiveBoundaryElement(UElement,USolver,DGBoundary) RESULT(l)
      TYPE(Element_t), OPTIONAL,  TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL,  TARGET :: USolver
+     LOGICAL, OPTIONAL :: DGBoundary
 
-     LOGICAL :: l
-     INTEGER :: n
+     LOGICAL :: l, DGb
+     INTEGER :: n, n2
      INTEGER, POINTER :: Indexes(:)
 
-     TYPE(Element_t), POINTER :: Element
      TYPE( Solver_t ), POINTER :: Solver
+     TYPE(Element_t), POINTER :: Element, P1, P2
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
@@ -1276,9 +1277,27 @@ CONTAINS
 
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
-     IF (isActivePElement(Element)) n=GetElementNOFNOdes(Element)
 
-     l = ALL( Solver % Variable % Perm(Indexes(1:n)) > 0)
+     DGb = Solver % DG .AND. PRESENT(DGboundary)
+     IF(DGb) DGb = DGboundary
+
+     IF (DGb) THEN
+       P1 => Element % BoundaryInfo % Left
+       P2 => Element % BoundaryInfo % Right
+       IF ( ASSOCIATED(P1).AND.ASSOCIATED(P2) ) THEN
+         n = P1 % Type % NumberOfNodes
+         l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
+         IF (.NOT.l) THEN
+           n2 = P2 % Type % NumberOfNodes
+           l = ALL(Solver % Variable % Perm(Indexes(n+1:n+n2)) > 0)
+          END IF
+       ELSE
+         l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
+       END IF
+     ELSE
+       IF (isActivePElement(Element)) n=GetElementNOFNOdes(Element)
+       l = ALL(Solver % Variable % Perm(Indexes(1:n)) > 0)
+     END IF
   END FUNCTION ActiveBoundaryElement
 
 
@@ -5307,7 +5326,7 @@ CONTAINS
      ! Nodal indexes
      Indexes(1:n) = Element % NodeIndexes(1:n)
 
-     ! Assign rest of indexes if neccessary
+     ! Assign rest of indexes if necessary
      SELECT CASE(Parent % TYPE % DIMENSION)
      CASE (1)
        indSize = n 

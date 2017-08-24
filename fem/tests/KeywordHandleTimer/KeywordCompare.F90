@@ -191,7 +191,7 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
   END DO
   NewTimes(4) = RealTime() - NewTimes(4) 
 
-  ! There is no old comparision for ListCompareelementString
+  ! There is no old comparison for ListCompareelementString
   OldTimes(4) = OldTimes(3)
   OldCounter(4) = OldCounter(3)
 

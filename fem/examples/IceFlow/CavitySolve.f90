@@ -657,7 +657,7 @@
             y1new(n) = (ynew(n+1) - ynew(n-1))/(xnew(n+1) - xnew(n-1))
           END DO
 
-! New cavity lenght and space between nodes
+! New cavity length and space between nodes
           
           ds = lc / (Nn - 1)
 

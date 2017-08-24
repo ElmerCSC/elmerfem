@@ -623,7 +623,7 @@ CONTAINS
 !
 !> L = (\nablda^2 u,\nabla^ w), G = (\nabla u,\nabla w)
 !------------------------------------------------------------------------------
-   SUBROUTINE StabParam(Element,Nodes,n,mK,hK)
+   SUBROUTINE StabParam(Element,Nodes,n,mK,hK,UseLongEdge)
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
@@ -632,6 +632,7 @@ CONTAINS
       TYPE(Nodes_t) :: Nodes
       REAL(KIND=dp) :: mK
       REAL(KIND=dp), OPTIONAL :: hK
+      LOGICAL, OPTIONAL :: UseLongEdge
 !------------------------------------------------------------------------------
       INTEGER :: info,p,q,i,j,t,dim
       REAL(KIND=dp) :: EIGR(n),EIGI(n),Beta(n),s,ddp(3),ddq(3),dNodalBasisdx(n,n,3)
@@ -648,7 +649,7 @@ CONTAINS
            CASE( 808 )
               mK = 1.0d0 / 6.0d0
          END SELECT
-         IF ( PRESENT( hK ) ) hK = ElementDiameter( Element, Nodes )
+         IF ( PRESENT( hK ) ) hK = ElementDiameter( Element, Nodes, UseLongEdge)
          RETURN
       END IF
 
@@ -692,7 +693,7 @@ CONTAINS
       IF ( ALL(ABS(L) < AEPS) ) THEN
         mK = 1.0d0 / 3.0d0
         IF ( PRESENT(hK) ) THEN
-          hK = ElementDiameter( Element,Nodes )
+          hK = ElementDiameter( Element,Nodes,UseLongEdge)
         END IF
         RETURN
       END IF
@@ -704,7 +705,7 @@ CONTAINS
       IF ( mK < 10*AEPS ) THEN
         mK = 1.0d0 / 3.0d0
         IF ( PRESENT(hK) ) THEN
-          hK = ElementDiameter( Element,Nodes )
+          hK = ElementDiameter( Element,Nodes,UseLongEdge )
         END IF
         RETURN
       END IF
@@ -2474,7 +2475,7 @@ END IF
                  IF ( q >= SIZE(BasisDegree) ) CYCLE
                  q = q + 1
 
-                 ! Use basis compatible with pyramid if neccessary
+                 ! Use basis compatible with pyramid if necessary
                  ! @todo Correct this!
                  IF (Edge % PDefs % pyramidQuadEdge) THEN
                     CALL Fatal('ElementInfo','Pyramid compatible wedge edge basis NIY!')
@@ -3113,7 +3114,7 @@ END IF
                  IF ( q >= SIZE(Basis) ) CYCLE
                  q = q + 1
 
-                 ! Use basis compatible with pyramid if neccessary
+                 ! Use basis compatible with pyramid if necessary
                  ! @todo Correct this!
                  IF (Edge % PDefs % pyramidQuadEdge) THEN
                     CALL Fatal('ElementInfo','Pyramid compatible wedge edge basis NIY!')
@@ -10704,7 +10705,7 @@ END IF
 !------------------------------------------------------------------------------
 !>    Figure out element diameter parameter for stablization.
 !------------------------------------------------------------------------------
-   FUNCTION ElementDiameter( elm, nodes ) RESULT(hK)
+   FUNCTION ElementDiameter( elm, nodes, UseLongEdge ) RESULT(hK)
 !------------------------------------------------------------------------------
 !
 !  ARGUMENTS:
@@ -10720,7 +10721,7 @@ END IF
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: elm
      TYPE(Nodes_t) :: nodes
-
+     LOGICAL, OPTIONAL :: UseLongEdge
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -10729,7 +10730,10 @@ END IF
      INTEGER, POINTER :: EdgeMap(:,:)
      REAL(KIND=dp) :: x0,y0,z0,hK,A,S,CX,CY,CZ
      REAL(KIND=dp) :: J11,J12,J13,J21,J22,J23,G11,G12,G21,G22
+     LOGICAL :: LongEdge=.FALSE.
 !------------------------------------------------------------------------------
+
+     IF(PRESENT(UseLongEdge)) LongEdge = UseLongEdge
 
      X => Nodes % x
      Y => Nodes % y
@@ -10776,14 +10780,24 @@ END IF
 
        CASE DEFAULT
          EdgeMap => LGetEdgeMap(Family)
-         hK = HUGE(1.0_dp)
+
+         IF(LongEdge) THEN
+           hK = -1.0 * HUGE(1.0_dp)
+         ELSE
+           hK = HUGE(1.0_dp)
+         END IF
+
          DO i=1,SIZE(EdgeMap,1)
            j=EdgeMap(i,1)
            k=EdgeMap(i,2)
            x0 = X(j) - X(k)
            y0 = Y(j) - Y(k)
            z0 = Z(j) - Z(k)
-           hk = MIN(hK, x0**2 + y0**2 + z0**2)
+           IF(LongEdge) THEN
+             hk = MAX(hK, x0**2 + y0**2 + z0**2)
+           ELSE
+             hk = MIN(hK, x0**2 + y0**2 + z0**2)
+           END IF
          END DO
      END SELECT
 
@@ -11969,6 +11983,11 @@ END FUNCTION PointFaceDistance
 
     MaxIndex = MAXLOC(ABS(ez),1)
     MinIndex = MINLOC(ABS(ez),1)
+
+    !Special case when calving front perfectly aligned to either
+    ! x or y axis. In this case, make minindex = 3 (ex points upwards)
+    IF(ABS(ez(3)) == ABS(ez(2)) .OR. ABS(ez(3)) == ABS(ez(1))) &
+         MinIndex = 3
 
     DO i=1,3
        IF(i == MaxIndex .OR. i == MinIndex) CYCLE

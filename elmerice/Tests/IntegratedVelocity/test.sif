@@ -158,7 +158,7 @@ Boundary Condition 3
 ! Integrated Velocity 1 = Equals SSAFlow 1
 End
 
-!!! Symetry axis
+!!! Symmetry axis
 Boundary Condition 4
   Target Boundaries = 4
 End

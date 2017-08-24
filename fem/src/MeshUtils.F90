@@ -682,7 +682,7 @@ END SUBROUTINE GetMaxDefs
 
      IF( TargetBody(1) > 0 ) THEN
        CALL Info('CreateDiscontMesh',&
-           'There seems to be a consistant discontinuous body: '&
+           'There seems to be a consistent discontinuous body: '&
            //TRIM(I2S(TargetBody(1))),Level=8)
        UseConsistantBody = .TRUE.
        TargetBodies => TargetBody
@@ -1930,7 +1930,7 @@ END SUBROUTINE GetMaxDefs
    !--------------------------------------------------------------------
    CALL LoadMeshStep( 1, Mesh, MeshNamePar, mype, Parallel ) 
 
-   ! Initilize and allocate mesh stuctures
+   ! Initialize and allocate mesh stuctures
    !---------------------------------------------------------------------
    CALL InitializeMesh()
 
@@ -3205,7 +3205,7 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: Solver
     INTEGER :: i,n, istat
-    LOGICAL :: stat
+    LOGICAL :: stat, UseLongEdge
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
@@ -3232,6 +3232,9 @@ END SUBROUTINE GetMaxDefs
     CALL AllocateVector( Nodes % y, Mesh % MaxElementNodes )
     CALL AllocateVector( Nodes % z, Mesh % MaxElementNodes )
 
+    UseLongEdge = ListGetLogical(CurrentModel % Simulation, &
+         "Stabilization Use Longest Element Edge")
+
     DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
        n = Element % TYPE % NumberOfNodes
@@ -3240,9 +3243,9 @@ END SUBROUTINE GetMaxDefs
        Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
        IF ( Mesh % Stabilize ) THEN
           CALL StabParam( Element, Nodes,n, &
-              Element % StabilizationMK, Element % hK )
+              Element % StabilizationMK, Element % hK, UseLongEdge=UseLongEdge)
        ELSE
-          Element % hK = ElementDiameter( Element, Nodes )
+          Element % hK = ElementDiameter( Element, Nodes, UseLongEdge=UseLongEdge)
        END IF
     END DO
  
@@ -5678,7 +5681,7 @@ END SUBROUTINE GetMaxDefs
           END IF
           
           ! Ok, the last check, this might fail if the element had skew even though the 
-          ! quick test is successfull! Then the left and right edge may have different range.
+          ! quick test is successful! Then the left and right edge may have different range.
           Dist = MAX( x1-xm2, xm1-x1 )
           IF( Dist > Xtol ) CYCLE
 
@@ -6269,7 +6272,7 @@ END SUBROUTINE GetMaxDefs
                   coeff(ncoeff) = cskew * (MIN(xmaxm,xmax)-MAX(xminm,xmin))/(xmax-xmin)
                 END IF
 
-                ! this sets the sign which should be consistant 
+                ! this sets the sign which should be consistent 
                 IF( (x1-x2)*(xm1-xm2)*(k1-k2)*(km1-km2) > 0.0_dp ) THEN
                   signs(ncoeff) = sgn0
                 ELSE
@@ -6603,7 +6606,7 @@ END SUBROUTINE GetMaxDefs
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
-            ! Omit the element if it is definately on the right circle
+            ! Omit the element if it is definitely on the right circle
             IF( ALL( ABS( NodesM % x(1:n) ) - 90.0 < Xtol ) ) CYCLE
             DO j=1,n
               IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = NodesM % x(j) + 360.0_dp
@@ -7286,7 +7289,7 @@ END SUBROUTINE GetMaxDefs
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
-            ! Omit the element if it is definately on the right circle
+            ! Omit the element if it is definitely on the right circle
             IF( ALL( ABS( AlphaM(1:neM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
             DO j=1,neM
               IF( AlphaM(j) < 0.0_dp ) AlphaM(j) = AlphaM(j) + ArcCoeff * 360.0_dp
@@ -8220,7 +8223,7 @@ END SUBROUTINE GetMaxDefs
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
-            ! Omit the element if it is definately on the right circle
+            ! Omit the element if it is definitely on the right circle
             IF( ALL( ABS( NodesM % x(1:nM) ) - 90.0 < XTol ) ) CYCLE
             DO j=1,nM
               IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = &
@@ -10844,7 +10847,7 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( wold(0:n),h(1:n))
       wold = w
 
-      ! paramaters that determine the accuracy of the iteration
+      ! parameters that determine the accuracy of the iteration
       maxiter = 10000
       err_eps = 1.0e-6
 
@@ -10880,7 +10883,7 @@ END SUBROUTINE GetMaxDefs
           w(i) = (w(i-1)*h(i+1)+w(i+1)*h(i))/(h(i)+h(i+1))
         END DO
         
-        ! If the maximum error is small compared to the minumum elementsize then exit
+        ! If the maximum error is small compared to the minimum elementsize then exit
         !-----------------------------------------------------------------------------
         err = MAXVAL( ABS(w-wold))/minhn
 
@@ -11394,6 +11397,7 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % Name=Mesh_in % Name
     Mesh_out % DiscontMesh = Mesh_in % DiscontMesh
     Mesh_out % MaxElementDOFs  = Mesh_out % MaxElementNodes
+    Mesh_out % Stabilize = Mesh_in % Stabilize
     Mesh_out % MeshDim = 3
     CurrentModel % DIMENSION = 3
 
@@ -12860,7 +12864,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Finds neigbours of the nodes in given direction.
+!> Finds neighbours of the nodes in given direction.
 !> The algorithm finds the neighbour that within 45 degrees of the 
 !> given direction has the smallest distance.
 !------------------------------------------------------------------------------
@@ -12880,7 +12884,7 @@ CONTAINS
   INTEGER :: i,j,k,n,t,DIM,istat
 
   IF(SIZE(Neighbours) < Mesh % NumberOfNodes) THEN
-    CALL Warn('FindNeigbourNodes','SIZE of Neigbours should equal Number of Nodes!')
+    CALL Warn('FindNeigbourNodes','SIZE of Neighbours should equal Number of Nodes!')
     RETURN
   END IF
 
@@ -16644,7 +16648,7 @@ CONTAINS
       IF( FirstTime ) THEN
         IF( ListGetLogical(Params,'Coordinate Transformation Save',Found ) ) THEN
           CALL Info('CoordinateTranformation',&
-              'Creating variables for > Tranformed Coordinate < ')
+              'Creating variables for > Transformed Coordinate < ')
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
               'Transformed Coordinate 1',1,x1) 
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&

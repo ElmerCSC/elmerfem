@@ -138,7 +138,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
-  LOGICAL, ALLOCATABLE :: TreeEdges(:)
+  LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
 
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
@@ -462,11 +462,16 @@ CONTAINS
 
     A => GetMatrix()
     IF (TG) THEN
-      CALL GaugeTree()
+      IF(.NOT.ALLOCATED(TreeEdges)) CALL GaugeTree()
+
       WRITE(Message,*) 'Volume tree edges: ', &
           TRIM(i2s(COUNT(TreeEdges))),     &
           ' of total: ',Mesh % NumberOfEdges
       CALL Info('WhitneyAVHarmonicSolver: ', Message, Level=5)
+
+      DO i=1,SIZE(TreeEdges)
+        IF(TreeEdges(i)) CALL SetDOFToValue(Solver,i,(0._dp,0._dp))
+      END DO
     END IF
 
     !
@@ -1007,6 +1012,9 @@ CONTAINS
         Cond1 = GetCReal(GetMaterial(), 'Electric Conductivity',Found)
         IF (cond1==0) condReg(Element % NodeIndexes) = .FALSE.
       END DO
+
+      CALL CommunicateCondReg(Solver,Mesh,CondReg)
+
       Done = Done.OR.CondReg
       DEALLOCATE(CondReg)
     END IF
@@ -1020,6 +1028,8 @@ CONTAINS
       Edge => Mesh % Edges(j)
       Done(Edge % NodeIndexes)=.TRUE.
     END DO
+
+    CALL RecvDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
 
     !
     ! node -> edge list
@@ -1046,6 +1056,8 @@ CONTAINS
     END DO
     DEALLOCATE(Done)
     CALL List_FreeMatrix(SIZE(Alist),Alist)
+
+    CALL SendDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
 !------------------------------------------------------------------------------
   END SUBROUTINE GaugeTree
 !------------------------------------------------------------------------------

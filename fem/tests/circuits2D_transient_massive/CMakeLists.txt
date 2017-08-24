@@ -1,3 +1,4 @@
+INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 CONFIGURE_FILE(sif/1381-components-massive.sif sif/1381-components-massive.sif COPYONLY) 
 file(COPY ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")

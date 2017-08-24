@@ -96,7 +96,7 @@
        ReferencePressure=0.0, SpecificHeatRatio, &
        PseudoCompressibilityScale=1.0, NonlinearRelax, FreeSTol, res
 
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter,FreeSIter
+     INTEGER :: NSDOFs,NewtonIter,NewtonMaxIter,NonlinearIter,FreeSIter
 
      TYPE(Variable_t), POINTER :: DensitySol, TimeVar
      TYPE(Variable_t), POINTER :: FlowSol, TempSol, MeshSol
@@ -112,12 +112,13 @@
      LOGICAL :: Stabilize,NewtonLinearization = .FALSE., GotForceBC, GotIt, &
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
-                  Transient, Rotating, AnyRotating, RecheckNewton=.FALSE.
+                  Transient, Rotating, AnyRotating, OutOfPlaneFlow=.FALSE.,&
+                  RecheckNewton=.FALSE.
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
      CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel
-     INTEGER :: CompressibilityModel, ModelCoords, ModelDim
+     INTEGER :: CompressibilityModel, ModelCoords, ModelDim, NoActive
      INTEGER :: body_id,bf_id,eq_id,DIM
      INTEGER :: MidEdgeNodes(12), BrickFaceMap(6,4)
      INTEGER, POINTER :: NodeIndexes(:), Indexes(:)
@@ -441,6 +442,10 @@
         'Nonlinear System Newton After Iterations', minv=0 )
      IF ( NewtonIter == 0 ) NewtonLinearization = .TRUE.
 
+     !Option to switch back to picard after NewtonMaxIter iterations
+     NewtonMaxIter = ListGetInteger( Solver % Values, &
+        'Nonlinear System Newton Max Iterations', GotIt )
+     RecheckNewton = RecheckNewton .OR. GotIt
 
      IF (GetLogical( GetSolverParams(), &
          'Nonlinear System Reset Newton',  GotIt)) NewtonLinearization=.FALSE.
@@ -535,9 +540,11 @@
        body_id = -1
 
        CALL StartAdvanceOutput( 'FlowSolve', 'Assembly: ' )
-       DO t = 1,GetNOFActive()
+       NoActive = GetNOFActive()
+       
+       DO t = 1,NoActive
 
-         CALL AdvanceOutput( t,GetNOFActive() )
+         CALL AdvanceOutput( t, NoActive )
 !
          Element => GetActiveElement(t)
          NodeIndexes => Element % NodeIndexes
@@ -623,10 +630,7 @@
                AngularVelocity = 0.0_dp
              END IF
            END IF
-
-
          END IF
-
 !------------------------------------------------------------------------------
 
          n = GetElementNOFNodes()
@@ -639,8 +643,13 @@
            CASE(3)
              U(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-2)
              V(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-1)
-             W(1:nd) = 0.0d0
-
+             W(1:nd) = 0.0_dp
+             IF (bf_id > 0 ) THEN
+               W(1:n)  = ListGetReal(BodyForce,'Out Of Plane Velocity',&
+                    n, NodeIndexes(1:n),OutOfPlaneFlow)
+               IF (.NOT.OutOfPlaneFlow) &
+                    W(1:n) = 0.0_dp
+             END IF
            CASE(4)
              U(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-3)
              V(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-2)
@@ -666,7 +675,7 @@
                END IF
             END SELECT
          END IF
-
+         
          LocalTemperature = 0.0d0
          LocalTempPrev    = 0.0d0
          IF ( ASSOCIATED( TempSol ) ) THEN
@@ -1033,7 +1042,9 @@
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
-      DO t = 1,GetNOFBoundaryElements()
+      NoActive = GetNOFBoundaryElements()
+      
+      DO t = 1,NoActive
 
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -1299,6 +1310,16 @@
       IF ( RelativeChange < NewtonTol .OR. &
              iter > NewtonIter ) NewtonLinearization = .TRUE.
 
+      IF ( RecheckNewton .AND. NewtonLinearization .AND. (RelativeChange > NewtonUBound)) THEN
+        NewtonLinearization = .FALSE.
+	CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
+      END IF
+
+      IF ( RecheckNewton .AND. NewtonLinearization .AND. (iter >= NewtonMaxIter)) THEN
+        NewtonLinearization = .FALSE.
+	CALL Info('FlowSolve', 'Newton iteration limit exceeded, switching back to picard', Level=6)
+      END IF
+
       IF ( RecheckNewton .AND. (RelativeChange > NewtonUBound) .AND. NewtonLinearization ) THEN
         NewtonLinearization = .FALSE.
 	CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
@@ -1332,7 +1353,9 @@
       ! Replace the zero pressure solution at the nodes which are not needed in the linear
       ! pressure approximation by the interpolated values for right visualization:
       !----------------------------------------------------------------------------------------
-      DO t=1,GetNOFActive()
+      NoActive = GetNOFActive()
+
+      DO t=1,NoActive
         ! First the midedge nodes:
         Element => GetActiveElement(t)
         IF ( Element % TYPE % BasisFunctionDegree <= 1 ) CYCLE

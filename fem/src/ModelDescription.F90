@@ -70,7 +70,7 @@ MODULE ModelDescription
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
 
-    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 100
+    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000
 
 CONTAINS
 
@@ -2619,7 +2619,7 @@ CONTAINS
       IF ( .NOT. GotIt ) OutputCaller = .TRUE.
       
       ! By default only on partition is used to show the results
-      ! For debugging it may be usefull to show several.
+      ! For debugging it may be useful to show several.
       MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
           'Max Output Partition', GotIt )    
       
@@ -3931,7 +3931,7 @@ CONTAINS
 
       IF ( nPerm < 0 ) THEN
          IF ( Binary ) CALL BinReadInt8( RestartUnit, Pos )
-         ! At the moment, we allways read all variables, and can therefore
+         ! At the moment, we always read all variables, and can therefore
          ! safely assume that the "previous" Perm table has been read and is
          ! held in memory at this point. In the future, however, we might be
          ! asked to read only some variables, in which case the previous Perm

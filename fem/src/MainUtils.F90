@@ -1122,7 +1122,7 @@ CONTAINS
         END IF
 
         ! Basically the solver could be matrix free but still the matrix
-        ! is used here temperarily since it is needed when making the 
+        ! is used here temporarily since it is needed when making the 
         ! permutation vector
         !-----------------------------------------------------------------
         IF( ListGetLogical( SolverParams, 'No Matrix', Found ) ) THEN
@@ -1389,8 +1389,10 @@ CONTAINS
         Solution = 0.0d0
         nrows = SIZE( Solution ) 
         Perm => Solver % Variable % Perm
-        VariableOutput = Solver % Variable % Output
 
+        VariableOutput = ListGetLogical( Solver % Values,'Save Loads',Found )
+        IF( .NOT. Found ) VariableOutput = Solver % Variable % Output
+        
         CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
             var_name, Solver % Variable % DOFs, Solution, &
             Solver % Variable % Perm, Output=VariableOutput )
@@ -2078,10 +2080,18 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!   Intialize equation solvers for new timestep
+!   Initialize equation solvers for new timestep
 !------------------------------------------------------------------------------
     nSolvers = Model % NumberOfSolvers
 
+    IF(TransientSimulation) THEN
+       CoupledMinIter = ListGetInteger( Model % Simulation, &
+            'Steady State Min Iterations', Found )
+
+       CoupledMaxIter = ListGetInteger( Model % Simulation, &
+            'Steady State Max Iterations', Found, minv=1 )
+       IF ( .NOT. Found ) CoupledMaxIter = 1
+    END IF
 
     Scanning = &
       ListGetString( CurrentModel % Simulation, 'Simulation Type', Found ) == 'scanning'
@@ -2354,6 +2364,17 @@ CONTAINS
 CONTAINS
 
     SUBROUTINE SolveCoupled()
+
+    TYPE(Mesh_t), POINTER, SAVE :: PrevMesh
+    INTEGER, SAVE :: PrevMeshNoNodes
+    LOGICAL, SAVE :: FirstTime=.TRUE.
+
+    IF(FirstTime) THEN
+      PrevMesh => Model % Mesh
+      PrevMeshNoNodes = Model % Mesh % NumberOfNodes
+      FirstTime = .FALSE.
+    END IF
+
 !------------------------------------------------------------------------------
 
      DO i=1,CoupledMaxIter
@@ -2521,7 +2542,16 @@ CONTAINS
          END DO
 !------------------------------------------------------------------------------
          CALL ListPopNamespace()
-         Model % Mesh % Changed = .FALSE.
+
+         !Check if the mesh changed - should do this elsewhere too?
+         IF(ASSOCIATED(Model % Mesh, PrevMesh) .AND. &
+              Model % Mesh % NumberOfNodes == PrevMeshNoNodes) THEN
+           Model % Mesh % Changed = .FALSE.
+         ELSE
+           PrevMesh => Model % Mesh
+           PrevMeshNoNodes = Model % Mesh % NumberOfNodes
+           Model % Mesh % Changed = .TRUE.
+         END IF
 
          IF( DivergenceExit ) EXIT
 
@@ -4243,6 +4273,59 @@ CONTAINS
   END SUBROUTINE ExecSolverInSteps
 
 
+  ! Create list of active elements for more speedy operation
+  !-------------------------------------------------------------
+  SUBROUTINE SetActiveElementsTable( Model, Solver, MaxDim )
+    TYPE(Model_t)  :: Model
+    TYPE(Solver_t),POINTER :: Solver
+    INTEGER, OPTIONAL :: MaxDim
+    
+    INTEGER :: i, n, Sweep, MeshDim 
+    CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: Found
+    
+    IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
+
+    IF( ASSOCIATED( Solver % ActiveElements ) ) THEN
+      DEALLOCATE( Solver % ActiveElements )
+    END IF
+
+    
+    EquationName = ListGetString( Solver % Values, 'Equation', Found)
+    IF( .NOT. Found ) THEN
+      CALL Fatal('SetActiveElementsTable','Equation not present!')
+    END IF
+
+    
+    MeshDim = 0 
+    
+    DO Sweep = 0, 1    
+      n = 0
+      DO i=1,Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOFBoundaryElements
+        Element => Solver % Mesh % Elements(i)
+        IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
+        IF ( CheckElementEquation( Model, Element, EquationName ) ) THEN
+          n = n + 1
+          IF( Sweep == 0 ) THEN
+            MeshDim = MAX( Element % TYPE % DIMENSION, MeshDim )
+          ELSE
+            Solver % ActiveElements(n) = i
+          END IF
+        END IF
+      END DO
+      
+      IF( Sweep == 0 ) THEN
+        Solver % NumberOfActiveElements = n
+        ALLOCATE( Solver % ActiveElements( n ) )
+      END IF
+    END DO
+
+    IF( PRESENT( MaxDim ) ) MaxDim = MeshDim 
+    
+  END SUBROUTINE SetActiveElementsTable
+
+  
 !------------------------------------------------------------------------------
 !> This executes the original line of solvers (legacy solvers) where each solver 
 !> includes looping over elements and the convergence control. From generality
@@ -4276,43 +4359,18 @@ CONTAINS
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
 
        IF ( Found ) THEN
-          IF ( ASSOCIATED(Solver % ActiveElements)) DEALLOCATE( Solver % ActiveElements )
+         CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 
+         CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
 
-          ! Count the number of active elements and maximum element dimension 
-          Maxdim = 0
-          n = 0
-          DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
-             CurrentElement => Solver % Mesh % Elements(i)
-             IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
-             IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
-               n = n + 1
-               Maxdim = MAX( CurrentElement % TYPE % DIMENSION, Maxdim )
-             END IF
-          END DO
-          Solver % NumberOfActiveElements = n
-          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
+         ! Calculate accumulated integration weights for bulk if requested          
+         IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
+           CALL CalculateNodalWeights(Solver,.FALSE.)
+         END IF
 
-          ! Create list of active elements
-          ALLOCATE( Solver % ActiveElements( n ) )
-          n = 0
-          DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
-            CurrentElement => Solver % Mesh % Elements(i)
-            IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
-            IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
-              n = n + 1
-              Solver % ActiveElements( n ) = i
-            END IF
-          END DO
-
-          ! Calculate accumulated integration weights for bulk if requested          
-          IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
-            CALL CalculateNodalWeights(Solver,.FALSE.)
-          END IF
-
-          ! Calculate weight for boundary 
-          IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
-            CALL CalculateNodalWeights(Solver,.TRUE.) 
-          END IF
+         ! Calculate weight for boundary 
+         IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
+           CALL CalculateNodalWeights(Solver,.TRUE.) 
+         END IF
        END IF
      END IF
 !------------------------------------------------------------------------------

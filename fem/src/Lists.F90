@@ -632,7 +632,6 @@ CONTAINS
       ptr % SteadyConverged = -1    
 
       IF ( PRESENT( Secondary ) ) THEN
-        IF(Secondary) PRINT *,'Secondary:',TRIM(name)
         ptr % Secondary = Secondary
       END IF
 
@@ -839,6 +838,27 @@ CONTAINS
 
     RmVar % Next => NULL()
 
+    !cycle other variables to check for Perm association
+    IF (ASSOCIATED(RmVar % Perm)) THEN
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+        IF(ASSOCIATED(RmVar, Var)) &
+             CALL Fatal("VariableRemove", "Programming Error - Variable appears twice in list?")
+        IF (ASSOCIATED(Var % Perm,RmVar % Perm)) THEN
+          RmVar % Perm => NULL()
+          EXIT
+        END IF
+        Var => Var % Next
+      END DO
+
+      !ASSOCIATION between zero-length arrays cannot be tested
+      !so nullify it anyway, just to be safe. Technically results
+      !in a memory leak (of size zero??)
+      IF(SIZE(RmVar % Perm) == 0) RmVar % Perm => NULL()
+    END IF
+
+
+
     !ReleaseVariableList was intended to deallocate an entire list of variables,
     !but by nullifying RmVar % Next, we have effectively isolated RmVar in 
     !its own variable list.
@@ -1027,8 +1047,7 @@ CONTAINS
          IF ( ThisOnly ) THEN
             IF ( PRESENT(UnfoundFatal) ) THEN
                IF ( UnfoundFatal ) THEN
-                  WRITE(Message,'(A,A)') "Failed to find variable ",Name
-                  CALL Fatal("VariableGet",Message)
+                 CALL Fatal("VariableGet","Failed to find variable "//TRIM(Name))
                END IF
             END IF
             RETURN
@@ -1054,8 +1073,7 @@ CONTAINS
       IF ( .NOT.ASSOCIATED( PVar ) ) THEN
          IF ( PRESENT(UnfoundFatal) ) THEN
             IF ( UnfoundFatal ) THEN
-               WRITE(Message,'(A,A)') "Failed to find or interpolate variable ",Name
-               CALL Fatal("VariableGet",Message)
+              CALL Fatal("VariableGet","Failed to find or interpolate variable: "//TRIM(Name))
             END IF
          END IF
          RETURN
@@ -2848,8 +2866,8 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find ConstReal: ",Name
-           CALL Fatal("ListGetInteger", Message)
+           WRITE(Message, '(A,A)') "Failed to find constant real: ",Name
+           CALL Fatal("ListGetConstReal", Message)
          END IF
        END IF
        RETURN
@@ -3576,7 +3594,7 @@ CONTAINS
      END SELECT
 
 
-     ! Initialize the handle entries because it may be that the list stucture was altered,
+     ! Initialize the handle entries because it may be that the list structure was altered,
      ! or the same handle is used for different keyword.
      Handle % ConstantEverywhere = .TRUE.
      Handle % GlobalInList = .FALSE.
@@ -3628,6 +3646,10 @@ CONTAINS
          IF( i > Model % NumberOfBCs ) EXIT        
          List => Model % BCs(i) % Values
 
+         ! It is more difficult to make sure that the BC list is given for all BC elements.
+         ! Therefore set this to .FALSE. always for BCs. 
+         Handle % ConstantEverywhere = .FALSE.
+         
        CASE DEFAULT
          CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(I2S(Handle % SectionType)))
 
@@ -3640,7 +3662,7 @@ CONTAINS
        ptr => ListFind(List,Name,Found)
        Handle % ptr % Head => ptr
 
-       IF ( .NOT.ASSOCIATED(ptr) ) THEN
+       IF ( .NOT. ASSOCIATED(ptr) ) THEN
          Handle % ConstantEverywhere = .FALSE.
          CYCLE
        ELSE IF( FirstList ) THEN
@@ -3707,7 +3729,7 @@ CONTAINS
      END DO
 
      CALL Info('ListInitElementKeyword',&
-         'Initiated handle for: '//TRIM(Handle % Name)//' type '// &
+         'Initiated handle for: > '//TRIM(Handle % Name)//' < of type: '// &
          TRIM(I2S(Handle % ValueType)),Level=10)
      !PRINT *,'Constants:',Handle % NotPresentAnywhere, &
      !    Handle % ConstantEverywhere, Handle % GlobalEverywhere, &
@@ -4829,8 +4851,7 @@ CONTAINS
          Handle % Found = .FALSE.
        END IF
      END IF
-              
-     
+                   
    END FUNCTION ListGetElementLogical
 !------------------------------------------------------------------------------
 
@@ -5063,8 +5084,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find ConstRealArray: ",Name
-           CALL Fatal("ListGetInteger", Message)
+           CALL Fatal("ListGetConstRealArray", "Failed to find: "//TRIM(Name) )
          END IF
        END IF
        RETURN
@@ -5095,6 +5115,50 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Gets an 1D constant real array from the list by its name.   
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetConstRealArray1( List,Name,Found,UnfoundFatal ) RESULT( F )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), POINTER  :: F(:)
+     INTEGER :: i,j,N1,N2
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     NULLIFY( F ) 
+     ptr => ListFind(List,Name,Found)
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           CALL Fatal("ListGetConstRealArray1","Failed to find: "//TRIM(Name))
+         END IF
+       END IF
+       RETURN
+     END IF
+
+     IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+       WRITE(Message,*) 'Value type for property [', TRIM(Name), &
+               '] not used consistently.'
+       CALL Fatal( 'ListGetConstRealArray1', Message )
+       RETURN
+     END IF
+
+     N1 = SIZE( ptr % FValues,1 )
+     N2 = SIZE( ptr % FValues,2 )
+     IF( N2 > 1 ) THEN
+       CALL Warn('ListGetConstRealArray1','The routine is designed for 1D arrays!')
+     END IF
+       
+     F => ptr % FValues(:,1,1)
+
+   END FUNCTION ListGetConstRealArray1
+!------------------------------------------------------------------------------
+
+   
+   
 !------------------------------------------------------------------------------
 !> Gets a real array from the list by its name,
 !------------------------------------------------------------------------------
@@ -5928,13 +5992,12 @@ CONTAINS
 
 
     DO WHILE( ASSOCIATED( Var ) )
-
       ! Skip if variable is not active for saving       
       IF ( .NOT. Var % Output ) THEN
         Var => Var % Next
         CYCLE
       END IF
-      
+
       ! Skip if variable is global one
       IF ( SIZE( Var % Values ) == Var % DOFs ) THEN
         Var => Var % Next
@@ -5943,7 +6006,7 @@ CONTAINS
 
       ! Skip if variable is otherwise strange in size
       IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
-        IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
+        IF( Var % TYPE /= Variable_on_nodes_on_elements ) THEN
           IF( SIZE( Var % Values ) /= Var % Dofs * Model % Mesh % NumberOfNodes ) THEN
             Var => Var % Next
             CYCLE
@@ -5955,7 +6018,6 @@ CONTAINS
           END IF         
         END IF
       END IF
-
 
       VarDim = Var % Dofs
       IsVector = (VarDim > 1)

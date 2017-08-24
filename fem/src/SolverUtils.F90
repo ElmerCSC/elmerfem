@@ -2261,7 +2261,7 @@ CONTAINS
        !------------------------------------------------------------------
        CALL NormalContactSet()
 
-       ! i) If requested ensure a minumum number of contact nodes
+       ! i) If requested ensure a minimum number of contact nodes
        !-------------------------------------------------------------------
        LimitedMin = ListGetInteger( BC,'Contact Active Set Minimum',Found)
        IF( Found ) CALL IncreaseContactSet( LimitedMin )
@@ -4330,7 +4330,7 @@ CONTAINS
     !----------------------------------------------------------------
     IF( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN    
       IF ( OrderByBCNumbering ) THEN
-        DO i=1,Model % NUmberOfBCs
+        DO i=1,Model % NumberOfBCs
           BC = i
           IF(ReorderBCs) BC = BCOrder(BC)
           IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
@@ -8338,7 +8338,7 @@ END FUNCTION SearchNodeL
 
 
     ! Optional a posteriori scaling for the computed fields
-    ! May be usefull for some floating systems where one want to impose some intergral 
+    ! May be useful for some floating systems where one want to impose some intergral 
     ! constraints without actually using them. Then first use just one Dirichlet point
     ! and then fix the level a posteriori using this condition. 
     !----------------------------------------------------------------------------------
@@ -9359,7 +9359,7 @@ END FUNCTION SearchNodeL
         PiecePerm(j) = NoPieces 
       END IF
     END DO
-    CALL Info('CalculateMeshPieces','Number of seperate pieces in mesh is '//TRIM(I2S(NoPieces)))
+    CALL Info('CalculateMeshPieces','Number of separate pieces in mesh is '//TRIM(I2S(NoPieces)))
 
 
     ! Save the mesh piece field to > mesh piece < 
@@ -9906,12 +9906,13 @@ END FUNCTION SearchNodeL
 !--------------------------------------------------------------
 !>  Scale the system back to original.
 !--------------------------------------------------------------
-  SUBROUTINE BackScaleLinearSystem(Solver,A,b,x,DiagScaling,ConstraintScaling) 
+  SUBROUTINE BackScaleLinearSystem( Solver,A,b,x,DiagScaling,&
+      ConstraintScaling, EigenScaling ) 
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp), OPTIONAL :: b(:),x(:)
-    LOGICAL, OPTIONAL :: ConstraintScaling
+    LOGICAL, OPTIONAL :: ConstraintScaling, EigenScaling
     REAL(KIND=dp), OPTIONAL, TARGET :: DiagScaling(:)
 
     REAL(KIND=dp), POINTER :: Diag(:)
@@ -9949,19 +9950,23 @@ END FUNCTION SearchNodeL
       b(1:n) = b(1:n) / Diag(1:n) * bnorm
     END IF
     
-    DO i=1,Solver % NOFEigenValues
-      !
-      !           Solve x:  INV(D)x = y
-      !           --------------------------
-      IF ( Solver % Matrix % COMPLEX ) THEN
-        Solver % Variable % EigenVectors(i,1:n/2) = &
-            Solver % Variable % EigenVectors(i,1:n/2) * Diag(1:n:2)
-      ELSE
-        Solver % Variable % EigenVectors(i,1:n) = &
-            Solver % Variable % EigenVectors(i,1:n) * Diag(1:n)
+    IF( PRESENT( EigenScaling ) ) THEN
+      IF( EigenScaling ) THEN
+        DO i=1,Solver % NOFEigenValues
+          !
+          !           Solve x:  INV(D)x = y
+          !           --------------------------
+          IF ( Solver % Matrix % COMPLEX ) THEN
+            Solver % Variable % EigenVectors(i,1:n/2) = &
+                Solver % Variable % EigenVectors(i,1:n/2) * Diag(1:n:2)
+          ELSE
+            Solver % Variable % EigenVectors(i,1:n) = &
+                Solver % Variable % EigenVectors(i,1:n) * Diag(1:n)
+          END IF
+        END DO
       END IF
-    END DO
-    
+    END IF
+      
     DO i=1,n
       DO j=A % Rows(i), A % Rows(i+1)-1
         A % Values(j) = A % Values(j) / (Diag(i) * Diag(A % Cols(j)))
@@ -10652,6 +10657,8 @@ END FUNCTION SearchNodeL
   RECURSIVE SUBROUTINE SolveLinearSystem( A, b, &
        x, Norm, DOFs, Solver, BulkMatrix )
 !------------------------------------------------------------------------------
+    USE EigenSolve
+
     REAL(KIND=dp) CONTIG :: b(:), x(:)
     REAL(KIND=dp) :: Norm
     TYPE(Matrix_t), POINTER :: A
@@ -10664,7 +10671,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
                SkipZeroRhs, ComplexSystem, ComputeChangeScaled, ConstraintModesAnalysis, &
-               RecursiveAnalysis
+               RecursiveAnalysis, CalcLoads
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
@@ -10676,7 +10683,8 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t), POINTER :: Aaid, Projector, MP
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
-
+    LOGICAL :: NormalizeToUnity
+    
     INTERFACE 
        SUBROUTINE VankaCreate(A,Solver)
           USE Types
@@ -10837,11 +10845,17 @@ END FUNCTION SearchNodeL
           Solver % Variable % EigenValues,       &
           Solver % Variable % EigenVectors, Solver )
       
-      IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A ) 
+      IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A, EigenScaling = .TRUE. ) 
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
 
       Norm = ComputeNorm(Solver,n,x)
       Solver % Variable % Norm = Norm
+
+      NormalizeToUnity = ListGetLogical( Solver % Values, &
+          'Eigen System Normalize To Unity',Stat)         
+      CALL ScaleEigenVectors( A, Solver % Variable % EigenVectors, &
+          SIZE(Solver % Variable % EigenValues), A % NumberOfRows, &
+          NormalizeToUnity ) 
       
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
@@ -10861,7 +10875,8 @@ END FUNCTION SearchNodeL
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
     END IF
-
+   
+    
     ! We have solved {harmonic,eigen,constraint} system and no need to continue further
     IF( RecursiveAnalysis ) THEN
       IF( HarmonicAnalysis ) CALL ListAddLogical( Solver % Values,'Harmonic Analysis',.TRUE.)
@@ -11017,8 +11032,14 @@ END FUNCTION SearchNodeL
     NodalLoads => VariableGet( Solver % Mesh % Variables, &
         GetVarName(Solver % Variable) // ' Loads' )
     IF( ASSOCIATED( NodalLoads ) ) THEN
-      CALL Info('SolveLinearSystem','Calculating nodal loads',Level=6)
-      CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
+      ! Nodal loads may be allocated but the user may have toggled
+      ! the 'calculate loads' flag such that no load computation should be performed.
+      CalcLoads = ListGetLogical( Solver % Values,'Calculate Loads',GotIt )
+      IF( .NOT. GotIt ) CalcLoads = .TRUE.
+      IF( CalcLoads ) THEN
+        CALL Info('SolveLinearSystem','Calculating nodal loads',Level=6)
+        CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
+      END IF
     END IF
 
     IF (BackRotation) THEN
@@ -11401,7 +11422,8 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
                 EigenValues, EigenVectors )
       END IF
     END IF
-
+   
+    
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
@@ -11993,7 +12015,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   INTEGER, POINTER :: UsePerm(:), UseIPerm(:)
   REAL(KIND=dp), POINTER :: UseDiag(:)
   TYPE(ListMatrix_t), POINTER :: Lmat(:)
-  LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel
+  LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel, UseTreeGauge
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
   LOGICAL, ALLOCATABLE :: TrueDof(:)
 
@@ -12106,6 +12128,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      MultiplierValues => NULL()
   END IF
 
+  UseTreeGauge = ListGetlogical( Solver % Values, 'Use Tree Gauge', Found )
 
 !------------------------------------------------------------------------------
 ! Put the RestMatrix to lower part of CollectionMatrix
@@ -12254,7 +12277,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           NoEmptyRows = NoEmptyRows + 1
           CollectionVector(k) = 0._dp
 !          might not be the right thing to do in parallel!!
-!         CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
+          IF(UseTreeGauge) THEN
+            CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
+          END IF 
         ELSE
           IF( ASSOCIATED( RestVector ) ) CollectionVector(k) = CollectionVector(k) + RestVector(i)
         END IF
@@ -13560,7 +13585,7 @@ CONTAINS
 
 
 !---------------------------------------------------------------------------------
-!> Set the diagonal entry to given minumum.
+!> Set the diagonal entry to given minimum.
 !----------------------------------------------------------------------------------
   SUBROUTINE LinearSystemMinDiagonal( Solver )
 !----------------------------------------------------------------------------------    
