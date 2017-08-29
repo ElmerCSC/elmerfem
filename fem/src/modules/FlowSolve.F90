@@ -134,14 +134,14 @@
          HighOrderGLInt =.FALSE.
 
 !=========================================================================
-    TYPE(variable_t), POINTER :: GroundingLineVar
+    TYPE(variable_t), POINTER :: GroundingLineVar, GroundedMaskVar
 
-    INTEGER, POINTER :: GroundingLineParaPerm(:)
+    INTEGER, POINTER :: GroundingLineParaPerm(:), GroundedMaskPerm(:)
     INTEGER :: nIntegration, tempNodeIndex, jj, GLparaIndex
     REAL(KIND=dp) :: Time, FFstressSum, GLstressSum, cond, ratio, bslope
 
     LOGICAL :: GLParaFlag, outputFlag = .FALSE., PressureParamFlag = .FALSE.
-    REAL(KIND=dp), POINTER :: GroundingLinePara(:)
+    REAL(KIND=dp), POINTER :: GroundingLinePara(:), GroundedMask(:)
 !=========================================================================
 
      REAL(KIND=dp),ALLOCATABLE :: MASS(:,:),STIFF(:,:), LoadVector(:,:), &
@@ -500,9 +500,9 @@
       GLParaFlag = ListGetLogical( Solver % Values, 'GroundingLine Parameterization', GotIt )
       IF ( GLParaFlag ) THEN
         ! GroundedMask import
-        ! GroundedMaskVar => VariableGet( Model % Mesh % Variables, 'GroundedMask')
-        ! GroundedMask => GroundedMaskVar % Values
-        ! GroundedMaskPerm => GroundedMaskVar % Perm
+        GroundedMaskVar => VariableGet( Model % Mesh % Variables, 'GroundedMask')
+        GroundedMask => GroundedMaskVar % Values
+        GroundedMaskPerm => GroundedMaskVar % Perm
 
         GroundingLineVar => VariableGet( Model % Mesh % Variables, 'GroundingLinePara')
         GroundingLinePara => GroundingLineVar % Values
@@ -1201,6 +1201,18 @@
 
               END IF
             END IF
+
+            !---------------------------------------------------------------
+            ! Weakly Imposed Dirichlet B.C.
+            !--------------------------------------------------------------- 
+            IF ( ALL(GroundedMaskPerm(Element % NodeIndexes) > 0) ) THEN
+              IF ( ALL(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) >= 0)) THEN
+                DO jj = 1, n
+                  SlipCoeff(1,jj) = 1.0e15
+                END DO 
+              END IF
+            END IF
+            !---------------------------------------------------------------
           END IF
 
           ! Get corresponding bedrock slop at the current element
