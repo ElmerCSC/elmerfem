@@ -4643,16 +4643,17 @@ CONTAINS
      nn = 0
      DO i=0, ParEnv % PEs-1
        k = i+1
-       IF(i==ParEnv % myPE) CYCLE
        IF(.NOT.ParEnv % Active(k) ) CYCLE
+       IF(i==ParEnv % myPE) CYCLE
        IF(.NOT.ParEnv % IsNeighbour(k) ) CYCLE
        nn = nn + 1
        fneigh(nn) = k
        ineigh(k) = nn
      END DO
 
-     ALLOCATE(s_e(A % NumberOfRows, nn ), r_e(A % NumberOfRows) )
-     ALLOCATE(d_e(A % NumberOfRows, nn ), g_e(A % NumberOfRows) )
+     n = COUNT(A % ConstrainedDOF .AND. A % ParallelInfo % Interface)
+     ALLOCATE( s_e(n, nn ), r_e(n) )
+     ALLOCATE( d_e(n, nn ), g_e(n) )
 
      ii = 0
      DO i=1, A % NumberOfRows
