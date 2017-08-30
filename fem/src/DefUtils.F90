@@ -4588,7 +4588,7 @@ CONTAINS
      IF ( Found ) THEN
 
         IF ( ParEnv % PEs > 1 ) THEN
-          IF (GetLogical( GetSimulation(), 'Dirichlet Comm') ) CALL CommunicateDirichletBCs(A)
+          IF (GetLogical( GetSimulation(), 'Dirichlet Comm', Found) ) CALL CommunicateDirichletBCs(A)
         END IF
 
         DO k=1,A % NumberOfRows
