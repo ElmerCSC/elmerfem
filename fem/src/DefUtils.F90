@@ -4655,6 +4655,8 @@ CONTAINS
      ALLOCATE( s_e(n, nn ), r_e(n) )
      ALLOCATE( d_e(n, nn ), g_e(n) )
 
+     CALL CheckBuffer( nn*3*n )
+
      ii = 0
      DO i=1, A % NumberOfRows
        IF(A % ConstrainedDOF(i) .AND. A % ParallelInfo % Interface(i) ) THEN
@@ -4681,10 +4683,14 @@ CONTAINS
      END DO
 
      DO i=1, nn
-       j = fneigh(i) 
-
+       j = fneigh(i)
        CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
        IF ( n>0 ) THEN
+         IF( n>SIZE(r_e)) THEN
+           DEALLOCATE(r_e,g_e)
+           ALLOCATE(r_e(n),g_e(n))
+         END IF
+
          CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
          CALL MPI_RECV( g_e,n,MPI_DOUBLE_PRECISION,j-1,112,ELMER_COMM_WORLD, status,ierr )
          DO j=1,n
