@@ -1364,6 +1364,13 @@ CONTAINS
      TYPE(Mesh_t), OPTIONAL :: Mesh
      INTEGER :: MeshDim, family
 
+     ! Orphan elements are not currently present in the mesh so any
+     ! boundary condition that exists is a possible flux element also.
+     possible = .TRUE.
+
+     RETURN
+
+     
      IF( PRESENT( Mesh ) ) THEN
        MeshDim = Mesh % MeshDim
      ELSE
@@ -4074,7 +4081,7 @@ CONTAINS
      INTEGER :: i, j, k, kk, l, m, n, nd, nb, np, mb, nn, ni, nj, i0
      INTEGER :: EDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
 
-     LOGICAL :: Flag,Found, ConstantValue, ScaleSystem
+     LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
 
      CHARACTER(LEN=MAX_NAME_LEN) :: name
@@ -4588,7 +4595,9 @@ CONTAINS
      IF ( Found ) THEN
 
         IF ( ParEnv % PEs > 1 ) THEN
-          IF (GetLogical( GetSimulation(), 'Dirichlet Comm', Found) ) CALL CommunicateDirichletBCs(A)
+          DirichletComm = GetLogical( GetSimulation(), 'Dirichlet Comm', Found)
+          IF(.NOT. Found) DirichletComm = .TRUE.
+          IF( DirichletComm) CALL CommunicateDirichletBCs(A)
         END IF
 
         DO k=1,A % NumberOfRows
