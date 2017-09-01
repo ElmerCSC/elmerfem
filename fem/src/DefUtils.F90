@@ -963,6 +963,7 @@ CONTAINS
     END IF
   END SUBROUTINE GetRealValues
 
+
 !> Returns a material property from either of the parents of the current boundary element
   RECURSIVE FUNCTION GetParentMatProp( Name, UElement, Found, UParent ) RESULT(x)
     CHARACTER(LEN=*) :: Name
@@ -972,13 +973,17 @@ CONTAINS
 
     REAL(KIND=dp), POINTER CONTIG :: x(:)
     INTEGER, POINTER :: Indexes(:)
-    LOGICAL :: GotIt
-    INTEGER :: n, leftright
+    LOGICAL :: GotIt, GotMat
+    INTEGER :: n, leftright, mat_id
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Element_t), POINTER :: Element, Parent
     
     Element => GetCurrentElement(Uelement)
 
+    IF( .NOT. ASSOCIATED( Element ) ) THEN
+      CALL Warn('GetParentMatProp','Element not associated!')
+    END IF
+    
     IF( PRESENT(UParent) ) NULLIFY( UParent )
 
     n = GetElementNOFNodes(Element)
@@ -987,16 +992,45 @@ CONTAINS
     x => GetValueStore(n)
     x(1:n) = REAL(0, dp)
 
+    IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
+      CALL Warn('GetParentMatProp','Boundary element needs parent information!')
+      RETURN
+    END IF
+    
+    
     Gotit = .FALSE.
     DO leftright = 1, 2
-       IF( leftright == 1) THEN
+
+      IF( leftright == 1) THEN
          Parent => Element % BoundaryInfo % Left
        ELSE 
          Parent => Element % BoundaryInfo % Right
        END IF
-
+       
        IF( ASSOCIATED(Parent) ) THEN
-         Material => GetMaterial(Parent)
+
+         GotMat = .FALSE.
+         IF( Parent % BodyId > 0 .AND. Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
+           mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',GotMat)
+         ELSE
+           CALL Warn('GetParentMatProp','Invalid parent BodyId '//TRIM(I2S(Parent % BodyId))//&
+               ' for element '//TRIM(I2S(Parent % ElementIndex)))
+           CYCLE
+         END IF
+         
+         IF(.NOT. GotMat) THEN
+           CALL Warn('GetParentMatProp','Parent body '//TRIM(I2S(Parent % BodyId))//' does not have material associated!')
+         END IF
+         
+         IF( mat_id > 0 .AND. mat_id <= CurrentModel % NumberOfMaterials ) THEN
+           Material => CurrentModel % Materials(mat_id) % Values
+         ELSE
+           CALL Warn('GetParentMatProp','Material index '//TRIM(I2S(mat_id))//' not associated to material list')
+           CYCLE
+         END IF
+                             
+         IF( .NOT. ASSOCIATED( Material ) ) CYCLE
+
          IF ( ListCheckPresent( Material,Name) ) THEN
            x(1:n) = ListGetReal(Material, Name, n, Indexes)
            IF( PRESENT( UParent ) ) UParent => Parent
@@ -1013,6 +1047,7 @@ CONTAINS
     END IF
      
   END FUNCTION GetParentMatProp
+
 
 !> Returns a constant real array by its name if found in the list structure. 
   RECURSIVE SUBROUTINE GetConstRealArray( List, x, Name, Found, UElement )
@@ -4664,6 +4699,8 @@ CONTAINS
      ALLOCATE( s_e(n, nn ), r_e(n) )
      ALLOCATE( d_e(n, nn ), g_e(n) )
 
+     CALL CheckBuffer( nn*3*n )
+
      ii = 0
      DO i=1, A % NumberOfRows
        IF(A % ConstrainedDOF(i) .AND. A % ParallelInfo % Interface(i) ) THEN
@@ -4690,10 +4727,14 @@ CONTAINS
      END DO
 
      DO i=1, nn
-       j = fneigh(i) 
-
+       j = fneigh(i)
        CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
        IF ( n>0 ) THEN
+         IF( n>SIZE(r_e)) THEN
+           DEALLOCATE(r_e,g_e)
+           ALLOCATE(r_e(n),g_e(n))
+         END IF
+
          CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
          CALL MPI_RECV( g_e,n,MPI_DOUBLE_PRECISION,j-1,112,ELMER_COMM_WORLD, status,ierr )
          DO j=1,n
