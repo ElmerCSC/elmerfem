@@ -4655,7 +4655,7 @@ CONTAINS
      ALLOCATE( s_e(n, nn ), r_e(n) )
      ALLOCATE( d_e(n, nn ), g_e(n) )
 
-     CALL CheckBuffer( nn*3*n )
+     CALL CheckBuffer( 3*n + nn + 3*nn*MPI_BSEND_OVERHEAD )
 
      ii = 0
      DO i=1, A % NumberOfRows
