@@ -480,8 +480,6 @@ END MODULE PorousMaterials
       DO t=1, Solver % Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
        
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()

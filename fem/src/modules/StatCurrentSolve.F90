@@ -407,8 +407,6 @@ END SUBROUTINE StatCurrentSolver_Init
                MaxPotential = MAX(MaxPotential, MAXVAL(Load(1:n)))             
              END IF
 
-             IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
-
              FluxBC = ListGetLogical(Model % BCs(i) % Values, &
                  'Current Density BC',gotIt) 
              IF(GotIt .AND. .NOT. FluxBC) CYCLE

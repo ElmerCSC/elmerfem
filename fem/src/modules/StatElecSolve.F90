@@ -843,8 +843,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
            MaxPotential = MAX(MaxPotential, MAXVAL(Load(1:n)))             
          END IF
 
-         IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
-
          ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
          ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
          ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
