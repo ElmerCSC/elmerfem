@@ -342,9 +342,6 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
 
-        ! Check that the dimension of element is suitable for fluxes
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
         BC => GetBC()
         IF ( ASSOCIATED( BC ) ) THEN
           Load(1,1:n) = GetReal( BC, 'Wave Flux 1', Found )

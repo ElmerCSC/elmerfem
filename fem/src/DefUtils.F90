@@ -1401,6 +1401,7 @@ CONTAINS
 
      ! Orphan elements are not currently present in the mesh so any
      ! boundary condition that exists is a possible flux element also.
+     ! Thus this routine is more or less obsolite. 
      possible = .TRUE.
 
      RETURN

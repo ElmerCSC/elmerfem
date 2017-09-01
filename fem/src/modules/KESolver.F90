@@ -358,8 +358,6 @@
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
-        ! Check that the dimension of element is suitable for fluxes
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
 !------------------------------------------------------------------------------
         n = GetElementNOFNodes()
         NodeIndexes => Element % NodeIndexes

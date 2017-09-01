@@ -1205,8 +1205,6 @@ CONTAINS
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
        
-       IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
        n = GetElementNOFNodes()
        ntot = GetElementNOFDOFs()
 
@@ -1389,8 +1387,6 @@ CONTAINS
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
        
-       IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
        n = GetElementNOFNodes()
        BC => GetBC()
        
@@ -1958,8 +1954,6 @@ CONTAINS
          Element => GetBoundaryElement(t)
          IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
-         IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
          BC => GetBC()
          IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
 !------------------------------------------------------------------------------
@@ -2221,8 +2215,6 @@ CONTAINS
          Element => GetBoundaryElement(t)
          IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
-         IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-         
          BC => GetBC()
          IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
@@ -2260,8 +2252,6 @@ CONTAINS
          Element => GetBoundaryElement(t)
          IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
-         IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-         
          BC => GetBC()
          IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
