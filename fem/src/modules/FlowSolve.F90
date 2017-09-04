@@ -1207,10 +1207,10 @@
             !---------------------------------------------------------------
             ! Weakly Imposed Dirichlet B.C.
             !--------------------------------------------------------------- 
-            weaklyDirichlet = GetLogical( BC, 'Weakly Imposed Dirichlet Condition', GotIt)
+            weaklyDirichlet = GetLogical( BC, 'Weakly Imposed Dirichlet', GotIt)
 
             IF ( weaklyDirichlet ) THEN
-              weaklyMu =  GetConstReal( BC, 'Weakly Imposed Dirichlet Condition Coefficient', GotIt)
+              weaklyMu =  GetConstReal( BC, 'Weakly Imposed Dirichlet Coefficient', GotIt)
               IF ( .NOT. GotIt ) weaklyMu = 1.0e6
               IF ( ALL(GroundedMaskPerm(Element % NodeIndexes) > 0) ) THEN
                 IF ( ALL(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) >= 0)) THEN
