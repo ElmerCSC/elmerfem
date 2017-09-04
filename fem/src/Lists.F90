@@ -6293,9 +6293,13 @@ CONTAINS
             ct = ct + cumct
             WRITE(Message,'(a,f10.4,a)') 'Elapsed CPU time cumulative: ',ct,' (s)'
             CALL Info(TRIM(TimerName),Message,Level=Level)          
+          ELSE
+            CALL Warn('CheckTimer',&
+                'Requesting time from non-existing timer: '//TRIM(TimerName) )            
           END IF
           CALL ListAddConstReal(CurrentModel % Simulation,&
               'res: '//TRIM(TimerName)//' cpu time',ct)
+          
         END IF
         IF( TimerRealTime ) THEN
           cumrt = ListGetConstReal(CurrentModel % Simulation,&
@@ -6304,16 +6308,16 @@ CONTAINS
             rt = rt + cumrt            
             WRITE(Message,'(a,f10.4,a)') 'Elapsed REAL time cumulative: ',rt,' (s)'
             CALL Info(TRIM(TimerName),Message,Level=Level)          
+          ELSE
+            CALL Warn('CheckTimer',&
+                'Requesting time from non-existing timer: '//TRIM(TimerName) )
           END IF
           CALL ListAddConstReal(CurrentModel % Simulation,&
               'res: '//TRIM(TimerName)//' real time',rt)
         END IF
       END IF
-    ELSE
-      CALL Warn('CheckTimer',&
-          'Requesting time from non-existing timer: '//TRIM(TimerName) )
     END IF
-
+    
     IF( PRESENT( Reset ) ) THEN
       IF( Reset ) THEN
         IF( TimerCPUTime ) THEN

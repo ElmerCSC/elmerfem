@@ -1032,9 +1032,6 @@
 
         n = GetElementNOFNodes()
 
-        ! Check that the dimension of element is suitable for fluxes
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
         BC => GetBC()
         IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
