@@ -1837,7 +1837,7 @@ MODULE NavierStokes
         CALL tan2Normal2D(bslope, tempNormal)
 
         IF (outputFlag) THEN
-          WRITE (*,*) '+++++++++++++++++', NodalExtPressure(1:n), NodalBedPressure(1:n), Alpha, u
+          WRITE (*,*) '+++++++++++++++++', NodalSlipCoeff(1,1:n), NodalSlipCoeff(2,1:n), Alpha, u
         END IF
         Normal = tempNormal
 
@@ -1847,7 +1847,7 @@ MODULE NavierStokes
         CALL tan2Normal2D(tanTheta, tempNormal)   
 
         IF (outputFlag) THEN
-          WRITE (*,*) '=================', NodalExtPressure(1:n), NodalBedPressure(1:n), Alpha, u
+          WRITE (*,*) '=================', NodalSlipCoeff(1,1:n), NodalSlipCoeff(2,1:n), Alpha, u
         END IF
         Normal = tempNormal
       END IF

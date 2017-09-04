@@ -138,9 +138,11 @@
 
     INTEGER, POINTER :: GroundingLineParaPerm(:), GroundedMaskPerm(:)
     INTEGER :: nIntegration, tempNodeIndex, jj, GLparaIndex
-    REAL(KIND=dp) :: Time, FFstressSum, GLstressSum, cond, ratio, bslope
+    REAL(KIND=dp) :: Time, FFstressSum, GLstressSum, cond, ratio, bslope, &
+                     weaklyMu
 
-    LOGICAL :: GLParaFlag, outputFlag = .FALSE., PressureParamFlag = .FALSE.
+    LOGICAL :: GLParaFlag, outputFlag = .FALSE., PressureParamFlag = .FALSE., &
+               weaklyDirichlet = .FALSE.
     REAL(KIND=dp), POINTER :: GroundingLinePara(:), GroundedMask(:)
 !=========================================================================
 
@@ -1205,11 +1207,17 @@
             !---------------------------------------------------------------
             ! Weakly Imposed Dirichlet B.C.
             !--------------------------------------------------------------- 
-            IF ( ALL(GroundedMaskPerm(Element % NodeIndexes) > 0) ) THEN
-              IF ( ALL(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) >= 0)) THEN
-                DO jj = 1, n
-                  SlipCoeff(1,jj) = 1.0e15
-                END DO 
+            weaklyDirichlet = GetLogical( BC, 'Weakly Imposed Dirichlet Condition', GotIt)
+
+            IF ( weaklyDirichlet ) THEN
+              weaklyMu =  GetConstReal( BC, 'Weakly Imposed Dirichlet Condition Coefficient', GotIt)
+              IF ( .NOT. GotIt ) weaklyMu = 1.0e6
+              IF ( ALL(GroundedMaskPerm(Element % NodeIndexes) > 0) ) THEN
+                IF ( ALL(GroundedMask(GroundedMaskPerm(Element % NodeIndexes)) >= 0)) THEN
+                  DO jj = 1, n
+                    SlipCoeff(1,jj) = weaklyMu!1.0e6  !1e8
+                  END DO 
+                END IF
               END IF
             END IF
             !---------------------------------------------------------------
