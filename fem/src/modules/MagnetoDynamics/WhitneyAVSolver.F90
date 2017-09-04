@@ -197,15 +197,15 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
-  LOGICAL, ALLOCATABLE :: TreeEdges(:)
+  LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
   LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
          SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
          PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis, &
          HasTensorReluctivity
   LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
-       HasStabC
+       HasStabC, RegularizeWithMass
 
-  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m
+  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, mass_reg_epsilon
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
@@ -250,6 +250,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
   TransientGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. Transient
+  
+
 
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
@@ -275,6 +277,15 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
     END IF
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
+  END IF
+  
+  mass_reg_epsilon = GetCReal(GetSolverParams(), 'Mass regularize epsilon', RegularizeWithMass)
+  IF (RegularizeWithMass .AND. mass_reg_epsilon == 0.0_dp) THEN
+    RegularizeWithMass = .FALSE.
+  END IF
+  IF (RegularizeWithMass) THEN
+    WRITE (Message, *) 'Mass regularization epsilon', mass_reg_epsilon
+    CALL Info("WhitneyAVSolver", Message)
   END IF
 
   gauge_penalize_c = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient', HasStabC)
@@ -740,13 +751,18 @@ CONTAINS
   CALL DirichletAfromB()
   CALL ConstrainUnused(A)
 
-
+ 
   IF (TG) THEN
-    CALL GaugeTree()
+    IF ( .NOT.ALLOCATED(TreeEdges) ) CALL GaugeTree()
+
     WRITE(Message,*) 'Volume tree edges: ', &
            TRIM(i2s(COUNT(TreeEdges))),     &
              ' of total: ',Mesh % NumberOfEdges
     CALL Info('WhitneyAVSolver: ', Message, Level=5)
+
+    DO i=1,SIZE(TreeEdges)
+      IF(TreeEdges(i)) CALL SetDOFToValue(Solver,i,0._dp)
+    END DO
   END IF
 
   IF (DefaultLineSearch(Converged)) RETURN
@@ -784,7 +800,7 @@ CONTAINS
 10 CONTINUE
 
   IF ( ALLOCATED(FluxMap) ) DEALLOCATE(FluxMap)
-  IF ( ALLOCATED(TreeEdges) ) DEALLOCATE(TreeEdges)
+! IF ( ALLOCATED(TreeEdges) ) DEALLOCATE(TreeEdges)
 
 ! CALL WriteResults  ! debugging helper
 
@@ -1270,8 +1286,10 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     REAL(KIND=dp) :: Cond1
     TYPE(Element_t), POINTER :: Edge, Boundary, Element
-!------------------------------------------------------------------------------
 
+    INTEGER, ALLOCATABLE :: r_e(:), s_e(:,:), iperm(:)
+    INTEGER :: ssz, status(MPI_STATUS_SIZE), ierr, ii(ParEnv % PEs)
+!------------------------------------------------------------------------------
     IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
       ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
     END IF
@@ -1280,7 +1298,6 @@ CONTAINS
     n = Mesh % NumberOfNodes
     ALLOCATE(Done(n)); Done=.FALSE.
 
-    ! 
     ! Skip Dirichlet BCs in terms of A:
     ! ---------------------------------
     DO i=1,Mesh % NumberOfBoundaryElements
@@ -1315,6 +1332,9 @@ CONTAINS
           Cond1 = GetCReal(GetMaterial(), 'Electric Conductivity',Found)
           IF (cond1==0) condReg(Element % NodeIndexes) = .FALSE.
         END DO
+
+        CALL CommunicateCondReg(Solver,Mesh,CondReg)
+
         Done = Done.OR.CondReg
         DEALLOCATE(CondReg)
       END IF
@@ -1330,7 +1350,12 @@ CONTAINS
       Done(Edge % NodeIndexes)=.TRUE.
     END DO
 
-    !
+    ! 
+    ! already set:
+    ! ------------
+
+    CALL RecvDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
+
     ! node -> edge list
     ! -----------------
     Alist => NULL()
@@ -1353,8 +1378,10 @@ CONTAINS
       END DO
       CALL DepthFirstSearch(Alist,Done,Start)
     END DO
-    DEALLOCATE(Done)
     CALL List_FreeMatrix(SIZE(Alist),Alist)
+
+    CALL SendDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
+    DEALLOCATE(Done)
 !------------------------------------------------------------------------------
   END SUBROUTINE GaugeTree
 !------------------------------------------------------------------------------
@@ -2065,6 +2092,22 @@ END SUBROUTINE LocalConstraintMatrix
            END DO
          END IF
 
+       END IF
+       
+       ! Add mass-type term to the stiffness matrix for regularization if requested
+       ! This turns the steady state system to "curl nu curl u + epsilon u = J"
+       ! For discussion on regularization see, e.g., "Cassagrande, Hiptmair, Ostrowski, 
+       ! An a priori error estimate for interior penalty discretizations of the Curl-Curl 
+       ! operator on non-conforming meshes" section 6.
+       
+       IF ( RegularizeWithMass ) THEN
+        DO j = 1, nd-np
+          q = j + np
+          DO i = 1, nd-np
+            p = i + np
+            STIFF(p,q) = STIFF(p,q) + mass_reg_epsilon*SUM(WBasis(i,:)*WBasis(j,:))*detJ*IP%s(t)
+          END DO
+        END DO
        END IF
 
     END DO

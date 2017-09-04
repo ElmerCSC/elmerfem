@@ -181,9 +181,6 @@
            Model % CurrentElement => Element
           
            IF ( ANY( CurvPerm(NodeIndexes) <= 0 ) ) CYCLE         
-
-           ! Check that the dimension of element is suitable for fluxes
-           IF( .NOT. PossibleFluxElement(Element) ) CYCLE
            
            IF ( .NOT. ListGetLogical(Model % BCs(i) % Values, &
                'Levelset Curvature BC',gotIt) ) CYCLE

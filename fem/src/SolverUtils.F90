@@ -12015,7 +12015,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   INTEGER, POINTER :: UsePerm(:), UseIPerm(:)
   REAL(KIND=dp), POINTER :: UseDiag(:)
   TYPE(ListMatrix_t), POINTER :: Lmat(:)
-  LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel
+  LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel, UseTreeGauge
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
   LOGICAL, ALLOCATABLE :: TrueDof(:)
 
@@ -12128,6 +12128,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      MultiplierValues => NULL()
   END IF
 
+  UseTreeGauge = ListGetlogical( Solver % Values, 'Use Tree Gauge', Found )
 
 !------------------------------------------------------------------------------
 ! Put the RestMatrix to lower part of CollectionMatrix
@@ -12276,7 +12277,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           NoEmptyRows = NoEmptyRows + 1
           CollectionVector(k) = 0._dp
 !          might not be the right thing to do in parallel!!
-!         CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
+          IF(UseTreeGauge) THEN
+            CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
+          END IF 
         ELSE
           IF( ASSOCIATED( RestVector ) ) CollectionVector(k) = CollectionVector(k) + RestVector(i)
         END IF

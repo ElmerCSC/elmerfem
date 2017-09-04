@@ -963,6 +963,7 @@ CONTAINS
     END IF
   END SUBROUTINE GetRealValues
 
+
 !> Returns a material property from either of the parents of the current boundary element
   RECURSIVE FUNCTION GetParentMatProp( Name, UElement, Found, UParent ) RESULT(x)
     CHARACTER(LEN=*) :: Name
@@ -972,13 +973,17 @@ CONTAINS
 
     REAL(KIND=dp), POINTER CONTIG :: x(:)
     INTEGER, POINTER :: Indexes(:)
-    LOGICAL :: GotIt
-    INTEGER :: n, leftright
+    LOGICAL :: GotIt, GotMat
+    INTEGER :: n, leftright, mat_id
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Element_t), POINTER :: Element, Parent
     
     Element => GetCurrentElement(Uelement)
 
+    IF( .NOT. ASSOCIATED( Element ) ) THEN
+      CALL Warn('GetParentMatProp','Element not associated!')
+    END IF
+    
     IF( PRESENT(UParent) ) NULLIFY( UParent )
 
     n = GetElementNOFNodes(Element)
@@ -987,16 +992,45 @@ CONTAINS
     x => GetValueStore(n)
     x(1:n) = REAL(0, dp)
 
+    IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
+      CALL Warn('GetParentMatProp','Boundary element needs parent information!')
+      RETURN
+    END IF
+    
+    
     Gotit = .FALSE.
     DO leftright = 1, 2
-       IF( leftright == 1) THEN
+
+      IF( leftright == 1) THEN
          Parent => Element % BoundaryInfo % Left
        ELSE 
          Parent => Element % BoundaryInfo % Right
        END IF
-
+       
        IF( ASSOCIATED(Parent) ) THEN
-         Material => GetMaterial(Parent)
+
+         GotMat = .FALSE.
+         IF( Parent % BodyId > 0 .AND. Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
+           mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',GotMat)
+         ELSE
+           CALL Warn('GetParentMatProp','Invalid parent BodyId '//TRIM(I2S(Parent % BodyId))//&
+               ' for element '//TRIM(I2S(Parent % ElementIndex)))
+           CYCLE
+         END IF
+         
+         IF(.NOT. GotMat) THEN
+           CALL Warn('GetParentMatProp','Parent body '//TRIM(I2S(Parent % BodyId))//' does not have material associated!')
+         END IF
+         
+         IF( mat_id > 0 .AND. mat_id <= CurrentModel % NumberOfMaterials ) THEN
+           Material => CurrentModel % Materials(mat_id) % Values
+         ELSE
+           CALL Warn('GetParentMatProp','Material index '//TRIM(I2S(mat_id))//' not associated to material list')
+           CYCLE
+         END IF
+                             
+         IF( .NOT. ASSOCIATED( Material ) ) CYCLE
+
          IF ( ListCheckPresent( Material,Name) ) THEN
            x(1:n) = ListGetReal(Material, Name, n, Indexes)
            IF( PRESENT( UParent ) ) UParent => Parent
@@ -1013,6 +1047,7 @@ CONTAINS
     END IF
      
   END FUNCTION GetParentMatProp
+
 
 !> Returns a constant real array by its name if found in the list structure. 
   RECURSIVE SUBROUTINE GetConstRealArray( List, x, Name, Found, UElement )
@@ -1364,6 +1399,14 @@ CONTAINS
      TYPE(Mesh_t), OPTIONAL :: Mesh
      INTEGER :: MeshDim, family
 
+     ! Orphan elements are not currently present in the mesh so any
+     ! boundary condition that exists is a possible flux element also.
+     ! Thus this routine is more or less obsolite. 
+     possible = .TRUE.
+
+     RETURN
+
+     
      IF( PRESENT( Mesh ) ) THEN
        MeshDim = Mesh % MeshDim
      ELSE
@@ -4074,7 +4117,7 @@ CONTAINS
      INTEGER :: i, j, k, kk, l, m, n, nd, nb, np, mb, nn, ni, nj, i0
      INTEGER :: EDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
 
-     LOGICAL :: Flag,Found, ConstantValue, ScaleSystem
+     LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
 
      CHARACTER(LEN=MAX_NAME_LEN) :: name
@@ -4586,6 +4629,13 @@ CONTAINS
 
      Found = .NOT. A % NoDirichlet
      IF ( Found ) THEN
+
+        IF ( ParEnv % PEs > 1 ) THEN
+          DirichletComm = GetLogical( GetSimulation(), 'Dirichlet Comm', Found)
+          IF(.NOT. Found) DirichletComm = .TRUE.
+          IF( DirichletComm) CALL CommunicateDirichletBCs(A)
+        END IF
+
         DO k=1,A % NumberOfRows
           IF ( A % ConstrainedDOF(k) ) THEN
             s = A % Values(A % Diag(k))
@@ -4620,6 +4670,92 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultDirichletBCs
 !------------------------------------------------------------------------------
+
+
+  !-------------------------------------------------------------------------------
+  SUBROUTINE CommunicateDirichletBCs(A)
+  !-------------------------------------------------------------------------------
+     TYPE(Matrix_t) :: A
+
+     REAL(KIND=dp), ALLOCATABLE :: d_e(:,:), g_e(:)
+     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:)
+     INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
+
+     IF( ParEnv % PEs<=1 ) RETURN
+
+     ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
+
+     nn = 0
+     DO i=0, ParEnv % PEs-1
+       k = i+1
+       IF(.NOT.ParEnv % Active(k) ) CYCLE
+       IF(i==ParEnv % myPE) CYCLE
+       IF(.NOT.ParEnv % IsNeighbour(k) ) CYCLE
+       nn = nn + 1
+       fneigh(nn) = k
+       ineigh(k) = nn
+     END DO
+
+     n = COUNT(A % ConstrainedDOF .AND. A % ParallelInfo % Interface)
+     ALLOCATE( s_e(n, nn ), r_e(n) )
+     ALLOCATE( d_e(n, nn ), g_e(n) )
+
+     CALL CheckBuffer( nn*3*n )
+
+     ii = 0
+     DO i=1, A % NumberOfRows
+       IF(A % ConstrainedDOF(i) .AND. A % ParallelInfo % Interface(i) ) THEN
+          DO j=1,SIZE(A % ParallelInfo % Neighbourlist(i) % Neighbours)
+            k = A % ParallelInfo % Neighbourlist(i) % Neighbours(j)
+            IF ( k == ParEnv % MyPE ) CYCLE
+            k = k + 1
+            k = ineigh(k)
+            ii(k) = ii(k) + 1
+            d_e(ii(k),k) = A % DValues(i)
+            s_e(ii(k),k) = A % ParallelInfo % GlobalDOFs(i)
+          END DO
+       END IF
+     END DO
+
+     DO i=1, nn
+       j = fneigh(i) 
+
+       CALL MPI_BSEND( ii(i),1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD,ierr )
+       IF( ii(i) > 0 ) THEN
+         CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
+         CALL MPI_BSEND( d_e(1:ii(i),i),ii(i),MPI_DOUBLE_PRECISION,j-1,112,ELMER_COMM_WORLD,ierr )
+       END IF
+     END DO
+
+     DO i=1, nn
+       j = fneigh(i)
+       CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
+       IF ( n>0 ) THEN
+         IF( n>SIZE(r_e)) THEN
+           DEALLOCATE(r_e,g_e)
+           ALLOCATE(r_e(n),g_e(n))
+         END IF
+
+         CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
+         CALL MPI_RECV( g_e,n,MPI_DOUBLE_PRECISION,j-1,112,ELMER_COMM_WORLD, status,ierr )
+         DO j=1,n
+           k = SearchNode( A % ParallelInfo, r_e(j), Order= A % Perm )
+           IF ( k>0 ) THEN
+             IF(.NOT. A % ConstrainedDOF(k)) THEN
+               CALL ZeroRow(A, k )
+               A % Values(A % Diag(k)) = 1._dp
+               A % Dvalues(k) = g_e(j)
+               A % ConstrainedDOF(k) = .TRUE.
+             END IF
+           END IF
+         END DO
+       END IF
+     END DO
+     DEALLOCATE(s_e, r_e, d_e, g_e)
+  !-------------------------------------------------------------------------------
+  END SUBROUTINE CommunicateDirichletBCs
+  !-------------------------------------------------------------------------------
+
 
 
 ! Solves a small dense linear system using Lapack routines
