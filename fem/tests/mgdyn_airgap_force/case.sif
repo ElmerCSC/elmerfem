@@ -33,6 +33,7 @@ Solver 1 ! avsolver
   Linear System Abort Not Converged = False
 
   Edge Basis = Logical True
+  Nonlinear System Consistent Norm = True
 End
 Solver 2 ! postprocess
   Exec Solver = always
@@ -44,8 +45,8 @@ Solver 2 ! postprocess
   use piola Transform = true
   quadratic approximation = logical $ quadratic
 
-  Calculate Current Density = Logical True
-  Calculate Electric Field = Logical True
+!  Calculate Current Density = Logical True
+!  Calculate Electric Field = Logical True
   Calculate Magnetic Field Strength = Logical True
   Calculate Magnetic Vector Potential = Logical True
   Calculate Magnetic Flux Density = Logical True
@@ -59,6 +60,7 @@ Solver 2 ! postprocess
   Linear System Convergence Tolerance = 1.0e-8
   optimize bandwidth = false
   
+  Nonlinear System Consistent Norm = True
 End
 Solver 3 ! resultoutput
     Equation = "Result Output"
@@ -74,6 +76,8 @@ Solver 4 ! savescalars
   Procedure = "SaveData" "SaveScalars"
   filename = "case.dat"
   save component results = logical true
+
+!  Parallel Reduce = True
 End
 Equation 1
   !Active Solvers(4) = 1 2 3 4
@@ -138,5 +142,9 @@ Component 2 ! gap_up component
   calculate magnetic force = logical true
 End
 
+!The vector potential is not uniquely defined and
+!hence serial and parallel solutions may be slightly different.
+!Solver 1::Reference Norm = 2.53172962E-07
+Solver 2::Reference Norm = 7.22316661E-05
 Solver 4::Reference Norm = 1.17605159E-01
 Solver 4::Show Norm Index = 4
