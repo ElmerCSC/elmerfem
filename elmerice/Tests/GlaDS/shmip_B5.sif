@@ -278,7 +278,7 @@ End
 
 Boundary Condition 2
   Name = "Sym"
-  Target Boundaries(1) = 1
+  Target Boundaries(1) = 2
   No Channel BC = Logical True
 End
 
