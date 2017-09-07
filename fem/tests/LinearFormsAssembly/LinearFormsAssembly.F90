@@ -354,7 +354,7 @@ CONTAINS
     
     ! Compute values of all basis functions at all integration points
     stat = ElementInfoVec( Element, Nodes, ngp, &
-            IP % U, IP % V, IP % W, DetJ, Basis, dBasisdx )
+            IP % U, IP % V, IP % W, DetJ, SIZE(Basis,2), Basis, dBasisdx )
 
     ! Compute actual integration weights (recycle memory space of DetJ)
     DO i=1,ngp
@@ -454,13 +454,22 @@ CONTAINS
                ElementNodes % z)
      ELSE
        IF (ASSOCIATED(Element % Type % NodeU)) THEN
-         ElementNodes % x(1:n) = Element % Type % NodeU(1:n)
+         !$OMP SIMD
+         DO i=1,n
+           ElementNodes % x(i) = Element % Type % NodeU(i)
+         END DO
        END IF
        IF (ASSOCIATED(Element % Type % NodeV)) THEN
-         ElementNodes % y(1:n) = Element % Type % NodeV(1:n)
+         !$OMP SIMD
+         DO i=1,n
+           ElementNodes % y(i) = Element % Type % NodeV(i)
+         END DO
        END IF
        IF (ASSOCIATED(Element % Type % NodeW)) THEN
-         ElementNodes % z(1:n) = Element % Type % NodeW(1:n)
+         !$OMP SIMD
+         DO i=1,n
+           ElementNodes % z(i) = Element % Type % NodeW(i)
+         END DO
        END IF
      END IF
   END SUBROUTINE GetReferenceElementNodes

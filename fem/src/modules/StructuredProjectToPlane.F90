@@ -238,7 +238,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
     WRITE (Name,'(A,I0)') 'Operator ',NoVar
     Oper = ListGetString( Params, TRIM(Name),GotOper)
     IF(.NOT. GotOper ) THEN
-      ! For the first variable the operator is definately needed
+      ! For the first variable the operator is definitely needed
       IF( NoVar > 1 ) THEN
         Oper = OldOper
       END IF

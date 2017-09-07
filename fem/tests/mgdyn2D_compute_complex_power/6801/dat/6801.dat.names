@@ -1,0 +1,99 @@
+Elmer version: 8.2
+Elmer revision: b6deb67
+Elmer compilation date: 2017-05-09
+File started at: 2017/05/10 07:53:16
+ 
+Variables in columns of matrix: ./6801/dat/6801.dat
+   1: res: air gap torque
+   2: res: inertial volume
+   3: res: inertial moment
+   4: res: joule heating
+   5: res: power re in body 1:
+   6: res: power im in body 1:
+   7: res: power re in body 2:
+   8: res: power im in body 2:
+   9: res: power re in body 3:
+  10: res: power im in body 3:
+  11: res: power re in body 4:
+  12: res: power im in body 4:
+  13: res: power re in body 5:
+  14: res: power im in body 5:
+  15: res: power re in body 6:
+  16: res: power im in body 6:
+  17: res: power re in body 7:
+  18: res: power im in body 7:
+  19: res: power re in component 1
+  20: res: power im in component 1
+  21: res: power re in component 2
+  22: res: power im in component 2
+  23: res: power re in component 3
+  24: res: power im in component 3
+  25: res: power re in component 4
+  26: res: power im in component 4
+  27: res: power re in component 5
+  28: res: power im in component 5
+  29: res: power re in component 6
+  30: res: power im in component 6
+  31: res: time
+  32: res: i_s1 re
+  33: res: i_s1 im
+  34: res: v_s1 re
+  35: res: v_s1 im
+  36: res: i_component(1) re
+  37: res: i_component(1) im
+  38: res: v_component(1) re
+  39: res: v_component(1) im
+  40: res: i_component(2) re
+  41: res: i_component(2) im
+  42: res: v_component(2) re
+  43: res: v_component(2) im
+  44: res: i_component(3) re
+  45: res: i_component(3) im
+  46: res: v_component(3) re
+  47: res: v_component(3) im
+  48: res: i_component(4) re
+  49: res: i_component(4) im
+  50: res: v_component(4) re
+  51: res: v_component(4) im
+  52: res: i_component(5) re
+  53: res: i_component(5) im
+  54: res: v_component(5) re
+  55: res: v_component(5) im
+  56: res: i_component(6) re
+  57: res: i_component(6) im
+  58: res: v_component(6) re
+  59: res: v_component(6) im
+  60: res: i_wp1 re
+  61: res: i_wp1 im
+  62: res: v_wp1 re
+  63: res: v_wp1 im
+  64: res: r_component(1)
+  65: res: p_dc_component(1)
+  66: res: p_ac_component(1)
+  67: res: r_ac_component(1)
+  68: res: ac to dc of component 1
+  69: res: r_component(2)
+  70: res: p_dc_component(2)
+  71: res: p_ac_component(2)
+  72: res: r_ac_component(2)
+  73: res: ac to dc of component 2
+  74: res: r_component(3)
+  75: res: p_dc_component(3)
+  76: res: p_ac_component(3)
+  77: res: r_ac_component(3)
+  78: res: ac to dc of component 3
+  79: res: r_component(4)
+  80: res: p_dc_component(4)
+  81: res: p_ac_component(4)
+  82: res: r_ac_component(4)
+  83: res: ac to dc of component 4
+  84: res: r_component(5)
+  85: res: p_dc_component(5)
+  86: res: p_ac_component(5)
+  87: res: r_ac_component(5)
+  88: res: ac to dc of component 5
+  89: res: r_component(6)
+  90: res: p_dc_component(6)
+  91: res: p_ac_component(6)
+  92: res: r_ac_component(6)
+  93: res: ac to dc of component 6

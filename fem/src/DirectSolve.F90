@@ -872,8 +872,8 @@ CONTAINS
 
     ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
 
-    A % MumpsID % icntl(2)  = 0 ! supress printing of diagnostics and warnings
-    A % MumpsID % icntl(3)  = 0 ! supress statistics
+    A % MumpsID % icntl(2)  = 0 ! suppress printing of diagnostics and warnings
+    A % MumpsID % icntl(3)  = 0 ! suppress statistics
     A % MumpsID % icntl(4)  = 1 ! the same as the two above, but doesn't seem to work.
     A % MumpsID % icntl(5)  = 0 ! matrix format 'assembled'
 
@@ -1839,7 +1839,7 @@ CONTAINS
       END IF
 
 !  .. Setup Pardiso control parameters und initialize the solvers
-!     internal adress pointers. This is only necessary for the FIRST
+!     internal address pointers. This is only necessary for the FIRST
 !     call of the PARDISO solver.
 !
       Factorize = ListGetLogical( Solver % Values, &
@@ -2103,7 +2103,7 @@ CONTAINS
     INTEGER :: fid
     CHARACTER(LEN=MAX_NAME_LEN) :: mat_type
 
-    ! Free old factorization if neccessary
+    ! Free old factorization if necessary
     IF (ASSOCIATED(A % CPardisoId)) THEN
         CALL CPardiso_Free(A)
     END IF

@@ -1,0 +1,244 @@
+! Solves a simple choke with harmonics scanning, that is, 
+! the FEM problem is solved for each harmonic. The scalar results are saved with a different 
+! Scan variable name and the field results are prefixed with "Scan i " where i is the scan variable
+! and saves the sum of the scan field to the original field variable.
+!
+! Author: Eelis Takala, Trafotek Oy
+! Original date: April 2017
+! eelis.takala@gmail.com
+!
+Check Keywords "Warn"
+INCLUDE sif/6425-circuits.definitions
+INCLUDE 6425/mesh.names
+
+Header 1
+   Mesh DB "." "6425"
+End
+
+Initial Condition 1
+   A re = Real 0
+   A im = Real 0
+End
+
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   $ fundamental_freq = 50
+   $ k = 1 5 10
+   Angular Frequency = Variable Scan
+     Real MATC "2*pi*fundamental_freq*k(tx-1)"
+End
+
+Solver 1  !---- DirectionSolver, DirectionSolver
+   Exec Solver = Before all
+   Procedure = "DirectionSolver" "DirectionSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 5000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction
+   Variable = Alpha
+End
+
+Solver 2  !---- CircuitsAndDynamics, CircuitsAndDynamicsHarmonic
+   Exec Solver = Never
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 3  !---- MagnetoDynamics2D, MagnetoDynamics2DHarmonic
+   Exec Solver = Always
+   Equation = "Mag"
+   Variable = A[A re:1 A im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System Complex = Logical True
+   Linear System preconditioning = Circuit
+   Linear System ILU Order = Integer 0
+   Linear System Convergence Tolerance = 1.e-8
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 1000
+   Linear System ILUT Tolerance=1e-8
+   BicgStabL Polynomial Degree = 4
+   Steady State Convergence Tolerance = 1e-08
+   Scanning Loops = 3
+   Nonlinear Pre Solvers (1) = 2
+   Post Solvers (3) = 4 5 6 8
+End
+
+Solver 4  !---- MagnetoDynamics2D, bSolver
+   Exec Solver = Never
+   Equation = CompB
+   Variable = -nooutput temp
+   Exported Variable 1 = B[B re:2 B im:2]
+   Calculate Joule Heating = Logical True
+   Calculate Complex Power = Logical True
+   Target Variable="A"
+   Procedure = "MagnetoDynamics2D" "bSolver"
+   Discontinuous Galerkin = Logical True
+   Calculate Current Density = Logical True
+   Calculate Component Lorentz Force = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStabl
+   Linear System Symmetric = True
+   Linear System Max Iterations = 100
+   Linear System Preconditioning = None
+   Linear System Convergence Tolerance = 1e-8
+   Linear System Residual Output = 1000
+End
+
+Solver 5  !---- ScannedFieldSolver, ScannedFieldSolver
+   Equation = "Treat Scan Fiealds"
+   Procedure = "ScannedFieldSolver" "ScannedFieldSolver"
+   Exec Solver = Never
+   Field Name 1 = String "a re"
+   Field Name 2 = String "a im"
+   Field Name 3 = String "Current Density re"
+   Field Name 4 = String "Current Density im"
+   Field Name 5 = String "Joule Heating"
+   Field Name 6 = String "b re 1"
+   Field Name 7 = String "b re 2"
+   Field Name 8 = String "b im 1"
+   Field Name 9 = String "b im 2"
+   Scan Solver = Integer 3
+End
+
+Solver 6  !---- CircuitsAndDynamics, CircuitsOutput
+   Exec Solver = Never
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+Solver 7  !---- ResultOutputSolve, ResultOutputSolver
+   Exec Solver = Never
+!   Exec Solver = After timestep
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 6425-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+
+Solver 8  !---- SaveData, SaveScalars
+   Exec Solver = Never
+   Variable 1 = Scan
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = 6425/dat/6425.dat
+End
+
+Equation 1
+   Active Solvers(4) = 2 3 4 5
+End
+
+Equation 2
+   Active Solvers(5) = 1 2 3 4 5
+End
+
+Material 1  !---- iron: generic
+   Name = iron
+   Electric Conductivity = 0
+   Relative Permeability = 2000.0
+   Relative Permittivity = 1e100
+End
+
+Material 2  !---- air: generic
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1.0
+   Relative Permittivity = 1
+End
+
+Material 3  !---- aluminium: generic
+   Name = aluminium
+   Relative Permeability = 1.0
+   Relative Permittivity = 1e100
+   Electric Conductivity = 36e6
+End
+
+Body 1  !---- Core
+   Name = Core
+   Target Bodies = 1
+   Equation = 1
+   Material = 1
+End
+
+Body 2  !---- air
+   Name = air
+   Target Bodies = 3
+   Equation = 1
+   Material = 2
+End
+
+Body 3  !---- A1
+   Name = A1
+   Target Bodies = 2
+   Equation = 2
+   Material = 3
+End
+
+Component 1  !---- A1
+   Name = String A1
+   Master Bodies = Integer 3
+   Coil Type = String foil winding
+   Number of Turns = Real 8
+   Foil In Plane Proximity = Logical True
+   Coil Thickness = Real 0.1
+   Foil Layer Thickness = Real 0.0112
+   Insulator Layer Thickness = Real 0.0013
+   Winding Temperature = Real 20
+End
+
+Body Force 1  !---- Circuit
+   Name = "Circuit"
+   $ real_S1 = 141.421356237 28.2842712475 14.1421356237
+   $ imag_S1 = 0.0 0.0 0.0
+   S1 Re = Variable Scan
+     Real MATC "real_S1(tx-1)"
+   S1 Im = Variable Scan
+     Real MATC "imag_S1(tx-1)"
+End
+
+Boundary Condition 1  !---- center
+   Target Boundaries = $ center0
+   A re = Real 0
+   A im = Real 0
+End
+
+Boundary Condition 2  !---- top
+   Target Boundaries(2) = 4 6
+   A re = Real 0
+   A im = Real 0
+End
+
+Boundary Condition 3  !---- outer
+   Target Boundaries = 5
+   Infinity BC = Logical True
+End
+
+Boundary Condition 4  !---- alpha_0
+   Target Boundaries = $ test_1_alpha0
+   Body 3: alpha = Real 0
+End
+
+Boundary Condition 5  !---- alpha_1
+   Target Boundaries = $ test_1_alpha1
+   Body 3: alpha = Real 1
+End
+
+Solver 3 :: Reference Norm = Real 1.078E-01 
+Solver 3 :: Reference Norm Tolerance= Real 1e-3 
+Solver 4 :: Reference Norm = Real 7.36942925E+05 
+Solver 4 :: Reference Norm Tolerance = Real 1e-3 
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

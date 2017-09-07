@@ -14,7 +14,7 @@ Header
 End
  
 Simulation
-  Max Output Level = 5
+  Max Output Level = 20
   Coordinate System = Cartesian 
   Simulation Type = transient
   Steady State Max Iterations = 1
@@ -59,7 +59,8 @@ Solver 1
 
   Particle To Field = Logical True
 !  Particle To Field Mode = String "kinetic energy"
-  Field 1 = String "kinetic energy"
+  Field 1 = String "weight"
+  Field 2 = String "kinetic energy"
 
 ! do not cumulate the particles
   Particle To Field Reset = Logical True

@@ -1,11 +1,53 @@
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! * This library is free software; you can redistribute it and/or
+! * modify it under the terms of the GNU Lesser General Public
+! * License as published by the Free Software Foundation; either
+! * version 2.1 of the License, or (at your option) any later version.
+! *
+! * This library is distributed in the hope that it will be useful,
+! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! * Lesser General Public License for more details.
+! * 
+! * You should have received a copy of the GNU Lesser General Public
+! * License along with this library (in file ../LGPL-2.1); if not, write 
+! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
+!
+!/******************************************************************************
+! *
+! *  Authors: Mikko Byckling
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *  Original Date: 31 May 2017
+! *
+! *****************************************************************************/
+
+!> \ingroup ElmerLib
+!> \{
+
+!-----------------------------------------------------------------------------
+!>  Module defining vectorized operations on common (bi)linear forms.
+!-----------------------------------------------------------------------------
+
+
+#include "../config.h"
+
 MODULE LinearForms
-  USE Types, ONLY: dp, VECTOR_BLOCK_LENGTH
+  USE Types, ONLY: dp, VECTOR_BLOCK_LENGTH, VECTOR_SMALL_THRESH
   USE Messages
   IMPLICIT NONE
   PRIVATE
-  
-  REAL(KIND=dp), ALLOCATABLE, DIMENSION(:,:), SAVE :: wrk
-  !$OMP THREADPRIVATE(wrk)
 
   INTERFACE LinearForms_ProjectToU
     MODULE PROCEDURE LinearForms_ProjectToU_rank1, LinearForms_ProjectToU_rankn
@@ -13,34 +55,7 @@ MODULE LinearForms
 
   PUBLIC LinearForms_GradUdotGradU, LinearForms_UdotF, LinearForms_ProjectToU
 CONTAINS
-  
-  SUBROUTINE LinearForms_InitWorkSpace(n1, n2)
-    IMPLICIT NONE
 
-    INTEGER, INTENT(IN) :: n1, n2
-    INTEGER :: allocstat
-
-    ! Reserve thread local workspace for routines within the module 
-    IF (.NOT. ALLOCATED(wrk)) THEN
-      ALLOCATE(wrk(n1,n2), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('LinearForms::InitWorkSpace','Storage allocation failed')
-      END IF
-    ELSE IF (SIZE(wrk,1) < n1 .OR. SIZE(wrk,2) < n2) THEN
-      DEALLOCATE(wrk)
-      ALLOCATE(wrk(n1,n2), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('LinearForms::InitWorkSpace','Storage allocation failed')
-      END IF
-    END IF
-  END SUBROUTINE LinearForms_InitWorkSpace
-
-  SUBROUTINE LinearForms_FreeWorkSpace()
-    IMPLICIT NONE
-
-    IF (ALLOCATED(wrk)) DEALLOCATE(wrk)
-  END SUBROUTINE LinearForms_FreeWorkSpace
-  
   ! Compute bilinear form G=G+(alpha grad u, grad u) = grad u .dot. (alpha grad u) 
   SUBROUTINE LinearForms_GradUdotGradU(m, n, dim, GradU, weight, G, alpha)
     IMPLICIT NONE
@@ -50,11 +65,10 @@ CONTAINS
     REAL(KIND=dp) CONTIG, INTENT(INOUT) :: G(:,:)
     REAL(KIND=dp) CONTIG, INTENT(IN), OPTIONAL :: alpha(:)
 
-    INTEGER :: i, ii, iin, j, k, kk, ldbasis, ldwrk, ldk, blklen
+    REAL(KIND=dp) :: wrk(VECTOR_BLOCK_LENGTH,n)
+    INTEGER :: i, ii, iin, j, l, k, kk, ldbasis, ldwrk, ldk, blklen
     LOGICAL :: noAlphaWeight
-
-    ! Set up workspace
-    CALL LinearForms_InitWorkSpace(VECTOR_BLOCK_LENGTH, n)
+!DIR$ ATTRIBUTES ALIGN:64::wrk
 
     ldbasis = SIZE(GradU,1)
     ldwrk = SIZE(wrk,1)
@@ -66,29 +80,60 @@ CONTAINS
     DO ii=1,m,VECTOR_BLOCK_LENGTH
       iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
       blklen=iin-ii+1
-      DO k=1, dim
+      
+      IF (blklen < VECTOR_SMALL_THRESH) THEN
+        ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
         IF (noAlphaWeight) THEN
           DO j=1,n
-            !$OMP SIMD
-            DO i=ii,iin
-              wrk(i-ii+1,j)=weight(i)*GradU(i,j,k)
+            !$OMP SIMD PRIVATE(l,k)
+            DO i=1,n
+!DIR$ LOOP COUNT MAX=3
+!DIR$ UNROLL
+              DO k=1,dim
+                DO l=ii,iin
+                  G(i,j) = G(i,j) + GradU(l,i,k)*GradU(l,j,k)*weight(l)
+                END DO
+              END DO
             END DO
           END DO
         ELSE
           DO j=1,n
-            !$OMP SIMD
-            DO i=ii,iin
-              wrk(i-ii+1,j)=weight(i)*alpha(i)*GradU(i,j,k)
+            !$OMP SIMD PRIVATE(l,k)
+            DO i=1,n
+!DIR$ LOOP COUNT MAX=3
+!DIR$ UNROLL
+              DO k=1,dim
+                DO l=ii,iin
+                  G(i,j) = G(i,j) + GradU(l,i,k)*GradU(l,j,k)*weight(l)*alpha(l)
+                END DO
+              END DO
             END DO
           END DO
         END IF
-
-        ! Compute matrix \grad u \dot \grad u for dim=k
-        CALL DGEMM('T', 'N', n, n, blklen, &
+      ELSE
+        DO k=1, dim
+          IF (noAlphaWeight) THEN
+            DO j=1,n
+              !$OMP SIMD
+              DO i=ii,iin
+                wrk(i-ii+1,j)=weight(i)*GradU(i,j,k)
+              END DO
+            END DO
+          ELSE
+            DO j=1,n
+              !$OMP SIMD
+              DO i=ii,iin
+                wrk(i-ii+1,j)=weight(i)*alpha(i)*GradU(i,j,k)
+              END DO
+            END DO
+          END IF
+          ! Compute matrix \grad u \dot \grad u for dim=k
+          CALL DGEMM('T', 'N', n, n, blklen, &
                 1D0, GradU(ii,1,k), ldbasis, &
                 wrk, ldwrk, 1D0, G, ldk)
-      END DO
-    END DO
+        END DO
+      END IF
+    END DO ! Vector blocks
   END SUBROUTINE LinearForms_GradUdotGradU
 
   SUBROUTINE LinearForms_ProjectToU_rank1(m, n, U, F, ProjectToU)
@@ -121,11 +166,10 @@ CONTAINS
     REAL(KIND=dp) CONTIG, INTENT(INOUT) :: UdotF(:)
     REAL(KIND=dp) CONTIG, INTENT(IN), OPTIONAL :: alpha(:)
 
-    INTEGER :: i, ii, iin, j, blklen
+    REAL(KIND=dp) :: wrk(VECTOR_BLOCK_LENGTH)
+    INTEGER :: i, ii, iin, j, blklen, l
     LOGICAL :: noAlphaWeight
-
-    ! Set up workspace
-    CALL LinearForms_InitWorkSpace(VECTOR_BLOCK_LENGTH, 2)
+!DIR$ ATTRIBUTES ALIGN:64::wrk
 
     noAlphaWeight = .TRUE.
     IF (PRESENT(alpha)) noAlphaWeight = .FALSE.
@@ -135,20 +179,38 @@ CONTAINS
       blklen= iin-ii+1
       ! Project local F to global basis
 
-      IF (noAlphaWeight) THEN
-        !$OMP SIMD
-        DO i=ii,iin
-          wrk(i-ii+1,2) = weight(i)*F(i)
-        END DO
+      IF (blklen < VECTOR_SMALL_THRESH) THEN
+        IF (noAlphaWeight) THEN
+          !$OMP SIMD PRIVATE(l)
+          DO i=1,n
+            DO l=ii,iin
+              UdotF(i) = UdotF(i) + U(l,i)*F(l)*weight(l)
+            END DO
+          END DO
+        ELSE
+          !$OMP SIMD PRIVATE(l)
+          DO i=1,n
+            DO l=ii,iin
+              UdotF(i) = UdotF(i) + U(l,i)*F(l)*weight(l)*alpha(l)
+            END DO
+          END DO
+        END IF
       ELSE
-        !$OMP SIMD 
-        DO i=ii,iin
-          wrk(i-ii+1,2) = weight(i)*F(i)*alpha(i)
-        END DO
-      END IF
+        IF (noAlphaWeight) THEN
+          !$OMP SIMD
+          DO i=ii,iin
+            wrk(i-ii+1) = weight(i)*F(i)
+          END DO
+        ELSE
+          !$OMP SIMD 
+          DO i=ii,iin
+            wrk(i-ii+1) = weight(i)*F(i)*alpha(i)
+          END DO
+        END IF
 
-      CALL DGEMV('T', blklen, n, &
-              1D0, U(ii,1), SIZE(U,1), wrk(1,2), 1, 1D0, UdotF, 1)
+        CALL DGEMV('T', blklen, n, &
+              1D0, U(ii,1), SIZE(U,1), wrk, 1, 1D0, UdotF, 1)
+      END IF
     END DO
   END SUBROUTINE LinearForms_UdotF
 

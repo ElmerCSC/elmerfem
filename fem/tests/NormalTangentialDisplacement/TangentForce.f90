@@ -55,7 +55,7 @@
       Force(i) = LoadValues( LoadDofs * (j-1) + i )
     END DO
 
-    ! This sign convention seems to be consistant for outer normals
+    ! This sign convention seems to be consistent for outer normals
     NormalForce = -SUM( Force * Normal ) 
 
     f = Mu * NormalForce

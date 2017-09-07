@@ -336,7 +336,7 @@ FUNCTION getBasalMeltingVelocity( Model, Node, HeatFlux ) RESULT(basalMeltingvel
   IF (other_body_id < 1) THEN ! only one body in calculation
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-  ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+  ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
   END IF
@@ -490,7 +490,7 @@ FUNCTION basalSlip( Model, Node, Temperature ) RESULT(basalSlipCoefficient)
   IF (other_body_id < 1) THEN ! only one body in calculation
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-  ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+  ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
   END IF
@@ -1802,7 +1802,7 @@ RECURSIVE SUBROUTINE getSIAstress( Model,Solver,Timestep,TransientSimulation)
 END SUBROUTINE getSIAstress
 
 !*********************************************************************************************************************************
-!* Computation of component of the SIA stress vector. This code is  used for a rectangular type geometry where the automatic solution "getSIAstres" does not provide good results at the corner. Here we compute the components Pressure i in the sif file independantly for each side, North, Est, South and West. 
+!* Computation of component of the SIA stress vector. This code is  used for a rectangular type geometry where the automatic solution "getSIAstres" does not provide good results at the corner. Here we compute the components Pressure i in the sif file independently for each side, North, Est, South and West. 
 !*
 !*********************************************************************************************************************************
 

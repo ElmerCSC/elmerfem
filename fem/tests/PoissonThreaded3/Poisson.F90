@@ -88,7 +88,7 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
   SUBROUTINE LocalMatrix(  STIFF, FORCE, LOAD, Element, n, nd )
 !------------------------------------------------------------------------------
     USE LinearForms
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:)
+    REAL(KIND=dp) CONTIG :: STIFF(:,:), FORCE(:), LOAD(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
@@ -129,7 +129,7 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
     
     ldbasis = SIZE(Basis,1)
     ! Compute values of all basis functions at all integration points
-    stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, DetJ, Basis, dBasisdx )
+    stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, DetJ, SIZE(Basis,2), Basis, dBasisdx )
     ! Compute actual integration weights (recycle memory space of DetJ)
     DetJ(1:ngp) = IP % s(1:ngp)*Detj(1:ngp)
 

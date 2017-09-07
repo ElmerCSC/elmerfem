@@ -1,0 +1,125 @@
+! A simple testcase for testing mgdyn2D feature: anisotropi permeability.
+! Author: Eelis Takala, Trafotek Oy
+! Original date: December 2015
+! eelis.takala@trafotek.fi
+
+Check Keywords "Warn"
+INCLUDE 7557/mesh.names
+
+Header 1
+   Mesh DB "." "7557"
+End
+
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian
+   Simulation Type = Steady State 
+   $ f = 50 
+   Angular Frequency = Real $ 2*pi*f
+   Coordinate Scaling = 1
+End
+
+Solver 1
+   Exec Solver = Before All
+   Procedure = "Poisson" "PoissonSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 1000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Preconditioning = ILU0
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction
+   Variable = -nooutput Alpha
+End
+
+Solver 2
+   Exec Solver = Always
+   Equation = "Mag"
+   Variable = A[A re:1 A im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System preconditioning = Circuit
+   Linear System ILU Order = Integer 2
+   Linear System Convergence Tolerance = 1.e-7
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 1000
+   Linear System Abort not Converged = False
+   Linear System ILUT Tolerance=1e-8
+   BicgStabL Polynomial Degree = 4
+   Steady State Convergence Tolerance = 1e-06
+End
+
+Solver 3
+   Equation = CompB
+   Variable = -nooutput temp
+   Exported Variable 1 = B[B re:2 B im:2]
+   Calculate Joule Heating = Logical True
+   Target Variable="A"
+   Procedure = "MagnetoDynamics2D" "bSolver"
+   Discontinuous Galerkin = Logical True
+   Calculate Current Density = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStabl
+   Linear System Symmetric = True
+   Linear System Max Iterations = 100
+   Linear System Preconditioning = None
+   Linear System Convergence Tolerance = 1e-6
+   Linear System Residual Output = 1000
+End
+
+Solver 4
+   Exec Solver = never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 7557-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+
+Equation 1
+   Active Solvers(3) = 2 3 4
+End
+
+Equation 2
+   Active Solvers(4) = 1 2 3 4
+End
+
+Material 1
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+End
+
+Material 2
+   Name = aluminium
+   Relative Permeability(2) = 2000 1
+   Electric Conductivity = 1
+End
+
+Body 1
+   Name = air 1
+   Target Bodies = 2
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = c 1
+   Target Bodies = 1
+   Equation = 2
+   Material = 2
+End
+
+Boundary Condition 1
+   Target Boundaries(4) = 5 6 7 8
+   Magnetic Flux Density 1 = 1
+   Magnetic Flux Density 2 = 1
+End
+
+Solver 3 :: Reference Norm = Real 2.956909E+01
+

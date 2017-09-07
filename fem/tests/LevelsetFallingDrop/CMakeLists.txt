@@ -1,0 +1,9 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE(drop.sif drop.sif COPYONLY)
+ADD_ELMERTEST_MODULE(LevelsetFallingDrop DropStuff DropStuff.F90)
+
+file(COPY ELMERSOLVER_STARTINFO DropStuff.F90 square.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(LevelsetFallingDrop)

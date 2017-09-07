@@ -24,7 +24,7 @@ Simulation
 
   Post File = "discont.vtu"
 
-! Normally we dont want to apply this
+! Normally we don't want to apply this
   Discontinuous Bulk Greedy = Logical False
 End
 

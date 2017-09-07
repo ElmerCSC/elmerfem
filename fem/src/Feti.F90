@@ -625,7 +625,7 @@ CONTAINS
   !------------------------------------------------------------------------------
   !> Extract interface values from partition vector b; send and
   !> receive  to/from neighbours.  Only 'owned' interface dofs
-  !> placed to result vector f. At intialization also assemble
+  !> placed to result vector f. At initialization also assemble
   !> the 'B' connectivity matrix. In effect f=Bb;
   !------------------------------------------------------------------------------
   FUNCTION FetiSendRecvIf(A,f,b,g,l_i) RESULT(nLC)
@@ -702,7 +702,7 @@ CONTAINS
       ALLOCATE( gdofs(nLC), ldofs(nLC), procs(nLC) )
       ldofs = [(i,i=1,nLC)];
 
-      ! Extract send & receive dof tags; Allocate, intialize
+      ! Extract send & receive dof tags; Allocate, initialize
       ! and assemble the  'B' connectivity matrix:
       ! -----------------------------------------------------
 

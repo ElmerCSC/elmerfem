@@ -245,7 +245,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        NeedOldValues, LimitDisp,  Bubbles = .TRUE.,&
        NormalFlux = .TRUE., SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE.,&
-       RotateFS, ReAllocate=.TRUE.
+       RotateFS, ReAllocate=.TRUE., ResetLimiters=.FALSE.
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
@@ -291,7 +291,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        ElementNodes, AllocationsDone, ReAllocate, Velo, TimeForce, &
        ElemFreeSurf, Flux, SubstantialSurface, NormalFlux,&
        UseBodyForce, LimitedSolution, LowerLimit, &
-       UpperLimit, ActiveNode, OldValues, OldRHS, &
+       UpperLimit, ActiveNode, ResetLimiters, OldValues, OldRHS, &
        ResidualVector, StiffVector, MeshVelocity
   !------------------------------------------------------------------------------
   !    Get variables for the solution
@@ -356,22 +356,29 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 
   Relax = GetCReal( SolverParams, 'Relaxation Factor', Found)
   IF(.NOT. Found) Relax = 1.0_dp
-  NeedOldValues = Found .OR. LimitDisp 
+  NeedOldValues = (Found .AND. (Relax < 1.0_dp)) .OR. LimitDisp 
 
   ApplyDirichlet = GetLogical( SolverParams, &
        'Apply Dirichlet', Found)
   IF ( .NOT.Found ) THEN
-     ApplyDirichlet = .FALSE.
-     CALL Info(SolverName, 'No keyword > Apply Dirichlet < found. No limitation of solution',Level=6 )
+    ApplyDirichlet = .FALSE.
+    CALL Info(SolverName, 'No keyword > Apply Dirichlet < found. No limitation of solution',Level=6 )
   ELSE
-     IF (ApplyDirichlet) THEN
-        CALL Info(SolverName, 'Using Dirichlet method for limitation',Level=6 )
-        IF (NonlinearIter < 2) THEN
-           CALL Warn(SolverName, 'Keyword > Apply Dirichlet < set, but > Nonlinear System Max Iterations < set to lower than 2')
-        END IF
-     ELSE
-        CALL Info(SolverName, 'No limitation of solution',Level=6 )
-     END IF
+    IF (ApplyDirichlet) THEN
+      CALL Info(SolverName, 'Using Dirichlet method for limitation',Level=6 )
+      ResetLimiters = GetLogical( SolverParams, &
+           'Reset Limiter', Found)
+      IF (.NOT.Found) THEN
+        ResetLimiters = .FALSE.
+      ELSE
+        CALL INFO(SolverName,"Limiters will be reset for each nonlinear iteration",Level=3)
+      END IF
+      IF (NonlinearIter < 2) THEN
+        CALL Warn(SolverName, 'Keyword > Apply Dirichlet < set, but > Nonlinear System Max Iterations < set to lower than 2')
+      END IF
+    ELSE
+      CALL Info(SolverName, 'No limitation of solution',Level=6 )
+    END IF
   END IF
 
   ALEFormulation = GetLogical( SolverParams, &
@@ -419,75 +426,75 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
 
   IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed .OR. ReAllocate) THEN
-     NMAX = Model % MaxElementNodes
-     MMAX = Model % Mesh % NumberOfNodes 
-     K = SIZE( SystemMatrix % Values )
-     L = SIZE( SystemMatrix % RHS )
+    NMAX = Model % MaxElementNodes
+    MMAX = Model % Mesh % NumberOfNodes 
+    K = SIZE( SystemMatrix % Values )
+    L = SIZE( SystemMatrix % RHS )
 
-     IF ( AllocationsDone ) THEN
-        DEALLOCATE( ElementNodes % x,    &
-             ElementNodes % y,    &
-             ElementNodes % z,    &
-             TimeForce,        &
-             FORCE,    &
-             STIFF, &
-             MASS,  &
-             Velo,  &
-             MeshVelocity, &
-             Flux, &
-             ElemFreeSurf,&
-             SourceFunc )
+    IF ( AllocationsDone ) THEN
+      DEALLOCATE( ElementNodes % x,    &
+           ElementNodes % y,    &
+           ElementNodes % z,    &
+           TimeForce,        &
+           FORCE,    &
+           STIFF, &
+           MASS,  &
+           Velo,  &
+           MeshVelocity, &
+           Flux, &
+           ElemFreeSurf,&
+           SourceFunc )
 
-        IF( ApplyDirichlet ) THEN
-          DEALLOCATE( LowerLimit,                      &
-              UpperLimit, &
-              LimitedSolution,  &
-              ActiveNode,                      & 
-              ResidualVector, &
-              StiffVector,  &
-              OldValues, &
-              OldRHS)
-        END IF
+      IF( ApplyDirichlet ) THEN
+        DEALLOCATE( LowerLimit,                      &
+             UpperLimit, &
+             LimitedSolution,  &
+             ActiveNode,                      & 
+             ResidualVector, &
+             StiffVector,  &
+             OldValues, &
+             OldRHS)
+      END IF
 
-        !IF( NeedOldValues ) DEALLOCATE( OldFreeSurf ) 
-     END IF
+      !IF( NeedOldValues ) DEALLOCATE( OldFreeSurf ) 
+    END IF
 
 
-     IF (Bubbles) THEN
-        Nmatrix = 2*NMAX
-     ELSE
-        Nmatrix = NMAX
-     END IF
+    IF (Bubbles) THEN
+      Nmatrix = 2*NMAX
+    ELSE
+      Nmatrix = NMAX
+    END IF
 
-     ALLOCATE(  ElementNodes % x( NMAX ),    &
-          ElementNodes % y( NMAX ),    &
-          ElementNodes % z( NMAX ),    &
-          TimeForce( Nmatrix ),        &
-          FORCE( Nmatrix ),    &
-          STIFF( Nmatrix, Nmatrix ), &
-          MASS( Nmatrix, Nmatrix ),  &
-          Velo( 3, NMAX ), &
-          MeshVelocity( 3,NMAX ), &
-          Flux( 3, NMAX), &
-          ElemFreeSurf( NMAX ),&
-          SourceFunc( NMAX ), &
-          STAT=istat )
-     IF ( istat /= 0 ) THEN
-        CALL Fatal(SolverName,'Memory allocation error 1, Aborting.')
-     END IF
+    ALLOCATE(  ElementNodes % x( NMAX ),    &
+         ElementNodes % y( NMAX ),    &
+         ElementNodes % z( NMAX ),    &
+         TimeForce( Nmatrix ),        &
+         FORCE( Nmatrix ),    &
+         STIFF( Nmatrix, Nmatrix ), &
+         MASS( Nmatrix, Nmatrix ),  &
+         Velo( 3, NMAX ), &
+         MeshVelocity( 3,NMAX ), &
+         Flux( 3, NMAX), &
+         ElemFreeSurf( NMAX ),&
+         SourceFunc( NMAX ), &
+         STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal(SolverName,'Memory allocation error 1, Aborting.')
+    END IF
 
-     ElemFreeSurf = 0._dp
+    ElemFreeSurf = 0._dp
 
-     IF(NeedOldValues) THEN
-        !ALLOCATE(OldFreeSurf(SIZE(FreeSurf)), STAT=istat)
+    IF(NeedOldValues) THEN
+      !ALLOCATE(OldFreeSurf(SIZE(FreeSurf)), STAT=istat)
 
-        IF ( istat /= 0 ) THEN
-           CALL Fatal(SolverName,'Memory allocation error 2, Aborting.')
-        END IF
-     END IF
-     
-     IF( ApplyDirichlet ) THEN
-       ALLOCATE( LowerLimit( MMAX ), &
+      IF ( istat /= 0 ) THEN
+        CALL Fatal(SolverName,'Memory allocation error 2, Aborting.')
+      END IF
+    END IF
+
+    IF( ApplyDirichlet ) THEN
+      ALLOCATE( LowerLimit( MMAX ), &
            UpperLimit( MMAX ), &
            LimitedSolution( MMAX, 2 ),  &
            ActiveNode( MMAX, 2 ),                      &  
@@ -496,15 +503,15 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
            OldValues( K ), &
            OldRHS( L ), &
            STAT=istat )
-       IF ( istat /= 0 ) THEN
-         CALL Fatal(SolverName,'Memory allocation error 3, Aborting.')
-       END IF
-       ActiveNode = .FALSE.
-       ResidualVector = 0.0_dp
-     END IF
+      IF ( istat /= 0 ) THEN
+        CALL Fatal(SolverName,'Memory allocation error 3, Aborting.')
+      END IF
+      ActiveNode = .FALSE.
+      ResidualVector = 0.0_dp
+    END IF
 
-     CALL Info(SolverName,'Memory allocations done' )
-     AllocationsDone = .TRUE.
+    CALL Info(SolverName,'Memory allocations done' )
+    AllocationsDone = .TRUE.
   END IF
 
 
@@ -525,7 +532,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
     PointerToResidualVector => VarSurfResidual % Values
   END IF
 
-
+  IF (ResetLimiters)  ActiveNode = .FALSE.
   !------------------------------------------------------------------------------
   ! Non-linear iteration loop
   !------------------------------------------------------------------------------
@@ -552,6 +559,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      DO t=1,Solver % NumberOfActiveElements
         CurrentElement => GetActiveElement(t)
         n = GetElementNOFNodes()
+        IF(GetElementFamily() == 1) CYCLE
         NodeIndexes => CurrentElement % NodeIndexes
 
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
@@ -574,7 +582,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
            END DO
         END IF
 
-        ! set coords of highest occuring dimension to zero (to get correct path element)
+        ! set coords of highest occurring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
         ElementNodes % z(1:n) = 0.0_dp
         IF (DIM == 2) THEN
@@ -815,7 +823,9 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        ! manipulation of the matrix
        !---------------------------
        DO i=1,Model % Mesh % NumberOfNodes
-         k = FreeSurfPerm(i)           
+         k = FreeSurfPerm(i)
+         IF ((ActiveNode(i,1) .AND. ActiveNode(i,2))) &
+              CALL FATAL(SolverName,"Upper as well as lower limiter active - this is a deadlock")
          IF ((ActiveNode(i,1) .OR. ActiveNode(i,2)) .AND. (k > 0)) THEN
            CALL ZeroRow( SystemMatrix, k ) 
            CALL SetMatrixElement( SystemMatrix, k, k, 1.0_dp ) 

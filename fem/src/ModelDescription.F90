@@ -70,7 +70,7 @@ MODULE ModelDescription
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
 
-    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 100
+    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000
 
 CONTAINS
 
@@ -1354,7 +1354,7 @@ CONTAINS
             ! This is intended to be activated when new keywords are checked 
             ! Generally it can be set false
             !---------------------------------------------------------------
-#ifdef DEBUG_KEYWORDMISSES
+#ifdef DEVEL_KEYWORDMISSES
             OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
                 STATUS='UNKNOWN',POSITION='APPEND' )
             WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
@@ -2138,8 +2138,7 @@ CONTAINS
       ElementDef = ListGetString( Solver % Values, 'Element', stat )
    
       IF ( .NOT. stat ) THEN
-        IF ( ListGetLogical( Solver % Values, &
-             'Discontinuous Galerkin', stat ) ) THEN
+        IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
            Solver % Def_Dofs(:,:,4) = 0
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
@@ -2399,10 +2398,10 @@ CONTAINS
 
         IF ( Single ) THEN
           Model % Solvers(s) % Mesh => &
-              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
+              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs, s )
         ELSE
           Model % Solvers(s) % Mesh => &
-              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs )
+              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs, s )
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 
@@ -2620,7 +2619,7 @@ CONTAINS
       IF ( .NOT. GotIt ) OutputCaller = .TRUE.
       
       ! By default only on partition is used to show the results
-      ! For debugging it may be usefull to show several.
+      ! For debugging it may be useful to show several.
       MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
           'Max Output Partition', GotIt )    
       
@@ -3932,7 +3931,7 @@ CONTAINS
 
       IF ( nPerm < 0 ) THEN
          IF ( Binary ) CALL BinReadInt8( RestartUnit, Pos )
-         ! At the moment, we allways read all variables, and can therefore
+         ! At the moment, we always read all variables, and can therefore
          ! safely assume that the "previous" Perm table has been read and is
          ! held in memory at this point. In the future, however, we might be
          ! asked to read only some variables, in which case the previous Perm

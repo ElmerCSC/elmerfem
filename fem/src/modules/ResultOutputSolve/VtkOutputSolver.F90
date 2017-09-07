@@ -390,7 +390,7 @@ CONTAINS
 
         ! Here's a bunch of routines to deal with ELMER Element -> VTK Cell
         ! translations.   Most element types has a directly corresponding cell
-        ! type, but some have to be expanded to a compound of simplier cell
+        ! type, but some have to be expanded to a compound of simpler cell
         ! types.
 
         ! nVtkCells is the number of VtkCells, and VtkCellNum is the total

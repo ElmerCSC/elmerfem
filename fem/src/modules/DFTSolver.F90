@@ -579,7 +579,7 @@ SUBROUTINE PoissonSolver( Model, Solver, dt, TransientSimulation )
           'Memory allocation error.' )
 
     ! The number of solver that has the charge density 
-    ! (namely Number of Eigenmodes Included as paramter) as a variable
+    ! (namely Number of Eigenmodes Included as parameter) as a variable
     ! is found out.
     !--------------------------------------------------------------
     ChargeDensitySolverNumber = 0

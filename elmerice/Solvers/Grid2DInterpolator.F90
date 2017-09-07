@@ -378,7 +378,7 @@ SUBROUTINE InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby, Rmin,
           (isNoData(zi(2,1))).AND. &
           (isNoData(zi(2,2))) ) THEN
 
-        ! Find the nearest point avalable if all neighbouring points have noData
+        ! Find the nearest point available if all neighbouring points have noData
         Rmin = 9999999.0
         DO i=1, Nb
            IF (.NOT.isNoData(zb(i))) THEN
@@ -392,7 +392,7 @@ SUBROUTINE InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby, Rmin,
         zbed = zb(imin)
 
      ELSE
-        ! Mean value over the avalable data if only some points have noData
+        ! Mean value over the available data if only some points have noData
         zbed = 0.0
         Npt = 0
         DO i=1, 2

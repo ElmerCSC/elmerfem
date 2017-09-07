@@ -318,7 +318,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
     Npes=Solver %  Matrix % ParMatrix % ParEnv % PEs
     allocate(NodePerPe(Npes))
 
-    call MPI_Gather(NActiveNodes,1,MPI_Integer,NodePerPe,1,MPI_Integer,0,MPI_COMM_WORLD,ierr)
+    call MPI_Gather(NActiveNodes,1,MPI_Integer,NodePerPe,1,MPI_Integer,0,ELMER_COMM_WORLD,ierr)
 
     if (Solver %  Matrix % ParMatrix % ParEnv % MyPE.eq.0) then
           ntot=0
@@ -334,12 +334,12 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
     LocalToGlobalPerm(1:NActiveNodes)=Model % Mesh % ParallelInfo % GlobalDOFs(ActiveNodes(1:NActiveNodes))
 
    if (Solver %  Matrix % ParMatrix % ParEnv % MyPE .ne.0) then
-             call MPI_BSEND(LocalToGlobalPerm(1),NActiveNodes,MPI_INTEGER,0,8001,MPI_COMM_WORLD,ierr)
+             call MPI_BSEND(LocalToGlobalPerm(1),NActiveNodes,MPI_INTEGER,0,8001,ELMER_COMM_WORLD,ierr)
    else
            NodePerm(1:NActiveNodes)=LocalToGlobalPerm(1:NActiveNodes)
            ni=1+NActiveNodes
            Do i=2,Npes
-             call   MPI_RECV(NodePerm(ni),NodePerPe(i),MPI_INTEGER,i-1,8001,MPI_COMM_WORLD, status, ierr )
+             call   MPI_RECV(NodePerm(ni),NodePerPe(i),MPI_INTEGER,i-1,8001,ELMER_COMM_WORLD, status, ierr )
              ni=ni+NodePerPe(i)
            End do
 
@@ -384,10 +384,10 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
      if (Solver %  Matrix % ParMatrix % ParEnv % MyPE .ne.0) then
 
-                     call MPI_SEND(x(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8003,MPI_COMM_WORLD,ierr)
-                     call MPI_SEND(g(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8004,MPI_COMM_WORLD,ierr)
-                     call MPI_RECV(x(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8005,MPI_COMM_WORLD,status, ierr )
-                     call MPI_RECV(omode,1,MPI_Integer,0,8006,MPI_COMM_WORLD,status,ierr )
+                     call MPI_SEND(x(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8003,ELMER_COMM_WORLD,ierr)
+                     call MPI_SEND(g(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8004,ELMER_COMM_WORLD,ierr)
+                     call MPI_RECV(x(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8005,ELMER_COMM_WORLD,status, ierr )
+                     call MPI_RECV(omode,1,MPI_Integer,0,8006,ELMER_COMM_WORLD,status,ierr )
 
                      ! Update Beta Values 
                      BetaValues(BetaPerm(ActiveNodes(1:NActiveNodes)))=x(1:NActiveNodes)
@@ -396,8 +396,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                      gtot(1:NActiveNodes)=g(1:NActiveNodes)
                      ni=1+NActiveNodes
                      Do i=2,Npes
-                       call MPI_RECV(xtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8003,MPI_COMM_WORLD, status, ierr )
-                       call MPI_RECV(gtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8004,MPI_COMM_WORLD, status, ierr )
+                       call MPI_RECV(xtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8003,ELMER_COMM_WORLD, status, ierr )
+                       call MPI_RECV(gtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8004,ELMER_COMM_WORLD, status, ierr )
                        ni=ni+NodePerPe(i)
                      End do
                      
@@ -441,8 +441,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                       
             ni=1+NActiveNodes
             Do i=2,Npes
-                  call MPI_SEND(xtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8005,MPI_COMM_WORLD,ierr)
-                  call MPI_SEND(omode,1,MPI_Integer,i-1,8006,MPI_COMM_WORLD,ierr)
+                  call MPI_SEND(xtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8005,ELMER_COMM_WORLD,ierr)
+                  call MPI_SEND(omode,1,MPI_Integer,i-1,8006,ELMER_COMM_WORLD,ierr)
                   ni=ni+NodePerPe(i)
            End do
   endif

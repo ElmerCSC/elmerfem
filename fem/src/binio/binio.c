@@ -46,7 +46,7 @@ typedef unsigned long long uint64_t;
 #define MAX_UNITS 1000
 
 struct unit_t {
-    int convert;  /* Convert endianess on reading.  */
+    int convert;  /* Convert endianness on reading.  */
     FILE *fd;
 };
 

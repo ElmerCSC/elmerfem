@@ -51,6 +51,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <locale.h>
 
 #define EXE_MODE 0
 #define LIB_MODE 1
@@ -813,6 +814,8 @@ int ConvertEgTypeToMeshType(struct FemType *dat,struct BoundaryType *bound,mesh_
     printf("Data is not created!\n");
     return(1);
   }
+
+  printf("Converting ElmerGrid data to ElmerGUI data\n");
   
   elemdim =  GetMaxElementDimension(dat);
   printf("Setting elements of %ddim\n",elemdim); 
@@ -821,7 +824,8 @@ int ConvertEgTypeToMeshType(struct FemType *dat,struct BoundaryType *bound,mesh_
   mesh->setDim(MAX(data->dim, elemdim));
   mesh->setNodes(dat->noknots);
   mesh->newNodeArray(mesh->getNodes());
-  
+
+  printf("Setting number of nodes %d\n",mesh->getNodes());   
   for(i=0; i < mesh->getNodes(); i++) {
     n = mesh->getNode(i);
     n->setX(0, dat->x[i+1]);
@@ -836,6 +840,7 @@ int ConvertEgTypeToMeshType(struct FemType *dat,struct BoundaryType *bound,mesh_
     mesh->setElements(dat->noelements);
     mesh->newElementArray(mesh->getElements());
     
+    printf("Setting number of 3d elements %d\n",mesh->getElements());   
     for(i = 0; i < mesh->getElements(); i++) {
       e = mesh->getElement(i);
       e->setCode(dat->elementtypes[i+1]);
@@ -919,7 +924,8 @@ int ConvertEgTypeToMeshType(struct FemType *dat,struct BoundaryType *bound,mesh_
     
     mesh->setSurfaces(dat->noelements);
     mesh->newSurfaceArray(mesh->getSurfaces());
-    
+
+    printf("Setting number of 2d elements %d\n",mesh->getSurfaces());       
     for(i = 0; i < mesh->getSurfaces(); i++) {
       b = mesh->getSurface(i);
       
@@ -1001,6 +1007,8 @@ int ConvertEgTypeToMeshType(struct FemType *dat,struct BoundaryType *bound,mesh_
     printf("Implemented only for element dimensions 2 and 3 (not %d)\n",elemdim);
   }
 
+  printf("Done converting\n");
+  
   return(0);
 }
 #endif
@@ -1061,6 +1069,8 @@ static int ImportMeshDefinition(int inmethod,int nofile,char *filename,int *nogr
   switch (inmethod) {
     
   case 1: 
+    printf("Loading ElmerGrid format file\n");
+    info = TRUE;
     errorstat = LoadElmergrid(&grids,nogrids,eg.filesin[nofile],info);
     if(errorstat == 1) {
       dim = eg.dim;
@@ -1123,6 +1133,7 @@ static int ImportMeshDefinition(int inmethod,int nofile,char *filename,int *nogr
     break;
 
   case 14:
+    printf("Loading Gmsh format file\n");
     errorstat = LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],info);
     break;
 
@@ -1161,8 +1172,11 @@ static int ManipulateMeshDefinition(int inmethod,int outmethod,Real relh)
   int i,j,k;
   Real mergeeps;
 
+  printf("Manipulate mesh definition: %d %d %12.3le\n",inmethod,outmethod,relh);
+  
   if(inmethod == 1 && outmethod != 1) {
     if(visited) {
+      printf("Deallocating structures from previous call\n");
       for(k=0;k<MAXCASES;k++) {	    
 	if(data[k].created) {
 	  DestroyKnots(&data[k]);
@@ -1171,9 +1185,11 @@ static int ManipulateMeshDefinition(int inmethod,int outmethod,Real relh)
 	}
       }
     }
+    printf("Starting to create ElmerGrid meshes\n");
     for(k=0;k<nogrids;k++) 
       CreateElmerGridMesh(&(grids[k]),&(data[k]),boundaries[k],relh,info);
     nomeshes = nogrids;
+    printf("Created %d ElmerGrid meshes\n",nomeshes);
   }
 
   visited = TRUE;
@@ -1314,6 +1330,8 @@ int eg_loadmesh(const char *filename)
 {
   static int inmethod,errorstat,info;
 
+  setlocale(LC_ALL, "C");  
+    
   strcpy(Filename,filename);
   info = TRUE;
   if(info) printf("\nElmerGrid checking filename suffix for file: %s\n",filename);
@@ -1340,6 +1358,8 @@ int eg_transfermesh(mesh_t *mesh,const char *str)
   int argc;
   static int visited = FALSE;
   char filename[MAXFILESIZE];
+
+  setlocale(LC_ALL, "C");  
   
   activemesh = 0;
   nofile = 0;
@@ -1372,6 +1392,7 @@ int eg_transfermesh(mesh_t *mesh,const char *str)
   }
   strcpy(eg.filesin[0],filename);
 
+  printf("Import mesh definition\n");
   errorstat = ImportMeshDefinition(inmethod,nofile,filename,&nogrids);
 
   if(errorstat) return(errorstat);
@@ -1395,10 +1416,13 @@ int eg_transfermesh(mesh_t *mesh,const char *str)
   for(i=0;i<argc;i++) argv[i] = &arguments[i][0];
 
   errorstat = InlineParameters(&eg,argc,argv,IOmethods,0,info);
-
+  if(errorstat) printf("Errorstat for inline parameters: %d\n",errorstat);
+  
   inmethod = eg.inmethod;
   outmethod = 0;
 
+  printf("Input method: %d\n",inmethod);
+  
   ManipulateMeshDefinition(inmethod,outmethod,eg.relh);
 
   errorstat = ConvertEgTypeToMeshType(&data[activemesh],boundaries[activemesh],mesh);

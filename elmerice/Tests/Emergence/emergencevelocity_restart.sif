@@ -1,0 +1,228 @@
+$filename = "bueler_smb3d"
+$MINH = 100.0
+$spy=365.25*24*3600
+$rhoi = 917.0/(1.0e6*spy^2)
+$gravity = -9.81*spy^2
+$A1 = 1.258E+13         ! MPa^(-3) a^(-1)
+$A2 = 6.046E+28         ! MPa^(-3) a^(-1)
+$Q1 = 60.0E3 
+$Q2 = 139.0E3
+
+
+!==============================================================================
+!---------------------------------- HEADER ------------------------------------
+!==============================================================================
+Header
+! Check Keywords warn
+  Mesh DB "." "footprint_bueler_f"
+  !Include Path "mesh"
+  !Results Directory "results/step100"
+End
+!==============================================================================
+!-------------------------------- CONSTANTS -----------------------------------
+!==============================================================================
+Constants 
+  Gravity(4) = 0 -1 0 9.81
+  Gas Constant = Real 8.314 ! SI Units
+  Stefan Boltzmann = Real 6.78E-08
+End
+!==============================================================================
+!-------------------------------- SIMULATION ----------------------------------
+!==============================================================================
+Simulation
+  Simulation Type = "Steady State"
+  Coordinate System  = "Cartesian 3D"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  !Output File = $filename$.result
+  !Post File = $filename$.vtu
+  Restart File = $filename$_init.result
+  Restart Position = 0
+  Output Intervals = 1
+  Max Output Level = 10
+  Extruded Mesh Levels = Integer 5
+  Extruded Max Coordinate = Real 10000.0
+  Extruded Min Coordinate = Real 0.0
+End
+!==============================================================================
+!--------------------------------- BODIES  ------------------------------------
+!==============================================================================
+Body 1
+  Name = "Ice"
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+Body 2
+  Name = "Free surface"
+  Equation = 2 
+  Material = 2
+End
+!==============================================================================
+!--------------------------- INITIAL CONDITIONS -------------------------------
+!==============================================================================
+Initial Condition 1
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  !Velocity 1 = Variable Coordinate
+  !   Real MATC "5.0*tx(0)/abs(tx(0)+tx(1)+0.001)"
+  !Velocity 2 = Variable Coordinate
+  !   Real MATC "5.0*tx(1)/abs(tx(0)+tx(1)+0.001)"
+  Velocity 3 = 0.0
+  Pressure = 0.0
+End
+!==============================================================================
+!---------------- BODY FORCES ----------------------
+!==============================================================================
+Body Force 1
+  Name = "Ice Bodyforce"
+  Flow BodyForce 1 = Real 0
+  Flow BodyForce 2 = Real 0
+  Flow BodyForce 3 = Real $gravity
+End
+!==============================================================================
+!---------------- MATERIALS ------------------------
+!==============================================================================
+Material 1
+  Name = "Ice Material"
+  Density = Real $rhoi
+  Viscosity Model = String "glen"
+  Viscosity = 1.0 ! Dummy but avoid warning output
+  Glen Exponent = Real 3.0
+  Limit Temperature = Real -10.0
+  Rate Factor 1 = Real $A1
+  Rate Factor 2 = Real $A2
+  Activation Energy 1 = Real $Q1
+  Activation Energy 2 = Real $Q2
+  Constant Temperature = Real -7.0
+  Critical Shear Rate = Real $1.0E-14*spy
+  Limit Temperature = Real -10.00        
+  Glen Enhancement Factor = Real 1.0
+  Minimum Height = Real $MINH
+End
+Material 2
+  Name = "Free Surface Material"
+  Density = Real $rhoi
+End
+!==============================================================================
+!---------------- EQUATIONS ------------------------
+!==============================================================================
+Equation 1
+  Name = "Ice Equations"
+  Active Solvers(4) = 1 2 3 5 
+  Convection = String "Computed"
+  Flow Solution Name = String "Flow Solution"
+End
+Equation 2
+  Name = "Surface Equations"
+  Active Solvers(1) = 4 
+  Convection = String "Computed"
+  Flow Solution Name = String "Flow Solution"
+End
+!==============================================================================
+!---------------- SOLVERS --------------------------
+!==============================================================================
+! /// Extract to Bueler profile ///
+!==============================================================================
+Solver 1
+  Exec Solver = "Before Simulation"
+  !Exec Solver = never
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+  Mesh Velocity Variable = String "dSdt"
+  Mesh Update Variable = String "dS"
+  Mesh Velocity First Zero = Logical True
+
+  Minimum Height = Real $MINH
+  !Top Surface Variable Name = String "Zs Top"
+  !Bottom Surface Variable Name = String "Zs Bottom"
+End
+!==============================================================================
+! /// Compute Normals ///
+!==============================================================================
+Solver 2
+   Exec Solver = "Before Simulation"
+   !Exec Solver = Never
+   Equation = "NormalVector"
+   Procedure = "ElmerIceSolvers" "ComputeNormalSolver"
+   Variable = String "Normal Vector"
+   Variable DOFs = 3
+   Optimize Bandwidth = Logical False
+   ComputeAll = Logical False
+End
+!==============================================================================
+! /// Stokes Equation ///
+!==============================================================================
+Solver 3
+  Exec Solver = "Never"
+  Equation = String "Navier-Stokes"
+  Flow Model = "Stokes"
+! Stabilization Method = [Stabilized,P2/P1,Bubbles] 
+  Stabilization Method = Stabilized
+  Optimize Bandwidth = Logical True
+! Steady State Relaxation Factor = Real 0.70
+  Steady State Convergence Tolerance = 1.0E-03
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+ !Mumps percentage increase working space = Integer 60
+  Nonlinear System Convergence Tolerance = 1.0E-03
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Min Iterations = 10
+  Nonlinear System Newton After Iterations = 50
+  Nonlinear System Newton After Tolerance =  1.0E-01
+  Nonlinear System Reset Newton = Logical True
+  Exported Variable 1 = -dofs 1 "dS"
+  Exported Variable 2 = -dofs 1 "dSdt"
+End
+!==============================================================================
+! /// Computing emergence velocity ///
+!==============================================================================
+Solver 4
+  Equation = "SMB"
+  !Exec Solver = "After Timestep"
+  Procedure = "ElmerIceSolvers" "GetEmergenceVelocity"
+  Variable = -dofs 1 EmergenceVelocity
+End
+
+!==============================================================================
+! /// Saving Scalar Line ///
+!==============================================================================
+Solver 5
+  Exec Solver = "Never"
+  Name = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = $filename$_surface.dat
+End
+!==============================================================================
+!--------------------------- BOUNDARY CONDITIONS ------------------------------
+!==============================================================================
+Boundary Condition 1
+  Name = "Ice front"
+  Target Boundaries(1) = 1
+  !Normal-Tangential Velocity = Logical True
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Velocity 3 = 0.0
+End
+Boundary Condition 2
+  Name = "Basal Surface"
+  Bottom Surface = Real 0.0
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Velocity 3 = 0.0
+End
+Boundary Condition 3
+  Name = "Free Surface"
+  Body ID = 2
+  Top Surface = Variable Coordinate
+     Real Procedure "buelerprofile" "Bueler"
+  Save Line  = Logical True
+  ComputeNormal = Logical True  
+End
+Solver 4 :: Reference Norm = Real 0.27191327 
+Solver 4 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.27191327,EPS=1E-06\n " );

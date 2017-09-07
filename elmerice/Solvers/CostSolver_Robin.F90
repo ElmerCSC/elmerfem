@@ -303,11 +303,11 @@ SUBROUTINE CostSolver_Robin( Model,Solver,dt,TransientSimulation )
 
    IF (Parallel) THEN
            CALL MPI_ALLREDUCE(Cost,Cost_S,1,&
-                  MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)  
+                  MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
            CALL MPI_ALLREDUCE(Cost_surf,Cost_surf_S,1,&
-                  MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)  
+                  MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
            CALL MPI_ALLREDUCE(Cost_bed,Cost_bed_S,1,&
-                  MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)  
+                  MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
           CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
           IF (ASSOCIATED(CostVar)) THEN
                  CostVar % Values(1)=Cost_S

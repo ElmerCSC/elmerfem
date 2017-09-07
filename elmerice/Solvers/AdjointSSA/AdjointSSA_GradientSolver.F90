@@ -365,7 +365,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 
      NodeIndexes => Element % NodeIndexes
 
- ! set coords of highest occuring dimension to zero (to get correct path element)
+ ! set coords of highest occurring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
         IF (STDOFs == 1) THEN !1D SSA
@@ -489,7 +489,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
      FORCE = 0.0e0
      STIFF = 0.0e0
 
- ! set coords of highest occuring dimension to zero (to get correct path element)
+ ! set coords of highest occurring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
         IF (STDOFs == 1) THEN
@@ -522,7 +522,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
         IF (other_body_id < 1) THEN ! only one body in calculation
           ParentElement => BoundaryElement % BoundaryInfo % Right
           IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-        ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+        ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
           ParentElement => BoundaryElement %  BoundaryInfo % Right
           IF (ParentElement % BodyId == other_body_id) ParentElement =>  BoundaryElement % BoundaryInfo % Left
         END IF
@@ -604,7 +604,7 @@ CONTAINS
        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
         IP % W(t),  detJ, Basis, dBasisdx, ddBasisddx, .FALSE. )
 
-! Needed Intergration Point value
+! Needed Integration Point value
 
        g = ABS(SUM( Gravity(1:n) * Basis(1:n) ))
        rho = SUM( Density(1:n) * Basis(1:n) )

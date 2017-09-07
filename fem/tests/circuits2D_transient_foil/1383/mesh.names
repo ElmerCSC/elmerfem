@@ -1,0 +1,7 @@
+! ----- names for boundaries -----
+$ center0 = 1
+$ center1 = 7
+$ center2 = 11
+$ center3 = 17
+$ test_1_alpha0 = 2
+$ test_1_alpha1 = 3

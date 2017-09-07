@@ -1,0 +1,252 @@
+! A simple testcase for testing mgdyn2D module feature: scan_skin_and_proximity_parameters.
+! Author: Eelis Takala, Trafotek Oy
+! Original date: November 2015
+! eelis.takala@trafotek.fi
+Check Keywords "Warn"
+INCLUDE sif/6801-circuits.definitions
+INCLUDE 6801/mesh.names
+
+Header 1
+   Mesh DB "." "6801"
+End
+
+Simulation 1
+   Max Output Level = 6
+   Coordinate System = Cartesian
+   Simulation Type = Scanning
+   Timestep Intervals = 3 
+   Timestep Sizes = 1 
+
+   Steady State Max Iterations = 3
+   Steady State Min Iterations = 3
+   $ f = 50 100 150
+   Angular Frequency = Variable timestep
+      Real MATC "2*pi*f(tx-1)"
+
+   ! The following is needed for checking the Coupled iter
+   ! namespaces. For example: 
+   ! Coupled 1: Magnetic Flux Density 1 = Real 1
+   Additive Namespaces = Logical True 
+End
+
+Solver 1
+   Exec Solver = Before All
+   Procedure = "Poisson" "PoissonSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 1000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Preconditioning = ILU0
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction
+   Variable = -nooutput Alpha
+End
+
+Solver 2
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 3
+   Equation = "Mag"
+   Variable = A[A re:1 A im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System Complex = Logical True
+   Linear System preconditioning = Circuit
+   Linear System ILU Order = Integer 1
+   Linear System Convergence Tolerance = 1.e-7
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 1000
+   Linear System Abort not Converged = False
+   Linear System ILUT Tolerance=1e-8
+   BicgStabL Polynomial Degree = 4
+   Steady State Convergence Tolerance = 1e-06
+End
+
+Solver 4
+   Equation = CompB
+   Variable = -nooutput temp
+   Exported Variable 1 = B[B re:2 B im:2]
+   Calculate Joule Heating = Logical True
+   Target Variable="A"
+   Procedure = "MagnetoDynamics2D" "bSolver"
+   Discontinuous Galerkin = Logical True
+   Calculate Current Density = Logical True
+   ! this needs to be true when Homogenization Parameters are to be computed:
+   Calculate Homogenization Parameters = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStabl
+   Linear System Symmetric = True
+   Linear System Max Iterations = 100
+   Linear System Preconditioning = None
+   Linear System Convergence Tolerance = 1e-5
+   Linear System Residual Output = 1
+End
+
+Solver 5
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+Solver 6
+   Exec Solver = After Timestep
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = 6801/dat/6801.dat
+End
+
+Solver 7
+   Exec Solver = Never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 6801-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+
+Equation 1
+   Active Solvers(3) = 2 3 4
+End
+
+Equation 2
+   Active Solvers(4) = 1 2 3 4
+End
+
+Material 1
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+End
+
+Material 2
+   Name = aluminium
+   Relative Permeability = 1
+   Electric Conductivity = 3e7
+End
+
+Body 1
+   Name = air
+   Target Bodies = 8
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = test 1
+   Target Bodies = 1
+   Equation = 2
+   Material = 2
+End
+
+Body 3
+   Name = test 2
+   Target Bodies = 2
+   Equation = 2
+   Material = 2
+End
+
+Body 4
+   Name = test 3
+   Target Bodies = 3
+   Equation = 2
+   Material = 2
+End
+
+Body 5
+   Name = test 4
+   Target Bodies = 4
+   Equation = 2
+   Material = 2
+End
+
+Body 6
+   Name = test 5
+   Target Bodies = 5
+   Equation = 2
+   Material = 2
+End
+
+Body 7
+   Name = test 6
+   Target Bodies = 6
+   Equation = 2
+   Material = 2
+End
+
+Component 1
+   Name = String test 1
+   Body = Integer 2
+   Coil Type = String massive
+   Number of Turns = Real 1
+End
+
+Component 2
+   Name = String test 2
+   Body = Integer 3
+   Coil Type = String massive
+   Number of Turns = Real 1
+End
+
+Component 3
+   Name = String test 3
+   Body = Integer 4
+   Coil Type = String massive
+   Number of Turns = Real 1
+End
+
+Component 4
+   Name = String test 4
+   Body = Integer 5
+   Coil Type = String massive
+   Number of Turns = Real 1
+End
+
+Component 5
+   Name = String test 5
+   Body = Integer 6
+   Coil Type = String massive
+   Number of Turns = Real 1
+   ! The homogenization parameters with respect to the elementary solutions are computed for the middle strand
+   Homogenization Parameters Body(2) = Integer 1 6 ! The insulation needs to be taken into account
+   Coupled 1: Homogenization Reluctivity Output Component = String 11
+   Coupled 2: Homogenization Reluctivity Output Component = String 22 
+   Coupled 3: Homogenization Conductivity Output Component = String 33
+End
+
+Component 6
+   Name = String test 6
+   Body = Integer 7
+   Coil Type = String massive
+   Number of Turns = Real 1
+End
+
+Body Force 1
+   Name = "Circuit"
+   S1 Re = Real 0
+   ! The third elementary solution is with respect to the current
+   Coupled 3: S1 Re = Real 1
+   S1 Im = Real 0.0
+End
+
+Boundary Condition 1
+   Target Boundaries(4) = 25 26 27 28
+   Magnetic Flux Density 1 = 0
+   ! The first elementary solution is with respect to the magnetic field 1
+   Coupled 1: Magnetic Flux Density 1 = Real 1
+   Magnetic Flux Density 2 = 0
+   ! The second elementary solution is with respect to the magnetic field 2
+   Coupled 2: Magnetic Flux Density 2 = Real 1
+End
+
+Solver 3 :: Reference Norm = 0.57521435E-07
+

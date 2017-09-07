@@ -2524,7 +2524,7 @@ tstart = realtime()
 !print *,'(2) Id:',ParEnv % MyPE+1,'MaxGlb=',MaxGlb
 
 !
-!    Recieve new interface nodes from lower
+!    Receive new interface nodes from lower
 !    numbered PEs, and check if they are
 !    relevant to us:
 !    ---------------------------------------

@@ -258,6 +258,13 @@ CONTAINS
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
 
+    IF( A % COMPLEX ) THEN
+      CALL Info('IterSolver','Matrix is complex valued',Level=10)
+    ELSE
+      CALL Info('IterSolver','Matrix is real valued',Level=12)
+    END IF
+
+    
     SELECT CASE(str)
     CASE('bicgstab2')
       IterType = ITER_BiCGStab2
@@ -970,8 +977,13 @@ CONTAINS
      END IF
 
      IF ( OutputLevelMask(0) ) THEN
-       WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
-            'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
+       IF(IsFatal) THEN
+         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+              'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
+       ELSE
+         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+              'NUMERICAL WARNING:: ', TRIM(Caller), ': ', TRIM(String)
+       END IF
        CALL FLUSH(6)
      END IF
 

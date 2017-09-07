@@ -38,7 +38,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 !
 !     OUTPUT are : J and DJDu (==Velocityb variable used as forcing of the SSA adjoint problem)
 !
-!    !! Be carefull this solver will reset the cost and DJDu to 0; so it has to
+!    !! Be careful this solver will reset the cost and DJDu to 0; so it has to
 !    be used as the first cost solver if regularistaion of flux divergence cost
 !    solvers are used in the simulation!!
 !
@@ -278,7 +278,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
          Element => GetActiveElement(InElement(s))
          n = GetElementNOFNodes()
          NodeIndexes => Element % NodeIndexes
-    ! set coords of highest occuring dimension to zero (to get correct path element)
+    ! set coords of highest occurring dimension to zero (to get correct path element)
           !-------------------------------------------------------------------------------
          ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
          IF (DIM == 1) THEN !1D SSA
@@ -338,9 +338,9 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
     IF (Parallel) THEN
            CALL MPI_ALLREDUCE(NTOT,NTOT_S,1,&
-                  MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,ierr)  
+                  MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
            CALL MPI_ALLREDUCE(Cost,Cost_S,1,&
-                  MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)  
+                  MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
           CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
           IF (ASSOCIATED(CostVar)) THEN
                  CostVar % Values(1)=Cost_S
