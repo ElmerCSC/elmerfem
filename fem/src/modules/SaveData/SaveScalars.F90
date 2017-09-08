@@ -617,7 +617,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = 1.0_dp * j
         CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
        
-      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs','mean','variance','range'&
+      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs','mean','variance','range', &
           'sum square','mean square')
         IF( MaskOper ) CALL CreateNodeMask()
         IF( GotNodalOper ) THEN
