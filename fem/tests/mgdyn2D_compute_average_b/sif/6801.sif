@@ -1,0 +1,225 @@
+! A simple testcase for testing mgdyn2D feature: compute_average_b module.
+! Author: Eelis Takala, Trafotek Oy
+! Original date: November 2015
+! eelis.takala@trafotek.fi
+Check Keywords "Warn"
+INCLUDE sif/6801-circuits.definitions
+INCLUDE 6801/mesh.names
+
+Header 1
+   Mesh DB "." "6801"
+End
+
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   Angular Frequency = 376.991118431
+End
+
+Solver 1
+   Exec Solver = Before All
+   Procedure = "Poisson" "PoissonSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 1000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Preconditioning = ILU0
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction
+   Variable = -nooutput Alpha
+End
+
+Solver 2
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 3
+   Equation = "Mag"
+   Variable = A[A re:1 A im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System Complex = Logical True
+   Linear System preconditioning = Circuit
+   Linear System ILU Order = Integer 2
+   Linear System Convergence Tolerance = 1.e-7
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 1000
+   Linear System Abort not Converged = False
+   Linear System ILUT Tolerance=1e-8
+   BicgStabL Polynomial Degree = 4
+   Steady State Convergence Tolerance = 1e-06
+End
+
+Solver 4
+   Equation = CompB
+   Variable = -nooutput temp
+   Exported Variable 1 = B[B re:2 B im:2]
+   Calculate Joule Heating = Logical True
+   Target Variable="A"
+   Procedure = "MagnetoDynamics2D" "bSolver"
+   Discontinuous Galerkin = Logical True
+   Calculate Current Density = Logical True
+   ! this needs to be true when Averate is computed:
+   Calculate Average Magnetic Flux Density = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System Symmetric = True
+   Linear System Max Iterations = 100
+   Linear System Preconditioning = None
+   Linear System Convergence Tolerance = 1e-6
+   Linear System Residual Output = 1000
+End
+
+Solver 5
+   Exec Solver = Never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 6801-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+
+Solver 6
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+Solver 7
+   Exec Solver = Always
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = 6801/dat/6801.dat
+End
+
+Equation 1
+   Active Solvers(3) = 2 3 4
+End
+
+Equation 2
+   Active Solvers(4) = 1 2 3 4
+End
+
+Material 1
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+End
+
+Material 2
+   Name = aluminium
+   Relative Permeability = 1
+   Electric Conductivity = 3e7
+End
+
+Body 1
+   Name = air
+   Target Bodies = 8
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = test 1
+   Target Bodies = 1
+   Equation = 2
+   Material = 2
+End
+
+Body 3
+   Name = test 2
+   Target Bodies = 2
+   Equation = 2
+   Material = 2
+End
+
+Body 4
+   Name = test 3
+   Target Bodies = 3
+   Equation = 2
+   Material = 2
+End
+
+Body 5
+   Name = test 4
+   Target Bodies = 4
+   Equation = 2
+   Material = 2
+End
+
+Body 6
+   Name = test 5
+   Target Bodies = 5
+   Equation = 2
+   Material = 2
+End
+
+Body 7
+   Name = test 6
+   Target Bodies = 6
+   Equation = 2
+   Material = 2
+End
+
+Component 1
+   Name = String test 1
+   Body = Integer 2
+   Coil Type = String massive
+End
+
+Component 2
+   Name = String test 2
+   Body = Integer 3
+   Coil Type = String massive
+End
+
+Component 3
+   Name = String test 3
+   Body = Integer 4
+   Coil Type = String massive
+End
+
+Component 4
+   Name = String test 4
+   Body = Integer 5
+   Coil Type = String massive
+End
+
+Component 5
+   Name = String test 5
+   Body = Integer 6
+   Coil Type = String massive
+End
+
+Component 6
+   Name = String test 6
+   Body = Integer 7
+   Coil Type = String massive
+End
+
+Body Force 1
+   Name = "Circuit"
+   S1 Re = Real 0.0
+   S1 Im = Real 0.0
+End
+
+Boundary Condition 1
+   Target Boundaries(4) = 25 26 27 28
+   Magnetic Flux Density 1 = 0
+   Magnetic Flux Density 2 = $ 1/1.094
+End
+
+Solver 3 :: Reference Norm = Real 2.479405E-01 
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

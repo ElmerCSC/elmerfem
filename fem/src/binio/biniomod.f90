@@ -17,10 +17,10 @@
 !
 !
 ! Wrappers for a bunch of C functions defined in binio.c to read/write
-! from/to a binary stream in a portable (independent of endianess) manner.
+! from/to a binary stream in a portable (independent of endianness) manner.
 !
 ! The OPTIONAL 'Status' argument, if PRESENT, will be set to > 0 for error (use
-! StrErrorF to create meaningful error messages), 0 for sucess and (for the
+! StrErrorF to create meaningful error messages), 0 for success and (for the
 ! BinRead* procedures) -1 for end-of-file.  If .NOT.PRESENT(Status), then, on
 ! error, an error message will be written and the program terminated.
 !

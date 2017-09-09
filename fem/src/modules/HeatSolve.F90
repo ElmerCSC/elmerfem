@@ -42,7 +42,7 @@
 !> Subroutine for solving the energy a.k.a. heat equation in various coordinate systems.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-   SUBROUTINE HeatSolver( Model,Solver,Timestep,TransientSimulation )
+   RECURSIVE SUBROUTINE HeatSolver( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DiffuseConvective
      USE DiffuseConvectiveGeneral

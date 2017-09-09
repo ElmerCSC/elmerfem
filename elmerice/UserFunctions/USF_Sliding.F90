@@ -202,7 +202,7 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
   REAL(KIND=dp), POINTER :: NValues(:)
   INTEGER, POINTER :: StressPerm(:), NormalPerm(:), FlowPerm(:), NPerm(:)
   INTEGER :: DIM, i, j, Ind(3,3), n, other_body_id
-  REAL (KIND=dp) :: C, m, Bdrag, As, Ne, q, Xi, a, Pw 
+  REAL (KIND=dp) :: C, m, Bdrag, As, Ne, q, Xi, a, Pw, Pice 
   REAL (KIND=dp) :: Snt, Snn, ut, un, ut0, t, t0
   LOGICAL :: GotIt, FirstTime = .TRUE., Cauchy, UnFoundFatal
   REAL (KIND=dp), ALLOCATABLE :: Sig(:,:), normal(:), velo(:), Sn(:), AuxReal(:) 
@@ -325,7 +325,7 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
      IF (other_body_id < 1) THEN ! only one body in calculation
         ParentElement => BoundaryElement % BoundaryInfo % Right
         IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-     ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+     ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
         ParentElement => BoundaryElement % BoundaryInfo % Right
         IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
      END IF
@@ -364,16 +364,24 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
            Sig(i,j) =  &
               StressValues( 2*DIM *(StressPerm(Nodenumber)-1) + Ind(i,j) )
         END DO
-        IF (.NOT.Cauchy) THEN 
-           Sig(i,i) = Sig(i,i) - FlowValues((DIM+1)*FlowPerm(Nodenumber))
-        END IF
      END DO
      ! Stress vector Sn       
      DO i=1, DIM
         Sn(i) = SUM(Sig(i,1:DIM)*normal(1:DIM)) 
      END DO
-     ! Convention is such that Snn should be negative (compressive)
+     ! Normal stress (still Cauchy or deviatoric)
      Snn = SUM( Sn(1:DIM) * normal(1:DIM) ) 
+     ! Isotropic ice pressure
+     Pice = FlowValues((DIM+1)*FlowPerm(Nodenumber))
+
+     IF (Cauchy) THEN 
+        ! At first time Snn = 0 and should be approximated by -pi
+        IF (ABS(Snn) < 1.0e-10*ABS(Pice)) Snn = -Pice
+     ELSE
+           Snn = Snn - Pice 
+     END IF
+
+     ! Convention is such that Snn should be negative (compressive)
      Ne = -Snn -Pw
   ENDIF
 
@@ -391,7 +399,7 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
   Bdrag = C*Ne * ((Xi * ut**(-m)) / ( 1.0 + a * Xi**q))**(1.0/m)
   Bdrag = MIN(Bdrag,1.0e20_dp)
   
-  ! Stress may be not known at first time / or first steady iteration  
+  ! Stress may be not known at first iteration  
   IF ((t==t0).AND.(.Not.ASSOCIATED( NVariable )).AND.(Snn.GE.0.0_dp)) Bdrag = 1.0e20
 END FUNCTION Friction_Coulomb
 
@@ -401,14 +409,14 @@ END FUNCTION Friction_Coulomb
 !
 ! tau_b = C.{u_b}^{m}*Zab^{q}
 ! 
-! where Zab is height above bouyancy and C, m and q respectively are 
+! where Zab is height above buoyancy and C, m and q respectively are 
 ! given in the sif by:
 !  Budd Friction Coefficient = Real 2.412579e-2        
 !  Budd Velocity Exponent = Real $1.0/3.0
 !  Budd Zab Exponent = Real 2.0
 !
 !  Budd Floatation = Logical False
-! If this is set to true then the height above bouyancy will be based 
+! If this is set to true then the height above buoyancy will be based 
 ! on the floatation condition instead of inferred from the effective 
 ! pressure (i.e. depth is used instead of normal stress). Default is 
 ! false.
@@ -492,7 +500,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   IF (other_body_id < 1) THEN ! only one body in calculation
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-  ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+  ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
   END IF
@@ -578,7 +586,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      ut = SQRT(SUM( velo(1:DIM-1)**2.0 ))
   END IF
 
-  ! Zab is height above bouyancy of the upper free surface.  This is 
+  ! Zab is height above buoyancy of the upper free surface.  This is 
   ! calculated based on the effective pressure at the bed.  The 
   ! effective pressure at the bed is calculated as the normal stress 
   ! at the lower boundary minus the External Pressure (which is set in 
@@ -609,7 +617,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
         Zab = H
      END IF
      
-     ! this "offset" to the height above bouyancy is intended to provide a non-zero  
+     ! this "offset" to the height above buoyancy is intended to provide a non-zero  
      ! basal drag due to contact with the bed, even when effective pressure is zero.
      ! Physically, this can be seen as a compromise between Elmer's "Weertman" 
      ! implementation and Elmer's "Budd" implementation.
@@ -724,7 +732,7 @@ CONTAINS
     IF (other_body_id < 1) THEN ! only one body in calculation
        ParentElement => BoundaryElement % BoundaryInfo % Right
        IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-    ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+    ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
        ParentElement => BoundaryElement % BoundaryInfo % Right
        IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
     END IF

@@ -1578,7 +1578,7 @@ CONTAINS
             j = GeometryBodyMap( j )
           ELSE
             j = GetBCId( CurrentElement ) 
-            IF ( j>1 .AND. j<= SIZE(GeometryBCMap)) j = GeometryBCMap( j )
+            IF ( j>=1 .AND. j<= SIZE(GeometryBCMap)) j = GeometryBCMap( j )
           END IF
 
           CALL AscBinIntegerWrite( j )

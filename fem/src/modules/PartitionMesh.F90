@@ -120,7 +120,7 @@
    CONTAINS
 
      ! Inherit partition from a boundary partition.
-     ! In case of conflict the 1st occurance prevails.
+     ! In case of conflict the 1st occurrence prevails.
      !-----------------------------------------------------
      SUBROUTINE InheritBoundaryPart()
        
@@ -692,7 +692,7 @@
       CALL Info('PartitionMesh','Creating neighbour list for parallel saving')
 
       n = Mesh % NumberOfNodes
-      ALLOCATE( NeighbourList(n) ) 
+      ALLOCATE( NeighbourList(n) , STAT=allocstat ) 
       IF( allocstat /= 0 ) THEN
         CALL Fatal('PartitionMesh','Allocation error for NeighbourList')
       END IF

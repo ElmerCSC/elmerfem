@@ -44,7 +44,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
 !
 !     TODO : add a varaiance term to regularise the cost
 !
-!    !!!!! BE carefull it will reset Cost , Velocityb, and DJZb; DJDZs to 0 by default !!!!
+!    !!!!! BE careful it will reset Cost , Velocityb, and DJZb; DJDZs to 0 by default !!!!
 !      !!! If other cost and gradient are computed before , 
 !       use "<Reset Cost Value> = False" to add cost and gradient to previously computed values !!!
 !
@@ -273,7 +273,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
 
        NodeIndexes => Element % NodeIndexes
 
- ! set coords of highest occuring dimension to zero (to get correct path element)
+ ! set coords of highest occurring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
         IF (DIM == 1) THEN !1D SSA

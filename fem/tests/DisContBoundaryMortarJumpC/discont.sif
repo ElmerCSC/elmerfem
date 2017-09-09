@@ -24,7 +24,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
-! Normally we dont want to apply this
+! Normally we don't want to apply this
 !  Discontinuous Bulk Greedy = Logical False
 End
 

@@ -48,29 +48,32 @@ MODULE Integration
 
    IMPLICIT NONE
 
-   INTEGER, PARAMETER, PRIVATE :: MAXN = 13
+   INTEGER, PARAMETER, PRIVATE :: MAXN = 13, MAXNPAD = 16 ! Padded to 64-byte alignment
    INTEGER, PARAMETER, PRIVATE :: MAX_INTEGRATION_POINTS = MAXN**3
 
    LOGICAL, PRIVATE :: GInit = .FALSE.
-
+   !$OMP THREADPRIVATE(GInit)
+   
 !------------------------------------------------------------------------------
    TYPE GaussIntegrationPoints_t
       INTEGER :: N
-!DIR$ ATTRIBUTES ALIGN:64 :: u, v, w, s
       REAL(KIND=dp), POINTER CONTIG :: u(:),v(:),w(:),s(:)
+!DIR$ ATTRIBUTES ALIGN:64 :: u, v, w, s
    END TYPE GaussIntegrationPoints_t
 
    TYPE(GaussIntegrationPoints_t), TARGET, PRIVATE, SAVE :: IntegStuff
-   ! SAVE IntegStuff, GInit
    !$OMP THREADPRIVATE(IntegStuff)
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 ! Storage for 1d Gauss points, and weights. The values are computed on the
 ! fly (see ComputeGaussPoints1D below). These values are used for quads and
-! bricks as well.
+! bricks as well. To avoid NUMA issues, Points and Weights are private for each
+! thread.   
 !------------------------------------------------------------------------------
-   REAL(KIND=dp), PRIVATE, SAVE :: Points(MAXN,MAXN),Weights(MAXN,MAXN)
+   REAL(KIND=dp), PRIVATE, SAVE :: Points(MAXNPAD,MAXN),Weights(MAXNPAD,MAXN)
+   !$OMP THREADPRIVATE(Points, Weights)
+!DIR$ ATTRIBUTES ALIGN:64::Points, Weights
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -636,18 +639,13 @@ CONTAINS
    SUBROUTINE GaussPointsInit
 !------------------------------------------------------------------------------
      INTEGER :: i,n,istat
-	 INTEGER :: omp_get_thread_num
 
-     !$omp barrier
-     !$omp single
      IF ( .NOT. GInit ) THEN
         DO n=1,MAXN
           CALL ComputeGaussPoints1D( Points(1:n,n),Weights(1:n,n),n )
         END DO
         GInit = .TRUE.
      END IF
-     !$omp end single
-     !$omp barrier
 
      ALLOCATE( IntegStuff % u(MAX_INTEGRATION_POINTS), &
                IntegStuff % v(MAX_INTEGRATION_POINTS), &
@@ -737,6 +735,7 @@ CONTAINS
       
       ! For each point apply mapping from quad to triangle and 
       ! multiply weight by detJ of mapping
+!DIR$ IVDEP
       DO i=1,p % n  
          uq = p % u(i) 
          vq = p % v(i) 
@@ -828,7 +827,8 @@ CONTAINS
 !        CALL Error( 'GaussPointsTriangle', 'Invalid number of points requested' )
 !        p % n = 0
 
-         p = GaussPointsQuad( n )
+        p = GaussPointsQuad( n )
+!DIR$ IVDEP
          DO i=1,p % n
             p % v(i) = (p % v(i) + 1) / 2
             p % u(i) = (p % u(i) + 1) / 2 * (1 - p % v(i))
@@ -845,7 +845,8 @@ CONTAINS
 	 ! p-reference element and scale the weights by the determinant of the 
 	 ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
-         DO i=1,P % n  
+!DIR$ IVDEP
+        DO i=1,P % n  
             uq = P % u(i) 
             vq = P % v(i) 
             sq = P % s(i)
@@ -883,6 +884,7 @@ CONTAINS
    ! For each point apply mapping from brick to 
    ! tetrahedron and multiply each weight by detJ 
    ! of mapping
+!DIR$ IVDEP
    DO i=1,p % n
       uh = p % u(i)
       vh = p % v(i)
@@ -956,6 +958,7 @@ END FUNCTION GaussPointsPTetra
 !        p % n = 0
          p = GaussPointsBrick( n )
 
+!DIR$ IVDEP
          DO i=1,p % n
             ScaleFactor = 0.5d0
             p % u(i) = ( p % u(i) + 1 ) * Scalefactor
@@ -983,7 +986,8 @@ END FUNCTION GaussPointsPTetra
 	 ! p-reference element and scale the weights by the determinant of the 
 	 ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
-         DO i=1,P % n  
+!DIR$ IVDEP
+        DO i=1,P % n  
             uq = P % u(i) 
             vq = P % v(i)
             wq = P % w(i)            
@@ -1020,6 +1024,7 @@ END FUNCTION GaussPointsPTetra
    ! For each point apply mapping from brick to 
    ! pyramid and multiply each weight by detJ 
    ! of mapping
+!DIR$ IVDEP
    DO i=1,p % n
       uh = p % u(i)
       vh = p % v(i)
@@ -1065,6 +1070,7 @@ END FUNCTION GaussPointsPTetra
       t = 0
       DO i=1,n
         DO j=1,n
+!DIR$ IVDEP
           DO k=1,n
              t = t + 1
              p % u(t) = Points(k,n)
@@ -1076,6 +1082,7 @@ END FUNCTION GaussPointsPTetra
       END DO
       p % n = t
 
+!DIR$ IVDEP
       DO t=1,p % n
         p % w(t) = (p % w(t) + 1.0d0) / 2.0d0
         p % u(t) = p % u(t) * (1.0d0-p % w(t))
@@ -1105,6 +1112,7 @@ END FUNCTION GaussPointsPTetra
    ! For each point apply mapping from brick to 
    ! wedge and multiply each weight by detJ 
    ! of mapping
+!DIR$ IVDEP
    DO i=1,p % n
       uh = p % u(i)
       vh = p % v(i)
@@ -1148,6 +1156,7 @@ END FUNCTION GaussPointsPTetra
       t = 0
       DO i=1,n
         DO j=1,n
+!DIR$ IVDEP
           DO k=1,n
              t = t + 1
              p % u(t) = Points(k,n)
@@ -1159,6 +1168,7 @@ END FUNCTION GaussPointsPTetra
       END DO
       p % n = t
 
+!DIR$ IVDEP
       DO i=1,p % n
         p % v(i) = (p % v(i) + 1)/2
         p % u(i) = (p % u(i) + 1)/2 * (1 - p % v(i))
@@ -1204,7 +1214,8 @@ END FUNCTION GaussPointsPTetra
             sq(1:m) = STriangle1P / 2.0D0
          END IF
       CASE (3)
-         IF (ConvertToPPrism) THEN
+        IF (ConvertToPPrism) THEN
+!DIR$ IVDEP
             DO i=1,m
                uq(i) = -1.0d0 + 2.0d0*UTriangle3P(i) + VTriangle3P(i)
                vq(i) = SQRT(3.0d0) * VTriangle3P(i)
@@ -1216,7 +1227,8 @@ END FUNCTION GaussPointsPTetra
             sq(1:m) = STriangle3P / 2.0D0
          END IF
       CASE (4)
-         IF (ConvertToPPrism) THEN
+        IF (ConvertToPPrism) THEN
+!DIR$ IVDEP
             DO i=1,m
                uq(i) = -1.0d0 + 2.0d0*UTriangle4P(i) + VTriangle4P(i)
                vq(i) = SQRT(3.0d0) * VTriangle4P(i)
@@ -1228,7 +1240,8 @@ END FUNCTION GaussPointsPTetra
             sq(1:m) = STriangle4P / 2.0D0
          END IF
       CASE (6)
-         IF (ConvertToPPrism) THEN
+        IF (ConvertToPPrism) THEN
+!DIR$ IVDEP
             DO i=1,m
                uq(i) = -1.0d0 + 2.0d0*UTriangle6P(i) + VTriangle6P(i)
                vq(i) = SQRT(3.0d0) * VTriangle6P(i)
@@ -1240,7 +1253,8 @@ END FUNCTION GaussPointsPTetra
             sq(1:m) = STriangle6P / 2.0D0
          END IF
       CASE (7)
-         IF (ConvertToPPrism) THEN
+        IF (ConvertToPPrism) THEN
+!DIR$ IVDEP
             DO i=1,m
                uq(i) = -1.0d0 + 2.0d0*UTriangle7P(i) + VTriangle7P(i)
                vq(i) = SQRT(3.0d0) * VTriangle7P(i)
@@ -1252,7 +1266,8 @@ END FUNCTION GaussPointsPTetra
             sq(1:m) = STriangle7P / 2.0D0
          END IF
       CASE (11)
-         IF (ConvertToPPrism) THEN
+        IF (ConvertToPPrism) THEN
+!DIR$ IVDEP
             DO i=1,m
                uq(i) = -1.0d0 + 2.0d0*UTriangle11P(i) + VTriangle11P(i)
                vq(i) = SQRT(3.0d0) * VTriangle11P(i)
@@ -1264,7 +1279,8 @@ END FUNCTION GaussPointsPTetra
             sq(1:m) = STriangle11P
          END IF
       CASE (12)
-         IF (ConvertToPPrism) THEN
+        IF (ConvertToPPrism) THEN
+!DIR$ IVDEP
             DO i=1,m
                uq(i) = -1.0d0 + 2.0d0*UTriangle12P(i) + VTriangle12P(i)
                vq(i) = SQRT(3.0d0) * VTriangle12P(i)
@@ -1276,7 +1292,8 @@ END FUNCTION GaussPointsPTetra
             sq(1:m) = STriangle12P
          END IF
       CASE (17)
-         IF (ConvertToPPrism) THEN
+        IF (ConvertToPPrism) THEN
+!DIR$ IVDEP
             DO i=1,m
                uq(i) = -1.0d0 + 2.0d0*UTriangle17P(i) + VTriangle17P(i)
                vq(i) = SQRT(3.0d0) * VTriangle17P(i)
@@ -1288,7 +1305,8 @@ END FUNCTION GaussPointsPTetra
             sq(1:m) = STriangle17P
          END IF
       CASE (20)
-         IF (ConvertToPPrism) THEN
+        IF (ConvertToPPrism) THEN
+!DIR$ IVDEP
             DO i=1,m
                uq(i) = -1.0d0 + 2.0d0*UTriangle20P(i) + VTriangle20P(i)
                vq(i) = SQRT(3.0d0) * VTriangle20P(i)
@@ -1306,7 +1324,8 @@ END FUNCTION GaussPointsPTetra
          ! and generate silently n x n x n rule. 
          !-----------------------------------------------------------------------------------
          IF (ConvertToPPrism) THEN
-            p = GaussPointsBrick(n*n*n)
+           p = GaussPointsBrick(n*n*n)
+!DIR$ IVDEP
             DO i=1,p % n
                uh = p % u(i)
                vh = p % v(i)
@@ -1321,7 +1340,8 @@ END FUNCTION GaussPointsPTetra
          ELSE
             t = 0
             DO i=1,n
-               DO j=1,n
+              DO j=1,n
+!DIR$ IVDEP
                   DO k=1,n
                      t = t + 1
                      p % u(t) = Points(k,n)
@@ -1333,6 +1353,7 @@ END FUNCTION GaussPointsPTetra
             END DO
             p % n = t
 
+!DIR$ IVDEP
             DO i=1,p % n
                p % v(i) = (p % v(i) + 1)/2
                p % u(i) = (p % u(i) + 1)/2 * (1 - p % v(i))
@@ -1344,6 +1365,7 @@ END FUNCTION GaussPointsPTetra
 
       t = 0
       DO i=1,m
+!DIR$ IVDEP
          DO j=1,n
             t = t + 1
             p % u(t) = uq(i)
@@ -1389,6 +1411,7 @@ END FUNCTION GaussPointsPTetra
 
       t = 0
       DO i=1,n
+!DIR$ IVDEP
         DO j=1,n
           t = t + 1
           p % u(t) = Points(j,n)
@@ -1435,6 +1458,7 @@ END FUNCTION GaussPointsPTetra
       t = 0
       DO i=1,nx
         DO j=1,ny
+!DIR$ IVDEP
           DO k=1,nz
             t = t + 1
             p % u(t) = Points(i,nx)
@@ -1479,6 +1503,7 @@ END FUNCTION GaussPointsPTetra
       t = 0
       DO i=1,n
         DO j=1,n
+!DIR$ IVDEP
           DO k=1,n
             t = t + 1
             p % u(t) = Points(k,n)

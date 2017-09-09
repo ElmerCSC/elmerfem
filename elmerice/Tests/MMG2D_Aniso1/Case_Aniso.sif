@@ -1,0 +1,150 @@
+!------------------------------------------------------------------
+! Anisotropic mesh adaptation
+!  Example given in sections 2.2 and 2.3 of:
+!    Alauzet, F., Frey, P., 2003. 
+!      Estimateur d’erreur géométrique et métriques anisotropes pour l’adaptation de maillage: Partie II: exemples d’applications.
+!       (Sorry - IN FRENCH!)
+!
+!  Example 1: 1-Variable optimisation
+!-------------------------------------------------------------------
+
+Header
+  Mesh DB "." "square"
+End
+
+$ function f1(c) {x=c(0);y=c(1); _f1 = sin(5*(y*y-y+1.0)*(x-0.2)^3.0) }
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady
+
+  Steady State Min Iterations = 2
+  Steady State Max Iterations = 2
+
+  max output level = 3
+
+  Post File = "Case_Aniso.vtu"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  f1 = Variable Coordinate
+     REAL MATC "f1(tx)"
+
+  M1 Hmin = Real 1.0e-3
+  M1 Hmax = Real 1.0
+  M1 err =  Real 0.0033
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! update f1  at the mesh nodes
+Solver 1
+   Equation = "Initialise fn"
+   Variable = -nooutput dumy
+
+   Procedure = "ElmerIceSolvers" "UpdateExport"
+
+   Optimize Bandwidth = False
+
+   Exported Variable 1 = f1
+End
+
+! Compute the metric associated with f1
+!  1- compute projected gradient of f1
+Solver 2
+  Equation = "Nodal Gradient 1"
+  Variable = -dofs 2 "Gradient1"
+  Procedure = "ElmerIce_MeshAdapt2D" "Compute2DNodalGradient"
+
+  Optimize Bandwidth = False
+
+  Variable Name = string "f1"
+  FE consistent average = Logical True
+End
+! 2- compute:
+!    - the hessian matrix by solving a diffusion equation:
+!      \int_Omega Hij+ k.A nabla(Hij) = int_Omega 0.5(dqi/dxj+dqj/dxi)
+!          Buscaglia, G.C., Dari, E.A., 1997. 
+!            Anisotropic mesh optimization and its application in adaptivity. International Journal for Numerical Methods in Engineering 40, 4119–4136.
+!   - the metric tensor
+Solver 3
+   Equation = "Metric1"
+   Variable = -nooutput dumy
+
+   Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricAniso"
+
+   Metric Variable Name = String "M1"
+
+   Hessian Variable Name = String "ddx1"
+   Gradient Name = String "Gradient1"
+   Diffusivity = Real 0.5
+
+   Linear System Solver = Direct
+   Linear System Direct Method = umfpack
+
+  Exported Variable 1 = -dofs 3 "M1"
+  Exported Variable 2 = -dofs 3 "ddx1"
+End
+
+!! Anisotropic mesh adaptation using the MMG library
+Solver 4
+!! mandatory else Model % Mesh % Changed reset to .FALSE. in coupled simulations
+  Exec Solver = after timestep
+
+  Equation = "MMG"
+  Variable = -nooutput dumy
+    Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
+
+  Optimize Bandwidth = False
+
+  Output file name = "square_aniso"
+  Metric Variable Name = String "M1"  !optimise using M1 (example sec 2.2)
+
+  hausd = Real 1000.0
+  hgrad = Real 1.3
+
+  verbosity = Integer 10
+
+End
+
+Solver 5
+  Exec Solver = after timestep
+  Equation = SaveScalars
+  Procedure =  "SaveData" "SaveScalars"
+  Filename = f.dat
+  Show Norm Index = Integer 1
+  Operator 1 = nodes
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(5) = 1 2 3 4 5
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 1
+End
+Boundary Condition 2
+  Target Boundaries = 2
+End
+Boundary Condition 3
+  Target Boundaries = 3
+End
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+
+Solver 5 :: Reference Norm = Real 1966.0
+Solver 5 :: Reference Norm Tolerance = Real 1E-01
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1966,EPS=1E-01\n" );

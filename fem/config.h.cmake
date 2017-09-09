@@ -139,8 +139,8 @@
 
 
 /* Have these defined only for debugging or optimization purposes */
-/* #define DEBUG_LISTCOUNTER */
-/* #define DEBUG_KEYWORDMISSES */
+/* #define DEVEL_LISTCOUNTER */
+/* #define DEVEL_KEYWORDMISSES */
 
 
 #endif

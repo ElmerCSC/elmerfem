@@ -703,7 +703,7 @@ void FC_FUNC(fcfftb,FCFFTB)( N, F, T )
  * rfftf: forward real FFT. First (N/2+1) coefficients returned.
  *        F(n) = Real(F(N-n))-i*Imag(F(N-n)), n=N/2+1..N-1.
  *
- * paramters:
+ * parameters:
  *
  * N     : int              / length of input sequence. 
  * T     : double[N]         / input sequence.

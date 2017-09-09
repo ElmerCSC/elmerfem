@@ -258,6 +258,13 @@ CONTAINS
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
 
+    IF( A % COMPLEX ) THEN
+      CALL Info('IterSolver','Matrix is complex valued',Level=10)
+    ELSE
+      CALL Info('IterSolver','Matrix is real valued',Level=12)
+    END IF
+
+    
     SELECT CASE(str)
     CASE('bicgstab2')
       IterType = ITER_BiCGStab2

@@ -43,8 +43,13 @@
 
 #include "../config.h"
 
-MODULE ElementDescription
+#if _OPENMP>=201511
+#define LINEAR_REF(var) LINEAR(REF(var))
+#else
+#define LINEAR_REF(var)
+#endif
 
+MODULE ElementDescription
    USE Integration
    USE GeneralUtils
    USE LinearAlgebra
@@ -68,11 +73,13 @@ MODULE ElementDescription
    LOGICAL, PRIVATE :: TypeListInitialized = .FALSE.
    TYPE(ElementType_t), PRIVATE, POINTER :: ElementTypeList
    ! Local workspace for basis function values and mapping
-   REAL(KIND=dp), ALLOCATABLE, PRIVATE :: BasisWrk(:,:), &
-           dBasisdxWrk(:,:,:), LtoGMapsWrk(:,:,:), DetJWrk(:), &
-           uWrk(:), vWrk(:), wWrk(:)
-   !$OMP THREADPRIVATE(BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, uWrk, vWrk, wWrk)
-!DIR$ ATTRIBUTES ALIGN:64::BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, uWrk, vWrk, wWrk
+!    REAL(KIND=dp), ALLOCATABLE, PRIVATE :: BasisWrk(:,:), dBasisdxWrk(:,:,:), &
+!            LtoGMapsWrk(:,:,:), DetJWrk(:), uWrk(:), vWrk(:), wWrk(:)
+!     !$OMP THREADPRIVATE(BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, uWrk, vWrk, wWrk)
+! !DIR$ ATTRIBUTES ALIGN:64::BasisWrk, dBasisdxWrk
+! !DIR$ ATTRIBUTES ALIGN:64::LtoGMapsWrk
+! !DIR$ ATTRIBUTES ALIGN:64::DetJWrk
+! !DIR$ ATTRIBUTES ALIGN:64::uWrk, vWrk, wWrk
 
 CONTAINS
 
@@ -2468,7 +2475,7 @@ END IF
                  IF ( q >= SIZE(BasisDegree) ) CYCLE
                  q = q + 1
 
-                 ! Use basis compatible with pyramid if neccessary
+                 ! Use basis compatible with pyramid if necessary
                  ! @todo Correct this!
                  IF (Edge % PDefs % pyramidQuadEdge) THEN
                     CALL Fatal('ElementInfo','Pyramid compatible wedge edge basis NIY!')
@@ -3107,7 +3114,7 @@ END IF
                  IF ( q >= SIZE(Basis) ) CYCLE
                  q = q + 1
 
-                 ! Use basis compatible with pyramid if neccessary
+                 ! Use basis compatible with pyramid if necessary
                  ! @todo Correct this!
                  IF (Edge % PDefs % pyramidQuadEdge) THEN
                     CALL Fatal('ElementInfo','Pyramid compatible wedge edge basis NIY!')
@@ -3539,51 +3546,48 @@ END IF
 !------------------------------------------------------------------------------
    END FUNCTION ElementInfo
 !------------------------------------------------------------------------------
-
-   SUBROUTINE ElementInfo_InitWork(m, n)
-     IMPLICIT NONE
-
-     INTEGER, INTENT(IN) :: m, n
-     INTEGER :: allocstat
-
-     allocstat = 0
-     IF (.NOT. ALLOCATED(BasisWrk)) THEN
-       ALLOCATE(BasisWrk(m,n), &
-               dBasisdxWrk(m,n,3), &
-            LtoGMapsWrk(m,3,3), &
-            DetJWrk(m), &
-            uWrk(m), vWrk(m), wWrk(m), STAT=allocstat)
-     ELSE IF (SIZE(BasisWrk,1) /= m .OR. SIZE(BasisWrk,2) /= n) THEN
-       DEALLOCATE(BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, &
-               uWrk, vWrk, wWrk)
-       ALLOCATE(BasisWrk(m,n), &
-               dBasisdxWrk(m,n,3), &
-               LtoGMapsWrk(m,3,3), &
-               DetJWrk(m), &
-               uWrk(m), vWrk(m), wWrk(m), STAT=allocstat)
-     END IF
-
-     ! Check memory allocation status
-     IF (allocstat /= 0) THEN
-       CALL Error('ElementInfo_InitWork','Storage allocation for local element basis failed')
-     END IF
-   END SUBROUTINE ElementInfo_InitWork
    
-   SUBROUTINE ElementInfo_FreeWork()
-     IMPLICIT NONE
+   ! SUBROUTINE ElementInfoVec_InitWork(m, n)
+   !   IMPLICIT NONE
 
-     IF (ALLOCATED(BasisWrk)) THEN
-       DEALLOCATE(BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, &
-               uWrk, vWrk, wWrk)
-     END IF
-   END SUBROUTINE ElementInfo_FreeWork
+   !   INTEGER, INTENT(IN) :: m, n
+   !   INTEGER :: allocstat
 
+   !   allocstat = 0
+   !   IF (.NOT. ALLOCATED(BasisWrk)) THEN
+   !     ALLOCATE(BasisWrk(m,n), &
+   !             dBasisdxWrk(m,n,3), &
+   !             LtoGMapsWrk(m,3,3), &
+   !             DetJWrk(m), &
+   !             uWrk(m), vWrk(m), wWrk(m), STAT=allocstat)
+   !   ELSE IF (SIZE(BasisWrk,1) /= m .OR. SIZE(BasisWrk,2) /= n) THEN
+   !     DEALLOCATE(BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, uWrk, vWrk, wWrk)
+   !     ALLOCATE(BasisWrk(m,n), &
+   !             dBasisdxWrk(m,n,3), &
+   !             LtoGMapsWrk(m,3,3), &
+   !             DetJWrk(m), &
+   !             uWrk(m), vWrk(m), wWrk(m), STAT=allocstat)
+   !   END IF
+
+   !   ! Check memory allocation status
+   !   IF (allocstat /= 0) THEN
+   !     CALL Error('ElementInfo_InitWork','Storage allocation for local element basis failed')
+   !   END IF
+   ! END SUBROUTINE ElementInfoVec_InitWork
+
+   ! SUBROUTINE ElementInfoVec_FreeWork()
+   !   IMPLICIT NONE
+
+   !   IF (ALLOCATED(BasisWrk)) THEN
+   !     DEALLOCATE(BasisWrk, dBasisdxWrk, LtoGMapsWrk, DetJWrk, uWrk, vWrk, wWrk)
+   !   END IF
+   ! END SUBROUTINE ElementInfoVec_FreeWork
 
 ! ElementInfoVec currently uses only P element definitions for basis
 ! functions, even for purely nodal elements. Support for standard nodal elements
 ! will be implemented in the future. 
 !------------------------------------------------------------------------------
-   FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, Basis, dBasisdx ) RESULT(retval)
+   FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, nbmax, Basis, dBasisdx ) RESULT(retval)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -3594,48 +3598,89 @@ END IF
      REAL(KIND=dp), POINTER CONTIG :: v(:)  !< 2nd local coordinates.
      REAL(KIND=dp), POINTER CONTIG :: w(:)  !< 3rd local coordinates.
      REAL(KIND=dp) CONTIG, INTENT(OUT) :: detJ(:) !< Square roots of determinants of element coordinate system metric at coordinates
+     INTEGER, INTENT(IN) :: nbmax          !< Maximum number of basis functions to compute
      REAL(KIND=dp) CONTIG :: Basis(:,:)    !< Basis function values at (u,v,w)
      REAL(KIND=dp) CONTIG, OPTIONAL :: dBasisdx(:,:,:)    !< Global first derivatives of basis functions at (u,v,w)
      LOGICAL :: retval                             !< If .FALSE. element is degenerate. or if local storage allocation fails
-     !------------------------------------------------------------------------------
-     !    Local variables
-     !------------------------------------------------------------------------------
-     INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, &
-             nb, nbp, nbdxp, allocstat, ncpad
-     INTEGER :: EdgeDegree(H1Basis_MaxPElementEdges), &
-             FaceDegree(H1Basis_MaxPElementFaces), &
-             EdgeDirection(H1Basis_MaxPElementEdgeNodes,H1Basis_MaxPElementEdges), &
-             FaceDirection(H1Basis_MaxPElementFaceNodes,H1Basis_MaxPElementFaces)
-!DIR$ ATTRIBUTES ALIGN:64::EdgeDegree, FaceDegree, EdgeDirection, FaceDirection
 
-     TYPE(Element_t), POINTER :: MeshEdges(:)
-     INTEGER, POINTER :: ElementMap(:,:)
-     LOGICAL :: invertBubble, elem
+     ! Internal work arrays (always needed)
+     REAL(KIND=dp) :: uWrk(VECTOR_BLOCK_LENGTH), vWrk(VECTOR_BLOCK_LENGTH), wWrk(VECTOR_BLOCK_LENGTH)
+     REAL(KIND=dp) :: BasisWrk(VECTOR_BLOCK_LENGTH,nbmax)
+     REAL(KIND=dp) :: dBasisdxWrk(VECTOR_BLOCK_LENGTH,nbmax,3)
+     REAL(KIND=dp) :: DetJWrk(VECTOR_BLOCK_LENGTH)
+     REAL(KIND=dp) :: LtoGMapsWrk(VECTOR_BLOCK_LENGTH,3,3)
+     
+     INTEGER :: i
+!DIR$ ATTRIBUTES ALIGN:64::uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGMapsWrk
+     
      !------------------------------------------------------------------------------
-     retval = .TRUE.
-     n    = Element % TYPE % NumberOfNodes
-     nb   = SIZE(Basis,2)
-     dim  = Element % TYPE % DIMENSION
-     cdim = CoordinateSystemDimension()
-
-     ! Set up workspace arrays BasisWrk, dBasisdxWrk, LtoGMapsWrk,
-     !  DetJWrk, uWrk, vWrk and  wWrk
-     CALL ElementInfo_InitWork(VECTOR_BLOCK_LENGTH, nb)
-     IF ( nb < Element % TYPE % NumberOfNodes ) THEN
-       CALL Fatal('ElementInfoVec','Not enough storage to compute local element basis')
-     END IF
-
      ! Special case, Element: POINT
      IF (Element % TYPE % ElementCODE == 101) THEN
        DetJ(1:nc) = REAL(1, dp)
        Basis(1:nc,1) = REAL(1, dp)
        IF (PRESENT(dBasisdx)) THEN
-          DO i=1,nc
-             dBasisdx(i,1,1) = REAL(0, dp)
-          END DO
+         DO i=1,nc
+           dBasisdx(i,1,1) = REAL(0, dp)
+         END DO
        END IF
+       retval = .TRUE.
        RETURN
      END IF
+     
+     ! Set up workspace arrays 
+     ! CALL ElementInfoVec_InitWork(VECTOR_BLOCK_LENGTH, nbmax)
+     IF ( nbmax < Element % TYPE % NumberOfNodes ) THEN
+       CALL Fatal('ElementInfoVec','Not enough storage to compute local element basis')
+     END IF
+
+     retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
+           uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx)
+   END FUNCTION ElementInfoVec
+     
+   FUNCTION ElementInfoVec_ComputePElementBasis(Element, Nodes, nc, u, v, w, DetJ, nbmax, Basis, &
+                                                uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, &
+                                                DetJWrk, LtoGmapsWrk, dBasisdx) RESULT(retval)
+     IMPLICIT NONE
+     TYPE(Element_t), TARGET :: Element    !< Element structure
+     TYPE(Nodes_t)   :: Nodes              !< Element nodal coordinates.
+     INTEGER, INTENT(IN) :: nc             !< Number of local coordinates to compute values of the basis function
+     REAL(KIND=dp), POINTER CONTIG :: u(:)  !< 1st local coordinates at which to calculate the basis function.
+     REAL(KIND=dp), POINTER CONTIG :: v(:)  !< 2nd local coordinates.
+     REAL(KIND=dp), POINTER CONTIG :: w(:)  !< 3rd local coordinates.
+     REAL(KIND=dp) CONTIG, INTENT(OUT) :: detJ(:) !< Square roots of determinants of element coordinate system metric at coordinates
+     INTEGER, INTENT(IN) :: nbmax          !< Maximum number of basis functions to compute
+     REAL(KIND=dp) CONTIG :: Basis(:,:)    !< Basis function values at (u,v,w)
+     ! Internal work arrays
+     REAL(KIND=dp) :: uWrk(VECTOR_BLOCK_LENGTH), vWrk(VECTOR_BLOCK_LENGTH), wWrk(VECTOR_BLOCK_LENGTH)
+     REAL(KIND=dp) :: BasisWrk(VECTOR_BLOCK_LENGTH,nbmax)
+     REAL(KIND=dp) :: dBasisdxWrk(VECTOR_BLOCK_LENGTH,nbmax,3)
+     REAL(KIND=dp) :: DetJWrk(VECTOR_BLOCK_LENGTH)
+     REAL(KIND=dp) :: LtoGMapsWrk(VECTOR_BLOCK_LENGTH,3,3)
+     REAL(KIND=dp) CONTIG, OPTIONAL :: dBasisdx(:,:,:)    !< Global first derivatives of basis functions at (u,v,w)
+     LOGICAL :: retval                             !< If .FALSE. element is degenerate. or if local storage allocation fails
+
+
+     !------------------------------------------------------------------------------
+     !    Local variables
+     !------------------------------------------------------------------------------
+     INTEGER :: EdgeDegree(H1Basis_MaxPElementEdges), &
+           FaceDegree(H1Basis_MaxPElementFaces), &
+           EdgeDirection(H1Basis_MaxPElementEdgeNodes,H1Basis_MaxPElementEdges), &
+           FaceDirection(H1Basis_MaxPElementFaceNodes,H1Basis_MaxPElementFaces)
+
+     INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, &
+           nbp, nbdxp, allocstat, ncpad, EdgeMaxDegree, FaceMaxDegree
+
+     LOGICAL :: invertBubble, elem
+!DIR$ ATTRIBUTES ALIGN:64::EdgeDegree, FaceDegree
+!DIR$ ATTRIBUTES ALIGN:64::EdgeDirection, FaceDirection
+!DIR$ ASSUME_ALIGNED uWrk:64, vWrk:64, wWrk:64, BasisWrk:64, dBasisdxWrk:64, DetJWrk:64, LtoGMapsWrk:64
+
+     retval = .TRUE.
+     n    = Element % TYPE % NumberOfNodes
+     dim  = Element % TYPE % DIMENSION
+     cdim = CoordinateSystemDimension()
+
 
      ! Block the computation for large values of input points
      DO ll=1,nc,VECTOR_BLOCK_LENGTH
@@ -3645,7 +3690,7 @@ END IF
        ! Set number of computed basis functions
        nbp = 0
        nbdxp = 0
-       
+
        ! Block copy input
        uWrk(1:ncl) = u(ll:lln)
        IF (cdim > 1) THEN
@@ -3655,17 +3700,14 @@ END IF
          wWrk(1:ncl) = w(ll:lln)
        END IF
 
-       ! TODO: Check the size of Basis and dBasisdxWrk before calls to compute
-       !       values of basis functions
-
-       ! Compute local nodal basis
+       ! Compute local p element basis
        SELECT CASE (Element % Type % ElementCode)
          ! Element: LINE
        CASE (202)
          ! Compute nodal basis
-         CALL H1Basis_LineNodal(ncl, uWrk, nbp, BasisWrk)
+         CALL H1Basis_LineNodal(ncl, uWrk, nbmax, BasisWrk, nbp)
          ! Compute local first derivatives
-         CALL H1Basis_dLineNodal(ncl, uWrk, nbdxp, dBasisdxWrk)
+         CALL H1Basis_dLineNodal(ncl, uWrk, nbmax, dBasisdxWrk, nbdxp)
 
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
@@ -3675,37 +3717,39 @@ END IF
              P = Element % BDOFS + 1
 
              IF (Element % PDefs % isEdge .AND. &
-                 Element % NodeIndexes(1)> Element % NodeIndexes(2)) THEN
+                   Element % NodeIndexes(1)> Element % NodeIndexes(2)) THEN
                invertBubble = .TRUE.
              ELSE
                invertBubble = .FALSE.
              END IF
            END IF
-             
-           CALL H1Basis_LineBubbleP(ncl, uWrk, P, nbp, BasisWrk, invertBubble)
-           CALL H1Basis_dLineBubbleP(ncl, uWrk, P, nbdxp, dBasisdxWrk, invertBubble)
+
+           CALL H1Basis_LineBubbleP(ncl, uWrk, P, nbmax, BasisWrk, nbp, invertBubble)
+           CALL H1Basis_dLineBubbleP(ncl, uWrk, P, nbmax, dBasisdxWrk, nbdxp, invertBubble)
          END IF
 
          ! Element: TRIANGLE
        CASE (303)
          ! Compute nodal basis
-         CALL H1Basis_TriangleNodalP(ncl, uWrk, vWrk, nbp, BasisWrk)
+         CALL H1Basis_TriangleNodalP(ncl, uWrk, vWrk, nbmax, BasisWrk, nbp)
          ! Compute local first derivatives
-         CALL H1Basis_dTriangleNodalP(ncl, uWrk, vWrk, nbdxp, dBasisdxWrk)
+         CALL H1Basis_dTriangleNodalP(ncl, uWrk, vWrk, nbmax, dBasisdxWrk, nbdxp)
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
              CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
-                     Element, EdgeDegree, EdgeDirection)
+                   Element, EdgeDegree, EdgeDirection, EdgeMaxDegree)
            END IF
 
            ! Compute basis function values
-           CALL H1Basis_TriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbp, BasisWrk, &
-                   EdgeDirection)
-           CALL H1Basis_dTriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
-                   EdgeDirection)
+           IF (EdgeMaxDegree > 1) THEN
+             CALL H1Basis_TriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, BasisWrk, &
+                   nbp, EdgeDirection)
+             CALL H1Basis_dTriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, dBasisdxWrk, &
+                   nbdxp, EdgeDirection)
+           END IF
          END IF
 
          ! Element bubble functions
@@ -3719,42 +3763,44 @@ END IF
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
                CALL H1Basis_GetFaceDirection(Element % Type % ElementCode, &
-                                             1, &
-                                             Element % NodeIndexes, &
-                                             FaceDirection)
+                     1, &
+                     Element % NodeIndexes, &
+                     FaceDirection)
              END IF
            END IF
            IF (Element % PDefs % isEdge) THEN
-             CALL H1Basis_TriangleBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk, &
-                                          FaceDirection(1:3,1))
-             CALL H1Basis_dTriangleBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk, &
-                                          FaceDirection(1:3,1))
+             CALL H1Basis_TriangleBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp, &
+                   FaceDirection(1:3,1))
+             CALL H1Basis_dTriangleBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp, &
+                   FaceDirection(1:3,1))
            ELSE
-             CALL H1Basis_TriangleBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
-             CALL H1Basis_dTriangleBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+             CALL H1Basis_TriangleBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp)
+             CALL H1Basis_dTriangleBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp)
            END IF
          END IF
 
          ! QUADRILATERAL
        CASE (404)
          ! Compute nodal basis
-         CALL H1Basis_QuadNodal(ncl, uWrk, vWrk, nbp, BasisWrk)
+         CALL H1Basis_QuadNodal(ncl, uWrk, vWrk, nbmax, BasisWrk, nbp)
          ! Compute local first derivatives
-         CALL H1Basis_dQuadNodal(ncl, uWrk, vWrk, nbdxp, dBasisdxWrk)
+         CALL H1Basis_dQuadNodal(ncl, uWrk, vWrk, nbmax, dBasisdxWrk, nbdxp)
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
              CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
-                     Element, EdgeDegree, EdgeDirection)
+                   Element, EdgeDegree, EdgeDirection, EdgeMaxDegree)
            END IF
 
            ! Compute basis function values
-           CALL H1Basis_QuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbp, BasisWrk, &
+           IF (EdgeMaxDegree > 1) THEN
+             CALL H1Basis_QuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
                    EdgeDirection)
-           CALL H1Basis_dQuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+             CALL H1Basis_dQuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
                    EdgeDirection)
+           END IF
          END IF
 
          ! Element bubble functions
@@ -3768,310 +3814,388 @@ END IF
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
                CALL H1Basis_GetFaceDirection(Element % Type % ElementCode, &
-                                             1, &
-                                             Element % NodeIndexes, &
-                                             FaceDirection)
+                     1, &
+                     Element % NodeIndexes, &
+                     FaceDirection)
              END IF
            END IF
-           
+
            IF (Element % PDefs % isEdge) THEN
-             CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk, &
-                                      FaceDirection(1:4,1))
-             CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk, &
-                                       FaceDirection(1:4,1))
+             CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp, &
+                   FaceDirection(1:4,1))
+             CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp, &
+                   FaceDirection(1:4,1))
            ELSE
-             CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbp, BasisWrk)
-             CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbdxp, dBasisdxWrk)
+             CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp)
+             CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp)
            END IF
          END IF
 
          ! TETRAHEDRON
        CASE (504)
          ! Compute nodal basis
-         CALL H1Basis_TetraNodalP(ncl, uWrk, vWrk, wWrk, nbp, BasisWrk)
+         CALL H1Basis_TetraNodalP(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk, nbp)
          ! Compute local first derivatives
-         CALL H1Basis_dTetraNodalP(ncl, uWrk, vWrk, wWrk, nbdxp, dBasisdxWrk)
+         CALL H1Basis_dTetraNodalP(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk, nbdxp)
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
              ! Get polynomial degree of each edge
-             DO i=1,6
-               EdgeDegree(i) = CurrentModel % Solver % &
+             EdgeMaxDegree = 0
+             IF (CurrentModel % Solver % Mesh % MinEdgeDOFs == &
+                   CurrentModel % Solver % Mesh % MaxEdgeDOFs) THEN
+               EdgeMaxDegree = Element % BDOFs+1
+               EdgeDegree(1:Element % Type % NumberOfFaces) = EdgeMaxDegree
+             ELSE
+               DO i=1,6
+                 EdgeDegree(i) = CurrentModel % Solver % &
                        Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
-             END DO
+                 EdgeMaxDegree = MAX(EdgeDegree(i),EdgeMaxDegree)
+               END DO
+             END IF
 
              ! Tetrahedral directions are enforced by tetra element types
-             CALL H1Basis_GetTetraEdgeDirection(Element % PDefs % TetraType, EdgeDirection)
+             IF (EdgeMaxDegree > 1) THEN
+               CALL H1Basis_GetTetraEdgeDirection(Element % PDefs % TetraType, EdgeDirection)
+             END IF
            END IF
 
            ! Compute basis function values
-           CALL H1Basis_TetraEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbp, BasisWrk, &
+           IF (EdgeMaxDegree > 1) THEN
+             CALL H1Basis_TetraEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
                    EdgeDirection)
-           CALL H1Basis_dTetraEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+             CALL H1Basis_dTetraEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
                    EdgeDirection)
+           END IF
          END IF
-         
+
          IF (ASSOCIATED( Element % FaceIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! face directions
            IF (ll==1) THEN
              ! Get polynomial degree of each face
-             DO i=1,4
-               IF (CurrentModel % Solver % Mesh % &
+             FaceMaxDegree = 0
+             IF (CurrentModel % Solver % Mesh % MinFaceDOFs == &
+                   CurrentModel % Solver % Mesh % MaxFaceDOFs) THEN
+               FaceMaxDegree = CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(1) ) % PDefs % P
+               FaceDegree(1:Element % Type % NumberOfFaces) = FaceMaxDegree
+             ELSE
+               DO i=1,4
+                 IF (CurrentModel % Solver % Mesh % &
                        Faces( Element % FaceIndexes(i) ) % BDOFs /= 0) THEN
-                 FaceDegree(i) = CurrentModel % Solver % Mesh % &
+                   FaceDegree(i) = CurrentModel % Solver % Mesh % &
                          Faces( Element % FaceIndexes(i) ) % PDefs % P
-               ELSE
-                 FaceDegree(i) = 0
-               END IF
-             END DO
+                   FaceMaxDegree = MAX(FaceDegree(i), FaceMaxDegree)
+                 ELSE
+                   FaceDegree(i) = 0
+                 END IF
+               END DO
+             END IF
 
              ! Tetrahedral directions are enforced by tetra element types
-             CALL H1Basis_GetTetraFaceDirection(Element % PDefs % TetraType, FaceDirection)
+             IF (FaceMaxDegree > 1) THEN
+               CALL H1Basis_GetTetraFaceDirection(Element % PDefs % TetraType, FaceDirection)
+             END IF
            END IF
 
            ! Compute basis function values
-           CALL H1Basis_TetraFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbp, BasisWrk, &
+           IF (FaceMaxDegree > 1) THEN
+             CALL H1Basis_TetraFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
                    FaceDirection)
-           CALL H1Basis_dTetraFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbdxp, dBasisdxWrk, &
+             CALL H1Basis_dTetraFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
                    FaceDirection)
+           END IF
          END IF
 
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P based on bubble dofs
            P=NINT(1/3d0*(81*(Element % BDOFS) + &
-                   3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
-                   1d0/(81*(Element % BDOFS)+ &
-                   3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
+                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
+                 1d0/(81*(Element % BDOFS)+ &
+                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
 
-           CALL H1Basis_TetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
-           CALL H1Basis_dTetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_TetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
+           CALL H1Basis_dTetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
          END IF
 
          ! WEDGE
        CASE (706)
          ! Compute nodal basis
-         CALL H1Basis_WedgeNodalP(ncl, uWrk, vWrk, wWrk, nbp, BasisWrk)
+         CALL H1Basis_WedgeNodalP(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk, nbp)
          ! Compute local first derivatives
-         CALL H1Basis_dWedgeNodalP(ncl, uWrk, vWrk, wWrk, nbdxp, dBasisdxWrk)
-         
+         CALL H1Basis_dWedgeNodalP(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk, nbdxp)
+
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
              CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
-                     Element, EdgeDegree, EdgeDirection)
+                   Element, EdgeDegree, EdgeDirection, EdgeMaxDegree)
            END IF
 
            ! Compute basis function values
-           CALL H1Basis_WedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbp, BasisWrk, &
+           IF (EdgeMaxDegree > 1) THEN
+             CALL H1Basis_WedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
                    EdgeDirection)
-           CALL H1Basis_dWedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+             CALL H1Basis_dWedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
                    EdgeDirection)
+           END IF
          END IF
-         
+
          IF (ASSOCIATED( Element % FaceIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! face directions
            IF (ll==1) THEN
              CALL GetElementMeshFaceInfo(CurrentModel % Solver % Mesh, &
-                     Element, FaceDegree, FaceDirection)
+                   Element, FaceDegree, FaceDirection, FaceMaxDegree)
            END IF
 
            ! Compute basis function values
-           CALL H1Basis_WedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbp, BasisWrk, &
+           IF (FaceMaxDegree > 1) THEN
+             CALL H1Basis_WedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
                    FaceDirection)
-           CALL H1Basis_dWedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbdxp, dBasisdxWrk, &
+             CALL H1Basis_dWedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
                    FaceDirection)
+           END IF
          END IF
 
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
            P=NINT(1/3d0*(81*(Element % BDOFS) + &
-                   3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
-                   1d0/(81*(Element % BDOFS)+ &
-                   3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
+                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
+                 1d0/(81*(Element % BDOFS)+ &
+                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
 
-           CALL H1Basis_WedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
-           CALL H1Basis_dWedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_WedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
+           CALL H1Basis_dWedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
          END IF
 
          ! HEXAHEDRON
        CASE (808)
          ! Compute local basis
-         CALL H1Basis_BrickNodal(ncl, uWrk, vWrk, wWrk, nbp, BasisWrk)
+         CALL H1Basis_BrickNodal(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk, nbp)
          ! Compute local first derivatives
-         CALL H1Basis_dBrickNodal(ncl, uWrk, vWrk, wWrk, nbdxp, dBasisdxWrk)
+         CALL H1Basis_dBrickNodal(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk, nbdxp)
 
          IF (ASSOCIATED( Element % EdgeIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
              CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
-                     Element, EdgeDegree, EdgeDirection)
+                   Element, EdgeDegree, EdgeDirection, EdgeMaxDegree)
            END IF
 
            ! Compute basis function values
-           CALL H1Basis_BrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbp, BasisWrk, &
+           IF (EdgeMaxDegree > 1) THEN
+             CALL H1Basis_BrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
                    EdgeDirection)
-           CALL H1Basis_dBrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbdxp, dBasisdxWrk, &
+             CALL H1Basis_dBrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
                    EdgeDirection)
+           END IF
          END IF
-         
+
          IF (ASSOCIATED( Element % FaceIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! face directions
            IF (ll==1) THEN
              CALL GetElementMeshFaceInfo(CurrentModel % Solver % Mesh, &
-                     Element, FaceDegree, FaceDirection)
+                   Element, FaceDegree, FaceDirection, FaceMaxDegree)
            END IF
-           
+
            ! Compute basis function values
-           CALL H1Basis_BrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbp, BasisWrk, &
+           IF (FaceMaxDegree > 1) THEN
+             CALL H1Basis_BrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
                    FaceDirection)
-           CALL H1Basis_dBrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbdxp, dBasisdxWrk, &
+             CALL H1Basis_dBrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
                    FaceDirection)
+           END IF
          END IF
 
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
            P=NINT(1/3d0*(81*Element % BDOFS + &
-                   3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
-                   1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
+                 3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
+                 1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
 
-           CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbp, BasisWrk)
-           CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbdxp, dBasisdxWrk)
+           CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
+           CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
          END IF
 
        CASE DEFAULT
          WRITE( Message, '(a,i4,a)' ) 'Vectorized basis for element: ', &
-                 Element % TYPE % ElementCode, ' not implemented.'
+               Element % TYPE % ElementCode, ' not implemented.'
          CALL Error( 'ElementInfoVec', Message )
          CALL Fatal( 'ElementInfoVec', 'ElementInfoVec is still does not include pyramids.' )
-       END SELECT 
-       
+       END SELECT
+
        ! Copy basis function values to global array
        DO j=1,nbp
-         !$OMP SIMD
-         DO i=ll,lln
-           Basis(i,j)=BasisWrk(i-ll+1,j)
+         DO i=1,ncl
+           Basis(i+ll-1,j)=BasisWrk(i,j)
          END DO
        END DO
 
        !--------------------------------------------------------------
        ! Element (contravariant) metric and square root of determinant
        !--------------------------------------------------------------
-       elem = ElementMetricVec( nbp, Element, Nodes, ncl, DetJWrk, dBasisdxWrk, LtoGMapsWrk )
+       elem = ElementMetricVec( Element, Nodes, ncl, nbp, DetJWrk, &
+             nbmax, dBasisdxWrk, LtoGMapsWrk )
        IF (.NOT. elem) THEN
          retval = .FALSE.
          RETURN
        END IF
-       
+
        !$OMP SIMD
-       DO i=ll,lln
-         DetJ(i)=DetJWrk(i-ll+1)
+       DO i=1,ncl
+         DetJ(i+ll-1)=DetJWrk(i)
        END DO
 
        ! Get global basis functions
        !--------------------------------------------------------------
        ! First derivatives
        IF (PRESENT(dBasisdx)) THEN
-         !DIR$ LOOP COUNT MAX=3
-         DO j=1,cdim
-           DO i=1,nbp
-             SELECT CASE (dim)
-             CASE(1)
-               !$OMP SIMD
-               DO l=ll,lln
-                 ! Map local basis function to global
-                 dBasisdx(l,i,j) = dBasisdxWrk(l-ll+1,i,1)*LtoGMapsWrk(l-ll+1,j,1)
-               END DO
-               !$OMP END SIMD
-             CASE(2)
-               !$OMP SIMD
-               DO l=ll,lln
-                 ! Map local basis function to global
-                 dBasisdx(l,i,j) = dBasisdxWrk(l-ll+1,i,1)*LtoGMapsWrk(l-ll+1,j,1) +&
-                         dBasisdxWrk(l-ll+1,i,2)*LtoGMapsWrk(l-ll+1,j,2)
-               END DO
-               !$OMP END SIMD
-             CASE(3)
-               !$OMP SIMD
-               DO l=ll,lln
-                 ! Map local basis function to global
-                 dBasisdx(l,i,j) = dBasisdxWrk(l-ll+1,i,1)*LtoGMapsWrk(l-ll+1,j,1) +&
-                         dBasisdxWrk(l-ll+1,i,2)*LtoGMapsWrk(l-ll+1,j,2) +&
-                         dBasisdxWrk(l-ll+1,i,3)*LtoGMapsWrk(l-ll+1,j,3)
-               END DO
-               !$OMP END SIMD
-             END SELECT
-           END DO
-         END DO
+!DIR$ FORCEINLINE
+         CALL ElementInfoVec_ElementBasisToGlobal(ncl, nbp, dBasisdxWrk, dim, cdim, LtoGMapsWrk, ll, dBasisdx)
        END IF
-
      END DO ! Block over Gauss points
-
-   CONTAINS
-
-     SUBROUTINE GetElementMeshEdgeInfo(Mesh, Element, EdgeDegree, EdgeDirection)
+  CONTAINS
+   
+     SUBROUTINE GetElementMeshEdgeInfo(Mesh, Element, EdgeDegree, EdgeDirection, EdgeMaxDegree)
        IMPLICIT NONE
        
        TYPE(Mesh_t), INTENT(IN) :: Mesh
        TYPE(Element_t), INTENT(IN) :: Element
        INTEGER, INTENT(OUT) :: EdgeDegree(H1Basis_MaxPElementEdges), &
                EdgeDirection(H1Basis_MaxPElementEdgeNodes,H1Basis_MaxPElementEdges)
+       INTEGER, INTENT(OUT) :: EdgeMaxDegree
        INTEGER :: i
 
-       ! Get polynomial degree of each edge
+       EdgeMaxDegree = 0
+       IF (Mesh % MinEdgeDOFs == Mesh % MaxEdgeDOFs) THEN
+          EdgeDegree(1:Element % Type % NumberOfEdges) = Mesh % MaxEdgeDOFs + 1
+          EdgeMaxDegree = Mesh % MaxEdgeDOFs + 1
+       ELSE
+       ! Get polynomial degree of each edge separately
 !DIR$ LOOP COUNT MAX=12
-       DO i=1,Element % Type % NumberOfEdges
-         EdgeDegree(i) = CurrentModel % Solver % &
-                 Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
-       END DO
-       
-       ! Get edge directions
-       CALL H1Basis_GetEdgeDirection(Element % Type % ElementCode, &
-                                     Element % Type % NumberOfEdges, &
-                                     Element % NodeIndexes, &
-                                     EdgeDirection)
+          DO i=1,Element % Type % NumberOfEdges
+             EdgeDegree(i) = Mesh % Edges( Element % EdgeIndexes(i) ) % BDOFs + 1
+             EdgeMaxDegree = MAX(EdgeDegree(i), EdgeMaxDegree)
+          END DO
+       END IF
+
+       ! Get edge directions if needed
+       IF (EdgeMaxDegree > 1) THEN
+         CALL H1Basis_GetEdgeDirection(Element % Type % ElementCode, &
+                                       Element % Type % NumberOfEdges, &
+                                       Element % NodeIndexes, &
+                                       EdgeDirection)
+       END IF
      END SUBROUTINE GetElementMeshEdgeInfo
      
-     SUBROUTINE GetElementMeshFaceInfo(Mesh, Element, FaceDegree, FaceDirection)
+     SUBROUTINE GetElementMeshFaceInfo(Mesh, Element, FaceDegree, FaceDirection, FaceMaxDegree)
        IMPLICIT NONE
        
        TYPE(Mesh_t), INTENT(IN) :: Mesh
        TYPE(Element_t), INTENT(IN) :: Element
        INTEGER, INTENT(OUT) :: FaceDegree(H1Basis_MaxPElementFaces), &
                FaceDirection(H1Basis_MaxPElementFaceNodes,H1Basis_MaxPElementFaces)
+       INTEGER, INTENT(OUT) :: FaceMaxDegree
        INTEGER :: i
 
        ! Get polynomial degree of each face
+       FaceMaxDegree = 0
+       IF (Mesh % MinFaceDOFs == Mesh % MaxFaceDOFs) THEN
+          FaceMaxDegree = Mesh % Faces( Element % FaceIndexes(1) ) % PDefs % P
+          FaceDegree(1:Element % Type % NumberOfFaces) = FaceMaxDegree
+       ELSE
 !DIR$ LOOP COUNT MAX=6
-       DO i=1,Element % Type % NumberOfFaces
-         IF (Mesh % Faces( Element % FaceIndexes(i) ) % BDOFs /= 0) THEN
-           FaceDegree(i) = CurrentModel % Solver % Mesh % &
-                   Faces( Element % FaceIndexes(i) ) % PDefs % P
-         ELSE
-           FaceDegree(i) = 0
-         END IF
-       END DO
+          DO i=1,Element % Type % NumberOfFaces
+             IF (Mesh % Faces( Element % FaceIndexes(i) ) % BDOFs /= 0) THEN
+                FaceDegree(i) = Mesh % Faces( Element % FaceIndexes(i) ) % PDefs % P
+                FaceMaxDegree = MAX(FaceDegree(i), FaceMaxDegree)
+             ELSE
+                FaceDegree(i) = 0
+             END IF
+          END DO
+       END IF
 
        ! Get face directions
-       CALL H1Basis_GetFaceDirection(Element % Type % ElementCode, &
-                                     Element % Type % NumberOfFaces, &
-                                     Element % NodeIndexes, &
-                                     FaceDirection)
-     END SUBROUTINE GetElementMeshFaceInfo
-
+       IF (FaceMaxDegree > 1) THEN
+         CALL H1Basis_GetFaceDirection(Element % Type % ElementCode, &
+                                       Element % Type % NumberOfFaces, &
+                                       Element % NodeIndexes, &
+                                       FaceDirection)
+       END IF
+     END SUBROUTINE GetElementMeshFaceInfo     
 !------------------------------------------------------------------------------
-   END FUNCTION ElementInfoVec
+   END FUNCTION ElementInfoVec_ComputePElementBasis
 !------------------------------------------------------------------------------
+   
+   SUBROUTINE ElementInfoVec_ElementBasisToGlobal(npts, nbasis, dLBasisdx, dim, cdim, LtoGMap, offset, dBasisdx)
+     IMPLICIT NONE
 
+     INTEGER, INTENT(IN) :: npts
+     INTEGER, INTENT(IN) :: nbasis
+     REAL(KIND=dp), INTENT(IN) :: dLBasisdx(VECTOR_BLOCK_LENGTH,nbasis,3)
+     INTEGER, INTENT(IN) :: dim
+     INTEGER, INTENT(IN) :: cdim
+     REAL(KIND=dp), INTENT(IN) :: LtoGMap(VECTOR_BLOCK_LENGTH,3,3)
+     INTEGER, INTENT(IN) :: offset
+     REAL(KIND=dp) CONTIG :: dBasisdx(:,:,:)
+
+     INTEGER :: i, j, l
+!DIR$ ASSUME_ALIGNED dLBasisdx:64, LtoGMap:64
+
+     ! Map local basis function to global
+     SELECT CASE (dim)
+     CASE(1)
+       !DIR$ LOOP COUNT MAX=3
+       DO j=1,cdim
+         DO i=1,nbasis
+           !$OMP SIMD
+           DO l=1,npts
+             dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)
+           END DO
+           !$OMP END SIMD
+         END DO
+       END DO
+     CASE(2)
+       !DIR$ LOOP COUNT MAX=3
+       DO j=1,cdim
+         DO i=1,nbasis
+           !$OMP SIMD
+           DO l=1,npts
+             ! Map local basis function to global
+             dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
+                   dLBasisdx(l,i,2)*LtoGMap(l,j,2)
+           END DO
+           !$OMP END SIMD
+         END DO
+       END DO
+     CASE(3)
+       !DIR$ LOOP COUNT MAX=3
+       DO j=1,cdim
+         DO i=1,nbasis
+           !$OMP SIMD
+           DO l=1,npts
+             ! Map local basis function to global
+             dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
+                   dLBasisdx(l,i,2)*LtoGMap(l,j,2)+ &
+                   dLBasisdx(l,i,3)*LtoGMap(l,j,3)
+           END DO
+           !$OMP END SIMD
+         END DO
+       END DO
+     END SELECT
+
+   END SUBROUTINE ElementInfoVec_ElementBasisToGlobal
+
+   
 !------------------------------------------------------------------------------
 !>  Returns just the size of the element at its center.
 !>  providing a more economical way than calling ElementInfo. 
@@ -5027,6 +5151,7 @@ END IF
        stat = .TRUE.
        Basis = 0.0d0
        EdgeBasis = 0.0d0
+       WorkBasis = 0.0d0
        CurlBasis = 0.0d0
        LG = 0.0d0
        !--------------------------------------------------------------------------------------------
@@ -9584,7 +9709,8 @@ END IF
 
      REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s
      REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
-
+     INTEGER :: GeomId
+     
      INTEGER :: cdim,dim,i,j,k,n
 !------------------------------------------------------------------------------
      success = .TRUE.
@@ -9685,8 +9811,14 @@ END IF
 100  Success = .FALSE.
      WRITE( Message,'(A,I0,A,I0)') 'Degenerate ',dim,'D element: ',Elm % ElementIndex
      CALL Error( 'ElementMetric', Message )
-     WRITE( Message,'(A,ES12.3)') 'DetG:',DetG
+     
+     IF( ASSOCIATED( Elm % BoundaryInfo ) ) THEN
+       WRITE( Message,'(A,I0,A,ES12.3)') 'Boundary Id: ',Elm % BoundaryInfo % Constraint,' DetG:',DetG
+     ELSE
+       WRITE( Message,'(A,I0,A,ES12.3)') 'Body Id: ',Elm % BodyId,' DetG:',DetG
+     END IF
      CALL Info( 'ElementMetric', Message, Level=3 )
+
      DO i=1,n
        WRITE( Message,'(A,I0,A,3ES12.3)') 'Node: ',i,' Coord:',x(i),y(i),z(i)       
        CALL Info( 'ElementMetric', Message, Level=3 )
@@ -9706,30 +9838,32 @@ END IF
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   FUNCTION ElementMetricVec(ndof, Elm, Nodes, nc, DetJ, dLBasisdx, LtoGMap) RESULT(AllSuccess)
+   FUNCTION ElementMetricVec( Elm, Nodes, nc, ndof, DetJ, nbmax, dLBasisdx, LtoGMap) RESULT(AllSuccess)
 !------------------------------------------------------------------------------
-     INTEGER :: ndof                        !< Number of active nodes in element
-     TYPE(Element_t)  :: Elm                !< Element structure
-     TYPE(Nodes_t)    :: Nodes              !< element nodal coordinates
-     INTEGER :: nc                          !< Number of points to map
-     REAL(KIND=dp) CONTIG :: DetJ(:)               !< SQRT of determinant of element coordinate metric at each point
-     REAL(KIND=dp) CONTIG :: dLBasisdx(:,:,:)      !< Derivatives of element basis function with 
-     !<  respect to local coordinates at each point
-     REAL(KIND=dp) CONTIG :: LtoGMap(:,:,:)        !< Mapping between local and global coordinates
+     TYPE(Element_t)  :: Elm                                 !< Element structure
+     TYPE(Nodes_t)    :: Nodes                               !< element nodal coordinates
+     INTEGER, INTENT(IN) :: nc                               !< Number of points to map
+     INTEGER :: ndof                                         !< Number of active nodes in element
+     REAL(KIND=dp) :: DetJ(VECTOR_BLOCK_LENGTH)              !< SQRT of determinant of element coordinate metric at each point
+     INTEGER, INTENT(IN) :: nbmax                            !< Maximum total number of basis functions in local basis
+     REAL(KIND=dp) :: dLBasisdx(VECTOR_BLOCK_LENGTH,nbmax,3) !< Derivatives of element basis function with 
+                                                             !<  respect to local coordinates at each point
+     REAL(KIND=dp) :: LtoGMap(VECTOR_BLOCK_LENGTH,3,3)       !< Mapping between local and global coordinates
      LOGICAL :: AllSuccess                  !< Returns .FALSE. if some point in element is degenerate
 !------------------------------------------------------------------------------
 !       Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: dx(nc,3,3)
-     REAL(KIND=dp) :: Metric(nc,6), G(nc,6) ! Symmetric Metric(nc,3,3) and G(nc,3,3)
-!DIR$ ATTRIBUTES ALIGN:64::Metric
-!DIR$ ATTRIBUTES ALIGN:64::dx
-!DIR$ ATTRIBUTES ALIGN:64::G
+     REAL(KIND=dp) :: dx(VECTOR_BLOCK_LENGTH,3,3)
+     REAL(KIND=dp) :: Metric(VECTOR_BLOCK_LENGTH,6), &
+             G(VECTOR_BLOCK_LENGTH,6)       ! Symmetric Metric(nc,3,3) and G(nc,3,3)
 
      REAL(KIND=dp) :: s
      INTEGER :: cdim,dim,i,j,k,l,n,ip, jj, kk
      INTEGER :: ldbasis, ldxyz, utind
-!DIR$ ASSUME_ALIGNED dlBasisdx:64, LtoGMap:64, DetJ:64
+!DIR$ ATTRIBUTES ALIGN:64::Metric
+!DIR$ ATTRIBUTES ALIGN:64::dx
+!DIR$ ATTRIBUTES ALIGN:64::G
+!DIR$ ASSUME_ALIGNED dLBasisdx:64, LtoGMap:64, DetJ:64
      !------------------------------------------------------------------------------
      AllSuccess = .TRUE.
 
@@ -9749,39 +9883,60 @@ END IF
      !------------------------------------------------------------------------------
      !       Partial derivatives of global coordinates with respect to local coordinates
      !------------------------------------------------------------------------------
-     DO i=1,dim
-       CALL DGEMM('N','N',nc, 3, n, &
-               REAL(1,dp), dLbasisdx(1,1,i), ldbasis, &
-               Nodes % xyz, ldxyz, REAL(0, dp), dx(1,1,i), nc)
-     END DO
+     ! Avoid DGEMM calls for nc small
+     IF (nc < VECTOR_SMALL_THRESH) THEN
+       DO l=1,dim
+         DO j=1,3
+           dx(1:nc,j,l)=REAL(0,dp)
+           DO k=1,n
+!DIR$ UNROLL
+             DO i=1,nc
+               dx(i,j,l)=dx(i,j,l)+dLBasisdx(i,k,l)*Nodes % xyz(k,j)
+             END DO
+           END DO
+         END DO
+       END DO
+     ELSE
+       DO i=1,dim
+         CALL DGEMM('N','N',nc, 3, n, &
+                 REAL(1,dp), dLbasisdx(1,1,i), ldbasis, &
+                 Nodes % xyz, ldxyz, REAL(0, dp), dx(1,1,i), VECTOR_BLOCK_LENGTH)
+       END DO
+     END IF
      !------------------------------------------------------------------------------
      !       Compute the covariant metric tensor of the element coordinate system (symmetric)
      !------------------------------------------------------------------------------
-     ! G=REAL(0,dp) ! Removed as k loop broken into two pieces
+     ! Linearized upper triangular indices for accesses to G
+     ! | (1,1) (1,2) (1,3) | = | 1 2 4 |
+     ! |       (2,2) (2,3) |   |   3 5 |
+     ! |             (3,3) |   |     6 |
+     ! G is symmetric, compute only the upper triangular part of G=dx^Tdx
 !DIR$ LOOP COUNT MAX=3
      DO j=1,dim
-       ! G is symmetric, compute only the upper triangular part
 !DIR$ LOOP COUNT MAX=3
        DO i=1,j
 !DIR$ INLINE
          utind = GetSymmetricIndex(i,j)
-         ! Linearized upper triangular indices
-         ! | (1,1) (1,2) (1,3) | = | 1 2 4 |
-         ! |       (2,2) (2,3) |   |   3 5 |
-         ! |             (3,3) |   |     6 |
-
-         !$OMP SIMD
-         DO l=1,nc
-           G(l,utind)=dx(l,1,i)*dx(l,1,j) ! G(l,utind)=0
-         END DO
-         !$OMP END SIMD
-         DO k=2,cdim
+         SELECT CASE (cdim)
+         CASE(1)
            !$OMP SIMD
            DO l=1,nc
-             G(l,utind)=G(l,utind)+dx(l,k,i)*dx(l,k,j)
+             G(l,utind)=dx(l,1,i)*dx(l,1,j)
            END DO
            !$OMP END SIMD
-         END DO
+         CASE(2)
+           !$OMP SIMD
+           DO l=1,nc
+             G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)
+           END DO
+           !$OMP END SIMD
+         CASE(3)
+           !$OMP SIMD
+           DO l=1,nc
+             G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)+dx(l,3,i)*dx(l,3,j)
+           END DO
+           !$OMP END SIMD
+         END SELECT
        END DO
      END DO
 
@@ -9912,38 +10067,38 @@ END IF
      END SELECT
 
      IF (AllSuccess) THEN
-       ! Construct mapping
-!DIR$ LOOP COUNT MAX=3
-       DO j=1,dim
+       SELECT CASE(dim)
+       CASE(1)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           LtoGMap(1:nc,i,j) = REAL(0,dp)
-           ! DO l=1,nc
-           !   LtoGMap(l,i,j) = LtoGMap(l,i,j) + &
-           !           dx(l,i,k)*Metric(l,k,j)
-           ! END DO
-
-           ! Metric is symmetric, k<=j
-           DO k=1,j
-             jj = j*(j-1)/2
-             !$OMP SIMD
-             DO l=1,nc
-               LtoGMap(l,i,j) = LtoGMap(l,i,j) + dx(l,i,k)*Metric(l,jj+k)
-             END DO
-             !$OMP END SIMD
+           !$OMP SIMD
+           DO l=1,nc
+             LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1)
            END DO
-           ! Metric is symmetric, k>j (reverse index)
-           DO k=j+1,dim
-             kk = k*(k-1)/2
-             !$OMP SIMD
-             DO l=1,nc
-               LtoGMap(l,i,j) = LtoGMap(l,i,j) + dx(l,i,k)*Metric(l,kk+j)
-             END DO
-             !$OMP END SIMD
-           END DO
+           !$OMP END SIMD
          END DO
-       END DO
-
+       CASE(2)
+!DIR$ LOOP COUNT MAX=3
+         DO i=1,cdim
+           !$OMP SIMD
+           DO l=1,nc
+             LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2)
+             LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3)
+           END DO
+           !$OMP END SIMD
+         END DO
+       CASE(3)
+!DIR$ LOOP COUNT MAX=3
+         DO i=1,cdim
+           !$OMP SIMD
+           DO l=1,nc
+             LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2) + dx(l,i,3)*Metric(l,4)
+             LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3) + dx(l,i,3)*Metric(l,5)
+             LtoGMap(l,i,3) = dx(l,i,1)*Metric(l,4) + dx(l,i,2)*Metric(l,5) + dx(l,i,3)*Metric(l,6)
+           END DO
+           !$OMP END SIMD
+         END DO
+       END SELECT
      ELSE
 
        ! Degenerate element!
@@ -9964,10 +10119,11 @@ END IF
 
    CONTAINS
 
-     PURE FUNCTION GetSymmetricIndex(i,j) RESULT(utind)
+     FUNCTION GetSymmetricIndex(i,j) RESULT(utind)
        IMPLICIT NONE
        INTEGER, INTENT(IN) :: i, j
        INTEGER :: utind
+       !$OMP DECLARE SIMD(GetSymmetricIndex) UNIFORM(j) LINEAR_REF(i) NOTINBRANCH
 
        IF (i>j) THEN
          utind = i*(i-1)/2+j
@@ -11567,7 +11723,7 @@ END FUNCTION PointFaceDistance
               delta(1) = r
               delta(2) = s
               delta(3) = t
-              delta = MATMUL( TRANSPOSE(J), delta )
+              delta(1:2) = MATMUL( TRANSPOSE(J(1:3,1:2)), delta )
               r = delta(1)
               s = delta(2)
 

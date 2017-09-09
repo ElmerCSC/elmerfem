@@ -912,6 +912,9 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     LinIter = ListGetInteger( Params,'Linear System Max Iterations',GotIt)
     LinTol = ListGetConstReal( Params,'Linear System Convergence Tolerance',GotIt)
 
+    TotNorm = 0.0_dp
+    MaxChange = 0.0_dp
+    
     DO iter = 1, LinIter
       
       ! In block Jacobi the r.h.s. is not updated during the iteration cycle

@@ -819,11 +819,16 @@ variable % owner = ParEnv % PEs-1
     CALL matc_get_array('C.'//TRIM(i2s(CId))//'.A'//CHAR(0),Circuit % A,n,n)
     CALL matc_get_array('C.'//TRIM(i2s(CId))//'.B'//CHAR(0),Circuit % B,n,n)
     
-    ! Complex multiplier matrix is used for:
-    ! B = times(M,B), where B times is the element-wise product
-    ! ---------------------------------------------------------
-    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mre'//CHAR(0),Circuit % Mre,n,n)
-    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mim'//CHAR(0),Circuit % Mim,n,n)
+    IF (Circuit % Harmonic) THEN
+      ! Complex multiplier matrix is used for:
+      ! B = times(M,B), where B times is the element-wise product
+      ! ---------------------------------------------------------
+      CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mre'//CHAR(0),Circuit % Mre,n,n)
+      CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mim'//CHAR(0),Circuit % Mim,n,n)
+    ELSE
+      Circuit % Mre = 0._dp
+      Circuit % Mim = 0._dp
+    END IF
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadCoefficientMatrices

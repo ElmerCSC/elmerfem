@@ -101,7 +101,7 @@ CONTAINS
 !  compare equality of two keys and provide an index to the bucket array
 !  given key and array size respectively (these are the only place where
 !  any reference to the format of the keys is made). If given as NULL
-!  pointers, the default string comparision and hash functions routines
+!  pointers, the default string comparison and hash functions routines
 !  respectively are implied. )
 ! 
 !-----------------------------------------------------------------------
@@ -152,7 +152,7 @@ CONTAINS
     Hash % MaxAvgEntries = MaxAvgEntries;
 
 !   /*
-!   *  the key comparision routine
+!   *  the key comparison routine
 !    */
 !   if ( EqualKeys )
 !     hash->EqualKeys = EqualKeys;

@@ -124,7 +124,7 @@
      CALL DefaultInitialize()
 
      !
-     ! These keywords enable that the use of a second paramter set for the
+     ! These keywords enable that the use of a second parameter set for the
      ! same elements where the material properties are given in an additional
      ! body. May be used to model microphone and its backplate, for example:
      ! --------------------------------------------------------------------

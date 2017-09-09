@@ -309,7 +309,7 @@ CONTAINS
     END IF
       
     Var => VariableGet( Model % Variables, VarName )
-    IF(.NOT. ASSOCIATED( Var ) ) THEN
+    IF( .NOT. ASSOCIATED( Var ) ) THEN
       Var => VariableGet( Model % Variables, TRIM(VarName)//' 1' )
       IF( ASSOCIATED( Var ) ) THEN
         DO j=2,99
@@ -327,6 +327,8 @@ CONTAINS
 
     IF( PRESENT( NoComponents ) ) NoComponents = k
 
+    CALL Info('VariableGetN','Variable: '//TRIM(VarName)//': '//TRIM(I2S(k)),Level=32)
+ 
   END FUNCTION VariableGetN
 
 
@@ -628,11 +630,16 @@ CONTAINS
       Var => VariableGetN( ivar, comps ) 
       IF( comps >= 2 ) THEN
         Var2 => VariableGetN( ivar, component = 2 ) 
+      ELSE
+        Var2 => NULL()
       END IF
       IF( comps >= 3 ) THEN
         Var3 => VariableGetN( ivar, component = 3 ) 
+      ELSE
+        Var3 => NULL()
       END IF
-        
+
+      
       IF( PRESENT( LocalCoord ) ) THEN
         
         CALL GetElementNodes(Nodes, Element) 
@@ -734,11 +741,11 @@ CONTAINS
               END DO
 
               IF( comps >= 2 ) THEN
-                Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
+                Values(No+2) = Values(No+2) + PtoBasis(k) * &
                     Var2 % Values(l)
               END IF
               IF( comps >= 3 ) THEN
-                Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
+                Values(No+3) = Values(No+3) + PtoBasis(k) * &
                     Var3 % Values(l)
               END IF
                 

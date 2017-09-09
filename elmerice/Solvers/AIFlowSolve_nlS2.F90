@@ -750,7 +750,7 @@ CONTAINS
            CALL INFO('AIFlowSolve', Message, Level = 20)
       ELSE
            IF ( (ASSOCIATED( FabricVariable )).AND.Isotropic ) Then
-              WRITE(Message,'(A)') 'Be carefull Isotropic is true &
+              WRITE(Message,'(A)') 'Be careful Isotropic is true &
                            & and Fabric is defined!'
               CALL INFO('AIFlowSolve', Message, Level = 1)
            END IF

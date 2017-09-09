@@ -71,27 +71,27 @@
 
      INTEGER, POINTER :: FlowPerm(:),KinPerm(:)
 
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter
+     INTEGER :: NSDOFs,NewtonIter,NonlinearIter,NoActive
      REAL(KIND=dp) :: NewtonTol, Clip, V2FCp
 
      REAL(KIND=dp), POINTER :: KEpsilon(:),KineticDissipation(:), &
-                   FlowSolution(:), ElectricCurrent(:), ForceVector(:)
+         FlowSolution(:), ElectricCurrent(:), ForceVector(:)
 
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
-       STIFF(:,:),LayerThickness(:), &
+         STIFF(:,:),LayerThickness(:), &
          LOAD(:,:),FORCE(:),U(:),V(:),W(:), &
-           Density(:),Viscosity(:),EffectiveVisc(:,:),Work(:),  &
-              TurbulentViscosity(:),LocalDissipation(:), &
-                 LocalKinEnergy(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
-                   KEC2(:),C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:),V2FCT(:)
+         Density(:),Viscosity(:),EffectiveVisc(:,:),Work(:),  &
+         TurbulentViscosity(:),LocalDissipation(:), &
+         LocalKinEnergy(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
+         KEC2(:),C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:),V2FCT(:)
 
      TYPE(ValueList_t), POINTER :: BC, Equation, Material
 
      SAVE U,V,W,MASS,STIFF,LOAD,FORCE, &
-       ElementNodes,LayerThickness,Density,&
+         ElementNodes,LayerThickness,Density,&
          AllocationsDone,Viscosity,LocalNodes,Work,TurbulentViscosity, &
-           LocalDissipation,LocalKinEnergy,KESigmaK,KESigmaE,KECmu,C0, &
-             SurfaceRoughness, TimeForce, KEC1, KEC2, EffectiveVisc, LocalV2, V2FCT
+         LocalDissipation,LocalKinEnergy,KESigmaK,KESigmaE,KECmu,C0, &
+         SurfaceRoughness, TimeForce, KEC1, KEC2, EffectiveVisc, LocalV2, V2FCT
 
      REAL(KIND=dp), POINTER :: SecInv(:)
      SAVE SecInv
@@ -208,11 +208,14 @@
 !------------------------------------------------------------------------------
        body_id = -1
        CALL StartAdvanceOutput('KESolver','Assembly' )
-       DO t=1,Solver % NumberOfActiveElements
+       
+       NoActive = GetNOFActive()
+       
+       DO t=1,NoActive
 
 !------------------------------------------------------------------------------
 
-         CALL AdvanceOutput(t,GetNOFActive())
+         CALL AdvanceOutput(t,NoActive)
 
 !------------------------------------------------------------------------------
 !        Check if this element belongs to a body where kinetic energy

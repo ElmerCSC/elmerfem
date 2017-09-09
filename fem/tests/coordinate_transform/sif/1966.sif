@@ -1,0 +1,178 @@
+! A simple testcase for testing DirectionSolver 
+! and CoordinateTransform.
+! Author: Eelis Takala, Trafotek Oy
+! Original date: October 2015
+! eelis.takala@trafotek.fi
+Check Keywords "Warn"
+INCLUDE sif/1966-circuits.definitions
+INCLUDE 1966/mesh.names
+
+Header 1
+   Mesh DB "." "1966"
+End
+
+Constants 1
+   Permittivity of Vacuum = 8.8542e-12
+End
+
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian 3D
+   Coordinate Mapping(3) = 1 2 3
+   Coordinate Scaling = 0.001
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   Output Intervals = 1
+End
+
+Solver 1
+   Exec Solver = Before All
+   Procedure = "DirectionSolver" "DirectionSolver"
+   Nonlinear System Max Iterations = 10
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 500
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction Alpha
+   Variable = Alpha
+End
+
+Solver 2
+   Exec Solver = Before All
+   Procedure = "DirectionSolver" "DirectionSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 500
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction Beta
+   Variable = Beta
+End
+
+Solver 3
+   Exec Solver = Before All
+   Equation = Transformation matrix
+   Procedure = "CoordinateTransform" "RotMSolver"
+   Variable = -nooutput Dummy
+   Optimize Bandwidth = False
+   Polar Decomposition Determinant Tolerance = Real 1.0e-9
+   Polar Decomposition Max Iterations = Integer 100
+   Exported Variable 1 = RotM E[RotM E:9]
+   Exported Variable 2 = Alpha Vector E[Alpha Vector E:3]
+   Exported Variable 3 = Beta Vector E[Beta Vector E:3]
+   Exported Variable 4 = Gamma Vector E[Gamma Vector E:3]
+   Discontinuous Galerkin = True
+End
+
+Solver 4
+   Exec Solver = never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 1966-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+
+Equation 1
+   Active Solvers(3) = 1 2 3
+End
+
+Equation 2
+   Active Solvers(1) = 4
+End
+
+
+Material 1
+   Name = perm1e1
+   Electric Conductivity = Real 0
+   Relative Permeability = Real 1e1
+End
+
+Material 2
+   Name = air
+   Electric Conductivity = Real 0
+   Relative Permeability = Real 1
+End
+
+Material 3
+   Name = aluminium
+   Relative Permeability = Real 1
+   rho1 = Real 0.113518
+   rho0 = Real -6.78964
+   Electric Conductivity(3) = 0 3.07e7 3.07e7
+End
+
+Body 1
+   Name = core
+   Target Bodies(1) = $ core
+   Equation = 2
+   Material = 1
+   Initial Condition = 1
+End
+
+Body 2
+   Name = air
+   Target Bodies(1) = $ air
+   Equation = 2
+   Material = 2
+   Initial Condition = 1
+End
+
+Body 3
+   Name = L2
+   Target Bodies(1) = $ L2
+   Equation = 1
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+   Alpha reference (3) = Real 1 0 0
+   Beta reference (3) = Real 0 1 0
+End
+
+Body 4
+   Name = L1
+   Target Bodies(1) = $ L1
+   Equation = 1 
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+   Alpha reference (3) = Real 1 0 0
+   Beta reference (3) = Real 0 1 0
+End
+
+Boundary Condition 1
+   Name = Alpha0
+   Target Boundaries(2) = $ L2_alpha0 L1_alpha0
+   Body 3: Alpha = Real 1
+   Body 4: Alpha = Real 0
+End
+
+Boundary Condition 2
+   Name = Alpha1
+   Target Boundaries(2) = $ L2_alpha1 L1_alpha1
+   Body 3: Alpha = Real 0
+   Body 4: Alpha = Real 1
+End
+
+Boundary Condition 3
+   Name = Beta1
+   Target Boundaries(2) = $ L2_beta1 L1_beta1
+   Body 3: Beta = Real 0
+   Body 4: Beta = Real 1
+End
+
+Boundary Condition 4
+   Name = Beta0
+   Target Boundaries(2) = $ L2_beta0 L1_beta0
+   Body 3: Beta = Real 1
+   Body 4: Beta = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 6.801575E-01  
+Solver 2 :: Reference Norm = Real 7.071068E-01  
+Solver 3 :: Reference Norm = Real 0.000000E+00  
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

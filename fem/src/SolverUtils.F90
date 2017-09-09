@@ -79,7 +79,6 @@ MODULE SolverUtils
    SAVE BoundaryReorder, NormalTangentialNOFNodes, BoundaryNormals, &
               BoundaryTangent1, BoundaryTangent2, NormalTangentialName
 
-
 CONTAINS
 
 !> Initialize matrix structure and vector to zero initial value.
@@ -652,6 +651,7 @@ CONTAINS
      LOGICAL :: NoPassiveElements = .FALSE.
      
      SAVE Passive, PrevPassName, NoPassiveElements
+     !$OMP THREADPRIVATE(Passive, PrevPassName, NoPassiveElements)
 !------------------------------------------------------------------------------
      IsPassive = .FALSE.
 
@@ -667,14 +667,18 @@ CONTAINS
        IF( NoPassiveElements ) RETURN       
      END IF
 
-
-     
-     IF ( PRESENT( UElement ) ) THEN
+     IF (PRESENT(UElement)) THEN
        Element => UElement
      ELSE
+#ifdef _OPENMP
+       IF (omp_in_parallel()) THEN
+         CALL Fatal('CheckPassiveElement', &
+                    'Need an element to update inside a threaded region')
+       END IF
+#endif
        Element => CurrentModel % CurrentElement
      END IF
-
+       
      body_id = Element % BodyId 
      IF ( body_id <= 0 )  RETURN   ! body_id == 0 for boundary elements
 
@@ -1177,9 +1181,9 @@ CONTAINS
    SUBROUTINE UpdateGlobalEquationsVec( Gmtr, Lmtr, Gvec, Lvec, n, &
            NDOFs, NodeIndexes, RotateNT, UElement, MCAssembly )
      TYPE(Matrix_t), POINTER :: Gmtr         !< The global matrix
-     REAL(KIND=dp) :: Lmtr(:,:)              !< Local matrix to be added to the global matrix.
-     REAL(KIND=dp) :: Gvec(:)                !< Element local force vector.
-     REAL(KIND=dp) :: Lvec(:)                !< The global RHS vector.
+     REAL(KIND=dp) CONTIG :: Lmtr(:,:)              !< Local matrix to be added to the global matrix.
+     REAL(KIND=dp) CONTIG :: Gvec(:)                !< Element local force vector.
+     REAL(KIND=dp) CONTIG :: Lvec(:)                !< The global RHS vector.
      INTEGER :: n                            !< Number of nodes.
      INTEGER :: NDOFs                        !< Number of degrees of free per node.
      INTEGER CONTIG :: NodeIndexes(:)               !< Element node to global node numbering mapping.
@@ -1195,7 +1199,7 @@ CONTAINS
 
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: Rotate
-     LOGICAL :: ColouredAssembly
+     LOGICAL :: ColouredAssembly, NeedMasking
 
      IF (PRESENT(UElement)) THEN
        Element => UElement
@@ -1220,28 +1224,35 @@ CONTAINS
      ! TODO: See that RotateMatrix is vectorized
      ! CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
      !                    Ind, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
-     IF (Rotate .AND. ndofs >= dim) THEN
+     IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
        CALL Fatal('UpdateGlobalEquationsVec', &
                'Normal or tangential boundary conditions not supported yet!')
      END IF
+
+     NeedMasking = .FALSE.
+     DO i=1,n
+       IF (NodeIndexes(i)<=0) THEN
+         NeedMasking = .TRUE.
+         EXIT
+       END IF
+     END DO
      
      IF ( ASSOCIATED( Gmtr ) ) THEN
        SELECT CASE( Gmtr % FORMAT )
        CASE( MATRIX_CRS )
-         CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr, ColouredAssembly)
+         CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr, ColouredAssembly, NeedMasking)
        CASE DEFAULT
          CALL Fatal('UpdateGlobalEquationsVec','Not implemented for given matrix type')
        END SELECT
      END IF
      
      ! Check for multicolored assembly
-     IF (ColouredAssembly) THEN 
-       IF (ANY(NodeIndexes<=0)) THEN
+     IF (ColouredAssembly) THEN
+       IF (NeedMasking) THEN
          ! Vector masking needed, no ATOMIC needed
+         !$OMP SIMD PRIVATE(j,k)
          DO i=1,n
            IF (NodeIndexes(i)>0) THEN
-!DIR$ LOOP COUNT MIN=1, AVG=3
-!DIR$ IVDEP
              DO j=1,NDOFs
                k = NDOFs*(NodeIndexes(i)-1) + j
                Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
@@ -1250,21 +1261,26 @@ CONTAINS
          END DO
        ELSE
          ! No vector masking needed, no ATOMIC needed
-         DO i=1,n
-!DIR$ LOOP COUNT MIN=1, AVG=3
-!DIR$ IVDEP
-           DO j=1,NDOFs
-             k = NDOFs*(NodeIndexes(i)-1) + j
-             Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+         IF (NDOFS>1) THEN
+           !$OMP SIMD PRIVATE(j,k)
+           DO i=1,n
+             DO j=1,NDOFs
+               k = NDOFs*(NodeIndexes(i)-1) + j
+               Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+             END DO
            END DO
-         END DO
+         ELSE
+           !$OMP SIMD
+           DO i=1,n
+             Gvec(NodeIndexes(i)) = Gvec(NodeIndexes(i)) + Lvec(i)
+           END DO
+         END IF
        END IF ! Vector masking
      ELSE
-       IF (ANY(NodeIndexes<=0)) THEN
+       IF (NeedMasking) THEN
          ! Vector masking needed, ATOMIC needed
          DO i=1,n
            IF (NodeIndexes(i)>0) THEN
-!DIR$ LOOP COUNT MIN=1, AVG=3
 !DIR$ IVDEP
              DO j=1,NDOFs
                k = NDOFs*(NodeIndexes(i)-1) + j
@@ -1276,7 +1292,6 @@ CONTAINS
        ELSE
          ! No vector masking needed, ATOMIC needed
          DO i=1,n
-!DIR$ LOOP COUNT MIN=1, AVG=3
 !DIR$ IVDEP
            DO j=1,NDOFs
              k = NDOFs*(NodeIndexes(i)-1) + j
@@ -2246,7 +2261,7 @@ CONTAINS
        !------------------------------------------------------------------
        CALL NormalContactSet()
 
-       ! i) If requested ensure a minumum number of contact nodes
+       ! i) If requested ensure a minimum number of contact nodes
        !-------------------------------------------------------------------
        LimitedMin = ListGetInteger( BC,'Contact Active Set Minimum',Found)
        IF( Found ) CALL IncreaseContactSet( LimitedMin )
@@ -3287,11 +3302,15 @@ CONTAINS
          END IF
        END DO
 
-       IF( MaxDist - MinDist >= 0.0_dp ) THEN
-         PRINT *,'NormalContactSet Dist:',MinDist,MaxDist
+       IF ( -HUGE(MaxDist) /= MaxDist ) THEN
+          IF( MaxDist - MinDist >= 0.0_dp ) THEN
+             PRINT *,'NormalContactSet Dist:',MinDist,MaxDist
+          END IF
        END IF
-       IF( MaxLoad - MinLoad >= 0.0_dp ) THEN
-         PRINT *,'NormalContactSet Load:',MinLoad,MaxLoad
+       IF ( -HUGE(MaxLoad) /= MaxLoad) THEN
+          IF( MaxLoad - MinLoad >= 0.0_dp ) THEN
+             PRINT *,'NormalContactSet Load:',MinLoad,MaxLoad
+          END IF
        END IF
 
        IF(added > 0) THEN
@@ -4874,7 +4893,8 @@ CONTAINS
 
     IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
 
-    CALL Info('SetDirichletBoundaries','Number of dofs set: '//TRIM(I2S(DirCount)))
+    CALL Info('SetDirichletBoundaries','Number of dofs set: '&
+        //TRIM(I2S(DirCount)),Level=12)
 
     
 !------------------------------------------------------------------------------
@@ -7725,6 +7745,7 @@ END FUNCTION SearchNodeL
     END IF
  
     n = nin
+    totn = 0
 
     IF( ParEnv % PEs > 1 ) THEN
       ConsistentNorm = ListGetLogical(Solver % Values,'Nonlinear System Consistent Norm',Stat)
@@ -7847,20 +7868,31 @@ END FUNCTION SearchNodeL
         Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
       END SELECT
       
-    ELSE
-      totn = NINT( ParallelReduction(1._dp*n) )
-      nscale = 1.0_dp * totn
-
-      SELECT CASE(NormDim)
-      CASE(0)
-        Norm = ParallelReduction(MAXVAL(ABS(x(1:n))),2)
-      CASE(1)
-        Norm = ParallelReduction(SUM(ABS(x(1:n))))/nscale
-      CASE(2)
-        Norm = SQRT(ParallelReduction(SUM(x(1:n)**2))/nscale)
-      CASE DEFAULT
-        Norm = (ParallelReduction(SUM(x(1:n)**NormDim))/nscale)**(1.0d0/NormDim)
-      END SELECT
+    ELSE      
+      val = ParallelReduction(1.0_dp*n)
+      totn = NINT( val )
+      IF (totn == 0) THEN
+         CALL Warn('ComputeNorm','Requested norm of a variable with no Dofs')
+         Norm = 0.0_dp
+      ELSE
+         nscale = 1.0_dp * totn
+         
+         val = 0.0_dp
+         SELECT CASE(NormDim)
+         CASE(0)
+            IF (n>0) val = MAXVAL(ABS(x(1:n)))
+            Norm = ParallelReduction(val,2)
+         CASE(1)
+            IF (n>0) val = SUM(ABS(x(1:n)))
+            Norm = ParallelReduction(val)/nscale
+         CASE(2)
+            IF (n>0) val = SUM(x(1:n)**2)
+            Norm = SQRT(ParallelReduction(val)/nscale)
+         CASE DEFAULT
+            IF (n>0) val = SUM(x(1:n)**NormDim)
+            Norm = (ParallelReduction(val)/nscale)**(1.0d0/NormDim)
+         END SELECT
+      END IF
     END IF
 
     IF( ComponentsAllocated ) THEN
@@ -8306,7 +8338,7 @@ END FUNCTION SearchNodeL
 
 
     ! Optional a posteriori scaling for the computed fields
-    ! May be usefull for some floating systems where one want to impose some intergral 
+    ! May be useful for some floating systems where one want to impose some intergral 
     ! constraints without actually using them. Then first use just one Dirichlet point
     ! and then fix the level a posteriori using this condition. 
     !----------------------------------------------------------------------------------
@@ -9327,7 +9359,7 @@ END FUNCTION SearchNodeL
         PiecePerm(j) = NoPieces 
       END IF
     END DO
-    CALL Info('CalculateMeshPieces','Number of seperate pieces in mesh is '//TRIM(I2S(NoPieces)))
+    CALL Info('CalculateMeshPieces','Number of separate pieces in mesh is '//TRIM(I2S(NoPieces)))
 
 
     ! Save the mesh piece field to > mesh piece < 
@@ -9849,6 +9881,18 @@ END FUNCTION SearchNodeL
       END DO
       f(i) = Diag(i) * f(i)
     END DO
+
+
+    IF ( ASSOCIATED( A % PrecValues ) ) THEN
+      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+        DO i=1,n
+          DO j=A % Rows(i), A % Rows(i+1)-1
+            A % PrecValues(j) = A % PrecValues(j) * Diag(i) 
+          END DO
+        END DO
+      END IF
+    END IF
+
     
     WRITE( Message, * ) 'Unscaled matrix norm: ', norm    
     CALL Info( 'OptimalMatrixScaling', Message, Level=5 )
@@ -9862,12 +9906,13 @@ END FUNCTION SearchNodeL
 !--------------------------------------------------------------
 !>  Scale the system back to original.
 !--------------------------------------------------------------
-  SUBROUTINE BackScaleLinearSystem(Solver,A,b,x,DiagScaling,ConstraintScaling) 
+  SUBROUTINE BackScaleLinearSystem( Solver,A,b,x,DiagScaling,&
+      ConstraintScaling, EigenScaling ) 
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp), OPTIONAL :: b(:),x(:)
-    LOGICAL, OPTIONAL :: ConstraintScaling
+    LOGICAL, OPTIONAL :: ConstraintScaling, EigenScaling
     REAL(KIND=dp), OPTIONAL, TARGET :: DiagScaling(:)
 
     REAL(KIND=dp), POINTER :: Diag(:)
@@ -9905,19 +9950,23 @@ END FUNCTION SearchNodeL
       b(1:n) = b(1:n) / Diag(1:n) * bnorm
     END IF
     
-    DO i=1,Solver % NOFEigenValues
-      !
-      !           Solve x:  INV(D)x = y
-      !           --------------------------
-      IF ( Solver % Matrix % COMPLEX ) THEN
-        Solver % Variable % EigenVectors(i,1:n/2) = &
-            Solver % Variable % EigenVectors(i,1:n/2) * Diag(1:n:2)
-      ELSE
-        Solver % Variable % EigenVectors(i,1:n) = &
-            Solver % Variable % EigenVectors(i,1:n) * Diag(1:n)
+    IF( PRESENT( EigenScaling ) ) THEN
+      IF( EigenScaling ) THEN
+        DO i=1,Solver % NOFEigenValues
+          !
+          !           Solve x:  INV(D)x = y
+          !           --------------------------
+          IF ( Solver % Matrix % COMPLEX ) THEN
+            Solver % Variable % EigenVectors(i,1:n/2) = &
+                Solver % Variable % EigenVectors(i,1:n/2) * Diag(1:n:2)
+          ELSE
+            Solver % Variable % EigenVectors(i,1:n) = &
+                Solver % Variable % EigenVectors(i,1:n) * Diag(1:n)
+          END IF
+        END DO
       END IF
-    END DO
-    
+    END IF
+      
     DO i=1,n
       DO j=A % Rows(i), A % Rows(i+1)-1
         A % Values(j) = A % Values(j) / (Diag(i) * Diag(A % Cols(j)))
@@ -10007,6 +10056,17 @@ END FUNCTION SearchNodeL
       END DO
     END DO
 
+    IF ( ASSOCIATED( A % PrecValues ) ) THEN
+      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+        DO i=1,n
+          DO j=A % Rows(i), A % Rows(i+1)-1
+            A % PrecValues(j) = A % PrecValues(j) / Diag(i) 
+          END DO
+        END DO
+      END IF
+    END IF
+
+    
     DEALLOCATE(A % DiagScaling)
     A % DiagScaling => NULL()
 
@@ -10597,6 +10657,8 @@ END FUNCTION SearchNodeL
   RECURSIVE SUBROUTINE SolveLinearSystem( A, b, &
        x, Norm, DOFs, Solver, BulkMatrix )
 !------------------------------------------------------------------------------
+    USE EigenSolve
+
     REAL(KIND=dp) CONTIG :: b(:), x(:)
     REAL(KIND=dp) :: Norm
     TYPE(Matrix_t), POINTER :: A
@@ -10621,7 +10683,8 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t), POINTER :: Aaid, Projector, MP
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
-
+    LOGICAL :: NormalizeToUnity
+    
     INTERFACE 
        SUBROUTINE VankaCreate(A,Solver)
           USE Types
@@ -10631,7 +10694,7 @@ END FUNCTION SearchNodeL
 
        SUBROUTINE CircuitPrecCreate(A,Solver)
           USE Types
-          TYPE(Matrix_t) :: A
+          TYPE(Matrix_t), TARGET :: A
           TYPE(Solver_t) :: Solver
        END SUBROUTINE CircuitPrecCreate
 
@@ -10782,11 +10845,17 @@ END FUNCTION SearchNodeL
           Solver % Variable % EigenValues,       &
           Solver % Variable % EigenVectors, Solver )
       
-      IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A ) 
+      IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A, EigenScaling = .TRUE. ) 
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
 
       Norm = ComputeNorm(Solver,n,x)
       Solver % Variable % Norm = Norm
+
+      NormalizeToUnity = ListGetLogical( Solver % Values, &
+          'Eigen System Normalize To Unity',Stat)         
+      CALL ScaleEigenVectors( A, Solver % Variable % EigenVectors, &
+          SIZE(Solver % Variable % EigenValues), A % NumberOfRows, &
+          NormalizeToUnity ) 
       
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
@@ -10806,7 +10875,8 @@ END FUNCTION SearchNodeL
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
     END IF
-
+   
+    
     ! We have solved {harmonic,eigen,constraint} system and no need to continue further
     IF( RecursiveAnalysis ) THEN
       IF( HarmonicAnalysis ) CALL ListAddLogical( Solver % Values,'Harmonic Analysis',.TRUE.)
@@ -11346,7 +11416,8 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
                 EigenValues, EigenVectors )
       END IF
     END IF
-
+   
+    
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
@@ -11895,6 +11966,7 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
 !------------------------------------------------------------------------------
 
 
+
 !------------------------------------------------------------------------------
 !>  This subroutine will solve the system with some linear restriction.
 !>  The restriction matrix is assumed to be in the ConstraintMatrix-field of 
@@ -11940,6 +12012,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
   LOGICAL, ALLOCATABLE :: TrueDof(:)
+
+  INTEGER, ALLOCATABLE :: Iperm(:)
   
 !------------------------------------------------------------------------------
   CALL Info( 'SolveWithLinearRestriction ', ' ', Level=5 )
@@ -12081,6 +12155,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       IF(Found) RestMatrix % Values = RestMatrix % Values * rowsum
     END IF
 
+    ALLOCATE( iperm(SIZE(Solver % Variable % Perm)) )
+    iperm = 0
+    DO i=1,SIZE(Solver % Variable % Perm)
+      IF ( Solver % Variable % Perm(i)>0) Iperm(Solver % Variable % Perm(i))=i
+    END DO
+
     DO i=RestMatrix % NumberOfRows,1,-1
 
       k=StiffMatrix % NumberOfRows
@@ -12146,47 +12226,54 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             END IF
           ELSE
             IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
-!             CollectionVector(k) = CollectionVector(k) - &
-!                       RestMatrix % TValues(j) * ForceVector(RestMatrix % Cols(j)) / &
-!                          StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
-             CALL AddToMatrixElement( CollectionMatrix, &
-                  k, RestMatrix % Cols(j), RestMatrix % TValues(j) )
-             NonEmptyRow = NonEmptyRow .OR. RestMatrix % TValues(j) /= 0
+              CollectionVector(k) = CollectionVector(k) - &
+                        RestMatrix % TValues(j) * ForceVector(RestMatrix % Cols(j)) / &
+                           StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+!            CALL AddToMatrixElement( CollectionMatrix, &
+!                 k, RestMatrix % Cols(j), RestMatrix % TValues(j) )
+!            NonEmptyRow = NonEmptyRow .OR. RestMatrix % TValues(j) /= 0
             ELSE
-!             CollectionVector(k) = CollectionVector(k) - &
-!                       RestMatrix % Values(j) * ForceVector(RestMatrix % Cols(j)) / &
-!                          StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
-              CALL AddToMatrixElement( CollectionMatrix, &
-                  k, RestMatrix % Cols(j), RestMatrix % Values(j) )
-              NonEmptyRow = NonEmptyRow .OR. RestMatrix % Values(j) /= 0
+              CollectionVector(k) = CollectionVector(k) - &
+                        RestMatrix % Values(j) * ForceVector(RestMatrix % Cols(j)) / &
+                           StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
+!             CALL AddToMatrixElement( CollectionMatrix, &
+!                 k, RestMatrix % Cols(j), RestMatrix % Values(j) )
+!             NonEmptyRow = NonEmptyRow .OR. RestMatrix % Values(j) /= 0
             END IF
           END IF
 
         END DO
       END IF
-
+ 
+      Found = .TRUE.
       IF (EnforceDirichlet) THEN
         IF(ASSOCIATED(RestMatrix % InvPerm)) THEN
           l = RestMatrix % InvPerm(i)
           IF(l>0) THEN
             l = MOD(l-1,StiffMatrix % NumberOfRows)+1
             IF(StiffMatrix % ConstrainedDOF(l)) THEN
-              CollectionVector(k) = 0
-              CALL ZeroRow(CollectionMatrix,k)
-              CALL SetMatrixElement(CollectionMatrix,k,k,1._dp)
+              l = iperm((l-1)/Solver % Variable % DOFs+1) 
+              IF (l<=Solver % Mesh % NumberOfNodes) THEN
+                Found = .FALSE.
+                CALL ZeroRow(CollectionMatrix,k)
+                CollectionVector(k) = 0
+                CALL SetMatrixElement(CollectionMatrix,k,k,1._dp)
+              END IF
             END IF
           END IF
         END IF
       END IF
 
       ! If there is no matrix entry, there can be no non-zero r.h.s.
-      IF( .NOT.NonEmptyRow ) THEN
-        NoEmptyRows = NoEmptyRows + 1
-        CollectionVector(k) = 0._dp
-!        might not be the right thing to do in parallel!!
-!       CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
-      ELSE
-        IF( ASSOCIATED( RestVector ) ) CollectionVector(k) = CollectionVector(k) + RestVector(i)
+      IF ( Found ) THEN
+        IF( .NOT.NonEmptyRow ) THEN
+          NoEmptyRows = NoEmptyRows + 1
+          CollectionVector(k) = 0._dp
+!          might not be the right thing to do in parallel!!
+!         CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
+        ELSE
+          IF( ASSOCIATED( RestVector ) ) CollectionVector(k) = CollectionVector(k) + RestVector(i)
+        END IF
       END IF
     END DO
 
@@ -13489,7 +13576,7 @@ CONTAINS
 
 
 !---------------------------------------------------------------------------------
-!> Set the diagonal entry to given minumum.
+!> Set the diagonal entry to given minimum.
 !----------------------------------------------------------------------------------
   SUBROUTINE LinearSystemMinDiagonal( Solver )
 !----------------------------------------------------------------------------------    

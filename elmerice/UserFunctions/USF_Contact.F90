@@ -119,7 +119,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
         CALL Info(USF_Name, Message, Level=3)
      END IF
      
-     ! Possiblity to fix the grounding line, default is a moving Grounding Line
+     ! Possibility to fix the grounding line, default is a moving Grounding Line
      GLmoves = GetLogical( BC, 'Grounding line moves', GotIt )
      IF (.NOT.GotIt) THEN
         GLmoves = .TRUE.

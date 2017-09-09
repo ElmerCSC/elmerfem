@@ -308,7 +308,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         n = GetElementNOFNodes()
         NodeIndexes => CurrentElement % NodeIndexes
 
-        ! set coords of highest occuring dimension to zero (to get correct path element)
+        ! set coords of highest occurring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
         IF (NSDOFs == 1) THEN

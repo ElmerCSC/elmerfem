@@ -1216,7 +1216,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element
-    REAL(KIND=dp) :: U(:), V(:), W(:)
+    REAL(KIND=dp), POINTER CONTIG :: U(:), V(:), W(:)
     LOGICAL, OPTIONAL :: PerformCheck
 !--------------------------------------------------------------------------------
     INTEGER :: n

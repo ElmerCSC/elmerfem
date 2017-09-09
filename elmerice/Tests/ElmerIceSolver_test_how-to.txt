@@ -57,7 +57,7 @@ maintained also in the future versions of Elmer. To do this:
 	+ run: how to run the test
 	+ clean: how to clean up if successful
 
-4) Define expected results and create repertory /DATA in wich will be put expected 
+4) Define expected results and create repertory /DATA in which will be put expected 
    results in a file named "valid_$NameRepertory.txt" (See description in the template above:
 
 	Step1Data1 [space] Step1Data2 [space] Step1Data3 ....

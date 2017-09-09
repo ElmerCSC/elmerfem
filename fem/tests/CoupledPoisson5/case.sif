@@ -1,5 +1,5 @@
 !# Solve two Laplace equations with prescribed flux. Level is determined by constraints. 
-!# This makes it possible to avoid the use of Dirichlet conditions alltogether.
+!# This makes it possible to avoid the use of Dirichlet conditions altogether.
 
 Header
   CHECK KEYWORDS Warn
