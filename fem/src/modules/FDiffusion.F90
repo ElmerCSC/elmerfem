@@ -325,12 +325,6 @@ SUBROUTINE FourierDiffusionSolver( Model,Solver,dt,TransientSimulation )
         Model % CurrentElement => CurrentElement
 
 !------------------------------------------------------------------------------
-!       The element type 101 (point element) can only be used
-!       to set Dirichlet BCs, so skip em at this stage.
-!------------------------------------------------------------------------------
-        IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
-
-!------------------------------------------------------------------------------
         DO i=1,Model % NumberOfBCs
            IF ( CurrentElement % BoundaryInfo % Constraint == &
                 Model % BCs(i) % Tag ) THEN

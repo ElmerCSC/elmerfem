@@ -963,6 +963,7 @@ CONTAINS
     END IF
   END SUBROUTINE GetRealValues
 
+
 !> Returns a material property from either of the parents of the current boundary element
   RECURSIVE FUNCTION GetParentMatProp( Name, UElement, Found, UParent ) RESULT(x)
     CHARACTER(LEN=*) :: Name
@@ -972,13 +973,17 @@ CONTAINS
 
     REAL(KIND=dp), POINTER CONTIG :: x(:)
     INTEGER, POINTER :: Indexes(:)
-    LOGICAL :: GotIt
-    INTEGER :: n, leftright
+    LOGICAL :: GotIt, GotMat
+    INTEGER :: n, leftright, mat_id
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Element_t), POINTER :: Element, Parent
     
     Element => GetCurrentElement(Uelement)
 
+    IF( .NOT. ASSOCIATED( Element ) ) THEN
+      CALL Warn('GetParentMatProp','Element not associated!')
+    END IF
+    
     IF( PRESENT(UParent) ) NULLIFY( UParent )
 
     n = GetElementNOFNodes(Element)
@@ -987,16 +992,45 @@ CONTAINS
     x => GetValueStore(n)
     x(1:n) = REAL(0, dp)
 
+    IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
+      CALL Warn('GetParentMatProp','Boundary element needs parent information!')
+      RETURN
+    END IF
+    
+    
     Gotit = .FALSE.
     DO leftright = 1, 2
-       IF( leftright == 1) THEN
+
+      IF( leftright == 1) THEN
          Parent => Element % BoundaryInfo % Left
        ELSE 
          Parent => Element % BoundaryInfo % Right
        END IF
-
+       
        IF( ASSOCIATED(Parent) ) THEN
-         Material => GetMaterial(Parent)
+
+         GotMat = .FALSE.
+         IF( Parent % BodyId > 0 .AND. Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
+           mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',GotMat)
+         ELSE
+           CALL Warn('GetParentMatProp','Invalid parent BodyId '//TRIM(I2S(Parent % BodyId))//&
+               ' for element '//TRIM(I2S(Parent % ElementIndex)))
+           CYCLE
+         END IF
+         
+         IF(.NOT. GotMat) THEN
+           CALL Warn('GetParentMatProp','Parent body '//TRIM(I2S(Parent % BodyId))//' does not have material associated!')
+         END IF
+         
+         IF( mat_id > 0 .AND. mat_id <= CurrentModel % NumberOfMaterials ) THEN
+           Material => CurrentModel % Materials(mat_id) % Values
+         ELSE
+           CALL Warn('GetParentMatProp','Material index '//TRIM(I2S(mat_id))//' not associated to material list')
+           CYCLE
+         END IF
+                             
+         IF( .NOT. ASSOCIATED( Material ) ) CYCLE
+
          IF ( ListCheckPresent( Material,Name) ) THEN
            x(1:n) = ListGetReal(Material, Name, n, Indexes)
            IF( PRESENT( UParent ) ) UParent => Parent
@@ -1013,6 +1047,7 @@ CONTAINS
     END IF
      
   END FUNCTION GetParentMatProp
+
 
 !> Returns a constant real array by its name if found in the list structure. 
   RECURSIVE SUBROUTINE GetConstRealArray( List, x, Name, Found, UElement )
@@ -1364,6 +1399,14 @@ CONTAINS
      TYPE(Mesh_t), OPTIONAL :: Mesh
      INTEGER :: MeshDim, family
 
+     ! Orphan elements are not currently present in the mesh so any
+     ! boundary condition that exists is a possible flux element also.
+     ! Thus this routine is more or less obsolite. 
+     possible = .TRUE.
+
+     RETURN
+
+     
      IF( PRESENT( Mesh ) ) THEN
        MeshDim = Mesh % MeshDim
      ELSE
@@ -4074,7 +4117,7 @@ CONTAINS
      INTEGER :: i, j, k, kk, l, m, n, nd, nb, np, mb, nn, ni, nj, i0
      INTEGER :: EDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
 
-     LOGICAL :: Flag,Found, ConstantValue, ScaleSystem
+     LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
 
      CHARACTER(LEN=MAX_NAME_LEN) :: name
@@ -4588,7 +4631,9 @@ CONTAINS
      IF ( Found ) THEN
 
         IF ( ParEnv % PEs > 1 ) THEN
-          IF (GetLogical( GetSimulation(), 'Dirichlet Comm', Found) ) CALL CommunicateDirichletBCs(A)
+          DirichletComm = GetLogical( GetSimulation(), 'Dirichlet Comm', Found)
+          IF(.NOT. Found) DirichletComm = .TRUE.
+          IF( DirichletComm) CALL CommunicateDirichletBCs(A)
         END IF
 
         DO k=1,A % NumberOfRows

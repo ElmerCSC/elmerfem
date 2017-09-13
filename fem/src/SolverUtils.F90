@@ -14140,7 +14140,7 @@ CONTAINS
      TYPE(Solver_t) :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,mcount,bcount,kk
+     INTEGER :: i,j,j2,k,k2,l,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,mcount,bcount,kk
      TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
      LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent, Found, &
          SetDof, SomeSet, SomeSkip, SumProjectors, NewRow, SumThis
@@ -14300,7 +14300,7 @@ CONTAINS
 
      MortarDiag = ListGetCReal( Solver % Values,'Mortar Diag',HaveMortarDiag )
      LumpedDiag = ListGetLogical( Solver % Values,'Lumped Diag',Found )
-          
+     
 
 100  sumrow = 0
      k2 = 0
@@ -14419,6 +14419,60 @@ CONTAINS
            CYCLE
          END IF
          
+         IF( SumThis ) THEN
+           DO i=1,Atmp % NumberOfRows                               
+             ! Skip empty row
+             IF( Atmp % Rows(i) >= Atmp % Rows(i+1) ) CYCLE 
+
+             ! If the mortar boundary is not active at this round don't apply it
+             IF( ThisIsMortar ) THEN
+               IF( ASSOCIATED( MortarBC % Active ) ) THEN
+                 IF( .NOT. MortarBC % Active(i) ) CYCLE
+               END IF
+             END IF
+             
+             ! Use InvPerm if it is present
+             IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
+               k = Atmp % InvPerm(i)
+               ! Node does not have an active dof to be constrained
+               IF( k == 0 ) CYCLE
+             ELSE
+               k = i
+             END IF
+             
+             IF( Reorder ) THEN
+               IF( Perm(k) == 0 ) CYCLE
+             END IF
+             
+             NewRow = ( SumPerm(k) == 0 )
+             IF( SumPerm(k) == 0 ) THEN
+               sumrow = sumrow + 1                
+               SumPerm(k) = sumrow 
+             ELSE IF(.NOT. AllocationsDone ) THEN
+               IF( Priority /= PrevPriority .AND. SumPerm(k) < 0 ) THEN
+                 NeglectedRows = NeglectedRows + 1
+               ELSE
+                 EliminatedRows = EliminatedRows + 1
+               END IF
+             END IF
+           END DO
+         END IF
+         
+         
+         IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) THEN
+           IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN                   
+             k = MAXVAL( Atmp % Cols )
+             PRINT *,'creating mortar perm of size: ',k
+             ALLOCATE( MortarBC % Perm(k) )
+             MortarBC % Perm = 0
+             DO k=1,SIZE(Atmp % InvPerm )
+               j = Atmp % InvPerm(k)
+               MortarBC % Perm( j ) = k
+             END DO
+           END IF
+         END IF
+         
+         
          DO i=1,Atmp % NumberOfRows           
 
            IF( Atmp % Rows(i) >= Atmp % Rows(i+1) ) CYCLE ! skip empty rows
@@ -14430,14 +14484,13 @@ CONTAINS
              END IF
            END IF
              
-           ! Use InvPerm if it is present
            IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
              k = Atmp % InvPerm(i)
-             ! Node does not have an active dof to be constrained
              IF( k == 0 ) CYCLE
            ELSE
              k = i
            END IF
+
            IF( Reorder ) THEN
              kk = Perm(k) 
              IF( kk == 0 ) CYCLE
@@ -14445,28 +14498,12 @@ CONTAINS
              kk = k
            END IF
              
-           IF( SumThis ) THEN
-             NewRow = ( SumPerm(k) == 0 )
-             IF( NewRow ) THEN
-               sumrow = sumrow + 1                
-               IF( Priority /= 0 ) THEN
-                 SumPerm(k) = -sumrow
-               ELSE
-                 SumPerm(k) = sumrow 
-               END IF
-             ELSE IF( Priority /= PrevPriority .AND. SumPerm(k) < 0 ) THEN
-               IF(.NOT. AllocationsDone ) THEN
-                 NeglectedRows = NeglectedRows + 1
-                 !PRINT *,'Neglecting:',bc_ind,k
-               END IF
-               CYCLE
-             ELSE
-               IF(.NOT. AllocationsDone ) THEN
-                 EliminatedRows = EliminatedRows + 1
-                 !PRINT *,'Eliminating:',bc_ind,k
-               END IF
-             END IF
-             row = ABS( SumPerm(k) )
+           IF( SumThis ) THEN             
+             row = SumPerm(k)
+             IF( row <= 0 ) CYCLE
+
+             ! Mark this for future contributions so we know this is already set
+             IF( Priority /= PrevPriority ) SumPerm(k) = -SumPerm(k)
            ELSE
              sumrow = sumrow + 1
              row = sumrow
@@ -14516,7 +14553,8 @@ CONTAINS
                  END IF
                END IF
 
-               ! Add a new column index to the summed up row
+               ! Add a new column index to the summed up row               
+               ! At the first sweep we need to find the first unset position
                IF( SumThis ) THEN
                  k2 = Btmp % Rows(row)
                  DO WHILE( Btmp % Cols(k2) > 0 )
@@ -14525,7 +14563,7 @@ CONTAINS
                ELSE
                  k2 = k2 + 1
                END IF
-
+               
                Btmp % Cols(k2) = col2
                Btmp % Values(k2) = Scale * Atmp % Values(k)
                IF(ASSOCIATED(Btmp % TValues)) THEN
@@ -14549,6 +14587,8 @@ CONTAINS
              IF( AllocationsDone ) THEN
                Btmp % Cols(k2) = Perm( Atmp % InvPerm(i) )
                Btmp % Values(k2) = MortarBC % SlaveScale * wsum
+             ELSE               
+               IF( SumThis) SumCount(row) = SumCount(row) + 1
              END IF
            END IF
 
@@ -14561,28 +14601,33 @@ CONTAINS
                  MortarDiag = MortarBC % Diag(i)
                  LumpedDiag = MortarBC % LumpedDiag
                END IF
-
-               
+              
                IF( LumpedDiag ) THEN
-                 k2 = k2 + 1             
+                 k2 = k2 + 1
                  IF( AllocationsDone ) THEN
                    Btmp % Cols(k2) = row + arows 
                    ! The factor 0.5 comes from the fact that the 
                    ! contribution is summed twice, 2nd time as transpose
                    ! For Nodal projector the entry is 1/(weight*coeff)
                    ! For Galerkin projector the is weight/coeff 
-                   Btmp % Values(k2) = -0.5_dp * MortarDiag * wsum
+                   Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * MortarDiag * wsum
+                 ELSE
+                   IF( SumThis) SumCount(row) = SumCount(row) + 1
                  END IF
                ELSE
-                 IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN
+                 IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN                   
                    CALL Fatal('GenerateConstraintMarix','MortarBC % Perm required, try lumped')
                  END IF
 
                  DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
                    col = Atmp % Cols(k) 
 
-                   IF( col > permsize ) CYCLE
+                   IF( col > permsize ) THEN
+                     PRINT *,'col too large',col,permsize
+                     CYCLE
+                   END IF
                    col2 = Perm(col)
+                   IF( col2 == 0 ) CYCLE
                      
                    IF( CreateSelf ) THEN
                      Scale = -MortarBC % MasterScale
@@ -14593,11 +14638,19 @@ CONTAINS
                        CYCLE                     
                      END IF
                    END IF
-
+                   
                    k2 = k2 + 1
-                   IF( AllocationsDone ) THEN                   
-                     Btmp % Cols(k2) = MortarBC % Perm( col ) + arows + rowoffset
-                     Btmp % Values(k2) = -0.5_dp * Atmp % Values(k) * MortarDiag
+                   IF( AllocationsDone ) THEN                                        
+                     IF( SumThis ) THEN
+                       l = ABS( SumPerm( col) )
+                     ELSE
+                       l = MortarBC % Perm(col)
+                     END IF
+                     
+                     Btmp % Cols(k2) = l + arows + rowoffset
+                     Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * Atmp % Values(k) * MortarDiag
+                   ELSE
+                     IF( SumThis) SumCount(row) = SumCount(row) + 1
                    END IF
                  END DO
                END IF
@@ -14610,6 +14663,8 @@ CONTAINS
                  Btmp % Rhs(row) = Btmp % Rhs(row) + wsum * MortarBC % rhs(i)
                END IF
              END IF
+
+             ! If every component is uniquely summed we can compute the row indexes simply
              IF( .NOT. SumThis ) THEN
                Btmp % Rows(row+1) = k2 + 1
              END IF
@@ -14711,6 +14766,8 @@ CONTAINS
                END IF
 
                  
+               k2 = k2 + 1
+               
                IF( AllocationsDone ) THEN
                  Scale = 1.0_dp
                  IF( ThisIsMortar ) THEN
@@ -14726,15 +14783,6 @@ CONTAINS
                      END IF
                    END IF
                  END IF
-
-                 IF( SumThis ) THEN
-                   k2 = Btmp % Rows(row)
-                   DO WHILE( Btmp % Cols(k2) > 0 )
-                     k2 = k2 + 1
-                   END DO
-                 ELSE
-                   k2 = k2 + 1
-                 END IF
                  
                  Btmp % Cols(k2) = Dofs * ( col2 - 1) + j
                  Btmp % Values(k2) = Scale * Atmp % Values(k)
@@ -14746,13 +14794,12 @@ CONTAINS
                    END IF
                  END IF
                ELSE
-                 k2 = k2 + 1 
                  IF( SumThis ) THEN
                    SumCount(row) = SumCount(row) + 1
                  END IF                 
                END IF
              END DO
-              
+             
              ! Add the self entry as in 'D'
              IF( CreateSelf ) THEN
                k2 = k2 + 1
@@ -14778,18 +14825,10 @@ CONTAINS
                    col2 = col
                  END IF
 
+                 k2 = k2 + 1
                  IF( AllocationsDone ) THEN
-                   IF( SumThis ) THEN
-                     k2 = Btmp % Rows(row)
-                     DO WHILE( Btmp % Cols(k2) > 0 )
-                       k2 = k2 + 1
-                     END DO
-                   ELSE
-                     k2 = k2 + 1
-                   END IF
                    Btmp % Cols(k2) = Dofs * ( col2 - 1) + j2
                  ELSE
-                   k2 = k2 + 1
                    IF( SumThis ) THEN
                      SumCount(row) = SumCount(row) + 1
                    END IF
@@ -14918,7 +14957,11 @@ CONTAINS
 
        GOTO 100
      END IF
-
+     
+     CALL Info('GenerateConstraintMatrix','Used '//&
+         TRIM(I2S(sumrow))//' rows and '//TRIM(I2S(k2))//' nonzeros',&
+         Level=6)
+          
      ! Eliminate entries
      IF( EliminatedRows > 0 ) THEN
        CALL Info('GenerateConstraintMatrix','Number of eliminated rows: '&

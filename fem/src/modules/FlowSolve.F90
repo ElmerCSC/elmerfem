@@ -1051,10 +1051,6 @@
 
         n = GetElementNOFNodes()
 
-!       The element type 101 (point element) can only be used
-!       to set Dirichlet BCs, so skip �em at this stage.
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
         CALL GetElementNodes( ElementNodes )
         NodeIndexes => Element % NodeIndexes
 

@@ -3233,7 +3233,7 @@ END SUBROUTINE GetMaxDefs
     CALL AllocateVector( Nodes % z, Mesh % MaxElementNodes )
 
     UseLongEdge = ListGetLogical(CurrentModel % Simulation, &
-         "Stabilization Use Longest Element Edge")
+         "Stabilization Use Longest Element Edge",Stat)
 
     DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)

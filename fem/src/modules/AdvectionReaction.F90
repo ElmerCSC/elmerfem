@@ -289,11 +289,6 @@
            Element => GetBoundaryElement(t)
            IF( .NOT. ActiveBoundaryElement() )  CYCLE
 
-           !------------------------------------------------------------------------------
-           ! Check that the dimension of element is suitable for BCs
-           !------------------------------------------------------------------------------
-           IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
            ParentElement => Element % BoundaryInfo % Left
            IF ( .NOT. ASSOCIATED( ParentElement ) ) &
                 ParentElement => Element % BoundaryInfo % Right

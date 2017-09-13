@@ -320,8 +320,6 @@ CONTAINS
       Element => GetBoundaryElement(t)
       IF(.NOT.ActiveBoundaryElement(Element)) CYCLE
 
-      IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
       CALL BoundaryLocalMatrix( Element, n, nd )

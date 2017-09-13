@@ -203,9 +203,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
          PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis, &
          HasTensorReluctivity
   LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
-       HasStabC
+       HasStabC, RegularizeWithMass
 
-  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m
+  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, mass_reg_epsilon
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
@@ -250,6 +250,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
   TransientGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. Transient
+  
+
 
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
@@ -275,6 +277,15 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
     END IF
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
+  END IF
+  
+  mass_reg_epsilon = GetCReal(GetSolverParams(), 'Mass regularize epsilon', RegularizeWithMass)
+  IF (RegularizeWithMass .AND. mass_reg_epsilon == 0.0_dp) THEN
+    RegularizeWithMass = .FALSE.
+  END IF
+  IF (RegularizeWithMass) THEN
+    WRITE (Message, *) 'Mass regularization epsilon', mass_reg_epsilon
+    CALL Info("WhitneyAVSolver", Message)
   END IF
 
   gauge_penalize_c = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient', HasStabC)
@@ -2081,6 +2092,22 @@ END SUBROUTINE LocalConstraintMatrix
            END DO
          END IF
 
+       END IF
+       
+       ! Add mass-type term to the stiffness matrix for regularization if requested
+       ! This turns the steady state system to "curl nu curl u + epsilon u = J"
+       ! For discussion on regularization see, e.g., "Cassagrande, Hiptmair, Ostrowski, 
+       ! An a priori error estimate for interior penalty discretizations of the Curl-Curl 
+       ! operator on non-conforming meshes" section 6.
+       
+       IF ( RegularizeWithMass ) THEN
+        DO j = 1, nd-np
+          q = j + np
+          DO i = 1, nd-np
+            p = i + np
+            STIFF(p,q) = STIFF(p,q) + mass_reg_epsilon*SUM(WBasis(i,:)*WBasis(j,:))*detJ*IP%s(t)
+          END DO
+        END DO
        END IF
 
     END DO
