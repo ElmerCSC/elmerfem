@@ -1818,15 +1818,18 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-   FUNCTION CreateChildMatrix( ParentMat, ParentDofs, Dofs, ColDofs, CreateRhs ) RESULT ( ChildMat )
+   FUNCTION CreateChildMatrix( ParentMat, ParentDofs, Dofs, ColDofs, CreateRhs, &
+       NoReuse ) RESULT ( ChildMat )
      TYPE(Matrix_t) :: ParentMat
      INTEGER :: ParentDofs
      INTEGER :: Dofs
      TYPE(Matrix_t), POINTER :: ChildMat
      INTEGER, OPTIONAL :: ColDofs
      LOGICAL, OPTIONAL :: CreateRhs
+     LOGICAL, OPTIONAL :: NoReuse
      INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
-
+     LOGICAL :: ReuseMatrix
+     
      
      ChildMat => AllocateMatrix()
 
@@ -1835,9 +1838,15 @@ CONTAINS
      ELSE
        CDofs = Dofs
      END IF
-       
+
      
-     IF( Dofs == ParentDofs .AND. CDofs == ParentDofs ) THEN
+     ReuseMatrix = ( Dofs == ParentDofs .AND. CDofs == ParentDofs )
+     IF( PRESENT( NoReuse ) ) THEN
+       IF( NoReuse ) ReuseMatrix = .FALSE.         
+     END IF
+
+     
+     IF( ReuseMatrix ) THEN
        CALL Info('CreateChildMatrix','Reusing initial matrix topology',Level=8)    
        
        ChildMat % Cols => ParentMat % Cols
@@ -1850,9 +1859,25 @@ CONTAINS
        ALLOCATE( ChildMat % Values(m) )
        ChildMat % Values = 0.0_dp
          
+     ELSE IF( Dofs == ParentDofs .AND. Cdofs == ParentDofs ) THEN
+       CALL Info('CreateChildMatrix','Copying initial matrix topology',Level=8)    
+       
+       ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) ) )
+       ALLOCATE( ChildMat % Rows( SIZE(ParentMat % Rows) ) )
+       ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) ) )
+
+       ChildMat % Cols = ParentMat % Cols
+       ChildMat % Rows = ParentMat % Rows
+       ChildMat % Diag = ParentMat % Diag
+       
+       ChildMat % NumberOfRows = ParentMat % NumberOfRows
+
+       m = SIZE( ParentMat % Values )
+       ALLOCATE( ChildMat % Values(m) )
+       ChildMat % Values = 0.0_dp
      ELSE
        CALL Info('CreateChildMatrix','Multiplying initial matrix topology',Level=8)    
-       
+         
        ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs * CDofs / ParentDofs**2 ) )
        ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
        
@@ -1910,14 +1935,15 @@ CONTAINS
 !> The number of dofs may vary but the basis functions and permutation is reused.
 !> If also the number of dofs is the same also matrix topology is reused.
 !------------------------------------------------------------------------------
-   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix ) &
+   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix, NoReuse) &
        RESULT ( ChildSolver )
      TYPE(Solver_t) :: ParentSolver
      CHARACTER(LEN=*) :: ChildVarName
      INTEGER, OPTIONAL :: ChildDofs
      CHARACTER(LEN=*), OPTIONAL :: ChildPrefix
      TYPE(Solver_t), POINTER :: ChildSolver
-
+     LOGICAL, OPTIONAL :: NoReuse
+     
      INTEGER :: ParentDofs 
      TYPE(Solver_t), POINTER :: Solver
      REAL(KIND=dp), POINTER :: ChildVarValues(:)
@@ -2000,7 +2026,7 @@ CONTAINS
        CALL Warn('CreateChildSolver','Parent matrix needed for child matrix!')
        Solver % Matrix => NULL()
      ELSE
-       ChildMat => CreateChildMatrix( ParentMat, ParentDofs, Dofs, Dofs, .TRUE. )
+       ChildMat => CreateChildMatrix( ParentMat, ParentDofs, Dofs, Dofs, .TRUE., NoReuse = NoReuse )
        ChildMat % Solver => Solver
        Solver % Matrix => ChildMat
      END IF
