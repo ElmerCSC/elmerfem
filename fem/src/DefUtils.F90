@@ -4189,7 +4189,7 @@ CONTAINS
        ALLOCATE(DiagScaling(A % NumberOfRows))
        DiagScaling=1._dp
      END IF
-
+     
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
 
@@ -4206,14 +4206,13 @@ CONTAINS
      END IF
 
 
-
      IF ( x % DOFs > 1 ) THEN
         CALL SetDirichletBoundaries( CurrentModel,A, b, GetVarName(x),-1,x % DOFs,x % Perm )
      END IF
 
      CALL Info('DefUtils::DefaultDirichletBCs', &
             'Setting Dirichlet boundary conditions', Level=5)
-
+     
      ! ----------------------------------------------------------------------
      ! Perform some preparations if BCs for p-approximation will be handled: 
      ! ----------------------------------------------------------------------
@@ -4221,6 +4220,8 @@ CONTAINS
      DO DOF=1,x % DOFs
         name = x % name
         IF ( x % DOFs > 1 ) name = ComponentName(name,DOF)
+
+        IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
         
         ! Clearing for p-approximation dofs associated with faces & edges:
         SaveElement => GetCurrentElement() 
@@ -4294,6 +4295,9 @@ CONTAINS
         ! Set Dirichlet BCs for edge and face dofs which come from approximating with
         ! p-elements:
         ! ----------------------------------------------------------------------------
+        IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
+
+
         SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
@@ -4468,6 +4472,9 @@ CONTAINS
      DO DOF=1,x % DOFs
         name = x % name
         IF (x % DOFs>1) name=ComponentName(name,DOF)
+
+        IF ( .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {e}') .AND. &
+            .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {f}') ) CYCLE
 
         SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
