@@ -6082,13 +6082,14 @@ CONTAINS
           IsIndex = .FALSE.
           Comp = 0
           k = INDEX( str(:j),' ',BACK=.TRUE.)
-
+          
           IF( k > 0 ) THEN
             IsIndex = ( VERIFY( str(k:j),' 0123456789') == 0 )
             IF( IsIndex ) READ( str(k:j), * ) Comp
           END IF
 
           ! This is the easy way of checking that the component belongs to a vector
+          ! The size of the vector can be either dim or 3. 
           GotIt = .FALSE.
           IF( IsIndex ) THEN
             Var1 => VariableGet(Variables,TRIM(str(1:k)))
@@ -6098,24 +6099,29 @@ CONTAINS
               Set = ( Comp == 1 .OR. .NOT. IsVector )
             END IF
           END IF
-                
+
           ! This is a hard way of ensuring that the component belongs to a vector    
           ! Check that there are exactly dim number of components
           ! If so save the quantity as a vector, otherwise componentwise
           IF( EnforceVectors .AND. .NOT. GotIt ) THEN
             IF( Comp == 1 ) THEN
+              ! If we have the 1st component we need at least dim (2 or 3) components
+              ! to have a vector.
               Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)		
+
+              ! However, if the 4th component also exists then this cannot be a vector
               IF( ASSOCIATED(Var1)) THEN
-                Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim+1),ThisOnly)		
+                Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)		
                 IsVector = .NOT. ASSOCIATED(Var1)
               END IF
               
+            ELSE IF( Comp <= 3 ) THEN  ! component 2 or 3
               ! Associated to the previous case, cycle the other components of the vector
               ! and cycle them if they are part of the vector that will be detected above.
-            ELSE IF( Comp <= dim ) THEN
+ 
               Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' 1',ThisOnly)		
               IF( ASSOCIATED( Var1 ) ) THEN
-                Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim+1),ThisOnly)		
+                Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)		
                 Set = ASSOCIATED( Var1 )
               END IF
             END IF
