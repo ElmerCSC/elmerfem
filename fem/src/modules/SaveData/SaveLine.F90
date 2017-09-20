@@ -1796,6 +1796,11 @@ CONTAINS
       IF( GotIt ) THEN
         WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
       END IF
+
+      DateStr = GetSifName( GotIt )
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Solver input file: '//TRIM(DateStr)
+      END IF
       
       DateStr = FormatDate()
       WRITE( 10,'(A,A)') 'File started at: ',TRIM(DateStr)

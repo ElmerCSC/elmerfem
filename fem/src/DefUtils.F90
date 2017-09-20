@@ -117,6 +117,12 @@ CONTAINS
      ch = VERSION
    END FUNCTION GetVersion
 
+   FUNCTION GetSifName(Found) RESULT(ch)
+     CHARACTER(LEN=:), ALLOCATABLE :: ch
+     LOGICAL, OPTIONAL :: Found     
+     ch = ListGetString( CurrentModel % Simulation,'Solver Input File', Found )
+   END FUNCTION GetSifName
+    
    FUNCTION GetRevision(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
      LOGICAL, OPTIONAL :: Found

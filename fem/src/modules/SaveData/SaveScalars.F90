@@ -1117,6 +1117,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF( GotIt ) THEN
         WRITE(10,'(A)') TRIM(Message)
       END IF
+
       Message = ListGetString(Params,'Comment',GotIt)
       IF( GotIt ) THEN
         WRITE(10,'(A)') TRIM(Message)
@@ -1124,15 +1125,22 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
       DateStr = GetVersion()
       WRITE( 10,'(A)') 'Elmer version: '//TRIM(DateStr)     
+
       DateStr = GetRevision( GotIt )
       IF( GotIt ) THEN
         WRITE( 10,'(A)') 'Elmer revision: '//TRIM(DateStr)
       END IF        
+
       DateStr = GetCompilationDate( GotIt )
       IF( GotIt ) THEN
         WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
       END IF
 
+      DateStr = GetSifName( GotIt ) 
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Solver input file: '//TRIM(DateStr)
+      END IF
+            
       DateStr = FormatDate()      
       WRITE( 10,'(A)') 'File started at: '//TRIM(DateStr)
 

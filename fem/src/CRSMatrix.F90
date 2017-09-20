@@ -1965,31 +1965,66 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !> operations. One must be careful since the fact the an entry is zero
 !> does not always imply that it would be zero throughout the simulation.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_RemoveZeros( A  )
+  SUBROUTINE CRS_RemoveZeros( A, NoDiag, RemoveEps )
 !-------------------------------------------------------------------------------------------
-    TYPE(Matrix_t) :: A     !< The matrix which will be returned with the non-zeros removed
-!-------------------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,kb,kb0,n,rowkb
+    TYPE(Matrix_t) :: A          !< The matrix which will be returned with the non-zeros removed
+    LOGICAL, OPTIONAL :: NoDiag  !< Can we also loose the diag if it happens to be zero? 
+    REAL(KIND=dp), OPTIONAL :: RemoveEps
+    !-------------------------------------------------------------------------------------------
+    INTEGER :: i,j,k,l,iml,kb,kb0,n,rowkb
     INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
-    REAL(KIND=DP) :: val
+    REAL(KIND=DP) :: val, imval, reps
     REAL(KIND=DP), POINTER :: Values(:)
-
-    N = A % NumberOfRows
+    LOGICAL :: IsComplex, Hit, ImHit, CheckDiag
     
+    N = A % NumberOfRows
+
+    IsComplex = A % Complex 
+
+    IF( PRESENT( NoDiag ) ) THEN
+      CheckDiag = .NOT. NoDiag
+    ELSE
+      CheckDiag = .TRUE.
+    END IF
+
+    IF( PRESENT( RemoveEps ) ) THEN
+      reps = RemoveEps
+    ELSE
+      reps = ( EPSILON( reps ) ) **2 
+    END IF
+      
     ! Count the number of nonzeros
     ! The diagonal entry is assumed always to exist.
     kb = 0
-    DO i=1,N
-      DO k= A % Rows(i), A % Rows(i+1)-1
-        l = A % Cols(k)
-        val = A % Values(k)
-        IF( i == l .OR. ABS( val ) > TINY( val) ) THEN
-          kb = kb + 1
-        END IF
+
+    IF( IsComplex ) THEN
+      DO i=1,N
+        DO k= A % Rows(i), A % Rows(i+1)-1, 2
+          l = A % Cols(k)
+          val = A % Values(k)
+          Hit = ( ( CheckDiag .AND. i == l ) .OR. ABS( val ) > reps )
+
+          iml = A % Cols(k+1)
+          imval = A % Values(k+1)
+          ImHit = ( ( CheckDiag .AND. i == iml ) .OR. ABS( imval ) > reps )
+          
+          IF( Hit .OR. ImHit ) kb = kb + 2
+        END DO
       END DO
-    END DO
-    
+    ELSE
+      DO i=1,N
+        DO k= A % Rows(i), A % Rows(i+1)-1
+          l = A % Cols(k)
+          val = A % Values(k)
+          Hit = ( ( CheckDiag .AND. i == l ) .OR. ABS( val ) > reps )
+          IF( Hit ) kb = kb + 1
+        END DO
+      END DO
+    END IF
+      
     kb0 = SIZE( A % Values )
+
+
     IF( kb == kb0 ) THEN
       CALL Info('CRS_RemoveZeros','There are no zeros to remove',Level=6)
       RETURN
@@ -2006,34 +2041,69 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Rows => A % Rows
 
 
-    kb = 1
-    DO i=1,N
-      ! Memorize this as this should not be set before the next loop
-      rowkb = kb
-      DO k = A % Rows(i), A % Rows(i+1)-1
-        l = A % Cols(k)
-        val = A % Values(k) 
+    kb = 0
+    Rows(1) = 1
 
-        IF( i == l ) THEN
-          Diag(i) = kb
-        ELSE IF( .NOT. ( ABS(val) > TINY(val) ) ) THEN
-          CYCLE
-        END IF
+    IF( IsComplex ) THEN
+      DO i=1,N
+        kb0 = kb+1
+        DO k = A % Rows(i), A % Rows(i+1)-1,2
+          l = A % Cols(k)
+          val = A % Values(k) 
+          Hit = ( ( CheckDiag .AND. i == l ) .OR. ABS( val ) > reps )
 
-        ! Set the new entry to the matrix
-        Values(kb) = A % Values(k)
-        Cols(kb) = l
-        kb = kb + 1
+          iml = A % Cols(k+1)
+          imval = A % Values(k+1)
+          ImHit = ( ( CheckDiag .AND. i == iml ) .OR. ABS( imval ) > reps ) 
 
+          IF( Hit .OR. ImHit ) THEN
+            kb = kb + 1
+            IF( CheckDiag .AND. i == l ) Diag(i) = kb
+            Values(kb) = val
+            Cols(kb) = l
+            
+            kb = kb + 1
+            IF( CheckDiag .AND. i == iml ) Diag(i) = kb
+            Values(kb) = imval
+            Cols(kb) = iml
+          END IF
+        END DO
+        Rows(i) = kb0
       END DO
-      Rows(i) = rowkb
-    END DO
-    Rows(N+1) = kb
+      
+    ELSE      
+      DO i=1,N
+        kb0 = kb+1
+        DO k = A % Rows(i), A % Rows(i+1)-1
+          l = A % Cols(k)
+          val = A % Values(k) 
 
+          Hit = ( i == l .OR. ABS( val ) > reps )
+          
+          IF( Hit ) THEN
+            kb = kb + 1
+            IF( CheckDiag .AND. i == l ) Diag(i) = kb
+            
+            ! Set the new entry to the matrix
+            Values(kb) = val
+            Cols(kb) = l
+          END IF
+            
+        END DO
+        Rows(i) = kb0
+      END DO
+    END IF
+    Rows(N+1) = kb+1
+    
+    
     DEALLOCATE( A % Values, A % Cols ) 
     A % Values => Values
     A % Cols => Cols
 
+    IF(.NOT. CheckDiag ) THEN
+      IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
+    END IF
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_RemoveZeros
 !------------------------------------------------------------------------------

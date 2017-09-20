@@ -2100,6 +2100,12 @@ CONTAINS
     REWIND( InFileUnit )
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
+
+
+    IF( .NOT. ListCheckPresent( Model % Simulation,'Solver Input File') ) THEN
+      CALL ListAddString( Model % Simulation,'Solver Input File',ModelName ) 
+    END IF
+      
     
     CALL InitializeOutputLevel()
 

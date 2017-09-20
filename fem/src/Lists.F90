@@ -171,9 +171,10 @@ MODULE Lists
    !$OMP THREADPRIVATE(Activename_stack)
 
    TYPE(ValueList_t), POINTER, SAVE, PRIVATE  :: TimerList => NULL()
-   LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerResults, TimerCumulative, &
-       TimerRealTime, TimerCPUTime
-
+   LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerCumulative, TimerRealTime, TimerCPUTime
+   CHARACTER(LEN=MAX_NAME_LEN), SAVE, PRIVATE :: TimerPrefix
+   
+   
    LOGICAL, PRIVATE :: DoNamespaceCheck = .FALSE.
 
 CONTAINS
@@ -6209,13 +6210,21 @@ CONTAINS
     IF( FirstTime ) THEN
       FirstTime=.FALSE.
       TimerPassive = ListGetLogical( CurrentModel % Simulation,'Timer Passive',Found)
-      TimerResults = ListGetLogical( CurrentModel % Simulation,'Timer Results',Found)      
       TimerCumulative = ListGetLogical( CurrentModel % Simulation,'Timer Cumulative',Found)      
       TimerRealTime = ListGetLogical( CurrentModel % Simulation,'Timer Real Time',Found)      
       TimerCPUTime = ListGetLogical( CurrentModel % Simulation,'Timer CPU Time',Found)            
       IF( .NOT. (TimerRealTime .OR. TimerCPUTime ) ) TimerRealTime = .TRUE.
+      TimerPrefix = ListGetString( CurrentModel % Simulation,'Timer Prefix',Found )
+      IF( .NOT. Found ) THEN
+        IF( ListGetLogical( CurrentModel % Simulation,'Timer Results',Found ) ) THEN
+          TimerPrefix = 'res:'
+        ELSE
+          TimerPrefix = 'timer:'
+        END IF
+      END IF
     END IF
 
+    
     IF( TimerPassive ) RETURN
 
     IF( TimerCPUTime ) THEN
@@ -6226,6 +6235,19 @@ CONTAINS
     IF( TimerRealTime ) THEN
       rt = RealTime()
       CALL ListAddConstReal( TimerList,TRIM(TimerName)//' real time',rt )
+    END IF
+
+    IF( TimerCumulative ) THEN
+      IF( TimerCPUTime ) THEN
+        IF( .NOT. ListCheckPresent( CurrentModel % Simulation,TRIM(TimerPrefix)//' '//TRIM(TimerName)//' cpu time') ) THEN
+          CALL ListAddConstReal( CurrentModel % Simulation,TRIM(TimerPrefix)//' '//TRIM(TimerName)//' cpu time',0.0_dp )
+        END IF
+      END IF
+      IF( TimerRealTime ) THEN
+        IF( .NOT. ListCheckPresent( CurrentModel % Simulation,TRIM(TimerPrefix)//' '//TRIM(TimerName)//' real time') ) THEN
+          CALL ListAddConstReal( CurrentModel % Simulation,TRIM(TimerPrefix)//' '//TRIM(TimerName)//' real time',0.0_dp )
+        END IF
+      END IF
     END IF
       
   END SUBROUTINE ResetTimer
@@ -6264,7 +6286,7 @@ CONTAINS
     LOGICAL :: Found
 
     IF( TimerPassive ) RETURN
-
+    
     IF( TimerCPUTime ) THEN
       ct0 = ListGetConstReal( TimerList,TRIM(TimerName)//' cpu time',Found) 
       IF( Found ) THEN
@@ -6284,39 +6306,40 @@ CONTAINS
     END IF
     
     
-    IF( TimerResults ) THEN
+    IF( TimerCPUTime ) THEN
       IF( TimerCumulative ) THEN
-        IF( TimerCPUTime ) THEN
-          cumct = ListGetConstReal(CurrentModel % Simulation,&
-            'res: '//TRIM(TimerName)//' cpu time',Found)
-          IF( Found ) THEN
-            ct = ct + cumct
-            WRITE(Message,'(a,f10.4,a)') 'Elapsed CPU time cumulative: ',ct,' (s)'
-            CALL Info(TRIM(TimerName),Message,Level=Level)          
-          ELSE
-            CALL Warn('CheckTimer',&
-                'Requesting time from non-existing timer: '//TRIM(TimerName) )            
-          END IF
-          CALL ListAddConstReal(CurrentModel % Simulation,&
-              'res: '//TRIM(TimerName)//' cpu time',ct)
-          
-        END IF
-        IF( TimerRealTime ) THEN
-          cumrt = ListGetConstReal(CurrentModel % Simulation,&
-              'res: '//TRIM(TimerName)//' real time',Found)
-          IF( Found ) THEN
-            rt = rt + cumrt            
-            WRITE(Message,'(a,f10.4,a)') 'Elapsed REAL time cumulative: ',rt,' (s)'
-            CALL Info(TRIM(TimerName),Message,Level=Level)          
-          ELSE
-            CALL Warn('CheckTimer',&
-                'Requesting time from non-existing timer: '//TRIM(TimerName) )
-          END IF
-          CALL ListAddConstReal(CurrentModel % Simulation,&
-              'res: '//TRIM(TimerName)//' real time',rt)
+        cumct = ListGetConstReal(CurrentModel % Simulation,&
+            TRIM(TimerPrefix)//' '//TRIM(TimerName)//' cpu time',Found)
+        IF( Found ) THEN
+          ct = ct + cumct
+          WRITE(Message,'(a,f10.4,a)') 'Elapsed CPU time cumulative: ',ct,' (s)'
+          CALL Info(TRIM(TimerName),Message,Level=Level)          
+        ELSE
+          CALL Warn('CheckTimer',&
+              'Requesting previous CPU time from non-existing timer: '//TRIM(TimerName) )            
         END IF
       END IF
+      CALL ListAddConstReal(CurrentModel % Simulation,&
+          TRIM(TimerPrefix)//' '//TRIM(TimerName)//' cpu time',ct)
+
     END IF
+    IF( TimerRealTime ) THEN
+      IF( TimerCumulative ) THEN
+        cumrt = ListGetConstReal(CurrentModel % Simulation,&
+            TRIM(TimerPrefix)//' '//TRIM(TimerName)//' real time',Found)
+        IF( Found ) THEN
+          rt = rt + cumrt
+          WRITE(Message,'(a,f10.4,a)') 'Elapsed real time cumulative: ',rt,' (s)'
+          CALL Info(TRIM(TimerName),Message,Level=Level)          
+        ELSE
+          CALL Warn('CheckTimer',&
+              'Requesting previous real time from non-existing timer: '//TRIM(TimerName) )            
+        END IF
+      END IF
+      CALL ListAddConstReal(CurrentModel % Simulation,&
+          TRIM(TimerPrefix)//' '//TRIM(TimerName)//' real time',rt)        
+    END IF
+      
     
     IF( PRESENT( Reset ) ) THEN
       IF( Reset ) THEN
