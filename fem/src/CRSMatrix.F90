@@ -2393,7 +2393,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END DO
       
       IF( kb == 0 ) THEN
-        PRINT *,'Nrow:',Nrow,'Ncol:',Ncol
         CALL Warn('CRS_BlockMatrixPick','No matrix entries in submatrix')
         RETURN
       END IF
@@ -2657,8 +2656,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Diagonal = ( Nrow == Ncol ) 
 
     IF( .NOT. Allocated ) THEN
-      PRINT *,'block rows no:',Mrow,' inds:',Irow(1:Mrow)
-      PRINT *,'block cols no:',Mcol,' inds:',Icol(1:Mcol)
+      !PRINT *,'block rows no:',Mrow,' inds:',Irow(1:Mrow)
+      !PRINT *,'block cols no:',Mcol,' inds:',Icol(1:Mcol)
       B % ListMatrix => NULL()
       B % FORMAT = MATRIX_CRS
       B % NumberOfRows = Mrow *  Nsub    
@@ -2761,7 +2760,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     IF( Status ) RETURN
 
     IF( SIZE( A % Values ) /= SIZE( B % Values ) ) THEN
-      PRINT *,'sizes',SIZE( A % Values ), SIZE( B % Values )
+      !PRINT *,'sizes',SIZE( A % Values ), SIZE( B % Values )
       CALL Info('CRS_CopyMatrixPrec','Mismatch in size, returning')            
       RETURN
     END IF

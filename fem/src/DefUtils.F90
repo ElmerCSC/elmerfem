@@ -4705,7 +4705,7 @@ CONTAINS
        ScaleSystem=GetLogical(Params,'Linear System Scaling',Found)
        IF(.NOT.Found) ScaleSystem=.TRUE.
      END IF
-
+     
      IF( ScaleSystem ) THEN
        CALL Info('DefUtils::DefaultDirichletBC','Applying Dirichlet conditions using scaled diagonal',Level=8)
        CALL ScaleLinearSystem(Solver,A,b,ApplyScaling=.FALSE.)
@@ -4747,7 +4747,7 @@ CONTAINS
        !A % NoDirichlet = .FALSE.
      END DO
        
-     !IF (ScaleSystem) THEN
+     IF (ScaleSystem) DEALLOCATE( A % DiagScaling ) 
      !  CALL BackScaleLinearSystem(Solver,A,b)
      !ELSE
      !  DEALLOCATE(DiagScaling)

@@ -9706,8 +9706,10 @@ END FUNCTION SearchNodeL
     n = A % NumberOfRows
 
     IF( PRESENT( DiagScaling ) ) THEN
+      CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
       Diag => DiagScaling 
     ELSE
+      CALL Info('ScaleLinearSystem','Computing > DiagScaling < vector',Level=12)
       IF(.NOT. ASSOCIATED(A % DiagScaling)) THEN
         ALLOCATE( A % DiagScaling(n) ) 
       END IF
@@ -9853,7 +9855,8 @@ END FUNCTION SearchNodeL
         x(1:n) = x(1:n) / Diag(1:n)
       END IF
     END IF
-!-----------------------------------------------------------------------------
+
+    !-----------------------------------------------------------------------------
   END SUBROUTINE ScaleLinearSystem
 !-----------------------------------------------------------------------------
 
@@ -10941,9 +10944,9 @@ END FUNCTION SearchNodeL
 
 !   If solving constraint modes analysis go there:
 !   ----------------------------------------------
-    IF ( ConstraintModesAnalysis ) THEN
+    IF ( ConstraintModesAnalysis ) THEN      
       CALL SolveConstraintModesSystem( A, Solver )
-
+     
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
       
       Norm = ComputeNorm(Solver,n,x)
@@ -11514,15 +11517,16 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: StiffMatrix
     TYPE(Solver_t) :: Solver
+    LOGICAL :: ScaleSystem
+!------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
-    !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,m
-    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric, ScaleSystem
+    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric
     REAL(KIND=dp), POINTER :: PValues(:)
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:)
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
-
+    
     Var => Solver % Variable
     IF( SIZE(Var % Values) /= n ) THEN
       CALL Fatal('SolveConstraintModesSystem','Conflicting sizes for matrix and variable!')
@@ -11540,6 +11544,7 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
       ALLOCATE( FluxesMatrix( m, m ) )
       FluxesMatrix = 0.0_dp
     END IF
+    
 
     DO i=1,m
       CALL Info('SolveConstraintModesSystem','Solving for mode: '//TRIM(I2S(i)))
@@ -11548,11 +11553,15 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
         CALL ListAddLogical( Solver % Values,'No Precondition Recompute',.TRUE.)
       END IF
 
-      WHERE( Var % ConstraintModesIndeces == i ) StiffMatrix % Rhs = 1.0_dp      
-
+      ! The matrix has been manipulated already before. This ensures
+      ! that the system has values 1 at the constraint mode i.
+      WHERE( Var % ConstraintModesIndeces == i ) &
+          StiffMatrix % Rhs = StiffMatrix % Values( StiffMatrix % Diag )
+        
       CALL SolveSystem( StiffMatrix,ParMatrix,StiffMatrix % rhs,&
           Var % Values,Var % Norm,Var % DOFs,Solver )
 
+      
       WHERE( Var % ConstraintModesIndeces == i ) StiffMatrix % Rhs = 0.0_dp            
 
       Var % ConstraintModes(i,:) = Var % Values
@@ -11581,6 +11590,7 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
       END IF
     END DO
 
+    
     IF( ComputeFluxes ) THEN
       Symmetric = ListGetLogical( Solver % Values,&
           'Constraint Modes Fluxes Symmetric', Found ) 
