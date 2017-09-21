@@ -4085,6 +4085,55 @@ CONTAINS
 
 
 
+!> Sets one Dirichlet condition to the desired value
+!------------------------------------------------------------------------------
+   SUBROUTINE UpdateDirichletDof( A, dof, dval )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+    INTEGER :: dof
+    REAL(KIND=dp) :: dval
+
+    IF(.NOT. ALLOCATED(A % ConstrainedDOF)) THEN
+      ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+      A % ConstrainedDOF = .FALSE.
+    END IF
+    
+    IF(.NOT. ALLOCATED(A % Dvalues)) THEN
+      ALLOCATE(A % Dvalues(A % NumberOfRows))
+      A % Dvalues = 0._dp
+    END IF
+    
+    A % Dvalues( dof ) = dval
+    A % ConstrainedDOF( dof ) = .TRUE.
+    
+  END SUBROUTINE UpdateDirichletDof
+!------------------------------------------------------------------------------
+
+
+!> Releases one Dirichlet condition 
+!------------------------------------------------------------------------------
+   SUBROUTINE ReleaseDirichletDof( A, dof )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+    INTEGER :: dof
+    REAL(KIND=dp) :: dval
+      
+    IF(.NOT. ALLOCATED(A % ConstrainedDOF)) THEN
+      ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+      A % ConstrainedDOF = .FALSE.
+    END IF
+    
+    IF(.NOT.ALLOCATED(A % Dvalues)) THEN
+      ALLOCATE(A % Dvalues(A % NumberOfRows))
+      A % Dvalues = 0._dp
+    END IF
+    
+    A % ConstrainedDOF( dof ) = .FALSE.
+    
+  END SUBROUTINE ReleaseDirichletDof
+!------------------------------------------------------------------------------
+
+   
 
 !------------------------------------------------------------------------------
 !> Set dirichlet boundary condition for given dof. The conditions are
@@ -4127,7 +4176,7 @@ CONTAINS
 
     INTEGER :: NoNodes,NoDims,bf_id,nlen, NOFNodesFound, dim, &
         bndry_start, bndry_end, Upper
-    REAL(KIND=dp), POINTER :: CoordNodes(:,:), Condition(:), Work(:),DiagScaling(:)
+    REAL(KIND=dp), POINTER :: CoordNodes(:,:), Condition(:), Work(:)!,DiagScaling(:)
     REAL(KIND=dp) :: GlobalMinDist,Dist, Eps
     LOGICAL, ALLOCATABLE :: ActivePart(:), ActiveCond(:), ActivePartAll(:)
     TYPE(ValueList_t), POINTER :: ValueList, Params
@@ -4148,11 +4197,11 @@ CONTAINS
 ! These logical vectors are used to minimize extra effort in setting up different BCs
 !------------------------------------------------------------------------------
 
-    DiagScaling => A % DiagScaling
-    IF (.NOT.ASSOCIATED(DiagScaling)) THEN
-      ALLOCATE(DiagScaling(A % NumberOFRows))
-      DiagScaling = 1._dp
-    END IF
+    !DiagScaling => A % DiagScaling
+    !IF (.NOT.ASSOCIATED(DiagScaling)) THEN
+    !  ALLOCATE(DiagScaling(A % NumberOFRows))
+    !  DiagScaling = 1._dp
+    !END IF
 
     nlen = LEN_TRIM(Name)
     n = MAX( Model % NumberOfBodyForces,Model % NumberOfBCs)
@@ -4891,7 +4940,7 @@ CONTAINS
       END IF
     END IF
 
-    IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
+    !IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
 
     CALL Info('SetDirichletBoundaries','Number of dofs set: '&
         //TRIM(I2S(DirCount)),Level=12)
@@ -4924,7 +4973,6 @@ CONTAINS
       !
       ! Check for nodes belonging to n-t boundary getting set by other bcs.
       ! -------------------------------------------------------------------
-
       DO j=1,n
         IF ( Conditional .AND. Condition(j)<0.0_dp ) CYCLE
         k = Perm(Indexes(j))
@@ -5014,7 +5062,7 @@ CONTAINS
                   b(lmax) = 0._dp
 
                   IF( .NOT. OffDiagonal ) THEN
-                    b(lmax) = b(lmax) + Work(j)/DiagScaling(lmax)
+                    b(lmax) = b(lmax) + Work(j) !/DiagScaling(lmax)
                   END IF
 
                   ! Consider all components of the cartesian vector mapped to the 
@@ -5072,8 +5120,9 @@ CONTAINS
           k0 = Offset + NDOFs * (Perm(ind0)-1) + DOF
           k = OffSet + NDOFs * (Perm(ind)-1) + DOF
 
-          Coeff = DiagScaling(k0) / DiagScaling(k)
-
+          !Coeff = DiagScaling(k0) / DiagScaling(k)
+          Coeff = 1.0_dp
+          
           CALL MoveRow( A, k, k0, Coeff )
           b(k0) = b(k0) + Coeff * b(k)
 
@@ -5085,8 +5134,9 @@ CONTAINS
             k0 = Offset + NDOFs + (Perm(ind0)-1) * DOF
             k = OffSet + NDOFs * (Perm(ind)-1) + l
 
-            Coeff = DiagScaling(k0) / DiagScaling(k)
-
+            !Coeff = DiagScaling(k0) / DiagScaling(k)
+            Coeff = 1.0_dp
+            
             CALL MoveRow( A, k, k0, Coeff )
             b(k0) = b(k0) + Coeff * b(k)
           
@@ -5163,6 +5213,19 @@ CONTAINS
       REAL(KIND=dp) :: s
       INTEGER :: i,j,k,k1,l
 
+
+      IF(.NOT. ALLOCATED(A % ConstrainedDOF)) THEN
+        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+        A % ConstrainedDOF = .FALSE.
+      END IF
+      
+      IF(.NOT. ALLOCATED(A % Dvalues)) THEN
+        ALLOCATE(A % Dvalues(A % NumberOfRows))
+        A % Dvalues = 0._dp
+      END IF
+
+
+      
       k = ind
       IF (ApplyPerm) k = Perm(ind)
       IF( k == 0 ) RETURN
@@ -5179,20 +5242,22 @@ CONTAINS
 
       DirCount = DirCount + 1
 
-      IF ( A % FORMAT == MATRIX_SBAND ) THEN
-        CALL SBand_SetDirichlet( A,b,k,s*val )
-      ELSE
-        IF (.NOT.A % NoDirichlet ) CALL ZeroRow( A,k )
-
+      !IF ( A % FORMAT == MATRIX_SBAND ) THEN
+      !  CALL SBand_SetDirichlet( A,b,k,s*val )
+      !ELSE
+      !  IF (.NOT.A % NoDirichlet ) CALL ZeroRow( A,k )
+      
         IF( .NOT. OffDiagonal ) THEN
-          IF(ALLOCATED(A % Dvalues)) A % Dvalues(k) =  val / DiagScaling(k)
-          IF( .NOT.A % NoDirichlet ) THEN
-            CALL SetMatrixElement( A,k,k,1._dp )
-            IF(.NOT.ALLOCATED(A % Dvalues)) b(k) = val / DiagScaling(k)
-          END IF
+          !IF(ALLOCATED(A % Dvalues))
+          A % Dvalues(k) =  val !/ DiagScaling(k)
+          !IF( .NOT.A % NoDirichlet ) THEN
+          !  CALL SetMatrixElement( A,k,k,1._dp )
+          !  IF(.NOT.ALLOCATED(A % Dvalues)) b(k) = val / DiagScaling(k)
+          !END IF
         END IF
-        IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
-      END IF
+        !IF(ALLOCATED(A % ConstrainedDOF))
+        A % ConstrainedDOF(k) = .TRUE.
+      !END IF
 !------------------------------------------------------------------------------
     END SUBROUTINE SetSinglePoint
 !------------------------------------------------------------------------------
@@ -5281,26 +5346,28 @@ CONTAINS
         k = Perm(ii)
         IF ( .NOT. Done(ii) .AND. k>0 ) THEN
           k = NDOFs * (k-1) + DOF
-          IF( .NOT.A % NoDirichlet ) THEN
-            CALL ZeroRow( A,k )
-            CALL AddToMatrixElement( A, k, k, 1.0_dp )
-          ELSE
-          END IF
-          IF(ALLOCATED(A % Dvalues)) A % Dvalues(k) = 0._dp
-          IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
+          !IF( .NOT.A % NoDirichlet ) THEN
+          !  CALL ZeroRow( A,k )
+          !  CALL AddToMatrixElement( A, k, k, 1.0_dp )
+          !ELSE
+          !END IF
+          !IF(ALLOCATED(A % Dvalues))
+          A % Dvalues(k) = 0._dp
+          !IF(ALLOCATED(A % ConstrainedDOF))
+          A % ConstrainedDOF(k) = .TRUE.
           
           DO l = Projector % Rows(i), Projector % Rows(i+1)-1
             IF ( Projector % Cols(l) <= 0 ) CYCLE
             m = Perm( Projector % Cols(l) )
             IF ( m > 0 ) THEN
               m = NDOFs * (m-1) + DOF
-              IF(ALLOCATED(A % Dvalues)) THEN
+              !IF(ALLOCATED(A % Dvalues)) THEN
                 A % Dvalues(k) = A % Dvalues(k) - Scale * Projector % Values(l) * &
-                    Var % Values(m)/DiagScaling(k)
-              ELSE
-                b(k) = b(k) - Scale * Projector % Values(l) * &
-                    Var % Values(m)/DiagScaling(k)
-              END IF
+                    Var % Values(m) !/DiagScaling(k)
+              !ELSE
+              !  b(k) = b(k) - Scale * Projector % Values(l) * &
+              !      Var % Values(m)/DiagScaling(k)
+              !END IF
             END IF
           END DO
         END IF
@@ -5433,15 +5500,15 @@ CONTAINS
                 m = NDOFs*(m-1) + DOF
                 DO nn=A % Rows(k),A % Rows(k+1)-1
                    CALL AddToMatrixElement( A, m, A % Cols(nn), &
-                          -scale*Projector % Values(l) * A % Values(nn) / &
-                          DiagScaling(k) * DiagScaling(m))
+                          -scale*Projector % Values(l) * A % Values(nn) ) !/ &
+                          !DiagScaling(k) * DiagScaling(m))
                    IF (ASSOCIATED(F % Values)) THEN
                      CALL AddToMatrixElement( F, m, F % Cols(nn), &
                           -scale*Projector % Values(l) * F % Values(nn) )
                    END IF
                 END DO
-                b(m)=b(m) - scale*Projector % Values(l)*b(k)*&
-                        DiagScaling(m) / DiagScaling(k)
+                b(m)=b(m) - scale*Projector % Values(l)*b(k) !*&
+                        !DiagScaling(m) / DiagScaling(k)
                 IF (ASSOCIATED(F % RHS)) THEN
                   F % RHS(m) = F % RHS(m) - scale*Projector % Values(l)*F % RHS(k)
                 END IF
@@ -5536,7 +5603,7 @@ CONTAINS
            weight = WeightVar % Values( k )
            coeff = ListGetRealAtNode( BC,'Periodic BC Coefficient '&
                //Name(1:nlen),ii, Found )
-           val = -weight * coeff * DiagScaling(k)**2
+           val = -weight * coeff !* DiagScaling(k)**2
            scale = -1.0
          ELSE         
            val = 1.0_dp
@@ -5553,14 +5620,20 @@ CONTAINS
              m = Perm( Projector % Cols(l) )
              IF ( m > 0 ) THEN
                m = NDOFs * (m-1) + DOF
-               CALL AddToMatrixElement( A,k,m,val * Projector % Values(l) * &
-                   ( DiagScaling(m) / DiagScaling(k) ) )
+               CALL AddToMatrixElement( A,k,m,val * Projector % Values(l) ) !* &
+                   !( DiagScaling(m) / DiagScaling(k) ) )
              END IF
           END DO
 
-          b(k) = b(k) - ValueOffset / DiagScaling(k)
+          !IF(.NOT. Jump) THEN
+          !  A % ConstrainedDof(k) = .TRUE.
+          !  A % DValues(k) = -ValueOffset
+          !ELSE          
+            b(k) = b(k) - ValueOffset !/ DiagScaling(k)
+          !END IF
           CALL AddToMatrixElement( A,k,k,scale*val )
-       END IF
+          
+        END IF
        Done(ii) = .TRUE.
     END DO
 !------------------------------------------------------------------------------
@@ -5990,11 +6063,12 @@ CONTAINS
     ! Manipulate the boundaries such that we need to modify only the r.h.s. in the actual linear solver
     DO k=1,A % NumberOfRows       
       IF( Var % ConstraintModesIndeces(k) == 0 ) CYCLE
-      b(k) = 0.0_dp
-      CALL ZeroRow(A,k)
-      CALL SetMatrixElement( A,k,k,1._dp )
+      A % ConstrainedDOF(k) = .TRUE.
+      A % DValues(k) = 0.0_dp
+      !b(k) = 0.0_dp
+      !CALL ZeroRow(A,k)
+      !CALL SetMatrixElement( A,k,k,1._dp )
     END DO
-
     
     ALLOCATE( Var % ConstraintModes( Var % NumberOfConstraintModes, A % NumberOfRows ) )
     Var % ConstraintModes = 0.0_dp
@@ -6031,21 +6105,24 @@ CONTAINS
     IF ( PermIndex > 0 ) THEN
       PermIndex = NDOFs * (PermIndex-1) + DOF
 
-      IF ( A % FORMAT == MATRIX_SBAND ) THEN
-        CALL SBand_SetDirichlet( A,b,PermIndex,NodeValue )
-      ELSE IF ( A % FORMAT == MATRIX_CRS .AND. &
-          A % Symmetric.AND..NOT. A % NoDirichlet ) THEN
-
-         CALL CRS_SetSymmDirichlet(A,b,PermIndex,NodeValue)
-      ELSE                  
-        s = A % Values(A % Diag(PermIndex))
-        b(PermIndex) = NodeValue * s
-        IF(.NOT. A % NoDirichlet) THEN
-           CALL ZeroRow( A,PermIndex )
-           CALL SetMatrixElement( A,PermIndex,PermIndex,s )
-        END IF
-      END IF
-      IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(PermIndex) = .TRUE.
+      !IF ( A % FORMAT == MATRIX_SBAND ) THEN
+      !  CALL SBand_SetDirichlet( A,b,PermIndex,NodeValue )
+      !ELSE IF ( A % FORMAT == MATRIX_CRS .AND. &
+      !    A % Symmetric.AND..NOT. A % NoDirichlet ) THEN
+      !
+      !   CALL CRS_SetSymmDirichlet(A,b,PermIndex,NodeValue)
+      !ELSE                  
+      !  s = A % Values(A % Diag(PermIndex))
+      !  b(PermIndex) = NodeValue * s
+      !  IF(.NOT. A % NoDirichlet) THEN
+      !     CALL ZeroRow( A,PermIndex )
+      !     CALL SetMatrixElement( A,PermIndex,PermIndex,s )
+      !  END IF
+      !END IF
+      !IF(ALLOCATED(A % ConstrainedDOF))
+      A % ConstrainedDOF(PermIndex) = .TRUE.
+      A % DValues(PermIndex) = NodeValue
+      
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE SetDirichletPoint
@@ -6102,11 +6179,11 @@ CONTAINS
 ! Go through the boundaries
 !------------------------------------------------------------------------------
 
-    DiagScaling => A % DiagScaling
-    IF (.NOT.ASSOCIATED(DiagScaling)) THEN
-      ALLOCATE(DiagScaling(A % NumberOFRows))
-      DiagScaling=1._dp
-    END IF
+    !DiagScaling => A % DiagScaling
+    !IF (.NOT.ASSOCIATED(DiagScaling)) THEN
+    !  ALLOCATE(DiagScaling(A % NumberOFRows))
+    !  DiagScaling=1._dp
+    !END IF
 
     ActivePart = .FALSE.
     ActivePartAll = .FALSE.
@@ -6284,7 +6361,7 @@ CONTAINS
     END DO
 
     DEALLOCATE( Indexes )
-    IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
+    !IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
 
     CALL Info('SetNodalLoads','Finished checking for nodal loads',Level=12)
 
@@ -6320,11 +6397,11 @@ CONTAINS
                IF( ParEnv % Pes > 1 ) THEN
                   IF(  A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) CYCLE
                END IF
-               b(k) = b(k) + Work(j) * DiagScaling(k)
+               b(k) = b(k) + Work(j) !* DiagScaling(k)
              ELSE
                DO l=1,MIN( NDOFs, SIZE(Worka,1) )
                  k1 = NDOFs * (k-1) + l
-                 b(k1) = b(k1) + WorkA(l,1,j) * DiagScaling(k1)
+                 b(k1) = b(k1) + WorkA(l,1,j) !* DiagScaling(k1)
                END DO
              END IF
            END IF
@@ -6357,11 +6434,11 @@ CONTAINS
            IF ( k > 0 ) THEN
              IF ( DOF>0 ) THEN
                k = NDOFs * (k-1) + DOF
-               b(k) = b(k) + Work(j) * DiagScaling(k)
+               b(k) = b(k) + Work(j) !* DiagScaling(k)
              ELSE
                DO l=1,MIN( NDOFs, SIZE(WorkA,1) )
                  k1 = NDOFs * (k-1) + l
-                 b(k1) = b(k1) + WorkA(l,1,j) * DiagScaling(k1)
+                 b(k1) = b(k1) + WorkA(l,1,j) !* DiagScaling(k1)
                END DO
              END IF
            END IF
