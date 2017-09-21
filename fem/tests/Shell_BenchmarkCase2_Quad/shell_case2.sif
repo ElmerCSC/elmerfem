@@ -41,8 +41,7 @@ Equation 1 :: Active Solvers(1) = 1
 
 Solver 1
   Equation = "Shell equations"
-  Variable = "U"
-  Variable DOFs = 6
+
   Procedure = "ShellSolver" "ShellSolver"
 
 !  Strain Reduction Operator = Integer 1
@@ -70,19 +69,19 @@ End
 Boundary Condition 1
   Target Boundaries(1) = 1
   U 2 = Real 0
-  U 5 = Real 0
+  DNU 2 = Real 0
 End
 
 Boundary Condition 2
   Target Boundaries(1) = 2
   U 3 = Real 0
-  U 6 = Real 0
+  DNU 3 = Real 0
 End
 
 Boundary Condition 3
   Target Boundaries(1) = 4
   U 1 = Real 0
-  U 4 = Real 0
+  DNU 1 = Real 0
 End
 
 Solver 1 :: Reference Norm = Real 0.91395101E-02      ! This corresponds to the default strain reduction

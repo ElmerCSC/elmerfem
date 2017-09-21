@@ -82,6 +82,8 @@ SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
   CALL ListAddInteger(SolverPars, 'Variable DOFs', 6)
   CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
 
+  CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
+
   !----------------------------------------------------------------------------
   ! Create variables for saving principal (curvature) directions:
   !----------------------------------------------------------------------------
