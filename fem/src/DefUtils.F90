@@ -4367,6 +4367,7 @@ CONTAINS
            IF ( ConstantValue ) CYCLE
 
            SELECT CASE(Parent % TYPE % DIMENSION)
+
            CASE(2)
               ! If no edges do not try to set boundary conditions
               ! @todo This should changed to EXIT

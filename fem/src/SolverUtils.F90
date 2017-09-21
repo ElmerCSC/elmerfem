@@ -4110,6 +4110,35 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+   SUBROUTINE UpdateDirichletDofC( A, dof, cval )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+    INTEGER :: dof
+    COMPLEX(KIND=dp) :: cval
+
+    IF(.NOT. ALLOCATED(A % ConstrainedDOF)) THEN
+      ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+      A % ConstrainedDOF = .FALSE.
+    END IF
+    
+    IF(.NOT. ALLOCATED(A % Dvalues)) THEN
+      ALLOCATE(A % Dvalues(A % NumberOfRows))
+      A % Dvalues = 0._dp
+    END IF
+    
+    A % Dvalues( 2*dof-1 ) = REAL( cval )
+    A % ConstrainedDOF( 2*dof-1 ) = .TRUE.
+
+    A % Dvalues( 2*dof ) = AIMAG( cval )
+    A % ConstrainedDOF( 2*dof ) = .TRUE.
+    
+  END SUBROUTINE UpdateDirichletDofC
+!------------------------------------------------------------------------------
+
+
+
+  
 !> Releases one Dirichlet condition 
 !------------------------------------------------------------------------------
    SUBROUTINE ReleaseDirichletDof( A, dof )

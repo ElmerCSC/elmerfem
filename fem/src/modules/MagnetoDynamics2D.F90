@@ -790,9 +790,12 @@ CONTAINS
             x = Mesh % Nodes % x(k)
             y = Mesh % Nodes % y(k)
             k = Perm(k)
-            b(k) = y * Bx(j) - x * By(j)
-            CALL ZeroRow(A, k)
-            CALL AddToMatrixElement(A, k, k, 1._dp)
+            !b(k) = y * Bx(j) - x * By(j)
+
+            CALL UpdateDirichletDof( A, k, y * Bx(j) - x * By(j) )
+
+            !CALL ZeroRow(A, k)
+            !CALL AddToMatrixElement(A, k, k, 1._dp)
           END DO 
         END IF  
       END IF  
@@ -1690,11 +1693,15 @@ CONTAINS
             x = Mesh % Nodes % x(k)
             y = Mesh % Nodes % y(k)
             k = Perm(k)
-            b(2*k-1) = y * Bx(j) - x * By(j)
-            b(2*k) = y * Bxim(j) - x * Byim(j)
-            CALL ZeroRow(A, 2*k-1)
-            CALL ZeroRow(A, 2*k)
-            CALL AddToCmplxMatrixElement(A, 2*k-1, 2*k-1, 1._dp, 0._dp)
+            !b(2*k-1) = y * Bx(j) - x * By(j)
+            !b(2*k) = y * Bxim(j) - x * Byim(j)
+
+            CALL UpdateDirichletDof( A, 2*k-1, y * Bx(j) - x * By(j) )
+            CALL UpdateDirichletDof( A, 2*k, y * Bxim(j) - x * Byim(j) )
+
+            !CALL ZeroRow(A, 2*k-1)
+            !CALL ZeroRow(A, 2*k)
+            !CALL AddToCmplxMatrixElement(A, 2*k-1, 2*k-1, 1._dp, 0._dp)
           END DO 
         END IF  
       END IF  
