@@ -5989,6 +5989,8 @@ CONTAINS
 
 
 
+  
+
 !> Prepare to set Dirichlet conditions for attachment DOFs in the case of
 !> component mode synthesis
 !------------------------------------------------------------------------------
@@ -6481,6 +6483,184 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+  
+    !-------------------------------------------------------------------------------
+  SUBROUTINE CommunicateDirichletBCs(A)
+  !-------------------------------------------------------------------------------
+     TYPE(Matrix_t) :: A
+
+     REAL(KIND=dp), ALLOCATABLE :: d_e(:,:), g_e(:)
+     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:)
+     INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
+
+     IF( ParEnv % PEs<=1 ) RETURN
+
+     ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
+
+     nn = 0
+     DO i=0, ParEnv % PEs-1
+       k = i+1
+       IF(.NOT.ParEnv % Active(k) ) CYCLE
+       IF(i==ParEnv % myPE) CYCLE
+       IF(.NOT.ParEnv % IsNeighbour(k) ) CYCLE
+       nn = nn + 1
+       fneigh(nn) = k
+       ineigh(k) = nn
+     END DO
+
+     n = COUNT(A % ConstrainedDOF .AND. A % ParallelInfo % Interface)
+     ALLOCATE( s_e(n, nn ), r_e(n) )
+     ALLOCATE( d_e(n, nn ), g_e(n) )
+
+     CALL CheckBuffer( nn*3*n )
+
+     ii = 0
+     DO i=1, A % NumberOfRows
+       IF(A % ConstrainedDOF(i) .AND. A % ParallelInfo % Interface(i) ) THEN
+          DO j=1,SIZE(A % ParallelInfo % Neighbourlist(i) % Neighbours)
+            k = A % ParallelInfo % Neighbourlist(i) % Neighbours(j)
+            IF ( k == ParEnv % MyPE ) CYCLE
+            k = k + 1
+            k = ineigh(k)
+            ii(k) = ii(k) + 1
+            d_e(ii(k),k) = A % DValues(i)
+            s_e(ii(k),k) = A % ParallelInfo % GlobalDOFs(i)
+          END DO
+       END IF
+     END DO
+
+     DO i=1, nn
+       j = fneigh(i) 
+
+       CALL MPI_BSEND( ii(i),1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD,ierr )
+       IF( ii(i) > 0 ) THEN
+         CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
+         CALL MPI_BSEND( d_e(1:ii(i),i),ii(i),MPI_DOUBLE_PRECISION,j-1,112,ELMER_COMM_WORLD,ierr )
+       END IF
+     END DO
+
+     DO i=1, nn
+       j = fneigh(i)
+       CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
+       IF ( n>0 ) THEN
+         IF( n>SIZE(r_e)) THEN
+           DEALLOCATE(r_e,g_e)
+           ALLOCATE(r_e(n),g_e(n))
+         END IF
+
+         CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
+         CALL MPI_RECV( g_e,n,MPI_DOUBLE_PRECISION,j-1,112,ELMER_COMM_WORLD, status,ierr )
+         DO j=1,n
+           k = SearchNode( A % ParallelInfo, r_e(j), Order= A % Perm )
+           IF ( k>0 ) THEN
+             IF(.NOT. A % ConstrainedDOF(k)) THEN
+               CALL ZeroRow(A, k )
+               A % Values(A % Diag(k)) = 1._dp
+               A % Dvalues(k) = g_e(j)
+               A % ConstrainedDOF(k) = .TRUE.
+             END IF
+           END IF
+         END DO
+       END IF
+     END DO
+     DEALLOCATE(s_e, r_e, d_e, g_e)
+  !-------------------------------------------------------------------------------
+  END SUBROUTINE CommunicateDirichletBCs
+  !-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+  SUBROUTINE EnforceDirichletConditions( Solver, A, b, OffDiagonal ) 
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp) :: b(:)
+    LOGICAL, OPTIONAL :: OffDiagonal
+    
+    TYPE(ValueList_t), POINTER :: Params
+    LOGICAL :: ScaleSystem, DirichletComm, Found, NoDiag
+    REAL(KIND=dp), POINTER :: DiagScaling(:)
+    REAL(KIND=dp) :: dval, s
+    INTEGER :: i,j,k
+
+    
+    Params => Solver % Values
+
+    IF( PRESENT( OffDiagonal ) ) THEN
+      NoDiag = OffDiagonal
+    ELSE
+      NoDiag = .FALSE.
+    END IF
+
+    IF( NoDiag ) THEN
+      ScaleSystem = .FALSE.
+    ELSE
+      ScaleSystem = ListGetLogical(Params,'Linear System Dirichlet Scaling',Found)
+      IF(.NOT.Found) THEN
+        ScaleSystem = ListGetLogical(Params,'Linear System Scaling',Found)
+        IF(.NOT.Found) ScaleSystem=.TRUE.
+      END IF
+    END IF
+      
+    
+    IF( ScaleSystem ) THEN
+      CALL Info('EnforceDirichletConditions','Applying Dirichlet conditions using scaled diagonal',Level=8)
+      CALL ScaleLinearSystem(Solver,A,b,ApplyScaling=.FALSE.)
+      DiagScaling => A % DiagScaling
+    END IF
+    
+    ! Communicate the Dirichlet conditions for parallel cases since there may be orphans      
+    IF ( ParEnv % PEs > 1 ) THEN
+      DirichletComm = ListGetLogical( CurrentModel % Simulation, 'Dirichlet Comm', Found)
+      IF(.NOT. Found) DirichletComm = .TRUE.
+      IF( DirichletComm) CALL CommunicateDirichletBCs(A)
+    END IF
+    
+    ! Eliminate all entries in matrix that may be eliminated in one sweep
+    ! If this is an offdiagonal entry this cannot be done.  
+    IF ( A % Symmetric .AND. .NOT. NoDiag ) THEN
+      CALL CRS_ElimSymmDirichlet(A,b)
+    END IF
+ 
+    
+    DO k=1,A % NumberOfRows
+      IF ( A % ConstrainedDOF(k) ) THEN
+        !s = A % Values(A % Diag(k))
+        !IF (s==0) s = 1
+        
+        dval = A % Dvalues(k) !/ ( s * DiagScaling(k) )
+        
+        IF( ScaleSystem ) THEN
+          s = DiagScaling(k)            
+          IF( ABS(s) <= TINY(s) ) s = 1.0_dp
+        ELSE
+          s = 1.0_dp
+        END IF
+        
+        CALL ZeroRow(A, k)
+
+        ! Off-diagonal entries for a block matrix are neglected since the code will
+        ! also go through the diagonal entries where the r.h.s. target value will be set.
+        IF(.NOT. NoDiag ) THEN
+          CALL SetMatrixElement(A,k,k,s)
+          b(k) = s * dval
+        END IF
+
+      END IF
+    END DO
+
+    ! Deallocate scaling since otherwise it could be misused out of context
+    IF (ScaleSystem) DEALLOCATE( A % DiagScaling ) 
+        
+    CALL Info('EnforceDirichletConditions','Dirichlet boundary conditions enforced', Level=12)
+    
+  END SUBROUTINE EnforceDirichletConditions
+!-------------------------------------------------------------------------------
+
+
+   
 !------------------------------------------------------------------------------
   FUNCTION sGetElementDOFs( Indexes, UElement, USolver )  RESULT(NB)
 !------------------------------------------------------------------------------

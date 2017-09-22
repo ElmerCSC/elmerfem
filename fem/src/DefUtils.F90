@@ -4265,6 +4265,10 @@ CONTAINS
 
         IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
         
+        CALL Info('DefUtils::DefaultDirichletBCs', &
+            'p-element preparations: '//TRIM(name), Level=15)
+        
+        
         ! Clearing for p-approximation dofs associated with faces & edges:
         SaveElement => GetCurrentElement() 
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
@@ -4285,8 +4289,10 @@ CONTAINS
            ptr => ListFind(BC, Name,Found )
            IF ( .NOT. ASSOCIATED(ptr) ) CYCLE
 
-           ConstantValue = ptr % PROCEDURE == 0 .AND. &
-               ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
+           !ConstantValue = ptr % PROCEDURE == 0 .AND. &
+           !    ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
+
+           !PRINT *,'ConstantValue:',ConstantValue, 
 
            IF ( isActivePElement(Parent)) THEN
               n = GetElementNOFNodes()
@@ -4339,7 +4345,9 @@ CONTAINS
         ! ----------------------------------------------------------------------------
         IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
 
-
+        CALL Info('DefUtils::DefaultDirichletBCs', &
+            'p-element condition setup: '//TRIM(name), Level=15)
+        
         SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
@@ -4364,8 +4372,13 @@ CONTAINS
            ptr => ListFind(BC, Name,Found )
            ConstantValue =  ptr % PROCEDURE == 0 .AND. &
                 ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
+
+
+           !PRINT *,'Constant Value:',ConstantValue,Parent % TYPE % DIMENSION
+
            IF ( ConstantValue ) CYCLE
 
+           
            SELECT CASE(Parent % TYPE % DIMENSION)
 
            CASE(2)
@@ -4384,7 +4397,8 @@ CONTAINS
               CALL LocalBcBDOFs( BC, Element, numEdgeDofs, Name, STIFF, Work )
 
               IF ( Solver % Matrix % Symmetric ) THEN
-                 DO l=1,n
+
+                DO l=1,n
                     nb = x % Perm( gInd(l) )
                     IF ( nb <= 0 ) CYCLE
                     nb = Offset + x % DOFs * (nb-1) + DOF
@@ -4423,7 +4437,8 @@ CONTAINS
                     !END IF
                  END DO
               ELSE
-                 ! Contribute this boundary to global system
+
+                ! Contribute this boundary to global system
                  ! (i.e solve global boundary problem)
                  DO k=n+1,numEdgeDofs
                     nb = x % Perm( gInd(k) )
@@ -4699,151 +4714,15 @@ CONTAINS
        RETURN
      END IF
 #endif
-     
-     
-     ScaleSystem=GetLogical(Params,'Linear System Dirichlet Scaling',Found)
-     IF(.NOT.Found) THEN
-       ScaleSystem=GetLogical(Params,'Linear System Scaling',Found)
-       IF(.NOT.Found) ScaleSystem=.TRUE.
-     END IF
-     
-     IF( ScaleSystem ) THEN
-       CALL Info('DefUtils::DefaultDirichletBC','Applying Dirichlet conditions using scaled diagonal',Level=8)
-       CALL ScaleLinearSystem(Solver,A,b,ApplyScaling=.FALSE.)
-       DiagScaling => A % DiagScaling
-     END IF
-     
-     ! Communicate the Dirichlet conditions for parallel cases since there may be orphans      
-     IF ( ParEnv % PEs > 1 ) THEN
-       DirichletComm = GetLogical( GetSimulation(), 'Dirichlet Comm', Found)
-       IF(.NOT. Found) DirichletComm = .TRUE.
-       IF( DirichletComm) CALL CommunicateDirichletBCs(A)
-     END IF
 
-     ! Eliminate all entries in matrix that may be eliminated in one sweep
-     IF ( A % Symmetric ) THEN
-       CALL CRS_ElimSymmDirichlet(A,b)
-     END IF
-     
-       
-     DO k=1,A % NumberOfRows
-       IF ( A % ConstrainedDOF(k) ) THEN
-         !s = A % Values(A % Diag(k))
-         !IF (s==0) s = 1
-
-         dval = A % Dvalues(k) !/ ( s * DiagScaling(k) )
-
-         IF( ScaleSystem ) THEN
-           s = DiagScaling(k)            
-           IF( ABS(s) <= TINY(s) ) s = 1.0_dp
-         ELSE
-           s = 1.0_dp
-         END IF
-
-         CALL ZeroRow(A, k)
-         b(k) = s * dval
-         CALL SetMatrixElement(A,k,k,s)
-       END IF
-       !DEALLOCATE(A % Dvalues)
-       !A % NoDirichlet = .FALSE.
-     END DO
-       
-     IF (ScaleSystem) DEALLOCATE( A % DiagScaling ) 
-     !  CALL BackScaleLinearSystem(Solver,A,b)
-     !ELSE
-     !  DEALLOCATE(DiagScaling)
-     !END IF
+     ! This is set outside so that it can be called more flexibilly
+     CALL EnforceDirichletConditions( Solver, A, b )
      
  
      CALL Info('DefUtils::DefaultDirichletBCs','Dirichlet boundary conditions set', Level=5)
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultDirichletBCs
 !------------------------------------------------------------------------------
-
-
-  !-------------------------------------------------------------------------------
-  SUBROUTINE CommunicateDirichletBCs(A)
-  !-------------------------------------------------------------------------------
-     TYPE(Matrix_t) :: A
-
-     REAL(KIND=dp), ALLOCATABLE :: d_e(:,:), g_e(:)
-     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:)
-     INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
-
-     IF( ParEnv % PEs<=1 ) RETURN
-
-     ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
-
-     nn = 0
-     DO i=0, ParEnv % PEs-1
-       k = i+1
-       IF(.NOT.ParEnv % Active(k) ) CYCLE
-       IF(i==ParEnv % myPE) CYCLE
-       IF(.NOT.ParEnv % IsNeighbour(k) ) CYCLE
-       nn = nn + 1
-       fneigh(nn) = k
-       ineigh(k) = nn
-     END DO
-
-     n = COUNT(A % ConstrainedDOF .AND. A % ParallelInfo % Interface)
-     ALLOCATE( s_e(n, nn ), r_e(n) )
-     ALLOCATE( d_e(n, nn ), g_e(n) )
-
-     CALL CheckBuffer( nn*3*n )
-
-     ii = 0
-     DO i=1, A % NumberOfRows
-       IF(A % ConstrainedDOF(i) .AND. A % ParallelInfo % Interface(i) ) THEN
-          DO j=1,SIZE(A % ParallelInfo % Neighbourlist(i) % Neighbours)
-            k = A % ParallelInfo % Neighbourlist(i) % Neighbours(j)
-            IF ( k == ParEnv % MyPE ) CYCLE
-            k = k + 1
-            k = ineigh(k)
-            ii(k) = ii(k) + 1
-            d_e(ii(k),k) = A % DValues(i)
-            s_e(ii(k),k) = A % ParallelInfo % GlobalDOFs(i)
-          END DO
-       END IF
-     END DO
-
-     DO i=1, nn
-       j = fneigh(i) 
-
-       CALL MPI_BSEND( ii(i),1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD,ierr )
-       IF( ii(i) > 0 ) THEN
-         CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
-         CALL MPI_BSEND( d_e(1:ii(i),i),ii(i),MPI_DOUBLE_PRECISION,j-1,112,ELMER_COMM_WORLD,ierr )
-       END IF
-     END DO
-
-     DO i=1, nn
-       j = fneigh(i)
-       CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
-       IF ( n>0 ) THEN
-         IF( n>SIZE(r_e)) THEN
-           DEALLOCATE(r_e,g_e)
-           ALLOCATE(r_e(n),g_e(n))
-         END IF
-
-         CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
-         CALL MPI_RECV( g_e,n,MPI_DOUBLE_PRECISION,j-1,112,ELMER_COMM_WORLD, status,ierr )
-         DO j=1,n
-           k = SearchNode( A % ParallelInfo, r_e(j), Order= A % Perm )
-           IF ( k>0 ) THEN
-             IF(.NOT. A % ConstrainedDOF(k)) THEN
-               CALL ZeroRow(A, k )
-               A % Values(A % Diag(k)) = 1._dp
-               A % Dvalues(k) = g_e(j)
-               A % ConstrainedDOF(k) = .TRUE.
-             END IF
-           END IF
-         END DO
-       END IF
-     END DO
-     DEALLOCATE(s_e, r_e, d_e, g_e)
-  !-------------------------------------------------------------------------------
-  END SUBROUTINE CommunicateDirichletBCs
-  !-------------------------------------------------------------------------------
 
 
 
