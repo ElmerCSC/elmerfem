@@ -4289,10 +4289,9 @@ CONTAINS
            ptr => ListFind(BC, Name,Found )
            IF ( .NOT. ASSOCIATED(ptr) ) CYCLE
 
-           !ConstantValue = ptr % PROCEDURE == 0 .AND. &
-           !    ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
+           ConstantValue = ptr % PROCEDURE == 0 .AND. &
+               ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
 
-           !PRINT *,'ConstantValue:',ConstantValue, 
 
            IF ( isActivePElement(Parent)) THEN
               n = GetElementNOFNodes()
@@ -4303,17 +4302,17 @@ CONTAINS
                  nb = x % Perm( gInd(k) )
                  IF ( nb <= 0 ) CYCLE
                  nb = Offset + x % DOFs * (nb-1) + DOF
-                 !IF ( ConstantValue  ) THEN
+                 IF ( ConstantValue  ) THEN
                    !IF (A % NoDirichlet) THEN
                      A % ConstrainedDOF(nb) = .TRUE.
                      A % Dvalues(nb) = 0._dp
                    !ELSE
                    !  CALL CRS_SetSymmDirichlet(A, A % RHS, nb, 0._dp )
                    !END IF
-                 !ELSE
-                 !  CALL ZeroRow( A, nb )
-                 !  A % RHS(nb) = 0._dp
-                 !END IF
+                 ELSE
+                   CALL ZeroRow( A, nb )
+                   A % RHS(nb) = 0._dp
+                 END IF
               END DO
            ELSE
               ! To do: Check whether BCs for edge/face elements must be set via L2 projection.
@@ -4374,8 +4373,6 @@ CONTAINS
                 ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
 
 
-           !PRINT *,'Constant Value:',ConstantValue,Parent % TYPE % DIMENSION
-
            IF ( ConstantValue ) CYCLE
 
            
@@ -4402,11 +4399,11 @@ CONTAINS
                     nb = x % Perm( gInd(l) )
                     IF ( nb <= 0 ) CYCLE
                     nb = Offset + x % DOFs * (nb-1) + DOF
-                    IF(A % ConstrainedDOF(nb)) THEN
+                    !IF(A % ConstrainedDOF(nb)) THEN
                       s = A % Dvalues(nb)
-                    ELSE
-                      s = A % RHS(nb)
-                    END IF
+                    !ELSE
+                    !  s = A % RHS(nb)
+                    !END IF
                     !s = s * DiagScaling(nb)
                     DO k=n+1,numEdgeDOFs
                        Work(k) = Work(k) - s*STIFF(k,l)
@@ -4424,7 +4421,8 @@ CONTAINS
                     Work(1) = Work(1)/STIFF(1,1)
                  ELSE
                     CALL SolveLinSys(STIFF(1:l,1:l),Work(1:l),l)
-                 END IF
+                  END IF
+                  
                  DO k=n+1,numEdgeDOFs
                     nb = x % Perm( gInd(k) )
                     IF ( nb <= 0 ) CYCLE
@@ -4485,11 +4483,11 @@ CONTAINS
                     IF ( nb <= 0 ) CYCLE
                     nb = Offset + x % DOFs * (nb-1) + DOF
 
-                    IF(A % ConstrainedDOF(nb)) THEN
+                    !IF(A % ConstrainedDOF(nb)) THEN
                       s = A % Dvalues(nb)
-                    ELSE
-                      s = A % RHS(nb)
-                    END IF
+                    !ELSE
+                    !  s = A % RHS(nb)
+                    !END IF
                     !s = s * DiagScaling(nb)
                     DO k=n+1,numEdgeDOFs
                        Work(k) = Work(k) - s*STIFF(k,l)
@@ -4532,10 +4530,12 @@ CONTAINS
      DO DOF=1,x % DOFs
         name = x % name
         IF (x % DOFs>1) name=ComponentName(name,DOF)
-
+        
         IF ( .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {e}') .AND. &
             .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {f}') ) CYCLE
 
+        CALL Info('SetDefaultDirichlet','Setting edge and face dofs',Level=15)
+        
         SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
@@ -4555,7 +4555,7 @@ CONTAINS
            np = Parent % TYPE % NumberOfNodes
 
            IF ( ListCheckPrefix(BC, TRIM(Name)//' {e}') ) THEN
-              !--------------------------------------------------------------------------------
+             !--------------------------------------------------------------------------------
               ! We now devote this branch for handling edge (curl-conforming) finite elements 
               ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
               !--------------------------------------------------------------------------------
@@ -4630,12 +4630,13 @@ CONTAINS
 
                      CALL LocalBcIntegral(BC, Edge, n, Parent, np, TRIM(Name)//' {e}', &
                          Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis)
-
-                     n=GetElementDOFs(gInd,Edge)
+                     
+                     n = GetElementDOFs(gInd,Edge)
 
                      n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
 
                      DO j=1,EDOFs
+
                        k = n_start + j
                        nb = x % Perm(gInd(k))
                        IF ( nb <= 0 ) CYCLE
