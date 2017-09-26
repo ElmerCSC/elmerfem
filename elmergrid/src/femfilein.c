@@ -332,6 +332,7 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
   int ivalues[MAXDOFS],ivalues0[MAXDOFS];
   int setmaterial;
   int debug,firstline;
+  char entityname[MAXNAMESIZE];
 
   strcpy(filename,prefix);
   if ((in = fopen(filename,"r")) == NULL) {
@@ -445,9 +446,16 @@ omstart:
 	  elemnodes = elemcode % 100;
 	  maxnodes = MAX( maxnodes, elemnodes);
 	  mode = 3;
-	  if(allocated) printf("Loading elements of type %d starting from element %d.\n",
-			       elemcode,noelements);
-
+	  if(allocated) {
+	    printf("Loading elements of type %d starting from element %d.\n",
+		   elemcode,noelements);
+	    if(!elsetactive) {
+	      sscanf(pstr+6,"%s",entityname);
+	      strcpy(data->bodyname[material],entityname);
+	      data->bodynamesexist = TRUE;
+	      data->boundarynamesexist = TRUE;
+	    }
+	  }	    
 	  firstline = TRUE;
 	}
       }
@@ -494,6 +502,10 @@ omstart:
 
 	if(allocated) {
 	  printf("Loading element set %d from %s",material,pstr+6);
+	  sscanf(pstr+6,"%s",entityname);
+	  strcpy(data->bodyname[material],entityname);
+	  data->bodynamesexist = TRUE;
+	  data->boundarynamesexist = TRUE;
 	}
       }
       else if(pstr = strstr(line,"HWCOLOR")) {
