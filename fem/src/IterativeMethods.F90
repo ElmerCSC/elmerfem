@@ -1019,7 +1019,7 @@ CONTAINS
     TYPE(Matrix_t),POINTER::A
 
     REAL(KIND=dp), POINTER :: x(:),b(:)
-    
+
     ndim = HUTI_NDIM
     Rounds = HUTI_MAXIT
     MinTol = HUTI_TOLERANCE
@@ -1038,7 +1038,7 @@ CONTAINS
     A => GlobalMatrix
     CM => A % ConstraintMatrix
     Constrained = ASSOCIATED(CM)
-
+    
     IF (Constrained) THEN
       nc = CM % NumberOfRows
       Constrained = nc>0
@@ -1051,13 +1051,14 @@ CONTAINS
         x(1:ndim) = xvec; x(ndim+1:) = CM % extraVals
       END IF
     END IF
-       
+    
     CALL GCR(ndim+nc, GlobalMatrix, x, b, Rounds, MinTol, MaxTol, Residual, &
         Converged, Diverged, OutputInterval, RestartN )
 
+    
     IF(Constrained) THEN
-      xvec=x(1:ndim)
-      rhsvec=b(1:ndim)
+      xvec = x(1:ndim)
+      rhsvec = b(1:ndim)
       CM % extraVals = x(ndim+1:ndim+nc)
       DEALLOCATE(x,b)
     END IF
@@ -1087,10 +1088,20 @@ CONTAINS
       INTEGER :: i,j,k
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
 !------------------------------------------------------------------------------
-      
-      ALLOCATE( R(n), T1(n), T2(n),TT(n) )
+      INTEGER :: allocstat
+        
+      ALLOCATE( R(n), T1(n), T2(n),TT(n), STAT=allocstat )
+      IF( allocstat /= 0 ) THEN
+        CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
+      END IF
+
       IF ( m > 1 ) THEN
-         ALLOCATE( S(n,m-1), V(n,m-1) )
+        ALLOCATE( S(n,m-1), V(n,m-1), STAT=allocstat )
+        IF( allocstat /= 0 ) THEN
+          CALL Fatal('GCR','Failed to allocate memory of size: '&
+              //TRIM(I2S(n))//' x '//TRIM(I2S(m)))
+        END IF
+        
          V(1:n,1:m-1) = 0.0d0	
          S(1:n,1:m-1) = 0.0d0
       END IF	
@@ -1109,9 +1120,9 @@ CONTAINS
       Converged = (Residual < MinTolerance) 
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)
       IF( Converged .OR. Diverged) RETURN
-       
+      
       DO k=1,Rounds
-	 !----------------------------------------------
+        !----------------------------------------------
 	 ! Check for restarting
          !----------------------------------------------
          IF ( MOD(k,m)==0 ) THEN
