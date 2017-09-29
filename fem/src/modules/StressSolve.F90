@@ -936,7 +936,14 @@ CONTAINS
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
     INTEGER :: RelIntegOrder, NoActive 
-    
+
+    LOGICAL :: AnyDamping
+
+    AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
+        ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
+    Damping = 0.0_dp
+    RayleighDamping = .FALSE.
+
     
 
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
@@ -969,16 +976,18 @@ CONTAINS
             CALL Fatal( 'StressSolve', 'No value for density found.' )
        END IF
 
-       Damping(1:n) = GetReal( Material, 'Damping', Found )
-       RayleighDamping = GetLogical( Material, 'Rayleigh damping', Found )
-       IF( RayleighDamping ) THEN
-         RayleighAlpha(1:N) = GetReal( Material, 'Rayleigh alpha', Found )
-         RayleighBeta(1:N) = GetReal( Material, 'Rayleigh beta', Found )
-       ELSE
-         RayleighAlpha = 0.0d0
-         RayleighBeta = 0.0d0        
+       IF( AnyDamping ) THEN
+         Damping(1:n) = GetReal( Material, 'Damping', Found )
+         RayleighDamping = GetLogical( Material, 'Rayleigh damping', Found )
+         IF( RayleighDamping ) THEN
+           RayleighAlpha(1:N) = GetReal( Material, 'Rayleigh alpha', Found )
+           RayleighBeta(1:N) = GetReal( Material, 'Rayleigh beta', Found )
+         ELSE
+           RayleighAlpha = 0.0d0
+           RayleighBeta = 0.0d0        
+         END IF
        END IF
-
+         
        CALL InputTensor( HeatExpansionCoeff, Isotropic(2),  &
            'Heat Expansion Coefficient', Material, n, NodeIndexes, GotHeatExp )
 

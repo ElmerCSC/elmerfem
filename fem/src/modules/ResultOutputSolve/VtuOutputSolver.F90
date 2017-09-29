@@ -63,7 +63,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: NumberOfGeomNodes, NumberOfDofNodes, NumberOfElements, ParallelNodes, ParallelElements, Sweep
   TYPE(Element_t), POINTER :: CurrentElement, LeftElem, RightElem
   TYPE(ValueList_t),POINTER :: Params
-  INTEGER :: MaxModes, MaxModes2, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex, discontMesh
+  INTEGER :: MaxModes, MaxModes2, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex, &
+      discontMesh, OutputMeshes
   INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:), Indexes(:)
   LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, ConstraintAnalysis, &
       WriteIds, SaveBoundariesOnly, SaveBulkOnly, SaveLinear, &
@@ -121,6 +122,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   END IF
   IntSize = KIND(i)
 
+  OutputMeshes = ListGetInteger(Params,'Number of Output Meshes',GotIt)
+
   Partitions = ParEnv % PEs
   Part = ParEnv % MyPE
   Parallel = (Partitions > 1) .OR. GetLogical(Params,'Enforce Parallel format',GotIt)
@@ -131,16 +134,47 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   FilePrefix = GetString( Params,'Output File Name',GotIt )
   IF ( .NOT.GotIt ) FilePrefix = "Output"
-  IF ( Mesh % DiscontMesh ) FilePrefix = TRIM(FilePrefix)//'_discont'    
-
+  IF ( Mesh % DiscontMesh ) THEN
+    FilePrefix = 'discont_'//TRIM(FilePrefix)    
+  ELSE IF( OutputMeshes > 1 ) THEN
+    i = INDEX( Mesh % Name,'/',.TRUE.)
+    IF( i > 0 ) THEN      
+      FilePrefix = TRIM(Mesh % Name(i+1:))//'_'//TRIM(FilePrefix)
+    ELSE
+      FilePrefix = TRIM(Mesh % Name)//'_'//TRIM(FilePrefix)      
+    END IF
+  END IF
+    
+  
   IF ( nTime == 1 ) THEN
     CALL Info('VtuOutputSolver','Saving results in VTK XML format with prefix: '//TRIM(FilePrefix))
     WRITE( Message,'(A,I0)') 'Saving number of partitions: ',Partitions
     CALL Info('VtuOutputSolver', Message )
   END IF
 
+
+  BaseFile = FilePrefix
+  IF ( .NOT. FileNameQualified(FilePrefix) ) THEN
+    Dir = GetString( Params,'Output Directory',GotIt) 
+    IF(.NOT. GotIt) Dir = GetString( Model % Simulation,&
+        'Output Directory',GotIt)     
+    IF( GotIt ) THEN
+      IF( LEN_TRIM(Dir) > 0 ) THEN
+        BaseFile = TRIM(Dir)// '/' //TRIM(FilePrefix)
+        CALL MakeDirectory( TRIM(Dir) // CHAR(0) )
+      END IF
+    ELSE 
+      BaseFile = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/' //TRIM(FilePrefix)
+    END IF
+  END IF
+  CALL Info('VtuOutputSolver','Full filename base is: '//TRIM(Basefile), Level=10 )
+
+  
+
+  
   FixedMesh = ListGetLogical(Params,'Fixed Mesh',GotIt)
 
+  
   !------------------------------------------------------------------------------
   ! Initialize stuff for masked saving
   !------------------------------------------------------------------------------
@@ -483,19 +517,6 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     IF( .NOT. GotIt ) BufferSize = MAX( NumberOfDofNodes, NumberOfElements )
   END IF
 
-  BaseFile = FilePrefix
-  IF ( .NOT. FileNameQualified(FilePrefix) ) THEN
-    Dir = GetString( Params,'Output Directory',GotIt) 
-    IF( GotIt ) THEN
-      IF( LEN_TRIM(Dir) > 0 ) THEN
-        BaseFile = TRIM(Dir)// '/' //TRIM(FilePrefix)
-        CALL MakeDirectory( TRIM(Dir) // CHAR(0) )
-      END IF
-    ELSE 
-      BaseFile = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/' //TRIM(FilePrefix)
-    END IF
-  END IF
-  CALL Info('VtuOutputSolver','Full filename base is: '//TRIM(Basefile), Level=10 )
 
 
   ActiveModes => ListGetIntegerArray( Params,'Active EigenModes',GotActiveModes ) 

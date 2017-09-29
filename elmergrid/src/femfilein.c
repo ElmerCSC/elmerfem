@@ -330,7 +330,9 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
   FILE *in;
   Real rvalues[MAXDOFS];
   int ivalues[MAXDOFS],ivalues0[MAXDOFS];
-
+  int setmaterial;
+  int debug,firstline;
+  char entityname[MAXNAMESIZE];
 
   strcpy(filename,prefix);
   if ((in = fopen(filename,"r")) == NULL) {
@@ -354,6 +356,8 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
      or nodes the results are read twice but registered only in the
      second time. */
 
+  debug = FALSE;
+  
 omstart:
 
   mode = 0;
@@ -377,61 +381,83 @@ omstart:
 
 
     if(strrchr(line,'*')) {
-      if( strstr(line,"**HWCOLOR") ) {
-	static int hwcolorstat = FALSE;
-	if( !hwcolorstat ) {
-	  printf("Omitting keywords HWCOLOR in Abaqus format!\n");
-	  hwcolorstat = TRUE;
-	}
-      }
-      else if( strstr(line,"**HMASSEM") ) {
-	static int hmassemstat = FALSE;
-	if( !hmassemstat ) {
-	  printf("Omitting keywords HMASSEM in Abaqus format!\n");
-	  hmassemstat = TRUE;
-	}
-      }
-      else if( strstr(line,"**") ) {
-	if(info && !allocated) printf("comment: %s",line);
+      if( strstr(line,"**") ) {
+	if( strstr(line,"**HWCOLOR") )
+	  mode = 10;
+	else if( strstr(line,"**HWNAME") )
+	  mode = 10;
+	else if( strstr(line,"**HMASSEM") )
+	  mode = 10;
+	else if( strstr(line,"**HM_COMP") )
+	  mode = 10;
+	else if( strstr(line,"**HM_PROP") )
+	  mode = 10;
+	else
+	  if(info && !allocated) printf("comment: %s",line);
       }
       else if(strstr(line,"HEAD")) {
 	mode = 1;
       }
-      else if(strstr(line,"NODE")) {
-	if(strstr(line,"SYSTEM=R")) data->coordsystem = COORD_CART2;
-	if(strstr(line,"SYSTEM=C")) data->coordsystem = COORD_AXIS;      
-	if(strstr(line,"SYSTEM=P")) data->coordsystem = COORD_POLAR;      
-	mode = 2;
+      else if(strstr(line,"*NODE")) {
+	if(pstr = strstr(line,"NODE OUTPUT")) {
+	  mode = 10;
+	}
+	else  {	  
+	  if(strstr(line,"SYSTEM=R")) data->coordsystem = COORD_CART2;
+	  if(strstr(line,"SYSTEM=C")) data->coordsystem = COORD_AXIS;      
+	  if(strstr(line,"SYSTEM=P")) data->coordsystem = COORD_POLAR;      
+	  mode = 2;
+	}
       }
-      else if(strstr(line,"ELEMENT")) {
-	if(!elsetactive) material++;
-	if(strstr(line,"S3") || strstr(line,"STRI3"))
-	  elemcode = 303;
-	else if(strstr(line,"2D4") || strstr(line,"SP4") || strstr(line,"AX4") 
-		|| strstr(line,"S4") || strstr(line,"CPE4")) 
-	  elemcode = 404;
-	else if(strstr(line,"2D8") || strstr(line,"AX8") || strstr(line,"DS8") )
-	  elemcode = 408;
-	else if(strstr(line,"3D4"))
-	  elemcode = 504;
-	else if(strstr(line,"3D5"))
-	  elemcode = 605;
-	else if(strstr(line,"3D6"))
-	  elemcode = 706;
-	else if(strstr(line,"3D15"))
-	  elemcode = 715;
-	else if(strstr(line,"3D8"))
-	  elemcode = 808;
-	else if(strstr(line,"3D20"))
-	  elemcode = 820;
-	else 
-	  printf("Unknown element code: %s\n",line);
+      else if(strstr(line,"*ELEMENT")) {
+	if(pstr = strstr(line,"ELEMENT OUTPUT")) {
+	  mode = 10;
+	}
+	else {
+	  if(!elsetactive) material++;
+	  if(strstr(line,"S3") || strstr(line,"STRI3") || strstr(line,"M3D3"))
+	    elemcode = 303;
+	  else if(strstr(line,"2D4") || strstr(line,"SP4") || strstr(line,"AX4") 
+		  || strstr(line,"S4") || strstr(line,"CPE4")) 
+	    elemcode = 404;
+	  else if(strstr(line,"2D8") || strstr(line,"AX8") || strstr(line,"DS8") )
+	    elemcode = 408;
+	  else if(strstr(line,"3D4"))
+	    elemcode = 504;
+	  else if(strstr(line,"3D5"))
+	    elemcode = 605;
+	  else if(strstr(line,"3D6"))
+	    elemcode = 706;
+	  else if(strstr(line,"3D15"))
+	    elemcode = 715;
+	  else if(strstr(line,"3D8"))
+	    elemcode = 808;
+	  else if(strstr(line,"3D20"))
+	    elemcode = 820;
+	  else 
+	    printf("Unknown element code: %s\n",line);
 
-	elemnodes = elemcode % 100;
-	maxnodes = MAX( maxnodes, elemnodes);
-	mode = 3;
-	if(allocated) printf("Loading elements of type %d starting from element %d.\n",
-			elemcode,noelements);
+	  if(pstr = strstr(line,"ELSET=")) {
+	    if(allocated) {
+	      printf("Loading element set %d from %s",material,pstr+6);
+	    }	    
+	  }
+	  
+	  elemnodes = elemcode % 100;
+	  maxnodes = MAX( maxnodes, elemnodes);
+	  mode = 3;
+	  if(allocated) {
+	    printf("Loading elements of type %d starting from element %d.\n",
+		   elemcode,noelements);
+	    if(!elsetactive) {
+	      sscanf(pstr+6,"%s",entityname);
+	      strcpy(data->bodyname[material],entityname);
+	      data->bodynamesexist = TRUE;
+	      data->boundarynamesexist = TRUE;
+	    }
+	  }	    
+	  firstline = TRUE;
+	}
       }
       else if( strstr(line,"BOUNDARY") ) {
 	boundarytype++;
@@ -439,6 +465,14 @@ omstart:
 	if(allocated) {
 	  printf("Treating keyword BOUNDARY\n");
 	}
+      }
+      else if( strstr(line,"SOLID SECTION") ) {
+	/* Have this here since solid section may include ELSET */
+	mode = 10;
+      }
+      else if( strstr(line,"MEMBRANE SECTION") ) {
+	/* Have this here since solid section may include ELSET */
+	mode = 10;
       }
       else if( strstr(line,"CLOAD") ) {
 	
@@ -448,13 +482,18 @@ omstart:
 	  printf("Treating keyword CLOAD\n");
 	}
       }
-      else if(pstr = strstr(line,"NSET=")) {
-	boundarytype++;
-	mode = 5;
-
-	if(allocated) {
-	  printf("Loading boundary node set %d from: %s",boundarytype,pstr+5);
-	}
+       else if(pstr = strstr(line,"NSET=")) {
+	 if( pstr = strstr(line,"ELSET=") ) {
+	   /* Skipping association of ELSET to NSET */
+	   mode = 10;
+	 }
+	 else {
+	   boundarytype++;
+	   mode = 5;	   
+	   if(allocated) {
+	     printf("Loading boundary node set %d from: %s",boundarytype,pstr+5);
+	   }
+	 }
       }
       else if(pstr = strstr(line,"ELSET=")) {
 	elsetactive = TRUE;
@@ -463,7 +502,15 @@ omstart:
 
 	if(allocated) {
 	  printf("Loading element set %d from %s",material,pstr+6);
+	  sscanf(pstr+6,"%s",entityname);
+	  strcpy(data->bodyname[material],entityname);
+	  data->bodynamesexist = TRUE;
+	  data->boundarynamesexist = TRUE;
 	}
+      }
+      else if(pstr = strstr(line,"HWCOLOR")) {
+	/* unused command */
+	mode = 0;
       }
       else {
 	if(!allocated) printf("unknown command: %s",line);
@@ -481,12 +528,19 @@ omstart:
       case 2: /* NODE */
 	nvalue = StringToReal(line,rvalues,MAXNODESD2+1,',');
 
-	if(nvalue != 4) printf("Invalid nvalue = %d\n",nvalue);
-
+	if(nvalue != 4) {
+	  printf("line: %s\n",line);
+	  printf("Invalid nvalue = %d\n",nvalue);
+	}
+	  
 	i = (int)(rvalues[0]+0.5);
 	
 	noknots++;
 	if(allocated) {
+	  if( debug && (i==1 || i==maxknot) ) {
+	    printf("debug node: %i %d %.3le %.3le %.3le\n",i,noknots,rvalues[1],rvalues[2],rvalues[3]);
+	  }
+
 	  if(i <= 0 || i > maxknot) {
 	    printf("Invalid node index = %d\n",i);
 	  }
@@ -508,6 +562,15 @@ omstart:
 	nvalue = StringToIntegerNoZero(line,ivalues,elemnodes+1,',');
        	
 	if(allocated) {
+	  if( debug && firstline ) {	    
+	    printf("debug elem: %d %d %d %d\n",noelements,ivalues[0],elemcode,material);
+	    printf("      topo:");
+	    for(i=0;i<nvalue-1;i++)
+	      printf(" %d",ivalues[i+1]);
+	    printf("\n");
+	    firstline = FALSE;
+	  }
+	  
 	  elemindx[noelements] = ivalues[0];
 	  data->elementtypes[noelements] = elemcode;
 	  data->material[noelements] = material;
@@ -598,6 +661,11 @@ omstart:
 	}
 	break;
 
+      case 10: 
+	/* Doing nothing */
+	break;
+	
+
       default:
 	printf("Unknown case: %d\n",mode);
       }      
@@ -666,12 +734,15 @@ omstart:
       
     ElementsToBoundaryConditions(data,bound,FALSE,info);
     
-    printf("Number of nodes in boundary sets: %d\n",boundarynodes);
     free_ivector(ind,1,maxknot);
     free_ivector(materials,1,maxelem);
-    free_Ivector(nodeindx,1,boundarynodes);
-    free_Ivector(boundindx,1,boundarynodes);
     free_Ivector(elemindx,1,noelements);
+
+    if( boundarynodes > 0 ) {
+      printf("Number of nodes in boundary sets: %d\n",boundarynodes);      
+      free_Ivector(nodeindx,1,boundarynodes);
+      free_Ivector(boundindx,1,boundarynodes);
+    }
     
     fclose(in);
 
@@ -687,13 +758,15 @@ omstart:
   if(info) printf("Allocating for %d knots and %d %d-node elements.\n",
 		  noknots,noelements,maxnodes);
   AllocateKnots(data);
-
+  
   elemindx = Ivector(1,noelements);
   for(i=1;i<=noelements;i++)
     elemindx[i] = 0;
 
-  nodeindx = Ivector(1,boundarynodes);
-  boundindx = Ivector(1,boundarynodes);
+  if( boundarynodes > 0 ) {
+    nodeindx = Ivector(1,boundarynodes);
+    boundindx = Ivector(1,boundarynodes);
+  }
   
   materials = ivector(1,maxelem);
   for(i=1;i<=maxelem;i++)

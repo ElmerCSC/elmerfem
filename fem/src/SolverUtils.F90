@@ -6092,7 +6092,7 @@ CONTAINS
     LoadName = TRIM(Name) // ' Load'
     nlen = LEN_TRIM(LoadName)
     
-    CALL Info('SetNodalLoads','Checking for nodal loads for variable: '//TRIM(Name),Level=10)
+    CALL Info('SetNodalLoads','Checking for nodal loads for variable: '//TRIM(Name),Level=12)
 
     n = MAX(Model % NumberOfBCs, Model % NumberOFBodyForces) 
     ALLOCATE( ActivePart(n), ActivePartAll(n) )

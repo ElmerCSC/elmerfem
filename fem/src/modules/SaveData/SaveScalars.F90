@@ -103,7 +103,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, LiveGraph, &
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
-      MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar
+      MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
+      NodalOper, GotNodalOper
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -126,7 +127,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen
-  INTEGER :: IntVal 
+  INTEGER :: IntVal, FirstInd, LastInd 
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT
 #ifndef USE_ISO_C_BINDINGS
@@ -167,6 +168,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     IF ( .NOT. FileNameQualified(ScalarsFile) ) THEN
       OutputDirectory = GetString( Params,'Output Directory',GotIt) 
+      IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
+          'Output Directory',GotIt) 
       IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
         ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
         CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
@@ -308,6 +311,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   NoVar = 0
   MinOper = 'min'
   MaxOper = 'max'
+  GotNodalOper = .FALSE.
 
   DO WHILE(GotVar .OR. GotOper)
     
@@ -319,12 +323,14 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   
     VariableName = ListGetString( Params, TRIM(Name), GotVar )
 
+
     IF(TRIM(VariableName) == 'cpu time' .OR. TRIM(VariableName) == 'cpu memory') THEN
       CALL Warn('SaveScalars','This variable should now be invoked as an operator: '//TRIM(VariableName))
       CYCLE
     END IF
     
     GotOldVar = .FALSE.
+
     IF(GotVar) THEN
       Var => VariableGet( Model % Variables, TRIM(VariableName) )
       IF ( .NOT. ASSOCIATED( Var ) )  THEN
@@ -361,6 +367,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         END IF
         CYCLE
       END IF
+
+      WRITE (Name,'(A,I0)') 'Nodal Variable ',NoVar
+      NodalOper = ListGetLogical(Params,TRIM(Name),GotNodalOper)   
     ELSE
       IF(ASSOCIATED(OldVar)) THEN
         Var => OldVar
@@ -444,7 +453,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         CALL Warn('SaveScalars','Masked operators require mask: '//TRIM(MaskName))
       END IF
     END IF
-
+    
     ActiveBC = .FALSE.
     DO j=1,Model % NumberOfBCs
       ActiveBC(j) =  &
@@ -483,8 +492,16 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         IF( GotMaskName ) THEN
           SaveName = TRIM(SaveName)//' mask '//TRIM(MaskName)
         END IF
+        IF( GotNodalOper ) THEN
+          IF( NodalOper ) THEN
+            SaveName = TRIM(SaveName)//' nodal'
+          ELSE
+            SaveName = TRIM(SaveName)//' non-nodal'            
+          END IF
+        END IF
       END IF
-
+        
+      
       SELECT CASE(Oper)
 
       CASE ('partitions')
@@ -602,9 +619,14 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = 1.0_dp * j
         CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
        
-      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs','mean','variance','range')
+      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs','mean','variance','range', &
+          'sum square','mean square')
         IF( MaskOper ) CALL CreateNodeMask()
-        Val = VectorStatistics(Var,Oper)
+        IF( GotNodalOper ) THEN
+          Val = VectorStatistics(Var,Oper,NodalOper)
+        ELSE
+          Val = VectorStatistics(Var,Oper)
+        END IF
         CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
         
       CASE ('deviation')
@@ -1097,6 +1119,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF( GotIt ) THEN
         WRITE(10,'(A)') TRIM(Message)
       END IF
+
       Message = ListGetString(Params,'Comment',GotIt)
       IF( GotIt ) THEN
         WRITE(10,'(A)') TRIM(Message)
@@ -1104,15 +1127,22 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
       DateStr = GetVersion()
       WRITE( 10,'(A)') 'Elmer version: '//TRIM(DateStr)     
+
       DateStr = GetRevision( GotIt )
       IF( GotIt ) THEN
         WRITE( 10,'(A)') 'Elmer revision: '//TRIM(DateStr)
       END IF        
+
       DateStr = GetCompilationDate( GotIt )
       IF( GotIt ) THEN
         WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
       END IF
 
+      DateStr = GetSifName( GotIt ) 
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Solver input file: '//TRIM(DateStr)
+      END IF
+            
       DateStr = FormatDate()      
       WRITE( 10,'(A)') 'File started at: '//TRIM(DateStr)
 
@@ -1506,11 +1536,13 @@ CONTAINS
 
 
 
-  FUNCTION VectorStatistics(Var,OperName) RESULT (operx)
+  FUNCTION VectorStatistics(Var,OperName,NodalOper) RESULT (operx)
 
     TYPE(Variable_t), POINTER :: Var
     CHARACTER(LEN=MAX_NAME_LEN) :: OperName
+    LOGICAL, OPTIONAL :: NodalOper
     REAL(KIND=dp) :: operx
+
     REAL(KIND=dp) :: Minimum, Maximum, AbsMinimum, AbsMaximum, &
         Mean, Variance, sumx, sumxx, sumabsx, x, Variance2
     INTEGER :: Nonodes, i, j, k, l, NoDofs, sumi
@@ -1535,6 +1567,7 @@ CONTAINS
       Nonodes = SIZE(Var % Values) / NoDofs
     END IF
 
+    
     IF( MaskOper ) THEN
       IF( NoNodes > SIZE(NodeMask) ) THEN
         CALL Info('SaveScalars','Decreasing operator range to size of mask: '&
@@ -1554,7 +1587,21 @@ CONTAINS
       END IF
     END IF
 
-    DO i=1,Nonodes
+    IF( PRESENT( NodalOper ) ) THEN
+      IF( NodalOper ) THEN
+        FirstInd = 1
+        LastInd = Mesh % NumberOfNodes
+      ELSE
+        FirstInd = Mesh % NumberOfNodes + 1
+        LastInd = SIZE( Var % Perm ) 
+      END IF
+    ELSE
+      FirstInd = 1
+      LastInd = NoNodes
+    END IF
+
+    
+    DO i=FirstInd,LastInd 
       IF( MaskOper ) THEN
         IF( .NOT. NodeMask(i) ) CYCLE
       END IF
@@ -1609,6 +1656,9 @@ CONTAINS
     CASE ('sum')
       operx = sumx
 
+    CASE ('sum square')
+      operx = sumxx 
+
     CASE ('sum abs')
       operx = sumabsx
       
@@ -1629,6 +1679,9 @@ CONTAINS
       
     CASE ('mean')
       operx = Mean
+
+    CASE ('mean square')
+      operx = SQRT( sumxx / sumi )
       
     CASE ('mean abs')
       operx = sumabsx / sumi
@@ -1647,6 +1700,9 @@ CONTAINS
 
   END FUNCTION VectorStatistics
 
+
+
+  
 !------------------------------------------------------------------------------
 
   FUNCTION VectorMeanDeviation(Var,OperName) RESULT (Deviation)
