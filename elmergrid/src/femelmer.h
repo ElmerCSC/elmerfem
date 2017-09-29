@@ -25,6 +25,8 @@ int PartitionSimpleElementsNonRecursive(struct FemType *data,
 int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bound,
 				    int nparts,int metisopt,int info);
 #endif
+int ExtendBoundaryPartitioning(struct FemType *data,struct BoundaryType *bound,
+			       int elemlayers,int info);
 int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dimper[],
 				      int info);
 int PartitionConnectedElementsStraight(struct FemType *data,struct BoundaryType *bound,
