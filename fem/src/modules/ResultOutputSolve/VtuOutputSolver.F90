@@ -156,6 +156,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   BaseFile = FilePrefix
   IF ( .NOT. FileNameQualified(FilePrefix) ) THEN
     Dir = GetString( Params,'Output Directory',GotIt) 
+    IF(.NOT. GotIt) Dir = GetString( Model % Simulation,&
+        'Output Directory',GotIt)     
     IF( GotIt ) THEN
       IF( LEN_TRIM(Dir) > 0 ) THEN
         BaseFile = TRIM(Dir)// '/' //TRIM(FilePrefix)
