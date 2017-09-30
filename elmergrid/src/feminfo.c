@@ -712,8 +712,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       printf("Using dual (elemental) graph in partitioning.\n");
     }
 
-
-    if(strcmp(argv[arg],"-metis") == 0) {
+    if(strcmp(argv[arg],"-metis") == 0 ||
+       strcmp(argv[arg],"-metisnodal") == 0 ||
+       strcmp(argv[arg],"-metisdual") == 0 ||
+       strcmp(argv[arg],"-metisrec") == 0 ||
+       strcmp(argv[arg],"-metiskway") == 0 ) {
 #if PARTMETIS
       if(arg+1 >= argc) {
 	printf("The number of partitions is required as a parameter\n");
@@ -723,9 +726,17 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->metis = atoi(argv[arg+1]);
 	printf("The mesh will be partitioned with Metis to %d partitions.\n",eg->metis);
 	eg->partopt = 0;
-	if(arg+2 < argc) 
+	if(strcmp(argv[arg],"-metisnodal") == 0)
+	  eg->partopt = 0;
+	else if(strcmp(argv[arg],"-metisdual") == 0)
+	  eg->partopt = 1;
+	else if(strcmp(argv[arg],"-metisrec") == 0)
+	  eg->partopt = 2;
+	else if(strcmp(argv[arg],"-metiskway") == 0 )
+	  eg->partopt = 3;
+	else if(arg+2 < argc) 
 	  if(argv[arg+2][0] != '-') eg->partopt = atoi(argv[arg+2]);
-      }
+      }    
 #else
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif     

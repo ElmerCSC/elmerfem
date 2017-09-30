@@ -174,7 +174,10 @@ static void Instructions()
   printf("-partition int[4]    : the mesh will be partitioned in main directions\n");
   printf("-partorder real[3]   : in the above method, the direction of the ordering\n");
 #if PARTMETIS
-  printf("-metis int[2]        : the mesh will be partitioned with Metis\n");
+  printf("-metis int           : mesh will be partitioned with Metis using Nodal routine\n");
+  printf("-metisdual int       : mesh will be partitioned with Metis using Dual routine\n");
+  printf("-metiskway int       : mesh will be partitioned with Metis using Kway routine\n");
+  printf("-metisrec int        : mesh will be partitioned with Metis using Recursive routine\n");
 #endif
   printf("-partdual            : use the dual graph in the partitioning\n");
   printf("-halo                : create halo for the partitioning for DG\n");

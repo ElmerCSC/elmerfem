@@ -35,6 +35,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 				 struct ElmergridType *eg, int info);
 int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
 			 int partorder, Real corder[],int info);
+int LinearNodes(int elemtype);
 #if PARTMETIS
 int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
 		       int partitions,int dual,int info);

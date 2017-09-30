@@ -3318,7 +3318,6 @@ int ExtendBoundaryPartitioning(struct FemType *data,struct BoundaryType *bound,
   for(j=1;j<=nparts;j++) {
     minpartelems = MIN( minpartelems, partelems[j] );
     maxpartelems = MAX( maxpartelems, partelems[j] );
-    if(0) printf("Part0: %d %d\n",j,partelems[j]);
   }
   printf("Initial partitioning has %d to %d elements in partition\n",minpartelems,maxpartelems);
 
@@ -3662,6 +3661,17 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
 }
 
 
+int LinearNodes(int elemtype)
+{
+  int elemfamily,nonodes;
+  int fam2nodemap[] = {0, 1, 2, 3, 4, 4, 5, 6, 8 }; 
+  
+  elemfamily = elemtype / 100;
+  nonodes = fam2nodemap[elemfamily];
+
+  return(nonodes);
+}
+
 
 int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
 		       int partitions,int dual,int info)
@@ -3669,8 +3679,8 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
    there exists only one elementtype. If this condition is not met then this routine cannot be 
    used. If the elements are higher order nodal elements then use only the linear basis. */
 {
-  int i,j,k,periodic, highorder, noelements, noknots, sides;
-  int nodesd2, etype, numflag,mintype,maxtype,elemtype,minnodes,maxnodes;
+  int i,j,k,periodic, noelements, noknots, sides, highorder;
+  int nodesd2, etype, numflag,mintype,maxtype,elemtype,minnodes;
   int *neededby,*indxper,*inpart;
   idx_t *metistopo,*eptr,*npart,*epart;
   idx_t ne,nn,ncommon,edgecut,nparts;
@@ -3679,61 +3689,50 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   METIS_SetDefaultOptions(options);
   options[METIS_OPTION_NUMBERING] = 0;
 
-  options[METIS_OPTION_DBGLVL] = 16;
-
    
   if(info) printf("Making a Metis partitioning for %d elements in %d-dimensions.\n",
 		  data->noelements,data->dim);
 
-  highorder = FALSE;
   noelements = data->noelements;
   noknots = data->noknots;
  
   for(i=1;i<=noelements;i++) {
     elemtype = data->elementtypes[i];
-    nodesd2 = elemtype % 100;
+    nodesd2 = LinearNodes( elemtype );
     if(i == 1 ) {
       mintype = maxtype = elemtype;
-      minnodes = maxnodes = nodesd2;
+      minnodes = nodesd2;
     } else {
       mintype = MIN( mintype, elemtype );
       maxtype = MAX( maxtype, elemtype );
       minnodes = MIN( minnodes, nodesd2 );
-      maxnodes = MAX( maxnodes, nodesd2 );
     }
   }
-
-  if(info && highorder) printf("There are at least some higher order elements\n");
 
   if(info) {
     if(mintype == maxtype ) {    
-      printf("All elemenents are of type %d\n",mintype);
-      printf("All elemenents have %d nodes\n",minnodes);
+      printf("All elements are of type %d\n",mintype);
     }
     else {
       printf("Minimum element type is %d\n",mintype);
-      printf("Maximum elementy type is %d\n",maxtype);
-      printf("Minimum elemental node number is %d\n",minnodes);
-      printf("Maximum elemental node number is %d\n",maxnodes);
+      printf("Maximum element type is %d\n",maxtype);
     }
   }
-      printf("Minimum element type is %d\n",mintype);
-      printf("Maximum elementy type is %d\n",maxtype);
-      printf("Minimum elemental node number is %d\n",minnodes);
-      printf("Maximum elemental node number is %d\n",maxnodes);
    
-  if( minnodes <= 4) {
-    ncommon = 2;
+  if( minnodes >= 8) {
+    ncommon = 4;
   }
-  else if(minnodes <= 7 ) {
+  else if(minnodes > 4 ) {
     ncommon = 3;
   }
   else {
-    ncommon = minnodes / 2;
+    ncommon = 2;
   }
-  printf("Requiring number of nodes in dual graph %d\n",ncommon);
-  
-
+  if(info) {
+    printf("Minimum number of linear nodes in elements %d\n",minnodes);
+    printf("Requiring number of nodes in dual graph %d\n",ncommon);
+  }
+    
   if( eg->connect ) {
     printf("Elemental Metis partition cannot deal with constraints!\n");
     printf("Using Metis algorithms based on the graph\n");
@@ -3759,19 +3758,9 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   nn = noknots;
 
   neededby = Ivector(1,noknots);
-  epart = Ivector(0,noelements-1);
-  eptr = Ivector(0,noelements);
-
+  
   numflag = 0;
   nparts = partitions;
-  
-  eptr[0] = 0;
-  for(i=1;i<ne;i++) {
-    eptr[i] = eptr[i-1] + nodesd2;
-  }
-  eptr[ne] = 0;
-
-  printf("nodesd2=%d\n",nodesd2);
 
   /* Mark the nodes that are needed */
   k = 0;
@@ -3779,7 +3768,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
     neededby[i] = 0;
   if(periodic) {
     for(i=1;i<=noelements;i++) {
-      nodesd2 = data->elementtypes[i] % 100;
+      nodesd2 = LinearNodes( data->elementtypes[i] );
       for(j=0;j<nodesd2;j++) {
         neededby[indxper[data->topology[i][j]]] = 1;
 	k += 1;
@@ -3788,7 +3777,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   }
   else {
     for(i=1;i<=noelements;i++) {
-      nodesd2 = data->elementtypes[i] % 100;
+      nodesd2 = LinearNodes( data->elementtypes[i] );
       for(j=0;j<nodesd2;j++) {
         neededby[data->topology[i][j]] = 1;
 	k += 1;
@@ -3802,44 +3791,56 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
       neededby[i] = ++j;
 
   nn = j;
-  if(info) printf("Using %d nodes of %d possible nodes in the Metis graph\n",nn,noknots);
+  if(info) {
+    if(nn == noknots)
+      printf("Using all %d possible nodes in the Metis graph\n",nn);
+    else
+      printf("Using %d nodes of %d possible nodes in the Metis graph\n",nn,noknots);
+    printf("Allocating mesh topology of size %d\n",k);
+  }
 
-  
-  if(info) printf("Allocating mesh topology of size %d\n",k);
+  eptr = Ivector(0,noelements);
   metistopo = Ivector(0,k-1);
 
-  
   k = 0;
+  eptr[0] = k;
   if(periodic) {
-    for(i=0;i<noelements;i++) {
-      nodesd2 = data->elementtypes[i] % 100;
+    for(i=1;i<=noelements;i++) {
+      nodesd2 = LinearNodes( data->elementtypes[i] );
       for(j=0;j<nodesd2;j++) {
-        metistopo[k+j] = neededby[indxper[data->topology[i+1][j]]]-1;
+        metistopo[k] = neededby[indxper[data->topology[i][j]]]-1;
 	k += 1;
       }
+      eptr[i] = k;
     }
   }    
   else if(nn < noknots) {
-    for(i=0;i<noelements;i++) {
-      nodesd2 = data->elementtypes[i] % 100;
+    for(i=1;i<=noelements;i++) {
+      nodesd2 = LinearNodes( data->elementtypes[i] );
       for(j=0;j<nodesd2;j++) {
-        metistopo[k+j] = neededby[data->topology[i+1][j]]-1;    
+        metistopo[k] = neededby[data->topology[i][j]]-1;    
 	k += 1;
       }
+      eptr[i] = k;
     }
   }
   else {
-    for(i=0;i<noelements;i++) {
-      nodesd2 = data->elementtypes[i] % 100;
+    for(i=1;i<=noelements;i++) {
+      nodesd2 = LinearNodes( data->elementtypes[i] );
       for(j=0;j<nodesd2;j++) {
-        metistopo[k+j] = data->topology[i+1][j]-1;    
+        metistopo[k] = data->topology[i][j]-1;    
 	k += 1;
       }
+      eptr[i] = k;
     }
   }
-  
-  printf("ne=%d %d %d %d\n",ne,nn,periodic,nparts);
+
   npart = Ivector(0,nn-1);
+  for(i=0;i<nn;i++) npart[i] = 0;
+  
+  epart = Ivector(0,ne-1);
+  for(i=0;i<ne;i++) epart[i] = 0;
+  
   if(dual) {
     if(info) printf("Starting graph partitioning METIS_PartMeshDual.\n");  
     METIS_PartMeshDual(&ne,&nn,eptr,metistopo,NULL,NULL,&ncommon,
@@ -3868,9 +3869,11 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
     for(i=1;i<=noknots;i++) {
       if(periodic) 
 	j = neededby[indxper[i]];
-      else
+      else if(nn < noknots)
 	j = neededby[i];
-      if(!j) printf("Cant set partitioning for node %d\n",i);
+      else
+	j = i;
+      if(!j) printf("Cannot set partitioning for node %d\n",i);
       data->nodepart[i] = npart[j-1]+1;
       if(data->nodepart[i] < 1 || data->nodepart[i] > partitions) 
         printf("Invalid partition %d for node %d\n",data->nodepart[i],i);
@@ -4084,8 +4087,6 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     }
   } /* !dual */    
 
-
-  printf("a1 metisopt=%d\n",metisopt);
 
   if(metisopt == 2) {
     if(info) printf("Starting graph partitioning METIS_PartGraphRecursive.\n");  
