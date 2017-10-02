@@ -174,10 +174,9 @@ static void Instructions()
   printf("-partition int[4]    : the mesh will be partitioned in main directions\n");
   printf("-partorder real[3]   : in the above method, the direction of the ordering\n");
 #if PARTMETIS
-  printf("-metis int           : mesh will be partitioned with Metis using Nodal routine\n");
-  printf("-metisdual int       : mesh will be partitioned with Metis using Dual routine\n");
-  printf("-metiskway int       : mesh will be partitioned with Metis using Kway routine\n");
-  printf("-metisrec int        : mesh will be partitioned with Metis using Recursive routine\n");
+  printf("-metis int           : mesh will be partitioned with Metis using mesh routines\n");
+  printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
+  printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
 #endif
   printf("-partdual            : use the dual graph in the partitioning\n");
   printf("-halo                : create halo for the partitioning for DG\n");
@@ -955,12 +954,17 @@ int main(int argc, char *argv[])
 	  printf("Metis optional parameter should be in range [0,4], not %d\n",partopt);
 	  bigerror("Cannot perform partitioning");
 	}
+	if( partopt <= 1 && eg.connect ) {
+	  printf("Elemental Metis partition cannot deal with constraints!\n");
+	  printf("Using Metis algorithms based on the dual graph\n");
+	  partopt = 2;	  
+	}
+       	
 	if(partopt <= 1) {
 	  if(!partdual) partdual = partopt;
 	  fail = PartitionMetisMesh(&data[k],&eg,eg.metis,partdual,info);
-	  if( fail ) partopt = 2;
 	}
-	if( partopt > 1 ) {
+	else {
 	  PartitionMetisGraph(&data[k],boundaries[k],&eg,eg.metis,partopt,partdual,info);
 	} 
       }

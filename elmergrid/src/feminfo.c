@@ -713,8 +713,6 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     }
 
     if(strcmp(argv[arg],"-metis") == 0 ||
-       strcmp(argv[arg],"-metisnodal") == 0 ||
-       strcmp(argv[arg],"-metisdual") == 0 ||
        strcmp(argv[arg],"-metisrec") == 0 ||
        strcmp(argv[arg],"-metiskway") == 0 ) {
 #if PARTMETIS
@@ -726,11 +724,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->metis = atoi(argv[arg+1]);
 	printf("The mesh will be partitioned with Metis to %d partitions.\n",eg->metis);
 	eg->partopt = 0;
-	if(strcmp(argv[arg],"-metisnodal") == 0)
-	  eg->partopt = 0;
-	else if(strcmp(argv[arg],"-metisdual") == 0)
-	  eg->partopt = 1;
-	else if(strcmp(argv[arg],"-metisrec") == 0)
+	if(strcmp(argv[arg],"-metisrec") == 0)
 	  eg->partopt = 2;
 	else if(strcmp(argv[arg],"-metiskway") == 0 )
 	  eg->partopt = 3;

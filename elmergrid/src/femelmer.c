@@ -3196,10 +3196,9 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
   vwgt = NULL;
   adjwgt = NULL;
 
-  if(0) printf("Calling Metis routine for boundary partitioning\n");
   if(metisopt == 2) {
     if(info) printf("Starting graph partitioning METIS_PartGraphRecursive.\n");
-    METIS_PartGraphRecursive(&nn,&ncon,xadj,adjncy,NULL,NULL,NULL,
+    METIS_PartGraphRecursive(&nn,&ncon,xadj,adjncy,vwgt,&wgtflag,adjwgt,
 			     &nparts,NULL,NULL,options,&edgecut,npart); 
   }
   else if(metisopt == 3 || metisopt == 4) {
@@ -3207,7 +3206,7 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
     ncon = 0;
     wgtflag = 0;    
     METIS_PartGraphKway(&nn,&ncon,xadj,adjncy,vwgt,&wgtflag,adjwgt,
-			     &nparts,NULL,NULL,options,&edgecut,npart); 
+			&nparts,NULL,NULL,options,&edgecut,npart); 
   }
   else {
     printf("Unknown Metis option %d\n",metisopt);
@@ -3733,12 +3732,6 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
     printf("Requiring number of nodes in dual graph %d\n",ncommon);
   }
     
-  if( eg->connect ) {
-    printf("Elemental Metis partition cannot deal with constraints!\n");
-    printf("Using Metis algorithms based on the graph\n");
-    return(-2);
-  }
-
   if(!data->partitionexist) {
     data->partitionexist = TRUE;
     data->elempart = Ivector(1,data->noelements);
@@ -4086,8 +4079,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
       }
     }
   } /* !dual */    
-
-
+  
   if(metisopt == 2) {
     if(info) printf("Starting graph partitioning METIS_PartGraphRecursive.\n");  
     METIS_PartGraphRecursive(&nn,&ncon,xadj,adjncy,vwgt,&wgtflag,adjwgt,
