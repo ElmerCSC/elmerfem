@@ -171,14 +171,17 @@ static void Instructions()
   printf("-infofile str        : file for saving the timer and size information\n");
 
   printf("\nThe following keywords are related only to the parallel Elmer computations.\n");
-  printf("-partition int[4]    : the mesh will be partitioned in main directions\n");
+  printf("-partition int[3]    : the mesh will be partitioned in cartesian main directions\n");
   printf("-partorder real[3]   : in the above method, the direction of the ordering\n");
+  printf("-partitioncell int[3]: the mesh will be partitioned in cells of fixed sizes\n");
+  printf("-partitioncyl int[3] : the mesh will be partitioned in cylindrical main directions\n");
 #if PARTMETIS
   printf("-metis int           : mesh will be partitioned with Metis using mesh routines\n");
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
   printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
+  printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
 #endif
-  printf("-partdual            : use the dual graph in the partitioning\n");
+  printf("-partdual            : use the dual graph in partition method (when available)\n");
   printf("-halo                : create halo for the partitioning for DG\n");
   printf("-halobc              : create halo for the partitioning at boundaries only\n");
   printf("-haloz / -halor      : create halo for the the special z- or r-partitioning\n");
@@ -200,7 +203,7 @@ static void Instructions()
 
   if(0) printf("-names               : conserve name information where applicable\n");
 }
-
+ 
 
 static void Goodbye()
 {
@@ -939,6 +942,7 @@ int main(int argc, char *argv[])
 	FindPeriodicNodes(&data[k],eg.periodicdim,info);
 
       if(eg.partitions) {
+	if( partopt = -1 ) partopt = partdual;
 	if(partopt == 0) 
 	  PartitionSimpleElements(&data[k],&eg,boundaries[k],eg.partdim,eg.periodicdim,eg.partorder,eg.partcorder,info);	
 	else if(partopt == 2) 

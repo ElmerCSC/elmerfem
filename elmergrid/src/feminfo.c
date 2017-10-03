@@ -281,6 +281,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->elements3d = 0;
   eg->nodes3d = 0;
   eg->metis = 0;
+  eg->metiscontig = FALSE;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
@@ -656,7 +657,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-boundorder") == 0) {
       eg->boundorder = TRUE;
     }
-    if(strcmp(argv[arg],"-partition") == 0) {
+    if(strcmp(argv[arg],"-partition") == 0  ||
+       strcmp(argv[arg],"-partitioncell") == 0  || 
+       strcmp(argv[arg],"-partitioncyl") == 0 ) {
       if(arg+dim >= argc) {
 	printf("The number of partitions in %d dims is required as parameters.\n",dim);
 	return(13);
@@ -671,11 +674,18 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	  if(eg->partdim[i] == 0) eg->partdim[i] = 1;
 	  eg->partitions *= eg->partdim[i];
 	}
-	eg->partopt = 0;
-	if(arg+4 < argc) 
-	  if(argv[arg+4][0] != '-') eg->partopt = atoi(argv[arg+4]);
-
-	printf("The mesh will be partitioned with simple division to %d partitions.\n",
+	eg->partopt = -1;
+	if( strcmp(argv[arg],"-partition") == 0 ) {
+	  if(arg+4 < argc) 
+	    if(argv[arg+4][0] != '-') eg->partopt = atoi(argv[arg+4]);
+	}
+	else if( strcmp( argv[arg],"-partitioncell") == 0 )  {
+	  eg->partopt = 2;
+	} else if( strcmp( argv[arg],"-partitioncyl") == 0 ) {
+	  eg->partopt = 3;
+	}
+	  
+	printf("The mesh will be partitioned geometrically to %d partitions.\n",
 	       eg->partitions);
       }
     }
@@ -780,6 +790,10 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
     }
 
+    if(strcmp(argv[arg],"-metiscontig") == 0 ) {
+      eg->metiscontig = TRUE;
+    }
+    
     if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of Metis partitions is required as a parameter\n");
