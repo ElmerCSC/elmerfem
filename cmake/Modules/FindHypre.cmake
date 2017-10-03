@@ -36,6 +36,7 @@ find_library(Hypre_LIBRARY NAMES HYPRE
   "$ENV{HYPREROOT}/lib"
   "${HYPRE_ROOT}/lib"
   "$ENV{HYPRE_ROOT}/lib"
+  "${HYPRE_LIBRARY_DIR}"
   "${CMAKE_SOURCE_DIR}/hypre/lib"
   )
 
@@ -48,7 +49,7 @@ foreach(_comp ${Hypre_FIND_COMPONENTS})
     HINTS
     "${HYPREROOT}/lib"
     "$ENV{HYPREROOT}/lib"
-    "${HYPRE_LIBRARY_DIR}"
+  "${HYPRE_LIBRARY_DIR}"
     )
   
   IF(NOT _Hypre_LIB)
