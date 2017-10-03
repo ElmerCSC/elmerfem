@@ -51,7 +51,9 @@
 #include "femelmer.h"
 #include "../config.h"
 
-#include "../metis-5.1.0/include/metis.h"
+#if PARTMETIS
+#include "metis.h"
+#endif
 
 #define getline fgets(line,MAXLINESIZE,in) 
 
