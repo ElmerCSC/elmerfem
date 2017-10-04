@@ -752,7 +752,7 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
   fprintf(out,"      </PointData>\n");
 
 
-  printf("Saving cell data (Element numbers and Goemetry Ids).\n");
+  printf("Saving cell data (Element numbers and Geometry Ids).\n");
   fprintf(out,"      <CellData>\n");
   /* Write out the element indexes, this is mainly just on example */
   if(0) { /* This as floats - just for testing */
