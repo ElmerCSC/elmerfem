@@ -47,12 +47,11 @@
 #include "femdef.h"
 #include "femtypes.h"
 #include "femknot.h"
-#include "femsolve.h"
 #include "femelmer.h"
 #include "../config.h"
 
 #if PARTMETIS
-#include "metis.h"
+#include "metis-5.1.0/include/metis.h"
 #endif
 
 #define getline fgets(line,MAXLINESIZE,in) 

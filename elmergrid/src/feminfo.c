@@ -46,7 +46,6 @@
 #include "nrutil.h"
 #include "femdef.h"
 #include "femtypes.h"
-#include "femsolve.h"
 #include "femmesh.h"
 #include "femknot.h"
 #include "feminfo.h"

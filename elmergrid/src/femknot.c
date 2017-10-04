@@ -43,7 +43,6 @@
 #include "femtypes.h"
 #include "femmesh.h"
 #include "femknot.h"
-#include "femsolve.h"
 
 #define DEBUG 0
 
