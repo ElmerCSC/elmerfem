@@ -162,7 +162,6 @@ static void Instructions()
   printf("-divlayer int[2] real[2]: make a boundary layer for given boundary\n");
   printf("-3d / -2d / -1d      : mesh is 3, 2 or 1-dimensional (applies to examples)\n");
   printf("-isoparam            : ensure that higher order elements are convex\n");
-  printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
   printf("-nonames             : disable use of mesh.names even if it would be supported by the format\n");
   printf("-nosave              : disable saving part alltogether\n");
   printf("-nooverwrite         : if mesh already exists don't overwite it\n");
@@ -170,11 +169,11 @@ static void Instructions()
   printf("-timer               : show timer information\n");
   printf("-infofile str        : file for saving the timer and size information\n");
 
-  printf("\nThe following keywords are related only to the parallel Elmer computations.\n");
+  printf("\nKeywords are related to mesh partitioning for parallel ElmerSolver runs:\n");
   printf("-partition int[3]    : the mesh will be partitioned in cartesian main directions\n");
-  printf("-partorder real[3]   : in the above method, the direction of the ordering\n");
-  printf("-partitioncell int[3]: the mesh will be partitioned in cells of fixed sizes\n");
-  printf("-partitioncyl int[3] : the mesh will be partitioned in cylindrical main directions\n");
+  printf("-partorder real[3]   : in the 'partition' method set the direction of the ordering\n");
+  printf("-partcell int[3]     : the mesh will be partitioned in cells of fixed sizes\n");
+  printf("-partcyl int[3]      : the mesh will be partitioned in cylindrical main directions\n");
 #if PARTMETIS
   printf("-metis int           : mesh will be partitioned with Metis using mesh routines\n");
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
@@ -185,13 +184,10 @@ static void Instructions()
   printf("-halo                : create halo for the partitioning for DG\n");
   printf("-halobc              : create halo for the partitioning at boundaries only\n");
   printf("-haloz / -halor      : create halo for the the special z- or r-partitioning\n");
-  printf("-indirect            : create indirect connections in the partitioning\n");
-  printf("-periodic int[3]     : decleare the periodic coordinate directions for parallel meshes\n");
-  printf("-partjoin int        : number of partitions in the data to be joined\n");
-  printf("-saveinterval int[3] : the first, last and step for fusing parallel data\n");
-  printf("-partorder real[3]   : in the above method, the direction of the ordering\n");
+  printf("-indirect            : create indirect connections (102 elements) in the partitioning\n");
+  printf("-periodic int[3]     : periodic coordinate directions for parallel & conforming meshes\n");
   printf("-partoptim           : apply aggressive optimization to node sharing\n");
-  printf("-partbcoptim         : apply optimization to bc ownership sharing\n");
+  printf("-partnobcoptim       : do not apply optimization to bc ownership sharing\n");
   printf("-partbw              : minimize the bandwidth of partition-partion couplings\n");
   printf("-parthypre           : number the nodes continuously partitionwise\n");
   printf("-partzbc             : partition connected BCs separately to partitions in Z-direction\n");
@@ -199,7 +195,12 @@ static void Instructions()
 #if PARTMETIS
   printf("-metisbc             : partition connected BCs separately to partitions by Metis\n");
 #endif
-  printf("-partlayers          : extended boundary partitioning by element layers\n");
+  printf("-partlayers int      : extend boundary partitioning by element layers\n");
+  
+  printf("\nKeywords are related to (nearly obsolite) ElmerPost format:\n");
+  printf("-partjoin int        : number of ElmerPost partitions in the data to be joined\n");
+  printf("-saveinterval int[3] : the first, last and step for fusing parallel data\n");
+  printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
 
   if(0) printf("-names               : conserve name information where applicable\n");
 }
@@ -942,7 +943,7 @@ int main(int argc, char *argv[])
 	FindPeriodicNodes(&data[k],eg.periodicdim,info);
 
       if(eg.partitions) {
-	if( partopt = -1 ) partopt = partdual;
+	if( partopt == -1 ) partopt = partdual;
 	if(partopt == 0) 
 	  PartitionSimpleElements(&data[k],&eg,boundaries[k],eg.partdim,eg.periodicdim,eg.partorder,eg.partcorder,info);	
 	else if(partopt == 2) 

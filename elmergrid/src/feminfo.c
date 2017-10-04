@@ -658,8 +658,8 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       eg->boundorder = TRUE;
     }
     if(strcmp(argv[arg],"-partition") == 0  ||
-       strcmp(argv[arg],"-partitioncell") == 0  || 
-       strcmp(argv[arg],"-partitioncyl") == 0 ) {
+       strcmp(argv[arg],"-partcell") == 0  || 
+       strcmp(argv[arg],"-partcyl") == 0 ) {
       if(arg+dim >= argc) {
 	printf("The number of partitions in %d dims is required as parameters.\n",dim);
 	return(13);
@@ -679,9 +679,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	  if(arg+4 < argc) 
 	    if(argv[arg+4][0] != '-') eg->partopt = atoi(argv[arg+4]);
 	}
-	else if( strcmp( argv[arg],"-partitioncell") == 0 )  {
+	else if( strcmp( argv[arg],"-partcell") == 0 )  {
 	  eg->partopt = 2;
-	} else if( strcmp( argv[arg],"-partitioncyl") == 0 ) {
+	} else if( strcmp( argv[arg],"-partcyl") == 0 ) {
 	  eg->partopt = 3;
 	}
 	  
@@ -1075,7 +1075,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
       return(4);
     }    
-    if(info) printf("Loading ElmerGrid commands from file '%s'.\n",filename);
+    if(info) printf("\nLoading ElmerGrid commands from file '%s'.\n",filename);
   }
 
 
@@ -1241,6 +1241,22 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif
     }
+    else if(strstr(command,"METISKWAY")) {
+#if PARTMETIS
+      sscanf(params,"%d",&eg->metis);
+      eg->partopt = 3;
+#else
+      printf("This version of ElmerGrid was compiled without Metis library!\n");
+#endif
+    }
+    else if(strstr(command,"METISREC")) {
+#if PARTMETIS
+      sscanf(params,"%d",&eg->metis);
+      eg->partopt = 2;
+#else
+      printf("This version of ElmerGrid was compiled without Metis library!\n");
+#endif
+    }
     else if(strstr(command,"PARTITION DUAL")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->partdual = TRUE;      
@@ -1254,7 +1270,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       if(eg->dim == 3) sscanf(params,"%le%le%le",&eg->partcorder[0],
 			      &eg->partcorder[1],&eg->partcorder[2]);      
     }
-    else if(strstr(command,"PARTITION")) {
+    else if(strstr(command,"PARTITION") || strstr(command,"PARTCYL") || strstr(command,"PARTCELL")) {
       if(eg->dim == 2) sscanf(params,"%d%d",&eg->partdim[0],&eg->partdim[1]);
       if(eg->dim == 3) sscanf(params,"%d%d%d",&eg->partdim[0],&eg->partdim[1],&eg->partdim[2]);
       eg->partitions = 1;
@@ -1262,6 +1278,8 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 	if(eg->partdim[i] < 1) eg->partdim[i] = 1;
 	eg->partitions *= eg->partdim[i];
       }
+      if( strstr(command,"PARTCYL") ) eg->partopt = 3;
+      if( strstr(command,"PARTCCELL") ) eg->partopt = 2;
     }
     else if(strstr(command,"PERIODIC")) {
       if(eg->dim == 2) sscanf(params,"%d%d",&eg->periodicdim[0],&eg->periodicdim[1]);
@@ -2968,7 +2986,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
     }
 
     else if(strstr(command,"END") ) {      
-      printf("End of field\n");
+      if(0) printf("End of field\n");
     }
       
     else if(strstr(command,"START NEW MESH")) {
