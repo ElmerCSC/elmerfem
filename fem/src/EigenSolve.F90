@@ -263,7 +263,7 @@ CONTAINS
       CALL ListAddLogical( Params, 'Linear System Refactorize',.TRUE. )
 
       FreeFactorize = ListGetLogical( Params, &
-                'Linear System Refactorize', FoundFreeFactorize )
+                'Linear System Free Fctorization', FoundFreeFactorize )
       CALL ListAddLogical( Params,  &
                      'Linear System Free Factorization',.FALSE. )
 
@@ -586,7 +586,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Scale both real and complex valued eigenvectors. 
 !------------------------------------------------------------------------------
-    SUBROUTINE ScaleEigenVectors( Matrix, EigVectors, NoEigen, n, NormalizeToUnity)
+    SUBROUTINE ScaleEigenVectors( Matrix, EigVectors, NoEigen, NormalizeToUnity)
 
       USE CRSMatrix
       USE IterSolve
@@ -594,14 +594,14 @@ CONTAINS
 
       IMPLICIT NONE
 
-      TYPE(Matrix_t) :: Matrix
+      TYPE(Matrix_t), TARGET :: Matrix
       COMPLEX(KIND=dp) :: EigVectors(:,:)
       INTEGER :: n, NoEigen
       LOGICAL :: NormalizeToUnity
 
-      INTEGER :: i,j,k,l
+      INTEGER :: i,j,k,l, mk, mj
       REAL(KIND=dp) :: r
-      COMPLEX(KIND=dp) :: s, s1
+      COMPLEX(KIND=dp) :: s, s1, mx
 
       CALL Info('ScaleEigenVectors','Scaling eigen vectors',Level=10)
 
@@ -611,37 +611,40 @@ CONTAINS
       ! Optionally normalize such that the maximum amplitude is set one.
       ! -----------------------------------------------------------------------------
       
+      n = Matrix % NumberOfRows
+      IF ( Matrix % Complex ) n = n / 2
+
       DO i = 1, NoEigen
 
         IF(  Matrix % COMPLEX ) THEN
-          s = 0.0d0
+          s = 0.0_dp
           IF( NormalizeToUnity ) THEN
             DO j=1,n
               s1 = EigVectors(i,j) * CONJG(EigVectors(i,j))
-              IF( ABS( s1 ) > ABS( s ) ) THEN
-                s = s1
-              END IF
+              IF( ABS( s1 ) > ABS( s ) ) s = s1
             END DO
           ELSE IF ( Matrix % Lumped ) THEN
             DO j=1,n
-              s = s + ABS( EigVectors(i,j) )**2 * Matrix % MassValues( Matrix % Diag(j) )
+              s = s + ABS( EigVectors(i,j) )**2 * Matrix % MassValues( Matrix % Diag(2*j-1) )
             END DO
           ELSE
-            DO j=1,n
-              DO l=Matrix % Rows(j), Matrix % Rows(j+1)-1
-                s = s + Matrix % MassValues(l) * &
-                    CONJG( EigVectors(i,j) ) * EigVectors(i,Matrix % Cols(l))
+            DO j=1,Matrix % NumberOfRows,2
+              DO l=Matrix % Rows(j),Matrix % Rows(j+1)-1,2
+                mx = CMPLX( Matrix % MassValues(l), -Matrix % MassValues(l+1), KIND=DP )
+                mj  = (j-1)/2 + 1
+                mk  = (Matrix % Cols(l)-1)/2 + 1
+                s = s + mx * CONJG( EigVectors(i,mj) ) * EigVectors(i,mk)
               END DO
             END DO
           END IF
           
-          s = CMPLX( ParallelReduction( REAL(s) ), ParallelReduction( AIMAG(s) ) )
+          s = CMPLX( ParallelReduction( REAL(s) ), ParallelReduction( AIMAG(s) ), KIND=dp )
                   
           IF ( ABS(s) > 0 ) THEN
-            s = SQRT( s) 
+            s = SQRT(s) 
             WRITE(Message,'(A,2ES12.3)') 'Normalizing Eigenvector with: ',REAL(s),AIMAG(s)
             CALL Info('EigenSolve',Message,Level=12)
-            EigVectors(i,:) = EigVectors(i,:) / s
+            EigVectors(i,1:n) = EigVectors(i,1:n) / s
           ELSE
             CALL Warn('EigenSolve','Eigenmode has zero amplitude!')
           END IF
@@ -657,15 +660,15 @@ CONTAINS
                   Matrix % MassValues(Matrix % Diag(j))
             END DO
           ELSE
+            r = 0
             DO j=1,n
               DO l=Matrix % Rows(j), Matrix % Rows(j+1)-1
-                r = r + Matrix % MassValues(l) * &
-                    CONJG( EigVectors(i,j) ) * EigVectors(i,Matrix % Cols(l))
+                r = r +  CONJG(EigVectors(i,j)) * Matrix % MassValues(l) * EigVectors(i,Matrix % Cols(l))
               END DO
             END DO
           END IF
           
-          r = ParallelReduction( r ) 
+          r = ParallelReduction(r) 
 
           IF( ABS(r - 1) < EPSILON( r ) ) THEN
             CALL Info('EigenSolve','Eigenmode already normalized!',Level=12)              
