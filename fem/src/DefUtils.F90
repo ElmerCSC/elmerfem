@@ -4230,7 +4230,6 @@ CONTAINS
        ALLOCATE(A % Dvalues(A % NumberOfRows))
        A % Dvalues = 0._dp
      END IF
-    
      
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
@@ -4267,7 +4266,6 @@ CONTAINS
         
         CALL Info('DefUtils::DefaultDirichletBCs', &
             'p-element preparations: '//TRIM(name), Level=15)
-        
         
         ! Clearing for p-approximation dofs associated with faces & edges:
         SaveElement => GetCurrentElement() 
@@ -4346,7 +4344,7 @@ CONTAINS
 
         CALL Info('DefUtils::DefaultDirichletBCs', &
             'p-element condition setup: '//TRIM(name), Level=15)
-        
+
         SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
@@ -4535,7 +4533,7 @@ CONTAINS
             .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {f}') ) CYCLE
 
         CALL Info('SetDefaultDirichlet','Setting edge and face dofs',Level=15)
-        
+
         SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
@@ -4724,7 +4722,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultDirichletBCs
 !------------------------------------------------------------------------------
-
 
 
 ! Solves a small dense linear system using Lapack routines

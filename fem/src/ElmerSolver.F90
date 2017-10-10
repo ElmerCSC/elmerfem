@@ -2056,7 +2056,15 @@ END INTERFACE
     Simul = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
     
     OutputFile = ListGetString(CurrentModel % Simulation,'Output File',GotIt)
+    
+
     IF ( GotIt ) THEN
+      i = INDEX( OutputFile,'/')
+      IF( i > 0 ) THEN
+        CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
+            //TRIM(OutputFile))
+      END IF
+      
       IF ( ParEnv % PEs > 1 ) THEN
         DO i=1,MAX_NAME_LEN
           IF ( OutputFile(i:i) == ' ' ) EXIT

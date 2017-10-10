@@ -617,6 +617,8 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     REAL(KIND=dp), ALLOCATABLE :: s(:)
     INTEGER :: maxsize,ndofs
     INTEGER, POINTER :: Offset(:)
+
+    CALL Info('BlockMatrixVectorProd','Starting block matrix multiplication',Level=20)
     
     NoVar = TotMatrix % NoVar
     Offset => TotMatrix % Offset
@@ -652,6 +654,8 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
         END DO
       END DO
     END DO
+
+    CALL Info('BlockMatrixVectorProd','Finished block matrix multiplication',Level=20)
 !------------------------------------------------------------------------------
   END SUBROUTINE BlockMatrixVectorProd
 !------------------------------------------------------------------------------
@@ -683,7 +687,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     EXTERNAL :: AddrFunc
 #endif
 
-    CALL Info('BlockMatrixPrec','Starting preconditioning',Level=6)
+    CALL Info('BlockMatrixPrec','Starting block matrix preconditioning',Level=6)
     
     Solver => CurrentModel % Solver
     Params => Solver % Values
@@ -880,7 +884,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
       DEALLOCATE( vtmp, rtmp ) 
     END IF
 
-    CALL Info('BlockMatrixPrec','Finished preconditioning',Level=6)
+    CALL Info('BlockMatrixPrec','Finished block matrix preconditioning',Level=6)
     
   END SUBROUTINE BlockMatrixPrec
 
@@ -1013,6 +1017,8 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     INTEGER :: i,j,k,l,ia,ib
     LOGICAL :: LS, BlockAV,Found
 
+    CALL Info('BlockKrylovIter','Starting block krylov iteration',Level=20)
+    
     Params => Solver % Values
 
     BlockAV = ListGetLogical(Params,'Block A-V System', Found)
@@ -1127,6 +1133,9 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     
     MaxChange = 2*ABS(Xnorm-PrevXnorm)/(Xnorm+PrevXnorm)
     PrevXNorm = Xnorm
+
+    WRITE( Message,'(A,ES12.3)') 'Relative change: ',MaxChange
+    CALL Info('BlockKrylovIter','Level=12')
     
     DO i=1,NoVar
       TotMatrix % SubVector(i) % Var % Values(1:offset(i+1)-offset(i)) = & 
@@ -1155,7 +1164,9 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     ELSE IF (BlockAV) THEN
       SolverVar % Values = x
     END IF
-    
+
+    CALL Info('BlockKrylovIter','Finished block krylov iteration',Level=20)
+   
   END SUBROUTINE blockKrylovIter
 
 

@@ -953,6 +953,8 @@ CONTAINS
 
     IF ( .NOT. FileNameQualified(SideFile) ) THEN
       OutputDirectory = GetString( Params,'Output Directory',GotIt) 
+      IF(.NOT. GotIt ) OutputDirectory = GetString( Model % Simulation,&
+          'Output Directory',GotIt)
       IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
         SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
         IF( Solver % TimesVisited == 0 ) THEN

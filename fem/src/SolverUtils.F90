@@ -11142,9 +11142,13 @@ END FUNCTION SearchNodeL
 
       NormalizeToUnity = ListGetLogical( Solver % Values, &
           'Eigen System Normalize To Unity',Stat)         
-      CALL ScaleEigenVectors( A, Solver % Variable % EigenVectors, &
-          SIZE(Solver % Variable % EigenValues), A % NumberOfRows, &
-          NormalizeToUnity ) 
+
+      IF(NormalizeToUnity .OR. ListGetLogical( Solver % Values,  &
+          'Eigen System Mass Normalize', Stat ) ) THEN
+
+        CALL ScaleEigenVectors( A, Solver % Variable % EigenVectors, &
+            SIZE(Solver % Variable % EigenValues), NormalizeToUnity ) 
+      END IF
       
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )

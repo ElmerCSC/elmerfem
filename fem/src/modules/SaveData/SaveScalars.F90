@@ -168,6 +168,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     IF ( .NOT. FileNameQualified(ScalarsFile) ) THEN
       OutputDirectory = GetString( Params,'Output Directory',GotIt) 
+      IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
+          'Output Directory',GotIt) 
       IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
         ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
         CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
