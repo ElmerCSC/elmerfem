@@ -483,7 +483,7 @@ omstart:
 	}
       }
        else if(pstr = strstr(line,"NSET=")) {
-	 if( pstr = strstr(line,"ELSET=") ) {
+	 if( strstr(line,"ELSET=") ) {
 	   /* Skipping association of ELSET to NSET */
 	   mode = 10;
 	 }
