@@ -2288,7 +2288,7 @@ void tetrahedralize(char *switches, tetgenio *in, tetgenio *out,
                     tetgenio *addin = NULL, tetgenio *bgmin = NULL);
 
 extern "C"
-#ifdef WIN32
+#ifdef Q_WS_WIN
 __declspec(dllexport)
 #endif
 void delegate_tetrahedralize(int bs, tetgenbehavior *b, char *switches,
