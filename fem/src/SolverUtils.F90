@@ -6638,7 +6638,8 @@ CONTAINS
         ELSE
           s = 1.0_dp
         END IF
-        
+        s = 1._dp / s**2
+
         CALL ZeroRow(A, k)
 
         ! Off-diagonal entries for a block matrix are neglected since the code will
