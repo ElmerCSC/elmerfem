@@ -4564,7 +4564,7 @@ SUBROUTINE SParActiveSUM(tsum, oper)
    REAL(KIND=dp) :: ssum
 
    comm = ParEnv % ActiveComm
-   IF ( COUNT(ParEnv % Active)<= 1 ) comm = ELMER_COMM_WORLD
+   IF ( COUNT(ParEnv % Active)<= 0 ) comm = ELMER_COMM_WORLD
 
    ssum = tsum
    SELECT CASE(oper)
