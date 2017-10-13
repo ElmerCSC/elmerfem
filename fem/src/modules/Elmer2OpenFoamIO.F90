@@ -163,14 +163,23 @@ CONTAINS
     
     NoDir = 0
     IF( ParEnv % MyPe /= 0 ) RETURN
-    
-    INQUIRE( File = BaseDir, Exist = FileExists )
+
+#ifdef __INTEL_COMPILER
+    ! Fortran standard states that inquiry for a file returns true if the queried entity is a file
+    INQUIRE( Directory = TRIM(BaseDir), Exist = FileExists )
+#else
+    INQUIRE( File = TRIM(BaseDir), Exist = FileExists )
+#endif
     IF(.NOT. FileExists ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','OpenFOAM directory does not exist: '//TRIM(BaseDir))
     END IF
 
     DirName = TRIM(BaseDir)//'/0/'
+#ifdef __INTEL_COMPILER
+    INQUIRE( Directory = DirName, Exist = FileExists )
+#else
     INQUIRE( File = DirName, Exist = FileExists )
+#endif
     IF(.NOT. FileExists ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','OpenFOAM mesh does not exist: '//TRIM(DirName))
     END IF
@@ -189,7 +198,7 @@ CONTAINS
     DirCommand = 'ls -d '//TRIM(DirName)//'*/ > OpenFOAMBlocks.txt' 
     CALL Info('Elmer2OpenFoamWrite','Performing command: '//TRIM(DirCommand),Level=12)
     CALL SystemCommand( DirCommand )
-      
+
     OPEN(InFileUnit,File='OpenFOAMBlocks.txt',IOStat=IOstatus)
     IF(IOStatus /= 0 ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','Could not open file: OpenFOAMBlocks.txt')

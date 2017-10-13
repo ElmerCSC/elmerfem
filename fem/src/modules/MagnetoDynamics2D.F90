@@ -433,7 +433,7 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:), &
-      CubicCoeff(:) => NULL(), HB(:,:) => NULL()
+      CubicCoeff(:), HB(:,:)
     TYPE(ValueListEntry_t), POINTER :: Lst
     TYPE(ValueList_t), POINTER :: Material, BodyForce
 
@@ -447,7 +447,8 @@ CONTAINS
     REAL(KIND=dp) :: nu_tensor(2,2)
     REAL(KIND=dp) :: B_ip(2), Alocal
 !------------------------------------------------------------------------------
-
+    CubicCoeff => NULL()
+    HB => NULL()
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
     JAC  = 0._dp

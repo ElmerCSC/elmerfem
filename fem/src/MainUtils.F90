@@ -634,10 +634,10 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Component(:)
 
     TYPE(Graph_t) :: DualGraph
-    TYPE(GraphColour_t) :: GraphColouring
+    TYPE(GraphColour_t) :: GraphColouring, BoundaryGraphColouring
     LOGICAL :: ConsistentColours
 
-    LOGICAL :: ThreadedStartup
+    LOGICAL :: ThreadedStartup, MultiColourSolver
 
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
@@ -1078,8 +1078,15 @@ CONTAINS
         IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Perm')
         Perm = 0
         MatrixFormat = MATRIX_CRS
+
+        ThreadedStartup = ListGetLogical( SolverParams,'Multithreaded Startup',Found )
+        IF( ThreadedStartup ) THEN
+          CALL Info('AddEquationBasics','Using multithreaded startup')
+        END IF
         
-        IF( ListGetLogical( SolverParams,'MultiColour Solver',Found ) ) THEN
+        MultiColourSolver = ListGetLogical( SolverParams,'MultiColour Solver',Found )
+
+        IF( MultiColourSolver .OR. ThreadedStartup ) THEN
           CALL Info('AddEquationBasics','Creating structures for mesh colouring')
           ConsistentColours = .FALSE.
           IF ( ListGetLogical(SolverParams,'MultiColour Consistent', Found) ) THEN
@@ -1087,27 +1094,37 @@ CONTAINS
             ConsistentColours = .TRUE.
           END IF
 
-          ! Construct the dual graph from Elmer mesh
-          CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
+          IF (Solver % Mesh % NumberOfBulkElements > 0) THEN 
+             ! Construct the dual graph from Elmer mesh
+             CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
+             ! Colour the dual graph
+             CALL ElmerGraphColour(DualGraph, GraphColouring, ConsistentColours)
+             ! Deallocate dual graph as it is no longer needed
+             CALL Graph_Deallocate(DualGraph)
           
-          ! Colour the dual graph
-          CALL ElmerGraphColour(DualGraph, GraphColouring, ConsistentColours)
-          
-          ! Deallocate dual graph as it is no longer needed
-          CALL Graph_Deallocate(DualGraph)
-          
-          ! Construct colour lists
-          ALLOCATE( Solver % ColourIndexList, STAT=AllocStat )
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for ColourIndexList')
-          
-          CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
-          CALL Colouring_Deallocate(GraphColouring)          
-        END IF
+             ! Construct colour lists
+             ALLOCATE( Solver % ColourIndexList, STAT=AllocStat )
+             IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for ColourIndexList')
+             CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
+             CALL Colouring_Deallocate(GraphColouring)
+          END IF
 
-        ThreadedStartup = .FALSE.
-        IF( ListGetLogical( SolverParams,'Multithreaded Startup',Found ) ) THEN
-          CALL Info('AddEquationBasics','Using multithreaded startup')
-          ThreadedStartup = .TRUE.
+          IF (Solver % Mesh % NumberOfBoundaryElements > 0) THEN 
+             ! Construct the dual graph from Elmer boundary mesh
+             CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph, UseBoundaryMesh=.TRUE.)
+             ! Colour the dual graph of boundary mesh
+             CALL ElmerGraphColour(DualGraph, BoundaryGraphColouring, ConsistentColours)
+             ! Deallocate dual graph as it is no longer needed
+             CALL Graph_Deallocate(DualGraph)
+                       
+             ALLOCATE( Solver % BoundaryColourIndexList, STAT=AllocStat )
+             IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for BoundaryColourIndexList')
+             CALL ElmerColouringToGraph(BoundaryGraphColouring, Solver % BoundaryColourIndexList)
+             CALL Colouring_Deallocate(BoundaryGraphColouring)
+          END IF
+
+          ! DEBUG/TODO: Add a Solver keyword for enabling the functionality
+          ! CALL CheckColourings(Solver)
         END IF
         
         CALL Info('AddEquationBasics','Creating solver matrix topology',Level=12)
@@ -1119,6 +1136,23 @@ CONTAINS
         IF (ASSOCIATED(Solver % Matrix)) THEN
           Nrows = Solver % Matrix % NumberOfRows
           CALL Info('AddEquationBasics','Number of rows in CRS matrix: '//TRIM(I2S(Nrows)),Level=12)
+        END IF
+        
+        ! Check if mesh colouring is needed by the solver
+        IF( .NOT. MultiColourSolver .AND. ThreadedStartup ) THEN
+           ! Deallocate mesh colouring
+           IF (ASSOCIATED(Solver % ColourIndexList)) THEN
+              CALL Graph_Deallocate(Solver % ColourIndexList)
+              DEALLOCATE(Solver % ColourIndexList)
+              Solver % ColourIndexList => NULL()
+           END IF
+
+           ! Deallocate boundary mesh colouring
+           IF (ASSOCIATED(Solver % BoundaryColourIndexList)) THEN
+              CALL Graph_Deallocate(Solver % BoundaryColourIndexList)
+              DEALLOCATE(Solver % BoundaryColourIndexList)
+              Solver % BoundaryColourIndexList => NULL()
+           END IF
         END IF
 
         ! Basically the solver could be matrix free but still the matrix

@@ -96,8 +96,13 @@ CONTAINS
 
      TYPE(Element_t) :: Element
 
-     ALLOCATE(Element % PDefs, STAT=istat)
-     IF ( istat /= 0) CALL Fatal('AllocatePDefinitions','Unable to allocate memory')
+     ! Sanity check to avoid memory leaks
+     IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
+        ALLOCATE(Element % PDefs, STAT=istat)
+        IF ( istat /= 0) CALL Fatal('AllocatePDefinitions','Unable to allocate memory')
+     ELSE
+        CALL Warn('AllocatePDefinitions','P element definitions already allocated')
+     END IF
 
      ! Initialize fields
      Element % PDefs % P = 0 
@@ -106,7 +111,6 @@ CONTAINS
      Element % PDefs % pyramidQuadEdge = .FALSE.
      Element % PDefs % localNumber = 0
      Element % PDefs % GaussPoints = 0
-
 !------------------------------------------------------------------------------
    END SUBROUTINE AllocatePDefinitions
 !------------------------------------------------------------------------------
@@ -15751,11 +15755,7 @@ CONTAINS
     IF(FirstRound) THEN
        ! Allocate space 
        NULLIFY( ListMatrix )
-       ALLOCATE( ListMatrix(LocalNodes) )
-       DO i=1,LocalNodes
-          ListMatrix(i) % Degree = 0
-          NULLIFY( ListMatrix(i) % Head )
-       END DO
+       ListMatrix => List_AllocateMatrix(LocalNodes)
        FirstRound = .FALSE.
 
        ! Find the node in the lower left corner at give it the 1st index
@@ -17988,11 +17988,12 @@ CONTAINS
 
   END FUNCTION CreateLineMesh
 
-  SUBROUTINE ElmerMeshToDualGraph(Mesh, DualGraph)
+  SUBROUTINE ElmerMeshToDualGraph(Mesh, DualGraph, UseBoundaryMesh)
     IMPLICIT NONE
 
     TYPE(Mesh_t) :: Mesh
     TYPE(Graph_t) :: DualGraph
+    LOGICAL, OPTIONAL :: UseBoundaryMesh
 
     TYPE(Element_t), POINTER :: Element, Elements(:)
 
@@ -18028,15 +18029,26 @@ CONTAINS
     INTEGER :: i, dnnz, eid, nl, nli, nti, nn, nv, nthr, &
             te, thrli, thrti, vli, vti, TID, allocstat
     INTEGER :: mapSizePad, maxNodesPad, neighSizePad
+    LOGICAL :: Boundary
 
     INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 24
 
     CALL Info('ElmerMeshToDualGraph','Creating a dual graph for the mesh',Level=8)
 
-    ! Mesh data
-    Elements => Mesh % Elements
-    nvertex = Mesh % NumberOfNodes
-    nelem = Mesh % NumberOfBulkElements
+    Boundary = .FALSE.
+    IF (Present(UseBoundaryMesh)) Boundary = UseBoundaryMesh
+
+    ! Pointers to mesh data
+    IF (.NOT. Boundary) THEN
+       nelem = Mesh % NumberOfBulkElements
+       nvertex = Mesh % NumberOfNodes
+       Elements => Mesh % Elements
+    ELSE
+       nelem = Mesh % NumberOfBoundaryElements
+       nvertex = Mesh % NumberOfNodes
+       Elements => Mesh % Elements(&
+            Mesh % NumberOfBulkElements+1:Mesh % NumberOfBulkElements+nelem)
+    END IF
 
     ! Initialize dual mesh size and number of nonzeroes
     DualGraph % n = nelem
@@ -18046,6 +18058,7 @@ CONTAINS
     ALLOCATE(eptr(nelem+1), eind(nelem*Mesh % MaxElementNodes), STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
             'Unable to allocate mesh structure!')
+
     eptr(1)=1 ! Fortran numbering
     DO i=1, nelem
       Element => Elements(i)
@@ -18114,8 +18127,8 @@ CONTAINS
               'Unable to allocate local workspace!')
     ELSE
       ! With a small number of threads, use map -based merge
-      mapSizePad = IntegerNBytePad(Mesh % NumberOfBulkElements, 8)
-      ALLOCATE(wrkmap(Mesh % NumberOfBulkElements), STAT=allocstat)
+      mapSizePad = IntegerNBytePad(nelem, 8)
+      ALLOCATE(wrkmap(mapSizePad), STAT=allocstat)
       IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
               'Unable to allocate local workspace!')
       ! Initialize local map
@@ -18742,6 +18755,67 @@ CONTAINS
     CALL MOVE_ALLOC(cind, PackedList % ind)
   END SUBROUTINE ElmerColouringToGraph
 
+  ! Routine constructs colouring for boundary mesh based on colours of main mesh
+  SUBROUTINE ElmerBoundaryGraphColour(Mesh, Colours, BoundaryColours)
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), INTENT(IN) :: Mesh
+    TYPE(GraphColour_t), INTENT(IN) :: Colours
+    TYPE(GraphColour_t) :: BoundaryColours
+
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: elem, nelem, nbelem, astat, lcolour, rcolour, nbc
+    INTEGER, ALLOCATABLE :: bcolours(:)
+
+    nelem = Mesh % NumberOfBulkElements
+    nbelem = Mesh % NumberOfBoundaryElements
+
+    ! Allocate boundary colouring
+    ALLOCATE(bcolours(nbelem), STAT=astat)
+    IF (astat /= 0) THEN
+       CALL Fatal('ElmerBoundaryGraphColour','Unable to allocate boundary colouring')
+    END IF
+    
+    nbc = 0
+    ! Loop over boundary mesh
+    !$OMP PARALLEL DO &
+    !$OMP SHARED(Mesh, nelem, nbelem, Colours, bcolours) &
+    !$OMP PRIVATE(Element, lcolour, rcolour) &
+    !$OMP REDUCTION(max:nbc) &
+    !$OMP DEFAULT(NONE)
+    DO elem=1,nbelem       
+       Element => Mesh % Elements(nelem+elem)
+
+       ! Try to find colour for boundary element based on left / right parent
+       lcolour = 0
+       IF (ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+          lcolour = Colours % colours(Element % BoundaryInfo % Left % ElementIndex)
+       END IF
+       rcolour = 0
+       IF (ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+          rcolour = Colours % colours(Element % BoundaryInfo % Right % ElementIndex)
+       END IF
+
+       ! Sanity check for debug
+       IF (ASSOCIATED(Element % BoundaryInfo % Left) .AND. & 
+          ASSOCIATED(Element % BoundaryInfo % Right) .AND. &
+            lcolour /= rcolour) THEN
+         CALL Warn('ElmerBoundaryGraphColour','Inconsistent colours for boundary element: ' &
+               // TRIM(i2s(elem)) // "=>" &
+               // TRIM(i2s(lcolour))// " | "//TRIM(i2s(rcolour)))
+         WRITE (*,*) Element % BoundaryInfo % Left % ElementIndex, Element % BoundaryInfo % Right % ElementIndex
+       END IF
+
+       bcolours(elem)=MAX(lcolour,rcolour)
+       nbc=MAX(nbc,bcolours(elem))
+    END DO
+    !$OMP END PARALLEL DO
+
+    ! Set up colouring data structure
+    BoundaryColours % nc = nbc
+    CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
+  END SUBROUTINE ElmerBoundaryGraphColour
+  
   ! Given CRS indices, referenced indirectly from graph, 
   ! evenly load balance the work among the nthr threads
   SUBROUTINE ThreadLoadBalanceElementNeighbour(nthr, gn, gptr, gind, &
