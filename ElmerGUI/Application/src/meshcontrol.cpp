@@ -150,7 +150,11 @@ void MeshControl::defaultControls()
   bool tq_isnum=0;
   QString tetlib_options = "nnJApVq";
   if (tq_ind > 0) args.at(tq_ind + 1).toFloat(&tq_isnum);
-  if (tq_ind > 0 && !tq_isnum) cout << "Ignoring -tq option: " << args.at(tq_ind + 1).toStdString() << endl;
+#if WITH_QT5
+  if (tq_ind > 0 && !tq_isnum) cout << "Ignoring -tq option: " << args.at(tq_ind + 1).toLatin1().data() << endl;
+#else
+  if (tq_ind > 0 && !tq_isnum) cout << "Ignoring -tq option: " << args.at(tq_ind + 1).toAscii().data() << endl;
+#endif
   if (tq_isnum) tetlib_options.append(args.at(tq_ind + 1));
   else tetlib_options.append("1.414");
  
