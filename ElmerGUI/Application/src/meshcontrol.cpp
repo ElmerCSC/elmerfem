@@ -73,7 +73,7 @@ MeshControl::MeshControl(QWidget *parent)
 
   connect(ui.elementCodesStringEdit, SIGNAL(textChanged(const QString&)), this, SLOT(defineElementCodesString(const QString&)));
 
-  defaultControls();
+  //  defaultControls(); // Note - already called from mainwindow.cpp
 }
 
 MeshControl::~MeshControl()
@@ -143,7 +143,18 @@ void MeshControl::defaultControls()
   // ui.elmerGridRadioButton->setChecked(true);
   // }
 
-  ui.tetlibStringEdit->setText("nnJApq1.414V");
+  // Check for valid tetgen quality in cmd line arguments:
+  //---------------------------
+  QStringList args = QCoreApplication::arguments();
+  int tq_ind = args.indexOf("-tq");
+  bool tq_isnum=0;
+  QString tetlib_options = "nnJApVq";
+  if (tq_ind > 0) args.at(tq_ind + 1).toFloat(&tq_isnum);
+  if (tq_ind > 0 && !tq_isnum) cout << "Ignoring -tq option: " << args.at(tq_ind + 1).toStdString() << endl;
+  if (tq_isnum) tetlib_options.append(args.at(tq_ind + 1));
+  else tetlib_options.append("1.414");
+ 
+  ui.tetlibStringEdit->setText(tetlib_options);
   ui.nglibMaxHEdit->setText("1000000");
   ui.nglibFinenessEdit->setText("0.5");
   ui.nglibBgmeshEdit->setText("");
