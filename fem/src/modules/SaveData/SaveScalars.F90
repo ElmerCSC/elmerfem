@@ -54,21 +54,53 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: NormInd
+  INTEGER :: NormInd, LineInd, i
   LOGICAL :: GotIt
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
 
+  
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
   NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
   IF( NormInd > 0 ) THEN
-    SolverName = ListGetString( Solver % Values, 'Equation',GotIt)
+    Name = ListGetString( Solver % Values, 'Equation',GotIt)
     IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
       CALL ListAddString( Solver % Values,'Variable',&
-          '-nooutput -global '//TRIM(SolverName)//'_var')
+          '-nooutput -global '//TRIM(Name)//'_var')
     END IF
   END IF
 
+  IF( ParEnv % MyPe == 0 ) THEN
+    IF( ListGetLogical( Solver % Values,'Mark Failed Strategy',GotIt) ) THEN
+      LineInd = ListGetInteger( Solver % Values,'Line Marker',GotIt)
+      IF(.NOT. GotIt) THEN
+        CALL Fatal('SaveScalars_init','Failed strategy marked requires > Line Marker <')
+      END IF
+
+      Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
+
+      INQUIRE(FILE=TRIM(Name),EXIST=GotIt)
+      IF( GotIt ) THEN     
+        OPEN (10, FILE=Name)
+        READ(10,*) i
+        IF( i == 0 ) THEN
+          CALL Fatal('SaveScalars_init','Strategy already failed before!')
+        ELSE
+          CLOSE(10)
+        END IF
+      END IF
+
+      ! Save a negative status during the execution such that if the
+      ! program terminates the negative status will prevail
+      CALL Info('SaveScalars_init','Saving False marker at start')
+      i = 0
+      OPEN(10,FILE=Name,STATUS='Unknown')
+      WRITE(10,*) i
+    END IF
+  END IF
+
+
+  
 END SUBROUTINE SaveScalars_init
 
 
@@ -126,7 +158,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       MaskName, SaveName
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
-      MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen
+      MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen      
   INTEGER :: IntVal, FirstInd, LastInd 
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT
@@ -1090,6 +1122,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     CALL Info('SaveScalars','Found '//TRIM(I2S(NoValues))//' values to save in total',Level=6)
   END IF
 
+
+  
   !------------------------------------------------------------------------------
   ! Finally save all the scalars into a file 
   !------------------------------------------------------------------------------
@@ -1290,6 +1324,22 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
 
+  IF( ParEnv % MyPe == 0 ) THEN
+    IF( ListGetLogical( Params,'Mark Failed Strategy',GotIt) ) THEN
+      LineInd = ListGetInteger( Params,'Line Marker',GotIt)
+      IF(.NOT. GotIt) THEN
+        CALL Fatal('SaveScalars','Failed strategy marked requires > Line Marker <')
+      END IF
+    END IF
+
+    CALL Info('SaveScalars','Saving True marker at end')
+    Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
+    i = 1
+    OPEN(10,FILE=Name,STATUS='Unknown')
+    WRITE(10,*) i
+  END IF
+
+  
   IF( NoElements > 0 ) THEN
     DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z)
   END IF
