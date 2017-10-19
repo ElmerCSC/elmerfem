@@ -55,7 +55,7 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   INTEGER :: NormInd, LineInd, i
-  LOGICAL :: GotIt
+  LOGICAL :: GotIt, MarkFailed, AvoidFailed
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
 
   
@@ -71,14 +71,19 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( ParEnv % MyPe == 0 ) THEN
-    IF( ListGetLogical( Solver % Values,'Mark Failed Strategy',GotIt) ) THEN
+    MarkFailed = ListGetLogical( Solver % Values,'Mark Failed Strategy',GotIt)
+    AvoidFailed = ListGetLogical( Solver % Values,'Avoid Failed Strategy',GotIt)
+    IF(.NOT. GotIt) AvoidFailed = MarkFailed
+    
+    IF( MarkFailed .OR. AvoidFailed ) THEN
       LineInd = ListGetInteger( Solver % Values,'Line Marker',GotIt)
       IF(.NOT. GotIt) THEN
         CALL Fatal('SaveScalars_init','Failed strategy marked requires > Line Marker <')
       END IF
-
       Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
+    END IF
 
+    IF( AvoidFailed ) THEN
       INQUIRE(FILE=TRIM(Name),EXIST=GotIt)
       IF( GotIt ) THEN     
         OPEN (10, FILE=Name)
@@ -89,13 +94,15 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
           CLOSE(10)
         END IF
       END IF
-
-      ! Save a negative status during the execution such that if the
-      ! program terminates the negative status will prevail
+    END IF
+    
+    ! Save a negative status during the execution such that if the
+    ! program terminates the negative status will prevail
+    IF( MarkFailed ) THEN
       CALL Info('SaveScalars_init','Saving False marker at start')
       i = 0
       OPEN(10,FILE=Name,STATUS='Unknown')
-      WRITE(10,*) i
+      WRITE(10,'(I0)') i
     END IF
   END IF
 
@@ -1330,13 +1337,13 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(.NOT. GotIt) THEN
         CALL Fatal('SaveScalars','Failed strategy marked requires > Line Marker <')
       END IF
-    END IF
 
-    CALL Info('SaveScalars','Saving True marker at end')
-    Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
-    i = 1
-    OPEN(10,FILE=Name,STATUS='Unknown')
-    WRITE(10,*) i
+      CALL Info('SaveScalars','Saving True marker at end')
+      Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
+      i = 1
+      OPEN(10,FILE=Name,STATUS='Unknown')
+      WRITE(10,'(I0)') i
+    END IF
   END IF
 
   
