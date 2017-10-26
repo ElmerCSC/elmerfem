@@ -167,8 +167,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
 
     CALL DefaultFinishAssembly()
 
-    CALL DefaultDirichletBCs()
     CALL SetMagneticFluxDensityBC()
+    CALL DefaultDirichletBCs()
     Norm = DefaultSolve()
  
     IF( Solver % Variable % NonlinConverged > 0 ) EXIT
@@ -1001,8 +1001,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 
     CALL DefaultFinishAssembly()
 
-    CALL DefaultDirichletBCs()
     CALL SetMagneticFluxDensityBC()
+    CALL DefaultDirichletBCs()
     Norm = DefaultSolve()
  
     IF( Solver % Variable % NonlinConverged == 1 ) EXIT
