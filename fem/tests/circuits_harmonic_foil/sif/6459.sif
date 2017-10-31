@@ -105,7 +105,7 @@ Solver 6  !---- MagnetoDynamics, WhitneyAVHarmonicSolver
    Linear System Solver = Iterative
    Linear System Iterative Method = BicgstabL
    Linear System preconditioning = Circuit
-   Linear System Convergence Tolerance = 1.e-7
+   Linear System Convergence Tolerance = 1.e-10
    Linear System Max Iterations = 5000
    Linear System Residual Output = 1000
    BicgStabL Polynomial Degree = 4
@@ -127,7 +127,7 @@ Solver 7  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
    Linear System Max Iterations = 5000
    Linear System Iterative Method = CG
    Steady State Convergence Tolerance = 1e-6
-   Linear System Convergence Tolerance = 1.0e-8
+   Linear System Convergence Tolerance = 1.0e-10
 End
 
 Solver 8  !---- CircuitsAndDynamics, CircuitsOutput
@@ -276,8 +276,8 @@ End
 
 
 Solver 6 :: Reference Norm = Real 1.5653E-05
-!Solver 6 :: Reference Norm Tolerance = Real 1E-3
-Solver 7 :: Reference Norm = Real 7.57959E2 
-!Solver 7 :: Reference Norm Tolerance = Real 1E-3
+Solver 6 :: Reference Norm Tolerance = Real 1E-3
+Solver 7 :: Reference Norm = Real 758
+Solver 7 :: Reference Norm Tolerance = Real 1E-3
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
