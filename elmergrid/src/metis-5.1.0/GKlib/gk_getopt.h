@@ -52,11 +52,13 @@ struct gk_option {
 
 
 /* Function prototypes */
+#ifndef __MINGW32__
 extern int gk_getopt(int __argc, char **__argv, char *__shortopts);
 extern int gk_getopt_long(int __argc, char **__argv, char *__shortopts,
               struct gk_option *__longopts, int *__longind);
 extern int gk_getopt_long_only (int __argc, char **__argv,
               char *__shortopts, struct gk_option *__longopts, int *__longind);
+#endif
 
 
 

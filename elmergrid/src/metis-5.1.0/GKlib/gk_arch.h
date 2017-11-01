@@ -30,8 +30,12 @@
 #include <execinfo.h>
 #endif
 
-
-#ifdef __MSC__ 
+#ifdef __MINGW32__
+  #include "stdint.h"
+  #include "inttypes.h"
+  #include "sys/stat.h"
+#else
+#ifdef __MSC__
   #include "ms_stdint.h"
   #include "ms_inttypes.h"
   #include "ms_stat.h"
@@ -41,10 +45,9 @@
 #endif
   #include <inttypes.h>
   #include <sys/types.h>
-  #include <sys/resource.h>
   #include <sys/time.h>
 #endif
-
+#endif
 
 /*************************************************************************
 * Architecture-specific modifications
