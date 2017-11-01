@@ -9640,6 +9640,10 @@ END FUNCTION SearchNodeL
       ComplexMatrix = Solver % Matrix % COMPLEX
     
       IF ( ComplexMatrix ) THEN
+        !$OMP PARALLEL DO &
+        !$OMP SHARED(Diag, A, N) &
+        !$OMP PRIVATE(i, j) &
+        !$OMP DEFAULT(NONE)
         DO i=1,n,2
           j = A % Diag(i)
           IF(j>0) THEN
@@ -9649,16 +9653,26 @@ END FUNCTION SearchNodeL
             Diag(i)=0._dp;Diag(i+1)=0._dp
           END IF
         END DO
+        !$OMP END PARALLEL DO
       ELSE
+        !$OMP PARALLEL DO &
+        !$OMP SHARED(Diag, A, N) &
+        !$OMP PRIVATE(i, j) &
+        !$OMP DEFAULT(NONE)
         DO i=1,n
           j=A % Diag(i)
           IF (j>0) Diag(i) = A % Values(j)
         END DO
+        !$OMP END PARALLEL DO
       END IF
       
       IF ( ParEnv % PEs > 1 ) CALL ParallelSumVector(A, Diag)
 
       IF ( ComplexMatrix ) THEN
+        !$OMP PARALLEL DO &
+        !$OMP SHARED(Diag, A, N) &
+        !$OMP PRIVATE(i, j, DiagC) &
+        !$OMP DEFAULT(NONE)
         DO i=1,n,2
           DiagC = CMPLX(Diag(i),-Diag(i+1),KIND=dp)
           IF (ABS(DiagC)/=0._dp) THEN
@@ -9668,8 +9682,10 @@ END FUNCTION SearchNodeL
             Diag(i)   = 1.0_dp; Diag(i+1) = 1.0_dp
           END IF
         END DO
+        !$OMP END PARALLEL DO
       ELSE
         s = 0
+        ! TODO: Add threading
         IF (ANY(ABS(Diag)<=TINY(bnorm))) s=1
         s = ParallelReduction(s,2) 
 
@@ -9685,6 +9701,10 @@ END FUNCTION SearchNodeL
           IF ( ParEnv % PEs > 1 ) CALL ParallelSumVector(A, Diag)
         END IF
 
+        !$OMP PARALLEL DO &
+        !$OMP SHARED(Diag, N, bnorm) &
+        !$OMP PRIVATE(i) &
+        !$OMP DEFAULT(NONE)
         DO i=1,n
           IF ( ABS(Diag(i)) > TINY(bnorm) ) THEN
             Diag(i) = 1.0_dp / SQRT(ABS(Diag(i)))
@@ -9692,6 +9712,7 @@ END FUNCTION SearchNodeL
             Diag(i) = 1.0_dp
           END IF
         END DO
+        !$OMP END PARALLEL DO
       END IF
     END IF    
 
@@ -9701,46 +9722,61 @@ END FUNCTION SearchNodeL
     IF( PRESENT( ApplyScaling ) ) THEN
       IF(.NOT. ApplyScaling ) RETURN
     END IF
-    
+
+    !$OMP PARALLEL &
+    !$OMP SHARED(Diag, A, N) &
+    !$OMP PRIVATE(i,j) &
+    !$OMP DEFAULT(NONE)
+
+    !$OMP DO
     DO i=1,n
       DO j = A % Rows(i), A % Rows(i+1)-1
         A % Values(j) = A % Values(j) * &
             ( Diag(i) * Diag(A % Cols(j)) )
       END DO
     END DO
-    
+    !$OMP END DO NOWAIT
+
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
-      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN 
+        !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
             A % PrecValues(j) = A % PrecValues(j) * &
                 ( Diag(i) * Diag(A % Cols(j)) )
           END DO
         END DO
+        !$OMP END DO NOWAIT
       END IF
     END IF
 
     IF ( ASSOCIATED( A % MassValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
+        !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
             A % MassValues(j) = A % MassValues(j) * &
                 ( Diag(i) * Diag(A % Cols(j)) )
           END DO
         END DO
+        !$OMP END DO NOWAIT
       END IF
     END IF
     
     IF ( ASSOCIATED( A % DampValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
+        !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
             A % DampValues(j) = A % DampValues(j) * &
                 ( Diag(i) * Diag(A % Cols(j)) )
           END DO
         END DO
+        !$OMP END DO NOWAIT
       END IF
     END IF
+
+    !$OMP END PARALLEL
 
     DoCM=.FALSE.
     IF(PRESENT(ConstraintScaling)) DoCm=ConstraintScaling
@@ -9748,17 +9784,23 @@ END FUNCTION SearchNodeL
     IF(doCM) THEN
       CM => A % ConstraintMatrix
       IF (ASSOCIATED(CM)) THEN
+        !$OMP PARALLEL DO &
+        !$OMP SHARED(Diag, CM) &
+        !$OMP PRIVATE(i,j) &
+        !$OMP DEFAULT(NONE)
         DO i=1,CM % NumberOFRows
           DO j=CM % Rows(i), CM % Rows(i+1)-1
             CM % Values(j) = CM % Values(j) * Diag(CM % Cols(j))
           END DO
         END DO
+        !$OMP END PARALLEL DO
       END IF
     END IF
 
     ! Scale r.h.s. and initial guess
     !--------------------------------
     A % RhsScaling=1._dp
+    ! TODO: Add threading
     IF( PRESENT( b ) ) THEN      
       b(1:n) = b(1:n) * Diag(1:n)
       DoRHS = .TRUE.
@@ -9939,6 +9981,7 @@ END FUNCTION SearchNodeL
     END IF 
 
     IF( PRESENT( b ) ) THEN
+       ! TODO: Add threading
 ! 
 !      Solve x:  INV(D)x = y, scale b back to orig
 !      -------------------------------------------
@@ -9952,6 +9995,7 @@ END FUNCTION SearchNodeL
     
     IF( PRESENT( EigenScaling ) ) THEN
       IF( EigenScaling ) THEN
+        ! TODO: Add threading
         DO i=1,Solver % NOFEigenValues
           !
           !           Solve x:  INV(D)x = y
@@ -9966,45 +10010,61 @@ END FUNCTION SearchNodeL
         END DO
       END IF
     END IF
-      
+    
+    !$OMP PARALLEL &
+    !$OMP SHARED(Diag, A, N) &
+    !$OMP PRIVATE(i, j) &
+    !$OMP DEFAULT(NONE)
+    
+    !$OMP DO
     DO i=1,n
       DO j=A % Rows(i), A % Rows(i+1)-1
         A % Values(j) = A % Values(j) / (Diag(i) * Diag(A % Cols(j)))
       END DO
     END DO
+    !$OMP END DO NOWAIT
     
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+        !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
             A % PrecValues(j) = A % PrecValues(j) / &
                 ( Diag(i) * Diag(A % Cols(j)) )
           END DO
         END DO
+        !$OMP END DO NOWAIT
       END IF
     END IF
     IF ( ASSOCIATED( A % MassValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
+        !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
             A % MassValues(j) = A % MassValues(j) / &
                 ( Diag(i) * Diag(A % Cols(j)) )
           END DO
         END DO
+        !$OMP END DO NOWAIT
       END IF
     END IF
     
     IF ( ASSOCIATED( A % DampValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
+        !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
             A % DampValues(j) = A % DampValues(j) / &
                 ( Diag(i) * Diag(A % Cols(j)) )
           END DO
         END DO
+        !$OMP END DO NOWAIT
       END IF
     END IF
 
+    !$OMP END PARALLEL
+
+    ! TODO: Add threading
     doCM=.FALSE.
     IF(PRESENT(ConstraintScaling)) doCM=ConstraintScaling
     IF(doCM) THEN

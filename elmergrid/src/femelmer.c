@@ -5119,7 +5119,8 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   int *bcnodesaved[MAXBCS],maxbcnodesaved,*bcelemsaved,*bcnode;
   int *bcnodedummy,*elementhalo,*neededtimes2;
   int partstart,partfin,filesetsize,nofile,nofile2,nobcnodes;
-  int halobulkelems,halobcs,savethis,fail,cdstat;
+  int halobulkelems,halobcs,savethis,fail=0,cdstat;
+
   FILE *out,*outfiles[MAXPARTITIONS+1];
   int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart,sumindirect;
 
@@ -5212,7 +5213,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 #ifdef MINGW32
   mkdir(directoryname);
 #else
-  mkdir(directoryname,0700);
+  fail = mkdir(directoryname,0700);
 #endif
   if(info && !fail) printf("Created mesh directory: %s\n",directoryname);
   fail = chdir(directoryname);

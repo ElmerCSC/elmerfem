@@ -327,7 +327,7 @@ CONTAINS
 
     IF( PRESENT( NoComponents ) ) NoComponents = k
 
-    CALL Info('VariableGetN','Variable: '//TRIM(VarName)//': '//TRIM(I2S(k)),Level=32)
+    CALL Info('VariableGetN','Variable: '//TRIM(VarName)//': '//TRIM(I2S(k)),Level=31)
  
   END FUNCTION VariableGetN
 

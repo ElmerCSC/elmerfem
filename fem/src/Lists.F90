@@ -1515,7 +1515,7 @@ CONTAINS
       str = Namespace
     ELSE
       l = .FALSE.
-      str = ''
+!      str = '' ! Namespace string not needed when returning .FALSE.
     END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListGetNamespace

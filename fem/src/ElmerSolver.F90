@@ -1470,6 +1470,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
    SUBROUTINE ExecSimulation(TimeIntervals,  CoupledMinIter, &
               CoupledMaxIter, OutputIntervals, Transient, Scanning)
+     IMPLICIT NONE
       INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
       LOGICAL :: Transient,Scanning
 !------------------------------------------------------------------------------
@@ -1500,9 +1501,9 @@ END INTERFACE
      REAL(KIND=dp) :: RealTime
 #endif
      
-!$omp parallel
-!$   IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit
-!$omp end parallel
+     !$OMP PARALLEL
+     IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
+     !$OMP END PARALLEL
 
      nSolvers = CurrentModel % NumberOfSolvers
      DO i=1,nSolvers

@@ -5870,6 +5870,118 @@ CONTAINS
     CALL Info('GetNOFColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
   END FUNCTION GetNOFColours
 
+  
+  ! Check given colourings are valid and see if they are free of race conditions. 
+  SUBROUTINE CheckColourings(Solver)
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Graph_t), POINTER :: Colours
+    TYPE(Graph_t), POINTER :: BoundaryColours
+
+    TYPE(Element_t), POINTER :: Element
+    
+    INTEGER, ALLOCATABLE :: Indexes(:), DOFIndexes(:)
+    INTEGER :: col, elem, belem, NDOF, dof
+    LOGICAL :: errors
+
+    errors = .FALSE.
+    
+    Mesh => Solver % Mesh
+    Colours => Solver % ColourIndexList
+    BoundaryColours => Solver % BoundaryColourIndexList
+    
+    ! Allocate workspace and initialize it
+    ALLOCATE(Indexes(MAX(Mesh % NumberOfNodes,&
+          Mesh % NumberOfBulkElements*Mesh % MaxElementDOFs,&
+          Mesh%NumberOfBoundaryElements*Mesh % MaxElementDOFs)), &
+          DOFIndexes(Mesh % MaxElementDOFs))
+    Indexes = 0
+
+    ! Check that every element has a colour
+    IF (ASSOCIATED(Colours)) THEN
+       DO col=1,Colours % N
+          DO elem=Colours % Ptr(col), Colours%Ptr(col+1)-1
+             Indexes(Colours % Ind(elem))=Indexes(Colours % Ind(elem))+1
+          END DO
+       END DO
+       DO elem=1,Mesh % NumberOfBulkElements
+          IF (Indexes(elem) < 1 .OR. Indexes(elem) > 1) THEN
+             CALL Warn('CheckColourings','Element not colored correctly: '//i2s(elem))
+             errors = .TRUE.
+          END IF
+       END DO
+       
+       Indexes = 0
+       ! Check that colouring is free of race conditions
+       DO col=1,Colours % N
+          DO elem=Colours % Ptr(col), Colours%Ptr(col+1)-1
+             Element => Mesh % Elements(Colours % Ind(elem))
+             NDOF = GetElementDOFs( DOFIndexes, Element, Solver )
+             DO dof=1,NDOF
+                Indexes(DOFIndexes(dof))=Indexes(DOFIndexes(dof))+1
+             END DO
+          END DO
+          ! Check colouring
+          DO dof=1,Mesh % NumberOfBulkElements*Mesh % MaxElementDOFs
+             IF (Indexes(dof)>1) THEN
+                CALL Warn('CheckColourings','DOF not colored correctly: '//i2s(dof))
+                errors = .TRUE.
+             END IF
+             Indexes(dof)=0
+          END DO
+       END DO
+    END IF
+
+    ! Check that every boundary element has a colour
+    IF (ASSOCIATED(BoundaryColours)) THEN
+       
+       DO col=1,BoundaryColours % N
+          DO elem=BoundaryColours % Ptr(col), BoundaryColours%Ptr(col+1)-1
+             Indexes(BoundaryColours % Ind(elem))=Indexes(BoundaryColours % Ind(elem))+1
+          END DO
+       END DO
+       DO elem=Mesh % NumberOfBulkElements+1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          belem = elem - Mesh % NumberOfBulkElements
+          IF (Indexes(belem) < 1 .OR. Indexes(belem) > 1) THEN
+             CALL Warn('CheckColourings','Boundary element not colored correctly: '//i2s(belem))
+             errors = .TRUE.
+          END IF
+       END DO
+       
+       Indexes = 0
+       ! Check that colouring is free of race conditions
+       DO col=1,BoundaryColours % N
+          DO elem=BoundaryColours % Ptr(col), BoundaryColours%Ptr(col+1)-1
+             Element => Mesh % Elements(Mesh % NumberOfBulkElements + BoundaryColours % Ind(elem))
+             NDOF = GetElementDOFs( DOFIndexes, Element, Solver, NotDG=.TRUE. )
+             ! WRITE (*,'(2(A,I0))') 'BELEM=', elem, ', CMAP=', BoundaryColours % Ind(elem)
+             ! WRITE (*,*) DOFIndexes(1:NDOF)
+             DO dof=1,NDOF
+                Indexes(DOFIndexes(dof))=Indexes(DOFIndexes(dof))+1
+                ! WRITE (*,'(4(A,I0))') 'EID=', Element % ElementIndex,', dof=', dof, &
+                !      ', ind=', DOFIndexes(dof), ', colour=', col
+             END DO
+          END DO
+          ! Check colouring
+          DO dof=1,Mesh % NumberOfBulkElements*Mesh % MaxElementDOFs
+             IF (Indexes(dof)>1) THEN
+                CALL Warn('CheckColourings','Boundary DOF not colored correctly: '//i2s(dof))
+                errors = .TRUE.
+             END IF
+             Indexes(dof)=0
+          END DO
+       END DO
+    END IF
+
+    IF (errors) THEN
+      CALL Warn('CheckColourings','Mesh colouring contained errors')
+    END IF
+    
+    DEALLOCATE(Indexes, DOFIndexes)
+  END SUBROUTINE CheckColourings
+
 
 END MODULE DefUtils
 
