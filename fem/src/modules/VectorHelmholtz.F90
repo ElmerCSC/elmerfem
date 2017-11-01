@@ -388,7 +388,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
-  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound
+  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound, IsComplex
   INTEGER, POINTER :: Perm(:)
 
   TYPE(Matrix_t), POINTER :: A
@@ -444,8 +444,9 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   IF(.NOT. Found ) mu0inv = PI * 4.0d-7
   eps0 = GetConstReal ( CurrentModel % Constants, 'Permittivity of Vacuum', Found )
   IF(.NOT. Found ) eps0 = 8.854187817d-12
-
-!  CALL ListAddLogical( GetSolverParams(), "Linear System Complex", .TRUE.) !DEBUG
+  
+  IsComplex = ListGetLogical( GetSolverParams(), "Linear System Complex", Found)
+  if(.not. Found) CALL ListAddLogical( GetSolverParams(), "Linear System Complex", .TRUE.) !DEBUG
   !
   ! Resolve internal non.linearities, if requeted:
   ! ----------------------------------------------
