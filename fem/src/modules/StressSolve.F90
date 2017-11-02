@@ -609,11 +609,13 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
            ConstantBulkSystem .OR. ConstantSystem) ) CALL AddGlobalTime()
        CALL DefaultFinishAssembly()
 
-       CALL DefaultDirichletBCS()
-
        IF( ModelLumping .AND. FixDisplacement) THEN
          CALL LumpedDisplacements( Model, iter, LumpedArea, LumpedCenter)
        END IF
+
+       CALL DefaultDirichletBCS()
+
+
        CALL Info( 'StressSolve', 'Set boundaries done', Level=5 )
 
        !------------------------------------------------------------------------------

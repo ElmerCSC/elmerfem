@@ -966,17 +966,24 @@ CONTAINS
 !> the diagonal entry to one, the matrix symmetry is broken. This routine 
 !> maintains the symmetric structure of the matrix equation.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_SetSymmDirichlet( A,b,n,val )
+  SUBROUTINE CRS_SetSymmDirichlet( A,b,n,val,s)
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A       !< Structure holding matrix
     INTEGER, INTENT(IN) :: n              !< Index of the dofs to be fixed   
     REAL(KIND=dp) :: b(:)     !< right-hand-side of the matrix equation
     REAL(KIND=dp), INTENT(IN) :: val      !< Dirichlet value to be set
+    REAL(KIND=dp), OPTIONAL :: s
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,k1,k2
-    REAL(KIND=dp) :: t
+    REAL(KIND=dp) :: t,ss
     LOGICAL :: isMass, isDamp
 
+    IF( PRESENT( s ) ) THEN
+      ss = s
+    ELSE
+      ss = 1.0_dp
+    END IF
+    
     isMass = ASSOCIATED(A % MassValues)
     IF ( isMass ) &
       isMass = isMass .AND. SIZE(A % MassValues) == SIZE(A % Values)
@@ -985,59 +992,111 @@ CONTAINS
     IF ( isDamp ) &
       isDamp = isDamp .AND. SIZE(A % DampValues) == SIZE(A % Values)
 
-    IF(.NOT.A % NoDirichlet) THEN
-      DO l=A % Rows(n),A % Rows(n+1)-1
-         i = A % Cols(l)
-         IF ( i == n ) CYCLE
+!    IF(.NOT.A % NoDirichlet) THEN
+    DO l=A % Rows(n),A % Rows(n+1)-1
+      i = A % Cols(l)
 
-         IF ( n > i ) THEN
-           k1 = A % Diag(i)+1
-           k2 = A % Rows(i+1)-1
-         ELSE 
-           k1 = A % Rows(i)
-           k2 = A % Diag(i)-1
-         END IF
+      ! Cycle the diagonal entry that will be the last to set
+      IF ( i == n ) CYCLE
 
-         k = k2 - k1 + 1
-         IF ( k <= 30 ) THEN
-           DO j = k1, k2
-             IF ( A % Cols(j) == n ) THEN
-               b(i) = b(i) - A % Values(j) * val
-               A % Values(j) = 0.0_dp
-               IF ( isMass ) A % MassValues(j) = 0._dp
-               IF ( isDamp ) A % DampValues(j) = 0._dp
-               EXIT
-             ELSE IF ( A % Cols(j) > n ) THEN
-               EXIT
-             END IF
-           END DO
-         ELSE
-           j = CRS_Search( k,A % Cols(k1:k2),n )
-           IF ( j > 0 ) THEN
-             j = j + k1 - 1
-             b(i) = b(i) - A % Values(j) * val
-             A % Values(j) = 0.0_dp
-             IF ( isMass ) A % MassValues(j) = 0._dp
-             IF ( isDamp ) A % DampValues(j) = 0._dp
-           END IF
-         END IF
-      END DO
-      CALL CRS_ZeroRow(A,n)
-      A % Values(A % Diag(n)) = 1._dp
-      b(n) = val
-    END IF
+      ! The range of indexes to scan over assuming they are sorted
+      IF ( n > i ) THEN
+        k1 = A % Diag(i)+1
+        k2 = A % Rows(i+1)-1
+      ELSE 
+        k1 = A % Rows(i)
+        k2 = A % Diag(i)-1
+      END IF
 
-    IF(ALLOCATED(A % Dvalues)) THEN
-      A % DValues(n) = val
-    ELSE
-      b(n) = val
-    END IF
-    IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(n) = .TRUE.
+      k = k2 - k1 + 1
+      IF ( k <= 30 ) THEN
+        DO j = k1, k2
+          IF ( A % Cols(j) == n ) THEN
+            b(i) = b(i) - A % Values(j) * val
+            A % Values(j) = 0.0_dp
+            IF ( isMass ) A % MassValues(j) = 0._dp
+            IF ( isDamp ) A % DampValues(j) = 0._dp
+            EXIT
+          ELSE IF ( A % Cols(j) > n ) THEN
+            EXIT
+          END IF
+        END DO
+      ELSE
+        j = CRS_Search( k,A % Cols(k1:k2),n )
+        IF ( j > 0 ) THEN
+          j = j + k1 - 1
+          b(i) = b(i) - A % Values(j) * val
+          A % Values(j) = 0.0_dp
+          IF ( isMass ) A % MassValues(j) = 0._dp
+          IF ( isDamp ) A % DampValues(j) = 0._dp
+        END IF
+      END IF
+    END DO
+
+    CALL CRS_ZeroRow(A,n)
+    A % Values(A % Diag(n)) = ss
+    b(n) = ss * val
+       !     END IF
+     
+    !IF(ALLOCATED(A % Dvalues)) THEN
+      !A % DValues(n) = val
+    !ELSE
+    !  b(n) = s * val
+    !END IF
+      !IF(ALLOCATED(A % ConstrainedDOF))
+      !A % ConstrainedDOF(n) = .TRUE.
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_SetSymmDirichlet
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> When Dirichlet conditions are set by zeroing the row except for setting 
+!> the diagonal entry to one, the matrix symmetry is broken. This routine 
+!> maintains the symmetric structure of the matrix equation.
+!> This routine different from the one above in that only the matrix entries
+!> NOT on the row of the dirichlet condition are set. 
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_ElimSymmDirichlet(A,b)
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A       !< Structure holding matrix
+    REAL(KIND=dp) :: b(:)     !< right-hand-side of the matrix equation
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,l,n
+    REAL(KIND=dp) :: t,val
+    LOGICAL :: isMass, isDamp
+    
+    isMass = ASSOCIATED(A % MassValues)
+    IF ( isMass ) &
+        isMass = isMass .AND. SIZE(A % MassValues) == SIZE(A % Values)
+    
+    isDamp = ASSOCIATED(A % DampValues)
+    IF ( isDamp ) &
+        isDamp = isDamp .AND. SIZE(A % DampValues) == SIZE(A % Values)
+    
+    
+    DO n=1,A % NumberOfRows
 
+      ! There is no point eliminating entries in a row that will be nullified in the end
+      IF( A % ConstrainedDOF(n) ) CYCLE
+      
+      DO l=A % Rows(n),A % Rows(n+1)-1
+        i = A % Cols(l)
+        
+        IF( A % ConstrainedDOF(i) ) THEN         
+          b(n) = b(n) - A % Values(l) * A % DValues(i)
+
+          A % Values(l) = 0.0_dp
+          IF ( isMass ) A % MassValues(l) = 0._dp
+          IF ( isDamp ) A % DampValues(l) = 0._dp
+        END IF
+      END DO
+    END DO
+
+    !------------------------------------------------------------------------------
+  END SUBROUTINE CRS_ElimSymmDirichlet
+!------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
 !> Computes the rowsoum of a given row in a CRS matrix.
 !------------------------------------------------------------------------------
@@ -2334,7 +2393,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END DO
       
       IF( kb == 0 ) THEN
-        PRINT *,'Nrow:',Nrow,'Ncol:',Ncol
         CALL Warn('CRS_BlockMatrixPick','No matrix entries in submatrix')
         RETURN
       END IF
@@ -2598,8 +2656,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Diagonal = ( Nrow == Ncol ) 
 
     IF( .NOT. Allocated ) THEN
-      PRINT *,'block rows no:',Mrow,' inds:',Irow(1:Mrow)
-      PRINT *,'block cols no:',Mcol,' inds:',Icol(1:Mcol)
+      !PRINT *,'block rows no:',Mrow,' inds:',Irow(1:Mrow)
+      !PRINT *,'block cols no:',Mcol,' inds:',Icol(1:Mcol)
       B % ListMatrix => NULL()
       B % FORMAT = MATRIX_CRS
       B % NumberOfRows = Mrow *  Nsub    
@@ -2702,7 +2760,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     IF( Status ) RETURN
 
     IF( SIZE( A % Values ) /= SIZE( B % Values ) ) THEN
-      PRINT *,'sizes',SIZE( A % Values ), SIZE( B % Values )
+      !PRINT *,'sizes',SIZE( A % Values ), SIZE( B % Values )
       CALL Info('CRS_CopyMatrixPrec','Mismatch in size, returning')            
       RETURN
     END IF

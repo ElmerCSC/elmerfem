@@ -1259,6 +1259,8 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       'Im Temperature', Dofs-2, Dofs, FlowPerm )
 
   IF(.TRUE.) CALL AcousticShellInterface()
+
+  CALL DefaultDirichletBCs()
   
   CALL Info( 'AcousticsSolver', 'Assembly done', Level=4 )
 

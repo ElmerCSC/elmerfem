@@ -353,6 +353,27 @@
       CALL DefaultFinishBulkAssembly()      
       CALL Info( 'KESolver', 'Assembly done', Level=4 )
 
+    
+      IF(ListGetLogicalAnyBC(Model,'Epsilon Wall BC') .OR. &
+          ListGetLogicalAnyBC(Model,'Noslip Wall BC') ) THEN
+        DO t = 1, Solver % Mesh % NumberOfBoundaryElements
+          Element => GetBoundaryElement(t)
+          n = GetElementNOFNodes()
+
+          BC => GetBC()
+          IF ( ASSOCIATED( BC ) ) THEN
+            IF ( GetLogical( BC, 'Epsilon Wall BC', gotIt ) .OR. &
+                 GetLogical( BC, 'Noslip Wall BC',  gotIt ) ) THEN
+              DO i=1,n
+                j = KinPerm(Element % NodeIndexes(i))
+                CALL ZeroRow( Solver % Matrix, 2*j )
+                Solver % Matrix % RHS(2*j) = 0.0_dp
+              END DO
+             END IF
+          END IF
+        END DO
+     END IF
+
 !------------------------------------------------------------------------------
       DO t = 1, Solver % Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(t)
@@ -400,13 +421,17 @@
                  Density(j) )
 
               k = DOFs*(KinPerm(NodeIndexes(j))-1)
-              ForceVector(k+1) = Work(1)
-              CALL ZeroRow( StiffMatrix,k+1 )
-              CALL SetMatrixElement( StiffMatrix,k+1,k+1,1.0d0 )
 
-              ForceVector(k+2) = Work(2)
-              CALL ZeroRow( StiffMatrix,k+2 )
-              CALL SetMatrixElement( StiffMatrix,k+2,k+2,1.0d0 )
+              !ForceVector(k+1) = Work(1)
+              !CALL ZeroRow( StiffMatrix,k+1 )
+              !CALL SetMatrixElement( StiffMatrix,k+1,k+1,1.0d0 )
+
+               CALL UpdateDirichletDof( StiffMatrix, k+1, Work(1) )
+               CALL UpdateDirichletDof( StiffMatrix, k+2, Work(2) )
+
+              !ForceVector(k+2) = Work(2)
+              !CALL ZeroRow( StiffMatrix,k+2 )
+              !CALL SetMatrixElement( StiffMatrix,k+2,k+2,1.0d0 )
             END DO
           END IF
 
@@ -874,12 +899,6 @@ CONTAINS
 
      CALL GetScalarLocalSolution( KVals, 'Kinetic Energy', Parent )
      CALL GetScalarLocalSolution( EVals, 'Kinetic dissipation', Parent )
-
-     DO i=1,n
-       j = KinPerm(Element % NodeIndexes(i))
-       CALL ZeroRow( Solver % Matrix, 2*j )
-       Solver % Matrix % RHS(2*j) = 0.0_dp
-     END DO
 
      DO t=1,IntegStuff % n
        u = IntegStuff % u(t)

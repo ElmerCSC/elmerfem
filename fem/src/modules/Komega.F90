@@ -521,9 +521,11 @@ CONTAINS
        omega_wall = 6*mu(i)/rho(i)/0.075_dp/dist
 
        j = 2*Solver % Variable % Perm(j)
-       Solver % Matrix % RHS(j) = omega_wall
-       CALL ZeroRow( Solver % Matrix, j )
-       CALL SetMatrixElement( Solver % Matrix, j,j, 1.0_dp )
+       !Solver % Matrix % RHS(j) = omega_wall
+       !CALL ZeroRow( Solver % Matrix, j )
+       !CALL SetMatrixElement( Solver % Matrix, j,j, 1.0_dp )
+
+       CALL UpdateDirichletDof( Solver % Matrix, j, omega_wall )
      END DO
 
 !    DO i=1,n

@@ -596,15 +596,15 @@ CONTAINS
     !--------------------
   
     !
-    ! Dirichlet BCs in terms of electric field E
-    ! ---------------------------------------------
-    CALL DefaultDirichletBCs()
-
-    !
     ! Fix unused potential dofs:
     ! --------------------------
     A => GetMatrix()
     CALL ConstrainUnused(A)
+
+    !
+    ! Dirichlet BCs in terms of electric field E
+    ! ---------------------------------------------
+    CALL DefaultDirichletBCs()
 
     !
     ! Linear system solution:
@@ -645,18 +645,21 @@ CONTAINS
       Aval = CMPLX(dDiag(j+1), dDiag(j+2), KIND=dp)
 
       IF (Aval==0._dp) THEN
-        A % RHS(j+1) = 0._dp
-        CALL ZeroRow(A,j+1)
-        A % Values(A % Diag(j+1)) = 1._dp
+        !A % RHS(j+1) = 0._dp
+        !CALL ZeroRow(A,j+1)
+        !A % Values(A % Diag(j+1)) = 1._dp
 
-        A % RHS(j+2) = 0._dp
-        CALL ZeroRow(A,j+2)
-        A % Values(A % Diag(j+2)) = 1._dp
+        !A % RHS(j+2) = 0._dp
+        !CALL ZeroRow(A,j+2)
+        !A % Values(A % Diag(j+2)) = 1._dp
 
-        IF(ALLOCATED(A % ConstrainedDOF)) THEN
-          A % ConstrainedDOF(j+1) = .TRUE.
-          A % ConstrainedDOF(j+2) = .TRUE.
-        END IF
+        CALL UpdateDirichletDof( A, j+1, 0.0_dp )
+        CALL UpdateDirichletDof( A, j+2, 0.0_dp )
+
+        !IF(ALLOCATED(A % ConstrainedDOF)) THEN
+        !A % ConstrainedDOF(j+1) = .TRUE.
+        !A % ConstrainedDOF(j+2) = .TRUE.
+        !END IF
       END IF
     END DO
 !------------------------------------------------------------------------------
