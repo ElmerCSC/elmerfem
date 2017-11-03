@@ -380,14 +380,15 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: PrecDampCoeff(:)
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
-  COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:)  ! \TODO Acoef and Tcoef could be (1,1)-tensors
+  COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: Acoef(:), Tcoef(:)  ! \TODO Acoef and Tcoef could be (1,1)-tensors
   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
 
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
 
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
-  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound
+  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound, IsComplex
   INTEGER, POINTER :: Perm(:)
 
   TYPE(Matrix_t), POINTER :: A
@@ -417,12 +418,14 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
      ENDIF
 
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), LOAD(3,N), STIFF(N,N), &
-          MASS(N,N), Tcoef(N), RotM(3,3,N), &
-          Acoef(N), LamCond(N), LamThick(N), &
-          PrecDampCoeff(1), STAT=istat )
-     IF ( istat /= 0 ) THEN
-        CALL Fatal( 'VectorHelmholtzSolver', 'Memory allocation error.' )
+      ALLOCATE( FORCE(N), &
+        LOAD(4,N), &            ! 3 for vector value loads and 1 for scalar valued
+        STIFF(N,N), &
+        MASS(N,N), Tcoef(N), RotM(3,3,N), &
+        Acoef(N), LamCond(N), LamThick(N), &
+        PrecDampCoeff(1), STAT=istat )
+      IF ( istat /= 0 ) THEN
+                CALL Fatal( 'VectorHelmholtzSolver', 'Memory allocation error.' )
      END IF
 
      NULLIFY( Cwrk )
@@ -441,8 +444,9 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   IF(.NOT. Found ) mu0inv = PI * 4.0d-7
   eps0 = GetConstReal ( CurrentModel % Constants, 'Permittivity of Vacuum', Found )
   IF(.NOT. Found ) eps0 = 8.854187817d-12
-
-  CALL ListAddLogical( GetSolverParams(), "Linear System Complex", .TRUE.) !DEBUG
+  
+  IsComplex = ListGetLogical( GetSolverParams(), "Linear System Complex", Found)
+  if(.not. Found) CALL ListAddLogical( GetSolverParams(), "Linear System Complex", .TRUE.) !DEBUG
   !
   ! Resolve internal non.linearities, if requeted:
   ! ----------------------------------------------
@@ -570,10 +574,15 @@ CONTAINS
        Load(3,1:n) = GetReal( BC, 'Magnetic Boundary Load 3', Found )
        Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
           GetReal(BC, 'Magnetic Boundary Load im 3', Found), KIND=dp)
+          
+       Load(4,1:n) = GetReal( BC, 'TEM Potential', Found )
+       Load(4,1:n) = CMPLX( REAL(Load(4,1:n)), &
+          GetReal(BC, 'TEM Potential im', Found), KIND=dp)
 
        Acoef(1:n) = GetReal( BC, 'Electric Robin Coefficient', Found )
        Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
          GetReal( BC, 'Electric Robin Coefficient im', Found), KIND=dp)
+      
 
        ! ABC for vacuum ! TODO: disabled currently
 #if 0  
@@ -790,7 +799,7 @@ CONTAINS
 
       Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       B  = SUM(Basis(1:n) * Acoef(1:n))
-      L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
+      L  = MATMUL(LOAD(1:3,1:n), Basis(1:n)) + MATMUL(LOAD(4,1:n), dBasisdx(1:n,1:3))
       muinv = SUM( Basis(1:n) * Tcoef(1:n) )
 
       DO i = 1,nd-np
