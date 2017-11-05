@@ -3,7 +3,7 @@ echo on
 !
 ! working units are MPa, a, m
 !
-! THIS IS THE PARAMATER SPACE:
+! THIS IS THE PARAMETER SPACE:
 !-----------------------------
 ! the inflow velocity at X=0 in m/a
 $U0 = 8000.0
@@ -752,7 +752,7 @@ Boundary Condition 3
     Real MATC "tx(1) - tx(0)"
 End
 
-!! Symetry axis
+!! Symmetry axis
 Boundary Condition 4
   Name = "back"
   Target Boundaries = 4

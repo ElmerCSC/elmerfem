@@ -83,7 +83,7 @@ Solver 1
   Number of Particle Groups = Integer 2
   Set Particle Group By Domain = Logical True
 
-! Initilize particles assumed uniform cubic packing
+! Initialize particles assumed uniform cubic packing
   Coordinate Initialization Method = String "box uniform cubic"
   Particle Cell Size = Real $cellsize
   Initial Velocity(1,2) = Real 0.0 0.0

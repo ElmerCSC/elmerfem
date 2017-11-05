@@ -193,22 +193,22 @@ install(DIRECTORY "lib" DESTINATION ${ELMER_POST_DATADIR} COMPONENT ElmerPost)
 #ELMER_POST_DATADIR=$(prefix)/share/elmerpost
 #
 #install-data-local:
-#	@echo "Instaling modules to ${ELMER_POST_DATADIR}/modules"
+#	@echo "Installing modules to ${ELMER_POST_DATADIR}/modules"
 #
 #	mkdir -p $(DESTDIR)$(ELMER_POST_DATADIR)/modules
 #	-cp screensave.so $(DESTDIR)$(ELMER_POST_DATADIR)/modules 
 #
-#	@echo "Instaling help to ${ELMER_POST_DATADIR}/help"
+#	@echo "Installing help to ${ELMER_POST_DATADIR}/help"
 #	mkdir -p $(DESTDIR)$(ELMER_POST_DATADIR)/help
 #	cp -r help/* $(DESTDIR)$(ELMER_POST_DATADIR)/help
 #	rm -rf `find $(DESTDIR)$(ELMER_POST_DATADIR)/help -name .svn`
 #
-#	@echo "Instaling tcl scripts to ${ELMER_POST_DATADIR}/tcl"
+#	@echo "Installing tcl scripts to ${ELMER_POST_DATADIR}/tcl"
 #	mkdir -p $(DESTDIR)$(ELMER_POST_DATADIR)/tcl
 #	cp -r tcl/* $(DESTDIR)$(ELMER_POST_DATADIR)/tcl
 #	rm -rf `find $(DESTDIR)$(ELMER_POST_DATADIR)/tcl -name .svn`
 #
-#	@echo "Instaling initialization scripts to ${ELMER_POST_DATADIR}/lib"
+#	@echo "Installing initialization scripts to ${ELMER_POST_DATADIR}/lib"
 #	mkdir -p $(DESTDIR)$(ELMER_POST_DATADIR)/lib
 #	cp -r lib/* $(DESTDIR)$(ELMER_POST_DATADIR)/lib
 #	rm -rf `find $(DESTDIR)$(ELMER_POST_DATADIR)/lib -name .svn`

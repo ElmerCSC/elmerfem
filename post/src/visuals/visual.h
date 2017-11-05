@@ -80,7 +80,7 @@ typedef struct visual_param_s
    char *Format;
   
    /*
-    * Parameter offset from structure beginnig
+    * Parameter offset from structure beginning
     */
    long int Offset;
 

@@ -84,7 +84,7 @@ typedef struct shpere_s
  *     Parameters: 
  *
  *         Input:   (geometry_t *)   geometry description
- *                  (sphere_t     *) sphere display paramters
+ *                  (sphere_t     *) sphere display parameters
  *                  (double) 
  *
  *         Output:  graphics

@@ -658,7 +658,7 @@ Boundary Condition 3
   Real MATC "if(tx(1)<-0.5){(rhow-rhoi)/rhow*tx(2)} else {tx(0)}"
 End
 
-!! Symetry axis
+!! Symmetry axis
 Boundary Condition 4
   Name = "back"
   Target Boundaries = 4

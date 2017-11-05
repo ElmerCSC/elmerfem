@@ -168,7 +168,7 @@ Boundary Condition 4
 End
 
 Solver 2 :: Reference Norm = Real 6.8808137
-SOlver 2 :: Reference Norm Tolerence = Real 1E-06
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=6.8808137,EPS=1E-0.6\n" );

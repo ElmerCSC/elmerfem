@@ -200,7 +200,7 @@
               CALL INFO(SolverName, 'Setting to value of Uzawa Parameter.',Level=1)
               UzawaParameterMin = UzawaParameter
            ELSE IF(UzawaParameterMin .GE. UzawaParameter) THEN
-              CALL INFO(SolverName, 'Uzawa Parameter Min < Uzawa Paramter!',Level=1)
+              CALL INFO(SolverName, 'Uzawa Parameter Min < Uzawa Parameter!',Level=1)
               CALL INFO(SolverName, 'Setting to value of Uzawa Parameter.',Level=1)
               UzawaParameterMin = UzawaParameter
            ELSE

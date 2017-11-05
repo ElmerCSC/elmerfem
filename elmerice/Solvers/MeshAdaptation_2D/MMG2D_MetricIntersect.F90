@@ -118,7 +118,7 @@
       
 CONTAINS
 ! Return eigenvalues (lambda) of 2x2 matrice a
-! Return eigenvectors (colums of e) of 2x2 matrice a
+! Return eigenvectors (columns of e) of 2x2 matrice a
       SUBROUTINE Eigen2D(a,lambda,e)
       implicit none
       REAL(KIND=dp),intent(in) :: a(2,2)

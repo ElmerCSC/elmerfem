@@ -93,7 +93,7 @@
             ai(2) = 0.5 * (a2(1)+a2(2)+disc)
             ai(1) = 0.5 * (a2(1)+a2(2)-disc)
 
-            ! eigenvalues beetwen 0 and 1
+            ! eigenvalues between 0 and 1
 
             Do i=1,2
              ai(i)=Max(ai(i),0._dp)
