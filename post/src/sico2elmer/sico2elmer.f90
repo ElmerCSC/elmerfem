@@ -40,7 +40,7 @@ PROGRAM sico2elmer
   WRITE( *, '(A,A)', ADVANCE = 'YES') 'chosen run identifyer: ', runname
   CALL readlog_c(runname, imax,jmax,kcmax,ktmax,krmax,deform,Dx,gotit)
   IF (gotit .EQ. 0) THEN
-     WRITE(6,'(A)', ADVANCE = 'YES') 'Error occured while opening log-file!'
+     WRITE(6,'(A)', ADVANCE = 'YES') 'Error occurred while opening log-file!'
      STOP
   ELSE
      WRITE( *, '(A)', ADVANCE = 'YES') 'Log read successful'
@@ -244,7 +244,7 @@ CONTAINS
 
     OPEN(UNIT=10, IOSTAT=ios, FILE=ergfile, STATUS='old', FORM='unformatted')
     IF (ios /= 0) THEN
-       WRITE(6,'(A,A,A)') 'Error occured while opening timeslice-file ', ergfile,'!'
+       WRITE(6,'(A,A,A)') 'Error occurred while opening timeslice-file ', ergfile,'!'
        STOP
     ELSE
        WRITE( *, '(A,A)', ADVANCE = 'YES') 'Reading from ', ergfile
@@ -608,7 +608,7 @@ CONTAINS
     WRITE( *, '(A,A)', ADVANCE = 'YES') 'Atempting to open log-file ', logdat
     OPEN(UNIT=10, iostat=ios, file=logdat, status='old')
     IF (ios.ne.0) THEN
-       WRITE(6,'(A)') 'Error occured while opening log-file!'
+       WRITE(6,'(A)') 'Error occurred while opening log-file!'
        STOP
     ELSE
        WRITE( *, '(A,A)', ADVANCE = 'YES') 'Reading from ', logdat

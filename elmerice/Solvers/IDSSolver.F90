@@ -360,7 +360,7 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
   Wpress => WaterPressure % Values
   WpPerm  => WaterPressure % Perm
 
-  !Checking wether to use upper limit
+  !Checking whether to use upper limit
   !------------------------------------
   SolverParams => GetSolverParams()
 

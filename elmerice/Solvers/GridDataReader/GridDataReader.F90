@@ -215,7 +215,7 @@ MODULE NetCDFInterface
         !---------------------------------------------------------------------------
 
         IF ( (i == 4) .AND. (TimeSize == 1) ) THEN
-           ! can't find first 2 if time is scalar, so treat seperately
+           ! can't find first 2 if time is scalar, so treat separately
            FirstTwo = 0.0_dp
            IndVec = 1
            NetCDFstatus = NF90_GET_VAR(FileId,varid,FirstTwo(1),IndVec)
@@ -1133,7 +1133,7 @@ CONTAINS
 
     ! check coord variable dimensions
     IF (MAXVAL(CoordVarNDims) == 1) THEN
-       ! all coord variable dimensions are 1D so search each seperately
+       ! all coord variable dimensions are 1D so search each separately
        DO i = 1,NetDim
           success = findCell1D(coordVar(i),x(i),Ind(i),weights(i))
           WRITE(Message, '(A)') 'Not yet tested this combination of netcdf &

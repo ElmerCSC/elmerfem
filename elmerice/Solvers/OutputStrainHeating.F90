@@ -185,7 +185,7 @@ SUBROUTINE getStrainHeating( Model,Solver,dt,TransientSimulation )
            UY(i) = 0.0d0
            UZ(i) = 0.0d0
         END IF
-     END DO !loop over nodes in elment
+     END DO !loop over nodes in element
 
      DO i=1,N     ! loop nodes in element
         jj=Element % NodeIndexes(i)

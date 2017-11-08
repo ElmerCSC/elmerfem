@@ -84,7 +84,7 @@ D. Results
 =====================
 	On screen
 	---------
-Test will print some informations for each test-case:
+Test will print some information for each test-case:
 <Test Number>		<Test Name>		[<Result>]
 In <Result>, [FAILED] in case where difference between results are upper 1E-6
 	     [PASSED] in case where there is no difference

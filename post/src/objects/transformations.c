@@ -619,7 +619,7 @@ static void obj_compute_matrix( transform_t *transform )
  *
  *         Input:    both structures are read
  *
- *         Output:   both strutures are modifed
+ *         Output:   both structures are modified
  *
  *   Return value:    malloc() success
  *

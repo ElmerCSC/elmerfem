@@ -758,7 +758,7 @@ void tkSetOneColor(int index, float r, float g, float b)
 
         // This is a workaround for a GDI palette "feature".  If any of
         // the static colors are repeated in the palette, those colors
-        // will map to the first occurance.  So, for our case where there
+        // will map to the first occurrence.  So, for our case where there
         // are only two static colors (black and white), if a white
         // color appears anywhere in the palette other than in the last
         // entry, the static white will remap to the first white.  This
@@ -828,7 +828,7 @@ void tkSetFogRamp(int density, int startIndex)
 
                 // This is a workaround for a GDI palette "feature".  If any of
                 // the static colors are repeated in the palette, those colors
-                // will map to the first occurance.  So, for our case where there
+                // will map to the first occurrence.  So, for our case where there
                 // are only two static colors (black and white), if a white
                 // color appears anywhere in the palette other than in the last
                 // entry, the static white will remap to the first white.  This
