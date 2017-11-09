@@ -370,11 +370,6 @@
          
          CurrentElement => Solver % Mesh % Elements(t)
          Model % CurrentElement => CurrentElement
-!------------------------------------------------------------------------------
-!       the element type 101 (point element) can only be used
-!       to set Dirichlet BCs, so skip em.
-!------------------------------------------------------------------------------
-         IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
 !------------------------------------------------------------------------------
          DO i=1,Model % NumberOfBCs

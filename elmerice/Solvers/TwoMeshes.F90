@@ -28,7 +28,7 @@
 ! *
 ! *  This solver may be used to map the field variables of a stretched mesh
 ! *  to the unstretched initial configuarion of the same mesh. In addition
-! *  the vertical size of the mesh is accomodated so that the height of 
+! *  the vertical size of the mesh is accommodated so that the height of 
 ! *  the mesh stays fixed. All-in-all two different mapping stages and 
 ! *  one solution of Laplace equation is needed for the mapping.
 ! *  The user may also optionally nullify some field variables such as the 
@@ -702,7 +702,7 @@ SUBROUTINE TwoMeshes( Model,Solver,dt,TransientSimulation )
   LastBodyVar % Next => FirstBCVar
 
   ! Now we still have the problem that the interpolated values sit on MeshB while
-  ! we would like to work with MeshA. It seems easiest to copy all the relevent
+  ! we would like to work with MeshA. It seems easiest to copy all the relevant
   ! stuff back to MeshA. 
   !------------------------------------------------------------------------------
 

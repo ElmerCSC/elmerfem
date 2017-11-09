@@ -1,6 +1,6 @@
 !---------------------------------------------------------
 ! Test case for the consistency of partitioning.
-! This case is partitoned exactly using Metis partitioning
+! This case is partitoned exactly using basic Metis partitioning
 ! into 8 partitions. The number of 
 ! partitions can not be freely chosen here.
 !
@@ -69,10 +69,10 @@ RUN
 
 ! check the global numbering 
 Solver 1:: Show Norm Index = 2
-Solver 1:: Reference Norm = 0.33452560E+10
+Solver 1:: Reference Norm = 3.72184473E+09
 RUN
 
 ! check the neighbours
 Solver 1:: Show Norm Index = 3 
-Solver 1:: Reference Norm = 1012524.0
+Solver 1:: Reference Norm = 9.67657000E+05
 RUN 

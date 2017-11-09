@@ -201,7 +201,7 @@ static void vis_draw_edge(vertex_t *vertex,int v0,int v1,double *color,double CS
  *     Parameters: 
  *
  *         Input:   (geometry_t *) triangles to draw
- *                  (mesh_t     *) mesh display paramters
+ *                  (mesh_t     *) mesh display parameters
  *                  (double) 
  *
  *         Output:  graphics

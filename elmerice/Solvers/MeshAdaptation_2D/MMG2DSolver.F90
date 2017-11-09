@@ -42,7 +42,7 @@
 !!!  
 !!!   - replace current mesh by NewMesh to have remeshing during the simulation:
 !!!     
-!!!    TODO: Varaible RELEASE_MESH (defaut false) allow to release prev
+!!!    TODO: Varaible RELEASE_MESH (default false) allow to release prev
 !mesh if true (seems that not everything is deallocated); 
 !!!
       SUBROUTINE MMG2DSolver( Model,Solver,dt,TransientSimulation)
@@ -204,7 +204,7 @@
         END IF
       END DO
 
-! Release previous mesh (shoudl be optionnal)
+! Release previous mesh (should be optional)
 !-------------------
       RELEASE_MESH=ListGetLogical(SolverParams,'Release previous mesh')
       IF (RELEASE_MESH) THEN

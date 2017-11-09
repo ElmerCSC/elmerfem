@@ -483,6 +483,10 @@ CONTAINS
                  Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
           CALL Info( 'GMGSolve', Message, Level=5 )
 
+          IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+             CALL Fatal('GMGSolve','We seem to have diverged')
+          END IF
+          
           IF( Level == Solver % MultiGridTotal ) THEN
             IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
           ELSE
@@ -1241,6 +1245,11 @@ CONTAINS
                  Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
           CALL Info( 'PMGSolve', Message, Level=5 )
 
+
+          IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+             CALL Fatal('PMGSolve','We seem to have diverged')
+          END IF
+
           IF( Level == Solver % MultiGridTotal ) THEN
             IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
           ELSE
@@ -1791,8 +1800,13 @@ CONTAINS
       WRITE(Message,'(A,I0,A,I0,A,E20.12E3)') 'MG Residual at level: ', &
           Level, ' iter: ', iter,' is:', ResidualNorm
       CALL Info( 'AMGSolve', Message, Level=5 )
-      
+
+      IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+         CALL Fatal('AMGSolve','We seem to have diverged')
+      END IF
+            
       IF ( ResidualNorm < Tolerance ) EXIT
+
     END DO
     
 !------------------------------------------------------------------------------
@@ -5396,6 +5410,11 @@ CONTAINS
           Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
       CALL Info( 'CMGSolve', Message, Level=5 )
 
+
+      IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+         CALL Fatal('CMGSolve','We seem to have diverged')
+      END IF
+      
       IF( Level == Solver % MultiGridTotal ) THEN
         IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
       ELSE

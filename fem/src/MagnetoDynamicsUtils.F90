@@ -10,7 +10,7 @@
                    CoilBody,CoilType) RESULT (Tcoef)  
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => Null()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -20,6 +20,7 @@
     LOGICAL :: Found
     LOGICAL :: CoilBody
 
+    Cwrk => NULL()
     Tcoef=0._dp
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
@@ -95,7 +96,7 @@
                   RESULT (mu)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => Null()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -103,6 +104,7 @@
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
 
+    Cwrk => NULL()
     mu=0._dp
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
@@ -140,7 +142,7 @@
                   RESULT (T)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => Null()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j, slen, tsize 
     TYPE(Valuelist_t), POINTER :: Material
@@ -149,6 +151,7 @@
     CHARACTER(LEN=*) :: varname
     LOGICAL, OPTIONAL :: Found
 
+    Cwrk => NULL()
     IF (.NOT. ASSOCIATED(Element)) CALL Fatal ('GetTensor', 'Element not associated')
     T=0._dp
     Material => GetMaterial( Element )

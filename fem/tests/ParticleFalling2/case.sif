@@ -1,0 +1,123 @@
+! In this example particles are falling one second under the influence of unity gravity field.
+! As the particles are initially at rest they obtain velocity of 1.0 m/s in the end. 
+! The information is used to constract a continuous velocity field from the data
+! with the help of an auxiliary solver that utilizes the r.h.s. created by the particle solver.
+! Periodic BCs are enforced on the particles. 
+!
+! This only has two dummy particle tests instead of default of one. 
+!---------------------------------------------------------------------------------------------
+
+Check Keywords Warn
+
+
+Header
+  Mesh DB "." "square"
+End
+ 
+Simulation
+  Max Output Level = 10
+  Coordinate System = Cartesian 
+  Simulation Type = transient
+  Steady State Max Iterations = 1
+  Timestep Intervals = 10
+  Output Intervals = 1
+  Timestep Sizes = 0.1
+End
+
+Constants
+  Permittivity Of Vacuum = 1.0
+  Gravity(4) = 0 -1 0 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Solver 1
+  Equation = ParticleDynamics
+  Procedure = "ParticleDynamics" "ParticleDynamics"
+
+  Simulation Timestep Sizes = Logical True
+  Max Timestep Intervals = Integer 10
+  Time Order = Integer 2
+
+! Initialize one group of particles - just as a test
+  Number of Particle Groups = Integer 2
+
+! Namespace is used for the test
+  group1: Number of Particles = Integer 70
+  group1: Coordinate Initialization Method = String "box random"
+  group1: Initial Velocity(1,2) = Real 0.0 0.0
+
+  group2: Number of Particles = Integer 30
+  group2: Coordinate Initialization Method = String "box random"
+  group2: Initial Velocity(1,2) = Real 0.0 0.0
+
+  Particle Gravity = Logical True
+  Particle Mass = Real 1.0
+  Box Particle Periodic = Logical True
+
+!  Particle Accurate At Face = Logical True
+  Particle Accurate Always = Logical True
+
+  Particle To Field = Logical True
+
+  Field 1 = String "weight"
+  Field 2 = String "kinetic energy"
+
+! do not cumulate the particles
+  Particle To Field Reset = Logical True
+
+  Statistical Info = Logical False
+  Particle Info = Logical True
+End 
+
+
+Solver 2
+!  Exec Solver = never
+  Equation = String "FitData"
+  Procedure = File "DataToFieldSolver" "DataToFieldSolver"
+  Variable = Fitted Field
+
+  Target Variable = String "Particle Kinetic Energy"
+  Weight Variable = String "Particle Weight"
+  Normalize by Given Weight = Logical True
+  Set Constant Weight Sum = Logical True
+
+  Diffusion Coefficient = Real 1.0
+  
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Preconditioning = ILU2
+  Linear System Residual Output = 20
+ 
+  Linear System Abort Not Converged = False
+
+  Optimize Bandwidth =  False
+
+!  Continue BC With Boundary Assembly = Logical True
+End
+
+
+
+
+Material 1
+  Name = "Ideal"
+End
+
+Boundary Condition 1
+  Name = BCs
+  Target Boundaries(4) = 1 2 3 4
+
+! natural BC is ok here!
+!  FitData Continue = Logical True  
+End
+
+Solver 2 :: Reference Norm = Real 0.5

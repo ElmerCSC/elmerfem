@@ -22,10 +22,10 @@ SET(MPI_CXX_COMPILER CC)
 SET(MPI_Fortran_COMPILER ftn)
 
 # Compilation flags (i.e. with optimization)
-SET(CMAKE_C_FLAGS "-g -fPIC" CACHE STRING "")
-SET(CMAKE_CXX_FLAGS "-g -fPIC" CACHE STRING "")
-SET(CMAKE_Fortran_FLAGS "-g -fPIC" CACHE STRING "")
-
+SET(CMAKE_C_FLAGS "-O2 -fPIC" CACHE STRING "")
+SET(CMAKE_CXX_FLAGS "-O2 -fPIC" CACHE STRING "")
+SET(CMAKE_Fortran_FLAGS "-O2 -fPIC" CACHE STRING "")
+#for the brave: -fPIC -O2 -ffast-math -funroll-loops -march=haswell -mtune=haswell -mavx2
 # Reset the default build type flags, all flags should be set above
 SET(CMAKE_C_FLAGS_RELWITHDEBINFO "" CACHE STRING "")
 SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "" CACHE STRING "")

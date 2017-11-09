@@ -59,4 +59,5 @@ int StringToIntegerNoZero(const char *buf,int *dest,int maxcnt,char separator);
 int EchoFile(char *filename);
 int next_int(char **start);
 Real next_real(char **start);
+void SortIndex( int N, double *Key, int *Ord );
 #endif

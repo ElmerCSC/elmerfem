@@ -1160,12 +1160,12 @@ FUNCTION getFluidity( Model, n, temperature ) RESULT(fluidity)
      temphom = MIN(temperature - PressureMeltingPoint(nodeInElement), 0.0d00)
   END IF
   !-----------------------------------------------------
-  ! homologous Temperature is below temperature treshold
+  ! homologous Temperature is below temperature threshold
   !----------------------------------------------------
   IF (temphom < LimitTemp(nodeInElement))THEN
      i=1
      !-----------------------------------------------------
-     ! homologous Temperature is above temperature treshold
+     ! homologous Temperature is above temperature threshold
      !-----------------------------------------------------
   ELSE
      i=2

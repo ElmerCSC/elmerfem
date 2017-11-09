@@ -560,7 +560,7 @@ proc HMset_image {win handle src} {
 # if we have a clickable image, arrange for a callback
 
 proc HMgot_image {win image_error} {
-	# if we're in a frame turn on geometry propogation
+	# if we're in a frame turn on geometry propagation
 	if {[winfo name $win] == "label"} {
 		pack propagate [winfo parent $win] 1
 	}
@@ -598,7 +598,7 @@ proc HMlink_setup {win href} {
 
 # generic link-hit callback
 # This gets called upon button hits on hypertext links
-# Applications are expected to supply ther own HMlink_callback routine
+# Applications are expected to supply their own HMlink_callback routine
 #   win:   The name of the text widget to render into
 #   x,y:   The cursor position at the "click"
 
@@ -815,10 +815,10 @@ array set HMesc_map {
 # Remember, there can be multiple forms existing on multiple pages.  When
 # HTML tables are added, a single form could be spread out over multiple
 # text widgets, which makes it impractical to hang the form state off the
-# HM$win structure.  We don't need to check for the existance of required
+# HM$win structure.  We don't need to check for the existence of required
 # parameters, we just "fail" and get caught in HMrender
 
-# This causes line breaks to be preserved in the inital values
+# This causes line breaks to be preserved in the initial values
 # of text areas
 array set HMtag_map {
 	textarea    {fill 0}

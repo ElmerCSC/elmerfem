@@ -2157,7 +2157,7 @@ CONTAINS
 
     Var => VariableGet(ExtrudedMesh % Variables, VarName, .TRUE.)
     IF(.NOT. ASSOCIATED(Var)) CALL Fatal(SolverName, &
-         "Couldnt get calving var on new mesh to determing calving nodes")
+         "Couldn't get calving var on new mesh to determining calving nodes")
 
     ALLOCATE(IsCalvingNode(ExtrudedMesh % NumberOfNodes))
     IsCalvingNode = .FALSE.

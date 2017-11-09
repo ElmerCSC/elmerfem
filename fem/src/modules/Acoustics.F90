@@ -503,8 +503,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       !------------------------------------------------------------------------------
       ! Check that the dimension of element is suitable for BCs
       !------------------------------------------------------------------------------
-      IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
-
       n = CurrentElement % TYPE % NumberOfNodes
       NodeIndexes => CurrentElement % NodeIndexes
       IF (ANY(FlowPerm(NodeIndexes(1:n)) == 0)) CYCLE
@@ -815,10 +813,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     Model % CurrentElement => CurrentElement
 
     IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel % Solver) ) CYCLE    
-    !------------------------------------------------------------------------------
-    ! Check that the dimension of element is suitable for BCs
-    !------------------------------------------------------------------------------
-    IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
     !------------------------------------------------------------------------------
     ! Extract the parent element to find its material parameters... 
@@ -1118,11 +1112,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel% Solver) ) CYCLE    
 
     !------------------------------------------------------------------------------
-    ! Check that the dimension of element is suitable for BCs
-    !------------------------------------------------------------------------------
-    IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
-
-    !------------------------------------------------------------------------------
     ! Extract the parent element to find its material parameters... 
     !----------------------------------------------------------------------------- 
     n = CurrentElement % TYPE % NumberOfNodes
@@ -1270,6 +1259,8 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       'Im Temperature', Dofs-2, Dofs, FlowPerm )
 
   IF(.TRUE.) CALL AcousticShellInterface()
+
+  CALL DefaultDirichletBCs()
   
   CALL Info( 'AcousticsSolver', 'Assembly done', Level=4 )
 
@@ -1316,11 +1307,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
        CurrentElement => Solver % Mesh % Elements(t)
        Model % CurrentElement => CurrentElement
        IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel% Solver) ) CYCLE    
-
-       !------------------------------------------------------------------------------
-       ! Check that the dimension of element is suitable for BCs
-       !------------------------------------------------------------------------------
-       IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
        !------------------------------------------------------------------------------
        ! Extract the parent element to find its material parameters... 
@@ -1589,10 +1575,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
       CurrentElement => Solver % Mesh % Elements(t)
       Model % CurrentElement => CurrentElement
-      !------------------------------------------------------------------------------
-      ! Check that the dimension of element is suitable for BCs
-      !------------------------------------------------------------------------------
-      IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
       n = CurrentElement % TYPE % NumberOfNodes
       NodeIndexes => CurrentElement % NodeIndexes
@@ -1708,11 +1690,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     Model % CurrentElement => CurrentElement
 
     IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel % Solver) ) CYCLE    
-
-    !------------------------------------------------------------------------------
-    ! Check that the dimension of element is suitable for BCs
-    !------------------------------------------------------------------------------
-    IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
     !------------------------------------------------------------------------------
     ! Extract the parent element to find its material parameters... 

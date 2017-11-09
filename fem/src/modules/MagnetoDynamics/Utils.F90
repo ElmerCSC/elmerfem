@@ -534,4 +534,170 @@ CONTAINS
   END SUBROUTINE PackEdgeRows
   !-------------------------------------------------------------------------------
 
+
+  !-------------------------------------------------------------------------------
+  SUBROUTINE CommunicateCondReg(Solver, Mesh, CondReg)
+  !-------------------------------------------------------------------------------
+     TYPE(Mesh_t) :: Mesh
+     LOGICAL :: CondReg(:)
+     TYPE(Solver_t) :: Solver
+
+     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:)
+     INTEGER :: i,j,k,l,n,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
+
+     IF( ParEnv % PEs<=1 ) RETURN
+
+     ALLOCATE(s_e(Mesh % NumberOfNodes, ParEnv % PEs), &
+               r_e(Mesh % NUmberOfNodes) )
+     ii = 0
+     DO i=1,Mesh % NumberOfNodes
+       IF(.NOT.CondReg(i) .AND. Mesh % ParallelInfo % Interface(i) ) THEN
+          DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
+            k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
+            IF ( k== ParEnv % MyPE ) CYCLE
+            k = k + 1
+            ii(k) = ii(k) + 1
+            s_e(ii(k),k) = Mesh % ParallelInfo % GlobalDOFs(i)
+          END DO
+       END IF
+     END DO
+
+     DO i=0, ParEnv % PEs-1
+       IF(i==ParEnv % myPE) CYCLE
+       k = i+1
+       CALL MPI_BSEND( ii(k),1,MPI_INTEGER,i,110,Solver % matrix % comm,ierr )
+       IF( ii(k) > 0 ) THEN
+         CALL MPI_BSEND( s_e(1:ii(k),k),ii(k),MPI_INTEGER,i,111,solver % matrix % comm,ierr )
+       END IF
+     END DO
+
+     DO i=0, ParENv % PEs-1
+       IF(i==ParEnv % myPE) CYCLE
+       CALL MPI_RECV( n,1,MPI_INTEGER,i,110,Solver % Matrix % Comm, status,ierr )
+       IF ( n>0 ) THEN
+         CALL MPI_RECV( r_e,n,MPI_INTEGER,i,111,Solver % Matrix % Comm, status,ierr )
+         DO j=1,n
+           k = SearchNode( Mesh % ParallelInfo, r_e(j) )
+           IF ( k>0 ) CondReg(k) = .FALSE.
+         END DO
+       END IF
+     END DO
+     DEALLOCATE(s_e, r_e)
+  !-------------------------------------------------------------------------------
+  END SUBROUTINE CommunicateCondReg
+  !-------------------------------------------------------------------------------
+
+  !-------------------------------------------------------------------------------
+  SUBROUTINE RecvDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
+  !-------------------------------------------------------------------------------
+     TYPE(Solver_t):: Solver
+     TYPE(Mesh_t) :: Mesh
+     LOGICAL :: Done(:), TreeEdges(:)
+  
+     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), iperm(:)
+     INTEGER :: i,j,k,l,n,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
+
+     IF(ParEnv % myPE <= 0) RETURN
+
+     ALLOCATE(r_e(Mesh % NumberOfEdges), iperm(SIZE(Solver % Variable % Perm)))
+     iperm = 0
+     DO i=1,SIZE(Solver % Variable % Perm)
+       IF ( Solver % Variable % Perm(i) > 0 ) &
+         iperm(Solver % Variable % Perm(i)) = i
+     END DO
+
+     DO i=0, ParEnv % MyPE-1
+       CALL MPI_RECV( n,1,MPI_INTEGER,i,112,Solver % Matrix % Comm, status,ierr )
+       IF ( n>0 ) THEN
+         CALL MPI_RECV( r_e,n,MPI_INTEGER,i,113,Solver % Matrix % Comm, status,ierr )
+         DO j=1,n
+           k = SearchNode( Solver % Matrix % ParallelInfo, r_e(j), Order=Solver % Variable % Perm )
+           k = iperm(k) - Mesh % NumberOfNodes
+           IF ( k>0 .AND. k<=SIZE(TreeEdges) ) THEN
+             TreeEdges(k) = .TRUE.
+           END IF
+         END DO
+       END IF
+     END DO
+
+     DO i=0, ParENv % myPE-1
+       CALL MPI_RECV( n,1,MPI_INTEGER,i,114,Solver % Matrix % Comm, status,ierr )
+       IF ( n>0 ) THEN
+         CALL MPI_RECV( r_e,n,MPI_INTEGER,i,115,Solver % Matrix % Comm, status,ierr )
+         DO j=1,n
+           k = SearchNode( Mesh % ParallelInfo, r_e(j) )
+           IF ( k>0 ) Done(k) = .TRUE.
+         END DO
+       END IF
+     END DO
+  !-------------------------------------------------------------------------------
+  END SUBROUTINE RecvDoneNodesAndEdges
+  !-------------------------------------------------------------------------------
+
+
+  !-------------------------------------------------------------------------------
+  SUBROUTINE SendDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
+  !-------------------------------------------------------------------------------
+     TYPE(Solver_t):: Solver
+     TYPE(Mesh_t) :: Mesh
+     LOGICAL :: Done(:), TreeEdges(:)
+  
+     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), iperm(:)
+     INTEGER :: i,j,k,l,n,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
+
+     IF(Parenv % myPE < ParEnv % PEs-1) THEN
+
+      ALLOCATE(s_e(Mesh % NumberOfEdges, ParEnv % PEs) )
+
+      ii = 0
+      DO i=1,Mesh % NumberOfedges
+        IF ( TreeEdges(i) .AND. Mesh % ParallelInfo % EdgeInterface(i) ) THEN
+          DO j=1,SIZE(Mesh % ParallelInfo % EdgeNeighbourlist(i) % Neighbours)
+            k = Mesh % ParallelInfo % EdgeNeighbourlist(i) % Neighbours(j)
+            IF ( k>ParEnv % myPE ) THEN
+               k = k + 1
+               ii(k) = ii(k) +1
+               s_e(ii(k),k) = Solver % Matrix % ParallelInfo % GlobalDOFs( & 
+                    Solver % Variable % Perm(Mesh % NumberOfNodes+i) )
+            END IF
+          END DO
+        END IF
+      END DO
+
+      DO i=Parenv % mype+1,Parenv % PEs-1
+        k = i+1
+        CALL MPI_BSEND( ii(k),1,MPI_INTEGER,i,112,Solver % matrix % comm,ierr )
+        IF( ii(k) > 0 ) THEN
+          CALL MPI_BSEND( s_e(1:ii(k),k),ii(k),MPI_INTEGER,i,113,solver % matrix % comm,ierr )
+        END IF
+      END DO
+
+      ii = 0
+      DO i=1,Mesh % NumberOfNodes
+        IF ( Done(i) .AND. Mesh % ParallelInfo % Interface(i) ) THEN
+          DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
+            k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
+            IF ( k>ParEnv % myPE ) THEN
+               k = k + 1
+               ii(k) = ii(k) +1
+               s_e(ii(k),k) = Mesh % ParallelInfo % GlobalDOFs(i)
+            END IF
+          END DO
+        END IF
+      END DO
+
+      DO i=Parenv % mype+1,Parenv % PEs-1
+        k = i+1
+        CALL MPI_BSEND( ii(k),1,MPI_INTEGER,i,114,Solver % matrix % comm,ierr )
+        IF( ii(k) > 0 ) THEN
+          CALL MPI_BSEND( s_e(1:ii(k),k),ii(k),MPI_INTEGER,i,115,solver % matrix % comm,ierr )
+        END IF
+      END DO
+    END IF
+
+    CALL SparIterBarrier()
+  !-------------------------------------------------------------------------------
+  END SUBROUTINE SendDoneNodesAndEdges
+  !-------------------------------------------------------------------------------
+
 END MODULE MagnetoDynamicsUtils

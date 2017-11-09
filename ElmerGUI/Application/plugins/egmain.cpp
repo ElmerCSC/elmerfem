@@ -51,6 +51,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <locale.h>
 
 #define EXE_MODE 0
 #define LIB_MODE 1
@@ -1329,6 +1330,8 @@ int eg_loadmesh(const char *filename)
 {
   static int inmethod,errorstat,info;
 
+  setlocale(LC_ALL, "C");  
+    
   strcpy(Filename,filename);
   info = TRUE;
   if(info) printf("\nElmerGrid checking filename suffix for file: %s\n",filename);
@@ -1355,6 +1358,8 @@ int eg_transfermesh(mesh_t *mesh,const char *str)
   int argc;
   static int visited = FALSE;
   char filename[MAXFILESIZE];
+
+  setlocale(LC_ALL, "C");  
   
   activemesh = 0;
   nofile = 0;
