@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen
+! *  Authors: Juha Ruokolainen, Thomas Zwinger
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -203,7 +203,7 @@ this ise not in USE
           Symb(3,3,3), dSymb(3,3,3,3)
 
      INTEGER :: i,j,k
-     LOGICAL :: stat,GotIt
+     LOGICAL :: stat,GotIt,UseEUsrf=.FALSE.
 
      CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag, TemperatureName, EnhcmntFactFlag
      TYPE(ValueList_t), POINTER :: Material
@@ -240,21 +240,18 @@ this ise not in USE
           REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
                Velo(:), dVelodx(:,:), s
         END FUNCTION MaterialUserFunction
-     END INTERFACE     
-     INTERFACE
         FUNCTION EnhancementFactorUserFunction( Proc,Model,Element,Nodes,n,nd, &
-             Basis,dBasisdx,Viscosity,Velo, dVelodx ) RESULT(Ehf)
+             Basis,dBasisdx,Viscosity,Velo,dVelodx,SecondInvariantSqr ) RESULT(Ehf)
           USE Types
-          INTEGER(KIND=AddrInt), INTENT(IN) :: Proc
-          TYPE(Model_t), INTENT(IN) :: Model
-          TYPE(Nodes_t), INTENT(IN) :: Nodes
+          INTEGER(KIND=AddrInt) :: Proc
+          TYPE(Model_t) :: Model
+          TYPE(Nodes_t) :: Nodes
           TYPE(Element_t), POINTER :: Element
-          INTEGER, INTENT(IN) :: n,nd
-          REAL(KIND=dp), INTENT(IN) :: Basis(:),dBasisdx(:,:),Viscosity, &
-               Velo(:), dVelodx(:,:)
-          REAL(KIND=dp) :: Ehf
+          INTEGER :: n,nd
+          REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
+               Velo(:), dVelodx(:,:), SecondInvariantSqr, Ehf
         END FUNCTION EnhancementFactorUserFunction
-     END INTERFACE
+     END INTERFACE     
 #endif
      !------------------------------------------------------------------------------
      mu = Viscosity
@@ -358,32 +355,34 @@ this ise not in USE
            END IF
         
            IF (Temp.LE. Tlimit) THEN
-              ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15 + Temp)))
+              ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15_dp + Temp)))
            ELSE IF((Tlimit<Temp) .AND. (Temp .LE. 0.0_dp)) THEN
-              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15 + Temp)))
+              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp + Temp)))
            ELSE
-              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15)))
-              CALL INFO('EffectiveViscosity','Positive Temperature detected in Glen - limiting to zero!', Level = 5)
+              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp)))
+              CALL INFO('EffectiveViscosity',&
+                   'Positive Temperature detected in Glen - limiting to zero!', Level = 5)
            END IF
         ELSE
           ArrheniusFactor = GetConstReal(Material,'Arrhenius Factor', GotIt)
           IF (.NOT.(GotIt)) THEN 
-            CALL FATAL('EffectiveViscosity','<Set Arrhenius Factor> is TRUE, but no value <Arrhenius Factor> found')
+            CALL FATAL('EffectiveViscosity',&
+                 '<Set Arrhenius Factor> is TRUE, but no value <Arrhenius Factor> found')
           END IF
         END IF
         Ehf = 1.0_dp
-        EnhcmntFactFlag = ListGetString( Material,'Glen Enhancement Factor Function', GotIt)
-        IF(GotIt) THEN
-          Fnc = GetProcAddr( str, Quiet=.TRUE. )
-          !EhF = EnhancementFactorUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
-          !     Basis, dBasisdx, Viscosity, Velo, dVelodx )
-          EhF = MaterialUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
-               Basis, dBasisdx, Viscosity, Velo, dVelodx )
+        EnhcmntFactFlag = ListGetString( Material,'Glen Enhancement Factor Function', UseEUsrf )
+        IF (UseEUsrf) THEN
+          Fnc = GetProcAddr( EnhcmntFactFlag, Quiet=.TRUE. )
+          EhF = EnhancementFactorUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
+               Basis, dBasisdx, Viscosity, Velo, dVelodx, s )
         ELSE
-          NodalEhF(1:n) =  ListGetReal( Material, 'Glen Enhancement Factor', n, Element % NodeIndexes, GotIt )
+          NodalEhF(1:n) =  ListGetReal( Material, 'Glen Enhancement Factor',&
+               n, Element % NodeIndexes, GotIt )
           IF (GotIt) &
                EhF = SUM(Basis(1:n) * NodalEhF(1:n))
         END IF
+        
         IF (PRESENT(muder)) muder = 0.5_dp * (  EhF * ArrheniusFactor)**(-1.0_dp/c2) &
              * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
 
@@ -645,7 +644,6 @@ this ise not in USE
      !------------------------------------------------------------------------------
    END FUNCTION EffectiveViscosity
 !------------------------------------------------------------------------------
-
 
 
 !------------------------------------------------------------------------------

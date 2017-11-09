@@ -1037,6 +1037,9 @@
 !       non-linear system iteration loop
 !------------------------------------------------------------------------------
      IF (Channels) THEN 
+        t = Solver % Mesh % NumberOfEdges 
+        M = Model % Mesh % NumberOfNodes
+
         IF (ParEnv % PEs > 1) THEN
            PrevNorm = ParallelNorm(t,AreaSolution(AreaPerm(M+1:M+t))) 
         ELSE            
@@ -1044,11 +1047,6 @@
         END IF
 
         DO iter = 1, NonlinearIter
-
-           t = Solver % Mesh % NumberOfEdges 
-           M = Model % Mesh % NumberOfNodes
-           
-
               DO t=1, Solver % Mesh % NumberOfEdges 
                  Edge => Solver % Mesh % Edges(t)
                  IF (.NOT.ASSOCIATED(Edge)) CYCLE
