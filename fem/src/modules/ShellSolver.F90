@@ -81,6 +81,7 @@ SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
 
   CALL ListAddInteger(SolverPars, 'Variable DOFs', 6)
   CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
+  CALL ListAddLogical(SolverPars, 'Initialize Dirichlet Conditions', .FALSE.)
 
   CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
 
@@ -179,6 +180,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: PlateBody, PlanarPoint, UmbilicalPoint
   LOGICAL :: Bubbles, ApplyBubbles
   LOGICAL :: LargeDeflection, MeshDisplacementActive
+  LOGICAL :: NoTractions
   LOGICAL :: SolveBenchmarkCase
 
   INTEGER, POINTER :: Indices(:) => NULL()
@@ -195,7 +197,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: LocalRHSForce(:)
   REAL(KIND=dp), TARGET :: LocalFrameNodes(MaxPatchNodes,3)
   REAL(KIND=dp) :: d(3), d1(3), d2(3), d3(3), X1(3), X2(3), e1(3), e2(3), e3(3), o(3), p(3)
-  REAL(KIND=dp) :: c, Norm, u, v, X
+  REAL(KIND=dp) :: c, Norm, u, v
   REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2), ZNodes(MaxPatchNodes)
   REAL(KIND=dp) :: BlendingSurfaceArea, ShellModelArea, MappedMeshArea, RefArea
   REAL(KIND=dp) :: NonlinTol, NonlinRes, NonlinRes0
@@ -329,6 +331,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   NonlinTol =  GetConstReal(SolverPars, 'Nonlinear System Convergence Tolerance')
 
   IF (LargeDeflection) THEN
+    SolveBenchmarkCase = .FALSE.
     IF (.NOT. ASSOCIATED(Solver % Matrix % BulkRHS)) &
         ALLOCATE(Solver % Matrix % BulkRHS(SIZE(Solver % Matrix % RHS)))
     Solver % Matrix % BulkRHS = 0.0d0
@@ -491,13 +494,37 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     CALL DefaultDirichletBCs()
 
     ! ---------------------------------------------------------------------------------
+    ! The solution variable is the solution increment while the sif-file specifies
+    ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
+    ! is obtained for the solution increment:
+    ! --------------------------------------------------------------------------------
+    IF (ALLOCATED(Solver % Matrix % ConstrainedDOF)) THEN
+      DO i=1,Solver % Matrix % NumberOfRows
+        IF (Solver % Matrix % ConstrainedDOF(i)) THEN
+          Solver % Matrix % DValues(i) = Solver % Matrix % DValues(i) - Solver % Variable % Values(i)
+        END IF
+      END DO
+      CALL EnforceDirichletConditions(Solver, Solver % Matrix, Solver % Matrix % RHS)
+    END IF
+ 
+    ! ---------------------------------------------------------------------------------
     ! Check whether the nonlinear iteration can be terminated:
     ! ---------------------------------------------------------------------------------
     IF (LargeDeflection) THEN
       IF (NonlinIter == 1) THEN
-        ! Compute the norm of the initial residual (RHS vector before setting BCs). 
-        ! Update this for parallel implementation. 
-        NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+        NoTractions = MAXVAL(ABS(Solver % Matrix % BulkRHS(:)))  < AEPS
+        IF (NoTractions) THEN
+          ! This appears to be a purely BC-loaded case, switch to using a different criterion
+          ! (use absolute norm, this can be hard ...):
+          CALL Info('ShellSolver', 'No pressure load ... ', Level=4)
+          CALL Info('ShellSolver', &
+              'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
+          NonlinRes0 = 1.0d0
+        ELSE
+          ! Compute the norm of the initial residual (RHS vector before setting BCs). 
+          ! Update this for parallel implementation. 
+          NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+        END IF
       END IF
       NonlinRes = SQRT(SUM(Solver % Matrix % RHS(:)**2)) / NonlinRes0
       WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
@@ -563,7 +590,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! -------------------------------------------------------------------------------------
   ! SOME VERIFICATION OUTPUT if a benchmark case of straight cylindrical shell is solved
   !-----------------------------------------------------------------------------------
-  IF (SolveBenchmarkCase .AND. .NOT. LargeDeflection) THEN
+  IF (SolveBenchmarkCase) THEN
     
     CALL MatrixVectorMultiply(Solver % Matrix, Solver % Variable % Values, TotalSol)
     Work = 8.0d0 * SUM( Solver % Variable % Values(:) * TotalSol(:) )
@@ -572,10 +599,10 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     RefWork = 0.0d0
     SELECT CASE(ListGetInteger(SolverPars, 'Benchmark Case', Found, minv=0,maxv=2))
     CASE(1)
-      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 2.688287959059254d0 * 1.0d-2 ! t=0.01
+      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 2.688287959059254d0 * 1.0d-2 ! t=0.01
       !RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 1.828629366566552 * 1.0d-1 ! t=0.1
     CASE(2)
-      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 0.704331198817278d0 * (1.0d-2)**3 ! t=0.01
+      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 0.704331198817278d0 * (1.0d-2)**3 ! t=0.01
     END SELECT
     PRINT *, 'Relative energy error = ', SQRT(ABS(RefWork-Work)/RefWork)
     PRINT *, 'Total number of DOFS = ', SIZE(Solver % Variable % Values) 
@@ -583,7 +610,6 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     IF (ComputeShellArea) THEN
       RefArea = 0.5d0 * PI 
       !RefArea = 4 * (1.0472d0)**2  
-      !  RefArea = PI/4.0d0
       PRINT *, 'Relative Error of Model Surface Area = ', ABS(RefArea  - ShellModelArea)/RefArea    
       PRINT *, 'Relative Error of Blending Surface Area = ', ABS(RefArea  - BlendingSurfaceArea)/RefArea
       PRINT *, 'Relative Error of Mapped BG Mesh Area = ', ABS(RefArea  - MappedMeshArea)/RefArea
@@ -600,10 +626,6 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     !PRINT *, 'The L2 error norm for the principal direction 1 = ', SQRT(MaxPDir1Err)
 
   END IF
-
-
-
-
 
  
 CONTAINS
@@ -3197,8 +3219,11 @@ CONTAINS
     YoungsMod(1:n) = GetReal(GetMaterial(), 'Youngs Modulus')
     ShellThickness(1:n) = GetReal(GetMaterial(), 'Shell Thickness')
     BodyForce => GetBodyForce()
-    IF ( ASSOCIATED(BodyForce) ) &
-        Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
+    IF ( ASSOCIATED(BodyForce) ) THEN
+      Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
+    ELSE
+      Load(1:n) = 0.0d0
+    END IF
     IF (TransientSimulation) &
         rho(1:n) = GetReal(GetMaterial(), 'Density')
 
@@ -3963,6 +3988,9 @@ CONTAINS
 
         Weight = SQRT(NewDetA) * detJ * sq
 
+        RHSForce(1:DOFs:m) = RHSForce(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
+        RHSForce(2:DOFs:m) = RHSForce(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
+        RHSForce(3:DOFs:m) = RHSForce(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
         Force(1:DOFs:m) = Force(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
         Force(2:DOFs:m) = Force(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
         Force(3:DOFs:m) = Force(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
@@ -3972,7 +4000,6 @@ CONTAINS
         DO p=1,nd
           i = m*(p-1)+3
           Force(i) = Force(i) + NormalTraction * Basis(p) * Weight
-          ! RHSForce(i) = RHSForce(i) + NormalTraction * Basis(p) * Weight
         END DO
       END IF
 
@@ -3983,8 +4010,6 @@ CONTAINS
       !Error = Error + sq * (1.0d0 - abs(B11/a11) - abs(B22/a22))**2 * detJ * SqrtDetA
 
     END DO QUADRATURELOOP
-
-    RHSForce(1:DOFs) = Force(1:DOFs)
 
     ! ------------------------------------------------------------------------------
     ! Static condensation is performed before transforming to the global DOFs:
@@ -3999,7 +4024,7 @@ CONTAINS
     Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
     Force(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),Force(1:DOFs))
 
-    RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
+    IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
 
     IF(TransientSimulation) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
@@ -4707,7 +4732,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE(Element_t), INTENT(IN), TARGET :: Element          !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                      !< Nodes structure
-    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)                 !< Coefficients for expressing the DOFs 
+    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)                  !< Coefficients for expressing the DOFs 
     INTEGER, INTENT(IN) :: nd                               !< The dimension of the strain reduction space X(K)
     INTEGER, INTENT(IN) :: n                                !< The number of the H1-conforming basis functions
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
@@ -5316,18 +5341,6 @@ CONTAINS
 !-------------------------------------------------------------------------------------
   END SUBROUTINE ComputeSurfaceArea
 !-------------------------------------------------------------------------------------
-
-
-!---------------------------------------------------------------------------
-  FUNCTION LDot(a,b) RESULT(res)
-!---------------------------------------------------------------------------
-    REAL(KIND=dp) :: a(3), b(3), res   
-!---------------------------------------------------------------------------
-    res = SUM( a(:) * b(:) )
-!---------------------------------------------------------------------------
-  END FUNCTION LDot
-!---------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver
