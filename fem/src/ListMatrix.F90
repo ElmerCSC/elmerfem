@@ -258,7 +258,8 @@ CONTAINS
       ALLOCATE(A % ListMatrix(i) % Head)
       Clist => A % ListMatrix(i) % Head
       Clist % Next => Null()
-      A % ListMatrix(i) % Level = 0
+      A % ListMatrix(i) % Level  = 0
+      A % ListMatrix(i) % Degree = 0
 
       DO j=A % Rows(i), A % Rows(i+1)-1
         IF(Trunc) THEN
