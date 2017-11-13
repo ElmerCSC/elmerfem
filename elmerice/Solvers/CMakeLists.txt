@@ -26,7 +26,7 @@ SET(ElmerIce_SRC AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     TwoMeshes.F90 ProjectCalving.F90 ComputeCalvingNormal.F90 
     CalvingGeometry.F90 Calving3D.F90 CalvingRemesh.F90
     CalvingFrontAdvance3D.F90 Emergence.F90 SSAmask.F90 
-    GlaDSCoupledSolver.F90 GlaDSchannelSolver.F90 )
+    GlaDSCoupledSolver.F90 GlaDSchannelSolver.F90 Flotation.F90 )
 
 ADD_LIBRARY(ElmerIceSolvers SHARED ${ElmerIce_SRC})
 
