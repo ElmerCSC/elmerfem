@@ -3114,27 +3114,24 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
-!------------------------------------------------------------------------------
-  FUNCTION ListCheckAllGlobal( List, name ) RESULT ( AllGlobal )
-!------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List
-     CHARACTER(LEN=*) :: name
-     LOGICAL :: AllGlobal
+ !------------------------------------------------------------------------------
+  FUNCTION ListCheckGlobal( ptr ) RESULT ( IsGlobal )
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
+     LOGICAL :: IsGlobal
+!------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      INTEGER :: ind,i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Variable, CVar
      INTEGER :: slen
 
-     AllGlobal = .TRUE.
+     IsGlobal = .TRUE.
 
-     IF(.NOT.ASSOCIATED(List)) RETURN
-
-     ptr => List % Head
-     IF(.NOT.ASSOCIATED(ptr)) RETURN
-
+     IF(.NOT.ASSOCIATED(ptr)) THEN
+       CALL Warn('ListCheckGlobal','ptr not associated!')
+       RETURN
+     END IF
+       
      
      IF( ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR_STR ) THEN
        RETURN
@@ -3145,7 +3142,7 @@ CONTAINS
 
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
-         AllGlobal = .FALSE.
+         IsGlobal = .FALSE.
          RETURN
        END IF
 
@@ -3169,35 +3166,64 @@ CONTAINS
            Variable => VariableGet( CurrentModel % Variables,TRIM(ptr % DependName(l0:l1)) )
            IF ( .NOT. ASSOCIATED( Variable ) ) THEN
              WRITE( Message, * ) 'Can''t find INDEPENDENT variable:[', &
-                 TRIM(ptr % DependName(l0:l1)),']' // &
-                 'for dependent variable:[', TRIM(Name),']'
+                 TRIM(ptr % DependName(l0:l1)),']'
              CALL Fatal( 'ListGetReal', Message )
            END IF
 
            IF( SIZE( Variable % Values ) > 1 ) THEN
-             AllGlobal = .FALSE.
+             IsGlobal = .FALSE.
              RETURN
            END IF
          ELSE
-           AllGlobal = .FALSE.
+           IsGlobal = .FALSE.
            RETURN
          END IF
 
          l0 = l1+2
          IF ( l0 > slen ) EXIT
-
+         
        END DO
-       
      ELSE
-       CALL Fatal('ListCheckAllGlobal','Unknown type for >'//TRIM(ptr % name)//'<: '//TRIM(I2S(ptr % TYPE)))
+       
+       IsGlobal = .FALSE.
+       
      END IF
+     
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckGlobal
+!------------------------------------------------------------------------------
 
+
+   
+!------------------------------------------------------------------------------
+  FUNCTION ListCheckAllGlobal( List, name ) RESULT ( AllGlobal )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: name
+     LOGICAL :: AllGlobal
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: ind,i,j,k,n,k1,l,l0,l1
+     TYPE(Variable_t), POINTER :: Variable, CVar
+     INTEGER :: slen
+
+     AllGlobal = .TRUE.
+
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
+     ptr => List % Head
+     IF(.NOT.ASSOCIATED(ptr)) RETURN
+
+     AllGlobal = ListCheckGlobal( ptr )
+    
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckAllGlobal
 !------------------------------------------------------------------------------
 
 
 
+   
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in each node of an element.
 !------------------------------------------------------------------------------
