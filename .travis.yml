@@ -3,8 +3,8 @@ before_install:
 - docker build -t elmertest/xenial -f ci/Dockerfile-build .
 - docker ps -a
 script:
-- docker run elmertest/xenial /bin/sh -c 'cmake -C ../opts-ubuntu-xenial.cmake ../elmerfem
-  && make -j$(nproc) && ctest -L quick'
+- docker build -t elmerfem-build/xenial -f ci/Dockerfile-build-elmer .
+- docker run elmerfem-build/xenial /bin/sh -c 'ctest -LE slow'
 notifications:
   email: change
   flowdock:

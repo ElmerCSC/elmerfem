@@ -1,0 +1,3 @@
+FROM elmertest/xenial
+RUN cmake -C ../opts-ubuntu-xenial.cmake ../elmerfem
+RUN make -j$(nproc)
