@@ -14,7 +14,7 @@
 !! <SAVE> = Next iteration "(i+1)_0" or "i_(j+1)"
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Header
-  Mesh DB "." "Mesh_I<I>_J<J>"
+  Mesh DB "." "MESH_I<I>_J<J>"
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Simulation
@@ -143,7 +143,7 @@ Solver 5
   Variable = -nooutput dumy
     Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
 
-  Output file name = "Mesh_<SAVE>"
+  Output file name = "MESH_<SAVE>"
   Metric Variable Name = String "Mt"  
   Increment Mesh Number = Logical False
 
