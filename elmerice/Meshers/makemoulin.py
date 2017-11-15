@@ -2,7 +2,7 @@
 #========================================== 
 #
 # FILE:     makemoulin.py
-# USAGE:    python makempoulin.py --meshdir mesh_dir --moulin moulin_file --partition number_of_partition 
+# USAGE:    python makemoulin.py --meshdir mesh_dir --moulin moulin_file --partition number_of_partition 
 # DESCRIPTION:  Add Moulins to partition mesh  
 # BUGS: ---
 #
@@ -11,7 +11,7 @@
 #
 # VERSION: V0 
 # CREATED:  2017-09-05 16:00:35
-# MODIFIED: 2017-10-07 18:45:28
+# MODIFIED: 2017-11-15 12:50:13
 #
 #========================================== 
 import numpy as np
@@ -78,6 +78,7 @@ if __name__=='__main__':
 		if file_donot_exists(mesh_dir):
 			exit_error("Directory does not exit")
 
+	NodeMoulinFound=0
 	for kk in np.arange(nbpartition): 
 	
 	    if nbpartition >1:
@@ -104,13 +105,17 @@ if __name__=='__main__':
 	    header=[]
 	    for row in head:
 	       header.append(np.fromstring(row, sep=' '))
+
+	    if Moulin.size == 2:
+		Moulin=Moulin.reshape(1,2)	
+
 	    ms=np.size(Moulin,0)
 	    Nnode=np.size(nodes,0)
 	    nBC=np.size(bc,0)
 	    nheader=np.size(header,0)
 	
 	    NodeMoulin=np.zeros(ms) 
-	
+
 	    for ii in np.arange(ms):
 	        xm = Moulin[ii,0] 
 	        ym = Moulin[ii,1]
@@ -119,47 +124,50 @@ if __name__=='__main__':
 	           yn = nodes[jj,3] 
 	           if (np.abs((xm-xn)*(xm-xn))+np.abs((ym-yn)*(ym-yn))) < Err:
 	               NodeMoulin[ii] = nodes[jj,0] 
+		       NodeMoulinFound=NodeMoulinFound+1
 	    # Test if each Moulin has been associated a mesh node
 	    if np.count_nonzero(NodeMoulin)==0:
-	       print(NodeMoulin)
-	       exit_error('Error - No nodes correspond to some moulin locations')
-
-	    #print("Partition: %d"%(kk))
-	    #print NodeMoulin
-
-	    if nbpartition >1:
-		ms_partition=np.count_nonzero(NodeMoulin)
-	
-	    # Write the 101 BC at the end of the mesh.boundary file
-	    MaxBC = np.max(bc[:,1]) 
-	    # get the minimun elment index to add fro 101 BC
-	    MinEIndex= np.min(elements[:,0])
-	
-	    # Rewrite the file and add the 101 elements
-	    fid1=open(bc_file,'w');
-	    for ii in np.arange(nBC):
-	        fid1.write(" ".join(["%g"%(v) for v in bc[ii,:]]))
-	        fid1.write("\n")
-	    jj=0
-	    for ii in np.arange(ms):
-		if (NodeMoulin[ii] >0):
-	        	jj = jj + 1 
-	        	fid1.write('%g %g %g %g %g %g \n'%(nBC+jj,NodeMoulin[ii],MinEIndex,0,101,NodeMoulin[ii]))
-	    fid1.close()
-	
-	    # Change the header file
-	    fid1=open(header_file,'w')
-	    if nbpartition >1:
-	    	fid1.write('%g %g %g \n'%(header[0][0],header[0][1],header[0][2]+ms_partition))
+	             print('WARNING: No moulin node found on partition: %d'%(kk))
 	    else:
-	    	fid1.write('%g %g %g \n'%(header[0][0],header[0][1],header[0][2]+ms))
-	    fid1.write('%g \n'%(header[1][0]+1))
-	    if nbpartition >1:
-	    	fid1.write('%g %g \n'%(101,ms_partition))
-	    else:
-	    	fid1.write('%g %g \n'%(101,ms))
-	    for ii in np.arange(2,nheader):
-	        fid1.write('%g %g \n'%(header[ii][0],header[ii][1]))
+		    #print("Partition: %d"%(kk))
+		    #print NodeMoulin
 	
-	    fid1.close()
+		    if nbpartition >1:
+			ms_partition=np.count_nonzero(NodeMoulin)
+		
+		    # Write the 101 BC at the end of the mesh.boundary file
+		    MaxBC = np.max(bc[:,1]) 
+		    # get the minimun elment index to add fro 101 BC
+		    MinEIndex= np.min(elements[:,0])
+		
+		    # Rewrite the file and add the 101 elements
+		    fid1=open(bc_file,'w');
+		    for ii in np.arange(nBC):
+		        fid1.write(" ".join(["%g"%(v) for v in bc[ii,:]]))
+		        fid1.write("\n")
+		    jj=0
+		    for ii in np.arange(ms):
+			if (NodeMoulin[ii] >0):
+		        	jj = jj + 1 
+		        	fid1.write('%g %g %g %g %g %g \n'%(nBC+jj,NodeMoulin[ii],MinEIndex,0,101,NodeMoulin[ii]))
+		    fid1.close()
+		
+		    # Change the header file
+		    fid1=open(header_file,'w')
+		    if nbpartition >1:
+		    	fid1.write('%g %g %g \n'%(header[0][0],header[0][1],header[0][2]+ms_partition))
+		    else:
+		    	fid1.write('%g %g %g \n'%(header[0][0],header[0][1],header[0][2]+ms))
+		    fid1.write('%g \n'%(header[1][0]+1))
+		    if nbpartition >1:
+		    	fid1.write('%g %g \n'%(101,ms_partition))
+		    else:
+		    	fid1.write('%g %g \n'%(101,ms))
+		    for ii in np.arange(2,nheader):
+		        fid1.write('%g %g \n'%(header[ii][0],header[ii][1]))
+		
+		    fid1.close()
+	 # Test if each Moulin has been associated a mesh node
+	if NodeMoulinFound == 0:
+		exit_error(' No moulin node found on all partitions ')
 
