@@ -1083,7 +1083,7 @@ CONTAINS
       REAL(KIND=dp) :: bnorm,rnorm
       REAL(KIND=dp), ALLOCATABLE :: R(:)
 
-      REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:),TT(:)
+      REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:)
 
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
@@ -1091,7 +1091,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       INTEGER :: allocstat
         
-      ALLOCATE( R(n), T1(n), T2(n),TT(n), STAT=allocstat )
+      ALLOCATE( R(n), T1(n), T2(n), STAT=allocstat )
       IF( allocstat /= 0 ) THEN
         CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
       END IF
