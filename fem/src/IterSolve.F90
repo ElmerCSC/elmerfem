@@ -398,6 +398,9 @@ CONTAINS
     HUTI_MAXIT = ListGetInteger( Params, &
         'Linear System Max Iterations', minv=1 )
     
+    HUTI_MINIT = ListGetInteger( Params, &
+        'Linear System Min Iterations', GotIt )
+    
 #ifdef USE_ISO_C_BINDINGS
     IF (A % COMPLEX) THEN
         ALLOCATE(workC(N/2,wsize), stat=istat)

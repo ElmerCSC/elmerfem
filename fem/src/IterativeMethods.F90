@@ -1012,7 +1012,7 @@ CONTAINS
        xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
 #endif
     INTEGER :: ndim, RestartN
-    INTEGER :: Rounds, OutputInterval
+    INTEGER :: Rounds, MinIter, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
     LOGICAL :: Converged, Diverged, UseStopCFun
 
@@ -1022,6 +1022,7 @@ CONTAINS
 
     ndim = HUTI_NDIM
     Rounds = HUTI_MAXIT
+    MinIter = HUTI_MINIT
     MinTol = HUTI_TOLERANCE
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL
@@ -1053,7 +1054,7 @@ CONTAINS
     END IF
     
     CALL GCR(ndim+nc, GlobalMatrix, x, b, Rounds, MinTol, MaxTol, Residual, &
-        Converged, Diverged, OutputInterval, RestartN )
+        Converged, Diverged, OutputInterval, RestartN, MinIter )
 
     
     IF(Constrained) THEN
@@ -1071,10 +1072,10 @@ CONTAINS
     
     
     SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
-        Converged, Diverged, OutputInterval, m) 
+        Converged, Diverged, OutputInterval, m, MinIter) 
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A
-      INTEGER :: Rounds
+      INTEGER :: Rounds, MinIter
       REAL(KIND=dp) :: x(n),b(n)
       LOGICAL :: Converged, Diverged
       REAL(KIND=dp) :: MinTolerance, MaxTolerance, Residual
@@ -1117,7 +1118,7 @@ CONTAINS
       ELSE
         Residual = rnorm / bnorm
       END IF
-      Converged = (Residual < MinTolerance) 
+      Converged = (Residual < MinTolerance) .AND. ( MinIter <= 0 )
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)
       IF( Converged .OR. Diverged) RETURN
       
@@ -1187,7 +1188,7 @@ CONTAINS
            END IF
          END IF
            
-         Converged = (Residual < MinTolerance) 
+         Converged = (Residual < MinTolerance) .AND. ( k >= MinIter )
          !-----------------------------------------------------------------
          ! Make an additional check that the true residual agrees with 
          ! the iterated residual:
