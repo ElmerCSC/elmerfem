@@ -92,7 +92,9 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
   END IF
   
   BaseDir = GetString( Params,'OpenFOAM Directory',Found)
-  IF(.NOT. Found ) THEN
+  IF( Found ) THEN
+    CALL Info('Elmer2OpenFoamWrite','Using given > OpenFOAM Directory < : '//TRIM(BaseDir),Level=6)
+  ELSE
     CALL Fatal('Elmer2OpenFoamWrite','> OpenFOAM Directory < must exist for the solver!')
   END IF
 
@@ -190,7 +192,7 @@ CONTAINS
    
     IF( FileExists ) THEN
       CALL Info('Elmer2OpenFoamWrite','Using OpenFOAM centers in: '//TRIM(FileName),Level=10)
-      CALL ListAddString( Params, 'OpenFOAM Mesh 1', DirName )
+      CALL ListAddString( Params, 'OpenFOAM Mesh 1', DirName, .FALSE.)
       NoDir = 1
       RETURN
     END IF
@@ -213,7 +215,7 @@ CONTAINS
       IF( FileExists ) THEN
         NoDir = NoDir + 1
         CALL Info('Elmer2OpenFoamWrite','Using OpenFOAM centers in: '//TRIM(FileName),Level=10)
-        CALL ListAddString( Params, 'OpenFOAM Mesh '//TRIM(I2S(NoDir)), DirName )
+        CALL ListAddString( Params, 'OpenFOAM Mesh '//TRIM(I2S(NoDir)), DirName, .FALSE.)
       ELSE
         CALL Info('Elmer2OpenFoamWrite','No OpenFOAM center in: '//TRIM(DirName),Level=12)
       END IF
