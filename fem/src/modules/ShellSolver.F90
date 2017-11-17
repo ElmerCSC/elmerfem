@@ -3157,13 +3157,13 @@ CONTAINS
     UmbilicalPointFlag => GetElementProperty('umbilical point', BGElement)
     PlateBody = PlanarPointFlag(1) > 0.0d0
     SphericalSurface = UmbilicalPointFlag(1) > 0.0d0
-    
+
     ! ------------------------------------------------------------------------------
     ! Decide what strain reduction strategy is applied and set parameters that
     ! control the selection of variational crimes.
     ! ------------------------------------------------------------------------------
     ReductionMethod = StrainReductionMethod
-    CALL SetStrainReductionParameters(BGElement, ReductionMethod, &
+    CALL SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
       ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform)
 
     ! ------------------------------------------------------------------------------
@@ -4042,11 +4042,12 @@ CONTAINS
 ! Define what strain reduction strategy is applied and set parameters that
 ! control the selection of variational crimes.
 !------------------------------------------------------------------------------
-  SUBROUTINE SetStrainReductionParameters(BGElement, ReductionMethod, &
+  SUBROUTINE SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
       ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
-    INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different 
+    INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different
+    LOGICAL, INTENT(IN) :: PlateBody
     INTEGER, INTENT(OUT) :: ReducedStrainDim
     LOGICAL, INTENT(OUT) :: UseBubbles
     LOGICAL, INTENT(OUT) :: UseShearCorrection
@@ -4104,7 +4105,7 @@ CONTAINS
         UseShearCorrection = .TRUE.
       ELSE
         ReducedStrainDim = 3
-        UseShearCorrection = .FALSE.
+        UseShearCorrection = .TRUE.
       END IF
     CASE(MITC)
       IF (Family == 3) THEN
