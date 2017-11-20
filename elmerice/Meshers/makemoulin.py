@@ -11,7 +11,7 @@
 #
 # VERSION: V0 
 # CREATED:  2017-09-05 16:00:35
-# MODIFIED: 2017-11-15 12:50:13
+# MODIFIED: 2017-11-19 08:49:03
 #
 #========================================== 
 import numpy as np
@@ -79,6 +79,11 @@ if __name__=='__main__':
 			exit_error("Directory does not exit")
 
 	NodeMoulinFound=0
+	# Read global node file and get the number of all nodes
+	nodeAll=np.loadtxt('%s/mesh.nodes'%(mesh))
+	NnodeAll=np.size(nodeAll,0)
+	MoulinAssign=np.zeros(NnodeAll)
+
 	for kk in np.arange(nbpartition): 
 	
 	    if nbpartition >1:
@@ -108,13 +113,13 @@ if __name__=='__main__':
 
 	    if Moulin.size == 2:
 		Moulin=Moulin.reshape(1,2)	
-
 	    ms=np.size(Moulin,0)
 	    Nnode=np.size(nodes,0)
 	    nBC=np.size(bc,0)
 	    nheader=np.size(header,0)
 	
 	    NodeMoulin=np.zeros(ms) 
+
 
 	    for ii in np.arange(ms):
 	        xm = Moulin[ii,0] 
@@ -123,8 +128,14 @@ if __name__=='__main__':
 	           xn = nodes[jj,2] 
 	           yn = nodes[jj,3] 
 	           if (np.abs((xm-xn)*(xm-xn))+np.abs((ym-yn)*(ym-yn))) < Err:
-	               NodeMoulin[ii] = nodes[jj,0] 
-		       NodeMoulinFound=NodeMoulinFound+1
+		       idx = nodes[jj,0]-1	
+		       if MoulinAssign[idx] == 0:
+	               	  NodeMoulin[ii] = nodes[jj,0] 
+		       	  MoulinAssign[idx] = kk+1 
+		          NodeMoulinFound=NodeMoulinFound+1
+		       else:
+	             	  print('WARNING part.%d: Remove Moulin node %d already assigned to partition %d '%(kk+1,idx+1,MoulinAssign[idx]))
+			
 	    # Test if each Moulin has been associated a mesh node
 	    if np.count_nonzero(NodeMoulin)==0:
 	             print('WARNING: No moulin node found on partition: %d'%(kk))
@@ -167,7 +178,5 @@ if __name__=='__main__':
 		        fid1.write('%g %g \n'%(header[ii][0],header[ii][1]))
 		
 		    fid1.close()
-	 # Test if each Moulin has been associated a mesh node
 	if NodeMoulinFound == 0:
 		exit_error(' No moulin node found on all partitions ')
-
