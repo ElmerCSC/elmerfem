@@ -83,24 +83,26 @@
      TYPE(ValueList_t), POINTER :: BC, Constants
 
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
-          istat, LocalNodes, bc_id, DIM, NodeSheet, EdgeSheet, NbMoulin, &
-          GhostNodes, it, itOut
+          istat, LocalNodes, bc_id, DIM, NodeSheet, EdgeSheet, NbMoulin, NbMoulinAll, &
+          GhostNodes, it, itOut, ierr
      INTEGER, ALLOCATABLE :: TableNodeSheet(:), TableMoulin(:)     
 
      CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, HydPotName, &
                 OutPutFileName, nit
 
-     LOGICAL :: Found, AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., FirstTime = .TRUE.
+     LOGICAL :: Found, AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
+                FirstTime = .TRUE., FirstVisit = .TRUE. 
 
      INTEGER, PARAMETER :: PVtuUnit=1300
      INTEGER :: VtuUnit, offset, Cpt, kk
      INTEGER, ALLOCATABLE :: EdgePointArray(:), EdgeOffsetArray(:), EdgeTypeArray(:)
 
-     LOGICAL :: SaveVTU=.False. , VtuBinary=.False., FileVTU = .FALSE. 
+     LOGICAL :: SaveVTU=.False. , VtuBinary=.False., FileVTU = .FALSE., OutPutQm = .FALSE. 
 
      CHARACTER :: lf
      CHARACTER(LEN=1024) :: OutStr
      CHARACTER(MAX_NAME_LEN) :: proc_number, VtuFile, PVtuFile, VtuFormat, VtuFileFormat, OutPutDirectoryName
+     CHARACTER(MAX_NAME_LEN) :: ChFluxVarName, ChAreaVarName, QmVarName 
 
      REAL(KIND=dp) , ALLOCATABLE ::  tmparray(:,:), Flux(:) 
      REAL(KIND=dp) , ALLOCATABLE :: NodePointArray(:), ChannelAreaArray(:), ChannelFluxArray(:), MoulinInputArray(:) 
@@ -112,8 +114,9 @@
      SAVE &
           ElementNodes, EdgeNodes,      &
           IsGhostNode,  OutPutFileName, OutPutDirectoryName, FileVTU, VtuBinary, it, itOut,  &
-          AllocationsDone, FirstTime, SolverName, HydPotName, M, &
-          NodeSheet, TableNodeSheet, EdgeSheet, NbMoulin, TableMoulin, Flux
+          AllocationsDone, FirstTime, FirstVisit, SolverName, HydPotName, M, &
+          NodeSheet, TableNodeSheet, EdgeSheet, NbMoulin, TableMoulin, OutPutQm, Flux, &
+          ChFluxVarName, ChAreaVarName, QmVarName 
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -181,14 +184,26 @@
 
         AllocationsDone = .TRUE.
      END IF
-
-     Constants => GetConstants()
-     HydPotName = GetString( Constants, &
-          'Hydraulic Potential Variable Name', Found )
-     IF(.NOT.Found) THEN        
-        CALL WARN(SolverName,'Keyword >Hydraulic Potential Variable Name< not found in section Constants')
-        CALL WARN(SolverName,'Taking default value >Hydraulic Potential<')
-        WRITE(HydPotName,'(A)') 'Hydraulic Potential'
+      
+     IF (FirstVisit) THEN 
+        FirstVisit = .FALSE. 
+        Constants => GetConstants()
+        HydPotName = GetString( Constants, &
+             'Hydraulic Potential Variable Name', Found )
+        IF(.NOT.Found) THEN        
+           CALL WARN(SolverName,'Keyword >Hydraulic Potential Variable Name< not found in section Constants')
+           CALL WARN(SolverName,'Taking default value >Hydraulic Potential<')
+           WRITE(HydPotName,'(A)') 'Hydraulic Potential'
+        END IF
+        ChAreaVarName = GetString( Constants, &
+             'Channel Area Variable Name', Found )
+        IF(.NOT.Found) THEN        
+           CALL WARN(SolverName,'Keyword >Channel Area Variable Name< not found in section Constants')
+           CALL WARN(SolverName,'Taking default value >Channel Area<')
+           WRITE(ChAreaVarName,'(A)') 'Channel Area'
+        END IF
+        WRITE(QmVarName,'(A)') 'Flux from Moulins' 
+        WRITE(ChFluxVarName,'(A)') 'Channel Flux' 
      END IF
 
      ! Point on the needed variables
@@ -196,13 +211,13 @@
      HydPotPerm     => HydPotSol % Perm
      HydPot => HydPotSol % Values
 
-     QcSol => VariableGet( Solver % Mesh % Variables, "Channel Flux" )
+     QcSol => VariableGet( Solver % Mesh % Variables, ChFluxVarName )
      IF (ASSOCIATED(QcSol)) THEN
         QcPerm     => QcSol % Perm
         QcSolution => QcSol % Values
      END IF
 
-     QmSol => VariableGet( Solver % Mesh % Variables, "Flux from Moulins" )
+     QmSol => VariableGet( Solver % Mesh % Variables, QmVarName )
      IF (ASSOCIATED(QmSol)) THEN
         QmPerm     => QmSol % Perm
         QmSolution => QmSol % Values
@@ -273,12 +288,28 @@
                 j = Element % NodeIndexes(1)
                 TableMoulin(j) = NbMoulin
              END DO
-             WRITE(Message,'(a,i0)')'Number of Moulins: ', NbMoulin 
-             CALL INFO(SolverName, Message, level=3 )
+             OutPutQm = .FALSE.
+             IF ((NbMoulin>0).AND.(.Not.ASSOCIATED(QmSol))) THEN
+                WRITE(Message,'(i0,a,i0)') &
+                    NbMoulin, 'moulins found, but not variable >Flux from Moulins< associated, part ',ParEnv%myPe 
+                CALL INFO(SolverName, Message, level=1 )
+             ELSE IF (NbMoulin==0) THEN
+                WRITE(Message,'(a,i0)')'No moulin found, part ',ParEnv%myPe  
+                CALL INFO(SolverName, Message, level=3 )
+             ELSE
+                WRITE(Message,'(a,i0,a,i0)')'Qm will be saved for ',NbMoulin,' moulins in part ',ParEnv%myPe   
+                CALL INFO(SolverName, Message, level=3 )
+                OutPutQm = .TRUE. 
+             END IF
           END IF
      END IF ! FirstTime
 
-     
+     ! Check the number of moulins on all partitions
+     CALL MPI_ALLREDUCE( NbMoulin, NbMoulinAll, 1, MPI_INTEGER, &
+                         MPI_SUM, ELMER_COMM_WORLD, ierr )
+     WRITE(Message,'(a,i0,a)')'Qm will be saved for ',NbMoulinAll,' moulins in total'   
+     CALL INFO(SolverName, Message, level=3 )
+ 
      ! If we are here, it means we have to save 
      ! assuming Exec Solver = After Saving is set in the solver section
      ! number of file is incremented by one
@@ -332,12 +363,17 @@
            '       <PDataArray type="Int32" Name="types"        NumberOfComponents="1" format="'//TRIM(VtuFileFormat)//'"/>'
            WRITE( PVtuUnit,'(A)') '    </PCells>'
            WRITE( PVtuUnit,'(A)') '    <PCellData >'
-           WRITE( PVtuUnit,'(A)') '       <PDataArray type="Float64" Name="Channel_Area" format="'//TRIM(VtuFileFormat)//'"/>'
-           WRITE( PVtuUnit,'(A)') '       <PDataArray type="Float64" Name="Channel_Flux" format="'//TRIM(VtuFileFormat)//'"/>'
+           WRITE( PVtuUnit,'(A)') &
+           '       <PDataArray type="Float64" Name="'//TRIM(ChAreaVarName)//'" format="'//TRIM(VtuFileFormat)//'"/>'
+           WRITE( PVtuUnit,'(A)') &
+           '       <PDataArray type="Float64" Name="'//TRIM(ChFluxVarName)//'" format="'//TRIM(VtuFileFormat)//'"/>'
            WRITE( PVtuUnit,'(A)') '    </PCellData>'
-           WRITE( PVtuUnit,'(A)') '    <PPointData>'
-           WRITE( PVtuUnit,'(A)') '       <PDataArray type="Float64" Name="Moulin_Input" format="'//TRIM(VtuFileFormat)//'"/>'
-           WRITE( PVtuUnit,'(A)') '    </PPointData>'
+           IF (ASSOCIATED(QmSol) .AND. NbMoulinAll >0 ) THEN
+              WRITE( PVtuUnit,'(A)') '    <PPointData>'
+              WRITE( PVtuUnit,'(A)') &
+              '       <PDataArray type="Float64" Name="'//TRIM(QmVarName)//'" format="'//TRIM(VtuFileFormat)//'"/>'
+              WRITE( PVtuUnit,'(A)') '    </PPointData>'
+           END IF
            DO i=1, ParEnv%PEs 
               WRITE(proc_number,'(i4.4)') i
               proc_number = ADJUSTL(proc_number)
@@ -452,7 +488,7 @@
         END IF
          
         ! Loops to get the Flux from Moulins variable
-        IF (NbMoulin>0) THEN 
+        IF (OutPutQm) THEN 
            ALLOCATE(MoulinInputArray(NodeSheet))
            Flux = 0.0_dp
            DO t=1, Solver % Mesh % NumberOfBoundaryElements
@@ -526,40 +562,52 @@
 
            offset = offset + 4*EdgeSheet+4
            WRITE( OutStr,'(A,I0,A)') &
-           '            <DataArray type="Float64" Name="Channel_Area" NumberOfComponents="1" &
+           '            <DataArray type="Float64" Name="'//TRIM(ChAreaVarName)//'" NumberOfComponents="1" &
                         & format="appended" offset="',offset,'" />'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
 
            offset = offset + 8*EdgeSheet +4
            WRITE( OutStr,'(A,I0,A)') &
-           '            <DataArray type="Float64" Name="Channel_Flux" NumberOfComponents="1" &
+           '            <DataArray type="Float64" Name="'//TRIM(ChFluxVarName)//'" NumberOfComponents="1" &
                         & format="appended" offset="',offset,'" />'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
            WRITE( OutStr,'(A)' ) '         </CellData>'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
-           WRITE( OutStr,'(A)' ) '         <PointData>'//lf
-           CALL VtuStrWrite( OutStr , VtuUnit )
 
-           offset = offset +  8*EdgeSheet + 4
-           WRITE( OutStr,'(A,I0,A)') &
-           '            <DataArray type="Float64" Name="Moulin_Input" NumberOfComponents="1" &
-                        & format="appended" offset="',offset,'" />'//lf
-           CALL VtuStrWrite( OutStr , VtuUnit )
-           WRITE( OutStr,'(A)' ) '         </PointData>'//lf
-           CALL VtuStrWrite( OutStr , VtuUnit )
+           IF (OutPutQm) THEN 
+              WRITE( OutStr,'(A)' ) '         <PointData>'//lf
+              CALL VtuStrWrite( OutStr , VtuUnit )
+              offset = offset +  8*EdgeSheet + 4
+              WRITE( OutStr,'(A,I0,A)') &
+              '            <DataArray type="Float64" Name="'//TRIM(QmVarName)//'" NumberOfComponents="1" &
+           	             & format="appended" offset="',offset,'" />'//lf
+              CALL VtuStrWrite( OutStr , VtuUnit )
+              WRITE( OutStr,'(A)' ) '         </PointData>'//lf
+              CALL VtuStrWrite( OutStr , VtuUnit )
+           END IF
+
            WRITE( OutStr,'(A)' ) '      </Piece>'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
            WRITE( OutStr,'(A)' ) '  </UnstructuredGrid>'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
            WRITE( OutStr,'(A)' ) '<AppendedData encoding="raw">'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
-           WRITE(VtuUnit) '_',  KIND(NodePointArray)  *size(NodePointArray)  , NodePointArray(:)   ,&
-                                KIND(EdgePointArray)  *size(EdgePointArray)  , EdgePointArray(:)   ,&
-                                KIND(EdgeOffsetArray) *size(EdgeOffsetArray) , EdgeOffsetArray(:)  ,&
-                                KIND(EdgeTypeArray)   *size(EdgeTypeArray)   , EdgeTypeArray(:)    ,&
-                                KIND(ChannelAreaArray)*size(ChannelAreaArray), ChannelAreaArray(:) ,&
-                                KIND(ChannelFluxArray)*size(ChannelFluxArray), ChannelFluxArray(:) ,&
-                                KIND(MoulinInputArray)*size(MoulinInputArray), MoulinInputArray(:) 
+           IF (OutPutQm) THEN 
+              WRITE(VtuUnit) '_',  KIND(NodePointArray)  *size(NodePointArray)  , NodePointArray(:)   ,&
+                                   KIND(EdgePointArray)  *size(EdgePointArray)  , EdgePointArray(:)   ,&
+                                   KIND(EdgeOffsetArray) *size(EdgeOffsetArray) , EdgeOffsetArray(:)  ,&
+                                   KIND(EdgeTypeArray)   *size(EdgeTypeArray)   , EdgeTypeArray(:)    ,&
+                                   KIND(ChannelAreaArray)*size(ChannelAreaArray), ChannelAreaArray(:) ,&
+                                   KIND(ChannelFluxArray)*size(ChannelFluxArray), ChannelFluxArray(:) ,&
+                                   KIND(MoulinInputArray)*size(MoulinInputArray), MoulinInputArray(:) 
+           ELSE
+              WRITE(VtuUnit) '_',  KIND(NodePointArray)  *size(NodePointArray)  , NodePointArray(:)   ,&
+                                   KIND(EdgePointArray)  *size(EdgePointArray)  , EdgePointArray(:)   ,&
+                                   KIND(EdgeOffsetArray) *size(EdgeOffsetArray) , EdgeOffsetArray(:)  ,&
+                                   KIND(EdgeTypeArray)   *size(EdgeTypeArray)   , EdgeTypeArray(:)    ,&
+                                   KIND(ChannelAreaArray)*size(ChannelAreaArray), ChannelAreaArray(:) ,&
+                                   KIND(ChannelFluxArray)*size(ChannelFluxArray), ChannelFluxArray(:)
+           END IF
            WRITE( OutStr,'(A)' ) lf//'</AppendedData>'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
         ELSE
@@ -623,7 +671,7 @@
            CALL VtuStrWrite( OutStr , VtuUnit )
 
            WRITE( OutStr,'(A)') &
-           '            <DataArray type="Float64" Name="Channel_Area" NumberOfComponents="1" format="ascii" >'//lf
+           '            <DataArray type="Float64" Name="'//TRIM(ChAreaVarName)//'" NumberOfComponents="1" format="ascii" >'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
            WRITE(VtuFormat,'(A,I0,A,A)') &
                                 "(",size(ChannelAreaArray), "E16.7",")"
@@ -632,7 +680,7 @@
            CALL VtuStrWrite( OutStr , VtuUnit )
 
            WRITE( OutStr,'(A)') &
-           '            <DataArray type="Float64" Name="Channel_Flux" NumberOfComponents="1" format="ascii" >'//lf
+           '            <DataArray type="Float64" Name="'//TRIM(ChFluxVarName)//'" NumberOfComponents="1" format="ascii" >'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
            WRITE(VtuFormat,'(A,I0,A,A)') &
                                 "(",size(ChannelFluxArray), "E16.7",")"
@@ -642,20 +690,22 @@
 
            WRITE( OutStr,'(A)' ) '         </CellData>'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
-           WRITE( OutStr,'(A)' ) '         <PointData>'//lf
-           CALL VtuStrWrite( OutStr , VtuUnit )
 
-           WRITE( OutStr,'(A)') &
-           '            <DataArray type="Float64" Name="Moulin_Input" NumberOfComponents="1" format="ascii" >'//lf
-           CALL VtuStrWrite( OutStr , VtuUnit )
-           WRITE(VtuFormat,'(A,I0,A,A)') &
-                                "(",size(MoulinInputArray), "E16.7",")"
-           WRITE(VtuUnit,VtuFormat) MoulinInputArray(:) 
-           WRITE( OutStr,'(A)') '            </DataArray>'//lf
-           CALL VtuStrWrite( OutStr , VtuUnit )
+           IF (OutPutQm) THEN 
+              WRITE( OutStr,'(A)' ) '         <PointData>'//lf
+              CALL VtuStrWrite( OutStr , VtuUnit )
+              WRITE( OutStr,'(A)') &
+              '            <DataArray type="Float64" Name="'//TRIM(QmVarName)//'" NumberOfComponents="1" format="ascii" >'//lf
+              CALL VtuStrWrite( OutStr , VtuUnit )
+              WRITE(VtuFormat,'(A,I0,A,A)') &
+                                   "(",size(MoulinInputArray), "E16.7",")"
+              WRITE(VtuUnit,VtuFormat) MoulinInputArray(:) 
+              WRITE( OutStr,'(A)') '            </DataArray>'//lf
+              CALL VtuStrWrite( OutStr , VtuUnit )
+              WRITE( OutStr,'(A)' ) '         </PointData>'//lf
+              CALL VtuStrWrite( OutStr , VtuUnit )
+           END IF
 
-           WRITE( OutStr,'(A)' ) '         </PointData>'//lf
-           CALL VtuStrWrite( OutStr , VtuUnit )
            WRITE( OutStr,'(A)' ) '      </Piece>'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
            WRITE( OutStr,'(A)' ) '  </UnstructuredGrid>'//lf
@@ -671,7 +721,7 @@
         DEALLOCATE(EdgeTypeArray)   
         DEALLOCATE(ChannelAreaArray)
         DEALLOCATE(ChannelFluxArray)
-        DEALLOCATE(MoulinInputArray)
+        IF (OutPutQm) DEALLOCATE(MoulinInputArray)
     END IF ! Output VTU
 
     SubroutineVisited = .TRUE.
