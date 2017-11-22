@@ -6,5 +6,4 @@ ADD_ELMERTEST_MODULE(BlockLinElast1 BlockLinElast BlockLinElast.f90)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO BlockLinElast.f90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(BlockLinElast1)
-ADD_ELMER_LABEL(BlockLinElast1 quick)
+ADD_ELMER_TEST(BlockLinElast1 LABELS quick block)

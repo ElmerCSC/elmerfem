@@ -1,8 +1,8 @@
 INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
-CONFIGURE_FILE( gcr_amg_sgs.sif gcr_amg_sgs.sif COPYONLY)
+CONFIGURE_FILE( gcr_cmg_sgs.sif gcr_cmg_sgs.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(BlockLinElast3 LABELS block)
+ADD_ELMER_TEST(BlockLinElast3b LABELS block)
