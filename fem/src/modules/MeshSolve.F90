@@ -307,9 +307,6 @@ END SUBROUTINE MeshSolver_Init
     Element => GetBoundaryElement(t)
     IF ( .NOT.ActiveBoundaryElement() ) CYCLE
 
-    ! Check that the dimension of element is suitable for fluxes
-    IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
     BC => GetBC()
     IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 

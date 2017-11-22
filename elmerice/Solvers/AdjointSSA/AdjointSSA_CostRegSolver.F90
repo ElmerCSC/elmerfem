@@ -52,18 +52,18 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
 !       Required Sif parameters are:
 !
 !          In the solver section:
-!               Problem Dimension=Integer (default:coordinate sytem dimension),
+!               Problem Dimension=Integer (default:coordinate system dimension),
 !               Cost Filename=File (default: CostOfT.dat),
 !               Optimized Variable Name= String (default='Beta'),
 !               Gradient Variable Name= String (default = 'DJDBeta'),
 !               Cost Variable Name= String (default='Cost Value'),
 !               Lambda= Real (default 1.0),
 !               Reset Cost Value= Logical (default = True),
-!               A priori Regularisation= Logical (defualt = .False.),
+!               A priori Regularisation= Logical (default = .False.),
 !
 !          In Body Force section:
-!               <VarSolName> a priori value = Real (defualt =0.0),
-!               <VarSolName> variance = real (defualt=1.0)
+!               <VarSolName> a priori value = Real (default =0.0),
+!               <VarSolName> variance = real (default=1.0)
 !
 !
 !******************************************************************************

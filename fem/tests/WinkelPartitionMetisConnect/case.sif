@@ -72,10 +72,10 @@ RUN
 
 ! check the global numbering 
 Solver 1:: Show Norm Index = 2
-Solver 1:: Reference Norm = 3.36763370E+09
+Solver 1:: Reference Norm = 2.94255727E+09
 RUN
 
 ! check the neighbours
 Solver 1:: Show Norm Index = 3 
-Solver 1:: Reference Norm = 1.05036400E+06
+Solver 1:: Reference Norm = 1.00305100E+06
 RUN 

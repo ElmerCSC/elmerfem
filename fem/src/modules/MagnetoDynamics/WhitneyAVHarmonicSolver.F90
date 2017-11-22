@@ -1054,10 +1054,11 @@ CONTAINS
       END DO
       CALL DepthFirstSearch(Alist,Done,Start)
     END DO
-    DEALLOCATE(Done)
-    CALL List_FreeMatrix(SIZE(Alist),Alist)
 
     CALL SendDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
+
+    DEALLOCATE(Done)
+    CALL List_FreeMatrix(SIZE(Alist),Alist)
 !------------------------------------------------------------------------------
   END SUBROUTINE GaugeTree
 !------------------------------------------------------------------------------

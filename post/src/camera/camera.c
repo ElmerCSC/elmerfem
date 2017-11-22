@@ -262,7 +262,7 @@ void cam_set_onoff( camera_t *camera,int onoff)
  *     Name:        cam_add_camera( camera_t *, char * )
  *
  *     Purpose:     Add camera to a given list of camera with given name.
- *                  If one with given name allready exists, it is returned.
+ *                  If one with given name already exists, it is returned.
  *
  *     Parameters:
  *

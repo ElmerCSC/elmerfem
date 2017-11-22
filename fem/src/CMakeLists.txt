@@ -20,7 +20,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   NavierStokesCylindrical.F90 Lists.F90
   DiffuseConvectiveAnisotropic.F90 LoadMod.F90
   DiffuseConvectiveGeneralAnisotropic.F90 PElementMaps.F90
-  PElementBase.F90 ElementDescription.F90 Integration.F90
+  PElementBase.F90 ElementDescription.F90 Integration.F90 ListMatrixArray.F90
   ModelDescription.F90 GeneralUtils.F90 Stress.F90 StressGeneral.F90
   LinearAlgebra.F90 CoordinateSystems.F90 ListMatrix.F90 CRSMatrix.F90
   BandMatrix.F90 BandwidthOptimize.F90 BlockSolve.F90

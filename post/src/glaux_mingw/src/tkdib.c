@@ -443,7 +443,7 @@ TK_RGBImageRec *tkDIBImageLoadAW(char *fileName, BOOL bUnicode)
         MESSAGEBOX(GetFocus(), "Out of memory.", "Error", MB_OK);
         goto tkDIBLoadImage_cleanup;
     }
-    // If we get to here, we have suceeded!
+    // If we get to here, we have succeeded!
     final->sizeX = pbmiSource->bmiHeader.biWidth;
     final->sizeY = pbmiSource->bmiHeader.biHeight;
     final->data = pjTKBits;

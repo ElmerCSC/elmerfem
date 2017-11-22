@@ -61,6 +61,9 @@ Solver 1
   Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 200
   Linear System Convergence Tolerance = 1e-6
+
+  Linear System Min Iterations = Integer 150
+
 End
 
 !---------------------------------------------------------------

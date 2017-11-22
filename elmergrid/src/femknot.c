@@ -43,7 +43,6 @@
 #include "femtypes.h"
 #include "femmesh.h"
 #include "femknot.h"
-#include "femsolve.h"
 
 #define DEBUG 0
 
@@ -7993,7 +7992,7 @@ int CreateBoundaryLayer(struct FemType *data,struct BoundaryType *bound,
   int *topomap=NULL,*newmaterial=NULL,*herit=NULL,*inside=NULL,*nonlin=NULL;
   int endbcs, *endparents=NULL, *endtypes=NULL, *endnodes=NULL, *endnodes2=NULL, *endneighbours=NULL;
 
-  printf("maxfilters=%d layereps=%.3e\n",maxfilters,layereps);
+  if(0) printf("maxfilters=%d layereps=%.3e\n",maxfilters,layereps);
 
   if(!maxfilters) maxfilters = 1000;
   if(layereps < 1.0e-20) layereps = 1.0e-3;

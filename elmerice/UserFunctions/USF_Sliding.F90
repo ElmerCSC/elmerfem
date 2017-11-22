@@ -202,7 +202,7 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
   REAL(KIND=dp), POINTER :: NValues(:)
   INTEGER, POINTER :: StressPerm(:), NormalPerm(:), FlowPerm(:), NPerm(:)
   INTEGER :: DIM, i, j, Ind(3,3), n, other_body_id
-  REAL (KIND=dp) :: C, m, Bdrag, As, Ne, q, Xi, a, Pw 
+  REAL (KIND=dp) :: C, m, Bdrag, As, Ne, q, Xi, a, Pw, Pice 
   REAL (KIND=dp) :: Snt, Snn, ut, un, ut0, t, t0
   LOGICAL :: GotIt, FirstTime = .TRUE., Cauchy, UnFoundFatal
   REAL (KIND=dp), ALLOCATABLE :: Sig(:,:), normal(:), velo(:), Sn(:), AuxReal(:) 
@@ -364,16 +364,24 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
            Sig(i,j) =  &
               StressValues( 2*DIM *(StressPerm(Nodenumber)-1) + Ind(i,j) )
         END DO
-        IF (.NOT.Cauchy) THEN 
-           Sig(i,i) = Sig(i,i) - FlowValues((DIM+1)*FlowPerm(Nodenumber))
-        END IF
      END DO
      ! Stress vector Sn       
      DO i=1, DIM
         Sn(i) = SUM(Sig(i,1:DIM)*normal(1:DIM)) 
      END DO
-     ! Convention is such that Snn should be negative (compressive)
+     ! Normal stress (still Cauchy or deviatoric)
      Snn = SUM( Sn(1:DIM) * normal(1:DIM) ) 
+     ! Isotropic ice pressure
+     Pice = FlowValues((DIM+1)*FlowPerm(Nodenumber))
+
+     IF (Cauchy) THEN 
+        ! At first time Snn = 0 and should be approximated by -pi
+        IF (ABS(Snn) < 1.0e-10*ABS(Pice)) Snn = -Pice
+     ELSE
+           Snn = Snn - Pice 
+     END IF
+
+     ! Convention is such that Snn should be negative (compressive)
      Ne = -Snn -Pw
   ENDIF
 
@@ -391,7 +399,7 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
   Bdrag = C*Ne * ((Xi * ut**(-m)) / ( 1.0 + a * Xi**q))**(1.0/m)
   Bdrag = MIN(Bdrag,1.0e20_dp)
   
-  ! Stress may be not known at first time / or first steady iteration  
+  ! Stress may be not known at first iteration  
   IF ((t==t0).AND.(.Not.ASSOCIATED( NVariable )).AND.(Snn.GE.0.0_dp)) Bdrag = 1.0e20
 END FUNCTION Friction_Coulomb
 

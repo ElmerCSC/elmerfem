@@ -12,12 +12,14 @@ IF(CMAKE_CROSSCOMPILING)
   ENDIF()
 ENDIF()
 
-ADD_SUBDIRECTORY(metis)
+# Dont install metis
+SET(METIS_INSTALL FALSE CACHE BOOL "")
+ADD_SUBDIRECTORY(metis-5.1.0)
 
 SET(elmergrid_SRCS common.h femdef.h femelmer.h femfilein.h
-  femfileout.h feminfo.h femknot.h femmesh.h femsolve.h 
+  femfileout.h feminfo.h femknot.h femmesh.h 
   femtypes.h nrutil.h common.c femelmer.c femfilein.c femfileout.c
-  feminfo.c femknot.c femmesh.c fempre.c femsolve.c 
+  feminfo.c femknot.c femmesh.c fempre.c 
   nrutil.c)
 
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/metis)

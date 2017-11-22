@@ -1012,16 +1012,17 @@ CONTAINS
        xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
 #endif
     INTEGER :: ndim, RestartN
-    INTEGER :: Rounds, OutputInterval
+    INTEGER :: Rounds, MinIter, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
     LOGICAL :: Converged, Diverged, UseStopCFun
 
     TYPE(Matrix_t),POINTER::A
 
     REAL(KIND=dp), POINTER :: x(:),b(:)
-    
+
     ndim = HUTI_NDIM
     Rounds = HUTI_MAXIT
+    MinIter = HUTI_MINIT
     MinTol = HUTI_TOLERANCE
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL
@@ -1038,7 +1039,7 @@ CONTAINS
     A => GlobalMatrix
     CM => A % ConstraintMatrix
     Constrained = ASSOCIATED(CM)
-
+    
     IF (Constrained) THEN
       nc = CM % NumberOfRows
       Constrained = nc>0
@@ -1051,13 +1052,14 @@ CONTAINS
         x(1:ndim) = xvec; x(ndim+1:) = CM % extraVals
       END IF
     END IF
-       
+    
     CALL GCR(ndim+nc, GlobalMatrix, x, b, Rounds, MinTol, MaxTol, Residual, &
-        Converged, Diverged, OutputInterval, RestartN )
+        Converged, Diverged, OutputInterval, RestartN, MinIter )
 
+    
     IF(Constrained) THEN
-      xvec=x(1:ndim)
-      rhsvec=b(1:ndim)
+      xvec = x(1:ndim)
+      rhsvec = b(1:ndim)
       CM % extraVals = x(ndim+1:ndim+nc)
       DEALLOCATE(x,b)
     END IF
@@ -1070,10 +1072,10 @@ CONTAINS
     
     
     SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
-        Converged, Diverged, OutputInterval, m) 
+        Converged, Diverged, OutputInterval, m, MinIter) 
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A
-      INTEGER :: Rounds
+      INTEGER :: Rounds, MinIter
       REAL(KIND=dp) :: x(n),b(n)
       LOGICAL :: Converged, Diverged
       REAL(KIND=dp) :: MinTolerance, MaxTolerance, Residual
@@ -1081,16 +1083,26 @@ CONTAINS
       REAL(KIND=dp) :: bnorm,rnorm
       REAL(KIND=dp), ALLOCATABLE :: R(:)
 
-      REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:),TT(:)
+      REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:)
 
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
 !------------------------------------------------------------------------------
-      
-      ALLOCATE( R(n), T1(n), T2(n),TT(n) )
+      INTEGER :: allocstat
+        
+      ALLOCATE( R(n), T1(n), T2(n), STAT=allocstat )
+      IF( allocstat /= 0 ) THEN
+        CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
+      END IF
+
       IF ( m > 1 ) THEN
-         ALLOCATE( S(n,m-1), V(n,m-1) )
+        ALLOCATE( S(n,m-1), V(n,m-1), STAT=allocstat )
+        IF( allocstat /= 0 ) THEN
+          CALL Fatal('GCR','Failed to allocate memory of size: '&
+              //TRIM(I2S(n))//' x '//TRIM(I2S(m)))
+        END IF
+        
          V(1:n,1:m-1) = 0.0d0	
          S(1:n,1:m-1) = 0.0d0
       END IF	
@@ -1106,12 +1118,12 @@ CONTAINS
       ELSE
         Residual = rnorm / bnorm
       END IF
-      Converged = (Residual < MinTolerance) 
+      Converged = (Residual < MinTolerance) .AND. ( MinIter <= 0 )
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)
       IF( Converged .OR. Diverged) RETURN
-       
+      
       DO k=1,Rounds
-	 !----------------------------------------------
+        !----------------------------------------------
 	 ! Check for restarting
          !----------------------------------------------
          IF ( MOD(k,m)==0 ) THEN
@@ -1176,7 +1188,7 @@ CONTAINS
            END IF
          END IF
            
-         Converged = (Residual < MinTolerance) 
+         Converged = (Residual < MinTolerance) .AND. ( k >= MinIter )
          !-----------------------------------------------------------------
          ! Make an additional check that the true residual agrees with 
          ! the iterated residual:

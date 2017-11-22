@@ -92,7 +92,9 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
   END IF
   
   BaseDir = GetString( Params,'OpenFOAM Directory',Found)
-  IF(.NOT. Found ) THEN
+  IF( Found ) THEN
+    CALL Info('Elmer2OpenFoamWrite','Using given > OpenFOAM Directory < : '//TRIM(BaseDir),Level=6)
+  ELSE
     CALL Fatal('Elmer2OpenFoamWrite','> OpenFOAM Directory < must exist for the solver!')
   END IF
 
@@ -163,14 +165,23 @@ CONTAINS
     
     NoDir = 0
     IF( ParEnv % MyPe /= 0 ) RETURN
-    
-    INQUIRE( File = BaseDir, Exist = FileExists )
+
+#ifdef __INTEL_COMPILER
+    ! Fortran standard states that inquiry for a file returns true if the queried entity is a file
+    INQUIRE( Directory = TRIM(BaseDir), Exist = FileExists )
+#else
+    INQUIRE( File = TRIM(BaseDir), Exist = FileExists )
+#endif
     IF(.NOT. FileExists ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','OpenFOAM directory does not exist: '//TRIM(BaseDir))
     END IF
 
     DirName = TRIM(BaseDir)//'/0/'
+#ifdef __INTEL_COMPILER
+    INQUIRE( Directory = DirName, Exist = FileExists )
+#else
     INQUIRE( File = DirName, Exist = FileExists )
+#endif
     IF(.NOT. FileExists ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','OpenFOAM mesh does not exist: '//TRIM(DirName))
     END IF
@@ -181,7 +192,7 @@ CONTAINS
    
     IF( FileExists ) THEN
       CALL Info('Elmer2OpenFoamWrite','Using OpenFOAM centers in: '//TRIM(FileName),Level=10)
-      CALL ListAddString( Params, 'OpenFOAM Mesh 1', DirName )
+      CALL ListAddString( Params, 'OpenFOAM Mesh 1', DirName, .FALSE.)
       NoDir = 1
       RETURN
     END IF
@@ -189,7 +200,7 @@ CONTAINS
     DirCommand = 'ls -d '//TRIM(DirName)//'*/ > OpenFOAMBlocks.txt' 
     CALL Info('Elmer2OpenFoamWrite','Performing command: '//TRIM(DirCommand),Level=12)
     CALL SystemCommand( DirCommand )
-      
+
     OPEN(InFileUnit,File='OpenFOAMBlocks.txt',IOStat=IOstatus)
     IF(IOStatus /= 0 ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','Could not open file: OpenFOAMBlocks.txt')
@@ -204,7 +215,7 @@ CONTAINS
       IF( FileExists ) THEN
         NoDir = NoDir + 1
         CALL Info('Elmer2OpenFoamWrite','Using OpenFOAM centers in: '//TRIM(FileName),Level=10)
-        CALL ListAddString( Params, 'OpenFOAM Mesh '//TRIM(I2S(NoDir)), DirName )
+        CALL ListAddString( Params, 'OpenFOAM Mesh '//TRIM(I2S(NoDir)), DirName, .FALSE.)
       ELSE
         CALL Info('Elmer2OpenFoamWrite','No OpenFOAM center in: '//TRIM(DirName),Level=12)
       END IF

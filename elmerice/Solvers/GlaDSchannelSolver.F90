@@ -724,7 +724,7 @@
                        Found, UnfoundFatal = .TRUE. ) 
                   j = Element % NodeIndexes(1)
                   dphidt = (HydPot(HydPotPerm(j)) -  HydPotPrev(HydPotPerm(j),1))/dt 
-                  Flux(j) = MoulinFlux(1) +  MoulinArea(1)/(WaterDensity*gravity)*dPhidt 
+                  Flux(j) = MoulinFlux(1) -  MoulinArea(1)/(WaterDensity*gravity)*dPhidt 
                END IF
             END DO
             DO i = 1, Model % NumberOfNodes

@@ -414,10 +414,13 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
           val = 0.0_dp
         END IF
         
-        s = StiffMatrix % Values(StiffMatrix % Diag(i))
-        ForceVector(i) = val * s
-        CALL ZeroRow( StiffMatrix,i )
-        CALL SetMatrixElement( StiffMatrix,i,i,1.0d0*s )     
+        !s = StiffMatrix % Values(StiffMatrix % Diag(i))
+        !ForceVector(i) = val * s
+
+        CALL UpdateDirichletDof( Solver % Matrix, i, val )
+                
+        !CALL ZeroRow( StiffMatrix,i )
+        !CALL SetMatrixElement( StiffMatrix,i,i,1.0d0*s )     
       END DO
       
       ! If we use narrow strategy we need to cut the connections in the bulk values
@@ -427,7 +430,10 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL CutInterfaceConnections( StiffMatrix, Set )
       END IF
 
+      ! Only Default dirichlet conditions activate the BCs above!
+      CALL DefaultDirichletBCs()
 
+      
       ! Solve the potential field
       !--------------------------
       CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.FALSE.) 

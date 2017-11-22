@@ -313,6 +313,7 @@ struct ElmergridType {
     layernumber[MAXBOUNDARIES], 
     layermove,  /* map the created layer to the original geometry */
     metis,      /* number of Metis partitions */
+    metiscontig,  /* is Metis partitioning contiguous */
     partopt,    /* free parameter for optimization */
     partoptim,  /* apply aggressive optimization to node sharing on bulk */
     partbcoptim,  /* apply aggressive optimization to node sharing on bcs */
