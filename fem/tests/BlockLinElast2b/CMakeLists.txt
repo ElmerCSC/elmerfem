@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(BlockLinElast2b)
-ADD_ELMER_LABEL(BlockLinElast2b quick)
+ADD_ELMER_TEST(BlockLinElast2b LABELS quick block)
