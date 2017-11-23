@@ -529,7 +529,7 @@ CONTAINS
     REAL(KIND=dp) :: Volumes(nofbodies)
     REAL(KIND=dp) :: Wnorms(nofbodies)
     REAL(KIND=dp) :: WnormCoeffs(nofbodies)
-    INTEGER :: Active, t, n
+    INTEGER :: Active, t, n, i
     TYPE(Element_t),POINTER :: Element
     LOGICAL :: CoilBody, Found, stat
     CHARACTER(LEN=MAX_NAME_LEN):: CoilType
@@ -558,10 +558,12 @@ CONTAINS
       END IF 
     END DO
    
-    WnormCoeffs(Element % BodyId) = ParallelReduction(WnormCoeffs(Element % BodyId)) 
-    Volumes(Element % BodyId) = ParallelReduction(Volumes(Element % BodyId)) 
-    Wnorms(Element % BodyId) = WnormCoeffs(Element % BodyId) &
-                               /   Volumes(Element % BodyId)
+    DO i=1, nofbodies
+       WnormCoeffs(i) = ParallelReduction(WnormCoeffs(i)) 
+       Volumes(i) = ParallelReduction(Volumes(i)) 
+       Wnorms(i) = WnormCoeffs(i) &
+                               /   Volumes(i)
+    END DO
 
     CALL Info('GetWnormsForBodies', &
          'W norm computed in components.', level=9)
