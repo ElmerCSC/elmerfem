@@ -397,13 +397,13 @@
            QcPerm     => QcSol % Perm
            QcSolution => QcSol % Values
         END IF
+     END IF
 
-        ! discharge out of the moulins (for output only)
-        QmSol => VariableGet( Solver % Mesh % Variables, "Flux from Moulins" )
-        IF ( ASSOCIATED( QmSol ) ) THEN
-           QmPerm     => QmSol % Perm
-           QmSolution => QmSol % Values
-        END IF
+     ! discharge out of the moulins (for output only)
+     QmSol => VariableGet( Solver % Mesh % Variables, "Flux from Moulins" )
+     IF ( ASSOCIATED( QmSol ) ) THEN
+        QmPerm     => QmSol % Perm
+        QmSolution => QmSol % Values
      END IF
 
      ZbSol => VariableGet( Solver % Mesh % Variables, ZbName )
