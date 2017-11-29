@@ -3189,16 +3189,13 @@ CONTAINS
     ! control the selection of variational crimes.
     ! ------------------------------------------------------------------------------
     MembraneReductionMethod = MembraneStrainReductionMethod
+    UseBubbles = .FALSE.
     CALL SetStrainReductionParameters(BGElement, MembraneReductionMethod, PlateBody, &
       MembraneStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
       MembraneStrains = .TRUE.)
 
     ReductionMethod = StrainReductionMethod
-    IF (ReductionMethod == CurlKernelWithEdgeDOFs) THEN
-      CALL Warn('ShellLocalMatrix', 'Operator 4 is not yet possible for transverse shear strains')
-      ReductionMethod = CurlKernel
-    END IF
-    UseBubbles = Bubbles
+    UseBubbles = Bubbles .AND. (.NOT. LargeDeflection)
     CALL SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
       ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
       MembraneStrains = .FALSE.)
@@ -4099,7 +4096,12 @@ CONTAINS
     Family = GetElementFamily(BGElement)
     PVersion = IsPElement(BGElement)
 
-    UseBubbles = .FALSE.
+    IF (.NOT. MembraneStrains .AND. (ReductionMethod == CurlKernelWithEdgeDOFs)) THEN
+      CALL Warn('SetStrainReductionParameters', &
+          'Operator 4 is not yet possible for transverse shear strains')
+      ReductionMethod = CurlKernel
+    END IF
+
     IF (Pversion) THEN
       ReductionMethod = NoStrainReduction
     ELSE
@@ -4113,7 +4115,7 @@ CONTAINS
             ReductionMethod = DoubleReduction
           ELSE
             ReductionMethod = DoubleReduction
-            UseBubbles = .TRUE.
+            UseBubbles = .FALSE.
           END IF
         CASE(4)
           IF (MembraneStrains) THEN
