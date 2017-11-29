@@ -15,13 +15,13 @@ Element Divisions 2 = 1 8 8 1
 
 I. QUADS
 
-Strain reduction method = 1 (solver default)
+The default (strain reduction) method
 ================================
-0.29361496010559796
-0.14485785741221821
-7.2605668992780439E-002
-3.6366926053659009E-002
-1.8205831129635589E-002
+0.28534440085557611
+0.14033086583199897
+7.0275522871128052E-002
+3.5170214283552041E-002
+1.7592769166581007E-002
 
 
 Strain reduction method = 0 (no reduction)

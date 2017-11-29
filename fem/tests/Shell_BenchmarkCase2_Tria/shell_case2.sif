@@ -48,8 +48,6 @@ Solver 1
 
   Procedure = "ShellSolver" "ShellSolver"
 
-!  Strain Reduction Operator = Integer 1
-
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU2
 !  Linear System Row Equilibration = Logical True

@@ -39,7 +39,6 @@ Equation 1 :: Active Solvers(1) = 1
 Solver 1
   Equation = "Shell equations"
   Procedure = "ShellSolver" "ShellSolver"
-  Strain Reduction Operator = Integer 2    ! 0 = no reduction, 1 = kernel version, 2 = MITC
 
   Large Deflection = False
 
@@ -68,5 +67,5 @@ Boundary Condition 1
 !  DNU 3 = Real 0     ! No BC => let the energy principle adjust the normal strain
 End
 
-Solver 1 :: Reference Norm = Real 0.34686716       ! This corresponds to "Strain Reduction Operator=2"
+Solver 1 :: Reference Norm = Real 0.34686716
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
