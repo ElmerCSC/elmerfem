@@ -35,10 +35,14 @@
     TYPE(ValueList_t), POINTER :: SolverParams
 !------------------------------------------------------------------------------
     SolverParams => GetSolverParams()
-    IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
+    IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
       CALL ListAddInteger( SolverParams, 'Variable DOFs', 3 )
       CALL ListAddString( SolverParams, 'Variable', 'Deflection' )
     END IF
+    
+
+
+    
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 !------------------------------------------------------------------------------
   END SUBROUTINE SmitcSolver_Init
@@ -72,7 +76,7 @@
      TYPE(ValueList_t), POINTER :: Material, BodyForce
  
      LOGICAL :: AllocationsDone = .FALSE., HoleCorrection, &
-         got_mat_id, got_bf_id, NeglectSprings
+         got_mat_id, got_bf_id, NeglectSprings, EigenOrHarmonic, Found
 
      INTEGER, POINTER, SAVE ::  Indexes(:)
      INTEGER :: MaxIter, iter
@@ -126,9 +130,12 @@
      CALL Info( 'SmitcSolver', '--------------------------------------------------',Level=4 )
 
      SolverParams => GetSolverParams()
+     
+     
+     EigenOrHarmonic = EigenOrHarmonicAnalysis() &
+         .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found ) 
 
-     CALL DefaultStart()
-
+     CALL DefaultStart()     
 
      MaxIter = GetInteger( SolverParams, &
          'Nonlinear System Max Iterations',GotIt )
@@ -241,7 +248,7 @@
          !---------------------------------------------------------------
          CALL DefaultUpdateEquations( STIFF, FORCE )
 
-         IF ( EigenOrHarmonicAnalysis() ) THEN
+         IF ( EigenOrHarmonic ) THEN
            CALL DefaultUpdateMass( MASS )
            CALL DefaultUpdateDamp( DAMP )
          END IF
@@ -276,7 +283,8 @@
 
        IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
      END DO
-
+     
+     CALL DefaultFinish()
        
 !------------------------------------------------------------------------------
  

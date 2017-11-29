@@ -34,6 +34,27 @@
 ! *
 ! ****************************************************************************/
 
+SUBROUTINE HelmholtzSolver_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+
+  Params => GetSolverParams()
+  CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
+
+END SUBROUTINE HelmholtzSolver_init
+  
+  
+
 !------------------------------------------------------------------------------
 !> Solver for Helmholtz equation accounting also for variable density and 
 !> convection field. Also includes a built-in interface for coupling with harmonic
@@ -159,7 +180,6 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   n = GetElementNOFNodes()
   Simulation => GetSimulation()
   dim = CoordinateSystemDimension()     
-  Solver % Matrix % COMPLEX = .TRUE.
   GotFrequency = .FALSE.
 
   ! Check for flow or strcuture interface

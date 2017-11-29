@@ -5115,14 +5115,19 @@ END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
-    CALL FreeValueList(Solver % Values)
+
+    CALL Info('FreeSolver','Free solver matrix',Level=20)
     CALL FreeMatrix(Solver % Matrix)
+
+    CALL Info('FreeSolver','Free solver miscallenous',Level=20)
+    CALL FreeValueList(Solver % Values)
     IF (ALLOCATED(Solver % Def_Dofs)) DEALLOCATE(Solver % Def_Dofs)
     IF (ASSOCIATED(Solver % ActiveElements)) DEALLOCATE(Solver % ActiveElements)
     IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
       CALL Graph_Deallocate(Solver % ColourIndexList)
       DEALLOCATE( Solver % ColourIndexList )
     END IF
+        
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeSolver
 !------------------------------------------------------------------------------
@@ -5162,12 +5167,17 @@ END SUBROUTINE GetNodalElementSize
    INTEGER :: i
    IF (.NOT.ASSOCIATED(Model)) RETURN
 
+   CALL Info('FreeModel','Freeing meshes',Level=15)
    CALL FreeMesh(Model % Meshes)
 
+   CALL Info('FreeModel','Freeing constants list',Level=15)
    CALL FreeValueList(Model % Constants)
+
+   CALL Info('FreeModel','Freeing simulation list',Level=15)
    CALL FreeValueList(Model % Simulation)
 
    IF (ASSOCIATED(Model % BCs)) THEN
+     CALL Info('FreeModel','Freeing boundary lists',Level=15)
      DO i=1,Model % NumberOfBCs
 #if 0
        A => Model % BCs(i) % PMatrix
@@ -5185,12 +5195,15 @@ END SUBROUTINE GetNodalElementSize
      DEALLOCATE(Model % BCs)
    END IF
 
+   CALL Info('FreeModel','Freeing solvers',Level=15)  
    DO i=1,Model % NumberOfSolvers
+     CALL Info('FreeModel','Solver: '//TRIM(I2S(i)),Level=32)
      CALL FreeSolver(Model % Solvers(i))
    END DO
    DEALLOCATE(Model % Solvers)
 
    IF (ASSOCIATED(Model % ICs)) THEN
+     CALL Info('FreeModel','Freeing initial conditions lists',Level=15)   
      DO i=1,Model % NumberOfICs
        CALL FreeValueList( Model % ICs(i) % Values)
      END DO
@@ -5198,6 +5211,7 @@ END SUBROUTINE GetNodalElementSize
    END IF
 
    IF (ASSOCIATED(Model % Bodies)) THEN
+     CALL Info('FreeModel','Freeing body lists',Level=15)   
      DO i=1,Model % NumberOfBodies
        CALL FreeValueList( Model % Bodies(i) % Values)
      END DO
@@ -5205,6 +5219,7 @@ END SUBROUTINE GetNodalElementSize
    END IF
 
    IF (ASSOCIATED(Model % Equations)) THEN
+     CALL Info('FreeModel','Freeing equations lists',Level=15)    
      DO i=1,Model % NumberOfEquations
        CALL FreeValueList( Model % Equations(i) % Values)
      END DO
@@ -5212,6 +5227,7 @@ END SUBROUTINE GetNodalElementSize
    END IF
 
    IF (ASSOCIATED(Model % BodyForces)) THEN
+     CALL Info('FreeModel','Freeing body forces lists',Level=15)   
      DO i=1,Model % NumberOfBodyForces
        CALL FreeValueList( Model % BodyForces(i) % Values)
      END DO

@@ -190,7 +190,7 @@ CONTAINS
 
 
           CALL ListPushNamespace('mglowest:')
-
+          
           CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
           CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', NewLinearSystem )
 
@@ -201,7 +201,7 @@ CONTAINS
             LowestSolver='direct'
             IF ( LIter ) LowestSolver='iterative'
           END IF
-
+          
           CALL Info('GMGSolve','Starting lowest linear solver using: '//TRIM(LowestSolver),Level=10 )
 
           SELECT CASE(LowestSolver)
@@ -241,8 +241,8 @@ CONTAINS
              END IF
           END SELECT
 
-          CALL ListPopNamespace()
-
+          CALL ListPopNamespace('mglowest:')
+          
           Solution(1:n) = Solution(1:n) * RHSNorm
           ForceVector(1:n) = ForceVector(1:n) * RHSnorm
 
@@ -994,7 +994,7 @@ CONTAINS
              END IF
           END SELECT
 
-          CALL ListPopNamespace()
+          CALL ListPopNamespace('mglowest:')
 
           RETURN
        END IF
@@ -1593,7 +1593,7 @@ CONTAINS
       NewLinearSystem = .FALSE.
       IF(PRESENT(NewSystem)) NewSystem = .FALSE.
       IF ( ListGetLogical( Params, 'MG Lowest Linear Solver Unsolve',gotit ) ) THEN
-        RETURN
+        CALL Info('AMGSolve','Leaving lowest level of AMG cycle unsolved',Level=12)
       ELSE IF ( .NOT. Parallel ) THEN
         IF ( ListGetLogical( Params, 'MG Lowest Linear Solver Iterative',gotit ) ) THEN
           CALL IterSolver( Matrix1, Solution, ForceVector, Solver )
@@ -1605,7 +1605,7 @@ CONTAINS
             Solution, ForceVector, Solver, Matrix1 % ParMatrix )
       END IF
 
-      CALL ListPopNamespace()
+      CALL ListPopNamespace('mglowest:')
 
       RETURN
     END IF
@@ -5235,8 +5235,9 @@ CONTAINS
       END IF
 
       DEALLOCATE( Residual ) 
+      
+      CALL ListPopNamespace('mglowest:')
 
-      CALL ListPopNamespace()
       CALL Info('CMGSolve','Lowest level solved',Level=9)
 
       RETURN

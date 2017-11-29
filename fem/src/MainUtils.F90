@@ -1852,117 +1852,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-   FUNCTION CreateChildMatrix( ParentMat, ParentDofs, Dofs, ColDofs, CreateRhs, &
-       NoReuse ) RESULT ( ChildMat )
-     TYPE(Matrix_t) :: ParentMat
-     INTEGER :: ParentDofs
-     INTEGER :: Dofs
-     TYPE(Matrix_t), POINTER :: ChildMat
-     INTEGER, OPTIONAL :: ColDofs
-     LOGICAL, OPTIONAL :: CreateRhs
-     LOGICAL, OPTIONAL :: NoReuse
-     INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
-     LOGICAL :: ReuseMatrix
      
-     
-     ChildMat => AllocateMatrix()
-
-     IF( PRESENT( ColDofs ) ) THEN
-       CDofs = ColDofs
-     ELSE
-       CDofs = Dofs
-     END IF
-
-     
-     ReuseMatrix = ( Dofs == ParentDofs .AND. CDofs == ParentDofs )
-     IF( PRESENT( NoReuse ) ) THEN
-       IF( NoReuse ) ReuseMatrix = .FALSE.         
-     END IF
-
-     
-     IF( ReuseMatrix ) THEN
-       CALL Info('CreateChildMatrix','Reusing initial matrix topology',Level=8)    
-       
-       ChildMat % Cols => ParentMat % Cols
-       ChildMat % Rows => ParentMat % Rows
-       ChildMat % Diag => ParentMat % Diag
-       
-       ChildMat % NumberOfRows = ParentMat % NumberOfRows
-       
-       m = SIZE( ParentMat % Values )
-       ALLOCATE( ChildMat % Values(m) )
-       ChildMat % Values = 0.0_dp
-         
-     ELSE IF( Dofs == ParentDofs .AND. Cdofs == ParentDofs ) THEN
-       CALL Info('CreateChildMatrix','Copying initial matrix topology',Level=8)    
-       
-       ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) ) )
-       ALLOCATE( ChildMat % Rows( SIZE(ParentMat % Rows) ) )
-       ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) ) )
-
-       ChildMat % Cols = ParentMat % Cols
-       ChildMat % Rows = ParentMat % Rows
-       ChildMat % Diag = ParentMat % Diag
-       
-       ChildMat % NumberOfRows = ParentMat % NumberOfRows
-
-       m = SIZE( ParentMat % Values )
-       ALLOCATE( ChildMat % Values(m) )
-       ChildMat % Values = 0.0_dp
-     ELSE
-       CALL Info('CreateChildMatrix','Multiplying initial matrix topology',Level=8)    
-         
-       ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs * CDofs / ParentDofs**2 ) )
-       ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
-       
-       ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
-       
-       ii = 0
-       jj = 0
-       ChildMat % Rows(1) = 1
-       DO i=1, ParentMat % NumberOFRows, ParentDOFs
-         DO k=1,Dofs
-           ii = ii + 1
-           DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1, ParentDOFs
-             nn = (ParentMat % Cols(j)-1) / ParentDofs + 1
-             DO l=1,CDofs
-               jj = jj + 1
-               ChildMat % Cols(jj) = Dofs*(nn-1) + l
-             END DO
-           END DO
-           ChildMat % Rows(ii+1) = jj+1
-         END DO
-       END DO
-       
-       ALLOCATE( ChildMat % Values(jj) )
-       ChildMat % Values = 0.0_dp
-       
-       IF( Dofs == CDofs ) THEN
-         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )      
-         DO i=1,ChildMat % NumberOfRows
-           DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
-             IF (ChildMat % Cols(j) == i) THEN
-               ChildMat % Diag(i) = j
-               EXIT
-             END IF
-           END DO
-         END DO
-       END IF
-     END IF
-
-     IF( PRESENT( CreateRhs ) ) THEN
-       IF( CreateRhs ) THEN
-         ALLOCATE( ChildMat % rhs(ChildMat % NumberOfRows ) )
-         ChildMat % rhs = 0.0_dp
-       END IF
-     END IF
-
-     CALL Info('CreateChildMatrix','Created matrix with rows: '&
-         //TRIM(I2S( ChildMat % NumberOfRows)),Level=10 )
-     
-     
-   END FUNCTION CreateChildMatrix
-   
 
 !------------------------------------------------------------------------------
 !> Generate a similar solver instance as for the parent solver.
@@ -4057,8 +3947,14 @@ CONTAINS
     IF(.NOT. ASSOCIATED( Var ) .AND. RowVar == 1 .AND. ColVar == 1 ) THEN
       Var => Solver % Variable
     END IF
+    IF( .NOT. ASSOCIATED( Var ) ) THEN
+      CALL Fatal('BlockSystemAssembly','Could not find variable: '//TRIM(I2S(RowVar)))
+    END IF
     RowDofs = Var % Dofs
     RowPerm => Var % Perm
+    IF( .NOT. ASSOCIATED( RowPerm ) ) THEN
+      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//TRIM(I2S(RowVar)))
+    END IF
     
     ! Column variable
     !------------------------------------------
@@ -4067,8 +3963,14 @@ CONTAINS
       ColName = ListGetString( SolverParams, TRIM(str), GotIt )
       Var => VariableGet( Mesh % Variables, TRIM(ColName) )
     END IF          
+    IF( .NOT. ASSOCIATED( Var ) ) THEN
+      CALL Fatal('BlockSystemAssembly','Could not find variable: '//TRIM(I2S(ColVar)))
+    END IF
     ColDofs = Var % Dofs
     ColPerm => Var % Perm
+    IF( .NOT. ASSOCIATED( ColPerm ) ) THEN
+      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//TRIM(I2S(ColVar)))
+    END IF
 
     ! These could be user provided for each block
     !-----------------------------------------

@@ -2732,6 +2732,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   END SUBROUTINE CRS_BlockMatrixPick2
 !------------------------------------------------------------------------------
 
+
 !------------------------------------------------------------------------------
 !> Copies some preconditioning structures from matrix A to B. 
 !> The intent is to allow saving of memory and CPU time for cases
@@ -2789,7 +2790,120 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
   END FUNCTION CRS_CopyMatrixPrec
 
+!------------------------------------------------------------------------------
+!> Creates CRS matrix of different size but same structure.
+!------------------------------------------------------------------------------
 
+
+  SUBROUTINE CRS_CreateChildMatrix( ParentMat, ParentDofs, ChildMat, Dofs, ColDofs, CreateRhs, NoReuse ) 
+
+    TYPE(Matrix_t) :: ParentMat
+    INTEGER :: ParentDofs
+    INTEGER :: Dofs
+    TYPE(Matrix_t), POINTER :: ChildMat
+    INTEGER, OPTIONAL :: ColDofs
+    LOGICAL, OPTIONAL :: CreateRhs
+    LOGICAL, OPTIONAL :: NoReuse
+    INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
+    LOGICAL :: ReuseMatrix
+
+    IF( PRESENT( ColDofs ) ) THEN
+      CDofs = ColDofs
+    ELSE
+      CDofs = Dofs
+    END IF
+
+
+    ReuseMatrix = ( Dofs == ParentDofs .AND. CDofs == ParentDofs )
+    IF( PRESENT( NoReuse ) ) THEN
+      IF( NoReuse ) ReuseMatrix = .FALSE.         
+    END IF
+
+
+    IF( ReuseMatrix ) THEN
+      CALL Info('CRS_CreateChildMatrix','Reusing initial matrix topology',Level=8)    
+
+      ChildMat % Cols => ParentMat % Cols
+      ChildMat % Rows => ParentMat % Rows
+      ChildMat % Diag => ParentMat % Diag
+
+      ChildMat % NumberOfRows = ParentMat % NumberOfRows
+
+      m = SIZE( ParentMat % Values )
+      ALLOCATE( ChildMat % Values(m) )
+      ChildMat % Values = 0.0_dp
+
+    ELSE IF( Dofs == ParentDofs .AND. Cdofs == ParentDofs ) THEN
+      CALL Info('CRS_CreateChildMatrix','Copying initial matrix topology',Level=8)    
+
+      ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) ) )
+      ALLOCATE( ChildMat % Rows( SIZE(ParentMat % Rows) ) )
+      ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) ) )
+
+      ChildMat % Cols = ParentMat % Cols
+      ChildMat % Rows = ParentMat % Rows
+      ChildMat % Diag = ParentMat % Diag
+
+      ChildMat % NumberOfRows = ParentMat % NumberOfRows
+
+      m = SIZE( ParentMat % Values )
+      ALLOCATE( ChildMat % Values(m) )
+      ChildMat % Values = 0.0_dp
+    ELSE
+      CALL Info('CRS_CreateChildMatrix','Multiplying initial matrix topology',Level=8)    
+
+      ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs * CDofs / ParentDofs**2 ) )
+      ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
+
+      ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
+
+      ii = 0
+      jj = 0
+      ChildMat % Rows(1) = 1
+      DO i=1, ParentMat % NumberOFRows, ParentDOFs
+        DO k=1,Dofs
+          ii = ii + 1
+          DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1, ParentDOFs
+            nn = (ParentMat % Cols(j)-1) / ParentDofs + 1
+            DO l=1,CDofs
+              jj = jj + 1
+              ChildMat % Cols(jj) = Dofs*(nn-1) + l
+            END DO
+          END DO
+          ChildMat % Rows(ii+1) = jj+1
+        END DO
+      END DO
+
+      ALLOCATE( ChildMat % Values(jj) )
+      ChildMat % Values = 0.0_dp
+
+      IF( Dofs == CDofs ) THEN
+        ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )      
+        DO i=1,ChildMat % NumberOfRows
+          DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
+            IF (ChildMat % Cols(j) == i) THEN
+              ChildMat % Diag(i) = j
+              EXIT
+            END IF
+          END DO
+        END DO
+      END IF
+    END IF
+
+    IF( PRESENT( CreateRhs ) ) THEN
+      IF( CreateRhs ) THEN
+        ALLOCATE( ChildMat % rhs(ChildMat % NumberOfRows ) )
+        ChildMat % rhs = 0.0_dp
+      END IF
+    END IF
+
+    CALL Info('CRS_CreateChildMatrix','Created matrix with rows: '&
+        //TRIM(I2S( ChildMat % NumberOfRows)),Level=10 )
+
+
+  END SUBROUTINE CRS_CreateChildMatrix
+  
+  
 
 !------------------------------------------------------------------------------
 !>    Builds an incomplete (ILU(n)) factorization for a iterative solver

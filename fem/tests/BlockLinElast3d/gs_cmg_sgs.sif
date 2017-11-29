@@ -1,0 +1,121 @@
+! Simple 2d linear elasticity bending problem.
+! Here the monolithic matrix is split into a block matrix
+! and then the block matrix strategy is used to solve it.
+!
+! Compared to base case here we used cmg instead of amg.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 20
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Equation 1
+  Name = "Both"
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Equation = "lin.elast"
+
+  Optimize Bandwidth = False
+  Linear System Scaling = True
+
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "Disp"
+  Variable DOFs = Integer 2
+  Calculate Stresses = False
+  Displace Mesh = Logical False
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 1
+
+! These choose the overall block strategies
+!-----------------------------------------
+  Block Solver = Logical True
+  Block Preconditioner = Logical False
+  Block Gauss-Seidel = Logical True
+  Block Matrix Reuse = Logical True
+
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = string "Iterative"
+  Outer: Linear System Convergence Tolerance = real 1e-8
+  Outer: Linear System Iterative Method = string GCR
+  Outer: Linear System GCR Restart = Integer 50
+  Outer: Linear System Residual Output = integer 1
+  Outer: Linear System Max Iterations = integer 200
+
+! Linear system solver for blocks
+!-----------------------------------------
+  Linear System Solver = multigrid	
+  Linear System Convergence Tolerance = 1.0e-05
+  Multigrid Levels = Integer 10
+
+!--- basic algebraic multigrid iteration stuff
+  MG Levels = Integer 10
+  MG Smoother = String sgs
+  MG Pre Smoothing Iterations(1) = 2
+  MG Post Smoothing Iterations(1) = 2
+ 
+!--- cluster MG specific parameters
+  MG Method = String cluster
+  MG Cluster Size = Integer 0
+  MG Cluster Alpha = Real 1.8
+  MG Strong Connection Limit = Real 0.01
+! MG Strong Connection Minimum = Integer 4
+  MG Max Iterations = Integer 2
+End  
+
+Material 1
+  Name = "Ideal"
+
+  Youngs modulus = 1
+  Poisson Ratio  = 0.35
+  Density = 1.0
+End 
+
+Body Force 1 
+  Name = "bodyforce"
+  Stress BodyForce 1 = Real 1.0
+!  Stress BodyForce 2 = Real -1.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 1 
+
+  Disp 1 = Real 0
+  Disp 2 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 0.23581335

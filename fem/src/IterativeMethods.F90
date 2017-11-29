@@ -1149,9 +1149,9 @@ CONTAINS
          ! Perform the orthogonalization of the search directions....
          !--------------------------------------------------------------
          DO i=1,j-1
-            beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
-            T1(1:n) = T1(1:n) - beta * S(1:n,i)
-            T2(1:n) = T2(1:n) - beta * V(1:n,i)        
+           beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+           T1(1:n) = T1(1:n) - beta * S(1:n,i)
+           T2(1:n) = T2(1:n) - beta * V(1:n,i)        
          END DO
 
          alpha = normfun(n, T2(1:n), 1 )
@@ -1179,12 +1179,12 @@ CONTAINS
          IF (UseStopCFun) THEN
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(I8, 3E11.4)') k, rnorm / bnorm, residual
+             WRITE (*, '(A, I6, 2E12.4)') 'gcr:',k, rnorm / bnorm, residual
            END IF           
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(I8, E11.4)') k, residual
+             WRITE (*, '(A, I6, 2E12.4)') 'gcr:',k, residual, beta
            END IF
          END IF
            
