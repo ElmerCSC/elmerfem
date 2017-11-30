@@ -574,7 +574,7 @@ CONTAINS
 
     TYPE(Matrix_t),POINTER :: A
 
-    REAL(KIND=dp), POINTER :: x(:),b(:)
+    REAL(KIND=dp), POINTER CONTIG :: x(:),b(:)
 
     ! Variables related to robust mode
     LOGICAL :: Robust 
@@ -672,7 +672,8 @@ CONTAINS
       REAL(KIND=dp) :: alpha, beta, omega, rho0, rho1, sigma, ddot, varrho, hatgamma
       LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
       CHARACTER(LEN=MAX_NAME_LEN) :: str
-      REAL(KIND=dp), ALLOCATABLE :: work(:,:), rwork(:,:)
+      REAL(KIND=dp), ALLOCATABLE :: work(:,:)
+      REAL(KIND=dp) :: rwork(l+1,3+2*(l+1))
       REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
 !------------------------------------------------------------------------------
     
@@ -683,10 +684,22 @@ CONTAINS
       zero = 0.0d0
       one =  1.0d0
 
-      ALLOCATE( work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)) )
-      work = 0.0d0
-      rwork = 0.0d0
-    
+      ALLOCATE( work(n,3+2*(l+1)) )
+      !$OMP PARALLEL PRIVATE(j)
+      DO j=1,3+2*(l+1)
+         !$OMP DO SCHEDULE(STATIC)
+         DO i=1,n
+            work(i,j) = 0.0d0
+         END DO
+         !$OMP END DO
+      END DO
+      !$OMP END PARALLEL
+      DO j=1,3+2*(l+1)
+         DO i=1,l+1
+            rwork(i,j) = 0.0d0
+         END DO
+      END DO
+
       rr = 1
       r = rr+1
       u = r+(l+1)
@@ -699,11 +712,18 @@ CONTAINS
       yl = y0+1
       y = yl+1
     
-      CALL C_matvec(x,work(:,r),ipar,matvecsubr)
-
-      work(1:n,r) = b(1:n) - work(1:n,r)
-      bnrm  = normfun(n, b(1:n), 1 )
-      rnrm0 = normfun(n, work(1:n,r), 1 )
+      ! CALL C_matvec(x,work(:,r),ipar,matvecsubr)
+      CALL C_matvec(x,work(1,r),ipar,matvecsubr)
+      
+      !$OMP PARALLEL DO SCHEDULE(STATIC)
+      DO i=1,n
+         work(i,r) = b(i) - work(i,r)
+      END DO
+      !$OMP END PARALLEL DO
+      ! bnrm  = normfun(n, b(1:n), 1 )
+      ! rnrm0 = normfun(n, work(1:n,r), 1 )
+      bnrm  = normfun(n, b(1), 1 )
+      rnrm0 = normfun(n, work(1,r), 1 )
 
       !-------------------------------------------------------------------
       ! Check whether the initial guess is already converged, diverged or NaN
@@ -728,14 +748,28 @@ CONTAINS
 
       EarlyExit = .FALSE.
 
-      work(1:n,rr) = work(1:n,r) 
-      work(1:n,bp) = work(1:n,r)
-      work(1:n,xp) = x(1:n)
+      !$OMP PARALLEL 
+      !$OMP DO SCHEDULE(STATIC)
+      DO i=1,n
+         work(i,rr) = work(i,r) 
+         work(i,bp) = work(i,r)
+      END DO
+      !$OMP END DO NOWAIT
+      !$OMP DO SCHEDULE(STATIC)
+      DO i=1,n
+         work(i,xp) = x(i)
+      END DO
+      !$OMP END DO NOWAIT
+      !$OMP DO SCHEDULE(STATIC)
+      DO i=1,n
+         x(i) = zero
+      END DO
+      !$OMP END DO NOWAIT
+      !$OMP END PARALLEL
 
       rnrm = rnrm0
       mxnrmx = rnrm0
-      mxnrmr = rnrm0      
-      x(1:n) = zero      
+      mxnrmr = rnrm0  
       alpha = zero
       omega = one
       sigma = one
@@ -748,7 +782,8 @@ CONTAINS
         rho0 = -omega*rho0
       
         DO k=1,l
-          rho1 = dotprodfun(n, work(1:n,rr), 1, work(1:n,r+k-1), 1 )
+          ! rho1 = dotprodfun(n, work(1:n,rr), 1, work(1:n,r+k-1), 1 )
+          rho1 = dotprodfun(n, work(1,rr), 1, work(1,r+k-1), 1 )
           IF (rho0 == zero) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: rho0 == zero.' )
           ENDIF
@@ -758,13 +793,22 @@ CONTAINS
          
           beta = alpha*(rho1/rho0)
           rho0 = rho1
+          !$OMP PARALLEL PRIVATE(j)
           DO j=0,k-1
-            work(1:n,u+j) = work(1:n,r+j) - beta*work(1:n,u+j)
+             !$OMP DO SCHEDULE(STATIC)
+             DO i=1,n
+                work(i,u+j) = work(i,r+j) - beta*work(i,u+j)
+             END DO
+             !$OMP END DO
           ENDDO
+          !$OMP END PARALLEL
 
-          CALL C_lpcond( t, work(:,u+k-1), ipar, pcondlsubr )
-          CALL C_matvec( t, work(:,u+k), ipar, matvecsubr )
-          sigma = dotprodfun(n, work(1:n,rr), 1, work(1:n,u+k), 1 )
+          ! CALL C_lpcond( t, work(:,u+k-1), ipar, pcondlsubr )
+          CALL C_lpcond( t, work(1,u+k-1), ipar, pcondlsubr )
+          ! CALL C_matvec( t, work(:,u+k), ipar, matvecsubr )
+          CALL C_matvec( t, work(1,u+k), ipar, matvecsubr )
+          ! sigma = dotprodfun(n, work(1:n,rr), 1, work(1:n,u+k), 1 )
+          sigma = dotprodfun(n, work(1,rr), 1, work(1,u+k), 1 )
           
           IF (sigma == zero) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: sigma == zero.' )
@@ -774,15 +818,29 @@ CONTAINS
           ENDIF
 
           alpha = rho1/sigma
-          x(1:n) = x(1:n) + alpha * work(1:n,u)
+
+          !$OMP PARALLEL PRIVATE(j)
+          !$OMP DO SCHEDULE(STATIC)
+          DO i=1,n
+             x(i) = x(i) + alpha * work(i,u)
+          END DO
+          !$OMP END DO NOWAIT
           DO j=0,k-1
-            work(1:n,r+j) = work(1:n,r+j) - alpha * work(1:n,u+j+1)
+             !$OMP DO SCHEDULE(STATIC)
+             DO i=1,n
+                work(i,r+j) = work(i,r+j) - alpha * work(i,u+j+1)
+             END DO
+             !$OMP END DO
           ENDDO
+          !$OMP END PARALLEL
 
-          CALL C_lpcond( t, work(:,r+k-1), ipar,pcondlsubr )
-          CALL C_matvec( t, work(:,r+k), ipar, matvecsubr )
+          ! CALL C_lpcond( t, work(:,r+k-1), ipar,pcondlsubr )
+          ! CALL C_matvec( t, work(:,r+k), ipar, matvecsubr )
+          CALL C_lpcond( t, work(1,r+k-1), ipar,pcondlsubr )
+          CALL C_matvec( t, work(1,r+k), ipar, matvecsubr )
 
-          rnrm = normfun(n, work(1:n,r), 1 )
+          ! rnrm = normfun(n, work(1:n,r), 1 )
+          rnrm = normfun(n, work(1,r), 1 )
           IF (rnrm /= rnrm) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: rnrm == NaN.' )
           ENDIF
@@ -814,73 +872,108 @@ CONTAINS
         !--------------------------------------
         ! --- The convex polynomial part ---
         !--------------------------------------
-        
         DO i=1,l+1
           DO j=1,i
-            rwork(i,j) = dotprodfun(n, work(1:n,r+i-1), 1, work(1:n,r+j-1), 1 ) 
+             ! rwork(i,j) = dotprodfun(n, work(1:n,r+i-1), 1, work(1:n,r+j-1), 1 ) 
+             rwork(i,j) = dotprodfun(n, work(1,r+i-1), 1, work(1,r+j-1), 1 ) 
           END DO
         END DO
         DO j=2,l+1
-          rwork(1:j-1,j) = rwork(j,1:j-1)
+           DO i=1,j-1
+              rwork(i,j) = rwork(j,i)
+           END DO
         END DO
-          
-        rwork(1:l+1,zz:zz+l) = rwork(1:l+1,z:z+l)
-        tmpmtr(1:l-1,1:l-1) = rwork(2:l,zz+1:zz+l-1)
+        DO j=0,l-1
+           DO i=1,l+1
+              rwork(i,zz+j) = rwork(i,z+j)
+           END DO
+        END DO
+        DO j=1,l-1
+           DO i=1,l-1
+              tmpmtr(i,j) = rwork(i+1,zz+j)
+           END DO
+        END DO
         ! CALL dgetrf (l-1, l-1, rwork(2:l,zz+1:zz+l-1), l-1, &
         !     iwork, stat)
         CALL dgetrf (l-1, l-1, tmpmtr, l-1, &
              iwork, stat)
       
         ! --- tilde r0 and tilde rl (small vectors)
-      
+        
         rwork(1,y0) = -one
-        rwork(2:l,y0) = rwork(2:l,z) 
-        tmpvec(1:l-1) = rwork(2:l,y0)
+        DO i=2,l
+           rwork(i,y0) = rwork(i,z)
+        END DO
+        DO i=1,l-1
+           tmpvec(i) = rwork(i+1,y0)
+        END DO
         ! CALL dgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
         !     rwork(2:l,y0), l-1, stat)
         CALL dgetrs('n', l-1, 1, tmpmtr, l-1, iwork, &
              tmpvec, l-1, stat)
-        rwork(2:l,y0) = tmpvec(1:l-1)
+        DO i=1,l-1
+           rwork(i+1,y0) = tmpvec(i)
+        END DO
         rwork(l+1,y0) = zero
         
         rwork(1,yl) = zero
-        rwork(2:l,yl) = rwork(2:l,z+l)
-        tmpvec(1:l-1) = rwork(2:l,yl)
+        DO i=1,l-1
+           rwork(i+1,yl) = rwork(i+1,z+l)
+           tmpvec(i) = rwork(i+1,yl)
+        END DO
         ! CALL dgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
         !     rwork(2:l,yl), l-1, stat)
         CALL dgetrs ('n', l-1, 1, tmpmtr, l-1, iwork, &
              tmpvec, l-1, stat)
-        rwork(2:l,yl) = tmpvec(1:l-1)
+        DO i=1,l-1
+           rwork(i+1,yl) = tmpvec(i)
+        END DO
         rwork(l+1,yl) = -one
       
         ! --- Convex combination
       
-        CALL dsymv ('u', l+1, one, rwork(1:l+1,z:z+l), l+1, &
-            rwork(1:l+1,y0), 1, zero, rwork(1:l+1,y), 1)
-        kappa0 = SQRT( ddot(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1) )
-        CALL dsymv ('u', l+1, one, rwork(1:l+1,z:z+l), l+1, &
-            rwork(1:l+1,yl), 1, zero, rwork(1:l+1,y), 1)
-        kappal = SQRT( ddot(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) )
-        CALL dsymv ('u', l+1, one, rwork(1:l+1,z:z+l), l+1, &
-          rwork(1:l+1,y0), 1, zero, rwork(1:l+1,y), 1)
-        varrho = ddot(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) / &
+        CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
+            rwork(1,y0), 1, zero, rwork(1,y), 1)
+        kappa0 = SQRT( ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1) )
+        CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
+            rwork(1,yl), 1, zero, rwork(1,y), 1)
+        kappal = SQRT( ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1) )
+        CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
+          rwork(1,y0), 1, zero, rwork(1,y), 1)
+        varrho = ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1) / &
             (kappa0*kappal)
         hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
             kappa0/kappal
-        rwork(1:l+1,y0) = rwork(1:l+1,y0) - hatgamma * rwork(1:l+1,yl)
+        DO i=1,l+1
+           rwork(i,y0) = rwork(i,y0) - hatgamma * rwork(i,yl)
+        END DO
         
         !  --- Update
         
         omega = rwork(l+1,y0)
+        !$OMP PARALLEL PRIVATE(j,i) FIRSTPRIVATE(rwork)
         DO j=1,l
-          work(1:n,u) = work(1:n,u) - rwork(j+1,y0) * work(1:n,u+j)
-          x(1:n) = x(1:n) + rwork(j+1,y0) * work(1:n,r+j-1)
-          work(1:n,r) = work(1:n,r) - rwork(j+1,y0) * work(1:n,r+j)
+           !$OMP DO SCHEDULE(STATIC)
+           DO i=1,n
+              work(i,u) = work(i,u) - rwork(j+1,y0) * work(i,u+j)
+           END DO
+           !$OMP END DO
+           !$OMP DO SCHEDULE(STATIC)
+           DO i=1,n
+              x(i) = x(i) + rwork(j+1,y0) * work(i,r+j-1)
+           END DO
+           !$OMP END DO
+           !$OMP DO SCHEDULE(STATIC)
+           DO i=1,n
+              work(i,r) = work(i,r) - rwork(j+1,y0) * work(i,r+j)
+           END DO
+           !$OMP END DO
         ENDDO
+        !$OMP END PARALLEL
     
-        CALL dsymv ('u', l+1, one, rwork(1:l+1,z:z+l), l+1, &
-            rwork(1:l+1,y0), 1, zero, rwork(1:l+1,y), 1)
-        rnrm = SQRT( ddot(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1) )
+        CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
+            rwork(1,y0), 1, zero, rwork(1,y), 1)
+        rnrm = SQRT( ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1) )
         
         !---------------------------------------
         !  --- The reliable update part ---
@@ -893,28 +986,50 @@ CONTAINS
         IF (rcmp) THEN
           ! PRINT *, 'Performing residual update...'
           CALL C_lpcond( t, x, ipar,pcondlsubr )
-          CALL C_matvec( t, work(:,r), ipar, matvecsubr )
+          ! CALL C_matvec( t, work(:,r), ipar, matvecsubr )
+          CALL C_matvec( t, work(1,r), ipar, matvecsubr )
 
-          work(1:n,r) = work(1:n,bp) - work(1:n,r)
           mxnrmr = rnrm
+          !$OMP PARALLEL DO SCHEDULE(STATIC)
+          DO i=1,n
+             work(i,r) = work(i,bp) - work(i,r)
+          END DO
+          !$OMP END PARALLEL DO
           IF (xpdt) THEN
             ! PRINT *, 'Performing solution update...'
-            work(1:n,xp) = work(1:n,xp) + t(1:n)
-            x(1:n) = zero
-            work(1:n,bp) = work(1:n,r)
-            mxnrmx = rnrm
+            !$OMP PARALLEL DO SCHEDULE(STATIC)
+             DO i=1,n
+                work(i,xp) = work(i,xp) + t(i)
+                x(i) = zero
+                work(i,bp) = work(i,r)
+             END DO
+             !$OMP END PARALLEL DO
+
+             mxnrmx = rnrm
           ENDIF
         ENDIF
         
         IF (rcmp) THEN
           IF (xpdt) THEN       
-            t(1:n) = work(1:n,xp)
+             !$OMP PARALLEL DO SCHEDULE(STATIC)
+             DO i=1,n
+                t(i) = work(i,xp)
+             END DO
+             !$OMP END PARALLEL DO
           ELSE
-            t(1:n) = t(1:n) + work(1:n,xp)  
+             !$OMP PARALLEL DO SCHEDULE(STATIC)
+             DO i=1,n
+                t(i) = t(i) + work(i,xp)  
+             END DO
+             !$OMP END PARALLEL DO
           END IF
         ELSE
           CALL C_lpcond( t, x, ipar,pcondlsubr )
-          t(1:n) = t(1:n)+work(1:n,xp)
+          !$OMP PARALLEL DO
+          DO i=1,n
+             t(i) = t(i)+work(i,xp)
+          END DO
+          !$OMP END PARALLEL DO
         END IF
       
         errorind = rnrm / bnrm
@@ -963,9 +1078,17 @@ CONTAINS
       ! We have solved z = P*x, with P the preconditioner, so finally 
       ! solve the true unknown x
       !------------------------------------------------------------
-      t(1:n) = x(1:n)
+      !$OMP PARALLEL DO
+      DO i=1,n
+         t(i) = x(i)
+      END DO
+      !$OMP END PARALLEL DO
       CALL C_lpcond( x, t, ipar,pcondlsubr )
-      x(1:n) = x(1:n) + work(1:n,xp)        
+      !$OMP PARALLEL DO
+      DO i=1,n
+         x(i) = x(i) + work(i,xp)
+      END DO
+      !$OMP END PARALLEL DO
 !------------------------------------------------------------------------------
     END SUBROUTINE RealBiCGStabl
 !------------------------------------------------------------------------------

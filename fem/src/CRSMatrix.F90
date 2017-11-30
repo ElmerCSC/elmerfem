@@ -1445,18 +1445,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     
     INTEGER :: i,j,n
     REAL(KIND=dp) :: rsum
-#ifdef HAVE_MKL
-    INTERFACE
-      SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
-        USE Types
-        CHARACTER :: transa
-        INTEGER :: m
-        REAL(KIND=dp) :: a(*)
-        INTEGER :: ia(*), ja(*)
-        REAL(KIND=dp) :: x(*), y(*)
-      END SUBROUTINE mkl_dcsrgemv
-    END INTERFACE
-#endif
 !------------------------------------------------------------------------------
 
     n = A % NumberOfRows
@@ -1476,21 +1464,16 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       RETURN
     END IF
 
-    ! Use MKL to perform mvp if it is available
-#ifdef HAVE_MKL
-    CALL mkl_dcsrgemv('N', n, ABS(Values), Rows, Cols, u, v)
-#else
 !$omp parallel do private(j,rsum)
     DO i=1,n
       rsum = 0.0d0
-      DO j=Rows(i),Rows(i+1)-1
 !DIR$ IVDEP
+      DO j=Rows(i),Rows(i+1)-1
         rsum = rsum + u(Cols(j)) * ABS(Values(j))
       END DO
       v(i) = rsum
     END DO
 !$omp end parallel do
-#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_ABSMatrixVectorMultiply
 !------------------------------------------------------------------------------
@@ -1897,10 +1880,13 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     n = GlobalMatrix % NumberOfRows
 
     IF ( .NOT. GlobalMatrix % Ordered ) THEN
+       !$OMP PARALLEL DO
        DO i=1,N
           CALL SortF( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1), &
                    Values(Rows(i):Rows(i+1)-1) )
        END DO
+       !$OMP END PARALLEL DO
+       !$OMP PARALLEL DO
        DO i=1,N
           DO j=Rows(i),Rows(i+1)-1
              IF ( Cols(j) == i ) THEN
@@ -1909,9 +1895,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
              END IF
           END DO
        END DO
+       !$OMP END PARALLEL DO
        GlobalMatrix % Ordered = .TRUE.
     END IF
 
+    !$OMP PARALLEL DO
     DO i=1,n
        IF  ( ABS( Values(Diag(i))) > AEPS ) THEN
            u(i) = v(i) / Values(Diag(i))
@@ -1919,6 +1907,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
            u(i) = v(i)
        END IF
     END DO
+    !$OMP END PARALLEL DO
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_DiagPrecondition
 !------------------------------------------------------------------------------
@@ -4046,8 +4035,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, DIMENSION(*), INTENT(IN) :: ipar  !< structure holding info from (HUTIter-iterative solver package)
     REAL(KIND=dp), DIMENSION(HUTI_NDIM), INTENT(IN) :: v   !< Right-hand-side vector
     REAL(KIND=dp), DIMENSION(HUTI_NDIM), INTENT(OUT) :: u   !< Solution vector
+    
+    INTEGER :: i
 
-    u = v
+    !$OMP PARALLEL DO
+    DO i=1,HUTI_NDIM
+       u(i) = v(i)
+    END DO
+    !$OMP END PARALLEL DO
     CALL CRS_LUSolve( HUTI_NDIM,GlobalMatrix,u )
   END SUBROUTINE CRS_LUPrecondition
 !------------------------------------------------------------------------------
@@ -4083,8 +4078,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,row,col,nn
     DOUBLE PRECISION :: s
-    DOUBLE PRECISION, POINTER :: Values(:)
-    INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
+    DOUBLE PRECISION, POINTER CONTIG :: Values(:)
+    INTEGER, POINTER CONTIG :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
 
     Diag => A % ILUDiag
@@ -4114,6 +4109,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! Forward substitute (solve z from Lz = b)
       DO i=1,n
         s = b(i)
+!DIR$ IVDEP
         DO j=Rows(i),Diag(i)-1
            s = s - Values(j) * b(Cols(j))
         END DO
@@ -4124,6 +4120,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! Backward substitute (solve x from L^Tx = z)
       DO i=n,1,-1
         b(i) = b(i) * Values(Diag(i))
+!DIR$ IVDEP
         DO j=Rows(i),Diag(i)-1
            b(Cols(j)) = b(Cols(j)) - Values(j) * b(i)
         END DO
@@ -4133,6 +4130,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! Forward substitute (solve z from Lz = b)
       DO i=1,n
          s = b(i)
+!DIR$ IVDEP
          DO j=Rows(i),Diag(i)-1
             s = s - Values(j) * b(Cols(j))
          END DO
@@ -4143,6 +4141,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! Backward substitute (solve x from UDx = z)
       DO i=n,1,-1
          s = b(i)
+!DIR$ IVDEP
          DO j=Diag(i)+1,Rows(i+1)-1
             s = s - Values(j) * b(Cols(j))
          END DO

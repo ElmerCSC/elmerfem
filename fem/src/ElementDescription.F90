@@ -4060,7 +4060,7 @@ END IF
        ! First derivatives
        IF (PRESENT(dBasisdx)) THEN
 !DIR$ FORCEINLINE
-         CALL ElementInfoVec_ElementBasisToGlobal(ncl, nbp, dBasisdxWrk, dim, cdim, LtoGMapsWrk, ll, dBasisdx)
+         CALL ElementInfoVec_ElementBasisToGlobal(ncl, nbp, nbmax, dBasisdxWrk, dim, cdim, LtoGMapsWrk, ll, dBasisdx)
        END IF
      END DO ! Block over Gauss points
   CONTAINS
@@ -4136,12 +4136,13 @@ END IF
    END FUNCTION ElementInfoVec_ComputePElementBasis
 !------------------------------------------------------------------------------
    
-   SUBROUTINE ElementInfoVec_ElementBasisToGlobal(npts, nbasis, dLBasisdx, dim, cdim, LtoGMap, offset, dBasisdx)
+   SUBROUTINE ElementInfoVec_ElementBasisToGlobal(npts, nbasis, nbmax, dLBasisdx, dim, cdim, LtoGMap, offset, dBasisdx)
      IMPLICIT NONE
 
      INTEGER, INTENT(IN) :: npts
      INTEGER, INTENT(IN) :: nbasis
-     REAL(KIND=dp), INTENT(IN) :: dLBasisdx(VECTOR_BLOCK_LENGTH,nbasis,3)
+     INTEGER, INTENT(IN) :: nbmax
+     REAL(KIND=dp), INTENT(IN) :: dLBasisdx(VECTOR_BLOCK_LENGTH,nbmax,3)
      INTEGER, INTENT(IN) :: dim
      INTEGER, INTENT(IN) :: cdim
      REAL(KIND=dp), INTENT(IN) :: LtoGMap(VECTOR_BLOCK_LENGTH,3,3)

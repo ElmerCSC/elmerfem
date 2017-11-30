@@ -180,7 +180,7 @@ END INTERFACE
          CALL envir( 'OMP_NUM_THREADS'//CHAR(0), threads, tlen )
 #endif
          IF (tlen==0) THEN
-           CALL Warn('MAIN','OMP_NUM_THREADS not set. Using only 1 thread.')
+           CALL Info('MAIN','OMP_NUM_THREADS not set. Using only 1 thread per task.',Level=10)
            nthreads = 1
            ! Set number of threads to 1
            !$ CALL omp_set_num_threads(nthreads)

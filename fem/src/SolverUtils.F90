@@ -785,7 +785,7 @@ CONTAINS
      LOGICAL :: ConstantDt
      TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-     INTEGER :: PredCorrOrder = 2       !< Order of predictor-corrector scheme
+     INTEGER :: PredCorrOrder       !< Order of predictor-corrector scheme
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE

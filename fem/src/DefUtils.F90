@@ -305,7 +305,7 @@ CONTAINS
 
      IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
        Solver % CurrentColour = Solver % CurrentColour + 1
-       n = Solver % ColourIndexList % ptr(Solver % CurrentColour+1)-1 &
+       n = Solver % ColourIndexList % ptr(Solver % CurrentColour+1) &
            - Solver % ColourIndexList % ptr(Solver % CurrentColour)
        CALL Info('GetNOFActive','Number of active elements: '&
            //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=20)
@@ -316,6 +316,33 @@ CONTAINS
      END IF
 
   END FUNCTION GetNOFActive
+
+  !> Return number of boundary elements of the current boundary colour
+  !> and increments the colour counter
+  FUNCTION GetNOFBoundaryActive( USolver ) RESULT(n)
+     INTEGER :: n
+     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+     TYPE(Solver_t), POINTER :: Solver
+
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver 
+     END IF
+
+     IF( ASSOCIATED( Solver % BoundaryColourIndexList ) ) THEN
+       Solver % CurrentBoundaryColour = Solver % CurrentBoundaryColour + 1
+       n = Solver % BoundaryColourIndexList % ptr(Solver % CurrentBoundaryColour+1) &
+           - Solver % BoundaryColourIndexList % ptr(Solver % CurrentBoundaryColour)
+       CALL Info('GetNOFBoundaryActive','Number of boundary elements: '&
+           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentBoundaryColour)),Level=20)
+     ELSE
+       n = Solver % Mesh % NumberOfBoundaryElements
+       CALL Info('GetNOFBoundaryActive','Number of active elements: '&
+           //TRIM(I2S(n)),Level=20)
+     END IF
+
+  END FUNCTION GetNOFBoundaryActive
 
 !> Returns the current time
   FUNCTION GetTime() RESULT(st)
@@ -1275,12 +1302,23 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      TYPE( Solver_t ), OPTIONAL, TARGET :: USolver
      TYPE( Solver_t ), POINTER :: Solver
+     INTEGER :: ind
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
 
      IF ( t > 0 .AND. t <= Solver % Mesh % NumberOfBoundaryElements ) THEN
-        Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements+t )
+       ! Check if colouring is really used by the solver
+       IF( Solver % CurrentBoundaryColour > 0 .AND. &
+            ASSOCIATED( Solver % BoundaryColourIndexList ) ) THEN
+          ind = Solver % BoundaryColourIndexList % ind( &
+               Solver % BoundaryColourIndexList % ptr(Solver % CurrentBoundaryColour)+(t-1))
+       ELSE
+         ind = t
+       END IF
+
+       ! Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements+t )
+       Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements + ind )
 #ifdef _OPENMP
         IF (omp_in_parallel()) THEN
           ! May be used by user functions, thread safe
@@ -1838,6 +1876,10 @@ CONTAINS
             ElementNodes % x => ElementNodes % xyz(1:n,1)
             ElementNodes % y => ElementNodes % xyz(1:n,2)
             ElementNodes % z => ElementNodes % xyz(1:n,3)
+        ELSE
+            ElementNodes % x => ElementNodes % xyz(1:n,1)
+            ElementNodes % y => ElementNodes % xyz(1:n,2)
+            ElementNodes % z => ElementNodes % xyz(1:n,3)
         END IF
 
         n = Element % TYPE % NumberOfNodes
@@ -1848,11 +1890,11 @@ CONTAINS
           ElementNodes % z(i) = Mesh % Nodes % z(Element % NodeIndexes(i))
         END DO
 
-        sz = SIZE(ElementNodes % x)
+        sz = SIZE(ElementNodes % xyz,1)
         IF ( sz > n ) THEN
-            ElementNodes % x(n+1:sz) = 0.0d0
-            ElementNodes % y(n+1:sz) = 0.0d0
-            ElementNodes % z(n+1:sz) = 0.0d0
+            ElementNodes % xyz(n+1:sz,1) = 0.0d0
+            ElementNodes % xyz(n+1:sz,2) = 0.0d0
+            ElementNodes % xyz(n+1:sz,3) = 0.0d0
         END IF
 
         sz1 = SIZE(Mesh % Nodes % x)
@@ -5072,6 +5114,8 @@ CONTAINS
 
     Params => GetSolverParams( PSolver ) 
 
+    ! Reset colouring 
+    PSolver % CurrentColour = 0
 
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
@@ -5140,6 +5184,9 @@ CONTAINS
     END IF
 
     Params => GetSolverParams(PSolver)
+
+    ! Reset colouring 
+    PSolver % CurrentBoundaryColour = 0
 
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
@@ -5842,6 +5889,26 @@ CONTAINS
     CALL Info('GetNOFColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
   END FUNCTION GetNOFColours
 
+  FUNCTION GetNOFBoundaryColours(USolver) RESULT( ncolours ) 
+    IMPLICIT NONE
+    TYPE(Solver_t), TARGET, OPTIONAL :: USolver
+    INTEGER :: ncolours
+
+    ncolours = 1
+    IF ( PRESENT( USolver ) ) THEN
+      IF( ASSOCIATED( USolver % BoundaryColourIndexList ) ) THEN
+        ncolours = USolver % BoundaryColourIndexList % n
+        USolver % CurrentBoundaryColour = 0
+      END IF
+    ELSE
+      IF( ASSOCIATED( CurrentModel % Solver % BoundaryColourIndexList ) ) THEN
+        ncolours = CurrentModel % Solver % BoundaryColourIndexList % n 
+        CurrentModel % Solver % CurrentBoundaryColour = 0
+      END IF
+    END IF
+
+    CALL Info('GetNOFBoundaryColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
+  END FUNCTION GetNOFBoundaryColours
   
   ! Check given colourings are valid and see if they are free of race conditions. 
   SUBROUTINE CheckColourings(Solver)

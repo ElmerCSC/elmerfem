@@ -1839,7 +1839,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
     IF (EEC) THEN
       CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=1)
-	    WRITE( Message,'(A,4G10.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
+	    WRITE( Message,'(A,4G11.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
       CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
       
           
@@ -1870,7 +1870,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     TTime = GetTime()
     IF(TTime .GE. (EEC_time_0 + 0.5/EEC_freq)) THEN
       EEC_cnt = EEC_cnt + 1
-      WRITE( Message,'(A,4G10.4)') 'Performing EEC #', EEC_cnt
+      WRITE( Message,'(A,4G11.4)') 'Performing EEC #', EEC_cnt
       CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
       
       EEC_time_0 = EEC_time_0 + 0.5/EEC_freq

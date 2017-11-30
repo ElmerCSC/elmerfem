@@ -549,7 +549,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       IMPLICIT NONE
       
-      CALL Info('PElementMaps::InitializeMappings','Initializing mappings for elements')
+      CALL Info('PElementMaps::InitializeMappings','Initializing mappings for elements',Level=10)
 
       ! Quad edge mappings
       QuadEdgeMap(1,:) = (/ 1,2 /)

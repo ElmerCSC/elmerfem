@@ -121,8 +121,13 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: ipar(*)
     REAL(KIND=dp) :: u(HUTI_NDIM), v(HUTI_NDIM)
+    INTEGER :: i
 !------------------------------------------------------------------------------
-    u = v 
+    !$OMP PARALLEL DO
+    DO i=1,HUTI_NDIM
+       u(i) = v(i)
+    END DO
+    !$OMP END PARALLEL DO
 !------------------------------------------------------------------------------
   END SUBROUTINE pcond_dummy
 !------------------------------------------------------------------------------
@@ -413,7 +418,15 @@ CONTAINS
         IF ( istat /= 0 ) THEN
             CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
         END IF
-        work = real(0,dp)
+        !$OMP PARALLEL PRIVATE(j)
+        DO j=1,wsize
+           !$OMP DO
+           DO i=1,N
+              work(i,j) = real(0,dp)
+           END DO
+           !$OMP END DO
+        END DO
+        !$OMP END PARALLEL
     END IF
 #else
     ALLOCATE( work(N,wsize),stat=istat )
@@ -554,11 +567,11 @@ CONTAINS
                   IF(ASSOCIATED(CM)) THEN
                     DO i=CM % NumberOfRows,1,-1
                       k = i + A % NumberOfRows
-                      CALL List_AddToMatrixElement( PrecMat % ListMatrix,k,k,0._dp)
+                      CALL List_AddMatrixIndex( PrecMat % ListMatrix,k,k)
                       IF(MOD(k,2)==0) THEN
-                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, k, k-1, 0._dp)
+                        CALL List_AddMatrixIndex(PrecMat % ListMatrix, k, k-1)
                       ELSE
-                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, k, k+1, 0._dp)
+                        CALL List_AddMatrixIndex(PrecMat % ListMatrix, k, k+1)
                       END IF
 
                       DO j=CM % Rows(i+1)-1,CM % Rows(i),-1
@@ -574,18 +587,18 @@ CONTAINS
                   k = A % NumberOfRows - A % ExtraDOFs
                   DO i=A % NumberOfRows,1,-1
                     IF(i>k) THEN
-                       CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 0._dp)
+                       CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i)
                        IF(MOD(i,2)==0) THEN
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i-1, 0._dp)
+                         CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i-1)
                        ELSE
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i+1, 0._dp)
+                         CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i+1)
                        END IF
                     ELSE IF (NullEdges) THEN
                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
                        IF(MOD(i,2)==0) THEN
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i-1, 0._dp)
+                         CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i-1)
                        ELSE
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i+1, 0._dp)
+                         CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i+1)
                        END IF
                     END IF
 
@@ -632,8 +645,8 @@ CONTAINS
 
                   IF(ASSOCIATED(CM)) THEN
                     DO i=CM % NumberOfRows,1,-1
-                      CALL List_AddToMatrixElement( PrecMat % ListMatrix, &
-                             i + A % NumberOfRows, i + A % NumberOFrows, 0._dp)
+                      CALL List_AddMatrixIndex( PrecMat % ListMatrix, &
+                             i + A % NumberOfRows, i + A % NumberOFrows)
 
                       DO j=CM % Rows(i+1)-1,CM % Rows(i),-1
                         CALL List_AddToMatrixElement( PrecMat % ListMatrix, &
@@ -648,7 +661,7 @@ CONTAINS
                   k = A % NumberOfRows - A % ExtraDOFs
                   DO i=A % NumberOfRows,1,-1
                     IF(i>k) THEN
-                       CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 0._dp)
+                       CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i)
                     ELSE IF (NullEdges) THEN
                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
                     END IF
