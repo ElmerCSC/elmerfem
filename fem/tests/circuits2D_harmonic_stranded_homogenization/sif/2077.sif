@@ -16,28 +16,15 @@ Simulation 1
    Simulation Type = Steady
    Steady State Max Iterations = 1
    Angular Frequency = 3140.159265359
-   output file = "runoutput.dat"
 End
 Solver 1
-   Exec Solver = Before All
-   Procedure = "DirectionSolver" "DirectionSolver"
-   Linear System Solver = Iterative
-   Linear System Iterative Method = BiCGStab
-   Linear System Max Iterations = 5000
-   Linear System Convergence Tolerance = 1.0e-10
-   Linear System Abort Not Converged = True
-   Linear System Residual Output = 1000
-   Equation = Direction
-   Variable = -nooutput Alpha
-End
-Solver 2
    Exec Solver = Always
    Equation = Circuits
    Variable = X
    No Matrix = Logical True
    Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
 End
-Solver 3
+Solver 2
    Exec Solver = Always
    Equation = "Mag"
    Variable = A[A re:1 A im:1]
@@ -58,7 +45,7 @@ Solver 3
    BicgStabL Polynomial Degree = 4
    Steady State Convergence Tolerance = 1e-06
 End
-Solver 4
+Solver 3
    Equation = CompB
    Variable = -nooutput temp
    Exported Variable 1 = B[B re:2 B im:2]
@@ -77,21 +64,21 @@ Solver 4
    Linear System Convergence Tolerance = 1e-6
    Linear System Residual Output = 1000
 End
-Solver 5
-   Exec Solver = After timestep
-!   Exec Solver = Never
+Solver 4
+!   Exec Solver = After timestep
+   Exec Solver = Never
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
    Output File Name = 2077-results_1e2
    Vtu format = Logical True
    Save Geometry Ids = Logical True
 End
-Solver 6
+Solver 5
    Exec Solver = Always
    Equation = Circuits Output
    Procedure = "CircuitsAndDynamics" "CircuitsOutput"
 End
-Solver 7
+Solver 6
 !   Exec Solver = Always
    Exec Solver = Never
    Equation = "sv"
@@ -99,10 +86,10 @@ Solver 7
    Filename = 2077/dat/2077.dat
 End
 Equation 1
-   Active Solvers(3) = 2 3 4
+   Active Solvers(2) = 2 3
 End
 Equation 2
-   Active Solvers(4) = 1 2 3 4
+   Active Solvers(3) = 1 2 3
 End
 Material 1
    Name = iron
@@ -172,7 +159,7 @@ Boundary Condition 2
    Infinity BC = Logical True
 End
 
-Solver 3 :: Reference Norm = Real 1.22351164E-04
+Solver 2 :: Reference Norm = Real 1.22351164E-04
+Solver 2 :: Reference Norm Tolerance = Real 1E-03
+Solver 3 :: Reference Norm = Real 8.36768008E-09
 Solver 3 :: Reference Norm Tolerance = Real 1E-03
-Solver 4 :: Reference Norm = Real 8.36768008E-09
-Solver 4 :: Reference Norm Tolerance = Real 1E-03
