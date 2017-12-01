@@ -6616,6 +6616,12 @@ CONTAINS
     
     Params => Solver % Values
 
+    IF(.NOT. ASSOCIATED( A % ConstrainedDOF ) ) THEN
+      CALL Info('EnforceDirichletConditions',&
+          'ConstrainedDOF not associated, returning...',Level=8)
+    END IF
+
+    
     IF( PRESENT( OffDiagonal ) ) THEN
       NoDiag = OffDiagonal
     ELSE
