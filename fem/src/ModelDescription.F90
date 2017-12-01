@@ -5197,7 +5197,7 @@ END SUBROUTINE GetNodalElementSize
 
    CALL Info('FreeModel','Freeing solvers',Level=15)  
    DO i=1,Model % NumberOfSolvers
-     CALL Info('FreeModel','Solver: '//TRIM(I2S(i)),Level=32)
+     CALL Info('FreeModel','Solver: '//TRIM(I2S(i)),Level=20)
      CALL FreeSolver(Model % Solvers(i))
    END DO
    DEALLOCATE(Model % Solvers)

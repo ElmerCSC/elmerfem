@@ -895,7 +895,7 @@ CONTAINS
       END DO
 
       bnorm = SQRT( SUM( rhs**2 ) / n )
-      BlockMatrix % SubVector(NoCol) % bnorm = bnorm
+      BlockMatrix % SubVector(NoRow) % bnorm = bnorm
       
       ! Finally duduct the diagonal entry so that we can solve for the residual
       NoCol = NoRow
