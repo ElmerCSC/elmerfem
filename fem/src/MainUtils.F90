@@ -1387,7 +1387,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
     LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal, EigAnal, &
-         VariableOutput, MGAlgebraic,MultigridActive
+         VariableOutput, MGAlgebraic,MultigridActive, HarmonicMode
     INTEGER :: MgLevels, AllocStat
     REAL(KIND=dp), POINTER :: Component(:)
     REAL(KIND=dp), POINTER :: freqv(:,:)
@@ -1485,6 +1485,8 @@ CONTAINS
 
 
     HarmonicAnal = ListGetLogical( Solver % Values, 'Harmonic Analysis', Found )
+
+    HarmonicMode = ListGetLogical( Solver % Values, 'Harmonic Mode', Found )
     
     IF ( ASSOCIATED( Solver % Matrix ) ) THEN
       IF(.NOT. ASSOCIATED(Solver % Matrix % RHS)) THEN
@@ -1493,7 +1495,7 @@ CONTAINS
         Solver % Matrix % RHS = 0.0d0
         
         Solver % Matrix % RHS_im => NULL()
-        IF ( HarmonicAnal ) THEN
+        IF ( HarmonicAnal .OR. HarmonicMode ) THEN
           ALLOCATE( Solver % Matrix % RHS_im(Solver % Matrix % NumberOFRows), STAT=AllocStat)
           IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Rhs_im')                  
           Solver % Matrix % RHS_im = 0.0d0
@@ -1696,6 +1698,13 @@ CONTAINS
         ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
         IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
         Solver % Matrix % MassValues = 0.0d0
+
+      ELSE IF( HarmonicMode ) THEN
+
+        ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
+        Solver % Matrix % MassValues = 0.0d0        
+
       END IF
     END IF
 

@@ -1,24 +1,18 @@
-! This is test case for static GCR coupled fluid-structure-interaction
+! This is test case for harmonic GCR coupled fluid-structure-interaction
 !
 ! A "shoebox" with an elastic lid is being pressed with a force that causes
 ! the box to shrink in size. As an effect there is a counterforce due to ideal
 ! gas acting as a spring to the other direction.
 !
-! The static ideal gas is implemented as a suitable choice of coefficient in ModelPDE.
-! For the elasticity equation the displacement is solved in static mode.
+! The harmonic gas is presented by the Helmholtz eequation.
+! For the elasticity equation the stress solver is used in a harmonic mode.
+! Still the system of equations is solved as a real system, for now.
 !
-! P.R. 29.11.2017
-
-
+! P.R. 1.12.2017
 
 
 $ AirDensity = 1.21
 $ SoundSpeed = sqrt( 1.402 * 0.402 * 716 * 293)
-$ P0 = 1.013e5
-
-! equilibrium pressure inverse
-$RC = 1.0/P0
-$DC = 1.0e5*RC
 
 
 Header
@@ -29,13 +23,15 @@ Constants
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
   Steady State Max Iterations = 1
 
-  Post File = "static.vtu"
+  Post File = "harm.vtu"
+
+  Frequency = 1000.0
 End
 
 Body 1
@@ -57,9 +53,6 @@ End
 Material 1
   Density = Real $ AirDensity
   Sound Speed = $ SoundSpeed
-
-  Diffusion Coefficient = $DC
-  Reaction Coefficient = $RC
 End
 
 Material 2
@@ -81,19 +74,17 @@ End
 Solver 1
 !  Exec Solver = never
 
+
   Use Density = Logical True
 
-  Equation = "Container"
-  Procedure = "ModelPDE" "AdvDiffSolver"
-  Variable = P
+  Equation = "Helmholtz"
+  Variable = Pressure[Pressure Re:1 Pressure Im:1]
 
-  Linear System Solver = String "iterative"
-  Linear System Iterative Method = String BiCGStabl
-  Linear System Max Iterations = Integer 500
-  Linear System Convergence Tolerance = Real 1.0e-10
-  Linear System Preconditioning = String ILU1
-  Linear System Residual Output = 10
-!  Steady State Convergence Tolerance = 1.0e-0
+  Procedure = "HelmholtzSolve" "HelmholtzSolver" 
+
+  Linear System Solver = Direct
+
+  Linear System Direct Method = umfpack
 
 ! The index of the fluid and structure solver must be given now
   Fluid Solver Index = Integer 1
@@ -110,9 +101,10 @@ Solver 1
 ! Could probably be called also otherwise as far as before. 
   Pre Solvers(1) = 2
   
-  Linear System Block Method = String "other"
+
+!  Linear System Block Method = String "other"
   Outer: Linear System Solver = string "Iterative"
-  Outer: Linear System Convergence Tolerance = real 1e-4
+  Outer: Linear System Convergence Tolerance = real 1e-6
   Outer: Linear System Iterative Method = string GCR
   Outer: Linear System GCR Restart = Integer 50
   Outer: Linear System Residual Output = integer 1
@@ -130,6 +122,7 @@ Solver 1
 
 ! First coupling only works in real mode
   Linear System Complex = False
+
 End
 
 
@@ -138,6 +131,8 @@ Solver 2
   Equation = Navier Solver
 
   Variable = -dofs 3 U
+  Variable Output = False
+
 
   Procedure = "StressSolve" "StressSolver"
   Linear System Solver = Direct
@@ -153,6 +148,9 @@ Solver 2
 
 ! First coupling only works in real mode
   Linear System Complex = False
+
+
+  Harmonic Mode = Logical True
 End
 
 
@@ -161,19 +159,19 @@ Solver 3
   Equation = "SaveScalars"
   Procedure = File "SaveData" "SaveScalars"
 
-  Variable 1 = U 3
+  Variable 1 = U re 3
   Operator 1 = min 
   Operator 2 = max 
   Operator 3 = int mean
 
-  Variable 4 = P
+  Variable 4 = Pressure Re
   Operator 4 = min
   Operator 5 = max
   Operator 6 = int mean
 
-  Filename = static.dat
+  Filename = harm.dat
 
-  File Append = Logical True
+!  File Append = Logical True
 End
 
 
@@ -189,8 +187,6 @@ End
 Boundary Condition 2
   Target Boundaries(1) = 5
   Name = "Bottom"
-
-!  field flux = Real 0.005 ! should result to 0.1*P0 pressure
 End 
 
 Boundary Condition 3
@@ -208,5 +204,5 @@ Boundary Condition 4
 End
 
 
-Solver 1 :: reference norm = 2.50528396E+03
-Solver 2 :: reference norm = 2.81463522E-09
+Solver 1 :: reference norm = 4.14624185E+03
+Solver 2 :: reference norm = 4.59712176E-10

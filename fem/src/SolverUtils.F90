@@ -12452,10 +12452,10 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   LOGICAL :: stat, Found, OptimizeBW, Real_given, Imag_given
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
   REAL(KIND=dp) :: Omega, s
-  REAL(KIND=dp), POINTER :: b(:)
+  REAL(KIND=dp), POINTER :: b(:), ImVarVals(:), ReVarVals(:)
   REAL(KIND=dp) :: frequency
   TYPE(ValueList_t), POINTER :: BC
-  TYPE(Variable_t), POINTER :: ReVar, ImVar, TotVar, SaveVar
+  TYPE(Variable_t), POINTER :: SaveVar, ReVar, ImVar, TotVar, TmpVar
   LOGICAL :: ToReal, ToHarmonic
 
   SAVE ImVar, TotVar, ReVar, SaveVar, SaveMatrix
@@ -12472,11 +12472,10 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     CALL Info('ChangeToHarmonicSystem','Changing the real transient system to harmonic one!',Level=5)
 
     SaveMatrix => Solver % Matrix
-    SaveVar => Solver % Variable
-    ReVar => Solver % Variable 
+    SaveVar => Solver % Variable 
 
     n = Solver % Matrix % NumberofRows
-    DOFs = ReVar % Dofs
+    DOFs = SaveVar % Dofs
 
     CALL Info('ChangeToHarmonicSystem','Number of real system rows: '//TRIM(I2S(n)),Level=16)
     
@@ -12587,20 +12586,32 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     
     ! Create the new fields, the total one and the imaginary one
     !-------------------------------------------------------------
-    Name = TRIM( ReVar % Name )//' complex'
+    Name = TRIM( SaveVar % Name )//' complex'
     TotVar => VariableGet( Solver % Mesh % Variables, Name )
     IF(.NOT. ASSOCIATED( TotVar ) ) THEN
       CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
-          Name,2*DOFs,Perm=ReVar % Perm,Output=.FALSE.,Secondary=.TRUE.)
+          Name,2*DOFs,Perm=SaveVar % Perm,Output=.FALSE.,Secondary=.TRUE.)
       TotVar => VariableGet( Solver % Mesh % Variables, Name )
-    END IF
-
-    Name = TRIM( ReVar % Name )//' im'
-    ImVar => VariableGet( Solver % Mesh % Variables, Name )
-    IF( .NOT. ASSOCIATED( ImVar ) ) THEN    
+      
+      Name = TRIM( SaveVar % Name )//' re'
+      ReVarVals => TotVar % Values(1::2)    
       CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
-          Name,DOFs,Perm=ReVar % Perm,Output=.TRUE.,Secondary=.TRUE.)
-      ImVar => VariableGet( Solver % Mesh % Variables, Name )
+          Name,DOFs,ReVarVals,Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)
+
+      Name = TRIM( SaveVar % Name )//' im'
+      ImVarVals => TotVar % Values(2::2)    
+      CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
+          Name,DOFs,ImVarVals,Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)
+
+      ! We replace the initial field to be outputted with the Re and Im components
+      !IF( SaveVar % Dofs > 1 ) THEN
+      !  DO j=1, SaveVar % Dofs
+      !    Name = ComponentName( SaveVar % Name, j )
+      !    TmpVar => VariableGet( Solver % Mesh % Variables, Name )
+      !    IF( ASSOCIATED( TmpVar ) ) TmpVar % Output = .FALSE.
+      !  END DO
+      !END IF        
+      !SaveVar % Output = .FALSE.
     END IF
     
     ! Now change the pointers such that when we visit the linear solver
@@ -12611,9 +12622,8 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   ELSE
     CALL Info('ChangeToHarmonicSystem','Changing the harmonic results to real system!',Level=5)
    
-    ReVar % Values = TotVar % Values(1::2)
-    ImVar % Values = TotVar % Values(2::2)
-        
+    SaveVar % Values = TotVar % Values(1::2)
+
     Solver % Variable => SaveVar
     Solver % Matrix => SaveMatrix   
   END IF
@@ -14004,7 +14014,7 @@ CONTAINS
     REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area
     LOGICAL :: Stat, IsHarmonic
     INTEGER :: dim,mat_id,tcount
-    LOGICAL :: FreeF, FreeS, Found
+    LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, Found
     REAL(KIND=dp) :: MultSF, MultFS
     
     
@@ -14017,7 +14027,7 @@ CONTAINS
     fdofs = FVar % Dofs
     sdofs = SVar % Dofs
 
-    ! Here we assume harmonic coupling
+    ! Here we assume harmonic coupling if there are more then 3 structure dofs
     IF( sdofs > 3 ) THEN
       IsHarmonic = .TRUE.
       dim = sdofs / 2
@@ -14063,8 +14073,8 @@ CONTAINS
     MultSF = ListGetCReal( Solver % Values,'SF multiplier',Found)
     IF( .NOT. Found ) MultSF = 1.0_dp
     
-    FreeS = .TRUE.
-    FreeF = .TRUE.
+    FreeS = .TRUE.; FreeSim = .TRUE.
+    FreeF = .TRUE.; FreeFim = .TRUE.    
     
     
     DO t=Mesh % NumberOfBulkElements+1, &
@@ -14162,10 +14172,18 @@ CONTAINS
 
         IF( IsHarmonic ) THEN
           ifluid = 2*FPerm(ii)-1                  
+          IF( ASSOCIATED( ConstrainedF ) ) THEN
+            FreeF = .NOT. ConstrainedF(ifluid)
+            FreeFim = .NOT. ConstrainedF(ifluid+1)            
+          END IF     
         ELSE
           ifluid = FPerm(ii)
+          IF( ASSOCIATED( ConstrainedF ) ) THEN
+            FreeF = .NOT. ConstrainedF(ifluid)
+          END IF
         END IF
-          
+     
+        
         DO j=1,n
           jj = Indexes(j)
           val = MASS(i,j)
@@ -14176,14 +14194,44 @@ CONTAINS
 
             IF( IsHarmonic ) THEN
               jstruct = 2*dim*(SPerm(jj)-1)+2*(k-1)+1  
-
+              
+              IF( ASSOCIATED( ConstrainedS ) ) THEN
+                FreeS = .NOT. ConstrainedS(jstruct)
+                FreeSim = .NOT. ConstrainedS(jstruct+1)
+              END IF
+                                          
               ! Fluid load on the structure: tau \cdot n = p * n
-              CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           ! Re terms coupling
-              CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,MultSF*val)       ! Im
+              IF( FreeS ) THEN
+                CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           ! Re terms coupling
+              ELSE
+                CALL AddToMatrixElement(A_sf,jstruct,ifluid,0.0_dp)
+              END IF
 
+              IF( FreeSim ) THEN
+                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,MultSF*val)       ! Im
+              ELSE
+                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp) 
+              END IF                
+                
               ! Structure load on the fluid: dp/dn = -rho*omega^2*n
-              CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
-              CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
+              IF( FreeF ) THEN
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
+              ELSE
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
+              END IF
+
+              IF( FreeFim ) THEN
+                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
+              ELSE                
+                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
+              END IF
+                
+              ! These must be created for compleness bacause the matrix topology of complex
+              ! matrices must be the same for all compoents.
+              CALL AddToMatrixElement(A_sf,jstruct,ifluid+1,0.0_dp)
+              CALL AddToMatrixElement(A_sf,jstruct+1,ifluid,0.0_dp)            
+              CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
+              CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
             ELSE
               jstruct = dim*(SPerm(jj)-1)+k
 
@@ -14196,10 +14244,6 @@ CONTAINS
                 CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           
               END IF
 
-              IF( ASSOCIATED( ConstrainedF ) ) THEN
-                FreeF = .NOT. ConstrainedF(ifluid)
-              END IF
-                           
               ! Structure load on the fluid: dp/dn = -u
               IF( FreeF ) THEN
                 CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           

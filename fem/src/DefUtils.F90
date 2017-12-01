@@ -2865,12 +2865,7 @@ CONTAINS
     Solver => CurrentModel % Solver
     Norm = REAL(0, dp)
     IF ( PRESENT( USolver ) ) Solver => USolver
-    
-    IF( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) THEN
-      CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
-      RETURN
-    END IF
-      
+
     Params => GetSolverParams(Solver)
     
     NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
@@ -2909,6 +2904,14 @@ CONTAINS
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
 
+    
+    IF( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) THEN
+      CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
+      RETURN
+    END IF
+    
+
+    
     CALL Info('DefaultSolve','Calling SolveSystem for linear solution',Level=20)
 
     A => Solver % Matrix
