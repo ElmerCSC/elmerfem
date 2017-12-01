@@ -13993,13 +13993,15 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Assemble coupling matrix related to fluid-structure interaction
 !------------------------------------------------------------------------------
-  SUBROUTINE FsiCouplingAssembly( Solver, FVar, SVar, A_fs, A_sf, ConstrainedF, ConstrainedS )
+  SUBROUTINE FsiCouplingAssembly( Solver, FVar, SVar, A_fs, A_sf, &
+      ConstrainedF, ConstrainedS, IsPlate )
     
     TYPE(Solver_t) :: Solver          ! leading solver
     TYPE(Variable_t), POINTER :: FVar ! fluid variable
     TYPE(Variable_t), POINTER :: SVar ! structure variable
     TYPE(Matrix_t), POINTER :: A_fs, A_sf
     LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
+    LOGICAL :: IsPlate
     !------------------------------------------------------------------------------
     INTEGER, POINTER :: FPerm(:), SPerm(:)
     INTEGER :: FDofs, SDofs
@@ -14027,6 +14029,9 @@ CONTAINS
     fdofs = FVar % Dofs
     sdofs = SVar % Dofs
 
+    IF( IsPlate ) CALL Info('FsiCouplingAssembly','Assuming structure to be plate',Level=8)
+
+    
     ! Here we assume harmonic coupling if there are more then 3 structure dofs
     IF( sdofs > 3 ) THEN
       IsHarmonic = .TRUE.
@@ -14170,6 +14175,7 @@ CONTAINS
       DO i=1,n
         ii = Indexes(i)
 
+        ! The pressure component of the fluid
         IF( IsHarmonic ) THEN
           ifluid = 2*FPerm(ii)-1                  
           IF( ASSOCIATED( ConstrainedF ) ) THEN
@@ -14187,19 +14193,90 @@ CONTAINS
         DO j=1,n
           jj = Indexes(j)
           val = MASS(i,j)
-                   
-          DO k=1,dim
 
-            val = MASS(i,j) * Normal(k)
 
+          IF( .NOT. IsPlate ) THEN
+            
+            DO k=1,dim
+
+              val = MASS(i,j) * Normal(k)
+
+              IF( IsHarmonic ) THEN
+                jstruct = 2*dim*(SPerm(jj)-1)+2*(k-1)+1  
+
+                IF( ASSOCIATED( ConstrainedS ) ) THEN
+                  FreeS = .NOT. ConstrainedS(jstruct)
+                  FreeSim = .NOT. ConstrainedS(jstruct+1)
+                END IF
+
+                ! Fluid load on the structure: tau \cdot n = p * n
+                IF( FreeS ) THEN
+                  CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           ! Re terms coupling
+                ELSE
+                  CALL AddToMatrixElement(A_sf,jstruct,ifluid,0.0_dp)
+                END IF
+
+                IF( FreeSim ) THEN
+                  CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,MultSF*val)       ! Im
+                ELSE
+                  CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp) 
+                END IF
+
+                ! Structure load on the fluid: dp/dn = -rho*omega^2*n
+                IF( FreeF ) THEN
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
+                ELSE
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
+                END IF
+
+                IF( FreeFim ) THEN
+                  CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
+                ELSE                
+                  CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
+                END IF
+
+                ! These must be created for compleness bacause the matrix topology of complex
+                ! matrices must be the same for all compoents.
+                CALL AddToMatrixElement(A_sf,jstruct,ifluid+1,0.0_dp)
+                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid,0.0_dp)            
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
+                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
+              ELSE
+                jstruct = dim*(SPerm(jj)-1)+k
+
+                IF( ASSOCIATED( ConstrainedS ) ) THEN
+                  FreeS = .NOT. ConstrainedS(jstruct)
+                END IF
+
+                ! Fluid load on the structure: tau \cdot n = p * n
+                IF( FreeS ) THEN
+                  CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           
+                END IF
+
+                ! Structure load on the fluid: dp/dn = -u
+                IF( FreeF ) THEN
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
+                END IF
+              END IF
+            END DO              
+
+          ELSE ! If IsPlate
+
+
+            val = MASS(i,j) 
+
+            ! By default the plate should be oriented so that normal points to z
+            ! If there is a plate then fluid is always 3D
+            IF( Normal(3) < 0 ) val = -val
+            
             IF( IsHarmonic ) THEN
-              jstruct = 2*dim*(SPerm(jj)-1)+2*(k-1)+1  
-              
+              jstruct = 2*dim*(SPerm(jj)-1)+1
+
               IF( ASSOCIATED( ConstrainedS ) ) THEN
                 FreeS = .NOT. ConstrainedS(jstruct)
                 FreeSim = .NOT. ConstrainedS(jstruct+1)
               END IF
-                                          
+
               ! Fluid load on the structure: tau \cdot n = p * n
               IF( FreeS ) THEN
                 CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           ! Re terms coupling
@@ -14211,8 +14288,8 @@ CONTAINS
                 CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,MultSF*val)       ! Im
               ELSE
                 CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp) 
-              END IF                
-                
+              END IF
+
               ! Structure load on the fluid: dp/dn = -rho*omega^2*n
               IF( FreeF ) THEN
                 CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
@@ -14225,7 +14302,7 @@ CONTAINS
               ELSE                
                 CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
               END IF
-                
+
               ! These must be created for compleness bacause the matrix topology of complex
               ! matrices must be the same for all compoents.
               CALL AddToMatrixElement(A_sf,jstruct,ifluid+1,0.0_dp)
@@ -14233,7 +14310,7 @@ CONTAINS
               CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
               CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
             ELSE
-              jstruct = dim*(SPerm(jj)-1)+k
+              jstruct = dim*(SPerm(jj)-1)+1
 
               IF( ASSOCIATED( ConstrainedS ) ) THEN
                 FreeS = .NOT. ConstrainedS(jstruct)
@@ -14243,14 +14320,14 @@ CONTAINS
               IF( FreeS ) THEN
                 CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           
               END IF
-
+              
               ! Structure load on the fluid: dp/dn = -u
               IF( FreeF ) THEN
                 CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
               END IF
-            END IF
+            END IF            
 
-          END DO
+          END IF
           
         END DO
       END DO
