@@ -525,11 +525,6 @@ END INTERFACE
    INTEGER, PARAMETER :: Variable_on_faces  = 2
    INTEGER, PARAMETER :: Variable_on_nodes_on_elements   = 3
 
-!  TYPE Variable_Component_t
-!     CHARACTER(LEN=MAX_NAME_LEN) :: Name
-!     INTEGER :: DOFs, Type
-!  END TYPE Variable_Component_t
-
    TYPE Variable_t
      TYPE(Variable_t), POINTER   :: Next => NULL()
      INTEGER :: NameLen = 0
@@ -840,6 +835,8 @@ END INTERFACE
     INTEGER :: polord, nofcnts, BodyId, ComponentId
     INTEGER, POINTER :: ElBoundaries(:) => Null()
     INTEGER, POINTER :: BodyIds(:) => Null()
+    INTEGER, POINTER :: OwnerElementCounts(:) => Null()
+    INTEGER :: nofpartitions
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
     LOGICAL :: UseCoilResistance = .FALSE.

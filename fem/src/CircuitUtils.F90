@@ -1072,6 +1072,64 @@ MODULE CircMatInitMod
 CONTAINS
 
 !------------------------------------------------------------------------------
+   SUBROUTINE CountCompOwnerElCounts()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Circuit_t), POINTER :: Circuits(:)
+    TYPE(CircuitVariable_t), POINTER :: Cvar
+    TYPE(Solver_t), POINTER :: ASolver
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Component_t), POINTER :: Comp
+    INTEGER :: p, n_Circuits, CompInd, j
+    INTEGER :: cnt(ParEnv%PEs), r_cnt(ParEnv%PEs)
+    INTEGER, POINTER :: OwnerElCounts(:)=>Null()
+    LOGICAL :: visited = .FALSE.
+    SAVE :: visited
+    
+    IF ( visited ) RETURN
+    visited = .TRUE.
+
+    Circuits => CurrentModel % Circuits
+    n_Circuits = CurrentModel % n_Circuits
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CountCompOwnerElCounts','ASolver not found!')
+    DO p=1,n_Circuits
+      DO CompInd=1,Circuits(p) % n_comp
+        Comp => Circuits(p) % Components(CompInd)
+        ALLOCATE(Comp % OwnerElementCounts(ParEnv % PEs))
+        OwnerElCounts => Comp % OwnerElementCounts
+        OwnerElCounts = 0
+        cnt=0
+
+        IF(ASSOCIATED(Comp)) THEN
+          DO j=1,GetNOFACtive()
+             Element => GetActiveElement(j)
+               IF(ElAssocToComp(Element, Comp)) THEN
+                 cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
+               END IF
+          END DO
+        END IF
+
+!        print *, "mype", ParEnv % mype
+!        print *, "Comp", CompInd
+!        print *, "cnt", cnt
+
+        CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
+                MPI_MAX,ASolver % Matrix % Comm,j)
+
+        OwnerElCounts = r_cnt
+
+        Comp % nofpartitions = COUNT(r_cnt>0)
+!        print *, "nof_partitions", Comp % nofpartitions
+
+      END DO
+    END DO
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountCompOwnerElCounts
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
    SUBROUTINE SetCircuitsParallelInfo()
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -1084,6 +1142,8 @@ CONTAINS
                cnt(Parenv % PEs), r_cnt(ParEnv % PEs), &
                RowId, nn, l, k, n_Circuits
     
+    CALL CountCompOwnerElCounts()
+
     CM => CurrentModel%CircuitMatrix
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('SetCircuitsParallelInfo','ASolver not found!')
