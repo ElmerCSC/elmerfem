@@ -14000,14 +14000,14 @@ CONTAINS
 !> Assemble coupling matrix related to fluid-structure interaction
 !------------------------------------------------------------------------------
   SUBROUTINE FsiCouplingAssembly( Solver, FVar, SVar, A_fs, A_sf, &
-      ConstrainedF, ConstrainedS, IsPlate )
+      ConstrainedF, ConstrainedS, IsPlate, IsShell )
     
     TYPE(Solver_t) :: Solver          ! leading solver
     TYPE(Variable_t), POINTER :: FVar ! fluid variable
     TYPE(Variable_t), POINTER :: SVar ! structure variable
     TYPE(Matrix_t), POINTER :: A_fs, A_sf
     LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
-    LOGICAL :: IsPlate
+    LOGICAL :: IsPlate, IsShell
     !------------------------------------------------------------------------------
     INTEGER, POINTER :: FPerm(:), SPerm(:)
     INTEGER :: FDofs, SDofs
@@ -14037,15 +14037,36 @@ CONTAINS
 
     IF( IsPlate ) CALL Info('FsiCouplingAssembly','Assuming structure to be plate',Level=8)
 
+    IF( IsShell ) CALL Info('FsiCouplingAssembly','Assuming structure to be shell',Level=8)
+
     
     ! Here we assume harmonic coupling if there are more then 3 structure dofs
-    IF( sdofs > 3 ) THEN
-      IsHarmonic = .TRUE.
-      dim = sdofs / 2
+    dim = 3
+    IsHarmonic = .FALSE.
+    IF( IsPlate ) THEN
+      IF( sdofs == 6 ) THEN
+        IsHarmonic = .TRUE.
+      ELSE IF( sdofs /= 3 ) THEN
+        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in plate solver: '//TRIM(I2S(sdofs)))
+      END IF
+    ELSE IF( IsShell ) THEN
+      IF( sdofs == 12 ) THEN
+        IsHarmonic = .TRUE.
+      ELSE IF( sdofs /= 6 ) THEN
+        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in shell solver: '//TRIM(I2S(sdofs)))
+      END IF
+    ELSE
+      IF( sdofs == 4 .OR. sdofs == 6 ) THEN
+        IsHarmonic = .TRUE.
+      ELSE IF( sdofs /= 2 .AND. sdofs /= 3 ) THEN
+        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in shell solver: '//TRIM(I2S(sdofs)))
+      END IF
+      IF( sdofs == 4 .OR. sdofs == 2 ) dim = 2
+    END IF
+
+    IF( IsHarmonic ) THEN
       CALL Info('FsiCouplingAssembly','Assuming harmonic coupling matrix',Level=10)
     ELSE
-      IsHarmonic = .FALSE.
-      dim = sdofs
       CALL Info('FsiCouplingAssembly','Assuming real valued coupling matrix',Level=10)
     END IF
 
@@ -14208,7 +14229,7 @@ CONTAINS
               val = MASS(i,j) * Normal(k)
 
               IF( IsHarmonic ) THEN
-                jstruct = 2*dim*(SPerm(jj)-1)+2*(k-1)+1  
+                jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
 
                 IF( ASSOCIATED( ConstrainedS ) ) THEN
                   FreeS = .NOT. ConstrainedS(jstruct)
@@ -14248,7 +14269,7 @@ CONTAINS
                 CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
                 CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
               ELSE
-                jstruct = dim*(SPerm(jj)-1)+k
+                jstruct = sdofs*(SPerm(jj)-1)+k
 
                 IF( ASSOCIATED( ConstrainedS ) ) THEN
                   FreeS = .NOT. ConstrainedS(jstruct)
@@ -14266,6 +14287,32 @@ CONTAINS
               END IF
             END DO              
 
+          ELSE IF( IsShell ) THEN
+
+            DO k=1,dim
+            
+              IF( IsHarmonic ) THEN
+                CALL Fatal('FsiCouplingAssembly','Not coded for harmonic shells yet!')
+              ELSE
+                jstruct = sdofs*(SPerm(jj)-1)+k
+
+                IF( ASSOCIATED( ConstrainedS ) ) THEN
+                  FreeS = .NOT. ConstrainedS(jstruct)
+                END IF
+
+                ! Fluid load on the structure: tau \cdot n = p * n
+                IF( FreeS ) THEN
+                  CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           
+                END IF
+
+                ! Structure load on the fluid: dp/dn = -u
+                IF( FreeF ) THEN
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
+                END IF
+              END IF
+            
+            END DO
+              
           ELSE ! If IsPlate
 
 
@@ -14276,7 +14323,7 @@ CONTAINS
             IF( Normal(3) < 0 ) val = -val
             
             IF( IsHarmonic ) THEN
-              jstruct = 2*dim*(SPerm(jj)-1)+1
+              jstruct = sdofs*(SPerm(jj)-1)+1
 
               IF( ASSOCIATED( ConstrainedS ) ) THEN
                 FreeS = .NOT. ConstrainedS(jstruct)
@@ -14316,7 +14363,7 @@ CONTAINS
               CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
               CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
             ELSE
-              jstruct = dim*(SPerm(jj)-1)+1
+              jstruct = sdofs*(SPerm(jj)-1)+1
 
               IF( ASSOCIATED( ConstrainedS ) ) THEN
                 FreeS = .NOT. ConstrainedS(jstruct)

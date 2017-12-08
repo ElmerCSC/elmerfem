@@ -781,16 +781,21 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A_fs, A_sf
     TYPE(Variable_t), POINTER :: FVar, SVar
     LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
-    LOGICAL :: IsPlate
+    LOGICAL :: IsPlate, IsShell
     
     Params => Solver % Values
 
     IsPlate = .FALSE.
+    IsShell = .FALSE.
+    
     i = ListGetInteger( Params,'Structure Solver Index',Found)
     IF( .NOT. Found ) THEN
       i = ListGetInteger( Params,'Plate Solver Index',IsPlate)
+      IF(.NOT. IsPlate ) THEN
+        i = ListGetInteger( Params,'Shell Solver Index',IsShell)
+      END IF
     END IF
-
+      
     j = ListGetInteger( Params,'Fluid Solver Index',Found)
     
     IF(i<=0 .OR. j<=0) THEN
@@ -823,7 +828,7 @@ CONTAINS
     END IF
         
     CALL FsiCouplingAssembly( Solver, FVar, SVar, A_fs, A_sf, &
-        ConstrainedF, ConstrainedS, IsPlate )
+        ConstrainedF, ConstrainedS, IsPlate, IsShell )
 
   END SUBROUTINE FsiCouplingBlocks
     
