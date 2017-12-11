@@ -63,7 +63,7 @@
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
-SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
+SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -102,14 +102,14 @@ SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
           "Exported Variable "//TRIM(i2s(i))) ) EXIT
       i = i + 1
     END DO
-    CALL ListAddString( SolverPars, "Exported Variable "//TRIM(i2s(i)), &
-        "Principal Coordinate Dir1[Principal Coordinate Dir1:3]" )  
+    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+        "Principal Coordinate Dir1[Principal Coordinate Dir1:3]")  
     i = i + 1
-    CALL ListAddString( SolverPars, "Exported Variable "//TRIM(i2s(i)), &
-        "Principal Coordinate Dir2[Principal Coordinate Dir2:3]" )
+    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+        "Principal Coordinate Dir2[Principal Coordinate Dir2:3]")
     i = i + 1
-    CALL ListAddString( SolverPars, "Exported Variable "//TRIM(i2s(i)), &
-        "Principal Coordinate Dir3[Principal Coordinate Dir3:3]" )  
+    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+        "Principal Coordinate Dir3[Principal Coordinate Dir3:3]")  
   END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver_Init
@@ -117,7 +117,7 @@ END SUBROUTINE ShellSolver_Init
 
 
 !------------------------------------------------------------------------------
-SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
+SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
   USE ElementDescription
@@ -220,7 +220,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! ---------------------------------------------------------------------------------
   Mesh => GetMesh()
   SolverPars => GetSolverParams()
-  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found )  
+  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
 
   ! ---------------------------------------------------------------------------------
   ! The number of unknown fields in the shell model:
@@ -228,7 +228,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=6)
 
   ! ---------------------------------------------------------------------------------
-  ! The choice of strain reduction method. Now only the automated default is active:
+  ! The choice of strain reduction method. Now only the automated default is active.
+  ! Alter to experiment with other methods.
   ! ---------------------------------------------------------------------------------
   StrainReductionMethod = ListGetInteger(SolverPars, 'Strain Reduction Operator', &
       Found, minv=0,maxv=4)
@@ -236,8 +237,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   MembraneStrainReductionMethod = ListGetInteger(SolverPars, 'Membrane Strain Reduction Operator', &
       Found, minv=0,maxv=4)
   IF (.NOT.Found) MembraneStrainReductionMethod = StrainReductionMethod
-  ! Set the default choice of strain reduction method active (comment the following 
-  ! lines out to experiment with other methods):
+
   IF (MembraneStrainReductionMethod /= NoStrainReduction) &
       MembraneStrainReductionMethod = AutomatedChoice
   IF (StrainReductionMethod /= NoStrainReduction) &
@@ -252,9 +252,9 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   !-----------------------------------------------------------------------------------
   SavePrincipalAxes = GetLogical(SolverPars, 'Principal Axes Output', Found)
   IF (SavePrincipalAxes) THEN
-    NodalPDir1 => VariableGet( Mesh % Variables, 'Principal Coordinate Dir1')
-    NodalPDir2 => VariableGet( Mesh % Variables, 'Principal Coordinate Dir2')
-    NodalPDir3 => VariableGet( Mesh % Variables, 'Principal Coordinate Dir3')
+    NodalPDir1 => VariableGet(Mesh % Variables, 'Principal Coordinate Dir1')
+    NodalPDir2 => VariableGet(Mesh % Variables, 'Principal Coordinate Dir2')
+    NodalPDir3 => VariableGet(Mesh % Variables, 'Principal Coordinate Dir3')
     NodalPDir1 % Values = 0.0d0
     NodalPDir2 % Values = 0.0d0
     NodalPDir3 % Values = 0.0d0
@@ -273,9 +273,9 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     ALLOCATE( TotalSol(SIZE(Solver % Variable % Values)) )
   ELSE
     IF (MeshDisplacementActive) THEN
-      CALL Info('ShellSolver','Returning the mesh to its reference position',Level=4)     
+      CALL Info('ShellSolver','Returning the mesh to its reference position', Level=4)     
       CALL DisplaceMesh(Mesh, Solver % Variable % Values, -1, Solver % Variable % Perm, &
-         ShellModelPar, .FALSE., 3 )      
+         ShellModelPar, .FALSE., 3)      
     END IF
   END IF
     
@@ -414,7 +414,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
         CALL LinesOfCurvatureFrame(BGElement, TaylorApproximation=.TRUE., &
             LagrangeNodes=LocalFrameNodes, d=d, PlanarSurface=PlateBody, &
             PlanarPoint=PlanarPoint, UmbilicalPoint=UmbilicalPoint, &
-            MacroElement=MacroElements, SaveProperties = .TRUE.) 
+            MacroElement=MacroElements, SaveProperties=.TRUE.) 
 
         TaylorParams => GetElementProperty('taylor parameters', BGElement)
 
@@ -506,7 +506,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     ! ---------------------------------------------------------------------------------
     ! The solution variable is the solution increment while the sif-file specifies
     ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
-    ! is obtained for the solution increment:
+    ! is obtained for the solution increment. 
+    ! TO DO: This should be checked for p-elements.
     ! --------------------------------------------------------------------------------
     IF (ALLOCATED(Solver % Matrix % ConstrainedDOF)) THEN
       DO i=1,Solver % Matrix % NumberOfRows
@@ -529,10 +530,12 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
           CALL Info('ShellSolver', 'No pressure load ... ', Level=4)
           CALL Info('ShellSolver', &
               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
+          CALL Info('ShellSolver', &
+              'This may give a hard stopping criterion',  Level=4)
           NonlinRes0 = 1.0d0
         ELSE
           ! Compute the norm of the initial residual (RHS vector before setting BCs). 
-          ! Update this for parallel implementation. 
+          ! TO DO: Update this for parallel implementation. 
           NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
         END IF
       END IF
@@ -591,9 +594,9 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! PART IV: Postprocess
   ! -------------------------------------------------------------------------------------
   IF ( MeshDisplacementActive ) THEN
-     CALL Info('ShellSolver','Displacing the mesh with computed displacement field',Level=4)
-     CALL DisplaceMesh( Mesh, Solver % Variable % Values, 1, Solver % Variable % Perm, &
-         ShellModelPar, .FALSE., 3 )
+     CALL Info('ShellSolver', 'Displacing the mesh with computed displacement field', Level=4)
+     CALL DisplaceMesh(Mesh, Solver % Variable % Values, 1, Solver % Variable % Perm, &
+         ShellModelPar, .FALSE., 3)
   END IF
 
 
@@ -3083,7 +3086,7 @@ CONTAINS
 ! p-element switches to the standard weak formulation which can give highly
 ! inaccurate results for thin shells (with low p)! 
 !------------------------------------------------------------------------------
-  SUBROUTINE ShellLocalMatrix( BGElement, n, nd, m, LocalSol, LargeDeflection, &
+  SUBROUTINE ShellLocalMatrix(BGElement, n, nd, m, LocalSol, LargeDeflection, &
       StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, Area, Error, &
       RHSForce, BenchmarkProblem)
 !------------------------------------------------------------------------------
@@ -3199,10 +3202,6 @@ CONTAINS
     CALL SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
       ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
       MembraneStrains = .FALSE.)
-    !print *, 'MembraneReductionMethod=', MembraneReductionMethod
-    !print *, 'ReductionMethod=', ReductionMethod
-    !print *, 'shear correction=', UseShearCorrection
-    !print *, 'usebubbles=', usebubbles
 
     ! ------------------------------------------------------------------------------
     ! The DOFs count: Currently, FE bubbles can be employed only in a very special 
@@ -3395,7 +3394,7 @@ CONTAINS
         vq = IP % V(t)
         sq = IP % S(t)          
 
-        stat = ElementInfo( BGElement, PNodes, uq, vq, IP % W(t), detJ, Basis, dBasis )
+        stat = ElementInfo(BGElement, PNodes, uq, vq, IP % W(t), detJ, Basis, dBasis)
         y1 = SUM( PNodes % x(1:nd) * Basis(1:nd) )
         y2 = SUM( PNodes % y(1:nd) * Basis(1:nd) )
 
@@ -3410,7 +3409,7 @@ CONTAINS
         !          y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )  
         !        ELSE
 
-
+        ! ---------------------------------------------------------------------------------
         ! Use isoparametric element map:
         ! ReductionOperatorInfo should give all necessary basis functions without the
         ! standard ElementInfo call as
@@ -3422,7 +3421,7 @@ CONTAINS
         ! switch to the reference p-element (perhaps we could use the standard reference 
         ! elements, since continuity across elements is not needed for the reduced strain).
         ! ---------------------------------------------------------------------------------
-        IF (Family==3 .AND. .NOT. PVersion) THEN
+        IF (Family==3) THEN
           uq = -1.0d0 + 2.0d0 * IP % U(t) + IP % V(t)
           vq = SQRT(3.0d0) * IP % V(t)
           sq = SQRT(3.0d0) * 2.0d0 * IP % S(t)
@@ -5296,39 +5295,48 @@ CONTAINS
 !
 !     [d_k(Nb*e1) d_k(Nb*e2)]
 !
-!  where Nb is the bubble basis function, e1=(1,0) and e2=(0,1). 
-!  Currently, just one bubble function (cf. the size of Basis array) and the kernel 
-!  version of strain reduction are supported currently. 
+!  where Nb is the bubble basis function, e1=(1,0) and e2=(0,1). Optionally 
+!  the interpolating function can be computed for a field Cu where C is a 2X2 matrix 
+!  field. Currently, just one bubble function (cf. the size of Basis array) and 
+!  the kernel version of strain reduction are supported currently.
 !------------------------------------------------------------------------------
   SUBROUTINE ReductionOperatorBubbleDofs(Element, Nodes, A, nd, nb, n, ReductionMethod, &
-      ModelPars)
+      ModelPars, GradientField)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), INTENT(IN), TARGET :: Element          !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                      !< Nodes structure
-    REAL(KIND=dp), INTENT(INOUT) :: A(nd,2*nb)                !< Coefficients for expressing the DOFs 
+    REAL(KIND=dp), INTENT(INOUT) :: A(nd,2*nb)              !< Coefficients for expressing the DOFs 
     INTEGER, INTENT(IN) :: nd                               !< The dimension of the strain reduction space X(K)
     INTEGER, INTENT(IN) :: nb                               !< The number of the H1-conforming bubble functions
     INTEGER, INTENT(IN) :: n                                !< The number of the BG element nodes
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: ModelPars(2,2,n) !< To include the effect of additional model parameters
+    LOGICAL, OPTIONAL :: GradientField                      !< To return [d_k(grad(Nb).e1) d_k(grad(Nb).e2)]
 !---------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: stat, UseParameters, PRefElement
+    LOGICAL :: stat, UseParameters, PRefElement, GradientOperand
 
     INTEGER :: Family, i, j, k, t
 
     REAL(KIND=dp) :: StrainBasis(4,3)         ! The basis functions for the strain reduction space X(K)
     REAL(KIND=dp) :: DOFWeigths(3,2)          ! The auxiliary functions to evaluate the interpolant in X(K)
     REAL(KIND=dp) :: Basis(5)                 ! H1-conforming basis functions (p=1, with one bubble)
+    REAL(KIND=dp) :: DBasis(5,1:3) 
     REAL(KIND=dp) :: u(2), ParMat(2,2), uk, vk, sk
 !---------------------------------------------------------------------------------
     IF (ReductionMethod /= CurlKernel) CALL Fatal('ReductionOperatorBubbleDofs', &
         'An unsupported strain reduction technique')
 
+    IF (PRESENT(GradientField)) THEN
+      GradientOperand = GradientField
+    ELSE
+      GradientOperand = .FALSE.
+    END IF
+
     Family = GetElementFamily(Element)
- 
+    
     A = 0.0d0
 
     UseParameters = PRESENT(ModelPars)
@@ -5355,9 +5363,9 @@ CONTAINS
         sk = IP % S(t)
       END IF
 
-      stat = ReductionOperatorInfo( Element, Nodes, uk, vk, StrainBasis, &
-          ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths, &
-          Bubbles=.TRUE.)  
+      stat = ReductionOperatorInfo(Element, Nodes, uk, vk, StrainBasis, &
+          ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DBasis=DBasis, &
+          DOFWeigths=DOFWeigths, Bubbles=.TRUE.)
 
       IF (UseParameters) THEN
         ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
@@ -5371,11 +5379,21 @@ CONTAINS
           DO k=1,2
             SELECT CASE(k)
             CASE(1)
-              u(1) = ParMat(1,1)*Basis(n+j)
-              u(2) = ParMat(2,1)*Basis(n+j)
+              IF (GradientOperand) THEN
+                u(1) = DBasis(n+j,1)
+                u(2) = 0.0d0
+              ELSE
+                u(1) = ParMat(1,1)*Basis(n+j)
+                u(2) = ParMat(2,1)*Basis(n+j)
+              END IF
             CASE(2)
-              u(1) = ParMat(1,2)*Basis(n+j)
-              u(2) = ParMat(2,2)*Basis(n+j)
+              IF (GradientOperand) THEN
+                u(1) = 0.0d0
+                u(2) = DBasis(n+j,2)
+              ELSE 
+                u(1) = ParMat(1,2)*Basis(n+j)
+                u(2) = ParMat(2,2)*Basis(n+j)
+              END IF
             END SELECT
             A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * sk
           END DO
