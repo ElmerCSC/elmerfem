@@ -1,9 +1,9 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! Test GlaDS solvers              !!
+!! Test Coupling GlaDS-SSA solvers !!
 !!                                 !!
-!! Olivier Gagliardini June 2017   !!
+!! Olivier Gagliardini Nov 2017    !!
 !!                                 !!
-!! SHMIP - test B5                 !!
+!! SHMIP - test B5 modified        !!
 !!                                 !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -42,7 +42,7 @@ $A2 = 2.42736e-02*yearinsec*MPainPa^3
 
 $ng = 3.0
 $Aglen = 2.5e-25*yearinsec*MPainPa^3
-$eta = (2.0*Aglen)^(-1.0/ng)
+$eta = (2.0*Aglen/10.0)^(-1.0/ng)
 
 $gravity = 9.80*yearinsec^2  
 
@@ -67,6 +67,12 @@ $Lw = 334000.0*yearinsec^2
 
 ! For the Moulins
 $Am = 4.0
+
+! For the friction law
+$mub = 0.16     ! Hewitt 2013
+$lb = 1.0       ! 3 x Hewitt 2013 
+$C = mub
+$beta = C * (Aglen * lb)^(-1.0/ng)
 
 ! Definition of the sqrt geometry 
 ! for SHMIP A, B, C, D
@@ -95,6 +101,8 @@ Constants
   Hydraulic Potential Variable Name = String "Hydraulic Potential"
   Channel Area Variable Name = String "Channel Area"
   Bedrock Variable Name = String "Zb"
+  Bottom Surface Name = String "Zb"
+  Top Surface Name = String "Zs"
 End
 
 !---------------------------------------------------
@@ -116,7 +124,7 @@ Simulation
   Steady State Min Iterations = 1
 
 ! Output File = "$namerun".result"
-  Post File = "$namerun".vtu"
+! Post File = "$namerun".vtu"
 
   max output level = 3
 End
@@ -146,8 +154,11 @@ Initial Condition 1
   Zs = Variable Coordinate 1
     Real MATC "H(tx)"
   Zb = Real 0.0 
-  Effective Pressure = Variable Coordinate 1
-     Real MATC "rhoi*gravity*H(tx)"
+! Effective Pressure = Variable Coordinate 1
+!    Real MATC "rhoi*gravity*H(tx)"
+  Effective Pressure = Real 1.0
+  SSAVelocity 1 = Real -$ub
+  SSAVelocity 2 = Real 0.0
 End
 
 !---------------------------------------------------
@@ -165,8 +176,23 @@ End
 
 !! ice material properties in MPa - m - a system 
 Material 1
+! material for SSA (power law)
+  Viscosity Exponent = Real $1.0/ng
+  SSA Mean Viscosity = Real $eta
+  SSA Mean Density = Real $rhoi
+  Density = Real $rhoi
+  Critical Shear Rate = Real 1.0e-15
   Density = Real $rhoi          
   Glen Exponent = Real $ng
+
+! slip coeff for the SSA
+  SSA Friction Law = String "Coulomb"
+  SSA Friction Parameter = Real $beta
+  SSA Friction Exponent = Real $1.0/ng
+  SSA Friction Linear Velocity = Real 0.01
+  SSA Friction Post-Peak = Real 1.0
+  SSA Friction Maximum Value = Real $C
+  SSA Min Effective Pressure = Real 0.01
 
 ! For the sheet 
   Sheet Conductivity = Real $Ks 
@@ -174,7 +200,8 @@ Material 1
   Sheet flow exponent beta = Real $betas
   Englacial Void Ratio = Real $ev       
 
-  Sliding Velocity = Real $ub
+  Sliding Velocity = Variable Coordinate 1
+       Real Procedure "ElmerIceUSF" "HorizontalVelo"
 
   Bedrock Bump Length = Real $lr
   Bedrock Bump High = Real $hr
@@ -190,7 +217,7 @@ Material 1
 
 ! For both
   Ice Normal Stress = Variable Coordinate 1
-     Real MATC "rhoi*gravity*H(tx)"
+     Real Procedure "ElmerIceUSF" "OverburdenPressure"
 End
 
 !---------------------------------------------------
@@ -198,7 +225,24 @@ End
 !---------------------------------------------------
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-Solver 1 
+Solver 1
+  Equation = "SSA"
+  Variable = -dofs 2 "SSAVelocity"
+  Procedure = File "ElmerIceSolvers" "SSABasalSolver"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-06
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-03
+  Nonlinear System Newton Max divergent iterations = Integer 3
+  Nonlinear System Relaxation Factor = 1.00
+End
+
+
+Solver 2 
   Equation = "GlaDS Coupled sheet"
   Procedure = "ElmerIceSolvers" "GlaDSCoupledSolver"
   Variable = -dofs 1 "Hydraulic Potential"
@@ -235,14 +279,14 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-03
 End
 
-Solver 2 
+Solver 3 
   ! Just here to declare the variable Sheet Thickness
   Equation = "GlaDS Thickness sheet"
   Procedure = "ElmerIceSolvers" "GlaDSsheetThickDummy"
   Variable = -dofs 1 "Sheet Thickness"
 End
 
-Solver 3 
+Solver 4 
   ! Just here for output and declare the Channel Area variable
   ! It is executed simultaneously to saving
   Exec Solver = After Saving
@@ -266,7 +310,7 @@ End
 !---------------------------------------------------
 ! Equation for the ice
 Equation 1
-  Active Solvers (3) = 1 2 3 
+  Active Solvers (4) = 1 2 3 4 
 End
 
 
@@ -277,12 +321,15 @@ End
 Boundary Condition 1
   Target Boundaries(2) = 1 3
   No Channel BC = Logical True
+  SSAVelocity 2 = Real 0.0
 End
 
 Boundary Condition 2
   Name = "Sym"
   Target Boundaries(1) = 2
   No Channel BC = Logical True
+  SSAVelocity 1 = Real -$ub 
+  SSAVelocity 2 = Real 0.0
 End
 
 Boundary Condition 3
@@ -290,6 +337,7 @@ Boundary Condition 3
   Target Boundaries(1) = 4
   Hydraulic Potential = Real 0.0
   No Channel BC = Logical True
+  Calving Front = Logical True
 End
 
 ! This is the boundary condition for the moulins, case B5
@@ -301,8 +349,8 @@ Boundary Condition 4
   Moulin Flux = Real $0.9*yearinsec
 End
 
-Solver 1 :: Reference Norm = Real 8.28199040E+00 
+Solver 1 :: Reference Norm = Real 2.51446150E+00 
 Solver 1 :: Reference Norm Tolerance = Real 1E-04
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=8.28199040E+00,EPS=1E-04\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=2.51446150E+00,EPS=1E-04\n" );

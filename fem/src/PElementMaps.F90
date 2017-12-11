@@ -294,10 +294,10 @@ CONTAINS
       map = 0
 
       ! Function is not defined for non p elements
-      IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementMaps::getElementBoundaryMap','Element not p element') 
-         RETURN
-      END IF
+      !IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
+      !   CALL Warn('PElementMaps::getElementBoundaryMap','Element not p element') 
+      !   RETURN
+      !END IF
 
       SELECT CASE(Element % TYPE % ElementCode / 100)
       CASE (3)
@@ -350,11 +350,11 @@ CONTAINS
       IF (.NOT. MInit) CALL InitializeMappings()
 
       ! Function is not defined for non p elements
-      IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementMaps::getFaceEdgeMap','Element not p element') 
-         map = 0
-         RETURN
-      END IF
+      !IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
+      !   CALL Warn('PElementMaps::getFaceEdgeMap','Element not p element') 
+      !   map = 0
+      !   RETURN
+      !END IF
 
       SELECT CASE(elementCode / 100)
       CASE (5)

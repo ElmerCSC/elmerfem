@@ -1,0 +1,63 @@
+!!#################################################
+!!#################################################
+!!   Initialisation Run :
+!!     Here :
+!!      Initial thickness h0
+!!#################################################
+!!#################################################
+!! PARAMETERS:
+!! 
+!!
+$name="M_I0_J0_"
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "MESH_I0_J0"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+ WithCylinder = logical False
+ WithCone =  logical True
+ WithBump = logical True
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D
+  Simulation Type = transient
+  
+  !! Transient simulation with dt=0;=> physical time not increasing
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Output Intervals = 1
+  Timestep Intervals = 1
+  Timestep Sizes = 0.0
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "$name$.vtu"
+  OutPut File = "$name$.result"
+
+  max output level = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  H0 = Variable Coordinate 1, coordinate 2
+      REAL Procedure "USFs" "HIni"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(1) = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "Init"
+   procedure = "ElmerIceSolvers" "UpdateExport"
+  Variable = -nooutput dumy
+
+  Exported Variable 1 = H0
+End

@@ -71,9 +71,6 @@
      TYPE(Matrix_t), POINTER :: Systemmatrix
      TYPE(Nodes_t) :: ElementNodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Edge, Face, Bulk
-     TYPE(Variable_t), POINTER :: HydPotSol
-     TYPE(Variable_t), POINTER :: ThickSol, AreaSol, VSol, WSol, NSol,  &
-              PwSol, ZbSol, qSol, hstoreSol
      TYPE(ValueList_t), POINTER :: Equation, Material, SolverParams, BodyForce, BC, Constants
 
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
@@ -81,9 +78,18 @@
           NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin, Ne, BDForder, &
           CoupledIter
 
+     TYPE(Variable_t), POINTER :: HydPotSol
+     TYPE(Variable_t), POINTER :: ThickSol, AreaSol, VSol, WSol, NSol,  &
+              PwSol, ZbSol, qSol, hstoreSol, QcSol, QmSol
+
      INTEGER, POINTER :: NodeIndexes(:), HydPotPerm(:), PwPerm(:), ZbPerm(:), &
              ThickPerm(:), VPerm(:), WPerm(:), NPerm(:), AreaPerm(:), & 
-             qPerm(:), hstorePerm(:)
+             qPerm(:), hstorePerm(:), QcPerm(:), QmPerm(:)
+
+     REAL(KIND=dp), POINTER :: HydPot(:), HydPotPrev(:,:), ForceVector(:)
+     REAL(KIND=dp), POINTER :: ThickSolution(:), ThickPrev(:,:), VSolution(:), WSolution(:), &
+            NSolution(:), PwSolution(:), AreaSolution(:), AreaPrev(:,:), ZbSolution(:), &
+            qSolution(:), hstoreSolution(:), QcSolution(:), QmSolution(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, SolverName
      CHARACTER(LEN=MAX_NAME_LEN) :: SheetThicknessName, ChannelAreaName, ZbName
@@ -94,17 +100,8 @@
           meltChannels = .TRUE., NeglectH = .TRUE. 
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
-     REAL(KIND=dp) :: NonlinearTol, Relax, &
-          SaveRelax, dt, CumulativeTime, RelativeChange, &
-          Norm, PrevNorm, S, C, CForce
-     REAL(KIND=dp), POINTER :: HydPot(:), HydPotPrev(:,:), ForceVector(:)
-          
-     REAL(KIND=dp), POINTER :: ThickSolution(:), ThickPrev(:,:), VSolution(:), WSolution(:), &
-            NSolution(:), PwSolution(:), AreaSolution(:), AreaPrev(:,:), ZbSolution(:), &
-            qSolution(:), hstoreSolution(:)
-
-     REAL(KIND=dp), ALLOCATABLE :: ThickRelax(:), AreaRelax(:), HydPotRelax(:) 
-
+     REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
+          Norm, PrevNorm, S, C, Qc
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:), SheetConductivity(:), ChannelConductivity(:),&
        FORCE(:),  C1(:), CT(:), OldValues(:), Refq(:)
@@ -150,8 +147,7 @@
           ChannelAreaName, ZbName, IceDensity, Ac, alphac, CCt, &
           CCw, lc, Lw, NoChannel, NodalNoChannel, &
           Channels, meltChannels, NeglectH, BDForder, &
-          Vvar, ublr, hr2, &
-          ThickRelax, AreaRelax, HydPotRelax, Relax, Refq
+          Vvar, ublr, hr2, Refq
 
       
      totst = 0.0_dp
@@ -212,7 +208,7 @@
                 IceDensity, Ac, alphac, CCt, &
                 CCw, lc, OldValues, NoChannel, NodalNoChannel, &
                 Vvar, ublr, hr2, &
-                ThickRelax, AreaRelax, HydPotRelax, Refq )
+                Refq )
 
         END IF                           
         
@@ -238,7 +234,7 @@
              IceDensity(N), Ac(N), alphac(N), CCt(N), &
              CCw(N), lc(N), OldValues(K), NoChannel(M), NodalNoChannel(N), &
              Vvar(M), ublr(M), hr2(M), &
-             ThickRelax(M), AreaRelax(Ne), HydPotRelax(M), refq(dim*M), &
+             refq(dim*M), &
              STAT=istat )
 
         IF ( istat /= 0 ) THEN
@@ -384,10 +380,6 @@
           'Coupled Convergence Tolerance',    Found )
      IF ((.Not.Found).AND.(CoupledIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
 
-     Relax = GetConstReal( SolverParams, &
-               'Nonlinear System Relaxation Factor',Found )
-     IF ( .NOT.Found ) Relax = 1.0_dp
-
      ThickSol => VariableGet( Solver % Mesh % Variables, SheetThicknessName, UnfoundFatal = .TRUE. )
      ThickPerm     => ThickSol % Perm
      ThickSolution => ThickSol % Values
@@ -398,6 +390,20 @@
         AreaPerm     => AreaSol % Perm
         AreaSolution => AreaSol % Values
         AreaPrev => AreaSol % PrevValues
+        
+        ! flux in the channels (for output only) - edge type variable
+        QcSol => VariableGet( Solver % Mesh % Variables, "Channel Flux" )
+        IF ( ASSOCIATED( QcSol ) ) THEN
+           QcPerm     => QcSol % Perm
+           QcSolution => QcSol % Values
+        END IF
+     END IF
+
+     ! discharge out of the moulins (for output only)
+     QmSol => VariableGet( Solver % Mesh % Variables, "Flux from Moulins" )
+     IF ( ASSOCIATED( QmSol ) ) THEN
+        QmPerm     => QmSol % Perm
+        QmSolution => QmSol % Values
      END IF
 
      ZbSol => VariableGet( Solver % Mesh % Variables, ZbName )
@@ -406,7 +412,6 @@
         ZbSolution => ZbSol % Values
      END IF
 
-     SaveRelax = Relax
      dt = Timestep
 
 !------------------------------------------------------------------------------
@@ -483,17 +488,6 @@
               
            M = Model % Mesh % NumberOfNodes
            Ne = Solver % Mesh % NumberOfEdges
-           ! TODO : I am not sure this is correct in the case of a coupled
-           ! system on timestep... 
-           IF ( iter == 1 .AND. TransientSimulation ) THEN
-              HydPotRelax(1:M) = HydPotPrev(HydPotPerm(1:M),1)
-              ThickRelax(1:M) = ThickPrev(ThickPerm(1:M),1)
-              IF (Channels) AreaRelax(1:Ne) = AreaPrev(AreaPerm(M+1:M+Ne),1)
-           ELSE
-              HydPotRelax(1:M) = HydPot(HydPotPerm(1:M))
-              ThickRelax(1:M) = ThickSolution(ThickPerm(1:M))
-              IF (Channels) AreaRelax(1:Ne) = AreaSolution(AreaPerm(M+1:M+Ne))
-           END IF
             
            !------------------------------------------------------------------------------
            ! lets start
@@ -624,7 +618,7 @@
               !----------------
 
               IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-                  CALL SheetCompose( Mass, STIFF, FORCE, LOAD, &
+                  CALL SheetCompose( MASS, STIFF, FORCE, LOAD, &
                        ThickSolution(ThickPerm(Element % NodeIndexes(1:n))), &
                        HydPot(HydPotPerm(Element % NodeIndexes(1:N))), &
                        CT(1:N), SheetConductivity(1:n), alphas(1:n), betas(1:n), & 
@@ -770,7 +764,7 @@
               !----------------
 
               IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-                 CALL ChannelCompose( Mass, STIFF, FORCE, &
+                 CALL ChannelCompose( MASS, STIFF, FORCE, &
                       ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
                       HydPot(HydPotPerm(Edge % NodeIndexes(1:N))), ChannelArea, &
                       ChannelConductivity, alphac, betac, Phi0, Phim, Ac, lc, ng, &
@@ -780,6 +774,7 @@
                  WRITE(Message,'(A)')' Work only for cartesian coordinate'
                  CALL FATAL( SolverName, Message)
               END IF              
+              ! This should be not needed as MASS = 0 here
               IF ( TransientSimulation ) THEN
                  CALL Default1stOrderTime( MASS, STIFF, FORCE, Edge )
               END IF
@@ -830,6 +825,12 @@
                          UnfoundFatal = .TRUE. )
                   FORCE(1) = MoulinFlux(1)
 
+                  ! If variable exist, update the Flux from Moulins variable 
+                  IF (ASSOCIATED( QmSol )) THEN
+                     j = Element % NodeIndexes(1)
+                     QmSolution(QmPerm(j)) = MoulinFlux(1)-MASS(1,1)*(HydPot(HydPotPerm(j))-HydPotPrev(HydPotPerm(j),1))/dt 
+                  END IF
+
                   !------------------------------------------------------------------------------
                   ! Update global matrices from local matrices
                   !------------------------------------------------------------------------------
@@ -872,6 +873,10 @@
                         WRITE(Message,'(A)')' Work only for cartesian coordinate'
                         CALL FATAL( SolverName, Message)
                      END IF
+                     !!! TODO : do we need that as MASS = 0 here
+                     IF ( TransientSimulation ) THEN
+                        CALL Default1stOrderTime( MASS, STIFF, FORCE, Element )
+                     END IF
 
                      CALL DefaultUpdateEquations( STIFF, FORCE, Element )
                   END IF
@@ -894,7 +899,6 @@
            st = CPUTime()
 
            PrevNorm = Solver % Variable % Norm
-
            Norm = DefaultSolve()
 
            st = CPUTime()-st
@@ -1000,34 +1004,29 @@
               IF (k==0) CYCLE
               SELECT CASE(methodSheet)
               CASE('implicit') 
-                 ThickSolution(k) = MAX((ThickPrev(k,1) + dt*ublr(j)*hr2(j))/(1.0_dp + dt*(Vvar(j)+ublr(j))) , 0.0)
-                 IF (ThickSolution(k) > hr2(j)) THEN 
-                    ThickSolution(k) = MAX(ThickPrev(k,1)/(1.0_dp + dt*Vvar(j)) , 0.0)
-                 END IF   
+                 IF (ThickSolution(k) > hr2(j)) THEN
+                    ThickSolution(k) = MAX(ThickPrev(k,1)/(1.0_dp + dt*Vvar(j)) , AEPS)
+                 ELSE
+                    ThickSolution(k) = MAX((ThickPrev(k,1) + dt*ublr(j)*hr2(j))/(1.0_dp + dt*(Vvar(j)+ublr(j))) , AEPS)
+                 END IF
               CASE('explicit')
-                 ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - dt*(Vvar(j)+ublr(j))) + dt*ublr(j)*hr2(j), 0.0)
                  IF (ThickSolution(k) > hr2(j)) THEN 
-                    ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - dt*Vvar(j)) , 0.0)
-                 END IF   
+                    ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - dt*Vvar(j)) , AEPS)
+                 ELSE
+                    ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - dt*(Vvar(j)+ublr(j))) + dt*ublr(j)*hr2(j), AEPS)
+                 END IF
               CASE('crank-nicolson')
-                 ThickSolution(k) = MAX((ThickPrev(k,1)*(1.0_dp - 0.5*dt*(Vvar(j)+ublr(j))) + dt*ublr(j)*hr2(j)) & 
-                                & /(1.0_dp + 0.5*dt*(Vvar(j)+ublr(j))) , 0.0)
                  IF (ThickSolution(k) > hr2(j)) THEN 
-                    ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - 0.5*dt*Vvar(j))/(1.0_dp + 0.5*dt*Vvar(j)) , 0.0)
-                 END IF   
+                    ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - 0.5*dt*Vvar(j))/(1.0_dp + 0.5*dt*Vvar(j)) , AEPS)
+                 ELSE
+                    ThickSolution(k) = MAX((ThickPrev(k,1)*(1.0_dp - 0.5*dt*(Vvar(j)+ublr(j))) + dt*ublr(j)*hr2(j)) & 
+                                & /(1.0_dp + 0.5*dt*(Vvar(j)+ublr(j))) , AEPS)
+                 END IF
               END SELECT 
 
               ! Update Vvar
               Vvar(j) = Vvar(j) * ThickSolution(k)
 
-         ! TODO : implement higher order BDF method
-         !    IF (BDForder==1) THEN
-         !    ELSE IF (BDForder==2) THEN
-         !       ThickSolution(k) = MAX(4.0*ThickPrev(k,1) - ThickPrev(k,2) + 2.0*dt*CForce, 0.0)/3.0 
-         !    ELSE IF (BDForder==3) THEN
-         !       ThickSolution(k) = MAX(18.0*ThickPrev(k,1) - 9.0*ThickPrev(k,2) +2.0*ThickPrev(k,3) & 
-         !           + 6.0*dt*CForce, 0.0)/11.0 
-         !    END IF
            END DO 
 
 !------------------------------------------------------------------------------
@@ -1132,7 +1131,7 @@
 ! Compute the force term to evolve the channels area
 ! Equation of the form dS/dt = S x ALPHA + BETA
                  IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-                    CALL GetEvolveChannel( ALPHA, BETA, ChannelArea, &
+                    CALL GetEvolveChannel( ALPHA, BETA, Qc, ChannelArea, &
                          HydPot(HydPotPerm(Edge % NodeIndexes(1:n))), &
                          ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
                          alphac, betac, ChannelConductivity, Phi0, Phim, Ac, lc, ng, &
@@ -1153,14 +1152,10 @@
                     AreaSolution(k) = (AreaPrev(k,1)*(1.0_dp + 0.5*ALPHA*dt) + dt*BETA)/(1.0_dp - 0.5*dt*ALPHA)
                  END SELECT 
 
-
-               ! TODO : Implement higher order BDF method
-               ! IF (BDForder==1) THEN
-               ! ELSE IF (BDForder==2) THEN
-               !    AreaSolution(k) = MAX(4.0*AreaPrev(k,1) - AreaPrev(k,2) + 2.0*dt*CForce, 0.0)/3.0 
-               ! ELSE IF (BDForder==3) THEN
-               !    AreaSolution(k) = MAX(18.0*AreaPrev(k,1) - 9.0*AreaPrev(k,2) +2.0*AreaPrev(k,3) + 6.0*dt*CForce, 0.0)/11.0 
-               ! END IF
+                 ! Save Qc if variable exists
+                 IF (ASSOCIATED(QcSol)) THEN
+                    QcSolution(QcPerm(M+t)) = Qc
+                 END IF
               END DO
 
            t = Solver % Mesh % NumberOfEdges 
@@ -1194,21 +1189,8 @@
         ! Make sure Area > 0
         AreaSolution(AreaPerm(M+1:M+t)) = MAX(AreaSolution(AreaPerm(M+1:M+t)),0.0_dp)
 
-     END IF  ! If Channels
 
-           !------------------------------------------------------------------------------
-           !    Apply a Relaxation on all Three Variables 
-           !------------------------------------------------------------------------------
-           IF (Relax < 1.0_dp) THEN
-              M = Model % Mesh % NumberOfNodes
-              Ne = Solver % Mesh % NumberOfEdges
-              ThickSolution(ThickPerm(1:M)) = (1.0_dp - Relax) * ThickRelax(1:M)  &
-                      + Relax * ThickSolution(ThickPerm(1:M))
-              HydPot(HydPotPerm(1:M)) = (1.0_dp - Relax) * HydPotRelax(1:M) + Relax * HydPot(HydPotPerm(1:M))
-              
-              IF (Channels) AreaSolution(AreaPerm(M+1:M+Ne)) = (1.0_dp - Relax) * AreaRelax(1:Ne) & 
-                     + Relax * AreaSolution(AreaPerm(M+1:M+Ne))         
-           END IF
+     END IF  ! If Channels
 
       !   Check for convergence                           
       IF (ParEnv % PEs > 1) THEN
@@ -1226,9 +1208,8 @@
 
       WRITE( Message, * ) 'COUPLING LOOP (NRM,RELC) : ',iterC, CoupledNorm, RelativeChange
       CALL Info( SolverName, Message, Level=3 )
-
+       
       IF ((RelativeChange < CoupledTol).AND. (iterC > 1)) EXIT 
-
    END DO ! iterC
 
 !--------------------------------------------------------------------------------------------
@@ -1692,7 +1673,7 @@ END SUBROUTINE ChannelCompose
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-SUBROUTINE GetEvolveChannel(ALPHA, BETA, CArea, NodalHydPot, NodalH, &
+SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
       NodalAlphac, NodalBetac, NodalKc, NodalPhi0, NodalPhim, NodalAc, Nodallc, Nodalng, &
       NodalKs, NodalAlphas, NodalBetas, NodalAfactor, NodalBfactor, &
       Tangent, Element, n, Nodes )
@@ -1704,7 +1685,7 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, CArea, NodalHydPot, NodalH, &
   IMPLICIT NONE
 
             
-     REAL(KIND=dp) :: ALPHA, BETA
+     REAL(KIND=dp) :: ALPHA, BETA, Qcc
      REAL(KIND=dp) :: NodalHydPot(:), NodalAlphas(:), NodalBetas(:)
      REAL(KIND=dp) :: NodalH(:), CArea, Tangent(3)
      REAL(KIND=dp) :: NodalPhi0(:), NodalPhim(:), NodalNg(:), NodalAfactor(:)
@@ -1835,6 +1816,9 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, CArea, NodalHydPot, NodalH, &
        Pii = -Afactor*(Ffactor)*dPw
        BETA = Bfactor*(Xi - Pii) 
 
+       ! Channel flux for output
+       Qcc = ABS(Kc*GradPhi)
+
 !------------------------------------------------------------------------------
 END SUBROUTINE GetEvolveChannel
 !------------------------------------------------------------------------------
@@ -1927,59 +1911,59 @@ END SUBROUTINE GetParametersSheet
 !------------------------------------------------------------------------------
 
   SheetConductivity = 0.0_dp
-  SheetConductivity = ListGetReal(Material, 'Sheet Conductivity', n, Edge % NodeIndexes, &
+  SheetConductivity(1:n) = ListGetReal(Material, 'Sheet Conductivity', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
                    
   ChannelConductivity = 0.0_dp
-  ChannelConductivity = ListGetReal(Material, 'Channel Conductivity', n, Edge % NodeIndexes, & 
+  ChannelConductivity(1:n) = ListGetReal(Material, 'Channel Conductivity', n, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
                    
   alphac = 0.0_dp
-  alphac(1:N) =  ListGetReal( Material, 'Channel Flow Exponent Alpha', n, Edge % NodeIndexes, &
+  alphac(1:n) =  ListGetReal( Material, 'Channel Flow Exponent Alpha', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
                    
   betac = 0.0_dp
-  betac(1:N) =  ListGetReal( Material, 'Channel Flow Exponent Beta', n, Edge % NodeIndexes, &
+  betac(1:n) =  ListGetReal( Material, 'Channel Flow Exponent Beta', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
   
   alphas = 0.0_dp
-  alphas(1:N) =  ListGetReal( Material, 'Sheet Flow Exponent alpha', n, Edge % NodeIndexes, &
+  alphas(1:n) =  ListGetReal( Material, 'Sheet Flow Exponent alpha', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
 
   betas = 0.0_dp
-  betas(1:N) =  ListGetReal( Material, 'Sheet Flow Exponent beta', n, Edge % NodeIndexes, &
+  betas(1:n) =  ListGetReal( Material, 'Sheet Flow Exponent beta', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
                    
   IceDensity = 0.0_dp
-  IceDensity(1:N) = ListGetReal( Material, 'Density',  N, Edge % NodeIndexes, & 
+  IceDensity(1:n) = ListGetReal( Material, 'Density',  N, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 
   Snn = 0.0_dp
-  Snn(1:N) = ListGetReal( Material, 'Ice Normal Stress',  N, Edge % NodeIndexes, &
+  Snn(1:n) = ListGetReal( Material, 'Ice Normal Stress',  N, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
-  IF (ANY(Snn(1:N) < 0.0)) THEN
+  IF (ANY(Snn(1:n) < 0.0)) THEN
      WRITE(Message,'(A)')'The Ice Normal Stress (overburden pressure) must be positive'
      CALL FATAL(SolverName, Message)
   END IF
 
   Ac = 0.0_dp
-  Ac(1:N) = ListGetReal( Material, 'Channel Closure Coefficient',  N, Edge % NodeIndexes, & 
+  Ac(1:n) = ListGetReal( Material, 'Channel Closure Coefficient',  N, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 
   ng = 0.0_dp
-  ng(1:N) = ListGetReal( Material, 'Glen Exponent',  N, Edge % NodeIndexes, & 
+  ng(1:n) = ListGetReal( Material, 'Glen Exponent',  N, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 
   CCt = 0.0_dp
-  CCt(1:N) = ListGetReal( Material, 'Pressure Melting Coefficient',  N, Edge % NodeIndexes, & 
+  CCt(1:n) = ListGetReal( Material, 'Pressure Melting Coefficient',  N, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 
   CCw = 0.0_dp
-  CCw(1:N) = ListGetReal( Material, 'Water Heat Capacity',  N, Edge % NodeIndexes, &
+  CCw(1:n) = ListGetReal( Material, 'Water Heat Capacity',  N, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
 
   lc = 0.0_dp
-  lc(1:N) = ListGetReal( Material, 'Sheet Width Over Channel',  N, Edge % NodeIndexes, &
+  lc(1:n) = ListGetReal( Material, 'Sheet Width Over Channel',  N, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
 !------------------------------------------------------------------------------
 END SUBROUTINE GetParametersChannel

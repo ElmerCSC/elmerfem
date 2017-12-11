@@ -1,0 +1,174 @@
+!!#################################################
+!!#################################################
+!!  Mesh Adaptation simulation
+!!      Here:
+!!       Update mesh using informations on h
+!!#################################################
+!!#################################################
+!!PARAMETERS:
+!! <I> : Physical loop i
+!! <J> : Adaptation loop j
+!!
+!! <INTERVALS> = Number of Timestep Intervals (correspond to the number of time steps saved in the physical .result file)
+!! <ExecRELOAD> = If we need to read all the physical timestep for the mesh adaptation
+!! <SAVE> = Next iteration "(i+1)_0" or "i_(j+1)"
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "MESH_I<I>_J<J>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+  Simulation Type = transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Output Intervals = <INTERVALS>
+  Timestep Intervals = <INTERVALS>
+  Timestep Sizes = 0.0
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  max output level = 3
+
+  OutPut File = "M_<SAVE>_.result"
+  !Post File = "M_<SAVE>_.vtu"
+
+  Restart File = "R_I<I>_J<J>_.result"
+  Restart Before Initial Conditions = logical true
+  Restart Position = 0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+ Mt 1 = Real $1.0/1.0e10
+ Mt 2 = Real $1.0/1.0e10
+ Mt 3 = Real 0.0
+
+! h0 will be: 
+!  - latest value of h if last step of the initialisation loop
+ h0 = Equals h
+!  - overwrited if "ReloadSolution" solver is executed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  M1 Hmin = Real 1.0e-3
+  M1 Hmax = Real 1.0
+  M1 err =  Real 0.001
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Exec Solver = <ExecRELOAD>
+  Equation = ReloadData
+  Procedure = "ReloadData" "ReloadSolution"
+  Reload Solution File = "R_I<I>_J<J>_.result"
+  Continuous Reading = logical true
+End
+
+! Compute the metric associated with f1
+!  1- compute projected gradient of f1
+Solver 2
+  Equation = "Nodal Gradient 1"
+  Variable = -nooutput "Gradient1"
+  Variable DOFS = 2
+  Procedure = "ElmerIce_MeshAdapt2D" "Compute2DNodalGradient"
+
+ Optimize Bandwidth = False
+
+  Variable Name = string "h"
+  FE consistent average = Logical True
+End
+
+! 2- compute:
+!    - the hessian matrix by solving a diffusion equation:
+!      \int_Omega Hij+ k.A nabla(Hij) = int_Omega 0.5(dqi/dxj+dqj/dxi)
+!          Buscaglia, G.C., Dari, E.A., 1997. 
+!            Anisotropic mesh optimization and its application in adaptivity. International Journal for Numerical Methods in Engineering 40, 4119–4136.
+!   - the metric tensor
+Solver 3
+   Equation = "Metric1"
+   Variable = -nooutput dumy
+
+   Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricAniso"
+
+   Metric Variable Name = String "M1"
+
+   Hessian Variable Name = String "ddx1"
+   Gradient Name = String "Gradient1"
+   Diffusivity = Real 0.5
+
+   Linear System Solver = Direct
+   Linear System Direct Method = umfpack
+   Linear System Refactorize = false
+
+  Exported Variable 1 = -nooutput "M1"
+  Exported Variable 1 dofs = 3
+  Exported Variable 2 = -nooutput "ddx1"
+  Exported Variable 2 dofs = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Metric Intersection in Time
+Solver 4
+   Equation = "MetricMt"
+   Variable = -nooutput dumy
+
+   Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricIntersect"
+
+   Optimize Bandwidth = False
+
+   Metric Variable Name = String "Mt"
+   Metric 2 Variable Name = String "M1"
+   Metric 1 Variable Name = String "Mt"
+
+   Exported Variable 1 = -nooutput "Mt"  ! Mandatory -noutput sinon Mt relu dans le point .result
+   Exported Variable 1 dofs = 3
+End
+
+!! Anisotropic mesh adaptation using the MMG library
+Solver 5
+!! mandatory else Model % Mesh % Changed reset to .FALSE. in coupled simulations
+  Exec Solver = after all
+
+  Equation = "MMG"
+  Variable = -nooutput dumy
+    Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
+
+  Output file name = "MESH_<SAVE>"
+  Metric Variable Name = String "Mt"  
+  Increment Mesh Number = Logical False
+
+  hausd = Real 1000.0
+  hgrad = Real 1.3
+
+  verbosity = Integer 0
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(5) = 1 2 3 4 5 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 1
+End
+Boundary Condition 2
+  Target Boundaries = 2
+End
+Boundary Condition 3
+  Target Boundaries = 3
+End
+Boundary Condition 4
+  Target Boundaries = 4
+End
