@@ -284,13 +284,12 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! Read the director data at the nodes from mesh.director file and/or check the
   ! the integrity of the surface model. This subroutine creates an elementwise 
   ! property 'director' corresponding to the data, if not already available
-  ! via reading the director data from the file mesh.elements.data.
+  ! via reading the director data from the file mesh.elements.data. I neither
+  ! mesh.director nor mesh.elements.data are used to define the director, other
+  ! means can also be used for obtaining the director.
   !----------------------------------------------------------------------------------
-  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars )
-
-  IF( .TRUE. ) THEN  
-    CALL CheckSurfaceOrientation()
-  END IF
+  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars)
+  CALL CheckSurfaceOrientation()
   
   ! --------------------------------------------------------------------------------
   ! PART II:
@@ -633,58 +632,6 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
 
  
 CONTAINS
-
-!-------------------------------------------------------------------------------
-! This function can be used to return the elementwise values of the director
-! field. The director data is supposed to be found as the elementwise property
-! 'director'. If this property does not exits, the normal is computed otherwise.
-!-------------------------------------------------------------------------------
-  FUNCTION GetElementalDirector(Element, ElementNodes) RESULT (DirectorValues) 
-!-------------------------------------------------------------------------------    
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
-    TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
-    REAL(KIND=dp), POINTER :: DirectorValues(:)
-    !-------------------------------------------------------------------------------
-    TYPE(Nodes_t) :: Nodes
-    LOGICAL :: Visited = .FALSE., UseElementProperty = .FALSE., UseNormalSolver = .FALSE.
-    REAL(KIND=dp), POINTER :: NodalNormals(:)
-    REAL(KIND=dp) :: Normal(3)
-    INTEGER :: n
-    
-    SAVE Visited, UseElementProperty, NodalNormals, Nodes
-    !-------------------------------------------------------------------------------
-
-    IF(.NOT. Visited ) THEN
-      DirectorValues => GetElementProperty('director', Element)
-      UseElementProperty = ASSOCIATED( DirectorValues ) 
-
-      IF(.NOT. UseElementProperty ) THEN
-        n = CurrentModel % MaxElementNodes
-        ALLOCATE( NodalNormals(3*n) ) 
-      END IF
-      Visited = .TRUE.
-    END IF
-
-    IF( UseElementProperty ) THEN    
-      DirectorValues => GetElementProperty('director', Element)
-    ELSE
-      IF( PRESENT( ElementNodes ) ) THEN
-        Normal = NormalVector( Element, ElementNodes, Check = .TRUE. ) 
-      ELSE
-        CALL GetElementNodes( Nodes, Element ) 
-        Normal = NormalVector( Element, Nodes, Check = .TRUE. ) 
-      END IF
-        
-      n = Element % TYPE % NumberOfNodes
-      NodalNormals(1:3*n:3) = Normal(1)
-      NodalNormals(2:3*n:3) = Normal(2)
-      NodalNormals(3:3*n:3) = Normal(3)      
-      DirectorValues => NodalNormals
-    END IF     
-!-------------------------------------------------------------------------------    
-  END FUNCTION GetElementalDirector
-!-------------------------------------------------------------------------------
-
   
 ! ---------------------------------------------------------------------------------
 ! This subroutine reads mesh.director file arranged as
@@ -837,6 +784,56 @@ CONTAINS
   END SUBROUTINE ReadSurfaceDirector
 !------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+! This function can be used to return the elementwise values of the director
+! field. The director data is supposed to be found as the elementwise property
+! 'director'. If this property does not exits, the normal is computed otherwise.
+!-------------------------------------------------------------------------------
+  FUNCTION GetElementalDirector(Element, ElementNodes) RESULT (DirectorValues) 
+!-------------------------------------------------------------------------------    
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
+    REAL(KIND=dp), POINTER :: DirectorValues(:)
+    !-------------------------------------------------------------------------------
+    TYPE(Nodes_t) :: Nodes
+    LOGICAL :: Visited = .FALSE., UseElementProperty = .FALSE., UseNormalSolver = .FALSE.
+    REAL(KIND=dp), POINTER :: NodalNormals(:)
+    REAL(KIND=dp) :: Normal(3)
+    INTEGER :: n
+    
+    SAVE Visited, UseElementProperty, NodalNormals, Nodes
+    !-------------------------------------------------------------------------------
+
+    IF(.NOT. Visited) THEN
+      DirectorValues => GetElementProperty('director', Element)
+      UseElementProperty = ASSOCIATED( DirectorValues ) 
+
+      IF(.NOT. UseElementProperty ) THEN
+        n = CurrentModel % MaxElementNodes
+        ALLOCATE( NodalNormals(3*n) ) 
+      END IF
+      Visited = .TRUE.
+    END IF
+
+    IF( UseElementProperty ) THEN    
+      DirectorValues => GetElementProperty('director', Element)
+    ELSE
+      IF( PRESENT( ElementNodes ) ) THEN
+        Normal = NormalVector( Element, ElementNodes, Check = .TRUE. ) 
+      ELSE
+        CALL GetElementNodes( Nodes, Element ) 
+        Normal = NormalVector( Element, Nodes, Check = .TRUE. ) 
+      END IF
+        
+      n = Element % TYPE % NumberOfNodes
+      NodalNormals(1:3*n:3) = Normal(1)
+      NodalNormals(2:3*n:3) = Normal(2)
+      NodalNormals(3:3*n:3) = Normal(3)      
+      DirectorValues => NodalNormals
+    END IF     
+!-------------------------------------------------------------------------------    
+  END FUNCTION GetElementalDirector
+!-------------------------------------------------------------------------------
   
 ! ---------------------------------------------------------------------------
 !> Perform an additional check that the director data defines a properly 
@@ -898,11 +895,13 @@ CONTAINS
       e3 = e3/Norm     
 
       ! Check that all directors point to the same side of the oriented surface:
-      DirectorValues => GetElementalDirector( Element, Nodes )
+      DirectorValues => GetElementalDirector(Element, Nodes)
 
       IF (.NOT. ASSOCIATED(DirectorValues)) THEN
-        CALL Fatal( 'ReadSurfaceDirector', 'Elemental director data is not associated')
+        CALL Fatal( 'CheckSurfaceOrientation', 'Elemental director data is not associated')
       END IF
+      IF (SIZE(DirectorValues) < 3*n) CALL Fatal('CheckSurfaceOrientation', &
+          'Elemental director data is not associated with all nodes')
 
       ! reference direction for the 1st element node
       d1(1:3) = DirectorValues(1:3)
