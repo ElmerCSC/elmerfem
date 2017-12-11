@@ -634,12 +634,17 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
  
 CONTAINS
 
-  FUNCTION GetElementalDirector( Element, ElementNodes ) RESULT ( DirectorValues ) 
-    
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Nodes_t), OPTIONAL :: ElementNodes
+!-------------------------------------------------------------------------------
+! This function can be used to return the elementwise values of the director
+! field. The director data is supposed to be found as the elementwise property
+! 'director'. If this property does not exits, the normal is computed otherwise.
+!-------------------------------------------------------------------------------
+  FUNCTION GetElementalDirector(Element, ElementNodes) RESULT (DirectorValues) 
+!-------------------------------------------------------------------------------    
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
     REAL(KIND=dp), POINTER :: DirectorValues(:)
-
+    !-------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: Visited = .FALSE., UseElementProperty = .FALSE., UseNormalSolver = .FALSE.
     REAL(KIND=dp), POINTER :: NodalNormals(:)
@@ -647,7 +652,8 @@ CONTAINS
     INTEGER :: n
     
     SAVE Visited, UseElementProperty, NodalNormals, Nodes
-    
+    !-------------------------------------------------------------------------------
+
     IF(.NOT. Visited ) THEN
       DirectorValues => GetElementProperty('director', Element)
       UseElementProperty = ASSOCIATED( DirectorValues ) 
@@ -656,6 +662,7 @@ CONTAINS
         n = CurrentModel % MaxElementNodes
         ALLOCATE( NodalNormals(3*n) ) 
       END IF
+      Visited = .TRUE.
     END IF
 
     IF( UseElementProperty ) THEN    
@@ -674,9 +681,9 @@ CONTAINS
       NodalNormals(3:3*n:3) = Normal(3)      
       DirectorValues => NodalNormals
     END IF     
-    
+!-------------------------------------------------------------------------------    
   END FUNCTION GetElementalDirector
-
+!-------------------------------------------------------------------------------
 
   
 ! ---------------------------------------------------------------------------------
@@ -687,27 +694,24 @@ CONTAINS
 !    node_idN d_x d_y d_z
 !
 ! to obtain the shell director data at nodes and creates an elementwise property 
-! 'director' corresponding to this data. With the optional argument 
-! CheckSurfaceOrientation = .TRUE. the integrity of director data is checked 
-! (a consistent orientation of the surface over the element). If the file
-! mesh.elements.data has been used to specify the director as an elementwise
-! property 'director', this subroutine may be used just to perform the orientation 
-! check. If both the files exist, the director obtained from mesh.elements.data
-! is used. With WriteElementwiseDirector = .TRUE. the director data is written
-! as elementwise property to a file whose format conforms with a file 
-! mesh.elements.data (this is the default name for the output file, so this
-! option can be used to convert mesh.director into mesh.elements.data format).
+! 'director' corresponding to this data. If the file mesh.elements.data has been 
+! used to specify the director as an elementwise property 'director', the director 
+! obtained from mesh.elements.data is used. With the keyword Write Elemental Director
+! being active,the director data is written as elementwise property to a file whose 
+! format conforms with a file mesh.elements.data (this is the default name for the 
+! output file, so this option can be used to convert mesh.director into 
+! mesh.elements.data format).
 ! 
 ! TO DO: Implement parallel version of file reading (mesh.elements.data and
 !        mesh.director). Allow arbitrary indexing of nodes.
 !------------------------------------------------------------------------------
-  SUBROUTINE ReadSurfaceDirector( MeshName, NumberOfNodes, SolverPars )
+  SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
-    TYPE(ValueList_t), POINTER :: SolverPars
+    TYPE(ValueList_t), POINTER, INTENT(IN) :: SolverPars
     !------------------------------------------------------------------------------
     LOGICAL :: ReadNodalDirectors, WriteElementsData, Found
     INTEGER :: n, iostat, i, j, k, i0
@@ -718,19 +722,19 @@ CONTAINS
     !------------------------------------------------------------------------------
 
     ! -----------------------------------------------------------------------------
-    ! Check whether mesh.director is read:
+    ! Check whether mesh.director can be read:
     ! -----------------------------------------------------------------------------
     n = LEN_TRIM(MeshName)
     DirectorFile = TRIM(MeshName)//'/'//'mesh.director'//CHAR(0)
 
-    INQUIRE(FILE = DirectorFile(1:n+15), EXIST = ReadNodalDirectors )
+    INQUIRE(FILE = DirectorFile(1:n+15), EXIST = ReadNodalDirectors)
 
     IF (ReadNodalDirectors) THEN
       
       CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
           'NodalDirector array could not be allocated')
       
-      OPEN( 10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat )
+      OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
       IF ( iostat /= 0 ) THEN
         CALL Fatal( 'ReadSurfaceDirector', 'Opening mesh.director file failed.')     
       ELSE
@@ -770,7 +774,6 @@ CONTAINS
       END DO
     END IF
 
-
     ! ---------------------------------------------------------------------
     ! Write the director data as elementwise property to a file whose
     ! format conforms with a file mesh.elements.data. By default
@@ -781,7 +784,7 @@ CONTAINS
 
     IF ( WriteElementsData ) THEN
       OutputFile = GetString(SolverPars, 'Elemental Director Output File', Found)
-      IF (.NOT. Found) OutputFile = 'mesh.elements.data'
+      IF (.NOT. Found) OutputFile = 'mesh.elements.data'//CHAR(0)
 
       n = LEN_TRIM(MeshName)
       DirectorFile = MeshName(1:n)//'/'//TRIM(OutputFile)//CHAR(0)
@@ -834,25 +837,20 @@ CONTAINS
   END SUBROUTINE ReadSurfaceDirector
 !------------------------------------------------------------------------------
 
-  ! DirectorDataCheck = CheckSurfaceOrientation
   
-  
-  
-  ! ---------------------------------------------------------------------------
-  !> Perform an additional check that the director data defines a properly 
-  !> oriented model. All directors should point to the same side of the surface.
-  !----------------------------------------------------------------------------
+! ---------------------------------------------------------------------------
+!> Perform an additional check that the director data defines a properly 
+!> oriented model. All directors should point to the same side of the surface.
+!----------------------------------------------------------------------------
   SUBROUTINE CheckSurfaceOrientation()
-
-    !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
-    INTEGER :: n, i, j, k, i0, Active
+    INTEGER :: n, i, j, k, i0, Active, Family
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
-    REAL(KIND=dp) :: d(3), d1(3), d2(3), d3(3), X1(3), X2(3)
-    REAL(KIND=dp) :: e1(3), e2(3), e3(3)
-    CHARACTER(LEN=MAX_NAME_LEN) :: DirectorFile, FormatString
     REAL(KIND=dp), POINTER :: DirectorValues(:)
+    REAL(KIND=dp) :: d(3), d1(3), d2(3), X1(3), X2(3)
+    REAL(KIND=dp) :: e1(3), e2(3), e3(3), Norm
     !------------------------------------------------------------------------------
 
     Active = GetNOFActive()
@@ -923,8 +921,9 @@ CONTAINS
         END IF
       END DO
     END DO
-    
+!-------------------------------------------------------------------------------   
   END SUBROUTINE CheckSurfaceOrientation
+!-------------------------------------------------------------------------------   
   
 ! ---------------------------------------------------------------------------------
 ! Use nodal directors, which are retrieved as elementwise property 'director', 
