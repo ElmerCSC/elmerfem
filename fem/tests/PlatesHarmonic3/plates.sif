@@ -1,0 +1,114 @@
+! Solves the plate equation that is assembled as it was a transient one
+! and the system is enforced to be harmonic only after the assembly.
+! For this purpose a new matrix with double size is created.
+! This matrix is by default solved as a complex system. 
+!
+! Compared to the base version this solves the system as real one. 
+!
+! Also the system utilizes block solution strategy. I.e. the system is
+! first transformed from 3x3 matrix to 6x6 matrix and this is treated as
+! a block matrix such that each component is solved separately in Gauss-Seidel
+! fashion.
+!
+! P.R. 24.11.2017
+
+Header
+  Mesh DB "." "plates"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = "plates.vtu" 
+
+  Frequency = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Density = 7800
+  Thickness = 0.01
+  Youngs Modulus = 70e9
+  Poisson Ratio = 0.3
+End
+
+Body Force 1
+  Pressure = 1e6
+End
+
+Solver 1
+  Equation = Plate Solver
+  Procedure = "Smitc" "SmitcSolver"
+
+
+  Nonlinear System Max Iterations = 1
+
+! The defaults are True for the following 2 keywords:
+!  Linear System Scaling = False
+!  Optimize Bandwidth = False
+
+! "Harmonic analysis" cannot be combined with other linear strategies such
+! as block preconditioning. 
+!  Harmonic Analysis = True
+
+! "Harmonic mode" create a fully functional linear system that can then be
+! treated with other linear strategies. 
+  Harmonic Mode = Logical True
+
+! We may toggle the system to be solved as a real one
+! For harmonic mode the default is True
+  Linear System Complex = False
+
+
+! These choose the overall block strategies
+!-----------------------------------------
+  Linear System Block Mode = Logical True
+!  Block Solver = Logical True
+  Block Preconditioner = Logical True
+  Block Gauss-Seidel = Logical True
+  Block Matrix Reuse = Logical True
+
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = string "Iterative"
+  Outer: Linear System Convergence Tolerance = real 1e-8
+  Outer: Linear System Iterative Method = string GCR
+  Outer: Linear System GCR Restart = Integer 50
+  Outer: Linear System Residual Output = integer 1
+  Outer: Linear System Max Iterations = integer 200
+
+! Linear system solver for blocks
+!-----------------------------------------
+  Block: Linear System Solver = iterative
+  Block: Linear System Iterative Method = bicgstab
+  Block: Linear System Convergence Tolerance = 1.0e-03
+  Block: Linear System Max Iterations = 1000
+  Block: Linear System Preconditioning = ILU2
+  Block: Linear System Residual Output = integer 20
+
+End
+
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Deflection 1 = 0  ! z-deflection
+  Deflection 2 = 0  ! x-rotation
+  Deflection 3 = 0  ! y-rotation
+End
+
+Solver 1 :: Reference Norm = 4.79055836E-01

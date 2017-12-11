@@ -81,6 +81,7 @@ SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
 
   CALL ListAddInteger(SolverPars, 'Variable DOFs', 6)
   CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
+  CALL ListAddLogical(SolverPars, 'Initialize Dirichlet Conditions', .FALSE.)
 
   CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
 
@@ -154,7 +155,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, PARAMETER :: NoStrainReduction = 0
   INTEGER, PARAMETER :: CurlKernel = 1
   INTEGER, PARAMETER :: MITC = 2
-  INTEGER, PARAMETER :: DoubleReduction = 3 
+  INTEGER, PARAMETER :: DoubleReduction = 3
+  INTEGER, PARAMETER :: CurlKernelWithEdgeDOFs = 4
 
   INTEGER, PARAMETER :: MaxBGElementNodes = 9
   INTEGER, PARAMETER :: MaxPatchNodes = 16    ! The maximum node count for the surface description 
@@ -179,13 +181,14 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: PlateBody, PlanarPoint, UmbilicalPoint
   LOGICAL :: Bubbles, ApplyBubbles
   LOGICAL :: LargeDeflection, MeshDisplacementActive
+  LOGICAL :: NoTractions
   LOGICAL :: SolveBenchmarkCase
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
   INTEGER :: e, i, i0, j, k, m, n, nb, nd, t 
   INTEGER :: Family, Active
-  INTEGER :: ShellModelPar, StrainReductionMethod
+  INTEGER :: ShellModelPar, StrainReductionMethod, MembraneStrainReductionMethod
   INTEGER :: NonlinIter, MaxNonlinIters
   
   REAL(KIND=dp), POINTER :: TotalSol(:) => NULL()
@@ -195,7 +198,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: LocalRHSForce(:)
   REAL(KIND=dp), TARGET :: LocalFrameNodes(MaxPatchNodes,3)
   REAL(KIND=dp) :: d(3), d1(3), d2(3), d3(3), X1(3), X2(3), e1(3), e2(3), e3(3), o(3), p(3)
-  REAL(KIND=dp) :: c, Norm, u, v, X
+  REAL(KIND=dp) :: c, Norm, u, v
   REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2), ZNodes(MaxPatchNodes)
   REAL(KIND=dp) :: BlendingSurfaceArea, ShellModelArea, MappedMeshArea, RefArea
   REAL(KIND=dp) :: NonlinTol, NonlinRes, NonlinRes0
@@ -225,11 +228,20 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=6)
 
   ! ---------------------------------------------------------------------------------
-  ! The choice of strain reduction method:
+  ! The choice of strain reduction method. Now only the automated default is active:
   ! ---------------------------------------------------------------------------------
   StrainReductionMethod = ListGetInteger(SolverPars, 'Strain Reduction Operator', &
-      Found, minv=0,maxv=3)
+      Found, minv=0,maxv=4)
   IF (.NOT.Found) StrainReductionMethod = AutomatedChoice
+  MembraneStrainReductionMethod = ListGetInteger(SolverPars, 'Membrane Strain Reduction Operator', &
+      Found, minv=0,maxv=4)
+  IF (.NOT.Found) MembraneStrainReductionMethod = StrainReductionMethod
+  ! Set the default choice of strain reduction method active (comment the following 
+  ! lines out to experiment with other methods):
+  IF (MembraneStrainReductionMethod /= NoStrainReduction) &
+      MembraneStrainReductionMethod = AutomatedChoice
+  IF (StrainReductionMethod /= NoStrainReduction) &
+      StrainReductionMethod = AutomatedChoice
 
   Bubbles = GetLogical(SolverPars, 'Bubbles', Found)
 
@@ -329,6 +341,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   NonlinTol =  GetConstReal(SolverPars, 'Nonlinear System Convergence Tolerance')
 
   IF (LargeDeflection) THEN
+    SolveBenchmarkCase = .FALSE.
     IF (.NOT. ASSOCIATED(Solver % Matrix % BulkRHS)) &
         ALLOCATE(Solver % Matrix % BulkRHS(SIZE(Solver % Matrix % RHS)))
     Solver % Matrix % BulkRHS = 0.0d0
@@ -429,8 +442,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
       ! Generate the tangential stiffness matrix and assemble the local contribution:
       ! -----------------------------------------------------------------------------
       CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
-          LargeDeflection, StrainReductionMethod, ApplyBubbles, ShellModelArea, TotalErr, &
-          LocalRHSForce, BenchmarkProblem=SolveBenchmarkCase)
+          LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
+          ApplyBubbles, ShellModelArea, TotalErr, LocalRHSForce, BenchmarkProblem=SolveBenchmarkCase)
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
@@ -491,13 +504,37 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     CALL DefaultDirichletBCs()
 
     ! ---------------------------------------------------------------------------------
+    ! The solution variable is the solution increment while the sif-file specifies
+    ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
+    ! is obtained for the solution increment:
+    ! --------------------------------------------------------------------------------
+    IF (ALLOCATED(Solver % Matrix % ConstrainedDOF)) THEN
+      DO i=1,Solver % Matrix % NumberOfRows
+        IF (Solver % Matrix % ConstrainedDOF(i)) THEN
+          Solver % Matrix % DValues(i) = Solver % Matrix % DValues(i) - Solver % Variable % Values(i)
+        END IF
+      END DO
+      CALL EnforceDirichletConditions(Solver, Solver % Matrix, Solver % Matrix % RHS)
+    END IF
+ 
+    ! ---------------------------------------------------------------------------------
     ! Check whether the nonlinear iteration can be terminated:
     ! ---------------------------------------------------------------------------------
     IF (LargeDeflection) THEN
       IF (NonlinIter == 1) THEN
-        ! Compute the norm of the initial residual (RHS vector before setting BCs). 
-        ! Update this for parallel implementation. 
-        NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+        NoTractions = MAXVAL(ABS(Solver % Matrix % BulkRHS(:)))  < AEPS
+        IF (NoTractions) THEN
+          ! This appears to be a purely BC-loaded case, switch to using a different criterion
+          ! (use absolute norm, this can be hard ...):
+          CALL Info('ShellSolver', 'No pressure load ... ', Level=4)
+          CALL Info('ShellSolver', &
+              'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
+          NonlinRes0 = 1.0d0
+        ELSE
+          ! Compute the norm of the initial residual (RHS vector before setting BCs). 
+          ! Update this for parallel implementation. 
+          NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+        END IF
       END IF
       NonlinRes = SQRT(SUM(Solver % Matrix % RHS(:)**2)) / NonlinRes0
       WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
@@ -563,7 +600,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! -------------------------------------------------------------------------------------
   ! SOME VERIFICATION OUTPUT if a benchmark case of straight cylindrical shell is solved
   !-----------------------------------------------------------------------------------
-  IF (SolveBenchmarkCase .AND. .NOT. LargeDeflection) THEN
+  IF (SolveBenchmarkCase) THEN
     
     CALL MatrixVectorMultiply(Solver % Matrix, Solver % Variable % Values, TotalSol)
     Work = 8.0d0 * SUM( Solver % Variable % Values(:) * TotalSol(:) )
@@ -572,10 +609,10 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     RefWork = 0.0d0
     SELECT CASE(ListGetInteger(SolverPars, 'Benchmark Case', Found, minv=0,maxv=2))
     CASE(1)
-      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 2.688287959059254d0 * 1.0d-2 ! t=0.01
+      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 2.688287959059254d0 * 1.0d-2 ! t=0.01
       !RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 1.828629366566552 * 1.0d-1 ! t=0.1
     CASE(2)
-      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 0.704331198817278d0 * (1.0d-2)**3 ! t=0.01
+      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 0.704331198817278d0 * (1.0d-2)**3 ! t=0.01
     END SELECT
     PRINT *, 'Relative energy error = ', SQRT(ABS(RefWork-Work)/RefWork)
     PRINT *, 'Total number of DOFS = ', SIZE(Solver % Variable % Values) 
@@ -583,7 +620,6 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     IF (ComputeShellArea) THEN
       RefArea = 0.5d0 * PI 
       !RefArea = 4 * (1.0472d0)**2  
-      !  RefArea = PI/4.0d0
       PRINT *, 'Relative Error of Model Surface Area = ', ABS(RefArea  - ShellModelArea)/RefArea    
       PRINT *, 'Relative Error of Blending Surface Area = ', ABS(RefArea  - BlendingSurfaceArea)/RefArea
       PRINT *, 'Relative Error of Mapped BG Mesh Area = ', ABS(RefArea  - MappedMeshArea)/RefArea
@@ -600,10 +636,6 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     !PRINT *, 'The L2 error norm for the principal direction 1 = ', SQRT(MaxPDir1Err)
 
   END IF
-
-
-
-
 
  
 CONTAINS
@@ -2063,7 +2095,7 @@ CONTAINS
     REAL(KIND=dp) :: GlobPDir1(3), GlobPDir2(3), GlobPDir3(3), X0(3)
     REAL(KIND=dp) :: Lambda1, Lambda2, LambdaMax
     REAL(KIND=dp) :: a1(3), a2(3), a3(3), a(2,2), Deta, b(2,2), ContravA(2,2)
-    REAL(KIND=dp) :: c(2,2), trc, detc, PDir1(2), PDir2(2)
+    REAL(KIND=dp) :: c(2,2), trc, detc, discriminant, PDir1(2), PDir2(2)
     REAL(KIND=dp) :: DualBase1(3), DualBase2(3), Id(2,2), EigenMat(2,2), T(2,2) 
     REAL(KIND=dp) :: BPrinc(2,2), scale, Err
     REAL(KIND=dp) :: rK, hK, h1, h2, pk(3), xi, eta, z(MaxPatchNodes), x1(4), x2(4), uk, vk
@@ -2194,16 +2226,28 @@ CONTAINS
     c(1:2,1:2) = MATMUL(b,ContravA)
     detc = c(1,1)*c(2,2)-c(1,2)*c(2,1)
     trc = c(1,1) + c(2,2)
- 
+    discriminant = trc**2 - 4.0d0*detc
+    !------------------------------------
+    ! Allow some arithmetic inaccuracy:
+    !------------------------------------
+    IF (discriminant < 0.0d0) THEN
+      IF (-discriminant/trc**2 > UmbilicalDelta**2) THEN
+      !IF (-discriminant > GeometryEpsilon**2) THEN
+        CALL Fatal('LinesOfCurvatureFrame', 'Error in computing lines of curvature')
+      ELSE
+        discriminant = 0.0d0
+      END IF
+    END IF
+
     !--------------------------------------------------------------
     ! Order the eigenvalues by their absolute values:
     !--------------------------------------------------------------
     IF (trc>0.0d0) THEN
-      lambda2 = 0.5d0 * ( trc + SQRT(trc**2 - 4.0d0*detc) )
-      lambda1 = 0.5d0 * ( trc - SQRT(trc**2 - 4.0d0*detc) )
+      lambda2 = 0.5d0 * ( trc + SQRT(discriminant) )
+      lambda1 = 0.5d0 * ( trc - SQRT(discriminant) )
     ELSE
-      lambda2 = 0.5d0 * ( trc - SQRT(trc**2 - 4.0d0*detc) )
-      lambda1 = 0.5d0 * ( trc + SQRT(trc**2 - 4.0d0*detc) )
+      lambda2 = 0.5d0 * ( trc - SQRT(discriminant) )
+      lambda1 = 0.5d0 * ( trc + SQRT(discriminant) )
     END IF
     !print *, 'Eigenvalues=', lambda1,lambda2
     LambdaMax = MAX(ABS(Lambda1), ABS(Lambda2))
@@ -3040,7 +3084,8 @@ CONTAINS
 ! inaccurate results for thin shells (with low p)! 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrix( BGElement, n, nd, m, LocalSol, LargeDeflection, &
-      StrainReductionMethod, Bubbles, Area, Error, RHSForce, BenchmarkProblem)
+      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, Area, Error, &
+      RHSForce, BenchmarkProblem)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
@@ -3051,6 +3096,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
     LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
     INTEGER, INTENT(IN) :: StrainReductionMethod       ! The choice of strain reduction method
+    INTEGER, INTENT(IN) :: MembraneStrainReductionMethod ! The choice of membrane strain reduction method    
     LOGICAL, INTENT(IN) :: Bubbles                     ! To indicate that bubble functions are used
     REAL(KIND=dp), INTENT(INOUT) :: Area               ! A variable for area compution
     REAL(KIND=dp), INTENT(INOUT) :: Error              ! A variable for error compution
@@ -3069,7 +3115,7 @@ CONTAINS
     LOGICAL :: PlateBody                   ! To indicate that the surface is flat
     LOGICAL :: SphericalSurface            ! To indicate that the surface is considered to spherical
 
-    INTEGER :: Family, ReducedStrainDim, ReductionMethod
+    INTEGER :: Family, ReducedStrainDim, MembraneStrainDim, ReductionMethod, MembraneReductionMethod
     INTEGER :: ShearReductionMethod, StretchReductionMethod
     INTEGER :: DOFs, BubbleDOFs, i, j, k, p, t, i0, j0, csize, GElementNodes 
 
@@ -3102,12 +3148,13 @@ CONTAINS
     REAL(KIND=dp) :: yk, y1, y2, XGlob, YGlob, ZGlob
     REAL(KIND=dp) :: uq, vq, sq
     REAL(KIND=dp) :: BGBasis(n), GBasis(MaxPatchNodes), PBasis(nd)
-    REAL(KIND=dp) :: StrainBasis(4,3)             ! Four rows large enough for p=1
+    REAL(KIND=dp) :: StrainBasis(4,3)   ! Four rows large enough for p=1
+    REAL(KIND=dp) :: MembraneStrainBasis1(4,3), MembraneStrainBasis2(4,3)
 
     REAL(KIND=dp) :: DOFsTransform(2,3)
-    REAL(KIND=dp) :: ShearParMat(2,2,nd), StretchParMat1(2,2,nd)
-    REAL(KIND=dp) :: StretchParMat2(2,2,nd), StretchParMat3(2,2,nd)
-    REAL(KIND=dp) :: StretchParMat4(2,2,nd), StretchParMat5(2,2,nd), StretchParMat6(2,2,nd)
+    REAL(KIND=dp) :: ShearParMat(2,2,nd)
+    REAL(KIND=dp) :: ChristoffelMat1(2,2,nd), ChristoffelMat2(2,2,nd)
+    REAL(KIND=dp) :: BParMat(2,2,nd), BParMat1(2,2,nd), BParMat2(2,2,nd)
     REAL(KIND=dp) :: PoissonRatio(n), YoungsMod(n), ShellThickness(n), Load(n), rho(n), rho0
     REAL(KIND=dp) :: nu, E, h, NormalTraction, Kappa
     REAL(KIND=dp) :: DetJ, Weight, Norm
@@ -3115,6 +3162,7 @@ CONTAINS
     SAVE Element, GElement, Nodes, PNodes, PRefNodes
 !------------------------------------------------------------------------------
     IF (m /= 6) CALL Fatal('ShellLocalMatrix', 'Wrong number of unknown fields')
+    Family = GetElementFamily(BGElement)
 
     ! ------------------------------------------------------------------------------
     ! Retrieve the data which have been saved as elementwise properties:
@@ -3135,14 +3183,26 @@ CONTAINS
     UmbilicalPointFlag => GetElementProperty('umbilical point', BGElement)
     PlateBody = PlanarPointFlag(1) > 0.0d0
     SphericalSurface = UmbilicalPointFlag(1) > 0.0d0
-    
+
     ! ------------------------------------------------------------------------------
     ! Decide what strain reduction strategy is applied and set parameters that
     ! control the selection of variational crimes.
     ! ------------------------------------------------------------------------------
+    MembraneReductionMethod = MembraneStrainReductionMethod
+    UseBubbles = .FALSE.
+    CALL SetStrainReductionParameters(BGElement, MembraneReductionMethod, PlateBody, &
+      MembraneStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
+      MembraneStrains = .TRUE.)
+
     ReductionMethod = StrainReductionMethod
-    CALL SetStrainReductionParameters(BGElement, ReductionMethod, &
-      ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform)
+    UseBubbles = Bubbles .AND. (.NOT. LargeDeflection)
+    CALL SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
+      ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
+      MembraneStrains = .FALSE.)
+    !print *, 'MembraneReductionMethod=', MembraneReductionMethod
+    !print *, 'ReductionMethod=', ReductionMethod
+    !print *, 'shear correction=', UseShearCorrection
+    !print *, 'usebubbles=', usebubbles
 
     ! ------------------------------------------------------------------------------
     ! The DOFs count: Currently, FE bubbles can be employed only in a very special 
@@ -3168,7 +3228,7 @@ CONTAINS
     !   * GElement: an element structure corresponding to the surface reconstruction
     ! ------------------------------------------------------------------------------
     Pversion = IsPElement(BGElement)
-    Family = GetElementFamily(BGElement)
+
     SuperParametric = .FALSE. ! This relates to an experimental version which is not active 
     ! ------------------------------------------------------------------------------
     ! Allocate a Lagrange interpolation element structure corresponding to the
@@ -3197,8 +3257,11 @@ CONTAINS
     YoungsMod(1:n) = GetReal(GetMaterial(), 'Youngs Modulus')
     ShellThickness(1:n) = GetReal(GetMaterial(), 'Shell Thickness')
     BodyForce => GetBodyForce()
-    IF ( ASSOCIATED(BodyForce) ) &
-        Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
+    IF ( ASSOCIATED(BodyForce) ) THEN
+      Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
+    ELSE
+      Load(1:n) = 0.0d0
+    END IF
     IF (TransientSimulation) &
         rho(1:n) = GetReal(GetMaterial(), 'Density')
 
@@ -3216,41 +3279,34 @@ CONTAINS
     ! TO DO: Should we create nodal vectors of all model parameters to avoid
     ! a later call of SurfaceBasisVectors?
     ! -------------------------------------------------------------------------- 
-    IF (ReductionMethod /= NoStrainReduction) THEN
+    IF (ReductionMethod /= NoStrainReduction .OR. MembraneReductionMethod /= NoStrainReduction) THEN
       ShearParMat = 0.0d0
-      StretchParMat1 = 0.0d0
-      StretchParMat2 = 0.0d0
-      StretchParMat3 = 0.0d0
-      StretchParMat4 = 0.0d0
-      StretchParMat5 = 0.0d0
-      StretchParMat6 = 0.0d0
+      BParMat = 0.0d0
+      BParMat1 = 0.0d0
+      BParMat2 = 0.0d0
       DO j=1,nd
         CALL SurfaceBasisVectors(Nodes % x(j), Nodes % y(j), TaylorParams, e1, e2, e3, o, &
             abasis1, abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
             C211, C212, XGlob=XGlob, YGlob=YGlob, ZGlob=ZGlob, PlanarPoint=PlateBody, &
             UmbilicalPoint=SphericalSurface)
 
+        ChristoffelMat1(1,1,j) = C111
+        ChristoffelMat1(2,1,j) = C211
+        ChristoffelMat1(1,2,j) = C112
+        ChristoffelMat1(2,2,j) = C212
+
+        ChristoffelMat2(1,1,j) = C211
+        ChristoffelMat2(2,1,j) = C221
+        ChristoffelMat2(1,2,j) = C212
+        ChristoffelMat2(2,2,j) = C222
+
+        BParMat(1,1,j) = B11
+        BParMat(2,2,j) = B22       
+        BParMat1(1,1,j) = B11
+        BParMat2(2,2,j) = B22
+
         ShearParMat(1,1,j) = B11/a11
         ShearParMat(2,2,j) = B22/a22
-
-        StretchParMat1(1,1,j) = C111
-        StretchParMat1(2,2,j) = C212
-
-        StretchParMat2(1,1,j) = C112
-        StretchParMat2(2,2,j) = C211
-
-        StretchParMat3(1,1,j) = C211
-        StretchParMat3(2,2,j) = C222
-
-        StretchParMat4(1,1,j) = C212
-        StretchParMat4(2,2,j) = C221
-
-        StretchParMat5(1,1,j) = B11
-        StretchParMat5(2,2,j) = 0.0d0
-
-        StretchParMat6(1,1,j) = 0.0d0
-        StretchParMat6(2,2,j) = B22
-
       END DO
     END IF
 
@@ -3376,9 +3432,22 @@ CONTAINS
           sq = IP % S(t)
         END IF
 
-        stat = ReductionOperatorInfo( Element, Nodes, uq, vq, StrainBasis, &
+        stat = ReductionOperatorInfo(Element, Nodes, uq, vq, StrainBasis, &
             ReductionMethod, ApplyPiolaTransform = .TRUE., detF=detJ, Basis=Basis, &
-            dBasis=dBasis, Bubbles=UseBubbles )
+            dBasis=dBasis, Bubbles=UseBubbles)
+
+        IF (MembraneReductionMethod /= ReductionMethod) THEN
+          stat = ReductionOperatorInfo(Element, Nodes, uq, vq, MembraneStrainBasis1, &
+              MembraneReductionMethod, ApplyPiolaTransform = .TRUE., EdgeDirection=1)
+          IF (MembraneReductionMethod == CurlKernelWithEdgeDOFs) THEN
+            ! Two sets of basis functions available, create both:
+            stat = ReductionOperatorInfo(Element, Nodes, uq, vq, MembraneStrainBasis2, &
+                MembraneReductionMethod, ApplyPiolaTransform = .TRUE., EdgeDirection=2)
+          END IF
+        ELSE
+          MembraneStrainBasis1 = StrainBasis
+          MembraneStrainBasis2 = StrainBasis
+        END IF
 
         y1 = SUM( Nodes % x(1:nd) * Basis(1:nd) )
         y2 = SUM( Nodes % y(1:nd) * Basis(1:nd) )
@@ -3430,127 +3499,119 @@ CONTAINS
       !------------------------------------------------------------------------------------
       Weight = h * SqrtDetA * detJ * sq
 
-      IF ( (ReductionMethod /= NoStrainReduction) .AND. (.NOT. PlateBody) ) THEN
-
-        !------------------------------------------------------------------------------------------
-        ! Apply strain reduction to vector (C111 u1, C212 u2):
-        !------------------------------------------------------------------------------------------
-        IF (ReductionMethod == DoubleReduction) THEN
+      IF ( (MembraneReductionMethod /= NoStrainReduction) .AND. (.NOT. PlateBody) ) THEN
+        ! -------------------------------------------------------------------------------
+        ! Apply strain reduction to terms having the Christoffel symbols as coefficients:
+        ! -------------------------------------------------------------------------------
+        IF (MembraneReductionMethod == DoubleReduction) THEN
           ! First, get DOFs for the RT interpolant ...
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat1)
+              3, nd, MITC, ChristoffelMat1)
           ! and then apply a second round of reductions:
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat1)
+              MembraneStrainDim, nd, MembraneReductionMethod, ChristoffelMat1, EdgeDirection=1)
         END IF
         DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
-
-            BM(1,(p-1)*m+2) = BM(1,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
+          DO j=1,MembraneStrainDim
+            BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+            BM(1,(p-1)*m+2) = BM(1,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
           END DO
         END DO
 
-        ! Apply strain reduction to vector (C112 u2, C211 u1). Notice the order of components.
-        IF (ReductionMethod == DoubleReduction) THEN
+        IF (MembraneReductionMethod == DoubleReduction) THEN
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat2)
+              3, nd, MITC, ChristoffelMat2)
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat2)
+              MembraneStrainDim, nd, MembraneReductionMethod, ChristoffelMat2, EdgeDirection=2)
         END IF
         DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(1,(p-1)*m+2) = BM(1,(p-1)*m+2) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
-
-            BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
+          DO j=1,MembraneStrainDim
+            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis2(j,1)
+            BM(2,(p-1)*m+1) = BM(2,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis2(j,2)
+            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,1)
+            BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,2)
           END DO
         END DO
 
-        ! Apply strain reduction to vector (B11 u3, 0):
-        IF (ReductionMethod == DoubleReduction) THEN
+        ! -------------------------------------------------------------------------------
+        ! The terms having the components of the second fundamental form as coefficients:
+        ! -------------------------------------------------------------------------------
+        IF (MembraneReductionMethod == CurlKernelWithEdgeDOFs) THEN
+          ! This splits up into two steps ...
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat5)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+              MembraneStrainDim, nd, MembraneReductionMethod, BParMat1, EdgeDirection=1)
+          DO p=1,nd
+            DO j=1,MembraneStrainDim
+              BM(1,(p-1)*m+3) = BM(1,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+              BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+            END DO
+          END DO
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+              MembraneStrainDim, nd, MembraneReductionMethod, BParMat2, EdgeDirection=2)
+          DO p=1,nd
+            DO j=1,MembraneStrainDim
+              BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,1)
+              BM(2,(p-1)*m+3) = BM(2,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,2)
+            END DO
+          END DO
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat5)
-        END IF
-        DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(1,(p-1)*m+3) = BM(1,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
+          ! Here all strain reduction operations are created by using just one parameter matrix:
+          IF (MembraneReductionMethod == DoubleReduction) THEN
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                3, nd, MITC, BParMat)
+            ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+          ELSE
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                MembraneStrainDim, nd, MembraneReductionMethod, BParMat)
+          END IF
+          DO p=1,nd
+            DO j=1,MembraneStrainDim
+              BM(1,(p-1)*m+3) = BM(1,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+              BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+              BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+              BM(2,(p-1)*m+3) = BM(2,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+            END DO
           END DO
-        END DO
+        END IF
 
-        ! Apply strain reduction to vector (C211 u1, C222 u2):
-        IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat3)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+        ! -------------------------------------------------------------------------------
+        ! The partial derivative terms
+        ! -------------------------------------------------------------------------------
+        IF (.TRUE.) THEN
+          ! No modifications:
+          DO p=1,nd
+            BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + dBasis(p,1)
+            BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + dBasis(p,2)
+            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + dBasis(p,2)
+            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + dBasis(p,1)
+          END DO
         ELSE
+          ! This branch is now for testing only and the full support for all strain reduction
+          ! operators is missing.
+          ! Apply the strain reduction operator to plain derivative terms. This doesn't make
+          ! any modification really with the current set of strain reduction operators.
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat3)
-        END IF
-        DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(2,(p-1)*m+1) = BM(2,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
+              MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE.)
+          DO p=1,nd
+            DO j=1,MembraneStrainDim
+              BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+              BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+              BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+              BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
 
-            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
+              BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+              BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+              BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+              BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+            END DO
           END DO
-        END DO
-
-        ! Apply strain reduction to vector (C212 u2, C221 u1). Notice the order of components.
-        IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat4)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
-        ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat4)
         END IF
-        DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
-
-            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(2,(p-1)*m+1) = BM(2,(p-1)*m+1) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
-          END DO
-        END DO
-
-        ! Apply strain reduction to vector (0, B22 u3):
-        IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat6)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
-        ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat6)
-        END IF
-        DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(2,(p-1)*m+3) = BM(2,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
-          END DO
-        END DO
-
-        ! The derivative terms that are invariant:
-        DO p=1,nd
-          BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + dBasis(p,1)
-          BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + dBasis(p,2)
-          BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + dBasis(p,2)
-          BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + dBasis(p,1)
-        END DO
 
       ELSE
         !-------------------------------------------------
@@ -3568,7 +3629,6 @@ CONTAINS
           BM(3,(p-1)*m+1) = dBasis(p,2) - 2.0d0 * C211 * Basis(p)
           BM(3,(p-1)*m+2) = dBasis(p,1) - 2.0d0 * C212 * Basis(p)
         END DO
-
       END IF
 
       !----------------------------------------------------------------------
@@ -3963,6 +4023,9 @@ CONTAINS
 
         Weight = SQRT(NewDetA) * detJ * sq
 
+        RHSForce(1:DOFs:m) = RHSForce(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
+        RHSForce(2:DOFs:m) = RHSForce(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
+        RHSForce(3:DOFs:m) = RHSForce(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
         Force(1:DOFs:m) = Force(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
         Force(2:DOFs:m) = Force(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
         Force(3:DOFs:m) = Force(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
@@ -3972,7 +4035,6 @@ CONTAINS
         DO p=1,nd
           i = m*(p-1)+3
           Force(i) = Force(i) + NormalTraction * Basis(p) * Weight
-          ! RHSForce(i) = RHSForce(i) + NormalTraction * Basis(p) * Weight
         END DO
       END IF
 
@@ -3983,8 +4045,6 @@ CONTAINS
       !Error = Error + sq * (1.0d0 - abs(B11/a11) - abs(B22/a22))**2 * detJ * SqrtDetA
 
     END DO QUADRATURELOOP
-
-    RHSForce(1:DOFs) = Force(1:DOFs)
 
     ! ------------------------------------------------------------------------------
     ! Static condensation is performed before transforming to the global DOFs:
@@ -3999,7 +4059,7 @@ CONTAINS
     Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
     Force(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),Force(1:DOFs))
 
-    RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
+    IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
 
     IF(TransientSimulation) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
@@ -4017,15 +4077,18 @@ CONTAINS
 ! Define what strain reduction strategy is applied and set parameters that
 ! control the selection of variational crimes.
 !------------------------------------------------------------------------------
-  SUBROUTINE SetStrainReductionParameters(BGElement, ReductionMethod, &
-      ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform)
+  SUBROUTINE SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
+      ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
+      MembraneStrains)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
-    INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different 
+    INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different
+    LOGICAL, INTENT(IN) :: PlateBody                  ! A dummy argument
     INTEGER, INTENT(OUT) :: ReducedStrainDim
-    LOGICAL, INTENT(OUT) :: UseBubbles
+    LOGICAL, INTENT(INOUT) :: UseBubbles
     LOGICAL, INTENT(OUT) :: UseShearCorrection
-    REAL(KIND=dp), INTENT(OUT) :: DOFsTransform(2,3)
+    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(2,3)
+    LOGICAL, INTENT(IN) :: MembraneStrains            ! To select the method for membrane strains
 !------------------------------------------------------------------------------
     LOGICAL :: PVersion
     INTEGER :: Family
@@ -4033,7 +4096,12 @@ CONTAINS
     Family = GetElementFamily(BGElement)
     PVersion = IsPElement(BGElement)
 
-    UseBubbles = .FALSE.
+    IF (.NOT. MembraneStrains .AND. (ReductionMethod == CurlKernelWithEdgeDOFs)) THEN
+      CALL Warn('SetStrainReductionParameters', &
+          'Operator 4 is not yet possible for transverse shear strains')
+      ReductionMethod = CurlKernel
+    END IF
+
     IF (Pversion) THEN
       ReductionMethod = NoStrainReduction
     ELSE
@@ -4043,10 +4111,18 @@ CONTAINS
         ! ------------------------------------------------------------------------------
         SELECT CASE(Family)
         CASE(3)
-          ReductionMethod = DoubleReduction
-          UseBubbles = .TRUE.
+          IF (MembraneStrains) THEN
+            ReductionMethod = DoubleReduction
+          ELSE
+            ReductionMethod = DoubleReduction
+            UseBubbles = .FALSE.
+          END IF
         CASE(4)
-          ReductionMethod = CurlKernel
+          IF (MembraneStrains) THEN
+            ReductionMethod = CurlKernelWithEdgeDOFs
+          ELSE
+            ReductionMethod = MITC
+          END IF
         END SELECT
       ELSE
         ! ------------------------------------------------------------------------------
@@ -4056,9 +4132,9 @@ CONTAINS
         IF (Family == 3 .AND. ReductionMethod == CurlKernel) &
             ReductionMethod = DoubleReduction
         ! Currently bubbles can be activated only for certain strategies:
-        IF (ReductionMethod == NoStrainReduction .OR. &
-            ReductionMethod == DoubleReduction) THEN
-          UseBubbles = Bubbles
+        IF (.NOT.(ReductionMethod == NoStrainReduction .OR. &
+            ReductionMethod == DoubleReduction)) THEN
+          UseBubbles = .FALSE.
         END IF
       END IF
     END IF
@@ -4079,7 +4155,7 @@ CONTAINS
         UseShearCorrection = .TRUE.
       ELSE
         ReducedStrainDim = 3
-        UseShearCorrection = .FALSE.
+        UseShearCorrection = .TRUE.
       END IF
     CASE(MITC)
       IF (Family == 3) THEN
@@ -4106,6 +4182,13 @@ CONTAINS
         DOFsTransform(2,3) = -1.0d0/(2.0d0*sqrt(3.0d0))
       ELSE
         CALL Fatal('SetStrainReductionParameters', 'Double reduction is not defined for quads')
+      END IF
+    CASE(CurlKernelWithEdgeDOFs)
+      IF (Family==3) THEN
+        CALL Fatal('SetStrainReductionParameters', 'Strain Reduction Operator=4 is not defined for trias')
+      ELSE
+        ReducedStrainDim = 3
+        UseShearCorrection = .TRUE.        
       END IF
     END SELECT
 !------------------------------------------------------------------------------
@@ -4472,7 +4555,8 @@ CONTAINS
 ! is made to serve the special purpose of strain reduction. 
 !------------------------------------------------------------------------------
   FUNCTION ReductionOperatorInfo( Element, Nodes, u, v, StrainBasis, ReductionMethod, &
-      ApplyPiolaTransform, F, G, detF, Basis, dBasis, DOFWeigths, Bubbles) RESULT(stat)
+      ApplyPiolaTransform, F, G, detF, Basis, dBasis, DOFWeigths, Bubbles, EdgeDirection) &
+      RESULT(stat)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), INTENT(IN), TARGET :: Element         !< Element structure
@@ -4480,7 +4564,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: u                         !< 1st reference element coordinate
     REAL(KIND=dp), INTENT(IN) :: v                         !< 2nd reference element coordinate
     REAL(KIND=dp), INTENT(OUT) :: StrainBasis(:,:)         !< The basis functions b spanning the reference element space
-    INTEGER, INTENT(IN) :: ReductionMethod                 !< The method chosen: (2=MITC, 1=kernel version)
+    INTEGER, INTENT(IN) :: ReductionMethod                 !< The method chosen: (1,4=kernel version,2=MITC)
     LOGICAL, INTENT(IN), OPTIONAL :: ApplyPiolaTransform   !< If  .TRUE., perform the Piola transform so that, instead of b(p),
                                                            !< return B(f(p)) with B(x) the basis functions on the physical
                                                            !< element K and f the element map f:k->K
@@ -4493,17 +4577,20 @@ CONTAINS
                                                            !< is done with respect to physical coordinates x
     REAL(KIND=dp), INTENT(OUT), OPTIONAL :: DOFWeigths(:,:)!< Auxiliary div-conforming functions needed in the evaluation of DOFs
     LOGICAL, INTENT(IN), OPTIONAL :: Bubbles               !< Indicate whether a bubble function is requested
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection         !< Preferred direction for edge DOFs when ReductionMethod=4
     LOGICAL :: Stat                                        !< Currently a dummy return value
 !---------------------------------------------------------------------------------
     LOGICAL :: PerformPiolaTransform, CreateBubbles
 
-    INTEGER :: dim, i, j, k, n, ntot, q, DOFs, Family
+    INTEGER :: dim, e, i, j, k, n, ntot, q, DOFs, Family
 
     REAL(KIND=dp) :: LF(3,3), LG(3,3), detLF, B(3)
     REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes+1)
     REAL(KIND=dp) :: dLBasis(Element % TYPE % NumberOfNodes+1,3)
 !------------------------------------------------------------------------------       
     StrainBasis = 0.0d0
+    IF ( PRESENT(DOFWeigths) ) DOFWeigths = 0.0d0
+
     PerformPiolaTransform = .FALSE.
     IF ( PRESENT(ApplyPiolaTransform) ) PerformPiolaTransform = ApplyPiolaTransform
 
@@ -4560,87 +4647,123 @@ CONTAINS
     LG(2,2) = 1.0d0/detLF * LF(1,1)     
     LG(1:dim,1:dim) = TRANSPOSE( LG(1:dim,1:dim) )
 
-    SELECT CASE(Family)
-    CASE(3)
-      IF (ReductionMethod == 2) THEN
-        !---------------------------------------------------------------------
-        ! The basis functions for RT_0(k) with DOFs attached to the edges
-        !---------------------------------------------------------------------
-        DOFs = 3
-        StrainBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0
-        StrainBasis(1,2) = u/(2.0d0*Sqrt(3.0d0))
-        StrainBasis(2,1) = -v/(2.0d0*Sqrt(3.0d0))
-        StrainBasis(2,2) = (1 + u)/(2.0d0*Sqrt(3.0d0))
-        StrainBasis(3,1) = -v/(2.0d0*Sqrt(3.0d0))
-        StrainBasis(3,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0))
-      ELSE
-        !---------------------------------------------------------------------
-        ! The basis functions for RT_0(k,0), with DOFs defined as integrals
-        ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
-        ! according to the standard Piola transformation (the div-conforming 
-        ! version).
-        !---------------------------------------------------------------------
-        DOFs = 2
-        StrainBasis(1,1) = 1.0d0
-        StrainBasis(1,2) = 0.0d0
-        StrainBasis(2,1) = 0.0d0
-        StrainBasis(2,2) = 1.0d0
-        
-        IF ( PRESENT(DOFWeigths) ) THEN
-          DOFWeigths = 0.0d0
-          DOFWeigths(1,1:2) = StrainBasis(1,1:2)/sqrt(3.0d0)
-          DOFWeigths(2,1:2) = StrainBasis(2,1:2)/sqrt(3.0d0)
-        END IF
-      END IF
-    CASE(4)
-      IF (ReductionMethod == 2) THEN
-        !---------------------------------------------------------------------
-        ! The basis functions for RT_0(k) with DOFs attached to the edges
-        !---------------------------------------------------------------------
-        DOFs = 4
-        StrainBasis(1,1) = (1.0d0-v)/4.0d0
-        StrainBasis(1,2) = 0.0d0
-        StrainBasis(2,1) = 0.0d0
-        StrainBasis(2,2) = (1.0d0+u)/4.0d0
-        StrainBasis(3,1) = -(1.0d0+v)/4.0d0
-        StrainBasis(3,2) = 0.0d0
-        StrainBasis(4,1) = 0.0d0
-        StrainBasis(4,2) = (-1.0d0+u)/4.0d0
-      ELSE
-        !---------------------------------------------------------------------
-        ! The basis functions for ABF_0(k,0), with DOFs defined as integrals
-        ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
-        ! according to the standard Piola transformation (the div-conforming 
-        ! version).
-        !---------------------------------------------------------------------
-        DOFs = 3
-        StrainBasis(1,1) = 1.0d0
-        StrainBasis(1,2) = 0.0d0
-        StrainBasis(2,1) = 0.0d0
-        StrainBasis(2,2) = 1.0d0
-        StrainBasis(3,1) = v
-        StrainBasis(3,2) = u
-        
-        IF ( PRESENT(DOFWeigths) ) THEN
-          DOFWeigths = 0.0d0
-          DOFWeigths(1,1:2) = StrainBasis(1,1:2)/4.0d0
-          DOFWeigths(2,1:2) = StrainBasis(2,1:2)/4.0d0
-          DOFWeigths(3,1:2) = StrainBasis(3,1:2)*3.0d0/8.0d0
-        END IF
-      END IF
+    IF (ReductionMethod /= NoStrainReduction) THEN
+      SELECT CASE(Family)
+      CASE(3)
+        SELECT CASE(ReductionMethod)
+        CASE(CurlKernel,DoubleReduction)
+          !---------------------------------------------------------------------
+          ! The basis functions for RT_0(k,0), with DOFs defined as integrals
+          ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
+          ! according to the standard Piola transformation (the div-conforming 
+          ! version).
+          !---------------------------------------------------------------------
+          DOFs = 2
+          StrainBasis(1,1) = 1.0d0
+          StrainBasis(1,2) = 0.0d0
+          StrainBasis(2,1) = 0.0d0
+          StrainBasis(2,2) = 1.0d0
 
-    CASE DEFAULT
-      CALL Warn('ReductionOperatorInfo','Unsupported element type')
-      RETURN
-    END SELECT
+          IF ( PRESENT(DOFWeigths) ) THEN
+            DOFWeigths(1,1:2) = StrainBasis(1,1:2)/sqrt(3.0d0)
+            DOFWeigths(2,1:2) = StrainBasis(2,1:2)/sqrt(3.0d0)
+          END IF
+
+        CASE(MITC)
+          !---------------------------------------------------------------------
+          ! The basis functions for RT_0(k) with DOFs attached to the edges
+          !---------------------------------------------------------------------
+          DOFs = 3
+          StrainBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0
+          StrainBasis(1,2) = u/(2.0d0*Sqrt(3.0d0))
+          StrainBasis(2,1) = -v/(2.0d0*Sqrt(3.0d0))
+          StrainBasis(2,2) = (1 + u)/(2.0d0*Sqrt(3.0d0))
+          StrainBasis(3,1) = -v/(2.0d0*Sqrt(3.0d0))
+          StrainBasis(3,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0))
+
+        CASE DEFAULT
+          CALL Fatal('ReductionOperatorInfo','Unknown strain reduction operator')
+        END SELECT
+
+      CASE(4)
+        SELECT CASE(ReductionMethod)
+        CASE(CurlKernel)
+          !---------------------------------------------------------------------
+          ! The basis functions for ABF_0(k,0), with DOFs defined as integrals
+          ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
+          ! according to the standard Piola transformation (the div-conforming 
+          ! version).
+          !---------------------------------------------------------------------
+          DOFs = 3
+          StrainBasis(1,1) = 1.0d0
+          StrainBasis(1,2) = 0.0d0
+          StrainBasis(2,1) = 0.0d0
+          StrainBasis(2,2) = 1.0d0
+          StrainBasis(3,1) = v
+          StrainBasis(3,2) = u
+
+          IF ( PRESENT(DOFWeigths) ) THEN
+            DOFWeigths(1,1:2) = StrainBasis(1,1:2)/4.0d0
+            DOFWeigths(2,1:2) = StrainBasis(2,1:2)/4.0d0
+            DOFWeigths(3,1:2) = StrainBasis(3,1:2)*3.0d0/8.0d0
+          END IF
+
+        CASE(MITC)
+          !---------------------------------------------------------------------
+          ! The basis functions for RT_0(k) with DOFs attached to the edges
+          !---------------------------------------------------------------------
+          DOFs = 4
+          StrainBasis(1,1) = (1.0d0-v)/4.0d0
+          StrainBasis(1,2) = 0.0d0
+          StrainBasis(2,1) = 0.0d0
+          StrainBasis(2,2) = (1.0d0+u)/4.0d0
+          StrainBasis(3,1) = -(1.0d0+v)/4.0d0
+          StrainBasis(3,2) = 0.0d0
+          StrainBasis(4,1) = 0.0d0
+          StrainBasis(4,2) = (-1.0d0+u)/4.0d0
+
+        CASE(CurlKernelWithEdgeDOFs)
+          !---------------------------------------------------------------------
+          ! The basis functions for ABF_0(k,0), but DOFs are now defined as
+          ! edge/line integrals d_i = (u,t)_E where t is an edge tangent.
+          ! Two versions are available which differ on what edges are used.
+          !---------------------------------------------------------------------
+          DOFs = 3
+          E = 1
+          IF (PRESENT(EdgeDirection)) THEN
+            E = EdgeDirection
+            IF (.NOT.(E==1 .OR. E==2)) &
+                CALL Fatal('ReductionOperatorInfo','A wrong direction parameter given')
+          END IF
+
+          IF (E == 1) THEN
+            ! Employ the edges 12 and 34 and the v-axis
+            StrainBasis(1,1) = (1.0d0-v)/4.0d0
+            StrainBasis(1,2) = -1.0d0/4.0d0*u
+            StrainBasis(2,1) = -(1.0d0+v)/4.0d0
+            StrainBasis(2,2) = -1.0d0/4.0d0*u
+            StrainBasis(3,1) = 0.0d0
+            StrainBasis(3,2) = 0.5d0
+          ELSE
+            ! Employ the edges 41 and 23 and the u-axis
+            StrainBasis(1,1) = 1.0d0/4.0d0*v
+            StrainBasis(1,2) = -(1.0d0-u)/4.0d0
+            StrainBasis(2,1) = 1.0d0/4.0d0*v
+            StrainBasis(2,2) = (1.0d0+u)/4.0d0
+            StrainBasis(3,1) = 0.5d0
+            StrainBasis(3,2) = 0.0d0
+          END IF
+
+        CASE DEFAULT
+          CALL Fatal('ReductionOperatorInfo','Unknown strain reduction operator')
+        END SELECT
+      CASE DEFAULT
+        CALL Warn('ReductionOperatorInfo','Unsupported element type')
+        RETURN
+      END SELECT
+    END IF
 
     IF (PerformPiolaTransform) THEN
-      DO j=1,DOFs
-        DO k=1,dim
-          B(k) = SUM( LG(k,1:dim) * StrainBasis(j,1:dim) )
-        END DO
-        StrainBasis(j,1:dim) = B(1:dim)
-      END DO
       ! ----------------------------------------------------------------------
       ! Get global first derivatives of the nodal basis functions if wanted:
       ! ----------------------------------------------------------------------
@@ -4654,17 +4777,27 @@ CONTAINS
           END DO
         END DO
       END IF
-      ! ----------------------------------------------------------------------
-      ! Apply the standard Piola transform for the functions needed in the 
-      ! expressions for the DOFs (the scaling with 1/detF however omitted) 
-      ! ----------------------------------------------------------------------
-      IF ( PRESENT(DOFWeigths) ) THEN
+
+      IF (ReductionMethod /= NoStrainReduction) THEN
         DO j=1,DOFs
           DO k=1,dim
-            B(k) = SUM( LF(k,1:dim) * DOFWeigths(j,1:dim) )
+            B(k) = SUM( LG(k,1:dim) * StrainBasis(j,1:dim) )
           END DO
-          DOFWeigths(j,1:dim) = B(1:dim)
+          StrainBasis(j,1:dim) = B(1:dim)
         END DO
+
+        ! ----------------------------------------------------------------------
+        ! Apply the standard Piola transform for the functions needed in the 
+        ! expressions for the DOFs (the scaling with 1/detF however omitted) 
+        ! ----------------------------------------------------------------------
+        IF ( PRESENT(DOFWeigths) ) THEN
+          DO j=1,DOFs
+            DO k=1,dim
+              B(k) = SUM( LF(k,1:dim) * DOFWeigths(j,1:dim) )
+            END DO
+            DOFWeigths(j,1:dim) = B(1:dim)
+          END DO
+        END IF
       END IF
     ELSE
       IF ( PRESENT(dBasis) ) dBasis(1:ntot,1:dim) = dLBasis(1:ntot,1:dim)
@@ -4687,14 +4820,14 @@ CONTAINS
 !  Compute a matrix which can be used to evaluate DOFs for the interpolating
 !  function R_K(u) in the strain reduction space X(K) when applied to a H1-
 !  conforming FE function u having two components. If d_k denotes the linear 
-!  functional defining the kth DOF, the kth row of the returned matrix has 
+!  functional defining the kth DOF, the kth row of the returned matrix A has 
 !  entries 
 !
 !     [d_k(N1*e1) d_k(N1*e2) ... d_k(Nn*e1) d_k(Nn*e2)]
 !
 !  where N1,...,Nn are the Lagrange basis functions, e1=(1,0) and e2=(0,1). 
 !  Thus, if the DOFs of u are contained accordingly in a vector U, the DOFs of
-!  the interpolating function can be evaluated by computing the product AU.
+!  the interpolating function can be evaluated by computing the product A*U.
 !  Optionally the interpolating function can be computed for a field Cu
 !  where C is a 2X2 matrix field. The model parameters at the element nodes
 !  are then given in the ModelPar array. This subroutine depends intimately
@@ -4702,38 +4835,50 @@ CONTAINS
 !  integrated here. 
 !------------------------------------------------------------------------------
   SUBROUTINE ReductionOperatorDofs(Element, Nodes, A, nd, n, ReductionMethod, &
-      ModelPars)
+      ModelPars, GradientField, EdgeDirection)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), INTENT(IN), TARGET :: Element          !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                      !< Nodes structure
-    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)                 !< Coefficients for expressing the DOFs 
+    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)                  !< Coefficients for expressing the DOFs 
     INTEGER, INTENT(IN) :: nd                               !< The dimension of the strain reduction space X(K)
     INTEGER, INTENT(IN) :: n                                !< The number of the H1-conforming basis functions
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: ModelPars(2,2,n) !< To include the effect of additional model parameters
+    LOGICAL, OPTIONAL :: GradientField                      !< To return [d_k(grad(N1).e1) d_k(grad(N1).e2) ... ]
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection          !< Preferred direction for edge DOFs when ReductionMethod=4
 !---------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: stat, UseParameters, PRefElement
+    LOGICAL :: stat, UseParameters, PRefElement, GradientOperand
 
-    INTEGER :: Family, i, j, k, t
+    INTEGER :: Family, e, i, j, k, t
 
     REAL(KIND=dp) :: StrainBasis(nd,3)        ! The basis functions for the strain reduction space X(K)
     REAL(KIND=dp) :: DOFWeigths(nd,3)         ! The auxiliary functions to evaluate the interpolant in X(K)
     REAL(KIND=dp) :: Basis(n)                 ! H1-conforming basis functions
+    REAL(KIND=dp) :: DBasis(n,1:3) 
     REAL(KIND=dp) :: F(3,3)                   ! The gradient F=Grad f of the element mapping
     REAL(KIND=dp) :: detJ
     REAL(KIND=dp) :: u(2), ParMat(2,2), uk, vk, sk
     REAL(KIND=dp) :: Tau(4,3)
 !---------------------------------------------------------------------------------
+    IF (PRESENT(GradientField)) THEN
+      GradientOperand = GradientField
+    ELSE
+      GradientOperand = .FALSE.
+    END IF
     Family = GetElementFamily(Element)
+
+    IF (GradientOperand .AND. .NOT.(Family==4 .AND. (ReductionMethod == CurlKernel .OR. &
+        ReductionMethod == CurlKernelWithEdgeDOFs))) &
+        CALL Fatal('ReductionOperatorDofs', 'GradientOperand is not supported the chosen reduction')
 
     ! Clear upper left corner of A
     A(1:nd,1:2*n) = 0.0d0
 
     UseParameters = PRESENT(ModelPars) 
-    IF (.NOT. UseParameters) THEN
+    IF (.NOT. UseParameters .OR. GradientOperand) THEN
       ParMat(1,1) = 1.0d0
       ParMat(1,2) = 0.0d0
       ParMat(2,1) = 0.0d0
@@ -4743,7 +4888,51 @@ CONTAINS
     SELECT CASE(Family)
     CASE(3)
       PRefElement = IsPElement(Element)
-      IF (ReductionMethod == 2) THEN
+      SELECT CASE(ReductionMethod)
+      CASE(CurlKernel)
+        ! Method: the kernel of RT
+        IP = GaussPoints(Element)
+        DO t=1,IP % n
+
+          IF (.NOT. PRefElement) THEN
+            ! Switch to the p-reference element:
+            uk = -1.0d0 + 2.0d0 * IP % U(t) + IP % V(t)
+            vk = SQRT(3.0d0) * IP % V(t)
+            sk = SQRT(3.0d0) * 2.0d0 * IP % S(t)
+          ELSE
+            uk = IP % U(t)
+            vk = IP % V(t)
+            sk = IP % S(t)
+          END IF
+
+          stat = ReductionOperatorInfo( Element, Nodes, uk, vk, StrainBasis, &
+              ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths)  
+
+          IF (UseParameters) THEN
+            ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+            ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+            ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+            ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+          END IF
+
+          DO i=1,nd
+            DO j=1,n
+              DO k=1,2
+                SELECT CASE(k)
+                CASE(1)
+                  u(1) = ParMat(1,1)*Basis(j)
+                  u(2) = ParMat(2,1)*Basis(j)
+                CASE(2)
+                  u(1) = ParMat(1,2)*Basis(j)
+                  u(2) = ParMat(2,2)*Basis(j)
+                END SELECT
+                A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * sk
+              END DO
+            END DO
+          END DO
+        END DO
+
+      CASE(MITC)
         ! MITC method: Create edge tangent vectors
         DO i=2,n
           Tau(i-1,1) = Nodes % x(i) - Nodes % x(i-1)
@@ -4816,26 +5005,30 @@ CONTAINS
         A(3,1) = 0.5d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
         A(3,2) = 0.5d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
 
-      ELSE
-        ! Method: the kernel of RT
+      CASE DEFAULT
+        CALL Fatal('ReductionOperatorDOFs','Unknown strain reduction operator')
+      END SELECT
+
+    CASE(4)
+      SELECT CASE(ReductionMethod)
+      CASE(CurlKernel)
+        ! Method: the kernel related to ABF
         IP = GaussPoints(Element)
         DO t=1,IP % n
 
-          IF (.NOT. PRefElement) THEN
-            ! Switch to the p-reference element:
-            uk = -1.0d0 + 2.0d0 * IP % U(t) + IP % V(t)
-            vk = SQRT(3.0d0) * IP % V(t)
-            sk = SQRT(3.0d0) * 2.0d0 * IP % S(t)
+          !stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          !    IP % W(t), detJ, Basis )
+
+          IF (GradientOperand) THEN
+            stat = ReductionOperatorInfo( Element, Nodes, IP % U(t), IP % V(t), StrainBasis, &
+                ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DBasis=Dbasis, &
+                DOFWeigths=DOFWeigths)
           ELSE
-            uk = IP % U(t)
-            vk = IP % V(t)
-            sk = IP % S(t)
+            stat = ReductionOperatorInfo( Element, Nodes, IP % U(t), IP % V(t), StrainBasis, &
+                ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths)  
           END IF
 
-          stat = ReductionOperatorInfo( Element, Nodes, uk, vk, StrainBasis, &
-              ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths)  
-
-          IF (UseParameters) THEN
+          IF (UseParameters .AND. .NOT.GradientOperand) THEN
             ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
             ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
             ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
@@ -4847,21 +5040,29 @@ CONTAINS
               DO k=1,2
                 SELECT CASE(k)
                 CASE(1)
-                  u(1) = ParMat(1,1)*Basis(j)
-                  u(2) = ParMat(2,1)*Basis(j)
+                  IF (GradientOperand) THEN
+                    u(1) = DBasis(j,1)
+                    u(2) = 0.0d0
+                  ELSE
+                    u(1) = ParMat(1,1)*Basis(j)
+                    u(2) = ParMat(2,1)*Basis(j)
+                  END IF
                 CASE(2)
-                  u(1) = ParMat(1,2)*Basis(j)
-                  u(2) = ParMat(2,2)*Basis(j)
+                  IF (GradientOperand) THEN
+                    u(1) = 0.0d0
+                    u(2) = DBasis(j,2)
+                  ELSE                  
+                    u(1) = ParMat(1,2)*Basis(j)
+                    u(2) = ParMat(2,2)*Basis(j)
+                  END IF
                 END SELECT
-                A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * sk
+                A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * IP % s(t)
               END DO
             END DO
           END DO
         END DO
-      END IF
 
-    CASE(4)
-      IF (ReductionMethod == 2) THEN
+      CASE(MITC)
         ! MITC method: Create edge tangent vectors
         DO i=2,n
           Tau(i-1,1) = Nodes % x(i) - Nodes % x(i-1)
@@ -4926,41 +5127,161 @@ CONTAINS
         A(4,1) = 0.5d0 * ( ParMat(1,1)*Tau(4,1) + ParMat(2,1)*Tau(4,2) ) * Tau(4,3)
         A(4,2) = 0.5d0 * ( ParMat(1,2)*Tau(4,1) + ParMat(2,2)*Tau(4,2) ) * Tau(4,3)
 
-      ELSE
-        ! Method: the kernel related to ABF
-        IP = GaussPoints(Element)
-        DO t=1,IP % n
+      CASE(CurlKernelWithEdgeDOFs)
+        ! Method: the kernel related to ABF with edge/line integral DOFs
+        E = 1
+        IF (PRESENT(EdgeDirection)) THEN
+          E = EdgeDirection
+          IF (.NOT.(E==1 .OR. E==2)) &
+              CALL Fatal('ReductionOperatorInfo','A wrong direction parameter given')
+        END IF
 
-          !stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          !    IP % W(t), detJ, Basis )
+        ! Create tangent vectors
+        IF (E==1) THEN
+          Tau(1,1) = Nodes % x(2) - Nodes % x(1)
+          Tau(1,2) = Nodes % y(2) - Nodes % y(1)
+          Tau(2,1) = Nodes % x(4) - Nodes % x(3)
+          Tau(2,2) = Nodes % y(4) - Nodes % y(3)
+          Tau(3,1) = (Nodes % x(4) + Nodes % x(3))/2.0d0 - (Nodes % x(2) + Nodes % x(1))/2.0d0
+          Tau(3,2) = (Nodes % y(4) + Nodes % y(3))/2.0d0 - (Nodes % y(2) + Nodes % y(1))/2.0d0
+        ELSE
+          Tau(1,1) = Nodes % x(1) - Nodes % x(4)
+          Tau(1,2) = Nodes % y(1) - Nodes % y(4)
+          Tau(2,1) = Nodes % x(3) - Nodes % x(2)
+          Tau(2,2) = Nodes % y(3) - Nodes % y(2)
+          Tau(3,1) = (Nodes % x(3) + Nodes % x(2))/2.0d0 - (Nodes % x(4) + Nodes % x(1))/2.0d0
+          Tau(3,2) = (Nodes % y(3) + Nodes % y(2))/2.0d0 - (Nodes % y(4) + Nodes % y(1))/2.0d0
+        END IF
+        DO i=1,3
+          Tau(i,3) = SQRT(SUM( Tau(i,1:2)**2 ))
+          Tau(i,1:2) = Tau(i,1:2)/Tau(i,3)
+        END DO
 
-          stat = ReductionOperatorInfo( Element, Nodes, IP % U(t), IP % V(t), StrainBasis, &
-              ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths)  
+        IF (E==1) THEN
+          IF (UseParameters .OR. GradientOperand) THEN
+            stat = ElementInfo( Element, Nodes, 0.0d0, -1.0d0, 0.0d0, detJ, Basis, DBasis )
+            IF (.NOT. GradientOperand) THEN
+              ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+              ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+              ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+              ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+            END IF
+          END IF
 
-          IF (UseParameters) THEN
+          IF (GradientOperand) THEN
+            A(1,1) = DBasis(1,1) * Tau(1,1) * Tau(1,3)
+            A(1,2) = DBasis(1,2) * Tau(1,2) * Tau(1,3)
+            A(1,3) = DBasis(2,1) * Tau(1,1) * Tau(1,3)
+            A(1,4) = DBasis(2,2) * Tau(1,2) * Tau(1,3)            
+          ELSE
+            A(1,1) = 0.5d0 * ( ParMat(1,1)*Tau(1,1) + ParMat(2,1)*Tau(1,2) ) * Tau(1,3)
+            A(1,2) = 0.5d0 * ( ParMat(1,2)*Tau(1,1) + ParMat(2,2)*Tau(1,2) ) * Tau(1,3)
+            A(1,3) = 0.5d0 * ( ParMat(1,1)*Tau(1,1) + ParMat(2,1)*Tau(1,2) ) * Tau(1,3)
+            A(1,4) = 0.5d0 * ( ParMat(1,2)*Tau(1,1) + ParMat(2,2)*Tau(1,2) ) * Tau(1,3)
+          END IF
+
+          IF (UseParameters .OR. GradientOperand) THEN
+            stat = ElementInfo( Element, Nodes, 0.0d0, 1.0d0, 0.0d0, detJ, Basis, DBasis )
+            IF (.NOT. GradientOperand) THEN
+              ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+              ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+              ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+              ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+            END IF
+          END IF
+
+          IF (GradientOperand) THEN
+            A(2,5) = DBasis(3,1) * Tau(2,1) * Tau(2,3)
+            A(2,6) = DBasis(3,2) * Tau(2,2) * Tau(2,3)
+            A(2,7) = DBasis(4,1) * Tau(2,1) * Tau(2,3)
+            A(2,8) = DBasis(4,2) * Tau(2,2) * Tau(2,3)
+          ELSE
+            A(2,5) = 0.5d0 * ( ParMat(1,1)*Tau(2,1) + ParMat(2,1)*Tau(2,2) ) * Tau(2,3)
+            A(2,6) = 0.5d0 * ( ParMat(1,2)*Tau(2,1) + ParMat(2,2)*Tau(2,2) ) * Tau(2,3)
+            A(2,7) = 0.5d0 * ( ParMat(1,1)*Tau(2,1) + ParMat(2,1)*Tau(2,2) ) * Tau(2,3)
+            A(2,8) = 0.5d0 * ( ParMat(1,2)*Tau(2,1) + ParMat(2,2)*Tau(2,2) ) * Tau(2,3)
+          END IF
+        ELSE
+          IF (UseParameters .OR. GradientOperand) THEN
+            stat = ElementInfo( Element, Nodes, -1.0d0, 0.0d0, 0.0d0, detJ, Basis, DBasis )
+            IF (.NOT. GradientOperand) THEN
+              ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+              ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+              ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+              ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+            END IF
+          END IF
+
+          IF (GradientOperand) THEN
+            A(1,7) = DBasis(4,1) * Tau(1,1) * Tau(1,3)
+            A(1,8) = DBasis(4,2) * Tau(1,2) * Tau(1,3)
+            A(1,1) = DBasis(1,1) * Tau(1,1) * Tau(1,3)
+            A(1,2) = DBasis(1,2) * Tau(1,2) * Tau(1,3)
+          ELSE
+            A(1,7) = 0.5d0 * ( ParMat(1,1)*Tau(1,1) + ParMat(2,1)*Tau(1,2) ) * Tau(1,3)
+            A(1,8) = 0.5d0 * ( ParMat(1,2)*Tau(1,1) + ParMat(2,2)*Tau(1,2) ) * Tau(1,3)
+            A(1,1) = 0.5d0 * ( ParMat(1,1)*Tau(1,1) + ParMat(2,1)*Tau(1,2) ) * Tau(1,3)
+            A(1,2) = 0.5d0 * ( ParMat(1,2)*Tau(1,1) + ParMat(2,2)*Tau(1,2) ) * Tau(1,3)
+          END IF
+
+          IF (UseParameters .OR. GradientOperand) THEN
+            stat = ElementInfo( Element, Nodes, 1.0d0, 0.0d0, 0.0d0, detJ, Basis, DBasis )
+            IF (.NOT. GradientOperand) THEN
+              ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+              ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+              ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+              ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+            END IF
+          END IF
+
+          IF (GradientOperand) THEN
+            A(2,3) = DBasis(2,1) * Tau(2,1) * Tau(2,3)
+            A(2,4) = DBasis(2,2) * Tau(2,2) * Tau(2,3)
+            A(2,5) = DBasis(3,1) * Tau(2,1) * Tau(2,3)
+            A(2,6) = DBasis(3,2) * Tau(2,2) * Tau(2,3)
+          ELSE
+            A(2,3) = 0.5d0 * ( ParMat(1,1)*Tau(2,1) + ParMat(2,1)*Tau(2,2) ) * Tau(2,3)
+            A(2,4) = 0.5d0 * ( ParMat(1,2)*Tau(2,1) + ParMat(2,2)*Tau(2,2) ) * Tau(2,3)
+            A(2,5) = 0.5d0 * ( ParMat(1,1)*Tau(2,1) + ParMat(2,1)*Tau(2,2) ) * Tau(2,3)
+            A(2,6) = 0.5d0 * ( ParMat(1,2)*Tau(2,1) + ParMat(2,2)*Tau(2,2) ) * Tau(2,3)
+          END IF
+        END IF
+
+        IF (UseParameters .OR. GradientOperand) THEN
+          stat = ElementInfo( Element, Nodes, 0.0d0, 0.0d0, 0.0d0, detJ, Basis, DBasis )
+          IF (.NOT. GradientOperand) THEN         
             ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
             ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
             ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
             ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
           END IF
+        END IF
 
-          DO i=1,nd
-            DO j=1,n
-              DO k=1,2
-                SELECT CASE(k)
-                CASE(1)
-                  u(1) = ParMat(1,1)*Basis(j)
-                  u(2) = ParMat(2,1)*Basis(j)
-                CASE(2)
-                  u(1) = ParMat(1,2)*Basis(j)
-                  u(2) = ParMat(2,2)*Basis(j)
-                END SELECT
-                A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * IP % s(t)
-              END DO
-            END DO
-          END DO
-        END DO
-      END IF
+        IF (GradientOperand) THEN
+          A(3,1) = DBasis(1,1) * Tau(3,1) * Tau(3,3)
+          A(3,2) = DBasis(1,2) * Tau(3,2) * Tau(3,3)
+          A(3,3) = DBasis(2,1) * Tau(3,1) * Tau(3,3)
+          A(3,4) = DBasis(2,2) * Tau(3,2) * Tau(3,3)
+
+          A(3,5) = DBasis(3,1) * Tau(3,1) * Tau(3,3)
+          A(3,6) = DBasis(3,2) * Tau(3,2) * Tau(3,3)
+          A(3,7) = DBasis(4,1) * Tau(3,1) * Tau(3,3)
+          A(3,8) = DBasis(4,2) * Tau(3,2) * Tau(3,3)
+        ELSE
+          A(3,1) = 0.25d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
+          A(3,2) = 0.25d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
+          A(3,3) = 0.25d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
+          A(3,4) = 0.25d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
+
+          A(3,5) = 0.25d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
+          A(3,6) = 0.25d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
+          A(3,7) = 0.25d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
+          A(3,8) = 0.25d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
+        END IF
+
+      CASE DEFAULT
+        CALL Fatal('ReductionOperatorDOFs','Unknown strain reduction operator')
+      END SELECT
     END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE ReductionOperatorDofs
@@ -5316,18 +5637,6 @@ CONTAINS
 !-------------------------------------------------------------------------------------
   END SUBROUTINE ComputeSurfaceArea
 !-------------------------------------------------------------------------------------
-
-
-!---------------------------------------------------------------------------
-  FUNCTION LDot(a,b) RESULT(res)
-!---------------------------------------------------------------------------
-    REAL(KIND=dp) :: a(3), b(3), res   
-!---------------------------------------------------------------------------
-    res = SUM( a(:) * b(:) )
-!---------------------------------------------------------------------------
-  END FUNCTION LDot
-!---------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver

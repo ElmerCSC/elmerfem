@@ -1,0 +1,83 @@
+! Solves the plate equation that is assembled as it was a transient one
+! and the system is enforced to be harmonic only after the assembly.
+! For this purpose a new matrix with double size is created.
+! This matrix is by default solved as a complex system. 
+
+Header
+  Mesh DB "." "plates"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = "plates.vtu" 
+
+  Frequency = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Density = 7800
+  Thickness = 0.01
+  Youngs Modulus = 70e9
+  Poisson Ratio = 0.3
+End
+
+Body Force 1
+  Pressure = 1e6
+End
+
+Solver 1
+  Equation = Plate Solver
+  Procedure = "Smitc" "SmitcSolver"
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 200 ! 163 iterations needed 
+  Linear System Residual Output = 1
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = none
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 10
+
+  Nonlinear System Max Iterations = 1
+
+! The defaults are True for the following 2 keywords:
+!  Linear System Scaling = False
+!  Optimize Bandwidth = False
+
+! "Harmonic analysis" cannot be combined with other linear strategies such
+! as block preconditioning. 
+!  Harmonic Analysis = True
+
+! "Harmonic mode" create a fully functional linear system that can then be
+! treated with other linear strategies. 
+  Harmonic Mode = Logical True
+
+! We may toggle the system to be solved as a real one
+! For hamonic mode the default is True
+!  Linear System Complex = False
+End
+
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Deflection 1 = 0  ! z-deflection
+  Deflection 2 = 0  ! x-rotation
+  Deflection 3 = 0  ! y-rotation
+End
+
+Solver 1 :: Reference Norm = 4.79055836E-01

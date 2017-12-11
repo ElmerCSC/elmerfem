@@ -2860,25 +2860,19 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
     INTEGER :: NameSpaceI
 
+    CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
+    
     Solver => CurrentModel % Solver
     Norm = REAL(0, dp)
     IF ( PRESENT( USolver ) ) Solver => USolver
-    
-    IF( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) RETURN
-
-    A => Solver % Matrix
-    b => A % RHS
-    x => Solver % Variable
-    SOL => x % Values
 
     Params => GetSolverParams(Solver)
     
     NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
     IF( NameSpaceI > 0 ) THEN
-      CALL Info('DefaultSolver','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
+      CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
       CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
     END IF
-
 
     IF( ListCheckPresent( Params, 'Dump system matrix') .OR. &
         ListCheckPresent( Params, 'Dump system RHS') ) THEN
@@ -2901,9 +2895,29 @@ CONTAINS
         CALL ListAddLogical(Params,'Back Rotate N-T Solution',BackRotNT)
     END IF
 
+    
+    IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
+      CALL ChangeToHarmonicSystem( Solver )
+    END IF
+
+    
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
 
+    
+    IF( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) THEN
+      CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
+      RETURN
+    END IF
+    
+
+    
+    CALL Info('DefaultSolve','Calling SolveSystem for linear solution',Level=20)
+
+    A => Solver % Matrix
+    b => A % RHS
+    x => Solver % Variable
+    SOL => x % Values
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
 
     ! If flux corrected transport is used then apply the corrector to the system
@@ -2920,6 +2934,13 @@ CONTAINS
 
     IF( NameSpaceI > 0 ) CALL ListPopNamespace()
 
+
+    IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
+      CALL ChangeToHarmonicSystem( Solver, .TRUE. )
+    END IF
+
+
+    
     ! One can run postprocessing solver in this slot in every nonlinear iteration.
     !-----------------------------------------------------------------------------
     CALL DefaultSlaveSolvers(Solver,'Nonlinear Post Solvers')
@@ -4287,8 +4308,9 @@ CONTAINS
            ptr => ListFind(BC, Name,Found )
            IF ( .NOT. ASSOCIATED(ptr) ) CYCLE
 
-           ConstantValue = ptr % PROCEDURE == 0 .AND. &
-               ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
+!          ConstantValue = ptr % PROCEDURE == 0 .AND. &
+!              ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
+           Constantvalue = ptr % type /= LIST_TYPE_CONSTANT_SCALAR_PROC
 
 
            IF ( isActivePElement(Parent)) THEN
@@ -4367,9 +4389,9 @@ CONTAINS
            IF (.NOT.isActivePElement(Parent)) CYCLE
 
            ptr => ListFind(BC, Name,Found )
-           ConstantValue =  ptr % PROCEDURE == 0 .AND. &
-                ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
-
+!          ConstantValue =  ptr % PROCEDURE == 0 .AND. &
+!               ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
+           Constantvalue = Ptr % Type /= LIST_TYPE_CONSTANT_SCALAR_PROC
 
            IF ( ConstantValue ) CYCLE
 

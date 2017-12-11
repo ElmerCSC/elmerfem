@@ -48,8 +48,6 @@ Solver 1
 
   Procedure = "ShellSolver" "ShellSolver"
 
-!  Strain Reduction Operator = Integer 1
-
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU2
 !  Linear System Row Equilibration = Logical True
@@ -85,5 +83,5 @@ Boundary Condition 3
   DNU 1 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 9.13950087E-07      ! This corresponds to the default strain reduction
+Solver 1 :: Reference Norm = Real 9.14116393E-07      ! This corresponds to the default strain reduction
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

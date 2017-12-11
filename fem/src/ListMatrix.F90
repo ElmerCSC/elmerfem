@@ -245,12 +245,51 @@ CONTAINS
     TYPE(Matrix_t) :: A
     LOGICAL, OPTIONAL :: Truncate
     
-    TYPE(ListMatrix_t), POINTER :: L(:)   
     INTEGER :: i,j,n
     LOGICAL :: Trunc
+    TYPE(ListMatrixEntry_t), POINTER :: CList
 
     Trunc=.FALSE.
     IF(PRESENT(Truncate)) Trunc=Truncate
+
+    A % ListMatrix => List_AllocateMatrix(A % NumberOfRows)
+
+    DO i=1,A % NumberOfRows
+      ALLOCATE(A % ListMatrix(i) % Head)
+      Clist => A % ListMatrix(i) % Head
+      Clist % Next => Null()
+      A % ListMatrix(i) % Level  = 0
+      A % ListMatrix(i) % Degree = 0
+
+      DO j=A % Rows(i), A % Rows(i+1)-1
+        IF(Trunc) THEN
+          IF (A % Cols(j) > A % NumberOfRows) EXIT
+        END IF
+
+        IF (j>A % Rows(i)) THEN
+          IF ( Clist % Index >= A % Cols(j) ) THEN
+            CALL Warn( 'List_ToListMatrix()', 'Input matrix not ordered ? ')
+            GOTO 100
+          END IF
+          ALLOCATE(Clist % Next)
+          Clist => Clist % Next
+          CList % Next => Null()
+        END IF
+
+        CList % Value = A % Values(j)
+        CList % Index = A % Cols(j)
+        A % ListMatrix(i) % Degree = A % ListMatrix(i) % Degree + 1
+      END DO
+    END DO
+
+    GOTO 200
+
+100 CONTINUE
+
+    ! If not ordered input ...
+
+    CALL List_FreeMatrix(i,A % ListMatrix)
+    A % ListMatrix => Null()
 
     DO i=1,A % NumberOfRows
       DO j=A % Rows(i+1)-1,A % Rows(i),-1
@@ -260,6 +299,9 @@ CONTAINS
         CALL List_SetMatrixElement(A % ListMatrix,i,A % Cols(j),A % Values(j))
       END DO
     END DO
+
+200 CONTINUE
+
     A % FORMAT = MATRIX_LIST
 
     IF( ASSOCIATED( A % Rows ) ) DEALLOCATE( A % Rows )

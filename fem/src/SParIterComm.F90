@@ -92,21 +92,24 @@ CONTAINS
 
      isfine = ALLOCATED( send_buffer )
      IF ( isfine ) isfine = (sz <= SIZE(send_buffer))
-     IF ( isfine ) RETURN
 
-     IF ( ALLOCATED(send_buffer) ) THEN
-        i = SIZE(send_buffer)
-        CALL MPI_BUFFER_DETACH( send_buffer, i, ierr )
-        DEALLOCATE( send_buffer )
-     END IF
+     IF ( isfine ) THEN
+       sz = SIZE(send_buffer)
+       CALL MPI_BUFFER_DETACH( send_buffer, sz, ierr )
+     ELSE
+       IF ( ALLOCATED(send_buffer) ) THEN
+          i = SIZE(send_buffer)
+          CALL MPI_BUFFER_DETACH( send_buffer, i, ierr )
+          DEALLOCATE( send_buffer )
+       END IF
 
-     ALLOCATE( send_buffer(sz), stat=i )
-     IF ( i/= 0 ) THEN
-       CALL Fatal( 'CheckBuffer', 'Alloc failed' )
+       ALLOCATE( send_buffer(sz), stat=i )
+       IF ( i/= 0 ) THEN
+         CALL Fatal( 'CheckBuffer', 'Alloc failed' )
+       END IF
      END IF
 
      CALL MPI_BUFFER_ATTACH( send_buffer, sz, ierr )
-
 !-----------------------------------------------------------------
    END SUBROUTINE CheckBuffer
 !-----------------------------------------------------------------
@@ -159,6 +162,8 @@ CONTAINS
     CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
         ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
     ParEnv % ActiveComm = ELMER_COMM_WORLD
+
+!ELMER_COMM_WORLD=MPI_COMM_WORLD
 
     CALL MPI_COMM_SIZE( ELMER_COMM_WORLD, ParEnv % PEs, ierr )
     IF ( ierr /= 0 ) THEN
@@ -284,7 +289,7 @@ CONTAINS
     !------------------------------------------------------------------
     ! Sync all neighbouring information
     !------------------------------------------------------------------
-    CALL CheckBuffer( ParEnv % PEs**2 + MPI_BSEND_OVERHEAD )
+    CALL CheckBuffer( ParEnv % PEs**2 + ParEnv % PEs*MPI_BSEND_OVERHEAD )
 
     ALLOCATE( Active(ParEnv % PEs), NeighList(Parenv % PEs) )
     DO MinActive=0,ParEnv % PEs-1
@@ -415,7 +420,7 @@ CONTAINS
       END DO
       ALLOCATE( buf(2*sz) )
 
-      CALL CheckBuffer( 4*n+4*Parenv % NumOfNeighbours+MPI_BSEND_OVERHEAD )
+      CALL CheckBuffer( 4*n+Parenv % NumOfNeighbours*(4+MPI_BSEND_OVERHEAD) )
 
       DO i=1,ParEnv % PEs
         IF ( .NOT. ParEnv % IsNeighbour(i) ) CYCLE
@@ -2945,7 +2950,7 @@ END  SUBROUTINE SParIterAllReduceOR
       totalsize = totalsize + 3*rows + 1 + cols
     END IF
   END DO
-  CALL CheckBuffer( totalsize*4+MPI_BSEND_OVERHEAD*8 )
+  CALL CheckBuffer( totalsize+n+n*MPI_BSEND_OVERHEAD )
 
   !
   ! Receive interface sizes:
@@ -3160,7 +3165,7 @@ END SUBROUTINE ExchangeInterfaces
       totalsize = totalsize + 4 + 3*4*rows + 4 + 5*cols
     END IF
   END DO
-  CALL CheckBuffer( totalsize+MPI_BSEND_OVERHEAD*8 )
+  CALL CheckBuffer(totalsize+n*MPI_BSEND_OVERHEAD)
 
   !
   ! Receive interface sizes:
@@ -3177,7 +3182,7 @@ END SUBROUTINE ExchangeInterfaces
     CALL MPI_BSEND( rows, 1, MPI_INTEGER, &
            destproc, 2000, ELMER_COMM_WORLD, ierr )
   END DO
-  CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
+  CALL MPI_WaitAll(n, requests, MPI_STATUSES_IGNORE, ierr)
    
 !----------------------------------------------------------------------
 
@@ -3536,7 +3541,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   END DO
 
   totalsize = SUM(send_size)
-  CALL CheckBuffer( 3*4*totalsize+3*MPI_BSEND_OVERHEAD )
+  CALL CheckBuffer( 3*totalsize+n*MPI_BSEND_OVERHEAD )
 
   !
   ! Receive interface sizes:
@@ -3710,7 +3715,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
   END DO
 
   totalsize = SUM(send_size)
-  CALL CheckBuffer( 3*4*totalsize+3*MPI_BSEND_OVERHEAD )
+  CALL CheckBuffer( 3*totalsize+3*n*MPI_BSEND_OVERHEAD )
 
   !
   ! Receive interface sizes:
@@ -3868,7 +3873,7 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
        END IF
      END IF
   END DO
-  CALL CheckBuffer( totalsize*4 + 3*MPI_BSEND_OVERHEAD )
+  CALL CheckBuffer( totalsize + n + 3*n*MPI_BSEND_OVERHEAD )
 
   DO i = 1,n
     CALL MPI_iRECV( recv_size(i), 1, MPI_INTEGER, &
@@ -4004,7 +4009,7 @@ SUBROUTINE BuildRevVecIndices( SplittedMatrix )
 #endif
 
   !*********************************************************************
-tt = CPUTime()
+tt = realTime()
 
   n = Parenv % NumOfNeighbours
   ALLOCATE( neigh(n), sbuf(n), L(n) )
@@ -4028,7 +4033,7 @@ tt = CPUTime()
       totalsize=totalsize+1
     END DO
   END DO
-  CALL CheckBuffer( totalsize*4+MPI_BSEND_OVERHEAD*count )
+  CALL CheckBuffer( totalsize+n+MPI_BSEND_OVERHEAD*count*n )
 
   InsideMatrix => SplittedMatrix % InsideMatrix
 
@@ -4072,8 +4077,8 @@ tt = CPUTime()
                4001, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
-!print*,parenv % mype, 'first send: ', CPUTime()-tt
-!tt = CPUtime()
+!print*,parenv % mype, 'first send: ', realTime()-tt
+!tt = realtime()
 !
 !
 !
@@ -4090,17 +4095,21 @@ tt = CPUTime()
       CALL MPI_RECV( Gindices, veclen, MPI_INTEGER, sproc, &
               4001, ELMER_COMM_WORLD, status, ierr )
 
+!print*,parenv % mype, ' <<----- ', sproc, veclen, insidematrix % numberofrows
+
+!tt = realtime()
       DO m = 1, VecLen
          ind = SearchIAItem( InsideMatrix %  NumberOfRows, &
            InsideMatrix % GRows, Gindices(m), InsideMatrix % Gorder )
          SplittedMatrix % Vecindices(sproc+1) % RevInd(m) = ind
       END DO
+!print*,parenv % mype, ' <<<<-----', sproc, realtime()-tt; flush(6)
       DEALLOCATE( Gindices )
     END IF 
   END DO
 
-!print*,parenv % mype, 'first recv: ', CPUTime()-tt
-!tt = CPUtime()
+!print*,parenv % mype, 'first recv: ', realTime()-tt
+!tt = realtime()
 
   DO i=1,n
     CurrIf => SplittedMatrix % IfMatrix(neigh(i)+1)
@@ -4123,8 +4132,9 @@ tt = CPUTime()
   DO i=1,n
      IF ( ALLOCATED(sbuf(i) % ibuf) ) DEALLOCATE(sbuf(i) % ibuf)
   END DO
+  CALL SParIterACtiveBarrier()
   DEALLOCATE(neigh, sbuf,L)
-!print*,parenv % mype, 'secnd recv: ', CPUTime()-tt
+!print*,parenv % mype, 'secnd recv: ', realTime()-tt
 !*********************************************************************
 END SUBROUTINE BuildRevVecIndices
 !*********************************************************************
@@ -4148,7 +4158,7 @@ SUBROUTINE Send_LocIf_Old( SplittedMatrix )
   TYPE (BasicMatrix_t), POINTER :: IfM
   TYPE (IfVecT), POINTER :: IfV
   INTEGER, ALLOCATABLE :: L(:)
-  REAL(KIND=dp), ALLOCATABLE :: VecL(:,:)
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: VecL(:,:)
 
   !*********************************************************************
 
@@ -4175,7 +4185,7 @@ SUBROUTINE Send_LocIf_Old( SplittedMatrix )
   L = 0
   VecL = 0
 
-  CALL CheckBuffer( 12*TotalL )
+  CALL CheckBuffer( TotalL + ParEnv % NumOfNeighbours*(1+MPI_BSEND_OVERHEAD) )
 
   DO i = 1, ParEnv % PEs
      IfM => SplittedMatrix % IfMatrix(i)
@@ -4308,8 +4318,7 @@ SUBROUTINE Send_LocIf_size( SplittedMatrix, n, neigh )
 
   DO nj=1,n
     j = neigh(nj)
-    CALL MPI_BSEND( L(nj), 1, MPI_INTEGER, j, 6000, &
-               ELMER_COMM_WORLD, ierr )
+    CALL MPI_BSEND(L(nj),1,MPI_INTEGER,j,6000,ELMER_COMM_WORLD, ierr)
   END DO
 !*********************************************************************
 END SUBROUTINE Send_LocIf_size
@@ -4334,7 +4343,7 @@ SUBROUTINE Send_LocIf( SplittedMatrix,n,neigh )
   TYPE (IfVecT), POINTER :: IfV
   TYPE (BasicMatrix_t), POINTER :: IfM
 
-  TYPE(Buff_t), ALLOCATABLE, SAVE :: VecL(:)
+  TYPE(Buff_t), ALLOCATABLE:: VecL(:)
 
   INTEGER :: L(n)
   !*********************************************************************
@@ -4357,36 +4366,12 @@ SUBROUTINE Send_LocIf( SplittedMatrix,n,neigh )
      END DO
   END DO
 
-  CALL CheckBuffer( 12*TotalL )
+  CALL CheckBuffer( 8*TotalL + n+ n*MPI_BSEND_OVERHEAD )
 
-  IF ( .NOT. ALLOCATED(Vecl) ) THEN
-    ALLOCATE( Vecl(n) )
-    DO i=1,n
-      ALLOCATE( Vecl(i) % Rbuf(L(i)) )
-    END DO
-  ELSE
-    IF ( SIZE(Vecl)<n ) THEN
-      DO i=1,SIZE(Vecl)
-        IF ( ALLOCATED(Vecl(i) % rbuf) ) &
-          DEALLOCATE( Vecl(i) % rbuf )
-      END DO
-      DEALLOCATE( Vecl )
-
-      ALLOCATE( Vecl(n) )
-      DO i=1,n
-        ALLOCATE( Vecl(i) % rbuf(L(i)) )
-      END DO
-    ELSE
-      DO i=1,n
-        IF ( .NOT. ALLOCATED(Vecl(i) % rbuf) ) THEN
-          ALLOCATE( Vecl(i) % rbuf(L(i)) )
-        ELSE IF ( SIZE(Vecl(i) % rbuf) < L(i) ) THEN
-          DEALLOCATE( Vecl(i) % rbuf )
-          ALLOCATE( Vecl(i) % rbuf(L(i)) )
-        END IF
-      END DO
-    END IF
-  END IF
+  ALLOCATE( VecL(n) )
+  DO i=1,n
+    ALLOCATE( VecL(i) % Rbuf(L(i)) )
+  END DO
 
   L = 0
   DO ni = 1, n

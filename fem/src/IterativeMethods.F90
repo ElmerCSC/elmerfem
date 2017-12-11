@@ -1012,7 +1012,7 @@ CONTAINS
        xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
 #endif
     INTEGER :: ndim, RestartN
-    INTEGER :: Rounds, OutputInterval
+    INTEGER :: Rounds, MinIter, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
     LOGICAL :: Converged, Diverged, UseStopCFun
 
@@ -1022,6 +1022,7 @@ CONTAINS
 
     ndim = HUTI_NDIM
     Rounds = HUTI_MAXIT
+    MinIter = HUTI_MINIT
     MinTol = HUTI_TOLERANCE
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL
@@ -1053,7 +1054,7 @@ CONTAINS
     END IF
     
     CALL GCR(ndim+nc, GlobalMatrix, x, b, Rounds, MinTol, MaxTol, Residual, &
-        Converged, Diverged, OutputInterval, RestartN )
+        Converged, Diverged, OutputInterval, RestartN, MinIter )
 
     
     IF(Constrained) THEN
@@ -1071,10 +1072,10 @@ CONTAINS
     
     
     SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
-        Converged, Diverged, OutputInterval, m) 
+        Converged, Diverged, OutputInterval, m, MinIter) 
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A
-      INTEGER :: Rounds
+      INTEGER :: Rounds, MinIter
       REAL(KIND=dp) :: x(n),b(n)
       LOGICAL :: Converged, Diverged
       REAL(KIND=dp) :: MinTolerance, MaxTolerance, Residual
@@ -1082,7 +1083,7 @@ CONTAINS
       REAL(KIND=dp) :: bnorm,rnorm
       REAL(KIND=dp), ALLOCATABLE :: R(:)
 
-      REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:),TT(:)
+      REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:)
 
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
@@ -1090,7 +1091,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       INTEGER :: allocstat
         
-      ALLOCATE( R(n), T1(n), T2(n),TT(n), STAT=allocstat )
+      ALLOCATE( R(n), T1(n), T2(n), STAT=allocstat )
       IF( allocstat /= 0 ) THEN
         CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
       END IF
@@ -1117,7 +1118,7 @@ CONTAINS
       ELSE
         Residual = rnorm / bnorm
       END IF
-      Converged = (Residual < MinTolerance) 
+      Converged = (Residual < MinTolerance) .AND. ( MinIter <= 0 )
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)
       IF( Converged .OR. Diverged) RETURN
       
@@ -1148,9 +1149,9 @@ CONTAINS
          ! Perform the orthogonalization of the search directions....
          !--------------------------------------------------------------
          DO i=1,j-1
-            beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
-            T1(1:n) = T1(1:n) - beta * S(1:n,i)
-            T2(1:n) = T2(1:n) - beta * V(1:n,i)        
+           beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+           T1(1:n) = T1(1:n) - beta * S(1:n,i)
+           T2(1:n) = T2(1:n) - beta * V(1:n,i)        
          END DO
 
          alpha = normfun(n, T2(1:n), 1 )
@@ -1178,16 +1179,16 @@ CONTAINS
          IF (UseStopCFun) THEN
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(I8, 3E11.4)') k, rnorm / bnorm, residual
+             WRITE (*, '(A, I6, 2E12.4)') 'gcr:',k, rnorm / bnorm, residual
            END IF           
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(I8, E11.4)') k, residual
+             WRITE (*, '(A, I6, 2E12.4)') 'gcr:',k, residual, beta
            END IF
          END IF
            
-         Converged = (Residual < MinTolerance) 
+         Converged = (Residual < MinTolerance) .AND. ( k >= MinIter )
          !-----------------------------------------------------------------
          ! Make an additional check that the true residual agrees with 
          ! the iterated residual:

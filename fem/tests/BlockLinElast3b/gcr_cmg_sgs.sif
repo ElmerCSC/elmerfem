@@ -1,6 +1,8 @@
 ! Simple 2d linear elasticity bending problem.
 ! Here the monolithic matrix is split into a block matrix
 ! and then the block matrix strategy is used to solve it.
+!
+! Compared to base case here we used cmg instead of amg.
 
 Header
   CHECK KEYWORDS Warn
@@ -75,12 +77,23 @@ Solver 1
 
 ! Linear system solver for blocks
 !-----------------------------------------
-  Linear System Solver = iterative
-  Linear System Iterative Method = bicgstab
-  Linear System Convergence Tolerance = 1.0e-03
-  Linear System Max Iterations = 1000
-  Linear System Preconditioning = ILU2
-  Linear System Residual Output = integer 20
+  Linear System Solver = multigrid	
+  Linear System Convergence Tolerance = 1.0e-05
+  Multigrid Levels = Integer 10
+
+!--- basic algebraic multigrid iteration stuff
+  MG Levels = Integer 10
+  MG Smoother = String sgs
+  MG Pre Smoothing Iterations(1) = 1
+  MG Post Smoothing Iterations(1) = 1
+ 
+!--- cluster MG specific parameters
+  MG Method = String cluster
+  MG Cluster Size = Integer 0
+  MG Cluster Alpha = Real 1.8
+  MG Strong Connection Limit = Real 0.01
+! MG Strong Connection Minimum = Integer 4
+  MG Max Iterations = Integer 2
 End  
 
 Material 1
@@ -100,10 +113,9 @@ End
 
 Boundary Condition 1
   Target Boundaries(1) = 1 
-!2
+
   Disp 1 = Real 0
   Disp 2 = Real 0
 End
 
-
-RUN
+Solver 1 :: Reference Norm = Real 0.23581335

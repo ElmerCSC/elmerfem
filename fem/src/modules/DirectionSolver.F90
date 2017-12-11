@@ -207,8 +207,7 @@ SUBROUTINE DirectionSolver( Model,Solver,dt,TransientSimulation )
   DO ns_iter=1,NofNameSpaces 
    Namespace='body '//TRIM(i2s(ns_iter))//':'
    VNWithNS = TRIM(Namespace)//' '//TRIM(varname)
-   IF (.NOT. ListCheckPresentAnyBC(Model,VNWithNS)) CYCLE
-   CALL ListSetNameSpace(Namespace)
+   IF (ListCheckPresentAnyBC(Model,VNWithNS)) CALL ListSetNameSpace(Namespace)
    !System assembly:
    !----------------
    Active = GetNOFActive()

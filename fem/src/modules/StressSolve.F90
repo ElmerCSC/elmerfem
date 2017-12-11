@@ -504,7 +504,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        MaxIter = 2
      END IF
 
-     HarmonicAnalysis = getLogical( SolverParams, 'Harmonic Analysis', Found )
+     HarmonicAnalysis = getLogical( SolverParams, 'Harmonic Analysis', Found ) .OR. &
+         getLogical( SolverParams,'Harmonic Mode',Found ) 
 !------------------------------------------------------------------------------
      Refactorize = GetLogical( SolverParams, 'Linear System Refactorize', Found )
      IF ( .NOT. Found ) Refactorize = .TRUE.
@@ -625,10 +626,11 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
        IF( Converged ) EXIT
 
-       ! Solve the system and check for convergence:
+       ! Solve the system and check for convergence:       
        !--------------------------------------------
        UNorm = DefaultSolve()
 
+       
        IF ( Transient .AND. .NOT. Refactorize .AND. dt /= Prevdt ) THEN
          Prevdt = dt
          CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
@@ -1193,7 +1195,7 @@ CONTAINS
            Solver % Matrix % RHS => SaveRHS
          END IF
 
-         IF ( EigenOrHarmonicAnalysis() .OR. &
+         IF ( EigenOrHarmonicAnalysis() .OR. HarmonicAnalysis .OR. &
            ConstantBulkMatrix .OR. ConstantBulkSystem .OR. ConstantSystem ) THEN
            CALL DefaultUpdateMass( MASS )
            CALL DefaultUpdateDamp( DAMP )
@@ -1561,7 +1563,7 @@ CONTAINS
        CALL ListAddLogical( SolverParams, 'Eigen Analysis', .FALSE. )
 
      IF( HarmonicAnalysis ) &
-       CALL ListAddLogical( SolverParams, 'Harmonic Analysis', .FALSE. )
+       CALL ListAddLogical( SolverParams, 'Harmonic Analysis', .FALSE. ) 
 
      StSolver % NOFEigenValues=0
 

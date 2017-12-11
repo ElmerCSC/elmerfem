@@ -576,6 +576,9 @@ CONTAINS
       TYPE(Solver_t), POINTER :: VSolver
 !------------------------------------------------------------------------------
 
+      CALL Info('VariableAdd','Adding variable > '//TRIM(Name)//&
+          ' < of size '//TRIM(I2S(SIZE(Values))),Level=15)
+
       NULLIFY(VSolver)
       IF (PRESENT(Solver)) VSolver => Solver
       
@@ -894,13 +897,16 @@ CONTAINS
       REAL(KIND=dp), POINTER :: Component(:), TmpValues(:)
       INTEGER :: i,nsize, ndofs
 !------------------------------------------------------------------------------
-
+            
       IF( PRESENT( DOFs ) ) THEN
         ndofs = Dofs
       ELSE
         ndofs = 1
       END IF
 
+      CALL Info('VariableAddVector','Adding variable > '//TRIM(Name)//' < with '&
+          //TRIM(I2S(ndofs))//' components',Level=15)
+      
       IF(PRESENT(Values)) THEN
         TmpValues => Values
       ELSE
@@ -1496,8 +1502,13 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: n
 !------------------------------------------------------------------------------
+
      n = StringToLowerCase( str_lcase,str,.TRUE. )
+
+     CALL Info('ListSetNamespace','Setting namespace to: '//TRIM(str_lcase),Level=15)
+     
      NameSpace = str_lcase
+
 !------------------------------------------------------------------------------
    END SUBROUTINE ListSetNamespace
 !------------------------------------------------------------------------------
@@ -1515,7 +1526,6 @@ CONTAINS
       str = Namespace
     ELSE
       l = .FALSE.
-!      str = '' ! Namespace string not needed when returning .FALSE.
     END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListGetNamespace
@@ -1530,6 +1540,9 @@ CONTAINS
      CHARACTER(:), ALLOCATABLE :: tstr
      TYPE(String_stack_t), POINTER :: stack
 !------------------------------------------------------------------------------
+
+     CALL Info('ListPushNameSpace','Adding name space: '//TRIM(str),Level=12)
+
      ALLOCATE(stack)
      L = ListGetNameSpace(tstr)
      IF(ALLOCATED(tstr)) THEN
@@ -1545,15 +1558,34 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE ListPopNamespace()
+   SUBROUTINE ListPopNamespace( str0 )
 !------------------------------------------------------------------------------
+     CHARACTER(LEN=*), OPTIONAL :: str0
      TYPE(String_stack_t), POINTER :: stack
-!------------------------------------------------------------------------------
+     
+
      IF(ASSOCIATED(Namespace_stack)) THEN
+
+       ! This is an optional part aimed to help to code correctly the name stack.
+       ! If one gives the namespace to be popped a Fatal will result if it is a
+       ! wrong namespace.
+       IF( PRESENT( str0 ) ) THEN
+         IF( str0 /= Namespace ) THEN
+           CALL Fatal('ListPopNamespace','Wrong namespace to pop: '&
+               //TRIM(str0)//' vs '//TRIM(Namespace))
+         END IF
+       END IF
+
        Namespace = Namespace_stack % name
+
+       CALL Info('ListPopNameSpace','Deleting entry from name space: '&
+           //TRIM(Namespace),Level=12)      
+
        stack => Namespace_stack
        Namespace_stack => stack % Next
        DEALLOCATE(stack)
+     ELSE
+       CALL Info('ListPopNameSpace','No namespace entry to delete',Level=20)
      END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE ListPopNamespace
@@ -3114,27 +3146,24 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
-!------------------------------------------------------------------------------
-  FUNCTION ListCheckAllGlobal( List, name ) RESULT ( AllGlobal )
-!------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List
-     CHARACTER(LEN=*) :: name
-     LOGICAL :: AllGlobal
+ !------------------------------------------------------------------------------
+  FUNCTION ListCheckGlobal( ptr ) RESULT ( IsGlobal )
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
+     LOGICAL :: IsGlobal
+!------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      INTEGER :: ind,i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Variable, CVar
      INTEGER :: slen
 
-     AllGlobal = .TRUE.
+     IsGlobal = .TRUE.
 
-     IF(.NOT.ASSOCIATED(List)) RETURN
-
-     ptr => List % Head
-     IF(.NOT.ASSOCIATED(ptr)) RETURN
-
+     IF(.NOT.ASSOCIATED(ptr)) THEN
+       CALL Warn('ListCheckGlobal','ptr not associated!')
+       RETURN
+     END IF
+       
      
      IF( ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR_STR ) THEN
        RETURN
@@ -3145,7 +3174,7 @@ CONTAINS
 
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
-         AllGlobal = .FALSE.
+         IsGlobal = .FALSE.
          RETURN
        END IF
 
@@ -3169,35 +3198,64 @@ CONTAINS
            Variable => VariableGet( CurrentModel % Variables,TRIM(ptr % DependName(l0:l1)) )
            IF ( .NOT. ASSOCIATED( Variable ) ) THEN
              WRITE( Message, * ) 'Can''t find INDEPENDENT variable:[', &
-                 TRIM(ptr % DependName(l0:l1)),']' // &
-                 'for dependent variable:[', TRIM(Name),']'
+                 TRIM(ptr % DependName(l0:l1)),']'
              CALL Fatal( 'ListGetReal', Message )
            END IF
 
            IF( SIZE( Variable % Values ) > 1 ) THEN
-             AllGlobal = .FALSE.
+             IsGlobal = .FALSE.
              RETURN
            END IF
          ELSE
-           AllGlobal = .FALSE.
+           IsGlobal = .FALSE.
            RETURN
          END IF
 
          l0 = l1+2
          IF ( l0 > slen ) EXIT
-
+         
        END DO
-       
      ELSE
-       CALL Fatal('ListCheckAllGlobal','Unknown type for >'//TRIM(ptr % name)//'<: '//TRIM(I2S(ptr % TYPE)))
+       
+       IsGlobal = .FALSE.
+       
      END IF
+     
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckGlobal
+!------------------------------------------------------------------------------
 
+
+   
+!------------------------------------------------------------------------------
+  FUNCTION ListCheckAllGlobal( List, name ) RESULT ( AllGlobal )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: name
+     LOGICAL :: AllGlobal
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: ind,i,j,k,n,k1,l,l0,l1
+     TYPE(Variable_t), POINTER :: Variable, CVar
+     INTEGER :: slen
+
+     AllGlobal = .TRUE.
+
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
+     ptr => List % Head
+     IF(.NOT.ASSOCIATED(ptr)) RETURN
+
+     AllGlobal = ListCheckGlobal( ptr )
+    
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckAllGlobal
 !------------------------------------------------------------------------------
 
 
 
+   
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in each node of an element.
 !------------------------------------------------------------------------------
