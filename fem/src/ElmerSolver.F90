@@ -610,7 +610,7 @@ CONTAINS
 
     !------------------------------------------------------------------------------
     !      Here we actually start the simulation ....
-    !      First go trough timeintervals
+    !      First go through timeintervals
     !------------------------------------------------------------------------------
     ExecCommand = ListGetString( CurrentModel % Simulation, &
          'Control Procedure', GotIt )
