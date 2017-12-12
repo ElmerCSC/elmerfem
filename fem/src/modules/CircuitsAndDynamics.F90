@@ -126,9 +126,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     Circuits => Model%Circuits
 
     CALL SetBoundaryAreasToValueLists() 
+    CALL CountAndAllocateComponents()
     
     DO p=1,n_Circuits
-      
       n = GetNofCircVariables(p)
       CALL AllocateCircuit(p)
       
@@ -951,7 +951,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     First = .FALSE.
     
     Model % HarmonicCircuits = .TRUE.
-
     CALL AddComponentsToBodyLists()
     
     ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
@@ -969,9 +968,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     Circuits => Model%Circuits
 
     CALL SetBoundaryAreasToValueLists() 
+    CALL CountAndAllocateComponents()
     
     DO p=1,n_Circuits
-      
       n = GetNofCircVariables(p)
       CALL AllocateCircuit(p)
       

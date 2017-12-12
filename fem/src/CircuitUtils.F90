@@ -331,6 +331,8 @@ CONTAINS
   END FUNCTION CountNofCircComponents
 !------------------------------------------------------------------------------
 
+
+
 !------------------------------------------------------------------------------
   SUBROUTINE ReadCircuitVariables(CId)
 !------------------------------------------------------------------------------
@@ -415,6 +417,28 @@ CONTAINS
   END FUNCTION GetNofCircVariables
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE CountAndAllocateComponents()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Circuit_t), POINTER :: Circuits(:)
+    INTEGER :: p, n
+
+    Circuits => CurrentModel%Circuits
+    CurrentModel % nof_circuit_components = 0
+    DO p=1,CurrentModel % n_Circuits
+      n = GetNofCircVariables(p)
+      Circuits(p) % n_comp = CountNofCircComponents(p, n)
+      CurrentModel % nof_circuit_components = CurrentModel % nof_circuit_components &
+        + Circuits(p) % n_comp
+    END DO
+    ALLOCATE(CurrentModel % CircuitComponents(CurrentModel % nof_circuit_components))
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE CountAndAllocateComponents
+!------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE AllocateCircuit(CId)
@@ -490,17 +514,24 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE CircuitUtils
     IMPLICIT NONE
-    INTEGER :: CId, CompInd
+    INTEGER :: CId, CompInd, CompIndAll
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Component_t), POINTER :: Comp
+    TYPE(ComponentPointer_t), POINTER :: Components(:)
     TYPE(Valuelist_t), POINTER :: CompParams
     LOGICAL :: Found
 
     Circuit => CurrentModel%Circuits(CId)
+    Components => CurrentModel%CircuitComponents
     
+    CompIndAll = 0
     Circuit % CvarDofs = 0
     DO CompInd=1,Circuit % n_comp
+      CompIndAll = CompIndAll + 1
+      Components(CompIndAll) % Component => Circuit % Components(CompInd)
       Comp => Circuit % Components(CompInd)
+
+      Comp % VarDofs = 0
       Comp % nofcnts = 0
 !        Comp % ComponentId = Circuits(p) % body(CompInd)
       Comp % BodyIds => GetComponentBodyIds(Comp % ComponentId)
@@ -583,8 +614,10 @@ CONTAINS
 
         Comp % N_j = Comp % nofturns / Comp % ElArea
       END SELECT
+      Comp % VarDofs = Comp % VarDofs + Comp % ivar % dofs + Comp % vvar % dofs
+      CurrentModel % nof_circuit_component_dofs = &
+      CurrentModel % nof_circuit_component_dofs + Comp % VarDofs
     END DO
-
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadComponents
@@ -609,9 +642,12 @@ CONTAINS
         CALL FATAL('Circuits_Init', 'Voltage Circuit Variable is not found for Component '//TRIM(i2s(Comp % ComponentId)))
       END IF
 
+!      print *, "Component:", Comp % ComponentId, "VarDofs", Comp % VarDofs
       CALL AddVariableToCircuit(Circuit, Comp % ivar, CId)
       CALL AddVariableToCircuit(Circuit, Comp % vvar, CId)
     END DO
+!    print *, "CurrentModel%nof_circuit_components",CurrentModel%nof_circuit_components
+!    print *, "CurrentModel%nof_circuit_component_dofs",CurrentModel%nof_circuit_component_dofs
 
 !------------------------------------------------------------------------------
   END SUBROUTINE AddComponentVariables

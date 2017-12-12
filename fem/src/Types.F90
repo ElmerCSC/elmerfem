@@ -842,7 +842,12 @@ END INTERFACE
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
     LOGICAL :: UseCoilResistance = .FALSE.
     INTEGER, POINTER :: ParPerm(:) => Null()
+    INTEGER :: VarDofs
   END TYPE Component_t
+
+  TYPE ComponentPointer_t
+    TYPE(Component_t), POINTER :: Component
+  END TYPE ComponentPointer_t
 
   TYPE Circuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
@@ -967,8 +972,11 @@ END INTERFACE
       
       ! Circuits:
       INTEGER, POINTER :: n_Circuits=>Null(), Circuit_tot_n=>Null()
+      INTEGER :: nof_circuit_component_dofs = 0
+      INTEGER :: nof_circuit_components = 0
       TYPE(Matrix_t), POINTER :: CircuitMatrix => Null()
       TYPE(Circuit_t), POINTER :: Circuits(:) => Null()
+      TYPE(ComponentPointer_t), POINTER :: CircuitComponents(:) => Null() 
       TYPE(Solver_t), POINTER :: ASolver    
       
       LOGICAL :: HarmonicCircuits
