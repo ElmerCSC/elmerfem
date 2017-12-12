@@ -1,9 +1,9 @@
-
 ! This is test case is related to the Shoebox test cases for FSI.
 !
-! This case only tests the shell solver run alone at top of the shoebox.
+! This case only tests the shell solver run alone as a body id
+! AND that it can run in harmonic mode.
 !
-! P.R. 10.12.2017
+! P.R. 11.12.2017
 
 
 $ AirDensity = 1.21
@@ -18,13 +18,14 @@ Constants
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 32
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
   Steady State Max Iterations = 1
 
-!  Post File = "shell.vtu"
+  Post File = "shell.vtu"
+  Frequency = 100
 End
 
 Body 1
@@ -58,7 +59,7 @@ End
 
 
 Equation 1
-  Name = "nothing here"
+  Name = "nothing here" 
 End
 
 Equation 2
@@ -72,25 +73,29 @@ Solver 1
 
   Procedure = "ShellSolver" "ShellSolver"
 
-  Linear System Solver = "Direct"
+!  Linear System Solver = "Direct"
+  Linear System Solver = "Iterative"
   Linear System Direct Method = MUMPS
 
   Linear System Preconditioning = ILU2
 !  Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1e-5
-  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1e-9
+  Linear System Iterative Method = bicgstab2 !GCR
   Linear System GCR Restart = 100
   Linear System Abort Not Converged = False
+  Linear System Residual Output = 1 
 
   Steady State Convergence Tolerance = 1e-09
   Nonlinear System Convergence Tolerance = 1e-8
   Nonlinear System Max Iterations = 1
 
+  Harmonic Mode = Logical True
+
 ! The defaults are True for the following 2 keywords:
-!  Linear System Scaling = False
+  Linear System Scaling = False
 !  Optimize Bandwidth = False
-!  Harmonic Mode = Logical True
+  Linear System Complex = False
 End
 
 
@@ -133,4 +138,4 @@ Boundary Condition 3
 End
 
 
-Solver 1 :: reference norm = 3.40901466E-01
+Solver 1 :: reference norm = 2.54938680E+01

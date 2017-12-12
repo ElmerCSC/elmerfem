@@ -325,11 +325,16 @@ CONTAINS
     DO i = 1,NoVar
       IF( GotSlaveSolvers ) THEN
         j = SlaveSolvers(i)
+
+        CALL Info('BlockSolver','Associating block '//TRIM(I2S(i))//' with solver: '//TRIM(I2S(j)),Level=10)
+
         PSolver => CurrentModel % Solvers(j)
         Var => PSolver % Variable 
         VarName = Var % Name
+
         BlockMatrix % SubVector(i) % Solver => PSolver
         BlockMatrix % SubMatrix(i,i) % Mat => PSolver % Matrix        
+
       ELSE
         WRITE (str,'(A,I0)') 'Variable ',i
 
@@ -1564,6 +1569,7 @@ CONTAINS
       
       IF (.NOT.isParallel) THEN
         x(offset(i)+1:offset(i+1)) = TotMatrix % SubVector(i) % Var % Values        
+
         IF( ASSOCIATED( TotMatrix % Submatrix(i,i) % Mat % Rhs ) ) THEN          
           b(offset(i)+1:offset(i+1)) = TotMatrix % SubMatrix(i,i) % Mat % rhs
         END IF
@@ -1598,8 +1604,8 @@ CONTAINS
     CALL ListAddLogical(Params,'Linear System Free Factorization',.FALSE.)
 
     precProc = AddrFunc(BlockMatrixPrec)
-    mvProc = AddrFunc(BlockMatrixVectorProd)
-    
+    mvProc = AddrFunc(BlockMatrixVectorProd)       
+
     prevXnorm = SQRT( SUM( b**2 ) )
     WRITE( Message,'(A,ES12.3)') 'Rhs norm at start: ',PrevXnorm
     CALL Info('BlockKrylovIter',Message,Level=10)

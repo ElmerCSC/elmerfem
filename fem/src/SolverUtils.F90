@@ -9955,7 +9955,10 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t), POINTER :: CM
 
     n = A % NumberOfRows
+    
+    CALL Info('ScaleLinearSystem','Scaling linear system such that diagonal is enforced to unity',Level=15)
 
+    
     IF( PRESENT( DiagScaling ) ) THEN
       CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
       Diag => DiagScaling 
@@ -10170,6 +10173,10 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: Cols(:), Rows(:)
     REAL(KIND=dp), POINTER :: Values(:), Diag(:)
 !-------------------------------------------------------------------------
+
+    CALL Info('RowEquilibration','Scaling system such that abs rowsum is unity',Level=15)
+        
+
     n = A % NumberOfRows
     ComplexMatrix = A % COMPLEX
 
@@ -10294,6 +10301,9 @@ END FUNCTION SearchNodeL
     LOGICAL :: doCM
 
     TYPE(Matrix_t), POINTER :: CM
+
+    CALL Info('BackScaleLinearSystem','Scaling back to original scale',Level=15)
+
     
     n = A % NumberOfRows
     
@@ -12458,11 +12468,12 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   LOGICAL :: stat, Found, OptimizeBW, Real_given, Imag_given
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
   REAL(KIND=dp) :: Omega, s
-  REAL(KIND=dp), POINTER :: b(:), ImVarVals(:), ReVarVals(:)
+  REAL(KIND=dp), POINTER :: b(:), ImVarVals(:), ReVarVals(:), TmpVals(:)
   REAL(KIND=dp) :: frequency
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Variable_t), POINTER :: SaveVar, ReVar, ImVar, TotVar, TmpVar
-  LOGICAL :: ToReal, ToHarmonic
+  LOGICAL :: ToReal, ToHarmonic, ParseName
+  
 
   SAVE ImVar, TotVar, ReVar, SaveVar, SaveMatrix
   
@@ -12490,7 +12501,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 
     Aharm => Are % EMatrix
     IF( ASSOCIATED( Aharm ) ) THEN
-      CALL Info('CreateHarmonicSystem','Found existing harmonic system',Level=10)
+      CALL Info('ChangeToHarmonicSystem','Found existing harmonic system',Level=10)
     ELSE    
       ! Create the matrix if it does not
       Aharm => CreateChildMatrix( Are, Dofs, 2*Dofs, CreateRhs = .TRUE.)
@@ -12499,16 +12510,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
         CALL Warn('ChangeToHarmonicSystem','ParallelInfo may not have been generated properly!')
       END IF
       
-      
-      !OptimizeBW = ListGetLogical(Solver % Values, 'Optimize Bandwidth', Found)
-      !IF ( .NOT. Found ) OptimizeBW = .TRUE.
-      
-      !A => CreateMatrix( CurrentModel, Solver, Solver % Mesh,   &
-      !    Solver % Variable % Perm, 2 * DOFs, MATRIX_CRS, OptimizeBW, &
-      !    ListGetString( Solver % Values, 'Equation') )
-      !ALLOCATE( A % rhs(2*n) )
-      !A % rhs = 0.0_dp
-
       Aharm % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex', Found ) 
       IF( .NOT. Found ) Aharm % Complex = .TRUE. 
       
@@ -12518,10 +12519,10 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     ! Obtain the frequency, it may depend on iteration step etc. 
     Frequency = ListGetAngularFrequency( Solver % Values, Found ) / (2*PI)
     IF( .NOT. Found ) THEN
-      CALL Fatal( 'AddEquation', '> Frequency < must be given for harmonic analysis.' )
+      CALL Fatal( 'ChangeToHarmonicSystem', '> Frequency < must be given for harmonic analysis.' )
     END IF
     WRITE( Message, '(a,e12.3)' ) 'Frequency value: ', frequency
-    CALL Info( 'CreateHarmonicSystem', Message )
+    CALL Info( 'ChangeToHarmonicSystem', Message )
     omega = 2 * PI * Frequency
 
     ! Set the harmonic system r.h.s
@@ -12529,7 +12530,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 
 
     IF( ASSOCIATED( Are % Rhs ) ) THEN
-      b(1::2) = Are % RHS(1:n)
+      b(1:2*n:2) = Are % RHS(1:n)
     ELSE
       b(1:2*n:2) = 0.0_dp
     END IF
@@ -12539,7 +12540,20 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     ELSE
       b(2:2*n:2) = 0.0_dp
     END IF
-    
+
+    IF( ASSOCIATED(Are % MassValues) ) THEN
+      CALL Info('ChangeToHarmonicSystem','We have mass matrix values',Level=12)
+    ELSE
+      CALL Warn('ChangeToHarmonicSystem','We do not have mass matrix values!')
+    END IF
+
+    IF( ASSOCIATED(Are % DampValues) ) THEN
+      CALL Info('ChangeToHarmonicSystem','We have damp matrix values',Level=12)
+    ELSE
+      CALL Info('ChangeToHarmonicSystem','We do not have damp matrix values',Level=12)
+    END IF
+
+           
     ! Set the harmonic system matrix
     DO k=1,n
       kr = Aharm % Rows(2*(k-1)+1)
@@ -12562,7 +12576,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 
     
     ! Finally set the Dirichlet conditions for the solver    
-    DO j=1,Solver % Variable % DOFs
+    DO j=1,DOFs
       Name = ComponentName( Solver % Variable % Name, j ) 
       DO i=1,CurrentModel % NumberOFBCs
         BC => CurrentModel % BCs(i) % Values
@@ -12577,59 +12591,96 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       END DO
     END DO
 
-    DO j=1,Solver % Variable % DOFs
-      Name = ComponentName( Solver % Variable % Name, j ) 
+    DO j=1,DOFs
+      Name = ComponentName( SaveVar % Name, j ) 
       
       CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
-          2*j-1, 2*DOFs, Solver % Variable % Perm )
+          2*j-1, 2*DOFs, SaveVar % Perm )
       
       CALL SetDirichletBoundaries( CurrentModel, Aharm, b, TRIM(Name) // ' im', &
-          2*j, 2*DOFs, Solver % Variable % Perm )
+          2*j, 2*DOFs, SaveVar % Perm )
     END DO
     
     CALL EnforceDirichletConditions( Solver, Aharm, b )
-  
+
+    
     
     ! Create the new fields, the total one and the imaginary one
     !-------------------------------------------------------------
-    Name = TRIM( SaveVar % Name )//' complex'
-    TotVar => VariableGet( Solver % Mesh % Variables, Name )
-    IF(.NOT. ASSOCIATED( TotVar ) ) THEN
-      CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
-          Name,2*DOFs,Perm=SaveVar % Perm,Output=.FALSE.,Secondary=.TRUE.)
-      TotVar => VariableGet( Solver % Mesh % Variables, Name )
+    k = INDEX( SaveVar % name, '[' )
+    ParseName = ( k > 0 ) 
+
+    ! Name of the full complex variable not used for postprocessing
+    IF( ParseName ) THEN
+      Name = TRIM(SaveVar % Name(1:k-1))//' complex'
+    ELSE
+      Name = TRIM( SaveVar % Name )//' complex'
+    END IF
       
-      Name = TRIM( SaveVar % Name )//' re'
-      ReVarVals => TotVar % Values(1::2)    
-      CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
-          Name,DOFs,ReVarVals,Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)
+    CALL Info('ChangeToHarmonicSystem','Harmonic system full name: '//TRIM(Name),Level=12)
 
-      Name = TRIM( SaveVar % Name )//' im'
-      ImVarVals => TotVar % Values(2::2)    
+     
+    TotVar => VariableGet( Solver % Mesh % Variables, Name )
+    IF( ASSOCIATED( TotVar ) ) THEN
+      CALL Info('ChangeToHarmonicSystem','Reusing full system harmonic dofs',Level=12)
+    ELSE
+      CALL Info('ChangeToHarmonicSystem','Creating full system harmonic dofs',Level=12)
       CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
-          Name,DOFs,ImVarVals,Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)
+          Name,2*DOFs,Perm=SaveVar % Perm,Output=.FALSE.)
+      TotVar => VariableGet( Solver % Mesh % Variables, Name )
+      IF(.NOT. ASSOCIATED( TotVar ) ) CALL Fatal('ChangeToHarmonicSystem','New created variable should exist!')
 
-      ! We replace the initial field to be outputted with the Re and Im components
-      !IF( SaveVar % Dofs > 1 ) THEN
-      !  DO j=1, SaveVar % Dofs
-      !    Name = ComponentName( SaveVar % Name, j )
-      !    TmpVar => VariableGet( Solver % Mesh % Variables, Name )
-      !    IF( ASSOCIATED( TmpVar ) ) TmpVar % Output = .FALSE.
-      !  END DO
-      !END IF        
-      !SaveVar % Output = .FALSE.
+      ! Repoint the values of the original solution vector
+      TotVar % Values(1:2*n:2) = SaveVar % Values(1:n)
+
+      ! It beats me why this cannot be deallocated without some NaNs later
+      !DEALLOCATE( SaveVar % Values )
+      SaveVar % Values => TotVar % Values(1:2*n:2)
+      SaveVar % Secondary = .TRUE.
+      
+      ! Repoint the components of the original solution
+      IF( Dofs > 1 ) THEN
+        DO i=1,Dofs
+          TmpVar => VariableGet( Solver % Mesh % Variables, ComponentName( SaveVar % Name, i ) )
+          IF( ASSOCIATED( TmpVar ) ) THEN
+            TmpVar % Values => TotVar % Values(2*i-1::TotVar % Dofs)
+          ELSE
+            CALL Fatal('ChangeToHarmonicSystem','Could not find re component '//TRIM(I2S(i)))
+          END IF
+        END DO
+      END IF
+
+      IF( ParseName ) THEN
+        Name = ListGetString( Solver % Values,'Imaginary Variable',Found )
+        IF(.NOT. Found ) THEN
+          CALL Fatal('ChangeToHarmonicSystem','We need > Imaginary Variable < to create harmonic system!')
+        END IF
+      ELSE
+        Name = TRIM( SaveVar % Name )//' im'
+        CALL Info('ChangeToHarmonicSystem','Using derived name for imaginary component: '//TRIM(Name),Level=12)
+      END IF
+
+      TmpVals => TotVar % Values(2:2*n:2)
+      CALL VariableAdd( Solver % Mesh % Variables,Solver % Mesh,Solver, &
+          Name, DOFs,TmpVals, Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)        
+
+      IF( Dofs > 1 ) THEN
+        DO i=1,Dofs
+          TmpVals => TotVar % Values(2*i:2*n:2*Dofs)
+          CALL VariableAdd( Solver % Mesh % Variables,Solver % Mesh,Solver, &
+              ComponentName(Name,i),1,TmpVals,Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)        
+        END DO
+      END IF
+        
     END IF
     
     ! Now change the pointers such that when we visit the linear solver
     ! the system will automatically be solved as complex
     Solver % Variable => TotVar
     Solver % Matrix => Aharm
-    
   ELSE
     CALL Info('ChangeToHarmonicSystem','Changing the harmonic results to real system!',Level=5)
    
-    SaveVar % Values = TotVar % Values(1::2)
-
     Solver % Variable => SaveVar
     Solver % Matrix => SaveMatrix   
   END IF

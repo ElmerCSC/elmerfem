@@ -85,6 +85,10 @@ SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
 
   CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
 
+  ! Only created if the system is harmonic
+  CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 DNU im:3]')
+
+  
   CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
   CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
   CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
@@ -211,6 +215,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: MaxPDir1Err, MaxPDir2Err, PDir1(3), PDir2(3)
   REAL(KIND=dp) :: Energy(4), MEnergy, SEnergy, BEnergy, Etot
 
+  LOGICAL :: MassAssembly, HarmonicAssembly
+  
   SAVE VisitsList, Indices, LocalSol, TotalSol, LocalRHSForce
 !------------------------------------------------------------------------------  
 
@@ -221,7 +227,11 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   Mesh => GetMesh()
   SolverPars => GetSolverParams()
   MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found )  
-
+  
+  HarmonicAssembly = GetLogical(SolverPars,'Harmonic Mode',Found ) .OR. &
+      GetLogical(SolverPars,'Harmonic Analysis',Found )
+  MassAssembly =  ( TransientSimulation .OR. HarmonicAssembly ) 
+  
   ! ---------------------------------------------------------------------------------
   ! The number of unknown fields in the shell model:
   ! ---------------------------------------------------------------------------------
@@ -656,6 +666,8 @@ CONTAINS
         n = CurrentModel % MaxElementNodes
         ALLOCATE( NodalNormals(3*n) ) 
       END IF
+      
+      Visited = .TRUE.
     END IF
 
     IF( UseElementProperty ) THEN    
@@ -3289,8 +3301,7 @@ CONTAINS
     ELSE
       Load(1:n) = 0.0d0
     END IF
-    IF (TransientSimulation) &
-        rho(1:n) = GetReal(GetMaterial(), 'Density')
+    IF ( MassAssembly ) rho(1:n) = GetReal(GetMaterial(), 'Density')
 
     ! ------------------------------------------------------------------------------
     ! The size of the constitutive matrix for 2D shell equations
@@ -3504,7 +3515,7 @@ CONTAINS
       nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
       E = SUM( YoungsMod(1:n) * Basis(1:n) )
       NormalTraction = SUM( Load(1:n) * Basis(1:n) )
-      IF (TransientSimulation) rho0 = SUM( rho(1:n) * Basis(1:n) )
+      IF ( MassAssembly ) rho0 = SUM( rho(1:n) * Basis(1:n) )
 
       ! The matrix description of the elasticity tensor:
       CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
@@ -4003,7 +4014,7 @@ CONTAINS
       !----------------------------------------------------------------
       ! Mass matrix without bubbles taken into account:
       !----------------------------------------------------------------     
-      IF (TransientSimulation) THEN
+      IF ( MassAssembly ) THEN
         DO k=1,3
           SELECT CASE(k)
           CASE(1)
@@ -4088,9 +4099,15 @@ CONTAINS
 
     IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
 
-    IF(TransientSimulation) THEN
+    IF( MassAssembly ) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
-      CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
+
+      IF( TransientSimulation ) THEN
+        CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
+      ELSE IF( HarmonicAssembly ) THEN
+        CALL DefaultUpdateMass( MASS )
+        ! update damping if present!
+      END IF
     END IF
 
     CALL DefaultUpdateEquations(STIFF,FORCE)
