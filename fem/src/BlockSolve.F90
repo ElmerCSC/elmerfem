@@ -325,11 +325,16 @@ CONTAINS
     DO i = 1,NoVar
       IF( GotSlaveSolvers ) THEN
         j = SlaveSolvers(i)
+
+        CALL Info('BlockSolver','Associating block '//TRIM(I2S(i))//' with solver: '//TRIM(I2S(j)),Level=10)
+
         PSolver => CurrentModel % Solvers(j)
         Var => PSolver % Variable 
         VarName = Var % Name
+
         BlockMatrix % SubVector(i) % Solver => PSolver
         BlockMatrix % SubMatrix(i,i) % Mat => PSolver % Matrix        
+
       ELSE
         WRITE (str,'(A,I0)') 'Variable ',i
 
@@ -781,16 +786,21 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A_fs, A_sf
     TYPE(Variable_t), POINTER :: FVar, SVar
     LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
-    LOGICAL :: IsPlate
+    LOGICAL :: IsPlate, IsShell
     
     Params => Solver % Values
 
     IsPlate = .FALSE.
+    IsShell = .FALSE.
+    
     i = ListGetInteger( Params,'Structure Solver Index',Found)
     IF( .NOT. Found ) THEN
       i = ListGetInteger( Params,'Plate Solver Index',IsPlate)
+      IF(.NOT. IsPlate ) THEN
+        i = ListGetInteger( Params,'Shell Solver Index',IsShell)
+      END IF
     END IF
-
+      
     j = ListGetInteger( Params,'Fluid Solver Index',Found)
     
     IF(i<=0 .OR. j<=0) THEN
@@ -823,7 +833,7 @@ CONTAINS
     END IF
         
     CALL FsiCouplingAssembly( Solver, FVar, SVar, A_fs, A_sf, &
-        ConstrainedF, ConstrainedS, IsPlate )
+        ConstrainedF, ConstrainedS, IsPlate, IsShell )
 
   END SUBROUTINE FsiCouplingBlocks
     
@@ -1559,6 +1569,7 @@ CONTAINS
       
       IF (.NOT.isParallel) THEN
         x(offset(i)+1:offset(i+1)) = TotMatrix % SubVector(i) % Var % Values        
+
         IF( ASSOCIATED( TotMatrix % Submatrix(i,i) % Mat % Rhs ) ) THEN          
           b(offset(i)+1:offset(i+1)) = TotMatrix % SubMatrix(i,i) % Mat % rhs
         END IF
@@ -1593,8 +1604,8 @@ CONTAINS
     CALL ListAddLogical(Params,'Linear System Free Factorization',.FALSE.)
 
     precProc = AddrFunc(BlockMatrixPrec)
-    mvProc = AddrFunc(BlockMatrixVectorProd)
-    
+    mvProc = AddrFunc(BlockMatrixVectorProd)       
+
     prevXnorm = SQRT( SUM( b**2 ) )
     WRITE( Message,'(A,ES12.3)') 'Rhs norm at start: ',PrevXnorm
     CALL Info('BlockKrylovIter',Message,Level=10)

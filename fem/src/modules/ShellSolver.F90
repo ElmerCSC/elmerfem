@@ -85,6 +85,10 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
 
   CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
 
+  ! Only created if the system is harmonic
+  CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 DNU im:3]')
+
+  
   CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
   CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
   CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
@@ -211,6 +215,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp) :: MaxPDir1Err, MaxPDir2Err, PDir1(3), PDir2(3)
   REAL(KIND=dp) :: Energy(4), MEnergy, SEnergy, BEnergy, Etot
 
+  LOGICAL :: MassAssembly, HarmonicAssembly
+  
   SAVE VisitsList, Indices, LocalSol, TotalSol, LocalRHSForce
 !------------------------------------------------------------------------------  
 
@@ -220,7 +226,12 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! ---------------------------------------------------------------------------------
   Mesh => GetMesh()
   SolverPars => GetSolverParams()
-  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
+
+  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found )  
+  
+  HarmonicAssembly = GetLogical(SolverPars,'Harmonic Mode',Found ) .OR. &
+      GetLogical(SolverPars,'Harmonic Analysis',Found )
+  MassAssembly =  ( TransientSimulation .OR. HarmonicAssembly ) 
 
   ! ---------------------------------------------------------------------------------
   ! The number of unknown fields in the shell model:
@@ -284,20 +295,13 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! Read the director data at the nodes from mesh.director file and/or check the
   ! the integrity of the surface model. This subroutine creates an elementwise 
   ! property 'director' corresponding to the data, if not already available
-  ! via reading the director data from the file mesh.elements.data.
+  ! via reading the director data from the file mesh.elements.data. I neither
+  ! mesh.director nor mesh.elements.data are used to define the director, other
+  ! means can also be used for obtaining the director.
   !----------------------------------------------------------------------------------
-  WriteElementalDirector = GetLogical(SolverPars, 'Write Elemental Director', Found)
-  IF (WriteElementalDirector) THEN
-    OutputFile = GetString(SolverPars, 'Elemental Director Output File', Found)
-    IF (.NOT. Found) THEN
-      OutputFile(1:18) = 'mesh.elements.data'
-      OutputFile(19:19) = CHAR(0)
-    END IF
-  END IF
-  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, &
-      CheckSurfaceOrientation=.TRUE., WriteElementwiseDirector = WriteElementalDirector, &
-      ElementwiseDirectorFile = OutputFile)
-
+  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars)
+  CALL CheckSurfaceOrientation()
+  
   ! --------------------------------------------------------------------------------
   ! PART II:
   ! Generate the descriptions of curved element edges for improved geometry 
@@ -643,6 +647,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
  
 CONTAINS
 
+
+  
 ! ---------------------------------------------------------------------------------
 ! This subroutine reads mesh.director file arranged as
 !
@@ -651,65 +657,47 @@ CONTAINS
 !    node_idN d_x d_y d_z
 !
 ! to obtain the shell director data at nodes and creates an elementwise property 
-! 'director' corresponding to this data. With the optional argument 
-! CheckSurfaceOrientation = .TRUE. the integrity of director data is checked 
-! (a consistent orientation of the surface over the element). If the file
-! mesh.elements.data has been used to specify the director as an elementwise
-! property 'director', this subroutine may be used just to perform the orientation 
-! check. If both the files exist, the director obtained from mesh.elements.data
-! is used. With WriteElementwiseDirector = .TRUE. the director data is written
-! as elementwise property to a file whose format conforms with a file 
-! mesh.elements.data (this is the default name for the output file, so this
-! option can be used to convert mesh.director into mesh.elements.data format).
+! 'director' corresponding to this data. If the file mesh.elements.data has been 
+! used to specify the director as an elementwise property 'director', the director 
+! obtained from mesh.elements.data is used. With the keyword Write Elemental Director
+! being active,the director data is written as elementwise property to a file whose 
+! format conforms with a file mesh.elements.data (this is the default name for the 
+! output file, so this option can be used to convert mesh.director into 
+! mesh.elements.data format).
 ! 
 ! TO DO: Implement parallel version of file reading (mesh.elements.data and
 !        mesh.director). Allow arbitrary indexing of nodes.
 !------------------------------------------------------------------------------
-  SUBROUTINE ReadSurfaceDirector( MeshName, NumberOfNodes, &
-      CheckSurfaceOrientation, WriteElementwiseDirector, ElementwiseDirectorFile)
+  SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
-    LOGICAL, OPTIONAL, INTENT(IN) :: CheckSurfaceOrientation
-    LOGICAL, OPTIONAL, INTENT(IN) :: WriteElementwiseDirector
-    CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL, INTENT(IN) :: ElementwiseDirectorFile
+    TYPE(ValueList_t), POINTER, INTENT(IN) :: SolverPars
     !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Nodes_t) :: Nodes
-    LOGICAL :: ReadNodalDirectors, DirectorDataCheck, WriteElementsData, Found
-    INTEGER :: n, iostat, i, j, k, i0, Active, Family
+    LOGICAL :: ReadNodalDirectors, WriteElementsData, Found
+    INTEGER :: n, iostat, i, j, k, i0
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
-    REAL(KIND=dp) :: d(3), d1(3), d2(3), d3(3), Norm, X1(3), X2(3)
-    REAL(KIND=dp) :: e1(3), e2(3), e3(3)
     REAL(KIND=dp) :: ElementDirectors(3*MaxBGElementNodes)
     CHARACTER(LEN=MAX_NAME_LEN) :: DirectorFile, FormatString
     !------------------------------------------------------------------------------
 
     ! -----------------------------------------------------------------------------
-    ! Check whether mesh.director is read:
+    ! Check whether mesh.director can be read:
     ! -----------------------------------------------------------------------------
     n = LEN_TRIM(MeshName)
-    DirectorFile(1:n) = MeshName(1:n)
-    DirectorFile(n+1:n+1) = '/'
-    DirectorFile(n+2:n+14) = 'mesh.director'
-    DirectorFile(n+15:n+15) = CHAR(0)
+    DirectorFile = TRIM(MeshName)//'/'//'mesh.director'//CHAR(0)
 
-    INQUIRE(FILE = DirectorFile(1:n+15), EXIST = Found)
-    IF ( Found ) THEN    
-      ReadNodalDirectors = .TRUE.
-      CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
-          'NodalDirector array could not be allocated')
-    ELSE
-      ReadNodalDirectors = .FALSE.
-      CALL Info('ReadSurfaceDirector', 'shell director data is read from mesh.elements.data file', &
-          Level=8)
-    END IF
+    INQUIRE(FILE = DirectorFile(1:n+15), EXIST = ReadNodalDirectors)
 
     IF (ReadNodalDirectors) THEN
-      OPEN( 10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat )
+      
+      CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
+          'NodalDirector array could not be allocated')
+      
+      OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
       IF ( iostat /= 0 ) THEN
         CALL Fatal( 'ReadSurfaceDirector', 'Opening mesh.director file failed.')     
       ELSE
@@ -744,88 +732,8 @@ CONTAINS
           i0 = (i-1)*3
           ElementDirectors(i0+1:i0+3) = NodalDirector(Element % NodeIndexes(i),1:3)
         END DO
+
         CALL SetElementProperty('director', ElementDirectors(1:3*n), Element)
-      END DO
-    END IF
-
-    ! ---------------------------------------------------------------------------
-    ! Perform an additional check that the director data defines a properly 
-    ! oriented model. All directors should point to the same side of the surface.
-    ! ----------------------------------------------------------------------------
-    IF (PRESENT(CheckSurfaceOrientation)) THEN
-      DirectorDataCheck = CheckSurfaceOrientation
-    ELSE
-      DirectorDataCheck = .FALSE.   
-    END IF
-
-    IF (DirectorDataCheck) THEN
-      Active = GetNOFActive()
-      DO k=1,Active
-        Element => GetActiveElement(k)
-        Family = GetElementFamily(Element)
-        n  = GetElementNOFNodes()
-        CALL GetElementNodes( Nodes )
-
-        i = 1
-        j = 2
-        X1(1) = Nodes % x(i)
-        X1(2) = Nodes % y(i)
-        X1(3) = Nodes % z(i)
-        X2(1) = Nodes % x(j)
-        X2(2) = Nodes % y(j)
-        X2(3) = Nodes % z(j)
-        e1(:) = X2(:)-X1(:)
-        Norm = SQRT(SUM(e1(:)**2))
-        e1 = e1/Norm
-
-        SELECT CASE(Family)
-        CASE(3)
-          i = 1
-          j = 3
-        CASE(4)
-          i = 2
-          j = 3
-        CASE DEFAULT
-          CYCLE
-        END SELECT
-
-        X1(1) = Nodes % x(i)
-        X1(2) = Nodes % y(i)
-        X1(3) = Nodes % z(i)
-        X2(1) = Nodes % x(j)
-        X2(2) = Nodes % y(j)
-        X2(3) = Nodes % z(j)
-        e2(:) = X2(:)-X1(:)
-        Norm = SQRT(SUM(e2(:)**2))
-
-        ! Now, define the element surface orientation: 
-        e3(:) = CrossProduct(e1,e2) 
-        Norm = SQRT(SUM(e3(:)**2))
-        e3 = e3/Norm     
-
-        ! Check that all directors point to the same side of the oriented surface:
-        DirectorValues => GetElementProperty('director', Element)
-        IF (ASSOCIATED(DirectorValues)) THEN
-          IF (SIZE(DirectorValues) < 3*n) CALL Fatal('ReadSurfaceDirector', &
-              'Elemental director data is not associated with all nodes')
-          d1(1:3) = DirectorValues(1:3)
-          c = DOT_PRODUCT(d1,e3)
-        ELSE
-          CALL Fatal( 'ReadSurfaceDirector', 'Elemental director data is not associated')
-        END IF
-
-        DO j=2,n
-          i0 = (j-1)*3
-          d2(1:3) = DirectorValues(i0+1:i0+3)
-          IF ( (c * DOT_PRODUCT(d2,e3)) < 0.0d0 ) THEN
-            PRINT *, 'Element indices=', Element % NodeIndexes(1:n)
-            PRINT *, 'Reference normal =', e3(:)
-            PRINT *, 'Node Index = ', j, Element % NodeIndexes(j)
-            PRINT *, 'Director =', d2(:)
-            CALL Fatal( 'ReadSurfaceDirector', &
-                'Director data does not define a unique upper/lower surface.')
-          END IF
-        END DO
       END DO
     END IF
 
@@ -834,26 +742,15 @@ CONTAINS
     ! format conforms with a file mesh.elements.data. By default
     ! the file name mesh.elements.data is used. This never overwrites
     ! an existing file.
-    ! ---------------------------------------------------------------------
-    IF (PRESENT(WriteElementwiseDirector)) THEN
-      WriteElementsData = WriteElementwiseDirector
-    ELSE
-      WriteElementsData = .FALSE.
-    END IF
-    IF (WriteElementsData) THEN
+    ! ---------------------------------------------------------------------    
+    WriteElementsData = GetLogical(SolverPars, 'Write Elemental Director', Found)
+
+    IF ( WriteElementsData ) THEN
+      OutputFile = GetString(SolverPars, 'Elemental Director Output File', Found)
+      IF (.NOT. Found) OutputFile = 'mesh.elements.data'//CHAR(0)
+
       n = LEN_TRIM(MeshName)
-      DirectorFile(1:n) = MeshName(1:n)
-      DirectorFile(n+1:n+1) = '/'
-      IF ( PRESENT(ElementwiseDirectorFile) ) THEN
-        j = LEN_TRIM(ElementwiseDirectorFile)
-        DirectorFile(n+2:n+1+j) = ElementwiseDirectorFile(1:j)
-        DirectorFile(n+2+j:n+2+j) = CHAR(0)
-        n = n+2+j
-      ELSE
-        DirectorFile(n+2:n+19) = 'mesh.elements.data'
-        DirectorFile(n+20:n+20) = CHAR(0)
-        n = n+20
-      END IF
+      DirectorFile = MeshName(1:n)//'/'//TRIM(OutputFile)//CHAR(0)
 
       INQUIRE(FILE = DirectorFile(1:n), EXIST = Found)
       IF (Found) THEN
@@ -903,6 +800,147 @@ CONTAINS
   END SUBROUTINE ReadSurfaceDirector
 !------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+! This function can be used to return the elementwise values of the director
+! field. The director data is supposed to be found as the elementwise property
+! 'director'. If this property does not exits, the normal is computed otherwise.
+!-------------------------------------------------------------------------------
+  FUNCTION GetElementalDirector(Element, ElementNodes) RESULT (DirectorValues) 
+!-------------------------------------------------------------------------------    
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
+    REAL(KIND=dp), POINTER :: DirectorValues(:)
+    !-------------------------------------------------------------------------------
+    TYPE(Nodes_t) :: Nodes
+    LOGICAL :: Visited = .FALSE., UseElementProperty = .FALSE., UseNormalSolver = .FALSE.
+    REAL(KIND=dp), POINTER :: NodalNormals(:)
+    REAL(KIND=dp) :: Normal(3)
+    INTEGER :: n
+    
+    SAVE Visited, UseElementProperty, NodalNormals, Nodes
+    !-------------------------------------------------------------------------------
+
+    IF(.NOT. Visited) THEN
+      DirectorValues => GetElementProperty('director', Element)
+      UseElementProperty = ASSOCIATED( DirectorValues ) 
+
+      IF(.NOT. UseElementProperty ) THEN
+        n = CurrentModel % MaxElementNodes
+        ALLOCATE( NodalNormals(3*n) ) 
+      END IF
+      Visited = .TRUE.
+    END IF
+
+    IF( UseElementProperty ) THEN    
+      DirectorValues => GetElementProperty('director', Element)
+    ELSE
+      IF( PRESENT( ElementNodes ) ) THEN
+        Normal = NormalVector( Element, ElementNodes, Check = .TRUE. ) 
+      ELSE
+        CALL GetElementNodes( Nodes, Element ) 
+        Normal = NormalVector( Element, Nodes, Check = .TRUE. ) 
+      END IF
+        
+      n = Element % TYPE % NumberOfNodes
+      NodalNormals(1:3*n:3) = Normal(1)
+      NodalNormals(2:3*n:3) = Normal(2)
+      NodalNormals(3:3*n:3) = Normal(3)      
+      DirectorValues => NodalNormals
+    END IF     
+!-------------------------------------------------------------------------------    
+  END FUNCTION GetElementalDirector
+!-------------------------------------------------------------------------------
+
+  
+! ---------------------------------------------------------------------------
+!> Perform an additional check that the director data defines a properly 
+!> oriented model. All directors should point to the same side of the surface.
+!----------------------------------------------------------------------------
+  SUBROUTINE CheckSurfaceOrientation()
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t) :: Nodes
+    INTEGER :: n, i, j, k, i0, Active, Family
+    REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
+    REAL(KIND=dp), POINTER :: DirectorValues(:)
+    REAL(KIND=dp) :: d(3), d1(3), d2(3), X1(3), X2(3)
+    REAL(KIND=dp) :: e1(3), e2(3), e3(3), Norm
+    !------------------------------------------------------------------------------
+
+    Active = GetNOFActive()
+    DO k=1,Active
+      Element => GetActiveElement(k)
+      Family = GetElementFamily(Element)
+      n  = GetElementNOFNodes()
+      CALL GetElementNodes( Nodes )
+
+      i = 1
+      j = 2
+      X1(1) = Nodes % x(i)
+      X1(2) = Nodes % y(i)
+      X1(3) = Nodes % z(i)
+      X2(1) = Nodes % x(j)
+      X2(2) = Nodes % y(j)
+      X2(3) = Nodes % z(j)
+      e1(:) = X2(:)-X1(:)
+      Norm = SQRT(SUM(e1(:)**2))
+      e1 = e1/Norm
+
+      SELECT CASE(Family)
+      CASE(3)
+        i = 1
+        j = 3
+      CASE(4)
+        i = 2
+        j = 3
+      CASE DEFAULT
+        CYCLE
+      END SELECT
+
+      X1(1) = Nodes % x(i)
+      X1(2) = Nodes % y(i)
+      X1(3) = Nodes % z(i)
+      X2(1) = Nodes % x(j)
+      X2(2) = Nodes % y(j)
+      X2(3) = Nodes % z(j)
+      e2(:) = X2(:)-X1(:)
+      Norm = SQRT(SUM(e2(:)**2))
+
+      ! Now, define the element surface orientation: 
+      e3(:) = CrossProduct(e1,e2) 
+      Norm = SQRT(SUM(e3(:)**2))
+      e3 = e3/Norm     
+
+      ! Check that all directors point to the same side of the oriented surface:
+      DirectorValues => GetElementalDirector(Element, Nodes)
+
+      IF (.NOT. ASSOCIATED(DirectorValues)) THEN
+        CALL Fatal( 'CheckSurfaceOrientation', 'Elemental director data is not associated')
+      END IF
+      IF (SIZE(DirectorValues) < 3*n) CALL Fatal('CheckSurfaceOrientation', &
+          'Elemental director data is not associated with all nodes')
+
+      ! reference direction for the 1st element node
+      d1(1:3) = DirectorValues(1:3)
+      c = DOT_PRODUCT(d1,e3)
+
+      DO j=2,n
+        i0 = (j-1)*3
+        d2(1:3) = DirectorValues(i0+1:i0+3)
+        IF ( (c * DOT_PRODUCT(d2,e3)) < 0.0d0 ) THEN
+          PRINT *, 'Element indices=', Element % NodeIndexes(1:n)
+          PRINT *, 'Reference normal =', e3(:)
+          PRINT *, 'Node Index = ', j, Element % NodeIndexes(j)
+          PRINT *, 'Director =', d2(:)
+          CALL Fatal( 'ReadSurfaceDirector', &
+              'Director data does not define a unique upper/lower surface.')
+        END IF
+      END DO
+    END DO
+!-------------------------------------------------------------------------------   
+  END SUBROUTINE CheckSurfaceOrientation
+!-------------------------------------------------------------------------------   
+  
 ! ---------------------------------------------------------------------------------
 ! Use nodal directors, which are retrieved as elementwise property 'director', 
 ! to create the parametrizations of curved edges for the Hermite interpolation.
@@ -954,9 +992,10 @@ CONTAINS
     Active = GetNOFActive()
     DO k=1,Active
       Element => GetActiveElement(k)
-      DirectorValues => GetElementProperty('director', Element)
       CALL GetElementNodes( Nodes )
 
+      DirectorValues => GetElementalDirector( Element, Nodes )
+      
       Family = GetElementFamily(Element)
       SELECT CASE(Family)
       CASE(3)
@@ -3261,8 +3300,7 @@ CONTAINS
     ELSE
       Load(1:n) = 0.0d0
     END IF
-    IF (TransientSimulation) &
-        rho(1:n) = GetReal(GetMaterial(), 'Density')
+    IF ( MassAssembly ) rho(1:n) = GetReal(GetMaterial(), 'Density')
 
     ! ------------------------------------------------------------------------------
     ! The size of the constitutive matrix for 2D shell equations
@@ -3476,7 +3514,7 @@ CONTAINS
       nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
       E = SUM( YoungsMod(1:n) * Basis(1:n) )
       NormalTraction = SUM( Load(1:n) * Basis(1:n) )
-      IF (TransientSimulation) rho0 = SUM( rho(1:n) * Basis(1:n) )
+      IF ( MassAssembly ) rho0 = SUM( rho(1:n) * Basis(1:n) )
 
       ! The matrix description of the elasticity tensor:
       CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
@@ -3975,7 +4013,7 @@ CONTAINS
       !----------------------------------------------------------------
       ! Mass matrix without bubbles taken into account:
       !----------------------------------------------------------------     
-      IF (TransientSimulation) THEN
+      IF ( MassAssembly ) THEN
         DO k=1,3
           SELECT CASE(k)
           CASE(1)
@@ -4060,9 +4098,15 @@ CONTAINS
 
     IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
 
-    IF(TransientSimulation) THEN
+    IF( MassAssembly ) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
-      CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
+
+      IF( TransientSimulation ) THEN
+        CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
+      ELSE IF( HarmonicAssembly ) THEN
+        CALL DefaultUpdateMass( MASS )
+        ! update damping if present!
+      END IF
     END IF
 
     CALL DefaultUpdateEquations(STIFF,FORCE)
@@ -5537,7 +5581,8 @@ CONTAINS
       PlateBodyCheck = .FALSE.
     END IF
 
-    DirectorValues => GetElementProperty('director', Element)
+    DirectorValues => GetElementalDirector( Element )
+    
     IF (ASSOCIATED(DirectorValues)) THEN
       IF (SIZE(DirectorValues) < 3*n) CALL Fatal('AverageDirector', &
           'Elemental director data is not associated with all nodes')
