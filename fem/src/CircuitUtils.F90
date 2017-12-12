@@ -485,7 +485,6 @@ CONTAINS
  END SUBROUTINE SetBoundaryAreasToValueLists
 !-------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
   SUBROUTINE ReadComponents(CId)
 !------------------------------------------------------------------------------
@@ -505,6 +504,7 @@ CONTAINS
       Comp % nofcnts = 0
 !        Comp % ComponentId = Circuits(p) % body(CompInd)
       Comp % BodyIds => GetComponentBodyIds(Comp % ComponentId)
+      CALL CountCompOwnerElCounts(Comp)
 
       IF (.NOT. ASSOCIATED(Comp % ivar) ) THEN
         CALL FATAL('Circuits_Init', 'Current Circuit Variable is not found for Component '//TRIM(i2s(Comp % ComponentId)))
@@ -582,13 +582,103 @@ CONTAINS
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
 
         Comp % N_j = Comp % nofturns / Comp % ElArea
-
       END SELECT
+    END DO
+
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE ReadComponents
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AddComponentVariables(CId)
+!------------------------------------------------------------------------------
+    USE CircuitUtils
+    IMPLICIT NONE
+    INTEGER :: CId, CompInd
+    TYPE(Circuit_t), POINTER :: Circuit
+    TYPE(Component_t), POINTER :: Comp
+
+    Circuit => CurrentModel%Circuits(CId)
+    
+    DO CompInd=1,Circuit % n_comp
+      Comp => Circuit % Components(CompInd)
+      IF (.NOT. ASSOCIATED(Comp % ivar) ) THEN
+        CALL FATAL('Circuits_Init', 'Current Circuit Variable is not found for Component '//TRIM(i2s(Comp % ComponentId)))
+      ELSE IF (.NOT. ASSOCIATED(Comp % vvar) ) THEN
+        CALL FATAL('Circuits_Init', 'Voltage Circuit Variable is not found for Component '//TRIM(i2s(Comp % ComponentId)))
+      END IF
+
       CALL AddVariableToCircuit(Circuit, Comp % ivar, CId)
       CALL AddVariableToCircuit(Circuit, Comp % vvar, CId)
     END DO
+
 !------------------------------------------------------------------------------
-  END SUBROUTINE ReadComponents
+  END SUBROUTINE AddComponentVariables
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountCompOwnerElCounts(Comp)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER :: j, p
+    INTEGER :: cnt(ParEnv%PEs), r_cnt(ParEnv%PEs)
+    INTEGER, POINTER :: OwnerElCounts(:)=>Null()
+    LOGICAL :: visited = .FALSE.
+
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CountCompOwnerElCounts','ASolver not found!')
+
+    ALLOCATE(Comp % OwnerElementCounts(ParEnv % PEs))
+    OwnerElCounts => Comp % OwnerElementCounts
+    OwnerElCounts = 0
+    cnt=0
+    r_cnt=0
+
+    IF(ASSOCIATED(Comp)) THEN
+      DO j=1,GetNOFACtive()
+         Element => GetActiveElement(j)
+           IF(ElAssocToComp(Element, Comp)) THEN
+             cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
+           END IF
+      END DO
+    END IF
+
+
+    ! print *, "mype", ParEnv % mype
+
+    CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
+            MPI_MAX,ASolver % Matrix % Comm,j)
+
+    OwnerElCounts = r_cnt
+
+    Comp % nofpartitions = COUNT(r_cnt>0)
+!    print *, "nof_partitions", Comp % nofpartitions
+!    print *, "OwnerElCounts", OwnerElCounts
+
+    ! Now that we know how many processes own the component we 
+    ! allocate parallel permutation vector (this tells
+    ! the order of the parallel component equations:
+    ! ----------------------------------------------
+    IF (Comp % nofpartitions > 0) THEN 
+      ALLOCATE(Comp % ParPerm(Comp % nofpartitions))
+      p = 1
+      Comp % ParPerm = -1
+      DO j = 1, ParEnv % PEs
+        IF (OwnerElCounts(j) > 0) THEN
+          Comp % ParPerm(p) = j-1
+          p = p + 1
+        END IF 
+      END DO
+    END IF
+!    print *, ParEnv % MyPe, "Comp % ParPerm", Comp % ParPerm
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountCompOwnerElCounts
 !------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------
@@ -712,11 +802,22 @@ CONTAINS
     IMPLICIT NONE
     TYPE(Circuit_t) :: Circuit
     TYPE(CircuitVariable_t) :: Variable
+    TYPE(Component_t), POINTER :: Comp
     INTEGER :: Owner=-1, k
     INTEGER, POINTER :: circuit_tot_n => Null()
     
+    Comp => Variable % Component
+    IF (ASSOCIATED(Comp)) THEN
+      Variable % ParPerm => Comp % ParPerm
+!      IF (Comp % nofpartitions .NE. 0) THEN
+!        PRINT *, "Variable", Variable % valueId, "belongs to a component", Comp % ComponentId
+!        PRINT *, "Component belongs to", Comp % nofpartitions, "partitions"
+!        PRINT *, "Varible % ParPerm", Variable % ParPerm
+!      END IF
+    END IF
+
     Circuit_tot_n => CurrentModel%Circuit_tot_n
-    
+  
     IF(k==1) THEN
       IF(Owner<=0) Owner = MAX(Parenv % PEs/2,1)
       Owner = Owner - 1
@@ -748,6 +849,8 @@ variable % owner = ParEnv % PEs-1
       
       Circuit_tot_n = Circuit_tot_n + Variable % dofs
     END IF
+
+    !ParPerm
 !------------------------------------------------------------------------------
   END SUBROUTINE AddVariableToCircuit
 !------------------------------------------------------------------------------
@@ -1072,64 +1175,6 @@ MODULE CircMatInitMod
 CONTAINS
 
 !------------------------------------------------------------------------------
-   SUBROUTINE CountCompOwnerElCounts()
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(Circuit_t), POINTER :: Circuits(:)
-    TYPE(CircuitVariable_t), POINTER :: Cvar
-    TYPE(Solver_t), POINTER :: ASolver
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Component_t), POINTER :: Comp
-    INTEGER :: p, n_Circuits, CompInd, j
-    INTEGER :: cnt(ParEnv%PEs), r_cnt(ParEnv%PEs)
-    INTEGER, POINTER :: OwnerElCounts(:)=>Null()
-    LOGICAL :: visited = .FALSE.
-    SAVE :: visited
-    
-    IF ( visited ) RETURN
-    visited = .TRUE.
-
-    Circuits => CurrentModel % Circuits
-    n_Circuits = CurrentModel % n_Circuits
-    ASolver => CurrentModel % Asolver
-    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CountCompOwnerElCounts','ASolver not found!')
-    DO p=1,n_Circuits
-      DO CompInd=1,Circuits(p) % n_comp
-        Comp => Circuits(p) % Components(CompInd)
-        ALLOCATE(Comp % OwnerElementCounts(ParEnv % PEs))
-        OwnerElCounts => Comp % OwnerElementCounts
-        OwnerElCounts = 0
-        cnt=0
-
-        IF(ASSOCIATED(Comp)) THEN
-          DO j=1,GetNOFACtive()
-             Element => GetActiveElement(j)
-               IF(ElAssocToComp(Element, Comp)) THEN
-                 cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
-               END IF
-          END DO
-        END IF
-
-!        print *, "mype", ParEnv % mype
-!        print *, "Comp", CompInd
-!        print *, "cnt", cnt
-
-        CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
-                MPI_MAX,ASolver % Matrix % Comm,j)
-
-        OwnerElCounts = r_cnt
-
-        Comp % nofpartitions = COUNT(r_cnt>0)
-!        print *, "nof_partitions", Comp % nofpartitions
-
-      END DO
-    END DO
-
-!------------------------------------------------------------------------------
-   END SUBROUTINE CountCompOwnerElCounts
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
    SUBROUTINE SetCircuitsParallelInfo()
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -1142,8 +1187,6 @@ CONTAINS
                cnt(Parenv % PEs), r_cnt(ParEnv % PEs), &
                RowId, nn, l, k, n_Circuits
     
-    CALL CountCompOwnerElCounts()
-
     CM => CurrentModel%CircuitMatrix
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('SetCircuitsParallelInfo','ASolver not found!')

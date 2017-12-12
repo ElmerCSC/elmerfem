@@ -827,6 +827,7 @@ END INTERFACE
     REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
     REAL(KIND=dp), ALLOCATABLE :: SourceRe(:), SourceIm(:), Mre(:), Mim(:)
     INTEGER, ALLOCATABLE :: EqVarIds(:)
+    INTEGER, POINTER :: ParPerm(:) => Null()
   END TYPE CircuitVariable_t
   
   TYPE Component_t
@@ -840,6 +841,7 @@ END INTERFACE
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
     LOGICAL :: UseCoilResistance = .FALSE.
+    INTEGER, POINTER :: ParPerm(:) => Null()
   END TYPE Component_t
 
   TYPE Circuit_t

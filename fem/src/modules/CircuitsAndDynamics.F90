@@ -139,6 +139,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       
       CALL ReadCircuitVariables(p)
       CALL ReadComponents(p)
+      CALL AddComponentVariables(p)
       CALL AddComponentValuesToLists(p)  ! Lists are used to communicate values to other solvers at the moment...
       CALL AddBareCircuitVariables(p)   ! these don't belong to any components
       CALL ReadCoefficientMatrices(p)
@@ -981,6 +982,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       
       CALL ReadCircuitVariables(p)
       CALL ReadComponents(p)
+      CALL AddComponentVariables(p)
       CALL AddComponentValuesToLists(p)  ! Lists are used to communicate values to other solvers at the moment...
       CALL AddBareCircuitVariables(p)   ! these don't belong to any components
       CALL ReadCoefficientMatrices(p)
