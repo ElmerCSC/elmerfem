@@ -1518,11 +1518,10 @@ CONTAINS
      Matrix => AllocateMatrix()
      Matrix % FORMAT = MATRIX_LIST
      
-     ! This is basically a stupid way to initialize but we have a very little matrix...
+     ! Initialize matrix indices
      DO i = 1, Dofs
        DO j = 1, Dofs
-         CALL List_AddToMatrixElement(Matrix % ListMatrix, i, &
-             j, 0.0_dp ) 
+          CALL List_AddMatrixIndex(Matrix % ListMatrix, i, j) 
        END DO
      END DO
 

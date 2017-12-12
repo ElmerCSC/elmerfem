@@ -565,9 +565,9 @@ END INTERFACE
 
 !------------------------------------------------------------------------------
    TYPE ListMatrixEntry_t
-     INTEGER :: Index
-     REAL(KIND=dp) :: Value
-     TYPE(ListMatrixEntry_t), POINTER :: Next
+     INTEGER :: Index = -1
+     REAL(KIND=dp) :: Value = 0.0
+     TYPE(ListMatrixEntry_t), POINTER :: Next => NULL()
    END TYPE ListMatrixEntry_t
 
    TYPE ListMatrixEntryPool_t
@@ -813,7 +813,7 @@ END INTERFACE
           BoundaryElementProcedure=0, BulkElementProcedure=0
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL(), BoundaryColourIndexList => NULL()
-      INTEGER :: CurrentColour = 0
+      INTEGER :: CurrentColour = 0, CurrentBoundaryColour = 0
       INTEGER :: DirectMethod = DIRECT_NORMAL
       LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
 #ifdef USE_ISO_C_BINDINGS

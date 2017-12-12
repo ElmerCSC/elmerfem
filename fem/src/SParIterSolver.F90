@@ -703,7 +703,7 @@ st = realtime()
       RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
       DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
         ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
-        CALL List_AddToMatrixElement(A % ListMatrix,RowInd,ColInd,0._dp)
+        CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
       END DO
     END DO
   END DO
@@ -2375,16 +2375,26 @@ END SUBROUTINE Solve
   CALL Recv_LocIf( GlobalData % SplittedMatrix, &
       nneigh, neigh, recv_size, requests, buffer )
 
-  v(1:n) = 0.0
+  !$OMP PARALLEL DO
+  DO i=1,n
+     v(i) = 0.0
+  END DO
+  !$OMP END PARALLEL DO
   DO i = 1, ParEnv % PEs
      CurrIf => GlobalData % SplittedMatrix % IfMatrix(i)
 
      IF ( CurrIf % NumberOfRows /= 0 ) THEN
-       IfV => GlobalData % SplittedMatrix % IfVecs(i)
-       IfL => GlobalData % SplittedMatrix % IfLCols(i)
-       IfO => GlobalData % SplittedMatrix % IfORows(i)
+        IfV => GlobalData % SplittedMatrix % IfVecs(i)
+        IfL => GlobalData % SplittedMatrix % IfLCols(i)
+        IfO => GlobalData % SplittedMatrix % IfORows(i)
 
-        IfV % IfVec(1:CurrIf % NumberOfRows) = 0.0
+        !$OMP PARALLEL PRIVATE(ColInd,j,k)
+        !$OMP DO
+        DO j=1,CurrIf % NumberOfRows
+           IfV % IfVec(j) = 0.0
+        END DO
+        !$OMP END DO
+        !$OMP DO
         DO j = 1, CurrIf % NumberOfRows
            IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) THEN
              DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
@@ -2394,6 +2404,8 @@ END SUBROUTINE Solve
              END DO
            END IF
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
      END IF
   END DO
 

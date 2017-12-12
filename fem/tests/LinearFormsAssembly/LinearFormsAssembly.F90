@@ -37,45 +37,50 @@ SUBROUTINE LinearFormsAssembly( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-    REAL(kind=dp), PARAMETER :: tol1d = 1D-12, tol2d=1D-12, tol3d=1D-12
-    INTEGER :: nerror, netest
-
+    REAL(KIND=dp), PARAMETER :: tol1d = 1D-12, tol2d=1D-12, tol3d=1D-12
+    REAL(KIND=dp) :: float_P
+    INTEGER :: nerror, netest, P
+    LOGICAL :: Found
+    
     nerror = 0
-
+    float_P = ListGetCReal(GetSolverParams(), 'P', Found)
+    IF (.NOT. Found) float_P = 6.0_dp
+    P = NINT(float_P)
+    
     ! 1D tests
-    netest = TestLineElement(Solver, tol1d)
+    netest = TestLineElement(Solver, P, tol1d)
     IF (netest /= 0) THEN
-      CALL Warn('LinearFormsAssembly','Line element contained errors')
+       CALL Warn('LinearFormsAssembly','Line element contained errors')
     END IF
     nerror = nerror + netest
     
-    ! 2D tests 
-    netest = TestTriangleElement(Solver, tol2d)
+    ! ! 2D tests 
+    netest = TestTriangleElement(Solver, P, tol2d)
     IF (netest /= 0) THEN
       CALL Warn('LinearFormsAssembly','Triangle element contained errors')
     END IF
     nerror = nerror + netest
     
-    netest = TestQuadElement(Solver, tol2d)
+    netest = TestQuadElement(Solver, P, tol2d)
     IF (netest /= 0) THEN
       CALL Warn('LinearFormsAssembly','Quad element contained errors')
     END IF
     nerror = nerror + netest
 
-    ! 3D tests
-    netest = TestTetraElement(Solver, tol3d)
+    ! ! 3D tests
+    netest = TestTetraElement(Solver, P, tol3d)
     IF (netest /= 0) THEN
       CALL Warn('LinearFormsAssembly','Tetra element contained errors')
     END IF
     nerror = nerror + netest
 
-    netest = TestWedgeElement(Solver, tol3d)
+    netest = TestWedgeElement(Solver, P, tol3d)
     IF (netest /= 0) THEN
       CALL Warn('LinearFormsAssembly','Wedge element contained errors')
     END IF
     nerror = nerror + netest
 
-    netest = TestBrickElement(Solver, tol3d)
+    netest = TestBrickElement(Solver, P, tol3d)
     IF (netest /= 0) THEN
       CALL Warn('LinearFormsAssembly','Brick element contained errors')
     END IF
@@ -87,71 +92,78 @@ SUBROUTINE LinearFormsAssembly( Model,Solver,dt,TransientSimulation )
     
 CONTAINS
 
-  FUNCTION TestLineElement(Solver, tol) RESULT(nerror)
+  FUNCTION TestLineElement(Solver, P, tol) RESULT(nerror)
     IMPLICIT NONE
     
     TYPE(Solver_t) :: Solver
+    INTEGER, INTENT(IN) :: P
     REAL(kind=dp), INTENT(IN) :: tol
     INTEGER :: nerror
     
-    nerror = TestElement(Solver, 202, tol)
+    nerror = TestElement(Solver, 202, P, tol)
   END FUNCTION TestLineElement
   
-  FUNCTION TestTriangleElement(Solver, tol) RESULT(nerror)
+  FUNCTION TestTriangleElement(Solver, P, tol) RESULT(nerror)
     IMPLICIT NONE
     
     TYPE(Solver_t) :: Solver
+    INTEGER, INTENT(IN) :: P
     REAL(kind=dp), INTENT(IN) :: tol
     INTEGER :: nerror
     
-    nerror = TestElement(Solver, 303, tol)
+    nerror = TestElement(Solver, 303, P, tol)
   END FUNCTION TestTriangleElement
 
-  FUNCTION TestQuadElement(Solver, tol) RESULT(nerror)
+  FUNCTION TestQuadElement(Solver, P, tol) RESULT(nerror)
     IMPLICIT NONE
     
     TYPE(Solver_t) :: Solver
+    INTEGER, INTENT(IN) :: P
     REAL(kind=dp), INTENT(IN) :: tol
     INTEGER :: nerror
     
-    nerror = TestElement(Solver, 404, tol)
+    nerror = TestElement(Solver, 404, P, tol)
   END FUNCTION TestQuadElement
 
-  FUNCTION TestTetraElement(Solver, tol) RESULT(nerror)
+  FUNCTION TestTetraElement(Solver, P, tol) RESULT(nerror)
     IMPLICIT NONE
     
     TYPE(Solver_t) :: Solver
+    INTEGER, INTENT(IN) :: P
     REAL(kind=dp), INTENT(IN) :: tol
     INTEGER :: nerror
     
-    nerror = TestElement(Solver, 504, tol)
+    nerror = TestElement(Solver, 504, P, tol)
   END FUNCTION TestTetraElement
 
-  FUNCTION TestWedgeElement(Solver, tol) RESULT(nerror)
+  FUNCTION TestWedgeElement(Solver, P, tol) RESULT(nerror)
     IMPLICIT NONE
     
     TYPE(Solver_t) :: Solver
+    INTEGER, INTENT(IN) :: P
     REAL(kind=dp), INTENT(IN) :: tol
     INTEGER :: nerror
     
-    nerror = TestElement(Solver, 706, tol)
+    nerror = TestElement(Solver, 706, P, tol)
   END FUNCTION TestWedgeElement
 
-  FUNCTION TestBrickElement(Solver, tol) RESULT(nerror)
+  FUNCTION TestBrickElement(Solver, P, tol) RESULT(nerror)
     IMPLICIT NONE
     
     TYPE(Solver_t) :: Solver
+    INTEGER, INTENT(IN) :: P
     REAL(kind=dp), INTENT(IN) :: tol
     INTEGER :: nerror
     
-    nerror = TestElement(Solver, 808, tol)
+    nerror = TestElement(Solver, 808, P, tol)
   END FUNCTION TestBrickElement
   
-  FUNCTION TestElement(Solver, ecode, tol) RESULT(nerror)
+  FUNCTION TestElement(Solver, ecode, P, tol) RESULT(nerror)
     IMPLICIT NONE
     
     TYPE(Solver_t) :: Solver
     INTEGER, INTENT(IN) :: ecode
+    INTEGER, INTENT(IN) :: P
     REAL(kind=dp), INTENT(IN) :: tol
 
     TYPE(Element_t), POINTER :: Element, SingleElement
@@ -162,8 +174,9 @@ CONTAINS
     INTEGER :: i, j, k, l, q, nerror, nbasis, nndof, allocstat, tag, nthr, &
             nbasisvec, ndbasisdxvec, rep, dim, lm_eval, lm_eval_vec, NumGP
 
-    INTEGER, PARAMETER :: P = 6, NREP = 100, NumGP1D = 8
+    INTEGER, PARAMETER :: NREP = 100
     REAL(kind=dp) :: t_start, t_end, t_tot, t_startvec, t_endvec, t_tot_vec
+    TYPE(GaussIntegrationPoints_t) :: Quadrature
     
     nerror = 0
     lm_eval = 0
@@ -176,15 +189,16 @@ CONTAINS
     NewMesh => NULL()
     CALL AllocateMeshAndPElement(NewMesh, ecode, P, SingleElement)
     Solver % Mesh => NewMesh
-    NumGP = NumGP1D ** SingleElement % Type % Dimension
 
     ! Insert P element definitions to Solver mapping (sets P elements as "active")
     IF (ALLOCATED(Solver % Def_Dofs)) THEN
       tag = ecode / 100
       Solver % Def_Dofs(tag,1,6) = P
     END IF
-
-    !$OMP PARALLEL SHARED(Solver, SingleElement, ecode, tol, NumGP) &
+    Quadrature = GaussPoints(SingleElement, PReferenceElement=.TRUE.)
+    NumGP = Quadrature % N
+    
+    !$OMP PARALLEL SHARED(Solver, SingleElement, ecode, tol) &
     !$OMP PRIVATE(STIFF, FORCE, STIFFvec, FORCEvec, &
     !$OMP         LOAD, Element, nndof, nbasis, &
     !$OMP         allocstat, rep, t_start, t_end, &
@@ -197,7 +211,7 @@ CONTAINS
 
     nndof = Element % Type % NumberOfNodes
     nbasis = nndof + GetElementNOFDOFs( Element )
-
+    
     ! Reserve workspace
     ALLOCATE(STIFF(nbasis, nbasis), FORCE(nbasis), &
             STIFFvec(nbasis, nbasis), FORCEvec(nbasis), &
@@ -212,25 +226,25 @@ CONTAINS
     LOAD = REAL(1,dp)
     
     ! Warmup
-    CALL LocalMatrix( STIFF, FORCE, LOAD, Element, nndof, nbasis, NumGP)
+    CALL LocalMatrix( STIFF, FORCE, LOAD, Element, nndof, nbasis)
     !$OMP BARRIER
     t_start = ftimer()
     DO rep=1,NREP
       ! Construct local matrix
 !DIR$ NOINLINE
-      CALL LocalMatrix( STIFF, FORCE, LOAD, Element, nndof, nbasis, NumGP)
+      CALL LocalMatrix( STIFF, FORCE, LOAD, Element, nndof, nbasis)
     END DO
     t_end = ftimer()
     lm_eval = NREP
     
     ! Warmup
-    CALL LocalMatrixVec( STIFFvec, FORCEvec, LOAD, Element, nndof, nbasis, NumGP)
+    CALL LocalMatrixVec( STIFFvec, FORCEvec, LOAD, Element, nndof, nbasis)
     !$OMP BARRIER
     t_startvec = ftimer()
     DO rep=1,NREP
       ! Construct local matrix
 !DIR$ NOINLINE
-      CALL LocalMatrixVec( STIFFvec, FORCEvec, LOAD, Element, nndof, nbasis, NumGP)
+      CALL LocalMatrixVec( STIFFvec, FORCEvec, LOAD, Element, nndof, nbasis)
     END DO
     t_endvec = ftimer()
     lm_eval_vec = NREP
@@ -264,17 +278,16 @@ CONTAINS
     END IF
   END FUNCTION TestElement
   
-  SUBROUTINE LocalMatrix( STIFF, FORCE, LOAD, Element, n, nd, NumGP )
+  SUBROUTINE LocalMatrix( STIFF, FORCE, LOAD, Element, n, nd )
     IMPLICIT NONE
     REAL(KIND=dp) CONTIG :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp) CONTIG, INTENT(IN) :: LOAD(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: NumGP
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,Weight
     LOGICAL :: Stat
-    INTEGER :: i,j,t
+    INTEGER :: i,j,t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
@@ -284,9 +297,10 @@ CONTAINS
     STIFF = 0.0d0
     FORCE = 0.0d0
 
+    dim = Element % Type % Dimension
     !Numerical integration:
     !----------------------
-    IP = GaussPoints( Element, NumGP )
+    IP = GaussPoints( Element, PReferenceElement=.TRUE. )
 
     DO t=1,IP % n
 
@@ -298,26 +312,36 @@ CONTAINS
       ! The source term at the integration point:
       !------------------------------------------
       LoadAtIP = SUM( Basis(1:n) * LOAD(1:n) )
-      ! Finally, the elemental matrix & vector:
-      !----------------------------------------
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-                MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
+      Weight = IP % s(t) * DetJ
+      ! STIFF=STIFF+(grad u, grad v)
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
+            MATMUL( dBasisdx(1:nd,1:dim), TRANSPOSE( dBasisdx(1:nd,1:dim) ) )
+      
+      DO p=1,nd
+        DO q=1,nd
+          ! STIFF=STIFF+(grad u,v)
+          ! -----------------------------------
+          STIFF (p,q) = STIFF(p,q) + Weight * SUM(dBasisdx(q,1:dim)) * Basis(p)
 
+          ! STIFF=STIFF+(u,v)
+          STIFF(p,q) = STIFF(p,q) + Weight * Basis(q) * Basis(p)
+        END DO
+      END DO
+      
       FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * LoadAtIP * Basis(1:nd)
-    END DO    
+    END DO
   END SUBROUTINE LocalMatrix
 
-  SUBROUTINE LocalMatrixVec( STIFF, FORCE, LOAD, Element, n, nd, NumGP )
+  SUBROUTINE LocalMatrixVec( STIFF, FORCE, LOAD, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) CONTIG :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp) CONTIG, INTENT(IN) :: LOAD(:)
     INTEGER, INTENT(IN) :: n, nd
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: NumGP
 !------------------------------------------------------------------------------
     LOGICAL :: Stat
-    INTEGER :: i, j, ngp, allocstat
+    INTEGER :: i, j, ngp, allocstat, gp
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
@@ -331,7 +355,7 @@ CONTAINS
     FORCE = REAL(0, dp)
 
     ! Get integration points
-    IP = GaussPoints( Element, NumGP )
+    IP = GaussPoints( Element, PReferenceElement=.TRUE. )
     ngp = IP % n
 
     ! Reserve workspace
@@ -342,7 +366,7 @@ CONTAINS
         CALL Fatal('LocalMatrixVec',&
                    'Storage allocation for local element basis failed')
       END IF
-    ELSE IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) THEN
+    ELSE IF (SIZE(Basis,1) /= ngp .OR. SIZE(Basis,2) /= nd) THEN
       DEALLOCATE(Basis, dBasisdx, DetJ, LoadAtIPs)
       ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
               DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
@@ -356,6 +380,7 @@ CONTAINS
     stat = ElementInfoVec( Element, Nodes, ngp, &
             IP % U, IP % V, IP % W, DetJ, SIZE(Basis,2), Basis, dBasisdx )
 
+        
     ! Compute actual integration weights (recycle memory space of DetJ)
     DO i=1,ngp
        DetJ(i) = Ip % s(i)*Detj(i)
@@ -363,8 +388,12 @@ CONTAINS
 
     ! STIFF=STIFF+(grad u, grad u)
     CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, &
-            dBasisdx, DetJ, STIFF)
-
+             dBasisdx, DetJ, STIFF)
+    ! STIFF=STIFF+(u,u)
+    CALL LinearForms_UdotU(ngp, nd, Element % TYPE % DIMENSION, Basis, DetJ, STIFF)
+    ! STIFF=STIFF+(grad u,v)
+    CALL LinearForms_GradUdotU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, Basis, DetJ, STIFF)
+    
     ! Source terms at IPs
     !------------------------------------------
     ! LoadAtIPs(1:ngp) = MATMUL( Basis(1:ngp,1:n), LOAD(1:n) )
@@ -445,8 +474,29 @@ CONTAINS
        ElementNodes % x => ElementNodes % xyz(1:n,1)
        ElementNodes % y => ElementNodes % xyz(1:n,2)
        ElementNodes % z => ElementNodes % xyz(1:n,3)
+     ELSE
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
+       sz = SIZE(ElementNodes % xyz,1)
+       SELECT CASE(Element % TYPE % DIMENSION)
+       CASE(1)
+         ElementNodes % y(n+1:sz) = REAL(0,dp)
+         ElementNodes % y(1:sz) = REAL(0,dp)
+         ElementNodes % z(1:sz) = REAL(0,dp)
+       CASE(2)
+         ElementNodes % x(n+1:sz) = REAL(0,dp)
+         ElementNodes % y(n+1:sz) = REAL(0,dp)
+         ElementNodes % z(1:sz) = REAL(0,dp)
+       CASE(3)
+         ElementNodes % x(n+1:sz) = REAL(0,dp)
+         ElementNodes % y(n+1:sz) = REAL(0,dp)
+         ElementNodes % z(n+1:sz) = REAL(0,dp)
+       CASE DEFAULT
+         CALL Fatal('GetReferenceElementNodes','Unsupported element dimension')
+       END SELECT
      END IF
-     
+
      IF (isPElement(Element)) THEN
        CALL GetRefPElementNodes(Element, &
                ElementNodes % x, &
@@ -543,6 +593,8 @@ CONTAINS
         CALL Fatal('AllocateMeshAndElement','Allocation of mesh edges failed')
       END IF
       Mesh % NumberOfEdges = PElement % Type % NumberOfEdges
+      ! Mesh % MinEdgeDofs = HUGE(Mesh % MinEdgeDofs)
+      Mesh % MinEdgeDofs = 0
       Mesh % MaxEdgeDofs = 0
       DO edge=1,PElement % Type % NumberOfEdges
         CALL InitializePElement(Mesh % Edges(edge))
@@ -551,9 +603,10 @@ CONTAINS
         CALL AllocatePDefinitions(Mesh % Edges(edge))
         Mesh % Edges(edge) % PDefs % P = P
         Mesh % Edges(edge) % PDefs % isEdge = .TRUE.
-        Mesh % Edges(edge) % PDefs % GaussPoints = 0
+        Mesh % Edges(edge) % PDefs % GaussPoints = (P+1) ** Mesh % Edges(edge) % Type % DIMENSION
         Mesh % Edges(edge) % PDefs % LocalNumber = edge
         Mesh % Edges(edge) % BDOFs = GetBubbleDofs(Mesh % Edges(edge), P)
+        Mesh % MinEdgeDofs = MIN(Mesh % MinEdgeDofs, Mesh % Edges(edge) % BDOFs)
         Mesh % MaxEdgeDofs = MAX(Mesh % MaxEdgeDofs, Mesh % Edges(edge) % BDOFs)
       END DO
     END IF
@@ -572,6 +625,7 @@ CONTAINS
         CALL Fatal('AllocateMeshAndElement','Allocation of mesh faces failed')
       END IF
       Mesh % NumberOfFaces = PElement % Type % NumberOfFaces
+      Mesh % MinFaceDofs = HUGE(Mesh % MinFaceDofs)
       Mesh % MaxFaceDofs = 0
       DO face=1,PElement % Type % NumberOfFaces
         CALL InitializePElement(Mesh % Faces(face))
@@ -599,9 +653,10 @@ CONTAINS
         CALL AllocatePDefinitions(Mesh % Faces(face))
         Mesh % Faces(face) % PDefs % P = P
         Mesh % Faces(face) % PDefs % isEdge = .TRUE.
-        Mesh % Faces(face) % PDefs % GaussPoints = 0
+        Mesh % Faces(face) % PDefs % GaussPoints = (P+1) ** Mesh % Faces(face) % Type % DIMENSION
         Mesh % Faces(face) % PDefs % LocalNumber = face
         Mesh % Faces(face) % BDOFs = GetBubbleDofs(Mesh % Faces(face), P)
+        Mesh % MinFaceDofs = MAX(Mesh % MinFaceDofs, Mesh % Faces(face) % BDOFs)
         Mesh % MaxFaceDofs = MAX(Mesh % MaxFaceDofs, Mesh % Faces(face) % BDOFs)
       END DO
     END IF 
@@ -620,7 +675,7 @@ CONTAINS
            PElement % Type % NumberOfFaces * Mesh % MaxFaceDOFs + &
            PElement % BDOFs
 
-    PElement % PDefs % GaussPoints = 0
+    PElement % PDefs % GaussPoints = (P+1) ** PElement % Type % DIMENSION
   END SUBROUTINE AllocateMeshAndPElement
 
   SUBROUTINE InitializePElement(Element)

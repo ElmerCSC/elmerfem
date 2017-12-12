@@ -7201,11 +7201,9 @@ END SUBROUTINE GetMaxDefs
             j = InvPerm1(Indexes(i))
             nrow = NodePerm(j)
             IF( nrow == 0 ) CYCLE
-            CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                j, 0.0_dp ) 
+            CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
              IF(ASSOCIATED(Projector % Child)) &
-               CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                   j, 0.0_dp ) 
+               CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
           END DO
         END IF
 
@@ -8224,8 +8222,7 @@ END SUBROUTINE GetMaxDefs
           j = InvPerm1(Indexes(i))
           nrow = NodePerm(j)
           IF( nrow == 0 ) CYCLE
-          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-              j, 0.0_dp ) 
+          CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
         END DO
 
         ! Currently a n^2 loop but it could be improved

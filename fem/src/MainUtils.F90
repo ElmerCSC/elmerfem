@@ -1169,8 +1169,11 @@ CONTAINS
           ALLOCATE(Solution(Nrows),STAT=AllocStat)
           IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Solution')
 
-          Solution = InitValue
-          
+          !$OMP PARALLEL DO
+          DO i=1,Nrows
+             Solution(i) = InitValue
+          END DO
+          !$OMP END PARALLEL DO
           CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver, &
               var_name(1:n), DOFs, Solution, Perm, Output=VariableOutput )          
           Solver % Variable => VariableGet( Solver % Mesh % Variables, var_name(1:n) )
@@ -4009,6 +4012,12 @@ CONTAINS
           STAT=istat )
       IF ( istat /= 0 ) CALL FATAL('BlockSystemAssembly','Memory allocation error')
       AllocationsDone = .TRUE.
+      STIFF = 0.0_dp
+      DAMP = 0.0_dp
+      MASS = 0.0_dp
+      FORCE = 0.0_dp
+      ColInds = 0
+      RowInds = 0
     END IF
       
     CALL Info('BlockSystemAssembly','Starting block system assembly',Level=5)
@@ -4355,7 +4364,7 @@ CONTAINS
 
      IF ( ParEnv % PEs > 1 .AND. .NOT.SlaveNotParallel ) THEN
        ! Check that the solver is active in some of the active output solvers
-       IF( ANY( ParEnv % Active(MinOutputPE+1:MaxOutputPE+1) ) ) THEN
+       IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
          IF( ParEnv % MyPe >= MinOutputPE .AND. &
              ParEnv % MyPe <= MaxOutputPE ) THEN 
            OutputPE = ParEnv % MyPE

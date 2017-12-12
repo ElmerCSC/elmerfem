@@ -1583,9 +1583,9 @@ CONTAINS
 
      NodalStress  = 0.0d0
      ForceG       = 0.0d0
+     SForceG      = 0.0d0
      IF(CalculateStrains) THEN
        NodalStrain  = 0.0d0
-       SForceG      = 0.0d0
      END IF
      CALL DefaultInitialize()
 
