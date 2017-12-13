@@ -822,7 +822,9 @@ END INTERFACE
 !-------------------Circuit stuff----------------------------------------------
   TYPE CircuitVariable_t
     LOGICAL :: isIvar, isVvar
-    INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner, ComponentId
+    INTEGER :: BodyId, valueId, ImValueId, &
+               parValueId, ParValueIdIm, &
+              dofs, pdofs, Owner, ComponentId
     TYPE(Component_t), POINTER :: Component => Null()
     REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
     REAL(KIND=dp), ALLOCATABLE :: SourceRe(:), SourceIm(:), Mre(:), Mim(:)
@@ -839,10 +841,10 @@ END INTERFACE
     INTEGER, POINTER :: OwnerElementCounts(:) => Null()
     INTEGER :: nofpartitions
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
-    TYPE(CircuitVariable_t), POINTER :: ivar, vvar
-    LOGICAL :: UseCoilResistance = .FALSE.
+    TYPE(CircuitVariable_t), POINTER :: ivar, vvar, xvar=>Null(), yvar=>Null()
+    LOGICAL :: UseCoilResistance = .FALSE., Parallel = .FALSE.
     INTEGER, POINTER :: ParPerm(:) => Null()
-    INTEGER :: VarDofs
+    INTEGER :: VarDofs, FirstParDofId
   END TYPE Component_t
 
   TYPE ComponentPointer_t
@@ -974,6 +976,8 @@ END INTERFACE
       INTEGER, POINTER :: n_Circuits=>Null(), Circuit_tot_n=>Null()
       INTEGER :: nof_circuit_component_dofs = 0
       INTEGER :: nof_circuit_components = 0
+      INTEGER :: nof_component_pardofs = 0
+      INTEGER :: Component_par_tot_n = 0
       TYPE(Matrix_t), POINTER :: CircuitMatrix => Null()
       TYPE(Circuit_t), POINTER :: Circuits(:) => Null()
       TYPE(ComponentPointer_t), POINTER :: CircuitComponents(:) => Null() 

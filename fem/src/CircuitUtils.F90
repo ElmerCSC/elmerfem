@@ -535,7 +535,6 @@ CONTAINS
       Comp % nofcnts = 0
 !        Comp % ComponentId = Circuits(p) % body(CompInd)
       Comp % BodyIds => GetComponentBodyIds(Comp % ComponentId)
-      CALL CountCompOwnerElCounts(Comp)
 
       IF (.NOT. ASSOCIATED(Comp % ivar) ) THEN
         CALL FATAL('Circuits_Init', 'Current Circuit Variable is not found for Component '//TRIM(i2s(Comp % ComponentId)))
@@ -555,6 +554,22 @@ CONTAINS
       IF (.NOT. Found) Comp % i_multiplier_im = 0._dp
 
       Comp % ElBoundaries => ListGetIntegerArray(CompParams, 'Electrode Boundaries', Found)
+
+      Comp % Parallel = GetLogical(CompParams, 'Use Component Parallelization', Found)
+      IF (.NOT. Found) Comp % Parallel = .TRUE.
+      IF ( Comp % Parallel ) THEN
+        CALL Info( 'ReadComponents','Component '//TRIM(i2s(Comp % ComponentId))//' is set for Component Parallelization', Level=5 )
+        CALL CountAndSortComponentPartitions(Comp)
+        CALL Info( 'ReadComponents','Component '//TRIM(i2s(Comp % ComponentId))//' belongs to '&
+          //TRIM(i2s(Comp % nofpartitions))//' partitions', Level=5 )
+        IF ( .NOT. Comp % nofpartitions > 1 ) Comp % Parallel = .FALSE.
+        IF ( Comp % Parallel ) THEN
+          CALL Info( 'ReadComponents','Using Circuit Component Equation Parallelization Method for Component '&
+            //TRIM(i2s(Comp % ComponentId)), Level=5 )
+        ELSE
+          CALL Info( 'ReadComponents','Component '//TRIM(i2s(Comp % ComponentId))//' Parallelization is set OFF', Level=5 )
+        END IF
+      END IF
       
       SELECT CASE (Comp % CoilType) 
       CASE ('stranded')
@@ -615,8 +630,16 @@ CONTAINS
         Comp % N_j = Comp % nofturns / Comp % ElArea
       END SELECT
       Comp % VarDofs = Comp % VarDofs + Comp % ivar % dofs + Comp % vvar % dofs
+      IF ( Comp % Parallel ) THEN
+        Comp % FirstParDofId = CurrentModel % nof_component_pardofs + 1
+        CurrentModel % nof_component_pardofs = &
+        CurrentModel % nof_component_pardofs + Comp % VarDofs * Comp % nofpartitions
+        CurrentModel % Component_par_tot_n = CurrentModel % nof_component_pardofs
+        IF ( Circuit % Harmonic ) CurrentModel % Component_par_tot_n = 2 * CurrentModel % nof_component_pardofs
+      END IF
+
       CurrentModel % nof_circuit_component_dofs = &
-      CurrentModel % nof_circuit_component_dofs + Comp % VarDofs
+        CurrentModel % nof_circuit_component_dofs + Comp % VarDofs
     END DO
 
 !------------------------------------------------------------------------------
@@ -645,6 +668,7 @@ CONTAINS
 !      print *, "Component:", Comp % ComponentId, "VarDofs", Comp % VarDofs
       CALL AddVariableToCircuit(Circuit, Comp % ivar, CId)
       CALL AddVariableToCircuit(Circuit, Comp % vvar, CId)
+      CALL AddComponentParallelizationVariables(Circuit, Comp)
     END DO
 !    print *, "CurrentModel%nof_circuit_components",CurrentModel%nof_circuit_components
 !    print *, "CurrentModel%nof_circuit_component_dofs",CurrentModel%nof_circuit_component_dofs
@@ -655,7 +679,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-   SUBROUTINE CountCompOwnerElCounts(Comp)
+   SUBROUTINE CountAndSortComponentPartitions(Comp)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
@@ -701,20 +725,19 @@ CONTAINS
     ! the order of the parallel component equations:
     ! ----------------------------------------------
     IF (Comp % nofpartitions > 0) THEN 
-      ALLOCATE(Comp % ParPerm(Comp % nofpartitions))
+      ALLOCATE(Comp % ParPerm(ParEnv % PEs))
       p = 1
       Comp % ParPerm = -1
       DO j = 1, ParEnv % PEs
         IF (OwnerElCounts(j) > 0) THEN
-          Comp % ParPerm(p) = j-1
+          Comp % ParPerm(j) = p
           p = p + 1
         END IF 
       END DO
     END IF
-!    print *, ParEnv % MyPe, "Comp % ParPerm", Comp % ParPerm
 
 !------------------------------------------------------------------------------
-   END SUBROUTINE CountCompOwnerElCounts
+   END SUBROUTINE CountAndSortComponentPartitions
 !------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------
@@ -830,7 +853,61 @@ CONTAINS
    END FUNCTION ElementAreaNoAxisTreatment
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE AddComponentParallelizationVariables(Circuit, Comp)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Circuit_t) :: Circuit
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar
+    INTEGER, POINTER :: ParPerm(:)
+    INTEGER :: mype, idx, idy
+    
+    mype = ParEnv % MyPe
+    IF (ASSOCIATED(Comp)) THEN
+      ParPerm => Comp % ParPerm
+      IF ( Comp % Parallel .AND. ParPerm(mype+1) > 0) THEN
+        SELECT CASE (Comp % CoilType)
+        CASE('stranded')
+          Comp % xvar => Comp % ivar
+          Comp % yvar => Comp % vvar
+        CASE('massive')
+          Comp % xvar => Comp % vvar
+          Comp % yvar => Comp % ivar
+        CASE('foil winding')
+          Comp % xvar => Comp % vvar
+          Comp % yvar => Comp % ivar
+        CASE DEFAULT
+          CALL Fatal ('AddComponentParallelizationVariables', 'Unsupported coil type')
+        END SELECT
 
+        xvar => Comp % xvar
+        yvar => Comp % yvar
+        
+        idx = Comp % FirstParDofId + Comp % VarDofs * (ParPerm(mype+1)-1)
+        xvar % parValueId = ReIndex(idx)
+        idy = idx + xvar % dofs
+        yvar % parValueId = ReIndex(idy)
+        IF (Circuit % Harmonic) THEN
+          xvar % parValueIdIm = ImIndex(idx)
+          yvar % parValueIdIm = ImIndex(idy)
+        END IF
+
+        print *, "Comp % ComponentId", Comp % ComponentId, "Comp % FirstParDofIjd", &
+          Comp % FirstParDofId, "Comp % VarDofs:", Comp % VarDofs, "ParEnv % MyPE", &
+          mype, "ParPerm(mype+1)", ParPerm(mype+1)
+        print *, "xvar % parValueId", xvar % parValueId
+        print *, "yvar % parValueId", yvar % parValueId
+        print *, "xvar % dofs", xvar % dofs
+        print *, "xvar % valueId", xvar % valueId
+
+      END IF
+    END IF
+
+    !ParPerm
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddComponentParallelizationVariables
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddVariableToCircuit(Circuit, Variable, k)
@@ -842,16 +919,6 @@ CONTAINS
     INTEGER :: Owner=-1, k
     INTEGER, POINTER :: circuit_tot_n => Null()
     
-    Comp => Variable % Component
-    IF (ASSOCIATED(Comp)) THEN
-      Variable % ParPerm => Comp % ParPerm
-!      IF (Comp % nofpartitions .NE. 0) THEN
-!        PRINT *, "Variable", Variable % valueId, "belongs to a component", Comp % ComponentId
-!        PRINT *, "Component belongs to", Comp % nofpartitions, "partitions"
-!        PRINT *, "Varible % ParPerm", Variable % ParPerm
-!      END IF
-    END IF
-
     Circuit_tot_n => CurrentModel%Circuit_tot_n
   
     IF(k==1) THEN
@@ -884,6 +951,16 @@ variable % owner = ParEnv % PEs-1
       END IF
       
       Circuit_tot_n = Circuit_tot_n + Variable % dofs
+    END IF
+
+    Comp => Variable % Component
+    IF (ASSOCIATED(Comp)) THEN
+      Variable % ParPerm => Comp % ParPerm
+      IF (Comp % nofpartitions .NE. 0) THEN
+!        PRINT *, "Variable", Variable % valueId, "belongs to a component", Comp % ComponentId
+!        PRINT *, "Component belongs to", Comp % nofpartitions, "partitions"
+!        PRINT *, "Varible % ParPerm", Variable % ParPerm
+      END IF
     END IF
 
     !ParPerm
@@ -1850,14 +1927,21 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: CM
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:), Rows(:), Cols(:), Cnts(:)
-    INTEGER :: nm, Circuit_tot_n, n, i
+    INTEGER :: nm, Circuit_tot_n, n, i, Component_par_tot_n
     LOGICAL :: dofsdone
     LOGICAL*1, ALLOCATABLE :: Done(:)
     REAL(KIND=dp), POINTER :: Values(:)
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')
-    Circuit_tot_n = CurrentModel%Circuit_tot_n
+    Circuit_tot_n = CurrentModel % Circuit_tot_n
+    Component_par_tot_n = CurrentModel % Component_par_tot_n
+
+
+    CALL Info( 'Circuits_MatrixInit','Total number of circuit rows is '&
+      //TRIM(i2s(Circuit_tot_n)), Level=5 )
+    CALL Info( 'Circuits_MatrixInit','On top of the circuit rows total number of Component Parallelization rows is '&
+      //TRIM(i2s(Component_par_tot_n)), Level=5 )
     
     ! Initialialize Circuit matrix:
     ! -----------------------------
