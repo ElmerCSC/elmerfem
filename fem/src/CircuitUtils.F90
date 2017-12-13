@@ -1566,6 +1566,128 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  SUBROUTINE CountParallelComponentConstraints(Rows, Cnts)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, POINTER :: Rows(:), Cnts(:)
+    TYPE(Solver_t), POINTER :: Asolver
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(ComponentPointer_t), POINTER :: Components(:)
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar
+    INTEGER :: n_comp, CompInd, npart, part, xRowId, RowId
+    
+    Asolver => CurrentModel % Asolver
+
+    DO CompInd=1, n_comp 
+      Comp => Components(CompInd) % Component 
+      ! Adding parallel constraints are only for those components 
+      ! that are asked to be computed in parallel
+      ! ---------------------------------------------------------
+      IF (.NOT. Comp % Parallel) CYCLE
+      npart = Comp % nofpartitions
+      nm = Asolver % Matrix % NumberOfRows
+      xvar => Comp % xvar
+      xRowId = Comp % vvar % ValueId + nm 
+
+      ! for every dof of \vec{x}
+      DO dof = 1, xvar % dofs
+        ! let x be a dof of \vec{x}
+        ! x = x1 + ... xn
+        ! where xi are the parts of x that are 
+        ! computed in different partitions
+        ! ---------------------------------------------------------
+        RowId = xRowId + dof - 1
+        IF(xvar % Owner == ParEnv % myPE) & 
+          CALL CountMatElement(Rows, Cnts, RowId, 1)
+
+        ColId = xvar % parValueId + nm + dof - 1
+        ! Here all the processes write their own contribution to the 
+        ! x = x1 + ... + xn
+        CALL CountMatElement(Rows, Cnts, RowId, 1) 
+        print *, ParEnv % mype, "wrote to Component", Comp % ComponentId, "rowid", RowId, "n ", 1
+      END DO
+
+      ! for every part of component partitions
+      ! y = yi,
+      ! where yi are the parts of y that are computed
+      ! in different partitions
+      ! ---------------------------------------------------------
+      DO dof = 1, yvar % dofs
+        ! Do this to every dof of y
+        RowId = yvar % parValueId + nm
+        CALL CountMatElement(Rows, Cnts, RowId, 2) 
+        print *, ParEnv % mype, "wrote to Component", Comp % ComponentId, "rowid", RowId, "n 2"
+      END DO
+      
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountParallelComponentConstraints
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE CreateParallelComponentConstraints(Rows, Cols, Cnts)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, POINTER :: Rows(:), Cols, Cnts(:)
+    TYPE(Solver_t), POINTER :: Asolver
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(ComponentPointer_t), POINTER :: Components(:)
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar
+    INTEGER :: n_comp, CompInd, npart, part, xRowId, yRowId, RowId, ColId
+    
+    Asolver => CurrentModel % Asolver
+
+    DO CompInd=1, n_comp 
+      Comp => Components(CompInd) % Component 
+      ! Adding parallel constraints are only for those components 
+      ! that are asked to be computed in parallel
+      ! ---------------------------------------------------------
+      IF (.NOT. Comp % Parallel) CYCLE
+      npart = Comp % nofpartitions
+      nm = Asolver % Matrix % NumberOfRows
+      xvar => Comp % xvar
+
+      ! Fix the counting!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      ! Proces owner wrong!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      ! for every dof of \vec{x}
+      xRowId = Comp % vvar % ValueId + nm 
+      yRowId = yvar % ValueId + nm
+      DO dof = 1, xvar % dofs
+        ! let x be a dof of \vec{x}
+        ! x = x1 + ... xn
+        ! where xi are the parts of x that are 
+        ! computed in different partitions
+        ! ---------------------------------------------------------
+        RowId = xRowId + dof - 1
+        IF(xvar % Owner == ParEnv % myPE) & 
+          CALL CreateMatElement(Rows, Cols, Cnts, RowId, RowId)
+        ColId = xvar % parValueId + nm + dof - 1
+        ! Here all the processes write their own contribution to the 
+        ! x = x1 + ... + xn
+        CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
+        print *, ParEnv % mype, "created to Component", Comp % ComponentId, "rowid", RowId, "colid ", ColId
+      END DO
+
+      ! for every part of component partitions
+      ! y = yi,
+      ! where yi are the parts of y that are computed
+      ! in different partitions
+      ! ---------------------------------------------------------
+      DO dof = 1, yvar % dofs
+        ! Do this to every dof of y
+        RowId = yvar % parValueId + nm + dof - 1
+        ColId = yRowId + dof - 1
+        CALL CreateMatElement(Rows, Cols, Cnts, RowId, RowId)
+        CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
+        print *, ParEnv % mype, "created to Component", Comp % ComponentId, "rowid", RowId, "colid ", ColId
+      END DO
+      
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CreateParallelComponentConstraints
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
    SUBROUTINE CountComponentEquations(Rows, Cnts, Done, dofsdone)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -1590,8 +1712,14 @@ CONTAINS
         Done = .FALSE.
         Comp => Circuits(p) % Components(CompInd)
         Cvar => Comp % vvar
-        RowId = Cvar % ValueId + nm
-        ColId = Cvar % ValueId + nm
+        IF (Comp % Parallel) THEN 
+          RowId = Cvar % parValueId + nm
+          ColId = Cvar % parValueId + nm
+        ELSE
+          RowId = Cvar % ValueId + nm
+          ColId = Cvar % ValueId + nm
+        END IF
+
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
            CALL CountMatElement(Rows, Cnts, RowId, 1)
@@ -1664,8 +1792,13 @@ CONTAINS
         Done = .FALSE.
         Comp => Circuits(p) % Components(CompInd)
         Cvar => Comp % vvar
-        VvarId = Comp % vvar % ValueId + nm
-        IvarId = Comp % ivar % ValueId + nm
+        IF (Comp % Parallel) THEN 
+          VvarId = Comp % vvar % parValueId + nm
+          IvarId = Comp % ivar % parValueId + nm
+        ELSE
+          VvarId = Comp % vvar % ValueId + nm
+          IvarId = Comp % ivar % ValueId + nm
+        END IF
 
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
@@ -1953,9 +2086,9 @@ CONTAINS
     
     CM % Format = MATRIX_CRS
     Asolver % Matrix % AddMatrix => CM
-    ALLOCATE(CM % RHS(nm + Circuit_tot_n)); CM % RHS=0._dp
+    ALLOCATE(CM % RHS(nm + Circuit_tot_n + Component_par_tot_n)); CM % RHS=0._dp
 
-    CM % NumberOfRows = nm + Circuit_tot_n
+    CM % NumberOfRows = nm + Circuit_tot_n + Component_par_tot_n
     n = CM % NumberOfRows
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
     ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
@@ -1967,6 +2100,7 @@ CONTAINS
     dofsdone = .FALSE.
     
     CALL CountBasicCircuitEquations(Rows, Cnts)
+    CALL CountParallelComponentConstraints(Rows, Cnts)
     CALL CountComponentEquations(Rows, Cnts, Done, dofsdone)
 
     ! ALLOCATE CRS STRUCTURES (if need be):
@@ -2000,6 +2134,7 @@ CONTAINS
     ! ===============
 
     CALL CreateBasicCircuitEquations(Rows, Cols, Cnts)
+    CALL CreateParallelComponentConstraints(Rows, Cols, Cnts)
     CALL CreateComponentEquations(Rows, Cols, Cnts, Done, dofsdone)
     
 
