@@ -556,7 +556,7 @@ CONTAINS
       Comp % ElBoundaries => ListGetIntegerArray(CompParams, 'Electrode Boundaries', Found)
 
       Comp % Parallel = GetLogical(CompParams, 'Use Component Parallelization', Found)
-      IF (.NOT. Found) Comp % Parallel = .TRUE.
+      IF (.NOT. Found) Comp % Parallel = .FALSE.
       IF ( Comp % Parallel ) THEN
         CALL Info( 'ReadComponents','Component '//TRIM(i2s(Comp % ComponentId))//' is set for Component Parallelization', Level=5 )
         CALL CountAndSortComponentPartitions(Comp)
@@ -1574,9 +1574,10 @@ CONTAINS
     TYPE(Component_t), POINTER :: Comp
     TYPE(ComponentPointer_t), POINTER :: Components(:)
     TYPE(CircuitVariable_t), POINTER :: xvar, yvar
-    INTEGER :: n_comp, CompInd, npart, part, xRowId, RowId
-    
+    INTEGER :: n_comp, CompInd, npart, part, xRowId, RowId, &
+               dof, nm
     Asolver => CurrentModel % Asolver
+    nm = Asolver % Matrix % NumberOfRows
 
     DO CompInd=1, n_comp 
       Comp => Components(CompInd) % Component 
@@ -1585,7 +1586,6 @@ CONTAINS
       ! ---------------------------------------------------------
       IF (.NOT. Comp % Parallel) CYCLE
       npart = Comp % nofpartitions
-      nm = Asolver % Matrix % NumberOfRows
       xvar => Comp % xvar
       xRowId = Comp % vvar % ValueId + nm 
 
@@ -1600,7 +1600,6 @@ CONTAINS
         IF(xvar % Owner == ParEnv % myPE) & 
           CALL CountMatElement(Rows, Cnts, RowId, 1)
 
-        ColId = xvar % parValueId + nm + dof - 1
         ! Here all the processes write their own contribution to the 
         ! x = x1 + ... + xn
         CALL CountMatElement(Rows, Cnts, RowId, 1) 
@@ -1628,12 +1627,14 @@ CONTAINS
   SUBROUTINE CreateParallelComponentConstraints(Rows, Cols, Cnts)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER, POINTER :: Rows(:), Cols, Cnts(:)
+    INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
     TYPE(Solver_t), POINTER :: Asolver
     TYPE(Component_t), POINTER :: Comp
     TYPE(ComponentPointer_t), POINTER :: Components(:)
     TYPE(CircuitVariable_t), POINTER :: xvar, yvar
-    INTEGER :: n_comp, CompInd, npart, part, xRowId, yRowId, RowId, ColId
+    INTEGER :: n_comp, CompInd, npart, part, &
+               xRowId, yRowId, RowId, ColId, &
+               dof, nm
     
     Asolver => CurrentModel % Asolver
 
@@ -1647,8 +1648,6 @@ CONTAINS
       nm = Asolver % Matrix % NumberOfRows
       xvar => Comp % xvar
 
-      ! Fix the counting!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      ! Proces owner wrong!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       ! for every dof of \vec{x}
       xRowId = Comp % vvar % ValueId + nm 
       yRowId = yvar % ValueId + nm

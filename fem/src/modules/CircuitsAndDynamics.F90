@@ -1015,6 +1015,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CALL AddBasicCircuitEquations(p)
     CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
   END DO
+  CALL AddParallelComponentConstraints()
   Asolver %  Matrix % AddMatrix => CM
 
   IF(ASSOCIATED(CM)) THEN
@@ -1047,6 +1048,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
     Circuit => CurrentModel % Circuits(p)
     nm = CurrentModel % Asolver % Matrix % NumberOfRows
+
     Omega = GetAngularFrequency()
     BF => CurrentModel % BodyForces(1) % Values
     CM => CurrentModel%CircuitMatrix
@@ -1105,6 +1107,69 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  SUBROUTINE AddParallelComponentConstraints()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t), POINTER :: Asolver
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(Matrix_t), POINTER :: CM
+    TYPE(ComponentPointer_t), POINTER :: Components(:)
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar
+    INTEGER :: n_comp, CompInd, npart, part, &
+               xRowId, yRowId, RowId, ColId, &
+               nm, dof
+    
+    Asolver => CurrentModel % Asolver
+    nm = Asolver % Matrix % NumberOfRows
+    print *, "nm", nm
+    CM => CurrentModel%CircuitMatrix
+
+    DO CompInd=1, n_comp 
+      Comp => Components(CompInd) % Component 
+      ! Adding parallel constraints are only for those components 
+      ! that are asked to be computed in parallel
+      ! ---------------------------------------------------------
+      IF (.NOT. Comp % Parallel) CYCLE
+      npart = Comp % nofpartitions
+      xvar => Comp % xvar
+
+      ! for every dof of \vec{x}
+      xRowId = Comp % vvar % ValueId + nm 
+      yRowId = yvar % ValueId + nm
+      DO dof = 1, xvar % dofs
+        ! let x be a dof of \vec{x}
+        ! x = x1 + ... xn
+        ! where xi are the parts of x that are 
+        ! computed in different partitions
+        ! ---------------------------------------------------------
+        RowId = xRowId + dof - 1
+        IF(xvar % Owner == ParEnv % myPE) & 
+          CALL AddToCmplxMatrixElement(CM, RowId, RowId, 1._dp, 0._dp)
+        ColId = xvar % parValueId + nm + dof - 1
+        ! Here all the processes write their own contribution to the 
+        ! x = x1 + ... + xn
+        CALL AddToCmplxMatrixElement(CM, RowId, ColId, -1._dp, 0._dp)
+      END DO
+
+      ! for every part of component partitions
+      ! y = yi,
+      ! where yi are the parts of y that are computed
+      ! in different partitions
+      ! ---------------------------------------------------------
+      DO dof = 1, yvar % dofs
+        ! Do this to every dof of y
+        RowId = yvar % parValueId + nm + dof - 1
+        ColId = yRowId + dof - 1
+        CALL AddToCmplxMatrixElement(CM, RowId, RowId, 1._dp, 0._dp)
+        CALL AddToCmplxMatrixElement(CM, RowId, ColId, -1._dp, 0._dp)
+      END DO
+      
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE AddParallelComponentConstraints
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -1141,8 +1206,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       Comp % Conductance = 0._dp 
 
       Cvar => Comp % vvar
-      vvarId = Comp % vvar % ValueId + nm
-      IvarId = Comp % ivar % ValueId + nm
+      IF (Comp % Parallel) THEN 
+        VvarId = Comp % vvar % parValueId + nm
+        IvarId = Comp % ivar % parValueId + nm
+      ELSE
+        VvarId = Comp % vvar % ValueId + nm
+        IvarId = Comp % ivar % ValueId + nm
+      END IF
 
       CompParams => CurrentModel % Components(CompInd) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
@@ -1831,8 +1901,6 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    ASolver => CurrentModel % Asolver
    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CircuitsOutput','ASolver not found!')
       
-   nm =  Asolver % Matrix % NumberOfRows
-
 
   IF (First) THEN
     SolverParams => GetSolverParams(Solver)
