@@ -510,7 +510,7 @@ CONTAINS
 !-------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE ReadComponents(CId)
+  SUBROUTINE ReadComponents(CId, CompIndAll)
 !------------------------------------------------------------------------------
     USE CircuitUtils
     IMPLICIT NONE
@@ -524,7 +524,6 @@ CONTAINS
     Circuit => CurrentModel%Circuits(CId)
     Components => CurrentModel%CircuitComponents
     
-    CompIndAll = 0
     Circuit % CvarDofs = 0
     DO CompInd=1,Circuit % n_comp
       CompIndAll = CompIndAll + 1
@@ -629,6 +628,9 @@ CONTAINS
 
         Comp % N_j = Comp % nofturns / Comp % ElArea
       END SELECT
+      Comp % vvar % outputpdofs = 0
+      Comp % ivar % outputpdofs = 0
+
       Comp % VarDofs = Comp % VarDofs + Comp % ivar % dofs + Comp % vvar % dofs
       IF ( Comp % Parallel ) THEN
         Comp % FirstParDofId = CurrentModel % nof_component_pardofs + 1
@@ -918,9 +920,18 @@ CONTAINS
     TYPE(Component_t), POINTER :: Comp
     INTEGER :: Owner=-1, k
     INTEGER, POINTER :: circuit_tot_n => Null()
+    LOGICAL :: CompParallel
     
     Circuit_tot_n => CurrentModel%Circuit_tot_n
   
+    Comp => Variable % Component
+    CompParallel = .FALSE.
+    IF (ASSOCIATED(Comp)) THEN
+      IF (Comp % Parallel) THEN
+        CompParallel = .TRUE.
+      END IF
+    END IF
+ 
     IF(k==1) THEN
       IF(Owner<=0) Owner = MAX(Parenv % PEs/2,1)
       Owner = Owner - 1
@@ -942,28 +953,26 @@ variable % owner = ParEnv % PEs-1
         Variable % ImValueId = Circuit_tot_n + 2
       END IF
     
-      Circuit_tot_n = Circuit_tot_n + 2*Variable % dofs
+      IF (CompParallel) THEN
+        Circuit_tot_n = Circuit_tot_n + 2
+      ELSE
+        Circuit_tot_n = Circuit_tot_n + 2*Variable % dofs
+      END IF
     ELSE
       IF (Circuit % UsePerm) THEN
         Variable % valueId = Circuit % Perm(Circuit_tot_n + 1)
       ELSE
         Variable % valueId = Circuit_tot_n + 1
       END IF
-      
-      Circuit_tot_n = Circuit_tot_n + Variable % dofs
-    END IF
 
-    Comp => Variable % Component
-    IF (ASSOCIATED(Comp)) THEN
-      Variable % ParPerm => Comp % ParPerm
-      IF (Comp % nofpartitions .NE. 0) THEN
-!        PRINT *, "Variable", Variable % valueId, "belongs to a component", Comp % ComponentId
-!        PRINT *, "Component belongs to", Comp % nofpartitions, "partitions"
-!        PRINT *, "Varible % ParPerm", Variable % ParPerm
+      IF (CompParallel) THEN
+        Circuit_tot_n = Circuit_tot_n + 1
+      ELSE
+        Circuit_tot_n = Circuit_tot_n + Variable % dofs
       END IF
+      
     END IF
 
-    !ParPerm
 !------------------------------------------------------------------------------
   END SUBROUTINE AddVariableToCircuit
 !------------------------------------------------------------------------------
@@ -1298,7 +1307,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     INTEGER :: i, nm, Circuit_tot_n, p, j, &
                cnt(Parenv % PEs), r_cnt(ParEnv % PEs), &
-               RowId, nn, l, k, n_Circuits
+               RowId, nn, l, k, n_Circuits, cvardofs
     
     CM => CurrentModel%CircuitMatrix
     ASolver => CurrentModel % Asolver
@@ -1320,7 +1329,9 @@ CONTAINS
       DO i=1,Circuits(p) % n
         cnt  = 0
         Cvar => Circuits(p) % CircuitVariables(i)
+        cvardofs = Cvar % dofs
         IF(ASSOCIATED(CVar%Component)) THEN
+          IF (Cvar % Component % Parallel) cvardofs = 1
           DO j=1,GetNOFACtive()
              Element => GetActiveElement(j)
                IF(ElAssocToCvar(Element, Cvar)) THEN
@@ -1338,7 +1349,7 @@ CONTAINS
         IF(r_cnt(Cvar % Owner+1)<=0) nn=nn+1
         
         IF (Circuits(p) % Harmonic) THEN
-          DO j=1,Cvar % Dofs
+          DO j=1,cvardofs
             IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1))%Neighbours)) THEN
               ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(nn))
               ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(nn))
@@ -1358,7 +1369,7 @@ CONTAINS
             CM % RowOwner(RowId + AddImIndex(j-1)) = Cvar % Owner
           END DO
         ELSE
-          DO j=1,Cvar % Dofs
+          DO j=1,cvardofs
             IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+j-1)%Neighbours)) THEN
               ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+j-1) % Neighbours(nn))
             END IF
@@ -1573,11 +1584,14 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Asolver
     TYPE(Component_t), POINTER :: Comp
     TYPE(ComponentPointer_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: xvar, yvar
-    INTEGER :: n_comp, CompInd, npart, part, xRowId, RowId, &
-               dof, nm
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar
+    INTEGER :: n_comp, CompInd, xRowId, RowId, &
+               dof, nm, ncomp, vRowId, yRowId
+
     Asolver => CurrentModel % Asolver
+    Components => CurrentModel % CircuitComponents
     nm = Asolver % Matrix % NumberOfRows
+    n_comp = CurrentModel % nof_circuit_components
 
     DO CompInd=1, n_comp 
       Comp => Components(CompInd) % Component 
@@ -1585,40 +1599,39 @@ CONTAINS
       ! that are asked to be computed in parallel
       ! ---------------------------------------------------------
       IF (.NOT. Comp % Parallel) CYCLE
-      npart = Comp % nofpartitions
+      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
+      yvar => Comp % yvar
       xvar => Comp % xvar
-      xRowId = Comp % vvar % ValueId + nm 
+      vvar => Comp % vvar
 
-      ! for every dof of \vec{x}
-      DO dof = 1, xvar % dofs
-        ! let x be a dof of \vec{x}
-        ! x = x1 + ... xn
-        ! where xi are the parts of x that are 
-        ! computed in different partitions
-        ! ---------------------------------------------------------
-        RowId = xRowId + dof - 1
-        IF(xvar % Owner == ParEnv % myPE) & 
-          CALL CountMatElement(Rows, Cnts, RowId, 1)
+      ! The v variable row is always reserved for the component.
+      ! i variable is reserved for the network that is written 
+      ! by the user
+      ! -------------------------------------------------------
+      vRowId = vvar % ValueId + nm 
+      yRowId = yvar % ValueId + nm
+      xRowId = xvar % ValueId + nm
 
-        ! Here all the processes write their own contribution to the 
-        ! x = x1 + ... + xn
-        CALL CountMatElement(Rows, Cnts, RowId, 1) 
-        print *, ParEnv % mype, "wrote to Component", Comp % ComponentId, "rowid", RowId, "n ", 1
-      END DO
+      ! y = y1 + ... + yn
+      ! where yi are the parts of y that are 
+      ! computed in different partitions
+      ! ---------------------------------------------------------
+      RowId = vRowId ! this needs to go to the row owned by v
+      IF(vvar % Owner == ParEnv % myPE) & 
+        CALL CountMatElement(Rows, Cnts, RowId, 1)
+      ! Here all the processes write their own contribution to the 
+      ! y = y1 + ... + yn
+      CALL CountMatElement(Rows, Cnts, RowId, 1)
 
       ! for every part of component partitions
-      ! y = yi,
-      ! where yi are the parts of y that are computed
+      ! x = xi,
+      ! where xi are the parts of x that are computed
       ! in different partitions
       ! ---------------------------------------------------------
-      DO dof = 1, yvar % dofs
-        ! Do this to every dof of y
-        RowId = yvar % parValueId + nm
-        CALL CountMatElement(Rows, Cnts, RowId, 2) 
-        print *, ParEnv % mype, "wrote to Component", Comp % ComponentId, "rowid", RowId, "n 2"
-      END DO
-      
+      RowId = yvar % parValueId + nm
+      CALL CountMatElement(Rows, Cnts, RowId, 2)
     END DO
+
 !------------------------------------------------------------------------------
    END SUBROUTINE CountParallelComponentConstraints
 !------------------------------------------------------------------------------
@@ -1631,12 +1644,15 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Asolver
     TYPE(Component_t), POINTER :: Comp
     TYPE(ComponentPointer_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: xvar, yvar
-    INTEGER :: n_comp, CompInd, npart, part, &
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar
+    INTEGER :: n_comp, CompInd, &
                xRowId, yRowId, RowId, ColId, &
-               dof, nm
+               dof, nm, vRowId
     
     Asolver => CurrentModel % Asolver
+    Components => CurrentModel % CircuitComponents
+    nm = Asolver % Matrix % NumberOfRows
+    n_comp = CurrentModel % nof_circuit_components
 
     DO CompInd=1, n_comp 
       Comp => Components(CompInd) % Component 
@@ -1644,44 +1660,44 @@ CONTAINS
       ! that are asked to be computed in parallel
       ! ---------------------------------------------------------
       IF (.NOT. Comp % Parallel) CYCLE
-      npart = Comp % nofpartitions
-      nm = Asolver % Matrix % NumberOfRows
+      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
+      yvar => Comp % yvar
       xvar => Comp % xvar
+      vvar => Comp % vvar
 
-      ! for every dof of \vec{x}
-      xRowId = Comp % vvar % ValueId + nm 
+      ! The v variable row is always reserved for the component.
+      ! i variable is reserved for the network that is written 
+      ! by the user
+      ! -------------------------------------------------------
+      vRowId = vvar % ValueId + nm 
       yRowId = yvar % ValueId + nm
-      DO dof = 1, xvar % dofs
-        ! let x be a dof of \vec{x}
-        ! x = x1 + ... xn
-        ! where xi are the parts of x that are 
-        ! computed in different partitions
-        ! ---------------------------------------------------------
-        RowId = xRowId + dof - 1
-        IF(xvar % Owner == ParEnv % myPE) & 
-          CALL CreateMatElement(Rows, Cols, Cnts, RowId, RowId)
-        ColId = xvar % parValueId + nm + dof - 1
-        ! Here all the processes write their own contribution to the 
-        ! x = x1 + ... + xn
+      xRowId = xvar % ValueId + nm
+
+      ! y = y1 + ... + yn
+      ! where yi are the parts of y that are 
+      ! computed in different partitions
+      ! ---------------------------------------------------------
+      RowId = vRowId ! this needs to go to the row owned by v
+      ColId = yRowId
+      IF(vvar % Owner == ParEnv % myPE) & 
         CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
-        print *, ParEnv % mype, "created to Component", Comp % ComponentId, "rowid", RowId, "colid ", ColId
-      END DO
+      ColId = yvar % parValueId + nm
+      ! Here all the processes write their own contribution to the 
+      ! y = y1 + ... + yn
+      CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
 
       ! for every part of component partitions
-      ! y = yi,
-      ! where yi are the parts of y that are computed
+      ! x = xi,
+      ! where xi are the parts of x that are computed
       ! in different partitions
       ! ---------------------------------------------------------
-      DO dof = 1, yvar % dofs
-        ! Do this to every dof of y
-        RowId = yvar % parValueId + nm + dof - 1
-        ColId = yRowId + dof - 1
-        CALL CreateMatElement(Rows, Cols, Cnts, RowId, RowId)
-        CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
-        print *, ParEnv % mype, "created to Component", Comp % ComponentId, "rowid", RowId, "colid ", ColId
-      END DO
-      
+      RowId = yvar % parValueId + nm
+      ColId = xRowId 
+      CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
+      ColId = xRowId
+      CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
     END DO
+
 !------------------------------------------------------------------------------
    END SUBROUTINE CreateParallelComponentConstraints
 !------------------------------------------------------------------------------
@@ -1712,6 +1728,7 @@ CONTAINS
         Comp => Circuits(p) % Components(CompInd)
         Cvar => Comp % vvar
         IF (Comp % Parallel) THEN 
+          IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
           RowId = Cvar % parValueId + nm
           ColId = Cvar % parValueId + nm
         ELSE
@@ -1792,8 +1809,14 @@ CONTAINS
         Comp => Circuits(p) % Components(CompInd)
         Cvar => Comp % vvar
         IF (Comp % Parallel) THEN 
+          IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
           VvarId = Comp % vvar % parValueId + nm
           IvarId = Comp % ivar % parValueId + nm
+        print *, ParEnv % MyPe, "Create Comp % ComponentId", Comp % ComponentId 
+        print *, ParEnv % MyPe, "Create Comp % vvar % parValueId", VvarId
+        print *, ParEnv % MyPe, "Create Comp % ivar % parValueId", IvarId
+        print *, ParEnv % MyPe, "Create Comp % ivar % parValueId", nm
+ 
         ELSE
           VvarId = Comp % vvar % ValueId + nm
           IvarId = Comp % ivar % ValueId + nm

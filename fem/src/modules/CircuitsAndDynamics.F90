@@ -93,7 +93,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
-  INTEGER :: p, n, istat, max_element_dofs
+  INTEGER :: p, n, istat, max_element_dofs, CompIndAll
   TYPE(Mesh_t), POINTER :: Mesh  
 
   TYPE(Matrix_t), POINTER :: CM
@@ -127,6 +127,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
     CALL SetBoundaryAreasToValueLists() 
     CALL CountAndAllocateComponents()
+    CompIndAll = 0
     
     DO p=1,n_Circuits
       n = GetNofCircVariables(p)
@@ -138,7 +139,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       Circuits(p) % Harmonic = .FALSE.
       
       CALL ReadCircuitVariables(p)
-      CALL ReadComponents(p)
+      CALL ReadComponents(p, CompIndAll)
       CALL AddComponentVariables(p)
       CALL AddComponentValuesToLists(p)  ! Lists are used to communicate values to other solvers at the moment...
       CALL AddBareCircuitVariables(p)   ! these don't belong to any components
@@ -184,6 +185,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     CALL AddBasicCircuitEquations(p,ip,dt)
     CALL AddComponentEquationsAndCouplings(p, max_element_dofs,dt)
   END DO
+  CALL AddParallelComponentConstraints()
   Asolver %  Matrix % AddMatrix => CM
 
   IF(ASSOCIATED(CM)) THEN
@@ -258,6 +260,72 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  SUBROUTINE AddParallelComponentConstraints()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t), POINTER :: Asolver
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(Matrix_t), POINTER :: CM
+    TYPE(ComponentPointer_t), POINTER :: Components(:)
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar
+    INTEGER :: n_comp, CompInd, &
+               yRowId, RowId, ColId, &
+               nm, vRowId, xRowId
+    
+    Asolver => CurrentModel % Asolver
+    Components => CurrentModel % CircuitComponents
+    nm = Asolver % Matrix % NumberOfRows
+    CM => CurrentModel%CircuitMatrix
+    n_comp = CurrentModel % nof_circuit_components
+
+    DO CompInd=1, n_comp 
+      Comp => Components(CompInd) % Component 
+      ! Adding parallel constraints are only for those components 
+      ! that are asked to be computed in parallel
+      ! ---------------------------------------------------------
+      IF (.NOT. Comp % Parallel) CYCLE
+      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
+      yvar => Comp % yvar
+      xvar => Comp % xvar
+      vvar => Comp % vvar
+
+      ! The v variable row is always reserved for the component.
+      ! i variable is reserved for the network that is written 
+      ! by the user
+      ! -------------------------------------------------------
+      vRowId = vvar % ValueId + nm 
+      yRowId = yvar % ValueId + nm
+      xRowId = xvar % ValueId + nm
+
+      ! y = y1 + ... + yn
+      ! where yi are the parts of y that are 
+      ! computed in different partitions
+      ! ---------------------------------------------------------
+      RowId = vRowId ! this needs to go to the row owned by v
+      ColId = yRowId
+      IF(vvar % Owner == ParEnv % myPE) & 
+        CALL AddToMatrixElement(CM, RowId, ColId, 1._dp)
+      ColId = yvar % parValueId + nm
+      ! Here all the processes write their own contribution to the 
+      ! y = y1 + ... + yn
+      CALL AddToMatrixElement(CM, RowId, ColId, -1._dp)
+
+      ! for every part of component partitions
+      ! x = xi,
+      ! where xi are the parts of x that are computed
+      ! in different partitions
+      ! ---------------------------------------------------------
+      RowId = yvar % parValueId + nm
+      ColId = xRowId 
+      CALL AddToMatrixElement(CM, RowId, ColId, 1._dp)
+      ColId = xRowId
+      CALL AddToMatrixElement(CM, RowId, ColId, -1._dp)
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE AddParallelComponentConstraints
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn, dt)
 !------------------------------------------------------------------------------
     USE MGDynMaterialUtils
@@ -270,7 +338,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: VvarId, IvarId, q, j
+    INTEGER :: VvarId, IvarId, q, j, CvarOwner
     REAL(KIND=dp) :: Tcoef(3,3,nn)
     REAL(KIND=dp) :: RotM(3,3,nn)
     REAL(KIND=dp) :: value, dt
@@ -292,8 +360,16 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       Comp % Conductance = 0._dp 
 
       Cvar => Comp % vvar
-      vvarId = Comp % vvar % ValueId + nm
-      IvarId = Comp % ivar % ValueId + nm
+      IF (Comp % Parallel) THEN 
+        IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
+        VvarId = Comp % vvar % parValueId + nm
+        IvarId = Comp % ivar % parValueId + nm
+        CvarOwner = ParEnv % MyPe
+      ELSE
+        VvarId = Comp % vvar % ValueId + nm
+        IvarId = Comp % ivar % ValueId + nm
+        CvarOwner = Cvar % Owner
+      END IF
 
       CompParams => CurrentModel % Components(CompInd) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
@@ -306,7 +382,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         END IF
       END IF
 
-      IF ( Cvar % Owner == ParEnv % myPE ) THEN
+      IF ( CvarOwner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
@@ -936,7 +1012,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
-  INTEGER :: p, n, istat, max_element_dofs
+  INTEGER :: p, n, istat, max_element_dofs, CompIndAll
   TYPE(Mesh_t), POINTER :: Mesh  
 
   TYPE(Matrix_t), POINTER :: CM
@@ -969,6 +1045,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     CALL SetBoundaryAreasToValueLists() 
     CALL CountAndAllocateComponents()
+    CompIndAll = 0
     
     DO p=1,n_Circuits
       n = GetNofCircVariables(p)
@@ -980,7 +1057,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       Circuits(p) % Harmonic = .TRUE.
       
       CALL ReadCircuitVariables(p)
-      CALL ReadComponents(p)
+      CALL ReadComponents(p, CompIndAll)
       CALL AddComponentVariables(p)
       CALL AddComponentValuesToLists(p)  ! Lists are used to communicate values to other solvers at the moment...
       CALL AddBareCircuitVariables(p)   ! these don't belong to any components
@@ -1114,15 +1191,16 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Component_t), POINTER :: Comp
     TYPE(Matrix_t), POINTER :: CM
     TYPE(ComponentPointer_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: xvar, yvar
-    INTEGER :: n_comp, CompInd, npart, part, &
-               xRowId, yRowId, RowId, ColId, &
-               nm, dof
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar
+    INTEGER :: n_comp, CompInd, &
+               yRowId, RowId, ColId, &
+               nm, vRowId, xRowId
     
     Asolver => CurrentModel % Asolver
+    Components => CurrentModel % CircuitComponents
     nm = Asolver % Matrix % NumberOfRows
-    print *, "nm", nm
     CM => CurrentModel%CircuitMatrix
+    n_comp = CurrentModel % nof_circuit_components
 
     DO CompInd=1, n_comp 
       Comp => Components(CompInd) % Component 
@@ -1130,40 +1208,42 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! that are asked to be computed in parallel
       ! ---------------------------------------------------------
       IF (.NOT. Comp % Parallel) CYCLE
-      npart = Comp % nofpartitions
-      xvar => Comp % xvar
+      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
+      yvar => Comp % yvar
+      xvar => Comp % yvar
+      vvar => Comp % xvar
 
-      ! for every dof of \vec{x}
-      xRowId = Comp % vvar % ValueId + nm 
+      ! The v variable row is always reserved for the component.
+      ! i variable is reserved for the network that is written 
+      ! by the user
+      ! -------------------------------------------------------
+      vRowId = Comp % vvar % ValueId + nm 
       yRowId = yvar % ValueId + nm
-      DO dof = 1, xvar % dofs
-        ! let x be a dof of \vec{x}
-        ! x = x1 + ... xn
-        ! where xi are the parts of x that are 
-        ! computed in different partitions
-        ! ---------------------------------------------------------
-        RowId = xRowId + dof - 1
-        IF(xvar % Owner == ParEnv % myPE) & 
-          CALL AddToCmplxMatrixElement(CM, RowId, RowId, 1._dp, 0._dp)
-        ColId = xvar % parValueId + nm + dof - 1
-        ! Here all the processes write their own contribution to the 
-        ! x = x1 + ... + xn
-        CALL AddToCmplxMatrixElement(CM, RowId, ColId, -1._dp, 0._dp)
-      END DO
+      xRowId = xvar % ValueId + nm
+
+      ! y = y1 + ... + yn
+      ! where yi are the parts of y that are 
+      ! computed in different partitions
+      ! ---------------------------------------------------------
+      RowId = vRowId ! this needs to go to the row owned by v
+      ColId = yRowId
+      IF(vvar % Owner == ParEnv % myPE) & 
+        CALL AddToCmplxMatrixElement(CM, RowId, ColId, 1._dp, 0._dp)
+      ColId = yvar % parValueId + nm
+      ! Here all the processes write their own contribution to the 
+      ! y = y1 + ... + yn
+      CALL AddToCmplxMatrixElement(CM, RowId, ColId, -1._dp, 0._dp)
 
       ! for every part of component partitions
-      ! y = yi,
-      ! where yi are the parts of y that are computed
+      ! x = xi,
+      ! where xi are the parts of x that are computed
       ! in different partitions
       ! ---------------------------------------------------------
-      DO dof = 1, yvar % dofs
-        ! Do this to every dof of y
-        RowId = yvar % parValueId + nm + dof - 1
-        ColId = yRowId + dof - 1
-        CALL AddToCmplxMatrixElement(CM, RowId, RowId, 1._dp, 0._dp)
-        CALL AddToCmplxMatrixElement(CM, RowId, ColId, -1._dp, 0._dp)
-      END DO
-      
+      RowId = yvar % parValueId + nm
+      ColId = xRowId 
+      CALL AddToCmplxMatrixElement(CM, RowId, ColId, 1._dp, 0._dp)
+      ColId = xRowId
+      CALL AddToCmplxMatrixElement(CM, RowId, ColId, -1._dp, 0._dp)
     END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE AddParallelComponentConstraints
@@ -1183,7 +1263,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Omega
     REAL(KIND=dp) :: sigma_33(nn), sigmaim_33(nn)
-    INTEGER :: VvarId, IvarId, q, j
+    INTEGER :: VvarId, IvarId, q, j, CvarOwner
     COMPLEX(KIND=dp) :: i_multiplier, cmplx_value
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
@@ -1207,11 +1287,18 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
       Cvar => Comp % vvar
       IF (Comp % Parallel) THEN 
+        IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
         VvarId = Comp % vvar % parValueId + nm
         IvarId = Comp % ivar % parValueId + nm
+        print *, ParEnv % MyPe, "Comp % ComponentId", Comp % ComponentId 
+        print *, ParEnv % MyPe, "Comp % vvar % parValueId", VvarId
+        print *, ParEnv % MyPe, "Comp % ivar % parValueId", IvarId
+        print *, ParEnv % MyPe, "Comp % ivar % parValueId", nm
+        CvarOwner = ParEnv % MyPe
       ELSE
         VvarId = Comp % vvar % ValueId + nm
         IvarId = Comp % ivar % ValueId + nm
+        CvarOwner = Cvar % Owner
       END IF
 
       CompParams => CurrentModel % Components(CompInd) % Values
@@ -1225,7 +1312,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         END IF
       END IF
 
-      IF ( Cvar % Owner == ParEnv % myPE ) THEN
+      IF ( CvarOwner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
@@ -2002,8 +2089,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          CALL SimListAddAndOutputConstReal(&
            TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId), Level=10)
 
-         IF (Cvar % pdofs /= 0 ) THEN
-           DO jj = 1, Cvar % pdofs
+         IF (Cvar % outputpdofs /= 0 ) THEN
+           DO jj = 1, Cvar % outputpdofs
              write (dofnumber, "(I2)") jj
              CALL SimListAddAndOutputConstReal(&
                TRIM(Circuits(p) % names(i))&
@@ -2017,8 +2104,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          CALL SimListAddAndOutputConstReal(&
            TRIM(Circuits(p) % names(i)), ip(Cvar % ValueId), Level=10)
          
-         IF (Cvar % pdofs /= 0 ) THEN
-           DO jj = 1, Cvar % pdofs
+         IF (Cvar % outputpdofs /= 0 ) THEN
+           DO jj = 1, Cvar % outputpdofs
              write (dofnumber, "(I2)") jj
              CALL SimListAddAndOutputConstReal(&
                TRIM(Circuits(p) % names(i))&

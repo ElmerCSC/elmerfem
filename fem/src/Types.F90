@@ -824,7 +824,7 @@ END INTERFACE
     LOGICAL :: isIvar, isVvar
     INTEGER :: BodyId, valueId, ImValueId, &
                parValueId, ParValueIdIm, &
-              dofs, pdofs, Owner, ComponentId
+              dofs, pdofs, outputpdofs, Owner, ComponentId
     TYPE(Component_t), POINTER :: Component => Null()
     REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
     REAL(KIND=dp), ALLOCATABLE :: SourceRe(:), SourceIm(:), Mre(:), Mim(:)
