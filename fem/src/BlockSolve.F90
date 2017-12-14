@@ -828,9 +828,8 @@ CONTAINS
 
     LOGICAL :: Found
     TYPE(ValueList_t), POINTER :: Params
-    TYPE(Matrix_t), POINTER :: A_fs, A_sf
+    TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_s, A_f
     TYPE(Variable_t), POINTER :: FVar, SVar
-    LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
     LOGICAL :: IsPlate, IsShell, IsNs
     
     Params => Solver % Values
@@ -871,9 +870,9 @@ CONTAINS
     FVar => TotMatrix % Subvector(j) % Var
     SVar => TotMatrix % Subvector(i) % Var
 
-    ConstrainedS => TotMatrix % Submatrix(i,i) % Mat % ConstrainedDOF
-    ConstrainedF => TotMatrix % Submatrix(j,j) % Mat % ConstrainedDOF
-    
+    A_s => TotMatrix % Submatrix(i,i) % Mat
+    A_f => TotMatrix % Submatrix(j,j) % Mat
+
     IF(.NOT. ASSOCIATED( FVar ) ) THEN
       CALL Fatal('FsiCouplingBlocks','Fluid variable not present!')
     END IF
@@ -881,8 +880,8 @@ CONTAINS
       CALL Fatal('FsiCouplingBlocks','Structure variable not present!')
     END IF
         
-    CALL FsiCouplingAssembly( Solver, FVar, SVar, A_fs, A_sf, &
-        ConstrainedF, ConstrainedS, IsPlate, IsShell, IsNS )
+    CALL FsiCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
+        IsPlate, IsShell, IsNS )
       
   END SUBROUTINE FsiCouplingBlocks
     
@@ -1044,9 +1043,6 @@ CONTAINS
         A => TotMatrix % SubMatrix(i,j) % Mat
         IF( A % NumberOfRows > 0 ) THEN
         
-          !PRINT *,'a1',ASSOCIATED( A ),i,j,NoVar,offset(j),offset(j+1)
-          !PRINT *,'a2',A % NumberOfRows, ASSOCIATED( A % Cols ) 
-          
           IF( MAXVAL( A % Cols ) > offset(j+1)-offset(j) ) THEN
             CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
                 //TRIM(I2S(MAXVAL( A % Cols )))//' vs. '//TRIM(I2S(offset(j+1)-offset(j))))

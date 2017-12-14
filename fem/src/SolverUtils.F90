@@ -12581,6 +12581,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     ! the system will automatically be solved as complex
     Solver % Variable => TotVar
     Solver % Matrix => Aharm
+
   ELSE
     CALL Info('ChangeToHarmonicSystem','Changing the harmonic results to real system!',Level=5)
    
@@ -13953,16 +13954,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Assemble coupling matrix related to fluid-structure interaction
 !------------------------------------------------------------------------------
-  SUBROUTINE FsiCouplingAssembly( Solver, FVar, SVar, A_fs, A_sf, &
-      ConstrainedF, ConstrainedS, IsPlate, IsShell, IsNS )
+  SUBROUTINE FsiCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
+      IsPlate, IsShell, IsNS )
     
     TYPE(Solver_t) :: Solver          ! leading solver
     TYPE(Variable_t), POINTER :: FVar ! fluid variable
     TYPE(Variable_t), POINTER :: SVar ! structure variable
-    TYPE(Matrix_t), POINTER :: A_fs, A_sf
-    LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
+    TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_f, A_s
     LOGICAL :: IsPlate, IsShell, IsNS
-    !------------------------------------------------------------------------------
+   !------------------------------------------------------------------------------
+    LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
     INTEGER, POINTER :: FPerm(:), SPerm(:)
     INTEGER :: FDofs, SDofs
     TYPE(Mesh_t), POINTER :: Mesh
@@ -13973,7 +13974,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:)
     REAL(KIND=dp), POINTER :: Basis(:)
-    REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area
+    REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area, fdiag
     LOGICAL :: Stat, IsHarmonic
     INTEGER :: dim,mat_id,tcount
     LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, Found
@@ -13995,6 +13996,9 @@ CONTAINS
 
     IF( IsNS ) CALL Info('FsiCouplingAssembly','Assuming fluid to have velocities',Level=8)
 
+    ConstrainedF => A_f % ConstrainedDof
+    ConstrainedS => A_s % ConstrainedDof
+    
     
     ! Here we assume harmonic coupling if there are more then 3 structure dofs
     dim = 3
@@ -14027,8 +14031,6 @@ CONTAINS
       CALL Info('FsiCouplingAssembly','Assuming real valued coupling matrix',Level=10)
     END IF
 
-    PRINT *,'IsNS:',IsNS, IsHarmonic, dim, fdofs, sdofs
-    
     
     ! The fluid system must be consistent with elasticity system
     IF( IsNS ) THEN
@@ -14216,7 +14218,7 @@ CONTAINS
                 val = omega
                 jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
               ELSE
-                CALL Fatal('','NS coupling only done for harmonic system!')               
+                CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')               
               END IF
                 
             ELSE ! If IsPlate
@@ -14229,20 +14231,23 @@ CONTAINS
 
                 jstruct = sdofs*(SPerm(jj)-1)+1
               ELSE
-                CALL Fatal('','NS coupling only done for harmonic system!')               
+                CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')               
               END IF
             END IF
 
             IF( IsHarmonic ) THEN
+                            
               ! Structure load on the fluid: v = i*omega*u
+              fdiag = A_f % Values( A_f % diag(ifluid) )
               IF( FreeF ) THEN
-                CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,-MultFS*val)     ! Re 
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,MultFS*val*fdiag)     ! Re 
               ELSE
                 CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)
               END IF
-              
+
+              fdiag = A_f % Values( A_f % diag(ifluid+1) )
               IF( FreeFim ) THEN
-                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,MultFS*val)      ! Im
+                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,-MultFS*val*fdiag)      ! Im
               ELSE                
                 CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
               END IF
@@ -14252,7 +14257,7 @@ CONTAINS
               CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)     
               CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp)
             ELSE
-              CALL Fatal('','NS coupling only done for harmonic system!')
+              CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')
             END IF
           END DO
         END DO
