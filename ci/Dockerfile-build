@@ -1,5 +1,5 @@
 FROM ubuntu:xenial
-RUN apt-get -y update && apt-get install -y gcc cmake g++ gfortran libopenblas-dev
+RUN apt-get -y update && apt-get install -y gcc cmake g++ gfortran libopenblas-dev libopenmpi-dev libopenmpi1.10
 RUN apt-get install -y unzip libopenmpi-dev
 ADD ./ ./elmerfem
 ADD ci/precaches/opts-ubuntu-xenial.cmake /opts-ubuntu-xenial.cmake
