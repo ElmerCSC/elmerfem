@@ -1290,10 +1290,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
         VvarId = Comp % vvar % parValueId + nm
         IvarId = Comp % ivar % parValueId + nm
-        print *, ParEnv % MyPe, "Comp % ComponentId", Comp % ComponentId 
-        print *, ParEnv % MyPe, "Comp % vvar % parValueId", VvarId
-        print *, ParEnv % MyPe, "Comp % ivar % parValueId", IvarId
-        print *, ParEnv % MyPe, "Comp % ivar % parValueId", nm
         CvarOwner = ParEnv % MyPe
       ELSE
         VvarId = Comp % vvar % ValueId + nm

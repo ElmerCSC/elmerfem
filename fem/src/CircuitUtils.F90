@@ -1712,7 +1712,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(Component_t), POINTER :: Comp
     INTEGER :: i, j, p, nm, nn, nd, &
-               RowId, ColId, n_Circuits, &
+               RowId, n_Circuits, &
                CompInd, q
     INTEGER, POINTER :: Rows(:), Cnts(:)
     LOGICAL :: dofsdone
@@ -1730,10 +1730,8 @@ CONTAINS
         IF (Comp % Parallel) THEN 
           IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
           RowId = Cvar % parValueId + nm
-          ColId = Cvar % parValueId + nm
         ELSE
           RowId = Cvar % ValueId + nm
-          ColId = Cvar % ValueId + nm
         END IF
 
         SELECT CASE (Comp % CoilType)
@@ -1812,11 +1810,6 @@ CONTAINS
           IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
           VvarId = Comp % vvar % parValueId + nm
           IvarId = Comp % ivar % parValueId + nm
-        print *, ParEnv % MyPe, "Create Comp % ComponentId", Comp % ComponentId 
-        print *, ParEnv % MyPe, "Create Comp % vvar % parValueId", VvarId
-        print *, ParEnv % MyPe, "Create Comp % ivar % parValueId", IvarId
-        print *, ParEnv % MyPe, "Create Comp % ivar % parValueId", nm
- 
         ELSE
           VvarId = Comp % vvar % ValueId + nm
           IvarId = Comp % ivar % ValueId + nm
@@ -1824,6 +1817,8 @@ CONTAINS
 
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
+          print *, ParEnv % Mype, "Rows(",VvarId,")", Rows(VvarId)
+          print *, ParEnv % Mype, "Cnts(",VvarId,")", Cnts(VvarId)
           CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
           CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
         CASE('massive')
@@ -2144,7 +2139,7 @@ CONTAINS
     ! CREATE ROW POINTERS:
     ! ====================
 
-    CM % NumberOfRows = nm + Circuit_tot_n
+    CM % NumberOfRows = nm + Circuit_tot_n + Component_par_tot_n
     Rows(1) = 1
     DO i=2,CM % NumberOfRows+1
       Rows(i) = Rows(i-1) + Cnts(i-1)
@@ -2159,7 +2154,6 @@ CONTAINS
     CALL CreateParallelComponentConstraints(Rows, Cols, Cnts)
     CALL CreateComponentEquations(Rows, Cols, Cnts, Done, dofsdone)
     
-
     IF (n /= SUM(Cnts)) THEN
       print *, "Counted Cnts:", n, "Applied Cnts:", SUM(Cnts)
       CALL Fatal('Circuits_MatrixInit', &
