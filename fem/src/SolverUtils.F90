@@ -14175,7 +14175,7 @@ CONTAINS
           jj = Indexes(j)
           val = MASS(i,j)
 
-
+          ! Shell and 3D elasticity are both treated with the same routine
           IF( .NOT. IsPlate ) THEN
             
             DO k=1,dim
@@ -14240,35 +14240,8 @@ CONTAINS
                 END IF
               END IF
             END DO              
-
-          ELSE IF( IsShell ) THEN
-
-            DO k=1,dim
-            
-              IF( IsHarmonic ) THEN
-                CALL Fatal('FsiCouplingAssembly','Not coded for harmonic shells yet!')
-              ELSE
-                jstruct = sdofs*(SPerm(jj)-1)+k
-
-                IF( ASSOCIATED( ConstrainedS ) ) THEN
-                  FreeS = .NOT. ConstrainedS(jstruct)
-                END IF
-
-                ! Fluid load on the structure: tau \cdot n = p * n
-                IF( FreeS ) THEN
-                  CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           
-                END IF
-
-                ! Structure load on the fluid: dp/dn = -u
-                IF( FreeF ) THEN
-                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
-                END IF
-              END IF
-            
-            END DO
               
           ELSE ! If IsPlate
-
 
             val = MASS(i,j) 
 

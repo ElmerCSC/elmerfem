@@ -2628,20 +2628,20 @@ CONTAINS
       ! For debugging it may be useful to show several.
       MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
           'Max Output Partition', GotIt )    
-      MaxOutputPE = MIN(ParEnv % PEs, MaxOutputPE)
-
-      MinOutputPE = ListGetInteger( CurrentModel % Simulation, &
-          'Min Output Partition', GotIt )    
-      MinOutputPE = MAX(1, MinOutputPE)
-
-      IF( ParEnv % MyPe >= MinOutputPE .AND. &
-          ParEnv % MyPe <= MaxOutputPE ) THEN 
-        OutputPE = ParEnv % MyPE
-      ELSE
-        OutputPE = -1
-      END IF
-  
-
+      IF( GotIt ) THEN
+        MaxOutputPE = MIN(ParEnv % PEs, MaxOutputPE)        
+        MinOutputPE = ListGetInteger( CurrentModel % Simulation, &
+            'Min Output Partition', GotIt )    
+        MinOutputPE = MAX(0, MinOutputPE)
+        
+        IF( ParEnv % MyPe >= MinOutputPE .AND. &
+            ParEnv % MyPe <= MaxOutputPE ) THEN 
+          OutputPE = ParEnv % MyPE
+        ELSE
+          OutputPE = -1
+        END IF
+      END IF 
+                    
     END SUBROUTINE InitializeOutputLevel
 !------------------------------------------------------------------------------
   END FUNCTION LoadModel

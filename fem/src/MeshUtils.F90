@@ -10277,10 +10277,14 @@ END SUBROUTINE GetMaxDefs
           
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
-      ii = intinvperm(i)
-      IF( ii == 0) THEN
-        PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
-        CYCLE
+      IF( ASSOCIATED( IntInvPerm ) ) THEN
+        ii = intinvperm(i)        
+        IF( ii == 0) THEN
+          PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
+          CYCLE
+        END IF
+      ELSE
+        ii = i
       END IF
       IF( GlobalInds ) THEN
         IF( ii > SIZE( GlobalDofs ) ) THEN
@@ -10330,8 +10334,12 @@ END SUBROUTINE GetMaxDefs
       
       OPEN(1,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
-        ii = intinvperm(i)
-        IF( ii == 0 ) CYCLE
+        IF( ASSOCIATED( IntInvPerm ) ) THEN
+          ii = intinvperm(i)
+          IF( ii == 0 ) CYCLE
+        ELSE
+          ii = i
+        END IF
         rowsum = 0.0_dp
         dia = 0.0_dp
 

@@ -412,6 +412,7 @@ CONTAINS
     Params => Solver % Values
 
     IF( NoVar == 1 ) THEN
+      CALL Info('BlockSolver','Using the original matrix as the (1,1) block!',Level=10)
       TotMatrix % SubMatrix(1,1) % Mat => SolverMatrix
       RETURN
     END IF
@@ -578,6 +579,7 @@ CONTAINS
     CHARACTER(LEN=max_name_len) :: VarName
     TYPE(Variable_t), POINTER :: Var
     TYPE(Solver_t), POINTER :: PSolver
+    LOGICAL :: InheritCM, PrecTrue 
     
     CALL Info('BlockSolver','Picking constraints to block matrix',Level=10)
 
@@ -589,37 +591,71 @@ CONTAINS
     A => SolverMatrix
     n = Solver % Mesh % NumberOfNodes
     
-    PrecCoeff = ListGetConstReal( Params,'Block Constraint Coeff',Found)
+    PrecCoeff = ListGetConstReal( Params,'Block Diag Coeff',Found)
     IF(.NOT. Found ) PrecCoeff = 1.0_dp
 
+    PrecTrue = ListGetLogical( Params,'Block Diag True',Found ) 
+    
     
     ! temporarily be generic
     NoCon = 0
+    CM => A % ConstraintMatrix
+    DO WHILE(ASSOCIATED(CM))
+      NoCon = NoCon + 1
+      CM => CM % ConstraintMatrix
+    END DO
 
+    CALL Info('BlockPickConstraint','Number of constraint matrices: '//TRIM(I2S(NoCon)),Level=10)
+    
+    InheritCM = (NoVar == 1 ) .AND. (NoCon == 1 )
+    
     
     IF( NoVar == 1 ) THEN
-      IF( NoCon == 1 ) THEN
+      IF( InheritCM ) THEN
         TotMatrix % Submatrix(NoVar+1,1) % Mat => A % ConstraintMatrix
-        CALL Info('','Using constraint matrix as is!')
-        RETURN
+        CALL Info('BlockPickConstraint','Using constraint matrix as is!',Level=10)
+        IF( PrecTrue ) THEN
+          C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % Mat                  
+        ELSE
+          C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % PrecMat        
+        END IF
       ELSE      
         C1 => TotMatrix % Submatrix(NoVar+1,1) % Mat
-        C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % PrecMat
-        
-        TotMatrix % SubMatrixTranspose(NoVar+1,1) = .TRUE.
+        IF( PrecTrue ) THEN
+          C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % Mat        
+        ELSE
+          C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % PrecMat        
+        END IF
       END IF
+      TotMatrix % SubMatrixTranspose(NoVar+1,1) = .TRUE.
+      
     ELSE IF(BlockAV) THEN          
       C1 => TotMatrix % SubMatrix(NoVar+1,1) % Mat
       C2 => TotMatrix % Submatrix(NoVar+2,2) % Mat
-      C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % PrecMat
-      C2prec => TotMatrix % Submatrix(NoVar+2,NoVar+2) % PrecMat
+      IF( PrecTrue ) THEN
+        C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % Mat
+        C2prec => TotMatrix % Submatrix(NoVar+2,NoVar+2) % Mat
+      ELSE
+        C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % PrecMat
+        C2prec => TotMatrix % Submatrix(NoVar+2,NoVar+2) % PrecMat
+      END IF
+      TotMatrix % SubMatrixTranspose(NoVar+1,1) = .TRUE.
+      TotMatrix % SubMatrixTranspose(NoVar+2,2) = .TRUE.
     ELSE
-      CALL Fatal('','Not done for vectors!')
+      CALL Fatal('BlockPickConstraint','Not done for vectors!')
     END IF
     
+    n = Solver % Mesh % NumberOfNodes
+    CM => A % ConstraintMatrix
+    DO WHILE(ASSOCIATED(CM)) 
+      n = MAX( n, MAXVAL( CM % InvPerm ) )
+      CM => CM % ConstraintMatrix
+    END DO
 
-    ALLOCATE( ConsPerm( Solver % Mesh % NumberOfNodes ) )
+    
+    ALLOCATE( ConsPerm( n ) ) 
     ConsPerm = 0
+    
 
     DO DoPrec = 0, 1
       
@@ -631,12 +667,6 @@ CONTAINS
 
         DO i=1,CM % NumberOFRows
 
-          ! First round initialize the ConsPerm
-          IF( DoPrec == 0 ) THEN
-            j = CM % InvPerm(i)
-            ConsPerm( j ) = i
-          END IF
-                      
           rowi = CM % Cols(CM % Rows(i))
 
           rb = 1          
@@ -650,6 +680,12 @@ CONTAINS
             i2 = i2 + 1
           END IF
 
+          ! First round initialize the ConsPerm
+          IF( DoPrec == 0 ) THEN
+            j = CM % InvPerm(i)
+            ConsPerm( j ) = i
+          END IF
+                      
           DO j=CM % Rows(i),CM % Rows(i+1)-1
             IF (CM % Values(j)==0._dp) CYCLE
 
@@ -666,14 +702,15 @@ CONTAINS
 
             IF( DoPrec == 1 ) THEN
               IF( ConsPerm( colj ) > 0 ) THEN
-                val = PrecCoeff * val
+                ! The sign -1 is needed for consistency
+                val = -PrecCoeff * val
                 IF ( cb == 1 ) THEN
                   CALL AddToMatrixElement(C1prec,i1,ConsPerm(colj),val)
                 ELSE
                   CALL AddToMatrixElement(C2prec,i2,ConsPerm(colj),val)
                 END IF
               END IF                
-            ELSE
+            ELSE IF( .NOT. InheritCM ) THEN
               IF ( cb == 1 ) THEN
                 CALL AddToMatrixElement(C1,i1,colj,val)
              ELSE
@@ -690,17 +727,25 @@ CONTAINS
       IF( DoPrec == 0 ) THEN
         CALL AddToMatrixElement(C1prec,i1,i1,0.0_dp)
       END IF
-        
-      
+               
     END DO
       
-    CALL Info('BlockSolver','Setting format of constraint block to CRS',Level=20)
-    CALL List_toCRSMatrix(C1)
-    IF( BlockAV ) CALL List_toCRSMatrix(C2)
-    
-    CALL Info('BlockSolver','Setting format of constraint preconditioning block to CRS',Level=20)
+    CALL Info('BlockSolver','Setting format of constraint blocks to CRS',Level=20)
+    IF(.NOT. InheritCM ) THEN
+      CALL List_toCRSMatrix(C1)
+    END IF
     CALL List_toCRSMatrix(C1prec)
 
+    IF( BlockAV ) THEN
+      CALL List_toCRSMatrix(C2)    
+      CALL List_toCRSMatrix(C2prec)
+    END IF
+
+    
+    IF( ListGetLogical( Solver % Values,'Save Prec Matrix', Found ) ) THEN   
+      CALL SaveProjector(C1prec,.TRUE.,"CM")
+    END IF
+    
     
     VarName = "lambda"
     Var => VariableGet( Solver % Mesh % Variables, VarName )
@@ -855,7 +900,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: x(:),rtmp(:),rhs(:)
     REAL(KIND=dp) :: bnorm
     TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: GotRhs
+    LOGICAL :: GotRhs, DoSum
     
     CALL Info('BlockUpdateRhs','Computing block r.h.s',Level=5)
 
@@ -903,14 +948,23 @@ CONTAINS
         
         Var => BlockMatrix % SubVector(NoCol) % Var
         x => Var % Values
+
+        DoSum = .FALSE.
         A => BlockMatrix % SubMatrix( NoRow, NoCol ) % Mat
         IF( A % NumberOfRows > 0 ) THEN        
-          rtmp = 0._dp
           CALL CRS_MatrixVectorMultiply( A, x, rtmp)              
-          rhs(1:n) = rhs(1:n) - rtmp(1:n)
+          DoSum = .TRUE.
+        ELSE IF( BlockMatrix % SubMatrixTranspose(NoCol,NoRow) ) THEN
+          A => TotMatrix % SubMatrix(NoCol,NoRow) % Mat
+          IF( A % NumberOfRows >  0 ) THEN
+            CALL CRS_TransposeMatrixVectorMultiply( A, x, rtmp )
+            DoSum = .TRUE.
+          END IF
         END IF
+        IF(DoSum) rhs(1:n) = rhs(1:n) - rtmp(1:n) 
       END DO
 
+      
       bnorm = SQRT( SUM( rhs**2 ) / n )
       BlockMatrix % SubVector(NoRow) % bnorm = bnorm
       
@@ -919,8 +973,7 @@ CONTAINS
       Var => BlockMatrix % SubVector(NoCol) % Var
       x => Var % Values
       A => BlockMatrix % SubMatrix( NoRow, NoCol ) % Mat
-      IF( A % NumberOfRows  > 0 ) THEN
-        rtmp = 0._dp
+      IF( A % NumberOfRows > 0 ) THEN
         CALL CRS_MatrixVectorMultiply( A, x, rtmp)              
         rhs(1:n) = rhs(1:n) - rtmp(1:n)
       END IF
@@ -951,6 +1004,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A
 
     REAL(KIND=dp), POINTER :: b(:)
+    LOGICAL :: DoSum 
     
     CALL Info('BlockMatrixVectorProd','Starting block matrix multiplication',Level=20)
     
@@ -977,46 +1031,65 @@ CONTAINS
     DO i=1,NoVar
       DO j=1,NoVar
         s = 0._dp
-        A => TotMatrix % SubMatrix(i,j) % Mat
 
-        IF( .NOT. ASSOCIATED( A ) ) CYCLE
-        IF( A % NumberOfRows == 0 ) CYCLE
-        
-        !PRINT *,'a1',ASSOCIATED( A ),i,j,NoVar,offset(j),offset(j+1)
-        !PRINT *,'a2',A % NumberOfRows, ASSOCIATED( A % Cols ) 
-        
-        IF( MAXVAL( A % Cols ) > offset(j+1)-offset(j) ) THEN
-          CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
-              //TRIM(I2S(MAXVAL( A % Cols )))//' vs. '//TRIM(I2S(offset(j+1)-offset(j))))
-        END IF
-        IF( A % NumberofRows > offset(i+1)-offset(i)) THEN         
-          CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
-              //TRIM(I2S( A % NumberOfRows ))//' vs. '//TRIM(I2S(offset(i+1)-offset(i))))
-        END IF
-          
         j1 = offset(j)+1
         j2 = offset(j+1)
 
-        CALL Info('BlockMatrixVectorProd','Multiplying with submatrix ('&
-            //TRIM(I2S(i))//','//TRIM(I2S(j))//')',Level=8)
-
+        DoSum = .FALSE.
         
-        IF (isParallel) THEN
-          CALL ParallelMatrixVector( A, u(j1:j2), s  )
-        ELSE
-          CALL CRS_MatrixVectorMultiply( A, u(j1:j2), s )
-        END IF
+        A => TotMatrix % SubMatrix(i,j) % Mat
+        IF( A % NumberOfRows > 0 ) THEN
+        
+          !PRINT *,'a1',ASSOCIATED( A ),i,j,NoVar,offset(j),offset(j+1)
+          !PRINT *,'a2',A % NumberOfRows, ASSOCIATED( A % Cols ) 
+          
+          IF( MAXVAL( A % Cols ) > offset(j+1)-offset(j) ) THEN
+            CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
+                //TRIM(I2S(MAXVAL( A % Cols )))//' vs. '//TRIM(I2S(offset(j+1)-offset(j))))
+          END IF
+          IF( A % NumberofRows > offset(i+1)-offset(i)) THEN         
+            CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
+                //TRIM(I2S( A % NumberOfRows ))//' vs. '//TRIM(I2S(offset(i+1)-offset(i))))
+          END IF
+          
+          CALL Info('BlockMatrixVectorProd','Multiplying with submatrix ('&
+              //TRIM(I2S(i))//','//TRIM(I2S(j))//')',Level=8)          
+          
+          IF (isParallel) THEN
+            CALL ParallelMatrixVector( A, u(j1:j2), s  )
+          ELSE
+            CALL CRS_MatrixVectorMultiply( A, u(j1:j2), s )
+          END IF
+          DoSum = .TRUE.
 
+        ELSE IF( TotMatrix % SubMatrixTranspose(j,i) ) THEN          
+          A => TotMatrix % SubMatrix(j,i) % Mat
+          IF( A % NumberOfRows > 0 ) THEN            
+            CALL Info('BlockMatrixVectorProd','Multiplying with transpose of submatrix ('&
+                //TRIM(I2S(j))//','//TRIM(I2S(i))//')',Level=12)
+            
+            IF (isParallel) THEN
+              CALL Fatal('BlockMatrixVectorProd','Do transpose in parallel!')
+            ELSE          
+              CALL CRS_TransposeMatrixVectorMultiply( A, u(j1:j2), s )
+            END IF
+            DoSum = .TRUE.
+          END IF
+        END IF
+          
+        
         IF( InfoActive( 15 ) ) THEN
           PRINT *,'MatVecProdNorm u:',i,j,&
               SQRT(SUM(u(j1:j2)**2)),SUM( u(j1:j2) ), MINVAL( u(j1:j2) ), MAXVAL( u(j1:j2) ) 
           PRINT *,'MatVecProdNorm s:',i,j,&
               SQRT(SUM(s**2)), SUM( s ), MINVAL( s ), MAXVAL( s ) 
         END IF
-              
-        DO k=1,offset(i+1)-offset(i)
-          v(k+offset(i)) = v(k+offset(i)) + s(k)
-        END DO
+
+        IF( DoSum ) THEN
+          DO k=1,offset(i+1)-offset(i)
+            v(k+offset(i)) = v(k+offset(i)) + s(k)
+          END DO
+        END IF
       END DO
 
       IF( InfoActive( 15 ) ) THEN
@@ -1029,36 +1102,9 @@ CONTAINS
         END IF
         PRINT *,'MatVecProdNorm v:',i,&
             SQRT(SUM(v(i1:i2)**2)), SUM( v(i1:i2) ), MINVAL( v(i1:i2) ), MAXVAL( v(i1:i2) ) 
-      END IF      
+      END IF
     END DO
-    
-    ! Do the transpose stuff too
-    DO i=1,NoVar
-      DO j=1,NoVar
-        IF( .NOT. TotMatrix % SubMatrixTranspose(i,j) ) CYCLE
-
-        A => TotMatrix % SubMatrix(i,j) % Mat
-
-        IF( .NOT. ASSOCIATED( A ) ) CYCLE
-        IF( A % NumberOfRows ==  0 ) CYCLE
-
-        CALL Info('BlockMatrixVectorProd','Multiplying with transpose of submatrix ('&
-            //TRIM(I2S(i))//','//TRIM(I2S(j))//')',Level=8)
-        
-        s = 0._dp
-        IF (isParallel) THEN
-          CALL Fatal('','Do transpose in parallel!')
-        ELSE          
-          CALL CRS_TransposeMatrixVectorMultiply( A, u(offset(i)+1:offset(i+1)), s )
-        END IF
-        !PRINT *,'MatVecProdNorm Transpose:',i,j,SQRT(SUM(s**2))
-        
-        DO k=1,offset(j+1)-offset(j)
-          v(k+offset(j)) = v(k+offset(j)) + s(k)
-        END DO
-      END DO
-    END DO
-
+      
     IF( InfoActive( 15 ) ) THEN
       i = offset(NoVar+1)
       nrm = SQRT( SUM( v(1:i)**2 ) )
@@ -1089,7 +1135,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A, mat_save
     TYPE(Variable_t), POINTER :: Var, Var_save
 
-    LOGICAL :: GotOrder, BlockGS, Found, NS, SkipCompChange
+    LOGICAL :: GotOrder, BlockGS, Found, NS, SkipCompChange, ScaleSystem, DoSum
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
@@ -1160,8 +1206,7 @@ CONTAINS
           A => TotMatrix % Submatrix(i,i) % Mat
         ELSE
           PRINT *,'Using specialized preconditioning block'
-        END IF
-      
+        END IF      
         ASolver => Solver
       END IF
       
@@ -1234,8 +1279,14 @@ CONTAINS
         CALL SolveLinearSystem( A, b, x, Var % Norm, Var % DOFs, ASolver )
 #endif
       ELSE
-        !CALL SolveSystem( A, ParMatrix, b, x, Var % Norm, Var % DOFs, ASolver )
+        
+        ScaleSystem = ListGetLogical( Params,'block: Linear System Scaling', Found )
+        !IF(.NOT. Found) ScaleSystem = .TRUE.
+        IF ( ScaleSystem ) CALL ScaleLinearSystem(ASolver, A,b,x )
+        
         CALL SolveLinearSystem( A, b, x, Var % Norm, Var % DOFs, ASolver )
+
+        IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,b,x)       
       END IF
 
       IF( InfoActive( 15 ) ) THEN
@@ -1259,7 +1310,7 @@ CONTAINS
  
       !---------------------------------------------------------------------
       IF( BlockGS ) THEN        
-        CALL Info('BlockSolver','Updating block r.h.s',Level=5)
+        CALL Info('BlockMatrixPrec','Updating block r.h.s',Level=5)
       
         DO l=j+1,NoVar
           IF( GotOrder ) THEN
@@ -1267,39 +1318,79 @@ CONTAINS
           ELSE
             k = l
           END IF
-        
+
           WRITE( str,'(A,I0,I0)') 'Block Gauss-Seidel Passive ',k,i
           IF( ListGetLogical( Params, str, Found ) ) CYCLE
         
-          CALL Info('BlockSolver','Updating r.h.s for component '//TRIM(I2S(k)),Level=15)
+          CALL Info('BlockMatrixPrec','Updating r.h.s for component '//TRIM(I2S(k)),Level=15)
 
-          ! The residual is used only as a temporary vector
+          !IF( ASSOCIATED( TotMatrix % Subvector(i) % Solver ) ) THEN
+          !  ASolver => TotMatrix % SubVector(i) % Solver
+          !  A => ASolver % Matrix
+          !ELSE
+          !  A => TotMatrix % Submatrix(i,i) % Mat
+          !END IF
+          
+            ! The residual is used only as a temporary vector
           !-------------------------------------------------------------
+          DoSum = .FALSE.
+
           IF (isParallel) THEN
             IF(ASSOCIATED(TotMatrix % SubMatrix(k,i) % Mat % ParMatrix)) THEN
               CALL ParallelMatrixVector(TotMatrix % SubMatrix(k,i) % Mat,x,rtmp )
+              DoSum = .TRUE.
             ELSE IF (ASSOCIATED(SolverMatrix)) THEN
               xtmp=0
               xtmp(offset(i)+1:offset(i+1))=x(offset(i)+1:offset(i+1))
               CALL ParallelMatrixVector(SolverMatrix,xtmp,rtmp)
               rtmp(1:offset(k+1)-offset(k))=rtmp(offset(k)+1:offset(k+1))
+              DoSum = .TRUE.
             ELSE
               CALL Fatal('BlockKrylovIter','No matrix to apply.')
             END IF
+
+            IF( TotMatrix % SubMatrixTranspose(i,k) ) THEN
+              CALL Fatal('','Do transpose in parallel!')
+            END IF
+
           ELSE
+            !IF( ASSOCIATED( TotMatrix % Subvector(i) % Solver ) ) THEN
+            !  ASolver => TotMatrix % SubVector(i) % Solver
+            !  A => ASolver % Matrix
+            !ELSE
+            !  A => TotMatrix % Submatrix(i,i) % Mat
+            !END IF
+
             IF(.NOT.ASSOCIATED(TotMatrix % SubMatrix(k,i) % Mat) ) THEN
-              xtmp=0
-              xtmp(offset(i)+1:offset(i+1))=x(offset(i)+1:offset(i+1))
-              CALL CRS_MatrixVectorMultiply(SolverMatrix,x,rtmp )
-              rtmp(1:offset(k+1)-offset(k))=rtmp(offset(k)+1:offset(k+1))
-            ELSE
-              CALL CRS_MatrixVectorMultiply(TotMatrix % SubMatrix(k,i) % Mat,x,rtmp )
+            !  CALL Fatal('','what is this')
+            !  xtmp=0
+            !  xtmp(offset(i)+1:offset(i+1))=x(offset(i)+1:offset(i+1))
+            !  CALL CRS_MatrixVectorMultiply(SolverMatrix,x,rtmp )
+            !  rtmp(1:offset(k+1)-offset(k))=rtmp(offset(k)+1:offset(k+1))
+            END IF
+            A => TotMatrix % Submatrix(k,i) % Mat            
+            IF( A % NumberOfRows > 0 ) THEN
+              CALL CRS_MatrixVectorMultiply(A,x,rtmp )
+              DoSum = .TRUE.
+            ELSE IF( TotMatrix % SubMatrixTranspose(i,k) ) THEN
+              A => TotMatrix % SubMatrix(i,k) % Mat
+              IF( A % NumberOfRows >  0 ) THEN
+                CALL Info('BlockMatrixPrec','Multiplying with transpose of submatrix ('&
+                    //TRIM(I2S(i))//','//TRIM(I2S(k))//')',Level=8)
+                CALL CRS_TransposeMatrixVectorMultiply( A, x, rtmp )
+                DoSum = .TRUE.
+              END IF
             END IF
           END IF
-          ! Up-date the off-diagonal entries to the r.h.s. 
-          vtmp(offset(k)+1:offset(k+1)) = vtmp(offset(k)+1:offset(k+1)) &
-                   - rtmp(1:offset(k+1)-offset(k))
+
+          IF( DoSum ) THEN
+            ! Up-date the off-diagonal entries to the r.h.s. 
+            vtmp(offset(k)+1:offset(k+1)) = vtmp(offset(k)+1:offset(k+1)) &
+                - rtmp(1:offset(k+1)-offset(k))
+          END IF                 
+
         END DO ! l=j+1,NoVar
+        
       END IF
 
       CALL ListPopNameSpace() ! block ij:
@@ -1338,15 +1429,15 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: MaxChange
 
-    INTEGER :: i,j,NoVar,RowVar,iter,LinIter
+    INTEGER :: i,j,NoVar,RowVar,iter,LinIter,MinIter
     INTEGER, POINTER :: BlockOrder(:)
     LOGICAL :: GotIt, GotBlockOrder, SkipCompChange, BlockGS
     REAL(KIND=dp), POINTER :: b(:), rhs_save(:), dx(:)
     TYPE(Matrix_t), POINTER :: A, mat_save
     TYPE(Variable_t), POINTER :: Var, SolverVar
-    REAL(KIND=dp) :: LinTol, TotNorm, dxnorm, xnorm
+    REAL(KIND=dp) :: LinTol, TotNorm, dxnorm, xnorm, Relax
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: Found
+    LOGICAL :: ScaleSystem, Found
 
     NoVar = TotMatrix % NoVar
     Params => Solver % Values
@@ -1355,6 +1446,7 @@ CONTAINS
     BlockGS = ListGetLogical( Params,'Block Gauss-Seidel',Found)
     BlockOrder => ListGetIntegerArray( Params,'Block Order',GotBlockOrder)
     LinIter = ListGetInteger( Params,'Linear System Max Iterations',GotIt)
+    MinIter = ListGetInteger( Params,'Linear System Min Iterations',GotIt)
     LinTol = ListGetConstReal( Params,'Linear System Convergence Tolerance',GotIt)
     
     !mat_Save => Solver % Matrix
@@ -1366,7 +1458,8 @@ CONTAINS
 
     ! We don't want compute change externally
     CALL ListAddNewLogical( Solver % Values,'block: skip compute nonlinear change',.TRUE.)
-
+    
+    Relax = 1.0_dp
     
     DO iter = 1, LinIter
       
@@ -1419,12 +1512,12 @@ CONTAINS
         IF( A % NumberOfRows == 0 ) THEN
           A => TotMatrix % Submatrix(i,i) % Mat
         ELSE
-          PRINT *,'Using specialized preconditioning block'
+          CALL Info('BlockSolver','Using preconditioning block: '//TRIM(I2S(i)))
         END IF
         
         !Solver % Matrix => A
 
-        ! Use the residual rather than original r.h.s. to solve the equation!!
+        ! Use the newly computed residual rather than original r.h.s. to solve the equation!!
         rhs_save => A % rhs ! Solver % Matrix % RHS
         A % RHS => b
         
@@ -1434,23 +1527,37 @@ CONTAINS
         dx = 0.0_dp
 
         CALL ListPushNamespace('block '//TRIM(i2s(RowVar))//TRIM(i2s(RowVar))//':')          
+
+        ScaleSystem = ListGetLogical( Solver % Values,'block: Linear System Scaling', Found )
+        !IF(.NOT. Found) ScaleSystem = .TRUE.
+
+        IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A, b, dx )
+        
         CALL SolveLinearSystem( A, b, dx, Var % Norm, Var % DOFs, Solver )
         !CALL SolveSystem( A, ParMatrix, b, dx, Var % Norm, Var % DOFs, Solver )
+
+        IF( ScaleSystem ) CALL BackScaleLinearSystem(Solver, A, b, dx)       
+
         CALL ListPopNamespace()
 
         ! Revert back to original r.h.s.
         A % RHS => rhs_save
         !Solver % Matrix => mat_save
 
-        Var % Values = Var % Values + dx
-
+        IF( iter > 1 ) THEN
+          Var % Values = Var % Values + Relax * dx
+        ELSE
+          Var % Values = Var % Values + dx
+        END IF
+          
         dxnorm = SQRT( SUM(dx**2) )
         xnorm = SQRT( SUM( Var % Values**2 ) )
 
+        Var % Norm = xnorm
         Var % NonlinChange = dxnorm / xnorm
         
         IF( InfoActive( 15 ) ) THEN
-          PRINT *,'dx'//TRIM(I2S(i))//':',SQRT( SUM(dx**2) ), MINVAL( dx ), MAXVAL( dx ), SUM( dx )
+          PRINT *,'dx'//TRIM(I2S(i))//':',SQRT( SUM(dx**2) ), MINVAL( dx ), MAXVAL( dx ), SUM( dx ), SUM( ABS( dx ) )
         END IF
       
         DEALLOCATE( dx )
@@ -1460,10 +1567,10 @@ CONTAINS
       END DO
 
       IF( InfoActive( 15 ) ) THEN
-        PRINT *,'GS Norm:',iter,Var % Norm, Var % NonlinChange, MaxChange, TotNorm
+        PRINT *,'GS Norm:',iter, MaxChange, TotNorm
       END IF
 
-      IF( MaxChange < LinTol ) EXIT
+      IF( MaxChange < LinTol .AND. iter >= MinIter ) EXIT
 
     END DO
     CALL ListPopNamespace('block:')
@@ -1731,7 +1838,7 @@ CONTAINS
     LOGICAL :: GotSlaveSolvers
     
     
-    TYPE(Matrix_t), POINTER :: Amat, SaveMatrix
+    TYPE(Matrix_t), POINTER :: Amat, SaveMatrix, SaveCM
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
 
@@ -1807,6 +1914,9 @@ CONTAINS
     
     IF( HaveConstraint > 0 ) THEN
       CALL BlockPickConstraint( Solver, VarDofs )
+      ! Storing pointer to CM so that the SolverMatrix won't be treated with the constraints
+      SaveCM => Solver % Matrix % ConstraintMatrix
+      Solver % Matrix % ConstraintMatrix => NULL()
     END IF
 
     IF (isParallel) THEN
@@ -1876,6 +1986,12 @@ CONTAINS
     Solver % Variable => SolverVar
     Solver % Variable % Values => SaveValues
        
+    IF( HaveConstraint > 0 ) THEN
+      ! Restore the pointer to the SolverMatrix
+      Solver % Matrix % ConstraintMatrix => SaveCM 
+    END IF
+
+
     CALL Info('BlockSolverInt','All done')
     CALL Info('BlockSolverInt','-------------------------------------------------',Level=5)
 
