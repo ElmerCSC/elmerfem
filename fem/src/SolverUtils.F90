@@ -257,7 +257,7 @@ CONTAINS
 !     REAL, POINTER :: t => Null()
 !------------------------------------------------------------------------------
 
-!     IF ( i == 68917 .AND. j == 68917 ) print *, t
+!     IF ( i == 8875 .AND. j == 8877 ) print *, t
 
      SELECT CASE( A % FORMAT )
        CASE( MATRIX_CRS )

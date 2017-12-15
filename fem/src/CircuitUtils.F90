@@ -866,22 +866,22 @@ CONTAINS
     
     mype = ParEnv % MyPe
     IF (ASSOCIATED(Comp)) THEN
+      SELECT CASE (Comp % CoilType)
+      CASE('stranded')
+        Comp % xvar => Comp % ivar
+        Comp % yvar => Comp % vvar
+      CASE('massive')
+        Comp % xvar => Comp % vvar
+        Comp % yvar => Comp % ivar
+      CASE('foil winding')
+        Comp % xvar => Comp % vvar
+        Comp % yvar => Comp % ivar
+      CASE DEFAULT
+        CALL Fatal ('AddComponentParallelizationVariables', 'Unsupported coil type')
+      END SELECT
+
       ParPerm => Comp % ParPerm
       IF ( Comp % Parallel .AND. ParPerm(mype+1) > 0) THEN
-        SELECT CASE (Comp % CoilType)
-        CASE('stranded')
-          Comp % xvar => Comp % ivar
-          Comp % yvar => Comp % vvar
-        CASE('massive')
-          Comp % xvar => Comp % vvar
-          Comp % yvar => Comp % ivar
-        CASE('foil winding')
-          Comp % xvar => Comp % vvar
-          Comp % yvar => Comp % ivar
-        CASE DEFAULT
-          CALL Fatal ('AddComponentParallelizationVariables', 'Unsupported coil type')
-        END SELECT
-
         xvar => Comp % xvar
         yvar => Comp % yvar
         
@@ -1599,7 +1599,6 @@ CONTAINS
       ! that are asked to be computed in parallel
       ! ---------------------------------------------------------
       IF (.NOT. Comp % Parallel) CYCLE
-      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
       yvar => Comp % yvar
       xvar => Comp % xvar
       vvar => Comp % vvar
@@ -1619,6 +1618,8 @@ CONTAINS
       RowId = vRowId ! this needs to go to the row owned by v
       IF(vvar % Owner == ParEnv % myPE) & 
         CALL CountMatElement(Rows, Cnts, RowId, 1)
+
+      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
       ! Here all the processes write their own contribution to the 
       ! y = y1 + ... + yn
       CALL CountMatElement(Rows, Cnts, RowId, 1)
@@ -1668,8 +1669,6 @@ CONTAINS
       ! i variable is reserved for the network that is written 
       ! by the user
       ! -------------------------------------------------------
-      IF (.NOT. ASSOCIATED(yvar))&
-        print *, ParEnv % Mype, "yvar not associated"
       vRowId = vvar % ValueId + nm 
       yRowId = yvar % ValueId + nm
       xRowId = xvar % ValueId + nm
