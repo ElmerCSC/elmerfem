@@ -1323,6 +1323,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             Comp % Resistance = 0._dp
           END IF
  
+        print *, ParEnv % Mype, "RowId", RowId, "ColId", ColId
+        print *, ParEnv % Mype, "nm", nm
           CALL AddToCmplxMatrixElement(CM, VvarId, VvarId, -1._dp, 0._dp)
         CASE('massive')
           i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
