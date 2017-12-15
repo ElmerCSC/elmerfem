@@ -724,7 +724,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
                      x, circ_eq_coeff, grads_coeff,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
     REAL(KIND=dp) :: localR !, localL
-    INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
+    INTEGER :: p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
                dim
     LOGICAL :: stat
@@ -750,7 +750,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
-    nm = CurrentModel % Asolver % Matrix % NumberOfRows
 
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
@@ -840,7 +839,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           ! ---------------------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
-          CALL AddToMatrixElement(CM, dofIdtest+nm, dofId+nm, value)
+          CALL AddToMatrixElement(CM, dofIdtest, dofId, value)
         END DO
 
 
@@ -854,8 +853,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
             IF (dim == 3) value = IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)/dt
   !          localL = value
   !          Comp % Inductance = Comp % Inductance + localL
-            CALL AddToMatrixElement(CM, dofIdtest+nm, PS(Indexes(q)), tscl * value)
-            CM % RHS(dofIdtest+nm) = CM % RHS(dofIdtest+nm) + pPOT(q) * value
+            CALL AddToMatrixElement(CM, dofIdtest, PS(Indexes(q)), tscl * value)
+            CM % RHS(dofIdtest) = CM % RHS(dofIdtest) + pPOT(q) * value
           END DO
         END IF
 
@@ -870,7 +869,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
             IF (dim == 3) q=q+nn
             IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
             IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
-            CALL AddToMatrixElement(CM, PS(indexes(q)), dofId+nm, value)
+            CALL AddToMatrixElement(CM, PS(indexes(q)), dofId, value)
         END DO
       END DO
 
@@ -1090,11 +1089,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   ! Write Circuit equations:
   ! ------------------------
   DO p = 1,n_Circuits
-    print *, "p0", p, "mype:", ParEnv % Mype
     CALL AddBasicCircuitEquations(p)
-    print *, "p1", p, "mype:", ParEnv % Mype
     CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
-    print *, "p2", p, "mype:", ParEnv % Mype
   END DO
   CALL AddParallelComponentConstraints()
   Asolver %  Matrix % AddMatrix => CM
@@ -1323,8 +1319,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             Comp % Resistance = 0._dp
           END IF
  
-        print *, ParEnv % Mype, "RowId", RowId, "ColId", ColId
-        print *, ParEnv % Mype, "nm", nm
           CALL AddToCmplxMatrixElement(CM, VvarId, VvarId, -1._dp, 0._dp)
         CASE('massive')
           i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
@@ -1424,7 +1418,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Element_t) :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     TYPE(Component_t) :: Comp
-    INTEGER :: nn, nd, nm, Indexes(nd),VvarId,IvarId
+    INTEGER :: nn, nd, Indexes(nd),VvarId,IvarId
 
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
@@ -1459,7 +1453,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
-    nm = CurrentModel % Asolver % Matrix % NumberOfRows
     Omega = GetAngularFrequency()
     
     CALL GetElementNodes(Nodes)
@@ -1471,9 +1464,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CALL GetWPotential(WBase)
       !print *, "W Potential", Wbase
     END IF
-
-!    VvarId = Comp % vvar % ValueId + nm
-!    IvarId = Comp % ivar % ValueId + nm
 
     i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
 
@@ -1563,7 +1553,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: dBasisdx(nn,3)
     COMPLEX(KIND=dp) :: localC, cmplx_value
     REAL(KIND=dp) :: localConductance !, localL
-    INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
+    INTEGER :: nn, nd, j, t, Indexes(nd), &
                VvarId, dim
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
@@ -1589,7 +1579,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
-    nm = CurrentModel % Asolver % Matrix % NumberOfRows
     Omega = GetAngularFrequency()
 
     CALL GetElementNodes(Nodes)
@@ -1600,8 +1589,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CALL GetWPotential(WBase)
       ncdofs=nd-nn
     END IF
-
-!    vvarId = Comp % vvar % ValueId + nm
 
     ! Numerical integration:
     ! ----------------------
@@ -1680,7 +1667,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: Basis(nn), DetJ, Omega, localAlpha, localV, localVtest, &
                      x, circ_eq_coeff, grads_coeff
     REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
-    INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
+    INTEGER :: p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
                dim
     LOGICAL :: stat
@@ -1708,7 +1695,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
-    nm = CurrentModel % Asolver % Matrix % NumberOfRows
     Omega = GetAngularFrequency()
 
     CALL GetElementNodes(Nodes)
@@ -1791,7 +1777,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
 
-          CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, dofId+nm, REAL(value), AIMAG(value))
+          CALL AddToCmplxMatrixElement(CM, dofIdtest, dofId, REAL(value), AIMAG(value))
         END DO
 
         DO j=1,ncdofs
@@ -1801,7 +1787,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           ! ---------------------------------------------------------
           IF (dim == 2) value = im * Omega * IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff
           IF (dim == 3) value = im * Omega * IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)
-          CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, ReIndex(PS(Indexes(q))), REAL(value), AIMAG(value) )
+          CALL AddToCmplxMatrixElement(CM, dofIdtest, ReIndex(PS(Indexes(q))), REAL(value), AIMAG(value) )
         END DO
 
       END DO
@@ -1815,7 +1801,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             IF (dim == 3) q=q+nn
             IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
             IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
-            CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), dofId+nm, REAL(value), AIMAG(value))
+            CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), dofId, REAL(value), AIMAG(value))
         END DO
       END DO
 

@@ -895,13 +895,13 @@ CONTAINS
           yvar % parValueIdIm = idy + 1
         END IF
 
-        print *, Parenv % MyPe, "Comp % ComponentId", Comp % ComponentId, "Comp % FirstParDofIjd", &
-          Comp % FirstParDofId, "Comp % VarDofs:", Comp % VarDofs, "ParEnv % MyPE", &
-          mype, "ParPerm(mype+1)", ParPerm(mype+1)
-        print *,  Parenv % MyPe, "xvar % parValueId", xvar % parValueId
-        print *,  Parenv % MyPe, "xvar % valueId", xvar % valueId
-        print *,  Parenv % MyPe, "yvar % valueId", yvar % valueId
-        print *,  Parenv % MyPe, "yvar % parValueId", yvar % parValueId
+!        print *, Parenv % MyPe, "Comp % ComponentId", Comp % ComponentId, "Comp % FirstParDofIjd", &
+!          Comp % FirstParDofId, "Comp % VarDofs:", Comp % VarDofs, "ParEnv % MyPE", &
+!          mype, "ParPerm(mype+1)", ParPerm(mype+1)
+!        print *,  Parenv % MyPe, "xvar % parValueId", xvar % parValueId
+!        print *,  Parenv % MyPe, "xvar % valueId", xvar % valueId
+!        print *,  Parenv % MyPe, "yvar % valueId", yvar % valueId
+!        print *,  Parenv % MyPe, "yvar % parValueId", yvar % parValueId
 
       END IF
     END IF
