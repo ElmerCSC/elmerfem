@@ -284,7 +284,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ! that are asked to be computed in parallel
       ! ---------------------------------------------------------
       IF (.NOT. Comp % Parallel) CYCLE
-      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
       yvar => Comp % yvar
       xvar => Comp % xvar
       vvar => Comp % vvar
@@ -305,6 +304,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ColId = yRowId
       IF(vvar % Owner == ParEnv % myPE) & 
         CALL AddToMatrixElement(CM, RowId, ColId, 1._dp)
+
+      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
       ColId = yvar % parValueId + nm
       ! Here all the processes write their own contribution to the 
       ! y = y1 + ... + yn
@@ -432,13 +433,13 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           Tcoef = GetElectricConductivityTensor(Element, nn, 're', .TRUE., CoilType)
           SELECT CASE(CoilType)
           CASE ('stranded')
-            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt)
+            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt,VvarId,IvarId)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
-            CALL Add_massive(Element,Tcoef,Comp,nn,nd,dt)
+            CALL Add_massive(Element,Tcoef,Comp,nn,nd,dt,VvarId)
           CASE ('foil winding')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
-            CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt)
+            CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt,VvarId)
           CASE DEFAULT
             CALL Fatal ('Circuits_apply', 'Non existent Coil Type Chosen!')
           END SELECT
@@ -456,7 +457,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt)
+   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt,VvarId,IvarId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element
@@ -515,8 +516,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ncdofs=nd-nn
     END IF
 
-    VvarId = Comp % vvar % ValueId + nm
-    IvarId = Comp % ivar % ValueId + nm
+!    VvarId = Comp % vvar % ValueId + nm
+!    IvarId = Comp % ivar % ValueId + nm
 
     ! Numerical integration:
     ! ----------------------
@@ -585,7 +586,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,dt)
+   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,dt,VvarId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element
@@ -642,7 +643,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ncdofs=nd-nn
     END IF
 
-    vvarId = Comp % vvar % ValueId + nm
+!    vvarId = Comp % vvar % ValueId + nm
 
     ! Numerical integration:
     ! ----------------------
@@ -708,7 +709,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt)
+   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt,VvarId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: nn, nd
@@ -772,7 +773,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ncdofs=nd-nn
     END IF
 
-    vvarId = Comp % vvar % ValueId
+!    vvarId = Comp % vvar % ValueId
     vpolord_tot = Comp % vvar % pdofs - 1
 
     ! Numerical integration:
@@ -1089,8 +1090,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   ! Write Circuit equations:
   ! ------------------------
   DO p = 1,n_Circuits
+    print *, "p0", p, "mype:", ParEnv % Mype
     CALL AddBasicCircuitEquations(p)
+    print *, "p1", p, "mype:", ParEnv % Mype
     CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
+    print *, "p2", p, "mype:", ParEnv % Mype
   END DO
   CALL AddParallelComponentConstraints()
   Asolver %  Matrix % AddMatrix => CM
@@ -1174,7 +1178,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           ELSE
             cmplx_value = Cvar % B(j)
           END IF
-          
+
           CALL AddToCmplxMatrixElement(CM, RowId, ColId, REAL(cmplx_value), AIMAG(cmplx_value))
         END IF
       END DO
@@ -1208,9 +1212,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! that are asked to be computed in parallel
       ! ---------------------------------------------------------
       IF (.NOT. Comp % Parallel) CYCLE
-      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
       yvar => Comp % yvar
-      xvar => Comp % yvar
+      xvar => Comp % xvar
       vvar => Comp % xvar
 
       ! The v variable row is always reserved for the component.
@@ -1229,6 +1232,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ColId = yRowId
       IF(vvar % Owner == ParEnv % myPE) & 
         CALL AddToCmplxMatrixElement(CM, RowId, ColId, 1._dp, 0._dp)
+
+      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
       ColId = yvar % parValueId + nm
       ! Here all the processes write their own contribution to the 
       ! y = y1 + ... + yn
@@ -1383,17 +1388,17 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             ELSE
               Tcoef = GetCMPLXElectricConductivityTensor(Element, nn, .TRUE., CoilType) 
             END IF
-            CALL Add_stranded(Element,Tcoef,Comp,nn,nd)
+            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,VvarId,IvarId)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
          !   CALL GetConductivity(Element, Tcoef, nn)
             Tcoef = GetCMPLXElectricConductivityTensor(Element, nn, .TRUE., CoilType) 
-            CALL Add_massive(Element,Tcoef,Comp,nn,nd)
+            CALL Add_massive(Element,Tcoef,Comp,nn,nd,VvarId)
           CASE ('foil winding')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
          !   CALL GetConductivity(Element, Tcoef, nn)
             Tcoef = GetCMPLXElectricConductivityTensor(Element, nn, .TRUE., CoilType) 
-            CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd)
+            CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd,VvarId)
           CASE DEFAULT
             CALL Fatal ('AddComponentEquationsAndCouplings', 'Non existent Coil Type Chosen!')
           END SELECT
@@ -1411,7 +1416,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd)
+   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,VvarId,IvarId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element
@@ -1465,8 +1470,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       !print *, "W Potential", Wbase
     END IF
 
-    VvarId = Comp % vvar % ValueId + nm
-    IvarId = Comp % ivar % ValueId + nm
+!    VvarId = Comp % vvar % ValueId + nm
+!    IvarId = Comp % ivar % ValueId + nm
 
     i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
 
@@ -1504,6 +1509,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
         Comp % Resistance = Comp % Resistance + localR
         
+
         CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
               REAL(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff), &
              AIMAG(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff))
@@ -1540,7 +1546,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd)
+   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,VvarId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element
@@ -1593,7 +1599,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ncdofs=nd-nn
     END IF
 
-    vvarId = Comp % vvar % ValueId + nm
+!    vvarId = Comp % vvar % ValueId + nm
 
     ! Numerical integration:
     ! ----------------------
@@ -1658,7 +1664,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd)
+   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,VvarId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: nn, nd
@@ -1715,7 +1721,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ncdofs=nd-nn
     END IF
 
-    vvarId = Comp % vvar % ValueId
+!    vvarId = Comp % vvar % ValueId
     vpolord_tot = Comp % vvar % pdofs - 1
 
     ! Numerical integration:

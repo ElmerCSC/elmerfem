@@ -523,7 +523,6 @@ CONTAINS
 
     Circuit => CurrentModel%Circuits(CId)
     Components => CurrentModel%CircuitComponents
-    
     Circuit % CvarDofs = 0
     DO CompInd=1,Circuit % n_comp
       CompIndAll = CompIndAll + 1
@@ -886,22 +885,23 @@ CONTAINS
         xvar => Comp % xvar
         yvar => Comp % yvar
         
-        idx = Comp % FirstParDofId + Comp % VarDofs * (ParPerm(mype+1)-1)
-        xvar % parValueId = ReIndex(idx)
-        idy = idx + xvar % dofs
-        yvar % parValueId = ReIndex(idy)
+        idx = CurrentModel % Circuit_tot_n + ReIndex(Comp % FirstParDofId + &
+          Comp % VarDofs * (ParPerm(mype+1)-1))
+        xvar % parValueId = idx
+        idy = idx + 1 + ReIndex(xvar % dofs)
+        yvar % parValueId = idy
         IF (Circuit % Harmonic) THEN
-          xvar % parValueIdIm = ImIndex(idx)
-          yvar % parValueIdIm = ImIndex(idy)
+          xvar % parValueIdIm = idx + 1
+          yvar % parValueIdIm = idy + 1
         END IF
 
-        print *, "Comp % ComponentId", Comp % ComponentId, "Comp % FirstParDofIjd", &
+        print *, Parenv % MyPe, "Comp % ComponentId", Comp % ComponentId, "Comp % FirstParDofIjd", &
           Comp % FirstParDofId, "Comp % VarDofs:", Comp % VarDofs, "ParEnv % MyPE", &
           mype, "ParPerm(mype+1)", ParPerm(mype+1)
-        print *, "xvar % parValueId", xvar % parValueId
-        print *, "yvar % parValueId", yvar % parValueId
-        print *, "xvar % dofs", xvar % dofs
-        print *, "xvar % valueId", xvar % valueId
+        print *,  Parenv % MyPe, "xvar % parValueId", xvar % parValueId
+        print *,  Parenv % MyPe, "xvar % valueId", xvar % valueId
+        print *,  Parenv % MyPe, "yvar % valueId", yvar % valueId
+        print *,  Parenv % MyPe, "yvar % parValueId", yvar % parValueId
 
       END IF
     END IF
@@ -1660,7 +1660,6 @@ CONTAINS
       ! that are asked to be computed in parallel
       ! ---------------------------------------------------------
       IF (.NOT. Comp % Parallel) CYCLE
-      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
       yvar => Comp % yvar
       xvar => Comp % xvar
       vvar => Comp % vvar
@@ -1669,6 +1668,8 @@ CONTAINS
       ! i variable is reserved for the network that is written 
       ! by the user
       ! -------------------------------------------------------
+      IF (.NOT. ASSOCIATED(yvar))&
+        print *, ParEnv % Mype, "yvar not associated"
       vRowId = vvar % ValueId + nm 
       yRowId = yvar % ValueId + nm
       xRowId = xvar % ValueId + nm
@@ -1681,6 +1682,8 @@ CONTAINS
       ColId = yRowId
       IF(vvar % Owner == ParEnv % myPE) & 
         CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
+
+      IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
       ColId = yvar % parValueId + nm
       ! Here all the processes write their own contribution to the 
       ! y = y1 + ... + yn
@@ -1817,8 +1820,6 @@ CONTAINS
 
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          print *, ParEnv % Mype, "Rows(",VvarId,")", Rows(VvarId)
-          print *, ParEnv % Mype, "Cnts(",VvarId,")", Cnts(VvarId)
           CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
           CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
         CASE('massive')
@@ -2090,7 +2091,7 @@ CONTAINS
 
     CALL Info( 'Circuits_MatrixInit','Total number of circuit rows is '&
       //TRIM(i2s(Circuit_tot_n)), Level=5 )
-    CALL Info( 'Circuits_MatrixInit','On top of the circuit rows total number of Component Parallelization rows is '&
+    CALL Info( 'Circuits_MatrixInit','Additional number of Component Parallelization rows is '&
       //TRIM(i2s(Component_par_tot_n)), Level=5 )
     
     ! Initialialize Circuit matrix:
