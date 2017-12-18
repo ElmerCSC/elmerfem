@@ -1770,7 +1770,7 @@ CONTAINS
               CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows)
            CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows)
+              CALL CountAndCreateFoilWinding(Element,nn,nd,RowId,Comp,Cnts,Done,Rows)
             END SELECT
           END IF
         END DO
@@ -1855,7 +1855,7 @@ CONTAINS
               CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols)
            CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE   
-              CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows,Cols=Cols)
+              CALL CountAndCreateFoilWinding(Element,nn,nd,VvarId,Comp,Cnts,Done,Rows,Cols=Cols)
             END SELECT
           END IF
         END DO
@@ -1988,7 +1988,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-    SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows,Cols,Harmonic)
+    SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,VvarId,Comp,Cnts,Done,&
+                                         Rows,Cols,Harmonic)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element
@@ -1998,7 +1999,7 @@ CONTAINS
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: Indexes(nd)
     INTEGER :: p,j,q,vpolord,vpolordtest,vpolord_tot,&
-      dofId,dofIdtest,vvarId, nm
+      dofId,dofIdtest,vvarId
     LOGICAL :: dofsdone, First=.TRUE.
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
@@ -2020,12 +2021,10 @@ CONTAINS
     IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateFoilWinding','ASolver not found!')
     PS => CurrentModel % Asolver % Variable % Perm
     nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
-    nm = CurrentModel % ASolver % Matrix % NumberOfRows
 
     ncdofs=nd
     IF (dim == 3) ncdofs=nd-nn
 
-    vvarId = Comp % vvar % ValueId
     vpolord_tot = Comp % vvar % pdofs - 1
 
     DO vpolordtest=0,vpolord_tot ! V'(alpha)
@@ -2033,9 +2032,9 @@ CONTAINS
       DO vpolord = 0, vpolord_tot ! V(alpha)
         dofId = AddIndex(vpolord + 1) + vvarId
         IF (PRESENT(Cols)) THEN  
-          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, dofId+nm, harm)
+          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest, dofId, harm)
         ELSE
-          CALL CountMatElement(Rows, Cnts, dofIdtest+nm, 1, harm)
+          CALL CountMatElement(Rows, Cnts, dofIdtest, 1, harm)
         END IF
       END DO
 
@@ -2045,9 +2044,9 @@ CONTAINS
         IF (PRESENT(Cols)) THEN  
           q = PS(Indexes(q))
           IF (harm) q = ReIndex(q)
-          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, q, harm)
+          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest, q, harm)
         ELSE
-          CALL CountMatElement(Rows, Cnts, dofIdtest+nm, 1, harm)
+          CALL CountMatElement(Rows, Cnts, dofIdtest, 1, harm)
         END IF
       END DO
     END DO
@@ -2060,7 +2059,7 @@ CONTAINS
         q = PS(Indexes(q))
         IF (harm) q = ReIndex(q)
         IF (PRESENT(Cols)) THEN  
-          CALL CreateMatElement(Rows, Cols, Cnts, q, dofId+nm, harm)
+          CALL CreateMatElement(Rows, Cols, Cnts, q, dofId, harm)
         ELSE
           CALL CountMatElement(Rows, Cnts, q, 1, harm)
         END IF
