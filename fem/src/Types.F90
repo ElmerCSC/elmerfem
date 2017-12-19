@@ -824,12 +824,13 @@ END INTERFACE
     LOGICAL :: isIvar, isVvar
     INTEGER :: BodyId, valueId, ImValueId, &
                parValueId, ParValueIdIm, &
-              dofs, pdofs, outputpdofs, Owner, ComponentId
+              dofs, pdofs, outputpdofs=0, Owner, ComponentId
     TYPE(Component_t), POINTER :: Component => Null()
     REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
     REAL(KIND=dp), ALLOCATABLE :: SourceRe(:), SourceIm(:), Mre(:), Mim(:)
     INTEGER, ALLOCATABLE :: EqVarIds(:)
     INTEGER, POINTER :: ParPerm(:) => Null()
+    INTEGER, POINTER :: Partitions(:) => Null()
   END TYPE CircuitVariable_t
   
   TYPE Component_t
@@ -844,6 +845,7 @@ END INTERFACE
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar, xvar=>Null(), yvar=>Null()
     LOGICAL :: UseCoilResistance = .FALSE., Parallel = .FALSE.
     INTEGER, POINTER :: ParPerm(:) => Null()
+    INTEGER, POINTER :: Partitions(:) => Null()
     INTEGER :: VarDofs, FirstParDofId
   END TYPE Component_t
 

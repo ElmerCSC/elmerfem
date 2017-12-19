@@ -727,11 +727,13 @@ CONTAINS
     ! ----------------------------------------------
     IF (Comp % nofpartitions > 0) THEN 
       ALLOCATE(Comp % ParPerm(ParEnv % PEs))
+      ALLOCATE(Comp % Partitions(Comp % nofpartitions))
       p = 1
       Comp % ParPerm = -1
       DO j = 1, ParEnv % PEs
         IF (OwnerElCounts(j) > 0) THEN
           Comp % ParPerm(j) = p
+          Comp % Partitions(p) = j
           p = p + 1
         END IF 
       END DO
@@ -884,6 +886,10 @@ CONTAINS
       IF ( Comp % Parallel .AND. ParPerm(mype+1) > 0) THEN
         xvar => Comp % xvar
         yvar => Comp % yvar
+        xvar % ParPerm => Comp % ParPerm
+        yvar % ParPerm => Comp % ParPerm
+        xvar % Partitions => Comp % Partitions
+        yvar % Partitions => Comp % Partitions
         
         idx = CurrentModel % Circuit_tot_n + ReIndex(Comp % FirstParDofId + &
           Comp % VarDofs * (ParPerm(mype+1)-1))
@@ -1297,6 +1303,86 @@ MODULE CircMatInitMod
 CONTAINS
 
 !------------------------------------------------------------------------------
+   SUBROUTINE SetParallelComponentVariableInfo(Comp, Cvar, nm, Harmonic)
+!------------------------------------------------------------------------------
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(CircuitVariable_t), POINTER :: Cvar
+    TYPE(Matrix_t), POINTER :: CM
+    INTEGER, POINTER :: ParPerm(:) => Null(), Partitions(:) => Null()
+    INTEGER :: nm
+    INTEGER :: j, RowId, ParRowId, CircOwnerPE, nofNeighbours, k
+    LOGICAL :: OwnerInParPerm, Harmonic
+
+    CM => CurrentModel%CircuitMatrix
+    ParRowId = Cvar % parValueId + nm
+    RowId = Cvar % parValueId + nm
+    ParPerm => Comp % ParPerm
+    Partitions => Comp % Partitions
+    CircOwnerPE = ParEnv % PEs - 1
+    OwnerInParPerm = IdInList(CircOwnerPE+1, Partitions)
+    nofNeighbours = Comp % nofpartitions
+    IF (.NOT. OwnerInParPerm) nofNeighbours = nofNeighbours + 1
+    IF (Harmonic) THEN
+      DO j = 1, Cvar % dofs
+        IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(ParRowId+AddIndex(j-1))%Neighbours)) THEN
+          ALLOCATE(CM % ParallelInfo % NeighbourList(ParRowId+AddIndex(j-1)) % Neighbours(2))
+          ALLOCATE(CM % ParallelInfo % NeighbourList(ParRowId+AddImIndex(j-1)) % Neighbours(2))
+        END IF
+        CM % ParallelInfo % NeighbourList(ParRowId+AddIndex(j-1)) % Neighbours(1) = ParEnv % MyPe
+        CM % ParallelInfo % NeighbourList(ParRowId+AddIndex(j-1)) % Neighbours(2) = ParEnv % PEs-1
+        CM % ParallelInfo % NeighbourList(ParRowId+AddImIndex(j-1)) % Neighbours(1) = ParEnv % MyPe
+        CM % ParallelInfo % NeighbourList(ParRowId+AddImIndex(j-1)) % Neighbours(2) = ParEnv % PEs-1
+      END DO
+
+      IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId)%Neighbours)) THEN
+        ALLOCATE(CM % ParallelInfo % NeighbourList(RowId) % Neighbours(nofNeighbours))
+        ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(nofNeighbours))
+      END IF
+      CM % ParallelInfo % NeighbourList(RowId) % Neighbours(1) = ParEnv % PEs - 1
+      CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(1) = ParEnv % PEs - 1
+      k=1
+      IF (.NOT. OwnerInParPerm) THEN
+        CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = CircOwnerPE
+        CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(k) = CircOwnerPE
+        k=k+1
+      END IF
+      DO j=1,Comp%nofpartitions
+        IF (CircOwnerPE+1 .NE. Partitions(j)) THEN
+          CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = Partitions(j)-1
+          CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(k) = Partitions(j)-1
+          k=k+1
+        END IF
+      END DO
+    ELSE
+      DO j = 1, Cvar % dofs
+        IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(ParRowId+j-1)%Neighbours)) THEN
+          ALLOCATE(CM % ParallelInfo % NeighbourList(ParRowId+j-1) % Neighbours(2))
+        END IF
+        CM % ParallelInfo % NeighbourList(ParRowId+j-1) % Neighbours(1) = ParEnv % MyPe
+        CM % ParallelInfo % NeighbourList(ParRowId+j-1) % Neighbours(2) = ParEnv % PEs-1
+      END DO
+
+      IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId)%Neighbours)) THEN
+        ALLOCATE(CM % ParallelInfo % NeighbourList(RowId) % Neighbours(nofNeighbours))
+      END IF
+      CM % ParallelInfo % NeighbourList(RowId) % Neighbours(1) = ParEnv % PEs - 1
+      k=1
+      IF (.NOT. OwnerInParPerm) THEN
+        CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = Partitions(j)-1
+        k=k+1
+      END IF
+      DO j=1,Comp%nofpartitions
+        IF (CircOwnerPE+1 .NE. Partitions(j)) THEN
+          CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = CircOwnerPE
+          k=k+1
+        END IF
+      END DO
+    END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetParallelComponentVariableInfo
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
    SUBROUTINE SetCircuitsParallelInfo()
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -1305,6 +1391,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: ASolver
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(Element_t), POINTER :: Element
+    TYPE(Component_t), POINTER :: Comp
     INTEGER :: i, nm, Circuit_tot_n, p, j, &
                cnt(Parenv % PEs), r_cnt(ParEnv % PEs), &
                RowId, nn, l, k, n_Circuits, cvardofs
@@ -1316,7 +1403,7 @@ CONTAINS
     Circuit_tot_n = CurrentModel%Circuit_tot_n
     Circuits => CurrentModel % Circuits
     n_Circuits = CurrentModel % n_Circuits
-    
+
     IF(.NOT.ASSOCIATED(CM % ParallelInfo)) THEN
       ALLOCATE(CM % ParallelInfo)
 #if 0
@@ -1338,13 +1425,19 @@ CONTAINS
         Cvar => Circuits(p) % CircuitVariables(i)
         cvardofs = Cvar % dofs
         IF(ASSOCIATED(CVar%Component)) THEN
-          IF (Cvar % Component % Parallel) cvardofs = 1
-          DO j=1,GetNOFACtive()
-             Element => GetActiveElement(j)
-               IF(ElAssocToCvar(Element, Cvar)) THEN
-                 cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
-               END IF
-          END DO
+          Comp => Cvar%Component
+          IF (Comp % Parallel) THEN
+            Cvar % Owner = ParEnv % PEs - 1
+            CALL SetParallelComponentVariableInfo(Comp, Cvar, nm, Circuits(p) % Harmonic)
+            CYCLE
+          ELSE
+            DO j=1,GetNOFACtive()
+               Element => GetActiveElement(j)
+                 IF(ElAssocToCvar(Element, Cvar)) THEN
+                   cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
+                 END IF
+            END DO
+          END IF
         END IF
         CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
                 MPI_MAX,ASolver % Matrix % Comm,j)
@@ -1395,14 +1488,12 @@ CONTAINS
       END DO
     END DO
 
-
     DO i=1,CM % NumberOfRows
       IF ( .NOT. ASSOCIATED( CM % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
         ALLOCATE(CM % ParallelInfo % NeighbourList(i) % Neighbours(1) )
         CM % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % myPE
       END IF
     END DO
-
 
     IF ( parenv % mype==0 ) THEN
       DO i=1,parenv % pes
