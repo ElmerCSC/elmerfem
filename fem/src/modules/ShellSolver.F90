@@ -187,6 +187,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: LargeDeflection, MeshDisplacementActive
   LOGICAL :: NoTractions
   LOGICAL :: SolveBenchmarkCase
+  LOGICAL :: MassAssembly, HarmonicAssembly
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
@@ -214,8 +215,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp) :: RefWork, Work
   REAL(KIND=dp) :: MaxPDir1Err, MaxPDir2Err, PDir1(3), PDir2(3)
   REAL(KIND=dp) :: Energy(4), MEnergy, SEnergy, BEnergy, Etot
-
-  LOGICAL :: MassAssembly, HarmonicAssembly
   
   SAVE VisitsList, Indices, LocalSol, TotalSol, LocalRHSForce
 !------------------------------------------------------------------------------  
@@ -227,10 +226,10 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   Mesh => GetMesh()
   SolverPars => GetSolverParams()
 
-  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found )  
+  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
   
-  HarmonicAssembly = GetLogical(SolverPars,'Harmonic Mode',Found ) .OR. &
-      GetLogical(SolverPars,'Harmonic Analysis',Found )
+  HarmonicAssembly = GetLogical(SolverPars, 'Harmonic Mode', Found) .OR. &
+      GetLogical(SolverPars, 'Harmonic Analysis', Found)
   MassAssembly =  ( TransientSimulation .OR. HarmonicAssembly ) 
 
   ! ---------------------------------------------------------------------------------
@@ -447,7 +446,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ! -----------------------------------------------------------------------------
       CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
           LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
-          ApplyBubbles, ShellModelArea, TotalErr, LocalRHSForce, BenchmarkProblem=SolveBenchmarkCase)
+          ApplyBubbles, MassAssembly, HarmonicAssembly, LocalRHSForce, ShellModelArea, &
+          TotalErr, BenchmarkProblem=SolveBenchmarkCase)
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
@@ -699,10 +699,10 @@ CONTAINS
       
       OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
       IF ( iostat /= 0 ) THEN
-        CALL Fatal( 'ReadSurfaceDirector', 'Opening mesh.director file failed.')     
+        CALL Fatal('ReadSurfaceDirector', 'Opening mesh.director file failed.')     
       ELSE
         DO i=1,NumberOfNodes
-          READ( 10,*,IOSTAT=iostat) k, d
+          READ(10,*,IOSTAT=iostat) k, d
 
           IF (k /= i) CALL Fatal('mesh.director', &
               'Trivial correspondence between rows and node numbers assumed currently')
@@ -757,7 +757,7 @@ CONTAINS
         CALL Info('ReadSurfaceDirector', &
             'a file for director output exists: write rejected', Level=5)
       ELSE
-        OPEN( 10, FILE = DirectorFile(1:n), status='NEW', IOSTAT = iostat )        
+        OPEN(10, FILE = DirectorFile(1:n), status='NEW', IOSTAT = iostat)        
         IF ( iostat /= 0 ) CALL Fatal( 'ReadSurfaceDirector', &
             'Opening a file for elementwise director output failed.')
 
@@ -987,7 +987,7 @@ CONTAINS
 
     ! Write edge curve parameters to a file:
     ! ------------------------------------------------------------------
-    IF (FileOutput) OPEN( 10, FILE = 'edgecsys.dat', status='REPLACE')
+    IF (FileOutput) OPEN(10, FILE = 'edgecsys.dat', status='REPLACE')
 
     Active = GetNOFActive()
     DO k=1,Active
@@ -1119,11 +1119,11 @@ CONTAINS
           CALL EdgeFrame(X1, X2, d1, d2, A, cpars)
 
           IF (FileOutput .AND. EdgesParametrized == 4) THEN
-            WRITE( 10, '(2I5,18e23.15)',ADVANCE='NO') v1, v2, A(1,1), A(2,1), &
+            WRITE(10, '(2I5,18e23.15)',ADVANCE='NO') v1, v2, A(1,1), A(2,1), &
                 A(3,1), A(1,2), A(2,2), A(3,2), A(1,3), A(2,3), A(3,3), A(1,4), &
                 A(2,4), A(3,4), cpars(1), cpars(1), cpars(2), cpars(3), cpars(4), &
                 cpars(5)
-            WRITE( 10, *) ''
+            WRITE(10, *) ''
           END IF
         END IF
 
@@ -3126,8 +3126,8 @@ CONTAINS
 ! inaccurate results for thin shells (with low p)! 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrix(BGElement, n, nd, m, LocalSol, LargeDeflection, &
-      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, Area, Error, &
-      RHSForce, BenchmarkProblem)
+      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, MassAssembly, &
+      HarmonicAssembly, RHSForce, Area, Error, BenchmarkProblem)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
@@ -3140,9 +3140,11 @@ CONTAINS
     INTEGER, INTENT(IN) :: StrainReductionMethod       ! The choice of strain reduction method
     INTEGER, INTENT(IN) :: MembraneStrainReductionMethod ! The choice of membrane strain reduction method    
     LOGICAL, INTENT(IN) :: Bubbles                     ! To indicate that bubble functions are used
+    LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
+    LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
+    REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
     REAL(KIND=dp), INTENT(INOUT) :: Area               ! A variable for area compution
     REAL(KIND=dp), INTENT(INOUT) :: Error              ! A variable for error compution
-    REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
     LOGICAL, INTENT(IN) :: BenchmarkProblem            ! To omit some terms in the strain energy 
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element => NULL()
@@ -3286,7 +3288,7 @@ CONTAINS
     ! only by using the node coordinates of the background element.
     ! --------------------------------------------------------------------------
     CALL WriteElementNodesVariables(BGElement, GElement, Element, Nodes, &
-        PNodes, PatchNodes, PVersion) 
+        PNodes, PatchNodes)
 
     ! --------------------------------------------------------------------------
     ! Body forces, material parameters and the shell thickness:
@@ -3356,8 +3358,8 @@ CONTAINS
 
     Q = 0.0d0
     DO j=1,nd
-      !IF ( PVersion ) THEN
-      IF ( .FALSE. ) THEN
+      IF ( PVersion ) THEN
+      !IF ( .FALSE. ) THEN
         y1 = PNodes % x(j)
         y2 = PNodes % y(j)       
       ELSE
@@ -4282,6 +4284,9 @@ CONTAINS
         SELECT CASE(nd)
         CASE(3)
           Element % Type => GetElementType(303, .FALSE.)
+          ! Ensure that the reference element for the Lagrange interpolation is used:
+          Element % Type % NodeU(1:3) = (/ 0.0d0, 1.0d0, 0.0d0 /)
+          Element % Type % NodeV(1:3) = (/ 0.0d0, 0.0d0, 1.0d0 /)
         CASE DEFAULT
           CALL Fatal('CreateLagrangeElementStructures', 'Unsupported triangular p-element')
         END SELECT
@@ -4344,7 +4349,7 @@ CONTAINS
 ! in terms of p-basis.
 !------------------------------------------------------------------------------
   SUBROUTINE WriteElementNodesVariables(BGElement, GElement, Element, Nodes, &
-      PNodes, PatchNodes, PVersion)
+      PNodes, PatchNodes)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
     TYPE(Element_t), POINTER, INTENT(IN) :: GElement  ! A Lagrange element for surface reconstruction
@@ -4352,10 +4357,9 @@ CONTAINS
     TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! A nodes data structure for Element     
     TYPE(Nodes_t), INTENT(INOUT) :: PNodes            ! A nodes data structure for p-version
     REAL(KIND=dp), INTENT(IN) :: PatchNodes(:,:)      ! The nodes data of coordinate domain
-    LOGICAL, INTENT(IN) :: PVersion                   ! To create nodes data for p-version
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: Stat
+    LOGICAL :: Stat, PVersion
     INTEGER :: j, k, t, NodesCount, GElementNodes, Family
     REAL(KIND=dp) :: u, v, yk, up, vp, sp
     REAL(KIND=dp) :: GBasis(GElement % Type % NumberOfNodes)
@@ -4364,6 +4368,8 @@ CONTAINS
     REAL(KIND=dp) :: PBasis(Element % Type % NumberOfNodes)
     REAL(KIND=dp) :: Basis(Element % Type % NumberOfNodes)
 !------------------------------------------------------------------------------
+    PVersion = IsPElement(BGElement)
+
     n = BGElement % Type % NumberOfNodes
     NodesCount = Element % Type % NumberOfNodes
     GElementNodes = GElement % Type % NumberOfNodes
@@ -5587,7 +5593,7 @@ CONTAINS
       IF (SIZE(DirectorValues) < 3*n) CALL Fatal('AverageDirector', &
           'Elemental director data is not associated with all nodes')
     ELSE
-      CALL Fatal( 'AverageDirector', 'Elemental director data is not associated')
+      CALL Fatal('AverageDirector', 'Elemental director data is not associated')
     END IF
 
     DO i=1,n
@@ -5650,7 +5656,7 @@ CONTAINS
 
     IP = GaussPoints(PlaneElement)
     DO j=1,IP % n   
-      stat = ElementInfo( PlaneElement, NodesVar, IP % u(j), IP % v(j), &
+      stat = ElementInfo(PlaneElement, NodesVar, IP % u(j), IP % v(j), &
           IP % w(j), detJ, Basis)
       Area = Area + IP % s(j) * detJ
     END DO
@@ -5685,7 +5691,7 @@ CONTAINS
     ! -------------------------------------------------------
     SELECT CASE(Family)
     CASE(3)
-      IP = GaussPointsTriangle(11, PReferenceElement=.TRUE. )
+      IP = GaussPointsTriangle(11, PReferenceElement=.TRUE.)
     CASE(4)
       IP = GaussPoints(Element, 25)
     CASE DEFAULT
@@ -5693,7 +5699,7 @@ CONTAINS
     END SELECT
 
     DO j=1,IP % n
-      stat = BlendingSurfaceInfo( Element, Nodes, IP % U(j), IP % V(j), &
+      stat = BlendingSurfaceInfo(Element, Nodes, IP % U(j), IP % V(j), &
           DetA, a1, a2, a3, A, B, x, MacroElement)      
       SurfaceArea = SurfaceArea + IP % s(j) * SQRT(Deta)
     END DO
