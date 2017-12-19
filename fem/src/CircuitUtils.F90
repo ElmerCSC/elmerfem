@@ -1340,10 +1340,8 @@ CONTAINS
       END IF
       CM % ParallelInfo % NeighbourList(RowId) % Neighbours(1) = CircOwnerPE
       CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(1) = CircOwnerPE
-      k=1
-      IF (.NOT. OwnerInParPerm) k=k+1
       DO j=1,Comp%nofpartitions
-        IF (CircOwnerPE+1 .NE. Partitions(j)) THEN
+        IF (CircOwnerPE .NE. Partitions(j)-1) THEN
           CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = Partitions(j)-1
           CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(k) = Partitions(j)-1
           k=k+1
@@ -1355,21 +1353,17 @@ CONTAINS
           ALLOCATE(CM % ParallelInfo % NeighbourList(ParRowId+j-1) % Neighbours(2))
         END IF
         CM % ParallelInfo % NeighbourList(ParRowId+j-1) % Neighbours(1) = ParEnv % MyPe
-        CM % ParallelInfo % NeighbourList(ParRowId+j-1) % Neighbours(2) = ParEnv % PEs-1
+        CM % ParallelInfo % NeighbourList(ParRowId+j-1) % Neighbours(2) = CircOwnerPE
       END DO
 
       IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId)%Neighbours)) THEN
         ALLOCATE(CM % ParallelInfo % NeighbourList(RowId) % Neighbours(nofNeighbours))
       END IF
-      CM % ParallelInfo % NeighbourList(RowId) % Neighbours(1) = ParEnv % PEs - 1
-      k=1
-      IF (.NOT. OwnerInParPerm) THEN
-        CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = Partitions(j)-1
-        k=k+1
-      END IF
+      CM % ParallelInfo % NeighbourList(RowId) % Neighbours(1) = CircOwnerPE
+      k=2
       DO j=1,Comp%nofpartitions
         IF (CircOwnerPE+1 .NE. Partitions(j)) THEN
-          CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = CircOwnerPE
+          CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = Partitions(j)-1
           k=k+1
         END IF
       END DO
@@ -1419,7 +1413,7 @@ CONTAINS
       DO i=1,Circuits(p) % n
         cnt  = 0
         Cvar => Circuits(p) % CircuitVariables(i)
-        cvardofs = Cvar % dofs
+        Cvar % Owner = ParEnv % PEs - 1
         IF(ASSOCIATED(CVar%Component)) THEN
           Comp => Cvar%Component
           IF (Comp % Parallel) THEN
