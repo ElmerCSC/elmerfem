@@ -1319,10 +1319,17 @@ CONTAINS
     
     IF(.NOT.ASSOCIATED(CM % ParallelInfo)) THEN
       ALLOCATE(CM % ParallelInfo)
+#if 0
       ALLOCATE(CM % ParallelInfo % NeighbourList(nm+Circuit_tot_n))
       DO i=1,nm+Circuit_tot_n
         CM % ParallelInfo % NeighbourList(i) % Neighbours => Null()
       END DO
+#else
+      ALLOCATE(CM % ParallelInfo % NeighbourList(CM % NumberOfRows))
+      DO i=1,CM % NumberOfRows
+        CM % ParallelInfo % NeighbourList(i) % Neighbours => Null()
+      END DO
+#endif
     END IF
 
     DO p = 1,n_Circuits
@@ -1361,7 +1368,7 @@ CONTAINS
               IF(k==CVar % Owner) CYCLE
               IF(r_cnt(k+1)>0) THEN
                 l = l + 1
-                CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(l) = k
+                CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(l)   = k
                 CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(l) = k
               END IF
             END DO
@@ -1386,6 +1393,14 @@ CONTAINS
           END DO
         END IF
       END DO
+    END DO
+
+
+    DO i=1,CM % NumberOfRows
+      IF ( .NOT. ASSOCIATED( CM % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+        ALLOCATE(CM % ParallelInfo % NeighbourList(i) % Neighbours(1) )
+        CM % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % myPE
+      END IF
     END DO
 
 
