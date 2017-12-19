@@ -1338,14 +1338,10 @@ CONTAINS
         ALLOCATE(CM % ParallelInfo % NeighbourList(RowId) % Neighbours(nofNeighbours))
         ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(nofNeighbours))
       END IF
-      CM % ParallelInfo % NeighbourList(RowId) % Neighbours(1) = ParEnv % PEs - 1
-      CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(1) = ParEnv % PEs - 1
+      CM % ParallelInfo % NeighbourList(RowId) % Neighbours(1) = CircOwnerPE
+      CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(1) = CircOwnerPE
       k=1
-      IF (.NOT. OwnerInParPerm) THEN
-        CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = CircOwnerPE
-        CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(k) = CircOwnerPE
-        k=k+1
-      END IF
+      IF (.NOT. OwnerInParPerm) k=k+1
       DO j=1,Comp%nofpartitions
         IF (CircOwnerPE+1 .NE. Partitions(j)) THEN
           CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = Partitions(j)-1
