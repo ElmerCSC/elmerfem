@@ -1315,7 +1315,7 @@ CONTAINS
 
     CM => CurrentModel%CircuitMatrix
     ParRowId = Cvar % parValueId + nm
-    RowId = Cvar % parValueId + nm
+    RowId = Cvar % ValueId + nm
     ParPerm => Comp % ParPerm
     Partitions => Comp % Partitions
     CircOwnerPE = ParEnv % PEs - 1
@@ -1340,6 +1340,7 @@ CONTAINS
       END IF
       CM % ParallelInfo % NeighbourList(RowId) % Neighbours(1) = CircOwnerPE
       CM % ParallelInfo % NeighbourList(RowId+1) % Neighbours(1) = CircOwnerPE
+      k=2
       DO j=1,Comp%nofpartitions
         IF (CircOwnerPE .NE. Partitions(j)-1) THEN
           CM % ParallelInfo % NeighbourList(RowId) % Neighbours(k) = Partitions(j)-1
@@ -1417,6 +1418,7 @@ CONTAINS
         IF(ASSOCIATED(CVar%Component)) THEN
           Comp => Cvar%Component
           IF (Comp % Parallel) THEN
+            IF ( .NOT. Comp % OwnerElementCounts(ParEnv % Mype+1) > 0 ) CYCLE
             Cvar % Owner = ParEnv % PEs - 1
             CALL SetParallelComponentVariableInfo(Comp, Cvar, nm, Circuits(p) % Harmonic)
             CYCLE
@@ -1481,7 +1483,7 @@ CONTAINS
     DO i=1,CM % NumberOfRows
       IF ( .NOT. ASSOCIATED( CM % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
         ALLOCATE(CM % ParallelInfo % NeighbourList(i) % Neighbours(1) )
-        CM % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % myPE
+        CM % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe
       END IF
     END DO
 
