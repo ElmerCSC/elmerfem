@@ -238,6 +238,36 @@ CONTAINS
   END FUNCTION FindSolverWithKey
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE WriteCircuitMatrices()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+ 
+    TYPE(Matrix_t), POINTER :: CM
+    INTEGER :: nm, RowId, ColId
+    REAL(KIND=dp) :: CMvalue
+ 
+    CM=>CurrentModel%CircuitMatrix
+
+    OPEN(UNIT=12, FILE="cm"//TRIM(i2s(ParEnv % MyPe)), ACTION="write", STATUS="replace")
+
+    nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    
+    WRITE(12,*) "#col ", "row ", "value"
+    DO RowId = nm, CM % NumberOfRows
+      DO ColId = nm, CM % NumberOfRows
+        CMvalue = CRS_GetMatrixElement(CM, RowId, ColId)
+        IF (CMvalue .NE. 0._dp) THEN
+          WRITE(12,*) RowId-nm, " ", ColId-nm, " ", CMValue
+        END IF 
+      END DO
+    END DO
+
+    CLOSE(UNIT=12)
+!------------------------------------------------------------------------------
+  END SUBROUTINE WriteCircuitMatrices
+!------------------------------------------------------------------------------
+
 END MODULE CircuitUtils
 
 
@@ -1414,7 +1444,6 @@ CONTAINS
       DO i=1,Circuits(p) % n
         cnt  = 0
         Cvar => Circuits(p) % CircuitVariables(i)
-        Cvar % Owner = ParEnv % PEs - 1
         IF(ASSOCIATED(CVar%Component)) THEN
           Comp => Cvar%Component
           IF (Comp % Parallel) THEN

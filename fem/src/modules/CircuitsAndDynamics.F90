@@ -1018,7 +1018,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)
-    
+
+   
 !------------------------------------------------------------------------------
 
   CALL DefaultStart()
@@ -1094,6 +1095,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   END DO
   CALL AddParallelComponentConstraints()
   Asolver %  Matrix % AddMatrix => CM
+
+  CALL WriteCircuitMatrices()
 
   IF(ASSOCIATED(CM)) THEN
     IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)

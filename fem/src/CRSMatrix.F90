@@ -442,7 +442,7 @@ CONTAINS
     IF ( .NOT.ASSOCIATED(Diag).OR.i /= j .OR. .NOT. A % Ordered ) THEN
        k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
       IF ( k==0 ) THEN
-         PRINT*,'Trying to get value to nonexistent matrix element: ', i,j
+!         PRINT*,'Trying to get value to nonexistent matrix element: ', i,j
          RETURN
        END IF
        k = k + Rows(i) - 1
