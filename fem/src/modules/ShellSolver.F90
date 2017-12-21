@@ -46,6 +46,7 @@
 ! *  are not yet fully utilized. Note the current restrictions:
 ! *        -- Strain reduction operators have been worked out for 
 ! *           the lowest-order finite elements only.
+! *        -- p-element discretization is not properly supported (and probably never so)
 ! *        -- Parallel file formats for the director data are missing
 ! *        -- Postprocessing routines are also missing 
 ! *        -- Terms of O(d/R), with d the shell thickness and R the minimum of
@@ -294,7 +295,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! Read the director data at the nodes from mesh.director file and/or check the
   ! the integrity of the surface model. This subroutine creates an elementwise 
   ! property 'director' corresponding to the data, if not already available
-  ! via reading the director data from the file mesh.elements.data. I neither
+  ! via reading the director data from the file mesh.elements.data. If neither
   ! mesh.director nor mesh.elements.data are used to define the director, other
   ! means can also be used for obtaining the director.
   !----------------------------------------------------------------------------------
@@ -510,8 +511,11 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     ! ---------------------------------------------------------------------------------
     ! The solution variable is the solution increment while the sif-file specifies
     ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
-    ! is obtained for the solution increment. 
-    ! TO DO: This should be checked for p-elements.
+    ! is obtained for the solution increment.
+    !
+    ! NOTE: If higher-order elements were used over the lowest-order background mesh, 
+    ! the treatment of Dirichlet BCs should be checked (depending on how the additional
+    ! DOFs would be created)
     ! --------------------------------------------------------------------------------
     IF (ALLOCATED(Solver % Matrix % ConstrainedDOF)) THEN
       DO i=1,Solver % Matrix % NumberOfRows
@@ -3358,14 +3362,13 @@ CONTAINS
 
     Q = 0.0d0
     DO j=1,nd
-      IF ( PVersion ) THEN
-      !IF ( .FALSE. ) THEN
-        y1 = PNodes % x(j)
-        y2 = PNodes % y(j)       
-      ELSE
-        y1 = Nodes % x(j)
-        y2 = Nodes % y(j)
-      END IF
+      ! ------------------------------------------------------------------------
+      ! The following transformation is designed for the Lagrange element DOFs.
+      ! This is obscure and most likely inconsistent for the p-element DOFs, p>1,
+      ! although this may not break the p-approximation definitely.
+      ! ------------------------------------------------------------------------
+      y1 = Nodes % x(j)
+      y2 = Nodes % y(j)
 
       CALL SurfaceBasisVectors(y1, y2, TaylorParams, e1, e2, e3, o, abasis1, &
           abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
@@ -3392,17 +3395,7 @@ CONTAINS
     Force = 0.0d0
     RHSForce = 0.0d0
 
-    IF (PVersion) THEN
-      IP = GaussPoints( BGElement )
-    ELSE
-      !IF (SuperParametric) THEN
-      !  IP = GaussPoints( Element,  Element % TYPE % GaussPoints2 )
-      !ELSE
-
-      IP = GaussPoints( Element )
-
-      !END IF
-    END IF
+    IP = GaussPoints( BGElement )
 
     QUADRATURELOOP: DO t=1,IP % n
 
@@ -3426,19 +3419,15 @@ CONTAINS
         !    y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
         !    y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )            
         !
-        !  ELSE
+        !  ELSE ...
 
         ! Here the element mapping is isoparametric:
 
-        uq = IP % U(t)
-        vq = IP % V(t)
         sq = IP % S(t)          
 
-        stat = ElementInfo(BGElement, PNodes, uq, vq, IP % W(t), detJ, Basis, dBasis)
+        stat = ElementInfo(BGElement, PNodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis, dBasis)
         y1 = SUM( PNodes % x(1:nd) * Basis(1:nd) )
         y2 = SUM( PNodes % y(1:nd) * Basis(1:nd) )
-
-        !  END IF
 
       ELSE
 
@@ -3447,7 +3436,7 @@ CONTAINS
         !              PatchNodes(1:16,2), IP % U(t), IP % V(t), detJ, Basis, dBasis )
         !          y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
         !          y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )  
-        !        ELSE
+        !        ELSE ...
 
         ! ---------------------------------------------------------------------------------
         ! Use isoparametric element map:
@@ -3458,8 +3447,7 @@ CONTAINS
         !      detJ, Basis, dBasis )
         !
         ! Now ReductionOperatorInfo assumes p-reference elements, so
-        ! switch to the reference p-element (perhaps we could use the standard reference 
-        ! elements, since continuity across elements is not needed for the reduced strain).
+        ! switch to the reference p-element.
         ! ---------------------------------------------------------------------------------
         IF (Family==3) THEN
           uq = -1.0d0 + 2.0d0 * IP % U(t) + IP % V(t)
@@ -3490,8 +3478,6 @@ CONTAINS
 
         y1 = SUM( Nodes % x(1:nd) * Basis(1:nd) )
         y2 = SUM( Nodes % y(1:nd) * Basis(1:nd) )
-
-        !        END IF
 
       END IF
 
@@ -4129,10 +4115,10 @@ CONTAINS
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
     INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different
     LOGICAL, INTENT(IN) :: PlateBody                  ! A dummy argument
-    INTEGER, INTENT(OUT) :: ReducedStrainDim
-    LOGICAL, INTENT(INOUT) :: UseBubbles
-    LOGICAL, INTENT(OUT) :: UseShearCorrection
-    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(2,3)
+    INTEGER, INTENT(OUT) :: ReducedStrainDim          ! The number of basis functions for strain interpolation
+    LOGICAL, INTENT(INOUT) :: UseBubbles              ! To augment approximation by bubble functions
+    LOGICAL, INTENT(OUT) :: UseShearCorrection        ! To activate shear correctionn trick
+    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(2,3)! To reduce RT_0 functions to constants
     LOGICAL, INTENT(IN) :: MembraneStrains            ! To select the method for membrane strains
 !------------------------------------------------------------------------------
     LOGICAL :: PVersion
@@ -4148,6 +4134,7 @@ CONTAINS
     END IF
 
     IF (Pversion) THEN
+      ! If p-element approximation has been requested, the standard weak formulation is used:
       ReductionMethod = NoStrainReduction
     ELSE
       IF (ReductionMethod == AutomatedChoice) THEN
@@ -4247,7 +4234,7 @@ CONTAINS
 ! In addition, the element structure corresponding to the surface reconstruction
 ! is created.
 !------------------------------------------------------------------------------
-  SUBROUTINE CreateLagrangeElementStructures( BGElement, nd, Element, Nodes, &
+  SUBROUTINE CreateLagrangeElementStructures(BGElement, nd, Element, Nodes, &
       PNodes, GElement)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
@@ -4284,12 +4271,16 @@ CONTAINS
         SELECT CASE(nd)
         CASE(3)
           Element % Type => GetElementType(303, .FALSE.)
-          ! Ensure that the reference element for the Lagrange interpolation is used:
-          Element % Type % NodeU(1:3) = (/ 0.0d0, 1.0d0, 0.0d0 /)
-          Element % Type % NodeV(1:3) = (/ 0.0d0, 0.0d0, 1.0d0 /)
+        CASE(6)
+          Element % Type => GetElementType(306, .FALSE.)
+        CASE(10)
+          Element % Type => GetElementType(310, .FALSE.)
         CASE DEFAULT
           CALL Fatal('CreateLagrangeElementStructures', 'Unsupported triangular p-element')
         END SELECT
+        ! Ensure that the reference element for the Lagrange interpolation is used:
+        Element % Type % NodeU(1:3) = (/ 0.0d0, 1.0d0, 0.0d0 /)
+        Element % Type % NodeV(1:3) = (/ 0.0d0, 0.0d0, 1.0d0 /)
       CASE(4)
         SELECT CASE(nd)
         CASE(4)
@@ -4298,6 +4289,8 @@ CONTAINS
           Element % Type => GetElementType(408, .FALSE.)
         CASE(9)
           Element % Type => GetElementType(409, .FALSE.)
+        CASE(12)
+          Element % Type => GetElementType(412, .FALSE.)
         CASE DEFAULT
           CALL Fatal('CreateLagrangeElementStructures', 'Unsupported quadrilateral p-element type')
         END SELECT
@@ -4602,8 +4595,9 @@ CONTAINS
 ! element edges have the same length. The functionality of this routine could 
 ! also be a part of the function EdgeElementInfo, but this separate implementation 
 ! is made to serve the special purpose of strain reduction. 
+! NOTE: Only the lowest-order case is supported currently. 
 !------------------------------------------------------------------------------
-  FUNCTION ReductionOperatorInfo( Element, Nodes, u, v, StrainBasis, ReductionMethod, &
+  FUNCTION ReductionOperatorInfo(Element, Nodes, u, v, StrainBasis, ReductionMethod, &
       ApplyPiolaTransform, F, G, detF, Basis, dBasis, DOFWeigths, Bubbles, EdgeDirection) &
       RESULT(stat)
 !------------------------------------------------------------------------------
@@ -4653,7 +4647,7 @@ CONTAINS
 
     Family = GetElementFamily(Element)
     !-----------------------------------------------------------------------
-    ! The standard nodal basis functions on the reference element and
+    ! The lowest-order (nodal) basis functions on the reference element and
     ! their derivatives with respect to the local coordinates. These define 
     ! the mapping of the reference element to a physical element.
     !-----------------------------------------------------------------------
@@ -4661,7 +4655,7 @@ CONTAINS
     dLBasis = 0.0d0      
     SELECT CASE(Family)
     CASE(3)
-      DO q=1,n
+      DO q=1,3
         LBasis(q) = TriangleNodalPBasis(q, u, v)
         dLBasis(q,1:2) = dTriangleNodalPBasis(q, u, v) 
       END DO
