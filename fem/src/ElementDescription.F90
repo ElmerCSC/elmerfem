@@ -59,7 +59,8 @@ MODULE ElementDescription
    USE PElementBase
    ! Vectorized P element basis functions
    USE H1Basis
-
+   USE Lists
+   
    IMPLICIT NONE
 
    INTEGER, PARAMETER,PRIVATE  :: MaxDeg  = 4, MaxDeg3 = MaxDeg**3, &
@@ -11124,6 +11125,102 @@ END IF
   END FUNCTION BrickInside
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Check if the current element has been defined passive.
+!> This is done by inspecting a looking an the values of "varname Passive"
+!> in the Body Force section. It is determined to be passive if it has 
+!> more positive than negative hits in an element.
+!------------------------------------------------------------------------------
+  FUNCTION CheckPassiveElement( UElement )  RESULT( IsPassive )
+    !------------------------------------------------------------------------------
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
+    LOGICAL :: IsPassive
+    !------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), ALLOCATABLE :: Passive(:)
+    INTEGER :: body_id, bf_id, nlen, NbrNodes,PassNodes, LimitNodes
+    LOGICAL :: Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: PassName, PrevPassName
+    LOGICAL :: NoPassiveElements = .FALSE.
+
+    SAVE Passive, PrevPassName, NoPassiveElements
+    !$OMP THREADPRIVATE(Passive, PrevPassName, NoPassiveElements)
+    !------------------------------------------------------------------------------
+    IsPassive = .FALSE.
+
+
+    nlen = CurrentModel % Solver % Variable % NameLen
+    PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'     
+
+    IF( PassName(1:nlen) == PrevPassName(1:nlen) ) THEN
+      IF( NoPassiveElements ) RETURN
+    ELSE
+      NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce( CurrentModel, PassName )
+      PrevPassName = PassName
+      IF( NoPassiveElements ) RETURN       
+    END IF
+
+    IF (PRESENT(UElement)) THEN
+      Element => UElement
+    ELSE
+#ifdef _OPENMP
+      IF (omp_in_parallel()) THEN
+        CALL Fatal('CheckPassiveElement', &
+             'Need an element to update inside a threaded region')
+      END IF
+#endif
+      Element => CurrentModel % CurrentElement
+    END IF
+
+    body_id = Element % BodyId 
+    IF ( body_id <= 0 )  RETURN   ! body_id == 0 for boundary elements
+
+    bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+         'Body Force', Found, minv=1,maxv=CurrentModel % NumberOfBodyForces )
+    IF ( .NOT. Found )  RETURN
+
+    IF ( ListCheckPresent(CurrentModel % BodyForces(bf_id) % Values, PassName) ) THEN
+      NbrNodes = Element % TYPE % NumberOfNodes
+      IF ( ALLOCATED(Passive) ) THEN
+        IF ( SIZE(Passive) < NbrNodes ) THEN
+          DEALLOCATE(Passive)
+          ALLOCATE( Passive(NbrNodes) )
+        END IF
+      ELSE
+        ALLOCATE( Passive(NbrNodes) )
+      END IF
+      Passive(1:NbrNodes) = ListGetReal( CurrentModel % BodyForces(bf_id) % Values, &
+           PassName, NbrNodes, Element % NodeIndexes )
+      PassNodes = COUNT(Passive(1:NbrNodes)>0)
+
+      ! Go through the extremum cases first, and if the element is not either fully 
+      ! active or passive, then check for some possible given criteria for determining 
+      ! the element active / passive. 
+      !------------------------------------------------------------------------------
+      IF( PassNodes == 0 ) THEN
+        CONTINUE
+      ELSE IF( PassNodes == NbrNodes ) THEN
+        IsPassive = .TRUE.
+      ELSE
+        LimitNodes = ListGetInteger( CurrentModel % BodyForces(bf_id) % Values, &
+             'Passive Element Min Nodes',Found )
+        IF( Found ) THEN
+          IsPassive = ( PassNodes >= LimitNodes )
+        ELSE
+          LimitNodes = ListGetInteger( CurrentModel % BodyForces(bf_id) % Values, &
+               'Active Element Min Nodes',Found )
+          IF( Found ) THEN
+            IsPassive = ( PassNodes > NbrNodes - LimitNodes )
+          ELSE
+            IsPassive = ( 2*PassNodes > NbrNodes )
+          END IF
+        END IF
+      END IF
+    END IF
+
+!------------------------------------------------------------------------------
+  END FUNCTION CheckPassiveElement
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !>   Normal will point from more dense material to less dense
@@ -11144,35 +11241,42 @@ END IF
 
     REAL(KIND=dp) :: x1,y1,z1
     REAL(KIND=dp), ALLOCATABLE :: nx(:),ny(:),nz(:)
+    LOGICAL :: LPassive
 !------------------------------------------------------------------------------
-
+    
     IF(.NOT. ASSOCIATED( Boundary % BoundaryInfo ) )  RETURN
-
+    
     k = Boundary % BoundaryInfo % OutBody
 
     LeftElement => Boundary % BoundaryInfo % Left
 
     IF ( ASSOCIATED(LeftELement) ) THEN
        RightElement => Boundary % BoundaryInfo % Right
-
-       IF ( ASSOCIATED( RightElement ) ) THEN
-         IF ( k > 0 ) THEN
-            IF ( LeftElement % BodyId == k ) THEN
+       IF ( ASSOCIATED( RightElement ) ) THEN ! we have a body-body boundary        
+         IF ( k > 0 ) THEN ! declared outbody 
+           IF ( LeftElement % BodyId == k ) THEN
+             Element => RightElement
+           ELSE
+             Element => LeftElement
+           END IF
+         ELSE IF (LeftElement % BodyId > RightElement % BodyId) THEN ! normal pointing into body with lower body ID
+             Element => LeftElement
+         ELSE IF (LeftElement % BodyId < RightElement % BodyId) THEN! normal pointing into body with lower body ID
+           Element => RightElement
+         ELSE ! active/passive boundary
+           LPassive = CheckPassiveElement( LeftElement )
+           IF (LPassive .NEQV. CheckPassiveElement( RightElement )) THEN 
+             IF(LPassive) THEN
                Element => RightElement
-            ELSE
+             ELSE
                Element => LeftElement
-            END IF
-         ELSE
-            IF (LeftElement % BodyId > RightElement % BodyId) THEN
-              Element => LeftElement
-            ELSE
-              Element => RightElement
-            END IF
+             END IF
+           END IF
          END IF
-       ELSE
-          Element => LeftElement
+       ELSE ! body-vacuum boundary from left->right
+         Element => LeftElement
        END IF
-    ELSE
+    ELSE! body-vacuum boundary from right->left
        Element => Boundary % BoundaryInfo % Right
     END IF
 
@@ -11230,7 +11334,6 @@ END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE CheckNormalDirection
 !------------------------------------------------------------------------------
-
 
 
 !------------------------------------------------------------------------------

@@ -31,7 +31,9 @@ Simulation
   Steady State Min Iterations = 1
   Output Intervals = 1
 
-!  Post File = "case.ep"
+  Additive Namespaces = Logical Trues
+
+!  Post File = "case.vtu"
 End
 
 Constants
@@ -118,6 +120,4 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.46964473E-01
-RUN
-
 

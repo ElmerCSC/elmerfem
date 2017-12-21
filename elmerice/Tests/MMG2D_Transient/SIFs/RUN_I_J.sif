@@ -1,0 +1,124 @@
+!!#################################################
+!!#################################################
+!!   Physical Simulation : 
+!!      Here:
+!!       Solver the mass conservation equation for thickness using given velocity field
+!!#################################################
+!!#################################################
+!!PARAMETERS:
+!! <I> : Physical loop i
+!! <J> : Adaptation loop j
+!! 
+!! <O_I> : Number of Output Intervals
+!! <T_I> : Number of Timestep Intervals
+!! <dT>  : Timestep Size
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "MESH_I<I>_J<J>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D
+  Simulation Type = transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Output Intervals = <O_I>
+  Timestep Intervals = <T_I>
+  Timestep Sizes = <dT>
+
+  Restart File = "M_I<I>_J<J>_.result"
+  Restart Position = 0
+  Restart Before Initial Conditions = logical true
+  Restart Time = Real $ <I>*<T_I>*<dT>
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "R_I<I>_J<J>_.vtu"
+  OutPut File = "R_I<I>_J<J>_.result"
+
+  max output level = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+ ! Ice thickness initialisation 
+  h = Equals h0
+
+ Velocity 1 = Variable coordinate 1
+      REAL Procedure "USFs" "Ux"
+ Velocity 2 = Variable coordinate 1
+      REAL Procedure "USFs" "Uy"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(2) = 1 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Top Surface Accumulation = Real 0.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+   Equation = "Thickness"
+   Variable = -dofs 1 "H"
+   Procedure = "ElmerIceSolvers" "ThicknessSolver"
+
+    Linear System Solver = Direct
+    Linear System Direct Method = umfpack
+    
+    Linear System Convergence Tolerance = Real 1.0e-12
+
+! equation is linear if no min/max
+    Nonlinear System Max Iterations = 1
+
+    Apply Dirichlet = Logical False
+    Stabilization Method = Stabilized
+
+    Exported Variable 1 = h Residual
+    Exported Variable 2 = -dofs 2 "Velocity"
+!!  the convection velocity (mean horizontal velocity)
+    Flow Solution Name = String "Velocity"
+End
+!!
+Solver 2
+!  Exec Solver = After Timestep
+  Exec Solver = All
+
+  Equation = "Save Scalars"
+    Procedure = File "SaveData" "SaveScalars"
+
+  Show Norm Index = Integer 1
+
+  Filename = File "Scalars_R_I<I>_J<J>.dat"
+
+  Operator 1 = nodes
+
+  Variable 2 = Time
+
+! int H = Volume
+  Variable 3 = "H"
+  Operator 3 = "int"
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+
+    H = Real 0.0
+End
+
+Solver 2 :: Reference Norm = Real 4993
+Solver 2 :: Reference Norm Tolerance = Real 5E-02
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=4993,EPS=5E-02\n" );

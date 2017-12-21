@@ -1470,6 +1470,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
    SUBROUTINE ExecSimulation(TimeIntervals,  CoupledMinIter, &
               CoupledMaxIter, OutputIntervals, Transient, Scanning)
+     IMPLICIT NONE
       INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
       LOGICAL :: Transient,Scanning
 !------------------------------------------------------------------------------
@@ -1500,9 +1501,9 @@ END INTERFACE
      REAL(KIND=dp) :: RealTime
 #endif
      
-!$omp parallel
-!$   IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit
-!$omp end parallel
+     !$OMP PARALLEL
+     IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
+     !$OMP END PARALLEL
 
      nSolvers = CurrentModel % NumberOfSolvers
      DO i=1,nSolvers
@@ -2056,7 +2057,15 @@ END INTERFACE
     Simul = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
     
     OutputFile = ListGetString(CurrentModel % Simulation,'Output File',GotIt)
+    
+
     IF ( GotIt ) THEN
+      i = INDEX( OutputFile,'/')
+      IF( i > 0 ) THEN
+        CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
+            //TRIM(OutputFile))
+      END IF
+      
       IF ( ParEnv % PEs > 1 ) THEN
         DO i=1,MAX_NAME_LEN
           IF ( OutputFile(i:i) == ' ' ) EXIT

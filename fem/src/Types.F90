@@ -148,14 +148,15 @@ END INTERFACE
 
 
   TYPE SubVector_t
-     TYPE(Variable_t), POINTER :: Var
-     REAL(KIND=dp) :: rnorm, bnorm, xnorm
-     REAL(KIND=dp), ALLOCATABLE :: rhs(:)
+    TYPE(Variable_t), POINTER :: Var
+    REAL(KIND=dp) :: rnorm, bnorm, xnorm
+    REAL(KIND=dp), ALLOCATABLE :: rhs(:)
+    TYPE(Solver_t), POINTER :: Solver => NULL()
   END TYPE SubVector_t
 
   TYPE SubMatrix_t
-     TYPE(Matrix_t), POINTER :: Mat
-     TYPE(Matrix_t), POINTER :: PrecMat
+    TYPE(Matrix_t), POINTER :: Mat
+    TYPE(Matrix_t), POINTER :: PrecMat
   END TYPE SubMatrix_t
 
   TYPE BlockMatrix_t
@@ -168,6 +169,7 @@ END INTERFACE
     TYPE(SubVector_t), POINTER :: SubVector(:) => NULL()
     INTEGER, POINTER :: BlockStruct(:)
     LOGICAL :: GotBlockStruct
+    LOGICAL, ALLOCATABLE :: SubMatrixTranspose(:,:)
   END TYPE BlockMatrix_t
 
 #if defined(HAVE_MKL) && defined(HAVE_CPARDISO)                                 
@@ -563,16 +565,36 @@ END INTERFACE
 
 !------------------------------------------------------------------------------
    TYPE ListMatrixEntry_t
-     INTEGER :: INDEX
-     REAL(KIND=dp) :: VALUE
+     INTEGER :: Index
+     REAL(KIND=dp) :: Value
      TYPE(ListMatrixEntry_t), POINTER :: Next
    END TYPE ListMatrixEntry_t
 
+   TYPE ListMatrixEntryPool_t
+      TYPE(ListMatrixEntry_t), ALLOCATABLE :: Entries(:)
+      INTEGER :: NextIndex = 0
+      TYPE(ListMatrixEntryPool_t), POINTER :: Next => NULL()
+   END type ListMatrixEntryPool_t
+
+   TYPE ListMatrixPool_t
+     TYPE(ListMatrixEntryPool_t), POINTER :: EntryPool => NULL()
+     TYPE(ListMatrixEntry_t), POINTER :: Deleted => NULL()
+     INTEGER :: PoolSize = 0
+   END TYPE ListMatrixPool_t
+   
    TYPE ListMatrix_t
      INTEGER :: Degree, Level
      TYPE(ListMatrixEntry_t), POINTER :: Head
    END TYPE ListMatrix_t
 
+   TYPE ListMatrixArray_t
+     TYPE(ListMatrix_t), ALLOCATABLE :: Rows(:)
+     TYPE(ListMatrixPool_t), ALLOCATABLE :: Pool(:)
+#ifdef _OPENMP
+     INTEGER(KIND=omp_lock_kind), ALLOCATABLE :: RowLocks(:)
+#endif
+   END TYPE ListMatrixArray_t
+   
 !------------------------------------------------------------------------------
 
    TYPE Factors_t 
@@ -790,7 +812,7 @@ END INTERFACE
       INTEGER(KIND=AddrInt) :: MortarProc, &
           BoundaryElementProcedure=0, BulkElementProcedure=0
 
-      TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
+      TYPE(Graph_t), POINTER :: ColourIndexList => NULL(), BoundaryColourIndexList => NULL()
       INTEGER :: CurrentColour = 0
       INTEGER :: DirectMethod = DIRECT_NORMAL
       LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.

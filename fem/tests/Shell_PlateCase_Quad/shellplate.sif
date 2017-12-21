@@ -38,10 +38,9 @@ Equation 1 :: Active Solvers(1) = 1
 
 Solver 1
   Equation = "Shell equations"
-  Variable = "U"
-  Variable DOFs = 6
   Procedure = "ShellSolver" "ShellSolver"
-  Strain Reduction Operator = Integer 2    ! 0 = no reduction, 1 = kernel version, 2 = MITC
+
+  Large Deflection = False
 
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU0
@@ -63,10 +62,10 @@ Boundary Condition 1
   U 1 = Real 0
   U 2 = Real 0
   U 3 = Real 0
-  U 4 = Real 0
-  U 5 = Real 0
-!  U 6 = Real 0     ! No BC => let the energy principle adjust the normal strain
+  DNU 1 = Real 0
+  DNU 2 = Real 0
+!  DNU 3 = Real 0     ! No BC => let the energy principle adjust the normal strain
 End
 
-Solver 1 :: Reference Norm = Real 0.34686716       ! This corresponds to "Strain Reduction Operator=2"
+Solver 1 :: Reference Norm = Real 0.34686716
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

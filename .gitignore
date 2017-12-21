@@ -17,5 +17,5 @@ cmake_install.cmake
 compile_*.sh
 create_module_file.sh
 run_mgdyn_tests.sh
-
+fem/tests/CircuitsAndDynamics
 slurm*out

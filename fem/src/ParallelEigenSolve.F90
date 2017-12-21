@@ -143,7 +143,7 @@ INCLUDE "mpif.h"
 
 !
       Solution    = 0
-      ForceVector = 1
+      ForceVector = 0
       Residual    = 0
 
       DOFs = Solver % Variable % DOFs
@@ -394,6 +394,7 @@ INCLUDE "mpif.h"
                CASE DEFAULT
                  CALL Fatal('EigenSolve','Unknown linear system method: '//TRIM(Method))
                END SELECT
+               CALL ParallelInitSolve( A, x, b, Residual )
 
                A % rhs => SaveRhs
 
@@ -409,8 +410,8 @@ INCLUDE "mpif.h"
                x => Solution
                b => ForceVector
 
-               CALL PartitionVector( A, x, WORKD(IPNTR(2):IPNTR(2)+PN-1))
-               CALL PartitionVector( A, b, WORKD(IPNTR(1):IPNTR(1)+PN-1))
+               CALL PartitionVector(A, x, WORKD(IPNTR(2):IPNTR(2)+PN-1))
+               CALL PartitionVector(A, b, WORKD(IPNTR(1):IPNTR(1)+PN-1))
 
                ! Some strategies (such as 'block') may depend on that these are set properly
                ! to reflect the linear problem under study.
@@ -431,6 +432,7 @@ INCLUDE "mpif.h"
                CASE DEFAULT
                  CALL Fatal('EigenSolve','Unknown linear system method: '//TRIM(Method))
                END SELECT
+               CALL ParallelInitSolve( A, x, b, Residual )
 
                A % rhs => SaveRhs
 
@@ -1002,6 +1004,7 @@ INCLUDE "mpif.h"
                     x(i+1) = CMPLX(Solution(2*i+1),Solution(2*i+2),KIND=dp)
                   END DO
                END IF
+               CALL ParallelInitSolve( Matrix, Solution, ForceVector, Residual )
             ELSE
                x => WORKD(IPNTR(1):IPNTR(1)+pn-1)
                b => xx
@@ -1060,6 +1063,7 @@ INCLUDE "mpif.h"
                     x(i+1) = CMPLX(Solution(2*i+1),Solution(2*i+2),KIND=dp)
                   END DO
                END IF
+               CALL ParallelInitSolve( Matrix, Solution, ForceVector, Residual )
             END IF
          ELSE IF (ido == 2) THEN
 !

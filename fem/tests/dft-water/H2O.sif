@@ -25,7 +25,7 @@ Solver 1
   NOFnuclei = Integer 3
 
   ! NucleiTable is an array of the form NucleiTable( NOFnuclei, 4 ) where
-  ! each row includes the information of one nucleus. The colums are
+  ! each row includes the information of one nucleus. The columns are
   ! from left to right : 
   ! atomic number, x-coordinate, y-coordinate and z-coordinate.
 

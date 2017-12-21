@@ -9,6 +9,7 @@
 ! HUTI defaults
 
 #define HUTI_DFLTMAXIT 5000
+#define HUTI_DFLTMINIT 0						
 #define HUTI_DFLTTOLERANCE 0.000001
 #define HUTI_DFLTDBUGLVL 0
 #define HUTI_DFLTPROCS 1
@@ -112,6 +113,7 @@
 ! Iteration parameters (10-19)
 
 #define HUTI_MAXIT ipar(10)
+#define HUTI_MINIT ipar(11)
 #define HUTI_STOPC ipar(12)
 #define HUTI_PCOND ipar(13)
 #define HUTI_INITIALX ipar(14)

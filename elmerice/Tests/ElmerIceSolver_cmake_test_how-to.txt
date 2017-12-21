@@ -75,7 +75,7 @@ C. Results
 ============
 	On screen
 	---------
-Run the tests will print some informations for each test-case. For example:
+Run the tests will print some information for each test-case. For example:
       Start  1: Teterousse3a
  1/36 Test  #1: Teterousse3a .....................***Passed    503.64 sec
       Start  2: Dating

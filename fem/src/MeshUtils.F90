@@ -96,8 +96,13 @@ CONTAINS
 
      TYPE(Element_t) :: Element
 
-     ALLOCATE(Element % PDefs, STAT=istat)
-     IF ( istat /= 0) CALL Fatal('AllocatePDefinitions','Unable to allocate memory')
+     ! Sanity check to avoid memory leaks
+     IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
+        ALLOCATE(Element % PDefs, STAT=istat)
+        IF ( istat /= 0) CALL Fatal('AllocatePDefinitions','Unable to allocate memory')
+     ELSE
+        CALL Warn('AllocatePDefinitions','P element definitions already allocated')
+     END IF
 
      ! Initialize fields
      Element % PDefs % P = 0 
@@ -106,7 +111,6 @@ CONTAINS
      Element % PDefs % pyramidQuadEdge = .FALSE.
      Element % PDefs % localNumber = 0
      Element % PDefs % GaussPoints = 0
-
 !------------------------------------------------------------------------------
    END SUBROUTINE AllocatePDefinitions
 !------------------------------------------------------------------------------
@@ -2839,18 +2843,23 @@ END SUBROUTINE GetMaxDefs
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs)
+  SUBROUTINE SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs,NeedEdges)
 !------------------------------------------------------------------------------
     INTEGER, OPTIONAL :: EdgeDOFs(:), FaceDOFs(:)
     TYPE(Mesh_t) :: Mesh
     INTEGER, OPTIONAL :: indofs(:,:)
+    LOGICAL, OPTIONAL :: NeedEdges
 !------------------------------------------------------------------------------
     INTEGER :: i,j,el_id
     TYPE(Element_t), POINTER :: Element, Edge, Face
+    LOGICAL :: AssignEdges=.FALSE.
 !------------------------------------------------------------------------------
 
     CALL FindMeshEdges(Mesh)
 
+    IF (PRESENT(NeedEdges)) &
+         AssignEdges = NeedEdges
+    
     ! Set edge and face polynomial degree and degrees of freedom for
     ! all elements
     DO i=1,Mesh % NumberOFBulkElements
@@ -2878,7 +2887,9 @@ END SUBROUTINE GetMaxDefs
              
           ! Other element types, which need edge dofs
           ELSE IF(PRESENT(EdgeDOFs)) THEN
-             Edge % BDOFs = MAX(EdgeDOFs(i), Edge % BDOFs)
+            Edge % BDOFs = MAX(EdgeDOFs(i), Edge % BDOFs)
+          ELSE
+            Edge % BDOFs = Max(1, Edge % BDOFs)
           END IF
 
           ! Get maximum dof for edges
@@ -2941,6 +2952,15 @@ END SUBROUTINE GetMaxDefs
              Element % PDefs % isEdge = .TRUE.
              CALL AssignLocalNumber(Element, Element % BoundaryInfo % Right, Mesh)
           END IF
+       END IF
+
+       IF (AssignEdges) THEN
+         IF (ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+           CALL AssignLocalNumber(Element,Element % BoundaryInfo % Left, Mesh, NoPE=.TRUE.)
+         END IF
+         IF (ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+           CALL AssignLocalNumber(Element,Element % BoundaryInfo % Right, Mesh, NoPE=.TRUE.)
+         END IF
        END IF
     END DO
 !------------------------------------------------------------------------------
@@ -3233,7 +3253,7 @@ END SUBROUTINE GetMaxDefs
     CALL AllocateVector( Nodes % z, Mesh % MaxElementNodes )
 
     UseLongEdge = ListGetLogical(CurrentModel % Simulation, &
-         "Stabilization Use Longest Element Edge")
+         "Stabilization Use Longest Element Edge",Stat)
 
     DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
@@ -10934,10 +10954,10 @@ END SUBROUTINE GetMaxDefs
 
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
-        ExtrudedCoord,dg_n
+        ExtrudedCoord,dg_n,totalnumberofelements
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     INTEGER :: nnodes,gnodes,gelements,ierr
-    LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline
+    LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline, PreserveEdges
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
@@ -11004,6 +11024,9 @@ END SUBROUTINE GetMaxDefs
     PreserveBaseline = ListGetLogical( CurrentModel % Simulation,'Preserve Baseline',Found )
     IF(.NOT. Found) PreserveBaseline = .FALSE.
 
+    PreserveEdges = ListGetLogical( CurrentModel % Simulation,'Preserve Edges',Found )
+    IF(.NOT. Found) PreserveEdges = .FALSE.
+
     MinCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found )
     IF(.NOT. Found) MinCoord = 0.0_dp
 
@@ -11053,12 +11076,13 @@ END SUBROUTINE GetMaxDefs
     END DO
 
     n=SIZE(Mesh_in % Elements)
-    IF (PreserveBaseline) THEN
-        ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + Mesh_in % NumberOfBoundaryElements + cnt101) )
-    ELSE
-	ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + cnt101) )
-    END IF
 
+    ! inquire total number of needed 
+    totalnumberofelements = n*(in_levels+3) + cnt101
+    IF (PreserveBaseline) &
+         totalnumberofelements = totalnumberofelements + Mesh_in % NumberOfBoundaryElements
+    ALLOCATE(Mesh_out % Elements(totalnumberofelements))
+    
     ! Generate volume bulk elements:
     ! ------------------------------
 
@@ -11128,6 +11152,10 @@ END SUBROUTINE GetMaxDefs
     max_bid=0
     max_baseline_bid=0
 
+    ! include edges (see below)
+    NeedEdges =  (NeedEdges .OR. PreserveEdges)
+    
+    
     ! -------------------------------------------------------
     IF (PreserveBaseline) THEN
       DO j=1,Mesh_in % NumberOfBoundaryElements
@@ -11401,7 +11429,7 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % MeshDim = 3
     CurrentModel % DIMENSION = 3
 
-    IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh_out)
+    IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh_out,NeedEdges=.TRUE.)
     CALL SetMeshMaxDOFs(Mesh_out)
 
     IF (PRESENT(ExtrudedMeshName)) THEN
@@ -15439,7 +15467,7 @@ CONTAINS
 !>     Assign local number of edge to given boundary element. Also copies all 
 !>     p element attributes from element edge to boundary edge.
 !------------------------------------------------------------------------------
-  SUBROUTINE AssignLocalNumber( EdgeElement, Element, Mesh )
+  SUBROUTINE AssignLocalNumber( EdgeElement, Element, Mesh,NoPE )
 !------------------------------------------------------------------------------
     USE PElementMaps, ONLY : getFaceEdgeMap 
     IMPLICIT NONE
@@ -15448,12 +15476,17 @@ CONTAINS
     TYPE(Mesh_t) :: Mesh            !< Finite element mesh containing faces and edges.
     TYPE(Element_t), POINTER :: EdgeElement  !< Edge element to which assign local number
     TYPE(Element_t), POINTER :: Element      !< Bulk element with some global numbering to use to assign local number
+    LOGICAL, OPTIONAL :: NoPE
 !------------------------------------------------------------------------------
     ! Local variables
 
     INTEGER i,j,n,edgeNumber, numEdges, bMap(4)
     TYPE(Element_t), POINTER :: Edge
+    LOGICAL :: EvalPE=.TRUE.
 
+    IF(PRESENT(NoPE)) &
+         EvalPE = .NOT.NoPE
+    
     ! Get number of points, edges or faces
     numEdges = 0
     SELECT CASE (Element % TYPE % DIMENSION)
@@ -15496,7 +15529,8 @@ CONTAINS
 
        ! If all nodes are on boundary, edge was found
        IF (n == EdgeElement % TYPE % NumberOfNodes) THEN
-          EdgeElement % PDefs % localNumber = edgeNumber
+          IF(EvalPE) &
+              EdgeElement % PDefs % localNumber = edgeNumber
 
           ! Change ordering of global nodes to match that of element
           bMap = getElementBoundaryMap( Element, edgeNumber )
@@ -15506,14 +15540,19 @@ CONTAINS
 
           ! Copy attributes of edge element to boundary element
           ! Misc attributes
-          EdgeElement % PDefs % isEdge = Edge % PDefs % isEdge
+          IF(EvalPE) THEN
+            EdgeElement % PDefs % isEdge = Edge % PDefs % isEdge
           
           ! Gauss points
-          EdgeElement % PDefs % GaussPoints = Edge % PDefs % GaussPoints
+            EdgeElement % PDefs % GaussPoints = Edge % PDefs % GaussPoints
 
-          ! Element p (and boundary bubble dofs)
+          ! Element p
+            EdgeElement % PDefs % P = Edge % PDefs % P
+          END IF
+          
+          !(and boundary bubble dofs)
           EdgeElement % BDOFs = Edge % BDOFs
-          EdgeElement % PDefs % P = Edge % PDefs % P
+
 
           ! If this boundary has edges copy edge indexes
           IF (ASSOCIATED(Edge % EdgeIndexes)) THEN
@@ -15751,11 +15790,7 @@ CONTAINS
     IF(FirstRound) THEN
        ! Allocate space 
        NULLIFY( ListMatrix )
-       ALLOCATE( ListMatrix(LocalNodes) )
-       DO i=1,LocalNodes
-          ListMatrix(i) % Degree = 0
-          NULLIFY( ListMatrix(i) % Head )
-       END DO
+       ListMatrix => List_AllocateMatrix(LocalNodes)
        FirstRound = .FALSE.
 
        ! Find the node in the lower left corner at give it the 1st index
@@ -17988,11 +18023,12 @@ CONTAINS
 
   END FUNCTION CreateLineMesh
 
-  SUBROUTINE ElmerMeshToDualGraph(Mesh, DualGraph)
+  SUBROUTINE ElmerMeshToDualGraph(Mesh, DualGraph, UseBoundaryMesh)
     IMPLICIT NONE
 
     TYPE(Mesh_t) :: Mesh
     TYPE(Graph_t) :: DualGraph
+    LOGICAL, OPTIONAL :: UseBoundaryMesh
 
     TYPE(Element_t), POINTER :: Element, Elements(:)
 
@@ -18028,15 +18064,26 @@ CONTAINS
     INTEGER :: i, dnnz, eid, nl, nli, nti, nn, nv, nthr, &
             te, thrli, thrti, vli, vti, TID, allocstat
     INTEGER :: mapSizePad, maxNodesPad, neighSizePad
+    LOGICAL :: Boundary
 
     INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 24
 
     CALL Info('ElmerMeshToDualGraph','Creating a dual graph for the mesh',Level=8)
 
-    ! Mesh data
-    Elements => Mesh % Elements
-    nvertex = Mesh % NumberOfNodes
-    nelem = Mesh % NumberOfBulkElements
+    Boundary = .FALSE.
+    IF (Present(UseBoundaryMesh)) Boundary = UseBoundaryMesh
+
+    ! Pointers to mesh data
+    IF (.NOT. Boundary) THEN
+       nelem = Mesh % NumberOfBulkElements
+       nvertex = Mesh % NumberOfNodes
+       Elements => Mesh % Elements
+    ELSE
+       nelem = Mesh % NumberOfBoundaryElements
+       nvertex = Mesh % NumberOfNodes
+       Elements => Mesh % Elements(&
+            Mesh % NumberOfBulkElements+1:Mesh % NumberOfBulkElements+nelem)
+    END IF
 
     ! Initialize dual mesh size and number of nonzeroes
     DualGraph % n = nelem
@@ -18046,6 +18093,7 @@ CONTAINS
     ALLOCATE(eptr(nelem+1), eind(nelem*Mesh % MaxElementNodes), STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
             'Unable to allocate mesh structure!')
+
     eptr(1)=1 ! Fortran numbering
     DO i=1, nelem
       Element => Elements(i)
@@ -18114,8 +18162,8 @@ CONTAINS
               'Unable to allocate local workspace!')
     ELSE
       ! With a small number of threads, use map -based merge
-      mapSizePad = IntegerNBytePad(Mesh % NumberOfBulkElements, 8)
-      ALLOCATE(wrkmap(Mesh % NumberOfBulkElements), STAT=allocstat)
+      mapSizePad = IntegerNBytePad(nelem, 8)
+      ALLOCATE(wrkmap(mapSizePad), STAT=allocstat)
       IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
               'Unable to allocate local workspace!')
       ! Initialize local map
@@ -18742,6 +18790,67 @@ CONTAINS
     CALL MOVE_ALLOC(cind, PackedList % ind)
   END SUBROUTINE ElmerColouringToGraph
 
+  ! Routine constructs colouring for boundary mesh based on colours of main mesh
+  SUBROUTINE ElmerBoundaryGraphColour(Mesh, Colours, BoundaryColours)
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), INTENT(IN) :: Mesh
+    TYPE(GraphColour_t), INTENT(IN) :: Colours
+    TYPE(GraphColour_t) :: BoundaryColours
+
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: elem, nelem, nbelem, astat, lcolour, rcolour, nbc
+    INTEGER, ALLOCATABLE :: bcolours(:)
+
+    nelem = Mesh % NumberOfBulkElements
+    nbelem = Mesh % NumberOfBoundaryElements
+
+    ! Allocate boundary colouring
+    ALLOCATE(bcolours(nbelem), STAT=astat)
+    IF (astat /= 0) THEN
+       CALL Fatal('ElmerBoundaryGraphColour','Unable to allocate boundary colouring')
+    END IF
+    
+    nbc = 0
+    ! Loop over boundary mesh
+    !$OMP PARALLEL DO &
+    !$OMP SHARED(Mesh, nelem, nbelem, Colours, bcolours) &
+    !$OMP PRIVATE(Element, lcolour, rcolour) &
+    !$OMP REDUCTION(max:nbc) &
+    !$OMP DEFAULT(NONE)
+    DO elem=1,nbelem       
+       Element => Mesh % Elements(nelem+elem)
+
+       ! Try to find colour for boundary element based on left / right parent
+       lcolour = 0
+       IF (ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+          lcolour = Colours % colours(Element % BoundaryInfo % Left % ElementIndex)
+       END IF
+       rcolour = 0
+       IF (ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+          rcolour = Colours % colours(Element % BoundaryInfo % Right % ElementIndex)
+       END IF
+
+       ! Sanity check for debug
+       IF (ASSOCIATED(Element % BoundaryInfo % Left) .AND. & 
+          ASSOCIATED(Element % BoundaryInfo % Right) .AND. &
+            lcolour /= rcolour) THEN
+         CALL Warn('ElmerBoundaryGraphColour','Inconsistent colours for boundary element: ' &
+               // TRIM(i2s(elem)) // "=>" &
+               // TRIM(i2s(lcolour))// " | "//TRIM(i2s(rcolour)))
+         WRITE (*,*) Element % BoundaryInfo % Left % ElementIndex, Element % BoundaryInfo % Right % ElementIndex
+       END IF
+
+       bcolours(elem)=MAX(lcolour,rcolour)
+       nbc=MAX(nbc,bcolours(elem))
+    END DO
+    !$OMP END PARALLEL DO
+
+    ! Set up colouring data structure
+    BoundaryColours % nc = nbc
+    CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
+  END SUBROUTINE ElmerBoundaryGraphColour
+  
   ! Given CRS indices, referenced indirectly from graph, 
   ! evenly load balance the work among the nthr threads
   SUBROUTINE ThreadLoadBalanceElementNeighbour(nthr, gn, gptr, gind, &

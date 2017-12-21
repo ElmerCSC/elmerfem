@@ -25,6 +25,8 @@ int PartitionSimpleElementsNonRecursive(struct FemType *data,
 int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bound,
 				    int nparts,int metisopt,int info);
 #endif
+int ExtendBoundaryPartitioning(struct FemType *data,struct BoundaryType *bound,
+			       int elemlayers,int info);
 int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dimper[],
 				      int info);
 int PartitionConnectedElementsStraight(struct FemType *data,struct BoundaryType *bound,
@@ -33,6 +35,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 				 struct ElmergridType *eg, int info);
 int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
 			 int partorder, Real corder[],int info);
+int LinearNodes(int elemtype);
 #if PARTMETIS
 int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
 		       int partitions,int dual,int info);

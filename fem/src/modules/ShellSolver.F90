@@ -48,8 +48,8 @@
 ! *           the lowest-order finite elements only.
 ! *        -- Parallel file formats for the director data are missing
 ! *        -- Postprocessing routines are also missing 
-! *        -- Some terms related to normal stretch parameter are ignored in 
-! *           the expression for the strain energy 
+! *        -- Terms of O(d/R), with d the shell thickness and R the minimum of
+! *           radius of curvature, are ignored in the expression for the strain energy 
 ! *
 ! *  Authors: Mika Malinen
 ! *  Email:   mika.malinen@csc.fi
@@ -74,18 +74,26 @@ SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverPars
-  LOGICAL :: SavePrincipalAxes
+  LOGICAL :: SavePrincipalAxes, Found
   INTEGER  :: i
 !------------------------------------------------------------------------------
   SolverPars => GetSolverParams()
 
   CALL ListAddInteger(SolverPars, 'Variable DOFs', 6)
   CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
+  CALL ListAddLogical(SolverPars, 'Initialize Dirichlet Conditions', .FALSE.)
+
+  CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
+
+  CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
+  CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
+  CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
+  CALL ListAddNewLogical(SolverPars, 'Skip Compute Nonlinear Change', .TRUE.)
 
   !----------------------------------------------------------------------------
   ! Create variables for saving principal (curvature) directions:
   !----------------------------------------------------------------------------
-  SavePrincipalAxes = GetLogical(SolverPars, 'Principal Axes Output')
+  SavePrincipalAxes = GetLogical(SolverPars, 'Principal Axes Output', Found)
 
   IF (SavePrincipalAxes) THEN
     i=1
@@ -147,7 +155,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, PARAMETER :: NoStrainReduction = 0
   INTEGER, PARAMETER :: CurlKernel = 1
   INTEGER, PARAMETER :: MITC = 2
-  INTEGER, PARAMETER :: DoubleReduction = 3 
+  INTEGER, PARAMETER :: DoubleReduction = 3
+  INTEGER, PARAMETER :: CurlKernelWithEdgeDOFs = 4
 
   INTEGER, PARAMETER :: MaxBGElementNodes = 9
   INTEGER, PARAMETER :: MaxPatchNodes = 16    ! The maximum node count for the surface description 
@@ -171,19 +180,28 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: MacroElements, QuadraticApproximation = .FALSE.
   LOGICAL :: PlateBody, PlanarPoint, UmbilicalPoint
   LOGICAL :: Bubbles, ApplyBubbles
+  LOGICAL :: LargeDeflection, MeshDisplacementActive
+  LOGICAL :: NoTractions
+  LOGICAL :: SolveBenchmarkCase
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
   INTEGER :: e, i, i0, j, k, m, n, nb, nd, t 
   INTEGER :: Family, Active
-  INTEGER :: ShellModelPar, StrainReductionMethod
-
+  INTEGER :: ShellModelPar, StrainReductionMethod, MembraneStrainReductionMethod
+  INTEGER :: NonlinIter, MaxNonlinIters
+  
+  REAL(KIND=dp), POINTER :: TotalSol(:) => NULL()
+  REAL(KIND=dp), POINTER CONTIG :: ValuesSaved(:) => NULL()
+  REAL(KIND=dp), POINTER :: TaylorParams(:)
+  REAL(KIND=dp), ALLOCATABLE :: LocalSol(:,:)
+  REAL(KIND=dp), ALLOCATABLE :: LocalRHSForce(:)
   REAL(KIND=dp), TARGET :: LocalFrameNodes(MaxPatchNodes,3)
-  REAL(KIND=dp) :: LocalSol(6,9)
   REAL(KIND=dp) :: d(3), d1(3), d2(3), d3(3), X1(3), X2(3), e1(3), e2(3), e3(3), o(3), p(3)
-  REAL(KIND=dp) :: c, Norm, u, v, X
-  REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2), ZNodes(MaxPatchNodes), TaylorParams(6)
+  REAL(KIND=dp) :: c, Norm, u, v
+  REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2), ZNodes(MaxPatchNodes)
   REAL(KIND=dp) :: BlendingSurfaceArea, ShellModelArea, MappedMeshArea, RefArea
+  REAL(KIND=dp) :: NonlinTol, NonlinRes, NonlinRes0
 
   CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile
 
@@ -193,7 +211,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: MaxPDir1Err, MaxPDir2Err, PDir1(3), PDir2(3)
   REAL(KIND=dp) :: Energy(4), MEnergy, SEnergy, BEnergy, Etot
 
-  SAVE Indices
+  SAVE VisitsList, Indices, LocalSol, TotalSol, LocalRHSForce
 !------------------------------------------------------------------------------  
 
   ! ---------------------------------------------------------------------------------
@@ -202,6 +220,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! ---------------------------------------------------------------------------------
   Mesh => GetMesh()
   SolverPars => GetSolverParams()
+  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found )  
 
   ! ---------------------------------------------------------------------------------
   ! The number of unknown fields in the shell model:
@@ -209,11 +228,20 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=6)
 
   ! ---------------------------------------------------------------------------------
-  ! The choice of strain reduction method:
+  ! The choice of strain reduction method. Now only the automated default is active:
   ! ---------------------------------------------------------------------------------
   StrainReductionMethod = ListGetInteger(SolverPars, 'Strain Reduction Operator', &
-      Found, minv=0,maxv=3)
+      Found, minv=0,maxv=4)
   IF (.NOT.Found) StrainReductionMethod = AutomatedChoice
+  MembraneStrainReductionMethod = ListGetInteger(SolverPars, 'Membrane Strain Reduction Operator', &
+      Found, minv=0,maxv=4)
+  IF (.NOT.Found) MembraneStrainReductionMethod = StrainReductionMethod
+  ! Set the default choice of strain reduction method active (comment the following 
+  ! lines out to experiment with other methods):
+  IF (MembraneStrainReductionMethod /= NoStrainReduction) &
+      MembraneStrainReductionMethod = AutomatedChoice
+  IF (StrainReductionMethod /= NoStrainReduction) &
+      StrainReductionMethod = AutomatedChoice
 
   Bubbles = GetLogical(SolverPars, 'Bubbles', Found)
 
@@ -239,8 +267,18 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF (.NOT. ASSOCIATED(Indices)) ALLOCATE( Indices(Mesh % MaxElementDOFs) )
-
-
+  IF (.NOT. ALLOCATED(LocalSol)) ALLOCATE( LocalSol(ShellModelPar, Mesh % MaxElementDOFs) )
+  IF (.NOT. ALLOCATED(LocalRHSForce)) ALLOCATE( LocalRHSForce((ShellModelPar+1) * Mesh % MaxElementDOFs) )
+  IF (.NOT. ASSOCIATED(TotalSol)) THEN
+    ALLOCATE( TotalSol(SIZE(Solver % Variable % Values)) )
+  ELSE
+    IF (MeshDisplacementActive) THEN
+      CALL Info('ShellSolver','Returning the mesh to its reference position',Level=4)     
+      CALL DisplaceMesh(Mesh, Solver % Variable % Values, -1, Solver % Variable % Perm, &
+         ShellModelPar, .FALSE., 3 )      
+    END IF
+  END IF
+    
   ! ---------------------------------------------------------------------------------
   ! PART I: 
   ! Read the director data at the nodes from mesh.director file and/or check the
@@ -278,140 +316,249 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! ---------------------------------------------------------------------------------
   ! PART III:
   ! Utilize the parametrized edge curves to obtain improved geometry approximation 
-  ! via using the finite element blending technique and assemble the discrete shell 
+  ! via using the finite element blending technique, perform a reparametrization 
+  ! to obtain lines of curvature coordinates and assemble the discrete shell 
   ! equations. 
-  !   Here elementwise frames which give the orientation of the lines of curvature 
-  ! at the element centers are defined and then these frames are employed to
-  ! generate a refined approximation to lines of curvature parameterization; cf. [1].
+  ! ---------------------------------------------------------------------------------
+
   ! ---------------------------------------------------------------------------------
   ! Check whether the area of shell surface should be computed (here this is done
   ! in several ways to check the model integrity):
   ! ---------------------------------------------------------------------------------
-  ComputeShellArea = GetLogical(SolverPars, 'Compute Shell Area')
+  ComputeShellArea = GetLogical(SolverPars, 'Compute Shell Area', Found)
   BlendingSurfaceArea = 0.0d0
-  ShellModelArea = 0.0d0
   MappedMeshArea = 0.0d0
-  ! The following are just for verification purposes (remove when final)
-  TotalErr = 0.0d0
 
-  ! ------------------------------------------------------------------------------
-  ! Finally, this is the assembly loop for generating discrete shell equations.
-  ! During the assembly, several elementwise properties of geometric nature (principal
-  ! directions, elementwise coordinate systems, etc.) are computed and may be saved
-  ! as elementwise properties to avoid a later recomputation.
-  ! ------------------------------------------------------------------------------
-  CALL DefaultInitialize()
-  Active = GetNOFActive()  
-  DO k=1,Active
-    BGElement => GetActiveElement(k)
+  ! For verification purposes we may solve a case for which the reference strain 
+  ! energy is known:
+  SolveBenchmarkCase = GetLogical(SolverPars, 'Benchmark Problem', Found)
 
-    Family = GetElementFamily(BGElement)
-    IF ( .NOT.(Family == 3 .OR. Family == 4) ) CYCLE
+  ! ---------------------------------------------------------------------------------
+  ! Read parameters that control the nonlinear solution:
+  ! ---------------------------------------------------------------------------------
+  LargeDeflection = GetLogical(SolverPars, 'Large Deflection')
+  MaxNonlinIters = ListGetInteger(SolverPars, 'Nonlinear System Max Iterations')
+  NonlinTol =  GetConstReal(SolverPars, 'Nonlinear System Convergence Tolerance')
 
-    n  = GetElementNOFNodes()
-    nd = GetElementDOFs(Indices)
-    nb = GetElementNOFBDOFs()
+  IF (LargeDeflection) THEN
+    SolveBenchmarkCase = .FALSE.
+    IF (.NOT. ASSOCIATED(Solver % Matrix % BulkRHS)) &
+        ALLOCATE(Solver % Matrix % BulkRHS(SIZE(Solver % Matrix % RHS)))
+    Solver % Matrix % BulkRHS = 0.0d0
+  ELSE
+    MaxNonlinIters = 1
+  END IF
 
-    !----------------------------------------------------------------------
-    ! Bubbles are designed for the lowest-order discretization:
-    !----------------------------------------------------------------------
-    ApplyBubbles = Bubbles .AND. (nd == Family)
-    IF (nb > 0) CALL Fatal('ShellSolver', &
-        'Static condensation for p-bubbles is not supported')
+  NONLINEARLOOP: DO NonlinIter=1,MaxNonlinIters
 
-    !----------------------------------------------------------------------
-    ! The elementwise average of director data for orientation purposes
-    ! (check also for body flatness):
-    !----------------------------------------------------------------------
-    d = AverageDirector(BGElement, n, PlateBody)
+    CALL Info('ShellSolver','--------------------------------------------------------', Level=4)
+    WRITE( Message,'(A,I4)') 'Nonlinear iteration:', NonlinIter
+    CALL Info('ShellSolver', Message, Level=4)
+    CALL Info('ShellSolver','--------------------------------------------------------', Level=4)    
 
-    !-------------------------------------------------------------------------
-    ! Create an improved geometry approximation by using the finite element 
-    ! blending technique and then find the orientation of lines of curvatures 
-    ! at the element center. Compute also the coefficients of the Taylor 
-    ! polynomial for creating the improved lines of curvature parameterization:
-    !-------------------------------------------------------------------------
-    CALL LinesOfCurvatureFrame(BGElement, e1=e1, e2=e2, e3=e3, o=o, &
-        TaylorParams=TaylorParams, LagrangeNodes=LocalFrameNodes, d=d, &
-        PlanarSurface=PlateBody, PlanarPoint=PlanarPoint, &
-        UmbilicalPoint=UmbilicalPoint, MacroElement=MacroElements, &
-        SaveProperties = .TRUE.) 
-
-    !--------------------------------------------------------------------------
-    ! Obtain the final domain for improved lines of curvature parametrization. 
-    ! The array PatchNodes will contain a new set of nodes on the plane 
-    ! span{e1,e2} so that the final domain can represented via bicubic 
-    ! interpolation.
-    !--------------------------------------------------------------------------
-    CALL LinesOfCurvaturePatch(LocalFrameNodes(1:MaxPatchNodes,1:2), TaylorParams, &
-        PatchNodes, Family, ZNodes, PlanarPoint, UmbilicalPoint)
-
-    !LocalFrameNodes(:,3) = ZNodes(:)
-    !CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
-    !CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElement=.FALSE.)
-    !CYCLE
+    TotalSol(:) = Solver % Variable % Values(:)
 
     ! ------------------------------------------------------------------------------
-    ! Generate the element stiffness matrix and assemble the local contribution:
-    ! -----------------------------------------------------------------------------
-    CALL ShellLocalMatrix(BGElement, n, nd+nb, TaylorParams, PatchNodes, &
-        e1, e2, e3, o, ShellModelPar, PlanarPoint, UmbilicalPoint, &
-        StrainReductionMethod, ApplyBubbles, ShellModelArea, TotalErr)
+    ! Finally, this is the assembly loop for generating discrete shell equations.
+    ! During the first assembly step, several elementwise properties of geometric nature 
+    ! (principal directions, elementwise coordinate systems, etc.) are computed and are
+    ! saved as elementwise properties to avoid a later recomputation.
+    ! ------------------------------------------------------------------------------
+    CALL DefaultInitialize()
+    ShellModelArea = 0.0d0
+    TotalErr = 0.0d0         ! Just for verification purposes (remove when final)
+    Active = GetNOFActive()  
 
-    !-------------------------------------------------------------------------
-    ! The following is not active since with the current implementation
-    ! triangular blending functions cannot be evaluated at nodes (due to  
-    ! implementation). Save principal directions at the nodes of the background 
-    ! mesh:
-    !-------------------------------------------------------------------------
-    SavePrincipalAxes = .FALSE.
-    IF (SavePrincipalAxes) THEN
-  
-      ShellElement => BGElement % Type
+    ASSEMBLYLOOP: DO k=1,Active
+      BGElement => GetActiveElement(k)
 
-      DO j=1,n
-        i = Indices(j)
-        t = Solver % Variable % Perm(i)
+      Family = GetElementFamily(BGElement)
+      IF ( .NOT.(Family == 3 .OR. Family == 4) ) CYCLE
 
-        u = ShellElement % NodeU(j)
-        v = ShellElement % NodeV(j)
+      n  = GetElementNOFNodes()
+      nd = GetElementDOFs(Indices)
+      nb = GetElementNOFBDOFs()
 
+      IF (LargeDeflection) THEN
+        CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
+      ELSE
+        LocalSol = 0.0d0
+      END IF
+
+      !----------------------------------------------------------------------
+      ! Bubbles are designed for the lowest-order discretization:
+      !----------------------------------------------------------------------
+      ApplyBubbles = Bubbles .AND. (nd == Family)
+      IF (nb > 0) CALL Fatal('ShellSolver', &
+          'Static condensation for p-bubbles is not supported')
+
+      !----------------------------------------------------------------------
+      ! Create elementwise geometry data related to the reference configuration. 
+      ! This is computed only once since the data is saved as elementwise 
+      ! properties and can thus be retrieved by calling the function
+      ! GetElementProperty
+      !----------------------------------------------------------------------
+      REPARAMETRIZATION: IF (NonlinIter==1) THEN
+        !----------------------------------------------------------------------
+        ! Get the elementwise average of director data for orientation purposes
+        ! (check also for body flatness):
+        !----------------------------------------------------------------------
+        d = AverageDirector(BGElement, n, PlateBody)
         !-------------------------------------------------------------------------
-        ! The principal directions at the given node: 
-        !-------------------------------------------------------------------------        
-        CALL LinesOfCurvatureFrame(BGElement, u, v, d1, d2, d3, p, d=d)
-
+        ! Create an improved geometry approximation by using the finite element 
+        ! blending technique and create a local coordinate frame whose orientation
+        ! corresponds to the orientation of lines of curvatures at the element 
+        ! center. Compute also the coefficients of the Taylor polynomial for 
+        ! creating the improved lines of curvature parameterization:
         !-------------------------------------------------------------------------
-        ! Add to existing values and average later:
-        !-------------------------------------------------------------------------
-        NodalPDir1 % Values(3*(t-1)+1) = d1(1) + NodalPDir1 % Values(3*(t-1)+1)
-        NodalPDir1 % Values(3*(t-1)+2) = d1(2) + NodalPDir1 % Values(3*(t-1)+2)
-        NodalPDir1 % Values(3*(t-1)+3) = d1(3) + NodalPDir1 % Values(3*(t-1)+3)
+        CALL LinesOfCurvatureFrame(BGElement, TaylorApproximation=.TRUE., &
+            LagrangeNodes=LocalFrameNodes, d=d, PlanarSurface=PlateBody, &
+            PlanarPoint=PlanarPoint, UmbilicalPoint=UmbilicalPoint, &
+            MacroElement=MacroElements, SaveProperties = .TRUE.) 
 
-        NodalPDir2 % Values(3*(t-1)+1) = d2(1) + NodalPDir2 % Values(3*(t-1)+1)
-        NodalPDir2 % Values(3*(t-1)+2) = d2(2) + NodalPDir2 % Values(3*(t-1)+2)
-        NodalPDir2 % Values(3*(t-1)+3) = d2(3) + NodalPDir2 % Values(3*(t-1)+3)
+        TaylorParams => GetElementProperty('taylor parameters', BGElement)
 
-        NodalPDir3 % Values(3*(t-1)+1) = d3(1) + NodalPDir3 % Values(3*(t-1)+1)
-        NodalPDir3 % Values(3*(t-1)+2) = d3(2) + NodalPDir3 % Values(3*(t-1)+2)
-        NodalPDir3 % Values(3*(t-1)+3) = d3(3) + NodalPDir3 % Values(3*(t-1)+3)
-        Visitslist(i) = Visitslist(i) + 1
+        !--------------------------------------------------------------------------
+        ! Obtain the final domain for improved lines of curvature parametrization. 
+        ! The nodes of the final domain are here saved as the elementwise property
+        ! 'patch nodes'.
+        !--------------------------------------------------------------------------
+        CALL LinesOfCurvaturePatch(BGElement, LocalFrameNodes(1:MaxPatchNodes,1:2), &
+            TaylorParams, Family, PlanarPoint, UmbilicalPoint)
+
+        !----------------------------------------------------------------------
+        ! The area computation for the available geometry description:
+        !----------------------------------------------------------------------
+        IF (ComputeShellArea) CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
+        IF (ComputeShellArea) CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElements)
+        !LocalFrameNodes(:,3) = ZNodes(:)
+        !CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
+        !CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElement=.FALSE.)
+        !CYCLE
+
+      END IF REPARAMETRIZATION
+
+      ! ------------------------------------------------------------------------------
+      ! Generate the tangential stiffness matrix and assemble the local contribution:
+      ! -----------------------------------------------------------------------------
+      CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
+          LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
+          ApplyBubbles, ShellModelArea, TotalErr, LocalRHSForce, BenchmarkProblem=SolveBenchmarkCase)
+
+      IF (LargeDeflection .AND. NonlinIter == 1) THEN
+        ! ---------------------------------------------------------------------------
+        ! Create a RHS vector which contains just the contribution of external loads
+        ! for the purpose of nonlinear error estimation:
+        ! ---------------------------------------------------------------------------
+        ValuesSaved => Solver % Matrix % RHS
+        Solver % Matrix % RHS => Solver % Matrix % BulkRHS
+        CALL DefaultUpdateForce(LocalRHSForce)
+        Solver % Matrix % RHS => ValuesSaved
+      END IF
+
+      !-------------------------------------------------------------------------
+      ! The following is not active since with the current implementation
+      ! triangular blending functions cannot be evaluated at nodes (due to  
+      ! implementation). Save principal directions at the nodes of the background 
+      ! mesh:
+      !-------------------------------------------------------------------------
+      SavePrincipalAxes = .FALSE.
+      IF (SavePrincipalAxes) THEN
+
+        ShellElement => BGElement % Type
+
+        DO j=1,n
+          i = Indices(j)
+          t = Solver % Variable % Perm(i)
+
+          u = ShellElement % NodeU(j)
+          v = ShellElement % NodeV(j)
+
+          !-------------------------------------------------------------------------
+          ! The principal directions at the given node: 
+          !-------------------------------------------------------------------------        
+          CALL LinesOfCurvatureFrame(BGElement, u, v, d1, d2, d3, p, d=d)
+
+          !-------------------------------------------------------------------------
+          ! Add to existing values and average later:
+          !-------------------------------------------------------------------------
+          NodalPDir1 % Values(3*(t-1)+1) = d1(1) + NodalPDir1 % Values(3*(t-1)+1)
+          NodalPDir1 % Values(3*(t-1)+2) = d1(2) + NodalPDir1 % Values(3*(t-1)+2)
+          NodalPDir1 % Values(3*(t-1)+3) = d1(3) + NodalPDir1 % Values(3*(t-1)+3)
+
+          NodalPDir2 % Values(3*(t-1)+1) = d2(1) + NodalPDir2 % Values(3*(t-1)+1)
+          NodalPDir2 % Values(3*(t-1)+2) = d2(2) + NodalPDir2 % Values(3*(t-1)+2)
+          NodalPDir2 % Values(3*(t-1)+3) = d2(3) + NodalPDir2 % Values(3*(t-1)+3)
+
+          NodalPDir3 % Values(3*(t-1)+1) = d3(1) + NodalPDir3 % Values(3*(t-1)+1)
+          NodalPDir3 % Values(3*(t-1)+2) = d3(2) + NodalPDir3 % Values(3*(t-1)+2)
+          NodalPDir3 % Values(3*(t-1)+3) = d3(3) + NodalPDir3 % Values(3*(t-1)+3)
+          Visitslist(i) = Visitslist(i) + 1
+        END DO
+      END IF
+
+    END DO ASSEMBLYLOOP
+
+    CALL DefaultFinishBulkAssembly() 
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
+
+    ! ---------------------------------------------------------------------------------
+    ! The solution variable is the solution increment while the sif-file specifies
+    ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
+    ! is obtained for the solution increment:
+    ! --------------------------------------------------------------------------------
+    IF (ALLOCATED(Solver % Matrix % ConstrainedDOF)) THEN
+      DO i=1,Solver % Matrix % NumberOfRows
+        IF (Solver % Matrix % ConstrainedDOF(i)) THEN
+          Solver % Matrix % DValues(i) = Solver % Matrix % DValues(i) - Solver % Variable % Values(i)
+        END IF
       END DO
+      CALL EnforceDirichletConditions(Solver, Solver % Matrix, Solver % Matrix % RHS)
+    END IF
+ 
+    ! ---------------------------------------------------------------------------------
+    ! Check whether the nonlinear iteration can be terminated:
+    ! ---------------------------------------------------------------------------------
+    IF (LargeDeflection) THEN
+      IF (NonlinIter == 1) THEN
+        NoTractions = MAXVAL(ABS(Solver % Matrix % BulkRHS(:)))  < AEPS
+        IF (NoTractions) THEN
+          ! This appears to be a purely BC-loaded case, switch to using a different criterion
+          ! (use absolute norm, this can be hard ...):
+          CALL Info('ShellSolver', 'No pressure load ... ', Level=4)
+          CALL Info('ShellSolver', &
+              'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
+          NonlinRes0 = 1.0d0
+        ELSE
+          ! Compute the norm of the initial residual (RHS vector before setting BCs). 
+          ! Update this for parallel implementation. 
+          NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+        END IF
+      END IF
+      NonlinRes = SQRT(SUM(Solver % Matrix % RHS(:)**2)) / NonlinRes0
+      WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
+          NonlinIter-1, NonLinRes
+      CALL Info('ShellSolver', Message, Level=3)        
+      IF (NonlinRes < NonlinTol) THEN
+        WRITE(Message,'(a)') 'Nonlinear iteration is terminated succesfully'
+        CALL Info('ShellSolver', Message, Level=3)          
+        EXIT
+      END IF
     END IF
 
-    !----------------------------------------------------------------------
-    ! The area computation for the available geometry description:
-    !----------------------------------------------------------------------
-    IF (ComputeShellArea) CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
-    IF (ComputeShellArea) CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElements)
-  
-  END DO
+    ! --------------------------------------------------------------------------------
+    ! Previous correction may not be a particularly good initial guess so start from
+    ! the trivial iterate:
+    ! --------------------------------------------------------------------------------
+    IF (LargeDeflection) Solver % Variable % Values = 0.0d0
 
-  CALL DefaultFinishBulkAssembly() 
-  CALL DefaultFinishAssembly()
-  CALL DefaultDirichletBCs()
+    Norm = DefaultSolve()
 
-  Norm = DefaultSolve()
+    IF (LargeDeflection) &
+        Solver % Variable % Values(:) = TotalSol(:) + Solver % Variable % Values(:)
+
+  END DO NONLINEARLOOP
 
   ! -------------------------------------------------------------------------------
   ! Finalize the generation of the principal directions (average):
@@ -443,31 +590,36 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! -------------------------------------------------------------------------------------
   ! PART IV: Postprocess
   ! -------------------------------------------------------------------------------------
-
+  IF ( MeshDisplacementActive ) THEN
+     CALL Info('ShellSolver','Displacing the mesh with computed displacement field',Level=4)
+     CALL DisplaceMesh( Mesh, Solver % Variable % Values, 1, Solver % Variable % Perm, &
+         ShellModelPar, .FALSE., 3 )
+  END IF
 
 
   ! -------------------------------------------------------------------------------------
   ! SOME VERIFICATION OUTPUT if a benchmark case of straight cylindrical shell is solved
   !-----------------------------------------------------------------------------------
-  IF (GetLogical(SolverPars, 'Benchmark Problem', Found)) THEN
+  IF (SolveBenchmarkCase) THEN
+    
+    CALL MatrixVectorMultiply(Solver % Matrix, Solver % Variable % Values, TotalSol)
+    Work = 8.0d0 * SUM( Solver % Variable % Values(:) * TotalSol(:) )
+    !Work = 8.0d0*SUM(Solver % Variable % Values(:) * Solver % Matrix % RHS(:))
 
-    Work = 8.0d0*SUM(Solver % Variable % Values(:) * Solver % Matrix % RHS(:))
-
+    RefWork = 0.0d0
     SELECT CASE(ListGetInteger(SolverPars, 'Benchmark Case', Found, minv=0,maxv=2))
     CASE(1)
-      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 2.688287959059254d0 * 1.0d-2 ! t=0.01
+      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 2.688287959059254d0 * 1.0d-2 ! t=0.01
       !RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 1.828629366566552 * 1.0d-1 ! t=0.1
-      PRINT *, 'Relative energy error = ', SQRT(ABS(RefWork-Work)/RefWork)
     CASE(2)
-      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 0.704331198817278d0 * (1.0d-2)**3 ! t=0.01
-      PRINT *, 'Relative energy error = ', SQRT(ABS(RefWork-Work)/RefWork)
+      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 0.704331198817278d0 * (1.0d-2)**3 ! t=0.01
     END SELECT
+    PRINT *, 'Relative energy error = ', SQRT(ABS(RefWork-Work)/RefWork)
     PRINT *, 'Total number of DOFS = ', SIZE(Solver % Variable % Values) 
 
     IF (ComputeShellArea) THEN
       RefArea = 0.5d0 * PI 
       !RefArea = 4 * (1.0472d0)**2  
-      !  RefArea = PI/4.0d0
       PRINT *, 'Relative Error of Model Surface Area = ', ABS(RefArea  - ShellModelArea)/RefArea    
       PRINT *, 'Relative Error of Blending Surface Area = ', ABS(RefArea  - BlendingSurfaceArea)/RefArea
       PRINT *, 'Relative Error of Mapped BG Mesh Area = ', ABS(RefArea  - MappedMeshArea)/RefArea
@@ -484,10 +636,6 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     !PRINT *, 'The L2 error norm for the principal direction 1 = ', SQRT(MaxPDir1Err)
 
   END IF
-
-
-
-
 
  
 CONTAINS
@@ -1896,12 +2044,12 @@ CONTAINS
 !   The basis vectors may be returned via the arguments e1, e2 and e3, 
 ! while the coordinates of the surface point may be returned via o.
 ! When this subroutine is called at the element centre, it can be used to 
-! define an elementwise coordinate system. In this case the optional arguments
-! LagrangeNodes and TaylorParams can be used to obtain data for the Lagrange 
-! interpolation to describe the shape of the projected surface on the plane 
-! spanned by {e1,e2} and the coefficients of the third-order 
-! Taylor polynomial which approximates the blending surface. The optional
-! argument d can be used to ensure that e3 and d point to the same
+! define an elementwise coordinate system which is aligned with lines of curvature. 
+! In this case the optional arguments LagrangeNodes and TaylorApproximation 
+! can be used to obtain data for the Lagrange interpolation to describe the shape 
+! of the projected surface on the plane spanned by {e1,e2} and the coefficients of 
+! the third-order Taylor polynomial which approximates the blending surface. 
+! The optional argument d can be used to ensure that e3 and d point to the same
 ! direction, while PlanarSurface indicates whether the surface is planar
 ! at the given point.
 !   The optional argument MacroElement indicates whether a quadrilateral should
@@ -1911,10 +2059,11 @@ CONTAINS
 ! as follows.
 !    * 'element frame': e1, e2, e3 and o
 !    * 'taylor parameters': the coefficients of the Taylor polynomial
-!    * 'blending surface nodes': the nodes for the Lagrange approximation
 !    * 'bubble dofs': the coefficients for bubble basis functions of Q3
+!    * 'planar point': to indicate that the surface is planar
+!    * 'umbilical point': to indicate that the surface is umbilical
 !------------------------------------------------------------------------------
-  SUBROUTINE LinesOfCurvatureFrame(Element, xi1, xi2, e1, e2, e3, o, TaylorParams, &
+  SUBROUTINE LinesOfCurvatureFrame(Element, xi1, xi2, e1, e2, e3, o, TaylorApproximation, &
       LagrangeNodes, d, PlanarSurface, PlanarPoint, UmbilicalPoint, &
       MacroElement, SaveProperties, SizeRadiusRatio)
 !------------------------------------------------------------------------------
@@ -1923,7 +2072,7 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: xi1, xi2
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: e1(3), e2(3), e3(3)
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: o(3)
-    REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: TaylorParams(6)
+    LOGICAL, OPTIONAL, INTENT(IN) :: TaylorApproximation
     REAL(KIND=dp), OPTIONAL, TARGET, INTENT(OUT) :: LagrangeNodes(MaxPatchNodes,3)
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: d(3)
     LOGICAL, OPTIONAL, INTENT(IN) :: PlanarSurface
@@ -1941,11 +2090,12 @@ CONTAINS
     LOGICAL :: Subtriangulation, Planar, Umbilical
     INTEGER :: Family, n, m, e, i, j, k,  GridPoint
 
+    REAL(KIND=dp) :: TaylorParams(6), PlanarFlag(1), UmbilicalFlag(1) 
     REAL(KIND=dp) :: u, v
     REAL(KIND=dp) :: GlobPDir1(3), GlobPDir2(3), GlobPDir3(3), X0(3)
     REAL(KIND=dp) :: Lambda1, Lambda2, LambdaMax
     REAL(KIND=dp) :: a1(3), a2(3), a3(3), a(2,2), Deta, b(2,2), ContravA(2,2)
-    REAL(KIND=dp) :: c(2,2), trc, detc, PDir1(2), PDir2(2)
+    REAL(KIND=dp) :: c(2,2), trc, detc, discriminant, PDir1(2), PDir2(2)
     REAL(KIND=dp) :: DualBase1(3), DualBase2(3), Id(2,2), EigenMat(2,2), T(2,2) 
     REAL(KIND=dp) :: BPrinc(2,2), scale, Err
     REAL(KIND=dp) :: rK, hK, h1, h2, pk(3), xi, eta, z(MaxPatchNodes), x1(4), x2(4), uk, vk
@@ -1973,9 +2123,8 @@ CONTAINS
       END SELECT      
     END IF
 
-    IF ( PRESENT(TaylorParams) ) THEN
-      ComputeTaylorPolynomial = .TRUE.
-      TaylorParams = 0.0d0
+    IF ( PRESENT(TaylorApproximation) ) THEN
+      ComputeTaylorPolynomial = TaylorApproximation
     ELSE
       ComputeTaylorPolynomial = .FALSE.
     END IF
@@ -2077,16 +2226,28 @@ CONTAINS
     c(1:2,1:2) = MATMUL(b,ContravA)
     detc = c(1,1)*c(2,2)-c(1,2)*c(2,1)
     trc = c(1,1) + c(2,2)
- 
+    discriminant = trc**2 - 4.0d0*detc
+    !------------------------------------
+    ! Allow some arithmetic inaccuracy:
+    !------------------------------------
+    IF (discriminant < 0.0d0) THEN
+      IF (-discriminant/trc**2 > UmbilicalDelta**2) THEN
+      !IF (-discriminant > GeometryEpsilon**2) THEN
+        CALL Fatal('LinesOfCurvatureFrame', 'Error in computing lines of curvature')
+      ELSE
+        discriminant = 0.0d0
+      END IF
+    END IF
+
     !--------------------------------------------------------------
     ! Order the eigenvalues by their absolute values:
     !--------------------------------------------------------------
     IF (trc>0.0d0) THEN
-      lambda2 = 0.5d0 * ( trc + SQRT(trc**2 - 4.0d0*detc) )
-      lambda1 = 0.5d0 * ( trc - SQRT(trc**2 - 4.0d0*detc) )
+      lambda2 = 0.5d0 * ( trc + SQRT(discriminant) )
+      lambda1 = 0.5d0 * ( trc - SQRT(discriminant) )
     ELSE
-      lambda2 = 0.5d0 * ( trc - SQRT(trc**2 - 4.0d0*detc) )
-      lambda1 = 0.5d0 * ( trc + SQRT(trc**2 - 4.0d0*detc) )
+      lambda2 = 0.5d0 * ( trc - SQRT(discriminant) )
+      lambda1 = 0.5d0 * ( trc + SQRT(discriminant) )
     END IF
     !print *, 'Eigenvalues=', lambda1,lambda2
     LambdaMax = MAX(ABS(Lambda1), ABS(Lambda2))
@@ -2466,21 +2627,28 @@ CONTAINS
     ! Save the quantities computed as elementwise properties:
     ! -------------------------------------------------------------------------
     IF (WriteElementProperties) THEN
-      FrameData(1:3) = GlobPDir1(1:3)
-      FrameData(4:6) = GlobPDir2(1:3)
-      FrameData(7:9) = GlobPDir3(1:3)
-      FrameData(10:12) = X0(1:3)
+      FrameData(FrameBasis1) = GlobPDir1(1:3)
+      FrameData(FrameBasis2) = GlobPDir2(1:3)
+      FrameData(FrameBasis3) = GlobPDir3(1:3)
+      FrameData(FrameOrigin) = X0(1:3)
       CALL SetElementProperty('element frame', FrameData(1:FrameDataSize), Element) 
 
       IF (ComputeTaylorPolynomial) CALL SetElementProperty('taylor parameters', &
           TaylorParams(1:6), Element)
 
-      IF (ApproximatePlaneDomain) THEN
-        NodesArray(1:MaxPatchNodes) = LagrangeNodes(1:MaxPatchNodes,1)
-        NodesArray(MaxPatchNodes+1:2*MaxPatchNodes) = LagrangeNodes(1:MaxPatchNodes,2)
-        NodesArray(2*MaxPatchNodes+1:3*MaxPatchNodes) = LagrangeNodes(1:MaxPatchNodes,3)
-        CALL SetElementProperty('blending surface nodes', NodesArray(1:3*MaxPatchNodes), Element)
+      IF (Planar) THEN
+        PlanarFlag = 1.0d0
+      ELSE
+        PlanarFlag = -1.0d0
       END IF
+      CALL SetElementProperty('planar point', PlanarFlag, Element)
+
+      IF (Umbilical) THEN
+        UmbilicalFlag = 1.0d0
+      ELSE
+        UmbilicalFlag = -1.0d0
+      END IF
+      CALL SetElementProperty('umbilical point', UmbilicalFlag, Element) 
 
       IF (Subtriangulation) THEN
         NodesArray(1:4) = BubbleNodesDelta(1:4,1)
@@ -2509,26 +2677,29 @@ CONTAINS
 ! parameterization. This subroutine solves nodewise a root finding problem of 
 ! the type g(y) - x = 0, where x is a given node on the plane domain S and g is 
 ! a given nonlinear transformation from a subset K of R^2 onto S. The argument 
-! LocalFrameNodes defines x, the points y are returned via the argument PatchNodes 
-! and the form of g is defined by the parameters TaylorParams. If ZNodes is
-! supplied, approximations of nodal z-coordinates is computed using a third-order
-! Taylor polynomial in the coordinates y of the final patch K. This option
+! LocalFrameNodes defines x, the points y are saved as the elementwise property 
+! 'patch nodes' and the form of g is defined by the parameters TaylorParams. 
+! If ZNodes is supplied, approximations of nodal z-coordinates is computed using 
+! a third-order Taylor polynomial in the coordinates y of the final patch K. This option
 ! can be used to cross-check different approximations but may not have final utility.
 !-----------------------------------------------------------------------------------
-  SUBROUTINE LinesOfCurvaturePatch(LocalFrameNodes, TaylorParams, PatchNodes, &
-      Family, ZNodes, PlanarSurface, UmbilicalPoint)
+  SUBROUTINE LinesOfCurvaturePatch(Element, LocalFrameNodes, TaylorParams, &
+      Family, PlanarSurface, UmbilicalPoint, ZNodes)
 !-----------------------------------------------------------------------------------
     IMPLICIT NONE
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
     REAL(KIND=dp), TARGET, INTENT(IN) :: LocalFrameNodes(MaxPatchNodes,2)
-    REAL(KIND=dp), INTENT(IN) :: TaylorParams(6)
-    REAL(KIND=dp), INTENT(OUT) :: PatchNodes(MaxPatchNodes,2)
+    REAL(KIND=dp), POINTER, INTENT(IN) :: TaylorParams(:)
     INTEGER, INTENT(IN) :: Family
-    REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: ZNodes(MaxPatchNodes)
     LOGICAL, OPTIONAL, INTENT(IN) :: PlanarSurface
     LOGICAL, OPTIONAL, INTENT(IN) :: UmbilicalPoint
+    REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: ZNodes(MaxPatchNodes)
 !-----------------------------------------------------------------------------------
     LOGICAL :: Planar, Umbilical, Converged
     INTEGER :: i, k, n
+
+    REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2)
+    REAL(KIND=dp) :: NodesArray(2*MaxPatchNodes)
     REAL(KIND=dp) :: c1, c2, c4, c5, c6, c7, b5, b7 
     REAL(KIND=dp) :: hK, y1, y2
     REAL(KIND=dp) :: r(2), delta(2), DerMat(2,2), err
@@ -2543,8 +2714,13 @@ CONTAINS
         ! In the special case of planar surface there is no need to improve
         ! parametrization: make an early exit
         !-----------------------------------------------------------------------
-        PatchNodes = LocalFrameNodes
-        IF (PRESENT(ZNodes)) ZNodes = 0.0d0       
+        IF (PRESENT(ZNodes)) ZNodes = 0.0d0
+
+        ! Save the patch nodes as an elementwise property:
+        NodesArray(1:MaxPatchNodes) = LocalFrameNodes(1:MaxPatchNodes,1)
+        NodesArray(MaxPatchNodes+1:2*MaxPatchNodes) = LocalFrameNodes(1:MaxPatchNodes,2)
+        CALL SetElementProperty('patch nodes', NodesArray(1:2*MaxPatchNodes), Element)
+
         RETURN
       END IF
     END IF
@@ -2668,6 +2844,12 @@ CONTAINS
         END IF
       END DO
     END IF
+
+    ! Save the patch nodes as an elementwise property:
+    NodesArray(1:MaxPatchNodes) = PatchNodes(1:MaxPatchNodes,1)
+    NodesArray(MaxPatchNodes+1:2*MaxPatchNodes) = PatchNodes(1:MaxPatchNodes,2)
+    CALL SetElementProperty('patch nodes', NodesArray(1:2*MaxPatchNodes), Element)
+
 !-----------------------------------------------------------------------------------
   END SUBROUTINE LinesOfCurvaturePatch
 !-----------------------------------------------------------------------------------
@@ -2688,7 +2870,7 @@ CONTAINS
 !-----------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: x, y
-    REAL(KIND=dp), INTENT(IN) :: TaylorParams(6)
+    REAL(KIND=dp), POINTER, INTENT(IN) :: TaylorParams(:)
     REAL(KIND=dp), INTENT(IN) :: e1(3), e2(3), e3(3), o(3)
     REAL(KIND=dp), INTENT(OUT) :: a1(3), a2(3), a3(3)
     REAL(KIND=dp), INTENT(OUT) :: A11, A22, SqrtDetA, B11, B22
@@ -2886,6 +3068,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 ! The elementwise contribution to the system of discrete shell equations.
+! This subroutine creates the tangential stiffness matrix for the computation
+! of the solution increment to update the nonlinear iterate.
 ! The local DOFs always correspond to the displacement components along the
 ! principal axes. The transformation to global DOFs is done within this subroutine.
 ! The stiffness matrix K corresponding to the global DOFs is thus obtained as 
@@ -2899,26 +3083,25 @@ CONTAINS
 ! p-element switches to the standard weak formulation which can give highly
 ! inaccurate results for thin shells (with low p)! 
 !------------------------------------------------------------------------------
-  SUBROUTINE ShellLocalMatrix( BGElement, n, nd, TaylorParams, PatchNodes, &
-      e1, e2, e3, o, m, PlateBody, SphericalSurface, StrainReductionMethod, &
-      Bubbles, Area, Error)
+  SUBROUTINE ShellLocalMatrix( BGElement, n, nd, m, LocalSol, LargeDeflection, &
+      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, Area, Error, &
+      RHSForce, BenchmarkProblem)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component (after
                                                        ! static condensation if bubbles are used)
-    REAL(KIND=dp), INTENT(IN) :: TaylorParams(6)       ! The coefficients of the Taylor approximation
-    REAL(KIND=dp), INTENT(IN) :: PatchNodes(MaxPatchNodes,2) ! The nodes of principal coordinate patch
-    REAL(KIND=dp), INTENT(IN) :: e1(3), e2(3), e3(3)   ! The basis of the local frame
-    REAL(KIND=dp), INTENT(IN) :: o(3)                  ! The origin of the local frame
     INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
-    LOGICAL, INTENT(IN) :: PlateBody                   ! To indicate that the surface is flat
-    LOGICAL, INTENT(IN) :: SphericalSurface            ! To indicate that the surface is considered to spherical
+    REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
+    LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
     INTEGER, INTENT(IN) :: StrainReductionMethod       ! The choice of strain reduction method
+    INTEGER, INTENT(IN) :: MembraneStrainReductionMethod ! The choice of membrane strain reduction method    
     LOGICAL, INTENT(IN) :: Bubbles                     ! To indicate that bubble functions are used
     REAL(KIND=dp), INTENT(INOUT) :: Area               ! A variable for area compution
     REAL(KIND=dp), INTENT(INOUT) :: Error              ! A variable for error compution
+    REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
+    LOGICAL, INTENT(IN) :: BenchmarkProblem            ! To omit some terms in the strain energy 
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element => NULL()
     TYPE(Element_t), POINTER :: GElement => NULL()     
@@ -2927,33 +3110,51 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Stat, Found
-    LOGICAL :: SuperParametric, NoNormalStress, SecondOrder, PVersion
+    LOGICAL :: SuperParametric, SecondOrder, PVersion
     LOGICAL :: UseShearCorrection, UseBubbles
+    LOGICAL :: PlateBody                   ! To indicate that the surface is flat
+    LOGICAL :: SphericalSurface            ! To indicate that the surface is considered to spherical
 
-    INTEGER :: Family, ReducedStrainDim, ReductionMethod
+    INTEGER :: Family, ReducedStrainDim, MembraneStrainDim, ReductionMethod, MembraneReductionMethod
     INTEGER :: ShearReductionMethod, StretchReductionMethod
-    INTEGER :: DOFs, nb, i, j, k, p, t, i0, j0, csize, GElementNodes 
+    INTEGER :: DOFs, BubbleDOFs, i, j, k, p, t, i0, j0, csize, GElementNodes 
 
-    ! Prepare for the scenario that one elementwise bubble per component can be added:
+    REAL(KIND=dp), POINTER :: TaylorParams(:), FrameData(:), PatchData(:)
+    REAL(KIND=dp), POINTER :: PlanarPointFlag(:), UmbilicalPointFlag(:)
+
+    REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2) ! The nodes of principal coordinate patch
+    REAL(KIND=dp) :: e1(3), e2(3), e3(3)         ! The basis of the local frame
+    REAL(KIND=dp) :: o(3)                        ! The origin of the local frame
+
+    ! Prepare for the scenario that one elementwise bubble per component can be added
+    ! (check array sizes if more bubbles are used):
     REAL(KIND=dp) :: Stiff(m*nd+m,m*nd+m), Mass(m*nd+m,m*nd+m), Force(m*nd+m)
     REAL(KIND=dp) :: Damp(m*nd+m,m*nd+m)
-    REAL(KIND=dp) :: BM(4,m*nd+m), BS(2,m*nd+m), BB(3,m*nd+m)
+    REAL(KIND=dp) :: BM(4,m*nd+m), BS(4,m*nd+m), BB(3,m*nd+m)
+    REAL(KIND=dp) :: NonlinBM(4,m*nd+m), NonlinBS(4,m*nd+m), BWork(7,m*nd+m)
     REAL(KIND=dp) :: Basis(nd+1), dBasis(nd+1,3)
+    REAL(KIND=dp) :: ReductionDOFsArray(4,2*nd+2) ! Large enough for p=1 with one bubble
 
+    REAL(KIND=dp) :: StrainVec(6), StressVec(6)
+    REAL(KIND=dp) :: PrevSolVec(m*nd), PrevField(7)
     REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd)
     REAL(KIND=dp) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2, B11, B22
     REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
     REAL(KIND=dp) :: abasis1(3), abasis2(3), abasis3(3)
+    REAL(KIND=dp) :: abasis1New(3), abasis2New(3), abasis3New(3), NewDetA
+    REAL(KIND=dp) :: dual1(3), dual2(3)
+    REAL(KIND=dp) :: v1, v2, v3
     REAL(KIND=dp) :: yk, y1, y2, XGlob, YGlob, ZGlob
     REAL(KIND=dp) :: uq, vq, sq
     REAL(KIND=dp) :: BGBasis(n), GBasis(MaxPatchNodes), PBasis(nd)
-    REAL(KIND=dp) :: StrainBasis(4,3)             ! Four rows large enough for p=1
-    REAL(KIND=dp) :: ReductionDOFsArray(4,2*nd+2) ! Four rows large enough for p=1 with one bubble
+    REAL(KIND=dp) :: StrainBasis(4,3)   ! Four rows large enough for p=1
+    REAL(KIND=dp) :: MembraneStrainBasis1(4,3), MembraneStrainBasis2(4,3)
+
     REAL(KIND=dp) :: DOFsTransform(2,3)
-    REAL(KIND=dp) :: ShearParMat(2,2,nd), StretchParMat1(2,2,nd)
-    REAL(KIND=dp) :: StretchParMat2(2,2,nd), StretchParMat3(2,2,nd)
-    REAL(KIND=dp) :: StretchParMat4(2,2,nd), StretchParMat5(2,2,nd), StretchParMat6(2,2,nd)
+    REAL(KIND=dp) :: ShearParMat(2,2,nd)
+    REAL(KIND=dp) :: ChristoffelMat1(2,2,nd), ChristoffelMat2(2,2,nd)
+    REAL(KIND=dp) :: BParMat(2,2,nd), BParMat1(2,2,nd), BParMat2(2,2,nd)
     REAL(KIND=dp) :: PoissonRatio(n), YoungsMod(n), ShellThickness(n), Load(n), rho(n), rho0
     REAL(KIND=dp) :: nu, E, h, NormalTraction, Kappa
     REAL(KIND=dp) :: DetJ, Weight, Norm
@@ -2961,114 +3162,58 @@ CONTAINS
     SAVE Element, GElement, Nodes, PNodes, PRefNodes
 !------------------------------------------------------------------------------
     IF (m /= 6) CALL Fatal('ShellLocalMatrix', 'Wrong number of unknown fields')
-
     Family = GetElementFamily(BGElement)
-    PVersion = IsPElement(BGElement)
 
+    ! ------------------------------------------------------------------------------
+    ! Retrieve the data which have been saved as elementwise properties:
+    ! ------------------------------------------------------------------------------
+    TaylorParams => GetElementProperty('taylor parameters', BGElement)
+
+    PatchData => GetElementProperty('patch nodes', BGElement) 
+    PatchNodes(1:MaxPatchNodes,1) = PatchData(1:MaxPatchNodes)
+    PatchNodes(1:MaxPatchNodes,2) = PatchData(MaxPatchNodes+1:2*MaxPatchNodes)
+ 
+    FrameData => GetElementProperty('element frame', BGElement) 
+    e1 = FrameData(FrameBasis1)
+    e2 = FrameData(FrameBasis2)
+    e3 = FrameData(FrameBasis3)
+    o = FrameData(FrameOrigin)
+
+    PlanarPointFlag => GetElementProperty('planar point', BGElement)
+    UmbilicalPointFlag => GetElementProperty('umbilical point', BGElement)
+    PlateBody = PlanarPointFlag(1) > 0.0d0
+    SphericalSurface = UmbilicalPointFlag(1) > 0.0d0
+
+    ! ------------------------------------------------------------------------------
+    ! Decide what strain reduction strategy is applied and set parameters that
+    ! control the selection of variational crimes.
+    ! ------------------------------------------------------------------------------
+    MembraneReductionMethod = MembraneStrainReductionMethod
     UseBubbles = .FALSE.
+    CALL SetStrainReductionParameters(BGElement, MembraneReductionMethod, PlateBody, &
+      MembraneStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
+      MembraneStrains = .TRUE.)
 
-    IF (Pversion) THEN
-      ReductionMethod = NoStrainReduction
-    ELSE
-      IF (StrainReductionMethod == AutomatedChoice) THEN
-        ! ------------------------------------------------------------------------------
-        ! This option saves the user from deciding a strain reduction method
-        ! ------------------------------------------------------------------------------
-        SELECT CASE(Family)
-        CASE(3)
-          ReductionMethod = DoubleReduction
-          UseBubbles = .TRUE.
-        CASE(4)
-          ReductionMethod = CurlKernel
-        END SELECT
-      ELSE
-        ReductionMethod = StrainReductionMethod
-        ! Currently bubbles can be activated only for certain strategies:
-        IF (ReductionMethod == NoStrainReduction .OR. &
-            ReductionMethod == DoubleReduction) THEN
-          UseBubbles = Bubbles
-        END IF
-      END IF
-    END IF
-
-    ! ------------------------------------------------------------------------------
-    ! In the case of triangles asking for the kernel version switches to the
-    ! compound strain reduction strategy:
-    ! ------------------------------------------------------------------------------
-    IF (Family == 3 .AND. ReductionMethod == CurlKernel) &
-        ReductionMethod = DoubleReduction
-
-    ! ------------------------------------------------------------------------------
-    ! Set the dimension of the range of strain reduction operator and decide
-    ! whether a numerical shear correction trick is applied:
-    ! ------------------------------------------------------------------------------
-    SELECT CASE(ReductionMethod)
-    CASE(NoStrainReduction)
-      UseShearCorrection = .FALSE.
-    CASE(CurlKernel)
-      IF (Family == 3) THEN
-        ! This choice should not really be used for triangles (without applying MITC 
-        ! interpolation first, cf. DoubleReduction case); with the current version
-        ! one should never end up here
-        ReducedStrainDim = 2
-        UseShearCorrection = .TRUE.
-      ELSE
-        ReducedStrainDim = 3
-        UseShearCorrection = .FALSE.
-      END IF
-    CASE(MITC)
-      IF (Family == 3) THEN
-        ReducedStrainDim = 3
-      ELSE
-        ReducedStrainDim = 4
-      END IF
-      UseShearCorrection = .TRUE.
-    CASE(DoubleReduction)
-      !Use a combination of MITC and the kernel reduction:
-      IF (Family==3) THEN
-        ReducedStrainDim = 2
-        IF (UseBubbles) THEN
-          UseShearCorrection = .FALSE.
-        ELSE
-          UseShearCorrection = .TRUE.
-        END IF
-        ! Coefficients to transform from MITC DOFs to the kernel DOFs: 
-        DOFsTransform(1,1) = 1.0d0/3.0d0
-        DOFsTransform(1,2) = -1.0d0/6.0d0
-        DOFsTransform(1,3) = DOFsTransform(1,2)
-        DOFsTransform(2,1) = 0.0d0
-        DOFsTransform(2,2) = 1.0d0/(2.0d0*sqrt(3.0d0))
-        DOFsTransform(2,3) = -1.0d0/(2.0d0*sqrt(3.0d0))
-      ELSE
-        CALL Fatal('ShellLocalMatrix', 'Double reduction is not defined for quads')
-      END IF
-    END SELECT
-
-    ! ------------------------------------------------------------------------------
-    ! The size of the constitutive matrix for 2D shell equations
-    ! ------------------------------------------------------------------------------
-    csize = 4
+    ReductionMethod = StrainReductionMethod
+    UseBubbles = Bubbles .AND. (.NOT. LargeDeflection)
+    CALL SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
+      ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
+      MembraneStrains = .FALSE.)
+    !print *, 'MembraneReductionMethod=', MembraneReductionMethod
+    !print *, 'ReductionMethod=', ReductionMethod
+    !print *, 'shear correction=', UseShearCorrection
+    !print *, 'usebubbles=', usebubbles
 
     ! ------------------------------------------------------------------------------
     ! The DOFs count: Currently, FE bubbles can be employed only in a very special 
     ! way by augmenting the two rotation components
     ! ------------------------------------------------------------------------------
     IF (UseBubbles) THEN
-      nb = 2
-      !IF (ReductionMethod == DoubleReduction) nb = nb + 1 ! Try with u3-bubbles
+      BubbleDOFs = 2
     ELSE
-      nb = 0
+      BubbleDOFs = 0
     END IF
-    DOFs = m*nd + nb
-
-    ! ------------------------------------------------------------------------------
-    ! The following parameter defines how the normal strain variable is handled.
-    ! With NoNormalStress = .TRUE. the traditional condition of vanishing normal
-    ! stress is enforced a priori. Otherwise the energy principle is used to determine
-    ! the normal strain variable.
-    ! ------------------------------------------------------------------------------
-    NoNormalStress = .FALSE. ! The choice .TRUE. does not work anymore if membrabe
-                             ! strain reductions are active! 
+    DOFs = m*nd ! The local stiffness matrix size after static condensation
 
     ! ------------------------------------------------------------------------------
     ! A general remark:
@@ -3082,160 +3227,28 @@ CONTAINS
     !   * Element: the Lagrange interpolation element corresponding to the "Element" keyword 
     !   * GElement: an element structure corresponding to the surface reconstruction
     ! ------------------------------------------------------------------------------
+    Pversion = IsPElement(BGElement)
+
     SuperParametric = .FALSE. ! This relates to an experimental version which is not active 
-
-    ! --------------------------------------------------------------------------
+    ! ------------------------------------------------------------------------------
     ! Allocate a Lagrange interpolation element structure corresponding to the
-    ! "Element" keyword. Note that the implementation of the p-version is not
-    ! fully optimal since loads and BCs may be interpolated only by using the node 
-    ! coordinates of the background element.
+    ! "Element" keyword. A node variable suitable for defining the isoparametric 
+    ! element map from the reference element onto the set which is the domain of 
+    ! lines of curvature coordinates is also created. In addition, the element 
+    ! structure corresponding to the surface reconstruction is created. 
     ! --------------------------------------------------------------------------
-
-    IF ( PVersion ) THEN
-      IF ( .NOT. ASSOCIATED(Element) ) Element => AllocateElement()
-      SELECT CASE(nd)
-      CASE(3)
-        Element % Type => GetElementType(303, .FALSE.)
-      CASE(4)
-        IF (Family /= 4) CALL Fatal('ShellLocalMatrix', 'Unsupported p-element')
-        Element % Type => GetElementType(404, .FALSE.)
-      CASE(8)
-        Element % Type => GetElementType(408, .FALSE.)
-      CASE(9)
-        Element % Type => GetElementType(409, .FALSE.)
-      CASE DEFAULT
-        CALL Fatal('ShellLocalMatrix', 'Unsupported p-element type')
-      END SELECT
-    ELSE
-      Element => BGElement
-    END IF
+    CALL CreateLagrangeElementStructures(BGElement, nd, Element, Nodes, PNodes, &
+        GElement)
 
     ! --------------------------------------------------------------------------
-    ! The element structure corresponding to the surface reconstruction:
+    ! Update the coordinate values of the Lagrange nodes variable. If p-basis is 
+    ! used for approximating the shell equations, create also the isoparametric 
+    ! geometry representation in terms of p-basis. Note that the implementation of 
+    ! the p-version is not fully optimal since loads and BCs may be interpolated 
+    ! only by using the node coordinates of the background element.
     ! --------------------------------------------------------------------------
-    IF ( .NOT. ASSOCIATED(GElement) ) GElement => AllocateElement()
-    SELECT CASE(Family)
-    CASE(3)
-      GElement % Type => GetElementType(310, .FALSE.)
-    CASE(4)
-      GElement % Type => GetElementType(416, .FALSE.)
-    CASE DEFAULT
-      CALL Fatal('ShellLocalMatrix', 'Unsupported (geometry model) element type')
-    END SELECT
-
-    ! --------------------------------------------------------------------------
-    ! Create a node variable suitable for defining the isoparametric element 
-    ! map from the reference element onto the set which is the domain of lines of
-    ! curvature coordinates, i.e. use as many nodes as DOFs in the spartial 
-    ! discretization. Then update the coordinate values of the node variable. 
-    ! --------------------------------------------------------------------------
-    IF ( .NOT. ASSOCIATED( Nodes % x ) ) THEN
-      ALLOCATE( Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) ) 
-      Nodes % NumberOfNodes = nd
-    ELSE
-      IF (nd > SIZE(Nodes % x)) THEN
-        DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
-        ALLOCATE( Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) ) 
-      END IF
-      Nodes % NumberOfNodes = nd          
-    END IF
-
-    GElementNodes = GElement % Type % NumberOfNodes
-    DO j=1,nd
-      u = Element % Type % NodeU(j)
-      v = Element % Type % NodeV(j)
-      CALL NodalBasisFunctions2D(GBasis, GElement, u, v)
-      Nodes % x(j) = SUM(GBasis(1:GElementNodes) * PatchNodes(1:GElementNodes,1))
-      Nodes % y(j) = SUM(GBasis(1:GElementNodes) * PatchNodes(1:GElementNodes,2))
-      Nodes % z(j) = 0.0d0
-    END DO
-
-
-    ! --------------------------------------------------------------------------
-    ! If p-basis is used for approximating the shell equations,  
-    ! create also the isoparametric geometry representation in terms of p-basis:
-    ! --------------------------------------------------------------------------    
-    IF ( PVersion ) THEN
-      ! --------------------------------------------------------------------------
-      ! Solve coefficients to express the isoparametric geometry approximation by 
-      ! an equivalent expansion in terms of the p-basis:
-      ! --------------------------------------------------------------------------     
-      IF ( .NOT. ASSOCIATED( PNodes % x ) ) THEN
-        ALLOCATE( PNodes % x(nd), PNodes % y(nd), PNodes % z(nd) )
-        PNodes % NumberOfNodes = nd
-      ELSE
-        IF (nd > SIZE(PNodes % x)) THEN
-          DEALLOCATE(PNodes % x, PNodes % y, PNodes % z)
-          ALLOCATE( PNodes % x(nd), PNodes % y(nd), PNodes % z(nd) ) 
-        END IF
-        PNodes % NumberOfNodes = nd          
-      END IF
-      
-      ! Initialize to avoid errors from the next ElementInfo call:
-      PNodes % x(1:nd) = 0.0d0
-      PNodes % y(1:nd) = 0.0d0
-      PNodes % z(1:nd) = 0.0d0
-      PNodes % x(1:n) = Nodes % x(1:n)
-      PNodes % y(1:n) = Nodes % y(1:n)
-
-      DO k=1,2
-        STIFF = 0.0d0
-        FORCE = 0.0d0
-
-        IP = GaussPoints( BGElement )
-        DO t=1,IP % n 
-          ! ------------------------------------------------------------------
-          ! Don't change the order of ElementInfo calls to get the right detJ
-          ! ------------------------------------------------------------------
-          stat = ElementInfo( BGElement, PNodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, PBasis )
-
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, Basis )         
-
-          DO i=1,nd
-            DO j=1,nd
-              STIFF(i,j) = STIFF(i,j) + IP % s(t) * DetJ * PBasis(i) * PBasis(j)
-            END DO
-          END DO
-
-          SELECT CASE(k)
-          CASE(1)
-            yk = SUM( Nodes % x(1:nd) * Basis(1:nd) )
-          CASE(2)
-            yk = SUM( Nodes % y(1:nd) * Basis(1:nd) )           
-          END SELECT
-          FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * yk * PBasis(1:nd)
-        END DO
-
-        CALL LUSolve(nd, Stiff(1:nd,1:nd), Force(1:nd))
-        SELECT CASE(k)
-        CASE(1)
-          PNodes % x(1:nd) = Force(1:nd)
-        CASE(2)
-          PNodes % y(1:nd) = Force(1:nd) 
-        END SELECT
-      END DO
-
-      ! ------------------------------------------------------------------------
-      ! An additional node variable needed for superparametric case:
-      ! ------------------------------------------------------------------------
-      IF (SuperParametric) THEN
-        IF ( .NOT. ASSOCIATED( PRefNodes % x ) ) THEN
-          ALLOCATE( PRefNodes % x(n), PRefNodes % y(n), PRefNodes % z(n) )
-        ELSE
-          IF (n > SIZE(PRefNodes % x)) THEN
-            DEALLOCATE(PRefNodes % x, PRefNodes % y, PRefNodes % z)
-            ALLOCATE( PRefNodes % x(n), PRefNodes % y(n), PRefNodes % z(n) ) 
-          END IF
-        END IF
-        PRefNodes % NumberOfNodes = n
-        PrefNodes % x(1:n) = BGElement % Type % NodeU(1:n)
-        PrefNodes % y(1:n) = BGElement % Type % NodeV(1:n)
-        PrefNodes % z(1:n) = BGElement % Type % NodeW(1:n)
-      END IF
-    END IF
-
+    CALL WriteElementNodesVariables(BGElement, GElement, Element, Nodes, &
+        PNodes, PatchNodes, PVersion) 
 
     ! --------------------------------------------------------------------------
     ! Body forces, material parameters and the shell thickness:
@@ -3244,11 +3257,18 @@ CONTAINS
     YoungsMod(1:n) = GetReal(GetMaterial(), 'Youngs Modulus')
     ShellThickness(1:n) = GetReal(GetMaterial(), 'Shell Thickness')
     BodyForce => GetBodyForce()
-    IF ( ASSOCIATED(BodyForce) ) &
-        Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
+    IF ( ASSOCIATED(BodyForce) ) THEN
+      Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
+    ELSE
+      Load(1:n) = 0.0d0
+    END IF
     IF (TransientSimulation) &
         rho(1:n) = GetReal(GetMaterial(), 'Density')
 
+    ! ------------------------------------------------------------------------------
+    ! The size of the constitutive matrix for 2D shell equations
+    ! ------------------------------------------------------------------------------
+    csize = 4
 
     ! --------------------------------------------------------------------------
     ! Strain reduction operators will be applied to fields Cu where
@@ -3259,56 +3279,91 @@ CONTAINS
     ! TO DO: Should we create nodal vectors of all model parameters to avoid
     ! a later call of SurfaceBasisVectors?
     ! -------------------------------------------------------------------------- 
-    ShearParMat = 0.0d0
-    StretchParMat1 = 0.0d0
-    StretchParMat2 = 0.0d0
-    StretchParMat3 = 0.0d0
-    StretchParMat4 = 0.0d0
-    StretchParMat5 = 0.0d0
-    StretchParMat6 = 0.0d0
-    DO j=1,nd
-      CALL SurfaceBasisVectors(Nodes % x(j), Nodes % y(j), TaylorParams, e1, e2, e3, o, &
-          abasis1, abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
-          C211, C212, XGlob=XGlob, YGlob=YGlob, ZGlob=ZGlob, PlanarPoint=PlateBody, &
-          UmbilicalPoint=SphericalSurface)
- 
-      ShearParMat(1,1,j) = B11/a11
-      ShearParMat(2,2,j) = B22/a22
+    IF (ReductionMethod /= NoStrainReduction .OR. MembraneReductionMethod /= NoStrainReduction) THEN
+      ShearParMat = 0.0d0
+      BParMat = 0.0d0
+      BParMat1 = 0.0d0
+      BParMat2 = 0.0d0
+      DO j=1,nd
+        CALL SurfaceBasisVectors(Nodes % x(j), Nodes % y(j), TaylorParams, e1, e2, e3, o, &
+            abasis1, abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
+            C211, C212, XGlob=XGlob, YGlob=YGlob, ZGlob=ZGlob, PlanarPoint=PlateBody, &
+            UmbilicalPoint=SphericalSurface)
 
-      StretchParMat1(1,1,j) = C111
-      StretchParMat1(2,2,j) = C212
+        ChristoffelMat1(1,1,j) = C111
+        ChristoffelMat1(2,1,j) = C211
+        ChristoffelMat1(1,2,j) = C112
+        ChristoffelMat1(2,2,j) = C212
 
-      StretchParMat2(1,1,j) = C112
-      StretchParMat2(2,2,j) = C211
+        ChristoffelMat2(1,1,j) = C211
+        ChristoffelMat2(2,1,j) = C221
+        ChristoffelMat2(1,2,j) = C212
+        ChristoffelMat2(2,2,j) = C222
 
-      StretchParMat3(1,1,j) = C211
-      StretchParMat3(2,2,j) = C222
+        BParMat(1,1,j) = B11
+        BParMat(2,2,j) = B22       
+        BParMat1(1,1,j) = B11
+        BParMat2(2,2,j) = B22
 
-      StretchParMat4(1,1,j) = C212
-      StretchParMat4(2,2,j) = C221
-
-      StretchParMat5(1,1,j) = B11
-      StretchParMat5(2,2,j) = 0.0d0
-
-      StretchParMat6(1,1,j) = 0.0d0
-      StretchParMat6(2,2,j) = B22
-
-    END DO
-
-    IF (PVersion) THEN
-      IP = GaussPoints( BGElement )
-    ELSE
-      IF (SuperParametric) THEN
-        IP = GaussPoints( Element,  Element % TYPE % GaussPoints2 )
-      ELSE
-        IP = GaussPoints( Element )
-      END IF
+        ShearParMat(1,1,j) = B11/a11
+        ShearParMat(2,2,j) = B22/a22
+      END DO
     END IF
 
+    ! ------------------------------------------------------------------------
+    ! Vectorize the previous solution and transform it to the local DOFs:
+    ! ------------------------------------------------------------------------
+    DO k=1,m
+      PrevSolVec(k:DOFs:m) = LocalSol(k,1:nd)
+    END DO
+
+    Q = 0.0d0
+    DO j=1,nd
+      !IF ( PVersion ) THEN
+      IF ( .FALSE. ) THEN
+        y1 = PNodes % x(j)
+        y2 = PNodes % y(j)       
+      ELSE
+        y1 = Nodes % x(j)
+        y2 = Nodes % y(j)
+      END IF
+
+      CALL SurfaceBasisVectors(y1, y2, TaylorParams, e1, e2, e3, o, abasis1, &
+          abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
+          C211, C212, PlanarPoint=PlateBody, UmbilicalPoint=SphericalSurface)
+
+      QBlock(1,1:3) = abasis1(1:3)
+      QBlock(2,1:3) = abasis2(1:3)
+      QBlock(3,1:3) = abasis3(1:3)         
+
+      i0 = (j-1)*m
+
+      Q(i0+1:i0+3,i0+1:i0+3) =  QBlock(1:3,1:3)
+      Q(i0+4:i0+6,i0+4:i0+6) =  QBlock(1:3,1:3)
+
+    END DO    
+    PrevSolVec(1:DOFs) = MATMUL(Q(1:DOFs,1:DOFs),PrevSolVec(1:DOFs))
+
+    ! ------------------------------------------------------------------------
+    ! Finally, integrate local element matrices:
+    ! ------------------------------------------------------------------------
     Mass = 0.0d0
     Damp = 0.0d0
     Stiff = 0.0d0
     Force = 0.0d0
+    RHSForce = 0.0d0
+
+    IF (PVersion) THEN
+      IP = GaussPoints( BGElement )
+    ELSE
+      !IF (SuperParametric) THEN
+      !  IP = GaussPoints( Element,  Element % TYPE % GaussPoints2 )
+      !ELSE
+
+      IP = GaussPoints( Element )
+
+      !END IF
+    END IF
 
     QUADRATURELOOP: DO t=1,IP % n
 
@@ -3316,20 +3371,23 @@ CONTAINS
       BB = 0.0d0
       BS = 0.0d0
 
+      NonlinBM = 0.0d0
+      NonlinBS = 0.0d0
+
       IF ( PVersion ) THEN
 
-!        IF (SuperParametric) THEN
-!          ! Get p-basis on the reference element ...
-!          stat = ElementInfo( BGElement, PRefNodes, IP % U(t), IP % V(t), &
-!              IP % W(t), detJ, Basis, dBasis )
-!          ! ... and get the derivatives with respect to lines of curvature coordinates by just transforming the 
-!          ! derivatives of basis functions taken with respect to the reference element coordinates:
-!          stat = SuperParametricElementInfo( BGElement, GElement, GBasis, PatchNodes(1:16,1), &
-!              PatchNodes(1:16,2), IP % U(t), IP % V(t), detJ, Basis, dBasis, ReadyBasis = .TRUE.)
-!          y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
-!          y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )            
-!
-!        ELSE
+        !  IF (SuperParametric) THEN
+        !    ! Get p-basis on the reference element ...
+        !    stat = ElementInfo( BGElement, PRefNodes, IP % U(t), IP % V(t), &
+        !              IP % W(t), detJ, Basis, dBasis )
+        !    ! ... and get the derivatives with respect to lines of curvature coordinates by just transforming the 
+        !    ! derivatives of basis functions taken with respect to the reference element coordinates:
+        !    stat = SuperParametricElementInfo( BGElement, GElement, GBasis, PatchNodes(1:16,1), &
+        !              PatchNodes(1:16,2), IP % U(t), IP % V(t), detJ, Basis, dBasis, ReadyBasis = .TRUE.)
+        !    y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
+        !    y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )            
+        !
+        !  ELSE
 
         ! Here the element mapping is isoparametric:
 
@@ -3341,16 +3399,16 @@ CONTAINS
         y1 = SUM( PNodes % x(1:nd) * Basis(1:nd) )
         y2 = SUM( PNodes % y(1:nd) * Basis(1:nd) )
 
-!        END IF
+        !  END IF
 
       ELSE
 
-!        IF (SuperParametric) THEN
-!          stat = SuperParametricElementInfo( Element, GElement, GBasis, PatchNodes(1:16,1), &
-!              PatchNodes(1:16,2), IP % U(t), IP % V(t), detJ, Basis, dBasis )
-!          y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
-!          y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )  
-!        ELSE
+        !        IF (SuperParametric) THEN
+        !          stat = SuperParametricElementInfo( Element, GElement, GBasis, PatchNodes(1:16,1), &
+        !              PatchNodes(1:16,2), IP % U(t), IP % V(t), detJ, Basis, dBasis )
+        !          y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
+        !          y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )  
+        !        ELSE
 
 
         ! Use isoparametric element map:
@@ -3374,14 +3432,27 @@ CONTAINS
           sq = IP % S(t)
         END IF
 
-        stat = ReductionOperatorInfo( Element, Nodes, uq, vq, StrainBasis, &
+        stat = ReductionOperatorInfo(Element, Nodes, uq, vq, StrainBasis, &
             ReductionMethod, ApplyPiolaTransform = .TRUE., detF=detJ, Basis=Basis, &
-            dBasis=dBasis, Bubbles=UseBubbles )
+            dBasis=dBasis, Bubbles=UseBubbles)
+
+        IF (MembraneReductionMethod /= ReductionMethod) THEN
+          stat = ReductionOperatorInfo(Element, Nodes, uq, vq, MembraneStrainBasis1, &
+              MembraneReductionMethod, ApplyPiolaTransform = .TRUE., EdgeDirection=1)
+          IF (MembraneReductionMethod == CurlKernelWithEdgeDOFs) THEN
+            ! Two sets of basis functions available, create both:
+            stat = ReductionOperatorInfo(Element, Nodes, uq, vq, MembraneStrainBasis2, &
+                MembraneReductionMethod, ApplyPiolaTransform = .TRUE., EdgeDirection=2)
+          END IF
+        ELSE
+          MembraneStrainBasis1 = StrainBasis
+          MembraneStrainBasis2 = StrainBasis
+        END IF
 
         y1 = SUM( Nodes % x(1:nd) * Basis(1:nd) )
         y2 = SUM( Nodes % y(1:nd) * Basis(1:nd) )
 
-!        END IF
+        !        END IF
 
       END IF
 
@@ -3391,8 +3462,8 @@ CONTAINS
       ! ------------------------------------------------------------------------------
       CALL SurfaceBasisVectors(y1, y2, TaylorParams, e1, e2, e3, o, abasis1, &
           abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
-          C211, C212, XGlob=XGlob, YGlob=YGlob, ZGlob=ZGlob, PlanarPoint=PlateBody, &
-          UmbilicalPoint=SphericalSurface)
+          C211, C212, dual1=dual1, dual2=dual2, XGlob=XGlob, YGlob=YGlob, ZGlob=ZGlob, &
+          PlanarPoint=PlateBody, UmbilicalPoint=SphericalSurface)
 
       ! The geometric Lame parameters:
       ! ------------------------------
@@ -3418,196 +3489,129 @@ CONTAINS
         Kappa = 1.0d0
       END IF
 
-      !---------------------------------------------------------------
-      ! The part corresponding to the membrane strains:
-      !---------------------------------------------------------------
+
+      !-----------------------------------------------------------------------------------
+      ! THE PART CORRESPONDING TO THE MEMBRANE STRAINS:
+      !-----------------------------------------------------------------------------------
+      ! Create first the representation of the differential DE_0(U)[V] of the linearized 
+      ! membrane strain E_0(U) in the matrix form as DE_0(U)[V] = E_0(V) = BM * V (here 
+      ! DE_0(U)[V] = E_0(V) holds for all U since E_0(U) is linear with respect to U).
+      !------------------------------------------------------------------------------------
       Weight = h * SqrtDetA * detJ * sq
 
-      IF ( (ReductionMethod /= NoStrainReduction) .AND. (.NOT. PlateBody) ) THEN
-
-        !------------------------------------------------------------------------------------------
-        ! Apply strain reduction to vector (C111 u1, C212 u2):
-        !------------------------------------------------------------------------------------------
-        IF (ReductionMethod == DoubleReduction) THEN
+      IF ( (MembraneReductionMethod /= NoStrainReduction) .AND. (.NOT. PlateBody) ) THEN
+        ! -------------------------------------------------------------------------------
+        ! Apply strain reduction to terms having the Christoffel symbols as coefficients:
+        ! -------------------------------------------------------------------------------
+        IF (MembraneReductionMethod == DoubleReduction) THEN
           ! First, get DOFs for the RT interpolant ...
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat1)
+              3, nd, MITC, ChristoffelMat1)
           ! and then apply a second round of reductions:
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat1)
+              MembraneStrainDim, nd, MembraneReductionMethod, ChristoffelMat1, EdgeDirection=1)
         END IF
         DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
-
-            BM(1,(p-1)*m+2) = BM(1,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
-
-            IF (.NOT. NoNormalStress) THEN
-              BM(4,(p-1)*m+1) = BM(4,(p-1)*m+1) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)/A1**2)
-              BM(4,(p-1)*m+2) = BM(4,(p-1)*m+2) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p) * StrainBasis(j,1)/A1**2)
-            END IF
+          DO j=1,MembraneStrainDim
+            BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+            BM(1,(p-1)*m+2) = BM(1,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
           END DO
         END DO
 
-        ! Apply strain reduction to vector (C112 u2, C211 u1). Notice the order of components.
-        IF (ReductionMethod == DoubleReduction) THEN
+        IF (MembraneReductionMethod == DoubleReduction) THEN
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat2)
+              3, nd, MITC, ChristoffelMat2)
           ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
         ELSE
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat2)
+              MembraneStrainDim, nd, MembraneReductionMethod, ChristoffelMat2, EdgeDirection=2)
         END IF
         DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(1,(p-1)*m+2) = BM(1,(p-1)*m+2) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
-
-            BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
-
-            IF (.NOT. NoNormalStress) THEN
-              BM(4,(p-1)*m+1) = BM(4,(p-1)*m+1) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p) * StrainBasis(j,1)/A1**2)
-              BM(4,(p-1)*m+2) = BM(4,(p-1)*m+2) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)/A1**2)
-            END IF
+          DO j=1,MembraneStrainDim
+            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis2(j,1)
+            BM(2,(p-1)*m+1) = BM(2,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis2(j,2)
+            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,1)
+            BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,2)
           END DO
         END DO
 
-        ! Apply strain reduction to vector (B11 u3, 0):
-        IF (ReductionMethod == DoubleReduction) THEN
+        ! -------------------------------------------------------------------------------
+        ! The terms having the components of the second fundamental form as coefficients:
+        ! -------------------------------------------------------------------------------
+        IF (MembraneReductionMethod == CurlKernelWithEdgeDOFs) THEN
+          ! This splits up into two steps ...
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat5)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+              MembraneStrainDim, nd, MembraneReductionMethod, BParMat1, EdgeDirection=1)
+          DO p=1,nd
+            DO j=1,MembraneStrainDim
+              BM(1,(p-1)*m+3) = BM(1,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+              BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+            END DO
+          END DO
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+              MembraneStrainDim, nd, MembraneReductionMethod, BParMat2, EdgeDirection=2)
+          DO p=1,nd
+            DO j=1,MembraneStrainDim
+              BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,1)
+              BM(2,(p-1)*m+3) = BM(2,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,2)
+            END DO
+          END DO
         ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat5)
-        END IF
-        DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(1,(p-1)*m+3) = BM(1,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
-
-            IF (.NOT. NoNormalStress) THEN
-              BM(4,(p-1)*m+3) = BM(4,(p-1)*m+3) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)/A1**2)
-            END IF
-          END DO
-        END DO
-
-        ! If normal displacement is augmented with a bubble, we need to compute an augmented DOFs array.
-        ! This is commented out as this gives poor results.
-        !IF (Bubbles .AND. ReductionMethod == DoubleReduction) THEN
-        !  CALL ReductionOperatorBubbleDofs(Element, Nodes, ReductionDOFsArray(1:2,2*nd+1:2*nd+2), &
-        !      ReducedStrainDim, 1, Family, CurlKernel, StretchParMat5)
-        !
-        !  DO j=1,ReducedStrainDim
-        !    BM(1,nd*m+3) = BM(1,nd*m+3) - ReductionDOFsArray(j,2*nd+1) * StrainBasis(j,1)
-        !    BM(3,nd*m+3) = BM(3,nd*m+3) - ReductionDOFsArray(j,2*nd+1) * StrainBasis(j,2)
-        !    IF (.NOT. NoNormalStress) THEN
-        !      BM(4,nd*m+3) = BM(4,nd*m+3) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*nd+1) * StrainBasis(j,1)/A1**2)
-        !    END IF
-        !  END DO
-        !END IF       
-
-        ! Apply strain reduction to vector (C211 u1, C222 u2):
-        IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat3)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
-        ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat3)
-        END IF
-        DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(2,(p-1)*m+1) = BM(2,(p-1)*m+1) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
-
-            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
-
-            IF (.NOT. NoNormalStress) THEN
-              BM(4,(p-1)*m+1) = BM(4,(p-1)*m+1) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)/A2**2)
-              BM(4,(p-1)*m+2) = BM(4,(p-1)*m+2) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p) * StrainBasis(j,2)/A2**2)
-            END IF
-          END DO
-        END DO
-
-        ! Apply strain reduction to vector (C212 u2, C221 u1). Notice the order of components.
-        IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat4)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
-        ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat4)
-        END IF
-        DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,1)
-            BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) - ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)
-
-            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(2,(p-1)*m+1) = BM(2,(p-1)*m+1) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
-
-            IF (.NOT. NoNormalStress) THEN
-              BM(4,(p-1)*m+1) = BM(4,(p-1)*m+1) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p) * StrainBasis(j,2)/A2**2)
-              BM(4,(p-1)*m+2) = BM(4,(p-1)*m+2) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p-1) * StrainBasis(j,2)/A2**2)
-            END IF
-          END DO
-        END DO
-
-        ! Apply strain reduction to vector (0, B22 u3):
-        IF (ReductionMethod == DoubleReduction) THEN
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, StretchParMat6)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
-        ELSE
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              ReducedStrainDim, nd, ReductionMethod, StretchParMat6)
-        END IF
-        DO p=1,nd
-          DO j=1,ReducedStrainDim
-            BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * StrainBasis(j,1)
-            BM(2,(p-1)*m+3) = BM(2,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * StrainBasis(j,2)
-
-            IF (.NOT. NoNormalStress) THEN
-              BM(4,(p-1)*m+3) = BM(4,(p-1)*m+3) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*p) * StrainBasis(j,2)/A2**2)
-            END IF
-          END DO
-        END DO
-
-        ! If normal displacement is augmented with a bubble, we need to compute an augmented DOFs array
-        ! This is commented out as this gives poor results.
-        !IF (Bubbles .AND. ReductionMethod == DoubleReduction) THEN
-        !  CALL ReductionOperatorBubbleDofs(Element, Nodes, ReductionDOFsArray(1:2,2*nd+1:2*nd+2), &
-        !      ReducedStrainDim, 1, Family, CurlKernel, StretchParMat6)
-        !
-        !  DO j=1,ReducedStrainDim
-        !    BM(3,nd*m+3) = BM(3,nd*m+3) - ReductionDOFsArray(j,2*nd+2) * StrainBasis(j,1)
-        !    BM(2,nd*m+3) = BM(2,nd*m+3) - ReductionDOFsArray(j,2*nd+2) * StrainBasis(j,2)          
-        !    IF (.NOT. NoNormalStress) THEN
-        !      BM(4,nd*m+3) = BM(4,nd*m+3) - nu/(1.0d0-nu) * (-ReductionDOFsArray(j,2*nd+2) * StrainBasis(j,2)/A2**2)
-        !    END IF
-        !  END DO
-        !END IF
-
-        ! The derivative terms that are invariant:
-        DO p=1,nd
-          BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + dBasis(p,1)
-          BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + dBasis(p,2)
-          BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + dBasis(p,2)
-          BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + dBasis(p,1)
-
-          IF (.NOT. NoNormalStress) THEN
-            BM(4,(p-1)*m+6) = BM(4,(p-1)*m+6) + Basis(p)
-            BM(4,(p-1)*m+1) = BM(4,(p-1)*m+1) - nu/(1.0d0-nu) * (dBasis(p,1)/A1**2)
-            BM(4,(p-1)*m+2) = BM(4,(p-1)*m+2) - nu/(1.0d0-nu) * (dBasis(p,2)/A2**2)
+          ! Here all strain reduction operations are created by using just one parameter matrix:
+          IF (MembraneReductionMethod == DoubleReduction) THEN
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                3, nd, MITC, BParMat)
+            ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+          ELSE
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                MembraneStrainDim, nd, MembraneReductionMethod, BParMat)
           END IF
-        END DO
+          DO p=1,nd
+            DO j=1,MembraneStrainDim
+              BM(1,(p-1)*m+3) = BM(1,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+              BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+              BM(3,(p-1)*m+3) = BM(3,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+              BM(2,(p-1)*m+3) = BM(2,(p-1)*m+3) - ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+            END DO
+          END DO
+        END IF
+
+        ! -------------------------------------------------------------------------------
+        ! The partial derivative terms
+        ! -------------------------------------------------------------------------------
+        IF (.TRUE.) THEN
+          ! No modifications:
+          DO p=1,nd
+            BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + dBasis(p,1)
+            BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + dBasis(p,2)
+            BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + dBasis(p,2)
+            BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + dBasis(p,1)
+          END DO
+        ELSE
+          ! This branch is now for testing only and the full support for all strain reduction
+          ! operators is missing.
+          ! Apply the strain reduction operator to plain derivative terms. This doesn't make
+          ! any modification really with the current set of strain reduction operators.
+          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+              MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE.)
+          DO p=1,nd
+            DO j=1,MembraneStrainDim
+              BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+              BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+              BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+              BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+
+              BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+              BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+              BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+              BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+            END DO
+          END DO
+        END IF
 
       ELSE
         !-------------------------------------------------
@@ -3624,27 +3628,153 @@ CONTAINS
 
           BM(3,(p-1)*m+1) = dBasis(p,2) - 2.0d0 * C211 * Basis(p)
           BM(3,(p-1)*m+2) = dBasis(p,1) - 2.0d0 * C212 * Basis(p)
-
-          !----------------------------------------------------------------------
-          ! Normal stress T^{33} via energy principle: We add a term of the type
-          ! e * T^{33}(e)
-          !----------------------------------------------------------------------
-          IF (.NOT. NoNormalStress) THEN
-            BM(4,(p-1)*m+6) = Basis(p)
-            BM(4,(p-1)*m+1) = -nu/(1.0d0-nu) * (dBasis(p,1)/A1**2 - C111 * Basis(p)/A1**2 - C221 * Basis(p)/A2**2)
-            BM(4,(p-1)*m+2) = -nu/(1.0d0-nu) * (-C112 * Basis(p)/A1**2 + dBasis(p,2)/A2**2 - C222 * Basis(p)/A2**2)
-            BM(4,(p-1)*m+3) = -nu/(1.0d0-nu) * (-B11 * Basis(p)/A1**2 - B22 * Basis(p)/A2**2)
-          END IF
-
         END DO
       END IF
 
-      CALL StrainEnergyDensity(Stiff, CMat, BM, &
-          csize, DOFs, Weight)
+      !----------------------------------------------------------------------
+      ! Normal stress T^{33} via energy principle: We add a term of the type
+      ! e * T^{33}(e)
+      !----------------------------------------------------------------------
+      BM(4,6:DOFs:m) = -Basis(1:nd)
+      BM(4,1:DOFs) = BM(4,1:DOFs) + nu/((1.0d0-nu)*A1**2) * BM(1,1:DOFs) + &
+          nu/((1.0d0-nu)*A2**2) * BM(2,1:DOFs)
+      
 
-      !---------------------------------------------------------------
-      ! The part corresponding to the shear strains:
-      !--------------------------------------------------------------- 
+      StrainVec = 0.0d0
+      IF (LargeDeflection) THEN
+        ! ---------------------------------------------------------------------------------------
+        ! The differential DE(U)[V] of the membrane strain E(U) is by definition linear with 
+        ! respect to V and thus have a matrix representation DE(U)[V] ~ BM * V + NonlinBM(U) * V.
+        ! The matrix BM is already created and here we create the matrix NonlinBM(U), which
+        ! depends on the current solution iterate U.
+        ! ---------------------------------------------------------------------------------------
+        ! Strain component 11:
+        ! ---------------------------------------------------------------------------------------
+
+        ! The part depending on the covariant derivative v_{2|1}:
+        BWork = 0.0d0
+        BWork(1,1:DOFs:m) = -C211 * Basis(1:nd)
+        BWork(1,2:DOFs:m) = dBasis(1:nd,1) - C212 * Basis(1:nd)
+        PrevField(1) = SUM( BWork(1,1:DOFs) * PrevSolVec(1:DOFs) )
+
+        ! The part depending on v_{3|1} + B11/A11 v_1:
+        BWork(2,1:DOFs:m) = B11/A11 * Basis(1:nd)
+        BWork(2,3:DOFs:m) = dBasis(1:nd,1)
+        PrevField(2) = SUM( BWork(2,1:DOFs) * PrevSolVec(1:DOFs) )
+
+        NonlinBM(1,1:DOFs) = SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) / A1**2 * BM(1,1:DOFs) + &
+            PrevField(1) / A2**2 * BWork(1,1:DOFs) + &
+            PrevField(2) * BWork(2,1:DOFs)
+
+        ! The nonlinear part of strain component 11 for the current iterate:
+        StrainVec(1) = StrainVec(1) + 0.5d0 * SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) )**2 / A1**2 + &
+            0.5d0 * PrevField(1)**2 / A2**2 + 0.5d0 * PrevField(2)**2
+
+        ! ---------------------------------------------------------------------------------------
+        ! Strain component 22:
+        ! ---------------------------------------------------------------------------------------
+
+        ! The part depending on the covariant derivative v_{1|2}:
+        BWork(3,1:DOFs:m) = dBasis(1:nd,2) - C211 * Basis(1:nd)
+        BWork(3,2:DOFs:m) = -C212 * Basis(1:nd)
+        PrevField(3) = SUM( BWork(3,1:DOFs) * PrevSolVec(1:DOFs) )
+
+        ! The part depending on v_{3|2} + B22/A22 v_2:
+        BWork(4,2:DOFs:m) = B22/A22 * Basis(1:nd)
+        BWork(4,3:DOFs:m) = dBasis(1:nd,2)
+        PrevField(4) = SUM( BWork(4,1:DOFs) * PrevSolVec(1:DOFs) )
+
+        NonlinBM(2,1:DOFs) = SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) / A2**2 * BM(2,1:DOFs) + &
+            PrevField(3) / A1**2 * BWork(3,1:DOFs) + &
+            PrevField(4) * BWork(4,1:DOFs)
+
+        ! The nonlinear part of strain component 22 for the current iterate:
+        StrainVec(2) = StrainVec(2) + 0.5d0 * SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) )**2 / A2**2 + &
+            0.5d0 * PrevField(3)**2 / A1**2 + 0.5d0 * PrevField(4)**2
+
+        ! ---------------------------------------------------------------------------------------
+        ! Strain component 12:
+        ! ---------------------------------------------------------------------------------------
+        NonlinBM(3,1:DOFs) =  BM(1,1:DOFs) * PrevField(3) / A1**2 + &
+            SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) / A1**2 * BWork(3,1:DOFs) + &
+            BM(2,1:DOFs) * PrevField(1) / A2**2 + &
+            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) / A2**2 * BWork(1,1:DOFs) + &
+            BWork(2,1:DOFs) * PrevField(4) + PrevField(2) * BWork(4,1:DOFs) 
+
+        ! The nonlinear part of strain component 12 for the current iterate:
+        StrainVec(3) = StrainVec(3) + SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(3) / A1**2 + &
+            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(1) / A2**2 + &
+            PrevField(2) * PrevField(4)
+
+        ! ---------------------------------------------------------------------------------------
+        ! A strain-like variable e such that the normal stress T33 = DW/De
+        ! ---------------------------------------------------------------------------------------
+        BWork(5,4:DOFs:m) = Basis(1:nd)
+        BWork(6,5:DOFs:m) = Basis(1:nd)
+        BWork(7,6:DOFs:m) = Basis(1:nd)
+        PrevField(5:7) = MATMUL(BWork(5:7,1:DOFs),PrevSolVec(1:DOFs))
+
+        NonlinBM(4,1:DOFs) = nu/(1.0d0-nu) * NonlinBM(1,1:DOFs) / A1**2 + &
+            nu/(1.0d0-nu) * NonlinBM(2,1:DOFs) / A2**2 + &
+            BWork(5,1:DOFs) * PrevField(5) / A1**2 + &
+            BWork(6,1:DOFs) * PrevField(6) / A2**2 +  BWork(7,1:DOFs) * PrevField(7)
+
+        ! The nonlinear part of e for the current iterate: 
+        StrainVec(4) = StrainVec(4) + nu/(1.0d0-nu) * StrainVec(1) / A1**2 + &
+            nu/(1.0d0-nu) * StrainVec(2) / A2**2 + 0.5d0 * PrevField(5)**2 / A1**2 + &
+            0.5d0 * PrevField(6)**2 / A2**2 + 0.5d0 * PrevField(7)**2
+
+      END IF
+
+      CALL StrainEnergyDensity(Stiff, CMat, BM + NonlinBM, csize, DOFs, Weight)
+
+      ! The linear part of strain for the current iterate:
+      StrainVec(1:csize) = StrainVec(1:csize) + MATMUL( BM(1:csize,1:DOFs), PrevSolVec(1:DOFs) )
+
+      ! Residual terms for RHS:
+      StressVec(1:csize) = MATMUL( CMat(1:csize,1:csize), StrainVec(1:csize) )
+      Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE(BM(1:csize,1:DOFs) + NonlinBM(1:csize,1:DOFs)), &
+         StressVec(1:csize) ) * Weight
+
+      ! The remaining terms for the complete Newton iteration:
+      IF (LargeDeflection) THEN
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + &
+            MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BM(1:1,1:DOFs))/A1**2 * &
+            (StressVec(1) + nu/(1.0d0-nu) * StressVec(4)/A1**2) * Weight + &
+            MATMUL( TRANSPOSE(BWork(1:1,1:DOFs)),BWork(1:1,1:DOFs))/A2**2 * &
+            (StressVec(1) + nu/(1.0d0-nu) * StressVec(4)/A1**2 ) * Weight + &
+            MATMUL( TRANSPOSE(BWork(2:2,1:DOFs)),BWork(2:2,1:DOFs)) * &
+            (StressVec(1) + nu/(1.0d0-nu) * StressVec(4)/A1**2) * Weight
+ 
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + &
+            MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BM(2:2,1:DOFs))/A2**2 * &
+            (StressVec(2) + nu/(1.0d0-nu) * StressVec(4)/A2**2) * Weight + &
+            MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BWork(3:3,1:DOFs))/A1**2 * &
+            (StressVec(2) + nu/(1.0d0-nu) * StressVec(4)/A2**2) * Weight + &
+            MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(4:4,1:DOFs)) * &
+            (StressVec(2) + nu/(1.0d0-nu) * StressVec(4)/A2**2) * Weight
+
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + ( &
+            MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BM(1:1,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BWork(3:3,1:DOFs)) ) * StressVec(3)/A1**2 * Weight + ( &
+            MATMUL( TRANSPOSE(BWork(1:1,1:DOFs)),BM(2:2,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BWork(1:1,1:DOFs)) ) * StressVec(3)/A2**2 * Weight + ( &
+            MATMUL( TRANSPOSE(BWork(2:2,1:DOFs)),BWork(4:4,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(2:2,1:DOFs)) ) * StressVec(3) * Weight
+
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + &
+            MATMUL(TRANSPOSE(BWork(5:5,1:DOFs)),BWork(5:5,1:DOFs)) * StressVec(4) / A1**2 * Weight + &
+            MATMUL(TRANSPOSE(BWork(6:6,1:DOFs)),BWork(6:6,1:DOFs)) * StressVec(4) / A2**2 * Weight + &
+            MATMUL(TRANSPOSE(BWork(7:7,1:DOFs)),BWork(7:7,1:DOFs)) * StressVec(4) * Weight
+      END IF
+
+      !-----------------------------------------------------------------------------------
+      ! THE PART CORRESPONDING TO THE TRANSVERSE SHEAR STRAINS:
+      !-----------------------------------------------------------------------------------
+      ! Create first the representation of the differential DE_0(U)[V] of the linearized 
+      ! transverse shear strain E_0(U) in the matrix form as DE_0(U)[V] = E_0(V) = BS * V
+      ! (here DE_0(U)[V] = E_0(V) holds since E_0(U) is linear with respect to U).
+      !------------------------------------------------------------------------------------
       IF (ReductionMethod /= NoStrainReduction) THEN
         !---------------------------------------------------------------     
         ! Get coefficients that can be used to evaluate the DOFs for the interpolant of 
@@ -3674,8 +3804,8 @@ CONTAINS
               ReducedStrainDim, 1, Family, CurlKernel)
 
           DO j=1,ReducedStrainDim
-            BS(1:2,nd*m+1) = BS(1:2,nd*m+1) - ReductionDOFsArray(j,2*nd+1) * StrainBasis(j,1:2)
-            BS(1:2,nd*m+2) = BS(1:2,nd*m+2) - ReductionDOFsArray(j,2*nd+2) * StrainBasis(j,1:2)          
+            BS(1:2,DOFs+1) = BS(1:2,DOFs+1) - ReductionDOFsArray(j,2*nd+1) * StrainBasis(j,1:2)
+            BS(1:2,DOFs+2) = BS(1:2,DOFs+2) - ReductionDOFsArray(j,2*nd+2) * StrainBasis(j,1:2)          
           END DO
         END IF
 
@@ -3708,22 +3838,100 @@ CONTAINS
           BS(1,(p-1)*m+4) = -Basis(p) 
           
           BS(2,(p-1)*m+2) = B22/a22 * Basis(p) 
-          BS(2,(p-1)*m+5) = -Basis(p) 
+          BS(2,(p-1)*m+5) = -Basis(p)
         END DO
 
         IF (UseBubbles) THEN
           ! With rotation bubbles:
-          BS(1,nd*m+1) = -Basis(nd+1)
-          BS(2,nd*m+2) = -Basis(nd+1)
+          BS(1,DOFs+1) = -Basis(nd+1)
+          BS(2,DOFs+2) = -Basis(nd+1)
         END IF
+
       END IF
 
-      CALL StrainEnergyDensity(Stiff, GMat, BS, &
-          2, DOFs, Kappa*Weight)
+      IF (LargeDeflection) THEN
+        ! ---------------------------------------------------------------------------------------
+        ! The representation of the differential DE(U)[V] of the transverse shear strain E(U) in 
+        ! the matrix form as DE(U)[V] ~ BS * V + NonlinBS(U) * V. The matrix BS is already created 
+        ! and here we compute the matrix NonlinBS(U), which depends on the current solution iterate 
+        ! U. TO DO: Bubbles are not yet handled 
+        ! ---------------------------------------------------------------------------------------
+        ! Strain component 13:
+        ! ---------------------------------------------------------------------------------------
+        NonlinBS(1,1:DOFs) = -BM(1,1:DOFs) * PrevField(5) / A1**2 - &
+            SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) / A1**2 * BWork(5,1:DOFs) - &
+            BWork(1,1:DOFs) * PrevField(6) / A2**2 - &
+            PrevField(1) / A2**2 * BWork(6,1:DOFs) - &
+            BWork(2,1:DOFs) * PrevField(7) - PrevField(2) * BWork(7,1:DOFs) 
 
+        ! The nonlinear part of strain component 13 for the current iterate:
+        StrainVec(5) = StrainVec(5) - SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(5) / A1**2 - &
+            PrevField(1) * PrevField(6) / A2**2 - PrevField(2) * PrevField(7)
+        ! ---------------------------------------------------------------------------------------
+        ! Strain component 23:
+        ! ---------------------------------------------------------------------------------------
+        NonlinBS(2,1:DOFs) = -BWork(3,1:DOFs) * PrevField(5) / A1**2 - &
+            PrevField(3) / A1**2 * BWork(5,1:DOFs) - &
+            BM(2,1:DOFs) * PrevField(6) / A2**2 - &
+            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) / A2**2 * BWork(6,1:DOFs) - &
+            BWork(4,1:DOFs) * PrevField(7) - PrevField(4) * BWork(7,1:DOFs) 
+
+        ! The nonlinear part of strain component 23 for the current iterate:
+        StrainVec(6) = StrainVec(6) - PrevField(3) * PrevField(5) / A1**2 - &
+            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(6) / A2**2 - PrevField(4) * PrevField(7)
+
+      END IF
+
+      CALL StrainEnergyDensity(Stiff, GMat, BS+NonlinBS, 2, DOFs+BubbleDOFs, Kappa*Weight)
+
+      ! The linear part of strain for the current iterate:
+      StrainVec(5:6) = StrainVec(5:6) + MATMUL( BS(1:2,1:DOFs), PrevSolVec(1:DOFs) )
+
+      ! Residual terms for RHS:
+      StressVec(5:6) = MATMUL( GMat(1:2,1:2), StrainVec(5:6) )
+      Force(1:DOFs+BubbleDOFs) = Force(1:DOFs+BubbleDOFs) - & 
+          MATMUL( TRANSPOSE(BS(1:2,1:DOFs+BubbleDOFs) + NonlinBS(1:2,1:DOFs+BubbleDOFs)), &
+          StressVec(5:6) ) * Kappa * Weight
+
+      ! The remaining terms for the complete Newton iteration:
+      IF (LargeDeflection) THEN
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) - ( &
+            MATMUL( TRANSPOSE(BWork(5:5,1:DOFs)),BM(1:1,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BWork(5:5,1:DOFs)) ) * StressVec(5)/A1**2 * Kappa * Weight - ( &
+            MATMUL( TRANSPOSE(BWork(1:1,1:DOFs)),BWork(6:6,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BWork(6:6,1:DOFs)),BWork(1:1,1:DOFs)) ) * StressVec(5)/A2**2 * Kappa * Weight - ( &
+            MATMUL( TRANSPOSE(BWork(2:2,1:DOFs)),BWork(7:7,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BWork(7:7,1:DOFs)),BWork(2:2,1:DOFs)) ) * StressVec(5) * Kappa * Weight
+
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) - ( &
+            MATMUL( TRANSPOSE(BWork(5:5,1:DOFs)),BWork(3:3,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BWork(5:5,1:DOFs)) ) * StressVec(6)/A1**2 * Kappa * Weight - ( &
+            MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BWork(6:6,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BWork(6:6,1:DOFs)),BM(2:2,1:DOFs)) ) * StressVec(6)/A2**2 * Kappa * Weight - ( &
+            MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(7:7,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BWork(7:7,1:DOFs)),BWork(4:4,1:DOFs)) ) * StressVec(6) * Kappa * Weight
+      END IF
+
+      !----------------------------------------------------------------------------------------
+      ! The part of transverse shear strains which depend linearly on the thickness coordinate: 
+      !----------------------------------------------------------------------------------------
+      IF (.NOT. BenchmarkProblem) THEN
+        BS(3,6:DOFs:m) = dBasis(1:nd,1)
+        BS(4,6:DOFs:m) = dBasis(1:nd,2)
+        Weight = h**2/12.0d0 * Weight
+
+        ! The expression of the strain energy density:
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
+             MATMUL(TRANSPOSE(BS(3:4,1:DOFs)),MATMUL(GMat(1:2,1:2),BS(3:4,1:DOFs)))
+
+        ! Residual terms for RHS:
+        StrainVec(1:2) = MATMUL( BS(3:4,1:DOFs), PrevSolVec(1:DOFs) )
+        Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE( BS(3:4,1:DOFs) ), &
+            MATMUL( GMat(1:2,1:2), StrainVec(1:2) ) ) * Weight
+      END IF
 
       !---------------------------------------------------------------
-      ! The part corresponding to the bending strains (terms depending
+      ! THE PART CORRESPONDING TO THE BENDING STRAINS (terms depending
       ! on the membrane strains dropped at the moment):
       !---------------------------------------------------------------      
       Weight = h**3/12.0d0 * SqrtDetA * detJ * sq
@@ -3736,43 +3944,34 @@ CONTAINS
 
         BB(3,(p-1)*m+4) = dBasis(p,2) - 2.0d0 * C211 * Basis(p)
         BB(3,(p-1)*m+5) = dBasis(p,1) - 2.0d0 * C212 * Basis(p)
-        BB(3,(p-1)*m+1) = B11/a11 * (dBasis(p,2) - C211 * Basis(p)) - B22/a22 * C211 * Basis(p)
-        BB(3,(p-1)*m+2) = B11/a11 * (- C212) * Basis(p) + B22/a22 * (dBasis(p,1) - C212 * Basis(p))
+        IF (BenchmarkProblem) THEN
+          ! The following can be obtained by adding some (unnatural) weighted combinations of membrane strains
+          ! to the bending strains:
+          BB(3,(p-1)*m+1) = B11/a11 * (dBasis(p,2) - C211 * Basis(p)) - B22/a22 * C211 * Basis(p)
+          BB(3,(p-1)*m+2) = B11/a11 * (- C212) * Basis(p) + B22/a22 * (dBasis(p,1) - C212 * Basis(p))
+        ELSE
+          BB(3,(p-1)*m+1) = B11/a11 * C211 * Basis(p) - B22/a22 * (dBasis(p,2) - C211 * Basis(p))
+          BB(3,(p-1)*m+2) = -B11/a11 * (dBasis(p,1) - C212 * Basis(p)) + B22/a22 * C212 * Basis(p)
+        END IF
       END DO
 
       IF (UseBubbles) THEN
         ! With rotation bubbles:
-        BB(1,nd*m+1) = dBasis(nd+1,1) - C111 * Basis(nd+1)
-        BB(1,nd*m+2) = -C112 * Basis(nd+1)
-        BB(2,nd*m+1) = -C221 * Basis(nd+1)
-        BB(2,nd*m+2) = dBasis(nd+1,2) - C222 * Basis(nd+1)
-        BB(3,nd*m+1) = dBasis(nd+1,2) - 2.0d0 * C211 * Basis(nd+1)
-        BB(3,nd*m+2) = dBasis(nd+1,1) - 2.0d0 * C212 * Basis(nd+1)
+        BB(1,DOFs+1) = dBasis(nd+1,1) - C111 * Basis(nd+1)
+        BB(1,DOFs+2) = -C112 * Basis(nd+1)
+        BB(2,DOFs+1) = -C221 * Basis(nd+1)
+        BB(2,DOFs+2) = dBasis(nd+1,2) - C222 * Basis(nd+1)
+        BB(3,DOFs+1) = dBasis(nd+1,2) - 2.0d0 * C211 * Basis(nd+1)
+        BB(3,DOFs+2) = dBasis(nd+1,1) - 2.0d0 * C212 * Basis(nd+1)
       END IF
 
-      CALL StrainEnergyDensity(Stiff, CMat, BB, &
-          3, DOFs, Weight)
+      CALL StrainEnergyDensity(Stiff, CMat, BB, 3, DOFs+BubbleDOFs, Weight)
 
-      IF (NoNormalStress) THEN
-        !----------------------------------------------------------------
-        ! This does not include the action of strain reduction operators
-        ! and is becoming obsolite.
-        ! Determine the thickness-stretch parameter corresponding to the
-        ! state of vanishing normal stress:
-        !----------------------------------------------------------------
-        Weight = SqrtDetA * detJ * sq
-        DO p=1,nd
-          DO k=1,nd
-            Stiff(p*6,k*6) = Stiff(p*6,k*6) + Basis(p) * Basis(k) * Weight
-            Stiff(p*6,(k-1)*m+1) = Stiff(p*6,(k-1)*m+1) - nu/(1.0d0-nu) * Basis(p) * &
-                (  dBasis(k,1)/A1**2 - C111 * Basis(k)/A1**2 - C221 * Basis(k)/A2**2 ) * Weight
-            Stiff(p*6,(k-1)*m+2) = Stiff(p*6,(k-1)*m+2) - nu/(1.0d0-nu) * Basis(p) * &
-                ( -C112 * Basis(k)/A1**2 + dBasis(k,2)/A2**2 - C222 * Basis(k)/A2**2 ) * Weight
-            Stiff(p*6,(k-1)*m+3) = Stiff(p*6,(k-1)*m+3) - nu/(1.0d0-nu) * Basis(p) * &
-                ( -B11 * Basis(k)/A1**2 - B22 * Basis(k)/A2**2 ) * Weight
-          END DO
-        END DO
-      END IF
+      ! Residual terms for RHS:
+      StrainVec(1:3) = MATMUL( BB(1:3,1:DOFs), PrevSolVec(1:DOFs) )
+      Force(1:DOFs+BubbleDOFs) = Force(1:DOFs+BubbleDOFs) - &
+          MATMUL( TRANSPOSE( BB(1:3,1:DOFs+BubbleDOFs) ), &
+          MATMUL( CMat(1:3,1:3), StrainVec(1:3) ) ) * Weight
 
       !----------------------------------------------------------------
       ! Mass matrix without bubbles taken into account:
@@ -3799,15 +3998,44 @@ CONTAINS
       !----------------------------------------------------------------
       ! RHS vector:
       !----------------------------------------------------------------
-      Weight = SqrtDetA * detJ * sq
-      DO p=1,nd
-        i = m*(p-1)+3
-        Force(i) = Force(i) + NormalTraction * Basis(p) * Weight
-      END DO
+      IF (LargeDeflection) THEN
+        !----------------------------------------------------------------
+        ! Compute the normal vector n to the deformed mid-surface using
+        ! the current iterate and apply the normal traction p * n, with
+        ! the effect of area change being taken into account. 
+        !----------------------------------------------------------------
+        v1 = SUM(Basis(1:nd) * PrevSolVec(1:DOFs:m))
+        v2 = SUM(Basis(1:nd) * PrevSolVec(2:DOFs:m))
+        v3 = SUM(Basis(1:nd) * PrevSolVec(3:DOFs:m))
+        abasis1New(1:3) = abasis1(1:3) + (SUM(dBasis(1:nd,1) * PrevSolVec(1:DOFs:m)) - &
+            C111 * v1 - C112 * v2 - B11 * v3) * dual1(1:3) + &
+            (SUM(dBasis(1:nd,1) * PrevSolVec(2:DOFs:m)) - C211 * v1 - C212 * v2) * dual2(1:3) + &
+            (SUM(dBasis(1:nd,1) * PrevSolVec(3:DOFs:m)) + B11/A11 * v1) * abasis3(1:3)
+        abasis2New(1:3) = abasis2(1:3) + (SUM(dBasis(1:nd,2) * PrevSolVec(1:DOFs:m)) - &
+            C211 * v1 - C212 * v2) * dual1(1:3) + (SUM(dBasis(1:nd,2) * PrevSolVec(2:DOFs:m)) - &
+            C221 * v1 - C222 * v2 - B22 * v3) * dual2(1:3) + &
+            (SUM(dBasis(1:nd,2) * PrevSolVec(3:DOFs:m)) + B22/A22 * v2) * abasis3(1:3)
+        NewDetA = DOT_PRODUCT(abasis1New,abasis1New) * DOT_PRODUCT(abasis2New,abasis2New) - &
+            DOT_PRODUCT(abasis1New,abasis2New)**2
+        abasis3New(1:3) = CrossProduct(abasis1New,abasis2New)
+        Norm = SQRT(SUM(abasis3New(:)**2))
+        abasis3New(1:3) = abasis3New(1:3)/Norm
 
-      IF (UseBubbles .AND. nb > 2) THEN
-        i = m*nd+3
-        Force(i) = Force(i) + NormalTraction * Basis(nd+1) * Weight
+        Weight = SQRT(NewDetA) * detJ * sq
+
+        RHSForce(1:DOFs:m) = RHSForce(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
+        RHSForce(2:DOFs:m) = RHSForce(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
+        RHSForce(3:DOFs:m) = RHSForce(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
+        Force(1:DOFs:m) = Force(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
+        Force(2:DOFs:m) = Force(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
+        Force(3:DOFs:m) = Force(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
+        ! TO DO: Add terms related to the first-order terms in the normal coordinate
+      ELSE
+        Weight = SqrtDetA * detJ * sq
+        DO p=1,nd
+          i = m*(p-1)+3
+          Force(i) = Force(i) + NormalTraction * Basis(p) * Weight
+        END DO
       END IF
 
       Area = Area + sq * detJ * SqrtDetA
@@ -3821,46 +4049,20 @@ CONTAINS
     ! ------------------------------------------------------------------------------
     ! Static condensation is performed before transforming to the global DOFs:
     ! ------------------------------------------------------------------------------
-    IF (UseBubbles .AND. nb>0) THEN
-      CALL CondensateP( m*nd, nb, Stiff, Force )
+    IF (UseBubbles .AND. BubbleDOFs>0) THEN
+      CALL CondensateP( DOFs, BubbleDOFs, Stiff, Force )
     END IF
-
-
-    Q = 0.0d0
-    DO j=1,nd
-      !IF ( PVersion ) THEN
-      IF ( .FALSE. ) THEN
-        y1 = PNodes % x(j)
-        y2 = PNodes % y(j)       
-      ELSE
-        y1 = Nodes % x(j)
-        y2 = Nodes % y(j)
-      END IF
-
-      CALL SurfaceBasisVectors(y1, y2, TaylorParams, e1, e2, e3, o, abasis1, &
-          abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
-          C211, C212, PlanarPoint=PlateBody, UmbilicalPoint=SphericalSurface)
-
-      QBlock(1,1:3) = abasis1(1:3)
-      QBlock(2,1:3) = abasis2(1:3)
-      QBlock(3,1:3) = abasis3(1:3)         
-
-      i0 = (j-1)*m
-
-      Q(i0+1:i0+3,i0+1:i0+3) =  QBlock(1:3,1:3)
-      Q(i0+4:i0+6,i0+4:i0+6) =  QBlock(1:3,1:3)
-
-    END DO
 
     !-------------------------------------------------------
     ! Transform to the global DOFs:
     !-------------------------------------------------------
-    k = m*nd
-    Stiff(1:k,1:k) = MATMUL(TRANSPOSE(Q(1:k,1:k)),MATMUL(Stiff(1:k,1:k),Q(1:k,1:k)))
-    Force(1:k) = MATMUL(TRANSPOSE(Q(1:k,1:k)),Force(1:k))
+    Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
+    Force(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),Force(1:DOFs))
+
+    IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
 
     IF(TransientSimulation) THEN
-      Mass(1:k,1:k) = MATMUL(TRANSPOSE(Q(1:k,1:k)),MATMUL(Mass(1:k,1:k),Q(1:k,1:k)))
+      Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
       CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
     END IF
 
@@ -3868,6 +4070,363 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ShellLocalMatrix
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+! Define what strain reduction strategy is applied and set parameters that
+! control the selection of variational crimes.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
+      ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
+      MembraneStrains)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
+    INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different
+    LOGICAL, INTENT(IN) :: PlateBody                  ! A dummy argument
+    INTEGER, INTENT(OUT) :: ReducedStrainDim
+    LOGICAL, INTENT(INOUT) :: UseBubbles
+    LOGICAL, INTENT(OUT) :: UseShearCorrection
+    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(2,3)
+    LOGICAL, INTENT(IN) :: MembraneStrains            ! To select the method for membrane strains
+!------------------------------------------------------------------------------
+    LOGICAL :: PVersion
+    INTEGER :: Family
+!------------------------------------------------------------------------------
+    Family = GetElementFamily(BGElement)
+    PVersion = IsPElement(BGElement)
+
+    IF (.NOT. MembraneStrains .AND. (ReductionMethod == CurlKernelWithEdgeDOFs)) THEN
+      CALL Warn('SetStrainReductionParameters', &
+          'Operator 4 is not yet possible for transverse shear strains')
+      ReductionMethod = CurlKernel
+    END IF
+
+    IF (Pversion) THEN
+      ReductionMethod = NoStrainReduction
+    ELSE
+      IF (ReductionMethod == AutomatedChoice) THEN
+        ! ------------------------------------------------------------------------------
+        ! This option saves the user from deciding a strain reduction method
+        ! ------------------------------------------------------------------------------
+        SELECT CASE(Family)
+        CASE(3)
+          IF (MembraneStrains) THEN
+            ReductionMethod = DoubleReduction
+          ELSE
+            ReductionMethod = DoubleReduction
+            UseBubbles = .FALSE.
+          END IF
+        CASE(4)
+          IF (MembraneStrains) THEN
+            ReductionMethod = CurlKernelWithEdgeDOFs
+          ELSE
+            ReductionMethod = MITC
+          END IF
+        END SELECT
+      ELSE
+        ! ------------------------------------------------------------------------------
+        ! In the case of triangles asking for the kernel version switches to the
+        ! compound strain reduction strategy:
+        ! ------------------------------------------------------------------------------
+        IF (Family == 3 .AND. ReductionMethod == CurlKernel) &
+            ReductionMethod = DoubleReduction
+        ! Currently bubbles can be activated only for certain strategies:
+        IF (.NOT.(ReductionMethod == NoStrainReduction .OR. &
+            ReductionMethod == DoubleReduction)) THEN
+          UseBubbles = .FALSE.
+        END IF
+      END IF
+    END IF
+
+    ! ------------------------------------------------------------------------------
+    ! Set the dimension of the range of strain reduction operator and decide
+    ! whether a numerical shear correction trick is applied:
+    ! ------------------------------------------------------------------------------
+    SELECT CASE(ReductionMethod)
+    CASE(NoStrainReduction)
+      UseShearCorrection = .FALSE.
+    CASE(CurlKernel)
+      IF (Family == 3) THEN
+        ! This choice should not really be used for triangles (without applying MITC 
+        ! interpolation first, cf. DoubleReduction case); with the current version
+        ! one should never end up here
+        ReducedStrainDim = 2
+        UseShearCorrection = .TRUE.
+      ELSE
+        ReducedStrainDim = 3
+        UseShearCorrection = .TRUE.
+      END IF
+    CASE(MITC)
+      IF (Family == 3) THEN
+        ReducedStrainDim = 3
+      ELSE
+        ReducedStrainDim = 4
+      END IF
+      UseShearCorrection = .TRUE.
+    CASE(DoubleReduction)
+      !Use a combination of MITC and the kernel reduction:
+      IF (Family==3) THEN
+        ReducedStrainDim = 2
+        IF (UseBubbles) THEN
+          UseShearCorrection = .FALSE.
+        ELSE
+          UseShearCorrection = .TRUE.
+        END IF
+        ! Coefficients to transform from MITC DOFs to the kernel DOFs: 
+        DOFsTransform(1,1) = 1.0d0/3.0d0
+        DOFsTransform(1,2) = -1.0d0/6.0d0
+        DOFsTransform(1,3) = DOFsTransform(1,2)
+        DOFsTransform(2,1) = 0.0d0
+        DOFsTransform(2,2) = 1.0d0/(2.0d0*sqrt(3.0d0))
+        DOFsTransform(2,3) = -1.0d0/(2.0d0*sqrt(3.0d0))
+      ELSE
+        CALL Fatal('SetStrainReductionParameters', 'Double reduction is not defined for quads')
+      END IF
+    CASE(CurlKernelWithEdgeDOFs)
+      IF (Family==3) THEN
+        CALL Fatal('SetStrainReductionParameters', 'Strain Reduction Operator=4 is not defined for trias')
+      ELSE
+        ReducedStrainDim = 3
+        UseShearCorrection = .TRUE.        
+      END IF
+    END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetStrainReductionParameters
+!------------------------------------------------------------------------------
+
+
+! --------------------------------------------------------------------------
+! Allocate a Lagrange interpolation element structure corresponding to the
+! "Element" keyword. A corresponding nodes data structure is also created.
+! In addition, the element structure corresponding to the surface reconstruction
+! is created.
+!------------------------------------------------------------------------------
+  SUBROUTINE CreateLagrangeElementStructures( BGElement, nd, Element, Nodes, &
+      PNodes, GElement)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
+    INTEGER, INTENT(IN) :: nd                          ! The number of DOFs (per component)
+    TYPE(Element_t), POINTER, INTENT(OUT) :: Element   ! A Lagrange element data structure
+    TYPE(Nodes_t), INTENT(OUT) :: Nodes                ! A nodes data structure for the Lagrange element
+    TYPE(Nodes_t), INTENT(OUT) :: PNodes               ! A nodes data structure for p-version
+    TYPE(Element_t), POINTER, INTENT(OUT) :: GElement  ! The element structure for surface reconstruction
+!------------------------------------------------------------------------------
+    LOGICAL :: PVersion
+    INTEGER :: Family
+!------------------------------------------------------------------------------
+    Family = GetElementFamily(BGElement)
+    PVersion = IsPElement(BGElement)
+
+    ! --------------------------------------------------------------------------
+    ! Create the element structure corresponding to the surface reconstruction:
+    ! --------------------------------------------------------------------------
+    IF ( .NOT. ASSOCIATED(GElement) ) GElement => AllocateElement()
+    SELECT CASE(Family)
+    CASE(3)
+      GElement % Type => GetElementType(310, .FALSE.)
+    CASE(4)
+      GElement % Type => GetElementType(416, .FALSE.)
+    CASE DEFAULT
+      CALL Fatal('CreateLagrangeElementStructures', 'Unsupported (geometry model) element type')
+    END SELECT
+
+    IF ( PVersion ) THEN
+      IF ( .NOT. ASSOCIATED(Element) ) Element => AllocateElement()
+
+      SELECT CASE(Family)
+      CASE(3)
+        SELECT CASE(nd)
+        CASE(3)
+          Element % Type => GetElementType(303, .FALSE.)
+        CASE DEFAULT
+          CALL Fatal('CreateLagrangeElementStructures', 'Unsupported triangular p-element')
+        END SELECT
+      CASE(4)
+        SELECT CASE(nd)
+        CASE(4)
+          Element % Type => GetElementType(404, .FALSE.)
+        CASE(8)
+          Element % Type => GetElementType(408, .FALSE.)
+        CASE(9)
+          Element % Type => GetElementType(409, .FALSE.)
+        CASE DEFAULT
+          CALL Fatal('CreateLagrangeElementStructures', 'Unsupported quadrilateral p-element type')
+        END SELECT
+      CASE DEFAULT
+        CALL Fatal('CreateLagrangeElementStructures', 'Expecting an element of surface type')
+      END SELECT
+    ELSE
+      Element => BGElement
+    END IF
+
+    ! --------------------------------------------------------------------------
+    ! Create a node variable suitable for defining the isoparametric element 
+    ! map, i.e. use as many nodes as DOFs in the spartial discretization. 
+    ! --------------------------------------------------------------------------
+    IF ( .NOT. ASSOCIATED( Nodes % x ) ) THEN
+      ALLOCATE( Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) ) 
+      Nodes % NumberOfNodes = nd
+    ELSE
+      IF (nd > SIZE(Nodes % x)) THEN
+        DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
+        ALLOCATE( Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) ) 
+      END IF
+      Nodes % NumberOfNodes = nd          
+    END IF
+
+    IF ( PVersion ) THEN    
+      IF ( .NOT. ASSOCIATED( PNodes % x ) ) THEN
+        ALLOCATE( PNodes % x(nd), PNodes % y(nd), PNodes % z(nd) )
+        PNodes % NumberOfNodes = nd
+      ELSE
+        IF (nd > SIZE(PNodes % x)) THEN
+          DEALLOCATE(PNodes % x, PNodes % y, PNodes % z)
+          ALLOCATE( PNodes % x(nd), PNodes % y(nd), PNodes % z(nd) ) 
+        END IF
+        PNodes % NumberOfNodes = nd          
+      END IF
+    END IF
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE CreateLagrangeElementStructures
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+! This subroutine updates the coordinate arrays of Nodes argument such that they
+! correspond to the isoparametric approximation of the coordinate patch
+! obtained via surface reconstruction. If p-version is used for approximating 
+! the shell equations, this creates also the isoparametric geometry representation 
+! in terms of p-basis.
+!------------------------------------------------------------------------------
+  SUBROUTINE WriteElementNodesVariables(BGElement, GElement, Element, Nodes, &
+      PNodes, PatchNodes, PVersion)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
+    TYPE(Element_t), POINTER, INTENT(IN) :: GElement  ! A Lagrange element for surface reconstruction
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element   ! The element type for which nodes are written
+    TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! A nodes data structure for Element     
+    TYPE(Nodes_t), INTENT(INOUT) :: PNodes            ! A nodes data structure for p-version
+    REAL(KIND=dp), INTENT(IN) :: PatchNodes(:,:)      ! The nodes data of coordinate domain
+    LOGICAL, INTENT(IN) :: PVersion                   ! To create nodes data for p-version
+!------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: Stat
+    INTEGER :: j, k, t, NodesCount, GElementNodes, Family
+    REAL(KIND=dp) :: u, v, yk, up, vp, sp
+    REAL(KIND=dp) :: GBasis(GElement % Type % NumberOfNodes)
+    REAL(KIND=dp) :: Stiff(Element % Type % NumberOfNodes, Element % Type % NumberOfNodes)
+    REAL(KIND=dp) :: Force(Element % Type % NumberOfNodes), DetJ
+    REAL(KIND=dp) :: PBasis(Element % Type % NumberOfNodes)
+    REAL(KIND=dp) :: Basis(Element % Type % NumberOfNodes)
+!------------------------------------------------------------------------------
+    n = BGElement % Type % NumberOfNodes
+    NodesCount = Element % Type % NumberOfNodes
+    GElementNodes = GElement % Type % NumberOfNodes
+
+    ! --------------------------------------------------------------------------
+    ! Write the nodes variable for isoparametric approximation of coordinate patch
+    ! --------------------------------------------------------------------------
+    DO j=1,NodesCount
+      u = Element % Type % NodeU(j)
+      v = Element % Type % NodeV(j)
+      CALL NodalBasisFunctions2D(GBasis, GElement, u, v)
+
+      Nodes % x(j) = SUM(GBasis(1:GElementNodes) * PatchNodes(1:GElementNodes,1))
+      Nodes % y(j) = SUM(GBasis(1:GElementNodes) * PatchNodes(1:GElementNodes,2))
+      Nodes % z(j) = 0.0d0
+    END DO
+
+    ! ---------------------------------------------------------------------------
+    ! Express the isoparametric representation in terms of the p-basis:
+    ! ---------------------------------------------------------------------------
+    IF ( PVersion ) THEN
+      Family = GetElementFamily(BGElement)
+      ! -----------------------------------------------
+      ! The corner values can be written immediately:
+      ! -----------------------------------------------
+      PNodes % x(1:NodesCount) = 0.0d0
+      PNodes % y(1:NodesCount) = 0.0d0
+      PNodes % z(1:NodesCount) = 0.0d0
+      PNodes % x(1:n) = Nodes % x(1:n)
+      PNodes % y(1:n) = Nodes % y(1:n)
+
+      ! ------------------------------------------------------
+      ! Solve a local matrix equation in the case of higher p:
+      ! ------------------------------------------------------
+      IF (NodesCount > n) THEN
+        DO k=1,2
+          STIFF = 0.0d0
+          FORCE = 0.0d0
+
+          IP = GaussPoints( BGElement )
+          DO t=1,IP % n
+            up = IP % U(t)
+            vp = IP % V(t)
+            ! ------------------------------------------------------------------
+            ! First, evaluate the basis functions for p-version:
+            ! ------------------------------------------------------------------
+            stat = ElementInfo( BGElement, PNodes, up, vp, 0.0d0, detJ, PBasis )
+            ! ------------------------------------------------------------------
+            ! Map the p-point to the point on the standard reference element:
+            ! ------------------------------------------------------------------
+            IF (Family==3) THEN
+              u = 0.5d0 * (1.0d0 + up - 1.0d0/sqrt(3.0d0) * vp)
+              v = 1.0d0/sqrt(3.0d0) * vp
+            ELSE
+              u = up
+              v = vp
+            END IF
+
+            stat = ElementInfo( Element, Nodes, u, v, 0.0d0, detJ, Basis )         
+
+            DO i=1,NodesCount
+              DO j=1,NodesCount
+                STIFF(i,j) = STIFF(i,j) + IP % s(t) * PBasis(i) * PBasis(j)
+              END DO
+            END DO
+
+            SELECT CASE(k)
+            CASE(1)
+              yk = SUM( Nodes % x(1:NodesCount) * Basis(1:NodesCount) )
+            CASE(2)
+              yk = SUM( Nodes % y(1:NodesCount) * Basis(1:NodesCount) )           
+            END SELECT
+            FORCE(1:NodesCount) = FORCE(1:NodesCount) + IP % s(t) * yk * PBasis(1:NodesCount)
+          END DO
+
+          CALL LUSolve(NodesCount, Stiff, Force)
+          SELECT CASE(k)
+          CASE(1)
+            PNodes % x(1:NodesCount) = Force(1:NodesCount)
+          CASE(2)
+            PNodes % y(1:NodesCount) = Force(1:NodesCount) 
+          END SELECT
+        END DO
+      END IF
+
+      ! ------------------------------------------------------------------------
+      ! An additional node variable needed for superparametric case:
+      ! ------------------------------------------------------------------------
+      !IF (SuperParametric) THEN
+      !  IF ( .NOT. ASSOCIATED( PRefNodes % x ) ) THEN
+      !    ALLOCATE( PRefNodes % x(n), PRefNodes % y(n), PRefNodes % z(n) )
+      !  ELSE
+      !    IF (n > SIZE(PRefNodes % x)) THEN
+      !      DEALLOCATE(PRefNodes % x, PRefNodes % y, PRefNodes % z)
+      !      ALLOCATE( PRefNodes % x(n), PRefNodes % y(n), PRefNodes % z(n) ) 
+      !    END IF
+      !  END IF
+      !  PRefNodes % NumberOfNodes = n
+      !  PrefNodes % x(1:n) = BGElement % Type % NodeU(1:n)
+      !  PrefNodes % y(1:n) = BGElement % Type % NodeV(1:n)
+      !  PrefNodes % z(1:n) = BGElement % Type % NodeW(1:n)
+      !END IF
+
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE WriteElementNodesVariables
 !------------------------------------------------------------------------------
 
 
@@ -3996,7 +4555,8 @@ CONTAINS
 ! is made to serve the special purpose of strain reduction. 
 !------------------------------------------------------------------------------
   FUNCTION ReductionOperatorInfo( Element, Nodes, u, v, StrainBasis, ReductionMethod, &
-      ApplyPiolaTransform, F, G, detF, Basis, dBasis, DOFWeigths, Bubbles) RESULT(stat)
+      ApplyPiolaTransform, F, G, detF, Basis, dBasis, DOFWeigths, Bubbles, EdgeDirection) &
+      RESULT(stat)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), INTENT(IN), TARGET :: Element         !< Element structure
@@ -4004,7 +4564,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: u                         !< 1st reference element coordinate
     REAL(KIND=dp), INTENT(IN) :: v                         !< 2nd reference element coordinate
     REAL(KIND=dp), INTENT(OUT) :: StrainBasis(:,:)         !< The basis functions b spanning the reference element space
-    INTEGER, INTENT(IN) :: ReductionMethod                 !< The method chosen: (2=MITC, 1=kernel version)
+    INTEGER, INTENT(IN) :: ReductionMethod                 !< The method chosen: (1,4=kernel version,2=MITC)
     LOGICAL, INTENT(IN), OPTIONAL :: ApplyPiolaTransform   !< If  .TRUE., perform the Piola transform so that, instead of b(p),
                                                            !< return B(f(p)) with B(x) the basis functions on the physical
                                                            !< element K and f the element map f:k->K
@@ -4017,17 +4577,20 @@ CONTAINS
                                                            !< is done with respect to physical coordinates x
     REAL(KIND=dp), INTENT(OUT), OPTIONAL :: DOFWeigths(:,:)!< Auxiliary div-conforming functions needed in the evaluation of DOFs
     LOGICAL, INTENT(IN), OPTIONAL :: Bubbles               !< Indicate whether a bubble function is requested
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection         !< Preferred direction for edge DOFs when ReductionMethod=4
     LOGICAL :: Stat                                        !< Currently a dummy return value
 !---------------------------------------------------------------------------------
     LOGICAL :: PerformPiolaTransform, CreateBubbles
 
-    INTEGER :: dim, i, j, k, n, ntot, q, DOFs, Family
+    INTEGER :: dim, e, i, j, k, n, ntot, q, DOFs, Family
 
     REAL(KIND=dp) :: LF(3,3), LG(3,3), detLF, B(3)
     REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes+1)
     REAL(KIND=dp) :: dLBasis(Element % TYPE % NumberOfNodes+1,3)
 !------------------------------------------------------------------------------       
     StrainBasis = 0.0d0
+    IF ( PRESENT(DOFWeigths) ) DOFWeigths = 0.0d0
+
     PerformPiolaTransform = .FALSE.
     IF ( PRESENT(ApplyPiolaTransform) ) PerformPiolaTransform = ApplyPiolaTransform
 
@@ -4084,87 +4647,123 @@ CONTAINS
     LG(2,2) = 1.0d0/detLF * LF(1,1)     
     LG(1:dim,1:dim) = TRANSPOSE( LG(1:dim,1:dim) )
 
-    SELECT CASE(Family)
-    CASE(3)
-      IF (ReductionMethod == 2) THEN
-        !---------------------------------------------------------------------
-        ! The basis functions for RT_0(k) with DOFs attached to the edges
-        !---------------------------------------------------------------------
-        DOFs = 3
-        StrainBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0
-        StrainBasis(1,2) = u/(2.0d0*Sqrt(3.0d0))
-        StrainBasis(2,1) = -v/(2.0d0*Sqrt(3.0d0))
-        StrainBasis(2,2) = (1 + u)/(2.0d0*Sqrt(3.0d0))
-        StrainBasis(3,1) = -v/(2.0d0*Sqrt(3.0d0))
-        StrainBasis(3,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0))
-      ELSE
-        !---------------------------------------------------------------------
-        ! The basis functions for RT_0(k,0), with DOFs defined as integrals
-        ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
-        ! according to the standard Piola transformation (the div-conforming 
-        ! version).
-        !---------------------------------------------------------------------
-        DOFs = 2
-        StrainBasis(1,1) = 1.0d0
-        StrainBasis(1,2) = 0.0d0
-        StrainBasis(2,1) = 0.0d0
-        StrainBasis(2,2) = 1.0d0
-        
-        IF ( PRESENT(DOFWeigths) ) THEN
-          DOFWeigths = 0.0d0
-          DOFWeigths(1,1:2) = StrainBasis(1,1:2)/sqrt(3.0d0)
-          DOFWeigths(2,1:2) = StrainBasis(2,1:2)/sqrt(3.0d0)
-        END IF
-      END IF
-    CASE(4)
-      IF (ReductionMethod == 2) THEN
-        !---------------------------------------------------------------------
-        ! The basis functions for RT_0(k) with DOFs attached to the edges
-        !---------------------------------------------------------------------
-        DOFs = 4
-        StrainBasis(1,1) = (1.0d0-v)/4.0d0
-        StrainBasis(1,2) = 0.0d0
-        StrainBasis(2,1) = 0.0d0
-        StrainBasis(2,2) = (1.0d0+u)/4.0d0
-        StrainBasis(3,1) = -(1.0d0+v)/4.0d0
-        StrainBasis(3,2) = 0.0d0
-        StrainBasis(4,1) = 0.0d0
-        StrainBasis(4,2) = (-1.0d0+u)/4.0d0
-      ELSE
-        !---------------------------------------------------------------------
-        ! The basis functions for ABF_0(k,0), with DOFs defined as integrals
-        ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
-        ! according to the standard Piola transformation (the div-conforming 
-        ! version).
-        !---------------------------------------------------------------------
-        DOFs = 3
-        StrainBasis(1,1) = 1.0d0
-        StrainBasis(1,2) = 0.0d0
-        StrainBasis(2,1) = 0.0d0
-        StrainBasis(2,2) = 1.0d0
-        StrainBasis(3,1) = v
-        StrainBasis(3,2) = u
-        
-        IF ( PRESENT(DOFWeigths) ) THEN
-          DOFWeigths = 0.0d0
-          DOFWeigths(1,1:2) = StrainBasis(1,1:2)/4.0d0
-          DOFWeigths(2,1:2) = StrainBasis(2,1:2)/4.0d0
-          DOFWeigths(3,1:2) = StrainBasis(3,1:2)*3.0d0/8.0d0
-        END IF
-      END IF
+    IF (ReductionMethod /= NoStrainReduction) THEN
+      SELECT CASE(Family)
+      CASE(3)
+        SELECT CASE(ReductionMethod)
+        CASE(CurlKernel,DoubleReduction)
+          !---------------------------------------------------------------------
+          ! The basis functions for RT_0(k,0), with DOFs defined as integrals
+          ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
+          ! according to the standard Piola transformation (the div-conforming 
+          ! version).
+          !---------------------------------------------------------------------
+          DOFs = 2
+          StrainBasis(1,1) = 1.0d0
+          StrainBasis(1,2) = 0.0d0
+          StrainBasis(2,1) = 0.0d0
+          StrainBasis(2,2) = 1.0d0
 
-    CASE DEFAULT
-      CALL Warn('ReductionOperatorInfo','Unsupported element type')
-      RETURN
-    END SELECT
+          IF ( PRESENT(DOFWeigths) ) THEN
+            DOFWeigths(1,1:2) = StrainBasis(1,1:2)/sqrt(3.0d0)
+            DOFWeigths(2,1:2) = StrainBasis(2,1:2)/sqrt(3.0d0)
+          END IF
+
+        CASE(MITC)
+          !---------------------------------------------------------------------
+          ! The basis functions for RT_0(k) with DOFs attached to the edges
+          !---------------------------------------------------------------------
+          DOFs = 3
+          StrainBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0
+          StrainBasis(1,2) = u/(2.0d0*Sqrt(3.0d0))
+          StrainBasis(2,1) = -v/(2.0d0*Sqrt(3.0d0))
+          StrainBasis(2,2) = (1 + u)/(2.0d0*Sqrt(3.0d0))
+          StrainBasis(3,1) = -v/(2.0d0*Sqrt(3.0d0))
+          StrainBasis(3,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0))
+
+        CASE DEFAULT
+          CALL Fatal('ReductionOperatorInfo','Unknown strain reduction operator')
+        END SELECT
+
+      CASE(4)
+        SELECT CASE(ReductionMethod)
+        CASE(CurlKernel)
+          !---------------------------------------------------------------------
+          ! The basis functions for ABF_0(k,0), with DOFs defined as integrals
+          ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
+          ! according to the standard Piola transformation (the div-conforming 
+          ! version).
+          !---------------------------------------------------------------------
+          DOFs = 3
+          StrainBasis(1,1) = 1.0d0
+          StrainBasis(1,2) = 0.0d0
+          StrainBasis(2,1) = 0.0d0
+          StrainBasis(2,2) = 1.0d0
+          StrainBasis(3,1) = v
+          StrainBasis(3,2) = u
+
+          IF ( PRESENT(DOFWeigths) ) THEN
+            DOFWeigths(1,1:2) = StrainBasis(1,1:2)/4.0d0
+            DOFWeigths(2,1:2) = StrainBasis(2,1:2)/4.0d0
+            DOFWeigths(3,1:2) = StrainBasis(3,1:2)*3.0d0/8.0d0
+          END IF
+
+        CASE(MITC)
+          !---------------------------------------------------------------------
+          ! The basis functions for RT_0(k) with DOFs attached to the edges
+          !---------------------------------------------------------------------
+          DOFs = 4
+          StrainBasis(1,1) = (1.0d0-v)/4.0d0
+          StrainBasis(1,2) = 0.0d0
+          StrainBasis(2,1) = 0.0d0
+          StrainBasis(2,2) = (1.0d0+u)/4.0d0
+          StrainBasis(3,1) = -(1.0d0+v)/4.0d0
+          StrainBasis(3,2) = 0.0d0
+          StrainBasis(4,1) = 0.0d0
+          StrainBasis(4,2) = (-1.0d0+u)/4.0d0
+
+        CASE(CurlKernelWithEdgeDOFs)
+          !---------------------------------------------------------------------
+          ! The basis functions for ABF_0(k,0), but DOFs are now defined as
+          ! edge/line integrals d_i = (u,t)_E where t is an edge tangent.
+          ! Two versions are available which differ on what edges are used.
+          !---------------------------------------------------------------------
+          DOFs = 3
+          E = 1
+          IF (PRESENT(EdgeDirection)) THEN
+            E = EdgeDirection
+            IF (.NOT.(E==1 .OR. E==2)) &
+                CALL Fatal('ReductionOperatorInfo','A wrong direction parameter given')
+          END IF
+
+          IF (E == 1) THEN
+            ! Employ the edges 12 and 34 and the v-axis
+            StrainBasis(1,1) = (1.0d0-v)/4.0d0
+            StrainBasis(1,2) = -1.0d0/4.0d0*u
+            StrainBasis(2,1) = -(1.0d0+v)/4.0d0
+            StrainBasis(2,2) = -1.0d0/4.0d0*u
+            StrainBasis(3,1) = 0.0d0
+            StrainBasis(3,2) = 0.5d0
+          ELSE
+            ! Employ the edges 41 and 23 and the u-axis
+            StrainBasis(1,1) = 1.0d0/4.0d0*v
+            StrainBasis(1,2) = -(1.0d0-u)/4.0d0
+            StrainBasis(2,1) = 1.0d0/4.0d0*v
+            StrainBasis(2,2) = (1.0d0+u)/4.0d0
+            StrainBasis(3,1) = 0.5d0
+            StrainBasis(3,2) = 0.0d0
+          END IF
+
+        CASE DEFAULT
+          CALL Fatal('ReductionOperatorInfo','Unknown strain reduction operator')
+        END SELECT
+      CASE DEFAULT
+        CALL Warn('ReductionOperatorInfo','Unsupported element type')
+        RETURN
+      END SELECT
+    END IF
 
     IF (PerformPiolaTransform) THEN
-      DO j=1,DOFs
-        DO k=1,dim
-          B(k) = SUM( LG(k,1:dim) * StrainBasis(j,1:dim) )
-        END DO
-        StrainBasis(j,1:dim) = B(1:dim)
-      END DO
       ! ----------------------------------------------------------------------
       ! Get global first derivatives of the nodal basis functions if wanted:
       ! ----------------------------------------------------------------------
@@ -4178,17 +4777,27 @@ CONTAINS
           END DO
         END DO
       END IF
-      ! ----------------------------------------------------------------------
-      ! Apply the standard Piola transform for the functions needed in the 
-      ! expressions for the DOFs (the scaling with 1/detF however omitted) 
-      ! ----------------------------------------------------------------------
-      IF ( PRESENT(DOFWeigths) ) THEN
+
+      IF (ReductionMethod /= NoStrainReduction) THEN
         DO j=1,DOFs
           DO k=1,dim
-            B(k) = SUM( LF(k,1:dim) * DOFWeigths(j,1:dim) )
+            B(k) = SUM( LG(k,1:dim) * StrainBasis(j,1:dim) )
           END DO
-          DOFWeigths(j,1:dim) = B(1:dim)
+          StrainBasis(j,1:dim) = B(1:dim)
         END DO
+
+        ! ----------------------------------------------------------------------
+        ! Apply the standard Piola transform for the functions needed in the 
+        ! expressions for the DOFs (the scaling with 1/detF however omitted) 
+        ! ----------------------------------------------------------------------
+        IF ( PRESENT(DOFWeigths) ) THEN
+          DO j=1,DOFs
+            DO k=1,dim
+              B(k) = SUM( LF(k,1:dim) * DOFWeigths(j,1:dim) )
+            END DO
+            DOFWeigths(j,1:dim) = B(1:dim)
+          END DO
+        END IF
       END IF
     ELSE
       IF ( PRESENT(dBasis) ) dBasis(1:ntot,1:dim) = dLBasis(1:ntot,1:dim)
@@ -4211,14 +4820,14 @@ CONTAINS
 !  Compute a matrix which can be used to evaluate DOFs for the interpolating
 !  function R_K(u) in the strain reduction space X(K) when applied to a H1-
 !  conforming FE function u having two components. If d_k denotes the linear 
-!  functional defining the kth DOF, the kth row of the returned matrix has 
+!  functional defining the kth DOF, the kth row of the returned matrix A has 
 !  entries 
 !
 !     [d_k(N1*e1) d_k(N1*e2) ... d_k(Nn*e1) d_k(Nn*e2)]
 !
 !  where N1,...,Nn are the Lagrange basis functions, e1=(1,0) and e2=(0,1). 
 !  Thus, if the DOFs of u are contained accordingly in a vector U, the DOFs of
-!  the interpolating function can be evaluated by computing the product AU.
+!  the interpolating function can be evaluated by computing the product A*U.
 !  Optionally the interpolating function can be computed for a field Cu
 !  where C is a 2X2 matrix field. The model parameters at the element nodes
 !  are then given in the ModelPar array. This subroutine depends intimately
@@ -4226,38 +4835,50 @@ CONTAINS
 !  integrated here. 
 !------------------------------------------------------------------------------
   SUBROUTINE ReductionOperatorDofs(Element, Nodes, A, nd, n, ReductionMethod, &
-      ModelPars)
+      ModelPars, GradientField, EdgeDirection)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), INTENT(IN), TARGET :: Element          !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                      !< Nodes structure
-    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)                 !< Coefficients for expressing the DOFs 
+    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)                  !< Coefficients for expressing the DOFs 
     INTEGER, INTENT(IN) :: nd                               !< The dimension of the strain reduction space X(K)
     INTEGER, INTENT(IN) :: n                                !< The number of the H1-conforming basis functions
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: ModelPars(2,2,n) !< To include the effect of additional model parameters
+    LOGICAL, OPTIONAL :: GradientField                      !< To return [d_k(grad(N1).e1) d_k(grad(N1).e2) ... ]
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection          !< Preferred direction for edge DOFs when ReductionMethod=4
 !---------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: stat, UseParameters, PRefElement
+    LOGICAL :: stat, UseParameters, PRefElement, GradientOperand
 
-    INTEGER :: Family, i, j, k, t
+    INTEGER :: Family, e, i, j, k, t
 
     REAL(KIND=dp) :: StrainBasis(nd,3)        ! The basis functions for the strain reduction space X(K)
     REAL(KIND=dp) :: DOFWeigths(nd,3)         ! The auxiliary functions to evaluate the interpolant in X(K)
     REAL(KIND=dp) :: Basis(n)                 ! H1-conforming basis functions
+    REAL(KIND=dp) :: DBasis(n,1:3) 
     REAL(KIND=dp) :: F(3,3)                   ! The gradient F=Grad f of the element mapping
     REAL(KIND=dp) :: detJ
     REAL(KIND=dp) :: u(2), ParMat(2,2), uk, vk, sk
     REAL(KIND=dp) :: Tau(4,3)
 !---------------------------------------------------------------------------------
+    IF (PRESENT(GradientField)) THEN
+      GradientOperand = GradientField
+    ELSE
+      GradientOperand = .FALSE.
+    END IF
     Family = GetElementFamily(Element)
+
+    IF (GradientOperand .AND. .NOT.(Family==4 .AND. (ReductionMethod == CurlKernel .OR. &
+        ReductionMethod == CurlKernelWithEdgeDOFs))) &
+        CALL Fatal('ReductionOperatorDofs', 'GradientOperand is not supported the chosen reduction')
 
     ! Clear upper left corner of A
     A(1:nd,1:2*n) = 0.0d0
 
     UseParameters = PRESENT(ModelPars) 
-    IF (.NOT. UseParameters) THEN
+    IF (.NOT. UseParameters .OR. GradientOperand) THEN
       ParMat(1,1) = 1.0d0
       ParMat(1,2) = 0.0d0
       ParMat(2,1) = 0.0d0
@@ -4267,7 +4888,51 @@ CONTAINS
     SELECT CASE(Family)
     CASE(3)
       PRefElement = IsPElement(Element)
-      IF (ReductionMethod == 2) THEN
+      SELECT CASE(ReductionMethod)
+      CASE(CurlKernel)
+        ! Method: the kernel of RT
+        IP = GaussPoints(Element)
+        DO t=1,IP % n
+
+          IF (.NOT. PRefElement) THEN
+            ! Switch to the p-reference element:
+            uk = -1.0d0 + 2.0d0 * IP % U(t) + IP % V(t)
+            vk = SQRT(3.0d0) * IP % V(t)
+            sk = SQRT(3.0d0) * 2.0d0 * IP % S(t)
+          ELSE
+            uk = IP % U(t)
+            vk = IP % V(t)
+            sk = IP % S(t)
+          END IF
+
+          stat = ReductionOperatorInfo( Element, Nodes, uk, vk, StrainBasis, &
+              ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths)  
+
+          IF (UseParameters) THEN
+            ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+            ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+            ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+            ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+          END IF
+
+          DO i=1,nd
+            DO j=1,n
+              DO k=1,2
+                SELECT CASE(k)
+                CASE(1)
+                  u(1) = ParMat(1,1)*Basis(j)
+                  u(2) = ParMat(2,1)*Basis(j)
+                CASE(2)
+                  u(1) = ParMat(1,2)*Basis(j)
+                  u(2) = ParMat(2,2)*Basis(j)
+                END SELECT
+                A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * sk
+              END DO
+            END DO
+          END DO
+        END DO
+
+      CASE(MITC)
         ! MITC method: Create edge tangent vectors
         DO i=2,n
           Tau(i-1,1) = Nodes % x(i) - Nodes % x(i-1)
@@ -4340,26 +5005,30 @@ CONTAINS
         A(3,1) = 0.5d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
         A(3,2) = 0.5d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
 
-      ELSE
-        ! Method: the kernel of RT
+      CASE DEFAULT
+        CALL Fatal('ReductionOperatorDOFs','Unknown strain reduction operator')
+      END SELECT
+
+    CASE(4)
+      SELECT CASE(ReductionMethod)
+      CASE(CurlKernel)
+        ! Method: the kernel related to ABF
         IP = GaussPoints(Element)
         DO t=1,IP % n
 
-          IF (.NOT. PRefElement) THEN
-            ! Switch to the p-reference element:
-            uk = -1.0d0 + 2.0d0 * IP % U(t) + IP % V(t)
-            vk = SQRT(3.0d0) * IP % V(t)
-            sk = SQRT(3.0d0) * 2.0d0 * IP % S(t)
+          !stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          !    IP % W(t), detJ, Basis )
+
+          IF (GradientOperand) THEN
+            stat = ReductionOperatorInfo( Element, Nodes, IP % U(t), IP % V(t), StrainBasis, &
+                ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DBasis=Dbasis, &
+                DOFWeigths=DOFWeigths)
           ELSE
-            uk = IP % U(t)
-            vk = IP % V(t)
-            sk = IP % S(t)
+            stat = ReductionOperatorInfo( Element, Nodes, IP % U(t), IP % V(t), StrainBasis, &
+                ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths)  
           END IF
 
-          stat = ReductionOperatorInfo( Element, Nodes, uk, vk, StrainBasis, &
-              ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths)  
-
-          IF (UseParameters) THEN
+          IF (UseParameters .AND. .NOT.GradientOperand) THEN
             ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
             ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
             ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
@@ -4371,21 +5040,29 @@ CONTAINS
               DO k=1,2
                 SELECT CASE(k)
                 CASE(1)
-                  u(1) = ParMat(1,1)*Basis(j)
-                  u(2) = ParMat(2,1)*Basis(j)
+                  IF (GradientOperand) THEN
+                    u(1) = DBasis(j,1)
+                    u(2) = 0.0d0
+                  ELSE
+                    u(1) = ParMat(1,1)*Basis(j)
+                    u(2) = ParMat(2,1)*Basis(j)
+                  END IF
                 CASE(2)
-                  u(1) = ParMat(1,2)*Basis(j)
-                  u(2) = ParMat(2,2)*Basis(j)
+                  IF (GradientOperand) THEN
+                    u(1) = 0.0d0
+                    u(2) = DBasis(j,2)
+                  ELSE                  
+                    u(1) = ParMat(1,2)*Basis(j)
+                    u(2) = ParMat(2,2)*Basis(j)
+                  END IF
                 END SELECT
-                A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * sk
+                A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * IP % s(t)
               END DO
             END DO
           END DO
         END DO
-      END IF
 
-    CASE(4)
-      IF (ReductionMethod == 2) THEN
+      CASE(MITC)
         ! MITC method: Create edge tangent vectors
         DO i=2,n
           Tau(i-1,1) = Nodes % x(i) - Nodes % x(i-1)
@@ -4450,41 +5127,161 @@ CONTAINS
         A(4,1) = 0.5d0 * ( ParMat(1,1)*Tau(4,1) + ParMat(2,1)*Tau(4,2) ) * Tau(4,3)
         A(4,2) = 0.5d0 * ( ParMat(1,2)*Tau(4,1) + ParMat(2,2)*Tau(4,2) ) * Tau(4,3)
 
-      ELSE
-        ! Method: the kernel related to ABF
-        IP = GaussPoints(Element)
-        DO t=1,IP % n
+      CASE(CurlKernelWithEdgeDOFs)
+        ! Method: the kernel related to ABF with edge/line integral DOFs
+        E = 1
+        IF (PRESENT(EdgeDirection)) THEN
+          E = EdgeDirection
+          IF (.NOT.(E==1 .OR. E==2)) &
+              CALL Fatal('ReductionOperatorInfo','A wrong direction parameter given')
+        END IF
 
-          !stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          !    IP % W(t), detJ, Basis )
+        ! Create tangent vectors
+        IF (E==1) THEN
+          Tau(1,1) = Nodes % x(2) - Nodes % x(1)
+          Tau(1,2) = Nodes % y(2) - Nodes % y(1)
+          Tau(2,1) = Nodes % x(4) - Nodes % x(3)
+          Tau(2,2) = Nodes % y(4) - Nodes % y(3)
+          Tau(3,1) = (Nodes % x(4) + Nodes % x(3))/2.0d0 - (Nodes % x(2) + Nodes % x(1))/2.0d0
+          Tau(3,2) = (Nodes % y(4) + Nodes % y(3))/2.0d0 - (Nodes % y(2) + Nodes % y(1))/2.0d0
+        ELSE
+          Tau(1,1) = Nodes % x(1) - Nodes % x(4)
+          Tau(1,2) = Nodes % y(1) - Nodes % y(4)
+          Tau(2,1) = Nodes % x(3) - Nodes % x(2)
+          Tau(2,2) = Nodes % y(3) - Nodes % y(2)
+          Tau(3,1) = (Nodes % x(3) + Nodes % x(2))/2.0d0 - (Nodes % x(4) + Nodes % x(1))/2.0d0
+          Tau(3,2) = (Nodes % y(3) + Nodes % y(2))/2.0d0 - (Nodes % y(4) + Nodes % y(1))/2.0d0
+        END IF
+        DO i=1,3
+          Tau(i,3) = SQRT(SUM( Tau(i,1:2)**2 ))
+          Tau(i,1:2) = Tau(i,1:2)/Tau(i,3)
+        END DO
 
-          stat = ReductionOperatorInfo( Element, Nodes, IP % U(t), IP % V(t), StrainBasis, &
-              ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths)  
+        IF (E==1) THEN
+          IF (UseParameters .OR. GradientOperand) THEN
+            stat = ElementInfo( Element, Nodes, 0.0d0, -1.0d0, 0.0d0, detJ, Basis, DBasis )
+            IF (.NOT. GradientOperand) THEN
+              ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+              ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+              ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+              ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+            END IF
+          END IF
 
-          IF (UseParameters) THEN
+          IF (GradientOperand) THEN
+            A(1,1) = DBasis(1,1) * Tau(1,1) * Tau(1,3)
+            A(1,2) = DBasis(1,2) * Tau(1,2) * Tau(1,3)
+            A(1,3) = DBasis(2,1) * Tau(1,1) * Tau(1,3)
+            A(1,4) = DBasis(2,2) * Tau(1,2) * Tau(1,3)            
+          ELSE
+            A(1,1) = 0.5d0 * ( ParMat(1,1)*Tau(1,1) + ParMat(2,1)*Tau(1,2) ) * Tau(1,3)
+            A(1,2) = 0.5d0 * ( ParMat(1,2)*Tau(1,1) + ParMat(2,2)*Tau(1,2) ) * Tau(1,3)
+            A(1,3) = 0.5d0 * ( ParMat(1,1)*Tau(1,1) + ParMat(2,1)*Tau(1,2) ) * Tau(1,3)
+            A(1,4) = 0.5d0 * ( ParMat(1,2)*Tau(1,1) + ParMat(2,2)*Tau(1,2) ) * Tau(1,3)
+          END IF
+
+          IF (UseParameters .OR. GradientOperand) THEN
+            stat = ElementInfo( Element, Nodes, 0.0d0, 1.0d0, 0.0d0, detJ, Basis, DBasis )
+            IF (.NOT. GradientOperand) THEN
+              ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+              ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+              ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+              ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+            END IF
+          END IF
+
+          IF (GradientOperand) THEN
+            A(2,5) = DBasis(3,1) * Tau(2,1) * Tau(2,3)
+            A(2,6) = DBasis(3,2) * Tau(2,2) * Tau(2,3)
+            A(2,7) = DBasis(4,1) * Tau(2,1) * Tau(2,3)
+            A(2,8) = DBasis(4,2) * Tau(2,2) * Tau(2,3)
+          ELSE
+            A(2,5) = 0.5d0 * ( ParMat(1,1)*Tau(2,1) + ParMat(2,1)*Tau(2,2) ) * Tau(2,3)
+            A(2,6) = 0.5d0 * ( ParMat(1,2)*Tau(2,1) + ParMat(2,2)*Tau(2,2) ) * Tau(2,3)
+            A(2,7) = 0.5d0 * ( ParMat(1,1)*Tau(2,1) + ParMat(2,1)*Tau(2,2) ) * Tau(2,3)
+            A(2,8) = 0.5d0 * ( ParMat(1,2)*Tau(2,1) + ParMat(2,2)*Tau(2,2) ) * Tau(2,3)
+          END IF
+        ELSE
+          IF (UseParameters .OR. GradientOperand) THEN
+            stat = ElementInfo( Element, Nodes, -1.0d0, 0.0d0, 0.0d0, detJ, Basis, DBasis )
+            IF (.NOT. GradientOperand) THEN
+              ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+              ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+              ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+              ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+            END IF
+          END IF
+
+          IF (GradientOperand) THEN
+            A(1,7) = DBasis(4,1) * Tau(1,1) * Tau(1,3)
+            A(1,8) = DBasis(4,2) * Tau(1,2) * Tau(1,3)
+            A(1,1) = DBasis(1,1) * Tau(1,1) * Tau(1,3)
+            A(1,2) = DBasis(1,2) * Tau(1,2) * Tau(1,3)
+          ELSE
+            A(1,7) = 0.5d0 * ( ParMat(1,1)*Tau(1,1) + ParMat(2,1)*Tau(1,2) ) * Tau(1,3)
+            A(1,8) = 0.5d0 * ( ParMat(1,2)*Tau(1,1) + ParMat(2,2)*Tau(1,2) ) * Tau(1,3)
+            A(1,1) = 0.5d0 * ( ParMat(1,1)*Tau(1,1) + ParMat(2,1)*Tau(1,2) ) * Tau(1,3)
+            A(1,2) = 0.5d0 * ( ParMat(1,2)*Tau(1,1) + ParMat(2,2)*Tau(1,2) ) * Tau(1,3)
+          END IF
+
+          IF (UseParameters .OR. GradientOperand) THEN
+            stat = ElementInfo( Element, Nodes, 1.0d0, 0.0d0, 0.0d0, detJ, Basis, DBasis )
+            IF (.NOT. GradientOperand) THEN
+              ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
+              ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
+              ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
+              ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
+            END IF
+          END IF
+
+          IF (GradientOperand) THEN
+            A(2,3) = DBasis(2,1) * Tau(2,1) * Tau(2,3)
+            A(2,4) = DBasis(2,2) * Tau(2,2) * Tau(2,3)
+            A(2,5) = DBasis(3,1) * Tau(2,1) * Tau(2,3)
+            A(2,6) = DBasis(3,2) * Tau(2,2) * Tau(2,3)
+          ELSE
+            A(2,3) = 0.5d0 * ( ParMat(1,1)*Tau(2,1) + ParMat(2,1)*Tau(2,2) ) * Tau(2,3)
+            A(2,4) = 0.5d0 * ( ParMat(1,2)*Tau(2,1) + ParMat(2,2)*Tau(2,2) ) * Tau(2,3)
+            A(2,5) = 0.5d0 * ( ParMat(1,1)*Tau(2,1) + ParMat(2,1)*Tau(2,2) ) * Tau(2,3)
+            A(2,6) = 0.5d0 * ( ParMat(1,2)*Tau(2,1) + ParMat(2,2)*Tau(2,2) ) * Tau(2,3)
+          END IF
+        END IF
+
+        IF (UseParameters .OR. GradientOperand) THEN
+          stat = ElementInfo( Element, Nodes, 0.0d0, 0.0d0, 0.0d0, detJ, Basis, DBasis )
+          IF (.NOT. GradientOperand) THEN         
             ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
             ParMat(1,2) = SUM(ModelPars(1,2,1:n) * Basis(1:n))
             ParMat(2,1) = SUM(ModelPars(2,1,1:n) * Basis(1:n))
             ParMat(2,2) = SUM(ModelPars(2,2,1:n) * Basis(1:n))
           END IF
+        END IF
 
-          DO i=1,nd
-            DO j=1,n
-              DO k=1,2
-                SELECT CASE(k)
-                CASE(1)
-                  u(1) = ParMat(1,1)*Basis(j)
-                  u(2) = ParMat(2,1)*Basis(j)
-                CASE(2)
-                  u(1) = ParMat(1,2)*Basis(j)
-                  u(2) = ParMat(2,2)*Basis(j)
-                END SELECT
-                A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * IP % s(t)
-              END DO
-            END DO
-          END DO
-        END DO
-      END IF
+        IF (GradientOperand) THEN
+          A(3,1) = DBasis(1,1) * Tau(3,1) * Tau(3,3)
+          A(3,2) = DBasis(1,2) * Tau(3,2) * Tau(3,3)
+          A(3,3) = DBasis(2,1) * Tau(3,1) * Tau(3,3)
+          A(3,4) = DBasis(2,2) * Tau(3,2) * Tau(3,3)
+
+          A(3,5) = DBasis(3,1) * Tau(3,1) * Tau(3,3)
+          A(3,6) = DBasis(3,2) * Tau(3,2) * Tau(3,3)
+          A(3,7) = DBasis(4,1) * Tau(3,1) * Tau(3,3)
+          A(3,8) = DBasis(4,2) * Tau(3,2) * Tau(3,3)
+        ELSE
+          A(3,1) = 0.25d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
+          A(3,2) = 0.25d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
+          A(3,3) = 0.25d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
+          A(3,4) = 0.25d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
+
+          A(3,5) = 0.25d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
+          A(3,6) = 0.25d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
+          A(3,7) = 0.25d0 * ( ParMat(1,1)*Tau(3,1) + ParMat(2,1)*Tau(3,2) ) * Tau(3,3)
+          A(3,8) = 0.25d0 * ( ParMat(1,2)*Tau(3,1) + ParMat(2,2)*Tau(3,2) ) * Tau(3,3)
+        END IF
+
+      CASE DEFAULT
+        CALL Fatal('ReductionOperatorDOFs','Unknown strain reduction operator')
+      END SELECT
     END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE ReductionOperatorDofs
@@ -4840,18 +5637,6 @@ CONTAINS
 !-------------------------------------------------------------------------------------
   END SUBROUTINE ComputeSurfaceArea
 !-------------------------------------------------------------------------------------
-
-
-!---------------------------------------------------------------------------
-  FUNCTION LDot(a,b) RESULT(res)
-!---------------------------------------------------------------------------
-    REAL(KIND=dp) :: a(3), b(3), res   
-!---------------------------------------------------------------------------
-    res = SUM( a(:) * b(:) )
-!---------------------------------------------------------------------------
-  END FUNCTION LDot
-!---------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver

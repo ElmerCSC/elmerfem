@@ -12,7 +12,7 @@ check keywords warn
 echo on
 
 $Bnum = "B5"
-$namerun = "B5_shmip"
+$namerun = "B5_shmip_"
 
 ! All Units are in m, year, MPa
 ! For ice flow 
@@ -61,7 +61,7 @@ $betac = 1.5
 $Kc = 0.1*yearinsec*(1.0/MPainPa)^(1.0-betac) 
 $Ac = Aglen  
 $lc = 2.0 
-$Ct = 7.5e-8*MPainPa 
+$Ct = -7.5e-8*MPainPa 
 $Cw = 4220.0*yearinsec^2
 $Lw = 334000.0*yearinsec^2
 
@@ -116,7 +116,7 @@ Simulation
   Steady State Min Iterations = 1
 
 ! Output File = "$namerun".result"
-! Post File = "$namerun".vtu"
+  Post File = "$namerun".vtu"
 
   max output level = 3
 End
@@ -220,6 +220,7 @@ Solver 1
   Exported Variable 7 = -dofs 1 "Sheet Storage"
   Exported Variable 8 = -dofs 1 "Zs"
   Exported Variable 9 = -dofs 1 "Zb"
+  Exported Variable 10 = -dofs 1 "Flux from Moulins"
 
   Linear System Solver = Direct     
   Linear System Direct Method = umfpack
@@ -243,7 +244,7 @@ End
 
 Solver 3 
   ! Just here for output and declare the Channel Area variable
-  ! is executed simultaneously to saving
+  ! It is executed simultaneously to saving
   Exec Solver = After Saving
   Equation = "GlaDS Channel OutPut"
   Procedure = "ElmerIceSolvers" "GlaDSchannelOut"
@@ -253,8 +254,10 @@ Solver 3
   
   Exported Variable 1 = -dofs 1 "Channel Flux"
 
-  VTK OutPutFile = Logical False
-  ASCII OutPutFile = Logical False 
+  VTU OutPutFile = Logical False
+  VTU BinaryFile = Logical False
+
+  Channels OutPut Directory Name = String "results"
   Channels OutPut File Name = String "$namerun"_channels"
 End
 

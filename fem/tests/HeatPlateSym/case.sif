@@ -124,6 +124,6 @@ Boundary Condition 3
   Displacement 3 = 0
 End
 
-Solver 1 :: Reference Norm = 7.549444E-05
+Solver 1 :: Reference Norm = 7.54633203E-05
 Solver 1 :: Reference Norm Tolerance = 1.0E-5
 

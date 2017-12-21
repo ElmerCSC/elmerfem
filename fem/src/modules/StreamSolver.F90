@@ -212,15 +212,19 @@ SUBROUTINE StreamSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    IF( FirstNode > 0 ) THEN
      k = Solver % Variable % Perm( FirstNode )
-     val =  MAXVAL( ABS( StiffMatrix % Values) ) 
-     IF( DirichletPoint ) THEN
-       CALL ZeroRow( StiffMatrix, k )
-       StiffMatrix % RHS(k) = 0.0_dp
-     END IF
-     CALL AddToMatrixElement( StiffMatrix,k,k,val*coeff )
-   ELSE
-     CALL DefaultDirichletBCs()
+     CALL UpdateDirichletDof( StiffMatrix, k, 0.0_dp )
+
+     !val =  MAXVAL( ABS( StiffMatrix % Values) ) 
+     !IF( DirichletPoint ) THEN
+       
+
+     !CALL ZeroRow( StiffMatrix, k )
+     !StiffMatrix % RHS(k) = 0.0_dp
+     !END IF
+     !CALL AddToMatrixElement( StiffMatrix,k,k,val*coeff )
    END IF
+   CALL DefaultDirichletBCs()
+   !END IF
 !------------------------------------------------------------------------------
 !  Solve the system:
 !------------------------------------------------------------------------------

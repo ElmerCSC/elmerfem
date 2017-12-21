@@ -634,10 +634,10 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Component(:)
 
     TYPE(Graph_t) :: DualGraph
-    TYPE(GraphColour_t) :: GraphColouring
+    TYPE(GraphColour_t) :: GraphColouring, BoundaryGraphColouring
     LOGICAL :: ConsistentColours
 
-    LOGICAL :: ThreadedStartup
+    LOGICAL :: ThreadedStartup, MultiColourSolver
 
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
@@ -1078,8 +1078,15 @@ CONTAINS
         IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Perm')
         Perm = 0
         MatrixFormat = MATRIX_CRS
+
+        ThreadedStartup = ListGetLogical( SolverParams,'Multithreaded Startup',Found )
+        IF( ThreadedStartup ) THEN
+          CALL Info('AddEquationBasics','Using multithreaded startup')
+        END IF
         
-        IF( ListGetLogical( SolverParams,'MultiColour Solver',Found ) ) THEN
+        MultiColourSolver = ListGetLogical( SolverParams,'MultiColour Solver',Found )
+
+        IF( MultiColourSolver .OR. ThreadedStartup ) THEN
           CALL Info('AddEquationBasics','Creating structures for mesh colouring')
           ConsistentColours = .FALSE.
           IF ( ListGetLogical(SolverParams,'MultiColour Consistent', Found) ) THEN
@@ -1087,27 +1094,37 @@ CONTAINS
             ConsistentColours = .TRUE.
           END IF
 
-          ! Construct the dual graph from Elmer mesh
-          CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
+          IF (Solver % Mesh % NumberOfBulkElements > 0) THEN 
+             ! Construct the dual graph from Elmer mesh
+             CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
+             ! Colour the dual graph
+             CALL ElmerGraphColour(DualGraph, GraphColouring, ConsistentColours)
+             ! Deallocate dual graph as it is no longer needed
+             CALL Graph_Deallocate(DualGraph)
           
-          ! Colour the dual graph
-          CALL ElmerGraphColour(DualGraph, GraphColouring, ConsistentColours)
-          
-          ! Deallocate dual graph as it is no longer needed
-          CALL Graph_Deallocate(DualGraph)
-          
-          ! Construct colour lists
-          ALLOCATE( Solver % ColourIndexList, STAT=AllocStat )
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for ColourIndexList')
-          
-          CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
-          CALL Colouring_Deallocate(GraphColouring)          
-        END IF
+             ! Construct colour lists
+             ALLOCATE( Solver % ColourIndexList, STAT=AllocStat )
+             IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for ColourIndexList')
+             CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
+             CALL Colouring_Deallocate(GraphColouring)
+          END IF
 
-        ThreadedStartup = .FALSE.
-        IF( ListGetLogical( SolverParams,'Multithreaded Startup',Found ) ) THEN
-          CALL Info('AddEquationBasics','Using multithreaded startup')
-          ThreadedStartup = .TRUE.
+          IF (Solver % Mesh % NumberOfBoundaryElements > 0) THEN 
+             ! Construct the dual graph from Elmer boundary mesh
+             CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph, UseBoundaryMesh=.TRUE.)
+             ! Colour the dual graph of boundary mesh
+             CALL ElmerGraphColour(DualGraph, BoundaryGraphColouring, ConsistentColours)
+             ! Deallocate dual graph as it is no longer needed
+             CALL Graph_Deallocate(DualGraph)
+                       
+             ALLOCATE( Solver % BoundaryColourIndexList, STAT=AllocStat )
+             IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for BoundaryColourIndexList')
+             CALL ElmerColouringToGraph(BoundaryGraphColouring, Solver % BoundaryColourIndexList)
+             CALL Colouring_Deallocate(BoundaryGraphColouring)
+          END IF
+
+          ! DEBUG/TODO: Add a Solver keyword for enabling the functionality
+          ! CALL CheckColourings(Solver)
         END IF
         
         CALL Info('AddEquationBasics','Creating solver matrix topology',Level=12)
@@ -1119,6 +1136,23 @@ CONTAINS
         IF (ASSOCIATED(Solver % Matrix)) THEN
           Nrows = Solver % Matrix % NumberOfRows
           CALL Info('AddEquationBasics','Number of rows in CRS matrix: '//TRIM(I2S(Nrows)),Level=12)
+        END IF
+        
+        ! Check if mesh colouring is needed by the solver
+        IF( .NOT. MultiColourSolver .AND. ThreadedStartup ) THEN
+           ! Deallocate mesh colouring
+           IF (ASSOCIATED(Solver % ColourIndexList)) THEN
+              CALL Graph_Deallocate(Solver % ColourIndexList)
+              DEALLOCATE(Solver % ColourIndexList)
+              Solver % ColourIndexList => NULL()
+           END IF
+
+           ! Deallocate boundary mesh colouring
+           IF (ASSOCIATED(Solver % BoundaryColourIndexList)) THEN
+              CALL Graph_Deallocate(Solver % BoundaryColourIndexList)
+              DEALLOCATE(Solver % BoundaryColourIndexList)
+              Solver % BoundaryColourIndexList => NULL()
+           END IF
         END IF
 
         ! Basically the solver could be matrix free but still the matrix
@@ -1353,7 +1387,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
     LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal, EigAnal, &
-         VariableOutput, MGAlgebraic,MultigridActive
+         VariableOutput, MGAlgebraic,MultigridActive, HarmonicMode
     INTEGER :: MgLevels, AllocStat
     REAL(KIND=dp), POINTER :: Component(:)
     REAL(KIND=dp), POINTER :: freqv(:,:)
@@ -1389,8 +1423,10 @@ CONTAINS
         Solution = 0.0d0
         nrows = SIZE( Solution ) 
         Perm => Solver % Variable % Perm
-        VariableOutput = Solver % Variable % Output
 
+        VariableOutput = ListGetLogical( Solver % Values,'Save Loads',Found )
+        IF( .NOT. Found ) VariableOutput = Solver % Variable % Output
+        
         CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
             var_name, Solver % Variable % DOFs, Solution, &
             Solver % Variable % Perm, Output=VariableOutput )
@@ -1449,6 +1485,8 @@ CONTAINS
 
 
     HarmonicAnal = ListGetLogical( Solver % Values, 'Harmonic Analysis', Found )
+
+    HarmonicMode = ListGetLogical( Solver % Values, 'Harmonic Mode', Found )
     
     IF ( ASSOCIATED( Solver % Matrix ) ) THEN
       IF(.NOT. ASSOCIATED(Solver % Matrix % RHS)) THEN
@@ -1457,7 +1495,7 @@ CONTAINS
         Solver % Matrix % RHS = 0.0d0
         
         Solver % Matrix % RHS_im => NULL()
-        IF ( HarmonicAnal ) THEN
+        IF ( HarmonicAnal .OR. HarmonicMode ) THEN
           ALLOCATE( Solver % Matrix % RHS_im(Solver % Matrix % NumberOFRows), STAT=AllocStat)
           IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Rhs_im')                  
           Solver % Matrix % RHS_im = 0.0d0
@@ -1660,6 +1698,13 @@ CONTAINS
         ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
         IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
         Solver % Matrix % MassValues = 0.0d0
+
+      ELSE IF( HarmonicMode ) THEN
+
+        ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
+        Solver % Matrix % MassValues = 0.0d0        
+
       END IF
     END IF
 
@@ -1816,106 +1861,22 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-   FUNCTION CreateChildMatrix( ParentMat, ParentDofs, Dofs, ColDofs, CreateRhs ) RESULT ( ChildMat )
-     TYPE(Matrix_t) :: ParentMat
-     INTEGER :: ParentDofs
-     INTEGER :: Dofs
-     TYPE(Matrix_t), POINTER :: ChildMat
-     INTEGER, OPTIONAL :: ColDofs
-     LOGICAL, OPTIONAL :: CreateRhs
-     INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
-
      
-     ChildMat => AllocateMatrix()
-
-     IF( PRESENT( ColDofs ) ) THEN
-       CDofs = ColDofs
-     ELSE
-       CDofs = Dofs
-     END IF
-       
-     
-     IF( Dofs == ParentDofs .AND. CDofs == ParentDofs ) THEN
-       CALL Info('CreateChildMatrix','Reusing initial matrix topology',Level=8)    
-       
-       ChildMat % Cols => ParentMat % Cols
-       ChildMat % Rows => ParentMat % Rows
-       ChildMat % Diag => ParentMat % Diag
-       
-       ChildMat % NumberOfRows = ParentMat % NumberOfRows
-       
-       m = SIZE( ParentMat % Values )
-       ALLOCATE( ChildMat % Values(m) )
-       ChildMat % Values = 0.0_dp
-         
-     ELSE
-       CALL Info('CreateChildMatrix','Multiplying initial matrix topology',Level=8)    
-       
-       ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * Dofs * CDofs / ParentDofs**2 ) )
-       ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * Dofs / ParentDofs + 1 ) )
-       
-       ChildMat % NumberOfRows = ParentMat % NumberOfRows * Dofs / ParentDofs           
-       
-       ii = 0
-       jj = 0
-       ChildMat % Rows(1) = 1
-       DO i=1, ParentMat % NumberOFRows, ParentDOFs
-         DO k=1,Dofs
-           ii = ii + 1
-           DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1, ParentDOFs
-             nn = (ParentMat % Cols(j)-1) / ParentDofs + 1
-             DO l=1,CDofs
-               jj = jj + 1
-               ChildMat % Cols(jj) = Dofs*(nn-1) + l
-             END DO
-           END DO
-           ChildMat % Rows(ii+1) = jj+1
-         END DO
-       END DO
-       
-       ALLOCATE( ChildMat % Values(jj) )
-       ChildMat % Values = 0.0_dp
-       
-       IF( Dofs == CDofs ) THEN
-         ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * Dofs / ParentDofs ) )      
-         DO i=1,ChildMat % NumberOfRows
-           DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
-             IF (ChildMat % Cols(j) == i) THEN
-               ChildMat % Diag(i) = j
-               EXIT
-             END IF
-           END DO
-         END DO
-       END IF
-     END IF
-
-     IF( PRESENT( CreateRhs ) ) THEN
-       IF( CreateRhs ) THEN
-         ALLOCATE( ChildMat % rhs(ChildMat % NumberOfRows ) )
-         ChildMat % rhs = 0.0_dp
-       END IF
-     END IF
-
-     CALL Info('CreateChildMatrix','Created matrix with rows: '&
-         //TRIM(I2S( ChildMat % NumberOfRows)),Level=10 )
-     
-     
-   END FUNCTION CreateChildMatrix
-   
 
 !------------------------------------------------------------------------------
 !> Generate a similar solver instance as for the parent solver.
 !> The number of dofs may vary but the basis functions and permutation is reused.
 !> If also the number of dofs is the same also matrix topology is reused.
 !------------------------------------------------------------------------------
-   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix ) &
+   FUNCTION CreateChildSolver( ParentSolver, ChildVarName, ChildDofs, ChildPrefix, NoReuse) &
        RESULT ( ChildSolver )
      TYPE(Solver_t) :: ParentSolver
      CHARACTER(LEN=*) :: ChildVarName
      INTEGER, OPTIONAL :: ChildDofs
      CHARACTER(LEN=*), OPTIONAL :: ChildPrefix
      TYPE(Solver_t), POINTER :: ChildSolver
-
+     LOGICAL, OPTIONAL :: NoReuse
+     
      INTEGER :: ParentDofs 
      TYPE(Solver_t), POINTER :: Solver
      REAL(KIND=dp), POINTER :: ChildVarValues(:)
@@ -1998,7 +1959,7 @@ CONTAINS
        CALL Warn('CreateChildSolver','Parent matrix needed for child matrix!')
        Solver % Matrix => NULL()
      ELSE
-       ChildMat => CreateChildMatrix( ParentMat, ParentDofs, Dofs, Dofs, .TRUE. )
+       ChildMat => CreateChildMatrix( ParentMat, ParentDofs, Dofs, Dofs, .TRUE., NoReuse = NoReuse )
        ChildMat % Solver => Solver
        Solver % Matrix => ChildMat
      END IF
@@ -3995,8 +3956,14 @@ CONTAINS
     IF(.NOT. ASSOCIATED( Var ) .AND. RowVar == 1 .AND. ColVar == 1 ) THEN
       Var => Solver % Variable
     END IF
+    IF( .NOT. ASSOCIATED( Var ) ) THEN
+      CALL Fatal('BlockSystemAssembly','Could not find variable: '//TRIM(I2S(RowVar)))
+    END IF
     RowDofs = Var % Dofs
     RowPerm => Var % Perm
+    IF( .NOT. ASSOCIATED( RowPerm ) ) THEN
+      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//TRIM(I2S(RowVar)))
+    END IF
     
     ! Column variable
     !------------------------------------------
@@ -4005,8 +3972,14 @@ CONTAINS
       ColName = ListGetString( SolverParams, TRIM(str), GotIt )
       Var => VariableGet( Mesh % Variables, TRIM(ColName) )
     END IF          
+    IF( .NOT. ASSOCIATED( Var ) ) THEN
+      CALL Fatal('BlockSystemAssembly','Could not find variable: '//TRIM(I2S(ColVar)))
+    END IF
     ColDofs = Var % Dofs
     ColPerm => Var % Perm
+    IF( .NOT. ASSOCIATED( ColPerm ) ) THEN
+      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//TRIM(I2S(ColVar)))
+    END IF
 
     ! These could be user provided for each block
     !-----------------------------------------

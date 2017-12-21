@@ -717,7 +717,7 @@ CONTAINS
              END DO
            END IF
          END IF
-
+         
          IF( .NOT. TryQTree .OR. (.NOT. Found .AND. .NOT. Parallel .AND. TryLinear ) ) THEN
            !------------------------------------------------------------------------------
            ! Go through all old mesh bulk elements
@@ -797,37 +797,46 @@ CONTAINS
                 END IF
                 OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
 
-
+                
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
                 IF ( ASSOCIATED (Element) ) THEN
-!------------------------------------------------------------------------------
+                  !------------------------------------------------------------------------------
 !
 !                  Check for rounding errors:
 !                  --------------------------
-                   Indexes => Element % NodeIndexes
-                   IF ( ALL(OldSol % Perm(Indexes)>0) ) THEN
-                     IF ( NewSol % Perm(i) /= 0 ) THEN
-                       ElementValues(1:n) = & 
-                              OldSol % Values(OldSol % Perm(Indexes))
-                       NewSol % Values(NewSol % Perm(i)) = InterpolateInElement( &
-                            Element, ElementValues, LocalCoordinates(1), &
-                                LocalCoordinates(2), LocalCoordinates(3) )
+                  IF( OldSol % TYPE == Variable_on_nodes_on_elements ) THEN
+                    Indexes => Element % DGIndexes
+                  ELSE
+                    Indexes => Element % NodeIndexes
+                  END IF
+                  
+                                    
+                  IF ( ALL(OldSol % Perm(Indexes) > 0) ) THEN
+                    IF ( NewSol % Perm(i) /= 0 ) THEN
+                      ElementValues(1:n) = & 
+                          OldSol % Values(OldSol % Perm(Indexes))
 
-                       IF ( ASSOCIATED( OldSol % PrevValues ) ) THEN
-                         DO j=1,SIZE(OldSol % PrevValues,2)
-                           ElementValues(1:n) = &
-                               OldSol % PrevValues(OldSol % Perm(Indexes),j)
-                           NewSol % PrevValues(NewSol % Perm(i),j) = &
-                             InterpolateInElement( Element, ElementValues, &
-                               LocalCoordinates(1), &
-                                  LocalCoordinates(2), LocalCoordinates(3) )
-                         END DO
-                       END IF
-                     END IF
-                   END IF
+                      val = InterpolateInElement( Element, ElementValues, &
+                          LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
+
+                      NewSol % Values(NewSol % Perm(i)) = val
+
+                      IF ( ASSOCIATED( OldSol % PrevValues ) ) THEN
+                        DO j=1,SIZE(OldSol % PrevValues,2)
+                          ElementValues(1:n) = &
+                              OldSol % PrevValues(OldSol % Perm(Indexes),j)
+
+                          val = InterpolateInElement( Element, ElementValues, &
+                              LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
+
+                          NewSol % PrevValues(NewSol % Perm(i),j) = val
+                        END DO
+                      END IF
+                    END IF
+                  END IF
                 ELSE
-                   IF ( NewSol % Perm(i)/=0 ) NewValue(NewSol % Perm(i))=0.0_dp
+                  IF ( NewSol % Perm(i)/=0 ) NewValue(NewSol % Perm(i))=0.0_dp
                 END IF
 
 !------------------------------------------------------------------------------
