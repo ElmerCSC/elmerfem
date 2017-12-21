@@ -847,6 +847,7 @@ END INTERFACE
     INTEGER, POINTER :: ParPerm(:) => Null()
     INTEGER, POINTER :: Partitions(:) => Null()
     INTEGER :: VarDofs, FirstParDofId
+    LOGICAL :: Harmonic = .FALSE.
   END TYPE Component_t
 
   TYPE ComponentPointer_t

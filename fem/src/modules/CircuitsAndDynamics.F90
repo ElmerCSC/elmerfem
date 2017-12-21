@@ -139,16 +139,16 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       Circuits(p) % Harmonic = .FALSE.
       
       CALL ReadCircuitVariables(p)
+      CALL AddBareCircuitVariables(p)   ! these don't belong to any components
       CALL ReadComponents(p, CompIndAll)
       CALL AddComponentVariables(p)
       CALL AddComponentValuesToLists(p)  ! Lists are used to communicate values to other solvers at the moment...
-      CALL AddBareCircuitVariables(p)   ! these don't belong to any components
       CALL ReadCoefficientMatrices(p)
       CALL ReadPermutationVector(p)
       CALL ReadCircuitSources(p)
       CALL WriteCoeffVectorsForCircVariables(p)
-    
     END DO
+    CALL AddComponentParallelizationVariables()
 
     ! Create CRS matrix strucures for the circuit equations:
     ! ------------------------------------------------------
@@ -316,10 +316,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ! where xi are the parts of x that are computed
       ! in different partitions
       ! ---------------------------------------------------------
-      RowId = yvar % parValueId + nm
+      RowId = vvar % parValueId + nm
       ColId = xRowId 
       CALL AddToMatrixElement(CM, RowId, ColId, 1._dp)
-      ColId = xRowId
+      ColId = xvar % parValueId + nm
       CALL AddToMatrixElement(CM, RowId, ColId, -1._dp)
     END DO
 !------------------------------------------------------------------------------
@@ -1058,16 +1058,16 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       Circuits(p) % Harmonic = .TRUE.
       
       CALL ReadCircuitVariables(p)
+      CALL AddBareCircuitVariables(p)   ! these don't belong to any components
       CALL ReadComponents(p, CompIndAll)
       CALL AddComponentVariables(p)
       CALL AddComponentValuesToLists(p)  ! Lists are used to communicate values to other solvers at the moment...
-      CALL AddBareCircuitVariables(p)   ! these don't belong to any components
       CALL ReadCoefficientMatrices(p)
       CALL ReadPermutationVector(p)
       CALL ReadCircuitSources(p)
       CALL WriteCoeffVectorsForCircVariables(p)
-    
     END DO
+    CALL AddComponentParallelizationVariables()
 
     ! Create CRS matrix strucures for the circuit equations:
     ! ------------------------------------------------------
@@ -1094,9 +1094,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
   END DO
   CALL AddParallelComponentConstraints()
+  
   Asolver %  Matrix % AddMatrix => CM
-
-  CALL WriteCircuitMatrices()
 
   IF(ASSOCIATED(CM)) THEN
     IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
@@ -1109,6 +1108,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   END IF
 
   CALL DefaultFinish()
+
+  CALL WriteCircuitMatrices()
 
   CONTAINS
 
@@ -1194,7 +1195,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Component_t), POINTER :: Comp
     TYPE(Matrix_t), POINTER :: CM
     TYPE(ComponentPointer_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar, ivar
     INTEGER :: n_comp, CompInd, &
                yRowId, RowId, ColId, &
                nm, vRowId, xRowId
@@ -1213,7 +1214,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF (.NOT. Comp % Parallel) CYCLE
       yvar => Comp % yvar
       xvar => Comp % xvar
-      vvar => Comp % xvar
+      vvar => Comp % vvar
+      ivar => Comp % ivar
 
       ! The v variable row is always reserved for the component.
       ! i variable is reserved for the network that is written 
@@ -1243,10 +1245,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! where xi are the parts of x that are computed
       ! in different partitions
       ! ---------------------------------------------------------
-      RowId = yvar % parValueId + nm
+      RowId = ivar % parValueId + nm
       ColId = xRowId 
       CALL AddToCmplxMatrixElement(CM, RowId, ColId, 1._dp, 0._dp)
-      ColId = xRowId
+      ColId = xvar % parValueId + nm
       CALL AddToCmplxMatrixElement(CM, RowId, ColId, -1._dp, 0._dp)
     END DO
 !------------------------------------------------------------------------------
@@ -1410,6 +1412,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       Comp % Resistance = ParallelReduction(Comp % Resistance)
       Comp % Conductance = ParallelReduction(Comp % Conductance)
     END DO
+
 !------------------------------------------------------------------------------
    END SUBROUTINE AddComponentEquationsAndCouplings
 !------------------------------------------------------------------------------

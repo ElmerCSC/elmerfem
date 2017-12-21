@@ -558,6 +558,7 @@ CONTAINS
       CompIndAll = CompIndAll + 1
       Components(CompIndAll) % Component => Circuit % Components(CompInd)
       Comp => Circuit % Components(CompInd)
+      Comp % Harmonic = Circuit % Harmonic
 
       Comp % VarDofs = 0
       Comp % nofcnts = 0
@@ -699,7 +700,6 @@ CONTAINS
 !      print *, "Component:", Comp % ComponentId, "VarDofs", Comp % VarDofs
       CALL AddVariableToCircuit(Circuit, Comp % ivar, CId)
       CALL AddVariableToCircuit(Circuit, Comp % vvar, CId)
-      CALL AddComponentParallelizationVariables(Circuit, Comp)
     END DO
 !    print *, "CurrentModel%nof_circuit_components",CurrentModel%nof_circuit_components
 !    print *, "CurrentModel%nof_circuit_component_dofs",CurrentModel%nof_circuit_component_dofs
@@ -887,62 +887,69 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AddComponentParallelizationVariables(Circuit, Comp)
+  SUBROUTINE AddComponentParallelizationVariables()
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Circuit_t) :: Circuit
     TYPE(Component_t), POINTER :: Comp
     TYPE(CircuitVariable_t), POINTER :: xvar, yvar
+    TYPE(ComponentPointer_t), POINTER :: Components(:)
     INTEGER, POINTER :: ParPerm(:)
-    INTEGER :: mype, idx, idy
+    INTEGER :: mype, idx, idy, CompInd, n_comp
     
-    mype = ParEnv % MyPe
-    IF (ASSOCIATED(Comp)) THEN
-      SELECT CASE (Comp % CoilType)
-      CASE('stranded')
-        Comp % xvar => Comp % ivar
-        Comp % yvar => Comp % vvar
-      CASE('massive')
-        Comp % xvar => Comp % vvar
-        Comp % yvar => Comp % ivar
-      CASE('foil winding')
-        Comp % xvar => Comp % vvar
-        Comp % yvar => Comp % ivar
-      CASE DEFAULT
-        CALL Fatal ('AddComponentParallelizationVariables', 'Unsupported coil type')
-      END SELECT
+    n_comp = CurrentModel % nof_circuit_components
+    Components => CurrentModel % CircuitComponents
 
-      ParPerm => Comp % ParPerm
-      IF ( Comp % Parallel .AND. ParPerm(mype+1) > 0) THEN
-        xvar => Comp % xvar
-        yvar => Comp % yvar
-        xvar % ParPerm => Comp % ParPerm
-        yvar % ParPerm => Comp % ParPerm
-        xvar % Partitions => Comp % Partitions
-        yvar % Partitions => Comp % Partitions
-        
-        idx = CurrentModel % Circuit_tot_n + ReIndex(Comp % FirstParDofId + &
-          Comp % VarDofs * (ParPerm(mype+1)-1))
-        xvar % parValueId = idx
-        idy = idx + 1 + ReIndex(xvar % dofs)
-        yvar % parValueId = idy
-        IF (Circuit % Harmonic) THEN
-          xvar % parValueIdIm = idx + 1
-          yvar % parValueIdIm = idy + 1
+    DO CompInd=1, n_comp
+      Comp => Components(CompInd) % Component 
+      mype = ParEnv % MyPe
+      IF (ASSOCIATED(Comp)) THEN
+        SELECT CASE (Comp % CoilType)
+        CASE('stranded')
+          Comp % xvar => Comp % ivar
+          Comp % yvar => Comp % vvar
+        CASE('massive')
+          Comp % xvar => Comp % vvar
+          Comp % yvar => Comp % ivar
+        CASE('foil winding')
+          Comp % xvar => Comp % vvar
+          Comp % yvar => Comp % ivar
+        CASE DEFAULT
+          CALL Fatal ('AddComponentParallelizationVariables', 'Unsupported coil type')
+        END SELECT
+
+        ParPerm => Comp % ParPerm
+        IF ( Comp % Parallel .AND. ParPerm(mype+1) > 0) THEN
+          xvar => Comp % xvar
+          yvar => Comp % yvar
+          xvar % ParPerm => Comp % ParPerm
+          yvar % ParPerm => Comp % ParPerm
+          xvar % Partitions => Comp % Partitions
+          yvar % Partitions => Comp % Partitions
+          
+          idx = CurrentModel % Circuit_tot_n + ReIndex(Comp % FirstParDofId + &
+            Comp % VarDofs * (ParPerm(mype+1)-1))
+          xvar % parValueId = idx
+          idy = idx + 1 + ReIndex(xvar % dofs)
+          yvar % parValueId = idy
+          IF (Comp % Harmonic) THEN
+            xvar % parValueIdIm = idx + 1
+            yvar % parValueIdIm = idy + 1
+          END IF
+
+          print *, Parenv % MyPe, "CurrentModel % Circuit_tot_n", CurrentModel % Circuit_tot_n
+          print *, Parenv % MyPe, "Comp % ComponentId", Comp % ComponentId, "Comp % FirstParDofIjd", &
+            Comp % FirstParDofId, "Comp % VarDofs:", Comp % VarDofs, "ParEnv % MyPE", &
+            mype, "ParPerm(mype+1)", ParPerm(mype+1)
+          print *,  Parenv % MyPe, "xvar % parValueId", xvar % parValueId
+          print *,  Parenv % MyPe, "xvar % valueId", xvar % valueId
+          print *,  Parenv % MyPe, "yvar % valueId", yvar % valueId
+          print *,  Parenv % MyPe, "yvar % parValueId", yvar % parValueId
+
         END IF
-
-!        print *, Parenv % MyPe, "Comp % ComponentId", Comp % ComponentId, "Comp % FirstParDofIjd", &
-!          Comp % FirstParDofId, "Comp % VarDofs:", Comp % VarDofs, "ParEnv % MyPE", &
-!          mype, "ParPerm(mype+1)", ParPerm(mype+1)
-!        print *,  Parenv % MyPe, "xvar % parValueId", xvar % parValueId
-!        print *,  Parenv % MyPe, "xvar % valueId", xvar % valueId
-!        print *,  Parenv % MyPe, "yvar % valueId", yvar % valueId
-!        print *,  Parenv % MyPe, "yvar % parValueId", yvar % parValueId
-
       END IF
-    END IF
+    END DO
 
-    !ParPerm
 !------------------------------------------------------------------------------
   END SUBROUTINE AddComponentParallelizationVariables
 !------------------------------------------------------------------------------
@@ -1444,6 +1451,7 @@ CONTAINS
       DO i=1,Circuits(p) % n
         cnt  = 0
         Cvar => Circuits(p) % CircuitVariables(i)
+        cvardofs = Cvar % dofs
         IF(ASSOCIATED(CVar%Component)) THEN
           Comp => Cvar%Component
           IF (Comp % Parallel) THEN
@@ -1711,7 +1719,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Asolver
     TYPE(Component_t), POINTER :: Comp
     TYPE(ComponentPointer_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar, ivar
     INTEGER :: n_comp, CompInd, xRowId, RowId, &
                dof, nm, ncomp, vRowId, yRowId
 
@@ -1729,6 +1737,7 @@ CONTAINS
       yvar => Comp % yvar
       xvar => Comp % xvar
       vvar => Comp % vvar
+      ivar => Comp % ivar
 
       ! The v variable row is always reserved for the component.
       ! i variable is reserved for the network that is written 
@@ -1756,7 +1765,7 @@ CONTAINS
       ! where xi are the parts of x that are computed
       ! in different partitions
       ! ---------------------------------------------------------
-      RowId = yvar % parValueId + nm
+      RowId = ivar % parValueId + nm
       CALL CountMatElement(Rows, Cnts, RowId, 2)
     END DO
 
@@ -1772,7 +1781,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Asolver
     TYPE(Component_t), POINTER :: Comp
     TYPE(ComponentPointer_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar, ivar
     INTEGER :: n_comp, CompInd, &
                xRowId, yRowId, RowId, ColId, &
                dof, nm, vRowId
@@ -1791,6 +1800,7 @@ CONTAINS
       yvar => Comp % yvar
       xvar => Comp % xvar
       vvar => Comp % vvar
+      ivar => Comp % ivar
 
       ! The v variable row is always reserved for the component.
       ! i variable is reserved for the network that is written 
@@ -1820,10 +1830,10 @@ CONTAINS
       ! where xi are the parts of x that are computed
       ! in different partitions
       ! ---------------------------------------------------------
-      RowId = yvar % parValueId + nm
+      RowId = ivar % parValueId + nm
       ColId = xRowId 
       CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
-      ColId = xRowId
+      ColId = xvar % parValueId + nm
       CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
     END DO
 
