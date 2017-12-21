@@ -239,17 +239,30 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE WriteCircuitMatrices()
+  SUBROUTINE WriteCircuitMatrices(Params)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
  
     TYPE(Matrix_t), POINTER :: CM
+    TYPE(ValueList_t), POINTER :: Params
     INTEGER :: nm, RowId, ColId
     REAL(KIND=dp) :: CMvalue
- 
+    CHARACTER(LEN=MAX_NAME_LEN) :: ofilename
+    LOGICAL :: Found, WriteMatrix = .FALSE.
+
+    WriteMatrix = GetLogical(params, 'Circuit Matrix Output', Found)
+    IF (.NOT. Found) WriteMatrix = .FALSE.
+
+    IF (WriteMatrix) THEN
+      ofilename = GetString(params, 'Circuit Matrix Ouput File', Found)
+      IF (.NOT. Found) ofilename = 'cm'
+    ELSE
+      RETURN
+    END IF
+
     CM=>CurrentModel%CircuitMatrix
 
-    OPEN(UNIT=12, FILE="cm"//TRIM(i2s(ParEnv % MyPe)), ACTION="write", STATUS="replace")
+    OPEN(UNIT=12, FILE=TRIM(ofilename)//TRIM(i2s(ParEnv % MyPe)), ACTION="write", STATUS="replace")
 
     nm = CurrentModel % Asolver % Matrix % NumberOfRows
     

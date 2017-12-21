@@ -198,6 +198,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
      ASolver % Matrix % AddMatrix => Null()
   END IF
 
+   CALL WriteCircuitMatrices(Solver % Values)
+
   CONTAINS
 
 !------------------------------------------------------------------------------
@@ -267,7 +269,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     TYPE(Component_t), POINTER :: Comp
     TYPE(Matrix_t), POINTER :: CM
     TYPE(ComponentPointer_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar
+    TYPE(CircuitVariable_t), POINTER :: xvar, yvar, vvar, ivar
     INTEGER :: n_comp, CompInd, &
                yRowId, RowId, ColId, &
                nm, vRowId, xRowId
@@ -287,6 +289,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       yvar => Comp % yvar
       xvar => Comp % xvar
       vvar => Comp % vvar
+      ivar => Comp % ivar
 
       ! The v variable row is always reserved for the component.
       ! i variable is reserved for the network that is written 
@@ -316,7 +319,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ! where xi are the parts of x that are computed
       ! in different partitions
       ! ---------------------------------------------------------
-      RowId = vvar % parValueId + nm
+      RowId = ivar % parValueId + nm
       ColId = xRowId 
       CALL AddToMatrixElement(CM, RowId, ColId, 1._dp)
       ColId = xvar % parValueId + nm
@@ -1109,7 +1112,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultFinish()
 
-  CALL WriteCircuitMatrices()
+  CALL WriteCircuitMatrices(Solver % Values)
 
   CONTAINS
 
