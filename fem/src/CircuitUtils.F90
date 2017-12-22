@@ -239,6 +239,50 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+   SUBROUTINE SetCircuitsCommunicator(CM, CommSave, SaveActive)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+ 
+    TYPE(Matrix_t), POINTER :: CM
+    INTEGER :: CommSave
+    LOGICAL, POINTER :: SaveActive(:) 
+
+    LOGICAL :: active
+    INTEGER, ALLOCATABLE :: memb(:)
+    INTEGER :: i, n, comm_active, group_active, group_world, ierr
+
+    IF (ParEnv % PEs>1) THEN
+      SaveActive => Parenv % Active
+      Parenv % Active => NULL()
+      active = ASSOCIATED(CM)
+      IF (active) active = SIZE(CM % Values)>0
+
+      CALL ParallelActive(active)
+
+      CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
+      ALLOCATE(memb(n))
+      n = 0
+      DO i=1,ParEnv % PEs
+        IF ( ParEnv % Active(i) ) THEN
+          n=n+1
+          memb(n)=i-1
+        END IF
+      END DO
+      CALL MPI_Group_incl( group_world, n, memb, group_active, ierr)
+      DEALLOCATE(memb)
+      CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, &
+              comm_active, ierr)
+
+      print *, ParEnv % Mype, "ParEnv % Active", ParEnv % Active
+
+      CommSave = Parenv % ActiveComm
+      ParEnv % ActiveComm = comm_active
+    END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetCircuitsCommunicator
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
   SUBROUTINE WriteCircuitMatrices(Params)
 !------------------------------------------------------------------------------
     IMPLICIT NONE

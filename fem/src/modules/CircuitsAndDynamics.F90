@@ -450,10 +450,14 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       END DO
     END DO
 
+print*,parenv % mype, 'aaaa'; flush(6)
     DO CompInd = 1, Circuit % n_comp
       Comp => Circuit % Components(CompInd)
+print*,parenv % mype, compind, 'go red'; flush(6)
       Comp % Resistance = ParallelReduction(Comp % Resistance)
+print*,parenv % mype, compind, 'go red 1'; flush(6)
       Comp % Conductance = ParallelReduction(Comp % Conductance)
+print*,parenv % mype, compind, 'go red 2'; flush(6)
     END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE AddComponentEquationsAndCouplings
@@ -1022,9 +1026,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)
 
-   
+  INTEGER :: CommSave, ierr
+  LOGICAL, POINTER :: SaveActive(:) 
 !------------------------------------------------------------------------------
 
+print*,'circ enter', parenv % mype; flush(6)
   CALL DefaultStart()
 
   IF (First) THEN
@@ -1084,35 +1090,56 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   
   ! Initialialize Circuit matrix:
   ! -----------------------------
-  IF(.NOT.ASSOCIATED(CM)) RETURN
-
-  IF (SIZE(CM % values) <= 0) RETURN
-  CM % RHS = 0._dp
-  IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
-
-  ! Write Circuit equations:
-  ! ------------------------
-  DO p = 1,n_Circuits
-    CALL AddBasicCircuitEquations(p)
-    CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
-  END DO
-  CALL AddParallelComponentConstraints()
-  
-  Asolver %  Matrix % AddMatrix => CM
-
-  IF(ASSOCIATED(CM)) THEN
-    IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
-    IF(CM % NumberOfRows<=0)  THEN
-      CALL FreeMatrix(CM)
-      Asolver % Matrix % AddMatrix => Null()
-    END IF
+  print *, ParEnv % MyPe, "CommSave1", CommSave
+  IF (ASSOCIATED(SaveActive)) THEN
+    Print *, ParEnv % MyPe, "SaveActive1", SaveActive
   ELSE
-     ASolver % Matrix % AddMatrix => Null()
+    Print *, ParEnv % MyPe, "SaveActive1 not associated"
+  END IF
+  CALL SetCircuitsCommunicator(CM, CommSave, SaveActive)
+
+  print *, ParEnv % MyPe, "CommSave2", CommSave
+  IF (ASSOCIATED(SaveActive)) THEN
+    Print *, ParEnv % MyPe, "SaveActive1", SaveActive
+  ELSE
+    Print *, ParEnv % MyPe, "SaveActive1 not associated"
+  END IF
+  IF (ASSOCIATED(CM) .AND. .NOT. SIZE(CM % values) <= 0) THEN
+
+    CM % RHS = 0._dp
+    IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
+
+    ! Write Circuit equations:
+    ! ------------------------
+    DO p = 1,n_Circuits
+      CALL AddBasicCircuitEquations(p)
+      CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
+    END DO
+    CALL AddParallelComponentConstraints()
+    
+    Asolver %  Matrix % AddMatrix => CM
+
+    IF(ASSOCIATED(CM)) THEN
+      IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
+      IF(CM % NumberOfRows<=0)  THEN
+        CALL FreeMatrix(CM)
+        Asolver % Matrix % AddMatrix => Null()
+      END IF
+    ELSE
+       ASolver % Matrix % AddMatrix => Null()
+    END IF
+
+    CALL DefaultFinish()
+
+    CALL WriteCircuitMatrices(Solver % Values)
   END IF
 
-  CALL DefaultFinish()
-
-  CALL WriteCircuitMatrices(Solver % Values)
+  IF ( ParEnv % PEs>1 ) THEN
+!   CALL MPI_Comm_Free( Parenv % ActiveComm, ierr )
+    ParEnv % ActiveComm = CommSave
+    DEALLOCATE(ParEnv % Active)
+    ParEnv % Active => SaveActive
+  END IF
 
   CONTAINS
 
@@ -1412,7 +1439,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     DO CompInd = 1, Circuit % n_comp
       Comp => Circuit % Components(CompInd)
-      Comp % Resistance = ParallelReduction(Comp % Resistance)
+      Comp % Resistance  = ParallelReduction(Comp % Resistance)
       Comp % Conductance = ParallelReduction(Comp % Conductance)
     END DO
 
