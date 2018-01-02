@@ -1184,7 +1184,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
 
            IF( ImposeBodyForcePotential ) THEN
-             E(1,1:n) = E(1,1:n) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+             E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
            END IF             
          END SELECT
          
@@ -1249,7 +1249,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
 
            IF( ImposeBodyForcePotential ) THEN
-             E(1,1:n) = E(1,1:n) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+             E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
            END IF
 
          END SELECT
