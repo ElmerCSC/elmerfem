@@ -481,17 +481,27 @@ CONTAINS
        sz = SIZE(ElementNodes % xyz,1)
        SELECT CASE(Element % TYPE % DIMENSION)
        CASE(1)
-         ElementNodes % y(n+1:sz) = REAL(0,dp)
-         ElementNodes % y(1:sz) = REAL(0,dp)
-         ElementNodes % z(1:sz) = REAL(0,dp)
+         DO i=n+1,sz
+           ElementNodes % xyz(i,1) = REAL(0,dp)
+         END DO
+         DO i=1,sz
+           ElementNodes % xyz(i,2) = REAL(0,dp)
+           ElementNodes % xyz(i,3) = REAL(0,dp)
+         END DO
        CASE(2)
-         ElementNodes % x(n+1:sz) = REAL(0,dp)
-         ElementNodes % y(n+1:sz) = REAL(0,dp)
-         ElementNodes % z(1:sz) = REAL(0,dp)
+         DO i=n+1,sz
+           ElementNodes % xyz(i,1) = REAL(0,dp)
+           ElementNodes % xyz(i,2) = REAL(0,dp)
+         END DO
+         DO i=1,sz
+           ElementNodes % xyz(i,3) = REAL(0,dp)
+         END DO
        CASE(3)
-         ElementNodes % x(n+1:sz) = REAL(0,dp)
-         ElementNodes % y(n+1:sz) = REAL(0,dp)
-         ElementNodes % z(n+1:sz) = REAL(0,dp)
+         DO i=n+1,sz
+           ElementNodes % xyz(i,1) = REAL(0,dp)
+           ElementNodes % xyz(i,2) = REAL(0,dp)
+           ElementNodes % xyz(i,3) = REAL(0,dp)
+         END DO
        CASE DEFAULT
          CALL Fatal('GetReferenceElementNodes','Unsupported element dimension')
        END SELECT

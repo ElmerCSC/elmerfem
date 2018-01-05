@@ -73,7 +73,7 @@ Solver 1
   Procedure = "ShellSolver" "ShellSolver"
 
   Linear System Solver = "Direct"
-  Linear System Direct Method = MUMPS
+  Linear System Direct Method = Umfpack
 
   Linear System Preconditioning = ILU2
 !  Linear System Row Equilibration = Logical True

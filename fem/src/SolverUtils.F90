@@ -8272,6 +8272,7 @@ END FUNCTION SearchNodeL
     IF( SkipConstraints ) n = MIN( n, Solver % Matrix % NumberOfRows )
 
     Stat = .FALSE.
+    x0 => NULL()
     IF(PRESENT(values0)) THEN
       x0 => values0
       Stat = .TRUE.
@@ -8284,10 +8285,14 @@ END FUNCTION SearchNodeL
       IF( ASSOCIATED(Solver % Variable % NonlinValues)) THEN
         x0 => Solver % Variable % NonlinValues
         Stat = .TRUE.
+      ELSE
+        x0 => Solver % Variable % Values
+        Stat = .TRUE.
       END IF
     END IF
+    
     IF(Stat .AND. .NOT. SkipConstraints ) THEN
-      IF (SIZE(x0) /= SIZE(x)) CALL Warn('ComputeChange','Possible mismatch in length of vectors!')
+      IF (SIZE(x0) /= SIZE(x)) CALL Info('ComputeChange','WARNING: Possible mismatch in length of vectors!',Level=10)
     END IF
 
     IF( ResidualMode ) THEN
@@ -8351,7 +8356,8 @@ END FUNCTION SearchNodeL
         b => Solver % Matrix % rhs
       END IF
       
-      ALLOCATE(r(n)); r=0._dp
+      ALLOCATE(r(n))
+      r=0._dp
 
       IF (Parenv % Pes>1) THEN
         ALLOCATE( TmpRHSVec(n), TmpXVec(n) )
@@ -14064,6 +14070,8 @@ CONTAINS
       IF( .NOT. Stat) THEN
         CALL Fatal('FsiCouplingAssembly','Frequency in Simulation list not found!')
       END IF
+    ELSE
+      Omega = 0.0_dp
     END IF
     
     

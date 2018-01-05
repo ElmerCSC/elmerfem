@@ -3153,7 +3153,7 @@ CONTAINS
      LOGICAL :: IsGlobal
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: ind,i,j,k,n,k1,l,l0,l1
+     INTEGER :: ind,i,j,k,n,k1,l,l0,l1,ll
      TYPE(Variable_t), POINTER :: Variable, CVar
      INTEGER :: slen
 
@@ -3179,46 +3179,48 @@ CONTAINS
        END IF
 
        slen = ptr % DepNameLen
-
+       
        l0 = 1
-       DO WHILE( .TRUE. )
-         DO WHILE( ptr % DependName(l0:l0) == ' ' )
-           l0 = l0 + 1
-         END DO
-         IF ( l0 > slen ) EXIT
-
-         l1 = INDEX( ptr % DependName(l0:slen),',')
-         IF ( l1 > 0 ) THEN
-           l1=l0+l1-2
-         ELSE
-           l1=slen
-         END IF
-
-         IF ( ptr % DependName(l0:l1) /= 'coordinate' ) THEN
-           Variable => VariableGet( CurrentModel % Variables,TRIM(ptr % DependName(l0:l1)) )
-           IF ( .NOT. ASSOCIATED( Variable ) ) THEN
-             WRITE( Message, * ) 'Can''t find INDEPENDENT variable:[', &
-                 TRIM(ptr % DependName(l0:l1)),']'
-             CALL Fatal( 'ListGetReal', Message )
+       IF (slen > 0) THEN
+         DO
+           DO ll=l0,slen
+             IF (ptr % DependName(ll:ll) == ' ' ) EXIT
+           END DO
+           IF (ll <= slen) THEN
+             l0=ll
+             l1 = INDEX( ptr % DependName(l0:slen),',')
+             IF ( l1 > 0 ) THEN
+               l1=l0+l1-2
+             ELSE
+               l1=slen
+             END IF
+           ELSE
+             l1=slen
            END IF
-
-           IF( SIZE( Variable % Values ) > 1 ) THEN
+             
+           IF ( ptr % DependName(l0:l1) /= 'coordinate' ) THEN
+             Variable => VariableGet( CurrentModel % Variables,TRIM(ptr % DependName(l0:l1)) )
+             IF ( .NOT. ASSOCIATED( Variable ) ) THEN
+               WRITE( Message, * ) 'Can''t find INDEPENDENT variable:[', &
+                     TRIM(ptr % DependName(l0:l1)),']'
+               CALL Fatal( 'ListGetReal', Message )
+             END IF
+             
+             IF( SIZE( Variable % Values ) > 1 ) THEN
+               IsGlobal = .FALSE.
+               RETURN
+             END IF
+           ELSE
              IsGlobal = .FALSE.
-             RETURN
+             EXIT
            END IF
-         ELSE
-           IsGlobal = .FALSE.
-           RETURN
-         END IF
 
-         l0 = l1+2
-         IF ( l0 > slen ) EXIT
-         
-       END DO
+           l0 = l1+2
+           IF ( l0 > slen ) EXIT
+         END DO
+       END IF
      ELSE
-       
        IsGlobal = .FALSE.
-       
      END IF
      
 !------------------------------------------------------------------------------
