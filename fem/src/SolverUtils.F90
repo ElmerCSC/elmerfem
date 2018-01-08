@@ -6522,6 +6522,7 @@ CONTAINS
     IF(.NOT. ALLOCATED( A % ConstrainedDOF ) ) THEN
       CALL Info('EnforceDirichletConditions',&
           'ConstrainedDOF not associated, returning...',Level=8)
+      RETURN
     END IF
 
     
@@ -6563,11 +6564,10 @@ CONTAINS
  
     
     DO k=1,A % NumberOfRows
+
       IF ( A % ConstrainedDOF(k) ) THEN
-        !s = A % Values(A % Diag(k))
-        !IF (s==0) s = 1
         
-        dval = A % Dvalues(k) !/ ( s * DiagScaling(k) )
+        dval = A % Dvalues(k) 
         
         IF( ScaleSystem ) THEN
           s = DiagScaling(k)            
