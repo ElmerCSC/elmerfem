@@ -6514,7 +6514,7 @@ CONTAINS
     LOGICAL :: ScaleSystem, DirichletComm, Found, NoDiag
     REAL(KIND=dp), POINTER :: DiagScaling(:)
     REAL(KIND=dp) :: dval, s
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k,n
 
     
     Params => Solver % Values
@@ -6525,6 +6525,15 @@ CONTAINS
       RETURN
     END IF
 
+    
+    n = COUNT( A % ConstrainedDOF )
+    n = NINT( ParallelReduction(1.0_dp * n ) )
+
+    IF( n == 0 ) THEN
+      CALL Info('EnforceDirichletConditions','No Dirichlet conditions to enforce, exiting!',Level=10)
+      RETURN
+    END IF
+    
     
     IF( PRESENT( OffDiagonal ) ) THEN
       NoDiag = OffDiagonal
@@ -9859,7 +9868,7 @@ END FUNCTION SearchNodeL
 
     n = A % NumberOfRows
     
-    CALL Info('ScaleLinearSystem','Scaling linear system such that diagonal is enforced to unity',Level=15)
+    CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity',Level=10)
 
     
     IF( PRESENT( DiagScaling ) ) THEN
@@ -9874,8 +9883,10 @@ END FUNCTION SearchNodeL
       Diag = 0._dp
     
       ComplexMatrix = Solver % Matrix % COMPLEX
-    
+            
       IF ( ComplexMatrix ) THEN
+        CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
+
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, A, N) &
         !$OMP PRIVATE(i, j) &
@@ -9886,17 +9897,20 @@ END FUNCTION SearchNodeL
             Diag(i)   = A % Values(j)
             Diag(i+1) = A % Values(j+1)
           ELSE
-            Diag(i)=0._dp;Diag(i+1)=0._dp
+            Diag(i) = 0._dp
+            Diag(i+1) = 0._dp
           END IF
         END DO
         !$OMP END PARALLEL DO
       ELSE
+        CALL Info('ScaleLinearSystem','Assuming real valued matrix while scaling',Level=25)
+
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, A, N) &
         !$OMP PRIVATE(i, j) &
         !$OMP DEFAULT(NONE)
         DO i=1,n
-          j=A % Diag(i)
+          j = A % Diag(i)
           IF (j>0) Diag(i) = A % Values(j)
         END DO
         !$OMP END PARALLEL DO
@@ -9907,25 +9921,28 @@ END FUNCTION SearchNodeL
       IF ( ComplexMatrix ) THEN
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, A, N) &
-        !$OMP PRIVATE(i, j, DiagC) &
+        !$OMP PRIVATE(i, j, DiagC, s) &
         !$OMP DEFAULT(NONE)
         DO i=1,n,2
           DiagC = CMPLX(Diag(i),-Diag(i+1),KIND=dp)
-          IF (ABS(DiagC)/=0._dp) THEN
-            Diag(i)   = 1.0_dp/SQRT(ABS(DiagC))
-            Diag(i+1) = 1.0_dp/SQRT(ABS(DiagC))
+
+          s = SQRT( ABS( DiagC ) )
+          IF( s > TINY(s) ) THEN 
+            Diag(i)   = 1.0_dp / s
+            Diag(i+1) = 1.0_dp / s
           ELSE
-            Diag(i)   = 1.0_dp; Diag(i+1) = 1.0_dp
+            Diag(i)   = 1.0_dp
+            Diag(i+1) = 1.0_dp
           END IF
         END DO
         !$OMP END PARALLEL DO
       ELSE
-        s = 0
+        s = 0.0_dp
         ! TODO: Add threading
-        IF (ANY(ABS(Diag)<=TINY(bnorm))) s=1
+        IF (ANY(ABS(Diag) <= TINY(bnorm))) s=1
         s = ParallelReduction(s,2) 
 
-        IF(s/=0) THEN 
+        IF(s > TINY(s) ) THEN 
           DO i=1,n
             IF ( ABS(Diag(i)) <= TINY(bnorm) ) THEN
               Diag(i) = SUM( ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)) )
@@ -9950,7 +9967,7 @@ END FUNCTION SearchNodeL
         END DO
         !$OMP END PARALLEL DO
       END IF
-    END IF    
+    END IF
 
 
     ! Optionally we may just create the diag and leave the scaling undone
@@ -9959,6 +9976,8 @@ END FUNCTION SearchNodeL
       IF(.NOT. ApplyScaling ) RETURN
     END IF
 
+    CALL Info('ScaleLinearSystem','Scaling matrix values',Level=20)
+    
     !$OMP PARALLEL &
     !$OMP SHARED(Diag, A, N) &
     !$OMP PRIVATE(i,j) &
@@ -9975,6 +9994,7 @@ END FUNCTION SearchNodeL
 
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN 
+        CALL Info('ScaleLinearSystem','Scaling PrecValues',Level=20)
         !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
@@ -9988,6 +10008,7 @@ END FUNCTION SearchNodeL
 
     IF ( ASSOCIATED( A % MassValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
+        CALL Info('ScaleLinearSystem','Scaling MassValues',Level=20)
         !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
@@ -10001,6 +10022,7 @@ END FUNCTION SearchNodeL
     
     IF ( ASSOCIATED( A % DampValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
+        CALL Info('ScaleLinearSystem','Scaling DampValues',Level=20)
         !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
@@ -10014,12 +10036,13 @@ END FUNCTION SearchNodeL
 
     !$OMP END PARALLEL
 
-    DoCM=.FALSE.
+    DoCM = .FALSE.
     IF(PRESENT(ConstraintScaling)) DoCm=ConstraintScaling
 
     IF(doCM) THEN
       CM => A % ConstraintMatrix
       IF (ASSOCIATED(CM)) THEN
+        CALL Info('ScaleLinearSystem','Scaling Constraints',Level=20)
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, CM) &
         !$OMP PRIVATE(i,j) &
@@ -10037,7 +10060,9 @@ END FUNCTION SearchNodeL
     !--------------------------------
     A % RhsScaling=1._dp
     ! TODO: Add threading
-    IF( PRESENT( b ) ) THEN      
+    IF( PRESENT( b ) ) THEN
+      CALL Info('ScaleLinearSystem','Scaling Rhs vector',Level=20)
+      
       b(1:n) = b(1:n) * Diag(1:n)
       DoRHS = .TRUE.
       IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
@@ -10809,8 +10834,6 @@ END FUNCTION SearchNodeL
     CALL Info('CalculateBCLoads','All done')
 
   END SUBROUTINE BCLoadsComputation
-
-
 
 
   
@@ -12375,7 +12398,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   REAL(KIND=dp) :: frequency
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Variable_t), POINTER :: SaveVar, ReVar, ImVar, TotVar, TmpVar
-  LOGICAL :: ToReal, ToHarmonic, ParseName
+  LOGICAL :: ToReal, ToHarmonic, ParseName, AnyDirichlet
   
 
   SAVE ImVar, TotVar, ReVar, SaveVar, SaveMatrix
@@ -12477,6 +12500,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       END DO
     END DO
 
+    AnyDirichlet = .FALSE.
     
     ! Finally set the Dirichlet conditions for the solver    
     DO j=1,DOFs
@@ -12486,6 +12510,8 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
         real_given = ListCheckPresent( BC, Name )
         imag_given = ListCheckPresent( BC, TRIM(Name) // ' im' )
 
+        IF( real_given .OR. imag_given ) AnyDirichlet = .TRUE.
+
         IF ( real_given .AND. .NOT. imag_given ) THEN
           CALL ListAddConstReal( BC, TRIM(Name) // ' im', 0._dp)
         ELSE IF ( imag_given .AND. .NOT. real_given ) THEN
@@ -12494,18 +12520,20 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       END DO
     END DO
 
-    DO j=1,DOFs
-      Name = ComponentName( SaveVar % Name, j ) 
+    IF( AnyDirichlet ) THEN
+      DO j=1,DOFs
+        Name = ComponentName( SaveVar % Name, j ) 
+        
+        CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
+            2*j-1, 2*DOFs, SaveVar % Perm )
+        
+        CALL SetDirichletBoundaries( CurrentModel, Aharm, b, TRIM(Name) // ' im', &
+            2*j, 2*DOFs, SaveVar % Perm )
+      END DO
       
-      CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
-          2*j-1, 2*DOFs, SaveVar % Perm )
+      CALL EnforceDirichletConditions( Solver, Aharm, b )
+    END IF
       
-      CALL SetDirichletBoundaries( CurrentModel, Aharm, b, TRIM(Name) // ' im', &
-          2*j, 2*DOFs, SaveVar % Perm )
-    END DO
-    
-    CALL EnforceDirichletConditions( Solver, Aharm, b )
-
     
     
     ! Create the new fields, the total one and the imaginary one
@@ -12581,7 +12609,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     ! the system will automatically be solved as complex
     Solver % Variable => TotVar
     Solver % Matrix => Aharm
-
   ELSE
     CALL Info('ChangeToHarmonicSystem','Changing the harmonic results to real system!',Level=5)
    
