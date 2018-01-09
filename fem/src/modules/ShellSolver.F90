@@ -147,11 +147,11 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
 ! For edge parametrizations based on the director data of first and second order:
 !------------------------------------------------------------------------------
-  INTEGER, PARAMETER :: MaxNumberOCurves = 6
+  INTEGER, PARAMETER :: MaxNumberOfCurves = 6
   INTEGER, PARAMETER :: CurveDataSize1 = 5
-  INTEGER, PARAMETER :: CurveDataSize2 = 7
+  INTEGER, PARAMETER :: CurveDataSize2 = 6
   INTEGER, DIMENSION(CurveDataSize1), PARAMETER :: CurveParams1 = (/ 1, 2, 3, 4, 5/)
-  INTEGER, DIMENSION(CurveDataSize2), PARAMETER :: CurveParams2 = (/ 1, 2, 3, 4, 5, 6, 7/) 
+  INTEGER, DIMENSION(CurveDataSize2), PARAMETER :: CurveParams2 = (/ 1, 2, 3, 4, 5, 6/) 
 !------------------------------------------------------------------------------
 ! Some other parameter definitions related to the choice of strain reduction 
 ! method, geometric tolerances ... 
@@ -231,7 +231,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   
   HarmonicAssembly = GetLogical(SolverPars, 'Harmonic Mode', Found) .OR. &
       GetLogical(SolverPars, 'Harmonic Analysis', Found)
-  MassAssembly =  ( TransientSimulation .OR. HarmonicAssembly ) 
+  MassAssembly =  TransientSimulation .OR. HarmonicAssembly 
 
   ! ---------------------------------------------------------------------------------
   ! The number of unknown fields in the shell model:
@@ -243,10 +243,10 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! Alter to experiment with other methods.
   ! ---------------------------------------------------------------------------------
   StrainReductionMethod = ListGetInteger(SolverPars, 'Strain Reduction Operator', &
-      Found, minv=0,maxv=4)
+      Found, minv=0, maxv=4)
   IF (.NOT.Found) StrainReductionMethod = AutomatedChoice
   MembraneStrainReductionMethod = ListGetInteger(SolverPars, 'Membrane Strain Reduction Operator', &
-      Found, minv=0,maxv=4)
+      Found, minv=0, maxv=4)
   IF (.NOT.Found) MembraneStrainReductionMethod = StrainReductionMethod
 
   IF (MembraneStrainReductionMethod /= NoStrainReduction) &
@@ -284,7 +284,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     ALLOCATE( TotalSol(SIZE(Solver % Variable % Values)) )
   ELSE
     IF (MeshDisplacementActive) THEN
-      CALL Info('ShellSolver','Returning the mesh to its reference position', Level=4)     
+      CALL Info('ShellSolver', 'Returning the mesh to its reference position', Level=4)     
       CALL DisplaceMesh(Mesh, Solver % Variable % Values, -1, Solver % Variable % Perm, &
          ShellModelPar, .FALSE., 3)      
     END IF
@@ -433,12 +433,9 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         !----------------------------------------------------------------------
         ! The area computation for the available geometry description:
         !----------------------------------------------------------------------
-        IF (ComputeShellArea) CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
         IF (ComputeShellArea) CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElements)
         !LocalFrameNodes(:,3) = ZNodes(:)
-        !CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
-        !CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElement=.FALSE.)
-        !CYCLE
+        !IF (ComputeShellArea) CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
 
       END IF REPARAMETRIZATION
 
@@ -633,7 +630,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       !RefArea = 4 * (1.0472d0)**2  
       PRINT *, 'Relative Error of Model Surface Area = ', ABS(RefArea  - ShellModelArea)/RefArea    
       PRINT *, 'Relative Error of Blending Surface Area = ', ABS(RefArea  - BlendingSurfaceArea)/RefArea
-      PRINT *, 'Relative Error of Mapped BG Mesh Area = ', ABS(RefArea  - MappedMeshArea)/RefArea
+      !PRINT *, 'Relative Error of Mapped BG Mesh Area = ', ABS(RefArea  - MappedMeshArea)/RefArea
     END IF
 
     !PRINT *, 'Mean curvature L2-error = ', SQRT(TotalErr)
@@ -664,7 +661,7 @@ CONTAINS
 ! 'director' corresponding to this data. If the file mesh.elements.data has been 
 ! used to specify the director as an elementwise property 'director', the director 
 ! obtained from mesh.elements.data is used. With the keyword Write Elemental Director
-! being active,the director data is written as elementwise property to a file whose 
+! being active, the director data is written as elementwise property to a file whose 
 ! format conforms with a file mesh.elements.data (this is the default name for the 
 ! output file, so this option can be used to convert mesh.director into 
 ! mesh.elements.data format).
@@ -792,7 +789,7 @@ CONTAINS
             WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
             WRITE(10,'(A3)') 'end'
           ELSE
-            CALL Fatal( 'ReadSurfaceDirector', 'Elemental director data is not associated')
+            CALL Fatal('ReadSurfaceDirector', 'Elemental director data is not associated')
           END IF
         END DO
         CLOSE(10)
@@ -809,7 +806,7 @@ CONTAINS
 ! field. The director data is supposed to be found as the elementwise property
 ! 'director'. If this property does not exits, the normal is computed otherwise.
 !-------------------------------------------------------------------------------
-  FUNCTION GetElementalDirector(Element, ElementNodes) RESULT (DirectorValues) 
+  FUNCTION GetElementalDirector(Element, ElementNodes) RESULT(DirectorValues) 
 !-------------------------------------------------------------------------------    
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
@@ -824,18 +821,18 @@ CONTAINS
     SAVE Visited, UseElementProperty, NodalNormals, Nodes
     !-------------------------------------------------------------------------------
 
-    IF(.NOT. Visited) THEN
+    IF (.NOT. Visited) THEN
       DirectorValues => GetElementProperty('director', Element)
       UseElementProperty = ASSOCIATED( DirectorValues ) 
 
-      IF(.NOT. UseElementProperty ) THEN
+      IF (.NOT. UseElementProperty) THEN
         n = CurrentModel % MaxElementNodes
         ALLOCATE( NodalNormals(3*n) ) 
       END IF
       Visited = .TRUE.
     END IF
 
-    IF( UseElementProperty ) THEN    
+    IF ( UseElementProperty ) THEN    
       DirectorValues => GetElementProperty('director', Element)
     ELSE
       IF( PRESENT( ElementNodes ) ) THEN
@@ -919,7 +916,7 @@ CONTAINS
       DirectorValues => GetElementalDirector(Element, Nodes)
 
       IF (.NOT. ASSOCIATED(DirectorValues)) THEN
-        CALL Fatal( 'CheckSurfaceOrientation', 'Elemental director data is not associated')
+        CALL Fatal('CheckSurfaceOrientation', 'Elemental director data is not associated')
       END IF
       IF (SIZE(DirectorValues) < 3*n) CALL Fatal('CheckSurfaceOrientation', &
           'Elemental director data is not associated with all nodes')
@@ -936,7 +933,7 @@ CONTAINS
           PRINT *, 'Reference normal =', e3(:)
           PRINT *, 'Node Index = ', j, Element % NodeIndexes(j)
           PRINT *, 'Director =', d2(:)
-          CALL Fatal( 'ReadSurfaceDirector', &
+          CALL Fatal('ReadSurfaceDirector', &
               'Director data does not define a unique upper/lower surface.')
         END IF
       END DO
@@ -952,7 +949,7 @@ CONTAINS
 ! 'edge parameters'.
 !
 ! TO DO: Make MacroElement option functional for second-order nodal director data.
-!        Add 6-node triangles
+!
 !-------------------------------------------------------------------------------
   SUBROUTINE CreateCurvedEdges( FileOutput, MacroElements )
 !-------------------------------------------------------------------------------
@@ -971,23 +968,12 @@ CONTAINS
     REAL(KIND=dp), TARGET :: FrameData(3,4)
     REAL(KIND=dp), TARGET :: CurveData(CurveDataSize2)
     REAL(KIND=dp) :: d1(3), d2(3), d3(3), X1(3), X2(3), X3(3)
-    REAL(KIND=dp) :: EdgeFramesData(FrameDataSize*MaxNumberOCurves)
-    REAL(KIND=dp) :: EdgeCurveParams(CurveDataSize2*MaxNumberOCurves)
+    REAL(KIND=dp) :: EdgeFramesData(FrameDataSize*MaxNumberOfCurves)
+    REAL(KIND=dp) :: EdgeCurveParams(CurveDataSize2*MaxNumberOfCurves)
 !-------------------------------------------------------------------------------
 
     A => FrameData(:,:)
     cpars => CurveData(:)
-
-    ! -------------------------------------------------------------------------------
-    ! We may consider 404 as a macroelement for a subtriangulation to ensure that 
-    ! fourth-order accurate approximation in L2 can be obtained. 
-    ! TO DO: Alter the list of edges parametrized for 9-node director data
-    ! -------------------------------------------------------------------------------
-    IF (PRESENT(MacroElements)) THEN
-      Subtriangulation = MacroElements
-    ELSE
-      Subtriangulation = .FALSE.
-    END IF
 
     ! Write edge curve parameters to a file:
     ! ------------------------------------------------------------------
@@ -999,31 +985,43 @@ CONTAINS
       CALL GetElementNodes( Nodes )
 
       DirectorValues => GetElementalDirector( Element, Nodes )
-      
+
       Family = GetElementFamily(Element)
+
+      ! Set some default values:
+      Subtriangulation = .FALSE.
+      EdgesParametrized = Family
+
       SELECT CASE(Family)
       CASE(3)
-        IF (Element % TYPE % NumberOfNodes /= 3) &
-            CALL Fatal('CreateCurvedEdges', 'Only 3-node triangles possible')
-        QuadraticGeometryData = .FALSE.
-        CurveDataSize = CurveDataSize1
-        EdgesParametrized = Family
+        IF (Element % TYPE % NumberOfNodes > 6) &
+            CALL Fatal('CreateCurvedEdges', 'Triangular background mesh of order k>2 is not supported')
+        QuadraticGeometryData = Element % TYPE % NumberOfNodes == 6
       CASE(4)
+        IF (Element % TYPE % NumberOfNodes > 9) &
+            CALL Fatal('CreateCurvedEdges', 'Background mesh of order k>2 is not supported')
+        IF (Element % TYPE % NumberOfNodes == 8) &
+            CALL Fatal('CreateCurvedEdges', '8-node background quad is not supported')
         QuadraticGeometryData = Element % TYPE % NumberOfNodes == 9
         IF (QuadraticGeometryData) THEN
-          EdgesParametrized = 6
-          CurveDataSize = CurveDataSize2
+          EdgesParametrized = 6   ! Even 8 edges could be created
         ELSE
-          CurveDataSize = CurveDataSize1
-          IF (Subtriangulation) THEN
-            EdgesParametrized = 6
-          ELSE
-            EdgesParametrized = Family
-          END IF
+          ! -------------------------------------------------------------------------------
+          ! We may consider 404 as a macroelement for a subtriangulation to ensure that 
+          ! fourth-order accurate approximation in L2 can be obtained. 
+          ! -------------------------------------------------------------------------------
+          IF (PRESENT(MacroElements)) Subtriangulation = MacroElements
+          IF (Subtriangulation) EdgesParametrized = 6
         END IF
       CASE DEFAULT
         CYCLE
       END SELECT
+
+      IF (QuadraticGeometryData) THEN
+        CurveDataSize = CurveDataSize2
+      ELSE
+        CurveDataSize = CurveDataSize1
+      END IF
 
       DO e=1,EdgesParametrized
         !-------------------------------------------------------------------------
@@ -1064,7 +1062,7 @@ CONTAINS
             j = 4
             l = 8
           CASE(5)
-            IF (Subtriangulation .AND. (Element % TYPE % NumberOfNodes == 4)) THEN
+            IF (Subtriangulation) THEN
               i = 1
               j = 3
             ELSE
@@ -1073,7 +1071,7 @@ CONTAINS
               l = 9
             END IF
           CASE(6)
-            IF (Subtriangulation .AND. (Element % TYPE % NumberOfNodes == 4)) THEN
+            IF (Subtriangulation) THEN
               i = 2
               j = 4
             ELSE         
@@ -1176,41 +1174,56 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: X3(3), d3(3)
 !------------------------------------------------------------------------------
     LOGICAL :: WithThreeNodes
-    REAL(KIND=dp) :: d(3), ex(3), ey(3), ez(3), X0(3), v21(3), b(3)
+    REAL(KIND=dp) :: d(3), ex(3), ey(3), ez(3), X0(3), v21(3), v31(3), b(3)
     REAL(KIND=dp) :: r1(3), r2(3), r3(3), t1(3), t2(3), t3(3), Norm
 !------------------------------------------------------------------------------
     WithThreeNodes = PRESENT(X3) .AND. PRESENT(d3)
 
+    ! ------------------------------------------------------------------------------
+    ! The coordinate system is created such that the given vertices lie on 
+    ! the plane y=0. A bit different logic is used to decide the orientation of
+    ! the coordinate system for the different vertice counts. 
+    ! ------------------------------------------------------------------------------
     IF (WithThreeNodes) THEN
+
       X0(:) = X3(:)
 
-      Norm = SQRT(SUM(d3(1:3)**2))
-      ez(1:3) = 1.0d0/Norm * d3(1:3) 
-
       v21(:) = X2(:) - X1(:)
-      b(:) = v21(:) - DOT_PRODUCT(v21,ez)*ez(:)
+      Norm = SQRT(SUM(v21(1:3)**2))
+      ex(1:3) = 1.0d0/Norm * v21(1:3)
+
+      v31(:) = X3(:) - X1(:)
+      Norm = SQRT(SUM(v31(1:3)**2))
+      v31(1:3) = 1.0d0/Norm * v31(1:3)
+      b(:) = v31(:) - DOT_PRODUCT(v31,ex)*ex(:)
+      IF (SQRT(SUM(b(1:3)**2)) < 1.0d-6) THEN
+        ! The three vertices are on the same line. Use the mid-node director to generate z-axis.
+        b(:) = d3(:) - DOT_PRODUCT(d3,ex)*ex(:)
+      END IF
       Norm = SQRT(SUM(b(1:3)**2))
-      ex(1:3) = 1.0d0/Norm * b(1:3)     
+      ez(1:3) = 1.0d0/Norm * b(1:3)
       ey(:) = CrossProduct(ez,ex)
 
       cpars(1) = DOT_PRODUCT(v21,ex)
-      IF (cpars(1) < 0.0d0) &
-          CALL Fatal('EdgeFrame','Negative edge length obtained')
 
       r1(:) = X1(:) - X0(:)
       r2(:) = X2(:) - X0(:)
 
-      cpars(2) = DOT_PRODUCT(r1,ey)               ! The y-coordinate of the vertex X1
-      cpars(3) = DOT_PRODUCT(r2,ey)               ! The y-coordinate of the vertex X2
-      cpars(4) = DOT_PRODUCT(r1,ez)               ! The z-coordinate of the vertex X1
-      cpars(5) = DOT_PRODUCT(r2,ez)               ! The z-coordinate of the vertex X2      
-      
+      ! -----------------------------------------------------------------------------------------
+      ! The function BlendingSurfaceInfo is built on the assumption that the mid-node is centered
+      ! -----------------------------------------------------------------------------------------
+      IF (ABS(DOT_PRODUCT(r1+r2,ex))/cpars(1) > 1.0d-3) &
+          CALL Fatal('EdgeFrame', 'Centered edge mid-nodes expected')
+
+      cpars(2) = DOT_PRODUCT(r1,ez)               ! The z-coordinate of the vertex X1
+      cpars(3) = DOT_PRODUCT(r2,ez)               ! The z-coordinate of the vertex X2
+
       t1(:) = CrossProduct(ey,d1)
       t2(:) = CrossProduct(ey,d2)
       t3(:) = CrossProduct(ey,d3)
-      
-      cpars(6) = DOT_PRODUCT(t1,ez)/DOT_PRODUCT(t1,ex);  ! The angle parameter for z(x) at the vertex X1
-      cpars(7) = DOT_PRODUCT(t2,ez)/DOT_PRODUCT(t2,ex);  ! The angle parameter for z(x) at the vertex X2      
+      cpars(4) = DOT_PRODUCT(t1,ez)/DOT_PRODUCT(t1,ex) ! The angle parameter for z(x) at the vertex X1
+      cpars(5) = DOT_PRODUCT(t2,ez)/DOT_PRODUCT(t2,ex) ! The angle parameter for z(x) at the vertex X2
+      cpars(6) = DOT_PRODUCT(t3,ez)/DOT_PRODUCT(t3,ex) ! The angle parameter for z(x) at the vertex X3
 
     ELSE
 
@@ -1227,7 +1240,7 @@ CONTAINS
       X0(:) = 0.5d0 * ( X1(1:3) + X2(1:3) )
       cpars(1) = DOT_PRODUCT(v21,ex)
       IF (cpars(1) < 0.0d0) &
-          CALL Fatal('EdgeFrame','Negative edge length obtained')
+          CALL Fatal('EdgeFrame', 'Negative edge length obtained')
 
       r1(:) = X1(:) - X0(:)
       r2(:) = X2(:) - X0(:)
@@ -1256,7 +1269,7 @@ CONTAINS
 ! surface must be contained as elementwise properties 'edge frames' and 
 ! 'edge parameters'. The optional arguments MacroElement and BubbleDOFs
 ! can be used to augment the serendipity approximation by an additional bubble 
-! part to ensure optimal accuracy.
+! part to ensure optimal accuracy with 4-node background elements.
 ! TO DO: Complement and clean the implementation when the initial data
 !        is defined over second-order Lagrange elements
 !-----------------------------------------------------------------------------  
@@ -1281,7 +1294,7 @@ CONTAINS
 !----------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: GElement => NULL()
     LOGICAL :: QuadraticGeometryData, Subtriangulation
-    INTEGER :: i, j, e, n, q, i0, EdgesParametrized, CurveDataSize, Family
+    INTEGER :: i, j, e, n, q, i0, cn, EdgesParametrized, CurveDataSize, Family
     REAL(KIND=dp), POINTER :: FrameData(:), EdgeParams(:), BubbleValues(:)
     REAL(KIND=dp) :: Basis(MaxPatchNodes), dBasis(MaxPatchNodes,2), ddBasis(4,2,2)
     REAL(KIND=dp) :: BubbleCoeff(4,3)
@@ -1289,10 +1302,8 @@ CONTAINS
     REAL(KIND=dp) :: d(CurveDataSize2)
     REAL(KIND=dp) :: h, s, t, w, xe, c(3), deltac(3), dc(3), ddc(3)
     REAL(KIND=dp) :: b12(3), db12(3), h12, d1h12, d2h12, ddh12, dsdu, dsdv
-    REAL(KIND=dp) :: f1, f2, f3, f4, f5, f6
     REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
-    REAL(KIND=dp) :: df1, df2, df3, df4, df5, df6, ddf1, ddf2, ddf3, ddf4, ddf5, ddf6
-    REAL(KIND=dp) :: f, df, ddf, fy, dfy, ddfy, fz, dfz, ddfz
+    REAL(KIND=dp) :: f, df, ddf
     REAL(KIND=dp) :: h1, h2, h3, dh1, dh2, dh3, ddh1, ddh2, ddh3
     REAL(KIND=dp) :: r1(3), r2(3)
     REAL(KIND=dp) :: d1a1(3), d2a1(3), d2a2(3)
@@ -1302,22 +1313,30 @@ CONTAINS
     SAVE GElement
 !----------------------------------------------------------------------------
     Family = GetElementFamily(Element)
+    
+    ! Set some default values:
+    Subtriangulation = .FALSE.
+    EdgesParametrized = Family
 
     SELECT CASE(Family)  
     CASE(3)
-      IF (Element % TYPE % NumberOfNodes /= 3) &
-          CALL Fatal('BlendingSurfaceInfo', 'Only 3-node triangles possible')
-      QuadraticGeometryData = .FALSE.
-      Subtriangulation = .FALSE.
-      EdgesParametrized = 3
-      CurveDataSize = CurveDataSize1
+      QuadraticGeometryData = Element % TYPE % NumberOfNodes == 6
     CASE(4)
-      IF (PRESENT(BubbleDOFs)) THEN
-        Subtriangulation = .TRUE.
-        BubbleCoeff(1:4,1:3) = BubbleDOFs(1:4,1:3)
+      QuadraticGeometryData = Element % TYPE % NumberOfNodes == 9
+      IF (QuadraticGeometryData) THEN
+        EdgesParametrized = 6
       ELSE
-        IF (PRESENT(MacroElement)) THEN
-          Subtriangulation = MacroElement
+        !
+        ! This must be a 4-node background element; see the tests already done in CreateCurvedEdges.
+        ! If the macro element strategy is used, the coefficients of the bubble fuctions must already
+        ! be available at the time of the function call and the virtual edges used in the construction
+        ! of the bubble functions are not employed within this function (thus, EdgesParametrized = 4). 
+        !
+        IF (PRESENT(BubbleDOFs)) THEN
+          Subtriangulation = .TRUE.
+          BubbleCoeff(1:4,1:3) = BubbleDOFs(1:4,1:3)
+        ELSE
+          IF (PRESENT(MacroElement)) Subtriangulation = MacroElement
           IF (Subtriangulation) THEN
             BubbleValues => GetElementProperty('bubble dofs', Element)
             IF (ASSOCIATED(BubbleValues)) THEN
@@ -1331,23 +1350,19 @@ CONTAINS
                   'Bubble DOFs are not found as elementwise properties')
             END IF
           END IF
-        ELSE
-          Subtriangulation = .FALSE.
         END IF
-      END IF
-
-      ! Check whether the edges have mid-nodes:
-      QuadraticGeometryData = Element % TYPE % NumberOfNodes == 9
-      IF (QuadraticGeometryData) THEN
-        EdgesParametrized = 6
-        CurveDataSize = CurveDataSize2
-      ELSE
-        EdgesParametrized = 4
-        CurveDataSize = CurveDataSize1
       END IF
     CASE DEFAULT
       CALL Fatal('BlendingSurfaceInfo', 'Only quads and triangles can be handled')     
     END SELECT
+    
+    IF (QuadraticGeometryData) THEN
+      cn = 3 ! The node count per curved edge
+      CurveDataSize = CurveDataSize2
+    ELSE
+      cn = 2
+      CurveDataSize = CurveDataSize1
+    END IF
 
     !-----------------------------------------------------------------------
     ! Retrive parametrizations of curved edges:
@@ -1473,8 +1488,8 @@ CONTAINS
         !-------------------------------------------------------------------------
         ! The ordinary third-order Hermite interpolation basis and
         ! linear basis functions and their derivatives on an edge [-1,1]
-        !-------------------------------------------------------------------------         
-        CALL HermiteBasis(s, h, HermBasis(1:4), dHermBasis(1:4), ddHermBasis(1:4))
+        !-------------------------------------------------------------------------
+        CALL HermiteBasis(s, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
         L1 = 0.5d0 * (1.0d0 - s)
         L2 = 0.5d0 * (1.0d0 + s)
         dL1 = -0.5d0
@@ -1487,9 +1502,15 @@ CONTAINS
         ! Decompose the edge curve into components along the global coordinate axes
         ! and compute the derivatives of the edge curve with respect to s
         !----------------------------------------------------------------------------
-        f = SUM( d(2:5) * HermBasis(1:4) )
-        df = SUM( d(2:5) * dHermBasis(1:4) )
-        ddf = SUM( d(2:5) * ddHermBasis(1:4) )
+        IF (QuadraticGeometryData) THEN
+          f = d(2)*HermBasis(1) + d(3)*HermBasis(2) + SUM(d(4:6) * HermBasis(4:6))
+          df = d(2)*dHermBasis(1) + d(3)*dHermBasis(2) + SUM(d(4:6) * dHermBasis(4:6))
+          ddf = d(2)*ddHermBasis(1) + d(3)*ddHermBasis(2) + SUM(d(4:6) * ddHermBasis(4:6))
+        ELSE
+          f = SUM( d(2:5) * HermBasis(1:4) )
+          df = SUM( d(2:5) * dHermBasis(1:4) )
+          ddf = SUM( d(2:5) * ddHermBasis(1:4) )
+        END IF
         c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
         dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
         ddc(1:3) = ddf * ez(1:3)
@@ -1676,35 +1697,9 @@ CONTAINS
         !-------------------------------------------------------------------------
         ! The basis functions for the edge curve expansion in terms of s and
         ! their derivatives
-        !------------------------------------------------------------------------- 
-        IF (QuadraticGeometryData) THEN
-          ! Fifth-order Hermite basis: Dofs are listed as p(v1), p(v2), p(v3),
-          ! Dp(v1)[e1], Dp(v2)[e1], Dp(v3)[e1]
-          ! TO DO: the subroutine Hermite should return these
-          f1 = s ** 2 - 0.5D1 / 0.4D1 * s ** 3 - s ** 4 / 0.2D1 + 0.3D1 / 0.4D1 * s ** 5
-          f2 = s ** 2 + 0.5D1 / 0.4D1 * s ** 3 - s ** 4 / 0.2D1 - 0.3D1 / 0.4D1 * s ** 5
-          f3 = s ** 4 - 2.0D0 * s ** 2 + 1.0D0
-          f4 = h/2.0d0 * (s ** 2 / 0.4D1 - s ** 3 / 0.4D1 - s ** 4 / 0.4D1 + s ** 5 / 0.4D1)
-          f5 = h/2.0d0 * (-s ** 2 / 0.4D1 - s ** 3 / 0.4D1 + s ** 4 / 0.4D1 + s ** 5 /0.4D1)
-          f6 = h/2.0d0 * (s ** 5 - 2.0D0 * s ** 3 + s)
+        !-------------------------------------------------------------------------
+        CALL HermiteBasis(s, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
 
-          df1 = 2.0D0 * s - 0.15D2 / 0.4D1 * s ** 2 - 2.0D0 * s ** 3 + 0.15D2 / 0.4D1 * s ** 4
-          df2 = 2 * s + 0.15D2 / 0.4D1 * s ** 2 - 2.0D0 * s ** 3 - 0.15D2 / 0.4D1 * s ** 4
-          df3 = 4.0D0 * s ** 3 - 4.0D0 * s
-          df4 = h/2.0d0 * (s / 0.2D1 - 0.3D1 / 0.4D1 * s ** 2 - s ** 3 + 0.5D1 / 0.4D1 * s ** 4)
-          df5 = h/2.0d0 * (-s / 0.2D1 - 0.3D1 / 0.4D1 * s ** 2 + s ** 3 + 0.5D1 / 0.4D1* s ** 4)
-          df6 = h/2.0d0 * (5.0D0 * s ** 4 - 6.0D0 * s ** 2 + 1.0D0)
-
-          ddf1 = 0.2D1 - 0.15D2 / 0.2D1 * s - 0.6D1 * s ** 2 + 0.15D2 * s ** 3
-          ddf2 = 0.2D1 + 0.15D2 / 0.2D1 * s - 0.6D1 * s ** 2 - 0.15D2 * s ** 3
-          ddf3 = 0.12D2 * s ** 2 - 0.4D1
-          ddf4 = h/2.0d0 * (0.1D1 / 0.2D1 - 0.3D1 / 0.2D1 * s - 0.3D1 * s ** 2 + 0.5D1 * s ** 3)
-          ddf5 = h/2.0d0 * (-0.1D1 / 0.2D1 - 0.3D1 / 0.2D1 * s + 0.3D1 * s ** 2 + 0.5D1 * s ** 3)
-          ddf6 = h/2.0d0 * (0.2D2 * s ** 3 - 0.12D2 * s)
-        ELSE
-          ! The ordinary third-order Hermite interpolation basis:
-          CALL HermiteBasis(s, h, HermBasis(1:4), dHermBasis(1:4), ddHermBasis(1:4))
-        END IF
         ! ----------------------------------------------------------------------------
         ! The Hermite basis functions in terms of variable t and their derivatives.
         ! These are used to define how the blending edge basis function decays towards
@@ -1744,26 +1739,17 @@ CONTAINS
         ! and compute the derivatives of the edge curve with respect to s
         !----------------------------------------------------------------------------
         IF (QuadraticGeometryData) THEN
-          fz = d(4)*f1 + d(5)*f2 + d(6)*f4 + d(7)*f5 ! + d(8)*f6
-          dfz = d(4)*df1 + d(5)*df2 + d(6)*df4 + d(7)*df5 ! + d(8)*df6
-          ddfz = d(4)*ddf1 + d(5)*ddf2 + d(6)*ddf4 + d(7)*ddf5 !+ d(8)*ddf6
-
-          fy = d(2)*f1 + d(3)*f2 ! + d(9)*f4 + d(10)*f5 + d(11)*f6
-          dfy = d(2)*df1 + d(3)*df2 ! + d(9)*df4 + d(10)*df5 + d(11)*df6
-          ddfy = d(2)*ddf1 + d(3)*ddf2 ! + d(9)*ddf4 + d(10)*ddf5 + d(11)*ddf6
-
-          c(1:3) = X0(1:3) + xe * ex(1:3) + fy * ey(1:3) + fz * ez(1:3)
-          dc(1:3) = 0.5d0*h * ex(1:3) + dfy * ey(1:3) + dfz * ez(1:3)
-          ddc(1:3) = ddfy * ey(1:3) + ddfz * ez(1:3)
-
+          f = d(2)*HermBasis(1) + d(3)*HermBasis(2) + SUM(d(4:6) * HermBasis(4:6))
+          df = d(2)*dHermBasis(1) + d(3)*dHermBasis(2) + SUM(d(4:6) * dHermBasis(4:6))
+          ddf = d(2)*ddHermBasis(1) + d(3)*ddHermBasis(2) + SUM(d(4:6) * ddHermBasis(4:6))
         ELSE
           f = SUM( d(2:5) * HermBasis(1:4) )
           df = SUM( d(2:5) * dHermBasis(1:4) )
           ddf = SUM( d(2:5) * ddHermBasis(1:4) )
-          c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
-          dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
-          ddc(1:3) = ddf * ez(1:3)
         END IF
+        c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
+        dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
+        ddc(1:3) = ddf * ez(1:3)
 
         !---------------------------------------------------------------------------
         ! The contributions of the blending functions to the position vector, to the
@@ -1939,10 +1925,17 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-! This subroutine gives the Hermite basis functions over [-1,1] and their
-! derivatives up to the second order.
+! This subroutine gives the referential description B(f(p)) of the Hermite basis 
+! functions B(x), with f being the mapping of the reference element [-1,1] to
+! the physical element. The length of the physical element h is used as a scale
+! factor so that an interpolating function w(x) has w(x_i) and Dw(x_i)[u] as  
+! the nodal DOFs. In practice, if b(p) were constructed to be a basis function 
+! on the reference element and were associated with the derivative DOF, we would 
+! have B(f(p)) = h/2 b(p) (for the other basis functions B(f(p)) = b(p) as usual). 
+! This subroutine returns also the first and second derivatives d/dp B(f(p)) 
+! and d^2/dp^2 B(f(p)) or dB/dx(f(p)) and d^2B/dx^2(f(p)).
 !------------------------------------------------------------------------------
-  SUBROUTINE HermiteBasis(s, h, Basis, dBasis, ddBasis)
+  SUBROUTINE HermiteBasis(s, h, Basis, dBasis, ddBasis, n, GlobalDerivative)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: s           ! Coordinate
@@ -1950,25 +1943,81 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: Basis(:)   ! Basis functions
     REAL(KIND=dp), INTENT(OUT) :: dBasis(:)  ! The first-order derivatives
     REAL(KIND=dp), INTENT(OUT) :: ddBasis(:) ! The second-order derivatives
+    INTEGER, OPTIONAL, INTENT(IN) :: n       ! The number of nodes
+    LOGICAL, OPTIONAL, INTENT(IN) :: GlobalDerivative  ! To return dB/dx and d^2B/dx^2 
 !------------------------------------------------------------------------------
-    IF (SIZE(Basis) < 4 .OR. SIZE(dBasis) < 4 .OR.  SIZE(ddBasis) < 4) &
+    INTEGER :: NodeCount, DOFs
+    LOGICAL :: TransformDerivatives
+!------------------------------------------------------------------------------
+    IF (PRESENT(n)) THEN
+      NodeCount = n
+    ELSE
+      NodeCount = 2
+    END IF
+    DOFs = 2*NodeCount
+
+    IF (PRESENT(GlobalDerivative)) THEN
+      TransformDerivatives = GlobalDerivative
+    ELSE
+      TransformDerivatives = .FALSE.
+    END IF
+
+    IF (SIZE(Basis) < DOFs .OR. SIZE(dBasis) < DOFs .OR.  SIZE(ddBasis) < DOFs) &
         CALL Fatal('HermiteBasis', 'Too small arrays for basis functions')
 
-    Basis(1) = (2.0d0 - 3*s + s**3)/4.0d0
-    Basis(2) = (2.0d0 + 3*s - s**3)/4.0d0
-    Basis(3) = h/8.0d0 - (h*s)/8.0d0 - (h*s**2)/8.0d0 + (h*s**3)/8.0d0
-    Basis(4) = -h/8.0d0 - (h*s)/8.0d0 + (h*s**2)/8.0d0 + (h*s**3)/8.0d0
+    SELECT CASE(NodeCount)
+    CASE(2)
+      ! ------------------------------------------------------------------------
+      ! Third-order Hermite basis: Dofs are listed as w(v1), w(v2),
+      ! Dw(v1)[u], Dw(v2)[u]
+      ! ------------------------------------------------------------------------
+      Basis(1) = (2.0d0 - 3*s + s**3)/4.0d0
+      Basis(2) = (2.0d0 + 3*s - s**3)/4.0d0
+      Basis(3) = h/8.0d0 - (h*s)/8.0d0 - (h*s**2)/8.0d0 + (h*s**3)/8.0d0
+      Basis(4) = -h/8.0d0 - (h*s)/8.0d0 + (h*s**2)/8.0d0 + (h*s**3)/8.0d0
 
-    dBasis(1) = (-3.0d0 + 3*s**2)/4.0d0
-    dBasis(2) = (3.0d0 - 3*s**2)/4.0d0
-    dBasis(3) = -h/8.0d0 - (h*s)/4.0d0 + (3*h*s**2)/8.0d0
-    dBasis(4) = -h/8.0d0 + (h*s)/4.0d0 + (3*h*s**2)/8.0d0
+      dBasis(1) = (-3.0d0 + 3*s**2)/4.0d0
+      dBasis(2) = (3.0d0 - 3*s**2)/4.0d0
+      dBasis(3) = -h/8.0d0 - (h*s)/4.0d0 + (3*h*s**2)/8.0d0
+      dBasis(4) = -h/8.0d0 + (h*s)/4.0d0 + (3*h*s**2)/8.0d0
 
-    ddBasis(1) = (3*s)/2.0d0
-    ddBasis(2) = (-3*s)/2.0d0
-    ddBasis(3) = (h*(-1 + 3*s))/4.0d0
-    ddBasis(4) = (h + 3*h*s)/4.0d0
+      ddBasis(1) = (3*s)/2.0d0
+      ddBasis(2) = (-3*s)/2.0d0
+      ddBasis(3) = (h*(-1 + 3*s))/4.0d0
+      ddBasis(4) = (h + 3*h*s)/4.0d0
+    CASE(3)
+      ! ------------------------------------------------------------------------
+      ! Third-order Hermite basis: Dofs are listed as w(v1), w(v2), w(v3),
+      ! Dw(v1)[u], Dw(v2)[u], Dw(v3)[u]
+      ! ------------------------------------------------------------------------
+      Basis(1) = s ** 2 - 0.5D1 / 0.4D1 * s ** 3 - s ** 4 / 0.2D1 + 0.3D1 / 0.4D1 * s ** 5
+      Basis(2) = s ** 2 + 0.5D1 / 0.4D1 * s ** 3 - s ** 4 / 0.2D1 - 0.3D1 / 0.4D1 * s ** 5
+      Basis(3) = s ** 4 - 2.0D0 * s ** 2 + 1.0D0
+      Basis(4) = h/2.0d0 * (s ** 2 / 0.4D1 - s ** 3 / 0.4D1 - s ** 4 / 0.4D1 + s ** 5 / 0.4D1)
+      Basis(5) = h/2.0d0 * (-s ** 2 / 0.4D1 - s ** 3 / 0.4D1 + s ** 4 / 0.4D1 + s ** 5 /0.4D1)
+      Basis(6) = h/2.0d0 * (s ** 5 - 2.0D0 * s ** 3 + s)
 
+      dBasis(1) = 2.0D0 * s - 0.15D2 / 0.4D1 * s ** 2 - 2.0D0 * s ** 3 + 0.15D2 / 0.4D1 * s ** 4
+      dBasis(2) = 2 * s + 0.15D2 / 0.4D1 * s ** 2 - 2.0D0 * s ** 3 - 0.15D2 / 0.4D1 * s ** 4
+      dBasis(3) = 4.0D0 * s ** 3 - 4.0D0 * s
+      dBasis(4) = h/2.0d0 * (s / 0.2D1 - 0.3D1 / 0.4D1 * s ** 2 - s ** 3 + 0.5D1 / 0.4D1 * s ** 4)
+      dBasis(5) = h/2.0d0 * (-s / 0.2D1 - 0.3D1 / 0.4D1 * s ** 2 + s ** 3 + 0.5D1 / 0.4D1* s ** 4)
+      dBasis(6) = h/2.0d0 * (5.0D0 * s ** 4 - 6.0D0 * s ** 2 + 1.0D0)
+
+      ddBasis(1) = 0.2D1 - 0.15D2 / 0.2D1 * s - 0.6D1 * s ** 2 + 0.15D2 * s ** 3
+      ddBasis(2) = 0.2D1 + 0.15D2 / 0.2D1 * s - 0.6D1 * s ** 2 - 0.15D2 * s ** 3
+      ddBasis(3) = 0.12D2 * s ** 2 - 0.4D1
+      ddBasis(4) = h/2.0d0 * (0.1D1 / 0.2D1 - 0.3D1 / 0.2D1 * s - 0.3D1 * s ** 2 + 0.5D1 * s ** 3)
+      ddBasis(5) = h/2.0d0 * (-0.1D1 / 0.2D1 - 0.3D1 / 0.2D1 * s + 0.3D1 * s ** 2 + 0.5D1 * s ** 3)
+      ddBasis(6) = h/2.0d0 * (0.2D2 * s ** 3 - 0.12D2 * s)
+    CASE DEFAULT
+      CALL Fatal('HermiteBasis', 'An unsupported element type')     
+    END SELECT
+
+    IF (TransformDerivatives) THEN
+      dBasis(1:DOFs) = 2.0d0/h * dBasis(1:DOFs)
+      ddBasis(1:DOFs) = 4.0d0/h**2 * ddBasis(1:DOFs)
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE HermiteBasis
 !------------------------------------------------------------------------------
@@ -2038,6 +2087,7 @@ CONTAINS
         s = -1.0d0/3.0d0 + (k-1)*2.0d0/3.0d0
         xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
 
+        ! TO DO: Get these basis functions by calling HermiteBasis
         f2 = (2 - 3*s + s**3)/4.0d0
         f3 = (2 + 3*s - s**3)/4.0d0
         f4 = h/8.0d0 - (h*s)/8.0d0 - (h*s**2)/8.0d0 + (h*s**3)/8.0d0
@@ -2188,11 +2238,9 @@ CONTAINS
       CheckOrientation = .FALSE.
     END IF
 
-    IF ( PRESENT(MacroElement) ) THEN
-      Subtriangulation = MacroElement .AND. (Family == 4)
-    ELSE
-      Subtriangulation = .FALSE.
-    END IF   
+    Subtriangulation = .FALSE.
+    IF ( PRESENT(MacroElement) .AND. (Family == 4) ) &
+        Subtriangulation = MacroElement .AND. Element % TYPE % NumberOfNodes == 4
 
     IF ( PRESENT(SaveProperties) ) THEN
       WriteElementProperties = SaveProperties
@@ -2278,7 +2326,6 @@ CONTAINS
     !------------------------------------
     IF (discriminant < 0.0d0) THEN
       IF (-discriminant/trc**2 > UmbilicalDelta**2) THEN
-      !IF (-discriminant > GeometryEpsilon**2) THEN
         CALL Fatal('LinesOfCurvatureFrame', 'Error in computing lines of curvature')
       ELSE
         discriminant = 0.0d0
@@ -2725,7 +2772,7 @@ CONTAINS
 ! a given nonlinear transformation from a subset K of R^2 onto S. The argument 
 ! LocalFrameNodes defines x, the points y are saved as the elementwise property 
 ! 'patch nodes' and the form of g is defined by the parameters TaylorParams. 
-! If ZNodes is supplied, approximations of nodal z-coordinates is computed using 
+! If ZNodes is supplied, approximations of nodal z-coordinates are computed using 
 ! a third-order Taylor polynomial in the coordinates y of the final patch K. This option
 ! can be used to cross-check different approximations but may not have final utility.
 !-----------------------------------------------------------------------------------
@@ -3273,6 +3320,13 @@ CONTAINS
     ! ------------------------------------------------------------------------------
     Pversion = IsPElement(BGElement)
 
+    SELECT CASE(Family)
+    CASE(3)
+      SecondOrder = BGElement % Type % NumberOfNodes == 6
+    CASE(4)
+      SecondOrder = BGElement % Type % NumberOfNodes == 9
+    END SELECT
+
     SuperParametric = .FALSE. ! This relates to an experimental version which is not active 
     ! ------------------------------------------------------------------------------
     ! Allocate a Lagrange interpolation element structure corresponding to the
@@ -3406,7 +3460,7 @@ CONTAINS
       NonlinBM = 0.0d0
       NonlinBS = 0.0d0
 
-      IF ( PVersion ) THEN
+      IF ( PVersion .OR. SecondOrder) THEN
 
         !  IF (SuperParametric) THEN
         !    ! Get p-basis on the reference element ...
@@ -3419,16 +3473,17 @@ CONTAINS
         !    y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
         !    y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )            
         !
-        !  ELSE ...
-
-        ! Here the element mapping is isoparametric:
-
-        sq = IP % S(t)          
-
-        stat = ElementInfo(BGElement, PNodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis, dBasis)
-        y1 = SUM( PNodes % x(1:nd) * Basis(1:nd) )
-        y2 = SUM( PNodes % y(1:nd) * Basis(1:nd) )
-
+ 
+        IF (PVersion) THEN
+          stat = ElementInfo(BGElement, PNodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis, dBasis)
+          y1 = SUM( PNodes % x(1:nd) * Basis(1:nd) )
+          y2 = SUM( PNodes % y(1:nd) * Basis(1:nd) )
+        ELSE
+          stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis, dBasis)
+          y1 = SUM( Nodes % x(1:nd) * Basis(1:nd) )
+          y2 = SUM( Nodes % y(1:nd) * Basis(1:nd) )
+        END IF
+        sq = IP % S(t)
       ELSE
 
         !        IF (SuperParametric) THEN
@@ -3509,7 +3564,7 @@ CONTAINS
 
       ! Shear correction factor:
       IF (UseShearCorrection) THEN
-        CALL ShearCorrectionFactor(Kappa, h, Nodes % x(1:n), Nodes % y(1:n), n)
+        CALL ShearCorrectionFactor(Kappa, h, Nodes % x(1:Family), Nodes % y(1:Family), Family)
       ELSE
         Kappa = 1.0d0
       END IF
@@ -4121,11 +4176,21 @@ CONTAINS
     REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(2,3)! To reduce RT_0 functions to constants
     LOGICAL, INTENT(IN) :: MembraneStrains            ! To select the method for membrane strains
 !------------------------------------------------------------------------------
-    LOGICAL :: PVersion
+    LOGICAL :: PVersion, SecondOrder
     INTEGER :: Family
 !------------------------------------------------------------------------------
     Family = GetElementFamily(BGElement)
     PVersion = IsPElement(BGElement)
+
+    SecondOrder = .FALSE.
+    IF (.NOT. PVersion) THEN
+      SELECT CASE(Family)
+      CASE(3)
+        SecondOrder = BGElement % Type % NumberOfNodes == 6
+      CASE(4)
+        SecondOrder = BGElement % Type % NumberOfNodes == 9
+      END SELECT
+    END IF
 
     IF (.NOT. MembraneStrains .AND. (ReductionMethod == CurlKernelWithEdgeDOFs)) THEN
       CALL Warn('SetStrainReductionParameters', &
@@ -4133,8 +4198,8 @@ CONTAINS
       ReductionMethod = CurlKernel
     END IF
 
-    IF (Pversion) THEN
-      ! If p-element approximation has been requested, the standard weak formulation is used:
+    IF (PVersion .OR. SecondOrder) THEN
+      ! If a higher-order approximation has been requested, the standard weak formulation is used:
       ReductionMethod = NoStrainReduction
     ELSE
       IF (ReductionMethod == AutomatedChoice) THEN
@@ -5649,6 +5714,7 @@ CONTAINS
     NodesVar % NumberOfNodes = PlaneElement % Type % NumberOfNodes
 
     IP = GaussPoints(PlaneElement)
+
     DO j=1,IP % n   
       stat = ElementInfo(PlaneElement, NodesVar, IP % u(j), IP % v(j), &
           IP % w(j), detJ, Basis)
