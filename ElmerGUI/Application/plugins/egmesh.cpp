@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter RÃ¥back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -3662,7 +3662,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
     
     j = 0;
     /* Give the larger dimension always a smaller BC type */
-    for(elemdim==2;elemdim>=0;elemdim--) {
+    for(elemdim=2;elemdim>=0;elemdim--) {
       for(i=minbc;i<=maxbc;i++) {
 	if(mapdim[i] != elemdim) continue;
 	if(mapbc[i]) {
@@ -6490,7 +6490,7 @@ int FindPeriodicNodes(struct FemType *data,int periodicdim[],int info)
   if(!periodicdim[0] && !periodicdim[1] && !periodicdim[2]) return(1);
 
   if(data->periodicexist) {
-    printf("FindPeriodicNodes: Subroutine is called for second time¡\n");
+    printf("FindPeriodicNodes: Subroutine is called for second timeÂ¡\n");
     return(2);
   }
 
