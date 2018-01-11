@@ -8546,7 +8546,7 @@ END FUNCTION SearchNodeL
     ! Steady state output is done in MainUtils
     SolverName = ListGetString( SolverParams, 'Equation',Stat)
     IF(.NOT. Stat) SolverName = Solver % Variable % Name
-
+ 
     IF(SteadyState) THEN        
       WRITE( Message, '(a,g15.8,g15.8,a)') &
          'SS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, Change,&
@@ -10070,7 +10070,8 @@ END FUNCTION SearchNodeL
       IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
       IF (DoRHS) THEN
         bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
-        IF( bnorm < EPSILON( bnorm ) ) THEN
+
+        IF( bnorm < SQRT( TINY( bnorm ) ) ) THEN
           CALL Info('ScaleLinearSystem','Rhs vector is almost zero, skipping rhs scaling!',Level=20)
           DoRhs = .FALSE.
           bnorm = 1.0_dp
