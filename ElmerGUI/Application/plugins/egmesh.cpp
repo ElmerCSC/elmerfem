@@ -3662,7 +3662,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
     
     j = 0;
     /* Give the larger dimension always a smaller BC type */
-    for(elemdim==2;elemdim>=0;elemdim--) {
+    for(elemdim=2;elemdim>=0;elemdim--) {
       for(i=minbc;i<=maxbc;i++) {
 	if(mapdim[i] != elemdim) continue;
 	if(mapbc[i]) {
