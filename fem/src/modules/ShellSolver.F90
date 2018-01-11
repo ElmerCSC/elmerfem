@@ -167,7 +167,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   INTEGER, PARAMETER :: MaxPatchNodes = 16    ! The maximum node count for the surface description 
 
   INTEGER, PARAMETER :: GeometryMaxIters = 50
-  REAL(KIND=dp), PARAMETER :: UmbilicalDelta = 1.0d-2  ! The tolerance to decide umbilical points
+  REAL(KIND=dp), PARAMETER :: UmbilicalDelta = 2.0d-2  ! The tolerance to decide umbilical points
   REAL(KIND=dp), PARAMETER :: GeometryEpsilon = 1.0d-6
 !------------------------------------------------------------------------------
 ! Local variables:
@@ -997,6 +997,8 @@ CONTAINS
         IF (Element % TYPE % NumberOfNodes > 6) &
             CALL Fatal('CreateCurvedEdges', 'Triangular background mesh of order k>2 is not supported')
         QuadraticGeometryData = Element % TYPE % NumberOfNodes == 6
+        IF (QuadraticGeometryData) &
+            CALL Fatal('CreateCurvedEdges', 'Triangular 6-node background elements are not yet supported')
       CASE(4)
         IF (Element % TYPE % NumberOfNodes > 9) &
             CALL Fatal('CreateCurvedEdges', 'Background mesh of order k>2 is not supported')
@@ -1212,8 +1214,10 @@ CONTAINS
       ! -----------------------------------------------------------------------------------------
       ! The function BlendingSurfaceInfo is built on the assumption that the mid-node is centered
       ! -----------------------------------------------------------------------------------------
-      IF (ABS(DOT_PRODUCT(r1+r2,ex))/cpars(1) > 1.0d-3) &
-          CALL Fatal('EdgeFrame', 'Centered edge mid-nodes expected')
+      IF (ABS(DOT_PRODUCT(r1+r2,ex))/cpars(1) > 2.0d-2) THEN
+        CALL Warn('EdgeFrame', 'Centered edge mid-nodes expected')
+        PRINT *, 'Relative error of node position ...', ABS(DOT_PRODUCT(r1+r2,ex))/cpars(1)
+      END IF
 
       cpars(2) = DOT_PRODUCT(r1,ez)               ! The z-coordinate of the vertex X1
       cpars(3) = DOT_PRODUCT(r2,ez)               ! The z-coordinate of the vertex X2
@@ -2362,10 +2366,31 @@ CONTAINS
 
     Umbilical = .FALSE.
     IF (.NOT. Planar) THEN
-      delta(1) = ABS(Lambda1-Lambda2)/LambdaMax
+      ! ------------------------------------------------------------------------------ 
+      ! The test for umbilical points depends on a rough estimate of the element size:
+      ! ------------------------------------------------------------------------------
+      rK = 0.0d0
+      SELECT CASE(Family)
+      CASE(3)
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(2) - Nodes % x(1))**2 + (Nodes % y(2) - Nodes % y(1))**2 + &
+            (Nodes % z(2) - Nodes % z(1))**2))
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(3) - Nodes % x(2))**2 + (Nodes % y(3) - Nodes % y(2))**2 + &
+            (Nodes % z(3) - Nodes % z(2))**2))
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(3) - Nodes % x(1))**2 + (Nodes % y(3) - Nodes % y(1))**2 + &
+            (Nodes % z(3) - Nodes % z(1))**2))
+      CASE(4)
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(3) - Nodes % x(1))**2 + (Nodes % y(3) - Nodes % y(1))**2 + &
+            (Nodes % z(3) - Nodes % z(1))**2))
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(4) - Nodes % x(2))**2 + (Nodes % y(4) - Nodes % y(2))**2 + &
+            (Nodes % z(4) - Nodes % z(2))**2))
+      END SELECT
+      delta(1) = ABS(Lambda1-Lambda2) * rK
+      Umbilical = delta(1) < UmbilicalDelta
+      !print *, 'this point is umbilical=', Umbilical
       !PRINT *, 'difference of eigenvals=',delta(1)
-      Umbilical = delta(1) < UmbilicalDelta    !1000.0*EPSILON(1.0)
+      !print *, 'eigen1,eigen2,max eigenvalue,rK', Lambda1,Lambda2,LambdaMax,rK
     END IF
+
     !-----------------------------------------------------------------
     ! Compute the eigenvectors: 
     !-----------------------------------------------------------------
@@ -2668,10 +2693,10 @@ CONTAINS
         END IF
       ELSE
         IF (Umbilical) THEN
-          err = ABS(APar-BPar)/MAX(ABS(APar),ABS(BPar))
+          err = ABS(APar-BPar) * rK
           IF ( err > 5.0d0*UmbilicalDelta ) THEN
             CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial (umbilical point)')
-            print *, '|APar-BPar|/max(|APar|,|BPar|)=', err
+            print *, '|APar-BPar| h = ', err
           END IF
         ELSE
           !-------------------------------------------------------------------------------------
@@ -4122,7 +4147,7 @@ CONTAINS
 
       ! For computing the mean curvature error:
       !-----------------------------------------
-      !Error = Error + sq * (1.0d0 - abs(B11/a11) - abs(B22/a22))**2 * detJ * SqrtDetA
+      !Error = Error + sq * (1.0d-1 - 0.5d0*abs(B11/a11) - 0.5d0*abs(B22/a22))**2 * detJ * SqrtDetA
 
     END DO QUADRATURELOOP
 
