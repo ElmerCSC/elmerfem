@@ -166,7 +166,8 @@ contains
     residual = normfun( HUTI_NDIM, S, 1 )
     if ( residual .lt. HUTI_EPSILON ) then
        X = X + alpha * T1V
-       HUTI_INFO = HUTI_BICGSTAB_SNORM
+       !HUTI_INFO = HUTI_BICGSTAB_SNORM
+       HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
 
@@ -422,7 +423,8 @@ contains
 #else
        X = X + alpha * T1V
 #endif
-       HUTI_INFO = HUTI_BICGSTAB_SNORM
+       HUTI_INFO = HUTI_CONVERGENCE
+       !HUTI_INFO = HUTI_BICGSTAB_SNORM
        go to 1000
     end if
 
@@ -669,7 +671,8 @@ contains
     residual = normfun( HUTI_NDIM, S, 1 )
     if ( residual .lt. HUTI_EPSILON ) then
        X = X + alpha * T1V
-       HUTI_INFO = HUTI_BICGSTAB_SNORM
+       HUTI_INFO = HUTI_CONVERGENCE
+       !HUTI_INFO = HUTI_BICGSTAB_SNORM
        go to 1000
     end if
 
@@ -874,7 +877,8 @@ contains
     residual = normfun( HUTI_NDIM, S, 1 )
     if ( residual .lt. HUTI_EPSILON ) then
        X = X + alpha * T1V
-       HUTI_INFO = HUTI_BICGSTAB_SNORM
+       !HUTI_INFO = HUTI_BICGSTAB_SNORM
+       HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
 
