@@ -151,6 +151,7 @@ END INTERFACE
     TYPE(Variable_t), POINTER :: Var
     REAL(KIND=dp) :: rnorm, bnorm, xnorm
     REAL(KIND=dp), ALLOCATABLE :: rhs(:)
+    REAL(KIND=dp), ALLOCATABLE :: DiagScaling(:)
     TYPE(Solver_t), POINTER :: Solver => NULL()
   END TYPE SubVector_t
 

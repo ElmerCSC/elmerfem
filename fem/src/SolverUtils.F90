@@ -8172,6 +8172,7 @@ END FUNCTION SearchNodeL
 
     SolverParams => Solver % Values
 
+    
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
@@ -8219,6 +8220,7 @@ END FUNCTION SearchNodeL
       iterV % Values(1) = iterV % Values(1) + 1 
       
       Skip = ListGetLogical( SolverParams,'Skip Compute Nonlinear Change',Stat)
+
       IF(Skip) THEN
         CALL Info('ComputeChange','Skipping the computation of nonlinear change',Level=15)
         RETURN
@@ -8323,7 +8325,6 @@ END FUNCTION SearchNodeL
     !--------------------------------------------------------------------------
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
-!   IF( ISNAN(Norm) ) THEN ! ISNAN not avaiable in all compilers
     IF( Norm /= Norm ) THEN
       CALL NumericalError('ComputeChange','Norm of solution appears to be NaN')
     END IF
@@ -8335,6 +8336,7 @@ END FUNCTION SearchNodeL
       MaxNorm = ListGetCReal( SolverParams, &
           'Nonlinear System Max Norm', Stat )
     END IF    
+
     IF( Stat ) THEN
       WRITE( Message, *) 'Computed Norm:',Norm
       CALL Info('ComputeChange',Message)
@@ -9870,7 +9872,6 @@ END FUNCTION SearchNodeL
     
     CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity',Level=10)
 
-    
     IF( PRESENT( DiagScaling ) ) THEN
       CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
       Diag => DiagScaling 
@@ -9969,7 +9970,7 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
-
+    
     ! Optionally we may just create the diag and leave the scaling undone
     !--------------------------------------------------------------------
     IF( PRESENT( ApplyScaling ) ) THEN
@@ -9992,6 +9993,7 @@ END FUNCTION SearchNodeL
     END DO
     !$OMP END DO NOWAIT
 
+    
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN 
         CALL Info('ScaleLinearSystem','Scaling PrecValues',Level=20)
@@ -10068,18 +10070,28 @@ END FUNCTION SearchNodeL
       IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
       IF (DoRHS) THEN
         bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
+        IF( bnorm < EPSILON( bnorm ) ) THEN
+          CALL Info('ScaleLinearSystem','Rhs vector is almost zero, skipping rhs scaling!',Level=20)
+          DoRhs = .FALSE.
+          bnorm = 1.0_dp
+        END IF
       ELSE
-        bnorm = 1._dp
+        bnorm = 1.0_dp
       END IF
+      
       A % RhsScaling = bnorm
 
-      Diag(1:n) = Diag(1:n) * bnorm
-      b(1:n) = b(1:n) / bnorm
+      IF( DoRhs ) THEN
+        Diag(1:n) = Diag(1:n) * bnorm
+        b(1:n) = b(1:n) / bnorm
+      END IF
+      
       IF( PRESENT( x) ) THEN
         x(1:n) = x(1:n) / Diag(1:n)
       END IF
     END IF
 
+    
     !-----------------------------------------------------------------------------
   END SUBROUTINE ScaleLinearSystem
 !-----------------------------------------------------------------------------
@@ -10129,15 +10141,8 @@ END FUNCTION SearchNodeL
         DO j=Rows(i),Rows(i+1)-1,2
           tmp = tmp + ABS( CMPLX( Values(j), -Values(j+1), kind=dp ) )
         END DO
-
-        IF ( .NOT. Parallel ) THEN
-          IF (tmp > norm) norm = tmp        
-        END IF
-
-        IF (tmp > 0.0d0) THEN
-          Diag(i) = tmp
-          Diag(i+1) = tmp
-        END IF
+        Diag(i) = tmp
+        Diag(i+1) = tmp
       END DO
     ELSE
       DO i=1,n
@@ -10145,18 +10150,16 @@ END FUNCTION SearchNodeL
         DO j=Rows(i),Rows(i+1)-1        
           tmp = tmp + ABS(Values(j))          
         END DO
-
-        IF ( .NOT. Parallel ) THEN
-          IF (tmp > norm) norm = tmp        
-        END IF
-
-        IF (tmp > 0.0d0) Diag(i) = tmp       
+        Diag(i) = tmp       
       END DO
     END IF
 
     IF (Parallel) THEN
       CALL ParallelSumVector(A, Diag)
-      norm = ParallelReduction(MAXVAL(Diag(1:n)),2)
+    END IF
+    norm = MAXVAL(Diag(1:n))
+    IF( Parallel ) THEN
+      norm = ParallelReduction(norm)
     END IF
 
     !--------------------------------------------------
@@ -10165,20 +10168,19 @@ END FUNCTION SearchNodeL
     !--------------------------------------------------
     IF (ComplexMatrix) THEN    
       DO i=1,n,2
-        IF (Diag(i) > 0.0d0) THEN
-          Diag(i) = 1.0d0/Diag(i)
-          Diag(i+1) = 1.0d0/Diag(i+1)
+        IF (Diag(i) > TINY(norm) ) THEN
+          Diag(i) = 1.0_dp / Diag(i)
         ELSE
-          Diag(i) = 1.0d0
-          Diag(i+1) = 1.0d0
+          Diag(i) = 1.0_dp
         END IF
+        Diag(i+1) = Diag(i)
       END DO
     ELSE
       DO i=1,n      
-        IF (Diag(i) > 0.0d0) THEN
-          Diag(i) = 1.0d0/Diag(i)
+        IF (Diag(i) > TINY(norm)) THEN
+          Diag(i) = 1.0_dp / Diag(i)
         ELSE
-          Diag(i) = 1.0d0
+          Diag(i) = 1.0_dp
         END IF
       END DO
     END IF
@@ -10230,7 +10232,7 @@ END FUNCTION SearchNodeL
 
     TYPE(Matrix_t), POINTER :: CM
 
-    CALL Info('BackScaleLinearSystem','Scaling back to original scale',Level=15)
+    CALL Info('BackScaleLinearSystem','Scaling back to original scale',Level=14)
 
     
     n = A % NumberOfRows
@@ -10836,8 +10838,7 @@ END FUNCTION SearchNodeL
   END SUBROUTINE BCLoadsComputation
 
 
-  
-  
+    
 !------------------------------------------------------------------------------
 !> Prints the values of the CRS matrix to standard output.
 !------------------------------------------------------------------------------
@@ -11041,14 +11042,30 @@ END FUNCTION SearchNodeL
     END INTERFACE
 !------------------------------------------------------------------------------
 
-   ComplexSystem = ListGetLogical( Solver % Values, 'Linear System Complex', GotIt )
-   IF ( GotIt ) A % COMPLEX = ComplexSystem
+    Params => Solver % Values
  
-   IF( A % COMPLEX ) THEN
-     CALL Info('SolveLinearSystem','Assuming complex valued linear system',Level=6)
-   ELSE
-     CALL Info('SolveLinearSystem','Assuming real valued linear system',Level=8)
-   END IF
+    ComplexSystem = ListGetLogical( Params, 'Linear System Complex', GotIt )
+    IF ( GotIt ) A % COMPLEX = ComplexSystem
+    
+    ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
+    IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
+    
+    IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
+      CALL Info('SolveLinearSystem','This time skipping complex treatment',Level=20)
+      A % COMPLEX = .FALSE.
+      ComplexSystem = .FALSE.
+    END IF
+
+    IF( ListGetLogical( Params,'Linear System Skip Scaling',GotIt ) ) THEN     
+      CALL Info('SolveLinearSystem','This time skipping scaling',Level=20)
+      ScaleSystem = .FALSE.
+    END IF
+   
+    IF( A % COMPLEX ) THEN
+      CALL Info('SolveLinearSystem','Assuming complex valued linear system',Level=6)
+    ELSE
+      CALL Info('SolveLinearSystem','Assuming real valued linear system',Level=8)
+    END IF
 
 !------------------------------------------------------------------------------
 !   If parallel execution, check for parallel matrix initializations
@@ -11057,14 +11074,13 @@ END FUNCTION SearchNodeL
       CALL ParallelInitMatrix( Solver, A )
     END IF
 
-   IF ( ListGetLogical( Solver % Values, 'Linear System Save',GotIt )) THEN
+    IF ( ListGetLogical( Solver % Values, 'Linear System Save',GotIt )) THEN
       saveslot = ListGetString( Solver % Values,'Linear System Save Slot', GotIt )
       IF(SaveSlot == 'linear solve') CALL SaveLinearSystem( Solver, A )
     END IF
 
 !------------------------------------------------------------------------------
 
-    Params => Solver % Values
     n = A % NumberOfRows
 
     BackRotation = ListGetLogical(Params,'Back Rotate N-T Solution',GotIt)
@@ -11106,9 +11122,6 @@ END FUNCTION SearchNodeL
         ListGetInteger( Params,'Multigrid Levels', GotIt, minv=1 ) )
     Solver % MultiGridLevel = Solver % MultigridTotal
 !------------------------------------------------------------------------------
-
-    ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
-    IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
 
     EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
         ListGetLogical( Params, 'Eigen Analysis',GotIt )

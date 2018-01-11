@@ -181,7 +181,8 @@ CONTAINS
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
-
+    LOGICAL :: ComplexSystem
+    
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
     TYPE(ValueList_t), POINTER :: Params
@@ -211,13 +212,11 @@ CONTAINS
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
         pcondrProc, mvProc, iterProc, StopcProc
-#ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=Addrint) :: AddrFunc
-#else
+#ifdef USE_ISO_C_BINDINGS
     INTEGER :: astat
     COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
-    INTEGER(KIND=Addrint) :: AddrFunc
     EXTERNAL :: AddrFunc    
 #endif
 
@@ -262,14 +261,22 @@ CONTAINS
     ELSE
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
+    
+    ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
+    IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
 
-    IF( A % COMPLEX ) THEN
+    IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
+      CALL Info('IterSolver','This time skipping complex treatment',Level=20)
+      A % COMPLEX = .FALSE.
+      ComplexSystem = .FALSE.
+    END IF
+            
+    IF( ComplexSystem ) THEN
       CALL Info('IterSolver','Matrix is complex valued',Level=10)
     ELSE
       CALL Info('IterSolver','Matrix is real valued',Level=12)
     END IF
-
-    
+   
     SELECT CASE(str)
     CASE('bicgstab2')
       IterType = ITER_BiCGStab2
@@ -407,7 +414,7 @@ CONTAINS
         'Linear System Min Iterations', GotIt )
     
 #ifdef USE_ISO_C_BINDINGS
-    IF (A % COMPLEX) THEN
+    IF( ComplexSystem ) THEN
         ALLOCATE(workC(N/2,wsize), stat=istat)
         IF ( istat /= 0 ) THEN
             CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
@@ -549,7 +556,7 @@ CONTAINS
               A % Values( A % Diag ) = DiagFactor * A % Values( A % Diag )      
             END IF
 
-            IF ( A % COMPLEX ) THEN
+            IF ( ComplexSystem ) THEN
               IF ( PCondType == PRECOND_ILUn .OR. (PCondType==PRECOND_Circuit.AND.ILUn>=0) ) THEN
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)
                 CM => A % ConstraintMatrix
@@ -739,7 +746,7 @@ CONTAINS
     IF ( PRESENT(MatvecF) ) THEN
       mvProc = MatvecF
     ELSE
-      IF ( .NOT. A % COMPLEX ) THEN
+      IF ( .NOT. ComplexSystem ) THEN
         mvProc = AddrFunc( CRS_MatrixVectorProd )
       ELSE
         mvProc = AddrFunc( CRS_ComplexMatrixVectorProd )
@@ -749,7 +756,7 @@ CONTAINS
     IF ( PRESENT(dotF) ) THEN
       dotProc = dotF
     ELSE
-      dotProc =0
+      dotProc = 0
     END IF
     
     IF ( PRESENT(normF) ) THEN
@@ -764,21 +771,21 @@ CONTAINS
     ELSE
       SELECT CASE( PCondType )
       CASE (PRECOND_NONE)
-        IF ( .NOT. A % COMPLEX ) THEN
+        IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( pcond_dummy )
         ELSE
           pcondProc = AddrFunc( pcond_dummy_cmplx  )
         END IF
         
       CASE (PRECOND_DIAGONAL)
-        IF ( .NOT. A % COMPLEX ) THEN
+        IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CRS_DiagPrecondition )
         ELSE
           pcondProc = AddrFunc( CRS_ComplexDiagPrecondition )
         END IF
         
       CASE (PRECOND_ILUn, PRECOND_ILUT, PRECOND_BILUn )
-        IF ( .NOT. A % COMPLEX ) THEN
+        IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CRS_LUPrecondition )
         ELSE
           pcondProc = AddrFunc( CRS_ComplexLUPrecondition )
@@ -791,7 +798,7 @@ CONTAINS
         pcondProc = AddrFunc( VankaPrec )
 
       CASE (PRECOND_Circuit)
-        IF ( .NOT. A % Complex ) THEN
+        IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CircuitPrec )
         ELSE
           pcondProc = AddrFunc( CircuitPrecComplex )
@@ -803,7 +810,7 @@ CONTAINS
     END IF
     
 
-    IF ( .NOT. A % COMPLEX ) THEN
+    IF ( .NOT. ComplexSystem ) THEN
       SELECT CASE ( IterType )
 
        ! Solvers from HUTiter library 
@@ -894,9 +901,9 @@ CONTAINS
 
     SaveGlobalM => GlobalMatrix
     GlobalMatrix => A
-
+    
 #ifdef USE_ISO_C_BINDINGS
-    IF (A % Complex) THEN
+    IF ( ComplexSystem ) THEN
       ! Associate xC and bC with complex variables
       ALLOCATE(xC(HUTI_NDIM), bC(HUTI_NDIM), STAT=astat)
       IF (astat /= 0) THEN
@@ -909,9 +916,10 @@ CONTAINS
       DO i=1,HUTI_NDIM
         bC(i) = cmplx(b(2*i-1),b(2*i),dp)
       END DO
-      
+
+      CALL Info('IterSolver','Calling complex iterative solver',Level=32)
       CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
-            mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+          mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
 
       ! Copy result back
       DO i=1,HUTI_NDIM
@@ -920,18 +928,20 @@ CONTAINS
       END DO
       DEALLOCATE(bC,xC)
     ELSE
-        CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-                       mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+      CALL Info('IterSolver','Calling real valued iterative solver',Level=32)
+      CALL IterCall( iterProc, x, b, ipar, dpar, work, &
+          mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
     ENDIF
 #else
+    CALL Info('IterSolver','Calling iterative solver',Level=32)   
     CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-                       mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+        mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
 #endif
     GlobalMatrix => SaveGlobalM
 
     stack_pos=stack_pos-1
     
-    IF ( A % COMPLEX ) HUTI_NDIM = HUTI_NDIM * 2
+    IF ( ComplexSystem ) HUTI_NDIM = HUTI_NDIM * 2
 !------------------------------------------------------------------------------
     IF ( HUTI_INFO /= HUTI_CONVERGENCE .AND. ParEnv % myPE==0 ) THEN
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
@@ -942,7 +952,7 @@ CONTAINS
     END IF
 !------------------------------------------------------------------------------
 #ifdef USE_ISO_C_BINDINGS
-    IF (A % COMPLEX) THEN
+    IF ( ComplexSystem ) THEN
         DEALLOCATE( workC )
     ELSE
         DEALLOCATE( work )

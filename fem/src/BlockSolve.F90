@@ -44,6 +44,44 @@ MODULE BlockSolve
 CONTAINS
 
 
+  ! This is currently for testing purposes. When treating a complex system
+  ! with gcr as a real one all other operations than dot product are similar.
+  ! I.e. matrix-vector product and norm (dot product with one self) are the same.
+  ! However, for dot product with another vector the complex part is omitted which
+  ! may have an effect on convergence. This computes the complex part but does not
+  ! use it yet...
+  !-----------------------------------------------------------------------------------
+  FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT(dres)
+  !-----------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: ndim, xind, yind
+    REAL(KIND=dp) :: x(*)
+    REAL(KIND=dp) :: y(*)
+    REAL(KIND=dp) :: dres
+    
+    REAL(KIND=dp) :: dim
+    INTEGER :: i
+    REAL(KIND=dp) :: a,b,c
+    
+    dres = 0.0_dp
+    dim = 0.0_dp
+    
+    DO i = 1, ndim, 2
+      a = x(i) * y(i) + x(i+1) * y(i+1)    ! real part
+      b = x(i+1) * y(i) - x(i) * y(i+1)    ! imag part
+      dres = dres + a
+      dim = dim + b 
+    END DO
+
+    PRINT *,'PseudoZdotProd:',dres,dim
+    
+    !-----------------------------------------------------------------------------------
+  END FUNCTION PseudoZDotProd
+  !-----------------------------------------------------------------------------------
+
+
+  
   !-----------------------------------------------------------------------------------
   !> If a block variable does not exist it will be created. 
   !> Here only normal nodal elements are supported for the moment. 
@@ -380,7 +418,7 @@ CONTAINS
     
     BlockMatrix % TotSize = BlockMatrix % Offset( NoVar + 1 )
     
-    
+      
   END SUBROUTINE BlockInitMatrix
     
 
@@ -941,6 +979,9 @@ CONTAINS
   END SUBROUTINE BlockPrecMatrix
 
 
+  !> Create the coupling blocks for a linear FSI coupling among various types of
+  !> among various types of elasticity and fluid solvers.
+  !--------------------------------------------------------------------------------
   SUBROUTINE FsiCouplingBlocks( Solver )
 
     TYPE(Solver_t) :: Solver
@@ -1237,6 +1278,237 @@ CONTAINS
 !------------------------------------------------------------------------------
   
 
+!> Create the vectors needed for block matrix scaling. Currently only
+!> real and complex valued row equilibriation is supported. Does not perform
+!> the actual scaling.
+!------------------------------------------------------------------------------
+  SUBROUTINE CreateBlockMatrixScaling( )
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,l,n,m,NoVar
+    REAL(KIND=dp) :: nrm, tmp
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp), POINTER :: b(:), Diag(:), Values(:)
+    LOGICAL :: Transpose, ComplexMatrix
+    INTEGER, POINTER :: Rows(:), Cols(:)
+    
+    
+    CALL Info('CreateBlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
+    
+    NoVar = TotMatrix % NoVar
+ 
+    DO k=1,NoVar
+
+      A => TotMatrix % SubMatrix(k,k) % Mat
+      IF( A % NumberOfRows > 0 ) THEN
+        ComplexMatrix = A % COMPLEX
+      ELSE
+        CALL Warn('CreateBlockMatrixScaling','Improve complex matrix detection!')
+      END IF
+        
+      IF( ComplexMatrix ) THEN
+        m = 2
+      ELSE
+        m = 1
+      END IF
+      
+      n = TotMatrix % offset(k+1) - TotMatrix % offset(k)
+      IF( .NOT. ALLOCATED( Totmatrix % SubVector(k) % DiagScaling ) ) THEN
+        ALLOCATE( TotMatrix % SubVector(k) % DiagScaling(n) )
+      END IF
+
+      Diag => TotMatrix % SubVector(k) % DiagScaling
+      Diag = 0.0_dp
+      
+      DO l=1,NoVar
+        A => TotMatrix % SubMatrix(k,l) % Mat
+        IF( A % NumberOfRows >  0 ) THEN
+          Transpose = .FALSE.
+        ELSE IF( TotMatrix % SubMatrixTranspose(l,k) ) THEN                    
+          A => TotMatrix % SubMatrix(l,k) % Mat
+          IF( A % NumberOfRows >  0 ) THEN
+            Transpose = .TRUE.
+          ELSE
+            CYCLE
+          END IF
+        END IF
+                          
+        Rows   => A % Rows
+        Cols   => A % Cols
+        Values => A % Values
+        
+        !---------------------------------------------
+        ! Compute 1-norm of each row
+        !---------------------------------------------
+        IF( Transpose ) THEN
+          CALL Fatal('BlockMatrixScaling','Do the tranpose stuff!')
+        ELSE
+          DO i=1,n,m
+            tmp = 0.0d0
+            
+            IF( ComplexMatrix ) THEN
+              DO j=Rows(i),Rows(i+1)-1,2
+                tmp = tmp + SQRT( Values(j)**2 + Values(j+1)**2 )
+              END DO
+            ELSE
+              DO j=Rows(i),Rows(i+1)-1        
+                tmp = tmp + ABS(Values(j))          
+              END DO
+            END IF
+            
+            ! Compute the sum to the real component, scaling for imaginary will be the same
+            Diag(i) = Diag(i) + tmp
+          END DO
+        END IF
+      END DO
+              
+      IF (ParEnv % PEs > 1) THEN
+        CALL ParallelSumVector(A, Diag)
+      END IF
+      
+      nrm = MAXVAL( Diag(1:n) ) 
+
+      IF( ParEnv % PEs > 1 ) THEN
+        nrm = ParallelReduction(nrm,2)
+      END IF
+      
+      ! Define the actual scaling vector (for real component)
+      DO i=1,n,m
+        IF (Diag(i) > TINY( nrm ) ) THEN
+          Diag(i) = 1.0_dp / Diag(i)
+        ELSE
+          Diag(i) = 1.0_dp
+        END IF
+      END DO
+
+      ! Scaling of complex component
+      IF( ComplexMatrix ) Diag(2::2) = Diag(1::2)
+
+    END DO
+    
+    WRITE( Message, * ) 'Unscaled matrix norm: ', nrm    
+    CALL Info('CreateBlockMatrixScaling', Message, Level=7 )
+    
+    CALL Info('CreateBlockMatrixScaling','Finished block matrix row equilibriation',Level=20)           
+    
+  END SUBROUTINE CreateBlockMatrixScaling
+!------------------------------------------------------------------------------
+
+
+!> Performs the actual forward or reverse scaling. Optionally the scaling may be
+!> applied to only one matrix with an optional r.h.s. The idea is that for
+!> block preconditioning we may revert to the original symmetric matrix but
+!> still use the optimal row equilibriation scaling for the block system. 
+!------------------------------------------------------------------------------
+  SUBROUTINE BlockMatrixScaling( reverse, blockrow, blockcol, bext )
+!------------------------------------------------------------------------------
+    LOGICAL, OPTIONAL :: reverse
+    INTEGER, OPTIONAL :: blockrow, blockcol
+    REAL(KIND=dp), POINTER, OPTIONAL :: bext(:)
+
+    INTEGER :: i,j,k,l,n,m,NoVar
+    REAL(KIND=dp) :: nrm, tmp
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp), POINTER :: b(:), Diag(:), Values(:)
+    LOGICAL :: Transpose
+    INTEGER, POINTER :: Rows(:), Cols(:)
+    LOGICAL :: backscale
+    
+    
+    CALL Info('BlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
+           
+    IF( PRESENT( Reverse ) ) THEN
+      CALL Info('BlockMatrixScaling','Performing reverse scaling',Level=20)
+      BackScale = Reverse
+    ELSE
+      CALL Info('BlockMatrixScaling','Performing forward scaling',Level=20)
+      BackScale = .FALSE.
+    END IF
+
+    
+    NoVar = TotMatrix % NoVar   
+    DO k=1,NoVar
+      
+      IF( PRESENT( blockrow ) ) THEN
+        IF( blockrow /= k ) CYCLE
+      END IF
+      
+      n = TotMatrix % offset(k+1) - TotMatrix % offset(k)
+      Diag => TotMatrix % SubVector(k) % DiagScaling
+      IF( .NOT. ASSOCIATED( Diag ) ) THEN
+        CALL Fatal('BlockMatrixScaling','Diag not associated!')
+      END IF
+      
+      IF( BackScale ) Diag = 1.0_dp / Diag 
+            
+      DO l=1,NoVar        
+        
+        IF( PRESENT( blockcol ) ) THEN
+          IF( blockcol /= l ) CYCLE
+        END IF
+        
+        A => TotMatrix % SubMatrix(k,l) % Mat
+        IF( A % NumberOfRows >  0 ) THEN
+          Transpose = .FALSE.
+        ELSE IF( TotMatrix % SubMatrixTranspose(l,k) ) THEN                    
+          A => TotMatrix % SubMatrix(l,k) % Mat
+          IF( A % NumberOfRows >  0 ) THEN
+            Transpose = .TRUE.
+          ELSE
+            CYCLE
+          END IF
+        END IF
+                          
+        Rows   => A % Rows
+        Cols   => A % Cols
+        Values => A % Values
+                  
+        DO i=1,n    
+          DO j=Rows(i),Rows(i+1)-1
+            Values(j) = Values(j) * Diag(i)
+          END DO
+        END DO
+
+      END DO
+        
+      IF( PRESENT( bext ) ) THEN
+        b => bext
+      ELSE        
+        b => TotMatrix % Submatrix(k,k) % Mat % Rhs
+      END IF
+        
+      IF( ASSOCIATED( b ) ) THEN
+        b(1:n) = Diag(1:n) * b(1:n)
+      END IF
+      
+      IF( BackScale ) Diag = 1.0_dp / Diag       
+    END DO
+        
+    CALL Info('ForwardBlockMatrixScaling','Finished block matrix row equilibriation',Level=20)           
+
+  END SUBROUTINE BlockMatrixScaling
+!------------------------------------------------------------------------------
+
+
+!> Deallocates the block matrix scaling vectors.   
+!------------------------------------------------------------------------------
+  SUBROUTINE DestroyBlockMatrixScaling()
+!------------------------------------------------------------------------------
+    INTEGER :: k,NoVar
+    
+    CALL Info('DestroyBlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
+              
+    NoVar = TotMatrix % NoVar   
+    DO k=1,NoVar            
+      IF( ALLOCATED( TotMatrix % SubVector(k) % DiagScaling ) ) THEN
+        DEALLOCATE( TotMatrix % SubVector(k) % DiagScaling )
+      END IF
+    END DO
+
+  END SUBROUTINE DestroyBlockMatrixScaling
+!------------------------------------------------------------------------------
+
+
+  
 !------------------------------------------------------------------------------
 !> Perform block preconditioning for Au=v by solving all the individual diagonal problems.
 !> Has to be called outside the module by Krylov methods.
@@ -1255,7 +1527,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A, mat_save
     TYPE(Variable_t), POINTER :: Var, Var_save
 
-    LOGICAL :: GotOrder, BlockGS, Found, NS, SkipCompChange, ScaleSystem, DoSum
+    LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, IsComplex, BlockScaling
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
@@ -1283,7 +1555,12 @@ CONTAINS
     var_save => Solver % Variable
     mat_save => Solver % Matrix
     rhs_save => Solver % Matrix % RHS
-    
+
+    ! Always treat the inner iterations as truly complex if they are
+    CALL ListAddLogical( Params,'Linear System Skip Complex',.FALSE.) 
+    CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.) 
+
+    BlockScaling = ListGetLogical( Params,'Block Scaling',Found )
     
 #define SOLSYS
 #ifdef SOLSYS
@@ -1299,10 +1576,9 @@ CONTAINS
       ALLOCATE( vtmp(offset(NoVar+1)), rtmp(offset(NoVar+1)), xtmp(offset(NoVar+1)))
       vtmp(1:offset(NoVar+1)) = v(1:offset(NoVar+1))
     END IF
-
-
+    
     CALL ListPushNameSpace('block:')
-
+    
     DO j=1,NoVar
       IF( GotOrder ) THEN
         i = BlockOrder(j)
@@ -1376,13 +1652,18 @@ CONTAINS
 
       CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
 
-      SkipCompChange = ListGetLogical( Params,'Skip Compute Nonlinear Change',Found)
-      CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
-
+      ! We do probably not want to compute the change within each iteration
+      CALL ListAddNewLogical( Asolver % Values,'Skip Compute Nonlinear Change',.TRUE.)         
+        
+      ! Revert back if the matrix was set not complex
+      !IF( ListGetLogical( ASolver % Values,'Linear System Complex', Found ) ) A % COMPLEX = .TRUE.
+        
       IF( InfoActive( 15 ) ) THEN
         PRINT *,'Range pre:',i,TRIM(Var % Name), MINVAL(x),MAXVAL(x)
       END IF
-        
+
+      IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,k,k,b)
+      
       IF (isParallel) THEN
 #ifndef SOLSYS
         GlobalData => A % ParMatrix
@@ -1400,15 +1681,18 @@ CONTAINS
 #endif
       ELSE
         
-        ScaleSystem = ListGetLogical( Params,'block: Linear System Scaling', Found )
+        !ScaleSystem = ListGetLogical( Params,'block: Linear System Scaling', Found )
         !IF(.NOT. Found) ScaleSystem = .TRUE.
-        IF ( ScaleSystem ) CALL ScaleLinearSystem(ASolver, A,b,x )
+        !IF ( ScaleSystem ) CALL ScaleLinearSystem(ASolver, A,b,x )
         
         CALL SolveLinearSystem( A, b, x, Var % Norm, Var % DOFs, ASolver )
 
-        IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,b,x)       
+        !IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,b,x)       
       END IF
 
+      IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,k,k,b)
+
+      
       IF( InfoActive( 15 ) ) THEN
         PRINT *,'Range post:',i,TRIM(Var % Name), MINVAL(x),MAXVAL(x)
       END IF
@@ -1525,8 +1809,8 @@ CONTAINS
     CALL ListPopNameSpace('block:') ! block:
 
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
-    CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',SkipCompChange)
- 
+
+      
     Solver => Solver_save
     Solver % Matrix => mat_save
     Solver % Matrix % RHS => rhs_save
@@ -1551,13 +1835,13 @@ CONTAINS
 
     INTEGER :: i,j,NoVar,RowVar,iter,LinIter,MinIter
     INTEGER, POINTER :: BlockOrder(:)
-    LOGICAL :: GotIt, GotBlockOrder, SkipCompChange, BlockGS
+    LOGICAL :: GotIt, GotBlockOrder, BlockGS
     REAL(KIND=dp), POINTER :: b(:), rhs_save(:), dx(:)
     TYPE(Matrix_t), POINTER :: A, mat_save
     TYPE(Variable_t), POINTER :: Var, SolverVar
     REAL(KIND=dp) :: LinTol, TotNorm, dxnorm, xnorm, Relax
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: ScaleSystem, Found
+    LOGICAL :: ScaleSystem, BlockScaling, Found
 
     NoVar = TotMatrix % NoVar
     Params => Solver % Values
@@ -1568,6 +1852,7 @@ CONTAINS
     LinIter = ListGetInteger( Params,'Linear System Max Iterations',GotIt)
     MinIter = ListGetInteger( Params,'Linear System Min Iterations',GotIt)
     LinTol = ListGetConstReal( Params,'Linear System Convergence Tolerance',GotIt)
+    BlockScaling = ListGetLogical( Params,'Block Scaling',GotIt)
     
     !mat_Save => Solver % Matrix
     !Solver % Matrix => A
@@ -1577,7 +1862,7 @@ CONTAINS
     CALL ListPushNamespace('block:')
 
     ! We don't want compute change externally
-    CALL ListAddNewLogical( Solver % Values,'block: skip compute nonlinear change',.TRUE.)
+    CALL ListAddNewLogical( Params,'Skip compute nonlinear change',.TRUE.)
     
     Relax = 1.0_dp
     
@@ -1648,15 +1933,21 @@ CONTAINS
 
         CALL ListPushNamespace('block '//TRIM(i2s(RowVar))//TRIM(i2s(RowVar))//':')          
 
-        ScaleSystem = ListGetLogical( Solver % Values,'block: Linear System Scaling', Found )
+        IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,i,i,b)
+              
+        !IF( ListGetLogical( Solver % Values,'Linear System Complex', Found ) ) A % Complex = .TRUE.
+
+        !ScaleSystem = ListGetLogical( Solver % Values,'block: Linear System Scaling', Found )
         !IF(.NOT. Found) ScaleSystem = .TRUE.
 
-        IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A, b, dx )
+        !IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A, b, dx )
         
         CALL SolveLinearSystem( A, b, dx, Var % Norm, Var % DOFs, Solver )
-        !CALL SolveSystem( A, ParMatrix, b, dx, Var % Norm, Var % DOFs, Solver )
 
-        IF( ScaleSystem ) CALL BackScaleLinearSystem(Solver, A, b, dx)       
+        IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,i,i,b)
+
+        
+        !IF( ScaleSystem ) CALL BackScaleLinearSystem(Solver, A, b, dx)       
 
         CALL ListPopNamespace()
 
@@ -1714,10 +2005,8 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: MaxChange
 
-#ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
-#else
-    INTEGER(KIND=AddrInt) :: AddrFunc
+#ifdef USE_ISO_C_BINDINGS
     EXTERNAL :: AddrFunc
 #endif
     INTEGER(KIND=AddrInt) :: iterProc,precProc, mvProc,dotProc,nmrProc, zero=0
@@ -1738,7 +2027,7 @@ CONTAINS
     
     !CALL ListPushNameSpace('outer:')
     Params => Solver % Values
-
+    
     BlockAV = ListGetLogical(Params,'Block A-V System', Found)
 
     Offset => TotMatrix % Offset
@@ -1843,12 +2132,22 @@ CONTAINS
 
     CALL info('BlockSolver','Start of blocks system iteration',Level=18)
 
-    
+    ! Always treat the block system as a real valued system and complex
+    ! arithmetics only at the inner level.
+    CALL ListAddLogical( Params,'Linear System Skip Complex',.TRUE.) 
+
+    ! Skip the scaling for block level system as the default routines
+    ! would not perform it properly.
+    CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE.) 
+     
     IF(ASSOCIATED(SolverMatrix)) THEN
       A => SolverMatrix
     ELSE
       A => TotMatrix % SubMatrix(1,1) % Mat
     END IF
+
+    !IF( ListGetLogical( Solver % Values,'Linear System Complex', Found ) ) A % COMPLEX = .TRUE.
+
     IF (isParallel) THEN
         A => A % ParMatrix % SplittedMatrix % InsideMatrix
       CALL IterSolver( A,x,b,&
@@ -1874,8 +2173,14 @@ CONTAINS
         END DO
       END IF
     ELSE
-      CALL IterSolver( A,x,b,&
-          Solver,ndim=ndim,MatvecF=mvProc,PrecF=precProc )
+      IF( ListGetLogical( Params,'Linear System test',Found ) ) THEN
+        CALL IterSolver( A,x,b,&
+            Solver,ndim=ndim,MatvecF=mvProc,PrecF=precProc,&
+            DotF=AddrFunc(PseudoZDotProd) )
+      ELSE
+        CALL IterSolver( A,x,b,&
+            Solver,ndim=ndim,MatvecF=mvProc,PrecF=precProc) 
+      END IF
     END IF
     CALL info('BlockSolver','Finished block system iteration',Level=18)
     
@@ -1951,7 +2256,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: SaveValues(:), SaveRHS(:)
     CHARACTER(LEN=max_name_len) :: str, VarName, ColName, RowName
     LOGICAL :: Robust, LinearSearch, ErrorReduced, IsProcedure, ScaleSystem,&
-        ReuseMatrix, LS
+        ReuseMatrix, LS, BlockScaling
     INTEGER :: HaveConstraint, HaveAdd
     INTEGER, POINTER :: VarPerm(:)
     INTEGER, POINTER :: SlaveSolvers(:)
@@ -1979,6 +2284,8 @@ CONTAINS
       BlockPrec = .TRUE.
     END IF
 
+    BlockScaling = ListGetLogical( Params,'Block Scaling',GotIt)
+    
     BlockGS = ListGetLogical( Params,'Block Gauss-Seidel',GotIt)    
     BlockJacobi = ListGetLogical( Params,'Block Jacobi',GotIt)
     
@@ -2081,6 +2388,12 @@ CONTAINS
       
     TotNorm = 0.0_dp
     MaxChange = 0.0_dp
+
+    IF( BlockScaling ) THEN   
+      CALL CreateBlockMatrixScaling()
+      CALL BlockMatrixScaling(.FALSE.)
+    END IF
+    
     
     CALL ListPushNamespace('outer:')
     
@@ -2109,6 +2422,12 @@ CONTAINS
 
     CALL ListPopNamespace('outer:')
 
+    IF( BlockScaling ) THEN
+      CALL BlockMatrixScaling(.TRUE.)
+      CALL DestroyBlockMatrixScaling()
+    END IF
+
+    
     ! For legacy matrices do the backmapping 
     !------------------------------------------
     SolverMatrix % RHS => SaveRHS
