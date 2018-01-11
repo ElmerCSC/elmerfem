@@ -1090,20 +1090,20 @@ print*,'circ enter', parenv % mype; flush(6)
   
   ! Initialialize Circuit matrix:
   ! -----------------------------
-  print *, ParEnv % MyPe, "CommSave1", CommSave
-  IF (ASSOCIATED(SaveActive)) THEN
-    Print *, ParEnv % MyPe, "SaveActive1", SaveActive
-  ELSE
-    Print *, ParEnv % MyPe, "SaveActive1 not associated"
-  END IF
+!  print *, ParEnv % MyPe, "CommSave1", CommSave
+!  IF (ASSOCIATED(SaveActive)) THEN
+!    Print *, ParEnv % MyPe, "SaveActive1", SaveActive
+!  ELSE
+!    Print *, ParEnv % MyPe, "SaveActive1 not associated"
+!  END IF
   CALL SetCircuitsCommunicator(CM, CommSave, SaveActive)
-
-  print *, ParEnv % MyPe, "CommSave2", CommSave
-  IF (ASSOCIATED(SaveActive)) THEN
-    Print *, ParEnv % MyPe, "SaveActive1", SaveActive
-  ELSE
-    Print *, ParEnv % MyPe, "SaveActive1 not associated"
-  END IF
+!
+!  print *, ParEnv % MyPe, "CommSave2", CommSave
+!  IF (ASSOCIATED(SaveActive)) THEN
+!    Print *, ParEnv % MyPe, "SaveActive1", SaveActive
+!  ELSE
+!    Print *, ParEnv % MyPe, "SaveActive1 not associated"
+!  END IF
   IF (ASSOCIATED(CM) .AND. .NOT. SIZE(CM % values) <= 0) THEN
 
     CM % RHS = 0._dp

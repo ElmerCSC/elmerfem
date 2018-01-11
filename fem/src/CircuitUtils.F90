@@ -251,7 +251,9 @@ CONTAINS
     INTEGER, ALLOCATABLE :: memb(:)
     INTEGER :: i, n, comm_active, group_active, group_world, ierr
 
-    IF (ParEnv % PEs>1) THEN
+    n = ParEnv % PEs
+
+    IF (n>1) THEN
       SaveActive => Parenv % Active
       Parenv % Active => NULL()
       active = ASSOCIATED(CM)
@@ -1044,6 +1046,8 @@ variable % owner = 0
 variable % owner = ParEnv % PEs-1
     END IF
 
+variable % owner = ParEnv % PEs-1
+
     IF (Circuit % Harmonic) THEN
       IF (Circuit % UsePerm) THEN
         Variable % valueId = Circuit % Perm(Circuit_tot_n + 1)
@@ -1468,6 +1472,35 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+   SUBROUTINE SetCircuitsParallelInfoShareAll()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Matrix_t), POINTER :: CM
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER :: PEs, i, nm, k
+
+    CM => CurrentModel%CircuitMatrix
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('SetCircuitsParallelInfoShareAll','ASolver not found!')
+    nm = ASolver % Matrix % NumberOfRows
+
+    PEs = ParEnv % PEs
+
+    IF(.NOT.ASSOCIATED(CM % ParallelInfo)) THEN
+      ALLOCATE(CM % ParallelInfo)
+      ALLOCATE(CM % ParallelInfo % NeighbourList(CM % NumberOfRows))
+      DO i=nm + 1,CM % NumberOfRows
+        DO k = 1, PEs
+          CM % ParallelInfo % NeighbourList(i) % Neighbours(k) = PEs - k
+        END DO
+      END DO
+    END IF
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetCircuitsParallelInfoShareAll
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
    SUBROUTINE SetCircuitsParallelInfo()
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -1504,11 +1537,14 @@ CONTAINS
 #endif
     END IF
 
+!    CALL SetCircuitsParallelInfoShareAll()
+
     DO p = 1,n_Circuits
       DO i=1,Circuits(p) % n
         cnt  = 0
         Cvar => Circuits(p) % CircuitVariables(i)
         cvardofs = Cvar % dofs
+        Cvar % Owner = ParEnv % PEs - 1
         IF(ASSOCIATED(CVar%Component)) THEN
           Comp => Cvar%Component
           IF (Comp % Parallel) THEN
