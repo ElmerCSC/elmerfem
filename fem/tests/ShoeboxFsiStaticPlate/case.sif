@@ -126,14 +126,14 @@ Solver 1
   Outer: Linear System Max Iterations = integer 50
   Outer: Linear System Min Iterations = integer 3
 
-  Linear System Scaling = True  ! seems to work with these as well
-  Optimize Bandwidth = True
+!  Linear System Scaling = True  ! seems to work with these as well
+!  Optimize Bandwidth = True
 
   Block Preconditioner = Logical True ! default
   Block Gauss-Seidel = Logical True   ! if false, jacobi
 
 ! First coupling only works in real mode
-  Linear System Complex = False
+!  Linear System Complex = False
 End
 
 
@@ -169,8 +169,8 @@ Solver 2
 ! For hamonic mode the default is True
 !  Linear System Complex = False
 
-  Linear System Scaling = False
-  Optimize Bandwidth = False
+!  Linear System Scaling = False
+!  Optimize Bandwidth = False
 
   Exec Solver = never
   Linear System Solver Disabled = Logical True  
@@ -224,4 +224,3 @@ End
 
 
 Solver 1 :: reference norm = 4.99291493E+04
-Solver 2 :: reference norm = 2.59187778E-08
