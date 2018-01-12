@@ -1490,36 +1490,49 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        
        INTEGER, ALLOCATABLE :: Row(:)
        INTEGER :: NVals
-       INTEGER :: i,j,k,istat,n
+       INTEGER :: i,j,k,istat,nb, na
 
+       CALL Info('CRS_Transpose','Creating a transpose of matrix',Level=20)
+       
        B => AllocateMatrix()
        
+       na = A % NumberOfRows
+       IF( na == 0 ) THEN
+         B % NumberOfRows = 0
+         RETURN
+       END IF
+       
        NVals = SIZE( A % Values )
-       B % NumberOfRows = MAXVAL( A % Cols )
+       nb = MAXVAL( A % Cols )
+       B % NumberOfRows = nb
+       
+       ALLOCATE( B % Rows( nb +1 ), B % Cols( NVals ), &
+           B % Values( Nvals ), Row( nb ), STAT=istat )
+       IF ( istat /= 0 )  CALL Fatal( 'CRS_Transpose','Memory allocation error.' )
 
-       ALLOCATE( B % Rows( B % NumberOfRows +1 ), B % Cols( NVals ), &
-           B % Values( Nvals ), B % Diag( B % NumberOfRows ), Row( B % NumberOfRows ), &
-           STAT=istat )
-       IF ( istat /= 0 )  CALL Fatal( 'CRS_Transpose', &
-           'Memory allocation error.' )
-
-       B % Diag = 0
+       IF( ASSOCIATED( A % Diag ) ) THEN
+         ALLOCATE( B % Diag(nb) )       
+         B % Diag = 0
+       END IF
+         
        Row = 0       
        DO i = 1, NVals
          Row( A % Cols(i) ) = Row( A % Cols(i) ) + 1
        END DO
        
+       B % Rows = 0
        B % Rows(1) = 1
-       DO i = 1, B % NumberOfRows
+       DO i = 1, nB
          B % Rows(i+1) = B % Rows(i) + Row(i)
        END DO
        B % Cols = 0
        
-       DO i = 1, B % NumberOfRows
+       DO i = 1, nB
          Row(i) = B % Rows(i)
        END DO
-      
-       DO i = 1, A % NumberOfRows
+
+       
+       DO i = 1, nA
 
          DO j = A % Rows(i), A % Rows(i+1) - 1
            k = A % Cols(j)
@@ -1535,9 +1548,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
            END IF
          END DO
        END DO
-
+              
        DEALLOCATE( Row )
-
+       
 !------------------------------------------------------------------------------
      END FUNCTION CRS_Transpose
 !------------------------------------------------------------------------------

@@ -1203,7 +1203,7 @@ CONTAINS
         
         A => TotMatrix % SubMatrix(i,j) % Mat
         IF( A % NumberOfRows > 0 ) THEN
-        
+          
           IF( MAXVAL( A % Cols ) > offset(j+1)-offset(j) ) THEN
             CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
                 //TRIM(I2S(MAXVAL( A % Cols )))//' vs. '//TRIM(I2S(offset(j+1)-offset(j))))
@@ -1222,7 +1222,7 @@ CONTAINS
             CALL CRS_MatrixVectorMultiply( A, u(j1:j2), s )
           END IF
           DoSum = .TRUE.
-
+          
         ELSE IF( TotMatrix % SubMatrixTranspose(j,i) ) THEN          
           A => TotMatrix % SubMatrix(j,i) % Mat
           IF( A % NumberOfRows > 0 ) THEN            
@@ -1252,7 +1252,7 @@ CONTAINS
           END DO
         END IF
       END DO
-
+      
       IF( InfoActive( 15 ) ) THEN
         i1 = offset(i)+1
         i2 = offset(i+1)
@@ -1286,24 +1286,27 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,n,m,NoVar
     REAL(KIND=dp) :: nrm, tmp
-    TYPE(Matrix_t), POINTER :: A
+    TYPE(Matrix_t), POINTER :: A, Atrans
     REAL(KIND=dp), POINTER :: b(:), Diag(:), Values(:)
-    LOGICAL :: Transpose, ComplexMatrix
+    LOGICAL :: ComplexMatrix, GotIt
     INTEGER, POINTER :: Rows(:), Cols(:)
     
     
     CALL Info('CreateBlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
     
     NoVar = TotMatrix % NoVar
- 
-    DO k=1,NoVar
 
+    
+    DO k=1,NoVar
+      GotIt = .FALSE.
       A => TotMatrix % SubMatrix(k,k) % Mat
-      IF( A % NumberOfRows > 0 ) THEN
-        ComplexMatrix = A % COMPLEX
-      ELSE
-        CALL Warn('CreateBlockMatrixScaling','Improve complex matrix detection!')
+      IF( ASSOCIATED( A ) ) THEN
+        IF( A % NumberOfRows > 0 ) THEN
+          GotIt = .TRUE.
+          ComplexMatrix = A % COMPLEX
+        END IF
       END IF
+      IF(.NOT. GotIt) CALL Warn('CreateBlockMatrixScaling','Improve complex matrix detection!')
         
       IF( ComplexMatrix ) THEN
         m = 2
@@ -1312,26 +1315,32 @@ CONTAINS
       END IF
       
       n = TotMatrix % offset(k+1) - TotMatrix % offset(k)
+
       IF( .NOT. ALLOCATED( Totmatrix % SubVector(k) % DiagScaling ) ) THEN
         ALLOCATE( TotMatrix % SubVector(k) % DiagScaling(n) )
       END IF
-
+      
       Diag => TotMatrix % SubVector(k) % DiagScaling
       Diag = 0.0_dp
+
       
       DO l=1,NoVar
+        
         A => TotMatrix % SubMatrix(k,l) % Mat
-        IF( A % NumberOfRows >  0 ) THEN
-          Transpose = .FALSE.
-        ELSE IF( TotMatrix % SubMatrixTranspose(l,k) ) THEN                    
-          A => TotMatrix % SubMatrix(l,k) % Mat
-          IF( A % NumberOfRows >  0 ) THEN
-            Transpose = .TRUE.
-          ELSE
-            CYCLE
+
+        IF( A % NumberOfRows ==  0 ) THEN
+          IF( TotMatrix % SubMatrixTranspose(l,k) ) THEN                    
+            CALL Info('CreateBlockMatrixScaling','Creating the transpose for real!')
+            Atrans => CRS_Transpose( TotMatrix % SubMatrix(l,k) % Mat ) 
+            TotMatrix % Submatrix(k,l) % Mat => Atrans
+            TotMatrix % SubMatrixTranspose(l,k) = .FALSE.
+            A => Atrans
           END IF
         END IF
-                          
+        
+        IF(.NOT. ASSOCIATED( A  ) ) CYCLE
+        IF( A % NumberOfRows ==  0 ) CYCLE
+
         Rows   => A % Rows
         Cols   => A % Cols
         Values => A % Values
@@ -1339,26 +1348,23 @@ CONTAINS
         !---------------------------------------------
         ! Compute 1-norm of each row
         !---------------------------------------------
-        IF( Transpose ) THEN
-          CALL Fatal('BlockMatrixScaling','Do the tranpose stuff!')
-        ELSE
-          DO i=1,n,m
-            tmp = 0.0d0
-            
-            IF( ComplexMatrix ) THEN
-              DO j=Rows(i),Rows(i+1)-1,2
-                tmp = tmp + SQRT( Values(j)**2 + Values(j+1)**2 )
-              END DO
-            ELSE
-              DO j=Rows(i),Rows(i+1)-1        
-                tmp = tmp + ABS(Values(j))          
-              END DO
-            END IF
-            
-            ! Compute the sum to the real component, scaling for imaginary will be the same
-            Diag(i) = Diag(i) + tmp
-          END DO
-        END IF
+        DO i=1,n,m
+          tmp = 0.0d0
+
+          IF( ComplexMatrix ) THEN
+            DO j=Rows(i),Rows(i+1)-1,2
+              tmp = tmp + SQRT( Values(j)**2 + Values(j+1)**2 )
+            END DO
+          ELSE
+            DO j=Rows(i),Rows(i+1)-1        
+              tmp = tmp + ABS(Values(j))          
+            END DO
+          END IF
+
+          ! Compute the sum to the real component, scaling for imaginary will be the same
+          Diag(i) = Diag(i) + tmp
+        END DO
+
       END DO
               
       IF (ParEnv % PEs > 1) THEN
@@ -1409,7 +1415,6 @@ CONTAINS
     REAL(KIND=dp) :: nrm, tmp
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp), POINTER :: b(:), Diag(:), Values(:)
-    LOGICAL :: Transpose
     INTEGER, POINTER :: Rows(:), Cols(:)
     LOGICAL :: backscale
     
@@ -1435,7 +1440,7 @@ CONTAINS
       n = TotMatrix % offset(k+1) - TotMatrix % offset(k)
       Diag => TotMatrix % SubVector(k) % DiagScaling
       IF( .NOT. ASSOCIATED( Diag ) ) THEN
-        CALL Fatal('BlockMatrixScaling','Diag not associated!')
+        CALL Fatal('BlockMatrixScaling','Diag for scaling not associated!')
       END IF
       
       IF( BackScale ) Diag = 1.0_dp / Diag 
@@ -1447,21 +1452,12 @@ CONTAINS
         END IF
         
         A => TotMatrix % SubMatrix(k,l) % Mat
-        IF( A % NumberOfRows >  0 ) THEN
-          Transpose = .FALSE.
-        ELSE IF( TotMatrix % SubMatrixTranspose(l,k) ) THEN                    
-          A => TotMatrix % SubMatrix(l,k) % Mat
-          IF( A % NumberOfRows >  0 ) THEN
-            Transpose = .TRUE.
-          ELSE
-            CYCLE
-          END IF
-        END IF
+        IF( A % NumberOfRows == 0 ) CYCLE
                           
         Rows   => A % Rows
         Cols   => A % Cols
         Values => A % Values
-                  
+        
         DO i=1,n    
           DO j=Rows(i),Rows(i+1)-1
             Values(j) = Values(j) * Diag(i)
