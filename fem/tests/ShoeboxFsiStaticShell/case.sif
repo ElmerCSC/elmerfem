@@ -144,6 +144,7 @@ Solver 2
   Procedure = "ShellSolver" "ShellSolver"
 
   Linear System Solver = "Direct"
+!  Linear System Direct Method = MUMPS
   Linear System Direct Method = Umfpack
 
   Linear System Preconditioning = ILU2
