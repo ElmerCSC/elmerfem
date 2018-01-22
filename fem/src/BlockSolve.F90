@@ -1285,17 +1285,24 @@ CONTAINS
   SUBROUTINE CreateBlockMatrixScaling( )
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,n,m,NoVar
-    REAL(KIND=dp) :: nrm, tmp
+    REAL(KIND=dp) :: nrm, tmp, blocknrm
     TYPE(Matrix_t), POINTER :: A, Atrans
     REAL(KIND=dp), POINTER :: b(:), Diag(:), Values(:)
-    LOGICAL :: ComplexMatrix, GotIt
+    LOGICAL :: ComplexMatrix, GotIt, DiagOnly
     INTEGER, POINTER :: Rows(:), Cols(:)
+    LOGICAL :: Found
     
     
     CALL Info('CreateBlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
     
     NoVar = TotMatrix % NoVar
 
+    DiagOnly = ListGetLogical( CurrentModel % Solver % Values,'Block Scaling Diagonal',Found ) 
+    IF( DiagOnly ) THEN
+       CALL Info('CreateBlockMatrixScaling',&
+            'Considering only diagonal matrices in scaling',Level=20)      
+    END IF
+    
     
     DO k=1,NoVar
       GotIt = .FALSE.
@@ -1310,9 +1317,13 @@ CONTAINS
         
       IF( ComplexMatrix ) THEN
         m = 2
+        CALL Info('CreateBlockMatrixScaling',&
+            'Assuming complex matrix block: '//TRIM(I2S(k)),Level=20)
       ELSE
         m = 1
-      END IF
+        CALL Info('CreateBlockMatrixScaling',&
+            'Assuming real valued matrix block: '//TRIM(I2S(k)),Level=20)
+      END IF     
       
       n = TotMatrix % offset(k+1) - TotMatrix % offset(k)
 
@@ -1325,6 +1336,10 @@ CONTAINS
 
       
       DO l=1,NoVar
+
+        IF( DiagOnly ) THEN
+          IF( k /= l ) CYCLE
+        END IF
         
         A => TotMatrix % SubMatrix(k,l) % Mat
 
@@ -1348,8 +1363,9 @@ CONTAINS
         !---------------------------------------------
         ! Compute 1-norm of each row
         !---------------------------------------------
+        blocknrm = 0.0_dp
         DO i=1,n,m
-          tmp = 0.0d0
+          tmp = 0.0_dp
 
           IF( ComplexMatrix ) THEN
             DO j=Rows(i),Rows(i+1)-1,2
@@ -1361,12 +1377,16 @@ CONTAINS
             END DO
           END IF
 
+          blocknrm = MAX( blocknrm, tmp ) 
+          
           ! Compute the sum to the real component, scaling for imaginary will be the same
           Diag(i) = Diag(i) + tmp
         END DO
 
+        PRINT *,'BlockNorm:',k,l,blocknrm
+        
       END DO
-              
+      
       IF (ParEnv % PEs > 1) THEN
         CALL ParallelSumVector(A, Diag)
       END IF
