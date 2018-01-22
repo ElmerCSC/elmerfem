@@ -11942,29 +11942,45 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
 !> A parser of the variable name that returns the true variablename
 !> where the inline options have been interpreted.
 !------------------------------------------------------------------------------
-SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs )
+SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable )
 
   CHARACTER(LEN=*)  :: var_name
   LOGICAL, OPTIONAL :: NoOutput, Global
   INTEGER, OPTIONAL :: Dofs
-
-  INTEGER :: i,j,k
+  LOGICAL, OPTIONAL :: IpVariable
+  LOGICAL, OPTIONAL :: ElemVariable
+  
+  INTEGER :: i,j,k,m
 
   IF(PRESENT(NoOutput)) NoOutput = .FALSE.
   IF(PRESENT(Global)) Global = .FALSE.
   IF(PRESENT(Dofs)) Dofs = 0
-
+  IF(PRESENT(IpVariable)) IpVariable = .FALSE.
+  
   DO WHILE( var_name(1:1) == '-' )
+
+    m = 0
     IF ( SEQL(var_name, '-nooutput ') ) THEN
       IF(PRESENT(NoOutput)) NoOutput = .TRUE.
-      var_name(1:LEN(var_name)-10) = var_name(11:)
-    END IF
-    
-    IF ( SEQL(var_name, '-global ') ) THEN
+      m = 10
+
+    ELSE IF ( SEQL(var_name, '-global ') ) THEN
       IF(PRESENT(Global)) Global = .TRUE.
-      var_name(1:LEN(var_name)-8) = var_name(9:)
+      m = 8
+
+    ELSE IF ( SEQL(var_name, '-ip ') ) THEN
+      IF(PRESENT(IpVariable)) IpVariable = .TRUE.      
+      m = 4
+
+    ELSE IF ( SEQL(var_name, '-elem ') ) THEN
+      IF(PRESENT(ElemVariable)) ElemVariable = .TRUE.      
+      m = 6
     END IF
     
+    IF( m > 0 ) THEN
+      var_name(1:LEN(var_name)-m) = var_name(m+1:)
+    END IF
+   
     IF ( SEQL(var_name, '-dofs ') ) THEN
       IF(PRESENT(DOFs)) READ( var_name(7:), * ) DOFs     
       j = LEN_TRIM( var_name )
@@ -11988,42 +12004,53 @@ END SUBROUTINE VariableNameParser
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   
-  INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize
+  INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize,i1,i2
   CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name,tmpname,condname
   REAL(KIND=dp), POINTER :: Values(:), Solution(:), LocalSol(:), LocalCond(:)
   INTEGER, POINTER :: Indexes(:), Perm(:)
-  LOGICAL :: Found, AllocationsDone, Conditional, GotIt, StateVariable
+  LOGICAL :: Found, Conditional, GotIt, Stat, StateVariable, AllocationsDone
   LOGICAL, POINTER :: ActivePart(:),ActiveCond(:)
   TYPE(Variable_t), POINTER :: ExpVariable
   TYPE(ValueList_t), POINTER :: ValueList
-  TYPE(Element_t),POINTER :: Element
+  TYPE(Element_t),POINTER :: Element  
+  TYPE(GaussIntegrationPoints_t) :: IP
+  TYPE(Nodes_t) :: Nodes
+  REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+  REAL(KIND=dp) :: detJ
+  TYPE(ValueHandle_t) :: LocalSol_h
+  TYPE(Mesh_t), POINTER :: Mesh
+  
+  SAVE LocalSol_h
 
-  SAVE AllocationsDone
+  CALL Info('UpdateExportedVariables','Updating variables, if any!',Level=20)
 
   AllocationsDone = .FALSE.
-
+  Mesh => Solver % Mesh
+  
   l = 0
   DO WHILE( .TRUE. )
     l = l + 1
     str = ComponentName( 'exported variable', l )
-    var_name = ListGetString( Solver % Values, str, GotIt )
-    
+    var_name = ListGetString( Solver % Values, str, GotIt )    
     IF(.NOT. GotIt) EXIT
     
     CALL VariableNameParser( var_name ) 
-
-    ExpVariable => VariableGet( Solver % Mesh % Variables, Var_name )
+    
+    ExpVariable => VariableGet( Mesh % Variables, Var_name )
     IF( .NOT. ASSOCIATED(ExpVariable)) CYCLE
     
     WRITE(Message,*) 'Trying to set values for variable: '//TRIM(Var_name)
     CALL Info('UpdateExportedVariables',Message,Level=6)
-  
-    IF( .NOT. AllocationsDone) THEN      
+
+    IF(.NOT. AllocationsDone ) THEN
       m = CurrentModel % NumberOFBodyForces
       ALLOCATE( ActivePart(m), ActiveCond(m) )
-
-      m = Solver % Mesh % MaxElementDOFs
+      
+      m = Mesh % MaxElementDOFs
       ALLOCATE( LocalSol(m), LocalCond(m))
+      
+      m =  CurrentModel % MaxElementNodes
+      ALLOCATE( Basis(m), Nodes % x(m), Nodes % y(m), Nodes % z(m) )
 
       AllocationsDone = .TRUE.
     END IF
@@ -12032,9 +12059,10 @@ END SUBROUTINE VariableNameParser
     Values => ExpVariable % Values
     Perm => ExpVariable % Perm
     n = LEN_TRIM( var_name )
-
+    
     StateVariable = ( SIZE( Values ) == DOFs )
     IF( StateVariable ) THEN
+      CALL Info('UpdateExportedVariables','Updating state variable',Level=20)
       IF( Dofs > 1 ) THEN
         tmpname = ComponentName( var_name(1:n), j )
         Solution => Values( j:j )
@@ -12053,22 +12081,24 @@ END SUBROUTINE VariableNameParser
         END IF
       END DO
       CYCLE
-    END IF	
+    END IF
 
-    
+    CALL Info('UpdateExportedVariables','Updating field variable with dofs: '//TRIM(I2S(DOFs)),Level=20)
+
+        
     DO j=1,DOFs
       
       IF( Dofs > 1 ) THEN
         tmpname = ComponentName( var_name(1:n), j )
         nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs
-        Perm => Solver % Variable % Perm
+        !Perm => Solver % Variable % Perm
         Solution => Values( j:nSize-DOFs+j:DOFs )
       ELSE
         tmpname = var_name(1:n)
         Solution => Values
       END IF
       condname = TRIM(tmpname) //' Condition' 
-        
+      
       !------------------------------------------------------------------------------
       ! Go through the Dirichlet conditions in the body force lists
       !------------------------------------------------------------------------------
@@ -12087,11 +12117,19 @@ END SUBROUTINE VariableNameParser
 
       CALL Info('UpdateExportedVariables','Found a proper definition in body forces',Level=6)
 
-      DO t = 1, Solver % NumberOfActiveElements 
-        Element => CurrentModel % Elements(Solver % ActiveElements(t) )
+      
+      IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
+        ! Initialize handle when doing values on Gauss points!
+        CALL ListInitElementKeyword( LocalSol_h,'Body Force',TmpName )
+      END IF
+
+      
+      DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(t) 
+        IF( Element % BodyId <= 0 ) CYCLE
         bf_id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values,&
             'Body Force',GotIt)
-        
+
         IF(.NOT. GotIt) CYCLE
         IF(.NOT. ActivePart(bf_id)) CYCLE
         Conditional = ActiveCond(bf_id)
@@ -12101,27 +12139,70 @@ END SUBROUTINE VariableNameParser
         Indexes => Element % NodeIndexes
         ValueList => CurrentModel % BodyForces(bf_id) % Values
         
-        LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
-        IF( Conditional ) THEN
-          LocalCond(1:m) = ListGetReal(ValueList, CondName, m, Indexes(1:m) )
-          DO i=1,m
-            IF( LocalCond(i) > 0.0_dp ) THEN
-              Solution( Perm(Indexes(i)) ) = LocalSol(i)
+        IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
+
+          i1 = Perm( Element % ElementIndex )
+          i2 = Perm( Element % ElementIndex + 1 )
+
+          IF( i2 - i1 > 0 ) THEN            
+            Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
+            Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
+            Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+
+                       
+            IP = GaussPoints( Element )
+            IF( i2 - i1 /= Ip % n ) THEN
+              CALL Warn('UpdateExportedVariables','Incompatible number of Gauss points, skipping')
+            ELSE
+              IF( Conditional ) THEN
+                CALL Warn('UpdateExportedVariable','Elemental variables not conditional!')
+              END IF
+              
+              DO k=1,IP % n
+                stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
+                    IP % W(k), detJ, Basis )
+                Solution(i1+k) = ListGetElementReal( LocalSol_h,Basis,Element,Found,GaussPoint=k) 
+              END DO
             END IF
-          END DO
+          END IF
+          
+        ELSE IF( ExpVariable % TYPE == Variable_on_elements ) THEN
+          IF( Conditional ) THEN
+            CALL Warn('UpdateExportedVariable','Elemental variables not conditional!')
+          END IF
+          LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
+          i = Perm( Element % ElementIndex ) 
+          IF( i > 0 ) Solution(i) = SUM( LocalSol(1:m) ) / m
+          
         ELSE
-          Solution( Perm(Indexes(1:m)) ) = LocalSol(1:m)
+          LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
+                    
+          IF( Conditional ) THEN
+            LocalCond(1:m) = ListGetReal(ValueList, CondName, m, Indexes(1:m) )
+            DO i=1,m
+              IF( LocalCond(i) > 0.0_dp ) THEN
+                IF( Perm(Indexes(i)) > 0 ) THEN
+                  Solution( Perm(Indexes(i)) ) = LocalSol(i)
+                END IF
+              END IF
+            END DO
+          ELSE
+            IF( ALL( Perm(Indexes(1:m)) > 0 ) ) THEN
+              Solution( Perm(Indexes(1:m)) ) = LocalSol(1:m)
+            END IF
+          END IF
+          
         END IF
       END DO
-        
+      
     END DO
   END DO
 
   IF( AllocationsDone ) THEN
-    DEALLOCATE(ActivePart, ActiveCond, LocalSol, LocalCond)
-    AllocationsDone = .FALSE.
+    DEALLOCATE(ActivePart, ActiveCond, LocalSol, LocalCond, Basis, &
+        Nodes % x, Nodes % y, Nodes % z )
   END IF
-
+    
 END SUBROUTINE UpdateExportedVariables
 
 

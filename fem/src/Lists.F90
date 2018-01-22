@@ -52,6 +52,8 @@ MODULE Lists
    USE LoadMod
 #endif
 
+#define NEWSTR 1
+   
    IMPLICIT NONE
 
    INTEGER, PARAMETER :: LIST_TYPE_LOGICAL = 1
@@ -620,7 +622,8 @@ CONTAINS
 
       ptr % NonlinChange = 0.0_dp
       ptr % SteadyChange = 0.0_dp
-      ptr % NonlinValues => NULL(); ptr % SteadyValues => NULL()
+      ptr % NonlinValues => NULL()
+      ptr % SteadyValues => NULL()
       ptr % NonlinIter = 0
 
       ptr % Solver => VSolver
@@ -630,7 +633,7 @@ CONTAINS
       ptr % Output = .TRUE.
       ptr % Secondary = .FALSE.
       ptr % ValuesChanged = .TRUE.
-
+      
 ! Converged information undefined = -1, not = 0, yes = 1
       ptr % NonlinConverged = -1
       ptr % SteadyConverged = -1    
@@ -638,7 +641,7 @@ CONTAINS
       IF ( PRESENT( Secondary ) ) THEN
         ptr % Secondary = Secondary
       END IF
-
+      
       IF ( PRESENT( TYPE ) ) ptr % TYPE = TYPE
       IF ( PRESENT( Output ) ) ptr % Output = Output
 !------------------------------------------------------------------------------
@@ -879,7 +882,7 @@ CONTAINS
 !> Also allocates the field values if not given in the parameter list. 
 !------------------------------------------------------------------------------
     SUBROUTINE VariableAddVector( Variables,Mesh,Solver,Name,DOFs,Values,&
-      Perm,Output,Secondary,Global,InitValue )
+      Perm,Output,Secondary,TYPE,Global,InitValue,IpPoints)
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       TYPE(Mesh_t),   TARGET :: Mesh
@@ -890,12 +893,15 @@ CONTAINS
       LOGICAL, OPTIONAL :: Output
       INTEGER, OPTIONAL, POINTER :: Perm(:)
       LOGICAL, OPTIONAL :: Secondary
+      INTEGER, OPTIONAL :: TYPE
       LOGICAL, OPTIONAL :: Global
       REAL(KIND=dp), OPTIONAL :: InitValue
+      LOGICAL, OPTIONAL :: IpPoints
 !------------------------------------------------------------------------------
       CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
       REAL(KIND=dp), POINTER :: Component(:), TmpValues(:)
       INTEGER :: i,nsize, ndofs
+      LOGICAL :: IsPerm, IsGlobal, IsIPPoints
 !------------------------------------------------------------------------------
             
       IF( PRESENT( DOFs ) ) THEN
@@ -904,20 +910,33 @@ CONTAINS
         ndofs = 1
       END IF
 
+      IsPerm = .FALSE.
+      IsGlobal = .FALSE.
+      IsIPPoints = .FALSE.
+
+      IsPerm = PRESENT( Perm ) 
+      IF( PRESENT( Global ) ) IsGlobal = Global
+      IF( PRESENT( IPPoints ) ) IsIPPoints = IPPoints
+      
+
       CALL Info('VariableAddVector','Adding variable > '//TRIM(Name)//' < with '&
           //TRIM(I2S(ndofs))//' components',Level=15)
       
       IF(PRESENT(Values)) THEN
         TmpValues => Values
       ELSE
-        IF( PRESENT( Perm ) ) THEN 
+        IF( IsPerm ) THEN
           nsize = MAXVAL( Perm ) 
-        ELSE IF( PRESENT( Global ) ) THEN
-          IF( Global ) THEN
-            nsize = 1 
-          ELSE
-            nsize = Mesh % NumberOfNodes
+        ELSE IF( IsGlobal ) THEN
+          nsize = 1 
+        ELSE IF( IsIpPoints ) THEN
+          IF( .NOT. PRESENT( Solver ) ) THEN
+            CALL Fatal('VariableAddVector','Integration point variable needs a Solver!')
           END IF
+          IF( .NOT. ASSOCIATED( Solver % IPTable ) ) THEN
+            CALL Fatal('VariableAddVector','Integration point variable needs an IpTable')
+          END IF
+          nsize = Solver % IPTable % IPCount
         ELSE
           nsize = Mesh % NumberOfNodes          
         END IF
@@ -935,12 +954,12 @@ CONTAINS
           tmpname = ComponentName(Name,i)
           Component => TmpValues(i::nDOFs)
           CALL VariableAdd( Variables,Mesh,Solver,TmpName,1,Component,&
-              Perm,Output,Secondary)
+              Perm,Output,Secondary,Type)
         END DO
       END IF
 
       CALL VariableAdd( Variables,Mesh,Solver,Name,nDOFs,TmpValues,&
-            Perm,Output,Secondary )
+            Perm,Output,Secondary,Type)
 
 !------------------------------------------------------------------------------
     END SUBROUTINE VariableAddVector
@@ -2993,11 +3012,7 @@ CONTAINS
 
      x = 0.0_dp
      IF ( ASSOCIATED(List % head) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, UnfoundFatal=UnfoundFatal )
-        ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, UnfoundFatal=UnfoundFatal)
-        END IF
+       x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, UnfoundFatal=UnfoundFatal )
      END IF
      s = x(1)
 !------------------------------------------------------------------------------
@@ -3042,18 +3057,219 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-  SUBROUTINE ListParseStrToValues( str, slen, ind, name, T, count, AllGlobal )
+!> Given a string containing comma-separated variablenames, reads the strings
+!> and obtains the corresponging variables to a table.
+!------------------------------------------------------------------------------
+  SUBROUTINE ListParseStrToVars( str, slen, name, count, VarTable, &
+      SomeAtIp, SomeAtNodes )
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: str, name
+     INTEGER :: slen, count
+     TYPE(VariableTable_t) :: VarTable(:)
+     LOGICAL :: SomeAtIp, SomeAtNodes
+!------------------------------------------------------------------------------
+     INTEGER :: i,j,k,n,k1,l,l0,l1
+     TYPE(Variable_t), POINTER :: Var
+
+     SomeAtIp = .FALSE.
+     SomeAtNodes = .FALSE.
+     
+     count=0
+     l0=1
+     IF(slen<=0) RETURN
+
+     DO WHILE( .TRUE. )
+       DO WHILE( str(l0:l0) == ' ' )
+         l0 = l0 + 1
+         IF ( l0 > slen ) EXIT
+       END DO
+       IF ( l0 > slen ) EXIT
+
+       l1 = INDEX( str(l0:slen),',')
+       IF ( l1 > 0 ) THEN
+         l1=l0+l1-2
+       ELSE
+         l1=slen
+       END IF
+
+       IF ( str(l0:l1) == 'coordinate' ) THEN
+         VarTable(count+1) % Variable => VariableGet( CurrentModel % Variables,"coordinate 1")
+         VarTable(count+2) % Variable => VariableGet( CurrentModel % Variables,"coordinate 2")
+         VarTable(count+3) % Variable => VariableGet( CurrentModel % Variables,"coordinate 3")
+         count = count + 3 
+         SomeAtNodes = .TRUE.
+       ELSE
+         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )
+         IF ( .NOT. ASSOCIATED( Var ) ) THEN
+           CALL Fatal( 'ListParseStrToVars', 'Can''t find dependent variable:['// &
+               TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
+         END IF
+         count = count + 1
+         VarTable(count) % Variable => Var
+
+         IF( Var % TYPE == Variable_on_gauss_points ) THEN
+           SomeAtIp = .TRUE.
+         ELSE
+           SomeAtNodes = .TRUE.
+         END IF
+         
+       END IF
+       
+       !PRINT *,'found variable: '//TRIM(str(l0:l1))
+        
+       l0 = l1+2
+       IF ( l0 > slen ) EXIT       
+     END DO
+
+     !PRINT *,'Number of variables:',count
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListParseStrToVars
+!------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------------------------
+!> Given a table of variables and a node index return the variable values on the node.
+!-------------------------------------------------------------------------------------
+  SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count, AllGlobal )
+!------------------------------------------------------------------------------
+     INTEGER :: Varcount
+     TYPE(VariableTable_t) :: VarTable(:)
+     INTEGER :: ind
+     INTEGER :: count
+     REAL(KIND=dp) :: T(:)
+     LOGICAL :: AllGlobal
+     LOGICAL :: SomeAtIp
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: i,j,k,n,k1,l,varsize,vari
+     TYPE(Variable_t), POINTER :: Var
+     LOGICAL :: Failed
+     
+     count = 0
+     AllGlobal = .TRUE.
+     Failed = .FALSE.
+     
+     DO Vari = 1, VarCount 
+       Var => VarTable(Vari) % Variable
+       Varsize = SIZE( Var % Values ) / Var % Dofs 
+       
+       IF( Varsize == 1 ) THEN
+         DO l=1,Var % DOFs
+           count = count + 1
+           T(count) = Var % Values(l)
+         END DO
+       ELSE
+         AllGlobal = .FALSE.
+         k1 = ind
+         
+         IF ( Var % TYPE == Variable_on_gauss_points ) THEN
+           count = count + Var % DOFs
+           CYCLE
+         ELSE IF( Var % TYPE == Variable_on_elements ) THEN
+           Element => CurrentModel % CurrentElement
+           IF( ASSOCIATED( Element ) ) k1 = Element % ElementIndex
+         ELSE IF ( Var % TYPE == Variable_on_nodes_on_elements ) THEN
+           Element => CurrentModel % CurrentElement
+           IF ( ASSOCIATED(Element) ) THEN
+             IF ( ASSOCIATED(Element % DGIndexes) ) THEN
+               n = Element % TYPE % NumberOfNodes
+               IF ( SIZE(Element % DGIndexes)==n ) THEN
+                 DO i=1,n
+                   IF ( Element % NodeIndexes(i)==ind ) THEN
+                     k1 = Element % DGIndexes(i)
+                     EXIT
+                   END IF
+                 END DO
+               END IF
+             END IF
+           END IF
+         END IF
+
+         IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)         
+         
+         IF ( k1 > 0 .AND. k1 <= VarSize ) THEN
+           DO l=1,Var % DOFs
+             count = count + 1
+             T(count) = Var % Values(Var % Dofs*(k1-1)+l)
+           END DO
+         ELSE
+           Failed = .TRUE.
+           DO l=1,Var % DOFs
+             count = count + 1
+             T(count) = HUGE(1.0_dp)           
+           END DO
+           RETURN
+         END IF
+       END IF
+     END DO
+     
+   END SUBROUTINE VarsToValuesOnNodes
+ !------------------------------------------------------------------------------
+    
+
+!-------------------------------------------------------------------------------------
+!> Given a table of variables return the variable values on the gauss point.
+!> This only deals with the gauss point variables, all other are already treated. 
+!-------------------------------------------------------------------------------------
+  SUBROUTINE VarsToValuesOnIps( VarCount, VarTable, ind, T, count )
+!------------------------------------------------------------------------------
+     INTEGER :: Varcount
+     TYPE(VariableTable_t) :: VarTable(:)
+     INTEGER :: ind
+     INTEGER :: count
+     REAL(KIND=dp) :: T(:)
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: i,j,k,n,k1,l,varsize,vari
+     TYPE(Variable_t), POINTER :: Var
+     LOGICAL :: Failed
+     
+     count = 0
+     Failed = .FALSE.
+     
+     DO Vari = 1, VarCount 
+       Var => VarTable(Vari) % Variable
+       Varsize = SIZE( Var % Values ) / Var % Dofs 
+
+       k1 = 0
+       IF ( Var % TYPE == Variable_on_gauss_points ) THEN         
+         Element => CurrentModel % CurrentElement
+         IF ( ASSOCIATED(Element) ) THEN
+           k1 = Var % Perm( Element % ElementIndex ) + ind
+         END IF
+       END IF
+         
+       IF ( k1 > 0 .AND. k1 <= VarSize ) THEN
+         DO l=1,Var % DOFs
+           count = count + 1
+           T(count) = Var % Values(Var % Dofs*(k1-1)+l)
+         END DO
+       ELSE
+         count = count + Var % Dofs
+       END IF
+     END DO
+     
+   END SUBROUTINE VarsToValuesOnIps
+ !------------------------------------------------------------------------------
+
+
+   
+!------------------------------------------------------------------------------
+  SUBROUTINE ListParseStrToValues( str, slen, ind, name, T, count, AllGlobal )!, SomeIp )
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: str, name
      REAL(KIND=dp)  :: T(:)
      INTEGER :: slen, count, ind
      LOGICAL :: AllGlobal
+     LOGICAL :: SomeIp
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Variable, CVar
 
      AllGlobal = .TRUE.
+     SomeIp = .FALSE.
+     
      count=0
      l0=1
      IF(slen<=0) RETURN
@@ -3086,7 +3302,21 @@ CONTAINS
          Variable => VariableGet( CurrentModel % Variables,'Coordinate 1' )
        END IF
        
+       IF( Variable % TYPE == Variable_on_gauss_points ) THEN
+         SomeIp = .TRUE.
+         
+         DO l=1,Variable % DOFs
+           count = count + 1
+           T(count) = HUGE(1.0_dp)
+         END DO
+
+         l0 = l1+2
+         IF ( l0 > slen ) EXIT
+         CYCLE
+       END IF
+                       
        k1 = ind
+                
        IF ( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
          Element => CurrentModel % CurrentElement
          IF ( ASSOCIATED(Element) ) THEN
@@ -3272,9 +3502,10 @@ CONTAINS
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
      TYPE(ValueListEntry_t), POINTER :: ptr
      REAL(KIND=dp) :: T(MAX_FNC)
-     INTEGER :: i,j,k,k1,l,l0,l1,lsize
+     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
+     INTEGER :: i,j,k,k1,l,l0,l1,lsize, VarCount
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
-     LOGICAL :: AllGlobal
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes
      ! INTEGER :: TID, OMP_GET_THREAD_NUM
 !------------------------------------------------------------------------------
      ! TID = 0
@@ -3291,7 +3522,6 @@ CONTAINS
        RETURN
      END IF
 
-
      SELECT CASE(ptr % TYPE)
 
      CASE( LIST_TYPE_CONSTANT_SCALAR )
@@ -3306,12 +3536,26 @@ CONTAINS
 
      
      CASE( LIST_TYPE_VARIABLE_SCALAR )
-
+              
        CALL ListPushActiveName(Name)
+
+#if NEWSTR
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, VarTable, &
+           SomeAtIp, SomeAtNodes )
+       IF( SomeAtIp ) THEN
+         CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
+       END IF
+#endif
+
        DO i=1,n
          k = NodeIndexes(i)
-         CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
 
+#if NEWSTR
+         CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+#else         
+         CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
+#endif
+         
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            IF ( ptr % PROCEDURE /= 0 ) THEN
              F(i) = ptr % Coeff * &
@@ -3356,10 +3600,24 @@ CONTAINS
        k = LEN_TRIM(cmd)
        CALL matc( cmd, tmp_str, k )
 
+#if NEWSTR
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, &
+           VarTable, SomeAtIp, SomeAtNodes )
+       IF( SomeAtIp ) THEN
+         CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
+       END IF
+#endif
+       
+       
        DO i=1,n
          k = NodeIndexes(i)
-         CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
 
+#if NEWSTR        
+         CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+#else
+         CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
+#endif
+         
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            DO l=1,j
              WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
@@ -3992,7 +4250,8 @@ CONTAINS
 !> nodal points and then using basis functions estimated at the 
 !> gaussian integration points. 
 !------------------------------------------------------------------------------
-   FUNCTION ListGetElementReal( Handle,Basis,Element,Found,Indexes) RESULT(Rvalue)
+   FUNCTION ListGetElementReal( Handle,Basis,Element,Found,Indexes,&
+       GaussPoint) RESULT(Rvalue)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      TYPE(ValueList_t), POINTER :: List
@@ -4000,17 +4259,19 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      TYPE(Element_t), POINTER, OPTIONAL :: Element
      INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
      REAL(KIND=dp)  :: Rvalue
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: T(MAX_FNC),x,y,z
+     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
      REAL(KIND=dp), POINTER :: F(:)
      REAL(KIND=dp), POINTER :: ParF(:,:)
-     INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id
+     INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,varcount
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
-     LOGICAL :: AllGlobal, ListSame, ListFound, GotIt, IntFound
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound
      TYPE(Element_t), POINTER :: PElement
 !------------------------------------------------------------------------------
      
@@ -4093,10 +4354,23 @@ CONTAINS
        END IF
        RETURN
      END IF
+
+
+     IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
+         ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
+#if NEWSTR
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
+           Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
+
+       ! If some input parameter is given at integration point we don't have any option other than evaluate things on IPs
+       IF( SomeAtIP ) Handle % EvaluateAtIp = .TRUE.
+#endif
+     END IF
+
      
      ! Either evaluate parameter directly at IP, 
      ! or first at nodes and then using basis functions at IP.
-     ! The later is the default. 
+     ! The latter is the default. 
      !------------------------------------------------------------------
      IF( Handle % EvaluateAtIp ) THEN
 
@@ -4148,8 +4422,12 @@ CONTAINS
            
            DO i=1,n
              k = NodeIndexes(i)
+#if NEWSTR
+             CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+#else         
              CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, &
                  Handle % Name, T, j, AllGlobal)
+#endif
              
              IF( AllGlobal ) THEN
                CALL Fatal('ListGetElementReal','Constant lists should not need to be here')
@@ -4186,7 +4464,17 @@ CONTAINS
          DO j=1,Handle % ParNo 
            T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
          END DO
-         ! there is no node index, so use zero
+         
+         ! This one only deals with the variables on IPs, nodal ones have been fecthed already
+         IF( SomeAtIp ) THEN
+           IF( .NOT. PRESENT( GaussPoint ) ) THEN
+             CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
+           END IF
+           CALL VarsToValuesOnIps( VarCount, VarTable, GaussPoint, T, j )
+         END IF
+         
+         
+         ! there is no node index, so use zero (it could be the gauss point index as well!)
          j = 0 
          
          TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
@@ -4225,7 +4513,7 @@ CONTAINS
          
        END SELECT
      
-     ELSE
+     ELSE ! .NOT. EvaluteAtIp
        
        ! If we get back to the same element than last time use the data already 
        ! retrieved. If the element is new then get the data in every node of the 
@@ -4281,10 +4569,21 @@ CONTAINS
 
          CASE( LIST_TYPE_VARIABLE_SCALAR )
            CALL ListPushActiveName(Handle % name)
+
+#if NEWSTR
+           CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
+               Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
+#endif
+
+           
            DO i=1,n
              k = NodeIndexes(i)
+#if NEWSTR
+             CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+#else         
              CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, &
                  Handle % Name, T, j, AllGlobal)
+#endif
              
              IF ( .NOT. ANY( T(1:j) == HUGE(1.0_dp) ) ) THEN
                IF ( ptr % PROCEDURE /= 0 ) THEN
@@ -4301,7 +4600,7 @@ CONTAINS
                  F(i) = ptr % Coeff * &
                      InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
                      T(1), ptr % CubicCoeff )
-                 
+
                  ! If the dependency table includes just global values (such as time) 
                  ! the values will be the same for all element entries.
                  IF( AllGlobal ) THEN
@@ -4335,11 +4634,21 @@ CONTAINS
            WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
            k = LEN_TRIM(cmd)
            CALL matc( cmd, tmp_str, k )
+
+#if NEWSTR
+           CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
+               Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
+#endif
            
            DO i=1,n
              k = NodeIndexes(i)
+#if NEWSTR
+             CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+#else         
              CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, &
                  Handle % Name, T, j, AllGlobal)
+#endif
+
              IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
                DO l=1,j
                  WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
@@ -4433,11 +4742,12 @@ CONTAINS
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: T(MAX_FNC),x,y,z, RValue
+     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
      REAL(KIND=dp), POINTER :: F(:)
      REAL(KIND=dp), POINTER :: ParF(:,:)
-     INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,node,gp
-     CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
-     LOGICAL :: AllGlobal, ListSame, ListFound, GotIt, IntFound
+     INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,node,gp,varcount
+     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, tmp_str
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound
      TYPE(Element_t), POINTER :: PElement
      TYPE(ValueList_t), POINTER :: List
 !------------------------------------------------------------------------------
@@ -4542,6 +4852,16 @@ CONTAINS
      END IF
 
      
+     IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
+         ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN       
+#if NEWSTR
+         CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
+             Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
+         IF( SomeAtIp ) Handle % EvaluateAtIp = .TRUE.
+#endif
+       END IF
+         
+
      ! Either evaluate parameter directly at IP, 
      ! or first at nodes and then using basis functions at IP.
      ! The later is the default. 
@@ -4574,13 +4894,15 @@ CONTAINS
            ALLOCATE( Handle % ParValues(MAX_FNC,CurrentModel % Mesh % MaxElementNodes) )
            Handle % ParValues = 0.0_dp
          END IF
-
-         ! Get the dependent parameter values at each node 
+         
          DO i=1,n
            node = NodeIndexes(i)
+#if NEWSTR
+           CALL VarsToValuesOnNodes( VarCount, VarTable, node, T, j, AllGlobal )
+#else         
            CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, node, &
                Handle % Name, T, j, AllGlobal)
-
+#endif
            IF( AllGlobal ) THEN
              CALL Warn('ListGetElementRealVec','Constant expression need not be evaluated at IPs!')
            END IF
@@ -4607,7 +4929,7 @@ CONTAINS
              DO j=1,Handle % ParNo 
                T(j) = SUM( BasisVec(gp,1:n) *  ParF(j,1:n) )
              END DO
-             Rvalue = ExecRealFunction( ptr % PROCEDURE,CurrentModel, node, T )
+             Rvalue = ExecRealFunction( ptr % PROCEDURE, CurrentModel, node, T )
              Handle % ValuesVec(gp) = RValue
            END DO
            CALL ListPopActiveName()
@@ -4638,6 +4960,11 @@ CONTAINS
              T(j) = SUM( BasisVec(gp,1:n) *  Handle % ParValues(j,1:n) )
            END DO
 
+           ! This one only deals with the variables on IPs, nodal ones have been fecthed already
+           IF( SomeAtIp ) THEN
+             CALL VarsToValuesOnIps( VarCount, VarTable, gp, T, j )
+           END IF
+             
            DO l=1,Handle % ParNo
              WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
              k1 = LEN_TRIM(cmd)
@@ -4720,9 +5047,14 @@ CONTAINS
 
          DO i=1,n
            node = NodeIndexes(i)
+
+#if NEWSTR
+           CALL VarsToValuesOnNodes( VarCount, VarTable, node, T, j, AllGlobal )
+#else         
            CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, node, &
                Handle % Name, T, j, AllGlobal)
-
+#endif
+           
            IF ( ptr % PROCEDURE /= 0 ) THEN
              F(i) = ptr % Coeff * &
                  ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
@@ -6064,14 +6396,28 @@ CONTAINS
         CYCLE
       END IF
 
+      IF( Var % TYPE == Variable_global ) THEN
+        Var => Var % Next
+        CYCLE        
+      ELSE IF( Var % TYPE == Variable_on_gauss_points ) THEN
+        CALL Warn('CreateListForSaving','Gauss point fields might not be fully functional!')
+        !Var => Var % Next
+        !CYCLE        
+      ELSE IF( Var % TYPE == Variable_on_elements ) THEN
+        CALL Warn('CreateListForSaving','Elemental fields might not be fully functional!')
+        
+        !Var => Var % Next
+        !CYCLE        
+      END IF
+
       ! Skip if variable is otherwise strange in size
       IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
-        IF( Var % TYPE /= Variable_on_nodes_on_elements ) THEN
+        IF( Var % TYPE == Variable_on_nodes ) THEN
           IF( SIZE( Var % Values ) /= Var % Dofs * Model % Mesh % NumberOfNodes ) THEN
             Var => Var % Next
             CYCLE
           END IF
-        ELSE
+        ELSE IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
           IF( SIZE( Var % Values ) /= Var % Dofs * Model % Mesh % NumberOfBulkElements ) THEN
             Var => Var % Next
             CYCLE
