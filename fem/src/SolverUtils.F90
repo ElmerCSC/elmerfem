@@ -6514,7 +6514,7 @@ CONTAINS
     LOGICAL :: ScaleSystem, DirichletComm, Found, NoDiag
     REAL(KIND=dp), POINTER :: DiagScaling(:)
     REAL(KIND=dp) :: dval, s
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k,n
 
     
     Params => Solver % Values
@@ -6522,8 +6522,18 @@ CONTAINS
     IF(.NOT. ALLOCATED( A % ConstrainedDOF ) ) THEN
       CALL Info('EnforceDirichletConditions',&
           'ConstrainedDOF not associated, returning...',Level=8)
+      RETURN
     END IF
 
+    
+    n = COUNT( A % ConstrainedDOF )
+    n = NINT( ParallelReduction(1.0_dp * n ) )
+
+    IF( n == 0 ) THEN
+      CALL Info('EnforceDirichletConditions','No Dirichlet conditions to enforce, exiting!',Level=10)
+      RETURN
+    END IF
+    
     
     IF( PRESENT( OffDiagonal ) ) THEN
       NoDiag = OffDiagonal
@@ -6563,11 +6573,10 @@ CONTAINS
  
     
     DO k=1,A % NumberOfRows
+
       IF ( A % ConstrainedDOF(k) ) THEN
-        !s = A % Values(A % Diag(k))
-        !IF (s==0) s = 1
         
-        dval = A % Dvalues(k) !/ ( s * DiagScaling(k) )
+        dval = A % Dvalues(k) 
         
         IF( ScaleSystem ) THEN
           s = DiagScaling(k)            
@@ -8163,6 +8172,7 @@ END FUNCTION SearchNodeL
 
     SolverParams => Solver % Values
 
+    
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
@@ -8210,6 +8220,7 @@ END FUNCTION SearchNodeL
       iterV % Values(1) = iterV % Values(1) + 1 
       
       Skip = ListGetLogical( SolverParams,'Skip Compute Nonlinear Change',Stat)
+
       IF(Skip) THEN
         CALL Info('ComputeChange','Skipping the computation of nonlinear change',Level=15)
         RETURN
@@ -8319,7 +8330,6 @@ END FUNCTION SearchNodeL
     !--------------------------------------------------------------------------
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
-!   IF( ISNAN(Norm) ) THEN ! ISNAN not avaiable in all compilers
     IF( Norm /= Norm ) THEN
       CALL NumericalError('ComputeChange','Norm of solution appears to be NaN')
     END IF
@@ -8331,6 +8341,7 @@ END FUNCTION SearchNodeL
       MaxNorm = ListGetCReal( SolverParams, &
           'Nonlinear System Max Norm', Stat )
     END IF    
+
     IF( Stat ) THEN
       WRITE( Message, *) 'Computed Norm:',Norm
       CALL Info('ComputeChange',Message)
@@ -8541,7 +8552,7 @@ END FUNCTION SearchNodeL
     ! Steady state output is done in MainUtils
     SolverName = ListGetString( SolverParams, 'Equation',Stat)
     IF(.NOT. Stat) SolverName = Solver % Variable % Name
-
+ 
     IF(SteadyState) THEN        
       WRITE( Message, '(a,g15.8,g15.8,a)') &
          'SS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, Change,&
@@ -9865,9 +9876,8 @@ END FUNCTION SearchNodeL
 
     n = A % NumberOfRows
     
-    CALL Info('ScaleLinearSystem','Scaling linear system such that diagonal is enforced to unity',Level=15)
+    CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity',Level=10)
 
-    
     IF( PRESENT( DiagScaling ) ) THEN
       CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
       Diag => DiagScaling 
@@ -9880,8 +9890,10 @@ END FUNCTION SearchNodeL
       Diag = 0._dp
     
       ComplexMatrix = Solver % Matrix % COMPLEX
-    
+            
       IF ( ComplexMatrix ) THEN
+        CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
+
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, A, N) &
         !$OMP PRIVATE(i, j) &
@@ -9892,17 +9904,20 @@ END FUNCTION SearchNodeL
             Diag(i)   = A % Values(j)
             Diag(i+1) = A % Values(j+1)
           ELSE
-            Diag(i)=0._dp;Diag(i+1)=0._dp
+            Diag(i) = 0._dp
+            Diag(i+1) = 0._dp
           END IF
         END DO
         !$OMP END PARALLEL DO
       ELSE
+        CALL Info('ScaleLinearSystem','Assuming real valued matrix while scaling',Level=25)
+
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, A, N) &
         !$OMP PRIVATE(i, j) &
         !$OMP DEFAULT(NONE)
         DO i=1,n
-          j=A % Diag(i)
+          j = A % Diag(i)
           IF (j>0) Diag(i) = A % Values(j)
         END DO
         !$OMP END PARALLEL DO
@@ -9913,25 +9928,28 @@ END FUNCTION SearchNodeL
       IF ( ComplexMatrix ) THEN
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, A, N) &
-        !$OMP PRIVATE(i, j, DiagC) &
+        !$OMP PRIVATE(i, j, DiagC, s) &
         !$OMP DEFAULT(NONE)
         DO i=1,n,2
           DiagC = CMPLX(Diag(i),-Diag(i+1),KIND=dp)
-          IF (ABS(DiagC)/=0._dp) THEN
-            Diag(i)   = 1.0_dp/SQRT(ABS(DiagC))
-            Diag(i+1) = 1.0_dp/SQRT(ABS(DiagC))
+
+          s = SQRT( ABS( DiagC ) )
+          IF( s > TINY(s) ) THEN 
+            Diag(i)   = 1.0_dp / s
+            Diag(i+1) = 1.0_dp / s
           ELSE
-            Diag(i)   = 1.0_dp; Diag(i+1) = 1.0_dp
+            Diag(i)   = 1.0_dp
+            Diag(i+1) = 1.0_dp
           END IF
         END DO
         !$OMP END PARALLEL DO
       ELSE
-        s = 0
+        s = 0.0_dp
         ! TODO: Add threading
-        IF (ANY(ABS(Diag)<=TINY(bnorm))) s=1
+        IF (ANY(ABS(Diag) <= TINY(bnorm))) s=1
         s = ParallelReduction(s,2) 
 
-        IF(s/=0) THEN 
+        IF(s > TINY(s) ) THEN 
           DO i=1,n
             IF ( ABS(Diag(i)) <= TINY(bnorm) ) THEN
               Diag(i) = SUM( ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)) )
@@ -9956,15 +9974,17 @@ END FUNCTION SearchNodeL
         END DO
         !$OMP END PARALLEL DO
       END IF
-    END IF    
+    END IF
 
-
+    
     ! Optionally we may just create the diag and leave the scaling undone
     !--------------------------------------------------------------------
     IF( PRESENT( ApplyScaling ) ) THEN
       IF(.NOT. ApplyScaling ) RETURN
     END IF
 
+    CALL Info('ScaleLinearSystem','Scaling matrix values',Level=20)
+    
     !$OMP PARALLEL &
     !$OMP SHARED(Diag, A, N) &
     !$OMP PRIVATE(i,j) &
@@ -9979,8 +9999,10 @@ END FUNCTION SearchNodeL
     END DO
     !$OMP END DO NOWAIT
 
+    
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN 
+        CALL Info('ScaleLinearSystem','Scaling PrecValues',Level=20)
         !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
@@ -9994,6 +10016,7 @@ END FUNCTION SearchNodeL
 
     IF ( ASSOCIATED( A % MassValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
+        CALL Info('ScaleLinearSystem','Scaling MassValues',Level=20)
         !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
@@ -10007,6 +10030,7 @@ END FUNCTION SearchNodeL
     
     IF ( ASSOCIATED( A % DampValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
+        CALL Info('ScaleLinearSystem','Scaling DampValues',Level=20)
         !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
@@ -10020,12 +10044,13 @@ END FUNCTION SearchNodeL
 
     !$OMP END PARALLEL
 
-    DoCM=.FALSE.
+    DoCM = .FALSE.
     IF(PRESENT(ConstraintScaling)) DoCm=ConstraintScaling
 
     IF(doCM) THEN
       CM => A % ConstraintMatrix
       IF (ASSOCIATED(CM)) THEN
+        CALL Info('ScaleLinearSystem','Scaling Constraints',Level=20)
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, CM) &
         !$OMP PRIVATE(i,j) &
@@ -10043,24 +10068,37 @@ END FUNCTION SearchNodeL
     !--------------------------------
     A % RhsScaling=1._dp
     ! TODO: Add threading
-    IF( PRESENT( b ) ) THEN      
+    IF( PRESENT( b ) ) THEN
+      CALL Info('ScaleLinearSystem','Scaling Rhs vector',Level=20)
+      
       b(1:n) = b(1:n) * Diag(1:n)
       DoRHS = .TRUE.
       IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
       IF (DoRHS) THEN
         bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
+
+        IF( bnorm < SQRT( TINY( bnorm ) ) ) THEN
+          CALL Info('ScaleLinearSystem','Rhs vector is almost zero, skipping rhs scaling!',Level=20)
+          DoRhs = .FALSE.
+          bnorm = 1.0_dp
+        END IF
       ELSE
-        bnorm = 1._dp
+        bnorm = 1.0_dp
       END IF
+      
       A % RhsScaling = bnorm
 
-      Diag(1:n) = Diag(1:n) * bnorm
-      b(1:n) = b(1:n) / bnorm
+      IF( DoRhs ) THEN
+        Diag(1:n) = Diag(1:n) * bnorm
+        b(1:n) = b(1:n) / bnorm
+      END IF
+      
       IF( PRESENT( x) ) THEN
         x(1:n) = x(1:n) / Diag(1:n)
       END IF
     END IF
 
+    
     !-----------------------------------------------------------------------------
   END SUBROUTINE ScaleLinearSystem
 !-----------------------------------------------------------------------------
@@ -10110,15 +10148,8 @@ END FUNCTION SearchNodeL
         DO j=Rows(i),Rows(i+1)-1,2
           tmp = tmp + ABS( CMPLX( Values(j), -Values(j+1), kind=dp ) )
         END DO
-
-        IF ( .NOT. Parallel ) THEN
-          IF (tmp > norm) norm = tmp        
-        END IF
-
-        IF (tmp > 0.0d0) THEN
-          Diag(i) = tmp
-          Diag(i+1) = tmp
-        END IF
+        Diag(i) = tmp
+        Diag(i+1) = tmp
       END DO
     ELSE
       DO i=1,n
@@ -10126,18 +10157,16 @@ END FUNCTION SearchNodeL
         DO j=Rows(i),Rows(i+1)-1        
           tmp = tmp + ABS(Values(j))          
         END DO
-
-        IF ( .NOT. Parallel ) THEN
-          IF (tmp > norm) norm = tmp        
-        END IF
-
-        IF (tmp > 0.0d0) Diag(i) = tmp       
+        Diag(i) = tmp       
       END DO
     END IF
 
     IF (Parallel) THEN
       CALL ParallelSumVector(A, Diag)
-      norm = ParallelReduction(MAXVAL(Diag(1:n)),2)
+    END IF
+    norm = MAXVAL(Diag(1:n))
+    IF( Parallel ) THEN
+      norm = ParallelReduction(norm)
     END IF
 
     !--------------------------------------------------
@@ -10146,20 +10175,19 @@ END FUNCTION SearchNodeL
     !--------------------------------------------------
     IF (ComplexMatrix) THEN    
       DO i=1,n,2
-        IF (Diag(i) > 0.0d0) THEN
-          Diag(i) = 1.0d0/Diag(i)
-          Diag(i+1) = 1.0d0/Diag(i+1)
+        IF (Diag(i) > TINY(norm) ) THEN
+          Diag(i) = 1.0_dp / Diag(i)
         ELSE
-          Diag(i) = 1.0d0
-          Diag(i+1) = 1.0d0
+          Diag(i) = 1.0_dp
         END IF
+        Diag(i+1) = Diag(i)
       END DO
     ELSE
       DO i=1,n      
-        IF (Diag(i) > 0.0d0) THEN
-          Diag(i) = 1.0d0/Diag(i)
+        IF (Diag(i) > TINY(norm)) THEN
+          Diag(i) = 1.0_dp / Diag(i)
         ELSE
-          Diag(i) = 1.0d0
+          Diag(i) = 1.0_dp
         END IF
       END DO
     END IF
@@ -10211,7 +10239,7 @@ END FUNCTION SearchNodeL
 
     TYPE(Matrix_t), POINTER :: CM
 
-    CALL Info('BackScaleLinearSystem','Scaling back to original scale',Level=15)
+    CALL Info('BackScaleLinearSystem','Scaling back to original scale',Level=14)
 
     
     n = A % NumberOfRows
@@ -10817,10 +10845,7 @@ END FUNCTION SearchNodeL
   END SUBROUTINE BCLoadsComputation
 
 
-
-
-  
-  
+    
 !------------------------------------------------------------------------------
 !> Prints the values of the CRS matrix to standard output.
 !------------------------------------------------------------------------------
@@ -11024,14 +11049,30 @@ END FUNCTION SearchNodeL
     END INTERFACE
 !------------------------------------------------------------------------------
 
-   ComplexSystem = ListGetLogical( Solver % Values, 'Linear System Complex', GotIt )
-   IF ( GotIt ) A % COMPLEX = ComplexSystem
+    Params => Solver % Values
  
-   IF( A % COMPLEX ) THEN
-     CALL Info('SolveLinearSystem','Assuming complex valued linear system',Level=6)
-   ELSE
-     CALL Info('SolveLinearSystem','Assuming real valued linear system',Level=8)
-   END IF
+    ComplexSystem = ListGetLogical( Params, 'Linear System Complex', GotIt )
+    IF ( GotIt ) A % COMPLEX = ComplexSystem
+    
+    ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
+    IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
+    
+    IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
+      CALL Info('SolveLinearSystem','This time skipping complex treatment',Level=20)
+      A % COMPLEX = .FALSE.
+      ComplexSystem = .FALSE.
+    END IF
+
+    IF( ListGetLogical( Params,'Linear System Skip Scaling',GotIt ) ) THEN     
+      CALL Info('SolveLinearSystem','This time skipping scaling',Level=20)
+      ScaleSystem = .FALSE.
+    END IF
+   
+    IF( A % COMPLEX ) THEN
+      CALL Info('SolveLinearSystem','Assuming complex valued linear system',Level=6)
+    ELSE
+      CALL Info('SolveLinearSystem','Assuming real valued linear system',Level=8)
+    END IF
 
 !------------------------------------------------------------------------------
 !   If parallel execution, check for parallel matrix initializations
@@ -11040,14 +11081,13 @@ END FUNCTION SearchNodeL
       CALL ParallelInitMatrix( Solver, A )
     END IF
 
-   IF ( ListGetLogical( Solver % Values, 'Linear System Save',GotIt )) THEN
+    IF ( ListGetLogical( Solver % Values, 'Linear System Save',GotIt )) THEN
       saveslot = ListGetString( Solver % Values,'Linear System Save Slot', GotIt )
       IF(SaveSlot == 'linear solve') CALL SaveLinearSystem( Solver, A )
     END IF
 
 !------------------------------------------------------------------------------
 
-    Params => Solver % Values
     n = A % NumberOfRows
 
     BackRotation = ListGetLogical(Params,'Back Rotate N-T Solution',GotIt)
@@ -11089,9 +11129,6 @@ END FUNCTION SearchNodeL
         ListGetInteger( Params,'Multigrid Levels', GotIt, minv=1 ) )
     Solver % MultiGridLevel = Solver % MultigridTotal
 !------------------------------------------------------------------------------
-
-    ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
-    IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
 
     EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
         ListGetLogical( Params, 'Eigen Analysis',GotIt )
@@ -12381,7 +12418,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   REAL(KIND=dp) :: frequency
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Variable_t), POINTER :: SaveVar, ReVar, ImVar, TotVar, TmpVar
-  LOGICAL :: ToReal, ToHarmonic, ParseName
+  LOGICAL :: ToReal, ToHarmonic, ParseName, AnyDirichlet
   
 
   SAVE ImVar, TotVar, ReVar, SaveVar, SaveMatrix
@@ -12483,6 +12520,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       END DO
     END DO
 
+    AnyDirichlet = .FALSE.
     
     ! Finally set the Dirichlet conditions for the solver    
     DO j=1,DOFs
@@ -12492,6 +12530,8 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
         real_given = ListCheckPresent( BC, Name )
         imag_given = ListCheckPresent( BC, TRIM(Name) // ' im' )
 
+        IF( real_given .OR. imag_given ) AnyDirichlet = .TRUE.
+
         IF ( real_given .AND. .NOT. imag_given ) THEN
           CALL ListAddConstReal( BC, TRIM(Name) // ' im', 0._dp)
         ELSE IF ( imag_given .AND. .NOT. real_given ) THEN
@@ -12500,18 +12540,20 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       END DO
     END DO
 
-    DO j=1,DOFs
-      Name = ComponentName( SaveVar % Name, j ) 
+    IF( AnyDirichlet ) THEN
+      DO j=1,DOFs
+        Name = ComponentName( SaveVar % Name, j ) 
+        
+        CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
+            2*j-1, 2*DOFs, SaveVar % Perm )
+        
+        CALL SetDirichletBoundaries( CurrentModel, Aharm, b, TRIM(Name) // ' im', &
+            2*j, 2*DOFs, SaveVar % Perm )
+      END DO
       
-      CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
-          2*j-1, 2*DOFs, SaveVar % Perm )
+      CALL EnforceDirichletConditions( Solver, Aharm, b )
+    END IF
       
-      CALL SetDirichletBoundaries( CurrentModel, Aharm, b, TRIM(Name) // ' im', &
-          2*j, 2*DOFs, SaveVar % Perm )
-    END DO
-    
-    CALL EnforceDirichletConditions( Solver, Aharm, b )
-
     
     
     ! Create the new fields, the total one and the imaginary one
@@ -12587,7 +12629,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     ! the system will automatically be solved as complex
     Solver % Variable => TotVar
     Solver % Matrix => Aharm
-
   ELSE
     CALL Info('ChangeToHarmonicSystem','Changing the harmonic results to real system!',Level=5)
    

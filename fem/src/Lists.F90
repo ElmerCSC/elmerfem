@@ -958,8 +958,8 @@ CONTAINS
        TYPE(Projector_t), POINTER :: Projector
 !------------------------------------------------------------------------------
        INTERFACE
-         SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm)
+         SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, NewVariables, &
+             UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm, KeepUnfoundNodes )
            USE Types
            TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
            TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
@@ -967,6 +967,7 @@ CONTAINS
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
            INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
+           LOGICAL, OPTIONAL :: KeepUnfoundNodes  !< Do not disregard unfound nodes from projector
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 

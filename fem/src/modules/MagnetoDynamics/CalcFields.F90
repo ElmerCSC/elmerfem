@@ -1386,12 +1386,20 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               DO l=1,3
                 JatIp(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) - &
                              SUM( AIMAG(CMat_ip(l,1:3)) * E(2,1:3) ) + REAL(BodyForceCurrDens_ip(l))
+                IF( HasVelocity ) THEN
+                  JatIp(1,l) = JatIp(1,l) + SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)) ) - &
+                               SUM( AIMAG(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(2,1:3)) )
+                END IF
                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
               DO l=1,3
                 JatIp(2,l) = SUM( AIMAG(CMat_ip(l,1:3)) * E(1,1:3) ) + &
                              SUM( REAL(CMat_ip(l,1:3)) * E(2,1:3) ) + AIMAG(BodyForceCurrDens_ip(l))
+                IF( HasVelocity ) THEN
+                  JatIp(2,l) = JatIp(2,l) + SUM( AIMAG(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)) ) + &
+                               SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(2,1:3)) )
+                END IF
                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(2,l)*Basis(p)
               END DO
               k = k+3
@@ -1483,6 +1491,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s + &               
                SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
                TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s)
+           IF (HasVelocity) THEN
+             Coeff = Coeff + HarmPowerCoeff * (SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(1,:)) ) * &
+               CrossProduct(rot_velo, B(1,:)) ) * Basis(p) * s - &
+               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(2,:)) ) * &
+               CrossProduct(rot_velo, B(1,:)) ) * Basis(p) * s + &
+               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(1,:)) ) * &
+               CrossProduct(rot_velo, B(2,:)) ) * Basis(p) * s + &
+               SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(2,:)) ) * &
+               CrossProduct(rot_velo, B(2,:)) ) * Basis(p) * s)
+           END IF
          END IF
 
          IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff

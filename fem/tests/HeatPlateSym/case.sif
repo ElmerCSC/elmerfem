@@ -32,7 +32,7 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Solver Input File = case.sif
-  Post File = case.vtu
+!  Post File = case.vtu
 End
 
 Constants

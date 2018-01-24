@@ -108,7 +108,7 @@ Solver 2
 
 ! Note that block (1,1) can be solved very inaccurately
   Block 11: Linear System Solver = string "iterative"
-  Block 11: Linear System Convergence Tolerance = real 1.0e-2
+  Block 11: Linear System Convergence Tolerance = real 1.0e-1
   Block 11: Linear System Iterative Method = string bicgstabl
   Block 11: Linear System Max Iterations = integer 1000
   Block 11: Linear System Residual Output = integer 10
@@ -132,10 +132,13 @@ Solver 2
   Linear System Timing Cumulative = Logical True
   Solver Timing Cumulative = Logical True
 
-  Linear System Scaling = True
+!  Linear System Scaling = True
 
 ! This is an experimental coefficient that affects the convergence
   Block Diag Coeff = Real 0.1
+
+  Block Scaling = Logical True
+
 
 ! These are used for testing, now passive 
 !  Block Diag True = Logical True 

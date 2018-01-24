@@ -23,7 +23,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 32
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -87,9 +87,9 @@ Solver 1
   Procedure = "HelmholtzSolve" "HelmholtzSolver" 
 
   Linear System Solver = "Iterative"
-  Linear System Iterative Method = "BiCGStab"
+  Linear System Iterative Method = "BiCGStabl"
   Linear System Max Iterations = 1000  
-  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Convergence Tolerance = 1.0e-8
   Linear System Abort Not Converged = True
   Linear System Preconditioning = "ILU1"
   Linear System Residual Output = 10
@@ -119,14 +119,20 @@ Solver 1
   Outer: Linear System Max Iterations = integer 50
   Outer: Linear System Min Iterations = integer 3
 
-  Linear System Scaling = True  ! seems to work with these as well
-  Optimize Bandwidth = True
+!  Linear System Scaling = False
+!  block: Linear System Scaling = Logical True  ! seems to work with these as well
 
   Block Preconditioner = Logical True ! default
   Block Gauss-Seidel = Logical True   ! if false, jacobi
 
+  Block Scaling = Logical True
+
 ! First coupling only works in real mode
-  Linear System Complex = False
+!  Linear System Complex = False
+
+
+!  Linear System test = Logical True
+!  block: Linear System Complex = Logical True
 End
 
 
@@ -159,13 +165,15 @@ Solver 2
   Harmonic Mode = Logical True
   Variable Output = Logical False
 
+!  block: Linear System Scaling = Logical True
+!  Linear System Scaling = False
 
 ! We may toggle the system to be solved as a real one
 ! For hamonic mode the default is True
-  Linear System Complex = False
+!  Linear System Complex = False
+  !block: Linear System Complex = Logical True
 
-  Linear System Scaling = False
-  Optimize Bandwidth = False
+!  Linear System Scaling = False
 
   Exec Solver = never
   Linear System Solver Disabled = Logical True  
@@ -216,4 +224,3 @@ Boundary Condition 3
 End
 
 Solver 1 :: reference norm = 7.18018127E+04
-Solver 2 :: reference norm = 2.34973765E-04

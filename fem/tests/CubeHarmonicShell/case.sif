@@ -1,30 +1,32 @@
-
-! This is test case is related to the Shoebox test cases for FSI.
+! This is a test case to study shell solver with sharp corners.
+! The derivation of the solver is not done assuming such geometric
+! but computed fields seem to be realistic anaway...
 !
-! This case only tests the shell solver run alone at top of the shoebox.
+! This is also a test case for freely floating harmonic case.
 !
-! P.R. 10.12.2017
-
-
-$ AirDensity = 1.21
-$ SoundSpeed = sqrt( 1.402 * 0.402 * 716 * 293)
+! P.R. 8.1.2018
 
 
 Header
-  Mesh DB "." "shoebox"
+  Mesh DB "." "cube"
 End
 
 Constants
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 10
   Coordinate System = Cartesian
-  Simulation Type = Steady State
+  Simulation Type = Scanning
   Output Intervals = 1
+  Timestep Intervals = 2 ! test just for two frequencies i.e. 1 and 2 Hz. 
   Steady State Max Iterations = 1
 
-!  Post File = "shell.vtu"
+  Post File = "case.vtu"
+  vtu: Save Boundaries Only = Logical True
+
+  Frequency = Variable "time"
+    Real MATC "2^(tx-1)"
 End
 
 Body 1
@@ -45,11 +47,11 @@ End
 
 
 Material 1
-  Density = Real $ AirDensity
-  Sound Speed = $ SoundSpeed
+  Name = "Inside"
 End
 
 Material 2
+  Name = "Shell" 
   Density = 2710.0
   Youngs Modulus = 70e9
   Poisson Ratio = 0.3
@@ -58,7 +60,7 @@ End
 
 
 Equation 1
-  Name = "nothing here"
+  Name = "nothing here" 
 End
 
 Equation 2
@@ -73,30 +75,38 @@ Solver 1
   Procedure = "ShellSolver" "ShellSolver"
 
   Linear System Solver = "Direct"
-!  Linear System Direct Method = MUMPS
+  !Linear System Solver = "Iterative"
+  Linear System Direct Method = MUMPS
 
   Linear System Preconditioning = ILU2
 !  Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1e-5
-  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1e-9
+  Linear System Iterative Method = bicgstab2 !GCR
   Linear System GCR Restart = 100
   Linear System Abort Not Converged = False
+  Linear System Residual Output = 1 
 
   Steady State Convergence Tolerance = 1e-09
   Nonlinear System Convergence Tolerance = 1e-8
   Nonlinear System Max Iterations = 1
 
+  Harmonic Mode = Logical True
+
 ! The defaults are True for the following 2 keywords:
-!  Linear System Scaling = False
+  Linear System Scaling = False
 !  Optimize Bandwidth = False
-!  Harmonic Mode = Logical True
+  Linear System Complex = False
+
+  Large Deflection = Logical False
 End
 
 
 Solver 2
   Equation = "SaveScalars"
   Procedure = File "SaveData" "SaveScalars"
+
+  Exec Solver = after timestep
 
   Variable 1 = U 3
   Operator 1 = min 
@@ -107,30 +117,35 @@ Solver 2
 End
 
 
+
 Boundary Condition 1
   Target Boundaries(4) = 1 2 3 4
   Name = "Sides"
 
-  U 1 = Real 0
-  DNU 1 = Real 0
-  U 2 = Real 0
-  DNU 2 = Real 0
-  U 3 = Real 0
-  DNU 3 = Real 0
+  Body Id = 2 
 End 
 
 Boundary Condition 2
   Target Boundaries(1) = 5
   Name = "Bottom"
+
+!  U 1 = Real 0
+!  DNU 1 = Real 0
+!  U 2 = Real 0
+!  DNU 2 = Real 0
+!  U 3 = Real 0
+!  DNU 3 = Real 0
+
+  Body Id = 2 
 End 
 
 Boundary Condition 3
   Target Boundaries(1) = 6
-  Name = "Fsi"
+  Name = "Top"
 
   Save Scalars = True
   Body Id = 2
 End
 
 
-Solver 1 :: reference norm = 3.40901466E-01
+Solver 1 :: reference norm = 1.79678138E+01
