@@ -2384,11 +2384,11 @@ CONTAINS
         rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(4) - Nodes % x(2))**2 + (Nodes % y(4) - Nodes % y(2))**2 + &
             (Nodes % z(4) - Nodes % z(2))**2))
       END SELECT
-      delta(1) = ABS(Lambda1-Lambda2) * rK
-      Umbilical = delta(1) < UmbilicalDelta
+      delta(1) = ABS(Lambda1-Lambda2)/LambdaMax
+      Umbilical = delta(1) < 1.0d1*(rK*LambdaMax)**2
       !print *, 'this point is umbilical=', Umbilical
       !PRINT *, 'difference of eigenvals=',delta(1)
-      !print *, 'eigen1,eigen2,max eigenvalue,rK', Lambda1,Lambda2,LambdaMax,rK
+      !print *, 'delta,O-term', delta(1),1.0d1*(rK*LambdaMax)**2
     END IF
 
     !-----------------------------------------------------------------
@@ -2693,10 +2693,10 @@ CONTAINS
         END IF
       ELSE
         IF (Umbilical) THEN
-          err = ABS(APar-BPar) * rK
-          IF ( err > 5.0d0*UmbilicalDelta ) THEN
+          err = ABS(APar-BPar)/MAX(ABS(APar), ABS(BPar))
+          IF ( err > 5.0d1*(rK * MAX(ABS(APar), ABS(BPar)))**2 ) THEN
             CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial (umbilical point)')
-            print *, '|APar-BPar| h = ', err
+            print *, '|APar-BPar|/max(|APar|,|BPar|) = ', err
           END IF
         ELSE
           !-------------------------------------------------------------------------------------
