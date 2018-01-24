@@ -291,6 +291,60 @@ CONTAINS
     END DO
   END SUBROUTINE GetElementNodeIndex
 
+  FUNCTION GetIPIndex( LocalIp, USolver, Element ) RESULT ( GlobalIp ) 
+    INTEGER :: LocalIp, GlobalIp
+
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+    TYPE(Element_t), OPTIONAL :: Element
+
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Element_t), POINTER :: CurrElement
+    INTEGER :: n, m
+    
+    IF ( PRESENT( USolver ) ) THEN
+      Solver => USolver
+    ELSE
+      Solver => CurrentModel % Solver 
+    END IF
+
+    IF( .NOT. ASSOCIATED( Solver % IpTable ) ) THEN
+      CALL Fatal('GetIpIndex','Cannot access index of gaussian point!')
+    END IF
+    
+    CurrElement => GetCurrentElement(Element)
+    n = CurrElement % ElementIndex
+    m = Solver % IpTable % IpOffset(n+1) - Solver % IpTable % IpOffset(n)
+    IF( m < LocalIp ) THEN
+      CALL Warn('GetIpIndex','Inconsistent number of IP points!')
+      GlobalIp = 0 
+    ELSE
+      GlobalIp = Solver % IpTable % IpOffset(n) + LocalIp
+    END IF
+
+  END FUNCTION GetIPIndex
+
+  
+  FUNCTION GetIPCount( USolver ) RESULT ( IpCount ) 
+    INTEGER :: IpCount
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+
+    TYPE(Solver_t), POINTER :: Solver
+
+    IF ( PRESENT( USolver ) ) THEN
+      Solver => USolver
+    ELSE
+      Solver => CurrentModel % Solver 
+    END IF
+
+    IF( .NOT. ASSOCIATED( Solver % IpTable ) ) THEN
+      CALL Fatal('GetIpCount','Cannot access index of gaussian point!')
+    END IF
+    
+    IpCount = Solver % IpTable % IpCount 
+    
+  END FUNCTION GetIPCount
+
+  
 !> Returns the number of active elements for the current solver
   FUNCTION GetNOFActive( USolver ) RESULT(n)
      INTEGER :: n
@@ -780,7 +834,7 @@ CONTAINS
 !> Add variable to the default variable list.
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultVariableAdd( Name, DOFs, Perm, Values,&
-      Output,Secondary,Global,InitValue,USolver,Var )
+      Output,Secondary,VariableType,Global,InitValue,USolver,Var )
     
     CHARACTER(LEN=*) :: Name
     INTEGER, OPTIONAL :: DOFs
@@ -788,6 +842,7 @@ CONTAINS
     LOGICAL, OPTIONAL :: Output
     INTEGER, OPTIONAL, POINTER :: Perm(:)
     LOGICAL, OPTIONAL :: Secondary
+    INTEGER, OPTIONAL :: VariableType
     LOGICAL, OPTIONAL :: Global
     REAL(KIND=dp), OPTIONAL :: InitValue   
     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
@@ -806,7 +861,7 @@ CONTAINS
     Variables => Mesh % Variables
 
     CALL VariableAddVector( Variables,Mesh,Solver,Name,DOFs,Values,&
-        Perm,Output,Secondary,Global,InitValue )
+        Perm,Output,Secondary,VariableType,Global,InitValue )
 
     IF( PRESENT( Var ) ) THEN
       Var => VariableGet( Variables, Name )

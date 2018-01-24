@@ -594,6 +594,73 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+   SUBROUTINE CreateIpTable( Solver, VarPerm, VarMask )
+
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER, POINTER, OPTIONAL :: VarPerm(:)
+     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: VarMask 
+     
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(GaussIntegrationPoints_t) :: IP
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: t, n, IpCount 
+     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+     LOGICAL :: Found
+     INTEGER, POINTER :: IpOffset(:) 
+     
+     IF( XOR( PRESENT(VarPerm), PRESENT( VarMask ) ) ) THEN
+       CALL Fatal('CreateIpTable','Either none or both optional parameters must be present!')
+     END IF
+
+     IF( PRESENT( VarPerm ) ) THEN
+       CALL Info('CreateIpTable','Creating masked version specific to variable',Level=15)
+     ELSE       
+       IF( ASSOCIATED( Solver % IpTable ) ) THEN
+         CALL Info('CreateIpTable','IpTable already allocated, returning')
+       END IF
+     END IF
+       
+     EquationName = ListGetString( Solver % Values, 'Equation', Found)
+     IF( .NOT. Found ) THEN
+       CALL Fatal('SetActiveElementsTable','Equation not present!')
+     END IF     
+     
+     Mesh => Solver % Mesh
+     NULLIFY( IpOffset ) 
+
+     n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+     ALLOCATE( IpOffset( n + 1) )
+
+     IpOffset = 0     
+     IpCount = 0
+
+     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+       Element => Mesh % Elements(t)
+            
+       IF( Element % PartIndex == ParEnv % myPE ) THEN
+         IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
+         
+           IP = GaussPoints( Element )
+           IpCount = IpCount + Ip % n
+         END IF
+       END IF
+         
+       IpOffset(t+1) = IpCount
+     END DO
+
+     IF( PRESENT( VarPerm ) ) THEN
+       VarPerm => IpOffset
+     ELSE
+       ALLOCATE( Solver % IpTable ) 
+       Solver % IpTable % IpOffset => IpOffset
+       Solver % IpTable % IpCount = IpCount
+     END IF
+       
+     CALL Info('CreateIpTable','Tabulated IpTable of size: '//TRIM(I2S(IpCount)),Level=12)  
+     
+   END SUBROUTINE CreateIpTable
+
+   
 
 
 !------------------------------------------------------------------------------
@@ -617,10 +684,10 @@ CONTAINS
 
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
     MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
-    VariableGlobal, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, &
-    IsProcedure, IsStepsSolver, LegacySolver
+    VariableGlobal, VariableIP, VariableElem, NoMatrix, IsAssemblySolver, &
+    IsCoupledSolver, IsBlockSolver, IsProcedure, IsStepsSolver, LegacySolver, UseMask
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname
+    CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name
 
     TYPE(ValueList_t), POINTER :: SolverParams
     TYPE(Mesh_t),   POINTER :: NewMesh,OldMesh
@@ -637,8 +704,9 @@ CONTAINS
     TYPE(GraphColour_t) :: GraphColouring, BoundaryGraphColouring
     LOGICAL :: ConsistentColours
 
-    LOGICAL :: ThreadedStartup, MultiColourSolver
-
+    LOGICAL :: ThreadedStartup, MultiColourSolver, HavePerm
+    INTEGER :: VariableType
+    
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
     SolverParams => ListGetSolverParams(Solver)
@@ -926,6 +994,9 @@ CONTAINS
       
       VariableOutput = ListGetLogical( SolverParams, 'Variable Output', Found )
       IF ( .NOT. Found ) VariableOutput = .TRUE.
+
+      VariableIp = ListGetLogical( SolverParams, 'Variable IP', Found )
+      VariableElem = ListGetLogical( SolverParams, 'Variable Elemental', Found )           
       
       DOFs = ListGetInteger( SolverParams, 'Variable DOFs', Found, minv=1 )
       IF ( .NOT. Found ) THEN
@@ -951,6 +1022,16 @@ CONTAINS
           var_name(1:LEN(var_name)-8) = var_name(9:)
         END IF
         
+        IF ( SEQL(var_name, '-ip ') ) THEN
+          VariableIp = .TRUE.
+          var_name(1:LEN(var_name)-4) = var_name(5:)
+        END IF
+
+         IF ( SEQL(var_name, '-elem ') ) THEN
+          VariableElem = .TRUE.
+          var_name(1:LEN(var_name)-6) = var_name(7:)
+        END IF
+               
         IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs
           i = 7
@@ -1021,8 +1102,7 @@ CONTAINS
         !-----------------------------------------------------------------------------------------
         CALL Info('AddEquationBasics','Computing size of permutation vector',Level=12)
         Ndeg = 0
-!        IF( Solver % SolverMode == SOLVER_MODE_DEFAULT .OR. &
-!            Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
+
         IF(.TRUE.) THEN
           eq = ListGetString( Solver  % Values, 'Equation', Found )
           MaxNDOFs  = 0
@@ -1196,6 +1276,10 @@ CONTAINS
       !------------------------------------------------------------------------------
     END IF
 
+    IF( ListGetLogical( SolverParams,'Create Integration Points Table',Found ) ) THEN
+      CALL CreateIpTable( Solver ) 
+    END IF
+    
     !------------------------------------------------------------------------------
     ! Add the exported variables which are typically auxiliary variables derived
     ! from the solution without their own matrix equation.  
@@ -1213,6 +1297,9 @@ CONTAINS
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' Output'
       VariableOutput = ListGetLogical( SolverParams, str, Found )
       IF ( .NOT. Found ) VariableOutput = .TRUE.
+
+      str = TRIM( ComponentName( 'exported variable', l ) ) // ' Mask'
+      mask_name = ListGetString( SolverParams, str, UseMask )
       
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' DOFs'
       DOFs = ListGetInteger( SolverParams, str, Found )
@@ -1227,10 +1314,15 @@ CONTAINS
           j = i + 1
         END DO
       END IF
+
+      
       
       VariableOutput = .TRUE.
       VariableGlobal = .FALSE.
-      
+      VariableIp = .FALSE.      
+      VariableElem = .FALSE.
+      VariableType = Solver % Variable % TYPE
+            
       DO WHILE( var_name(1:1) == '-' )
         IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
@@ -1240,6 +1332,16 @@ CONTAINS
         IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
+        END IF
+        
+        IF ( SEQL(var_name, '-ip ') ) THEN
+          VariableIp = .TRUE.
+          var_name(1:LEN(var_name)-4) = var_name(5:)
+        END IF        
+
+        IF ( SEQL(var_name, '-elem ') ) THEN
+          VariableElem = .TRUE.
+          var_name(1:LEN(var_name)-6) = var_name(7:)
         END IF
         
         IF ( SEQL(var_name, '-dofs ') ) THEN
@@ -1254,13 +1356,47 @@ CONTAINS
         END IF
       END DO
       IF ( DOFs == 0 ) DOFs = 1
-      
+
       NewVariable => VariableGet( Solver % Mesh % Variables, Var_name )
-      
+    
       IF ( .NOT. ASSOCIATED(NewVariable) ) THEN
-        IF( VariableGlobal ) THEN
+        
+        IF( VariableIp ) THEN
+          VariableType = Variable_on_gauss_points
+
+          IF( UseMask ) THEN
+            NULLIFY( Perm ) 
+            CALL CreateIpTable( Solver, Perm, mask_name ) 
+            nsize = MAXVAL( Perm ) 
+            
+          ELSE
+            ! Create a table showing the offset for IPs within elements
+            CALL CreateIpTable( Solver ) 
+            
+            nSize = Solver % IpTable % IpCount
+            Perm => Solver % IpTable % IpOffset
+          END IF
+            
+        ELSE IF( VariableElem ) THEN
+          VariableType = Variable_on_elements
+
+          ! We need to call these earlier than otherwise
+          IF( UseMask ) THEN
+            CALL SetActiveElementsTable( CurrentModel, Solver, k )
+            CALL Fatal('AddEquationBasics','Create masked version of exported variable on elements!')
+          ELSE
+            CALL SetActiveElementsTable( CurrentModel, Solver, k, CreateInv = .TRUE.  ) 
+            
+            nSize = Solver % NumberOfActiveElements          
+            Perm => Solver % InvActiveElements
+          END IF
+          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', k )
+            
+        ELSE IF( VariableGlobal ) THEN
+          VariableType = Variable_global
           nSize = DOFs
           NULLIFY( Perm )
+
         ELSE
           nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs
           Perm => Solver % Variable % Perm
@@ -1272,15 +1408,14 @@ CONTAINS
         Solution = 0.0d0
         IF( ASSOCIATED(Perm) ) THEN
           CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-              var_name, DOFs, Solution, Solver % Variable % Perm, &
-              Output=VariableOutput, TYPE=Solver % Variable % TYPE )
+              var_name, DOFs, Solution, Perm, &
+              Output=VariableOutput, TYPE=VariableType )
         ELSE          
           CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-              var_name, DOFs, Solution, TYPE=Solver % Variable % TYPE )
+              var_name, DOFs, Solution, TYPE=VariableType )
         END IF
         
         IF ( DOFs > 1 ) THEN
-!.AND. .NOT. VariableGlobal ) THEN
           n = LEN_TRIM( var_name )
           DO j=1,DOFs
             tmpname = ComponentName( var_name(1:n), j )
@@ -1288,10 +1423,10 @@ CONTAINS
             IF( ASSOCIATED(Perm) ) THEN
               CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
                   tmpname, 1, Component, Perm,  &
-                  Output=VariableOutput, TYPE=Solver % Variable % TYPE )
+                  Output=VariableOutput, TYPE = VariableType )
             ELSE
               CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                  tmpname, 1, Component, TYPE=Solver % Variable % TYPE )
+                  tmpname, 1, Component, TYPE = VariableType )
             END IF
           END DO
         END IF
@@ -4255,17 +4390,21 @@ CONTAINS
 
   ! Create list of active elements for more speedy operation
   !-------------------------------------------------------------
-  SUBROUTINE SetActiveElementsTable( Model, Solver, MaxDim )
+  SUBROUTINE SetActiveElementsTable( Model, Solver, MaxDim, CreateInv )
     TYPE(Model_t)  :: Model
     TYPE(Solver_t),POINTER :: Solver
     INTEGER, OPTIONAL :: MaxDim
+    LOGICAL, OPTIONAL :: CreateInv
     
     INTEGER :: i, n, Sweep, MeshDim 
     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: Found
+    TYPE(Mesh_t), POINTER :: Mesh
     
     IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
+
+    CALL Info('SetActiveElementsTable','Creating table showing active element indexes',Level=12)
 
     IF( ASSOCIATED( Solver % ActiveElements ) ) THEN
       DEALLOCATE( Solver % ActiveElements )
@@ -4277,12 +4416,13 @@ CONTAINS
       CALL Fatal('SetActiveElementsTable','Equation not present!')
     END IF
 
+    Mesh => Solver % Mesh
     
     MeshDim = 0 
     
     DO Sweep = 0, 1    
       n = 0
-      DO i=1,Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOFBoundaryElements
+      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
         Element => Solver % Mesh % Elements(i)
         IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
         IF ( CheckElementEquation( Model, Element, EquationName ) ) THEN
@@ -4302,6 +4442,20 @@ CONTAINS
     END DO
 
     IF( PRESENT( MaxDim ) ) MaxDim = MeshDim 
+
+    IF( PRESENT( CreateInv ) ) THEN
+      IF( CreateInv ) THEN
+        CALL Info('SetActiveElementsTable','Creating inverse table for elemental variable permutation',Level=20)
+        ALLOCATE( Solver % InvActiveElements( Mesh % NumberOfBulkElements &
+            + Mesh % NumberOFBoundaryElements ) )
+
+        Solver % InvActiveElements = 0
+        DO i=1,Solver % NumberOfActiveElements
+          Solver % InvActiveElements( Solver % ActiveElements(i) ) = i
+        END DO
+      END IF
+    END IF
+
     
   END SUBROUTINE SetActiveElementsTable
 

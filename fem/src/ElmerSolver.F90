@@ -521,8 +521,18 @@ END INTERFACE
 
        ! Initial Conditions:
        ! -------------------
-       IF ( FirstLoad ) CALL SetInitialConditions()
-       
+       IF ( FirstLoad ) THEN
+         CALL SetInitialConditions()     
+
+         DO i=1,CurrentModel % NumberOfSolvers
+           Solver => CurrentModel % Solvers(i)
+           IF( ListGetLogical( Solver % Values, 'Initialize Exported Variables', GotIt ) ) THEN
+             CurrentModel % Solver => Solver
+             CALL UpdateExportedVariables( Solver )	 
+           END IF
+         END DO
+       END IF
+         
        ! Compute the total number of steps that will be saved to the files
        ! Particularly look if the last step will be saved, or if it has
        ! to be saved separately.

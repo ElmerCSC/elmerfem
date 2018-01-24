@@ -5,5 +5,4 @@ CONFIGURE_FILE( map.sif map.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO box.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(structmap_p2)
-ADD_ELMER_LABEL(structmap_p2 quick)
+ADD_ELMER_TEST(structmap_p2 LABELS matc quick)

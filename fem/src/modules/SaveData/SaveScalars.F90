@@ -784,7 +784,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   IF( NoVar > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Performed ',NoVar-1,' reduction operations'
-    CALL Info('SaveScalars',Message)
+    CALL Info('SaveScalars',Message,Level=7)
   END IF
 
 
@@ -1081,7 +1081,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END DO
   IF(l > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Found ',l,' result scalars in simulation section'
-    CALL Info('SaveScalars',Message)
+    CALL Info('SaveScalars',Message,Level=7)
   END IF
 
   !------------------------------------------------------------------------------
@@ -1114,7 +1114,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END DO
     IF(l > 0 ) THEN
       WRITE (Message,'(A,I0,A)') 'Found ',l,' result scalars in components section'
-      CALL Info('SaveScalars',Message)
+      CALL Info('SaveScalars',Message,Level=7)
     END IF
   END IF
   
@@ -1351,8 +1351,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z)
   END IF
 
-  CALL Info('SaveScalars','All done')
-  CALL Info('SaveScalars', '-----------------------------------------', Level=4 )
+  n = 1
+  n = NINT( ParallelReduction(1.0_dp*n) )
+  
+  CALL Info('SaveScalars', '-----------------------------------------', Level=7 )
 
 
 !------------------------------------------------------------------------------
@@ -1396,7 +1398,7 @@ CONTAINS
 
     END SELECT
 
-    CALL Info('OperToParOperMap',TRIM(LocalOper)//' -> '//TRIM(ParOper))
+    CALL Info('OperToParOperMap',TRIM(LocalOper)//' -> '//TRIM(ParOper),Level=12)
 
   END FUNCTION OperToParOperMap
 
@@ -1529,7 +1531,7 @@ CONTAINS
         TargetVar => VariableGet( Model % Variables, TRIM(VariableName) )       
       END IF
       TargetVar % Values(1) = Values(n)
-      CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(n)))
+      CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(n)),Level=8)
     END IF
 
   END SUBROUTINE AddToSaveList
@@ -1604,7 +1606,8 @@ CONTAINS
         Mean, Variance, sumx, sumxx, sumabsx, x, Variance2
     INTEGER :: Nonodes, i, j, k, l, NoDofs, sumi
     TYPE(NeighbourList_t), POINTER :: nlist(:)
-
+    INTEGER, POINTER :: PPerm(:)
+    
     CALL Info('SaveScalars','Computing operator: '//TRIM(OperName),Level=12)
 
     sumi = 0
@@ -1616,10 +1619,17 @@ CONTAINS
     Minimum = HUGE(x)
     AbsMaximum = -HUGE(x)
     AbsMinimum = HUGE(x)
+
+    PPerm => Var % Perm
+    IF( Var % TYPE == Variable_on_gauss_points .OR. &
+        Var % TYPE == Variable_on_elements ) THEN
+      NULLIFY( PPerm )
+    END IF
+
     
     NoDofs = Var % Dofs
-    IF(ASSOCIATED (Var % Perm)) THEN
-      Nonodes = SIZE(Var % Perm) 
+    IF(ASSOCIATED (PPerm)) THEN
+      Nonodes = SIZE(PPerm) 
     ELSE
       Nonodes = SIZE(Var % Values) / NoDofs
     END IF
@@ -1628,7 +1638,7 @@ CONTAINS
     IF( MaskOper ) THEN
       IF( NoNodes > SIZE(NodeMask) ) THEN
         CALL Info('SaveScalars','Decreasing operator range to size of mask: '&
-            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))) )
+            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))), Level=8)
         NoNodes = SIZE(NodeMask)
       END IF
     END IF
@@ -1650,7 +1660,7 @@ CONTAINS
         LastInd = Mesh % NumberOfNodes
       ELSE
         FirstInd = Mesh % NumberOfNodes + 1
-        LastInd = SIZE( Var % Perm ) 
+        LastInd = SIZE( PPerm ) 
       END IF
     ELSE
       FirstInd = 1
@@ -1664,7 +1674,7 @@ CONTAINS
       END IF
 
       j = i
-      IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
+      IF(ASSOCIATED(PPerm)) j = Var % Perm(i)
 
       IF(j > 0) THEN
         IF( ParEnv % PEs > 1 .AND. ASSOCIATED(nlist) ) THEN
@@ -1769,10 +1779,18 @@ CONTAINS
     REAL(KIND=dp) :: Mean, Deviation
     REAL(KIND=dp) :: sumx, sumdx, x, dx
     INTEGER :: Nonodes, i, j, k, NoDofs, sumi
-
+    INTEGER, POINTER :: PPerm(:)
+    
     NoDofs = Var % Dofs
-    IF(ASSOCIATED (Var % Perm)) THEN
-      Nonodes = SIZE(Var % Perm) 
+
+    PPerm => Var % Perm
+    IF( Var % TYPE == Variable_on_gauss_points .OR. &
+        Var % TYPE == Variable_on_elements ) THEN
+      NULLIFY( PPerm )
+    END IF
+
+    IF(ASSOCIATED (PPerm)) THEN
+      Nonodes = SIZE(PPerm) 
     ELSE
       Nonodes = SIZE(Var % Values) / NoDofs
     END IF
@@ -1800,7 +1818,7 @@ CONTAINS
         IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
       END IF
 
-      IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
+      IF(ASSOCIATED(PPerm)) j = PPerm(i)
       IF(j > 0) THEN
         IF(NoDofs <= 1) THEN
           x = Var % Values(j)
@@ -1823,7 +1841,7 @@ CONTAINS
     sumdx = 0.0
     DO i=1,Nonodes
       j = i
-      IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
+      IF(ASSOCIATED(PPerm)) j = PPerm(i)
       IF(j > 0) THEN
         IF(NoDofs <= 1) THEN
           x = Var % Values(j)
