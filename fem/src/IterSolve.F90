@@ -939,15 +939,17 @@ CONTAINS
 #endif
     GlobalMatrix => SaveGlobalM
 
+    
     stack_pos=stack_pos-1
     
     IF ( ComplexSystem ) HUTI_NDIM = HUTI_NDIM * 2
 !------------------------------------------------------------------------------
     IF ( HUTI_INFO /= HUTI_CONVERGENCE .AND. ParEnv % myPE==0 ) THEN
+      CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
-        CALL NumericalError( 'IterSolve', 'System diverged over tolerance.')
-      ELSE
-        CALL NumericalError( 'IterSolve', 'Failed convergence tolerances.')
+        CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
+      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
+        CALL NumericalError( 'IterSolve', 'Too many iterations was needed.')
       END IF
     END IF
 !------------------------------------------------------------------------------
