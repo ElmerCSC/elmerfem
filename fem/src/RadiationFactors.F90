@@ -108,7 +108,7 @@
          InvElementNumbers(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag, GebhardtFactorsFile, &
-         ViewFactorsFile,OutputName, OutputName2
+         ViewFactorsFile,OutputName, OutputName2, SolverType 
      CHARACTER(LEN=100) :: cmd
 
      LOGICAL :: GotIt, SaveFactors, UpdateViewFactors, UpdateGebhardtFactors, &
@@ -196,11 +196,29 @@
        y0(1) = 1.0
      END IF
 
-     FullMatrix =  ListGetLogical( TSolver % Values,  &
+     FullMatrix = ListGetLogical( TSolver % Values,  &
          'Gebhardt Factors Solver Full',GotIt) 
+     IF( FullMatrix ) THEN
+       CALL Info('RadiationFactors','Using full matrix for Gebhardt factors',Level=6)
+     ELSE
+       CALL Info('RadiationFactors','Using sparse matrix for Gebhardt factors',Level=6)
+     END IF
+
      IterSolveGebhardt =  ListGetLogical( TSolver % Values,  &
          'Gebhardt Factors Solver Iterative',GotIt) 
-     IF(.NOT. GotIt) IterSolveGebhardt = .FALSE.
+     IF(.NOT. GotIt) THEN
+       SolverType = ListGetString( TSolver % Values, &
+           'radiation: Linear System Solver', GotIt )
+       IF( GotIt ) THEN
+         IF( SolverType == 'iterative' ) IterSolveGebhardt = .TRUE. 
+       END IF
+     END IF
+     IF( IterSolveGebhardt ) THEN
+       CALL Info('RadiationFactors','Using iterative solver for Gebhardt factors',Level=6)
+     ELSE
+       CALL Info('RadiationFactors','Using direct solver for Gebhardt factors',Level=6)
+     END IF
+       
      ComputeViewFactors = ListGetLogical( TSolver % Values,  &
          'Compute View Factors',GotIt )
 
@@ -683,7 +701,7 @@
      END DO
 
      ALLOCATE( Solver )
-     CALL InitFactorSolver(Solver)
+     CALL InitFactorSolver(TSolver, Solver)
      
      RHS = 0.0D0
      SOL = 1.0D-4
@@ -1100,28 +1118,32 @@
      END SUBROUTINE FIterSolver
      
 
-     SUBROUTINE InitFactorSolver(Solver)
-       
+     SUBROUTINE InitFactorSolver(TSolver, Solver)
+
+       TYPE(Solver_t) :: TSolver
        TYPE(Solver_t) :: Solver
 
        Solver % Values => ListAllocate()
+
+       CALL ListCopyPrefixedKeywords( TSolver % Values, Solver % Values, 'radiation:' )
+
        
-       CALL ListAddString( Solver % Values, &
+       CALL ListAddNewString( Solver % Values, &
            'Linear System Iterative Method', 'CGS' )
 
-       CALL ListAddString( Solver % Values, &
+       CALL ListAddNewString( Solver % Values, &
            'Linear System Direct Method', 'Umfpack' )
 
-       CALL ListAddInteger( Solver % Values, &
+       CALL ListAddNewInteger( Solver % Values, &
            'Linear System Max Iterations', 500 )
        
-       CALL ListAddConstReal( Solver % Values, &
+       CALL ListAddNewConstReal( Solver % Values, &
            'Linear System Convergence Tolerance', 1.0D-9 )
        
-       CALL ListAddString( Solver % Values, &
+       CALL ListAddNewString( Solver % Values, &
            'Linear System Preconditioning', 'None' )
        
-       CALL ListAddInteger( Solver % Values, &
+       CALL ListAddNewInteger( Solver % Values, &
            'Linear System Residual Output', 10 )
        
      END SUBROUTINE InitFactorSolver
