@@ -594,30 +594,37 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-   SUBROUTINE CreateIpTable( Solver, VarPerm, VarMask )
+
+   !> Create permutation for fields on integration points, optionally with mask.
+   !> The non-masked version is saved to Solver structure for reuse while the
+   !> masked version may be unique to every variable. 
+   !-----------------------------------------------------------------------------------
+   SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName )
 
      TYPE(Solver_t), POINTER :: Solver
-     INTEGER, POINTER, OPTIONAL :: VarPerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: VarMask 
+     INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
+     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName 
      
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(GaussIntegrationPoints_t) :: IP
      TYPE(Element_t), POINTER :: Element
      INTEGER :: t, n, IpCount 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
-     LOGICAL :: Found
+     LOGICAL :: Found, ActiveElem
      INTEGER, POINTER :: IpOffset(:) 
+     TYPE(ValueList_t), POINTER :: BF
      
-     IF( XOR( PRESENT(VarPerm), PRESENT( VarMask ) ) ) THEN
-       CALL Fatal('CreateIpTable','Either none or both optional parameters must be present!')
+     IF( XOR( PRESENT(MaskPerm), PRESENT( MaskName ) ) ) THEN
+       CALL Fatal('CreateIpPerm','Either none or both optional parameters must be present!')
      END IF
 
-     IF( PRESENT( VarPerm ) ) THEN
-       CALL Info('CreateIpTable','Creating masked version specific to variable',Level=15)
+     IF( PRESENT( MaskPerm ) ) THEN
+       CALL Info('CreateIpPerm','Creating masked permutation for integration points',Level=8)
      ELSE       
        IF( ASSOCIATED( Solver % IpTable ) ) THEN
-         CALL Info('CreateIpTable','IpTable already allocated, returning')
+         CALL Info('CreateIpPerm','IpTable already allocated, returning')
        END IF
+       CALL Info('CreateIpPerm','Creating permuation for integration points',Level=8)       
      END IF
        
      EquationName = ListGetString( Solver % Values, 'Equation', Found)
@@ -639,28 +646,161 @@ CONTAINS
             
        IF( Element % PartIndex == ParEnv % myPE ) THEN
          IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
-         
-           IP = GaussPoints( Element )
-           IpCount = IpCount + Ip % n
+           
+           IF( PRESENT( MaskName ) ) THEN
+             BF => GetBodyForce( Element )
+             ActiveElem = ListGetLogical( BF, MaskName, Found )
+           ELSE
+             ActiveElem = .TRUE.
+           END IF
+           
+           IF( ActiveElem ) THEN
+             IP = GaussPoints( Element )
+             IpCount = IpCount + Ip % n
+           END IF
          END IF
        END IF
          
        IpOffset(t+1) = IpCount
      END DO
 
-     IF( PRESENT( VarPerm ) ) THEN
-       VarPerm => IpOffset
+     IF( PRESENT( MaskPerm ) ) THEN
+       MaskPerm => IpOffset
      ELSE
        ALLOCATE( Solver % IpTable ) 
        Solver % IpTable % IpOffset => IpOffset
        Solver % IpTable % IpCount = IpCount
      END IF
        
-     CALL Info('CreateIpTable','Tabulated IpTable of size: '//TRIM(I2S(IpCount)),Level=12)  
+     CALL Info('CreateIpPerm','Created permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
      
-   END SUBROUTINE CreateIpTable
+   END SUBROUTINE CreateIpPerm
+
+
+
+   !> Create permutation for fields on elements, optional using mask
+   !-----------------------------------------------------------------
+   SUBROUTINE CreateElementsPerm( Solver, Perm, nsize, MaskName ) 
+     TYPE(Solver_t),POINTER :: Solver
+     INTEGER, POINTER :: Perm(:)
+     INTEGER :: nsize
+     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName
+
+     INTEGER :: t, n, m
+     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: Found, ActiveElem
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(ValueList_t), POINTER :: BF
+
+     CALL Info('CreateElementsPerm','Creating permutation for elemental fields',Level=8)
+
+     EquationName = ListGetString( Solver % Values, 'Equation', Found)
+     IF( .NOT. Found ) THEN
+       CALL Fatal('CreateElementsPerm','Equation not present!')
+     END IF
+
+     Mesh => Solver % Mesh
+
+
+     NULLIFY( Perm ) 
+     n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+     ALLOCATE( Perm(n) )
+     Perm = 0
+
+
+     m = 0
+     DO t=1,n
+       Element => Solver % Mesh % Elements(t)
+       IF( Element % PartIndex == ParEnv % myPE ) THEN
+         IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
+           IF( PRESENT( MaskName ) ) THEN
+             BF => GetBodyForce( Element )
+             ActiveElem = ListGetLogical( BF, MaskName, Found )
+           ELSE
+             ActiveElem = .TRUE.
+           END IF
+         END IF
+
+         IF( ActiveElem ) THEN
+           m = m + 1
+           Perm(t) = m
+         END IF
+       END IF
+     END DO
+
+     CALL Info('CreateElementsPerm','Number of active elements in permutation: '//TRIM(I2S(m)),Level=8)
+
+     nsize = m 
+
+   END SUBROUTINE CreateElementsPerm
+
 
    
+   !> Create permutation table that follows the degrees of freedom of the primary
+   !> permutation but is masked by a flag on the body force section.
+   !---------------------------------------------------------------------------------
+   SUBROUTINE CreateMaskedPerm( Solver, FullPerm, MaskName, MaskPerm, nsize )
+
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER, POINTER :: FullPerm(:)
+     CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
+     INTEGER, POINTER :: MaskPerm(:) 
+     INTEGER :: nsize
+          
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: t, n, m
+     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+     TYPE(ValueList_t), POINTER :: BF
+     LOGICAL :: Found
+     INTEGER, ALLOCATABLE :: Indexes(:)
+     
+     
+     CALL Info('CreateMaskedPerm','Creating variable with mask: '//TRIM(MaskName),Level=8)
+       
+     EquationName = ListGetString( Solver % Values, 'Equation', Found)
+     IF( .NOT. Found ) THEN
+       CALL Fatal('CreateMaskedPerm','Equation not present!')
+     END IF     
+     
+     Mesh => Solver % Mesh
+     NULLIFY( MaskPerm ) 
+
+     n = SIZE( FullPerm ) 
+     ALLOCATE( MaskPerm( n ), Indexes(100) ) 
+
+     MaskPerm = 0     
+
+     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+       Element => Mesh % Elements(t)
+            
+       IF( Element % PartIndex == ParEnv % myPE ) THEN
+         IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
+
+           BF => GetBodyForce( Element )
+           IF( ListGetLogical( BF, MaskName, Found) ) THEN           
+             m = GetElementDOFs( Indexes, Element, Solver )
+             MaskPerm( Indexes(1:m) ) = FullPerm( Indexes(1:m) )
+           END IF
+         END IF
+       END IF
+     END DO
+       
+     m = 0
+     DO t=1,n
+       IF( MaskPerm( t ) > 0 ) THEN
+         m = m + 1
+         MaskPerm( t ) = m
+       END IF
+     END DO
+            
+     nsize = m
+     
+     CALL Info('CreateMaskedPerm','Created masked permutation for dofs: '//TRIM(I2S(nsize)),Level=8)  
+     
+   END SUBROUTINE CreateMaskedPerm
+
 
 
 !------------------------------------------------------------------------------
@@ -1277,7 +1417,7 @@ CONTAINS
     END IF
 
     IF( ListGetLogical( SolverParams,'Create Integration Points Table',Found ) ) THEN
-      CALL CreateIpTable( Solver ) 
+      CALL CreateIpPerm( Solver ) 
     END IF
     
     !------------------------------------------------------------------------------
@@ -1366,13 +1506,12 @@ CONTAINS
 
           IF( UseMask ) THEN
             NULLIFY( Perm ) 
-            CALL CreateIpTable( Solver, Perm, mask_name ) 
+            CALL CreateIpPerm( Solver, Perm, mask_name ) 
             nsize = MAXVAL( Perm ) 
             
           ELSE
             ! Create a table showing the offset for IPs within elements
-            CALL CreateIpTable( Solver ) 
-            
+            CALL CreateIpPerm( Solver )             
             nSize = Solver % IpTable % IpCount
             Perm => Solver % IpTable % IpOffset
           END IF
@@ -1381,9 +1520,8 @@ CONTAINS
           VariableType = Variable_on_elements
 
           ! We need to call these earlier than otherwise
-          IF( UseMask ) THEN
-            CALL SetActiveElementsTable( CurrentModel, Solver, k )
-            CALL Fatal('AddEquationBasics','Create masked version of exported variable on elements!')
+          IF( UseMask ) THEN            
+            CALL CreateElementsPerm( Solver, Perm, nsize, Mask_Name ) 
           ELSE
             CALL SetActiveElementsTable( CurrentModel, Solver, k, CreateInv = .TRUE.  ) 
             
@@ -1398,8 +1536,14 @@ CONTAINS
           NULLIFY( Perm )
 
         ELSE
-          nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs
-          Perm => Solver % Variable % Perm
+          IF( UseMask ) THEN
+            NULLIFY( Perm )
+            CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, Perm, nsize )
+            nsize = DOFs * nsize
+          ELSE
+            nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs          
+            Perm => Solver % Variable % Perm
+          END IF
         END IF
         
         ALLOCATE( Solution(nSize), STAT = AllocStat )
@@ -2712,7 +2856,7 @@ CONTAINS
     INTEGER :: Row, Col, ColDofs, RowDofs, ColInd0, RowInd0, MaxDofs, &
          ColVar, RowVar, Nrow, Ncol, NoVar, NoCons, TotSize, ConDofs, OffSet(20), &
          VarSizes(20),VarDofs(20)
-    INTEGER :: ElementsFirst, ElementsLast, bf_id, bc_id, body_id, eq_id
+    INTEGER :: ElementsFirst, ElementsLast
     INTEGER, POINTER :: VarPerm(:), ColPerm(:), RowPerm(:), ColInds(:), RowInds(:), DirPerm(:)
     REAL(KIND=dp), POINTER :: ConsValues(:)
     REAL(KIND=dp) :: NonlinearTol, Norm, PrevNorm, ConsValue, ConsCoeff, ConsVolume
@@ -4459,6 +4603,9 @@ CONTAINS
     
   END SUBROUTINE SetActiveElementsTable
 
+
+
+  
   
 !------------------------------------------------------------------------------
 !> This executes the original line of solvers (legacy solvers) where each solver 
