@@ -2866,6 +2866,37 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+!------------------------------------------------------------------------------
+!> A generalized version of ListGetLogical. Uses logical, only if the keyword is
+!> of type locical, otherwise returns True if the keyword is present.
+!> Since the absense if a sign of False there is no separate Found flag.
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetLogicalGen( List, Name) RESULT(L)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: L
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     LOGICAL :: Found
+!------------------------------------------------------------------------------
+
+     L = .FALSE.
+     ptr => ListFind(List,Name,Found)
+     IF ( ASSOCIATED(ptr) ) THEN
+       IF(ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR ) THEN
+         L = ptr % Lvalue
+       ELSE
+         L = .TRUE.
+       END IF
+     END IF    
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetLogicalGen
+!------------------------------------------------------------------------------
+ 
+   
+
 !------------------------------------------------------------------------------
 !> Gets a string from the list by its name, if not found return empty string.
 !------------------------------------------------------------------------------
