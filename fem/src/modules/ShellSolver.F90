@@ -148,9 +148,9 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 ! For edge parametrizations based on the director data of first and second order:
 !------------------------------------------------------------------------------
   INTEGER, PARAMETER :: MaxNumberOfCurves = 6
-  INTEGER, PARAMETER :: CurveDataSize1 = 5
+  INTEGER, PARAMETER :: CurveDataSize1 = 6
   INTEGER, PARAMETER :: CurveDataSize2 = 6
-  INTEGER, DIMENSION(CurveDataSize1), PARAMETER :: CurveParams1 = (/ 1, 2, 3, 4, 5/)
+  INTEGER, DIMENSION(CurveDataSize1), PARAMETER :: CurveParams1 = (/ 1, 2, 3, 4, 5, 6/)
   INTEGER, DIMENSION(CurveDataSize2), PARAMETER :: CurveParams2 = (/ 1, 2, 3, 4, 5, 6/) 
 !------------------------------------------------------------------------------
 ! Some other parameter definitions related to the choice of strain reduction 
@@ -292,9 +292,9 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     
   ! ---------------------------------------------------------------------------------
   ! PART I: 
-  ! Read the director data at the nodes from mesh.director file and/or check the
-  ! the integrity of the surface model. This subroutine creates an elementwise 
-  ! property 'director' corresponding to the data, if not already available
+  ! Read the director data at the nodes from mesh.director file and check the
+  ! the integrity of the surface model. An elementwise property 'director' 
+  ! corresponding to the data is created, if not already available
   ! via reading the director data from the file mesh.elements.data. If neither
   ! mesh.director nor mesh.elements.data are used to define the director, other
   ! means can also be used for obtaining the director.
@@ -982,9 +982,9 @@ CONTAINS
     Active = GetNOFActive()
     DO k=1,Active
       Element => GetActiveElement(k)
-      CALL GetElementNodes( Nodes )
+      CALL GetElementNodes(Nodes)
 
-      DirectorValues => GetElementalDirector( Element, Nodes )
+      DirectorValues => GetElementalDirector(Element, Nodes)
 
       Family = GetElementFamily(Element)
 
@@ -1006,6 +1006,7 @@ CONTAINS
             CALL Fatal('CreateCurvedEdges', '8-node background quad is not supported')
         QuadraticGeometryData = Element % TYPE % NumberOfNodes == 9
         IF (QuadraticGeometryData) THEN
+          CALL Fatal('CreateCurvedEdges', '9-node background elements are not yet supported')
           EdgesParametrized = 6   ! Even 8 edges could be created
         ELSE
           ! -------------------------------------------------------------------------------
@@ -1110,6 +1111,7 @@ CONTAINS
         IF (QuadraticGeometryData) THEN
           ! -----------------------------------------------------------
           ! In this case each edge has also a mid-node: 
+          ! TO DO: Call HermiteForm instead of EdgeFrame
           ! -----------------------------------------------------------
           X3(1) = Nodes % x(l)
           X3(2) = Nodes % y(l)
@@ -1120,24 +1122,27 @@ CONTAINS
 
           CALL EdgeFrame(X1, X2, d1, d2, A, cpars, X3, d3)
         ELSE
-          CALL EdgeFrame(X1, X2, d1, d2, A, cpars)
+          CALL HermiteForm(X1, X2, d1, d2, cpars)
 
-          IF (FileOutput .AND. EdgesParametrized == 4) THEN
-            WRITE(10, '(2I5,18e23.15)',ADVANCE='NO') v1, v2, A(1,1), A(2,1), &
-                A(3,1), A(1,2), A(2,2), A(3,2), A(1,3), A(2,3), A(3,3), A(1,4), &
-                A(2,4), A(3,4), cpars(1), cpars(1), cpars(2), cpars(3), cpars(4), &
-                cpars(5)
-            WRITE(10, *) ''
-          END IF
+          ! TO DO: Revise the file output
+          !IF (FileOutput .AND. EdgesParametrized == 4) THEN
+          !  WRITE(10, '(2I5,18e23.15)',ADVANCE='NO') v1, v2, A(1,1), A(2,1), &
+          !      A(3,1), A(1,2), A(2,2), A(3,2), A(1,3), A(2,3), A(3,3), A(1,4), &
+          !      A(2,4), A(3,4), cpars(1), cpars(1), cpars(2), cpars(3), cpars(4), &
+          !      cpars(5)
+          !  WRITE(10, *) ''
+          !END IF
         END IF
 
         ! Prepare for writing the edge curve data as element properties:
         !---------------------------------------------------------------
-        i0 = (e-1)*FrameDataSize
-        DO j=1,4
-          j0 = i0 + (j-1)*3
-          EdgeFramesData(j0+1:j0+3) = A(1:3,j)
-        END DO
+        IF (QuadraticGeometryData) THEN
+          i0 = (e-1)*FrameDataSize
+          DO j=1,4
+            j0 = i0 + (j-1)*3
+            EdgeFramesData(j0+1:j0+3) = A(1:3,j)
+          END DO
+        END IF
 
         i0 = (e-1)*CurveDataSize
         EdgeCurveParams(i0+1:i0+CurveDataSize) = cpars(1:CurveDataSize)
@@ -1146,11 +1151,12 @@ CONTAINS
 
       ! Write the edge curve data as element properties:
       !----------------------------------------------------
-      CALL SetElementProperty('edge frames', &
-          EdgeFramesData(1:FrameDataSize*EdgesParametrized), Element) 
       CALL SetElementProperty('edge parameters', &
-          EdgeCurveParams(1:CurveDataSize*EdgesParametrized), Element)       
-
+          EdgeCurveParams(1:CurveDataSize*EdgesParametrized), Element)
+      IF (QuadraticGeometryData) THEN
+        CALL SetElementProperty('edge frames', &
+            EdgeFramesData(1:FrameDataSize*EdgesParametrized), Element) 
+      END IF
     END DO
 
     IF (FileOutput) CLOSE(10)
@@ -1264,6 +1270,75 @@ CONTAINS
   END SUBROUTINE EdgeFrame
 !---------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+! Compute data which can be used to represent a space curve in the standard 
+! Hermite form. The curve tangent vectors expressed with respect to the global 
+! frame at the nodes are created by requiring that the tangent vector is orthogonal 
+! to the given director vector. The tangent vectors are returned via cpars. The base 
+! vectors and the origin X0 of a local coordinate frame are also returned (this 
+! may not be of any use in practice) via A. The input data Xk gives the global 
+! coordinates of the kth vertex on the edge, while dk specifies the director at 
+! the kth vertex on the edge.
+!------------------------------------------------------------------------------
+  SUBROUTINE HermiteForm(X1, X2, d1, d2, cpars, A, X3, d3)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: X1(3), X2(3), d1(3), d2(3)
+    REAL(KIND=dp), POINTER, INTENT(OUT) :: cpars(:)
+    REAL(KIND=dp), POINTER, OPTIONAL, INTENT(OUT) :: A(:,:)
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: X3(3), d3(3)
+!------------------------------------------------------------------------------
+    LOGICAL :: WithThreeNodes
+    REAL(KIND=dp) :: d(3), ex(3), ey(3), ez(3), X0(3), v21(3), b(3)
+    REAL(KIND=dp) :: t1(3), t2(3), t3(3), Norm, h
+!------------------------------------------------------------------------------
+    WithThreeNodes = PRESENT(X3) .AND. PRESENT(d3)
+    IF (WithThreeNodes) CALL Fatal('HermiteForm', 'Only 2-node version made')
+
+    v21 = X2 - X1
+    h = SQRT(SUM(v21**2))
+    b = 1.0d0/h * v21
+
+    ! Pick a unit tangent vector orthogonal to the nodal director:
+    t1 = v21 - DOT_PRODUCT(v21,d1)*d1
+    Norm = SQRT(SUM(t1**2))
+    t1 = 1.0d0/Norm * t1
+    ! Scale to obtain a tangent vector suitable for the Hermite interpolation
+    ! with the derivative DOF being Dv(a_1)[a_2-a_1]:
+    Norm = h / DOT_PRODUCT(t1,b)
+    t1 = Norm * t1
+
+    ! Repeat for the second node with the derivative DOF Dv(a_2)[a_2-a_1]:
+    t2 = v21 - DOT_PRODUCT(v21,d2)*d2
+    Norm = SQRT(SUM(t2**2))
+    t2 = 1.0d0/Norm * t2
+    Norm = h / DOT_PRODUCT(t2,b)
+    t2 = Norm * t2
+
+    cpars(1:3) = t1(1:3)
+    cpars(4:6) = t2(1:3)
+
+    ! Create a local frame, although this may not be of any use:
+    IF (PRESENT(A)) THEN
+      X0 = 0.5d0 * (X1 + X2)
+      ex = b
+      d = 0.5d0 * (d1 + d2) 
+      d = d - DOT_PRODUCT(d,ex)*ex
+      Norm = SQRT(SUM(d**2))
+      ez = 1.0d0/Norm * d 
+      ey = CrossProduct(ez,ex)
+
+      A(1:3,1) = ex(1:3)
+      A(1:3,2) = ey(1:3)
+      A(1:3,3) = ez(1:3)
+      A(1:3,4) = X0(1:3)
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE HermiteForm
+!------------------------------------------------------------------------------
+
+
 !----------------------------------------------------------------------------
 ! This function produces the covariant basis {a_i}, the first and second
 ! fundamental forms A and B, the determinant of the metric surface tensor detA
@@ -1316,6 +1391,7 @@ CONTAINS
 
     SAVE GElement
 !----------------------------------------------------------------------------
+
     Family = GetElementFamily(Element)
     
     ! Set some default values:
@@ -1371,8 +1447,10 @@ CONTAINS
     !-----------------------------------------------------------------------
     ! Retrive parametrizations of curved edges:
     !------------------------------------------------------------------------
-    FrameData => GetElementProperty('edge frames', Element) 
     EdgeParams => GetElementProperty('edge parameters', Element)   
+    FrameData => NULL()
+    IF (QuadraticGeometryData) &
+        FrameData => GetElementProperty('edge frames', Element) 
 
     IF (ASSOCIATED(FrameData)) THEN
       IF (Subtriangulation) THEN
@@ -1382,8 +1460,6 @@ CONTAINS
         IF (SIZE(FrameData) < EdgesParametrized*FrameDataSize) &
             CALL Fatal('BlendingSurfaceInfo','Frame data are not associated with all edges')
       END IF
-    ELSE
-      CALL Fatal('BlendingSurfaceInfo','edge frames data could not be retrieved')
     END IF
 
     IF (ASSOCIATED(EdgeParams)) THEN
@@ -1395,7 +1471,7 @@ CONTAINS
             CALL Fatal('BlendingSurfaceInfo','edge parameters are not associated with all edges')
       END IF
     ELSE
-      CALL Fatal('BlendingSurfaceInfo','edge frames data could not be retrieved')
+      CALL Fatal('BlendingSurfaceInfo','edge curves data could not be retrieved')
     END IF
 
     !---------------------------------------------------------------------------
@@ -1424,16 +1500,16 @@ CONTAINS
     ! to the surface basis vectors and to the derivatives of the surface basis 
     ! vectors
     !--------------------------------------------------------------------------
-    X(1) = SUM( Nodes % x(1:n) * Basis(1:n) )
-    X(2) = SUM( Nodes % y(1:n) * Basis(1:n) )
-    X(3) = SUM( Nodes % z(1:n) * Basis(1:n) )
-    ! XInit(:) = X(:)
-    a1(1) = SUM( dBasis(1:n,1) * Nodes % x(1:n) )
-    a1(2) = SUM( dBasis(1:n,1) * Nodes % y(1:n) )
-    a1(3) = SUM( dBasis(1:n,1) * Nodes % z(1:n) )
-    a2(1) = SUM( dBasis(1:n,2) * Nodes % x(1:n) )
-    a2(2) = SUM( dBasis(1:n,2) * Nodes % y(1:n) )
-    a2(3) = SUM( dBasis(1:n,2) * Nodes % z(1:n) )
+    X(1) = SUM( Nodes % x(1:Family) * Basis(1:Family) )
+    X(2) = SUM( Nodes % y(1:Family) * Basis(1:Family) )
+    X(3) = SUM( Nodes % z(1:Family) * Basis(1:Family) )
+
+    a1(1) = SUM( dBasis(1:Family,1) * Nodes % x(1:Family) )
+    a1(2) = SUM( dBasis(1:Family,1) * Nodes % y(1:Family) )
+    a1(3) = SUM( dBasis(1:Family,1) * Nodes % z(1:Family) )
+    a2(1) = SUM( dBasis(1:Family,2) * Nodes % x(1:Family) )
+    a2(2) = SUM( dBasis(1:Family,2) * Nodes % y(1:Family) )
+    a2(3) = SUM( dBasis(1:Family,2) * Nodes % z(1:Family) )
 
     d1a1 = 0.0d0
     IF (Family == 4) THEN
@@ -1455,17 +1531,21 @@ CONTAINS
     ! Add the blending part edgewise...
     !--------------------------------------------------------------------------
     DO e=1,EdgesParametrized
-      
-      i0 = (e-1)*FrameDataSize
-      ex(1:3) = FrameData(i0+FrameBasis1)
-      ey(1:3) = FrameData(i0+FrameBasis2)
-      ez(1:3) = FrameData(i0+FrameBasis3)
-      X0(1:3) = FrameData(i0+FrameOrigin)
 
       i0 = (e-1)*CurveDataSize
       d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
-      h = d(1) ! The length parameter
 
+      IF (QuadraticGeometryData) THEN
+        h = d(1) ! The length parameter
+        i0 = (e-1)*FrameDataSize
+        ex(1:3) = FrameData(i0+FrameBasis1)
+        ey(1:3) = FrameData(i0+FrameBasis2)
+        ez(1:3) = FrameData(i0+FrameBasis3)
+        X0(1:3) = FrameData(i0+FrameOrigin)
+      ELSE
+        h = 2.0d0 ! the length of reference element [-1,1]
+      END IF
+        
       SELECT CASE(Family)
       CASE(3)
         !-------------------------------------------------------------------------
@@ -1475,23 +1555,35 @@ CONTAINS
         CASE(1)
           s = Basis(2) - Basis(1)
           h1 = Basis(2) * Basis(1)
+          r1(1) = Nodes % x(1)
+          r1(2) = Nodes % y(1)
+          r1(3) = Nodes % z(1)
+          r2(1) = Nodes % x(2)
+          r2(2) = Nodes % y(2)
+          r2(3) = Nodes % z(2)
         CASE(2)
           s = Basis(3) - Basis(2)
           h1 = Basis(3) * Basis(2)
+          r1(1) = Nodes % x(2)
+          r1(2) = Nodes % y(2)
+          r1(3) = Nodes % z(2)
+          r2(1) = Nodes % x(3)
+          r2(2) = Nodes % y(3)
+          r2(3) = Nodes % z(3)
         CASE(3)
           s = Basis(1) - Basis(3)
           h1 = Basis(1) * Basis(3)
+          r1(1) = Nodes % x(3)
+          r1(2) = Nodes % y(3)
+          r1(3) = Nodes % z(3)
+          r2(1) = Nodes % x(1)
+          r2(2) = Nodes % y(1)
+          r2(3) = Nodes % z(1)
         END SELECT
 
         !-------------------------------------------------------------------------
-        ! The dimensional edge parameterization coordinate corresponding to
-        ! the dimensionless coordinate s
-        !--------------------------------------------------------------------------
-        xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
-
-        !-------------------------------------------------------------------------
-        ! The ordinary third-order Hermite interpolation basis and
-        ! linear basis functions and their derivatives on an edge [-1,1]
+        ! The basis functions for the edge curve expansion in terms of s and
+        ! their derivatives
         !-------------------------------------------------------------------------
         CALL HermiteBasis(s, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
         L1 = 0.5d0 * (1.0d0 - s)
@@ -1507,17 +1599,27 @@ CONTAINS
         ! and compute the derivatives of the edge curve with respect to s
         !----------------------------------------------------------------------------
         IF (QuadraticGeometryData) THEN
+          !-------------------------------------------------------------------------
+          ! The dimensional edge parameterization coordinate corresponding to
+          ! the dimensionless coordinate s
+          !--------------------------------------------------------------------------
+          xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
+
           f = d(2)*HermBasis(1) + d(3)*HermBasis(2) + SUM(d(4:6) * HermBasis(4:6))
           df = d(2)*dHermBasis(1) + d(3)*dHermBasis(2) + SUM(d(4:6) * dHermBasis(4:6))
           ddf = d(2)*ddHermBasis(1) + d(3)*ddHermBasis(2) + SUM(d(4:6) * ddHermBasis(4:6))
+
+          c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
+          dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
+          ddc(1:3) = ddf * ez(1:3)
         ELSE
-          f = SUM( d(2:5) * HermBasis(1:4) )
-          df = SUM( d(2:5) * dHermBasis(1:4) )
-          ddf = SUM( d(2:5) * ddHermBasis(1:4) )
+          c(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+              d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
+          dc(1:3) = r1(1:3)*dHermBasis(1) + r2(1:3)*dHermBasis(2) + &
+              d(1:3)*0.5d0*dHermBasis(3) + d(4:6)*0.5d0*dHermBasis(4)
+          ddc(1:3) = r1(1:3)*ddHermBasis(1) + r2(1:3)*ddHermBasis(2) + &
+              d(1:3)*0.5d0*ddHermBasis(3) + d(4:6)*0.5d0*ddHermBasis(4)
         END IF
-        c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
-        dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
-        ddc(1:3) = ddf * ez(1:3)
 
         !---------------------------------------------------------------------------
         ! The contributions of the blending functions to the position vector, to the
@@ -1525,13 +1627,6 @@ CONTAINS
         !---------------------------------------------------------------------------
         SELECT CASE(e)
         CASE(1)
-          r1(1) = Nodes % x(1)
-          r1(2) = Nodes % y(1)
-          r1(3) = Nodes % z(1)
-          r2(1) = Nodes % x(2)
-          r2(2) = Nodes % y(2)
-          r2(3) = Nodes % z(2)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           X(1:3) = X(1:3) + h12 * b12(1:3)
 
@@ -1559,13 +1654,6 @@ CONTAINS
           d2a1(1:3) = d2a1(1:3) + d2h12 * db12(1:3) + ddh12 * b12(1:3)
    
         CASE(2)
-          r1(1) = Nodes % x(2)
-          r1(2) = Nodes % y(2)
-          r1(3) = Nodes % z(2)
-          r2(1) = Nodes % x(3)
-          r2(2) = Nodes % y(3)
-          r2(3) = Nodes % z(3)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           X(1:3) = X(1:3) + h12 * b12(1:3)
 
@@ -1619,13 +1707,6 @@ CONTAINS
               h12 * ddc(1:3) * dsdv * dsdu
 
         CASE(3)
-          r1(1) = Nodes % x(3)
-          r1(2) = Nodes % y(3)
-          r1(3) = Nodes % z(3)
-          r2(1) = Nodes % x(1)
-          r2(2) = Nodes % y(1)
-          r2(3) = Nodes % z(1)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           X(1:3) = X(1:3) + h12 * b12(1:3)
 
@@ -1685,19 +1766,50 @@ CONTAINS
         ! representing the curved edge
         !-------------------------------------------------------------------------
         SELECT CASE(e)
-        CASE(1,3,5)
+        CASE(1)
+          r1(1) = Nodes % x(1)
+          r1(2) = Nodes % y(1)
+          r1(3) = Nodes % z(1)
+          r2(1) = Nodes % x(2)
+          r2(2) = Nodes % y(2)
+          r2(3) = Nodes % z(2)
           s = u
           t = v
-        CASE(2,4,6)
+        CASE(2)
+          r1(1) = Nodes % x(2)
+          r1(2) = Nodes % y(2)
+          r1(3) = Nodes % z(2)
+          r2(1) = Nodes % x(3)
+          r2(2) = Nodes % y(3)
+          r2(3) = Nodes % z(3)
+          s = v
+          t = u
+        CASE(3)
+          r1(1) = Nodes % x(4)
+          r1(2) = Nodes % y(4)
+          r1(3) = Nodes % z(4)
+          r2(1) = Nodes % x(3)
+          r2(2) = Nodes % y(3)
+          r2(3) = Nodes % z(3)
+          s = u
+          t = v
+        CASE(4)
+          r1(1) = Nodes % x(1)
+          r1(2) = Nodes % y(1)
+          r1(3) = Nodes % z(1)
+          r2(1) = Nodes % x(4)
+          r2(2) = Nodes % y(4)
+          r2(3) = Nodes % z(4)
+          s = v
+          t = u
+        CASE(5)
+          s = u
+          t = v
+        CASE(6)
           s = v
           t = u
         END SELECT
 
-        !-------------------------------------------------------------------------
-        ! The dimensional edge parameterization coordinate corresponding to
-        ! the dimensionless coordinate s (depending on the edge either s=u or s=v)
-        !--------------------------------------------------------------------------
-        xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
         !-------------------------------------------------------------------------
         ! The basis functions for the edge curve expansion in terms of s and
         ! their derivatives
@@ -1743,17 +1855,27 @@ CONTAINS
         ! and compute the derivatives of the edge curve with respect to s
         !----------------------------------------------------------------------------
         IF (QuadraticGeometryData) THEN
+          !-------------------------------------------------------------------------
+          ! The dimensional edge parameterization coordinate corresponding to
+          ! the dimensionless coordinate s (depending on the edge either s=u or s=v)
+          !--------------------------------------------------------------------------
+          xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
+
           f = d(2)*HermBasis(1) + d(3)*HermBasis(2) + SUM(d(4:6) * HermBasis(4:6))
           df = d(2)*dHermBasis(1) + d(3)*dHermBasis(2) + SUM(d(4:6) * dHermBasis(4:6))
           ddf = d(2)*ddHermBasis(1) + d(3)*ddHermBasis(2) + SUM(d(4:6) * ddHermBasis(4:6))
+
+          c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
+          dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
+          ddc(1:3) = ddf * ez(1:3)
         ELSE
-          f = SUM( d(2:5) * HermBasis(1:4) )
-          df = SUM( d(2:5) * dHermBasis(1:4) )
-          ddf = SUM( d(2:5) * ddHermBasis(1:4) )
+          c(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+              d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
+          dc(1:3) = r1(1:3)*dHermBasis(1) + r2(1:3)*dHermBasis(2) + &
+              d(1:3)*0.5d0*dHermBasis(3) + d(4:6)*0.5d0*dHermBasis(4)
+          ddc(1:3) = r1(1:3)*ddHermBasis(1) + r2(1:3)*ddHermBasis(2) + &
+              d(1:3)*0.5d0*ddHermBasis(3) + d(4:6)*0.5d0*ddHermBasis(4)          
         END IF
-        c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
-        dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
-        ddc(1:3) = ddf * ez(1:3)
 
         !---------------------------------------------------------------------------
         ! The contributions of the blending functions to the position vector, to the
@@ -1761,13 +1883,6 @@ CONTAINS
         !---------------------------------------------------------------------------
         SELECT CASE(e)
         CASE(1)
-          r1(1) = Nodes % x(1)
-          r1(2) = Nodes % y(1)
-          r1(3) = Nodes % z(1)
-          r2(1) = Nodes % x(2)
-          r2(2) = Nodes % y(2)
-          r2(3) = Nodes % z(2)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           db12(1:3) = dc(1:3) - dL1 * r1(1:3) - dL2 * r2(1:3)
           X(1:3) = X(1:3) + h1 * b12(1:3)
@@ -1779,13 +1894,6 @@ CONTAINS
           d2a2(1:3) = d2a2(1:3) + ddh1 * b12(1:3)
 
         CASE(2)
-          r1(1) = Nodes % x(2)
-          r1(2) = Nodes % y(2)
-          r1(3) = Nodes % z(2)
-          r2(1) = Nodes % x(3)
-          r2(2) = Nodes % y(3)
-          r2(3) = Nodes % z(3)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           db12(1:3) = dc(1:3) - dL1 * r1(1:3) - dL2 * r2(1:3)
           X(1:3) = X(1:3) + h2 * b12(1:3)
@@ -1797,13 +1905,6 @@ CONTAINS
           d2a2(1:3) = d2a2(1:3) + h2 * ddc(1:3)
 
         CASE(3)
-          r1(1) = Nodes % x(4)
-          r1(2) = Nodes % y(4)
-          r1(3) = Nodes % z(4)
-          r2(1) = Nodes % x(3)
-          r2(2) = Nodes % y(3)
-          r2(3) = Nodes % z(3)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           db12(1:3) = dc(1:3) - dL1 * r1(1:3) - dL2 * r2(1:3)
           X(1:3) = X(1:3) + h2 * b12(1:3)
@@ -1815,13 +1916,6 @@ CONTAINS
           d2a2(1:3) = d2a2(1:3) + ddh2 * b12(1:3)
 
         CASE(4)
-          r1(1) = Nodes % x(1)
-          r1(2) = Nodes % y(1)
-          r1(3) = Nodes % z(1)
-          r2(1) = Nodes % x(4)
-          r2(2) = Nodes % y(4)
-          r2(3) = Nodes % z(4)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           db12(1:3) = dc(1:3) - dL1 * r1(1:3) - dL2 * r2(1:3)
           X(1:3) = X(1:3) + h1 * b12(1:3)
@@ -2040,26 +2134,26 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: BubbleNodesDelta(4,3)
 !------------------------------------------------------------------------------
     LOGICAL :: Stat
-    INTEGER :: CurveDataSize, i, j, k, e, i0
-    REAL(KIND=dp), POINTER :: FrameData(:), EdgeParams(:) 
+    INTEGER :: CurveDataSize, i, j, k, e, i0, cn
+    REAL(KIND=dp), POINTER :: EdgeParams(:) 
     REAL(KIND=dp) :: s, u, v
-    REAL(KIND=dp) :: ex(3), ey(3), ez(3), X0(3), c(3)
-    REAL(KIND=dp) :: h, xe, f, f2, f3, f4, f5
+    REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
+    REAL(KIND=dp) :: c(3), r1(3), r2(3)
+    REAL(KIND=dp) :: h, xe, f
     REAL(KIND=dp) :: d(CurveDataSize1)
     REAL(KIND=dp) :: a1(3), a2(3), a3(3), a(2,2), Deta, b(2,2), p(3)
 !------------------------------------------------------------------------------
     CurveDataSize = CurveDataSize1
-
+    cn = 2
     !-----------------------------------------------------------------------
     ! Retrive parametrizations of curved edges:
     !------------------------------------------------------------------------
-    FrameData => GetElementProperty('edge frames', Element) 
     EdgeParams => GetElementProperty('edge parameters', Element)
     !------------------------------------------------------------------------
     ! Note that the correct sizes of these data arrays are checked afterwards
     ! in the function BlendingSurfaceInfo, so avoid the size check here:
     !------------------------------------------------------------------------
-    IF ( .NOT. ASSOCIATED(FrameData) .OR.  .NOT. ASSOCIATED(EdgeParams) ) &
+    IF ( .NOT. ASSOCIATED(EdgeParams) ) &
         CALL Fatal('FindBubbleNodesQuad', 'Elemental properties missing')
     !-----------------------------------------------------------------------
     ! Find the desired place of the blending surface via the additional
@@ -2067,17 +2161,11 @@ CONTAINS
     ! per additional edge of the subtriangulation: 
     !-----------------------------------------------------------------------
     DO e=5,6
-      i0 = (e-1)*FrameDataSize
-      ex(1:3) = FrameData(i0+FrameBasis1)
-      ey(1:3) = FrameData(i0+FrameBasis2)
-      ez(1:3) = FrameData(i0+FrameBasis3)
-      X0(1:3) = FrameData(i0+FrameOrigin)
-
       i0 = (e-1)*CurveDataSize
       d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
-      h = d(1)
+      h = 2.0d0 ! the length of reference element [-1,1]
 
-      ! The indices 12+i and 12+j are the bubble DOF indices of 416 (Q3) element.
+      ! The indices 12+i and 12+j are the bubble DOF indices of 416 (Q3) element:
       SELECT CASE(e)
       CASE(5)
         i = 1
@@ -2087,18 +2175,19 @@ CONTAINS
         j = 4        
       END SELECT
 
+      r1(1) = Nodes % x(i)
+      r1(2) = Nodes % y(i)
+      r1(3) = Nodes % z(i)
+      r2(1) = Nodes % x(j)
+      r2(2) = Nodes % y(j)
+      r2(3) = Nodes % z(j)
+
       DO k=1,2
         s = -1.0d0/3.0d0 + (k-1)*2.0d0/3.0d0
-        xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
+        CALL HermiteBasis(s, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
 
-        ! TO DO: Get these basis functions by calling HermiteBasis
-        f2 = (2 - 3*s + s**3)/4.0d0
-        f3 = (2 + 3*s - s**3)/4.0d0
-        f4 = h/8.0d0 - (h*s)/8.0d0 - (h*s**2)/8.0d0 + (h*s**3)/8.0d0
-        f5 = -h/8.0d0 - (h*s)/8.0d0 + (h*s**2)/8.0d0 + (h*s**3)/8.0d0
-
-        f = d(2)*f2+d(3)*f3+d(4)*f4+d(5)*f5
-        c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)           
+        c(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+            d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
 
         SELECT CASE(k)
         CASE(1)
@@ -2497,10 +2586,10 @@ CONTAINS
           END IF
 
           IF (Subtriangulation) THEN
-            stat = BlendingSurfaceInfo( Element, Nodes, xi, eta, deta, &
+            stat = BlendingSurfaceInfo(Element, Nodes, xi, eta, deta, &
                 a1, a2, a3, a, b, p, BubbleDOFs=BubbleNodesDelta)
           ELSE
-            stat = BlendingSurfaceInfo( Element, Nodes, xi, eta, deta, &
+            stat = BlendingSurfaceInfo(Element, Nodes, xi, eta, deta, &
                 a1, a2, a3, a, b, p)         
           END IF
         ELSE
@@ -5791,6 +5880,81 @@ CONTAINS
 !-------------------------------------------------------------------------------------
   END SUBROUTINE ComputeSurfaceArea
 !-------------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------------------------
+! Return the global coordinates at the mid-node of the edge by evaluating
+! the value of the space curve. This function is just for testing purposes.
+!-------------------------------------------------------------------------------------
+FUNCTION EdgeMidNode(Element, e) RESULT(X)
+!-----------------------------------------------------------------------
+  TYPE(Element_t), POINTER, INTENT(IN) :: Element
+  INTEGER, INTENT(IN) :: e     ! Edge identifier 
+  REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
+!-----------------------------------------------------------------------
+  TYPE(Nodes_t) :: Nodes
+  INTEGER :: CurveDataSize, i0, cn
+  REAL(KIND=dp), POINTER :: EdgeParams(:)
+  REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
+  REAL(KIND=dp) :: d(CurveDataSize2), h, xe
+  REAL(KIND=dp) :: r1(3), r2(3)
+  REAL(KIND=dp) :: u, v, f
+!-----------------------------------------------------------------------
+  IF (Element % Type % NumberOfNodes > 4) &
+      CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
+
+  !-----------------------------------------------------------------------
+  ! Retrive parametrizations of curved edges:
+  !------------------------------------------------------------------------
+  EdgeParams => GetElementProperty('edge parameters', Element)
+
+  h = 2.0d0
+  CurveDataSize = CurveDataSize1
+
+  i0 = (e-1)*CurveDataSize
+  d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
+
+  cn = 2
+  CALL HermiteBasis(0.0d0, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
+
+  CALL GetElementNodes(Nodes, Element) 
+
+  Family = GetElementFamily(Element)
+  SELECT CASE(Family)
+  CASE(3)
+    SELECT CASE(e)
+    CASE(1)
+      r1(1) = Nodes % x(1)
+      r1(2) = Nodes % y(1)
+      r1(3) = Nodes % z(1)
+      r2(1) = Nodes % x(2)
+      r2(2) = Nodes % y(2)
+      r2(3) = Nodes % z(2)
+    CASE(2)
+      r1(1) = Nodes % x(2)
+      r1(2) = Nodes % y(2)
+      r1(3) = Nodes % z(2)
+      r2(1) = Nodes % x(3)
+      r2(2) = Nodes % y(3)
+      r2(3) = Nodes % z(3)
+    CASE(3)
+      r1(1) = Nodes % x(3)
+      r1(2) = Nodes % y(3)
+      r1(3) = Nodes % z(3)
+      r2(1) = Nodes % x(1)
+      r2(2) = Nodes % y(1)
+      r2(3) = Nodes % z(1)
+    END SELECT
+  CASE(4)
+    CALL Fatal('EdgeMidNode', '4-node implementation missing')
+  END SELECT
+
+  X(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+      d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
+
+!-----------------------------------------------------------------------
+END FUNCTION EdgeMidNode
+!-----------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver
