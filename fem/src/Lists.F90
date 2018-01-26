@@ -3883,7 +3883,8 @@ CONTAINS
 !> This is not mandatory but may still be used. 
 !------------------------------------------------------------------------------
    SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
-       DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp)
+       DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,&
+       FoundSomewhere)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      CHARACTER(LEN=*)  :: Section,Name
@@ -3893,6 +3894,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: DefLValue
      LOGICAL, OPTIONAL :: UnfoundFatal
      LOGICAL, OPTIONAL :: EvaluateAtIp
+     LOGICAL, OPTIONAL :: FoundSomewhere
      !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      TYPE(ValueListEntry_t), POINTER :: ptr
@@ -4118,7 +4120,11 @@ CONTAINS
      IF( PRESENT( EvaluateAtIp ) ) THEN
        Handle % EvaluateAtIp = EvaluateAtIp 
      END IF
-       
+
+     IF( PRESENT( FoundSomewhere ) ) THEN
+       FoundSomewhere = .NOT. Handle % NotPresentAnywhere
+     END IF
+     
      
    END SUBROUTINE ListInitElementKeyword
 !------------------------------------------------------------------------------
@@ -4755,8 +4761,9 @@ CONTAINS
    END FUNCTION ListGetElementReal
 !------------------------------------------------------------------------------
 
-   
+  
 
+   
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in all the Gaussian integration points.
 !------------------------------------------------------------------------------
@@ -5980,6 +5987,25 @@ CONTAINS
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyBC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is present in any boundary condition.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPresentAnyIC( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: ic
+     
+     Found = .FALSE.
+     DO ic = 1,Model % NumberOfICs
+       Found = ListCheckPresent( Model % ICs(ic) % Values, Name )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPresentAnyIC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

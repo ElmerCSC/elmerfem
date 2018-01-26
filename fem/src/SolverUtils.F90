@@ -12090,14 +12090,15 @@ END SUBROUTINE VariableNameParser
       
       IF( Dofs > 1 ) THEN
         tmpname = ComponentName( var_name(1:n), j )
-        nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs
+        !nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs
         !Perm => Solver % Variable % Perm
-        Solution => Values( j:nSize-DOFs+j:DOFs )
+        Solution => Values( j:: DOFs ) ! nSize-DOFs+j:DOFs )
       ELSE
         tmpname = var_name(1:n)
         Solution => Values
       END IF
       condname = TRIM(tmpname) //' Condition' 
+
       
       !------------------------------------------------------------------------------
       ! Go through the Dirichlet conditions in the body force lists
@@ -12123,7 +12124,6 @@ END SUBROUTINE VariableNameParser
         CALL ListInitElementKeyword( LocalSol_h,'Body Force',TmpName )
       END IF
 
-      
       DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         Element => Mesh % Elements(t) 
         IF( Element % BodyId <= 0 ) CYCLE
@@ -12138,16 +12138,16 @@ END SUBROUTINE VariableNameParser
         m = Element % TYPE % NumberOfNodes
         Indexes => Element % NodeIndexes
         ValueList => CurrentModel % BodyForces(bf_id) % Values
-        
+
         IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
 
           i1 = Perm( Element % ElementIndex )
           i2 = Perm( Element % ElementIndex + 1 )
-
+          
           IF( i2 - i1 > 0 ) THEN            
-            Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
-            Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
-            Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+            Nodes % x(1:m) = Mesh % Nodes % x(Indexes)
+            Nodes % y(1:m) = Mesh % Nodes % y(Indexes)
+            Nodes % z(1:m) = Mesh % Nodes % z(Indexes)
 
                        
             IP = GaussPoints( Element )
@@ -12157,6 +12157,7 @@ END SUBROUTINE VariableNameParser
               IF( Conditional ) THEN
                 CALL Warn('UpdateExportedVariable','Elemental variables not conditional!')
               END IF
+                            
               
               DO k=1,IP % n
                 stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &

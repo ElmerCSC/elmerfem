@@ -637,7 +637,7 @@ CONTAINS
 
      n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
      ALLOCATE( IpOffset( n + 1) )
-
+     
      IpOffset = 0     
      IpCount = 0
 
@@ -1508,13 +1508,13 @@ CONTAINS
             NULLIFY( Perm ) 
             CALL CreateIpPerm( Solver, Perm, mask_name ) 
             nsize = MAXVAL( Perm ) 
-            
           ELSE
             ! Create a table showing the offset for IPs within elements
             CALL CreateIpPerm( Solver )             
             nSize = Solver % IpTable % IpCount
             Perm => Solver % IpTable % IpOffset
           END IF
+          nsize = nsize * DOFs
             
         ELSE IF( VariableElem ) THEN
           VariableType = Variable_on_elements
@@ -1528,6 +1528,7 @@ CONTAINS
             nSize = Solver % NumberOfActiveElements          
             Perm => Solver % InvActiveElements
           END IF
+          nSize = nSize * Dofs
           CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', k )
             
         ELSE IF( VariableGlobal ) THEN
@@ -1552,25 +1553,38 @@ CONTAINS
         Solution = 0.0d0
         IF( ASSOCIATED(Perm) ) THEN
           CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-              var_name, DOFs, Solution, Perm, &
+              TRIM(var_name), DOFs, Solution, Perm, &
               Output=VariableOutput, TYPE=VariableType )
         ELSE          
           CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-              var_name, DOFs, Solution, TYPE=VariableType )
+              TRIM(var_name), DOFs, Solution, TYPE=VariableType )
+        END IF
+        NewVariable => VariableGet( Solver % Mesh % Variables, Var_name )
+        IF(ASSOCIATED( NewVariable ) ) THEN
+          CALL Info('AddEquationBasics','Succesfully created variable: '//TRIM(var_name),Level=12)          
+        ELSE
+          CALL Warn('AddEquationBasics','Could not create variable: '//TRIM(var_name))
         END IF
         
         IF ( DOFs > 1 ) THEN
           n = LEN_TRIM( var_name )
           DO j=1,DOFs
             tmpname = ComponentName( var_name(1:n), j )
-            Component => Solution( j:nSize-DOFs+j:DOFs )
+            Component => Solution( j::DOFs )
+
             IF( ASSOCIATED(Perm) ) THEN
               CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                  tmpname, 1, Component, Perm,  &
+                  TRIM(tmpname), 1, Component, Perm,  &
                   Output=VariableOutput, TYPE = VariableType )
             ELSE
               CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                  tmpname, 1, Component, TYPE = VariableType )
+                  TRIM(tmpname), 1, Component, TYPE = VariableType )
+            END IF
+            NewVariable => VariableGet( Solver % Mesh % Variables, tmpname )
+            IF(ASSOCIATED( NewVariable ) ) THEN
+              CALL Info('AddEquationBasics','Succesfully created variable: '//TRIM(tmpname),Level=12)          
+            ELSE
+              CALL Warn('AddEquationBasics','Could not create variable: '//TRIM(tmpname))
             END IF
           END DO
         END IF
