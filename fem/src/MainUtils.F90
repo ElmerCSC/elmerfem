@@ -834,7 +834,7 @@ CONTAINS
        END IF
      END DO
      
-     CALL Info('CreateDGPerm','Created permutation for IP points: '//TRIM(I2S(j)),Level=8)  
+     CALL Info('CreateDGPerm','Created permutation for DG nodes: '//TRIM(I2S(DgCount)),Level=8)  
      
    END SUBROUTINE CreateDGPerm
 
@@ -1676,6 +1676,7 @@ CONTAINS
         ELSE IF ( SEQL(var_name, '-dg ') ) THEN
           VariableDG = .TRUE.
           var_name(1:LEN(var_name)-4) = var_name(5:)
+
         END IF
             
         IF ( SEQL(var_name, '-dofs ') ) THEN

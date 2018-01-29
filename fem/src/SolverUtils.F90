@@ -11942,13 +11942,14 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
 !> A parser of the variable name that returns the true variablename
 !> where the inline options have been interpreted.
 !------------------------------------------------------------------------------
-SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable )
+SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable, DgVariable )
 
   CHARACTER(LEN=*)  :: var_name
   LOGICAL, OPTIONAL :: NoOutput, Global
   INTEGER, OPTIONAL :: Dofs
   LOGICAL, OPTIONAL :: IpVariable
   LOGICAL, OPTIONAL :: ElemVariable
+  LOGICAL, OPTIONAL :: DgVariable
   
   INTEGER :: i,j,k,m
 
@@ -11970,6 +11971,10 @@ SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, Elem
 
     ELSE IF ( SEQL(var_name, '-ip ') ) THEN
       IF(PRESENT(IpVariable)) IpVariable = .TRUE.      
+      m = 4
+
+    ELSE IF ( SEQL(var_name, '-dg ') ) THEN
+      IF(PRESENT(DgVariable)) DgVariable = .TRUE.      
       m = 4
 
     ELSE IF ( SEQL(var_name, '-elem ') ) THEN
@@ -12007,8 +12012,8 @@ END SUBROUTINE VariableNameParser
   INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize,i1,i2
   CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name,tmpname,condname
   REAL(KIND=dp), POINTER :: Values(:), Solution(:), LocalSol(:), LocalCond(:)
-  INTEGER, POINTER :: Indexes(:), Perm(:)
-  LOGICAL :: Found, Conditional, GotIt, Stat, StateVariable, AllocationsDone
+  INTEGER, POINTER :: Indexes(:), VarIndexes(:), Perm(:)
+  LOGICAL :: Found, Conditional, GotIt, Stat, StateVariable, AllocationsDone = .FALSE.
   LOGICAL, POINTER :: ActivePart(:),ActiveCond(:)
   TYPE(Variable_t), POINTER :: ExpVariable
   TYPE(ValueList_t), POINTER :: ValueList
@@ -12030,18 +12035,21 @@ END SUBROUTINE VariableNameParser
   l = 0
   DO WHILE( .TRUE. )
     l = l + 1
-    str = ComponentName( 'exported variable', l )
+
+    str = ComponentName( 'exported variable', l )    
+
     var_name = ListGetString( Solver % Values, str, GotIt )    
     IF(.NOT. GotIt) EXIT
+
+    CALL Info('UpdateExportedVariables','Trying to set values for variable: '//TRIM(Var_name),Level=12)
     
     CALL VariableNameParser( var_name ) 
     
     ExpVariable => VariableGet( Mesh % Variables, Var_name )
     IF( .NOT. ASSOCIATED(ExpVariable)) CYCLE
-    
-    WRITE(Message,*) 'Trying to set values for variable: '//TRIM(Var_name)
-    CALL Info('UpdateExportedVariables',Message,Level=6)
-
+      
+    CALL Info('UpdateExportedVariables','Setting values for variable: '//TRIM(Var_name),Level=6)
+      
     IF(.NOT. AllocationsDone ) THEN
       m = CurrentModel % NumberOFBodyForces
       ALLOCATE( ActivePart(m), ActiveCond(m) )
@@ -12060,7 +12068,7 @@ END SUBROUTINE VariableNameParser
     Perm => ExpVariable % Perm
     n = LEN_TRIM( var_name )
     
-    StateVariable = ( SIZE( Values ) == DOFs )
+    StateVariable = ( SIZE( Values ) == DOFs ) .OR. ( ExpVariable % Type == Variable_Global ) 
     IF( StateVariable ) THEN
       CALL Info('UpdateExportedVariables','Updating state variable',Level=20)
       IF( Dofs > 1 ) THEN
@@ -12125,6 +12133,7 @@ END SUBROUTINE VariableNameParser
       END IF
 
       DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
         Element => Mesh % Elements(t) 
         IF( Element % BodyId <= 0 ) CYCLE
         bf_id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values,&
@@ -12176,20 +12185,26 @@ END SUBROUTINE VariableNameParser
           IF( i > 0 ) Solution(i) = SUM( LocalSol(1:m) ) / m
           
         ELSE
+          IF( ExpVariable % TYPE == Variable_on_nodes_on_elements ) THEN
+            VarIndexes => Element % DGIndexes
+          ELSE
+            VarIndexes => Indexes
+          END IF
+          
           LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
-                    
+          
           IF( Conditional ) THEN
             LocalCond(1:m) = ListGetReal(ValueList, CondName, m, Indexes(1:m) )
             DO i=1,m
               IF( LocalCond(i) > 0.0_dp ) THEN
-                IF( Perm(Indexes(i)) > 0 ) THEN
-                  Solution( Perm(Indexes(i)) ) = LocalSol(i)
+                IF( Perm(VarIndexes(i)) > 0 ) THEN
+                  Solution( Perm(VarIndexes(i)) ) = LocalSol(i)
                 END IF
               END IF
             END DO
           ELSE
-            IF( ALL( Perm(Indexes(1:m)) > 0 ) ) THEN
-              Solution( Perm(Indexes(1:m)) ) = LocalSol(1:m)
+            IF( ALL( Perm(VarIndexes(1:m)) > 0 ) ) THEN
+              Solution( Perm(VarIndexes(1:m)) ) = LocalSol(1:m)
             END IF
           END IF
           
