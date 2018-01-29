@@ -2377,8 +2377,6 @@ CONTAINS
 
 
 
-
-
 !------------------------------------------------------------------------------
 !> Adds a string to the list.
 !------------------------------------------------------------------------------
@@ -3083,6 +3081,129 @@ CONTAINS
   END FUNCTION ListGetRealAtNode
 !------------------------------------------------------------------------------
 
+
+!> Get pointer to list of section
+!------------------------------------------------------------------------------
+  FUNCTION ListGetSection( Element, SectionName, Found ) RESULT(lst)
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER  :: Lst
+    CHARACTER(LEN=*) :: SectionName
+    LOGICAL, OPTIONAL :: Found
+    TYPE(Element_t) :: Element
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER  :: BodyLst
+    INTEGER :: id
+    LOGICAL :: LFound
+    
+    id = Element % BodyId
+    IF( id > 0 ) THEN
+      bodylst => CurrentModel % Bodies(id) % Values
+    ELSE
+      NULLIFY( bodylst ) 
+    END IF
+    LFound = .FALSE.
+    
+    SELECT CASE ( SectionName ) 
+
+    CASE( 'body' )     
+      lst => bodylst
+      Lfound = ASSOCIATED( lst ) 
+               
+    CASE( 'material' )
+      id = ListGetInteger( bodylst, SectionName, LFound )
+      IF( LFound ) lst => CurrentModel % Materials(id) % Values
+
+    CASE( 'body force' )
+      id = ListGetInteger( bodylst, SectionName, LFound )
+      IF( LFound ) lst => CurrentModel % BodyForces(id) % Values
+      
+    CASE( 'initial condition' )
+      id = ListGetInteger( bodylst, SectionName, LFound )
+      IF( LFound ) lst => CurrentModel % ICs(id) % Values
+
+    CASE( 'equation' )
+      id = ListGetInteger( bodylst, SectionName, LFound )
+      IF( LFound ) lst => CurrentModel % Equations(id) % Values
+
+    CASE( 'boundary condition' )
+      IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+        id = Element % BoundaryInfo % Constraint
+        IF( id > 0 ) THEN
+          lst => CurrentModel % BCs(id) % Values
+          LFound = .TRUE.
+        END IF
+      END IF
+        
+    CASE DEFAULT
+      CALL Fatal('ListGetSection','Unknown section name: '//TRIM(SectionName))
+            
+    END SELECT
+
+    IF( PRESENT( Found ) ) Found = LFound 
+
+!------------------------------------------------------------------------------
+  END FUNCTION ListGetSection
+!------------------------------------------------------------------------------
+
+
+!> Get pointer to list of section
+!------------------------------------------------------------------------------
+  FUNCTION ListGetSectionId( Element, SectionName, Found ) RESULT(id)
+!------------------------------------------------------------------------------
+    INTEGER :: id
+    CHARACTER(LEN=*) :: SectionName
+    LOGICAL, OPTIONAL :: Found
+    TYPE(Element_t) :: Element
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER  :: BodyLst
+    INTEGER :: body_id
+    LOGICAL :: LFound
+
+    id = 0
+    
+    body_id = Element % BodyId
+    IF( body_id > 0 ) THEN
+      bodylst => CurrentModel % Bodies(body_id) % Values
+    ELSE
+      NULLIFY( bodylst ) 
+    END IF
+    LFound = .FALSE.
+    
+    SELECT CASE ( SectionName ) 
+
+    CASE( 'body' )     
+      id = body_id
+               
+    CASE( 'material' )
+      id = ListGetInteger( bodylst, SectionName, LFound )
+
+    CASE( 'body force' )
+      id = ListGetInteger( bodylst, SectionName, LFound )
+      
+    CASE( 'initial condition' )
+      id = ListGetInteger( bodylst, SectionName, LFound )
+
+    CASE( 'equation' )
+      id = ListGetInteger( bodylst, SectionName, LFound )
+
+    CASE( 'boundary condition' )
+      IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+        id = Element % BoundaryInfo % Constraint
+      END IF
+        
+    CASE DEFAULT
+      CALL Fatal('ListGetSection','Unknown section name: '//TRIM(SectionName))
+            
+    END SELECT
+
+    IF( PRESENT( Found ) ) Found = ( id > 0 ) 
+
+!------------------------------------------------------------------------------
+  END FUNCTION ListGetSectionId
+!------------------------------------------------------------------------------
+
+
+  
 #define MAX_FNC 32
 
 

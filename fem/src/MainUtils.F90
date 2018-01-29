@@ -593,17 +593,15 @@ CONTAINS
    END SUBROUTINE SwapMesh
 !------------------------------------------------------------------------------
 
-
-
    !> Create permutation for fields on integration points, optionally with mask.
    !> The non-masked version is saved to Solver structure for reuse while the
    !> masked version may be unique to every variable. 
    !-----------------------------------------------------------------------------------
-   SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName )
+   SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName, SecName )
 
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName 
+     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName      
      
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(GaussIntegrationPoints_t) :: IP
@@ -613,9 +611,14 @@ CONTAINS
      LOGICAL :: Found, ActiveElem
      INTEGER, POINTER :: IpOffset(:) 
      TYPE(ValueList_t), POINTER :: BF
+
+     n = 0
+     IF( PRESENT( MaskPerm ) ) n = n + 1
+     IF( PRESENT( MaskName ) ) n = n + 1
+     IF( PRESENT( SecName ) ) n = n + 1
      
-     IF( XOR( PRESENT(MaskPerm), PRESENT( MaskName ) ) ) THEN
-       CALL Fatal('CreateIpPerm','Either none or both optional parameters must be present!')
+     IF( n /= 0 .AND. n /= 3 ) THEN
+       CALL Fatal('CreateIpPerm','Either none or all optional parameters must be present!')
      END IF
 
      IF( PRESENT( MaskPerm ) ) THEN
@@ -641,6 +644,7 @@ CONTAINS
      IpOffset = 0     
      IpCount = 0
 
+
      DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
        Element => Mesh % Elements(t)
             
@@ -648,8 +652,8 @@ CONTAINS
          IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
            
            IF( PRESENT( MaskName ) ) THEN
-             BF => GetBodyForce( Element )
-             ActiveElem = ListGetLogical( BF, MaskName, Found )
+             BF => ListGetSection( Element, SecName )
+             ActiveElem = ListGetLogicalGen( BF, MaskName )
            ELSE
              ActiveElem = .TRUE.
            END IF
@@ -678,13 +682,171 @@ CONTAINS
 
 
 
+   !> Create permutation for discontinuous galerking type of fields optionally
+   !> with a given mask.
+   !-----------------------------------------------------------------------------------
+   SUBROUTINE CreateDGPerm( Solver, DGPerm, DGCount, MaskName, SecName )
+
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER, POINTER :: DGPerm(:)
+     INTEGER :: DGCount
+     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName 
+
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Element_t), POINTER :: Element, Parent
+     INTEGER :: t, n, i, j, k, DGIndex
+     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+     LOGICAL :: Found, ActiveElem, HaveSome
+     TYPE(ValueList_t), POINTER :: BF
+     
+
+     CALL Info('CreateDGPerm','Creating permutation for DG variable',Level=12)
+     
+     EquationName = ListGetString( Solver % Values, 'Equation', Found)
+     IF( .NOT. Found ) THEN
+       CALL Fatal('CreateDGPerm','Equation not present!')
+     END IF     
+     
+     Mesh => Solver % Mesh
+     DGIndex = 0
+
+     ! Check whetther the DG indexes might already have been allocated
+     HaveSome = .FALSE.
+     DO t=1,Mesh % NumberOfBulkElements 
+       Element => Mesh % Elements(t)
+       IF( ASSOCIATED( Element % DGIndexes ) ) THEN
+         HaveSome = .TRUE.
+         EXIT
+       END IF
+     END DO
+
+     ! If they are allocated somewhere check that they are good for this variable as well 
+     IF( HaveSome ) THEN
+       CALL Info('CreateDGPerm','There are at least some associated DG elements',Level=15)
+       DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+         Element => Mesh % Elements(t)         
+         IF( Element % PartIndex == ParEnv % myPE ) THEN
+           IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN             
+
+             IF( PRESENT( MaskName ) ) THEN
+               BF => ListGetSection( Element, SecName )
+               ActiveElem = ListGetLogicalGen( BF, MaskName )
+             ELSE
+               ActiveElem = .TRUE.
+             END IF
+
+             IF( ActiveElem ) THEN
+               IF( .NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+                 CALL Fatal('CreateDGPerm','Either all or none of DGIndexes should preexist!')               
+               END IF
+             END IF
+           END IF
+         END IF
+       END DO
+
+       ! Find out the maximum index for the size of the permutation
+       DO t=1,Mesh % NumberOfBulkElements 
+         Element => Mesh % Elements(t)
+         DGIndex = MAX( DGIndex, MAXVAL( Element % DGIndexes ) )
+       END DO
+     END IF
+
+
+     ! If they have not been allocated before the allocate DGIndexes for all bulk elements
+     IF(.NOT. HaveSome ) THEN       
+
+       ! Number the bulk indexes such that each node gets a new index
+       DGIndex = 0       
+       DO t=1,Mesh % NumberOfBulkElements 
+         Element => Mesh % Elements(t)
+         n = Element % TYPE % NumberOfNodes         
+         ALLOCATE( Element % DGindexes( n ) )
+         DO i=1, n
+           DGIndex = DGIndex + 1
+           Element % DGIndexes(i) = DGIndex
+         END DO
+       END DO
+       
+       ! Make boundary elements to inherit the bulk indexes
+       DO t=Mesh % NumberOfBulkElements + 1, &
+           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+         Element => Mesh % Elements(t)
+         n = Element % TYPE % NumberOfNodes
+         
+         IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+         DO k=1,2
+           IF( k == 1 ) THEN
+             Parent => Element % BoundaryInfo % Left
+           ELSE 
+             Parent => Element % BoundaryInfo % Right
+           END IF
+           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+           
+           IF( ASSOCIATED( Parent % DGIndexes ) ) THEN
+             ALLOCATE( Element % DGIndexes(n) ) 
+             DO i = 1, n
+               DO j = 1, Parent % TYPE % NumberOfNodes
+                 IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                   Element % DGIndexes(i) = Parent % DGIndexes(j)
+                   EXIT
+                 END IF
+               END DO
+             END DO
+             EXIT
+           END IF
+         END DO
+         
+       END DO
+     END IF
+     
+     CALL Info('CreateDGPerm','Size of DgPerm table: '//TRIM(I2S(DGIndex)),Level=12)
+     
+     ALLOCATE( DGPerm( DGIndex ) ) 
+     DGPerm = 0
+     
+     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+       Element => Mesh % Elements(t)
+            
+       IF( Element % PartIndex == ParEnv % myPE ) THEN
+         IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
+           
+           IF( PRESENT( MaskName ) ) THEN
+             BF => ListGetSection( Element, SecName )
+             ActiveElem = ListGetLogicalGen( BF, MaskName )
+           ELSE
+             ActiveElem = .TRUE.
+           END IF
+           
+           IF( ActiveElem ) THEN
+             n = Element % TYPE % NumberOfNodes
+             DGPerm( Element % DGIndexes ) = 1 
+           END IF
+           
+         END IF
+       END IF
+     END DO
+
+     DGCount = 0
+     DO i=1, DGIndex
+       IF( DGPerm(i) > 0 ) THEN
+         DGCount = DGCount + 1
+         DGPerm(i) = DGCount
+       END IF
+     END DO
+     
+     CALL Info('CreateDGPerm','Created permutation for IP points: '//TRIM(I2S(j)),Level=8)  
+     
+   END SUBROUTINE CreateDGPerm
+
+
+   
    !> Create permutation for fields on elements, optional using mask
    !-----------------------------------------------------------------
-   SUBROUTINE CreateElementsPerm( Solver, Perm, nsize, MaskName ) 
+   SUBROUTINE CreateElementsPerm( Solver, Perm, nsize, MaskName, SecName ) 
      TYPE(Solver_t),POINTER :: Solver
      INTEGER, POINTER :: Perm(:)
      INTEGER :: nsize
-     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName
+     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName
 
      INTEGER :: t, n, m
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
@@ -715,8 +877,8 @@ CONTAINS
        IF( Element % PartIndex == ParEnv % myPE ) THEN
          IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
            IF( PRESENT( MaskName ) ) THEN
-             BF => GetBodyForce( Element )
-             ActiveElem = ListGetLogical( BF, MaskName, Found )
+             BF => ListGetSection( Element, SecName )
+             ActiveElem = ListGetLogicalGen( BF, MaskName )
            ELSE
              ActiveElem = .TRUE.
            END IF
@@ -740,11 +902,11 @@ CONTAINS
    !> Create permutation table that follows the degrees of freedom of the primary
    !> permutation but is masked by a flag on the body force section.
    !---------------------------------------------------------------------------------
-   SUBROUTINE CreateMaskedPerm( Solver, FullPerm, MaskName, MaskPerm, nsize )
+   SUBROUTINE CreateMaskedPerm( Solver, FullPerm, MaskName, SecName, MaskPerm, nsize )
 
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, POINTER :: FullPerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
+     CHARACTER(LEN=MAX_NAME_LEN) :: MaskName, SecName
      INTEGER, POINTER :: MaskPerm(:) 
      INTEGER :: nsize
           
@@ -753,7 +915,7 @@ CONTAINS
      INTEGER :: t, n, m
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
      TYPE(ValueList_t), POINTER :: BF
-     LOGICAL :: Found
+     LOGICAL :: Found, ActiveElem
      INTEGER, ALLOCATABLE :: Indexes(:)
      
      
@@ -777,9 +939,11 @@ CONTAINS
             
        IF( Element % PartIndex == ParEnv % myPE ) THEN
          IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
+           
+           BF => ListGetSection( Element, SecName )
+           ActiveElem = ListGetLogicalGen( BF, MaskName )
 
-           BF => GetBodyForce( Element )
-           IF( ListGetLogical( BF, MaskName, Found) ) THEN           
+           IF( ActiveElem ) THEN
              m = GetElementDOFs( Indexes, Element, Solver )
              MaskPerm( Indexes(1:m) ) = FullPerm( Indexes(1:m) )
            END IF
@@ -820,14 +984,15 @@ CONTAINS
     INTEGER(KIND=AddrInt) :: InitProc, AssProc
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs
-    INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim, AllocStat
+    INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim, AllocStat, &
+        i1,i2,i3
 
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
-    MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
-    VariableGlobal, VariableIP, VariableElem, NoMatrix, IsAssemblySolver, &
-    IsCoupledSolver, IsBlockSolver, IsProcedure, IsStepsSolver, LegacySolver, UseMask
-
-    CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name
+        MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
+        VariableGlobal, VariableIP, VariableElem, VariableDG, DG, NoMatrix, IsAssemblySolver, &
+        IsCoupledSolver, IsBlockSolver, IsProcedure, IsStepsSolver, LegacySolver, UseMask
+    
+    CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name, sec_name
 
     TYPE(ValueList_t), POINTER :: SolverParams
     TYPE(Mesh_t),   POINTER :: NewMesh,OldMesh
@@ -1136,7 +1301,7 @@ CONTAINS
       IF ( .NOT. Found ) VariableOutput = .TRUE.
 
       VariableIp = ListGetLogical( SolverParams, 'Variable IP', Found )
-      VariableElem = ListGetLogical( SolverParams, 'Variable Elemental', Found )           
+      VariableElem = ListGetLogical( SolverParams, 'Variable Elemental', Found )                 
       
       DOFs = ListGetInteger( SolverParams, 'Variable DOFs', Found, minv=1 )
       IF ( .NOT. Found ) THEN
@@ -1279,9 +1444,11 @@ CONTAINS
           IF ( MaxFDOFs > 0 ) Ndeg = Ndeg + MaxFDOFs * Solver % Mesh % NumberOFFaces
           IF ( GlobalBubbles ) &
               Ndeg = Ndeg + MaxBDOFs * Solver % Mesh % NumberOfBulkElements
-          IF ( ListGetLogical( SolverParams, 'Discontinuous Galerkin', Found ) ) &
-              Ndeg = MAX( NDeg, MaxDGDOFs * (Solver % Mesh % NumberOfBulkElements+ &
-              Solver % Mesh % NumberOfBoundaryElements) )
+          DG = ListGetLogical( SolverParams, 'Discontinuous Galerkin', Found )
+          IF( DG ) THEN
+            Ndeg = MAX( NDeg, MaxDGDOFs * (Solver % Mesh % NumberOfBulkElements+ &
+                Solver % Mesh % NumberOfBoundaryElements) )
+          END IF
         END IF
         
         IF( ListGetLogical( SolverParams,'Radiation Solver',Found ) ) THEN
@@ -1349,8 +1516,7 @@ CONTAINS
         
         CALL Info('AddEquationBasics','Creating solver matrix topology',Level=12)
         Solver % Matrix => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
-            Perm, DOFs, MatrixFormat, BandwidthOptimize, eq(1:LEN_TRIM(eq)), &
-            ListGetLogical( SolverParams,'Discontinuous Galerkin', Found ), &
+            Perm, DOFs, MatrixFormat, BandwidthOptimize, eq(1:LEN_TRIM(eq)), DG, &
             GlobalBubbles=GlobalBubbles, ThreadedStartup=ThreadedStartup )
         Nrows = DOFs * Ndeg
         IF (ASSOCIATED(Solver % Matrix)) THEN
@@ -1409,9 +1575,11 @@ CONTAINS
         END IF
 
         IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = ELMER_COMM_WORLD
-        IF ( ListGetLogical( SolverParams, 'Discontinuous Galerkin', Found) ) &
-          Solver % Variable % TYPE = Variable_on_nodes_on_elements
 
+        IF ( DG ) THEN
+          Solver % Variable % TYPE = Variable_on_nodes_on_elements
+        END IF
+          
       END IF
       !------------------------------------------------------------------------------
     END IF
@@ -1439,7 +1607,30 @@ CONTAINS
       IF ( .NOT. Found ) VariableOutput = .TRUE.
 
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' Mask'
-      mask_name = ListGetString( SolverParams, str, UseMask )
+      tmpname = ListGetString( SolverParams, str, UseMask )
+     
+      IF( UseMask ) THEN
+        i3 = LEN_TRIM(tmpname) 
+        i1 = INDEX(tmpname,':')
+        IF( i1 > 1 ) THEN
+          i2 = i1 + 1
+          i1 = i1 - 1
+          IF( i1 > 0 ) THEN
+            DO WHILE( tmpname(i2:i2) == ' ')
+              i2 = i2 + 1 
+            END DO
+          END IF
+          sec_name = tmpname(1:i1)
+          mask_name = tmpname(i2:i3)
+          CALL Info('CreateIpPerm','masking with section: '//TRIM(sec_name),Level=12)
+          CALL Info('CreateIpPerm','masking with keyword: '//TRIM(mask_name),Level=12)
+        ELSE          
+          sec_name = 'body force'
+          mask_name = tmpname(1:i3)
+        END IF
+      END IF
+      
+
       
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' DOFs'
       DOFs = ListGetInteger( SolverParams, str, Found )
@@ -1455,12 +1646,12 @@ CONTAINS
         END DO
       END IF
 
-      
-      
+            
       VariableOutput = .TRUE.
       VariableGlobal = .FALSE.
       VariableIp = .FALSE.      
       VariableElem = .FALSE.
+      VariableDG = .FALSE.
       VariableType = Solver % Variable % TYPE
             
       DO WHILE( var_name(1:1) == '-' )
@@ -1468,22 +1659,25 @@ CONTAINS
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
         END IF
-        
+
+        ! Different types of variables: global, ip, elem, dg
         IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
-        END IF
-        
-        IF ( SEQL(var_name, '-ip ') ) THEN
+          
+        ELSE IF ( SEQL(var_name, '-ip ') ) THEN
           VariableIp = .TRUE.
           var_name(1:LEN(var_name)-4) = var_name(5:)
-        END IF        
 
-        IF ( SEQL(var_name, '-elem ') ) THEN
+        ELSE IF ( SEQL(var_name, '-elem ') ) THEN
           VariableElem = .TRUE.
           var_name(1:LEN(var_name)-6) = var_name(7:)
+          
+        ELSE IF ( SEQL(var_name, '-dg ') ) THEN
+          VariableDG = .TRUE.
+          var_name(1:LEN(var_name)-4) = var_name(5:)
         END IF
-        
+            
         IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs 
           j = LEN_TRIM( var_name )
@@ -1506,7 +1700,7 @@ CONTAINS
 
           IF( UseMask ) THEN
             NULLIFY( Perm ) 
-            CALL CreateIpPerm( Solver, Perm, mask_name ) 
+            CALL CreateIpPerm( Solver, Perm, mask_name, sec_name ) 
             nsize = MAXVAL( Perm ) 
           ELSE
             ! Create a table showing the offset for IPs within elements
@@ -1521,7 +1715,7 @@ CONTAINS
 
           ! We need to call these earlier than otherwise
           IF( UseMask ) THEN            
-            CALL CreateElementsPerm( Solver, Perm, nsize, Mask_Name ) 
+            CALL CreateElementsPerm( Solver, Perm, nsize, Mask_Name, sec_name ) 
           ELSE
             CALL SetActiveElementsTable( CurrentModel, Solver, k, CreateInv = .TRUE.  ) 
             
@@ -1531,6 +1725,17 @@ CONTAINS
           nSize = nSize * Dofs
           CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', k )
             
+        ELSE IF( VariableDG ) THEN
+          VariableType = Variable_on_nodes_on_elements
+
+          NULLIFY( Perm ) 
+          IF( UseMask ) THEN
+            CALL CreateDGPerm( Solver, Perm, nsize, mask_name, sec_name ) 
+          ELSE
+            CALL CreateDGPerm( Solver, Perm, nsize )
+          END IF
+          nsize = nsize * DOFs
+
         ELSE IF( VariableGlobal ) THEN
           VariableType = Variable_global
           nSize = DOFs
@@ -1539,7 +1744,7 @@ CONTAINS
         ELSE
           IF( UseMask ) THEN
             NULLIFY( Perm )
-            CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, Perm, nsize )
+            CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, sec_name, Perm, nsize )
             nsize = DOFs * nsize
           ELSE
             nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs          
