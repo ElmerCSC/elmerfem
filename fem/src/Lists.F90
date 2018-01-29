@@ -4606,6 +4606,14 @@ CONTAINS
          DO j=1,Handle % ParNo 
            T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
          END DO
+
+         ! This one only deals with the variables on IPs, nodal ones have been fecthed already
+         IF( SomeAtIp ) THEN
+           IF( .NOT. PRESENT( GaussPoint ) ) THEN
+             CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
+           END IF
+           CALL VarsToValuesOnIps( VarCount, VarTable, GaussPoint, T, j )
+         END IF         
          
          ! there is no node index, so use zero
          j = 0 
@@ -4619,6 +4627,7 @@ CONTAINS
          END IF
          
        CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+
          DO j=1,Handle % ParNo 
            T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
          END DO
@@ -4670,7 +4679,7 @@ CONTAINS
          CALL Fatal('ListGetElementReal','Unknown case for avaluation at ip')
          
        END SELECT
-     
+       
      ELSE ! .NOT. EvaluteAtIp
        
        ! If we get back to the same element than last time use the data already 
