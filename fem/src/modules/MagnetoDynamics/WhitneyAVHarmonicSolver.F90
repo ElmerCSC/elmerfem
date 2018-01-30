@@ -285,7 +285,12 @@ CONTAINS
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes() ! kulmat
        nd = GetElementNOFDOFs()  ! vapausasteet
-  
+       
+       IF (SIZE(Tcoef,3) /= n) THEN
+         DEALLOCATE(Tcoef)
+         ALLOCATE(Tcoef(3,3,n))
+       END IF
+       
        LOAD = 0.0d0
        BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.

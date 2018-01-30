@@ -617,9 +617,9 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
    TYPE Factors_t 
-     INTEGER :: NumberOfFactors, NumberOfImplicitFactors
-     INTEGER, POINTER :: Elements(:)
-     REAL(KIND=dp), POINTER :: Factors(:)
+     INTEGER :: NumberOfFactors = 0, NumberOfImplicitFactors = 0
+     INTEGER, POINTER :: Elements(:) => NULL()
+     REAL(KIND=dp), POINTER :: Factors(:) => NULL()
    END TYPE Factors_t
 
 !-------------------------------------------------------------------------------

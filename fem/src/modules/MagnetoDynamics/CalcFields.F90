@@ -834,6 +834,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      n = GetElementNOFNodes()
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
      nd = GetElementNOFDOFs(uSolver=pSolver)
+
+     IF (SIZE(Tcoef,3) /= n) THEN
+       DEALLOCATE(Tcoef)
+       ALLOCATE(Tcoef(3,3,n))
+     END IF
      
      CALL GetElementNodes( Nodes )
 

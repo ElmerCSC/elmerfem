@@ -10,7 +10,7 @@
                    CoilBody,CoilType) RESULT (Tcoef)  
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
+    REAL(KIND=dp), SAVE, POINTER :: Cwrk(:,:,:) => NULL()
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -19,8 +19,8 @@
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
     LOGICAL :: CoilBody
+!$OMP THREADPRIVATE(Cwrk)
 
-    Cwrk => NULL()
     Tcoef=0._dp
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
@@ -96,15 +96,15 @@
                   RESULT (mu)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
+    REAL(KIND=dp), SAVE, POINTER :: Cwrk(:,:,:) => NULL()
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: mu(3,3,n)
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
+!$OMP THREADPRIVATE(Cwrk)
 
-    Cwrk => NULL()
     mu=0._dp
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
@@ -142,7 +142,7 @@
                   RESULT (T)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => NULL()
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j, slen, tsize 
     TYPE(Valuelist_t), POINTER :: Material
@@ -150,8 +150,8 @@
     CHARACTER(LEN=2) :: Part
     CHARACTER(LEN=*) :: varname
     LOGICAL, OPTIONAL :: Found
+!$OMP THREADPRIVATE(Cwrk)
 
-    Cwrk => NULL()
     IF (.NOT. ASSOCIATED(Element)) CALL Fatal ('GetTensor', 'Element not associated')
     T=0._dp
     Material => GetMaterial( Element )
