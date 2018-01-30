@@ -3231,12 +3231,14 @@ CONTAINS
      IF(slen<=0) RETURN
 
      DO WHILE( .TRUE. )
+       ! Remove zeros ahead
        DO WHILE( str(l0:l0) == ' ' )
          l0 = l0 + 1
          IF ( l0 > slen ) EXIT
        END DO
        IF ( l0 > slen ) EXIT
 
+       ! Scan only until next comma
        l1 = INDEX( str(l0:slen),',')
        IF ( l1 > 0 ) THEN
          l1=l0+l1-2
@@ -3253,7 +3255,10 @@ CONTAINS
        ELSE
          Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )
          IF ( .NOT. ASSOCIATED( Var ) ) THEN
-           CALL Fatal( 'ListParseStrToVars', 'Can''t find dependent variable:['// &
+           CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
+           CALL Info('ListParseStrToVars','Parse counters: '&
+               //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+           CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
                TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
          END IF
          count = count + 1
@@ -3266,14 +3271,11 @@ CONTAINS
          END IF
          
        END IF
-       
-       !PRINT *,'found variable: '//TRIM(str(l0:l1))
-        
+
+       ! New start after the comma
        l0 = l1+2
        IF ( l0 > slen ) EXIT       
      END DO
-
-     !PRINT *,'Number of variables:',count
      
 !------------------------------------------------------------------------------
    END SUBROUTINE ListParseStrToVars
@@ -3443,10 +3445,11 @@ CONTAINS
        IF ( str(l0:l1) /= 'coordinate' ) THEN
          Variable => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )
          IF ( .NOT. ASSOCIATED( Variable ) ) THEN
-           WRITE( Message, * ) 'Can''t find INDEPENDENT variable:[', &
-               TRIM(str(l0:l1)),']' // &
-               'for dependent variable:[', TRIM(Name),']'
-           CALL Fatal( 'ListGetReal', Message )
+           CALL Info('ListParseStrToValues','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
+           CALL Info('ListParseStrToValues','Parse counters: '&
+               //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+           CALL Fatal('ListParseStrToValues','Can''t find independent variable:['// &
+               TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']')
          END IF
          IF( SIZE( Variable % Values ) > 1 ) AllGlobal = .FALSE.
        ELSE
@@ -3536,7 +3539,7 @@ CONTAINS
      LOGICAL :: IsGlobal
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: ind,i,j,k,n,k1,l,l0,l1
+     INTEGER :: ind,i,j,k,n,k1,l,l0,l1,count
      TYPE(Variable_t), POINTER :: Variable, CVar
      INTEGER :: slen
 
@@ -3563,6 +3566,7 @@ CONTAINS
 
        slen = ptr % DepNameLen
 
+       count = 0
        l0 = 1
        DO WHILE( .TRUE. )
          DO WHILE( ptr % DependName(l0:l0) == ' ' )
@@ -3577,12 +3581,20 @@ CONTAINS
            l1=slen
          END IF
 
+
+         count = count + 1
+         
          IF ( ptr % DependName(l0:l1) /= 'coordinate' ) THEN
            Variable => VariableGet( CurrentModel % Variables,TRIM(ptr % DependName(l0:l1)) )
-           IF ( .NOT. ASSOCIATED( Variable ) ) THEN
-             WRITE( Message, * ) 'Can''t find INDEPENDENT variable:[', &
+           IF ( .NOT. ASSOCIATED( Variable ) ) THEN             
+             CALL Info('ListCheckGlobal','Parsed variable '//TRIM(I2S(count))//' of '&
+                 //ptr % DependName(1:slen),Level=3)
+             CALL Info('ListCheckGlobal','Parse counters: '&
+               //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+ 
+             WRITE( Message, * ) 'Can''t find independent variable:[', &
                  TRIM(ptr % DependName(l0:l1)),']'
-             CALL Fatal( 'ListGetReal', Message )
+             CALL Fatal( 'ListCheckGlobal', Message )
            END IF
 
            IF( SIZE( Variable % Values ) > 1 ) THEN
