@@ -269,8 +269,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: VvarId, IvarId, q, j
-    REAL(KIND=dp) :: Tcoef(3,3,nn)
+    INTEGER :: VvarId, IvarId, q, j, astat
+    REAL(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
     REAL(KIND=dp) :: RotM(3,3,nn)
     REAL(KIND=dp) :: value, dt
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
@@ -283,6 +283,11 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     nm = Asolver % Matrix % NumberOfRows
     CM => CurrentModel%CircuitMatrix
 
+    ALLOCATE(Tcoef(3,3,nn), STAT=astat)
+    IF (astat /= 0) THEN
+      CALL Fatal('AddComponentEquationsAndCouplings','Memory allocation failed!')
+    END IF
+    
     DO CompInd = 1, Circuit % n_comp
     
       Comp => Circuit % Components(CompInd)
@@ -339,7 +344,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           END DO
         END SELECT
       END IF
-
+      
       DO q=GetNOFActive(),1,-1
         Element => GetActiveElement(q)
         IF (ElAssocToComp(Element, Comp)) THEN
@@ -351,7 +356,16 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           
           nn = GetElementNOFNodes(Element)
           nd = GetElementNOFDOFs(Element,ASolver)
-!          CALL GetConductivity(Element, Tcoef, nn)
+          !          CALL GetConductivity(Element, Tcoef, nn)
+          
+          IF (SIZE(Tcoef,3) /= nn) THEN
+            DEALLOCATE(Tcoef)
+            ALLOCATE(Tcoef(3,3,nn), STAT=astat)
+            IF ( astat /= 0 ) THEN
+              CALL Fatal('AddComponentEquationsAndCouplings', 'Memory allocation error!' )
+            END IF
+          END IF
+          
           Tcoef = GetElectricConductivityTensor(Element, nn, 're', .TRUE., CoilType)
           SELECT CASE(CoilType)
           CASE ('stranded')
@@ -374,6 +388,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       Comp % Resistance = ParallelReduction(Comp % Resistance)
       Comp % Conductance = ParallelReduction(Comp % Conductance)
     END DO
+
+    DEALLOCATE(Tcoef)
 !------------------------------------------------------------------------------
    END SUBROUTINE AddComponentEquationsAndCouplings
 !------------------------------------------------------------------------------
@@ -1107,7 +1123,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: p, CompInd, nm, nn, nd
+    INTEGER, INTENT(IN) :: p, nn
+    INTEGER :: CompInd, nm, nn_elem, nd_elem
     TYPE(Solver_t), POINTER :: ASolver
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Matrix_t), POINTER :: CM
@@ -1116,11 +1133,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Omega
-    REAL(KIND=dp) :: sigma_33(nn), sigmaim_33(nn)
-    INTEGER :: VvarId, IvarId, q, j
+    REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
+    INTEGER :: VvarId, IvarId, q, j, astat
     COMPLEX(KIND=dp) :: i_multiplier, cmplx_value
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-    COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
+    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
     REAL(KIND=dp) :: RotM(3,3,nn)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: Found, FoundIm, StrandedHomogenization
@@ -1207,13 +1224,26 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings',&
                                                         'Component parameters not found')
 
-
           StrandedHomogenization = .FALSE.
           CoilType = GetString(CompParams, 'Coil Type', Found)
           IF (.NOT. Found) CoilType = ''
           
-          nn = GetElementNOFNodes(Element)
-          nd = GetElementNOFDOFs(Element,ASolver)
+          nn_elem = GetElementNOFNodes(Element)
+          nd_elem = GetElementNOFDOFs(Element,ASolver)
+
+          IF (.NOT. ALLOCATED(Tcoef)) THEN
+            ALLOCATE(Tcoef(3,3,nn_elem), sigma_33(nn_elem), sigmaim_33(nn_elem), STAT=astat)
+            IF (astat /= 0) THEN
+              CALL Fatal ('AddComponentEquationsAndCouplings','Memory allocation failed')
+            END IF
+          ELSE IF (SIZE(Tcoef,3) /= nn_elem) THEN
+            DEALLOCATE(Tcoef, sigma_33, sigmaim_33)
+            ALLOCATE(Tcoef(3,3,nn_elem),sigma_33(nn_elem), sigmaim_33(nn_elem), STAT=astat)
+            IF (astat /= 0) THEN
+              CALL Fatal ('AddComponentEquationsAndCouplings','Memory allocation failed')
+            END IF
+          END IF
+          
           SELECT CASE(CoilType)
           CASE ('stranded')
             StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
@@ -1225,21 +1255,21 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
               IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('AddComponentEquationsAndCouplings', &
                                                                  'Homogenization Model Sigma 33 not found!')
               Tcoef = CMPLX(0._dp, 0._dp, KIND=dp)
-              Tcoef(3,3,1:nn) = CMPLX(sigma_33, sigmaim_33, KIND=dp)
+              Tcoef(3,3,1:nn_elem) = CMPLX(sigma_33, sigmaim_33, KIND=dp)
             ELSE
-              Tcoef = GetCMPLXElectricConductivityTensor(Element, nn, .TRUE., CoilType) 
+              Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
             END IF
-            CALL Add_stranded(Element,Tcoef,Comp,nn,nd)
+            CALL Add_stranded(Element,Tcoef,Comp,nn_elem,nd_elem)
           CASE ('massive')
-            IF (.NOT. HasSupport(Element,nn)) CYCLE
-         !   CALL GetConductivity(Element, Tcoef, nn)
-            Tcoef = GetCMPLXElectricConductivityTensor(Element, nn, .TRUE., CoilType) 
-            CALL Add_massive(Element,Tcoef,Comp,nn,nd)
+            IF (.NOT. HasSupport(Element,nn_elem)) CYCLE
+         !   CALL GetConductivity(Element, Tcoef, nn_elem)
+            Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
+            CALL Add_massive(Element,Tcoef,Comp,nn_elem,nd_elem)
           CASE ('foil winding')
-            IF (.NOT. HasSupport(Element,nn)) CYCLE
-         !   CALL GetConductivity(Element, Tcoef, nn)
-            Tcoef = GetCMPLXElectricConductivityTensor(Element, nn, .TRUE., CoilType) 
-            CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd)
+            IF (.NOT. HasSupport(Element,nn_elem)) CYCLE
+         !   CALL GetConductivity(Element, Tcoef, nn_elem)
+            Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
+            CALL Add_foil_winding(Element,Tcoef,Comp,nn_elem,nd_elem)
           CASE DEFAULT
             CALL Fatal ('AddComponentEquationsAndCouplings', 'Non existent Coil Type Chosen!')
           END SELECT
@@ -1252,6 +1282,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       Comp % Resistance = ParallelReduction(Comp % Resistance)
       Comp % Conductance = ParallelReduction(Comp % Conductance)
     END DO
+
+    IF (ALLOCATED(Tcoef)) THEN
+      DEALLOCATE(Tcoef,sigma_33,sigmaim_33)
+    END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE AddComponentEquationsAndCouplings
 !------------------------------------------------------------------------------
@@ -1839,7 +1873,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
     IF (EEC) THEN
       CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=1)
-	    WRITE( Message,'(A,4G10.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
+	    WRITE( Message,'(A,4G11.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
       CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
       
           
@@ -1870,7 +1904,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     TTime = GetTime()
     IF(TTime .GE. (EEC_time_0 + 0.5/EEC_freq)) THEN
       EEC_cnt = EEC_cnt + 1
-      WRITE( Message,'(A,4G10.4)') 'Performing EEC #', EEC_cnt
+      WRITE( Message,'(A,4G11.4)') 'Performing EEC #', EEC_cnt
       CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
       
       EEC_time_0 = EEC_time_0 + 0.5/EEC_freq

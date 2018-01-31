@@ -131,8 +131,6 @@ Solver 2
   Equation = Navier Solver
 
   Variable = -dofs 3 U
-  Variable Output = False
-
 
   Procedure = "StressSolve" "StressSolver"
   Linear System Solver = Direct
@@ -159,7 +157,7 @@ Solver 3
   Equation = "SaveScalars"
   Procedure = File "SaveData" "SaveScalars"
 
-  Variable 1 = U re 3
+  Variable 1 = U 3
   Operator 1 = min 
   Operator 2 = max 
   Operator 3 = int mean
@@ -205,4 +203,3 @@ End
 
 
 Solver 1 :: reference norm = 4.14624185E+03
-Solver 2 :: reference norm = 4.59712176E-10

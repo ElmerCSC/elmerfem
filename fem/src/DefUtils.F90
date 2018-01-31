@@ -291,6 +291,60 @@ CONTAINS
     END DO
   END SUBROUTINE GetElementNodeIndex
 
+  FUNCTION GetIPIndex( LocalIp, USolver, Element ) RESULT ( GlobalIp ) 
+    INTEGER :: LocalIp, GlobalIp
+
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+    TYPE(Element_t), OPTIONAL :: Element
+
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Element_t), POINTER :: CurrElement
+    INTEGER :: n, m
+    
+    IF ( PRESENT( USolver ) ) THEN
+      Solver => USolver
+    ELSE
+      Solver => CurrentModel % Solver 
+    END IF
+
+    IF( .NOT. ASSOCIATED( Solver % IpTable ) ) THEN
+      CALL Fatal('GetIpIndex','Cannot access index of gaussian point!')
+    END IF
+    
+    CurrElement => GetCurrentElement(Element)
+    n = CurrElement % ElementIndex
+    m = Solver % IpTable % IpOffset(n+1) - Solver % IpTable % IpOffset(n)
+    IF( m < LocalIp ) THEN
+      CALL Warn('GetIpIndex','Inconsistent number of IP points!')
+      GlobalIp = 0 
+    ELSE
+      GlobalIp = Solver % IpTable % IpOffset(n) + LocalIp
+    END IF
+
+  END FUNCTION GetIPIndex
+
+  
+  FUNCTION GetIPCount( USolver ) RESULT ( IpCount ) 
+    INTEGER :: IpCount
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+
+    TYPE(Solver_t), POINTER :: Solver
+
+    IF ( PRESENT( USolver ) ) THEN
+      Solver => USolver
+    ELSE
+      Solver => CurrentModel % Solver 
+    END IF
+
+    IF( .NOT. ASSOCIATED( Solver % IpTable ) ) THEN
+      CALL Fatal('GetIpCount','Cannot access index of gaussian point!')
+    END IF
+    
+    IpCount = Solver % IpTable % IpCount 
+    
+  END FUNCTION GetIPCount
+
+  
 !> Returns the number of active elements for the current solver
   FUNCTION GetNOFActive( USolver ) RESULT(n)
      INTEGER :: n
@@ -305,7 +359,7 @@ CONTAINS
 
      IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
        Solver % CurrentColour = Solver % CurrentColour + 1
-       n = Solver % ColourIndexList % ptr(Solver % CurrentColour+1)-1 &
+       n = Solver % ColourIndexList % ptr(Solver % CurrentColour+1) &
            - Solver % ColourIndexList % ptr(Solver % CurrentColour)
        CALL Info('GetNOFActive','Number of active elements: '&
            //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=20)
@@ -316,6 +370,33 @@ CONTAINS
      END IF
 
   END FUNCTION GetNOFActive
+
+  !> Return number of boundary elements of the current boundary colour
+  !> and increments the colour counter
+  FUNCTION GetNOFBoundaryActive( USolver ) RESULT(n)
+     INTEGER :: n
+     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+     TYPE(Solver_t), POINTER :: Solver
+
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver 
+     END IF
+
+     IF( ASSOCIATED( Solver % BoundaryColourIndexList ) ) THEN
+       Solver % CurrentBoundaryColour = Solver % CurrentBoundaryColour + 1
+       n = Solver % BoundaryColourIndexList % ptr(Solver % CurrentBoundaryColour+1) &
+           - Solver % BoundaryColourIndexList % ptr(Solver % CurrentBoundaryColour)
+       CALL Info('GetNOFBoundaryActive','Number of boundary elements: '&
+           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentBoundaryColour)),Level=20)
+     ELSE
+       n = Solver % Mesh % NumberOfBoundaryElements
+       CALL Info('GetNOFBoundaryActive','Number of active elements: '&
+           //TRIM(I2S(n)),Level=20)
+     END IF
+
+  END FUNCTION GetNOFBoundaryActive
 
 !> Returns the current time
   FUNCTION GetTime() RESULT(st)
@@ -753,7 +834,7 @@ CONTAINS
 !> Add variable to the default variable list.
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultVariableAdd( Name, DOFs, Perm, Values,&
-      Output,Secondary,Global,InitValue,USolver,Var )
+      Output,Secondary,VariableType,Global,InitValue,USolver,Var )
     
     CHARACTER(LEN=*) :: Name
     INTEGER, OPTIONAL :: DOFs
@@ -761,6 +842,7 @@ CONTAINS
     LOGICAL, OPTIONAL :: Output
     INTEGER, OPTIONAL, POINTER :: Perm(:)
     LOGICAL, OPTIONAL :: Secondary
+    INTEGER, OPTIONAL :: VariableType
     LOGICAL, OPTIONAL :: Global
     REAL(KIND=dp), OPTIONAL :: InitValue   
     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
@@ -779,7 +861,7 @@ CONTAINS
     Variables => Mesh % Variables
 
     CALL VariableAddVector( Variables,Mesh,Solver,Name,DOFs,Values,&
-        Perm,Output,Secondary,Global,InitValue )
+        Perm,Output,Secondary,VariableType,Global,InitValue )
 
     IF( PRESENT( Var ) ) THEN
       Var => VariableGet( Variables, Name )
@@ -1275,12 +1357,23 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      TYPE( Solver_t ), OPTIONAL, TARGET :: USolver
      TYPE( Solver_t ), POINTER :: Solver
+     INTEGER :: ind
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
 
      IF ( t > 0 .AND. t <= Solver % Mesh % NumberOfBoundaryElements ) THEN
-        Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements+t )
+       ! Check if colouring is really used by the solver
+       IF( Solver % CurrentBoundaryColour > 0 .AND. &
+            ASSOCIATED( Solver % BoundaryColourIndexList ) ) THEN
+          ind = Solver % BoundaryColourIndexList % ind( &
+               Solver % BoundaryColourIndexList % ptr(Solver % CurrentBoundaryColour)+(t-1))
+       ELSE
+         ind = t
+       END IF
+
+       ! Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements+t )
+       Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements + ind )
 #ifdef _OPENMP
         IF (omp_in_parallel()) THEN
           ! May be used by user functions, thread safe
@@ -1838,6 +1931,10 @@ CONTAINS
             ElementNodes % x => ElementNodes % xyz(1:n,1)
             ElementNodes % y => ElementNodes % xyz(1:n,2)
             ElementNodes % z => ElementNodes % xyz(1:n,3)
+        ELSE
+            ElementNodes % x => ElementNodes % xyz(1:n,1)
+            ElementNodes % y => ElementNodes % xyz(1:n,2)
+            ElementNodes % z => ElementNodes % xyz(1:n,3)
         END IF
 
         n = Element % TYPE % NumberOfNodes
@@ -1848,11 +1945,11 @@ CONTAINS
           ElementNodes % z(i) = Mesh % Nodes % z(Element % NodeIndexes(i))
         END DO
 
-        sz = SIZE(ElementNodes % x)
+        sz = SIZE(ElementNodes % xyz,1)
         IF ( sz > n ) THEN
-            ElementNodes % x(n+1:sz) = 0.0d0
-            ElementNodes % y(n+1:sz) = 0.0d0
-            ElementNodes % z(n+1:sz) = 0.0d0
+            ElementNodes % xyz(n+1:sz,1) = 0.0d0
+            ElementNodes % xyz(n+1:sz,2) = 0.0d0
+            ElementNodes % xyz(n+1:sz,3) = 0.0d0
         END IF
 
         sz1 = SIZE(Mesh % Nodes % x)
@@ -2879,7 +2976,7 @@ CONTAINS
       CALL Error('DefaultSolve','> Dump System Matrix < and > Dump System Rhs < are obsolite')
       CALL Fatal('DefaultSolve','Use > Linear System Save = True < instread!')
     END IF
-
+    
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
       IF(.NOT. Found .OR. TRIM( saveslot ) == 'solve') THEN
@@ -4308,9 +4405,7 @@ CONTAINS
            ptr => ListFind(BC, Name,Found )
            IF ( .NOT. ASSOCIATED(ptr) ) CYCLE
 
-!          ConstantValue = ptr % PROCEDURE == 0 .AND. &
-!              ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
-           Constantvalue = ptr % type /= LIST_TYPE_CONSTANT_SCALAR_PROC
+           Constantvalue = ( ptr % type /= LIST_TYPE_CONSTANT_SCALAR_PROC )
 
 
            IF ( isActivePElement(Parent)) THEN
@@ -4323,12 +4418,8 @@ CONTAINS
                  IF ( nb <= 0 ) CYCLE
                  nb = Offset + x % DOFs * (nb-1) + DOF
                  IF ( ConstantValue  ) THEN
-                   !IF (A % NoDirichlet) THEN
-                     A % ConstrainedDOF(nb) = .TRUE.
-                     A % Dvalues(nb) = 0._dp
-                   !ELSE
-                   !  CALL CRS_SetSymmDirichlet(A, A % RHS, nb, 0._dp )
-                   !END IF
+                   A % ConstrainedDOF(nb) = .TRUE.
+                   A % Dvalues(nb) = 0._dp
                  ELSE
                    CALL ZeroRow( A, nb )
                    A % RHS(nb) = 0._dp
@@ -4389,8 +4480,6 @@ CONTAINS
            IF (.NOT.isActivePElement(Parent)) CYCLE
 
            ptr => ListFind(BC, Name,Found )
-!          ConstantValue =  ptr % PROCEDURE == 0 .AND. &
-!               ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
            Constantvalue = Ptr % Type /= LIST_TYPE_CONSTANT_SCALAR_PROC
 
            IF ( ConstantValue ) CYCLE
@@ -4419,12 +4508,8 @@ CONTAINS
                     nb = x % Perm( gInd(l) )
                     IF ( nb <= 0 ) CYCLE
                     nb = Offset + x % DOFs * (nb-1) + DOF
-                    !IF(A % ConstrainedDOF(nb)) THEN
-                      s = A % Dvalues(nb)
-                    !ELSE
-                    !  s = A % RHS(nb)
-                    !END IF
-                    !s = s * DiagScaling(nb)
+
+                    s = A % Dvalues(nb)
                     DO k=n+1,numEdgeDOFs
                        Work(k) = Work(k) - s*STIFF(k,l)
                     END DO
@@ -4438,21 +4523,18 @@ CONTAINS
                  END DO
                  l = numEdgeDOFs-n
                  IF ( l==1 ) THEN
-                    Work(1) = Work(1)/STIFF(1,1)
+                   Work(1) = Work(1)/STIFF(1,1)
                  ELSE
-                    CALL SolveLinSys(STIFF(1:l,1:l),Work(1:l),l)
-                  END IF
-                  
+                   CALL SolveLinSys(STIFF(1:l,1:l),Work(1:l),l)
+                 END IF
+
                  DO k=n+1,numEdgeDOFs
-                    nb = x % Perm( gInd(k) )
-                    IF ( nb <= 0 ) CYCLE
-                    nb = Offset + x % DOFs * (nb-1) + DOF
-                    !IF( A % NoDirichlet ) THEN
-                       A % ConstrainedDOF(nb) = .TRUE.
-                       A % Dvalues(nb) = Work(k-n) !/DiagScaling(nb)
-                    !ELSE
-                    !   CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(k-n)/DiagScaling(nb))
-                    !END IF
+                   nb = x % Perm( gInd(k) )
+                   IF ( nb <= 0 ) CYCLE
+                   nb = Offset + x % DOFs * (nb-1) + DOF
+
+                   A % ConstrainedDOF(nb) = .TRUE.
+                   A % Dvalues(nb) = Work(k-n)
                  END DO
               ELSE
 
@@ -4462,16 +4544,15 @@ CONTAINS
                     nb = x % Perm( gInd(k) )
                     IF ( nb <= 0 ) CYCLE
                     nb = Offset + x % DOFs * (nb-1) + DOF
-                    A % RHS(nb) = A % RHS(nb) + Work(k) !/DiagScaling(nb)
+                    A % RHS(nb) = A % RHS(nb) + Work(k) 
                     DO l=1,numEdgeDofs
                        mb = x % Perm( gInd(l) )
                        IF ( mb <= 0 ) CYCLE
                        mb = Offset + x % DOFs * (mb-1) + DOF
                        DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
                           IF ( A % Cols(kk) == mb ) THEN
-                             A % Values(kk) = A % Values(kk) + STIFF(k,l) !* &
-                                  !DiagScaling(mb) / DiagScaling(nb)
-                             EXIT
+                            A % Values(kk) = A % Values(kk) + STIFF(k,l)
+                            EXIT
                           END IF
                        END DO
                     END DO
@@ -4503,12 +4584,7 @@ CONTAINS
                     IF ( nb <= 0 ) CYCLE
                     nb = Offset + x % DOFs * (nb-1) + DOF
 
-                    !IF(A % ConstrainedDOF(nb)) THEN
-                      s = A % Dvalues(nb)
-                    !ELSE
-                    !  s = A % RHS(nb)
-                    !END IF
-                    !s = s * DiagScaling(nb)
+                    s = A % Dvalues(nb)
                     DO k=n+1,numEdgeDOFs
                        Work(k) = Work(k) - s*STIFF(k,l)
                     END DO
@@ -4521,17 +4597,16 @@ CONTAINS
                  nb = x % Perm( gInd(k) )
                  IF ( nb <= 0 ) CYCLE
                  nb = Offset + x % DOFs * (nb-1) + DOF
-                 A % RHS(nb) = A % RHS(nb) + Work(k) !/DiagScaling(nb)
+                 A % RHS(nb) = A % RHS(nb) + Work(k) 
                  DO l=n_start,numEdgeDOFs
                     mb = x % Perm( gInd(l) )
                     IF ( mb <= 0 ) CYCLE
                     mb = Offset + x % DOFs * (mb-1) + DOF
                     DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
-                       IF ( A % Cols(kk) == mb ) THEN
-                          A % Values(kk) = A % Values(kk) + STIFF(k,l) !* &
-                               ! DiagScaling(mb) / DiagScaling(nb)
-                          EXIT
-                       END IF
+                      IF ( A % Cols(kk) == mb ) THEN
+                        A % Values(kk) = A % Values(kk) + STIFF(k,l)
+                        EXIT
+                      END IF
                     END DO
                  END DO
               END DO
@@ -4608,16 +4683,9 @@ CONTAINS
                      nb = x % Perm(gInd(k))
                      IF ( nb <= 0 ) CYCLE
                      nb = Offset + x % DOFs*(nb-1) + DOF
-                     !IF ( A % Symmetric .AND. (.NOT. A % NoDirichlet) ) THEN
-                     !  CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(j)/DiagScaling(nb))
-                     !ELSE
-                       A % ConstrainedDOF(nb) = .TRUE.
-                       A % Dvalues(nb) = Work(j) !/DiagScaling(nb)
-                       !IF( .NOT. A % NoDirichlet ) THEN
-                       !  CALL ZeroRow( A, nb )
-                       !  CALL SetMatrixElement(A,nb,nb,1._dp)
-                       !END IF
-                     !END IF
+
+                     A % ConstrainedDOF(nb) = .TRUE.
+                     A % Dvalues(nb) = Work(j) 
                    END DO
 
                  CASE(3,4)
@@ -4661,16 +4729,9 @@ CONTAINS
                        nb = x % Perm(gInd(k))
                        IF ( nb <= 0 ) CYCLE
                        nb = Offset + x % DOFs*(nb-1) + DOF
-                       !IF ( A % Symmetric .AND. (.NOT. A % NoDirichlet) ) THEN
-                       !  CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(i0+j)/DiagScaling(nb))
-                       !ELSE
-                         A % ConstrainedDOF(nb) = .TRUE.
-                         A % Dvalues(nb) = Work(i0+j) !/DiagScaling(nb)
-                         !IF( .NOT. A % NoDirichlet ) THEN
-                         !  CALL ZeroRow( A, nb )
-                         !  CALL SetMatrixElement(A,nb,nb,1._dp)
-                         !END IF
-                       !END IF
+
+                       A % ConstrainedDOF(nb) = .TRUE.
+                       A % Dvalues(nb) = Work(i0+j) 
                      END DO
                      i0 = i0 + EDOFs
                    END DO
@@ -4693,16 +4754,9 @@ CONTAINS
                        nb = x % Perm(GInd(n-Face % BDOFs+j)) ! The last entries should be face-DOF indices
                        IF ( nb <= 0 ) CYCLE
                        nb = Offset + x % DOFs*(nb-1) + DOF
-                       !IF ( A % Symmetric .AND. (.NOT. A % NoDirichlet) ) THEN
-                       !  CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(EDOFs+j)/DiagScaling(nb))
-                       !ELSE
-                         A % ConstrainedDOF(nb) = .TRUE.
-                         A % Dvalues(nb) = Work(EDOFs+j) !/DiagScaling(nb)
-                         !IF( .NOT. A % NoDirichlet ) THEN
-                         !  CALL ZeroRow(A,nb)
-                         !  CALL SetMatrixElement(A,nb,nb,1._dp)
-                         !END IF
-                       !END IF
+
+                       A % ConstrainedDOF(nb) = .TRUE.
+                       A % Dvalues(nb) = Work(EDOFs+j) 
                      END DO
                    END IF
 
@@ -5075,6 +5129,8 @@ CONTAINS
 
     Params => GetSolverParams( PSolver ) 
 
+    ! Reset colouring 
+    PSolver % CurrentColour = 0
 
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
@@ -5143,6 +5199,9 @@ CONTAINS
     END IF
 
     Params => GetSolverParams(PSolver)
+
+    ! Reset colouring 
+    PSolver % CurrentBoundaryColour = 0
 
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
@@ -5845,6 +5904,26 @@ CONTAINS
     CALL Info('GetNOFColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
   END FUNCTION GetNOFColours
 
+  FUNCTION GetNOFBoundaryColours(USolver) RESULT( ncolours ) 
+    IMPLICIT NONE
+    TYPE(Solver_t), TARGET, OPTIONAL :: USolver
+    INTEGER :: ncolours
+
+    ncolours = 1
+    IF ( PRESENT( USolver ) ) THEN
+      IF( ASSOCIATED( USolver % BoundaryColourIndexList ) ) THEN
+        ncolours = USolver % BoundaryColourIndexList % n
+        USolver % CurrentBoundaryColour = 0
+      END IF
+    ELSE
+      IF( ASSOCIATED( CurrentModel % Solver % BoundaryColourIndexList ) ) THEN
+        ncolours = CurrentModel % Solver % BoundaryColourIndexList % n 
+        CurrentModel % Solver % CurrentBoundaryColour = 0
+      END IF
+    END IF
+
+    CALL Info('GetNOFBoundaryColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
+  END FUNCTION GetNOFBoundaryColours
   
   ! Check given colourings are valid and see if they are free of race conditions. 
   SUBROUTINE CheckColourings(Solver)

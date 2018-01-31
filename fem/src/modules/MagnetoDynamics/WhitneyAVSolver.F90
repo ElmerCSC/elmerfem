@@ -507,6 +507,14 @@ CONTAINS
      nd = GetElementNOFDOFs()  ! vapausasteet
      nb = GetElementNOFBDOFs()  ! sisäiset vapausasteet
 
+     IF (SIZE(Tcoef,3) /= n) THEN
+       DEALLOCATE(Tcoef)
+       ALLOCATE(Tcoef(3,3,n), STAT=istat)
+       IF ( istat /= 0 ) THEN
+         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
+       END IF
+     END IF
+     
      LOAD = 0.0d0
      BodyForce => GetBodyForce()
      FoundMagnetization = .FALSE.
@@ -558,7 +566,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
-
+       
        Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
 
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )

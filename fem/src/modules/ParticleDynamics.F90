@@ -1249,6 +1249,8 @@ CONTAINS
            ELSE     
              Force = Force + dragcoeff * VeloAtPoint 
            END IF
+         ELSE
+           VeloAtPoint = 0.0_dp
          END IF
 
          IF( GotPot ) THEN

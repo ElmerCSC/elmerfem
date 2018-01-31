@@ -898,7 +898,9 @@ CONTAINS
         END IF
         IF( .NOT. ASSOCIATED( Solution ) ) CYCLE
         
-        IF ( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+        IF ( Solution % TYPE == Variable_on_nodes_on_elements .OR. &
+            Solution % TYPE == Variable_on_elements .OR. &
+            Solution % TYPE == Variable_on_gauss_points ) THEN
           HaveAnyElemental = .TRUE.
           EXIT
         END IF
@@ -962,7 +964,7 @@ CONTAINS
     INTEGER, PARAMETER :: VtuUnit = 58
     TYPE(Variable_t), POINTER :: Var,Var1
     CHARACTER(LEN=512) :: str
-    INTEGER :: i,ii,j,jj,k,dofs,Rank,cumn,n,dim,vari,sdofs,dispdofs, disp2dofs, Offset, &
+    INTEGER :: i,ii,j,jj,k,dofs,Rank,cumn,n,m,dim,vari,sdofs,dispdofs, disp2dofs, Offset, &
         NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldName2, OutStr
@@ -1112,6 +1114,10 @@ CONTAINS
 
           IF ( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
             IF( .NOT. ( ( DG .OR. DN ) .AND. SaveElemental ) ) CYCLE
+          ELSE IF( Solution % TYPE == Variable_on_elements ) THEN
+            CYCLE
+          ELSE IF( Solution % TYPE == Variable_on_gauss_points ) THEN
+            CYCLE
           END IF
 
           ! Default is to save the field only once
@@ -1433,12 +1439,15 @@ CONTAINS
             END IF
           END IF
 
-          IF (Solution % TYPE /= Variable_on_nodes_on_elements ) CYCLE
+          Found = ( Solution % TYPE == Variable_on_nodes_on_elements .OR. &
+              Solution % TYPE == Variable_on_gauss_points .OR. &
+              Solution % TYPE == Variable_on_elements )
+          IF (.NOT. Found ) CYCLE
 
           Perm => Solution % Perm
           Dofs = Solution % DOFs
           Values => Solution % Values
-
+          
           !---------------------------------------------------------------------
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
@@ -1498,51 +1507,104 @@ CONTAINS
               ElemVectVal = 0._dp
               ElemInd = 0
 
-              IF( SaveLinear ) THEN
-                n = GetElementCorners( CurrentElement )
-              ELSE
-                n = GetElementNOFNodes( CurrentElement )
-              END IF
+              IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+                
+                IF( SaveLinear ) THEN
+                  n = GetElementCorners( CurrentElement )
+                ELSE
+                  n = GetElementNOFNodes( CurrentElement )
+                END IF
 
-              IF ( ASSOCIATED(CurrentElement % BoundaryInfo) .AND. .NOT. &
-                  ASSOCIATED(CurrentElement % DGIndexes) ) THEN
+                IF ( ASSOCIATED(CurrentElement % BoundaryInfo) .AND. .NOT. &
+                    ASSOCIATED(CurrentElement % DGIndexes) ) THEN
 
-                Parent => CurrentElement % BoundaryInfo % Left
-                IF (.NOT.ASSOCIATED(Parent) ) &
-                    Parent => CurrentElement % BoundaryInfo % Right
+                  Parent => CurrentElement % BoundaryInfo % Left
+                  IF (.NOT.ASSOCIATED(Parent) ) &
+                      Parent => CurrentElement % BoundaryInfo % Right
 
-                IF ( ASSOCIATED(Parent) ) THEN
-                  IF (ASSOCIATED(Parent % DGIndexes) ) THEN
-                    DO j=1,n
-                      DO k=1,Parent % TYPE % NumberOfNodes
-                        IF(Currentelement % NodeIndexes(j) == Parent % NodeIndexes(k)) &
-                            ElemInd(j) = Perm( Parent % DGIndexes(k) )
+                  IF ( ASSOCIATED(Parent) ) THEN
+                    IF (ASSOCIATED(Parent % DGIndexes) ) THEN
+                      DO j=1,n
+                        DO k=1,Parent % TYPE % NumberOfNodes
+                          IF(Currentelement % NodeIndexes(j) == Parent % NodeIndexes(k)) &
+                              ElemInd(j) = Perm( Parent % DGIndexes(k) )
+                        END DO
                       END DO
+                    END IF
+                  END IF
+                ELSE
+                  ElemInd(1:n) = Perm( CurrentElement % DGIndexes(1:n) )
+                END IF
+
+                IF ( ALL(ElemInd(1:n) > 0)) THEN
+                  IF( sdofs == 1 ) THEN
+                    ElemVectVal(1) = SUM(Values(ElemInd(1:n))) / n
+                  ELSE
+                    DO k=1,sdofs
+                      IF( k > dofs ) THEN
+                        ElemVectVal(k) = 0.0_dp
+                      ELSE IF(ComponentVector) THEN
+                        IF (k==1) ElemVectVal(k) = SUM(Values(ElemInd(1:n)))/n
+                        IF (k==2) ElemVectVal(k) = SUM(Values2(ElemInd(1:n)))/n
+                        IF (k==3) ElemVectVal(k) = SUM(Values3(ElemInd(1:n)))/n
+                      ELSE
+                        ElemVectVal(k) = SUM(Values(dofs*(ElemInd(1:n)-1)+k))/n
+                      END IF
+                    END DO
+                  END IF
+                END IF 
+                
+              ELSE IF( Solution % TYPE == Variable_on_gauss_points ) THEN
+
+                m = CurrentElement % ElementIndex
+                n = Perm(m+1)-Perm(m)
+                IF( n > 0 ) THEN
+                  DO j=1,n
+                    ElemInd(j) = Perm(m)+j
+                  END DO
+                  
+                  IF( sdofs == 1 ) THEN
+                    ElemVectVal(1) = SUM(Values(ElemInd(1:n))) / n
+                  ELSE
+                    DO k=1,sdofs
+                      IF( k > dofs ) THEN
+                        ElemVectVal(k) = 0.0_dp
+                      ELSE IF(ComponentVector) THEN
+                        IF (k==1) ElemVectVal(k) = SUM(Values(ElemInd(1:n)))/n
+                        IF (k==2) ElemVectVal(k) = SUM(Values2(ElemInd(1:n)))/n
+                        IF (k==3) ElemVectVal(k) = SUM(Values3(ElemInd(1:n)))/n
+                      ELSE
+                        ElemVectVal(k) = SUM(Values(dofs*(ElemInd(1:n)-1)+k))/n
+                      END IF
                     END DO
                   END IF
                 END IF
-              ELSE
-                ElemInd(1:n) = Perm( CurrentElement % DGIndexes(1:n) )
-              END IF
+                
 
-              IF ( ALL(ElemInd(1:n) > 0)) THEN
+              ELSE IF( Solution % TYPE == Variable_on_elements ) THEN
+                
+                m = CurrentElement % ElementIndex
+                
+                IF( ASSOCIATED( Perm ) ) m = Perm( m ) 
+                
                 IF( sdofs == 1 ) THEN
-                  ElemVectVal(1) = SUM(Values(ElemInd(1:n))) / n
+                  ElemVectVal(1) = Values(m) 
                 ELSE
                   DO k=1,sdofs
                     IF( k > dofs ) THEN
                       ElemVectVal(k) = 0.0_dp
                     ELSE IF(ComponentVector) THEN
-                      IF (k==1) ElemVectVal(k) = SUM(Values(ElemInd(1:n)))/n
-                      IF (k==2) ElemVectVal(k) = SUM(Values2(ElemInd(1:n)))/n
-                      IF (k==3) ElemVectVal(k) = SUM(Values3(ElemInd(1:n)))/n
+                      IF (k==1) ElemVectVal(k) = Values(m)
+                      IF (k==2) ElemVectVal(k) = Values2(m)
+                      IF (k==3) ElemVectVal(k) = Values3(m)
                     ELSE
-                      ElemVectVal(k) = SUM(Values(dofs*(ElemInd(1:n)-1)+k))/n
+                      ElemVectVal(k) = Values(dofs*(m-1)+k)
                     END IF
                   END DO
                 END IF
+                
               END IF
-
+                
               DO k=1,sdofs
                 CALL AscBinRealWrite( ElemVectVal(k) )
               END DO

@@ -35,6 +35,29 @@
 ! *
 ! ****************************************************************************/
 
+
+
+SUBROUTINE AcousticsSolver_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+
+  Params => GetSolverParams()
+  CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
+
+END SUBROUTINE AcousticsSolver_init
+  
+  
+
 !-----------------------------------------------------------------------------
 !>  Solve the time-harmonic, generalized NS-equations assuming ideal gas law.
 !------------------------------------------------------------------------------
@@ -156,7 +179,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   ! Get variables needed for solution
   !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
-  Solver % Matrix % COMPLEX = .TRUE.
+  !Solver % Matrix % COMPLEX = .TRUE.
 
   ! Nullify pointer
   HSol => Null()
@@ -624,7 +647,9 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   CALL Info( 'AcousticsSolver', ' ', Level=4 )
   CALL Info( 'AcousticsSolver', 'Starting Assembly', Level=4 )
 
-  CALL InitializeToZero( StiffMatrix, ForceVector )
+  CALL DefaultStart()
+  CALL DefaultInitialize()
+  !InitializeToZero( StiffMatrix, ForceVector )
 
   !------------------------------------------------------------------------------
   DO t=1,Solver % NumberOfActiveElements

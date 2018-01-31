@@ -329,11 +329,11 @@ contains
     call matvecsubr( X, R, ipar )
 
 #ifdef _OPENMP
-    !$OMP PARALLEL DO SIMD
+    !$OMP PARALLEL DO 
     do i=1,ndim
       work(i,R_ind)=rhsvec(i)-work(i,R_ind)
     end do
-    !$OMP END PARALLEL DO SIMD
+    !$OMP END PARALLEL DO 
 #else
     R = B - R
 #endif
@@ -356,22 +356,22 @@ contains
 
     if ( iter_count .eq. 1 ) then
 #ifdef _OPENMP
-       !$OMP PARALLEL DO SIMD
+       !$OMP PARALLEL DO 
        DO i=1,ndim
           work(i,P_ind)=work(i,Z_ind)
        END DO  
-       !$OMP END PARALLEL DO SIMD
+       !$OMP END PARALLEL DO 
 #else
        P = Z
 #endif
      else
        beta = rho / oldrho
 #ifdef _OPENMP
-       !$OMP PARALLEL DO SIMD
+       !$OMP PARALLEL DO 
        DO i=1,ndim
           work(i,P_ind)=work(i,Z_ind) + beta * work(i,P_ind)
        END DO  
-       !$OMP END PARALLEL DO SIMD
+       !$OMP END PARALLEL DO 
 #else
        P = Z + beta * P
 #endif
@@ -383,16 +383,16 @@ contains
 
 #ifdef _OPENMP
     !$OMP PARALLEL PRIVATE(i)
-    !$OMP DO SIMD
+    !$OMP DO 
     DO i=1,ndim
        xvec(i) = xvec(i) + alpha * work(i,P_ind)
     END DO
-    !$OMP END DO SIMD NOWAIT
-    !$OMP DO SIMD
+    !$OMP END DO  NOWAIT
+    !$OMP DO 
     DO i=1,ndim
        work(i,R_ind) = work(i,R_ind) - alpha * work(i,Q_ind)
     END DO
-    !$OMP END DO SIMD NOWAIT
+    !$OMP END DO  NOWAIT
     !$OMP END PARALLEL
 #else
     X = X + alpha * P
@@ -407,11 +407,11 @@ contains
     case (HUTI_TRUERESIDUAL)
        call matvecsubr( X, Z, ipar )
 #ifdef _OPENMP
-       !$OMP PARALLEL DO SIMD
+       !$OMP PARALLEL DO 
        DO i=1,ndim
          work(i,Z_ind) = work(i,Z_ind) - rhsvec(i)
        END DO
-       !$OMP END PARALLEL DO SIMD
+       !$OMP END PARALLEL DO 
 #else
        Z = Z - B
 #endif
@@ -419,11 +419,11 @@ contains
     case (HUTI_TRESID_SCALED_BYB)
        call matvecsubr( X, Z, ipar )
 #ifdef _OPENMP
-       !$OMP PARALLEL DO SIMD
+       !$OMP PARALLEL DO 
        DO i=1,ndim
          work(i,Z_ind) = work(i,Z_ind) - rhsvec(i)
        END DO
-       !$OMP END PARALLEL DO SIMD
+       !$OMP END PARALLEL DO 
 #else
        Z = Z - B
 #endif
@@ -436,11 +436,11 @@ contains
        residual = normfun( HUTI_NDIM, R, 1 ) / precrhsnorm
     case (HUTI_XDIFF_NORM)
 #ifdef _OPENMP
-       !$OMP PARALLEL DO SIMD
+       !$OMP PARALLEL DO 
        DO i=1,ndim
          work(i,Z_ind) = alpha * work(i,P_ind)
        END DO
-       !$OMP END PARALLEL DO SIMD
+       !$OMP END PARALLEL DO 
 #else
        Z = alpha * P
 #endif   
@@ -450,11 +450,11 @@ contains
     case default
        call matvecsubr( X, Z, ipar )
 #ifdef _OPENMP
-       !$OMP PARALLEL DO SIMD
+       !$OMP PARALLEL DO 
        DO i=1,ndim
          work(i,Z_ind) = work(i,Z_ind) - rhsvec(i)
        END DO
-       !$OMP END PARALLEL DO SIMD
+       !$OMP END PARALLEL DO 
 #else
        Z = Z - B
 #endif

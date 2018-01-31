@@ -46,8 +46,8 @@
 
 !-------------------------------------------------------------------------------
        INTERFACE
-         SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm)
+         SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, NewVariables, &
+             UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm, KeepUnfoundNodes )
            USE Types
            TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
            TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
@@ -55,6 +55,7 @@
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
            INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
+           LOGICAL, OPTIONAL :: KeepUnfoundNodes  !< Do not disregard unfound nodes from projector
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 !-------------------------------------------------------------------------------
@@ -492,8 +493,8 @@ CONTAINS
 !>    Interpolates values of all variables from a mesh associated with
 !>    the old model to the mesh of the new model.
 !------------------------------------------------------------------------------
-     SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm )
+     SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, NewVariables, &
+         UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm, KeepUnfoundNodes )
 !------------------------------------------------------------------------------
        USE DefUtils
 !-------------------------------------------------------------------------------
@@ -506,6 +507,7 @@ CONTAINS
        CHARACTER(LEN=*),OPTIONAL :: MaskName  !< Mask the old variable set by the given MaskName when trying to define the interpolation.
        LOGICAL, OPTIONAL :: FoundNodes(:)     !< List of nodes where the interpolation was a success
        INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
+       LOGICAL, OPTIONAL :: KeepUnfoundNodes  !< Do not disregard unfound nodes from projector
 !------------------------------------------------------------------------------
        INTEGER :: dim
        TYPE(Nodes_t) :: ElementNodes
@@ -523,7 +525,8 @@ CONTAINS
                           RotWBasis(:,:), WBasis(:,:)
        REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum, F(3,3), G(3,3)
        
-       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel, TryLinear
+       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel, &
+           TryLinear, KeepUnfoundNodesL
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
        INTEGER, POINTER   :: Rows(:), Cols(:), Diag(:)
@@ -645,6 +648,12 @@ CONTAINS
        TryLinear = ListGetLogical( CurrentModel % Simulation, 'Try Linear Search If Qtree Fails', Found)
        IF(.NOT.Found) TryLinear = .TRUE.
 
+       IF ( PRESENT(KeepUnfoundNodes) ) THEN
+         KeepUnfoundNodesL = KeepUnfoundNodes
+       ELSE
+         KeepUnfoundNodesL = .TRUE.
+       END IF        
+       
        FoundCnt = 0
 !------------------------------------------------------------------------------
 ! Loop over all nodes in the new mesh
@@ -756,12 +765,20 @@ CONTAINS
 !
 !         Found Element in OldModel:
 !         ---------------------------------
-          IF ( PRESENT(Projector) ) THEN
+
+         IF ( PRESENT(Projector) ) THEN
              FoundCnt = FoundCnt + 1
-             ElemPtrs(i) % Element => Element
-             LocalU(i) = LocalCoordinates(1)
-             LocalV(i) = LocalCoordinates(2)
-             LocalW(i) = LocalCoordinates(3)
+             IF ( KeepUnfoundNodesL ) THEN
+               ElemPtrs(i) % Element => Element
+               LocalU(i) = LocalCoordinates(1)
+               LocalV(i) = LocalCoordinates(2)
+               LocalW(i) = LocalCoordinates(3)
+             ELSE
+               ElemPtrs(FoundCnt) % Element => Element
+               LocalU(FoundCnt) = LocalCoordinates(1)
+               LocalV(FoundCnt) = LocalCoordinates(2)
+               LocalW(FoundCnt) = LocalCoordinates(3)
+             END IF
           END IF
 
           IF ( .NOT.PRESENT(OldVariables) .OR. PRESENT(Projector) ) CYCLE
@@ -870,7 +887,11 @@ CONTAINS
 !      ---------------------------------------------------------
        IF ( PRESENT(Projector) ) THEN
 
-          n = NewMesh % NumberOfNodes
+          IF ( KeepUnfoundNodesL ) THEN
+            n = NewMesh % NumberOfNodes
+          ELSE
+            n = FoundCnt
+          END IF
           ALLOCATE( Basis(100),Vals(100), Indexes(100))
 
           ! The critical value of basis function that is accepted to the 

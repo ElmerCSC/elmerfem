@@ -141,6 +141,7 @@ Solver 2
 
   Procedure = "StressSolve" "StressSolver"
   Linear System Solver = Direct
+!  Linear System Direct Method = MUMPS
   Linear System Direct Method= Umfpack
 
   Steady State Convergence Tolerance = 1.0e-8
@@ -210,3 +211,4 @@ End
 
 Solver 1 :: reference norm = 2.50528396E+03
 Solver 2 :: reference norm = 2.81463522E-09
+

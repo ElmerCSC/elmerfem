@@ -7201,11 +7201,9 @@ END SUBROUTINE GetMaxDefs
             j = InvPerm1(Indexes(i))
             nrow = NodePerm(j)
             IF( nrow == 0 ) CYCLE
-            CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                j, 0.0_dp ) 
+            CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
              IF(ASSOCIATED(Projector % Child)) &
-               CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                   j, 0.0_dp ) 
+               CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
           END DO
         END IF
 
@@ -8224,8 +8222,7 @@ END SUBROUTINE GetMaxDefs
           j = InvPerm1(Indexes(i))
           nrow = NodePerm(j)
           IF( nrow == 0 ) CYCLE
-          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-              j, 0.0_dp ) 
+          CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
         END DO
 
         ! Currently a n^2 loop but it could be improved
@@ -10280,10 +10277,14 @@ END SUBROUTINE GetMaxDefs
           
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
-      ii = intinvperm(i)
-      IF( ii == 0) THEN
-        PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
-        CYCLE
+      IF( ASSOCIATED( IntInvPerm ) ) THEN
+        ii = intinvperm(i)        
+        IF( ii == 0) THEN
+          PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
+          CYCLE
+        END IF
+      ELSE
+        ii = i
       END IF
       IF( GlobalInds ) THEN
         IF( ii > SIZE( GlobalDofs ) ) THEN
@@ -10333,8 +10334,12 @@ END SUBROUTINE GetMaxDefs
       
       OPEN(1,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
-        ii = intinvperm(i)
-        IF( ii == 0 ) CYCLE
+        IF( ASSOCIATED( IntInvPerm ) ) THEN
+          ii = intinvperm(i)
+          IF( ii == 0 ) CYCLE
+        ELSE
+          ii = i
+        END IF
         rowsum = 0.0_dp
         dia = 0.0_dp
 

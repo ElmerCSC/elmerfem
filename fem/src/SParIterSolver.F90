@@ -703,7 +703,7 @@ st = realtime()
       RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
       DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
         ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
-        CALL List_AddToMatrixElement(A % ListMatrix,RowInd,ColInd,0._dp)
+        CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
       END DO
     END DO
   END DO
@@ -2375,16 +2375,26 @@ END SUBROUTINE Solve
   CALL Recv_LocIf( GlobalData % SplittedMatrix, &
       nneigh, neigh, recv_size, requests, buffer )
 
-  v(1:n) = 0.0
+  !$OMP PARALLEL DO
+  DO i=1,n
+     v(i) = 0.0
+  END DO
+  !$OMP END PARALLEL DO
   DO i = 1, ParEnv % PEs
      CurrIf => GlobalData % SplittedMatrix % IfMatrix(i)
 
      IF ( CurrIf % NumberOfRows /= 0 ) THEN
-       IfV => GlobalData % SplittedMatrix % IfVecs(i)
-       IfL => GlobalData % SplittedMatrix % IfLCols(i)
-       IfO => GlobalData % SplittedMatrix % IfORows(i)
+        IfV => GlobalData % SplittedMatrix % IfVecs(i)
+        IfL => GlobalData % SplittedMatrix % IfLCols(i)
+        IfO => GlobalData % SplittedMatrix % IfORows(i)
 
-        IfV % IfVec(1:CurrIf % NumberOfRows) = 0.0
+        !$OMP PARALLEL PRIVATE(ColInd,j,k)
+        !$OMP DO
+        DO j=1,CurrIf % NumberOfRows
+           IfV % IfVec(j) = 0.0
+        END DO
+        !$OMP END DO
+        !$OMP DO
         DO j = 1, CurrIf % NumberOfRows
            IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) THEN
              DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
@@ -2394,6 +2404,8 @@ END SUBROUTINE Solve
              END DO
            END IF
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
      END IF
   END DO
 
@@ -2914,46 +2926,64 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
         j2 = SMat2 % Rows(Ind)
 
         DO WHILE ( j1 < SMat1 % Rows(i1+1) .OR.  j2 < SMat2 % Rows(Ind+1) )
-
-           IF ( j1 <  SMat1 % Rows(i1+1) .AND. &
-                j2 >= SMat2 % Rows(Ind+1) ) THEN
-
-              DMat % Cols(col) = SMat1 % Cols(j1)
-              Col = Col + 1
-              j1 = j1 + 1
-
-           ELSE IF ( j1 < SMat1 % Rows(i1+1) .AND. &
-             SMat1 % Cols(j1) < SMat2 % Cols(j2) ) THEN
+          IF ( j1 <  SMat1 % Rows(i1+1)) THEN
+            IF (j2 >= SMat2 % Rows(Ind+1) ) THEN
 
               DMat % Cols(col) = SMat1 % Cols(j1)
               Col = Col + 1
               j1 = j1 + 1
-        
-           ELSE IF ( j1 >= SMat1 % Rows(i1+1) .AND. &
-                     j2 <  SMat2 % Rows(Ind+1) ) THEN
-              
-              DMat % Cols(col) = SMat2 % Cols(j2)
-              Col = Col + 1
-              j2 = j2 + 1
-        
-           ELSE IF ( j2 < SMat2 % Rows(Ind+1) .AND. &
-              SMat2 % Cols(j2) < SMat1 % Cols(j1) ) THEN
-
-              DMat % Cols(col) = SMat2 % Cols(j2)
-              Col = Col + 1
-              j2 = j2 + 1
-
-           ELSE IF ( SMat1 % Cols(j1) == SMat2 % Cols(j2) ) THEN
+              CYCLE
+            ELSE IF ( SMat1 % Cols(j1) < SMat2 % Cols(j2) ) THEN
 
               DMat % Cols(col) = SMat1 % Cols(j1)
               Col = Col + 1
-              j1 = j1 + 1; j2 = j2 + 1
+              j1 = j1 + 1
+              CYCLE
+            ELSE IF (j2 >= SMat2 % Rows(Ind+1) ) THEN
               
-           END IF
+              DMat % Cols(col) = SMat1 % Cols(j1)
+              Col = Col + 1
+              j1 = j1 + 1
+              CYCLE
+            ELSE IF ( SMat1 % Cols(j1) < SMat2 % Cols(j2) ) THEN
+
+              DMat % Cols(col) = SMat1 % Cols(j1)
+              Col = Col + 1
+              j1 = j1 + 1
+              CYCLE
+            END IF
+          END IF
+          IF ( j2 <  SMat2 % Rows(Ind+1) ) THEN
+            IF ( j1 >= SMat1 % Rows(i1+1) ) THEN
+
+              DMat % Cols(col) = SMat2 % Cols(j2)
+              Col = Col + 1
+              j2 = j2 + 1
+              CYCLE
+            ELSE IF ( SMat2 % Cols(j2) < SMat1 % Cols(j1) ) THEN
+
+              DMat % Cols(col) = SMat2 % Cols(j2)
+              Col = Col + 1
+              j2 = j2 + 1
+              CYCLE
+            END IF
+          END IF
+          IF ( SMat1 % Cols(j1) == SMat2 % Cols(j2) ) THEN
+            
+            DMat % Cols(col) = SMat1 % Cols(j1)
+            Col = Col + 1
+            j1 = j1 + 1
+            j2 = j2 + 1
+            CYCLE
+          END IF
+
+          ! Should not happen
+          CALL Fatal('CombineCRSMatIndices','Internal error while merging matrix rows')
         END DO
 
         Done(Ind) = .TRUE.
-        i1 = i1 + 1; i2 = i2 + 1
+        i1 = i1 + 1
+        i2 = i2 + 1
      END IF
   END DO
   DMat % Rows(Row) = Col
