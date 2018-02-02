@@ -32,7 +32,7 @@ Equation 1 :: Active Solvers(1) = 1
 Solver 1
   Equation = "ModelPDEthreaded"
   Variable = "Field"
-  Procedure = "ModelPDEthreaded" "AdvDiffSolver"
+  Procedure = "ModelPDEevol" "AdvDiffSolver"
   Element = "p:2"
   
   Steady State Convergence Tolerance = 1e-9
