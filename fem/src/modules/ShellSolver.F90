@@ -37,17 +37,20 @@
 ! *  data for general shell finite elements, Proceedings of the 29th Nordic
 ! *  Seminar on Computational Mechanics, 2016.
 ! *
-! *  The nodal director data should be available via reading from file mesh.director 
-! *  located in the same place as the standard mesh files or, alternatively, the 
-! *  user may provide mesh.elements.data file which should define the nodal 
-! *  director field associated with the name 'director'.
+! *  The nodal director data should be available via an ordinary solver variable
+! *  'Director' or via reading from file mesh.director located in the same place 
+! *  as the standard mesh files or, as the third option, the user may provide 
+! *  mesh.elements.data file which should define the nodal director field associated 
+! *  with the name 'director'.
 ! *
 ! *  This solver is STILL UNDER DEVELOPMENT and some possibilities of the strategy
 ! *  are not yet fully utilized. Note the current restrictions:
 ! *        -- Strain reduction operators have been worked out for 
 ! *           the lowest-order finite elements only.
 ! *        -- p-element discretization is not properly supported (and probably never so)
-! *        -- Parallel file formats for the director data are missing
+! *        -- Parallel file formats for mesh.director and mesh.elements.data are missing,
+! *           so for parallel execution the director should be defined as an ordinary 
+! *           solver variable
 ! *        -- Postprocessing routines are also missing 
 ! *        -- Terms of O(d/R), with d the shell thickness and R the minimum of
 ! *           radius of curvature, are ignored in the expression for the strain energy 
@@ -177,7 +180,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   TYPE(ElementType_t), POINTER :: ShellElement => NULL()
   TYPE(Nodes_t) :: Nodes
   TYPE(ValueList_t), POINTER :: SolverPars
-  TYPE(Variable_t), POINTER :: NodalPDir1, NodalPDir2, NodalPDir3
+  TYPE(Variable_t), POINTER :: NodalPDir1, NodalPDir2, NodalPDir3, Director
+  TYPE(Matrix_t), POINTER :: PMatrix
 
   LOGICAL :: Found
   LOGICAL :: CurveDataOutput, SavePrincipalAxes, ComputeShellArea
@@ -189,6 +193,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: NoTractions
   LOGICAL :: SolveBenchmarkCase
   LOGICAL :: MassAssembly, HarmonicAssembly
+  LOGICAL :: Parallel
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
@@ -200,6 +205,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp), POINTER :: TotalSol(:) => NULL()
   REAL(KIND=dp), POINTER CONTIG :: ValuesSaved(:) => NULL()
   REAL(KIND=dp), POINTER :: TaylorParams(:)
+  REAL(KIND=dp), POINTER :: Pb(:)
   REAL(KIND=dp), ALLOCATABLE :: LocalSol(:,:)
   REAL(KIND=dp), ALLOCATABLE :: LocalRHSForce(:)
   REAL(KIND=dp), TARGET :: LocalFrameNodes(MaxPatchNodes,3)
@@ -227,6 +233,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   Mesh => GetMesh()
   SolverPars => GetSolverParams()
 
+  Parallel = ParEnv % PEs > 1
   MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
   
   HarmonicAssembly = GetLogical(SolverPars, 'Harmonic Mode', Found) .OR. &
@@ -292,14 +299,14 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     
   ! ---------------------------------------------------------------------------------
   ! PART I: 
-  ! Read the director data at the nodes from mesh.director file and check the
+  ! Get the director data at the nodes as a field variable 'Director' or
+  ! read the director data at the nodes from mesh.director file and check the
   ! the integrity of the surface model. An elementwise property 'director' 
   ! corresponding to the data is created, if not already available
-  ! via reading the director data from the file mesh.elements.data. If neither
-  ! mesh.director nor mesh.elements.data are used to define the director, other
-  ! means can also be used for obtaining the director.
+  ! via reading the director data from the file mesh.elements.data. 
   !----------------------------------------------------------------------------------
-  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars)
+  Director => VariableGet(Mesh % Variables, 'Director', .TRUE.)
+  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars, Director)
   CALL CheckSurfaceOrientation()
   
   ! --------------------------------------------------------------------------------
@@ -528,7 +535,26 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     ! ---------------------------------------------------------------------------------
     IF (LargeDeflection) THEN
       IF (NonlinIter == 1) THEN
-        NoTractions = MAXVAL(ABS(Solver % Matrix % BulkRHS(:)))  < AEPS
+
+        IF (Parallel) THEN
+          IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix)) &
+              CALL ParallelInitMatrix(Solver, Solver % Matrix)
+
+          PMatrix => Solver % Matrix % ParMatrix % SplittedMatrix % InsideMatrix
+          IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
+               ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
+
+          ! Temporarily set the parallel rhs vector to be the plain source vector:
+          CALL ParallelUpdateRHS(Solver % Matrix, Solver % Matrix % BulkRHS)
+          Pb => PMatrix % RHS
+          Norm = MAXVAL(ABS(Pb))
+          Norm = ParallelReduction(Norm,2)
+        ELSE
+          Norm = MAXVAL(ABS(Solver % Matrix % BulkRHS(:)))
+        END IF
+
+        NoTractions = Norm < AEPS
+
         IF (NoTractions) THEN
           ! This appears to be a purely BC-loaded case, switch to using a different criterion
           ! (use absolute norm, this can be hard ...):
@@ -539,12 +565,32 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
               'This may give a hard stopping criterion',  Level=4)
           NonlinRes0 = 1.0d0
         ELSE
-          ! Compute the norm of the initial residual (RHS vector before setting BCs). 
-          ! TO DO: Update this for parallel implementation. 
-          NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+          ! Compute the 2-norm of the initial residual (RHS vector before setting BCs). 
+          IF (Parallel)  THEN
+            Norm = 0.0d0
+            DO i=1,PMatrix % NumberOfRows
+              Norm = Norm + Pb(i)**2
+            END DO
+            NonlinRes0 = SQRT(ParallelReduction(Norm))
+          ELSE
+            NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+          END IF
         END IF
       END IF
-      NonlinRes = SQRT(SUM(Solver % Matrix % RHS(:)**2)) / NonlinRes0
+
+      ! Employ BulkRHS vector to estimate the size of the current residual (RHS):
+      Solver % Matrix % BulkRHS = Solver % Matrix % RHS
+
+      IF (Parallel) THEN
+        CALL ParallelUpdateRHS(Solver % Matrix, Solver % Matrix % BulkRHS)
+        Norm = 0.0d0
+        DO i=1,PMatrix % NumberOfRows
+          Norm = Norm + Pb(i)**2
+        END DO
+        NonlinRes = SQRT(ParallelReduction(Norm)) / NonlinRes0
+      ELSE
+        NonlinRes = SQRT(SUM(Solver % Matrix % RHS(:)**2)) / NonlinRes0
+      END IF
       WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
           NonlinIter-1, NonLinRes
       CALL Info('ShellSolver', Message, Level=3)        
@@ -608,7 +654,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! -------------------------------------------------------------------------------------
   ! SOME VERIFICATION OUTPUT if a benchmark case of straight cylindrical shell is solved
   !-----------------------------------------------------------------------------------
-  IF (SolveBenchmarkCase) THEN
+  IF (SolveBenchmarkCase .AND. .NOT.Parallel) THEN
     
     CALL MatrixVectorMultiply(Solver % Matrix, Solver % Variable % Values, TotalSol)
     Work = 8.0d0 * SUM( Solver % Variable % Values(:) * TotalSol(:) )
@@ -651,7 +697,7 @@ CONTAINS
 
   
 ! ---------------------------------------------------------------------------------
-! This subroutine reads mesh.director file arranged as
+! This subroutine uses an ordinary field variable or mesh.director file arranged as
 !
 !    node_id1 d_x d_y d_z
 !    ...
@@ -666,56 +712,69 @@ CONTAINS
 ! output file, so this option can be used to convert mesh.director into 
 ! mesh.elements.data format).
 ! 
-! TO DO: Implement parallel version of file reading (mesh.elements.data and
-!        mesh.director). Allow arbitrary indexing of nodes.
+! Note: Parallel file formats for mesh.elements.data and mesh.director have not
+!       been implemented. Parallel execution is thus possible only when the
+!       director is available as an ordinary field variable.
 !------------------------------------------------------------------------------
-  SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars)
+  SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars, Director)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
     TYPE(ValueList_t), POINTER, INTENT(IN) :: SolverPars
+    TYPE(Variable_t), POINTER, INTENT(IN) :: Director    
     !------------------------------------------------------------------------------
-    LOGICAL :: ReadNodalDirectors, WriteElementsData, Found
+    LOGICAL :: UseFieldVariable, ReadNodalDirectors, WriteElementsData, Found
     INTEGER :: n, iostat, i, j, k, i0
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: ElementDirectors(3*MaxBGElementNodes)
     CHARACTER(LEN=MAX_NAME_LEN) :: DirectorFile, FormatString
     !------------------------------------------------------------------------------
+    ReadNodalDirectors = .FALSE.
 
-    ! -----------------------------------------------------------------------------
-    ! Check whether mesh.director can be read:
-    ! -----------------------------------------------------------------------------
-    n = LEN_TRIM(MeshName)
-    DirectorFile = TRIM(MeshName)//'/'//'mesh.director'//CHAR(0)
-
-    INQUIRE(FILE = DirectorFile(1:n+15), EXIST = ReadNodalDirectors)
-
-    IF (ReadNodalDirectors) THEN
+    UseFieldVariable = ASSOCIATED(Director)
+    IF (UseFieldVariable) THEN
+      CALL Info('ReadSurfaceDirector', '&
+          Using the field Director to define the mid-surface normal', Level=4)
+      IF (Director % DOFs /= 3) CALL Fatal('ReadSurfaceDirector', &
+          'The director field should have three components')
+      IF (.NOT.ASSOCIATED(Director % Perm) .OR. .NOT.ASSOCIATED(Director % Values)) &
+          CALL Fatal('ReadSurfaceDirector', 'The director solution is not associated')
+    ELSE
+      ! -----------------------------------------------------------------------------
+      ! Check whether mesh.director can be read:
+      ! -----------------------------------------------------------------------------
+      n = LEN_TRIM(MeshName)
+      DirectorFile = TRIM(MeshName)//'/'//'mesh.director'//CHAR(0)
       
-      CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
-          'NodalDirector array could not be allocated')
+      INQUIRE(FILE = DirectorFile(1:n+15), EXIST = ReadNodalDirectors)
+    END IF
+
+    IF (UseFieldVariable .OR. ReadNodalDirectors) THEN
+      IF (ReadNodalDirectors) THEN
+        CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
+            'NodalDirector array could not be allocated')
       
-      OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
-      IF ( iostat /= 0 ) THEN
-        CALL Fatal('ReadSurfaceDirector', 'Opening mesh.director file failed.')     
-      ELSE
-        DO i=1,NumberOfNodes
-          READ(10,*,IOSTAT=iostat) k, d
+        OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
+        IF ( iostat /= 0 ) THEN
+          CALL Fatal('ReadSurfaceDirector', 'Opening mesh.director file failed.')     
+        ELSE
+          DO i=1,NumberOfNodes
+            READ(10,*,IOSTAT=iostat) k, d
 
-          IF (k /= i) CALL Fatal('mesh.director', &
-              'Trivial correspondence between rows and node numbers assumed currently')
+            IF (k /= i) CALL Fatal('mesh.director', &
+                'Trivial correspondence between rows and node numbers assumed currently')
 
-          Norm = SQRT(SUM(d(1:3)**2))
-          NodalDirector(i,1) = d(1)/Norm
-          NodalDirector(i,2) = d(2)/Norm
-          NodalDirector(i,3) = d(3)/Norm
-        END DO
-        CLOSE(10)
+            Norm = SQRT(SUM(d(1:3)**2))
+            NodalDirector(i,1) = d(1)/Norm
+            NodalDirector(i,2) = d(2)/Norm
+            NodalDirector(i,3) = d(3)/Norm
+          END DO
+          CLOSE(10)
+        END IF
       END IF
-
       ! ---------------------------------------------------------------------
       ! Create director data as elementwise property
       ! ---------------------------------------------------------------------
@@ -728,12 +787,19 @@ CONTAINS
         DirectorValues => GetElementProperty('director', Element)
         IF (ASSOCIATED(DirectorValues)) CYCLE
 
-        n  = GetElementNOFNodes()     
-        DO i=1,n
-          i0 = (i-1)*3
-          ElementDirectors(i0+1:i0+3) = NodalDirector(Element % NodeIndexes(i),1:3)
-        END DO
-
+        n  = GetElementNOFNodes()
+        IF (ReadNodalDirectors) THEN
+          DO i=1,n
+            i0 = (i-1)*3
+            ElementDirectors(i0+1:i0+3) = NodalDirector(Element % NodeIndexes(i),1:3)
+          END DO
+        ELSE
+          DO i=1,n
+            i0 = (i-1)*3
+            j = 3*(Director % Perm(Element % NodeIndexes(i)) - 1)
+            ElementDirectors(i0+1:i0+3) = Director % Values(j+1:j+3)
+          END DO
+        END IF
         CALL SetElementProperty('director', ElementDirectors(1:3*n), Element)
       END DO
     END IF
