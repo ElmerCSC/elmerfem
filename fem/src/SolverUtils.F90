@@ -7982,7 +7982,7 @@ END FUNCTION SearchNodeL
 
     IF( ParEnv % PEs > 1 ) THEN
       ConsistentNorm = ListGetLogical(Solver % Values,'Nonlinear System Consistent Norm',Stat)
-      CALL Info('ComputeNorm','Using consistent norm in parallel',Level=10)
+      IF (ConsistentNorm) CALL Info('ComputeNorm','Using consistent norm in parallel',Level=10)
     ELSE
       ConsistentNorm = .FALSE.
     END IF
