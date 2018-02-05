@@ -185,7 +185,7 @@ this ise not in USE
 !> or from turbulence models, but not from both at the same time.
 !------------------------------------------------------------------------------
    FUNCTION EffectiveViscosity( Viscosity,Density,Ux,Uy,Uz,Element, &
-        Nodes,n,nd,u,v,w, muder ) RESULT(mu)
+        Nodes,n,nd,u,v,w, muder, LocalIP ) RESULT(mu)
      !------------------------------------------------------------------------------
 
      USE ModelDescription
@@ -194,6 +194,7 @@ this ise not in USE
      REAL(KIND=dp), OPTIONAL :: muder
      TYPE(Nodes_t)  :: Nodes
      INTEGER :: n,nd
+     INTEGER, OPTIONAL :: LocalIP
      TYPE(Element_t),POINTER :: Element
 
      !------------------------------------------------------------------------------
@@ -241,13 +242,13 @@ this ise not in USE
                Velo(:), dVelodx(:,:), s
         END FUNCTION MaterialUserFunction
         FUNCTION EnhancementFactorUserFunction( Proc,Model,Element,Nodes,n,nd, &
-             Basis,dBasisdx,Viscosity,Velo,dVelodx,SecondInvariantSqr ) RESULT(Ehf)
+             Basis,dBasisdx,Viscosity,Velo,dVelodx,SecondInvariantSqr,LocalIP ) RESULT(Ehf)
           USE Types
           INTEGER(KIND=AddrInt) :: Proc
           TYPE(Model_t) :: Model
           TYPE(Nodes_t) :: Nodes
           TYPE(Element_t), POINTER :: Element
-          INTEGER :: n,nd
+          INTEGER :: n,nd,LocalIP 
           REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
                Velo(:), dVelodx(:,:), SecondInvariantSqr, Ehf
         END FUNCTION EnhancementFactorUserFunction
@@ -373,9 +374,11 @@ this ise not in USE
         Ehf = 1.0_dp
         EnhcmntFactFlag = ListGetString( Material,'Glen Enhancement Factor Function', UseEUsrf )
         IF (UseEUsrf) THEN
+          IF (.NOT.PRESENT(LocalIP)) CALL FATAL('EffectiveViscosity',&
+               'Chose "Glen Enhancement Factor Function" but no LocalIP provided by calling function')
           Fnc = GetProcAddr( EnhcmntFactFlag, Quiet=.TRUE. )
           EhF = EnhancementFactorUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
-               Basis, dBasisdx, Viscosity, Velo, dVelodx, s )
+               Basis, dBasisdx, Viscosity, Velo, dVelodx, s , LocalIP)
         ELSE
           NodalEhF(1:n) =  ListGetReal( Material, 'Glen Enhancement Factor',&
                n, Element % NodeIndexes, GotIt )

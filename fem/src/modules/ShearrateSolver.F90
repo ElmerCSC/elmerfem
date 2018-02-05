@@ -281,7 +281,7 @@ CONTAINS
           ViscAtIP = SUM( NodalVisc(1:n) * Basis(1:n) )
           IF( ListCheckPresent( Material, 'Viscosity Model' ) ) THEN
             mu = EffectiveViscosity( ViscAtIP, RhoAtIp, Vx, Vy, Vz, &
-                Element, Nodes, n, n, u, v, w,  muder0 )
+                Element, Nodes, n, n, u, v, w,  muder0, LocalIP=t )
           ELSE
             mu = ViscAtIP
           END IF

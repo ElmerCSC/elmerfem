@@ -485,7 +485,7 @@ MODULE DiffuseConvectiveGeneral
          IF ( FrictionHeat ) THEN
            Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
            Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
-                 Element, Nodes, n, n, u, v, w )
+                 Element, Nodes, n, n, u, v, w, LocalIP=t )
            IF ( Viscosity > 0.0d0 ) THEN
              IF ( .NOT.Compressible ) THEN
                dVelodx = 0.0D0

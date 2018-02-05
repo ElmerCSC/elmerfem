@@ -507,7 +507,7 @@ MODULE NavierStokes
 
         IF( ViscNonnewtonian ) THEN
           mu = EffectiveViscosity( mu, rho, Ux, Uy, Uz, &
-              Element, Nodes, n, n, u, v, w,  muder0 )
+              Element, Nodes, n, n, u, v, w,  muder0, LocalIP=t )
 
           ViscNewtonLin = NewtonLinearization .AND. muder0/=0._dp
           IF ( ViscNewtonLin )  Strain = (Grad+TRANSPOSE(Grad))/2
