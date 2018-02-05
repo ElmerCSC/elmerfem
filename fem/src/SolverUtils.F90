@@ -4720,6 +4720,7 @@ CONTAINS
  
             DO l=1,NDOFs
               m = NDOFs*(k-1)+l
+              IF(A % ConstrainedDOF(m)) CYCLE
               CALL SetSinglePoint(k,l,Solver % Variable % Values(m),.FALSE.)
             END DO
           END DO
