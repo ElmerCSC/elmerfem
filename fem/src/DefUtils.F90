@@ -291,44 +291,67 @@ CONTAINS
     END DO
   END SUBROUTINE GetElementNodeIndex
 
-  FUNCTION GetIPIndex( LocalIp, USolver, Element ) RESULT ( GlobalIp ) 
+  FUNCTION GetIPIndex( LocalIp, USolver, Element, IpVar ) RESULT ( GlobalIp ) 
     INTEGER :: LocalIp, GlobalIp
 
     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
     TYPE(Element_t), OPTIONAL :: Element
+    TYPE(Variable_t), POINTER, OPTIONAL :: IpVar
 
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: CurrElement
     INTEGER :: n, m
+    INTEGER, POINTER :: IpPerm(:)
     
     IF ( PRESENT( USolver ) ) THEN
       Solver => USolver
     ELSE
       Solver => CurrentModel % Solver 
-    END IF
-
-    IF( .NOT. ASSOCIATED( Solver % IpTable ) ) THEN
-      CALL Fatal('GetIpIndex','Cannot access index of gaussian point!')
     END IF
     
     CurrElement => GetCurrentElement(Element)
     n = CurrElement % ElementIndex
-    m = Solver % IpTable % IpOffset(n+1) - Solver % IpTable % IpOffset(n)
-    IF( m < LocalIp ) THEN
-      CALL Warn('GetIpIndex','Inconsistent number of IP points!')
-      GlobalIp = 0 
+    GlobalIp = 0
+    
+    IF( PRESENT( IpVar ) ) THEN
+      IF( IpVar % TYPE /= Variable_on_gauss_points ) THEN
+        CALL Fatal('GetIpIndex','Variable is not of type gauss points!')
+      END IF
+      
+      IpPerm => IpVar % Perm
+      m = IpPerm(n+1) - IpPerm(n)
+
+      ! This is a sign that the variable is not active at the element
+      IF( m == 0 ) RETURN
     ELSE
-      GlobalIp = Solver % IpTable % IpOffset(n) + LocalIp
+      IF( .NOT. ASSOCIATED( Solver % IpTable ) ) THEN
+        CALL Fatal('GetIpIndex','Cannot access index of gaussian point!')
+      END IF
+
+      IpPerm => Solver % IpTable % IpOffset 
+      m = IpPerm(n+1) - IpPerm(n)
     END IF
+
+    ! There are not sufficient number of gauss points in the permutation table to have a
+    ! local index this big. 
+    IF( m < LocalIp ) THEN      
+      CALL Warn('GetIpIndex','Inconsistent number of IP points!')
+      RETURN
+    END IF
+    
+    GlobalIp = IpPerm(n) + LocalIp
 
   END FUNCTION GetIPIndex
 
   
-  FUNCTION GetIPCount( USolver ) RESULT ( IpCount ) 
+  
+  FUNCTION GetIPCount( USolver, IpVar ) RESULT ( IpCount ) 
     INTEGER :: IpCount
     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
-
+    TYPE(Variable_t), OPTIONAL, POINTER :: IpVar
+    
     TYPE(Solver_t), POINTER :: Solver
+    INTEGER, POINTER :: IpPerm 
 
     IF ( PRESENT( USolver ) ) THEN
       Solver => USolver
@@ -336,12 +359,18 @@ CONTAINS
       Solver => CurrentModel % Solver 
     END IF
 
-    IF( .NOT. ASSOCIATED( Solver % IpTable ) ) THEN
-      CALL Fatal('GetIpCount','Cannot access index of gaussian point!')
+    IF( PRESENT( IpVar ) ) THEN
+      IF( IpVar % TYPE /= Variable_on_gauss_points ) THEN
+        CALL Fatal('GetIpIndex','Variable is not of type gauss points!')
+      END IF
+      IpCount = SIZE( IpVar % Values ) / IpVar % Dofs
+    ELSE    
+      IF( .NOT. ASSOCIATED( Solver % IpTable ) ) THEN
+        CALL Fatal('GetIpCount','Gauss point table not initialized')
+      END IF    
+      IpCount = Solver % IpTable % IpCount 
     END IF
-    
-    IpCount = Solver % IpTable % IpCount 
-    
+      
   END FUNCTION GetIPCount
 
   
@@ -525,14 +554,6 @@ CONTAINS
 
      Element => GetCurrentElement(UElement)
 
-     Indexes => GetIndexStore()
-     IF ( ASSOCIATED(Variable % Solver) ) THEN
-       n = GetElementDOFs( Indexes, Element, Variable % Solver )
-     ELSE
-       n = GetElementDOFs( Indexes, Element, Solver )
-     END IF
-     n = MIN( n, SIZE(x) )
-
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
@@ -540,6 +561,25 @@ CONTAINS
            Values => Variable % PrevValues(:,-tStep)
        END IF
      END IF
+
+     ! If variable is defined on gauss points return that instead
+     IF( Variable % TYPE == Variable_on_gauss_points ) THEN
+       j = Element % ElementIndex
+       n = Variable % Perm(j+1) - Variable % Perm(j)
+       DO i=1,n
+         x(i) = Values(Variable % Perm(j) + i)
+       END DO
+       RETURN
+     END IF
+
+     
+     Indexes => GetIndexStore()
+     IF ( ASSOCIATED(Variable % Solver) ) THEN
+       n = GetElementDOFs( Indexes, Element, Variable % Solver )
+     ELSE
+       n = GetElementDOFs( Indexes, Element, Solver )
+     END IF
+     n = MIN( n, SIZE(x) )
 
 
      IF ( ASSOCIATED( Variable % Perm ) ) THEN
