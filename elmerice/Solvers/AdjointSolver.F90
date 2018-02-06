@@ -161,11 +161,12 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
         StiffMatrix % Values = TransMat % Values
         StiffMatrix % Rows = TransMat % Rows
         StiffMatrix % Cols = TransMat % Cols
-        StiffMatrix % Diag = TransMat % Diag
+        IF(ASSOCIATED(TransMat % Diag)) StiffMatrix % Diag = TransMat % Diag
         ForceVector = 0.0
         Perm = NSSolver % Variable % Perm
 
-        deallocate( TransMat % Rows, TransMat % Cols , TransMat % Values, TransMat %  Diag)
+        deallocate( TransMat % Rows, TransMat % Cols , TransMat % Values)
+        IF(ASSOCIATED(TransMat % Diag)) DEALLOCATE(TransMat % Diag)
         nullify(TransMat)
 
       DO t = 1,Solver % Mesh % NumberOfBoundaryElements
