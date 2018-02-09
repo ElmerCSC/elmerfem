@@ -11251,6 +11251,7 @@ END IF
 
     LeftElement => Boundary % BoundaryInfo % Left
 
+    Element => Null()
     IF ( ASSOCIATED(LeftELement) ) THEN
        RightElement => Boundary % BoundaryInfo % Right
        IF ( ASSOCIATED( RightElement ) ) THEN ! we have a body-body boundary        
