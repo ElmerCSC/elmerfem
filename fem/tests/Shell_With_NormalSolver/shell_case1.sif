@@ -81,7 +81,7 @@ Solver 2
   Nonlinear System Convergence Tolerance = 1e-8
   Nonlinear System Consistent Norm = Logical True
 
-  Linear System Solver = Direct !"Iterative"
+  Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU2
 !  Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 1000
