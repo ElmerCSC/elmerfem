@@ -632,7 +632,7 @@ CONTAINS
        
      EquationName = ListGetString( Solver % Values, 'Equation', Found)
      IF( .NOT. Found ) THEN
-       CALL Fatal('SetActiveElementsTable','Equation not present!')
+       CALL Fatal('CreateIpPerm','Equation not present!')
      END IF     
      
      Mesh => Solver % Mesh
@@ -4768,17 +4768,17 @@ CONTAINS
     
     IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
 
-    CALL Info('SetActiveElementsTable','Creating table showing active element indexes',Level=12)
-
     IF( ASSOCIATED( Solver % ActiveElements ) ) THEN
       DEALLOCATE( Solver % ActiveElements )
     END IF
-
     
     EquationName = ListGetString( Solver % Values, 'Equation', Found)
     IF( .NOT. Found ) THEN
       CALL Fatal('SetActiveElementsTable','Equation not present!')
     END IF
+
+    CALL Info('SetActiveElementsTable','Creating active element table for: '//TRIM(EquationName),Level=12)
+
 
     Mesh => Solver % Mesh
     
@@ -4801,10 +4801,16 @@ CONTAINS
       
       IF( Sweep == 0 ) THEN
         Solver % NumberOfActiveElements = n
+        IF( n == 0 ) EXIT
         ALLOCATE( Solver % ActiveElements( n ) )
       END IF
     END DO
 
+    IF( n == 0 ) THEN
+      CALL Info('SetActiveElementsTable','No active elements found',Level=12)    
+      RETURN
+    END IF
+                
     IF( PRESENT( MaxDim ) ) MaxDim = MeshDim 
 
     IF( PRESENT( CreateInv ) ) THEN
@@ -4819,7 +4825,8 @@ CONTAINS
         END DO
       END IF
     END IF
-
+    
+    CALL Info('SetActiveElementsTable','Number of active elements found : '//TRIM(I2S(n)),Level=12)    
     
   END SUBROUTINE SetActiveElementsTable
 
