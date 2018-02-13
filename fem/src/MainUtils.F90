@@ -1389,7 +1389,7 @@ CONTAINS
         !----------------------------------------------------------------------------------
         eq = ListGetString( SolverParams, 'Equation', Found )
         IF(.NOT. Found) THEN
-          CALL Fatal('AddEquationBasics','Variable exists but > Equation < is not defined')
+          CALL Fatal('AddEquationBasics','Variable exists but > Equation < is not defined in Solver ')
         END IF
         Found = .FALSE.
         DO i=1, CurrentModel % NumberOfEquations
