@@ -802,7 +802,8 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
     TYPE Solver_t
-      TYPE(ValueList_t), POINTER :: Values => Null()
+      INTEGER :: SolverId = 0
+      TYPE(ValueList_t), POINTER :: Values => NULL()
 
       INTEGER :: TimeOrder,DoneTime,Order,NOFEigenValues=0
       INTEGER :: TimesVisited = 0

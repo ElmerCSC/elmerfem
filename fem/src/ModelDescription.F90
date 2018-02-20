@@ -855,6 +855,7 @@ CONTAINS
               NULLIFY( Model % Solvers(i) % Variable )
               NULLIFY( Model % Solvers(i) % ActiveElements )
               Model % Solvers(i) % NumberOfActiveElements = 0
+              Model % Solvers(i) % SolverId = i
             END DO
           ELSE
             Model % NumberOfSolvers = MAX( Arrayn, Model % NumberOfSolvers )
