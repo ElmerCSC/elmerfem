@@ -43,12 +43,6 @@
 
 #include "../config.h"
 
-#if _OPENMP>=201511
-#define LINEAR_REF(var) LINEAR(REF(var))
-#else
-#define LINEAR_REF(var)
-#endif
-
 MODULE ElementDescription
    USE Integration
    USE GeneralUtils
@@ -4051,7 +4045,7 @@ END IF
          RETURN
        END IF
 
-       !$OMP SIMD
+       !_ELMER_OMP_SIMD
        DO i=1,ncl
          DetJ(i+ll-1)=DetJWrk(i)
        END DO
@@ -4159,38 +4153,35 @@ END IF
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,npts
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)
            END DO
-           !$OMP END SIMD
          END DO
        END DO
      CASE(2)
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,npts
              ! Map local basis function to global
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
                    dLBasisdx(l,i,2)*LtoGMap(l,j,2)
            END DO
-           !$OMP END SIMD
          END DO
        END DO
      CASE(3)
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,npts
              ! Map local basis function to global
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
                    dLBasisdx(l,i,2)*LtoGMap(l,j,2)+ &
                    dLBasisdx(l,i,3)*LtoGMap(l,j,3)
            END DO
-           !$OMP END SIMD
          END DO
        END DO
      END SELECT
@@ -9921,23 +9912,20 @@ END IF
          utind = GetSymmetricIndex(i,j)
          SELECT CASE (cdim)
          CASE(1)
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)
            END DO
-           !$OMP END SIMD
          CASE(2)
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)
            END DO
-           !$OMP END SIMD
          CASE(3)
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)+dx(l,3,i)*dx(l,3,j)
            END DO
-           !$OMP END SIMD
          END SELECT
        END DO
      END DO
@@ -9962,17 +9950,15 @@ END IF
        END DO
 
        IF (AllSuccess) THEN
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            ! Metric(i,1,1) = REAL(1,dp)/DetJ(i)
            Metric(i,1) = REAL(1,dp)/DetJ(i)
          END DO
-         !$OMP END SIMD
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT( DetJ(i))
          END DO
-         !$OMP END SIMD
        END IF
 
 
@@ -9981,13 +9967,12 @@ END IF
        !------------------------------------------------------------------------------
      CASE (2)
        ! Determinants
-       !$OMP SIMD
+       !_ELMER_OMP_SIMD
        DO i=1,nc
          ! DetJ(i) = ( G(i,1,1)*G(i,2,2) - G(i,1,2)*G(i,2,1) )
          ! G is symmetric
          DetJ(i) = G(i,1)*G(i,3)-G(i,2)*G(i,2)
        END DO
-       !$OMP END SIMD
 
        DO i=1,nc
          IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
@@ -9998,7 +9983,7 @@ END IF
 
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            s = REAL(1,dp)/DetJ(i)
            ! G is symmetric
@@ -10007,20 +9992,18 @@ END IF
            Metric(i,2) = -s*G(i,2)
            Metric(i,3) =  s*G(i,1)
          END DO
-         !$OMP END SIMD
-
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT(DetJ(i))
          END DO
-         !$OMP END SIMD
+
        END IF
        !------------------------------------------------------------------------------
        !       Volume elements
        !------------------------------------------------------------------------------
      CASE (3)
        ! Determinants
-       !$OMP SIMD
+       !_ELMER_OMP_SIMD
        DO i=1,nc
          ! DetJ(i) = G(i,1,1) * ( G(i,2,2)*G(i,3,3) - G(i,2,3)*G(i,3,2) ) + &
          !           G(i,1,2) * ( G(i,2,3)*G(i,3,1) - G(i,2,1)*G(i,3,3) ) + &
@@ -10030,7 +10013,6 @@ END IF
                  G(i,2)*(G(i,5)*G(i,4)-G(i,2)*G(i,6)) + &
                  G(i,4)*(G(i,2)*G(i,5)-G(i,3)*G(i,4))
        END DO
-       !$OMP END SIMD
 
        DO i=1,nc
          IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
@@ -10041,7 +10023,7 @@ END IF
 
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            s = REAL(1,dp) / DetJ(i)
            ! Metric(i,1,1) =  s * (G(i,2,2)*G(i,3,3) - G(i,3,2)*G(i,2,3))
@@ -10057,13 +10039,11 @@ END IF
            Metric(i,5)=-s*(G(i,1)*G(i,5)-G(i,2)*G(i,4))
            Metric(i,6)= s*(G(i,1)*G(i,3)-G(i,2)*G(i,2))
          END DO
-         !$OMP END SIMD
 
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT(DetJ(i))
          END DO
-         !$OMP END SIMD
 
        END IF
      END SELECT
@@ -10073,32 +10053,29 @@ END IF
        CASE(1)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1)
            END DO
-           !$OMP END SIMD
          END DO
        CASE(2)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3)
            END DO
-           !$OMP END SIMD
          END DO
        CASE(3)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2) + dx(l,i,3)*Metric(l,4)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3) + dx(l,i,3)*Metric(l,5)
              LtoGMap(l,i,3) = dx(l,i,1)*Metric(l,4) + dx(l,i,2)*Metric(l,5) + dx(l,i,3)*Metric(l,6)
            END DO
-           !$OMP END SIMD
          END DO
        END SELECT
      ELSE
@@ -10125,7 +10102,6 @@ END IF
        IMPLICIT NONE
        INTEGER, INTENT(IN) :: i, j
        INTEGER :: utind
-       !$OMP DECLARE SIMD(GetSymmetricIndex) UNIFORM(j) LINEAR_REF(i) NOTINBRANCH
 
        IF (i>j) THEN
          utind = i*(i-1)/2+j

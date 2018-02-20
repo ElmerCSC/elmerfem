@@ -1181,7 +1181,7 @@ CONTAINS
      IF (ColouredAssembly) THEN
        IF (NeedMasking) THEN
          ! Vector masking needed, no ATOMIC needed
-         !$OMP SIMD PRIVATE(j,k)
+         !_ELMER_OMP_SIMD PRIVATE(j,k)
          DO i=1,n
            IF (NodeIndexes(i)>0) THEN
              DO j=1,NDOFs
@@ -1193,7 +1193,7 @@ CONTAINS
        ELSE
          ! No vector masking needed, no ATOMIC needed
          IF (NDOFS>1) THEN
-           !$OMP SIMD PRIVATE(j,k)
+           !_ELMER_OMP_SIMD PRIVATE(j,k)
            DO i=1,n
              DO j=1,NDOFs
                k = NDOFs*(NodeIndexes(i)-1) + j
@@ -1201,7 +1201,7 @@ CONTAINS
              END DO
            END DO
          ELSE
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO i=1,n
              Gvec(NodeIndexes(i)) = Gvec(NodeIndexes(i)) + Lvec(i)
            END DO

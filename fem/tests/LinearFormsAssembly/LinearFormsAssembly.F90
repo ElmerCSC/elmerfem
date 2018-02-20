@@ -514,19 +514,19 @@ CONTAINS
                ElementNodes % z)
      ELSE
        IF (ASSOCIATED(Element % Type % NodeU)) THEN
-         !$OMP SIMD
+         !DIR$ IVDEP
          DO i=1,n
            ElementNodes % x(i) = Element % Type % NodeU(i)
          END DO
        END IF
        IF (ASSOCIATED(Element % Type % NodeV)) THEN
-         !$OMP SIMD
+         !DIR$ IVDEP
          DO i=1,n
            ElementNodes % y(i) = Element % Type % NodeV(i)
          END DO
        END IF
        IF (ASSOCIATED(Element % Type % NodeW)) THEN
-         !$OMP SIMD
+         !DIR$ IVDEP
          DO i=1,n
            ElementNodes % z(i) = Element % Type % NodeW(i)
          END DO

@@ -40,18 +40,14 @@
 !>  Module defining vectorized p element basis functions and mappings.
 !-----------------------------------------------------------------------------
 
+#include "../config.h"
+
 MODULE H1Basis
   USE Types, ONLY : dp, VECTOR_BLOCK_LENGTH
   USE Messages
   
   ! Module contains vectorized version of FE basis
   ! functions for selected elements
-
-#if _OPENMP>=201511
-#define LINEAR_REF(var) LINEAR(REF(var))
-#else
-#define LINEAR_REF(var)
-#endif
 
   INTEGER, PARAMETER :: H1Basis_MaxPElementEdgeNodes=2, &
           H1Basis_MaxPElementEdges = 12, &
@@ -337,14 +333,13 @@ CONTAINS
     INTEGER :: j
 !DIR$ ASSUME_ALIGNED u:64, fval:64
 
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       ! Node 1
       fval(j,nbasis+1) = c*(1-u(j))
       ! Node 2
       fval(j,nbasis+2) = c*(1+u(j))
     END DO
-    !$END OMP SIMD
     nbasis = nbasis + 2
   END SUBROUTINE H1Basis_LineNodal
 
@@ -363,12 +358,11 @@ CONTAINS
 !DIR$ ASSUME_ALIGNED u:64, grad:64
 
     ! First coordinate (xi)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -c
       grad(j,nbasis+2,1) = c
     END DO
-    !$END OMP SIMD
     nbasis = nbasis + 2
   END SUBROUTINE H1Basis_dLineNodal
 
@@ -394,19 +388,17 @@ CONTAINS
 
     IF (invert) THEN
       DO p=2,pmax
-        !$OMP SIMD 
+        !_ELMER_OMP_SIMD 
         DO j=1,nvec
            fval(j,nbasis+p-1) = H1Basis_Phi(p,-u(j))
         END DO
-        !$END OMP SIMD
       END DO
     ELSE
       DO p=2,pmax
-        !$OMP SIMD 
+        !_ELMER_OMP_SIMD 
         DO j=1,nvec
           fval(j,nbasis+p-1) = H1Basis_Phi(p,u(j))
         END DO
-        !$END OMP SIMD
       END DO
     END IF
 
@@ -437,20 +429,18 @@ CONTAINS
     IF (invert) THEN
       DO p=2,pmax
         ! First coordinate (xi)
-        !$OMP SIMD
+        !_ELMER_OMP_SIMD
         DO j=1,nvec
           grad(j,nbasis+p-1,1) = H1Basis_dPhi(p,-u(j))
         END DO
-        !$END OMP SIMD
       END DO
     ELSE
       DO p=2,pmax
         ! First coordinate (xi)
-        !$OMP SIMD
+        !_ELMER_OMP_SIMD
         DO j=1,nvec
           grad(j,nbasis+p-1,1) = H1Basis_dPhi(p,u(j))
         END DO
-        !$END OMP SIMD
       END DO
     END IF
 
@@ -473,13 +463,12 @@ CONTAINS
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
 !DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
 
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       fval(j,nbasis+1) = c*(1-u(j)-d*v(j))
       fval(j,nbasis+2) = c*(1+u(j)-d*v(j))
       fval(j,nbasis+3) = d*v(j)
     END DO
-    !$END OMP SIMD
     nbasis = nbasis + 3
   END SUBROUTINE H1Basis_TriangleNodalP
 
@@ -492,9 +481,9 @@ CONTAINS
     ! Result
     REAL(KIND=dp) :: fval
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
-    !$OMP DECLARE SIMD(H1Basis_TriangleL) UNIFORM(node) &
-    !$OMP LINEAR_REF(u) LINEAR_REF(v) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
+    !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) NOTINBRANCH
+    
     SELECT CASE(node)
     CASE(1)
       fval = c*(1-u-d*v)
@@ -519,36 +508,31 @@ CONTAINS
 !DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
 
     ! First coordinate (xi)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -1d0/2
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+2,1) = 1d0/2
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+3,1) = REAL(0,dp)
     END DO
-    !$END OMP SIMD
     ! Second coordinate (eta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,2) = -SQRT(3d0)/6
     END DO
-    !$END OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+2,2) = -SQRT(3d0)/6
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+3,2) = SQRT(3d0)/3
     END DO
-    !$END OMP SIMD
     nbasis = nbasis + 3
   END SUBROUTINE H1Basis_dTriangleNodalP
   
@@ -561,8 +545,8 @@ CONTAINS
     ! Result
     REAL(KIND=dp) :: grad(2)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
-    !$OMP DECLARE SIMD(H1Basis_dTriangleL) UNIFORM(node) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
+    
     SELECT CASE(node)
     CASE(1)
       grad = c*[REAL(-1,dp), REAL(-d,dp)]
@@ -591,14 +575,13 @@ CONTAINS
     ! For each edge
     DO i=1,3
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb)
         DO k=1,nvec
           La = H1Basis_TriangleL(edgedir(1,i),u(k),v(k))
           Lb = H1Basis_TriangleL(edgedir(2,i),u(k),v(k))
 
           fval(k, nbasis+j-1) = La*Lb*H1Basis_varPhi(j,Lb-La)
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -627,7 +610,7 @@ CONTAINS
       dLb = H1Basis_dTriangleL(edgedir(2,i))
 
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb, vPhi, dVPhi)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, vPhi, dVPhi)
         DO k=1,nvec
           La = H1Basis_TriangleL(edgedir(1,i),u(k),v(k))
           Lb = H1Basis_TriangleL(edgedir(2,i),u(k),v(k))
@@ -641,7 +624,6 @@ CONTAINS
                   La*dLb(2)*vPhi +&
                   La*Lb*dVPhi*(dLb(2)-dLa(2))
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -669,7 +651,7 @@ CONTAINS
       ! Triangle bubble basis
       DO i = 0,pmax-3
         DO j = 0,pmax-i-3
-          !$OMP SIMD PRIVATE(La, Lb, Lc)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc)
           DO k=1,nvec
             La = H1Basis_TriangleL(1,u(k),v(k))
             Lb = H1Basis_TriangleL(2,u(k),v(k))
@@ -678,7 +660,6 @@ CONTAINS
             fval(k,nbasis+j+1) = La*Lb*Lc*(H1Basis_PowInt((Lb-La),i))*&
                     H1Basis_PowInt((2D0*Lc-1),j)
           END DO
-          !$OMP END SIMD
         END DO
         ! nbasis = nbasis + (pmax-i-3) + 1
         nbasis = nbasis + MAX(pmax-i-2,0)
@@ -687,7 +668,7 @@ CONTAINS
       ! Triangular face basis
       DO i=0,pmax-3
         DO j=0,pmax-i-3
-          !$OMP SIMD PRIVATE(La, Lb, Lc)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc)
           DO k=1,nvec
             La=H1Basis_TriangleL(localnumbers(1),u(k),v(k))
             Lb=H1Basis_TriangleL(localnumbers(2),u(k),v(k))
@@ -725,7 +706,7 @@ CONTAINS
       ! Triangle bubble basis
       DO i = 0,pmax-3
         DO j = 0,pmax-i-3
-          !$OMP SIMD PRIVATE(La, Lb, Lc, Lb_Lai, Lc_1n)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Lb_Lai, Lc_1n)
           DO k=1,nvec
             La = H1Basis_TriangleL(1,u(k),v(k))
             Lb = H1Basis_TriangleL(2,u(k),v(k))
@@ -741,7 +722,6 @@ CONTAINS
                     La*Lb*e*Lb_Lai*Lc_1n + &
                     La*Lb*Lc*Lb_Lai*j*(H1Basis_PowInt((2D0*Lc-1),j-1))*2D0*e
           END DO
-          !$OMP END SIMD
         END DO
         ! nbasis = nbasis + (pmax-i-3) + 1
         nbasis = nbasis + MAX(pmax-i-2,0)
@@ -754,7 +734,7 @@ CONTAINS
 
       DO i=0,pmax-3
         DO j=0,pmax-i-3
-          !$OMP SIMD PRIVATE(La, Lb, Lc, Lb_La, Lc_1, a, b)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Lb_La, Lc_1, a, b)
           DO k=1,nvec
             La=H1Basis_TriangleL(localnumbers(1),u(k),v(k))
             Lb=H1Basis_TriangleL(localnumbers(2),u(k),v(k))
@@ -788,8 +768,8 @@ CONTAINS
     
     INTEGER :: i
     REAL(KIND=dp) :: powi
-    !$OMP DECLARE SIMD(H1Basis_PowInt) LINEAR_REF(x) UNIFORM(j) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD _ELMER_LINEAR_REF(x) UNIFORM(j) NOTINBRANCH
+    
     powi=REAL(1,dp)
     DO i=1,j
       powi=powi*x
@@ -811,7 +791,7 @@ CONTAINS
     INTEGER :: j
 !DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
 
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       ! Node 1
       fval(j,1) = c*(1-u(j))*(1-v(j))
@@ -822,7 +802,6 @@ CONTAINS
       ! Node 4
       fval(j,4) = c*(1-u(j))*(1+v(j))
     END DO
-    !$END OMP SIMD
     nbasis = nbasis + 4
   END SUBROUTINE H1Basis_QuadNodal
 
@@ -841,25 +820,23 @@ CONTAINS
 !DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
 
     ! First coordinate (xi)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -c*(1-v(j))
       grad(j,nbasis+2,1) = c*(1-v(j))
       grad(j,nbasis+3,1) = c*(1+v(j))
       grad(j,nbasis+4,1) = -c*(1+v(j))
     END DO
-    !$END OMP SIMD
-
+    
     ! Second coordinate (eta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,2) = -c*(1-u(j))
       grad(j,nbasis+2,2) = -c*(1+u(j))
       grad(j,nbasis+3,2) = c*(1+u(j))
       grad(j,nbasis+4,2) = c*(1-u(j))
     END DO
-    !$END OMP SIMD
-
+    
     nbasis = nbasis + 4
   END SUBROUTINE H1Basis_dQuadNodal
 
@@ -882,14 +859,13 @@ CONTAINS
     ! For each edge
     DO i=1,4
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb)
         DO k=1,nvec
           La = H1Basis_QuadL(edgedir(1,i), u(k), v(k))
           Lb = H1Basis_QuadL(edgedir(2,i), u(k), v(k))
 
           fval(k, nbasis+j-1) = c*(La+Lb-1)*H1Basis_Phi(j, Lb-La)
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -918,7 +894,7 @@ CONTAINS
       dLb = H1Basis_dQuadL(edgedir(2,i))
 
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb, Phi, dPhi)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Phi, dPhi)
         DO k=1,nvec
           La = H1Basis_QuadL(edgedir(1,i), u(k), v(k))
           Lb = H1Basis_QuadL(edgedir(2,i), u(k), v(k))
@@ -931,7 +907,6 @@ CONTAINS
           grad(k, nbasis+j-1, 2) = c*((dLa(2)+dLb(2))*Phi + &
                   (La+Lb-1)*dPhi*(dLb(2)-dLa(2)))
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -958,18 +933,17 @@ CONTAINS
     IF (.NOT. PRESENT(localNumbers)) THEN
       DO i=2,(pmax-2)
         DO j=2,(pmax-i)
-          !$OMP SIMD
+          !_ELMER_OMP_SIMD
           DO k=1,nvec
             fval(k,nbasis+j-1) = H1Basis_Phi(i,u(k))*H1Basis_Phi(j,v(k))
           END DO
-          !$END OMP SIMD
         END DO
         nbasis = nbasis+MAX(pmax-i-1,0)
       END DO
     ELSE
       DO i=2,(pmax-2)
         DO j=2,(pmax-i)
-          !$OMP SIMD PRIVATE(La,Lb,Lc)
+          !_ELMER_OMP_SIMD PRIVATE(La,Lb,Lc)
           DO k=1,nvec
             ! Directed quad bubbles
             La = H1Basis_QuadL(localNumbers(1),u(k),v(k))
@@ -979,7 +953,6 @@ CONTAINS
             ! Calculate value of function from the general form
             fval(k,nbasis+j-1) = H1Basis_Phi(i,Lb-La)*H1Basis_Phi(j,Lc-La)
           END DO
-          !$END OMP SIMD
         END DO
         nbasis = nbasis+MAX(pmax-i-1,0)
       END DO
@@ -1005,14 +978,13 @@ CONTAINS
     IF (.NOT. PRESENT(localNumbers)) THEN
       DO i=2,(pmax-2)
         DO j=2,(pmax-i)
-          !$OMP SIMD
+          !_ELMER_OMP_SIMD
           DO k=1,nvec
             ! First coordinate (Xi)
             grad(k,nbasis+j-1,1) = H1Basis_dPhi(i,u(k))*H1Basis_Phi(j,v(k))
             ! Second coordinate (Eta)
             grad(k,nbasis+j-1,2) = H1Basis_Phi(i,u(k))*H1Basis_dPhi(j,v(k))
           END DO
-          !$END OMP SIMD
         END DO
         nbasis = nbasis+MAX((pmax-i)-1,0)
       END DO
@@ -1027,7 +999,7 @@ CONTAINS
 
       DO i=2,(pmax-2)
         DO j=2,(pmax-i)
-          !$OMP SIMD PRIVATE(La,Lb,Lc)
+          !_ELMER_OMP_SIMD PRIVATE(La,Lb,Lc)
           DO k=1,nvec
             La = H1Basis_QuadL(localNumbers(1),u(k),v(k))
             Lb = H1Basis_QuadL(localNumbers(2),u(k),v(k))
@@ -1038,7 +1010,6 @@ CONTAINS
             grad(k,nbasis+j-1,2) = H1Basis_dPhi(i,Lb-La)*(dLbdLa(2))*H1Basis_Phi(j,Lc-La) + &
                     H1Basis_Phi(i,Lb-La)*H1Basis_dPhi(j,Lc-La)*(dLcdLa(2))
           END DO
-          !$END OMP SIMD
         END DO
         nbasis = nbasis+MAX((pmax-i)-1,0)
       END DO
@@ -1052,9 +1023,9 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: u, v
     REAL(KIND=dp) :: fval
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
-    !$OMP DECLARE SIMD(H1Basis_QuadL) UNIFORM(node) &
-    !$OMP LINEAR_REF(u) LINEAR_REF(v) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
+    !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) NOTINBRANCH
+    
     SELECT CASE (node)
     CASE (1)
       fval = c*(2d0-u-v)
@@ -1074,8 +1045,8 @@ CONTAINS
     ! REAL(KIND=dp), INTENT(IN) :: u, v
     REAL(KIND=dp) :: grad(2)
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
-    !$OMP DECLARE SIMD(H1Basis_dQuadL) UNIFORM(node) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
+    
     SELECT CASE(node)
     CASE (1)
       grad(1:2) = c*[-1,-1 ]
@@ -1104,7 +1075,7 @@ CONTAINS
             e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0)
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       ! Node 1
       fval(j,nbasis+1) = c*(1-u(j)-d*v(j)-e*w(j))
@@ -1115,7 +1086,6 @@ CONTAINS
       ! Node 4
       fval(j,nbasis+4) = SQRT(3d0/8d0)*w(j)
     END DO
-    !$END OMP SIMD
     nbasis = nbasis + 4
   END SUBROUTINE H1Basis_TetraNodalP
 
@@ -1129,9 +1099,9 @@ CONTAINS
     REAL(KIND=dp) :: fval
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0), &
             e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0)
-    !$OMP DECLARE SIMD(H1Basis_TetraL) UNIFORM(node) &
-    !$OMP LINEAR_REF(u) LINEAR_REF(v) LINEAR_REF(w) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
+    !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) _ELMER_LINEAR_REF(w) NOTINBRANCH
+    
     SELECT CASE(node)
     CASE(1)
       fval = c*(1-u-d*v-e*w)
@@ -1158,70 +1128,58 @@ CONTAINS
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
     ! First coordinate (xi)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1)=-1d0/2
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+2,1)=1d0/2
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+3,1)=REAL(0,dp)
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+4,1)=REAL(0,dp)
     END DO
-    !$END OMP SIMD
-
+    
     ! Second coordinate (eta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,2)=-SQRT(3d0)/6
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+2,2)=-SQRT(3d0)/6
     END DO
-    !$END OMP SIMD  
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+3,2)=SQRT(3d0)/3
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+4,2)=REAL(0,dp)
     END DO
-    !$END OMP SIMD
-
+    
     ! Third coordinate (zeta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,3)=-SQRT(6d0)/12
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+2,3)=-SQRT(6d0)/12
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+3,3)=-SQRT(6d0)/12
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+4,3)=SQRT(6d0)/4
     END DO
-    !$END OMP SIMD
     nbasis = nbasis + 4
   END SUBROUTINE H1Basis_dTetraNodalP
   
@@ -1234,8 +1192,8 @@ CONTAINS
     REAL(KIND=dp) :: grad(3)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0), &
             e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0)
-    !$OMP DECLARE SIMD(H1Basis_dTetraL) UNIFORM(node) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
+    
     SELECT CASE(node)
     CASE(1)
       grad = c*[-1D0, -d, -e]
@@ -1266,14 +1224,13 @@ CONTAINS
     ! For each edge
     DO i=1,6
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb)
         DO k=1,nvec
           La = H1Basis_TetraL(edgedir(1,i), u(k), v(k), w(k))
           Lb = H1Basis_TetraL(edgedir(2,i), u(k), v(k), w(k))
 
           fval(k, nbasis+j-1) = La*Lb*H1Basis_varPhi(j,Lb-La)
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -1301,7 +1258,7 @@ CONTAINS
       dLb = H1Basis_dTetraL(edgedir(2,i))
 
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb, vPhi, dVPhi)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, vPhi, dVPhi)
         DO k=1,nvec
           La = H1Basis_TetraL(edgedir(1,i),u(k),v(k),w(k))
           Lb = H1Basis_TetraL(edgedir(2,i),u(k),v(k),w(k))
@@ -1318,7 +1275,6 @@ CONTAINS
                   La*dLb(3)*vPhi +&
                   La*Lb*dVPhi*(dLb(3)-dLa(3))
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -1344,7 +1300,7 @@ CONTAINS
     DO i=1,4
       DO j=0,pmax(i)-3
         DO k=0,pmax(i)-j-3
-          !$OMP SIMD PRIVATE(La, Lb, Lc)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc)
           DO l=1,nvec
             La=H1Basis_TetraL(facedir(1,i),u(l),v(l),w(l))
             Lb=H1Basis_TetraL(facedir(2,i),u(l),v(l),w(l))
@@ -1383,7 +1339,7 @@ CONTAINS
 
       DO j=0,pmax(i)-3
         DO k=0,pmax(i)-j-3
-          !$OMP SIMD PRIVATE(La, Lb, Lc, Lb_La, Lc_1, a, b)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Lb_La, Lc_1, a, b)
           DO l=1,nvec
             La=H1Basis_TetraL(facedir(1,i),u(l),v(l),w(l))
             Lb=H1Basis_TetraL(facedir(2,i),u(l),v(l),w(l))
@@ -1432,7 +1388,7 @@ CONTAINS
     DO i=0,pmax-4
       DO j=0,pmax-i-4
         DO k=0,pmax-i-j-4
-          !$OMP SIMD PRIVATE(L1,L2,L3,L4,L2_L1,L3_1,L4_1)
+          !_ELMER_OMP_SIMD PRIVATE(L1,L2,L3,L4,L2_L1,L3_1,L4_1)
           DO l=1,nvec
             L1 = H1Basis_TetraL(1,u(l),v(l),w(l))
             L2 = H1Basis_TetraL(2,u(l),v(l),w(l))
@@ -1447,7 +1403,6 @@ CONTAINS
                     H1Basis_LegendreP(j,L3_1)*&
                     H1Basis_LegendreP(k,L4_1)
           END DO
-          !$END OMP SIMD
         END DO
         ! nbasis = nbasis + (pmax-i-j-4) + 1
         nbasis = nbasis + MAX(pmax-i-j-3,0)
@@ -1473,7 +1428,7 @@ CONTAINS
     DO i=0,pmax-4
       DO j=0,pmax-i-4
         DO k=0,pmax-i-j-4
-          !$OMP SIMD PRIVATE(L1,L2,L3,L4,L2_L1,L3_1,L4_1,a,b,c)
+          !_ELMER_OMP_SIMD PRIVATE(L1,L2,L3,L4,L2_L1,L3_1,L4_1,a,b,c)
           DO l=1,nvec
             L1 = H1Basis_TetraL(1,u(l),v(l),w(l))
             L2 = H1Basis_TetraL(2,u(l),v(l),w(l))
@@ -1501,7 +1456,6 @@ CONTAINS
                     SQRT(6d0)/6*L1*L2*L3*L4*a*H1Basis_dLegendreP(j,L3_1)*c &
                     + SQRT(6d0)/2*L1*L2*L3*L4*a*b*H1Basis_dLegendreP(k,L4_1)
           END DO
-          !$END OMP SIMD
         END DO
         ! nbasis = nbasis + (pmax-i-j-4) + 1
         nbasis = nbasis + MAX(pmax-i-j-3,0)
@@ -1525,7 +1479,7 @@ CONTAINS
             e = SQRT(3d0)/6D0
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       ! Node 1
       fval(j,nbasis+1) = c*(1d0-u(j)-d*v(j))*(1d0-w(j))
@@ -1540,7 +1494,6 @@ CONTAINS
       ! Node 6
       fval(j,nbasis+6) = e*v(j)*(1+w(j))
     END DO
-    !$END OMP SIMD
     nbasis = nbasis + 6
   END SUBROUTINE H1Basis_WedgeNodalP
 
@@ -1561,7 +1514,7 @@ CONTAINS
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
     ! First coordinate (xi)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -c*(1-w(j))
       grad(j,nbasis+2,1) = c*(1-w(j))  
@@ -1570,10 +1523,9 @@ CONTAINS
       grad(j,nbasis+5,1) = c*(1+w(j))
       grad(j,nbasis+6,1) = REAL(0, dp)
     END DO
-    !$END OMP SIMD
-
+    
     ! Second coordinate (eta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,2)= -f*(1-w(j))
       grad(j,nbasis+2,2) = -f*(1-w(j))
@@ -1582,10 +1534,9 @@ CONTAINS
       grad(j,nbasis+5,2) = -f*(1+w(j))
       grad(j,nbasis+6,2) = e*(1+w(j))
     END DO
-    !$END OMP SIMD
-
+    
     ! Third coordinate (zeta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,3) = -c*(1d0-u(j)-d*v(j))
       grad(j,nbasis+2,3) = -c*(1d0+u(j)-d*v(j))
@@ -1594,8 +1545,7 @@ CONTAINS
       grad(j,nbasis+5,3) = c*(1d0+u(j)-d*v(j))
       grad(j,nbasis+6,3) = e*v(j)
     END DO
-    !$END OMP SIMD
-    nbasis = nbasis + 6
+        nbasis = nbasis + 6
   END SUBROUTINE H1Basis_dWedgeNodalP
 
   FUNCTION H1Basis_WedgeL(node, u, v) RESULT(fval)
@@ -1606,8 +1556,8 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: u,v
     ! Result
     REAL(KIND=dp) :: fval
-    !$OMP DECLARE SIMD(H1Basis_WedgeL) UNIFORM(node) &
-    !$OMP LINEAR_REF(u) LINEAR_REF(v) NOTINBRANCH
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
+    !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) NOTINBRANCH
     
     SELECT CASE(node)
     CASE (1,4)
@@ -1627,8 +1577,8 @@ CONTAINS
     ! Result
     REAL(KIND=dp) :: grad(3)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
-    !$OMP DECLARE SIMD(H1Basis_dWedgeL) UNIFORM(node) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
+    
     SELECT CASE(node)
     CASE(1,4)
       grad = c*[REAL(-1,dp), REAL(-d,dp), 0D0]
@@ -1647,8 +1597,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: w
     ! Result
     REAL(KIND=dp) :: fval
-    !$OMP DECLARE SIMD(H1Basis_WedgeH) UNIFORM(node) &
-    !$OMP LINEAR_REF(w) NOTINBRANCH
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) _ELMER_LINEAR_REF(w) NOTINBRANCH
     
     SELECT CASE(node)
     CASE (1,2,3)
@@ -1666,7 +1615,7 @@ CONTAINS
     ! Result
     REAL(KIND=dp) :: grad(3)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
-    !$OMP DECLARE SIMD(H1Basis_dWedgeH) UNIFORM(node) NOTINBRANCH
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
     
     SELECT CASE(node)
     CASE (1,2,3)
@@ -1695,7 +1644,7 @@ CONTAINS
     ! For each triangle face edge
     DO i=1,6
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb, Na, Nb)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb)
         DO k=1,nvec
           La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
           Lb = H1Basis_WedgeL(edgedir(2,i), u(k), v(k))
@@ -1703,7 +1652,6 @@ CONTAINS
           Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
           fval(k, nbasis+j-1) = c*La*Lb*H1Basis_varPhi(j,Lb-La)*(1+Na+Nb)
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -1712,14 +1660,13 @@ CONTAINS
     ! For each square face edge
     DO i=7,9
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Na, Nb)
+        !_ELMER_OMP_SIMD PRIVATE(La, Na, Nb)
         DO k=1,nvec
           La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
           Na = H1Basis_WedgeH(edgedir(1,i), w(k))
           Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
           fval(k, nbasis+j-1) = La*H1Basis_Phi(j, Nb-Na)
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -1750,7 +1697,7 @@ CONTAINS
       dNa = H1Basis_dWedgeH(edgedir(1,i))
       dNb = H1Basis_dWedgeH(edgedir(2,i))
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb, Na, Nb, vPhi, dVPhi, NaNb)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb, vPhi, dVPhi, NaNb)
         DO k=1,nvec
           La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
           Lb = H1Basis_WedgeL(edgedir(2,i), u(k), v(k))
@@ -1771,7 +1718,6 @@ CONTAINS
                 ! c*La*dLb(3)*vPhi*NaNb + ! Second term zero
                 ! c*La*Lb*dVPhi*(dLb(3)-dLa(3))*NaNb ! Third term zero
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -1783,7 +1729,7 @@ CONTAINS
       dNa = H1Basis_dWedgeH(edgedir(1,i))
       dNb = H1Basis_dWedgeH(edgedir(2,i))
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Na, Nb, Phi, dPhi)
+        !_ELMER_OMP_SIMD PRIVATE(La, Na, Nb, Phi, dPhi)
         DO k=1,nvec
           La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
           Na = H1Basis_WedgeH(edgedir(1,i), w(k))
@@ -1795,7 +1741,6 @@ CONTAINS
           grad(k, nbasis+j-1,2) = dLa(2)*Phi+La*dPhi*(dNb(2)-dNa(2))
           grad(k, nbasis+j-1,3) = dLa(3)*Phi+La*dPhi*(dNb(3)-dNa(3)) 
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -1823,7 +1768,7 @@ CONTAINS
     DO i=1,2      
       DO j=0,pmax(i)-3
         DO k=0,pmax(i)-j-3
-          !$OMP SIMD PRIVATE(La, Lb, Lc, Na)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Na)
           DO l=1,nvec
             La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
             Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
@@ -1834,7 +1779,6 @@ CONTAINS
                                             H1Basis_LegendreP(j, Lb-La)* &
                                             H1Basis_LegendreP(k, 2*Lc-1)
           END DO
-          !$OMP END SIMD
         END DO
         ! nbasis = nbasis + (p-j-3) + 1
         nbasis = nbasis + MAX(pmax(i)-j-2,0)
@@ -1851,7 +1795,7 @@ CONTAINS
       DO j=2,pmax(i)-2
         DO k=2,pmax(i)-j          
           IF (nonpermuted) THEN
-            !$OMP SIMD PRIVATE(La,Lb,Na,Nc)
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc)
             DO l=1,nvec
               La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
               Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
@@ -1860,9 +1804,8 @@ CONTAINS
               fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(j, Lb-La)* &
                                          H1Basis_Phi(k, Nc-Na)
             END DO
-            !$OMP END SIMD
           ELSE
-            !$OMP SIMD PRIVATE(La,Lb,Na,Nc)
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc)
             DO l=1,nvec
               ! Numbering permuted, switch indices j,k and nodes 2 and 4
               La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
@@ -1872,7 +1815,6 @@ CONTAINS
               fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(k, Lb-La)* &
                                          H1Basis_Phi(j, Nc-Na)
             END DO
-            !$OMP END SIMD
           END IF
         END DO
         ! nbasis = nbasis + (pmax(i)-j-2) + 1
@@ -1907,7 +1849,7 @@ CONTAINS
       dNa = H1Basis_dWedgeH(facedir(1,i))
       DO j=0,pmax(i)-3
         DO k=0,pmax(i)-j-3
-          !$OMP SIMD PRIVATE(La, Lb, Lc, Na, LegPLbLa, LegP2Lc1, cNa)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Na, LegPLbLa, LegP2Lc1, cNa)
           DO l=1,nvec
             La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
             Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
@@ -1938,7 +1880,6 @@ CONTAINS
             ! cNa*La*Lb*Lc*H1Basis_dLegendreP(j, Lb-La)*(dLb(3)-dLa(3))*LegP2Lc1 + &
             ! cNa*La*Lb*Lc*LegPLbLa*H1Basis_dLegendreP(k, 2*Lc-1)*(2*dLc(3))
           END DO
-          !$OMP END SIMD
         END DO
         ! nbasis = nbasis + (p-j-3) + 1
         nbasis = nbasis + MAX(pmax(i)-j-2,0)
@@ -1967,7 +1908,7 @@ CONTAINS
       DO j=2,pmax(i)-2
         DO k=2,pmax(i)-j          
           IF (nonpermuted) THEN
-            !$OMP SIMD PRIVATE(La,Lb,Na,Nc,vPhi,Phi)
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc,vPhi,Phi)
             DO l=1,nvec
               La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
               Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
@@ -1993,9 +1934,8 @@ CONTAINS
               ! La*dLb(3)*vPhi*Phi + &
               ! La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(3)-dLa(3))*Phi
             END DO
-            !$OMP END SIMD
           ELSE
-            !$OMP SIMD PRIVATE(La,Lb,Na,Nc)
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc)
             DO l=1,nvec
               ! Numbering permuted, switch indices j,k and nodes 2 and 4
               La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
@@ -2022,7 +1962,6 @@ CONTAINS
               ! La*dLb(3)*vPhi*Phi + &
               ! La*Lb*H1Basis_dVarPhi(k, Lb-La)*(dLb(3)-dLa(3))*Phi
             END DO
-            !$OMP END SIMD
           END IF
         END DO
         ! nbasis = nbasis + (pmax(i)-j-2) + 1
@@ -2048,7 +1987,7 @@ CONTAINS
     DO i=0,pmax-5
       DO j=0,pmax-5-i
         DO k=2,pmax-3-i-j
-          !$OMP SIMD PRIVATE(L1, L2, L3, L2_L1, L3_1)
+          !_ELMER_OMP_SIMD PRIVATE(L1, L2, L3, L2_L1, L3_1)
           DO l=1,nvec
             L1 = H1Basis_WedgeL(1,u(l),v(l))
             L2 = H1Basis_WedgeL(2,u(l),v(l))
@@ -2086,7 +2025,7 @@ CONTAINS
     DO i=0,pmax-5
       DO j=0,pmax-5-i
         DO k=2,pmax-3-i-j
-          !$OMP SIMD PRIVATE(L1, L2, L3, Legi, Legj, phiW, L2_L1, L3_1)
+          !_ELMER_OMP_SIMD PRIVATE(L1, L2, L3, Legi, Legj, phiW, L2_L1, L3_1)
           DO l=1,nvec
 
             ! Values of function L
@@ -2132,7 +2071,7 @@ CONTAINS
     INTEGER :: j
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       ! Node 1
       fval(j,nbasis+1) = c*(1-u(j))*(1-v(j))*(1-w(j))
@@ -2151,7 +2090,6 @@ CONTAINS
       ! Node 8
       fval(j,nbasis+8) = c*(1-u(j))*(1+v(j))*(1+w(j))
     END DO
-    !$END OMP SIMD
     nbasis = nbasis + 8
   END SUBROUTINE H1Basis_BrickNodal
 
@@ -2170,7 +2108,7 @@ CONTAINS
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
     ! First coordinate (xi)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -c*(1-v(j))*(1-w(j))
       grad(j,nbasis+2,1) = c*(1-v(j))*(1-w(j))
@@ -2181,10 +2119,9 @@ CONTAINS
       grad(j,nbasis+7,1) = c*(1+v(j))*(1+w(j))
       grad(j,nbasis+8,1) = -c*(1+v(j))*(1+w(j))
     END DO
-    !$END OMP SIMD
-
+    
     ! Second coordinate (eta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,2) = -c*(1-u(j))*(1-w(j))
       grad(j,nbasis+2,2) = -c*(1+u(j))*(1-w(j))
@@ -2195,10 +2132,9 @@ CONTAINS
       grad(j,nbasis+7,2) = c*(1+u(j))*(1+w(j))
       grad(j,nbasis+8,2) = c*(1-u(j))*(1+w(j))
     END DO
-    !$END OMP SIMD
-
+    
     ! Third coordinate (zeta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,3) = -c*(1-u(j))*(1-v(j))
       grad(j,nbasis+2,3) = -c*(1+u(j))*(1-v(j))
@@ -2209,8 +2145,7 @@ CONTAINS
       grad(j,nbasis+7,3) = c*(1+u(j))*(1+v(j))
       grad(j,nbasis+8,3) = c*(1-u(j))*(1+v(j))
     END DO
-    !$END OMP SIMD
-    nbasis = nbasis + 8
+        nbasis = nbasis + 8
   END SUBROUTINE H1Basis_dBrickNodal
 
   FUNCTION H1Basis_BrickL(node, u, v, w) RESULT(fval)
@@ -2220,9 +2155,9 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: u, v, w
     REAL(KIND=dp) :: fval
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
-    !$OMP DECLARE SIMD(H1Basis_BrickL) UNIFORM(node) &
-    !$OMP LINEAR_REF(u) LINEAR_REF(v) LINEAR_REF(w) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) _ELMER_LINEAR_REF(u) &
+    !_ELMER_OMP _ELMER_LINEAR_REF(v) _ELMER_LINEAR_REF(w) NOTINBRANCH
+    
     SELECT CASE (node)
     CASE (1)
       fval = c*(3D0-u-v-w)
@@ -2250,8 +2185,8 @@ CONTAINS
     ! REAL(KIND=dp), INTENT(IN) :: u, v
     REAL(KIND=dp) :: grad(3)
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
-    !$OMP DECLARE SIMD(H1Basis_dBrickL) UNIFORM(node) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
+    
     SELECT CASE(node)
     CASE (1)
       grad(1:3) = c*[-1,-1,-1 ]
@@ -2278,12 +2213,9 @@ CONTAINS
     INTEGER, INTENT(IN) :: edge
     REAL(KIND=dp), INTENT(IN) :: u, v, w
     REAL(KIND=dp), INTENT(OUT) :: La, Lb
-#ifndef __GFORTRAN__
-    !$OMP DECLARE SIMD (H1Basis_BrickEdgeL) UNIFORM(edge) &
-    !$OMP& LINEAR_REF(u) LINEAR_REF(v) &
-    !$OMP& LINEAR_REF(w) LINEAR_REF(La) LINEAR_REF(Lb) NOTINBRANCH
-#endif
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(edge) _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) &
+    !_ELMER_OMP _ELMER_LINEAR_REF(w) _ELMER_LINEAR_REF(La) _ELMER_LINEAR_REF(Lb) NOTINBRANCH
+    
     SELECT CASE(edge)
     CASE (1)
       La=1-v
@@ -2329,10 +2261,8 @@ CONTAINS
 
     INTEGER, INTENT(IN) :: edge
     REAL(KIND=dp), INTENT(OUT) :: dLa(3), dLb(3)
-#ifndef __GFORTRAN__
-    !$OMP DECLARE SIMD(H1Basis_dBrickEdgeL) UNIFORM(edge) NOTINBRANCH
-#endif
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(edge) NOTINBRANCH
+    
     SELECT CASE(edge)
     CASE (1)
       dLa=[ 0,-1, 0 ] ! 1-v
@@ -2392,7 +2322,7 @@ CONTAINS
     ! For each edge
     DO i=1,12
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb, Aa, Ba)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Aa, Ba)
         DO k=1,nvec
           La=H1Basis_BrickL(edgedir(1,i), u(k), v(k), w(k))
           Lb=H1Basis_BrickL(edgedir(2,i), u(k), v(k), w(k))
@@ -2400,7 +2330,6 @@ CONTAINS
           
           fval(k, nbasis+j-1) = c*H1Basis_Phi(j, Lb-La)*Aa*Ba
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -2431,7 +2360,7 @@ CONTAINS
       CALL H1Basis_dBrickEdgeL(i, dAa, dBa)
 
       DO j=2,pmax(i)
-        !$OMP SIMD PRIVATE(La, Lb, Aa, Ba, Phi, dPhi)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Aa, Ba, Phi, dPhi)
         DO k=1,nvec
           La=H1Basis_BrickL(edgedir(1,i), u(k), v(k), w(k))
           Lb=H1Basis_BrickL(edgedir(2,i), u(k), v(k), w(k))
@@ -2450,7 +2379,6 @@ CONTAINS
                   c*Phi*dAa(3)*Ba +&
                   c*Phi*Aa*dBa(3)
         END DO
-        !$OMP END SIMD
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
@@ -2477,7 +2405,7 @@ CONTAINS
     DO i=1,6
       DO j=2,pmax(i)
         DO k=2,pmax(i)-j
-          !$OMP SIMD PRIVATE(La, Lb, Lc, Ld)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Ld)
           DO l=1,nvec
             La=H1Basis_BrickL(facedir(1,i), u(l), v(l), w(l))
             Lb=H1Basis_BrickL(facedir(2,i), u(l), v(l), w(l))
@@ -2487,7 +2415,6 @@ CONTAINS
             fval(l, nbasis+k-1) = (a*(La+Lb+Lc+Ld)-1)*H1Basis_Phi(j, Lb-La) &
                                                      *H1Basis_Phi(k, Ld-La)
           END DO
-          !$OMP END SIMD
         END DO
         ! nbasis = nbasis + (pmax(i)-j-2) + 1
         nbasis = nbasis + MAX(pmax(i)-j-1,0)
@@ -2520,7 +2447,7 @@ CONTAINS
       dLd=H1Basis_dBrickL(facedir(4,i))
       DO j=2,pmax(i)
         DO k=2,pmax(i)-j
-          !$OMP SIMD PRIVATE(La, Lb, Lc, Ld, PhiLbLa, PhiLdLa, LaLbLcLd)
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Ld, PhiLbLa, PhiLdLa, LaLbLcLd)
           DO l=1,nvec
             La=H1Basis_BrickL(facedir(1,i), u(l), v(l), w(l))
             Lb=H1Basis_BrickL(facedir(2,i), u(l), v(l), w(l))
@@ -2541,7 +2468,6 @@ CONTAINS
                   LaLbLcLd*H1Basis_dPhi(j,Lb-La)*(dLb(3)-dLa(3))*PhiLdLa + &
                   LaLbLcLd*PhiLbLa*H1Basis_dPhi(k, Ld-La)*(dLd(3)-dLa(3))
           END DO
-          !$OMP END SIMD
         END DO
         ! nbasis = nbasis + (pmax(i)-j-2) + 1
         nbasis = nbasis + MAX(pmax(i)-j-1,0)
@@ -2567,11 +2493,10 @@ CONTAINS
     DO i=2,pmax-4
       DO j=2,pmax-i-2
         DO k=2,pmax-i-j
-          !$OMP SIMD
+          !_ELMER_OMP_SIMD
           DO l=1,nvec
             fval(l,nbasis+k-1) = H1Basis_Phi(i,u(l))*H1Basis_Phi(j,v(l))*H1Basis_Phi(k,w(l))
           END DO
-          !$END OMP SIMD
         END DO
         nbasis = nbasis+MAX(pmax-i-j-1,0)
       END DO
@@ -2598,7 +2523,7 @@ CONTAINS
     DO i=2,pmax-4
       DO j=2,pmax-i-2
         DO k=2,pmax-i-j
-          !$OMP SIMD PRIVATE(phiU, phiV, phiW)
+          !_ELMER_OMP_SIMD PRIVATE(phiU, phiV, phiW)
           DO l=1,nvec
             phiU = H1Basis_Phi(i,u(l))
             phiV = H1Basis_Phi(j,v(l))
@@ -2607,7 +2532,6 @@ CONTAINS
             grad(l,nbasis+k-1,2) = phiU*H1Basis_dPhi(j,v(l))*phiW
             grad(l,nbasis+k-1,3) = phiU*phiV*H1Basis_dPhi(k,w(l))
           END DO
-          !$END OMP SIMD
         END DO
         nbasis = nbasis+MAX(pmax-i-j-1,0)
       END DO
@@ -2622,8 +2546,8 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(H1Basis_Phi) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
+    
     ! Phi function values (autogenerated to Horner form)
     SELECT CASE(k)
     CASE(2)
@@ -2739,8 +2663,8 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(H1Basis_dPhi) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
+    
     ! Phi function values (autogenerated to Horner form)
     SELECT CASE(k)
     CASE(2)
@@ -2820,7 +2744,7 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(H1Basis_VarPhi) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
 
     SELECT CASE(k)
     CASE(2)
@@ -2899,8 +2823,8 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(H1Basis_dVarPhi) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
+    
     SELECT CASE(k)
     CASE(2)
       fval = 0
@@ -2975,8 +2899,8 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(H1Basis_LegendreP) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
+    
     SELECT CASE(k)
     CASE(0)
       fval = 1
@@ -3085,8 +3009,8 @@ CONTAINS
     REAL (KIND=dp), INTENT(IN) :: x
     ! Return value
     REAL (KIND=dp) :: fval
-    !$OMP DECLARE SIMD(H1Basis_dLegendreP) UNIFORM(k) LINEAR_REF(x) NOTINBRANCH
-
+    !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
+    
     SELECT CASE(k)
     CASE(0)
       fval = 0
@@ -3179,7 +3103,7 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
     INTEGER :: j
 
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       ! Node 1
       fval(j,1) = 1-u(j)-v(j)
@@ -3188,7 +3112,6 @@ CONTAINS
       ! Node 3
       fval(j,3) = v(j)
     END DO
-    !$END OMP SIMD
   END SUBROUTINE H1Basis_TriangleNodal
 
   ! WARNING: this is not a barycentric triangle
@@ -3204,38 +3127,32 @@ CONTAINS
     INTEGER :: j
 
     ! First coordinate (xi)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,1) = -1D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,2,1) = 1D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,3,1) = 0D0
     END DO
-    !$END OMP SIMD
-
+    
     ! Second coordinate (eta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,2) = -1D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,2,2) = 0D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,3,2) = 1D0
     END DO
-    !$END OMP SIMD
   END SUBROUTINE H1Basis_dTriangleNodal
   
   ! WARNING: this is not a barycentric tetra
@@ -3250,7 +3167,7 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
     INTEGER :: j
 
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       ! Node 1
       fval(j,1) = 1-u(j)-v(j)-w(j)
@@ -3261,7 +3178,6 @@ CONTAINS
       ! Node 4
       fval(j,4) = w(j)
     END DO
-    !$END OMP SIMD
   END SUBROUTINE H1Basis_TetraNodal
 
   ! WARNING: this is not a barycentric tetra
@@ -3277,70 +3193,58 @@ CONTAINS
     INTEGER :: j
 
     ! First coordinate (xi)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,1) = -1D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,2,1) = 1D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,3,1) = 0D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,4,1) = 0D0
     END DO
-    !$END OMP SIMD
-
+    
     ! Second coordinate (eta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,2) = -1D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,2,2) = 0D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,3,2) = 1D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,4,2) = 0D0
     END DO
-    !$END OMP SIMD
-
+    
     ! Third coordinate (zeta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,3) = -1D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,2,3) = 0D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,3,3) = 0D0
     END DO
-    !$END OMP SIMD
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,4,3) = 1D0
     END DO
-    !$END OMP SIMD
   END SUBROUTINE H1Basis_dTetraNodal
 
   ! WARNING: this is not a barycentric wedge
@@ -3356,7 +3260,7 @@ CONTAINS
     REAL(Kind=dp), PARAMETER :: c = 1D0/2D0
     INTEGER :: j
 
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       ! Node 1
       fval(j,1) = c*(1-u(j)-v(j))*(1-w(j))
@@ -3371,7 +3275,6 @@ CONTAINS
       ! Node 6
       fval(j,6) = c*v(j)*(1+w(j))
     END DO
-    !$END OMP SIMD
   END SUBROUTINE H1Basis_WedgeNodal
 
   ! WARNING: this is not a barycentric wedge
@@ -3388,7 +3291,7 @@ CONTAINS
     INTEGER :: j
 
     ! First coordinate (xi)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,1) = -c*(1-w(j))
       grad(j,2,1) = c*(1-w(j))
@@ -3397,10 +3300,9 @@ CONTAINS
       grad(j,5,1) = c*(1+w(j))
       grad(j,6,1) = 0D0
     END DO
-    !$END OMP SIMD
-
+    
     ! Second coordinate (eta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,2) = -c*(1-w(j))
       grad(j,2,2) = 0D0
@@ -3409,10 +3311,9 @@ CONTAINS
       grad(j,5,2) = 0D0
       grad(j,6,2) = c*(1+w(j))
     END DO
-    !$END OMP SIMD
-
+    
     ! Third coordinate (zeta)
-    !$OMP SIMD
+    !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,3) = -c*(1-u(j)-v(j))
       grad(j,2,3) = -c*u(j)
@@ -3421,7 +3322,6 @@ CONTAINS
       grad(j,5,3) = c*u(j)
       grad(j,6,3) = c*v(j)
     END DO
-    !$END OMP SIMD
   END SUBROUTINE H1Basis_dWedgeNodal
 
 END MODULE H1Basis
