@@ -1734,21 +1734,24 @@ CONTAINS
   !------------------------------------------------------------------------------
 
 
-
-  !Returns an ordered list of nodenumbers which specify an edge of a domain,
+  !If EdgeMaskName is not provided, returns the ring of nodes which define the extent 
+  !of the upper surface of the mesh, arbitrarily beginning with the nodes from the lowest
+  !partition (PE).
+  !If EdgeMaskName is provided, this specifies a lateral margin. Then this returns an 
+  !ordered list of nodenumbers which specify an edge of a domain,
   !where the edge is determined by the overlap between the two provided permutations
   !NOTE: Returned domain edge is valid only on boss partition (PE=0)
-  SUBROUTINE GetDomainEdge(Model, Mesh, TopPerm, EdgeMaskName, OrderedNodes, OrderedNodeNums, &
-       Parallel, Simplify, MinDist) 
+  SUBROUTINE GetDomainEdge(Model, Mesh, TopPerm, OrderedNodes, OrderedNodeNums, Parallel, &
+       EdgeMaskName, Simplify, MinDist) 
 
     IMPLICIT NONE
 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: TopPerm(:)
-    CHARACTER(MAX_NAME_LEN) :: EdgeMaskName
     TYPE(Nodes_t) :: OrderedNodes, UnorderedNodes
     LOGICAL :: Parallel
+    CHARACTER(MAX_NAME_LEN), OPTIONAL :: EdgeMaskName
     LOGICAL, OPTIONAL :: Simplify
     REAL(KIND=dp), OPTIONAL :: MinDist
     !----------------------------------------------------------------
@@ -1764,16 +1767,17 @@ CONTAINS
          disps(:), nodenum_disps(:), PartOrder(:,:), MyCornerNodes(:), MyNeighbourParts(:), &
          NewSegStart(:), PartSegments(:), SegStarts_Gather(:), WorkInt(:), NodeNeighbours(:,:), &
          GlobalCorners(:), CornerParts(:), PCornerCounts(:)
-    LOGICAL :: Debug, ActivePart, Boss, Simpl, NotThis, Found, ThisBC
+    LOGICAL :: Debug, ActivePart, Boss, Simpl, NotThis, Found, ThisBC, FullBoundary
     LOGICAL, ALLOCATABLE :: OnEdge(:), ActivePartList(:), RemoveNode(:), IsCornerNode(:)
     REAL(KIND=dp) :: prec
+    REAL(KIND=dp), ALLOCATABLE :: WorkReal(:,:)
     CHARACTER(MAX_NAME_LEN) :: FuncName
 
     TYPE AllocIntList_t
        INTEGER, DIMENSION(:), POINTER :: Indices
     END TYPE AllocIntList_t
     TYPE(AllocIntList_t), ALLOCATABLE :: PartSegStarts(:)
-    
+
     !------------------------------------------------
     ! Change in strategy:
     !
@@ -1828,20 +1832,28 @@ CONTAINS
     OnEdge = .FALSE.
     NodeNeighbours = -1
 
-    !Find correct BC from logical
-    DO i=1,Model % NumberOfBCs
-       ThisBC = ListGetLogical(Model % BCs(i) % Values,EdgeMaskName,Found)
-       IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
-       EdgeBCtag =  Model % BCs(i) % Tag
-       EXIT
-    END DO
+    FullBoundary = .NOT.(PRESENT(EdgeMaskName))
+    IF(.NOT. FullBoundary) THEN
+      !Find correct BC from logical
+      DO i=1,Model % NumberOfBCs
+        ThisBC = ListGetLogical(Model % BCs(i) % Values,EdgeMaskName,Found)
+        IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+        EdgeBCtag =  Model % BCs(i) % Tag
+        EXIT
+      END DO
+    END IF
 
     !Cycle boundary elements, marking nodes on edge and finding neighbours
     DO i=Mesh % NumberOfBulkElements+1, &
          Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
        Element => Mesh % Elements(i)
-       IF(Element % BoundaryInfo % Constraint /= EdgeBCtag) CYCLE !elem not on lateral boundary
+
+       IF((.NOT. FullBoundary) .AND. Element % BoundaryInfo % Constraint /= EdgeBCtag) &
+            CYCLE !elem not on lateral boundary
+
+       IF(ALL(TopPerm(Element % NodeIndexes) > 0)) CYCLE !not a lateral element
        IF(.NOT. ANY(TopPerm(Element % NodeIndexes) > 0)) CYCLE !elem contains no nodes on top
+       !Logic gates above should leave only lateral elements with some nodes on top.
 
        IF(GetElementFamily(Element) == 1) &
             CALL Fatal(FuncName, "101 Elements are supposed to be a thing of the past!")
@@ -1885,6 +1897,9 @@ CONTAINS
     END DO
 
     !Cycle nodes on edge, looking for one with only one neighbour (a corner)
+    !Edge case = serial fullboundary run, no corner exists, choose arbitrarily
+    !Rare case (not dealt with!! TODO) = parallel fullboundary, no corners 
+    !            (whole mesh edge in one partition)
     IF(NoNodesOnEdge > 1) THEN
 
        ALLOCATE(IsCornerNode(NoNodesOnEdge))
@@ -1902,20 +1917,32 @@ CONTAINS
           CALL Fatal(FuncName, Message)
        END IF
 
-       Segments = COUNT(IsCornerNode) / 2
-       IF(Debug .AND. Segments > 1) PRINT *, &
-            'Partition ',ParEnv % MyPE, ' has ',Segments,' line segments on boundary.'
+       IF(FullBoundary .AND. .NOT. Parallel) THEN
 
-       ALLOCATE(NewSegStart(Segments-1))
-       ALLOCATE(MyCornerNodes(COUNT(IsCornerNode)))
+         !If serial FullBoundary request, no corner exists so just choose the first
+         !unordered node in the list and loop from there
+         Segments = 1
+         ALLOCATE(MyCornerNodes(2))
+         MyCornerNodes(1) = 1
 
-       counter = 1
-       DO i=1,NoNodesOnEdge 
-          IF(IsCornerNode(i)) THEN
+       ELSE 
+
+         Segments = COUNT(IsCornerNode) / 2
+         IF(Debug .AND. Segments > 1) PRINT *, &
+              'Partition ',ParEnv % MyPE, ' has ',Segments,' line segments on boundary.'
+
+         ALLOCATE(NewSegStart(Segments-1))
+         ALLOCATE(MyCornerNodes(COUNT(IsCornerNode)))
+
+         counter = 1
+         DO i=1,NoNodesOnEdge 
+           IF(IsCornerNode(i)) THEN
              MyCornerNodes(counter) = i
              counter = counter + 1
-          END IF
-       END DO
+           END IF
+         END DO
+
+       END IF
 
        counter = 1
        DO k=1,Segments
@@ -1972,44 +1999,45 @@ CONTAINS
     END IF
 
 
-    !gather corner count - replaces 101 element detection
-    ALLOCATE(PCornerCounts(ParEnv % PEs),disps(ParEnv % PEs))
-
-    CALL MPI_AllGather(SIZE(MyCornerNodes), 1, MPI_INTEGER, PCornerCounts, &
-         1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
-
-    disps(1) = 0
-    DO i=2, ParEnv % PEs
-       disps(i) = disps(i-1) + PCornerCounts(i-1)
-    END DO
-
-    ALLOCATE(GlobalCorners(SUM(PCornerCounts)),&
-         CornerParts(SUM(PCornerCounts)))
-
-    !gather corner nodenums
-    CALL MPI_AllGatherV(Mesh % ParallelInfo % GlobalDOFs(UnorderedNodeNums(MyCornerNodes)), &
-         SIZE(MyCornerNodes), MPI_INTEGER, GlobalCorners, PCornerCounts, disps, &
-         MPI_INTEGER, ELMER_COMM_WORLD, ierr)
-
-    !note which partition sent each corner node
-    counter = 1
-    DO i=1,ParEnv % PEs
-       IF(PCornerCounts(i) == 0) CYCLE
-       CornerParts(counter:counter+PCornerCounts(i)-1) = i-1
-       counter = counter + PCornerCounts(i)
-    END DO
-
-    !Quick check:
-    DO i=1,SIZE(GlobalCorners)
-      counter = COUNT(GlobalCorners == GlobalCorners(i))
-      IF(counter > 2) CALL Fatal(FuncName,"Programming error in partition segment detection, node found too many times!")
-    END DO
-
-    !Now GlobalCorners and CornerParts tell us which partitions found corner nodes
-    !(i.e. nodes which will join other segments)
-
     !Remember that, in parallel, we're using local rather than global node numbers
     IF(Parallel) THEN
+
+       !gather corner count - replaces 101 element detection
+       ALLOCATE(PCornerCounts(ParEnv % PEs),disps(ParEnv % PEs))
+
+       CALL MPI_AllGather(SIZE(MyCornerNodes), 1, MPI_INTEGER, PCornerCounts, &
+            1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
+       disps(1) = 0
+       DO i=2, ParEnv % PEs
+          disps(i) = disps(i-1) + PCornerCounts(i-1)
+       END DO
+
+       ALLOCATE(GlobalCorners(SUM(PCornerCounts)),&
+            CornerParts(SUM(PCornerCounts)))
+
+       !gather corner nodenums
+       CALL MPI_AllGatherV(Mesh % ParallelInfo % GlobalDOFs(UnorderedNodeNums(MyCornerNodes)), &
+            SIZE(MyCornerNodes), MPI_INTEGER, GlobalCorners, PCornerCounts, disps, &
+            MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
+       !note which partition sent each corner node
+       counter = 1
+       DO i=1,ParEnv % PEs
+          IF(PCornerCounts(i) == 0) CYCLE
+          CornerParts(counter:counter+PCornerCounts(i)-1) = i-1
+          counter = counter + PCornerCounts(i)
+       END DO
+
+       !Quick check:
+       DO i=1,SIZE(GlobalCorners)
+         counter = COUNT(GlobalCorners == GlobalCorners(i))
+         IF(counter > 2) CALL Fatal(FuncName,"Programming error in partition &
+              &segment detection, node found too many times!")
+       END DO
+       !Now GlobalCorners and CornerParts tell us which partitions found corner nodes
+       !(i.e. nodes which will join other segments)
+
        IF(ActivePart) THEN
           ALLOCATE(MyNeighbourParts(Segments*2))
 
@@ -2128,7 +2156,8 @@ CONTAINS
 
           !Here we account for shared nodes on partition boundaries
           OrderedNodes % NumberOfNodes = SUM(PartNodesOnEdge) - (SIZE(NeighbourPartsList)/2 - 1)
-          UnorderedNodes % NumberOfNodes = SUM(PartNodesOnEdge) !but they are still present when gathered...
+          !but they are still present when gathered...
+          UnorderedNodes % NumberOfNodes = SUM(PartNodesOnEdge) 
 
           ALLOCATE(PartOrder(SIZE(NeighbourPartsList)/2,2),&
                OrderedNodes % x(OrderedNodes % NumberOfNodes),&
@@ -2204,6 +2233,7 @@ CONTAINS
           PartOrder = 0 !init
           direction = 0
           prev = -1
+          next = 0
 
           !First fill in PartNeighbourList % Neighbours
           DO i=1,ParEnv % PEs
@@ -2225,6 +2255,24 @@ CONTAINS
              !find a corner partition
              IF(ANY(PartNeighbourList(i) % Neighbours == prev)) next = i
           END DO
+          
+          !No partition had corner (-1)
+          IF(next==0) THEN
+            IF(FullBoundary) THEN !this is expected, a closed loop so no -1
+              DO i=1,ParEnv % PEs
+                IF(PartSegments(i)>0) THEN
+                  next = i
+                  prev = PartNeighbourList(i) % Neighbours(1)
+                  EXIT
+                END IF
+              END DO
+            ELSE
+              CALL Fatal(FuncName,"Error finding corner of requested boundary in partitions.")
+            END IF
+          ELSE IF(FullBoundary) THEN
+            CALL Fatal(FuncName,"Error - found corner but requested FullBoundary&
+                 &- programming mistake.")
+          END IF
 
           IF(Debug) THEN
              PRINT *, 'Debug GetDomainEdge, globalno, unorderednodes % x: '
@@ -2242,6 +2290,7 @@ CONTAINS
           counter = 1
 
           DO WHILE(.TRUE.)
+            IF(Debug) PRINT *,'Next Partition is: ',next
              IF((COUNT(PartNeighbourList(next) % Neighbours == prev) == 1) .OR. &
                 (prev == -1)) THEN
                 DO j=1,SIZE(PartNeighbourList(next) % Neighbours)
@@ -2292,7 +2341,7 @@ CONTAINS
                 END DO
              END IF
 
-             segnum = ((index-1)/2) + 1
+             segnum = ((index-1)/2) + 1 !1,2 -> 1, 3,4 -> 2
              direction = (2 * MOD(index, 2)) - 1
              PartOrder(counter,1) = next - 1
              PartOrder(counter,2) = direction * segnum
@@ -2335,9 +2384,26 @@ CONTAINS
              END IF
 
              !wipe them out so we don't accidentally come back this way
-             PartNeighbourList(j) % Neighbours(index:index+direction:direction) = 0
+             PartNeighbourList(j) % Neighbours(index:index+direction:direction) = -2
 
-             IF(next == -1) EXIT
+             IF(FullBoundary) THEN
+               IF(Debug) THEN
+                  PRINT *, 'new index: ', index
+                  PRINT *, 'new segnum: ', segnum
+                  PRINT *, 'new direction: ',direction
+                  PRINT *, 'new next: ', next
+                  PRINT *, 'new prev: ', prev
+                  PRINT *, 'new neighbours: ', PartNeighbourList(next+1) % Neighbours
+               END IF
+
+               IF(ALL(PartNeighbourList(next+1) % Neighbours == -2)) THEN
+                 IF(Debug) PRINT *,'Finished cycling neighbours in FullBoundary'
+                 EXIT
+               END IF
+             ELSE IF(next == -1) THEN
+               EXIT
+             END IF
+
              next = next + 1
           END DO
 
@@ -2413,9 +2479,27 @@ CONTAINS
              put_start = put_fin !1 node overlap
           END DO
 
+          IF(FullBoundary) THEN
+            !In the full boundary case, we've inadvertently saved the first node twice
+            ! (once at the end too) - this sorts that out
+            n = OrderedNodes % NumberOfNodes - 1
+            OrderedNodes % NumberOfNodes = n
+
+            ALLOCATE(WorkReal(n,3))
+            WorkReal(:,1) = OrderedNodes % x(1:n)
+            WorkReal(:,2) = OrderedNodes % y(1:n)
+            WorkReal(:,3) = OrderedNodes % z(1:n)
+            DEALLOCATE(OrderedNodes % x, OrderedNodes % y, OrderedNodes % z)
+            ALLOCATE(OrderedNodes % x(n), OrderedNodes % y(n), OrderedNodes % z(n))
+            OrderedNodes % x(1:n) = WorkReal(:,1)
+            OrderedNodes % y(1:n) = WorkReal(:,2)
+            OrderedNodes % z(1:n) = WorkReal(:,3)
+            DEALLOCATE(WorkReal)
+          END IF
+
           DEALLOCATE(OrderedNodeNums)
           ALLOCATE(OrderedNodeNums(OrderedNodes % NumberOfNodes))
-          OrderedNodeNums = OrderedGlobalNodeNums
+          OrderedNodeNums = OrderedGlobalNodeNums(1:OrderedNodes % NumberOfNodes)
 
           IF(Debug) THEN
              PRINT *, 'Debug GetDomainEdge, globalno, orderednodes % x: '

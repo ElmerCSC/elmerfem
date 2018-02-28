@@ -180,8 +180,8 @@
    CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
         .FALSE., FrontPerm, FaceNodeCount)
 
-   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontMaskName, &
-        FrontNodes, FrontNodeNums, Parallel, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontNodes, &
+        FrontNodeNums, Parallel, FrontMaskName, Simplify=.FALSE.)
 
    !Pass FrontNodeNums to all CPUs
    IF(Boss) FrontLineCount = SIZE(FrontNodeNums)

@@ -896,17 +896,17 @@ CONTAINS
 
     !Get each of the 4 edges of the top surface
     !The result of these calls is only valid in Boss part
-    CALL GetDomainEdge(Model, OldMesh, TopPerm, LeftMaskName, &
-         LeftNodes, LeftLineNodeNums, Parallel, Simplify=.TRUE.)
+    CALL GetDomainEdge(Model, OldMesh, TopPerm, LeftNodes, &
+         LeftLineNodeNums, Parallel, LeftMaskName,Simplify=.TRUE.)
     IF(Debug) CALL Info(SolverName, "Done left domain edge")
-    CALL GetDomainEdge(Model, OldMesh, TopPerm, RightMaskName, &
-         RightNodes, RightLineNodeNums, Parallel, Simplify=.TRUE.)
+    CALL GetDomainEdge(Model, OldMesh, TopPerm, RightNodes, &
+         RightLineNodeNums, Parallel, RightMaskName, Simplify=.TRUE.)
     IF(Debug) CALL Info(SolverName, "Done right domain edge")
-    CALL GetDomainEdge(Model, OldMesh, TopPerm, InMaskName, &
-         BackNodes, BackLineNodeNums, Parallel, Simplify=.TRUE.)
+    CALL GetDomainEdge(Model, OldMesh, TopPerm, BackNodes, &
+         BackLineNodeNums, Parallel, InMaskName, Simplify=.TRUE.)
     IF(Debug) CALL Info(SolverName, "Done back domain edge")
-    CALL GetDomainEdge(Model, OldMesh, TopPerm, FrontMaskName, &
-         FrontNodes, FrontLineNodeNums, Parallel, Simplify=.FALSE.)
+    CALL GetDomainEdge(Model, OldMesh, TopPerm, FrontNodes, &
+         FrontLineNodeNums, Parallel, FrontMaskName, Simplify=.FALSE.)
     IF(Debug) CALL Info(SolverName, "Done front domain edge")
 
     !Call this again later to remove too close nodes from result
@@ -1655,6 +1655,8 @@ CONTAINS
     !------------------------------------------------------------
     ! Write and generate footprint mesh
     !------------------------------------------------------------
+    ! TODO: This only works on a 4-BC mesh...
+
     IF(Boss) THEN
        AllFail = .FALSE.
 
@@ -1735,6 +1737,9 @@ CONTAINS
             WritePoints(WriteNodeCount),',',WritePoints(1),'};'
 
        !------------Write physical lines-------------
+       !TODO - Adapt this from 4-BC setup. DO WHILE, watch for
+       ! change in BC ID (?) and cycle to next loop
+       ! I think this is the ONLY part of this loop which needs fixing
        counter = 1
        DO i=1,4 !cycle boundaries
           SELECT CASE(i)
@@ -1760,6 +1765,8 @@ CONTAINS
                      'Target Boundaries', Found )
                 IF(SIZE(BList)>1) CALL Fatal(SolverName,&
                      "Could not uniquely determine target BC")
+                !TODO - data is lost (which target BC?)
+                !However - can be detected/guessed by inspecting noncontiguity of given BC
                 MeshBC = BList(1)
                 EXIT
              END IF
