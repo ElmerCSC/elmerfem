@@ -14303,11 +14303,13 @@ CONTAINS
       
       mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material' )
       rho = ListGetConstReal( CurrentModel % Materials(mat_id) % Values,'Density',Stat)
+      IF(.NOT. Stat) rho = ListGetConstReal( CurrentModel % Materials(mat_id) % Values, &
+          'Equilibrium Density',Stat)
+
       IF( .NOT. Stat) THEN
-        CALL Fatal('FsiCouplingAssembly','Fluid density not found!')
+        CALL Fatal('FsiCouplingAssembly','Fluid density not found in material :'//TRIM(I2S(mat_id)))
       END IF
-
-
+      
       ! The sign depends on the convection of the normal direction
       coeff = rho * omega**2
 
