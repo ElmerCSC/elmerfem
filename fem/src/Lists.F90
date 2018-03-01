@@ -175,6 +175,10 @@ MODULE Lists
    TYPE(ValueList_t), POINTER, SAVE, PRIVATE  :: TimerList => NULL()
    LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerCumulative, TimerRealTime, TimerCPUTime
    CHARACTER(LEN=MAX_NAME_LEN), SAVE, PRIVATE :: TimerPrefix
+
+   INTERFACE StringToLowerCase
+     MODULE PROCEDURE StringToLowerCaseC, StringToLowerCaseV
+   END INTERFACE
    
    
    LOGICAL, PRIVATE :: DoNamespaceCheck = .FALSE.
@@ -520,7 +524,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Changes the string to all lower case to allow string comparison.
 !------------------------------------------------------------------------------
-    FUNCTION StringToLowerCase( to,from,same_len ) RESULT(n)
+    FUNCTION StringToLowerCaseC( to,from,same_len ) RESULT(n)
 !------------------------------------------------------------------------------
       CHARACTER(LEN=*), INTENT(in)  :: from
       CHARACTER(LEN=*), INTENT(out) :: to
@@ -551,7 +555,51 @@ CONTAINS
           IF ( to(i:i)=='[') n=i-1
         END IF
       END DO
-    END FUNCTION StringToLowerCase
+    END FUNCTION StringToLowerCaseC
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Changes the string to all lower case to allow string comparison.
+!------------------------------------------------------------------------------
+    FUNCTION StringToLowerCaseV( tov,from,same_len ) RESULT(n)
+!------------------------------------------------------------------------------
+      CHARACTER(LEN=*), INTENT(in)  :: from
+!     CHARACTER(LEN=*), INTENT(out) :: to
+      TYPE(Varying_string) :: tov
+      LOGICAL, OPTIONAL, INTENT(in) :: same_len
+!------------------------------------------------------------------------------
+      CHARACTER(LEN=:), ALLOCATABLE :: to
+      INTEGER :: n
+      INTEGER :: i,j,nlen
+      INTEGER, PARAMETER :: A=ICHAR('A'),Z=ICHAR('Z'),U2L=ICHAR('a')-ICHAR('A')
+
+      to = from
+      n = LEN(to)
+
+      IF (.NOT.PRESENT(same_len)) THEN
+        DO i=LEN(from),1,-1
+          IF ( from(i:i) /= ' ' ) EXIT
+        END DO
+        IF ( n>i ) THEN
+          to(i+1:n) = ' '
+          n=i
+        END IF
+      END IF
+
+      nlen = n
+      DO i=1,nlen
+        j = ICHAR( from(i:i) )
+        IF ( j >= A .AND. j <= Z ) THEN
+          to(i:i) = CHAR(j+U2L)
+        ELSE
+          to(i:i) = from(i:i)
+          IF ( to(i:i)=='[') n=i-1
+        END IF
+      END DO
+
+      tov = to(1:nlen)
+    END FUNCTION StringToLowerCaseV
 !------------------------------------------------------------------------------
 
 
@@ -2399,8 +2447,9 @@ CONTAINS
       IF ( DoCase ) THEN
         k = StringToLowerCase( ptr % CValue,CValue )
       ELSE
-        k = MIN( MAX_NAME_LEN,LEN(CValue) )
-        ptr % CValue(1:k) = CValue(1:k)
+!       k = MIN( MAX_NAME_LEN,LEN(CValue) )
+!       ptr % CValue(1:k) = CValue(1:k)
+        ptr % CValue = CValue
       END IF
 
       ptr % TYPE   = LIST_TYPE_STRING
@@ -2902,13 +2951,14 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
+     CHARACTER(LEN=:), ALLOCATABLE :: S
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
-     CHARACTER(LEN=MAX_NAME_LEN) :: S
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     S = ' '
+     s = ''
      ptr => ListFind(List,Name,Found)
+
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
@@ -2918,7 +2968,7 @@ CONTAINS
        END IF
        RETURN
      END IF
-     S = ptr % Cvalue
+     S = char(ptr % Cvalue)
 !------------------------------------------------------------------------------
    END FUNCTION ListGetString
 !------------------------------------------------------------------------------

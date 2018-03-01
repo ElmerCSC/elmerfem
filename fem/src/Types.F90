@@ -405,7 +405,8 @@ END INTERFACE
      INTEGER(KIND=AddrInt) :: PROCEDURE
 
      REAL(KIND=dp) :: Coeff = 1.0_dp
-     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+!    CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: CValue
+     TYPE(Varying_string) :: CValue
 
      INTEGER :: NameLen,DepNameLen = 0
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName

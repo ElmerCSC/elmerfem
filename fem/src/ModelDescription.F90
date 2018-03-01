@@ -1985,7 +1985,7 @@ CONTAINS
      LOGICAL :: Found, C(3)
      TYPE(Mesh_t), POINTER :: Mesh
      REAL(KIND=dp) :: x,y,z
-     CHARACTER(LEN=MAX_NAME_LEN) :: csys
+     CHARACTER(LEN=:), ALLOCATABLE :: csys
 
      csys = ListGetString( Model % Simulation, 'Coordinate System', Found )
      IF ( .NOT. Found ) Csys = 'cartesian'
