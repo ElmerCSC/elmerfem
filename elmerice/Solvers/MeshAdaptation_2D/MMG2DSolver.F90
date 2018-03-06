@@ -51,7 +51,7 @@
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
-#include "mmg2d/libmmg2df.h"
+#include "mmg/mmg2d/libmmg2df.h"
 
       TYPE(Model_t) :: Model
       TYPE(Solver_t), TARGET :: Solver
@@ -206,22 +206,14 @@
 
 ! Release previous mesh (should be optional)
 !-------------------
-      RELEASE_MESH=ListGetLogical(SolverParams,'Release previous mesh')
+      RELEASE_MESH=ListGetLogical(SolverParams,'Release previous mesh',Found)
       IF (RELEASE_MESH) THEN
-        !! BoundaryInfo is not deallocated by Remlease Mesh??
-        Do ii=1,PrevMesh%NumberOfBoundaryElements
-           kk=ii+PrevMesh%NumberOfBulkElements
-           IF (ASSOCIATED(PrevMesh%Elements(kk)%BoundaryInfo)) THEN
-              DEALLOCATE(PrevMesh%Elements(kk)%BoundaryInfo)
-              PrevMesh%Elements(kk)%BoundaryInfo=>NULL()
-           ENDIF
-        ENDDO
         CALL ReleaseMesh(PrevMesh)
         Deallocate(PrevMesh)
         Model % Meshes % Next => NULL()
       END IF
 
-     NewMesh % Changed = .TRUE.
+      NewMesh % Changed = .TRUE.
 ! Print info
 !-----------
       write(Message,'(A)') '--**--New mesh ready'
@@ -475,7 +467,7 @@
 
       REAL(KIND=dp) :: Pval
       INTEGER :: ier
-      INTEGER :: AngleDetect
+      LOGICAL :: AngleDetect
       INTEGER :: verbosity,MeMIncrease,Bucket,GMSHoption     
       LOGICAL :: DebugMode,NoInsert,NoSwap,NoMove,NoSurf
       LOGICAL :: Found
@@ -542,23 +534,21 @@
                 'CALL TO MMG2D_SET_DPARAMETER <hgrad> Failed')
       END IF
 
-
 !!! OTHER PARAMETERS: NOT ALL TESTED
-      ! Value for angle detection
-      AngleDetect=GetInteger(SolverParams,'Angle detection',Found)
+      Pval = GetConstReal( SolverParams, 'Angle detection',Found)
       IF (Found) THEN
+        CALL MMG2D_SET_DPARAMETER(mmgMesh,mmgSol,MMG2D_DPARAM_angleDetection,&
+                 Pval,ier)
+        IF ( ier == 0 ) CALL FATAL('MMGSolver', &
+                'CALL TO MMG2D_SET_DPARAMETER <Angle detection> Failed')
+      ENDIF
+      ! !< [1/0], Avoid/allow surface modifications */ 
+      AngleDetect=GetLogical(SolverParams,'No Angle detection',Found)
+      IF (Found.AND.AngleDetect) THEN
         CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_angle, &
-                AngleDetect,ier)
+                1,ier)
         IF ( ier == 0 ) CALL FATAL('MMGSolver', &
-                'CALL TO MMG2D_SET_IPARAMETER <Angle detection> Failed')
-      END IF
-      ! Specify the size of the bucket per dimension (DELAUNAY)
-      Bucket=GetInteger(SolverParams,'Bucket size',Found)
-      IF (Found) THEN
-        CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_bucket, &
-                Bucket,ier)
-        IF ( ier == 0 ) CALL FATAL('MMGSolver', &
-                   'CALL TO MMG2D_SET_IPARAMETER <Bucket size> Failed')
+              'CALL TO MMG2D_SET_IPARAMETER <No Angle detection> Failed')
       END IF
       ! [1/0] Avoid/allow point insertion
       NoInsert=GetLogical(SolverParams,'No insert',Found)
@@ -566,13 +556,13 @@
         CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_noinsert,&
                 1,ier)
         IF ( ier == 0 ) CALL FATAL('MMGSolver', &
-                      'CALL TO MMG2D_SET_IPARAMETER <No insert>Failed') 
+                      'CALL TO MMG2D_SET_IPARAMETER <No insert> Failed') 
       END IF
       ! [1/0] Avoid/allow edge or face flipping
       NoSwap=GetLogical(SolverParams,'No swap',Found)
       IF (Found .AND. NoSwap) THEN
         CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_noswap,&
-                 0,ier)
+                 1,ier)
         IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                         'CALL TO MMG2D_SET_IPARAMETER <No swap>Failed')
       END IF
@@ -580,7 +570,7 @@
       NoMove=GetLogical(SolverParams,'No move',Found)
       IF (Found .AND. NoMove) THEN
         CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_nomove,&
-                0,ier)
+                1,ier)
         IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                      'CALL TO MMG2D_SET_IPARAMETER <No move> Failed')
       END IF
@@ -591,20 +581,6 @@
                 0,ier)
         IF ( ier == 0 ) CALL FATAL('M/MGSolver',&
                        'CALL TO MMG2D_SET_IPARAMETER <No surf> Failed')
-      END IF
-      ! [val] Save the mesh in 3d for gmsh visualization if n=1.
-      !       Read and save the mesh in 3d if n=2.
-      GMSHoption=GetInteger(SolverParams,'GMSH option',Found)
-      IF (Found) THEN
-        IF ((GMSHoption .LT. 0) .OR. (GMSHoption .GT. 2)) THEN
-          CALL FATAL('MMGSolver',&
-                  'Wrong value for >GMSH option<')
-        ELSE
-          CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_msh,&
-                  GMSHoption,ier)
-          IF ( ier == 0 ) CALL FATAL('M/MGSolver',&
-                    'CALL TO MMG2D_SET_IPARAMETER <GMSH option> Failed')
-        END IF
       END IF
 !!!
       END SUBROUTINE SET_MMG2D_PARAMETERS

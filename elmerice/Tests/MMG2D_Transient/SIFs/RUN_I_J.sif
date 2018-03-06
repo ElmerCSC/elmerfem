@@ -117,8 +117,8 @@ Boundary Condition 1
     H = Real 0.0
 End
 
-Solver 2 :: Reference Norm = Real 4993
+Solver 2 :: Reference Norm = Real 3990
 Solver 2 :: Reference Norm Tolerance = Real 5E-02
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=4993,EPS=5E-02\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=3990,EPS=5E-02\n" );
