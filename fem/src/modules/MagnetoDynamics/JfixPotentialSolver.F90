@@ -326,6 +326,7 @@ CONTAINS
                 p = Element % NodeIndexes(k) 
                 p = dofs*(Perm(p)-1)+j
 
+#ifdef OLD_DIRICHLET
                 ! In parallel collect shared constrained dofs and send to
                 ! other owners...
                 ! -------------------------------------------------------
@@ -346,6 +347,9 @@ CONTAINS
                 ELSE
                    CALL CRS_SetSymmDirichlet(A,A % RHS,p,1._dp)
                 END IF
+#else
+                CALL UpdateDirichletDof(A, p, 0._dp)
+#endif
              END DO
           END DO
        END DO
@@ -353,6 +357,7 @@ CONTAINS
 
     ! In parallel apply constraints spotted by other partitions
     ! ---------------------------------------------------------
+#ifdef OLD_DIRICHLET
     IF(ParEnv % PEs>1) THEN
       IF(ASSOCIATED(gm % ListMatrix)) CALL List_toCRSMatrix(gm)
 
@@ -391,6 +396,7 @@ CONTAINS
         END IF
       END DO
     END IF
+#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
 !------------------------------------------------------------------------------
