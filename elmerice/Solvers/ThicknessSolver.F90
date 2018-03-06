@@ -252,6 +252,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      ActiveNode = .FALSE.
      ResidualVector = 0.0_dp
   END IF
+  LimitedSolution=.FALSE.
 
 
   !------------------------------------------------------------------------------
@@ -305,6 +306,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !------------------------------------------------------------------------------
      DO t=1,Solver % NumberOfActiveElements
         CurrentElement => GetActiveElement(t)
+        IF (CheckPassiveElement(CurrentElement)) CYCLE
         n = GetElementNOFNodes()
         NodeIndexes => CurrentElement % NodeIndexes
 

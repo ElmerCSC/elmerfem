@@ -199,6 +199,8 @@ DO COMP=1, DIM-1
 ! Dirichlet 
   CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
           ComponentName('Integrated Velocity',COMP), 1,1, Permutation)
+
+  CALL EnforceDirichletConditions( Solver, Solver % Matrix , Solver % Matrix % RHS)
   
   Norm = DefaultSolve()
 

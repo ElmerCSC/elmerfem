@@ -134,6 +134,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
          InitMat % Values => NSSolver % Matrix % BulkValues
          InitMat % Rows => NSSolver % Matrix % Rows 
          InitMat % Cols => NSSolver % Matrix % Cols
+         InitMat % Diag => NSSolver % Matrix % Diag
 
 
          VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb',UnFoundFatal=UnFoundFatal )
