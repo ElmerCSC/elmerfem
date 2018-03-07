@@ -146,13 +146,31 @@ ENDIF()
 # Find BLACS and Scalapack
 SET(MKL_CPARDISO_FOUND FALSE)
 IF (SCALAPACK_NEEDED AND NOT MKL_FAILMSG)
-  # From MKL link line advisor
+  # From MKL link line advisor (for Intel MPI)
   # GNU, seq:  -Wl,--no-as-needed -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_gf_lp64 -lmkl_core -lmkl_sequential -lmkl_blacs_intelmpi_lp64 -lpthread -lm
   # GNU, mt:  -Wl,--no-as-needed -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_gf_lp64 -lmkl_core -lmkl_gnu_thread -lmkl_blacs_intelmpi_lp64 -ldl -lpthread -lm
   # Intel, seq:  -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_core -lmkl_sequential -lmkl_blacs_intelmpi_lp64 -lpthread -lm
   # Intel, mt:  -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_core -lmkl_intel_thread -lmkl_blacs_intelmpi_lp64 -lpthread -lm
-  SET(MKL_BLACS_LIB_NAME "mkl_blacs_intelmpi${MKL_SUFFIX}")
+
+  # Attempt to guess MPI vendor
+  EXECUTE_PROCESS(COMMAND ${MPIEXEC} --version
+    OUTPUT_VARIABLE MKL_MPI_VENDOR_OUTPUT
+    ERROR_VARIABLE MKL_MPI_VENDOR_ERROR)
+
+  IF ("${MKL_MPI_VENDOR_OUTPUT}" MATCHES "(Intel.* MPI)")
+    SET(MKL_MPI_VENDOR_BASENAME "intelmpi")
+  ELSEIF ("${MKL_MPI_VENDOR_OUTPUT}" MATCHES "(Open MPI)")
+    SET(MKL_MPI_VENDOR_BASENAME "openmpi")
+  ELSE()
+    IF (NOT MKL_FIND_QUIETLY)
+      MESSAGE(WARNING "Could not determine MPI library type, assuming MPICH compatible MPI library")
+    ENDIF()
+    SET(MKL_MPI_VENDOR_BASENAME "intelmpi")
+  ENDIF()
+
+  SET(MKL_BLACS_LIB_NAME "mkl_blacs_${MKL_MPI_VENDOR_BASENAME}${MKL_SUFFIX}")
   SET(MKL_SCALAPACK_LIB_NAME "mkl_scalapack${MKL_SUFFIX}")
+  UNSET(MKL_MPI_VENDOR_BASENAME)
 
   FIND_LIBRARY(MKL_BLACS_LIB ${MKL_BLACS_LIB_NAME} HINTS ${MKLLIB})
   FIND_LIBRARY(MKL_SCALAPACK_LIB ${MKL_SCALAPACK_LIB_NAME} HINTS ${MKLLIB})
