@@ -44,33 +44,32 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 
     nColours = GetNOFColours(Solver)
     VecAsm = (nColours > 1) .OR. (nthr == 1)
-
+    
     CALL ResetTimer('ThreadedAssembly')
 
     !$OMP PARALLEL &
-    !$OMP SHARED(Solver, Active, nColours, &
-    !$OMP        VecAsm) &
+    !$OMP SHARED(Solver, Active, nColours, VecAsm) &
     !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
-
-    InitHandles = .TRUE.
+   
     DO col=1,nColours
+      
+      !$OMP SINGLE
+      CALL Info('ModelPDEthreaded','Assembly of colour: '//TRIM(I2S(col)),Level=10)
+      Active = GetNOFActive(Solver)
+      !$OMP END SINGLE
 
-       !$OMP SINGLE
-       CALL Info('ModelPDEthreaded','Assembly of colour: '//TRIM(I2S(col)),Level=10)
-       Active = GetNOFActive(Solver)
-       !$OMP END SINGLE
-
-       !$OMP DO
-       DO t=1,Active
-          Element => GetActiveElement(t)
-          totelem = totelem + 1
-          n  = GetElementNOFNodes(Element)
-          nd = GetElementNOFDOFs(Element)
-          nb = GetElementNOFBDOFs(Element)
-          CALL LocalMatrixVec(  Element, n, nd+nb, nb, VecAsm, InitHandles )
-       END DO
-       !$OMP END DO
+      InitHandles = .TRUE.
+      !$OMP DO
+      DO t=1,Active
+        Element => GetActiveElement(t)
+        totelem = totelem + 1
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+        nb = GetElementNOFBDOFs(Element)
+        CALL LocalMatrixVec(  Element, n, nd+nb, nb, VecAsm, InitHandles )
+      END DO
+      !$OMP END DO
     END DO
     !$OMP END PARALLEL 
 
@@ -94,8 +93,8 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
        Active = GetNOFBoundaryActive(Solver)
        !$OMP END SINGLE
 
-       !$OMP DO
        InitHandles = .TRUE. 
+       !$OMP DO
        DO t=1,Active
           Element => GetBoundaryElement(t)
           ! WRITE (*,*) Element % ElementIndex
@@ -138,14 +137,11 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-
-    INTEGER, PARAMETER :: DIFF_IND = 1, CONV_IND = 2, REACT_IND= 3, TIME_IND = 4, &
-         LOAD_IND = 5, VELO_IND = 6
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJ(:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
-    REAL(KIND=dp), POINTER CONTIG :: DiffCoeff(:), ConvCoeff(:), ReactCoeff(:), &
+    REAL(KIND=dp), SAVE, POINTER CONTIG :: DiffCoeff(:), ConvCoeff(:), ReactCoeff(:), &
         TimeCoeff(:), SourceCoeff(:), Velo1Coeff(:), Velo2Coeff(:), Velo3Coeff(:)
-    REAL(KIND=dp), POINTER CONTIG :: VeloCoeff(:,:)
+    REAL(KIND=dp), SAVE, POINTER CONTIG :: VeloCoeff(:,:)
     REAL(KIND=dp) :: Weight
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim,ngp,allocstat
@@ -158,7 +154,7 @@ CONTAINS
     !$OMP THREADPRIVATE(Basis, dBasisdx, DetJ, &
     !$OMP               MASS, STIFF, FORCE, Nodes, &
     !$OMP               SourceCoeff_h, DiffCoeff_h, ReactCoeff_h, TimeCoeff_h, &
-    !$OMP               ConvCoeff_h, Velo1Coeff_h, Velo2Coeff_h, Velo3Coeff_h )
+    !$OMP               ConvCoeff_h, Velo1Coeff_h, Velo2Coeff_h, Velo3Coeff_h, &
     !$OMP               SourceCoeff, DiffCoeff, ReactCoeff, TimeCoeff, &
     !$OMP               ConvCoeff, Velo1Coeff, Velo2Coeff, Velo3Coeff, VeloCoeff )
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJ
@@ -193,6 +189,7 @@ CONTAINS
     IF (.NOT. ALLOCATED(Basis)) THEN
       ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJ(ngp), &
           MASS(nd,nd), STIFF(nd,nd), FORCE(nd), VeloCoeff(ngp,3), STAT=allocstat)
+      
       IF (allocstat /= 0) THEN
         CALL Fatal('ModelPDEthreaded::LocalMatrix','Local storage allocation failed')
       END IF
@@ -249,17 +246,18 @@ CONTAINS
     ConvCoeff => ListGetElementRealVec( ConvCoeff_h, ngp, Basis, Element, Found ) 
     IF( Found ) THEN    
       Velo1Coeff => ListGetElementRealVec( Velo1Coeff_h, ngp, Basis, Element, Found ) 
-      Velo2Coeff => ListGetElementRealVec( Velo2Coeff_h, ngp, Basis, Element, Found ) 
-      Velo3Coeff => ListGetElementRealVec( Velo3Coeff_h, ngp, Basis, Element, Found ) 
+      IF( Found ) VeloCoeff(1:ngp,1) = Velo1Coeff(1:ngp)
       ! This does not work
-      !VeloCoeff(:,1) => Velo1Coeff(:)
-      !VeloCoeff(:,2) => Velo2Coeff(:)
-      !VeloCoeff(:,3) => Velo3Coeff(:)
-      VeloCoeff(1:ngp,1) = Velo1Coeff(1:ngp)
-      VeloCoeff(1:ngp,2) = Velo2Coeff(1:ngp)
+      !VeloCoeff(:,1) => Velo1Coeff(:) etc.
+
+      Velo2Coeff => ListGetElementRealVec( Velo2Coeff_h, ngp, Basis, Element, Found ) 
+      IF( Found ) VeloCoeff(1:ngp,2) = Velo2Coeff(1:ngp)
+
       IF( dim == 3 ) THEN
-        VeloCoeff(1:ngp,3) = Velo3Coeff(1:ngp)
+        Velo3Coeff => ListGetElementRealVec( Velo3Coeff_h, ngp, Basis, Element, Found ) 
+        IF( Found ) VeloCoeff(1:ngp,3) = Velo3Coeff(1:ngp)
       END IF
+      
       CALL LinearForms_GradUdotU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, Basis, DetJ, STIFF, &
           ConvCoeff, VeloCoeff )
     END IF          
