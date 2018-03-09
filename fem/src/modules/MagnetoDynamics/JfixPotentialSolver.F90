@@ -129,7 +129,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
   IF (.NOT.ListCheckPresent(SolverParams,'Jfix: Linear System Convergence Tolerance')) &
     CALL ListAddConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
-      0.01_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
+      0.001_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
 
 
   CALL ListAddLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
