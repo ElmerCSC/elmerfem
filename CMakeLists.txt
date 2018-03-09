@@ -27,7 +27,7 @@ SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Module
 SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
 SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel tests")
 SET(MPI_TEST_MINPROC 1 CACHE STRING "Minimum number of tasks used in parallel tests")
-SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread parallelization")
+SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread and SIMD (if available) parallelization")
 SET(WITH_MKL FALSE CACHE BOOL "Use Intel Math Kernel library")
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
@@ -100,6 +100,19 @@ IF(WITH_OpenMP)
   SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
   SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+
+  # Test compiler support for OpenMP 4.0 features used
+  INCLUDE(testOpenMP40)
+  IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP40)
+    SET(HAVE_OPENMP40 TRUE)
+    MARK_AS_ADVANCED(HAVE_OPENMP40)
+    # Test compiler support for advanced OpenMP 4.5 features used
+    INCLUDE(testOpenMP45)
+    IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP45)
+      SET(HAVE_OPENMP45 TRUE)
+      MARK_AS_ADVANCED(HAVE_OPENMP45)
+    ENDIF()
+  ENDIF()
 ENDIF()
 
 IF(WITH_MPI)
@@ -108,7 +121,6 @@ IF(WITH_MPI)
     MPI_EXTRA_LIBRARY
     MPI_LIBRARY
     )
-
 
   FIND_PACKAGE(MPI REQUIRED)
   # Workaround if MPI is found but MPI_FOUND is not set (windows+msmpi+findmpi)
@@ -129,16 +141,29 @@ IF(WITH_MKL)
   # Set BLAS and LAPACK to point to MKL
   SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
   SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-  IF(MPI_FOUND)
+  IF(MKL_SCALAPACK_LIBRARIES_FOUND)
     SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
     # Versions >11.1 of MKL include Cluster PARDISO direct solver
-    IF(WITH_OpenMP AND MKL_CPARDISO_FOUND)
+    IF(MKL_CPARDISO_FOUND)
       SET(HAVE_CPARDISO TRUE)
       MARK_AS_ADVANCED(HAVE_CPARDISO)
     ENDIF()
   ENDIF()
   INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
   SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+ELSE()
+  IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
+    # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
+    FIND_PACKAGE(MKL QUIET)
+    IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
+      # Set BLAS and LAPACK to point to MKL, in order to work around
+      # CMake FindBLAS finding wrong core library for GNU Fortran
+      SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+      SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+      INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+      SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+    ENDIF()
+  ENDIF()
 ENDIF()
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
