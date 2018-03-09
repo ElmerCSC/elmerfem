@@ -2267,7 +2267,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
            
            DO i = 0,p-3
               DO j = 0,p-i-3
@@ -2300,7 +2300,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
           
            DO i=2,(p-2)
               DO j=2,(p-i)
@@ -2362,7 +2362,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            DO i=0,p-4
@@ -2442,7 +2442,7 @@ END IF
            ! Get element p
            p = Element % PDefs % p
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            ! Calculate value of bubble functions from indexes
@@ -2529,7 +2529,7 @@ END IF
            ! Get p from element
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
            
            ! For each bubble calculate value of basis function and its derivative
@@ -2596,9 +2596,9 @@ END IF
            ! Get p from bubble DOFs 
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
-           
+
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
            DO i=2,p-4
@@ -2771,7 +2771,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
            
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2848,7 +2848,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
 
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2941,7 +2941,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            ! For each DOF in bubbles calculate value of bubble functions
@@ -3066,7 +3066,7 @@ END IF
            ! Get element p
            p = Element % PDefs % p
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            ! Calculate value of bubble functions from indexes
@@ -3208,7 +3208,7 @@ END IF
            ! Get p from element
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
            
            ! For each bubble calculate value of basis function and its derivative
@@ -3313,8 +3313,9 @@ END IF
            ! Get p from bubble DOFs 
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+
            
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
@@ -3759,7 +3760,7 @@ END IF
            ! edge directions
            IF (ll==1) THEN
              ! Compute P from bubble dofs
-             P = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+             P = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
@@ -3810,7 +3811,7 @@ END IF
            ! edge directions
            IF (ll==1) THEN
              ! Compute P from bubble dofs
-             P = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+             P = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
@@ -3913,7 +3914,7 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P based on bubble dofs
-           P=NINT(1/3d0*(81*(Element % BDOFS) + &
+           P=CEILING(1/3d0*(81*(Element % BDOFS) + &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
                  1d0/(81*(Element % BDOFS)+ &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
@@ -3966,7 +3967,7 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
-           P=NINT(1/3d0*(81*(Element % BDOFS) + &
+           P=CEILING(1/3d0*(81*(Element % BDOFS) + &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
                  1d0/(81*(Element % BDOFS)+ &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
@@ -4019,7 +4020,7 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
-           P=NINT(1/3d0*(81*Element % BDOFS + &
+           P=CEILING(1/3d0*(81*Element % BDOFS + &
                  3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
                  1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
 
