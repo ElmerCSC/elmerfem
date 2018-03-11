@@ -8,7 +8,9 @@ SET(CMAKE_Fortran_MODULE_DIRECTORY
 SET(ElmerIce_MeshAdapt2D_SRC
     Compute2DNodalGradient.F90
     MMG2D_MetricAniso.F90
-    MMG2D_MetricIntersect.F90)
+    MMG2D_MetricIntersect.F90
+    GetActiveMesh.F90
+    GetConnectedAreas.F90)
 
 # ---------------------- #
 # -- LOOK FOR MMG     -- #

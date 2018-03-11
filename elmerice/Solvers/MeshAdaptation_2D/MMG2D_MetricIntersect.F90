@@ -31,6 +31,41 @@
 !> Compute the intersection of 2 metrics
 !>  
 !------------------------------------------------------------------------------
+   SUBROUTINE MMG2D_MetricIntersect_Init( Model,Solver,dt,TransientSimulation )
+   USE DefUtils
+   IMPLICIT NONE
+   !------------------------------------------------------------------------------
+   TYPE(Solver_t), TARGET :: Solver
+   TYPE(Model_t) :: Model
+   REAL(KIND=dp) :: dt
+   LOGICAL :: TransientSimulation
+   !--------------------------------------------------------------------------
+   CHARACTER(LEN=MAX_NAME_LEN) :: Name,TensorName,ExportName
+   TYPE(ValueList_t), POINTER :: SolverParams
+   TYPE(Variable_t), POINTER :: TensorVariable
+   LOGICAL :: GotIt
+
+   SolverParams => Solver % Values 
+
+   Name = ListGetString( SolverParams, 'Equation',GotIt)
+   IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
+        CALL ListAddString( SolverParams,'Variable',&
+           '-nooutput '//TRIM(Name)//'_var')
+   ENDIF
+
+   IF(.NOT. ListCheckPresent(SolverParams,'Optimize Bandwidth')) &
+        CALL ListAddLogical(SolverParams,'Optimize Bandwidth',.FALSE.)
+   
+   TensorName = ListGetString( SolverParams, 'Metric Variable Name',  UnFoundFatal=.TRUE. )
+   TensorVariable => VariableGet( Solver % Mesh % Variables, TensorName, ThisOnly=.TRUE. )
+   IF (.NOT.ASSOCIATED(TensorVariable)) THEN
+      ExportName=NextFreeKeyword('Exported Variable',SolverParams)
+      CALL ListAddString( SolverParams,TRIM(ExportName),'-nooutput '//TRIM(TensorName))
+      CALL ListAddInteger( SolverParams,TRIM(ExportName)//' DOFs',3)
+   ENDIF
+
+   END SUBROUTINE MMG2D_MetricIntersect_Init
+!------------------------------------------------------------------------------
    RECURSIVE SUBROUTINE MMG2D_MetricIntersect( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
     USE DefUtils

@@ -52,6 +52,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE. , &
        ConvectionVar,Compute_dhdt,UnFoundFatal=.TRUE.
+  LOGICAL :: Passive
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
@@ -306,7 +307,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !------------------------------------------------------------------------------
      DO t=1,Solver % NumberOfActiveElements
         CurrentElement => GetActiveElement(t)
-        IF (CheckPassiveElement(CurrentElement)) CYCLE
+        Passive=CheckPassiveElement(CurrentElement)
         n = GetElementNOFNodes()
         NodeIndexes => CurrentElement % NodeIndexes
 
@@ -339,12 +340,12 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         !-----------------------------
         LowerLimit(CurrentElement % Nodeindexes(1:N)) = &
              ListGetReal(Material,'Min ' // TRIM(VariableName),n,CurrentElement % NodeIndexes, Found) 
-        LimitedSolution(CurrentElement % Nodeindexes(1:N), 1) = Found
+        IF (.NOT.Passive) LimitedSolution(CurrentElement % Nodeindexes(1:N), 1) = Found
         ! get upper limit for solution 
         !-----------------------------
         UpperLimit(CurrentElement % Nodeindexes(1:N)) = &
              ListGetReal(Material,'Max ' // TRIM(VariableName),n,CurrentElement % NodeIndexes, Found)              
-        LimitedSolution(CurrentElement % Nodeindexes(1:N), 2) = Found
+        IF (.NOT.Passive) LimitedSolution(CurrentElement % Nodeindexes(1:N), 2) = Found
 
         ! get flow soulution and velocity field from it
         !----------------------------------------------
