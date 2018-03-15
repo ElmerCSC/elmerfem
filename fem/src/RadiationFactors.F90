@@ -88,11 +88,11 @@
      REAL (KIND=dp) :: s,Norm,PrevNorm,Emissivity,Transmissivity,Reflectivity,&
          maxds,refds,ds,x,y,z,&
          dx,dy,dz,x0(1),y0(1),MeshU(TSolver % Mesh % MaxElementNodes)
-     REAL (KIND=dp), POINTER :: Vals(:)
+     REAL (KIND=dp), POINTER :: Vals(:), Wrk(:,:)
      REAL (KIND=dp), ALLOCATABLE :: SOL(:), RHS(:), Fac(:)
      REAL (KIND=dp) :: MinSum, MaxSum, SolSum, PrevSelf, FactorSum, &
          ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, FactorsFixedTol, &
-         GeometryFixedTol
+         GeometryFixedTol, BackScale(3), Coord(3)
 #ifdef USE_ISO_C_BINDINGS
      REAL (KIND=dp) :: at, at0, st
 #else
@@ -116,7 +116,8 @@
          FilesExist, FullMatrix, ImplicitLimitIs, IterSolveGebhardt, &
          ConstantEmissivity, Found, Debug
      LOGICAL, POINTER :: ActiveNodes(:)
-
+     LOGICAL :: DoScale
+     
      SAVE TimesVisited 
 
      EXTERNAL RMatvec
@@ -396,12 +397,28 @@
 
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
-         CALL Rename(OutputName, OutputName2)
-         
+         CALL Rename(OutputName, OutputName2)         
+
+         DoScale = ListCheckPresent( Model % Simulation,'Coordinate Scaling')
+
+         IF( DoScale ) THEN
+           Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',GotIt )    
+           BackScale = 1.0_dp
+           DO i=1,Mesh % MeshDim 
+             j = MIN( i, SIZE(Wrk,1) )
+             BackScale(i) = 1.0_dp / Wrk(j,1)
+           END DO
+         END IF
+
          OPEN( 10,FILE=TRIM(OutputName), STATUS='unknown' )                 
          DO i=1,Mesh % NumberOfNodes
-           WRITE( 10,'(i7,i3,f20.12,f20.12,f20.12)' ) i,-1,  &
-               Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
+           Coord(1) = Mesh % Nodes % x(i)
+           Coord(2) = Mesh % Nodes % y(i)
+           Coord(3) = Mesh % Nodes % z(i)
+
+           IF( DoScale ) Coord = BackScale * Coord
+           
+           WRITE( 10,'(i7,i3,3f20.12)' ) i,-1, Coord
          END DO
          CLOSE(10)
        END IF

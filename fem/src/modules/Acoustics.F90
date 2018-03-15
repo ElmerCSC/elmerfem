@@ -50,10 +50,33 @@ SUBROUTINE AcousticsSolver_init( Model,Solver,dt,TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
+  INTEGER :: dim
 
+  CALL Info('AcousticsSolver','Initialization the solver')
+  
   Params => GetSolverParams()
   CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
 
+  dim = CoordinateSystemDimension() 
+
+  IF( ListCheckPresent( Params,'Variable' ) ) THEN
+    CALL Warn('AcousticsSolver','Redefining variable name from the given one!')
+  END IF
+
+  ! Leave for now since the strings are too short
+  IF(.FALSE.) THEN
+    IF( dim == 2 ) THEN
+      CALL ListAddString( Params,'Variable',&
+          'Flow[Re Velocity 1:1 Im Velocity 1:1 Re Velocity 2:1 Im Velocity 2:1 '&
+          //' Re Temperature:1 Im Temperature:1 Re Pressure:1 Im Pressure]')
+    ELSE
+      CALL ListAddString( Params,'Variable',&
+          'Flow[Re Velocity 1:1 Im Velocity 1:1 Re Velocity 2:1 Im Velocity 2:1 Re Velocity 3:1 Im Velocity 3:1 '&
+          //' Re Temperature:1 Im Temperature:1 Re Pressure:1 Im Pressure:1]')
+    END IF
+  END IF
+    
+  
 END SUBROUTINE AcousticsSolver_init
   
   
@@ -1282,7 +1305,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       'Re Temperature', Dofs-3, Dofs, FlowPerm )
   CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, & 
       'Im Temperature', Dofs-2, Dofs, FlowPerm )
-
+  
   IF(.TRUE.) CALL AcousticShellInterface()
 
   CALL DefaultDirichletBCs()

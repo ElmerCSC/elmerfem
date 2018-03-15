@@ -43,12 +43,6 @@
 
 #include "../config.h"
 
-#if _OPENMP>=201511
-#define LINEAR_REF(var) LINEAR(REF(var))
-#else
-#define LINEAR_REF(var)
-#endif
-
 MODULE ElementDescription
    USE Integration
    USE GeneralUtils
@@ -2267,7 +2261,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
            
            DO i = 0,p-3
               DO j = 0,p-i-3
@@ -2300,7 +2294,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
           
            DO i=2,(p-2)
               DO j=2,(p-i)
@@ -2362,7 +2356,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            DO i=0,p-4
@@ -2442,7 +2436,7 @@ END IF
            ! Get element p
            p = Element % PDefs % p
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            ! Calculate value of bubble functions from indexes
@@ -2529,7 +2523,7 @@ END IF
            ! Get p from element
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
            
            ! For each bubble calculate value of basis function and its derivative
@@ -2596,9 +2590,9 @@ END IF
            ! Get p from bubble DOFs 
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
-           
+
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
            DO i=2,p-4
@@ -2771,7 +2765,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
            
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2848,7 +2842,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
 
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2941,7 +2935,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            ! For each DOF in bubbles calculate value of bubble functions
@@ -3066,7 +3060,7 @@ END IF
            ! Get element p
            p = Element % PDefs % p
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            ! Calculate value of bubble functions from indexes
@@ -3208,7 +3202,7 @@ END IF
            ! Get p from element
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
            
            ! For each bubble calculate value of basis function and its derivative
@@ -3313,8 +3307,9 @@ END IF
            ! Get p from bubble DOFs 
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+
            
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
@@ -3759,7 +3754,7 @@ END IF
            ! edge directions
            IF (ll==1) THEN
              ! Compute P from bubble dofs
-             P = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+             P = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
@@ -3810,7 +3805,7 @@ END IF
            ! edge directions
            IF (ll==1) THEN
              ! Compute P from bubble dofs
-             P = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+             P = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
@@ -3913,7 +3908,7 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P based on bubble dofs
-           P=NINT(1/3d0*(81*(Element % BDOFS) + &
+           P=CEILING(1/3d0*(81*(Element % BDOFS) + &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
                  1d0/(81*(Element % BDOFS)+ &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
@@ -3966,7 +3961,7 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
-           P=NINT(1/3d0*(81*(Element % BDOFS) + &
+           P=CEILING(1/3d0*(81*(Element % BDOFS) + &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
                  1d0/(81*(Element % BDOFS)+ &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
@@ -4019,7 +4014,7 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
-           P=NINT(1/3d0*(81*Element % BDOFS + &
+           P=CEILING(1/3d0*(81*Element % BDOFS + &
                  3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
                  1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
 
@@ -4051,7 +4046,7 @@ END IF
          RETURN
        END IF
 
-       !$OMP SIMD
+       !_ELMER_OMP_SIMD
        DO i=1,ncl
          DetJ(i+ll-1)=DetJWrk(i)
        END DO
@@ -4159,38 +4154,35 @@ END IF
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,npts
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)
            END DO
-           !$OMP END SIMD
          END DO
        END DO
      CASE(2)
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,npts
              ! Map local basis function to global
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
                    dLBasisdx(l,i,2)*LtoGMap(l,j,2)
            END DO
-           !$OMP END SIMD
          END DO
        END DO
      CASE(3)
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,npts
              ! Map local basis function to global
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
                    dLBasisdx(l,i,2)*LtoGMap(l,j,2)+ &
                    dLBasisdx(l,i,3)*LtoGMap(l,j,3)
            END DO
-           !$OMP END SIMD
          END DO
        END DO
      END SELECT
@@ -9921,23 +9913,20 @@ END IF
          utind = GetSymmetricIndex(i,j)
          SELECT CASE (cdim)
          CASE(1)
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)
            END DO
-           !$OMP END SIMD
          CASE(2)
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)
            END DO
-           !$OMP END SIMD
          CASE(3)
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)+dx(l,3,i)*dx(l,3,j)
            END DO
-           !$OMP END SIMD
          END SELECT
        END DO
      END DO
@@ -9962,17 +9951,15 @@ END IF
        END DO
 
        IF (AllSuccess) THEN
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            ! Metric(i,1,1) = REAL(1,dp)/DetJ(i)
            Metric(i,1) = REAL(1,dp)/DetJ(i)
          END DO
-         !$OMP END SIMD
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT( DetJ(i))
          END DO
-         !$OMP END SIMD
        END IF
 
 
@@ -9981,13 +9968,12 @@ END IF
        !------------------------------------------------------------------------------
      CASE (2)
        ! Determinants
-       !$OMP SIMD
+       !_ELMER_OMP_SIMD
        DO i=1,nc
          ! DetJ(i) = ( G(i,1,1)*G(i,2,2) - G(i,1,2)*G(i,2,1) )
          ! G is symmetric
          DetJ(i) = G(i,1)*G(i,3)-G(i,2)*G(i,2)
        END DO
-       !$OMP END SIMD
 
        DO i=1,nc
          IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
@@ -9998,7 +9984,7 @@ END IF
 
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            s = REAL(1,dp)/DetJ(i)
            ! G is symmetric
@@ -10007,20 +9993,18 @@ END IF
            Metric(i,2) = -s*G(i,2)
            Metric(i,3) =  s*G(i,1)
          END DO
-         !$OMP END SIMD
-
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT(DetJ(i))
          END DO
-         !$OMP END SIMD
+
        END IF
        !------------------------------------------------------------------------------
        !       Volume elements
        !------------------------------------------------------------------------------
      CASE (3)
        ! Determinants
-       !$OMP SIMD
+       !_ELMER_OMP_SIMD
        DO i=1,nc
          ! DetJ(i) = G(i,1,1) * ( G(i,2,2)*G(i,3,3) - G(i,2,3)*G(i,3,2) ) + &
          !           G(i,1,2) * ( G(i,2,3)*G(i,3,1) - G(i,2,1)*G(i,3,3) ) + &
@@ -10030,7 +10014,6 @@ END IF
                  G(i,2)*(G(i,5)*G(i,4)-G(i,2)*G(i,6)) + &
                  G(i,4)*(G(i,2)*G(i,5)-G(i,3)*G(i,4))
        END DO
-       !$OMP END SIMD
 
        DO i=1,nc
          IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
@@ -10041,7 +10024,7 @@ END IF
 
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            s = REAL(1,dp) / DetJ(i)
            ! Metric(i,1,1) =  s * (G(i,2,2)*G(i,3,3) - G(i,3,2)*G(i,2,3))
@@ -10057,13 +10040,11 @@ END IF
            Metric(i,5)=-s*(G(i,1)*G(i,5)-G(i,2)*G(i,4))
            Metric(i,6)= s*(G(i,1)*G(i,3)-G(i,2)*G(i,2))
          END DO
-         !$OMP END SIMD
 
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT(DetJ(i))
          END DO
-         !$OMP END SIMD
 
        END IF
      END SELECT
@@ -10073,32 +10054,29 @@ END IF
        CASE(1)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1)
            END DO
-           !$OMP END SIMD
          END DO
        CASE(2)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3)
            END DO
-           !$OMP END SIMD
          END DO
        CASE(3)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2) + dx(l,i,3)*Metric(l,4)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3) + dx(l,i,3)*Metric(l,5)
              LtoGMap(l,i,3) = dx(l,i,1)*Metric(l,4) + dx(l,i,2)*Metric(l,5) + dx(l,i,3)*Metric(l,6)
            END DO
-           !$OMP END SIMD
          END DO
        END SELECT
      ELSE
@@ -10125,7 +10103,6 @@ END IF
        IMPLICIT NONE
        INTEGER, INTENT(IN) :: i, j
        INTEGER :: utind
-       !$OMP DECLARE SIMD(GetSymmetricIndex) UNIFORM(j) LINEAR_REF(i) NOTINBRANCH
 
        IF (i>j) THEN
          utind = i*(i-1)/2+j
@@ -11251,6 +11228,7 @@ END IF
 
     LeftElement => Boundary % BoundaryInfo % Left
 
+    Element => Null()
     IF ( ASSOCIATED(LeftELement) ) THEN
        RightElement => Boundary % BoundaryInfo % Right
        IF ( ASSOCIATED( RightElement ) ) THEN ! we have a body-body boundary        

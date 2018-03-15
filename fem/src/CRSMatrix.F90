@@ -789,11 +789,10 @@ CONTAINS
 
     ! The actual contribution loop
     IF (MCAssembly) THEN
-      !$OMP SIMD
+      !_ELMER_OMP_SIMD
       DO i=1,nzind
         gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
       END DO
-      !$OMP END SIMD
     ELSE
       DO i=1,nzind
         !$OMP ATOMIC

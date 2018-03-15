@@ -877,11 +877,11 @@ CONTAINS
   FUNCTION CheckAnyElementalField() RESULT ( HaveAnyElemental ) 
 
     LOGICAL :: HaveAnyElemental
-    INTEGER :: Rank, Vari
+    INTEGER :: Rank, Vari, VarType
     CHARACTER(LEN=1024) :: Txt, FieldName
     TYPE(Variable_t), POINTER :: Solution
     LOGICAL :: Found
-
+    
     HaveAnyElemental = .FALSE.
 
     DO Rank = 0,1
@@ -897,10 +897,12 @@ CONTAINS
           Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
         END IF
         IF( .NOT. ASSOCIATED( Solution ) ) CYCLE
+
+        VarType = Solution % Type
         
-        IF ( Solution % TYPE == Variable_on_nodes_on_elements .OR. &
-            Solution % TYPE == Variable_on_elements .OR. &
-            Solution % TYPE == Variable_on_gauss_points ) THEN
+        IF ( VarType == Variable_on_nodes_on_elements .OR. &
+            VarType == Variable_on_elements .OR. &
+            VarType == Variable_on_gauss_points ) THEN
           HaveAnyElemental = .TRUE.
           EXIT
         END IF
@@ -922,6 +924,7 @@ CONTAINS
 
     NoAve = 0
     Var => Mesh % Variables
+    
     DO WHILE( ASSOCIATED( Var ) ) 
       
       ! Skip if variable is not active for saving       
@@ -978,7 +981,7 @@ CONTAINS
     REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3)
     INTEGER, ALLOCATABLE, TARGET :: ElemInd(:)
     INTEGER, POINTER :: NodeIndexes(:)
-    INTEGER :: TmpIndexes(27)
+    INTEGER :: TmpIndexes(27), VarType
 
     COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)
     REAL(KIND=dp), POINTER :: ConstraintModes(:,:)
@@ -1111,12 +1114,14 @@ CONTAINS
           END IF
 
           CALL Info('VtuOutputSolver','Saving variable: '//TRIM(FieldName),Level=10)
+          
+          VarType = Solution % Type
 
-          IF ( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+          IF ( VarType == Variable_on_nodes_on_elements ) THEN
             IF( .NOT. ( ( DG .OR. DN ) .AND. SaveElemental ) ) CYCLE
-          ELSE IF( Solution % TYPE == Variable_on_elements ) THEN
+          ELSE IF( VarType == Variable_on_elements ) THEN
             CYCLE
-          ELSE IF( Solution % TYPE == Variable_on_gauss_points ) THEN
+          ELSE IF( VarType == Variable_on_gauss_points ) THEN
             CYCLE
           END IF
 
@@ -1191,7 +1196,8 @@ CONTAINS
           Perm => Solution % Perm
           dofs = Solution % DOFs
           Values => Solution % Values
-
+          VarType = Solution % Type
+          
           !---------------------------------------------------------------------
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
@@ -1249,7 +1255,7 @@ CONTAINS
           !---------------------------------------------------------------------
           DO iField = 1, NoFields + NoFields2          
 
-            IF( ( DG .OR. DN ) .AND. Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+            IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
               CALL Info('WriteVTUFile','Setting field type to discontinuous',Level=12)
               InvFieldPerm => InvDgPerm
             ELSE
@@ -1439,9 +1445,10 @@ CONTAINS
             END IF
           END IF
 
-          Found = ( Solution % TYPE == Variable_on_nodes_on_elements .OR. &
-              Solution % TYPE == Variable_on_gauss_points .OR. &
-              Solution % TYPE == Variable_on_elements )
+          VarType = Solution % Type
+          Found = ( VarType == Variable_on_nodes_on_elements .OR. &
+              VarType == Variable_on_gauss_points .OR. &
+              VarType == Variable_on_elements )
           IF (.NOT. Found ) CYCLE
 
           Perm => Solution % Perm
@@ -1506,9 +1513,9 @@ CONTAINS
 
               ElemVectVal = 0._dp
               ElemInd = 0
+              
+              IF( VarType == Variable_on_nodes_on_elements ) THEN
 
-              IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
-                
                 IF( SaveLinear ) THEN
                   n = GetElementCorners( CurrentElement )
                 ELSE
@@ -1554,7 +1561,7 @@ CONTAINS
                   END IF
                 END IF 
                 
-              ELSE IF( Solution % TYPE == Variable_on_gauss_points ) THEN
+              ELSE IF( VarType == Variable_on_gauss_points ) THEN
 
                 m = CurrentElement % ElementIndex
                 n = Perm(m+1)-Perm(m)
@@ -1581,7 +1588,7 @@ CONTAINS
                 END IF
                 
 
-              ELSE IF( Solution % TYPE == Variable_on_elements ) THEN
+              ELSE IF( VarType == Variable_on_elements ) THEN
                 
                 m = CurrentElement % ElementIndex
                 
@@ -2034,7 +2041,7 @@ CONTAINS
     LOGICAL, POINTER :: ActivePartition(:)
     TYPE(Variable_t), POINTER :: Solution
     INTEGER, POINTER :: Perm(:)
-    INTEGER :: Active, NoActive, ierr, NoFields, NoModes, IndField, iField
+    INTEGER :: Active, NoActive, ierr, NoFields, NoModes, IndField, iField, VarType
     REAL(KIND=dp), POINTER :: Values(:)
     COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)
     TYPE(Element_t), POINTER :: CurrentElement
@@ -2135,8 +2142,9 @@ CONTAINS
             CYCLE
           END IF
         END IF
-
-        IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+        
+        VarType = Solution % Type
+        IF( VarType == Variable_on_nodes_on_elements ) THEN
           IF( .NOT. ( ( DG .OR. DN ) .AND. SaveElemental ) ) CYCLE
         END IF
 
@@ -2246,7 +2254,8 @@ CONTAINS
             END IF
           END IF
           
-          IF( Solution % TYPE /= Variable_on_nodes_on_elements ) CYCLE
+          VarType = Solution % Type
+          IF( VarType /= Variable_on_nodes_on_elements ) CYCLE
 
           IF( ASSOCIATED(Solution % EigenVectors)) THEN
             NoModes = SIZE( Solution % EigenValues )

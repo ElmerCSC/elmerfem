@@ -26,13 +26,18 @@ ENDIF()
 SET(MKL_FOUND FALSE)
 
 IF (NOT UNIX)
-  MESSAGE(STATUS "Manually specify:" "MKL_BLAS_LIBRARIES " 
-                                     "MKL_LAPACK_LIBRARIES "
-				     "MKL_Fortran_FLAGS")
-  IF(SCALAPACK_NEEDED)
-    MESSAGE(STATUS "Manually specify:" "MKL_SCALAPACK_LIBRARIES")
+  IF (NOT MKL_FIND_QUIETLY)
+    MESSAGE(STATUS "Manually specify:" "MKL_BLAS_LIBRARIES " 
+      "MKL_LAPACK_LIBRARIES "
+      "MKL_Fortran_FLAGS")
+    IF(SCALAPACK_NEEDED)
+      MESSAGE(STATUS "Manually specify:" "MKL_SCALAPACK_LIBRARIES")
+    ENDIF()
+    MESSAGE(FATAL_ERROR "Finding MKL libraries for Elmer not yet implemented for other platforms than Linux.")
+  ELSE()
+    SET(MKL_FOUND FALSE)
+    RETURN()
   ENDIF()
-  MESSAGE(FATAL_ERROR "Finding MKL libraries for Elmer not yet implemented for other platforms than Linux.")
 ENDIF()
 
 SET(MKLINCLUDE
@@ -123,15 +128,17 @@ IF (MKL_INCLUDE_DIR AND MKL_CORE_LIB AND
   UNSET(MKL_FAILMSG)
   # SET(MKL_FOUND TRUE)
   SET(MKL_BLAS_LIBRARIES ${MKL_NUM_LIB} 
-                         ${MKL_CORE_LIB} 
                          ${MKL_THREAD_LIB}
+			 ${MKL_CORE_LIB} 
                          ${MKL_PTHREAD_LIB}
                          ${MKL_M_LIB}  CACHE FILEPATH "MKL BLAS")
+  SET(MKL_BLAS_LIBRARIES_FOUND TRUE)
   SET(MKL_LAPACK_LIBRARIES ${MKL_NUM_LIB} 
-                           ${MKL_CORE_LIB} 
                            ${MKL_THREAD_LIB}
+			   ${MKL_CORE_LIB} 
                            ${MKL_PTHREAD_LIB}
                            ${MKL_M_LIB}  CACHE FILEPATH "MKL LAPACK")
+  SET(MKL_LAPACK_LIBRARIES_FOUND TRUE)
 ELSE()
   SET(MKL_FAILMSG "MKL core libraries not found.")
 ENDIF()
@@ -139,25 +146,44 @@ ENDIF()
 # Find BLACS and Scalapack
 SET(MKL_CPARDISO_FOUND FALSE)
 IF (SCALAPACK_NEEDED AND NOT MKL_FAILMSG)
-  # From MKL link line advisor
+  # From MKL link line advisor (for Intel MPI)
   # GNU, seq:  -Wl,--no-as-needed -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_gf_lp64 -lmkl_core -lmkl_sequential -lmkl_blacs_intelmpi_lp64 -lpthread -lm
   # GNU, mt:  -Wl,--no-as-needed -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_gf_lp64 -lmkl_core -lmkl_gnu_thread -lmkl_blacs_intelmpi_lp64 -ldl -lpthread -lm
   # Intel, seq:  -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_core -lmkl_sequential -lmkl_blacs_intelmpi_lp64 -lpthread -lm
   # Intel, mt:  -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_core -lmkl_intel_thread -lmkl_blacs_intelmpi_lp64 -lpthread -lm
-  SET(MKL_BLACS_LIB_NAME "mkl_blacs_intelmpi${MKL_SUFFIX}")
+
+  # Attempt to guess MPI vendor
+  EXECUTE_PROCESS(COMMAND ${MPIEXEC} --version
+    OUTPUT_VARIABLE MKL_MPI_VENDOR_OUTPUT
+    ERROR_VARIABLE MKL_MPI_VENDOR_ERROR)
+
+  IF ("${MKL_MPI_VENDOR_OUTPUT}" MATCHES "(Intel.* MPI)")
+    SET(MKL_MPI_VENDOR_BASENAME "intelmpi")
+  ELSEIF ("${MKL_MPI_VENDOR_OUTPUT}" MATCHES "(Open MPI)")
+    SET(MKL_MPI_VENDOR_BASENAME "openmpi")
+  ELSE()
+    IF (NOT MKL_FIND_QUIETLY)
+      MESSAGE(WARNING "Could not determine MPI library type, assuming MPICH compatible MPI library")
+    ENDIF()
+    SET(MKL_MPI_VENDOR_BASENAME "intelmpi")
+  ENDIF()
+
+  SET(MKL_BLACS_LIB_NAME "mkl_blacs_${MKL_MPI_VENDOR_BASENAME}${MKL_SUFFIX}")
   SET(MKL_SCALAPACK_LIB_NAME "mkl_scalapack${MKL_SUFFIX}")
+  UNSET(MKL_MPI_VENDOR_BASENAME)
 
   FIND_LIBRARY(MKL_BLACS_LIB ${MKL_BLACS_LIB_NAME} HINTS ${MKLLIB})
   FIND_LIBRARY(MKL_SCALAPACK_LIB ${MKL_SCALAPACK_LIB_NAME} HINTS ${MKLLIB})
 
   IF (MKL_BLACS_LIB AND MKL_SCALAPACK_LIB)
     SET(MKL_SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIB}
-                                ${MKL_CORE_LIB} 
                                 ${MKL_NUM_LIB} 
                                 ${MKL_THREAD_LIB}
-                                ${MKL_PTHREAD_LIB}
+                                ${MKL_CORE_LIB} 
 				${MKL_BLACS_LIB}
+				${MKL_PTHREAD_LIB}
                                 ${MKL_M_LIB} CACHE FILEPATH "MKL SCALAPACK libraries")
+    SET(MKL_SCALAPACK_LIBRARIES_FOUND TRUE)
     # Attempt to find Cluster PARDISO for OpenMP compilations
     IF(THREADS_NEEDED)
       EXECUTE_PROCESS(COMMAND ${CMAKE_NM} ${MKL_NUM_LIB}
@@ -169,15 +195,33 @@ IF (SCALAPACK_NEEDED AND NOT MKL_FAILMSG)
 	  "${MKL_CPARDISO_ERROR}" STREQUAL "")
 	SET(MKL_CPARDISO_FOUND TRUE)
       ENDIF()
+      UNSET(MKL_CPARDISO_STR)
+      UNSET(MKL_CPARDISO_OUTPUT)
+      UNSET(MKL_CPARDISO_ERROR)
     ENDIF()
   ELSE()
     SET(MKL_FAILMSG "MKL BLACS and SCALAPACK libraries not found.")
   ENDIF()
+  # Unset SCALAPACK library names
+  UNSET(MKL_BLACS_LIB_NAME)
+  UNSET(MKL_SCALAPACK_LIB_NAME)
 ENDIF()
 
 IF (NOT MKL_FAILMSG)
   SET(MKL_FOUND TRUE)
 ENDIF()
+
+# Unset hints and base MKL library names
+UNSET(MKLINCLUDE)
+UNSET(MKLLIB)
+UNSET(MKL_BASENAME)
+UNSET(MKL_THR_BASENAME)
+UNSET(MKL_CORE_LIB_NAME)
+UNSET(MKL_NUM_LIB_NAME)
+UNSET(MKL_THREAD_LIB_NAME)
+UNSET(MKL_PTHREAD_LIB_NAME)
+UNSET(MKL_M_LIB_NAME)
+UNSET(MKL_FAILMSG)
 
 IF (MKL_FOUND)
   IF (NOT MKL_FIND_QUIETLY)
@@ -200,9 +244,6 @@ ELSE()
 ENDIF()
 
 MARK_AS_ADVANCED(
-  MKLINCLUDE
-  MKLLIB
-  MKL_FAILMSG
   MKL_INCLUDE_DIR
   MKL_Fortran_FLAGS
   MKL_NUM_LIB
@@ -215,8 +256,8 @@ MARK_AS_ADVANCED(
   MKL_BLAS_LIBRARIES
   MKL_LAPACK_LIBRARIES
   MKL_SCALAPACK_LIBRARIES
-  MKL_CPARDISO_OUTPUT
-  MKL_CPARDISO_STR
-  MKL_CPARDISO_ERROR
+  MKL_BLAS_LIBRARIES_FOUND
+  MKL_LAPACK_LIBRARIES_FOUND
+  MKL_SCALAPACK_LIBRARIES_FOUND
   MKL_CPARDISO_FOUND
   )

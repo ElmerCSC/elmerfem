@@ -101,7 +101,7 @@ CONTAINS
         ALLOCATE(Element % PDefs, STAT=istat)
         IF ( istat /= 0) CALL Fatal('AllocatePDefinitions','Unable to allocate memory')
      ELSE
-        CALL Warn('AllocatePDefinitions','P element definitions already allocated')
+       CALL Info('AllocatePDefinitions','P element definitions already allocated',Level=10)
      END IF
 
      ! Initialize fields
@@ -2852,13 +2852,13 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
     INTEGER :: i,j,el_id
     TYPE(Element_t), POINTER :: Element, Edge, Face
-    LOGICAL :: AssignEdges=.FALSE.
+    LOGICAL :: AssignEdges
 !------------------------------------------------------------------------------
 
     CALL FindMeshEdges(Mesh)
 
-    IF (PRESENT(NeedEdges)) &
-         AssignEdges = NeedEdges
+    AssignEdges = .FALSE.
+    IF (PRESENT(NeedEdges)) AssignEdges = NeedEdges
     
     ! Set edge and face polynomial degree and degrees of freedom for
     ! all elements
@@ -15487,10 +15487,10 @@ CONTAINS
 
     INTEGER i,j,n,edgeNumber, numEdges, bMap(4)
     TYPE(Element_t), POINTER :: Edge
-    LOGICAL :: EvalPE=.TRUE.
+    LOGICAL :: EvalPE
 
-    IF(PRESENT(NoPE)) &
-         EvalPE = .NOT.NoPE
+    EvalPE = .TRUE.
+    IF(PRESENT(NoPE)) EvalPE = .NOT.NoPE
     
     ! Get number of points, edges or faces
     numEdges = 0

@@ -1205,6 +1205,9 @@ RETURN
       CALL Info('ChangeParticlePartition','No particles needs to be sent',Level=10)
       DEALLOCATE(ExcInfo, Perm, Neigh)
       RETURN
+    ELSE
+      CALL Info('ChangeParticlePartition','Global number of particles to sent: '&
+          //TRIM(I2S(nSent)),Level=10)      
     END IF
 
     !
@@ -1232,6 +1235,9 @@ RETURN
       CALL Info('ChangeParticlePartition','No particles needs to be received',Level=10)
       DEALLOCATE(Recv_Parts, Requests, ExcInfo, Perm, Neigh)
       RETURN
+    ELSE
+      CALL Info('ChangeParticlePartition','Global number of particles to recieve: '&
+          //TRIM(I2S(nReceived)),Level=10)      
     END IF
    
     n = SUM( ExcInfo(1:NoPartitions) % n )
@@ -3720,9 +3726,9 @@ RETURN
 
 
         Problems(3) = Problems(3) + 1
-        CALL Warn('LocateParticleInMeshMarch',&
-            'This is going nowhere, losing particle: '//TRIM(I2S(No))//' in '//TRIM(I2S(ParEnv % MyPe)))          
-
+        WRITE(Message,'(A,3ES10.3)') 'Losing particle '//TRIM(I2S(No))//' in: ',Rfin(1:3)
+        CALL Info('LocateParticlesInMesh',Message,Level=8)
+        
         ParticleStatus = PARTICLE_LOST
         EXIT
       END IF

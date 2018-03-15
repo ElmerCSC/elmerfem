@@ -172,7 +172,7 @@ END INTERFACE
        ! Set number of OpenMP threads
        nthreads = 1
        !$ nthreads = omp_get_max_threads()
-       IF (nthreads > 1) THEN
+       IF (nthreads > 1 ) THEN
          ! Check if OMP_NUM_THREADS environment variable is set
 #if USE_ISO_C_BINDINGS
          CALL envir( 'OMP_NUM_THREADS', threads, tlen )
@@ -180,7 +180,7 @@ END INTERFACE
          CALL envir( 'OMP_NUM_THREADS'//CHAR(0), threads, tlen )
 #endif
          IF (tlen==0) THEN
-           CALL Info('MAIN','OMP_NUM_THREADS not set. Using only 1 thread per task.',Level=10)
+           CALL Info('MAIN','OMP_NUM_THREADS not set. Using only 1 thread per task.',Level=6)
            nthreads = 1
            ! Set number of threads to 1
            !$ CALL omp_set_num_threads(nthreads)
@@ -189,9 +189,9 @@ END INTERFACE
 #endif
          END IF
        END IF
+
        ParEnv % NumberOfThreads = nthreads
        
-
        IF( .NOT. Silent ) THEN
          CALL Info( 'MAIN', ' ')
          CALL Info( 'MAIN', '=============================================================')
@@ -202,15 +202,21 @@ END INTERFACE
          CALL Info( 'MAIN', 'Version: ' // GetVersion() // ' (Rev: ' // GetRevision() // &
                             ', Compiled: ' // GetCompilationDate() // ')' )
 
-         IF ( ParEnv % PEs > 1 ) &
-             CALL Info( 'MAIN', ' Running in parallel using ' // &
-             TRIM(i2s(ParEnv % PEs)) // ' tasks.')
-
+         IF ( ParEnv % PEs > 1 ) THEN
+           CALL Info( 'MAIN', ' Running in parallel using ' // &
+               TRIM(i2s(ParEnv % PEs)) // ' tasks.')
+         ELSE
+           CALL Info('MAIN', ' Running one task without MPI parallelization.',Level=10)
+         END IF
+         
          ! Print out number of threads in use
-         IF ( nthreads > 1 ) &
-             CALL Info('MAIN', ' Running in parallel with ' // &
-                       TRIM(i2s(nthreads)) // ' threads per task.')
-
+         IF ( nthreads > 1 ) THEN
+           CALL Info('MAIN', ' Running in parallel with ' // &
+               TRIM(i2s(nthreads)) // ' threads per task.')
+         ELSE
+           CALL Info('MAIN', ' Running with just one thread per task.',Level=10)
+         END IF
+         
 #ifdef HAVE_FETI4I
          CALL Info( 'MAIN', ' FETI4I library linked in.')
 #endif

@@ -1181,7 +1181,7 @@ CONTAINS
      IF (ColouredAssembly) THEN
        IF (NeedMasking) THEN
          ! Vector masking needed, no ATOMIC needed
-         !$OMP SIMD PRIVATE(j,k)
+         !_ELMER_OMP_SIMD PRIVATE(j,k)
          DO i=1,n
            IF (NodeIndexes(i)>0) THEN
              DO j=1,NDOFs
@@ -1193,7 +1193,7 @@ CONTAINS
        ELSE
          ! No vector masking needed, no ATOMIC needed
          IF (NDOFS>1) THEN
-           !$OMP SIMD PRIVATE(j,k)
+           !_ELMER_OMP_SIMD PRIVATE(j,k)
            DO i=1,n
              DO j=1,NDOFs
                k = NDOFs*(NodeIndexes(i)-1) + j
@@ -1201,7 +1201,7 @@ CONTAINS
              END DO
            END DO
          ELSE
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO i=1,n
              Gvec(NodeIndexes(i)) = Gvec(NodeIndexes(i)) + Lvec(i)
            END DO
@@ -4720,6 +4720,7 @@ CONTAINS
  
             DO l=1,NDOFs
               m = NDOFs*(k-1)+l
+              IF(A % ConstrainedDOF(m)) CYCLE
               CALL SetSinglePoint(k,l,Solver % Variable % Values(m),.FALSE.)
             END DO
           END DO
@@ -7982,7 +7983,7 @@ END FUNCTION SearchNodeL
 
     IF( ParEnv % PEs > 1 ) THEN
       ConsistentNorm = ListGetLogical(Solver % Values,'Nonlinear System Consistent Norm',Stat)
-      CALL Info('ComputeNorm','Using consistent norm in parallel',Level=10)
+      IF (ConsistentNorm) CALL Info('ComputeNorm','Using consistent norm in parallel',Level=10)
     ELSE
       ConsistentNorm = .FALSE.
     END IF
@@ -14302,11 +14303,13 @@ CONTAINS
       
       mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material' )
       rho = ListGetConstReal( CurrentModel % Materials(mat_id) % Values,'Density',Stat)
+      IF(.NOT. Stat) rho = ListGetConstReal( CurrentModel % Materials(mat_id) % Values, &
+          'Equilibrium Density',Stat)
+
       IF( .NOT. Stat) THEN
-        CALL Fatal('FsiCouplingAssembly','Fluid density not found!')
+        CALL Fatal('FsiCouplingAssembly','Fluid density not found in material :'//TRIM(I2S(mat_id)))
       END IF
-
-
+      
       ! The sign depends on the convection of the normal direction
       coeff = rho * omega**2
 

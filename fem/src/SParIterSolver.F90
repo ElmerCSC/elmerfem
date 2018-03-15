@@ -1058,6 +1058,9 @@ END SUBROUTINE ZeroSplittedMatrix
 
 !----------------------------------------------------------------------
     SplittedMatrix => SourceMatrix % ParMatrix % SplittedMatrix
+
+    IF (.NOT. ASSOCIATED(SplittedMatrix % InsideMatrix % RHS)) &
+         ALLOCATE(SplittedMatrix % InsideMatrix % RHS(SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpRHSVec => SplittedMatrix % InsideMatrix % RHS
 
     CALL ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
@@ -1078,8 +1081,15 @@ END SUBROUTINE ZeroSplittedMatrix
     REAL(KIND=dp), POINTER :: TmpXVec(:),TmpRVec(:)
 !----------------------------------------------------------------------
     ParallelInfo => SourceMatrix % ParMatrix % ParallelInfo
+    IF (.NOT. ASSOCIATED(SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec)) &
+         ALLOCATE(SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec( &
+	 SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpXVec => SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec
+    IF (.NOT. ASSOCIATED(SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec)) &
+         ALLOCATE(SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec( &
+	 SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpRVec => SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec
+
     j = 0
     DO i = 1, SourceMatrix % NumberOfRows
        IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
