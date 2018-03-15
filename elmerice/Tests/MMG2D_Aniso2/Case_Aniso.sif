@@ -25,7 +25,7 @@ Simulation
 
   max output level = 3
 
-  Post File = "Case_Aniso.vtu"
+!  Post File = "Case_Aniso.vtu"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -53,11 +53,7 @@ End
 ! update f1 and f2 at the mesh nodes
 Solver 1
    Equation = "Initialise fn"
-   Variable = -nooutput dumy
-
    Procedure = "ElmerIceSolvers" "UpdateExport"
-
-   Optimize Bandwidth = False
 
    Exported Variable 1 = f1
    Exported Variable 2 = f2
@@ -70,10 +66,7 @@ Solver 2
   Variable = -dofs 2 "Gradient1"
   Procedure = "ElmerIce_MeshAdapt2D" "Compute2DNodalGradient"
 
-  Optimize Bandwidth = False
-
   Variable Name = string "f1"
-  FE consistent average = Logical True
 End
 ! 2- compute:
 !    - the hessian matrix by solving a diffusion equation:
@@ -83,21 +76,14 @@ End
 !   - the metric tensor
 Solver 3
    Equation = "Metric1"
-   Variable = -nooutput dumy
-
    Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricAniso"
 
    Metric Variable Name = String "M1"
-
    Hessian Variable Name = String "ddx1"
    Gradient Name = String "Gradient1"
-   Diffusivity = Real 0.5
 
    Linear System Solver = Direct
    Linear System Direct Method = umfpack
-
-  Exported Variable 1 = -dofs 3 "M1"
-  Exported Variable 2 = -dofs 3 "ddx1"
 End
 
 ! Compute the metric associated with f2
@@ -106,45 +92,30 @@ Solver 4
   Variable = -dofs 2 "Gradient2"
   Procedure = "ElmerIce_MeshAdapt2D" "Compute2DNodalGradient"
 
-  Optimize Bandwidth = False
-
   Variable Name = string "f2"
   FE consistent average = Logical True
 End
 Solver 5
    Equation = "Metric2"
-   Variable = -nooutput dumy
-
    Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricAniso"
 
    Metric Variable Name = String "M2"
-
    Hessian Variable Name = String "ddx2"
    Gradient Name = String "Gradient2"
-   Diffusivity = Real 0.5
 
    Linear System Solver = Direct
    Linear System Direct Method = umfpack
 
-  Exported Variable 1 = -dofs 3 "M2"
-  Exported Variable 2 = -dofs 3 "ddx2"
 End
 
 !! do the intersection of M1 and M2
 Solver 6
    Equation = "Metric"
-   Variable = -nooutput dumy
-
    Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricIntersect"
-
-  Optimize Bandwidth = False
-
 
    Metric Variable Name = String "M1M2"
    Metric 1 Variable Name = String "M2"
    Metric 2 Variable Name = String "M1"
-
-   Exported Variable 1 = -dofs 3 "M1M2"
 End
 
 !! Anisotropic mesh adaptation using the MMG library
@@ -153,8 +124,7 @@ Solver 7
   Exec Solver = after timestep
 
   Equation = "MMG"
-  Variable = -nooutput dumy
-    Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
+  Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
 
   Output file name = "square_aniso"
   Metric Variable Name = String "M1M2" !optimise using the 2 metrics (example sec 2.3)
@@ -196,8 +166,8 @@ Boundary Condition 4
 End
 
 
-Solver 8 :: Reference Norm = Real 5409.0
+Solver 8 :: Reference Norm = Real 4409.0
 Solver 8 :: Reference Norm Tolerance = Real 1E-01
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=5409,EPS=1E-01\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=4409,EPS=1E-01\n" );

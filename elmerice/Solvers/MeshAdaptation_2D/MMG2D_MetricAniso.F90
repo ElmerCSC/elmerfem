@@ -32,6 +32,53 @@
 !> Module to compute the 2D Metric (or only 2D Hessian) for
 !>  anisotropic remeshing with MMG2D
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+   SUBROUTINE MMG2D_MetricAniso_Init( Model,Solver,dt,TransientSimulation )
+   USE DefUtils
+   IMPLICIT NONE
+   !------------------------------------------------------------------------------
+   TYPE(Solver_t), TARGET :: Solver
+   TYPE(Model_t) :: Model
+   REAL(KIND=dp) :: dt
+   LOGICAL :: TransientSimulation
+   !--------------------------------------------------------------------------
+   CHARACTER(LEN=MAX_NAME_LEN) :: Name,TensorName,ExportName
+   TYPE(ValueList_t), POINTER :: SolverParams
+   TYPE(Variable_t), POINTER :: HessianVariable,MetricVariable
+   LOGICAL :: GotIt
+   REAL(KIND=dp) :: Diffusivity=0.5_dp
+
+   SolverParams => Solver % Values 
+
+   Name = ListGetString( SolverParams, 'Equation',GotIt)
+   IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
+        CALL ListAddString( SolverParams,'Variable',&
+           '-nooutput '//TRIM(Name)//'_var')
+   ENDIF
+
+   IF(.NOT. ListCheckPresent(SolverParams,'Optimize Bandwidth')) &
+        CALL ListAddLogical(SolverParams,'Optimize Bandwidth',.FALSE.)
+
+   IF(.NOT. ListCheckPresent(SolverParams,'Diffusivity')) &
+        CALL ListAddConstReal(SolverParams,'Diffusivity',Diffusivity)
+   
+   TensorName = ListGetString( SolverParams, 'Hessian Variable Name',  UnFoundFatal=.TRUE. )
+   HessianVariable => VariableGet( Solver % Mesh % Variables, TensorName, ThisOnly=.TRUE. )
+   IF (.NOT.ASSOCIATED(HessianVariable)) THEN
+      ExportName=NextFreeKeyword('Exported Variable',SolverParams)
+      CALL ListAddString( SolverParams,TRIM(ExportName),'-nooutput '//TRIM(TensorName))
+      CALL ListAddInteger( SolverParams,TRIM(ExportName)//' DOFs',3)
+   ENDIF
+
+   TensorName = ListGetString( SolverParams, 'Metric Variable Name',  UnFoundFatal=.TRUE. )
+   MetricVariable => VariableGet( Solver % Mesh % Variables, TensorName, ThisOnly=.TRUE. )
+   IF (.NOT.ASSOCIATED(MetricVariable)) THEN
+      ExportName=NextFreeKeyword('Exported Variable',SolverParams)
+      CALL ListAddString( SolverParams,TRIM(ExportName),'-nooutput '//TRIM(TensorName))
+      CALL ListAddInteger( SolverParams,TRIM(ExportName)//' DOFs',3)
+   ENDIF
+   END SUBROUTINE MMG2D_MetricAniso_Init
+!------------------------------------------------------------------------------
    RECURSIVE SUBROUTINE MMG2D_MetricAniso( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
     USE DefUtils
@@ -231,7 +278,9 @@
        Param(3)= ListGetRealAtNode(BodyForce,TRIM(TensorName) // ' err', node)
        Hessian(1:3)=HValues(3*(HPerm(node)-1) + 1:3)
        CALL ComputeMetric(Hessian,Param,Metric)
-       TensorValues(3*(TensorPerm(node)-1) + 1:3)=Metric
+       DO COMP=1,3
+         TensorValues(3*(TensorPerm(node)-1) + COMP )=Metric(COMP)
+       END DO
     END DO
       
 CONTAINS

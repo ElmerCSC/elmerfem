@@ -61,16 +61,18 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
        DistancePerm(:), FrictionPerm(:)
   INTEGER :: nodenumber, ii, DIM, GL_retreat, n, tt, Nn, jj, MSum, ZSum
 
-  LOGICAL :: FirstTime = .TRUE., GotIt, Yeschange, GLmoves, Friction,UnFoundFatal=.TRUE.
+  LOGICAL :: FirstTime = .TRUE., GotIt, Yeschange, GLmoves, Friction, UnFoundFatal=.TRUE.
 
   REAL (KIND=dp) ::  y, relChange, relChangeOld, Sliding_Budd, Sliding_Weertman, Friction_Coulomb
 
   REAL(KIND=dp) :: comp, cond, TestContact
   CHARACTER(LEN=MAX_NAME_LEN) :: USF_Name='SlidCoef_Contact', Sl_Law, GLtype, FrictionVarName
+  CHARACTER(LEN=MAX_NAME_LEN) :: FlowLoadsName, FlowSolutionName
 
   SAVE FirstTime, yeschange, told, GLmoves, thresh, GLtype, TestContact
   SAVE DIM, USF_Name, Normal, Fwater, Fbase, relChangeOld, Sl_Law
-  SAVE FrictionVar, FrictionValues, FrictionPerm, BC
+  SAVE FrictionVar, FrictionValues, FrictionPerm, BC, FlowLoadsName
+  SAVE FlowSolutionName
 
 !----------------------------------------------------------------------------
 
@@ -105,6 +107,13 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
      BoundaryElement => Model % CurrentElement
      BC => GetBC(BoundaryElement)
      
+     FlowSolutionName = GetString( BC, 'Flow Solution Name', GotIt )
+     IF (.NOT.Gotit) THEN
+        FlowSolutionName = 'Flow Solution'
+        CALL Info(USF_Name, 'Using default name >Flow Solution<', Level=4)
+     END IF
+     WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
+
      Sl_Law = GetString( BC, 'Sliding Law', GotIt )
      IF (.NOT.Gotit) THEN
         CALL FATAL(USF_Name,'No "Sliding law" Name given')
@@ -206,7 +215,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
      CALL Info(USF_name,'FLOW SOLVER HAS SLIGHTLY CONVERGED: look for new basal conditions', Level=3)
 
-     VarSurfResidual => VariableGet( Model % Mesh % Variables, 'Flow Solution Loads',UnFoundFatal=UnFoundFatal)
+     VarSurfResidual => VariableGet( Model % Mesh % Variables, FlowLoadsName, UnFoundFatal=UnFoundFatal)
      ResidPerm => VarSurfResidual  % Perm
      ResidValues => VarSurfResidual % Values
 

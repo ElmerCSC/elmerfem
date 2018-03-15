@@ -265,7 +265,7 @@ MODULE NavierStokesGeneral
 !------------------------------------------------------------------------------
       Viscosity = SUM( NodalViscosity(1:n)*Basis )
       Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
-            Element, Nodes, n, n, u, v, w )
+            Element, Nodes, n, n, u, v, w, LocalIP=t )
 !   
 !------------------------------------------------------------------------------
 !      Stabilization parameters Tau & Delta

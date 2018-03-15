@@ -74,7 +74,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal=.TRUE.
   LOGICAL :: Newton
 
-  INTEGER :: i, n, m, t, istat, DIM, p, STDOFs, iFriction
+  INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs, iFriction
   INTEGER :: NonlinearIter, NewtonIter, iter, other_body_id
 
   INTEGER, POINTER :: Permutation(:), ZsPerm(:), ZbPerm(:), &
@@ -89,22 +89,27 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
        NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
        NodalZs(:), NodalZb(:), NodalU(:), NodalV(:),  &
-       NodalBeta(:), NodalLinVelo(:), NodalC(:), NodalN(:)
+       NodalBeta(:), NodalLinVelo(:), NodalC(:), NodalN(:),&
+       NodalGM(:),NodalBed(:)
 
-
+  REAL(KIND=dp) :: UnLimit,un,un_max
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, Friction, ZsName, ZbName
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
 #else
   REAL(KIND=dp) :: at, at0, CPUTime, RealTime
 #endif     
+  LOGICAL :: SEP ! Sub-element parametrization for Grounding line
+  INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element parametrization
+  TYPE(Variable_t), POINTER :: GMSol,BedrockSol
 
   SAVE rhow,sealevel
   SAVE STIFF, LOAD, FORCE, AllocationsDone, DIM, SolverName, ElementNodes
   SAVE NodalGravity, NodalViscosity, NodalDensity, &
        NodalZs, NodalZb,   &
        NodalU, NodalV, NodeIndexes, &
-       NodalBeta, NodalLinVelo, NodalC, NodalN
+       NodalBeta, NodalLinVelo, NodalC, NodalN,&
+       NodalGM,NodalBed
 
   !------------------------------------------------------------------------------
   PointerToVariable => Solver % Variable
@@ -127,7 +132,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   IF (GotIt) THEN
     CALL INFO(SolverName, 'Bottom Surface Name found', level=4)            
   ELSE
-    CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=1) 
+    CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=4) 
     WRITE(ZbName,'(A)') 'Zb'
   END IF
   ZbSol => VariableGet( Solver % Mesh % Variables, ZbName,UnFoundFatal=UnFoundFatal)
@@ -138,7 +143,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   IF (GotIt) THEN
     CALL INFO(SolverName, 'Top Surface Name found', level=4)            
   ELSE
-    CALL INFO(SolverName, 'Top Surface Name not found - using default Zs', level=1) 
+    CALL INFO(SolverName, 'Top Surface Name not found - using default Zs', level=4) 
     WRITE(ZsName,'(A)') 'Zs'
   END IF
   ZsSol => VariableGet( Solver % Mesh % Variables, ZsName,UnFoundFatal=UnFoundFatal)
@@ -149,6 +154,17 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
     Nval => NSol % Values
     NPerm => NSol % Perm
   END IF
+
+!  Sub - element GL parameterisation
+  SEP=GetLogical( Solver % Values, 'Sub-Element GL parameterization',GotIt)
+  IF (.NOT.GotIt) SEP=.False.
+  IF (SEP) THEN
+     GLnIP=ListGetInteger( Solver % Values, &
+           'GL integration points number',UnFoundFatal=.TRUE. )
+     GMSol => VariableGet( Solver % Mesh % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock' )
+  END IF
+
   !--------------------------------------------------------------
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
@@ -179,6 +195,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
          NodalViscosity, NodalDensity,  &
          NodalZb, NodalZs,  NodalU, NodalV, &
          NodalBeta, NodalLinVelo, NodalC, NodalN, &
+         NodalGM,NodalBed,&
          ElementNodes % x, &
          ElementNodes % y, ElementNodes % z )
 
@@ -186,6 +203,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
          NodalGravity(N), NodalDensity(N), NodalViscosity(N), &
          NodalZb(N), NodalZs(N), NodalU(N), NodalV(N), &
          NodalBeta(N), NodalLinVelo(N), NodalC(N), NodalN(N), &
+         NodalGM(N),NodalBed(N), &
          ElementNodes % x(N), ElementNodes % y(N), ElementNodes % z(N), &
          STAT=istat )
     IF ( istat /= 0 ) THEN
@@ -364,10 +382,15 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       NodalV = 0.0_dp
       IF (STDOFs.EQ.2) NodalV(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+2)
 
+      IF (SEP) THEN
+        NodalGM(1:n)=GMSol%Values(GMSol%Perm(NodeIndexes(1:n)))
+        NodalBed(1:n)=BedrockSol%Values(BedrockSol%Perm(NodeIndexes(1:n)))
+      ENDIF
 
       CALL LocalMatrixUVSSA (  STIFF, FORCE, Element, n, ElementNodes, NodalGravity, &
            NodalDensity, NodalViscosity, NodalZb, NodalZs, NodalU, NodalV, &
            iFriction, NodalBeta, fm, NodalLinVelo, PostPeak, NodalC, NodalN, &
+           NodalGM,NodalBed,SEP,rhow, &
            cn, MinSRInv, MinH , STDOFs, Newton)
 
       CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -496,6 +519,25 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
 
   END DO ! Loop Non-Linear Iterations
 
+  UnLimit = ListGetConstReal(SolverParams,'velocity norm limit',GotIt)
+  IF (GotIt) THEN
+    Do i=1,Solver%Mesh%NumberOfNodes
+       un=0._dp
+       Do j=1,STDOFs
+         un=un+VariableValues(STDOFs*(i-1)+j)*VariableValues(STDOFs*(i-1)+j)
+       End do
+       un=sqrt(un)
+       IF (un.GT.0._dp) THEN
+         un_max=UnLimit/un
+         IF (un_max.LT.1.0_dp) THEN
+           Do j=1,STDOFs
+             VariableValues(STDOFs*(i-1)+j)=VariableValues(STDOFs*(i-1)+j)*un_max
+           End do
+         END IF
+       END IF
+    End do
+  END IF
+
 !!! reset Model Dimension to dim
   IF (DIM.eq.(STDOFs+1)) CurrentModel % Dimension = DIM
 
@@ -505,12 +547,17 @@ CONTAINS
   SUBROUTINE LocalMatrixUVSSA(  STIFF, FORCE, Element, n, Nodes, gravity, &
        Density, Viscosity, LocalZb, LocalZs, LocalU, LocalV, &
        Friction, LocalBeta, fm, LocalLinVelo, fq, LocalC, LocalN, &
+       NodalGM,NodalBed,SEP,rhow, &
        cm, MinSRInv, MinH, STDOFs , Newton )
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), gravity(:), Density(:), &
          Viscosity(:), LocalZb(:), LocalZs(:), &
          LocalU(:), LocalV(:) , LocalBeta(:), &
          LocalLinVelo(:), LocalC(:), LocalN(:)
+    REAL(KIND=dp) :: NodalGM(:),NodalBed(:)
+    LOGICAL :: SEP,PartlyGroundedElement
+    REAL(KIND=dp) :: rhow
+    REAL(KIND=dp) :: Bedrock,Hf
     INTEGER :: n, cp , STDOFs, Friction
     REAL(KIND=dp) :: cm, fm, fq
     TYPE(Element_t), POINTER :: Element
@@ -537,7 +584,17 @@ CONTAINS
     NewtonLin = (Newton.AND.(cm.NE.1.0_dp))
     fNewtonLin = (Newton.AND.(fm.NE.1.0_dp))
 
-    IP = GaussPoints( Element )
+    IF (SEP) THEN
+     PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n).LT.0._dp))
+     IF (PartlyGroundedElement) THEN
+        IP = GaussPoints( Element , np=GLnIP )
+     ELSE
+        IP = GaussPoints( Element )
+     ENDIF
+   ELSE
+     IP = GaussPoints( Element )
+   ENDIF
+
     DO t=1,IP % n
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
            IP % W(t),  detJ, Basis, dBasisdx, ddBasisddx, .FALSE. )
@@ -554,6 +611,15 @@ CONTAINS
       h=max(h,MinH)
 
       beta = SUM( LocalBeta(1:n) * Basis(1:n) )
+      IF (SEP) THEN
+        IF (ALL(NodalGM(1:n).LT.0._dp)) THEN
+           beta=0._dp
+        ELSE IF (PartlyGroundedElement) THEN
+           bedrock = SUM( NodalBed(1:n) * Basis(1:n) )
+           Hf= rhow * (sealevel-bedrock) / rho
+           if (h.lt.Hf) beta=0._dp
+        END IF
+      END IF
       IF (iFriction > 1) THEN
         LinVelo = SUM( LocalLinVelo(1:n) * Basis(1:n) )
         IF ((iFriction == 2).AND.(fm==1.0_dp)) iFriction=1

@@ -60,8 +60,8 @@ Simulation
   Steady State Max Iterations = 5!100
   Steady State Min Iterations = 1
 
-  Output File = "Test_$name$.result"
-  Post File = "Test_$name$.vtu"
+!  Output File = "Test_$name$.result"
+!  Post File = "Test_$name$.vtu"
 
   max output level = 4
 End
@@ -148,7 +148,7 @@ Solver 2
    Linear System Iterative Method = GMRES
    Linear System GMRES Restart = 100
    Linear System Preconditioning= ILU0
-   Linear System Convergence Tolerance= 1.0e-08
+   Linear System Convergence Tolerance= 1.0e-10
    Linear System Max Iterations = 1000
 
 ! system self adjoint if Newton is used for the last iterations
@@ -392,7 +392,7 @@ End
 
 
 Solver 2 :: Reference Norm = Real 326.33893
-Solver 2 :: Reference Norm Tolerance = Real 1E-06
+Solver 2 :: Reference Norm Tolerance = Real 1E-04
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=326.33893,EPS=1E-06\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=326.33893,EPS=1E-04\n" );

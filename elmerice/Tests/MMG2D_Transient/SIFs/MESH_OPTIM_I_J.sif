@@ -82,10 +82,7 @@ Solver 2
   Variable DOFS = 2
   Procedure = "ElmerIce_MeshAdapt2D" "Compute2DNodalGradient"
 
- Optimize Bandwidth = False
-
   Variable Name = string "h"
-  FE consistent average = Logical True
 End
 
 ! 2- compute:
@@ -96,42 +93,27 @@ End
 !   - the metric tensor
 Solver 3
    Equation = "Metric1"
-   Variable = -nooutput dumy
-
    Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricAniso"
 
    Metric Variable Name = String "M1"
 
    Hessian Variable Name = String "ddx1"
    Gradient Name = String "Gradient1"
-   Diffusivity = Real 0.5
 
    Linear System Solver = Direct
    Linear System Direct Method = umfpack
    Linear System Refactorize = false
-
-  Exported Variable 1 = -nooutput "M1"
-  Exported Variable 1 dofs = 3
-  Exported Variable 2 = -nooutput "ddx1"
-  Exported Variable 2 dofs = 3
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! Metric Intersection in Time
 Solver 4
    Equation = "MetricMt"
-   Variable = -nooutput dumy
-
    Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricIntersect"
-
-   Optimize Bandwidth = False
 
    Metric Variable Name = String "Mt"
    Metric 2 Variable Name = String "M1"
    Metric 1 Variable Name = String "Mt"
-
-   Exported Variable 1 = -nooutput "Mt"  ! Mandatory -noutput sinon Mt relu dans le point .result
-   Exported Variable 1 dofs = 3
 End
 
 !! Anisotropic mesh adaptation using the MMG library
@@ -140,8 +122,7 @@ Solver 5
   Exec Solver = after all
 
   Equation = "MMG"
-  Variable = -nooutput dumy
-    Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
+  Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
 
   Output file name = "MESH_<SAVE>"
   Metric Variable Name = String "Mt"  

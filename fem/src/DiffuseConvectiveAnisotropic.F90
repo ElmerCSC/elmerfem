@@ -402,7 +402,7 @@ MODULE DiffuseConvective
           IF ( Vms .OR. VectH ) THEN
             mu = GetCReal( Material, 'Viscosity', Found )
             mu = EffectiveViscosity( mu, rho, Ux, Uy, Uz, &
-                   Element, Nodes, n, n, u,v,w )
+                   Element, Nodes, n, n, u,v,w,LocalIP=t )
 
             Grad = 0.0D0
             DO i=1,3

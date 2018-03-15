@@ -11461,10 +11461,10 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
     OPEN( 1,FILE=TRIM(Path) // '/mesh.header',STATUS='UNKNOWN' )
-    WRITE( 1,'(3i8)' ) NewMesh % NumberOfNodes, &
+    WRITE( 1,'(i0,x,i0,x,i0)' ) NewMesh % NumberOfNodes, &
          NewMesh % NumberOfBulkElements, NewMesh % NumberOfBoundaryElements
     
-    WRITE( 1,* ) 2
+    WRITE( 1,'(i0)' ) 2
     MaxNodes = 0
     ElmCode  = 0
     DO i=1,NewMesh % NumberOfBoundaryElements
@@ -11474,7 +11474,7 @@ END SUBROUTINE GetMaxDefs
           MaxNodes = NewMesh % Elements(k) % TYPE % NumberOfNodes
        END IF
     END DO
-    WRITE( 1,'(2i8)' ) ElmCode,NewMesh % NumberOfBoundaryElements
+    WRITE( 1,'(i0,x,i0)' ) ElmCode,NewMesh % NumberOfBoundaryElements
 
     MaxNodes = 0
     ElmCode  = 0
@@ -11484,12 +11484,12 @@ END SUBROUTINE GetMaxDefs
           MaxNodes = NewMesh % Elements(i) % TYPE % NumberOfNodes
        END IF
     END DO
-    WRITE( 1,'(2i8)' ) ElmCode,NewMesh % NumberOfBulkElements
+    WRITE( 1,'(i0,x,i0)' ) ElmCode,NewMesh % NumberOfBulkElements
     CLOSE(1)
 
     OPEN( 1,FILE=TRIM(Path) // '/mesh.nodes', STATUS='UNKNOWN' )
     DO i=1,NewMesh % NumberOfNodes
-       WRITE(1,'(i6,a,3e23.15)',ADVANCE='NO') i,' -1 ', &
+       WRITE(1,'(i0,a,3e23.15)',ADVANCE='NO') i,' -1 ', &
             NewMesh % Nodes % x(i), &
             NewMesh % Nodes % y(i), NewMesh % Nodes % z(i)
        WRITE( 1,* ) ''
@@ -11498,11 +11498,11 @@ END SUBROUTINE GetMaxDefs
 
     OPEN( 1,FILE=TRIM(Path) // '/mesh.elements', STATUS='UNKNOWN' )
     DO i=1,NewMesh % NumberOfBulkElements
-       WRITE(1,'(3i7)',ADVANCE='NO') i, &
+       WRITE(1,'(3(i0,x))',ADVANCE='NO') i, &
             NewMesh % Elements(i) % BodyId, &
             NewMesh % Elements(i) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(i) % TYPE % NumberOfNodes
-          WRITE(1,'(i7)', ADVANCE='NO') &
+          WRITE(1,'(i0,x)', ADVANCE='NO') &
                NewMesh % Elements(i) % NodeIndexes(j)
        END DO
        WRITE(1,*) ''
@@ -11518,11 +11518,11 @@ END SUBROUTINE GetMaxDefs
        parent2 = 0
        IF ( ASSOCIATED( NewMesh % Elements(k) % BoundaryInfo % Right ) ) &
           parent2 = NewMesh % Elements(k) % BoundaryInfo % Right % ElementIndex
-       WRITE(1,'(5i7)',ADVANCE='NO') i, &
+       WRITE(1,'(5(i0,x))',ADVANCE='NO') i, &
             NewMesh % Elements(k) % BoundaryInfo % Constraint, Parent1,Parent2,&
             NewMesh % Elements(k) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(k) % TYPE % NumberOfNodes
-          WRITE(1,'(i7)', ADVANCE='NO') &
+          WRITE(1,'(i0,x)', ADVANCE='NO') &
                NewMesh % Elements(k) % NodeIndexes(j)
        END DO
        WRITE(1,*) ''
