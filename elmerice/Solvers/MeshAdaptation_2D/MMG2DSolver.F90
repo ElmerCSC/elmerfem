@@ -96,11 +96,14 @@
       TYPE(ValueList_t), POINTER :: SolverParams
 
       REAL(KIND=dp) :: Hmin, Hmax,hsiz
+      REAL(KIND=dp) :: Change,Tolerance
  
       INTEGER, SAVE :: MeshNumber=0
 
       INTEGER :: ier
       INTEGER :: ii,kk
+      INTEGER :: MinIter
+      INTEGER, SAVE :: nVisit=0
 
       CHARACTER(len=300) :: filename
       CHARACTER(LEN=1024) :: Path
@@ -114,7 +117,9 @@
       LOGICAL :: UnFoundFatal=.TRUE.
       LOGICAL :: IncrementMeshNumber
       LOGICAL :: UniformSize
+      LOGICAL :: TestConvergence
 
+      nVisit=nVisit+1
 
       SolverParams => GetSolverParams()
 
@@ -205,7 +210,26 @@
       END IF
 
 !! GET THE NEW MESH
-     NewMesh => GET_MMG2D_MESH()
+      NewMesh => GET_MMG2D_MESH()
+
+!! MIMIC COMPUTE CHANGE STYLE
+      Change=2.*(NewMesh%NumberOfNodes-Mesh%NumberOfNodes)/float(NewMesh%NumberOfNodes+Mesh%NumberOfNodes)
+      WRITE( Message, '(a,i0,g15.8,a)') &
+        'SS (ITER=1) (NRM,RELC): (',NewMesh%NumberOfNodes, Change,&
+        ' ) :: MMG2DSolver'
+      CALL Info( 'ComputeChange', Message, Level=3 )
+!! IF CONVERGENCE CRITERIA IS GIVEN AND REACHED, SET EXIT CONDITION TO TRUE
+!! (can not used the internal criteria as solver is executed After timestep)
+      Tolerance = &
+       ListGetCReal( SolverParams,'Steady State Convergence Tolerance',Found)
+      IF (Found) THEN
+        MinIter=&
+             ListGetInteger(SolverParams,'Steady State Min Iterations',Found)
+        IF (Found) TestConvergence = ( nVisit >= MinIter )
+        IF ((TestConvergence).AND.(Change.LE.Tolerance)) THEN
+          CALL ListAddConstReal(Model%Simulation,'Exit Condition',1.0_dp)
+        END IF
+      END IF
 
 !  SAVE MESH TO DISK
       IF (SAVE_ELMER_MESH) THEN
@@ -224,7 +248,7 @@
 
 ! Add the new mesh to the global list of meshes
 !----------------------------------------------
-      Model % Meshes   => NewMesh
+      Model % Meshes  => NewMesh
       
 ! Update Solver Meshes
 !---------------------
@@ -233,10 +257,14 @@
         IF (.NOT.ASSOCIATED(PSolver)) CYCLE
         IF (.NOT.ASSOCIATED(PSolver%Matrix)) THEN
           PSolver % Mesh => NewMesh
+          IF (ASSOCIATED(PSolver%Variable)) THEN
+            PSolver % Variable => VariableGet( NewMesh % Variables,&
+                     Solver % Variable % Name, ThisOnly = .TRUE. )
+          ENDIF
         ELSE
           CALL UpdateSolverMesh(PSolver,NewMesh) ! call distrib version in MeshUtils.F90
           WRITE(Message,'(A,A,A)') 'Updated for variable: ',TRIM(PSolver%Variable%Name)
-          CALL INFO('MMGSolver',TRIM(Message),level=1)
+          CALL INFO('MMGSolver',TRIM(Message),level=5)
         END IF
       END DO
 
@@ -698,6 +726,8 @@
           DO WHILE( ASSOCIATED( Var ) )
             IF ( Var % DOFs > 1 ) THEN
               NewVar => VariableGet( NewMesh % Variables,Var %Name,.FALSE. )
+              NewVar % PrimaryMesh => NewMesh
+              ! 
               kk = SIZE( NewVar % Values )
               IF ( ASSOCIATED( NewVar % Perm ) ) THEN
                 Kk = COUNT( NewVar % Perm > 0 )
@@ -724,6 +754,10 @@
           Var => RefMesh % Variables
           DO WHILE( ASSOCIATED( Var ) )
             IF( SIZE( Var % Values ) == Var % DOFs ) THEN
+              NewVar => VariableGet( NewMesh % Variables,Var %Name,.TRUE. )
+              IF (.NOT.ASSOCIATED(NewVar)) &
+                CALL VariableAdd( NewMesh % Variables, NewMesh, Var % Solver, &
+                                   TRIM(Var % Name), Var % DOFs , Var % Values )
               Var => Var % Next
               CYCLE
             END IF
