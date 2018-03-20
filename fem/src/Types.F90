@@ -544,7 +544,8 @@ END INTERFACE
 !  END TYPE Variable_Component_t
 
    TYPE Variable_t
-     TYPE(Variable_t), POINTER   :: Next => NULL()
+     TYPE(Variable_t), POINTER :: Next => NULL()
+     TYPE(Variable_t), POINTER :: EVar => NULL() 
      INTEGER :: NameLen = 0
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
 
