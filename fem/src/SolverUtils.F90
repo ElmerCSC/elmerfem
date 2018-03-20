@@ -12676,7 +12676,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   END IF
 
 
-
   ! Create the new fields, the total one and the imaginary one
   !-------------------------------------------------------------
   k = INDEX( SaveVar % name, '[' )
@@ -14149,6 +14148,13 @@ CONTAINS
     
     
     CALL Info('FsiCouplingAssembly','Creating coupling matrix for harmonic FSI',Level=6)
+
+    
+    IF( A_fs % FORMAT /= MATRIX_LIST ) THEN
+      A_fs % Values = 0.0_dp
+      A_sf % Values = 0.0_dp      
+    END IF
+      
     
     Mesh => Solver % Mesh
     FPerm => FVar % Perm
@@ -14659,9 +14665,11 @@ CONTAINS
       
     DEALLOCATE( Basis, MASS, Nodes % x, Nodes % y, Nodes % z)
 
-    CALL List_toCRSMatrix(A_fs)
-    CALL List_toCRSMatrix(A_sf)
-
+    IF( A_fs % FORMAT == MATRIX_LIST ) THEN
+      CALL List_toCRSMatrix(A_fs)
+      CALL List_toCRSMatrix(A_sf)
+    END IF
+      
     !PRINT *,'interface area:',area
     !PRINT *,'interface fs sum:',SUM(A_fs % Values)
     !PRINT *,'interface sf sum:',SUM(A_sf % Values)
