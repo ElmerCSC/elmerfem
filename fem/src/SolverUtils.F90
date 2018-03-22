@@ -543,7 +543,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
    FUNCTION CreateChildMatrix( ParentMat, ParentDofs, Dofs, ColDofs, CreateRhs, &
-       NoReuse ) RESULT ( ChildMat )
+       NoReuse, Diagonal ) RESULT ( ChildMat )
      TYPE(Matrix_t) :: ParentMat
      INTEGER :: ParentDofs
      INTEGER :: Dofs
@@ -551,6 +551,7 @@ CONTAINS
      INTEGER, OPTIONAL :: ColDofs
      LOGICAL, OPTIONAL :: CreateRhs
      LOGICAL, OPTIONAL :: NoReuse
+     LOGICAL, OPTIONAL :: Diagonal
      INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
      LOGICAL :: ReuseMatrix
 
@@ -560,7 +561,8 @@ CONTAINS
 
      ChildMat => AllocateMatrix()
 
-     CALL CRS_CreateChildMatrix( ParentMat, ParentDofs, ChildMat, Dofs, ColDofs, CreateRhs, NoReuse )
+     CALL CRS_CreateChildMatrix( ParentMat, ParentDofs, ChildMat, Dofs, ColDofs, CreateRhs, &
+         NoReuse, Diagonal )
 
    END FUNCTION CreateChildMatrix
 
@@ -12511,12 +12513,12 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   INTEGER :: i,j,k,n, kr, ki, DOFs
   LOGICAL :: stat, Found, OptimizeBW, Real_given, Imag_given
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
-  REAL(KIND=dp) :: Omega, s
+  REAL(KIND=dp) :: Omega, s, val
   REAL(KIND=dp), POINTER :: b(:), ImVarVals(:), ReVarVals(:), TmpVals(:)
   REAL(KIND=dp) :: frequency
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Variable_t), POINTER :: TmpVar, ReVar, ImVar, TotVar, SaveVar
-  LOGICAL :: ToReal, ParseName, AnyDirichlet
+  LOGICAL :: ToReal, ParseName, AnyDirichlet, Diagonal
   
 
   SAVE ImVar, TotVar, ReVar
@@ -12566,20 +12568,29 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   ! Find whether the matrix already exists
   Are => Solver % Matrix
 
+
+  Diagonal = ListGetLogical( Solver % Values,'Block Diagonal',Found )  
+  IF(.NOT. Found ) Diagonal = .NOT. ASSOCIATED(Are % DampValues)
+  IF( Diagonal ) THEN
+    CALL Info('ChangeToHarmonicSystem','Undamped system is assumed to be block diagonal')
+  END IF
+       
+  
   Aharm => Are % EMatrix
   IF( ASSOCIATED( Aharm ) ) THEN
     CALL Info('ChangeToHarmonicSystem','Found existing harmonic system',Level=10)
   ELSE    
     ! Create the matrix if it does not
-    Aharm => CreateChildMatrix( Are, Dofs, 2*Dofs, CreateRhs = .TRUE.)
+    
+    Aharm => CreateChildMatrix( Are, Dofs, 2*Dofs, CreateRhs = .TRUE., Diagonal = Diagonal )
 
     IF( ParEnv % PEs > 1 ) THEN
       CALL Warn('ChangeToHarmonicSystem','ParallelInfo may not have been generated properly!')
     END IF
 
     Aharm % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex', Found ) 
-    IF( .NOT. Found ) Aharm % Complex = .TRUE. 
-
+    IF( .NOT. Found ) Aharm % COMPLEX = .NOT. Diagonal !TRUE. 
+    
     Are % EMatrix => Aharm 
   END IF
 
@@ -12622,25 +12633,42 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 
 
   ! Set the harmonic system matrix
-  DO k=1,n
-    kr = Aharm % Rows(2*(k-1)+1)
-    ki = Aharm % Rows(2*(k-1)+2)
-    DO j=Are % Rows(k),Are % Rows(k+1)-1
-      Aharm % Values(kr) =  Are % Values(j)
-      IF (ASSOCIATED(Are % MassValues)) Aharm % Values(kr) = &
-          Aharm % Values(kr) - omega**2* Are % MassValues(j)
-      IF (ASSOCIATED(Are % DampValues)) THEN
-        Aharm % Values(kr+1) = -Are % Dampvalues(j) * omega
-        Aharm % Values(ki)   =  Are % Dampvalues(j) * omega
-      END IF
-      Aharm % Values(ki+1) = Are % Values(j)
-      IF (ASSOCIATED(Are % MassValues)) Aharm % Values(ki+1) = &
-          Aharm % Values(ki+1) - omega**2* Are % MassValues(j)
-      kr = kr + 2
-      ki = ki + 2
+  IF( Diagonal ) THEN
+    DO k=1,n
+      kr = Aharm % Rows(2*(k-1)+1)
+      ki = Aharm % Rows(2*(k-1)+2)
+      DO j=Are % Rows(k),Are % Rows(k+1)-1
+        val = Are % Values(j)
+        IF (ASSOCIATED(Are % MassValues)) val = val - omega**2* Are % MassValues(j)
+        
+        Aharm % Values(kr) = val 
+        Aharm % Values(ki) = val 
+        kr = kr + 1
+        ki = ki + 1
+      END DO
     END DO
-  END DO
+  ELSE
+    DO k=1,n
+      kr = Aharm % Rows(2*(k-1)+1)
+      ki = Aharm % Rows(2*(k-1)+2)
+      DO j=Are % Rows(k),Are % Rows(k+1)-1
+        val = Are % Values(j)
+        IF (ASSOCIATED(Are % MassValues)) val = val - omega**2* Are % MassValues(j)
 
+        Aharm % Values(kr) = val
+        Aharm % Values(ki+1) = val     
+        
+        IF (ASSOCIATED(Are % DampValues)) THEN
+          Aharm % Values(kr+1) = -Are % Dampvalues(j) * omega
+          Aharm % Values(ki)   =  Are % Dampvalues(j) * omega
+        END IF
+
+        kr = kr + 2
+        ki = ki + 2
+      END DO
+    END DO
+  END IF
+    
   AnyDirichlet = .FALSE.
 
   ! Finally set the Dirichlet conditions for the solver    

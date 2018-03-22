@@ -2796,7 +2796,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
 
 
-  SUBROUTINE CRS_CreateChildMatrix( ParentMat, ParentDofs, ChildMat, Dofs, ColDofs, CreateRhs, NoReuse ) 
+  SUBROUTINE CRS_CreateChildMatrix( ParentMat, ParentDofs, ChildMat, Dofs, ColDofs, &
+      CreateRhs, NoReuse, Diagonal ) 
 
     TYPE(Matrix_t) :: ParentMat
     INTEGER :: ParentDofs
@@ -2805,16 +2806,24 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, OPTIONAL :: ColDofs
     LOGICAL, OPTIONAL :: CreateRhs
     LOGICAL, OPTIONAL :: NoReuse
-    INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
-    LOGICAL :: ReuseMatrix
+    LOGICAL, OPTIONAL :: Diagonal
 
+    INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs,Cmult
+    LOGICAL :: ReuseMatrix
+    LOGICAL :: IsDiagonal
+    
     IF( PRESENT( ColDofs ) ) THEN
       CDofs = ColDofs
     ELSE
       CDofs = Dofs
     END IF
 
-
+    IF( PRESENT( Diagonal ) ) THEN
+      IsDiagonal = Diagonal
+    ELSE
+      IsDiagonal = .FALSE.
+    END IF
+    
     ReuseMatrix = ( Dofs == ParentDofs .AND. CDofs == ParentDofs )
     IF( PRESENT( NoReuse ) ) THEN
       IF( NoReuse ) ReuseMatrix = .FALSE.         
@@ -2850,6 +2859,57 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       m = SIZE( ParentMat % Values )
       ALLOCATE( ChildMat % Values(m) )
       ChildMat % Values = 0.0_dp
+    ELSE IF( IsDiagonal ) THEN
+
+      CALL Info('CRS_CreateChildMatrix','Multiplying initial matrix topology for diagonal system',Level=8)    
+
+      IF( CDofs /= Dofs ) THEN
+        CALL Fatal('CRS_CreateChildMatrix','Diagonal matrix must be square matrix!')
+      END IF
+      
+      cmult = Dofs / ParentDofs 
+      IF( cmult <= 1 .OR. Dofs /= cmult * ParentDofs ) THEN
+        CALL Fatal('CRS_CreateChildMatrix','Diagonal child matrix must be a multiple of parent matrix!')        
+      END IF
+            
+      ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * cmult ) )
+      ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * cmult + 1 ) )
+
+      ChildMat % NumberOfRows = ParentMat % NumberOfRows * cmult
+      
+      ii = 0
+      jj = 0
+      ChildMat % Rows(1) = 1
+      DO i=1, ParentMat % NumberOFRows
+
+        DO k=1,cmult
+
+          ii = ii + 1
+          DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1
+            nn = ParentMat % Cols(j)
+            jj = jj + 1            
+            ChildMat % Cols(jj) = cmult*(nn-1) + k
+          END DO
+
+          ChildMat % Rows(ii+1) = jj+1
+        END DO
+      END DO
+      
+      ALLOCATE( ChildMat % Values(jj) )
+      ChildMat % Values = 0.0_dp
+
+      IF( Dofs == CDofs ) THEN
+        ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * cmult ) )
+        DO i=1,ChildMat % NumberOfRows
+          DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
+            IF (ChildMat % Cols(j) == i) THEN
+              ChildMat % Diag(i) = j
+              EXIT
+            END IF
+          END DO
+        END DO
+      END IF
+
     ELSE
       CALL Info('CRS_CreateChildMatrix','Multiplying initial matrix topology',Level=8)    
 

@@ -3066,12 +3066,16 @@ CONTAINS
     SOL => x % Values
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
-
+    
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
       CALL FCT_Correction( Solver )
     END IF
- 
+
+    IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
+      CALL ChangeToHarmonicSystem( Solver, .TRUE. )
+    END IF
+    
     IF (PRESENT(BackRotNT)) THEN
       IF (BackRot.NEQV.BackRotNT) &
         CALL ListAddLogical(Params,'Back Rotate N-T Solution',BackRot)

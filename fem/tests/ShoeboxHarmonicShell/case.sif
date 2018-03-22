@@ -27,7 +27,7 @@ Simulation
   Post File = "shell.vtu"
   Frequency = 100
 End
-
+ 
 Body 1
   Equation = 1 
   Material = 1
@@ -75,7 +75,7 @@ Solver 1
 
 !  Linear System Solver = "Direct"
   Linear System Solver = "Iterative"
-  Linear System Direct Method = MUMPS
+  Linear System Direct Method = umfpack 
 
   Linear System Preconditioning = ILU2
 !  Linear System Row Equilibration = Logical True

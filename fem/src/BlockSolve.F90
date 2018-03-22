@@ -1033,7 +1033,7 @@ CONTAINS
 
     A_s => TotMatrix % Submatrix(i,i) % Mat
     A_f => TotMatrix % Submatrix(j,j) % Mat
-
+    
     IF(.NOT. ASSOCIATED( FVar ) ) THEN
       CALL Fatal('FsiCouplingBlocks','Fluid variable not present!')
     END IF
@@ -1420,6 +1420,52 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE BlockMatrixInfo()
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,l,n,m,NoVar
+    REAL(KIND=dp) :: nrm, tmp, blocknrm
+    TYPE(Matrix_t), POINTER :: A, Atrans
+    REAL(KIND=dp), POINTER :: b(:), Diag(:), Values(:)
+    LOGICAL :: ComplexMatrix, GotIt, DiagOnly
+    INTEGER, POINTER :: Rows(:), Cols(:)
+    LOGICAL :: Found
+    
+    
+    CALL Info('BlockMatrixInfo','Showing some ranges of block matrix stuff',Level=10)
+    
+    NoVar = TotMatrix % NoVar
+
+    PRINT *,'BlockInfo:',NoVar
+    
+    
+    DO k=1,NoVar
+      DO l=1,NoVar
+        
+        A => TotMatrix % SubMatrix(k,l) % Mat
+        IF( .NOT. ASSOCIATED( A ) ) CYCLE
+        IF( A % NumberOfRows == 0 ) CYCLE
+        
+        n = TotMatrix % offset(k+1) - TotMatrix % offset(k)
+
+        PRINT *,'BlockInfo:',k,l,A % NumberOfRows, n, A % COMPLEX
+
+        Rows   => A % Rows
+        Cols   => A % Cols
+        Values => A % Values
+
+        PRINT *,'BlockInfo: A range',SUM( Values ), MINVAL( Values ), MAXVAL( Values ) 
+      END DO
+    END DO
+    
+  END SUBROUTINE BlockMatrixInfo
+!------------------------------------------------------------------------------
+
+
+
+  
 !> Performs the actual forward or reverse scaling. Optionally the scaling may be
 !> applied to only one matrix with an optional r.h.s. The idea is that for
 !> block preconditioning we may revert to the original symmetric matrix but
@@ -1679,6 +1725,12 @@ CONTAINS
       END IF
 
       IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,k,k,b)
+
+
+      IF( InfoActive( 15 ) ) THEN
+        CALL BlockMatrixInfo()
+      END IF
+
       
       IF (isParallel) THEN
 #ifndef SOLSYS
