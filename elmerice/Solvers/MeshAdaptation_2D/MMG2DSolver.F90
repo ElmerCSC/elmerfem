@@ -214,6 +214,7 @@
 
 !! MIMIC COMPUTE CHANGE STYLE
       Change=2.*(NewMesh%NumberOfNodes-Mesh%NumberOfNodes)/float(NewMesh%NumberOfNodes+Mesh%NumberOfNodes)
+      Change=abs(Change)
       WRITE( Message, '(a,i0,g15.8,a)') &
         'SS (ITER=1) (NRM,RELC): (',NewMesh%NumberOfNodes, Change,&
         ' ) :: MMG2DSolver'
