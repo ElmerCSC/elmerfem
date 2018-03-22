@@ -871,6 +871,9 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
       ELSE IF ( IntTimeIndex < 1 .OR. IntTimeIndex > TimeSize ) THEN
         WRITE (Message, '(A,I0,A,I0,A)') 'Time value ', IntTimeIndex, ' is out of range (1,',TimeSize, ')'
         CALL Warn('GridDataReader',Message)
+        IntTimeIndex=MAX(1,MIN(IntTimeIndex,TimeSize))
+        WRITE (Message, '(A,I0)') 'Using ', IntTimeIndex 
+        CALL Warn('GridDataReader',Message)
       END IF
 
       ! Go through the active nodes and perform interpolation
@@ -1001,7 +1004,7 @@ CONTAINS
     Eps = 0.0_dp
     Eps(1) = GetConstReal(Params, "X Epsilon", Found )
     IF ( .NOT. Found ) THEN
-      CALL Warn('GridDataReader', 'Keyword > X Epsilon < not given, setting to default eps')
+      CALL Info('GridDataReader', 'Keyword > X Epsilon < not given, setting to default eps',Level=6)
       Eps(1) = EPSILON( Eps(1) )
     END IF
     Eps(2) = GetConstReal(Params, "Y Epsilon", Found )

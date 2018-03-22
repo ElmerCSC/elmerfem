@@ -50,6 +50,43 @@
 !   Material:
 !      SSA Mean Density
 !     
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE  Flotation_init( Model,Solver,dt,TransientSimulation )
+  USE DefUtils
+  IMPLICIT NONE
+  !------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+  !--------------------------------------------------------------------------
+  CHARACTER(LEN=MAX_NAME_LEN) :: ZbName,ZsName,HName
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='Flotation'
+  TYPE(ValueList_t), POINTER :: SolverParams
+  LOGICAL :: GotIt
+  
+  SolverParams => Solver % Values 
+
+  ZbName = GetString(SolverParams, 'Bottom Surface Name', GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=3)
+    CALL ListAddString(SolverParams,'Bottom Surface Name','Zb')
+  END IF
+
+  ZsName = GetString(SolverParams, 'Top Surface Name', GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL INFO(SolverName, 'Top Surface Name not found - using default Zs', level=3)
+    CALL ListAddString(SolverParams,'Top Surface Name','Zs')
+  END IF
+
+  HName = GetString(SolverParams, 'Thickness Variable Name', GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL INFO(SolverName, 'Thickness Variable Name not found - using default H', level=3)
+    CALL ListAddString(SolverParams,'Thickness Variable Name','H')
+  END IF
+
+END SUBROUTINE  Flotation_init
+!------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
 SUBROUTINE Flotation( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
@@ -103,35 +140,17 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   Params => Solver % Values
 
 !!! get required variables Zb,Zs,H
-  ZbName = GetString(Params, 'Bottom Surface Name', GotIt)
-  IF (GotIt) THEN
-    CALL INFO(SolverName, 'Bottom Surface Name found', level=4)
-  ELSE
-    CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=1)
-    WRITE(ZbName,'(A)') 'Zb'
-  END IF
+  ZbName = ListGetString(Params, 'Bottom Surface Name', UnFoundFatal=.TRUE.)
   zbVar => VariableGet( Model % Mesh % Variables, ZbName,UnFoundFatal=.TRUE.)
   
-  ZsName = GetString(Params, 'Top Surface Name', GotIt)
-  IF (GotIt) THEN
-    CALL INFO(SolverName, 'Top Surface Name found', level=4)
-  ELSE
-    CALL INFO(SolverName, 'Top Surface Name not found - using default Zs', level=1)
-    WRITE(ZsName,'(A)') 'Zs'
-  END IF
+  ZsName = ListGetString(Params, 'Top Surface Name', UnFoundFatal=.TRUE.)
   zsVar => VariableGet( Model % Mesh % Variables, ZsName,UnFoundFatal=.TRUE.)
 
-  HName = GetString(Params, 'Thickness Variable Name', GotIt)
-  IF (GotIt) THEN
-    CALL INFO(SolverName, 'Thickness Variable Name found', level=4)
-  ELSE
-    CALL INFO(SolverName, 'Thickness Variable  Name not found - using default H', level=1)
-    WRITE(HName,'(A)') 'H'
-  END IF
+  HName = ListGetString(Params, 'Thickness Variable Name', UnFoundFatal=.TRUE.)
   HVar => VariableGet( Model % Mesh % Variables, HName, UnFoundFatal=.TRUE.)
 
 !!
-!! get optinal variables GLMAsk,DZbDt,DZsDt,bedrock
+!! get optional variables GLMAsk,DZbDt,DZsDt,bedrock
   GLMAsk => VariableGet( Model % Mesh % Variables, 'GroundedMask')
   IF (.NOT.ASSOCIATED(GLMAsk)) THEN
     Message='GroundedMask not found'
@@ -181,20 +200,8 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   END IF
 !!
 
- zsea = GetCReal( Model % Constants, 'Sea Level', Found )
- If (.NOT.Found) THEN
-    WRITE(Message,'(A)') 'Constant >Sea Level< not found. &
-       &Setting to 0.0'
-    CALL INFO(SolverName, Message, level=3)
-    zsea = 0._dp
- End if
- rhow = GetCReal( Model % Constants, 'water density', Found )
- If (.NOT.Found) THEN
-    WRITE(Message,'(A)') 'Constant Water Density not found. &
-       &Setting to 1.03225e-18'
-    CALL INFO(SolverName, Message, level=3)
-    rhow = 1.03225d-18
- END IF
+ zsea = ListGetCReal( Model % Constants, 'Sea Level', UnFoundFatal=.TRUE. )
+ rhow = ListGetCReal( Model % Constants, 'water density', UnFoundFatal=.TRUE. )
 
  IF (ASSOCIATED(DZbDt)) ZbPrev=ZbVar%Values
  IF (ASSOCIATED(DZsDt)) ZsPrev=ZsVar%Values
@@ -208,11 +215,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
 
     Material => GetMaterial(Element)
 
-    Density(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,Found)
-    IF (.NOT.Found) THEN
-       Message='<SSA Mean Density> not found in material'
-       CALL FATAL(SolverName, Message)
-    END IF
+    Density(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,UnFoundFatal=.TRUE.)
 
     GroundedNode=0
     GL=-1
