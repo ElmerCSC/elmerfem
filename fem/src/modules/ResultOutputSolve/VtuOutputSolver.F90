@@ -181,6 +181,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   ! Halo exists only in parallel
   IF( Parallel ) THEN
     SkipHalo = GetLogical( Params,'Skip Halo Elements', GotIt )
+    IF(.NOT. GotIt) SkipHalo = .TRUE.
     SaveOnlyHalo = GetLogical( Params,'Save Halo Elements Only', GotIt )
   ELSE
     SkipHalo = .FALSE.
