@@ -1,0 +1,14 @@
+This directory contains standard configuration files to 
+run 100 years forecast simulations of the Greenland Ice Sheet with the Shallow Shelf Approximation (SSA).
+
+see http://elmerice.elmerfem.org/wiki/doku.php?id=eis:greenland#present
+
+USAGE:
+	- Get required DATA
+	- Get a mesh : e.g. http://elmerice.elmerfem.org/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_mesh_v0.tar.gz
+	- OPTIONAL: Partition the mesh with ElmerGrid
+	- compile User functions: make -f Makefile.IN
+	- Update default parameters in SSA.IN
+	- (OPTIONAL - Advanced users): update default .sif files: INIT.sif and SSA.sif
+	- RUN the initialisation : INIT.sif
+	- RUN the simulation: SSA.sif

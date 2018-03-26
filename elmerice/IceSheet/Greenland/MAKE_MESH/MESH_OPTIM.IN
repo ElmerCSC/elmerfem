@@ -1,0 +1,45 @@
+!##################################
+! INCLUDE file for MESH_OPTIM.sif
+!###################################
+
+!name of the RUN : optimised mesh will be saved in MESH_$RUN
+$RUN="1"
+! the name of the mesh to optimize
+$MESH_IN="MESH"
+
+
+!##########################################################
+!##########################################################
+!## Mesh criterias
+!##########################################################
+!##########################################################
+$IMIN=3
+$IMAX=10
+$Tol=0.01
+
+!##########################################################
+!##########################################################
+!## Mesh criterias
+!##########################################################
+!##########################################################
+! Tolerated erros on U and H
+$U_err=15.0
+$H_err=20.0
+
+! Minimal and maximal mesh size
+$Hmin=500.0
+
+!Maximal mesh size is function to the disance to the margin
+$MarginExtent=40.0e3
+! Maximal mesh size outside the margin
+$HMaxOUT=50.0e3
+! Maximal mesh size within the margin
+$HMaxIN=4.0e3
+
+!##########################################################
+!##########################################################
+!###### DATA FILES
+!##########################################################
+!##########################################################
+$TOPOGRAPHY_DATA="../DATA/BedMachineGreenland-2017-09-20.nc"
+$VELOCITY_DATA="../DATA/greenland_vel_mosaic250_v1.nc"
