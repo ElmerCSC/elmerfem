@@ -12514,14 +12514,12 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   LOGICAL :: stat, Found, OptimizeBW, Real_given, Imag_given
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
   REAL(KIND=dp) :: Omega, s, val
-  REAL(KIND=dp), POINTER :: b(:), ImVarVals(:), ReVarVals(:), TmpVals(:)
+  REAL(KIND=dp), POINTER :: b(:), TmpVals(:)
   REAL(KIND=dp) :: frequency
   TYPE(ValueList_t), POINTER :: BC
-  TYPE(Variable_t), POINTER :: TmpVar, ReVar, ImVar, TotVar, SaveVar
+  TYPE(Variable_t), POINTER :: TmpVar, ReVar, HarmVar, SaveVar
   LOGICAL :: ToReal, ParseName, AnyDirichlet, Diagonal, HarmonicReal
   
-
-  SAVE ImVar, TotVar, ReVar
   
   IF( .NOT. ASSOCIATED( Solver % Variable ) ) THEN
     CALL Warn('CgangeToHarmonicSystem','Not applicable without a variable')
@@ -12549,6 +12547,9 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 
         Solver % Matrix => Solver % Matrix % EMatrix
         Solver % Matrix % Ematrix => SaveMatrix
+
+        ! Eliminate cyclic dependence that is a bummer when deallocating stuff
+        NULLIFY( Solver % Matrix % EMatrix % Ematrix )
       END IF
     END IF
     RETURN
@@ -12598,7 +12599,8 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   IF( Diagonal ) THEN
     CALL Info('ChangeToHarmonicSystem','Undamped system is assumed to be block diagonal')
   END IF
-         
+
+  
   ! Find whether the matrix already exists
   Aharm => Are % EMatrix
   IF( ASSOCIATED( Aharm ) ) THEN
@@ -12614,21 +12616,18 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 
     Aharm % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex', Found ) 
     IF( .NOT. Found ) Aharm % COMPLEX = .NOT. Diagonal !TRUE. 
-    
-    Are % EMatrix => Aharm 
   END IF
 
 
   ! Set the harmonic system r.h.s
   b => Aharm % rhs
-
-
+  
   IF( ASSOCIATED( Are % Rhs ) ) THEN
     b(1:2*n:2) = Are % RHS(1:n)
   ELSE
     b(1:2*n:2) = 0.0_dp
   END IF
-
+  
   IF( ASSOCIATED( Are % Rhs_im ) ) THEN
     b(2:2*n:2) = Are % RHS_im(1:n)            
   ELSE
@@ -12735,22 +12734,22 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   CALL Info('ChangeToHarmonicSystem','Harmonic system full name: '//TRIM(Name),Level=12)
 
 
-  TotVar => VariableGet( Solver % Mesh % Variables, Name )
-  IF( ASSOCIATED( TotVar ) ) THEN
+  HarmVar => VariableGet( Solver % Mesh % Variables, Name )
+  IF( ASSOCIATED( HarmVar ) ) THEN
     CALL Info('ChangeToHarmonicSystem','Reusing full system harmonic dofs',Level=12)
   ELSE
     CALL Info('ChangeToHarmonicSystem','Creating full system harmonic dofs',Level=12)
     CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
         Name,2*DOFs,Perm=SaveVar % Perm,Output=.FALSE.)
-    TotVar => VariableGet( Solver % Mesh % Variables, Name )
-    IF(.NOT. ASSOCIATED( TotVar ) ) CALL Fatal('ChangeToHarmonicSystem','New created variable should exist!')
+    HarmVar => VariableGet( Solver % Mesh % Variables, Name )
+    IF(.NOT. ASSOCIATED( HarmVar ) ) CALL Fatal('ChangeToHarmonicSystem','New created variable should exist!')
 
     ! Repoint the values of the original solution vector
-    TotVar % Values(1:2*n:2) = SaveVar % Values(1:n)
+    HarmVar % Values(1:2*n:2) = SaveVar % Values(1:n)
 
     ! It beats me why this cannot be deallocated without some NaNs later
     !DEALLOCATE( SaveVar % Values )
-    SaveVar % Values => TotVar % Values(1:2*n:2)
+    SaveVar % Values => HarmVar % Values(1:2*n:2)
     SaveVar % Secondary = .TRUE.
 
     ! Repoint the components of the original solution
@@ -12758,7 +12757,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       DO i=1,Dofs
         TmpVar => VariableGet( Solver % Mesh % Variables, ComponentName( SaveVar % Name, i ) )
         IF( ASSOCIATED( TmpVar ) ) THEN
-          TmpVar % Values => TotVar % Values(2*i-1::TotVar % Dofs)
+          TmpVar % Values => HarmVar % Values(2*i-1::HarmVar % Dofs)
         ELSE
           CALL Fatal('ChangeToHarmonicSystem','Could not find re component '//TRIM(I2S(i)))
         END IF
@@ -12775,30 +12774,33 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       CALL Info('ChangeToHarmonicSystem','Using derived name for imaginary component: '//TRIM(Name),Level=12)
     END IF
 
-    TmpVals => TotVar % Values(2:2*n:2)
+    TmpVals => HarmVar % Values(2:2*n:2)
     CALL VariableAdd( Solver % Mesh % Variables,Solver % Mesh,Solver, &
         Name, DOFs,TmpVals, Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)        
 
     IF( Dofs > 1 ) THEN
       DO i=1,Dofs
-        TmpVals => TotVar % Values(2*i:2*n:2*Dofs)
+        TmpVals => HarmVar % Values(2*i:2*n:2*Dofs)
         CALL VariableAdd( Solver % Mesh % Variables,Solver % Mesh,Solver, &
             ComponentName(Name,i),1,TmpVals,Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)        
       END DO
     END IF
-
+    
   END IF
 
   ! Now change the pointers such that when we visit the linear solver
   ! the system will automatically be solved as complex
-  Solver % Variable => TotVar
+  Solver % Variable => HarmVar
   Solver % Matrix => Aharm
-
+  
   ! Save the original matrix and variable in Ematrix and Evar
   Solver % Matrix % Ematrix => SaveMatrix
   Solver % Variable % Evar => SaveVar    
 
-      
+  ! Eliminate cyclic dependence that is a bummer when deallocating stuff
+  ! We are toggling {Are,Aharm} in {Solver % Matrix, Solver % Matrix % Ematrix}
+  NULLIFY( Solver % Matrix % EMatrix % Ematrix )
+
 !------------------------------------------------------------------------------
 END SUBROUTINE ChangeToHarmonicSystem
 !------------------------------------------------------------------------------

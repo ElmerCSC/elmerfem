@@ -263,15 +263,18 @@ CONTAINS
     CHARACTER(LEN=max_name_len) :: VarName, str
     LOGICAL :: UseSolverMatrix
     
-    
-    CALL Info('BlockSolver','Initializing block matrix',Level=10)
-    
+        
     
     Params => Solver % Values
 
     BlockMatrix => Solver % BlockMatrix
-    IF (ASSOCIATED(BlockMatrix)) RETURN
+    IF (ASSOCIATED(BlockMatrix)) THEN
+      CALL Info('BlockSolver','Using existing block matrix',Level=10)
+      RETURN
+    END IF
 
+    CALL Info('BlockSolver','Initializing block matrix',Level=10)
+    
     ALLOCATE(Solver % BlockMatrix)
     BlockMatrix => Solver % BlockMatrix
  

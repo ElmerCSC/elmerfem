@@ -90,21 +90,20 @@
 
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
      LOGICAL :: GotIt, GotHoleType
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,st
-#else
-     REAL(KIND=dp) :: at,st,CPUTime
+#ifndef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: CPUTime
 #endif
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
-          DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef
+          DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef, Dofs
 
 !
 !    Allocate some permanent storage, this is done first time only
 !    -------------------------------------------------------------
-     DOFs = Solver % Variable % DOFs
 
      IF ( .NOT. AllocationsDone ) THEN
+       DOFs = Solver % Variable % DOFs
        N = Solver % Mesh % MaxElementDOFs
        ALLOCATE( Indexes( N ),      &
                  FORCE( DOFs*N ),      &
@@ -136,7 +135,7 @@
          .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found ) 
 
      CALL DefaultStart()     
-
+     
      MaxIter = GetInteger( SolverParams, &
          'Nonlinear System Max Iterations',GotIt )
      IF ( .NOT. GotIt ) MaxIter = 1
@@ -145,8 +144,8 @@
     
        at = CPUTime()
        CALL DefaultInitialize()
-
-       !
+       
+       !       
        ! These keywords enable that the use of a second parameter set for the
        ! same elements where the material properties are given in an additional
        ! body. May be used to model microphone and its backplate, for example:
@@ -254,13 +253,12 @@
          END IF
        END DO
        CALL DefaultFinishBulkAssembly()
-
+       
        ! No Flux BCs
        CALL DefaultFinishBoundaryAssembly()
        CALL DefaultFinishAssembly()
        
        !------------------------------------------------------------------------------
-
        ! Dirichlet boundary conditions
        !------------------------------
        CALL DefaultDirichletBCs()
@@ -275,6 +273,7 @@
        ! Solve the system and we are done
        !---------------------------------
        st = CPUTime()
+       
        Norm =  DefaultSolve()
 
        st = CPUTime() - st
