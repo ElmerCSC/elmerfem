@@ -12518,7 +12518,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   REAL(KIND=dp) :: frequency
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Variable_t), POINTER :: TmpVar, ReVar, ImVar, TotVar, SaveVar
-  LOGICAL :: ToReal, ParseName, AnyDirichlet, Diagonal
+  LOGICAL :: ToReal, ParseName, AnyDirichlet, Diagonal, HarmonicReal
   
 
   SAVE ImVar, TotVar, ReVar
@@ -12562,20 +12562,44 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 
   n = Solver % Matrix % NumberofRows
   DOFs = SaveVar % Dofs
-
-  CALL Info('ChangeToHarmonicSystem','Number of real system rows: '//TRIM(I2S(n)),Level=16)
-
-  ! Find whether the matrix already exists
   Are => Solver % Matrix
 
+  CALL Info('ChangeToHarmonicSystem','Number of real system rows: '//TRIM(I2S(n)),Level=16)
+  
+  ! Obtain the frequency, it may depend on iteration step etc. 
+  Frequency = ListGetAngularFrequency( Solver % Values, Found ) / (2*PI)
+  IF( .NOT. Found ) THEN
+    CALL Fatal( 'ChangeToHarmonicSystem', '> Frequency < must be given for harmonic analysis.' )
+  END IF
+  WRITE( Message, '(a,e12.3)' ) 'Frequency value: ', frequency
+  CALL Info( 'ChangeToHarmonicSystem', Message )
+  omega = 2 * PI * Frequency
 
-  Diagonal = ListGetLogical( Solver % Values,'Block Diagonal',Found )  
+  
+  CALL ListAddConstReal( CurrentModel % Simulation, 'res: frequency', Frequency )
+
+  
+  HarmonicReal = ListGetLogical( Solver % Values,'Harmonic Mode Real',Found ) 
+  IF( HarmonicReal ) THEN
+    CALL Info('ChangeToHarmonicSystem','Enforcing harmonic system to be real valued',Level=8)
+    IF (ASSOCIATED(Are % MassValues)) THEN
+      ARe % Values = Are % Values - omega**2* Are % MassValues
+    ELSE
+      CALL Fatal('ChangeToHarmonicSystem','Harmonic system requires mass!')
+    END IF
+    ! This is set outside so that it can be called more flexibilly
+    CALL EnforceDirichletConditions( Solver, Are, Are % rhs  )
+    RETURN
+  END IF
+
+ 
+  Diagonal = ListGetLogical( Solver % Values,'Harmonic Mode Block Diagonal',Found )  
   IF(.NOT. Found ) Diagonal = .NOT. ASSOCIATED(Are % DampValues)
   IF( Diagonal ) THEN
     CALL Info('ChangeToHarmonicSystem','Undamped system is assumed to be block diagonal')
   END IF
-       
-  
+         
+  ! Find whether the matrix already exists
   Aharm => Are % EMatrix
   IF( ASSOCIATED( Aharm ) ) THEN
     CALL Info('ChangeToHarmonicSystem','Found existing harmonic system',Level=10)
@@ -12594,14 +12618,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     Are % EMatrix => Aharm 
   END IF
 
-  ! Obtain the frequency, it may depend on iteration step etc. 
-  Frequency = ListGetAngularFrequency( Solver % Values, Found ) / (2*PI)
-  IF( .NOT. Found ) THEN
-    CALL Fatal( 'ChangeToHarmonicSystem', '> Frequency < must be given for harmonic analysis.' )
-  END IF
-  WRITE( Message, '(a,e12.3)' ) 'Frequency value: ', frequency
-  CALL Info( 'ChangeToHarmonicSystem', Message )
-  omega = 2 * PI * Frequency
 
   ! Set the harmonic system r.h.s
   b => Aharm % rhs

@@ -658,8 +658,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = 1.0_dp * j
         CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
        
-      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs','mean','variance','range', &
-          'sum square','mean square')
+      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs',&
+          'mean','variance','range','sum square','mean square')
         IF( MaskOper ) CALL CreateNodeMask()
         IF( GotNodalOper ) THEN
           Val = VectorStatistics(Var,Oper,NodalOper)
@@ -673,8 +673,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = VectorMeanDeviation(Var,Oper)
         CALL AddToSaveList(SaveName, Val,.FALSE.,ParOper)
         
-      CASE ('int','int mean','int abs','int abs mean','int variance','volume',&
-          'potential energy','diffusive energy','convective energy')
+      CASE ('int','int mean','int square','int square mean','int abs','int abs mean',&
+          'int variance','volume','potential energy','diffusive energy','convective energy')
         
         IF( MaskOper ) CALL CreateNodeMask()
         Val = BulkIntegrals(Var, Oper, GotCoeff, CoefficientName)
@@ -1373,9 +1373,10 @@ CONTAINS
 
     SELECT CASE(LocalOper)
       
-    CASE('nodes','elements','dofs','sum','sum abs','int','int abs','volume','potential energy','convective energy',&
-        'diffusive energy','boundary sum','boundary dofs','boundary int','area','diffusive flux',&
-        'convective flux','nans','partition checksum','partition neighbours checksum')
+    CASE('nodes','elements','dofs','sum','sum square','sum abs','int','int square','int abs','volume',&
+        'potential energy', 'convective energy','diffusive energy','boundary sum','boundary dofs',&
+        'boundary int','area','diffusive flux','convective flux','nans','partition checksum',&
+        'partition neighbours checksum')
       ParOper = 'sum'
             
     CASE('max','max abs','boundary max','boundary max abs')
@@ -1727,7 +1728,7 @@ CONTAINS
       operx = sumxx 
 
     CASE ('sum abs')
-      operx = sumabsx
+      operx = sumabsx      
       
     CASE ('max')
       operx = Maximum
@@ -2018,6 +2019,10 @@ CONTAINS
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
           integral1 = integral1 + S * coeff * func 
 
+          CASE ('int square','int square mean')
+          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          integral1 = integral1 + S * coeff * func**2 
+          
           CASE ('int abs','int abs mean')
           func = ABS( SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) ) )
           integral1 = integral1 + S * coeff * func 
@@ -2075,28 +2080,16 @@ CONTAINS
 
     SELECT CASE(OperName)
       
-      CASE ('volume')
-      operx = integral1
-
-      CASE ('int')
-      operx = integral1
-
-      CASE ('int abs')
+      CASE ('volume','int','int abs','int square')
       operx = integral1
       
-      CASE ('int mean')
-      operx = integral1 / vol        
-
-      CASE ('int abs mean')
+      CASE ('int mean','int square mean','int abs mean')
       operx = integral1 / vol        
 
       CASE ('int variance')
       operx = SQRT(integral2/vol-(integral1/vol)**2)
 
-      CASE ('diffusive energy')
-      operx = 0.5d0 * integral1
-
-      CASE ('convective energy')
+      CASE ('diffusive energy','convective energy')
       operx = 0.5d0 * integral1
 
       CASE ('potential energy')
