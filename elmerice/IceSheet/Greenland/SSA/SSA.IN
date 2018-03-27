@@ -36,7 +36,7 @@ $HMin=0.1
 $SMB_DATA="../DATA/MARv3.5.2-10km-yearly-ERA-Interim-1979-1999_Mean_EPSG3413.nc"
 
 !## read transient forcing (always/never)
-$FORCING_Update="always"
+$FORCING_Update="never"
 !## data file with transient forcing
 $FORCING_DATA="../DATA/MARv3.5-yearly-CanESM2-rcp85-2006-2100_EPSG3413.nc"
 
