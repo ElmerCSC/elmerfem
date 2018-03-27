@@ -143,7 +143,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
       MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
-      NodalOper, GotNodalOper
+      Numbering, NodalOper, GotNodalOper
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -172,20 +172,20 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 #ifndef USE_ISO_C_BINDINGS
   REAL (KIND=DP) :: CPUTime, RealTime, CPUMemory
 #endif
-
-
+  
 !------------------------------------------------------------------------------
 
   CALL Info('SaveScalars', '-----------------------------------------', Level=4 )
   CALL Info('SaveScalars','Saving scalar values of various kinds',Level=4)
 
-
+  
   Mesh => GetMesh()
   DIM = CoordinateSystemDimension()
   Params => GetSolverParams()	
 
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
 
+  FileAppend = ListGetLogical( Params,'File Append',GotIt)  
  
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN    
@@ -217,10 +217,16 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
-      ScalarsFile = NextFreeFilename( ScalarsFile ) 
-    END IF
+    Numbering = ListGetLogical(Params,'Filename Numbering',GotIt)
 
+    IF( Numbering  ) THEN
+      IF( Solver % TimesVisited > 0  ) THEN
+        ScalarsFile = NextFreeFilename( ScalarsFile, LastExisting = .TRUE. ) 
+      ELSE
+        ScalarsFile = NextFreeFilename( ScalarsFile ) 
+      END IF
+    END IF
+      
     ScalarNamesFile = TRIM(ScalarsFile) // '.' // TRIM("names")
     LiveGraph = ListGetLogical(Params,'Live Graph',GotIt) 
   END IF
@@ -247,8 +253,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END IF
     OutputPE = ParEnv % MYPe
   END IF
-
-  FileAppend = ListGetLogical( Params,'File Append',GotIt)
 
   NoLines = 0
   LineCoordinates => ListGetConstRealArray(Params,'Polyline Coordinates',gotIt)
