@@ -663,7 +663,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
        
       CASE ('sum','sum abs','mean abs','max','max abs','min','min abs',&
-          'mean','variance','range','sum square','mean square')
+          'mean','variance','range','sum square','mean square','rms')
         IF( MaskOper ) CALL CreateNodeMask()
         IF( GotNodalOper ) THEN
           Val = VectorStatistics(Var,Oper,NodalOper)
@@ -677,7 +677,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = VectorMeanDeviation(Var,Oper)
         CALL AddToSaveList(SaveName, Val,.FALSE.,ParOper)
         
-      CASE ('int','int mean','int square','int square mean','int abs','int abs mean',&
+      CASE ('int','int mean','int square','int square mean','int rms','int abs','int abs mean',&
           'int variance','volume','potential energy','diffusive energy','convective energy')
         
         IF( MaskOper ) CALL CreateNodeMask()
@@ -1730,7 +1730,7 @@ CONTAINS
 
     CASE ('sum square')
       operx = sumxx 
-
+      
     CASE ('sum abs')
       operx = sumabsx      
       
@@ -1753,6 +1753,9 @@ CONTAINS
       operx = Mean
 
     CASE ('mean square')
+      operx = sumxx / sumi 
+
+    CASE ('rms')
       operx = SQRT( sumxx / sumi )
       
     CASE ('mean abs')
@@ -2023,7 +2026,7 @@ CONTAINS
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
           integral1 = integral1 + S * coeff * func 
 
-          CASE ('int square','int square mean')
+          CASE ('int square','int square mean','int rms')
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
           integral1 = integral1 + S * coeff * func**2 
           
@@ -2083,22 +2086,25 @@ CONTAINS
     IF(hits == 0) RETURN
 
     SELECT CASE(OperName)
-      
-      CASE ('volume','int','int abs','int square')
+
+    CASE ('volume','int','int abs','int square')
       operx = integral1
-      
-      CASE ('int mean','int square mean','int abs mean')
+
+    CASE ('int mean','int square mean','int abs mean')
       operx = integral1 / vol        
 
-      CASE ('int variance')
+    CASE ('int rms')
+      operx = SQRT( integral1 / vol ) 
+
+    CASE ('int variance')
       operx = SQRT(integral2/vol-(integral1/vol)**2)
 
-      CASE ('diffusive energy','convective energy')
+    CASE ('diffusive energy','convective energy')
       operx = 0.5d0 * integral1
 
-      CASE ('potential energy')
+    CASE ('potential energy')
       operx = integral1
-      
+
     END SELECT
 
 
