@@ -136,6 +136,8 @@ SUBROUTINE AdjointSSA_SSASolver( Model,Solver,dt,TransientSimulation )
   IF (SEP) THEN
      GLnIP=ListGetInteger( Solver % Values, &
            'GL integration points number',UnFoundFatal=.TRUE. )
+     WRITE(Message,'(a,i0,a)') 'Sub-Element GL parameterization using ',GLnIP,' IPs'
+     CALL INFO(SolverName,TRIM(Message),level=4)
      GMSol => VariableGet( Solver % Mesh % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
      BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock',UnFoundFatal=.TRUE. )
   END IF

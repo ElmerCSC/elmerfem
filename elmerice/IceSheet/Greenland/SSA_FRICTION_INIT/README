@@ -1,0 +1,17 @@
+This directory contains standard configuration files to optimize the basal friction velocity
+This use the adjoint inverse method with the SSA direct model to minimize the mismatch between model and observed velocities
+with constrains on teh mismatch betwee model and observed ice flux divergence and smoothness of the basal friction field.
+
+The output can be restarted to run forecast simulations in the SSA directory with using the optimized friction field.
+
+see http://elmerice.elmerfem.org/wiki/doku.php?id=eis:greenland#present
+
+USAGE:
+	- Get required DATA
+	- Get a mesh : e.g. http://elmerice.elmerfem.org/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_mesh_v0.tar.gz
+	- REQUIRED: Partition the mesh with ElmerGrid
+	- compile User functions: make -f Makefile.IN
+	- Update default parameters in OPTIM_BETA.IN
+	- (OPTIONAL - Advanced users): update default .sif files: INIT_OPTIM_BETA.sif and OPTIM_BETA.sif
+	- RUN the initialisation : INIT_OPTIM_BETA.sif
+	- RUN the simulation: OPTIM_BETA.sif

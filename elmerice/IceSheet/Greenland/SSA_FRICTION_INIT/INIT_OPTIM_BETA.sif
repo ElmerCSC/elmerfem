@@ -1,11 +1,11 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! .sif file for the initialisation
-! of greenland transient simulations
+! of the inverse method
 !
 ! Author: F. Gillet-Chaulet (IGE-Grenoble-FR)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! FOR DEFAULT USE/UPDATE PARAMETERS IN SSA.IN
-include SSA.IN
+! FOR DEFAULT USE/UPDATE PARAMETERS IN OPTIM_BETA.IN
+include OPTIM_BETA.IN
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !#######################################################
 !#######################################################
@@ -35,6 +35,21 @@ End
 Body 1
   Equation = 1
   Material = 1
+  Initial Condition = 1
+End
+!#######################################################
+!#######################################################
+Initial Condition 1
+! List of variable that must be initialised
+  H = Real 0.0
+  bedrock = Real 0.0
+  Zs= Real 0.0
+  Zb= Real 0.0
+  smb= Real 0.0
+  Mu= Real 0.0
+  slc0=Real 0.0
+  Vobs= Real 0.0
+  dhdt_obs=Real 0.0
 End
 !#######################################################
 !#######################################################
@@ -117,8 +132,8 @@ Solver 5
    Y Dim Name = String "y"
 !--- 
   Variable 1 = File "C1"
-  Target Variable 1 = String "slc"
-  Exported Variable 1 = slc
+  Target Variable 1 = String "slc0"
+  Exported Variable 1 = slc0
 End
 !#######################################################
 Solver 6
@@ -139,8 +154,29 @@ Solver 6
   Exported Variable 1 = Vobs
 End
 !#######################################################
+Solver 7
+! comment if you have obs. File for dhdt
+  Exec Solver = never
+
+  Equation = Reader6
+    Procedure = "GridDataReader" "GridDataReader"
+    Variable = -nooutput dumy6
+   
+!---- NOTE: File is case sensitive, String is not!
+ Filename = File "$DHDT_DATA$"
+
+   X Dim Name = String "x"
+   Y Dim Name = String "y"
+   Is Time Counter = Logical True
+!--- 
+
+  Variable 1 = File "dhdt"
+  Target Variable 1 = String "dhdt_obs"
+  Exported Variable 1 = dhdt_obs
+End
+!#######################################################
 !#######################################################
 Equation 1
-  Active Solvers(6) = 1 2 3 4 5 6
+  Active Solvers(7) = 1 2 3 4 5 6 7
 End
 

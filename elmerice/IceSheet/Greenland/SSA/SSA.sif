@@ -1,5 +1,6 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! .sif file for greenland transient simulations
+! Author: F. Gillet-Chaulet (IGE-Grenoble-FR)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! FOR DEFAULT USE/UPDATE PARAMETERS IN SSA.IN
 include SSA.IN

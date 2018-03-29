@@ -99,6 +99,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
+  TYPE(Solver_t), POINTER :: DSolver
   TYPE(Nodes_t)   :: ElementNodes
   TYPE(Element_t),POINTER :: CurrentElement, Element, ParentElement, BoundaryElement
   TYPE(Matrix_t),POINTER  :: StiffMatrix
@@ -134,7 +135,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: iFriction
   REAL(KIND=dp) :: fm
   CHARACTER(LEN=MAX_NAME_LEN) :: Friction
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='DJDp_Adjoint_SSA'
 #ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: at, at0
 #else
@@ -146,6 +147,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL , SAVE :: ComputeDJDBeta,ComputeDJDZs,ComputeDJDZb,ComputeDJDRho,ComputeDJDEta,Reset
   CHARACTER(LEN=MAX_NAME_LEN), SAVE :: NeumannSolName,AdjointSolName,SName
+  INTEGER,SAVE :: SolverInd
 
   SAVE rhow,sealevel
   SAVE STIFF, LOAD, FORCE, AllocationsDone, DIM, SolverName, ElementNodes
@@ -156,31 +158,12 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
   SAVE STDOFs
 
 !------------------------------------------------------------------------------
-  WRITE(SolverName, '(A)') 'DJDp_Adjoint_SSA'
-
-!------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
   DIM = CoordinateSystemDimension()
 
 
-  ZbSol => VariableGet( Solver % Mesh % Variables, 'Zb', UnFoundFatal=.TRUE. )
-  Zb => ZbSol % Values
-  ZbPerm => ZbSol % Perm
 
-  ZsSol => VariableGet( Solver % Mesh % Variables, 'Zs', UnFoundFatal=.TRUE.  )
-  Zs => ZsSol % Values
-  ZsPerm => ZsSol % Perm
-
-!  Sub - element GL parameterisation
-  SEP=GetLogical( Solver % Values, 'Sub-Element GL parameterization',GotIt)
-  IF (.NOT.GotIt) SEP=.False.
-  IF (SEP) THEN
-     GLnIP=ListGetInteger( Solver % Values, &
-           'GL integration points number',UnFoundFatal=.TRUE. )
-     GMSol => VariableGet( Solver % Mesh % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
-     BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock',UnFoundFatal=.TRUE. )
-  END IF
 
 !!!!!!!!!!! get Solver Variables
   SolverParams => GetSolverParams()
@@ -196,8 +179,15 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
             WRITE(NeumannSolName,'(A)') 'SSAVelocity'
     END IF
   !! SSA Solution
-     VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName, UnFoundFatal=.TRUE.   )
+     VeloSolN => VariableGet( Solver % Mesh % Variables, TRIM(NeumannSolName), UnFoundFatal=.TRUE.   )
      STDOFs = VeloSolN % DOFs
+
+     ! Get the Direct solver
+     DO i=1,Model % NumberOfSolvers
+        if (TRIM(NeumannSolName) == TRIM(Model % Solvers(i) % Variable % Name)) exit
+     End do
+     if (i.eq.(Model % NumberOfSolvers+1)) CALL FATAL(SolverName,'Could not find Flow Solver Equation Name')
+     SolverInd=i
 
      AdjointSolName =  GetString( SolverParams,'Adjoint Solution Name', Found)
      IF(.NOT.Found) THEN        
@@ -249,65 +239,87 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
      CALL INFO( SolverName, 'Memory allocation done.',Level=1 )
   END IF
 
+! Get Info from Direct Solver Params
+  DSolver => Model % Solvers(SolverInd)
+!  Sub - element GL parameterisation
+  SEP=GetLogical( DSolver % Values, 'Sub-Element GL parameterization',GotIt)
+  IF (.NOT.GotIt) SEP=.False.
+  IF (SEP) THEN
+     GLnIP=ListGetInteger( DSolver % Values, &
+           'GL integration points number',UnFoundFatal=.TRUE. )
+     WRITE(Message,'(a,i0,a)') 'Sub-Element GL parameterization using ',GLnIP,' IPs'
+     CALL INFO(SolverName,TRIM(Message),level=4)
+     GMSol => VariableGet( Solver % Mesh % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock',UnFoundFatal=.TRUE. )
+  END IF
+
+  ZbSol => VariableGet( Solver % Mesh % Variables, 'Zb', UnFoundFatal=.TRUE. )
+  Zb => ZbSol % Values
+  ZbPerm => ZbSol % Perm
+
+  ZsSol => VariableGet( Solver % Mesh % Variables, 'Zs', UnFoundFatal=.TRUE.  )
+  Zs => ZsSol % Values
+  ZsPerm => ZsSol % Perm
+
   !! SSA Solution
-     VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName, UnFoundFatal=.TRUE.  )
-     VelocityN => VeloSolN % Values
-     VeloNPerm => VeloSolN % Perm
+  VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName, UnFoundFatal=.TRUE.  )
+  VelocityN => VeloSolN % Values
+  VeloNPerm => VeloSolN % Perm
 
   !! Adjoint Solution
-     VeloSolD => VariableGet( Solver % Mesh % Variables, AdjointSolName, UnFoundFatal=.TRUE. )
-     VelocityD => VeloSolD % Values
-     VeloDPerm => VeloSolD % Perm
+  VeloSolD => VariableGet( Solver % Mesh % Variables, AdjointSolName, UnFoundFatal=.TRUE. )
+  VelocityD => VeloSolD % Values
+  VeloDPerm => VeloSolD % Perm
 
-      IF (ComputeDJDBeta) Then
-       SName =  GetString( SolverParams,'DJDBeta Name', Found)
-       IF(.NOT.Found) THEN        
+  IF (ComputeDJDBeta) Then
+     SName =  GetString( SolverParams,'DJDBeta Name', Found)
+     IF(.NOT.Found) THEN        
             CALL WARN(SolverName,'Keyword >DJDBeta Name< not found in section >Solver<')
             CALL WARN(SolverName,'Taking default value >DJDBeta<')
             WRITE(SName,'(A)') 'DJDBeta'
             CALL ListAddString(  SolverParams, 'DJDBeta Name', TRIM(SName))
-        END IF
-        DJDBetaSol => VariableGet( Solver % Mesh % Variables, SName ,UnFoundFatal=.TRUE. )
-        DJDBeta => DJDBetaSol % Values
-        DJDBetaPerm => DJDBetaSol % Perm
+      END IF
+      DJDBetaSol => VariableGet( Solver % Mesh % Variables, SName ,UnFoundFatal=.TRUE. )
+      DJDBeta => DJDBetaSol % Values
+      DJDBetaPerm => DJDBetaSol % Perm
 
-        Reset =  GetLogical( SolverParams,'Reset DJDBeta', Found)
-        if (Reset.OR.(.NOT.Found)) DJDBeta = 0.0
-      End if
+      Reset =  GetLogical( SolverParams,'Reset DJDBeta', Found)
+      if (Reset.OR.(.NOT.Found)) DJDBeta = 0.0
+  End if
 
-      IF (ComputeDJDZs) Then
-          DJDZsSol => VariableGet( Solver % Mesh % Variables, 'DJDZs',UnFoundFatal=.TRUE. )
-          DJDZs => DJDZsSol % Values
-          DJDZsPerm => DJDZsSol % Perm
+  IF (ComputeDJDZs) Then
+       DJDZsSol => VariableGet( Solver % Mesh % Variables, 'DJDZs',UnFoundFatal=.TRUE. )
+       DJDZs => DJDZsSol % Values
+       DJDZsPerm => DJDZsSol % Perm
           
-          Reset =  GetLogical( SolverParams,'Reset DJDZs', Found)
-          if (Reset.OR.(.NOT.Found)) DJDZs = 0.0
-      End if
-      IF (ComputeDJDZb) Then
-          DJDZbSol => VariableGet( Solver % Mesh % Variables, 'DJDZb', UnFoundFatal=.TRUE. )
-          DJDZb => DJDZbSol % Values
-          DJDZbPerm => DJDZbSol % Perm
+       Reset =  GetLogical( SolverParams,'Reset DJDZs', Found)
+       if (Reset.OR.(.NOT.Found)) DJDZs = 0.0
+  End if
+  IF (ComputeDJDZb) Then
+       DJDZbSol => VariableGet( Solver % Mesh % Variables, 'DJDZb', UnFoundFatal=.TRUE. )
+       DJDZb => DJDZbSol % Values
+       DJDZbPerm => DJDZbSol % Perm
           
-          Reset =  GetLogical( SolverParams,'Reset DJDZb', Found)
-          if (Reset.OR.(.NOT.Found)) DJDZb = 0.0
-      End if
+       Reset =  GetLogical( SolverParams,'Reset DJDZb', Found)
+       if (Reset.OR.(.NOT.Found)) DJDZb = 0.0
+  End if
 
-      IF (ComputeDJDRho) Then
-          DJDRhoSol => VariableGet( Solver % Mesh % Variables, 'DJDRho', UnFoundFatal=.TRUE. )
-          DJDRho => DJDRhoSol % Values
-          DJDRhoPerm => DJDRhoSol % Perm
+  IF (ComputeDJDRho) Then
+        DJDRhoSol => VariableGet( Solver % Mesh % Variables, 'DJDRho', UnFoundFatal=.TRUE. )
+        DJDRho => DJDRhoSol % Values
+        DJDRhoPerm => DJDRhoSol % Perm
 
-          Reset =  GetLogical( SolverParams,'Reset DJDRho', Found)
-          if (Reset.OR.(.NOT.Found)) DJDRho = 0.0
-      End if
-      IF (ComputeDJDEta) Then
-          DJDEtaSol => VariableGet( Solver % Mesh % Variables, 'DJDEta' ,UnFoundFatal=.TRUE.)
-          DJDEta => DJDEtaSol % Values
-          DJDEtaPerm => DJDEtaSol % Perm
+        Reset =  GetLogical( SolverParams,'Reset DJDRho', Found)
+        if (Reset.OR.(.NOT.Found)) DJDRho = 0.0
+  End if
+  IF (ComputeDJDEta) Then
+        DJDEtaSol => VariableGet( Solver % Mesh % Variables, 'DJDEta' ,UnFoundFatal=.TRUE.)
+        DJDEta => DJDEtaSol % Values
+        DJDEtaPerm => DJDEtaSol % Perm
 
-          Reset =  GetLogical( SolverParams,'Reset DJDEta', Found)
-          if (Reset.OR.(.NOT.Found)) DJDEta = 0.0
-       END IF
+        Reset =  GetLogical( SolverParams,'Reset DJDEta', Found)
+        if (Reset.OR.(.NOT.Found)) DJDEta = 0.0
+  END IF
 
 
   ! bulk assembly
