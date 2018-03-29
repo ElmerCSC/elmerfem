@@ -1013,6 +1013,9 @@ CONTAINS
     j = ListGetInteger( Params,'Fluid Solver Index',Found)
     IF(.NOT. Found ) THEN
       j = ListGetInteger( Params,'NS Solver Index', IsNs )
+      IF( .NOT. IsNs ) THEN
+        j = ListGetInteger( Params,'Pressure Solver Index',Found)        
+      END IF
     END IF
     
     IF(i<=0 .OR. j<=0) THEN

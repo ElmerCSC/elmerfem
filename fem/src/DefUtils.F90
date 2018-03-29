@@ -2939,6 +2939,7 @@ CONTAINS
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
      
      TYPE(Solver_t), POINTER :: Solver
+     LOGICAL :: Found
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -2949,6 +2950,11 @@ CONTAINS
      CALL Info('DefaultStart','Starting solver: '//&
         TRIM(ListGetString(Solver % Values,'Equation')),Level=10)
      
+     ! If we changed the system last time to harmonic one then revert back the real system
+     IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
+       CALL ChangeToHarmonicSystem( Solver, .TRUE. )
+     END IF
+
      ! One can run preprocessing solver in this slot.
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Pre Solvers')

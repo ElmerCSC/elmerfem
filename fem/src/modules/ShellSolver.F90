@@ -226,6 +226,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   SAVE VisitsList, Indices, LocalSol, TotalSol, LocalRHSForce
 !------------------------------------------------------------------------------  
 
+  CALL DefaultStart()
+  
   ! ---------------------------------------------------------------------------------
   ! PART 0:
   ! Obtain the values of some key parameters and create allocatable variables. 
@@ -2840,6 +2842,7 @@ CONTAINS
       TaylorParams(5) = FPar
       TaylorParams(6) = GPar
 
+      
       IF (Planar) THEN
         IF ( (ABS(APar) > 1000.0*EPSILON(1.0)) .AND. (ABS(BPar) > 1000.0*EPSILON(1.0)) ) THEN
           CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial (planar point)')
@@ -2885,6 +2888,7 @@ CONTAINS
     IF ( PRESENT(e3) ) e3(:) = GlobPDir3(:)
     IF ( PRESENT(o) ) o(:) = X0(:)
 
+    
     ! Return information about the mesh resolution of geometry:
     IF ( PRESENT(SizeRadiusRatio) ) THEN
       SizeRadiusRatio = 0.0d0
@@ -2930,7 +2934,7 @@ CONTAINS
         CALL SetElementProperty('bubble dofs', NodesArray(1:12), Element)
       END IF
     END IF
-
+    
     !print *, 'o=', o
     !print *, 'e1=', e1
     !print *, 'e2=', e2
@@ -4758,8 +4762,10 @@ CONTAINS
       l14 = SQRT(x14**2 + y14**2)
       h = MAX(l21,l32,l43,l14)
       Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
+
     CASE DEFAULT
-      CALL WARN('ShearCorrectionFactor','Illegal number of nodes for Smitc elements')
+      CALL Fatal('ShearCorrectionFactor',&
+          'Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
     END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE ShearCorrectionFactor

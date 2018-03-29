@@ -238,7 +238,7 @@
          ! Get element local matrix, and rhs vector
          !-----------------------------------------
          CALL LocalMatrix(  STIFF, DAMP, MASS, FORCE, Load, &
-             Element,n, DOFs, ElementNodes, DampingCoef, SpringCoef )
+             Element, n, DOFs, ElementNodes, DampingCoef, SpringCoef )
 
          IF( TransientSimulation ) &
              CALL Default2ndOrderTime( MASS,DAMP,STIFF,FORCE )
@@ -575,7 +575,7 @@
              h = MAX(l21,l32,l43,l14)
              Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
           CASE DEFAULT
-            CALL WARN('SmitcSolver','Illegal number of nodes for Smitc elements')
+            CALL Fatal('SmitcSolver','Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
           END SELECT
 !------------------------------------------------------------------------------
      END SUBROUTINE ShearCorrectionFactor
