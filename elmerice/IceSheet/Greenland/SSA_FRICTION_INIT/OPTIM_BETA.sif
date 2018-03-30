@@ -161,7 +161,7 @@ Solver 2
  ! File with data: 
  !   ASCII x,y,u,v
  ! or netcdf with vx, vy
-   Observation File Name = File $VELOCITY_DATA
+   Observation File Name = File "$VELOCITY_DATA$"
  ! 
    Save used data = logical False
 end
