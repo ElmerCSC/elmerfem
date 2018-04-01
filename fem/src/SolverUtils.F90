@@ -14190,6 +14190,7 @@ CONTAINS
     LOGICAL :: Stat, IsHarmonic
     INTEGER :: dim,mat_id,tcount
     LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, Found
+    LOGICAL, ALLOCATABLE :: NodeDone(:)
     REAL(KIND=dp) :: MultSF, MultFS
     
     
@@ -14258,14 +14259,17 @@ CONTAINS
           CALL Fatal('FsiCouplingAssembly',&
               'Inconsistant number of harmonic dofs in NS solver: '//TRIM(I2S(fdofs)))
         END IF
+        ! pressure component
+        pcomp = fdofs / 2
       ELSE
         IF( fdofs /= (dim+2) .AND. fdofs /= (dim+1) ) THEN
           CALL Fatal('FsiCouplingAssembly',&
               'Inconsistant number of real dofs in NS solver: '//TRIM(I2S(fdofs)))
         END IF
+        pcomp = fdofs
       END IF
-      ! pressure component
-      pcomp = dim + 1
+      ALLOCATE( NodeDone(MAXVAL(FPerm)) )
+      NodeDone = .FALSE.
     ELSE
       IF( IsHarmonic ) THEN
         IF( fdofs /= 2 ) CALL Fatal('FsiCouplingAssembly',&
@@ -14409,7 +14413,7 @@ CONTAINS
         area = area + val
       END DO
 
-      
+      ! A: fs
       ! Effect of structure on fluid           
       IF( IsNs ) THEN
         ! For the N-S equation the condition applies directly on the velocity components
@@ -14418,6 +14422,11 @@ CONTAINS
           ii = Indexes(i)
           j = i
           jj = Indexes(j) ! one-to-one mapping
+
+
+          IF( NodeDone( Fperm(ii) ) ) CYCLE
+          NodeDone( FPerm(ii) ) = .TRUE.
+          
           
           DO k=1,dim
             
@@ -14458,8 +14467,7 @@ CONTAINS
               END IF
             END IF
 
-            IF( IsHarmonic ) THEN
-                            
+            IF( IsHarmonic ) THEN                                             
               ! Structure load on the fluid: v = i*omega*u
               fdiag = A_f % Values( A_f % diag(ifluid) )
               IF( FreeF ) THEN
@@ -14467,7 +14475,7 @@ CONTAINS
               ELSE
                 CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)
               END IF
-
+              
               fdiag = A_f % Values( A_f % diag(ifluid+1) )
               IF( FreeFim ) THEN
                 CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,-MultFS*val*fdiag)      ! Im
@@ -14590,7 +14598,7 @@ CONTAINS
       END IF
         
 
-
+      ! A_sf:
       ! Effect of fluid (pressure) on structure.
       ! Each component get the normal component of the pressure as a r.h.s. term.
       ! The plate equation just gets the full load and is treated separately. 
@@ -14635,7 +14643,7 @@ CONTAINS
                 ELSE
                   CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp) 
                 END IF
-
+                
                 ! These must be created for compleness bacause the matrix topology of complex
                 ! matrices must be the same for all compoents.
                 CALL AddToMatrixElement(A_sf,jstruct,ifluid+1,0.0_dp)
@@ -14716,9 +14724,9 @@ CONTAINS
       CALL List_toCRSMatrix(A_sf)
     END IF
       
-    !PRINT *,'interface area:',area
-    !PRINT *,'interface fs sum:',SUM(A_fs % Values)
-    !PRINT *,'interface sf sum:',SUM(A_sf % Values)
+    PRINT *,'interface area:',area
+    PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
+    PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
     CALL Info('FsiCouplingAssembly','Number of elements on interface: '&
         //TRIM(I2S(tcount)),Level=10)    
