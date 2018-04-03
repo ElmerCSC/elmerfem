@@ -326,7 +326,8 @@ CONTAINS
     INTEGER :: NumberOfNodes, IOStatus
     INTEGER, PARAMETER :: InFileUnit = 28
     CHARACTER(LEN=:), ALLOCATABLE :: ReadStr
-
+    LOGICAL :: InlineCoords
+    
     ALLOCATE( Mesh % Nodes )
     ALLOCATE( Mesh % Variables )
     Mesh % NumberOfBulkElements = 0
@@ -357,7 +358,10 @@ CONTAINS
       END IF
 
       j =  INDEX( ReadStr,'internalField',.TRUE.) 
-      IF( j > 0 ) EXIT
+      IF( j > 0 ) THEN
+        k = INDEX( ReadStr,'(')
+        EXIT
+      END IF
     END DO
 
     IF( j == 0 ) THEN
@@ -365,8 +369,16 @@ CONTAINS
     ELSE
       CALL Info('Elmer2OpenFoamWrite','internalField found at line: '//TRIM(I2S(Line)),Level=7)    
     END IF
-      
-    READ(InFileUnit,*,IOSTAT=IOStatus) NumberOfNodes    
+
+    InlineCoords = ( k > 0 ) 
+    IF( InlineCoords ) THEN
+      j = INDEX( ReadStr,'<vector>')
+      READ( ReadStr(j+8:k-1),*,IOSTAT=IOStatus ) NumberOfNodes
+      CALL Info('Elmer2OpenFoamWrite','Reading inline coordinates',Level=10)
+    ELSE
+      READ(InFileUnit,*,IOSTAT=IOStatus) NumberOfNodes    
+    END IF
+
     IF( IOStatus /= 0 ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','Could not read number of nodes!')
     END IF
@@ -394,26 +406,31 @@ CONTAINS
          
 
     ! This is just empty left paranthesis
-    READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
-    !PRINT *,'EmptyLine:',TRIM(ReadStr)
+    IF(.NOT. InlineCoords ) THEN
+      READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
+    END IF
    
     DO i=1,n
-      READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
-      IF( IOStatus /= 0 ) THEN
-        CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate line: '//TRIM(I2S(i)))
+      IF( InlineCoords ) THEN
+        ReadStr = TRIM( ReadStr(k+1:) )
+      ELSE      
+        READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
+        IF( IOStatus /= 0 ) THEN
+          CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate line: '//TRIM(I2S(i)))
+        END IF
       END IF
       
-      j =  INDEX( ReadStr,'(',.TRUE.) 
+      j =  INDEX( ReadStr,'(',.FALSE.) 
       IF( j == 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite',&
             'Expecting a paranthesis at the start of OpenFOAM line: '//TRIM(I2S(i)))
       END IF
-      k =  INDEX( ReadStr,')',.TRUE.) 
+      k =  INDEX( ReadStr,')',.FALSE.) 
       IF( k == 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite',&
             'Expecting a paranthesis at the end of OpenFOAM line: '//TRIM(I2S(i)))
       END IF
-      
+
       READ( ReadStr(j+1:k-1),*,IOSTAT=IOStatus ) x,y,z
       IF( IOStatus /= 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate values: '//TRIM(I2S(i)))
@@ -437,7 +454,9 @@ CONTAINS
         'Coordinate 3',1,Mesh % Nodes % z )
     
     CALL Info('Elmer2OpenFoamWrite','Created temporal OpenFOAM mesh just for nodes',Level=8)
-        
+
+    IF( InlineCoords ) STOP
+    
   END SUBROUTINE CreateFOAMMesh
 
 
