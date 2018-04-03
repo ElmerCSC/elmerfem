@@ -39,11 +39,11 @@
       CALL ListAddInteger( SolverParams, 'Variable DOFs', 3 )
       CALL ListAddString( SolverParams, 'Variable', 'Deflection' )
     END IF
-    
-
-
-    
+       
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
+
+    CALL ListAddLogical( SolverParams, 'Plate Solver', .TRUE. )
+
 !------------------------------------------------------------------------------
   END SUBROUTINE SmitcSolver_Init
 !------------------------------------------------------------------------------

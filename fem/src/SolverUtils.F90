@@ -92,7 +92,9 @@ CONTAINS
      LOGICAL :: Found, AnyNT, AnyProj, DoDisplaceMesh
      TYPE(Solver_t), POINTER :: Solver
 !------------------------------------------------------------------------------
-
+     
+     CALL Info('InitializeToZero','Initializing the linear system to zero',Level=12)
+     
      IF ( ASSOCIATED( A ) ) THEN
        SELECT CASE( A % FORMAT )
          CASE( MATRIX_CRS )
@@ -14239,7 +14241,7 @@ CONTAINS
       IF( sdofs == 4 .OR. sdofs == 6 ) THEN
         IsHarmonic = .TRUE.
       ELSE IF( sdofs /= 2 .AND. sdofs /= 3 ) THEN
-        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in shell solver: '//TRIM(I2S(sdofs)))
+        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in elasticity solver: '//TRIM(I2S(sdofs)))
       END IF
       IF( sdofs == 4 .OR. sdofs == 2 ) dim = 2
     END IF

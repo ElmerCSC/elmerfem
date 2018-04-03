@@ -119,6 +119,9 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
     CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
         "Principal Coordinate Dir3[Principal Coordinate Dir3:3]")  
   END IF
+
+  CALL ListAddLogical( SolverPars,'Shell Solver',.TRUE.)
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver_Init
 !------------------------------------------------------------------------------
