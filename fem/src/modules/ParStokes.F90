@@ -348,8 +348,10 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
      CALL DefaultInitialize()
 
      IF (BlockPreconditioning) THEN
-       CALL InitializeToZero( AMatrix, AMatrix % RHS ) 
-       CALL InitializeToZero( PMatrix, PMatrix % RHS )        
+       !CALL InitializeToZero( AMatrix, AMatrix % RHS ) 
+       !CALL InitializeToZero( PMatrix, PMatrix % RHS )        
+       CALL DefaultInitialize(USolver=VelocitySolver)
+       CALL DefaultInitialize(USolver=PressureSolver)
      END IF
 
      !------------------------------------------------------------
