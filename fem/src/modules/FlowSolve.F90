@@ -198,6 +198,8 @@
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
+     CALL DefaultStart()
+     
 !    Check for local coordinate system
 
      LocalCoords = GetString( Solver % Values, 'Solver Coordinate System', &
@@ -533,7 +535,8 @@
        CALL Info( 'FlowSolve','Starting Assembly...', Level=4 )
 
 !------------------------------------------------------------------------------
-       CALL InitializeToZero( StiffMatrix, ForceVector )
+       !CALL InitializeToZero( StiffMatrix, ForceVector )
+       CALL DefaultInitialize() 
 !------------------------------------------------------------------------------
 
        bf_id   = -1
@@ -1237,6 +1240,7 @@
         END IF
       END DO
 
+      CALL DefaultFinishBoundaryAssembly()
       CALL DefaultFinishAssembly()
 
 !------------------------------------------------------------------------------

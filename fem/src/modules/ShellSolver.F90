@@ -119,6 +119,9 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
     CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
         "Principal Coordinate Dir3[Principal Coordinate Dir3:3]")  
   END IF
+
+  CALL ListAddLogical( SolverPars,'Shell Solver',.TRUE.)
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver_Init
 !------------------------------------------------------------------------------
@@ -226,6 +229,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   SAVE VisitsList, Indices, LocalSol, TotalSol, LocalRHSForce
 !------------------------------------------------------------------------------  
 
+  CALL DefaultStart()
+  
   ! ---------------------------------------------------------------------------------
   ! PART 0:
   ! Obtain the values of some key parameters and create allocatable variables. 
@@ -287,6 +292,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   IF (.NOT. ASSOCIATED(Indices)) ALLOCATE( Indices(Mesh % MaxElementDOFs) )
   IF (.NOT. ALLOCATED(LocalSol)) ALLOCATE( LocalSol(ShellModelPar, Mesh % MaxElementDOFs) )
   IF (.NOT. ALLOCATED(LocalRHSForce)) ALLOCATE( LocalRHSForce((ShellModelPar+1) * Mesh % MaxElementDOFs) )
+
   IF (.NOT. ASSOCIATED(TotalSol)) THEN
     ALLOCATE( TotalSol(SIZE(Solver % Variable % Values)) )
   ELSE
@@ -339,7 +345,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ComputeShellArea = GetLogical(SolverPars, 'Compute Shell Area', Found)
   BlendingSurfaceArea = 0.0d0
   MappedMeshArea = 0.0d0
-
+  
   ! For verification purposes we may solve a case for which the reference strain 
   ! energy is known:
   SolveBenchmarkCase = GetLogical(SolverPars, 'Benchmark Problem', Found)
@@ -390,6 +396,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       nd = GetElementDOFs(Indices)
       nb = GetElementNOFBDOFs()
 
+      
       IF (LargeDeflection) THEN
         CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
       ELSE
@@ -403,6 +410,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       IF (nb > 0) CALL Fatal('ShellSolver', &
           'Static condensation for p-bubbles is not supported')
 
+      
       !----------------------------------------------------------------------
       ! Create elementwise geometry data related to the reference configuration. 
       ! This is computed only once since the data is saved as elementwise 
@@ -508,6 +516,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
     END DO ASSEMBLYLOOP
 
+
+    
     CALL DefaultFinishBulkAssembly() 
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -695,6 +705,21 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 CONTAINS
 
 
+  FUNCTION UsePElement( Element ) RESULT ( Pver )
+    TYPE(Element_t) :: Element
+    LOGICAL :: Pver
+    LOGICAL :: IsPver, Visited = .FALSE. 
+    SAVE IsPver, Visited
+    
+    IF( .NOT. Visited ) THEN      
+      IsPVer = IsPElement(BGElement) .AND. &
+          MAXVAL( Solver % Variable % Perm ) > Solver % Mesh % NumberOfNodes
+      Visited = .TRUE.
+    END IF
+    Pver = IsPVer
+  END FUNCTION UsePElement
+
+    
   
 ! ---------------------------------------------------------------------------------
 ! This subroutine uses an ordinary field variable or mesh.director file arranged as
@@ -2840,6 +2865,7 @@ CONTAINS
       TaylorParams(5) = FPar
       TaylorParams(6) = GPar
 
+      
       IF (Planar) THEN
         IF ( (ABS(APar) > 1000.0*EPSILON(1.0)) .AND. (ABS(BPar) > 1000.0*EPSILON(1.0)) ) THEN
           CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial (planar point)')
@@ -2885,6 +2911,7 @@ CONTAINS
     IF ( PRESENT(e3) ) e3(:) = GlobPDir3(:)
     IF ( PRESENT(o) ) o(:) = X0(:)
 
+    
     ! Return information about the mesh resolution of geometry:
     IF ( PRESENT(SizeRadiusRatio) ) THEN
       SizeRadiusRatio = 0.0d0
@@ -2930,7 +2957,7 @@ CONTAINS
         CALL SetElementProperty('bubble dofs', NodesArray(1:12), Element)
       END IF
     END IF
-
+    
     !print *, 'o=', o
     !print *, 'e1=', e1
     !print *, 'e2=', e2
@@ -3458,7 +3485,6 @@ CONTAINS
     UmbilicalPointFlag => GetElementProperty('umbilical point', BGElement)
     PlateBody = PlanarPointFlag(1) > 0.0d0
     SphericalSurface = UmbilicalPointFlag(1) > 0.0d0
-
     ! ------------------------------------------------------------------------------
     ! Decide what strain reduction strategy is applied and set parameters that
     ! control the selection of variational crimes.
@@ -3468,7 +3494,7 @@ CONTAINS
     CALL SetStrainReductionParameters(BGElement, MembraneReductionMethod, PlateBody, &
       MembraneStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
       MembraneStrains = .TRUE.)
-
+    
     ReductionMethod = StrainReductionMethod
     UseBubbles = Bubbles .AND. (.NOT. LargeDeflection)
     CALL SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
@@ -3498,7 +3524,7 @@ CONTAINS
     !   * Element: the Lagrange interpolation element corresponding to the "Element" keyword 
     !   * GElement: an element structure corresponding to the surface reconstruction
     ! ------------------------------------------------------------------------------
-    Pversion = IsPElement(BGElement)
+    Pversion = UsePElement(BGElement)
 
     SELECT CASE(Family)
     CASE(3)
@@ -3631,6 +3657,7 @@ CONTAINS
 
     IP = GaussPoints( BGElement )
 
+    
     QUADRATURELOOP: DO t=1,IP % n
 
       BM = 0.0d0
@@ -3742,8 +3769,9 @@ CONTAINS
       ! The matrix description of the elasticity tensor:
       CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
 
+
       ! Shear correction factor:
-      IF (UseShearCorrection) THEN
+      IF ( UseShearCorrection ) THEN
         CALL ShearCorrectionFactor(Kappa, h, Nodes % x(1:Family), Nodes % y(1:Family), Family)
       ELSE
         Kappa = 1.0d0
@@ -3983,11 +4011,11 @@ CONTAINS
         StrainVec(4) = StrainVec(4) + nu/(1.0d0-nu) * StrainVec(1) / A1**2 + &
             nu/(1.0d0-nu) * StrainVec(2) / A2**2 + 0.5d0 * PrevField(5)**2 / A1**2 + &
             0.5d0 * PrevField(6)**2 / A2**2 + 0.5d0 * PrevField(7)**2
-
       END IF
 
+      
       CALL StrainEnergyDensity(Stiff, CMat, BM + NonlinBM, csize, DOFs, Weight)
-
+      
       ! The linear part of strain for the current iterate:
       StrainVec(1:csize) = StrainVec(1:csize) + MATMUL( BM(1:csize,1:DOFs), PrevSolVec(1:DOFs) )
 
@@ -4141,9 +4169,9 @@ CONTAINS
             SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(6) / A2**2 - PrevField(4) * PrevField(7)
 
       END IF
-
+      
       CALL StrainEnergyDensity(Stiff, GMat, BS+NonlinBS, 2, DOFs+BubbleDOFs, Kappa*Weight)
-
+      
       ! The linear part of strain for the current iterate:
       StrainVec(5:6) = StrainVec(5:6) + MATMUL( BS(1:2,1:DOFs), PrevSolVec(1:DOFs) )
 
@@ -4309,7 +4337,7 @@ CONTAINS
     ! ------------------------------------------------------------------------------
     ! Static condensation is performed before transforming to the global DOFs:
     ! ------------------------------------------------------------------------------
-    IF (UseBubbles .AND. BubbleDOFs>0) THEN
+    IF (UseBubbles .AND. BubbleDOFs > 0) THEN
       CALL CondensateP( DOFs, BubbleDOFs, Stiff, Force )
     END IF
 
@@ -4360,7 +4388,7 @@ CONTAINS
     INTEGER :: Family
 !------------------------------------------------------------------------------
     Family = GetElementFamily(BGElement)
-    PVersion = IsPElement(BGElement)
+    PVersion = UsePElement(BGElement) 
 
     SecondOrder = .FALSE.
     IF (.NOT. PVersion) THEN
@@ -4493,7 +4521,7 @@ CONTAINS
     INTEGER :: Family
 !------------------------------------------------------------------------------
     Family = GetElementFamily(BGElement)
-    PVersion = IsPElement(BGElement)
+    PVersion = UsePElement(BGElement)
 
     ! --------------------------------------------------------------------------
     ! Create the element structure corresponding to the surface reconstruction:
@@ -4606,7 +4634,7 @@ CONTAINS
     REAL(KIND=dp) :: PBasis(Element % Type % NumberOfNodes)
     REAL(KIND=dp) :: Basis(Element % Type % NumberOfNodes)
 !------------------------------------------------------------------------------
-    PVersion = IsPElement(BGElement)
+    PVersion = UsePElement(BGElement)
 
     n = BGElement % Type % NumberOfNodes
     NodesCount = Element % Type % NumberOfNodes
@@ -4758,8 +4786,10 @@ CONTAINS
       l14 = SQRT(x14**2 + y14**2)
       h = MAX(l21,l32,l43,l14)
       Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
+
     CASE DEFAULT
-      CALL WARN('ShearCorrectionFactor','Illegal number of nodes for Smitc elements')
+      CALL Fatal('ShearCorrectionFactor',&
+          'Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
     END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE ShearCorrectionFactor
@@ -5175,7 +5205,7 @@ CONTAINS
 
     SELECT CASE(Family)
     CASE(3)
-      PRefElement = IsPElement(Element)
+      PRefElement = UsePElement(Element)
       SELECT CASE(ReductionMethod)
       CASE(CurlKernel)
         ! Method: the kernel of RT
@@ -5639,7 +5669,7 @@ CONTAINS
     IP = GaussPoints(Element)
     DO t=1,IP % n
 
-      PRefElement = IsPElement(Element)
+      PRefElement = UsePElement(Element)
       
       IF (Family == 3 .AND. .NOT.PRefElement) THEN
         ! Switch to the p-reference element:

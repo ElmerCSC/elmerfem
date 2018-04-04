@@ -2894,20 +2894,28 @@ CONTAINS
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
 
      TYPE(Solver_t), POINTER :: Solver
-
+     LOGICAL :: Found
+     
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
      ELSE
        Solver => CurrentModel % Solver
      END IF
-
+          
      CALL DefaultSlaveSolvers(Solver,'Slave Solvers') ! this is the initial name of the slot
      CALL DefaultSlaveSolvers(Solver,'Nonlinear Pre Solvers')     
+
+
+     ! If we changed the system last time to harmonic one then revert back the real system
+     IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
+       CALL ChangeToHarmonicSystem( Solver, .TRUE. )
+     END IF
+     
      
      IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
        CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
-     END IF
-
+     END IF     
+     
      CALL InitializeToZero( Solver % Matrix, Solver % Matrix % RHS )
 
      IF( ALLOCATED(Solver % Matrix % ConstrainedDOF) ) THEN
@@ -2931,6 +2939,7 @@ CONTAINS
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
      
      TYPE(Solver_t), POINTER :: Solver
+     LOGICAL :: Found
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -2941,6 +2950,11 @@ CONTAINS
      CALL Info('DefaultStart','Starting solver: '//&
         TRIM(ListGetString(Solver % Values,'Equation')),Level=10)
      
+     ! If we changed the system last time to harmonic one then revert back the real system
+     IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
+       CALL ChangeToHarmonicSystem( Solver, .TRUE. )
+     END IF
+
      ! One can run preprocessing solver in this slot.
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Pre Solvers')
@@ -3052,16 +3066,22 @@ CONTAINS
     CALL Info('DefaultSolve','Calling SolveSystem for linear solution',Level=20)
 
     A => Solver % Matrix
-    b => A % RHS
     x => Solver % Variable
+    
+    b => A % RHS
     SOL => x % Values
-    CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
 
+    CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+    
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
       CALL FCT_Correction( Solver )
     END IF
- 
+
+    IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
+      CALL ChangeToHarmonicSystem( Solver, .TRUE. )
+    END IF
+    
     IF (PRESENT(BackRotNT)) THEN
       IF (BackRot.NEQV.BackRotNT) &
         CALL ListAddLogical(Params,'Back Rotate N-T Solution',BackRot)
@@ -3070,18 +3090,10 @@ CONTAINS
     Norm = x % Norm
 
     IF( NameSpaceI > 0 ) CALL ListPopNamespace()
-
-
-    IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
-      CALL ChangeToHarmonicSystem( Solver, .TRUE. )
-    END IF
-
-
     
     ! One can run postprocessing solver in this slot in every nonlinear iteration.
     !-----------------------------------------------------------------------------
     CALL DefaultSlaveSolvers(Solver,'Nonlinear Post Solvers')
-
     
 !------------------------------------------------------------------------------
   END FUNCTION DefaultSolve
@@ -3491,8 +3503,8 @@ CONTAINS
        END IF
      END IF
 
-    CALL UpdateGlobalForce( Solver % Matrix % RHS, &
-       F, n, x % DOFs, x % Perm(Indexes(1:n)), UElement=Element)
+     CALL UpdateGlobalForce( Solver % Matrix % RHS, &
+         F, n, x % DOFs, x % Perm(Indexes(1:n)), UElement=Element)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateForceR

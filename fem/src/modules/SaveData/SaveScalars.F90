@@ -143,7 +143,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
       MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
-      NodalOper, GotNodalOper
+      Numbering, NodalOper, GotNodalOper
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -172,20 +172,20 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 #ifndef USE_ISO_C_BINDINGS
   REAL (KIND=DP) :: CPUTime, RealTime, CPUMemory
 #endif
-
-
+  
 !------------------------------------------------------------------------------
 
   CALL Info('SaveScalars', '-----------------------------------------', Level=4 )
   CALL Info('SaveScalars','Saving scalar values of various kinds',Level=4)
 
-
+  
   Mesh => GetMesh()
   DIM = CoordinateSystemDimension()
   Params => GetSolverParams()	
 
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
 
+  FileAppend = ListGetLogical( Params,'File Append',GotIt)  
  
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN    
@@ -217,10 +217,16 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
-      ScalarsFile = NextFreeFilename( ScalarsFile ) 
-    END IF
+    Numbering = ListGetLogical(Params,'Filename Numbering',GotIt)
 
+    IF( Numbering  ) THEN
+      IF( Solver % TimesVisited > 0  ) THEN
+        ScalarsFile = NextFreeFilename( ScalarsFile, LastExisting = .TRUE. ) 
+      ELSE
+        ScalarsFile = NextFreeFilename( ScalarsFile ) 
+      END IF
+    END IF
+      
     ScalarNamesFile = TRIM(ScalarsFile) // '.' // TRIM("names")
     LiveGraph = ListGetLogical(Params,'Live Graph',GotIt) 
   END IF
@@ -247,8 +253,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END IF
     OutputPE = ParEnv % MYPe
   END IF
-
-  FileAppend = ListGetLogical( Params,'File Append',GotIt)
 
   NoLines = 0
   LineCoordinates => ListGetConstRealArray(Params,'Polyline Coordinates',gotIt)
@@ -658,8 +662,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = 1.0_dp * j
         CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
        
-      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs','mean','variance','range', &
-          'sum square','mean square')
+      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs',&
+          'mean','variance','range','sum square','mean square','rms')
         IF( MaskOper ) CALL CreateNodeMask()
         IF( GotNodalOper ) THEN
           Val = VectorStatistics(Var,Oper,NodalOper)
@@ -673,8 +677,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = VectorMeanDeviation(Var,Oper)
         CALL AddToSaveList(SaveName, Val,.FALSE.,ParOper)
         
-      CASE ('int','int mean','int abs','int abs mean','int variance','volume',&
-          'potential energy','diffusive energy','convective energy')
+      CASE ('int','int mean','int square','int square mean','int rms','int abs','int abs mean',&
+          'int variance','volume','potential energy','diffusive energy','convective energy')
         
         IF( MaskOper ) CALL CreateNodeMask()
         Val = BulkIntegrals(Var, Oper, GotCoeff, CoefficientName)
@@ -1373,9 +1377,10 @@ CONTAINS
 
     SELECT CASE(LocalOper)
       
-    CASE('nodes','elements','dofs','sum','sum abs','int','int abs','volume','potential energy','convective energy',&
-        'diffusive energy','boundary sum','boundary dofs','boundary int','area','diffusive flux',&
-        'convective flux','nans','partition checksum','partition neighbours checksum')
+    CASE('nodes','elements','dofs','sum','sum square','sum abs','int','int square','int abs','volume',&
+        'potential energy', 'convective energy','diffusive energy','boundary sum','boundary dofs',&
+        'boundary int','area','diffusive flux','convective flux','nans','partition checksum',&
+        'partition neighbours checksum')
       ParOper = 'sum'
             
     CASE('max','max abs','boundary max','boundary max abs')
@@ -1725,9 +1730,9 @@ CONTAINS
 
     CASE ('sum square')
       operx = sumxx 
-
+      
     CASE ('sum abs')
-      operx = sumabsx
+      operx = sumabsx      
       
     CASE ('max')
       operx = Maximum
@@ -1748,6 +1753,9 @@ CONTAINS
       operx = Mean
 
     CASE ('mean square')
+      operx = sumxx / sumi 
+
+    CASE ('rms')
       operx = SQRT( sumxx / sumi )
       
     CASE ('mean abs')
@@ -2018,6 +2026,10 @@ CONTAINS
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
           integral1 = integral1 + S * coeff * func 
 
+          CASE ('int square','int square mean','int rms')
+          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          integral1 = integral1 + S * coeff * func**2 
+          
           CASE ('int abs','int abs mean')
           func = ABS( SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) ) )
           integral1 = integral1 + S * coeff * func 
@@ -2074,34 +2086,25 @@ CONTAINS
     IF(hits == 0) RETURN
 
     SELECT CASE(OperName)
-      
-      CASE ('volume')
+
+    CASE ('volume','int','int abs','int square')
       operx = integral1
 
-      CASE ('int')
-      operx = integral1
-
-      CASE ('int abs')
-      operx = integral1
-      
-      CASE ('int mean')
+    CASE ('int mean','int square mean','int abs mean')
       operx = integral1 / vol        
 
-      CASE ('int abs mean')
-      operx = integral1 / vol        
+    CASE ('int rms')
+      operx = SQRT( integral1 / vol ) 
 
-      CASE ('int variance')
+    CASE ('int variance')
       operx = SQRT(integral2/vol-(integral1/vol)**2)
 
-      CASE ('diffusive energy')
+    CASE ('diffusive energy','convective energy')
       operx = 0.5d0 * integral1
 
-      CASE ('convective energy')
-      operx = 0.5d0 * integral1
-
-      CASE ('potential energy')
+    CASE ('potential energy')
       operx = integral1
-      
+
     END SELECT
 
 

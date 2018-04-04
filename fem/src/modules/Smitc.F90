@@ -39,11 +39,11 @@
       CALL ListAddInteger( SolverParams, 'Variable DOFs', 3 )
       CALL ListAddString( SolverParams, 'Variable', 'Deflection' )
     END IF
-    
-
-
-    
+       
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
+
+    CALL ListAddLogical( SolverParams, 'Plate Solver', .TRUE. )
+
 !------------------------------------------------------------------------------
   END SUBROUTINE SmitcSolver_Init
 !------------------------------------------------------------------------------
@@ -90,21 +90,20 @@
 
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
      LOGICAL :: GotIt, GotHoleType
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,st
-#else
-     REAL(KIND=dp) :: at,st,CPUTime
+#ifndef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: CPUTime
 #endif
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
-          DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef
+          DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef, Dofs
 
 !
 !    Allocate some permanent storage, this is done first time only
 !    -------------------------------------------------------------
-     DOFs = Solver % Variable % DOFs
 
      IF ( .NOT. AllocationsDone ) THEN
+       DOFs = Solver % Variable % DOFs
        N = Solver % Mesh % MaxElementDOFs
        ALLOCATE( Indexes( N ),      &
                  FORCE( DOFs*N ),      &
@@ -136,7 +135,7 @@
          .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found ) 
 
      CALL DefaultStart()     
-
+     
      MaxIter = GetInteger( SolverParams, &
          'Nonlinear System Max Iterations',GotIt )
      IF ( .NOT. GotIt ) MaxIter = 1
@@ -145,8 +144,8 @@
     
        at = CPUTime()
        CALL DefaultInitialize()
-
-       !
+       
+       !       
        ! These keywords enable that the use of a second parameter set for the
        ! same elements where the material properties are given in an additional
        ! body. May be used to model microphone and its backplate, for example:
@@ -239,7 +238,7 @@
          ! Get element local matrix, and rhs vector
          !-----------------------------------------
          CALL LocalMatrix(  STIFF, DAMP, MASS, FORCE, Load, &
-             Element,n, DOFs, ElementNodes, DampingCoef, SpringCoef )
+             Element, n, DOFs, ElementNodes, DampingCoef, SpringCoef )
 
          IF( TransientSimulation ) &
              CALL Default2ndOrderTime( MASS,DAMP,STIFF,FORCE )
@@ -254,13 +253,12 @@
          END IF
        END DO
        CALL DefaultFinishBulkAssembly()
-
+       
        ! No Flux BCs
        CALL DefaultFinishBoundaryAssembly()
        CALL DefaultFinishAssembly()
        
        !------------------------------------------------------------------------------
-
        ! Dirichlet boundary conditions
        !------------------------------
        CALL DefaultDirichletBCs()
@@ -275,6 +273,7 @@
        ! Solve the system and we are done
        !---------------------------------
        st = CPUTime()
+       
        Norm =  DefaultSolve()
 
        st = CPUTime() - st
@@ -576,7 +575,7 @@
              h = MAX(l21,l32,l43,l14)
              Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
           CASE DEFAULT
-            CALL WARN('SmitcSolver','Illegal number of nodes for Smitc elements')
+            CALL Fatal('SmitcSolver','Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
           END SELECT
 !------------------------------------------------------------------------------
      END SUBROUTINE ShearCorrectionFactor
