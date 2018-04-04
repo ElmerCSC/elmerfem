@@ -2566,7 +2566,14 @@ CONTAINS
          DO i = 1, 2
            BodyLorentzForcesRe(i,j) = ParallelReduction(BodyLorentzForcesRe(i,j))
            BodyLorentzForcesIm(i,j) = ParallelReduction(BodyLorentzForcesIm(i,j))
+           IF (ISNAN(BodyLorentzForcesRe(i, j))) THEN
+             BodyLorentzForcesRe(i, j)=0._dp
+           END IF  
+           IF (ISNAN(BodyLorentzForcesIm(i, j))) THEN
+             BodyLorentzForcesIm(i, j)=0._dp
+           END IF  
          END DO
+
          WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesRe(1, j)
          WRITE (bodyNumber, "(I0)") j
          CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 re in Body '&
