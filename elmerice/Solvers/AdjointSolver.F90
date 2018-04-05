@@ -99,7 +99,8 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
   NSDOFs   =  Sol % DOFs
   Perm => Sol % Perm
 
-  CALL InitializeToZero( StiffMatrix, ForceVector )
+ ! CALL InitializeToZero( StiffMatrix, ForceVector )
+  CALL DefaultInitialize()
 
   if (Firsttime) then
           Firsttime=.False.

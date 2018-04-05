@@ -114,7 +114,8 @@ SUBROUTINE AdjointSSA_AdjointSolver( Model,Solver,dt,TransientSimulation )
   ! Model Dimension to 2
   IF (DIM.eq.(NSDOFs+1)) CurrentModel % Dimension = NSDOFs
 
-  CALL InitializeToZero( StiffMatrix, ForceVector )
+  !CALL InitializeToZero( StiffMatrix, ForceVector )
+  CALL DefaultInitialize()
 
   if (Firsttime) then
           Firsttime=.False.
