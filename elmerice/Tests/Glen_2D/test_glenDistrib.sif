@@ -25,9 +25,9 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  Output File = "test_glen_dist.result"
-  Post File = "test_glen_dist.ep"
-  max output level = 4
+!  Output File = "test_glen_dist.result"
+  Post File = "test_glen_dist.vtu"
+  max output level = 3
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -114,15 +114,19 @@ Solver 3
   Exec Solver =  After TimeStep  ! For transient simulation
   Procedure = File "SaveData" "SaveScalars"
   Filename =  "results.dat"
-  File Append = Logical True     ! For transient simulation
+  Show Norm = True
+  Show Norm Index = 1
 
-  Variable 1 = String "Flow Solution"
-  Operator 1 = String "Volume"
+  Variable 1 = String "Depth"
+  Operator 1 = String "boundary max"
+
+  Variable 2 = String "Flow Solution"
+  Operator 2 = String "Volume"
   
-  Variable 2 = String "Velocity 1"
-  Operator 2 = String "Max Abs"
+  Variable 3 = String "Velocity 1"
+  Operator 3 = String "Max Abs"
 
-  Operator 3 = String "cpu time"
+  Operator 4 = String "cpu time"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -137,6 +141,8 @@ Boundary Condition 1
   Target Boundaries = 1
   Velocity 1 = Real 0.0e0
   Velocity 2 = Real 0.0e0
+
+  Save Scalars = logical True
 End
 
 ! Periodic Right
@@ -148,8 +154,6 @@ Boundary Condition 2
   Periodic BC Velocity 1  = Logical True
   Periodic BC Velocity 2  = Logical True
   Periodic BC Pressure  = Logical True
-  
-  Flux integrate = Logical True
 End
 
 ! Upper Surface
@@ -157,19 +161,17 @@ Boundary Condition 3
   Target Boundaries = 3
   
   Depth = Real 0.0
-  Save Line = Logical True
-  Flux integrate = Logical True
 End
 
 ! Periodic Left
 Boundary Condition 4
   Target Boundaries = 4
-  Flux integrate = Logical True
 End
 
-Solver 2 :: Reference Norm = Real 6.8808137
-Solver 2 :: Reference Norm Tolerance = Real 1E-06
-$fprintf( stderr, "TEST CASE 1\n");
+Solver 2 :: Reference Norm = Real 6.8808207
+Solver 2 :: Reference Norm Tolerance = Real 1E-05
+
+Solver 3 :: Reference Norm = Real 1500.0
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=6.8808137,EPS=1E-0.6\n" );
 
