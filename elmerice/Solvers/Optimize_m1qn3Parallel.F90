@@ -46,6 +46,31 @@
 ! => Update the new value of variable to optimize
 !
 ! *****************************************************************************
+SUBROUTINE Optimize_m1qn3Parallel_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  INTEGER :: NormInd, LineInd, i
+  LOGICAL :: GotIt, MarkFailed, AvoidFailed
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+
+  Name = ListGetString( Solver % Values, 'Equation',GotIt)
+  IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
+      CALL ListAddString( Solver % Values,'Variable',&
+          '-nooutput -global '//TRIM(Name)//'_var')
+ END IF
+END
+!******************************************************************************
+
 SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
@@ -67,7 +92,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: BetaPerm(:),GradPerm(:),NodeIndexes(:),MaskPerm(:)
 
   REAL(KIND=dp),allocatable :: x(:),g(:),xx(:),gg(:),xtot(:),gtot(:)
-  REAL(KIND=dp) :: f,Normg
+  REAL(KIND=dp) :: f,Normg,Change
+  REAL(KIND=dp),SAVE :: Oldf=0._dp 
   real :: dumy
 
   integer :: i,j,t,n,NMAX,NActiveNodes,NPoints,ni,ind
@@ -115,8 +141,9 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
             WRITE(SolverName, '(A)') 'Optimize_m1qn3Parallel'
 
        ! Check we have a parallel run
-          IF(.NOT.ASSOCIATED(Solver %  Matrix % ParMatrix)) Then
-             CALL FATAL(SolverName,'ParMatrix not associated! This solver for parallel only!!')
+          !IF(.NOT.ASSOCIATED(Solver %  Matrix % ParMatrix)) Then
+          IF(.NOT.(ParEnv % PEs > 1)) THEN
+             CALL FATAL(SolverName,'This solver works in parallel only!!')
           End if
 
             SolverParams => GetSolverParams()
@@ -142,7 +169,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
           MaskVarName = GetString( SolverParams,'Optimisation Mask Variable',UseMask)
             IF (UseMask) Then
-                MaskVar => VariableGet( Solver % Mesh % Variables, MaskVarName,UnFoundFatal=UnFoundFatal) 
+                MaskVar => VariableGet( Model % Mesh % Variables, MaskVarName,UnFoundFatal=UnFoundFatal) 
                 MaskValues => MaskVar % Values 
                 MaskPerm => MaskVar % Perm 
             ENDIF
@@ -205,7 +232,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                    CALL WARN(SolverName,'Taking default value >0.2<')
                    df1=0.2
                 End if
-                CostVar => VariableGet( Solver % Mesh % Variables, CostSolName,UnFoundFatal=UnFoundFatal)
+                CostVar => VariableGet( Model % Mesh % Variables, CostSolName,UnFoundFatal=UnFoundFatal)
                 CostValues => CostVar % Values
                 df1=CostValues(1)*df1
              NormM1QN3 = GetString( SolverParams,'M1QN3 normtype', Found)
@@ -213,10 +240,10 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                      .OR.(NormM1QN3(1:3).ne.'two'))) THEN
                        CALL WARN(SolverName,'Keyword >M1QN3 normtype< not good in section >Solver<')
                        CALL WARN(SolverName,'Taking default value >dfn<')
-                       PRINT *,'M1QN3 normtype  ',NormM1QN3(1:3)
+                       !PRINT *,'M1QN3 normtype  ',NormM1QN3(1:3)
                        normtype = 'dfn'
                   ELSE
-                       PRINT *,'M1QN3 normtype  ',NormM1QN3(1:3)
+                       !PRINT *,'M1QN3 normtype  ',NormM1QN3(1:3)
                        normtype = NormM1QN3(1:3)
                   END IF
 
@@ -260,15 +287,15 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
      End if
 
 !  Get Variables CostValue, Beta and DJDBeta
-    CostVar => VariableGet( Solver % Mesh % Variables, CostSolName,UnFoundFatal=UnFoundFatal)
+    CostVar => VariableGet( Model % Mesh % Variables, CostSolName,UnFoundFatal=UnFoundFatal)
     CostValues => CostVar % Values 
     f=CostValues(1)
 
-     BetaVar => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal) 
+     BetaVar => VariableGet( Model % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal) 
      BetaValues => BetaVar % Values 
      BetaPerm => BetaVar % Perm 
 
-     GradVar => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal) 
+     GradVar => VariableGet( Model % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal) 
      GradValues   => GradVar % Values 
      GradPerm => GradVar % Perm 
 
@@ -277,7 +304,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
           
      Firsttime = .False.
 
-     NMAX=Solver % Mesh % NumberOfNodes
+     NMAX=Model % Mesh % NumberOfNodes
      allocate(VisitedNode(NMAX),NewNode(NMAX))
 
 !!!!!!!!!!!!find active nodes 
@@ -315,12 +342,12 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
 !! Gather number of active nodes in each partition and compute total number of
 !active nodes in partion 0
-    Npes=Solver %  Matrix % ParMatrix % ParEnv % PEs
+    Npes=ParEnv % PEs
     allocate(NodePerPe(Npes))
 
     call MPI_Gather(NActiveNodes,1,MPI_Integer,NodePerPe,1,MPI_Integer,0,ELMER_COMM_WORLD,ierr)
 
-    if (Solver %  Matrix % ParMatrix % ParEnv % MyPE.eq.0) then
+    if (ParEnv % MyPE.eq.0) then
           ntot=0
           Do i=1,Npes
                ntot=ntot+NodePerPe(i)
@@ -333,7 +360,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
     LocalToGlobalPerm(1:NActiveNodes)=Model % Mesh % ParallelInfo % GlobalDOFs(ActiveNodes(1:NActiveNodes))
 
-   if (Solver %  Matrix % ParMatrix % ParEnv % MyPE .ne.0) then
+   if (ParEnv % MyPE .ne.0) then
              call MPI_BSEND(LocalToGlobalPerm(1),NActiveNodes,MPI_INTEGER,0,8001,ELMER_COMM_WORLD,ierr)
    else
            NodePerm(1:NActiveNodes)=LocalToGlobalPerm(1:NActiveNodes)
@@ -382,7 +409,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
     ! Send variables to partition 0
     ! and receive results from partion 0
 
-     if (Solver %  Matrix % ParMatrix % ParEnv % MyPE .ne.0) then
+     if (ParEnv % MyPE .ne.0) then
 
                      call MPI_SEND(x(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8003,ELMER_COMM_WORLD,ierr)
                      call MPI_SEND(g(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8004,ELMER_COMM_WORLD,ierr)
@@ -409,7 +436,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                      End do 
 
                      If (ComputeNormG) then
-                             TimeVar => VariableGet( Solver % Mesh % Variables, 'Time' )
+                             TimeVar => VariableGet( Model % Mesh % Variables, 'Time' )
                              Normg=0.0_dp
 
                              Do i=1,NPoints
@@ -419,7 +446,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                               write(io,'(e13.5,2x,e15.8)') TimeVar % Values(1),sqrt(Normg)
                              close(io)
                     End if
-
+            
+            Oldf=sqrt(SUM(xx(:)*xx(:))/(1.0d0*NPoints))
             ! go to minimization
             open(io,file=trim(IOM1QN3),position='append')
             call m1qn3 (simul_rc,Euclid,ctonbe,ctcabe,NPoints,xx,f,gg,dxmin,df1, &
@@ -429,6 +457,20 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
             close(io)
             WRITE(Message,'(a,e15.8,x,I2)') 'm1qn3: Cost,omode= ',f,omode
             CALL Info(SolverName, Message, Level=3)
+
+            f=sqrt(SUM(xx(:)*xx(:))/(1.0d0*NPoints))
+            Solver%Variable%Values(1)=f
+            Solver%Variable%Norm=f
+            IF (SIZE(Solver%Variable % Values) == Solver%Variable % DOFs) THEN
+             !! MIMIC COMPUTE CHANGE STYLE
+             Change=2.*(f-Oldf)/(f+Oldf)
+             Change=abs(Change)
+             WRITE( Message, '(a,g15.8,g15.8,a)') &
+              'SS (ITER=1) (NRM,RELC): (',f, Change,&
+              ' ) :: Optimize'
+             CALL Info( 'ComputeChange', Message, Level=3 )
+             Oldf=f
+            ENDIF
 
             ! Put new Beta Value in xtot and send to each partition
             xtot=0.0
