@@ -2473,7 +2473,7 @@ CONTAINS
 
       IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
 
-      ptr % TYPE  = LIST_TYPE_CONSTANT_TENSOR
+      ptr % TYPE = LIST_TYPE_CONSTANT_TENSOR
       ptr % IValues(1:n) = IValues(1:n)
 
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
@@ -2593,7 +2593,10 @@ CONTAINS
       NULLIFY( ptr % TValues )
       ALLOCATE( ptr % FValues(N,M,1) )
 
-
+      ptr % Fdim = 0
+      IF( N > 1 ) ptr % Fdim = 1
+      IF( M > 1 ) ptr % Fdim = ptr % Fdim + 1
+      
       ptr % TYPE  = LIST_TYPE_CONSTANT_TENSOR
       ptr % FValues(1:n,1:m,1) = FValues(1:n,1:m)
 
@@ -2637,6 +2640,10 @@ CONTAINS
      ptr % FValues = FValues(1:n1,1:n2,1:N)
      ptr % TYPE = LIST_TYPE_VARIABLE_TENSOR
 
+     ptr % fdim = 0
+     IF( n1 > 1 ) ptr % fdim = 1
+     IF( n2 > 1 ) ptr % fdim = ptr % fdim + 1
+     
      IF ( PRESENT( Cvalue ) ) THEN
         ptr % CValue = CValue
         ptr % TYPE = LIST_TYPE_VARIABLE_TENSOR_STR
@@ -4036,7 +4043,7 @@ CONTAINS
      !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      TYPE(ValueListEntry_t), POINTER :: ptr
-     INTEGER :: i, n, NoVal, ValueType, IValue
+     INTEGER :: i, n, NoVal, ValueType, IValue, dim, n1, n2, maxn1, maxn2
      TYPE(Model_t), POINTER :: Model
      REAL(KIND=dp)  :: val, Rvalue
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
@@ -4109,7 +4116,9 @@ CONTAINS
      Handle % Initialized = .TRUE.
      
      FirstList = .TRUE.
-
+     maxn1 = 0
+     maxn2 = 0
+     
      i = 0
      DO WHILE(.TRUE.) 
        i = i + 1
@@ -4194,6 +4203,7 @@ CONTAINS
 
        ELSE IF( ValueType >= LIST_TYPE_CONSTANT_SCALAR .AND. &
            ValueType <= List_TYPE_CONSTANT_SCALAR_PROC ) THEN         
+         
          IF(.NOT. ListCheckAllGlobal( Handle % ptr, name ) ) THEN
            Handle % GlobalEverywhere = .FALSE.
            Handle % ConstantEverywhere = .FALSE.           
@@ -4212,6 +4222,24 @@ CONTAINS
              Handle % ConstantEverywhere = .FALSE.
            END IF
          END IF
+
+       ELSE IF( ValueType >= LIST_TYPE_CONSTANT_TENSOR .AND. &
+           ValueType <= LIST_TYPE_VARIABLE_TENSOR_STR ) THEN
+         
+         Handle % GlobalEverywhere = .FALSE.
+         Handle % ConstantEverywhere = .FALSE.           
+         IF( ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt ) ) THEN
+           Handle % SomewhereEvaluateAtIp = .TRUE.
+         END IF
+         
+         n1 = SIZE( ptr % FValues,1 ) 
+         n2 = SIZE( ptr % FValues,2 )
+         
+         maxn1 = MAX( n1, maxn1 )
+         maxn2 = MAX( n2, maxn2 )
+       ELSE
+         CALL Fatal('ListInitElementKeyword','Unknown value type: '//TRIM(I2S(ValueType)))
+
        END IF
 
        FirstList = .FALSE.
@@ -4262,8 +4290,27 @@ CONTAINS
      IF( PRESENT( FoundSomewhere ) ) THEN
        FoundSomewhere = .NOT. Handle % NotPresentAnywhere
      END IF
-     
-     
+
+     ! For tensor valued ListGetRealElement operations allocate the maximum size
+     ! of temporal table needed. 
+     IF( maxn1 > 1 .OR. maxn2 > 1 ) THEN
+       n = CurrentModel % Mesh % MaxElementNodes
+       IF( ASSOCIATED( Handle % RtensorValues ) ) THEN
+         IF( SIZE( Handle % RtensorValues, 1 ) < maxn1 .OR. &
+             SIZE( Handle % RtensorValues, 2 ) < maxn2 .OR. &
+             SIZE( Handle % RtensorValues, 3 ) < n ) THEN
+           DEALLOCATE( Handle % RtensorValues )
+         END IF
+       END IF
+       IF(.NOT. ASSOCIATED( Handle % RtensorValues ) ) THEN
+         ALLOCATE( Handle % RtensorValues(maxn1,maxn2,n) )
+       END IF
+     END IF
+
+     IF(.NOT. ASSOCIATED( Handle % Rtensor11 ) ) THEN
+       ALLOCATE( Handle % Rtensor11(1,1) )
+     END IF
+          
    END SUBROUTINE ListInitElementKeyword
 !------------------------------------------------------------------------------
 
@@ -4426,17 +4473,18 @@ CONTAINS
 !> gaussian integration points. 
 !------------------------------------------------------------------------------
    FUNCTION ListGetElementReal( Handle,Basis,Element,Found,Indexes,&
-       GaussPoint) RESULT(Rvalue)
+       GaussPoint,IsArray,IsSame) RESULT(Rvalue)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
-     TYPE(ValueList_t), POINTER :: List
      REAL(KIND=dp), OPTIONAL :: Basis(:)
      LOGICAL, OPTIONAL :: Found
      TYPE(Element_t), POINTER, OPTIONAL :: Element
      INTEGER, POINTER, OPTIONAL :: Indexes(:)
      INTEGER, OPTIONAL :: GaussPoint
+     LOGICAL, OPTIONAL :: IsArray, IsSame
      REAL(KIND=dp)  :: Rvalue
 !------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER, POINTER :: NodeIndexes(:)
@@ -4446,7 +4494,8 @@ CONTAINS
      REAL(KIND=dp), POINTER :: ParF(:,:)
      INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,varcount
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
-     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound, &
+         ElementSame
      TYPE(Element_t), POINTER :: PElement
 !------------------------------------------------------------------------------
      
@@ -4456,6 +4505,8 @@ CONTAINS
        Rvalue = Handle % DefRValue
        RETURN
      END IF
+
+     IF( PRESENT( IsArray ) ) IsArray = .FALSE.
      
      ! If the value is known to be globally constant return it asap.
      IF( Handle % ConstantEverywhere ) THEN
@@ -4474,6 +4525,7 @@ CONTAINS
      
      ! Set the default value 
      Rvalue = Handle % DefRValue
+     ElementSame = .FALSE.
      
      
      ! We know by initialization the list entry type that the keyword has
@@ -4713,7 +4765,8 @@ CONTAINS
            NodeIndexes => PElement % NodeIndexes
          END IF
          F => Handle % Values       
-
+         ElementSame = .TRUE.
+         
        ELSE         
          IF( .NOT. Handle % AllocationsDone ) THEN
            n = CurrentModel % Mesh % MaxElementNodes
@@ -4872,6 +4925,21 @@ CONTAINS
                  CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
            END DO
            CALL ListPopActiveName()
+
+
+         CASE( LIST_TYPE_CONSTANT_TENSOR, LIST_TYPE_VARIABLE_TENSOR, &
+             LIST_TYPE_CONSTANT_TENSOR_STR, LIST_TYPE_VARIABLE_TENSOR_STR ) 
+
+           IF( PRESENT( IsArray ) ) THEN             
+             IsArray = .TRUE.
+             IsSame = ElementSame 
+             RETURN
+           ELSE
+             CALL Fatal('ListGetElementReal','Cannot deal with arrays!')
+           END IF
+           
+         CASE DEFAULT
+           CALL Fatal('ListGetElementReal','Cannot deal with value type of:' //TRIM(I2S(ptr % Type)))
            
          END SELECT
        END IF
@@ -4909,7 +4977,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   
-
+   
    
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in all the Gaussian integration points.
@@ -5357,6 +5425,9 @@ CONTAINS
            Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
          END DO
 
+       CASE DEFAULT
+         CALL Fatal('ListGetElementRealVec','Impossible entry type: '//TRIM(I2S(ptr % Type)))
+         
        END SELECT
 
      END IF
@@ -5365,6 +5436,188 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+!------------------------------------------------------------------------------
+!> Gets a real valued parameter in the Gaussian integration point defined 
+!> by the local basis function. To speed up things there is a handle associated
+!> to the given keyword (Name). Here the values are first evaluated at the 
+!> nodal points and then using basis functions estimated at the 
+!> gaussian integration points. 
+!------------------------------------------------------------------------------
+   SUBROUTINE ListGetElementRealArray( Handle, F, Rdim, Basis, Element,Found,Indexes,&
+       GaussPoint) 
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     REAL(KIND=dp), POINTER :: F(:,:)
+     INTEGER :: Rdim
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     INTEGER, POINTER :: NodeIndexes(:)
+     REAL(KIND=dp) :: T(MAX_FNC),x,y,z,Rvalue
+     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
+     REAL(KIND=dp), POINTER :: ParF(:,:)
+     INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,varcount
+     CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound
+     TYPE(Element_t), POINTER :: PElement
+     LOGICAL :: IsArray, IsSame 
+     INTEGER :: n1,n2
+     !------------------------------------------------------------------------------
+    
+     Rvalue = ListGetElementReal( Handle,Basis,Element,Found,Indexes,&
+         GaussPoint, IsArray = IsArray, IsSame = IsSame ) 
+
+     IF( .NOT. IsArray ) THEN       
+       F => Handle % Rtensor11
+       rdim = 0
+       F(1,1) = Rvalue 
+       RETURN
+     END IF
+
+     ptr => Handle % ptr % Head
+     Rdim = ptr % fdim
+
+     IF( Handle % EvaluateAtIp ) THEN
+       CALL Warn('ListGetElementRealArray','Cannot currently evaluate arrays at IP!') 
+     END IF
+
+
+     IF( IsSame ) THEN
+       ! Same element, same array
+       F => Handle % Rtensor
+       IF( Handle % GlobalInList ) RETURN       
+       N1 = SIZE(ptr % FValues,1)
+       N2 = SIZE(ptr % FValues,2)       
+     ELSE
+       N1 = SIZE(ptr % FValues,1)
+       N2 = SIZE(ptr % FValues,2)       
+       IF ( ASSOCIATED( Handle % Rtensor) ) THEN
+         IF ( SIZE(Handle % Rtensor,1) /= N1 .OR. SIZE(Handle % Rtensor,2) /= N2 ) THEN
+           DEALLOCATE( Handle % Rtensor )
+         END IF
+       END IF
+       IF(.NOT. ASSOCIATED( Handle % Rtensor) ) THEN
+         ALLOCATE( Handle % Rtensor(N1,N2) )
+       END IF
+       F => Handle % Rtensor
+     END IF
+          
+     
+     SELECT CASE(ptr % TYPE)
+              
+     CASE ( LIST_TYPE_CONSTANT_TENSOR )
+
+       Handle % GlobalInList = .TRUE.
+              
+       IF ( ptr % PROCEDURE /= 0 ) THEN
+         CALL ListPushActiveName(Handle % name)
+         DO i=1,N1
+           DO j=1,N2
+             F(i,j) = ExecConstRealFunction( ptr % PROCEDURE, &
+                 CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
+           END DO
+         END DO
+         CALL ListPopActiveName()
+       ELSE
+         F(:,:) = ptr % FValues(:,:,1)
+       END IF
+
+       IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
+         F = ptr % Coeff * F
+       END IF
+      
+     
+     CASE( LIST_TYPE_VARIABLE_TENSOR,LIST_TYPE_VARIABLE_TENSOR_STR )
+       Handle % GlobalInList = .FALSE.
+       
+       TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+       WRITE( cmd, '(a,e15.8)' ) 'tx=0; st = ', TVar % Values(1)
+       k = LEN_TRIM(cmd)
+       CALL matc( cmd, tmp_str, k )
+
+       CALL ListPushActiveName(Handle % name)
+
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
+           Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
+
+       IF( PRESENT( Indexes ) ) THEN
+         n = SIZE( Indexes )
+         NodeIndexes => Indexes
+       ELSE
+         n = PElement % TYPE % NumberOfNodes 
+         NodeIndexes => PElement % NodeIndexes
+       END IF
+       
+       DO i=1,n
+         k = NodeIndexes(i)
+         
+         CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+
+         IF ( ptr % TYPE==LIST_TYPE_VARIABLE_TENSOR_STR) THEN
+           DO l=1,j
+             WRITE( cmd, '(a,g19.12)' ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+           END DO
+
+           cmd = ptr % CValue
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+           READ( tmp_str(1:k1), * ) ((F(j,k),k=1,N2),j=1,N1)
+           
+           
+         ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
+           CALL ExecRealArrayFunction( ptr % PROCEDURE, CurrentModel, &
+               NodeIndexes(i), T, F )
+         ELSE
+           DO j=1,N1
+             DO k=1,N2
+               F(j,k) = InterpolateCurve(ptr % TValues, ptr % FValues(j,k,:), &
+                   T(1), ptr % CubicCoeff )
+             END DO
+           END DO
+         END IF
+
+         CALL ListPopActiveName()
+         
+         IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
+           F = ptr % Coeff * F
+         END IF
+         
+         IF( AllGlobal ) THEN
+           Handle % GlobalInList = .TRUE.
+           EXIT
+         ELSE
+           Handle % RtensorValues(1:N1,1:N2,i) = F                      
+         END IF
+         
+       END DO
+       
+
+       IF(.NOT. PRESENT(Basis)) THEN
+         CALL Fatal('ListGetElementRealArray','Parameter > Basis < is required!')
+       ELSE
+         DO j=1,N1
+           DO k=1,N2               
+             F(j,k) = SUM( Basis(1:n) * Handle % RtensorValues(1:n,j,k) )
+           END DO
+         END DO
+       END IF
+
+     END SELECT
+
+   END SUBROUTINE ListGetElementRealArray
+            
+!------------------------------------------------------------------------------
+
+   
 
    
 !------------------------------------------------------------------------------
