@@ -45,7 +45,7 @@ Solver 1
   Equation = KeywordTimer
   Variable = ConsB
   Variable DOFs = 1
-  Procedure = "./KeywordCompareReal" "KeywordCompare"
+  Procedure = "./KeywordCompareTensor" "KeywordCompare"
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
