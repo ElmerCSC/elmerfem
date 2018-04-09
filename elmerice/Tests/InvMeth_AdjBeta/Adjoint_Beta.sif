@@ -369,16 +369,16 @@ Boundary Condition 5
 
 End 
 
-Solver 2 :: Reference Norm = Real 321.98015
+Solver 2 :: Reference Norm = Real 321.83520
 Solver 2 :: Reference Norm Tolerance = Real 1E-05
 
-Solver 3 :: Reference Norm = Real 0.59412914E+12
+Solver 3 :: Reference Norm = Real 0.59419389E+12
 Solver 3 :: Reference Norm Tolerance = Real 1E-06
 
-Solver 4 :: Reference Norm = 396313.92
+Solver 4 :: Reference Norm = 395915.02
 Solver 4 :: Reference Norm Tolerance = Real 1E-05
 
-Solver 6 :: Reference Norm = Real 0.32124467E-03 
+Solver 6 :: Reference Norm = Real 0.32124175E-03
 Solver 6 :: Reference Norm Tolerance = Real 1E-05
 
 $fprintf( stderr, "TEST CASE 1\n");

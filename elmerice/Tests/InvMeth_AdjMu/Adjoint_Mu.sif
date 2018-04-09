@@ -347,16 +347,16 @@ End
 
 
 
-Solver 2 :: Reference Norm = Real 324.82561
+Solver 2 :: Reference Norm = Real 324.70267
 Solver 2 :: Reference Norm Tolerance = Real 1E-06
 
-Solver 3 :: Reference Norm = Real 0.33385625E+13
+Solver 3 :: Reference Norm = Real 3.33857540E+12
 Solver 3 :: Reference Norm Tolerance = Real 1E-06
 
-Solver 4 :: Reference Norm = 291527.32 
+Solver 4 :: Reference Norm = 291002.11
 Solver 4 :: Reference Norm Tolerance = Real 1E-05
 
-Solver 6 :: Reference Norm = Real 0.67459290
+Solver 6 :: Reference Norm = Real 0.67459289
 Solver 6 :: Reference Norm Tolerance = Real 1E-05
 
 $fprintf( stderr, "TEST CASE 1\n");
