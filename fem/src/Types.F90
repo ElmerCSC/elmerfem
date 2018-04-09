@@ -443,7 +443,7 @@ END INTERFACE
      INTEGER :: ParNo = 0
      INTEGER :: IValue, DefIValue = 0
      REAL(KIND=dp) :: RValue, DefRValue = 0.0_dp
-     REAL(KIND=dp), POINTER :: RTensor11(:,:) => NULL()
+     INTEGER :: Rdim = 0
      REAL(KIND=dp), POINTER :: RTensor(:,:) => NULL()
      REAL(KIND=dp), POINTER :: RTensorValues(:,:,:) => NULL()
      LOGICAL :: LValue, DefLValue = .FALSE.
