@@ -329,7 +329,7 @@ CONTAINS
     LOGICAL :: InlineCoords
     
     ALLOCATE( Mesh % Nodes )
-    ALLOCATE( Mesh % Variables )
+!   ALLOCATE( Mesh % Variables )
     Mesh % NumberOfBulkElements = 0
     Mesh % NumberOfBoundaryElements = 0
     
