@@ -423,6 +423,7 @@ END INTERFACE
 !      Note that this is really quite a dirty hack, and is not a good example.
 !-----------------------------------------------------------------------------
        CALL AddVtuOutputSolverHack()
+       CALL AddSaveScalarsHack()
 
 !------------------------------------------------------------------------------
 !      Figure out what (flow,heat,stress,...) should be computed, and get
@@ -919,10 +920,10 @@ END INTERFACE
        Params => CurrentModel % Solvers(n) % Values
        CALL ListAddString( Params,&
            'Procedure', 'ResultOutputSolve ResultOutputSolver',.FALSE.)
-       CALL ListAddString(Params,'Output Format','vtu')
-       CALL ListAddString(Params,'Output File Name',str(1:k-1))
-       CALL ListAddString(Params,'Exec Solver','after saving')
        CALL ListAddString(Params,'Equation','InternalVtuOutputSolver')
+       CALL ListAddString(Params,'Output Format','vtu')
+       CALL ListAddString(Params,'Output File Name',str(1:k-1),.FALSE.)
+       CALL ListAddString(Params,'Exec Solver','after saving')
        CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
        CALL ListAddLogical(Params,'Check Simulation Keywords',.TRUE.)
 
@@ -934,6 +935,85 @@ END INTERFACE
      END SUBROUTINE AddVtuOutputSolverHack
 
 
+     ! This is a dirty hack that adds an instance of SaveScalars to the list of Solvers.
+     ! The idea is that it is much easier for the end user to add a basic instance.
+     !----------------------------------------------------------------------------------------------
+     SUBROUTINE AddSaveScalarsHack()     
+       TYPE(Solver_t), POINTER :: ABC(:), PSolver
+       CHARACTER(LEN=MAX_NAME_LEN) :: str
+       INTEGER :: i,j,j2,j3,k,n
+       TYPE(ValueList_t), POINTER :: Params, Simu
+       LOGICAL :: Found, VtuFormat
+       INTEGER :: AllocStat
+       
+       Simu => CurrentModel % Simulation
+       str = ListGetString( Simu,'Scalars File',Found) 
+       IF(.NOT. Found) RETURN
+
+       CALL Info('AddSaveScalarsHack','Adding SaveScalars solver to write scalars into file: '&
+           //TRIM(str))
+       
+       n = CurrentModel % NumberOfSolvers+1
+       ALLOCATE( ABC(n), STAT = AllocStat )
+       IF( AllocStat /= 0 ) CALL Fatal('AddSaveScalarsHack','Allocation error 1')
+       
+       CALL Info('AddSaveScalarsHack','Increasing number of solver to: '&
+           //TRIM(I2S(n)),Level=8)
+       DO i=1,n-1
+         ! Def_Dofs is the only allocatable structure within Solver_t:
+         IF( ALLOCATED( CurrentModel % Solvers(i) % Def_Dofs ) ) THEN
+           j = SIZE(CurrentModel % Solvers(i) % Def_Dofs,1)
+           j2 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,2)
+           j3 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,3)
+           ALLOCATE( ABC(i) % Def_Dofs(j,j2,j3), STAT = AllocStat )
+           IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 2')           
+         END IF
+
+         ! Copy the content of the Solver structure
+         ABC(i) = CurrentModel % Solvers(i)
+
+         ! Nullify the old structure since otherwise bad things may happen at deallocation
+         NULLIFY( CurrentModel % Solvers(i) % ActiveElements )
+         NULLIFY( CurrentModel % Solvers(i) % Mesh )
+         NULLIFY( CurrentModel % Solvers(i) % BlockMatrix )
+         NULLIFY( CurrentModel % Solvers(i) % Matrix )
+         NULLIFY( CurrentModel % Solvers(i) % Variable )
+       END DO
+
+       ! Deallocate the old structure and set the pointer to the new one
+       DEALLOCATE( CurrentModel % Solvers )
+       CurrentModel % Solvers => ABC
+       CurrentModel % NumberOfSolvers = n
+
+       ! Now create the ResultOutputSolver instance on-the-fly
+       CurrentModel % Solvers(n) % PROCEDURE = 0
+       NULLIFY( CurrentModel % Solvers(n) % Matrix )
+       NULLIFY( CurrentModel % Solvers(n) % BlockMatrix )
+       NULLIFY( CurrentModel % Solvers(n) % Variable )
+       NULLIFY( CurrentModel % Solvers(n) % ActiveElements )
+       CurrentModel % Solvers(n) % NumberOfActiveElements = 0
+       j = CurrentModel % NumberOfBodies
+       ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
+       IF( AllocStat /= 0 ) CALL Fatal('AddSaveScalarsHack','Allocation error 3')
+       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
+       
+       ! Add some keywords to the list
+       CurrentModel % Solvers(n) % Values => ListAllocate()
+       Params => CurrentModel % Solvers(n) % Values
+       CALL ListAddString( Params,'Procedure', 'SaveData SaveScalars',.FALSE.)
+       CALL ListAddString(Params,'Equation','InternalSaveScalars')
+       CALL ListAddString(Params,'Filename',TRIM(str),.FALSE.)
+       CALL ListAddString(Params,'Exec Solver','after saving')
+
+       ! Add a few often needed keywords also if they are given in simulation section
+       CALL ListCopyPrefixedKeywords( Simu, Params, 'scalars:' )
+
+       CALL Info('AddSaveScalarsHack','Finished appeding SaveScalars solver',Level=12)
+       
+     END SUBROUTINE AddSaveScalarsHack
+
+
+     
 !------------------------------------------------------------------------------
 !> Adds flags for active solvers. 
 !------------------------------------------------------------------------------
