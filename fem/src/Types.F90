@@ -398,7 +398,8 @@ END INTERFACE
 
      REAL(KIND=dp), POINTER :: TValues(:), Cumulative(:) => NULL()
      REAL(KIND=dp), POINTER :: FValues(:,:,:), CubicCoeff(:)=>NULL()
-
+     INTEGER :: Fdim = 0 
+     
      LOGICAL :: LValue
      INTEGER, POINTER :: IValues(:)
 
@@ -442,6 +443,9 @@ END INTERFACE
      INTEGER :: ParNo = 0
      INTEGER :: IValue, DefIValue = 0
      REAL(KIND=dp) :: RValue, DefRValue = 0.0_dp
+     INTEGER :: Rdim = 0
+     REAL(KIND=dp), POINTER :: RTensor(:,:) => NULL()
+     REAL(KIND=dp), POINTER :: RTensorValues(:,:,:) => NULL()
      LOGICAL :: LValue, DefLValue = .FALSE.
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
      INTEGER :: CValueLen
