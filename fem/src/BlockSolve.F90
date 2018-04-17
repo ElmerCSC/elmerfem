@@ -621,6 +621,164 @@ CONTAINS
   END SUBROUTINE BlockPickMatrixAV
 
 
+
+  !-------------------------------------------------------------------------------------
+  !> Picks vertical and horizontal components of a full matrix.
+  !-------------------------------------------------------------------------------------
+  SUBROUTINE BlockPickMatrixDirectional( Solver, NoVar )
+
+    TYPE(Solver_t) :: Solver
+    INTEGER :: Novar
+
+    INTEGER::i,j,k,n,t,na,nv,dofs,nd,ni
+    TYPE(Matrix_t), POINTER :: A,B_aa,B_av,B_va,B_vv
+    TYPE(Nodes_t), SAVE :: Nodes
+    INTEGER :: ActiveCoordinate
+    INTEGER, ALLOCATABLE :: DTag(:), DPerm(:)
+    INTEGER, POINTER :: Indexes(:)
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: Wlen, Wproj, Wtol, u, v, w, DetJ, Normal(3)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: PiolaVersion, Found, Stat
+    TYPE(Element_t), POINTER :: Element
+
+    REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
+
+    n = 20
+    ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisDx(n,3) )
+    
+    
+    CALL Info('BlockPickMatrixDirectional','Dividing matrix in vertical and horizontal dofs',Level=10)
+
+
+    n = MAXVAL(Solver % Variable % Perm)
+    Mesh => Solver % Mesh 
+
+    PRINT *,'Initial dofs:',n 
+       
+    dofs = Solver % Variable % Dofs
+    ALLOCATE( DTag(n ), DPerm(n*dofs)  ) 
+    DTag = 0
+    DPerm = 0
+        
+    PiolaVersion = ListGetLogical( Solver % Values,'Use Piola Transform', Found )
+    ActiveCoordinate = ListGetInteger( Solver % Values,'Active Coordinate',Found )
+    IF(.NOT. Found ) ActiveCoordinate = 3
+    Normal = 0.0_dp
+    Normal(ActiveCoordinate) = 1.0_dp
+    
+    Wtol = 1.0e-5
+
+    
+    DO t=1,Solver % NumberOfActiveElements
+      Element => Mesh % Elements( Solver % ActiveElements(t) )
+
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+      u = SUM( IP % U ) / IP % n
+      v = SUM( IP % v ) / IP % n
+      w = SUM( IP % w ) / IP % n
+            
+      !n  = GetElementNOFNodes() 
+      nd = GetElementDOFs(Indexes, Element, Solver)  
+
+      CALL GetElementNodes( Nodes, Element )
+
+      IF (PiolaVersion) THEN
+        stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+            ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo( Element, Nodes, u, v, w, &
+            detJ, Basis, dBasisdx )
+        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
+
+      DO i=1,nd
+        j = Solver % Variable % Perm(Indexes(i))
+        Wlen = SQRT( SUM( WBasis(i,:)**2 ) )
+        Wproj = ABS( SUM( WBasis(i,:) * Normal ) ) / Wlen 
+
+        IF( WProj > Wtol ) THEN
+          DTag(j) = 1
+        ELSE
+          DTag(j) = 2 
+        END IF
+      END DO
+    END DO
+    
+
+    nv = 0
+    na = 0
+    DO i=1,n
+      DO j=1,dofs
+        IF( DTag(i) == 1 ) THEN
+          nv = nv + 1
+          DPerm(i) = nv
+        ELSE
+          na = na + 1
+          DPerm(i) = -na
+        END IF
+      END DO
+    END DO
+    
+    PRINT *,'Vertical dofs:',nv
+    PRINT *,'Horizontal dofs:',na
+  
+            
+    A => Solver % Matrix
+
+    B_vv => TotMatrix % SubMatrix(1,1) % Mat
+    B_va => TotMatrix % SubMatrix(1,2) % Mat
+    B_av => TotMatrix % SubMatrix(2,1) % Mat
+    B_aa => TotMatrix % SubMatrix(2,2) % Mat
+
+    IF(ASSOCIATED(B_aa % Values)) B_aa % Values = 0._dp
+    IF(ASSOCIATED(B_av % Values)) B_av % Values = 0._dp
+    IF(ASSOCIATED(B_va % Values)) B_va % Values = 0._dp
+    IF(ASSOCIATED(B_vv % Values)) B_vv % Values = 0._dp
+
+    IF(.NOT. ASSOCIATED( B_aa % Rhs) ) ALLOCATE(B_aa % Rhs(na) )
+    IF(.NOT. ASSOCIATED( B_vv % Rhs) ) ALLOCATE(B_vv % Rhs(nv) )
+
+    
+    DO i=1,A % NumberOfRows
+      DO j=A % Rows(i+1)-1,A % Rows(i),-1
+        k = A % Cols(j)
+        IF(Dperm(i) > 0 ) THEN
+          IF( DPerm(k) > 0 ) THEN
+            CALL AddToMatrixElement(B_vv,Dperm(i),DPerm(k),A % Values(j))
+          ELSE
+            CALL AddToMatrixElement(B_va,Dperm(i),-DPerm(k),A % Values(j))
+          END IF
+          B_vv % Rhs(Dperm(i)) = A % Rhs(i)        
+        ELSE          
+          IF( DPerm(k) > 0 ) THEN
+            CALL AddToMatrixElement(B_av,-Dperm(i),DPerm(k),A % Values(j))
+          ELSE
+            CALL AddToMatrixElement(B_aa,-Dperm(i),-DPerm(k),A % Values(j))
+          END IF
+          B_aa % Rhs(-Dperm(i)) = A % Rhs(i)
+        END IF        
+      END DO
+    END DO
+
+    IF (B_aa % Format == MATRIX_LIST) THEN
+      CALL List_toCRSMatrix(B_aa)
+      CALL List_toCRSMatrix(B_av)
+      CALL List_toCRSMatrix(B_va)
+      CALL List_toCRSMatrix(B_vv)
+    END IF
+
+    IF( ASSOCIATED( A % ConstraintMatrix ) ) THEN
+      CALL Warn('BlockPickMatrixDirectional','Cannot deal with constraints')
+    END IF
+    
+  END SUBROUTINE BlockPickMatrixDirectional
+
+  
+
   !-------------------------------------------------------------------------------------
   !> Picks the components of a full matrix to the submatrices of a block matrix assuming AV solver.
   !-------------------------------------------------------------------------------------
