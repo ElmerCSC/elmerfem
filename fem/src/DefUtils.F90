@@ -2932,7 +2932,7 @@ CONTAINS
 
 
 
-!> Performs finilizing steps related to the the active solver
+!> Performs pre-steps related to the the active solver
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultStart( USolver )
 !------------------------------------------------------------------------------
@@ -2965,7 +2965,7 @@ CONTAINS
 
 
   
-!> Performs finilizing steps related to the the active solver
+!> Performs finalizing steps related to the the active solver
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultFinish( USolver )
 !------------------------------------------------------------------------------
