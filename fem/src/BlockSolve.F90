@@ -625,13 +625,13 @@ CONTAINS
   !-------------------------------------------------------------------------------------
   !> Picks vertical and horizontal components of a full matrix.
   !-------------------------------------------------------------------------------------
-  SUBROUTINE BlockPickMatrixDirectional( Solver, NoVar )
+  SUBROUTINE BlockPickMatrixDirection( Solver, NoVar )
 
     TYPE(Solver_t) :: Solver
     INTEGER :: Novar
 
-    INTEGER::i,j,k,n,t,na,nv,dofs,nd,ni
-    TYPE(Matrix_t), POINTER :: A,B_aa,B_av,B_va,B_vv
+    INTEGER::i,j,k,n,t,nh,nv,dofs,nd,ni
+    TYPE(Matrix_t), POINTER :: A,B_hh,B_hv,B_vh,B_vv
     TYPE(Nodes_t), SAVE :: Nodes
     INTEGER :: ActiveCoordinate
     INTEGER, ALLOCATABLE :: DTag(:), DPerm(:)
@@ -645,20 +645,23 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
 
-    n = 20
-    ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisDx(n,3) )
+    n = 28 ! currently just large enough
+    ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisDx(n,3), Indexes(n) )
     
     
-    CALL Info('BlockPickMatrixDirectional','Dividing matrix in vertical and horizontal dofs',Level=10)
+    CALL Info('BlockPickMatrixDirection','Dividing matrix in vertical and horizontal dofs',Level=10)
 
 
     n = MAXVAL(Solver % Variable % Perm)
     Mesh => Solver % Mesh 
 
+    A => Solver % Matrix
+    dofs = Solver % Variable % Dofs
+    
+    n = A % NumberOfRows / dofs
     PRINT *,'Initial dofs:',n 
        
-    dofs = Solver % Variable % Dofs
-    ALLOCATE( DTag(n ), DPerm(n*dofs)  ) 
+    ALLOCATE( DTag(n), DPerm(n*dofs)  ) 
     DTag = 0
     DPerm = 0
         
@@ -668,78 +671,96 @@ CONTAINS
     Normal = 0.0_dp
     Normal(ActiveCoordinate) = 1.0_dp
     
-    Wtol = 1.0e-5
+    Wtol = 1.0e-3
 
     
     DO t=1,Solver % NumberOfActiveElements
       Element => Mesh % Elements( Solver % ActiveElements(t) )
-
+      CurrentModel % CurrentElement => Element
+      
       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
-      u = SUM( IP % U ) / IP % n
-      v = SUM( IP % v ) / IP % n
-      w = SUM( IP % w ) / IP % n
-            
-      !n  = GetElementNOFNodes() 
-      nd = GetElementDOFs(Indexes, Element, Solver)  
+      
+      DO k = 1, IP % n 
 
-      CALL GetElementNodes( Nodes, Element )
+        u = IP % u(k)
+        v = IP % v(k)
+        w = IP % w(k)
 
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-            ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, u, v, w, &
-            detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
+        nd = GetElementDOFs( Indexes, Element, Solver)  
+        CALL GetElementNodes( Nodes, Element )
 
-      DO i=1,nd
-        j = Solver % Variable % Perm(Indexes(i))
-        Wlen = SQRT( SUM( WBasis(i,:)**2 ) )
-        Wproj = ABS( SUM( WBasis(i,:) * Normal ) ) / Wlen 
-
-        IF( WProj > Wtol ) THEN
-          DTag(j) = 1
+        IF (PiolaVersion) THEN
+          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+              DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+              ApplyPiolaTransform = .TRUE.)
         ELSE
-          DTag(j) = 2 
-        END IF
+          stat = ElementInfo( Element, Nodes, u, v, w, &
+              detJ, Basis, dBasisdx )
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+        END IF        
+        
+        DO i=1,nd
+          j = Solver % Variable % Perm(Indexes(i))
+          Wlen = SQRT( SUM( WBasis(i,:)**2 ) )
+          IF( Wlen < EPSILON( Wlen ) ) CYCLE
+
+          Wproj = ABS( SUM( WBasis(i,:) * Normal ) ) / Wlen 
+
+          IF( WProj > 1.0_dp - Wtol ) THEN  
+            IF( DTag(j) == 2 ) PRINT *,'Vertical and horizontal?'
+            DTag(j) = 1  ! set to be vertical
+          ELSE IF( Wproj < Wtol ) THEN
+            IF( DTag(j) == 1 ) THEN
+              PRINT *,'Horizontal and vertical?'
+            ELSE
+              DTag(j) = 2  ! set to be horizontal
+            END IF
+          ELSE
+            PRINT *,'Wproj:',j,Wproj
+          END IF
+
+        END DO
       END DO
     END DO
     
 
+    ! Number vertical and horizontal dofs separately.
+    ! Horizontal ones will be given negative index and can be thereby identified later on. 
     nv = 0
-    na = 0
+    nh = 0
     DO i=1,n
       DO j=1,dofs
         IF( DTag(i) == 1 ) THEN
           nv = nv + 1
           DPerm(i) = nv
-        ELSE
-          na = na + 1
-          DPerm(i) = -na
+        ELSE IF( DTag(i) == 2 ) THEN
+          nh = nh + 1
+          DPerm(i) = -nh
         END IF
       END DO
     END DO
     
     PRINT *,'Vertical dofs:',nv
-    PRINT *,'Horizontal dofs:',na
-  
-            
-    A => Solver % Matrix
+    PRINT *,'Horizontal dofs:',nh
+    i = n - nv - nh
+    IF( i > 0 ) THEN      
+      CALL Fatal('BlockPickMatrixDirection','Could not determine all nodes: '&
+          //TRIM(I2S(i)))
+    END IF
 
+    
     B_vv => TotMatrix % SubMatrix(1,1) % Mat
-    B_va => TotMatrix % SubMatrix(1,2) % Mat
-    B_av => TotMatrix % SubMatrix(2,1) % Mat
-    B_aa => TotMatrix % SubMatrix(2,2) % Mat
+    B_vh => TotMatrix % SubMatrix(1,2) % Mat
+    B_hv => TotMatrix % SubMatrix(2,1) % Mat
+    B_hh => TotMatrix % SubMatrix(2,2) % Mat
 
-    IF(ASSOCIATED(B_aa % Values)) B_aa % Values = 0._dp
-    IF(ASSOCIATED(B_av % Values)) B_av % Values = 0._dp
-    IF(ASSOCIATED(B_va % Values)) B_va % Values = 0._dp
+    IF(ASSOCIATED(B_hh % Values)) B_hh % Values = 0._dp
+    IF(ASSOCIATED(B_hv % Values)) B_hv % Values = 0._dp
+    IF(ASSOCIATED(B_vh % Values)) B_vh % Values = 0._dp
     IF(ASSOCIATED(B_vv % Values)) B_vv % Values = 0._dp
 
-    IF(.NOT. ASSOCIATED( B_aa % Rhs) ) ALLOCATE(B_aa % Rhs(na) )
+    IF(.NOT. ASSOCIATED( B_hh % Rhs) ) ALLOCATE(B_hh % Rhs(nh) )
     IF(.NOT. ASSOCIATED( B_vv % Rhs) ) ALLOCATE(B_vv % Rhs(nv) )
 
     
@@ -750,32 +771,32 @@ CONTAINS
           IF( DPerm(k) > 0 ) THEN
             CALL AddToMatrixElement(B_vv,Dperm(i),DPerm(k),A % Values(j))
           ELSE
-            CALL AddToMatrixElement(B_va,Dperm(i),-DPerm(k),A % Values(j))
+            CALL AddToMatrixElement(B_vh,Dperm(i),-DPerm(k),A % Values(j))
           END IF
           B_vv % Rhs(Dperm(i)) = A % Rhs(i)        
         ELSE          
           IF( DPerm(k) > 0 ) THEN
-            CALL AddToMatrixElement(B_av,-Dperm(i),DPerm(k),A % Values(j))
+            CALL AddToMatrixElement(B_hv,-Dperm(i),DPerm(k),A % Values(j))
           ELSE
-            CALL AddToMatrixElement(B_aa,-Dperm(i),-DPerm(k),A % Values(j))
+            CALL AddToMatrixElement(B_hh,-Dperm(i),-DPerm(k),A % Values(j))
           END IF
-          B_aa % Rhs(-Dperm(i)) = A % Rhs(i)
+          B_hh % Rhs(-Dperm(i)) = A % Rhs(i)
         END IF        
       END DO
     END DO
 
-    IF (B_aa % Format == MATRIX_LIST) THEN
-      CALL List_toCRSMatrix(B_aa)
-      CALL List_toCRSMatrix(B_av)
-      CALL List_toCRSMatrix(B_va)
+    IF (B_hh % Format == MATRIX_LIST) THEN
+      CALL List_toCRSMatrix(B_hh)
+      CALL List_toCRSMatrix(B_hv)
+      CALL List_toCRSMatrix(B_vh)
       CALL List_toCRSMatrix(B_vv)
     END IF
 
     IF( ASSOCIATED( A % ConstraintMatrix ) ) THEN
-      CALL Warn('BlockPickMatrixDirectional','Cannot deal with constraints')
+      CALL Warn('BlockPickMatrixDirection','Cannot deal with constraints')
     END IF
     
-  END SUBROUTINE BlockPickMatrixDirectional
+  END SUBROUTINE BlockPickMatrixDirection
 
   
 
@@ -794,7 +815,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: B_aa,B_av,B_va,B_vv,C_aa,C_vv,A,CM
     REAL(KIND=DP) :: SumAbsMat, val
     
-    CALL Info('BlockPickMatrixNodal','Picking nondal and non-nodal block matrices from monolithic one',Level=10)
+    CALL Info('BlockPickMatrixNodal','Picking nodal and non-nodal block matrices from monolithic one',Level=10)
 
     SolverMatrix => Solver % Matrix 
     
@@ -2498,7 +2519,8 @@ CONTAINS
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,l,n,nd,NonLinIter,tests,NoTests,iter
-    LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, BlockNodal
+    LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, &
+        BlockDirection, BlockNodal
     INTEGER :: ColVar, RowVar, NoVar, BlockDofs, VarDofs
     
     REAL(KIND=dp) :: NonlinearTol, Norm, PrevNorm, Residual, PrevResidual, &
@@ -2542,11 +2564,14 @@ CONTAINS
     
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)
     BlockNodal = ListGetLogical( Params,'Block Nodal System', GotIt)
+
+    BlockDirection = ListGetLogical( Params,'Block Direction System', GotIt)
+  
     
     SlaveSolvers =>  ListGetIntegerArray( Params, &
          'Block Solvers', GotSlaveSolvers )
     
-    IF( BlockAV .OR. BlockNodal ) THEN
+    IF( BlockAV .OR. BlockNodal .OR. BlockDirection ) THEN
       BlockDofs = 2
     ELSE IF( GotSlaveSolvers ) THEN
       BlockDofs = SIZE( SlaveSolvers )
@@ -2587,6 +2612,8 @@ CONTAINS
     IF( .NOT. GotSlaveSolvers ) THEN    
       IF( BlockAV ) THEN
         CALL BlockPickMatrixAV( Solver, VarDofs )
+      ELSE IF( BlockDirection ) THEN
+        CALL BlockPickMatrixDirection( Solver, VarDofs )       
       ELSE IF( BlockNodal ) THEN
         CALL BlockPickMatrixNodal( Solver, VarDofs )        
       ELSE IF( VarDofs > 1 ) THEN
