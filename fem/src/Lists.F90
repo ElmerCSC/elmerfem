@@ -4090,6 +4090,7 @@ CONTAINS
        Handle % Ptr => ListAllocate()
      END IF
 
+
      ! Deallocate stuff that may change in size, or is used as a marker for first element
      IF( Handle % nValuesVec > 0 ) THEN
        DEALLOCATE( Handle % ValuesVec )
@@ -4108,8 +4109,9 @@ CONTAINS
        i = i + 1
 
        SELECT CASE ( Handle % SectionType ) 
+
        CASE( SECTION_TYPE_BODY )
-         IF(i > Model % NumberOfMaterials ) EXIT
+         IF(i > Model % NumberOfBodies ) EXIT
          List => Model % Bodies(i) % Values
 
        CASE( SECTION_TYPE_MATERIAL )
@@ -4119,7 +4121,7 @@ CONTAINS
        CASE( SECTION_TYPE_BF )
          IF(i > Model % NumberOfBodyForces ) EXIT        
          List => Model % BodyForces(i) % Values
-
+         
        CASE( SECTION_TYPE_IC )
          IF( i > Model % NumberOfICs ) EXIT
          List => Model % ICs(i) % Values
@@ -4137,13 +4139,12 @@ CONTAINS
 
        END SELECT
 
-       
        ! If the parameter is not defined in some list we cannot really be sure
        ! that it is intentionally used as a zero. Hence we cannot assume that the
        ! keyword is constant. 
        ptr => ListFind(List,Name,Found)
        Handle % ptr % Head => ptr
-
+       
        IF ( .NOT. ASSOCIATED(ptr) ) THEN
          Handle % ConstantEverywhere = .FALSE.
          CYCLE
@@ -4232,10 +4233,6 @@ CONTAINS
      CALL Info('ListInitElementKeyword',&
          'Initiated handle for: > '//TRIM(Handle % Name)//' < of type: '// &
          TRIM(I2S(Handle % ValueType)),Level=10)
-     !PRINT *,'Constants:',Handle % NotPresentAnywhere, &
-     !    Handle % ConstantEverywhere, Handle % GlobalEverywhere, &
-     !    Handle % SomewhereEvaluateAtIp
-
 
      IF( PRESENT( UnfoundFatal ) ) THEN
        Handle % Unfoundfatal = UnfoundFatal
