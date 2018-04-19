@@ -783,8 +783,9 @@ CONTAINS
     dofs = Solver % Variable % Dofs
     
     n = A % NumberOfRows / dofs
-    PRINT *,'Initial dofs:',n 
-       
+    PRINT *,'Initial dofs:',A % NumberOfRows,dofs 
+    
+    
     ALLOCATE( DTag(n), DPerm(n*dofs)  ) 
     DTag = 0
     DPerm = 0
@@ -907,12 +908,13 @@ CONTAINS
     nh = 0
     DO i=1,n
       DO j=1,dofs
+        k = dofs*(i-1)+j
         IF( DTag(i) == 1 ) THEN
           nv = nv + 1
-          DPerm(i) = nv
+          DPerm(k) = nv
         ELSE IF( DTag(i) == 2 ) THEN
           nh = nh + 1
-          DPerm(i) = -nh
+          DPerm(k) = -nh
         END IF
       END DO
     END DO
