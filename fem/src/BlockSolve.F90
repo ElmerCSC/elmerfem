@@ -438,8 +438,7 @@ CONTAINS
 
 
   !-------------------------------------------------------------------
-  !> This subroutine initializes the block matrix structure so that the 
-  !> matrices and vectors have a natural location to save.
+  !> This subroutine creates the minssing component variables.
   !------------------------------------------------------------------
   SUBROUTINE BlockInitVar( Solver, BlockMatrix )
     
@@ -450,22 +449,16 @@ CONTAINS
     
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(Matrix_t), POINTER :: Amat
-    INTEGER :: i,j,n,Novar
+    INTEGER :: i,j,k,n,Novar
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: Var
     CHARACTER(LEN=max_name_len) :: VarName, str
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp), POINTER :: Vals(:)
-
     
     Params => Solver % Values
     Mesh => Solver % Mesh
-
-    ! If first component is allocated then others should be too!
-    IF( ASSOCIATED( BlockMatrix % SubVector(1) % Var ) ) RETURN
-    
     NoVar = BlockMatrix % NoVar
-
     
     DO i=1,NoVar
       Amat => BlockMatrix % Submatrix(i,i) % Mat 
@@ -489,6 +482,13 @@ CONTAINS
         Var => VariableGet( Mesh % Variables, VarName )
       END IF
       BlockMatrix % SubVector(i) % Var => Var
+
+      ! Take the monolithic solution as initial guess
+      !DO j=1,n
+      !  k = Amat % InvPerm(j)
+      !  Var % Values(j) = Solver % Variable % Values(k)
+      !END DO
+
     END DO
         
     BlockMatrix % TotSize = BlockMatrix % Offset( NoVar + 1 )
@@ -497,6 +497,54 @@ CONTAINS
       
   END SUBROUTINE BlockInitVar
 
+
+
+
+  !-------------------------------------------------------------------
+  !> This subroutine copies back the full vector from its components.
+  !------------------------------------------------------------------
+  SUBROUTINE BlockBackCopyVar( Solver, BlockMatrix )
+    
+    IMPLICIT NONE
+    
+    TYPE(Solver_t), TARGET :: Solver
+    TYPE(BlockMatrix_t), POINTER :: BlockMatrix
+    
+    TYPE(Matrix_t), POINTER :: Amat
+    INTEGER :: i,j,k,n,m,Novar
+    TYPE(Variable_t), POINTER :: Var
+    
+    CALL Info('BlockBackCopyVar','Copying values back to monolithic solution vector',Level=10)
+
+    NoVar = BlockMatrix % NoVar
+
+    PRINT *,'NoVar'
+    m = SIZE( Solver % Variable % Values ) 
+   
+    DO i=1,NoVar
+      Amat => BlockMatrix % Submatrix(i,i) % Mat 
+      n = Amat % NumberOfRows
+      Var => BlockMatrix % SubVector(i) % Var 
+
+      PRINT *,'sizes:',i,n,m
+      
+      ! Copy the block part to the monolithic solution
+      DO j=1,n
+        k = Amat % InvPerm(j)
+        IF( k < 1 .OR. k > m ) THEN
+          PRINT *,'ijk:',i,j,k
+          CYCLE
+        END IF
+        Solver % Variable % Values(k) = Var % Values(j)
+      END DO
+
+    END DO
+        
+    BlockMatrix % TotSize = BlockMatrix % Offset( NoVar + 1 )
+
+    CALL Info('BlockBackCopyVar','All done',Level=15)
+      
+  END SUBROUTINE BlockBackCopyVar
 
   
 
@@ -753,11 +801,12 @@ CONTAINS
     DO t=1,Solver % NumberOfActiveElements
       Element => Mesh % Elements( Solver % ActiveElements(t) )
       nn = Element % TYPE % NumberOfNodes
-     
+
       nd = GetElementDOFs( Indexes, Element, Solver)  
       CALL GetElementNodes( Nodes, Element )
 
 
+      ! Both strategies give exactly the same set of vertical and horizontal dofs!
       IF(.TRUE.) THEN
         IF( ActiveCoordinate == 1 ) THEN
           Coord => Nodes % x
@@ -766,16 +815,14 @@ CONTAINS
         ELSE
           Coord => Nodes % z
         END IF
-        
+
         MinCoord = MINVAL( Coord(1:nn) )
         MaxCoord = MAXVAL( Coord(1:nn) )
         Wlen = MaxCoord - MinCoord 
 
-        
         DO i=1,nd
           j = Solver % Variable % Perm(Indexes(i))
 
-          
           IF( i <= Element % Type % NumberOfEdges ) THEN
             Edge => Mesh % Edges( Element % EdgeIndexes(i) )
             CALL GetElementNodes( EdgeNodes, Edge )
@@ -785,7 +832,7 @@ CONTAINS
               PRINT *,'ind com:',Indexes(i), Mesh % NumberOfNodes + Element % EdgeIndexes(i), &
                   Mesh % NumberOfNodes 
             END IF
-              
+
             IF( ActiveCoordinate == 1 ) THEN
               Coord => EdgeNodes % x
             ELSE IF( ActiveCoordinate == 2 ) THEN
@@ -793,14 +840,14 @@ CONTAINS
             ELSE
               Coord => EdgeNodes % z
             END IF
- 
+
             MinCoord = MINVAL( Coord(1:ne) )
             MaxCoord = MAXVAL( Coord(1:ne) )
           ELSE            
             ! jj = 2 * ( Element % ElementIndex - 1) + ( i - noedges ) 
             CALL Fatal('BlockPickMatrixHorVer','Cannot do faces yet!')
           END IF
-                              
+
           Wproj = ( MaxCoord - MinCoord ) / Wlen
 
           IF( WProj > 1.0_dp - Wtol ) THEN  
@@ -813,52 +860,44 @@ CONTAINS
             PRINT *,'Edge '//TRIM(I2S(j))//' direction undefined: ',Wproj
           END IF
         END DO
-                             
+
       ELSE      
         IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
-        DO k = 1, IP % n 
+        u = SUM( IP % u ) / IP % n
+        v = SUM( IP % v ) / IP % n
+        w = IP % w(k)
 
-          u = IP % u(k)
-          v = IP % v(k)
-          w = IP % w(k)
+        IF (PiolaVersion) THEN
+          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+              DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+              ApplyPiolaTransform = .TRUE.)
+        ELSE
+          stat = ElementInfo( Element, Nodes, u, v, w, &
+              detJ, Basis, dBasisdx )
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+        END IF
 
-          IF (PiolaVersion) THEN
-            stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-                DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-                RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-                ApplyPiolaTransform = .TRUE.)
+        DO i=1,nd
+          j = Solver % Variable % Perm(Indexes(i))
+          Wlen = SQRT( SUM( WBasis(i,:)**2 ) )
+          IF( Wlen < EPSILON( Wlen ) ) CYCLE
+
+          Wproj = ABS( SUM( WBasis(i,:) * Normal ) ) / Wlen 
+
+          IF( WProj > 1.0_dp - Wtol ) THEN  
+            IF( DTag(j) == 2 ) PRINT *,'Vertical edge '//TRIM(I2S(j))//' is also horizontal?'
+            DTag(j) = 1  ! set to be vertical
+          ELSE IF( Wproj < Wtol ) THEN
+            IF( DTag(j) == 1 ) PRINT *,'Horizontal edge '//TRIM(I2S(j))//' is also vertical?'
+            DTag(j) = 2  ! set to be horizontal
           ELSE
-            stat = ElementInfo( Element, Nodes, u, v, w, &
-                detJ, Basis, dBasisdx )
-            CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+            PRINT *,'Edge '//TRIM(I2S(j))//' direction undefined: ',Wproj
           END IF
-
-          DO i=1,nd
-            j = Solver % Variable % Perm(Indexes(i))
-            Wlen = SQRT( SUM( WBasis(i,:)**2 ) )
-            IF( Wlen < EPSILON( Wlen ) ) CYCLE
-
-            Wproj = ABS( SUM( WBasis(i,:) * Normal ) ) / Wlen 
-
-            IF( WProj > 1.0_dp - Wtol ) THEN  
-              IF( DTag(j) == 2 ) PRINT *,'Vertical and horizontal?'
-              DTag(j) = 1  ! set to be vertical
-            ELSE IF( Wproj < Wtol ) THEN
-              IF( DTag(j) == 1 ) THEN
-                PRINT *,'Horizontal and vertical?'
-              ELSE
-                DTag(j) = 2  ! set to be horizontal
-              END IF
-            ELSE
-              PRINT *,'Wproj:',j,Wproj
-            END IF
-
-          END DO
         END DO
 
       END IF
-
     END DO
     
 
@@ -896,6 +935,9 @@ CONTAINS
     IF(ASSOCIATED(B_vh % Values)) B_vh % Values = 0._dp
     IF(ASSOCIATED(B_vv % Values)) B_vv % Values = 0._dp
 
+    IF(.NOT. ASSOCIATED( B_hh % InvPerm ) ) ALLOCATE( B_hh % InvPerm(nh) )
+    IF(.NOT. ASSOCIATED( B_vv % InvPerm ) ) ALLOCATE( B_vv % InvPerm(nv) )
+       
     IF(.NOT. ASSOCIATED( B_hh % Rhs) ) ALLOCATE(B_hh % Rhs(nh) )
     IF(.NOT. ASSOCIATED( B_vv % Rhs) ) ALLOCATE(B_vv % Rhs(nv) )
 
@@ -910,6 +952,7 @@ CONTAINS
             CALL AddToMatrixElement(B_vh,Dperm(i),-DPerm(k),A % Values(j))
           END IF
           B_vv % Rhs(Dperm(i)) = A % Rhs(i)        
+          B_vv % InvPerm(Dperm(i)) = i
         ELSE          
           IF( DPerm(k) > 0 ) THEN
             CALL AddToMatrixElement(B_hv,-Dperm(i),DPerm(k),A % Values(j))
@@ -917,7 +960,8 @@ CONTAINS
             CALL AddToMatrixElement(B_hh,-Dperm(i),-DPerm(k),A % Values(j))
           END IF
           B_hh % Rhs(-Dperm(i)) = A % Rhs(i)
-        END IF        
+          B_hh % InvPerm(-Dperm(i)) = i          
+        END IF
       END DO
     END DO
 
@@ -2845,7 +2889,6 @@ CONTAINS
       CALL DestroyBlockMatrixScaling()
     END IF
 
-    
     ! For legacy matrices do the backmapping 
     !------------------------------------------
     SolverMatrix % RHS => SaveRHS
@@ -2858,7 +2901,10 @@ CONTAINS
       Solver % Matrix % ConstraintMatrix => SaveCM 
     END IF
 
-
+    IF( BlockHorVer ) THEN
+      CALL BlockBackCopyVar( Solver, TotMatrix )
+    END IF
+      
     CALL Info('BlockSolverInt','All done')
     CALL Info('BlockSolverInt','-------------------------------------------------',Level=5)
 
