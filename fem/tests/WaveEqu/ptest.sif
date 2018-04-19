@@ -35,7 +35,7 @@ End
 Material 1
   Sound Speed = Real 0.5
   Sound Damping = Real 0.0
-  Sound Reaction = Real 0.0
+  Sound Reaction Damping = Real 0.0
 End 
 
 !Body Force 1
