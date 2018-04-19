@@ -74,17 +74,18 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER ::  VariableValues(:),VelocityN(:),VelocityD(:),BetaValues(:)
   INTEGER, POINTER :: Permutation(:), VeloNPerm(:),VeloDPerm(:),BetaPerm(:),NodeIndexes(:)
 
-  real(kind=dp),allocatable :: VisitedNode(:),db(:),Basis(:),dBasisdx(:,:)
-  real(kind=dp),allocatable :: nodalbetab(:),NodalRegb(:)
+  real(kind=dp),allocatable :: VisitedNode(:),db(:),area(:),Basis(:),dBasisdx(:,:)
+  real(kind=dp),allocatable :: nodalbetab(:),NodalRegb(:),nodalarea(:),PAreaSums(:)
   real(kind=dp) :: betab
   real(kind=dp) :: u,v,w,SqrtElementMetric,s
-  real(kind=dp) :: Lambda
+  real(kind=dp) :: Lambda, AreaSum, AreaMean
   REAL(KIND=dp) :: Normal(3),Tangent(3),Tangent2(3),Vect(3)
 
   integer :: i,j,k,e,t,n,NMAX,NActiveNodes,DIM
-  integer :: p,q
+  integer :: p,q,NodeCount,ierr
+  integer, allocatable :: PNodeCounts(:)
 
-  logical :: PowerFormulation,Beta2Formulation
+  logical :: PowerFormulation,Beta2Formulation,MeshIndep,Parallel
   Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal=.TRUE.
   Logical :: NormalTangential1,NormalTangential2
 
@@ -95,22 +96,24 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
   LOGICAL                     :: FreeSlipShelves
   CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
 
-  save FreeSlipShelves,MaskName
+  save FreeSlipShelves,MaskName,MeshIndep, Parallel
   save SolverName,NeumannSolName,AdjointSolName,VarSolName,GradSolName
-  save VisitedNode,db,Basis,dBasisdx,nodalbetab,NodalRegb
+  save VisitedNode,db,Basis,dBasisdx,nodalbetab,NodalRegb,nodalarea
   save Firsttime,DIM,Lambda
   save ElementNodes
-  save PowerFormulation,Beta2Formulation
+  save PowerFormulation,Beta2Formulation,area
 
   If (Firsttime) then
 
      DIM = CoordinateSystemDimension()
      WRITE(SolverName, '(A)') 'DJDBeta_Adjoint'
-     
+     Parallel = (ParEnv % PEs > 1)
+
      NMAX=Solver % Mesh % NumberOfNodes
-     allocate(VisitedNode(NMAX),db(NMAX),  &
+     allocate(VisitedNode(NMAX),db(NMAX), area(NMAX), &
           nodalbetab(Model %  MaxElementNodes),&
           NodalRegb(Model %  MaxElementNodes),&
+          NodalArea(Model %  MaxElementNodes),&
           Basis(Model % MaxElementNodes),  &
           dBasisdx(Model % MaxElementNodes,3))
      
@@ -179,6 +182,13 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
         END IF
      END IF
 
+     MeshIndep=GetLogical( SolverParams, 'Mesh Independent', Found)
+     IF(.NOT.Found) THEN
+        CALL WARN(SolverName,'Keyword >Mesh Independent< not found in solver params')
+        CALL WARN(SolverName,'Taking default value >FALSE<')
+        MeshIndep=.FALSE.
+     END IF
+
 !!! End of First visit
      Firsttime=.false.
   Endif
@@ -208,7 +218,8 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
   
   VisitedNode=0.0_dp
   db=0.0_dp
-  
+  area=0.0_dp
+
   DO e=1,Solver % NumberOfActiveElements
      Element => GetActiveElement(e)
      CALL GetElementNodes( ElementNodes )
@@ -244,7 +255,7 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
      ! Compute Integrated Nodal Value of DJDBeta
      nodalbetab=0.0_dp
      NodalRegb=0.0_dp
-     
+     NodalArea=0.0_dp
      
      IntegStuff = GaussPoints( Element )
      DO t=1,IntegStuff % n
@@ -294,6 +305,7 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
         End Do !on p
         
         nodalbetab(1:n)=nodalbetab(1:n)+betab*Basis(1:n)
+        nodalarea(1:n)=nodalarea(1:n)+s*Basis(1:n)
         
         If (Lambda /= 0.0) then
            NodalRegb(1:n)=NodalRegb(1:n)+&
@@ -322,8 +334,39 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
      END IF
 
      db(NodeIndexes(1:n)) = db(NodeIndexes(1:n)) + nodalbetab(1:n) + NodalRegb(1:n)
+     area(NodeIndexes(1:n)) = area(NodeIndexes(1:n)) + NodalArea(1:n)
   End do ! on elements
-  
+
+  IF(MeshIndep) THEN
+
+    AreaSum = 0.0_dp
+    nodecount = 0
+    DO t=1,Solver % Mesh % NumberOfNodes
+      IF (VisitedNode(t).LT.1.0_dp) CYCLE
+      AreaSum = AreaSum + area(t)
+      nodecount = nodecount + 1
+    END DO
+
+    IF(Parallel) THEN
+      !Pass area info between partitions
+      ALLOCATE(PNodeCounts(ParEnv % PEs),PAreaSums(ParEnv % PEs))
+
+      CALL MPI_AllGather(nodecount, 1, MPI_INTEGER, PNodeCounts, &
+           1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+      CALL MPI_AllGather(AreaSum, 1, MPI_DOUBLE_PRECISION, PAreaSums, &
+           1, MPI_DOUBLE_PRECISION, ELMER_COMM_WORLD, ierr)
+
+      AreaMean = SUM(PAreaSums)/REAL(SUM(PNodeCounts))
+    ELSE
+      AreaMean = AreaSum/REAL(nodecount)
+    END IF
+
+    !Scale down by boundary weight
+    db = db / area
+    !Scale up by mean area (keeps M1QN3 happy)
+    db = db * AreaMean
+  END IF
+
   Do t=1,Solver % Mesh % NumberOfNodes
      if (VisitedNode(t).lt.1.0_dp) cycle
      VariableValues(Permutation(t)) = db(t) 

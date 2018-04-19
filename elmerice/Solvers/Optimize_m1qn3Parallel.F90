@@ -99,10 +99,11 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   integer :: i,j,t,n,NMAX,NActiveNodes,NPoints,ni,ind
   INTEGER :: status(MPI_STATUS_SIZE)
   integer,allocatable :: ActiveNodes(:),NodePerPe(:)
-  integer,allocatable :: NewNode(:)
+  integer,allocatable :: NewNode(:),ggcount(:)
   integer, allocatable :: LocalToGlobalPerm(:),nodePerm(:),TestPerm(:)
 
-  Logical :: FirstVisit=.true.,Firsttime=.true.,Found,UseMask,ComputeNormG=.False.,UnFoundFatal=.TRUE.
+  logical :: FirstVisit=.TRUE.,Firsttime=.TRUE.,Found,UseMask,ComputeNormG=.FALSE.,&
+       UnFoundFatal=.TRUE.,MeshIndep
   logical,allocatable :: VisitedNode(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,NormM1QN3,MaskVarName,NormFile
@@ -122,13 +123,13 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 !
   save NActiveNodes,Npes,NPoints,ntot
    
-  save x,g,xx,gg,xtot,gtot
+  save x,g,xx,gg,ggcount,xtot,gtot
   save ActiveNodes,NodePerPe
 
   save TestPerm
 
   save normtype,dxmin,df1,epsrel,dz,dzs,rzs,imp,io,imode,omode,niter,nsim,iz,ndz,reverse,indic,izs
-  save SolverName
+  save SolverName, SolverParams
   save FirstVisit,Firsttime
   save ComputeNormG,NormFile
   save CostSolName,VarSolName,GradSolName,IOM1QN3
@@ -299,6 +300,13 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
      GradValues   => GradVar % Values 
      GradPerm => GradVar % Perm 
 
+     MeshIndep=ListGetLogical(SolverParams,"Mesh Independent", Found)
+     IF(.NOT.Found) THEN
+        CALL WARN(SolverName,'Keyword >Mesh Independent< not found in solver params')
+        CALL WARN(SolverName,'Taking default value >FALSE<')
+        MeshIndep=.FALSE.
+     END IF
+
 ! Do some allocation etc if first iteration
   If (Firsttime) then 
           
@@ -387,7 +395,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
            End do
 
            NPoints=ind
-           allocate(xx(Npoints),gg(Npoints))
+           allocate(xx(Npoints),gg(Npoints),ggcount(Npoints))
            deallocate(NodePerm,LocalToGlobalPerm)
 
  ! M1QN3 allocation of dz function of Npoints nd requested number of updates
@@ -430,10 +438,16 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                      
                      xx=0.0
                      gg=0.0
+                     ggcount=0
                      Do i=1,ntot
                          xx(TestPerm(i))=xtot(i)  ! same Beta Value for same node
                          gg(TestPerm(i))=gg(TestPerm(i))+gtot(i)  ! gather the contribution to DJDB 
+                         ggcount(TestPerm(i)) = ggcount(TestPerm(i)) + 1
                      End do 
+
+                     !In case we want element-size independent gradient, the gradient
+                     !should be the *mean* of all partition contributions, not the sum
+                     IF(MeshIndep) gg = gg / REAL(ggcount)
 
                      If (ComputeNormG) then
                              TimeVar => VariableGet( Model % Mesh % Variables, 'Time' )
