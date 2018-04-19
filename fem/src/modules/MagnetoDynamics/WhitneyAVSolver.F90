@@ -129,8 +129,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     END SELECT
 
     IF (.NOT. PiolaVersion) THEN
-      IF(GetString(SolverParams,'Linear System Solver')=='block') THEN
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+      IF(GetString(SolverParams,'Linear System Solver',Found)=='block') THEN
+!        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
         CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
       END IF
     END IF
@@ -335,7 +335,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
      END IF
 
-     IF(GetString(SolverParams,'Linear System Solver')=='block') THEN
+     IF(GetString(SolverParams,'Linear System Solver',Found)=='block') THEN
        n = Mesh % NumberOfNodes
        n_n = COUNT(Perm(1:n)>0)
        n_e = COUNT(Perm(n+1:)>0)

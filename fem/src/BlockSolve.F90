@@ -244,7 +244,7 @@ CONTAINS
   !> This subroutine initializes the block matrix structure so that the 
   !> matrices and vectors have a natural location to save.
   !------------------------------------------------------------------
-  SUBROUTINE BlockInitMatrix( Solver, BlockMatrix, BlockDofs, FieldDofs )
+  SUBROUTINE BlockInitMatrix( Solver, BlockMatrix, BlockDofs, FieldDofs, SkipVar )
     
     IMPLICIT NONE
     
@@ -252,6 +252,7 @@ CONTAINS
     INTEGER :: BlockDofs
     TYPE(BlockMatrix_t), POINTER :: BlockMatrix
     INTEGER, OPTIONAL :: FieldDofs
+    LOGICAL, OPTIONAL :: SkipVar
     
     TYPE(Solver_t), POINTER :: PSolver
     INTEGER, POINTER :: BlockStruct(:), SlaveSolvers(:)
@@ -263,8 +264,7 @@ CONTAINS
     CHARACTER(LEN=max_name_len) :: VarName, str
     LOGICAL :: UseSolverMatrix
     
-        
-    
+            
     Params => Solver % Values
 
     BlockMatrix => Solver % BlockMatrix
@@ -330,10 +330,19 @@ CONTAINS
     BlockMatrix % SubMatrixTranspose = .FALSE.
         
     ALLOCATE( BlockMatrix % SubVector(NoVar))
+    DO i=1,NoVar
+      BlockMatrix % Subvector(i) % Var => NULL()
+    END DO
+
     ALLOCATE( BlockMatrix % Offset(NoVar+1))
     BlockMatrix % Offset = 0
     BlockMatrix % maxsize = 0
 
+    
+    IF( PRESENT( SkipVar ) ) THEN
+      IF( SkipVar ) RETURN
+    END IF
+    
     IF( PRESENT( FieldDofs ) ) THEN
       NoVar = FieldDofs
     END IF
@@ -427,6 +436,69 @@ CONTAINS
   END SUBROUTINE BlockInitMatrix
     
 
+
+  !-------------------------------------------------------------------
+  !> This subroutine initializes the block matrix structure so that the 
+  !> matrices and vectors have a natural location to save.
+  !------------------------------------------------------------------
+  SUBROUTINE BlockInitVar( Solver, BlockMatrix )
+    
+    IMPLICIT NONE
+    
+    TYPE(Solver_t), TARGET :: Solver
+    TYPE(BlockMatrix_t), POINTER :: BlockMatrix
+    
+    TYPE(Solver_t), POINTER :: PSolver
+    TYPE(Matrix_t), POINTER :: Amat
+    INTEGER :: i,j,n,Novar
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Variable_t), POINTER :: Var
+    CHARACTER(LEN=max_name_len) :: VarName, str
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), POINTER :: Vals(:)
+
+    
+    Params => Solver % Values
+    Mesh => Solver % Mesh
+
+    ! If first component is allocated then others should be too!
+    IF( ASSOCIATED( BlockMatrix % SubVector(1) % Var ) ) RETURN
+    
+    NoVar = BlockMatrix % NoVar
+
+    
+    DO i=1,NoVar
+      Amat => BlockMatrix % Submatrix(i,i) % Mat 
+      n = Amat % NumberOfRows
+      
+      BlockMatrix % Offset(i+1) = BlockMatrix % Offset(i) + n
+      BlockMatrix % MaxSize = MAX( BlockMatrix % MaxSize, n )
+      
+      VarName = ComponentName("Block variable",i)            
+      Var => VariableGet( Mesh % Variables, VarName )
+      IF(.NOT. ASSOCIATED( Var ) ) THEN
+        CALL Info('BlockInitMatrix','Variable > '//TRIM(VarName)//' < does not exist, creating')
+        PSolver => Solver
+        NULLIFY( Vals )
+        ALLOCATE( Vals(n) )
+        Vals = 0.0_dp
+        
+        CALL VariableAdd( Mesh % Variables,Mesh,PSolver,VarName,1,Vals,&
+            Output = .FALSE. )
+        !Perm,Output,Secondary, TYPE )
+        Var => VariableGet( Mesh % Variables, VarName )
+      END IF
+      BlockMatrix % SubVector(i) % Var => Var
+    END DO
+        
+    BlockMatrix % TotSize = BlockMatrix % Offset( NoVar + 1 )
+
+    CALL Info('BlockInitVar','All done',Level=12)
+      
+  END SUBROUTINE BlockInitVar
+
+
+  
 
   !-------------------------------------------------------------------------------------
   !> Picks the components of a full matrix to the submatrices of a block matrix.
@@ -625,23 +697,24 @@ CONTAINS
   !-------------------------------------------------------------------------------------
   !> Picks vertical and horizontal components of a full matrix.
   !-------------------------------------------------------------------------------------
-  SUBROUTINE BlockPickMatrixDirection( Solver, NoVar )
+  SUBROUTINE BlockPickMatrixHorVer( Solver, NoVar )
 
     TYPE(Solver_t) :: Solver
     INTEGER :: Novar
 
-    INTEGER::i,j,k,n,t,nh,nv,dofs,nd,ni
+    INTEGER::i,j,k,n,t,nh,nv,ne,dofs,nd,ni,nn
     TYPE(Matrix_t), POINTER :: A,B_hh,B_hv,B_vh,B_vv
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t), SAVE :: Nodes, EdgeNodes
     INTEGER :: ActiveCoordinate
     INTEGER, ALLOCATABLE :: DTag(:), DPerm(:)
     INTEGER, POINTER :: Indexes(:)
     TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp) :: Wlen, Wproj, Wtol, u, v, w, DetJ, Normal(3)
+    REAL(KIND=dp) :: Wlen, Wproj, Wtol, u, v, w, DetJ, Normal(3), MaxCoord, MinCoord
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: PiolaVersion, Found, Stat
-    TYPE(Element_t), POINTER :: Element
-
+    TYPE(Element_t), POINTER :: Element, Edge
+    REAL(KIND=dp), POINTER :: Coord(:)
+    
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
 
@@ -649,12 +722,15 @@ CONTAINS
     ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisDx(n,3), Indexes(n) )
     
     
-    CALL Info('BlockPickMatrixDirection','Dividing matrix in vertical and horizontal dofs',Level=10)
+    CALL Info('BlockPickMatrixHorVer','Dividing matrix in vertical and horizontal dofs',Level=10)
 
 
     n = MAXVAL(Solver % Variable % Perm)
     Mesh => Solver % Mesh 
 
+
+    PRINT *,'nodal dofs:',COUNT( Solver % Variable % Perm(1:Mesh % NumberOfNodes) > 0 )
+    
     A => Solver % Matrix
     dofs = Solver % Variable % Dofs
     
@@ -672,56 +748,117 @@ CONTAINS
     Normal(ActiveCoordinate) = 1.0_dp
     
     Wtol = 1.0e-3
-
+      
     
     DO t=1,Solver % NumberOfActiveElements
       Element => Mesh % Elements( Solver % ActiveElements(t) )
-      CurrentModel % CurrentElement => Element
-      
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
-      
-      DO k = 1, IP % n 
+      nn = Element % TYPE % NumberOfNodes
+     
+      nd = GetElementDOFs( Indexes, Element, Solver)  
+      CALL GetElementNodes( Nodes, Element )
 
-        u = IP % u(k)
-        v = IP % v(k)
-        w = IP % w(k)
 
-        nd = GetElementDOFs( Indexes, Element, Solver)  
-        CALL GetElementNodes( Nodes, Element )
-
-        IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-              DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-              RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-              ApplyPiolaTransform = .TRUE.)
+      IF(.TRUE.) THEN
+        IF( ActiveCoordinate == 1 ) THEN
+          Coord => Nodes % x
+        ELSE IF( ActiveCoordinate == 2 ) THEN
+          Coord => Nodes % y
         ELSE
-          stat = ElementInfo( Element, Nodes, u, v, w, &
-              detJ, Basis, dBasisdx )
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-        END IF        
+          Coord => Nodes % z
+        END IF
+        
+        MinCoord = MINVAL( Coord(1:nn) )
+        MaxCoord = MAXVAL( Coord(1:nn) )
+        Wlen = MaxCoord - MinCoord 
+
         
         DO i=1,nd
           j = Solver % Variable % Perm(Indexes(i))
-          Wlen = SQRT( SUM( WBasis(i,:)**2 ) )
-          IF( Wlen < EPSILON( Wlen ) ) CYCLE
 
-          Wproj = ABS( SUM( WBasis(i,:) * Normal ) ) / Wlen 
+          
+          IF( i <= Element % Type % NumberOfEdges ) THEN
+            Edge => Mesh % Edges( Element % EdgeIndexes(i) )
+            CALL GetElementNodes( EdgeNodes, Edge )
+            ne = Edge % Type % NumberOfNodes
+
+            IF( Indexes(i) /= Mesh % NumberOfNodes + Element % EdgeIndexes(i) ) THEN
+              PRINT *,'ind com:',Indexes(i), Mesh % NumberOfNodes + Element % EdgeIndexes(i), &
+                  Mesh % NumberOfNodes 
+            END IF
+              
+            IF( ActiveCoordinate == 1 ) THEN
+              Coord => EdgeNodes % x
+            ELSE IF( ActiveCoordinate == 2 ) THEN
+              Coord => EdgeNodes % y
+            ELSE
+              Coord => EdgeNodes % z
+            END IF
+ 
+            MinCoord = MINVAL( Coord(1:ne) )
+            MaxCoord = MAXVAL( Coord(1:ne) )
+          ELSE            
+            ! jj = 2 * ( Element % ElementIndex - 1) + ( i - noedges ) 
+            CALL Fatal('BlockPickMatrixHorVer','Cannot do faces yet!')
+          END IF
+                              
+          Wproj = ( MaxCoord - MinCoord ) / Wlen
 
           IF( WProj > 1.0_dp - Wtol ) THEN  
-            IF( DTag(j) == 2 ) PRINT *,'Vertical and horizontal?'
+            IF( DTag(j) == 2 ) PRINT *,'Vertical edge '//TRIM(I2S(j))//' is also horizontal?'
             DTag(j) = 1  ! set to be vertical
           ELSE IF( Wproj < Wtol ) THEN
-            IF( DTag(j) == 1 ) THEN
-              PRINT *,'Horizontal and vertical?'
-            ELSE
-              DTag(j) = 2  ! set to be horizontal
-            END IF
+            IF( DTag(j) == 1 ) PRINT *,'Horizontal edge '//TRIM(I2S(j))//' is also vertical?'
+            DTag(j) = 2  ! set to be horizontal
           ELSE
-            PRINT *,'Wproj:',j,Wproj
+            PRINT *,'Edge '//TRIM(I2S(j))//' direction undefined: ',Wproj
+          END IF
+        END DO
+                             
+      ELSE      
+        IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+
+        DO k = 1, IP % n 
+
+          u = IP % u(k)
+          v = IP % v(k)
+          w = IP % w(k)
+
+          IF (PiolaVersion) THEN
+            stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+                DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+                RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+                ApplyPiolaTransform = .TRUE.)
+          ELSE
+            stat = ElementInfo( Element, Nodes, u, v, w, &
+                detJ, Basis, dBasisdx )
+            CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
           END IF
 
+          DO i=1,nd
+            j = Solver % Variable % Perm(Indexes(i))
+            Wlen = SQRT( SUM( WBasis(i,:)**2 ) )
+            IF( Wlen < EPSILON( Wlen ) ) CYCLE
+
+            Wproj = ABS( SUM( WBasis(i,:) * Normal ) ) / Wlen 
+
+            IF( WProj > 1.0_dp - Wtol ) THEN  
+              IF( DTag(j) == 2 ) PRINT *,'Vertical and horizontal?'
+              DTag(j) = 1  ! set to be vertical
+            ELSE IF( Wproj < Wtol ) THEN
+              IF( DTag(j) == 1 ) THEN
+                PRINT *,'Horizontal and vertical?'
+              ELSE
+                DTag(j) = 2  ! set to be horizontal
+              END IF
+            ELSE
+              PRINT *,'Wproj:',j,Wproj
+            END IF
+
+          END DO
         END DO
-      END DO
+
+      END IF
+
     END DO
     
 
@@ -745,10 +882,9 @@ CONTAINS
     PRINT *,'Horizontal dofs:',nh
     i = n - nv - nh
     IF( i > 0 ) THEN      
-      CALL Fatal('BlockPickMatrixDirection','Could not determine all nodes: '&
+      CALL Fatal('BlockPickMatrixHorVer','Could not determine all nodes: '&
           //TRIM(I2S(i)))
     END IF
-
     
     B_vv => TotMatrix % SubMatrix(1,1) % Mat
     B_vh => TotMatrix % SubMatrix(1,2) % Mat
@@ -793,10 +929,10 @@ CONTAINS
     END IF
 
     IF( ASSOCIATED( A % ConstraintMatrix ) ) THEN
-      CALL Warn('BlockPickMatrixDirection','Cannot deal with constraints')
+      CALL Warn('BlockPickMatrixHorVer','Cannot deal with constraints')
     END IF
     
-  END SUBROUTINE BlockPickMatrixDirection
+  END SUBROUTINE BlockPickMatrixHorVer
 
   
 
@@ -2520,7 +2656,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,l,n,nd,NonLinIter,tests,NoTests,iter
     LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, &
-        BlockDirection, BlockNodal
+        BlockHorVer, BlockNodal
     INTEGER :: ColVar, RowVar, NoVar, BlockDofs, VarDofs
     
     REAL(KIND=dp) :: NonlinearTol, Norm, PrevNorm, Residual, PrevResidual, &
@@ -2533,7 +2669,7 @@ CONTAINS
     INTEGER :: HaveConstraint, HaveAdd
     INTEGER, POINTER :: VarPerm(:)
     INTEGER, POINTER :: SlaveSolvers(:)
-    LOGICAL :: GotSlaveSolvers
+    LOGICAL :: GotSlaveSolvers, SkipVar
     
     
     TYPE(Matrix_t), POINTER :: Amat, SaveMatrix, SaveCM
@@ -2564,15 +2700,15 @@ CONTAINS
     
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)
     BlockNodal = ListGetLogical( Params,'Block Nodal System', GotIt)
-
-    BlockDirection = ListGetLogical( Params,'Block Direction System', GotIt)
+    BlockHorVer = ListGetLogical( Params,'Block Hor-Ver System', GotIt)
   
-    
     SlaveSolvers =>  ListGetIntegerArray( Params, &
          'Block Solvers', GotSlaveSolvers )
-    
-    IF( BlockAV .OR. BlockNodal .OR. BlockDirection ) THEN
+
+    SkipVar = .FALSE.
+    IF( BlockAV .OR. BlockNodal .OR. BlockHorVer ) THEN
       BlockDofs = 2
+      SkipVar = .TRUE.
     ELSE IF( GotSlaveSolvers ) THEN
       BlockDofs = SIZE( SlaveSolvers )
     ELSE
@@ -2592,9 +2728,9 @@ CONTAINS
 
     IF( HaveConstraint > 0 ) BlockDofs = BlockDofs + 1
     IF( HaveAdd > 0 ) BlockDofs = BlockDofs + 1    
-
-    CALL BlockInitMatrix( Solver, TotMatrix, BlockDofs, VarDofs )
-      
+   
+    CALL BlockInitMatrix( Solver, TotMatrix, BlockDofs, VarDofs, SkipVar )
+    
     NoVar = TotMatrix % NoVar
     TotMatrix % Solver => Solver
 
@@ -2608,12 +2744,12 @@ CONTAINS
 
     SaveRHS => SolverMatrix % RHS
     SolverMatrix % RHS => b
-
+    
     IF( .NOT. GotSlaveSolvers ) THEN    
       IF( BlockAV ) THEN
         CALL BlockPickMatrixAV( Solver, VarDofs )
-      ELSE IF( BlockDirection ) THEN
-        CALL BlockPickMatrixDirection( Solver, VarDofs )       
+      ELSE IF( BlockHorVer ) THEN
+        CALL BlockPickMatrixHorVer( Solver, VarDofs )       
       ELSE IF( BlockNodal ) THEN
         CALL BlockPickMatrixNodal( Solver, VarDofs )        
       ELSE IF( VarDofs > 1 ) THEN
@@ -2622,6 +2758,11 @@ CONTAINS
         CALL Info('BlockSolver','Using the original matrix as the (1,1) block!',Level=10)
         TotMatrix % SubMatrix(1,1) % Mat => SolverMatrix        
       END IF
+
+      IF( SkipVar ) THEN
+        CALL BlockInitVar( Solver, TotMatrix )
+      END IF
+
       CALL BlockPrecMatrix( Solver, VarDofs ) 
     END IF
 
@@ -2671,8 +2812,7 @@ CONTAINS
       CALL CreateBlockMatrixScaling()
       CALL BlockMatrixScaling(.FALSE.)
     END IF
-    
-    
+
     CALL ListPushNamespace('outer:')
     
     ! The case with one block is mainly for testing and developing features
