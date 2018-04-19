@@ -80,59 +80,67 @@ SUBROUTINE WaveSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp) :: Norm, Pave
-  INTEGER :: dim, n, nb, nd, t, active
+  INTEGER :: dim, maxiter, iter, n, nb, nd, t, active
   LOGICAL :: Found, InitHandles
 !------------------------------------------------------------------------------
   
   dim = CoordinateSystemDimension()
+  maxiter = ListGetInteger(GetSolverParams(), &
+      'Nonlinear System Max Iterations', Found, minv=1)
+  IF(.NOT. Found ) maxiter = 1
 
   CALL DefaultStart()
 
-  !System assembly:
-  !----------------
-  CALL DefaultInitialize()
-  InitHandles = .TRUE.
-  Active = GetNOFActive()
-  DO t=1,Active
-    Element => GetActiveElement(t)
-    n  = GetElementNOFNodes(Element)
-    nd = GetElementNOFDOFs(Element)
-    nb = GetElementNOFBDOFs(Element)
-    CALL LocalMatrix(Element, n, nd+nb, dim, InitHandles)
-  END DO
-
-  CALL DefaultFinishBulkAssembly()
-
-  InitHandles = .TRUE.
-  Active = GetNOFBoundaryElements()
-  DO t=1,Active
-    Element => GetBoundaryElement(t)
-    IF (ActiveBoundaryElement()) THEN
+  DO iter=1,maxiter
+    !----------------
+    !System assembly:
+    !----------------
+    CALL DefaultInitialize()
+    InitHandles = .TRUE.
+    Active = GetNOFActive()
+    DO t=1,Active
+      Element => GetActiveElement(t)
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
       nb = GetElementNOFBDOFs(Element)
-      CALL LocalMatrixBC(Element, n, nd+nb, InitHandles)
+      CALL LocalMatrix(Element, n, nd+nb, dim, InitHandles)
+    END DO
+
+    CALL DefaultFinishBulkAssembly()
+
+    InitHandles = .TRUE.
+    Active = GetNOFBoundaryElements()
+    DO t=1,Active
+      Element => GetBoundaryElement(t)
+      IF (ActiveBoundaryElement()) THEN
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+        nb = GetElementNOFBDOFs(Element)
+        CALL LocalMatrixBC(Element, n, nd+nb, InitHandles)
+      END IF
+    END DO
+
+    CALL DefaultFinishBoundaryAssembly()
+
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
+
+
+    ! And finally, solve:
+    !--------------------
+    Norm = DefaultSolve()
+
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
+
+    IF( GetLogical( Solver % Values, 'Set Average To Zero', Found ) ) THEN
+      Pave = SUM( Solver % Variable % Values) / &
+          SIZE( Solver % Variable % Values ) 
+      Solver % Variable % Values = Solver % Variable % Values - Pave
     END IF
+
   END DO
 
-  CALL DefaultFinishBoundaryAssembly()
-
-  CALL DefaultFinishAssembly()
-  CALL DefaultDirichletBCs()
-
-
-  ! And finally, solve:
-  !--------------------
-  Norm = DefaultSolve()
-
-  IF( GetLogical( Solver % Values, 'Set Average To Zero', Found ) ) THEN
-    Pave = SUM( Solver % Variable % Values) / &
-        SIZE( Solver % Variable % Values ) 
-    Solver % Variable % Values = Solver % Variable % Values - 0.5 * Pave
-  END IF
-
   CALL DefaultFinish()
-
 
 CONTAINS
 
@@ -162,7 +170,8 @@ CONTAINS
       CALL ListInitElementKeyword(SoundSpeed_h, 'Material', 'Sound speed', &
           UnfoundFatal=.TRUE.)
       CALL ListInitElementKeyword(DampingCoeff_h, 'Material', 'Sound damping')
-      CALL ListInitElementKeyword(ReactCoeff_h, 'Material', 'Sound reaction')
+      CALL ListInitElementKeyword(ReactCoeff_h, 'Material', &
+          'Sound reaction damping')
       InitHandles = .FALSE.
     END IF
 
