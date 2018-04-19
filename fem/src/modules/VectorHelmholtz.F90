@@ -554,12 +554,10 @@ CONTAINS
        n  = GetElementNOFNodes(Element)
        Model % CurrentElement => Element
 
-       Material => GetMaterial(Element % BoundaryInfo % Left)
+       Material => GetBulkMaterialAtBoundary(Element)
        Tcoef = 0.0_dp
+
        IF ( ASSOCIATED(Material) ) THEN
-         CALL GetInvPermeability(Material, Tcoef, n)
-       ELSE
-         Material => GetMaterial(Element % BoundaryInfo % Right)
          CALL GetInvPermeability(Material, Tcoef, n)
        END IF
 
