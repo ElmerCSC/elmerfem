@@ -2194,6 +2194,48 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Returns handle to Material value list of the bulk material meeting  
+!> element with larger body id. Typically Element is a boundary element.
+  FUNCTION GetBulkMaterialAtBoundary( Element, Found ) RESULT(Material)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), OPTIONAL :: Element
+    LOGICAL, OPTIONAL :: Found
+
+    TYPE(ValueList_t), POINTER :: Material
+    type(element_t), pointer :: BoundaryElement, BulkElementL, &
+        BulkElementR, BulkElement
+
+    LOGICAL :: L
+    INTEGER :: mat_id, BodyIdL, BodyIdR
+
+    Material => NULL()
+
+    BoundaryElement => GetCurrentElement(Element)
+
+    IF ( .NOT. ASSOCIATED(BoundaryElement % boundaryinfo)) return
+    BulkElementR => BoundaryElement % boundaryinfo % right
+    BulkElementL => BoundaryElement % boundaryinfo % left
+    BodyIdR = 0; BodyIdL = 0
+
+    IF (ASSOCIATED(BulkElementR)) BodyIdR = BulkElementR % BodyId
+    IF (ASSOCIATED(BulkElementL)) BodyIdL = BulkElementL % BodyId
+
+    if (BodyIdR == 0 .and. BodyIdL == 0) return
+    if (BodyIdR > BodyIdL) then
+      BulkElement => BulkElementR
+    end if
+    if (bodyIdL >= BodyIdR) then
+      BulkElement => BulkElementL
+    end if
+
+    mat_id = GetMaterialId( BulkElement, L )
+
+    IF ( L ) Material => CurrentModel % Materials(mat_id) % Values
+    IF ( PRESENT( Found ) ) Found = L
+!------------------------------------------------------------------------------
+  END FUNCTION GetBulkMaterialAtBoundary
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Return handle to the Body Force value list of the active element
