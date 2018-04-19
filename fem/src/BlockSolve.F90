@@ -745,13 +745,14 @@ CONTAINS
   !-------------------------------------------------------------------------------------
   !> Picks vertical and horizontal components of a full matrix.
   !-------------------------------------------------------------------------------------
-  SUBROUTINE BlockPickMatrixHorVer( Solver, NoVar )
+  SUBROUTINE BlockPickMatrixHorVer( Solver, NoVar, Cart )
 
     TYPE(Solver_t) :: Solver
     INTEGER :: Novar
+    LOGICAL :: Cart
 
-    INTEGER::i,j,k,n,t,nh,nv,ne,dofs,nd,ni,nn
-    TYPE(Matrix_t), POINTER :: A,B_hh,B_hv,B_vh,B_vv
+    INTEGER::i,j,k,n,t,ne,dofs,nd,ni,nn,ndir(3),ic,kc
+    TYPE(Matrix_t), POINTER :: A,B
     TYPE(Nodes_t), SAVE :: Nodes, EdgeNodes
     INTEGER :: ActiveCoordinate
     INTEGER, ALLOCATABLE :: DTag(:), DPerm(:)
@@ -808,7 +809,50 @@ CONTAINS
 
 
       ! Both strategies give exactly the same set of vertical and horizontal dofs!
-      IF(.TRUE.) THEN
+      ! Both strategies give exactly the same set of vertical and horizontal dofs!
+      IF( Cart ) THEN
+        DO ActiveCoordinate = 1, 3
+          IF( ActiveCoordinate == 1 ) THEN
+            Coord => Nodes % x
+          ELSE IF( ActiveCoordinate == 2 ) THEN
+            Coord => Nodes % y
+          ELSE
+            Coord => Nodes % z
+          END IF
+          
+          MinCoord = MINVAL( Coord(1:nn) )
+          MaxCoord = MAXVAL( Coord(1:nn) )
+          Wlen = MaxCoord - MinCoord 
+          
+          DO i=1,nd
+            j = Solver % Variable % Perm(Indexes(i))
+            
+            IF( i <= Element % TYPE % NumberOfEdges ) THEN
+              Edge => Mesh % Edges( Element % EdgeIndexes(i) )
+              CALL GetElementNodes( EdgeNodes, Edge )
+              ne = Edge % TYPE % NumberOfNodes
+              
+              IF( ActiveCoordinate == 1 ) THEN
+                Coord => EdgeNodes % x
+              ELSE IF( ActiveCoordinate == 2 ) THEN
+                Coord => EdgeNodes % y
+              ELSE
+                Coord => EdgeNodes % z
+              END IF
+              
+              MinCoord = MINVAL( Coord(1:ne) )
+              MaxCoord = MAXVAL( Coord(1:ne) )
+            ELSE            
+              CALL Fatal('BlockPickMatrixHorVer','Cannot do faces yet!')
+            END IF
+
+            Wproj = ( MaxCoord - MinCoord ) / Wlen
+            
+            IF( WProj > 1.0_dp - Wtol ) DTag(j) = ActiveCoordinate
+          END DO
+        END DO
+
+      ELSE IF(.TRUE.) THEN
         IF( ActiveCoordinate == 1 ) THEN
           Coord => Nodes % x
         ELSE IF( ActiveCoordinate == 2 ) THEN
@@ -852,13 +896,9 @@ CONTAINS
           Wproj = ( MaxCoord - MinCoord ) / Wlen
 
           IF( WProj > 1.0_dp - Wtol ) THEN  
-            IF( DTag(j) == 2 ) PRINT *,'Vertical edge '//TRIM(I2S(j))//' is also horizontal?'
-            DTag(j) = 1  ! set to be vertical
+            DTag(j) = 1  
           ELSE IF( Wproj < Wtol ) THEN
-            IF( DTag(j) == 1 ) PRINT *,'Horizontal edge '//TRIM(I2S(j))//' is also vertical?'
-            DTag(j) = 2  ! set to be horizontal
-          ELSE
-            PRINT *,'Edge '//TRIM(I2S(j))//' direction undefined: ',Wproj
+            DTag(j) = 2  
           END IF
         END DO
 
@@ -902,78 +942,76 @@ CONTAINS
     END DO
     
 
-    ! Number vertical and horizontal dofs separately.
-    ! Horizontal ones will be given negative index and can be thereby identified later on. 
-    nv = 0
-    nh = 0
+    ! Number vertical and horizontal (or all cartesian) dofs separately.
+    ndir = 0
     DO i=1,n
       DO j=1,dofs
         k = dofs*(i-1)+j
-        IF( DTag(i) == 1 ) THEN
-          nv = nv + 1
-          DPerm(k) = nv
-        ELSE IF( DTag(i) == 2 ) THEN
-          nh = nh + 1
-          DPerm(k) = -nh
-        END IF
+        ndir(DTag(i)) = ndir(DTag(i)) + 1
+        DPerm(k) = ndir(DTag(i))
       END DO
     END DO
-    
-    PRINT *,'Vertical dofs:',nv
-    PRINT *,'Horizontal dofs:',nh
-    i = n - nv - nh
+
+    PRINT *,'Cartesian dofs:',ndir(1:NoVar)
+
+    i = n - SUM( ndir ) 
     IF( i > 0 ) THEN      
       CALL Fatal('BlockPickMatrixHorVer','Could not determine all nodes: '&
           //TRIM(I2S(i)))
     END IF
+
+
+    ! Allocate vectors if not present
+    DO i=1,NoVar
+      DO j=1,NoVar
+        B => TotMatrix % SubMatrix(i,j) % Mat
+        IF( ASSOCIATED( B % Values ) ) B % Values = 0.0_dp
+      END DO
+      B => TotMatrix % SubMatrix(i,i) % Mat      
+      IF(.NOT. ASSOCIATED( B % InvPerm ) ) ALLOCATE( B % InvPerm(ndir(i)) )
+      IF(.NOT. ASSOCIATED( B % Rhs) ) ALLOCATE(B % Rhs(ndir(i)) )
+    END DO
     
-    B_vv => TotMatrix % SubMatrix(1,1) % Mat
-    B_vh => TotMatrix % SubMatrix(1,2) % Mat
-    B_hv => TotMatrix % SubMatrix(2,1) % Mat
-    B_hh => TotMatrix % SubMatrix(2,2) % Mat
 
-    IF(ASSOCIATED(B_hh % Values)) B_hh % Values = 0._dp
-    IF(ASSOCIATED(B_hv % Values)) B_hv % Values = 0._dp
-    IF(ASSOCIATED(B_vh % Values)) B_vh % Values = 0._dp
-    IF(ASSOCIATED(B_vv % Values)) B_vv % Values = 0._dp
-
-    IF(.NOT. ASSOCIATED( B_hh % InvPerm ) ) ALLOCATE( B_hh % InvPerm(nh) )
-    IF(.NOT. ASSOCIATED( B_vv % InvPerm ) ) ALLOCATE( B_vv % InvPerm(nv) )
-       
-    IF(.NOT. ASSOCIATED( B_hh % Rhs) ) ALLOCATE(B_hh % Rhs(nh) )
-    IF(.NOT. ASSOCIATED( B_vv % Rhs) ) ALLOCATE(B_vv % Rhs(nv) )
-
-    
     DO i=1,A % NumberOfRows
+      ic = (i-1)/dofs+1
+      
       DO j=A % Rows(i+1)-1,A % Rows(i),-1
         k = A % Cols(j)
-        IF(Dperm(i) > 0 ) THEN
-          IF( DPerm(k) > 0 ) THEN
-            CALL AddToMatrixElement(B_vv,Dperm(i),DPerm(k),A % Values(j))
-          ELSE
-            CALL AddToMatrixElement(B_vh,Dperm(i),-DPerm(k),A % Values(j))
-          END IF
-          B_vv % Rhs(Dperm(i)) = A % Rhs(i)        
-          B_vv % InvPerm(Dperm(i)) = i
-        ELSE          
-          IF( DPerm(k) > 0 ) THEN
-            CALL AddToMatrixElement(B_hv,-Dperm(i),DPerm(k),A % Values(j))
-          ELSE
-            CALL AddToMatrixElement(B_hh,-Dperm(i),-DPerm(k),A % Values(j))
-          END IF
-          B_hh % Rhs(-Dperm(i)) = A % Rhs(i)
-          B_hh % InvPerm(-Dperm(i)) = i          
+        kc = (k-1)/dofs+1
+        
+        IF( DTag(ic) < 1 .OR. DTag(ic) > NoVar ) THEN
+          PRINT *,'i:',i,ic,Dtag(ic)
+        END IF
+        
+        IF( DTag(kc) < 1 .OR. DTag(kc) > NoVar ) THEN
+          PRINT *,'k:',k,kc,Dtag(kc)
+        END IF
+        
+        B => TotMatrix % SubMatrix(DTag(ic),DTag(kc)) % Mat
+        
+        IF( Dperm(i) < 1 .OR. DPerm(k) < 1 ) THEN
+          PRINT *,'ik',Dperm(i),Dperm(k)
+          STOP
+        END IF
+        CALL AddToMatrixElement(B,Dperm(i),DPerm(k),A % Values(j))
+      END DO
+
+      B => TotMatrix % SubMatrix(DTag(ic),DTag(ic)) % Mat      
+      B % Rhs(Dperm(i)) = A % Rhs(i)          
+      B % InvPerm(Dperm(i)) = i          
+    END DO
+    
+    DO i=1,NoVar
+      DO j=1,NoVar
+        B => TotMatrix % SubMatrix(i,j) % Mat        
+        IF (B % FORMAT == MATRIX_LIST) THEN
+          CALL List_toCRSMatrix(B)
         END IF
       END DO
     END DO
 
-    IF (B_hh % Format == MATRIX_LIST) THEN
-      CALL List_toCRSMatrix(B_hh)
-      CALL List_toCRSMatrix(B_hv)
-      CALL List_toCRSMatrix(B_vh)
-      CALL List_toCRSMatrix(B_vv)
-    END IF
-
+    
     IF( ASSOCIATED( A % ConstraintMatrix ) ) THEN
       CALL Warn('BlockPickMatrixHorVer','Cannot deal with constraints')
     END IF
@@ -2702,7 +2740,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,l,n,nd,NonLinIter,tests,NoTests,iter
     LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, &
-        BlockHorVer, BlockNodal
+        BlockHorVer, BlockCart, BlockNodal
     INTEGER :: ColVar, RowVar, NoVar, BlockDofs, VarDofs
     
     REAL(KIND=dp) :: NonlinearTol, Norm, PrevNorm, Residual, PrevResidual, &
@@ -2747,13 +2785,17 @@ CONTAINS
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)
     BlockNodal = ListGetLogical( Params,'Block Nodal System', GotIt)
     BlockHorVer = ListGetLogical( Params,'Block Hor-Ver System', GotIt)
-  
+    BlockCart = ListGetLogical( Params,'Block Cartesian System', GotIt)
+    
     SlaveSolvers =>  ListGetIntegerArray( Params, &
          'Block Solvers', GotSlaveSolvers )
 
     SkipVar = .FALSE.
     IF( BlockAV .OR. BlockNodal .OR. BlockHorVer ) THEN
       BlockDofs = 2
+      SkipVar = .TRUE.
+    ELSE IF( BlockCart ) THEN
+      BlockDofs = 3
       SkipVar = .TRUE.
     ELSE IF( GotSlaveSolvers ) THEN
       BlockDofs = SIZE( SlaveSolvers )
@@ -2794,8 +2836,8 @@ CONTAINS
     IF( .NOT. GotSlaveSolvers ) THEN    
       IF( BlockAV ) THEN
         CALL BlockPickMatrixAV( Solver, VarDofs )
-      ELSE IF( BlockHorVer ) THEN
-        CALL BlockPickMatrixHorVer( Solver, VarDofs )       
+      ELSE IF( BlockHorVer .OR. BlockCart ) THEN
+        CALL BlockPickMatrixHorVer( Solver, VarDofs, BlockCart )       
       ELSE IF( BlockNodal ) THEN
         CALL BlockPickMatrixNodal( Solver, VarDofs )        
       ELSE IF( VarDofs > 1 ) THEN
@@ -2903,7 +2945,7 @@ CONTAINS
       Solver % Matrix % ConstraintMatrix => SaveCM 
     END IF
 
-    IF( BlockHorVer ) THEN
+    IF( BlockHorVer .OR. BlockCart ) THEN
       CALL BlockBackCopyVar( Solver, TotMatrix )
     END IF
       
