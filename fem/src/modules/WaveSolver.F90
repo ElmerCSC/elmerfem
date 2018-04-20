@@ -219,7 +219,7 @@ CONTAINS
 
           ! Reaction term:
           ! -----------------------------------
-          IF (ReactiveMedium) Damp(p,q) = Damp(p,q) + Weight * &
+          IF (ReactiveMedium) Damp(p,q) = Damp(p,q) - Weight * &
               (react/c**2) * Basis(q) * Basis(p)
 
           ! The 2nd time derivative:
