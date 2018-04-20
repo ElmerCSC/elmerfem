@@ -325,16 +325,19 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, PiolaVersion
 
-  SolverParams => GetSolverParams()
+  SolverParams => GetSolverParams()  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     PiolaVersion = GetLogical(SolverParams, &
         'Use Piola Transform', Found )   
     IF (PiolaVersion) THEN    
-       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
     ELSE
-       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
     END IF
   END IF
+
+  CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
+  
 ! CALL ListAddString( SolverParams, "Exported Variable 1", &
 !              "-dofs 2 -nooutput Jfix" )
 !------------------------------------------------------------------------------
