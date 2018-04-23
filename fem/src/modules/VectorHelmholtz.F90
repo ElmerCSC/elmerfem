@@ -327,8 +327,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
 
   SolverParams => GetSolverParams()  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    PiolaVersion = GetLogical(SolverParams, &
-        'Use Piola Transform', Found )   
+    PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
     IF (PiolaVersion) THEN    
       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
     ELSE
@@ -337,9 +336,9 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   END IF
 
   CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
-  
-! CALL ListAddString( SolverParams, "Exported Variable 1", &
-!              "-dofs 2 -nooutput Jfix" )
+  CALL ListAddNewString( SolverParams,'Variable','E[E re:1 E im:1]')
+  CALL ListAddNewLogical( SolverParams, "Linear System Complex", .TRUE.)
+
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzSolver_Init0
 !------------------------------------------------------------------------------
@@ -368,7 +367,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found, HasPrecDampCoeff_re, HasPrecDampCoeff_im
+  LOGICAL :: AllocationsDone = .FALSE., Found, HasPrecDampCoeff
   TYPE(Element_t),POINTER :: Element
 
 
@@ -381,7 +380,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
 
   COMPLEX(kind=dp) :: Aval
-  COMPLEX(KIND=dp), ALLOCATABLE :: PrecDampCoeff(:)
+  COMPLEX(KIND=dp) :: PrecDampCoeff
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: Acoef(:), Tcoef(:)  ! \TODO Acoef and Tcoef could be (1,1)-tensors
@@ -391,8 +390,9 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
-  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound, IsComplex
+  LOGICAL :: PiolaVersion, EdgeBasis
   INTEGER, POINTER :: Perm(:)
+  TYPE(ValueList_t), POINTER :: SolverParams
 
   TYPE(Matrix_t), POINTER :: A
 
@@ -400,17 +400,17 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
        Acoef, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM
 !------------------------------------------------------------------------------
-  PiolaVersion = GetLogical( GetSolverParams(), &
-      'Use Piola Transform', Found )
+  SolverParams => GetSolverParams()  
+  PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
 
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
   Mesh => GetMesh()
   nNodes = Mesh % NumberOfNodes
   Perm => Solver % Variable % Perm
-
+  
   A => GetMatrix()
-
+  
   IF ( .NOT. AllocationsDone ) THEN
 
      IF (Solver % Variable % dofs /= 2) THEN
@@ -426,7 +426,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
         STIFF(N,N), &
         MASS(N,N), Tcoef(N), RotM(3,3,N), &
         Acoef(N), LamCond(N), LamThick(N), &
-        PrecDampCoeff(1), STAT=istat )
+        STAT=istat )
       IF ( istat /= 0 ) THEN
                 CALL Fatal( 'VectorHelmholtzSolver', 'Memory allocation error.' )
      END IF
@@ -439,37 +439,38 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   
   Omega = GetAngularFrequency(Found=Found)
   PrecDampCoeff = 0._dp
-  PrecDampCoeff = GetReal(GetSolverParams(), 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff_re)
+  PrecDampCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
-    GetReal(GetSolverParams(), 'Linear System Preconditioning Damp Coefficient im', HasPrecDampCoeff_im))
+      GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ) )
+  HasPrecDampCoeff = HasPrecDampCoeff .OR. Found 
 
   mu0inv = GetConstReal( CurrentModel % Constants,  'Permeability of Vacuum', Found )
   IF(.NOT. Found ) mu0inv = PI * 4.0d-7
   eps0 = GetConstReal ( CurrentModel % Constants, 'Permittivity of Vacuum', Found )
   IF(.NOT. Found ) eps0 = 8.854187817d-12
   
-  IsComplex = ListGetLogical( GetSolverParams(), "Linear System Complex", Found)
-  if(.not. Found) CALL ListAddLogical( GetSolverParams(), "Linear System Complex", .TRUE.) !DEBUG
-  !
   ! Resolve internal non.linearities, if requeted:
   ! ----------------------------------------------
-  NoIterationsMax = GetInteger( GetSolverParams(), &
+  NoIterationsMax = GetInteger( SolverParams, &
               'Nonlinear System Max Iterations',Found)
   IF(.NOT. Found) NoIterationsMax = 1
 
-  NoIterationsMin = GetInteger( GetSolverParams(), &
+  NoIterationsMin = GetInteger( SolverParams, &
               'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
-  LFact = GetLogical( GetSolverParams(),'Linear System Refactorize', LFactFound )
-  EdgeBasis = .NOT.LFactFound .AND. GetLogical( GetSolverParams(), 'Edge Basis', Found )
+  EdgeBasis = .NOT. ListCheckPresent( SolverParams,'Linear System Refactorize' ) .AND. &
+      GetLogical( SolverParams, 'Edge Basis', Found )
+
+  CALL DefaultStart()
+  
   DO i=1,NoIterationsMax
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
-    IF( EdgeBasis ) CALL ListAddLogical(GetSolverParams(),'Linear System Refactorize',.FALSE.)
+    IF( EdgeBasis ) CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.)
   END DO
-  IF ( EdgeBasis ) CALL ListRemove( GetSolverParams(), 'Linear System Refactorize' )
+  IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
 CONTAINS
 
@@ -600,6 +601,7 @@ CONTAINS
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
 
+    CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
 
     ! And finally, solve:
@@ -742,13 +744,13 @@ CONTAINS
          END DO
        END DO
     END DO
-    IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) THEN
-      DAMP = PrecDampCoeff(1) * (STIFF(1:nd,1:nd) - MASS(1:nd,1:nd))
-      !DAMP = PrecDampCoeff(1) * (MASS(1:nd,1:nd))
+    IF( HasPrecDampCoeff ) THEN
+      DAMP = PrecDampCoeff * (STIFF(1:nd,1:nd) - MASS(1:nd,1:nd))
+      !DAMP = PrecDampCoeff * (MASS(1:nd,1:nd))
       !CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + MASS(1:nd,1:nd) + DAMP(1:nd,1:nd))
     END IF
    STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + MASS(1:nd, 1:nd)
-   IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) &
+   IF( HasPrecDampCoeff ) &
      CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + DAMP(1:nd,1:nd))
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -815,9 +817,9 @@ CONTAINS
         END DO
       END DO
    END DO
-   IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) THEN
+   IF( HasPrecDampCoeff ) THEN
      !CALL DefaultUpdatePrec(2*STIFF)
-     CALL DefaultUpdatePrec(PrecDampCoeff(1)*STIFF + STIFF)
+     CALL DefaultUpdatePrec(PrecDampCoeff*STIFF + STIFF)
    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
@@ -848,10 +850,12 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
-  IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) RETURN
+  SolverParams => GetSolverParams()
+  
+  IF( GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
 
-  ElementalFields = GetLogical( GetSolverParams(), 'Calculate Elemental Fields', Found)
-  IF(Found.AND..NOT.ElementalFields) RETURN
+  ElementalFields = GetLogical( SolverParams, 'Calculate Elemental Fields', Found)
+  IF(Found .AND. .NOT. ElementalFields) RETURN
 
   PSolver => Solver
   DO mysolver=1,Model % NumberOfSolvers
@@ -868,7 +872,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
            'Active Solvers', m+1, [Active, n+1] )
   END DO
 
-  pname = GetString(GetSolverParams(), 'Field variable', Found)
+  pname = GetString(SolverParams, 'Field variable', Found)
   vDOFs = 0
   DO i=1,Model % NumberOfSolvers
     sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
@@ -1045,7 +1049,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
     CALL ListAddConstReal(Model % Simulation,'res: Energy Functional im', 0._dp)
   END IF
 
-  IF (GetLogical(GetSolverParams(),'Show Angular Frequency',Found)) &
+  IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) &
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency',0._dp)
 
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
@@ -1155,10 +1159,12 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
    REAL(KIND=dp) ::  F(3,3), G(3,3)!, GT(3,3),DetF
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
+   TYPE(ValueList_t), POINTER :: SolverParams 
    
 !-------------------------------------------------------------------------------------------
-   PiolaVersion = GetLogical( GetSolverParams(), &
-      'Use Piola Transform', Found )
+   SolverParams => GetSolverParams()
+
+   PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
    IF (PiolaVersion) &
     CALL Info('VectorHelmholtzCalcFields', &
         'Using Piola transformed finite elements',Level=2)
@@ -1183,7 +1189,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    EW => VariableGet( Mesh % Variables, 'Electric Work')
    EL_EW => VariableGet( Mesh % Variables, 'Electric Work E')
 
-   Pname = GetString(GetSolverParams(), 'Field Variable')
+   Pname = GetString( SolverParams, 'Field Variable')
    DO i=1,Model % NumberOfSolvers
      pSolver => Model % Solvers(i)
      IF (Pname==getVarName(pSolver % Variable)) EXIT
@@ -1239,7 +1245,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    hdotE_i = 0._dp
    ! This piece of code effectively does what keyword "Calculate Energy Norm" would but
    ! it treats the system complex valued.
-   IF (GetLogical( GetSolverParams(), 'Calculate Energy Functional', Found)) THEN
+   IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
      ALLOCATE(TempVector(pSolver % Matrix % NumberOfRows))
      IF ( ParEnv % PEs > 1 ) THEN
        ALLOCATE(TempRHS(SIZE(bb)))
@@ -1432,8 +1438,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
     ! Assembly of the face terms:
     !----------------------------
 
-    IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) THEN
-      IF (GetLogical(GetSolverParams(),'Average Within Materials',Found)) THEN
+    IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
+      IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
         FORCE = 0.0_dp
         CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
       END IF
@@ -1460,7 +1466,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    DEALLOCATE( MASS,FORCE,Tcoef,RotM )
    IF (PiolaVersion) DEALLOCATE( EBasis, CurlEBasis )
       
-  IF (GetLogical(GetSolverParams(),'Show Angular Frequency',Found)) THEN
+  IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) THEN
     WRITE(Message,*) 'Angular Frequency: ', Omega
     CALL Info( 'MagnetoDynamics', Message )
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)
