@@ -837,7 +837,11 @@ CONTAINS
       CASE (ITER_RICHARDSON)
         iterProc = AddrFunc( itermethod_richardson )
       CASE (ITER_GCR)
-        iterProc = AddrFunc( itermethod_gcr )
+        IF( ListGetLogical( CurrentModel % Solver % Values,'Linear Solver test',Found ) ) THEN
+          iterProc = AddrFunc( itermethod_gcr_t )
+        ELSE          
+          iterProc = AddrFunc( itermethod_gcr )
+        END IF
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_bicgstabl )
       CASE (ITER_IDRS)
