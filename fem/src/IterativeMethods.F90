@@ -82,6 +82,54 @@ MODULE IterativeMethods
 CONTAINS
   
 
+  ! This is currently for testing purposes. When treating a complex system
+  ! with gcr as a real one all other operations than dot product are similar.
+  ! I.e. matrix-vector product and norm (dot product with one self) are the same.
+  ! However, for dot product with another vector the complex part is omitted which
+  ! may have an effect on convergence. This computes the complex part but does not
+  ! use it yet...
+  !-----------------------------------------------------------------------------------
+  FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT(d)
+  !-----------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: ndim, xind, yind
+    REAL(KIND=dp) :: x(*)
+    REAL(KIND=dp) :: y(*)
+    REAL(KIND=dp) :: d
+    
+    INTEGER :: i
+    REAL(KIND=dp) :: a,b,c
+
+    INTEGER :: ncount = 0
+    
+    SAVE ncount
+
+    ncount = ncount + 1
+    
+    d = 0.0_dp
+
+    IF( ncount == 1 ) THEN
+      DO i = 1, ndim, 2
+        a = x(i) * y(i) + x(i+1) * y(i+1)    ! real part
+        d = d + a
+      END DO
+      PRINT *,'PseudoZdotProd re:',d
+    ELSE
+      DO i = 1, ndim, 2
+        b = x(i+1) * y(i) - x(i) * y(i+1)    ! imag part
+        d = d + b 
+      END DO
+      PRINT *,'PseudoZdotProd im:',d
+      ncount = 0 
+    END IF
+      
+    
+    !-----------------------------------------------------------------------------------
+  END FUNCTION PseudoZDotProd
+  !-----------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
 !> Symmetric Gauss-Seidel iterative method for linear systems. This is not really of practical
 !> use but may be used for testing, for example. 
@@ -1459,7 +1507,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
-      REAL(KIND=dp) :: alpha, beta_re, beta_im, trueres(n), trueresnorm, normerr
+      REAL(KIND=dp) :: alpha, beta, beta_im, trueres(n), trueresnorm, normerr
 !------------------------------------------------------------------------------
       INTEGER :: allocstat
         
@@ -1521,14 +1569,15 @@ CONTAINS
          ! Perform the orthogonalization of the search directions....
          !--------------------------------------------------------------
          DO i=1,j-1
-           beta_re = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+           ! First call is for real component and second one for complex one!
+           beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
            beta_im = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
-
-           T1(1:n) = T1(1:n) - beta_re * S(1:n,i)
+           
+           T1(1:n) = T1(1:n) - beta * S(1:n,i)
            T1(1:n:2) = T1(1:n:2) + beta_im * S(2:n:2,i)
            T1(2:n:2) = T1(2:n:2) - beta_im * S(1:n:2,i)                    
            
-           T2(1:n) = T2(1:n) - beta_re * V(1:n,i)        
+           T2(1:n) = T2(1:n) - beta * V(1:n,i)        
            T2(1:n:2) = T2(1:n:2) + beta_im * V(2:n:2,i)
            T2(2:n:2) = T2(2:n:2) - beta_im * V(1:n:2,i)                    
          END DO
@@ -1541,14 +1590,14 @@ CONTAINS
          !-------------------------------------------------------------
          ! The update of the solution and save the search data...
          !------------------------------------------------------------- 
-         beta_re = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+         beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
          beta_im = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
-
-         x(1:n) = x(1:n) + beta_re * T1(1:n)
+         
+         x(1:n) = x(1:n) + beta * T1(1:n)
          x(1:n:2) = x(1:n:2) - beta_im * T1(2:n:2)
          x(2:n:2) = x(2:n:2) + beta_im * T1(1:n:2)         
          
-         r(1:n) = r(1:n) - beta_re * T2(1:n)
+         r(1:n) = r(1:n) - beta * T2(1:n)
          r(1:n:2) = r(1:n:2) + beta_im * T2(2:n:2)
          r(2:n:2) = r(2:n:2) - beta_im * T2(1:n:2)         
                   
@@ -1572,7 +1621,7 @@ CONTAINS
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(A, I6, 3E12.4)') '   gcr:',k, residual, beta_re, beta_im
+             WRITE (*, '(A, I6, 3E12.4)') '   gcr:',k, residual, beta, beta_im
            END IF
          END IF
            
@@ -2235,7 +2284,7 @@ CONTAINS
          Residual = rnorm / bnorm
         
          IF( MOD(k,OutputInterval) == 0) THEN
-            WRITE (*, '(A, I8, E11.4)') '   gcrz:',k, residual
+            WRITE (*, '(A, I8, E11.4)') '   gcrz:',k, residual, beta
          END IF
         
          Converged = (Residual < MinTolerance)

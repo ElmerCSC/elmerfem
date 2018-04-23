@@ -44,58 +44,6 @@ MODULE BlockSolve
 CONTAINS
 
 
-  ! This is currently for testing purposes. When treating a complex system
-  ! with gcr as a real one all other operations than dot product are similar.
-  ! I.e. matrix-vector product and norm (dot product with one self) are the same.
-  ! However, for dot product with another vector the complex part is omitted which
-  ! may have an effect on convergence. This computes the complex part but does not
-  ! use it yet...
-  !-----------------------------------------------------------------------------------
-  FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT(d)
-  !-----------------------------------------------------------------------------------
-    IMPLICIT NONE
-    
-    INTEGER :: ndim, xind, yind
-    REAL(KIND=dp) :: x(*)
-    REAL(KIND=dp) :: y(*)
-    REAL(KIND=dp) :: d
-    
-    INTEGER :: i
-    REAL(KIND=dp) :: a,b,c
-
-    INTEGER :: ncount = 0
-    
-    SAVE ncount
-
-    ncount = ncount + 1
-    
-    d = 0.0_dp
-
-    IF( ncount == 1 ) THEN
-      DO i = 1, ndim, 2
-        a = x(i) * y(i) + x(i+1) * y(i+1)    ! real part
-        d = d + a
-      END DO
-    ELSE
-      DO i = 1, ndim, 2
-        b = x(i+1) * y(i) - x(i) * y(i+1)    ! imag part
-        d = d + b 
-      END DO
-      ncount = 0
-    END IF
-      
-    IF( ncount == 1 ) THEN
-      PRINT *,'PseudoZdotProd re:',d
-    ELSE
-      PRINT *,'PseudoZdotProd im:',d
-      ncount = 0 
-    END IF
-    
-    !-----------------------------------------------------------------------------------
-  END FUNCTION PseudoZDotProd
-  !-----------------------------------------------------------------------------------
-
-
   
   !-----------------------------------------------------------------------------------
   !> If a block variable does not exist it will be created. 

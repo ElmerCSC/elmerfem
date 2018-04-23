@@ -181,7 +181,7 @@ CONTAINS
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
-    LOGICAL :: ComplexSystem
+    LOGICAL :: ComplexSystem, PseudoComplexSystem
     
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
@@ -204,7 +204,7 @@ CONTAINS
         HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
 
     REAL(KIND=dp) :: ddot, dnrm2, dznrm2
-    EXTERNAL :: ddot, dnrm2, dznrm2
+    EXTERNAL :: ddot, dnrm2, dznrm2   
     
     COMPLEX(KIND=dp) :: zdotc
     EXTERNAL :: zdotc
@@ -264,19 +264,24 @@ CONTAINS
     
     ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
     IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
-
+    
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
       CALL Info('IterSolver','This time skipping complex treatment',Level=20)
       A % COMPLEX = .FALSE.
       ComplexSystem = .FALSE.
     END IF
-            
+    
+    PseudoComplexSystem = ListGetLogical( Params,'Linear System Pseudo Complex',Found ) 
+
     IF( ComplexSystem ) THEN
       CALL Info('IterSolver','Matrix is complex valued',Level=10)
-    ELSE
+    ELSE IF( PseudoComplexSystem ) THEN
+      CALL Info('IterSolver','Matrix is pseudo complex valued',Level=10)
+    ELSE    
       CALL Info('IterSolver','Matrix is real valued',Level=12)
     END IF
-   
+
+    
     SELECT CASE(str)
     CASE('bicgstab2')
       IterType = ITER_BiCGStab2
@@ -837,7 +842,8 @@ CONTAINS
       CASE (ITER_RICHARDSON)
         iterProc = AddrFunc( itermethod_richardson )
       CASE (ITER_GCR)
-        IF( ListGetLogical( CurrentModel % Solver % Values,'Linear Solver test',Found ) ) THEN
+        IF( ListGetLogical( CurrentModel % Solver % Values,'Linear System Pseudo Complex',Found ) ) THEN
+          PRINT *,'Pseudo Complex'
           iterProc = AddrFunc( itermethod_gcr_t )
         ELSE          
           iterProc = AddrFunc( itermethod_gcr )
@@ -850,7 +856,12 @@ CONTAINS
       END SELECT
       
       IF( Internal ) THEN
-        IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
+        IF( PseudoComplexSystem ) THEN
+          PRINT *,'setting pseudozdot'
+          dotProc = AddrFunc( PseudoZDotProd) 
+        ELSE        
+          IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
+        END IF
         IF ( normProc == 0 ) normproc = AddrFunc(dnrm2)
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )        
       END IF

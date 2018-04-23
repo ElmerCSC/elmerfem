@@ -9874,7 +9874,7 @@ END FUNCTION SearchNodeL
     INTEGER :: n,i,j
     REAL(KIND=dp) :: bnorm,s
     COMPLEX(KIND=dp) :: DiagC
-    LOGICAL :: ComplexMatrix, DoRHS, DoCM
+    LOGICAL :: ComplexMatrix, DoRHS, DoCM, Found
     REAL(KIND=dp), POINTER  :: Diag(:)
 
     TYPE(Matrix_t), POINTER :: CM
@@ -9895,7 +9895,11 @@ END FUNCTION SearchNodeL
       Diag = 0._dp
     
       ComplexMatrix = Solver % Matrix % COMPLEX
-            
+
+      IF( ListGetLogical( Solver % Values,'Linear System Pseudo Complex',Found ) ) THEN
+        ComplexMatrix = .TRUE.
+      END IF
+      
       IF ( ComplexMatrix ) THEN
         CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
 
