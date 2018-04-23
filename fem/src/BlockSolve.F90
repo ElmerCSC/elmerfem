@@ -51,30 +51,45 @@ CONTAINS
   ! may have an effect on convergence. This computes the complex part but does not
   ! use it yet...
   !-----------------------------------------------------------------------------------
-  FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT(dres)
+  FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT(d)
   !-----------------------------------------------------------------------------------
     IMPLICIT NONE
     
     INTEGER :: ndim, xind, yind
     REAL(KIND=dp) :: x(*)
     REAL(KIND=dp) :: y(*)
-    REAL(KIND=dp) :: dres
+    REAL(KIND=dp) :: d
     
-    REAL(KIND=dp) :: dim
     INTEGER :: i
     REAL(KIND=dp) :: a,b,c
-    
-    dres = 0.0_dp
-    dim = 0.0_dp
-    
-    DO i = 1, ndim, 2
-      a = x(i) * y(i) + x(i+1) * y(i+1)    ! real part
-      b = x(i+1) * y(i) - x(i) * y(i+1)    ! imag part
-      dres = dres + a
-      dim = dim + b 
-    END DO
 
-    PRINT *,'PseudoZdotProd:',dres,dim
+    INTEGER :: ncount = 0
+    
+    SAVE ncount
+
+    ncount = ncount + 1
+    
+    d = 0.0_dp
+
+    IF( ncount == 1 ) THEN
+      DO i = 1, ndim, 2
+        a = x(i) * y(i) + x(i+1) * y(i+1)    ! real part
+        d = d + a
+      END DO
+    ELSE
+      DO i = 1, ndim, 2
+        b = x(i+1) * y(i) - x(i) * y(i+1)    ! imag part
+        d = d + b 
+      END DO
+      ncount = 0
+    END IF
+      
+    IF( ncount == 1 ) THEN
+      PRINT *,'PseudoZdotProd re:',d
+    ELSE
+      PRINT *,'PseudoZdotProd im:',d
+      ncount = 0 
+    END IF
     
     !-----------------------------------------------------------------------------------
   END FUNCTION PseudoZDotProd
@@ -262,10 +277,12 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: Var
     CHARACTER(LEN=max_name_len) :: VarName, str
-    LOGICAL :: UseSolverMatrix
+    LOGICAL :: UseSolverMatrix, IsComplex
     
             
     Params => Solver % Values
+
+    IsComplex = ListGetLogical( Params,'Linear System Complex',Found)
 
     BlockMatrix => Solver % BlockMatrix
     IF (ASSOCIATED(BlockMatrix)) THEN
@@ -313,12 +330,14 @@ CONTAINS
         Amat % ListMatrix => NULL()
         Amat % FORMAT = MATRIX_LIST      
         Amat % NumberOfRows = 0
+        AMat % Complex = IsComplex
         BlockMatrix % Submatrix(i,j) % Mat => Amat
 
         Bmat => AllocateMatrix()
         Bmat % ListMatrix => NULL()
         Bmat % FORMAT = MATRIX_LIST      
         Bmat % NumberOfRows = 0
+        BMat % Complex = IsComplex
         BlockMatrix % Submatrix(i,j) % PrecMat => Bmat
       END DO
     END DO
@@ -518,15 +537,12 @@ CONTAINS
 
     NoVar = BlockMatrix % NoVar
 
-    PRINT *,'NoVar'
     m = SIZE( Solver % Variable % Values ) 
    
     DO i=1,NoVar
       Amat => BlockMatrix % Submatrix(i,i) % Mat 
       n = Amat % NumberOfRows
       Var => BlockMatrix % SubVector(i) % Var 
-
-      PRINT *,'sizes:',i,n,m
       
       ! Copy the block part to the monolithic solution
       DO j=1,n
@@ -776,16 +792,11 @@ CONTAINS
 
     n = MAXVAL(Solver % Variable % Perm)
     Mesh => Solver % Mesh 
-
-
-    PRINT *,'nodal dofs:',COUNT( Solver % Variable % Perm(1:Mesh % NumberOfNodes) > 0 )
     
     A => Solver % Matrix
     dofs = Solver % Variable % Dofs
     
     n = A % NumberOfRows / dofs
-    PRINT *,'Initial dofs:',A % NumberOfRows,dofs 
-    
     
     ALLOCATE( DTag(n), DPerm(n*dofs)  ) 
     DTag = 0
@@ -970,6 +981,8 @@ CONTAINS
       B => TotMatrix % SubMatrix(i,i) % Mat      
       IF(.NOT. ASSOCIATED( B % InvPerm ) ) ALLOCATE( B % InvPerm(ndir(i)) )
       IF(.NOT. ASSOCIATED( B % Rhs) ) ALLOCATE(B % Rhs(ndir(i)) )
+      !PRINT *,'a complex', a % complex
+      !B % COMPLEX = A % COMPLEX
     END DO
     
 
@@ -1714,18 +1727,22 @@ CONTAINS
     REAL(KIND=dp), POINTER :: b(:), Diag(:), Values(:)
     LOGICAL :: ComplexMatrix, GotIt, DiagOnly
     INTEGER, POINTER :: Rows(:), Cols(:)
-    LOGICAL :: Found
+    LOGICAL :: Found !, IsComplex
+    TYPE(ValueList_t), POINTER :: Params
     
     
     CALL Info('CreateBlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
     
     NoVar = TotMatrix % NoVar
-
-    DiagOnly = ListGetLogical( CurrentModel % Solver % Values,'Block Scaling Diagonal',Found ) 
+    
+    Params => CurrentModel % Solver % Values 
+    DiagOnly = ListGetLogical( Params,'Block Scaling Diagonal',Found ) 
     IF( DiagOnly ) THEN
        CALL Info('CreateBlockMatrixScaling',&
             'Considering only diagonal matrices in scaling',Level=20)      
     END IF
+
+    !IsComplex = ListGetLogical( Params,'Linear System Complex',Found ) 
     
     
     DO k=1,NoVar
@@ -1807,7 +1824,7 @@ CONTAINS
           Diag(i) = Diag(i) + tmp
         END DO
 
-        PRINT *,'BlockNorm:',k,l,blocknrm
+        ! PRINT *,'BlockNorm:',k,l,blocknrm
         
       END DO
       
@@ -2761,7 +2778,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
 
     CALL Info('BlockSolver','---------------------------------------',Level=5)
-
+    
     Params => Solver % Values
     Mesh => Solver % Mesh
     PSolver => Solver
@@ -2778,10 +2795,12 @@ CONTAINS
     END IF
 
     BlockScaling = ListGetLogical( Params,'Block Scaling',GotIt)
-    
+
+    ! Block iteration style: jacobi vs. gauss-seidel
     BlockGS = ListGetLogical( Params,'Block Gauss-Seidel',GotIt)    
     BlockJacobi = ListGetLogical( Params,'Block Jacobi',GotIt)
-    
+
+    ! Different strategies on how to split the initial monolithic matrix into blocks
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)
     BlockNodal = ListGetLogical( Params,'Block Nodal System', GotIt)
     BlockHorVer = ListGetLogical( Params,'Block Hor-Ver System', GotIt)

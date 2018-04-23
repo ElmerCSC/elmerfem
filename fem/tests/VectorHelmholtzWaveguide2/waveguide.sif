@@ -54,7 +54,7 @@ End
 Solver 1
   Equation = "VectorHelmholtz"
   Variable = E[E re:1 E im:1]
-  Use Piola Transform = Logical True
+  Use Piola Transform = Logical False
   Optimize Bandwidth = True
   Linear System Symmetric = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
@@ -67,7 +67,7 @@ Solver 1
 
   Linear System Solver = String "Iterative"
   !Linear System Solver = String "Direct"
-  Linear System Iterative Method = String "bicgstabl"
+  Linear System Iterative Method = String "gmres" !bicgstabl"
   BiCGstabl polynomial degree = Integer 4
   
   Linear System Preconditioning Damp Coefficient = Real 0.0
@@ -155,5 +155,5 @@ Boundary Condition 2
   Electric Robin Coefficient im = Real $ 474315.9900340191  
 End
 
-Solver 1 :: Reference Norm = 6.59890081E-03
+Solver 1 :: Reference Norm = 6.36557591E-03
 Solver 1 :: Reference Norm Tolerance = 1.0E-6
