@@ -593,7 +593,7 @@
           <item row="2" column="1">
            <widget class="QComboBox" name="linearSystemPreconditioning">
             <property name="currentIndex">
-             <number>0</number>
+             <number>2</number>
             </property>
             <item>
              <property name="text">
@@ -697,7 +697,7 @@
           <item row="4" column="1" colspan="3">
            <widget class="QLineEdit" name="linearSystemResiduaOutputEdit">
             <property name="text">
-             <string>1</string>
+             <string>10</string>
             </property>
            </widget>
           </item>
