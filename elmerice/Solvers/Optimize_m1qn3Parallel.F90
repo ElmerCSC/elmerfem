@@ -87,11 +87,11 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER ::  Element
 ! Variables Beta,DJDbeta and Cost  
   TYPE(ValueList_t), POINTER :: SolverParams
-  TYPE(Variable_t), POINTER :: BetaVar,CostVar,GradVar,MaskVar,TimeVar
+  TYPE(Variable_t), POINTER :: BetaVar,CostVar,GradVar,MaskVar,TimeVar,BWeightVar
   REAL(KIND=dp), POINTER :: BetaValues(:),CostValues(:),GradValues(:),MaskValues(:)
-  INTEGER, POINTER :: BetaPerm(:),GradPerm(:),NodeIndexes(:),MaskPerm(:)
+  INTEGER, POINTER :: BetaPerm(:),GradPerm(:),NodeIndexes(:),MaskPerm(:),BWeightPerm(:)
 
-  REAL(KIND=dp),allocatable :: x(:),g(:),xx(:),gg(:),xtot(:),gtot(:)
+  REAL(KIND=dp),allocatable :: x(:),g(:),b(:),xx(:),gg(:),bb(:),xtot(:),gtot(:),btot(:)
   REAL(KIND=dp) :: f,Normg,Change
   REAL(KIND=dp),SAVE :: Oldf=0._dp 
   real :: dumy
@@ -99,22 +99,23 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   integer :: i,j,t,n,NMAX,NActiveNodes,NPoints,ni,ind
   INTEGER :: status(MPI_STATUS_SIZE)
   integer,allocatable :: ActiveNodes(:),NodePerPe(:)
-  integer,allocatable :: NewNode(:),ggcount(:)
+  integer,allocatable :: NewNode(:)
   integer, allocatable :: LocalToGlobalPerm(:),nodePerm(:),TestPerm(:)
 
   logical :: FirstVisit=.TRUE.,Firsttime=.TRUE.,Found,UseMask,ComputeNormG=.FALSE.,&
        UnFoundFatal=.TRUE.,MeshIndep
   logical,allocatable :: VisitedNode(:)
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,NormM1QN3,MaskVarName,NormFile
+  CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,NormM1QN3,&
+       MaskVarName, NormFile
   CHARACTER*10 :: date,temps
 
 
 !Variables for m1qn3
   external simul_rc,euclid,ctonbe,ctcabe
   character*3 normtype
-  REAL(KIND=dp) :: dxmin,df1,epsrel,dzs(1)
-  real(kind=dp), allocatable :: dz(:)
+  REAL(KIND=dp) :: dxmin,df1,epsrel
+  real(kind=dp), allocatable :: dz(:),dzs(:)
   REAL :: rzs(1)
   integer :: imp,io=20,imode(3),omode=-1,niter,nsim,iz(5),ndz,reverse,indic,izs(1)
   integer :: ierr,Npes,ntot
@@ -123,17 +124,26 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 !
   save NActiveNodes,Npes,NPoints,ntot
    
-  save x,g,xx,gg,ggcount,xtot,gtot
+  save x,g,b,xx,gg,bb,xtot,gtot,btot
   save ActiveNodes,NodePerPe
 
-  save TestPerm
+  save TestPerm, BWeightPerm, BWeightVar
 
   save normtype,dxmin,df1,epsrel,dz,dzs,rzs,imp,io,imode,omode,niter,nsim,iz,ndz,reverse,indic,izs
   save SolverName, SolverParams
-  save FirstVisit,Firsttime
+  save FirstVisit,Firsttime,MeshIndep
   save ComputeNormG,NormFile
   save CostSolName,VarSolName,GradSolName,IOM1QN3
 
+  INTERFACE
+     SUBROUTINE MeshUnweight(n,x,y,ps,izs,rzs,dzs)
+       !------------------------------------------------------------------------------
+       INTEGER n,izs(*)
+       REAL rzs(*)
+       DOUBLE PRECISION x(n),y(n),ps,dzs(*)
+     END SUBROUTINE MeshUnweight
+  END INTERFACE
+  PROCEDURE (MeshUnweight), POINTER :: prosca => NULL()
 
 !  Read Constant from sif solver section
       IF(FirstVisit) Then
@@ -174,6 +184,13 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                 MaskValues => MaskVar % Values 
                 MaskPerm => MaskVar % Perm 
             ENDIF
+
+            MeshIndep=ListGetLogical(SolverParams,"Mesh Independent", Found)
+            IF(.NOT.Found) THEN
+              CALL WARN(SolverName,'Keyword >Mesh Independent< not found in solver params')
+              CALL WARN(SolverName,'Taking default value >FALSE<')
+              MeshIndep=.FALSE.
+            END IF
 
            If (ParEnv % MyPe.EQ.0) then
               NormFile=GetString( SolverParams,'gradient Norm File',Found)
@@ -248,6 +265,11 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                        normtype = NormM1QN3(1:3)
                   END IF
 
+              IF(normtype(1:3) /= 'dfn' .AND. MeshIndep) THEN
+                CALL Fatal(SolverName,"Selected 'Mesh Independent = Logical True' &
+                     &but M1QN3 normtype is not 'dfn'!")
+              END IF
+
               IOM1QN3 = GetString( SolverParams,'M1QN3 OutputFile', Found)
                  IF(.NOT.Found) THEN
                        CALL WARN(SolverName,'Keyword >M1QN3 OutputFile< not found  in section >Solver<')
@@ -267,11 +289,14 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                        ndz=5
                    END IF
 
+                   IF(.NOT.MeshIndep) THEN
+                     ALLOCATE(dzs(1))
+                     dzs=0.0
+                   END IF
                     imode(2)=0 
                     imode(3)=0 
                     reverse=1 
                     omode=-1 
-                    dzs=0.0 
                     rzs=0.0
                     izs=0
 
@@ -300,11 +325,15 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
      GradValues   => GradVar % Values 
      GradPerm => GradVar % Perm 
 
-     MeshIndep=ListGetLogical(SolverParams,"Mesh Independent", Found)
-     IF(.NOT.Found) THEN
-        CALL WARN(SolverName,'Keyword >Mesh Independent< not found in solver params')
-        CALL WARN(SolverName,'Taking default value >FALSE<')
-        MeshIndep=.FALSE.
+     IF(MeshIndep) THEN
+       IF(FirstTime) THEN
+         ALLOCATE(BWeightPerm(SIZE(BetaPerm)))
+         BWeightPerm = BetaPerm
+       END IF
+
+       !Compute the boundary weights of basal nodes
+       !This could be done just once, assuming the mesh never changes.
+       CALL CalculateNodalWeights(Solver, .TRUE., BWeightPerm, Var=BWeightVar)
      END IF
 
 ! Do some allocation etc if first iteration
@@ -344,6 +373,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
      End if
   
     allocate(ActiveNodes(NActiveNodes),LocalToGlobalPerm(NActiveNodes),x(NActiveNodes),g(NActiveNodes))
+    IF(MeshIndep) ALLOCATE(b(NActiveNodes))
     ActiveNodes(1:NActiveNodes)=NewNode(1:NActiveNodes)
 
     deallocate(VisitedNode,NewNode)
@@ -361,6 +391,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                ntot=ntot+NodePerPe(i)
           End do
           allocate(xtot(ntot),gtot(ntot))
+          IF(MeshIndep) ALLOCATE(btot(ntot))
           allocate(NodePerm(ntot))
     End if
 
@@ -395,7 +426,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
            End do
 
            NPoints=ind
-           allocate(xx(Npoints),gg(Npoints),ggcount(Npoints))
+           allocate(xx(Npoints),gg(Npoints),bb(NPoints))
            deallocate(NodePerm,LocalToGlobalPerm)
 
  ! M1QN3 allocation of dz function of Npoints nd requested number of updates
@@ -406,6 +437,10 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
            end if
            allocate(dz(ndz))
 
+           IF(MeshIndep) THEN
+             ALLOCATE(dzs(Npoints))
+             dzs=0.0
+           END IF
     End if
    
   END IF
@@ -413,6 +448,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
      x(1:NActiveNodes)=BetaValues(BetaPerm(ActiveNodes(1:NActiveNodes)))
      g(1:NActiveNodes)=GradValues(GradPerm(ActiveNodes(1:NActiveNodes)))
+     IF(MeshIndep) b(1:NActiveNodes)=BWeightVar % Values(&
+          BWeightVar % Perm(ActiveNodes(1:NActiveNodes)))
 
     ! Send variables to partition 0
     ! and receive results from partion 0
@@ -421,6 +458,9 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
                      call MPI_SEND(x(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8003,ELMER_COMM_WORLD,ierr)
                      call MPI_SEND(g(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8004,ELMER_COMM_WORLD,ierr)
+                     IF(MeshIndep) call MPI_SEND(b(1),NActiveNodes,&
+                          MPI_DOUBLE_PRECISION,0,8006,ELMER_COMM_WORLD,ierr)
+
                      call MPI_RECV(x(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8005,ELMER_COMM_WORLD,status, ierr )
                      call MPI_RECV(omode,1,MPI_Integer,0,8006,ELMER_COMM_WORLD,status,ierr )
 
@@ -429,25 +469,29 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
      else
                      xtot(1:NActiveNodes)=x(1:NActiveNodes)
                      gtot(1:NActiveNodes)=g(1:NActiveNodes)
+                     IF(MeshIndep) btot(1:NActiveNodes)=b(1:NActiveNodes)
                      ni=1+NActiveNodes
                      Do i=2,Npes
                        call MPI_RECV(xtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8003,ELMER_COMM_WORLD, status, ierr )
                        call MPI_RECV(gtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8004,ELMER_COMM_WORLD, status, ierr )
+                       IF(MeshIndep) call MPI_RECV(btot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,&
+                            i-1,8006,ELMER_COMM_WORLD, status, ierr )
                        ni=ni+NodePerPe(i)
                      End do
                      
                      xx=0.0
                      gg=0.0
-                     ggcount=0
+                     IF(MeshIndep) bb=0.0
                      Do i=1,ntot
                          xx(TestPerm(i))=xtot(i)  ! same Beta Value for same node
                          gg(TestPerm(i))=gg(TestPerm(i))+gtot(i)  ! gather the contribution to DJDB 
-                         ggcount(TestPerm(i)) = ggcount(TestPerm(i)) + 1
+                         IF(MeshIndep) bb(TestPerm(i))=bb(TestPerm(i))+btot(i)! gather boundary weights
                      End do 
 
-                     !In case we want element-size independent gradient, the gradient
-                     !should be the *mean* of all partition contributions, not the sum
-                     IF(MeshIndep) gg = gg / REAL(ggcount)
+                     IF(MeshIndep) THEN
+                       dzs = bb
+                       gg = gg / bb
+                     END IF
 
                      If (ComputeNormG) then
                              TimeVar => VariableGet( Model % Mesh % Variables, 'Time' )
@@ -460,11 +504,17 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                               write(io,'(e13.5,2x,e15.8)') TimeVar % Values(1),sqrt(Normg)
                              close(io)
                     End if
-            
+
+            IF(MeshIndep) THEN
+              prosca => MeshUnweight
+            ELSE
+              prosca => Euclid
+            END IF
+
             Oldf=sqrt(SUM(xx(:)*xx(:))/(1.0d0*NPoints))
             ! go to minimization
             open(io,file=trim(IOM1QN3),position='append')
-            call m1qn3 (simul_rc,Euclid,ctonbe,ctcabe,NPoints,xx,f,gg,dxmin,df1, &
+            call m1qn3 (simul_rc,prosca,ctonbe,ctcabe,NPoints,xx,f,gg,dxmin,df1, &
                         epsrel,normtype,imp,io,imode,omode,niter,nsim,iz, &
                         dz,ndz,reverse,indic,izs,rzs,dzs)
 
@@ -508,4 +558,27 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 END SUBROUTINE Optimize_m1qn3Parallel
 !------------------------------------------------------------------------------
 
+!Replacement for prosca to precondition gradient by dividing by boundary weights
+!Uses REAL dp array 'dzs' passed from Optimize_... => m1qn3.F => MeshUnweight.
+SUBROUTINE MeshUnweight (n,x,y,ps,izs,rzs,dzs)
 
+  USE Types
+  IMPLICIT NONE
+
+  INTEGER n,izs(*)
+  REAL rzs(*)
+  DOUBLE PRECISION x(n),y(n),ps,dzs(*)
+
+  TYPE(Model_t), POINTER :: Model
+
+  INTEGER i
+
+  Model => CurrentModel
+
+  ps=0.d0
+  DO i=1,n
+    ps=ps+x(i)*y(i)*dzs(i)
+  ENDDO
+
+  RETURN
+END SUBROUTINE MeshUnweight
