@@ -142,8 +142,23 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
        REAL rzs(*)
        DOUBLE PRECISION x(n),y(n),ps,dzs(*)
      END SUBROUTINE MeshUnweight
+
+     SUBROUTINE MeshUnweight_ctonb(n,u,v,izs,rzs,dzs)
+       !------------------------------------------------------------------------------
+       INTEGER n,izs(*)
+       REAL rzs(*)
+       DOUBLE PRECISION u(n),v(n),dzs(*)
+     END SUBROUTINE MeshUnweight_ctonb
+
+     SUBROUTINE MeshUnweight_ctcab(n,u,v,izs,rzs,dzs)
+       !------------------------------------------------------------------------------
+       INTEGER n,izs(*)
+       REAL rzs(*)
+       DOUBLE PRECISION u(n),v(n),dzs(*)
+     END SUBROUTINE MeshUnweight_ctcab
   END INTERFACE
   PROCEDURE (MeshUnweight), POINTER :: prosca => NULL()
+  PROCEDURE (MeshUnweight_ctonb), POINTER :: ctonb => NULL(),ctcab => NULL()
 
 !  Read Constant from sif solver section
       IF(FirstVisit) Then
@@ -507,14 +522,18 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
             IF(MeshIndep) THEN
               prosca => MeshUnweight
+              ctonb => MeshUnweight_ctonb
+              ctcab => MeshUnweight_ctcab
             ELSE
               prosca => Euclid
+              ctonb => ctonbe
+              ctcab => ctcabe
             END IF
 
             Oldf=sqrt(SUM(xx(:)*xx(:))/(1.0d0*NPoints))
             ! go to minimization
             open(io,file=trim(IOM1QN3),position='append')
-            call m1qn3 (simul_rc,prosca,ctonbe,ctcabe,NPoints,xx,f,gg,dxmin,df1, &
+            call m1qn3 (simul_rc,prosca,ctonb,ctcab,NPoints,xx,f,gg,dxmin,df1, &
                         epsrel,normtype,imp,io,imode,omode,niter,nsim,iz, &
                         dz,ndz,reverse,indic,izs,rzs,dzs)
 
@@ -562,18 +581,12 @@ END SUBROUTINE Optimize_m1qn3Parallel
 !Uses REAL dp array 'dzs' passed from Optimize_... => m1qn3.F => MeshUnweight.
 SUBROUTINE MeshUnweight (n,x,y,ps,izs,rzs,dzs)
 
-  USE Types
   IMPLICIT NONE
-
   INTEGER n,izs(*)
   REAL rzs(*)
   DOUBLE PRECISION x(n),y(n),ps,dzs(*)
 
-  TYPE(Model_t), POINTER :: Model
-
   INTEGER i
-
-  Model => CurrentModel
 
   ps=0.d0
   DO i=1,n
@@ -582,3 +595,36 @@ SUBROUTINE MeshUnweight (n,x,y,ps,izs,rzs,dzs)
 
   RETURN
 END SUBROUTINE MeshUnweight
+
+
+SUBROUTINE MeshUnweight_ctonb (n,u,v,izs,rzs,dzs)
+
+  IMPLICIT NONE
+  INTEGER n,izs(*)
+  REAL rzs(*)
+  DOUBLE PRECISION u(n),v(n),dzs(*)
+
+  INTEGER i
+
+  DO i=1,n
+    v(i)=u(i)*SQRT(dzs(i))
+  END DO
+  RETURN
+
+END SUBROUTINE MeshUnweight_ctonb
+
+SUBROUTINE MeshUnweight_ctcab (n,u,v,izs,rzs,dzs)
+  
+  IMPLICIT NONE
+  INTEGER n,izs(*)
+  REAL rzs(*)
+  DOUBLE PRECISION u(n),v(n),dzs(*)
+
+  INTEGER i
+
+  DO i=1,n
+    v(i)=u(i)/SQRT(dzs(i))
+  ENDDO
+  RETURN
+
+END SUBROUTINE MeshUnweight_ctcab
