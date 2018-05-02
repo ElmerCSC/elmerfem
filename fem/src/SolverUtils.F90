@@ -8154,19 +8154,19 @@ END FUNCTION SearchNodeL
     INTEGER, OPTIONAL :: nsize
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:), RHS(:)
 !------------------------------------------------------------------------------
-    INTEGER :: i, n, nn, RelaxAfter, IterNo, MinIter, MaxIter
+    INTEGER :: i, n, nn, RelaxAfter, IterNo, MinIter, MaxIter, dofs
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
     REAL(KIND=dp), POINTER :: x0(:)
     REAL(KIND=dp) :: Norm, PrevNorm, rNorm, bNorm, Change, PrevChange, Relaxation, tmp(1),dt, &
-        Tolerance, MaxNorm, eps, Ctarget
+        Tolerance, MaxNorm, eps, Ctarget, Poffset, nsum, dpsum
     CHARACTER(LEN=MAX_NAME_LEN) :: ConvergenceType
     INTEGER, TARGET  ::  Dnodes(1)
     INTEGER, POINTER :: Indexes(:)
     TYPE(Variable_t), POINTER :: iterV, VeloVar, TimestepVar, WeightVar
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
-        SkipConstraints, ResidualMode 
+        SkipConstraints, ResidualMode, RelativeP
 
     TYPE(Matrix_t), POINTER :: MMatrix
     REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mb(:), Mr(:)
@@ -8176,7 +8176,7 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: UpdateComponents(:)
 
     SolverParams => Solver % Values
-
+    RelativeP = .FALSE.
     
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
@@ -8199,7 +8199,7 @@ END FUNCTION SearchNodeL
 
       Relaxation = ListGetCReal( SolverParams, &
           'Steady State Relaxation Factor', Relax )
-      Relax = Relax .AND. ABS(Relaxation-1.0_dp) > TINY(Relaxation)
+      Relax = Relax .AND. ABS(Relaxation-1.0_dp) > EPSILON(Relaxation)
 
       iterV => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
       IterNo = iterV % Values(1)
@@ -8217,7 +8217,7 @@ END FUNCTION SearchNodeL
 
       ! Steady state system has never any constraints
       SkipConstraints = .FALSE.
-
+      
     ELSE
       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       IterNo = iterV % Values(1)
@@ -8241,15 +8241,18 @@ END FUNCTION SearchNodeL
           ListGetLogical(SolverParams,'Nonlinear System Convergence Absolute',Stat)
       IF(.NOT. Stat) ConvergenceAbsolute = &
           ListGetLogical(SolverParams,'Use Absolute Norm for Convergence',Stat)
-
+              
       Relaxation = ListGetCReal( SolverParams, &
           'Nonlinear System Relaxation Factor', Relax )
-      Relax = Relax .AND. (Relaxation /= 1.0d0)
+      Relax = Relax .AND. ( ABS( Relaxation - 1.0_dp) > EPSILON( Relaxation ) )
       IF( Relax ) THEN
         RelaxAfter = ListGetInteger(SolverParams,'Nonlinear System Relaxation After',Stat)
         IF( Stat .AND. RelaxAfter >= Solver % Variable % NonlinIter ) Relax = .FALSE.
-      END IF	
 
+        RelativeP = ListGetLogical( SolverParams,'Relative Pressure Relaxation',Stat) 
+        CALL Info('ComputeChange','Using relative pressure relaxation',Level=10)
+      END IF
+      
       SkipConstraints = ListGetLogical(SolverParams,&
           'Nonlinear System Convergence Without Constraints',Stat) 
 
@@ -8311,6 +8314,20 @@ END FUNCTION SearchNodeL
       IF (SIZE(x0) /= SIZE(x)) CALL Info('ComputeChange','WARNING: Possible mismatch in length of vectors!',Level=10)
     END IF
 
+    ! This ensures that the relaxation does not affect the mean of the pressure
+    IF( RelativeP ) THEN
+      dofs = Solver % Variable % Dofs
+
+      dpsum = SUM(x(dofs:n:dofs)) - SUM(x0(dofs:n:dofs)) 
+      nsum = 1.0_dp * n / dofs
+
+      dpsum = ParallelReduction( dpsum ) 
+      nsum = ParallelReduction( nsum )
+
+      Poffset = (1-Relaxation) * dpsum / nsum
+    END IF
+
+    
     IF( ResidualMode ) THEN
       IF(Relax .AND. RelaxBefore) THEN
         x(1:n) = x0(1:n) + Relaxation*x(1:n)
@@ -8320,6 +8337,7 @@ END FUNCTION SearchNodeL
     ELSE 
       IF(Relax .AND. RelaxBefore) THEN
         x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
+        IF( RelativeP ) x(dofs:n:dofs) = x(dofs:n:dofs) + Poffset
       END IF
     END IF
 
@@ -8551,9 +8569,10 @@ END FUNCTION SearchNodeL
 
     IF(Relax .AND. .NOT. RelaxBefore) THEN
       x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
+      IF( RelativeP ) x(dofs:n:dofs) = x(dofs:n:dofs) + Poffset
       Solver % Variable % Norm = ComputeNorm(Solver,n,x)
     END IF
-
+    
     ! Steady state output is done in MainUtils
     SolverName = ListGetString( SolverParams, 'Equation',Stat)
     IF(.NOT. Stat) SolverName = Solver % Variable % Name
