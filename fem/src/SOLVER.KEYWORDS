@@ -1614,3 +1614,8 @@ Material:Real:       'Rate Factor 2'
 Material:Real:       'Activation Energy 1'
 Material:Real:       'Activation Energy 2'
 Material:String:     'Glen Enhancement Factor Function'
+Material:Real:       'Turbulent Prandtl Number'
+Material:Real:       'Shear Modulus'
+Material:Real:       'Tensile strength'
+Material:Real:       'Yield strength'
+
