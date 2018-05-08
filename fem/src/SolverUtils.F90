@@ -4907,7 +4907,7 @@ CONTAINS
 
     !IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
 
-    CALL Info('SetDirichletBoundaries','Number of dofs set: '&
+    CALL Info('SetDirichletBoundaries','Number of dofs set for '//TRIM(Name)//': '&
         //TRIM(I2S(DirCount)),Level=12)
 
     
@@ -6590,7 +6590,7 @@ CONTAINS
           s = 1.0_dp
         END IF
         s = 1._dp / s**2
-
+          
         CALL ZeroRow(A, k)
 
         ! Off-diagonal entries for a block matrix are neglected since the code will
@@ -12663,6 +12663,9 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 
   IF( ASSOCIATED(Are % DampValues) ) THEN
     CALL Info('ChangeToHarmonicSystem','We have damp matrix values',Level=12)
+    IF( Diagonal ) THEN
+      CALL Fatal('ChangeToHarmonicSystem','Damping matrix cannot be block diagonal!')
+    END IF
   ELSE
     CALL Info('ChangeToHarmonicSystem','We do not have damp matrix values',Level=12)
   END IF
@@ -12728,7 +12731,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   IF( AnyDirichlet ) THEN
     DO j=1,DOFs
       Name = ComponentName( SaveVar % Name, j ) 
-
+           
       CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
           2*j-1, 2*DOFs, SaveVar % Perm )
 
