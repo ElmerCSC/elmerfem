@@ -2,6 +2,7 @@ INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 ADD_ELMERTEST_MODULE(udfs udfs udfs.F90)
+ADD_ELMERTEST_MODULE(ZirkaTest ZirkaTest ZirkaTest.F90)
 
 file(COPY box.grd udfs.F90 case.sif BH_asc BH_single ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 

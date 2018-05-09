@@ -67,8 +67,8 @@ material 2 ! steel material
 end
 Solver 1
   Equation = "mgdyn2d"
-  ! Procedure = "../kernel/MagnetoDynamics2D" "MagnetoDynamics2D"
-  Procedure = "ZirkaHysteresis" "MagnetoDynamics2D"
+  Procedure = "MagnetoDynamics2D" "MagnetoDynamics2D"
+  ! Procedure = "ZirkaHysteresis" "MagnetoDynamics2D"
   linear system solver = iterative
   linear system iterative method = cg
   linear system direct method = mumps
@@ -102,8 +102,8 @@ Solver 1
 End
 Solver 2
   Equation = "calcfields"
-  ! Procedure = "../kernel/CalcFields" "MagnetoDynamicsCalcFields"
-  Procedure = "ZirkaHysteresis" "MagnetoDynamicsCalcFields"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  ! Procedure = "ZirkaHysteresis" "MagnetoDynamicsCalcFields"
   potential variable = "A"
   linear system solver = iterative
   linear system iterative method = cg
@@ -144,7 +144,7 @@ end
 solver 5
   exec solver = after all
   Equation = "zirkatest"
-  Procedure = "ZirkaHysteresis" "ZirkaTest"
+  Procedure = "ZirkaTest" "ZirkaTest"
   variable = -global testvar
   test number = integer 3
   zirka init sequence(18, 1) = real 1.8 -1.0 0.5555555555555556 -0.30864197530864196 0.17146776406035666 -0.09525986892242036 0.05292214940134464 -0.029401194111858136 0.016333996728810075 -0.009074442627116708 0.005041357015064837 -0.002800753897258243 0.0015559743873656904 -0.0008644302152031613 0.00048023900844620075 -0.0002667994491367782 0.00014822191618709898 -8.234550899283277e-5 4.57475049960182e-5 
