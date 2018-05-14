@@ -131,7 +131,8 @@
      LOGICAL :: AllocationsDone = .FALSE., FreeSurfaceFlag, &
          PseudoPressureExists, PseudoCompressible, Bubbles, P2P1, &
          Porous =.FALSE., PotentialForce=.FALSE., Hydrostatic=.FALSE., &
-         MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate
+         MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate, &
+         AllIncompressible
 
 
      REAL(KIND=dp),ALLOCATABLE :: MASS(:,:),STIFF(:,:), LoadVector(:,:), &
@@ -311,7 +312,8 @@
                ReferenceTemperature,                & 
                LocalTempPrev, LocalTemperature,     &
                PotentialField, PotentialCoefficient, &
-               PSolution, LoadVector, Alpha, Beta, &
+               !PSolution, &
+               LoadVector, Alpha, Beta, &
                ExtPressure, STAT=istat )
        END IF
 
@@ -335,7 +337,7 @@
                  GasConstant( N ), HeatCapacity( N ),    &
                  ReferenceTemperature(N),                & 
                  LocalTempPrev(N), LocalTemperature(N),  &
-                 PSolution( SIZE( FlowSolution ) ),      &
+                 !PSolution( SIZE( FlowSolution ) ),      &
                  PotentialField( N ), PotentialCoefficient( N ), &
                  LoadVector( 4,N ), Alpha( N ), Beta( N ), &
                  ExtPressure( N ), STAT=istat )
@@ -344,12 +346,20 @@
        NULLIFY(Pwrk) 
 
        PseudoPressureExists = .FALSE.
+       AllIncompressible = .TRUE.
+
        DO k=1,Model % NumberOfMaterials
          Material => Model % Materials(k) % Values
          CompressibilityFlag = ListGetString( Material, &
              'Compressibility Model', GotIt)
-         IF (gotIt .AND. CompressibilityFlag == 'artificial compressible') THEN
-            PseudoPressureExists = .TRUE.
+         IF (.NOT. gotIt ) CYCLE
+         IF( CompressibilityFlag == 'artificial compressible') THEN
+           PseudoPressureExists = .TRUE.
+           AllIncompressible = .FALSE.
+         ELSE IF ( CompressibilityFlag == 'incompressible' ) THEN
+           CONTINUE
+         ELSE
+           AllIncompressible = .FALSE.
          END IF
        END DO
 
@@ -361,10 +371,15 @@
           ALLOCATE( PseudoPressure(n),STAT=istat ) 
        END IF
 
+       IF( AllIncompressible ) THEN
+         CALL Info('FlowSole','Enforcing relative pressure relaxation',Level=8)
+         CALL ListAddNewLogical( Solver % Values,'Relative Pressure Relaxation',.TRUE.)
+       END IF
+       
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'FlowSolve','Memory allocation error, Aborting.' )
        END IF
-
+       
 !------------------------------------------------------------------------------
 
        AllocationsDone = .TRUE.
@@ -470,15 +485,15 @@
 !------------------------------------------------------------------------------
 !    We do our own relaxation...
 !------------------------------------------------------------------------------
-     NonlinearRelax = GetCReal( Solver % Values, &
-        'Nonlinear System Relaxation Factor', GotIt )
-     IF ( .NOT. GotIt ) NonlinearRelax = 1.0d0
+     !NonlinearRelax = GetCReal( Solver % Values, &
+     !   'Nonlinear System Relaxation Factor', GotIt )
+     !IF ( .NOT. GotIt ) NonlinearRelax = 1.0d0
 
-     CALL ListAddConstReal( Solver % Values, &
-            'Nonlinear System Relaxation Factor', 1.0d0 )
+     !CALL ListAddConstReal( Solver % Values, &
+     !       'Nonlinear System Relaxation Factor', 1.0d0 )
 
-     IF ( NonlinearRelax /= 1._dp ) &
-       CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .TRUE. )
+     !IF ( NonlinearRelax /= 1._dp ) &
+     !  CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .TRUE. )
 !------------------------------------------------------------------------------
 !    Check if free surfaces present
 !------------------------------------------------------------------------------
@@ -1255,7 +1270,7 @@
       at = CPUTime() - at
       st = CPUTime()
 
-      IF ( NonlinearRelax /= 1.0d0 ) PSolution = FlowSolution
+      !IF ( NonlinearRelax /= 1.0d0 ) PSolution = FlowSolution
       Unorm = DefaultSolve()
 
       st = CPUTIme()-st
@@ -1272,41 +1287,42 @@
 !     This hack is needed  cause of the fluctuating pressure levels
 !------------------------------------------------------------------------------
 
-      IF ( NonlinearRelax /= 1.0d0 ) THEN
-         IF ( CompressibilityModel == Incompressible ) THEN
-            s = FlowSolution(NSDOFs)
-            FlowSolution(NSDOFs:n:NSDOFs) = FlowSolution(NSDOFs:n:NSDOFs)-s
-            PSolution(NSDOFs:n:NSDOFs)=PSolution(NSDOFs:n:NSDOFs)-PSolution(NSDOFs)
-         END IF
+      !IF ( NonlinearRelax /= 1.0d0 ) THEN
+      !   IF ( CompressibilityModel == Incompressible ) THEN
+      !      s = FlowSolution(NSDOFs)
+      !      FlowSolution(NSDOFs:n:NSDOFs) = FlowSolution(NSDOFs:n:NSDOFs)-s
+      !      PSolution(NSDOFs:n:NSDOFs)=PSolution(NSDOFs:n:NSDOFs)-PSolution(NSDOFs)
+      !   END IF
 
-         FlowSolution(1:n) = (1-NonlinearRelax)*PSolution(1:n) + &
-                    NonlinearRelax*FlowSolution(1:n)
+      !   FlowSolution(1:n) = (1-NonlinearRelax)*PSolution(1:n) + &
+      !              NonlinearRelax*FlowSolution(1:n)
        
-         IF ( CompressibilityModel == Incompressible ) THEN
-            FlowSolution(NSDOFs:n:NSDOFs)=FlowSolution(NSDOFs:n:NSDOFs)+s
-         END IF
+      !   IF ( CompressibilityModel == Incompressible ) THEN
+      !      FlowSolution(NSDOFs:n:NSDOFs)=FlowSolution(NSDOFs:n:NSDOFs)+s
+      !   END IF
 
-        RelaxBefore = GetLogical( Solver % Values, &
-              'Nonlinear system Relaxation Before', gotIt )
-        IF ( .NOT.gotIt .OR. RelaxBefore ) THEN
-          CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .FALSE. )
+      !  RelaxBefore = GetLogical( Solver % Values, &
+      !        'Nonlinear system Relaxation Before', gotIt )
+      !  IF ( .NOT.gotIt .OR. RelaxBefore ) THEN
+      !    CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .FALSE. )
 
-          Solver % Variable % Norm = ComputeNorm(Solver, n, PSolution)
+      !    Solver % Variable % Norm = ComputeNorm(Solver, n, PSolution)
 
-          CALL ComputeChange( Solver, .FALSE., n, FlowSolution, PSolution )
+      !    CALL ComputeChange( Solver, .FALSE., n, FlowSolution, PSolution )
 
-          Solver % Variable % Norm = ComputeNorm(Solver, n, FlowSolution)
-        END IF
-      END IF
-      RelativeChange = Solver % Variable % NonlinChange
+       !   Solver % Variable % Norm = ComputeNorm(Solver, n, FlowSolution)
+        !END IF
+      ! END IF
+      !RelativeChange = Solver % Variable % NonlinChange
 
 !------------------------------------------------------------------------------
 
       WRITE( Message, * ) 'Result Norm     : ',Solver % Variable % Norm
       CALL Info( 'FlowSolve', Message, Level=4 )
-      WRITE( Message, * ) 'Relative Change : ',RelativeChange
+      WRITE( Message, * ) 'Relative Change : ',Solver % Variable % NonlinChange
       CALL Info( 'FlowSolve', Message, Level=4 )
-
+      
+      RelativeChange = Solver % Variable % NonlinChange
       IF ( RelativeChange < NewtonTol .OR. &
              iter > NewtonIter ) NewtonLinearization = .TRUE.
 
@@ -1427,8 +1443,8 @@
       END DO
     END IF
 
-    CALL ListAddConstReal( Solver % Values, &
-        'Nonlinear System Relaxation Factor', NonlinearRelax )
+    !CALL ListAddConstReal( Solver % Values, &
+    !    'Nonlinear System Relaxation Factor', NonlinearRelax )
 
     IF (ListGetLogical(Solver % Values,'Adaptive Mesh Refinement',GotIt)) &
       CALL RefineMesh( Model,Solver,FlowSolution,FlowPerm, &

@@ -1,0 +1,109 @@
+! Simple test case for periodic time. The heat source is periodic.
+! Demonstrates how to treat time in periodic systems. 
+!
+! P.R. 12.5.2018
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Simulation Type = Transient
+  Timestepping Method = BDF
+
+$nperiod=10
+$ncycle=10
+$tperiod=1.0
+$dt=tperiod/nperiod
+
+  BDF Order = 2
+  Timestep Sizes = $dt
+  Timestep Intervals = $ncycle*nperiod
+  Time Period = $tperiod
+
+  Output Intervals = 1 
+!  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers = 1 
+End
+
+Solver 1
+  Equation = "heat"
+  Variable = "Temp"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = False
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+
+  Optimize Bandwidth = FALSE
+End
+
+
+Solver 2 
+  Exec Solver = always
+  Equation = "save scalars"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Temp
+  Operator 1 = int mean
+  Variable 2 = Temp
+  Operator 2 = max
+  Variable 3 = Time
+  Variable 4 = Periodic Time
+  Filename = f.dat
+End 
+
+
+Material 1
+  Name = "Material1"
+  Density = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 10.0
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  ! within each time period there is a parabolic dependence
+  Heat Source = Variable "periodic time"
+    Real MATC "tx*(tperiod-tx)"
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries = 1 
+  Temp = Real 0
+End
+
+Solver 1 :: Reference Norm = 5.77549814e-3

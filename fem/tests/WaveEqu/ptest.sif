@@ -1,5 +1,7 @@
 Check Keywords "Warn"
 
+$ pival = 2.0 * acos(0.0)
+
 Header
   Mesh DB "." "square"
 End
@@ -7,25 +9,23 @@ End
 Simulation
   Coordinate System = "Cartesian 2D"
   Simulation Type = Transient
-  Timestep Sizes = 0.01
-  Timestep Intervals = 10
+  Timestep Sizes = 0.05
+  Timestep Intervals = 50
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-
   Max Output Level = 5
-
-! Post File   = "ptest.ep"
-! Output File = "ptest.dat"
+!  Post File = "wave.vtu"
 End
 
 Body 1
   Equation = 1
   Initial Condition = 1
   Material = 1
+!  Body Force = 1
 End
 
 Initial Condition 1
-  Potential Velocity = Real 1
+  P = Real 0
 End
 
 Equation 1
@@ -33,27 +33,39 @@ Equation 1
 End
 
 Material 1
-  Name = "Ideal"
-  Wave Speed = Real 1.0
+  Sound Speed = Real 0.5
+  Sound Damping = Real 0.0
+  Sound Reaction Damping = Real 0.0
 End 
 
-Solver 1
-  Equation = "Poisson"
+!Body Force 1
+!  Sound Source = Real 0.0
+!End
 
-  Variable = "Potential"
+Solver 1
+  Equation = "Wave Equation"
+  Variable = "P"
   Variable DOFs = 1
-  Procedure = "WaveEq" "WaveSolver"
+  Procedure = "WaveSolver" "WaveSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = Umfpack
-
   Steady State Convergence Tolerance = 1e-09
 End
 
 Boundary Condition 1
-  Target Boundaries(4) = 1 2 3 4
-  Potential = Real 0
-  Potential Velocity = Real 0
+  Target Boundaries(1) = 4
+
+  P = Variable Time
+    Real MATC "sin(2.0 * pival * tx)" 
+
+!  Source Acceleration = Variable Time
+!    Real MATC "-cos(2.0 * pival * tx) * 4.0 * pival"
 End
 
-Solver 1 :: Reference Norm = 0.815834703788E-01
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Outflow Boundary = True
+End
+
+Solver 1 :: Reference Norm = 6.92823977E-01
