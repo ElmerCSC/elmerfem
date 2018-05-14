@@ -1,0 +1,64 @@
+!##########################################################
+! #### NAMES
+!##########################################################
+!name of the RUN : 
+$name="1_"
+
+! the name of the mesh directory
+$MESH="MESH"
+
+!##########################################################
+! ####  Simulation Time
+!##########################################################
+
+!# Max Iterations (Integer)
+$niter=100
+
+!# Output intervals (Integer)
+$OutPutIntervals=50
+
+!##########################################################
+! ####  Physical Parameters
+!##########################################################
+
+include ../../Parameters/Physical_Params.IN 
+
+!## Min threshold value for Ice thickness (Real)
+$HMin=0.1
+
+!##########################################################
+!###### INVERSE METHOD PARAMETERS
+!##########################################################
+! The total cost function to minimize is J=J_u + LambdaDiv * Jdiv + LambdaReg * Jreg
+! where J_u=velocity error; Jdiv=error on flux divergence; Jreg=regularisation (smoothness)
+
+$LambdaDiv=0.0
+$LambdaReg=0.0
+
+!##########################################################
+!###### DATA FILES
+!##########################################################
+
+!###########################################################
+!## SMB
+!###########################################################
+!## Constant control SMB to run simulatiosn with constant forcing
+$SMB_DATA="../DATA/MARv3.5.2-10km-yearly-ERA-Interim-1979-1999_Mean_EPSG3413.nc"
+
+!##########################################################
+! ## TOPOGRAPHY (read <thickness> and <bed>)
+$TOPOGRAPHY_DATA="../DATA/BedMachineGreenland-2017-09-20.nc"
+
+!## Viscosity (read the vertically averaged velocity <MuMean>)
+$VISCOSITY_DATA="../DATA/greenland_elmerice_MuMean_v0.nc"
+
+!## Initial slip coefficient (read the linear slip coefficient <C1>)
+$SLIP_DATA="../DATA/greenland_elmerice_C1_v0.nc"
+
+!## Observed velocity (read <vnorm> for post-processing; read <vx> and <vy> for optimisation)
+$VELOCITY_DATA="../DATA/greenland_vel_mosaic250_v1.nc"
+
+!## Observed dhdt (provide nectdf data file if available)
+$DHDT_DATA="."
+
+

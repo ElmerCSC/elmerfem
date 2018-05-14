@@ -39,7 +39,6 @@ $ function MuSquare(tx) {\
 
 -----------------------
 TO RUN the TEST:
-elmerf90 ./PROG/GradientValidation.f90 -o GradientValidation
 elmerf90 ./PROG/USF_Init.f90 -o USF_Init
 ElmerGrid 1 2 mesh2D -metis 4 4
 mpirun -n 4 ElmerSolver_mpi
@@ -50,3 +49,8 @@ Results established:
 Laure Tavard,LGGE
 Froggy cluster (CIMENT: Grenoble University HPC centre)
 Revision 58f71b4
++------------------
+05.04.2018
+Updated F. Gillet-Chaulet.
+- reduce number of iterations from 5 to 2
+- test result from more solvers

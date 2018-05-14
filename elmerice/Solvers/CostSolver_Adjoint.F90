@@ -46,6 +46,30 @@
 !                'Adjoint Cost der 3 = Real ...' : The derivative of 'Adjoint Cost' w.r.t. w-velocity
 !
 ! *****************************************************************************
+SUBROUTINE CostSolver_Adjoint_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  INTEGER :: NormInd, LineInd, i
+  LOGICAL :: GotIt, MarkFailed, AvoidFailed
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+
+  Name = ListGetString( Solver % Values, 'Equation',GotIt)
+  IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
+      CALL ListAddString( Solver % Values,'Variable',&
+          '-nooutput -global '//TRIM(Name)//'_var')
+ END IF
+END
+!******************************************************************************
 SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
@@ -73,7 +97,8 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: VbPerm(:)
   Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit,UnFoundFatal=.TRUE.
   integer :: i,j,k,l,t,n,NMAX,DIM,ierr,c
-  real(kind=dp) :: Cost,Cost_bed,Cost_surf,Cost_S,Cost_bed_S,Cost_surf_S,Lambda
+  real(kind=dp) :: Cost,Cost_bed,Cost_surf,Cost_S,Cost_bed_S,Cost_surf_S,Lambda,Change
+  real(kind=dp),Save :: Oldf=0._dp
   real(kind=dp) :: Bu,Bv,u,v,w,s,coeff,SqrtElementMetric,x
   REAL(KIND=dp) :: NodeCost(Model % MaxElementNodes),Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
   REAL(KIND=dp) :: NodeCostb(Model % MaxElementNodes),NodeCost_der(3,Model %MaxElementNodes)
@@ -87,15 +112,10 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
 
   If (Firsttime) then
 
-!!!!!!! Check for parallel run 
-    Parallel = .FALSE.
-    IF ( ASSOCIATED( Solver % Matrix % ParMatrix ) ) THEN
-            IF ( Solver %  Matrix % ParMatrix % ParEnv % PEs > 1 )  THEN
-                    Parallel = .TRUE.
-            END IF
-    END IF
+    WRITE(SolverName, '(A)') 'CostSolver_Adjoint'
 
-     WRITE(SolverName, '(A)') 'CostSolver_Adjoint'
+!!!!!!! Check for parallel run 
+    Parallel = (ParEnv % PEs > 1)
 
 !!!!!!!!!!! get Solver Variables
   SolverParams => GetSolverParams()
@@ -143,11 +163,11 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
     Firsttime=.false.
   Endif
 
-    BetaSol => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
+    BetaSol => VariableGet( Model % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
     Beta => BetaSol % Values
     BetaPerm => BetaSol % Perm
 
-    VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb',UnFoundFatal=UnFoundFatal)
+    VelocitybSol => VariableGet( Model % Mesh % Variables, 'Velocityb',UnFoundFatal=UnFoundFatal)
     Vb => VelocitybSol % Values
     VbPerm => VelocitybSol % Perm
     c=DIM + 1 ! size of the velocity variable
@@ -162,7 +182,7 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
     Cost=0._dp
     Cost_surf=0._dp
     Cost_bed=0._dp
-    DO t=1,Solver % Mesh % NumberOfBoundaryElements
+    DO t=1,Model % Mesh % NumberOfBoundaryElements
 
       Element => GetBoundaryElement(t)
 
@@ -246,7 +266,7 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
 
    Cost=Cost_surf+0.5*Lambda*Cost_bed
 
-    TimeVar => VariableGet( Solver % Mesh % Variables, 'Time' )
+    TimeVar => VariableGet( Model % Mesh % Variables, 'Time' )
 
     IF (Parallel) THEN
            CALL MPI_ALLREDUCE(Cost,Cost_S,1,&
@@ -255,25 +275,39 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
                   MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
            CALL MPI_ALLREDUCE(Cost_bed,Cost_bed_S,1,&
                   MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
-          CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
+          CostVar => VariableGet( Model % Mesh % Variables, CostSolName )
           IF (ASSOCIATED(CostVar)) THEN
                  CostVar % Values(1)=Cost_S
           END IF
-         IF (Solver % Matrix % ParMatrix % ParEnv % MyPE == 0) then
+         IF (ParEnv % MyPE == 0) then
                  OPEN (12, FILE=CostFile,POSITION='APPEND')
                  write(12,'(e13.5,2x,e15.8,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost_S,Cost_surf_S,Cost_bed_S
                  CLOSE(12)
          End if
    ELSE
-            CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
+            CostVar => VariableGet( Model % Mesh % Variables, CostSolName )
             IF (ASSOCIATED(CostVar)) THEN
                     CostVar % Values(1)=Cost
             END IF
-                    OPEN (12, FILE=CostFile,POSITION='APPEND')
-                       write(12,'(e13.5,2x,e15.8,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost,Cost_surf,Cost_bed
-                    close(12)
+            OPEN (12, FILE=CostFile,POSITION='APPEND')
+              write(12,'(e13.5,2x,e15.8,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost,Cost_surf,Cost_bed
+            close(12)
+            Cost_S=Cost
    END IF
    
+   Solver % Variable % Values(1)=Cost_S
+   Solver % Variable % Norm = Cost_S
+   IF (SIZE(Solver%Variable % Values) == Solver%Variable % DOFs) THEN
+      !! MIMIC COMPUTE CHANGE STYLE
+      Change=2.*(Cost_S-Oldf)/(Cost_S+Oldf)
+      Change=abs(Change)
+      WRITE( Message, '(a,g15.8,g15.8,a)') &
+              'SS (ITER=1) (NRM,RELC): (',Cost_S, Change,&
+              ' ) :: Cost'
+      CALL Info( 'ComputeChange', Message, Level=3 )
+      Oldf=Cost_S
+   ENDIF
+
    Return
 !------------------------------------------------------------------------------
 END SUBROUTINE CostSolver_Adjoint

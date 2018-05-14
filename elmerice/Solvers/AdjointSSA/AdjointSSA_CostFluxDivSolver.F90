@@ -107,7 +107,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: NodeIndexes(:)
   integer :: i,j,k,l,t,n,NMAX,DIM,ierr,c
 
-  real(kind=dp) :: Cost,Cost_S,Costb,Lambda
+  real(kind=dp) :: Cost,Cost_S,Costb,Lambda,area
   real(kind=dp) :: u,v,w,s,coeff,SqrtElementMetric,x
   REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
   REAL(KIND=dp),dimension(:),allocatable,SAVE ::  NodeSMB,NodeDHDT,NodeH
@@ -193,15 +193,9 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
   Endif
 
 
-    VelocitySol => VariableGet( Solver % Mesh % Variables, 'SSAVelocity'  )
-    IF ( ASSOCIATED( VelocitySol ) ) THEN
-            Velocity => VelocitySol % Values
-            VeloPerm => VelocitySol % Perm
-    ELSE
-            WRITE(Message,'(A)') &
-                               'No variable > SSAVelocity < found'
-            CALL FATAL(SolverName,Message)
-    END IF  
+    VelocitySol => VariableGet( Solver % Mesh % Variables, 'SSAVelocity',UnFoundFatal=.TRUE.  )
+    Velocity => VelocitySol % Values
+    VeloPerm => VelocitySol % Perm
     c=DIM  ! size of the velocity variable
     IF (VelocitySol % DOFs.NE.c) then
            WRITE(Message,'(A,I1,A,I1)') &
@@ -209,15 +203,9 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
             CALL FATAL(SolverName,Message)
     End If
 
-    VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb'  )
-    IF ( ASSOCIATED( VelocitybSol ) ) THEN
-            Vb => VelocitybSol % Values
-            VbPerm => VelocitybSol % Perm
-    ELSE
-            WRITE(Message,'(A)') &
-                               'No variable > Velocityb < found'
-            CALL FATAL(SolverName,Message)
-    END IF  
+    VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb',UnFoundFatal=.TRUE.  )
+    Vb => VelocitybSol % Values
+    VbPerm => VelocitybSol % Perm
     IF (VelocitybSol % DOFs.NE.c) then
            WRITE(Message,'(A,I1,A,I1)') &
             'Variable Velocityb has ',VelocitybSol % DOFs,' DOFs, should be',c
@@ -225,49 +213,34 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
     End If
     if (ResetCost) Vb=0.0_dp
 
-    ZbSol => VariableGet( Solver % Mesh % Variables, 'Zb' )
-    IF (ASSOCIATED(ZbSol)) THEN
-           Zb => ZbSol % Values
-           ZbPerm => ZbSol % Perm
-    ELSE
-           CALL FATAL(SolverName,'Could not find variable >Zb<')
-    END IF
+    ZbSol => VariableGet( Solver % Mesh % Variables, 'Zb',UnFoundFatal=.TRUE.  )
+    Zb => ZbSol % Values
+    ZbPerm => ZbSol % Perm
     IF (ComputeDJDZb) Then
-       DJDZbSol => VariableGet( Solver % Mesh % Variables, 'DJDZb' )
-       IF (ASSOCIATED(DJDZbSol)) THEN
-           DJDZb => DJDZbSol % Values
-           DJDZbPerm => DJDZbSol % Perm
-       ELSE
-           CALL FATAL(SolverName,'Could not find variable >DJDZb<')
-       END IF
+       DJDZbSol => VariableGet( Solver % Mesh % Variables, 'DJDZb',UnFoundFatal=.TRUE. )
+       DJDZb => DJDZbSol % Values
+       DJDZbPerm => DJDZbSol % Perm
        !!!!! Reset DJDZ to 0 HERE
        DJDZb=0._dp
     ENDIF
 
-    ZsSol => VariableGet( Solver % Mesh % Variables, 'Zs' )
-    IF (ASSOCIATED(ZsSol)) THEN
-         Zs => ZsSol % Values
-         ZsPerm => ZsSol % Perm
-    ELSE
-        CALL FATAL(SolverName,'Could not find variable >Zs<')
-    END IF
+    ZsSol => VariableGet( Solver % Mesh % Variables, 'Zs',UnFoundFatal=.TRUE.  )
+    Zs => ZsSol % Values
+    ZsPerm => ZsSol % Perm
     IF (ComputeDJDZs) Then
-       DJDZsSol => VariableGet( Solver % Mesh % Variables, 'DJDZs' )
-       IF (ASSOCIATED(DJDZsSol)) THEN
-           DJDZs => DJDZsSol % Values
-           DJDZsPerm => DJDZsSol % Perm
-       ELSE
-           CALL FATAL(SolverName,'Could not find variable >DJDZs<')
-       END IF
+       DJDZsSol => VariableGet( Solver % Mesh % Variables, 'DJDZs',UnFoundFatal=.TRUE. )
+       DJDZs => DJDZsSol % Values
+       DJDZsPerm => DJDZsSol % Perm
        !!!!! Reset DJDZ to 0 HERE
        DJDZs=0._dp
     ENDIF
 
-
     Cost=0._dp
+    area=0._dp
 
     DO t=1,Solver % NumberOfActiveElements
        Element => GetActiveElement(t)
+       IF (CheckPassiveElement(Element)) CYCLE
        IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
        n = GetElementNOFNodes()
 
@@ -371,6 +344,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
           coeff=dhdt+ugrdh+h*divu-smb
 
           Cost=Cost+0.5*coeff*coeff*s
+          area=area+s
          
          ! compute the derivatives (NOTE Cost=Lambda*Cost at the end for output
          ! reasons)
@@ -411,7 +385,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
 
           IF (Solver % Matrix % ParMatrix % ParEnv % MyPE == 0) then
                  OPEN (12, FILE=CostFile,POSITION='APPEND')
-                 write(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost_S
+                 write(12,'(3(e13.5,2x))') TimeVar % Values(1),Cost_S,sqrt(2*Cost_S/area)
                  CLOSE(12)
           End if
 
@@ -427,7 +401,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
           END IF
    ELSE
             OPEN (12, FILE=CostFile,POSITION='APPEND')
-                  write(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost
+                  write(12,'(3(e13.5,2x))') TimeVar % Values(1),Cost,sqrt(2*Cost/area)
             close(12)
 
             Cost = Lambda * Cost
