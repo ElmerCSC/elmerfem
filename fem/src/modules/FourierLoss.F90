@@ -182,7 +182,8 @@ END SUBROUTINE FourierLossSolver_init0
 !------------------------------------------------------------------------------
 SUBROUTINE FourierLossSolver_Dummy(Model,Solver,dt,Transient)
   !------------------------------------------------------------------------------
-  USE MagnetoDynamicsUtils
+  USE DefUtils
+  !USE MagnetoDynamicsUtils
 
   IMPLICIT NONE
   !------------------------------------------------------------------------------
