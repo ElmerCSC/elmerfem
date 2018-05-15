@@ -1,0 +1,21 @@
+$ Circuits = 1
+
+! ------------------------ Circuit 1 ------------------------
+! Define variable count and initialize circuit matrices.
+$ C.1.perm = zeros(2)
+
+$ C.1.variables = 2
+$ C.1.A = zeros(2,2)
+$ C.1.B = zeros(2,2)
+$ C.1.Mre = zeros(2,2)
+$ C.1.Mim = zeros(2,2)
+
+! Define variables.
+$ C.1.name.1 = "i_component(1)"
+$ C.1.name.2 = "v_component(1)"
+
+! Define sources:
+!------------------
+$ C.1.B(0,0) = 1
+$ C.1.source.1 = "testsource"
+

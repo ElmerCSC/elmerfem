@@ -1,0 +1,109 @@
+!------ Skeleton for boundary section -----
+Boundary Condition 1
+  Name = center0
+End
+
+Boundary Condition 2
+  Name = bc2
+End
+
+Boundary Condition 3
+  Name = bc3
+End
+
+Boundary Condition 4
+  Name = bc4
+End
+
+Boundary Condition 5
+  Name = center1
+End
+
+Boundary Condition 6
+  Name = bc6
+End
+
+Boundary Condition 7
+  Name = bc7
+End
+
+Boundary Condition 8
+  Name = bc8
+End
+
+Boundary Condition 9
+  Name = center2
+End
+
+Boundary Condition 10
+  Name = bc10
+End
+
+Boundary Condition 11
+  Name = bc11
+End
+
+Boundary Condition 12
+  Name = bc12
+End
+
+Boundary Condition 13
+  Name = bc13
+End
+
+Boundary Condition 14
+  Name = bc14
+End
+
+Boundary Condition 15
+  Name = center3
+End
+
+Boundary Condition 16
+  Name = bc16
+End
+
+Boundary Condition 17
+  Name = bc17
+End
+
+Boundary Condition 18
+  Name = bc18
+End
+
+Boundary Condition 19
+  Name = bc19
+End
+
+Boundary Condition 20
+  Name = bc20
+End
+
+Boundary Condition 21
+  Name = bc21
+End
+
+Boundary Condition 22
+  Name = bc22
+End
+
+Boundary Condition 23
+  Name = bc23
+End
+
+Boundary Condition 24
+  Name = bc24
+End
+
+Boundary Condition 25
+  Name = bc25
+End
+
+Boundary Condition 26
+  Name = bc26
+End
+
+Boundary Condition 27
+  Name = bc27
+End
+
