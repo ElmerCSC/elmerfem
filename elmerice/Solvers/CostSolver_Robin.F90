@@ -43,6 +43,30 @@
 !   - define in the sif Name='surface' and Name='bed' in appropriate BC.
 !
 ! *****************************************************************************
+SUBROUTINE CostSolver_Robin_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  INTEGER :: NormInd, LineInd, i
+  LOGICAL :: GotIt, MarkFailed, AvoidFailed
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+
+  Name = ListGetString( Solver % Values, 'Equation',GotIt)
+  IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
+      CALL ListAddString( Solver % Values,'Variable',&
+          '-nooutput -global '//TRIM(Name)//'_var')
+ END IF
+END
+! *****************************************************************************
 SUBROUTINE CostSolver_Robin( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
@@ -71,7 +95,8 @@ SUBROUTINE CostSolver_Robin( Model,Solver,dt,TransientSimulation )
   Logical :: Firsttime=.true.,Found,Parallel,stat
   integer :: i,j,k,l,t,n,np,NMAX,DIM,ierr
 
-  real(kind=dp) :: Cost,Cost_surf,Cost_bed,Cost_S,Cost_surf_S,Cost_bed_S
+  real(kind=dp) :: Cost,Cost_surf,Cost_bed,Cost_S,Cost_surf_S,Cost_bed_S,Change
+  real(kind=dp),SAVE :: Oldf=0._dp
   real(kind=dp) :: coeff,sTimesN
   real(kind=dp) :: Viscosity,Viscosityn,Viscosityd
   real(kind=dp) :: pressuren,pressured
@@ -97,19 +122,13 @@ SUBROUTINE CostSolver_Robin( Model,Solver,dt,TransientSimulation )
      WRITE(SolverName, '(A)') 'CostSolver_Robin'
 
 !!!!!!! Check for parallel run 
-    Parallel = .FALSE.
-      IF ( ASSOCIATED( Solver % Matrix % ParMatrix ) ) THEN
-        IF ( Solver %  Matrix % ParMatrix % ParEnv % PEs > 1 )  THEN
-          Parallel = .TRUE.
-        END IF
-      END IF
+     Parallel = (ParEnv % PEs > 1 )
 
      NMAX= Model % MaxElementNodes
      allocate(NodalBeta(NMAX),NodalViscosity(NMAX), &
               Nodalvn(DIM+1,NMAX),Nodalvd(DIM+1,NMAX), Nodalvelon(3,NMAX),Nodalvelod(3,NMAX), &
               Basis(NMAX),PBasis(NMAX),&
               dBasisdx(NMAX,3),PdBasisdx(NMAX,3))
-
 
 !!!!!!!!!!! get Solver Variables
   SolverParams => GetSolverParams()
@@ -312,7 +331,7 @@ SUBROUTINE CostSolver_Robin( Model,Solver,dt,TransientSimulation )
           IF (ASSOCIATED(CostVar)) THEN
                  CostVar % Values(1)=Cost_S
           END IF
-         IF (Solver % Matrix % ParMatrix % ParEnv % MyPE == 0) then
+         IF (ParEnv % MyPE == 0) then
                  OPEN (12, FILE=CostFile,POSITION='APPEND')
                  write(12,'(e13.5,2x,e15.8,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost_S,Cost_surf_S,Cost_bed_S
                  CLOSE(12)
@@ -322,10 +341,25 @@ SUBROUTINE CostSolver_Robin( Model,Solver,dt,TransientSimulation )
               IF (ASSOCIATED(CostVar)) THEN
                    CostVar % Values(1)=Cost
               END IF
+              Cost_S=Cost
                OPEN (10, FILE=CostFile,POSITION='APPEND')
                write(10,'(e13.5,2x,e15.8,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost,Cost_surf,Cost_bed
                close(10)
    END IF
+
+   Solver % Variable % Values(1)=Cost_S
+   Solver % Variable % Norm = Cost_S
+   IF (SIZE(Solver%Variable % Values) == Solver%Variable % DOFs) THEN
+      !! MIMIC COMPUTE CHANGE STYLE
+      Change=2.*(Cost_S-Oldf)/(Cost_S+Oldf)
+      Change=abs(Change)
+      WRITE( Message, '(a,g15.8,g15.8,a)') &
+              'SS (ITER=1) (NRM,RELC): (',Cost_S, Change,&
+              ' ) :: Cost'
+      CALL Info( 'ComputeChange', Message, Level=3 )
+      Oldf=Cost_S
+   ENDIF
+
 
    Return
 

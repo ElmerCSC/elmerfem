@@ -79,14 +79,16 @@
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
+#ifdef HAVE_MMG
 #include "mmg/mmg2d/libmmg2df.h"
-
+#endif
       TYPE(Model_t) :: Model
       TYPE(Solver_t), TARGET :: Solver
       TYPE(Solver_t), POINTER ::PSolver
       REAL(KIND=dp) :: dt
       LOGICAL :: TransientSimulation
 
+#ifdef HAVE_MMG
       MMG5_DATA_PTR_T  :: mmgMesh
       MMG5_DATA_PTR_T  :: mmgSol
 
@@ -807,6 +809,11 @@
         End ! Subroutine AddVlueToMesh
 !------------------------------------------------------------------------------
  
+#else
+     CALL FATAL('MMG2DSolver',&
+        'Remeshing utility MMG2DSolver has not been installed')
+#endif
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       END SUBROUTINE MMG2DSolver

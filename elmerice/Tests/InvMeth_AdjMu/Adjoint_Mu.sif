@@ -57,13 +57,13 @@ Simulation
 
   Output Intervals = 1
 
-  Steady State Max Iterations = 5!100
+  Steady State Max Iterations = 2
   Steady State Min Iterations = 1
 
-!  Output File = "Test_$name$.result"
-!  Post File = "Test_$name$.vtu"
+  !Output File = "Test_$name$.result"
+  !Post File = "Test_$name$.vtu"
 
-  max output level = 4
+  max output level = 3
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -148,7 +148,7 @@ Solver 2
    Linear System Iterative Method = GMRES
    Linear System GMRES Restart = 100
    Linear System Preconditioning= ILU0
-   Linear System Convergence Tolerance= 1.0e-10
+   Linear System Convergence Tolerance= 1.0e-08
    Linear System Max Iterations = 1000
 
 ! system self adjoint if Newton is used for the last iterations
@@ -192,13 +192,7 @@ End
 !!!!!!!!   Has to be run before the Adjoint Solver as adjoint forcing is computed here !!!!!
 Solver 3
   Equation = "Cost"
-
-!!  Solver need to be associated => Define dumy variable
-  Variable = -nooutput "CostV"
-  Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "CostSolver_Adjoint"
-
 
   Cost Variable Name = String "CostValue"  ! Name of Cost Variable
 
@@ -232,11 +226,6 @@ End
 !!!!!  Compute Derivative of Cost function / Mu
 Solver 5
   Equation = "DJDmu"
-
-!!  Solver need to be associated => Define dumy variable
-  Variable = -nooutput "DJDBV"
-  Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "DJDMu_Adjoint"
   
   Flow Solution Name = String "Flow Solution"
@@ -250,11 +239,6 @@ end
 !!!!! Optimization procedure 
 Solver 6
   Equation = "Optimize_m1qn3"
-
-!!  Solver need to be associated => Define dumy variable
-  Variable = -nooutput "UBV"
-  Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "Optimize_m1qn3Parallel"
 
   Cost Variable Name = String "CostValue"
@@ -276,29 +260,6 @@ Solver 6
   M1QN3 ndz = Integer 20
 
 end
-
-!Solver 7
-
-!  Equation = "ResultOutput"!
-
-!  Procedure = File "ResultOutputSolve" "ResultOutputSolver"
-
-!  Output File Name  = File "Output_$name$"
-!  Vtu Format = logical true
-!  Binary Output = True
-!  Single Precision = True
-
- ! Vector Field 1 = "Velocity"
- ! Scalar Field 1 = Mu
- ! Scalar Field 2 = MuS
- ! Scalar Field 3 = Adjoint 1
- ! Scalar Field 4 = Adjoint 2
-  !Scalar Field 5 = Adjoint 3
-  !Scalar Field 6 = VsurfIni 1
-  !!Scalar Field 7 = VsurfIni 2
-!End
-
-
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Equation 1
@@ -347,9 +308,6 @@ End
 
 Boundary Condition 4
   Name = "bed"
-  !Target Boundaries = 5
-
-  Save Line = Logical True
 
   Bottom Surface = Variable Coordinate 1
     REAL   procedure "./USF_Init" "zbIni"
@@ -371,8 +329,6 @@ End
 ! Upper Surface
 Boundary Condition 5
   Name = "Surface"
-  !Target Boundaries = 6
-  Save Line = Logical True
 
   Top Surface = Variable Coordinate 1
      REAL procedure "./USF_Init" "zsIni"
@@ -391,8 +347,17 @@ End
 
 
 
-Solver 2 :: Reference Norm = Real 326.33893
-Solver 2 :: Reference Norm Tolerance = Real 1E-04
+Solver 2 :: Reference Norm = Real 324.70267
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+
+Solver 3 :: Reference Norm = Real 3.33857540E+12
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+
+Solver 4 :: Reference Norm = 291002.11
+Solver 4 :: Reference Norm Tolerance = Real 1E-05
+
+Solver 6 :: Reference Norm = Real 0.67459289
+Solver 6 :: Reference Norm Tolerance = Real 1E-05
+
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=326.33893,EPS=1E-04\n" );

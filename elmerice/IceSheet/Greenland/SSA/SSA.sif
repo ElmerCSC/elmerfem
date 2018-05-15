@@ -1,0 +1,212 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! .sif file for greenland transient simulations
+! Author: F. Gillet-Chaulet (IGE-Grenoble-FR)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! FOR DEFAULT USE/UPDATE PARAMETERS IN SSA.IN
+include SSA.IN
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "$MESH$"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+  Simulation Type = Transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 2
+  Output Intervals(1) = $OutPutIntervals
+  Timestep Intervals(1) = $Intervals
+  Timestep Sizes(1) = $dt
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+
+  OutPut File = "$name$.result"
+  Post File = "$name$.vtu"
+
+  Restart File = "RUN0_.result"
+  Restart Position = 0
+  Restart Time = Real 0.0
+
+  max output level = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity
+
+  Top Surface Accumulation = Equals smb
+  Bottom Surface Accumulation = Real 0.0
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+! Material properties
+  Viscosity Exponent = Real $1/n
+  Critical Shear Rate = Real 1.0e-16
+
+
+  SSA Mean Viscosity = Equals Mu
+  SSA Mean Density = Real $rhoi
+
+  SSA Critical Thickness = Real $HMin
+
+! slip coeff for the SSA
+   SSA Friction Law = String "linear"
+   SSA Friction Parameter = Equals slc
+
+!! Min Value for H
+   Min H = Real $HMin
+
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Solver  1
+  Exec Solver = $FORCING_Update
+
+  ! exec every year to run annual values
+  Exec Interval = $floor(1.0/dt)
+
+  Equation = Reader
+    Procedure = "GridDataReader" "GridDataReader"
+
+!---- 
+   Filename = File "$FORCING_DATA$"
+!---
+   X Dim Name = File  "x"
+   Y Dim Name = File  "y"
+   Time Dim Name = File "TIME"
+!--- 
+  Variable 1 = File "smb_ice"
+  Target Variable 1 = String "smb"
+!----
+ ! simulation time is converted in netcdf time index
+ ! i.e. if time=[0,1[ read time(1), etc...
+  Is Time Index = Logical True
+  Time Point = Variable Time
+    REAL MATC "floor(tx)+1"
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Solver 2
+   Equation = "Flotation"
+   Variable = GroundedMask
+      Procedure = "ElmerIceSolvers" "Flotation"
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Solver 3
+  Equation = "SSA"
+  Variable = -dofs 2 "SSAVelocity"
+
+   Procedure = "ElmerIceSolvers" "SSABasalSolver"
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = mumps
+
+   Linear System Solver = Iterative
+   Linear System Max Iterations = 300
+   Linear System Iterative Method = BiCGStab
+   Linear System Preconditioning = ILU2
+   Linear System Abort Not Converged = False
+   Linear System Residual Output = 1000
+   Linear System Convergence Tolerance = 1.0e-8
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance  = 1.0e-05
+  Nonlinear System Newton After Iterations = 6
+  Nonlinear System Newton After Tolerance = 1.0e-03
+  Nonlinear System Relaxation Factor = 1.00
+
+  velocity norm limit = Real 30.0e3
+
+  Sub-Element GL parameterization = logical True
+  GL integration points number = Integer 20
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Solver 4
+   Equation = "Thickness"
+   Variable = -dofs 1 "H"
+
+   Exported Variable 1 = -dofs 1 "H Residual"
+   Exported Variable 2 = DhDt
+   Compute DhDt = Logical True
+
+   Procedure = "ElmerIceSolvers" "ThicknessSolver"
+
+   !Linear System Solver = Direct
+   !Linear System Direct Method = mumps
+   Linear System Solver = Iterative
+   Linear System Max Iterations = 1000
+   Linear System Iterative Method = BiCGStab
+   Linear System Preconditioning = ILU0
+   Linear System Abort Not Converged = False
+   Linear System Residual Output = 1000
+
+   Linear System Convergence Tolerance = 1.0e-12
+
+   ! equation is linear if no min/max
+    Nonlinear System Max Iterations = 10
+    Nonlinear System Convergence Tolerance  = 1.0e-09
+
+!!
+    Stabilization Method = Stabilized
+    Transient Stabilisation = logical true
+    Apply Dirichlet = Logical True
+
+
+!!  the convection velocity (mean horizontal velocity)
+    Flow Solution Name = String "SSAVelocity"
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Solver 5
+  Exec Solver = After Timestep
+  Equation = "Save 1D Vars"
+    Procedure = File "Scalar_OUTPUT" "Scalar_OUTPUT"
+    Variable = -nooutput "savescal"
+
+   File Name = File "1DVar_OUTPUT_$name$.dat"
+End
+Solver 6
+  Exec Solver = After Timestep
+
+  Equation = "Save Scalars"
+   Procedure = File "SaveData" "SaveScalars"
+
+  Parallel Reduce = logical True
+
+   Filename = File "Scalars_"$name$".dat"
+
+  Variable 1 = "Time"
+
+   Variable 2 = "dhdt"
+   Operator 2 = min
+   Operator 3 = max
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Equation 1
+  Active Solvers (6)= 1 2 3 4 5 6
+End
+!#####
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Calving Front = Logical True
+
+  Save Scalars = Logical True
+End

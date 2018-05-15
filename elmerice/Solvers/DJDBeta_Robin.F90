@@ -154,6 +154,7 @@ SUBROUTINE DJDBeta_Robin( Model,Solver,dt,TransientSimulation )
         PointerToVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
         VariableValues => PointerToVariable % Values
         Permutation => PointerToVariable % Perm
+        VariableValues=0._dp
 
         BetaVariable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
         BetaValues => BetaVariable % Values

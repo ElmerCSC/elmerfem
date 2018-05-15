@@ -2,28 +2,6 @@ SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
 
 
-# ---------------------- #
-# -- NetCDF libraries -- #
-#----------------------- #
-MESSAGE(STATUS "------------------------------------------------")
-MESSAGE(STATUS "Elmer/Ice package: Looking for [NetCDF] & [NetCDF Fortran] libraries")
-
-FIND_PACKAGE(NetCDF)
-
-IF(NetCDF_FOUND)
-  SET(HAVE_NETCDF TRUE)
-  MARK_AS_ADVANCED(HAVE_NETCDF)
-  MESSAGE(STATUS "  NetCDF:           " "${NetCDF_FOUND}")
-  MESSAGE(STATUS "  NetCDF_INC:       " "${NetCDF_INCLUDE_DIR}")
-  MESSAGE(STATUS "  NetCDF_LIBS:     " "${NetCDF_LIBRARIES}")
-  MESSAGE(STATUS "Compile GridDatatReader")
-ELSE()
-  MESSAGE(STATUS "Library not found: >NetCDF_FOUND< ")
-  MESSAGE(WARNING "  \n Missing: >NetCDF_INCLUDE_DIR< , >NetCDF_LIBRARY<,  >NetCDFF_LIBRARY< \n to compile GridDataReader")
- RETURN()
-ENDIF(NetCDF_FOUND)
-
-MESSAGE(STATUS "------------------------------------------------")
 
 SET(FNAME GridDataReader.F90)
 GET_FILENAME_COMPONENT(BASENAME ${FNAME} NAME_WE)

@@ -1,7 +1,34 @@
-SET(WITH_GridDataReader FALSE CACHE BOOL "Include ElmerIce GridDataReader")
+#SET(WITH_GridDataReader FALSE CACHE BOOL "Include ElmerIce GridDataReader")
 SET(WITH_ScatteredDataInterpolator FALSE CACHE BOOL "Include ElmerIce ScatteredDataInterpolator")
-MARK_AS_ADVANCED(WITH_GridDataReader)
+#MARK_AS_ADVANCED(WITH_GridDataReader)
 MARK_AS_ADVANCED(WITH_ScatteredDataInterpolator)
+
+# ---------------------- #
+# -- NetCDF libraries -- #
+#----------------------- #
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Elmer/Ice package: Looking for [NetCDF] & [NetCDF Fortran] libraries")
+
+FIND_PACKAGE(NetCDF)
+
+IF(NetCDF_FOUND)
+
+  SET(HAVE_NETCDF TRUE)
+  MARK_AS_ADVANCED(HAVE_NETCDF)
+  INCLUDE_DIRECTORIES(${NetCDF_INCLUDE_DIR})
+  ADD_DEFINITIONS(-DHAVE_NETCDF)
+
+  MESSAGE(STATUS "  NetCDF:           " "${NetCDF_FOUND}")
+  MESSAGE(STATUS "  NetCDF_INC:       " "${NetCDF_INCLUDE_DIR}")
+  MESSAGE(STATUS "  NetCDF_LIBS:     " "${NetCDF_LIBRARIES}")
+ELSE()
+  MESSAGE(STATUS "Library not found: >NetCDF_FOUND< ")
+  MESSAGE(WARNING "  \n Missing: >NetCDF_INCLUDE_DIR< , >NetCDF_LIBRARY<,  >NetCDFF_LIBRARY< \n some functionalities will be disabled")
+ENDIF(NetCDF_FOUND)
+
+MESSAGE(STATUS "------------------------------------------------")
+
+
 
 SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
@@ -54,10 +81,14 @@ IF(NOT(WIN32))
 ENDIF()
 TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver)
 
+IF(HAVE_NETCDF)
+TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NetCDF_LIBRARIES})
+ENDIF()
+
 INSTALL(TARGETS ElmerIceSolvers LIBRARY DESTINATION "share/elmersolver/lib"
 	    RUNTIME DESTINATION "share/elmersolver/lib")
 
-IF(WITH_GridDataReader)
+IF(HAVE_NETCDF)
   ADD_SUBDIRECTORY(GridDataReader)
 ENDIF()
 IF(WITH_ScatteredDataInterpolator)	
