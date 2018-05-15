@@ -187,6 +187,12 @@ void SifGenerator::makeSimulationBlock()
 	     ui.timeStepIntervalsEdit->text().trimmed());
   addSifLine("  Timestep Sizes = ",
 	     ui.timestepSizesEdit->text().trimmed());
+
+  addSifLine("  Coordinate Scaling = ",
+	     ui.coordinateScalingEdit->text().trimmed());
+  addSifLine("  Angular Frequency = ",
+	     ui.angularFrequencyEdit->text().trimmed());
+    
   addSifLine("  Solver Input File = ", 
 	     ui.solverInputFileEdit->text().trimmed());
   addSifLine("  Post File = ", 
@@ -975,6 +981,12 @@ void SifGenerator::parseExecSolverTab(Ui::solverParameterEditor ui)
   
   if(ui.execAfterTimestep->isChecked())
     te->append("  Exec Solver = After Timestep");
+
+  if(ui.execBeforeSaving->isChecked())
+    te->append("  Exec Solver = Before Saving");
+
+  if(ui.execAfterSaving->isChecked())
+    te->append("  Exec Solver = After Saving");
   
   if(ui.execNever->isChecked())
     te->append("  Exec Solver = Never");

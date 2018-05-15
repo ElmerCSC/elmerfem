@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>687</width>
-    <height>698</height>
+    <height>728</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -354,7 +354,7 @@
          <string/>
         </property>
        </widget>
-      </item>
+      </item>      
       <item row="4" column="0">
        <widget class="QLabel" name="outputIntervalsLabel">
         <property name="text">
@@ -379,42 +379,69 @@
       <item row="4" column="3">
        <widget class="QLineEdit" name="timestepSizesEdit"/>
       </item>
+
       <item row="5" column="0">
+       <widget class="QLabel" name="coordinateScalingLabel">
+        <property name="text">
+         <string>Coordinate Scaling</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QLineEdit" name="coordinateScalingEdit">
+        <property name="text">
+         <string></string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="2">
+       <widget class="QLabel" name="angularFrequencyLabel">
+        <property name="text">
+         <string>Angular Frequency</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="3">
+       <widget class="QLineEdit" name="angularFrequencyEdit"/>
+      </item>
+
+
+      <item row="6" column="0">
        <widget class="QLabel" name="solverInputFileLabel">
         <property name="text">
          <string>Solver input file</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="1">
+      <item row="6" column="1">
        <widget class="QLineEdit" name="solverInputFileEdit">
         <property name="text">
          <string>case.sif</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="2">
+      <item row="6" column="2">
        <widget class="QLabel" name="postFileLabel">
         <property name="text">
          <string>Post file</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="3">
+      <item row="6" column="3">
        <widget class="QLineEdit" name="postFileEdit">
         <property name="text">
          <string>case.vtu</string>
         </property>
        </widget>
       </item>
-      <item row="6" column="0">
+      <item row="7" column="0">
        <widget class="QLabel" name="simulationFreeTextLabel">
         <property name="text">
          <string>Free text</string>
         </property>
        </widget>
       </item>
-      <item row="6" column="1" colspan="3">
+      <item row="7" column="1" colspan="3">
        <widget class="QTextEdit" name="simulationFreeTextEdit">
         <property name="maximumSize">
          <size>
