@@ -1,0 +1,226 @@
+! This is test case for harmonic GCR coupled fluid-structure-interaction
+!
+! A "shoebox" with an elastic lid is being pressed with a force that causes
+! the box to shrink in size. As an effect there is a counterforce due to ideal
+! gas acting as a spring to the other direction.
+!
+! The harmonic gas is presented by the Helmholtz equation.
+! For the elasticity equation the plate solver in harmonic mode is used.
+! Still the system of equations is solved as a real system, for now.
+!
+! P.R. 1.12.2017
+
+
+$ AirDensity = 1.21
+$ SoundSpeed = sqrt( 1.402 * 0.402 * 716 * 293)
+
+
+Header
+  Mesh DB "." "shoebox"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Post File = "harm.vtu"
+
+  Frequency = 100.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+
+Body Force 1
+  Pressure = Real -1.0e5
+End
+
+
+Initial Condition 1
+  Name = "guess p"
+  P = Real 1.0e-12
+End 
+
+Material 1
+  Density = Real $ AirDensity
+  Sound Speed = $ SoundSpeed
+End
+
+Material 2
+  Density = 2710.0
+  Youngs Modulus = 70e9
+  Poisson Ratio = 0.3
+  Thickness = 0.001
+End
+
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+Equation 2
+  Active Solvers(1) = 2
+End
+
+
+Solver 1
+  Use Density = Logical True
+
+  Equation = "Helmholtz"
+  Variable = Pressure[Pressure Re:1 Pressure Im:1]
+
+  Procedure = "HelmholtzSolve" "HelmholtzSolver" 
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  Linear System Max Iterations = 1000  
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+
+! The index of the fluid and structure solver must be given now
+  Fluid Solver Index = Integer 1
+  Plate Solver Index = Integer 2
+
+! Enforces the block mode when solving the system
+  Linear System Block Mode = Logical True
+
+! Define the solvers that build the block system
+! Block system can also be created from components of one solver but not in this case.
+  Block Solvers(2) = Integer 1 2
+
+! Call the assembly for the 2nd solver using the slave solver slot.
+! Could probably be called also otherwise as far as before. 
+  Pre Solvers(1) = 2
+  
+!  Linear System Block Method = String "other"
+  Outer: Linear System Solver = string "Iterative"
+  Outer: Linear System Convergence Tolerance = real 1e-6
+  Outer: Linear System Iterative Method = string GCR
+  Outer: Linear System GCR Restart = Integer 50
+  Outer: Linear System Residual Output = integer 1
+  Outer: Linear System Max Iterations = integer 50
+  Outer: Linear System Min Iterations = integer 3
+
+!  Linear System Scaling = False
+!  block: Linear System Scaling = Logical True  ! seems to work with these as well
+
+  Block Preconditioner = Logical True ! default
+  Block Gauss-Seidel = Logical True   ! if false, jacobi
+
+  Block Scaling = Logical True
+
+! First coupling only works in real mode
+!  Linear System Complex = False
+
+
+!  Linear System test = Logical True
+!  block: Linear System Complex = Logical True
+End
+
+
+Solver 2
+  Equation = Plate Solver
+  Procedure = "Smitc" "SmitcSolver"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  
+  Linear System Max Iterations = 500
+  Linear System Residual Output = 10
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = none
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 10
+
+  Nonlinear System Max Iterations = 1
+
+! The defaults are True for the following 2 keywords:
+!  Linear System Scaling = False
+!  Optimize Bandwidth = False
+
+! "Harmonic analysis" cannot be combined with other linear strategies such
+! as block preconditioning. 
+!  Harmonic Analysis = True
+
+! "Harmonic mode" create a fully functional linear system that can then be
+! treated with other linear strategies. 
+  Harmonic Mode = Logical True
+  Variable Output = Logical False
+
+!  block: Linear System Scaling = Logical True
+!  Linear System Scaling = False
+
+! We may toggle the system to be solved as a real one
+! For hamonic mode the default is True
+!  Linear System Complex = False
+  !block: Linear System Complex = Logical True
+
+!  Linear System Scaling = False
+
+  Exec Solver = never
+  Linear System Solver Disabled = Logical True  
+End
+
+
+
+Solver 3
+  Equation = "SaveScalars"
+  Procedure = File "SaveData" "SaveScalars"
+
+  Variable 1 = Deflection 1
+  Operator 1 = min 
+  Operator 2 = max 
+  Operator 3 = int mean
+
+  Variable 4 = Pressure Re
+  Operator 4 = min
+  Operator 5 = max
+  Operator 6 = int mean
+
+  Filename = harm.dat
+
+!  File Append = Logical True
+End
+
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Name = "Sides"
+
+  Deflection 1 = Real 0.0
+  Deflection 2 = Real 0.0
+  Deflection 3 = Real 0.0
+End 
+
+Boundary Condition 2
+  Target Boundaries(1) = 5
+  Name = "Bottom"
+End 
+
+Boundary Condition 3
+  Target Boundaries(1) = 6
+  Name = "Fsi"
+
+  Save Scalars = True
+  Body Id = 2
+End
+
+Solver 1 :: reference norm = 7.18018127E+04

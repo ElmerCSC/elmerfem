@@ -4593,9 +4593,11 @@ FUNCTION SParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
 
   !*********************************************************************
    dres = 0
+   !$OMP PARALLEL DO REDUCTION(+:dres)
    DO i = 1, ndim
       dres = dres + y(i) * x(i)
    END DO
+   !$OMP END PARALLEL DO 
    CALL SParActiveSUM(dres,0)
 !*********************************************************************
 END FUNCTION SParDotProd
@@ -4620,9 +4622,11 @@ FUNCTION SParNorm( ndim, x, xind ) RESULT(dres)
   INTEGER :: i
   !*********************************************************************
   dres = 0
+  !$OMP PARALLEL DO REDUCTION(+:dres)
   DO i = 1, ndim
     dres = dres + x(i)*x(i)
   END DO
+  !$OMP END PARALLEL DO
   CALL SParActiveSUM(dres,0)
   dres = SQRT(dres)
 !*********************************************************************
@@ -4656,9 +4660,11 @@ FUNCTION SParCDotProd( ndim, x, xind, y, yind ) result (dres)
   !*********************************************************************
   dres = 0.0d0
   IF ( xind == 1 .AND. yind  == 1 ) THEN
+     !$OMP PARALLEL DO REDUCTION(+:dres)
      DO i = 1, ndim
         dres = dres + dconjg(x(i)) * y(i)
      END DO
+     !$OMP END PARALLEL DO 
   ELSE
      CALL Fatal( 'SParCDotProd', 'xind or yind not 1' )
   END IF
@@ -4690,9 +4696,11 @@ FUNCTION SParCNorm( ndim, x, xind ) result (norm)
 
   !*********************************************************************
   norm = 0.0d0
+  !$OMP PARALLEL DO REDUCTION(+:norm)
   DO i = 1, ndim
      norm = norm + REAL(x(i))**2 + AIMAG(x(i))**2
   END DO
+  !$OMP END PARALLEL DO 
   CALL SparActiveSUM(norm,0)
   norm = SQRT(norm)
 !*********************************************************************

@@ -901,11 +901,9 @@ CONTAINS
        M => NULL()
 #ifdef PARALLEL_FOR_REAL
        M => A % ParMatrix % SplittedMatrix % InsideMatrix
-       IF ( PRESENT(x) ) THEN
-          b => M % RHS
-          x => A % ParMatrix % SplittedMatrix % TmpXVec
-          r => A % ParMatrix % SplittedMatrix % TmpRVec
-       END IF
+       IF ( PRESENT(x) ) x => A % ParMatrix % SplittedMatrix % TmpXVec
+       IF ( PRESENT(b) ) b => M % RHS
+       IF ( PRESENT(r) ) r => A % ParMatrix % SplittedMatrix % TmpRVec
 #endif
 !-------------------------------------------------------------------------------
     END FUNCTION ParallelMatrix

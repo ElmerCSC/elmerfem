@@ -1,0 +1,200 @@
+! Test case for handles that make code simpler
+! Here testing for arrays.
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State 
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Simulation Timing = Logical True
+  Timer Results = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+End
+
+Body 3
+  Equation = 1
+  Material = 3
+End
+
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+
+Solver 1
+!  Exec Solver = never
+
+  Equation = KeywordTimer
+  Variable = ConsB
+  Variable DOFs = 1
+  Procedure = "./KeywordCompareTensor" "KeywordCompare"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+! Stabilize = False  ! this is default
+
+  Solver Timing = True
+  Timer Sweeps = Integer 1
+End
+
+
+
+Material 1
+  Name = "Material1"
+
+! Basis material definitions
+  Float Value 1(3) = Real 1.0 2.0 3.0 
+  Float Value 2(2,2) = Real 1.0 0.0 0.0 2.0
+
+  Float Value 3(3) = Variable "time"
+    Real 
+      0 1 2 3
+      5 2 4 6
+    End
+    
+  Float Value 4(2,2) = Variable "time"
+    Real 
+      0 1 0 0 2	
+      5 2 0 0 10 
+    End
+
+  Float Value 5(3) = Variable "Coordinate 1"
+    Real 
+      0 1 2 3
+      5 2 4 7
+    End
+    
+  Float Value 6(2,2) = Variable "Coordinate 1"
+    Real 
+      0 1 0 0 2	
+      5 2 0 0 10 
+    End
+
+  Float Value 7(3) = Variable "time"
+    Real MATC "sin(tx) cos(tx) 0"
+
+  Float Value 8(2,2) = Variable "time"
+    Real MATC "sin(tx) 1 0 cos(tx)"
+
+  Float Value 9(3) = Variable "coordinate 2"
+    Real MATC "sin(tx) cos(tx) 0"
+
+  Float Value 10(2,2) = Variable "coordinate 2"
+    Real MATC "sin(tx) 1 0 cos(tx)"
+End
+
+
+Material 2
+! Material 2 includes the same test except with small variation
+  Name = "Material2"
+
+! Basis material definitions
+  Float Value 1(3) = Real 1.0 2.0 3.0 
+  Float Value 2(2,2) = Real 1.0 0.0 0.0 3.0
+
+  Float Value 3(3) = Variable "time"
+    Real 
+      0 1 2 3
+      5 3 5 6
+    End
+    
+  Float Value 4(2,2) = Variable "time"
+    Real 
+      0 1 0 0 2	
+      5 3 0 0 13
+    End
+
+  Float Value 5(3) = Variable "Coordinate 1"
+    Real 
+      0 1 2 3
+      5 3 5 7
+    End
+    
+  Float Value 6(2,2) = Variable "Coordinate 1"
+    Real 
+      0 1 0 0 2	
+      5 2 0 0 10 
+    End
+
+  Float Value 7(3) = Variable "time"
+    Real MATC "sin(tx) cos(tx) 1"
+
+  Float Value 8(2,2) = Variable "time"
+    Real MATC "sin(tx) 2 0 cos(tx)"
+
+  Float Value 9(3) = Variable "coordinate 2"
+    Real MATC "sin(tx) cos(tx) 1"
+
+  Float Value 10(2,2) = Variable "coordinate 2"
+    Real MATC "sin(tx) 1 2 cos(tx)"
+End 
+
+
+
+Material 3
+! Material 3 includes the same tests except the 2nd always missing
+  Name = "Material3"
+
+
+  Float Value 1(3) = Real 1.0 2.0 3.0 
+
+  Float Value 3(3) = Variable "time"
+    Real 
+      0 1 2 3
+      5 2 4 6
+    End
+    
+  Float Value 5(3) = Variable "Coordinate 1"
+    Real 
+      0 1 2 3
+      5 2 4 6
+    End
+    
+  Float Value 7(3) = Variable "time"
+    Real MATC "sin(tx) cos(tx) 0"
+
+  Float Value 9(3) = Variable "coordinate 2"
+    Real MATC "sin(tx) cos(tx) 0"
+End 
+
+
+
+Boundary Condition 1
+  Name = "BCs" 
+  Target Boundaries = 1
+End
+
+Solver 1 :: Reference Norm = 0.99999219519093629
+
+
+!End Of File
+

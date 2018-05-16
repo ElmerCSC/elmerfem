@@ -43,12 +43,6 @@
 
 #include "../config.h"
 
-#if _OPENMP>=201511
-#define LINEAR_REF(var) LINEAR(REF(var))
-#else
-#define LINEAR_REF(var)
-#endif
-
 MODULE ElementDescription
    USE Integration
    USE GeneralUtils
@@ -59,7 +53,8 @@ MODULE ElementDescription
    USE PElementBase
    ! Vectorized P element basis functions
    USE H1Basis
-
+   USE Lists
+   
    IMPLICIT NONE
 
    INTEGER, PARAMETER,PRIVATE  :: MaxDeg  = 4, MaxDeg3 = MaxDeg**3, &
@@ -2266,7 +2261,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
            
            DO i = 0,p-3
               DO j = 0,p-i-3
@@ -2299,7 +2294,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
           
            DO i=2,(p-2)
               DO j=2,(p-i)
@@ -2361,7 +2356,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            DO i=0,p-4
@@ -2441,7 +2436,7 @@ END IF
            ! Get element p
            p = Element % PDefs % p
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            ! Calculate value of bubble functions from indexes
@@ -2528,7 +2523,7 @@ END IF
            ! Get p from element
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
            
            ! For each bubble calculate value of basis function and its derivative
@@ -2595,9 +2590,9 @@ END IF
            ! Get p from bubble DOFs 
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
-           
+
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
            DO i=2,p-4
@@ -2770,7 +2765,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
            
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2847,7 +2842,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
 
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2940,7 +2935,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            ! For each DOF in bubbles calculate value of bubble functions
@@ -3065,7 +3060,7 @@ END IF
            ! Get element p
            p = Element % PDefs % p
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
            ! Calculate value of bubble functions from indexes
@@ -3207,7 +3202,7 @@ END IF
            ! Get p from element
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
            
            ! For each bubble calculate value of basis function and its derivative
@@ -3312,8 +3307,9 @@ END IF
            ! Get p from bubble DOFs 
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+
            
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
@@ -3758,7 +3754,7 @@ END IF
            ! edge directions
            IF (ll==1) THEN
              ! Compute P from bubble dofs
-             P = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+             P = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
@@ -3809,7 +3805,7 @@ END IF
            ! edge directions
            IF (ll==1) THEN
              ! Compute P from bubble dofs
-             P = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+             P = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
 
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
@@ -3912,7 +3908,7 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P based on bubble dofs
-           P=NINT(1/3d0*(81*(Element % BDOFS) + &
+           P=CEILING(1/3d0*(81*(Element % BDOFS) + &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
                  1d0/(81*(Element % BDOFS)+ &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
@@ -3965,7 +3961,7 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
-           P=NINT(1/3d0*(81*(Element % BDOFS) + &
+           P=CEILING(1/3d0*(81*(Element % BDOFS) + &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
                  1d0/(81*(Element % BDOFS)+ &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
@@ -4018,7 +4014,7 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
-           P=NINT(1/3d0*(81*Element % BDOFS + &
+           P=CEILING(1/3d0*(81*Element % BDOFS + &
                  3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
                  1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
 
@@ -4050,7 +4046,7 @@ END IF
          RETURN
        END IF
 
-       !$OMP SIMD
+       !_ELMER_OMP_SIMD
        DO i=1,ncl
          DetJ(i+ll-1)=DetJWrk(i)
        END DO
@@ -4060,7 +4056,7 @@ END IF
        ! First derivatives
        IF (PRESENT(dBasisdx)) THEN
 !DIR$ FORCEINLINE
-         CALL ElementInfoVec_ElementBasisToGlobal(ncl, nbp, dBasisdxWrk, dim, cdim, LtoGMapsWrk, ll, dBasisdx)
+         CALL ElementInfoVec_ElementBasisToGlobal(ncl, nbp, nbmax, dBasisdxWrk, dim, cdim, LtoGMapsWrk, ll, dBasisdx)
        END IF
      END DO ! Block over Gauss points
   CONTAINS
@@ -4136,12 +4132,13 @@ END IF
    END FUNCTION ElementInfoVec_ComputePElementBasis
 !------------------------------------------------------------------------------
    
-   SUBROUTINE ElementInfoVec_ElementBasisToGlobal(npts, nbasis, dLBasisdx, dim, cdim, LtoGMap, offset, dBasisdx)
+   SUBROUTINE ElementInfoVec_ElementBasisToGlobal(npts, nbasis, nbmax, dLBasisdx, dim, cdim, LtoGMap, offset, dBasisdx)
      IMPLICIT NONE
 
      INTEGER, INTENT(IN) :: npts
      INTEGER, INTENT(IN) :: nbasis
-     REAL(KIND=dp), INTENT(IN) :: dLBasisdx(VECTOR_BLOCK_LENGTH,nbasis,3)
+     INTEGER, INTENT(IN) :: nbmax
+     REAL(KIND=dp), INTENT(IN) :: dLBasisdx(VECTOR_BLOCK_LENGTH,nbmax,3)
      INTEGER, INTENT(IN) :: dim
      INTEGER, INTENT(IN) :: cdim
      REAL(KIND=dp), INTENT(IN) :: LtoGMap(VECTOR_BLOCK_LENGTH,3,3)
@@ -4157,38 +4154,35 @@ END IF
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,npts
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)
            END DO
-           !$OMP END SIMD
          END DO
        END DO
      CASE(2)
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,npts
              ! Map local basis function to global
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
                    dLBasisdx(l,i,2)*LtoGMap(l,j,2)
            END DO
-           !$OMP END SIMD
          END DO
        END DO
      CASE(3)
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,npts
              ! Map local basis function to global
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
                    dLBasisdx(l,i,2)*LtoGMap(l,j,2)+ &
                    dLBasisdx(l,i,3)*LtoGMap(l,j,3)
            END DO
-           !$OMP END SIMD
          END DO
        END DO
      END SELECT
@@ -9919,23 +9913,20 @@ END IF
          utind = GetSymmetricIndex(i,j)
          SELECT CASE (cdim)
          CASE(1)
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)
            END DO
-           !$OMP END SIMD
          CASE(2)
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)
            END DO
-           !$OMP END SIMD
          CASE(3)
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)+dx(l,3,i)*dx(l,3,j)
            END DO
-           !$OMP END SIMD
          END SELECT
        END DO
      END DO
@@ -9960,17 +9951,15 @@ END IF
        END DO
 
        IF (AllSuccess) THEN
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            ! Metric(i,1,1) = REAL(1,dp)/DetJ(i)
            Metric(i,1) = REAL(1,dp)/DetJ(i)
          END DO
-         !$OMP END SIMD
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT( DetJ(i))
          END DO
-         !$OMP END SIMD
        END IF
 
 
@@ -9979,13 +9968,12 @@ END IF
        !------------------------------------------------------------------------------
      CASE (2)
        ! Determinants
-       !$OMP SIMD
+       !_ELMER_OMP_SIMD
        DO i=1,nc
          ! DetJ(i) = ( G(i,1,1)*G(i,2,2) - G(i,1,2)*G(i,2,1) )
          ! G is symmetric
          DetJ(i) = G(i,1)*G(i,3)-G(i,2)*G(i,2)
        END DO
-       !$OMP END SIMD
 
        DO i=1,nc
          IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
@@ -9996,7 +9984,7 @@ END IF
 
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            s = REAL(1,dp)/DetJ(i)
            ! G is symmetric
@@ -10005,20 +9993,18 @@ END IF
            Metric(i,2) = -s*G(i,2)
            Metric(i,3) =  s*G(i,1)
          END DO
-         !$OMP END SIMD
-
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT(DetJ(i))
          END DO
-         !$OMP END SIMD
+
        END IF
        !------------------------------------------------------------------------------
        !       Volume elements
        !------------------------------------------------------------------------------
      CASE (3)
        ! Determinants
-       !$OMP SIMD
+       !_ELMER_OMP_SIMD
        DO i=1,nc
          ! DetJ(i) = G(i,1,1) * ( G(i,2,2)*G(i,3,3) - G(i,2,3)*G(i,3,2) ) + &
          !           G(i,1,2) * ( G(i,2,3)*G(i,3,1) - G(i,2,1)*G(i,3,3) ) + &
@@ -10028,7 +10014,6 @@ END IF
                  G(i,2)*(G(i,5)*G(i,4)-G(i,2)*G(i,6)) + &
                  G(i,4)*(G(i,2)*G(i,5)-G(i,3)*G(i,4))
        END DO
-       !$OMP END SIMD
 
        DO i=1,nc
          IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
@@ -10039,7 +10024,7 @@ END IF
 
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            s = REAL(1,dp) / DetJ(i)
            ! Metric(i,1,1) =  s * (G(i,2,2)*G(i,3,3) - G(i,3,2)*G(i,2,3))
@@ -10055,13 +10040,11 @@ END IF
            Metric(i,5)=-s*(G(i,1)*G(i,5)-G(i,2)*G(i,4))
            Metric(i,6)= s*(G(i,1)*G(i,3)-G(i,2)*G(i,2))
          END DO
-         !$OMP END SIMD
 
-         !$OMP SIMD
+         !_ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT(DetJ(i))
          END DO
-         !$OMP END SIMD
 
        END IF
      END SELECT
@@ -10071,32 +10054,29 @@ END IF
        CASE(1)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1)
            END DO
-           !$OMP END SIMD
          END DO
        CASE(2)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3)
            END DO
-           !$OMP END SIMD
          END DO
        CASE(3)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2) + dx(l,i,3)*Metric(l,4)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3) + dx(l,i,3)*Metric(l,5)
              LtoGMap(l,i,3) = dx(l,i,1)*Metric(l,4) + dx(l,i,2)*Metric(l,5) + dx(l,i,3)*Metric(l,6)
            END DO
-           !$OMP END SIMD
          END DO
        END SELECT
      ELSE
@@ -10123,7 +10103,6 @@ END IF
        IMPLICIT NONE
        INTEGER, INTENT(IN) :: i, j
        INTEGER :: utind
-       !$OMP DECLARE SIMD(GetSymmetricIndex) UNIFORM(j) LINEAR_REF(i) NOTINBRANCH
 
        IF (i>j) THEN
          utind = i*(i-1)/2+j
@@ -11124,6 +11103,102 @@ END IF
   END FUNCTION BrickInside
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Check if the current element has been defined passive.
+!> This is done by inspecting a looking an the values of "varname Passive"
+!> in the Body Force section. It is determined to be passive if it has 
+!> more positive than negative hits in an element.
+!------------------------------------------------------------------------------
+  FUNCTION CheckPassiveElement( UElement )  RESULT( IsPassive )
+    !------------------------------------------------------------------------------
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
+    LOGICAL :: IsPassive
+    !------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), ALLOCATABLE :: Passive(:)
+    INTEGER :: body_id, bf_id, nlen, NbrNodes,PassNodes, LimitNodes
+    LOGICAL :: Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: PassName, PrevPassName
+    LOGICAL :: NoPassiveElements = .FALSE.
+
+    SAVE Passive, PrevPassName, NoPassiveElements
+    !$OMP THREADPRIVATE(Passive, PrevPassName, NoPassiveElements)
+    !------------------------------------------------------------------------------
+    IsPassive = .FALSE.
+
+
+    nlen = CurrentModel % Solver % Variable % NameLen
+    PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'     
+
+    IF( PassName(1:nlen) == PrevPassName(1:nlen) ) THEN
+      IF( NoPassiveElements ) RETURN
+    ELSE
+      NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce( CurrentModel, PassName )
+      PrevPassName = PassName
+      IF( NoPassiveElements ) RETURN       
+    END IF
+
+    IF (PRESENT(UElement)) THEN
+      Element => UElement
+    ELSE
+#ifdef _OPENMP
+      IF (omp_in_parallel()) THEN
+        CALL Fatal('CheckPassiveElement', &
+             'Need an element to update inside a threaded region')
+      END IF
+#endif
+      Element => CurrentModel % CurrentElement
+    END IF
+
+    body_id = Element % BodyId 
+    IF ( body_id <= 0 )  RETURN   ! body_id == 0 for boundary elements
+
+    bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+         'Body Force', Found, minv=1,maxv=CurrentModel % NumberOfBodyForces )
+    IF ( .NOT. Found )  RETURN
+
+    IF ( ListCheckPresent(CurrentModel % BodyForces(bf_id) % Values, PassName) ) THEN
+      NbrNodes = Element % TYPE % NumberOfNodes
+      IF ( ALLOCATED(Passive) ) THEN
+        IF ( SIZE(Passive) < NbrNodes ) THEN
+          DEALLOCATE(Passive)
+          ALLOCATE( Passive(NbrNodes) )
+        END IF
+      ELSE
+        ALLOCATE( Passive(NbrNodes) )
+      END IF
+      Passive(1:NbrNodes) = ListGetReal( CurrentModel % BodyForces(bf_id) % Values, &
+           PassName, NbrNodes, Element % NodeIndexes )
+      PassNodes = COUNT(Passive(1:NbrNodes)>0)
+
+      ! Go through the extremum cases first, and if the element is not either fully 
+      ! active or passive, then check for some possible given criteria for determining 
+      ! the element active / passive. 
+      !------------------------------------------------------------------------------
+      IF( PassNodes == 0 ) THEN
+        CONTINUE
+      ELSE IF( PassNodes == NbrNodes ) THEN
+        IsPassive = .TRUE.
+      ELSE
+        LimitNodes = ListGetInteger( CurrentModel % BodyForces(bf_id) % Values, &
+             'Passive Element Min Nodes',Found )
+        IF( Found ) THEN
+          IsPassive = ( PassNodes >= LimitNodes )
+        ELSE
+          LimitNodes = ListGetInteger( CurrentModel % BodyForces(bf_id) % Values, &
+               'Active Element Min Nodes',Found )
+          IF( Found ) THEN
+            IsPassive = ( PassNodes > NbrNodes - LimitNodes )
+          ELSE
+            IsPassive = ( 2*PassNodes > NbrNodes )
+          END IF
+        END IF
+      END IF
+    END IF
+
+!------------------------------------------------------------------------------
+  END FUNCTION CheckPassiveElement
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !>   Normal will point from more dense material to less dense
@@ -11144,35 +11219,43 @@ END IF
 
     REAL(KIND=dp) :: x1,y1,z1
     REAL(KIND=dp), ALLOCATABLE :: nx(:),ny(:),nz(:)
+    LOGICAL :: LPassive
 !------------------------------------------------------------------------------
-
+    
     IF(.NOT. ASSOCIATED( Boundary % BoundaryInfo ) )  RETURN
-
+    
     k = Boundary % BoundaryInfo % OutBody
 
     LeftElement => Boundary % BoundaryInfo % Left
 
+    Element => Null()
     IF ( ASSOCIATED(LeftELement) ) THEN
        RightElement => Boundary % BoundaryInfo % Right
-
-       IF ( ASSOCIATED( RightElement ) ) THEN
-         IF ( k > 0 ) THEN
-            IF ( LeftElement % BodyId == k ) THEN
+       IF ( ASSOCIATED( RightElement ) ) THEN ! we have a body-body boundary        
+         IF ( k > 0 ) THEN ! declared outbody 
+           IF ( LeftElement % BodyId == k ) THEN
+             Element => RightElement
+           ELSE
+             Element => LeftElement
+           END IF
+         ELSE IF (LeftElement % BodyId > RightElement % BodyId) THEN ! normal pointing into body with lower body ID
+             Element => LeftElement
+         ELSE IF (LeftElement % BodyId < RightElement % BodyId) THEN! normal pointing into body with lower body ID
+           Element => RightElement
+         ELSE ! active/passive boundary
+           LPassive = CheckPassiveElement( LeftElement )
+           IF (LPassive .NEQV. CheckPassiveElement( RightElement )) THEN 
+             IF(LPassive) THEN
                Element => RightElement
-            ELSE
+             ELSE
                Element => LeftElement
-            END IF
-         ELSE
-            IF (LeftElement % BodyId > RightElement % BodyId) THEN
-              Element => LeftElement
-            ELSE
-              Element => RightElement
-            END IF
+             END IF
+           END IF
          END IF
-       ELSE
-          Element => LeftElement
+       ELSE ! body-vacuum boundary from left->right
+         Element => LeftElement
        END IF
-    ELSE
+    ELSE! body-vacuum boundary from right->left
        Element => Boundary % BoundaryInfo % Right
     END IF
 
@@ -11230,7 +11313,6 @@ END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE CheckNormalDirection
 !------------------------------------------------------------------------------
-
 
 
 !------------------------------------------------------------------------------

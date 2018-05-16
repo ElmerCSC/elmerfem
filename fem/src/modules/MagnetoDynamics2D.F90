@@ -432,13 +432,13 @@ CONTAINS
 
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:), &
-      CubicCoeff(:), HB(:,:)
+    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
+    REAL(KIND=dp), POINTER :: CubicCoeff(:) => NULL(), HB(:,:) => NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
     TYPE(ValueList_t), POINTER :: Material, BodyForce
 
     TYPE(Nodes_t), SAVE :: Nodes
-!$omp threadprivate(Nodes)
+!$omp threadprivate(Nodes, CubicCoeff, HB)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: CoilBody    
     TYPE(ValueList_t), POINTER :: CompParams
@@ -447,8 +447,6 @@ CONTAINS
     REAL(KIND=dp) :: nu_tensor(2,2)
     REAL(KIND=dp) :: B_ip(2), Alocal
 !------------------------------------------------------------------------------
-    CubicCoeff => NULL()
-    HB => NULL()
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
     JAC  = 0._dp
@@ -2568,7 +2566,14 @@ CONTAINS
          DO i = 1, 2
            BodyLorentzForcesRe(i,j) = ParallelReduction(BodyLorentzForcesRe(i,j))
            BodyLorentzForcesIm(i,j) = ParallelReduction(BodyLorentzForcesIm(i,j))
+           IF (ISNAN(BodyLorentzForcesRe(i, j))) THEN
+             BodyLorentzForcesRe(i, j)=0._dp
+           END IF  
+           IF (ISNAN(BodyLorentzForcesIm(i, j))) THEN
+             BodyLorentzForcesIm(i, j)=0._dp
+           END IF  
          END DO
+
          WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLorentzForcesRe(1, j)
          WRITE (bodyNumber, "(I0)") j
          CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 re in Body '&

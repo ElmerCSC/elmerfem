@@ -1756,16 +1756,16 @@ CONTAINS
     TYPE(NeighbourList_T), ALLOCATABLE :: PartNeighbourList(:)
     INTEGER :: i,j,k,m,n,prev,next,part_start,find_start,find_fin,find_stride,put_start,&
          put_fin, counter,NoNodes, NoNodesOnEdge, NoNeighbours, neigh, Segments, TotSegSplits, &
-         direction, index, segnum, soff, foff, target_nodenum, next_nodenum, EdgeBCtag
+         direction, index, segnum, soff, foff, target_nodenum, next_nodenum, EdgeBCtag, GlobalNN
     INTEGER :: comm, ierr !MPI stuff
     INTEGER, POINTER :: UnorderedNodeNums(:)=>NULL(), OrderedNodeNums(:), &
          UOGlobalNodeNums(:)=>NULL(), OrderedGlobalNodeNums(:)=>NULL()
     INTEGER, ALLOCATABLE :: NeighbourPartsList(:), PartNodesOnEdge(:), &
          disps(:), nodenum_disps(:), PartOrder(:,:), MyCornerNodes(:), MyNeighbourParts(:), &
          NewSegStart(:), PartSegments(:), SegStarts_Gather(:), WorkInt(:), NodeNeighbours(:,:), &
-         MyOrphans(:), POrphanCounts(:), GlobalOrphans(:), OrphanParts(:), BadParts(:)
+         GlobalCorners(:), CornerParts(:), PCornerCounts(:)
     LOGICAL :: Debug, ActivePart, Boss, Simpl, NotThis, Found, ThisBC
-    LOGICAL, ALLOCATABLE :: OnEdge(:), ActivePartList(:), RemoveNode(:), IsCornerNode(:), Orphan(:)
+    LOGICAL, ALLOCATABLE :: OnEdge(:), ActivePartList(:), RemoveNode(:), IsCornerNode(:)
     REAL(KIND=dp) :: prec
     CHARACTER(MAX_NAME_LEN) :: FuncName
 
@@ -1818,10 +1818,9 @@ CONTAINS
        Simpl = .FALSE.
     END IF
 
-    ALLOCATE(OnEdge(NoNodes), NodeNeighbours(NoNodes,2), Orphan(NoNodes))
+    ALLOCATE(OnEdge(NoNodes), NodeNeighbours(NoNodes,2))
     OnEdge = .FALSE.
     NodeNeighbours = -1
-    Orphan = .FALSE.
 
     !Find correct BC from logical
     DO i=1,Model % NumberOfBCs
@@ -1838,11 +1837,8 @@ CONTAINS
        IF(Element % BoundaryInfo % Constraint /= EdgeBCtag) CYCLE !elem not on lateral boundary
        IF(.NOT. ANY(TopPerm(Element % NodeIndexes) > 0)) CYCLE !elem contains no nodes on top
 
-       IF(GetElementFamily(Element) == 1) THEN
-          PRINT *, ParEnv % MyPE, ' Debug, cycling 101 element'
-          Orphan(Element % NodeIndexes) = .TRUE.
-          CYCLE !dirichlet orphan node, not required.
-       END IF
+       IF(GetElementFamily(Element) == 1) &
+            CALL Fatal(FuncName, "101 Elements are supposed to be a thing of the past!")
 
        !Cycle nodes in element
        DO j=1,Element % TYPE % NumberOfNodes
@@ -1866,52 +1862,11 @@ CONTAINS
     END DO
 
     NoNodesOnEdge = COUNT(OnEdge)
-
-    !Orphan node - possible redundancy later if using this
     IF(NoNodesOnEdge == 1) THEN
-       NoNodesOnEdge = 0
-       OnEdge = .FALSE.
+      CALL Fatal(FuncName, "A single node identified on boundary, shouldnt be possible. &
+           &Someone is messing around with 101 elements.")
     END IF
 
-    ALLOCATE(MyOrphans(COUNT(Orphan)))
-    counter = 0
-    DO i=1,NoNodes
-       IF(.NOT. Orphan(i)) CYCLE
-       counter = counter + 1
-       MyOrphans(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
-    END DO
-
-    !gather orphan count
-    ALLOCATE(POrphanCounts(ParEnv % PEs),disps(ParEnv % PEs))
-
-    CALL MPI_AllGather(SIZE(MyOrphans), 1, MPI_INTEGER, POrphanCounts, &
-         1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
-
-    disps(1) = 0
-    DO i=2, ParEnv % PEs
-       disps(i) = disps(i-1) + POrphanCounts(i-1)
-    END DO
-    ALLOCATE(GlobalOrphans(SUM(POrphanCounts)),&
-         OrphanParts(SUM(POrphanCounts)))
-
-    !gather orphans
-    CALL MPI_AllGatherV(MyOrphans, SIZE(MyOrphans), MPI_INTEGER, &
-         GlobalOrphans, POrphanCounts, disps, MPI_INTEGER, &
-         ELMER_COMM_WORLD, ierr)
-
-    !note which partition sent each orphan node
-    counter = 1
-    DO i=1,ParEnv % PEs
-       IF(POrphanCounts(i) == 0) CYCLE
-       OrphanParts(counter:counter+POrphanCounts(i)-1) = i-1
-       counter = counter + POrphanCounts(i)
-    END DO
-
-    DEALLOCATE(MyOrphans, Orphan)
-
-    !Case to handle here: 
-    !   Only 0 or 1 nodes found
-    !   Should only occur in parallel, or else an error
     ALLOCATE(UnorderedNodeNums(NoNodesOnEdge),&
          OrderedNodeNums(NoNodesOnEdge))
     OrderedNodeNums = -1 !initialize to invalid value
@@ -1973,9 +1928,6 @@ CONTAINS
           END IF
           counter = counter + 1
 
-          !TODO, should use ActiveNode here to take care of single unconnected nodes 
-          !on boundary.  Haven't yet though...
-
           !----------------------------------------------------
           !   Move along from corner, filling in order
           !----------------------------------------------------
@@ -2005,13 +1957,50 @@ CONTAINS
        !0 node case, obvious
        !1 node case, if THIS partition only has one node on the boundary,
        !this same node must be caught by two other partitions, so we aren't needed.
-       ALLOCATE(NewSegStart(0))
+       ALLOCATE(NewSegStart(0), MyCornerNodes(0))
        ActivePart = .FALSE.
        Segments = 0
        NoNodesOnEdge = 0 !simplifies mpi comms later
        IF(.NOT.Parallel) CALL Fatal(FuncName,&
             "Found either 1 or 0 nodes in a serial run, this isn't a valid boundary edge!")
     END IF
+
+
+    !gather corner count - replaces 101 element detection
+    ALLOCATE(PCornerCounts(ParEnv % PEs),disps(ParEnv % PEs))
+
+    CALL MPI_AllGather(SIZE(MyCornerNodes), 1, MPI_INTEGER, PCornerCounts, &
+         1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
+    disps(1) = 0
+    DO i=2, ParEnv % PEs
+       disps(i) = disps(i-1) + PCornerCounts(i-1)
+    END DO
+
+    ALLOCATE(GlobalCorners(SUM(PCornerCounts)),&
+         CornerParts(SUM(PCornerCounts)))
+
+    !gather corner nodenums
+    CALL MPI_AllGatherV(Mesh % ParallelInfo % GlobalDOFs(UnorderedNodeNums(MyCornerNodes)), &
+         SIZE(MyCornerNodes), MPI_INTEGER, GlobalCorners, PCornerCounts, disps, &
+         MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
+    !note which partition sent each corner node
+    counter = 1
+    DO i=1,ParEnv % PEs
+       IF(PCornerCounts(i) == 0) CYCLE
+       CornerParts(counter:counter+PCornerCounts(i)-1) = i-1
+       counter = counter + PCornerCounts(i)
+    END DO
+
+    !Quick check:
+    DO i=1,SIZE(GlobalCorners)
+      counter = COUNT(GlobalCorners == GlobalCorners(i))
+      IF(counter > 2) CALL Fatal(FuncName,"Programming error in partition segment detection, node found too many times!")
+    END DO
+
+    !Now GlobalCorners and CornerParts tell us which partitions found corner nodes
+    !(i.e. nodes which will join other segments)
 
     !Remember that, in parallel, we're using local rather than global node numbers
     IF(Parallel) THEN
@@ -2030,51 +2019,16 @@ CONTAINS
                 n = OrderedNodeNums(NewSegStart(i/2))
              END IF
              
-             NoNeighbours = SIZE(Mesh %  ParallelInfo % NeighbourList(n)&
-                  % Neighbours)
-             SELECT CASE(NoNeighbours)
-             CASE(1) !no neighbour, edge of domain
-                MyNeighbourParts(i) = -1
-
-             CASE(2) !get the neighbour partition number
-
-                !Rare case involving non-contiguity of partition and corner 101 node
-                IF(ANY(GlobalOrphans == &
-                     Mesh % ParallelInfo % GLobalDOFs(n) )) THEN
-                   MyNeighbourParts(i) = -1
-                   CYCLE
-                END IF
-
-                !Normal case, at a corner...
-                DO j=1,2
-                   IF(Mesh % ParallelInfo % NeighbourList(n) % &
-                        Neighbours(j) == ParEnv % MyPE) CYCLE
-                   MyNeighbourParts(i) = Mesh % ParallelInfo % NeighbourList(n) % Neighbours(j)
-                END DO
-
-             CASE DEFAULT
-                IF(.NOT. ANY(GlobalOrphans == Mesh % ParallelInfo % GlobalDOFs(n))) &
-                     CALL Fatal(FuncName,"Weird: Node appears in more than 2 partitions, &
-                     but it isn't marked as an orphan")
-
-                !In case of 3 or more partitions sharing a corner node...
-                !will be overwritten if this is not the case
-                MyNeighbourParts(i) = -1
-
-                ALLOCATE(BadParts(COUNT(GlobalOrphans == Mesh % ParallelInfo % GlobalDOFs(n))))
-                BadParts = PACK(OrphanParts, GlobalOrphans == Mesh % ParallelInfo % GlobalDOFs(n))
-                DO j=1,NoNeighbours
-                   IF(Mesh % ParallelInfo % NeighbourList(n) % Neighbours(j) == ParEnv % MyPE) CYCLE
-                   IF(ANY(BadParts == Mesh % ParallelInfo % NeighbourList(n) % Neighbours(j))) THEN
-                      IF(Debug) PRINT *,ParEnv % MyPE, 'Debug, cycling bad neighbour: ',&
-                           Mesh % ParallelInfo % NeighbourList(n) % Neighbours(j)
-                      CYCLE
-                   END IF
-                   MyNeighbourParts(i) = Mesh % ParallelInfo % NeighbourList(n) % Neighbours(j)
-                   
-                END DO
-                DEALLOCATE(BadParts)
-             END SELECT
+             MyNeighbourParts(i) = -1 !default if not caught in loop below
+             GlobalNN = Mesh % ParallelInfo % GlobalDOFs(n)
+             DO j=1,SIZE(GlobalCorners)
+               IF(GlobalCorners(j) /= GlobalNN) CYCLE
+               IF(CornerParts(j) == ParEnv % MyPE) CYCLE
+               MyNeighbourParts(i) = CornerParts(j)
+               IF( .NOT. (ANY(Mesh % ParallelInfo % NeighbourList(n) % Neighbours &
+                    == MyNeighbourParts(i)))) CALL Fatal(FuncName, &
+                    "Failed sanity check on neighbour partition detection.")
+             END DO
           END DO
        ELSE
           ALLOCATE(MyNeighbourParts(0))
@@ -2560,7 +2514,7 @@ CONTAINS
 
     !------------ DEALLOCATIONS ------------------
 
-    DEALLOCATE(OnEdge, UnorderedNodeNums, GlobalOrphans, OrphanParts)
+    DEALLOCATE(OnEdge, UnorderedNodeNums, GlobalCorners, CornerParts, PCornerCounts)
 
     IF(Boss .AND. Parallel) THEN !Deallocations
        DEALLOCATE(UnorderedNodes % x, &

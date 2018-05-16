@@ -855,6 +855,7 @@ CONTAINS
               NULLIFY( Model % Solvers(i) % Variable )
               NULLIFY( Model % Solvers(i) % ActiveElements )
               Model % Solvers(i) % NumberOfActiveElements = 0
+              Model % Solvers(i) % SolverId = i
             END DO
           ELSE
             Model % NumberOfSolvers = MAX( Arrayn, Model % NumberOfSolvers )
@@ -2628,18 +2629,20 @@ CONTAINS
       ! For debugging it may be useful to show several.
       MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
           'Max Output Partition', GotIt )    
-      
-      MinOutputPE = ListGetInteger( CurrentModel % Simulation, &
-          'Min Output Partition', GotIt )    
-      
-      IF( ParEnv % MyPe >= MinOutputPE .AND. &
-          ParEnv % MyPe <= MaxOutputPE ) THEN 
-        OutputPE = ParEnv % MyPE
-      ELSE
-        OutputPE = -1
-      END IF
-  
-
+      IF( GotIt ) THEN
+        MaxOutputPE = MIN(ParEnv % PEs, MaxOutputPE)        
+        MinOutputPE = ListGetInteger( CurrentModel % Simulation, &
+            'Min Output Partition', GotIt )    
+        MinOutputPE = MAX(0, MinOutputPE)
+        
+        IF( ParEnv % MyPe >= MinOutputPE .AND. &
+            ParEnv % MyPe <= MaxOutputPE ) THEN 
+          OutputPE = ParEnv % MyPE
+        ELSE
+          OutputPE = -1
+        END IF
+      END IF 
+                    
     END SUBROUTINE InitializeOutputLevel
 !------------------------------------------------------------------------------
   END FUNCTION LoadModel
@@ -5197,7 +5200,7 @@ END SUBROUTINE GetNodalElementSize
 
    CALL Info('FreeModel','Freeing solvers',Level=15)  
    DO i=1,Model % NumberOfSolvers
-     CALL Info('FreeModel','Solver: '//TRIM(I2S(i)),Level=32)
+     CALL Info('FreeModel','Solver: '//TRIM(I2S(i)),Level=20)
      CALL FreeSolver(Model % Solvers(i))
    END DO
    DEALLOCATE(Model % Solvers)

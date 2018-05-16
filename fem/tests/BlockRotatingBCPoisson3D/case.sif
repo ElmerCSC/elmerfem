@@ -1,0 +1,238 @@
+! Test case that combines mortar BCs with block strategy.
+! The constrained system is solved by using a mass matrix copied from
+! the mortar matrix to the diagonal. 
+! Results agree well with the monolithic version.
+!
+! P.R. 5.12.2017
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mortar3d"
+  Include Path ""
+  Results Directory ""
+End
+   
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 0.1
+  Timestep Intervals = 1 !80
+  Output Intervals = 0
+
+  Simulation Timing = Logical True
+
+! required currently by the block solver strategy
+  Additive Namespaces = Logical True
+End 
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Stator"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Rotor-Hot"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+  Initial Condition = 1
+End
+
+Body 3
+  Target Bodies(1) = 3
+  Name = "Rotor-Cold"
+  Equation = 1
+  Material = 1
+  Body Force = 3
+  Initial Condition = 1
+End
+
+
+Solver 1
+!  Exec Solver = Before all
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+  Translate Before Rotate = Logical True
+End
+
+
+Solver 2
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = -dofs 1 Temperature
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+
+!  Linear System Solver = block
+!  Block test = logical true
+!  Block Solver = Logical True
+
+
+!  Nonlinear System Relaxation Factor = 1.0  
+  Linear System Block Mode  = Logical True
+  
+  Block Preconditioner = Logical True
+  Block Gauss-Seidel = Logical True
+  Block: Linear System Refactorize = Logical False
+
+! Note that block (1,1) can be solved very inaccurately
+  Block 11: Linear System Solver = string "iterative"
+  Block 11: Linear System Convergence Tolerance = real 1.0e-1
+  Block 11: Linear System Iterative Method = string bicgstabl
+  Block 11: Linear System Max Iterations = integer 1000
+  Block 11: Linear System Residual Output = integer 10
+  Block 11: Linear System Preconditioning = String ILU0
+
+! Block (2,2) is the small equation related to the constraint diagonal
+  Block 22: Linear System Solver = string "direct"
+  Block 22: Linear System Direct Method = umfpack
+
+  Outer: Linear System Solver = string "Iterative"
+  Outer: Linear System Convergence Tolerance = real 1e-8
+  Outer: Linear System Iterative Method = string GCR
+  Outer: Linear System Residual Output = integer 1
+  Outer: Linear System Max Iterations = integer 50
+  Outer: Linear System GCR Restart = Integer 50
+
+  Apply Mortar BCs = Logical True
+
+  Linear System Timing = Logical True
+  Solver Timing = Logical True
+  Linear System Timing Cumulative = Logical True
+  Solver Timing Cumulative = Logical True
+
+!  Linear System Scaling = True
+
+! This is an experimental coefficient that affects the convergence
+  Block Diag Coeff = Real 0.1
+
+  Block Scaling = Logical True
+
+
+! These are used for testing, now passive 
+!  Block Diag True = Logical True 
+!  Linear System Abort Not Converged = False
+!  Save Prec Matrix = Logical True
+!  Linear System Scaling = True
+!  Optimize Bandwidth = False
+End
+
+Solver 3
+! Settings mainly for timing and verification
+  Exec Solver = after all
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = pois.dat
+
+  Variable 1 = Temperature
+  Operator 1 = dofs
+  Operator 2 = partitions
+  Operator 3 = min
+  Operator 4 = max
+  Operator 5 = norm
+  Operator 6 = cpu time
+  Operator 7 = wall time
+
+!  File Append = Logical True
+
+! Reduce just to one file when parallel
+  Parallel Reduce = Logical True
+  Default Parallel Operator = String max
+  Parallel Operator 1 = String sum
+End 
+
+Solver 4
+  Exec Solver = after all
+  Equation = VtuOutput
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = pois
+  Vtu Format = Logical True
+  Single Precision = Logical True
+
+  Save Geometry Ids = True
+End 
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 2
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1
+  Heat Capacity = 1
+  Density = 1
+End
+
+Body Force 1
+  Name = "MoveToLeft"
+  Mesh Translate 1 = -4.0
+End
+
+Body Force 2 
+  Name = "Hot Move"
+  Heat Source = 100.0
+  Mesh Rotate 3 = Variable time 
+    Real MATC "20*tx"
+End 
+
+Body Force 3
+  Name = "Cold Move"
+  Heat Source = -100.0
+  Mesh Rotate 3 = Variable time 
+    Real MATC "20*tx"
+End 
+
+Boundary Condition 1
+  Target Boundaries(4) = 10 11 12 13
+  Name = "Ambient"
+  Temperature = 0
+End
+
+Boundary Condition 2
+  Target Boundaries(4) = 6 7 8 9
+  Name = "Mortar Outside"
+End
+
+Boundary Condition 3
+  Target Boundaries(4) = 1 2 3 4
+  Name = "Mortar Inside"
+
+  Mortar BC =  Integer 2
+End
+
+
+Solver 2 :: Reference Norm = 2.19973986

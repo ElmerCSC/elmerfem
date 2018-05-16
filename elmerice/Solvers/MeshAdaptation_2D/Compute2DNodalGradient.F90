@@ -303,4 +303,24 @@ SUBROUTINE Compute2DNodalGradient( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 END SUBROUTINE Compute2DNodalGradient
 !------------------------------------------------------------------------------
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   SUBROUTINE Compute2DNodalGradient_Init( Model,Solver,dt,TransientSimulation )
+   USE DefUtils
+   IMPLICIT NONE
+   !------------------------------------------------------------------------------
+   TYPE(Solver_t), TARGET :: Solver
+   TYPE(Model_t) :: Model
+   REAL(KIND=dp) :: dt
+   LOGICAL :: TransientSimulation
+   !--------------------------------------------------------------------------
+   CHARACTER(LEN=MAX_NAME_LEN) :: Name
+   TYPE(ValueList_t), POINTER :: SolverParams
+  
+   SolverParams => Solver % Values 
 
+   IF(.NOT. ListCheckPresent(SolverParams,'Optimize Bandwidth')) &
+        CALL ListAddLogical(SolverParams,'Optimize Bandwidth',.FALSE.)
+   IF(.NOT. ListCheckPresent(SolverParams,'FE consistent average')) &
+        CALL ListAddLogical(SolverParams,'FE consistent average',.TRUE.)
+   END SUBROUTINE Compute2DNodalGradient_Init

@@ -203,7 +203,7 @@ End
 
 
 Solver 2 :: Reference Norm = 8.45041158E-01
-Solver 2 :: Reference Norm Tolerance = 1.0e-8
+Solver 2 :: Reference Norm Tolerance = 1.0e-7
 
 RUN
 

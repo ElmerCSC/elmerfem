@@ -88,7 +88,6 @@ VARIABLE *str_sprintf(var) VARIABLE *var;
   FREEMEM(fmt);
 
   res = var_temp_new(TYPE_STRING,1,strlen(str_pstr));
-
   for(i = 0; i < NCOL(res); i++)
   {
     M(res,0,i) = str_pstr[i];
@@ -243,6 +242,26 @@ VARIABLE *str_cvtmat(var) VARIABLE *var;
 }
 
 
+
+VARIABLE *str_env(var) VARIABLE *var;
+{
+  VARIABLE *res = NULL;
+  int i;
+  char *name = var_to_string(var), *str;
+
+  str = getenv(name);
+
+  if ( str ) {
+    res = var_temp_new(TYPE_STRING,1,strlen(str));
+    for(i = 0; i < NCOL(res); i++)
+    {
+      M(res,0,i) = str[i];
+    }
+  }
+
+  return res;
+}
+
 void str_com_init()
 {
   static char *sprintfHelp =
@@ -277,8 +296,15 @@ void str_com_init()
      "SEE ALSO: fread, matcvt.\n"
   };
 
+  static char *envHelp =
+  {
+     "str = env(name)\n"
+     "return environment variable value.\n"
+  };
+
   com_init( "sprintf", FALSE, TRUE, str_sprintf, 1, 2, sprintfHelp );
   com_init( "sscanf",  FALSE, TRUE, str_sscanf,  2, 2, sscanfHelp  );
   com_init( "matcvt",  FALSE, TRUE, str_matcvt,  2, 2, matcvtHelp  );
   com_init( "cvtmat",  FALSE, TRUE, str_cvtmat,  2, 2, cvtmatHelp  );
+  com_init( "env",     FALSE, TRUE, str_env,  1, 1, envHelp  );
 }

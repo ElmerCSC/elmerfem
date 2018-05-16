@@ -102,7 +102,7 @@
      LOGICAL ::  found
      TYPE(Element_t), POINTER :: Element
      INTEGER :: status(MPI_STATUS_SIZE)
-     INTEGER :: i,j,k,l,m,proc,rcnt,nn, dof, dofs, Active
+     INTEGER :: i,j,k,l,m,proc,rcnt,nn, dof, dofs, Active, Totcnt
      REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
      INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:)
 
@@ -167,6 +167,10 @@
            END DO
          END DO
        END DO
+
+       totcnt = SUM(cnt)
+       CALL CheckBuffer( ParEnv % PEs*(1+MPI_BSEND_OVERHEAD) + 4*totcnt + &
+                  3*COUNT(cnt/=0)*MPI_BSEND_OVERHEAD)
 
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN
@@ -388,7 +392,7 @@
      INTEGER :: status(MPI_STATUS_SIZE)
      REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
      INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:), perm(:)
-     INTEGER :: i,j,k,l,m,ii,jj,proc,rcnt,nn, dof, dofs, Active, n, nm, ierr
+     INTEGER :: i,j,k,l,m,ii,jj,proc,rcnt,nn, dof, dofs, Active, n, nm, ierr,totcnt
 
      TYPE Buf_t
         REAL(KIND=dp), ALLOCATABLE :: gval(:)
@@ -451,6 +455,10 @@
            END IF
          END DO
        END DO
+
+       totcnt = SUM(cnt)
+       CALL CheckBuffer( ParEnv % PEs*(1+MPI_BSEND_OVERHEAD) + 4*totcnt + &
+                  3*COUNT(cnt/=0)*MPI_BSEND_OVERHEAD)
 
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN

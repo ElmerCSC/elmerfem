@@ -1,0 +1,128 @@
+!
+! Solve nonlinear shell equations of Reissner-Naghdi type when the shell 
+! solver reads the director data as an ordinary Elmer solver variable. This
+! case can also be run in parallel, while parallel execution is not currently
+! possible if the data file format mesh.director or mesh.elements.data is used
+! to specify the director (currently there is no parallel file formats for these
+! files). 
+!
+! This case employs a slightly modified version of the solver NormalSolver
+! (the source code is contained in CylinderNormalSolver.F90).
+! The original mesh files located in the mesh directory give nodes which are on
+! a cylindrical surface. The known relation between the global coordinates and
+! the director vector is used to solve the Elmer variable 'Director' that
+! represents the shell director data.
+!
+! A cylindrical benchmark problem with membrane-dominated asymptotic behaviour 
+! in the linear regime is solved. The linearized problem has been described in 
+! Pitkäranta et al. Shell deformation states and the finite element method: 
+! a benchmark study of cylindrical shells. Computer Methods in Applied Mechanics
+! and Engineering 1995. 128:81-121. Here the shell is subject to a moderate 
+! load so that nonlinear effects start to be significant. 
+!
+
+$ t = 1.0e-2
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "p1mesh3"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File = "case1.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+ Poisson Ratio = Real $1.0/3.0
+ Youngs Modulus = Real 7.0e+10
+ Shell Thickness = Real $t
+End
+
+Body Force 1 
+  Normal Pressure = Variable Coordinate
+     Real MATC "-t * 1.0e+8 * (1-2*tx(0)*tx(0))"
+End
+
+Equation 1 :: Active Solvers(2) = 1 2
+
+Solver 1
+  Equation = "Director field"
+  Procedure = "CylinderNormalSolver" "NormalSolver"
+  Exec Solver = "Before Simulation"
+
+  Normals Result Variable = String "Director"
+  Exported Variable 1 = Director[Director:3]
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "IDRS"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+End
+
+Solver 2
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+  Large Deflection = True
+  Nonlinear System Convergence Tolerance = 1e-8
+  Nonlinear System Consistent Norm = Logical True
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+!  Linear System Row Equilibration = Logical True
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 100
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+End
+
+! ----------------------------------------------------
+! BCs are defined with respect the global XYZ system:
+! ----------------------------------------------------
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  U 2 = Real 0
+  DNU 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  U 3 = Real 0
+  DNU 3 = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  U 1 = Real 0
+  U 2 = Real 0
+  U 3 = Real 0
+  DNU 1 = Real 0
+  DNU 2 = Real 0
+  DNU 3 = Real 0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 4
+  U 1 = Real 0
+  DNU 1 = Real 0
+End
+
+Solver 2 :: Reference Norm = Real 5.77620248E-03   ! Default quads for nonlinear model
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5

@@ -475,26 +475,26 @@ MODULE LoadMod
           END SUBROUTINE execmortarprojector
           
           FUNCTION enhancementfactoruserfunction( fptr, model, element, nodes, n, nd, &
-                                       Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq ) &
+                                       Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip ) &
                                        RESULT(realval)
             IMPLICIT NONE
             INTEGER(KIND=AddrInt) :: fptr
             TYPE(Model_t) :: model
             TYPE(Element_t), POINTER :: element
             TYPE(Nodes_t) :: nodes
-            INTEGER :: n,nd
+            INTEGER :: n,nd,localip
             REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
                              Velo(:), dVelodx(:,:),sinvsq
             REAL(KIND=dp) :: realval
 
             INTERFACE
                 FUNCTION ElmerEnhancemntFactorFn(model, element, nodes, n, nd, &
-                               Basis, dBasisdx, Viscosity, Velo, dVelodx, sinvsq) RESULT(realval)
+                               Basis, dBasisdx, Viscosity, Velo, dVelodx, sinvsq,localip) RESULT(realval)
                     IMPORT Model_t, Element_t, Nodes_t, dp
                     TYPE(Model_t) :: model
                     TYPE(Element_t), POINTER :: element
                     TYPE(Nodes_t) :: nodes
-                    INTEGER :: n,nd
+                    INTEGER :: n,nd,localip
                     REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
                                      Velo(:), dVelodx(:,:), sinvsq
                     REAL(KIND=dp) :: realval
@@ -507,7 +507,7 @@ MODULE LoadMod
             cfptr = TRANSFER(fptr, cfptr)
             CALL C_F_PROCPOINTER(cfptr, pptr)
             realval = pptr(model, element, nodes, n, nd, &
-                           Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq)
+                           Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip)
         END FUNCTION enhancementfactoruserfunction  
 
         FUNCTION materialuserfunction( fptr, model, element, nodes, n, nd, &

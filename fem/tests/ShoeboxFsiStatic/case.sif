@@ -5,8 +5,7 @@
 ! gas acting as a spring to the other direction.
 !
 ! The static ideal gas is implemented as a suitable choice of coefficient in ModelPDE.
-! For the elasticity equation the stress solver is used in a harmonic mode.
-! Still the system of equations is solved as a real system, for now.
+! For the elasticity equation the displacement is solved in static mode.
 !
 ! P.R. 29.11.2017
 
@@ -36,7 +35,7 @@ Simulation
   Output Intervals = 1
   Steady State Max Iterations = 1
 
-  Post File = "fs.vtu"
+  Post File = "static.vtu"
 End
 
 Body 1
@@ -142,6 +141,7 @@ Solver 2
 
   Procedure = "StressSolve" "StressSolver"
   Linear System Solver = Direct
+!  Linear System Direct Method = MUMPS
   Linear System Direct Method= Umfpack
 
   Steady State Convergence Tolerance = 1.0e-8
@@ -172,7 +172,7 @@ Solver 3
   Operator 5 = max
   Operator 6 = int mean
 
-  Filename = fs.dat
+  Filename = static.dat
 
   File Append = Logical True
 End
@@ -210,4 +210,5 @@ End
 
 
 Solver 1 :: reference norm = 2.50528396E+03
-Solver 2 :: reference norm = 2.81463522E-09
+!Solver 2 :: reference norm = 2.81463522E-09
+

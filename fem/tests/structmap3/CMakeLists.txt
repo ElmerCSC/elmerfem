@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO cube.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(structmap3)
-ADD_ELMER_LABEL(structmap3 benchmark)
+ADD_ELMER_TEST(structmap3 LABELS matc benchmark)

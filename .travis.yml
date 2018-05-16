@@ -4,7 +4,7 @@ before_install:
 - docker ps -a
 script:
 - docker build -t elmerfem-build/xenial -f ci/Dockerfile-build-elmer .
-- docker run elmerfem-build/xenial /bin/sh -c 'ctest -LE slow'
+- docker run elmerfem-build/xenial /bin/sh -c 'CTEST_OUTPUT_ON_FAILURE=1 ctest -LE slow'
 notifications:
   email: change
   flowdock:

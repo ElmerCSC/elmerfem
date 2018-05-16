@@ -180,7 +180,7 @@ CONTAINS
     
     Coord(3) = 0.0_dp
     dim = Particles % dim
-    Coord(1:dim) = Particles % Coordinate(no,:)
+    Coord(1:dim) = Particles % Coordinate(no,1:dim)
   END FUNCTION GetParticleCoord
 
   !> Returns velocity of the particle.
@@ -194,7 +194,7 @@ CONTAINS
     
     Coord(3) = 0.0_dp
     dim = Particles % dim
-    Coord(1:dim) = Particles % Velocity(no,:)
+    Coord(1:dim) = Particles % Velocity(no,1:dim)
   END FUNCTION GetParticleVelo
 
   !> Returns force acting on the particle.
@@ -208,7 +208,7 @@ CONTAINS
     
     Coord(3) = 0.0_dp
     dim = Particles % dim
-    Coord(1:dim) = Particles % Force(no,:)
+    Coord(1:dim) = Particles % Force(no,1:dim)
   END FUNCTION GetParticleForce
 
   !> Sets the particle coordinates.
@@ -220,7 +220,7 @@ CONTAINS
     INTEGER :: dim
     
     dim = Particles % dim    
-    Particles % Coordinate(no,:) = Coord(1:dim)
+    Particles % Coordinate(no,1:dim) = Coord(1:dim)
   END SUBROUTINE SetParticleCoord
 
   !> Sets the particle velocity.
@@ -232,7 +232,7 @@ CONTAINS
     INTEGER :: dim
     
     dim = Particles % dim    
-    Particles % Velocity(no,:) = Velo(1:dim)
+    Particles % Velocity(no,1:dim) = Velo(1:dim)
   END SUBROUTINE SetParticleVelo
 
   !> Sets the particle force.
@@ -244,7 +244,7 @@ CONTAINS
     INTEGER :: dim
     
     dim = Particles % dim    
-    Particles % Force(no,:) = Force(1:dim)
+    Particles % Force(no,1:dim) = Force(1:dim)
   END SUBROUTINE SetParticleForce
 
 
@@ -260,7 +260,7 @@ CONTAINS
     Coord(3) = 0.0_dp
     dim = Particles % dim
 
-    Coord(1:dim) = Particles % PrevCoordinate(no,:)
+    Coord(1:dim) = Particles % PrevCoordinate(no,1:dim)
 
   END FUNCTION GetParticlePrevCoord
  
@@ -315,8 +315,8 @@ CONTAINS
     REAL(KIND=dp) :: Coord(3)     
     INTEGER :: dim    
     dim = Particles % dim    
-    Particles % Coordinate(no,:) = &
-        Particles % Coordinate(no,:) + Coord(1:dim)
+    Particles % Coordinate(no,1:dim) = &
+        Particles % Coordinate(no,1:dim) + Coord(1:dim)
   END SUBROUTINE AddParticleCoord
   
   !> Adds a velocity difference to the particle velocity.
@@ -327,8 +327,8 @@ CONTAINS
     REAL(KIND=dp) :: Coord(3)     
     INTEGER :: dim    
     dim = Particles % dim
-    Particles % Velocity(no,:) = &
-        Particles % Velocity(no,:) + Coord(1:dim)
+    Particles % Velocity(no,1:dim) = &
+        Particles % Velocity(no,1:dim) + Coord(1:dim)
   END SUBROUTINE AddParticleVelo
  
   !> Adds to the force acting on the particle.
@@ -339,8 +339,8 @@ CONTAINS
     REAL(KIND=dp) :: Force(3)     
     INTEGER :: dim    
     dim = Particles % dim   
-    Particles % Force(no,:) = &
-        Particles % Force(no,:) + Force(1:dim)
+    Particles % Force(no,1:dim) = &
+        Particles % Force(no,1:dim) + Force(1:dim)
   END SUBROUTINE AddParticleForce
 
   !> Gets the status of the particle.
@@ -1205,6 +1205,9 @@ RETURN
       CALL Info('ChangeParticlePartition','No particles needs to be sent',Level=10)
       DEALLOCATE(ExcInfo, Perm, Neigh)
       RETURN
+    ELSE
+      CALL Info('ChangeParticlePartition','Global number of particles to sent: '&
+          //TRIM(I2S(nSent)),Level=10)      
     END IF
 
     !
@@ -1232,6 +1235,9 @@ RETURN
       CALL Info('ChangeParticlePartition','No particles needs to be received',Level=10)
       DEALLOCATE(Recv_Parts, Requests, ExcInfo, Perm, Neigh)
       RETURN
+    ELSE
+      CALL Info('ChangeParticlePartition','Global number of particles to recieve: '&
+          //TRIM(I2S(nReceived)),Level=10)      
     END IF
    
     n = SUM( ExcInfo(1:NoPartitions) % n )
@@ -3720,9 +3726,9 @@ RETURN
 
 
         Problems(3) = Problems(3) + 1
-        CALL Warn('LocateParticleInMeshMarch',&
-            'This is going nowhere, losing particle: '//TRIM(I2S(No))//' in '//TRIM(I2S(ParEnv % MyPe)))          
-
+        WRITE(Message,'(A,3ES10.3)') 'Losing particle '//TRIM(I2S(No))//' in: ',Rfin(1:3)
+        CALL Info('LocateParticlesInMesh',Message,Level=8)
+        
         ParticleStatus = PARTICLE_LOST
         EXIT
       END IF
@@ -3820,7 +3826,7 @@ RETURN
       IF ( PartitionChangesOnly .AND. Status /= PARTICLE_PARTBOUNDARY ) CYCLE
       
       InitLocation = ( Status < PARTICLE_LOCATED ) 
-      Velo(1:dim) = GetParticleVelo( Particles, No )       
+      Velo = GetParticleVelo( Particles, No )       
       IF( Status == PARTICLE_INITIATED ) THEN
         AccurateNow = .FALSE.
       ELSE
@@ -3829,8 +3835,8 @@ RETURN
       FaceIndex0 = 0
 
 200   ElementIndex = GetParticleElement( Particles, No )
-      Rfin(1:dim) = GetParticleCoord( Particles, No )
-      Velo(1:dim) = GetParticleVelo( Particles, No )      
+      Rfin = GetParticleCoord( Particles, No )
+      Velo = GetParticleVelo( Particles, No )      
       IF( AccurateNow ) Rinit = GetParticlePrevCoord( Particles, No )        
       Rinit = GetParticlePrevCoord( Particles, No )        
 
@@ -3864,8 +3870,8 @@ RETURN
           Rfin0 = Rfin        
           Velo0 = Velo
           ElementIndex = GetParticleElement( Particles, No )
-          Rfin(1:dim) = GetParticleCoord( Particles, No )
-          Velo(1:dim) = GetParticleVelo( Particles, No )      
+          Rfin = GetParticleCoord( Particles, No )
+          Velo = GetParticleVelo( Particles, No )      
           IF ( debug ) PRINT*,parenv % mype, 'go 200 '; FLUSH(6)
           GOTO 200
         END IF

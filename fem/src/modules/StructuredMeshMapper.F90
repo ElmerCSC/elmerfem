@@ -380,6 +380,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     IF( TopMode == 1 ) THEN
       TopVal = TopVal0
     ELSE IF(TopMode == 2) THEN
+      IF( TopPerm( itop ) == 0 ) THEN
+        CALL Fatal('StructuredMeshMapper','Top surface variable perm is zero!')
+      END IF
       TopVal = TopField(TopPerm(itop))
     ELSE IF(TopMode == 3) THEN
       TopVal = Field(itop)
@@ -394,6 +397,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     IF( BotMode == 1 ) THEN
       BotVal = BotVal0 
     ELSE IF(BotMode == 2) THEN
+      IF( BotPerm( ibot ) == 0 ) THEN
+        CALL Fatal('StructuredMeshMapper','Bottom surface variable perm is zero!')
+      END IF
       BotVal = BotField(BotPerm(ibot))
     ELSE IF(BotMode == 3) THEN    
       BotVal = Field(ibot)

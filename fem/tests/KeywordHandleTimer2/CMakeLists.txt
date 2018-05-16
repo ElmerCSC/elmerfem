@@ -7,4 +7,4 @@ ADD_ELMERTEST_MODULE(RealFunctionTests RealFunctionTests RealFunctionTests.F90)
 
 file(COPY ELMERSOLVER_STARTINFO KeywordCompareReal.F90 RealFunctionTests.F90 square.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(KeywordCompare2)
+ADD_ELMER_TEST(KeywordCompare2 LABELS matc)

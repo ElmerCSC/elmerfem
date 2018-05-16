@@ -92,7 +92,9 @@ CONTAINS
      LOGICAL :: Found, AnyNT, AnyProj, DoDisplaceMesh
      TYPE(Solver_t), POINTER :: Solver
 !------------------------------------------------------------------------------
-
+     
+     CALL Info('InitializeToZero','Initializing the linear system to zero',Level=12)
+     
      IF ( ASSOCIATED( A ) ) THEN
        SELECT CASE( A % FORMAT )
          CASE( MATRIX_CRS )
@@ -546,7 +548,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
    FUNCTION CreateChildMatrix( ParentMat, ParentDofs, Dofs, ColDofs, CreateRhs, &
-       NoReuse ) RESULT ( ChildMat )
+       NoReuse, Diagonal ) RESULT ( ChildMat )
      TYPE(Matrix_t) :: ParentMat
      INTEGER :: ParentDofs
      INTEGER :: Dofs
@@ -554,6 +556,7 @@ CONTAINS
      INTEGER, OPTIONAL :: ColDofs
      LOGICAL, OPTIONAL :: CreateRhs
      LOGICAL, OPTIONAL :: NoReuse
+     LOGICAL, OPTIONAL :: Diagonal
      INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
      LOGICAL :: ReuseMatrix
 
@@ -563,7 +566,8 @@ CONTAINS
 
      ChildMat => AllocateMatrix()
 
-     CALL CRS_CreateChildMatrix( ParentMat, ParentDofs, ChildMat, Dofs, ColDofs, CreateRhs, NoReuse )
+     CALL CRS_CreateChildMatrix( ParentMat, ParentDofs, ChildMat, Dofs, ColDofs, CreateRhs, &
+         NoReuse, Diagonal )
 
    END FUNCTION CreateChildMatrix
 
@@ -662,104 +666,7 @@ CONTAINS
   END SUBROUTINE GetPassiveBoundary
 !------------------------------------------------------------------------------
 
-   
-!------------------------------------------------------------------------------
-!> Check if the current element has been defined passive.
-!> This is done by inspecting a looking an the values of "varname Passive"
-!> in the Body Force section. It is determined to be passive if it has 
-!> more positive than negative hits in an element.
-!------------------------------------------------------------------------------
-   FUNCTION CheckPassiveElement( UElement )  RESULT( IsPassive )
-!------------------------------------------------------------------------------
-     TYPE(Element_t), OPTIONAL, TARGET :: UElement
-     LOGICAL :: IsPassive
-!------------------------------------------------------------------------------
-     TYPE(Element_t), POINTER :: Element
-     REAL(KIND=dp), ALLOCATABLE :: Passive(:)
-     INTEGER :: body_id, bf_id, nlen, NbrNodes,PassNodes, LimitNodes
-     LOGICAL :: Found
-     CHARACTER(LEN=MAX_NAME_LEN) :: PassName, PrevPassName
-     LOGICAL :: NoPassiveElements = .FALSE.
-     
-     SAVE Passive, PrevPassName, NoPassiveElements
-     !$OMP THREADPRIVATE(Passive, PrevPassName, NoPassiveElements)
-!------------------------------------------------------------------------------
-     IsPassive = .FALSE.
-
-
-     nlen = CurrentModel % Solver % Variable % NameLen
-     PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'     
-
-     IF( PassName(1:nlen) == PrevPassName(1:nlen) ) THEN
-       IF( NoPassiveElements ) RETURN
-     ELSE
-       NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce( CurrentModel, PassName )
-       PrevPassName = PassName
-       IF( NoPassiveElements ) RETURN       
-     END IF
-
-     IF (PRESENT(UElement)) THEN
-       Element => UElement
-     ELSE
-#ifdef _OPENMP
-       IF (omp_in_parallel()) THEN
-         CALL Fatal('CheckPassiveElement', &
-                    'Need an element to update inside a threaded region')
-       END IF
-#endif
-       Element => CurrentModel % CurrentElement
-     END IF
-       
-     body_id = Element % BodyId 
-     IF ( body_id <= 0 )  RETURN   ! body_id == 0 for boundary elements
-
-     bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
-         'Body Force', Found, minv=1,maxv=CurrentModel % NumberOfBodyForces )
-     IF ( .NOT. Found )  RETURN
-
-     IF ( ListCheckPresent(CurrentModel % BodyForces(bf_id) % Values, PassName) ) THEN
-       NbrNodes = Element % TYPE % NumberOfNodes
-       IF ( ALLOCATED(Passive) ) THEN
-         IF ( SIZE(Passive) < NbrNodes ) THEN
-           DEALLOCATE(Passive)
-           ALLOCATE( Passive(NbrNodes) )
-         END IF
-       ELSE
-         ALLOCATE( Passive(NbrNodes) )
-       END IF
-       Passive(1:NbrNodes) = ListGetReal( CurrentModel % BodyForces(bf_id) % Values, &
-           PassName, NbrNodes, Element % NodeIndexes )
-       PassNodes = COUNT(Passive(1:NbrNodes)>0)
-
-       ! Go through the extremum cases first, and if the element is not either fully 
-       ! active or passive, then check for some possible given criteria for determining 
-       ! the element active / passive. 
-       !------------------------------------------------------------------------------
-       IF( PassNodes == 0 ) THEN
-         CONTINUE
-       ELSE IF( PassNodes == NbrNodes ) THEN
-         IsPassive = .TRUE.
-       ELSE
-         LimitNodes = ListGetInteger( CurrentModel % BodyForces(bf_id) % Values, &
-             'Passive Element Min Nodes',Found )
-         IF( Found ) THEN
-           IsPassive = ( PassNodes >= LimitNodes )
-         ELSE
-           LimitNodes = ListGetInteger( CurrentModel % BodyForces(bf_id) % Values, &
-               'Active Element Min Nodes',Found )
-           IF( Found ) THEN
-             IsPassive = ( PassNodes > NbrNodes - LimitNodes )
-           ELSE
-             IsPassive = ( 2*PassNodes > NbrNodes )
-           END IF
-         END IF
-       END IF
-     END IF
-   
-!------------------------------------------------------------------------------
-   END FUNCTION CheckPassiveElement
-!------------------------------------------------------------------------------
-
+!   CheckPassiveElement moved to ElementDescription
 
 !------------------------------------------------------------------------------
 !>  For time dependent simulations add the time derivative coefficient terms
@@ -788,7 +695,7 @@ CONTAINS
      LOGICAL :: ConstantDt
      TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-     INTEGER :: PredCorrOrder = 2       !< Order of predictor-corrector scheme
+     INTEGER :: PredCorrOrder       !< Order of predictor-corrector scheme
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE
@@ -1281,7 +1188,7 @@ CONTAINS
      IF (ColouredAssembly) THEN
        IF (NeedMasking) THEN
          ! Vector masking needed, no ATOMIC needed
-         !$OMP SIMD PRIVATE(j,k)
+         !_ELMER_OMP_SIMD PRIVATE(j,k)
          DO i=1,n
            IF (NodeIndexes(i)>0) THEN
              DO j=1,NDOFs
@@ -1293,7 +1200,7 @@ CONTAINS
        ELSE
          ! No vector masking needed, no ATOMIC needed
          IF (NDOFS>1) THEN
-           !$OMP SIMD PRIVATE(j,k)
+           !_ELMER_OMP_SIMD PRIVATE(j,k)
            DO i=1,n
              DO j=1,NDOFs
                k = NDOFs*(NodeIndexes(i)-1) + j
@@ -1301,7 +1208,7 @@ CONTAINS
              END DO
            END DO
          ELSE
-           !$OMP SIMD
+           !_ELMER_OMP_SIMD
            DO i=1,n
              Gvec(NodeIndexes(i)) = Gvec(NodeIndexes(i)) + Lvec(i)
            END DO
@@ -4820,6 +4727,7 @@ CONTAINS
  
             DO l=1,NDOFs
               m = NDOFs*(k-1)+l
+              IF(A % ConstrainedDOF(m)) CYCLE
               CALL SetSinglePoint(k,l,Solver % Variable % Values(m),.FALSE.)
             END DO
           END DO
@@ -6614,11 +6522,27 @@ CONTAINS
     LOGICAL :: ScaleSystem, DirichletComm, Found, NoDiag
     REAL(KIND=dp), POINTER :: DiagScaling(:)
     REAL(KIND=dp) :: dval, s
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k,n
 
     
     Params => Solver % Values
 
+    IF(.NOT. ALLOCATED( A % ConstrainedDOF ) ) THEN
+      CALL Info('EnforceDirichletConditions',&
+          'ConstrainedDOF not associated, returning...',Level=8)
+      RETURN
+    END IF
+
+    
+    n = COUNT( A % ConstrainedDOF )
+    n = NINT( ParallelReduction(1.0_dp * n ) )
+
+    IF( n == 0 ) THEN
+      CALL Info('EnforceDirichletConditions','No Dirichlet conditions to enforce, exiting!',Level=10)
+      RETURN
+    END IF
+    
+    
     IF( PRESENT( OffDiagonal ) ) THEN
       NoDiag = OffDiagonal
     ELSE
@@ -6657,11 +6581,10 @@ CONTAINS
  
     
     DO k=1,A % NumberOfRows
+
       IF ( A % ConstrainedDOF(k) ) THEN
-        !s = A % Values(A % Diag(k))
-        !IF (s==0) s = 1
         
-        dval = A % Dvalues(k) !/ ( s * DiagScaling(k) )
+        dval = A % Dvalues(k) 
         
         IF( ScaleSystem ) THEN
           s = DiagScaling(k)            
@@ -8067,7 +7990,7 @@ END FUNCTION SearchNodeL
 
     IF( ParEnv % PEs > 1 ) THEN
       ConsistentNorm = ListGetLogical(Solver % Values,'Nonlinear System Consistent Norm',Stat)
-      CALL Info('ComputeNorm','Using consistent norm in parallel',Level=10)
+      IF (ConsistentNorm) CALL Info('ComputeNorm','Using consistent norm in parallel',Level=10)
     ELSE
       ConsistentNorm = .FALSE.
     END IF
@@ -8257,6 +8180,7 @@ END FUNCTION SearchNodeL
 
     SolverParams => Solver % Values
 
+    
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
@@ -8304,6 +8228,7 @@ END FUNCTION SearchNodeL
       iterV % Values(1) = iterV % Values(1) + 1 
       
       Skip = ListGetLogical( SolverParams,'Skip Compute Nonlinear Change',Stat)
+
       IF(Skip) THEN
         CALL Info('ComputeChange','Skipping the computation of nonlinear change',Level=15)
         RETURN
@@ -8366,6 +8291,7 @@ END FUNCTION SearchNodeL
     IF( SkipConstraints ) n = MIN( n, Solver % Matrix % NumberOfRows )
 
     Stat = .FALSE.
+    x0 => NULL()
     IF(PRESENT(values0)) THEN
       x0 => values0
       Stat = .TRUE.
@@ -8378,10 +8304,14 @@ END FUNCTION SearchNodeL
       IF( ASSOCIATED(Solver % Variable % NonlinValues)) THEN
         x0 => Solver % Variable % NonlinValues
         Stat = .TRUE.
+      ELSE
+        x0 => Solver % Variable % Values
+        Stat = .TRUE.
       END IF
     END IF
+    
     IF(Stat .AND. .NOT. SkipConstraints ) THEN
-      IF (SIZE(x0) /= SIZE(x)) CALL Warn('ComputeChange','Possible mismatch in length of vectors!')
+      IF (SIZE(x0) /= SIZE(x)) CALL Info('ComputeChange','WARNING: Possible mismatch in length of vectors!',Level=10)
     END IF
 
     IF( ResidualMode ) THEN
@@ -8408,7 +8338,6 @@ END FUNCTION SearchNodeL
     !--------------------------------------------------------------------------
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
-!   IF( ISNAN(Norm) ) THEN ! ISNAN not avaiable in all compilers
     IF( Norm /= Norm ) THEN
       CALL NumericalError('ComputeChange','Norm of solution appears to be NaN')
     END IF
@@ -8420,6 +8349,7 @@ END FUNCTION SearchNodeL
       MaxNorm = ListGetCReal( SolverParams, &
           'Nonlinear System Max Norm', Stat )
     END IF    
+
     IF( Stat ) THEN
       WRITE( Message, *) 'Computed Norm:',Norm
       CALL Info('ComputeChange',Message)
@@ -8445,7 +8375,8 @@ END FUNCTION SearchNodeL
         b => Solver % Matrix % rhs
       END IF
       
-      ALLOCATE(r(n)); r=0._dp
+      ALLOCATE(r(n))
+      r=0._dp
 
       IF (Parenv % Pes>1) THEN
         ALLOCATE( TmpRHSVec(n), TmpXVec(n) )
@@ -8629,7 +8560,7 @@ END FUNCTION SearchNodeL
     ! Steady state output is done in MainUtils
     SolverName = ListGetString( SolverParams, 'Equation',Stat)
     IF(.NOT. Stat) SolverName = Solver % Variable % Name
-
+ 
     IF(SteadyState) THEN        
       WRITE( Message, '(a,g15.8,g15.8,a)') &
          'SS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, Change,&
@@ -9952,6 +9883,8 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t), POINTER :: CM
 
     n = A % NumberOfRows
+    
+    CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity',Level=10)
 
     IF( PRESENT( DiagScaling ) ) THEN
       CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
@@ -9965,8 +9898,10 @@ END FUNCTION SearchNodeL
       Diag = 0._dp
     
       ComplexMatrix = Solver % Matrix % COMPLEX
-    
+            
       IF ( ComplexMatrix ) THEN
+        CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
+
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, A, N) &
         !$OMP PRIVATE(i, j) &
@@ -9977,17 +9912,20 @@ END FUNCTION SearchNodeL
             Diag(i)   = A % Values(j)
             Diag(i+1) = A % Values(j+1)
           ELSE
-            Diag(i)=0._dp;Diag(i+1)=0._dp
+            Diag(i) = 0._dp
+            Diag(i+1) = 0._dp
           END IF
         END DO
         !$OMP END PARALLEL DO
       ELSE
+        CALL Info('ScaleLinearSystem','Assuming real valued matrix while scaling',Level=25)
+
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, A, N) &
         !$OMP PRIVATE(i, j) &
         !$OMP DEFAULT(NONE)
         DO i=1,n
-          j=A % Diag(i)
+          j = A % Diag(i)
           IF (j>0) Diag(i) = A % Values(j)
         END DO
         !$OMP END PARALLEL DO
@@ -9998,25 +9936,28 @@ END FUNCTION SearchNodeL
       IF ( ComplexMatrix ) THEN
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, A, N) &
-        !$OMP PRIVATE(i, j, DiagC) &
+        !$OMP PRIVATE(i, j, DiagC, s) &
         !$OMP DEFAULT(NONE)
         DO i=1,n,2
           DiagC = CMPLX(Diag(i),-Diag(i+1),KIND=dp)
-          IF (ABS(DiagC)/=0._dp) THEN
-            Diag(i)   = 1.0_dp/SQRT(ABS(DiagC))
-            Diag(i+1) = 1.0_dp/SQRT(ABS(DiagC))
+
+          s = SQRT( ABS( DiagC ) )
+          IF( s > TINY(s) ) THEN 
+            Diag(i)   = 1.0_dp / s
+            Diag(i+1) = 1.0_dp / s
           ELSE
-            Diag(i)   = 1.0_dp; Diag(i+1) = 1.0_dp
+            Diag(i)   = 1.0_dp
+            Diag(i+1) = 1.0_dp
           END IF
         END DO
         !$OMP END PARALLEL DO
       ELSE
-        s = 0
+        s = 0.0_dp
         ! TODO: Add threading
-        IF (ANY(ABS(Diag)<=TINY(bnorm))) s=1
+        IF (ANY(ABS(Diag) <= TINY(bnorm))) s=1
         s = ParallelReduction(s,2) 
 
-        IF(s/=0) THEN 
+        IF(s > TINY(s) ) THEN 
           DO i=1,n
             IF ( ABS(Diag(i)) <= TINY(bnorm) ) THEN
               Diag(i) = SUM( ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)) )
@@ -10041,15 +9982,17 @@ END FUNCTION SearchNodeL
         END DO
         !$OMP END PARALLEL DO
       END IF
-    END IF    
+    END IF
 
-
+    
     ! Optionally we may just create the diag and leave the scaling undone
     !--------------------------------------------------------------------
     IF( PRESENT( ApplyScaling ) ) THEN
       IF(.NOT. ApplyScaling ) RETURN
     END IF
 
+    CALL Info('ScaleLinearSystem','Scaling matrix values',Level=20)
+    
     !$OMP PARALLEL &
     !$OMP SHARED(Diag, A, N) &
     !$OMP PRIVATE(i,j) &
@@ -10064,8 +10007,10 @@ END FUNCTION SearchNodeL
     END DO
     !$OMP END DO NOWAIT
 
+    
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN 
+        CALL Info('ScaleLinearSystem','Scaling PrecValues',Level=20)
         !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
@@ -10079,6 +10024,7 @@ END FUNCTION SearchNodeL
 
     IF ( ASSOCIATED( A % MassValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
+        CALL Info('ScaleLinearSystem','Scaling MassValues',Level=20)
         !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
@@ -10092,6 +10038,7 @@ END FUNCTION SearchNodeL
     
     IF ( ASSOCIATED( A % DampValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
+        CALL Info('ScaleLinearSystem','Scaling DampValues',Level=20)
         !$OMP DO
         DO i=1,n
           DO j=A % Rows(i), A % Rows(i+1)-1
@@ -10105,12 +10052,13 @@ END FUNCTION SearchNodeL
 
     !$OMP END PARALLEL
 
-    DoCM=.FALSE.
+    DoCM = .FALSE.
     IF(PRESENT(ConstraintScaling)) DoCm=ConstraintScaling
 
     IF(doCM) THEN
       CM => A % ConstraintMatrix
       IF (ASSOCIATED(CM)) THEN
+        CALL Info('ScaleLinearSystem','Scaling Constraints',Level=20)
         !$OMP PARALLEL DO &
         !$OMP SHARED(Diag, CM) &
         !$OMP PRIVATE(i,j) &
@@ -10128,24 +10076,37 @@ END FUNCTION SearchNodeL
     !--------------------------------
     A % RhsScaling=1._dp
     ! TODO: Add threading
-    IF( PRESENT( b ) ) THEN      
+    IF( PRESENT( b ) ) THEN
+      CALL Info('ScaleLinearSystem','Scaling Rhs vector',Level=20)
+      
       b(1:n) = b(1:n) * Diag(1:n)
       DoRHS = .TRUE.
       IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
       IF (DoRHS) THEN
         bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
+
+        IF( bnorm < SQRT( TINY( bnorm ) ) ) THEN
+          CALL Info('ScaleLinearSystem','Rhs vector is almost zero, skipping rhs scaling!',Level=20)
+          DoRhs = .FALSE.
+          bnorm = 1.0_dp
+        END IF
       ELSE
-        bnorm = 1._dp
+        bnorm = 1.0_dp
       END IF
+      
       A % RhsScaling = bnorm
 
-      Diag(1:n) = Diag(1:n) * bnorm
-      b(1:n) = b(1:n) / bnorm
+      IF( DoRhs ) THEN
+        Diag(1:n) = Diag(1:n) * bnorm
+        b(1:n) = b(1:n) / bnorm
+      END IF
+      
       IF( PRESENT( x) ) THEN
         x(1:n) = x(1:n) / Diag(1:n)
       END IF
     END IF
 
+    
     !-----------------------------------------------------------------------------
   END SUBROUTINE ScaleLinearSystem
 !-----------------------------------------------------------------------------
@@ -10167,6 +10128,10 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: Cols(:), Rows(:)
     REAL(KIND=dp), POINTER :: Values(:), Diag(:)
 !-------------------------------------------------------------------------
+
+    CALL Info('RowEquilibration','Scaling system such that abs rowsum is unity',Level=15)
+        
+
     n = A % NumberOfRows
     ComplexMatrix = A % COMPLEX
 
@@ -10191,15 +10156,8 @@ END FUNCTION SearchNodeL
         DO j=Rows(i),Rows(i+1)-1,2
           tmp = tmp + ABS( CMPLX( Values(j), -Values(j+1), kind=dp ) )
         END DO
-
-        IF ( .NOT. Parallel ) THEN
-          IF (tmp > norm) norm = tmp        
-        END IF
-
-        IF (tmp > 0.0d0) THEN
-          Diag(i) = tmp
-          Diag(i+1) = tmp
-        END IF
+        Diag(i) = tmp
+        Diag(i+1) = tmp
       END DO
     ELSE
       DO i=1,n
@@ -10207,18 +10165,16 @@ END FUNCTION SearchNodeL
         DO j=Rows(i),Rows(i+1)-1        
           tmp = tmp + ABS(Values(j))          
         END DO
-
-        IF ( .NOT. Parallel ) THEN
-          IF (tmp > norm) norm = tmp        
-        END IF
-
-        IF (tmp > 0.0d0) Diag(i) = tmp       
+        Diag(i) = tmp       
       END DO
     END IF
 
     IF (Parallel) THEN
       CALL ParallelSumVector(A, Diag)
-      norm = ParallelReduction(MAXVAL(Diag(1:n)),2)
+    END IF
+    norm = MAXVAL(Diag(1:n))
+    IF( Parallel ) THEN
+      norm = ParallelReduction(norm)
     END IF
 
     !--------------------------------------------------
@@ -10227,20 +10183,19 @@ END FUNCTION SearchNodeL
     !--------------------------------------------------
     IF (ComplexMatrix) THEN    
       DO i=1,n,2
-        IF (Diag(i) > 0.0d0) THEN
-          Diag(i) = 1.0d0/Diag(i)
-          Diag(i+1) = 1.0d0/Diag(i+1)
+        IF (Diag(i) > TINY(norm) ) THEN
+          Diag(i) = 1.0_dp / Diag(i)
         ELSE
-          Diag(i) = 1.0d0
-          Diag(i+1) = 1.0d0
+          Diag(i) = 1.0_dp
         END IF
+        Diag(i+1) = Diag(i)
       END DO
     ELSE
       DO i=1,n      
-        IF (Diag(i) > 0.0d0) THEN
-          Diag(i) = 1.0d0/Diag(i)
+        IF (Diag(i) > TINY(norm)) THEN
+          Diag(i) = 1.0_dp / Diag(i)
         ELSE
-          Diag(i) = 1.0d0
+          Diag(i) = 1.0_dp
         END IF
       END DO
     END IF
@@ -10291,6 +10246,9 @@ END FUNCTION SearchNodeL
     LOGICAL :: doCM
 
     TYPE(Matrix_t), POINTER :: CM
+
+    CALL Info('BackScaleLinearSystem','Scaling back to original scale',Level=14)
+
     
     n = A % NumberOfRows
     
@@ -10895,10 +10853,7 @@ END FUNCTION SearchNodeL
   END SUBROUTINE BCLoadsComputation
 
 
-
-
-  
-  
+    
 !------------------------------------------------------------------------------
 !> Prints the values of the CRS matrix to standard output.
 !------------------------------------------------------------------------------
@@ -11102,14 +11057,30 @@ END FUNCTION SearchNodeL
     END INTERFACE
 !------------------------------------------------------------------------------
 
-   ComplexSystem = ListGetLogical( Solver % Values, 'Linear System Complex', GotIt )
-   IF ( GotIt ) A % COMPLEX = ComplexSystem
+    Params => Solver % Values
  
-   IF( A % COMPLEX ) THEN
-     CALL Info('SolveLinearSystem','Assuming complex valued linear system',Level=6)
-   ELSE
-     CALL Info('SolveLinearSystem','Assuming real valued linear system',Level=8)
-   END IF
+    ComplexSystem = ListGetLogical( Params, 'Linear System Complex', GotIt )
+    IF ( GotIt ) A % COMPLEX = ComplexSystem
+    
+    ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
+    IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
+    
+    IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
+      CALL Info('SolveLinearSystem','This time skipping complex treatment',Level=20)
+      A % COMPLEX = .FALSE.
+      ComplexSystem = .FALSE.
+    END IF
+
+    IF( ListGetLogical( Params,'Linear System Skip Scaling',GotIt ) ) THEN     
+      CALL Info('SolveLinearSystem','This time skipping scaling',Level=20)
+      ScaleSystem = .FALSE.
+    END IF
+   
+    IF( A % COMPLEX ) THEN
+      CALL Info('SolveLinearSystem','Assuming complex valued linear system',Level=6)
+    ELSE
+      CALL Info('SolveLinearSystem','Assuming real valued linear system',Level=8)
+    END IF
 
 !------------------------------------------------------------------------------
 !   If parallel execution, check for parallel matrix initializations
@@ -11118,14 +11089,13 @@ END FUNCTION SearchNodeL
       CALL ParallelInitMatrix( Solver, A )
     END IF
 
-   IF ( ListGetLogical( Solver % Values, 'Linear System Save',GotIt )) THEN
+    IF ( ListGetLogical( Solver % Values, 'Linear System Save',GotIt )) THEN
       saveslot = ListGetString( Solver % Values,'Linear System Save Slot', GotIt )
       IF(SaveSlot == 'linear solve') CALL SaveLinearSystem( Solver, A )
     END IF
 
 !------------------------------------------------------------------------------
 
-    Params => Solver % Values
     n = A % NumberOfRows
 
     BackRotation = ListGetLogical(Params,'Back Rotate N-T Solution',GotIt)
@@ -11167,9 +11137,6 @@ END FUNCTION SearchNodeL
         ListGetInteger( Params,'Multigrid Levels', GotIt, minv=1 ) )
     Solver % MultiGridLevel = Solver % MultigridTotal
 !------------------------------------------------------------------------------
-
-    ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
-    IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
 
     EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
         ListGetLogical( Params, 'Eigen Analysis',GotIt )
@@ -11989,29 +11956,50 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
 !> A parser of the variable name that returns the true variablename
 !> where the inline options have been interpreted.
 !------------------------------------------------------------------------------
-SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs )
+SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable, DgVariable )
 
   CHARACTER(LEN=*)  :: var_name
   LOGICAL, OPTIONAL :: NoOutput, Global
   INTEGER, OPTIONAL :: Dofs
-
-  INTEGER :: i,j,k
+  LOGICAL, OPTIONAL :: IpVariable
+  LOGICAL, OPTIONAL :: ElemVariable
+  LOGICAL, OPTIONAL :: DgVariable
+  
+  INTEGER :: i,j,k,m
 
   IF(PRESENT(NoOutput)) NoOutput = .FALSE.
   IF(PRESENT(Global)) Global = .FALSE.
   IF(PRESENT(Dofs)) Dofs = 0
-
+  IF(PRESENT(IpVariable)) IpVariable = .FALSE.
+  
   DO WHILE( var_name(1:1) == '-' )
+
+    m = 0
     IF ( SEQL(var_name, '-nooutput ') ) THEN
       IF(PRESENT(NoOutput)) NoOutput = .TRUE.
-      var_name(1:LEN(var_name)-10) = var_name(11:)
-    END IF
-    
-    IF ( SEQL(var_name, '-global ') ) THEN
+      m = 10
+
+    ELSE IF ( SEQL(var_name, '-global ') ) THEN
       IF(PRESENT(Global)) Global = .TRUE.
-      var_name(1:LEN(var_name)-8) = var_name(9:)
+      m = 8
+
+    ELSE IF ( SEQL(var_name, '-ip ') ) THEN
+      IF(PRESENT(IpVariable)) IpVariable = .TRUE.      
+      m = 4
+
+    ELSE IF ( SEQL(var_name, '-dg ') ) THEN
+      IF(PRESENT(DgVariable)) DgVariable = .TRUE.      
+      m = 4
+
+    ELSE IF ( SEQL(var_name, '-elem ') ) THEN
+      IF(PRESENT(ElemVariable)) ElemVariable = .TRUE.      
+      m = 6
     END IF
     
+    IF( m > 0 ) THEN
+      var_name(1:LEN(var_name)-m) = var_name(m+1:)
+    END IF
+   
     IF ( SEQL(var_name, '-dofs ') ) THEN
       IF(PRESENT(DOFs)) READ( var_name(7:), * ) DOFs     
       j = LEN_TRIM( var_name )
@@ -12035,42 +12023,56 @@ END SUBROUTINE VariableNameParser
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   
-  INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize
+  INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize,i1,i2
   CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name,tmpname,condname
   REAL(KIND=dp), POINTER :: Values(:), Solution(:), LocalSol(:), LocalCond(:)
-  INTEGER, POINTER :: Indexes(:), Perm(:)
-  LOGICAL :: Found, AllocationsDone, Conditional, GotIt, StateVariable
+  INTEGER, POINTER :: Indexes(:), VarIndexes(:), Perm(:)
+  LOGICAL :: Found, Conditional, GotIt, Stat, StateVariable, AllocationsDone = .FALSE.
   LOGICAL, POINTER :: ActivePart(:),ActiveCond(:)
   TYPE(Variable_t), POINTER :: ExpVariable
   TYPE(ValueList_t), POINTER :: ValueList
-  TYPE(Element_t),POINTER :: Element
+  TYPE(Element_t),POINTER :: Element  
+  TYPE(GaussIntegrationPoints_t) :: IP
+  TYPE(Nodes_t) :: Nodes
+  REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+  REAL(KIND=dp) :: detJ
+  TYPE(ValueHandle_t) :: LocalSol_h
+  TYPE(Mesh_t), POINTER :: Mesh
+  
+  SAVE LocalSol_h
 
-  SAVE AllocationsDone
+  CALL Info('UpdateExportedVariables','Updating variables, if any!',Level=20)
 
   AllocationsDone = .FALSE.
-
+  Mesh => Solver % Mesh
+  
   l = 0
   DO WHILE( .TRUE. )
     l = l + 1
-    str = ComponentName( 'exported variable', l )
-    var_name = ListGetString( Solver % Values, str, GotIt )
-    
+
+    str = ComponentName( 'exported variable', l )    
+
+    var_name = ListGetString( Solver % Values, str, GotIt )    
     IF(.NOT. GotIt) EXIT
+
+    CALL Info('UpdateExportedVariables','Trying to set values for variable: '//TRIM(Var_name),Level=12)
     
     CALL VariableNameParser( var_name ) 
-
-    ExpVariable => VariableGet( Solver % Mesh % Variables, Var_name )
-    IF( .NOT. ASSOCIATED(ExpVariable)) CYCLE
     
-    WRITE(Message,*) 'Trying to set values for variable: '//TRIM(Var_name)
-    CALL Info('UpdateExportedVariables',Message,Level=6)
-  
-    IF( .NOT. AllocationsDone) THEN      
+    ExpVariable => VariableGet( Mesh % Variables, Var_name )
+    IF( .NOT. ASSOCIATED(ExpVariable)) CYCLE
+      
+    CALL Info('UpdateExportedVariables','Setting values for variable: '//TRIM(Var_name),Level=6)
+      
+    IF(.NOT. AllocationsDone ) THEN
       m = CurrentModel % NumberOFBodyForces
       ALLOCATE( ActivePart(m), ActiveCond(m) )
-
-      m = Solver % Mesh % MaxElementDOFs
+      
+      m = Mesh % MaxElementDOFs
       ALLOCATE( LocalSol(m), LocalCond(m))
+      
+      m =  CurrentModel % MaxElementNodes
+      ALLOCATE( Basis(m), Nodes % x(m), Nodes % y(m), Nodes % z(m) )
 
       AllocationsDone = .TRUE.
     END IF
@@ -12079,9 +12081,10 @@ END SUBROUTINE VariableNameParser
     Values => ExpVariable % Values
     Perm => ExpVariable % Perm
     n = LEN_TRIM( var_name )
-
-    StateVariable = ( SIZE( Values ) == DOFs )
+    
+    StateVariable = ( SIZE( Values ) == DOFs ) .OR. ( ExpVariable % Type == Variable_Global ) 
     IF( StateVariable ) THEN
+      CALL Info('UpdateExportedVariables','Updating state variable',Level=20)
       IF( Dofs > 1 ) THEN
         tmpname = ComponentName( var_name(1:n), j )
         Solution => Values( j:j )
@@ -12100,22 +12103,25 @@ END SUBROUTINE VariableNameParser
         END IF
       END DO
       CYCLE
-    END IF	
+    END IF
 
-    
+    CALL Info('UpdateExportedVariables','Updating field variable with dofs: '//TRIM(I2S(DOFs)),Level=20)
+
+        
     DO j=1,DOFs
       
       IF( Dofs > 1 ) THEN
         tmpname = ComponentName( var_name(1:n), j )
-        nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs
-        Perm => Solver % Variable % Perm
-        Solution => Values( j:nSize-DOFs+j:DOFs )
+        !nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs
+        !Perm => Solver % Variable % Perm
+        Solution => Values( j:: DOFs ) ! nSize-DOFs+j:DOFs )
       ELSE
         tmpname = var_name(1:n)
         Solution => Values
       END IF
       condname = TRIM(tmpname) //' Condition' 
-        
+
+      
       !------------------------------------------------------------------------------
       ! Go through the Dirichlet conditions in the body force lists
       !------------------------------------------------------------------------------
@@ -12134,11 +12140,19 @@ END SUBROUTINE VariableNameParser
 
       CALL Info('UpdateExportedVariables','Found a proper definition in body forces',Level=6)
 
-      DO t = 1, Solver % NumberOfActiveElements 
-        Element => CurrentModel % Elements(Solver % ActiveElements(t) )
+      
+      IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
+        ! Initialize handle when doing values on Gauss points!
+        CALL ListInitElementKeyword( LocalSol_h,'Body Force',TmpName )
+      END IF
+
+      DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+        Element => Mesh % Elements(t) 
+        IF( Element % BodyId <= 0 ) CYCLE
         bf_id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values,&
             'Body Force',GotIt)
-        
+
         IF(.NOT. GotIt) CYCLE
         IF(.NOT. ActivePart(bf_id)) CYCLE
         Conditional = ActiveCond(bf_id)
@@ -12147,28 +12161,78 @@ END SUBROUTINE VariableNameParser
         m = Element % TYPE % NumberOfNodes
         Indexes => Element % NodeIndexes
         ValueList => CurrentModel % BodyForces(bf_id) % Values
-        
-        LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
-        IF( Conditional ) THEN
-          LocalCond(1:m) = ListGetReal(ValueList, CondName, m, Indexes(1:m) )
-          DO i=1,m
-            IF( LocalCond(i) > 0.0_dp ) THEN
-              Solution( Perm(Indexes(i)) ) = LocalSol(i)
+
+        IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
+
+          i1 = Perm( Element % ElementIndex )
+          i2 = Perm( Element % ElementIndex + 1 )
+          
+          IF( i2 - i1 > 0 ) THEN            
+            Nodes % x(1:m) = Mesh % Nodes % x(Indexes)
+            Nodes % y(1:m) = Mesh % Nodes % y(Indexes)
+            Nodes % z(1:m) = Mesh % Nodes % z(Indexes)
+
+                       
+            IP = GaussPoints( Element )
+            IF( i2 - i1 /= Ip % n ) THEN
+              CALL Warn('UpdateExportedVariables','Incompatible number of Gauss points, skipping')
+            ELSE
+              IF( Conditional ) THEN
+                CALL Warn('UpdateExportedVariable','Elemental variables not conditional!')
+              END IF
+                            
+              
+              DO k=1,IP % n
+                stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
+                    IP % W(k), detJ, Basis )
+                Solution(i1+k) = ListGetElementReal( LocalSol_h,Basis,Element,Found,GaussPoint=k) 
+              END DO
             END IF
-          END DO
+          END IF
+          
+        ELSE IF( ExpVariable % TYPE == Variable_on_elements ) THEN
+          IF( Conditional ) THEN
+            CALL Warn('UpdateExportedVariable','Elemental variables not conditional!')
+          END IF
+          LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
+          i = Perm( Element % ElementIndex ) 
+          IF( i > 0 ) Solution(i) = SUM( LocalSol(1:m) ) / m
+          
         ELSE
-          Solution( Perm(Indexes(1:m)) ) = LocalSol(1:m)
+          IF( ExpVariable % TYPE == Variable_on_nodes_on_elements ) THEN
+            VarIndexes => Element % DGIndexes
+          ELSE
+            VarIndexes => Indexes
+          END IF
+          
+          LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
+          
+          IF( Conditional ) THEN
+            LocalCond(1:m) = ListGetReal(ValueList, CondName, m, Indexes(1:m) )
+            DO i=1,m
+              IF( LocalCond(i) > 0.0_dp ) THEN
+                IF( Perm(VarIndexes(i)) > 0 ) THEN
+                  Solution( Perm(VarIndexes(i)) ) = LocalSol(i)
+                END IF
+              END IF
+            END DO
+          ELSE
+            IF( ALL( Perm(VarIndexes(1:m)) > 0 ) ) THEN
+              Solution( Perm(VarIndexes(1:m)) ) = LocalSol(1:m)
+            END IF
+          END IF
+          
         END IF
       END DO
-        
+      
     END DO
   END DO
 
   IF( AllocationsDone ) THEN
-    DEALLOCATE(ActivePart, ActiveCond, LocalSol, LocalCond)
-    AllocationsDone = .FALSE.
+    DEALLOCATE(ActivePart, ActiveCond, LocalSol, LocalCond, Basis, &
+        Nodes % x, Nodes % y, Nodes % z )
   END IF
-
+    
 END SUBROUTINE UpdateExportedVariables
 
 
@@ -12454,173 +12518,294 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   INTEGER :: i,j,k,n, kr, ki, DOFs
   LOGICAL :: stat, Found, OptimizeBW, Real_given, Imag_given
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
-  REAL(KIND=dp) :: Omega, s
-  REAL(KIND=dp), POINTER :: b(:)
+  REAL(KIND=dp) :: Omega, s, val
+  REAL(KIND=dp), POINTER :: b(:), TmpVals(:)
   REAL(KIND=dp) :: frequency
   TYPE(ValueList_t), POINTER :: BC
-  TYPE(Variable_t), POINTER :: ReVar, ImVar, TotVar, SaveVar
-  LOGICAL :: ToReal, ToHarmonic
-
-  SAVE ImVar, TotVar, ReVar, SaveVar, SaveMatrix
+  TYPE(Variable_t), POINTER :: TmpVar, ReVar, HarmVar, SaveVar
+  LOGICAL :: ToReal, ParseName, AnyDirichlet, Diagonal, HarmonicReal
   
-
-  ToReal = .FALSE.
-  IF( PRESENT( BackToReal ) ) THEN
-    ToReal = BackToReal
+  
+  IF( .NOT. ASSOCIATED( Solver % Variable ) ) THEN
+    CALL Warn('CgangeToHarmonicSystem','Not applicable without a variable')
+    RETURN    
   END IF
-  ToHarmonic = .NOT. ToReal 
 
+  IF( .NOT. ASSOCIATED( Solver % Matrix ) ) THEN
+    CALL Warn('CgangeToHarmonicSystem','Not applicable without a matrix')
+    RETURN    
+  END IF
+  
+  ToReal = .FALSE.
+  IF( PRESENT( BackToReal ) ) ToReal = BackToReal
 
-  IF( ToHarmonic ) THEN          
-    CALL Info('ChangeToHarmonicSystem','Changing the real transient system to harmonic one!',Level=5)
+  IF( ToReal ) THEN
+    IF( ASSOCIATED( Solver % Variable % Evar ) ) THEN
+      IF( Solver % Variable % Evar % Dofs < Solver % Variable % Dofs ) THEN
+        CALL Info('ChangeToHarmonicSystem','Changing the harmonic results back to real system!',Level=5)
 
-    SaveMatrix => Solver % Matrix
-    SaveVar => Solver % Variable
-    ReVar => Solver % Variable 
+        SaveVar => Solver % Variable
+        SaveMatrix => Solver % Matrix 
 
-    n = Solver % Matrix % NumberofRows
-    DOFs = ReVar % Dofs
+        Solver % Variable => Solver % Variable % Evar
+        Solver % Variable % Evar => SaveVar
 
-    CALL Info('ChangeToHarmonicSystem','Number of real system rows: '//TRIM(I2S(n)),Level=16)
-    
-    ! Find whether the matrix already exists
-    Are => Solver % Matrix
+        Solver % Matrix => Solver % Matrix % EMatrix
+        Solver % Matrix % Ematrix => SaveMatrix
 
-    Aharm => Are % EMatrix
-    IF( ASSOCIATED( Aharm ) ) THEN
-      CALL Info('CreateHarmonicSystem','Found existing harmonic system',Level=10)
-    ELSE    
-      ! Create the matrix if it does not
-      Aharm => CreateChildMatrix( Are, Dofs, 2*Dofs, CreateRhs = .TRUE.)
-
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL Warn('ChangeToHarmonicSystem','ParallelInfo may not have been generated properly!')
+        ! Eliminate cyclic dependence that is a bummer when deallocating stuff
+        NULLIFY( Solver % Matrix % EMatrix % Ematrix )
       END IF
-      
-      
-      !OptimizeBW = ListGetLogical(Solver % Values, 'Optimize Bandwidth', Found)
-      !IF ( .NOT. Found ) OptimizeBW = .TRUE.
-      
-      !A => CreateMatrix( CurrentModel, Solver, Solver % Mesh,   &
-      !    Solver % Variable % Perm, 2 * DOFs, MATRIX_CRS, OptimizeBW, &
-      !    ListGetString( Solver % Values, 'Equation') )
-      !ALLOCATE( A % rhs(2*n) )
-      !A % rhs = 0.0_dp
-
-      Aharm % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex', Found ) 
-      IF( .NOT. Found ) Aharm % Complex = .TRUE. 
-      
-      Are % EMatrix => Aharm 
     END IF
-    
-    ! Obtain the frequency, it may depend on iteration step etc. 
-    Frequency = ListGetAngularFrequency( Solver % Values, Found ) / (2*PI)
-    IF( .NOT. Found ) THEN
-      CALL Fatal( 'AddEquation', '> Frequency < must be given for harmonic analysis.' )
-    END IF
-    WRITE( Message, '(a,e12.3)' ) 'Frequency value: ', frequency
-    CALL Info( 'CreateHarmonicSystem', Message )
-    omega = 2 * PI * Frequency
-
-    ! Set the harmonic system r.h.s
-    b => Aharm % rhs
+    RETURN
+  END IF
 
 
-    IF( ASSOCIATED( Are % Rhs ) ) THEN
-      b(1::2) = Are % RHS(1:n)
+  CALL Info('ChangeToHarmonicSystem','Changing the real transient system to harmonic one!',Level=5)
+
+  SaveMatrix => Solver % Matrix
+  SaveVar => Solver % Variable     
+
+  n = Solver % Matrix % NumberofRows
+  DOFs = SaveVar % Dofs
+  Are => Solver % Matrix
+
+  CALL Info('ChangeToHarmonicSystem','Number of real system rows: '//TRIM(I2S(n)),Level=16)
+  
+  ! Obtain the frequency, it may depend on iteration step etc. 
+  Frequency = ListGetAngularFrequency( Solver % Values, Found ) / (2*PI)
+  IF( .NOT. Found ) THEN
+    CALL Fatal( 'ChangeToHarmonicSystem', '> Frequency < must be given for harmonic analysis.' )
+  END IF
+  WRITE( Message, '(a,e12.3)' ) 'Frequency value: ', frequency
+  CALL Info( 'ChangeToHarmonicSystem', Message )
+  omega = 2 * PI * Frequency
+
+  
+  CALL ListAddConstReal( CurrentModel % Simulation, 'res: frequency', Frequency )
+
+  
+  HarmonicReal = ListGetLogical( Solver % Values,'Harmonic Mode Real',Found ) 
+  IF( HarmonicReal ) THEN
+    CALL Info('ChangeToHarmonicSystem','Enforcing harmonic system to be real valued',Level=8)
+    IF (ASSOCIATED(Are % MassValues)) THEN
+      ARe % Values = Are % Values - omega**2* Are % MassValues
     ELSE
-      b(1:2*n:2) = 0.0_dp
+      CALL Fatal('ChangeToHarmonicSystem','Harmonic system requires mass!')
     END IF
+    ! This is set outside so that it can be called more flexibilly
+    CALL EnforceDirichletConditions( Solver, Are, Are % rhs  )
+    RETURN
+  END IF
+
+ 
+  Diagonal = ListGetLogical( Solver % Values,'Harmonic Mode Block Diagonal',Found )  
+  IF(.NOT. Found ) Diagonal = .NOT. ASSOCIATED(Are % DampValues)
+  IF( Diagonal ) THEN
+    CALL Info('ChangeToHarmonicSystem','Undamped system is assumed to be block diagonal')
+  END IF
+
+  
+  ! Find whether the matrix already exists
+  Aharm => Are % EMatrix
+  IF( ASSOCIATED( Aharm ) ) THEN
+    CALL Info('ChangeToHarmonicSystem','Found existing harmonic system',Level=10)
+  ELSE    
+    ! Create the matrix if it does not
     
-    IF( ASSOCIATED( Are % Rhs_im ) ) THEN
-      b(2:2*n:2) = Are % RHS_im(1:n)            
-    ELSE
-      b(2:2*n:2) = 0.0_dp
+    Aharm => CreateChildMatrix( Are, Dofs, 2*Dofs, CreateRhs = .TRUE., Diagonal = Diagonal )
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Warn('ChangeToHarmonicSystem','ParallelInfo may not have been generated properly!')
     END IF
-    
-    ! Set the harmonic system matrix
+
+    Aharm % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex', Found ) 
+    IF( .NOT. Found ) Aharm % COMPLEX = .NOT. Diagonal !TRUE. 
+  END IF
+
+
+  ! Set the harmonic system r.h.s
+  b => Aharm % rhs
+  
+  IF( ASSOCIATED( Are % Rhs ) ) THEN
+    b(1:2*n:2) = Are % RHS(1:n)
+  ELSE
+    b(1:2*n:2) = 0.0_dp
+  END IF
+  
+  IF( ASSOCIATED( Are % Rhs_im ) ) THEN
+    b(2:2*n:2) = Are % RHS_im(1:n)            
+  ELSE
+    b(2:2*n:2) = 0.0_dp
+  END IF
+
+  IF( ASSOCIATED(Are % MassValues) ) THEN
+    CALL Info('ChangeToHarmonicSystem','We have mass matrix values',Level=12)
+  ELSE
+    CALL Warn('ChangeToHarmonicSystem','We do not have mass matrix values!')
+  END IF
+
+  IF( ASSOCIATED(Are % DampValues) ) THEN
+    CALL Info('ChangeToHarmonicSystem','We have damp matrix values',Level=12)
+  ELSE
+    CALL Info('ChangeToHarmonicSystem','We do not have damp matrix values',Level=12)
+  END IF
+
+
+  ! Set the harmonic system matrix
+  IF( Diagonal ) THEN
     DO k=1,n
       kr = Aharm % Rows(2*(k-1)+1)
       ki = Aharm % Rows(2*(k-1)+2)
       DO j=Are % Rows(k),Are % Rows(k+1)-1
-        Aharm % Values(kr) =  Are % Values(j)
-        IF (ASSOCIATED(Are % MassValues)) Aharm % Values(kr) = &
-            Aharm % Values(kr) - omega**2* Are % MassValues(j)
+        val = Are % Values(j)
+        IF (ASSOCIATED(Are % MassValues)) val = val - omega**2* Are % MassValues(j)
+        
+        Aharm % Values(kr) = val 
+        Aharm % Values(ki) = val 
+        kr = kr + 1
+        ki = ki + 1
+      END DO
+    END DO
+  ELSE
+    DO k=1,n
+      kr = Aharm % Rows(2*(k-1)+1)
+      ki = Aharm % Rows(2*(k-1)+2)
+      DO j=Are % Rows(k),Are % Rows(k+1)-1
+        val = Are % Values(j)
+        IF (ASSOCIATED(Are % MassValues)) val = val - omega**2* Are % MassValues(j)
+
+        Aharm % Values(kr) = val
+        Aharm % Values(ki+1) = val     
+        
         IF (ASSOCIATED(Are % DampValues)) THEN
           Aharm % Values(kr+1) = -Are % Dampvalues(j) * omega
           Aharm % Values(ki)   =  Are % Dampvalues(j) * omega
         END IF
-        Aharm % Values(ki+1) = Are % Values(j)
-        IF (ASSOCIATED(Are % MassValues)) Aharm % Values(ki+1) = &
-            Aharm % Values(ki+1) - omega**2* Are % MassValues(j)
+
         kr = kr + 2
         ki = ki + 2
       END DO
     END DO
-
+  END IF
     
-    ! Finally set the Dirichlet conditions for the solver    
-    DO j=1,Solver % Variable % DOFs
-      Name = ComponentName( Solver % Variable % Name, j ) 
-      DO i=1,CurrentModel % NumberOFBCs
-        BC => CurrentModel % BCs(i) % Values
-        real_given = ListCheckPresent( BC, Name )
-        imag_given = ListCheckPresent( BC, TRIM(Name) // ' im' )
+  AnyDirichlet = .FALSE.
 
-        IF ( real_given .AND. .NOT. imag_given ) THEN
-          CALL ListAddConstReal( BC, TRIM(Name) // ' im', 0._dp)
-        ELSE IF ( imag_given .AND. .NOT. real_given ) THEN
-          CALL ListAddConstReal( BC, Name, 0._dp )
+  ! Finally set the Dirichlet conditions for the solver    
+  DO j=1,DOFs
+    Name = ComponentName( Solver % Variable % Name, j ) 
+    DO i=1,CurrentModel % NumberOFBCs
+      BC => CurrentModel % BCs(i) % Values
+      real_given = ListCheckPresent( BC, Name )
+      imag_given = ListCheckPresent( BC, TRIM(Name) // ' im' )
+
+      IF( real_given .OR. imag_given ) AnyDirichlet = .TRUE.
+
+      IF ( real_given .AND. .NOT. imag_given ) THEN
+        CALL ListAddConstReal( BC, TRIM(Name) // ' im', 0._dp)
+      ELSE IF ( imag_given .AND. .NOT. real_given ) THEN
+        CALL ListAddConstReal( BC, Name, 0._dp )
+      END IF
+    END DO
+  END DO
+
+  IF( AnyDirichlet ) THEN
+    DO j=1,DOFs
+      Name = ComponentName( SaveVar % Name, j ) 
+
+      CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
+          2*j-1, 2*DOFs, SaveVar % Perm )
+
+      CALL SetDirichletBoundaries( CurrentModel, Aharm, b, TRIM(Name) // ' im', &
+          2*j, 2*DOFs, SaveVar % Perm )
+    END DO
+
+    CALL EnforceDirichletConditions( Solver, Aharm, b )
+  END IF
+
+
+  ! Create the new fields, the total one and the imaginary one
+  !-------------------------------------------------------------
+  k = INDEX( SaveVar % name, '[' )
+  ParseName = ( k > 0 ) 
+
+  ! Name of the full complex variable not used for postprocessing
+  IF( ParseName ) THEN
+    Name = TRIM(SaveVar % Name(1:k-1))//' complex'
+  ELSE
+    Name = TRIM( SaveVar % Name )//' complex'
+  END IF
+
+  CALL Info('ChangeToHarmonicSystem','Harmonic system full name: '//TRIM(Name),Level=12)
+
+
+  HarmVar => VariableGet( Solver % Mesh % Variables, Name )
+  IF( ASSOCIATED( HarmVar ) ) THEN
+    CALL Info('ChangeToHarmonicSystem','Reusing full system harmonic dofs',Level=12)
+  ELSE
+    CALL Info('ChangeToHarmonicSystem','Creating full system harmonic dofs',Level=12)
+    CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
+        Name,2*DOFs,Perm=SaveVar % Perm,Output=.FALSE.)
+    HarmVar => VariableGet( Solver % Mesh % Variables, Name )
+    IF(.NOT. ASSOCIATED( HarmVar ) ) CALL Fatal('ChangeToHarmonicSystem','New created variable should exist!')
+
+    ! Repoint the values of the original solution vector
+    HarmVar % Values(1:2*n:2) = SaveVar % Values(1:n)
+
+    ! It beats me why this cannot be deallocated without some NaNs later
+    !DEALLOCATE( SaveVar % Values )
+    SaveVar % Values => HarmVar % Values(1:2*n:2)
+    SaveVar % Secondary = .TRUE.
+
+    ! Repoint the components of the original solution
+    IF( Dofs > 1 ) THEN
+      DO i=1,Dofs
+        TmpVar => VariableGet( Solver % Mesh % Variables, ComponentName( SaveVar % Name, i ) )
+        IF( ASSOCIATED( TmpVar ) ) THEN
+          TmpVar % Values => HarmVar % Values(2*i-1::HarmVar % Dofs)
+        ELSE
+          CALL Fatal('ChangeToHarmonicSystem','Could not find re component '//TRIM(I2S(i)))
         END IF
       END DO
-    END DO
-
-    DO j=1,Solver % Variable % DOFs
-      Name = ComponentName( Solver % Variable % Name, j ) 
-      
-      CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
-          2*j-1, 2*DOFs, Solver % Variable % Perm )
-      
-      CALL SetDirichletBoundaries( CurrentModel, Aharm, b, TRIM(Name) // ' im', &
-          2*j, 2*DOFs, Solver % Variable % Perm )
-    END DO
-    
-    CALL EnforceDirichletConditions( Solver, Aharm, b )
-  
-    
-    ! Create the new fields, the total one and the imaginary one
-    !-------------------------------------------------------------
-    Name = TRIM( ReVar % Name )//' complex'
-    TotVar => VariableGet( Solver % Mesh % Variables, Name )
-    IF(.NOT. ASSOCIATED( TotVar ) ) THEN
-      CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
-          Name,2*DOFs,Perm=ReVar % Perm,Output=.FALSE.,Secondary=.TRUE.)
-      TotVar => VariableGet( Solver % Mesh % Variables, Name )
     END IF
 
-    Name = TRIM( ReVar % Name )//' im'
-    ImVar => VariableGet( Solver % Mesh % Variables, Name )
-    IF( .NOT. ASSOCIATED( ImVar ) ) THEN    
-      CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver, &
-          Name,DOFs,Perm=ReVar % Perm,Output=.TRUE.,Secondary=.TRUE.)
-      ImVar => VariableGet( Solver % Mesh % Variables, Name )
+    IF( ParseName ) THEN
+      Name = ListGetString( Solver % Values,'Imaginary Variable',Found )
+      IF(.NOT. Found ) THEN
+        CALL Fatal('ChangeToHarmonicSystem','We need > Imaginary Variable < to create harmonic system!')
+      END IF
+    ELSE
+      Name = TRIM( SaveVar % Name )//' im'
+      CALL Info('ChangeToHarmonicSystem','Using derived name for imaginary component: '//TRIM(Name),Level=12)
+    END IF
+
+    TmpVals => HarmVar % Values(2:2*n:2)
+    CALL VariableAdd( Solver % Mesh % Variables,Solver % Mesh,Solver, &
+        Name, DOFs,TmpVals, Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)        
+
+    IF( Dofs > 1 ) THEN
+      DO i=1,Dofs
+        TmpVals => HarmVar % Values(2*i:2*n:2*Dofs)
+        CALL VariableAdd( Solver % Mesh % Variables,Solver % Mesh,Solver, &
+            ComponentName(Name,i),1,TmpVals,Perm=SaveVar % Perm,Output=.TRUE.,Secondary=.TRUE.)        
+      END DO
     END IF
     
-    ! Now change the pointers such that when we visit the linear solver
-    ! the system will automatically be solved as complex
-    Solver % Variable => TotVar
-    Solver % Matrix => Aharm
-    
-  ELSE
-    CALL Info('ChangeToHarmonicSystem','Changing the harmonic results to real system!',Level=5)
-   
-    ReVar % Values = TotVar % Values(1::2)
-    ImVar % Values = TotVar % Values(2::2)
-        
-    Solver % Variable => SaveVar
-    Solver % Matrix => SaveMatrix   
   END IF
-      
+
+  ! Now change the pointers such that when we visit the linear solver
+  ! the system will automatically be solved as complex
+  Solver % Variable => HarmVar
+  Solver % Matrix => Aharm
+  
+  ! Save the original matrix and variable in Ematrix and Evar
+  Solver % Matrix % Ematrix => SaveMatrix
+  Solver % Variable % Evar => SaveVar    
+
+  ! Eliminate cyclic dependence that is a bummer when deallocating stuff
+  ! We are toggling {Are,Aharm} in {Solver % Matrix, Solver % Matrix % Ematrix}
+  NULLIFY( Solver % Matrix % EMatrix % Ematrix )
+
 !------------------------------------------------------------------------------
 END SUBROUTINE ChangeToHarmonicSystem
 !------------------------------------------------------------------------------
@@ -13986,32 +14171,42 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Assemble coupling matrix related to fluid-structure interaction
 !------------------------------------------------------------------------------
-  SUBROUTINE FsiCouplingAssembly( Solver, FVar, SVar, A_fs, A_sf, ConstrainedF, ConstrainedS )
+  SUBROUTINE FsiCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
+      IsPlate, IsShell, IsNS )
     
     TYPE(Solver_t) :: Solver          ! leading solver
     TYPE(Variable_t), POINTER :: FVar ! fluid variable
     TYPE(Variable_t), POINTER :: SVar ! structure variable
-    TYPE(Matrix_t), POINTER :: A_fs, A_sf
+    TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_f, A_s
+    LOGICAL :: IsPlate, IsShell, IsNS
+   !------------------------------------------------------------------------------
     LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
-    !------------------------------------------------------------------------------
     INTEGER, POINTER :: FPerm(:), SPerm(:)
     INTEGER :: FDofs, SDofs
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: Indexes(:), pIndexes(:)
-    INTEGER :: i,j,ii,jj,k,n,t,istat,pn,ifluid,jstruct
+    INTEGER :: i,j,ii,jj,k,n,t,istat,pn,ifluid,jstruct,pcomp
     TYPE(Element_t), POINTER :: Element, Parent
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:)
     REAL(KIND=dp), POINTER :: Basis(:)
-    REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area
+    REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area, fdiag
     LOGICAL :: Stat, IsHarmonic
     INTEGER :: dim,mat_id,tcount
-    LOGICAL :: FreeF, FreeS, Found
+    LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, Found
+    LOGICAL, ALLOCATABLE :: NodeDone(:)
     REAL(KIND=dp) :: MultSF, MultFS
     
     
     CALL Info('FsiCouplingAssembly','Creating coupling matrix for harmonic FSI',Level=6)
+
+    
+    IF( A_fs % FORMAT /= MATRIX_LIST ) THEN
+      A_fs % Values = 0.0_dp
+      A_sf % Values = 0.0_dp      
+    END IF
+      
     
     Mesh => Solver % Mesh
     FPerm => FVar % Perm
@@ -14020,22 +14215,85 @@ CONTAINS
     fdofs = FVar % Dofs
     sdofs = SVar % Dofs
 
-    ! Here we assume harmonic coupling
-    IF( sdofs > 3 ) THEN
-      IsHarmonic = .TRUE.
-      dim = sdofs / 2
+    IF( IsPlate ) CALL Info('FsiCouplingAssembly','Assuming structure to be plate',Level=8)
+
+    IF( IsShell ) CALL Info('FsiCouplingAssembly','Assuming structure to be shell',Level=8)
+
+    IF( IsNS ) CALL Info('FsiCouplingAssembly','Assuming fluid to have velocities',Level=8)
+
+    ConstrainedF => A_f % ConstrainedDof
+    ConstrainedS => A_s % ConstrainedDof
+    
+    
+    ! Here we assume harmonic coupling if there are more then 3 structure dofs
+    dim = 3
+    IsHarmonic = .FALSE.
+    IF( IsPlate ) THEN
+      IF( sdofs == 6 ) THEN
+        IsHarmonic = .TRUE.
+      ELSE IF( sdofs /= 3 ) THEN
+        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in plate solver: '//TRIM(I2S(sdofs)))
+      END IF
+    ELSE IF( IsShell ) THEN
+      IF( sdofs == 12 ) THEN
+        IsHarmonic = .TRUE.
+      ELSE IF( sdofs /= 6 ) THEN
+        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in shell solver: '//TRIM(I2S(sdofs)))
+      END IF
+    ELSE
+      IF( sdofs == 4 .OR. sdofs == 6 ) THEN
+        IsHarmonic = .TRUE.
+      ELSE IF( sdofs /= 2 .AND. sdofs /= 3 ) THEN
+        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in elasticity solver: '//TRIM(I2S(sdofs)))
+      END IF
+      IF( sdofs == 4 .OR. sdofs == 2 ) dim = 2
+    END IF
+
+    ! The elasticity solver defines whether the system is real or harmonic
+    IF( IsHarmonic ) THEN
       CALL Info('FsiCouplingAssembly','Assuming harmonic coupling matrix',Level=10)
     ELSE
-      IsHarmonic = .FALSE.
-      dim = sdofs
       CALL Info('FsiCouplingAssembly','Assuming real valued coupling matrix',Level=10)
     END IF
 
+    
+    ! The fluid system must be consistent with elasticity system
+    IF( IsNS ) THEN
+      IF( IsHarmonic ) THEN
+        IF( fdofs /= 2*(dim+2) .AND. fdofs /= 2*(dim+1) ) THEN
+          CALL Fatal('FsiCouplingAssembly',&
+              'Inconsistant number of harmonic dofs in NS solver: '//TRIM(I2S(fdofs)))
+        END IF
+        ! pressure component
+        pcomp = fdofs / 2
+      ELSE
+        IF( fdofs /= (dim+2) .AND. fdofs /= (dim+1) ) THEN
+          CALL Fatal('FsiCouplingAssembly',&
+              'Inconsistant number of real dofs in NS solver: '//TRIM(I2S(fdofs)))
+        END IF
+        pcomp = fdofs
+      END IF
+      ALLOCATE( NodeDone(MAXVAL(FPerm)) )
+      NodeDone = .FALSE.
+    ELSE
+      IF( IsHarmonic ) THEN
+        IF( fdofs /= 2 ) CALL Fatal('FsiCouplingAssembly',&
+            'Inconsistant number of harmonic dofs in pressure solver: '//TRIM(I2S(fdofs)))
+      ELSE
+        IF( fdofs /= 1 ) CALL Fatal('FsiCouplingAssembly',&
+            'Inconsistant number of real dofs in pressure solver: '//TRIM(I2S(fdofs)))
+      END IF
+      pcomp = 1
+    END IF
+
+    
     IF( IsHarmonic ) THEN
       Omega = 2 * PI * ListGetCReal( CurrentModel % Simulation,'Frequency',Stat ) 
       IF( .NOT. Stat) THEN
         CALL Fatal('FsiCouplingAssembly','Frequency in Simulation list not found!')
       END IF
+    ELSE
+      Omega = 0.0_dp
     END IF
     
     
@@ -14066,8 +14324,8 @@ CONTAINS
     MultSF = ListGetCReal( Solver % Values,'SF multiplier',Found)
     IF( .NOT. Found ) MultSF = 1.0_dp
     
-    FreeS = .TRUE.
-    FreeF = .TRUE.
+    FreeS = .TRUE.; FreeSim = .TRUE.
+    FreeF = .TRUE.; FreeFim = .TRUE.    
     
     
     DO t=Mesh % NumberOfBulkElements+1, &
@@ -14128,11 +14386,13 @@ CONTAINS
       
       mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material' )
       rho = ListGetConstReal( CurrentModel % Materials(mat_id) % Values,'Density',Stat)
+      IF(.NOT. Stat) rho = ListGetConstReal( CurrentModel % Materials(mat_id) % Values, &
+          'Equilibrium Density',Stat)
+
       IF( .NOT. Stat) THEN
-        CALL Fatal('FsiCouplingAssembly','Fluid density not found!')
+        CALL Fatal('FsiCouplingAssembly','Fluid density not found in material :'//TRIM(I2S(mat_id)))
       END IF
-
-
+      
       ! The sign depends on the convection of the normal direction
       coeff = rho * omega**2
 
@@ -14141,8 +14401,7 @@ CONTAINS
       !----------------------
       IP = GaussPoints( Element )
       
-      DO k=1,IP % n
-        
+      DO k=1,IP % n        
         ! Basis function values & derivatives at the integration point:
         !--------------------------------------------------------------
         stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
@@ -14159,36 +14418,291 @@ CONTAINS
         area = area + val
       END DO
 
-      ! The mass matrix is symmetric hence there is no difference how to pick i/j 
+      ! A: fs
+      ! Effect of structure on fluid           
+      IF( IsNs ) THEN
+        ! For the N-S equation the condition applies directly on the velocity components
+        
+        DO i=1,n
+          ii = Indexes(i)
+          j = i
+          jj = Indexes(j) ! one-to-one mapping
+
+
+          IF( NodeDone( Fperm(ii) ) ) CYCLE
+          NodeDone( FPerm(ii) ) = .TRUE.
+          
+          
+          DO k=1,dim
+            
+            ! The velocity component of the fluid
+            IF( IsHarmonic ) THEN
+              ifluid = fdofs*(FPerm(ii)-1)+2*(k-1)+1
+              !IF( ASSOCIATED( ConstrainedF ) ) THEN
+              !  FreeF = .NOT. ConstrainedF(ifluid)
+              !  FreeFim = .NOT. ConstrainedF(ifluid+1)            
+              !END IF
+            ELSE
+              ifluid = fdofs*(FPerm(ii)-1)+k
+              !IF( ASSOCIATED( ConstrainedF ) ) THEN
+              !  FreeF = .NOT. ConstrainedF(ifluid)
+              !END IF
+            END IF
+                          
+            ! Shell and 3D elasticity are both treated with the same routine
+            IF( .NOT. IsPlate ) THEN
+              IF( IsHarmonic ) THEN
+                val = omega
+                jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
+              ELSE
+                CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')               
+              END IF
+                
+            ELSE ! If IsPlate
+              IF( IsHarmonic ) THEN              
+                val = omega * Normal(k)
+                
+                ! By default the plate should be oriented so that normal points to z
+                ! If there is a plate then fluid is always 3D
+                IF( Normal(3) < 0 ) val = -val
+
+                jstruct = sdofs*(SPerm(jj)-1)+1
+              ELSE
+                CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')               
+              END IF
+            END IF
+
+            IF( IsHarmonic ) THEN                                             
+              ! Structure load on the fluid: v = i*omega*u
+              fdiag = A_f % Values( A_f % diag(ifluid) )
+              IF( FreeF ) THEN
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,MultFS*val*fdiag)     ! Re 
+              ELSE
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)
+              END IF
+              
+              fdiag = A_f % Values( A_f % diag(ifluid+1) )
+              IF( FreeFim ) THEN
+                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,-MultFS*val*fdiag)      ! Im
+              ELSE                
+                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
+              END IF
+              
+              ! These must be created for compleness bacause the matrix topology of complex
+              ! matrices must be the same for all compoents.
+              CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)     
+              CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp)
+            ELSE
+              CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')
+            END IF
+          END DO
+        END DO
+
+      ELSE ! .NOT. IsNS
+        ! For pressure equations (Helmholz) the structure applies as Neumann condition for the normal traction
+        
+        DO i=1,n
+          ii = Indexes(i)
+
+          ! The pressure component of the fluid
+          IF( IsHarmonic ) THEN
+            ifluid = fdofs*(FPerm(ii)-1)+2*(pcomp-1)+1
+            IF( ASSOCIATED( ConstrainedF ) ) THEN
+              FreeF = .NOT. ConstrainedF(ifluid)
+              FreeFim = .NOT. ConstrainedF(ifluid+1)            
+            END IF
+          ELSE
+            ifluid = fdofs*(FPerm(ii)-1)+pcomp
+            IF( ASSOCIATED( ConstrainedF ) ) THEN
+              FreeF = .NOT. ConstrainedF(ifluid)
+            END IF
+          END IF
+
+
+          DO j=1,n
+            jj = Indexes(j)
+
+            ! Shell and 3D elasticity are both treated with the same routine
+            IF( .NOT. IsPlate ) THEN
+
+              DO k=1,dim
+
+                val = MASS(i,j) * Normal(k)
+
+                IF( IsHarmonic ) THEN
+                  jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
+
+                  ! Structure load on the fluid: dp/dn = -rho*omega^2*n
+                  IF( FreeF ) THEN
+                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
+                  ELSE
+                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
+                  END IF
+
+                  IF( FreeFim ) THEN
+                    CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
+                  ELSE                
+                    CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
+                  END IF
+
+                  ! These must be created for compleness bacause the matrix topology of complex
+                  ! matrices must be the same for all compoents.
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
+                  CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
+                ELSE
+                  jstruct = sdofs*(SPerm(jj)-1)+k
+
+                  ! Structure load on the fluid: dp/dn = -u
+                  IF( FreeF ) THEN
+                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
+                  END IF
+                END IF
+              END DO
+
+            ELSE ! If IsPlate
+
+              val = MASS(i,j) 
+
+              ! By default the plate should be oriented so that normal points to z
+              ! If there is a plate then fluid is always 3D
+              IF( Normal(3) < 0 ) val = -val
+
+              IF( IsHarmonic ) THEN
+                jstruct = sdofs*(SPerm(jj)-1)+1
+
+                ! Structure load on the fluid: dp/dn = -rho*omega^2*n
+                IF( FreeF ) THEN
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
+                ELSE
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
+                END IF
+
+                IF( FreeFim ) THEN
+                  CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
+                ELSE                
+                  CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
+                END IF
+
+                ! These must be created for compleness bacause the matrix topology of complex
+                ! matrices must be the same for all compoents.
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
+                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
+              ELSE
+                jstruct = sdofs*(SPerm(jj)-1)+1
+
+                ! Structure load on the fluid: dp/dn = -u
+                IF( FreeF ) THEN
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
+                END IF
+              END IF
+
+            END IF
+
+          END DO
+        END DO
+      END IF
+        
+
+      ! A_sf:
+      ! Effect of fluid (pressure) on structure.
+      ! Each component get the normal component of the pressure as a r.h.s. term.
+      ! The plate equation just gets the full load and is treated separately. 
+      !----------------------------------------------------------------------------
       DO i=1,n
         ii = Indexes(i)
 
+        ! The pressure component of the fluid
         IF( IsHarmonic ) THEN
-          ifluid = 2*FPerm(ii)-1                  
+          ifluid = fdofs*(FPerm(ii)-1)+2*(pcomp-1)+1
         ELSE
-          ifluid = FPerm(ii)
+          ifluid = fdofs*(FPerm(ii)-1)+pcomp
         END IF
-          
+
         DO j=1,n
           jj = Indexes(j)
-          val = MASS(i,j)
-                   
-          DO k=1,dim
 
-            val = MASS(i,j) * Normal(k)
+          ! Shell and 3D elasticity are both treated with the same routine
+          IF( .NOT. IsPlate ) THEN
 
+            DO k=1,dim
+              
+              val = MASS(i,j) * Normal(k)
+              
+              IF( IsHarmonic ) THEN
+                jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
+                
+                IF( ASSOCIATED( ConstrainedS ) ) THEN
+                  FreeS = .NOT. ConstrainedS(jstruct)
+                  FreeSim = .NOT. ConstrainedS(jstruct+1)
+                END IF
+
+                ! Fluid load on the structure: tau \cdot n = p * n
+                IF( FreeS ) THEN
+                  CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           ! Re terms coupling
+                ELSE
+                  CALL AddToMatrixElement(A_sf,jstruct,ifluid,0.0_dp)
+                END IF
+                
+                IF( FreeSim ) THEN
+                  CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,MultSF*val)       ! Im
+                ELSE
+                  CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp) 
+                END IF
+                
+                ! These must be created for compleness bacause the matrix topology of complex
+                ! matrices must be the same for all compoents.
+                CALL AddToMatrixElement(A_sf,jstruct,ifluid+1,0.0_dp)
+                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid,0.0_dp)            
+              ELSE
+                jstruct = sdofs*(SPerm(jj)-1)+k
+                
+                IF( ASSOCIATED( ConstrainedS ) ) THEN
+                  FreeS = .NOT. ConstrainedS(jstruct)
+                END IF
+
+                ! Fluid load on the structure: tau \cdot n = p * n
+                IF( FreeS ) THEN
+                  CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           
+                END IF
+                
+              END IF
+            END DO
+            
+          ELSE ! If IsPlate
+            
+            val = MASS(i,j) 
+            
+            ! By default the plate should be oriented so that normal points to z
+            ! If there is a plate then fluid is always 3D
+            IF( Normal(3) < 0 ) val = -val
+            
             IF( IsHarmonic ) THEN
-              jstruct = 2*dim*(SPerm(jj)-1)+2*(k-1)+1  
-
+              jstruct = sdofs*(SPerm(jj)-1)+1
+              
+              IF( ASSOCIATED( ConstrainedS ) ) THEN
+                FreeS = .NOT. ConstrainedS(jstruct)
+                FreeSim = .NOT. ConstrainedS(jstruct+1)
+              END IF
+              
               ! Fluid load on the structure: tau \cdot n = p * n
-              CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           ! Re terms coupling
-              CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,MultSF*val)       ! Im
+              IF( FreeS ) THEN
+                CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           ! Re terms coupling
+              ELSE
+                CALL AddToMatrixElement(A_sf,jstruct,ifluid,0.0_dp)
+              END IF
 
-              ! Structure load on the fluid: dp/dn = -rho*omega^2*n
-              CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
-              CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
+              IF( FreeSim ) THEN
+                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,MultSF*val)       ! Im
+              ELSE
+                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp) 
+              END IF
+              
+              ! These must be created for compleness bacause the matrix topology of complex
+              ! matrices must be the same for all compoents.
+              CALL AddToMatrixElement(A_sf,jstruct,ifluid+1,0.0_dp)
+              CALL AddToMatrixElement(A_sf,jstruct+1,ifluid,0.0_dp)            
             ELSE
-              jstruct = dim*(SPerm(jj)-1)+k
+              jstruct = sdofs*(SPerm(jj)-1)+1
 
               IF( ASSOCIATED( ConstrainedS ) ) THEN
                 FreeS = .NOT. ConstrainedS(jstruct)
@@ -14198,32 +14712,26 @@ CONTAINS
               IF( FreeS ) THEN
                 CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           
               END IF
-
-              IF( ASSOCIATED( ConstrainedF ) ) THEN
-                FreeF = .NOT. ConstrainedF(ifluid)
-              END IF
-                           
-              ! Structure load on the fluid: dp/dn = -u
-              IF( FreeF ) THEN
-                CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
-              END IF
             END IF
+            
+          END IF
 
-          END DO
-          
         END DO
       END DO
-      
-    END DO
+
+    END DO ! Loop over boundary elements
     
+      
     DEALLOCATE( Basis, MASS, Nodes % x, Nodes % y, Nodes % z)
 
-    CALL List_toCRSMatrix(A_fs)
-    CALL List_toCRSMatrix(A_sf)
-
-    !PRINT *,'interface area:',area
-    !PRINT *,'interface fs sum:',SUM(A_fs % Values)
-    !PRINT *,'interface sf sum:',SUM(A_sf % Values)
+    IF( A_fs % FORMAT == MATRIX_LIST ) THEN
+      CALL List_toCRSMatrix(A_fs)
+      CALL List_toCRSMatrix(A_sf)
+    END IF
+      
+    PRINT *,'interface area:',area
+    PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
+    PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
     CALL Info('FsiCouplingAssembly','Number of elements on interface: '&
         //TRIM(I2S(tcount)),Level=10)    

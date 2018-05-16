@@ -2021,7 +2021,7 @@ CONTAINS
           Viscosity  = SUM( NodalViscosity(1:fn) * FBasis )
 
           Viscosity = EffectiveViscosity( Viscosity,Density,Velocity(1,:),Velocity(2,:), &
-               Velocity(3,:),FlowElement,FlowNodes,fn,fn,ParentU,ParentV,ParentW)
+               Velocity(3,:),FlowElement,FlowNodes,fn,fn,ParentU,ParentV,ParentW,LocalIP=t)
           Viscosity  = SUM( NodalViscosity(1:fn) * FBasis )
 
           FlowStress = Viscosity * ( Grad + TRANSPOSE(Grad) )

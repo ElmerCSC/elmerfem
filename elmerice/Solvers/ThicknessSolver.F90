@@ -52,6 +52,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE. , &
        ConvectionVar,Compute_dhdt,UnFoundFatal=.TRUE.
+  LOGICAL :: Passive
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
@@ -252,6 +253,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      ActiveNode = .FALSE.
      ResidualVector = 0.0_dp
   END IF
+  LimitedSolution=.FALSE.
 
 
   !------------------------------------------------------------------------------
@@ -305,6 +307,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !------------------------------------------------------------------------------
      DO t=1,Solver % NumberOfActiveElements
         CurrentElement => GetActiveElement(t)
+        Passive=CheckPassiveElement(CurrentElement)
         n = GetElementNOFNodes()
         NodeIndexes => CurrentElement % NodeIndexes
 
@@ -337,12 +340,12 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         !-----------------------------
         LowerLimit(CurrentElement % Nodeindexes(1:N)) = &
              ListGetReal(Material,'Min ' // TRIM(VariableName),n,CurrentElement % NodeIndexes, Found) 
-        LimitedSolution(CurrentElement % Nodeindexes(1:N), 1) = Found
+        IF (.NOT.Passive) LimitedSolution(CurrentElement % Nodeindexes(1:N), 1) = Found
         ! get upper limit for solution 
         !-----------------------------
         UpperLimit(CurrentElement % Nodeindexes(1:N)) = &
              ListGetReal(Material,'Max ' // TRIM(VariableName),n,CurrentElement % NodeIndexes, Found)              
-        LimitedSolution(CurrentElement % Nodeindexes(1:N), 2) = Found
+        IF (.NOT.Passive) LimitedSolution(CurrentElement % Nodeindexes(1:N), 2) = Found
 
         ! get flow soulution and velocity field from it
         !----------------------------------------------
@@ -630,8 +633,11 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        REAL(KIND=dp) ::&
             Basis(2*nCoord),dBasisdx(2*nCoord,3), &
             Vgauss(3),  Source, &
-            X,Y,Z,U,V,W,S,SqrtElementMetric, SU(2*nCoord),SW(2*nCoord),Tau,hK,UNorm,divu
-
+            X,Y,Z,U,V,W,S,SqrtElementMetric, SU(2*nCoord),SW(2*nCoord),hK,UNorm,divu
+       REAL(KIND=dp) :: Tau,Tau1,Tau2
+       REAL(KIND=dp),PARAMETER :: r_switch=2.0
+       LOGICAL :: TransientStab
+       REAL(KIND=dp) :: Tau2_factor
        TYPE(ElementType_t), POINTER :: SaveElementType
        INTEGER :: LinType(2:4) = [202,303,404]
 
@@ -717,10 +723,27 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           END DO
 
           UNorm = SQRT( SUM( Vgauss(1:NSDOFs)**2 ) )
-          IF (UNorm .NE. 0.0_dp) THEN
-             Tau = hK / ( 2*Unorm )
+          Tau=0._dp
+          TransientStab=ListGetLogical(GetSolverParams(), 'Transient Stabilisation',Stat )
+          IF (.NOT.Stat) TransientStab=.FALSE.
+          IF (.NOT.TransientStab) THEN 
+            IF (UNorm .NE. 0.0_dp) Tau = hK / ( 2*Unorm )
           ELSE
-             Tau = 0.0_dp
+          ! STAB PARAMETER (SEE Akin and Tezduyar, Calculation of the advective
+        ! limit ..., Comput. Methods Appl. Mech. Engrg. 193 (2004)
+            !1/Tau1
+            Tau1=0._dp
+            Do i=1,n
+               Tau1=Tau1+ABS(SUM(dBasisdx(i,1:NSDOFS)*Vgauss(1:NSDOFS)))
+            End do
+            !1/Tau2
+            Tau2=0._dp
+            Tau2_factor=ListGetConstReal(GetSolverParams(), 'Tau2 factor', Stat )
+            IF (.NOT.Stat) Tau2_factor=1.0e-3
+            IF (TransientSimulation) Tau2=Tau2_factor*2.0/dt
+            !Tau=(1/Tau1^r+1/tau2^r)^(-1/r)
+            Tau=Tau1**r_switch+Tau2**r_switch
+            IF (Tau.NE.0._dp) Tau=(Tau)**(-1.0/r_switch)
           END IF
 
           IF ( .NOT. Bubbles ) THEN

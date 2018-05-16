@@ -285,7 +285,12 @@ CONTAINS
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes() ! kulmat
        nd = GetElementNOFDOFs()  ! vapausasteet
-  
+       
+       IF (SIZE(Tcoef,3) /= n) THEN
+         DEALLOCATE(Tcoef)
+         ALLOCATE(Tcoef(3,3,n))
+       END IF
+       
        LOAD = 0.0d0
        BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.
@@ -1360,14 +1365,17 @@ CONTAINS
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n), Nu(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,FixJPot(2,nd), &
-                     RotMLoc(3,3), RotM(3,3,n)
+                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
+                     lorentz_velo(3,n), RotWJ(3)
 
-    COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd)
+    COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
+                        CVelo(3), CVeloSum
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
 
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody
+    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody, &
+               HasVelocity, HasLorenzVelocity, HasAngularVelocity
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -1402,6 +1410,13 @@ CONTAINS
 
     JAC = 0._dp
     Newton = .FALSE.
+
+    HasVelocity = .FALSE.
+    IF(ASSOCIATED(BodyForce)) THEN
+      CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
+      CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
+      HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
+    END IF
 
     CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
     siz = 0
@@ -1483,6 +1498,26 @@ CONTAINS
        END IF
 
        mu = SUM( Basis(1:n) * Acoef(1:n) )
+
+       ! Compute convection type term coming from rotation
+       ! -------------------------------------------------
+       IF(HasVelocity) THEN
+         velo = 0.0_dp
+         IF( HasAngularVelocity ) THEN
+           DO i=1,n
+             velo(1:3) = velo(1:3) + CrossProduct(omega_velo(1:3,i), [ &
+                 basis(i) * Nodes % x(i), &
+                 basis(i) * Nodes % y(i), &
+                 basis(i) * Nodes % z(i)])
+           END DO
+         END IF
+         IF( HasLorenzVelocity ) THEN
+           velo(1:3) = velo(1:3) + [ &
+               SUM(basis(1:n)*lorentz_velo(1,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(2,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(3,1:n))]
+         END IF
+       END IF
 
        ! Compute the conductivity tensor
        ! -------------------------------
@@ -1583,6 +1618,24 @@ CONTAINS
           END DO
        END IF ! (.NOT. CoilBody)
 
+       IF ( HasVelocity ) THEN
+         DO i=1,np
+           p = i
+           DO j=1,nd-np
+             q = j+np
+             RotWJ(1:3) = RotWBasis(j,1:3)
+
+             CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
+             CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
+             CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
+             CVeloSum = REAL(0,dp)
+             DO k=1,3
+               CVeloSum = CVeloSum + CVelo(k)*dBasisdx(i,k)
+             END DO
+             STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
+           END DO
+         END DO
+       END IF
        !
        ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
        !        J + curl(M) - C*grad(P'):
@@ -1598,6 +1651,11 @@ CONTAINS
            IF ( Newton ) THEN
              JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(i,:)) * &
                  SUM(CONJG(B_ip(:))*RotWBasis(j,:))*detJ*IP % s(t)/Babs
+           END IF
+
+           IF( HasVelocity ) THEN
+             STIFF(p,q) = STIFF(p,q) &
+                 - SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
            END IF
 
            STIFF(p,q) = STIFF(p,q) + &

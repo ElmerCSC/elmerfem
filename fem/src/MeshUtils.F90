@@ -101,7 +101,7 @@ CONTAINS
         ALLOCATE(Element % PDefs, STAT=istat)
         IF ( istat /= 0) CALL Fatal('AllocatePDefinitions','Unable to allocate memory')
      ELSE
-        CALL Warn('AllocatePDefinitions','P element definitions already allocated')
+       CALL Info('AllocatePDefinitions','P element definitions already allocated',Level=10)
      END IF
 
      ! Initialize fields
@@ -2843,18 +2843,23 @@ END SUBROUTINE GetMaxDefs
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs)
+  SUBROUTINE SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs,NeedEdges)
 !------------------------------------------------------------------------------
     INTEGER, OPTIONAL :: EdgeDOFs(:), FaceDOFs(:)
     TYPE(Mesh_t) :: Mesh
     INTEGER, OPTIONAL :: indofs(:,:)
+    LOGICAL, OPTIONAL :: NeedEdges
 !------------------------------------------------------------------------------
     INTEGER :: i,j,el_id
     TYPE(Element_t), POINTER :: Element, Edge, Face
+    LOGICAL :: AssignEdges
 !------------------------------------------------------------------------------
 
     CALL FindMeshEdges(Mesh)
 
+    AssignEdges = .FALSE.
+    IF (PRESENT(NeedEdges)) AssignEdges = NeedEdges
+    
     ! Set edge and face polynomial degree and degrees of freedom for
     ! all elements
     DO i=1,Mesh % NumberOFBulkElements
@@ -2882,7 +2887,9 @@ END SUBROUTINE GetMaxDefs
              
           ! Other element types, which need edge dofs
           ELSE IF(PRESENT(EdgeDOFs)) THEN
-             Edge % BDOFs = MAX(EdgeDOFs(i), Edge % BDOFs)
+            Edge % BDOFs = MAX(EdgeDOFs(i), Edge % BDOFs)
+          ELSE
+            Edge % BDOFs = Max(1, Edge % BDOFs)
           END IF
 
           ! Get maximum dof for edges
@@ -2945,6 +2952,15 @@ END SUBROUTINE GetMaxDefs
              Element % PDefs % isEdge = .TRUE.
              CALL AssignLocalNumber(Element, Element % BoundaryInfo % Right, Mesh)
           END IF
+       END IF
+
+       IF (AssignEdges) THEN
+         IF (ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+           CALL AssignLocalNumber(Element,Element % BoundaryInfo % Left, Mesh, NoPE=.TRUE.)
+         END IF
+         IF (ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+           CALL AssignLocalNumber(Element,Element % BoundaryInfo % Right, Mesh, NoPE=.TRUE.)
+         END IF
        END IF
     END DO
 !------------------------------------------------------------------------------
@@ -7185,11 +7201,9 @@ END SUBROUTINE GetMaxDefs
             j = InvPerm1(Indexes(i))
             nrow = NodePerm(j)
             IF( nrow == 0 ) CYCLE
-            CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                j, 0.0_dp ) 
+            CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
              IF(ASSOCIATED(Projector % Child)) &
-               CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                   j, 0.0_dp ) 
+               CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
           END DO
         END IF
 
@@ -8208,8 +8222,7 @@ END SUBROUTINE GetMaxDefs
           j = InvPerm1(Indexes(i))
           nrow = NodePerm(j)
           IF( nrow == 0 ) CYCLE
-          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-              j, 0.0_dp ) 
+          CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
         END DO
 
         ! Currently a n^2 loop but it could be improved
@@ -10264,10 +10277,14 @@ END SUBROUTINE GetMaxDefs
           
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
-      ii = intinvperm(i)
-      IF( ii == 0) THEN
-        PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
-        CYCLE
+      IF( ASSOCIATED( IntInvPerm ) ) THEN
+        ii = intinvperm(i)        
+        IF( ii == 0) THEN
+          PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
+          CYCLE
+        END IF
+      ELSE
+        ii = i
       END IF
       IF( GlobalInds ) THEN
         IF( ii > SIZE( GlobalDofs ) ) THEN
@@ -10317,8 +10334,12 @@ END SUBROUTINE GetMaxDefs
       
       OPEN(1,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
-        ii = intinvperm(i)
-        IF( ii == 0 ) CYCLE
+        IF( ASSOCIATED( IntInvPerm ) ) THEN
+          ii = intinvperm(i)
+          IF( ii == 0 ) CYCLE
+        ELSE
+          ii = i
+        END IF
         rowsum = 0.0_dp
         dia = 0.0_dp
 
@@ -10938,10 +10959,10 @@ END SUBROUTINE GetMaxDefs
 
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
-        ExtrudedCoord,dg_n
+        ExtrudedCoord,dg_n,totalnumberofelements
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     INTEGER :: nnodes,gnodes,gelements,ierr
-    LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline
+    LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline, PreserveEdges
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
@@ -11008,6 +11029,9 @@ END SUBROUTINE GetMaxDefs
     PreserveBaseline = ListGetLogical( CurrentModel % Simulation,'Preserve Baseline',Found )
     IF(.NOT. Found) PreserveBaseline = .FALSE.
 
+    PreserveEdges = ListGetLogical( CurrentModel % Simulation,'Preserve Edges',Found )
+    IF(.NOT. Found) PreserveEdges = .FALSE.
+
     MinCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found )
     IF(.NOT. Found) MinCoord = 0.0_dp
 
@@ -11057,12 +11081,13 @@ END SUBROUTINE GetMaxDefs
     END DO
 
     n=SIZE(Mesh_in % Elements)
-    IF (PreserveBaseline) THEN
-        ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + Mesh_in % NumberOfBoundaryElements + cnt101) )
-    ELSE
-	ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + cnt101) )
-    END IF
 
+    ! inquire total number of needed 
+    totalnumberofelements = n*(in_levels+3) + cnt101
+    IF (PreserveBaseline) &
+         totalnumberofelements = totalnumberofelements + Mesh_in % NumberOfBoundaryElements
+    ALLOCATE(Mesh_out % Elements(totalnumberofelements))
+    
     ! Generate volume bulk elements:
     ! ------------------------------
 
@@ -11132,6 +11157,10 @@ END SUBROUTINE GetMaxDefs
     max_bid=0
     max_baseline_bid=0
 
+    ! include edges (see below)
+    NeedEdges =  (NeedEdges .OR. PreserveEdges)
+    
+    
     ! -------------------------------------------------------
     IF (PreserveBaseline) THEN
       DO j=1,Mesh_in % NumberOfBoundaryElements
@@ -11405,7 +11434,7 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % MeshDim = 3
     CurrentModel % DIMENSION = 3
 
-    IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh_out)
+    IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh_out,NeedEdges=.TRUE.)
     CALL SetMeshMaxDOFs(Mesh_out)
 
     IF (PRESENT(ExtrudedMeshName)) THEN
@@ -11432,10 +11461,10 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
     OPEN( 1,FILE=TRIM(Path) // '/mesh.header',STATUS='UNKNOWN' )
-    WRITE( 1,'(3i8)' ) NewMesh % NumberOfNodes, &
+    WRITE( 1,'(i0,x,i0,x,i0)' ) NewMesh % NumberOfNodes, &
          NewMesh % NumberOfBulkElements, NewMesh % NumberOfBoundaryElements
     
-    WRITE( 1,* ) 2
+    WRITE( 1,'(i0)' ) 2
     MaxNodes = 0
     ElmCode  = 0
     DO i=1,NewMesh % NumberOfBoundaryElements
@@ -11445,7 +11474,7 @@ END SUBROUTINE GetMaxDefs
           MaxNodes = NewMesh % Elements(k) % TYPE % NumberOfNodes
        END IF
     END DO
-    WRITE( 1,'(2i8)' ) ElmCode,NewMesh % NumberOfBoundaryElements
+    WRITE( 1,'(i0,x,i0)' ) ElmCode,NewMesh % NumberOfBoundaryElements
 
     MaxNodes = 0
     ElmCode  = 0
@@ -11455,12 +11484,12 @@ END SUBROUTINE GetMaxDefs
           MaxNodes = NewMesh % Elements(i) % TYPE % NumberOfNodes
        END IF
     END DO
-    WRITE( 1,'(2i8)' ) ElmCode,NewMesh % NumberOfBulkElements
+    WRITE( 1,'(i0,x,i0)' ) ElmCode,NewMesh % NumberOfBulkElements
     CLOSE(1)
 
     OPEN( 1,FILE=TRIM(Path) // '/mesh.nodes', STATUS='UNKNOWN' )
     DO i=1,NewMesh % NumberOfNodes
-       WRITE(1,'(i6,a,3e23.15)',ADVANCE='NO') i,' -1 ', &
+       WRITE(1,'(i0,a,3e23.15)',ADVANCE='NO') i,' -1 ', &
             NewMesh % Nodes % x(i), &
             NewMesh % Nodes % y(i), NewMesh % Nodes % z(i)
        WRITE( 1,* ) ''
@@ -11469,11 +11498,11 @@ END SUBROUTINE GetMaxDefs
 
     OPEN( 1,FILE=TRIM(Path) // '/mesh.elements', STATUS='UNKNOWN' )
     DO i=1,NewMesh % NumberOfBulkElements
-       WRITE(1,'(3i7)',ADVANCE='NO') i, &
+       WRITE(1,'(3(i0,x))',ADVANCE='NO') i, &
             NewMesh % Elements(i) % BodyId, &
             NewMesh % Elements(i) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(i) % TYPE % NumberOfNodes
-          WRITE(1,'(i7)', ADVANCE='NO') &
+          WRITE(1,'(i0,x)', ADVANCE='NO') &
                NewMesh % Elements(i) % NodeIndexes(j)
        END DO
        WRITE(1,*) ''
@@ -11489,11 +11518,11 @@ END SUBROUTINE GetMaxDefs
        parent2 = 0
        IF ( ASSOCIATED( NewMesh % Elements(k) % BoundaryInfo % Right ) ) &
           parent2 = NewMesh % Elements(k) % BoundaryInfo % Right % ElementIndex
-       WRITE(1,'(5i7)',ADVANCE='NO') i, &
+       WRITE(1,'(5(i0,x))',ADVANCE='NO') i, &
             NewMesh % Elements(k) % BoundaryInfo % Constraint, Parent1,Parent2,&
             NewMesh % Elements(k) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(k) % TYPE % NumberOfNodes
-          WRITE(1,'(i7)', ADVANCE='NO') &
+          WRITE(1,'(i0,x)', ADVANCE='NO') &
                NewMesh % Elements(k) % NodeIndexes(j)
        END DO
        WRITE(1,*) ''
@@ -15443,7 +15472,7 @@ CONTAINS
 !>     Assign local number of edge to given boundary element. Also copies all 
 !>     p element attributes from element edge to boundary edge.
 !------------------------------------------------------------------------------
-  SUBROUTINE AssignLocalNumber( EdgeElement, Element, Mesh )
+  SUBROUTINE AssignLocalNumber( EdgeElement, Element, Mesh,NoPE )
 !------------------------------------------------------------------------------
     USE PElementMaps, ONLY : getFaceEdgeMap 
     IMPLICIT NONE
@@ -15452,12 +15481,17 @@ CONTAINS
     TYPE(Mesh_t) :: Mesh            !< Finite element mesh containing faces and edges.
     TYPE(Element_t), POINTER :: EdgeElement  !< Edge element to which assign local number
     TYPE(Element_t), POINTER :: Element      !< Bulk element with some global numbering to use to assign local number
+    LOGICAL, OPTIONAL :: NoPE
 !------------------------------------------------------------------------------
     ! Local variables
 
     INTEGER i,j,n,edgeNumber, numEdges, bMap(4)
     TYPE(Element_t), POINTER :: Edge
+    LOGICAL :: EvalPE
 
+    EvalPE = .TRUE.
+    IF(PRESENT(NoPE)) EvalPE = .NOT.NoPE
+    
     ! Get number of points, edges or faces
     numEdges = 0
     SELECT CASE (Element % TYPE % DIMENSION)
@@ -15500,7 +15534,8 @@ CONTAINS
 
        ! If all nodes are on boundary, edge was found
        IF (n == EdgeElement % TYPE % NumberOfNodes) THEN
-          EdgeElement % PDefs % localNumber = edgeNumber
+          IF(EvalPE) &
+              EdgeElement % PDefs % localNumber = edgeNumber
 
           ! Change ordering of global nodes to match that of element
           bMap = getElementBoundaryMap( Element, edgeNumber )
@@ -15510,14 +15545,19 @@ CONTAINS
 
           ! Copy attributes of edge element to boundary element
           ! Misc attributes
-          EdgeElement % PDefs % isEdge = Edge % PDefs % isEdge
+          IF(EvalPE) THEN
+            EdgeElement % PDefs % isEdge = Edge % PDefs % isEdge
           
           ! Gauss points
-          EdgeElement % PDefs % GaussPoints = Edge % PDefs % GaussPoints
+            EdgeElement % PDefs % GaussPoints = Edge % PDefs % GaussPoints
 
-          ! Element p (and boundary bubble dofs)
+          ! Element p
+            EdgeElement % PDefs % P = Edge % PDefs % P
+          END IF
+          
+          !(and boundary bubble dofs)
           EdgeElement % BDOFs = Edge % BDOFs
-          EdgeElement % PDefs % P = Edge % PDefs % P
+
 
           ! If this boundary has edges copy edge indexes
           IF (ASSOCIATED(Edge % EdgeIndexes)) THEN

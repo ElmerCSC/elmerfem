@@ -37,16 +37,20 @@
 ! *  data for general shell finite elements, Proceedings of the 29th Nordic
 ! *  Seminar on Computational Mechanics, 2016.
 ! *
-! *  The nodal director data should be available via reading from file mesh.director 
-! *  located in the same place as the standard mesh files or, alternatively, the 
-! *  user may provide mesh.elements.data file which should define the nodal 
-! *  director field associated with the name 'director'.
+! *  The nodal director data should be available via an ordinary solver variable
+! *  'Director' or via reading from file mesh.director located in the same place 
+! *  as the standard mesh files or, as the third option, the user may provide 
+! *  mesh.elements.data file which should define the nodal director field associated 
+! *  with the name 'director'.
 ! *
 ! *  This solver is STILL UNDER DEVELOPMENT and some possibilities of the strategy
 ! *  are not yet fully utilized. Note the current restrictions:
 ! *        -- Strain reduction operators have been worked out for 
 ! *           the lowest-order finite elements only.
-! *        -- Parallel file formats for the director data are missing
+! *        -- p-element discretization is not properly supported (and probably never so)
+! *        -- Parallel file formats for mesh.director and mesh.elements.data are missing,
+! *           so for parallel execution the director should be defined as an ordinary 
+! *           solver variable
 ! *        -- Postprocessing routines are also missing 
 ! *        -- Terms of O(d/R), with d the shell thickness and R the minimum of
 ! *           radius of curvature, are ignored in the expression for the strain energy 
@@ -63,7 +67,7 @@
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
-SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
+SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -85,6 +89,10 @@ SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
 
   CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
 
+  ! Only created if the system is harmonic
+  CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 DNU im:3]')
+
+  
   CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
   CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
   CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
@@ -102,22 +110,25 @@ SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
           "Exported Variable "//TRIM(i2s(i))) ) EXIT
       i = i + 1
     END DO
-    CALL ListAddString( SolverPars, "Exported Variable "//TRIM(i2s(i)), &
-        "Principal Coordinate Dir1[Principal Coordinate Dir1:3]" )  
+    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+        "Principal Coordinate Dir1[Principal Coordinate Dir1:3]")  
     i = i + 1
-    CALL ListAddString( SolverPars, "Exported Variable "//TRIM(i2s(i)), &
-        "Principal Coordinate Dir2[Principal Coordinate Dir2:3]" )
+    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+        "Principal Coordinate Dir2[Principal Coordinate Dir2:3]")
     i = i + 1
-    CALL ListAddString( SolverPars, "Exported Variable "//TRIM(i2s(i)), &
-        "Principal Coordinate Dir3[Principal Coordinate Dir3:3]" )  
+    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+        "Principal Coordinate Dir3[Principal Coordinate Dir3:3]")  
   END IF
+
+  CALL ListAddLogical( SolverPars,'Shell Solver',.TRUE.)
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver_Init
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
+SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
   USE ElementDescription
@@ -142,11 +153,11 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! For edge parametrizations based on the director data of first and second order:
 !------------------------------------------------------------------------------
-  INTEGER, PARAMETER :: MaxNumberOCurves = 6
-  INTEGER, PARAMETER :: CurveDataSize1 = 5
-  INTEGER, PARAMETER :: CurveDataSize2 = 7
-  INTEGER, DIMENSION(CurveDataSize1), PARAMETER :: CurveParams1 = (/ 1, 2, 3, 4, 5/)
-  INTEGER, DIMENSION(CurveDataSize2), PARAMETER :: CurveParams2 = (/ 1, 2, 3, 4, 5, 6, 7/) 
+  INTEGER, PARAMETER :: MaxNumberOfCurves = 6
+  INTEGER, PARAMETER :: CurveDataSize1 = 6
+  INTEGER, PARAMETER :: CurveDataSize2 = 6
+  INTEGER, DIMENSION(CurveDataSize1), PARAMETER :: CurveParams1 = (/ 1, 2, 3, 4, 5, 6/)
+  INTEGER, DIMENSION(CurveDataSize2), PARAMETER :: CurveParams2 = (/ 1, 2, 3, 4, 5, 6/) 
 !------------------------------------------------------------------------------
 ! Some other parameter definitions related to the choice of strain reduction 
 ! method, geometric tolerances ... 
@@ -162,7 +173,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, PARAMETER :: MaxPatchNodes = 16    ! The maximum node count for the surface description 
 
   INTEGER, PARAMETER :: GeometryMaxIters = 50
-  REAL(KIND=dp), PARAMETER :: UmbilicalDelta = 1.0d-2  ! The tolerance to decide umbilical points
+  REAL(KIND=dp), PARAMETER :: UmbilicalDelta = 2.0d-2  ! The tolerance to decide umbilical points
   REAL(KIND=dp), PARAMETER :: GeometryEpsilon = 1.0d-6
 !------------------------------------------------------------------------------
 ! Local variables:
@@ -172,7 +183,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   TYPE(ElementType_t), POINTER :: ShellElement => NULL()
   TYPE(Nodes_t) :: Nodes
   TYPE(ValueList_t), POINTER :: SolverPars
-  TYPE(Variable_t), POINTER :: NodalPDir1, NodalPDir2, NodalPDir3
+  TYPE(Variable_t), POINTER :: NodalPDir1, NodalPDir2, NodalPDir3, Director
+  TYPE(Matrix_t), POINTER :: PMatrix
 
   LOGICAL :: Found
   LOGICAL :: CurveDataOutput, SavePrincipalAxes, ComputeShellArea
@@ -183,6 +195,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: LargeDeflection, MeshDisplacementActive
   LOGICAL :: NoTractions
   LOGICAL :: SolveBenchmarkCase
+  LOGICAL :: MassAssembly, HarmonicAssembly
+  LOGICAL :: Parallel
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
@@ -194,6 +208,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: TotalSol(:) => NULL()
   REAL(KIND=dp), POINTER CONTIG :: ValuesSaved(:) => NULL()
   REAL(KIND=dp), POINTER :: TaylorParams(:)
+  REAL(KIND=dp), POINTER :: Pb(:)
   REAL(KIND=dp), ALLOCATABLE :: LocalSol(:,:)
   REAL(KIND=dp), ALLOCATABLE :: LocalRHSForce(:)
   REAL(KIND=dp), TARGET :: LocalFrameNodes(MaxPatchNodes,3)
@@ -210,17 +225,25 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: RefWork, Work
   REAL(KIND=dp) :: MaxPDir1Err, MaxPDir2Err, PDir1(3), PDir2(3)
   REAL(KIND=dp) :: Energy(4), MEnergy, SEnergy, BEnergy, Etot
-
+  
   SAVE VisitsList, Indices, LocalSol, TotalSol, LocalRHSForce
 !------------------------------------------------------------------------------  
 
+  CALL DefaultStart()
+  
   ! ---------------------------------------------------------------------------------
   ! PART 0:
   ! Obtain the values of some key parameters and create allocatable variables. 
   ! ---------------------------------------------------------------------------------
   Mesh => GetMesh()
   SolverPars => GetSolverParams()
-  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found )  
+
+  Parallel = ParEnv % PEs > 1
+  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
+  
+  HarmonicAssembly = GetLogical(SolverPars, 'Harmonic Mode', Found) .OR. &
+      GetLogical(SolverPars, 'Harmonic Analysis', Found)
+  MassAssembly =  TransientSimulation .OR. HarmonicAssembly 
 
   ! ---------------------------------------------------------------------------------
   ! The number of unknown fields in the shell model:
@@ -228,16 +251,16 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=6)
 
   ! ---------------------------------------------------------------------------------
-  ! The choice of strain reduction method. Now only the automated default is active:
+  ! The choice of strain reduction method. Now only the automated default is active.
+  ! Alter to experiment with other methods.
   ! ---------------------------------------------------------------------------------
   StrainReductionMethod = ListGetInteger(SolverPars, 'Strain Reduction Operator', &
-      Found, minv=0,maxv=4)
+      Found, minv=0, maxv=4)
   IF (.NOT.Found) StrainReductionMethod = AutomatedChoice
   MembraneStrainReductionMethod = ListGetInteger(SolverPars, 'Membrane Strain Reduction Operator', &
-      Found, minv=0,maxv=4)
+      Found, minv=0, maxv=4)
   IF (.NOT.Found) MembraneStrainReductionMethod = StrainReductionMethod
-  ! Set the default choice of strain reduction method active (comment the following 
-  ! lines out to experiment with other methods):
+
   IF (MembraneStrainReductionMethod /= NoStrainReduction) &
       MembraneStrainReductionMethod = AutomatedChoice
   IF (StrainReductionMethod /= NoStrainReduction) &
@@ -252,9 +275,9 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   !-----------------------------------------------------------------------------------
   SavePrincipalAxes = GetLogical(SolverPars, 'Principal Axes Output', Found)
   IF (SavePrincipalAxes) THEN
-    NodalPDir1 => VariableGet( Mesh % Variables, 'Principal Coordinate Dir1')
-    NodalPDir2 => VariableGet( Mesh % Variables, 'Principal Coordinate Dir2')
-    NodalPDir3 => VariableGet( Mesh % Variables, 'Principal Coordinate Dir3')
+    NodalPDir1 => VariableGet(Mesh % Variables, 'Principal Coordinate Dir1')
+    NodalPDir2 => VariableGet(Mesh % Variables, 'Principal Coordinate Dir2')
+    NodalPDir3 => VariableGet(Mesh % Variables, 'Principal Coordinate Dir3')
     NodalPDir1 % Values = 0.0d0
     NodalPDir2 % Values = 0.0d0
     NodalPDir3 % Values = 0.0d0
@@ -269,35 +292,29 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   IF (.NOT. ASSOCIATED(Indices)) ALLOCATE( Indices(Mesh % MaxElementDOFs) )
   IF (.NOT. ALLOCATED(LocalSol)) ALLOCATE( LocalSol(ShellModelPar, Mesh % MaxElementDOFs) )
   IF (.NOT. ALLOCATED(LocalRHSForce)) ALLOCATE( LocalRHSForce((ShellModelPar+1) * Mesh % MaxElementDOFs) )
+
   IF (.NOT. ASSOCIATED(TotalSol)) THEN
     ALLOCATE( TotalSol(SIZE(Solver % Variable % Values)) )
   ELSE
     IF (MeshDisplacementActive) THEN
-      CALL Info('ShellSolver','Returning the mesh to its reference position',Level=4)     
+      CALL Info('ShellSolver', 'Returning the mesh to its reference position', Level=4)     
       CALL DisplaceMesh(Mesh, Solver % Variable % Values, -1, Solver % Variable % Perm, &
-         ShellModelPar, .FALSE., 3 )      
+         ShellModelPar, .FALSE., 3)      
     END IF
   END IF
     
   ! ---------------------------------------------------------------------------------
   ! PART I: 
-  ! Read the director data at the nodes from mesh.director file and/or check the
-  ! the integrity of the surface model. This subroutine creates an elementwise 
-  ! property 'director' corresponding to the data, if not already available
-  ! via reading the director data from the file mesh.elements.data.
+  ! Get the director data at the nodes as a field variable 'Director' or
+  ! read the director data at the nodes from mesh.director file and check the
+  ! the integrity of the surface model. An elementwise property 'director' 
+  ! corresponding to the data is created, if not already available
+  ! via reading the director data from the file mesh.elements.data. 
   !----------------------------------------------------------------------------------
-  WriteElementalDirector = GetLogical(SolverPars, 'Write Elemental Director', Found)
-  IF (WriteElementalDirector) THEN
-    OutputFile = GetString(SolverPars, 'Elemental Director Output File', Found)
-    IF (.NOT. Found) THEN
-      OutputFile(1:18) = 'mesh.elements.data'
-      OutputFile(19:19) = CHAR(0)
-    END IF
-  END IF
-  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, &
-      CheckSurfaceOrientation=.TRUE., WriteElementwiseDirector = WriteElementalDirector, &
-      ElementwiseDirectorFile = OutputFile)
-
+  Director => VariableGet(Mesh % Variables, 'Director', .TRUE.)
+  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars, Director)
+  CALL CheckSurfaceOrientation()
+  
   ! --------------------------------------------------------------------------------
   ! PART II:
   ! Generate the descriptions of curved element edges for improved geometry 
@@ -328,7 +345,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ComputeShellArea = GetLogical(SolverPars, 'Compute Shell Area', Found)
   BlendingSurfaceArea = 0.0d0
   MappedMeshArea = 0.0d0
-
+  
   ! For verification purposes we may solve a case for which the reference strain 
   ! energy is known:
   SolveBenchmarkCase = GetLogical(SolverPars, 'Benchmark Problem', Found)
@@ -379,6 +396,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
       nd = GetElementDOFs(Indices)
       nb = GetElementNOFBDOFs()
 
+      
       IF (LargeDeflection) THEN
         CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
       ELSE
@@ -392,6 +410,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
       IF (nb > 0) CALL Fatal('ShellSolver', &
           'Static condensation for p-bubbles is not supported')
 
+      
       !----------------------------------------------------------------------
       ! Create elementwise geometry data related to the reference configuration. 
       ! This is computed only once since the data is saved as elementwise 
@@ -414,7 +433,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
         CALL LinesOfCurvatureFrame(BGElement, TaylorApproximation=.TRUE., &
             LagrangeNodes=LocalFrameNodes, d=d, PlanarSurface=PlateBody, &
             PlanarPoint=PlanarPoint, UmbilicalPoint=UmbilicalPoint, &
-            MacroElement=MacroElements, SaveProperties = .TRUE.) 
+            MacroElement=MacroElements, SaveProperties=.TRUE.) 
 
         TaylorParams => GetElementProperty('taylor parameters', BGElement)
 
@@ -429,12 +448,9 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
         !----------------------------------------------------------------------
         ! The area computation for the available geometry description:
         !----------------------------------------------------------------------
-        IF (ComputeShellArea) CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
         IF (ComputeShellArea) CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElements)
         !LocalFrameNodes(:,3) = ZNodes(:)
-        !CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
-        !CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElement=.FALSE.)
-        !CYCLE
+        !IF (ComputeShellArea) CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
 
       END IF REPARAMETRIZATION
 
@@ -443,7 +459,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
       ! -----------------------------------------------------------------------------
       CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
           LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
-          ApplyBubbles, ShellModelArea, TotalErr, LocalRHSForce, BenchmarkProblem=SolveBenchmarkCase)
+          ApplyBubbles, MassAssembly, HarmonicAssembly, LocalRHSForce, ShellModelArea, &
+          TotalErr, BenchmarkProblem=SolveBenchmarkCase)
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
@@ -499,6 +516,8 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
 
     END DO ASSEMBLYLOOP
 
+
+    
     CALL DefaultFinishBulkAssembly() 
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -506,7 +525,11 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     ! ---------------------------------------------------------------------------------
     ! The solution variable is the solution increment while the sif-file specifies
     ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
-    ! is obtained for the solution increment:
+    ! is obtained for the solution increment.
+    !
+    ! NOTE: If higher-order elements were used over the lowest-order background mesh, 
+    ! the treatment of Dirichlet BCs should be checked (depending on how the additional
+    ! DOFs would be created)
     ! --------------------------------------------------------------------------------
     IF (ALLOCATED(Solver % Matrix % ConstrainedDOF)) THEN
       DO i=1,Solver % Matrix % NumberOfRows
@@ -522,21 +545,62 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
     ! ---------------------------------------------------------------------------------
     IF (LargeDeflection) THEN
       IF (NonlinIter == 1) THEN
-        NoTractions = MAXVAL(ABS(Solver % Matrix % BulkRHS(:)))  < AEPS
+
+        IF (Parallel) THEN
+          IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix)) &
+              CALL ParallelInitMatrix(Solver, Solver % Matrix)
+
+          PMatrix => Solver % Matrix % ParMatrix % SplittedMatrix % InsideMatrix
+          IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
+               ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
+
+          ! Temporarily set the parallel rhs vector to be the plain source vector:
+          CALL ParallelUpdateRHS(Solver % Matrix, Solver % Matrix % BulkRHS)
+          Pb => PMatrix % RHS
+          Norm = MAXVAL(ABS(Pb))
+          Norm = ParallelReduction(Norm,2)
+        ELSE
+          Norm = MAXVAL(ABS(Solver % Matrix % BulkRHS(:)))
+        END IF
+
+        NoTractions = Norm < AEPS
+
         IF (NoTractions) THEN
           ! This appears to be a purely BC-loaded case, switch to using a different criterion
           ! (use absolute norm, this can be hard ...):
           CALL Info('ShellSolver', 'No pressure load ... ', Level=4)
           CALL Info('ShellSolver', &
               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
+          CALL Info('ShellSolver', &
+              'This may give a hard stopping criterion',  Level=4)
           NonlinRes0 = 1.0d0
         ELSE
-          ! Compute the norm of the initial residual (RHS vector before setting BCs). 
-          ! Update this for parallel implementation. 
-          NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+          ! Compute the 2-norm of the initial residual (RHS vector before setting BCs). 
+          IF (Parallel)  THEN
+            Norm = 0.0d0
+            DO i=1,PMatrix % NumberOfRows
+              Norm = Norm + Pb(i)**2
+            END DO
+            NonlinRes0 = SQRT(ParallelReduction(Norm))
+          ELSE
+            NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+          END IF
         END IF
       END IF
-      NonlinRes = SQRT(SUM(Solver % Matrix % RHS(:)**2)) / NonlinRes0
+
+      ! Employ BulkRHS vector to estimate the size of the current residual (RHS):
+      Solver % Matrix % BulkRHS = Solver % Matrix % RHS
+
+      IF (Parallel) THEN
+        CALL ParallelUpdateRHS(Solver % Matrix, Solver % Matrix % BulkRHS)
+        Norm = 0.0d0
+        DO i=1,PMatrix % NumberOfRows
+          Norm = Norm + Pb(i)**2
+        END DO
+        NonlinRes = SQRT(ParallelReduction(Norm)) / NonlinRes0
+      ELSE
+        NonlinRes = SQRT(SUM(Solver % Matrix % RHS(:)**2)) / NonlinRes0
+      END IF
       WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
           NonlinIter-1, NonLinRes
       CALL Info('ShellSolver', Message, Level=3)        
@@ -591,16 +655,16 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
   ! PART IV: Postprocess
   ! -------------------------------------------------------------------------------------
   IF ( MeshDisplacementActive ) THEN
-     CALL Info('ShellSolver','Displacing the mesh with computed displacement field',Level=4)
-     CALL DisplaceMesh( Mesh, Solver % Variable % Values, 1, Solver % Variable % Perm, &
-         ShellModelPar, .FALSE., 3 )
+     CALL Info('ShellSolver', 'Displacing the mesh with computed displacement field', Level=4)
+     CALL DisplaceMesh(Mesh, Solver % Variable % Values, 1, Solver % Variable % Perm, &
+         ShellModelPar, .FALSE., 3)
   END IF
 
 
   ! -------------------------------------------------------------------------------------
   ! SOME VERIFICATION OUTPUT if a benchmark case of straight cylindrical shell is solved
   !-----------------------------------------------------------------------------------
-  IF (SolveBenchmarkCase) THEN
+  IF (SolveBenchmarkCase .AND. .NOT.Parallel) THEN
     
     CALL MatrixVectorMultiply(Solver % Matrix, Solver % Variable % Values, TotalSol)
     Work = 8.0d0 * SUM( Solver % Variable % Values(:) * TotalSol(:) )
@@ -622,7 +686,7 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
       !RefArea = 4 * (1.0472d0)**2  
       PRINT *, 'Relative Error of Model Surface Area = ', ABS(RefArea  - ShellModelArea)/RefArea    
       PRINT *, 'Relative Error of Blending Surface Area = ', ABS(RefArea  - BlendingSurfaceArea)/RefArea
-      PRINT *, 'Relative Error of Mapped BG Mesh Area = ', ABS(RefArea  - MappedMeshArea)/RefArea
+      !PRINT *, 'Relative Error of Mapped BG Mesh Area = ', ABS(RefArea  - MappedMeshArea)/RefArea
     END IF
 
     !PRINT *, 'Mean curvature L2-error = ', SQRT(TotalErr)
@@ -640,90 +704,102 @@ SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
  
 CONTAINS
 
+
+  FUNCTION UsePElement( Element ) RESULT ( Pver )
+    TYPE(Element_t) :: Element
+    LOGICAL :: Pver
+    LOGICAL :: IsPver, Visited = .FALSE. 
+    SAVE IsPver, Visited
+    
+    IF( .NOT. Visited ) THEN      
+      IsPVer = IsPElement(BGElement) .AND. &
+          MAXVAL( Solver % Variable % Perm ) > Solver % Mesh % NumberOfNodes
+      Visited = .TRUE.
+    END IF
+    Pver = IsPVer
+  END FUNCTION UsePElement
+
+    
+  
 ! ---------------------------------------------------------------------------------
-! This subroutine reads mesh.director file arranged as
+! This subroutine uses an ordinary field variable or mesh.director file arranged as
 !
 !    node_id1 d_x d_y d_z
 !    ...
 !    node_idN d_x d_y d_z
 !
 ! to obtain the shell director data at nodes and creates an elementwise property 
-! 'director' corresponding to this data. With the optional argument 
-! CheckSurfaceOrientation = .TRUE. the integrity of director data is checked 
-! (a consistent orientation of the surface over the element). If the file
-! mesh.elements.data has been used to specify the director as an elementwise
-! property 'director', this subroutine may be used just to perform the orientation 
-! check. If both the files exist, the director obtained from mesh.elements.data
-! is used. With WriteElementwiseDirector = .TRUE. the director data is written
-! as elementwise property to a file whose format conforms with a file 
-! mesh.elements.data (this is the default name for the output file, so this
-! option can be used to convert mesh.director into mesh.elements.data format).
+! 'director' corresponding to this data. If the file mesh.elements.data has been 
+! used to specify the director as an elementwise property 'director', the director 
+! obtained from mesh.elements.data is used. With the keyword Write Elemental Director
+! being active, the director data is written as elementwise property to a file whose 
+! format conforms with a file mesh.elements.data (this is the default name for the 
+! output file, so this option can be used to convert mesh.director into 
+! mesh.elements.data format).
 ! 
-! TO DO: Implement parallel version of file reading (mesh.elements.data and
-!        mesh.director). Allow arbitrary indexing of nodes.
+! Note: Parallel file formats for mesh.elements.data and mesh.director have not
+!       been implemented. Parallel execution is thus possible only when the
+!       director is available as an ordinary field variable.
 !------------------------------------------------------------------------------
-  SUBROUTINE ReadSurfaceDirector( MeshName, NumberOfNodes, &
-      CheckSurfaceOrientation, WriteElementwiseDirector, ElementwiseDirectorFile)
+  SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars, Director)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
-    LOGICAL, OPTIONAL, INTENT(IN) :: CheckSurfaceOrientation
-    LOGICAL, OPTIONAL, INTENT(IN) :: WriteElementwiseDirector
-    CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL, INTENT(IN) :: ElementwiseDirectorFile
+    TYPE(ValueList_t), POINTER, INTENT(IN) :: SolverPars
+    TYPE(Variable_t), POINTER, INTENT(IN) :: Director    
     !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Nodes_t) :: Nodes
-    LOGICAL :: ReadNodalDirectors, DirectorDataCheck, WriteElementsData, Found
-    INTEGER :: n, iostat, i, j, k, i0, Active, Family
+    LOGICAL :: UseFieldVariable, ReadNodalDirectors, WriteElementsData, Found
+    INTEGER :: n, iostat, i, j, k, i0
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
-    REAL(KIND=dp) :: d(3), d1(3), d2(3), d3(3), Norm, X1(3), X2(3)
-    REAL(KIND=dp) :: e1(3), e2(3), e3(3)
     REAL(KIND=dp) :: ElementDirectors(3*MaxBGElementNodes)
     CHARACTER(LEN=MAX_NAME_LEN) :: DirectorFile, FormatString
     !------------------------------------------------------------------------------
+    ReadNodalDirectors = .FALSE.
 
-    ! -----------------------------------------------------------------------------
-    ! Check whether mesh.director is read:
-    ! -----------------------------------------------------------------------------
-    n = LEN_TRIM(MeshName)
-    DirectorFile(1:n) = MeshName(1:n)
-    DirectorFile(n+1:n+1) = '/'
-    DirectorFile(n+2:n+14) = 'mesh.director'
-    DirectorFile(n+15:n+15) = CHAR(0)
-
-    INQUIRE(FILE = DirectorFile(1:n+15), EXIST = Found)
-    IF ( Found ) THEN    
-      ReadNodalDirectors = .TRUE.
-      CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
-          'NodalDirector array could not be allocated')
+    UseFieldVariable = ASSOCIATED(Director)
+    IF (UseFieldVariable) THEN
+      CALL Info('ReadSurfaceDirector', '&
+          Using the field Director to define the mid-surface normal', Level=4)
+      IF (Director % DOFs /= 3) CALL Fatal('ReadSurfaceDirector', &
+          'The director field should have three components')
+      IF (.NOT.ASSOCIATED(Director % Perm) .OR. .NOT.ASSOCIATED(Director % Values)) &
+          CALL Fatal('ReadSurfaceDirector', 'The director solution is not associated')
     ELSE
-      ReadNodalDirectors = .FALSE.
-      CALL Info('ReadSurfaceDirector', 'shell director data is read from mesh.elements.data file', &
-          Level=8)
+      ! -----------------------------------------------------------------------------
+      ! Check whether mesh.director can be read:
+      ! -----------------------------------------------------------------------------
+      n = LEN_TRIM(MeshName)
+      DirectorFile = TRIM(MeshName)//'/'//'mesh.director'//CHAR(0)
+      
+      INQUIRE(FILE = DirectorFile(1:n+15), EXIST = ReadNodalDirectors)
     END IF
 
-    IF (ReadNodalDirectors) THEN
-      OPEN( 10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat )
-      IF ( iostat /= 0 ) THEN
-        CALL Fatal( 'ReadSurfaceDirector', 'Opening mesh.director file failed.')     
-      ELSE
-        DO i=1,NumberOfNodes
-          READ( 10,*,IOSTAT=iostat) k, d
+    IF (UseFieldVariable .OR. ReadNodalDirectors) THEN
+      IF (ReadNodalDirectors) THEN
+        CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
+            'NodalDirector array could not be allocated')
+      
+        OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
+        IF ( iostat /= 0 ) THEN
+          CALL Fatal('ReadSurfaceDirector', 'Opening mesh.director file failed.')     
+        ELSE
+          DO i=1,NumberOfNodes
+            READ(10,*,IOSTAT=iostat) k, d
 
-          IF (k /= i) CALL Fatal('mesh.director', &
-              'Trivial correspondence between rows and node numbers assumed currently')
+            IF (k /= i) CALL Fatal('mesh.director', &
+                'Trivial correspondence between rows and node numbers assumed currently')
 
-          Norm = SQRT(SUM(d(1:3)**2))
-          NodalDirector(i,1) = d(1)/Norm
-          NodalDirector(i,2) = d(2)/Norm
-          NodalDirector(i,3) = d(3)/Norm
-        END DO
-        CLOSE(10)
+            Norm = SQRT(SUM(d(1:3)**2))
+            NodalDirector(i,1) = d(1)/Norm
+            NodalDirector(i,2) = d(2)/Norm
+            NodalDirector(i,3) = d(3)/Norm
+          END DO
+          CLOSE(10)
+        END IF
       END IF
-
       ! ---------------------------------------------------------------------
       ! Create director data as elementwise property
       ! ---------------------------------------------------------------------
@@ -736,93 +812,20 @@ CONTAINS
         DirectorValues => GetElementProperty('director', Element)
         IF (ASSOCIATED(DirectorValues)) CYCLE
 
-        n  = GetElementNOFNodes()     
-        DO i=1,n
-          i0 = (i-1)*3
-          ElementDirectors(i0+1:i0+3) = NodalDirector(Element % NodeIndexes(i),1:3)
-        END DO
-        CALL SetElementProperty('director', ElementDirectors(1:3*n), Element)
-      END DO
-    END IF
-
-    ! ---------------------------------------------------------------------------
-    ! Perform an additional check that the director data defines a properly 
-    ! oriented model. All directors should point to the same side of the surface.
-    ! ----------------------------------------------------------------------------
-    IF (PRESENT(CheckSurfaceOrientation)) THEN
-      DirectorDataCheck = CheckSurfaceOrientation
-    ELSE
-      DirectorDataCheck = .FALSE.   
-    END IF
-
-    IF (DirectorDataCheck) THEN
-      Active = GetNOFActive()
-      DO k=1,Active
-        Element => GetActiveElement(k)
-        Family = GetElementFamily(Element)
         n  = GetElementNOFNodes()
-        CALL GetElementNodes( Nodes )
-
-        i = 1
-        j = 2
-        X1(1) = Nodes % x(i)
-        X1(2) = Nodes % y(i)
-        X1(3) = Nodes % z(i)
-        X2(1) = Nodes % x(j)
-        X2(2) = Nodes % y(j)
-        X2(3) = Nodes % z(j)
-        e1(:) = X2(:)-X1(:)
-        Norm = SQRT(SUM(e1(:)**2))
-        e1 = e1/Norm
-
-        SELECT CASE(Family)
-        CASE(3)
-          i = 1
-          j = 3
-        CASE(4)
-          i = 2
-          j = 3
-        CASE DEFAULT
-          CYCLE
-        END SELECT
-
-        X1(1) = Nodes % x(i)
-        X1(2) = Nodes % y(i)
-        X1(3) = Nodes % z(i)
-        X2(1) = Nodes % x(j)
-        X2(2) = Nodes % y(j)
-        X2(3) = Nodes % z(j)
-        e2(:) = X2(:)-X1(:)
-        Norm = SQRT(SUM(e2(:)**2))
-
-        ! Now, define the element surface orientation: 
-        e3(:) = CrossProduct(e1,e2) 
-        Norm = SQRT(SUM(e3(:)**2))
-        e3 = e3/Norm     
-
-        ! Check that all directors point to the same side of the oriented surface:
-        DirectorValues => GetElementProperty('director', Element)
-        IF (ASSOCIATED(DirectorValues)) THEN
-          IF (SIZE(DirectorValues) < 3*n) CALL Fatal('ReadSurfaceDirector', &
-              'Elemental director data is not associated with all nodes')
-          d1(1:3) = DirectorValues(1:3)
-          c = DOT_PRODUCT(d1,e3)
+        IF (ReadNodalDirectors) THEN
+          DO i=1,n
+            i0 = (i-1)*3
+            ElementDirectors(i0+1:i0+3) = NodalDirector(Element % NodeIndexes(i),1:3)
+          END DO
         ELSE
-          CALL Fatal( 'ReadSurfaceDirector', 'Elemental director data is not associated')
+          DO i=1,n
+            i0 = (i-1)*3
+            j = 3*(Director % Perm(Element % NodeIndexes(i)) - 1)
+            ElementDirectors(i0+1:i0+3) = Director % Values(j+1:j+3)
+          END DO
         END IF
-
-        DO j=2,n
-          i0 = (j-1)*3
-          d2(1:3) = DirectorValues(i0+1:i0+3)
-          IF ( (c * DOT_PRODUCT(d2,e3)) < 0.0d0 ) THEN
-            PRINT *, 'Element indices=', Element % NodeIndexes(1:n)
-            PRINT *, 'Reference normal =', e3(:)
-            PRINT *, 'Node Index = ', j, Element % NodeIndexes(j)
-            PRINT *, 'Director =', d2(:)
-            CALL Fatal( 'ReadSurfaceDirector', &
-                'Director data does not define a unique upper/lower surface.')
-          END IF
-        END DO
+        CALL SetElementProperty('director', ElementDirectors(1:3*n), Element)
       END DO
     END IF
 
@@ -831,33 +834,22 @@ CONTAINS
     ! format conforms with a file mesh.elements.data. By default
     ! the file name mesh.elements.data is used. This never overwrites
     ! an existing file.
-    ! ---------------------------------------------------------------------
-    IF (PRESENT(WriteElementwiseDirector)) THEN
-      WriteElementsData = WriteElementwiseDirector
-    ELSE
-      WriteElementsData = .FALSE.
-    END IF
-    IF (WriteElementsData) THEN
+    ! ---------------------------------------------------------------------    
+    WriteElementsData = GetLogical(SolverPars, 'Write Elemental Director', Found)
+
+    IF ( WriteElementsData ) THEN
+      OutputFile = GetString(SolverPars, 'Elemental Director Output File', Found)
+      IF (.NOT. Found) OutputFile = 'mesh.elements.data'//CHAR(0)
+
       n = LEN_TRIM(MeshName)
-      DirectorFile(1:n) = MeshName(1:n)
-      DirectorFile(n+1:n+1) = '/'
-      IF ( PRESENT(ElementwiseDirectorFile) ) THEN
-        j = LEN_TRIM(ElementwiseDirectorFile)
-        DirectorFile(n+2:n+1+j) = ElementwiseDirectorFile(1:j)
-        DirectorFile(n+2+j:n+2+j) = CHAR(0)
-        n = n+2+j
-      ELSE
-        DirectorFile(n+2:n+19) = 'mesh.elements.data'
-        DirectorFile(n+20:n+20) = CHAR(0)
-        n = n+20
-      END IF
+      DirectorFile = MeshName(1:n)//'/'//TRIM(OutputFile)//CHAR(0)
 
       INQUIRE(FILE = DirectorFile(1:n), EXIST = Found)
       IF (Found) THEN
         CALL Info('ReadSurfaceDirector', &
             'a file for director output exists: write rejected', Level=5)
       ELSE
-        OPEN( 10, FILE = DirectorFile(1:n), status='NEW', IOSTAT = iostat )        
+        OPEN(10, FILE = DirectorFile(1:n), status='NEW', IOSTAT = iostat)        
         IF ( iostat /= 0 ) CALL Fatal( 'ReadSurfaceDirector', &
             'Opening a file for elementwise director output failed.')
 
@@ -888,7 +880,7 @@ CONTAINS
             WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
             WRITE(10,'(A3)') 'end'
           ELSE
-            CALL Fatal( 'ReadSurfaceDirector', 'Elemental director data is not associated')
+            CALL Fatal('ReadSurfaceDirector', 'Elemental director data is not associated')
           END IF
         END DO
         CLOSE(10)
@@ -900,6 +892,147 @@ CONTAINS
   END SUBROUTINE ReadSurfaceDirector
 !------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+! This function can be used to return the elementwise values of the director
+! field. The director data is supposed to be found as the elementwise property
+! 'director'. If this property does not exits, the normal is computed otherwise.
+!-------------------------------------------------------------------------------
+  FUNCTION GetElementalDirector(Element, ElementNodes) RESULT(DirectorValues) 
+!-------------------------------------------------------------------------------    
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
+    REAL(KIND=dp), POINTER :: DirectorValues(:)
+    !-------------------------------------------------------------------------------
+    TYPE(Nodes_t) :: Nodes
+    LOGICAL :: Visited = .FALSE., UseElementProperty = .FALSE., UseNormalSolver = .FALSE.
+    REAL(KIND=dp), POINTER :: NodalNormals(:)
+    REAL(KIND=dp) :: Normal(3)
+    INTEGER :: n
+    
+    SAVE Visited, UseElementProperty, NodalNormals, Nodes
+    !-------------------------------------------------------------------------------
+
+    IF (.NOT. Visited) THEN
+      DirectorValues => GetElementProperty('director', Element)
+      UseElementProperty = ASSOCIATED( DirectorValues ) 
+
+      IF (.NOT. UseElementProperty) THEN
+        n = CurrentModel % MaxElementNodes
+        ALLOCATE( NodalNormals(3*n) ) 
+      END IF
+      Visited = .TRUE.
+    END IF
+
+    IF ( UseElementProperty ) THEN    
+      DirectorValues => GetElementProperty('director', Element)
+    ELSE
+      IF( PRESENT( ElementNodes ) ) THEN
+        Normal = NormalVector( Element, ElementNodes, Check = .TRUE. ) 
+      ELSE
+        CALL GetElementNodes( Nodes, Element ) 
+        Normal = NormalVector( Element, Nodes, Check = .TRUE. ) 
+      END IF
+        
+      n = Element % TYPE % NumberOfNodes
+      NodalNormals(1:3*n:3) = Normal(1)
+      NodalNormals(2:3*n:3) = Normal(2)
+      NodalNormals(3:3*n:3) = Normal(3)      
+      DirectorValues => NodalNormals
+    END IF     
+!-------------------------------------------------------------------------------    
+  END FUNCTION GetElementalDirector
+!-------------------------------------------------------------------------------
+
+  
+! ---------------------------------------------------------------------------
+!> Perform an additional check that the director data defines a properly 
+!> oriented model. All directors should point to the same side of the surface.
+!----------------------------------------------------------------------------
+  SUBROUTINE CheckSurfaceOrientation()
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t) :: Nodes
+    INTEGER :: n, i, j, k, i0, Active, Family
+    REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
+    REAL(KIND=dp), POINTER :: DirectorValues(:)
+    REAL(KIND=dp) :: d(3), d1(3), d2(3), X1(3), X2(3)
+    REAL(KIND=dp) :: e1(3), e2(3), e3(3), Norm
+    !------------------------------------------------------------------------------
+
+    Active = GetNOFActive()
+    DO k=1,Active
+      Element => GetActiveElement(k)
+      Family = GetElementFamily(Element)
+      n  = GetElementNOFNodes()
+      CALL GetElementNodes( Nodes )
+
+      i = 1
+      j = 2
+      X1(1) = Nodes % x(i)
+      X1(2) = Nodes % y(i)
+      X1(3) = Nodes % z(i)
+      X2(1) = Nodes % x(j)
+      X2(2) = Nodes % y(j)
+      X2(3) = Nodes % z(j)
+      e1(:) = X2(:)-X1(:)
+      Norm = SQRT(SUM(e1(:)**2))
+      e1 = e1/Norm
+
+      SELECT CASE(Family)
+      CASE(3)
+        i = 1
+        j = 3
+      CASE(4)
+        i = 2
+        j = 3
+      CASE DEFAULT
+        CYCLE
+      END SELECT
+
+      X1(1) = Nodes % x(i)
+      X1(2) = Nodes % y(i)
+      X1(3) = Nodes % z(i)
+      X2(1) = Nodes % x(j)
+      X2(2) = Nodes % y(j)
+      X2(3) = Nodes % z(j)
+      e2(:) = X2(:)-X1(:)
+      Norm = SQRT(SUM(e2(:)**2))
+
+      ! Now, define the element surface orientation: 
+      e3(:) = CrossProduct(e1,e2) 
+      Norm = SQRT(SUM(e3(:)**2))
+      e3 = e3/Norm     
+
+      ! Check that all directors point to the same side of the oriented surface:
+      DirectorValues => GetElementalDirector(Element, Nodes)
+
+      IF (.NOT. ASSOCIATED(DirectorValues)) THEN
+        CALL Fatal('CheckSurfaceOrientation', 'Elemental director data is not associated')
+      END IF
+      IF (SIZE(DirectorValues) < 3*n) CALL Fatal('CheckSurfaceOrientation', &
+          'Elemental director data is not associated with all nodes')
+
+      ! reference direction for the 1st element node
+      d1(1:3) = DirectorValues(1:3)
+      c = DOT_PRODUCT(d1,e3)
+
+      DO j=2,n
+        i0 = (j-1)*3
+        d2(1:3) = DirectorValues(i0+1:i0+3)
+        IF ( (c * DOT_PRODUCT(d2,e3)) < 0.0d0 ) THEN
+          PRINT *, 'Element indices=', Element % NodeIndexes(1:n)
+          PRINT *, 'Reference normal =', e3(:)
+          PRINT *, 'Node Index = ', j, Element % NodeIndexes(j)
+          PRINT *, 'Director =', d2(:)
+          CALL Fatal('ReadSurfaceDirector', &
+              'Director data does not define a unique upper/lower surface.')
+        END IF
+      END DO
+    END DO
+!-------------------------------------------------------------------------------   
+  END SUBROUTINE CheckSurfaceOrientation
+!-------------------------------------------------------------------------------   
+  
 ! ---------------------------------------------------------------------------------
 ! Use nodal directors, which are retrieved as elementwise property 'director', 
 ! to create the parametrizations of curved edges for the Hermite interpolation.
@@ -907,7 +1040,7 @@ CONTAINS
 ! 'edge parameters'.
 !
 ! TO DO: Make MacroElement option functional for second-order nodal director data.
-!        Add 6-node triangles
+!
 !-------------------------------------------------------------------------------
   SUBROUTINE CreateCurvedEdges( FileOutput, MacroElements )
 !-------------------------------------------------------------------------------
@@ -926,58 +1059,63 @@ CONTAINS
     REAL(KIND=dp), TARGET :: FrameData(3,4)
     REAL(KIND=dp), TARGET :: CurveData(CurveDataSize2)
     REAL(KIND=dp) :: d1(3), d2(3), d3(3), X1(3), X2(3), X3(3)
-    REAL(KIND=dp) :: EdgeFramesData(FrameDataSize*MaxNumberOCurves)
-    REAL(KIND=dp) :: EdgeCurveParams(CurveDataSize2*MaxNumberOCurves)
+    REAL(KIND=dp) :: EdgeFramesData(FrameDataSize*MaxNumberOfCurves)
+    REAL(KIND=dp) :: EdgeCurveParams(CurveDataSize2*MaxNumberOfCurves)
 !-------------------------------------------------------------------------------
 
     A => FrameData(:,:)
     cpars => CurveData(:)
 
-    ! -------------------------------------------------------------------------------
-    ! We may consider 404 as a macroelement for a subtriangulation to ensure that 
-    ! fourth-order accurate approximation in L2 can be obtained. 
-    ! TO DO: Alter the list of edges parametrized for 9-node director data
-    ! -------------------------------------------------------------------------------
-    IF (PRESENT(MacroElements)) THEN
-      Subtriangulation = MacroElements
-    ELSE
-      Subtriangulation = .FALSE.
-    END IF
-
     ! Write edge curve parameters to a file:
     ! ------------------------------------------------------------------
-    IF (FileOutput) OPEN( 10, FILE = 'edgecsys.dat', status='REPLACE')
+    IF (FileOutput) OPEN(10, FILE = 'edgecsys.dat', status='REPLACE')
 
     Active = GetNOFActive()
     DO k=1,Active
       Element => GetActiveElement(k)
-      DirectorValues => GetElementProperty('director', Element)
-      CALL GetElementNodes( Nodes )
+      CALL GetElementNodes(Nodes)
+
+      DirectorValues => GetElementalDirector(Element, Nodes)
 
       Family = GetElementFamily(Element)
+
+      ! Set some default values:
+      Subtriangulation = .FALSE.
+      EdgesParametrized = Family
+
       SELECT CASE(Family)
       CASE(3)
-        IF (Element % TYPE % NumberOfNodes /= 3) &
-            CALL Fatal('CreateCurvedEdges', 'Only 3-node triangles possible')
-        QuadraticGeometryData = .FALSE.
-        CurveDataSize = CurveDataSize1
-        EdgesParametrized = Family
+        IF (Element % TYPE % NumberOfNodes > 6) &
+            CALL Fatal('CreateCurvedEdges', 'Triangular background mesh of order k>2 is not supported')
+        QuadraticGeometryData = Element % TYPE % NumberOfNodes == 6
+        IF (QuadraticGeometryData) &
+            CALL Fatal('CreateCurvedEdges', 'Triangular 6-node background elements are not yet supported')
       CASE(4)
+        IF (Element % TYPE % NumberOfNodes > 9) &
+            CALL Fatal('CreateCurvedEdges', 'Background mesh of order k>2 is not supported')
+        IF (Element % TYPE % NumberOfNodes == 8) &
+            CALL Fatal('CreateCurvedEdges', '8-node background quad is not supported')
         QuadraticGeometryData = Element % TYPE % NumberOfNodes == 9
         IF (QuadraticGeometryData) THEN
-          EdgesParametrized = 6
-          CurveDataSize = CurveDataSize2
+          CALL Fatal('CreateCurvedEdges', '9-node background elements are not yet supported')
+          EdgesParametrized = 6   ! Even 8 edges could be created
         ELSE
-          CurveDataSize = CurveDataSize1
-          IF (Subtriangulation) THEN
-            EdgesParametrized = 6
-          ELSE
-            EdgesParametrized = Family
-          END IF
+          ! -------------------------------------------------------------------------------
+          ! We may consider 404 as a macroelement for a subtriangulation to ensure that 
+          ! fourth-order accurate approximation in L2 can be obtained. 
+          ! -------------------------------------------------------------------------------
+          IF (PRESENT(MacroElements)) Subtriangulation = MacroElements
+          IF (Subtriangulation) EdgesParametrized = 6
         END IF
       CASE DEFAULT
         CYCLE
       END SELECT
+
+      IF (QuadraticGeometryData) THEN
+        CurveDataSize = CurveDataSize2
+      ELSE
+        CurveDataSize = CurveDataSize1
+      END IF
 
       DO e=1,EdgesParametrized
         !-------------------------------------------------------------------------
@@ -1018,7 +1156,7 @@ CONTAINS
             j = 4
             l = 8
           CASE(5)
-            IF (Subtriangulation .AND. (Element % TYPE % NumberOfNodes == 4)) THEN
+            IF (Subtriangulation) THEN
               i = 1
               j = 3
             ELSE
@@ -1027,7 +1165,7 @@ CONTAINS
               l = 9
             END IF
           CASE(6)
-            IF (Subtriangulation .AND. (Element % TYPE % NumberOfNodes == 4)) THEN
+            IF (Subtriangulation) THEN
               i = 2
               j = 4
             ELSE         
@@ -1064,6 +1202,7 @@ CONTAINS
         IF (QuadraticGeometryData) THEN
           ! -----------------------------------------------------------
           ! In this case each edge has also a mid-node: 
+          ! TO DO: Call HermiteForm instead of EdgeFrame
           ! -----------------------------------------------------------
           X3(1) = Nodes % x(l)
           X3(2) = Nodes % y(l)
@@ -1074,24 +1213,27 @@ CONTAINS
 
           CALL EdgeFrame(X1, X2, d1, d2, A, cpars, X3, d3)
         ELSE
-          CALL EdgeFrame(X1, X2, d1, d2, A, cpars)
+          CALL HermiteForm(X1, X2, d1, d2, cpars)
 
-          IF (FileOutput .AND. EdgesParametrized == 4) THEN
-            WRITE( 10, '(2I5,18e23.15)',ADVANCE='NO') v1, v2, A(1,1), A(2,1), &
-                A(3,1), A(1,2), A(2,2), A(3,2), A(1,3), A(2,3), A(3,3), A(1,4), &
-                A(2,4), A(3,4), cpars(1), cpars(1), cpars(2), cpars(3), cpars(4), &
-                cpars(5)
-            WRITE( 10, *) ''
-          END IF
+          ! TO DO: Revise the file output
+          !IF (FileOutput .AND. EdgesParametrized == 4) THEN
+          !  WRITE(10, '(2I5,18e23.15)',ADVANCE='NO') v1, v2, A(1,1), A(2,1), &
+          !      A(3,1), A(1,2), A(2,2), A(3,2), A(1,3), A(2,3), A(3,3), A(1,4), &
+          !      A(2,4), A(3,4), cpars(1), cpars(1), cpars(2), cpars(3), cpars(4), &
+          !      cpars(5)
+          !  WRITE(10, *) ''
+          !END IF
         END IF
 
         ! Prepare for writing the edge curve data as element properties:
         !---------------------------------------------------------------
-        i0 = (e-1)*FrameDataSize
-        DO j=1,4
-          j0 = i0 + (j-1)*3
-          EdgeFramesData(j0+1:j0+3) = A(1:3,j)
-        END DO
+        IF (QuadraticGeometryData) THEN
+          i0 = (e-1)*FrameDataSize
+          DO j=1,4
+            j0 = i0 + (j-1)*3
+            EdgeFramesData(j0+1:j0+3) = A(1:3,j)
+          END DO
+        END IF
 
         i0 = (e-1)*CurveDataSize
         EdgeCurveParams(i0+1:i0+CurveDataSize) = cpars(1:CurveDataSize)
@@ -1100,11 +1242,12 @@ CONTAINS
 
       ! Write the edge curve data as element properties:
       !----------------------------------------------------
-      CALL SetElementProperty('edge frames', &
-          EdgeFramesData(1:FrameDataSize*EdgesParametrized), Element) 
       CALL SetElementProperty('edge parameters', &
-          EdgeCurveParams(1:CurveDataSize*EdgesParametrized), Element)       
-
+          EdgeCurveParams(1:CurveDataSize*EdgesParametrized), Element)
+      IF (QuadraticGeometryData) THEN
+        CALL SetElementProperty('edge frames', &
+            EdgeFramesData(1:FrameDataSize*EdgesParametrized), Element) 
+      END IF
     END DO
 
     IF (FileOutput) CLOSE(10)
@@ -1130,41 +1273,58 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: X3(3), d3(3)
 !------------------------------------------------------------------------------
     LOGICAL :: WithThreeNodes
-    REAL(KIND=dp) :: d(3), ex(3), ey(3), ez(3), X0(3), v21(3), b(3)
+    REAL(KIND=dp) :: d(3), ex(3), ey(3), ez(3), X0(3), v21(3), v31(3), b(3)
     REAL(KIND=dp) :: r1(3), r2(3), r3(3), t1(3), t2(3), t3(3), Norm
 !------------------------------------------------------------------------------
     WithThreeNodes = PRESENT(X3) .AND. PRESENT(d3)
 
+    ! ------------------------------------------------------------------------------
+    ! The coordinate system is created such that the given vertices lie on 
+    ! the plane y=0. A bit different logic is used to decide the orientation of
+    ! the coordinate system for the different vertice counts. 
+    ! ------------------------------------------------------------------------------
     IF (WithThreeNodes) THEN
+
       X0(:) = X3(:)
 
-      Norm = SQRT(SUM(d3(1:3)**2))
-      ez(1:3) = 1.0d0/Norm * d3(1:3) 
-
       v21(:) = X2(:) - X1(:)
-      b(:) = v21(:) - DOT_PRODUCT(v21,ez)*ez(:)
+      Norm = SQRT(SUM(v21(1:3)**2))
+      ex(1:3) = 1.0d0/Norm * v21(1:3)
+
+      v31(:) = X3(:) - X1(:)
+      Norm = SQRT(SUM(v31(1:3)**2))
+      v31(1:3) = 1.0d0/Norm * v31(1:3)
+      b(:) = v31(:) - DOT_PRODUCT(v31,ex)*ex(:)
+      IF (SQRT(SUM(b(1:3)**2)) < 1.0d-6) THEN
+        ! The three vertices are on the same line. Use the mid-node director to generate z-axis.
+        b(:) = d3(:) - DOT_PRODUCT(d3,ex)*ex(:)
+      END IF
       Norm = SQRT(SUM(b(1:3)**2))
-      ex(1:3) = 1.0d0/Norm * b(1:3)     
+      ez(1:3) = 1.0d0/Norm * b(1:3)
       ey(:) = CrossProduct(ez,ex)
 
       cpars(1) = DOT_PRODUCT(v21,ex)
-      IF (cpars(1) < 0.0d0) &
-          CALL Fatal('EdgeFrame','Negative edge length obtained')
 
       r1(:) = X1(:) - X0(:)
       r2(:) = X2(:) - X0(:)
 
-      cpars(2) = DOT_PRODUCT(r1,ey)               ! The y-coordinate of the vertex X1
-      cpars(3) = DOT_PRODUCT(r2,ey)               ! The y-coordinate of the vertex X2
-      cpars(4) = DOT_PRODUCT(r1,ez)               ! The z-coordinate of the vertex X1
-      cpars(5) = DOT_PRODUCT(r2,ez)               ! The z-coordinate of the vertex X2      
-      
+      ! -----------------------------------------------------------------------------------------
+      ! The function BlendingSurfaceInfo is built on the assumption that the mid-node is centered
+      ! -----------------------------------------------------------------------------------------
+      IF (ABS(DOT_PRODUCT(r1+r2,ex))/cpars(1) > 2.0d-2) THEN
+        CALL Warn('EdgeFrame', 'Centered edge mid-nodes expected')
+        PRINT *, 'Relative error of node position ...', ABS(DOT_PRODUCT(r1+r2,ex))/cpars(1)
+      END IF
+
+      cpars(2) = DOT_PRODUCT(r1,ez)               ! The z-coordinate of the vertex X1
+      cpars(3) = DOT_PRODUCT(r2,ez)               ! The z-coordinate of the vertex X2
+
       t1(:) = CrossProduct(ey,d1)
       t2(:) = CrossProduct(ey,d2)
       t3(:) = CrossProduct(ey,d3)
-      
-      cpars(6) = DOT_PRODUCT(t1,ez)/DOT_PRODUCT(t1,ex);  ! The angle parameter for z(x) at the vertex X1
-      cpars(7) = DOT_PRODUCT(t2,ez)/DOT_PRODUCT(t2,ex);  ! The angle parameter for z(x) at the vertex X2      
+      cpars(4) = DOT_PRODUCT(t1,ez)/DOT_PRODUCT(t1,ex) ! The angle parameter for z(x) at the vertex X1
+      cpars(5) = DOT_PRODUCT(t2,ez)/DOT_PRODUCT(t2,ex) ! The angle parameter for z(x) at the vertex X2
+      cpars(6) = DOT_PRODUCT(t3,ez)/DOT_PRODUCT(t3,ex) ! The angle parameter for z(x) at the vertex X3
 
     ELSE
 
@@ -1181,7 +1341,7 @@ CONTAINS
       X0(:) = 0.5d0 * ( X1(1:3) + X2(1:3) )
       cpars(1) = DOT_PRODUCT(v21,ex)
       IF (cpars(1) < 0.0d0) &
-          CALL Fatal('EdgeFrame','Negative edge length obtained')
+          CALL Fatal('EdgeFrame', 'Negative edge length obtained')
 
       r1(:) = X1(:) - X0(:)
       r2(:) = X2(:) - X0(:)
@@ -1201,6 +1361,75 @@ CONTAINS
   END SUBROUTINE EdgeFrame
 !---------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+! Compute data which can be used to represent a space curve in the standard 
+! Hermite form. The curve tangent vectors expressed with respect to the global 
+! frame at the nodes are created by requiring that the tangent vector is orthogonal 
+! to the given director vector. The tangent vectors are returned via cpars. The base 
+! vectors and the origin X0 of a local coordinate frame are also returned (this 
+! may not be of any use in practice) via A. The input data Xk gives the global 
+! coordinates of the kth vertex on the edge, while dk specifies the director at 
+! the kth vertex on the edge.
+!------------------------------------------------------------------------------
+  SUBROUTINE HermiteForm(X1, X2, d1, d2, cpars, A, X3, d3)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: X1(3), X2(3), d1(3), d2(3)
+    REAL(KIND=dp), POINTER, INTENT(OUT) :: cpars(:)
+    REAL(KIND=dp), POINTER, OPTIONAL, INTENT(OUT) :: A(:,:)
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: X3(3), d3(3)
+!------------------------------------------------------------------------------
+    LOGICAL :: WithThreeNodes
+    REAL(KIND=dp) :: d(3), ex(3), ey(3), ez(3), X0(3), v21(3), b(3)
+    REAL(KIND=dp) :: t1(3), t2(3), t3(3), Norm, h
+!------------------------------------------------------------------------------
+    WithThreeNodes = PRESENT(X3) .AND. PRESENT(d3)
+    IF (WithThreeNodes) CALL Fatal('HermiteForm', 'Only 2-node version made')
+
+    v21 = X2 - X1
+    h = SQRT(SUM(v21**2))
+    b = 1.0d0/h * v21
+
+    ! Pick a unit tangent vector orthogonal to the nodal director:
+    t1 = v21 - DOT_PRODUCT(v21,d1)*d1
+    Norm = SQRT(SUM(t1**2))
+    t1 = 1.0d0/Norm * t1
+    ! Scale to obtain a tangent vector suitable for the Hermite interpolation
+    ! with the derivative DOF being Dv(a_1)[a_2-a_1]:
+    Norm = h / DOT_PRODUCT(t1,b)
+    t1 = Norm * t1
+
+    ! Repeat for the second node with the derivative DOF Dv(a_2)[a_2-a_1]:
+    t2 = v21 - DOT_PRODUCT(v21,d2)*d2
+    Norm = SQRT(SUM(t2**2))
+    t2 = 1.0d0/Norm * t2
+    Norm = h / DOT_PRODUCT(t2,b)
+    t2 = Norm * t2
+
+    cpars(1:3) = t1(1:3)
+    cpars(4:6) = t2(1:3)
+
+    ! Create a local frame, although this may not be of any use:
+    IF (PRESENT(A)) THEN
+      X0 = 0.5d0 * (X1 + X2)
+      ex = b
+      d = 0.5d0 * (d1 + d2) 
+      d = d - DOT_PRODUCT(d,ex)*ex
+      Norm = SQRT(SUM(d**2))
+      ez = 1.0d0/Norm * d 
+      ey = CrossProduct(ez,ex)
+
+      A(1:3,1) = ex(1:3)
+      A(1:3,2) = ey(1:3)
+      A(1:3,3) = ez(1:3)
+      A(1:3,4) = X0(1:3)
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE HermiteForm
+!------------------------------------------------------------------------------
+
+
 !----------------------------------------------------------------------------
 ! This function produces the covariant basis {a_i}, the first and second
 ! fundamental forms A and B, the determinant of the metric surface tensor detA
@@ -1210,7 +1439,7 @@ CONTAINS
 ! surface must be contained as elementwise properties 'edge frames' and 
 ! 'edge parameters'. The optional arguments MacroElement and BubbleDOFs
 ! can be used to augment the serendipity approximation by an additional bubble 
-! part to ensure optimal accuracy.
+! part to ensure optimal accuracy with 4-node background elements.
 ! TO DO: Complement and clean the implementation when the initial data
 !        is defined over second-order Lagrange elements
 !-----------------------------------------------------------------------------  
@@ -1235,7 +1464,7 @@ CONTAINS
 !----------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: GElement => NULL()
     LOGICAL :: QuadraticGeometryData, Subtriangulation
-    INTEGER :: i, j, e, n, q, i0, EdgesParametrized, CurveDataSize, Family
+    INTEGER :: i, j, e, n, q, i0, cn, EdgesParametrized, CurveDataSize, Family
     REAL(KIND=dp), POINTER :: FrameData(:), EdgeParams(:), BubbleValues(:)
     REAL(KIND=dp) :: Basis(MaxPatchNodes), dBasis(MaxPatchNodes,2), ddBasis(4,2,2)
     REAL(KIND=dp) :: BubbleCoeff(4,3)
@@ -1243,10 +1472,8 @@ CONTAINS
     REAL(KIND=dp) :: d(CurveDataSize2)
     REAL(KIND=dp) :: h, s, t, w, xe, c(3), deltac(3), dc(3), ddc(3)
     REAL(KIND=dp) :: b12(3), db12(3), h12, d1h12, d2h12, ddh12, dsdu, dsdv
-    REAL(KIND=dp) :: f1, f2, f3, f4, f5, f6
     REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
-    REAL(KIND=dp) :: df1, df2, df3, df4, df5, df6, ddf1, ddf2, ddf3, ddf4, ddf5, ddf6
-    REAL(KIND=dp) :: f, df, ddf, fy, dfy, ddfy, fz, dfz, ddfz
+    REAL(KIND=dp) :: f, df, ddf
     REAL(KIND=dp) :: h1, h2, h3, dh1, dh2, dh3, ddh1, ddh2, ddh3
     REAL(KIND=dp) :: r1(3), r2(3)
     REAL(KIND=dp) :: d1a1(3), d2a1(3), d2a2(3)
@@ -1255,23 +1482,32 @@ CONTAINS
 
     SAVE GElement
 !----------------------------------------------------------------------------
+
     Family = GetElementFamily(Element)
+    
+    ! Set some default values:
+    Subtriangulation = .FALSE.
+    EdgesParametrized = Family
 
     SELECT CASE(Family)  
     CASE(3)
-      IF (Element % TYPE % NumberOfNodes /= 3) &
-          CALL Fatal('BlendingSurfaceInfo', 'Only 3-node triangles possible')
-      QuadraticGeometryData = .FALSE.
-      Subtriangulation = .FALSE.
-      EdgesParametrized = 3
-      CurveDataSize = CurveDataSize1
+      QuadraticGeometryData = Element % TYPE % NumberOfNodes == 6
     CASE(4)
-      IF (PRESENT(BubbleDOFs)) THEN
-        Subtriangulation = .TRUE.
-        BubbleCoeff(1:4,1:3) = BubbleDOFs(1:4,1:3)
+      QuadraticGeometryData = Element % TYPE % NumberOfNodes == 9
+      IF (QuadraticGeometryData) THEN
+        EdgesParametrized = 6
       ELSE
-        IF (PRESENT(MacroElement)) THEN
-          Subtriangulation = MacroElement
+        !
+        ! This must be a 4-node background element; see the tests already done in CreateCurvedEdges.
+        ! If the macro element strategy is used, the coefficients of the bubble fuctions must already
+        ! be available at the time of the function call and the virtual edges used in the construction
+        ! of the bubble functions are not employed within this function (thus, EdgesParametrized = 4). 
+        !
+        IF (PRESENT(BubbleDOFs)) THEN
+          Subtriangulation = .TRUE.
+          BubbleCoeff(1:4,1:3) = BubbleDOFs(1:4,1:3)
+        ELSE
+          IF (PRESENT(MacroElement)) Subtriangulation = MacroElement
           IF (Subtriangulation) THEN
             BubbleValues => GetElementProperty('bubble dofs', Element)
             IF (ASSOCIATED(BubbleValues)) THEN
@@ -1285,29 +1521,27 @@ CONTAINS
                   'Bubble DOFs are not found as elementwise properties')
             END IF
           END IF
-        ELSE
-          Subtriangulation = .FALSE.
         END IF
-      END IF
-
-      ! Check whether the edges have mid-nodes:
-      QuadraticGeometryData = Element % TYPE % NumberOfNodes == 9
-      IF (QuadraticGeometryData) THEN
-        EdgesParametrized = 6
-        CurveDataSize = CurveDataSize2
-      ELSE
-        EdgesParametrized = 4
-        CurveDataSize = CurveDataSize1
       END IF
     CASE DEFAULT
       CALL Fatal('BlendingSurfaceInfo', 'Only quads and triangles can be handled')     
     END SELECT
+    
+    IF (QuadraticGeometryData) THEN
+      cn = 3 ! The node count per curved edge
+      CurveDataSize = CurveDataSize2
+    ELSE
+      cn = 2
+      CurveDataSize = CurveDataSize1
+    END IF
 
     !-----------------------------------------------------------------------
     ! Retrive parametrizations of curved edges:
     !------------------------------------------------------------------------
-    FrameData => GetElementProperty('edge frames', Element) 
     EdgeParams => GetElementProperty('edge parameters', Element)   
+    FrameData => NULL()
+    IF (QuadraticGeometryData) &
+        FrameData => GetElementProperty('edge frames', Element) 
 
     IF (ASSOCIATED(FrameData)) THEN
       IF (Subtriangulation) THEN
@@ -1317,8 +1551,6 @@ CONTAINS
         IF (SIZE(FrameData) < EdgesParametrized*FrameDataSize) &
             CALL Fatal('BlendingSurfaceInfo','Frame data are not associated with all edges')
       END IF
-    ELSE
-      CALL Fatal('BlendingSurfaceInfo','edge frames data could not be retrieved')
     END IF
 
     IF (ASSOCIATED(EdgeParams)) THEN
@@ -1330,7 +1562,7 @@ CONTAINS
             CALL Fatal('BlendingSurfaceInfo','edge parameters are not associated with all edges')
       END IF
     ELSE
-      CALL Fatal('BlendingSurfaceInfo','edge frames data could not be retrieved')
+      CALL Fatal('BlendingSurfaceInfo','edge curves data could not be retrieved')
     END IF
 
     !---------------------------------------------------------------------------
@@ -1359,16 +1591,16 @@ CONTAINS
     ! to the surface basis vectors and to the derivatives of the surface basis 
     ! vectors
     !--------------------------------------------------------------------------
-    X(1) = SUM( Nodes % x(1:n) * Basis(1:n) )
-    X(2) = SUM( Nodes % y(1:n) * Basis(1:n) )
-    X(3) = SUM( Nodes % z(1:n) * Basis(1:n) )
-    ! XInit(:) = X(:)
-    a1(1) = SUM( dBasis(1:n,1) * Nodes % x(1:n) )
-    a1(2) = SUM( dBasis(1:n,1) * Nodes % y(1:n) )
-    a1(3) = SUM( dBasis(1:n,1) * Nodes % z(1:n) )
-    a2(1) = SUM( dBasis(1:n,2) * Nodes % x(1:n) )
-    a2(2) = SUM( dBasis(1:n,2) * Nodes % y(1:n) )
-    a2(3) = SUM( dBasis(1:n,2) * Nodes % z(1:n) )
+    X(1) = SUM( Nodes % x(1:Family) * Basis(1:Family) )
+    X(2) = SUM( Nodes % y(1:Family) * Basis(1:Family) )
+    X(3) = SUM( Nodes % z(1:Family) * Basis(1:Family) )
+
+    a1(1) = SUM( dBasis(1:Family,1) * Nodes % x(1:Family) )
+    a1(2) = SUM( dBasis(1:Family,1) * Nodes % y(1:Family) )
+    a1(3) = SUM( dBasis(1:Family,1) * Nodes % z(1:Family) )
+    a2(1) = SUM( dBasis(1:Family,2) * Nodes % x(1:Family) )
+    a2(2) = SUM( dBasis(1:Family,2) * Nodes % y(1:Family) )
+    a2(3) = SUM( dBasis(1:Family,2) * Nodes % z(1:Family) )
 
     d1a1 = 0.0d0
     IF (Family == 4) THEN
@@ -1390,17 +1622,21 @@ CONTAINS
     ! Add the blending part edgewise...
     !--------------------------------------------------------------------------
     DO e=1,EdgesParametrized
-      
-      i0 = (e-1)*FrameDataSize
-      ex(1:3) = FrameData(i0+FrameBasis1)
-      ey(1:3) = FrameData(i0+FrameBasis2)
-      ez(1:3) = FrameData(i0+FrameBasis3)
-      X0(1:3) = FrameData(i0+FrameOrigin)
 
       i0 = (e-1)*CurveDataSize
       d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
-      h = d(1) ! The length parameter
 
+      IF (QuadraticGeometryData) THEN
+        h = d(1) ! The length parameter
+        i0 = (e-1)*FrameDataSize
+        ex(1:3) = FrameData(i0+FrameBasis1)
+        ey(1:3) = FrameData(i0+FrameBasis2)
+        ez(1:3) = FrameData(i0+FrameBasis3)
+        X0(1:3) = FrameData(i0+FrameOrigin)
+      ELSE
+        h = 2.0d0 ! the length of reference element [-1,1]
+      END IF
+        
       SELECT CASE(Family)
       CASE(3)
         !-------------------------------------------------------------------------
@@ -1410,25 +1646,37 @@ CONTAINS
         CASE(1)
           s = Basis(2) - Basis(1)
           h1 = Basis(2) * Basis(1)
+          r1(1) = Nodes % x(1)
+          r1(2) = Nodes % y(1)
+          r1(3) = Nodes % z(1)
+          r2(1) = Nodes % x(2)
+          r2(2) = Nodes % y(2)
+          r2(3) = Nodes % z(2)
         CASE(2)
           s = Basis(3) - Basis(2)
           h1 = Basis(3) * Basis(2)
+          r1(1) = Nodes % x(2)
+          r1(2) = Nodes % y(2)
+          r1(3) = Nodes % z(2)
+          r2(1) = Nodes % x(3)
+          r2(2) = Nodes % y(3)
+          r2(3) = Nodes % z(3)
         CASE(3)
           s = Basis(1) - Basis(3)
           h1 = Basis(1) * Basis(3)
+          r1(1) = Nodes % x(3)
+          r1(2) = Nodes % y(3)
+          r1(3) = Nodes % z(3)
+          r2(1) = Nodes % x(1)
+          r2(2) = Nodes % y(1)
+          r2(3) = Nodes % z(1)
         END SELECT
 
         !-------------------------------------------------------------------------
-        ! The dimensional edge parameterization coordinate corresponding to
-        ! the dimensionless coordinate s
-        !--------------------------------------------------------------------------
-        xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
-
+        ! The basis functions for the edge curve expansion in terms of s and
+        ! their derivatives
         !-------------------------------------------------------------------------
-        ! The ordinary third-order Hermite interpolation basis and
-        ! linear basis functions and their derivatives on an edge [-1,1]
-        !-------------------------------------------------------------------------         
-        CALL HermiteBasis(s, h, HermBasis(1:4), dHermBasis(1:4), ddHermBasis(1:4))
+        CALL HermiteBasis(s, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
         L1 = 0.5d0 * (1.0d0 - s)
         L2 = 0.5d0 * (1.0d0 + s)
         dL1 = -0.5d0
@@ -1441,12 +1689,28 @@ CONTAINS
         ! Decompose the edge curve into components along the global coordinate axes
         ! and compute the derivatives of the edge curve with respect to s
         !----------------------------------------------------------------------------
-        f = SUM( d(2:5) * HermBasis(1:4) )
-        df = SUM( d(2:5) * dHermBasis(1:4) )
-        ddf = SUM( d(2:5) * ddHermBasis(1:4) )
-        c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
-        dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
-        ddc(1:3) = ddf * ez(1:3)
+        IF (QuadraticGeometryData) THEN
+          !-------------------------------------------------------------------------
+          ! The dimensional edge parameterization coordinate corresponding to
+          ! the dimensionless coordinate s
+          !--------------------------------------------------------------------------
+          xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
+
+          f = d(2)*HermBasis(1) + d(3)*HermBasis(2) + SUM(d(4:6) * HermBasis(4:6))
+          df = d(2)*dHermBasis(1) + d(3)*dHermBasis(2) + SUM(d(4:6) * dHermBasis(4:6))
+          ddf = d(2)*ddHermBasis(1) + d(3)*ddHermBasis(2) + SUM(d(4:6) * ddHermBasis(4:6))
+
+          c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
+          dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
+          ddc(1:3) = ddf * ez(1:3)
+        ELSE
+          c(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+              d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
+          dc(1:3) = r1(1:3)*dHermBasis(1) + r2(1:3)*dHermBasis(2) + &
+              d(1:3)*0.5d0*dHermBasis(3) + d(4:6)*0.5d0*dHermBasis(4)
+          ddc(1:3) = r1(1:3)*ddHermBasis(1) + r2(1:3)*ddHermBasis(2) + &
+              d(1:3)*0.5d0*ddHermBasis(3) + d(4:6)*0.5d0*ddHermBasis(4)
+        END IF
 
         !---------------------------------------------------------------------------
         ! The contributions of the blending functions to the position vector, to the
@@ -1454,13 +1718,6 @@ CONTAINS
         !---------------------------------------------------------------------------
         SELECT CASE(e)
         CASE(1)
-          r1(1) = Nodes % x(1)
-          r1(2) = Nodes % y(1)
-          r1(3) = Nodes % z(1)
-          r2(1) = Nodes % x(2)
-          r2(2) = Nodes % y(2)
-          r2(3) = Nodes % z(2)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           X(1:3) = X(1:3) + h12 * b12(1:3)
 
@@ -1488,13 +1745,6 @@ CONTAINS
           d2a1(1:3) = d2a1(1:3) + d2h12 * db12(1:3) + ddh12 * b12(1:3)
    
         CASE(2)
-          r1(1) = Nodes % x(2)
-          r1(2) = Nodes % y(2)
-          r1(3) = Nodes % z(2)
-          r2(1) = Nodes % x(3)
-          r2(2) = Nodes % y(3)
-          r2(3) = Nodes % z(3)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           X(1:3) = X(1:3) + h12 * b12(1:3)
 
@@ -1548,13 +1798,6 @@ CONTAINS
               h12 * ddc(1:3) * dsdv * dsdu
 
         CASE(3)
-          r1(1) = Nodes % x(3)
-          r1(2) = Nodes % y(3)
-          r1(3) = Nodes % z(3)
-          r2(1) = Nodes % x(1)
-          r2(2) = Nodes % y(1)
-          r2(3) = Nodes % z(1)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           X(1:3) = X(1:3) + h12 * b12(1:3)
 
@@ -1614,51 +1857,56 @@ CONTAINS
         ! representing the curved edge
         !-------------------------------------------------------------------------
         SELECT CASE(e)
-        CASE(1,3,5)
+        CASE(1)
+          r1(1) = Nodes % x(1)
+          r1(2) = Nodes % y(1)
+          r1(3) = Nodes % z(1)
+          r2(1) = Nodes % x(2)
+          r2(2) = Nodes % y(2)
+          r2(3) = Nodes % z(2)
           s = u
           t = v
-        CASE(2,4,6)
+        CASE(2)
+          r1(1) = Nodes % x(2)
+          r1(2) = Nodes % y(2)
+          r1(3) = Nodes % z(2)
+          r2(1) = Nodes % x(3)
+          r2(2) = Nodes % y(3)
+          r2(3) = Nodes % z(3)
+          s = v
+          t = u
+        CASE(3)
+          r1(1) = Nodes % x(4)
+          r1(2) = Nodes % y(4)
+          r1(3) = Nodes % z(4)
+          r2(1) = Nodes % x(3)
+          r2(2) = Nodes % y(3)
+          r2(3) = Nodes % z(3)
+          s = u
+          t = v
+        CASE(4)
+          r1(1) = Nodes % x(1)
+          r1(2) = Nodes % y(1)
+          r1(3) = Nodes % z(1)
+          r2(1) = Nodes % x(4)
+          r2(2) = Nodes % y(4)
+          r2(3) = Nodes % z(4)
+          s = v
+          t = u
+        CASE(5)
+          s = u
+          t = v
+        CASE(6)
           s = v
           t = u
         END SELECT
 
         !-------------------------------------------------------------------------
-        ! The dimensional edge parameterization coordinate corresponding to
-        ! the dimensionless coordinate s (depending on the edge either s=u or s=v)
-        !--------------------------------------------------------------------------
-        xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
-        !-------------------------------------------------------------------------
         ! The basis functions for the edge curve expansion in terms of s and
         ! their derivatives
-        !------------------------------------------------------------------------- 
-        IF (QuadraticGeometryData) THEN
-          ! Fifth-order Hermite basis: Dofs are listed as p(v1), p(v2), p(v3),
-          ! Dp(v1)[e1], Dp(v2)[e1], Dp(v3)[e1]
-          ! TO DO: the subroutine Hermite should return these
-          f1 = s ** 2 - 0.5D1 / 0.4D1 * s ** 3 - s ** 4 / 0.2D1 + 0.3D1 / 0.4D1 * s ** 5
-          f2 = s ** 2 + 0.5D1 / 0.4D1 * s ** 3 - s ** 4 / 0.2D1 - 0.3D1 / 0.4D1 * s ** 5
-          f3 = s ** 4 - 2.0D0 * s ** 2 + 1.0D0
-          f4 = h/2.0d0 * (s ** 2 / 0.4D1 - s ** 3 / 0.4D1 - s ** 4 / 0.4D1 + s ** 5 / 0.4D1)
-          f5 = h/2.0d0 * (-s ** 2 / 0.4D1 - s ** 3 / 0.4D1 + s ** 4 / 0.4D1 + s ** 5 /0.4D1)
-          f6 = h/2.0d0 * (s ** 5 - 2.0D0 * s ** 3 + s)
+        !-------------------------------------------------------------------------
+        CALL HermiteBasis(s, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
 
-          df1 = 2.0D0 * s - 0.15D2 / 0.4D1 * s ** 2 - 2.0D0 * s ** 3 + 0.15D2 / 0.4D1 * s ** 4
-          df2 = 2 * s + 0.15D2 / 0.4D1 * s ** 2 - 2.0D0 * s ** 3 - 0.15D2 / 0.4D1 * s ** 4
-          df3 = 4.0D0 * s ** 3 - 4.0D0 * s
-          df4 = h/2.0d0 * (s / 0.2D1 - 0.3D1 / 0.4D1 * s ** 2 - s ** 3 + 0.5D1 / 0.4D1 * s ** 4)
-          df5 = h/2.0d0 * (-s / 0.2D1 - 0.3D1 / 0.4D1 * s ** 2 + s ** 3 + 0.5D1 / 0.4D1* s ** 4)
-          df6 = h/2.0d0 * (5.0D0 * s ** 4 - 6.0D0 * s ** 2 + 1.0D0)
-
-          ddf1 = 0.2D1 - 0.15D2 / 0.2D1 * s - 0.6D1 * s ** 2 + 0.15D2 * s ** 3
-          ddf2 = 0.2D1 + 0.15D2 / 0.2D1 * s - 0.6D1 * s ** 2 - 0.15D2 * s ** 3
-          ddf3 = 0.12D2 * s ** 2 - 0.4D1
-          ddf4 = h/2.0d0 * (0.1D1 / 0.2D1 - 0.3D1 / 0.2D1 * s - 0.3D1 * s ** 2 + 0.5D1 * s ** 3)
-          ddf5 = h/2.0d0 * (-0.1D1 / 0.2D1 - 0.3D1 / 0.2D1 * s + 0.3D1 * s ** 2 + 0.5D1 * s ** 3)
-          ddf6 = h/2.0d0 * (0.2D2 * s ** 3 - 0.12D2 * s)
-        ELSE
-          ! The ordinary third-order Hermite interpolation basis:
-          CALL HermiteBasis(s, h, HermBasis(1:4), dHermBasis(1:4), ddHermBasis(1:4))
-        END IF
         ! ----------------------------------------------------------------------------
         ! The Hermite basis functions in terms of variable t and their derivatives.
         ! These are used to define how the blending edge basis function decays towards
@@ -1698,25 +1946,26 @@ CONTAINS
         ! and compute the derivatives of the edge curve with respect to s
         !----------------------------------------------------------------------------
         IF (QuadraticGeometryData) THEN
-          fz = d(4)*f1 + d(5)*f2 + d(6)*f4 + d(7)*f5 ! + d(8)*f6
-          dfz = d(4)*df1 + d(5)*df2 + d(6)*df4 + d(7)*df5 ! + d(8)*df6
-          ddfz = d(4)*ddf1 + d(5)*ddf2 + d(6)*ddf4 + d(7)*ddf5 !+ d(8)*ddf6
+          !-------------------------------------------------------------------------
+          ! The dimensional edge parameterization coordinate corresponding to
+          ! the dimensionless coordinate s (depending on the edge either s=u or s=v)
+          !--------------------------------------------------------------------------
+          xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
 
-          fy = d(2)*f1 + d(3)*f2 ! + d(9)*f4 + d(10)*f5 + d(11)*f6
-          dfy = d(2)*df1 + d(3)*df2 ! + d(9)*df4 + d(10)*df5 + d(11)*df6
-          ddfy = d(2)*ddf1 + d(3)*ddf2 ! + d(9)*ddf4 + d(10)*ddf5 + d(11)*ddf6
+          f = d(2)*HermBasis(1) + d(3)*HermBasis(2) + SUM(d(4:6) * HermBasis(4:6))
+          df = d(2)*dHermBasis(1) + d(3)*dHermBasis(2) + SUM(d(4:6) * dHermBasis(4:6))
+          ddf = d(2)*ddHermBasis(1) + d(3)*ddHermBasis(2) + SUM(d(4:6) * ddHermBasis(4:6))
 
-          c(1:3) = X0(1:3) + xe * ex(1:3) + fy * ey(1:3) + fz * ez(1:3)
-          dc(1:3) = 0.5d0*h * ex(1:3) + dfy * ey(1:3) + dfz * ez(1:3)
-          ddc(1:3) = ddfy * ey(1:3) + ddfz * ez(1:3)
-
-        ELSE
-          f = SUM( d(2:5) * HermBasis(1:4) )
-          df = SUM( d(2:5) * dHermBasis(1:4) )
-          ddf = SUM( d(2:5) * ddHermBasis(1:4) )
           c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)
           dc(1:3) = 0.5d0*h * ex(1:3) + df * ez(1:3)
           ddc(1:3) = ddf * ez(1:3)
+        ELSE
+          c(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+              d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
+          dc(1:3) = r1(1:3)*dHermBasis(1) + r2(1:3)*dHermBasis(2) + &
+              d(1:3)*0.5d0*dHermBasis(3) + d(4:6)*0.5d0*dHermBasis(4)
+          ddc(1:3) = r1(1:3)*ddHermBasis(1) + r2(1:3)*ddHermBasis(2) + &
+              d(1:3)*0.5d0*ddHermBasis(3) + d(4:6)*0.5d0*ddHermBasis(4)          
         END IF
 
         !---------------------------------------------------------------------------
@@ -1725,13 +1974,6 @@ CONTAINS
         !---------------------------------------------------------------------------
         SELECT CASE(e)
         CASE(1)
-          r1(1) = Nodes % x(1)
-          r1(2) = Nodes % y(1)
-          r1(3) = Nodes % z(1)
-          r2(1) = Nodes % x(2)
-          r2(2) = Nodes % y(2)
-          r2(3) = Nodes % z(2)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           db12(1:3) = dc(1:3) - dL1 * r1(1:3) - dL2 * r2(1:3)
           X(1:3) = X(1:3) + h1 * b12(1:3)
@@ -1743,13 +1985,6 @@ CONTAINS
           d2a2(1:3) = d2a2(1:3) + ddh1 * b12(1:3)
 
         CASE(2)
-          r1(1) = Nodes % x(2)
-          r1(2) = Nodes % y(2)
-          r1(3) = Nodes % z(2)
-          r2(1) = Nodes % x(3)
-          r2(2) = Nodes % y(3)
-          r2(3) = Nodes % z(3)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           db12(1:3) = dc(1:3) - dL1 * r1(1:3) - dL2 * r2(1:3)
           X(1:3) = X(1:3) + h2 * b12(1:3)
@@ -1761,13 +1996,6 @@ CONTAINS
           d2a2(1:3) = d2a2(1:3) + h2 * ddc(1:3)
 
         CASE(3)
-          r1(1) = Nodes % x(4)
-          r1(2) = Nodes % y(4)
-          r1(3) = Nodes % z(4)
-          r2(1) = Nodes % x(3)
-          r2(2) = Nodes % y(3)
-          r2(3) = Nodes % z(3)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           db12(1:3) = dc(1:3) - dL1 * r1(1:3) - dL2 * r2(1:3)
           X(1:3) = X(1:3) + h2 * b12(1:3)
@@ -1779,13 +2007,6 @@ CONTAINS
           d2a2(1:3) = d2a2(1:3) + ddh2 * b12(1:3)
 
         CASE(4)
-          r1(1) = Nodes % x(1)
-          r1(2) = Nodes % y(1)
-          r1(3) = Nodes % z(1)
-          r2(1) = Nodes % x(4)
-          r2(2) = Nodes % y(4)
-          r2(3) = Nodes % z(4)
-
           b12(1:3) = c(1:3) - L1 * r1(1:3) - L2 * r2(1:3)
           db12(1:3) = dc(1:3) - dL1 * r1(1:3) - dL2 * r2(1:3)
           X(1:3) = X(1:3) + h1 * b12(1:3)
@@ -1893,10 +2114,17 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-! This subroutine gives the Hermite basis functions over [-1,1] and their
-! derivatives up to the second order.
+! This subroutine gives the referential description B(f(p)) of the Hermite basis 
+! functions B(x), with f being the mapping of the reference element [-1,1] to
+! the physical element. The length of the physical element h is used as a scale
+! factor so that an interpolating function w(x) has w(x_i) and Dw(x_i)[u] as  
+! the nodal DOFs. In practice, if b(p) were constructed to be a basis function 
+! on the reference element and were associated with the derivative DOF, we would 
+! have B(f(p)) = h/2 b(p) (for the other basis functions B(f(p)) = b(p) as usual). 
+! This subroutine returns also the first and second derivatives d/dp B(f(p)) 
+! and d^2/dp^2 B(f(p)) or dB/dx(f(p)) and d^2B/dx^2(f(p)).
 !------------------------------------------------------------------------------
-  SUBROUTINE HermiteBasis(s, h, Basis, dBasis, ddBasis)
+  SUBROUTINE HermiteBasis(s, h, Basis, dBasis, ddBasis, n, GlobalDerivative)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: s           ! Coordinate
@@ -1904,25 +2132,81 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: Basis(:)   ! Basis functions
     REAL(KIND=dp), INTENT(OUT) :: dBasis(:)  ! The first-order derivatives
     REAL(KIND=dp), INTENT(OUT) :: ddBasis(:) ! The second-order derivatives
+    INTEGER, OPTIONAL, INTENT(IN) :: n       ! The number of nodes
+    LOGICAL, OPTIONAL, INTENT(IN) :: GlobalDerivative  ! To return dB/dx and d^2B/dx^2 
 !------------------------------------------------------------------------------
-    IF (SIZE(Basis) < 4 .OR. SIZE(dBasis) < 4 .OR.  SIZE(ddBasis) < 4) &
+    INTEGER :: NodeCount, DOFs
+    LOGICAL :: TransformDerivatives
+!------------------------------------------------------------------------------
+    IF (PRESENT(n)) THEN
+      NodeCount = n
+    ELSE
+      NodeCount = 2
+    END IF
+    DOFs = 2*NodeCount
+
+    IF (PRESENT(GlobalDerivative)) THEN
+      TransformDerivatives = GlobalDerivative
+    ELSE
+      TransformDerivatives = .FALSE.
+    END IF
+
+    IF (SIZE(Basis) < DOFs .OR. SIZE(dBasis) < DOFs .OR.  SIZE(ddBasis) < DOFs) &
         CALL Fatal('HermiteBasis', 'Too small arrays for basis functions')
 
-    Basis(1) = (2.0d0 - 3*s + s**3)/4.0d0
-    Basis(2) = (2.0d0 + 3*s - s**3)/4.0d0
-    Basis(3) = h/8.0d0 - (h*s)/8.0d0 - (h*s**2)/8.0d0 + (h*s**3)/8.0d0
-    Basis(4) = -h/8.0d0 - (h*s)/8.0d0 + (h*s**2)/8.0d0 + (h*s**3)/8.0d0
+    SELECT CASE(NodeCount)
+    CASE(2)
+      ! ------------------------------------------------------------------------
+      ! Third-order Hermite basis: Dofs are listed as w(v1), w(v2),
+      ! Dw(v1)[u], Dw(v2)[u]
+      ! ------------------------------------------------------------------------
+      Basis(1) = (2.0d0 - 3*s + s**3)/4.0d0
+      Basis(2) = (2.0d0 + 3*s - s**3)/4.0d0
+      Basis(3) = h/8.0d0 - (h*s)/8.0d0 - (h*s**2)/8.0d0 + (h*s**3)/8.0d0
+      Basis(4) = -h/8.0d0 - (h*s)/8.0d0 + (h*s**2)/8.0d0 + (h*s**3)/8.0d0
 
-    dBasis(1) = (-3.0d0 + 3*s**2)/4.0d0
-    dBasis(2) = (3.0d0 - 3*s**2)/4.0d0
-    dBasis(3) = -h/8.0d0 - (h*s)/4.0d0 + (3*h*s**2)/8.0d0
-    dBasis(4) = -h/8.0d0 + (h*s)/4.0d0 + (3*h*s**2)/8.0d0
+      dBasis(1) = (-3.0d0 + 3*s**2)/4.0d0
+      dBasis(2) = (3.0d0 - 3*s**2)/4.0d0
+      dBasis(3) = -h/8.0d0 - (h*s)/4.0d0 + (3*h*s**2)/8.0d0
+      dBasis(4) = -h/8.0d0 + (h*s)/4.0d0 + (3*h*s**2)/8.0d0
 
-    ddBasis(1) = (3*s)/2.0d0
-    ddBasis(2) = (-3*s)/2.0d0
-    ddBasis(3) = (h*(-1 + 3*s))/4.0d0
-    ddBasis(4) = (h + 3*h*s)/4.0d0
+      ddBasis(1) = (3*s)/2.0d0
+      ddBasis(2) = (-3*s)/2.0d0
+      ddBasis(3) = (h*(-1 + 3*s))/4.0d0
+      ddBasis(4) = (h + 3*h*s)/4.0d0
+    CASE(3)
+      ! ------------------------------------------------------------------------
+      ! Third-order Hermite basis: Dofs are listed as w(v1), w(v2), w(v3),
+      ! Dw(v1)[u], Dw(v2)[u], Dw(v3)[u]
+      ! ------------------------------------------------------------------------
+      Basis(1) = s ** 2 - 0.5D1 / 0.4D1 * s ** 3 - s ** 4 / 0.2D1 + 0.3D1 / 0.4D1 * s ** 5
+      Basis(2) = s ** 2 + 0.5D1 / 0.4D1 * s ** 3 - s ** 4 / 0.2D1 - 0.3D1 / 0.4D1 * s ** 5
+      Basis(3) = s ** 4 - 2.0D0 * s ** 2 + 1.0D0
+      Basis(4) = h/2.0d0 * (s ** 2 / 0.4D1 - s ** 3 / 0.4D1 - s ** 4 / 0.4D1 + s ** 5 / 0.4D1)
+      Basis(5) = h/2.0d0 * (-s ** 2 / 0.4D1 - s ** 3 / 0.4D1 + s ** 4 / 0.4D1 + s ** 5 /0.4D1)
+      Basis(6) = h/2.0d0 * (s ** 5 - 2.0D0 * s ** 3 + s)
 
+      dBasis(1) = 2.0D0 * s - 0.15D2 / 0.4D1 * s ** 2 - 2.0D0 * s ** 3 + 0.15D2 / 0.4D1 * s ** 4
+      dBasis(2) = 2 * s + 0.15D2 / 0.4D1 * s ** 2 - 2.0D0 * s ** 3 - 0.15D2 / 0.4D1 * s ** 4
+      dBasis(3) = 4.0D0 * s ** 3 - 4.0D0 * s
+      dBasis(4) = h/2.0d0 * (s / 0.2D1 - 0.3D1 / 0.4D1 * s ** 2 - s ** 3 + 0.5D1 / 0.4D1 * s ** 4)
+      dBasis(5) = h/2.0d0 * (-s / 0.2D1 - 0.3D1 / 0.4D1 * s ** 2 + s ** 3 + 0.5D1 / 0.4D1* s ** 4)
+      dBasis(6) = h/2.0d0 * (5.0D0 * s ** 4 - 6.0D0 * s ** 2 + 1.0D0)
+
+      ddBasis(1) = 0.2D1 - 0.15D2 / 0.2D1 * s - 0.6D1 * s ** 2 + 0.15D2 * s ** 3
+      ddBasis(2) = 0.2D1 + 0.15D2 / 0.2D1 * s - 0.6D1 * s ** 2 - 0.15D2 * s ** 3
+      ddBasis(3) = 0.12D2 * s ** 2 - 0.4D1
+      ddBasis(4) = h/2.0d0 * (0.1D1 / 0.2D1 - 0.3D1 / 0.2D1 * s - 0.3D1 * s ** 2 + 0.5D1 * s ** 3)
+      ddBasis(5) = h/2.0d0 * (-0.1D1 / 0.2D1 - 0.3D1 / 0.2D1 * s + 0.3D1 * s ** 2 + 0.5D1 * s ** 3)
+      ddBasis(6) = h/2.0d0 * (0.2D2 * s ** 3 - 0.12D2 * s)
+    CASE DEFAULT
+      CALL Fatal('HermiteBasis', 'An unsupported element type')     
+    END SELECT
+
+    IF (TransformDerivatives) THEN
+      dBasis(1:DOFs) = 2.0d0/h * dBasis(1:DOFs)
+      ddBasis(1:DOFs) = 4.0d0/h**2 * ddBasis(1:DOFs)
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE HermiteBasis
 !------------------------------------------------------------------------------
@@ -1941,26 +2225,26 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: BubbleNodesDelta(4,3)
 !------------------------------------------------------------------------------
     LOGICAL :: Stat
-    INTEGER :: CurveDataSize, i, j, k, e, i0
-    REAL(KIND=dp), POINTER :: FrameData(:), EdgeParams(:) 
+    INTEGER :: CurveDataSize, i, j, k, e, i0, cn
+    REAL(KIND=dp), POINTER :: EdgeParams(:) 
     REAL(KIND=dp) :: s, u, v
-    REAL(KIND=dp) :: ex(3), ey(3), ez(3), X0(3), c(3)
-    REAL(KIND=dp) :: h, xe, f, f2, f3, f4, f5
+    REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
+    REAL(KIND=dp) :: c(3), r1(3), r2(3)
+    REAL(KIND=dp) :: h, xe, f
     REAL(KIND=dp) :: d(CurveDataSize1)
     REAL(KIND=dp) :: a1(3), a2(3), a3(3), a(2,2), Deta, b(2,2), p(3)
 !------------------------------------------------------------------------------
     CurveDataSize = CurveDataSize1
-
+    cn = 2
     !-----------------------------------------------------------------------
     ! Retrive parametrizations of curved edges:
     !------------------------------------------------------------------------
-    FrameData => GetElementProperty('edge frames', Element) 
     EdgeParams => GetElementProperty('edge parameters', Element)
     !------------------------------------------------------------------------
     ! Note that the correct sizes of these data arrays are checked afterwards
     ! in the function BlendingSurfaceInfo, so avoid the size check here:
     !------------------------------------------------------------------------
-    IF ( .NOT. ASSOCIATED(FrameData) .OR.  .NOT. ASSOCIATED(EdgeParams) ) &
+    IF ( .NOT. ASSOCIATED(EdgeParams) ) &
         CALL Fatal('FindBubbleNodesQuad', 'Elemental properties missing')
     !-----------------------------------------------------------------------
     ! Find the desired place of the blending surface via the additional
@@ -1968,17 +2252,11 @@ CONTAINS
     ! per additional edge of the subtriangulation: 
     !-----------------------------------------------------------------------
     DO e=5,6
-      i0 = (e-1)*FrameDataSize
-      ex(1:3) = FrameData(i0+FrameBasis1)
-      ey(1:3) = FrameData(i0+FrameBasis2)
-      ez(1:3) = FrameData(i0+FrameBasis3)
-      X0(1:3) = FrameData(i0+FrameOrigin)
-
       i0 = (e-1)*CurveDataSize
       d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
-      h = d(1)
+      h = 2.0d0 ! the length of reference element [-1,1]
 
-      ! The indices 12+i and 12+j are the bubble DOF indices of 416 (Q3) element.
+      ! The indices 12+i and 12+j are the bubble DOF indices of 416 (Q3) element:
       SELECT CASE(e)
       CASE(5)
         i = 1
@@ -1988,17 +2266,19 @@ CONTAINS
         j = 4        
       END SELECT
 
+      r1(1) = Nodes % x(i)
+      r1(2) = Nodes % y(i)
+      r1(3) = Nodes % z(i)
+      r2(1) = Nodes % x(j)
+      r2(2) = Nodes % y(j)
+      r2(3) = Nodes % z(j)
+
       DO k=1,2
         s = -1.0d0/3.0d0 + (k-1)*2.0d0/3.0d0
-        xe = -0.25d0*(1.0d0-s)*h + 0.25d0*(1.0d0+s)*h
+        CALL HermiteBasis(s, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
 
-        f2 = (2 - 3*s + s**3)/4.0d0
-        f3 = (2 + 3*s - s**3)/4.0d0
-        f4 = h/8.0d0 - (h*s)/8.0d0 - (h*s**2)/8.0d0 + (h*s**3)/8.0d0
-        f5 = -h/8.0d0 - (h*s)/8.0d0 + (h*s**2)/8.0d0 + (h*s**3)/8.0d0
-
-        f = d(2)*f2+d(3)*f3+d(4)*f4+d(5)*f5
-        c(1:3) = X0(1:3) + xe * ex(1:3) + f * ez(1:3)           
+        c(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+            d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
 
         SELECT CASE(k)
         CASE(1)
@@ -2142,11 +2422,9 @@ CONTAINS
       CheckOrientation = .FALSE.
     END IF
 
-    IF ( PRESENT(MacroElement) ) THEN
-      Subtriangulation = MacroElement .AND. (Family == 4)
-    ELSE
-      Subtriangulation = .FALSE.
-    END IF   
+    Subtriangulation = .FALSE.
+    IF ( PRESENT(MacroElement) .AND. (Family == 4) ) &
+        Subtriangulation = MacroElement .AND. Element % TYPE % NumberOfNodes == 4
 
     IF ( PRESENT(SaveProperties) ) THEN
       WriteElementProperties = SaveProperties
@@ -2232,7 +2510,6 @@ CONTAINS
     !------------------------------------
     IF (discriminant < 0.0d0) THEN
       IF (-discriminant/trc**2 > UmbilicalDelta**2) THEN
-      !IF (-discriminant > GeometryEpsilon**2) THEN
         CALL Fatal('LinesOfCurvatureFrame', 'Error in computing lines of curvature')
       ELSE
         discriminant = 0.0d0
@@ -2269,10 +2546,31 @@ CONTAINS
 
     Umbilical = .FALSE.
     IF (.NOT. Planar) THEN
+      ! ------------------------------------------------------------------------------ 
+      ! The test for umbilical points depends on a rough estimate of the element size:
+      ! ------------------------------------------------------------------------------
+      rK = 0.0d0
+      SELECT CASE(Family)
+      CASE(3)
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(2) - Nodes % x(1))**2 + (Nodes % y(2) - Nodes % y(1))**2 + &
+            (Nodes % z(2) - Nodes % z(1))**2))
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(3) - Nodes % x(2))**2 + (Nodes % y(3) - Nodes % y(2))**2 + &
+            (Nodes % z(3) - Nodes % z(2))**2))
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(3) - Nodes % x(1))**2 + (Nodes % y(3) - Nodes % y(1))**2 + &
+            (Nodes % z(3) - Nodes % z(1))**2))
+      CASE(4)
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(3) - Nodes % x(1))**2 + (Nodes % y(3) - Nodes % y(1))**2 + &
+            (Nodes % z(3) - Nodes % z(1))**2))
+        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(4) - Nodes % x(2))**2 + (Nodes % y(4) - Nodes % y(2))**2 + &
+            (Nodes % z(4) - Nodes % z(2))**2))
+      END SELECT
       delta(1) = ABS(Lambda1-Lambda2)/LambdaMax
+      Umbilical = delta(1) < 1.0d1*(rK*LambdaMax)**2
+      !print *, 'this point is umbilical=', Umbilical
       !PRINT *, 'difference of eigenvals=',delta(1)
-      Umbilical = delta(1) < UmbilicalDelta    !1000.0*EPSILON(1.0)
+      !print *, 'delta,O-term', delta(1),1.0d1*(rK*LambdaMax)**2
     END IF
+
     !-----------------------------------------------------------------
     ! Compute the eigenvectors: 
     !-----------------------------------------------------------------
@@ -2379,10 +2677,10 @@ CONTAINS
           END IF
 
           IF (Subtriangulation) THEN
-            stat = BlendingSurfaceInfo( Element, Nodes, xi, eta, deta, &
+            stat = BlendingSurfaceInfo(Element, Nodes, xi, eta, deta, &
                 a1, a2, a3, a, b, p, BubbleDOFs=BubbleNodesDelta)
           ELSE
-            stat = BlendingSurfaceInfo( Element, Nodes, xi, eta, deta, &
+            stat = BlendingSurfaceInfo(Element, Nodes, xi, eta, deta, &
                 a1, a2, a3, a, b, p)         
           END IF
         ELSE
@@ -2567,6 +2865,7 @@ CONTAINS
       TaylorParams(5) = FPar
       TaylorParams(6) = GPar
 
+      
       IF (Planar) THEN
         IF ( (ABS(APar) > 1000.0*EPSILON(1.0)) .AND. (ABS(BPar) > 1000.0*EPSILON(1.0)) ) THEN
           CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial (planar point)')
@@ -2575,10 +2874,10 @@ CONTAINS
         END IF
       ELSE
         IF (Umbilical) THEN
-          err = ABS(APar-BPar)/MAX(ABS(APar),ABS(BPar))
-          IF ( err > 5.0d0*UmbilicalDelta ) THEN
+          err = ABS(APar-BPar)/MAX(ABS(APar), ABS(BPar))
+          IF ( err > 5.0d1*(rK * MAX(ABS(APar), ABS(BPar)))**2 ) THEN
             CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial (umbilical point)')
-            print *, '|APar-BPar|/max(|APar|,|BPar|)=', err
+            print *, '|APar-BPar|/max(|APar|,|BPar|) = ', err
           END IF
         ELSE
           !-------------------------------------------------------------------------------------
@@ -2612,6 +2911,7 @@ CONTAINS
     IF ( PRESENT(e3) ) e3(:) = GlobPDir3(:)
     IF ( PRESENT(o) ) o(:) = X0(:)
 
+    
     ! Return information about the mesh resolution of geometry:
     IF ( PRESENT(SizeRadiusRatio) ) THEN
       SizeRadiusRatio = 0.0d0
@@ -2657,7 +2957,7 @@ CONTAINS
         CALL SetElementProperty('bubble dofs', NodesArray(1:12), Element)
       END IF
     END IF
-
+    
     !print *, 'o=', o
     !print *, 'e1=', e1
     !print *, 'e2=', e2
@@ -2679,7 +2979,7 @@ CONTAINS
 ! a given nonlinear transformation from a subset K of R^2 onto S. The argument 
 ! LocalFrameNodes defines x, the points y are saved as the elementwise property 
 ! 'patch nodes' and the form of g is defined by the parameters TaylorParams. 
-! If ZNodes is supplied, approximations of nodal z-coordinates is computed using 
+! If ZNodes is supplied, approximations of nodal z-coordinates are computed using 
 ! a third-order Taylor polynomial in the coordinates y of the final patch K. This option
 ! can be used to cross-check different approximations but may not have final utility.
 !-----------------------------------------------------------------------------------
@@ -3083,9 +3383,9 @@ CONTAINS
 ! p-element switches to the standard weak formulation which can give highly
 ! inaccurate results for thin shells (with low p)! 
 !------------------------------------------------------------------------------
-  SUBROUTINE ShellLocalMatrix( BGElement, n, nd, m, LocalSol, LargeDeflection, &
-      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, Area, Error, &
-      RHSForce, BenchmarkProblem)
+  SUBROUTINE ShellLocalMatrix(BGElement, n, nd, m, LocalSol, LargeDeflection, &
+      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, MassAssembly, &
+      HarmonicAssembly, RHSForce, Area, Error, BenchmarkProblem)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
@@ -3098,9 +3398,11 @@ CONTAINS
     INTEGER, INTENT(IN) :: StrainReductionMethod       ! The choice of strain reduction method
     INTEGER, INTENT(IN) :: MembraneStrainReductionMethod ! The choice of membrane strain reduction method    
     LOGICAL, INTENT(IN) :: Bubbles                     ! To indicate that bubble functions are used
+    LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
+    LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
+    REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
     REAL(KIND=dp), INTENT(INOUT) :: Area               ! A variable for area compution
     REAL(KIND=dp), INTENT(INOUT) :: Error              ! A variable for error compution
-    REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
     LOGICAL, INTENT(IN) :: BenchmarkProblem            ! To omit some terms in the strain energy 
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element => NULL()
@@ -3183,7 +3485,6 @@ CONTAINS
     UmbilicalPointFlag => GetElementProperty('umbilical point', BGElement)
     PlateBody = PlanarPointFlag(1) > 0.0d0
     SphericalSurface = UmbilicalPointFlag(1) > 0.0d0
-
     ! ------------------------------------------------------------------------------
     ! Decide what strain reduction strategy is applied and set parameters that
     ! control the selection of variational crimes.
@@ -3193,16 +3494,12 @@ CONTAINS
     CALL SetStrainReductionParameters(BGElement, MembraneReductionMethod, PlateBody, &
       MembraneStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
       MembraneStrains = .TRUE.)
-
+    
     ReductionMethod = StrainReductionMethod
     UseBubbles = Bubbles .AND. (.NOT. LargeDeflection)
     CALL SetStrainReductionParameters(BGElement, ReductionMethod, PlateBody, &
       ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
       MembraneStrains = .FALSE.)
-    !print *, 'MembraneReductionMethod=', MembraneReductionMethod
-    !print *, 'ReductionMethod=', ReductionMethod
-    !print *, 'shear correction=', UseShearCorrection
-    !print *, 'usebubbles=', usebubbles
 
     ! ------------------------------------------------------------------------------
     ! The DOFs count: Currently, FE bubbles can be employed only in a very special 
@@ -3227,7 +3524,14 @@ CONTAINS
     !   * Element: the Lagrange interpolation element corresponding to the "Element" keyword 
     !   * GElement: an element structure corresponding to the surface reconstruction
     ! ------------------------------------------------------------------------------
-    Pversion = IsPElement(BGElement)
+    Pversion = UsePElement(BGElement)
+
+    SELECT CASE(Family)
+    CASE(3)
+      SecondOrder = BGElement % Type % NumberOfNodes == 6
+    CASE(4)
+      SecondOrder = BGElement % Type % NumberOfNodes == 9
+    END SELECT
 
     SuperParametric = .FALSE. ! This relates to an experimental version which is not active 
     ! ------------------------------------------------------------------------------
@@ -3248,7 +3552,7 @@ CONTAINS
     ! only by using the node coordinates of the background element.
     ! --------------------------------------------------------------------------
     CALL WriteElementNodesVariables(BGElement, GElement, Element, Nodes, &
-        PNodes, PatchNodes, PVersion) 
+        PNodes, PatchNodes)
 
     ! --------------------------------------------------------------------------
     ! Body forces, material parameters and the shell thickness:
@@ -3262,8 +3566,7 @@ CONTAINS
     ELSE
       Load(1:n) = 0.0d0
     END IF
-    IF (TransientSimulation) &
-        rho(1:n) = GetReal(GetMaterial(), 'Density')
+    IF ( MassAssembly ) rho(1:n) = GetReal(GetMaterial(), 'Density')
 
     ! ------------------------------------------------------------------------------
     ! The size of the constitutive matrix for 2D shell equations
@@ -3319,14 +3622,13 @@ CONTAINS
 
     Q = 0.0d0
     DO j=1,nd
-      !IF ( PVersion ) THEN
-      IF ( .FALSE. ) THEN
-        y1 = PNodes % x(j)
-        y2 = PNodes % y(j)       
-      ELSE
-        y1 = Nodes % x(j)
-        y2 = Nodes % y(j)
-      END IF
+      ! ------------------------------------------------------------------------
+      ! The following transformation is designed for the Lagrange element DOFs.
+      ! This is obscure and most likely inconsistent for the p-element DOFs, p>1,
+      ! although this may not break the p-approximation definitely.
+      ! ------------------------------------------------------------------------
+      y1 = Nodes % x(j)
+      y2 = Nodes % y(j)
 
       CALL SurfaceBasisVectors(y1, y2, TaylorParams, e1, e2, e3, o, abasis1, &
           abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
@@ -3353,18 +3655,9 @@ CONTAINS
     Force = 0.0d0
     RHSForce = 0.0d0
 
-    IF (PVersion) THEN
-      IP = GaussPoints( BGElement )
-    ELSE
-      !IF (SuperParametric) THEN
-      !  IP = GaussPoints( Element,  Element % TYPE % GaussPoints2 )
-      !ELSE
+    IP = GaussPoints( BGElement )
 
-      IP = GaussPoints( Element )
-
-      !END IF
-    END IF
-
+    
     QUADRATURELOOP: DO t=1,IP % n
 
       BM = 0.0d0
@@ -3374,7 +3667,7 @@ CONTAINS
       NonlinBM = 0.0d0
       NonlinBS = 0.0d0
 
-      IF ( PVersion ) THEN
+      IF ( PVersion .OR. SecondOrder) THEN
 
         !  IF (SuperParametric) THEN
         !    ! Get p-basis on the reference element ...
@@ -3387,20 +3680,17 @@ CONTAINS
         !    y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
         !    y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )            
         !
-        !  ELSE
-
-        ! Here the element mapping is isoparametric:
-
-        uq = IP % U(t)
-        vq = IP % V(t)
-        sq = IP % S(t)          
-
-        stat = ElementInfo( BGElement, PNodes, uq, vq, IP % W(t), detJ, Basis, dBasis )
-        y1 = SUM( PNodes % x(1:nd) * Basis(1:nd) )
-        y2 = SUM( PNodes % y(1:nd) * Basis(1:nd) )
-
-        !  END IF
-
+ 
+        IF (PVersion) THEN
+          stat = ElementInfo(BGElement, PNodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis, dBasis)
+          y1 = SUM( PNodes % x(1:nd) * Basis(1:nd) )
+          y2 = SUM( PNodes % y(1:nd) * Basis(1:nd) )
+        ELSE
+          stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis, dBasis)
+          y1 = SUM( Nodes % x(1:nd) * Basis(1:nd) )
+          y2 = SUM( Nodes % y(1:nd) * Basis(1:nd) )
+        END IF
+        sq = IP % S(t)
       ELSE
 
         !        IF (SuperParametric) THEN
@@ -3408,9 +3698,9 @@ CONTAINS
         !              PatchNodes(1:16,2), IP % U(t), IP % V(t), detJ, Basis, dBasis )
         !          y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
         !          y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )  
-        !        ELSE
+        !        ELSE ...
 
-
+        ! ---------------------------------------------------------------------------------
         ! Use isoparametric element map:
         ! ReductionOperatorInfo should give all necessary basis functions without the
         ! standard ElementInfo call as
@@ -3419,10 +3709,9 @@ CONTAINS
         !      detJ, Basis, dBasis )
         !
         ! Now ReductionOperatorInfo assumes p-reference elements, so
-        ! switch to the reference p-element (perhaps we could use the standard reference 
-        ! elements, since continuity across elements is not needed for the reduced strain).
+        ! switch to the reference p-element.
         ! ---------------------------------------------------------------------------------
-        IF (Family==3 .AND. .NOT. PVersion) THEN
+        IF (Family==3) THEN
           uq = -1.0d0 + 2.0d0 * IP % U(t) + IP % V(t)
           vq = SQRT(3.0d0) * IP % V(t)
           sq = SQRT(3.0d0) * 2.0d0 * IP % S(t)
@@ -3452,8 +3741,6 @@ CONTAINS
         y1 = SUM( Nodes % x(1:nd) * Basis(1:nd) )
         y2 = SUM( Nodes % y(1:nd) * Basis(1:nd) )
 
-        !        END IF
-
       END IF
 
       ! ------------------------------------------------------------------------------
@@ -3477,14 +3764,15 @@ CONTAINS
       nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
       E = SUM( YoungsMod(1:n) * Basis(1:n) )
       NormalTraction = SUM( Load(1:n) * Basis(1:n) )
-      IF (TransientSimulation) rho0 = SUM( rho(1:n) * Basis(1:n) )
+      IF ( MassAssembly ) rho0 = SUM( rho(1:n) * Basis(1:n) )
 
       ! The matrix description of the elasticity tensor:
       CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
 
+
       ! Shear correction factor:
-      IF (UseShearCorrection) THEN
-        CALL ShearCorrectionFactor(Kappa, h, Nodes % x(1:n), Nodes % y(1:n), n)
+      IF ( UseShearCorrection ) THEN
+        CALL ShearCorrectionFactor(Kappa, h, Nodes % x(1:Family), Nodes % y(1:Family), Family)
       ELSE
         Kappa = 1.0d0
       END IF
@@ -3723,11 +4011,11 @@ CONTAINS
         StrainVec(4) = StrainVec(4) + nu/(1.0d0-nu) * StrainVec(1) / A1**2 + &
             nu/(1.0d0-nu) * StrainVec(2) / A2**2 + 0.5d0 * PrevField(5)**2 / A1**2 + &
             0.5d0 * PrevField(6)**2 / A2**2 + 0.5d0 * PrevField(7)**2
-
       END IF
 
+      
       CALL StrainEnergyDensity(Stiff, CMat, BM + NonlinBM, csize, DOFs, Weight)
-
+      
       ! The linear part of strain for the current iterate:
       StrainVec(1:csize) = StrainVec(1:csize) + MATMUL( BM(1:csize,1:DOFs), PrevSolVec(1:DOFs) )
 
@@ -3881,9 +4169,9 @@ CONTAINS
             SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(6) / A2**2 - PrevField(4) * PrevField(7)
 
       END IF
-
+      
       CALL StrainEnergyDensity(Stiff, GMat, BS+NonlinBS, 2, DOFs+BubbleDOFs, Kappa*Weight)
-
+      
       ! The linear part of strain for the current iterate:
       StrainVec(5:6) = StrainVec(5:6) + MATMUL( BS(1:2,1:DOFs), PrevSolVec(1:DOFs) )
 
@@ -3976,7 +4264,7 @@ CONTAINS
       !----------------------------------------------------------------
       ! Mass matrix without bubbles taken into account:
       !----------------------------------------------------------------     
-      IF (TransientSimulation) THEN
+      IF ( MassAssembly ) THEN
         DO k=1,3
           SELECT CASE(k)
           CASE(1)
@@ -4042,14 +4330,14 @@ CONTAINS
 
       ! For computing the mean curvature error:
       !-----------------------------------------
-      !Error = Error + sq * (1.0d0 - abs(B11/a11) - abs(B22/a22))**2 * detJ * SqrtDetA
+      !Error = Error + sq * (1.0d-1 - 0.5d0*abs(B11/a11) - 0.5d0*abs(B22/a22))**2 * detJ * SqrtDetA
 
     END DO QUADRATURELOOP
 
     ! ------------------------------------------------------------------------------
     ! Static condensation is performed before transforming to the global DOFs:
     ! ------------------------------------------------------------------------------
-    IF (UseBubbles .AND. BubbleDOFs>0) THEN
+    IF (UseBubbles .AND. BubbleDOFs > 0) THEN
       CALL CondensateP( DOFs, BubbleDOFs, Stiff, Force )
     END IF
 
@@ -4061,9 +4349,15 @@ CONTAINS
 
     IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
 
-    IF(TransientSimulation) THEN
+    IF( MassAssembly ) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
-      CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
+
+      IF( TransientSimulation ) THEN
+        CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
+      ELSE IF( HarmonicAssembly ) THEN
+        CALL DefaultUpdateMass( MASS )
+        ! update damping if present!
+      END IF
     END IF
 
     CALL DefaultUpdateEquations(STIFF,FORCE)
@@ -4084,17 +4378,27 @@ CONTAINS
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
     INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different
     LOGICAL, INTENT(IN) :: PlateBody                  ! A dummy argument
-    INTEGER, INTENT(OUT) :: ReducedStrainDim
-    LOGICAL, INTENT(INOUT) :: UseBubbles
-    LOGICAL, INTENT(OUT) :: UseShearCorrection
-    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(2,3)
+    INTEGER, INTENT(OUT) :: ReducedStrainDim          ! The number of basis functions for strain interpolation
+    LOGICAL, INTENT(INOUT) :: UseBubbles              ! To augment approximation by bubble functions
+    LOGICAL, INTENT(OUT) :: UseShearCorrection        ! To activate shear correctionn trick
+    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(2,3)! To reduce RT_0 functions to constants
     LOGICAL, INTENT(IN) :: MembraneStrains            ! To select the method for membrane strains
 !------------------------------------------------------------------------------
-    LOGICAL :: PVersion
+    LOGICAL :: PVersion, SecondOrder
     INTEGER :: Family
 !------------------------------------------------------------------------------
     Family = GetElementFamily(BGElement)
-    PVersion = IsPElement(BGElement)
+    PVersion = UsePElement(BGElement) 
+
+    SecondOrder = .FALSE.
+    IF (.NOT. PVersion) THEN
+      SELECT CASE(Family)
+      CASE(3)
+        SecondOrder = BGElement % Type % NumberOfNodes == 6
+      CASE(4)
+        SecondOrder = BGElement % Type % NumberOfNodes == 9
+      END SELECT
+    END IF
 
     IF (.NOT. MembraneStrains .AND. (ReductionMethod == CurlKernelWithEdgeDOFs)) THEN
       CALL Warn('SetStrainReductionParameters', &
@@ -4102,7 +4406,8 @@ CONTAINS
       ReductionMethod = CurlKernel
     END IF
 
-    IF (Pversion) THEN
+    IF (PVersion .OR. SecondOrder) THEN
+      ! If a higher-order approximation has been requested, the standard weak formulation is used:
       ReductionMethod = NoStrainReduction
     ELSE
       IF (ReductionMethod == AutomatedChoice) THEN
@@ -4202,7 +4507,7 @@ CONTAINS
 ! In addition, the element structure corresponding to the surface reconstruction
 ! is created.
 !------------------------------------------------------------------------------
-  SUBROUTINE CreateLagrangeElementStructures( BGElement, nd, Element, Nodes, &
+  SUBROUTINE CreateLagrangeElementStructures(BGElement, nd, Element, Nodes, &
       PNodes, GElement)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
@@ -4216,7 +4521,7 @@ CONTAINS
     INTEGER :: Family
 !------------------------------------------------------------------------------
     Family = GetElementFamily(BGElement)
-    PVersion = IsPElement(BGElement)
+    PVersion = UsePElement(BGElement)
 
     ! --------------------------------------------------------------------------
     ! Create the element structure corresponding to the surface reconstruction:
@@ -4239,9 +4544,16 @@ CONTAINS
         SELECT CASE(nd)
         CASE(3)
           Element % Type => GetElementType(303, .FALSE.)
+        CASE(6)
+          Element % Type => GetElementType(306, .FALSE.)
+        CASE(10)
+          Element % Type => GetElementType(310, .FALSE.)
         CASE DEFAULT
           CALL Fatal('CreateLagrangeElementStructures', 'Unsupported triangular p-element')
         END SELECT
+        ! Ensure that the reference element for the Lagrange interpolation is used:
+        Element % Type % NodeU(1:3) = (/ 0.0d0, 1.0d0, 0.0d0 /)
+        Element % Type % NodeV(1:3) = (/ 0.0d0, 0.0d0, 1.0d0 /)
       CASE(4)
         SELECT CASE(nd)
         CASE(4)
@@ -4250,6 +4562,8 @@ CONTAINS
           Element % Type => GetElementType(408, .FALSE.)
         CASE(9)
           Element % Type => GetElementType(409, .FALSE.)
+        CASE(12)
+          Element % Type => GetElementType(412, .FALSE.)
         CASE DEFAULT
           CALL Fatal('CreateLagrangeElementStructures', 'Unsupported quadrilateral p-element type')
         END SELECT
@@ -4301,7 +4615,7 @@ CONTAINS
 ! in terms of p-basis.
 !------------------------------------------------------------------------------
   SUBROUTINE WriteElementNodesVariables(BGElement, GElement, Element, Nodes, &
-      PNodes, PatchNodes, PVersion)
+      PNodes, PatchNodes)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
     TYPE(Element_t), POINTER, INTENT(IN) :: GElement  ! A Lagrange element for surface reconstruction
@@ -4309,10 +4623,9 @@ CONTAINS
     TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! A nodes data structure for Element     
     TYPE(Nodes_t), INTENT(INOUT) :: PNodes            ! A nodes data structure for p-version
     REAL(KIND=dp), INTENT(IN) :: PatchNodes(:,:)      ! The nodes data of coordinate domain
-    LOGICAL, INTENT(IN) :: PVersion                   ! To create nodes data for p-version
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: Stat
+    LOGICAL :: Stat, PVersion
     INTEGER :: j, k, t, NodesCount, GElementNodes, Family
     REAL(KIND=dp) :: u, v, yk, up, vp, sp
     REAL(KIND=dp) :: GBasis(GElement % Type % NumberOfNodes)
@@ -4321,6 +4634,8 @@ CONTAINS
     REAL(KIND=dp) :: PBasis(Element % Type % NumberOfNodes)
     REAL(KIND=dp) :: Basis(Element % Type % NumberOfNodes)
 !------------------------------------------------------------------------------
+    PVersion = UsePElement(BGElement)
+
     n = BGElement % Type % NumberOfNodes
     NodesCount = Element % Type % NumberOfNodes
     GElementNodes = GElement % Type % NumberOfNodes
@@ -4471,8 +4786,10 @@ CONTAINS
       l14 = SQRT(x14**2 + y14**2)
       h = MAX(l21,l32,l43,l14)
       Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
+
     CASE DEFAULT
-      CALL WARN('ShearCorrectionFactor','Illegal number of nodes for Smitc elements')
+      CALL Fatal('ShearCorrectionFactor',&
+          'Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
     END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE ShearCorrectionFactor
@@ -4553,8 +4870,9 @@ CONTAINS
 ! element edges have the same length. The functionality of this routine could 
 ! also be a part of the function EdgeElementInfo, but this separate implementation 
 ! is made to serve the special purpose of strain reduction. 
+! NOTE: Only the lowest-order case is supported currently. 
 !------------------------------------------------------------------------------
-  FUNCTION ReductionOperatorInfo( Element, Nodes, u, v, StrainBasis, ReductionMethod, &
+  FUNCTION ReductionOperatorInfo(Element, Nodes, u, v, StrainBasis, ReductionMethod, &
       ApplyPiolaTransform, F, G, detF, Basis, dBasis, DOFWeigths, Bubbles, EdgeDirection) &
       RESULT(stat)
 !------------------------------------------------------------------------------
@@ -4604,7 +4922,7 @@ CONTAINS
 
     Family = GetElementFamily(Element)
     !-----------------------------------------------------------------------
-    ! The standard nodal basis functions on the reference element and
+    ! The lowest-order (nodal) basis functions on the reference element and
     ! their derivatives with respect to the local coordinates. These define 
     ! the mapping of the reference element to a physical element.
     !-----------------------------------------------------------------------
@@ -4612,7 +4930,7 @@ CONTAINS
     dLBasis = 0.0d0      
     SELECT CASE(Family)
     CASE(3)
-      DO q=1,n
+      DO q=1,3
         LBasis(q) = TriangleNodalPBasis(q, u, v)
         dLBasis(q,1:2) = dTriangleNodalPBasis(q, u, v) 
       END DO
@@ -4887,7 +5205,7 @@ CONTAINS
 
     SELECT CASE(Family)
     CASE(3)
-      PRefElement = IsPElement(Element)
+      PRefElement = UsePElement(Element)
       SELECT CASE(ReductionMethod)
       CASE(CurlKernel)
         ! Method: the kernel of RT
@@ -5296,39 +5614,48 @@ CONTAINS
 !
 !     [d_k(Nb*e1) d_k(Nb*e2)]
 !
-!  where Nb is the bubble basis function, e1=(1,0) and e2=(0,1). 
-!  Currently, just one bubble function (cf. the size of Basis array) and the kernel 
-!  version of strain reduction are supported currently. 
+!  where Nb is the bubble basis function, e1=(1,0) and e2=(0,1). Optionally 
+!  the interpolating function can be computed for a field Cu where C is a 2X2 matrix 
+!  field. Currently, just one bubble function (cf. the size of Basis array) and 
+!  the kernel version of strain reduction are supported currently.
 !------------------------------------------------------------------------------
   SUBROUTINE ReductionOperatorBubbleDofs(Element, Nodes, A, nd, nb, n, ReductionMethod, &
-      ModelPars)
+      ModelPars, GradientField)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), INTENT(IN), TARGET :: Element          !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                      !< Nodes structure
-    REAL(KIND=dp), INTENT(INOUT) :: A(nd,2*nb)                !< Coefficients for expressing the DOFs 
+    REAL(KIND=dp), INTENT(INOUT) :: A(nd,2*nb)              !< Coefficients for expressing the DOFs 
     INTEGER, INTENT(IN) :: nd                               !< The dimension of the strain reduction space X(K)
     INTEGER, INTENT(IN) :: nb                               !< The number of the H1-conforming bubble functions
     INTEGER, INTENT(IN) :: n                                !< The number of the BG element nodes
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: ModelPars(2,2,n) !< To include the effect of additional model parameters
+    LOGICAL, OPTIONAL :: GradientField                      !< To return [d_k(grad(Nb).e1) d_k(grad(Nb).e2)]
 !---------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: stat, UseParameters, PRefElement
+    LOGICAL :: stat, UseParameters, PRefElement, GradientOperand
 
     INTEGER :: Family, i, j, k, t
 
     REAL(KIND=dp) :: StrainBasis(4,3)         ! The basis functions for the strain reduction space X(K)
     REAL(KIND=dp) :: DOFWeigths(3,2)          ! The auxiliary functions to evaluate the interpolant in X(K)
     REAL(KIND=dp) :: Basis(5)                 ! H1-conforming basis functions (p=1, with one bubble)
+    REAL(KIND=dp) :: DBasis(5,1:3) 
     REAL(KIND=dp) :: u(2), ParMat(2,2), uk, vk, sk
 !---------------------------------------------------------------------------------
     IF (ReductionMethod /= CurlKernel) CALL Fatal('ReductionOperatorBubbleDofs', &
         'An unsupported strain reduction technique')
 
+    IF (PRESENT(GradientField)) THEN
+      GradientOperand = GradientField
+    ELSE
+      GradientOperand = .FALSE.
+    END IF
+
     Family = GetElementFamily(Element)
- 
+    
     A = 0.0d0
 
     UseParameters = PRESENT(ModelPars)
@@ -5342,7 +5669,7 @@ CONTAINS
     IP = GaussPoints(Element)
     DO t=1,IP % n
 
-      PRefElement = IsPElement(Element)
+      PRefElement = UsePElement(Element)
       
       IF (Family == 3 .AND. .NOT.PRefElement) THEN
         ! Switch to the p-reference element:
@@ -5355,9 +5682,9 @@ CONTAINS
         sk = IP % S(t)
       END IF
 
-      stat = ReductionOperatorInfo( Element, Nodes, uk, vk, StrainBasis, &
-          ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DOFWeigths=DOFWeigths, &
-          Bubbles=.TRUE.)  
+      stat = ReductionOperatorInfo(Element, Nodes, uk, vk, StrainBasis, &
+          ReductionMethod, ApplyPiolaTransform = .TRUE., Basis=Basis, DBasis=DBasis, &
+          DOFWeigths=DOFWeigths, Bubbles=.TRUE.)
 
       IF (UseParameters) THEN
         ParMat(1,1) = SUM(ModelPars(1,1,1:n) * Basis(1:n))
@@ -5371,11 +5698,21 @@ CONTAINS
           DO k=1,2
             SELECT CASE(k)
             CASE(1)
-              u(1) = ParMat(1,1)*Basis(n+j)
-              u(2) = ParMat(2,1)*Basis(n+j)
+              IF (GradientOperand) THEN
+                u(1) = DBasis(n+j,1)
+                u(2) = 0.0d0
+              ELSE
+                u(1) = ParMat(1,1)*Basis(n+j)
+                u(2) = ParMat(2,1)*Basis(n+j)
+              END IF
             CASE(2)
-              u(1) = ParMat(1,2)*Basis(n+j)
-              u(2) = ParMat(2,2)*Basis(n+j)
+              IF (GradientOperand) THEN
+                u(1) = 0.0d0
+                u(2) = DBasis(n+j,2)
+              ELSE 
+                u(1) = ParMat(1,2)*Basis(n+j)
+                u(2) = ParMat(2,2)*Basis(n+j)
+              END IF
             END SELECT
             A(i,2*(j-1)+k) = A(i,2*(j-1)+k) + SUM(u(1:2) * DOFWeigths(i,1:2)) * sk
           END DO
@@ -5519,12 +5856,13 @@ CONTAINS
       PlateBodyCheck = .FALSE.
     END IF
 
-    DirectorValues => GetElementProperty('director', Element)
+    DirectorValues => GetElementalDirector( Element )
+    
     IF (ASSOCIATED(DirectorValues)) THEN
       IF (SIZE(DirectorValues) < 3*n) CALL Fatal('AverageDirector', &
           'Elemental director data is not associated with all nodes')
     ELSE
-      CALL Fatal( 'AverageDirector', 'Elemental director data is not associated')
+      CALL Fatal('AverageDirector', 'Elemental director data is not associated')
     END IF
 
     DO i=1,n
@@ -5586,8 +5924,9 @@ CONTAINS
     NodesVar % NumberOfNodes = PlaneElement % Type % NumberOfNodes
 
     IP = GaussPoints(PlaneElement)
+
     DO j=1,IP % n   
-      stat = ElementInfo( PlaneElement, NodesVar, IP % u(j), IP % v(j), &
+      stat = ElementInfo(PlaneElement, NodesVar, IP % u(j), IP % v(j), &
           IP % w(j), detJ, Basis)
       Area = Area + IP % s(j) * detJ
     END DO
@@ -5622,7 +5961,7 @@ CONTAINS
     ! -------------------------------------------------------
     SELECT CASE(Family)
     CASE(3)
-      IP = GaussPointsTriangle(11, PReferenceElement=.TRUE. )
+      IP = GaussPointsTriangle(11, PReferenceElement=.TRUE.)
     CASE(4)
       IP = GaussPoints(Element, 25)
     CASE DEFAULT
@@ -5630,13 +5969,88 @@ CONTAINS
     END SELECT
 
     DO j=1,IP % n
-      stat = BlendingSurfaceInfo( Element, Nodes, IP % U(j), IP % V(j), &
+      stat = BlendingSurfaceInfo(Element, Nodes, IP % U(j), IP % V(j), &
           DetA, a1, a2, a3, A, B, x, MacroElement)      
       SurfaceArea = SurfaceArea + IP % s(j) * SQRT(Deta)
     END DO
 !-------------------------------------------------------------------------------------
   END SUBROUTINE ComputeSurfaceArea
 !-------------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------------------------
+! Return the global coordinates at the mid-node of the edge by evaluating
+! the value of the space curve. This function is just for testing purposes.
+!-------------------------------------------------------------------------------------
+FUNCTION EdgeMidNode(Element, e) RESULT(X)
+!-----------------------------------------------------------------------
+  TYPE(Element_t), POINTER, INTENT(IN) :: Element
+  INTEGER, INTENT(IN) :: e     ! Edge identifier 
+  REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
+!-----------------------------------------------------------------------
+  TYPE(Nodes_t) :: Nodes
+  INTEGER :: CurveDataSize, i0, cn
+  REAL(KIND=dp), POINTER :: EdgeParams(:)
+  REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
+  REAL(KIND=dp) :: d(CurveDataSize2), h, xe
+  REAL(KIND=dp) :: r1(3), r2(3)
+  REAL(KIND=dp) :: u, v, f
+!-----------------------------------------------------------------------
+  IF (Element % Type % NumberOfNodes > 4) &
+      CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
+
+  !-----------------------------------------------------------------------
+  ! Retrive parametrizations of curved edges:
+  !------------------------------------------------------------------------
+  EdgeParams => GetElementProperty('edge parameters', Element)
+
+  h = 2.0d0
+  CurveDataSize = CurveDataSize1
+
+  i0 = (e-1)*CurveDataSize
+  d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
+
+  cn = 2
+  CALL HermiteBasis(0.0d0, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
+
+  CALL GetElementNodes(Nodes, Element) 
+
+  Family = GetElementFamily(Element)
+  SELECT CASE(Family)
+  CASE(3)
+    SELECT CASE(e)
+    CASE(1)
+      r1(1) = Nodes % x(1)
+      r1(2) = Nodes % y(1)
+      r1(3) = Nodes % z(1)
+      r2(1) = Nodes % x(2)
+      r2(2) = Nodes % y(2)
+      r2(3) = Nodes % z(2)
+    CASE(2)
+      r1(1) = Nodes % x(2)
+      r1(2) = Nodes % y(2)
+      r1(3) = Nodes % z(2)
+      r2(1) = Nodes % x(3)
+      r2(2) = Nodes % y(3)
+      r2(3) = Nodes % z(3)
+    CASE(3)
+      r1(1) = Nodes % x(3)
+      r1(2) = Nodes % y(3)
+      r1(3) = Nodes % z(3)
+      r2(1) = Nodes % x(1)
+      r2(2) = Nodes % y(1)
+      r2(3) = Nodes % z(1)
+    END SELECT
+  CASE(4)
+    CALL Fatal('EdgeMidNode', '4-node implementation missing')
+  END SELECT
+
+  X(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+      d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
+
+!-----------------------------------------------------------------------
+END FUNCTION EdgeMidNode
+!-----------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver

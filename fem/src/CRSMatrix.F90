@@ -789,11 +789,10 @@ CONTAINS
 
     ! The actual contribution loop
     IF (MCAssembly) THEN
-      !$OMP SIMD
+      !_ELMER_OMP_SIMD
       DO i=1,nzind
         gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
       END DO
-      !$OMP END SIMD
     ELSE
       DO i=1,nzind
         !$OMP ATOMIC
@@ -1445,18 +1444,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     
     INTEGER :: i,j,n
     REAL(KIND=dp) :: rsum
-#ifdef HAVE_MKL
-    INTERFACE
-      SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
-        USE Types
-        CHARACTER :: transa
-        INTEGER :: m
-        REAL(KIND=dp) :: a(*)
-        INTEGER :: ia(*), ja(*)
-        REAL(KIND=dp) :: x(*), y(*)
-      END SUBROUTINE mkl_dcsrgemv
-    END INTERFACE
-#endif
 !------------------------------------------------------------------------------
 
     n = A % NumberOfRows
@@ -1476,21 +1463,16 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       RETURN
     END IF
 
-    ! Use MKL to perform mvp if it is available
-#ifdef HAVE_MKL
-    CALL mkl_dcsrgemv('N', n, ABS(Values), Rows, Cols, u, v)
-#else
 !$omp parallel do private(j,rsum)
     DO i=1,n
       rsum = 0.0d0
-      DO j=Rows(i),Rows(i+1)-1
 !DIR$ IVDEP
+      DO j=Rows(i),Rows(i+1)-1
         rsum = rsum + u(Cols(j)) * ABS(Values(j))
       END DO
       v(i) = rsum
     END DO
 !$omp end parallel do
-#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_ABSMatrixVectorMultiply
 !------------------------------------------------------------------------------
@@ -1507,36 +1489,49 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        
        INTEGER, ALLOCATABLE :: Row(:)
        INTEGER :: NVals
-       INTEGER :: i,j,k,istat,n
+       INTEGER :: i,j,k,istat,nb, na
 
+       CALL Info('CRS_Transpose','Creating a transpose of matrix',Level=20)
+       
        B => AllocateMatrix()
        
+       na = A % NumberOfRows
+       IF( na == 0 ) THEN
+         B % NumberOfRows = 0
+         RETURN
+       END IF
+       
        NVals = SIZE( A % Values )
-       B % NumberOfRows = MAXVAL( A % Cols )
+       nb = MAXVAL( A % Cols )
+       B % NumberOfRows = nb
+       
+       ALLOCATE( B % Rows( nb +1 ), B % Cols( NVals ), &
+           B % Values( Nvals ), Row( nb ), STAT=istat )
+       IF ( istat /= 0 )  CALL Fatal( 'CRS_Transpose','Memory allocation error.' )
 
-       ALLOCATE( B % Rows( B % NumberOfRows +1 ), B % Cols( NVals ), &
-           B % Values( Nvals ), B % Diag( B % NumberOfRows ), Row( B % NumberOfRows ), &
-           STAT=istat )
-       IF ( istat /= 0 )  CALL Fatal( 'CRS_Transpose', &
-           'Memory allocation error.' )
-
-       B % Diag = 0
+       IF( ASSOCIATED( A % Diag ) ) THEN
+         ALLOCATE( B % Diag(nb) )       
+         B % Diag = 0
+       END IF
+         
        Row = 0       
        DO i = 1, NVals
          Row( A % Cols(i) ) = Row( A % Cols(i) ) + 1
        END DO
        
+       B % Rows = 0
        B % Rows(1) = 1
-       DO i = 1, B % NumberOfRows
+       DO i = 1, nB
          B % Rows(i+1) = B % Rows(i) + Row(i)
        END DO
        B % Cols = 0
        
-       DO i = 1, B % NumberOfRows
+       DO i = 1, nB
          Row(i) = B % Rows(i)
        END DO
-      
-       DO i = 1, A % NumberOfRows
+
+       
+       DO i = 1, nA
 
          DO j = A % Rows(i), A % Rows(i+1) - 1
            k = A % Cols(j)
@@ -1552,9 +1547,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
            END IF
          END DO
        END DO
-
+              
        DEALLOCATE( Row )
-
+       
 !------------------------------------------------------------------------------
      END FUNCTION CRS_Transpose
 !------------------------------------------------------------------------------
@@ -1897,10 +1892,13 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     n = GlobalMatrix % NumberOfRows
 
     IF ( .NOT. GlobalMatrix % Ordered ) THEN
+       !$OMP PARALLEL DO
        DO i=1,N
           CALL SortF( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1), &
                    Values(Rows(i):Rows(i+1)-1) )
        END DO
+       !$OMP END PARALLEL DO
+       !$OMP PARALLEL DO
        DO i=1,N
           DO j=Rows(i),Rows(i+1)-1
              IF ( Cols(j) == i ) THEN
@@ -1909,9 +1907,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
              END IF
           END DO
        END DO
+       !$OMP END PARALLEL DO
        GlobalMatrix % Ordered = .TRUE.
     END IF
 
+    !$OMP PARALLEL DO
     DO i=1,n
        IF  ( ABS( Values(Diag(i))) > AEPS ) THEN
            u(i) = v(i) / Values(Diag(i))
@@ -1919,6 +1919,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
            u(i) = v(i)
        END IF
     END DO
+    !$OMP END PARALLEL DO
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_DiagPrecondition
 !------------------------------------------------------------------------------
@@ -2795,7 +2796,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
 
 
-  SUBROUTINE CRS_CreateChildMatrix( ParentMat, ParentDofs, ChildMat, Dofs, ColDofs, CreateRhs, NoReuse ) 
+  SUBROUTINE CRS_CreateChildMatrix( ParentMat, ParentDofs, ChildMat, Dofs, ColDofs, &
+      CreateRhs, NoReuse, Diagonal ) 
 
     TYPE(Matrix_t) :: ParentMat
     INTEGER :: ParentDofs
@@ -2804,16 +2806,24 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, OPTIONAL :: ColDofs
     LOGICAL, OPTIONAL :: CreateRhs
     LOGICAL, OPTIONAL :: NoReuse
-    INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs
-    LOGICAL :: ReuseMatrix
+    LOGICAL, OPTIONAL :: Diagonal
 
+    INTEGER :: i,j,ii,jj,k,l,m,n,nn,Cdofs,Cmult
+    LOGICAL :: ReuseMatrix
+    LOGICAL :: IsDiagonal
+    
     IF( PRESENT( ColDofs ) ) THEN
       CDofs = ColDofs
     ELSE
       CDofs = Dofs
     END IF
 
-
+    IF( PRESENT( Diagonal ) ) THEN
+      IsDiagonal = Diagonal
+    ELSE
+      IsDiagonal = .FALSE.
+    END IF
+    
     ReuseMatrix = ( Dofs == ParentDofs .AND. CDofs == ParentDofs )
     IF( PRESENT( NoReuse ) ) THEN
       IF( NoReuse ) ReuseMatrix = .FALSE.         
@@ -2849,6 +2859,57 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       m = SIZE( ParentMat % Values )
       ALLOCATE( ChildMat % Values(m) )
       ChildMat % Values = 0.0_dp
+    ELSE IF( IsDiagonal ) THEN
+
+      CALL Info('CRS_CreateChildMatrix','Multiplying initial matrix topology for diagonal system',Level=8)    
+
+      IF( CDofs /= Dofs ) THEN
+        CALL Fatal('CRS_CreateChildMatrix','Diagonal matrix must be square matrix!')
+      END IF
+      
+      cmult = Dofs / ParentDofs 
+      IF( cmult <= 1 .OR. Dofs /= cmult * ParentDofs ) THEN
+        CALL Fatal('CRS_CreateChildMatrix','Diagonal child matrix must be a multiple of parent matrix!')        
+      END IF
+            
+      ALLOCATE( ChildMat % Cols( SIZE(ParentMat % Cols) * cmult ) )
+      ALLOCATE( ChildMat % Rows( (SIZE(ParentMat % Rows)-1) * cmult + 1 ) )
+
+      ChildMat % NumberOfRows = ParentMat % NumberOfRows * cmult
+      
+      ii = 0
+      jj = 0
+      ChildMat % Rows(1) = 1
+      DO i=1, ParentMat % NumberOFRows
+
+        DO k=1,cmult
+
+          ii = ii + 1
+          DO j=ParentMat % Rows(i), ParentMat % Rows(i+1)-1
+            nn = ParentMat % Cols(j)
+            jj = jj + 1            
+            ChildMat % Cols(jj) = cmult*(nn-1) + k
+          END DO
+
+          ChildMat % Rows(ii+1) = jj+1
+        END DO
+      END DO
+      
+      ALLOCATE( ChildMat % Values(jj) )
+      ChildMat % Values = 0.0_dp
+
+      IF( Dofs == CDofs ) THEN
+        ALLOCATE( ChildMat % Diag( SIZE(ParentMat % Diag) * cmult ) )
+        DO i=1,ChildMat % NumberOfRows
+          DO j=ChildMat % Rows(i), ChildMat % Rows(i+1)-1
+            IF (ChildMat % Cols(j) == i) THEN
+              ChildMat % Diag(i) = j
+              EXIT
+            END IF
+          END DO
+        END DO
+      END IF
+
     ELSE
       CALL Info('CRS_CreateChildMatrix','Multiplying initial matrix topology',Level=8)    
 
@@ -4046,8 +4107,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, DIMENSION(*), INTENT(IN) :: ipar  !< structure holding info from (HUTIter-iterative solver package)
     REAL(KIND=dp), DIMENSION(HUTI_NDIM), INTENT(IN) :: v   !< Right-hand-side vector
     REAL(KIND=dp), DIMENSION(HUTI_NDIM), INTENT(OUT) :: u   !< Solution vector
+    
+    INTEGER :: i
 
-    u = v
+    !$OMP PARALLEL DO
+    DO i=1,HUTI_NDIM
+       u(i) = v(i)
+    END DO
+    !$OMP END PARALLEL DO
     CALL CRS_LUSolve( HUTI_NDIM,GlobalMatrix,u )
   END SUBROUTINE CRS_LUPrecondition
 !------------------------------------------------------------------------------
@@ -4083,8 +4150,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,row,col,nn
     DOUBLE PRECISION :: s
-    DOUBLE PRECISION, POINTER :: Values(:)
-    INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
+    DOUBLE PRECISION, POINTER CONTIG :: Values(:)
+    INTEGER, POINTER CONTIG :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
 
     Diag => A % ILUDiag
@@ -4114,6 +4181,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! Forward substitute (solve z from Lz = b)
       DO i=1,n
         s = b(i)
+!DIR$ IVDEP
         DO j=Rows(i),Diag(i)-1
            s = s - Values(j) * b(Cols(j))
         END DO
@@ -4124,6 +4192,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! Backward substitute (solve x from L^Tx = z)
       DO i=n,1,-1
         b(i) = b(i) * Values(Diag(i))
+!DIR$ IVDEP
         DO j=Rows(i),Diag(i)-1
            b(Cols(j)) = b(Cols(j)) - Values(j) * b(i)
         END DO
@@ -4133,6 +4202,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! Forward substitute (solve z from Lz = b)
       DO i=1,n
          s = b(i)
+!DIR$ IVDEP
          DO j=Rows(i),Diag(i)-1
             s = s - Values(j) * b(Cols(j))
          END DO
@@ -4143,6 +4213,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! Backward substitute (solve x from UDx = z)
       DO i=n,1,-1
          s = b(i)
+!DIR$ IVDEP
          DO j=Diag(i)+1,Rows(i+1)-1
             s = s - Values(j) * b(Cols(j))
          END DO
