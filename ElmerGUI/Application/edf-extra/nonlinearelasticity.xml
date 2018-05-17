@@ -36,6 +36,18 @@
 
          <Parameter Widget="Label"> <Name> Miscellaneous options</Name> </Parameter>
          <Parameter Widget="CheckBox">
+           <Name> Calculate Stresses </Name>
+           <Whatis> If checked compute stresses of the solution. </Whatis>
+         </Parameter>
+	 <Parameter Widget="CheckBox">
+           <Name> Calculate Strains </Name>
+           <Whatis> If checked compute strains of the solution. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Principal </Name>
+           <Whatis> If checked compute the principal stresses/strains of the solution. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox">
            <Name> Calculate Loads </Name>
            <Whatis> If checked compute boundary reaction forces. </Whatis>
          </Parameter>
