@@ -1903,7 +1903,8 @@ CONTAINS
     IF ( .NOT. ASSOCIATED( Solver % Variable ) ) RETURN
     IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) RETURN
     IF (SIZE(Solver % Variable % Values)==0 ) THEN
-        DEALLOCATE(Solver % Variable % values); RETURN
+        DEALLOCATE(Solver % Variable % Values)
+        Solver % Variable % Values => Null(); RETURN
     END IF
     !------------------------------------------------------------------------------
 	

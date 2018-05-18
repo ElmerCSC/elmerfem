@@ -662,10 +662,12 @@ CONTAINS
     DO WHILE( ASSOCIATED( Var ) ) 
 
 !      This is used to skip variables such as time, timestep, timestep size etc.
-       IF( SIZE( Var % Values ) == Var % DOFs ) THEN
-         Var => Var % Next
-         CYCLE
-       END IF 
+       IF (ASSOCIATED(Var % Values) ) THEN
+         IF( SIZE( Var % Values ) == Var % DOFs ) THEN
+           Var => Var % Next
+           CYCLE
+         END IF 
+       END IF
 
        SELECT CASE( Var % Name )
        CASE( 'coordinate 1', 'coordinate 2', 'coordinate 3' )
@@ -714,8 +716,8 @@ CONTAINS
            END IF
            Var1 => Var1 % Next
          END DO
-
-         DEALLOCATE( Var % Perm)
+  
+         IF(SIZE(Var % Perm)>0) DEALLOCATE( Var % Perm)
        END IF
 
        IF ( GotValues ) THEN
@@ -777,6 +779,7 @@ CONTAINS
 
        Var => Var % Next
     END DO
+
 
 !   Deallocate mesh variable list:
 !   ------------------------------
