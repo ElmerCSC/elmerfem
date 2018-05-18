@@ -1,0 +1,60 @@
+!##########################################################
+! #### NAMES
+!##########################################################
+!name of the RUN : 
+$name="CTRL_"
+
+! the name of the mesh directory
+$MESH="MESH"
+
+!##########################################################
+! ####  Simulation Time
+!##########################################################
+
+!# Time step size (Real)
+$dt=5.0e-3
+
+!# Number of time steps (Integer)
+$Intervals=20000
+
+!# Output intervals (Integer)
+$OutPutIntervals=1000
+
+!##########################################################
+! ####  Physical Parameters
+!##########################################################
+
+include ../../Parameters/Physical_Params.IN 
+
+!## Min threshold value for Ice thickness (Real)
+$HMin=0.1
+
+!#############
+!## SMB
+!############
+!## Constant control SMB to run simulatiosn with constant forcing
+$SMB_DATA="../DATA/MARv3.5.2-10km-yearly-ERA-Interim-1979-1999_Mean_EPSG3413.nc"
+
+!## read transient forcing (always/never)
+$FORCING_Update="never"
+!## data file with transient forcing
+$FORCING_DATA="../DATA/MARv3.5-yearly-CanESM2-rcp85-2006-2100_EPSG3413.nc"
+
+!##########################################################
+!###### DATA FILES
+!##########################################################
+!##########################################################
+! ## TOPOGRAPHY (read <thickness> and <bed>)
+$TOPOGRAPHY_DATA="../DATA/BedMachineGreenland-2017-09-20.nc"
+
+!## Observed velocity (used for postprocessing; read <vnorm>)
+$VELOCITY_DATA="../DATA/greenland_vel_mosaic250_v1.nc"
+
+!## Viscosity (read the vertically averaged velocity <MuMean>)
+$VISCOSITY_DATA="../DATA/greenland_elmerice_MuMean_v0.nc"
+
+!## Slip coefficient (read the linear slip coefficient <C1>)
+$SLIP_DATA="../DATA/greenland_elmerice_C1_v0.nc"
+
+
+

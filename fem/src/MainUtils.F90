@@ -1550,7 +1550,7 @@ CONTAINS
           CALL FreeMatrix( Solver % Matrix )
         END IF
        
-        IF (Nrows>0) THEN
+!       IF (Nrows>0) THEN
           CALL Info('AddEquationBasics','Creating solver variable',Level=12)
           ALLOCATE(Solution(Nrows),STAT=AllocStat)
           IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Solution')
@@ -1572,7 +1572,7 @@ CONTAINS
                   tmpname, 1, Component, Perm, Output=VariableOutput )
             END DO
           END IF
-        END IF
+!       END IF
 
         IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = ELMER_COMM_WORLD
 
@@ -1902,6 +1902,9 @@ CONTAINS
     Solver % DoneTime = 0
     IF ( .NOT. ASSOCIATED( Solver % Variable ) ) RETURN
     IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) RETURN
+    IF (SIZE(Solver % Variable % Values)==0 ) THEN
+        DEALLOCATE(Solver % Variable % values); RETURN
+    END IF
     !------------------------------------------------------------------------------
 	
     !------------------------------------------------------------------------------
@@ -2983,6 +2986,7 @@ CONTAINS
                IF ( ParEnv % Active(ParEnv % MyPE+1) ) THEN
                  CALL ComputeChange(Solver,.TRUE., n)
                ELSE
+                 IF(.NOT.ASSOCIATED(Solver % Variable)) ALLOCATE(Solver % Variable)
                  Solver % Variable % SteadyConverged = 1
                END IF
              ELSE

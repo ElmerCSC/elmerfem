@@ -2064,7 +2064,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh
-    INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels
+    INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
@@ -2335,6 +2335,18 @@ CONTAINS
           single=.TRUE.
           Name=Name(9:)
         END IF
+
+        nprocs = numprocs
+        IF ( SEQL(Name, '-part ') ) THEN
+          READ( Name(7:), * ) nprocs
+          i = 7
+          DO WHILE(Name(i:i)/=' ')
+           i=i+1
+          END DO
+          Name=Name(i+1:)
+        END IF
+
+
         OneMeshName = .FALSE.
         k = 1
         i = 1
@@ -2403,12 +2415,17 @@ CONTAINS
           END DO
         END DO
 
+
         IF ( Single ) THEN
           Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs, s )
         ELSE
-          Model % Solvers(s) % Mesh => &
-              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs, s )
+          IF ( mype < nprocs ) THEN
+            Model % Solvers(s) % Mesh => &
+                LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,nprocs,mype,Def_Dofs, s )
+          ELSE
+            Model % Solvers(s) % Mesh => AllocateMesh()
+          END IF
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 

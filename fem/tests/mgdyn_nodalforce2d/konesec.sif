@@ -189,19 +189,6 @@ Solver 1
   Procedure = "RigidMeshMapper" "RigidMeshMapper"
 End
 
-Solver 4
-!  exec solver = never
-  Equation = "result output"
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case
-  Output Directory = konesec
-  Save Geometry IDs = Logical True
-  Vtu Format = Logical True
-
-!  Save Bulk Only = Logical True
-  Discontinuous Bodies = Logical True
-End 
-
 Solver 2
   Equation = "Mag"
 
@@ -251,6 +238,20 @@ Solver 3
   Linear System Convergence Tolerance = 1.0e-8
   Impose Body Force Current = Logical True
 End
+
+Solver 4
+  exec solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Output Directory = konesec
+  Save Geometry IDs = Logical True
+  Vtu Format = Logical True
+
+!  Save Bulk Only = Logical True
+  Discontinuous Bodies = Logical True
+End 
+
 
 ! Save voltages and torque
 Solver 5

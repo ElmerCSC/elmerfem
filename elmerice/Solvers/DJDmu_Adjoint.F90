@@ -177,6 +177,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
         GradVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
         GradValues => GradVariable % Values
         GradPerm => GradVariable % Perm
+        GradValues=0._dp
 
         Variable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
         Values => Variable % Values

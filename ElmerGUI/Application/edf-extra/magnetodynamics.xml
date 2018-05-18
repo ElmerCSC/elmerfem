@@ -112,13 +112,7 @@
          <Parameter Widget="Edit" Enabled="True">
            <Name> Procedure </Name>
            <DefaultValue> "MagnetoDynamics" "WhitneyAVSolver" </DefaultValue>
-         </Parameter>
-	     <Parameter Widget="Label" > <Name> Variable for vector (and scalar) potential </Name> </Parameter>
-	 <Parameter Widget="Edit" Enabled="True">
-           <Name> Variable </Name>
-           <DefaultValue> AV </DefaultValue>
-	   <Whatis>Variable for vector (and scalar) potential(s)</Whatis>
-         </Parameter>
+         </Parameter>	 
          <Parameter Widget="CheckBox" >
 	   <Parameter Widget="Label" > <Name> Special options </Name> </Parameter>
 	   <Name> Fix Input Current Density </Name>
@@ -213,7 +207,310 @@
       </BoundaryCondition>
     </PDE>
 
+   <PDE Name="MgHarm" >
+      <Name>MgHarm</Name>
 
+      <Equation>
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
+      <Material>
+        <Parameter Widget="Label" > <Name> Material properties </Name> </Parameter>
+        <Parameter Widget="Edit" >
+	  <Name> Reluctivity </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the real reluctivitity (inverse of permeability). </Whatis>
+	</Parameter>	
+        <Parameter Widget="Edit" >
+	  <Name> Reluctivity Im </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the imaginary reluctivitity (inverse of permeability). </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Relative Permeability </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the relative permeability compared to vacuum (if not reluctivity given). </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Electric Conductivity </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the real electric conductivity. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Electric Conductivity Im </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the imaginary electric conductivity. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Magnetization 1</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the real magnetization in x-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Magnetization 2</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the real magnetization in y-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Magnetization 3</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the real magnetization in z-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Magnetization Im 1</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the imaginary magnetization in x-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Magnetization Im 2</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the imaginary magnetization in y-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Magnetization Im 3</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the imaginary magnetization in z-direction. </Whatis>
+	</Parameter>
+
+    <Parameter Widget="Label" > <Name> Nonlinear material law </Name> </Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> H-B Curve</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the H-B Curve as a cubic spline. </Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox" >
+	  <Name> Cubic spline for H-B curve </Name>
+	  <Type> Logical </Type>
+	  <Whatis> Should a cubic spline be applied to the H-B curve. </Whatis>
+	</Parameter>
+      </Material>
+
+      <BodyForce>
+        <Parameter Widget="Label" > <Name> Given current density </Name> </Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density 1 </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the real current density in x-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density 2 </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the real current density in y-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density 3 </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the real current density in z-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density Im 1 </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the imaginary current density in x-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density Im 2 </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the imaginary current density in y-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density Im 3 </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the imaginary current density in z-direction. </Whatis>
+	</Parameter>
+	
+        <Parameter Widget="Label" > <Name> External electric potential </Name> </Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Electric Potential </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the real externally defined electric potential. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Electric Potential Im </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the imaginary externally defined electric potential. </Whatis>
+	</Parameter>
+      </BodyForce>
+
+      <InitialCondition>
+        <Parameter Widget="Label" > <Name> Initial values for potential(s) </Name> </Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> AV Re </Name>
+	  <Type> String </Type>
+            <Whatis> Give the initial condition for the real scalar potential. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> AV Im </Name>
+	  <Type> String </Type>
+            <Whatis> Give the initial condition for the imaginary scalar potential. </Whatis>
+	</Parameter>
+    <Parameter Widget="Edit" >
+	  <Name> AV Re {e}</Name>
+	  <Type> String </Type>
+            <Whatis> Give the initial condition for the real vector potential. </Whatis>
+	</Parameter>
+    <Parameter Widget="Edit" >
+	  <Name> AV Im {e}</Name>
+	  <Type> String </Type>
+            <Whatis> Give the initial condition for the imaginary vector potential. </Whatis>
+	</Parameter>
+      </InitialCondition>
+
+      <Solver>
+	 <Parameter Widget="Label" > <Name>Harmonic A-V formulation solver </Name> </Parameter>
+         <Parameter Widget="Edit" Enabled="True">
+           <Name> Procedure </Name>
+           <DefaultValue> "MagnetoDynamics" "WhitneyAVHarmonicSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+	   <Parameter Widget="Label" > <Name> Special options </Name> </Parameter>
+	   <Name> Fix Input Current Density </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Fix the given input current to be divergence free. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+	   <Name> Use Tree Gauge </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Use tree gauge to eliminate redundant lines in the linear system. </Whatis>
+         </Parameter>
+      </Solver>
+
+      <BoundaryCondition>
+	<Parameter Widget="Label" > <Name> Dirichlet conditions for potential</Name> </Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV re </Name>
+	  <Whatis> Give the real scalar potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV re {e} </Name>
+	  <Whatis> Give the real vector potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV re {e} 1 </Name>
+	  <Whatis> Give the x-component of the real vector potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV re {e} 2 </Name>
+	  <Whatis> Give the y-component of the real vector potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV re {e} 3 </Name>
+	  <Whatis> Give the z-component of the real vector potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV im </Name>
+	  <Whatis> Give the imaginary scalar potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV im {e} </Name>
+	  <Whatis> Give the imaginary vector potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV im {e} 1 </Name>
+	  <Whatis> Give the x-component of the imaginary vector potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV im {e} 2 </Name>
+	  <Whatis> Give the y-component of the imaginary vector potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> AV im {e} 3 </Name>
+	  <Whatis> Give the z-component of the imaginary vector potential on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Jfix </Name>
+	  <Whatis> Set the value of the potential field used to make the current divergence free. </Whatis>
+	</Parameter>
+
+<Parameter Widget="Label" > <Name> Dirichlet conditions via magnetic flux density</Name> </Parameter>
+			<Parameter  Widget="Edit">
+	  <Name> Magnetic Flux Density 1 </Name>
+	  <Whatis> Give the x-component of the desired magnetic flux density. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Flux Density 2 </Name>
+	  <Whatis> Give the y-component of the desired magnetic flux density. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Flux Density 3 </Name>
+	  <Whatis> Give the z-component of the desired magnetic flux density. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Flux Density {n} </Name>
+	  <Whatis> Give the nodal component of the desired magnetic flux density. </Whatis>
+	</Parameter>
+
+	
+	<Parameter Widget="Label" > <Name> Flux conditions </Name> </Parameter>
+
+	<Parameter  Widget="Edit">
+	  <Name> Electric Current Density </Name>
+	  <Whatis> Give the real electric current density on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Electric Current Density Im </Name>
+	  <Whatis> Give the imaginary electric current density on the boundary. </Whatis>
+	</Parameter>
+
+        <Parameter  Widget="Edit">
+	  <Name> Current Density </Name>
+	  <Whatis> Give the current density on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Field Strength 1 </Name>
+	  <Whatis> Give the real x-component of the desired magnetic field on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Field Strength 2 </Name>
+	  <Whatis> Give the real y-component of the desired magnetic field on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Field Strength 3 </Name>
+	  <Whatis> Give the real z-component of the desired magnetic field on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Field Strength Im 1 </Name>
+	  <Whatis> Give the imaginary x-component of the desired magnetic field on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Field Strength Im 2 </Name>
+	  <Whatis> Give the imaginary y-component of the desired magnetic field on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Field Strength Im 3 </Name>
+	  <Whatis> Give the imaginary z-component of the desired magnetic field on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Transfer Coefficient </Name>
+	  <Whatis> Give the real magnetic transfer coefficient on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Transfer Coefficient Im </Name>
+	  <Whatis> Give the imaginary magnetic transfer coefficient on the  boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Electric Transfer Coefficient </Name>
+	  <Whatis> Give the real electric transfer coefficient on the boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Electric Transfer Coefficient Im </Name>
+	  <Whatis> Give the imaginary electric transfer coefficient on the boundary. </Whatis>
+	</Parameter>
+
+
+      </BoundaryCondition>
+    </PDE>
+
+
+    
    <PDE Name="MgDynPost" >
      <Name>MgDynPost</Name>
 
@@ -236,14 +533,6 @@
 	  <Name> Procedure </Name>
 	  <DefaultValue> "MagnetoDynamics" "MagnetoDynamicsCalcFields" </DefaultValue>
 	</Parameter>
-
-	<Parameter Widget="Label" > <Name> Target Variable </Name> </Parameter>
-	<Parameter Widget="Edit" Enabled="True">
-	  <Name> Potential Variable </Name>
-	  <DefaultValue> AV </DefaultValue>
-	  <Whatis> Name of the vector (and scalar) potential field to apply the postprocessing computation. </Whatis>
-	</Parameter>
-
 
 	<Parameter Widget="Label" > <Name> Specify fields to compute </Name> </Parameter>
 	<Parameter Widget="CheckBox">
@@ -294,6 +583,11 @@
 	  <Name> Discontinuous Galerkin </Name>
 	  <Type> Logical </Type>
 	  <Whatis>Enforce continuity of solution already at the linear system level using Discontinuous Galerkin method. This is very expensive! Makes nodal fields to be computed elementwise.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Discontinuous Bodies </Name>
+	  <Type> Logical </Type>
+	  <Whatis>Enforce continuity of elemental solutions within bodies only. This is done by simple averaging and is therefore a lot cheaper than the Discontinuous Galerkin method.</Whatis>
 	</Parameter>
 
       </Solver>

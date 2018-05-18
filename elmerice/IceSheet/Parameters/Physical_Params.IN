@@ -1,0 +1,32 @@
+!#############################################################
+! A list of usefull constants for ice-sheet simulations
+!  - Can be included in elmer configuration .sif files using
+!       include PATH_TO/Physical_Params.IN 
+!  - Unit System =
+!     -- m
+!     -- a
+!     -- MPa
+!#############################################################
+
+!## Convertion factor year to seconds
+$yearinsec = 31556926.0
+
+!## Ice density
+$rhoi = 910.0/(1.0e6*yearinsec^2)
+
+!## Ice fusion latent heat (0.335×106 J kg−1)
+$Lf=0.335e06*yearinsec^2.0
+
+!## Sea level elevation
+$zsl=0.0
+!## Sea water density
+$rhow = 1028.0/(1.0e6*yearinsec^2)
+!## Specific heat of ocean water (4218 J kg−1 K−1)
+$cw=4218.0*yearinsec^2.0
+
+!## gravity
+$gravity = -9.81*yearinsec^2.0
+
+!## Glen Exponent
+$n = 3.0
+

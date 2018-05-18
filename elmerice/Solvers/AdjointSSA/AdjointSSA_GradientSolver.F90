@@ -99,6 +99,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
+  TYPE(Solver_t), POINTER :: DSolver
   TYPE(Nodes_t)   :: ElementNodes
   TYPE(Element_t),POINTER :: CurrentElement, Element, ParentElement, BoundaryElement
   TYPE(Matrix_t),POINTER  :: StiffMatrix
@@ -119,126 +120,104 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
        NodeIndexes(:)
 
   REAL(KIND=dp), POINTER :: ForceVector(:)
-  REAL(KIND=dp), POINTER :: Zs(:), Zb(:),DJDBeta(:),DJDZs(:),DJDZb(:),DJDRho(:),DJDEta(:),VelocityN(:),VelocityD(:)
+  REAL(KIND=dp), POINTER :: Zs(:), Zb(:)
+  REAL(KIND=dp), POINTER :: DJDBeta(:),DJDZs(:),DJDZb(:),DJDRho(:),DJDEta(:),VelocityN(:),VelocityD(:)
                             
   REAL(KIND=dp) :: UNorm, cn, dd, NonlinearTol, NewtonTol, MinSRInv, rhow, sealevel, &
                    PrevUNorm, relativeChange,minv
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
            NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
-           NodalZs(:), NodalZb(:),   &
+           NodalZs(:), NodalZb(:), NodalGM(:),NodalBed(:),  &
            NodalU(:), NodalV(:), NodalBeta(:),LocalLinVelo(:),&
            Nodalbetab(:),Nodalzsb(:),Nodalzbb(:),NodalRhob(:),NodalEtab(:)
 
   INTEGER :: iFriction
   REAL(KIND=dp) :: fm
   CHARACTER(LEN=MAX_NAME_LEN) :: Friction
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='DJDp_Adjoint_SSA'
 #ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: at, at0
 #else
     REAL(KIND=dp) :: at, at0, CPUTime, RealTime
 #endif 
-    
+  LOGICAL :: SEP ! Sub-element parametrization for Grounding line
+  INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element parametrization
+  TYPE(Variable_t), POINTER :: GMSol,BedrockSol
+
   LOGICAL , SAVE :: ComputeDJDBeta,ComputeDJDZs,ComputeDJDZb,ComputeDJDRho,ComputeDJDEta,Reset
   CHARACTER(LEN=MAX_NAME_LEN), SAVE :: NeumannSolName,AdjointSolName,SName
+  INTEGER,SAVE :: SolverInd
 
   SAVE rhow,sealevel
   SAVE STIFF, LOAD, FORCE, AllocationsDone, DIM, SolverName, ElementNodes
   SAVE NodalGravity, NodalViscosity, NodalDensity, &
-           NodalZs, NodalZb,   &
+           NodalZs, NodalZb, NodalGM,NodalBed,  &
            NodalU, NodalV, NodeIndexes, NodalBeta,LocalLinVelo, &
            Nodalbetab,Nodalzsb,NodalZbb,NodalRhob,NodalEtab
   SAVE STDOFs
 
 !------------------------------------------------------------------------------
-  WRITE(SolverName, '(A)') 'DJDp_Adjoint_SSA'
-
-!------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
-        DIM = CoordinateSystemDimension()
+  DIM = CoordinateSystemDimension()
 
 
-        ZbSol => VariableGet( Solver % Mesh % Variables, 'Zb' )
-        IF (ASSOCIATED(ZbSol)) THEN
-           Zb => ZbSol % Values
-           ZbPerm => ZbSol % Perm
-        ELSE
-           CALL FATAL(SolverName,'Could not find variable >Zb<')
-        END IF
 
-        ZsSol => VariableGet( Solver % Mesh % Variables, 'Zs' )
-        IF (ASSOCIATED(ZsSol)) THEN
-           Zs => ZsSol % Values
-           ZsPerm => ZsSol % Perm
-        ELSE
-           CALL FATAL(SolverName,'Could not find variable >Zs<')
-        END IF
+
 !!!!!!!!!!! get Solver Variables
-      SolverParams => GetSolverParams()
+  SolverParams => GetSolverParams()
   !--------------------------------------------------------------
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
   IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed  ) THEN
 
-      NeumannSolName =  GetString( SolverParams,'Flow Solution Name', Found)
-            IF(.NOT.Found) THEN        
-                  CALL WARN(SolverName,'Keyword >Flow Solution Name< not found in section >Solver<')
-                  CALL WARN(SolverName,'Taking default value >SSAVelocity<')
-                  WRITE(NeumannSolName,'(A)') 'SSAVelocity'
-            END IF
+    NeumannSolName =  GetString( SolverParams,'Flow Solution Name', Found)
+    IF(.NOT.Found) THEN        
+            CALL WARN(SolverName,'Keyword >Flow Solution Name< not found in section >Solver<')
+            CALL WARN(SolverName,'Taking default value >SSAVelocity<')
+            WRITE(NeumannSolName,'(A)') 'SSAVelocity'
+    END IF
   !! SSA Solution
-     VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName )
-           IF ( .NOT.ASSOCIATED( VeloSolN ) ) THEN
-              WRITE(Message,'(A,A,A)') &
-                   'No variable >',NeumannSolName,'< found'
-              CALL FATAL(SolverName,Message)              
-           END IF
-       STDOFs = VeloSolN % DOFs
+     VeloSolN => VariableGet( Solver % Mesh % Variables, TRIM(NeumannSolName), UnFoundFatal=.TRUE.   )
+     STDOFs = VeloSolN % DOFs
 
-       AdjointSolName =  GetString( SolverParams,'Adjoint Solution Name', Found)
-             IF(.NOT.Found) THEN        
-                 CALL WARN(SolverName,'Keyword >Adjoint Solution Name< not found in section >Solver<')
-                 CALL WARN(SolverName,'Taking default value >Adjoint<')
-                 WRITE(AdjointSolName,'(A)') 'Adjoint'
-              END IF
-       ComputeDJDBeta =  GetLogical( SolverParams,'Compute DJDBeta', Found)
-             IF(.NOT.Found) ComputeDJDBeta=.False.
-       ComputeDJDZs =  GetLogical( SolverParams,'Compute DJDZs', Found)
-                    IF(.NOT.Found) ComputeDJDZs=.False.
-       ComputeDJDZb =  GetLogical( SolverParams,'Compute DJDZb', Found)
-                    IF(.NOT.Found) ComputeDJDZb=.False.
-       ComputeDJDRho =  GetLogical( SolverParams,'Compute DJDRho', Found)
-                    IF(.NOT.Found) ComputeDJDRho=.False.
-       ComputeDJDEta =  GetLogical( SolverParams,'Compute DJDEta', Found)
-                    IF(.NOT.Found) ComputeDJDEta=.False.
+     ! Get the Direct solver
+     DO i=1,Model % NumberOfSolvers
+        if (TRIM(NeumannSolName) == TRIM(Model % Solvers(i) % Variable % Name)) exit
+     End do
+     if (i.eq.(Model % NumberOfSolvers+1)) CALL FATAL(SolverName,'Could not find Flow Solver Equation Name')
+     SolverInd=i
+
+     AdjointSolName =  GetString( SolverParams,'Adjoint Solution Name', Found)
+     IF(.NOT.Found) THEN        
+         CALL WARN(SolverName,'Keyword >Adjoint Solution Name< not found in section >Solver<')
+         CALL WARN(SolverName,'Taking default value >Adjoint<')
+         WRITE(AdjointSolName,'(A)') 'Adjoint'
+     END IF
+     ComputeDJDBeta =  GetLogical( SolverParams,'Compute DJDBeta', Found)
+     IF(.NOT.Found) ComputeDJDBeta=.False.
+     ComputeDJDZs =  GetLogical( SolverParams,'Compute DJDZs', Found)
+     IF(.NOT.Found) ComputeDJDZs=.False.
+     ComputeDJDZb =  GetLogical( SolverParams,'Compute DJDZb', Found)
+     IF(.NOT.Found) ComputeDJDZb=.False.
+     ComputeDJDRho =  GetLogical( SolverParams,'Compute DJDRho', Found)
+     IF(.NOT.Found) ComputeDJDRho=.False.
+     ComputeDJDEta =  GetLogical( SolverParams,'Compute DJDEta', Found)
+     IF(.NOT.Found) ComputeDJDEta=.False.
 
 
      ! Get some constants
-     rhow = GetConstReal( Model % Constants, 'Water Density', Found )
-     If (.NOT.Found) Then
-            WRITE(Message,'(A)') 'Constant Water Density not found. &
-                   &Setting to 1.03225e-18'
-            CALL INFO(SolverName, Message, level=20)
-            rhow = 1.03225e-18_dp
-     End if
+     rhow = ListGetConstReal( Model % Constants, 'Water Density', UnFoundFatal=.TRUE.)
 
-     sealevel = GetConstReal( Model % Constants, 'Sea Level', Found )
-     If (.NOT.Found) Then
-            WRITE(Message,'(A)') 'Constant >Sea Level< not found. &
-                   &Setting to 0.0'
-            CALL INFO(SolverName, Message, level=20)
-            sealevel=0.0_dp
-     End if
+     sealevel = ListGetConstReal( Model % Constants, 'Sea Level', UnFoundFatal=.TRUE. )
 
      ! Allocate
-
      N = Model % MaxElementNodes
      M = Model % Mesh % NumberOfNodes
      IF (AllocationsDone) DEALLOCATE(FORCE, LOAD, STIFF, NodalGravity, &
                        NodalViscosity, NodalDensity,  &
-                       NodalZb, NodalZs,  NodalU, NodalV, &
+                       NodalZb, NodalZs, NodalGM,NodalBed, NodalU, NodalV, &
                        NodalBeta,LocalLinVelo, Nodalbetab,Nodalzsb,NodalRhob,&
                        NodalEtab,NodalZbb,&
                        ElementNodes % x, &
@@ -246,7 +225,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 
      ALLOCATE( FORCE(STDOFs*N), LOAD(N), STIFF(STDOFs*N,STDOFs*N), &
           NodalGravity(N), NodalDensity(N), NodalViscosity(N), &
-          NodalZb(N), NodalZs(N) ,&
+          NodalZb(N), NodalZs(N) , NodalGM(N),NodalBed(N),&
           NodalU(N), NodalV(N), NodalBeta(N), LocalLinVelo(N),&
           Nodalbetab(N),NodalZsb(N), NodalRhob(N),NodalEtab(N),&
           NodalZbb(N),&
@@ -260,101 +239,87 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
      CALL INFO( SolverName, 'Memory allocation done.',Level=1 )
   END IF
 
+! Get Info from Direct Solver Params
+  DSolver => Model % Solvers(SolverInd)
+!  Sub - element GL parameterisation
+  SEP=GetLogical( DSolver % Values, 'Sub-Element GL parameterization',GotIt)
+  IF (.NOT.GotIt) SEP=.False.
+  IF (SEP) THEN
+     GLnIP=ListGetInteger( DSolver % Values, &
+           'GL integration points number',UnFoundFatal=.TRUE. )
+     WRITE(Message,'(a,i0,a)') 'Sub-Element GL parameterization using ',GLnIP,' IPs'
+     CALL INFO(SolverName,TRIM(Message),level=4)
+     GMSol => VariableGet( Solver % Mesh % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock',UnFoundFatal=.TRUE. )
+  END IF
+
+  ZbSol => VariableGet( Solver % Mesh % Variables, 'Zb', UnFoundFatal=.TRUE. )
+  Zb => ZbSol % Values
+  ZbPerm => ZbSol % Perm
+
+  ZsSol => VariableGet( Solver % Mesh % Variables, 'Zs', UnFoundFatal=.TRUE.  )
+  Zs => ZsSol % Values
+  ZsPerm => ZsSol % Perm
+
   !! SSA Solution
-     VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName )
-           IF ( ASSOCIATED( VeloSolN ) ) THEN
-             VelocityN => VeloSolN % Values
-             VeloNPerm => VeloSolN % Perm
-           ELSE
-              WRITE(Message,'(A,A,A)') &
-                   'No variable >',NeumannSolName,'< found'
-              CALL FATAL(SolverName,Message)              
-           END IF
+  VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName, UnFoundFatal=.TRUE.  )
+  VelocityN => VeloSolN % Values
+  VeloNPerm => VeloSolN % Perm
+
   !! Adjoint Solution
-     VeloSolD => VariableGet( Solver % Mesh % Variables, AdjointSolName )
-          IF (ASSOCIATED(veloSolD)) THEN
-             VelocityD => VeloSolD % Values
-             VeloDPerm => VeloSolD % Perm
-          ELSE
-              WRITE(Message,'(A,A,A)') &
-                   'No variable >',AdjointSolName,'< found'
-              CALL FATAL(SolverName,Message)              
-          ENDIF
+  VeloSolD => VariableGet( Solver % Mesh % Variables, AdjointSolName, UnFoundFatal=.TRUE. )
+  VelocityD => VeloSolD % Values
+  VeloDPerm => VeloSolD % Perm
 
-      IF (ComputeDJDBeta) Then
-       SName =  GetString( SolverParams,'DJDBeta Name', Found)
-             IF(.NOT.Found) THEN        
-                 CALL WARN(SolverName,'Keyword >DJDBeta Name< not found in section >Solver<')
-                 CALL WARN(SolverName,'Taking default value >DJDBeta<')
-                 WRITE(SName,'(A)') 'DJDBeta'
-              END IF
-          DJDBetaSol => VariableGet( Solver % Mesh % Variables, SName )
-                IF (ASSOCIATED(DJDBetaSol)) THEN
-                DJDBeta => DJDBetaSol % Values
-                DJDBetaPerm => DJDBetaSol % Perm
-                ELSE
-                  WRITE(Message,'(A)') &
-                      'No variable >DJDBeta< found'
-                  CALL FATAL(SolverName,Message)
-                ENDIF
-          Reset =  GetLogical( SolverParams,'Reset DJDBeta', Found)
-          if (Reset.OR.(.NOT.Found)) DJDBeta = 0.0
-      End if
+  IF (ComputeDJDBeta) Then
+     SName =  GetString( SolverParams,'DJDBeta Name', Found)
+     IF(.NOT.Found) THEN        
+            CALL WARN(SolverName,'Keyword >DJDBeta Name< not found in section >Solver<')
+            CALL WARN(SolverName,'Taking default value >DJDBeta<')
+            WRITE(SName,'(A)') 'DJDBeta'
+            CALL ListAddString(  SolverParams, 'DJDBeta Name', TRIM(SName))
+      END IF
+      DJDBetaSol => VariableGet( Solver % Mesh % Variables, SName ,UnFoundFatal=.TRUE. )
+      DJDBeta => DJDBetaSol % Values
+      DJDBetaPerm => DJDBetaSol % Perm
 
-      IF (ComputeDJDZs) Then
-          DJDZsSol => VariableGet( Solver % Mesh % Variables, 'DJDZs' )
-                IF (ASSOCIATED(DJDZsSol)) THEN
-                DJDZs => DJDZsSol % Values
-                DJDZsPerm => DJDZsSol % Perm
-                ELSE
-                  WRITE(Message,'(A)') &
-                      'No variable >DJDZs< found'
-                  CALL FATAL(SolverName,Message)
-                ENDIF
+      Reset =  GetLogical( SolverParams,'Reset DJDBeta', Found)
+      if (Reset.OR.(.NOT.Found)) DJDBeta = 0.0
+  End if
+
+  IF (ComputeDJDZs) Then
+       DJDZsSol => VariableGet( Solver % Mesh % Variables, 'DJDZs',UnFoundFatal=.TRUE. )
+       DJDZs => DJDZsSol % Values
+       DJDZsPerm => DJDZsSol % Perm
           
-          Reset =  GetLogical( SolverParams,'Reset DJDZs', Found)
-          if (Reset.OR.(.NOT.Found)) DJDZs = 0.0
-      End if
-      IF (ComputeDJDZb) Then
-          DJDZbSol => VariableGet( Solver % Mesh % Variables, 'DJDZb' )
-                IF (ASSOCIATED(DJDZbSol)) THEN
-                DJDZb => DJDZbSol % Values
-                DJDZbPerm => DJDZbSol % Perm
-                ELSE
-                  WRITE(Message,'(A)') &
-                      'No variable >DJDZb< found'
-                  CALL FATAL(SolverName,Message)
-                ENDIF
+       Reset =  GetLogical( SolverParams,'Reset DJDZs', Found)
+       if (Reset.OR.(.NOT.Found)) DJDZs = 0.0
+  End if
+  IF (ComputeDJDZb) Then
+       DJDZbSol => VariableGet( Solver % Mesh % Variables, 'DJDZb', UnFoundFatal=.TRUE. )
+       DJDZb => DJDZbSol % Values
+       DJDZbPerm => DJDZbSol % Perm
           
-          Reset =  GetLogical( SolverParams,'Reset DJDZb', Found)
-          if (Reset.OR.(.NOT.Found)) DJDZb = 0.0
-      End if
-      IF (ComputeDJDRho) Then
-          DJDRhoSol => VariableGet( Solver % Mesh % Variables, 'DJDRho' )
-                IF (ASSOCIATED(DJDRhoSol)) THEN
-                DJDRho => DJDRhoSol % Values
-                DJDRhoPerm => DJDRhoSol % Perm
-                ELSE
-                  WRITE(Message,'(A)') &
-                      'No variable >DJDRho< found'
-                  CALL FATAL(SolverName,Message)
-                ENDIF
-          Reset =  GetLogical( SolverParams,'Reset DJDRho', Found)
-          if (Reset.OR.(.NOT.Found)) DJDRho = 0.0
-      End if
-      IF (ComputeDJDEta) Then
-          DJDEtaSol => VariableGet( Solver % Mesh % Variables, 'DJDEta' )
-                IF (ASSOCIATED(DJDEtaSol)) THEN
-                DJDEta => DJDEtaSol % Values
-                DJDEtaPerm => DJDEtaSol % Perm
-                ELSE
-                  WRITE(Message,'(A)') &
-                      'No variable >DJDEta< found'
-                  CALL FATAL(SolverName,Message)
-                ENDIF
-          Reset =  GetLogical( SolverParams,'Reset DJDEta', Found)
-          if (Reset.OR.(.NOT.Found)) DJDEta = 0.0
-       END IF
+       Reset =  GetLogical( SolverParams,'Reset DJDZb', Found)
+       if (Reset.OR.(.NOT.Found)) DJDZb = 0.0
+  End if
+
+  IF (ComputeDJDRho) Then
+        DJDRhoSol => VariableGet( Solver % Mesh % Variables, 'DJDRho', UnFoundFatal=.TRUE. )
+        DJDRho => DJDRhoSol % Values
+        DJDRhoPerm => DJDRhoSol % Perm
+
+        Reset =  GetLogical( SolverParams,'Reset DJDRho', Found)
+        if (Reset.OR.(.NOT.Found)) DJDRho = 0.0
+  End if
+  IF (ComputeDJDEta) Then
+        DJDEtaSol => VariableGet( Solver % Mesh % Variables, 'DJDEta' ,UnFoundFatal=.TRUE.)
+        DJDEta => DJDEtaSol % Values
+        DJDEtaPerm => DJDEtaSol % Perm
+
+        Reset =  GetLogical( SolverParams,'Reset DJDEta', Found)
+        if (Reset.OR.(.NOT.Found)) DJDEta = 0.0
+  END IF
 
 
   ! bulk assembly
@@ -388,39 +353,26 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
      IF ( ASSOCIATED( BodyForce ) ) THEN
            IF (STDOFs==1) THEN 
            NodalGravity(1:n) = ListGetReal( &
-                   BodyForce, 'Flow BodyForce 2', n, NodeIndexes, Found)
+                   BodyForce, 'Flow BodyForce 2', n, NodeIndexes, UnFoundFatal=.TRUE.)
            ELSE 
            NodalGravity(1:n) = ListGetReal( &
-                   BodyForce, 'Flow BodyForce 3', n, NodeIndexes, Found)
+                   BodyForce, 'Flow BodyForce 3', n, NodeIndexes, UnFoundFatal=.TRUE.)
            END IF
      END IF
 
      ! Read the Viscosity eta, density, and exponent m in MMaterial Section
      ! Same definition as NS Solver in Elmer - n=1/m , A = 1/ (2 eta^n) 
      Material => GetMaterial(Element)
-     cn = ListGetConstReal( Material, 'Viscosity Exponent',Found)
-     MinSRInv = ListGetConstReal( Material, 'Critical Shear Rate',Found)
+     cn = ListGetConstReal( Material, 'Viscosity Exponent',UnFoundFatal=.TRUE.)
+     MinSRInv = ListGetConstReal( Material, 'Critical Shear Rate',UnFoundFatal=.TRUE.)
 
      NodalDensity=0.0_dp
-     NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n,NodeIndexes,Found)
-     IF (.NOT.Found) &
-           CALL FATAL(SolverName,'Could not find Material prop.  >SSA Mean Density<')
+     NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n,NodeIndexes,UnFoundFatal=.TRUE.)
 
      NodalViscosity=0.0_dp
-     NodalViscosity(1:n) = ListGetReal( Material, 'SSA Mean Viscosity',n, NodeIndexes,Found)
-     IF (.NOT.Found) &
-          CALL FATAL(SolverName,'Could not find Material prop. >SSA Mean Viscosity<')
+     NodalViscosity(1:n) = ListGetReal( Material, 'SSA Mean Viscosity',n, NodeIndexes,UnFoundFatal=.TRUE.)
 
-     !NodalSliding = 0.0_dp
-     !NodalSliding(1,1:n) = ListGetReal( &
-     !      Material, 'SSA Slip Coefficient 1', n, NodeIndexes(1:n), Found )
-     !IF (STDOFs==2) THEN
-     !   NodalSliding(2,1:n) = ListGetReal( &
-     !        Material, 'SSA Slip Coefficient 2', n, NodeIndexes(1:n), Found )  
-     !END IF
-     Friction = GetString(Material, 'SSA Friction Law', Found)
-     IF (.NOT.Found) &
-        CALL FATAL(SolverName,'Could not find Material keyword >SSA Friction Law<')
+     Friction = ListGetString(Material, 'SSA Friction Law', UnFoundFatal=.TRUE.)
 
     SELECT CASE(Friction)
        CASE('linear')
@@ -433,43 +385,45 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
    END SELECT
 
 
-     NodalBeta(1:n) = GetReal( Material, 'SSA Friction Parameter', Found, Element)
-     IF (.NOT.Found) &
-        CALL FATAL(SolverName,'Could not find Material prop. >SSA Friction Parameter<')
-     IF (iFriction > 1) THEN
-           fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found )
-           IF (.NOT.Found) &
-               CALL FATAL(SolverName,'Could not find Material prop. >SSA Friction Exponent<')
-           LocalLinVelo = 0.0_dp
-           LocalLinVelo(1:n) = GetReal(Material, 'SSA Friction Linear Velocity', Found, Element)
-           IF (.NOT.Found) &
-                    CALL FATAL(SolverName,'Could not find  Material prop. >SSA Friction Linear Velocity<')
-     END IF
+   NodalBeta(1:n) = ListGetReal( Material, 'SSA Friction Parameter',n, NodeIndexes,UnFoundFatal=.TRUE.)
+   IF (iFriction > 1) THEN
+        fm = ListGetConstReal( Material, 'SSA Friction Exponent', UnFoundFatal=.TRUE. )
 
-     ! Get the Nodal value of Zb and Zs
-     NodalZb(1:n) = Zb(ZbPerm(NodeIndexes(1:n)))
-     NodalZs(1:n) = Zs(ZsPerm(NodeIndexes(1:n)))
+        LocalLinVelo = 0.0_dp
+        LocalLinVelo(1:n) = ListGetReal(Material, 'SSA Friction Linear Velocity', n, NodeIndexes,UnFoundFatal=.TRUE.)
+   END IF
 
-     ! Previous Velocity 
-     NodalU(1:n) = VelocityN(STDOFs*(VeloNPerm(NodeIndexes(1:n))-1)+1)
-     NodalV = 0.0
-     IF (STDOFs.EQ.2) NodalV(1:n) = VelocityN(STDOFs*(VeloNPerm(NodeIndexes(1:n))-1)+2)
+   IF (SEP) THEN
+     NodalGM(1:n)=GMSol%Values(GMSol%Perm(NodeIndexes(1:n)))
+     NodalBed(1:n)=BedrockSol%Values(BedrockSol%Perm(NodeIndexes(1:n)))
+   ENDIF
+
+   ! Get the Nodal value of Zb and Zs
+   NodalZb(1:n) = Zb(ZbPerm(NodeIndexes(1:n)))
+   NodalZs(1:n) = Zs(ZsPerm(NodeIndexes(1:n)))
+
+   ! Previous Velocity 
+   NodalU(1:n) = VelocityN(STDOFs*(VeloNPerm(NodeIndexes(1:n))-1)+1)
+   NodalV = 0.0
+   IF (STDOFs.EQ.2) NodalV(1:n) = VelocityN(STDOFs*(VeloNPerm(NodeIndexes(1:n))-1)+2)
       
 
-     CALL LocalMatrixUVSSA (  STIFF, FORCE, Element, n, ElementNodes, NodalGravity, &
+   CALL LocalMatrixUVSSA (  STIFF, FORCE, Element, n, ElementNodes, NodalGravity, &
         NodalDensity, NodalViscosity, NodalZb, NodalZs, &
-        NodalU, NodalV, NodalBeta,iFriction,fm,LocalLinVelo, cn, MinSRInv , STDOFs,&
+        NodalU, NodalV, NodalBeta,iFriction,fm,LocalLinVelo, cn, &
+        NodalGM,NodalBed,SEP,GLnIP,sealevel,rhow,&
+        MinSRInv , STDOFs,&
         Nodalbetab,nodalzsb,nodalzbb,nodalrhob,nodaletab)
 
-    IF (ComputeDJDBeta) &
+   IF (ComputeDJDBeta) &
         DJDBeta(DJDBetaPerm(NodeIndexes(1:n)))=DJDBeta(DJDBetaPerm(NodeIndexes(1:n)))+Nodalbetab(1:n)
    IF (ComputeDJDZs) &
         DJDZs(DJDZsPerm(NodeIndexes(1:n)))=DJDZs(DJDZsPerm(NodeIndexes(1:n)))+Nodalzsb(1:n)
-    IF (ComputeDJDZb) &
+   IF (ComputeDJDZb) &
         DJDZb(DJDZbPerm(NodeIndexes(1:n)))=DJDZb(DJDZbPerm(NodeIndexes(1:n)))+Nodalzbb(1:n)
-    IF (ComputeDJDRho) &
+   IF (ComputeDJDRho) &
         DJDRho(DJDRhoPerm(NodeIndexes(1:n)))=DJDRho(DJDRhoPerm(NodeIndexes(1:n)))+Nodalrhob(1:n)
-    IF (ComputeDJDEta) &
+   IF (ComputeDJDEta) &
         DJDEta(DJDEtaPerm(NodeIndexes(1:n)))=DJDEta(DJDEtaPerm(NodeIndexes(1:n)))+Nodaletab(1:n)
 
   END DO
@@ -531,9 +485,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
         Material => GetMaterial(ParentElement)
 
         NodalDensity=0.0_dp
-        NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,Found)
-        IF (.NOT.Found) &
-           CALL FATAL(SolverName,'Could not find Material prop.  >SSA Mean Density<')
+        NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,UnFoundFatal=.TRUE.)
 
         ! Read the gravity in the Body Force Section 
         BodyForce => GetBodyForce(ParentElement)
@@ -541,10 +493,10 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
         IF ( ASSOCIATED( BodyForce ) ) THEN
            IF (STDOFs==1) THEN 
            NodalGravity(1:n) = ListGetReal( &
-                   BodyForce, 'Flow BodyForce 2', n, NodeIndexes, Found)
+                   BodyForce, 'Flow BodyForce 2', n, NodeIndexes,UnFoundFatal=.TRUE.)
            ELSE 
            NodalGravity(1:n) = ListGetReal( &
-                   BodyForce, 'Flow BodyForce 3', n, NodeIndexes, Found)
+                   BodyForce, 'Flow BodyForce 3', n, NodeIndexes,UnFoundFatal=.TRUE.)
            END IF
         END IF
 
@@ -567,7 +519,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixUVSSA(  STIFF, FORCE, Element, n, Nodes, gravity, &
            Density, Viscosity, LocalZb, LocalZs, LocalU, &
-           LocalV, LocalBeta,iFriction,fm,LocalLinVelo, cm, MinSRInv, STDOFs , &
+           LocalV, LocalBeta,iFriction,fm,LocalLinVelo, cm,&
+           NodalGM,NodalBed,SEP,GLnIP,sealevel,rhow,&
+           MinSRInv, STDOFs , &
             nodalbetab,nodalzsb,nodalzbb,nodalrhob,nodaletab )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), gravity(:), Density(:), &
@@ -579,9 +533,13 @@ CONTAINS
     REAL(KIND=dp) :: cm,fm
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: Newton
+    REAL(KIND=dp) :: NodalGM(:),NodalBed(:)
+    REAL(KIND=dp) :: sealevel,rhow
+    LOGICAL :: SEP
+    INTEGER :: GLnIP
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), detJ 
-    REAL(KIND=dp) :: g, rho, eta, h, dhdx, dhdy , muder
+    REAL(KIND=dp) :: g, rho, eta, h, dhdx, dhdy , muder, bedrock,Hf
     REAL(KIND=dp) :: gradS(2),gradSb(2),Slip,  A(2,2),  Exx, Eyy, Exy, Ezz, Ee, MinSRInv                            
     REAL(KIND=dp) :: beta,Slip2,Velo(2),LinVelo,ub
     REAL(KIND=dp) :: betab,hb,rhob,etab
@@ -589,6 +547,7 @@ CONTAINS
     LOGICAL :: Stat, NewtonLin
     INTEGER :: i, j, t, p, q 
     TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: PartlyGroundedElement
 
     TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
@@ -599,7 +558,17 @@ CONTAINS
     nodalrhob = 0.0_dp
     nodaletab = 0.0_dp
 
-    IP = GaussPoints( Element )
+    IF (SEP) THEN
+     PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n).LT.0._dp))
+     IF (PartlyGroundedElement) THEN
+        IP = GaussPoints( Element , np=GLnIP )
+     ELSE
+        IP = GaussPoints( Element )
+     ENDIF
+    ELSE
+     IP = GaussPoints( Element )
+    ENDIF
+
     DO t=1,IP % n
        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
         IP % W(t),  detJ, Basis, dBasisdx, ddBasisddx, .FALSE. )
@@ -614,11 +583,6 @@ CONTAINS
        if (STDOFs == 2) gradS(2) = SUM( LocalZs(1:n) * dBasisdx(1:n,2) )
        h = SUM( (LocalZs(1:n)-LocalZb(1:n)) * Basis(1:n) )
        beta = SUM( LocalBeta(1:n) * Basis(1:n) )
-      ! slip = 0.0_dp
-      ! DO i=1,STDOFs
-      !    slip(i) = SUM( LocalSliding(i,1:n) * Basis(1:n) )
-      ! END DO
-
 
 !------------------------------------------------------------------------------
 ! In the non-linear case, effective viscosity       
@@ -705,6 +669,16 @@ CONTAINS
               ub = LinVelo
            ENDIF
            betab = betab * ub**(fm-1.0_dp)
+       END IF
+
+       IF (SEP) THEN
+        IF (ALL(NodalGM(1:n).LT.0._dp)) THEN
+           betab=0._dp
+        ELSE IF (PartlyGroundedElement) THEN
+           bedrock = SUM( NodalBed(1:n) * Basis(1:n) )
+           Hf= rhow * (sealevel-bedrock) / rho
+           if (h.lt.Hf) betab=0._dp
+        END IF
        END IF
 
        nodalbetab(1:n)=nodalbetab(1:n)+betab*Basis(1:n)

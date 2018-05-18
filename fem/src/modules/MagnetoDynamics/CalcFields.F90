@@ -61,6 +61,8 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   ! as is done in this initialization. 
   SolverParams => GetSolverParams()
 
+  CALL ListAddNewString(SolverParams,'Potential Variable','av')
+  
   ! If we have DG for the standard fields they are already elemental...
   IF (GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
 

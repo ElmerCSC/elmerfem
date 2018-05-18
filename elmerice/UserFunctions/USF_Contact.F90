@@ -259,8 +259,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
            Fbase = ResidValues((DIM+1)*(ResidPerm(jj)-1)+1 : (DIM+1)*ResidPerm(jj)-1)
 
            ! comparison between water pressure and bed action
-           comp = ABS( SUM( Fwater * Normal ) ) - ABS( SUM( Fbase * Normal ) )
-           
+           comp =  SUM( Fwater * Normal ) + SUM( Fbase * Normal )
            
            IF (comp .GE. 0.0_dp) THEN
               IF (thresh.LE.0.0_dp) THEN

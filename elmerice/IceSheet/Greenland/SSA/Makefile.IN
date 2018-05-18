@@ -1,0 +1,9 @@
+LIBS= Scalar_OUTPUT
+
+all: $(LIBS)
+
+%: %.F90 
+	elmerf90 $^ -o $@
+
+clean:
+	rm -f $(LIBS)

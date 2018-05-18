@@ -1,0 +1,20 @@
+- GET_DATA.sh:
+    * Script to download and process DATA required to run the standard Greenland application
+    * see http://elmerice.elmerfem.org/wiki/doku.php?id=eis:greenland#present
+    * Requirements: 
+    	* 1- An account to download data from nsidc (https://nsidc.org/nsidc/register) "
+        * 2- curl and wget to download the data files"
+             (optionnally you will get the link to download teh files from your webbrowser)
+	* 3- http://www.gdal.org/   to convert from .tif to netcdf and reproject
+	* 4- nco to manipulate netcdf files (http://nco.sourceforge.net/)"
+
+- scripts: contain scripts to process the data 
+    * GET_FROM_NSIDC.sh : 
+    	* check that the configuration file "$HOME/.netrc" containing the NSIDC authentifications ID is present and download the file following the link provided in argument
+
+    * VELOCITY_TO_NETCDF.sh : 
+    	* Convert .tif files of obs. velocity ux and uy to netcdf and compute velocity norm
+
+    * MAR_Bamber5km_to_EPSG3413.sh :
+    	* Reproject MAR forcing from the 5km Bamber Grid to EPSG 3414
+

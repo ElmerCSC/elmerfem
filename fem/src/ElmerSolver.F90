@@ -1658,21 +1658,22 @@ END INTERFACE
 !------------------------------------------------------------------------------
      USE DefUtils
      LOGICAL :: Gotit
-     INTEGER :: k
+     INTEGER :: i, k
      REAL(KIND=dp) :: StartTime
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(ValueList_t), POINTER :: RestartList
 !------------------------------------------------------------------------------
 
 
-     RestartFile = ListGetString( CurrentModel % Simulation, &
-         'Restart File', GotIt )
-
+     ! Do the standard global restart
+     !-----------------------------------------------------------------
+     RestartList => CurrentModel % Simulation    
+     RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
      IF ( GotIt ) THEN
-       k = ListGetInteger( CurrentModel % Simulation,'Restart Position',GotIt, &
-                  minv=0 )
-
+       k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
        Mesh => CurrentModel % Meshes
+       
        DO WHILE( ASSOCIATED(Mesh) ) 
-
          IF ( LEN_TRIM(Mesh % Name) > 0 ) THEN
            OutputName = TRIM(Mesh % Name) // '/' // TRIM(RestartFile)
          ELSE
@@ -1682,20 +1683,56 @@ END INTERFACE
            OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
 
          CALL SetCurrentMesh( CurrentModel, Mesh )
-         CALL LoadRestartFile( OutputName,k,Mesh )
+         CALL LoadRestartFile( OutputName, k, Mesh )
 
-         StartTime = ListGetConstReal( CurrentModel % Simulation,'Restart Time',GotIt)
+         StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
          IF( GotIt ) THEN
 	   Var  => VariableGet( Mesh % Variables, 'Time' )
-           IF ( ASSOCIATED( Var ) )  Var % Values(1)  = StartTime
+           IF ( ASSOCIATED( Var ) )  Var % Values(1) = StartTime
          END IF
 
          Mesh => Mesh % Next
-
        END DO
-
-
      END IF
+     
+     ! Do Solver-mesh specific restart only
+     !-----------------------------------------------------------------
+     IF ( ListCheckPresentAnySolver( CurrentModel,'Restart File') ) THEN
+       DO i=1, CurrentModel % NumberOfSolvers
+         RestartList => CurrentModel % Solvers(i) % Values 
+         
+         RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
+         IF ( GotIt ) THEN
+
+           Mesh => CurrentModel % Solvers(i) % Mesh 
+           IF( .NOT. ASSOCIATED(Mesh) ) THEN
+             CALL Warn('Restart','Solver has no mesh associated!')
+             CYCLE
+           END IF
+           CALL Info('Restart','Perfoming solver specific Restart for: '//TRIM(Mesh % Name),Level=6)
+           IF ( LEN_TRIM(Mesh % Name) > 0 ) THEN
+             OutputName = TRIM(Mesh % Name) // '/' // TRIM(RestartFile)
+           ELSE
+             OutputName = TRIM(RestartFile)
+           END IF
+                      
+           IF ( ParEnv % PEs > 1 ) &
+               OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+           CALL SetCurrentMesh( CurrentModel, Mesh )
+
+           k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
+           CALL LoadRestartFile( OutputName, k, Mesh )
+           
+           StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
+           IF( GotIt ) THEN
+             Var  => VariableGet( Mesh % Variables, 'Time' )
+             IF ( ASSOCIATED( Var ) )  Var % Values(1) = StartTime
+           END IF
+         END IF
+         
+       END DO
+     END IF
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE Restart
 !------------------------------------------------------------------------------

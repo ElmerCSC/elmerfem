@@ -56,8 +56,8 @@ SUBROUTINE ElasticSolver_Init0( Model,Solver,dt,Transient )
   MixedFormulation = GetLogical(SolverParams, 'Mixed Formulation', Found) .AND. &
       GetLogical(SolverParams, 'Neo-Hookean Material', Found)
 
-  IF (MixedFormulation .AND. (.NOT. ListCheckPresent(SolverParams,'Element'))) THEN
-    CALL ListAddString( SolverParams, "Element", "p:2" )
+  IF( MixedFormulation ) THEN
+    CALL ListAddNewString( SolverParams, "Element", "p:2" )
   END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE ElasticSolver_Init0
@@ -104,12 +104,9 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     CALL ListAddInteger( SolverParams, 'Variable DOFs', DOFs )
   END IF
 
-  CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
-  CALL ListAddLogical( SolverParams,'Bubbles in Global System',.TRUE.)
-
-  IF( .NOT. ListCheckPresent( SolverParams,'Displace Mesh At Init') ) THEN
-    CALL ListAddLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
-  END IF
+  CALL ListAddInteger( SolverParams,'Time derivative order', 2 )
+  CALL ListAddNewLogical( SolverParams,'Bubbles in Global System',.TRUE.)
+  CALL ListAddNewLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
 
   CalculateStrains = GetLogical(SolverParams, 'Calculate Strains', Found)
   CalculateStresses = GetLogical( SolverParams, 'Calculate Stresses', Found )
@@ -127,9 +124,6 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   IF (CalcPrincipalAngle) CalcPrincipal = .TRUE. ! Principal angle computation enforces component calculation
 
   !----------------------------------------------------------------------------------------------------
-  ! Presently "Calculate Principal = TRUE" is not enough to enforce principal component computation:
-  !----------------------------------------------------------------------------------------------------
-  !IF (CalcPrincipal) CalculateStresses = .TRUE. ! Stress needed for principal component calculation
   CalcPrincipalStress = CalculateStresses .AND. CalcPrincipal
   CalcPrincipalStrain = CalculateStrains .AND. CalcPrincipal
 
@@ -147,11 +141,6 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
 
      CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable ',SolverParams), 'vonMises' )
-
-     !CALL ListAddString( SolverParams,&
-     !     NextFreeKeyword('Exported Variable ',SolverParams), &
-     !     'Mean Normal Stress')      
-
 
      IF (CalcPrincipalStress) THEN
         CALL ListAddString( SolverParams,&
@@ -1498,7 +1487,7 @@ CONTAINS
     ! the value 1/2. The code used in the standard case is reused by redefining 
     ! the Lame parameter mu and adding remaining terms afterwards.
     !------------------------------------------------------------------------------
-    IF (MixedFormulation) THEN
+    IF( MixedFormulation ) THEN
 
       IF (PlaneStress) CALL Warn( 'ElasticSolve',  &
           'Mixed formulation does not support plane stress: plane strain assumed instead' )
@@ -1856,7 +1845,7 @@ CONTAINS
        END IF
      END DO
 
-     IF (MixedFormulation) THEN 
+     IF( MixedFormulation) THEN 
         ! Use just the lowest-order basis for the pressure variable:
         DO p = n+1,ntot
            i = DOFs * p

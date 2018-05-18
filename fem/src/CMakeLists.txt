@@ -291,9 +291,11 @@ INSTALL(DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/.
 
 IF(WITH_MPI)
   IF(NOT(WIN32))
-    INSTALL(CODE "
-    EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver
-    WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/bin)")
+    # INSTALL(CODE "
+    # EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver
+    # WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/bin)")
+    ADD_CUSTOM_TARGET(elmersolver_link ALL COMMAND ${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver)
+    INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver DESTINATION "bin")
   ELSE()
     INSTALL(CODE "EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E copy
     \${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver_mpi.exe
