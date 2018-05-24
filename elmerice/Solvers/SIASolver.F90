@@ -72,7 +72,7 @@ SUBROUTINE SIASolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, Grad1Sol, Grad2Sol, &
                                DepthSol, VeloSol
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, LimitVelocity,UnFoundFatal
+  LOGICAL :: AllocationsDone = .FALSE., Found, LimitVelocity,UnFoundFatal=.TRUE.
   
   INTEGER :: i, j, n, m, t, istat, DIM, p, Indexes(128), COMP, constrainedvelocities
   INTEGER, POINTER :: Permutation(:), VeloPerm(:), &
@@ -279,7 +279,9 @@ SUBROUTINE SIASolver( Model,Solver,dt,TransientSimulation )
   ! Dirichlet 
      CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
           ComponentName('SIAFlow',COMP), 1,1, Permutation )
-  
+
+  CALL EnforceDirichletConditions( Solver, Solver % Matrix , Solver % Matrix % RHS)
+
   !Solve the system
   Norm = DefaultSolve()
 

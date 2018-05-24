@@ -26,7 +26,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -116,7 +116,7 @@ Solver 2
 End
 
 Solver 3
-  Exec Solver = never
+!  Exec Solver = never
   Equation = "MGDynamicsCalc"
 
   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
@@ -135,6 +135,9 @@ Solver 3
   Linear System Max Iterations = 5000
   Linear System Iterative Method = CG
   Linear System Convergence Tolerance = 1.0e-8
+
+  Calculate Nodal Fields = False
+  Discontinuous Bodies = True
 End
 
 
@@ -190,6 +193,8 @@ Solver 6
   Vtu Format = True
   Single Precision = True
   Save Geometry Ids = True
+
+  Discontinuous Bodies = True
 End 
 
 Equation 1
@@ -353,4 +358,6 @@ Boundary Condition 14
 End 
  
 
-Solver 2 :: Reference Norm = Real 4.122693E-03
+Solver 2 :: Reference Norm = 4.12188764E-03
+Solver 2 :: Reference Norm Tolerance = 1E-04
+

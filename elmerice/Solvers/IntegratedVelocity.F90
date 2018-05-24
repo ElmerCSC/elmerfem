@@ -71,7 +71,7 @@ SUBROUTINE IntegratedVelocity( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material
   TYPE(Variable_t), POINTER :: PointerToVariable, IntVeloSol, FlowVariable, HeightSol
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, OnSurface = .True.,UnFoundFatal
+  LOGICAL :: AllocationsDone = .FALSE., Found, OnSurface = .TRUE.,UnFoundFatal=.TRUE.
 
   INTEGER :: i, n, m, t, istat, DIM, COMP, other_body_id   
   INTEGER, POINTER :: Permutation(:), NodeIndexes(:), IntVeloPerm(:),&
@@ -199,6 +199,8 @@ DO COMP=1, DIM-1
 ! Dirichlet 
   CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
           ComponentName('Integrated Velocity',COMP), 1,1, Permutation)
+
+  CALL EnforceDirichletConditions( Solver, Solver % Matrix , Solver % Matrix % RHS)
   
   Norm = DefaultSolve()
 

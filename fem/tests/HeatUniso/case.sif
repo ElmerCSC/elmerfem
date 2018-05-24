@@ -1,0 +1,131 @@
+! Test case for unisotropic heat conduction.
+! The geometry is designed such that it is relatively easy
+! to see that the solution is realistic.
+!
+! This case with k_xx=1, k_yy=10.
+!
+! P.R. 9.3.2018
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cross"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 2
+  Equation = ComputeFlux
+  Procedure = "FluxSolver" "FluxSolver"
+
+  Calculate Flux = Logical True
+  Target Variable = String Temperature
+  Flux Coefficient = String "Heat Conductivity"
+
+! these are taken care by the defaults
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "cg"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = Integer 100
+  Linear System Convergence Tolerance = 1.0e-10
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+
+! For 3D constant diagonal conductivity
+  Heat Conductivity(3) = 1 10 0
+!  Heat Conductivity(3,3) = 1 0 0 0 10 0 0 0 0
+
+! For 2D these are ok as well
+!  Heat Conductivity(2) = 1 10
+!  Heat Conductivity(2,2) = 1 0 0 10 
+End
+
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(1) = 1 
+End
+
+Boundary Condition 2
+  Name = "Bottom"
+  Target Boundaries(1) = 2 
+  Heat Flux = 1.0
+End
+
+Boundary Condition 3
+  Name = "Right"
+  Target Boundaries(1) = 3
+  Heat Flux = 1.0
+End
+
+Boundary Condition 4
+  Name = "Top"
+  Target Boundaries(1) = 4
+  Heat Flux = -1.0
+End
+
+Boundary Condition 5
+  Name = "Left"
+  Target Boundaries(1) = 5
+  Heat Flux = -1.0
+End
+
+
+Solver 1 :: Reference Norm = 9.30658750E-01
+Solver 2 :: Reference Norm = 8.45189077E-01
+

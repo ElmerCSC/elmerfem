@@ -166,7 +166,8 @@ contains
     residual = normfun( HUTI_NDIM, S, 1 )
     if ( residual .lt. HUTI_EPSILON ) then
        X = X + alpha * T1V
-       HUTI_INFO = HUTI_BICGSTAB_SNORM
+       !HUTI_INFO = HUTI_BICGSTAB_SNORM
+       HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
 
@@ -223,7 +224,12 @@ contains
        HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
-
+    
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+    
     if ( omega .eq. 0 ) then
        HUTI_INFO = HUTI_BICGSTAB_OMEGA
        go to 1000
@@ -295,7 +301,7 @@ contains
     ! Local variables
 
     double precision :: rho, oldrho, alpha, beta, omega
-    integer :: iter_count
+    integer :: iter_count, i
 
     double precision :: residual, rhsnorm, precrhsnorm
 
@@ -332,13 +338,38 @@ contains
     if ( HUTI_INITIALX .eq. HUTI_RANDOMX ) then
        call  huti_drandvec   ( X, ipar )
     else if ( HUTI_INITIALX .ne. HUTI_USERSUPPLIEDX ) then
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       do i=1,ndim
+          xvec(i) = 1
+       end do
+       !$OMP END PARALLEL DO
+#else
        X = 1
+#endif
     end if
 
     call matvecsubr( X, R, ipar )
+#ifdef _OPENMP
+    !$OMP PARALLEL PRIVATE(i)
+    !$OMP DO
+    do i=1,ndim
+       work(i,R_ind) = rhsvec(i) - work(i,R_ind)
+       work(i,RTLD_ind) = work(i,R_ind)
+    end do
+    !$OMP END DO NOWAIT
+    !$OMP DO
+    do i=1,ndim
+       work(i,P_ind) = 0
+       work(i,V_ind) = 0
+    end do
+    !$OMP END DO NOWAIT
+    !$OMP END PARALLEL
+#else
     R = B - R
     RTLD = R
     P = 0; V = 0
+#endif
     oldrho = 1; omega = 1; alpha = 0
 
     !
@@ -355,19 +386,45 @@ contains
     end if
 
     beta = ( rho * alpha ) / ( oldrho * omega )
+
+#ifdef _OPENMP
+    !$OMP PARALLEL DO
+    do i=1,ndim
+       work(i,P_ind) = work(i,R_ind) + beta * ( work(i,P_ind) - omega * work(i,V_ind) )
+    end do
+    !$OMP END PARALLEL DO
+#else
     P = R + beta * ( P - omega * V )
+#endif
 
     call pcondlsubr( V, P, ipar )
     call pcondrsubr( T1V, V, ipar )
     call matvecsubr( T1V, V, ipar )
 
     alpha = rho / dotprodfun( HUTI_NDIM, RTLD, 1, V, 1 )
+#ifdef _OPENMP
+    !$OMP PARALLEL DO
+    do i=1,ndim
+       work(i,S_ind) = work(i,R_ind) - alpha * work(i,V_ind)
+    end do
+    !$OMP END PARALLEL DO
+#else
     S = R - alpha * V
+#endif
 
     residual = normfun( HUTI_NDIM, S, 1 )
     if ( residual .lt. HUTI_EPSILON ) then
+#ifdef _OPENMP
+    !$OMP PARALLEL DO
+    do i=1,ndim
+       xvec(i) = xvec(i) + alpha * work(i,T1V_ind)
+    end do
+    !$OMP END PARALLEL DO
+#else
        X = X + alpha * T1V
-       HUTI_INFO = HUTI_BICGSTAB_SNORM
+#endif
+       HUTI_INFO = HUTI_CONVERGENCE
+       !HUTI_INFO = HUTI_BICGSTAB_SNORM
        go to 1000
     end if
 
@@ -377,8 +434,18 @@ contains
 
     omega = ( dotprodfun( HUTI_NDIM, T, 1, S, 1 ) ) / &
          ( dotprodfun( HUTI_NDIM, T, 1, T, 1 ) )
+
+#ifdef _OPENMP
+    !$OMP PARALLEL DO
+    do i=1,ndim
+       xvec(i) = xvec(i) + alpha * work(i,T1V_ind) + omega * work(i,T2V_ind)
+       work(i,R_ind) = work(i,S_ind) - omega * work(i,T_ind)
+    end do
+    !$OMP END PARALLEL DO
+#else
     X = X + alpha * T1V + omega * T2V
     R = S - omega * T
+#endif
 
     !
     ! Check the convergence against selected stopping criterion
@@ -387,11 +454,27 @@ contains
     select case (HUTI_STOPC)
     case (HUTI_TRUERESIDUAL)
        call matvecsubr( X, T2V, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       do i=1,ndim
+          work(i,T1V_ind) = work(i,T2V_ind) - rhsvec(i)
+       end do
+       !$OMP END PARALLEL DO
+#else
        T1V = T2V - B
+#endif
        residual = normfun( HUTI_NDIM, T1V, 1 )
     case (HUTI_TRESID_SCALED_BYB)
        call matvecsubr( X, T2V, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       do i=1,ndim
+          work(i,T1V_ind) = work(i,T2V_ind) - rhsvec(i)
+       end do
+       !$OMP END PARALLEL DO
+#else
        T1V = T2V - B
+#endif
        residual = normfun( HUTI_NDIM, T1V, 1 ) / rhsnorm
     case (HUTI_PSEUDORESIDUAL)
        residual = normfun( HUTI_NDIM, R, 1 )
@@ -400,13 +483,29 @@ contains
     case (HUTI_PRESID_SCALED_BYPRECB)
        residual = normfun( HUTI_NDIM, R, 1 ) / precrhsnorm
     case (HUTI_XDIFF_NORM)
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       do i=1,ndim
+          work(i,T1V_ind) = alpha * work(i,T1V_ind) + omega * work(i,T2V_ind)
+       end do
+       !$OMP END PARALLEL DO
+#else
        T1V = alpha * T1V + omega * T2V
+#endif
        residual = normfun( HUTI_NDIM, T1V, 1 )
     case (HUTI_USUPPLIED_STOPC)
        residual = stopcfun( X, B, R, ipar, dpar )
     case default
        call matvecsubr( X, T2V, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       do i=1,ndim
+          work(i,T1V_ind) = work(i,T2V_ind) - rhsvec(i)
+       end do
+       !$OMP END PARALLEL DO
+#else
        T1V = T2V - B
+#endif
        residual = normfun( HUTI_NDIM, T1V, 1 )
     end select
 
@@ -430,6 +529,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+    
     oldrho = rho
 
     !
@@ -567,7 +671,8 @@ contains
     residual = normfun( HUTI_NDIM, S, 1 )
     if ( residual .lt. HUTI_EPSILON ) then
        X = X + alpha * T1V
-       HUTI_INFO = HUTI_BICGSTAB_SNORM
+       HUTI_INFO = HUTI_CONVERGENCE
+       !HUTI_INFO = HUTI_BICGSTAB_SNORM
        go to 1000
     end if
 
@@ -625,6 +730,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+    
     if ( omega .eq. 0 ) then
        HUTI_INFO = HUTI_BICGSTAB_OMEGA
        go to 1000
@@ -767,7 +877,8 @@ contains
     residual = normfun( HUTI_NDIM, S, 1 )
     if ( residual .lt. HUTI_EPSILON ) then
        X = X + alpha * T1V
-       HUTI_INFO = HUTI_BICGSTAB_SNORM
+       !HUTI_INFO = HUTI_BICGSTAB_SNORM
+       HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
 
@@ -825,6 +936,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+    
     if ( omega .eq. 0 ) then
        HUTI_INFO = HUTI_BICGSTAB_OMEGA
        go to 1000

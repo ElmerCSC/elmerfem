@@ -1,8 +1,8 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !   Compare the total derivative of the cost function computed as:
-!     (1) dJ=P.G  where P is a pertubation vector of the variable of interest
+!     (1) dJ=P.G  where P is a perturbation vector of the variable of interest
 !                     G is the gradient of the cost function computed by an inverse method
-!     (2) [J(V+hP)-J(V)]/h  : forward finite diffrence computation of the derivative
+!     (2) [J(V+hP)-J(V)]/h  : forward finite difference computation of the derivative
 !                             V is the variable of interest
 !                             h is the step size 
 !
@@ -178,7 +178,7 @@ Solver 2
 
   Steady State Convergence Tolerance = Real 1.0e-12
 
-! Define  some usefull Variables
+! Define  some useful Variables
   Exported Variable 1 = BetaS
   Exported Variable 1 DOFS = 1
   Exported Variable 2 = MuS
@@ -233,7 +233,7 @@ end
 
 !!!!  Adjoint Solver
 Solver 4
-  !!! needed only at the first iteration for computation of the total derivative with teh inverse method
+  !!! needed only at the first iteration for computation of the total derivative with the inverse method
   Exec Interval = 100
 
   Equation = "Adjoint"
@@ -256,7 +256,7 @@ End
 
 !!!!!  Compute Derivative of Cost function / Mu
 Solver 5
-  !!! needed only at the first iteration for computation of the total derivative with teh inverse method
+  !!! needed only at the first iteration for computation of the total derivative with the inverse method
   Exec Interval = 100
 
   Equation = "DJDmu"

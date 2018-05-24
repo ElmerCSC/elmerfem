@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen
+! *  Authors: Juha Ruokolainen, Thomas Zwinger
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -185,7 +185,7 @@ this ise not in USE
 !> or from turbulence models, but not from both at the same time.
 !------------------------------------------------------------------------------
    FUNCTION EffectiveViscosity( Viscosity,Density,Ux,Uy,Uz,Element, &
-        Nodes,n,nd,u,v,w, muder ) RESULT(mu)
+        Nodes,n,nd,u,v,w, muder, LocalIP ) RESULT(mu)
      !------------------------------------------------------------------------------
 
      USE ModelDescription
@@ -194,6 +194,7 @@ this ise not in USE
      REAL(KIND=dp), OPTIONAL :: muder
      TYPE(Nodes_t)  :: Nodes
      INTEGER :: n,nd
+     INTEGER, OPTIONAL :: LocalIP
      TYPE(Element_t),POINTER :: Element
 
      !------------------------------------------------------------------------------
@@ -203,9 +204,9 @@ this ise not in USE
           Symb(3,3,3), dSymb(3,3,3,3)
 
      INTEGER :: i,j,k
-     LOGICAL :: stat,GotIt
+     LOGICAL :: stat,GotIt,UseEUsrf=.FALSE.
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag, TemperatureName
+     CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag, TemperatureName, EnhcmntFactFlag
      TYPE(ValueList_t), POINTER :: Material
      REAL(KIND=dp) :: x, y, z, c1n(n), c2n(n), c3n(n), c4n(n), &
           c1, c2, c3, c4, c5, c6, c7, Temp, NodalTemperature(n), Tlimit, TempCoeff, &
@@ -240,7 +241,18 @@ this ise not in USE
           REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
                Velo(:), dVelodx(:,:), s
         END FUNCTION MaterialUserFunction
-     END INTERFACE
+        FUNCTION EnhancementFactorUserFunction( Proc,Model,Element,Nodes,n,nd, &
+             Basis,dBasisdx,Viscosity,Velo,dVelodx,SecondInvariantSqr,LocalIP ) RESULT(Ehf)
+          USE Types
+          INTEGER(KIND=AddrInt) :: Proc
+          TYPE(Model_t) :: Model
+          TYPE(Nodes_t) :: Nodes
+          TYPE(Element_t), POINTER :: Element
+          INTEGER :: n,nd,LocalIP 
+          REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
+               Velo(:), dVelodx(:,:), SecondInvariantSqr, Ehf
+        END FUNCTION EnhancementFactorUserFunction
+     END INTERFACE     
 #endif
      !------------------------------------------------------------------------------
      mu = Viscosity
@@ -252,7 +264,7 @@ this ise not in USE
      Material => CurrentModel % Materials(k) % Values
 
      ViscosityFlag = ListGetString( Material,'Viscosity Model', GotIt)
-
+     
      IF(.NOT. gotIt) RETURN
      !------------------------------------------------------------------------------
      !    Basis function values & derivatives at the calculation point
@@ -280,7 +292,7 @@ this ise not in USE
      ! This is the square of shearrate which results to 1/2 in exponent 
      ! Also the derivative is taken with respect to the square
      !-------------------------------------------------------------------
-     ss = SecondInvariant(Velo,dVelodx,Metric,Symb)/2
+     ss = 0.5_dp * SecondInvariant(Velo,dVelodx,Metric,Symb)
 
 
      SELECT CASE( ViscosityFlag )
@@ -344,27 +356,38 @@ this ise not in USE
            END IF
         
            IF (Temp.LE. Tlimit) THEN
-              ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15 + Temp)))
+              ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15_dp + Temp)))
            ELSE IF((Tlimit<Temp) .AND. (Temp .LE. 0.0_dp)) THEN
-              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15 + Temp)))
+              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp + Temp)))
            ELSE
-              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15)))
-              CALL INFO('EffectiveViscosity','Positive Temperature detected in Glen - limiting to zero!', Level = 5)
+              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp)))
+              CALL INFO('EffectiveViscosity',&
+                   'Positive Temperature detected in Glen - limiting to zero!', Level = 5)
            END IF
         ELSE
-           ArrheniusFactor = GetConstReal(Material,'Arrhenius Factor', GotIt)
-           IF (.NOT.(GotIt)) THEN 
-              CALL FATAL('EffectiveViscosity','<Set Arrhenius Factor> is TRUE, but no value <Arrhenius Factor> found')
-           END IF
+          ArrheniusFactor = GetConstReal(Material,'Arrhenius Factor', GotIt)
+          IF (.NOT.(GotIt)) THEN 
+            CALL FATAL('EffectiveViscosity',&
+                 '<Set Arrhenius Factor> is TRUE, but no value <Arrhenius Factor> found')
+          END IF
         END IF
-
-        NodalEhF(1:n) =  ListGetReal( Material, 'Glen Enhancement Factor', n, Element % NodeIndexes, GotIt )
-        IF (.NOT.GotIt) NodalEhF(1:n) = 1.0_dp
-        EhF = SUM(Basis(1:n) * NodalEhF(1:n))
-
-
+        Ehf = 1.0_dp
+        EnhcmntFactFlag = ListGetString( Material,'Glen Enhancement Factor Function', UseEUsrf )
+        IF (UseEUsrf) THEN
+          IF (.NOT.PRESENT(LocalIP)) CALL FATAL('EffectiveViscosity',&
+               'Chose "Glen Enhancement Factor Function" but no LocalIP provided by calling function')
+          Fnc = GetProcAddr( EnhcmntFactFlag, Quiet=.TRUE. )
+          EhF = EnhancementFactorUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
+               Basis, dBasisdx, Viscosity, Velo, dVelodx, s , LocalIP)
+        ELSE
+          NodalEhF(1:n) =  ListGetReal( Material, 'Glen Enhancement Factor',&
+               n, Element % NodeIndexes, GotIt )
+          IF (GotIt) &
+               EhF = SUM(Basis(1:n) * NodalEhF(1:n))
+        END IF
+        
         IF (PRESENT(muder)) muder = 0.5_dp * (  EhF * ArrheniusFactor)**(-1.0_dp/c2) &
-             * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4
+             * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
 
         c3n = ListGetReal( Material, 'Critical Shear Rate',n, Element % NodeIndexes,GotIt )
         IF (GotIt) THEN
@@ -383,7 +406,13 @@ this ise not in USE
         c2 = SUM( Basis(1:n) * c2n(1:n) )
 
         s = ss
-        IF (PRESENT(muder)) muder = Viscosity * (c2-1)/2 * s**((c2-1)/2-1)
+        IF (PRESENT(muder)) THEN
+           IF (s /= 0) THEN
+              muder = Viscosity * (c2-1)/2 * s**((c2-1)/2-1)
+           ELSE
+              muder = 0.0_dp
+           END IF
+        END IF
 
         c3n = ListGetReal( Material, 'Critical Shear Rate',n, Element % NodeIndexes,gotIt )
         IF (GotIt) THEN
@@ -618,7 +647,6 @@ this ise not in USE
      !------------------------------------------------------------------------------
    END FUNCTION EffectiveViscosity
 !------------------------------------------------------------------------------
-
 
 
 !------------------------------------------------------------------------------

@@ -129,7 +129,7 @@ SUBROUTINE ChargeDensitySolver( Model, Solver, dt, TransientSimulation )
 
   s = MAXVAL(Solver % Variable % Values(Solver % Variable % Perm(1:n)))
 ! IF ( ParEnv % Pes > 1 ) THEN
-!   CALL MPI_ALLREDUCE(s,s0,1,MPI_DOUBLE_PRECISION, MPI_MAX, MPI_COMM_WORLD, i)
+!   CALL MPI_ALLREDUCE(s,s0,1,MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, i)
 !   s = s0
 ! END IF
   WRITE(Message,*) 'Greatest value of the Charge density is ', s
@@ -137,7 +137,7 @@ SUBROUTINE ChargeDensitySolver( Model, Solver, dt, TransientSimulation )
   
   s = MINVAL(Solver % Variable % Values(Solver % Variable % Perm(1:n)))
 ! IF ( ParEnv % Pes > 1 ) THEN
-!   CALL MPI_ALLREDUCE(s,s0,1,MPI_DOUBLE_PRECISION, MPI_MIN, MPI_COMM_WORLD, i)
+!   CALL MPI_ALLREDUCE(s,s0,1,MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, i)
 !   s = s0
 ! END IF
 
@@ -579,7 +579,7 @@ SUBROUTINE PoissonSolver( Model, Solver, dt, TransientSimulation )
           'Memory allocation error.' )
 
     ! The number of solver that has the charge density 
-    ! (namely Number of Eigenmodes Included as paramter) as a variable
+    ! (namely Number of Eigenmodes Included as parameter) as a variable
     ! is found out.
     !--------------------------------------------------------------
     ChargeDensitySolverNumber = 0
@@ -828,7 +828,7 @@ SUBROUTINE PoissonSolver( Model, Solver, dt, TransientSimulation )
 
 ! IF ( ParEnv % PEs > 1 ) THEN
 !   CALL MPI_ALLREDUCE( TotalCharge, temp, 1, &
-!    MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, i)
+!    MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, i)
 !    TotalCharge = temp
 ! END IF
   
@@ -928,9 +928,9 @@ SUBROUTINE PoissonSolver( Model, Solver, dt, TransientSimulation )
 !       r = r + Solver % Variable % Values(k)**2
 !       s = s + (OldSolution(k) - Solver % Variable % Values(k))**2
 !     END DO
-!     CALL MPI_ALLREDUCE(s,temp,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,i)
+!     CALL MPI_ALLREDUCE(s,temp,1,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,i)
 !     s = temp
-!     CALL MPI_ALLREDUCE(r,temp,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,i)
+!     CALL MPI_ALLREDUCE(r,temp,1,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,i)
 !     r = temp
 !     s = SQRT(s/r)
 !
@@ -965,7 +965,7 @@ SUBROUTINE PoissonSolver( Model, Solver, dt, TransientSimulation )
 
   s = MINVAL(Solver % Variable % Values(Perm(1:n)))
 ! IF ( ParEnv % Pes > 1 ) THEN
-!   CALL MPI_ALLREDUCE(s,temp,1,MPI_DOUBLE_PRECISION,MPI_MIN,MPI_COMM_WORLD,i)
+!   CALL MPI_ALLREDUCE(s,temp,1,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,i)
 !   s = temp
 ! END IF
   WRITE(Message,*) 'Smallest value of the potential is ', s, & 
@@ -974,7 +974,7 @@ SUBROUTINE PoissonSolver( Model, Solver, dt, TransientSimulation )
   
   s = MAXVAL(Solver % Variable % Values(Perm(1:n)))
 ! IF ( ParEnv % Pes > 1 ) THEN
-!   CALL MPI_ALLREDUCE(s,temp,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD,i)
+!   CALL MPI_ALLREDUCE(s,temp,1,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,i)
 !   s = temp
 ! END IF
   WRITE(Message,*) 'Greatest value of the potential is ', s, & 
@@ -1157,7 +1157,7 @@ CONTAINS
 !               s = s + ResidualStorage(t,k) * ResidualStorage(p,k)
 !             END DO
 !             CALL MPI_ALLREDUCE( s, PulayMatrix(t,p), 1, &
-!                    MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+!                    MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr)
 !           ELSE
               PulayMatrix(t,p) = DOT_PRODUCT( &
                   ResidualStorage(t, 1:GlobSize) , ResidualStorage(p, 1:GlobSize) )            
@@ -1188,7 +1188,7 @@ CONTAINS
 !                  Neighbours(1) /= ParEnv % mype ) CYCLE
 !           s = s + (Solution(k) - SolutionStorage(1,k))**2
 !         END DO
-!         CALL MPI_ALLREDUCE(s,temp,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)
+!         CALL MPI_ALLREDUCE(s,temp,1,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
 !         s = temp
 !
 !         WRITE(Message,*) 'Norm of the minimized residual', SQRT(s)

@@ -140,7 +140,7 @@
      INTEGER :: RadiationBody, MaxRadiationBody, Nrays
      LOGICAL :: RadiationOpen, Combine
 
-     EXTERNAL Matvec,DiagPrec
+     EXTERNAL MatvecViewFact,DiagPrecViewFact
 
 
      CALL Info( 'ViewFactors', ' ', Level=3 )
@@ -560,7 +560,6 @@
 
        CALL NormalizeFactors( Model )
 
-
        DO i=1,N
          s = 0.0D0
          DO j=1,N
@@ -631,7 +630,7 @@
          DEALLOCATE( Normals, Factors, Surfaces, TYPE)
        END IF
        
-     END DO  /* Of radiation RadiationBody */
+     END DO  ! Of radiation RadiationBody
 
      CALL Info( 'ViewFactors', '*** ALL DONE ***' )
      CALL FLUSH(6)
@@ -644,23 +643,27 @@
 !------------------------------------------------------------------------------
 
       SUBROUTINE NormalizeFactors( Model )
-
+        IMPLICIT NONE
         TYPE(Model_t), POINTER :: Model
 
-        INTEGER :: itmax=20,it = 0,i,j,k
+        INTEGER :: itmax,it,i,j,k
 
         LOGICAL :: li,lj
 
         REAL(KIND=dp), ALLOCATABLE :: RHS(:),SOL(:),Areas(:),PSOL(:)
 
-        REAL(KIND=dp) :: cum = 0.0D0,eps=1.0D-20,s,si,sj
+        REAL(KIND=dp) :: cum,s,si,sj
+        REAL(KIND=dp), PARAMETER :: eps=1.0D-20
 #ifdef USE_ISO_C_BINDINGS
         REAL(KIND=dp) :: at1
 #else
         REAL(KIND=dp) :: at1, CPUTime
 #endif
 
-
+        itmax = 20
+        it = 0
+        cum = 0.0_dp
+        
         ALLOCATE( Areas(n),STAT=istat )
         IF ( istat /= 0 ) THEN
           CALL Fatal( 'Viewfactors', &
@@ -674,7 +677,7 @@
           Areas(i) = ElementArea( Model % Mesh, RadElements(i), &
                RadElements(i) % TYPE % NumberOfNodes )
         END DO
-
+        
         DO i=1,n
           DO j=i,n
             si = Areas(i) * Factors((i-1)*n+j)
@@ -697,6 +700,7 @@
             Factors((j-1)*n+i) = s
           END DO
         END DO
+
 !------------------------------------------------------------------------------
 !       Next we solve the equation DFD = A by Newton iteration (this is a very
 !       well behaved equation (symmetric, diagonal dominant), no need for any
@@ -714,7 +718,6 @@
           cum = 1.0_dp
           
           DO it=1,itmax
-            
             DO i=1,n
               cum = 0.0_dp
               DO j=1,n
@@ -740,7 +743,7 @@
               END DO
               Jdiag(i) = 1._dp / Jacobian(i,i)
             END DO
-            
+
             PSOL = SOL
             CALL IterSolv( n,SOL,RHS )
             SOL = PSOL + SOL
@@ -776,7 +779,7 @@
     SUBROUTINE IterSolv( N,x,b )
       IMPLICIT NONE
 
-      REAL(KIND=dp), DIMENSION(:) :: x,b
+      REAL(KIND=dp), DIMENSION(n) :: x,b
 
       REAL(KIND=dp) :: dpar(50)
 
@@ -806,13 +809,17 @@
       HUTI_DBUGLVL  = 0
       HUTI_MAXIT    = 100
  
-      ALLOCATE( work(wsize,N) )
+      ALLOCATE( work(N, wsize) )
 
+      work = 0D0
       HUTI_TOLERANCE = 1.0D-12
-
+      HUTI_MAXTOLERANCE = 1.0d20
+      HUTI_INITIALX = HUTI_USERSUPPLIEDX
+      HUTI_STOPC = HUTI_TRESID_SCALED_BYB
+      
       iterProc  = AddrFunc(HUTI_D_CG)
-      mvProc    = AddrFunc(Matvec)
-      pcondProc = AddrFunc(DiagPrec)
+      mvProc    = AddrFunc(MatvecViewFact)
+      pcondProc = AddrFunc(DiagPrecViewFact)
       CALL IterCall( iterProc,x,b,ipar,dpar,work,mvProc,pcondProc, &
                 dProc, dProc, dProc, dProc )
           
@@ -822,20 +829,20 @@
   END PROGRAM ViewFactors
 
 
-  SUBROUTINE DiagPrec( u,v,ipar )
+  SUBROUTINE DiagPrecViewFact( u,v,ipar )
     USE ViewFactorGlobals
 
     REAL(KIND=dp) :: u(*),v(*)
     INTEGER :: ipar(*)
 
-    INTEGER :: i,n
+    INTEGER :: n
 
     n = HUTI_NDIM
     u(1:n) = v(1:n)*Jdiag(1:n)
-  END SUBROUTINE DiagPrec
+  END SUBROUTINE DiagPrecViewFact
 
 
-  SUBROUTINE Matvec( u,v,ipar )
+  SUBROUTINE MatvecViewFact( u,v,ipar )
     USE ViewFactorGlobals
 
     INTEGER :: ipar(*)
@@ -845,7 +852,7 @@
 
     n = HUTI_NDIM
     CALL DGEMV('N',n,n,1.0_dp,Jacobian,n,u,1,0.0_dp,v,1)
-  END SUBROUTINE Matvec
+  END SUBROUTINE MatvecViewFact
 
   
 !> \}

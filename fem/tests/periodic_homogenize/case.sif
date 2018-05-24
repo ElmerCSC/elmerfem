@@ -20,7 +20,7 @@ Simulation
   Simulation Type = Steady state
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Post File = case.vtu
+!  Post File = case.vtu
 End
 
 Constants
@@ -133,14 +133,10 @@ Boundary Condition 6
 End 
 
 Solver 1 :: Reference Norm = Real 0.26056759
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.26056759\n");
 
 Boundary Condition 4 :: Periodic BC Offset Temperature = Real 0.0
 Boundary Condition 5 :: Periodic BC Offset Temperature = Real 1.0
 
 Solver 1 :: Reference Norm = Real 0.29491024
-$fprintf( stderr, "TEST CASE 2\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.29491024\n");

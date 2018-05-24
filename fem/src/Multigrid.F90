@@ -190,7 +190,7 @@ CONTAINS
 
 
           CALL ListPushNamespace('mglowest:')
-
+          
           CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
           CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', NewLinearSystem )
 
@@ -201,7 +201,7 @@ CONTAINS
             LowestSolver='direct'
             IF ( LIter ) LowestSolver='iterative'
           END IF
-
+          
           CALL Info('GMGSolve','Starting lowest linear solver using: '//TRIM(LowestSolver),Level=10 )
 
           SELECT CASE(LowestSolver)
@@ -241,8 +241,8 @@ CONTAINS
              END IF
           END SELECT
 
-          CALL ListPopNamespace()
-
+          CALL ListPopNamespace('mglowest:')
+          
           Solution(1:n) = Solution(1:n) * RHSNorm
           ForceVector(1:n) = ForceVector(1:n) * RHSnorm
 
@@ -483,6 +483,10 @@ CONTAINS
                  Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
           CALL Info( 'GMGSolve', Message, Level=5 )
 
+          IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+             CALL Fatal('GMGSolve','We seem to have diverged')
+          END IF
+          
           IF( Level == Solver % MultiGridTotal ) THEN
             IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
           ELSE
@@ -990,7 +994,7 @@ CONTAINS
              END IF
           END SELECT
 
-          CALL ListPopNamespace()
+          CALL ListPopNamespace('mglowest:')
 
           RETURN
        END IF
@@ -1240,6 +1244,11 @@ CONTAINS
           WRITE(Message,'(A,I0,A,I0,A,2E20.12E3)') 'MG Residual at level: ', &
                  Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
           CALL Info( 'PMGSolve', Message, Level=5 )
+
+
+          IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+             CALL Fatal('PMGSolve','We seem to have diverged')
+          END IF
 
           IF( Level == Solver % MultiGridTotal ) THEN
             IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
@@ -1584,7 +1593,7 @@ CONTAINS
       NewLinearSystem = .FALSE.
       IF(PRESENT(NewSystem)) NewSystem = .FALSE.
       IF ( ListGetLogical( Params, 'MG Lowest Linear Solver Unsolve',gotit ) ) THEN
-        RETURN
+        CALL Info('AMGSolve','Leaving lowest level of AMG cycle unsolved',Level=12)
       ELSE IF ( .NOT. Parallel ) THEN
         IF ( ListGetLogical( Params, 'MG Lowest Linear Solver Iterative',gotit ) ) THEN
           CALL IterSolver( Matrix1, Solution, ForceVector, Solver )
@@ -1596,7 +1605,7 @@ CONTAINS
             Solution, ForceVector, Solver, Matrix1 % ParMatrix )
       END IF
 
-      CALL ListPopNamespace()
+      CALL ListPopNamespace('mglowest:')
 
       RETURN
     END IF
@@ -1791,8 +1800,13 @@ CONTAINS
       WRITE(Message,'(A,I0,A,I0,A,E20.12E3)') 'MG Residual at level: ', &
           Level, ' iter: ', iter,' is:', ResidualNorm
       CALL Info( 'AMGSolve', Message, Level=5 )
-      
+
+      IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+         CALL Fatal('AMGSolve','We seem to have diverged')
+      END IF
+            
       IF ( ResidualNorm < Tolerance ) EXIT
+
     END DO
     
 !------------------------------------------------------------------------------
@@ -3876,7 +3890,7 @@ CONTAINS
 
 !-----------------------------------------------------------------------------
 !>     A pseudo geometric version of the previous
-!>     Here the stregth of connections is assumed to be inversily proportional
+!>     Here the strength of connections is assumed to be inversily proportional
 !>     to the distance between nodes. 
 !------------------------------------------------------------------------------
      FUNCTION InterpolateF2CDistance( Fmat, CF, DOFs) RESULT (Projector)
@@ -5221,8 +5235,9 @@ CONTAINS
       END IF
 
       DEALLOCATE( Residual ) 
+      
+      CALL ListPopNamespace('mglowest:')
 
-      CALL ListPopNamespace()
       CALL Info('CMGSolve','Lowest level solved',Level=9)
 
       RETURN
@@ -5396,6 +5411,11 @@ CONTAINS
           Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
       CALL Info( 'CMGSolve', Message, Level=5 )
 
+
+      IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+         CALL Fatal('CMGSolve','We seem to have diverged')
+      END IF
+      
       IF( Level == Solver % MultiGridTotal ) THEN
         IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
       ELSE
@@ -6044,7 +6064,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows>0)
      CALL ParallelActive( MeActive )
 
-     IF ( ASSOCIATED(Solver % Matrix) ) Solver % Matrix % Comm = MPI_COMM_WORLD
+     IF ( ASSOCIATED(Solver % Matrix) ) Solver % Matrix % Comm = ELMER_COMM_WORLD
 
      IF ( ParEnv % PEs>1 ) THEN
        DO i=1,ParEnv % PEs
@@ -6058,7 +6078,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
 
        n = COUNT(ParEnv % Active)
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
-         CALL MPI_Comm_group( MPI_COMM_WORLD, group_world, ierr )
+         CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
          ALLOCATE(memb(n))
          n = 0
          DO i=1,ParEnv % PEs
@@ -6069,7 +6089,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
          END DO
          CALL MPI_Group_incl( group_world, n, memb, group_active, ierr)
          DEALLOCATE(memb)
-         CALL MPI_Comm_create( MPI_COMM_WORLD, group_active, &
+         CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, &
                  comm_active, ierr)
          Solver % Matrix % Comm = comm_active
        END IF
@@ -6093,7 +6113,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
 
      IF(NamespaceFound) CALL ListPopNamespace()
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
-       IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+       IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
           CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
      END IF
 

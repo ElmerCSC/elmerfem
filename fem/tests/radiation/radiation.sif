@@ -9,7 +9,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 30
+  Max Output Level = 5
   Coordinate System = Axi Symmetric
   Simulation Type = Steady State
   Steady State Max Iterations = 1
@@ -93,6 +93,4 @@ Boundary Condition 3
 End
 
 Solver 1 :: Reference Norm = Real 245.285347500079
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=245.285347500079\n" );

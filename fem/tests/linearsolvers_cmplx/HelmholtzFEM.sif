@@ -73,102 +73,87 @@ Boundary Condition 2
 End
 
 Solver 1 :: Reference Norm = Real 0.128318193425E-01
-$ fprintf( stderr, "\n\nTEST CASE 1 (Lapack Band solver)\n");
 Solver 1 :: Linear System Solver = Direct
 Solver 1 :: Linear System Direct Method = Banded
 
 Boundary Condition 1 :: Wave Flux 1 = 1
 RUN
-$ fprintf( stderr, "END TEST CASE 1: Target NRM=0.128318193425E-01\n" );
 
 
 Solver 1 :: Reference Norm = Real 0.256636386851E-01
-$ fprintf( stderr, "\n\nTEST CASE 2 (UMFPack Sparse LU)\n");
 Solver 1 :: Linear System Solver = Direct
 Solver 1 :: Linear System Direct Method = UMFPack
 
 Boundary Condition 1 :: Wave Flux 1 = 2
 RUN
-$ fprintf( stderr, "END TEST CASE 2: Target NRM=0.256636386851E-01\n" );
 
 
 Solver 1 :: Reference Norm = Real 0.641590967148E-01
-$ fprintf( stderr, "\n\nTEST CASE 3 (CG)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = CG
 
 Boundary Condition 1 :: Wave Flux 1 = 5
 RUN
-$ fprintf( stderr, "END TEST CASE 3: Target NRM=0.641590967148E-01\n" );
 
 
 Solver 1 :: Reference Norm = Real 0.769909160662E-01
-$ fprintf( stderr, "\n\nTEST CASE 4 (CGS)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = CGS
 
 Boundary Condition 1 :: Wave Flux 1 = 6
 RUN
-$ fprintf( stderr, "END TEST CASE 4: Target NRM=0.769909160662E-01\n" );
 
 
 Solver 1 :: Reference Norm = Real 0.898227353788E-01
-$ fprintf( stderr, "\n\nTEST CASE 5 (QMR)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = QMR
 
 Boundary Condition 1 :: Wave Flux 1 = 7
 RUN
-$ fprintf( stderr, "END TEST CASE 5: Target NRM=0.898227353788E-01\n" );
 
 
 Solver 1 :: Reference Norm = Real 0.102654554732
-$ fprintf( stderr, "\n\nTEST CASE 6 (TFQMR)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = TFQMR
 
 Boundary Condition 1 :: Wave Flux 1 = 8
 RUN
-$ fprintf( stderr, "END TEST CASE 6: Target NRM=0.102654554732\n" );
 
 
 Solver 1 :: Reference Norm = Real 0.115486374077
-$ fprintf( stderr, "\n\nTEST CASE 7 (GMRES)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = GMRES
 
 Boundary Condition 1 :: Wave Flux 1 = 9
 RUN
-$ fprintf( stderr, "END TEST CASE 7: Target NRM=0.115486374077\n" );
 
 
 Solver 1 :: Reference Norm = Real 0.128318193405
-$ fprintf( stderr, "\n\nTEST CASE 8 (BiCStab)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = BiCGStab
 
 Boundary Condition 1 :: Wave Flux 1 = 10
 RUN
-$ fprintf( stderr, "END TEST CASE 8: Target NRM=0.128318193405\n" );
 
 
 Solver 1 :: Reference Norm = Real 0.141150012766
-$ fprintf( stderr, "\n\nTEST CASE 9 (BiCStab2)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = BiCGStab2
 
 Boundary Condition 1 :: Wave Flux 1 = 11
 RUN
-$ fprintf( stderr, "END TEST CASE 9: Target NRM=0.141150012766\n" );
 
 
 Solver 1 :: Reference Norm = Real 0.15398183
-$ fprintf( stderr, "\n\nTEST CASE 10 (BiCGStabL)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = BiCGStabL
 Boundary Condition 1 :: Wave Flux 1 = 12
 RUN
-$fprintf( stderr, "END TEST CASE 10: Target NRM=0.15398183\n");
 
+Solver 1 :: Reference Norm = Real 1.66813651E-01
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = idrs
+Boundary Condition 1 :: Wave Flux 1 = 13
+RUN
 
 !End Of File

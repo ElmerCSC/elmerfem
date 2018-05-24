@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
 
   Coordinate System = Cartesian
   Simulation Type = Steady
@@ -155,7 +155,7 @@ Material 4
     Real MATC "mag*mx(tx(1) tx(0))"
 End
 
-Equation 1 :: Active Solvers(2) = 2 3
+Equation 1 :: Active Solvers(3) = 2 3 5
 
 ! Roottorin pyöritys joka aika-askeleen aluksi
 Solver 1
@@ -198,10 +198,9 @@ Solver 2
   Nonlinear System Convergence Without Constraints = Logical True
 End
 
-
 ! Lasketaan magneetivuontiheys vektoripotentiaalista
 Solver 3
-  Exec Solver = never ! After all
+  !Exec Solver = never ! After all
   Equation = ComputeB
 
   Potential Variable="A"
@@ -213,14 +212,36 @@ Solver 3
   Linear System Max Iterations = 100
   Linear System Preconditioning = ILU
   Linear System Convergence Tolerance = 1.0e-8
+  Calculate Magnetic Flux = true
+  Calculate Nodal Forces = True
+  calculate elemental fields = true
+End
+
+! Tallenna tulokset .vtu tiedostoon
+Solver 4
+  exec solver = "never"
+  Equation = "Result Output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Save Geometry IDs = Logical True
+  discontinuous bodies = logical true
+  Output File Name = "konesec"
+  Output Format = vtu
 End
 
 ! Tallennetaan jännitteet ja vääntömomentti
-Solver 4
-  Exec Solver = never
+Solver 5
+  !Exec Solver = never
   Procedure = "SaveData" "SaveScalars"
   Filename = "l.dat"
+  save component results = true
+  show norm index = integer 12
 End
+
+component 1
+  name = "stator"
+  master bodies(4) = 4 6 7 8
+  calculate magnetic torque = true
+end
 
 ! Liikkuva reuna
 Boundary Condition 1
@@ -266,5 +287,6 @@ End
 Boundary Condition 6:: Target Boundaries(1) = 6
 
 Solver 2 :: Reference Norm = Real 2.053797E-02
+!solver 5 :: Reference Norm = real 2.089979005245E+001
 
 !End Of File

@@ -119,17 +119,17 @@ CONTAINS
      END IF
 
      CALL MPI_BSEND( n, 1, MPI_INTEGER, &
-          proc, tag, MPI_COMM_WORLD, ierr )
+          proc, tag, ELMER_COMM_WORLD, ierr )
 
      IF (n>0) THEN
        IF (PRESENT(buf)) THEN
          CALL MPI_BSEND( buf, n, MPI_DOUBLE_PRECISION, &
-            proc, tag+1, MPI_COMM_WORLD, ierr )
+            proc, tag+1, ELMER_COMM_WORLD, ierr )
        END IF
 
        IF (PRESENT(ifg)) THEN
          CALL MPI_BSEND( ifg, n, MPI_INTEGER, &
-           proc, tag+2, MPI_COMM_WORLD, ierr )
+           proc, tag+2, ELMER_COMM_WORLD, ierr )
        END IF
      END IF
 !------------------------------------------------------------------------------
@@ -151,13 +151,13 @@ CONTAINS
      INTEGER :: status(MPI_STATUS_SIZE)=0, ierr=0
 !------------------------------------------------------------------------------
      CALL MPI_RECV( n, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-           tag, MPI_COMM_WORLD, status, ierr )
+           tag, ELMER_COMM_WORLD, status, ierr )
      proc = status(MPI_SOURCE)
 
      IF (n>0) THEN
        IF (PRESENT(buf)) THEN
          CALL MPI_RECV( buf, n, MPI_DOUBLE_PRECISION, proc, &
-             tag+1, MPI_COMM_WORLD, status, ierr )
+             tag+1, ELMER_COMM_WORLD, status, ierr )
        END IF
 
        IF (PRESENT(ifg)) THEN
@@ -166,7 +166,7 @@ CONTAINS
          END IF
          IF ( .NOT. ALLOCATED(ifg)) ALLOCATE(ifg(n))
          CALL MPI_RECV( ifg, n, MPI_INTEGER, proc, &
-             tag+2, MPI_COMM_WORLD, status, ierr )
+             tag+2, ELMER_COMM_WORLD, status, ierr )
        END IF
      END IF
 !------------------------------------------------------------------------------
@@ -625,7 +625,7 @@ CONTAINS
   !------------------------------------------------------------------------------
   !> Extract interface values from partition vector b; send and
   !> receive  to/from neighbours.  Only 'owned' interface dofs
-  !> placed to result vector f. At intialization also assemble
+  !> placed to result vector f. At initialization also assemble
   !> the 'B' connectivity matrix. In effect f=Bb;
   !------------------------------------------------------------------------------
   FUNCTION FetiSendRecvIf(A,f,b,g,l_i) RESULT(nLC)
@@ -702,7 +702,7 @@ CONTAINS
       ALLOCATE( gdofs(nLC), ldofs(nLC), procs(nLC) )
       ldofs = [(i,i=1,nLC)];
 
-      ! Extract send & receive dof tags; Allocate, intialize
+      ! Extract send & receive dof tags; Allocate, initialize
       ! and assemble the  'B' connectivity matrix:
       ! -----------------------------------------------------
 
@@ -1761,7 +1761,7 @@ END SUBROUTINE FetiProject
     snd=0
     snd(me)=A % NumberOfRows
     CALL MPI_ALLREDUCE( snd,asize,Parenv % PEs,MPI_INTEGER,MPI_MAX,&
-                              MPI_COMM_WORLD,ierr)
+                              ELMER_COMM_WORLD,ierr)
     abeg = SUM(asize(0:me-1))
 
     OPEN(1,file='f' // i2s(Parenv % MyPE))
@@ -1835,13 +1835,13 @@ END SUBROUTINE FetiProject
     snd=0
     snd(me)=A % NumberOfRows
     CALL MPI_ALLREDUCE( snd,asize,Parenv % PEs,MPI_INTEGER,MPI_MAX,&
-                              MPI_COMM_WORLD,ierr)
+                              ELMER_COMM_WORLD,ierr)
     abeg = SUM(asize(0:me-1))
 
     snd=0
     snd(me)=Bmat % NumberOFrows
     CALL MPI_ALLREDUCE( snd,bsize,ParEnv%PEs,MPI_INTEGER, &
-               MPI_MAX, MPI_COMM_WORLD,ierr)
+               MPI_MAX, ELMER_COMM_WORLD,ierr)
     bbeg=sum(bsize(0:me-1))
 
     ALLOCATE(cnt(0:parenv%pes-1))
@@ -1864,13 +1864,13 @@ END SUBROUTINE FetiProject
       IF(.NOT. ParEnv % ISneighbour(i)) CYCLE
         proc=i-1
       CALL MPI_BSEND( cnt(proc), 1, MPI_INTEGER, proc, &
-                800, MPI_COMM_WORLD, ierr )
+                800, ELMER_COMM_WORLD, ierr )
       IF(cnt(proc)>0) THEN
         CALL MPI_BSEND( gbuf(:,proc), cnt(proc), MPI_INTEGER, proc, &
-                  801, MPI_COMM_WORLD, ierr )
+                  801, ELMER_COMM_WORLD, ierr )
   
         CALL MPI_BSEND( ibuf(:,proc), cnt(proc), MPI_INTEGER, proc, &
-                  802, MPI_COMM_WORLD, ierr )
+                  802, ELMER_COMM_WORLD, ierr )
       END IF
     END DO
     CALL ParallelActiveBarrier()
@@ -1879,14 +1879,14 @@ END SUBROUTINE FetiProject
       IF(.NOT. ParEnv % IsNeighbour(i)) CYCLE
       proc=i-1
       CALL MPI_RECV( cnt(proc), 1, MPI_INTEGER, proc, &
-          800, MPI_COMM_WORLD, status, ierr )
+          800, ELMER_COMM_WORLD, status, ierr )
 
       IF(cnt(proc)>0) THEN
         CALL MPI_RECV( gbuf(:,proc), cnt(proc), MPI_INTEGER, proc, &
-                  801, MPI_COMM_WORLD, status, ierr )
+                  801, ELMER_COMM_WORLD, status, ierr )
 
         CALL MPI_RECV( ibuf(:,proc), cnt(proc), MPI_INTEGER, proc, &
-                  802, MPI_COMM_WORLD, status, ierr )
+                  802, ELMER_COMM_WORLD, status, ierr )
       END IF
     END DO
 

@@ -1,0 +1,9 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( shell_case2.sif shell_case2.sif COPYONLY)
+
+file(COPY ELMERSOLVER_STARTINFO p1mesh3 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(Shell_BenchmarkCase2_Quad LABELS shell)
+

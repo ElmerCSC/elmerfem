@@ -44,6 +44,10 @@
 #include "meshtype.h"
 #include <QMatrix4x4>
 
+#if WITH_QT5
+#define qreal float
+#endif
+
 class Helpers
 {
  public:

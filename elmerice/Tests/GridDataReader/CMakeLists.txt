@@ -1,0 +1,10 @@
+IF(WITH_GridDataReader)
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+CONFIGURE_FILE(case2d.sif case2d.sif COPYONLY)
+FILE(COPY ELMERSOLVER_STARTINFO README.txt MyFile.nc square.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMERICE_TEST(GridDataReader)
+ADD_ELMERICE_LABEL(GridDataReader elmerice-fast)
+ADD_ELMERICE_LABEL(GridDataReader netcdf)
+ENDIF()

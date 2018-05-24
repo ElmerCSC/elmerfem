@@ -45,6 +45,7 @@ MODULE ElementUtils
     USE DirectSolve
     USE Integration
     USE ListMatrix
+    USE ListMatrixArray
     USE BandMatrix
     USE Lists
     USE CRSMatrix
@@ -270,7 +271,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    END SUBROUTINE FreeMatrix
 !------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 !> Create a list matrix given the mesh, the active domains and the elementtype 
@@ -627,7 +627,439 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE MakeListMatrix
 !------------------------------------------------------------------------------
+  
+!------------------------------------------------------------------------------
+!> Create a list matrix array given the mesh, the active domains and the elementtype 
+!> related to the solver. The list matrix is flexible since it can account 
+!> for any entries. Also constraints and periodic BCs may give rise to entries
+!> in the list matrix topology. Multithreaded version using ListMatrixArray for
+!> matrix storage.
+!------------------------------------------------------------------------------
+  SUBROUTINE MakeListMatrixArray( Model,Solver,Mesh,List,Reorder, &
+        LocalNodes,Equation, DGSolver, GlobalBubbles, &
+        NodalDofsOnly, ProjectorDofs )
+!------------------------------------------------------------------------------
+    TYPE(Model_t)  :: Model
+    TYPE(Mesh_t)   :: Mesh
+    TYPE(Matrix_t) :: Matrix
+    TYPE(SOlver_t) :: Solver
+    TYPE(ListMatrixArray_t) :: List
+    INTEGER :: LocalNodes, InvPerm(LocalNodes)
+    INTEGER, OPTIONAL :: Reorder(:)
+    LOGICAL, OPTIONAL :: DGSolver
+    LOGICAL, OPTIONAL :: GlobalBubbles
+    LOGICAL, OPTIONAL :: NodalDofsOnly
+    LOGICAL, OPTIONAL :: ProjectorDofs
+    CHARACTER(LEN=*), OPTIONAL :: Equation
+!------------------------------------------------------------------------------
+    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This, istat, nthr
 
+    LOGICAL :: Flag, FoundDG, GB, Found, Radiation, DoProjectors
+
+    TYPE(Matrix_t), POINTER :: Projector
+
+    INTEGER :: IndexSize, NumberOfFactors
+    INTEGER, ALLOCATABLE :: Indexes(:), IndexReord(:), IPerm(:)
+
+    TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
+
+    TYPE(Matrix_t),POINTER :: PMatrix
+    TYPE(Element_t), POINTER :: Element,Elm, Edge1, Edge2, Face1, Face2, ElementsList(:)
+    TYPE(Graph_t), POINTER :: CurrentColourList
+    INTEGER :: CurrentColour, BoundaryColour, CurrentColourStart, &
+          CurrentColourEnd, NumberOfMeshColours
+    LOGICAL :: NeedLocking
+!------------------------------------------------------------------------------
+
+    CALL Info('MakeListMatrixArray','Creating list matrix',Level=14)
+
+    GB = .FALSE.
+    IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
+
+    ! No colouring equals a single colour
+    NumberOfMeshColours = 1
+    IF (ASSOCIATED(Solver % ColourIndexList)) THEN
+       NumberOfMeshColours = Solver % ColourIndexList % n
+       ! If boundary mesh exists, it has been coloured as well
+       IF (ASSOCIATED(Solver % BoundaryColourIndexList)) &
+            NumberOfMeshColours = NumberOfMeshColours + Solver % BoundaryColourIndexList % n
+    END IF
+
+    nthr=1
+    !$ nthr = omp_get_max_threads()
+    NeedLocking = (NumberOfMeshColours == 1) .AND. (nthr > 1)
+    CALL ListMatrixArray_Allocate(List, LocalNodes, Atomic=NeedLocking)
+    
+    BDOFs = Mesh % MaxBDOFs
+    EDOFs = Mesh % MaxEdgeDOFs
+    FDOFs = Mesh % MaxFaceDOFs
+    IF( PRESENT( NodalDofsOnly ) ) THEN
+      IF( NodalDofsOnly ) THEN
+        EDOFS = 0
+        FDOFS = 0
+      END IF
+    END IF
+
+    IF( PRESENT( ProjectorDofs ) ) THEN
+      DoProjectors = ProjectorDofs 
+    ELSE
+      DoProjectors = .TRUE.
+    END IF
+
+    IF( EDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Edges) ) THEN
+      CALL Warn('MakeListMatrixArray','Edge dofs requested but not edges exist in mesh!')
+      EDOFS = 0
+    END IF
+
+    IF( FDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Faces) ) THEN
+      CALL Warn('MakeListMatrixArray','Face dofs requested but not faces exist in mesh!')
+      FDOFS = 0
+    END IF
+
+    ! Create the permutation for the Discontinuous Galerkin solver 
+    !-------------------------------------------------------------------
+    FoundDG = .FALSE.
+    IF ( DGSolver ) THEN
+       IndexSize = 128
+       ALLOCATE( Indexes(IndexSize), STAT=istat )
+       IF( istat /= 0 ) THEN
+         CALL Fatal('MakeListMatrixArray','Allocation error for Indexes')
+       END IF
+
+       ! TODO: Add multithreading
+       DO t=1,Mesh % NumberOfEdges
+         n = 0
+         Elm => Mesh % Edges(t) % BoundaryInfo % Left
+         IF ( ASSOCIATED( Elm ) ) THEN
+             IF ( CheckElementEquation(Model,Elm,Equation) ) THEN
+                FoundDG = FoundDG .OR. Elm % DGDOFs > 0
+                DO j=1,Elm % DGDOFs
+                   n = n + 1
+                   Indexes(n) = Elm % DGIndexes(j)
+                END DO
+             END IF
+         END IF
+
+         Elm => Mesh % Edges(t) % BoundaryInfo %  Right
+         IF ( ASSOCIATED( Elm ) ) THEN
+             IF ( CheckElementEquation(Model,Elm,Equation) ) THEN
+                FoundDG = FoundDG .OR. Elm % DGDOFs > 0
+                DO j=1,Elm % DGDOFs
+                   n = n + 1
+                   Indexes(n) = Elm % DGIndexes(j)
+                END DO
+             END IF
+         END IF
+
+         DO i=1,n
+            k1 = Reorder(Indexes(i))
+            IF ( k1 <= 0 ) CYCLE
+            DO j=1,n
+              k2 = Reorder(Indexes(j))
+              IF ( k2 <= 0 ) CYCLE
+              
+              CALL ListMatrixArray_AddEntry(List, k1, k2)
+            END DO
+         END DO
+      END DO
+      DO t=1,Mesh % NumberOfFaces
+         n = 0
+         Elm => Mesh % Faces(t) % BoundaryInfo % Left
+         IF ( ASSOCIATED( Elm ) ) THEN
+             IF ( CheckElementEquation(Model,Elm,Equation) ) THEN
+                FoundDG = FoundDG .OR. Elm % DGDOFs > 0
+                DO j=1,Elm % DGDOFs
+                   n = n + 1
+                   Indexes(n) = Elm % DGIndexes(j)
+                END DO
+             END IF
+         END IF
+
+         Elm => Mesh % Faces(t) % BoundaryInfo %  Right
+         IF ( ASSOCIATED( Elm ) ) THEN
+             IF ( CheckElementEquation(Model,Elm,Equation) ) THEN
+                FoundDG = FoundDG .OR. Elm % DGDOFs > 0
+                DO j=1,Elm % DGDOFs
+                   n = n + 1
+                   Indexes(n) = Elm % DGIndexes(j)
+                END DO
+             END IF
+         END IF
+
+         DO i=1,n
+            k1 = Reorder(Indexes(i))
+            IF ( k1 <= 0 ) CYCLE
+            DO j=1,n
+              k2 = Reorder(Indexes(j))
+              IF ( k2 <= 0 ) CYCLE
+              
+              CALL ListMatrixArray_AddEntry(List, k1, k2)
+            END DO
+         END DO
+      END DO
+      DEALLOCATE(Indexes)
+    END IF
+
+    ! If this is not a GD solver then create permutation considering 
+    ! nodal, edge, face and bubble dofs. 
+    !-------------------------------------------------------------------
+    IF (.NOT. FoundDG) THEN
+      
+      !$OMP PARALLEL &
+      !$OMP SHARED(LocalNodes, List, ListNew, Equation, EDOFS, FDOFS, GB, &
+      !$OMP        Reorder, Model, Mesh, NumberOfMeshColours, CurrentColourStart, NeedLocking, &
+      !$OMP        CurrentColourEnd, CurrentColourList, ElementsList, Solver, BoundaryColour) &
+      !$OMP PRIVATE(Element, Indexes, istat, IndexSize, IndexReord, &
+      !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, LptrNew, Errors, &
+      !$OMP         CurrentColour) &
+      !$OMP DEFAULT(NONE)
+
+      IndexSize = 0
+
+      ! Loop over mesh colours
+      DO CurrentColour=1,NumberOfMeshColours
+
+         !$OMP SINGLE
+         ! Test if matrix is actually coloured or not
+         IF (NumberOfMeshColours == 1) THEN
+           CurrentColourList => NULL()
+           ElementsList => Mesh % Elements(1:Mesh % NumberOfBulkElements+Mesh % NumberOFBoundaryElements)
+           CurrentColourStart = 1
+           CurrentColourEnd = Mesh % NumberOfBulkElements+Mesh % NumberOFBoundaryElements
+         ELSE IF (CurrentColour <= Solver % ColourIndexList % n) THEN
+           CALL Info('MakeListMatrixArray','ListMatrix add colour: '//TRIM(I2S(CurrentColour)),Level=10)
+           CurrentColourList => Solver % ColourIndexList
+           ElementsList => Mesh % Elements(1:Mesh % NumberOfBulkElements)
+           CurrentColourStart = CurrentColourList % Ptr(CurrentColour)
+           CurrentColourEnd = CurrentColourList % Ptr(CurrentColour+1)-1
+         ELSE
+           BoundaryColour = CurrentColour-Solver % ColourIndexList % n
+           CALL Info('MakeListMatrixArray','ListMatrix add boundary colour: '//TRIM(I2S(BoundaryColour)),Level=10)
+
+           CurrentColourList => Solver % BoundaryColourIndexList
+           ! Boundary elements are stored after bulk elements in Mesh
+           ElementsList => Mesh % Elements(Mesh % NumberOfBulkElements+1:&
+                 Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)
+           CurrentColourStart = CurrentColourList % Ptr(BoundaryColour)
+           CurrentColourEnd = CurrentColourList % Ptr(BoundaryColour+1)-1
+         END IF
+         !$OMP END SINGLE
+         
+         !$OMP DO
+         DO t=CurrentColourStart,CurrentColourEnd
+            IF (ASSOCIATED(CurrentColourList)) THEN
+               Element => ElementsList(CurrentColourList % ind(t))
+            ELSE
+               Element => ElementsList(t)
+            END IF
+
+
+            IF ( PRESENT(Equation) ) THEN
+               IF ( .NOT. CheckElementEquation(Model,Element,Equation) ) CYCLE
+            END IF
+
+            n = Element % NDOFs 
+            IF( EDOFS > 0 ) n = n + Element % TYPE % NumberOfEdges * EDOFs 
+            IF( FDOFS > 0 ) n = n + Element % TYPE % NumberOfFaces * FDOFs
+            IF ( GB ) n = n + Element % BDOFs
+            
+            ! Reallocate index permutation if needed
+            IF ( n > IndexSize ) THEN
+               IF (ALLOCATED(Indexes)) DEALLOCATE(Indexes, IndexReord, IPerm)
+               
+               IndexSize = MAX(MAX(128, IndexSize*2), n)
+               ALLOCATE(Indexes(IndexSize), &
+                    IndexReord(IndexSize), &
+                    IPerm(IndexSize), STAT=istat )
+               IF( istat /= 0 ) THEN
+                  CALL Fatal('MakeListMatrixArray','Allocation error for Indexes of size: '//TRIM(I2S(n)))
+               END IF
+            END IF
+            
+            n = 0
+            DO i=1,Element % NDOFs
+               n = n + 1
+               Indexes(n) = Element % NodeIndexes(i)
+            END DO
+            
+            IF ( EDOFs > 0 ) THEN
+               IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
+                  DO j=1,Element % TYPE % NumberOFEdges
+                     DO i=1, Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
+                        n = n + 1
+                        Indexes(n) = EDOFs * (Element % EdgeIndexes(j)-1) + i &
+                             + Mesh % NumberOfNodes
+                     END DO
+                  END DO
+               END IF
+            END IF
+            
+            IF ( FDOFS > 0 ) THEN
+               IF ( ASSOCIATED(Element % FaceIndexes) ) THEN
+                  DO j=1,Element % TYPE % NumberOFFaces
+                     DO i=1, Mesh % Faces(Element % FaceIndexes(j)) % BDOFs
+                        n = n + 1
+                        Indexes(n) = FDOFs*(Element % FaceIndexes(j)-1) + i + &
+                             Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
+                     END DO
+                  END DO
+               END IF
+            END IF
+            
+            IF ( GB .AND. ASSOCIATED(Element % BubbleIndexes) ) THEN
+               DO i=1,Element % BDOFs
+                  n = n + 1
+                  Indexes(n) = FDOFs*Mesh % NumberOfFaces + &
+                       Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
+                       Element % BubbleIndexes(i)
+               END DO
+            END IF
+
+            nReord=0
+            DO i=1,n
+               IF (Reorder(Indexes(i)) > 0) THEN
+                  nReord=nReord+1
+                  IndexReord(nReord)=Reorder(Indexes(i))
+               END IF
+            END DO
+            CALL InsertionSort(nReord, IndexReord, IPerm)
+
+            DO i=1,nReord
+               k1 = IndexReord(IPerm(i))
+             
+               ! Bulk add all sorted nonzero indices to a matrix row in one go
+               CALL ListMatrixArray_AddEntries(List, k1, nReord, IndexReord, IPerm, NeedLocking)
+            END DO
+         END DO
+         !$OMP END DO
+      END DO ! Loop over mesh colours
+
+      IF (ALLOCATED(Indexes)) DEALLOCATE(Indexes, IndexReord, IPerm)
+      !$OMP END PARALLEL
+
+!
+!     Diffuse gray radiation condition:
+!     ---------------------------------
+      Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
+      IF ( .NOT. Found .AND. PRESENT(Equation) ) &
+        Radiation = Radiation .OR. (Equation == 'heat equation')
+
+      IF ( Radiation ) THEN
+        DO i = Mesh % NumberOfBulkElements+1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+          Element => Mesh % Elements(i)
+          IF ( ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) THEN
+             DO j=1,Element % TYPE % NumberOfNodes
+                k1 = Reorder(Element % NodeIndexes(j))
+
+                NumberOfFactors = Element % BoundaryInfo % &
+                  GebhardtFactors % NumberOfImplicitFactors
+
+                DO n=1,NumberOfFactors
+
+                  Elm => Mesh % Elements( Element % BoundaryInfo % &
+                              GebhardtFactors % Elements(n) )
+
+                  DO k=1,Elm % TYPE % NumberOfNodes
+                     k2 = Reorder( Elm % NodeIndexes(k) )
+                     CALL ListMatrixArray_AddEntry(List, k1, k2)
+                  END DO
+                END DO
+             END DO
+          END IF
+        END DO
+      END IF
+
+      ! TODO: Add multithreading
+      DO i=Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements+ &
+                     Mesh % NumberOfBoundaryElements
+        IF ( Mesh % Elements(i) % TYPE % ElementCode <  102 .OR. &
+             Mesh % Elements(i) % TYPE % ElementCode >= 200 ) CYCLE
+
+        k1 = Reorder( Mesh % Elements(i) % NodeIndexes(1) )
+        IF ( k1 > 0 ) THEN
+          DO k=1,Mesh % Elements(i) % TYPE % NumberOFNodes
+            k2 = Reorder( Mesh % Elements(i) % NodeIndexes(k) )
+            IF ( k2 > 0 ) THEN
+              CALL ListMatrixArray_AddEntry(List, k1, k2)
+              CALL ListMatrixArray_AddEntry(List, k2, k1)
+            END IF
+          END DO
+        END IF
+
+        ! This is a connection element, make a matrix connection for that 
+        IF ( Mesh % Elements(i) % TYPE % ElementCode == 102 ) THEN
+          k2 = Reorder( Mesh % Elements(i) % NodeIndexes(2) )
+          IF ( k2 > 0 ) CALL ListMatrixArray_AddEntry(List, k2, k2)
+        END IF
+      END DO
+
+
+      ! Add connection from projectors. These are only needed if the projector is treated
+      ! implicely. For explicit projectors or when using Lagrange coefficients the 
+      ! connections are not needed. 
+      !----------------------------------------------------------------------------------
+      IF( DoProjectors ) THEN
+        DO This=1,Model % NumberOfBCs
+          Projector => Model % BCs(This) % PMatrix
+          IF ( .NOT. ASSOCIATED(Projector) ) CYCLE
+
+          IF( ListGetLogical( Model % BCs(This) % Values,&
+              'Periodic BC Explicit',Found)) CYCLE
+          IF( ListGetLogical( Model % BCs(This) % Values,&
+              'Periodic BC Use Lagrange Coefficient',Found)) CYCLE
+
+          CALL Info('MakeListMatrixArray','Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
+
+          ! TODO: Add multithreading
+          DO i=1,Projector % NumberOfRows
+            k = Reorder( Projector % InvPerm(i) )
+            IF ( k > 0 ) THEN
+              DO l=Projector % Rows(i),Projector % Rows(i+1)-1
+                IF ( Projector % Cols(l) <= 0 ) CYCLE
+                m = Reorder( Projector % Cols(l) )
+                IF ( m > 0 ) THEN
+                  CALL ListMatrixArray_AddEntry(List, k, m)
+                  CALL ListMatrixArray_AddEntry(List, m, k)
+                  CList => List % Rows(k) % Head
+                  DO WHILE( ASSOCIATED( CList ) )
+                    CALL ListMatrixArray_AddEntry(List, m, CList % Index)
+                    CALL ListMatrixArray_AddEntry(List, CList % Index, m)
+                    CList => CList % Next
+                  END DO
+                END IF
+              END DO
+            END IF
+          END DO
+        END DO
+      END IF ! DoProjectors
+
+    END IF ! (.NOT. FoundDG)
+
+
+    k = 0
+    DO i=1,SIZE(Reorder)
+      IF (Reorder(i)>0) THEN
+        k = k + 1
+        InvPerm(Reorder(i)) = k
+      END IF
+    END DO
+
+    Model % TotalMatrixElements = 0
+    Model % Rownonzeros = 0
+    ! TODO: Add multithreading
+    DO i=1,LocalNodes
+       Model % RowNonzeros(InvPerm(i)) = List % Rows(i) % Degree
+       Model % TotalMatrixElements =  &
+           Model % TotalMatrixElements + List % Rows(i) % Degree
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE MakeListMatrixArray
+!------------------------------------------------------------------------------
+
+  
 
 !------------------------------------------------------------------------------
 !>    Initialize a CRS format matrix to the effect that it will be ready to
@@ -644,11 +1076,15 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(ListMatrixEntry_t), POINTER :: Clist
     INTEGER :: i,j,k,l,m,k1,k2
-    INTEGER, POINTER :: Rows(:), Cols(:)
+    INTEGER, POINTER CONTIG :: Rows(:), Cols(:)
 !------------------------------------------------------------------------------
 
-	Rows => Matrix % Rows
-	Cols => Matrix % Cols
+    Rows => Matrix % Rows
+    Cols => Matrix % Cols
+
+    !$OMP PARALLEL DO SHARED(Rows, Cols, List, n, DOFs, Reorder, InvInitialReorder) &
+    !$OMP PRIVATE(CList, l, j, k1, k2, k, m) &
+    !$OMP DEFAULT(NONE)
     DO i=1,n
       DO l=1,DOFs
         CList => List(i) % Head
@@ -666,6 +1102,7 @@ CONTAINS
         END DO
       END DO
     END DO
+    !$OMP END PARALLEL DO
 
     IF ( Matrix % FORMAT == MATRIX_CRS ) CALL CRS_SortMatrix( Matrix )
 !------------------------------------------------------------------------------
@@ -709,8 +1146,9 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION CreateMatrix( Model, Solver, Mesh, Perm, DOFs, MatrixFormat, &
           OptimizeBW, Equation, DGSolver, GlobalBubbles, &
-          NodalDofsOnly, ProjectorDofs ) RESULT(Matrix)
+          NodalDofsOnly, ProjectorDofs, ThreadedStartup ) RESULT(Matrix)
 !------------------------------------------------------------------------------
+     IMPLICIT NONE
      TYPE(Model_t) :: Model
      TYPE(Mesh_t) :: Mesh
      TYPE(Solver_t), TARGET :: Solver
@@ -718,22 +1156,27 @@ CONTAINS
      INTEGER, TARGET :: Perm(:)
      LOGICAL :: OptimizeBW
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
-     LOGICAL, OPTIONAL :: NodalDofsOnly, ProjectorDofs 
+     LOGICAL, OPTIONAL :: NodalDofsOnly, ProjectorDofs
+     LOGICAL, OPTIONAL :: ThreadedStartup
 
      CHARACTER(LEN=*), OPTIONAL :: Equation
 
      TYPE(Matrix_t),POINTER :: Matrix
 !------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: ListMatrix(:)
+     TYPE(ListMatrixArray_t) :: ListMatrixArray
      TYPE(Matrix_t), POINTER :: A
      TYPE(Element_t), POINTER :: Element
      TYPE(ListMatrixEntry_t), POINTER :: CList
      CHARACTER(LEN=MAX_NAME_LEN) :: Eq, str
      LOGICAL :: GotIt, DG, GB, UseOptimized, Found
-     INTEGER i,j,k,l,k1,t,n, p,m, EDOFs, FDOFs, BDOFs, cols, istat
+     INTEGER i,j,k,l,k1,t,n, p,m, minEdgeDOFs, maxEdgeDOFs, &
+           minFaceDOFs, maxFaceDOFs, BDOFs, cols, istat
      INTEGER, POINTER :: Ivals(:)
      INTEGER, ALLOCATABLE :: InvInitialReorder(:)
-
+     INTEGER :: nthr
+     LOGICAL :: UseThreads
+     
 !------------------------------------------------------------------------------
 
      NULLIFY( Matrix )
@@ -744,24 +1187,64 @@ CONTAINS
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) )  GB=GlobalBubbles
 
-     EDOFs = 0
-     DO i=1,Mesh % NumberOfEdges
-        EDOFs = MAX( EDOFs, Mesh % Edges(i) % BDOFs )
-     END DO
-     Mesh % MaxEdgeDOFs = EDOFs
+     UseThreads = .FALSE.
+     nthr = 1
+     IF ( PRESENT(ThreadedStartup) ) THEN
+#ifdef _OPENMP
+       IF (ThreadedStartup) THEN
+          UseThreads = .TRUE.
+          nthr = omp_get_max_threads()
+       END IF
+#endif
+     END IF
 
-     FDOFs = 0
-     DO i=1,Mesh % NumberOfFaces
-        FDOFs = MAX( FDOFs, Mesh % Faces(i) % BDOFs )
-     END DO
-     Mesh % MaxFaceDOFs = FDOFs
-
+     minEdgeDOFs = HUGE(minEdgeDOFs)
+     maxEdgeDOFs = 0
+     minFaceDOFs = HUGE(minFaceDOFs)
+     maxFaceDOFs = 0
      BDOFs = 0
+
+     !$OMP PARALLEL SHARED(Mesh) &
+     !$OMP          REDUCTION(min:minEdgeDOFs) REDUCTION(max:maxEdgeDOFs) &
+     !$OMP          REDUCTION(min:minFaceDOFs) REDUCTION(max:maxFaceDOFs) &
+     !$OMP          REDUCTION(max:BDOFs) &
+     !$OMP          DEFAULT(NONE) NUM_THREADS(nthr)
+     
+     !$OMP DO 
+     DO i=1,Mesh % NumberOfEdges
+        minEdgeDOFs = MIN( minEdgeDOFs, Mesh % Edges(i) % BDOFs )
+        maxEdgeDOFs = MAX( maxEdgeDOFs, Mesh % Edges(i) % BDOFs )
+     END DO
+     !$OMP END DO NOWAIT
+     !$OMP DO
+     DO i=1,Mesh % NumberOfFaces
+        minFaceDOFs = MIN( minFaceDOFs, Mesh % Faces(i) % BDOFs )
+        maxFaceDOFs = MAX( maxFaceDOFs, Mesh % Faces(i) % BDOFs )
+     END DO
+     !$OMP END DO NOWAIT
+     !$OMP DO
      DO i=1,Mesh % NumberOfBulkElements
         BDOFs = MAX( BDOFs, Mesh % Elements(i) % BDOFs )
      END DO
-     Mesh % MaxBDOFs = BDOFs
+     !$OMP END DO NOWAIT
+     !$OMP END PARALLEL
+     
+     Mesh % MaxEdgeDOFs = maxEdgeDOFs
+     IF(minEdgeDOFs <= maxEdgeDOFs ) THEN
+       Mesh % MinEdgeDOFs = minEdgeDOFs
+     ELSE
+       Mesh % MinEdgeDOFs = maxEdgeDOFs
+     END IF
 
+     Mesh % MaxFaceDOFs = maxFaceDOFs
+     IF(minFaceDOFs <= maxFaceDOFs ) THEN
+       Mesh % MinFaceDOFs = minFaceDOFs
+     ELSE
+       Mesh % MinFaceDOFs = maxFaceDOFs
+     END IF
+     
+     Mesh % MaxBDOFs = BDOFs
+     
      IF ( PRESENT( Equation ) ) n = StringToLowerCase( Eq,Equation )
 
      Perm = 0
@@ -832,46 +1315,77 @@ CONTAINS
        CALL Fatal('CreateMatrix','Allocation error for RowNonZeros of size: '//TRIM(I2S(k)))
      END IF
     
-
      Model % RowNonzeros=0
-     NULLIFY( ListMatrix )
+    
+     IF (UseThreads) THEN
+       CALL Info('CreateMatrix','Creating list matrix array for equation',Level=14)
+       IF ( PRESENT(Equation) ) THEN
+         CALL MakeListMatrixArray( Model, Solver, Mesh, ListMatrixArray, Perm, k, Eq, DG, GB,&
+               NodalDofsOnly, ProjectorDofs )
+         n = OptimizeBandwidth( ListMatrixArray % Rows, Perm, InvInitialReorder, &
+               k, OptimizeBW, UseOptimized, Eq )
+       ELSE
+         CALL MakeListMatrixArray( Model, Solver, Mesh, ListMatrixArray, Perm, k, &
+               DGSolver=DG, GlobalBubbles=GB, NodalDofsOnly=NodalDofsOnly, &
+               ProjectorDofs=ProjectorDofs )
+         n = OptimizeBandwidth( ListMatrixArray % Rows, Perm, InvInitialReorder, &
+               k, OptimizeBW,UseOptimized, ' ' )
+       END IF
+       
+       !------------------------------------------------------------------------------
+       ! Initialize the matrix. Multithreading only supports CRS.
+       !------------------------------------------------------------------------------
+       CALL Info('CreateMatrix','Initializing list matrix array for equation',Level=14)
+       IF ( MatrixFormat == MATRIX_CRS) THEN
+         Matrix => CRS_CreateMatrix( DOFs*k, &
+               Model % TotalMatrixElements,Model % RowNonzeros,DOFs,Perm,.TRUE. )
+         Matrix % FORMAT = MatrixFormat
+         CALL InitializeMatrix( Matrix, k, ListMatrixArray % Rows, &
+                 Perm, InvInitialReorder, DOFs )
+       ELSE
+         CALL Fatal('CreateMatrix','Multithreaded startup only supports CRS matrix format')
+       END IF
+       
+       CALL Info('CreateMatrix','Matrix created',Level=14)
 
-     CALL Info('CreateMatrix','Creating list matrix for equation',Level=14)
-     IF ( PRESENT(Equation) ) THEN
-        CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
-            NodalDofsOnly, ProjectorDofs )
-        n = OptimizeBandwidth( ListMatrix, Perm, InvInitialReorder, &
-                   k, OptimizeBW, UseOptimized, Eq )
-     ELSE 
-        CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, &
-                DGSolver=DG, GlobalBubbles=GB, NodalDofsOnly=NodalDofsOnly, &
-                ProjectorDofs=ProjectorDofs)
-        n = OptimizeBandwidth( ListMatrix, Perm, InvInitialReorder, &
-                      k, OptimizeBW,UseOptimized, ' ' )
-     ENDIF
-
-!------------------------------------------------------------------------------
-!    Ok, create and initialize the matrix
-!------------------------------------------------------------------------------
-     CALL Info('CreateMatrix','Initializing list matrix for equation',Level=14)
-     SELECT CASE( MatrixFormat )
+       CALL ListMatrixArray_Free( ListMatrixArray )       
+     ELSE
+       NULLIFY( ListMatrix )
+       CALL Info('CreateMatrix','Creating list matrix for equation',Level=14)
+       IF ( PRESENT(Equation) ) THEN
+         CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
+               NodalDofsOnly, ProjectorDofs )
+         n = OptimizeBandwidth( ListMatrix, Perm, InvInitialReorder, &
+               k, OptimizeBW, UseOptimized, Eq )
+       ELSE
+         CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, &
+               DGSolver=DG, GlobalBubbles=GB, NodalDofsOnly=NodalDofsOnly, &
+               ProjectorDofs=ProjectorDofs )
+         n = OptimizeBandwidth( ListMatrix, Perm, InvInitialReorder, &
+               k, OptimizeBW,UseOptimized, ' ' )
+       END IF
+       !------------------------------------------------------------------------------
+       ! Initialize the matrix. 
+       !------------------------------------------------------------------------------
+       CALL Info('CreateMatrix','Initializing list matrix for equation',Level=14)
+       SELECT CASE( MatrixFormat )
        CASE( MATRIX_CRS )
          Matrix => CRS_CreateMatrix( DOFs*k, &
-             Model % TotalMatrixElements,Model % RowNonzeros,DOFs,Perm,.TRUE. )
+               Model % TotalMatrixElements,Model % RowNonzeros,DOFs,Perm,.TRUE. )
          Matrix % FORMAT = MatrixFormat
          CALL InitializeMatrix( Matrix, k, ListMatrix, &
                Perm, InvInitialReorder, DOFs )
-
        CASE( MATRIX_BAND )
          Matrix => Band_CreateMatrix( DOFs*k, DOFs*n,.FALSE.,.TRUE. )
-
+         
        CASE( MATRIX_SBAND )
          Matrix => Band_CreateMatrix( DOFs*k, DOFs*n,.TRUE.,.TRUE. )
-     END SELECT
-     CALL Info('CreateMatrix','Matrix created finally',Level=14)
+       END SELECT
+       CALL Info('CreateMatrix','Matrix created',Level=14)
 
-     CALL List_FreeMatrix( k, ListMatrix )
-
+       CALL List_FreeMatrix( k, ListMatrix )
+     END IF
+     
      NULLIFY( Matrix % MassValues, Matrix % DampValues, Matrix % Force, Matrix % RHS_im )
 !------------------------------------------------------------------------------
      Matrix % Solver => Solver
@@ -1004,11 +1518,10 @@ CONTAINS
      Matrix => AllocateMatrix()
      Matrix % FORMAT = MATRIX_LIST
      
-     ! This is basically a stupid way to initialize but we have a very little matrix...
+     ! Initialize matrix indices
      DO i = 1, Dofs
        DO j = 1, Dofs
-         CALL List_AddToMatrixElement(Matrix % ListMatrix, i, &
-             j, 0.0_dp ) 
+          CALL List_AddMatrixIndex(Matrix % ListMatrix, i, j) 
        END DO
      END DO
 
@@ -1024,7 +1537,7 @@ CONTAINS
      Matrix % DGMatrix = .FALSE.
      Matrix % Subband = DOFs
      Matrix % COMPLEX = .FALSE.
-     Matrix % FORMAT  = MatrixFormat
+     ! Matrix % FORMAT  = MatrixFormat
 
 !------------------------------------------------------------------------------
    END FUNCTION CreateOdeMatrix

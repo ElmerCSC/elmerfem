@@ -1,0 +1,197 @@
+! A simple 3D steady-state hybrid mapping
+! a) Map 2D plane using MeshUpdateSolver
+! b) Move and map 1D chains using StructuredMeshMapper
+!
+! P.R. / 27.12.2016
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Cube"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Bottom"
+  Equation = 2
+  Material = 1
+End
+
+
+Equation 1
+  Name = "3D solvers"
+  Active Solvers(2) = 2 3
+End
+
+Equation 2
+  Name = "2D solvers" 
+  Active Solvers(1) = 1
+End 
+
+
+
+Solver 1
+  Equation = MeshSolver
+
+  Procedure = "MeshSolve" "MeshSolver"
+  Variable = "Lateral Mesh Update[Lateral Mesh Update:2]" 
+
+  Linear System Solver = Iterative
+
+  Linear System Iterative Method = BiCGStabL
+  Linear System Preconditioning = none
+  !ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Residual Output = 50
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+! This eliminates the displacing of the mesh that is done by default
+  Skip Displace Mesh = Logical True
+End
+
+
+
+Solver 2
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+
+! Add base displacement to each column displacement
+  Base Displacement Variable = String "Lateral Mesh Update"  
+
+! Which is the order. Base first, or structure first (default)? 
+!  Base Displacement First = Logical True
+End
+
+
+
+Solver 3
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 4
+  Equation = SaveScalars
+  Exec Solver = After all
+
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = f.dat
+
+  Variable 1 = Temperature
+  Operator 1 = min
+  Operator 2 = max
+End
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1
+  Heat Capacity = 1000
+  Heat Conductivity  = 1.0
+  Youngs Modulus = 1.0
+  Poisson Ratio = 0.3
+End
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 1.0
+End 
+
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Name = "South"
+
+  Lateral Mesh Update 2 = Real 0.0
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Name = "Right"
+
+  Lateral Mesh Update 1 = Variable "Coordinate 2"
+    Real MATC "0.5+0.5*tx"
+  Lateral Mesh Update 2 = Real 0.0
+End
+
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Name = "North"
+
+  Lateral Mesh Update 2 = Real 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+  Name = "Left"
+
+  Lateral Mesh Update 1 = Real 0.0
+  Lateral Mesh Update 2 = Real 0.0
+End
+
+
+Boundary Condition 5
+  Target Boundaries = 5
+  Name = "Down"
+
+  Body Id = 2
+  Temperature = 0.0
+  Bottom Surface = Real 0.0 
+End
+
+Boundary Condition 6
+  Target Boundaries = 6
+  Name = "Top"
+  Temperature = 0.0
+  Top Surface = Variable "Coordinate 2"
+    Real MATC "1.0+0.2*tx"
+End
+
+
+Solver 3 :: Reference Norm = 1.05122984E-01

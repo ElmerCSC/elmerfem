@@ -502,6 +502,8 @@
 
         HUTI_TOLERANCE = 1.0d-10
 
+        HUTI_MAXTOLERANCE = 1.0d20
+        
         mvProc   = AddrFunc( Matvec )
         iterProc = AddrFunc(HUTI_D_CGS)
         CALL iterCall( iterProc,x,b,ipar,dpar,work,mvProc, &

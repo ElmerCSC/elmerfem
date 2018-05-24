@@ -12,7 +12,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian 2D
   Simulation Type = Steady
   Steady State Max Iterations = 1
@@ -69,7 +69,7 @@ Boundary Condition 2
 
 ! When using periodicity in nonconforming meshes the translate and
 ! scale vectors may be trivially given to be on the safe side
-! allthough the automatic definition seems to work as well.
+! although the automatic definition seems to work as well.
   Periodic BC Translate(3) =  0 0 0
   Periodic BC Scale(3) = 1 1 1 
   Periodic BC Temperature = Logical True
@@ -87,6 +87,4 @@ Boundary Condition 4
 End
 
 Solver 1 :: Reference Norm = Real 3.75473557189614573E-002
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=3.75473557189614573E-002\n");

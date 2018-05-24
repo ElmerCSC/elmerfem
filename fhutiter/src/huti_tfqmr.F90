@@ -283,6 +283,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+
     !
     ! And then the 2n case
     !
@@ -362,6 +367,11 @@ contains
        HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
+
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
 
     !
     ! Produce debugging output if desired
@@ -631,6 +641,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+
     !
     ! And then the 2n case
     !
@@ -710,6 +725,11 @@ contains
        HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
+
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
 
     !
     ! Produce debugging output if desired
@@ -979,6 +999,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+
     !
     ! And then the 2n case
     !
@@ -1058,6 +1083,11 @@ contains
        HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
+
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
 
     !
     ! Produce debugging output if desired
@@ -1327,6 +1357,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+
     !
     ! And then the 2n case
     !
@@ -1406,6 +1441,11 @@ contains
        HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
+
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
 
     !
     ! Produce debugging output if desired

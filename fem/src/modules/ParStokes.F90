@@ -67,6 +67,10 @@ SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
       CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
   IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Convergence Tolerance') ) &
       CALL ListAddConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-6)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Base Tolerance') ) &
+      CALL ListAddConstReal(SolverParams, 'Linear System Base Tolerance', 1.0d-3)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Relative Tolerance') ) &
+      CALL ListAddConstReal(SolverParams, 'Linear System Relative Tolerance', 1.0d-2)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE StokesSolver_Init0
@@ -344,8 +348,10 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
      CALL DefaultInitialize()
 
      IF (BlockPreconditioning) THEN
-       CALL InitializeToZero( AMatrix, AMatrix % RHS ) 
-       CALL InitializeToZero( PMatrix, PMatrix % RHS )        
+       !CALL InitializeToZero( AMatrix, AMatrix % RHS ) 
+       !CALL InitializeToZero( PMatrix, PMatrix % RHS )        
+       CALL DefaultInitialize(USolver=VelocitySolver)
+       CALL DefaultInitialize(USolver=PressureSolver)
      END IF
 
      !------------------------------------------------------------
@@ -368,6 +374,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         SkipPowerlaw = .FALSE.
      END IF
 
+     CALL StartAdvanceOutput( 'StokesSolver', 'Assembly:' )
      DO t=1,Active
         CALL AdvanceOutput(t, Active)        
 
@@ -717,7 +724,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         !------------------------------------------------------------------------------------------
         ! Test whether the nonlinear residual is small enough to terminate the nonlinear iteration
         !------------------------------------------------------------------------------------------
-        IF (Iter > 1) THEN
+        IF (Iter >= 1) THEN
            !--------------------------------------------------------------------------------------
            ! The rotated variables are used to compute the current residual.
            !--------------------------------------------------------------------------------------
@@ -764,7 +771,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            !---------------------------------------------------------------------------------------
            ! Adapt the linear system convergence tolerance in terms of the current nonlinear error
            !---------------------------------------------------------------------------------------
-           IF (Iter > 1 ) THEN
+           IF (Iter >= 1 ) THEN
               MinTolerance = RelTolerance * NonLinError
               IF (MinTolerance > BaseTolerance) MinTolerance = BaseTolerance
               IF (MinTolerance < TargetTol) MinTolerance = TargetTol
@@ -1276,7 +1283,7 @@ CONTAINS
           IF( ListCheckPresent( Material, 'Viscosity Model' ) ) THEN
              mu = EffectiveViscosity( ViscAtIP, RhoAtIp, Vx, Vy, Vz, &
                   Element, Nodes, n, n, IP % U(t), IP % V(t), &
-                  IP % W(t), muder0 )
+                  IP % W(t), muder0, LocalIP=t )
              ViscNewtonLin = Newton .AND. muder0/= 0.0d0
              IF ( ViscNewtonLin )  Strain = (Grad+TRANSPOSE(Grad))/2
           ELSE

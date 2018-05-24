@@ -105,7 +105,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag
 
   logical :: SquareFormulation
-  Logical ::  Firsttime=.true.,Found,stat,gotit,UnFoundFatal
+  Logical ::  Firsttime=.true.,Found,stat,gotit,UnFoundFatal=.TRUE.
 
 
   save Firsttime,DIM
@@ -177,6 +177,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   GradVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
   GradValues => GradVariable % Values
   GradPerm => GradVariable % Perm
+  GradValues=0._dp
   
   Variable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
   Values => Variable % Values
@@ -211,7 +212,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
      Uy(1:n)=VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(1:n))-1)+2)
      If (DIM.eq.3) Uz(1:n)=VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(1:n))-1)+3)
      
-     !!!!
+!!!!
      nodalViscosityb=0.0_dp
      
      IntegStuff = GaussPoints( Element )
@@ -221,6 +222,11 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
         u = IntegStuff % u(t)
         v = IntegStuff % v(t)
         w =IntegStuff % w(t)
+        
+        stat = ElementInfo( Element, ElementNodes, u, v, w,SqrtElementMetric, &
+             Basis, dBasisdx) !removed bubbles 
+        
+        s = SqrtElementMetric * IntegStuff % s(t)
 
         stat = ElementInfo( Element, ElementNodes, u, v, w,SqrtElementMetric, &
              Basis, dBasisdx) !removed bubbles 

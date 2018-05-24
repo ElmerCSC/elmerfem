@@ -46,7 +46,6 @@
 #include "nrutil.h"
 #include "femdef.h"
 #include "femtypes.h"
-#include "femsolve.h"
 #include "femmesh.h"
 #include "femknot.h"
 #include "feminfo.h"
@@ -273,7 +272,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->rotate = FALSE;
   eg->polar = FALSE;
   eg->cylinder = FALSE;
-  eg->usenames = FALSE;
+  eg->usenames = TRUE;
   eg->layers = 0;
   eg->layereps = 0.0;
   eg->layermove = 0;
@@ -281,6 +280,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->elements3d = 0;
   eg->nodes3d = 0;
   eg->metis = 0;
+  eg->metiscontig = FALSE;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
@@ -306,10 +306,12 @@ void InitParameters(struct ElmergridType *eg)
   eg->parthypre = FALSE;
   eg->partdual = FALSE;
   eg->partbcz = 0;
+  eg->partbcr = 0;
   eg->partbclayers = 1;
   eg->partbcmetis = 0;
   eg->partbw = FALSE;
   eg->saveboundaries = TRUE;
+  eg->vtuone = FALSE;
   eg->timeron = FALSE;
   eg->nosave = FALSE;
   eg->nooverwrite = FALSE;
@@ -457,7 +459,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->order = TRUE;
 	eg->corder[0] = atof(argv[arg+1]);
 	eg->corder[1] = atof(argv[arg+2]);
-	if(dim==3) eg->corder[2] = atof(argv[arg+3]);
+	eg->corder[2] = atof(argv[arg+3]);
       }
     }
 
@@ -474,7 +476,10 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-haloz") == 0) {
       eg->partitionhalo = 3;
     }
-     if(strcmp(argv[arg],"-indirect") == 0) {
+    if(strcmp(argv[arg],"-halor") == 0) {
+      eg->partitionhalo = 3;
+    }
+    if(strcmp(argv[arg],"-indirect") == 0) {
       eg->partitionindirect = TRUE;
     }
     if(strcmp(argv[arg],"-metisorder") == 0) {
@@ -492,7 +497,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->scale = TRUE;
 	eg->cscale[0] = atof(argv[arg+1]);
 	eg->cscale[1] = atof(argv[arg+2]);
-	if(dim==3) eg->cscale[2] = atof(argv[arg+3]);
+	eg->cscale[2] = atof(argv[arg+3]);
       }
     }
 
@@ -505,7 +510,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->translate = TRUE;
 	eg->ctranslate[0] = atof(argv[arg+1]);
 	eg->ctranslate[1] = atof(argv[arg+2]);
-	if(dim == 3) eg->ctranslate[2] = atof(argv[arg+3]);
+	eg->ctranslate[2] = atof(argv[arg+3]);
       }
     }
 
@@ -584,9 +589,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       printf("The meshes will be united.\n");
     }   
 
-    if(strcmp(argv[arg],"-names") == 0) {
-      eg->usenames = TRUE;
-      printf("Names will be conserved when possible\n");
+    if(strcmp(argv[arg],"-nonames") == 0) {
+      eg->usenames = FALSE;
+      printf("Names will be omitted even if they would exist\n");
     }   
 
     if(strcmp(argv[arg],"-removelowdim") == 0) {
@@ -651,7 +656,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-boundorder") == 0) {
       eg->boundorder = TRUE;
     }
-    if(strcmp(argv[arg],"-partition") == 0) {
+    if(strcmp(argv[arg],"-partition") == 0  ||
+       strcmp(argv[arg],"-partcell") == 0  || 
+       strcmp(argv[arg],"-partcyl") == 0 ) {
       if(arg+dim >= argc) {
 	printf("The number of partitions in %d dims is required as parameters.\n",dim);
 	return(13);
@@ -666,11 +673,18 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	  if(eg->partdim[i] == 0) eg->partdim[i] = 1;
 	  eg->partitions *= eg->partdim[i];
 	}
-	eg->partopt = 0;
-	if(arg+4 < argc) 
-	  if(argv[arg+4][0] != '-') eg->partopt = atoi(argv[arg+4]);
-
-	printf("The mesh will be partitioned with simple division to %d partitions.\n",
+	eg->partopt = -1;
+	if( strcmp(argv[arg],"-partition") == 0 ) {
+	  if(arg+4 < argc) 
+	    if(argv[arg+4][0] != '-') eg->partopt = atoi(argv[arg+4]);
+	}
+	else if( strcmp( argv[arg],"-partcell") == 0 )  {
+	  eg->partopt = 2;
+	} else if( strcmp( argv[arg],"-partcyl") == 0 ) {
+	  eg->partopt = 3;
+	}
+	  
+	printf("The mesh will be partitioned geometrically to %d partitions.\n",
 	       eg->partitions);
       }
     }
@@ -707,8 +721,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       printf("Using dual (elemental) graph in partitioning.\n");
     }
 
-
-    if(strcmp(argv[arg],"-metis") == 0) {
+    if(strcmp(argv[arg],"-metis") == 0 ||
+       strcmp(argv[arg],"-metisrec") == 0 ||
+       strcmp(argv[arg],"-metiskway") == 0 ) {
 #if PARTMETIS
       if(arg+1 >= argc) {
 	printf("The number of partitions is required as a parameter\n");
@@ -718,9 +733,13 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->metis = atoi(argv[arg+1]);
 	printf("The mesh will be partitioned with Metis to %d partitions.\n",eg->metis);
 	eg->partopt = 0;
-	if(arg+2 < argc) 
+	if(strcmp(argv[arg],"-metisrec") == 0)
+	  eg->partopt = 2;
+	else if(strcmp(argv[arg],"-metiskway") == 0 )
+	  eg->partopt = 3;
+	else if(arg+2 < argc) 
 	  if(argv[arg+2][0] != '-') eg->partopt = atoi(argv[arg+2]);
-      }
+      }    
 #else
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif     
@@ -728,7 +747,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 
     if(strcmp(argv[arg],"-partjoin") == 0) {
       if(arg+1 >= argc) {
-	printf("The number of partitions is required as a parameter\n");
+	printf("The number of partitions is required as a parameter!\n");
 	return(15);
       }
       else {
@@ -737,14 +756,25 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
     }
 
-    if(strcmp(argv[arg],"-partconnect") == 0 ) {
+    if(strcmp(argv[arg],"-partconnect") == 0 || strcmp(argv[arg],"-partzbc") == 0 ) {
       if(arg+1 >= argc) {
-	printf("The number of 1D partitions is required as a parameter\n");
+	printf("The number of 1D partitions is required as a parameter!\n");
 	return(15);
       }
       else {
 	eg->partbcz = atoi(argv[arg+1]);
-	printf("The connected BCs will be partitioned to %d partitions in 1D.\n",eg->partbcz);
+	printf("The connected BCs will be partitioned to %d partitions in Z.\n",eg->partbcz);
+      }
+    }
+
+    if(strcmp(argv[arg],"-partrbc") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The number of 1D partitions is required as a parameter!\n");
+	return(15);
+      }
+      else {
+	eg->partbcr = atoi(argv[arg+1]);
+	printf("The connected BCs will be partitioned to %d partitions in R.\n",eg->partbcr);
       }
     }
 
@@ -755,11 +785,15 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
       else {
 	eg->partbclayers = atoi(argv[arg+1]);
-	printf("The boundary partitioning will be extended by %d layers.\n",eg->partbcz);
+	printf("The boundary partitioning will be extended by %d layers.\n",eg->partbclayers);
       }
     }
 
-    if(strcmp(argv[arg],"-metisconnect") == 0) {
+    if(strcmp(argv[arg],"-metiscontig") == 0 ) {
+      eg->metiscontig = TRUE;
+    }
+    
+    if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of Metis partitions is required as a parameter\n");
 	return(15);
@@ -927,6 +961,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-nobound") == 0) {
       eg->saveboundaries = FALSE;
     }
+    if(strcmp(argv[arg],"-vtuone") == 0) {
+      eg->vtuone = TRUE;
+    }
     if(strcmp(argv[arg],"-nosave") == 0) {
       eg->nosave = TRUE;
     }
@@ -1023,7 +1060,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else 
       return(2);
   }
-  if(mode == 1) { 
+  else if(mode == 1) { 
     AddExtension(prefix,filename,"eg");
     if ((in = fopen(filename,"r")) == NULL) {
       printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
@@ -1037,7 +1074,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
       return(4);
     }    
-    if(info) printf("Loading ElmerGrid commands from file '%s'.\n",filename);
+    if(info) printf("\nLoading ElmerGrid commands from file '%s'.\n",filename);
   }
 
 
@@ -1203,6 +1240,22 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif
     }
+    else if(strstr(command,"METISKWAY")) {
+#if PARTMETIS
+      sscanf(params,"%d",&eg->metis);
+      eg->partopt = 3;
+#else
+      printf("This version of ElmerGrid was compiled without Metis library!\n");
+#endif
+    }
+    else if(strstr(command,"METISREC")) {
+#if PARTMETIS
+      sscanf(params,"%d",&eg->metis);
+      eg->partopt = 2;
+#else
+      printf("This version of ElmerGrid was compiled without Metis library!\n");
+#endif
+    }
     else if(strstr(command,"PARTITION DUAL")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->partdual = TRUE;      
@@ -1216,7 +1269,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       if(eg->dim == 3) sscanf(params,"%le%le%le",&eg->partcorder[0],
 			      &eg->partcorder[1],&eg->partcorder[2]);      
     }
-    else if(strstr(command,"PARTITION")) {
+    else if(strstr(command,"PARTITION") || strstr(command,"PARTCYL") || strstr(command,"PARTCELL")) {
       if(eg->dim == 2) sscanf(params,"%d%d",&eg->partdim[0],&eg->partdim[1]);
       if(eg->dim == 3) sscanf(params,"%d%d%d",&eg->partdim[0],&eg->partdim[1],&eg->partdim[2]);
       eg->partitions = 1;
@@ -1224,6 +1277,8 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 	if(eg->partdim[i] < 1) eg->partdim[i] = 1;
 	eg->partitions *= eg->partdim[i];
       }
+      if( strstr(command,"PARTCYL") ) eg->partopt = 3;
+      if( strstr(command,"PARTCCELL") ) eg->partopt = 2;
     }
     else if(strstr(command,"PERIODIC")) {
       if(eg->dim == 2) sscanf(params,"%d%d",&eg->periodicdim[0],&eg->periodicdim[1]);
@@ -1358,6 +1413,10 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else if(strstr(command,"REMOVE UNUSED NODES")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->removeunused = TRUE; 
+    }
+    else if(strstr(command,"NO MESH NAMES")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->usenames = FALSE; 
     }
     else if(strstr(command,"REORDER MATERIAL")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
@@ -2926,7 +2985,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
     }
 
     else if(strstr(command,"END") ) {      
-      printf("End of field\n");
+      if(0) printf("End of field\n");
     }
       
     else if(strstr(command,"START NEW MESH")) {

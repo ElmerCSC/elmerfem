@@ -1,0 +1,199 @@
+! A levelset example of a falling drop hold together by surface tension.
+! Reinitialization and volume conservation are applied.
+!
+! This is an old case from ~2010 now added to a test.
+! P.R. 6.6.2017
+
+!check keywords abort
+
+$ bw=0.02
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = String Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Timestepping Method = String BDF
+  BDF Order = Integer 2
+  Timestep sizes = Real 0.2
+
+! Increase the timestep to 100 or 200 to get converged shape
+  Timestep Intervals = Integer 5
+
+!  Timestep Function 
+!    Real Procedure "LevelSet" "LevelSetTimestep"
+!  LevelSet Courant Number = Real 1.0
+
+  Frame Velocity Relaxation Factor = Real 0.5
+
+  Steady State Max Iterations = Integer 1
+  Output Intervals = Integer 1
+
+!  Output File = File "data.dat"
+  Post File = File "data.vtu"
+End
+
+Constants
+  Gravity(4) = Real 0.0 -1.0 0.0 9.82
+  Stefan Boltzmann = Real 5.67e-08
+End
+
+Body 1
+  Name = String "fluid"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Potential Force = Logical True
+  Potential Field = Equals Surface
+  Potential Coefficient = Equals Curvature
+
+  Flow Bodyforce 2 = -1.0
+End
+
+Initial Condition 1
+  Velocity 1 = 0.0e-3
+  Velocity 2 = 0.0e-3
+  Pressure = 0.0
+
+  Surface = Variable Coordinate 1
+       Real Procedure "DropStuff" "InitCircle"
+End
+
+Equation 1
+  Name = String "Equation1"
+  Active Solvers(5) = 1 2 3 4 5
+End
+
+Solver 1
+  Equation = String "Level Set"
+  Variable = String Surface
+  Variable DOFs = Integer 1
+  Procedure = File "LevelSet" "LevelSetSolver"
+  Steady State Convergence Tolerance = Real 1e-6
+
+  Stabilize = Logical True
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Convergence Tolerance = Real 1.0e-6
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+End
+
+Solver 2
+  Equation = String "Reinitialize"
+
+  Variable = String Renorm
+  Variable DOFs = Integer 1
+  Procedure = File "LevelSet" "LevelSetDistance"
+
+  Extract Interval = Integer 5
+  Reinitialize Interval = Integer 20
+
+  Filename = File "ls5.dat"
+  File Append = Logical True
+End
+
+Solver 3
+  Equation = String "Integrate"
+
+  Procedure = File "LevelSet" "LevelSetIntegrate"
+  Levelset Bandwidth = Real $ bw
+  Conserve Volume = Logical True
+  Conserve Volume Relaxation = Real 0.5
+End
+
+Solver 4
+  Equation = String "Curvature"
+  Variable = String Curvature
+  Variable DOFs = Integer 1
+  Procedure = File "LevelSet" "LevelSetCurvature"
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+
+  Curvature Coefficient = Real 1.0e-1
+  Curvature Diffusion = Real 0.0
+  Levelset Bandwidth = Real $ bw
+End
+
+Solver 5
+  Equation = Navier-Stokes
+  Stabilize = True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Relaxation Factor = 1.0
+  NS Convect = Logical False
+  Steady State Convergence Tolerance = 1.0e-4  
+End
+
+
+Solver 6
+  Equation = String "SaveScalars"
+
+  Exec Solver = After timestep
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = File "f.dat"
+  Variable 1 = String time
+End
+
+
+Material 1
+  Name = String "ideal"
+
+!  Density = 1.0
+!  Viscosity = 1.0
+
+  Viscosity = Variable Surface
+     Real Procedure "DropStuff" "Viscosity"
+
+  Density = Variable Surface
+     Real Procedure "DropStuff" "Viscosity"
+  
+  LevelSet Bandwidth = Real $ bw
+
+  Inside Viscosity = Real 1.0
+  Outside Viscosity = Real 1.0
+
+  Inside Density = Real 1.0
+  Outside Density = Real 1.0e-6
+
+  Levelset Velocity 1 = Equals Velocity 1
+  Levelset Velocity 2 = Equals Velocity 2
+End
+
+Boundary Condition 1
+  Name = String "Horizontal"
+  Target Boundaries(2) = 1 3 
+
+  Levelset Curvature BC = Logical True  
+  Velocity 1 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = String "Vertical"
+  Target Boundaries(2) = 2 4 
+
+  Levelset Curvature BC = Logical True
+!  Velocity 2 = Real 0.0
+  Velocity 2 = Variable "timestep size"
+     Real Procedure "DropStuff" "FrameVelo"
+End
+
+
+Solver 1 :: Reference Norm = 2.00083198E-01
+Solver 4 :: Reference Norm = 7.88922213E+00
+Solver 5 :: Reference Norm = 4.03706849E-02

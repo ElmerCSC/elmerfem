@@ -167,7 +167,16 @@ set(OpenMP_Fortran_TEST_SOURCE
   "
 program test
 use omp_lib
-integer :: n
+integer :: n,m
+REAL :: A(16), B(16)
+DO m = 1,16
+B(m) = 1.0
+END DO
+!$OMP PARALLEL DO
+DO m = 1,16
+A(m) = B(m)
+END DO
+!$OMP END PARALLEL DO
 n = omp_get_num_threads()
 end program test
   "
@@ -291,3 +300,4 @@ if(_OPENMP_REQUIRED_VARS)
 else()
   message(SEND_ERROR "FindOpenMP requires C or CXX language to be enabled")
 endif()
+

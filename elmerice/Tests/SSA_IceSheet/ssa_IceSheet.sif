@@ -2,14 +2,13 @@
 !!                                       !!
 !!                                       !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
 $Step = "SSA_IceSheet"
 $L = 20.0e3
 $Slope = 0.1 * pi / 180.0
 
 $yearinsec = 365.25*24*60*60
 $rhoi = 900.0/(1.0e6*yearinsec^2)   
+$rhow = 1000.0/(1.0e6*yearinsec^2)
 $gravity = -9.81*yearinsec^2
 $n = 3.0
 $eta = (2.0*100.0)^(-1.0/n)
@@ -19,7 +18,10 @@ Header
 End
 
 Constants
-! No constant Needed
+ ! Constants used by SSA and Flotation criterion
+ !  Here we don't want a marine ice sheet => put sea level below bedrock elevation
+ Sea level = Real -500.0
+ Water Density = Real $rhow
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -63,7 +65,8 @@ Initial Condition 1
 ! bedrock elevation
   Zb = Variable Coordinate 1 , Coordinate 2
     Real MATC "100.0*sin(3*2.0*pi*tx(0)/L)*sin(2*2.0*pi*tx(1)/L)"
-
+  bedrock = Variable Coordinate 1 , Coordinate 2
+    Real MATC "100.0*sin(3*2.0*pi*tx(0)/L)*sin(2*2.0*pi*tx(1)/L)"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -74,10 +77,6 @@ Body Force 1
 
   Top Surface Accumulation = Real 0.5
   Bottom Surface Accumulation = Real 0.0
-
-! to update Zs according to H evolution
-  Zs = Variable Zb , H
-     REAL MATC "tx(0)+tx(1)"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -151,14 +150,15 @@ Solver 2
      Flow Solution Name = String "SSAVelocity"
 End
 
-!! This solver is just used to update Zs (look for the value of Zs in Body forces
+!! Apply the Flotation criterion to compute Zb and Zs knowing bedrock and H
 Solver 3
-   Equation = "UpdateExport"
-   Procedure = "ElmerIceSolvers" "UpdateExport"
-   Variable = -nooutput "dumy"
+   Equation = "Flotation"
+   Procedure = "ElmerIceSolvers" "Flotation"
+   Variable =  "GroundedMask"
 
    Exported Variable 1 = -dofs 1 "Zs"
    Exported Variable 2 = -dofs 1 "Zb"
+   Exported Variable 3 = -dofs 1 "bedrock"
 End
 
 Solver 4

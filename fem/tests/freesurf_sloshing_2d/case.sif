@@ -2,7 +2,7 @@
 ! U. Rasthofer et al., Comput. Methods Appl. Mech. Engrg. 200 (2011) 1866-1876
 ! An initial free surface is set and the time evolution of the 
 ! free surface is studied. The free surface must be smooth enough to be 
-! descibed as h=h(x). 
+! described as h=h(x). 
 !
 ! Authors: Tiago Rebelo & Peter Raback. 2013
 
@@ -19,7 +19,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type  = Transient
@@ -224,7 +224,5 @@ Boundary Condition 3
 End
 
 Solver 3 :: Reference Norm = Real 5.48559563392912453E-002
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=5.48559563392912453E-002\n");
 

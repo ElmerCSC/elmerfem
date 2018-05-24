@@ -574,12 +574,40 @@ int StringToInteger(const char *buf,int *dest,int maxcnt,char separator)
 {
   int cnt = 0;
   char *ptr1 = (char *)buf, *ptr2;
-
+  int ival;
+  
   if (!buf[0]) return 0;
   do {
+    
     ptr2 = strchr(ptr1,separator);
     if (ptr2) ptr2[0] = '\0';
-    dest[cnt++] = atoi(ptr1);
+    ival = atoi(ptr1);
+
+    dest[cnt++] = ival;
+    
+    if (ptr2) ptr1 = ptr2+1;
+  } while (cnt < maxcnt && ptr2 != NULL);
+
+  return cnt;
+}
+
+int StringToIntegerNoZero(const char *buf,int *dest,int maxcnt,char separator)
+{
+  int cnt = 0;
+  char *ptr1 = (char *)buf, *ptr2;
+  int ival;
+  
+  if (!buf[0]) return 0;
+  do {
+    
+    ptr2 = strchr(ptr1,separator);
+    if (ptr2) ptr2[0] = '\0';
+    ival = atoi(ptr1);
+
+    if(ival == 0) break;
+      
+    dest[cnt++] = ival;      
+
     if (ptr2) ptr1 = ptr2+1;
   } while (cnt < maxcnt && ptr2 != NULL);
 
@@ -628,6 +656,75 @@ Real next_real(char **start)
   return(r);
 }
 
+
+/*
+ * sort: sort an (double) array to ascending order, and move the elements of
+ *       another (integer) array accordingly. the latter can be used as track
+ *       keeper of where an element in the sorted order at position (k) was in
+ *       in the original order (Ord[k]), if it is initialized to contain
+ *       numbers (0..N-1) before calling sort. 
+ *
+ * Parameters:
+ *
+ * N:      int                  / number of entries in the arrays.
+ * Key:    double[N]             / array to be sorted.
+ * Ord:    int[N]               / change this accordingly.
+ */
+void SortIndex( int N, double *Key, int *Ord )
+{
+  double CurrentKey;
+
+  int CurrentOrd;
+
+  int CurLastPos;
+  int CurHalfPos;
+
+  int i;
+  int j; 
+ 
+  /* Initialize order */
+  for(i=1;i<=N;i++)
+    Ord[i] = i;
+
+  CurHalfPos = N / 2 + 1;
+  CurLastPos = N;
+  while( 1 ) {
+    if ( CurHalfPos > 1 ) {
+      CurHalfPos--;
+      CurrentKey = Key[CurHalfPos];
+      CurrentOrd = Ord[CurHalfPos];
+    } else {
+      CurrentKey = Key[CurLastPos];
+      CurrentOrd = Ord[CurLastPos];
+      Key[CurLastPos] = Key[1];
+      Ord[CurLastPos] = Ord[1];
+      CurLastPos--;
+      if ( CurLastPos == 1 ) {
+	Key[1] = CurrentKey;
+	Ord[1] = CurrentOrd;
+	return;
+      }
+    }
+    i = CurHalfPos;
+    j = 2 * CurHalfPos;
+    while( j <= CurLastPos ) {
+      if ( j < CurLastPos && Key[j] < Key[j + 1] ) {
+	j++;
+      }
+      if ( CurrentKey < Key[j] ) {
+	Key[i] = Key[j];
+	Ord[i] = Ord[j];
+	i  = j;
+	j += i;
+      } else {
+	j = CurLastPos + 1;
+      }
+    }
+    Key[i] = CurrentKey;
+    Ord[i] = CurrentOrd;
+  }
+
+}
 
 
 

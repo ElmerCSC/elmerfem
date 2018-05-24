@@ -773,8 +773,6 @@
            n = CurrentElement % TYPE % NumberOfNodes
            NodeIndexes => CurrentElement % NodeIndexes
            
-           IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
-
            ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
            ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
            ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -935,9 +933,6 @@
               NodeIndexes => CurrentElement % NodeIndexes
 
               IF ( ANY( SpeciesPerm( NodeIndexes ) <= 0 ) ) CYCLE
-
-              ! Check that the dimension of element is suitable for fluxes
-              IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
               ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
               ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
@@ -1886,7 +1881,7 @@ CONTAINS
  
 !------------------------------------------------------------------------------
 !    Stabilization parameters: hK, mK (take a look at Franca et.al.)
-!    If there is no convection term we dont need stabilization.
+!    If there is no convection term we don't need stabilization.
 !------------------------------------------------------------------------------
      ConvectOrNPAndStabilize = .FALSE.
      IF ( Stabilize .AND. (ANY(NodalC1 /= 0.0D0) .OR. NPDiffusion) ) THEN

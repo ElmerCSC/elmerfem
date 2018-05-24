@@ -122,7 +122,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   SAVE Visited,Nodes,Initialized,UnitVector,Coord,MaskExist,MaskPerm,TopPointer,&
       BotPointer,MidPointer, UpPointer,DownPointer,FieldOut,FieldIn,&
       TopNodes,MidNodes,TopPerm, MidPerm, TopField, BotNodes, BotPerm, nsize, &
-      UnitPerm
+      UnitPerm, MidLayerExists
  
   CALL Info( 'StructuredProjectToPlane','------------------------------------------',Level=4 )
   CALL Info( 'StructuredProjectToPlane','Performing projection on a structured mesh ',Level=4 )
@@ -153,7 +153,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
     MaskExist = ASSOCIATED( Var % Perm ) 
     IF( MaskExist ) MaskPerm => Var % Perm
     Coord => Var % Values
-    nsize = SIZE( Coord )
+    nsize = MIN( SIZE( Coord ), Mesh % NumberOfNodes )
     Initialized = .TRUE.
 
     TopNodes = 0
@@ -238,7 +238,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
     WRITE (Name,'(A,I0)') 'Operator ',NoVar
     Oper = ListGetString( Params, TRIM(Name),GotOper)
     IF(.NOT. GotOper ) THEN
-      ! For the first variable the operator is definately needed
+      ! For the first variable the operator is definitely needed
       IF( NoVar > 1 ) THEN
         Oper = OldOper
       END IF

@@ -92,21 +92,24 @@ CONTAINS
 
      isfine = ALLOCATED( send_buffer )
      IF ( isfine ) isfine = (sz <= SIZE(send_buffer))
-     IF ( isfine ) RETURN
 
-     IF ( ALLOCATED(send_buffer) ) THEN
-        i = SIZE(send_buffer)
-        CALL MPI_BUFFER_DETACH( send_buffer, i, ierr )
-        DEALLOCATE( send_buffer )
-     END IF
+     IF ( isfine ) THEN
+       sz = SIZE(send_buffer)
+       CALL MPI_BUFFER_DETACH( send_buffer, sz, ierr )
+     ELSE
+       IF ( ALLOCATED(send_buffer) ) THEN
+          i = SIZE(send_buffer)
+          CALL MPI_BUFFER_DETACH( send_buffer, i, ierr )
+          DEALLOCATE( send_buffer )
+       END IF
 
-     ALLOCATE( send_buffer(sz), stat=i )
-     IF ( i/= 0 ) THEN
-       CALL Fatal( 'CheckBuffer', 'Alloc failed' )
+       ALLOCATE( send_buffer(sz), stat=i )
+       IF ( i/= 0 ) THEN
+         CALL Fatal( 'CheckBuffer', 'Alloc failed' )
+       END IF
      END IF
 
      CALL MPI_BUFFER_ATTACH( send_buffer, sz, ierr )
-
 !-----------------------------------------------------------------
    END SUBROUTINE CheckBuffer
 !-----------------------------------------------------------------
@@ -130,7 +133,7 @@ CONTAINS
 
     ParEnv % MyPE = 0
     ParEnv % PEs  = 1
-    ParEnv % ActiveComm = MPI_COMM_WORLD
+    ParEnv % ActiveComm = 0
 
     ierr = 0
 #ifdef _OPENMP
@@ -149,10 +152,24 @@ CONTAINS
     IF ( ierr /= 0 ) RETURN
 
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
+    CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
+
+    ! The colour could be set to be some different if we want to couple ElmerSolver with some other
+    ! software having MPI colour set to zero. 
+#ifndef ELMER_COLOUR
+#define ELMER_COLOUR 0
+#endif
+    CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
+        ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
+    ParEnv % ActiveComm = ELMER_COMM_WORLD
+
+!ELMER_COMM_WORLD=MPI_COMM_WORLD
+
+    CALL MPI_COMM_SIZE( ELMER_COMM_WORLD, ParEnv % PEs, ierr )
     IF ( ierr /= 0 ) THEN
        CALL MPI_Finalize( ierr )
     ELSE
-       CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
+       CALL MPI_COMM_RANK( ELMER_COMM_WORLD, ParEnv % MyPE, ierr )
        OutputPE = ParEnv % MyPe
 
        WRITE( Message, * ) 'Initialize #PEs: ', ParEnv % PEs
@@ -205,7 +222,7 @@ CONTAINS
     Active = .FALSE.
     Active(ParEnv % MYPe+1) = L
     CALL MPI_ALLREDUCE(Active,ParEnv % Active,ParEnv % PEs, &
-         MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+         MPI_LOGICAL,MPI_LOR,ELMER_COMM_WORLD,ierr)
     DEALLOCATE( Active )
 !-----------------------------------------------------------------------
   END SUBROUTINE SParIterActive
@@ -272,7 +289,7 @@ CONTAINS
     !------------------------------------------------------------------
     ! Sync all neighbouring information
     !------------------------------------------------------------------
-    CALL CheckBuffer( ParEnv % PEs**2 + MPI_BSEND_OVERHEAD )
+    CALL CheckBuffer( ParEnv % PEs**2 + ParEnv % PEs*MPI_BSEND_OVERHEAD )
 
     ALLOCATE( Active(ParEnv % PEs), NeighList(Parenv % PEs) )
     DO MinActive=0,ParEnv % PEs-1
@@ -289,17 +306,17 @@ CONTAINS
 
     IF (Parenv % myPE /= MinActive ) THEN
       CALL MPI_BSEND( n, 1, MPI_INTEGER, MinActive, &
-                800, MPI_COMM_WORLD, ierr )
+                800, ELMER_COMM_WORLD, ierr )
       IF ( n>0 ) THEN
         CALL MPI_BSEND( Active, n, MPI_INTEGER, MinActive, &
-                 801, MPI_COMM_WORLD, ierr )
+                 801, ELMER_COMM_WORLD, ierr )
       END IF
 
       CALL MPI_RECV( n, 1, MPI_INTEGER, MinActive, &
-             802, MPI_COMM_WORLD, status, ierr )
+             802, ELMER_COMM_WORLD, status, ierr )
       IF ( n>0 ) THEN
         CALL MPI_RECV( Active, n, MPI_INTEGER, MinActive, &
-               803, MPI_COMM_WORLD, status, ierr )
+               803, ELMER_COMM_WORLD, status, ierr )
         DO i=1,n
           ParEnv % IsNeighbour(Active(i)+1) = .TRUE.
         END DO
@@ -316,11 +333,11 @@ CONTAINS
 
       DO i=1,COUNT(ParEnv % Active)-1
         CALL MPI_RECV( n, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-              800, MPI_COMM_WORLD, status, ierr )
+              800, ELMER_COMM_WORLD, status, ierr )
         IF ( n>0 ) THEN
           proc = status(MPI_SOURCE)
           CALL MPI_RECV( Active, n, MPI_INTEGER, proc, &
-              801, MPI_COMM_WORLD, status, ierr )
+              801, ELMER_COMM_WORLD, status, ierr )
           DO k=1,n
             CALL AddToNList( NeighList(Active(k)+1), proc, 0 )
             CALL AddToNList( NeighList(proc+1), Active(k), 0 )
@@ -342,10 +359,10 @@ CONTAINS
           END DO
 
           CALL MPI_BSEND( n, 1, MPI_INTEGER, i-1, &
-                 802, MPI_COMM_WORLD, ierr )
+                 802, ELMER_COMM_WORLD, ierr )
           IF ( n>0 ) THEN
             CALL MPI_BSEND( Active, n, MPI_INTEGER, i-1, &
-                   803, MPI_COMM_WORLD, ierr )
+                   803, ELMER_COMM_WORLD, ierr )
           END IF
         END IF
       END DO
@@ -403,7 +420,7 @@ CONTAINS
       END DO
       ALLOCATE( buf(2*sz) )
 
-      CALL CheckBuffer( 4*n+4*Parenv % NumOfNeighbours+MPI_BSEND_OVERHEAD )
+      CALL CheckBuffer( 4*n+Parenv % NumOfNeighbours*(4+MPI_BSEND_OVERHEAD) )
 
       DO i=1,ParEnv % PEs
         IF ( .NOT. ParEnv % IsNeighbour(i) ) CYCLE
@@ -418,18 +435,18 @@ CONTAINS
           ptr => ptr % next
           DEALLOCATE( ptr1 )
         END DO
-        CALL MPI_BSEND(j,1,MPI_INTEGER,i-1, 20000,MPI_COMM_WORLD,status,ierr)
-        IF (j>0) CALL MPI_BSEND(buf,j,MPI_INTEGER,i-1,20001,MPI_COMM_WORLD,status,ierr)
+        CALL MPI_BSEND(j,1,MPI_INTEGER,i-1, 20000,ELMER_COMM_WORLD,status,ierr)
+        IF (j>0) CALL MPI_BSEND(buf,j,MPI_INTEGER,i-1,20001,ELMER_COMM_WORLD,status,ierr)
       END DO
       DEALLOCATE( NeighList, buf )
 
       m = SIZE(ParallelInfo % GlobalDOFs)
       DO i=1,ParEnv % NumOfNeighbours
-        CALL MPI_RECV( sz,1,MPI_INTEGER,MPI_ANY_SOURCE,20000,MPI_COMM_WORLD,status,ierr)
+        CALL MPI_RECV( sz,1,MPI_INTEGER,MPI_ANY_SOURCE,20000,ELMER_COMM_WORLD,status,ierr)
         IF (sz>0 ) THEN
           proc = status(MPI_SOURCE)
           ALLOCATE( buf(sz) )
-          CALL MPI_RECV( buf,sz,MPI_INTEGER,proc,20001,MPI_COMM_WORLD,status,ierr)
+          CALL MPI_RECV( buf,sz,MPI_INTEGER,proc,20001,ELMER_COMM_WORLD,status,ierr)
           DO j=1,sz,2
             IF ( buf(j+1)>0 ) THEN
               k = SearchNode( ParallelInfo, buf(j), Order=SourceMatrix % Perm )
@@ -551,13 +568,13 @@ CONTAINS
     IF(Parenv % Mype==i-1) CYCLE
     IF(ParEnv % Active(i)) &
       CALL MPI_BSEND( ParEnv % IsNeighbour(i),1, &
-                 MPI_LOGICAL,i-1,1410,MPI_COMM_WORLD,ierr)
+                 MPI_LOGICAL,i-1,1410,ELMER_COMM_WORLD,ierr)
   END DO
 
   DO i=1,ParEnv % PEs
     IF(Parenv % Mype==i-1) CYCLE
     IF(ParEnv % Active(i)) THEN
-      CALL MPI_RECV( L,1,MPI_LOGICAL,i-1,1410,MPI_COMM_WORLD,status,ierr)
+      CALL MPI_RECV( L,1,MPI_LOGICAL,i-1,1410,ELMER_COMM_WORLD,status,ierr)
       IF(L) ParEnv % IsNeighbour(i) = .TRUE.
     END IF
   END DO
@@ -792,7 +809,7 @@ CONTAINS
 
     owned_edges2=0
     CALL MPI_ALLREDUCE( owned_edges, owned_edges2, ParEnv % PEs, &
-        MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr )
+        MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr )
     !
     ! Number the edges:
     !------------------
@@ -855,7 +872,7 @@ CONTAINS
        IF( .NOT. IsNeighbour(i) ) CYCLE
 
        CALL MPI_BSEND( tosend(i), 1, MPI_INTEGER, i-1, &
-               100, MPI_COMM_WORLD, ierr)
+               100, ELMER_COMM_WORLD, ierr)
        IF( tosend(i) < 1 ) CYCLE
 
        datasize = 3*tosend(i)
@@ -877,7 +894,7 @@ CONTAINS
        END DO
 
        CALL MPI_BSEND( gindices, DataSize, MPI_INTEGER, &
-           i-1, 101, MPI_COMM_WORLD, ierr )
+           i-1, 101, ELMER_COMM_WORLD, ierr )
        DEALLOCATE( gindices )
     END DO
 
@@ -888,7 +905,7 @@ CONTAINS
 
     DO i = 1, COUNT(isNeighbour)
        CALL MPI_RECV( DataSize, 1, MPI_INTEGER, &
-          MPI_ANY_SOURCE, 100, MPI_COMM_WORLD, status, ierr )
+          MPI_ANY_SOURCE, 100, ELMER_COMM_WORLD, status, ierr )
 
        proc=status(MPI_SOURCE)
 
@@ -896,7 +913,7 @@ CONTAINS
 
        IF( datasize > 0 ) THEN
          CALL MPI_RECV( gindices, 3*DataSize, MPI_INTEGER, &
-            proc, 101, MPI_COMM_WORLD, status, ierr )
+            proc, 101, ELMER_COMM_WORLD, status, ierr )
 
          DO l = 1, datasize
            Found=.FALSE.
@@ -926,11 +943,11 @@ CONTAINS
        ! share lists:
        ! ------------------------------------------------
        CALL MPI_BSEND( tosend(proc+1), 1, MPI_INTEGER, &
-            proc, 200, MPI_COMM_WORLD, ierr )
+            proc, 200, ELMER_COMM_WORLD, ierr )
 
        IF ( tosend(proc+1)>0 ) THEN
          CALL MPI_BSEND( gindices, tosend(proc+1), MPI_INTEGER, &
-            proc, 201, MPI_COMM_WORLD, ierr )
+            proc, 201, ELMER_COMM_WORLD, ierr )
        END IF
        DEALLOCATE(gindices)
     END DO
@@ -938,14 +955,14 @@ CONTAINS
     DO i = 1, COUNT(isNeighbour)
 
       CALL MPI_RECV( DataSize, 1, MPI_INTEGER, &
-       MPI_ANY_SOURCE, 200, MPI_COMM_WORLD, status, ierr )
+       MPI_ANY_SOURCE, 200, ELMER_COMM_WORLD, status, ierr )
 
       proc=status(MPI_SOURCE)
       IF( datasize < 1 ) CYCLE
 
       ALLOCATE( gindices(DataSize) )
       CALL MPI_RECV( gindices, DataSize, MPI_INTEGER, &
-         proc, 201, MPI_COMM_WORLD, status, ierr )
+         proc, 201, ELMER_COMM_WORLD, status, ierr )
 
       DO k_intf=1,n_intf
         j=Iedges(k_intf) 
@@ -1006,7 +1023,7 @@ CONTAINS
       IF( .NOT. IsNeighbour(i) ) CYCLE
 
       CALL MPI_BSEND( tosend(i), 1, MPI_INTEGER, &
-           i-1, 300, MPI_COMM_WORLD, ierr )
+           i-1, 300, ELMER_COMM_WORLD, ierr )
 
       IF (tosend(i)<=0 ) CYCLE
 
@@ -1027,7 +1044,7 @@ CONTAINS
       END DO
 
       CALL MPI_BSEND( gindices, tosend(i), MPI_INTEGER, &
-             i-1, 301, MPI_COMM_WORLD, ierr )
+             i-1, 301, ELMER_COMM_WORLD, ierr )
 
       DEALLOCATE(gindices)
     END DO
@@ -1035,14 +1052,14 @@ CONTAINS
     DO i = 1,COUNT(isNeighbour)
 
        CALL MPI_RECV( DataSize, 1, MPI_INTEGER, &
-        MPI_ANY_SOURCE, 300, MPI_COMM_WORLD, status, ierr )
+        MPI_ANY_SOURCE, 300, ELMER_COMM_WORLD, status, ierr )
 
        proc=status(MPI_SOURCE)
 
        IF( datasize > 0 ) THEN
          ALLOCATE( gindices(DataSize) )
          CALL MPI_RECV( gindices, DataSize, MPI_INTEGER, &
-            proc, 301, MPI_COMM_WORLD, status, ierr )
+            proc, 301, ELMER_COMM_WORLD, status, ierr )
 
          j=0
          DO WHILE(j<Datasize)
@@ -1091,7 +1108,7 @@ CONTAINS
     END DO
 
     CALL MPI_ALLREDUCE( m, retry, 1, &
-        MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr )
+        MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr )
 
     ! if some of the edges don't have global numbers, retry.
     ! ------------------------------------------------------
@@ -1214,12 +1231,12 @@ CONTAINS
       END DO
 
       CALL MPI_BSEND( mm, 1, MPI_INTEGER, &
-           i-1, 400, MPI_COMM_WORLD, ierr )
+           i-1, 400, ELMER_COMM_WORLD, ierr )
 
       IF (mm<=0 ) CYCLE
 
       CALL MPI_BSEND( buf, mm*2, MPI_INTEGER, &
-           i-1, 401, MPI_COMM_WORLD, ierr )
+           i-1, 401, ELMER_COMM_WORLD, ierr )
     END DO
 
     DEALLOCATE(buf)
@@ -1227,14 +1244,14 @@ CONTAINS
     DO i = 1, COUNT(isNeighbour)
 
       CALL MPI_RECV( DataSize, 1, MPI_INTEGER, &
-       MPI_ANY_SOURCE, 400, MPI_COMM_WORLD, status, ierr )
+       MPI_ANY_SOURCE, 400, ELMER_COMM_WORLD, status, ierr )
 
       proc = status(MPI_SOURCE)
 
       IF( DataSize > 0 ) THEN
         ALLOCATE( buf(DataSize*2) )
         CALL MPI_RECV( buf, DataSize*2, MPI_INTEGER, &
-           proc, 401, MPI_COMM_WORLD, status, ierr )
+           proc, 401, ELMER_COMM_WORLD, status, ierr )
 
         DO j=1,Datasize
           gi = buf(2*j-1)
@@ -1252,7 +1269,7 @@ CONTAINS
 
     DEALLOCATE( gorder, grevorder, gdofs, edgen, tosend )
     IF ( AllM ) DEALLOCATE(IsNeighbour)
-    CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+    CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 !--------------------------------------------------------------------  
   END SUBROUTINE SParEdgeNumbering
 !--------------------------------------------------------------------  
@@ -1438,7 +1455,7 @@ CONTAINS
 
     owned_faces2=0
     CALL MPI_ALLREDUCE( owned_faces, owned_faces2, ParEnv % PEs, &
-        MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr )
+        MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr )
     !
     ! Number the faces:
     !------------------
@@ -1498,7 +1515,7 @@ CONTAINS
       IF( .NOT. IsNeighbour(i) ) CYCLE
 
       CALL MPI_BSEND( tosend(i), 1, MPI_INTEGER, i-1, &
-            100, MPI_COMM_WORLD, ierr)
+            100, ELMER_COMM_WORLD, ierr)
       IF(tosend(i)<1) CYCLE
 
       datasize = 4*tosend(i)
@@ -1520,7 +1537,7 @@ CONTAINS
       END DO
 
       CALL MPI_BSEND( gindices, DataSize, MPI_INTEGER, &
-            i-1, 101, MPI_COMM_WORLD, ierr )
+            i-1, 101, ELMER_COMM_WORLD, ierr )
       DEALLOCATE( gindices )
     END DO
 
@@ -1530,13 +1547,13 @@ CONTAINS
     tosend = 0
     DO i = 1, COUNT(isNeighbour)
       CALL MPI_RECV( DataSize, 1, MPI_INTEGER, MPI_ANY_SOURCE, 100, &
-                  MPI_COMM_WORLD, status, ierr )
+                  ELMER_COMM_WORLD, status, ierr )
       proc=status(MPI_SOURCE)
 
       ALLOCATE( gindices(4*DataSize) )
       IF( datasize > 0 ) THEN
         CALL MPI_RECV( gindices, 4*DataSize, MPI_INTEGER, &
-           proc, 101, MPI_COMM_WORLD, status, ierr )
+           proc, 101, ELMER_COMM_WORLD, status, ierr )
 
         DO l = 1, datasize
           m = 4*l-3
@@ -1561,25 +1578,25 @@ CONTAINS
       ! share lists:
       ! ------------------------------------------------
       CALL MPI_BSEND( tosend(proc+1), 1, MPI_INTEGER, &
-           proc, 200, MPI_COMM_WORLD, ierr )
+           proc, 200, ELMER_COMM_WORLD, ierr )
 
       IF ( tosend(proc+1)>0 ) THEN
         CALL MPI_BSEND( gindices, tosend(proc+1), MPI_INTEGER, &
-                proc, 201, MPI_COMM_WORLD, ierr )
+                proc, 201, ELMER_COMM_WORLD, ierr )
       END IF
       DEALLOCATE(gindices)
     END DO
 
     DO i = 1, COUNT(isNeighbour)
        CALL MPI_RECV( DataSize, 1, MPI_INTEGER, &
-          MPI_ANY_SOURCE, 200, MPI_COMM_WORLD, status, ierr )
+          MPI_ANY_SOURCE, 200, ELMER_COMM_WORLD, status, ierr )
        IF( datasize < 1 ) CYCLE
 
        proc=status(MPI_SOURCE)
 
        ALLOCATE( gindices(DataSize) )
        CALL MPI_RECV( gindices, DataSize, MPI_INTEGER, &
-          proc, 201, MPI_COMM_WORLD, status, ierr )
+          proc, 201, ELMER_COMM_WORLD, status, ierr )
 
        DO k_intf=1,n_intf
          j = Ifaces(k_intf)
@@ -1631,7 +1648,7 @@ CONTAINS
     END DO
 
     CALL MPI_ALLREDUCE( m, mm, 1, &
-        MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr )
+        MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr )
 
     ! if some of the faces miss a global number, retry.
     ! -------------------------------------------------
@@ -1761,25 +1778,25 @@ CONTAINS
       END DO
 
       CALL MPI_BSEND( mm, 1, MPI_INTEGER, &
-           i-1, 400, MPI_COMM_WORLD, ierr )
+           i-1, 400, ELMER_COMM_WORLD, ierr )
 
       IF (mm<=0 ) CYCLE
 
       CALL MPI_BSEND( buf, mm*2, MPI_INTEGER, &
-           i-1, 401, MPI_COMM_WORLD, ierr )
+           i-1, 401, ELMER_COMM_WORLD, ierr )
     END DO
 
     DEALLOCATE(buf)
 
     DO i = 1,COUNT(isNeighbour)
       CALL MPI_RECV( DataSize, 1, MPI_INTEGER, &
-         MPI_ANY_SOURCE, 400, MPI_COMM_WORLD, status, ierr )
+         MPI_ANY_SOURCE, 400, ELMER_COMM_WORLD, status, ierr )
 
       proc = status(MPI_SOURCE) 
       IF( datasize > 0 ) THEN
         ALLOCATE( buf(DataSize*2) )
         CALL MPI_RECV( buf, DataSize*2, MPI_INTEGER, &
-           proc, 401, MPI_COMM_WORLD, status, ierr )
+           proc, 401, ELMER_COMM_WORLD, status, ierr )
 
         DO j=1,Datasize
           gi = buf(2*j-1)
@@ -1798,7 +1815,7 @@ CONTAINS
 
     DEALLOCATE( gorder, grevorder, gdofs, facen )
     IF ( ALLM ) DEALLOCATE(IsNeighbour)
-    CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+    CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 !--------------------------------------------------------------------  
   END SUBROUTINE SParFaceNumbering
 !--------------------------------------------------------------------  
@@ -1847,7 +1864,7 @@ CONTAINS
      real(kind=dp) :: realtime, tstart
 #endif
 !-----------------------------------------------------------------------
-     CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 tstart = realtime()
 
      Iterate = 0
@@ -2077,11 +2094,11 @@ tstart = realtime()
      !----------------------------------------------------------------------
      oldnodes2 = 0
      CALL MPI_ALLREDUCE( oldnodes, oldnodes2, ParEnv % PEs, &   ! <- fix 
-          MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr )
+          MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr )
 
      newnodes2 = 0
      CALL MPI_ALLREDUCE( newnodes, newnodes2, ParEnv % PEs, &   ! <- fix 
-          MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr )
+          MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr )
      !
      ! Number the new nodes:
      !----------------------
@@ -2126,7 +2143,7 @@ tstart = realtime()
         IF( i-1 == ParEnv % MyPE ) CYCLE
         IF( .NOT. IsNeighbour(i) ) CYCLE
 
-        CALL MPI_BSEND( tosend(i), 1, MPI_INTEGER, i-1, 100, MPI_COMM_WORLD, ierr)
+        CALL MPI_BSEND( tosend(i), 1, MPI_INTEGER, i-1, 100, ELMER_COMM_WORLD, ierr)
         IF( tosend(i) < 1 ) CYCLE
 
         DataSize = 3*tosend(i)
@@ -2147,7 +2164,7 @@ tstart = realtime()
            END DO
         END DO
 
-        CALL MPI_BSEND( gindices, DataSize, MPI_INTEGER, i-1, 400, MPI_COMM_WORLD, ierr )
+        CALL MPI_BSEND( gindices, DataSize, MPI_INTEGER, i-1, 400, ELMER_COMM_WORLD, ierr )
         
         DEALLOCATE( gindices )
      END DO
@@ -2158,7 +2175,7 @@ tstart = realtime()
         IF( i-1 == ParEnv % MyPE ) CYCLE
         IF( .NOT. IsNeighbour(i) ) CYCLE
 
-        CALL MPI_RECV( DataSize, 1, MPI_INTEGER, i-1, 100, MPI_COMM_WORLD, status, ierr )
+        CALL MPI_RECV( DataSize, 1, MPI_INTEGER, i-1, 100, ELMER_COMM_WORLD, status, ierr )
         !IF( DataSize /= toreceive(i) ) THEN
         !   WRITE(*,'(A,I4,A,I4,A,I5,A,I5)') 'SParGlobalNumbering: PE:',ParEnv % MyPE+1, &
         !        ' Disagreement about data size with PE:', i, ' Expecting:',toreceive(i), &
@@ -2167,7 +2184,7 @@ tstart = realtime()
         IF( DataSize < 1 ) CYCLE
 
         ALLOCATE( gindices(3*DataSize) ) ! work space
-        CALL MPI_RECV( gindices, 3*DataSize, MPI_INTEGER, i-1, 400, MPI_COMM_WORLD, status, ierr )
+        CALL MPI_RECV( gindices, 3*DataSize, MPI_INTEGER, i-1, 400, ELMER_COMM_WORLD, status, ierr )
 
         DO k = n, Mesh % Nodes % NumberOfnodes
            IF( .NOT. Mesh % ParallelInfo % Interface(k) ) CYCLE
@@ -2251,11 +2268,11 @@ tstart = realtime()
         IF( ASSOCIATED( Request2(i) % DATA ) ) DataSize = SIZE( Request2(i) % DATA )
 !ddd = ddd+DataSize
 
-        !CALL MPI_SEND( DataSize, 1, MPI_INTEGER, i-1, 900, MPI_COMM_WORLD, ierr)
-        CALL MPI_BSEND( DataSize, 1, MPI_INTEGER, i-1, 900, MPI_COMM_WORLD, ierr)
+        !CALL MPI_SEND( DataSize, 1, MPI_INTEGER, i-1, 900, ELMER_COMM_WORLD, ierr)
+        CALL MPI_BSEND( DataSize, 1, MPI_INTEGER, i-1, 900, ELMER_COMM_WORLD, ierr)
         IF( DataSize < 1 ) CYCLE
 
-        CALL MPI_BSEND( Request2(i) % DATA, DataSize, MPI_INTEGER, i-1, 950, MPI_COMM_WORLD, ierr)
+        CALL MPI_BSEND( Request2(i) % DATA, DataSize, MPI_INTEGER, i-1, 950, ELMER_COMM_WORLD, ierr)
      END DO
 !print *,'*****',ParEnv % MyPE+1,ddd
      !
@@ -2265,11 +2282,11 @@ tstart = realtime()
         IF( i-1 == ParEnv % MyPE ) CYCLE
         IF( .NOT. IsNeighbour(i) ) CYCLE
 
-        CALL MPI_RECV( DataSize, 1, MPI_INTEGER, i-1, 900, MPI_COMM_WORLD, status, ierr )
+        CALL MPI_RECV( DataSize, 1, MPI_INTEGER, i-1, 900, ELMER_COMM_WORLD, status, ierr )
         IF( DataSize < 1 ) CYCLE
         
         ALLOCATE( IntArray(DataSize) )
-        CALL MPI_RECV( IntArray, DataSize, MPI_INTEGER, i-1, 950, MPI_COMM_WORLD, status, ierr )
+        CALL MPI_RECV( IntArray, DataSize, MPI_INTEGER, i-1, 950, ELMER_COMM_WORLD, status, ierr )
 
         DO q = 1, DataSize/3
            TmpArray = IntArray(3*q-2:3*q)
@@ -2315,9 +2332,9 @@ tstart = realtime()
 
         DataSize = 0
         IF( ASSOCIATED( Request1(i) % DATA ) ) DataSize = SIZE( Request1(i) % DATA )
-        CALL MPI_BSEND( DataSize, 1, MPI_INTEGER, i-1, 700, MPI_COMM_WORLD, ierr)
+        CALL MPI_BSEND( DataSize, 1, MPI_INTEGER, i-1, 700, ELMER_COMM_WORLD, ierr)
         IF( DataSize < 1 ) CYCLE
-        CALL MPI_BSEND( Request1(i) % DATA, DataSize, MPI_INTEGER, i-1, 1800, MPI_COMM_WORLD, ierr )
+        CALL MPI_BSEND( Request1(i) % DATA, DataSize, MPI_INTEGER, i-1, 1800, ELMER_COMM_WORLD, ierr )
      END DO
      !
      ! Receive the removal requests and update the neighbour lists (CASE 1):
@@ -2327,11 +2344,11 @@ tstart = realtime()
         IF( i-1 == ParEnv % MyPE ) CYCLE
         IF( .NOT. IsNeighbour(i) ) CYCLE
 
-        CALL MPI_RECV( DataSize, 1, MPI_INTEGER, i-1, 700, MPI_COMM_WORLD, status, ierr )
+        CALL MPI_RECV( DataSize, 1, MPI_INTEGER, i-1, 700, ELMER_COMM_WORLD, status, ierr )
         IF( DataSize < 1 ) CYCLE
         
         ALLOCATE( IntArray(DataSize) )
-        CALL MPI_RECV( IntArray, DataSize, MPI_INTEGER, i-1, 1800, MPI_COMM_WORLD, status, ierr )
+        CALL MPI_RECV( IntArray, DataSize, MPI_INTEGER, i-1, 1800, ELMER_COMM_WORLD, status, ierr )
         
         mm = DataSize/3
         DO nn = 1,mm
@@ -2405,7 +2422,7 @@ tstart = realtime()
      oldnodes = 0 ! workspace
      IF( Found ) oldnodes( ParEnv % MyPE+1 ) = 1
      oldnodes2 = 0
-     CALL MPI_ALLREDUCE( oldnodes, oldnodes2, ParEnv % PEs, MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr )
+     CALL MPI_ALLREDUCE( oldnodes, oldnodes2, ParEnv % PEs, MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr )
      j = SUM( oldnodes2 )
 
      IF( j < 1 ) GOTO 20
@@ -2414,7 +2431,7 @@ tstart = realtime()
      Iterate = Iterate+1
      IF(Iterate > MaxIterates ) THEN
         WRITE(*,'(A,I6,A)') 'SParIterGlobalNumbering: PE: ', ParEnv % MyPE+1,'Max iterations exceeded'
-        CALL MPI_FINALIZE( MPI_COMM_WORLD, ierr )
+        CALL MPI_FINALIZE( ELMER_COMM_WORLD, ierr )
      END IF
      DO i = n, Mesh % NumberOfNodes
         Mesh % ParallelInfo % GlobalDOFs(i) = 0
@@ -2481,7 +2498,7 @@ tstart = realtime()
      IF ( .NOT. ASSOCIATED(Parenv % IsNeighbour,IsNeighbour) ) &
        DEALLOCATE(isNeighbour)
 
-     CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 !print*,'globnum: ', parenv % mype, RealTime()-tstart; call flush(6)
 
      RETURN
@@ -2500,19 +2517,19 @@ tstart = realtime()
         DO i = MinProc+1, ParEnv % PEs
            IF ( ParEnv % Active(i) ) THEN
               CALL MPI_RECV( k, 1, MPI_INTEGER, i-1, &
-                   10, MPI_COMM_WORLD, status, ierr )
+                   10, ELMER_COMM_WORLD, status, ierr )
               MaxGlb = MAX( MaxGlb, k )
            END IF
         END DO
      ELSE
         CALL MPI_BSEND( MaxLcl, 1, MPI_INTEGER, &
-             MinProc-1, 10, MPI_COMM_WORLD, ierr )
+             MinProc-1, 10, ELMER_COMM_WORLD, ierr )
      END IF
 
 !print *,'(2) Id:',ParEnv % MyPE+1,'MaxGlb=',MaxGlb
 
 !
-!    Recieve new interface nodes from lower
+!    Receive new interface nodes from lower
 !    numbered PEs, and check if they are
 !    relevant to us:
 !    ---------------------------------------
@@ -2525,7 +2542,7 @@ tstart = realtime()
         IF ( .NOT. (ParEnv % Active(i) .AND. ParEnv % Isneighbour(i)) ) CYCLE
         
         CALL MPI_RECV( InterfaceNodes, 1, MPI_INTEGER, &
-             i-1, 14, MPI_COMM_WORLD, status, ierr )
+             i-1, 14, ELMER_COMM_WORLD, status, ierr )
 
 !print *,'(4) Id:',ParEnv % MyPE+1,'Neighbour=',i,'InterfaceNodes=',InterfaceNodes
         
@@ -2533,24 +2550,24 @@ tstart = realtime()
            ALLOCATE( GIndices(InterfaceNodes), IntCnts(InterfaceNodes) )
            
            CALL MPI_RECV( GIndices, InterfaceNodes, MPI_INTEGER, &
-                i-1, 15, MPI_COMM_WORLD, status, ierr )
+                i-1, 15, ELMER_COMM_WORLD, status, ierr )
 
 !print *,'(5) Id:', ParEnv % MyPE+1, 'Neighbour=',i,'GIndices=',GIndices
            
            CALL MPI_RECV( IntCnts, InterfaceNodes, MPI_INTEGER, &
-                i-1, 16, MPI_COMM_WORLD, status, ierr )
+                i-1, 16, ELMER_COMM_WORLD, status, ierr )
 
 !print *,'(6) Id:', ParEnv % MyPE+1, 'Neighbour=',i,'IntCnts=',IntCnts
            
            CALL MPI_RECV( k, 1, MPI_INTEGER, &
-                i-1, 17, MPI_COMM_WORLD, status, ierr )
+                i-1, 17, ELMER_COMM_WORLD, status, ierr )
 
 !print *,'(7) Id:', ParEnv % MyPE+1, 'Neighbour=',i,'k=',k
            
            ALLOCATE( IntArray(k) )
            
            CALL MPI_RECV( IntArray, SIZE(IntArray), MPI_INTEGER, &
-                i-1, 18, MPI_COMM_WORLD, status, ierr )
+                i-1, 18, ELMER_COMM_WORLD, status, ierr )
 
 !print *,'(8) Id:', ParEnv % MyPE+1, 'Neighbour=',i,'IntArray=',IntArray
 
@@ -2601,7 +2618,7 @@ tstart = realtime()
         DO i=ParEnv % MyPE, MinProc, -1
            IF ( ParEnv % Active(i) ) THEN
               CALL MPI_RECV( MaxGlb, 1, MPI_INTEGER, &
-               i-1, 20, MPI_COMM_WORLD, status, ierr )
+               i-1, 20, ELMER_COMM_WORLD, status, ierr )
 
 !print *,'(20) Id:',ParEnv % MyPE+1,'dest=',i,'MaxGlb=',MaxGlb
 
@@ -2639,21 +2656,21 @@ tstart = realtime()
         IF ( .NOT. (ParEnv % Active(i) .AND. ParEnv % Isneighbour(i)) ) CYCLE
 
         CALL MPI_BSEND( InterfaceNodes, 1, MPI_INTEGER, &
-               i-1, 14, MPI_COMM_WORLD, ierr )
+               i-1, 14, ELMER_COMM_WORLD, ierr )
 
         IF ( InterfaceNodes > 0 ) THEN
            CALL MPI_BSEND( GIndices, InterfaceNodes, MPI_INTEGER, &
-                    i-1, 15, MPI_COMM_WORLD, ierr )
+                    i-1, 15, ELMER_COMM_WORLD, ierr )
 
            CALL MPI_BSEND( OldIntCnts, InterfaceNodes, &
-              MPI_INTEGER, i-1, 16, MPI_COMM_WORLD, ierr )
+              MPI_INTEGER, i-1, 16, ELMER_COMM_WORLD, ierr )
 
            j = SIZE(OldIntArray)
            CALL MPI_BSEND( j, 1, &
-              MPI_INTEGER, i-1, 17, MPI_COMM_WORLD, ierr )
+              MPI_INTEGER, i-1, 17, ELMER_COMM_WORLD, ierr )
 
            CALL MPI_BSEND( OldIntArray, SIZE(OldIntArray), &
-              MPI_INTEGER, i-1, 18, MPI_COMM_WORLD, ierr )
+              MPI_INTEGER, i-1, 18, ELMER_COMM_WORLD, ierr )
 
         END IF
      END DO
@@ -2665,7 +2682,7 @@ tstart = realtime()
      DO i = ParEnv % MyPE+2, ParEnv % PEs
         IF ( ParEnv % Active(i) ) THEN
            CALL MPI_BSEND( MaxGlb, 1, MPI_INTEGER, &
-               i-1, 20, MPI_COMM_WORLD, ierr )
+               i-1, 20, ELMER_COMM_WORLD, ierr )
            EXIT
         END IF
      END DO
@@ -2727,10 +2744,10 @@ tstart = realtime()
         IF ( ParEnv % MyPE == i-1 ) CYCLE
         IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
            CALL MPI_BSEND( InterfaceNodes, 1, &
-              MPI_INTEGER, i-1, 30, MPI_COMM_WORLD, ierr )
+              MPI_INTEGER, i-1, 30, ELMER_COMM_WORLD, ierr )
 
            CALL MPI_BSEND( GIndices, InterfaceNodes, &
-              MPI_INTEGER, i-1, 31, MPI_COMM_WORLD, ierr )
+              MPI_INTEGER, i-1, 31, ELMER_COMM_WORLD, ierr )
         END IF
      END DO
 
@@ -2750,12 +2767,12 @@ tstart = realtime()
         IF ( ParEnv % MyPE == i-1 ) CYCLE
         IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
            CALL MPI_RECV( InterfaceNodes, 1, MPI_INTEGER, &
-               i-1, 30, MPI_COMM_WORLD, status, ierr )
+               i-1, 30, ELMER_COMM_WORLD, status, ierr )
 
            ALLOCATE( GIndices(InterfaceNodes) )
 
            CALL MPI_RECV( GIndices, InterfaceNodes, MPI_INTEGER, &
-               i-1, 31, MPI_COMM_WORLD, status, ierr )
+               i-1, 31, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,InterfaceNodes
               k = SearchNode( Mesh % ParallelInfo, Gindices(j), n )
@@ -2801,7 +2818,7 @@ DO i = 1, mesh % nodes % numberofnodes
 END DO
 
 
-     CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
 CONTAINS
 
@@ -2844,7 +2861,7 @@ CONTAINS
 SUBROUTINE SParIterBarrier
 !-----------------------------------------------------------------------
   INTEGER :: ierr
-  CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+  CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 !-----------------------------------------------------------------------
 END  SUBROUTINE SParIterBarrier
 !-----------------------------------------------------------------------
@@ -2868,7 +2885,7 @@ SUBROUTINE SParIterAllReduceAnd(L)
    INTEGER :: ierr
 
    L1 = L
-   CALL MPI_ALLREDUCE(L1,L,1,MPI_LOGICAL,MPI_LAND,MPI_COMM_WORLD,ierr)
+   CALL MPI_ALLREDUCE(L1,L,1,MPI_LOGICAL,MPI_LAND,ELMER_COMM_WORLD,ierr)
 !-----------------------------------------------------------------------
 END  SUBROUTINE SParIterAllReduceAnd
 !-----------------------------------------------------------------------
@@ -2881,7 +2898,7 @@ SUBROUTINE SParIterAllReduceOR(L)
    INTEGER :: ierr
 
    L1 = L
-   CALL MPI_ALLREDUCE(L1,L,1,MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+   CALL MPI_ALLREDUCE(L1,L,1,MPI_LOGICAL,MPI_LOR,ELMER_COMM_WORLD,ierr)
 !-----------------------------------------------------------------------
 END  SUBROUTINE SParIterAllReduceOR
 !-----------------------------------------------------------------------
@@ -2933,7 +2950,7 @@ END  SUBROUTINE SParIterAllReduceOR
       totalsize = totalsize + 3*rows + 1 + cols
     END IF
   END DO
-  CALL CheckBuffer( totalsize*4+MPI_BSEND_OVERHEAD*8 )
+  CALL CheckBuffer( totalsize+n+n*MPI_BSEND_OVERHEAD )
 
   !
   ! Receive interface sizes:
@@ -2941,14 +2958,14 @@ END  SUBROUTINE SParIterAllReduceOR
   ALLOCATE( recv_rows(n), recv_cols(n), requests(n) )
   DO i=1,n
     CALL MPI_iRECV( recv_rows(i),1, MPI_INTEGER, neigh(i), &
-         2000, MPI_COMM_WORLD, requests(i), ierr )
+         2000, ELMER_COMM_WORLD, requests(i), ierr )
   END DO
 
   DO i=1,n
     destproc = neigh(i)
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
     CALL MPI_BSEND( rows, 1, MPI_INTEGER, &
-           destproc, 2000, MPI_COMM_WORLD, ierr )
+           destproc, 2000, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
    
@@ -2959,7 +2976,7 @@ END  SUBROUTINE SParIterAllReduceOR
     IF (recv_rows(i)>0) THEN
       req_cnt = req_cnt + 1
       CALL MPI_iRECV( recv_cols(i), 1, MPI_INTEGER, neigh(i), &
-         2001, MPI_COMM_WORLD, requests(req_cnt), ierr )
+         2001, ELMER_COMM_WORLD, requests(req_cnt), ierr )
     END IF
   END DO
   !
@@ -2972,7 +2989,7 @@ END  SUBROUTINE SParIterAllReduceOR
     IF (rows>0) THEN
       cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
       CALL MPI_BSEND( cols,1, MPI_INTEGER, &
-           destproc, 2001, MPI_COMM_WORLD, ierr )
+           destproc, 2001, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -2999,7 +3016,7 @@ END  SUBROUTINE SParIterAllReduceOR
 
        req_cnt = req_cnt+1
        CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % GRows, rows,  MPI_INTEGER, &
-             sproc, 1002, MPI_COMM_WORLD, requests(req_cnt), ierr )
+             sproc, 1002, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3009,7 +3026,7 @@ END  SUBROUTINE SParIterAllReduceOR
     IF ( rows>0 ) THEN
        cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
        CALL MPI_BSEND( NbsIfMatrix(destproc+1) % GRows, &
-            rows, MPI_INTEGER, destproc, 1002, MPI_COMM_WORLD, ierr )
+            rows, MPI_INTEGER, destproc, 1002, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3025,7 +3042,7 @@ END  SUBROUTINE SParIterAllReduceOR
      IF ( rows>0 ) THEN
        req_cnt = req_cnt+1
        CALL MPI_iRECV( RecvdIfmatrix(sproc+1) % Rows, rows+1, MPI_INTEGER, &
-            sproc, 1003, MPI_COMM_WORLD, requests(req_cnt), ierr )
+            sproc, 1003, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3034,7 +3051,7 @@ END  SUBROUTINE SParIterAllReduceOR
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
     IF ( rows>0 ) THEN
        CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Rows, &
-            rows+1, MPI_INTEGER, destproc, 1003, MPI_COMM_WORLD, ierr )
+            rows+1, MPI_INTEGER, destproc, 1003, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3051,7 +3068,7 @@ END  SUBROUTINE SParIterAllReduceOR
        cols = recv_cols(i)
        req_cnt = req_cnt+1
        CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % Cols, cols, MPI_INTEGER, &
-            sproc, 1004, MPI_COMM_WORLD, requests(req_cnt), ierr )
+            sproc, 1004, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3062,7 +3079,7 @@ END  SUBROUTINE SParIterAllReduceOR
     IF ( rows>0 ) THEN
        cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
        CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Cols, &
-            cols, MPI_INTEGER, destproc, 1004, MPI_COMM_WORLD, ierr )
+            cols, MPI_INTEGER, destproc, 1004, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3078,7 +3095,7 @@ END  SUBROUTINE SParIterAllReduceOR
      IF ( rows>0 ) THEN
        req_cnt = req_cnt+1
        CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % RowOwner, rows, MPI_INTEGER, &
-            sproc, 1005, MPI_COMM_WORLD, requests(req_cnt), ierr )
+            sproc, 1005, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3087,7 +3104,7 @@ END  SUBROUTINE SParIterAllReduceOR
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
     IF ( rows>0 ) THEN
        CALL MPI_BSEND( NbsIfMatrix(destproc+1) % RowOwner, &
-            rows, MPI_INTEGER, destproc, 1005, MPI_COMM_WORLD, ierr )
+            rows, MPI_INTEGER, destproc, 1005, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3148,7 +3165,7 @@ END SUBROUTINE ExchangeInterfaces
       totalsize = totalsize + 4 + 3*4*rows + 4 + 5*cols
     END IF
   END DO
-  CALL CheckBuffer( totalsize+MPI_BSEND_OVERHEAD*8 )
+  CALL CheckBuffer(totalsize+n*MPI_BSEND_OVERHEAD)
 
   !
   ! Receive interface sizes:
@@ -3156,16 +3173,16 @@ END SUBROUTINE ExchangeInterfaces
   ALLOCATE( recv_rows(n), recv_cols(n), requests(n) )
   DO i=1,n
     CALL MPI_iRECV( recv_rows(i),1, MPI_INTEGER, neigh(i), &
-         2000, MPI_COMM_WORLD, requests(i), ierr )
+         2000, ELMER_COMM_WORLD, requests(i), ierr )
   END DO
 
   DO i=1,n
     destproc = neigh(i)
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
     CALL MPI_BSEND( rows, 1, MPI_INTEGER, &
-           destproc, 2000, MPI_COMM_WORLD, ierr )
+           destproc, 2000, ELMER_COMM_WORLD, ierr )
   END DO
-  CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
+  CALL MPI_WaitAll(n, requests, MPI_STATUSES_IGNORE, ierr)
    
 !----------------------------------------------------------------------
 
@@ -3174,7 +3191,7 @@ END SUBROUTINE ExchangeInterfaces
     IF (recv_rows(i)>0) THEN
       req_cnt = req_cnt + 1
       CALL MPI_iRECV( recv_cols(i), 1, MPI_INTEGER, neigh(i), &
-         2001, MPI_COMM_WORLD, requests(req_cnt), ierr )
+         2001, ELMER_COMM_WORLD, requests(req_cnt), ierr )
     END IF
   END DO
   !
@@ -3187,7 +3204,7 @@ END SUBROUTINE ExchangeInterfaces
     IF (rows>0) THEN
       cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
       CALL MPI_BSEND( cols,1, MPI_INTEGER, &
-           destproc, 2001, MPI_COMM_WORLD, ierr )
+           destproc, 2001, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3232,7 +3249,7 @@ END SUBROUTINE ExchangeInterfaces
 
        req_cnt = req_cnt+1
        CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % GRows, rows,  MPI_INTEGER, &
-             sproc, 2002, MPI_COMM_WORLD, requests(req_cnt), ierr )
+             sproc, 2002, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3242,7 +3259,7 @@ END SUBROUTINE ExchangeInterfaces
     IF ( rows>0 ) THEN
        cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
        CALL MPI_BSEND( NbsIfMatrix(destproc+1) % GRows, &
-            rows, MPI_INTEGER, destproc, 2002, MPI_COMM_WORLD, ierr )
+            rows, MPI_INTEGER, destproc, 2002, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3259,7 +3276,7 @@ END SUBROUTINE ExchangeInterfaces
        cols = recv_cols(i)
        req_cnt = req_cnt+1
        CALL MPI_iRECV( RecvdIfmatrix(sproc+1) % Rows, rows+1, MPI_INTEGER, &
-            sproc, 2003, MPI_COMM_WORLD, requests(req_cnt), ierr )
+            sproc, 2003, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3269,7 +3286,7 @@ END SUBROUTINE ExchangeInterfaces
     IF ( rows>0 ) THEN
        cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
        CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Rows, &
-            rows+1, MPI_INTEGER, destproc, 2003, MPI_COMM_WORLD, ierr )
+            rows+1, MPI_INTEGER, destproc, 2003, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3286,7 +3303,7 @@ END SUBROUTINE ExchangeInterfaces
        cols = recv_cols(i)
        req_cnt = req_cnt+1
        CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % Cols, cols, MPI_INTEGER, &
-            sproc, 2004, MPI_COMM_WORLD, requests(req_cnt), ierr )
+            sproc, 2004, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3296,7 +3313,7 @@ END SUBROUTINE ExchangeInterfaces
     IF ( rows>0 ) THEN
        cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
        CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Cols, &
-            cols, MPI_INTEGER, destproc, 2004, MPI_COMM_WORLD, ierr )
+            cols, MPI_INTEGER, destproc, 2004, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3313,7 +3330,7 @@ END SUBROUTINE ExchangeInterfaces
        cols = recv_cols(i)
        req_cnt = req_cnt+1
        CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % Values, cols, MPI_DOUBLE_PRECISION, &
-            sproc, 2005, MPI_COMM_WORLD, requests(req_cnt), ierr )
+            sproc, 2005, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3323,7 +3340,7 @@ END SUBROUTINE ExchangeInterfaces
     IF ( rows>0 ) THEN
        cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
        CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Values, &
-            cols, MPI_DOUBLE_PRECISION, destproc, 2005, MPI_COMM_WORLD, ierr )
+            cols, MPI_DOUBLE_PRECISION, destproc, 2005, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3341,7 +3358,7 @@ END SUBROUTINE ExchangeInterfaces
          cols = recv_cols(i)
          req_cnt = req_cnt+1
          CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % PrecValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2006, MPI_COMM_WORLD, requests(req_cnt), ierr )
+           MPI_DOUBLE_PRECISION, sproc, 2006, ELMER_COMM_WORLD, requests(req_cnt), ierr )
        END IF
     END DO
 
@@ -3351,7 +3368,7 @@ END SUBROUTINE ExchangeInterfaces
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
          CALL MPI_BSEND( NbsIfMatrix(destproc+1) % PrecValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2006, MPI_COMM_WORLD, ierr )
+              cols, MPI_DOUBLE_PRECISION, destproc, 2006, ELMER_COMM_WORLD, ierr )
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3369,7 +3386,7 @@ END SUBROUTINE ExchangeInterfaces
          cols = recv_cols(i)
          req_cnt = req_cnt+1
          CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % MassValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2007, MPI_COMM_WORLD, requests(req_cnt), ierr )
+           MPI_DOUBLE_PRECISION, sproc, 2007, ELMER_COMM_WORLD, requests(req_cnt), ierr )
        END IF
     END DO
 
@@ -3379,7 +3396,7 @@ END SUBROUTINE ExchangeInterfaces
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
          CALL MPI_BSEND( NbsIfMatrix(destproc+1) % MassValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2007, MPI_COMM_WORLD, ierr )
+              cols, MPI_DOUBLE_PRECISION, destproc, 2007, ELMER_COMM_WORLD, ierr )
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3398,7 +3415,7 @@ END SUBROUTINE ExchangeInterfaces
          cols = recv_cols(i)
          req_cnt = req_cnt+1
          CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % DampValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2008, MPI_COMM_WORLD, requests(req_cnt), ierr )
+           MPI_DOUBLE_PRECISION, sproc, 2008, ELMER_COMM_WORLD, requests(req_cnt), ierr )
        END IF
     END DO
 
@@ -3408,7 +3425,7 @@ END SUBROUTINE ExchangeInterfaces
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
          CALL MPI_BSEND( NbsIfMatrix(destproc+1) % DampValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2008, MPI_COMM_WORLD, ierr )
+              cols, MPI_DOUBLE_PRECISION, destproc, 2008, ELMER_COMM_WORLD, ierr )
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3427,7 +3444,7 @@ END SUBROUTINE ExchangeInterfaces
          cols = recv_cols(i)
          req_cnt = req_cnt+1
          CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % ILUValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2009, MPI_COMM_WORLD, requests(req_cnt), ierr )
+           MPI_DOUBLE_PRECISION, sproc, 2009, ELMER_COMM_WORLD, requests(req_cnt), ierr )
        END IF
     END DO
 
@@ -3437,7 +3454,7 @@ END SUBROUTINE ExchangeInterfaces
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
          CALL MPI_BSEND( NbsIfMatrix(destproc+1) % ILUValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2009, MPI_COMM_WORLD, ierr )
+              cols, MPI_DOUBLE_PRECISION, destproc, 2009, ELMER_COMM_WORLD, ierr )
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3524,7 +3541,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   END DO
 
   totalsize = SUM(send_size)
-  CALL CheckBuffer( 3*4*totalsize+3*MPI_BSEND_OVERHEAD )
+  CALL CheckBuffer( 3*totalsize+n*MPI_BSEND_OVERHEAD )
 
   !
   ! Receive interface sizes:
@@ -3532,7 +3549,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   ALLOCATE( recv_size(n), requests(n) )
   DO i=1,n
     CALL MPI_iRECV( recv_size(i), 1, MPI_INTEGER, neigh(i), &
-          3000, MPI_COMM_WORLD, requests(i), ierr )
+          3000, ELMER_COMM_WORLD, requests(i), ierr )
   END DO
 
   !
@@ -3540,7 +3557,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   !--------------------------
   DO i=1,n
     CALL MPI_BSEND( send_size(i), 1, MPI_INTEGER, neigh(i), &
-          3000, MPI_COMM_WORLD, ierr )
+          3000, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
   
@@ -3554,7 +3571,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
         req_cnt = req_cnt + 1
         ALLOCATE( recv_buf(i) % ind(datalen) )
         CALL MPI_iRECV( recv_buf(i) % Ind, datalen, MPI_INTEGER, sproc, &
-                3001, MPI_COMM_WORLD, requests(req_cnt), ierr )
+                3001, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3563,7 +3580,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
     datalen = send_size(i)
     IF ( datalen > 0 ) THEN
        CALL MPI_BSEND( send_buf(i) % ind, datalen, &
-          MPI_INTEGER, destproc, 3001, MPI_COMM_WORLD, ierr )
+          MPI_INTEGER, destproc, 3001, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3578,7 +3595,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
         req_cnt = req_cnt + 1
         ALLOCATE( recv_buf(i) % vec(datalen) )
         CALL MPI_iRECV( recv_buf(i) % vec, datalen, MPI_DOUBLE_PRECISION, &
-             sproc, 3002, MPI_COMM_WORLD, requests(req_cnt), ierr )
+             sproc, 3002, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3587,7 +3604,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
     datalen = send_size(i)
     IF ( datalen > 0 ) THEN
        CALL MPI_BSEND( send_buf(i) % vec, datalen, &
-          MPI_DOUBLE_PRECISION, destproc, 3002, MPI_COMM_WORLD, ierr )
+          MPI_DOUBLE_PRECISION, destproc, 3002, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3698,7 +3715,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
   END DO
 
   totalsize = SUM(send_size)
-  CALL CheckBuffer( 3*4*totalsize+3*MPI_BSEND_OVERHEAD )
+  CALL CheckBuffer( 3*totalsize+3*n*MPI_BSEND_OVERHEAD )
 
   !
   ! Receive interface sizes:
@@ -3706,7 +3723,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
   ALLOCATE( recv_size(n), requests(n) )
   DO i=1,n
     CALL MPI_iRECV( recv_size(i),1, MPI_INTEGER, neigh(i), &
-         3100, MPI_COMM_WORLD, requests(i), ierr )
+         3100, ELMER_COMM_WORLD, requests(i), ierr )
   END DO
 
   !
@@ -3714,7 +3731,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
   !--------------------------
   DO i=1,n
     CALL MPI_BSEND( send_size(i), 1, MPI_INTEGER, neigh(i), &
-         3100, MPI_COMM_WORLD, ierr )
+         3100, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
   
@@ -3728,7 +3745,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
         req_cnt = req_cnt + 1
         ALLOCATE( recv_buf(i) % ind(datalen) )
         CALL MPI_iRECV( recv_buf(i) % Ind, datalen, MPI_INTEGER, sproc, &
-                3101, MPI_COMM_WORLD, requests(req_cnt), ierr )
+                3101, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3737,7 +3754,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
     datalen = send_size(i)
     IF ( datalen > 0 ) THEN
        CALL MPI_BSEND( send_buf(i) % ind, datalen, &
-          MPI_INTEGER, destproc, 3101, MPI_COMM_WORLD, ierr )
+          MPI_INTEGER, destproc, 3101, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3752,7 +3769,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
         req_cnt = req_cnt + 1
         ALLOCATE( recv_buf(i) % vec(datalen) )
         CALL MPI_iRECV( recv_buf(i) % vec, datalen, MPI_DOUBLE_PRECISION, &
-             sproc, 3102, MPI_COMM_WORLD, requests(req_cnt), ierr )
+             sproc, 3102, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3761,7 +3778,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
     datalen = send_size(i)
     IF ( datalen > 0 ) THEN
        CALL MPI_BSEND( send_buf(i) % vec, datalen, &
-          MPI_DOUBLE_PRECISION, destproc, 3102, MPI_COMM_WORLD, ierr )
+          MPI_DOUBLE_PRECISION, destproc, 3102, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
   CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3856,11 +3873,11 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
        END IF
      END IF
   END DO
-  CALL CheckBuffer( totalsize*4 + 3*MPI_BSEND_OVERHEAD )
+  CALL CheckBuffer( totalsize + n + 3*n*MPI_BSEND_OVERHEAD )
 
   DO i = 1,n
     CALL MPI_iRECV( recv_size(i), 1, MPI_INTEGER, &
-        neigh(i), 9000, MPI_COMM_WORLD, requests(i), ierr )
+        neigh(i), 9000, ELMER_COMM_WORLD, requests(i), ierr )
   END DO
 
   DO i = 1,n
@@ -3872,7 +3889,7 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
       datalen = SIZE(CurrRBuf % ResInd)
 
     CALL MPI_BSEND( datalen, 1, MPI_INTEGER, &
-         destproc, 9000, MPI_COMM_WORLD, ierr )
+         destproc, 9000, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
 
@@ -3886,7 +3903,7 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
        req_cnt = req_cnt + 1
        ALLOCATE( recv_buf(i) % ind(datalen) )
        CALL MPI_iRECV( recv_buf(i) % ind, datalen, MPI_INTEGER, sproc, &
-               9001, MPI_COMM_WORLD, requests(req_cnt), ierr )
+               9001, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3897,7 +3914,7 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
       datalen = SIZE(CurrRBuf % Resind)
       IF ( datalen > 0 ) THEN
          CALL MPI_BSEND( CurrRBuf % resind, datalen, &
-            MPI_INTEGER, destproc, 9001, MPI_COMM_WORLD, ierr )
+            MPI_INTEGER, destproc, 9001, ELMER_COMM_WORLD, ierr )
       END IF
     END IF
   END DO
@@ -3913,7 +3930,7 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
         req_cnt = req_cnt + 1
         ALLOCATE( recv_buf(i) % vec(datalen) )
         CALL MPI_iRECV( recv_buf(i) % vec, datalen, MPI_DOUBLE_PRECISION, &
-             sproc, 9002, MPI_COMM_WORLD, requests(req_cnt), ierr )
+             sproc, 9002, ELMER_COMM_WORLD, requests(req_cnt), ierr )
      END IF
   END DO
 
@@ -3924,7 +3941,7 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
       datalen = SIZE(CurrRBuf % Resind)
       IF ( datalen > 0 ) THEN
          CALL MPI_BSEND( CurrRBuf % resval, datalen, &
-            MPI_DOUBLE_PRECISION, destproc, 9002, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, destproc, 9002, ELMER_COMM_WORLD, ierr )
       END IF
     END IF
   END DO
@@ -3992,7 +4009,7 @@ SUBROUTINE BuildRevVecIndices( SplittedMatrix )
 #endif
 
   !*********************************************************************
-tt = CPUTime()
+tt = realTime()
 
   n = Parenv % NumOfNeighbours
   ALLOCATE( neigh(n), sbuf(n), L(n) )
@@ -4016,7 +4033,7 @@ tt = CPUTime()
       totalsize=totalsize+1
     END DO
   END DO
-  CALL CheckBuffer( totalsize*4+MPI_BSEND_OVERHEAD*count )
+  CALL CheckBuffer( totalsize+n+MPI_BSEND_OVERHEAD*count*n )
 
   InsideMatrix => SplittedMatrix % InsideMatrix
 
@@ -4053,22 +4070,22 @@ tt = CPUTime()
 
   DO i=1,n
     CALL MPI_BSEND( L(i), 1, MPI_INTEGER, neigh(i), 4000, &
-                MPI_COMM_WORLD, ierr )
+                ELMER_COMM_WORLD, ierr )
 
     IF ( L(i) > 0 ) THEN
        CALL MPI_BSEND( sbuf(i) % ibuf, L(i), MPI_INTEGER, neigh(i), &
-               4001, MPI_COMM_WORLD, ierr )
+               4001, ELMER_COMM_WORLD, ierr )
     END IF
   END DO
-!print*,parenv % mype, 'first send: ', CPUTime()-tt
-!tt = CPUtime()
+!print*,parenv % mype, 'first send: ', realTime()-tt
+!tt = realtime()
 !
 !
 !
   DO i = 1,n
     sproc = neigh(i)
     CALL MPI_RECV( veclen, 1, MPI_INTEGER, sproc, &
-         4000, MPI_COMM_WORLD, status, ierr )
+         4000, ELMER_COMM_WORLD, status, ierr )
 
     SplittedMatrix % VecIndices(sproc+1) % RevInd => Null()
     IF ( veclen > 0 ) THEN
@@ -4076,19 +4093,23 @@ tt = CPUTime()
       ALLOCATE( Gindices(Veclen) )
 
       CALL MPI_RECV( Gindices, veclen, MPI_INTEGER, sproc, &
-              4001, MPI_COMM_WORLD, status, ierr )
+              4001, ELMER_COMM_WORLD, status, ierr )
 
+!print*,parenv % mype, ' <<----- ', sproc, veclen, insidematrix % numberofrows
+
+!tt = realtime()
       DO m = 1, VecLen
          ind = SearchIAItem( InsideMatrix %  NumberOfRows, &
            InsideMatrix % GRows, Gindices(m), InsideMatrix % Gorder )
          SplittedMatrix % Vecindices(sproc+1) % RevInd(m) = ind
       END DO
+!print*,parenv % mype, ' <<<<-----', sproc, realtime()-tt; flush(6)
       DEALLOCATE( Gindices )
     END IF 
   END DO
 
-!print*,parenv % mype, 'first recv: ', CPUTime()-tt
-!tt = CPUtime()
+!print*,parenv % mype, 'first recv: ', realTime()-tt
+!tt = realtime()
 
   DO i=1,n
     CurrIf => SplittedMatrix % IfMatrix(neigh(i)+1)
@@ -4111,8 +4132,9 @@ tt = CPUTime()
   DO i=1,n
      IF ( ALLOCATED(sbuf(i) % ibuf) ) DEALLOCATE(sbuf(i) % ibuf)
   END DO
+  CALL SParIterACtiveBarrier()
   DEALLOCATE(neigh, sbuf,L)
-!print*,parenv % mype, 'secnd recv: ', CPUTime()-tt
+!print*,parenv % mype, 'secnd recv: ', realTime()-tt
 !*********************************************************************
 END SUBROUTINE BuildRevVecIndices
 !*********************************************************************
@@ -4136,7 +4158,7 @@ SUBROUTINE Send_LocIf_Old( SplittedMatrix )
   TYPE (BasicMatrix_t), POINTER :: IfM
   TYPE (IfVecT), POINTER :: IfV
   INTEGER, ALLOCATABLE :: L(:)
-  REAL(KIND=dp), ALLOCATABLE :: VecL(:,:)
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: VecL(:,:)
 
   !*********************************************************************
 
@@ -4163,7 +4185,7 @@ SUBROUTINE Send_LocIf_Old( SplittedMatrix )
   L = 0
   VecL = 0
 
-  CALL CheckBuffer( 12*TotalL )
+  CALL CheckBuffer( TotalL + ParEnv % NumOfNeighbours*(1+MPI_BSEND_OVERHEAD) )
 
   DO i = 1, ParEnv % PEs
      IfM => SplittedMatrix % IfMatrix(i)
@@ -4185,11 +4207,11 @@ SUBROUTINE Send_LocIf_Old( SplittedMatrix )
      IF ( .NOT. ParEnv % IsNeighbour(j) ) CYCLE
 
      CALL MPI_BSEND( L(j), 1, MPI_INTEGER, J-1, 6000, &
-                MPI_COMM_WORLD, IERR )
+                ELMER_COMM_WORLD, IERR )
 
      IF ( L(j) > 0 ) THEN
         CALL MPI_BSEND( VecL(1:L(j),j), L(j), MPI_DOUBLE_PRECISION, &
-                 J-1, 6001, MPI_COMM_WORLD, ierr )
+                 J-1, 6001, ELMER_COMM_WORLD, ierr )
      END IF
   END DO
 
@@ -4231,7 +4253,7 @@ SUBROUTINE Recv_LocIf_Old( SplittedMatrix, ndim, v )
 
   DO i = 1, ParEnv % NumOfNeighbours
      CALL MPI_RECV( VecLen, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-              6000, MPI_COMM_WORLD, status, ierr )
+              6000, ELMER_COMM_WORLD, status, ierr )
 
      IF ( VecLen > 0 ) THEN
         sproc = status(MPI_SOURCE)
@@ -4243,7 +4265,7 @@ SUBROUTINE Recv_LocIf_Old( SplittedMatrix, ndim, v )
         END IF
 
         CALL MPI_RECV( DPBuffer, VecLen, MPI_DOUBLE_PRECISION, &
-               sproc, 6001, MPI_COMM_WORLD, status, ierr )
+               sproc, 6001, ELMER_COMM_WORLD, status, ierr )
 
         DO k = 1, VecLen
            IF ( RevInd(k) > 0 ) &
@@ -4296,8 +4318,7 @@ SUBROUTINE Send_LocIf_size( SplittedMatrix, n, neigh )
 
   DO nj=1,n
     j = neigh(nj)
-    CALL MPI_BSEND( L(nj), 1, MPI_INTEGER, j, 6000, &
-               MPI_COMM_WORLD, ierr )
+    CALL MPI_BSEND(L(nj),1,MPI_INTEGER,j,6000,ELMER_COMM_WORLD, ierr)
   END DO
 !*********************************************************************
 END SUBROUTINE Send_LocIf_size
@@ -4322,7 +4343,7 @@ SUBROUTINE Send_LocIf( SplittedMatrix,n,neigh )
   TYPE (IfVecT), POINTER :: IfV
   TYPE (BasicMatrix_t), POINTER :: IfM
 
-  TYPE(Buff_t), ALLOCATABLE, SAVE :: VecL(:)
+  TYPE(Buff_t), ALLOCATABLE:: VecL(:)
 
   INTEGER :: L(n)
   !*********************************************************************
@@ -4345,36 +4366,12 @@ SUBROUTINE Send_LocIf( SplittedMatrix,n,neigh )
      END DO
   END DO
 
-  CALL CheckBuffer( 12*TotalL )
+  CALL CheckBuffer( 8*TotalL + n+ n*MPI_BSEND_OVERHEAD )
 
-  IF ( .NOT. ALLOCATED(Vecl) ) THEN
-    ALLOCATE( Vecl(n) )
-    DO i=1,n
-      ALLOCATE( Vecl(i) % Rbuf(L(i)) )
-    END DO
-  ELSE
-    IF ( SIZE(Vecl)<n ) THEN
-      DO i=1,SIZE(Vecl)
-        IF ( ALLOCATED(Vecl(i) % rbuf) ) &
-          DEALLOCATE( Vecl(i) % rbuf )
-      END DO
-      DEALLOCATE( Vecl )
-
-      ALLOCATE( Vecl(n) )
-      DO i=1,n
-        ALLOCATE( Vecl(i) % rbuf(L(i)) )
-      END DO
-    ELSE
-      DO i=1,n
-        IF ( .NOT. ALLOCATED(Vecl(i) % rbuf) ) THEN
-          ALLOCATE( Vecl(i) % rbuf(L(i)) )
-        ELSE IF ( SIZE(Vecl(i) % rbuf) < L(i) ) THEN
-          DEALLOCATE( Vecl(i) % rbuf )
-          ALLOCATE( Vecl(i) % rbuf(L(i)) )
-        END IF
-      END DO
-    END IF
-  END IF
+  ALLOCATE( VecL(n) )
+  DO i=1,n
+    ALLOCATE( VecL(i) % Rbuf(L(i)) )
+  END DO
 
   L = 0
   DO ni = 1, n
@@ -4396,7 +4393,7 @@ SUBROUTINE Send_LocIf( SplittedMatrix,n,neigh )
   DO nj=1,n
      IF ( L(nj) > 0 ) THEN
        CALL MPI_BSEND( VecL(nj) % rbuf, L(nj), MPI_DOUBLE_PRECISION, &
-                Neigh(nj), 6001, MPI_COMM_WORLD, Ierr )
+                Neigh(nj), 6001, ELMER_COMM_WORLD, Ierr )
      END IF
   END DO
 !*********************************************************************
@@ -4424,7 +4421,7 @@ SUBROUTINE Recv_LocIf_size( n, neigh, sizes )
   !*********************************************************************
   DO i=1, ParEnv % NumOfNeighbours
      CALL MPI_RECV( Veclen, 1, MPI_INTEGER, neigh(i), &
-            6000, MPI_COMM_WORLD, status, ierr )
+            6000, ELMER_COMM_WORLD, status, ierr )
      sizes(i) = Veclen
   END DO
 !*********************************************************************
@@ -4464,7 +4461,7 @@ SUBROUTINE Recv_LocIf( SplittedMatrix, n, neigh, sizes, requests, buffer )
     IF ( sizes(ni)>0 ) THEN
       i = neigh(ni)
       CALL MPI_iRECV( buffer(ni) % rbuf,sizes(ni),MPI_DOUBLE_PRECISION, &
-              i, 6001, MPI_COMM_WORLD, requests(ni), Ierr)
+              i, 6001, ELMER_COMM_WORLD, requests(ni), Ierr)
     END IF
   END DO
 !*********************************************************************
@@ -4548,26 +4545,28 @@ SUBROUTINE SParActiveSUM(tsum, oper)
    INTEGER :: oper
    REAL(KIND=dp) :: tsum
 !*********************************************************************
-   INTEGER :: ierr
+   INTEGER :: ierr, comm
    REAL(KIND=dp) :: ssum
 
-   IF ( COUNT(ParEnv % Active)<= 1 ) RETURN
+   comm = ParEnv % ActiveComm
+   IF ( COUNT(ParEnv % Active)<= 0 ) comm = ELMER_COMM_WORLD
 
    ssum = tsum
    SELECT CASE(oper)
    CASE(0)
      CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_PRECISION, &
-            MPI_SUM, ParEnv % ActiveComm, ierr )
+            MPI_SUM, comm, ierr )
    CASE(1)
      CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_PRECISION, &
-            MPI_MIN, ParEnv % ActiveComm, ierr )
+            MPI_MIN, comm, ierr )
    CASE(2)
      CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_PRECISION, &
-            MPI_MAX, ParEnv % ActiveComm, ierr )
+            MPI_MAX, comm, ierr )
    END SELECT
 !*********************************************************************
 END SUBROUTINE SParActiveSUM
 !*********************************************************************
+
 
 
 !*********************************************************************
@@ -4594,9 +4593,11 @@ FUNCTION SParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
 
   !*********************************************************************
    dres = 0
+   !$OMP PARALLEL DO REDUCTION(+:dres)
    DO i = 1, ndim
       dres = dres + y(i) * x(i)
    END DO
+   !$OMP END PARALLEL DO 
    CALL SParActiveSUM(dres,0)
 !*********************************************************************
 END FUNCTION SParDotProd
@@ -4621,9 +4622,11 @@ FUNCTION SParNorm( ndim, x, xind ) RESULT(dres)
   INTEGER :: i
   !*********************************************************************
   dres = 0
+  !$OMP PARALLEL DO REDUCTION(+:dres)
   DO i = 1, ndim
     dres = dres + x(i)*x(i)
   END DO
+  !$OMP END PARALLEL DO
   CALL SParActiveSUM(dres,0)
   dres = SQRT(dres)
 !*********************************************************************
@@ -4657,9 +4660,11 @@ FUNCTION SParCDotProd( ndim, x, xind, y, yind ) result (dres)
   !*********************************************************************
   dres = 0.0d0
   IF ( xind == 1 .AND. yind  == 1 ) THEN
+     !$OMP PARALLEL DO REDUCTION(+:dres)
      DO i = 1, ndim
         dres = dres + dconjg(x(i)) * y(i)
      END DO
+     !$OMP END PARALLEL DO 
   ELSE
      CALL Fatal( 'SParCDotProd', 'xind or yind not 1' )
   END IF
@@ -4691,9 +4696,11 @@ FUNCTION SParCNorm( ndim, x, xind ) result (norm)
 
   !*********************************************************************
   norm = 0.0d0
+  !$OMP PARALLEL DO REDUCTION(+:norm)
   DO i = 1, ndim
      norm = norm + REAL(x(i))**2 + AIMAG(x(i))**2
   END DO
+  !$OMP END PARALLEL DO 
   CALL SparActiveSUM(norm,0)
   norm = SQRT(norm)
 !*********************************************************************
@@ -4715,7 +4722,7 @@ SUBROUTINE ParEnvFinalize()
   INTEGER :: ierr
 
   !*********************************************************************
-  CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+  CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
   CALL MPI_FINALIZE( ierr )
 
   IF ( ierr /= 0 ) THEN

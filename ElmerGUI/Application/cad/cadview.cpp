@@ -38,7 +38,12 @@
  *                                                                           *
  *****************************************************************************/
 
+#ifdef WITH_QT5
+#include <QtWidgets>
+#else
 #include <QtGui>
+#endif
+
 #include <iostream>
 
 #include "cadview.h"
@@ -599,7 +604,7 @@ TopoDS_Shape CadView::readBrep(QString fileName)
   BRep_Builder builder;
   Standard_Boolean result;
 
-  result = BRepTools::Read(shape, fileName.toAscii().data(), builder);    
+  result = BRepTools::Read(shape, fileName.toLatin1().data(), builder);    
 
   if(!result)
     cout << "Read brep failed" << endl;
@@ -614,7 +619,7 @@ TopoDS_Shape CadView::readStep(QString fileName)
   STEPControl_Reader stepReader;
   IFSelect_ReturnStatus status;
 
-  status = stepReader.ReadFile(fileName.toAscii().data());
+  status = stepReader.ReadFile(fileName.toLatin1().data());
   
   if(status == IFSelect_RetDone) {	  
     bool failsonly = false;
@@ -657,7 +662,7 @@ TopoDS_Shape CadView::readIges(QString fileName)
   IGESControl_Reader igesReader;
   IFSelect_ReturnStatus status;
 
-  status = igesReader.ReadFile(fileName.toAscii().data());
+  status = igesReader.ReadFile(fileName.toLatin1().data());
   
   if(status == IFSelect_RetDone) {
     igesReader.TransferRoots();

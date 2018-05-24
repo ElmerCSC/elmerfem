@@ -69,17 +69,17 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
        DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
-       MidLayerExists, WriteMappedMeshToDisk = .FALSE.
+       MidLayerExists, WriteMappedMeshToDisk = .FALSE., GotBaseVar, &
+       BaseDisplaceFirst, RecompStab
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, MidVal, ElemVector(3),DotPro,Eps,Length, MinHeight
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2,Heps
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime,Heps
+#ifndef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: CPUTime,RealTime
 #endif
   REAL(KIND=dp), POINTER :: Coord(:),BotField(:),TopField(:),TangledMask(:)
   REAL(KIND=dp), ALLOCATABLE :: OrigCoord(:), Field(:), Surface(:)
-  TYPE(Variable_t), POINTER :: Var, VeloVar, UpdateVar, TangledMaskVar
+  TYPE(Variable_t), POINTER :: Var, VeloVar, UpdateVar, TangledMaskVar, BaseVar
   TYPE(Element_t), POINTER :: Element
   TYPE(Nodes_t), SAVE :: Nodes
   TYPE(ValueList_t),POINTER :: BC
@@ -100,8 +100,13 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   PSolver => Solver
   Mesh => Solver % Mesh
 
+  dim = Mesh % MeshDim
+  
   Reinitialize = ListGetLogical(SolverParams, "Always Detect Structure", Found)
   IF(.NOT. Found) Reinitialize = .FALSE.
+
+  RecompStab = ListGetLogical(SolverParams, "Recompute Stabilization", Found)
+  IF(.NOT. Found) RecompStab = .FALSE.
 
   IF( (.NOT. Initialized) .OR. Reinitialize ) THEN
     IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
@@ -112,7 +117,10 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     MaskExists = ASSOCIATED( Var % Perm ) 
     IF( MaskExists ) MaskPerm => Var % Perm
     Coord => Var % Values
-    nsize = SIZE( Coord )
+
+    ! For p-elements the number of nodes and coordinate vector differ
+    ! The projection is implemented only for the true nodes
+    nsize = MIN( SIZE( Coord ), Mesh % NumberOfNodes )
     Initialized = .TRUE.
 
     IF(ALLOCATED(OrigCoord)) DEALLOCATE(OrigCoord)
@@ -151,7 +159,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       TangledMaskVar => VariableGet( Mesh % Variables,  TRIM(TangledMaskVarName) )
       IF (ASSOCIATED(TangledMaskVar)) THEN
         IF(TangledMaskVar % DOFs /= 1) THEN 
-          CALL Fatal('StructuredMeshMapper','>Correct Surface Mask< variable should have only 1 dof')
+          CALL Fatal('StructuredMeshMapper','> Correct Surface Mask < variable should have only 1 dof')
         END IF
         TangledMask => TangledMaskVar % Values
         TangledMask = 1.0_dp
@@ -161,7 +169,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
             'Output of > Correct Surface Mask < to: '//TRIM(TangledMaskVarName),Level=6 )
       ELSE
         CALL Warn('StructuredMeshMapper',&
-            'Ignoring '//TRIM(TangledMaskVarName)//' given as >Correct Surface Mask< variable, as not found.')
+            'Ignoring '//TRIM(TangledMaskVarName)//' given as > Correct Surface Mask < variable, as not found.')
       END IF
     END IF
   END IF
@@ -287,7 +295,21 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     END DO
   END IF
 
+  GotBaseVar = .FALSE.
+  VarName = GetString( SolverParams,'Base Displacement Variable',Found)
+  IF( Found ) THEN
+    BaseVar => VariableGet( Mesh % Variables, VarName )
+    GotBaseVar = ASSOCIATED( BaseVar )
+    IF(.NOT. GotBaseVar ) THEN
+      CALL Fatal('StructuredMeshMapper','The variable does not exist: '//TRIM(VarName))
+    END IF
 
+    BaseDisplaceFirst = GetLogical( SolverParams,'Base Displacement First',Found ) 
+    IF( BaseDisplaceFirst ) THEN
+      CALL Info('StructuredMeshMapper','Applying base displacement before structural mapping')
+    END IF
+  END IF
+  
 
   ! Get the velocity variable component. 
   !-------------------------------------------------------------------
@@ -326,6 +348,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   DisplacementMode = GetLogical(SolverParams,'Displacement Mode',Found)
 
+  IF( GotBaseVar .AND. BaseDisplaceFirst ) THEN
+    CALL BaseVarDisplace() 
+  END IF
 
 
   ! Get the new mapping using linear interpolation from bottom and top
@@ -355,6 +380,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     IF( TopMode == 1 ) THEN
       TopVal = TopVal0
     ELSE IF(TopMode == 2) THEN
+      IF( TopPerm( itop ) == 0 ) THEN
+        CALL Fatal('StructuredMeshMapper','Top surface variable perm is zero!')
+      END IF
       TopVal = TopField(TopPerm(itop))
     ELSE IF(TopMode == 3) THEN
       TopVal = Field(itop)
@@ -369,6 +397,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     IF( BotMode == 1 ) THEN
       BotVal = BotVal0 
     ELSE IF(BotMode == 2) THEN
+      IF( BotPerm( ibot ) == 0 ) THEN
+        CALL Fatal('StructuredMeshMapper','Bottom surface variable perm is zero!')
+      END IF
       BotVal = BotField(BotPerm(ibot))
     ELSE IF(BotMode == 3) THEN    
       BotVal = Field(ibot)
@@ -380,57 +411,64 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       END IF
     END IF
 
-
-    IF( DisplacementMode ) THEN
-      Tangled = ( TopVal + x0top < BotVal + x0bot + MinHeight)
-    ELSE
-      Tangled = ( TopVal < BotVal + MinHeight) 
+    ! If we have a midlayer fetch the data for that too
+    IF( MidLayerExists ) THEN
+      MidVal = Field(imid)
+      x0mid = OrigCoord(imid)
     END IF
 
+    ! Check whether the mesh gets tangled
+    ! Note that for midlayer existing we only check the upper part currently!
+    IF( MidLayerExists ) THEN
+      IF( DisplacementMode ) THEN
+        Tangled = ( TopVal + x0top < MidVal + x0mid + MinHeight)
+      ELSE
+        Tangled = ( TopVal < MidVal + MinHeight) 
+      END IF      
+    ELSE      
+      IF( DisplacementMode ) THEN
+        Tangled = ( TopVal + x0top < BotVal + x0bot + MinHeight)
+      ELSE
+        Tangled = ( TopVal < BotVal + MinHeight) 
+      END IF
+    END IF
+
+    ! If the mesh is tangled then take some action.
+    ! Here the lower surface stays intact. This is due to the main application field, 
+    ! computational glaciology, where the lower surface of ice is usually nicely constrained. 
     IF( Tangled ) THEN
       TangledCount = TangledCount + 1
-      IF(.NOT.DeTangle ) THEN
-        PRINT *,'Mode',DisplacementMode
-        PRINT *,'TopVal',TopVal,x0top,TopVal+x0top
-        PRINT *,'Botval',BotVal,x0bot,BotVal+x0bot
 
-        PRINT *,'Node',i,'Height',Coord(i),'W',wtop
-        PRINT *,'Position',Mesh % Nodes % x(i),Mesh % Nodes % y(i),Mesh % Nodes % z(i)
-        PRINT *,'TopVal',TopVal,'BotVal',Botval,'dVal',TopVal-BotVal
-        !           WRITE( Message,'(A,2ES12.3)') 'Top and bottom get tangled: ',TopVal, BotVal 
-        !          CALL Fatal('SructuredMeshMapper',Message)
-      ELSE
-        IF( DisplacementMode ) THEN
-          TopVal = BotVal + x0bot + x0top + MinHeight
+      IF( DeTangle ) THEN
+        IF( MidLayerExists ) THEN
+          IF( DisplacementMode ) THEN
+            TopVal = MidVal + x0mid + x0top + MinHeight
+          ELSE
+            TopVal = MidVal + MinHeight
+          END IF
         ELSE
-          TopVal = BotVal + MinHeight 
-        END IF
-
-        IF (ComputeTangledMask) THEN
-          TangledMask(TangledMaskPerm(i)) = -1.0_dp 
-        END IF
-        IF( .FALSE. ) THEN
-          WRITE(Message,'(A,E11.4,A,E11.4,A,E11.4,A,E11.4)')&
-              "Corrected negative height:", TopVal - BotVal, "=",&
-              TopVal ,"-", BotVal, ". New upper value:", Field(itop)
-          CALL Info('SructuredMeshMapper',Message,Level=9)
+          IF( DisplacementMode ) THEN
+            TopVal = BotVal + x0bot + x0top + MinHeight
+          ELSE
+            TopVal = BotVal + MinHeight
+          END IF
         END IF
       END IF
-    ELSE   
+
       IF (ComputeTangledMask) THEN
-        IF(TangledMask(TangledMaskPerm(itop)) == -1.0_dp) THEN
-          TangledMask(TangledMaskPerm(i)) = -1.0_dp
-        ELSE
-          TangledMask(TangledMaskPerm(i)) = 1.0_dp
-        END IF
+        TangledMask(TangledMaskPerm(i)) = -1.0_dp 
+      END IF
+      IF( .FALSE. ) THEN
+        WRITE(Message,'(A,E11.4,A,E11.4,A,E11.4,A,E11.4)')&
+            "Corrected negative height:", TopVal - BotVal, "=",&
+            TopVal ,"-", BotVal, ". New upper value:", Field(itop)
+        CALL Info('SructuredMeshMapper',Message,Level=9)
       END IF
     END IF
 
     ! New coordinate location
     IF( MidLayerExists ) THEN
-      ! With middle layer in two parts
-      MidVal = Field(imid)
-      x0mid = OrigCoord(imid)
+      ! With middle layer in two parts, first the upper part
       IF( (x0top - x0mid ) * ( x0loc - x0mid ) > 0.0_dp ) THEN
         wtop = (x0loc-x0mid)/(x0top-x0mid);
         xloc = wtop * TopVal + (1.0_dp - wtop) * MidVal         
@@ -460,7 +498,11 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(i) - OrigCoord(i)
   END DO
 
-
+  IF( GotBaseVar .AND. .NOT. BaseDisplaceFirst ) THEN
+    CALL BaseVarDisplace() 
+  END IF
+  
+  
   IF( GotVeloVar .AND. .NOT. Visited ) THEN
     IF( GetLogical(SolverParams,'Mesh Velocity First Zero',Found ) ) THEN
       VeloVar % Values = 0.0_dp
@@ -483,6 +525,35 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   Visited = .TRUE.
 
+  IF(RecompStab) CALL MeshStabParams(Mesh)
+
+CONTAINS
+
+  SUBROUTINE BaseVarDisplace()
+
+    CALL Info('StructuredMeshMapper','Adding base displacement to the displacements!')
+    DO i=1,nsize
+      j = i
+      IF( MaskExists ) THEN
+        j = MaskPerm(i) 
+        IF( j == 0) CYCLE
+      END IF
+      ibot = BotPointer(i)
+
+      IF( BaseVar % Dofs == 2 ) THEN
+        Mesh % Nodes % x(i) = Mesh % Nodes % x(i) + &
+            BaseVar % Values( 2*BaseVar % Perm(ibot)-1 )  
+        Mesh % Nodes % y(i) = Mesh % Nodes % y(i) + &
+            BaseVar % Values( 2*BaseVar % Perm(ibot) )  
+      ELSE
+        CALL Fatal('StructuredMeshMapper','Base displacement assumed to be two!')
+      END IF
+    END DO
+       
+  END SUBROUTINE BaseVarDisplace
+
+
+  
   !------------------------------------------------------------------------------
 END SUBROUTINE StructuredMeshMapper
 !------------------------------------------------------------------------------

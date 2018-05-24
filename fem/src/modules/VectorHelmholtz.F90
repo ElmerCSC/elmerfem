@@ -380,14 +380,15 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: PrecDampCoeff(:)
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
-  COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:)  ! \TODO Acoef and Tcoef could be (1,1)-tensors
+  COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: Acoef(:), Tcoef(:)  ! \TODO Acoef and Tcoef could be (1,1)-tensors
   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
 
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
 
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
-  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound
+  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound, IsComplex
   INTEGER, POINTER :: Perm(:)
 
   TYPE(Matrix_t), POINTER :: A
@@ -417,12 +418,14 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
      ENDIF
 
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), LOAD(3,N), STIFF(N,N), &
-          MASS(N,N), Tcoef(N), RotM(3,3,N), &
-          Acoef(N), LamCond(N), LamThick(N), &
-          PrecDampCoeff(1), STAT=istat )
-     IF ( istat /= 0 ) THEN
-        CALL Fatal( 'VectorHelmholtzSolver', 'Memory allocation error.' )
+      ALLOCATE( FORCE(N), &
+        LOAD(4,N), &            ! 3 for vector value loads and 1 for scalar valued
+        STIFF(N,N), &
+        MASS(N,N), Tcoef(N), RotM(3,3,N), &
+        Acoef(N), LamCond(N), LamThick(N), &
+        PrecDampCoeff(1), STAT=istat )
+      IF ( istat /= 0 ) THEN
+                CALL Fatal( 'VectorHelmholtzSolver', 'Memory allocation error.' )
      END IF
 
      NULLIFY( Cwrk )
@@ -441,8 +444,9 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   IF(.NOT. Found ) mu0inv = PI * 4.0d-7
   eps0 = GetConstReal ( CurrentModel % Constants, 'Permittivity of Vacuum', Found )
   IF(.NOT. Found ) eps0 = 8.854187817d-12
-
-  CALL ListAddLogical( GetSolverParams(), "Linear System Complex", .TRUE.) !DEBUG
+  
+  IsComplex = ListGetLogical( GetSolverParams(), "Linear System Complex", Found)
+  if(.not. Found) CALL ListAddLogical( GetSolverParams(), "Linear System Complex", .TRUE.) !DEBUG
   !
   ! Resolve internal non.linearities, if requeted:
   ! ----------------------------------------------
@@ -533,7 +537,6 @@ CONTAINS
     Active = GetNOFBoundaryElements()
     DO t=1,Active
        Element => GetBoundaryElement(t)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
      
@@ -545,17 +548,16 @@ CONTAINS
        CASE(3,4)
          k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
        END SELECT
+       IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
        nd = GetElementNOFDOFs(Element)
        n  = GetElementNOFNodes(Element)
        Model % CurrentElement => Element
 
-       Material => GetMaterial(Element % BoundaryInfo % Left)
+       Material => GetBulkMaterialAtBoundary(Element)
        Tcoef = 0.0_dp
+
        IF ( ASSOCIATED(Material) ) THEN
-         CALL GetInvPermeability(Material, Tcoef, n)
-       ELSE
-         Material => GetMaterial(Element % BoundaryInfo % Right)
          CALL GetInvPermeability(Material, Tcoef, n)
        END IF
 
@@ -565,15 +567,20 @@ CONTAINS
 
        Load(2,1:n) = GetReal( BC, 'Magnetic Boundary Load 2', Found )
        Load(2,1:n) = CMPLX( REAL(Load(2,1:n)), &
-          GetReal(BC, 'Magnetic Boundary Load  im 2', Found), KIND=dp)
+          GetReal(BC, 'Magnetic Boundary Load im 2', Found), KIND=dp)
 
        Load(3,1:n) = GetReal( BC, 'Magnetic Boundary Load 3', Found )
        Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
           GetReal(BC, 'Magnetic Boundary Load im 3', Found), KIND=dp)
+          
+       Load(4,1:n) = GetReal( BC, 'TEM Potential', Found )
+       Load(4,1:n) = CMPLX( REAL(Load(4,1:n)), &
+          GetReal(BC, 'TEM Potential im', Found), KIND=dp)
 
        Acoef(1:n) = GetReal( BC, 'Electric Robin Coefficient', Found )
        Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
          GetReal( BC, 'Electric Robin Coefficient im', Found), KIND=dp)
+      
 
        ! ABC for vacuum ! TODO: disabled currently
 #if 0  
@@ -596,15 +603,15 @@ CONTAINS
     !--------------------
   
     !
-    ! Dirichlet BCs in terms of electric field E
-    ! ---------------------------------------------
-    CALL DefaultDirichletBCs()
-
-    !
     ! Fix unused potential dofs:
     ! --------------------------
     A => GetMatrix()
     CALL ConstrainUnused(A)
+
+    !
+    ! Dirichlet BCs in terms of electric field E
+    ! ---------------------------------------------
+    CALL DefaultDirichletBCs()
 
     !
     ! Linear system solution:
@@ -645,18 +652,21 @@ CONTAINS
       Aval = CMPLX(dDiag(j+1), dDiag(j+2), KIND=dp)
 
       IF (Aval==0._dp) THEN
-        A % RHS(j+1) = 0._dp
-        CALL ZeroRow(A,j+1)
-        A % Values(A % Diag(j+1)) = 1._dp
+        !A % RHS(j+1) = 0._dp
+        !CALL ZeroRow(A,j+1)
+        !A % Values(A % Diag(j+1)) = 1._dp
 
-        A % RHS(j+2) = 0._dp
-        CALL ZeroRow(A,j+2)
-        A % Values(A % Diag(j+2)) = 1._dp
+        !A % RHS(j+2) = 0._dp
+        !CALL ZeroRow(A,j+2)
+        !A % Values(A % Diag(j+2)) = 1._dp
 
-        IF(ALLOCATED(A % ConstrainedDOF)) THEN
-          A % ConstrainedDOF(j+1) = .TRUE.
-          A % ConstrainedDOF(j+2) = .TRUE.
-        END IF
+        CALL UpdateDirichletDof( A, j+1, 0.0_dp )
+        CALL UpdateDirichletDof( A, j+2, 0.0_dp )
+
+        !IF(ALLOCATED(A % ConstrainedDOF)) THEN
+        !A % ConstrainedDOF(j+1) = .TRUE.
+        !A % ConstrainedDOF(j+2) = .TRUE.
+        !END IF
       END IF
     END DO
 !------------------------------------------------------------------------------
@@ -787,7 +797,7 @@ CONTAINS
 
       Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       B  = SUM(Basis(1:n) * Acoef(1:n))
-      L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
+      L  = MATMUL(LOAD(1:3,1:n), Basis(1:n)) + MATMUL(LOAD(4,1:n), dBasisdx(1:n,1:3))
       muinv = SUM( Basis(1:n) * Tcoef(1:n) )
 
       DO i = 1,nd-np
@@ -881,6 +891,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   Solvers(1:n) = Model % Solvers
   SolverParams => NULL()
   CALL ListAddLogical( SolverParams, 'Discontinuous Galerkin', .TRUE. )
+  Solvers(n+1) % DG = .TRUE.
   Solvers(n+1) % Values => SolverParams
   Solvers(n+1) % PROCEDURE = 0
   Solvers(n+1) % ActiveElements => NULL()

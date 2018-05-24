@@ -57,7 +57,7 @@ maintained also in the future versions of Elmer. To do this:
 	+ run: how to run the test
 	+ clean: how to clean up if successful
 
-4) Define expected results and create repertory /DATA in wich will be put expected 
+4) Define expected results and create repertory /DATA in which will be put expected 
    results in a file named "valid_$NameRepertory.txt" (See description in the template above:
 
 	Step1Data1 [space] Step1Data2 [space] Step1Data3 ....
@@ -84,7 +84,7 @@ D. Results
 =====================
 	On screen
 	---------
-Test will print some informations for each test-case:
+Test will print some information for each test-case:
 <Test Number>		<Test Name>		[<Result>]
 In <Result>, [FAILED] in case where difference between results are upper 1E-6
 	     [PASSED] in case where there is no difference

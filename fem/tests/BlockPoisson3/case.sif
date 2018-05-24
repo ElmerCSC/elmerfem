@@ -1,7 +1,7 @@
 ! Solver two ordinary & Poisson equations of the same kind
 !
 ! We assume eq. -\nabla^2 f = 1 and -\nabla^2 g = -1 with {f,g}=0 at boundary.
-! The solution is rougly max(f)=-min(g)=0.073...
+! The solution is roughly max(f)=-min(g)=0.073...
 
 ! Then make a change of variables so that u=(f-cg)/(1+c^2) and 
 ! v=(g+cf)/(1+c^2) and solve for u and v with given c. The resulting 
@@ -22,7 +22,7 @@ Header
 End
 
 Simulation
-!  Max Output Level = 4
+!  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -31,7 +31,9 @@ Simulation
   Steady State Min Iterations = 1
   Output Intervals = 1
 
-!  Post File = "case.ep"
+  Additive Namespaces = Logical Trues
+
+!  Post File = "case.vtu"
 End
 
 Constants
@@ -118,8 +120,4 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.46964473E-01
-$fprintf( stderr, "TEST CASE 1\n")$
-RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.46964473E-01\n");
-
 

@@ -1,0 +1,155 @@
+Check Keywords "Warn"
+INCLUDE airgap/mesh.names
+
+Header
+  Mesh DB "." "airgap"
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 0
+End
+
+Initial Condition 1
+ P re = Real 0
+ P im = Real 0
+ P re {e} = Real 0
+ P im {e} = Real 0
+End
+
+Solver 1
+  Equation = "MGDynamics"
+
+  Variable = P[P re:1 P im:1]
+  Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+
+  Angular Frequency = Real 314
+
+  Linear System Symmetric = True
+  Linear System Complex = Logical True
+
+!  Linear System Solver = "Direct"
+!  Linear System Direct Method = mumps
+
+  Linear System Solver = "Iterative"
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = BiCGStabl
+  Linear System Convergence Tolerance = 1.0e-6
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential Variable = String "P"
+
+  Calculate Current Density = Logical True
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-6
+End
+
+
+!Solver 3
+!  Exec Solver = after all
+!  Equation = "ResultOutput"
+!  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+!  Output File Name = airgap
+!  Vtu format = Logical True
+!  Save Geometry Ids = Logical True
+!End
+
+Equation 1
+  Name = "Coupled Equations"
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Name = "Air"
+  Electric Conductivity = 0.0
+  Relative Permeability = 1
+End
+
+Material 2
+  Name = "Iron"
+  Electric Conductivity = 0.0
+  Relative Permeability = 1000
+End
+
+Material 3
+  Name = "Copper"
+  Electric Conductivity = 58.14e6
+  Relative Permeability = 1.0
+End
+
+Body 1
+   Name = "Air"
+   Target Bodies(1) = $ Ilma
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = "Ring"
+   Target Bodies(1) = $ M5
+   Equation = 1
+   Material = 2
+End
+
+Body 3
+   Name = "Cable"
+   Target Bodies(1) = $ alumiini
+   Equation = 1
+   Material = 3
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = $ FluxParallel
+  P re {e} = real 0
+  P im {e} = real 0
+End
+
+$ curr = 200
+Boundary Condition 2
+  Target Boundaries(1) = $ CurrentIn
+  P re {e} = real 0
+  P im {e} = real 0
+  Electric Current Density = Real $ 1e5 * curr
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = $ CurrentOut
+  P re {e} = real 0
+  P im {e} = real 0
+  P re = real 0
+  P im = real 0
+  Electric Current Density = Real $ -1e5 * curr
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = $ airgap
+  Air Gap Length = Real 0.001
+  Air Gap Relative Permeability = Real 0.1
+End
+
+Solver 1 :: Reference Norm = Real 2.424230E-03
+RUN
+
+
+
+
+

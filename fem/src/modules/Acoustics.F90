@@ -35,6 +35,52 @@
 ! *
 ! ****************************************************************************/
 
+
+
+SUBROUTINE AcousticsSolver_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+  INTEGER :: dim
+
+  CALL Info('AcousticsSolver','Initialization the solver')
+  
+  Params => GetSolverParams()
+  CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
+
+  dim = CoordinateSystemDimension() 
+
+  IF( ListCheckPresent( Params,'Variable' ) ) THEN
+    CALL Warn('AcousticsSolver','Redefining variable name from the given one!')
+  END IF
+
+  ! Leave for now since the strings are too short
+  IF(.FALSE.) THEN
+    IF( dim == 2 ) THEN
+      CALL ListAddString( Params,'Variable',&
+          'Flow[Re Velocity 1:1 Im Velocity 1:1 Re Velocity 2:1 Im Velocity 2:1 '&
+          //' Re Temperature:1 Im Temperature:1 Re Pressure:1 Im Pressure]')
+    ELSE
+      CALL ListAddString( Params,'Variable',&
+          'Flow[Re Velocity 1:1 Im Velocity 1:1 Re Velocity 2:1 Im Velocity 2:1 Re Velocity 3:1 Im Velocity 3:1 '&
+          //' Re Temperature:1 Im Temperature:1 Re Pressure:1 Im Pressure:1]')
+    END IF
+  END IF
+    
+  
+END SUBROUTINE AcousticsSolver_init
+  
+  
+
 !-----------------------------------------------------------------------------
 !>  Solve the time-harmonic, generalized NS-equations assuming ideal gas law.
 !------------------------------------------------------------------------------
@@ -80,7 +126,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
   INTEGER, POINTER :: NodeIndexes(:), FlowPerm(:)
   INTEGER :: i, j, k, m, n, t, istat, LocalNodes, Dofs, VelocityComponents, &
-      VelocityDofs, CoordSys, pn, AcousticI, MaxNodesOnBoundary, np, nlen, nb
+      VelocityDofs, CoordSys, pn, AcousticI, MaxNodesOnBoundary, np, nlen, nb, RelOrder
   INTEGER, ALLOCATABLE :: Bndries(:), BemElementIndeces(:), AcousticInterfaceNodes(:), &
       NodesOnBoundary(:)
 
@@ -136,9 +182,8 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   
   SAVE CurrentDoneTime, ReIterationCoeff, ImIterationCoeff
 
-  LOGICAL ::  PotentialFlowBC, DDPreconditioning
-  
-
+  LOGICAL ::  PotentialFlowBC, DDPreconditioning, Found
+  TYPE(GaussIntegrationPoints_t) :: IP
 
 
   !------------------------------------------------------------------------------
@@ -156,7 +201,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   ! Get variables needed for solution
   !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
-  Solver % Matrix % COMPLEX = .TRUE.
+  !Solver % Matrix % COMPLEX = .TRUE.
 
   ! Nullify pointer
   HSol => Null()
@@ -276,6 +321,20 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
      END IF
   END IF
 
+  RelOrder = ListGetInteger( Solver % Values,'Relative Integration Order',Found )
+  IF( Found ) THEN
+    IF( ParEnv % MyPe == 0 ) THEN
+      CurrentElement => Solver % Mesh % Elements( Solver % ActiveElements(1) )
+      IP = GaussPoints( CurrentElement )
+      i = IP % n 
+      IP = GaussPoints( CurrentElement, RelOrder = RelOrder )
+      j = IP % n 
+      CALL Info('AcousticsSolver','Number of Gauss Points: '&
+          //TRIM(I2S(j))//' (vs. '//TRIM(I2S(i))//')',Level=6)
+    END IF
+  END IF
+
+  
   !-------------------------------------------------------------------------------
   ! If the Helmholtz solution is done with an external BEM solver, create an array
   ! for the node indices on the acoustic interface.
@@ -503,8 +562,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       !------------------------------------------------------------------------------
       ! Check that the dimension of element is suitable for BCs
       !------------------------------------------------------------------------------
-      IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
-
       n = CurrentElement % TYPE % NumberOfNodes
       NodeIndexes => CurrentElement % NodeIndexes
       IF (ANY(FlowPerm(NodeIndexes(1:n)) == 0)) CYCLE
@@ -626,7 +683,9 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   CALL Info( 'AcousticsSolver', ' ', Level=4 )
   CALL Info( 'AcousticsSolver', 'Starting Assembly', Level=4 )
 
-  CALL InitializeToZero( StiffMatrix, ForceVector )
+  CALL DefaultStart()
+  CALL DefaultInitialize()
+  !InitializeToZero( StiffMatrix, ForceVector )
 
   !------------------------------------------------------------------------------
   DO t=1,Solver % NumberOfActiveElements
@@ -815,10 +874,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     Model % CurrentElement => CurrentElement
 
     IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel % Solver) ) CYCLE    
-    !------------------------------------------------------------------------------
-    ! Check that the dimension of element is suitable for BCs
-    !------------------------------------------------------------------------------
-    IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
     !------------------------------------------------------------------------------
     ! Extract the parent element to find its material parameters... 
@@ -1118,11 +1173,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel% Solver) ) CYCLE    
 
     !------------------------------------------------------------------------------
-    ! Check that the dimension of element is suitable for BCs
-    !------------------------------------------------------------------------------
-    IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
-
-    !------------------------------------------------------------------------------
     ! Extract the parent element to find its material parameters... 
     !----------------------------------------------------------------------------- 
     n = CurrentElement % TYPE % NumberOfNodes
@@ -1268,8 +1318,10 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       'Re Temperature', Dofs-3, Dofs, FlowPerm )
   CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, & 
       'Im Temperature', Dofs-2, Dofs, FlowPerm )
-
+  
   IF(.TRUE.) CALL AcousticShellInterface()
+
+  CALL DefaultDirichletBCs()
   
   CALL Info( 'AcousticsSolver', 'Assembly done', Level=4 )
 
@@ -1316,11 +1368,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
        CurrentElement => Solver % Mesh % Elements(t)
        Model % CurrentElement => CurrentElement
        IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel% Solver) ) CYCLE    
-
-       !------------------------------------------------------------------------------
-       ! Check that the dimension of element is suitable for BCs
-       !------------------------------------------------------------------------------
-       IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
        !------------------------------------------------------------------------------
        ! Extract the parent element to find its material parameters... 
@@ -1460,20 +1507,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     Solver % Variable % Norm = Norm
 
   ELSE
-
-    IterationMethod = ListGetString(Solver % Values, 'Linear System Iterative Method', GotIt)
-
-    IF ( GotIt .AND. IterationMethod == 'bicgstabl') THEN
-      j = ListGetInteger(Solver % Values, 'BiCGStab Polynomial Degree', GotIt)
-      IF ( .NOT. GotIt) j = 4
-      CALL MonolithicSolve( Solver % Matrix % NumberOfRows, Solver % Matrix, &
-          Flow, ForceVector, Norm, j )
-    ELSE
-      CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, &
-          Flow, Norm, Dofs, Solver )
-    END IF
-    !Solver % Variable % Norm = Norm
-
+    Norm = DefaultSolve()      
   END IF
   st = CPUTime() - st
 
@@ -1589,10 +1623,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
       CurrentElement => Solver % Mesh % Elements(t)
       Model % CurrentElement => CurrentElement
-      !------------------------------------------------------------------------------
-      ! Check that the dimension of element is suitable for BCs
-      !------------------------------------------------------------------------------
-      IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
       n = CurrentElement % TYPE % NumberOfNodes
       NodeIndexes => CurrentElement % NodeIndexes
@@ -1708,11 +1738,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     Model % CurrentElement => CurrentElement
 
     IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel % Solver) ) CYCLE    
-
-    !------------------------------------------------------------------------------
-    ! Check that the dimension of element is suitable for BCs
-    !------------------------------------------------------------------------------
-    IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
     !------------------------------------------------------------------------------
     ! Extract the parent element to find its material parameters... 
@@ -2024,71 +2049,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
 CONTAINS
 
-!-----------------------------------------------------------------------------------
-  SUBROUTINE MonolithicSolve( n, A, x, b, Norm, l)
-!-----------------------------------------------------------------------------------
-!   This subroutine has been used to test the performance of the BiCGStab(l) 
-!   algorithm and the effect of row scaling. 
-!-----------------------------------------------------------------------------------
-    INTEGER :: n, l
-    TYPE(Matrix_t), POINTER :: A
-    REAL(KIND=dp) :: x(n), b(n), Norm
-    !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Tol
-    INTEGER :: Rounds, m, IluOrder
-    COMPLEX(KIND=dp) :: y(n/2), f(n/2), s(n/2)
-    LOGICAL :: Condition, GotIt    
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
-    !------------------------------------------------------------------------------
-    Tol = ListGetConstReal( Solver % Values, &
-        'Linear System Convergence Tolerance' )
-    Rounds = ListGetInteger( Solver % Values, &
-        'Linear System Max Iterations')
-    m = n/2
-    IF ( ALL( b == 0.0d0 ) ) THEN
-      x = 0.0d0
-      Norm = 0.0d0
-    ELSE
-      !--------------------------------------------------------------
-      ! Perform optimal scaling...
-      !--------------------------------------------------------------
-      CALL OptimalMatrixScaling( m, A, s )
 
-      str = ListGetString( Solver % Values, 'Linear System Preconditioning',GotIt )
-      IF (GotIt .AND. SEQL(str, 'ilu')) THEN
-        IluOrder = ICHAR(str(4:4)) - ICHAR('0')
-        IF ( IluOrder  < 0 .OR. IluOrder > 9 ) IluOrder = 0
-        Condition = CRS_ComplexIncompleteLU( A, IluOrder )
-      END IF
-      !----------------------------------------------------------------------------
-      ! Transform the solution vector x and the right-hand side vector b to 
-      ! complex-valued vectors y and f
-    !---------------------------------------------------------------------------
-      DO i=1,m
-        y(i) = CMPLX( x(2*i-1), x(2*i), kind=dp )
-        f(i) = CMPLX( b(2*i-1), b(2*i), kind=dp )
-        f(i) = s(i) * f(i)
-      END DO
-      IF ( ALL( y == CMPLX(0.0d0,0.0d0, kind=dp ) ) ) y(1:m) = f(1:m)
-
-      !CALL ComplexBiCGStab( n, A, y, f, Rounds, Tol, 0) 
-      CALL ComplexBiCGStabl( l, m, A, y, f, Rounds, Tol, 0)
-
-      Norm = 0.0d0
-      DO i=1,m
-        x( 2*i-1 ) = REAL( y(i) )
-        x( 2*i ) = AIMAG( y(i) )
-        Norm = MAX( Norm, SQRT( x( 2*i-1 )*x( 2*i-1 ) + x( 2*i )*x( 2*i ) ) )
-      END DO
-    END IF
-    !    PRINT *, 'Complex infinity norm of the solution: ', Norm
-    WRITE( Message, * ) 'Complex infinity norm of the solution: ', Norm
-
-    Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))  
-  
-!-----------------------------------------------------------------------------------
-  END SUBROUTINE MonolithicSolve
-!-----------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE OptimalScaling( n, A, s )
@@ -5298,20 +5259,15 @@ CONTAINS
     !   Numerical integration
     !------------------------------------------------------------------------------
     IF ( Bubbles .OR. Mini_Bubbles) THEN
-       IntegStuff = GaussPoints( Element, Element % TYPE % GaussPoints2 )
-       IF (Mini_Bubbles) THEN
-          NBasis = n+1 
-       ELSE
-          NBasis = 2*n
-       ENDIF
-    ELSE
-       IF( nb > 0 ) THEN
-          NBasis = n + nb
-          IntegStuff = GaussPoints( Element )
-       ELSE
-          NBasis = n
-          IntegStuff = GaussPoints( Element )
-       END IF
+      IntegStuff = GaussPoints( Element, Element % TYPE % GaussPoints2 )
+      IF (Mini_Bubbles) THEN
+        NBasis = n+1 
+      ELSE
+        NBasis = 2*n
+      ENDIF
+    ELSE       
+      NBasis = n + nb
+      IntegStuff = GaussPoints( Element, RelOrder = RelOrder )
     END IF
 
     !------------------------------------------------------------------------------

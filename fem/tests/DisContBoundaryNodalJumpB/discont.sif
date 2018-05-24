@@ -15,7 +15,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -26,7 +26,7 @@ Simulation
 
   Post File = "discont.vtu"
 
-! Normally we dont want to apply this
+! Normally we don't want to apply this
 !  Discontinuous Boundaries Greedy = Logical True
 
 ! Here the discontinuity loader is currently active
@@ -176,7 +176,5 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.61010017
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.61010017\n");
 !End Of File

@@ -80,6 +80,11 @@ CONTAINS
      TYPE(ListMatrixEntry_t), POINTER :: CList
 !-------------------------------------------------------------------------------
      HalfBandWidth = 0
+     !$OMP PARALLEL DO &
+     !$OMP SHARED(List, Reorder, InvInitialReorder, N) & 
+     !$OMP PRIVATE(Clist, j, k) & 
+     !$OMP REDUCTION(max:HalfBandWidth) &
+     !$OMP DEFAULT(NONE)
      DO i=1,n
         CList => List(i) % Head
         j = i
@@ -95,6 +100,7 @@ CONTAINS
            Clist => Clist % Next
         END DO
      END DO
+     !$OMP END PARALLEL DO
 !-------------------------------------------------------------------------------
    END FUNCTION ComputeBandwidth
 !-------------------------------------------------------------------------------

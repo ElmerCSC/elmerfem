@@ -129,6 +129,8 @@ MODULE ComponentUtils
          CALL Fatal('ComponentNodalForceReduction','Size of > Torque Axis < should be 3!')
        END IF
        Axis = Pwrk(1:3,1)
+       ! Normalize axis is it should just be used for the direction
+       Axis = Axis / SQRT( SUM( Axis*Axis ) )
      ELSE
        Axis = 0.0_dp    
        Axis(3) = 1.0_dp  
@@ -321,6 +323,14 @@ MODULE ComponentUtils
        VisitedNode = .FALSE.
      END IF
 
+     sumi = 0
+     sumx = 0.0_dp
+     sumxx = 0.0_dp
+     sumabsx = 0.0_dp
+     Maximum = 0.0_dp
+     Minimum = 0.0_dp
+     AbsMaximum = 0.0_dp
+     AbsMinimum = 0.0_dp
 
      DO t=FirstElem,LastElem
        Element => Mesh % Elements(t)
@@ -491,7 +501,9 @@ MODULE ComponentUtils
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
 
      OperX = 0.0_dp
-
+     vol = 0.0_dp
+     integral = 0.0_dp
+     
      BcMode = .FALSE.
      MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
      IF( .NOT. Found ) THEN
@@ -678,10 +690,10 @@ MODULE ComponentUtils
     INTEGER, POINTER :: ComponentList(:)
 
     INTEGER :: i,j,NoVar
-    CHARACTER(LEN=MAX_NAME_LEN) :: OperName, VarName, CoeffName
+    CHARACTER(LEN=MAX_NAME_LEN) :: OperName, VarName, CoeffName, TmpOper
     LOGICAL :: GotVar, GotOper, GotCoeff, VectorResult
     TYPE(ValueList_t), POINTER :: CompParams
-    REAL(KIND=dp) :: ScalarVal, VectorVal(3)
+    REAL(KIND=dp) :: ScalarVal, VectorVal(3), Power, Voltage
     TYPE(Variable_t), POINTER :: Var
 
     CALL Info('UpdateDepedentComponents','Updating Components to reflect new solution',Level=6)
@@ -700,6 +712,14 @@ MODULE ComponentUtils
         OperName = ListGetString( CompParams,'Operator '//TRIM(I2S(NoVar)), GotOper)
         VarName = ListGetString( CompParams,'Variable '//TRIM(I2S(NoVar)), GotVar)
         CoeffName = ListGetString( CompParams,'Coeffcient '//TRIM(I2S(NoVar)), GotCoeff)
+        
+        IF(.NOT. GotVar .AND. GotOper .AND. OperName == 'electric resistance') THEN
+          VarName = 'Potential'
+          GotVar = .TRUE.
+          CALL Info('UpdateDependentComponents',&
+              'Defaulting field to > Potential < for operator: '//TRIM(OperName),Level=8)
+        END IF
+        
         IF(.NOT. (GotVar .AND. GotOper ) ) EXIT
 
         Var => VariableGet( CurrentModel % Mesh % Variables, VarName ) 
@@ -711,6 +731,20 @@ MODULE ComponentUtils
 
         SELECT CASE( OperName ) 
 
+        CASE('electric resistance')
+          IF(.NOT. GotCoeff ) THEN
+            CoeffName = 'electric conductivity'
+            GotCoeff = .TRUE.
+          END IF
+          TmpOper = 'diffusive energy'
+          Power = ComponentIntegralReduction(CurrentModel, CurrentModel % Mesh, CompParams, Var, &
+              TmpOper, CoeffName, GotCoeff )
+          TmpOper = 'range'
+          Voltage = ComponentNodalReduction(CurrentModel, CurrentModel % Mesh, CompParams, Var, &
+              TmpOper )
+          ScalarVal = Voltage**2 / Power 
+          CALL ListAddConstReal( CompParams,'res: '//TRIM(OperName),ScalarVal )
+ 
         CASE ('sum','sum abs','min','max','min abs','max abs','range','mean','mean abs','variance')
           ScalarVal = ComponentNodalReduction(CurrentModel, CurrentModel % Mesh, CompParams, Var, &
               OperName )
@@ -750,9 +784,11 @@ MODULE ComponentUtils
                 //TRIM(VarName)//' '//TRIM(I2S(i)),VectorVal(i) )                        
           END DO
         ELSE          
-          WRITE( Message,'(A,ES15.6)') TRIM(OperName)//': '//TRIM(VarName)//': ',ScalarVal
+          WRITE( Message,'(A,ES15.6)') &
+              'comp '//TRIM(I2S(j))//': '//TRIM(OperName)//': '//TRIM(VarName)//': ',ScalarVal
           CALL Info('UpdateDependentComponents',Message,Level=5)
-          CALL ListAddConstReal( CompParams,'res: '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )           
+          CALL ListAddConstReal( CurrentModel % Simulation, &
+              'res: comp '//TRIM(I2S(j))//': '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )           
         END IF
 
       END DO

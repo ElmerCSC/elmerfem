@@ -480,8 +480,6 @@ END MODULE PorousMaterials
       DO t=1, Solver % Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
        
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
@@ -562,7 +560,7 @@ END MODULE PorousMaterials
 
 !------------------------------------------------------------------------------------
 !> The water content derivative is computed using the real differential. This way the 
-!> differential of water content with time will be consistant.
+!> differential of water content with time will be consistent.
 !------------------------------------------------------------------------------------
     FUNCTION WaterContentDerivative( Element, Material, Basis, elemMatric, elemPrevMatric ) RESULT ( dtetadmatric )
       

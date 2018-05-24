@@ -35,11 +35,15 @@
     TYPE(ValueList_t), POINTER :: SolverParams
 !------------------------------------------------------------------------------
     SolverParams => GetSolverParams()
-    IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
+    IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
       CALL ListAddInteger( SolverParams, 'Variable DOFs', 3 )
       CALL ListAddString( SolverParams, 'Variable', 'Deflection' )
     END IF
+       
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
+
+    CALL ListAddLogical( SolverParams, 'Plate Solver', .TRUE. )
+
 !------------------------------------------------------------------------------
   END SUBROUTINE SmitcSolver_Init
 !------------------------------------------------------------------------------
@@ -72,10 +76,12 @@
      TYPE(ValueList_t), POINTER :: Material, BodyForce
  
      LOGICAL :: AllocationsDone = .FALSE., HoleCorrection, &
-         got_mat_id, got_bf_id, NeglectSprings
+         got_mat_id, got_bf_id, NeglectSprings, EigenOrHarmonic, Found
 
      INTEGER, POINTER, SAVE ::  Indexes(:)
- 
+     INTEGER :: MaxIter, iter
+     TYPE(ValueList_t), POINTER :: SolverParams
+     
      REAL(KIND=dp), ALLOCATABLE :: &
                      STIFF(:,:), Load(:), Load2(:), FORCE(:), &
                      Poisson(:), Thickness(:), Young(:), Tension(:), &
@@ -84,21 +90,20 @@
 
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
      LOGICAL :: GotIt, GotHoleType
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,st
-#else
-     REAL(KIND=dp) :: at,st,CPUTime
+#ifndef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: CPUTime
 #endif
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
-          DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef
+          DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef, Dofs
 
 !
 !    Allocate some permanent storage, this is done first time only
 !    -------------------------------------------------------------
-     DOFs = Solver % Variable % DOFs
 
      IF ( .NOT. AllocationsDone ) THEN
+       DOFs = Solver % Variable % DOFs
        N = Solver % Mesh % MaxElementDOFs
        ALLOCATE( Indexes( N ),      &
                  FORCE( DOFs*N ),      &
@@ -119,144 +124,167 @@
 !
 !    Do some additional initialization, and go for it
 !    ------------------------------------------------
+     CALL Info( 'SmitcSolver', '--------------------------------------------------',Level=4 )
+     CALL Info( 'SmitcSolver', 'Solving the Reissner-Mindlin equations for plates',Level=4 )     
+     CALL Info( 'SmitcSolver', '--------------------------------------------------',Level=4 )
 
-     at = CPUTime()
-     CALL DefaultInitialize()
+     SolverParams => GetSolverParams()
+     
+     
+     EigenOrHarmonic = EigenOrHarmonicAnalysis() &
+         .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found ) 
 
-     !
-     ! These keywords enable that the use of a second paramter set for the
-     ! same elements where the material properties are given in an additional
-     ! body. May be used to model microphone and its backplate, for example:
-     ! --------------------------------------------------------------------
-     mat_id = ListGetInteger( GetSolverParams(), 'Material Index',got_mat_id, &
-               minv=1, maxv=Model % NumberOFMaterials )
+     CALL DefaultStart()     
+     
+     MaxIter = GetInteger( SolverParams, &
+         'Nonlinear System Max Iterations',GotIt )
+     IF ( .NOT. GotIt ) MaxIter = 1
 
-     Material => NULL()
-     IF(got_mat_id) THEN
-       Material => Model % Materials(mat_id) % Values
-     END IF
+     DO iter=1,MaxIter
+    
+       at = CPUTime()
+       CALL DefaultInitialize()
+       
+       !       
+       ! These keywords enable that the use of a second parameter set for the
+       ! same elements where the material properties are given in an additional
+       ! body. May be used to model microphone and its backplate, for example:
+       ! --------------------------------------------------------------------
+       mat_id = ListGetInteger( SolverParams, 'Material Index',got_mat_id, &
+           minv=1, maxv=Model % NumberOFMaterials )
 
-     bf_id = ListGetInteger( GetSolverParams(), 'Body Force Index', &
-        got_bf_id,  minv=1, maxv=Model % NumberOFBodyForces )
+       Material => NULL()
+       IF(got_mat_id) THEN
+         Material => Model % Materials(mat_id) % Values
+       END IF
 
-     BodyForce => NULL()
-     IF(got_bf_id) THEN
-       BodyForce => Model % Materials(mat_id) % Values
-     END IF
-     HoleCorrection = ListGetLogical( GetSolverParams(), &
-          'Hole Correction',gotIt )
+       bf_id = ListGetInteger( SolverParams, 'Body Force Index', &
+           got_bf_id,  minv=1, maxv=Model % NumberOFBodyForces )
 
-!
-!    Do the assembly:
-!    ----------------
-     DO t=1,Solver % NumberOfActiveElements
-       Element => GetActiveElement(t)
+       BodyForce => NULL()
+       IF(got_bf_id) THEN
+         BodyForce => Model % Materials(mat_id) % Values
+       END IF
+       HoleCorrection = ListGetLogical( SolverParams, &
+           'Hole Correction',gotIt )
 
-       n = GetElementDOFs(Indexes)
-       n = GetElementNOFNodes()
-       CALL GetElementNodes(ElementNodes)
-  
-       IF(.NOT. got_bf_id) BodyForce => GetBodyForce()
+       !
+       !    Do the assembly:
+       !    ----------------
+       DO t=1,Solver % NumberOfActiveElements
+         Element => GetActiveElement(t)
 
-       Load = 0.0d0
-       Load2 = 0.0d0
+         n = GetElementDOFs(Indexes)
+         n = GetElementNOFNodes()
+         CALL GetElementNodes(ElementNodes)
 
-       ! There may be three forces, which should be introduced
-       ! in the following order
-       ! ------------------------------------------------------
-       IF(ASSOCIATED(BodyForce)) THEN
-         Load(1:n) = GetReal( BodyForce, 'Pressure',  GotIt)
-         IF(GotIt) THEN
-           Load2(1:n) = GetReal( BodyForce, 'Pressure B', GotIt )
+         IF(.NOT. got_bf_id) BodyForce => GetBodyForce()
+
+         Load = 0.0d0
+         Load2 = 0.0d0
+
+         ! There may be three forces, which should be introduced
+         ! in the following order
+         ! ------------------------------------------------------
+         IF(ASSOCIATED(BodyForce)) THEN
+           Load(1:n) = GetReal( BodyForce, 'Pressure',  GotIt)
            IF(GotIt) THEN
-             Load(1:n) = Load(1:n) + Load2(1:n)
-             Load2(1:n) = GetReal( BodyForce, 'Pressure C', GotIt)
-             IF(GotIt) Load(1:n) = Load(1:n) + Load2(1:n)
+             Load2(1:n) = GetReal( BodyForce, 'Pressure B', GotIt )
+             IF(GotIt) THEN
+               Load(1:n) = Load(1:n) + Load2(1:n)
+               Load2(1:n) = GetReal( BodyForce, 'Pressure C', GotIt)
+               IF(GotIt) Load(1:n) = Load(1:n) + Load2(1:n)
+             END IF
            END IF
          END IF
-       END IF
 
-       IF (.NOT. got_mat_id) Material => GetMaterial()
+         IF (.NOT. got_mat_id) Material => GetMaterial()
 
-       Poisson(1:n) = GetReal( Material, 'Poisson ratio' )
-       Density(1:n) = GetReal( Material, 'Density' )
-       Thickness(1:n) = GetReal( Material,'Thickness' )
-       Young(1:n) = GetReal( Material,'Youngs modulus' )
-       Tension(1:n) = GetReal( Material, 'Tension', GotIt )
+         Poisson(1:n) = GetReal( Material, 'Poisson ratio' )
+         Density(1:n) = GetReal( Material, 'Density' )
+         Thickness(1:n) = GetReal( Material,'Thickness' )
+         Young(1:n) = GetReal( Material,'Youngs modulus' )
+         Tension(1:n) = GetReal( Material, 'Tension', GotIt )
 
-       ! In some cases it is preferable that the damping and spring
-       ! coefficients are related to the body force.
-       ! ----------------------------------------------------------
-       IF ( ASSOCIATED(BodyForce) ) THEN
-          DampingCoef(1:n) = GetReal( BodyForce, 'Damping', GotIt )
-       ELSE
-          GotIt = .FALSE.
-       END IF
-       IF (.NOT. GotIt) DampingCoef(1:n) = &
-                GetReal( Material, 'Damping', GotIt )
-       IF (.NOT. GotIt ) DampingCoef(1:n) = 0.0d0
-
-       IF ( ASSOCIATED(BodyForce)) THEN
-          SpringCoef(1:n) = GetReal( BodyForce, 'Spring', GotIt )
-       ELSE
-          GotIt = .FALSE.
-       END IF
-       IF (.NOT. GotIt) SpringCoef(1:n) = &
-                  GetReal( Material, 'Spring', GotIt )
-       IF (.NOT. GotIt ) SpringCoef(1:n) = 0.0d0
-
-       IF(HoleCorrection) THEN
-         HoleType = GetString(Material,'Hole Type',GotHoleType)
-         IF(GotHoleType) THEN
-           HoleSize(1:n) = GetReal( Material, 'Hole Size' )
-           HoleFraction(1:n) = GetReal( Material, 'Hole Fraction' )
+         ! In some cases it is preferable that the damping and spring
+         ! coefficients are related to the body force.
+         ! ----------------------------------------------------------
+         IF ( ASSOCIATED(BodyForce) ) THEN
+           DampingCoef(1:n) = GetReal( BodyForce, 'Damping', GotIt )
+         ELSE
+           GotIt = .FALSE.
          END IF
-       END IF
+         IF (.NOT. GotIt) DampingCoef(1:n) = &
+             GetReal( Material, 'Damping', GotIt )
+         IF (.NOT. GotIt ) DampingCoef(1:n) = 0.0d0
 
-        ! Get element local matrix, and rhs vector
-        !-----------------------------------------
-       CALL LocalMatrix(  STIFF, DAMP, MASS, FORCE, Load, &
-        Element,n, DOFs, ElementNodes, DampingCoef, SpringCoef )
+         IF ( ASSOCIATED(BodyForce)) THEN
+           SpringCoef(1:n) = GetReal( BodyForce, 'Spring', GotIt )
+         ELSE
+           GotIt = .FALSE.
+         END IF
+         IF (.NOT. GotIt) SpringCoef(1:n) = &
+             GetReal( Material, 'Spring', GotIt )
+         IF (.NOT. GotIt ) SpringCoef(1:n) = 0.0d0
 
-       IF( TransientSimulation ) &
-          CALL Default2ndOrderTime( MASS,DAMP,STIFF,FORCE )
+         IF(HoleCorrection) THEN
+           HoleType = GetString(Material,'Hole Type',GotHoleType)
+           IF(GotHoleType) THEN
+             HoleSize(1:n) = GetReal( Material, 'Hole Size' )
+             HoleFraction(1:n) = GetReal( Material, 'Hole Fraction' )
+           END IF
+         END IF
 
-       ! Update global matrix and rhs vector from local matrix & vector
-       !---------------------------------------------------------------
-       CALL DefaultUpdateEquations( STIFF, FORCE )
+         ! Get element local matrix, and rhs vector
+         !-----------------------------------------
+         CALL LocalMatrix(  STIFF, DAMP, MASS, FORCE, Load, &
+             Element, n, DOFs, ElementNodes, DampingCoef, SpringCoef )
 
-       IF ( EigenOrHarmonicAnalysis() ) THEN
-          CALL DefaultUpdateMass( MASS )
-          CALL DefaultUpdateDamp( DAMP )
-       END IF
+         IF( TransientSimulation ) &
+             CALL Default2ndOrderTime( MASS,DAMP,STIFF,FORCE )
+
+         ! Update global matrix and rhs vector from local matrix & vector
+         !---------------------------------------------------------------
+         CALL DefaultUpdateEquations( STIFF, FORCE )
+
+         IF ( EigenOrHarmonic ) THEN
+           CALL DefaultUpdateMass( MASS )
+           CALL DefaultUpdateDamp( DAMP )
+         END IF
+       END DO
+       CALL DefaultFinishBulkAssembly()
+       
+       ! No Flux BCs
+       CALL DefaultFinishBoundaryAssembly()
+       CALL DefaultFinishAssembly()
+       
+       !------------------------------------------------------------------------------
+       ! Dirichlet boundary conditions
+       !------------------------------
+       CALL DefaultDirichletBCs()
+
+       at = CPUTime() - at
+
+       WRITE (Message,*) 'Assembly (s): ',at
+       CALL Info('SmitcSolver',Message,Level=4)
+
+       !------------------------------------------------------------------------------
+
+       ! Solve the system and we are done
+       !---------------------------------
+       st = CPUTime()
+       
+       Norm =  DefaultSolve()
+
+       st = CPUTime() - st
+       WRITE (Message,*) 'Solve (s): ',st
+       CALL Info('SmitcSolver',Message,Level=4)
+
+       IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
      END DO
-     CALL DefaultFinishBulkAssembly()
-
-     ! No Flux BCs
-     CALL DefaultFinishAssembly()
-
-!------------------------------------------------------------------------------
-
-     ! Dirichlet boundary conditions
-     !------------------------------
-     CALL DefaultDirichletBCs()
-
-     at = CPUTime() - at
-
-     WRITE (Message,*) 'Assembly (s): ',at
-     CALL Info('SmitcSolver',Message,Level=4)
-
-!------------------------------------------------------------------------------
-
-     ! Solve the system and we are done
-     !---------------------------------
-     st = CPUTime()
-     Norm =  DefaultSolve()
-
-     st = CPUTime() - st
-     WRITE (Message,*) 'Solve (s): ',st
-     CALL Info('SmitcSolver',Message,Level=4)
-
+     
+     CALL DefaultFinish()
+       
 !------------------------------------------------------------------------------
  
    CONTAINS
@@ -547,7 +575,7 @@
              h = MAX(l21,l32,l43,l14)
              Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
           CASE DEFAULT
-            CALL WARN('SmitcSolver','Illegal number of nodes for Smitc elements')
+            CALL Fatal('SmitcSolver','Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
           END SELECT
 !------------------------------------------------------------------------------
      END SUBROUTINE ShearCorrectionFactor

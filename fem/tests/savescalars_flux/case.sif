@@ -8,7 +8,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
   Coordinate System = "Cartesian"
 
   Simulation Type = "Steady State"
@@ -105,8 +105,6 @@ End
 
 Solver 2 :: Reference Norm = Real 1.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=-1.0, EPS=1e-4\n" );
 
 !End Of File

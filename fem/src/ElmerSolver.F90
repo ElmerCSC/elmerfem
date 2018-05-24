@@ -52,14 +52,14 @@
 MODULE ElmerSolver_mod
   
   USE MainUtils
+!     USE Lists
   
   IMPLICIT NONE
   
   PRIVATE
   
   PUBLIC :: ElmerSolver, ElmerSolver_init, ElmerSolver_run, ElmerSolver_runAll, ElmerSolver_finalize
-
-
+#include "../config.h"
 
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp)      :: CT0  
@@ -93,13 +93,12 @@ MODULE ElmerSolver_mod
   REAL(KIND=dp),SAVE            :: ss,dt,dtfunc
   REAL(KIND=dP), POINTER, SAVE  :: WorkA(:,:,:) => NULL()
   REAL(KIND=dp), POINTER, SAVE  :: sTime(:), sStep(:), sInterval(:), sSize(:), &
-       steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:)  
+       steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sScan(:),sPar(:)
   TYPE(Element_t),POINTER, SAVE :: CurrentElement  
-  LOGICAL, SAVE                 :: GotIt,Transient,Scanning,LastSaved  
+  LOGICAL, SAVE                 :: GotIt,Transient,Scanning,LastSaved, MeshMode = .FALSE.
   INTEGER, SAVE                 :: TimeIntervals,interval,timestep, &
        TotalTimesteps,SavedSteps,CoupledMaxIter,CoupledMinIter  
-  INTEGER, POINTER, SAVE        :: Timesteps(:),OutputIntervals(:)
-  INTEGER, POINTER, SAVE        :: ActiveSolvers(:)
+  INTEGER, POINTER, SAVE        :: Timesteps(:),OutputIntervals(:),ActiveSolvers(:)
   REAL(KIND=dp), POINTER, SAVE  :: TimestepSizes(:,:)  
   INTEGER(KIND=AddrInt), SAVE   :: ControlProcedure
   LOGICAL, SAVE                 :: InitDirichlet, ExecThis  
@@ -114,6 +113,7 @@ MODULE ElmerSolver_mod
   LOGICAL, SAVE                 :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
   LOGICAL, SAVE                 :: Silent, Version, GotModelName  
   INTEGER, SAVE                 :: ExtrudeLevels
+  INTEGER, SAVE                 :: ExtrudeLayers, MeshIndex
   TYPE(Mesh_t), POINTER, SAVE   :: ExtrudedMesh
   INTEGER, SAVE                 :: omp_get_max_threads
   INTEGER, SAVE                 :: Initialize = 0
@@ -202,7 +202,6 @@ CONTAINS
     IF ( FirstTime ) THEN
        !
        ! Print banner to output:
-#include "../config.h"
        ! -----------------------
 #ifdef USE_ISO_C_BINDINGS
        NoArgs = COMMAND_ARGUMENT_COUNT()
@@ -238,7 +237,7 @@ CONTAINS
           CALL envir( 'OMP_NUM_THREADS'//CHAR(0), threads, tlen )
 #endif
           IF (tlen==0) THEN
-             CALL Warn('MAIN','OMP_NUM_THREADS not set. Using only 1 thread.')
+             CALL Info('MAIN','OMP_NUM_THREADS not set. Using only 1 thread per task.',Level=6)
              nthreads = 1
              ! Set number of threads to 1
              !$ CALL omp_set_num_threads(nthreads)
@@ -247,30 +246,37 @@ CONTAINS
 #endif
           END IF
        END IF
-       
+
+       ParEnv % NumberOfThreads = nthreads
        
        IF( .NOT. Silent ) THEN
-          CALL Info( 'MAIN', ' ')
-          CALL Info( 'MAIN', '=============================================================')
-          CALL Info( 'MAIN', 'ElmerSolver finite element software, Welcome!                ')
-          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
-          CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
-          CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
-          CALL Info( 'MAIN', 'Library version: ' // VERSION &
-#ifdef REVISION
-               // ' (Rev: ' // REVISION // ')' )
-#else
-          )
-#endif
-          IF ( ParEnv % PEs > 1 ) &
-               CALL Info( 'MAIN', ' Running in parallel using ' // &
+         CALL Info( 'MAIN', ' ')
+         CALL Info( 'MAIN', '=============================================================')
+         CALL Info( 'MAIN', 'ElmerSolver finite element software, Welcome!                ')
+         CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
+         CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
+         CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
+         CALL Info( 'MAIN', 'Version: ' // GetVersion() // ' (Rev: ' // GetRevision() // &
+                            ', Compiled: ' // GetCompilationDate() // ')' )
+
+         IF ( ParEnv % PEs > 1 ) THEN
+           CALL Info( 'MAIN', ' Running in parallel using ' // &
                TRIM(i2s(ParEnv % PEs)) // ' tasks.')
-          
-          ! Print out number of threads in use
-          IF ( nthreads > 1 ) &
-             CALL Info('MAIN', ' Running in parallel with ' // &
-             TRIM(i2s(nthreads)) // ' threads per task.')
-          
+         ELSE
+           CALL Info('MAIN', ' Running one task without MPI parallelization.',Level=10)
+         END IF
+         
+         ! Print out number of threads in use
+         IF ( nthreads > 1 ) THEN
+           CALL Info('MAIN', ' Running in parallel with ' // &
+               TRIM(i2s(nthreads)) // ' threads per task.')
+         ELSE
+           CALL Info('MAIN', ' Running with just one thread per task.',Level=10)
+         END IF
+         
+#ifdef HAVE_FETI4I
+         CALL Info( 'MAIN', ' FETI4I library linked in.')
+#endif
 #ifdef HAVE_HYPRE
           CALL Info( 'MAIN', ' HYPRE library linked in.')
 #endif
@@ -344,8 +350,14 @@ CONTAINS
     !------------------------------------------------------------------------------
     !    Read Model and mesh from Elmer mesh data base
     !------------------------------------------------------------------------------
-       
+    MeshIndex = 0       
     IF ( initialize==2 ) GOTO 1
+    
+    IF(MeshMode) THEN
+       CALL FreeModel(CurrentModel)
+       MeshIndex = MeshIndex + 1
+       FirstLoad = .TRUE.
+    END IF
     
     IF ( FirstLoad ) THEN
        IF( .NOT. Silent ) THEN
@@ -359,34 +371,62 @@ CONTAINS
        IF ( gotIt ) CLOSE(inFileUnit)
        
        OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',ERR=20 )
-       CurrentModel => LoadModel( ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE )
+       CurrentModel => LoadModel( ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
+       IF(.NOT.ASSOCIATED(CurrentModel)) EXIT 
        
+       !----------------------------------------------------------------------------------
+       ! Set namespace searching mode
+       !----------------------------------------------------------------------------------
+       CALL SetNamespaceCheck( ListGetLogical( CurrentModel % Simulation, &
+            'Additive namespaces', Found ) )
+       
+       !----------------------------------------------------------------------------------
+       ! ???
+       !----------------------------------------------------------------------------------
+       MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
+       
+       !----------------------------------------------------------------------------------
+       IF (PRESENT(meshFootprint)) THEN
+          meshFootprint = CurrentModel % Meshes
+       END IF
+
+       !----------------------------------------------------------------------------------
        ! Optionally perform simple extrusion to increase the dimension of the mesh
        !----------------------------------------------------------------------------------
-       ExtrudeLevels=GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
-       IF(ExtrudeLevels>1) THEN
-          IF (PRESENT(meshFootprint)) THEN
-             meshFootprint = CurrentModel % Meshes
-          END IF
-          ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
-          DO ii=1,CurrentModel % NumberOfSolvers
-             IF(ASSOCIATED(CurrentModel % Solvers(ii) % Mesh,CurrentModel % Meshes)) &
-                  CurrentModel % Solvers(ii) % Mesh => ExtrudedMesh 
-          END DO
-          ExtrudedMesh % Next => CurrentModel % Meshes % Next
-          CurrentModel % Meshes => ExtrudedMesh
-          
-          ! If periodic BC given, compute boundary mesh projector:
-          ! ------------------------------------------------------
-          DO ii = 1,CurrentModel % NumberOfBCs
-             IF(ASSOCIATED(CurrentModel % Bcs(ii) % PMatrix)) &
-                  CALL FreeMatrix( CurrentModel % BCs(ii) % PMatrix )
-             CurrentModel % BCs(ii) % PMatrix => NULL()
-             kk = ListGetInteger( CurrentModel % BCs(ii) % Values, 'Periodic BC', GotIt )
-             IF( GotIt ) THEN
-                CurrentModel % BCs(ii) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, ii, kk )
+       ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
+       IF( .NOT. Found ) THEN
+          ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Layers',Found)
+       END IF
+       
+       IF (Found) THEN
+          IF(ExtrudeLayers > 1) THEN
+             ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
+             IF (Found) THEN
+                ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1, ExtrudedMeshName)
+             ELSE
+                ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
              END IF
-          END DO
+             
+
+             DO ii=1,CurrentModel % NumberOfSolvers
+                IF(ASSOCIATED(CurrentModel % Solvers(ii) % Mesh,CurrentModel % Meshes)) &
+                     CurrentModel % Solvers(ii) % Mesh => ExtrudedMesh 
+             END DO
+             ExtrudedMesh % Next => CurrentModel % Meshes % Next
+             CurrentModel % Meshes => ExtrudedMesh
+          
+             ! If periodic BC given, compute boundary mesh projector:
+             ! ------------------------------------------------------
+             DO ii = 1,CurrentModel % NumberOfBCs
+                IF(ASSOCIATED(CurrentModel % Bcs(ii) % PMatrix)) &
+                     CALL FreeMatrix( CurrentModel % BCs(ii) % PMatrix )
+                CurrentModel % BCs(ii) % PMatrix => NULL()
+                kk = ListGetInteger( CurrentModel % BCs(ii) % Values, 'Periodic BC', GotIt )
+                IF( GotIt ) THEN
+                   CurrentModel % BCs(ii) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, ii, kk )
+                END IF
+             END DO
+          END IF
        END IF
        
        ! If requested perform coordinate transformation directly after is has been obtained.
@@ -445,6 +485,7 @@ CONTAINS
     !      Note that this is really quite a dirty hack, and is not a good example.
     !-----------------------------------------------------------------------------
     CALL AddVtuOutputSolverHack()
+    CALL AddSaveScalarsHack()
     
     !------------------------------------------------------------------------------
     !      Figure out what (flow,heat,stress,...) should be computed, and get
@@ -502,13 +543,15 @@ CONTAINS
     
     IF ( FirstLoad ) &
          ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
-         steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1) )
-    
+         steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), &
+         sPar(1), sScan(1) )
+
     dt   = 0._dp
     
     sTime = 0._dp
     sStep = 0
     sPeriodic = 0._dp
+    sScan = 0._dp
     
     sSize = dt
     sPrevSizes = 0_dp
@@ -517,6 +560,7 @@ CONTAINS
     
     steadyIt = 0
     nonlinIt = 0
+    sPar = 0
     
     CoupledMinIter = ListGetInteger( CurrentModel % Simulation, &
          'Steady State Min Iterations', GotIt )
@@ -534,16 +578,29 @@ CONTAINS
     
     OutputIntervals => ListGetIntegerArray( CurrentModel % Simulation, &
          'Output Intervals', GotIt )
-    IF ( .NOT. GotIt ) THEN
+    IF( GotIt ) THEN
+       IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
+          CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
+       END IF
+    ELSE
        ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
        OutputIntervals = 1
     END IF
-    
+        
        
     ! Initial Conditions:
     ! -------------------
-    IF ( FirstLoad ) CALL SetInitialConditions()
-    
+    IF ( FirstLoad ) THEN
+       CALL SetInitialConditions()     
+       
+       DO i=1,CurrentModel % NumberOfSolvers
+          Solver => CurrentModel % Solvers(i)
+          IF( ListGetLogical( Solver % Values, 'Initialize Exported Variables', GotIt ) ) THEN
+             CurrentModel % Solver => Solver
+             CALL UpdateExportedVariables( Solver )	 
+          END IF
+       END DO
+    END IF
     
     ! Compute the total number of steps that will be saved to the files
     ! Particularly look if the last step will be saved, or if it has
@@ -667,8 +724,13 @@ CONTAINS
        IF ( .NOT.ReloadInputFile(CurrentModel) ) CONTINUE
     END IF
 
-
-     CALL CompareToReferenceSolution( Finalize = .TRUE. )
+#ifdef DEVEL_LISTCOUNTER
+    CALL Info('ElmerSolver','Reporting list counters for code optimization purposes only!')
+    CALL Info('ElmerSolver','If you get these lines with production code undefine > LISTCOUNTER < !')
+    CALL ReportListCounters( CurrentModel )
+#endif
+    
+    CALL CompareToReferenceSolution( Finalize = .TRUE. )
 
     !------------------------------------------------------------------------------
     !    THIS IS THE END (...,at last, the end, my friend,...)
@@ -788,12 +850,6 @@ CONTAINS
                WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
                    'Solver ',solver_id,' FAILED:  Norm =',Norm,'  RefNorm =',RefNorm
                CALL Warn('CompareToReferenceSolution',Message)
-               IF( AbsoluteErr ) THEN
-                 WRITE( Message,'(A,ES13.6)') 'Absolute Error to reference norm:',Err
-               ELSE
-                 WRITE( Message,'(A,ES13.6)') 'Relative Error to reference norm:',Err
-               END IF
-               CALL Info('CompareToReferenceSolution',Message, Level = 4 )
              END IF
              Success = .FALSE.
            ELSE         
@@ -801,6 +857,13 @@ CONTAINS
                  'Solver ',solver_id,' PASSED:  Norm =',Norm,'  RefNorm =',RefNorm
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
+           IF( AbsoluteErr ) THEN
+             WRITE( Message,'(A,ES13.6)') 'Absolute Error to reference norm:',Err
+           ELSE
+             WRITE( Message,'(A,ES13.6)') 'Relative Error to reference norm:',Err
+           END IF
+           CALL Info('CompareToReferenceSolution',Message, Level = 4 )
+
          END IF
 
          IF( CompareSolution ) THEN
@@ -870,30 +933,35 @@ CONTAINS
        TYPE(Solver_t), POINTER :: ABC(:), PSolver
        CHARACTER(LEN=MAX_NAME_LEN) :: str
        INTEGER :: ii,jj,j2,j3,kk,nn
-       TYPE(ValueList_t), POINTER :: Params
-       LOGICAL :: gotIt, VtuFormat
+       TYPE(ValueList_t), POINTER :: Params, Simu
+       LOGICAL :: Found, VtuFormat
+       INTEGER :: AllocStat
 
-       str = ListGetString( CurrentModel % Simulation,'Post File',GotIt) 
-       IF(.NOT. GotIt) RETURN
+       Simu => CurrentModel % Simulation
+       str = ListGetString( Simu,'Post File',Found) 
+       IF(.NOT. Found) RETURN
        kk = INDEX( str,'.vtu' )
        VtuFormat = ( kk /= 0 ) 
 
        IF(.NOT. VtuFormat ) RETURN
        
        CALL Info('AddVtuOutputSolverHack','Adding ResultOutputSolver to write VTU output in file: '&
-           //TRIM(str(1:kk-1)))
+            //TRIM(str(1:kk-1)))
      
-       CALL ListRemove( CurrentModel % Simulation,'Post File')
+       CALL ListRemove( Simu,'Post File')
        nn = CurrentModel % NumberOfSolvers+1
-       ALLOCATE( ABC(nn) )
+       ALLOCATE( ABC(nn), STAT = AllocStat )
+       IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 1')
+       CALL Info('AddVtuOutputSolverHack','Increasing number of solver to: '&
+           //TRIM(I2S(n)),Level=8)
        DO ii=1,nn-1
          ! Def_Dofs is the only allocatable structure within Solver_t:
          IF( ALLOCATED( CurrentModel % Solvers(ii) % Def_Dofs ) ) THEN
            jj = SIZE(CurrentModel % Solvers(ii) % Def_Dofs,1)
            j2 = SIZE(CurrentModel % Solvers(ii) % Def_Dofs,2)
            j3 = SIZE(CurrentModel % Solvers(ii) % Def_Dofs,3)
-           ALLOCATE( ABC(ii) % Def_Dofs(jj,j2,j3) )
-         END IF
+           ALLOCATE( ABC(ii) % Def_Dofs(jj,j2,j3), STAT = AllocStat )
+           IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 2')              END IF
 
          ! Copy the content of the Solver structure
          ABC(ii) = CurrentModel % Solvers(ii)
@@ -913,31 +981,117 @@ CONTAINS
        CurrentModel % NumberOfSolvers = nn
 
        ! Now create the ResultOutputSolver instance on-the-fly
-       NULLIFY( CurrentModel % Solvers(nn) % Values )
        CurrentModel % Solvers(nn) % PROCEDURE = 0
        NULLIFY( CurrentModel % Solvers(nn) % Matrix )
        NULLIFY( CurrentModel % Solvers(nn) % BlockMatrix )
-       NULLIFY( CurrentModel % Solvers(nn) % Values )
+!       NULLIFY( CurrentModel % Solvers(nn) % Values )
        NULLIFY( CurrentModel % Solvers(nn) % Variable )
        NULLIFY( CurrentModel % Solvers(nn) % ActiveElements )
        CurrentModel % Solvers(nn) % NumberOfActiveElements = 0
-       NULLIFY( CurrentModel % Solvers(nn) % Values )
        jj = CurrentModel % NumberOfBodies
-       ALLOCATE( CurrentModel % Solvers(nn) % Def_Dofs(10,jj,6))
+       ALLOCATE( CurrentModel % Solvers(nn) % Def_Dofs(10,jj,6),STAT=AllocStat)       
+       IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 3')
        CurrentModel % Solvers(nn) % Def_Dofs(:,1:jj,6) = -1
        
        ! Add some keywords to the list
+       CurrentModel % Solvers(nn) % Values => ListAllocate()
+       Params => CurrentModel % Solvers(nn) % Values
        CALL ListAddString(CurrentModel % Solvers(nn) % Values,&
            'Procedure', 'ResultOutputSolve ResultOutputSolver',.FALSE.)
        CALL ListAddString(CurrentModel % Solvers(nn) % Values,'Output Format','vtu')
-       CALL ListAddString(CurrentModel % Solvers(nn) % Values,'Output File Name',str(1:kk-1))
+       CALL ListAddString(CurrentModel % Solvers(nn) % Values,'Output File Name',str(1:kk-1),.FALSE.)
        CALL ListAddString(CurrentModel % Solvers(nn) % Values,'Exec Solver','after saving')
        CALL ListAddString(CurrentModel % Solvers(nn) % Values,'Equation','InternalVtuOutputSolver')
        CALL ListAddLogical(CurrentModel % Solvers(nn) % Values,'Save Geometry IDs',.TRUE.)
+       CALL ListAddLogical(Params,'Check Simulation Keywords',.TRUE.)
 
+       ! Add a few often needed keywords also if they are given in simulation section
+       CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
+
+       CALL Info('AddVtuOutputSolverHack','Finished appeding VTU output solver',Level=12)
+       
      END SUBROUTINE AddVtuOutputSolverHack
 
 
+     ! This is a dirty hack that adds an instance of SaveScalars to the list of Solvers.
+     ! The idea is that it is much easier for the end user to add a basic instance.
+     !----------------------------------------------------------------------------------------------
+     SUBROUTINE AddSaveScalarsHack()     
+       TYPE(Solver_t), POINTER :: ABC(:), PSolver
+       CHARACTER(LEN=MAX_NAME_LEN) :: str
+       INTEGER :: i,j,j2,j3,k,n
+       TYPE(ValueList_t), POINTER :: Params, Simu
+       LOGICAL :: Found, VtuFormat
+       INTEGER :: AllocStat
+       
+       Simu => CurrentModel % Simulation
+       str = ListGetString( Simu,'Scalars File',Found) 
+       IF(.NOT. Found) RETURN
+
+       CALL Info('AddSaveScalarsHack','Adding SaveScalars solver to write scalars into file: '&
+           //TRIM(str))
+       
+       n = CurrentModel % NumberOfSolvers+1
+       ALLOCATE( ABC(n), STAT = AllocStat )
+       IF( AllocStat /= 0 ) CALL Fatal('AddSaveScalarsHack','Allocation error 1')
+       
+       CALL Info('AddSaveScalarsHack','Increasing number of solver to: '&
+           //TRIM(I2S(n)),Level=8)
+       DO i=1,n-1
+         ! Def_Dofs is the only allocatable structure within Solver_t:
+         IF( ALLOCATED( CurrentModel % Solvers(i) % Def_Dofs ) ) THEN
+           j = SIZE(CurrentModel % Solvers(i) % Def_Dofs,1)
+           j2 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,2)
+           j3 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,3)
+           ALLOCATE( ABC(i) % Def_Dofs(j,j2,j3), STAT = AllocStat )
+           IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 2')           
+         END IF
+
+         ! Copy the content of the Solver structure
+         ABC(i) = CurrentModel % Solvers(i)
+
+         ! Nullify the old structure since otherwise bad things may happen at deallocation
+         NULLIFY( CurrentModel % Solvers(i) % ActiveElements )
+         NULLIFY( CurrentModel % Solvers(i) % Mesh )
+         NULLIFY( CurrentModel % Solvers(i) % BlockMatrix )
+         NULLIFY( CurrentModel % Solvers(i) % Matrix )
+         NULLIFY( CurrentModel % Solvers(i) % Variable )
+       END DO
+
+       ! Deallocate the old structure and set the pointer to the new one
+       DEALLOCATE( CurrentModel % Solvers )
+       CurrentModel % Solvers => ABC
+       CurrentModel % NumberOfSolvers = n
+
+       ! Now create the ResultOutputSolver instance on-the-fly
+       CurrentModel % Solvers(n) % PROCEDURE = 0
+       NULLIFY( CurrentModel % Solvers(n) % Matrix )
+       NULLIFY( CurrentModel % Solvers(n) % BlockMatrix )
+       NULLIFY( CurrentModel % Solvers(n) % Variable )
+       NULLIFY( CurrentModel % Solvers(n) % ActiveElements )
+       CurrentModel % Solvers(n) % NumberOfActiveElements = 0
+       j = CurrentModel % NumberOfBodies
+       ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
+       IF( AllocStat /= 0 ) CALL Fatal('AddSaveScalarsHack','Allocation error 3')
+       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
+       
+       ! Add some keywords to the list
+       CurrentModel % Solvers(n) % Values => ListAllocate()
+       Params => CurrentModel % Solvers(n) % Values
+       CALL ListAddString( Params,'Procedure', 'SaveData SaveScalars',.FALSE.)
+       CALL ListAddString(Params,'Equation','InternalSaveScalars')
+       CALL ListAddString(Params,'Filename',TRIM(str),.FALSE.)
+       CALL ListAddString(Params,'Exec Solver','after saving')
+
+       ! Add a few often needed keywords also if they are given in simulation section
+       CALL ListCopyPrefixedKeywords( Simu, Params, 'scalars:' )
+
+       CALL Info('AddSaveScalarsHack','Finished appeding SaveScalars solver',Level=12)
+       
+     END SUBROUTINE AddSaveScalarsHack
+
+
+     
 !------------------------------------------------------------------------------
 !> Adds flags for active solvers. 
 !------------------------------------------------------------------------------
@@ -1008,29 +1162,37 @@ CONTAINS
 
      Mesh => CurrentModel % Meshes 
      DO WHILE( ASSOCIATED( Mesh ) )
-       CALL VariableAdd( Mesh % Variables, Mesh,Solver, &
-             'Coordinate 1',1,Mesh % Nodes % x )
+       CALL VariableAdd( Mesh % Variables, Mesh, &
+             Name='Coordinate 1',DOFs=1,Values=Mesh % Nodes % x )
 
-       CALL VariableAdd(Mesh % Variables,Mesh,Solver, &
-             'Coordinate 2',1,Mesh % Nodes % y )
+       CALL VariableAdd(Mesh % Variables,Mesh, &
+             Name='Coordinate 2',DOFs=1,Values=Mesh % Nodes % y )
 
-       CALL VariableAdd(Mesh % Variables,Mesh,Solver, &
-             'Coordinate 3',1,Mesh % Nodes % z )
+       CALL VariableAdd(Mesh % Variables,Mesh, &
+             Name='Coordinate 3',DOFs=1,Values=Mesh % Nodes % z )
 
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Time', 1, sTime )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Periodic Time', 1, sPeriodic )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Timestep', 1, sStep )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Timestep size', 1, sSize )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Timestep interval', 1, sInterval )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Time',DOFs=1, Values=sTime )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Periodic Time',DOFs=1, Values=sPeriodic )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep', DOFs=1, Values=sStep )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep size', DOFs=1, Values=sSize )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep interval', DOFs=1, Values=sInterval )
 
        ! Save some previous timesteps for variable timestep multistep methods
        DtVar => VariableGet( Mesh % Variables, 'Timestep size' )
        DtVar % PrevValues => sPrevSizes
 
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
-               'nonlin iter', 1, nonlinIt )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
-               'coupled iter', 1, steadyIt )
+       CALL VariableAdd( Mesh % Variables, Mesh, &
+               Name='nonlin iter', DOFs=1, Values=nonlinIt )
+       CALL VariableAdd( Mesh % Variables, Mesh, &
+               Name='coupled iter', DOFs=1, Values=steadyIt )
+
+       IF( ListCheckPresentAnySolver( CurrentModel,'Scanning Loops') ) THEN
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
+       END IF
+               
+       sPar(1) = 1.0_dp * ParEnv % MyPe 
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Partition', DOFs=1, Values=sPar ) 
+
        Mesh => Mesh % Next
      END DO
 !------------------------------------------------------------------------------
@@ -1059,6 +1221,9 @@ CONTAINS
      LOGICAL :: nt_boundary
      TYPE(Element_t), POINTER :: Element
      TYPE(Variable_t), POINTER :: var, vect_var
+     LOGICAL :: AnyNameSpace
+     
+     CALL Info('SetInitialConditions','Setting up initial conditions (if any)',Level=10)
 
      dim = CoordinateSystemDimension()
 
@@ -1070,6 +1235,7 @@ CONTAINS
        CALL Restart
      END IF
 
+         
 !------------------------------------------------------------------------------
 !    Make sure that initial values at boundaries are set correctly.
 !    NOTE: This overrides the initial condition setting for field variables!!!!
@@ -1078,6 +1244,9 @@ CONTAINS
             'Initialize Dirichlet Conditions', GotIt ) 
      IF ( .NOT. GotIt ) InitDirichlet = .TRUE.
 
+     AnyNameSpace = ListCheckPresentAnySolver( CurrentModel,'Namespace')
+     NamespaceFound = .FALSE.
+     
      vect_var => NULL()
      IF ( InitDirichlet ) THEN
        Mesh => CurrentModel % Meshes
@@ -1103,9 +1272,10 @@ CONTAINS
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
-             str = ListGetString( Solver % Values, 'Namespace', Found )
-             IF (Found) CALL ListSetNamespace(TRIM(str))
-
+             IF( AnyNameSpace ) THEN
+               str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+               IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
+             END IF               
 
              IF ( Var % DOFs <= 1 ) THEN
                Work(1:nn) = GetReal( BC,Var % Name, gotIt )
@@ -1232,19 +1402,35 @@ CONTAINS
      USE DefUtils
      TYPE(Element_t), POINTER :: Edge
      INTEGER :: DOFs,bid,jj,kk,ll,k1,nn,tt
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
-     LOGICAL :: Found, ThingsToDO
+!     INTEGER :: DOFs,i,j,k,k1,k2,l
+     CHARACTER(LEN=MAX_NAME_LEN) :: str, VarName
+     LOGICAL :: Found, ThingsToDO, NamespaceFound, AnyNameSpace
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, ALLOCATABLE :: Indexes(:)
      REAL(KIND=dp) :: Val
      REAL(KIND=dp),ALLOCATABLE :: Work(:)
      TYPE(ValueList_t), POINTER :: IC
-!------------------------------------------------------------------------------
+     TYPE(Nodes_t) :: Nodes
+     TYPE(GaussIntegrationPoints_t) :: IP
+     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+     REAL(KIND=dp) :: DetJ
+     TYPE(ValueHandle_t) :: LocalSol_h
+     LOGICAL :: Stat, FoundIC, PrevFoundIC
+     INTEGER :: VarOrder, PrevBodyId
+     !------------------------------------------------------------------------------
 
+     AnyNameSpace = ListCheckPresentAnySolver( CurrentModel,'namespace')
+     NameSpaceFound = .FALSE.
+     
      Mesh => CurrentModel % Meshes
      DO WHILE( ASSOCIATED( Mesh ) )
        ALLOCATE( Indexes(Mesh % MaxElementDOFs), Work(Mesh % MaxElementDOFs) )
+       
+
        CALL SetCurrentMesh( CurrentModel, Mesh )
+
+       n =  Mesh % MaxElementNodes      
+       ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
        ! First set the global variables and check whether there is anything left to do
        ThingsToDo = .FALSE.
@@ -1257,12 +1443,14 @@ CONTAINS
            
            Solver => Var % Solver
            IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
-           
-           str = ListGetString( Solver % Values, 'Namespace', Found )
-           IF (Found) CALL ListSetNamespace(TRIM(str))
-           
+
+           IF( AnyNameSpace ) THEN
+             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
+           END IF
+             
            ! global variable
-           IF( SIZE( Var % Values ) == Var % DOFs ) THEN
+           IF( SIZE( Var % Values ) == Var % DOFs .OR. Var % Type == Variable_global ) THEN
              Val = ListGetCReal( IC, Var % Name, GotIt )
              IF( GotIt ) THEN
                WRITE( Message,'(A,ES12.3)') 'Initializing global variable: > '&
@@ -1309,11 +1497,30 @@ CONTAINS
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
-             str = ListGetString( Solver % Values, 'Namespace', Found )
-             IF (Found) CALL ListSetNamespace(TRIM(str))
              
+             IF( AnyNameSpace ) THEN
+               str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+               IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
+             END IF
+               
              ! global variables were already set
-             IF( SIZE( Var % Values ) == Var % DOFs ) THEN
+             IF( SIZE( Var % Values ) == Var % DOFs .OR. Var % Type == Variable_global ) THEN
+               CONTINUE
+               
+             ELSE IF( Var % TYPE == Variable_on_elements ) THEN
+               IF( Var % DOFs > 1 ) THEN
+                 CALL Fatal('InitCond','Initialization only for scalar elements fields!')
+               END IF
+               
+               Work(1:n) = GetReal( IC, Var % Name, GotIt )
+               IF ( GotIt ) THEN
+                 k1 = CurrentElement % ElementIndex 
+                 IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
+                 IF ( k1>0 ) Var % Values(k1) = SUM( Work(1:n) ) / n
+               END IF               
+               
+             ELSE IF( Var % TYPE == Variable_on_gauss_points ) THEN
+               ! We do this elsewhere in a more efficient manner
                CONTINUE
                
              ELSE IF ( Var % DOFs <= 1 ) THEN
@@ -1359,8 +1566,8 @@ CONTAINS
                        IF ( ll>0 ) THEN
                          CALL LocalBcIntegral( IC, &
                              Edge, Edge % TYPE % NumberOfNodes, CurrentElement, nn, &
-                             TRIM(Var % Name)//' {e}', Work(1) )
-                         Var % Values(ll) = Work(1)
+                             TRIM(Var % Name)//' {e}', Work )
+                         Var % Values(l) = Work(1)
                        END IF
                      END DO
                    END IF
@@ -1385,9 +1592,121 @@ CONTAINS
              Var => Var % Next
            END DO
          END DO
+
+         
+         ! Here we do just the gauss point values for now.
+         ! It would really make sense to do the ICs in this order since probably
+         ! there are quite few IC variables to set but quite many elements.
+         
+         Var => Mesh % Variables
+         DO WHILE( ASSOCIATED(Var) ) 
+
+           VarName = Var % Name 
+           Solver => Var % Solver
+           IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
+           
+           IF( AnyNameSpace ) THEN
+             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
+           END IF
+           
+           VarOrder = -1
+           DO VarOrder = 0, 2
+             IF( VarOrder == 0 ) THEN
+               VarName = Var % Name
+             ELSE IF( VarOrder == 1 ) THEN
+               VarName = TRIM( Var % Name )//' Velocity'
+             ELSE IF( VarOrder == 2 ) THEN
+               VarName = TRIM( Var % Name )//' Acceleration'
+             END IF
+
+             !CALL ListInitElementKeyword( LocalSol_h,'Initial Condition',VarName, &
+             !    FoundSomewhere = Found )
+             Found = ListCheckPresentAnyIC( CurrentModel, VarName )
+
+             IF( Found .AND. VarOrder > 0 ) THEN              
+               IF ( .NOT. ( Transient .AND. Solver % TimeOrder==2 ) ) THEN
+                 CALL Warn('InitCond','We can only set timederivative for transients')
+                 Found = .FALSE.
+               END IF
+             END IF
+
+             IF( Found ) THEN
+               
+               CALL ListInitElementKeyword( LocalSol_h,'Initial Condition',VarName )
+               
+               IF( Var % TYPE /= Variable_on_gauss_points ) CYCLE
+
+               CALL Info('InitCond','Initializing gauss point field: '//TRIM(VarName),Level=7)               
+               IF( Var % DOFs > 1 ) THEN
+                 CALL Fatal('InitCond','Initialization only for scalar elemental fields!')
+               END IF
+               
+               PrevBodyId = -1 
+               DO t=1, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+                 
+                 CurrentElement => Mesh % Elements(t)
+
+                 i = CurrentElement % BodyId 
+                 IF( i == 0 ) CYCLE         
+
+                 IF( i == PrevBodyId ) THEN
+                   FoundIC = PrevFoundIC
+                 ELSE
+                   j = ListGetInteger(CurrentModel % Bodies(i) % Values, &
+                       'Initial Condition',FoundIC, 1, CurrentModel % NumberOfICs )           
+                   IF ( FoundIC ) THEN                       
+                     IC => CurrentModel % ICs(j) % Values
+                     FoundIC = ListCheckPresent( IC, VarName )
+                   END IF
+                   PrevFoundIC = FoundIC 
+                 END IF
+
+                 IF( .NOT. FoundIC ) CYCLE
+
+                 CurrentModel % CurrentElement => CurrentElement
+                 n = GetElementNOFNodes()                 
+                 
+                 k1 = Var % Perm( CurrentElement % ElementIndex )
+                 k2 = Var % Perm( CurrentElement % ElementIndex + 1 )
+
+                 IF( k2- k1 > 0 ) THEN
+                   
+                   Nodes % x(1:n) = Mesh % Nodes % x(CurrentElement % NodeIndexes)
+                   Nodes % y(1:n) = Mesh % Nodes % y(CurrentElement % NodeIndexes)
+                   Nodes % z(1:n) = Mesh % Nodes % z(CurrentElement % NodeIndexes)
+
+                   IP = GaussPoints( CurrentElement )
+                   IF( k2 - k1 /= Ip % n ) THEN
+                     CALL Warn('InitCond','Incompatible number of Gauss points, skipping')
+                   ELSE              
+                     DO k=1,IP % n
+                       stat = ElementInfo( CurrentElement, Nodes, IP % U(k), IP % V(k), &
+                           IP % W(k), detJ, Basis )
+
+                       val = ListGetElementReal( LocalSol_h,Basis,CurrentElement,Found,GaussPoint=k)
+                       
+                       IF( VarOrder == 0 ) THEN
+                         Var % Values(k1+k) = val
+                       ELSE 
+                         Var % PrevValues(k1+k,VarOrder) = val
+                       END IF
+
+                     END DO
+                   END IF
+                   
+                 END IF 
+               END DO
+             END IF
+           END DO
+           IF(NamespaceFound) CALL ListPopNamespace()
+           Var => Var % Next
+         END DO
        END IF
 
        DEALLOCATE( Indexes, Work )
+       DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z)
+
        Mesh => Mesh % Next
      END DO
 
@@ -1450,6 +1769,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE ExecSimulation(TimeIntervals,  CoupledMinIter, &
               CoupledMaxIter, OutputIntervals, Transient, Scanning)
+     IMPLICIT NONE
       INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
       LOGICAL :: Transient,Scanning
 !------------------------------------------------------------------------------
@@ -1457,45 +1777,84 @@ CONTAINS
      REAL(KIND=dp) :: dt, ddt, dtfunc
      INTEGER :: timeleft,cum_timestep
      INTEGER, SAVE ::  stepcount=0, RealTimestep
-     LOGICAL :: ExecThis,SteadyStateReached=.FALSE.
+     LOGICAL :: ExecThis,SteadyStateReached=.FALSE.,PredCorrControl, &
+         DivergenceControl, HaveDivergence
 
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
            AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
-     INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1
-     LOGICAL :: AdaptiveTime = .TRUE.
+     INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
+     LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found
+     INTEGER :: AllocStat
+
+     REAL(KIND=dp) :: AdaptiveIncrease, AdaptiveDecrease
 
      TYPE(Solver_t), POINTER :: Solver
+     TYPE AdaptiveVariables_t 
+       TYPE(Variable_t) :: Var
+       REAL(KIND=dp) :: Norm
+     END TYPE AdaptiveVariables_t
+     TYPE(AdaptiveVariables_t), ALLOCATABLE, SAVE :: AdaptVars(:)
+
 #ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
-#else
-     REAL(KIND=dp) :: RealTime, newtime, prevtime=0, maxtime, exitcond
+#ifndef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: RealTime
 #endif
-     REAL(KIND=dp), ALLOCATABLE :: xx(:,:), xxnrm(:), yynrm(:), PrevXX(:,:,:)
+     
+     !$OMP PARALLEL
+     IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
+     !$OMP END PARALLEL
 
-!$omp parallel
-!$   IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit
-!$omp end parallel
+     nSolvers = CurrentModel % NumberOfSolvers
+     DO ii=1,nSolvers
+        Solver => CurrentModel % Solvers(ii)
+        IF ( Solver % PROCEDURE==0 ) CYCLE
+        IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
+          ! solver to be called prior to time looping can never be transient
+          dt = 1.0_dp
+          CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
+        END IF
+     END DO
 
+     IF( ListGetLogical( CurrentModel % Simulation,'Calculate Mesh Pieces',Found ) ) THEN
+       CALL CalculateMeshPieces( CurrentModel % Mesh ) 
+     END IF
+
+     ! Predictor-Corrector time stepping control 
+     PredCorrControl = ListGetLogical( CurrentModel % Simulation, &
+         'Predictor-Corrector Control', gotIt)
+
+     ! Divergence control 
+     DivergenceControl = ListGetLogical( CurrentModel % Simulation, &
+         'Convergence Control', gotIt)     
+
+     AdaptiveTime = ListGetLogical( CurrentModel % Simulation, &
+         'Adaptive Timestepping', GotIt )
+     
      DO interval = 1, TimeIntervals
         stepcount = stepcount + Timesteps(interval)
      END DO 
 
+     dt = 1.0_dp
      cum_Timestep = 0
-     ddt = 0.0d0
+     ddt = -1.0_dp  
      DO interval = 1,TimeIntervals
 
 !------------------------------------------------------------------------------
-       IF ( Transient .OR. Scanning ) THEN
-         dt = TimestepSizes(interval,1)
-       ELSE
-         dt = 1
-       END IF
-!------------------------------------------------------------------------------
-!      go trough number of timesteps within an interval
+!      go through number of timesteps within an interval
 !------------------------------------------------------------------------------
        timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)
        IF(.NOT.GotIt) timePeriod = HUGE(timePeriod)
 
+       IF(GetNameSpaceCheck()) THEN
+         IF(Scanning) THEN
+           CALL ListPushNamespace('scan:')
+         ELSE IF(Transient) THEN
+           CALL ListPushNamespace('time:')
+         ELSE
+           CALL ListPushNamespace('steady:')
+         END IF
+       END IF
 
        RealTimestep = 1
        DO timestep = 1,Timesteps(interval)
@@ -1503,16 +1862,81 @@ CONTAINS
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
 
-         dtfunc = ListGetConstReal( CurrentModel % Simulation, &
-                  'Timestep Function', gotIt)
-         IF(GotIt) THEN
-	   CALL Warn('ExecSimulation','Obsolite keyword > Timestep Function < , use > Timestep Size < instead')
-         ELSE	
-           dtfunc = ListGetCReal( CurrentModel % Simulation, &
-                  'Timestep Size', gotIt)
+         IF ( GetNamespaceCheck() ) THEN
+           IF( Scanning ) THEN
+             CALL ListPushNamespace('scan '//TRIM(i2s(cum_Timestep))//':')
+           ELSE IF ( Transient ) THEN
+             CALL ListPushNamespace('time '//TRIM(i2s(cum_Timestep))//':')
+           ELSE
+             CALL ListPushNamespace('steady '//TRIM(i2s(cum_Timestep))//':')
+           END IF
          END IF
-         IF(GotIt) dt = dtfunc
 
+         IF ( Transient .OR. Scanning ) THEN
+           dtfunc = ListGetConstReal( CurrentModel % Simulation, &
+               'Timestep Function', gotIt)
+           IF(GotIt) THEN
+             CALL Warn('ExecSimulation','Obsolite keyword > Timestep Function < , use > Timestep Size < instead')
+           ELSE	
+             dtfunc = ListGetCReal( CurrentModel % Simulation, &
+                 'Timestep Size', gotIt)
+           END IF
+           IF(GotIt) THEN
+             dt = dtfunc
+           ELSE
+             dt = TimestepSizes(interval,1)
+           END IF
+         END IF
+           
+
+!------------------------------------------------------------------------------
+         ! Predictor-Corrector time stepping control 
+         IF ( PredCorrControl ) THEN
+           CALL PredictorCorrectorControl( CurrentModel, dt, timestep )
+         END IF
+
+!------------------------------------------------------------------------------
+         
+         IF( AdaptiveTime ) THEN
+           AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Time Error', GotIt )       
+           IF ( .NOT. GotIt ) THEN 
+             CALL Fatal('ElmerSolver','Adaptive Time Limit must be given for ' // &
+                 'adaptive stepping scheme.')
+           END IF
+           AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
+               'Adaptive Keep Smallest', GotIt, minv=0  )         
+        END IF
+         
+         IF( AdaptiveTime .OR. DivergenceControl ) THEN
+           AdaptiveMaxTimestep = ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Max Timestep', GotIt )
+           IF ( GotIt ) THEN
+             AdaptiveMaxTimestep =  MIN(AdaptiveMaxTimeStep, dt)
+           ELSE
+             AdaptiveMaxTimestep =  dt
+           END IF
+                        
+           AdaptiveMinTimestep = ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Min Timestep', GotIt )
+           IF(.NOT. GotIt) AdaptiveMinTimestep = 1.0e-8 * AdaptiveMaxTimestep
+           
+           AdaptiveIncrease =  ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Increase Coefficient', GotIt )
+           IF(.NOT. GotIt) AdaptiveIncrease = 2.0_dp
+           
+           AdaptiveDecrease =  ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Decrease Coefficient', GotIt )
+           IF(.NOT. GotIt) AdaptiveDecrease = 0.5_dp
+           
+           AdaptiveRough = ListGetLogical( CurrentModel % Simulation, &
+               'Adaptive Rough Timestep', GotIt )           
+
+           AdaptiveSmart = ListGetLogical( CurrentModel % Simulation, &
+               'Adaptive Smart Timestep', GotIt )           
+         END IF
+
+         
 !------------------------------------------------------------------------------
          sTime(1) = sTime(1) + dt
          sPeriodic(1) = sTime(1)
@@ -1578,8 +2002,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 !        Solve any and all governing equations in the system
 !------------------------------------------------------------------------------
-         AdaptiveTime = ListGetLogical( CurrentModel % Simulation, &
-                  'Adaptive Timestepping', GotIt )
 
          IF ( Transient .AND. AdaptiveTime ) THEN 
             AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
@@ -1616,6 +2038,31 @@ CONTAINS
             END DO
             ALLOCATE( xx(nn,kk), yynrm(nn), xxnrm(nn), prevxx( nn,kk,jj ) )
 
+            IF(.NOT. ALLOCATED( AdaptVars ) ) THEN
+              ALLOCATE( AdaptVars( nSolvers ), STAT = AllocStat )
+              IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for AdaptVars')
+              
+              DO i=1,nSolvers
+                Solver => CurrentModel % Solvers(i)
+
+                NULLIFY( AdaptVars(i) % Var % Values )
+                NULLIFY( AdaptVars(i) % Var % PrevValues )
+
+                IF( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+                IF( .NOT. ASSOCIATED( Solver % Variable  % Values ) ) CYCLE
+                CALL Info('ExecSimulation','Allocating adaptive work space for: '//TRIM(I2S(i)),Level=12)
+                j = SIZE( Solver % Variable % Values )
+                ALLOCATE( AdaptVars(i) % Var % Values( j ), STAT=AllocStat )
+                IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error AdaptVars Values')
+
+                IF( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                  k = SIZE( Solver % Variable % PrevValues, 2 )
+                  ALLOCATE( AdaptVars(i) % Var % PrevValues( j, k ), STAT=AllocStat)
+                  IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for AdaptVars PrevValues')
+                END IF
+              END DO
+            END IF
+            
             CumTime = 0.0d0
             IF ( ddt == 0.0d0 .OR. ddt > AdaptiveMaxTimestep ) ddt = AdaptiveMaxTimestep
 
@@ -1623,102 +2070,223 @@ CONTAINS
             SmallestCount = 0
             DO WHILE( CumTime < dt-1.0d-12 )
                ddt = MIN( dt - CumTime, ddt )
-
-               DO ii=1,CurrentModel % NumberOFSolvers
-                  Solver => CurrentModel % Solvers(ii)
-                  IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-                     nn = SIZE( Solver % Variable % Values )
-                     xx(ii,1:nn) = Solver % Variable % Values
-                     xxnrm(ii) = Solver % Variable % Norm
-                     IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                        DO jj=1,SIZE( Solver % Variable % PrevValues,2 )
-                           prevxx(ii,1:nn,jj) = Solver % Variable % PrevValues(:,jj)
-                        END DO
-                     END IF
+               IF( AdaptiveSmart ) THEN
+                  ! If the next timestep will not get us home but the next one would
+                  ! then split the timestep equally into two parts.
+                  IF( dt - CumTime - ddt > 1.0d-12 ) THEN
+                     CALL Info('ExecSimulation','Splitted timestep into two equal parts',Level=12)
+                     ddt = MIN( ddt, ( dt - CumTime ) / 2.0_dp )
+                     
+!               DO ii=1,CurrentModel % NumberOFSolvers
+!                  Solver => CurrentModel % Solvers(ii)
+!                  IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
+!                     nn = SIZE( Solver % Variable % Values )
+!                     xx(ii,1:nn) = Solver % Variable % Values
+!                     xxnrm(ii) = Solver % Variable % Norm
+!                     IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+!                        DO jj=1,SIZE( Solver % Variable % PrevValues,2 )
+!                           prevxx(ii,1:nn,jj) = Solver % Variable % PrevValues(:,jj)
+!                        END DO
+!                     END IF
                   END IF
+               END DO
+            
+               ! Store the initial values before the start of the step
+               DO i=1,nSolvers
+                 Solver => CurrentModel % Solvers(i)
+                 IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+                 IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
+                 AdaptVars(i) % Var % Values = Solver % Variable % Values
+                 AdaptVars(i) % Var % Norm = Solver % Variable % Norm
+                 IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                   AdaptVars(i) % Var % PrevValues = Solver % Variable % PrevValues
+                 END IF
                END DO
 
                sTime(1) = ss + CumTime + ddt
                sSize(1) = ddt
+
+               ! Solve with full timestep
                CALL SolveEquations( CurrentModel, ddt, Transient, &
-                 CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
+                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                   BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)           
 
-
+               ! External adaptive error given 
                MaxErr = ListGetConstReal( CurrentModel % Simulation, &
                           'Adaptive Error Measure', GotIt )
 
-               DO ii=1,CurrentModel % NumberOFSolvers
+               DO ii=1,nSolvers
                   Solver => CurrentModel % Solvers(ii)
-                  IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-                     nn = SIZE(Solver % Variable % Values)
-                     yynrm(ii) = Solver % Variable % Norm
-                     Solver % Variable % Values = xx(ii,1:nn)
-                     IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                        DO jj=1,SIZE( Solver % Variable % PrevValues,2 )
-                           Solver % Variable % PrevValues(:,jj) = prevxx(ii,1:nn,jj)
-                        END DO
-                     END IF
+                  IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE 
+                  IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
+                  Solver % Variable % Values = AdaptVars(ii) % Var % Values 
+                  AdaptVars(ii) % Norm = Solver % Variable % Norm
+                  IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                     Solver % Variable % PrevValues = AdaptVars(ii) % Var % PrevValues 
                   END IF
+                  !IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
+                  !   nn = SIZE(Solver % Variable % Values)
+                  !   yynrm(ii) = Solver % Variable % Norm
+                  !   Solver % Variable % Values = xx(ii,1:nn)
+                  !   IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                  !      DO jj=1,SIZE( Solver % Variable % PrevValues,2 )
+                  !         Solver % Variable % PrevValues(:,jj) = prevxx(ii,1:nn,jj)
+                  !      END DO
+                  !   END IF
+                  !END IF
                END DO
 
+               ! Test the error for half the timestep
                sStep(1) = ddt / 2
                sTime(1) = ss + CumTime + ddt/2
                CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                  CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
+                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                   BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)           
+
                sTime(1) = ss + CumTime + ddt
                CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                  CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
+                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                   BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)           
 
                MaxErr = ABS( MaxErr - ListGetConstReal( CurrentModel % Simulation, &
-                           'Adaptive Error Measure', GotIt ) )
+                   'Adaptive Error Measure', GotIt ) )
 
+               ! If not measure given then use the maximum change in norm as the measure
                IF ( .NOT. GotIt ) THEN
-                  MaxErr = 0.0d0
-                  DO ii=1,CurrentModel % NumberOFSolvers
-                     Solver => CurrentModel % Solvers(ii)
-                     IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-                        IF ( yynrm(ii) /= Solver % Variable % Norm ) THEN
-                           Maxerr = MAX(Maxerr,ABS(yynrm(ii)-Solver % Variable % Norm)/yynrm(ii))
-                        END IF
-                     END IF
-                  END DO
+                 MaxErr = 0.0d0
+                 DO ii=1,nSolvers
+                   Solver => CurrentModel % Solvers(ii)
+                   IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+                   IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
+                   IF ( AdaptVars(ii) % norm /= Solver % Variable % Norm ) THEN
+                     Maxerr = MAX(Maxerr,ABS(AdaptVars(ii) % norm - Solver % Variable % Norm)/&
+                         AdaptVars(ii) % norm )
+                   END IF
+                 END DO
                END IF
-
+               
+               ! We have a success no need to redo this step
                IF ( MaxErr < AdaptiveLimit .OR. ddt <= AdaptiveMinTimestep ) THEN
                  CumTime = CumTime + ddt
                  RealTimestep = RealTimestep+1
                  IF ( SmallestCount >= AdaptiveKeepSmallest .OR. StepControl > 0 ) THEN
-                    ddt = MIN( 2*ddt, AdaptiveMaxTimeStep )
-                    StepControl   = 1
-                    SmallestCount = 0
-                  ELSE
-                    StepControl   = 0
-                    SmallestCount = SmallestCount + 1
-                  END IF
+                   ddt = MIN( AdaptiveIncrease * ddt, AdaptiveMaxTimeStep )
+                   StepControl   = 1
+                   SmallestCount = 0
+                 ELSE
+                   StepControl   = 0
+                   SmallestCount = SmallestCount + 1
+                 END IF
+
+                 ! Finally solve only the postprocessing solver after the timestep has been accepted
+                 CALL SolveEquations( CurrentModel, ddt/2, Transient, &
+                     CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                     BeforeTime = .FALSE., AtTime = .FALSE., AfterTime = .TRUE.)           
                ELSE
-                  DO ii=1,CurrentModel % NumberOFSolvers
-                     Solver => CurrentModel % Solvers(ii)
-                     IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-                        nn = SIZE(Solver % Variable % Values)
-                        Solver % Variable % Norm = xxnrm(ii)
-                        Solver % Variable % Values = xx(ii,1:nn)
-                        IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                           DO jj=1,SIZE( Solver % Variable % PrevValues,2 )
-                              Solver % Variable % PrevValues(:,jj) = prevxx(ii,1:nn,jj)
-                           END DO
-                        END IF
-                     END IF
-                  END DO
-                  ddt = ddt / 2
-                  StepControl = -1
+                 DO ii=1,nSolvers
+                   Solver => CurrentModel % Solvers(ii)
+                   IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+                   IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
+                   Solver % Variable % Norm = AdaptVars(ii) % Var % Norm 
+                   Solver % Variable % Values = AdaptVars(ii) % Var % Values 
+                   IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                     Solver % Variable % PrevValues = AdaptVars(ii) % Var % PrevValues
+                   END IF
+                 END DO
+                 ddt = AdaptiveDecrease * ddt 
+                 StepControl = -1
                END IF
+
                WRITE(*,'(a,3e20.12)') 'Adaptive(cum,ddt,err): ', cumtime, ddt, maxerr
-            END DO
+             END DO
             sSize(1) = dt
             sTime(1) = ss + dt
-  
-            DEALLOCATE( xx, xxnrm, yynrm, prevxx )
-         ELSE ! Adaptive timestepping
+
+          ELSE IF( DivergenceControl ) THEN
+            ! This is still tentative 
+            CALL Info('ExecSimulation','Solving equations with divergence control',Level=6)
+            
+            CumTime = 0.0d0
+            ddt = AdaptiveIncrease * ddt
+            IF ( ddt < 0.0_dp .OR. ddt > AdaptiveMaxTimestep ) ddt = AdaptiveMaxTimestep            
+            ss = sTime(1) - dt
+            !StepControl = 0
+            
+            DO WHILE( CumTime < dt-1.0d-12 )              
+
+              IF( .NOT. AdaptiveRough ) THEN
+                ddt = MIN( dt - CumTime, ddt )
+                IF( AdaptiveSmart ) THEN
+                  IF( dt - CumTime - ddt > 1.0d-12 ) THEN
+                    CALL Info('ExecSimulation','Splitted timestep into two equal parts',Level=12)
+                    ddt = MIN( ddt, ( dt - CumTime ) / 2.0_dp )
+                  END IF
+                END IF
+              END IF
+
+              sTime(1) = ss + CumTime + ddt
+              sSize(1) = ddt
+
+              CALL SolveEquations( CurrentModel, ddt, Transient, &
+                  CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                  BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+
+              HaveDivergence = .FALSE.
+              DO ii=1,nSolvers
+                Solver => CurrentModel % Solvers(ii) 
+                IF( ASSOCIATED( Solver % Variable ) ) THEN
+                  IF( Solver % Variable % NonlinConverged > 1 ) THEN
+                    CALL Info('ExecSimulation','Solver '//TRIM(I2S(ii))//' has diverged',Level=8)
+                    HaveDivergence = .TRUE.
+                    EXIT
+                  END IF
+                END IF
+              END DO
+              
+              IF( .NOT. HaveDivergence ) THEN
+                CALL Info('ExecSimulation','No solver has diverged',Level=8)
+
+                ! Finally solve only the postprocessing solver after the timestep has been accepted
+                CALL SolveEquations( CurrentModel, ddt, Transient, &
+                    CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                    BeforeTime = .FALSE., AtTime = .FALSE., AfterTime = .TRUE.)           
+                
+                ! If step control was active for this interval then we can
+                ! again start to increase timestep, otherwise not
+
+                CumTime = CumTime + ddt
+                RealTimestep = RealTimestep+1
+                
+                !IF ( StepControl > 0 ) THEN
+                  ddt = AdaptiveIncrease * ddt
+                  IF( ddt > AdaptiveMaxTimestep ) THEN
+                    ddt = AdaptiveMaxTimestep
+                    StepControl = 0
+                  END IF
+                !END IF
+             ELSE
+               IF( ddt < AdaptiveMinTimestep * (1+1.0e-8) ) THEN
+                 CALL Fatal('ExecSimulation','Could not find stable timestep above given minimum')
+               END IF
+
+               CALL Info('ExecSimulation','Reducing timestep due to divergence problems!',Level=6)
+
+               ddt = MAX( AdaptiveDecrease * ddt, AdaptiveMinTimestep ) 
+               StepControl = 1
+
+               CALL Info('ExecSimulation','Reverting to previous timestep as initial guess',Level=8)
+               DO ii=1,nSolvers
+                 Solver => CurrentModel % Solvers(ii)
+                 IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
+                   IF( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+                     Solver % Variable % Values = Solver % Variable % PrevValues(:,1)
+                     Solver % Variable % Norm = Solver % Variable % PrevNorm 
+                   END IF
+                 END IF
+               END DO
+             END IF
+            END DO
+          ELSE
             CALL SolveEquations( CurrentModel, dt, Transient, &
               CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep )
             RealTimestep = RealTimestep+1
@@ -1728,13 +2296,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 
          LastSaved = .FALSE.
+         
          IF( OutputIntervals(Interval) /= 0 ) THEN
 
            CALL SaveToPost(0)
            kk = MOD( Timestep-1, OutputIntervals(Interval) )
            IF ( kk == 0 .OR. SteadyStateReached ) THEN
             
-             DO ii=1,CurrentModel % NumberOfSolvers
+             DO ii=1,nSolvers
                Solver => CurrentModel % Solvers(ii)
                IF ( Solver % PROCEDURE == 0 ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
@@ -1746,7 +2315,7 @@ CONTAINS
              CALL SaveCurrent(Timestep)
              LastSaved = .TRUE.
 
-             DO ii=1,CurrentModel % NumberOfSolvers
+             DO ii=1,nSolvers
                Solver => CurrentModel % Solvers(ii)
                IF ( Solver % PROCEDURE == 0 ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_SAVE)
@@ -1756,6 +2325,8 @@ CONTAINS
              END DO 
            END IF
          END IF
+!------------------------------------------------------------------------------
+         CALL ListPopNameSpace()
 !------------------------------------------------------------------------------
 
          maxtime = ListGetCReal( CurrentModel % Simulation,'Real Time Max',GotIt)
@@ -1784,7 +2355,11 @@ CONTAINS
      END DO ! timestep intervals, i.e. the simulation
 !------------------------------------------------------------------------------
 
-100   DO ii=1,CurrentModel % NumberOfSolvers
+100  CONTINUE
+
+     CALL ListPopNamespace()
+
+     DO ii=1,nSolvers
         Solver => CurrentModel % Solvers(ii)
         IF ( Solver % PROCEDURE == 0 ) CYCLE
         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
@@ -1802,7 +2377,7 @@ CONTAINS
      END DO
 
      IF( .NOT. LastSaved ) THEN
-        DO ii=1,CurrentModel % NumberOfSolvers
+        DO ii=1,nSolvers
            Solver => CurrentModel % Solvers(ii)
            IF ( Solver % PROCEDURE == 0 ) CYCLE
            ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
@@ -1831,7 +2406,15 @@ CONTAINS
     Simul = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
     
     OutputFile = ListGetString(CurrentModel % Simulation,'Output File',GotIt)
+    
+
     IF ( GotIt ) THEN
+      i = INDEX( OutputFile,'/')
+      IF( i > 0 ) THEN
+        CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
+            //TRIM(OutputFile))
+      END IF
+      
       IF ( ParEnv % PEs > 1 ) THEN
         DO ii=1,MAX_NAME_LEN
           IF ( OutputFile(ii:ii) == ' ' ) EXIT

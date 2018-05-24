@@ -1,4 +1,4 @@
-INCLUDE(${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake)
+INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( 1d.sif 1d.sif COPYONLY)

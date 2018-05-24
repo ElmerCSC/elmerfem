@@ -64,7 +64,7 @@ FUNCTION getFrictionHeat(  Model, Node, DummyInput)RESULT(frictionheat)
   REAL(KIND=dp), POINTER :: FlowValues(:),NormalValues(:),StressValues(:)
   REAL(KIND=dp) :: normal(3), velo(3), un, ut, Sig(3,3), Sn(3), snn, snt
   INTEGER, POINTER :: FlowPerm(:),StressPerm(:), NormalPerm(:)
-  LOGICAL :: FirstTime=.TRUE.,UnFoundFatal
+  LOGICAL :: FirstTime=.TRUE.,UnFoundFatal=.TRUE.
   TYPE(Variable_t), POINTER :: FlowSol,StressVariable, NormalVar
   CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName
   
@@ -131,7 +131,7 @@ END FUNCTION getFrictionHeat
 ! *
 ! *  Module containing a functions for friction heat based
 ! *       on residuals from (Navier-)Stokes solver
-! *  This function should be preferrably used to compute the heat production
+! *  This function should be preferably used to compute the heat production
 ! *  at the base, as it utilizes the natural way to couple the flow
 ! *  and temperature solution
 ! *

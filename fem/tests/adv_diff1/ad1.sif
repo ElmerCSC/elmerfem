@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
   Coordinate System = Cartesian 2D
   Simulation Type = Transient
   Timestepping Method = BDF
@@ -59,9 +59,7 @@ Boundary Condition 1
 End
 
 Solver 1 :: Reference Norm = Real 0.426963082339
-$ fprintf( stderr, "TEST CASE 1\n" );
 RUN
-$ fprintf( stderr, "END TEST CASE 1, Target NRM=0.426963082339\n ");
 
 !End Of File
 

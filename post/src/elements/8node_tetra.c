@@ -72,7 +72,7 @@ static double NodeW[] = { 0.0, 0.0, 0.0, 1.0 };
  *
  *     Name:        elm_8node_tetra_triangulate
  *
- *     Purpose:     Triangulate an elment. The process also builds up an edge
+ *     Purpose:     Triangulate an element. The process also builds up an edge
  *                  table and adds new nodes to node table. The triangulation
  *                  and edge table is stored in geometry_t *geom-structure.
  *

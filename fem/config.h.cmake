@@ -46,8 +46,6 @@
 /* Define if your system has dyld for dynamic linking */
 #cmakedefine HAVE_DYLD_API
 
-/* Define if you have a EIOF library. */
-#define HAVE_EIOF
 /* Define to 1 if you have the `fseeko' function. */
 #define HAVE_FSEEKO
 
@@ -84,6 +82,30 @@
 
 /* ... */
 #define HAVE_MPI
+
+/* Define if you have a OpenMP 4.0 SIMD compiler */
+#cmakedefine HAVE_OPENMP40
+
+/* Define if you have a OpenMP 4.5 SIMD compiler */
+#cmakedefine HAVE_OPENMP45
+
+/* Macro expansions based on compiler OpenMP feature support */
+#if defined(HAVE_OPENMP45)
+#define _ELMER_OMP $OMP
+#define _ELMER_OMP_SIMD $OMP SIMD
+#define _ELMER_OMP_DECLARE_SIMD $OMP DECLARE SIMD
+#define _ELMER_LINEAR_REF(var) LINEAR(REF(var))
+#elif defined(HAVE_OPENMP40)
+#define _ELMER_OMP $OMP
+#define _ELMER_OMP_SIMD $OMP SIMD
+#define _ELMER_OMP_DECLARE_SIMD $OMP DECLARE SIMD
+#define _ELMER_LINEAR_REF(var) 
+#else
+#define _ELMER_OMP
+#define _ELMER_OMP_SIMD DIR$ IVDEP !
+#define _ELMER_OMP_DECLARE_SIMD
+#define _ELMER_LINEAR_REF(var) 
+#endif
 
 /* Define if you have a MUMPS library. */
 /* define HAVE_MUMPS */
@@ -134,12 +156,15 @@
 /* Trilinos */
 #cmakedefine HAVE_TRILINOS
 
-/* This remove calls to EIO library */
-#cmakedefine HAVE_EIO
-
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1
 
 #cmakedefine CONTIG ${FC_CONTIG}
+
+
+/* Have these defined only for debugging or optimization purposes */
+/* #define DEVEL_LISTCOUNTER */
+/* #define DEVEL_KEYWORDMISSES */
+
 
 #endif

@@ -30,7 +30,7 @@ End
 $fileid="c"
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State

@@ -1,0 +1,11 @@
+services: docker
+before_install:
+- docker build -t elmertest/xenial -f ci/Dockerfile-build .
+- docker ps -a
+script:
+- docker build -t elmerfem-build/xenial -f ci/Dockerfile-build-elmer .
+- docker run elmerfem-build/xenial /bin/sh -c 'CTEST_OUTPUT_ON_FAILURE=1 ctest -LE slow'
+notifications:
+  email: change
+  flowdock:
+    secure: "lu9jDOsW8lSOJr/d/7VGxU9nG1AAhc4kPKgfiOnLsBp2CJXVPAmbyaFMmaMfdJdHgM7pGW6fnoJSBtwyYfsB/GmXtmX9vKGwiKfAAGeUIGS15wzllHKjRQm3hDQ/MnO5wmj6r7dcSPjfLhy5ZFuiihoOSsBd9LpcMOetEsg99tA="

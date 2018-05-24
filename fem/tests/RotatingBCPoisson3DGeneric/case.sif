@@ -21,7 +21,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -92,7 +92,7 @@ Solver 2
   Lumped Mass Matrix = False
   Optimize Bandwidth = True
   Steady State Convergence Tolerance = 1.0e-5
-  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Convergence Tolerance = 1.0e-9
   Nonlinear System Max Iterations = 1
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-3
@@ -101,7 +101,7 @@ Solver 2
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStabl
   Linear System Max Iterations = 5000
-  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Convergence Tolerance = 1.0e-9
   Linear System Preconditioning = ILU0
   Linear System ILUT Tolerance = 1.0e-3
   Linear System Abort Not Converged = False
@@ -241,7 +241,7 @@ Boundary Condition 3
 
   Level Projector = Logical True
   Level Projector Generic = Logical True
-
+  
 !  Save Projector = Logical True
 !  Level Projector Save Element Index = Integer 1
 End
@@ -282,5 +282,5 @@ Boundary Condition 8
 End 
 
 
-Solver 2 :: Reference Norm = Real 7.225090E+00
-Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
+Solver 2 :: Reference Norm = 7.22541711E+00
+Solver 2 :: Reference Norm Tolerance = 1.0e-4

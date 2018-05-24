@@ -73,6 +73,7 @@ MODULE IterSolve
    INTEGER, PARAMETER, PRIVATE :: ITER_RICHARDSON   =           391
    INTEGER, PARAMETER, PRIVATE :: ITER_BICGSTABL    =           400
    INTEGER, PARAMETER, PRIVATE :: ITER_GCR          =           410
+   INTEGER, PARAMETER, PRIVATE :: ITER_IDRS         =           420
 
    !/*
    ! * Preconditioning type code
@@ -108,6 +109,9 @@ CONTAINS
 #ifndef HUTI_GCR_RESTART
 #define HUTI_GCR_RESTART ipar(17)
 #endif
+#ifndef HUTI_IDRS_S
+#define HUTI_IDRS_S ipar(18)
+#endif
 
 !------------------------------------------------------------------------------
 !> Dummy preconditioner, if linear system scaling is active this corresponds
@@ -117,8 +121,13 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: ipar(*)
     REAL(KIND=dp) :: u(HUTI_NDIM), v(HUTI_NDIM)
+    INTEGER :: i
 !------------------------------------------------------------------------------
-    u = v 
+    !$OMP PARALLEL DO
+    DO i=1,HUTI_NDIM
+       u(i) = v(i)
+    END DO
+    !$OMP END PARALLEL DO
 !------------------------------------------------------------------------------
   END SUBROUTINE pcond_dummy
 !------------------------------------------------------------------------------
@@ -171,8 +180,9 @@ CONTAINS
     INTEGER :: i,j,k,N,ipar(HUTI_IPAR_DFLTSIZE),wsize,istat,IterType,PCondType,ILUn,Blocks
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
-    LOGICAL :: Condition,GotIt,AbortNotConverged, Refactorize,Found,GotDiagFactor
-
+    LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
+    LOGICAL :: ComplexSystem
+    
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
     TYPE(ValueList_t), POINTER :: Params
@@ -202,13 +212,11 @@ CONTAINS
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
         pcondrProc, mvProc, iterProc, StopcProc
-#ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=Addrint) :: AddrFunc
-#else
+#ifdef USE_ISO_C_BINDINGS
     INTEGER :: astat
     COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
-    INTEGER(KIND=Addrint) :: AddrFunc
     EXTERNAL :: AddrFunc    
 #endif
 
@@ -253,7 +261,22 @@ CONTAINS
     ELSE
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
+    
+    ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
+    IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
 
+    IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
+      CALL Info('IterSolver','This time skipping complex treatment',Level=20)
+      A % COMPLEX = .FALSE.
+      ComplexSystem = .FALSE.
+    END IF
+            
+    IF( ComplexSystem ) THEN
+      CALL Info('IterSolver','Matrix is complex valued',Level=10)
+    ELSE
+      CALL Info('IterSolver','Matrix is real valued',Level=12)
+    END IF
+   
     SELECT CASE(str)
     CASE('bicgstab2')
       IterType = ITER_BiCGStab2
@@ -277,6 +300,8 @@ CONTAINS
       IterType = ITER_richardson
     CASE('gcr')
       IterType = ITER_GCR
+    CASE('idrs')
+      IterType = ITER_IDRS
     CASE DEFAULT
       IterType = ITER_BiCGStab
     END SELECT
@@ -338,6 +363,12 @@ CONTAINS
           GotIt,minv=2)
       IF(.NOT. GotIt) HUTI_BICGSTABL_L = 2
       Internal = .TRUE.
+
+    CASE (ITER_IDRS)
+      HUTI_WRKDIM = 1
+      HUTI_IDRS_S = ListGetInteger( Params,'IDRS parameter',GotIt,minv=1)
+      IF(.NOT. GotIt) HUTI_IDRS_S = 4
+      Internal = .TRUE.
       
     END SELECT
 !------------------------------------------------------------------------------
@@ -379,8 +410,11 @@ CONTAINS
     HUTI_MAXIT = ListGetInteger( Params, &
         'Linear System Max Iterations', minv=1 )
     
+    HUTI_MINIT = ListGetInteger( Params, &
+        'Linear System Min Iterations', GotIt )
+    
 #ifdef USE_ISO_C_BINDINGS
-    IF (A % COMPLEX) THEN
+    IF( ComplexSystem ) THEN
         ALLOCATE(workC(N/2,wsize), stat=istat)
         IF ( istat /= 0 ) THEN
             CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
@@ -391,7 +425,15 @@ CONTAINS
         IF ( istat /= 0 ) THEN
             CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
         END IF
-        work = real(0,dp)
+        !$OMP PARALLEL PRIVATE(j)
+        DO j=1,wsize
+           !$OMP DO
+           DO i=1,N
+              work(i,j) = real(0,dp)
+           END DO
+           !$OMP END DO
+        END DO
+        !$OMP END PARALLEL
     END IF
 #else
     ALLOCATE( work(N,wsize),stat=istat )
@@ -408,9 +450,30 @@ CONTAINS
         'Linear System Convergence Tolerance' )
     
     HUTI_MAXTOLERANCE = ListGetCReal( Params, &
-        'Linear System Divergence Tolerance', GotIt)
-    IF(.NOT. GotIt) HUTI_MAXTOLERANCE = HUGE(HUTI_MAXTOLERANCE) 
+        'Linear System Divergence Limit', GotIt)
+    IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20
     
+    IF( ListGetLogical( Params,'Linear System Robust',GotIt) ) THEN
+      HUTI_ROBUST = 1
+      HUTI_ROBUST_TOLERANCE = ListGetCReal( Params,'Linear System Robust Tolerance',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_TOLERANCE = HUTI_TOLERANCE**(2.0/3.0)
+      HUTI_ROBUST_MAXTOLERANCE = ListGetCReal( Params,'Linear System Robust Limit',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_MAXTOLERANCE = SQRT( HUTI_TOLERANCE )      
+      HUTI_ROBUST_STEPSIZE = ListGetCReal( Params,'Linear System Robust Margin',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_STEPSIZE = 1.1_dp
+      HUTI_ROBUST_MAXBADIT = ListGetInteger( Params,'Linear System Robust Max Iterations',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_MAXBADIT = HUTI_MAXIT / 2
+    ELSE
+      HUTI_ROBUST = 0
+    END IF
+
+
+    IF( ListGetLogical( Params,'IDRS Smoothing',GotIt) ) THEN
+      HUTI_SMOOTHING = 1
+    ELSE
+      HUTI_SMOOTHING = 0
+    END IF
+      
     
 !------------------------------------------------------------------------------
 
@@ -426,12 +489,15 @@ CONTAINS
       ILUn = -1
       IF ( str == 'none' ) THEN
         PCondType = PRECOND_NONE
+
       ELSE IF ( str == 'diagonal' ) THEN
         PCondType = PRECOND_DIAGONAL
+
       ELSE IF ( str == 'ilut' ) THEN
         ILUT_TOL = ListGetCReal( Params, &
             'Linear System ILUT Tolerance',GotIt )
         PCondType = PRECOND_ILUT
+
       ELSE IF ( SEQL(str, 'ilu') ) THEN
         ILUn = NINT(ListGetCReal( Params, &
             'Linear System ILU Order', gotit ))
@@ -439,6 +505,7 @@ CONTAINS
             ILUn = ICHAR(str(4:4)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         PCondType = PRECOND_ILUn
+
       ELSE IF ( SEQL(str, 'bilu') ) THEN
         ILUn = ICHAR(str(5:5)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
@@ -448,14 +515,18 @@ CONTAINS
         ELSE
           PCondType = PRECOND_BILUn
         END IF
+
       ELSE IF ( str == 'multigrid' ) THEN
         PCondType = PRECOND_MG
+
       ELSE IF ( str == 'vanka' ) THEN
         PCondType = PRECOND_VANKA
+
       ELSE IF ( str == 'circuit' ) THEN
         ILUn = ListGetInteger( Params, 'Linear System ILU Order', gotit )
         IF(.NOT.Gotit ) ILUn=-1
         PCondType = PRECOND_Circuit
+
       ELSE
         PCondType = PRECOND_NONE
         CALL Warn( 'IterSolve', 'Unknown preconditioner type, feature disabled.' )
@@ -485,7 +556,7 @@ CONTAINS
               A % Values( A % Diag ) = DiagFactor * A % Values( A % Diag )      
             END IF
 
-            IF ( A % COMPLEX ) THEN
+            IF ( ComplexSystem ) THEN
               IF ( PCondType == PRECOND_ILUn .OR. (PCondType==PRECOND_Circuit.AND.ILUn>=0) ) THEN
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)
                 CM => A % ConstraintMatrix
@@ -503,11 +574,11 @@ CONTAINS
                   IF(ASSOCIATED(CM)) THEN
                     DO i=CM % NumberOfRows,1,-1
                       k = i + A % NumberOfRows
-                      CALL List_AddToMatrixElement( PrecMat % ListMatrix,k,k,0._dp)
+                      CALL List_AddMatrixIndex( PrecMat % ListMatrix,k,k)
                       IF(MOD(k,2)==0) THEN
-                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, k, k-1, 0._dp)
+                        CALL List_AddMatrixIndex(PrecMat % ListMatrix, k, k-1)
                       ELSE
-                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, k, k+1, 0._dp)
+                        CALL List_AddMatrixIndex(PrecMat % ListMatrix, k, k+1)
                       END IF
 
                       DO j=CM % Rows(i+1)-1,CM % Rows(i),-1
@@ -523,18 +594,18 @@ CONTAINS
                   k = A % NumberOfRows - A % ExtraDOFs
                   DO i=A % NumberOfRows,1,-1
                     IF(i>k) THEN
-                       CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 0._dp)
+                       CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i)
                        IF(MOD(i,2)==0) THEN
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i-1, 0._dp)
+                         CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i-1)
                        ELSE
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i+1, 0._dp)
+                         CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i+1)
                        END IF
                     ELSE IF (NullEdges) THEN
                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
                        IF(MOD(i,2)==0) THEN
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i-1, 0._dp)
+                         CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i-1)
                        ELSE
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i+1, 0._dp)
+                         CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i+1)
                        END IF
                     END IF
 
@@ -581,8 +652,8 @@ CONTAINS
 
                   IF(ASSOCIATED(CM)) THEN
                     DO i=CM % NumberOfRows,1,-1
-                      CALL List_AddToMatrixElement( PrecMat % ListMatrix, &
-                             i + A % NumberOfRows, i + A % NumberOFrows, 0._dp)
+                      CALL List_AddMatrixIndex( PrecMat % ListMatrix, &
+                             i + A % NumberOfRows, i + A % NumberOFrows)
 
                       DO j=CM % Rows(i+1)-1,CM % Rows(i),-1
                         CALL List_AddToMatrixElement( PrecMat % ListMatrix, &
@@ -597,7 +668,7 @@ CONTAINS
                   k = A % NumberOfRows - A % ExtraDOFs
                   DO i=A % NumberOfRows,1,-1
                     IF(i>k) THEN
-                       CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 0._dp)
+                       CALL List_AddMatrixIndex(PrecMat % ListMatrix, i, i)
                     ELSE IF (NullEdges) THEN
                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
                     END IF
@@ -672,16 +743,10 @@ CONTAINS
     A % SolveCount = A % SolveCount + 1
 !------------------------------------------------------------------------------
 
-    AbortNotConverged = ListGetLogical( Params, &
-        'Linear System Abort Not Converged', GotIt )
-    IF ( .NOT. GotIt ) AbortNotConverged = .TRUE.
-
-!------------------------------------------------------------------------------
-    
     IF ( PRESENT(MatvecF) ) THEN
       mvProc = MatvecF
     ELSE
-      IF ( .NOT. A % COMPLEX ) THEN
+      IF ( .NOT. ComplexSystem ) THEN
         mvProc = AddrFunc( CRS_MatrixVectorProd )
       ELSE
         mvProc = AddrFunc( CRS_ComplexMatrixVectorProd )
@@ -691,7 +756,7 @@ CONTAINS
     IF ( PRESENT(dotF) ) THEN
       dotProc = dotF
     ELSE
-      dotProc =0
+      dotProc = 0
     END IF
     
     IF ( PRESENT(normF) ) THEN
@@ -706,26 +771,26 @@ CONTAINS
     ELSE
       SELECT CASE( PCondType )
       CASE (PRECOND_NONE)
-        IF ( .NOT. A % COMPLEX ) THEN
+        IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( pcond_dummy )
         ELSE
           pcondProc = AddrFunc( pcond_dummy_cmplx  )
         END IF
         
       CASE (PRECOND_DIAGONAL)
-        IF ( .NOT. A % COMPLEX ) THEN
+        IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CRS_DiagPrecondition )
         ELSE
           pcondProc = AddrFunc( CRS_ComplexDiagPrecondition )
         END IF
         
       CASE (PRECOND_ILUn, PRECOND_ILUT, PRECOND_BILUn )
-        IF ( .NOT. A % COMPLEX ) THEN
+        IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CRS_LUPrecondition )
         ELSE
           pcondProc = AddrFunc( CRS_ComplexLUPrecondition )
         END IF
-        
+
       CASE (PRECOND_MG)
         pcondProc = AddrFunc( MultiGridPrec )
         
@@ -733,7 +798,7 @@ CONTAINS
         pcondProc = AddrFunc( VankaPrec )
 
       CASE (PRECOND_Circuit)
-        IF ( .NOT. A % Complex ) THEN
+        IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CircuitPrec )
         ELSE
           pcondProc = AddrFunc( CircuitPrecComplex )
@@ -745,10 +810,10 @@ CONTAINS
     END IF
     
 
-    IF ( .NOT. A % COMPLEX ) THEN
+    IF ( .NOT. ComplexSystem ) THEN
       SELECT CASE ( IterType )
 
-       ! Solvers from HUTiter libdary 
+       ! Solvers from HUTiter library 
        !-------------------------------------------------------       
       CASE (ITER_BiCGStab)
         iterProc = AddrFunc( HUTI_D_BICGSTAB )
@@ -775,6 +840,8 @@ CONTAINS
         iterProc = AddrFunc( itermethod_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_bicgstabl )
+      CASE (ITER_IDRS)
+        iterProc = AddrFunc( itermethod_idrs )
         
       END SELECT
       
@@ -788,7 +855,7 @@ CONTAINS
       HUTI_NDIM = HUTI_NDIM / 2
       SELECT CASE ( IterType )
 
-        ! Solvers from HUTiter libdary 
+        ! Solvers from HUTiter library 
         !-------------------------------------------------------       
       CASE (ITER_BiCGStab)
         iterProc = AddrFunc( HUTI_Z_BICGSTAB )
@@ -809,6 +876,9 @@ CONTAINS
         iterProc = AddrFunc( itermethod_z_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_z_bicgstabl )
+      CASE (ITER_IDRS)
+        iterProc = AddrFunc( itermethod_z_idrs )
+
       END SELECT
       
       IF( Internal ) THEN
@@ -823,7 +893,7 @@ CONTAINS
 
     stack_pos = stack_pos+1
     IF(stack_pos>stack_max) THEN
-      CALL Fatal('IterSolver', 'Recursion too deep')
+      CALL Fatal('IterSolver', 'Recursion too deep ('//TRIM(I2S(stack_pos))//' vs '//TRIM(I2S(stack_max))//')')
     ELSE IF(stack_pos<=0) THEN
       CALL Fatal('IterSolver', 'eh')
     END IF
@@ -831,9 +901,9 @@ CONTAINS
 
     SaveGlobalM => GlobalMatrix
     GlobalMatrix => A
-
+    
 #ifdef USE_ISO_C_BINDINGS
-    IF (A % Complex) THEN
+    IF ( ComplexSystem ) THEN
       ! Associate xC and bC with complex variables
       ALLOCATE(xC(HUTI_NDIM), bC(HUTI_NDIM), STAT=astat)
       IF (astat /= 0) THEN
@@ -846,9 +916,10 @@ CONTAINS
       DO i=1,HUTI_NDIM
         bC(i) = cmplx(b(2*i-1),b(2*i),dp)
       END DO
-      
+
+      CALL Info('IterSolver','Calling complex iterative solver',Level=32)
       CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
-            mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+          mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
 
       ! Copy result back
       DO i=1,HUTI_NDIM
@@ -857,31 +928,33 @@ CONTAINS
       END DO
       DEALLOCATE(bC,xC)
     ELSE
-        CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-                       mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+      CALL Info('IterSolver','Calling real valued iterative solver',Level=32)
+      CALL IterCall( iterProc, x, b, ipar, dpar, work, &
+          mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
     ENDIF
 #else
+    CALL Info('IterSolver','Calling iterative solver',Level=32)   
     CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-                       mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+        mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
 #endif
     GlobalMatrix => SaveGlobalM
 
+    
     stack_pos=stack_pos-1
     
-    IF ( A % COMPLEX ) HUTI_NDIM = HUTI_NDIM * 2
+    IF ( ComplexSystem ) HUTI_NDIM = HUTI_NDIM * 2
 !------------------------------------------------------------------------------
     IF ( HUTI_INFO /= HUTI_CONVERGENCE .AND. ParEnv % myPE==0 ) THEN
+      CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
-        CALL Fatal( 'IterSolve', 'System diverged over tolerance.' )
-      ELSE IF ( AbortNotConverged ) THEN
-        CALL Fatal( 'IterSolve', 'Failed convergence tolerances.' )
-      ELSE
-        CALL Error( 'IterSolve', 'Failed convergence tolerances.' )
+        CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
+      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
+        CALL NumericalError( 'IterSolve', 'Too many iterations was needed.')
       END IF
     END IF
 !------------------------------------------------------------------------------
 #ifdef USE_ISO_C_BINDINGS
-    IF (A % COMPLEX) THEN
+    IF ( ComplexSystem ) THEN
         DEALLOCATE( workC )
     ELSE
         DEALLOCATE( work )
@@ -893,6 +966,60 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE IterSolver
 !------------------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+!> This routine may be used to either inform user or terminate following
+!> convergence/numerical issues, based on a flag in the SIF. Default
+!> behaviour terminates execution.
+!-----------------------------------------------------------------------
+   SUBROUTINE NumericalError( Caller, String, Fatal )
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*) :: Caller, String
+     LOGICAL, OPTIONAL :: Fatal
+!-----------------------------------------------------------------------
+     LOGICAL :: GlobalNumFatal, SolverNumFatal, IsFatal, Found
+!-----------------------------------------------------------------------
+
+     !Fatality logic:
+     ! 1) Respect calling routine's wishes if present
+     ! 2) Respect solver specific option if present
+     ! 3) Respect global abort flag if present
+     ! 4) Otherwise fatal (backwards compatibility)
+
+     IF(PRESENT(Fatal)) THEN
+       IsFatal = Fatal
+     ELSE
+       SolverNumFatal = ListGetLogical( CurrentModel % Solver % Values, &
+            'Linear System Abort Not Converged', Found)
+       IF(Found) THEN
+         IsFatal = SolverNumFatal
+       ELSE
+         GlobalNumFatal = ListGetLogical(CurrentModel % Simulation,&
+            'Global Abort Not Converged',Found)
+         IF(Found) THEN
+           IsFatal = GlobalNumFatal
+         ELSE
+           IsFatal = .TRUE.
+         END IF
+       END IF
+     END IF
+
+     IF ( OutputLevelMask(0) ) THEN
+       IF(IsFatal) THEN
+         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+              'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
+       ELSE
+         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+              'NUMERICAL WARNING:: ', TRIM(Caller), ': ', TRIM(String)
+       END IF
+       CALL FLUSH(6)
+     END IF
+
+     IF(IsFatal) STOP
+
+!-----------------------------------------------------------------------
+   END SUBROUTINE NumericalError
+!-----------------------------------------------------------------------
 
 END MODULE IterSolve
 

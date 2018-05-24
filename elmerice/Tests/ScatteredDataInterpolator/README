@@ -1,0 +1,35 @@
+Test case to interpolate sparse 2D data sets onto the FE mesh: ScatteredDataInterpolator.F90
+---------------------------------------------------------------
+data are read from an ASCII file (x,y,variable)
+Dec. 2013 : possibility to read NETCDF has been added (if data file has a .nc extension)
+
+Interpolation is made using external libraries
+ - nn (http://code.google.com/p/nn-c/): a c code for Natural Neighbours interpolation
+ - csa (http://code.google.com/p/csa-c/) : a c code for cubic spline approximation
+
+!! To use the solver :
+	- nn and csa libraries must be compiled by the user
+	- Go to the ELMER_TRUNK/elmerice/ScatteredDataInterpolator directory
+	- Edit/Update the Makefile and compile/install the solver
+
+/!\ -- 
+/!\ Only executed if netcdf, csa & nn options are present in the building project.
+/!\    NetCDF:     >NetCDF_INCLUDE_DIR<, >NetCDFF_LIBRARY<, >NetCDF_LIBRARY<
+/!\    NN    :     >NN_INCLUDE_DIR<, >NN_LIBRARY<
+/!\    CSA   :      >CSA_INCLUDE_DIR<, >CSA_LIBRARY<
+/!\ -- 
+
+!! The user is invited to get familiar with these libraries by usibg the command line utilities and test case provided with the libraries
+
+
+How to run the test:
+---------------------
+ElmerGrid 1 2 mesh2D.grd
+ElmerSolver case.sif
+
+Results established:
+------------------
+28.10.2016
+Laure Tavard,LGGE
+LGGE cluster
+Revision d81d8c3

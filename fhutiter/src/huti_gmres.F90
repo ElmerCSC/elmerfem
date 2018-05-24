@@ -343,6 +343,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+
     !
     ! Return back to the iteration loop (without initialization)
     !
@@ -408,7 +413,7 @@ contains
     double precision :: residual, rhsnorm, precrhsnorm
     double precision :: bnrm, alpha, beta
 
-    INTEGER :: reit, info, i, j, k, l, m, n
+    INTEGER :: reit, info, i, j, k, l, m, n, ii, jj
 
     double precision :: temp, temp2, error, gamma
 
@@ -454,20 +459,53 @@ contains
     if ( HUTI_INITIALX .eq. HUTI_RANDOMX ) then
        call  huti_drandvec   ( X, ipar )
     else if ( HUTI_INITIALX .ne. HUTI_USERSUPPLIEDX ) then
-       X = 1
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       DO ii=1,ndim
+         xvec(ii) = 1
+       END DO
+       !$OMP END PARALLEL DO
+#else   
+        X = 1
+#endif
     end if
 
     call pcondrsubr( T1V, X, ipar )
     call matvecsubr( T1V, R, ipar )
+#ifdef _OPENMP
+    !$OMP PARALLEL DO
+    DO ii=1,ndim
+      work(ii,T1V_ind) = rhsvec(ii) - work(ii,R_ind)
+    END DO
+    !$OMP END PARALLEL DO
+#else
     T1V = B - R
+#endif
     call pcondlsubr( R, T1V, ipar )
 
     m = HUTI_GMRES_RESTART
+#ifdef _OPENMP
+    !$OMP PARALLEL PRIVATE(j)
+    DO jj=V_ind+1-1,V_ind+m+1-1
+      !$OMP DO
+      DO ii=1,ndim
+        work(ii,jj) = 0
+      END DO
+      !$OMP END DO
+    END DO
+    !$OMP DO
+    DO ii=1,ndim
+      work(ii,VTMP_ind) = 0
+    END DO
+    !$OMP END DO
+    !$OMP END PARALLEL
+#else
     work(:,V_ind+1-1:V_ind+m+1-1) = 0
+    VTMP = 0
+#endif
     H = 0
     CS = 0
     SN = 0
-    VTMP = 0
     work(1,VTMP_ind) = 1.0
 
     !
@@ -479,7 +517,15 @@ contains
 
     call pcondrsubr( T1V, X, ipar )
     call matvecsubr( T1V, R, ipar )
+#ifdef _OPENMP
+    !$OMP PARALLEL DO
+    DO ii=1,ndim
+      work(ii,T1V_ind) = rhsvec(ii) - work(ii,R_ind)
+    END DO
+    !$OMP END PARALLEL DO
+#else
     T1V = B - R
+#endif
     call pcondlsubr( R, T1V, ipar )
 
     alpha = normfun( HUTI_NDIM, R, 1 )
@@ -488,8 +534,23 @@ contains
        go to 1000
     end if
 
+#ifdef _OPENMP
+    !$OMP PARALLEL
+    !$OMP DO
+    DO ii=1,ndim
+      work(ii,V_ind+1-1) = work(ii,R_ind) / alpha
+    END DO
+    !$OMP END DO
+    !$OMP DO
+    DO ii=1,ndim
+      work(ii,S_ind) = alpha * work(ii,VTMP_ind)
+    END DO
+    !$OMP END DO
+    !$OMP END PARALLEL
+#else
     work(:,V_ind+1-1) = R / alpha
     S = alpha * VTMP
+#endif
 
     !
     ! Construct orthonormal
@@ -502,7 +563,15 @@ contains
 
        DO k = 1, i
           H(k,i) = dotprodfun( HUTI_NDIM, W, 1, work(:,V_ind+k-1), 1 )
+#ifdef _OPENMP
+          !$OMP PARALLEL DO
+          DO ii=1,ndim
+            work(ii,W_ind) = work(ii,W_ind) - H(k,i) * work(ii,V_ind+k-1)
+          END DO
+          !$OMP END PARALLEL DO
+#else
           W = W - H(k,i) * work(:,V_ind+k-1)
+#endif
        END DO
 
        beta = normfun( HUTI_NDIM, W, 1 )
@@ -512,8 +581,16 @@ contains
        end if
 
        H(i+1,i) = beta
+#if _OPENMP
+       !$OMP PARALLEL DO
+       DO ii=1,ndim
+         work(ii,V_ind+i+1-1) = work(ii,W_ind) / H(i+1, i)
+       END DO
+       !$OMP END PARALLEL DO
+#else
        work(:,V_ind+i+1-1) = W / H(i+1, i)
-
+#endif
+       
        !
        ! Compute the Givens rotation
        !
@@ -558,8 +635,12 @@ contains
 
           call  huti_dlusolve  ( i, HLU, Y, work(:,S_ind) )
 
+#ifdef _OPENMP
+          CALL DGEMV('N',ndim,i,1D0,work(1,V_ind),ndim,Y,1,1D0,xvec,1)
+#else
           X = X + MATMUL( work(:,V_ind+1-1:V_ind+i-1), Y(1:i) )
-
+#endif
+          
           EXIT
        END IF
 
@@ -579,7 +660,12 @@ contains
 
     call  huti_dlusolve  ( m, HLU, Y, work(:,S_ind) )
 
+#ifdef _OPENMP
+    CALL DGEMV('N',ndim,m,1D0,work(1,V_ind),ndim,Y,1,1D0,xvec,1)
+#else
     X = X + MATMUL( work(:,V_ind+1-1:V_ind+m-1), Y(1:m) )
+#endif
+
 
 500 CONTINUE
 
@@ -591,39 +677,91 @@ contains
     case (HUTI_TRUERESIDUAL)
        call pcondrsubr( T1V, X, ipar )
        call matvecsubr( T1V, R, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       DO ii=1,ndim
+         work(ii,T1V_ind) = rhsvec(ii) - work(ii,R_ind)
+       END DO
+       !$OMP END PARALLEL DO
+#else
        T1V = B - R
+#endif
        call pcondlsubr( R, T1V, ipar )
        residual = normfun( HUTI_NDIM, R, 1 )
     case (HUTI_TRESID_SCALED_BYB)
        call pcondrsubr( T1V, X, ipar )
        call matvecsubr( T1V, R, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       DO ii=1,ndim
+         work(ii,T1V_ind) = rhsvec(ii) - work(ii,R_ind)
+       END DO
+       !$OMP END PARALLEL DO
+#else
        T1V = B - R
+#endif
        call pcondlsubr( R, T1V, ipar )
        residual = normfun( HUTI_NDIM, R, 1 ) / rhsnorm
     case (HUTI_PSEUDORESIDUAL)
        call matvecsubr( X, R, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       DO ii=1,ndim
+         work(ii,R_ind) = work(ii,R_ind) - rhsvec(ii)
+       END DO
+       !$OMP END PARALLEL DO
+#else
        R = R - B
+#endif
        call pcondlsubr( T1V, R, ipar )
        residual = normfun( HUTI_NDIM, T1V, 1 )
     case (HUTI_PRESID_SCALED_BYB)
        call matvecsubr( X, R, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       DO ii=1,ndim
+         work(ii,R_ind) = work(ii,R_ind) - rhsvec(ii)
+       END DO
+       !$OMP END PARALLEL DO
+#else
        R = R - B
+#endif
        call pcondlsubr( T1V, R, ipar )
        residual = normfun( HUTI_NDIM, T1V, 1 ) / rhsnorm
     case (HUTI_PRESID_SCALED_BYPRECB)
        call matvecsubr( X, R, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       DO ii=1,ndim
+         work(ii,R_ind) = work(ii,R_ind) - rhsvec(ii)
+       END DO
+       !$OMP END PARALLEL DO
+#else
        R = R - B
+#endif
        call pcondlsubr( T1V, R, ipar )
        residual = normfun( HUTI_NDIM, T1V, 1 ) / precrhsnorm
     case (HUTI_XDIFF_NORM)
+#ifdef _OPENMP
+       CALL DGEMV('N',ndim,m,1D0,work(1,V_ind),ndim,Y,1,0D0,work(1,T1V_ind),1)
+#else
        T1V = MATMUL( work(:,V_ind+1-1:V_ind+m-1), Y(1:m) )
+#endif
        residual = normfun( HUTI_NDIM, T1V, 1 )
     case (HUTI_USUPPLIED_STOPC)
        residual = stopcfun( X, B, R, ipar, dpar )
     case default
        call pcondrsubr( T1V, X, ipar )
        call matvecsubr( T1V, R, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO
+       DO ii=1,ndim
+         work(ii,T1V_ind) = work(ii,R_ind) - rhsvec(ii)
+       END DO
+       !$OMP END PARALLEL DO
+#else
        T1V = R - B
+#endif
        call pcondlsubr( R, T1V, ipar )
        residual = normfun( HUTI_NDIM, R, 1 )
     end select
@@ -644,6 +782,11 @@ contains
        HUTI_INFO = HUTI_CONVERGENCE
        go to 1000
     end if
+
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
 
     !
     ! Return back to the iteration loop (without initialization)
@@ -948,6 +1091,11 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+    
     !
     ! Return back to the iteration loop (without initialization)
     !
@@ -1251,6 +1399,12 @@ contains
        go to 1000
     end if
 
+    IF( residual /= residual .OR. residual > HUTI_MAXTOLERANCE ) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+      GOTO 1000
+    END IF
+
+    
     !
     ! Return back to the iteration loop (without initialization)
     !

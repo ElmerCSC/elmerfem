@@ -88,11 +88,11 @@
      REAL (KIND=dp) :: s,Norm,PrevNorm,Emissivity,Transmissivity,Reflectivity,&
          maxds,refds,ds,x,y,z,&
          dx,dy,dz,x0(1),y0(1),MeshU(TSolver % Mesh % MaxElementNodes)
-     REAL (KIND=dp), POINTER :: Vals(:)
+     REAL (KIND=dp), POINTER :: Vals(:), Wrk(:,:)
      REAL (KIND=dp), ALLOCATABLE :: SOL(:), RHS(:), Fac(:)
      REAL (KIND=dp) :: MinSum, MaxSum, SolSum, PrevSelf, FactorSum, &
          ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, FactorsFixedTol, &
-         GeometryFixedTol
+         GeometryFixedTol, BackScale(3), Coord(3)
 #ifdef USE_ISO_C_BINDINGS
      REAL (KIND=dp) :: at, at0, st
 #else
@@ -108,7 +108,7 @@
          InvElementNumbers(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag, GebhardtFactorsFile, &
-         ViewFactorsFile,OutputName, OutputName2
+         ViewFactorsFile,OutputName, OutputName2, SolverType 
      CHARACTER(LEN=100) :: cmd
 
      LOGICAL :: GotIt, SaveFactors, UpdateViewFactors, UpdateGebhardtFactors, &
@@ -116,7 +116,8 @@
          FilesExist, FullMatrix, ImplicitLimitIs, IterSolveGebhardt, &
          ConstantEmissivity, Found, Debug
      LOGICAL, POINTER :: ActiveNodes(:)
-
+     LOGICAL :: DoScale
+     
      SAVE TimesVisited 
 
      EXTERNAL RMatvec
@@ -196,11 +197,29 @@
        y0(1) = 1.0
      END IF
 
-     FullMatrix =  ListGetLogical( TSolver % Values,  &
+     FullMatrix = ListGetLogical( TSolver % Values,  &
          'Gebhardt Factors Solver Full',GotIt) 
+     IF( FullMatrix ) THEN
+       CALL Info('RadiationFactors','Using full matrix for Gebhardt factors',Level=6)
+     ELSE
+       CALL Info('RadiationFactors','Using sparse matrix for Gebhardt factors',Level=6)
+     END IF
+
      IterSolveGebhardt =  ListGetLogical( TSolver % Values,  &
          'Gebhardt Factors Solver Iterative',GotIt) 
-     IF(.NOT. GotIt) IterSolveGebhardt = .FALSE.
+     IF(.NOT. GotIt) THEN
+       SolverType = ListGetString( TSolver % Values, &
+           'radiation: Linear System Solver', GotIt )
+       IF( GotIt ) THEN
+         IF( SolverType == 'iterative' ) IterSolveGebhardt = .TRUE. 
+       END IF
+     END IF
+     IF( IterSolveGebhardt ) THEN
+       CALL Info('RadiationFactors','Using iterative solver for Gebhardt factors',Level=6)
+     ELSE
+       CALL Info('RadiationFactors','Using direct solver for Gebhardt factors',Level=6)
+     END IF
+       
      ComputeViewFactors = ListGetLogical( TSolver % Values,  &
          'Compute View Factors',GotIt )
 
@@ -378,12 +397,28 @@
 
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
-         CALL Rename(OutputName, OutputName2)
-         
+         CALL Rename(OutputName, OutputName2)         
+
+         DoScale = ListCheckPresent( Model % Simulation,'Coordinate Scaling')
+
+         IF( DoScale ) THEN
+           Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',GotIt )    
+           BackScale = 1.0_dp
+           DO i=1,Mesh % MeshDim 
+             j = MIN( i, SIZE(Wrk,1) )
+             BackScale(i) = 1.0_dp / Wrk(j,1)
+           END DO
+         END IF
+
          OPEN( 10,FILE=TRIM(OutputName), STATUS='unknown' )                 
          DO i=1,Mesh % NumberOfNodes
-           WRITE( 10,'(i7,i3,f20.12,f20.12,f20.12)' ) i,-1,  &
-               Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
+           Coord(1) = Mesh % Nodes % x(i)
+           Coord(2) = Mesh % Nodes % y(i)
+           Coord(3) = Mesh % Nodes % z(i)
+
+           IF( DoScale ) Coord = BackScale * Coord
+           
+           WRITE( 10,'(i7,i3,3f20.12)' ) i,-1, Coord
          END DO
          CLOSE(10)
        END IF
@@ -683,7 +718,7 @@
      END DO
 
      ALLOCATE( Solver )
-     CALL InitFactorSolver(Solver)
+     CALL InitFactorSolver(TSolver, Solver)
      
      RHS = 0.0D0
      SOL = 1.0D-4
@@ -1100,28 +1135,32 @@
      END SUBROUTINE FIterSolver
      
 
-     SUBROUTINE InitFactorSolver(Solver)
-       
+     SUBROUTINE InitFactorSolver(TSolver, Solver)
+
+       TYPE(Solver_t) :: TSolver
        TYPE(Solver_t) :: Solver
 
        Solver % Values => ListAllocate()
+
+       CALL ListCopyPrefixedKeywords( TSolver % Values, Solver % Values, 'radiation:' )
+
        
-       CALL ListAddString( Solver % Values, &
+       CALL ListAddNewString( Solver % Values, &
            'Linear System Iterative Method', 'CGS' )
 
-       CALL ListAddString( Solver % Values, &
+       CALL ListAddNewString( Solver % Values, &
            'Linear System Direct Method', 'Umfpack' )
 
-       CALL ListAddInteger( Solver % Values, &
+       CALL ListAddNewInteger( Solver % Values, &
            'Linear System Max Iterations', 500 )
        
-       CALL ListAddConstReal( Solver % Values, &
+       CALL ListAddNewConstReal( Solver % Values, &
            'Linear System Convergence Tolerance', 1.0D-9 )
        
-       CALL ListAddString( Solver % Values, &
+       CALL ListAddNewString( Solver % Values, &
            'Linear System Preconditioning', 'None' )
        
-       CALL ListAddInteger( Solver % Values, &
+       CALL ListAddNewInteger( Solver % Values, &
            'Linear System Residual Output', 10 )
        
      END SUBROUTINE InitFactorSolver

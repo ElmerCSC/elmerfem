@@ -174,7 +174,7 @@ Node V  0.0  0.0  1.0
 !
 Basis   1 2 5
 
-Gauss Points 3 20 1
+Gauss Points 3 11 1
 
 Stabilization 0.333333333333333333333
 END ELEMENT
@@ -229,7 +229,7 @@ Node V  0.0  0.0  1.0 0.000000000000000000 0.000000000000000000 0.33333333333333
 !      u^2v^2 u^3v^2 v^3 uv^3 u^2v^3 u^3v^3
 Basis 1 2 3 4 5 6 7 9 10 13
 
-Gauss Points 25 64
+Gauss Points 11 36
 
 Stabilization 0.01341555597798937329
 END ELEMENT

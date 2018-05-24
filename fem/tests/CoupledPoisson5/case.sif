@@ -1,5 +1,5 @@
 !# Solve two Laplace equations with prescribed flux. Level is determined by constraints. 
-!# This makes it possible to avoid the use of Dirichlet conditions alltogether.
+!# This makes it possible to avoid the use of Dirichlet conditions altogether.
 
 Header
   CHECK KEYWORDS Warn
@@ -9,7 +9,7 @@ Header
 End
 
 Simulation
-!  Max Output Level = 4
+!  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -133,8 +133,6 @@ Boundary Condition 3
 End
 
 Solver 1 :: Reference Norm = Real 58.517808
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=58.517808\n");
 
 

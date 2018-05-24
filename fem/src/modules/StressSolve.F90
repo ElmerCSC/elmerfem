@@ -83,7 +83,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       IF( CalcStressAll ) CALL ListAddLogical( SolverParams,'Calculate Stresses',.TRUE.)
     END IF
 
-
     IF ( CalcStressAll ) THEN
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable ',SolverParams), &
@@ -119,6 +118,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       END IF
     END IF
 
+    CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE StressSolver_Init
@@ -261,7 +261,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      CALL Info( 'StressSolve', '--------------------------------------------------',Level=4 )
      CALL Info( 'StressSolve', 'Solving displacements from linear elasticity model',Level=4 )     
      CALL Info( 'StressSolve', '--------------------------------------------------',Level=4 )
- 
+
+     CALL DefaultStart()
+     
      DIM = CoordinateSystemDimension()
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -502,7 +504,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        MaxIter = 2
      END IF
 
-     HarmonicAnalysis = getLogical( SolverParams, 'Harmonic Analysis', Found )
+     HarmonicAnalysis = getLogical( SolverParams, 'Harmonic Analysis', Found ) .OR. &
+         getLogical( SolverParams,'Harmonic Mode',Found ) 
 !------------------------------------------------------------------------------
      Refactorize = GetLogical( SolverParams, 'Linear System Refactorize', Found )
      IF ( .NOT. Found ) Refactorize = .TRUE.
@@ -607,11 +610,13 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
            ConstantBulkSystem .OR. ConstantSystem) ) CALL AddGlobalTime()
        CALL DefaultFinishAssembly()
 
-       CALL DefaultDirichletBCS()
-
        IF( ModelLumping .AND. FixDisplacement) THEN
          CALL LumpedDisplacements( Model, iter, LumpedArea, LumpedCenter)
        END IF
+
+       CALL DefaultDirichletBCS()
+
+
        CALL Info( 'StressSolve', 'Set boundaries done', Level=5 )
 
        !------------------------------------------------------------------------------
@@ -621,10 +626,11 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
        IF( Converged ) EXIT
 
-       ! Solve the system and check for convergence:
+       ! Solve the system and check for convergence:       
        !--------------------------------------------
        UNorm = DefaultSolve()
 
+       
        IF ( Transient .AND. .NOT. Refactorize .AND. dt /= Prevdt ) THEN
          Prevdt = dt
          CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
@@ -759,6 +765,116 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
            END DO
          END DO
+
+       ELSE IF ( HarmonicAnalysis ) THEN
+
+         nsize = SIZE(Solver % Variable % EigenVectors,2)/STDOFs
+         nomodes = Solver % NOFEigenValues
+
+         DO i=1,nomodes
+
+           WRITE (Message,'(A,I0)') 'Computing stresses for eigenmode: ',i 
+           CALL INfo('StressSolver', Message ) 
+
+           DO l=1,2
+            IF ( l==1 ) THEN
+              Displacement = REAL( Solver % Variable % EigenVectors(i,:) )
+            ELSE
+              Displacement = AIMAG( Solver % Variable % EigenVectors(i,:) )
+            END IF
+
+            CALL ComputeStress( Displacement, NodalStress,  &
+               VonMises, DisplPerm, StressPerm, &
+               NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle )
+
+
+           DO j=1,7               
+             SELECT CASE ( j )
+             CASE(1) 
+               VarName = 'Stress'
+             CASE(2) 
+               VarName = 'vonMises'
+             CASE(3) 
+               VarName = 'Principal Stress'
+             CASE(4) 
+               VarName = 'Strain'
+             CASE(5) 
+               VarName = 'Principal Strain'
+             CASE(6) 
+               VarName = 'Principal Angle'
+             CASE(7) 
+               VarName = 'Tresca'                 
+             END SELECT
+             
+             Var => VariableGet( Mesh % Variables, VarName )
+             IF(.NOT. ASSOCIATED(Var) ) CYCLE
+             dofs = Var % Dofs
+            
+             IF( i == 1 ) THEN               
+               IF( .NOT. ASSOCIATED( Var % EigenVectors ) ) THEN
+                 ALLOCATE( Var % EigenVectors(nomodes, dofs * nsize ) )             
+                 Var % EigenVectors = 0.0_dp
+               END IF
+               IF( .NOT. ASSOCIATED( Var % EigenValues ) ) THEN                 
+                 ALLOCATE( Var % EigenValues(nomodes) )
+                 Var % EigenValues = 0._dp
+               END IF
+
+               Var % EigenValues = Solver % Variable % EigenValues 
+               IF( dofs > 1 ) THEN
+                 DO k=1,dofs
+                   iVar => VariableGet( Mesh % Variables,ComponentName(Var % Name,k) )
+                   IF( ASSOCIATED( iVar ) ) THEN
+                     iVar % EigenValues => Var % EigenValues
+                     iVar % Eigenvectors => Var % EigenVectors(:,k::dofs)
+                   ELSE
+                     CALL Fatal('StressSolver','No variable associated: '//&
+                         ComponentName( Var % Name,k ) )
+                   END IF
+                 END DO
+               END IF
+             END IF
+
+
+             IF ( l==1 ) THEN
+               SELECT CASE ( j )
+               CASE(1) 
+                 Var % EigenVectors(i,:) = NodalStress
+               CASE(2) 
+                 Var % EigenVectors(i,:) = VonMises
+               CASE(3) 
+                 Var % EigenVectors(i,:) = PrincipalStress
+               CASE(4) 
+                 Var % EigenVectors(i,:) = NodalStrain
+               CASE(5) 
+                 Var % EigenVectors(i,:) = PrincipalStrain
+               CASE(6) 
+                 Var % EigenVectors(i,:) = PrincipalAngle
+               CASE(7) 
+                 Var % EigenVectors(i,:) = Tresca
+               END SELECT
+             ELSE
+               SELECT CASE ( j )
+               CASE(1) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,NodalStress,KIND=dp)
+               CASE(2) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,VonMises,KIND=dp)
+               CASE(3) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,PrincipalStress,KIND=dp)
+               CASE(4) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,NodalStrain,KIND=dp)
+               CASE(5) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,PrincipalStrain,KIND=dp)
+               CASE(6) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,PrincipalAngle,KIND=dp)
+               CASE(7) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,Tresca,KIND=dp)
+               END SELECT
+             END IF
+           END DO
+           END DO
+         END DO
+
        ELSE
          CALL ComputeStress( Displacement, NodalStress,  &
              VonMises, DisplPerm, StressPerm, &
@@ -810,7 +926,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
          END IF
        END DO
      END IF
-
+     
+     CALL DefaultFinish()
+     
      CALL Info('StressSolver','All done',Level=4)
      CALL Info('StressSolver','------------------------------------------',Level=4)
 
@@ -821,19 +939,28 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-    INTEGER :: RelIntegOrder 
+    INTEGER :: RelIntegOrder, NoActive 
 
+    LOGICAL :: AnyDamping
+
+    AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
+        ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
+    Damping = 0.0_dp
+    RayleighDamping = .FALSE.
+
+    
 
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
      body_id = -1
 
      RelIntegOrder = ListGetInteger( SolverParams,'Relative Integration Order',Found)
 
+     NoActive = GetNOFActive()
 
-     DO t=1,Solver % NumberOFActiveElements
+     DO t=1,NoActive
 
 !------------------------------------------------------------------------------
-       CALL AdvanceOutput(t,GetNOFActive())
+       CALL AdvanceOutput(t,NoActive)
 !------------------------------------------------------------------------------
 
        Element => GetActiveElement(t)
@@ -853,16 +980,18 @@ CONTAINS
             CALL Fatal( 'StressSolve', 'No value for density found.' )
        END IF
 
-       Damping(1:n) = GetReal( Material, 'Damping', Found )
-       RayleighDamping = GetLogical( Material, 'Rayleigh damping', Found )
-       IF( RayleighDamping ) THEN
-         RayleighAlpha(1:N) = GetReal( Material, 'Rayleigh alpha', Found )
-         RayleighBeta(1:N) = GetReal( Material, 'Rayleigh beta', Found )
-       ELSE
-         RayleighAlpha = 0.0d0
-         RayleighBeta = 0.0d0        
+       IF( AnyDamping ) THEN
+         Damping(1:n) = GetReal( Material, 'Damping', Found )
+         RayleighDamping = GetLogical( Material, 'Rayleigh damping', Found )
+         IF( RayleighDamping ) THEN
+           RayleighAlpha(1:N) = GetReal( Material, 'Rayleigh alpha', Found )
+           RayleighBeta(1:N) = GetReal( Material, 'Rayleigh beta', Found )
+         ELSE
+           RayleighAlpha = 0.0d0
+           RayleighBeta = 0.0d0        
+         END IF
        END IF
-
+         
        CALL InputTensor( HeatExpansionCoeff, Isotropic(2),  &
            'Heat Expansion Coefficient', Material, n, NodeIndexes, GotHeatExp )
 
@@ -1066,7 +1195,7 @@ CONTAINS
            Solver % Matrix % RHS => SaveRHS
          END IF
 
-         IF ( EigenOrHarmonicAnalysis() .OR. &
+         IF ( EigenOrHarmonicAnalysis() .OR. HarmonicAnalysis .OR. &
            ConstantBulkMatrix .OR. ConstantBulkSystem .OR. ConstantSystem ) THEN
            CALL DefaultUpdateMass( MASS )
            CALL DefaultUpdateDamp( DAMP )
@@ -1089,8 +1218,6 @@ CONTAINS
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
        
-       IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
        n = GetElementNOFNodes()
        ntot = GetElementNOFDOFs()
 
@@ -1113,6 +1240,7 @@ CONTAINS
           Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
 
           LOAD_im=0._dp
+          Beta_im=0._dp
           IF ( HarmonicAnalysis ) THEN
             LOAD_im(1,1:n) = GetReal( BC, 'Force 1 im',Found )
             LOAD_im(2,1:n) = GetReal( BC, 'Force 2 im',Found )
@@ -1272,8 +1400,6 @@ CONTAINS
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
        
-       IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
        n = GetElementNOFNodes()
        BC => GetBC()
        
@@ -1360,7 +1486,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
-     
+
      CALL Info('StressSolver','------------------------------------------',Level=5)
      CALL Info('StressSolver','Starting Stress Computation',Level=5)
 
@@ -1436,6 +1562,9 @@ CONTAINS
      IF ( EigenAnalysis ) &
        CALL ListAddLogical( SolverParams, 'Eigen Analysis', .FALSE. )
 
+     IF( HarmonicAnalysis ) &
+       CALL ListAddLogical( SolverParams, 'Harmonic Analysis', .FALSE. ) 
+
      StSolver % NOFEigenValues=0
 
      Ident = 0.0d0
@@ -1454,9 +1583,9 @@ CONTAINS
 
      NodalStress  = 0.0d0
      ForceG       = 0.0d0
+     SForceG      = 0.0d0
      IF(CalculateStrains) THEN
        NodalStrain  = 0.0d0
-       SForceG      = 0.0d0
      END IF
      CALL DefaultInitialize()
 
@@ -1766,7 +1895,10 @@ CONTAINS
 
       IF ( EigenAnalysis ) &
         CALL ListAddLogical( SolverParams, 'Eigen Analysis', .TRUE. )
+      IF ( HarmonicAnalysis ) &
+        CALL ListAddLogical( SolverParams, 'Harmonic Analysis', .TRUE. )
       CALL ListAddConstReal( SolverParams,'Nonlinear System Relaxation Factor', Relax )
+
 
       Model % Solver => Solver
 
@@ -1834,8 +1966,6 @@ CONTAINS
        DO t=1,Mesh % NumberOfBoundaryElements
          Element => GetBoundaryElement(t)
          IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
-         IF( .NOT. PossibleFluxElement(Element) ) CYCLE
 
          BC => GetBC()
          IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
@@ -2098,8 +2228,6 @@ CONTAINS
          Element => GetBoundaryElement(t)
          IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
-         IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-         
          BC => GetBC()
          IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
@@ -2137,8 +2265,6 @@ CONTAINS
          Element => GetBoundaryElement(t)
          IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
-         IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-         
          BC => GetBC()
          IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE

@@ -42,7 +42,6 @@
 !------------------------------------------------------------------------------
 
 MODULE ParallelUtils
-
      USE SparIterSolve
 
      IMPLICIT NONE
@@ -748,6 +747,73 @@ CONTAINS
     END SUBROUTINE ParallelMatrixVector
 !-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelMatrixVectorC( Matrix, x, b, Update, UseMassVals,ZeroNotOwned )
+!-------------------------------------------------------------------------------
+      COMPLEX(KIND=dp) CONTIG :: x(:), b(:)
+      TYPE(Matrix_t), POINTER :: Matrix
+      LOGICAL, OPTIONAL :: Update, UseMassVals,ZeroNotOwned
+!-------------------------------------------------------------------------------
+      INTEGER :: i,ipar(1)
+      REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mr(:), Mb(:), r(:)
+
+      TYPE(Matrix_t), POINTER :: SaveMatrix
+      TYPE(SplittedMatrixT), POINTER :: SP
+      TYPE(Matrix_t), POINTER :: SavePtrIN
+      TYPE(BasicMatrix_t), POINTER :: SavePtrIF(:), SavePtrNB(:)
+!-------------------------------------------------------------------------------
+#ifdef PARALLEL_FOR_REAL
+      GlobalData => Matrix % ParMatrix
+      SaveMatrix  => GlobalMatrix
+      GlobalMatrix => Matrix
+      ParEnv = GlobalData % ParEnv
+      ParEnv % ActiveComm = Matrix % Comm
+      IF ( PRESENT( Update ) ) THEN
+        CALL Fatal('ParallelMatrixVectorC','Cannot handle parameter > Update <')
+      END IF
+        
+      IF ( PRESENT( UseMassVals ) ) THEN
+        CALL Fatal('ParallelMatrixVectorC','Cannot handle parameter > UseMassVals <')
+      END IF
+
+      CALL SParCMatrixVector( x, b, ipar )
+
+      GlobalMatrix => SaveMatrix
+#endif
+!-------------------------------------------------------------------------------
+    END SUBROUTINE ParallelMatrixVectorC
+!-------------------------------------------------------------------------------
+
+    
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelVectorC(A, vec_out, vec_in)
+!-------------------------------------------------------------------------------
+      TYPE(Matrix_t), INTENT(in) :: A
+      COMPLEX(KIND=dp), INTENT(inout) :: vec_out(:)
+      COMPLEX(KIND=dp), INTENT(in), OPTIONAL :: vec_in(:)
+!-------------------------------------------------------------------------------
+      INTEGER :: i,j,k
+!-------------------------------------------------------------------------------
+      j = 0
+
+      ! We have a complex valued vector but a real valued matrix.
+      ! We use the even (complex) component to check the ownership of the dof.
+      ! We could as well use the odd (real) component.
+  
+      DO i=1,A % NumberOfRows / 2
+        IF ( A % ParallelInfo % Neighbourlist(2*i) % &
+                   Neighbours(1)==Parenv % Mype ) THEN
+          j=j+1
+          IF(PRESENT(vec_in)) THEN
+            vec_out(j) = vec_in(i)
+          ELSE
+            vec_out(j) = vec_out(i)
+          END IF
+        END IF
+      END DO
+!-------------------------------------------------------------------------------
+    END SUBROUTINE ParallelVectorC
+!-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelVector(A, vec_out, vec_in)
@@ -774,7 +840,7 @@ CONTAINS
     END SUBROUTINE ParallelVector
 !-------------------------------------------------------------------------------
 
-
+    
 !-------------------------------------------------------------------------------
     SUBROUTINE PartitionVector(A, vec_out, vec_in)
 !-------------------------------------------------------------------------------
@@ -835,11 +901,9 @@ CONTAINS
        M => NULL()
 #ifdef PARALLEL_FOR_REAL
        M => A % ParMatrix % SplittedMatrix % InsideMatrix
-       IF ( PRESENT(x) ) THEN
-          b => M % RHS
-          x => A % ParMatrix % SplittedMatrix % TmpXVec
-          r => A % ParMatrix % SplittedMatrix % TmpRVec
-       END IF
+       IF ( PRESENT(x) ) x => A % ParMatrix % SplittedMatrix % TmpXVec
+       IF ( PRESENT(b) ) b => M % RHS
+       IF ( PRESENT(r) ) r => A % ParMatrix % SplittedMatrix % TmpRVec
 #endif
 !-------------------------------------------------------------------------------
     END FUNCTION ParallelMatrix
@@ -861,6 +925,20 @@ CONTAINS
     END FUNCTION ParallelNorm
 !-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelCNorm( n, x ) RESULT(s)
+!-------------------------------------------------------------------------------
+      INTEGER :: n
+      REAL(KIND=dp) :: s
+      COMPLEX(KIND=dp) CONTIG :: x(:)
+!-------------------------------------------------------------------------------
+      s = 0.0d0
+#ifdef PARALLEL_FOR_REAL
+      s = SParCNorm( n, x, 1 )
+#endif
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelCNorm
+!-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
     FUNCTION ParallelDOT( n, x, y ) RESULT(s)

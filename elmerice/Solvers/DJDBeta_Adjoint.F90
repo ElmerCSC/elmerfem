@@ -85,7 +85,7 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
   integer :: p,q
 
   logical :: PowerFormulation,Beta2Formulation
-  Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal
+  Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal=.TRUE.
   Logical :: NormalTangential1,NormalTangential2
 
   ! Variables for setting DJDBeta to zero for ice shelves.
@@ -183,19 +183,20 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
      Firsttime=.false.
   Endif
   
-  PointerToVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
+  PointerToVariable => VariableGet( Model % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
   VariableValues => PointerToVariable % Values
   Permutation => PointerToVariable % Perm
+  VariableValues=0._dp
   
-  BetaVariable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
+  BetaVariable => VariableGet( Model % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
   BetaValues => BetaVariable % Values
   BetaPerm => BetaVariable % Perm
   
-  VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName,UnFoundFatal=UnFoundFatal)
+  VeloSolN => VariableGet( Model % Mesh % Variables, NeumannSolName,UnFoundFatal=UnFoundFatal)
   VelocityN => VeloSolN % Values
   VeloNPerm => VeloSolN % Perm
   
-  VeloSolD => VariableGet( Solver % Mesh % Variables, AdjointSolName,UnFoundFatal=UnFoundFatal)
+  VeloSolD => VariableGet( Model % Mesh % Variables, AdjointSolName,UnFoundFatal=UnFoundFatal)
   VelocityD => VeloSolD % Values
   VeloDPerm => VeloSolD % Perm
   

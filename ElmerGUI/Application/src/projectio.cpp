@@ -42,6 +42,10 @@
 #include <iostream>
 #include "projectio.h"
 
+#if WITH_QT5
+#include <QtWidgets>
+#endif
+
 using namespace std;
 
 ProjectIO::ProjectIO(QWidget *parent)
@@ -216,7 +220,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 {
   // Radio buttons:
   //----------------
+#if WITH_QT5 
+  QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(QString()); 
+#else
   QList<QRadioButton *> allRadioButtons = parentWidget->findChildren<QRadioButton *>(); 
+#endif
 
   QList<QString> rbObjectNames;
   for(int i = 0; i < allRadioButtons.size(); i++) 
@@ -240,7 +248,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: RadioButton: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 
@@ -274,7 +286,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: Check box: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 
@@ -308,7 +324,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: LineEdit: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 
@@ -343,7 +363,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: TextEdit: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 
@@ -354,7 +378,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 
   // Combo boxes:
   //--------------
+#if WITH_QT5
+  QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(QString()); 
+#else
   QList<QComboBox *> allComboBoxes = parentWidget->findChildren<QComboBox *>(); 
+#endif
 
   QList<QString> cxObjectNames;
   for(int i = 0; i < allComboBoxes.size(); i++)
@@ -378,7 +406,11 @@ void ProjectIO::readFromProject(QDomDocument *projectDoc, QDomElement *item)
     
     if(index < 0) {
       cout << "Load project: Combo box: mismatch with object name" << endl;
+#if WITH_QT5
+      cout << "*** " << string(objectName.toLatin1()) << " ***" << endl;
+#else
       cout << "*** " << string(objectName.toAscii()) << " ***" << endl;
+#endif
       return;
     }
 

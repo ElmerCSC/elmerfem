@@ -12,7 +12,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
 
   Extruded Mesh Levels=10
 
@@ -107,8 +107,6 @@ Boundary Condition 4
 End
 
 Solver 1 :: Reference Norm = Real 0.14717749E-01
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.14717749E-01\n");
 
 !End Of File

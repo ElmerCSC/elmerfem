@@ -125,18 +125,27 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 
   VariableValues = 0.0_dp
 
-  DO t = 1, Solver % NumberOfActiveElements
-    Element => GetActiveElement(t)
+  DO t = Model % Mesh % NumberOfBulkElements+1,&
+       Model % Mesh % NumberOfBulkElements + Model % Mesh % NumberOfBoundaryElements
+    Element => Model % Mesh % Elements(t)
     IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
-    n = GetElementNOFNodes()
+    n = GetElementNOFNodes( Element )
+
+    !Does this element contribute to any basal nodes?
+    IF(.NOT. ANY(Permutation(Element % NodeIndexes(1:n)) > 0)) CYCLE
 
     BC => GetBC( Element ) 
     pwt(1:n) =  -1.0 * ListGetReal(BC, 'External Pressure', n, &
                     Element % NodeIndexes , GotIt)
+
+    !Is there an external pressure to consider?
+    IF(.NOT. GotIt) CYCLE
+    IF(ALL(pwt(1:n) == 0.0)) CYCLE
+
 !
 ! Integration
 ! 
-    CALL GetElementNodes( Nodes )
+    CALL GetElementNodes( Nodes, Element )
     IP = GaussPoints( Element )
     DO p = 1, IP % n
 
@@ -156,6 +165,7 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 
       DO i = 1, n
         Nn = Permutation(Element % NodeIndexes(i))
+        IF(Nn <= 0) CYCLE
         DO j = 1, DIM
           VariableValues(DIM*(Nn-1)+j) = VariableValues(DIM*(Nn-1)+j) + PwVector(j) * s * Basis(i)
         END DO

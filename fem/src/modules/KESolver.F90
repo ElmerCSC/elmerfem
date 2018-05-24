@@ -71,27 +71,27 @@
 
      INTEGER, POINTER :: FlowPerm(:),KinPerm(:)
 
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter
+     INTEGER :: NSDOFs,NewtonIter,NonlinearIter,NoActive
      REAL(KIND=dp) :: NewtonTol, Clip, V2FCp
 
      REAL(KIND=dp), POINTER :: KEpsilon(:),KineticDissipation(:), &
-                   FlowSolution(:), ElectricCurrent(:), ForceVector(:)
+         FlowSolution(:), ElectricCurrent(:), ForceVector(:)
 
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
-       STIFF(:,:),LayerThickness(:), &
+         STIFF(:,:),LayerThickness(:), &
          LOAD(:,:),FORCE(:),U(:),V(:),W(:), &
-           Density(:),Viscosity(:),EffectiveVisc(:,:),Work(:),  &
-              TurbulentViscosity(:),LocalDissipation(:), &
-                 LocalKinEnergy(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
-                   KEC2(:),C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:),V2FCT(:)
+         Density(:),Viscosity(:),EffectiveVisc(:,:),Work(:),  &
+         TurbulentViscosity(:),LocalDissipation(:), &
+         LocalKinEnergy(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
+         KEC2(:),C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:),V2FCT(:)
 
      TYPE(ValueList_t), POINTER :: BC, Equation, Material
 
      SAVE U,V,W,MASS,STIFF,LOAD,FORCE, &
-       ElementNodes,LayerThickness,Density,&
+         ElementNodes,LayerThickness,Density,&
          AllocationsDone,Viscosity,LocalNodes,Work,TurbulentViscosity, &
-           LocalDissipation,LocalKinEnergy,KESigmaK,KESigmaE,KECmu,C0, &
-             SurfaceRoughness, TimeForce, KEC1, KEC2, EffectiveVisc, LocalV2, V2FCT
+         LocalDissipation,LocalKinEnergy,KESigmaK,KESigmaE,KECmu,C0, &
+         SurfaceRoughness, TimeForce, KEC1, KEC2, EffectiveVisc, LocalV2, V2FCT
 
      REAL(KIND=dp), POINTER :: SecInv(:)
      SAVE SecInv
@@ -208,11 +208,14 @@
 !------------------------------------------------------------------------------
        body_id = -1
        CALL StartAdvanceOutput('KESolver','Assembly' )
-       DO t=1,Solver % NumberOfActiveElements
+       
+       NoActive = GetNOFActive()
+       
+       DO t=1,NoActive
 
 !------------------------------------------------------------------------------
 
-         CALL AdvanceOutput(t,GetNOFActive())
+         CALL AdvanceOutput(t,NoActive)
 
 !------------------------------------------------------------------------------
 !        Check if this element belongs to a body where kinetic energy
@@ -350,13 +353,32 @@
       CALL DefaultFinishBulkAssembly()      
       CALL Info( 'KESolver', 'Assembly done', Level=4 )
 
+    
+      IF(ListGetLogicalAnyBC(Model,'Epsilon Wall BC') .OR. &
+          ListGetLogicalAnyBC(Model,'Noslip Wall BC') ) THEN
+        DO t = 1, Solver % Mesh % NumberOfBoundaryElements
+          Element => GetBoundaryElement(t)
+          n = GetElementNOFNodes()
+
+          BC => GetBC()
+          IF ( ASSOCIATED( BC ) ) THEN
+            IF ( GetLogical( BC, 'Epsilon Wall BC', gotIt ) .OR. &
+                 GetLogical( BC, 'Noslip Wall BC',  gotIt ) ) THEN
+              DO i=1,n
+                j = KinPerm(Element % NodeIndexes(i))
+                CALL ZeroRow( Solver % Matrix, 2*j )
+                Solver % Matrix % RHS(2*j) = 0.0_dp
+              END DO
+             END IF
+          END IF
+        END DO
+     END IF
+
 !------------------------------------------------------------------------------
       DO t = 1, Solver % Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
-        ! Check that the dimension of element is suitable for fluxes
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
 !------------------------------------------------------------------------------
         n = GetElementNOFNodes()
         NodeIndexes => Element % NodeIndexes
@@ -399,13 +421,17 @@
                  Density(j) )
 
               k = DOFs*(KinPerm(NodeIndexes(j))-1)
-              ForceVector(k+1) = Work(1)
-              CALL ZeroRow( StiffMatrix,k+1 )
-              CALL SetMatrixElement( StiffMatrix,k+1,k+1,1.0d0 )
 
-              ForceVector(k+2) = Work(2)
-              CALL ZeroRow( StiffMatrix,k+2 )
-              CALL SetMatrixElement( StiffMatrix,k+2,k+2,1.0d0 )
+              !ForceVector(k+1) = Work(1)
+              !CALL ZeroRow( StiffMatrix,k+1 )
+              !CALL SetMatrixElement( StiffMatrix,k+1,k+1,1.0d0 )
+
+               CALL UpdateDirichletDof( StiffMatrix, k+1, Work(1) )
+               CALL UpdateDirichletDof( StiffMatrix, k+2, Work(2) )
+
+              !ForceVector(k+2) = Work(2)
+              !CALL ZeroRow( StiffMatrix,k+2 )
+              !CALL SetMatrixElement( StiffMatrix,k+2,k+2,1.0d0 )
             END DO
           END IF
 
@@ -873,12 +899,6 @@ CONTAINS
 
      CALL GetScalarLocalSolution( KVals, 'Kinetic Energy', Parent )
      CALL GetScalarLocalSolution( EVals, 'Kinetic dissipation', Parent )
-
-     DO i=1,n
-       j = KinPerm(Element % NodeIndexes(i))
-       CALL ZeroRow( Solver % Matrix, 2*j )
-       Solver % Matrix % RHS(2*j) = 0.0_dp
-     END DO
 
      DO t=1,IntegStuff % n
        u = IntegStuff % u(t)

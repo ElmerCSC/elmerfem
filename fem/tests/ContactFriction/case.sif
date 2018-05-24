@@ -18,7 +18,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 6
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
@@ -100,7 +100,5 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.13287213
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=0.13287213\n");
 

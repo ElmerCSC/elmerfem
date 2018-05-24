@@ -67,7 +67,7 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable,FlowSol
   TYPE(Solver_t), POINTER :: PointerToSolver
 
-  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal
+  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal=.TRUE.
 
   INTEGER :: i, j,n, m, t, istat,k
   INTEGER, POINTER :: Permutation(:), FlowPerm(:), NodeIndexes(:)
@@ -183,7 +183,7 @@ CONTAINS
 
         mu = SUM( Viscosity(1:n) * Basis(1:n) )
         mu = EffectiveViscosity( mu, 1.0_dp , Velo(1,:) , Velo(2,:), Velo(3,:), &
-                                   Element, Nodes, n, n, IP % U(t), IP % V(t), IP % W(t) )
+                                   Element, Nodes, n, n, IP % U(t), IP % V(t), IP % W(t), LocalIP=t )
 
         LGrad = MATMUL( Velo(:,1:n), dBasisdx(1:n,:) )
         VeloIP=0.

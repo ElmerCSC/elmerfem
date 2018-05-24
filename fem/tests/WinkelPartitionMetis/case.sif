@@ -1,0 +1,78 @@
+!---------------------------------------------------------
+! Test case for the consistency of partitioning.
+! This case is partitoned exactly using basic Metis partitioning
+! into 8 partitions. The number of 
+! partitions can not be freely chosen here.
+!
+! P.R. 2.5.2016
+!------------------------------------------------------------
+
+Header
+  Mesh DB "." "winkel"
+  Include Path ""
+  Results Directory ""
+End 
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+  Mesh Levels = 1
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+Body 1
+  Name = "Body"
+  Equation = 1
+  Material = 1 
+End
+
+Equation 1
+  Name = "CheckPart"
+  Active Solvers = 1 
+End
+
+
+Material 1
+  Name = "None"
+End
+
+
+Solver 1
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Parallel Reduce = Logical True
+
+  Filename = f.dat
+
+  Operator 1 = partitions
+  Operator 2 = partition checksum
+  Operator 3 = partition neighbours checksum
+
+  Show Norm Index = 1
+
+End 
+
+! check that there are 8 partitions 
+Solver 1:: Reference Norm = 8
+RUN
+
+! check the global numbering 
+Solver 1:: Show Norm Index = 2
+Solver 1:: Reference Norm = 3.72184473E+09
+RUN
+
+! check the neighbours
+Solver 1:: Show Norm Index = 3 
+Solver 1:: Reference Norm = 9.67657000E+05
+RUN 

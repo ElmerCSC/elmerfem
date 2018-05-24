@@ -52,6 +52,7 @@ MODULE SParIterSolve
   USE SParIterGlobals
   USE SParIterComm
   USE SParIterPrecond
+  USE IterSolve, ONLY : NumericalError
 
   USE CRSMatrix
 
@@ -702,7 +703,7 @@ st = realtime()
       RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
       DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
         ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
-        CALL List_AddToMatrixElement(A % ListMatrix,RowInd,ColInd,0._dp)
+        CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
       END DO
     END DO
   END DO
@@ -1057,6 +1058,9 @@ END SUBROUTINE ZeroSplittedMatrix
 
 !----------------------------------------------------------------------
     SplittedMatrix => SourceMatrix % ParMatrix % SplittedMatrix
+
+    IF (.NOT. ASSOCIATED(SplittedMatrix % InsideMatrix % RHS)) &
+         ALLOCATE(SplittedMatrix % InsideMatrix % RHS(SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpRHSVec => SplittedMatrix % InsideMatrix % RHS
 
     CALL ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
@@ -1077,8 +1081,15 @@ END SUBROUTINE ZeroSplittedMatrix
     REAL(KIND=dp), POINTER :: TmpXVec(:),TmpRVec(:)
 !----------------------------------------------------------------------
     ParallelInfo => SourceMatrix % ParMatrix % ParallelInfo
+    IF (.NOT. ASSOCIATED(SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec)) &
+         ALLOCATE(SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec( &
+	 SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpXVec => SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec
+    IF (.NOT. ASSOCIATED(SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec)) &
+         ALLOCATE(SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec( &
+	 SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpRVec => SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec
+
     j = 0
     DO i = 1, SourceMatrix % NumberOfRows
        IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
@@ -1237,7 +1248,7 @@ END SUBROUTINE ZeroSplittedMatrix
          IF ( ParEnv % Active(prev_id+1) ) EXIT
        END DO
        CALL MPI_RECV( gind, 1, MPI_INTEGER, &
-           prev_id, 801, MPI_COMM_WORLD, status, ierr )
+           prev_id, 801, ELMER_COMM_WORLD, status, ierr )
      END IF
 
      ! give a number to dofs owned by us:
@@ -1261,7 +1272,7 @@ END SUBROUTINE ZeroSplittedMatrix
          IF ( ParEnv % Active(next_id+1) ) EXIT
        END DO
        CALL MPI_BSEND( gind, 1, MPI_INTEGER, &
-          next_id, 801, MPI_COMM_WORLD, ierr )
+          next_id, 801, ELMER_COMM_WORLD, ierr )
      END IF
 
      ! the rest is to communicate the numbering of shared dofs
@@ -1326,10 +1337,10 @@ END SUBROUTINE ZeroSplittedMatrix
          active_neighbours = active_neighbours+1
          k = neigh(i)
          ssz = sz(k)
-         CALL MPI_BSEND( ssz,1,MPI_INTEGER,i-1,802,MPI_COMM_WORLD,ierr )
+         CALL MPI_BSEND( ssz,1,MPI_INTEGER,i-1,802,ELMER_COMM_WORLD,ierr )
          IF ( ssz>0 ) THEN
-           CALL MPI_BSEND( buf_a(1:ssz,k),ssz,MPI_INTEGER,i-1,803,MPI_COMM_WORLD,ierr )
-           CALL MPI_BSEND( buf_g(1:ssz,k),ssz,MPI_INTEGER,i-1,804,MPI_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf_a(1:ssz,k),ssz,MPI_INTEGER,i-1,803,ELMER_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf_g(1:ssz,k),ssz,MPI_INTEGER,i-1,804,ELMER_COMM_WORLD,ierr )
          END IF
        END IF
      END DO 
@@ -1337,13 +1348,13 @@ END SUBROUTINE ZeroSplittedMatrix
      DEALLOCATE( buf_a, buf_g, neigh, sz )
 
      DO i=1,active_neighbours
-       CALL MPI_RECV( ssz,1,MPI_INTEGER,MPI_ANY_SOURCE,802,MPI_COMM_WORLD,status,ierr )
+       CALL MPI_RECV( ssz,1,MPI_INTEGER,MPI_ANY_SOURCE,802,ELMER_COMM_WORLD,status,ierr )
        IF ( ssz>0 ) THEN
          src = status(MPI_SOURCE)
          ALLOCATE( buf_aa(ssz), buf_gg(ssz) )
 
-         CALL MPI_RECV( buf_aa,ssz,MPI_INTEGER,src,803,MPI_COMM_WORLD,status,ierr )
-         CALL MPI_RECV( buf_gg,ssz,MPI_INTEGER,src,804,MPI_COMM_WORLD,status,ierr )
+         CALL MPI_RECV( buf_aa,ssz,MPI_INTEGER,src,803,ELMER_COMM_WORLD,status,ierr )
+         CALL MPI_RECV( buf_gg,ssz,MPI_INTEGER,src,804,ELMER_COMM_WORLD,status,ierr )
 
          DO j=1,ssz
            k = SearchIAItem( nob, g_nownbuf, buf_gg(j), i_nownbuf )
@@ -1402,7 +1413,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   INTEGER, POINTER :: nb(:), Rows(:), Cols(:)
 
   LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, Found
-  LOGICAL :: NewSetup
+  LOGICAL :: NewSetup, UpdateTolerance
   INTEGER :: verbosity
   
   INTEGER :: nrows, ncols, nnz
@@ -1476,6 +1487,13 @@ INTEGER::inside
                             hypre_dppara(5), Gvals(*), xx_d(*), yy_d(*), zz_d(*)
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPREAMS
+
+      SUBROUTINE UpdateHypre(TOL, hypremethod, hypreContainer) BIND(C,name="updatehypre")
+        USE, INTRINSIC :: iso_c_binding
+        REAL(KIND=c_double) :: TOL
+        INTEGER(KIND=c_int) :: hypremethod
+        INTEGER(KIND=C_INTPTR_T) :: hypreContainer
+      END SUBROUTINE UpdateHypre
 
     END INTERFACE
 #endif
@@ -1722,6 +1740,14 @@ INTEGER::inside
               rounds, TOL, verbosity, SourceMatrix % Hypre, SourceMatrix % Comm)
         END IF
 
+        ! In some cases the stopping tolerance is adapted during the solution procedure.
+        ! Make an update if needed:
+        UpdateTolerance = ListGetLogical( Params, 'Linear System Adaptive Tolerance', Found )
+        IF (UpdateTolerance) THEN
+           !PRINT *, 'Setting tolerance to:', TOL
+           CALL UpdateHypre( TOL, hypremethod, SourceMatrix % Hypre)
+        END IF
+
         ! solve using previously computed HYPRE data structures.
         ! NOTE: this is only correct if the matrix has not changed,
         ! otherwise we should use the SolveHYPRE3 function, which is
@@ -1880,13 +1906,8 @@ INTEGER::inside
         CALL Fatal('SParIterSolver',&
                'Linear system solve using Trilinos caused an error');
       ELSE IF (ierr>0) THEN
-        IF (ListGetLogical(Solver%Values,'Linear System Abort Not Converged',Found)) THEN
-          CALL Fatal('SParIterSolver', &
-                'Linear system solve using Trilinos issued a warning');
-        ELSE
-          CALL Error('SParIterSolver', &
-                'Linear system solve using Trilinos issued a warning');
-        END IF
+        CALL NumericalError('SParIterSolver',&
+             'Linear system solve using Trilinos issued a warning')
       END IF
       
       ALLOCATE( VecEPerNB( ParEnv % PEs ) )
@@ -2364,16 +2385,26 @@ END SUBROUTINE Solve
   CALL Recv_LocIf( GlobalData % SplittedMatrix, &
       nneigh, neigh, recv_size, requests, buffer )
 
-  v(1:n) = 0.0
+  !$OMP PARALLEL DO
+  DO i=1,n
+     v(i) = 0.0
+  END DO
+  !$OMP END PARALLEL DO
   DO i = 1, ParEnv % PEs
      CurrIf => GlobalData % SplittedMatrix % IfMatrix(i)
 
      IF ( CurrIf % NumberOfRows /= 0 ) THEN
-       IfV => GlobalData % SplittedMatrix % IfVecs(i)
-       IfL => GlobalData % SplittedMatrix % IfLCols(i)
-       IfO => GlobalData % SplittedMatrix % IfORows(i)
+        IfV => GlobalData % SplittedMatrix % IfVecs(i)
+        IfL => GlobalData % SplittedMatrix % IfLCols(i)
+        IfO => GlobalData % SplittedMatrix % IfORows(i)
 
-        IfV % IfVec(1:CurrIf % NumberOfRows) = 0.0
+        !$OMP PARALLEL PRIVATE(ColInd,j,k)
+        !$OMP DO
+        DO j=1,CurrIf % NumberOfRows
+           IfV % IfVec(j) = 0.0
+        END DO
+        !$OMP END DO
+        !$OMP DO
         DO j = 1, CurrIf % NumberOfRows
            IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) THEN
              DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
@@ -2383,6 +2414,8 @@ END SUBROUTINE Solve
              END DO
            END IF
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
      END IF
   END DO
 
@@ -2392,31 +2425,7 @@ END SUBROUTINE Solve
   ! Compute the local part
   !
   !----------------------------------------------------------------------
-
-  Rows => InsideMatrix % Rows
-  Cols => InsideMatrix % Cols
-  Vals => InsideMatrix % Values
-
-  IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
-    CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,Vals,u,v,0)
-#else
-    CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,Vals,u,v,0)
-#endif
-  ELSE
-!$omp parallel do private(j,rsum)
-    DO i = 1, n
-      rsum = 0._dp
-      DO j = Rows(i), Rows(i+1) - 1
-        rsum = rsum + Vals(j) * u(Cols(j))
-      END DO
-      v(i)=v(i)+rsum
-    END DO
-!omp end parallel do
-  END IF
-
+  CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v )
 
   CALL Recv_LocIf_Wait( GlobalData % SplittedMatrix, n, v,  &
        nneigh, neigh, recv_size, requests, buffer )
@@ -2927,46 +2936,64 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
         j2 = SMat2 % Rows(Ind)
 
         DO WHILE ( j1 < SMat1 % Rows(i1+1) .OR.  j2 < SMat2 % Rows(Ind+1) )
-
-           IF ( j1 <  SMat1 % Rows(i1+1) .AND. &
-                j2 >= SMat2 % Rows(Ind+1) ) THEN
-
-              DMat % Cols(col) = SMat1 % Cols(j1)
-              Col = Col + 1
-              j1 = j1 + 1
-
-           ELSE IF ( j1 < SMat1 % Rows(i1+1) .AND. &
-             SMat1 % Cols(j1) < SMat2 % Cols(j2) ) THEN
+          IF ( j1 <  SMat1 % Rows(i1+1)) THEN
+            IF (j2 >= SMat2 % Rows(Ind+1) ) THEN
 
               DMat % Cols(col) = SMat1 % Cols(j1)
               Col = Col + 1
               j1 = j1 + 1
-        
-           ELSE IF ( j1 >= SMat1 % Rows(i1+1) .AND. &
-                     j2 <  SMat2 % Rows(Ind+1) ) THEN
-              
-              DMat % Cols(col) = SMat2 % Cols(j2)
-              Col = Col + 1
-              j2 = j2 + 1
-        
-           ELSE IF ( j2 < SMat2 % Rows(Ind+1) .AND. &
-              SMat2 % Cols(j2) < SMat1 % Cols(j1) ) THEN
-
-              DMat % Cols(col) = SMat2 % Cols(j2)
-              Col = Col + 1
-              j2 = j2 + 1
-
-           ELSE IF ( SMat1 % Cols(j1) == SMat2 % Cols(j2) ) THEN
+              CYCLE
+            ELSE IF ( SMat1 % Cols(j1) < SMat2 % Cols(j2) ) THEN
 
               DMat % Cols(col) = SMat1 % Cols(j1)
               Col = Col + 1
-              j1 = j1 + 1; j2 = j2 + 1
+              j1 = j1 + 1
+              CYCLE
+            ELSE IF (j2 >= SMat2 % Rows(Ind+1) ) THEN
               
-           END IF
+              DMat % Cols(col) = SMat1 % Cols(j1)
+              Col = Col + 1
+              j1 = j1 + 1
+              CYCLE
+            ELSE IF ( SMat1 % Cols(j1) < SMat2 % Cols(j2) ) THEN
+
+              DMat % Cols(col) = SMat1 % Cols(j1)
+              Col = Col + 1
+              j1 = j1 + 1
+              CYCLE
+            END IF
+          END IF
+          IF ( j2 <  SMat2 % Rows(Ind+1) ) THEN
+            IF ( j1 >= SMat1 % Rows(i1+1) ) THEN
+
+              DMat % Cols(col) = SMat2 % Cols(j2)
+              Col = Col + 1
+              j2 = j2 + 1
+              CYCLE
+            ELSE IF ( SMat2 % Cols(j2) < SMat1 % Cols(j1) ) THEN
+
+              DMat % Cols(col) = SMat2 % Cols(j2)
+              Col = Col + 1
+              j2 = j2 + 1
+              CYCLE
+            END IF
+          END IF
+          IF ( SMat1 % Cols(j1) == SMat2 % Cols(j2) ) THEN
+            
+            DMat % Cols(col) = SMat1 % Cols(j1)
+            Col = Col + 1
+            j1 = j1 + 1
+            j2 = j2 + 1
+            CYCLE
+          END IF
+
+          ! Should not happen
+          CALL Fatal('CombineCRSMatIndices','Internal error while merging matrix rows')
         END DO
 
         Done(Ind) = .TRUE.
-        i1 = i1 + 1; i2 = i2 + 1
+        i1 = i1 + 1
+        i2 = i2 + 1
      END IF
   END DO
   DMat % Rows(Row) = Col

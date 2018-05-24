@@ -32,7 +32,7 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Solver Input File = case.sif
-  Post File = case.vtu
+!  Post File = case.vtu
 End
 
 Constants
@@ -44,22 +44,22 @@ Constants
 End
 
 Body 1
-  Target Bodies(1) = 1
+  Target Bodies(2) = 1 2
   Name = "Body 1"
   Equation = 1
   Material = 1
-  Body Force = 1
+  Initial Condition = 1
 End
 
-Body 2
-  Target Bodies(1) = 2
-  Name = "Body 2"
-  Equation = 1
-  Material = 1
-  Body Force = 1
-End
 
-Solver 2
+Initial Condition 1
+  Name = "InitialField"
+  Temperature = Variable Coordinate 3
+    Real MATC "((2*tx/0.0025)-1)*50"
+End 
+
+
+Solver 1
   Equation = Linear elasticity
   Procedure = "StressSolve" "StressSolver"
   Variable = -dofs 3 Displacement
@@ -76,36 +76,12 @@ Solver 2
   Nonlinear System Relaxation Factor = 1
   Linear System Solver = Direct
   Linear System Direct Method = Umfpack
+
+  Exported Variable 1 = Temperature
 End
 
-Solver 1
-  Equation = Heat Equation
-  Procedure = "HeatSolve" "HeatSolver"
-  Variable = Temperature
-  Exec Solver = Always
-  Stabilize = True
-  Bubbles = False
-  Lumped Mass Matrix = False
-  Optimize Bandwidth = True
-  Steady State Convergence Tolerance = 1.0e-5
-  Nonlinear System Convergence Tolerance = 1.0e-7
-  Nonlinear System Max Iterations = 20
-  Nonlinear System Newton After Iterations = 3
-  Nonlinear System Newton After Tolerance = 1.0e-3
-  Nonlinear System Relaxation Factor = 1
-  Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStab
-  Linear System Max Iterations = 500
-  Linear System Convergence Tolerance = 1.0e-10
-  BiCGstabl polynomial degree = 2
-  Linear System Preconditioning = Diagonal
-  Linear System ILUT Tolerance = 1.0e-3
-  Linear System Abort Not Converged = False
-  Linear System Residual Output = 1
-  Linear System Precondition Recompute = 1
-End
 
-!Solver 3
+!Solver 2
 !Exec Solver = After Simulation
 !Equation = SaveLine
 !Procedure = "SaveData" "SaveLine"
@@ -114,8 +90,8 @@ End
 
 
 Equation 1
-  Name = "HeatElast"
-  Active Solvers(2) = 2 1
+  Name = "Elast"
+  Active Solvers(1) = 1
 End
 
 Material 1
@@ -127,10 +103,6 @@ Material 1
   Heat expansion Coefficient = 6.5e-6
 End
 
-Body Force 1
-  Name = "HeatLoad"
-  Temperature = Variable Coordinate 3; Real MATC "((2*tx/0.0025)-1)*50"
-End
 
 Boundary Condition 1
   Target Boundaries(2) = 6 9 
@@ -152,6 +124,6 @@ Boundary Condition 3
   Displacement 3 = 0
 End
 
-Solver 2 :: Reference Norm = 7.549444E-05
-Solver 2 :: Reference Norm Tolerance = 1.0E-5
+Solver 1 :: Reference Norm = 7.54633203E-05
+Solver 1 :: Reference Norm Tolerance = 1.0E-5
 

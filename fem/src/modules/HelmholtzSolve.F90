@@ -34,6 +34,27 @@
 ! *
 ! ****************************************************************************/
 
+SUBROUTINE HelmholtzSolver_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+
+  Params => GetSolverParams()
+  CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
+
+END SUBROUTINE HelmholtzSolver_init
+  
+  
+
 !------------------------------------------------------------------------------
 !> Solver for Helmholtz equation accounting also for variable density and 
 !> convection field. Also includes a built-in interface for coupling with harmonic
@@ -159,7 +180,6 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   n = GetElementNOFNodes()
   Simulation => GetSimulation()
   dim = CoordinateSystemDimension()     
-  Solver % Matrix % COMPLEX = .TRUE.
   GotFrequency = .FALSE.
 
   ! Check for flow or strcuture interface
@@ -209,7 +229,6 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
         AngularFrequency = SQRT( DispSol % EigenValues(NoEigen))
 	GotFrequency = .TRUE.
       END IF
-PRINT *,'dispdofs',dispdofs,dim
       IF( DispDofs < dim ) THEN
         CALL Fatal('HelmholtzSolver','Eigenmode displacement field should have at least 1*dim components')
       END IF
@@ -262,6 +281,8 @@ PRINT *,'dispdofs',dispdofs,dim
   totat = 0.0d0
   totst = 0.0d0
 
+  CALL DefaultStart()
+  
   DO iter=1,NonlinearIter
 !------------------------------------------------------------------------------
      at  = CPUTime()
@@ -340,9 +361,6 @@ PRINT *,'dispdofs',dispdofs,dim
 
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
-
-        ! Check that the dimension of element is suitable for fluxes
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
 
         BC => GetBC()
         IF ( ASSOCIATED( BC ) ) THEN
@@ -491,6 +509,8 @@ PRINT *,'dispdofs',dispdofs,dim
   END DO ! of nonlinear iteration
 !------------------------------------------------------------------------------
 
+  CALL DefaultFinish()
+  
 
 CONTAINS
 

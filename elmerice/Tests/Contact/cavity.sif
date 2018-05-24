@@ -51,7 +51,7 @@ Simulation
   Initialize Dirichlet Conditions = Logical False
   Output File = "$namerun".result"
   Post File = "$namerun".vtu"
-  max output level = 4
+  max output level = 3
 End
 
 !---------------------------------------------------
@@ -306,20 +306,15 @@ Solver 9
   Equation = SaveScalars
   Procedure = File "SaveData" "SaveScalars"
   Filename = "results.dat"
-  File Append = Logical True
 
-  Variable 1 = String "Time"
+  Show Norm = True
+  Show Norm Index = 1
 
-  Variable 2 = String "ViscousStress"
-  Operator 2 = String "int"
+   Variable 1 = "Stress Vector 2"
+   Operator 1 = "boundary min"
+   Operator 2 = "boundary max"
+   Operator 3 = "boundary mean"
 
-  Variable 3 = String "ViscousStress"
-  Operator 3 = String "max"
-
-  Variable 4 = String "ViscousStress"
-  Operator 4 = String "min" 
-
-  Operator 5 = String "cpu time"
 End
 
 !---------------------------------------------------
@@ -383,7 +378,7 @@ Boundary Condition 1
   Mesh Update 2 = Variable Zs Bottom
     Real Procedure "ElmerIceUSF" "ZsBottomMzsIni"
    
-  Save Line = Logical True 
+  Save Scalars = Logical True 
 End
 
 ! Periodic BC
@@ -419,8 +414,10 @@ Boundary Condition 4
   Target Boundaries = 4
 End
 
-Solver 8 :: Reference Norm = Real 5.755779E-02
-Solver 8 :: Reference Norm Tolerance = Real 1E-06
+Solver 6 :: Reference Norm = Real 7.0439455
+Solver 6 :: Reference Norm Tolerance = Real 1E-05
+
+Solver 9 :: Reference Norm = Real 0.1
+Solver 9 :: Reference Norm Tolerance = Real 1E-06
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=5.755779E-02,EPS=1E-06\n" );

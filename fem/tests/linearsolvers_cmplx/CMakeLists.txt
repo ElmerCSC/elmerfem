@@ -1,8 +1,8 @@
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( HelmholtzFEM.sif HelmholtzFEM.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO CircleInBox.mif MeshFiles DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(linearsolvers_cmplx)
+ADD_ELMER_TEST(linearsolvers_cmplx LABELS quick)

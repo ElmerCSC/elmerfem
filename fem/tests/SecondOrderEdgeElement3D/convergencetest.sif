@@ -14,7 +14,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 6
+  Max Output Level = 5
   Coordinate System = "Cartesian 3D"
   Simulation Type = Steady
   Output Intervals(1) = 1
@@ -80,6 +80,6 @@ Solver 1
 !  Linear System Save and Stop = Logical True
 End
 
-Solver 1 :: Reference Norm = Real 0.50505269E-01
+Solver 1 :: Reference Norm = Real 4.00615662E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-6
 

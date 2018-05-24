@@ -204,13 +204,13 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
            IF (SupportingPoints(NoVariables) > 99) THEN
               WRITE(Message,'(A,A,I6,A)') TRIM(Name),&
                    ' Number of supporting points: ', SupportingPoints(NoVariables), &
-                   ' exceeds maximum value of 99 - reseting to 99'
+                   ' exceeds maximum value of 99 - resetting to 99'
               SupportingPoints(NoVariables) = 99
               CALL WARN(SolverName, Message)
            ELSEIF (SupportingPoints(NoVariables) < 2) THEN
               WRITE(Message,'(A,A,I6,A)') TRIM(Name),&
                    ' Number of supporting points: ', SupportingPoints(NoVariables), &
-                   ' less than 2 - reseting to 2'
+                   ' less than 2 - resetting to 2'
               SupportingPoints(NoVariables) = 2
               CALL WARN(SolverName, Message)
            ELSE

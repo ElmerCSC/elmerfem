@@ -4,7 +4,7 @@ End
 
 Simulation
   Coordinate System = Cartesian 2D
-  Max Output Level = 3
+  Max Output Level = 5
 
   Simulation Type = Steady
   Steady State Max Iterations  = 500
@@ -145,6 +145,4 @@ Boundary Condition 3
   Noslip Wall BC = Logical True
 End
 
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=9.98368, EPS=1e-3\n" );

@@ -1,0 +1,159 @@
+$ mu_pm = 1.05
+$ mu0 = 4e-7*pi
+$ Jcurr = 1e3
+
+Header
+  Mesh DB "." "cylinders"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = steady state
+  Use Mesh Names = False
+End
+
+Material 1 ! Air
+  name = "air"
+  Relative Permittivity = 1
+  relative permeability = 1
+end
+
+Material 2 ! magnetic material
+  Name = "Iron"
+  Relative Permittivity = 1
+  relative permeability = 1000
+  Electric conductivity = real 3000
+End
+
+Material 3 ! slightly magnetic material
+  name = "PM"
+  relative permeability = $ mu_pm
+  relative permittivity = 1
+End
+
+body force 1 ! current
+  magnetization 3 = 1
+  magnetization 2 = 1
+end
+
+Body 1 ! air
+  name = "air"
+  target bodies(1) = 1
+  material = integer 1
+  Equation = 1
+  initial condition = 1
+end
+
+Body 2 ! iron
+  name = "iron"
+  target bodies(1) = 2
+  material = integer 2
+  Equation = 1
+  initial condition = 1
+end
+
+body 3 ! wire
+  name = "magnets"
+  target bodies(1) = 3
+  material = integer 3
+  Equation = 1
+  body force = 1
+end
+
+Boundary condition 1 ! ext
+  name = "ext"
+  target boundaries(5) = 3 4 5 7 11
+  A {e} = real 0
+End
+
+Boundary condition 2
+  name = "wire_a"
+  target boundaries(1) = 10 
+  electric current density = $ -Jcurr
+  A {e} = real 0
+end
+
+Boundary condition 3
+  name = "wire_b"
+  target boundaries(1) = 9
+  electric current density = $ Jcurr
+  A {e} = real 0
+end
+
+Solver 1 ! whitneyavsolver
+  Equation = "Mag"
+
+  Variable = "A"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Fix Input Current Density = true
+  Use Piola Transform = Logical true
+  quadratic approximation = logical false
+  use tree gauge = logical false
+
+  linear system use hypre = logical true
+  Newton-Raphson Iteration = logical false
+
+  Linear System Solver = iterative
+  Linear System Symmetric = true
+  Linear System Convergence Tolerance = 1.e-6
+  Linear System Max Iterations = 5000
+  Linear System Residual Output = 10
+  Linear System preconditioning = ams
+  Linear System Iterative Method = cg
+  Edge Basis = Logical True
+End
+
+Solver 2 ! MagnetoDynamicsCalcFields
+  Equation = ComputeB
+
+  Potential Variable="A"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Use Piola Transform = Logical true
+  quadratic approximation = logical false
+
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Magnetic Vector Potential = Logical True
+  !Calculate Nodal Forces = Logical True
+  Calculate Elemental Fields = Logical True
+  !Calculate Maxwell Stress = Logical True
+  Apply Mortar BCs = Logical false
+  !Optimize Bandwidth = False
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = bicgstab
+  Linear System Symmetric = True
+  Linear System Max Iterations = 100
+  Linear System Residual Output=10
+  Linear System Preconditioning = none
+  Linear System Convergence Tolerance = 1.0e-8
+End
+
+Solver 3
+!  Exec Solver = never
+  Procedure = "SaveData" "SaveScalars"
+  output directory = "."
+!  Filename = mgdyn_hypreams.dat
+End
+
+Solver 4
+  exec solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = mgdyn_hypreams
+  Output Directory = wires
+  Save Geometry IDs = Logical True
+  Vtu Format = Logical True
+  discontinuous bodies = true
+End
+
+Equation 1
+  active solvers(4) = 1 2 3 4
+End
+
+Solver 3:: Show Norm Index = 2
+Solver 3:: Reference Norm = 8.32659876E-06
+Solver 3:: Reference Norm Tolerance = 2e-4

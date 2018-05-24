@@ -1,7 +1,7 @@
 !   Compare the total derivative of the cost function computed as:
-!     (1) dJ=P.G  where P is a pertubation vector of the variable of interest
+!     (1) dJ=P.G  where P is a perturbation vector of the variable of interest
 !                     G is the gradient of the cost function computed by an inverse method
-!     (2) [J(V+hP)-J(V)]/h  : forward finite diffrence computation of the derivative
+!     (2) [J(V+hP)-J(V)]/h  : forward finite difference computation of the derivative
 !                             V is the variable of interest
 !                             h is the step size 
 !

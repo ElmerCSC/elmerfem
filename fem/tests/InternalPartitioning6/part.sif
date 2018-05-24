@@ -1,0 +1,115 @@
+! Test case for internal partitioning
+! Step 1) : hybrid partitioning with four sets being united
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "squares"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Max Output Partition = Integer 10
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Target Bodies(4) = 1 2 3 4
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Procedure = "PartitionMesh" "PartitionMeshSolver"
+  Equation = "Partition"
+  Variable = "Partition"
+
+!  No Matrix = Logical True
+!  Optimize Bandwidth = False
+  Boundary Partitioning Maximum Fraction = Real $1.0/6
+
+  Partition Mesh Extend Layers = Integer 5
+  Partition Mesh Merge Boundaries = Logical True
+
+
+  Partitioning Method = String "Directional"
+!  Partitioning Method = String "Uniform"
+
+!  Number Of Partitions = Integer 3
+  Partitioning Divisions(3) = Integer 3 3 1
+
+!  Output Directory = File squares
+End
+
+Solver 2
+!  Exec Solver = never
+
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "part" 
+
+  Vtu format = Logical True
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries(1) = 1 
+  Temperature = 0
+  Partition Set = Integer 1
+End
+
+Boundary Condition 2
+  Name = "Constraint2"
+  Target Boundaries(1) = 2 
+  Temperature = 0
+  Partition Set = Integer 2
+End
+
+Boundary Condition 3
+  Name = "Constraint3"
+  Target Boundaries(1) = 3
+  Temperature = 0
+  Partition Set = Integer 3
+End
+
+Boundary Condition 4
+  Name = "Constraint4"
+  Target Boundaries(1) = 4 
+  Temperature = 0
+  Partition Set = Integer 4
+End
+
+
+Solver 1 :: Reference Norm = 6.13446353

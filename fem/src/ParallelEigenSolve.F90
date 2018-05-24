@@ -143,7 +143,7 @@ INCLUDE "mpif.h"
 
 !
       Solution    = 0
-      ForceVector = 1
+      ForceVector = 0
       Residual    = 0
 
       DOFs = Solver % Variable % DOFs
@@ -394,6 +394,7 @@ INCLUDE "mpif.h"
                CASE DEFAULT
                  CALL Fatal('EigenSolve','Unknown linear system method: '//TRIM(Method))
                END SELECT
+               CALL ParallelInitSolve( A, x, b, Residual )
 
                A % rhs => SaveRhs
 
@@ -409,8 +410,8 @@ INCLUDE "mpif.h"
                x => Solution
                b => ForceVector
 
-               CALL PartitionVector( A, x, WORKD(IPNTR(2):IPNTR(2)+PN-1))
-               CALL PartitionVector( A, b, WORKD(IPNTR(1):IPNTR(1)+PN-1))
+               CALL PartitionVector(A, x, WORKD(IPNTR(2):IPNTR(2)+PN-1))
+               CALL PartitionVector(A, b, WORKD(IPNTR(1):IPNTR(1)+PN-1))
 
                ! Some strategies (such as 'block') may depend on that these are set properly
                ! to reflect the linear problem under study.
@@ -431,6 +432,7 @@ INCLUDE "mpif.h"
                CASE DEFAULT
                  CALL Fatal('EigenSolve','Unknown linear system method: '//TRIM(Method))
                END SELECT
+               CALL ParallelInitSolve( A, x, b, Residual )
 
                A % rhs => SaveRhs
 
@@ -509,11 +511,11 @@ INCLUDE "mpif.h"
 !        
       D = 0.0d0
       IF ( A % Symmetric ) THEN
-         CALL pDSEUPD ( MPI_COMM_WORLD, .TRUE., 'A', Choose, D, V, PN, SigmaR,  &
+         CALL pDSEUPD ( ELMER_COMM_WORLD, .TRUE., 'A', Choose, D, V, PN, SigmaR,  &
             BMAT, PN, Which, NEIG, TOL, RESID, NCV, V, PN, &
             IPARAM, IPNTR, WORKD, WORKL, lWORKL, IERR )
       ELSE
-         CALL pDNEUPD ( MPI_COMM_WORLD, .TRUE., 'A', Choose, D, D(1,2), &
+         CALL pDNEUPD ( ELMER_COMM_WORLD, .TRUE., 'A', Choose, D, D(1,2), &
             V, PN, SigmaR, SigmaI, WORKEV, BMAT, PN, &
             Which, NEIG, TOL, RESID, NCV, V, PN, &
             IPARAM, IPNTR, WORKD, WORKL, lWORKL, IERR )
@@ -574,7 +576,7 @@ INCLUDE "mpif.h"
       CALL Info( 'EigenSolve', 'Computed Eigen Values: ', Level=3 )
       CALL Info( 'EigenSolve', '--------------------------------', Level=3 )
 
-      ! Restore matrix values, if modifed when using shift:
+      ! Restore matrix values, if modified when using shift:
       ! ---------------------------------------------------
       IF ( SigmaR /= 0.0d0 ) THEN
          A % Values = A % Values + SigmaR * A % MassValues
@@ -1002,6 +1004,7 @@ INCLUDE "mpif.h"
                     x(i+1) = CMPLX(Solution(2*i+1),Solution(2*i+2),KIND=dp)
                   END DO
                END IF
+               CALL ParallelInitSolve( Matrix, Solution, ForceVector, Residual )
             ELSE
                x => WORKD(IPNTR(1):IPNTR(1)+pn-1)
                b => xx
@@ -1060,6 +1063,7 @@ INCLUDE "mpif.h"
                     x(i+1) = CMPLX(Solution(2*i+1),Solution(2*i+2),KIND=dp)
                   END DO
                END IF
+               CALL ParallelInitSolve( Matrix, Solution, ForceVector, Residual )
             END IF
          ELSE IF (ido == 2) THEN
 !
@@ -1193,7 +1197,7 @@ INCLUDE "mpif.h"
       CALL Info( 'EigenSolve', 'Computed Eigen Values: ', Level=3 )
       CALL Info( 'EigenSolve', '--------------------------------', Level=3 )
 
-      ! Restore matrix values, if modifed when using shift:
+      ! Restore matrix values, if modified when using shift:
       ! ---------------------------------------------------
       IF ( Sigma /= 0._dp ) THEN
         DO i=1,Matrix % NumberOfRows,2

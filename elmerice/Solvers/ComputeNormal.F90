@@ -86,7 +86,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp) :: Bu, Bv, Normal(3), NormalCond(4)
 
   LOGICAL :: CompAll = .TRUE., CompBC = .TRUE., Found, Parallel, &
-       FirstTime = .TRUE.,UnFoundFatal
+       FirstTime = .TRUE.,UnFoundFatal=.TRUE.
   LOGICAL, ALLOCATABLE :: Hit(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'ComputeNormalSolver'
@@ -104,6 +104,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   NormalSolution => VariableGet( Solver % Mesh % Variables, 'Normal Vector',UnFoundFatal=UnFoundFatal)
   Nvector => NormalSolution % Values
   Permutation => NormalSolution % Perm
+  NVector = 0.0_dp
 
   CALL INFO(SolverName, 'Computing Normal Vector for Nodes', level=3)
 
@@ -231,10 +232,10 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
         m = NeighbourPerm(i)
 
         !Send count
-        CALL MPI_BSEND(PassCount(m), 1, MPI_INTEGER, i-1, 200, MPI_COMM_WORLD, ierr)
+        CALL MPI_BSEND(PassCount(m), 1, MPI_INTEGER, i-1, 200, ELMER_COMM_WORLD, ierr)
         !Send (global) node numbers
         CALL MPI_BSEND(Mesh % ParallelInfo % GlobalDOFs(PassIndices(m,1:PassCount(m))),&
-             PassCount(m), MPI_INTEGER, i-1, 201, MPI_COMM_WORLD, ierr)
+             PassCount(m), MPI_INTEGER, i-1, 201, ELMER_COMM_WORLD, ierr)
 
         !Construct normal vector array to pass
         ALLOCATE(PassNVector(PassCount(m) * DIM))
@@ -245,7 +246,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
 
         !Send normal vectors
         CALL MPI_BSEND(PassNVector, PassCount(m)*DIM, MPI_DOUBLE_PRECISION, &
-             i-1, 202, MPI_COMM_WORLD, ierr)
+             i-1, 202, ELMER_COMM_WORLD, ierr)
 
         DEALLOCATE(PassNVector)
      END DO
@@ -257,16 +258,16 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
         m = NeighbourPerm(i)
 
         !Receive count
-        CALL MPI_RECV(RecvCount(m), 1, MPI_INTEGER, i-1, 200, MPI_COMM_WORLD, status, ierr)
+        CALL MPI_RECV(RecvCount(m), 1, MPI_INTEGER, i-1, 200, ELMER_COMM_WORLD, status, ierr)
 
         !Receive (global) node numbers
         CALL MPI_RECV(RecvIndices(m,1:RecvCount(m)), RecvCount(m), MPI_INTEGER, &
-             i-1, 201, MPI_COMM_WORLD, status, ierr)
+             i-1, 201, ELMER_COMM_WORLD, status, ierr)
 
         !Receive normal vectors
         ALLOCATE(RecvNVector(RecvCount(m)*DIM))
         CALL MPI_RECV(RecvNVector, RecvCount(m)*DIM, MPI_DOUBLE_PRECISION, &
-             i-1, 202, MPI_COMM_WORLD, status, ierr)
+             i-1, 202, ELMER_COMM_WORLD, status, ierr)
         
         DO j=1, RecvCount(m)
            IF(.NOT. Hit(LocalPerm(RecvIndices(m,j)))) CYCLE !passed a halo node

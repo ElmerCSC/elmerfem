@@ -1,0 +1,165 @@
+! A simple testcase for testing mgdyn2D feature: 2d stranded homogenization model.
+! Author: Eelis Takala, Trafotek Oy
+! Original date: December 2015
+! eelis.takala@trafotek.fi
+
+Check Keywords "Warn"
+INCLUDE sif/2077-circuits.definitions
+INCLUDE 2077/mesh.names
+Header 1
+   Mesh DB "." "2077"
+End
+Simulation 1
+   Max Output Level = 3
+!   Coordinate System = Axi symmetric
+   Coordinate System = Cartesian
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   Angular Frequency = 3140.159265359
+End
+Solver 1
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+Solver 2
+   Exec Solver = Always
+   Equation = "Mag"
+   Variable = A[A re:1 A im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System Complex = Logical True
+   Linear System preconditioning = Circuit
+   Linear System ILU Order = Integer 2
+   Linear System Convergence Tolerance = 1.e-7
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 1000
+   Linear System Abort not Converged = False
+   Linear System ILUT Tolerance=1e-8
+   BicgStabL Polynomial Degree = 4
+   Steady State Convergence Tolerance = 1e-06
+End
+Solver 3
+   Equation = CompB
+   Variable = -nooutput temp
+   Exported Variable 1 = B[B re:2 B im:2]
+   Calculate Joule Heating = Logical True
+   Target Variable="A"
+   Procedure = "MagnetoDynamics2D" "bSolver"
+   Discontinuous Galerkin = Logical True
+   Calculate Current Density = Logical True
+   Linear System Solver = Iterative
+!   Linear System Solver = Direct
+   Linear System Iterative Method = BiCGStabL
+!   Linear System Iterative Method =CG
+   Linear System Symmetric = True
+   Linear System Max Iterations = 100
+   Linear System Preconditioning = ILU0
+   Linear System Convergence Tolerance = 1e-6
+   Linear System Residual Output = 1000
+End
+Solver 4
+!   Exec Solver = After timestep
+   Exec Solver = Never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 2077-results_1e2
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+Solver 5
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+Solver 6
+!   Exec Solver = Always
+   Exec Solver = Never
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = 2077/dat/2077.dat
+End
+Equation 1
+   Active Solvers(2) = 2 3
+End
+Equation 2
+   Active Solvers(3) = 1 2 3
+End
+Material 1
+   Name = iron
+   Electric Conductivity = 0
+   Relative Permeability = 2000
+   Relative Permittivity = 1e100
+End
+Material 2
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+   Relative Permittivity = 1
+End
+Material 3
+   Name = copper
+   Relative Permeability = 1
+   Relative Permittivity = 1e100
+   Electric Conductivity = 1e7
+End
+Body 1
+   Name = Core
+   Target Bodies(2) = 1 2
+   Equation = 1
+   Material = 1
+End
+Body 2
+   Name = air
+   Target Bodies(2) = 5 3
+   Equation = 1
+   Material = 2
+End
+Body 3
+   Name = c 1
+   Target Bodies = 4
+   Equation = 2
+   Material = 3
+End
+Component 1
+   Name = String c 1
+   Body = Integer 3
+   Coil Type = String stranded
+   Number of Turns = Real 144
+   Electrode Area = Real 0.000192024
+   Insulator Portion = Real 0
+   Winding Temperature = Real 20
+   Homogenization Model = Logical True
+   $ mu0 = 4e-7*pi
+   Nu 11 = Real $ 1/mu0
+   Nu 11 im = Real $ 1/(mu0)
+   Nu 22 = Real $ 1/mu0 
+   Nu 22 im = Real $ 1/(mu0)
+   Sigma 33 = Real 1e7
+!   Sigma 33 im = Real 1e7
+End
+Body Force 1
+   Name = "Circuit"
+   S Re = Real 1.41421356237
+   S Im = Real 0 
+End
+Boundary Condition 1
+   Target Boundaries(2) = $ center0 center1
+   A re = Real 0
+   A im = Real 0
+End
+Boundary Condition 2
+   Target Boundaries(5) = 5 9 19 6 8
+   Infinity BC = Logical True
+End
+
+Solver 2 :: Reference Norm = Real 1.22351164E-04
+Solver 2 :: Reference Norm Tolerance = Real 1E-03
+Solver 3 :: Reference Norm = Real 8.36768008E-09
+Solver 3 :: Reference Norm Tolerance = Real 1E-03

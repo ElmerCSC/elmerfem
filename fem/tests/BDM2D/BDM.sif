@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 30
+  Max Output Level = 5
   Coordinate System = "Cartesian 2D"
   Simulation Type = Steady
   Output Intervals(1) = 1
@@ -61,6 +61,9 @@ Solver 1
   Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 200
   Linear System Convergence Tolerance = 1e-6
+
+  Linear System Min Iterations = Integer 150
+
 End
 
 !---------------------------------------------------------------
@@ -70,6 +73,4 @@ End
 
 Solver 1 :: Reference Norm = Real 0.26619939
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.26619939,EPS=1.0E-5\n" );

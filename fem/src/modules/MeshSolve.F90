@@ -94,7 +94,7 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: i,j,k,n,nd,nb,t,STDOFs,LocalNodes,istat
+  INTEGER :: i,j,k,l,m,n,nd,nb,t,DOFs,STDOFs,LocalNodes,istat
 
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t),POINTER :: Material, BC
@@ -106,16 +106,19 @@ END SUBROUTINE MeshSolver_Init
   REAL(KIND=dp), POINTER :: MeshUpdate(:),Displacement(:), &
        MeshVelocity(:)
 
-  INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:)
+  INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:), MeshVeloPerm(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
-            GotForceBC, Found, ComputeMeshVelocity, &
-            SkipFirstMeshVelocity = .FALSE., FirstTime = .TRUE.
+            GotForceBC, Found, ComputeMeshVelocity, DisplaceFirst, &
+            SkipFirstMeshVelocity = .FALSE., FirstTime = .TRUE., &
+            SkipDisplace 
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
        Alpha(:,:), Beta(:)
 
-  SAVE STIFF, LOAD, FORCE, MeshVelocity, AllocationsDone, &
+  INTEGER :: dim
+  
+  SAVE STIFF, LOAD, FORCE, MeshVelocity, MeshVeloPerm, AllocationsDone, &
        ElasticModulus, PoissonRatio, TPerm, Alpha, Beta, &
        SkipFirstMeshVelocity, FirstTime
 
@@ -138,6 +141,7 @@ END SUBROUTINE MeshSolver_Init
     MeshSol      => VariableGet( Solver % Mesh % Variables, 'Mesh Velocity' )
     IF( ASSOCIATED( MeshSol ) ) THEN
       MeshVelocity => MeshSol % Values
+      MeshVeloPerm => MeshSol % Perm
     END IF
   END IF
 
@@ -149,6 +153,15 @@ END SUBROUTINE MeshSolver_Init
   LocalNodes = COUNT( MeshPerm > 0 )
   IF ( LocalNodes <= 0 ) RETURN
 
+  dim = CoordinateSystemDimension()
+  IF( STDOFs < dim ) THEN
+    CALL Warn('MeshSolve','Displacement dofs smaller than dim, assuming reduced dimension!')
+
+    ! We can solve the equation also on a DIM-1 dimensional boundary of DIM dimensional object
+    dim = STDOFs
+  END IF
+    
+  
 !------------------------------------------------------------------------------
 
   StressSol => VariableGet( Solver % Mesh % Variables, 'Displacement' )
@@ -156,8 +169,12 @@ END SUBROUTINE MeshSolver_Init
     NULLIFY( StressSol )
   END IF
 
-
-  IF ( ASSOCIATED( StressSol ) )  THEN
+  DisplaceFirst = ListGetLogical( Solver % Values,'First Time Non-Zero', Found)
+  SkipDisplace = ListGetLogical( Solver % Values,'Skip Displace Mesh',Found )
+  
+  IF( SkipDisplace ) THEN
+    CALL Info('MeshSolver','Skipping the displacement of mesh!',Level=5)
+  ELSE IF ( ASSOCIATED( StressSol ) )  THEN
      StressPerm   => StressSol % Perm
      STDOFs       =  StressSol % DOFs
      Displacement => StressSol % Values
@@ -176,12 +193,12 @@ END SUBROUTINE MeshSolver_Init
         IF ( StressPerm(i) /= 0 .AND. MeshPerm(i) /= 0 ) TPerm(i) = 0
      END DO
 
-     IF ( AllocationsDone ) THEN
+     IF ( AllocationsDone .OR. DisplaceFirst ) THEN
         CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, TPerm,   STDOFs )
      END IF
      CALL DisplaceMesh( Solver % Mesh, Displacement,  -1, StressPerm, STDOFs )
   ELSE
-     IF ( AllocationsDone ) THEN
+     IF ( AllocationsDone .OR. DisplaceFirst ) THEN
         CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, MeshPerm, STDOFs )
      END IF
   END IF
@@ -231,6 +248,8 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
   CALL DefaultInitialize()
 !------------------------------------------------------------------------------
+
+  
   DO t=1,Solver % NumberOfActiveElements
 
      IF ( RealTime() - at0 > 1.0 ) THEN
@@ -287,9 +306,6 @@ END SUBROUTINE MeshSolver_Init
 
     Element => GetBoundaryElement(t)
     IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-
-    ! Check that the dimension of element is suitable for fluxes
-    IF( .NOT. PossibleFluxElement(Element) ) CYCLE
 
     BC => GetBC()
     IF ( .NOT. ASSOCIATED(BC) ) CYCLE
@@ -379,29 +395,46 @@ END SUBROUTINE MeshSolver_Init
         k = 1
       END IF
       
-      SELECT CASE(k)
-      CASE(0)
-        MeshVelocity = 0._dp
-      CASE(1)
-        MeshVelocity = ( MeshUpdate - Solver % Variable % PrevValues(:,1) ) / dt
-      CASE(2)
-        MeshVelocity = ( &
-            MeshUpdate - (4.0d0/3.0d0)*Solver % Variable % PrevValues(:,1) &
-            + (1.0d0/3.0d0)*Solver % Variable % PrevValues(:,2) ) / dt
-      CASE DEFAULT
-        MeshVelocity = ( &
-            MeshUpdate - (18.0d0/11.0d0)*Solver % Variable % PrevValues(:,1) &
-            + ( 9.0d0/11.0d0)*Solver % Variable % PrevValues(:,2) &
-            - ( 2.0d0/11.0d0)*Solver % Variable % PrevValues(:,3) ) / dt
-      END SELECT
+      DOFs = MeshSol % DOFs
 
+      DO i=1,Solver % Mesh % NumberOfNodes
+         IF(MeshVeloPerm(i) <= 0) CYCLE
+
+         j = MeshPerm(i)*DOFs
+         l = MeshVeloPerm(i)*DOFs
+
+         SELECT CASE(k)
+         CASE(0)
+            MeshVelocity = 0._dp
+         CASE(1)
+            DO m=0,DOFs-1
+               MeshVelocity(l-m) = ( MeshUpdate(j-m) - &
+                    Solver % Variable % PrevValues(j-m,1) ) / dt
+            END DO
+         CASE(2)
+            DO m=0,DOFs-1
+               MeshVelocity(l-m) = ( &
+                    MeshUpdate(j-m) - (4.0d0/3.0d0)*Solver % Variable % PrevValues(j-m,1) &
+                    + (1.0d0/3.0d0)*Solver % Variable % PrevValues(j-m,2) ) / dt
+            END DO
+         CASE DEFAULT
+            DO m=0,DOFs-1
+               MeshVelocity(l-m) = ( &
+                    MeshUpdate(j-m) - (18.0d0/11.0d0)*Solver % Variable % PrevValues(j-m,1) &
+                    + ( 9.0d0/11.0d0)*Solver % Variable % PrevValues(j-m,2) &
+                    - ( 2.0d0/11.0d0)*Solver % Variable % PrevValues(j-m,3) ) / dt
+            END DO
+         END SELECT
+      END DO
     ELSE IF( ASSOCIATED( MeshVelocity ) .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN 
       MeshVelocity = 0.0d0
     END IF
   END IF
 
 
-  IF ( ASSOCIATED( StressSol ) ) THEN
+  IF( SkipDisplace ) THEN
+    CONTINUE
+  ELSE IF ( ASSOCIATED( StressSol ) ) THEN
     CALL DisplaceMesh( Solver % Mesh, MeshUpdate,   1, TPerm,      STDOFs )
     CALL DisplaceMesh( Solver % Mesh, Displacement, 1, StressPerm, STDOFs, .FALSE.)
   ELSE
@@ -433,7 +466,7 @@ END SUBROUTINE MeshSolver_Init
 
      REAL(KIND=dp), POINTER :: A(:,:)
      REAL(KIND=dp) :: s,u,v,w
-     INTEGER :: i,j,k,p,q,t,dim
+     INTEGER :: i,j,k,p,q,t
   
      LOGICAL :: stat
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -443,8 +476,7 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 
      CALL GetElementNodes( Nodes )
-     dim = CoordinateSystemDimension()
-
+     
      IF ( PlaneStress ) THEN
         NodalLame1(1:n) = NodalYoung(1,1,1:n) * NodalPoisson(1:n) / &
                ((1.0d0 - NodalPoisson(1:n)**2))
@@ -536,7 +568,7 @@ END SUBROUTINE MeshSolver_Init
    REAL(KIND=dp) :: u,v,w,s
    REAL(KIND=dp) :: Alpha(3),Beta,Normal(3),LoadAtIP(3)
 
-   INTEGER :: i,t,q,p,dim
+   INTEGER :: i,t,q,p
 
    LOGICAL :: stat
 
@@ -546,7 +578,6 @@ END SUBROUTINE MeshSolver_Init
    SAVE Nodes
 !------------------------------------------------------------------------------
 
-   dim = Element % TYPE % DIMENSION + 1
    CALL GetElementNodes( Nodes )
 
    FORCE = 0.0D0

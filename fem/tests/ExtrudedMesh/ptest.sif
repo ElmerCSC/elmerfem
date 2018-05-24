@@ -8,15 +8,15 @@ End
 
 Simulation
 
-  Extruded Mesh Levels=Integer 4
+  Extruded Mesh Layers = 3
 
-  Max Output Level = 9
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-! Post File   = "ptest.ep"
-! Output File = "ptest.dat"
+
+  Post File   = "case.vtu"
 End
 
 Body 1
@@ -45,6 +45,3 @@ Boundary Condition 1
 End
 
 Solver 1 :: Reference Norm = Real 0.37817080E-01
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.37817080E-01\n" );

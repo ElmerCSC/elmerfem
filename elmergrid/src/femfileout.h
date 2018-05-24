@@ -8,4 +8,4 @@ int SaveFidapOutput(struct FemType *data,char *prefix,int info,
 int SaveMeshGmsh(struct FemType *data,struct BoundaryType *bound,
 		 int nobound,char *prefix,int decimals,int info);
 int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
-		 int nobound,char *prefix,int decimals,int info);
+		 int nobound,char *prefix,int dummyzero,int info);

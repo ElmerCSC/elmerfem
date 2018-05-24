@@ -1,0 +1,157 @@
+! A benchmark problem where a straight cylindrical shell is subject to a 
+! pinching force and has rigid end diaphragms allowing axial slip. The reference
+! results can be found in Sze KY, Liu XH, Lo SH. Popular benchmark problems for 
+! geometric nonlinear analysis of shells. Finite Elements in Analysis and 
+! Design 2004, 40(11):1551-1569.
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "Mesh"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+!  Simulation Type = Scanning
+  Timestep Sizes = 1
+  Timestep Intervals = 1
+!  Timestep Intervals = 35
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = "pointload.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+ Poisson Ratio = Real 0.3
+ Youngs Modulus = Real 3.0e+4
+ Shell Thickness = Real 1.0e-2
+End
+
+Body Force 1 
+  Normal Pressure = Real 0.0
+End
+
+Equation 1 :: Active Solvers(1) = 1
+
+! -------------------------------------------------------------------------
+! Note that there is no surface tractions applied and we adjust the stopping
+! criterion for the linear solver (cf. Linear System Normwise Backward Error)
+! so that the smallness of the norm of the RHS vector does not cause troubles 
+! in getting the convergence.
+!---------------------------------------------------------------------------
+Solver 1
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+  Large Deflection = True
+  Displace Mesh = True
+  Nonlinear System Max Iterations = 40
+  Nonlinear System Convergence Tolerance = 1e-7
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Normwise Backward Error = Logical True
+  Linear System Convergence Tolerance = 1e-9
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 100
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+End
+
+! -------------------------------------------------------------------------
+! The following can be used to save the deflection at the points considered 
+! in the paper:
+!----------------
+Solver 2
+  Equation = "Save Scalars"
+  Exec Solver = After Timestep
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = pointwise.dat
+  Variable 1 = U
+  Save Points(2) = 1 65
+End
+
+! ----------------------------------------------------
+! BCs are defined with respect the global XYZ system:
+! ----------------------------------------------------
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  U 2 = Real 0
+  DNU 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  U 3 = Real 0
+  DNU 3 = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 4
+  U 1 = Real 0
+  DNU 1 = Real 0
+End
+
+Boundary Condition 4
+  Target Nodes(1) = 65
+  U 1 Load = Variable Time
+   Real 
+    1.0 -4.05e-3
+    2.0 -4.66e-3
+    3.0 -5.00e-3
+    4.0 -5.75e-3
+    5.0 -6.61e-3
+    6.0 -7.60e-3
+    7.0 -8.75e-3
+    8.0 -1.00e-2
+    9.0 -1.15e-2
+    10.0 -1.32e-2
+    11.0 -1.52e-2
+    12.0 -1.74e-2
+    13.0 -2.01e-2
+    14.0 -2.31e-2
+    15.0 -2.66e-2
+    16.0 -3.06e-2
+    17.0 -3.52e-2
+    18.0 -4.05e-2
+    19.0 -4.66e-2
+    20.0 -5.00e-2
+    21.0 -5.75e-2
+    22.0 -6.61e-2
+    23.0 -7.60e-2
+    24.0 -8.75e-2
+    25.0 -1.00e-1
+    26.0 -1.15e-1
+    27.0 -1.32e-1
+    28.0 -1.52e-1
+    29.0 -1.74e-1
+    30.0 -2.01e-1
+    31.0 -2.15e-1
+    32.0 -2.32e-1
+    33.0 -2.52e-1
+    34.0 -2.74e-1
+    35.0 -3.00e-1
+  End
+End
+
+! ----------------------------------------------------
+! The end diaphragm allowing axial slip:
+! ----------------------------------------------------
+Boundary Condition 5
+  Target Boundaries(1) = 3
+  U 1 = Real 0
+  U 3 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 3.99380679E-03
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

@@ -1,0 +1,53 @@
+##  Old makefile to compile the solver Scattered2DDataInterpolator   ##
+# ------------------------------------------------------------------- #
+#
+##### This solver require external libraries:
+        #####   netcdf
+        #####   csa: http://code.google.com/p/csa-c/
+        #####   nn: http://code.google.com/p/nn-c/
+####### These libraries must be compiled by the user and this Makefile edited/updated
+
+#To compile the Scattered2DDataInterpolator Solver
+#       1) Edit/update the Makefile according to your installation (Require NETCDF,NN, and CSA librairies)
+#       2) make
+#       3) make install
+
+
+####### EDIT the floowing flags according to your installation ###########
+###### C compilert and FLAG
+CC=mpicc
+CCFLAG=-fPIC
+
+# PATH to the HOME directory of NN and CSA header files and libraries
+NN_HOME=/PATH_TO/nn
+CS_HOME=/PATH_TO/csa
+NNLIB=$(NN_HOME)/libnn.a
+CSLIB=$(CS_HOME)/libcsa.a
+
+# NETCDF INCLUDE and LIBS Flags
+NETCDFHOME="/PATH_TO_NETCDF/build"
+NETCDFINC="-I$(NETCDFHOME)/include"
+NETCDFLIBS="-L$(NETCDFHOME)/lib -lnetcdff -lnetcdf"
+
+
+##########################################################################
+ELMERICE_HOME ?= $(ELMER_HOME)/share/elmersolver
+##############
+
+all: Scattered2DDataInterpolator
+
+install: Scattered2DDataInterpolator
+        cp -f Scattered2DDataInterpolator $(ELMERICE_HOME)/lib/.
+
+Scattered2DDataInterpolator: Scattered2DDataInterpolator.F90 csa_interpolate_points.o Scattered2D_FInterface.o
+        elmerf90 $(NETCDFINC) $^ $(NNLIB) $(CSLIB) -o $@ $(NETCDFLIBS)
+
+csa_interpolate_points.o : csa_interpolate_points.c
+        $(CC) $(CCFLAG) -I$(CS_HOME) -c $^ -o $@
+
+Scattered2D_FInterface.o : Scattered2D_FInterface.F90
+        elmerf90 -c $< -o $@
+
+clean:
+        rm -f Scattered2DDataInterpolator
+        rm -f *.o   

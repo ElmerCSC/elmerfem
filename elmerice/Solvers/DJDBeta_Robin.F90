@@ -63,7 +63,7 @@ SUBROUTINE DJDBeta_Robin( Model,Solver,dt,TransientSimulation )
   TYPE(GaussIntegrationPoints_t) :: IntegStuff
   REAL(KIND=dp), POINTER ::  VariableValues(:),VelocityN(:),VelocityD(:),BetaValues(:)
   INTEGER, POINTER :: Permutation(:), VeloNPerm(:),VeloDPerm(:),BetaPerm(:),NodeIndexes(:)
-  Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal
+  Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal=.TRUE.
   integer :: i,j,t,n,NMAX,NActiveNodes,DIM
   real(kind=dp),allocatable :: VisitedNode(:),db(:),Basis(:),dBasisdx(:,:)
   real(kind=dp),allocatable :: NodeDJ(:)
@@ -154,6 +154,7 @@ SUBROUTINE DJDBeta_Robin( Model,Solver,dt,TransientSimulation )
         PointerToVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
         VariableValues => PointerToVariable % Values
         Permutation => PointerToVariable % Perm
+        VariableValues=0._dp
 
         BetaVariable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
         BetaValues => BetaVariable % Values

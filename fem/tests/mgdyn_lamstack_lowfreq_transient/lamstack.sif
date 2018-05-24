@@ -12,7 +12,7 @@ $ periods = 0.5
 $ tsize = periods/(f*intervals)
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Simulation Type = Transient
@@ -192,9 +192,7 @@ End
 
 Solver 2 :: Reference Norm = Real 75.5195
 Solver 2 :: Reference Norm Tolerance = Real 1e-3
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=75.5195,EPS=1e-3\n" );
 
 
 

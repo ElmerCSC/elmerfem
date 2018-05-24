@@ -28,7 +28,7 @@ Simulation
   Binary Output = Logical True
 
   Output Version Numbers = Logical True
-  Max Output Level = 32
+  Max Output Level = 5
 End
 
 
@@ -170,6 +170,4 @@ Boundary Condition 4
 End
 
 Solver 3 :: Reference Norm = Real 0.16145013E-01
-$ fprintf( stderr, "TEST CASE 1\n" );
 RUN
-$ fprintf( stderr, "END TEST CASE 1, Target NRM=0.16145013E-01\n");

@@ -1,0 +1,178 @@
+!------------------------------------------------------------------
+!
+! 3d patch test
+!
+! Jukka Aho / 31.3.2015
+! Peter Råback / 13.9.2016 (added mesh.names)
+!
+! Bodies:
+! 55 = lower block
+! 56 = upper block
+!
+! Surfaces:
+! 57 = bottom surface of lower block
+! 58 = top surface of lower block
+! 59 = bottom surface of upper block
+! 60 = top surface of upper block
+! 61 = symmetry y-z
+! 62 = symmetry x-z
+!
+! pressure in z direction
+!
+!------------------------------------------------------------------
+
+echo off
+numbering off
+
+Header
+  CHECK KEYWORDS warn
+  Mesh DB "." "cubes"
+  Include Path ""
+  Results Directory ""
+End
+
+$fileid="c"
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = case_$fileid$.vtu
+  Save Geometry Ids = Logical True
+
+! Increase mesh density by factor 2 in every direction
+! as the initial mesh is rather coarse
+  Mesh Levels = 2
+
+! The ElasticSolver does not really like the Dirichlet conditions at the start 
+! of the nonlinear iteration. 
+  Initialize Dirichlet Conditions = False
+
+  Use Mesh Names = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+End
+
+Equation 1
+  Name = "Deformation"
+  Active Solvers(1) = 1
+End
+
+Body 1
+  Name = "lower_block"
+!  Target Bodies(1) = 55
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "upper_block"
+!  Target Bodies(1) = 56
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Youngs modulus = 90.0
+  Density = 10.0
+  Poisson ratio = 0.25
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+!  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement
+
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = GCR 
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 100
+  Linear System Max Iterations = 5000
+  BiCGStabl Polynomial Degree = 4
+  
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Mode = True
+
+! Enforce contact computation
+  Apply Contact BCs = Logical True
+!  Save Contact = Logical True
+
+! Restore the linear solution
+! Elasticity Solver Linear = Logical True
+
+  Calculate Stresses = Logical True
+
+  Displace Mesh = Logical True
+  Nonlinear System Consistent Norm = True
+End
+
+Solver 2
+  Exec Solver = never
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = f_$fileid$.dat
+End
+
+Boundary Condition 
+  Name = "lower_block_bot"
+!  Target Boundaries(1) = 57
+  Displacement 3 = Real 0.0
+End
+
+Boundary Condition 
+  Name = "lower_block_top"
+
+  Mortar BC = Integer 3
+
+! Create a projector by choosing a plane where to integrate
+  Plane Projector = Logical True
+
+! Use weak projector (mortar method)
+  Galerkin Projector = Logical True
+  Normal-Tangential Displacement = Logical True
+  Mass Consistant Normals = Logical True
+
+! Type of contact 
+  Tie Contact = Logical True
+End
+
+Boundary Condition 
+  Name = "upper_block_bot"
+!  Target Boundaries(1) = 59
+End
+
+Boundary Condition 
+  Name = "upper_block_top"
+!  Target Boundaries(1) = 60
+  Normal Surface Traction = -1.0
+End
+
+Boundary Condition 
+  Name = "symmetry_yz"
+!  Target Boundaries(1) = 61
+  Displacement 1 = 0.0
+End
+
+Boundary Condition 
+  Name = "symmetry_xz"
+!  Target Boundaries(1) = 62
+  Displacement 2 = 0.0
+End
+
+
+Solver 1 :: Reference Norm = 6.693448E-03
+Solver 1 :: Reference Norm Tolerance = 1.0e-6

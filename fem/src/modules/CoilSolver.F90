@@ -67,7 +67,7 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params 
   INTEGER :: dim
-  LOGICAL :: Found  
+  LOGICAL :: Found, CalcCurr
 
   dim = CoordinateSystemDimension()
   Params => GetSolverParams()
@@ -75,11 +75,15 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
   IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
     CALL ListAddString( Params,'Variable','-nooutput CoilTmp')
   END IF
+
   CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),&
       'CoilPot')
-  CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),&
-      'CoilFix')
 
+  IF( GetLogical( Params,'Coil Conductivity Fix', Found ) ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),&
+        'CoilFix')
+  END IF
+    
   IF( GetLogical( Params,'Coil Closed', Found ) ) THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),&
         'CoilPotB')
@@ -102,10 +106,14 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
         'CoilIndex')
   END IF
 
-  CALL ListAddString( Params,&
-       NextFreeKeyword('Exported Variable',Params),&
-       'CoilCurrent[CoilCurrent:'//TRIM(I2S(dim))//']')
-
+  CalcCurr = GetLogical( Params,'Calculate Coil Current',Found )
+  IF( .NOT. Found ) CalcCurr = .TRUE.
+  IF( CalcCurr ) THEN
+    CALL ListAddString( Params,&
+        NextFreeKeyword('Exported Variable',Params),&
+        'CoilCurrent[CoilCurrent:'//TRIM(I2S(dim))//']')
+  END IF
+    
 ! Loads are needed to compute the induced currents in a numerically optimal way
   CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
 
@@ -142,7 +150,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: CoilCrossSection,InitialCurrent, Coeff, val, x0
   REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
-      NormalizeCurrent, FitCoil, SelectNodes
+      NormalizeCurrent, FitCoil, SelectNodes, CalcCurr, NarrowInterface
   LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:)
   REAL(KIND=dp) :: CoilCenter(3), CoilNormal(3), CoilTangent1(3), CoilTangent2(3), &
       MinCurr(3),MaxCurr(3),TmpCurr(3)
@@ -195,23 +203,21 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     CoilParts = 1
   END IF
 
+  NarrowInterface = GetLogical( Params,'Narrow Interface',Found )
+  
+  CalcCurr = GetLogical( Params,'Calculate Coil Current',Found )
+  IF( .NOT. Found ) CalcCurr = .TRUE.
+
   NormalizeCurrent = ListGetLogical( Params,'Normalize Coil Current',Found ) 
 
-  MaxNonlinIter = GetInteger( Params,'Nonlinear System Max Iterations',Found )
-  IF(.NOT. Found ) THEN
-    IF( FixConductivity ) THEN
-      IF( CoilAnisotropic ) THEN
-        MaxNonlinIter = 3
-      ELSE
-        MaxNonlinIter = 2
-      END IF
+  IF( FixConductivity ) THEN
+    IF( CoilAnisotropic ) THEN
+      MaxNonlinIter = 3
     ELSE
-      MaxNonlinIter = 1
+      MaxNonlinIter = 2
     END IF
-  END IF
-
-  IF( MaxNonlinIter > 1 .AND. .NOT. FixConductivity ) THEN
-    CALL Info('CoilSolver','No conductivity fixing, setting nonlinear iterations to one!',Level=6)
+  ELSE
+    MaxNonlinIter = 1
   END IF
 
   PotVarA => VariableGet( Mesh % Variables,'CoilPot' )
@@ -235,11 +241,14 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-  FixVar => VariableGet( Mesh % Variables,'CoilFix' )
-  IF( .NOT. ASSOCIATED( FixVar ) ) THEN
-    CALL Fatal('CoilSolver','CoilFix not associated!')
+  IF( FixConductivity ) THEN
+    FixVar => VariableGet( Mesh % Variables,'CoilFix' )
+    IF( .NOT. ASSOCIATED( FixVar ) ) THEN
+      CALL Fatal('CoilSolver','CoilFix not associated!')
+    END IF
+    FixVar % Values = 1.0_dp
   END IF
-
+    
   ! Get the loads
   LoadVar => VariableGet( Mesh % Variables,&
       TRIM(SolVar % Name)//' Loads' )
@@ -266,7 +275,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       IF(.NOT. ListCheckPresent( CoilList,'Coil Type' ) ) CYCLE      
       TargetBodies => ListGetIntegerArray( CoilList,'Master Bodies',Found )
       IF( .NOT. Found ) TargetBodies => ListGetIntegerArray( CoilList,'Body',Found )
-      IF( .NOT. Found ) CALL Fatal('CoilSolver','Coil fitting requires > Target Bodies <') 
+      IF( .NOT. Found ) CALL Fatal('CoilSolver','Coil fitting requires > Master Bodies <') 
 
       CALL Info('CoilSolver','Treating coil in Component: '//TRIM(I2S(i)),Level=7)
 
@@ -289,14 +298,21 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
     ! Choose nodes where the Dirichlet values are set. 
     IF( CoilClosed ) THEN
-      Set => SetA
-      CALL ChooseFixedBulkNodes(Set,1,SelectNodes)
-      Set => SetB
-      CALL ChooseFixedBulkNodes(Set,2,SelectNodes)
+      IF( NarrowInterface ) THEN
+        Set => SetA
+        CALL ChooseFixedBulkNodesNarrow(Set,1,SelectNodes)
+        Set => SetB
+        CALL ChooseFixedBulkNodesNarrow(Set,2,SelectNodes)
+      ELSE
+        Set => SetA
+        CALL ChooseFixedBulkNodes(Set,1,SelectNodes)
+        Set => SetB
+        CALL ChooseFixedBulkNodes(Set,2,SelectNodes)
+      END IF
     ELSE
       Set => SetA
       CALL ChooseFixedEndNodes(Set)
-    END IF   
+    END IF
 
     DesiredCoilCurrent(NoCoils) = ListGetCReal( CoilList,'Desired Coil Current',Found )
     IF(.NOT. Found ) DesiredCoilCurrent(NoCoils) = 1.0_dp
@@ -324,6 +340,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
   CALL Info('CoilSolver','Coil system consists of '//TRIM(I2S(NoCoils))//' coils',Level=7)
 
+
+  ! Count the fixing nodes just for information 
   Set => SetA
   CALL CountFixingNodes(Set,1)
   IF( CoilClosed ) THEN
@@ -334,9 +352,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
        
   DO iter=1,MaxNonlinIter
       
-    IF( iter == 1 ) THEN
-      FixVar % Values = 1.0_dp
-    ELSE
+    IF( iter > 1 ) THEN
       CALL Info('CoilSolver','Fixing the conductivity field')
       
       CALL DefaultInitialize()
@@ -385,7 +401,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       ! Bulk values are needed to compute the currents
       CALL DefaultFinishBulkAssembly()
       CALL DefaultFinishAssembly()
-      
+
       ! Set the potential values on the nodes
       ! Values 0/1 are used as the potential is later scaled. 
       DO i = 1,nsize
@@ -398,11 +414,25 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
           val = 0.0_dp
         END IF
         
-        s = StiffMatrix % Values(StiffMatrix % Diag(i))
-        ForceVector(i) = val * s
-        CALL ZeroRow( StiffMatrix,i )
-        CALL SetMatrixElement( StiffMatrix,i,i,1.0d0*s )     
+        !s = StiffMatrix % Values(StiffMatrix % Diag(i))
+        !ForceVector(i) = val * s
+
+        CALL UpdateDirichletDof( Solver % Matrix, i, val )
+                
+        !CALL ZeroRow( StiffMatrix,i )
+        !CALL SetMatrixElement( StiffMatrix,i,i,1.0d0*s )     
       END DO
+      
+      ! If we use narrow strategy we need to cut the connections in the bulk values
+      ! between the two different Dirichlet conditions. Otherwise the load computation
+      ! will produce crap.
+      IF( NarrowInterface ) THEN
+        CALL CutInterfaceConnections( StiffMatrix, Set )
+      END IF
+
+      ! Only Default dirichlet conditions activate the BCs above!
+      CALL DefaultDirichletBCs()
+
       
       ! Solve the potential field
       !--------------------------
@@ -420,71 +450,77 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
         CALL Fatal('CoilSolver','> '//TRIM(SolVar % Name)//' < Loads not associated!')
       END IF
-      
+
       CALL ScalePotential()
-      
+        
     END DO
   END DO
 
 
   ! Compute the current
   !---------------------------------
-  MinCurr = 0.0_dp
-  MaxCurr = 0.0_dp
+  IF( CalcCurr ) THEN
+    CALL ListAddLogical( Params,'Calculate Loads',.FALSE.)
 
-  DO Part = 1,CoilParts
-    
-    ! The solution is computed separately for each component
-    !--------------------------------------------------------
-    DO dimi = 1,dim
-      CALL Info('CoilSolver','Computing the current components')
-      
-      CALL DefaultInitialize()
-      Active = GetNOFActive()          
-      DO t=1,Active
-        Element => GetActiveElement(t)
-        n  = GetElementNOFNodes()
-        nd = GetElementNOFDOFs()           
-        CALL LocalFluxMatrix(  Element, n, nd, dimi )
+    MinCurr = 0.0_dp
+    MaxCurr = 0.0_dp
+
+    DO Part = 1,CoilParts
+
+      ! The solution is computed separately for each component
+      !--------------------------------------------------------
+
+      DO dimi = 1,dim
+        CALL Info('CoilSolver','Computing current component: '//TRIM(I2S(dimi)),Level=6)
+        
+        CALL DefaultInitialize()
+        Active = GetNOFActive()          
+        DO t=1,Active
+          Element => GetActiveElement(t)
+          n  = GetElementNOFNodes()
+          nd = GetElementNOFDOFs()           
+          CALL LocalFluxMatrix(  Element, n, nd, dimi )
+        END DO
+        
+        ! Solve the flux in direction dimi
+        !--------------------------------------
+        CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.) 
+        Norm = DefaultSolve()
+
+        ! If the coil is computed in two parts then 
+        ! for the other part pick only the values which are on the better half
+        FluxVar => VariableGet( Mesh % Variables,'CoilCurrent '//TRIM(I2S(dimi)) )
+        IF( .NOT. ASSOCIATED( FluxVar ) ) THEN
+          CALL Fatal('CoilSolver','CoilCurrent not associated!')
+        END IF
+
+        MinCurr(dimi) = MINVAL( SolVar % Values ) 
+        MaxCurr(dimi) = MAXVAL( SolVar % Values )
+
+        FluxVar % Values = SolVar % Values
       END DO
-      
-      ! Solve the flux in direction dimi
-      !--------------------------------------
-      CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.) 
-      Norm = DefaultSolve()
-      
-      ! If the coil is computed in two parts then 
-      ! for the other part pick only the values which are on the better half
-      FluxVar => VariableGet( Mesh % Variables,'CoilCurrent '//TRIM(I2S(dimi)) )
-      IF( .NOT. ASSOCIATED( FluxVar ) ) THEN
-        CALL Fatal('CoilSolver','CoilCurrent not associated!')
+
+      IF( ParEnv % PEs > 1 ) THEN
+        TmpCurr = MinCurr
+        CALL MPI_ALLREDUCE(MinCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
+        MinCurr = TmpCurr
+        TmpCurr = MaxCurr
+        CALL MPI_ALLREDUCE(MaxCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+        MaxCurr = TmpCurr
       END IF
 
-      MinCurr(dimi) = MINVAL( SolVar % Values ) 
-      MaxCurr(dimi) = MAXVAL( SolVar % Values )
-      
-      FluxVar % Values = SolVar % Values
-    END DO    
+      WRITE( Message,'(A,3ES12.4)') 'Minimum current components: ',MinCurr
+      CALL Info('CoilSolver',Message,Level=7)
+      WRITE( Message,'(A,3ES12.4)') 'Maximum current components: ',MaxCurr
+      CALL Info('CoilSolver',Message,Level=7)
+    END DO
 
-    IF( ParEnv % PEs > 1 ) THEN
-      TmpCurr = MinCurr
-      CALL MPI_ALLREDUCE(MinCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MIN,MPI_COMM_WORLD,ierr)
-      MinCurr = TmpCurr
-      TmpCurr = MaxCurr
-      CALL MPI_ALLREDUCE(MaxCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD,ierr)
-      MaxCurr = TmpCurr
+    IF( NormalizeCurrent ) THEN
+      CALL NormalizeCurrentDensity() 
     END IF
-    
-    WRITE( Message,'(A,3ES12.4)') 'Minimum current components: ',MinCurr
-    CALL Info('CoilSolver',Message,Level=7)
-    WRITE( Message,'(A,3ES12.4)') 'Maximum current components: ',MaxCurr
-    CALL Info('CoilSolver',Message,Level=7)
-  END DO
-  
-  IF( NormalizeCurrent ) THEN
-    CALL NormalizeCurrentDensity() 
+    CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
   END IF
-
+    
 
   ! Some optional postprocessing mainly for debugging purposes
   CoilIndexVar => VariableGet( Mesh % Variables,'CoilIndex' )
@@ -518,11 +554,64 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  ! Finally, always use the primary variable for testing convergence in
+  ! coupled system level etc.
+  Solver % Variable % Values = PotVarA % Values
+  
   CALL Info('CoilSolver','All done',Level=7)
+  CALL Info('CoilSolver','--------------------------------------')
    
  
 
 CONTAINS 
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE CutInterfaceConnections( A, Set )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A             
+    INTEGER, POINTER :: Set(:)
+!------------------------------------------------------------------------------
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+
+    INTEGER :: i,j,k,n,cnt,s1,s2,dia
+
+!------------------------------------------------------------------------------     
+     n = A % NumberOfRows
+     Rows   => A % Rows
+     Cols   => A % Cols
+
+     IF(.NOT. ASSOCIATED( A % BulkValues ) ) THEN
+       CALL Fatal('CutInterfaceConnections','Dont have bulk values!')
+     END IF
+     Values => A % BulkValues
+
+     cnt = 0
+     
+     DO i=1,n
+       s1 = Set(i)
+       IF( s1 == 0 ) CYCLE
+       dia = A % Diag(i)
+       DO j=Rows(i),Rows(i+1)-1
+         k = Cols(j)
+         s2 = Set(k)
+         IF( s1 * s2 < 0 ) THEN
+           ! The diagonal needs also to be compensated for the cutted connections.
+           ! For Laplace operator the row sum is known to be zero. 
+           A % BulkValues(dia) = A % BulkValues(dia) + A % BulkValues(j)
+           A % BulkValues(j) = 0.0_dp
+           cnt = cnt + 1
+         END IF
+       END DO
+     END DO
+     
+     CALL Info('CutInterfaceConnections','Number of connections cut: '//TRIM(I2S(cnt)),Level=7)
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE CutInterfaceConnections
+!------------------------------------------------------------------------------
+
 
   
 
@@ -542,6 +631,7 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp) :: Volume,Center(3),SerTmp(4),ParTmp(4),ierr
+    REAL(KIND=dp), POINTER :: HelperArray(:,:)
 
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n) )
@@ -558,12 +648,18 @@ CONTAINS
       END DO
     END IF
 
-    Center(1) = ListGetCReal( Params,'Coil x0',CoilCenterSet)
-    Center(2) = ListGetCReal( Params,'Coil y0',Found)
-    CoilCenterSet = CoilCenterSet .OR. Found
-    Center(3) = ListGetCReal( Params,'Coil z0',Found)
-    CoilCenterSet = CoilCenterSet .OR. Found
 
+    HelperArray => ListGetConstRealArray( Params, 'Coil Center', CoilCenterSet)
+    IF( CoilCenterSet ) THEN
+      Center(1:3) = HelperArray(1:3,1)
+    ELSE
+      Center(1) = ListGetCReal( Params,'Coil x0',CoilCenterSet)
+      Center(2) = ListGetCReal( Params,'Coil y0',Found)
+      CoilCenterSet = CoilCenterSet .OR. Found
+      Center(3) = ListGetCReal( Params,'Coil z0',Found)
+      CoilCenterSet = CoilCenterSet .OR. Found
+    END IF
+      
     IF( CoilCenterSet ) THEN
       CoilCenter = Center
       CALL Info('CoilSolver','Coil center defined by user',Level=20)
@@ -608,7 +704,7 @@ CONTAINS
     IF( ParEnv % PEs > 1 ) THEN
       SerTmp(1:3) = Center
       SerTmp(4) = Volume
-      CALL MPI_ALLREDUCE(SerTmp,ParTmp,4,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(SerTmp,ParTmp,4,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
       Center = ParTmp(1:3)
       Volume = ParTmp(4)
     END IF
@@ -636,6 +732,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
     INTEGER, POINTER, OPTIONAL :: TargetBodies(:)
 
+    REAL(KIND=dp), POINTER :: HelperArray(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s,CoilTangentTmp(3)
     INTEGER :: e,t,i,j,n,Active
@@ -650,13 +747,18 @@ CONTAINS
     FitCoil = GetLogical( Params,'Fit Coil',Found )
     IF(.NOT. Found ) FitCoil = .TRUE. 
 
-    IF(.NOT. FitCoil ) THEN
-      CoilNormal   = 0.0_dp; CoilNormal(3)   = 1.0_dp
-      CoilTangent1 = 0.0_dp; CoilTangent1(1) = 1.0_dp
-      CoilTangent2 = 0.0_dp; CoilTangent2(2) = 1.0_dp
+    HelperArray => ListGetConstRealArray( Params, 'Coil normal', Found)
+    IF(.NOT. FitCoil .or. Found) THEN
+      IF(Found) THEN
+        CoilNormal(1:3) = HelperArray(1:3,1)
+      ELSE
+        CoilNormal = 0.0_dp
+        CoilNormal(3) = 1.0_dp
+      END IF
+      CALL TangentDirections(CoilNormal, CoilTangent1, CoilTangent2)
       RETURN
     END IF
- 
+
     CALL Info('DefineCoilParametes','Fitting the coil by maximizing inertia',Level=7)
 
     n = Mesh % MaxElementNodes
@@ -702,7 +804,7 @@ CONTAINS
     END DO
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(Imoment,ParTmp,9,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(Imoment,ParTmp,9,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
       Imoment = ParTmp
     END IF
 
@@ -758,7 +860,7 @@ CONTAINS
 
     LOGICAL :: Mirror 
     TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp) :: x,y,z,x0,y0,rad2deg,fii,dfii,dy
+    REAL(KIND=dp) :: x,y,z,x0,y0,dy
     REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3),ierr
     INTEGER :: i,j,k,ioffset
     LOGICAL :: Found
@@ -767,14 +869,7 @@ CONTAINS
 
     Mirror = ( SetNo == 2 )
 
-    rad2deg = 180.0_dp / PI
-
     Mesh => Solver % Mesh
-
-    ! The angle of acceptable nodes 
-    ! 90 degs effectively chooses the right half
-    dfii = ListGetCReal( Params,'Coil dfii',Found)
-    IF(.NOT. Found ) dfii = 90.0
 
     ! The maximum coordinate difference for an acceptable node
     ! The larger the value the more there will be nodes in the set.
@@ -814,9 +909,9 @@ CONTAINS
     END DO
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(MinCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MIN,MPI_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(MinCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
       MinCoord = ParTmp
-      CALL MPI_ALLREDUCE(MaxCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(MaxCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
       MaxCoord = ParTmp
     END IF
 
@@ -826,6 +921,7 @@ CONTAINS
     END IF
 
 
+    
     DO i=1,Mesh % NumberOfNodes
 
       IF( SelectNodes ) THEN
@@ -852,12 +948,7 @@ CONTAINS
         PotSelect % Values( PotSelect % Perm(i) ) = rp(1)
       END IF
 
-      !fii = rad2deg * ATAN2( rp(1), rp(2) )
-      !IF( fii > 180.0 ) fii = fii - 360.0
-      
-      !IF( ABS( fii ) > dfii ) CYCLE
       IF( ABS( rp(2) ) > dy ) CYCLE
-      !IF( rp(1) > 0.0 ) CYCLE
 
       ! Values with abs 1 indicate the narrow band that is omitted when computing the currents
       ! Values with abs 2 indicate the wide band
@@ -880,6 +971,106 @@ CONTAINS
 
 
 
+
+  ! Chooses bulk nodes which are used to set the artificial boundary conditions
+  ! in the middle of the coil. Narrow version.
+  !----------------------------------------------------------------------------  
+  SUBROUTINE ChooseFixedBulkNodesNarrow( Set, SetNo, SelectNodes )
+    
+    INTEGER :: SetNo
+    INTEGER, POINTER :: Set(:)
+    LOGICAL :: SelectNodes
+
+    LOGICAL :: Mirror 
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: x,y,z,x0,y0
+    REAL(KIND=dp) :: r(3),rp(3),MinCut, MaxCut, CutDist(27)
+    INTEGER :: t,i,j,k,n,ioffset
+    LOGICAL :: Found, Hit
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: Indexes(:)
+
+
+    CALL Info('CoilSolver','Choosing fixing nodes for set: '//TRIM(I2S(SetNo)))
+
+    Mirror = ( SetNo == 2 )
+
+    Mesh => Solver % Mesh
+
+    ioffset = 10 * NoCoils 
+
+
+    DO t=1,Mesh % NumberOfBulkElements
+
+      Element => Mesh % Elements(t)
+      Indexes => Element % NodeIndexes
+      n = Element % Type % NumberOfNodes
+
+      ! Study the elements belonging to the coil under study
+      IF( SelectNodes ) THEN
+        IF( ANY( CoilIndex(Indexes) /= NoCoils ) ) CYCLE
+      END IF
+
+
+      Hit = .TRUE.
+
+      DO k = 1, n
+        i = Indexes(k)
+
+        j = Perm(i)
+        IF( j == 0 ) THEN
+          Hit = .FALSE.
+          CYCLE
+        END IF
+          
+        r(1) = Mesh % Nodes % x(i)
+        r(2) = Mesh % Nodes % y(i)
+        r(3) = Mesh % Nodes % z(i)
+
+        r = r - CoilCenter
+        IF( mirror ) r = -r
+
+        ! Coordinate projected to coil coordinates
+        rp(1) = SUM( CoilTangent1 * r ) 
+        rp(2) = SUM( CoilTangent2 * r ) 
+        rp(3) = SUM( CoilNormal * r ) 
+
+        IF( SetNo == 1 ) THEN
+          ! This is used to determine "left" and "right" side of the coil
+          PotSelect % Values( PotSelect % Perm(i) ) = rp(1)
+        END IF
+
+        ! This element can not be an the interface as it is on the wrong side
+        IF( rp(1) < 0 ) THEN
+          Hit = .FALSE.
+          CYCLE
+        END IF
+
+        CutDist(k) = rp(2)
+      END DO
+      
+      IF(.NOT. Hit) CYCLE
+
+      MaxCut = MAXVAL( CutDist(1:n) )
+      MinCut = MINVAL( CutDist(1:n) )
+
+      IF( MaxCut >= -EPSILON( MaxCut) .AND. MinCut <= EPSILON( MinCut)  ) THEN
+        DO k=1,n
+          i = Indexes(k)
+          j = Perm(i)
+          IF( CutDist(k) > 0.0_dp ) THEN
+            Set(j) = 2 + ioffset
+          ELSE
+            Set(j) = -2 - ioffset
+          END IF
+        END DO
+      END IF
+    END DO
+
+  END SUBROUTINE ChooseFixedBulkNodesNarrow
+
+
+  
 
   ! Choose end nodes as assingled by "Coil Start" and "Coil End" flags.
   ! The result of this imitate the previous routine in order to be able
@@ -973,11 +1164,12 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,GradAtIp(3), &
         FixAtIp, AbsGradAtIp, CondAtIp(3), DistGradAtIp(3),AbsDistGradAtIp,AbsCondAtIp
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), NodalPot(n), &
-        NodalFix(n), NodalDist(n),DotProd
-    LOGICAL :: Stat,Found
+        NodalFix(n), NodalDist(n),DotProd, ElCond(n)
+    LOGICAL :: Stat,Found, GotElCond
     INTEGER :: i,t,p,q
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: Material
     SAVE Nodes
     !------------------------------------------------------------------------------
 
@@ -985,6 +1177,9 @@ CONTAINS
     STIFF = 0._dp
     FORCE = 0._dp
 
+    Material => GetMaterial( Element ) 
+    ElCond(1:n) = GetReal( Material, 'Electric Conductivity', GotElCond ) 
+   
     IF( CoilParts == 1 ) THEN
       NodalPot(1:n) = PotVar % Values( Perm( Element % NodeIndexes ) )
     ELSE      
@@ -1012,6 +1207,7 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx )
 
+      CondAtIp = 1.0_dp
       IF( iter > 1 ) THEN
         FixAtIp = SUM( Basis(1:n) * NodalFix(1:n) )
         IF( CoilAnisotropic ) THEN
@@ -1019,14 +1215,13 @@ CONTAINS
             GradAtIP(i) = SUM( dBasisdx(1:n,i) * NodalPot(1:n) )
           END DO
           AbsGradAtIp = SQRT( SUM( GradAtIp ** 2 ) )
-          CondAtIp = FixAtIp * ABS( GradAtIp ) / AbsGradAtIp
-        ELSE
-          CondAtIp = FixAtIp
+          CondAtIp = ABS( GradAtIp ) / AbsGradAtIp
         END IF
       ELSE
-        CondAtIp = 1.0_dp
+        FixAtIp = 1.0_dp
       END IF
 
+                
       ! If distance from the tangential walls is used then
       ! remove from conductivity the normal component.
       ! The normal vector is defined as the gradient of distance.
@@ -1048,9 +1243,15 @@ CONTAINS
         END IF
 
         CondAtIp = CondAtIp - DotProd * DistGradAtIp
-
       END IF
 
+      IF( GotElCond ) THEN
+        CondAtIP = SUM( Basis(1:n) * ElCond(1:n) ) * FixAtIp * CondAtIp
+      ELSE
+        CondAtIP = FixAtIp * CondAtIp        
+      END IF
+        
+      
       Weight = IP % s(t) * DetJ
 
       ! diffusion term (Cond*grad(u),grad(v)):
@@ -1170,15 +1371,20 @@ CONTAINS
          GradAtIp(3),AbsGradAtIp,CondAtIp(3),DistGradAtIp(3),AbsDistGradAtIp, &
          AbsCondAtIp,DotProd
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd),NodalPot(nd),&
-         NodalFix(nd),NodalDist(nd)
-    LOGICAL :: Stat
+         NodalFix(nd),NodalDist(nd),Elcond(nd)
+    LOGICAL :: Stat, GotElCond
     INTEGER :: i,t,p,q
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: Material
 
     SAVE Nodes
 !------------------------------------------------------------------------------
 
+
+    Material => GetMaterial( Element ) 
+    ElCond(1:n) = GetReal( Material, 'Electric Conductivity', GotElCond ) 
+    
     CALL GetElementNodes( Nodes )
     STIFF = 0._dp
     FORCE = 0._dp
@@ -1193,12 +1399,12 @@ CONTAINS
       END IF
     END IF
 
-    IF( iter > 1 ) THEN
+    IF( FixConductivity ) THEN
       NodalFix(1:n) = FixVar % Values( Perm( Element % NodeIndexes ) )
     END IF
 
     IF( UseDistance ) THEN
-       NodalDist(1:n) = DistVar % Values( DistVar % Perm( Element % NodeIndexes ) )
+      NodalDist(1:n) = DistVar % Values( DistVar % Perm( Element % NodeIndexes ) )
     END IF
 
     !Numerical integration:
@@ -1210,41 +1416,48 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx )
 
+
       DO i=1,3
-         GradAtIP(i) = SUM( dBasisdx( 1:nd, i) * NodalPot(1:nd) )
+        GradAtIP(i) = SUM( dBasisdx(1:n,i) * NodalPot(1:n) )
       END DO
-      AbsGradAtIp = SQRT( SUM( GradAtIp**2) )            
-
-      IF( iter == 1 ) THEN
-        CondAtIp = 1.0_dp
-      ELSE
-        FixAtIP = SUM( Basis( 1:nd) * NodalFix(1:nd) )
+      
+      CondAtIp = 1.0_dp
+      IF( FixConductivity ) THEN
+        FixAtIp = SUM( Basis(1:n) * NodalFix(1:n) )
         IF( CoilAnisotropic ) THEN
-          CondAtIp = FixAtIp * ABS( GradAtIp ) / AbsGradAtIp
-        ELSE
-          CondAtIp = FixAtIp 
+          AbsGradAtIp = SQRT( SUM( GradAtIp ** 2 ) )
+          CondAtIp = ABS( GradAtIp ) / AbsGradAtIp
         END IF
+      ELSE
+        FixAtIp = 1.0_dp
       END IF
-
 
       IF( UseDistance ) THEN
         DO i=1,3
           DistGradAtIP(i) = SUM( dBasisdx(1:n,i) * NodalDist(1:n) )
         END DO
-         AbsDistGradAtIp = SQRT( SUM( DistGradAtIp ** 2 ) )
+        AbsDistGradAtIp = SQRT( SUM( DistGradAtIp ** 2 ) )
 
-         AbsCondAtIp = SQRT(SUM( CondAtIP**2 ))
-         DotProd = SUM( CondAtIp * DistGradAtIp ) / ( AbsDistGradAtIp * SQRT(3.0) )
+        AbsCondAtIp = SQRT(SUM( CondAtIP**2 ))
+        DotProd = SUM( CondAtIp * DistGradAtIp ) / ( AbsDistGradAtIp * SQRT(3.0) )
 
-         IF( AbsDistGradAtIp > 1.0_dp ) THEN
-            DistGradAtIp = DistGradAtIp / AbsDistGradAtIp
-         END IF
+        IF( AbsDistGradAtIp > 1.0_dp ) THEN
+          DistGradAtIp = DistGradAtIp / AbsDistGradAtIp
+        END IF
 
-         CondAtIp = CondAtIp - DotProd * DistGradAtIp
+        CondAtIp = CondAtIp - DotProd * DistGradAtIp
       END IF
 
-      LoadAtIp = CondAtIp(dimi) * GradAtIp(dimi) 
       
+      IF( GotElCond ) THEN
+        CondAtIP = SUM( Basis(1:n) * ElCond(1:n) ) * FixAtIp * CondAtIp
+      ELSE
+        CondAtIP = FixAtIp * CondAtIp        
+      END IF
+  
+      
+      LoadAtIp = CondAtIp(dimi) * GradAtIp(dimi) 
+
       Weight = IP % s(t) * DetJ
 
       DO p=1,nd
@@ -1263,7 +1476,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-
+! Scale the potential such that the total current is the desired one.
+! The scaling uses the feature where the nodal current is computed from
+! r=Ax-b where the components of r are the nodal currents corresponding to
+! the enforces Dirichlet conditions.
+!----------------------------------------------------------------------------- 
   SUBROUTINE ScalePotential() 
     
     REAL(KIND=dp) :: InitialCurrent,possum, negsum, sumerr
@@ -1312,16 +1529,22 @@ CONTAINS
         possum = ParallelReduction( possum ) 
         negsum = ParallelReduction( negsum ) 
       END IF
+
+      WRITE (Message,'(A,I6,ES12.4)') 'Positive coil currents:',posi,possum
+      CALL Info('CoilSolver',Message,Level=12)
+
+      WRITE (Message,'(A,I6,ES12.4)') 'Negative coil currents:',negi,negsum
+      CALL Info('CoilSolver',Message,Level=12)
     
       IF( ABS( possum ) < EPSILON( possum ) ) THEN
         CALL Fatal('CoilSolver','No positive current sources on coil end!')
       END IF
       IF( ABS( negsum ) < EPSILON( negsum ) ) THEN
         CALL Fatal('CoilSolver','No negative current sources on coil end!')
-      END IF
-
+      END IF            
+      
       sumerr = 2.0 * ABS( ABS( possum ) - ABS( negsum ) )  / (ABS( possum ) + ABS( negsum ) ) 
-      WRITE (Message,'(A,ES15.4)') 'Discrepancy of start and end coil currents: ',sumerr 
+      WRITE (Message,'(A,ES12.4)') 'Discrepancy of start and end coil currents: ',sumerr 
       CALL Info('CoilSolver',Message,Level=7)
 
       IF( sumerr > 0.5 ) THEN
@@ -1332,7 +1555,7 @@ CONTAINS
       
       WRITE( Message,'(A,ES12.4)') 'Initial coil current for coil '&
           //TRIM(I2S(Coil))//':',InitialCurrent
-      CALL Info('CoilSolver',Message,Level=10)
+      CALL Info('CoilSolver',Message,Level=5)
     
 
       ! Scale the potential such that the current is as desired
@@ -1340,7 +1563,7 @@ CONTAINS
       Coeff = DesiredCoilCurrent(Coil) / InitialCurrent
 
       WRITE( Message,'(A,ES12.4)') 'Coil potential multiplier:',Coeff
-      CALL Info('CoilSolver',Message,Level=10)
+      CALL Info('CoilSolver',Message,Level=5)
 
       IF( NoCoils == 1 ) THEN
         PotVar % Values = Coeff * PotVar % Values     
@@ -1358,8 +1581,10 @@ CONTAINS
   END SUBROUTINE ScalePotential
 
 
-
+  
 ! Normalize the current density to a given length
+! When using this feature the potential can no longer be used
+! to obtain the same effective current.   
 !------------------------------------------------------------------------------
   SUBROUTINE NormalizeCurrentDensity()
 !------------------------------------------------------------------------------
@@ -1445,8 +1670,12 @@ CONTAINS
         CALL Info('CoilSolver',Message)
       ELSE
         TargetDensity = DesiredCurrentDensity(Coil)
+        WRITE( Message,'(A,ES12.4)') 'Desired current density:',TargetDensity
       END IF
 
+
+      
+      ! Now perform the normalization to the target value
       DO i = 1, Solver % Mesh % NumberOfNodes
         IF( NoCoils > 1 ) THEN
           IF( CoilIndex(i) /= Coil ) CYCLE
@@ -1525,6 +1754,8 @@ FUNCTION CoilPotential( Model, n, t ) RESULT(f)
 END FUNCTION CoilPotential
 
 
+! Returns the potential such that it is normalized to the desired current density.
+!---------------------------------------------------------------------------------
 FUNCTION CoilPotentialNormalized( Model, n, t ) RESULT(f)
 
   USE DefUtils

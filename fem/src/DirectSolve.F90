@@ -872,8 +872,8 @@ CONTAINS
 
     ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
 
-    A % MumpsID % icntl(2)  = 0 ! supress printing of diagnostics and warnings
-    A % MumpsID % icntl(3)  = 0 ! supress statistics
+    A % MumpsID % icntl(2)  = 0 ! suppress printing of diagnostics and warnings
+    A % MumpsID % icntl(3)  = 0 ! suppress statistics
     A % MumpsID % icntl(4)  = 1 ! the same as the two above, but doesn't seem to work.
     A % MumpsID % icntl(5)  = 0 ! matrix format 'assembled'
 
@@ -1431,6 +1431,120 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Permon solver
+!------------------------------------------------------------------------------
+  SUBROUTINE Permon_SolveSystem( Solver,A,x,b,Free_Fact )
+!------------------------------------------------------------------------------
+#ifdef HAVE_FETI4I
+   use feti4i
+#endif
+ 
+  LOGICAL, OPTIONAL :: Free_Fact
+  TYPE(Matrix_t) :: A
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp), TARGET :: x(*), b(*)
+
+#ifdef HAVE_FETI4I
+  INCLUDE 'mpif.h'
+
+  INTEGER, ALLOCATABLE :: Owner(:)
+  INTEGER :: i,j,n,nd,ip,ierr,icntlft,nzloc
+  LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled
+
+  INTEGER :: n_dof_partition
+
+  INTEGER, ALLOCATABLE :: memb(:), DirichletInds(:), Neighbours(:), IntOptions(:)
+  REAL(KIND=dp), ALLOCATABLE :: DirichletVals(:), RealOptions(:)
+  INTEGER :: Comm_active, Group_active, Group_world
+
+  REAL(KIND=dp), ALLOCATABLE :: dbuf(:)
+
+
+  n_dof_partition = A % NumberOfRows
+
+!  INTERFACE
+!     FUNCTION Permon_InitSolve(n, gnum, nd, dinds, dvals, n_n, n_ranks) RESULT(handle) BIND(c,name='permon_initsolve') 
+!        USE, INTRINSIC :: ISO_C_BINDING
+!        TYPE(C_PTR) :: handle
+!        INTEGER(C_INT), VALUE :: n, nd, n_n
+!        REAL(C_DOUBLE) :: dvals(*)
+!        INTEGER(C_INT) :: gnum(*), dinds(*), n_ranks(*)
+!     END FUNCTION Permon_Initsolve
+!
+!     SUBROUTINE Permon_Solve( handle, x, b ) BIND(c,name='permon_solve')
+!        USE, INTRINSIC :: ISO_C_BINDING
+!        REAL(C_DOUBLE) :: x(*), b(*)
+!        TYPE(C_PTR), VALUE :: handle
+!     END SUBROUTINE Permon_solve
+!  END INTERFACE
+
+  IF ( PRESENT(Free_Fact) ) THEN
+    IF ( Free_Fact ) THEN
+      RETURN
+    END IF
+  END IF
+
+  Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
+  IF ( .NOT. stat ) Factorize = .TRUE.
+
+  IF ( Factorize .OR. .NOT.C_ASSOCIATED(A % PermonSolverInstance) ) THEN
+    IF ( C_ASSOCIATED(A % PermonSolverInstance) ) THEN
+       CALL Fatal( 'Permon', 're-entry not implemented' )
+    END IF
+
+    nd = COUNT(A % ConstrainedDOF)
+    ALLOCATE(DirichletInds(nd), DirichletVals(nd))
+    j = 0
+    DO i=1,A % NumberOfRows
+      IF(A % ConstrainedDOF(i)) THEN
+        j = j + 1
+        DirichletInds(j) = i; DirichletVals(j) = A % Dvalues(i)
+      END IF
+    END DO
+
+    !TODO sequential case not working
+    n = 0
+    ALLOCATE(neighbours(Parenv % PEs))
+    DO i=1,ParEnv % PEs
+      IF( ParEnv % IsNeighbour(i) .AND. i-1/=ParEnv % myPE) THEN
+        n = n + 1
+        neighbours(n) = i-1
+      END IF
+    END DO
+
+    !A % PermonSolverInstance = Permon_InitSolve( SIZE(A % ParallelInfo % GlobalDOFs), &
+    !     A % ParallelInfo % GlobalDOFs, nd,  DirichletInds, DirichletVals, n, neighbours )
+
+    IF( n_dof_partition /=  SIZE(A % ParallelInfo % GlobalDOFs) ) THEN
+      CALL Fatal( 'Permon', &
+        'inconsistency: A % NumberOfRows /=  SIZE(A % ParallelInfo % GlobalDOFs' )
+    END IF
+
+    ALLOCATE(IntOptions(10))
+    ALLOCATE(RealOptions(1))
+
+    CALL FETI4ISetDefaultIntegerOptions(IntOptions)
+    CALL FETI4ISetDefaultRealOptions(RealOptions)
+
+    CALL FETI4ICreateInstance(A % PermonSolverInstance, A % PermonMatrix, &
+      A % NumberOfRows, b, A % ParallelInfo % GlobalDOFs, &
+      n, neighbours, &
+      nd, DirichletInds, DirichletVals, &
+      IntOptions, RealOptions)
+  END IF
+
+  !CALL Permon_Solve( A % PermonSolverInstance, x, b )
+  CALL FETI4ISolve(A % PermonSolverInstance, n_dof_partition, x)
+#else
+   CALL Fatal( 'Permon_SolveSystem', 'Permon Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE Permon_SolveSystem
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
 !> Solves a linear system using Pardiso direct solver (from either MKL or
 !> official Pardiso distribution. If possible, MKL-version is used).
 !------------------------------------------------------------------------------
@@ -1725,7 +1839,7 @@ CONTAINS
       END IF
 
 !  .. Setup Pardiso control parameters und initialize the solvers
-!     internal adress pointers. This is only necessary for the FIRST
+!     internal address pointers. This is only necessary for the FIRST
 !     call of the PARDISO solver.
 !
       Factorize = ListGetLogical( Solver % Values, &
@@ -1989,7 +2103,7 @@ CONTAINS
     INTEGER :: fid
     CHARACTER(LEN=MAX_NAME_LEN) :: mat_type
 
-    ! Free old factorization if neccessary
+    ! Free old factorization if necessary
     IF (ASSOCIATED(A % CPardisoId)) THEN
         CALL CPardiso_Free(A)
     END IF
@@ -2324,12 +2438,19 @@ CONTAINS
         CALL SPQR_SolveSystem( Solver, A, x, b, Free_Fact )
         CALL Cholmod_SolveSystem( Solver, A, x, b, Free_Fact )
 #endif
+#ifdef HAVE_FETI4I
+        CALL Permon_SolveSystem( Solver, A, x, b, Free_Fact )
+#endif
+        RETURN
         RETURN
       END IF
     END IF
 
     Method = ListGetString( Solver % Values, 'Linear System Direct Method',GotIt )
     IF ( .NOT. GotIt ) Method = 'banded'
+    
+    
+    CALL Info('DirectSolver','Using direct method: '//TRIM(Method),Level=9)
 
     SELECT CASE( Method )
       CASE( 'banded', 'symmetric banded' )
@@ -2356,6 +2477,9 @@ CONTAINS
 
       CASE( 'superlu' )
         CALL SuperLU_SolveSystem( Solver, A, x, b )
+
+      CASE( 'permon' )
+        CALL Permon_SolveSystem( Solver, A, x, b )
 
       CASE( 'pardiso' )
         CALL Pardiso_SolveSystem( Solver, A, x, b )

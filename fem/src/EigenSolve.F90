@@ -263,7 +263,7 @@ CONTAINS
       CALL ListAddLogical( Params, 'Linear System Refactorize',.TRUE. )
 
       FreeFactorize = ListGetLogical( Params, &
-                'Linear System Refactorize', FoundFreeFactorize )
+                'Linear System Free Fctorization', FoundFreeFactorize )
       CALL ListAddLogical( Params,  &
                      'Linear System Free Factorization',.FALSE. )
 
@@ -528,7 +528,7 @@ CONTAINS
          CALL Info( 'EigenSolve',Message, Level=4 )
          CALL Info( 'EigenSolve', '--------------------------------', Level=4 )
 
-         ! Restore matrix values, if modifed when using shift:
+         ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
          IF ( SigmaR /= 0.0d0 ) THEN
            Matrix % Values = Matrix % Values + SigmaR * Matrix % MassValues
@@ -560,37 +560,11 @@ CONTAINS
                  EigVectors(i,j) = CMPLX( V(j,k),0.0d0,KIND=dp )
               END IF
            END DO
-!
-!          Normalize eigenvector  (x) so that x^T(M x) = 1
-!          (probably already done, but no harm in redoing!)
-!          -------------------------------------------------
 
-           CALL Info('EigenSolve','Normalizing Eigenvector',Level=12)
-           
-           NormalizeToUnity = ListGetLogical( Params, &
-               'Eigen System Normalize To Unity',Stat)
+           ! Normalization moved to ScaleEigenVectors
 
-           r = 0.0_dp
-           IF( NormalizeToUnity ) THEN
-             DO j=1,n
-               r = MAX( r, ABS(EigVectors(i,j))**2 )
-             END DO
-           ELSE IF ( Matrix % Lumped ) THEN
-              DO j=1,n
-                 r= r + ABS(EigVectors(i,j))**2 * &
-                     Matrix % MassValues(Matrix % Diag(j))
-              END DO
-           ELSE
-              DO j=1,n
-                 DO l=Matrix % Rows(j), Matrix % Rows(j+1)-1
-                    r = r + Matrix % MassValues(l) * &
-                     CONJG( EigVectors(i,j) ) * EigVectors(i,Matrix % Cols(l))
-                 END DO
-              END DO
-           END IF
-           IF ( ABS(r) > 0 ) EigVectors(i,:) = EigVectors(i,:) / SQRT( r )
          END DO
-
+                    
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
            CALL Info('EigenSolve','Computing eigen system residuals',Level=8)
            CALL CheckResiduals( Matrix, Neig, EigValues, EigVectors )
@@ -605,10 +579,115 @@ CONTAINS
 #endif
 !
 !------------------------------------------------------------------------------
-     END SUBROUTINE ArpackEigenSolve
+    END SUBROUTINE ArpackEigenSolve
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Scale both real and complex valued eigenvectors. 
+!------------------------------------------------------------------------------
+    SUBROUTINE ScaleEigenVectors( Matrix, EigVectors, NoEigen, NormalizeToUnity)
+
+      USE CRSMatrix
+      USE IterSolve
+      USE Multigrid
+
+      IMPLICIT NONE
+
+      TYPE(Matrix_t), TARGET :: Matrix
+      COMPLEX(KIND=dp) :: EigVectors(:,:)
+      INTEGER :: n, NoEigen
+      LOGICAL :: NormalizeToUnity
+
+      INTEGER :: i,j,k,l, mk, mj
+      REAL(KIND=dp) :: r
+      COMPLEX(KIND=dp) :: s, s1, mx
+
+      CALL Info('ScaleEigenVectors','Scaling eigen vectors',Level=10)
+
+      ! Real case: Normalize eigenvector  (x) so that x^T(M x) = 1
+      ! Complex case: Normalize eigenvectors (x) so that x^H(M x) = 1
+      ! (probably already done, but no harm in redoing!)
+      ! Optionally normalize such that the maximum amplitude is set one.
+      ! -----------------------------------------------------------------------------
+      
+      n = Matrix % NumberOfRows
+      IF ( Matrix % Complex ) n = n / 2
+
+      DO i = 1, NoEigen
+
+        IF(  Matrix % COMPLEX ) THEN
+          s = 0.0_dp
+          IF( NormalizeToUnity ) THEN
+            DO j=1,n
+              s1 = EigVectors(i,j) * CONJG(EigVectors(i,j))
+              IF( ABS( s1 ) > ABS( s ) ) s = s1
+            END DO
+          ELSE IF ( Matrix % Lumped ) THEN
+            DO j=1,n
+              s = s + ABS( EigVectors(i,j) )**2 * Matrix % MassValues( Matrix % Diag(2*j-1) )
+            END DO
+          ELSE
+            DO j=1,Matrix % NumberOfRows,2
+              DO l=Matrix % Rows(j),Matrix % Rows(j+1)-1,2
+                mx = CMPLX( Matrix % MassValues(l), -Matrix % MassValues(l+1), KIND=DP )
+                mj  = (j-1)/2 + 1
+                mk  = (Matrix % Cols(l)-1)/2 + 1
+                s = s + mx * CONJG( EigVectors(i,mj) ) * EigVectors(i,mk)
+              END DO
+            END DO
+          END IF
+          
+          s = CMPLX( ParallelReduction( REAL(s) ), ParallelReduction( AIMAG(s) ), KIND=dp )
+                  
+          IF ( ABS(s) > 0 ) THEN
+            s = SQRT(s) 
+            WRITE(Message,'(A,2ES12.3)') 'Normalizing Eigenvector with: ',REAL(s),AIMAG(s)
+            CALL Info('EigenSolve',Message,Level=12)
+            EigVectors(i,1:n) = EigVectors(i,1:n) / s
+          ELSE
+            CALL Warn('EigenSolve','Eigenmode has zero amplitude!')
+          END IF
+        ELSE          
+          r = 0.0_dp
+          IF( NormalizeToUnity ) THEN
+            DO j=1,n
+              r = MAX( r, ABS(EigVectors(i,j))**2 )
+            END DO
+          ELSE IF ( Matrix % Lumped ) THEN
+            DO j=1,n
+              r= r + ABS(EigVectors(i,j))**2 * &
+                  Matrix % MassValues(Matrix % Diag(j))
+            END DO
+          ELSE
+            r = 0
+            DO j=1,n
+              DO l=Matrix % Rows(j), Matrix % Rows(j+1)-1
+                r = r +  CONJG(EigVectors(i,j)) * Matrix % MassValues(l) * EigVectors(i,Matrix % Cols(l))
+              END DO
+            END DO
+          END IF
+          
+          r = ParallelReduction(r) 
+
+          IF( ABS(r - 1) < EPSILON( r ) ) THEN
+            CALL Info('EigenSolve','Eigenmode already normalized!',Level=12)              
+          ELSE IF ( ABS(r) > 0 ) THEN            
+            r = SQRT( r ) 
+            WRITE(Message,'(A,ES12.3)') 'Normalizing Eigenvector with: ',r
+            CALL Info('EigenSolve',Message,Level=12)
+            EigVectors(i,:) = EigVectors(i,:) / r
+          ELSE
+            CALL Warn('EigenSolve','Eigenmode has zero amplitude!')
+          END IF
+        END IF
+          
+      END DO
+
+    END SUBROUTINE ScaleEigenVectors
+!------------------------------------------------------------------------------
+
+     
 !------------------------------------------------------------------------------
     SUBROUTINE CheckResiduals( Matrix, n, Eigs, EigVectors )
 !------------------------------------------------------------------------------
@@ -963,35 +1042,12 @@ END SUBROUTINE CheckResiduals
                  EigVectors(i,j) = CMPLX( V(j,k),0.0d0,KIND=dp )
               END IF
            END DO
-!
-!          Normalize eigenvector  (x) so that x^T(M x) = 1
-!          (probably already done, but no harm in redoing!)
-!          -------------------------------------------------
-!
-           IF ( Matrix % Lumped ) THEN
-              s = 0.0d0
-              DO j=1,n
-                 s = s + ABS(EigVectors(i,j))**2 * &
-                      Matrix % MassValues(Matrix % Diag(j))
-              END DO
-           ELSE
-              s = 0.0d0
-              DO j=1,n
-                 DO l=Matrix % Rows(j), Matrix % Rows(j+1)-1
-                    s = s + Matrix % MassValues(l) * &
-                         CONJG( EigVectors(i,j) ) * EigVectors(i,Matrix % Cols(l))
-                 END DO
-              END DO
-           END IF
-
-           PRINT *,'abs(s)=',ABS(s)
-
-           IF ( ABS(s) > 0 ) EigVectors(i,:) = EigVectors(i,:) / SQRT(s)
-
+           
+           ! Normalizatin moved to ScaleEigenVectors
         END DO
 
-         CALL Info( 'StabEigenSolve', '--------------------------------',Level=4 )
-!
+        CALL Info( 'StabEigenSolve', '--------------------------------',Level=4 )
+
       END IF
 
       DO i = 1,Neig
@@ -1411,7 +1467,7 @@ END SUBROUTINE CheckResiduals
          CALL Info( 'EigenSolveComplex', 'Computed Eigen Values: ', Level=4 )
          CALL Info( 'EigenSolveComplex', '--------------------------------', Level=4 )
 
-         ! Restore matrix values, if modifed when using shift:
+         ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
          IF ( Sigma /= 0._dp ) THEN
            Matrix % Values = Matrix % Values + Sigma * Matrix % MassValues
@@ -1427,21 +1483,7 @@ END SUBROUTINE CheckResiduals
                EigVectors(i,j) = V(j,p)
             END DO
 
-           IF ( Matrix % Lumped ) THEN
-              s = 0.0d0
-              DO j=1,n
-                 s = s + ABS( EigVectors(i,j) )**2 * Matrix % MassValues( Matrix % Diag(j) )
-              END DO
-           ELSE
-              s = 0.0d0
-              DO j=1,n
-                 DO l=Matrix % Rows(j), Matrix % Rows(j+1)-1
-                    s = s + Matrix % MassValues(l) * &
-                      CONJG( EigVectors(i,j) ) * EigVectors(i,Matrix % Cols(l))
-                 END DO
-              END DO
-           END IF
-           IF ( ABS(s) > 0 ) EigVectors(i,:) = EigVectors(i,:) / SQRT(s)
+            ! Scaling moved to ScaleEigenVectors
          END DO
 
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
@@ -1730,7 +1772,7 @@ END SUBROUTINE CheckResidualsComplex
            IF ( ILU  < 0 .OR. ILU > 9 ) ILU = 0
          ELSE
            ILU = 0
-           CALL Warn( 'DampedEigenSolve','Unknown preconditioner type, useing ILU0' )
+           CALL Warn( 'DampedEigenSolve','Unknown preconditioner type, using ILU0' )
          END IF
       END IF
 
@@ -1955,9 +1997,6 @@ END SUBROUTINE CheckResidualsComplex
             l = l + 1
          END DO
                
-! Finally normalize eigenvectors (x) so that x^H(M x) = 1
-! (probably already done, but no harm in redoing!)
-! -----------------------------------------------------------------------------
          DO i = 1, NEIG/2
             s = 0.0d0
             DO j=1,N/2
@@ -1968,6 +2007,11 @@ END SUBROUTINE CheckResidualsComplex
             END DO
             IF ( ABS(s) > 0 ) EigVectors(i,:) = EigVectors(i,:) / SQRT(s)
          END DO
+
+         CALL Warn('DampedEigenSolve','Check that the scaling is not done twice if you call this!')
+         
+         ! Standard scaling moved to ScaleEigenVectors
+
          
          CALL Info( 'DampedEigenSolve', '--------------------------------',Level=4 )
       END IF

@@ -60,6 +60,10 @@ SUBROUTINE StatCurrentSolver_Init( Model,Solver,dt,TransientSimulation)
     IF (ListGetLogical(Params,'Calculate Joule Heating',Found)) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Joule Heating' )
+
+    IF (ListGetLogical(Params,'Calculate Nodal Heating',Found)) &
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Nodal Joule Heating' )
     
     Calculate = ListGetLogical(Params,'Calculate Volume Current',Found)
     IF( Calculate ) THEN
@@ -99,7 +103,7 @@ END SUBROUTINE StatCurrentSolver_Init
 
      REAL (KIND=DP), POINTER :: ForceVector(:), Potential(:)
      REAL (KIND=DP), POINTER :: ElField(:), VolCurrent(:)
-     REAL (KIND=DP), POINTER :: Heating(:)
+     REAL (KIND=DP), POINTER :: Heating(:), NodalHeating(:)
      REAL (KIND=DP), POINTER :: EleC(:)
      REAL (KIND=DP), POINTER :: Cwrk(:,:,:)
      REAL (KIND=DP), ALLOCATABLE ::  Conductivity(:,:,:), &
@@ -120,7 +124,7 @@ END SUBROUTINE StatCurrentSolver_Init
  
      LOGICAL :: AllocationsDone = .FALSE., gotIt, FluxBC
      LOGICAL :: CalculateField = .FALSE., ConstantWeights
-     LOGICAL :: CalculateCurrent, CalculateHeating
+     LOGICAL :: CalculateCurrent, CalculateHeating, CalculateNodalHeating
      LOGICAL :: ControlPower, ControlCurrent, Control
 
      TYPE(ValueList_t), POINTER :: Params
@@ -128,12 +132,15 @@ END SUBROUTINE StatCurrentSolver_Init
 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
 
-
+     LOGICAL :: GetCondAtIp
+     TYPE(ValueHandle_t) :: CondAtIp_h
+     REAL(KIND=dp) :: CondAtIp
+     
      SAVE LocalStiffMatrix, Load, LocalForce, &
           ElementNodes, CalculateCurrent, CalculateHeating, &
           AllocationsDone, VolCurrent, Heating, Conductivity, &
           CalculateField, ConstantWeights, &
-          Cwrk, ControlScaling
+          Cwrk, ControlScaling, CalculateNodalHeating
      
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -168,6 +175,8 @@ END SUBROUTINE StatCurrentSolver_Init
      NonlinearIter = ListGetInteger( Params, &
          'Nonlinear System Max Iterations', GotIt )
      IF ( .NOT. GotIt ) NonlinearIter = 1
+
+     GetCondAtIp = ListGetLogical( Params,'Conductivity At Ip',GotIt )
      
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
@@ -225,6 +234,19 @@ END SUBROUTINE StatCurrentSolver_Init
          END IF
        END IF
 
+       CalculateNodalHeating = ListGetLogical( Params, &
+           'Calculate Nodal Heating', GotIt )
+       IF ( CalculateNodalHeating ) THEN
+         Var => VariableGet( Solver % Mesh % Variables,'Nodal Joule Heating')
+         IF( ASSOCIATED( Var) ) THEN
+           NodalHeating => Var % Values
+         ELSE
+           CALL Fatal('StatCurrentSolver','Nodal Joule Heating does not exist')
+         END IF
+       END IF
+
+
+       
        ConstantWeights = ListGetLogical( Params, &
            'Constant Weights', GotIt )
 
@@ -256,6 +278,8 @@ END SUBROUTINE StatCurrentSolver_Init
      CALL Info( 'StatCurrentSolve', 'STAT CURRENT SOLVER:  ', Level=4 )
      CALL Info( 'StatCurrentSolve', '-------------------------------------',Level=4 )
 
+     CALL DefaultStart()
+     
      DO iter = 1, NonlinearIter
        at  = CPUTime()
        at0 = RealTime()
@@ -274,6 +298,11 @@ END SUBROUTINE StatCurrentSolver_Init
        !    Do the assembly
        !------------------------------------------------------------------------------
 
+       IF( GetCondAtIp ) THEN
+         CALL ListInitElementKeyword( CondAtIp_h,'Material','Electric Conductivity')
+       END IF
+         
+       
        DO t = 1, Solver % NumberOfActiveElements
 
          IF ( RealTime() - at0 > 1.0 ) THEN
@@ -309,33 +338,36 @@ END SUBROUTINE StatCurrentSolver_Init
                'Current Source',n,NodeIndexes, Gotit )
          END IF
 
-         k = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
-             Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
+         IF( .NOT. GetCondAtIp ) THEN
 
-         !------------------------------------------------------------------------------
-         !      Read conductivity values (might be a tensor)
-         !------------------------------------------------------------------------------
+           k = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
+               Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
 
-         CALL ListGetRealArray( Model % Materials(k) % Values, &
-             'Electric Conductivity', Cwrk, n, NodeIndexes )
+           !------------------------------------------------------------------------------
+           !      Read conductivity values (might be a tensor)
+           !------------------------------------------------------------------------------
+           
+           CALL ListGetRealArray( Model % Materials(k) % Values, &
+               'Electric Conductivity', Cwrk, n, NodeIndexes )
 
-         Conductivity = 0.0d0
-         IF ( SIZE(Cwrk,1) == 1 ) THEN
-           DO i=1,3
-             Conductivity( i,i,1:n ) = Cwrk( 1,1,1:n )
-           END DO
-         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-           DO i=1,MIN(3,SIZE(Cwrk,1))
-             Conductivity(i,i,1:n) = Cwrk(i,1,1:n)
-           END DO
-         ELSE
-           DO i=1,MIN(3,SIZE(Cwrk,1))
-             DO j=1,MIN(3,SIZE(Cwrk,2))
-               Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
+           Conductivity = 0.0d0
+           IF ( SIZE(Cwrk,1) == 1 ) THEN
+             DO i=1,3
+               Conductivity( i,i,1:n ) = Cwrk( 1,1,1:n )
              END DO
-           END DO
+           ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+             DO i=1,MIN(3,SIZE(Cwrk,1))
+               Conductivity(i,i,1:n) = Cwrk(i,1,1:n)
+             END DO
+           ELSE
+             DO i=1,MIN(3,SIZE(Cwrk,1))
+               DO j=1,MIN(3,SIZE(Cwrk,2))
+                 Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
+               END DO
+             END DO
+           END IF
          END IF
-
+           
          !------------------------------------------------------------------------------
          !      Get element local matrix, and rhs vector
          !------------------------------------------------------------------------------
@@ -387,8 +419,6 @@ END SUBROUTINE StatCurrentSolver_Init
                MinPotential = MIN(MinPotential, MINVAL(Load(1:n)))
                MaxPotential = MAX(MaxPotential, MAXVAL(Load(1:n)))             
              END IF
-
-             IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
              FluxBC = ListGetLogical(Model % BCs(i) % Values, &
                  'Current Density BC',gotIt) 
@@ -466,7 +496,8 @@ END SUBROUTINE StatCurrentSolver_Init
 !    Compute the Joule heating: H,tot = Integral (E . D)dV
 !------------------------------------------------------------------------------
        
-       IF ( Control .OR. CalculateCurrent .OR. CalculateHeating ) THEN 
+       IF ( Control .OR. CalculateCurrent .OR. CalculateHeating .OR. &
+           CalculateNodalHeating ) THEN 
          CALL GeneralCurrent( Model, Potential, PotentialPerm )
 
          WRITE( Message, * ) 'Total Heating Power   :', Heatingtot
@@ -511,10 +542,12 @@ END SUBROUTINE StatCurrentSolver_Init
 !         Solver % Variable % Norm = ControlScaling * Solver % Variable % Norm
 
          IF ( CalculateHeating )  Heating = ControlScaling**2 * Heating
+         IF ( CalculateNodalHeating)  &
+             NodalHeating = ControlScaling**2 * NodalHeating
          IF ( CalculateCurrent )  VolCurrent = ControlScaling * VolCurrent
        END IF
 
-       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+       IF( Solver % Variable % NonlinConverged > 0 ) EXIT
 
      END DO
 
@@ -530,6 +563,13 @@ END SUBROUTINE StatCurrentSolver_Init
     IF ( CalculateHeating ) THEN
       CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Joule Heating')
     END IF
+
+    IF ( CalculateNodalHeating ) THEN
+      CALL InvalidateVariable( Model % Meshes, Solver % Mesh, &
+          'Nodal Joule Heating')
+    END IF
+
+    CALL DefaultFinish()
     
 
 !------------------------------------------------------------------------------
@@ -554,7 +594,7 @@ END SUBROUTINE StatCurrentSolver_Init
     REAL(KIND=dp) :: Conductivity(3,3,Model % MaxElementNodes)
     REAL(KIND=dp) :: Basis(Model % MaxElementNodes)
     REAL(KIND=dp) :: dBasisdx(Model % MaxElementNodes,3)
-    REAL(KIND=DP) :: SqrtElementMetric, ECond, ElemVol
+    REAL(KIND=DP) :: SqrtElementMetric, ElemVol
     REAL(KIND=dp) :: ElementPot(Model % MaxElementNodes)
     REAL(KIND=dp) :: Current(3)
     REAL(KIND=dp) :: s, ug, vg, wg, Grad(3), EpsGrad(3)
@@ -578,8 +618,13 @@ END SUBROUTINE StatCurrentSolver_Init
     HeatingTot = 0.0d0
     VolTot = 0.0d0
     IF ( CalculateHeating )  Heating = 0.0d0
+    IF ( CalculateNodalHeating)  NodalHeating = 0.0d0
     IF ( CalculateCurrent )  VolCurrent = 0.0d0
 
+    IF( GetCondAtIp ) THEN
+      CALL ListInitElementKeyword( CondAtIp_h,'Material','Electric Conductivity')
+    END IF
+     
 !------------------------------------------------------------------------------
 !   Go through model elements, we will compute on average of elementwise
 !   fluxes to nodes of the model
@@ -617,36 +662,37 @@ END SUBROUTINE StatCurrentSolver_Init
 
 !------------------------------------------------------------------------------
 
-       k = ListGetInteger( Model % Bodies( Element % BodyId ) % &
-            Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
+       IF( .NOT. GetCondAtIp ) THEN
+         k = ListGetInteger( Model % Bodies( Element % BodyId ) % &
+             Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
 
-       CALL ListGetRealArray( Model % Materials(k) % Values, &
-            'Electric Conductivity', Cwrk, n, NodeIndexes, gotIt )
+         CALL ListGetRealArray( Model % Materials(k) % Values, &
+             'Electric Conductivity', Cwrk, n, NodeIndexes, gotIt )
 
-       Conductivity = 0.0d0
-       IF ( SIZE(Cwrk,1) == 1 ) THEN
-          DO i=1,3
+         Conductivity = 0.0d0
+         IF ( SIZE(Cwrk,1) == 1 ) THEN
+           DO i=1,3
              Conductivity( i,i,1:n ) = Cwrk( 1,1,1:n )
-          END DO
-       ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-          DO i=1,MIN(3,SIZE(Cwrk,1))
+           END DO
+         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+           DO i=1,MIN(3,SIZE(Cwrk,1))
              Conductivity(i,i,1:n) = Cwrk(i,1,1:n)
-          END DO
-       ELSE
-          DO i=1,MIN(3,SIZE(Cwrk,1))
+           END DO
+         ELSE
+           DO i=1,MIN(3,SIZE(Cwrk,1))
              DO j=1,MIN(3,SIZE(Cwrk,2))
-                Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
+               Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
              END DO
-          END DO
+           END DO
+         END IF
        END IF
-
+         
 !------------------------------------------------------------------------------
 ! Loop over Gauss integration points
 !------------------------------------------------------------------------------
 
        HeatingDensity = 0.0d0
        Current = 0.0d0
-       ECond = 0.0d0
        ElemVol = 0.0d0
 
 
@@ -679,26 +725,34 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
 
           EpsGrad = 0.0d0
-          DO j = 1, DIM
-             Grad(j) = SUM( dBasisdx(1:n,j) * ElementPot(1:n) )
-             DO i = 1, DIM
+          IF( GetCondAtIp ) THEN
+            CondAtIp = ListGetElementReal( CondAtIp_h, Basis, Element, Stat, GaussPoint = tg )
+            DO j = 1, DIM
+              Grad(j) = SUM( dBasisdx(1:n,j) * ElementPot(1:n) )
+            END DO
+            EpsGrad(1:dim) = CondAtIp * Grad(1:dim)
+          ELSE
+            DO j = 1, DIM
+              Grad(j) = SUM( dBasisdx(1:n,j) * ElementPot(1:n) )
+              DO i = 1, DIM
                 EpsGrad(j) = EpsGrad(j) + SUM( Conductivity(j,i,1:n) * &
-                     Basis(1:n) ) * SUM( dBasisdx(1:n,i) * ElementPot(1:n) )
-             END DO
-          END DO
+                    Basis(1:n) ) * SUM( dBasisdx(1:n,i) * ElementPot(1:n) )
+              END DO
+            END DO
+          END IF
 
+            
           VolTot = VolTot + s
 
           HeatingTot = HeatingTot + &
                s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) )
 
-          IF( CalculateHeating .OR. CalculateCurrent ) THEN
+          IF( CalculateHeating .OR. CalculateCurrent .OR. CalculateNodalHeating ) THEN
             HeatingDensity = HeatingDensity + &
                 s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) ) 
             DO j = 1,DIM
               Current(j) = Current(j) - EpsGrad(j) * s
             END DO
-            ECond = ECond + SUM( Conductivity(1,1,1:n) * Basis(1:n) ) * s
             
             ElemVol = ElemVol + s
           END IF
@@ -713,51 +767,54 @@ END SUBROUTINE StatCurrentSolver_Init
          IF ( ConstantWeights ) THEN
            HeatingDensity = HeatingDensity / ElemVol
            Current(1:Dim) = Current(1:Dim) / ElemVol
-           ECond = Econd / ElemVol
            SumOfWeights( Reorder( NodeIndexes(1:n) ) ) = &
                SumOfWeights( Reorder( NodeIndexes(1:n) ) ) + 1
          ELSE
            SumOfWeights( Reorder( NodeIndexes(1:n) ) ) = &
                SumOfWeights( Reorder( NodeIndexes(1:n) ) ) + ElemVol
          END IF
-
-         IF ( CalculateHeating ) THEN
-           Heating( Reorder(NodeIndexes(1:n)) ) = &
-               Heating( Reorder(NodeIndexes(1:n)) ) + HeatingDensity
-         END IF
+       END IF
          
-         IF ( CalculateCurrent ) THEN
-           DO j=1,DIM 
-             VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) = &
-                 VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) + &
-                 Current(j)
-           END DO
-         END IF
+       IF ( CalculateHeating ) THEN
+         Heating( Reorder(NodeIndexes(1:n)) ) = &
+             Heating( Reorder(NodeIndexes(1:n)) ) + HeatingDensity
+       END IF
+       
+       IF ( CalculateNodalHeating ) THEN
+         NodalHeating( Reorder(NodeIndexes(1:n)) ) = &
+             NodalHeating( Reorder(NodeIndexes(1:n)) ) + HeatingDensity
+       END IF
+         
+       IF ( CalculateCurrent ) THEN
+         DO j=1,DIM 
+           VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) = &
+               VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) + &
+               Current(j)
+         END DO
        END IF
 
     END DO! of the bulk elements
 
-    IF ( ParEnv % PEs > 1) THEN
-      VolTot     = ParallelReduction(VolTot)
-      HeatingTot = ParallelReduction(HeatingTot)
-
-      IF ( CalculateCurrent) THEN
-        ALLOCATE(tmp(SIZE(VolCurrent)/dim))
-        DO i=1,dim
-          tmp = VolCurrent(i::dim)
-          CALL ParallelSumVector(Solver % Matrix, tmp)
-          Volcurrent(i::dim) = tmp
-        END DO
+    IF ( CalculateHeating .OR. CalculateCurrent) THEN
+      IF ( ParEnv % PEs > 1) THEN
+        VolTot     = ParallelReduction(VolTot)
+        HeatingTot = ParallelReduction(HeatingTot)
+        
+        IF ( CalculateCurrent) THEN
+          ALLOCATE(tmp(SIZE(VolCurrent)/dim))
+          DO i=1,dim
+            tmp = VolCurrent(i::dim)
+            CALL ParallelSumVector(Solver % Matrix, tmp)
+            Volcurrent(i::dim) = tmp
+          END DO
+        END IF
+        IF (CalculateHeating ) CALL ParallelSumVector(Solver % Matrix, Heating)
+        CALL ParallelSumVector(Solver % Matrix, SumOfWeights)
       END IF
-      IF (CalculateHeating ) CALL ParallelSumVector(Solver % Matrix, Heating)
-      CALL ParallelSumVector(Solver % Matrix, SumOfWeights)
-    END IF
-
+      
 !------------------------------------------------------------------------------
 !   Finally, compute average of the fluxes at nodes
 !------------------------------------------------------------------------------
-
-    IF( CalculateHeating .OR. CalculateCurrent ) THEN
       DO i = 1, Model % NumberOfNodes
         IF ( ABS( SumOfWeights(i) ) > 0.0D0 ) THEN
           IF ( CalculateHeating )  Heating(i) = Heating(i) / SumOfWeights(i)
@@ -769,7 +826,7 @@ END SUBROUTINE StatCurrentSolver_Init
       END DO
       DEALLOCATE( SumOfWeights ) 
     END IF
-
+      
     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
 
 !------------------------------------------------------------------------------
@@ -832,11 +889,21 @@ END SUBROUTINE StatCurrentSolver_Init
          S = S * SqrtElementMetric * SqrtMetric
 
          L = SUM( Load(1:n) * Basis )
-         DO i=1,DIM
-            DO j=1,DIM
+
+         IF( GetCondAtIp ) THEN
+           CondAtIp = ListGetElementReal( CondAtIp_h, Basis, Element, Stat, GaussPoint = t )
+           C(1:dim,1:dim) = 0.0_dp
+           DO i=1,dim
+             C(i,i) = CondAtIp
+           END DO
+         ELSE
+           DO i=1,DIM
+             DO j=1,DIM
                C(i,j) = SUM( Conductivity(i,j,1:n) * Basis(1:n) )
-            END DO
-          END DO
+             END DO
+           END DO
+         END IF
+         
 !------------------------------------------------------------------------------
 !        The Poisson equation
 !------------------------------------------------------------------------------

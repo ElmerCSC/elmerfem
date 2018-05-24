@@ -124,6 +124,7 @@ MODULE DiffuseConvectiveGeneral
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t), POINTER :: Element
 
+     
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -154,13 +155,16 @@ MODULE DiffuseConvectiveGeneral
 
      LOGICAL :: stat,CylindricSymmetry,Convection,ConvectAndStabilize,Bubbles, &
                FrictionHeat, Found
-     TYPE(ValueList_t), POINTER :: BodyForce
+     TYPE(ValueList_t), POINTER :: BodyForce, Material
 
+     LOGICAL :: GotCondModel
+   
 !------------------------------------------------------------------------------
 
      CylindricSymmetry = (CurrentCoordinateSystem() == CylindricSymmetric .OR. &
                   CurrentCoordinateSystem() == AxisSymmetric)
 
+     
      IF ( CylindricSymmetry ) THEN
        dim = 3
      ELSE
@@ -181,6 +185,9 @@ MODULE DiffuseConvectiveGeneral
         Bubbles = .TRUE.
      END IF
      
+     Material => GetMaterial()
+     GotCondModel = ListCheckPresent( Material,'Heat Conductivity Model')
+     
 !------------------------------------------------------------------------------
 !    Integration stuff
 !------------------------------------------------------------------------------
@@ -197,7 +204,7 @@ MODULE DiffuseConvectiveGeneral
  
 !------------------------------------------------------------------------------
 !    Stabilization parameters: hK, mK (take a look at Franca et.al.)
-!    If there is no convection term we dont need stabilization.
+!    If there is no convection term we don't need stabilization.
 !------------------------------------------------------------------------------
      ConvectAndStabilize = .FALSE.
      IF ( Stabilize .AND. ANY(NodalC1 /= 0.0D0) ) THEN
@@ -280,11 +287,13 @@ MODULE DiffuseConvectiveGeneral
                 SUM( NodalC2(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
- 
-       DO i=1,dim
-          C2(i,i) = EffectiveConductivity( C2(i,i), Density, Element, &
-                 Temperature, UX,UY,UZ, Nodes, n, n, u, v, w )
-       END DO
+
+       IF( GotCondModel ) THEN
+         DO i=1,dim
+           C2(i,i) = EffectiveConductivity( C2(i,i), Density, Element, &
+               Temperature, UX,UY,UZ, Nodes, n, n, u, v, w )
+         END DO
+       END IF
 !------------------------------------------------------------------------------
 !      If there's no convection term we don't need the velocities, and
 !      also no need for stabilization
@@ -476,7 +485,7 @@ MODULE DiffuseConvectiveGeneral
          IF ( FrictionHeat ) THEN
            Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
            Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
-                 Element, Nodes, n, n, u, v, w )
+                 Element, Nodes, n, n, u, v, w, LocalIP=t )
            IF ( Viscosity > 0.0d0 ) THEN
              IF ( .NOT.Compressible ) THEN
                dVelodx = 0.0D0

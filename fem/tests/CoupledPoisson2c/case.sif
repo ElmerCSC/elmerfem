@@ -1,4 +1,4 @@
-!# This is similar to the previous exept a non-trivial source term is introduced. Basically this
+!# This is similar to the previous except a non-trivial source term is introduced. Basically this
 !# is linear but treting it explicitely creates a nasty feedback that is treated with a nonlinear
 !# solver with linesearch using the Armijo-Goldstein criterion.
 !#
@@ -13,7 +13,7 @@ Header
 End
 
 Simulation
-!  Max Output Level = 4
+!  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -106,9 +106,7 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.26405675E-01
-$fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=0.26405675E-01\n");
 
 
 

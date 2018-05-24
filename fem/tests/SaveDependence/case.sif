@@ -1,0 +1,105 @@
+! This is for testing SaveDependence, the mesh and HeatSolver are just around
+! 21.9.2016 / P.R.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+  Heat Equation = True
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 2 
+  Equation = SaveDep
+  Procedure = "SaveData" "SaveDependence"
+  Filename = f.dat
+
+! This defines the uniform interval for x
+  Number of points = Integer 31
+  Lower Limit = Real 0.0
+  Upper Limit = Real 3.0
+
+! This is the functional f(x) expression to be saved in table
+  Expression 1 = Variable dummy
+    Real 
+     -1.0 -1.0
+      1.0 1.0
+      2.0 1.1
+      3.0 2.1
+      4.0 2.1
+    End
+
+  Show Norm Index = 1
+End
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1
+  Heat Conductivity = 1.0
+End
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Zero"
+  Target Boundaries(1) = 1
+  Temperature = 0
+End
+
+
+Solver 1 :: Reference Norm = 3.78170795E-02
+Solver 2 :: Reference Norm = 1.17827786E+00
+
+
+!End Of File

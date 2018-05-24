@@ -1,0 +1,123 @@
+!------------------------------------------------------------------------
+! Temperature distribution of a simple angle object 
+! Create the mesh with: ElmerGrid 1 2 angle.grd
+!
+! This case tests hybrid partitioning strategies.
+! The partitioning method is layer partitioning + geometric partitioning. 
+!
+! P.R. 26.4.2016
+!-------------------------------------------------------------------------
+
+Header
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End 
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+  Mesh Levels = 2
+
+!  Post File = case.vtu
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+Body 1
+  Name = "Body"
+  Equation = 1
+  Material = 1 
+  Body Force = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers = 1 
+End
+
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 1.0
+End 
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Exec Solver = Always
+  Stabilize = False
+  Bubbles = False
+
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Timing = True
+  Solver Timing = True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = CG
+  Bicgstabl Polynomial Degree = 2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = none
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+  Linear System Symmetric = True
+!  Optimize Bandwidth = False
+
+  Nonlinear System Consistent Norm = True
+End 
+
+
+Solver 2
+  Exec Solver = Never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = f.dat
+  Filename Numbering = Logical True
+
+  Variable 1 = Temperature
+  Operator 1 = dofs
+  Operator 2 = partitions
+  Operator 3 = max 
+  Operator 4 = norm
+End 
+
+
+Boundary Condition 1
+  Name = "Walls"
+  Target Boundaries = 1
+  Temperature = 0
+End
+
+
+
+Solver 1:: Reference Norm = 1.65708974E-01

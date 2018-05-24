@@ -270,7 +270,7 @@ End
 
 Solver 8
   Equation = "Free Surface Sea/Shelf"
-  Procedure =  "./MyFreeSurfaceSolver" "FreeSurfaceSolver"
+  Procedure =  "FreeSurfaceSolver" "FreeSurfaceSolver"
   Variable = "Zb"
   Variable DOFS =  1
   Exported Variable 1 = "Zb Residual"
@@ -426,7 +426,7 @@ Boundary Condition 3
   ComputeNormal = Logical False
 End
 
-!! Symetry axis
+!! Symmetry axis
 Boundary Condition 4
   Name = "back"
   Target Boundaries = 4

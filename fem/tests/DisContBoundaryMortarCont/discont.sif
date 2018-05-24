@@ -16,7 +16,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -25,7 +25,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
-! Normally we dont want to apply this
+! Normally we don't want to apply this
   Discontinuous Bulk Greedy = Logical False
 End
 
@@ -182,7 +182,5 @@ End
 
 
 Solver 1 :: Reference Norm = Real 0.54992101
-$fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.54992101\n");
 !End Of File

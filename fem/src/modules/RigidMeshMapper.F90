@@ -69,10 +69,9 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   INTEGER, POINTER :: RelaxPerm(:), VeloPerm(:), NodeIndex(:), IntArray(:) => NULL()
   REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
       TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, dCoord(3), Norm, dx(3)
-#ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: at0,at1,at2,Coeff,relax(1)
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime,Coeff,relax(1)
+  REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform
+#ifndef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: CPUTime,RealTime
 #endif
   REAL(KIND=dp), POINTER :: Xorig(:),Yorig(:),Zorig(:),Xnew(:),Ynew(:),Znew(:),&
       RelaxField(:),VeloVal(:), PArray(:,:) => NULL()
@@ -82,7 +81,8 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
       UseOriginalMesh, Cumulative, GotRelaxField=.FALSE., &
       CalculateVelocity,TranslateBeforeRotate
-  LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,AnyMeshOrigin
+  LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
+      AnyMeshOrigin
   LOGICAL, POINTER :: NodeDone(:)
   TYPE(Element_t), POINTER :: Element
   TYPE(Nodes_t), SAVE :: Nodes
@@ -204,7 +204,10 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     IF(.NOT. Found) MaxNonlinIter = 1
     
     Coeff = GetCReal( SolverParams,'Nonlinear Conductivity Coeffient',Found)
+    Source = GetCReal( SolverParams,'Mesh Relax Source',Found)
 
+
+    
     DO NonlinIter = 1, MaxNonlinIter
       CALL DefaultInitialize()
       
@@ -224,6 +227,14 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
     END DO
 
+    IF( ListGetLogical(SolverParams,'Mesh Relax Normalize') ) THEN
+      MaxDeform = MAXVAL( ABS( Solver % Variable % Values ) )
+      MaxDeform = ParallelReduction( MaxDeform, 2 )      
+      WRITE(Message,'(A,ES12.3)') 'Normalizing deformation by:',MaxDeform
+      CALL Info('RigidMeshMapper',Message,Level=6)
+      Solver % Variable % Values = Solver % Variable % Values / MaxDeform
+    END IF
+    
     DEALLOCATE( FORCE, STIFF )
   END IF
 
@@ -567,12 +578,15 @@ CONTAINS
       DO i=1,3
         Grad(i) = SUM( dBasisdx(:,i) * LocalRelax(1:n) )
       END DO
-      Cond = 1.0_dp + Coeff * SQRT( SUM( Grad * Grad ) )
 
+      Cond = 1.0_dp + Coeff * SQRT( SUM( Grad * Grad ) )
+      
       ! Laplace operator
       !------------------
-      STIFF(1:n,1:n) = Cond * STIFF(1:n,1:n) + IP % s(t) * DetJ * &
+      STIFF(1:n,1:n) = STIFF(1:n,1:n) + Cond * IP % s(t) * DetJ * &
           MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
+
+      FORCE(1:n) = FORCE(1:n) + Source * IP % s(t) * DetJ * Basis(1:n)
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix

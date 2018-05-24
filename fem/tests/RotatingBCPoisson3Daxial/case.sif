@@ -1,0 +1,206 @@
+! Test case for 3D nonconforming mortar elements with axial projector
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "sector3d"
+  Include Path ""
+  Results Directory ""
+End
+   
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  
+  Timestepping Method = BDF
+  BDF Order = 1
+
+$dt=1.0
+  Timestep Sizes = $dt
+  Timestep Intervals = 9
+  Output Intervals = 1
+  Post File = case.vtu
+  Simulation Timing = Logical True
+End 
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Stator"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Rotor"
+  Equation = 1
+  Material = 2
+  Body Force = 1
+  Initial Condition = 1
+End
+
+
+Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+  Translate Before Rotate = Logical True
+End
+
+
+Solver 2
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = -dofs 1 Temperature
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+
+  Nonlinear System Relaxation Factor = 1.0  
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+ 
+  Optimize Bandwidth = False
+
+  Apply Mortar BCs = Logical True
+  Export Lagrange Multiplier = Logical True
+
+
+  Nonlinear System Consistent Norm = True
+!  No Explicit Constrained Matrix = Logical True
+
+  Linear System Timing = Logical True
+  Solver Timing = Logical True
+  Linear System Timing Cumulative = Logical True
+  Solver Timing Cumulative = Logical True
+End
+
+Solver 3
+! Settings mainly for timing and verification
+  Exec Solver = never
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+!  Filename = scalars.dat
+
+  Variable 1 = Temperature
+  Operator 1 = dofs
+  Operator 2 = partitions
+  Operator 3 = min
+  Operator 4 = max
+  Operator 5 = norm
+  Operator 6 = cpu time
+  Operator 7 = wall time
+
+!  File Append = Logical True
+
+! Reduce just to one file when parallel
+  Parallel Reduce = Logical True
+  Default Parallel Operator = String max
+  Parallel Operator 1 = String sum
+End 
+
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 2
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 100
+  Heat Capacity = 1
+  Density = 1
+End
+
+
+Material 2
+  Name = "Ideal"
+  Heat Conductivity = 1
+  Heat Capacity = 1
+  Density = 1
+End
+
+Body Force 1 
+  Name = "Hot Move"
+  Mesh Rotate 3 = Variable time 
+    Real MATC "20*tx"
+End 
+
+Boundary Condition 1
+  Target Boundaries(3) = 1 2 3
+  Name = "Ambient"
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 7
+  Name = "Zero"
+  Temperature = 0.0  
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 5
+  Name = "Mortar Slave"
+
+  Mortar BC =  4
+
+!  Axial Projector = Logical True
+  Anti Axial Projector = Logical True
+!  Axial Projector Periods = Integer 4
+!  Rotational Projector Periods = Integer 4
+
+  Level Projector = Logical True
+  Level Projector Generic = Logical True
+! Save Projector = Logical True
+! Level Projector Debug Element Index = Integer 2
+
+!  Mortar Projector Radius = Real 1.0
+!  Periodic BC = 2
+!  Periodic BC Translate(3) =  4 0 0
+!  Periodic BC Temperature = Logical True
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 6
+  Name = "Mortar Master"
+End
+
+Boundary Condition 5
+  Target Boundaries(1) = 4
+  Name = "OtherEnd"
+
+! This temperature profile is antiperiodic hence use 'anti axial projector'
+  Temperature = Variable Coordinate
+    Real MATC "abs(tx(0))-abs(tx(1))"
+End
+
+
+Solver 2 :: Reference Norm = 3.18192935E-01

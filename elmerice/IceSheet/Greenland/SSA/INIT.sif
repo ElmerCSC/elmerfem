@@ -1,0 +1,146 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! .sif file for the initialisation
+! of greenland transient simulations
+!
+! Author: F. Gillet-Chaulet (IGE-Grenoble-FR)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! FOR DEFAULT USE/UPDATE PARAMETERS IN SSA.IN
+include SSA.IN
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!#######################################################
+!#######################################################
+Header
+  Mesh DB "." "$MESH$"
+End
+!#######################################################
+!#######################################################
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "RUN0_.result"
+  Post File = "RUN0_.vtu"
+  max output level = 3
+End
+!#######################################################
+!#######################################################
+Body 1
+  Equation = 1
+  Material = 1
+End
+!#######################################################
+!#######################################################
+Material 1
+! Material properties
+  SSA Mean Density = Real $rhoi
+End
+!#######################################################
+!#######################################################
+Solver 1
+  Equation = Reader
+    Procedure = "GridDataReader" "GridDataReader"
+    Variable = -nooutput dumy
+   
+!---- NOTE: File is case sensitive, String is not!
+   Filename = File "$TOPOGRAPHY_DATA$"
+
+   X Dim Name = String "x"
+   Y Dim Name = String "y"
+!--- 
+  Variable 1 = File "thickness"
+  Target Variable 1 = String "H"
+  Exported Variable 1 = H
+  Valid Min Value 1 = Real $HMin
+
+  Variable 2 = File "bed"
+  Target Variable 2 = String "bedrock"
+  Exported Variable 2 = bedrock
+End
+Solver 2
+   Equation = "Flotation"
+      Variable = GroundedMask
+      Procedure = "ElmerIceSolvers" "Flotation"
+
+   Exported Variable 1 = Zs
+   Exported Variable 2 = Zb
+End
+!#######################################################
+Solver 3
+  Equation = Reader2
+    Procedure = "GridDataReader" "GridDataReader"
+    Variable = -nooutput dumy2
+   
+!---- NOTE: File is case sensitive, String is not!
+   Filename = File "$SMB_DATA$"
+
+   X Dim Name = String "x"
+   Y Dim Name = String "y"
+!--- 
+  Variable 1 = File "smb_ice"
+  Target Variable 1 = String "smb"
+  Exported Variable 1 = smb
+End
+!#######################################################
+Solver 4
+  Equation = Reader3
+    Procedure = "GridDataReader" "GridDataReader"
+    Variable = -nooutput dumy3
+   
+!---- NOTE: File is case sensitive, String is not!
+   Filename = File "$VISCOSITY_DATA$"
+
+   X Dim Name = String "x"
+   Y Dim Name = String "y"
+!--- 
+  Variable 1 = File "MuMean"
+  Target Variable 1 = String "Mu"
+  Exported Variable 1 = Mu
+End
+!#######################################################
+Solver 5
+  Equation = Reader4
+    Procedure = "GridDataReader" "GridDataReader"
+    Variable = -nooutput dumy4
+   
+!---- NOTE: File is case sensitive, String is not!
+   Filename = File "$SLIP_DATA$"
+
+   X Dim Name = String "x"
+   Y Dim Name = String "y"
+!--- 
+  Variable 1 = File "C1"
+  Target Variable 1 = String "slc"
+  Exported Variable 1 = slc
+End
+!#######################################################
+Solver 6
+  Equation = Reader5
+    Procedure = "GridDataReader" "GridDataReader"
+    Variable = -nooutput dumy5
+   
+!---- NOTE: File is case sensitive, String is not!
+ Filename = File "$VELOCITY_DATA$"
+
+   X Dim Name = String "x"
+   Y Dim Name = String "y"
+   Is Time Counter = Logical True
+!--- 
+
+  Variable 1 = File "vnorm"
+  Target Variable 1 = String "Vobs"
+  Exported Variable 1 = Vobs
+End
+!#######################################################
+!#######################################################
+Equation 1
+  Active Solvers(6) = 1 2 3 4 5 6
+End
+

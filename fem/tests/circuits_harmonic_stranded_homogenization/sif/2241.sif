@@ -1,0 +1,258 @@
+Check Keywords "Warn"
+INCLUDE sif/2241-circuits.definitions
+INCLUDE 2241/mesh.names
+Header 1
+   Mesh DB "." "2241"
+End
+Constants 1
+   Permittivity of Vacuum = 8.8542e-12
+End
+Initial Condition 1
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian 3D
+   Coordinate Mapping(3) = 1 2 3
+   Coordinate Scaling = 0.001
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   BDF Order = 1
+   Output Intervals = 1
+   Angular Frequency = $ 2*pi*10000
+End
+Solver 1
+   Exec Solver = Before all
+   Procedure = "DirectionSolver" "DirectionSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 5000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction Alpha
+   Variable =  Alpha
+End
+Solver 2
+   Exec Solver = Before all
+   Procedure = "DirectionSolver" "DirectionSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 5000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction Beta
+   Variable =  Beta
+End
+Solver 3
+   Exec Solver = Before All
+   Equation = Transformation matrix
+   Procedure = "CoordinateTransform" "RotMSolver"
+   Variable = -nooutput Dummy
+   Optimize Bandwidth = False
+   Exported Variable 1 = -nooutput RotM E[RotM E:9]
+   Exported Variable 2 = -nooutput Alpha Vector E[Alpha Vector E:3]
+   Exported Variable 3 = -nooutput Beta Vector E[Beta Vector E:3]
+   Exported Variable 4 = -nooutput Gamma Vector E[Gamma Vector E:3]
+   Discontinuous Galerkin = True
+End
+Solver 4 !-- WpotentialSolver - Wsolve
+   Exec Solver = Before All
+   Procedure = "WPotentialSolver" "Wsolve"
+   Equation = "Wire direction"
+   Variable = W
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 10000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+End
+Solver 5 !-- CircuitsAndDynamics - CircuitsAndDynamicsHarmonic
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+Solver 6 !-- MagnetoDynamics - WhitneyAVHarmonicSolver
+   Exec Solver = Always
+   Equation = "MGDynamics"
+   Variable = "A[A re:1 A im:1]"
+   Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+   Angular Frequency = 376.991118431
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = Logical True
+   Linear System Complex = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System preconditioning = Circuit
+   Linear System Convergence Tolerance = 1.e-7
+   Linear System Max Iterations = 5000
+   Linear System Residual Output = 1000
+   BicgStabL Polynomial Degree = 4
+   Linear System Abort not Converged = True
+   Steady State Convergence Tolerance = 1e-06
+End
+Solver 7
+   Exec Solver = Always
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "A"
+   Calculate Current Density = Logical True
+   Loss Estimation = Logical True
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 1000
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+Solver 8
+   Exec Solver = After timestep
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 2241-results2
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+Solver 9
+   Exec Solver = Always
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+Solver 10
+   Exec Solver = Never
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = 2241/dat/2241.dat
+End
+Equation 1
+   Active Solvers(2) = 6 7
+End
+Equation 2
+   Active Solvers(7) = 1 2 3 4 5 6 7
+End
+Material 1
+   Name = iron
+   Electric Conductivity = 0
+   Relative Permeability = 2000
+   Relative Permittivity = 1e100
+End
+Material 2
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+   Relative Permittivity = 1
+End
+Material 3
+   Name = metal
+   Relative Permeability = 1
+   Relative Permittivity = 1e100
+   Electric Conductivity = 1e7
+End
+Body 1
+   Name = core
+   Target Bodies(1) = $ core
+   Equation = 1
+   Material = 1
+   Initial Condition = 1
+End
+Body 2
+   Name = air
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 2
+   Initial Condition = 1
+End
+Body 3
+   Name = airgap_1_limb_2
+   Target Bodies(1) = $ airgap_1_limb_2
+   Equation = 1
+   Material = 2
+   Initial Condition = 1
+End
+Body 4
+   Name = wp1
+   Target Bodies(1) = $ wp1
+   Equation = 2
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+   Alpha reference (3) = Real 1 0 0
+   Beta reference (3) = Real 0 1 0
+End
+Component 1
+   Name = String wp1
+   Body = Integer 4
+   Coil Type = String stranded
+   Homogenization Model = Logical True
+   Nu 11 = Real $ 773655 
+   Nu 11 im = Real $ 259371
+   Nu 22 = Real $ 773655 
+   Nu 22 im = Real $ 259371
+   Sigma 33 = Real 9e7
+   Number of Turns = Real 144
+   Electrode Area = Real 0.000185614878383
+End
+Body Force 1
+   Name = "Circuit"
+   S Re = Real $ cos(0.0*pi/3) * 1.41421356237
+   S Im = Real $ sin(0.0*pi/3) * 1.41421356237
+End
+Boundary Condition 1
+   Name = BCn Flux Parallel
+   Target Boundaries(2) = $ coreface_xy xy0
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Boundary Condition 2
+   Name = Alpha0
+   Target Boundaries = $ wp1_alpha0
+   Body 4: Alpha = Real 0
+End
+Boundary Condition 3
+   Name = Alpha1
+   Target Boundaries = $ wp1_alpha1
+   Body 4: Alpha = Real 1
+End
+Boundary Condition 4
+   Name = ground
+   Target Boundaries = $ wp1_gamma1
+   W = Real 0
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Boundary Condition 5
+   Name = current in foil winding
+   Target Boundaries = $ wp1_gamma0
+   W = Real 1
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Boundary Condition 6
+   Name = Beta1
+   Target Boundaries = $ wp1_beta1
+   Body 4: Beta = Real 1
+End
+Boundary Condition 7
+   Name = Beta0
+   Target Boundaries = $ wp1_beta0
+   Body 4: Beta = Real 0
+End
+
+Solver 4 :: Reference Norm = Real 5.88944303E-01 
+Solver 4 :: Reference Norm Tolerance = Real 1E-03
+Solver 6 :: Reference Norm = Real 4.09497893E-07 
+Solver 6 :: Reference Norm Tolerance = Real 1E-03
+!Solver 7 :: Reference Norm = Real 1.63166208E-09
+!Solver 7 :: Reference Norm Tolerance = Real 1E-03
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+

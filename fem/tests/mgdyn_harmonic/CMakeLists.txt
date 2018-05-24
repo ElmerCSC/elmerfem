@@ -1,9 +1,8 @@
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( MGDynamicsHarmonic.sif MGDynamicsHarmonic.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO mesh3d DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_harmonic)
-ADD_ELMER_LABEL(mgdyn_harmonic benchmark)
+ADD_ELMER_TEST(mgdyn_harmonic LABELS whitney benchmark)

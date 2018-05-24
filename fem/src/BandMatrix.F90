@@ -215,9 +215,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>    Set value of unkown x_n to given value for symmetric band matrix. This is
+!>    Set value of unknown x_n to given value for symmetric band matrix. This is
 !>    done by replacing the equation of the unknown by  x_n = Value (i.e.
-!>    zeroing the row of the unkown in the matrix, and setting diagonal to
+!>    zeroing the row of the unknown in the matrix, and setting diagonal to
 !>    identity). Also the respective column is set to zero (except for the
 !>    diagonal) to preserve symmetry, while also substituting the rhs by
 !>    by rhs(i) = rhs(i) - A(i,n) * Value.
@@ -227,7 +227,7 @@ CONTAINS
     TYPE(Matrix_t) :: A  !< Structure holding matrix, values are affected in the process
     REAL(KIND=dp) :: b(:)         !< RHS vector
     REAL(KIND=dp), INTENT(IN) :: Value        !< Value for the unknown
-    INTEGER, INTENT(IN) :: n                  !< Ordered number of the unkown (i.e. matrix row and column number)
+    INTEGER, INTENT(IN) :: n                  !< Ordered number of the unknown (i.e. matrix row and column number)
 !------------------------------------------------------------------------------
 
     INTEGER :: j

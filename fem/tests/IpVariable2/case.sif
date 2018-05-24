@@ -1,0 +1,141 @@
+! Just creates a variable on IP points and computes some values to it
+! using the "update exported variables" and body force defintions. 
+!
+! This is a masked version of the variable.
+!!
+! P.R. 19.1.2018
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "squares"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 12
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "BodyA"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "BodyB"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+
+! These are used to create a variable 
+  Exported Variable 1 = -ip testvar a
+  Exported Variable 2 = -ip testvar b
+
+! These can be used to toggle exported variable passive/active somewhere
+! In effect the lenght of the variable will be smaller
+  Exported Variable 1 Mask = String "mask a"
+  Exported Variable 2 Mask = String "mask b"
+
+! This is nice in that it is done before the simulation is started
+! just after the "initial conditions" are set.
+!  Initialize Exported Variables = Logical True
+ Update Exported Variables = Logical True
+
+! This could be used just to create the table but not do anything with it
+!  Create Integration Points Table = Logical True 
+End
+
+
+Solver 2
+  Exec Solver = "Always"
+  Procedure = "SaveData" "SaveScalars"
+  Equation = "ShowScalars"
+
+  Variable 1 = "Temperature"
+  Operator 1 = max
+  Variable 2 = testvar a
+  Operator 2 = max
+  Variable 3 = testvar b
+  Operator 3 = max
+
+  Show Norm Index = 2
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1.0
+End
+ 
+Body Force 1
+  Name = "BodyForceA"
+  TestVar A = Variable "Coordinate"
+    Real MATC "tx(0)+tx(1)"
+  TestVar B = Variable "Temperature"
+    Real MATC "tx"
+  Mask A = Logical True
+End
+
+Body Force 2
+  Name = "BodyForce"
+  Heat Source = 1
+  TestVar A = Variable "Coordinate"
+    Real MATC "tx(0)+tx(1)"
+  TestVar B = Variable "Temperature"
+    Real MATC "tx"
+  Mask B = Logical True
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(1) = 1 
+  Temperature = 0
+End
+
+
+Solver 1 :: Reference Norm = 1.27320795E-02
+Solver 2 :: Reference Norm = 1.95773502692
+!End Of File

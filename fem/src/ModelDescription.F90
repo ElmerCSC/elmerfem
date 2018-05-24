@@ -40,6 +40,7 @@
 !-----------------------------------------------------------------------------
 !>  Module that defined the Model: reads in the command file, mesh and results etc.
 !-----------------------------------------------------------------------------
+#include "../config.h"
 
 MODULE ModelDescription
 
@@ -69,7 +70,7 @@ MODULE ModelDescription
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
 
-    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 100
+    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000
 
 CONTAINS
 
@@ -147,6 +148,8 @@ CONTAINS
      INTEGER :: k,k0,k1,l
 !------------------------------------------------------------------------------
 
+     CALL Info('LoadIncludeFile','Loading include file: '//TRIM(FileName),Level=8)
+     
      IF ( .NOT. FileNameQualified(FileName) ) THEN
        k0 = 1
        k1 = INDEX( IncludePath, ';' )
@@ -212,6 +215,7 @@ CONTAINS
     INTEGER :: pos, posn
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
 
+    CALL Info('ReloadInputFile','Realoading input file',Level=7)
     MeshDir  = ' '
     Meshname = ' '
     CALL LoadInputFile( Model, InFileUnit, ' ', &
@@ -248,8 +252,8 @@ CONTAINS
 
     CHARACTER(LEN=:), ALLOCATABLE :: section, name, str
 
-    LOGICAL :: Found, SizeGiven
-    LOGICAL :: FreeNames=.FALSE., Echo = .FALSE.
+    LOGICAL :: Found, SizeGiven, FoundName
+    LOGICAL :: FreeNames=.FALSE., Echo = .FALSE., Numbering = .TRUE.
     INTEGER :: CheckAbort = 0
 
     TYPE(Solver_t), POINTER :: ASolvers(:)
@@ -265,7 +269,8 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE.
 
-    INTEGER :: nlen
+    INTEGER :: nlen, BCcount, BodyCount, EqCount, MatCount, BfCount, &
+        IcCount, SolverCount, LineCount, ComponentCount
     REAL(KIND=dp) :: Val
 
 !------------------------------------------------------------------------------
@@ -274,6 +279,12 @@ CONTAINS
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::name)
 
+    IF( ScanOnly ) THEN
+      CALL Info('LoadInputFile','Scanning input file: '//TRIM(FileName),Level=7)
+    ELSE
+      CALL Info('LoadInputFile','Loading input file: '//TRIM(FileName),Level=7)
+    END IF
+      
 !------------------------------------------------------------------------------
 !   Read model header first
 !------------------------------------------------------------------------------
@@ -305,6 +316,10 @@ CONTAINS
            Echo = .TRUE.
         ELSE IF ( Name == 'echo off' ) THEN
            Echo = .FALSE.
+        ELSE IF ( Name == 'numbering on' ) THEN
+           Numbering = .TRUE.
+        ELSE IF ( Name == 'numbering off' ) THEN
+           Numbering = .FALSE.
         ELSE IF ( SEQL(Name, 'bodies') ) THEN
         ELSE IF ( SEQL(Name, 'initial conditions') ) THEN
         ELSE IF ( SEQL(Name, 'boundaries') ) THEN
@@ -378,9 +393,18 @@ CONTAINS
          END DO
          BoundaryIndex = 0
        END IF
-
     END IF
 
+    BCcount = 0
+    BodyCount = 0
+    BfCount = 0
+    EqCount = 0
+    MatCount = 0
+    IcCount = 0
+    SolverCount = 0
+    ComponentCount = 0
+    LineCount = 0
+    
     IF ( PRESENT(runc) ) runc = .FALSE.
 !------------------------------------------------------------------------------
     DO WHILE(ReadAndTrim(InFileUnit,Section,Echo))
@@ -405,433 +429,465 @@ CONTAINS
          EXIT
       END IF
 
-      FreeNames = CheckAbort <= 0
-
+      FreeNames = ( CheckAbort <= 0 )
       ArrayN = 0
+      LineCount = LineCount + 1
+      
       IF ( SEQL(Section, 'constants') ) THEN
-
-         IF ( .NOT. ScanOnly ) THEN
-           ArrayN = 1
-           IF(.NOT.ASSOCIATED(Model % Constants)) &
-                Model % Constants => ListAllocate()
-           List => Model % Constants
-         END IF
-
-      ELSE IF ( SEQL(Section, 'simulation') ) THEN
-
-         IF ( .NOT. ScanOnly ) THEN
-           ArrayN = 1
-           IF(.NOT.ASSOCIATED(Model % Simulation)) &
-               Model % Simulation=>ListAllocate()
-           List => Model % Simulation
-         END IF
-
-      ELSE IF ( SEQL(Section, 'boundary condition') ) THEN
-
-        IF ( ScanOnly ) THEN
-           READ( Section(19:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           Model % NumberOFBCs = MAX( Model % NumberOfBCs, Arrayn )
-        ELSE
-           IF ( .NOT.ASSOCIATED( Model % BCs ) ) THEN
-              ALLOCATE( Model % BCs(Model % NumberOfBCs) )
-           ELSE 
-             READ( Section(19:),*,iostat=iostat ) Arrayn
-             IF( iostat /= 0 ) THEN
-               CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-             END IF
-
-             Model % NumberOfBCs = MAX( Arrayn, Model % NumberOfBCs )
-
-             IF ( SIZE( Model % BCs ) < Model % NumberOfBCs ) THEN
-                ALLOCATE( ABC(Model % NumberOfBCs) )
-                DO i=1,SIZE(Model % BCs)
-                   ABC(i) % Values => Model % BCs(i) % Values
-                END DO
-                DEALLOCATE( Model % BCs )
-                Model % BCs => ABC
-             END IF
-           END IF
-
-           DO i=1,Model % NUmberOfBCs
-             IF(.NOT.ASSOCIATED(Model % BCs(i) % Values)) &
-               Model % BCs(i) % Values => ListAllocate()
-           END DO
-
-           READ( Section(19:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-
-           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBCs ) THEN
-              WRITE( Message, * ) 'Boundary Condition section number ('//TRIM(I2S(Arrayn))// &
-                            ') exceeds number of BCs ('//TRIM(I2S(Model % NumberOfBCs))//')'
-              CALL Fatal( 'Model Input', Message )
-           END IF
-           Model % BCs(ArrayN) % Tag = ArrayN
-           List => Model % BCs(Arrayn) % Values
+        IF ( .NOT. ScanOnly ) THEN
+          ArrayN = 1
+          IF(.NOT.ASSOCIATED(Model % Constants)) &
+              Model % Constants => ListAllocate()
+          List => Model % Constants
         END IF
-
+        
+      ELSE IF ( SEQL(Section, 'simulation') ) THEN        
+        IF ( .NOT. ScanOnly ) THEN
+          ArrayN = 1
+          IF(.NOT.ASSOCIATED(Model % Simulation)) &
+              Model % Simulation=>ListAllocate()
+          List => Model % Simulation
+        END IF
+        
+      ELSE IF ( SEQL(Section, 'boundary condition') ) THEN
+        
+        READ( Section(19:),*,iostat=iostat ) Arrayn
+        IF( iostat /= 0 ) THEN
+          IF( Numbering ) THEN
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          BCcount = BCcount + 1
+          ArrayN = BCcount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Boundary Condition < index next value: &
+                '//TRIM(I2S(ArrayN)),Level=4)
+          END IF
+        ELSE
+          BcCount = MAX( BcCount, ArrayN )
+        END IF
+          
+        IF ( ScanOnly ) THEN
+          Model % NumberOFBCs = MAX( Model % NumberOfBCs, Arrayn )
+        ELSE          
+          IF ( .NOT.ASSOCIATED( Model % BCs ) ) THEN
+            ALLOCATE( Model % BCs(Model % NumberOfBCs) )
+          ELSE             
+            Model % NumberOfBCs = MAX( Arrayn, Model % NumberOfBCs )
+            
+            IF ( SIZE( Model % BCs ) < Model % NumberOfBCs ) THEN
+              ALLOCATE( ABC(Model % NumberOfBCs) )
+              DO i=1,SIZE(Model % BCs)
+                ABC(i) % Values => Model % BCs(i) % Values
+              END DO
+              DEALLOCATE( Model % BCs )
+              Model % BCs => ABC
+            END IF
+          END IF
+          
+          DO i=1,Model % NUmberOfBCs
+            IF(.NOT.ASSOCIATED(Model % BCs(i) % Values)) &
+                Model % BCs(i) % Values => ListAllocate()
+          END DO
+          
+          IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBCs ) THEN
+            WRITE( Message, * ) 'Boundary Condition section number ('//TRIM(I2S(Arrayn))// &
+                ') exceeds number of BCs ('//TRIM(I2S(Model % NumberOfBCs))//')'
+            CALL Fatal( 'Model Input', Message )
+          END IF
+          Model % BCs(ArrayN) % Tag = ArrayN
+          List => Model % BCs(Arrayn) % Values
+        END IF
+        
         FreeNames = .TRUE.
 
       ELSE IF ( SEQL(Section, 'boundary') ) THEN
 
         IF ( ScanOnly ) THEN
-           Model % NumberOfBoundaries = Model % NumberOfBoundaries + 1
+          Model % NumberOfBoundaries = Model % NumberOfBoundaries + 1
         ELSE
-           IF ( .NOT.ASSOCIATED( Model % Boundaries ) ) THEN
-              ALLOCATE( Model % Boundaries(Model % NumberOfBoundaries) )
-              ALLOCATE( Model % BoundaryId(Model % NumberOfBoundaries) )
-              DO i=1,Model % NumberOfBoundaries
-                 Model % BoundaryId(i) = 0
-              END DO
-           END IF
+          IF ( .NOT.ASSOCIATED( Model % Boundaries ) ) THEN
+            ALLOCATE( Model % Boundaries(Model % NumberOfBoundaries) )
+            ALLOCATE( Model % BoundaryId(Model % NumberOfBoundaries) )
+            DO i=1,Model % NumberOfBoundaries
+              Model % BoundaryId(i) = 0
+            END DO
+          END IF
 
-           READ( Section(9:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
+          READ( Section(9:),*,iostat=iostat ) Arrayn
+          IF( iostat /= 0 ) THEN
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
 
-           BoundaryIndex = BoundaryIndex + 1
-           IF ( BoundaryIndex <= 0 .OR. BoundaryIndex >  &
-                 Model % NumberOfBoundaries ) THEN
-              WRITE( Message, * ) 'Boundary section number: ',BoundaryIndex, &
-                               ' exeeds header value.'
-              CALL Fatal( 'Model Input', Message )
-           END IF
-           Model % BoundaryId(BoundaryIndex) = Arrayn
-           List => Model % Boundaries(BoundaryIndex) % Values
+          BoundaryIndex = BoundaryIndex + 1
+          IF ( BoundaryIndex <= 0 .OR. BoundaryIndex >  &
+              Model % NumberOfBoundaries ) THEN
+            WRITE( Message, * ) 'Boundary section number: ',BoundaryIndex, &
+                ' exeeds header value.'
+            CALL Fatal( 'Model Input', Message )
+          END IF
+          Model % BoundaryId(BoundaryIndex) = Arrayn
+          List => Model % Boundaries(BoundaryIndex) % Values
         END IF
 
       ELSE IF ( SEQL(Section, 'initial condition') ) THEN
 
-        IF ( ScanOnly ) THEN
-           READ( Section(18:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           Model % NumberOFICs = MAX( Model % NumberOfICs, ArrayN )
+        READ( Section(18:),*,iostat=iostat ) Arrayn
+        IF( iostat /= 0 ) THEN
+          IF( Numbering ) THEN               
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          IcCount = IcCount + 1
+          ArrayN = IcCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Initial Condition < index next value: &
+                '//TRIM(I2S(ArrayN)),Level=4)
+          END IF
         ELSE
-           IF ( .NOT.ASSOCIATED( Model % ICs ) ) THEN
-              ALLOCATE( Model % ICs(Model % NumberOfICs) )
-           ELSE
-              READ( Section(18:),*,iostat=iostat ) Arrayn
-              IF( iostat /= 0 ) THEN
-                CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-              END IF
-              Model % NumberOfICs = MAX( Model % NumberOfICs, Arrayn )
-              IF ( SIZE( Model % ICs ) < Model % NumberOfICs ) THEN
-                ALLOCATE( AIC(Model % NumberOfICs) )
-                DO i=1,SIZE(Model % ICs)
-                   AIC(i) % Values => Model % ICs(i) % Values
-                END DO
-                DEALLOCATE( Model % ICs )
-                Model % ICs => AIC
-              END IF
-           END IF
-
-           DO i=1,Model % NUmberOfICs
-             IF(.NOT.ASSOCIATED(Model % ICs(i) % Values)) &
-               Model % ICs(i) % Values => ListAllocate()
-           END DO
-
-           READ( Section(18:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-
-           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfICs ) THEN
-              WRITE( Message, * ) 'Initial Condition section number: ',Arrayn, &
-                          ' exeeds header value.'
-              CALL Fatal( 'Model Input', Message )
-           END IF
-           Model % ICs(ArrayN) % Tag = ArrayN
-           List => Model % ICs(Arrayn) % Values
+          IcCount = MAX( IcCount, ArrayN ) 
+        END IF
+        
+        IF ( ScanOnly ) THEN
+          Model % NumberOFICs = MAX( Model % NumberOfICs, ArrayN )
+        ELSE
+          IF ( .NOT.ASSOCIATED( Model % ICs ) ) THEN
+            ALLOCATE( Model % ICs(Model % NumberOfICs) )
+          ELSE
+            Model % NumberOfICs = MAX( Model % NumberOfICs, Arrayn )
+            IF ( SIZE( Model % ICs ) < Model % NumberOfICs ) THEN
+              ALLOCATE( AIC(Model % NumberOfICs) )
+              DO i=1,SIZE(Model % ICs)
+                AIC(i) % Values => Model % ICs(i) % Values
+              END DO
+              DEALLOCATE( Model % ICs )
+              Model % ICs => AIC
+            END IF
+          END IF
+          
+          DO i=1,Model % NUmberOfICs
+            IF(.NOT.ASSOCIATED(Model % ICs(i) % Values)) &
+                Model % ICs(i) % Values => ListAllocate()
+          END DO
+          
+          IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfICs ) THEN
+            WRITE( Message, * ) 'Initial Condition section number: ',Arrayn, &
+                ' exeeds header value.'
+            CALL Fatal( 'Model Input', Message )
+          END IF
+          Model % ICs(ArrayN) % Tag = ArrayN
+          List => Model % ICs(Arrayn) % Values
         END IF
 
         FreeNames = .TRUE.
 
       ELSE IF ( SEQL(Section, 'material') ) THEN
 
-        IF ( ScanOnly ) THEN
-           READ( Section(9:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           Model % NumberOFMaterials = MAX( Model % NumberOfMaterials, ArrayN )
+        READ( Section(9:),*,iostat=iostat ) Arrayn
+        
+        IF( iostat /= 0 ) THEN
+          IF( Numbering ) THEN               
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          MatCount = MatCount + 1
+          ArrayN = MatCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Material < index next value: &
+                '//TRIM(I2S(ArrayN)),Level=4)
+          END IF
         ELSE
-           IF ( .NOT.ASSOCIATED( Model % Materials ) ) THEN
-              ALLOCATE( Model % Materials(Model % NumberOfMaterials) )
-           ELSE
-              READ( Section(9:),*,iostat=iostat ) Arrayn
-              IF( iostat /= 0 ) THEN
-                CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-              END IF              
-              Model % NumberOfMaterials = MAX( Arrayn, Model % NumberOFMaterials ) 
-              IF ( SIZE( Model % Materials ) < Model % NumberOfMaterials ) THEN
-                ALLOCATE( AMaterial(Model % NumberOfMaterials) )
-                DO i=1,SIZE(Model % Materials)
-                   AMaterial(i) % Values => Model % Materials(i) % Values
-                END DO
-                DEALLOCATE( Model % Materials )
-                Model % Materials => AMaterial
-              END IF
-           END IF
-
-           DO i=1,Model % NumberOfMaterials
-             IF(.NOT.ASSOCIATED(Model % Materials(i) % Values)) &
-               Model % Materials(i) % Values => ListAllocate()
-           END DO
-
-           READ( Section(9:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfMaterials ) THEN
-              WRITE( Message, * ) 'Material section number: ',Arrayn, &
-                             ' exeeds header value.'
-              CALL Fatal( 'Model Input', Message )
-           END IF
-           List => Model % Materials(Arrayn) % Values
+          MatCount = MAX( MatCount, ArrayN ) 
+        END IF
+        
+        IF ( ScanOnly ) THEN
+          Model % NumberOFMaterials = MAX( Model % NumberOfMaterials, ArrayN )
+        ELSE
+          IF ( .NOT.ASSOCIATED( Model % Materials ) ) THEN
+            ALLOCATE( Model % Materials(Model % NumberOfMaterials) )
+          ELSE
+            Model % NumberOfMaterials = MAX( Arrayn, Model % NumberOFMaterials ) 
+            IF ( SIZE( Model % Materials ) < Model % NumberOfMaterials ) THEN
+              ALLOCATE( AMaterial(Model % NumberOfMaterials) )
+              DO i=1,SIZE(Model % Materials)
+                AMaterial(i) % Values => Model % Materials(i) % Values
+              END DO
+              DEALLOCATE( Model % Materials )
+              Model % Materials => AMaterial
+            END IF
+          END IF
+          
+          DO i=1,Model % NumberOfMaterials
+            IF(.NOT.ASSOCIATED(Model % Materials(i) % Values)) &
+                Model % Materials(i) % Values => ListAllocate()
+          END DO
+          
+          IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfMaterials ) THEN
+            WRITE( Message, * ) 'Material section number: ',Arrayn, &
+                ' exeeds header value.'
+            CALL Fatal( 'Model Input', Message )
+          END IF
+          List => Model % Materials(Arrayn) % Values
         END IF
 
       ELSE IF ( SEQL(Section, 'body force') ) THEN
 
-        IF ( ScanOnly ) THEN
-           READ( Section(12:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           Model % NumberOFBodyForces = MAX( Model % NumberOFBodyForces, ArrayN)
+        READ( Section(12:),*,iostat=iostat ) Arrayn
+        IF( iostat /= 0 ) THEN
+          IF( Numbering ) THEN               
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          BfCount = BfCount + 1
+          ArrayN = BfCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Body Force < index next value: &
+                '//TRIM(I2S(ArrayN)),Level=4)
+          END IF
         ELSE
-           IF ( .NOT.ASSOCIATED( Model % BodyForces ) ) THEN
-             ALLOCATE( Model % BodyForces(Model % NumberOfBodyForces) )
-           ELSE
-              READ( Section(12:),*,iostat=iostat ) Arrayn
-              IF( iostat /= 0 ) THEN
-                CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-              END IF              
-              Model % NumberOFBodyForces = MAX( Arrayn, Model % NumberOfBodyForces )
-              IF ( SIZE( Model % BodyForces ) < Model % NumberOfBodyForces ) THEN
-                 ALLOCATE( ABF(Model % NumberOfBodyForces) )
-                 DO i=1,SIZE(Model % BodyForces)
-                    ABF(i) % Values => Model % BodyForces(i) % Values
-                 END DO
-                 DEALLOCATE( Model % BodyForces )
-                 Model % BodyForces => ABF
-              END IF
-           END IF
-
-           DO i=1,Model % NumberOfBodyForces
-             IF(.NOT.ASSOCIATED(Model % BodyForces(i) % Values)) &
-               Model % BodyForces(i) % Values => ListAllocate()
-           END DO
-
-           READ( Section(12:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodyForces ) THEN
-              WRITE( Message, * ) 'Body Force section number: ',Arrayn, &
-                          ' exeeds header value.'
-              CALL Fatal( 'Model Input', Message )
-           END IF
-           List => Model % BodyForces(Arrayn) % Values
+          BfCount = MAX( ArrayN, BfCount ) 
         END IF
-
+        
+        IF ( ScanOnly ) THEN
+          Model % NumberOFBodyForces = BfCount
+        ELSE
+          IF ( .NOT.ASSOCIATED( Model % BodyForces ) ) THEN
+            ALLOCATE( Model % BodyForces(Model % NumberOfBodyForces) )
+          ELSE
+            Model % NumberOFBodyForces = MAX( Arrayn, Model % NumberOfBodyForces )
+            IF ( SIZE( Model % BodyForces ) < Model % NumberOfBodyForces ) THEN
+              ALLOCATE( ABF(Model % NumberOfBodyForces) )
+              DO i=1,SIZE(Model % BodyForces)
+                ABF(i) % Values => Model % BodyForces(i) % Values
+              END DO
+              DEALLOCATE( Model % BodyForces )
+              Model % BodyForces => ABF
+            END IF
+          END IF
+          
+          DO i=1,Model % NumberOfBodyForces
+            IF(.NOT.ASSOCIATED(Model % BodyForces(i) % Values)) &
+                Model % BodyForces(i) % Values => ListAllocate()
+          END DO
+          
+          IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodyForces ) THEN
+            WRITE( Message, * ) 'Body Force section number: ',Arrayn, &
+                ' exeeds header value.'
+            CALL Fatal( 'Model Input', Message )
+          END IF
+          List => Model % BodyForces(Arrayn) % Values
+        END IF
+        
       ELSE IF ( SEQL(Section, 'equation') ) THEN
 
-        IF ( ScanOnly ) THEN
-           READ( Section(9:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           Model % NUmberOfEquations = MAX( Model % NumberOFEquations, ArrayN )
+        READ( Section(9:),*,iostat=iostat ) Arrayn
+        IF( iostat /= 0 ) THEN
+          IF( Numbering ) THEN               
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          EqCount = EqCount + 1
+          ArrayN = EqCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Equation < index next value: &
+                '//TRIM(I2S(ArrayN)),Level=4)
+          END IF
         ELSE
-           IF ( .NOT.ASSOCIATED( Model % Equations ) ) THEN
-             ALLOCATE( Model % Equations(Model % NumberOfEquations) )
-           ELSE
-              READ( Section(9:),*,iostat=iostat ) Arrayn
-              IF( iostat /= 0 ) THEN
-                CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-              END IF
-              Model % NumberOFEquations = MAX( Arrayn, Model % NumberOFEquations )
-              IF ( SIZE( Model % Equations ) < Model % NumberOfEquations ) THEN
-                ALLOCATE( AEquation(Model % NumberOfEquations) )
-                DO i=1,SIZE(Model % Equations)
-                   AEquation(i) % Values => Model % Equations(i) % Values
-                END DO
-                DEALLOCATE( Model % Equations )
-                Model % Equations => AEquation
-              END IF
-           END IF
-
-           DO i=1,Model % NumberOfEquations
-             IF(.NOT.ASSOCIATED(Model % Equations(i) % Values)) &
-               Model % Equations(i) % Values => ListAllocate()
-           END DO
-
-           READ( Section(9:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfEquations ) THEN
-              WRITE( Message, * ) 'Equation section number: ',Arrayn, &
-                           ' exeeds header value.'
-              CALL Fatal( 'Model Input', Message )
-           END IF
-           List => Model % Equations(ArrayN) % Values
+          EqCount = MAX( EqCount, ArrayN )
+        END IF
+          
+        IF ( ScanOnly ) THEN
+          Model % NUmberOfEquations = MAX( Model % NumberOFEquations, ArrayN )
+        ELSE
+          IF ( .NOT.ASSOCIATED( Model % Equations ) ) THEN
+            ALLOCATE( Model % Equations(Model % NumberOfEquations) )
+          ELSE
+            Model % NumberOFEquations = MAX( Arrayn, Model % NumberOFEquations )
+            IF ( SIZE( Model % Equations ) < Model % NumberOfEquations ) THEN
+              ALLOCATE( AEquation(Model % NumberOfEquations) )
+              DO i=1,SIZE(Model % Equations)
+                AEquation(i) % Values => Model % Equations(i) % Values
+              END DO
+              DEALLOCATE( Model % Equations )
+              Model % Equations => AEquation
+            END IF
+          END IF
+          
+          DO i=1,Model % NumberOfEquations
+            IF(.NOT.ASSOCIATED(Model % Equations(i) % Values)) &
+                Model % Equations(i) % Values => ListAllocate()
+          END DO
+          
+          IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfEquations ) THEN
+            WRITE( Message, * ) 'Equation section number: ',Arrayn, &
+                ' exeeds header value.'
+            CALL Fatal( 'Model Input', Message )
+          END IF
+          List => Model % Equations(ArrayN) % Values
         END IF
 
         FreeNames = .TRUE.
 
       ELSE IF ( SEQL(Section, 'body') ) THEN
 
-        IF ( ScanOnly ) THEN
-           READ( Section(5:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           Model % NumberOFBodies = MAX( Model % NumberOFBodies, ArrayN )
+        READ( Section(5:),*,iostat=iostat ) Arrayn
+        IF( iostat /= 0 ) THEN
+          IF( Numbering ) THEN               
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          BodyCount = BodyCount + 1
+          ArrayN = BodyCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Body < index next value: &
+                '//TRIM(I2S(ArrayN)),Level=4)
+          END IF
         ELSE
-           IF ( .NOT.ASSOCIATED( Model % Bodies ) ) THEN
-             ALLOCATE( Model % Bodies(Model % NumberOfBodies) )
-           ELSE
-              READ( Section(5:),*,iostat=iostat ) Arrayn
-              IF( iostat /= 0 ) THEN
-                CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-              END IF
-              Model % NumberOFBodies = MAX( Arrayn, Model % NumberOFBodies )
-              IF ( SIZE( Model % Bodies ) < Model % NumberOfBodies ) THEN
-                 ALLOCATE( ABody(Model % NumberOfBodies) )
-                 DO i=1,SIZE(Model % Bodies)
-                    ABody(i) % Values => Model % Bodies(i) % Values
-                 END DO
-                 DEALLOCATE( Model % Bodies )
-                 Model % Bodies => ABody
-              END IF
-           END IF
-
-           DO i=1,Model % NumberOfBodies
-             IF(.NOT.ASSOCIATED(Model % Bodies(i) % Values)) &
-               Model % Bodies(i) % Values => ListAllocate()
-           END DO
-
-           READ( Section(5:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodies ) THEN
-              WRITE( Message, * ) 'Body section number: ',Arrayn, &
-                        ' exeeds header value. Aborting. '
-              CALL Fatal( 'Model Input', Message )
-           END IF
-           List => Model % Bodies(Arrayn) % Values
+          BodyCount = MAX( BodyCount, ArrayN ) 
+        END IF
+        
+        IF ( ScanOnly ) THEN
+          Model % NumberOFBodies = BodyCount 
+        ELSE
+          IF ( .NOT.ASSOCIATED( Model % Bodies ) ) THEN
+            ALLOCATE( Model % Bodies(Model % NumberOfBodies) )
+          ELSE
+            Model % NumberOFBodies = MAX( Arrayn, Model % NumberOFBodies )
+            IF ( SIZE( Model % Bodies ) < Model % NumberOfBodies ) THEN
+              ALLOCATE( ABody(Model % NumberOfBodies) )
+              DO i=1,SIZE(Model % Bodies)
+                ABody(i) % Values => Model % Bodies(i) % Values
+              END DO
+              DEALLOCATE( Model % Bodies )
+              Model % Bodies => ABody
+            END IF
+          END IF
+          
+          DO i=1,Model % NumberOfBodies
+            IF(.NOT.ASSOCIATED(Model % Bodies(i) % Values)) &
+                Model % Bodies(i) % Values => ListAllocate()
+          END DO
+          
+          IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodies ) THEN
+            WRITE( Message, * ) 'Body section number: ',Arrayn, &
+                ' exeeds header value. Aborting. '
+            CALL Fatal( 'Model Input', Message )
+          END IF
+          List => Model % Bodies(Arrayn) % Values
         END IF
 
       ELSE IF ( SEQL(Section, 'component') ) THEN
 
-        IF ( ScanOnly ) THEN
-           READ( Section(10:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           Model % NumberOFComponents = MAX( Model % NumberOFComponents, ArrayN )
+        READ( Section(10:),*,iostat=iostat ) Arrayn
+        
+        IF( iostat /= 0 ) THEN
+          IF( Numbering ) THEN
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          ComponentCount = ComponentCount + 1
+          ArrayN = ComponentCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Component < index next value: &
+                '//TRIM(I2S(ArrayN)),Level=4)
+          END IF
         ELSE
-           IF ( .NOT.ASSOCIATED( Model % Components ) ) THEN
-             ALLOCATE( Model % Components(Model % NumberOfComponents) )
-           ELSE
-              READ( Section(10:),*,iostat=iostat ) Arrayn
-              IF( iostat /= 0 ) THEN
-                CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-              END IF
-              Model % NumberOFComponents = MAX( Arrayn, Model % NumberOFComponents )
-              IF ( SIZE( Model % Components ) < Model % NumberOfComponents ) THEN
-                 ALLOCATE( ABody(Model % NumberOfComponents) )
-                 DO i=1,SIZE(Model % Components)
-                    AComponent(i) % Values % head => Model % Components(i) % Values % head
-                 END DO
-                 DEALLOCATE( Model % Components )
-                 Model % Components => AComponent
-              END IF
-           END IF
-
-           DO i=1,Model % NumberOfComponents
-             IF(.NOT.ASSOCIATED(Model % Components(i) % Values)) &
-               Model % Components(i) % Values => ListAllocate()
-           END DO
-
-           READ( Section(10:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfComponents ) THEN
-              WRITE( Message, * ) 'Component section number: ',Arrayn, &
-                        ' exeeds header value. Aborting. '
-              CALL Fatal( 'Model Input', Message )
-           END IF
-           List => Model % Components(Arrayn) % Values
+          ComponentCount = MAX( ComponentCount, ArrayN )
+        END IF
+        
+        IF ( ScanOnly ) THEN
+          Model % NumberOFComponents = ComponentCount  
+        ELSE
+          IF ( .NOT.ASSOCIATED( Model % Components ) ) THEN
+            ALLOCATE( Model % Components(Model % NumberOfComponents) )
+          ELSE
+            Model % NumberOFComponents = MAX( Arrayn, Model % NumberOFComponents )
+            IF ( SIZE( Model % Components ) < Model % NumberOfComponents ) THEN
+              ALLOCATE( ABody(Model % NumberOfComponents) )
+              DO i=1,SIZE(Model % Components)
+                AComponent(i) % Values % head => Model % Components(i) % Values % head
+              END DO
+              DEALLOCATE( Model % Components )
+              Model % Components => AComponent
+            END IF
+          END IF
+          
+          DO i=1,Model % NumberOfComponents
+            IF(.NOT.ASSOCIATED(Model % Components(i) % Values)) &
+                Model % Components(i) % Values => ListAllocate()
+          END DO
+          
+          IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfComponents ) THEN
+            WRITE( Message, * ) 'Component section number: ',Arrayn, &
+                ' exeeds header value. Aborting. '
+            CALL Fatal( 'Model Input', Message )
+          END IF
+          List => Model % Components(Arrayn) % Values
         END IF
 
       ELSE IF ( SEQL(Section, 'solver') ) THEN
 
-        IF ( ScanOnly ) THEN
-           READ( Section(7:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           Model % NumberOfSolvers = MAX( Model % NumberOfSolvers, ArrayN )
+        READ( Section(7:),*,iostat=iostat ) Arrayn
+        IF( iostat /= 0 ) THEN
+          IF( Numbering ) THEN
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          SolverCount = SolverCount + 1
+          ArrayN = SolverCount
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Solver < index next value: &
+                '//TRIM(I2S(ArrayN)),Level=4)
+          END IF
         ELSE
-           IF ( .NOT.ASSOCIATED( Model % Solvers ) ) THEN
-             ALLOCATE( Model % Solvers(Model % NumberOfSolvers) )
-             DO i=1,Model % NumberOfSolvers
-                Model % Solvers(i) % PROCEDURE = 0
-                NULLIFY( Model % Solvers(i) % Matrix )
-                NULLIFY( Model % Solvers(i) % Variable )
-                NULLIFY( Model % Solvers(i) % ActiveElements )
-                Model % Solvers(i) % NumberOfActiveElements = 0
-             END DO
-           ELSE
-              READ( Section(7:),*,iostat=iostat ) Arrayn
-              IF( iostat /= 0 ) THEN
-                CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-              END IF
-              Model % NumberOfSolvers = MAX( Arrayn, Model % NumberOfSolvers )
-              IF ( SIZE(Model % Solvers) < Model % NumberOfSolvers ) THEN
-                ALLOCATE( ASolvers(Model % NumberOfSolvers) )
-                DO i=1,SIZE(Model % Solvers)
-                   ASolvers(i) = Model % Solvers(i)
-                END DO
-                DO i=SIZE(Model % Solvers)+1,Model % NumberOfSolvers
-                   ASolvers(i) % PROCEDURE = 0
-                   NULLIFY( ASolvers(i) % Matrix )
-                   NULLIFY( ASolvers(i) % Mesh )
-                   NULLIFY( ASolvers(i) % Variable )
-                   NULLIFY( ASolvers(i) % ActiveElements )
-                   ASolvers(i) % NumberOfActiveElements = 0
-                END DO
-                DEALLOCATE( Model % Solvers )
-                Model % Solvers => ASolvers
-              END IF
-           END IF
-
-           DO i=1,Model % NumberOfSolvers
-             IF(.NOT.ASSOCIATED(Model % Solvers(i) % Values)) &
-               Model % Solvers(i) % Values => ListAllocate()
-           END DO
-
-           READ( Section(7:),*,iostat=iostat ) Arrayn
-           IF( iostat /= 0 ) THEN
-             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
-           END IF
-           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfSolvers ) THEN
-              WRITE( Message, * ) 'Solver section number: ',Arrayn, &
-                               ' exeeds header value. Aborting. '
-              CALL Fatal( 'Model Input', Message )
-           END IF
-           List => Model % Solvers(Arrayn) % Values
+          SolverCount = MAX( SolverCount, ArrayN )
+        END IF
+        
+        IF ( ScanOnly ) THEN
+          Model % NumberOfSolvers = SolverCount
+        ELSE
+          IF ( .NOT.ASSOCIATED( Model % Solvers ) ) THEN
+            ALLOCATE( Model % Solvers(Model % NumberOfSolvers) )
+            DO i=1,Model % NumberOfSolvers
+              Model % Solvers(i) % PROCEDURE = 0
+              NULLIFY( Model % Solvers(i) % Matrix )
+              NULLIFY( Model % Solvers(i) % Variable )
+              NULLIFY( Model % Solvers(i) % ActiveElements )
+              Model % Solvers(i) % NumberOfActiveElements = 0
+              Model % Solvers(i) % SolverId = i
+            END DO
+          ELSE
+            Model % NumberOfSolvers = MAX( Arrayn, Model % NumberOfSolvers )
+            IF ( SIZE(Model % Solvers) < Model % NumberOfSolvers ) THEN
+              ALLOCATE( ASolvers(Model % NumberOfSolvers) )
+              DO i=1,SIZE(Model % Solvers)
+                ASolvers(i) = Model % Solvers(i)
+              END DO
+              DO i=SIZE(Model % Solvers)+1,Model % NumberOfSolvers
+                ASolvers(i) % PROCEDURE = 0
+                NULLIFY( ASolvers(i) % Matrix )
+                NULLIFY( ASolvers(i) % Mesh )
+                NULLIFY( ASolvers(i) % Variable )
+                NULLIFY( ASolvers(i) % ActiveElements )
+                ASolvers(i) % NumberOfActiveElements = 0
+              END DO
+              DEALLOCATE( Model % Solvers )
+              Model % Solvers => ASolvers
+            END IF
+          END IF
+          
+          DO i=1,Model % NumberOfSolvers
+            IF(.NOT.ASSOCIATED(Model % Solvers(i) % Values)) &
+                Model % Solvers(i) % Values => ListAllocate()
+          END DO
+          
+          IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfSolvers ) THEN
+            WRITE( Message, * ) 'Solver section number: ',Arrayn, &
+                ' exeeds header value. Aborting. '
+            CALL Fatal( 'Model Input', Message )
+          END IF
+          List => Model % Solvers(Arrayn) % Values
         END IF
       ELSE
         WRITE( Message, * ) 'Unknown input section name: ',TRIM(Section)
@@ -846,7 +902,7 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
 
-    IF ( .NOT. ScanOnly )  THEN
+    IF ( BaseLoad .AND. .NOT. ScanOnly )  THEN
 
       ! Make some sanity checks that all the entries have been defined
       ! The might be missing entries due to duplicate numbering etc.
@@ -905,6 +961,7 @@ CONTAINS
       ! each solver should be uniquely defined by its name.
       ! If the same equation name is used twice it may lead to difficult-to-find 
       ! problems later on. 
+      !-----------------------------------------------------------------------------------
       DO i = 1, Model % NumberOfSolvers
         str = ListGetString( Model % Solvers(i) % Values,'Equation',Found )
         IF(.NOT. Found ) CYCLE
@@ -915,16 +972,104 @@ CONTAINS
           END IF
         END DO
       END DO
+            
+      ! If automatic numbering is used map the names to numbers
+      !------------------------------------------------------------
+      IF( .NOT. Numbering ) THEN
+        DO i = 1, Model % NumberOfBodies
+          IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Material') ) THEN
+            name = ListGetString( Model % Bodies(i) % Values,'Material Name', Found )
+            IF(.NOT. Found ) CYCLE
+            FoundName = .FALSE.
+            DO j = 1,Model % NumberOfMaterials
+              str = ListGetString( Model % Materials(j) % Values,'Name',Found )
+              IF(.NOT. Found ) CYCLE
+              IF( str == name ) THEN
+                CALL ListAddInteger( Model % Bodies(i) % Values,'Material',j)
+                CALL Info('LoadInputFile','Giving material > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                FoundName = .TRUE.
+                EXIT
+              END IF
+            END DO
+            IF(.NOT. FoundName ) THEN
+              CALL Fatal('LoadInputFile','> Material Name = '//TRIM(name)//&
+                  ' < given but no such material exists!')
+            END IF            
+          END IF
+            
+          IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Equation') ) THEN
+            name = ListGetString( Model % Bodies(i) % Values,'Equation Name', Found )
+            IF(.NOT. Found ) CYCLE
+            FoundName = .FALSE.
+            DO j = 1,Model % NumberOfEquations
+              str = ListGetString( Model % Equations(j) % Values,'Name',Found )
+              IF(.NOT. Found ) CYCLE
+              IF( str == name ) THEN
+                CALL ListAddInteger( Model % Bodies(i) % Values,'Equation',j)
+                CALL Info('LoadInputFile','Giving equation > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                FoundName = .TRUE.
+                EXIT
+              END IF
+            END DO
+            IF(.NOT. FoundName ) THEN
+              CALL Fatal('LoadInputFile','> Equation Name = '//TRIM(name)//&
+                  ' < given but no such equation exists!')
+            END IF            
+          END IF
+
+          IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Body Force') ) THEN
+            name = ListGetString( Model % Bodies(i) % Values,'Body Force Name', Found )
+            IF(.NOT. Found ) CYCLE
+            FoundName = .FALSE.
+            DO j = 1,Model % NumberOfBodyForces
+              str = ListGetString( Model % BodyForces(j) % Values,'Name',Found )
+              IF(.NOT. Found ) CYCLE
+              IF( str == name ) THEN
+                CALL ListAddInteger( Model % Bodies(i) % Values,'Body Force',j)
+                CALL Info('LoadInputFile','Giving body force > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                FoundName = .TRUE.
+                EXIT
+              END IF
+            END DO
+            IF(.NOT. FoundName ) THEN
+              CALL Fatal('LoadInputFile','> Body Force Name = '//TRIM(name)//&
+                  ' < given but no such body force exists!')
+            END IF
+          END IF
+
+          IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Initial Condition') ) THEN
+            name = ListGetString( Model % Bodies(i) % Values,'Initial Condition Name', Found )
+            IF(.NOT. Found ) CYCLE
+            FoundName = .FALSE.
+            DO j = 1,Model % NumberOfICs
+              str = ListGetString( Model % ICs(j) % Values,'Name',Found )
+              IF(.NOT. Found ) CYCLE
+              IF( str == name ) THEN
+                CALL ListAddInteger( Model % Bodies(i) % Values,'Initial Condition',j)
+                CALL Info('LoadInputFile','Giving initial condition > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                FoundName = .TRUE.
+                EXIT
+              END IF
+            END DO
+            IF(.NOT. FoundName ) THEN
+              CALL Fatal('LoadInputFile','> Initial Condition Name = '//TRIM(name)//&
+                  ' < given but no such initial condition exists!')
+            END IF            
+          END IF
+               
+        END DO ! number of bodies
+      END IF
+      
 
       ! Make sanity check that all Material, Body Force and Equation is associated to some
-      ! body. This is not detrimental so a warning suffices. The 2nd time there is the 
-      ! default setting so apply this only on the first time.
+      ! body. This is not detrimental so a warning suffices.
       !-----------------------------------------------------------------------------------
-      IF( FirstTime ) THEN
-        n = MAX( Model % NumberOfMaterials, &
-            Model % NumberOfBodyForces, &
-            Model % NumberOfEquations )
-        ALLOCATE( EntryUsed( n ) )
+      n = MAX( Model % NumberOfMaterials, &
+          Model % NumberOfBodyForces, &
+          Model % NumberOfEquations )
+      ALLOCATE( EntryUsed( n ) )
+
+      IF( Model % NumberOfMaterials > 0 ) THEN
         EntryUsed = .FALSE.
         DO i = 1, Model % NumberOfBodies
           j = ListGetInteger( Model % Bodies(i) % Values,'Material',Found )
@@ -935,7 +1080,9 @@ CONTAINS
             CALL Warn('LoadInputFile','> Material '// TRIM(I2S(i)) //' < not used in any Body!')
           END IF
         END DO
-        
+      END IF
+
+      IF( Model % NumberOfBodyForces > 0 ) THEN
         EntryUsed = .FALSE.
         DO i = 1, Model % NumberOfBodies
           j = ListGetInteger( Model % Bodies(i) % Values,'Body Force',Found )
@@ -946,7 +1093,9 @@ CONTAINS
             CALL Warn('LoadInputFile','> Body Force '// TRIM(I2S(i)) //' < not used in any Body!')
           END IF
         END DO
-        
+      END IF
+
+      IF( Model % NumberOfEquations > 0 ) THEN
         EntryUsed = .FALSE.
         DO i = 1, Model % NumberOfBodies
           j = ListGetInteger( Model % Bodies(i) % Values,'Equation',Found )
@@ -957,59 +1106,56 @@ CONTAINS
             CALL Warn('LoadInputFile','> Equation '// TRIM(I2S(i)) //' < not used in any Body!')
           END IF
         END DO
-
-        DEALLOCATE( EntryUsed ) 
       END IF
+
+      DEALLOCATE( EntryUsed ) 
       !--- sanity checks done
 
       ! Add default equation, material, ic, bodyforce, and body if not given:
       ! ---------------------------------------------------------------------
       IF ( Model % NumberOFEquations <= 0 ) THEN
-         Model % NumberOfEquations = 1
-         ALLOCATE( Model % Equations(1) )
-         Model % Equations(1) % Values => ListAllocate()
-         CALL ListAddIntegerArray( Model % Equations(1) % Values, 'Active Solvers', &
-             Model % NumberOFSolvers, (/ (i,i=1,Model % NumberOfSolvers) /) )
-         CALL ListAddString ( Model % Equations(1) % Values, 'Name', 'Default Equation 1' )
-       END IF
+        Model % NumberOfEquations = 1
+        ALLOCATE( Model % Equations(1) )
+        Model % Equations(1) % Values => ListAllocate()
+        CALL ListAddIntegerArray( Model % Equations(1) % Values, 'Active Solvers', &
+            Model % NumberOFSolvers, (/ (i,i=1,Model % NumberOfSolvers) /) )
+        CALL ListAddString ( Model % Equations(1) % Values, 'Name', 'Default Equation 1' )
+      END IF
 
       IF ( Model % NumberOfMaterials <= 0 ) THEN
-         Model % NumberOfMaterials = 1
-         ALLOCATE( Model % Materials(1) )
-         Model % Materials(1) % Values => ListAllocate()
-         CALL ListAddString ( Model % Materials(1) % Values, 'Name', 'Default Material 1' )
+        Model % NumberOfMaterials = 1
+        ALLOCATE( Model % Materials(1) )
+        Model % Materials(1) % Values => ListAllocate()
+        CALL ListAddString ( Model % Materials(1) % Values, 'Name', 'Default Material 1' )
       END IF
 
       IF ( Model % NumberOfBodyForces <= 0 ) THEN
-         Model % NumberOfBodyForces = 1
-         ALLOCATE( Model % BodyForces(1) )
-         Model % BodyForces(1) % Values => ListAllocate()
-         CALL ListAddString ( Model % BodyForces(1) % Values, 'Name','Default Body Force 1' )
+        Model % NumberOfBodyForces = 1
+        ALLOCATE( Model % BodyForces(1) )
+        Model % BodyForces(1) % Values => ListAllocate()
+        CALL ListAddString ( Model % BodyForces(1) % Values, 'Name','Default Body Force 1' )
       END IF
 
       IF ( Model % NumberOfICs <= 0 ) THEN
-         Model % NumberOfICs = 1
-         ALLOCATE( Model % ICs(1) )
-         Model % ICs(1) % Values => ListAllocate()
-         CALL ListAddString ( Model % ICs(1) % Values, 'Name','Default IC 1' )
+        Model % NumberOfICs = 1
+        ALLOCATE( Model % ICs(1) )
+        Model % ICs(1) % Values => ListAllocate()
+        CALL ListAddString ( Model % ICs(1) % Values, 'Name','Default IC 1' )
       END IF
 
       IF ( Model % NumberOfBodies <= 0 ) THEN
-         Model % NumberOfBodies = 1
-         ALLOCATE( Model % Bodies(1) )
-         Model % Bodies(1) % Values => ListAllocate()
-         CALL ListAddString(  Model % Bodies(1) % Values, 'Name', 'Default Body 1' )
-         CALL ListAddInteger( Model % Bodies(1) % Values, 'Equation',   1 )
-         CALL ListAddInteger( Model % Bodies(1) % Values, 'Material',   1 )
-         CALL ListAddInteger( Model % Bodies(1) % Values, 'Body Force', 1 )
-         CALL ListAddInteger( Model % Bodies(1) % Values, 'Initial Condition', 1 )
-       END IF
+        Model % NumberOfBodies = 1
+        ALLOCATE( Model % Bodies(1) )
+        Model % Bodies(1) % Values => ListAllocate()
+        CALL ListAddString(  Model % Bodies(1) % Values, 'Name', 'Default Body 1' )
+        CALL ListAddInteger( Model % Bodies(1) % Values, 'Equation',   1 )
+        CALL ListAddInteger( Model % Bodies(1) % Values, 'Material',   1 )
+        CALL ListAddInteger( Model % Bodies(1) % Values, 'Body Force', 1 )
+        CALL ListAddInteger( Model % Bodies(1) % Values, 'Initial Condition', 1 )
+      END IF
       ! -- done adding default fields
-
-
-       
-
-     END IF
+               
+    END IF
     !--------------------------------------------------------------------
 
     FirstTime = .FALSE.
@@ -1052,7 +1198,6 @@ CONTAINS
 !         Priority is in ELMER_LIB, ELMER_HOME, and finally, if all else fails
 !         use the compilation time prefix.
 !         ------------------------------------------------------
-#include "../config.h"
 
 #ifdef USE_ISO_C_BINDINGS
           str = 'ELMER_LIB'
@@ -1210,18 +1355,18 @@ CONTAINS
             ! This is intended to be activated when new keywords are checked 
             ! Generally it can be set false
             !---------------------------------------------------------------
-            IF(.FALSE.) THEN
-              OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
-                  STATUS='UNKNOWN',POSITION='APPEND' )
-              WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
-              CLOSE(10)
+#ifdef DEVEL_KEYWORDMISSES
+            OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
+                STATUS='UNKNOWN',POSITION='APPEND' )
+            WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
+            CLOSE(10)
 
-              i = INDEX( str,':' )
-              OPEN( 10,File='../SOLVER.KEYWORDS.bysection',&
-                  STATUS='UNKNOWN',POSITION='APPEND' )
-              WRITE( 10,'(A,T22,A)') str(1:i)//TRIM(TYPE)//':',"'"//TRIM(Name)//"'"
-              CLOSE(10 )
-            END IF
+            i = INDEX( str,':' )
+            OPEN( 10,File='../SOLVER.KEYWORDS.bysection',&
+                STATUS='UNKNOWN',POSITION='APPEND' )
+            WRITE( 10,'(A,T22,A)') str(1:i)//TRIM(TYPE)//':',"'"//TRIM(Name)//"'"
+            CLOSE(10 )
+#endif
           END IF
        ELSE IF ( ASSOCIATED( Val ) ) THEN
          ! Difference between types 'string' and 'file' is just that 
@@ -1957,6 +2102,12 @@ CONTAINS
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
 
+
+    IF( .NOT. ListCheckPresent( Model % Simulation,'Solver Input File') ) THEN
+      CALL ListAddString( Model % Simulation,'Solver Input File',ModelName ) 
+    END IF
+      
+    
     CALL InitializeOutputLevel()
 
     Transient=ListGetString(Model % Simulation, &
@@ -1994,8 +2145,7 @@ CONTAINS
       ElementDef = ListGetString( Solver % Values, 'Element', stat )
    
       IF ( .NOT. stat ) THEN
-        IF ( ListGetLogical( Solver % Values, &
-             'Discontinuous Galerkin', stat ) ) THEN
+        IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
            Solver % Def_Dofs(:,:,4) = 0
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
@@ -2255,10 +2405,10 @@ CONTAINS
 
         IF ( Single ) THEN
           Model % Solvers(s) % Mesh => &
-              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
+              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs, s )
         ELSE
           Model % Solvers(s) % Mesh => &
-              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs )
+              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs, s )
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 
@@ -2476,21 +2626,23 @@ CONTAINS
       IF ( .NOT. GotIt ) OutputCaller = .TRUE.
       
       ! By default only on partition is used to show the results
-      ! For debugging it may be usefull to show several.
+      ! For debugging it may be useful to show several.
       MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
           'Max Output Partition', GotIt )    
-      
-      MinOutputPE = ListGetInteger( CurrentModel % Simulation, &
-          'Min Output Partition', GotIt )    
-      
-      IF( ParEnv % MyPe >= MinOutputPE .AND. &
-          ParEnv % MyPe <= MaxOutputPE ) THEN 
-        OutputPE = ParEnv % MyPE
-      ELSE
-        OutputPE = -1
-      END IF
-  
-
+      IF( GotIt ) THEN
+        MaxOutputPE = MIN(ParEnv % PEs, MaxOutputPE)        
+        MinOutputPE = ListGetInteger( CurrentModel % Simulation, &
+            'Min Output Partition', GotIt )    
+        MinOutputPE = MAX(0, MinOutputPE)
+        
+        IF( ParEnv % MyPe >= MinOutputPE .AND. &
+            ParEnv % MyPe <= MaxOutputPE ) THEN 
+          OutputPE = ParEnv % MyPE
+        ELSE
+          OutputPE = -1
+        END IF
+      END IF 
+                    
     END SUBROUTINE InitializeOutputLevel
 !------------------------------------------------------------------------------
   END FUNCTION LoadModel
@@ -2505,12 +2657,89 @@ CONTAINS
 
     TYPE(Model_t), POINTER :: Model 
     TYPE(ValueList_t), POINTER :: List, ListB
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k,n,nb
     LOGICAL :: Found, Flag
+    CHARACTER(LEN=MAX_NAME_LEN) :: Name, NameB
+    REAL(KIND=dp) :: Tol = 1.0e-8
     
-    CALL Info('CompleteModelKeywords','Completing default keywords for master sides',Level=12)
+    CALL Info('CompleteModelKeywords','Completing keywords for mortar BCs',Level=12)
 
     Model => CurrentModel 
+
+    IF( ListGetLogical( Model % Simulation,'Mortar BCs Rotational',Found ) ) THEN     
+      Tol = ListGetConstReal( Model % Simulation,&
+          'Mortar BCs Rotational Tolerance',Found )
+      IF(.NOT. Found ) Tol = 1.0e-6
+      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 4, .TRUE. )
+    END IF
+    IF( ListGetLogical( Model % Simulation,'Mortar BCs Radial',Found ) ) THEN
+      Tol = ListGetConstReal( Model % Simulation,&
+          'Mortar BCs Radial Tolerance',Found )
+      IF(.NOT. Found ) Tol = 1.0e-3
+      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 5, .FALSE. )     
+    END IF
+    IF( ListGetLogical( Model % Simulation,'Mortar BCs Axial',Found ) ) THEN
+      Tol = ListGetConstReal( Model % Simulation,&
+          'Mortar BCs Axial Tolerance',Found )
+      IF(.NOT. Found ) Tol = 1.0e-6
+      CALL DetectMortarPairs( Model, Model % Meshes, Tol, 3, .TRUE. )           
+    END IF
+      
+    
+    IF( ListGetLogical( Model % Simulation,'Use Mortar Names',Found ) ) THEN
+      DO i=1,Model % NumberOfBCs
+        List => Model % BCs(i) % Values
+        Name = ListGetString( List,'Name',Found )
+        IF(.NOT. Found ) CYCLE
+        n = INDEX(Name,'_mortar') - 1
+        IF( n <= 0 ) CYCLE
+        
+        DO j=1,Model % NumberOfBCs
+          ListB => Model % BCs(j) % Values
+          NameB = ListGetString( ListB,'Name',Found )
+          
+          IF(.NOT. Found ) CYCLE
+          IF( ListCheckPresent( List,'Mortar BC') ) CYCLE
+
+          nb = LEN_TRIM(NameB)
+          IF( nb /= n ) CYCLE          
+          IF( Name(1:n) == NameB(1:n) ) THEN
+            CALL Info('CompleteModelKeywords','Adding > Mortar BC = '&
+                //TRIM(I2S(i))//' < to boundary '//TRIM(I2S(j)),Level=5)
+            CALL ListAddInteger( ListB,'Mortar BC',i )
+            EXIT
+          END IF
+        END DO
+      END DO
+    END IF
+      
+    IF( ListGetLogical( Model % Simulation,'Use Contact Names',Found ) ) THEN
+      DO i=1,Model % NumberOfBCs
+        List => Model % BCs(i) % Values
+        Name = ListGetString( List,'Name',Found )
+        IF(.NOT. Found ) CYCLE
+        n = INDEX(Name,'_contact') - 1
+        IF( n <= 0 ) CYCLE
+
+        DO j=1,Model % NumberOfBCs
+          ListB => Model % BCs(j) % Values
+          NameB = ListGetString( ListB,'Name',Found )
+          
+          IF(.NOT. Found ) CYCLE
+          IF( ListCheckPresent( List,'Contact BC') ) CYCLE
+
+          nb = LEN_TRIM(NameB)
+          IF( nb /= n ) CYCLE
+          IF( Name(1:n) == NameB(1:n) ) THEN
+            CALL Info('CompleteModelKeywords','Adding > Contact BC = '&
+                //TRIM(I2S(i))//' < to boundary '//TRIM(I2S(j)),Level=5)
+            CALL ListAddInteger( ListB,'Contact BC',i )
+            EXIT
+          END IF
+        END DO
+      END DO
+    END IF
+      
 
     DO i=1,Model % NumberOfBCs
       List => Model % BCs(i) % Values
@@ -2527,9 +2756,17 @@ CONTAINS
       IF( Found ) CALL Info('CompleteModelKeywords',&
           'Added > Mass Consistent Normals < to master BC '//TRIM(I2S(j)),Level=10)
 
+      CALL ListCompareAndCopy( List, ListB,'Rotational Normals',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Rotational Normals < to master BC '//TRIM(I2S(j)),Level=10)
+
       CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Displacement',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
           'Added > Normal-Tangential Displacement < to master BC '//TRIM(I2S(j)),Level=10)
+
+      CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Velocity',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Normal-Tangential Velocity < to master BC '//TRIM(I2S(j)),Level=10)
     END DO
 
 
@@ -3470,8 +3707,16 @@ CONTAINS
              n = SIZE(Var % Values)
            END IF
            ! in case of (.NOT. LoadThis) n has already been set
-         END IF
 
+           ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
+           IF( ASSOCIATED( Var % Solver ) ) THEN
+             IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
+               CALL Info('LoadRestartFile','Assuming variable to have transient initialization: '//TRIM(Row),Level=6)
+               Var % Solver % DoneTime = Var % Solver % Order
+             END IF
+           END IF
+         END IF
+         
          DO j=1, n
            IF ( FmtVersion > 0 ) THEN
              CALL GetValue( RestartUnit, Perm, GotPerm, j, k, Val )
@@ -3695,7 +3940,7 @@ CONTAINS
 
       IF ( nPerm < 0 ) THEN
          IF ( Binary ) CALL BinReadInt8( RestartUnit, Pos )
-         ! At the moment, we allways read all variables, and can therefore
+         ! At the moment, we always read all variables, and can therefore
          ! safely assume that the "previous" Perm table has been read and is
          ! held in memory at this point. In the future, however, we might be
          ! asked to read only some variables, in which case the previous Perm
@@ -4530,6 +4775,8 @@ CONTAINS
                     END IF
                  ELSE
                     WRITE(PostFileUnit,'(A)',ADVANCE='NO') ' 0.0'
+                    IF(ASSOCIATED(Var % Cvalues)) &
+                      WRITE(PostFileUnit,'(A)',ADVANCE='NO') ' 0.0'
                  END IF
               ELSE
                  l = INDEX( var % name, '[' )
@@ -4691,7 +4938,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   A => CreateMatrix(Model,Solver, &
            Solver % Mesh,CPerm,1,MATRIX_CRS,.FALSE.,NodalDofsOnly=.TRUE. )
 
-  A % Comm = MPI_COMM_WORLD
+  A % Comm = ELMER_COMM_WORLD
   A % ParMatrix => NULL()
   Solver % Matrix => A
   Model % Solver => Solver
@@ -4707,7 +4954,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
   IF ( ParEnv % PEs>1 ) THEN
     IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % INTERFACE) ) THEN
-      ParEnv % ActiveComm = MPI_COMM_WORLD
+      ParEnv % ActiveComm = ELMER_COMM_WORLD
 
       ALLOCATE(ParEnv % Active(ParEnv % PEs))
       ParEnv % Active=.TRUE.
@@ -4871,10 +5118,19 @@ END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
-    CALL FreeValueList(Solver % Values)
+
+    CALL Info('FreeSolver','Free solver matrix',Level=20)
     CALL FreeMatrix(Solver % Matrix)
+
+    CALL Info('FreeSolver','Free solver miscallenous',Level=20)
+    CALL FreeValueList(Solver % Values)
     IF (ALLOCATED(Solver % Def_Dofs)) DEALLOCATE(Solver % Def_Dofs)
     IF (ASSOCIATED(Solver % ActiveElements)) DEALLOCATE(Solver % ActiveElements)
+    IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+      CALL Graph_Deallocate(Solver % ColourIndexList)
+      DEALLOCATE( Solver % ColourIndexList )
+    END IF
+        
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeSolver
 !------------------------------------------------------------------------------
@@ -4914,12 +5170,17 @@ END SUBROUTINE GetNodalElementSize
    INTEGER :: i
    IF (.NOT.ASSOCIATED(Model)) RETURN
 
+   CALL Info('FreeModel','Freeing meshes',Level=15)
    CALL FreeMesh(Model % Meshes)
 
+   CALL Info('FreeModel','Freeing constants list',Level=15)
    CALL FreeValueList(Model % Constants)
+
+   CALL Info('FreeModel','Freeing simulation list',Level=15)
    CALL FreeValueList(Model % Simulation)
 
    IF (ASSOCIATED(Model % BCs)) THEN
+     CALL Info('FreeModel','Freeing boundary lists',Level=15)
      DO i=1,Model % NumberOfBCs
 #if 0
        A => Model % BCs(i) % PMatrix
@@ -4937,12 +5198,15 @@ END SUBROUTINE GetNodalElementSize
      DEALLOCATE(Model % BCs)
    END IF
 
+   CALL Info('FreeModel','Freeing solvers',Level=15)  
    DO i=1,Model % NumberOfSolvers
+     CALL Info('FreeModel','Solver: '//TRIM(I2S(i)),Level=20)
      CALL FreeSolver(Model % Solvers(i))
    END DO
    DEALLOCATE(Model % Solvers)
 
    IF (ASSOCIATED(Model % ICs)) THEN
+     CALL Info('FreeModel','Freeing initial conditions lists',Level=15)   
      DO i=1,Model % NumberOfICs
        CALL FreeValueList( Model % ICs(i) % Values)
      END DO
@@ -4950,6 +5214,7 @@ END SUBROUTINE GetNodalElementSize
    END IF
 
    IF (ASSOCIATED(Model % Bodies)) THEN
+     CALL Info('FreeModel','Freeing body lists',Level=15)   
      DO i=1,Model % NumberOfBodies
        CALL FreeValueList( Model % Bodies(i) % Values)
      END DO
@@ -4957,6 +5222,7 @@ END SUBROUTINE GetNodalElementSize
    END IF
 
    IF (ASSOCIATED(Model % Equations)) THEN
+     CALL Info('FreeModel','Freeing equations lists',Level=15)    
      DO i=1,Model % NumberOfEquations
        CALL FreeValueList( Model % Equations(i) % Values)
      END DO
@@ -4964,6 +5230,7 @@ END SUBROUTINE GetNodalElementSize
    END IF
 
    IF (ASSOCIATED(Model % BodyForces)) THEN
+     CALL Info('FreeModel','Freeing body forces lists',Level=15)   
      DO i=1,Model % NumberOfBodyForces
        CALL FreeValueList( Model % BodyForces(i) % Values)
      END DO

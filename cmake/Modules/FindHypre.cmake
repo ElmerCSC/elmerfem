@@ -1,6 +1,12 @@
 # CMake script for finding Hypre
 # Juhani Kataja, CSC - IT Center for Science Ltd.
 # 2014/08
+#
+# Hint variables:
+# * HYPREROOT (env, cmake)
+# * HYPRE_ROOT (env, cmake)
+# * HYPRE_INCLUDE_DIR (cmake)
+# * HYPRE_LIBRARY_DIR (cmake)
 
 cmake_minimum_required(VERSION 2.8)
 
@@ -20,6 +26,7 @@ find_path(Hypre_INCLUDE_DIR NAMES HYPRE.h
   "$ENV{HYPREROOT}/include"
   "${HYPRE_ROOT}/include"
   "$ENV{HYPRE_ROOT}/include"
+  "${HYPRE_INCLUDE_DIR}"
   "${CMAKE_SOURCE_DIR}/hypre/include"
   )
 
@@ -29,6 +36,7 @@ find_library(Hypre_LIBRARY NAMES HYPRE
   "$ENV{HYPREROOT}/lib"
   "${HYPRE_ROOT}/lib"
   "$ENV{HYPRE_ROOT}/lib"
+  "${HYPRE_LIBRARY_DIR}"
   "${CMAKE_SOURCE_DIR}/hypre/lib"
   )
 
@@ -41,6 +49,7 @@ foreach(_comp ${Hypre_FIND_COMPONENTS})
     HINTS
     "${HYPREROOT}/lib"
     "$ENV{HYPREROOT}/lib"
+  "${HYPRE_LIBRARY_DIR}"
     )
   
   IF(NOT _Hypre_LIB)

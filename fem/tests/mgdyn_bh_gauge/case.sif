@@ -1,0 +1,191 @@
+$ fileprefix = "tet"
+
+Header
+  mesh db "." "mesh_$fileprefix$"
+end
+
+Simulation
+  max output level = 5
+  coordinate system = cartesian 3D
+  coordinate mapping(3) = 1 2 3
+  simulation type = steady state
+  steady state max iterations = 1
+  output intervals = 1
+end
+
+Constants
+  permittivity of vacuum = 8.8542e-12
+end
+
+Solver 1
+  exec solver = before simulation
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+  Equation = "Stat Current Solver"
+  Variable = Potential
+  variable dofs = 1
+  calculate volume current = True
+  calculate joule heating = False
+  current control = real 12.5
+  linear system solver = iterative
+  linear system iterative method = CG
+  linear system max iterations = 1000
+  linear system convergence tolerance = 1e-08
+  linear system preconditioning = ILU0
+  linear system abort not converged = True
+  linear system residual output = 1
+end
+
+solver 2
+  equation = "MGDynamics"
+  Variable = P
+  use piola transform = logical false
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Fix input current density = Logical true
+  Newton-Raphson Iteration = Logical True
+  nonlinear system max iterations = 10
+  nonlinear system convergence tolerance = 1e-6
+  linear system symmetric = True
+  linear system solver = iterative
+  linear system preconditioning = none
+  linear system convergence tolerance = 1e-6
+  linear system residual output = 10
+  linear system max iterations = 5000
+  linear system iterative method = bicgstab
+  linear system direct method = mumps
+  use lagrange gauge = logical true
+  use tree gauge = logical false
+  lagrange gauge penalization coefficient = real 1e8
+  linear system refactorize = logical true
+  mumps percentage increase working space = integer 300
+end
+
+solver 3
+  equation = "MGDynamicsCalc"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  linear system symmetric = True
+  Potential variable = string "P"
+  calculate magnetic field strength = True
+  steady state convergence tolerance = 1e-6
+  linear system solver = iterative
+  linear system preconditioning = none
+  linear system residual output = 0
+  linear system max iterations = 5000
+  linear system iterative method = CG
+  linear system convergence tolerance = 1e-8
+end
+
+solver 4
+  exec solver = never
+  equation = resultoutput
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  vtu format = True
+  discontinuous bodies = logical true
+  vector field 1 = String "Volume Current"
+  vector field 2 = String "Magnetic Flux Density E"
+  vector field 3 = String "Magnetic Field Strength E"
+end
+
+solver 5
+  equation = scalars
+  Procedure = "SaveData" "SaveScalars"
+  show norm index = 2
+  parallel append = logical true
+end
+
+solver 6
+  equation = scalars2
+  Procedure = "SaveData" "SaveScalars"
+  show norm index = 3
+  parallel append = logical true
+end
+
+equation 1
+  name = coupled equations
+  active solvers(2) = 2 3
+end
+
+equation 2
+  name = coupled equations
+  active solvers(3) = 1 2 3
+end
+
+equation 3
+  name = coupled equations
+  active solvers(2) = 2 3
+end
+
+material 1
+  name = air
+  electric conductivity = 0.0
+  relative permeability = 1.0
+  relative permittivity = 1.0
+end
+
+material 2
+  relative permittivity = 1.0
+  name = iron
+  electric conductivity = 0.0
+  relative permeability = 1000.0
+end
+
+material 3
+  relative permittivity = 1.0
+  name = copper
+  electric conductivity = 58.14e6
+  relative permeability = 1.0
+end
+
+body 1
+  name = air
+  target bodies(1) = 1
+  equation = 1
+  material = 1
+end
+
+body 2
+  name = ring
+  target bodies(1) = 2
+  equation = 3
+  material = 2
+end
+
+body 3
+  name = cable
+  target bodies(1) = 3
+  equation = 2
+  material = 3
+  body force = 1
+end
+
+boundary condition 1
+  name = "bc potential"
+  target boundaries(1) = 52
+  P {e} = real 0
+  potential = 0.001
+end
+
+boundary condition 2
+  name = "bc volgate ground"
+  target boundaries(1) = 42
+  P {e} = real 0
+  potential = 0.0
+end
+
+boundary condition 3
+  name = "BCn flux parallel"
+  target boundaries(3) = 4 28 29
+  P {e} = real 0
+end
+
+body force 1
+  name = "current density"
+  current density 1 = 0
+  current density 2 = 0
+  current density 3 = equals volume current 3
+end
+
+Solver 6 :: Reference Norm = Real  8.05311383E-03
+Solver 6 :: Reference Norm tolerance = Real 2e-4
+Solver 5 :: reference norm = real 5.28894624E-05
+Solver 5 :: reference norm tolerance = real 2e-4
+

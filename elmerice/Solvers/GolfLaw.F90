@@ -56,7 +56,7 @@
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!							              !!!!!!
-!!!!!!       Non-relative viscosities and Temperature dependancy      !!!!!!
+!!!!!!       Non-relative viscosities and Temperature dependency      !!!!!!
 !!!!!! 							              !!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
        
@@ -728,10 +728,16 @@
       if (infor.ne.0) &
       CALL FATAL('GolfLaw,R2R0', 'failed to compute fabric eignevalues')
 
+     ! need a right handed orthonormal basis to compute euler angles;
+     ! not guarantee by DGEEV.
+      EigenVec(1,3)=EigenVec(2,1)*EigenVec(3,2)-EigenVec(3,1)*EigenVec(2,2)
+      EigenVec(2,3)=EigenVec(3,1)*EigenVec(1,2)-EigenVec(1,1)*EigenVec(3,2)
+      EigenVec(3,3)=EigenVec(1,1)*EigenVec(2,2)-EigenVec(2,1)*EigenVec(1,2)
+
       Euler(2)=Acos(EigenVec(3,3))
       if (abs(Euler(2)).gt.tiny(Euler(2))) then !3D euler angles 
-        Euler(1)=ATAN2(EigenVec(3,1),-EigenVec(3,2))
-        Euler(3)=ATAN2(EigenVec(1,3),EigenVec(2,3))
+        Euler(1)=ATAN2(EigenVec(1,3),-EigenVec(2,3))
+        Euler(3)=ATAN2(EigenVec(3,1),EigenVec(3,2))
       else ! only one rotation of angle phi
         Euler(3)=0.0
         Euler(1)=ATAN2(EigenVec(2,1),EigenVec(1,1))

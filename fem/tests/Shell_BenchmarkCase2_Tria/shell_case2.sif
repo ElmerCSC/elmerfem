@@ -1,0 +1,87 @@
+! Solve nonlinear shell equations of Reissner-Naghdi type in the case of 
+! a cylindrical benchmark problem with bending-dominated asymptotic behaviour in 
+! the linear regime. The linearized problem has been described in 
+! Pitkäranta et al. Shell deformation states and the finite element method: 
+! a benchmark study of cylindrical shells. Computer Methods in Applied Mechanics 
+! and Engineering 1995. 128:81-121. As opposed to the reference, here the shell
+! problem is treated as nonlinear but the shell is subject to a small load 
+! so that nonlinear effects are not yet significant.
+
+$ t = 1.0e-2
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "tria3"
+End
+
+Simulation
+  Max Output Level = 8
+  Coordinate System = Cartesian 3D  !** This affects what ElementInfo returns (3D for getting right metric)
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File = "case2.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+ Poisson Ratio = Real $1.0/3.0
+ Youngs Modulus = Real 7.0e+10
+ Shell Thickness = Real $t
+End
+
+Body Force 1 
+  Normal Pressure = Variable Coordinate
+     Real MATC "-t^3 * 1.0e+5 * (1-2*tx(0)*tx(0))"
+End
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Shell equations"
+
+  Procedure = "ShellSolver" "ShellSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+!  Linear System Row Equilibration = Logical True
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-5
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 100
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+
+  Nonlinear System Convergence Tolerance = 1e-8
+End
+
+! ----------------------------------------------------
+! BCs are defined with respect the global XYZ system:
+! ----------------------------------------------------
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  U 2 = Real 0
+  DNU 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  U 3 = Real 0
+  DNU 3 = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 4
+  U 1 = Real 0
+  DNU 1 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 9.14023441E-07      ! This corresponds to the default strain reduction
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

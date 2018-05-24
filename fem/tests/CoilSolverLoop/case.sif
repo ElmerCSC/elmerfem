@@ -5,17 +5,19 @@ Header
 End
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 
 !  Filename Numbering = Logical True
-  Post File = "case.vtu"
+  Post File = "b.vtu"
 
 ! Increase mesh density
   Mesh Levels = 2
+
+  Max Output Partition  = Integer 4
 End
 
 Body 1
@@ -53,7 +55,7 @@ Solver 1
   Linear System Convergence Tolerance = 1e-10
   Linear System Iterative Method = BiCGStabL
   Linear System Residual Output = 20
-  Steady State Convergence Tolerance = 1e-06
+!  Steady State Convergence Tolerance = 1e-06
 
 ! It is not sensible to perform too many iterations because the 
 ! iterative system actually does not most often have a solution
@@ -74,7 +76,8 @@ Solver 1
 ! In the unisotropic model the conductivity is aligned like the 
 ! previous gradient of the solution.
 !  Coil Unisotropic = Logical True
-  Normalize Coil Current = Logical True
+
+!  Normalize Coil Current = Logical True
 
   Nonlinear System Consistent Norm = Logical True
 
@@ -83,31 +86,8 @@ End
 
 
 
-Solver 2
-  Equation = ComputeFlux
-  Procedure = "FluxSolver" "FluxSolver"
-
-  Calculate Grad = Logical True
-  Target Variable = String CoilPot
-
-! these are taken care by the defaults
-  Linear System Solver = "Iterative"
-  Linear System Iterative Method = "bicgstab"
-  Linear System Preconditioning = ILU1
-  Linear System Residual Output = 10
-  Linear System Max Iterations = Integer 500
-  Linear System Convergence Tolerance = 1.0e-8
-
-  Linear System Abort Not Converged = False
-!  Exec Solver = never
-
-  Nonlinear System Consistent Norm = True
-End
-
-
-
 ! Compute divergence field: it should be zero
-Solver 3
+Solver 2
   Equation = Divergence Solver
   Procedure = "DivergenceSolver" "DivergenceSolver"
 
@@ -131,6 +111,5 @@ Material 1
 End
 
 
-Solver 1 :: Reference Norm = 8.19652353E-01
-Solver 2 :: Reference Norm = 1.21160884E+00
-Solver 3 :: Reference Norm = 9.58641785E-02
+Solver 1 :: Reference Norm = 7.78974736
+Solver 2 :: Reference Norm = 1.20855655E-01

@@ -1,0 +1,9 @@
+This directory contains standard configuration files to adapt an initial mesh of the Greenland Ice Sheet:
+see http://elmerice.elmerfem.org/wiki/doku.php?id=eis:greenland#present
+
+USAGE:
+	- Get an initial mesh : e.g. http://elmerice.elmerfem.org/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_mesh_v0.tar.gz
+	- Update default parameteris in MESH_OPTIM.IN
+	- (OPTIONAL - Adavnaced users): update default .sif file MESH_OPTIM.sif
+	- compile user-function: make -f Makefile.IN
+	- run the mesh optimisation: ElmerSolver
