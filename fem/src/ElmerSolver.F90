@@ -62,24 +62,11 @@ MODULE ElmerSolver_mod
 #include "../config.h"
 
 #ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp)      :: CT0  
-  REAL(KIND=dp),SAVE :: RT0
+  REAL(KIND=dp)      :: CT0, tt  
 #else
-  REAL(KIND=dp)      :: CT0  
-  REAL(KIND=dp),SAVE :: RT0
-  INTERFACE
-     FUNCTION RealTime()
-       USE MainUtils
-       REAL(KIND=dp) :: RealTime
-     END FUNCTION RealTime
-  END INTERFACE
-  INTERFACE
-     FUNCTION CPUTime()
-       USE MainUtils
-       REAL(KIND=dp) :: CPUTime
-     END FUNCTION CPUTime
-  END INTERFACE
+  REAL(KIND=dp)      :: RealTime,CPUTime,CT0,RT0,tt
 #endif
+  REAL(KIND=dp),SAVE :: RT0
 
   INTEGER            :: NoArgs
 
@@ -1797,7 +1784,7 @@ CONTAINS
 
 #ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
-#ifndef USE_ISO_C_BINDINGS
+#else
      REAL(KIND=dp) :: RealTime
 #endif
      
