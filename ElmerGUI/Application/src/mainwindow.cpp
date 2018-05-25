@@ -730,7 +730,7 @@ void MainWindow::createActions()
   connect(showVtkPostAct, SIGNAL(triggered()), this, SLOT(showVtkPostSlot()));
 
   // Solver -> Show ParaView postprocessor
-  paraviewAct = new QAction(QIcon(), tr("Start ParaView"), this);
+  paraviewAct = new QAction(QIcon(":/icons/Paraview.png"), tr("Start ParaView"), this);
   paraviewAct->setStatusTip(tr("Invokes ParaView for visualization"));
   connect(paraviewAct, SIGNAL(triggered()), this, SLOT(showParaViewSlot()));
 
