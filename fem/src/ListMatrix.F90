@@ -176,7 +176,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Values(:)
 
     IF( A % FORMAT /= MATRIX_LIST ) THEN
-      CALL Warn('ListToCRSMatrix','The initial matrix type is not List')
+      CALL Warn('List_ToCRSMatrix','The initial matrix type is not List')
       RETURN
     END IF
     
@@ -230,7 +230,7 @@ CONTAINS
     A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
-    CALL Info('ListToCRSMatrix','Matrix format changed from List to CRS', Level=8)
+    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=8)
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToCRSMatrix

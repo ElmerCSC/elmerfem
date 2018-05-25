@@ -3829,7 +3829,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> This is a line of solvers where a matrix is matrices and a vector of vectors 
+!> This is a line of solvers where a matrix of matrices and a vector of vectors 
 !> are created to allow different kinds of block strategies for the solvers.
 !> This strategy has optimal memory consumption even if block strategies are 
 !> employed on the linear system level. 
@@ -4114,7 +4114,7 @@ CONTAINS
         MaxChange = Solver % Variable % NonlinChange 
 
       ELSE IF( BlockPrec ) THEN
-	CALL Info('BlockSolver','Using block precontioning strategy',Level=6)        
+	CALL Info('BlockSolver','Using block preconditioning strategy',Level=6)        
         CALL BlockKrylovIter( Solver, MaxChange )
 
       ELSE
