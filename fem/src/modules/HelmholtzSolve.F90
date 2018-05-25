@@ -444,12 +444,12 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
                END DO
              END DO
            END IF
-             WallVelocity = ImUnit * AngularFrequency * WallVelocity
+           WallVelocity = ImUnit * AngularFrequency * WallVelocity
          END IF
          
-         ! Find the Helmholtz parent to determine the reference density
-         ! If density is used everywhere then is is actually elimited in
-         ! this BC hence one is used instead.
+         ! Find the Helmholtz parent to determine the reference density.
+         ! If density is used everywhere, then it is actually eliminated in
+         ! this BC due to the scaling and hence unity is used instead.
          !----------------------------------------------------------------
          IF( UseDensity ) THEN
            Density = 1.0_dp
@@ -832,7 +832,7 @@ CONTAINS
        rho = SUM( Density(1:n) * Basis(1:n) )
 !------------------------------------------------------------------------------
        DO p=1,n
-         FORCE(p) = FORCE(p) + s * Basis(p) * &
+         FORCE(p) = FORCE(p) - s * Basis(p) * &
              ImUnit * rho * AngularFrequency * NormVelo
        END DO
 !------------------------------------------------------------------------------
