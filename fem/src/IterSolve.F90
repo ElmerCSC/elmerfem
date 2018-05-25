@@ -443,7 +443,9 @@ CONTAINS
     work=0._dp
 #endif
 
-    IF ( ALL(x == 0.0) ) x = 1.0d-8
+    IF ( (IterType == ITER_BiCGStab2 .OR. IterType == ITER_BiCGStabL .OR. &
+         IterType == ITER_BiCGStab ) .AND. ALL(x == 0.0) ) x = 1.0d-8
+
     HUTI_INITIALX = HUTI_USERSUPPLIEDX
     
     HUTI_TOLERANCE = ListGetCReal( Params, &
