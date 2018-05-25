@@ -14518,7 +14518,7 @@ CONTAINS
         END DO
 
       ELSE ! .NOT. IsNS
-        ! For pressure equations (Helmholz) the structure applies as Neumann condition for the normal traction
+        ! For pressure equations (Helmholtz) the structure applies a Neumann condition
         
         DO i=1,n
           ii = Indexes(i)
@@ -14551,27 +14551,33 @@ CONTAINS
                 IF( IsHarmonic ) THEN
                   jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
 
-                  ! Structure load on the fluid: dp/dn = -rho*omega^2*n
+                  ! Structure load on the fluid: This assembles
+                  !
+                  !    -1/rho <dp/dn,v> = -omega^2 <u.n,v> = omega^2 <u.m,v> 
+                  !
+                  ! with the normal vectors satisfying m = -n. Note that the density (rho) 
+                  ! must be defined for Helmholtz solver to make it assemble a system
+                  ! consistent with the boundary integral -1/rho <dp/dn,v>.
                   IF( FreeF ) THEN
-                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
+                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff/rho)     ! Re 
                   ELSE
                     CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
                   END IF
 
                   IF( FreeFim ) THEN
-                    CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
+                    CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff/rho) ! Im
                   ELSE                
                     CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
                   END IF
 
-                  ! These must be created for compleness bacause the matrix topology of complex
-                  ! matrices must be the same for all compoents.
+                  ! These must be created for completeness because the matrix topology of complex
+                  ! matrices must be the same for all components.
                   CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
                   CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
                 ELSE
                   jstruct = sdofs*(SPerm(jj)-1)+k
 
-                  ! Structure load on the fluid: dp/dn = -u
+                  ! Structure load on the fluid: dp/dn = -u. (This seems strange???)
                   IF( FreeF ) THEN
                     CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
                   END IF
@@ -14589,15 +14595,15 @@ CONTAINS
               IF( IsHarmonic ) THEN
                 jstruct = sdofs*(SPerm(jj)-1)+1
 
-                ! Structure load on the fluid: dp/dn = -rho*omega^2*n
+                ! Structure load on the fluid: -1/rho dp/dn = -omega^2 u.n = omega^2 u.m
                 IF( FreeF ) THEN
-                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff/rho)     ! Re 
                 ELSE
                   CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
                 END IF
 
                 IF( FreeFim ) THEN
-                  CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
+                  CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff/rho) ! Im
                 ELSE                
                   CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
                 END IF
@@ -14609,7 +14615,7 @@ CONTAINS
               ELSE
                 jstruct = sdofs*(SPerm(jj)-1)+1
 
-                ! Structure load on the fluid: dp/dn = -u
+                ! Structure load on the fluid: dp/dn = -u. (This seems strange???)
                 IF( FreeF ) THEN
                   CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
                 END IF
@@ -14754,9 +14760,9 @@ CONTAINS
 
     CALL Info('FsiCouplingAssembly','Number of elements on interface: '&
         //TRIM(I2S(tcount)),Level=10)    
-    CALL Info('FsiCouplingAssembly','Number of entries if fluid-structure matrix: '&
+    CALL Info('FsiCouplingAssembly','Number of entries in fluid-structure matrix: '&
         //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
-    CALL Info('FsiCouplingAssembly','Number of entries if structure-fluid matrix: '&
+    CALL Info('FsiCouplingAssembly','Number of entries in structure-fluid matrix: '&
         //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
     
     CALL Info('FsiCouplingAssembly','All done',Level=20)
