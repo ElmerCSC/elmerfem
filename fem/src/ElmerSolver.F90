@@ -74,8 +74,9 @@ MODULE ElmerSolver_mod
 
   ! note: this declaration list needs checking for which variables actually
   ! require the SAVE attribute (note also the SAVE attribute is imposed by 
-  ! setting a default).  It aslo needs checking for variables that can be 
-  ! removed to a subroutine.
+  ! setting a default).  
+  ! It also needs checking for variables that can be removed to a subroutine 
+  ! instead of being available at module level.
   CHARACTER(LEN=MAX_STRING_LEN),SAVE :: threads, CoordTransform  
   REAL(KIND=dp),SAVE            :: ss,dt,dtfunc
   REAL(KIND=dP), POINTER, SAVE  :: WorkA(:,:,:) => NULL()
@@ -115,8 +116,10 @@ CONTAINS
   !------------------------------------------------------------------------------
   SUBROUTINE ElmerSolver(init)
     
-    INTEGER :: Init
+    INTEGER, INTENT(IN) :: Init
     
+    LOGICAL             :: RunElmer = .TRUE.
+
     Initialize = init
 
 ! !!!NYI!!!
@@ -138,11 +141,14 @@ CONTAINS
 ! procedure. For example, some preconditioners create static 
 ! structures that will not be recreated
     
-    CALL ElmerSolver_init()
-    IF ( Initialize /= 1 ) THEN       
-       CALL ElmerSolver_runAll()
-       CALL ElmerSolver_finalize()
-    END IF
+    DO WHILE (RunElmer)
+       CALL ElmerSolver_init()
+       IF ( Initialize /= 1 ) THEN       
+          CALL ElmerSolver_runAll()
+          CALL ElmerSolver_finalize()
+       END IF
+       RunElmer = ReloadInputFile(CurrentModel)
+    END DO
     
   END SUBROUTINE ElmerSolver
   
@@ -176,7 +182,7 @@ CONTAINS
     IF (PRESENT(ParEnvInitialised)) THEN
        IF (ParEnvInitialised) THEN
           WRITE( Message, * ) 'ParEnv initialised by calling program'
-          CALL Info( 'ParCommInit', Message, Level=4 )
+          CALL Info( 'ParCommInit', Message, Level=3 )
           ParallelEnv => ParEnv
        ELSE
           ParallelEnv => ParallelInit()
@@ -295,13 +301,12 @@ CONTAINS
     END IF
     
     ! Read input file name either as an argument, or from the default file:
-    !----------------------------------------------------------------------
-    GotModelName = .FALSE.
-    
+    !----------------------------------------------------------------------    
     IF (PRESENT(inputFileName)) THEN
        ModelName = inputFileName
        GotModelName = .TRUE.
     ELSE
+       GotModelName = .FALSE.
        IF ( ParEnv % PEs <= 1 .AND. NoArgs > 0 ) THEN
 #ifdef USE_ISO_C_BINDINGS
           CALL GET_COMMAND_ARGUMENT(1, ModelName)
@@ -340,7 +345,7 @@ CONTAINS
     MeshIndex = 0       
     IF ( initialize==2 ) GOTO 1
     
-    IF(MeshMode) THEN
+    IF (MeshMode) THEN
        CALL FreeModel(CurrentModel)
        MeshIndex = MeshIndex + 1
        FirstLoad = .TRUE.
@@ -371,13 +376,22 @@ CONTAINS
        !----------------------------------------------------------------------------------
        MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
        
+       !------------------------------------------------------------------------------
+       ! Some keywords automatically require other keywords to be set. 
+       ! We could complain on the missing keywords later on, but sometimes 
+       ! it may be just as simple to add them directly. 
+       !------------------------------------------------------------------------------
+       CALL CompleteModelKeywords( )
+       
+       !----------------------------------------------------------------------------------
+       ! We might need to pass the mesh footprint to the calling program before extrusion. 
        !----------------------------------------------------------------------------------
        IF (PRESENT(meshFootprint)) THEN
           meshFootprint = CurrentModel % Meshes
        END IF
 
        !----------------------------------------------------------------------------------
-       ! Optionally perform simple extrusion to increase the dimension of the mesh
+       ! Optionally perform simple extrusion to increase the dimension of the mesh.
        !----------------------------------------------------------------------------------
        ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
        IF( .NOT. Found ) THEN
@@ -434,8 +448,6 @@ CONTAINS
           OPEN( Unit=InFileUnit, Action='Read', & 
                File=ModelName,Status='OLD',ERR=20 )
        END IF
-
-       IF ( .NOT.ReloadInputFile(CurrentModel) ) RETURN
 
        Mesh => CurrentModel % Meshes
        DO WHILE( ASSOCIATED(Mesh) )
