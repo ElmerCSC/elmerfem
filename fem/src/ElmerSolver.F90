@@ -91,7 +91,7 @@ MODULE ElmerSolver_mod
   LOGICAL, SAVE                 :: InitDirichlet, ExecThis  
   TYPE(ElementType_t),POINTER,SAVE :: elmt  
   TYPE(ParEnv_t),POINTER,SAVE   :: ParallelEnv  
-  CHARACTER(LEN=MAX_NAME_LEN),SAVE :: ModelName, eq, ExecCommand
+  CHARACTER(LEN=MAX_NAME_LEN),SAVE :: ModelName, eq, ExecCommand, ExtrudedMeshName
   CHARACTER(LEN=MAX_STRING_LEN),SAVE :: OutputFile, PostFile, RestartFile, &
        OutputName=' ',PostName=' ', When, OptionString  
   TYPE(Variable_t),POINTER,SAVE :: Var
@@ -359,7 +359,6 @@ CONTAINS
        
        OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',ERR=20 )
        CurrentModel => LoadModel( ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
-       IF(.NOT.ASSOCIATED(CurrentModel)) EXIT 
        
        !----------------------------------------------------------------------------------
        ! Set namespace searching mode
@@ -580,8 +579,8 @@ CONTAINS
     IF ( FirstLoad ) THEN
        CALL SetInitialConditions()     
        
-       DO i=1,CurrentModel % NumberOfSolvers
-          Solver => CurrentModel % Solvers(i)
+       DO ii=1,CurrentModel % NumberOfSolvers
+          Solver => CurrentModel % Solvers(ii)
           IF( ListGetLogical( Solver % Values, 'Initialize Exported Variables', GotIt ) ) THEN
              CurrentModel % Solver => Solver
              CALL UpdateExportedVariables( Solver )	 
@@ -940,28 +939,29 @@ CONTAINS
        ALLOCATE( ABC(nn), STAT = AllocStat )
        IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 1')
        CALL Info('AddVtuOutputSolverHack','Increasing number of solver to: '&
-           //TRIM(I2S(n)),Level=8)
+           //TRIM(I2S(nn)),Level=8)
        DO ii=1,nn-1
-         ! Def_Dofs is the only allocatable structure within Solver_t:
-         IF( ALLOCATED( CurrentModel % Solvers(ii) % Def_Dofs ) ) THEN
-           jj = SIZE(CurrentModel % Solvers(ii) % Def_Dofs,1)
-           j2 = SIZE(CurrentModel % Solvers(ii) % Def_Dofs,2)
-           j3 = SIZE(CurrentModel % Solvers(ii) % Def_Dofs,3)
-           ALLOCATE( ABC(ii) % Def_Dofs(jj,j2,j3), STAT = AllocStat )
-           IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 2')              END IF
-
-         ! Copy the content of the Solver structure
-         ABC(ii) = CurrentModel % Solvers(ii)
-
-         ! Nullify the old structure since otherwise bad things may happen at deallocation
-         NULLIFY( CurrentModel % Solvers(ii) % ActiveElements )
-         NULLIFY( CurrentModel % Solvers(ii) % Values )
-         NULLIFY( CurrentModel % Solvers(ii) % Mesh )
-         NULLIFY( CurrentModel % Solvers(ii) % BlockMatrix )
-         NULLIFY( CurrentModel % Solvers(ii) % Matrix )
-         NULLIFY( CurrentModel % Solvers(ii) % Variable )
+          ! Def_Dofs is the only allocatable structure within Solver_t:
+          IF( ALLOCATED( CurrentModel % Solvers(ii) % Def_Dofs ) ) THEN
+             jj = SIZE(CurrentModel % Solvers(ii) % Def_Dofs,1)
+             j2 = SIZE(CurrentModel % Solvers(ii) % Def_Dofs,2)
+             j3 = SIZE(CurrentModel % Solvers(ii) % Def_Dofs,3)
+             ALLOCATE( ABC(ii) % Def_Dofs(jj,j2,j3), STAT = AllocStat )
+             IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 2')
+          END IF
+          
+          ! Copy the content of the Solver structure
+          ABC(ii) = CurrentModel % Solvers(ii)
+          
+          ! Nullify the old structure since otherwise bad things may happen at deallocation
+          NULLIFY( CurrentModel % Solvers(ii) % ActiveElements )
+          NULLIFY( CurrentModel % Solvers(ii) % Values )
+          NULLIFY( CurrentModel % Solvers(ii) % Mesh )
+          NULLIFY( CurrentModel % Solvers(ii) % BlockMatrix )
+          NULLIFY( CurrentModel % Solvers(ii) % Matrix )
+          NULLIFY( CurrentModel % Solvers(ii) % Variable )
        END DO
-
+       
        ! Deallocate the old structure and set the pointer to the new one
        DEALLOCATE( CurrentModel % Solvers )
        CurrentModel % Solvers => ABC
@@ -1195,7 +1195,7 @@ CONTAINS
      USE DefUtils
      INTEGER :: DOFs
      CHARACTER(LEN=MAX_NAME_LEN) :: str
-     LOGICAL :: Found
+     LOGICAL :: Found, NamespaceFound
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, ALLOCATABLE :: Indexes(:)
      REAL(KIND=dp),ALLOCATABLE :: Work(:)
@@ -1387,9 +1387,9 @@ CONTAINS
    SUBROUTINE InitCond()
 !------------------------------------------------------------------------------
      USE DefUtils
+
      TYPE(Element_t), POINTER :: Edge
-     INTEGER :: DOFs,bid,jj,kk,ll,k1,nn,tt
-!     INTEGER :: DOFs,i,j,k,k1,k2,l
+     INTEGER :: DOFs,jj,kk,ll,k1,k2,nn,tt,bid
      CHARACTER(LEN=MAX_NAME_LEN) :: str, VarName
      LOGICAL :: Found, ThingsToDO, NamespaceFound, AnyNameSpace
      TYPE(Solver_t), POINTER :: Solver
@@ -1416,8 +1416,8 @@ CONTAINS
 
        CALL SetCurrentMesh( CurrentModel, Mesh )
 
-       n =  Mesh % MaxElementNodes      
-       ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+       nn =  Mesh % MaxElementNodes      
+       ALLOCATE( Basis(nn), Nodes % x(nn), Nodes % y(nn), Nodes % z(nn) )
 
        ! First set the global variables and check whether there is anything left to do
        ThingsToDo = .FALSE.
@@ -1499,11 +1499,11 @@ CONTAINS
                  CALL Fatal('InitCond','Initialization only for scalar elements fields!')
                END IF
                
-               Work(1:n) = GetReal( IC, Var % Name, GotIt )
+               Work(1:nn) = GetReal( IC, Var % Name, GotIt )
                IF ( GotIt ) THEN
                  k1 = CurrentElement % ElementIndex 
                  IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
-                 IF ( k1>0 ) Var % Values(k1) = SUM( Work(1:n) ) / n
+                 IF ( k1>0 ) Var % Values(k1) = SUM( Work(1:nn) ) / nn
                END IF               
                
              ELSE IF( Var % TYPE == Variable_on_gauss_points ) THEN
@@ -1554,7 +1554,7 @@ CONTAINS
                          CALL LocalBcIntegral( IC, &
                              Edge, Edge % TYPE % NumberOfNodes, CurrentElement, nn, &
                              TRIM(Var % Name)//' {e}', Work )
-                         Var % Values(l) = Work(1)
+                         Var % Values(ll) = Work(1)
                        END IF
                      END DO
                    END IF
@@ -1630,59 +1630,59 @@ CONTAINS
                END IF
                
                PrevBodyId = -1 
-               DO t=1, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+               DO tt=1, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
                  
-                 CurrentElement => Mesh % Elements(t)
+                 CurrentElement => Mesh % Elements(tt)
 
-                 i = CurrentElement % BodyId 
-                 IF( i == 0 ) CYCLE         
+                 bid = CurrentElement % BodyId 
+                 IF( bid == 0 ) CYCLE         
 
-                 IF( i == PrevBodyId ) THEN
-                   FoundIC = PrevFoundIC
+                 IF( bid == PrevBodyId ) THEN
+                    FoundIC = PrevFoundIC
                  ELSE
-                   j = ListGetInteger(CurrentModel % Bodies(i) % Values, &
-                       'Initial Condition',FoundIC, 1, CurrentModel % NumberOfICs )           
-                   IF ( FoundIC ) THEN                       
-                     IC => CurrentModel % ICs(j) % Values
-                     FoundIC = ListCheckPresent( IC, VarName )
-                   END IF
-                   PrevFoundIC = FoundIC 
+                    jj = ListGetInteger(CurrentModel % Bodies(bid) % Values, &
+                         'Initial Condition',FoundIC, 1, CurrentModel % NumberOfICs ) 
+                    IF ( FoundIC ) THEN                       
+                       IC => CurrentModel % ICs(jj) % Values
+                       FoundIC = ListCheckPresent( IC, VarName )
+                    END IF
+                    PrevFoundIC = FoundIC 
                  END IF
-
+                 
                  IF( .NOT. FoundIC ) CYCLE
-
+                 
                  CurrentModel % CurrentElement => CurrentElement
-                 n = GetElementNOFNodes()                 
+                 nn = GetElementNOFNodes()                 
                  
                  k1 = Var % Perm( CurrentElement % ElementIndex )
                  k2 = Var % Perm( CurrentElement % ElementIndex + 1 )
-
+                 
                  IF( k2- k1 > 0 ) THEN
-                   
-                   Nodes % x(1:n) = Mesh % Nodes % x(CurrentElement % NodeIndexes)
-                   Nodes % y(1:n) = Mesh % Nodes % y(CurrentElement % NodeIndexes)
-                   Nodes % z(1:n) = Mesh % Nodes % z(CurrentElement % NodeIndexes)
-
-                   IP = GaussPoints( CurrentElement )
-                   IF( k2 - k1 /= Ip % n ) THEN
-                     CALL Warn('InitCond','Incompatible number of Gauss points, skipping')
-                   ELSE              
-                     DO k=1,IP % n
-                       stat = ElementInfo( CurrentElement, Nodes, IP % U(k), IP % V(k), &
-                           IP % W(k), detJ, Basis )
-
-                       val = ListGetElementReal( LocalSol_h,Basis,CurrentElement,Found,GaussPoint=k)
-                       
-                       IF( VarOrder == 0 ) THEN
-                         Var % Values(k1+k) = val
-                       ELSE 
-                         Var % PrevValues(k1+k,VarOrder) = val
-                       END IF
-
-                     END DO
-                   END IF
-                   
-                 END IF 
+                    
+                    Nodes % x(1:nn) = Mesh % Nodes % x(CurrentElement % NodeIndexes)
+                    Nodes % y(1:nn) = Mesh % Nodes % y(CurrentElement % NodeIndexes)
+                    Nodes % z(1:nn) = Mesh % Nodes % z(CurrentElement % NodeIndexes)
+                    
+                    IP = GaussPoints( CurrentElement )
+                    IF( k2 - k1 /= Ip % n ) THEN
+                       CALL Warn('InitCond','Incompatible number of Gauss points, skipping')
+                    ELSE              
+                       DO kk=1,IP % n
+                          stat = ElementInfo( CurrentElement, Nodes, IP % U(kk), IP % V(kk), &
+                               IP % W(kk), detJ, Basis )
+                          
+                          val = ListGetElementReal( LocalSol_h,Basis,CurrentElement,Found,GaussPoint=kk)
+                          
+                          IF( VarOrder == 0 ) THEN
+                             Var % Values(k1+kk) = val
+                          ELSE 
+                             Var % PrevValues(k1+kk,VarOrder) = val
+                          END IF
+                          
+                       END DO
+                    END IF
+                    
+                 END IF
                END DO
              END IF
            END DO
@@ -2023,28 +2023,27 @@ CONTAINS
                   kk = MAX( kk, SIZE( Solver % Variable % Values ) )
                END IF
             END DO
-            ALLOCATE( xx(nn,kk), yynrm(nn), xxnrm(nn), prevxx( nn,kk,jj ) )
 
             IF(.NOT. ALLOCATED( AdaptVars ) ) THEN
               ALLOCATE( AdaptVars( nSolvers ), STAT = AllocStat )
               IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for AdaptVars')
               
-              DO i=1,nSolvers
-                Solver => CurrentModel % Solvers(i)
+              DO ii=1,nSolvers
+                Solver => CurrentModel % Solvers(ii)
 
-                NULLIFY( AdaptVars(i) % Var % Values )
-                NULLIFY( AdaptVars(i) % Var % PrevValues )
+                NULLIFY( AdaptVars(ii) % Var % Values )
+                NULLIFY( AdaptVars(ii) % Var % PrevValues )
 
                 IF( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
                 IF( .NOT. ASSOCIATED( Solver % Variable  % Values ) ) CYCLE
-                CALL Info('ExecSimulation','Allocating adaptive work space for: '//TRIM(I2S(i)),Level=12)
-                j = SIZE( Solver % Variable % Values )
-                ALLOCATE( AdaptVars(i) % Var % Values( j ), STAT=AllocStat )
+                CALL Info('ExecSimulation','Allocating adaptive work space for: '//TRIM(I2S(ii)),Level=12)
+                jj = SIZE( Solver % Variable % Values )
+                ALLOCATE( AdaptVars(ii) % Var % Values( jj ), STAT=AllocStat )
                 IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error AdaptVars Values')
 
                 IF( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                  k = SIZE( Solver % Variable % PrevValues, 2 )
-                  ALLOCATE( AdaptVars(i) % Var % PrevValues( j, k ), STAT=AllocStat)
+                  kk = SIZE( Solver % Variable % PrevValues, 2 )
+                  ALLOCATE( AdaptVars(ii) % Var % PrevValues( jj, kk ), STAT=AllocStat)
                   IF( AllocStat /= 0 ) CALL Fatal('ExecSimulation','Allocation error for AdaptVars PrevValues')
                 END IF
               END DO
@@ -2063,30 +2062,18 @@ CONTAINS
                   IF( dt - CumTime - ddt > 1.0d-12 ) THEN
                      CALL Info('ExecSimulation','Splitted timestep into two equal parts',Level=12)
                      ddt = MIN( ddt, ( dt - CumTime ) / 2.0_dp )
-                     
-!               DO ii=1,CurrentModel % NumberOFSolvers
-!                  Solver => CurrentModel % Solvers(ii)
-!                  IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-!                     nn = SIZE( Solver % Variable % Values )
-!                     xx(ii,1:nn) = Solver % Variable % Values
-!                     xxnrm(ii) = Solver % Variable % Norm
-!                     IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-!                        DO jj=1,SIZE( Solver % Variable % PrevValues,2 )
-!                           prevxx(ii,1:nn,jj) = Solver % Variable % PrevValues(:,jj)
-!                        END DO
-!                     END IF
                   END IF
-               END DO
-            
+               END IF
+               
                ! Store the initial values before the start of the step
-               DO i=1,nSolvers
-                 Solver => CurrentModel % Solvers(i)
+               DO ii=1,nSolvers
+                 Solver => CurrentModel % Solvers(ii)
                  IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
                  IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
-                 AdaptVars(i) % Var % Values = Solver % Variable % Values
-                 AdaptVars(i) % Var % Norm = Solver % Variable % Norm
+                 AdaptVars(ii) % Var % Values = Solver % Variable % Values
+                 AdaptVars(ii) % Var % Norm = Solver % Variable % Norm
                  IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                   AdaptVars(i) % Var % PrevValues = Solver % Variable % PrevValues
+                   AdaptVars(ii) % Var % PrevValues = Solver % Variable % PrevValues
                  END IF
                END DO
 
@@ -2111,16 +2098,6 @@ CONTAINS
                   IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
                      Solver % Variable % PrevValues = AdaptVars(ii) % Var % PrevValues 
                   END IF
-                  !IF ( ASSOCIATED( Solver % Variable % Values ) ) THEN
-                  !   nn = SIZE(Solver % Variable % Values)
-                  !   yynrm(ii) = Solver % Variable % Norm
-                  !   Solver % Variable % Values = xx(ii,1:nn)
-                  !   IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                  !      DO jj=1,SIZE( Solver % Variable % PrevValues,2 )
-                  !         Solver % Variable % PrevValues(:,jj) = prevxx(ii,1:nn,jj)
-                  !      END DO
-                  !   END IF
-                  !END IF
                END DO
 
                ! Test the error for half the timestep
@@ -2396,8 +2373,8 @@ CONTAINS
     
 
     IF ( GotIt ) THEN
-      i = INDEX( OutputFile,'/')
-      IF( i > 0 ) THEN
+      ii = INDEX( OutputFile,'/')
+      IF( ii > 0 ) THEN
         CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
             //TRIM(OutputFile))
       END IF
