@@ -119,7 +119,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: Init
     
     LOGICAL             :: RunElmer = .TRUE.
-
+integer :: nnn
     Initialize = init
 
 ! !!!NYI!!!
@@ -140,17 +140,52 @@ CONTAINS
 ! It should be noted that not quite all features support this 
 ! procedure. For example, some preconditioners create static 
 ! structures that will not be recreated
+
+! note that TEST.PASSED is called from finalize, comparetoref...
+! we need at least one call to comparetoref... before the one with finalize 
+! (which is functionally different)
+
+! failed tests include calving3d:
+! ERROR:: FrontAdvance3D: Programming error: wrong number of nodes in TangledGroup
+! InvMeth_AdjRobin/
+! Is CostSolver_Robin much different between my version and elmerice branch?  
+! Does changing it to the elmerice version do anything to the results norm? 
+! (i,e, to the tests)
+!
+! all new failures are parallel?  something wrong with test metrics in parallel?
+! double check how these work in normal elmerice branch?
+!
+! *** try just with my new ElmerSolver and standard elmerice branch for everything 
+! else (checkout elmrice branch and copy in my ElmerSolver)
+
+
+    print*,"*** Run Elmer! ***", RunElmer
     
     DO WHILE (RunElmer)
-       CALL ElmerSolver_init()
+       !    DO nnn=1,2
+       print*,"*** GOGOGOGOGOGO! ***", RunElmer
        IF ( Initialize /= 1 ) THEN       
+          CALL ElmerSolver_init()
+          ! modify init to put more stuff in loadfirst?
+          print*,"*** initilled! ***", RunElmer
           CALL ElmerSolver_runAll()
-          CALL ElmerSolver_finalize()
+          print*,"*** Run Ran! ***", RunElmer
        END IF
+       print*,"*** What now1! ***", RunElmer
        RunElmer = ReloadInputFile(CurrentModel)
+       ! why is this false? there is a RUN!
+       print*,"*** What now2! ***", RunElmer
+       CALL CompareToReferenceSolution( )
     END DO
     
+    IF ( Initialize /= 1 ) THEN       
+       CALL ElmerSolver_finalize()
+       
+       print*,"*** finalized! ***", RunElmer
+    END IF
+    
   END SUBROUTINE ElmerSolver
+
   
   !------------------------------------------------------------------------------
   SUBROUTINE ElmerSolver_init(meshFootprint,ParEnvInitialised,inputFileName)
@@ -660,6 +695,7 @@ CONTAINS
   
   END SUBROUTINE ElmerSolver_init
     
+
   !------------------------------------------------------------------------------
   SUBROUTINE  ElmerSolver_runAll()
 
@@ -679,6 +715,7 @@ CONTAINS
 
   END SUBROUTINE ElmerSolver_runAll
   
+
   !------------------------------------------------------------------------------
   SUBROUTINE  ElmerSolver_run()
 
@@ -686,6 +723,7 @@ CONTAINS
             CoupledMaxIter, OutputIntervals, Transient, Scanning)
   
   END SUBROUTINE ElmerSolver_run
+
   
   !------------------------------------------------------------------------------
   SUBROUTINE ElmerSolver_finalize()
@@ -749,7 +787,6 @@ CONTAINS
 
   
   
-
      ! The user may request unit tests to be performed. 
      ! This will be done if any reference norm is given.
      ! The success will be written to file TEST.PASSED as 0/1. 
@@ -766,6 +803,7 @@ CONTAINS
 
        SAVE TestCount, PassCount 
 
+       IF( ParEnv % MyPe > 0 ) RETURN
 
        ! Write the success to a file for further use e.g. by cmake
        !----------------------------------------------------------
@@ -790,12 +828,19 @@ CONTAINS
          
          IF( FinalizeOnly ) THEN
            IF( ParEnv % MyPe == 0 ) THEN
-             OPEN( 10, FILE = 'TEST.PASSED' )
+             IF( ParEnv % PEs > 1 ) THEN
+               ! Parallel test, add the number of tasks as a suffix
+               WRITE(PassedMsg, '("TEST.PASSED_",I0)') ParEnv % PEs
+               OPEN( 10, FILE = PassedMsg )
+             ELSE
+               OPEN( 10, FILE = 'TEST.PASSED' )
+             END IF
              IF( Success ) THEN
                WRITE( 10,'(I1)' ) 1
              ELSE
                WRITE( 10,'(I1)' ) 0
              END IF
+             CLOSE( 10 )
            END IF
          END IF
 
@@ -834,7 +879,7 @@ CONTAINS
 
            IF(.NOT. AbsoluteErr ) THEN
              IF( RefNorm < TINY( RefNorm ) ) THEN
-               CALL Warn('CompareToReferenceSolution','Refenrece norm too small for relative error')
+               CALL Warn('CompareToReferenceSolution','Reference norm too small for relative error')
                AbsoluteErr = .TRUE.
              ELSE
                Err = Err / RefNorm 
@@ -890,7 +935,7 @@ CONTAINS
                END IF
              END DO
            END DO
-           IF( ParEnv % PEs > 1 ) CALL Warn('CompareToReferefenSolution','Not implemented in parallel!')
+           IF( ParEnv % PEs > 1 ) CALL Warn('CompareToReferenceSolution','Not implemented in parallel!')
            IF( n == 0 ) CALL Fatal('CompareToReferenceSolution','Could not find any reference solution')
            RefNorm = SQRT( RefNorm / n ) 
            Norm = SQRT( Norm / n )
@@ -912,8 +957,6 @@ CONTAINS
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
          END IF
-
-
 
          IF( Success ) PassCount = PassCount + 1
        END DO
