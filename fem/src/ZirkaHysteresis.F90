@@ -767,6 +767,8 @@ module ZirkaUtils ! Utils for 2D/3D calculations {{{
 use zirka
 use DefUtils
 
+character(len=*), parameter :: default_zirka_variable_name = 'zirka_ipvar'
+
 contains
 !-------------------------------------------------------------------------------
 ! Initialization for 2D case
@@ -803,6 +805,7 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
     material => model % materials(n) % values
     ZirkaEntry => listfind(material, 'zirka material', haszirka)
     if (.not. HasZirka) CYCLE
+    if (.not. ZirkaEntry % LValue) CYCLE
     n_zirka_mat = n_zirka_mat + 1
 
     if(ListGetLogical(material, 'zirka initialized', HasZirka)) then
@@ -815,9 +818,12 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
     BHSingle => NULL()
 
     hystvar => GetZirkaVariable(Material)
-    if (.not. associated(hystvar)) call fatal('InitHysteresis', 'hystvar > ' // trim(str) //' < not available')
+    
+    if (.not. associated(hystvar)) HystVar => CreateZirkaVariable(Material)
+    ! call fatal('InitHysteresis', 'hystvar > ' // trim(str) //' < not available')
 
-    n_dir = ListGetInteger(material, 'n_dir', found)
+    n_dir = ListGetInteger(material, 'Zirka Directions', found)
+    if (.NOT. found) n_dir = ListGetInteger(material, 'n_dir', found)
     IF(.NOT. Found) n_dir = n_dir_default
 
     zeroinit = ListGetLogical(material, 'Init to zero', zeroinit)
@@ -884,6 +890,7 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
           if (ipindex == 0) CYCLE
           do i = 1,n_dir
             phi = (i-1.0)*pi/n_dir
+            ! print *, 'hello', i, t, ipindex ! DEBUG
             if(.not. associated(initseq)) then
               zirkamodel % curves(i, ipindex) = &
                   MasterCurve_t(zirkamodel % masterloop, ABCparams, &
@@ -939,6 +946,53 @@ FUNCTION GetZirkaPointer(material) result(ZirkaModelPtr) ! {{{
 END FUNCTION ! }}}
 !-------------------------------------------------------------------------------
 
+FUNCTION CreateZirkaVariable(Material) RESULT(var)
+!-------------------------------------------------------------------------------
+  USE MainUtils
+  IMPLICIT NONE
+  TYPE(ValueList_t), POINTER, intent(in) :: Material
+  TYPE(Variable_t), POINTER :: var
+!-------------------------------------------------------------------------------
+  CHARACTER(len=MAX_NAME_LEN) :: str
+  type(mesh_t), pointer :: mesh
+  logical :: found
+
+  mesh => getmesh()
+
+  str = ListGetString(material, 'Zirka variable', found) 
+  if(.not. found) str = default_zirka_variable_name !'zirka'
+  var => VariableGet(mesh % variables, str)
+  if(associated(var)) THEN
+    write (Message, '(A)') 'Attempting to create existing variable > ' // trim(str) // ' <'
+    call warn('CreateZirkaVariable', Message)
+    return
+  END IF
+  BLOCK
+    LOGICAL :: HasZirka, Found
+    TYPE(ValueListEntry_t), POINTER :: zmat
+    CHARACTER(len=MAX_NAME_LEN) :: maskname, mask_sec
+    INTEGER, POINTER :: Perm(:)
+    REAL(KIND=dp), POINTER :: Values(:)
+    type(Solver_t), POINTER :: PSolver
+    type(Model_t) :: Model
+    integer :: nsize
+
+
+    PSolver => GetSolver()
+    maskname = 'zirka material'
+    mask_sec = 'material'
+    zmat => ListFind( material , 'Zirka Material' , Found)
+    IF (Found .and. zmat % LValue) THEN
+      call CreateIpPerm(PSolver, Perm, maskname, mask_sec)
+      nsize = maxval(perm)
+      allocate(Values(nsize))
+      call VariableAdd( PSolver % Mesh % Variables, PSolver % Mesh, PSolver, &
+          trim(str), 1, Values, Perm, output = .TRUE., TYPE=Variable_on_gauss_points)
+    END IF
+  END BLOCK
+  var => VariableGet(mesh % variables, str)
+END FUNCTION CreateZirkaVariable
+
 !-------------------------------------------------------------------------------
 ! Returns a pointer to the variable holding hysteresis models
 !-------------------------------------------------------------------------------
@@ -954,8 +1008,10 @@ FUNCTION GetZirkaVariable(Material) RESULT(ZirkaVariable) ! {{{
   mesh => getmesh()
 
   str = ListGetString(material, 'Zirka variable', found) 
-  if(.not. found) str = 'zirka'
+  if(.not. found) str = default_zirka_variable_name! 'zirka'
   ZirkaVariable => VariableGet(mesh % variables, str)
+  if(associated(zirkaVariable)) return
+  
 !-------------------------------------------------------------------------------
 END FUNCTION ! }}}
 !-------------------------------------------------------------------------------
@@ -1119,8 +1175,6 @@ SUBROUTINE GetHystereticMFS(Element, Force, pSolver, HasZirka, CSymmetry) ! {{{
         B_ip(2) = B_ip(2) + Alocal/x
       END IF
 
-      ! B_ip(1) = -SUM(pot*dBasisdx(:,2))
-      ! B_ip(2) = SUM(pot*dBasisdx(:,1))
       do n_dir = 1, ubound(zirkamodel % curves, 1)
         associate(B0 => zirkamodel % curves(n_dir, ipindex) % B0)
           H_ip = H_ip + zirkamodel % curves(n_dir,ipindex) % &
