@@ -177,6 +177,9 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END DO
 
+  ! This flag could be needed in FSI iterations, for example
+  CALL ListAddLogical( SolverParams,'Use Density', UseDensity )
+  
   n = GetElementNOFNodes()
   Simulation => GetSimulation()
   dim = CoordinateSystemDimension()     
