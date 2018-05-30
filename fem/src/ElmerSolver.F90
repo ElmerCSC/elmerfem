@@ -1838,9 +1838,8 @@ CONTAINS
      END TYPE AdaptiveVariables_t
      TYPE(AdaptiveVariables_t), ALLOCATABLE, SAVE :: AdaptVars(:)
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
-#else
+#ifndef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: RealTime
 #endif
      
@@ -2077,7 +2076,7 @@ CONTAINS
             END IF
             
             CumTime = 0.0d0
-            IF ( ddt == 0.0d0 .OR. ddt > AdaptiveMaxTimestep ) ddt = AdaptiveMaxTimestep
+            IF ( ddt < 0.0_dp .OR. ddt > AdaptiveMaxTimestep ) ddt = AdaptiveMaxTimestep
 
             ss = sTime(1) - dt
             SmallestCount = 0
