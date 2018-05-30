@@ -55,6 +55,8 @@ Solver 1
 !  OpenFOAM Directory = FILE "ofdir"
   OpenFOAM Directory = FILE "ofdir"
   OpenFOAM Timestep = Integer 15000
+
+! You can also test with "p" which has only one proper field
   OpenFOAM Field = FILE "T"
   Passive OpenFOAM Coordinate = Integer 3 
 
@@ -63,17 +65,18 @@ Solver 1
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1.0e-8
   Linear System Preconditioning = ILU0
+  Linear System Residual Output = 10
 
-! default 
-!  Diffusivity Name = String "Heat Conductivity" 
+! default name for conductivity
+  Diffusivity Name = String "Heat Conductivity" 
 
 ! With this one can tune the effetc of regularization 
-! Large value => effect of diffusion smaller
+! Large value => relative effect of diffusion smaller
   Fit Coefficient = Real 1.0e6
 End 
 
 Material 1
-  Name = "Cu"
+  Name = "Ideal"
   Heat Conductivity = 1.0
 End
 
