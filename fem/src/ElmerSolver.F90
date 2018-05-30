@@ -59,6 +59,7 @@ MODULE ElmerSolver_mod
   PRIVATE
   
   PUBLIC :: ElmerSolver, ElmerSolver_init, ElmerSolver_run, ElmerSolver_runAll, ElmerSolver_finalize
+
 #include "../config.h"
 
 #ifdef USE_ISO_C_BINDINGS
@@ -77,8 +78,8 @@ MODULE ElmerSolver_mod
   ! setting a default).  
   ! It also needs checking for variables that can be removed to a subroutine 
   ! instead of being available at module level.
-  CHARACTER(LEN=MAX_STRING_LEN),SAVE :: threads, CoordTransform  
-  REAL(KIND=dp),SAVE            :: ss,dt,dtfunc
+!  REAL(KIND=dp),SAVE            :: ss,dt,dtfunc
+  REAL(KIND=dp),SAVE            :: dt ! used in _init, _finalize, execsimulation, probably needs to be module scope
   REAL(KIND=dP), POINTER, SAVE  :: WorkA(:,:,:) => NULL()
   REAL(KIND=dp), POINTER, SAVE  :: sTime(:), sStep(:), sInterval(:), sSize(:), &
        steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sScan(:),sPar(:)
@@ -90,15 +91,13 @@ MODULE ElmerSolver_mod
   REAL(KIND=dp), POINTER, SAVE  :: TimestepSizes(:,:)  
   INTEGER(KIND=AddrInt), SAVE   :: ControlProcedure
   LOGICAL, SAVE                 :: InitDirichlet, ExecThis  
-  TYPE(ElementType_t),POINTER,SAVE :: elmt  
   TYPE(ParEnv_t),POINTER,SAVE   :: ParallelEnv  
   CHARACTER(LEN=MAX_NAME_LEN),SAVE :: ModelName, eq, ExecCommand, ExtrudedMeshName
   CHARACTER(LEN=MAX_STRING_LEN),SAVE :: OutputFile, PostFile, RestartFile, &
        OutputName=' ',PostName=' ', When, OptionString  
-  TYPE(Variable_t),POINTER,SAVE :: Var
-  TYPE(Mesh_t), POINTER, SAVE   :: Mesh
+  TYPE(Variable_t),POINTER,SAVE :: Var ! used in comparetoreferencesolution, setinitialconditions, initcond, restart, savecurrent, savetopost, could probably be just local in all cases.
+  TYPE(Mesh_t), POINTER, SAVE   :: Mesh ! used in several subroutines, could probably be local to each.
   TYPE(Solver_t), POINTER, SAVE :: Solver  
-  LOGICAL, SAVE                 :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
   LOGICAL, SAVE                 :: Silent, Version, GotModelName  
   INTEGER, SAVE                 :: ExtrudeLevels
   INTEGER, SAVE                 :: ExtrudeLayers, MeshIndex
@@ -108,42 +107,60 @@ MODULE ElmerSolver_mod
   
 CONTAINS
   
-  !------------------------------------------------------------------------------
-  ! The top level subroutine for Elmer.  For default stand alone simulations it 
-  ! is to be called from Solver.src with Initialize set to 0.  The Elmer API calls 
-  ! this routine with different values of initialize.  The ESMF framework calls 
-  ! the  ElmerSolver_int, _run and _finalize subroutines directly.
-  !------------------------------------------------------------------------------
+  !-------------------------------------------------------------------------------------
+  ! ElmerSolver, top level subroutine for Elmer.  
+  !
+  ! Comments from Rupert Gladstone (RupertGladstone1972@gmail.com) after modifying the 
+  ! Elmer top level control structures to support Earth System Modelling Framework (ESMF)
+  ! compatibility.
+  !
+  ! Date: 30th May 2018.
+  !
+  ! The modifications were made with the aim of providing unchanged test results using ctest
+  ! and providing ESMF compatibility.
+  !
+  ! Note that code to convert the Elmer mesh and fields into ESMF structures at run time is 
+  ! (at time of writing) contained in the Framework for Ice Sheet - Ocean Coupling (FISOC) 
+  ! repository.  This could in principle be shifted to the Elmer repository to increase 
+  ! Elmer's generic ESMF compatibility.
+  !
+  ! The Elmer API calls this subroutine with different values of initialize. Use of the API
+  ! was not tested during code changes to support ESMF.  It might not currently function 
+  ! as intended.
+  !
+  ! Running Elmer in coupled mode using ESMF:
+  !  Initialise with ElmerSolver_init.
+  !  Run a single timestep with ElmerSolver_run.  Repeat as desired.
+  !  Finalise with ElmerSolver_finalize.
+  !
+  ! Running Elmer in stand-alone mode:
+  !  For default stand alone simulations this subroutine is called from Solver.F90 
+  !  with Initialize set to 0.  
+  !  Initialisation may be repeated, essentially updating input parameters and running again.
+  !  The number of repeats is governed by the occurrences of RUN in the solver input file.
+  !  In the code, this is controlled through ReloadInputFile, which returns positive if the 
+  !  input file indicates further executions are needed.  After each execution a comparison 
+  !  to a reference solution is made, which is needed for the Elmer tests through ctest.
+  !  Finalise is the same for both standalone and ESMF cases.
+  !
+  ! Tests still failing at time of writing:
+  !       60 - circuits_harmonic_stranded_homogenization (Failed)
+  !       84 - coordinate_transform (Failed)
+  !	 161 - circuits_transient_stranded (Failed)
+  !	 179 - RichardsDyke2 (Failed)
+  !	 215 - circuits_harmonic_stranded (Failed)
+  !	 263 - circuits_transient_foil (Failed)
+  !	 303 - RigidMeshMapper2 (Failed)
+  !	 418 - circuits_harmonic_foil (Failed)
+  !	 543 - RigidMeshMapper1 (Failed)
+  !	 563 - TimeAdapt (OTHER_FAULT)
+  
   SUBROUTINE ElmerSolver(init)
     
     INTEGER, INTENT(IN) :: Init
     
     LOGICAL             :: RunElmer = .TRUE.
-integer :: nnn
     Initialize = init
-
-! !!!NYI!!!
-! 2.4  Running several sequences
-! Execution within command file
-! When reading the string RUN in the command file, 
-! the solver stops the reading and performs
-! the computation with the instructions so far obtained. 
-! After a successful execution the solver continues to 
-! interpret the command file. Using this functionality 
-! it is therefore possible to create scripts where some 
-! parameter value is changed and the problem is recomputed. 
-! For example, adding the same sequence to the end of the sif file
-! could be used to test the solution with another linear solver
-! RUN 
-! Solver 1::Linear System Iterative Method = BiCgstabl
-! RUN
-! It should be noted that not quite all features support this 
-! procedure. For example, some preconditioners create static 
-! structures that will not be recreated
-
-! note that TEST.PASSED is called from finalize, comparetoref...
-! we need at least one call to comparetoref... before the one with finalize 
-! (which is functionally different)
 
 ! failed tests include calving3d:
 ! ERROR:: FrontAdvance3D: Programming error: wrong number of nodes in TangledGroup
@@ -154,38 +171,23 @@ integer :: nnn
 !
 ! all new failures are parallel?  something wrong with test metrics in parallel?
 ! double check how these work in normal elmerice branch?
-!
-! *** try just with my new ElmerSolver and standard elmerice branch for everything 
-! else (checkout elmrice branch and copy in my ElmerSolver)
 
-
-    print*,"*** Run Elmer! ***", RunElmer
-    
     DO WHILE (RunElmer)
-       !    DO nnn=1,2
-       print*,"*** GOGOGOGOGOGO! ***", RunElmer
        IF ( Initialize /= 1 ) THEN       
           CALL ElmerSolver_init()
-          ! modify init to put more stuff in loadfirst?
-          print*,"*** initilled! ***", RunElmer
           CALL ElmerSolver_runAll()
-          print*,"*** Run Ran! ***", RunElmer
        END IF
-       print*,"*** What now1! ***", RunElmer
-       RunElmer = ReloadInputFile(CurrentModel)
-       ! why is this false? there is a RUN!
-       print*,"*** What now2! ***", RunElmer
        CALL CompareToReferenceSolution( )
+       RunElmer = ReloadInputFile(CurrentModel)
     END DO
     
     IF ( Initialize /= 1 ) THEN       
        CALL ElmerSolver_finalize()
-       
-       print*,"*** finalized! ***", RunElmer
     END IF
     
   END SUBROUTINE ElmerSolver
 
+  
   
   !------------------------------------------------------------------------------
   SUBROUTINE ElmerSolver_init(meshFootprint,ParEnvInitialised,inputFileName)
@@ -202,7 +204,9 @@ integer :: nnn
     LOGICAL,INTENT(IN),OPTIONAL         :: ParEnvInitialised
     CHARACTER(LEN=MAX_STRING_LEN),INTENT(IN),OPTIONAL :: inputFileName
 
-    INTEGER :: ii, kk
+    CHARACTER(LEN=MAX_STRING_LEN),SAVE  :: threads, CoordTransform  
+    LOGICAL, SAVE                       :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
+    INTEGER                             :: ii, kk
 
 
     ! Start the watches, store later
@@ -211,23 +215,24 @@ integer :: nnn
     CT0 = CPUTime()
     
     
-    ! If parallel execution requested, initialize parallel environment, 
-    ! unless the calling program already initialised ParEnv.
-    !------------------------------------------------------------------
-    IF (PRESENT(ParEnvInitialised)) THEN
-       IF (ParEnvInitialised) THEN
-          WRITE( Message, * ) 'ParEnv initialised by calling program'
-          CALL Info( 'ParCommInit', Message, Level=3 )
-          ParallelEnv => ParEnv
+    IF ( FirstTime ) THEN
+
+       ! If parallel execution requested, initialize parallel environment, 
+       ! unless the calling program already initialised ParEnv.
+       !------------------------------------------------------------------
+       IF (PRESENT(ParEnvInitialised)) THEN
+          IF (ParEnvInitialised) THEN
+             WRITE( Message, * ) 'ParEnv initialised by calling program'
+             CALL Info( 'ParCommInit', Message, Level=3 )
+             ParallelEnv => ParEnv
+          ELSE
+             ParallelEnv => ParallelInit()
+          END IF
        ELSE
           ParallelEnv => ParallelInit()
        END IF
-    ELSE
-       ParallelEnv => ParallelInit()
-    END IF
-    OutputPE = ParEnv % MyPE
-    
-    IF ( FirstTime ) THEN
+       OutputPE = ParEnv % MyPE
+       
        !
        ! Print banner to output:
        ! -----------------------
@@ -428,7 +433,7 @@ integer :: nnn
        !----------------------------------------------------------------------------------
        ! Optionally perform simple extrusion to increase the dimension of the mesh.
        !----------------------------------------------------------------------------------
-       ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
+       ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found) - 1
        IF( .NOT. Found ) THEN
           ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Layers',Found)
        END IF
@@ -441,8 +446,6 @@ integer :: nnn
              ELSE
                 ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
              END IF
-             
-
              DO ii=1,CurrentModel % NumberOfSolvers
                 IF(ASSOCIATED(CurrentModel % Solvers(ii) % Mesh,CurrentModel % Meshes)) &
                      CurrentModel % Solvers(ii) % Mesh => ExtrudedMesh 
@@ -464,6 +467,7 @@ integer :: nnn
           END IF
        END IF
        
+       !----------------------------------------------------------------------------------
        ! If requested perform coordinate transformation directly after is has been obtained.
        ! Don't maintain the original mesh. 
        !----------------------------------------------------------------------------------
@@ -671,13 +675,13 @@ integer :: nnn
     IF ( .NOT.LastSaved ) TotalTimesteps = TotalTimesteps + 1
     IF( TotalTimesteps == 0 ) TotalTimesteps = 1
     
-    DO ii=1,CurrentModel % NumberOfSolvers
-       Solver => CurrentModel % Solvers(ii)
-       IF ( Solver % PROCEDURE==0 ) CYCLE
-       IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
-          CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-       END IF
-    END DO
+!    DO ii=1,CurrentModel % NumberOfSolvers
+!       Solver => CurrentModel % Solvers(ii)
+!       IF ( Solver % PROCEDURE==0 ) CYCLE
+!       IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
+!          CALL SolverActivate( CurrentModel,Solver,dt,Transient )
+!       END IF
+!    END DO
     
     CALL ListAddLogical( CurrentModel % Simulation,  &
          'Initialization Phase', .FALSE. )
@@ -1810,26 +1814,23 @@ integer :: nnn
 !> Execute the individual solvers in defined sequence. 
 !------------------------------------------------------------------------------
    SUBROUTINE ExecSimulation(TimeIntervals,  CoupledMinIter, &
-              CoupledMaxIter, OutputIntervals, Transient, Scanning)
+        CoupledMaxIter, OutputIntervals, Transient, Scanning)
+
      IMPLICIT NONE
-      INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
-      LOGICAL :: Transient,Scanning
-!------------------------------------------------------------------------------
-     INTEGER :: interval, timestep, ii, jj, kk, nn
-     REAL(KIND=dp) :: dt, ddt, dtfunc
-     INTEGER :: timeleft,cum_timestep
-     INTEGER, SAVE ::  stepcount=0, RealTimestep
-     LOGICAL :: ExecThis,SteadyStateReached=.FALSE.,PredCorrControl, &
-         DivergenceControl, HaveDivergence
-
-     REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
-           AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
-     INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
-     LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found
-     INTEGER :: AllocStat
-
-     REAL(KIND=dp) :: AdaptiveIncrease, AdaptiveDecrease
-
+     INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
+     LOGICAL :: Transient,Scanning 
+     !------------------------------------------------------------------------------
+     INTEGER             :: interval, timestep, ii, jj, kk, nn
+     INTEGER             :: cum_timestep, AllocStat
+     INTEGER, SAVE       :: stepcount=0, RealTimestep
+     INTEGER             :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
+     REAL(KIND=dp)       :: AdaptiveIncrease, AdaptiveDecrease,timeleft
+     REAL(KIND=dp),SAVE  :: ss
+     REAL(KIND=dp)       :: CumTime, MaxErr, AdaptiveLimit, ddt, dtfunc
+     REAL(KIND=dp)       :: AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
+     LOGICAL             :: ExecThis,SteadyStateReached=.FALSE.,PredCorrControl
+     LOGICAL             :: DivergenceControl, HaveDivergence
+     LOGICAL             :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found     
      TYPE(Solver_t), POINTER :: Solver
      TYPE AdaptiveVariables_t 
        TYPE(Variable_t) :: Var
@@ -2012,24 +2013,27 @@ integer :: nnn
              IF( cum_Timestep > 1 ) THEN
                maxtime = ListGetConstReal( CurrentModel % Simulation,'Real Time Max',GotIt)
                IF( GotIt ) THEN
-                  WRITE( Message,'(A,F8.3)') 'Fraction of real time left: ',&
-                              1.0_dp-RealTime() / maxtime
-               ELSE             
-                 timeleft = NINT((stepcount-(cum_Timestep-1))*(newtime-prevtime)/60._dp);
-                 IF (timeleft > 120) THEN
-                   WRITE( Message, *) 'Estimated time left: ', &
-                     TRIM(i2s(timeleft/60)),' hours.'
-                 ELSE IF(timeleft > 60) THEN
-                   WRITE( Message, *) 'Estimated time left: 1 hour ', &
-                     TRIM(i2s(MOD(timeleft,60))), ' minutes.'
-                 ELSE IF(timeleft >= 1) THEN
-                   WRITE( Message, *) 'Estimated time left: ', &
-                     TRIM(i2s(timeleft)),' minutes.'
-                 ELSE
-                   WRITE( Message, *) 'Estimated time left: less than a minute.'
-                 END IF
+                 WRITE( Message,'(A,F8.3)') 'Fraction of real time left: ',&
+                     1.0_dp-RealTime() / maxtime
                END IF
-               CALL Info( 'MAIN', Message, Level=3 )
+
+               ! Compute estimated time left in seconds
+               timeleft = (stepcount-(cum_Timestep-1))*(newtime-prevtime)
+               
+               ! No sense to show too short estimated times
+               IF( timeleft > 1 ) THEN
+                 IF (timeleft >= 24 * 3600) THEN ! >24 hours
+                   WRITE( Message,'(A)') 'Estimated time left: '//I2S(NINT(timeleft/3600))//' hours'
+                 ELSE IF (timeleft >= 3600) THEN   ! 1 to 20 hours
+                   WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/3600,' hours'
+                 ELSE IF(timeleft >= 60) THEN ! 1 to 60 minutes
+                   WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/60,' minutes'
+                 ELSE                         ! 1 to 60 seconds
+                   WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft,' seconds'
+                 END IF
+                 CALL Info( 'MAIN', Message, Level=3 )
+               END IF
+               
              END IF
              prevtime = newtime
            ELSE
@@ -2046,38 +2050,6 @@ integer :: nnn
 !------------------------------------------------------------------------------
 
          IF ( Transient .AND. AdaptiveTime ) THEN 
-            AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
-                        'Adaptive Time Error', GotIt )
- 
-            IF ( .NOT. GotIt ) THEN 
-               WRITE( Message, * ) 'Adaptive Time Limit must be given for' // &
-                        'adaptive stepping scheme.'
-               CALL Fatal( 'ElmerSolver', Message )
-            END IF
-
-            AdaptiveMaxTimestep = ListGetConstReal( CurrentModel % Simulation, &
-                     'Adaptive Max Timestep', GotIt )
-            IF ( .NOT. GotIt ) AdaptiveMaxTimestep =  dt
-            AdaptiveMaxTimestep =  MIN(AdaptiveMaxTimeStep, dt)
-
-            AdaptiveMinTimestep = ListGetConstReal( CurrentModel % Simulation, &
-                     'Adaptive Min Timestep', GotIt )
-
-            AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
-                       'Adaptive Keep Smallest', GotIt, minv=0  )
-
-            nn = CurrentModel % NumberOfSolvers
-            jj = 0
-            kk = 0
-            DO ii=1,nn
-               Solver => CurrentModel % Solvers(ii)
-               IF ( ASSOCIATED( Solver % Variable  % Values ) ) THEN
-                  IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-                     jj = MAX( jj, SIZE( Solver % Variable % PrevValues,2 ) )
-                  END IF
-                  kk = MAX( kk, SIZE( Solver % Variable % Values ) )
-               END IF
-            END DO
 
             IF(.NOT. ALLOCATED( AdaptVars ) ) THEN
               ALLOCATE( AdaptVars( nSolvers ), STAT = AllocStat )
@@ -2110,16 +2082,18 @@ integer :: nnn
             ss = sTime(1) - dt
             SmallestCount = 0
             DO WHILE( CumTime < dt-1.0d-12 )
-               ddt = MIN( dt - CumTime, ddt )
-               IF( AdaptiveSmart ) THEN
+              IF( .NOT. AdaptiveRough ) THEN
+                ddt = MIN( dt - CumTime, ddt )
+                IF( AdaptiveSmart ) THEN
                   ! If the next timestep will not get us home but the next one would
                   ! then split the timestep equally into two parts.
                   IF( dt - CumTime - ddt > 1.0d-12 ) THEN
                      CALL Info('ExecSimulation','Splitted timestep into two equal parts',Level=12)
                      ddt = MIN( ddt, ( dt - CumTime ) / 2.0_dp )
                   END IF
-               END IF
-               
+                END IF
+              END IF
+             
                ! Store the initial values before the start of the step
                DO ii=1,nSolvers
                  Solver => CurrentModel % Solvers(ii)
@@ -2275,14 +2249,12 @@ integer :: nnn
 
                 CumTime = CumTime + ddt
                 RealTimestep = RealTimestep+1
-                
-                !IF ( StepControl > 0 ) THEN
-                  ddt = AdaptiveIncrease * ddt
-                  IF( ddt > AdaptiveMaxTimestep ) THEN
-                    ddt = AdaptiveMaxTimestep
-                    StepControl = 0
-                  END IF
-                !END IF
+     
+                ddt = AdaptiveIncrease * ddt
+                IF( ddt > AdaptiveMaxTimestep ) THEN
+                  ddt = AdaptiveMaxTimestep
+                  StepControl = 0
+                END IF
              ELSE
                IF( ddt < AdaptiveMinTimestep * (1+1.0e-8) ) THEN
                  CALL Fatal('ExecSimulation','Could not find stable timestep above given minimum')
