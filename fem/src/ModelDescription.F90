@@ -1992,14 +1992,18 @@ CONTAINS
 
      IF ( csys=='cartesian' .OR. csys=='polar' ) THEN
         Mesh => Model % Meshes
+
+        c = .FALSE.
         x = Mesh % Nodes % x(1)
         y = Mesh % Nodes % y(1)
         z = Mesh % Nodes % z(1)
-        c = .FALSE.
+
         DO WHILE( ASSOCIATED( Mesh ) )
-           c(1) = c(1) .OR. ANY( Mesh % Nodes % x /= x )
-           c(2) = c(2) .OR. ANY( Mesh % Nodes % y /= y )
-           c(3) = c(3) .OR. ANY( Mesh % Nodes % z /= z )
+           IF( ASSOCIATED(Mesh % Nodes % x) ) THEN
+             c(1) = c(1) .OR. ANY( Mesh % Nodes % x /= x )
+             c(2) = c(2) .OR. ANY( Mesh % Nodes % y /= y )
+             c(3) = c(3) .OR. ANY( Mesh % Nodes % z /= z )
+           END IF
            Mesh => Mesh % Next
         END DO
 
