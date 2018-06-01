@@ -14207,13 +14207,14 @@ CONTAINS
     INTEGER :: i,j,ii,jj,k,n,t,istat,pn,ifluid,jstruct,pcomp
     TYPE(Element_t), POINTER :: Element, Parent
     TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Solver_t), POINTER :: PSolver
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:)
     REAL(KIND=dp), POINTER :: Basis(:)
     REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area, fdiag
     LOGICAL :: Stat, IsHarmonic
     INTEGER :: dim,mat_id,tcount
-    LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, Found
+    LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, UseDensity, Found
     LOGICAL, ALLOCATABLE :: NodeDone(:)
     REAL(KIND=dp) :: MultSF, MultFS
     
@@ -14240,6 +14241,20 @@ CONTAINS
 
     IF( IsNS ) CALL Info('FsiCouplingAssembly','Assuming fluid to have velocities',Level=8)
 
+
+    UseDensity = .FALSE.
+    DO i=1,CurrentModel % NumberOfSolvers
+      PSolver => CurrentModel % Solvers(i)      
+      IF( ASSOCIATED( PSolver % Variable, FVar ) ) THEN
+        UseDensity = ListGetLogical( PSolver % Values,'Use Density',Found ) 
+        EXIT
+      END IF
+    END DO
+    IF( UseDensity ) THEN
+      CALL Info('FsiCouplingAssembly','The Helmholtz equation is multiplied by density',Level=10)
+    END IF
+    
+    
     ConstrainedF => A_f % ConstrainedDof
     ConstrainedS => A_s % ConstrainedDof
     
@@ -14314,7 +14329,6 @@ CONTAINS
     ELSE
       Omega = 0.0_dp
     END IF
-    
     
     i = SIZE( FVar % Values ) 
     j = SIZE( SVar % Values ) 
@@ -14413,8 +14427,13 @@ CONTAINS
       END IF
       
       ! The sign depends on the convection of the normal direction
-      coeff = rho * omega**2
-
+      ! If density is divided out already in the Helmholtz equation the multiplier will
+      ! be different. 
+      IF( UseDensity ) THEN
+        coeff = omega**2
+      ELSE
+        coeff = rho * omega**2
+      END IF
       
       ! Numerical integration:
       !----------------------
@@ -14559,13 +14578,13 @@ CONTAINS
                   ! must be defined for Helmholtz solver to make it assemble a system
                   ! consistent with the boundary integral -1/rho <dp/dn,v>.
                   IF( FreeF ) THEN
-                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff/rho)     ! Re 
+                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
                   ELSE
                     CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
                   END IF
 
                   IF( FreeFim ) THEN
-                    CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff/rho) ! Im
+                    CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
                   ELSE                
                     CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
                   END IF
@@ -14597,13 +14616,13 @@ CONTAINS
 
                 ! Structure load on the fluid: -1/rho dp/dn = -omega^2 u.n = omega^2 u.m
                 IF( FreeF ) THEN
-                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff/rho)     ! Re 
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
                 ELSE
                   CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
                 END IF
 
                 IF( FreeFim ) THEN
-                  CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff/rho) ! Im
+                  CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,MultFS*val*coeff) ! Im
                 ELSE                
                   CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
                 END IF
