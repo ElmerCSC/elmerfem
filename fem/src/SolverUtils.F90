@@ -12627,7 +12627,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   Aharm => Are % EMatrix
   IF( ASSOCIATED( Aharm ) ) THEN
     CALL Info('ChangeToHarmonicSystem','Found existing harmonic system',Level=10)
-    IF( ASSOCIATED( Aharm % ConstrainedDOF ) ) Aharm % ConstrainedDOF = .FALSE.
+    IF( ALLOCATED( Aharm % ConstrainedDOF ) ) Aharm % ConstrainedDOF = .FALSE.
   ELSE    
     ! Create the matrix if it does not
     
