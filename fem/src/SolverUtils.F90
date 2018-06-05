@@ -12492,6 +12492,7 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
         END DO
       END DO
 
+      
       DO j=1,Solver % Variable % DOFs
         Name = ComponentName( Solver % Variable % Name, j ) 
 
@@ -12626,6 +12627,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   Aharm => Are % EMatrix
   IF( ASSOCIATED( Aharm ) ) THEN
     CALL Info('ChangeToHarmonicSystem','Found existing harmonic system',Level=10)
+    IF( ASSOCIATED( Aharm % ConstrainedDOF ) ) Aharm % ConstrainedDOF = .FALSE.
   ELSE    
     ! Create the matrix if it does not
     
@@ -12709,7 +12711,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   END IF
     
   AnyDirichlet = .FALSE.
-
+  
   ! Finally set the Dirichlet conditions for the solver    
   DO j=1,DOFs
     Name = ComponentName( Solver % Variable % Name, j ) 
@@ -12721,17 +12723,21 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       IF( real_given .OR. imag_given ) AnyDirichlet = .TRUE.
 
       IF ( real_given .AND. .NOT. imag_given ) THEN
+        CALL Info('ChangeToHarmonicSystem','Setting zero >'//TRIM(Name)//' im< on BC '//TRIM(I2S(i)),Level=12)
         CALL ListAddConstReal( BC, TRIM(Name) // ' im', 0._dp)
       ELSE IF ( imag_given .AND. .NOT. real_given ) THEN
+        CALL Info('ChangeToHarmonicSystem','Setting zero >'//TRIM(Name)//'< on BC '//TRIM(I2S(i)),Level=12)
         CALL ListAddConstReal( BC, Name, 0._dp )
       END IF
     END DO
   END DO
 
+
+
   IF( AnyDirichlet ) THEN
     DO j=1,DOFs
       Name = ComponentName( SaveVar % Name, j ) 
-           
+      
       CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
           2*j-1, 2*DOFs, SaveVar % Perm )
 
@@ -12743,6 +12749,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   END IF
 
 
+  
   ! Create the new fields, the total one and the imaginary one
   !-------------------------------------------------------------
   k = INDEX( SaveVar % name, '[' )
@@ -14489,12 +14496,14 @@ CONTAINS
                           
             ! Shell and 3D elasticity are both treated with the same routine
             IF( .NOT. IsPlate ) THEN
+
               IF( IsHarmonic ) THEN
                 val = omega
                 jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
               ELSE
                 CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')               
               END IF
+
                 
             ELSE ! If IsPlate
               IF( IsHarmonic ) THEN              
@@ -14664,7 +14673,7 @@ CONTAINS
 
         DO j=1,n
           jj = Indexes(j)
-
+          
           ! Shell and 3D elasticity are both treated with the same routine
           IF( .NOT. IsPlate ) THEN
 
@@ -14773,9 +14782,9 @@ CONTAINS
       CALL List_toCRSMatrix(A_sf)
     END IF
       
-    PRINT *,'interface area:',area
-    PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
-    PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
+    !PRINT *,'interface area:',area
+    !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
+    !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
     CALL Info('FsiCouplingAssembly','Number of elements on interface: '&
         //TRIM(I2S(tcount)),Level=10)    
