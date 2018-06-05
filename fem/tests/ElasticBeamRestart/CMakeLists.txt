@@ -1,4 +1,3 @@
-INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( restart.sif restart.sif COPYONLY)

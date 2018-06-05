@@ -1,3 +1,4 @@
 execute_process(COMMAND ${ELMERGRID_BIN} 1 2 beam2d)
-execute_process(COMMAND ${ELMERSOLVER_BIN} ref.sif)
+# execute_process(COMMAND ${ELMERSOLVER_BIN} ref.sif)
+EXECUTE_ELMER_SOLVER(ref.sif)
 RUN_ELMER_TEST()
