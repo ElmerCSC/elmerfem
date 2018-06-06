@@ -1,0 +1,85 @@
+! Case create TempB on a cube for restart.
+
+Header
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Coordinate System =  Cartesian 3D
+  Coordinate Mapping(3) = 1 2 3
+
+  Max Output Level = 5
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "case_b.vtu"
+  Output File = "case_b.dat"
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+
+Equation 1
+  Name = "Temp"
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Equation = "Heat Equation"
+
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = "TempB"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = Variable "Coordinate 1"
+    Real MATC "10*tx"
+End
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 1 
+  Tempb = Real 1
+End
+
+

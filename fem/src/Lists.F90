@@ -717,11 +717,14 @@ CONTAINS
            Var1 => Var1 % Next
          END DO
   
-         IF(SIZE(Var % Perm)>0) DEALLOCATE( Var % Perm)
+         IF(SIZE(Var % Perm)>0) THEN
+           DEALLOCATE( Var % Perm)
+         ELSE
+           GotValues = .FALSE.
+         END IF
        END IF
-
+       
        IF ( GotValues ) THEN
-
         IF ( ASSOCIATED( Var % Values ) ) &
             DEALLOCATE( Var % Values )
 
@@ -780,7 +783,7 @@ CONTAINS
        Var => Var % Next
     END DO
 
-
+    
 !   Deallocate mesh variable list:
 !   ------------------------------
     Var => VariableList
