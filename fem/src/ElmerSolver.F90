@@ -252,7 +252,7 @@ END INTERFACE
      ! Read input file name either as an argument, or from the default file:
      !----------------------------------------------------------------------
      GotModelName = .FALSE.
-     IF ( ParEnv % PEs <= 1 .AND. NoArgs > 0 ) THEN
+     IF ( NoArgs > 0 ) THEN
 #ifdef USE_ISO_C_BINDINGS
        CALL GET_COMMAND_ARGUMENT(1, ModelName)
 #else
