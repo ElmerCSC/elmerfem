@@ -3,6 +3,6 @@ INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE(fine.sif fine.sif COPYONLY)
 
-file(COPY ELMERSOLVER_STARTINFO mesh_coarse.grd coarse.sif mesh_fine.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+file(COPY ELMERSOLVER_STARTINFO mesh_coarse mesh_fine.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(NonconformingRestart2)

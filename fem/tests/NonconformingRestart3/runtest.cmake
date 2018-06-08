@@ -1,6 +1,2 @@
-execute_process(COMMAND ${ELMERGRID_BIN} 1 2 square)
-execute_process(COMMAND ${ELMERSOLVER_BIN} case_a.sif)
-execute_process(COMMAND ${ELMERGRID_BIN} 1 2 cube)
-execute_process(COMMAND ${ELMERSOLVER_BIN} case_b.sif)
 execute_process(COMMAND ${ELMERGRID_BIN} 1 2 cube_fine)
 RUN_ELMER_TEST()
