@@ -172,7 +172,7 @@ CONTAINS
     TYPE(ListMatrix_t), POINTER :: L(:)   
     INTEGER :: i,j,n
     TYPE(ListMatrixEntry_t), POINTER :: P
-    INTEGER, POINTER :: Rows(:),Cols(:),Diag(:)
+    INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
     REAL(KIND=dp), POINTER :: Values(:)
 
     IF( A % FORMAT /= MATRIX_LIST ) THEN
