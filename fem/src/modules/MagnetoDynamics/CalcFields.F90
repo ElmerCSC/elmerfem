@@ -518,6 +518,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
    USE MagnetoDynamicsUtils
    USE CircuitUtils
+   USE Zirka
+   use zirkautils
    
    IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -571,7 +573,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
-              ImposeBodyForcePotential, JouleHeatingFromCurrent
+              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka
    
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -651,7 +653,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ElectricPotName = GetString(SolverParams, 'Precomputed Electric Potential', PrecomputedElectricPot)
    IF (PrecomputedElectricPot) THEN
-     DO i=1,Model % NumberOfSolvers
+     DO i=1, Model % NumberOfSolvers
        ElPotSolver => Model % Solvers(i)
        IF (ElectricPotName==getVarName(ElPotSolver % Variable)) EXIT
      END DO
@@ -1035,6 +1037,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      MASS  = 0._dp
      FORCE = 0._dp
      E = 0._dp; B=0._dp
+
+     haszirka = .false.
+     if(ASSOCIATED(MFS) .OR. ASSOCIATED(el_MFS)) THEN
+       CALL GetHystereticMFS(Element, force(:,4:6), pSolver, HasZirka, CSymmetry=CSymmetry)
+     end if
+
      DO j = 1,IP % n
        u = IP % U(j)
        v = IP % V(j)
@@ -1341,12 +1349,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            k = k+3
          END DO
 
-         IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(1,:)-REAL(MG_ip))*Basis(p)
-           k = k+3
-           IF ( Vdofs>1 ) THEN
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(2,:)-AIMAG(MG_ip))*Basis(p)
+         IF ( (ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) .and. .not. HasZirka) THEN
+           IF(.NOT. HasZirka) then
+             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(1,:)-REAL(MG_ip))*Basis(p)
              k = k+3
+             IF ( Vdofs>1 ) THEN
+               FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(2,:)-AIMAG(MG_ip))*Basis(p)
+               k = k+3
+             END IF
+           ELSE
+             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)-s*(REAL(MG_ip))*Basis(p)
            END IF
          END IF
          IF ( ASSOCIATED(VP).OR.ASSOCIATED(EL_VP)) THEN
@@ -2288,7 +2300,7 @@ CONTAINS
    TYPE(Variable_t), POINTER :: CoordVar
    LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
    INTEGER :: pnodal, nnt, ElemNodeDofs(27), ndofs, globalnode, m, n
-   LOGICAL :: ONCE=.TRUE., DEBUG, Found
+   LOGICAL :: ONCE=.TRUE., Found
    
    VisitedNode = .FALSE.
    FoundOne = .FALSE.
