@@ -105,12 +105,12 @@ def create_bar(box_size, bar_lenght, center, name, symmetry_planes=None, mesh_si
 
     doc.recompute()
     face_picks=[]
-    face_picks=[('alpha0',4),
-                ('alpha1',2),
+    face_picks=[('alpha0',0),
+                ('alpha1',5),
                 ('beta0',3),
                 ('beta1',1),
-                ('gamma0',5),
-                ('gamma1',0)]
+                ('gamma0',4),
+                ('gamma1',2)]
  
     faces = pick_faces_from_geometry(bar_obj, face_picks)
 
@@ -148,10 +148,7 @@ def create_air(bars, x, y, z, name, symmetry_planes=None, mesh_size=None):
     remove_compare_faces_from_list(bar_face_objects, faces_in_symmetry_plane)
 
     faces = []
-    add_entity_in_list(faces, 'gamma0', faces_in_symmetry_plane[0])
-    add_entity_in_list(faces, 'gamma1', air.Shape.Faces[4])
-
-
+    add_entity_in_list(faces, 'gamma1', faces_in_symmetry_plane[0])
 
     solids = []
     add_entity_in_list(solids, name, air, {'mesh size':mesh_size})
@@ -198,7 +195,7 @@ def create_solids(model_parameters):
 
 def create_sif(model_parameters):
 
-    FluxBC=model_parameters['FluxBC']
+    T_BC=model_parameters['T_BC']
     n1=model_parameters['n1']
     n2=model_parameters['n2']
 
@@ -217,7 +214,7 @@ Simulation
   
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Simulation Type = Transient !Steady state !Transient
+  Simulation Type = Steady state !Transient
   Timestepping Method = BDF
   BDF Order = 1
   Post File = thermal.vtu
@@ -261,7 +258,7 @@ End
 Solver 1
   Equation = Heat Equation
   Procedure = "HeatSolve" "HeatSolver"
-  Variable = Temp
+  Variable = Temperature
   Exec Solver = Always
   Stabilize = True
   Bubbles = False
@@ -289,11 +286,11 @@ Solver 2
   Exec Solver = Always
   Equation = "save scalars"
   Procedure = "SaveData" "SaveScalars"
-!  Variable 1 = Temp
+!  Variable 1 = Temperature
 !  Operator 1 = int mean
-  Variable 1 = Temp
+  Variable 1 = Temperature
   Operator 1 = max abs
-  Variable 2 = Temp
+  Variable 2 = Temperature
   Operator 2 = min abs
   Variable 3 = Time
   Filename = scalars.dat
@@ -307,7 +304,7 @@ End
 
 Initial Condition 1
   Name = "InitialState"
-  Temperature = 300.0
+  Temperature = 0.0
 End
 
 
@@ -329,10 +326,10 @@ End
 
 
 Boundary Condition 1
-  Target Boundaries(1) = $ air_gamma0
+  Target Boundaries(1) = $ air_gamma1
   Name = "Symmetry_air"
 
-  Temperature = Real 0.0
+  Heat Flux = Real 0.0
 End
 
     '''
@@ -343,10 +340,10 @@ Boundary Condition '''
     BCstring2='''
   Target Boundaries(1) = $ bar_'''
 
-    BCstring3='''_alpha0
+    BCstring3='''_gamma1
   Name = "Bar '''
     BCstring4=''' BC"
-  Heat Flux = Real '''
+  Temperature = Real '''
 
     BCstring5='''
 End
@@ -357,7 +354,7 @@ End
     num=0
     for j in range (0, n2):
         for i in range (0, n1):    
-            filepart3=filepart3+BCstring1+str(num+2)+BCstring2+str(num)+BCstring3+str(num)+BCstring4+str(FluxBC[j][i])+BCstring5
+            filepart3=filepart3+BCstring1+str(num+2)+BCstring2+str(num)+BCstring3+str(num)+BCstring4+str(T_BC[j][i])+BCstring5
             num=num+1
 
     export_path=PWD+u"/thermal.sif"
@@ -376,7 +373,7 @@ def test_all():
 #    FluxBC=[[1.,2.,3.,4.],[2.,3.,4.,5.]]
     n1=3
     n2=3
-    FluxBC=[[1.,2.,3.],[2.,3.,4.], [3.,4.,5]]
+    T_BC=[[1.,2.,3.],[2.,3.,4.], [3.,4.,5]]
 #    n1=10
 #    n2=1
 #    FluxBC=[[1.,2.,3.,4., 5.,2.,3.,4.,5.,6.]]
@@ -388,13 +385,13 @@ def test_all():
     model_parameters['n2']=n2
     model_parameters['box_size']=box_size
     model_parameters['airgap']=airgap
-    model_parameters['FluxBC']=FluxBC
+    model_parameters['T_BC']=T_BC
     model_parameters['x'] =n1*box_size+(n1+1)*airgap
     model_parameters['y'] =depth
     model_parameters['z'] =n2*box_size+(n2+1)*airgap
     model_parameters['default_mesh_size'] = 10  #If default mesh size is smaller than given mesh sizes, fallback value is used.
-    model_parameters['bar_mesh_sizes'] = 7
-    model_parameters['air_mesh_sizes'] = 7
+    model_parameters['bar_mesh_sizes'] = 2
+    model_parameters['air_mesh_sizes'] = 2
  
     default_mesh_size = model_parameters['default_mesh_size']
 
