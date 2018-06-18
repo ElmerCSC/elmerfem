@@ -187,7 +187,7 @@ def create_solids(model_parameters):
 #    print(entities_dicts)
 
     entities_dict = merge_entities_dicts(entities_dicts, 
-            'thermal', default_mesh_size=default_mesh_size)
+            'variable_topology', default_mesh_size=default_mesh_size)
 
     doc.recompute()
 
@@ -202,8 +202,8 @@ def create_sif(model_parameters):
     filepart1='''
 Header
   CHECK KEYWORDS Warn
-  Mesh DB "." "thermal"
-  Include thermal/mesh.names
+  Mesh DB "." "variable_topology"
+  Include variable_topology/mesh.names
   Results Directory ""
 End
 
@@ -217,7 +217,7 @@ Simulation
   Simulation Type = Steady state !Transient
   Timestepping Method = BDF
   BDF Order = 1
-  Post File = thermal.vtu
+  Post File = variable_topology.vtu
 
   Timestep Sizes(1) = 0.1
   Timestep Intervals(1) = 20
@@ -357,7 +357,7 @@ End
             filepart3=filepart3+BCstring1+str(num+2)+BCstring2+str(num)+BCstring3+str(num)+BCstring4+str(T_BC[j][i])+BCstring5
             num=num+1
 
-    export_path=PWD+u"/thermal.sif"
+    export_path=PWD+u"/variable_topology.sif"
     file = open(export_path, "w+") 
     file.write(filepart1+filepart2+filepart3)
     file.close()
@@ -407,7 +407,7 @@ def test_all():
 
     define_mesh_sizes(mesh_object, compound_filter, entities_dict, doc)
     create_mesh(mesh_object)
-    export_path=PWD+u"/thermal.unv"
+    export_path=PWD+u"/variable_topology.unv"
     run_elmergrid(export_path, mesh_object)
     create_sif(model_parameters)
 #################
