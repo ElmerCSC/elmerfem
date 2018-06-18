@@ -1,5 +1,5 @@
 """
-  Massive coil generation and solving test for 
+  Geometry generation for with variable topology and solving test for 
   FreeCADBatchFEMTools - A library for using FreeCAD for FEM preprocessing in batch mode
 
   Copyright 1st May 2018 - , Trafotek Oy, Finland
