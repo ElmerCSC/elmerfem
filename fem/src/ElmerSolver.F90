@@ -90,7 +90,7 @@
 
      INTEGER(KIND=AddrInt) :: ControlProcedure
 
-     LOGICAL :: InitDirichlet, ExecThis
+     LOGICAL :: InitDirichlet, ExecThis, SleepAtEnd
 
      TYPE(ElementType_t),POINTER :: elmt
 
@@ -130,7 +130,7 @@ END INTERFACE
      !--------------------------------
      RT0 = RealTime()
      CT0 = CPUTime()
-
+     SleepAtEnd = .FALSE.
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
@@ -626,7 +626,8 @@ END INTERFACE
        IF ( Initialize >= 2 ) EXIT
      END DO
 
-
+     
+     SleepAtEnd = ListGetLogical( CurrentModel % Simulation,'Sleep At End',Found)
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
 
 
@@ -651,6 +652,10 @@ END INTERFACE
 
      IF ( FirstTime ) CALL ParallelFinalize()
      FirstTime = .FALSE.
+
+     IF( SleepAtEnd ) CALL SLEEP(1)
+
+
      CALL Info('ElmerSolver','The end',Level=3)
 
      RETURN
