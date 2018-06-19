@@ -124,7 +124,7 @@ CONTAINS
     INTEGER :: i,j,n
     TYPE(Matrix_t), POINTER :: A
     TYPE(ListMatrixEntry_t), POINTER :: P
-    INTEGER, POINTER :: Rows(:),Cols(:),Diag(:)
+    INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
 
     DO n=SIZE(L),1,-1
       IF ( L(n) % Degree>0 ) EXIT
@@ -173,7 +173,7 @@ CONTAINS
     INTEGER :: i,j,n
     TYPE(ListMatrixEntry_t), POINTER :: P
     INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
-    REAL(KIND=dp), POINTER :: Values(:)
+    REAL(KIND=dp), POINTER CONTIG :: Values(:)
 
     IF( A % FORMAT /= MATRIX_LIST ) THEN
       CALL Warn('List_ToCRSMatrix','The initial matrix type is not List')
