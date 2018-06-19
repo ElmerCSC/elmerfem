@@ -244,8 +244,9 @@ Body 2
 
     filepart1+=str(n1*n2)+ ') = $ '
 
-    for i in range (0, n1*n2):
-        filepart1=filepart1+'bar_'+str(i)+'001 '
+    for i in range (0, n1*n2-1):
+        filepart1=filepart1+'bar_'+str(i)+'001 \\ \n    '
+    filepart1=filepart1+'bar_'+str(i+1)+'001'
 
     filepart2='''
   Name = "Bars"
