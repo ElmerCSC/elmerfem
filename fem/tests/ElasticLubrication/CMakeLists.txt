@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO bump.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ElasticLubrication)
+ADD_ELMER_TEST(ElasticLubrication LABELS elasticsolve)
