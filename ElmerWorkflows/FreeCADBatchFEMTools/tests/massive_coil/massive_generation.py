@@ -53,7 +53,7 @@ from FreeCADBatchFEMTools import run_elmergrid
 
 def create_core(h, w, a, b, name, mesh_sizes=None):
     
-    core = doc.addObject('PartDesign::Body',name)
+    core = doc.addObject('PartDesign::Body',name+'_obj')
     sketch = core.newObject('Sketcher::SketchObject',name+' sketch')
     #sketch.Support = (doc.XY_Plane, [''])
     sketch.MapMode = 'FlatFace'
@@ -96,7 +96,7 @@ def create_core(h, w, a, b, name, mesh_sizes=None):
     return entities_out
     
 def create_coil (r, R, h, z, name, face_entities=True, mesh_sizes=None):
-    coil = doc.addObject('PartDesign::Body',name)
+    coil = doc.addObject('PartDesign::Body',name+'_obj')
     sketch = coil.newObject('Sketcher::SketchObject',name+' sketch')
     #sketch.Support = (doc.XY_Plane, [''])
     sketch.MapMode = 'FlatFace'
@@ -140,7 +140,7 @@ def create_air(coil_inner_radius, coil_outer_radius, coil_height, airgap, z, coi
     
     airpluscoil_entities=create_coil(coil_inner_radius-airgap, coil_outer_radius+airgap, coil_height+airgap*2, z, name = "air and coil", face_entities=False)
 	
-    air = doc.addObject("Part::Cut","air")
+    air = doc.addObject("Part::Cut","air"+'_obj')
     air.Base = airpluscoil_entities['main object']
     air.Tool = coil_entities['main object']
     doc.recompute()

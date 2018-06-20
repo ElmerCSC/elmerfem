@@ -121,21 +121,21 @@ Material 3
 End
 Body 1
    Name = core
-   Target Bodies(1) = $ core001
+   Target Bodies(1) = $ core
    Equation = 1
    Material = 1
    Initial Condition = 1
 End
 Body 2
    Name = air
-   Target Bodies(1) = $ air001
+   Target Bodies(1) = $ air
    Equation = 1
    Material = 2
    Initial Condition = 1
 End
 Body 3
    Name = L1
-   Target Bodies(1) = $ L1001
+   Target Bodies(1) = $ L1
    Equation = 2
    Material = 3
    Initial Condition = 1
