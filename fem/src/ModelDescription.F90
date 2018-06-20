@@ -1591,9 +1591,17 @@ CONTAINS
                    IF (ALLOCATED(ATt) ) DEALLOCATE(ATt,ATx)
                    ALLOCATE( ATt(MaxBufLen), ATx(n1,n2,MaxBufLen) )
                  END IF
- 
+                 
+                 ! Enable both "cubic monotone" and "monotone cubic"
                  Cubic = SEQL(str(str_beg:),'cubic')
-                 monotone = SEQL(str(str_beg+6:),'monotone')
+                 IF(Cubic) THEN
+                   monotone = SEQL(str(str_beg+6:),'monotone')
+                 ELSE
+                   monotone = SEQL(str(str_beg:),'monotone')
+                   IF( Monotone ) Cubic = SEQL(str(str_beg+9:),'cubic')
+                   IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                 END IF
+
                  n = 0
                  DO WHILE( ReadAndTrim(InFileUnit,str,Echo) )
 
