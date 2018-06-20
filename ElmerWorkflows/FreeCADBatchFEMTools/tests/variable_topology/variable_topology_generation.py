@@ -28,12 +28,11 @@
 
   Original Date: May 2018
 """
-doc = App.newDocument("Thermal")
+doc = App.newDocument("Variable_geometry")
 import os
 import sys
 import Part
 import ObjectsFem
-#from FreeCAD import Base
 
 PWD = os.path.dirname(os.path.realpath(__file__))
 module_path = PWD + "/../.."
@@ -66,7 +65,6 @@ def reduce_half_symmetry(solid, name, planes=None, reversed_direction = False):
     y = 10. * solid.Shape.BoundBox.YLength
     z = 10. * solid.Shape.BoundBox.ZLength
     center=solid.Shape.CenterOfMass
-#    print("center ", center.x, center.y, center.z)
     tool_box.Length = x
     tool_box.Width = y 
     tool_box.Height = z
@@ -93,12 +91,11 @@ def reduce_half_symmetry(solid, name, planes=None, reversed_direction = False):
     return half_symmetry
 
 def create_bar(box_size, bar_lenght, center, name, symmetry_planes=None, mesh_size=None):
-    bar_obj = doc.addObject('Part::Box', name)
+    bar_obj = doc.addObject('Part::Box', name+'_obj')
     bar_obj.Height = box_size
     bar_obj.Width = bar_lenght
     bar_obj.Length = box_size
     bar_obj.Placement.Base = FreeCAD.Vector(center)- FreeCAD.Vector(box_size/2,0,box_size/2)
-#    fit_view()
     doc.recompute()
      
     bar_obj = reduce_half_symmetry(bar_obj, name, planes=symmetry_planes)
@@ -127,9 +124,7 @@ def create_air(bars, x, y, z, name, symmetry_planes=None, mesh_size=None):
     air_with_bars.Width = y
     air_with_bars.Length = x
     air_with_bars.Placement.Base = FreeCAD.Vector(-x/2,-y/2,-z/2)
-#    fit_view()
     air_with_bars = reduce_half_symmetry(air_with_bars, name, planes=symmetry_planes)
-#    fit_view()
 
     bar_objs = [bar['main object'] for bar in bars]
     solid_objects = [air_with_bars]+bar_objs
@@ -140,7 +135,7 @@ def create_air(bars, x, y, z, name, symmetry_planes=None, mesh_size=None):
 
     faces_in_symmetry_plane = faces_with_vertices_in_symmetry_plane(air.Shape.Faces, plane='zx')
 
-    # remove faces that belong to coil
+    # remove faces that belong to bar
     bar_face_objects = []
     for bar in bars:
         bar_face_objects += [face_entity['geometric object'] for face_entity in bar['faces']]
@@ -172,8 +167,6 @@ def create_solids(model_parameters):
     for j in range (0, n2):
         for i in range (0, n1):
             bar_centers.append(((airgap+box_size/2)+i*(airgap+box_size)-x/2,-y/2,(airgap+box_size/2)+j*(airgap+box_size)-z/2))
-#            bar_centers.append(((airgap+box_size/2)+i*(airgap+box_size),0,(airgap+box_size/2)+j*(airgap+box_size)))
-#    print(bar_centers)
     bars = []
     for i,center in enumerate(bar_centers):
         name = "bar_" + str(i)
@@ -183,8 +176,6 @@ def create_solids(model_parameters):
     air_entities = create_air(bars, x, y, z, name = 'air', symmetry_planes=['zx'], mesh_size=air_mesh_sizes)
 
     entities_dicts = [air_entities] + bars
-
-#    print(entities_dicts)
 
     entities_dict = merge_entities_dicts(entities_dicts, 
             'variable_topology', default_mesh_size=default_mesh_size)
@@ -240,13 +231,13 @@ Body 1
 End
 
 Body 2
-  Target Bodies(''' #8) = $ ''' #bar_0001 bar_1001 bar_2001 bar_3001 bar_4001 bar_5001 bar_6001 bar_7001
+  Target Bodies(''' 
 
     filepart1+=str(n1*n2)+ ') = $ '
 
     for i in range (0, n1*n2-1):
-        filepart1=filepart1+'bar_'+str(i)+'001 \\ \n    '
-    filepart1=filepart1+'bar_'+str(i+1)+'001'
+        filepart1=filepart1+'bar_'+str(i)+' \\ \n    '
+    filepart1=filepart1+'bar_'+str(i+1)
 
     filepart2='''
   Name = "Bars"
@@ -395,7 +386,7 @@ def get_test5_params():
 
 ##### Tests #####
 def test_all():
-    n1, n2, T_BC = get_test4_params()
+    n1, n2, T_BC = get_test2_params()
     box_size=10.
     airgap=5.
     depth=25.

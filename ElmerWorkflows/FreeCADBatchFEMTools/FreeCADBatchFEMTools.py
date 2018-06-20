@@ -526,7 +526,13 @@ def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_di
             surface_objs[index_found].References=[(compound_filter, found_cface_names)]
         else:
             # New name, create new MeshGroup
-            surface_objs.append(ObjectsFem.makeMeshGroup(doc, mesh_object, True, face['name']))
+            # The third argument of makeMeshGroup is True, as we want to use face's Labels in VTU, 
+            # not the names, which cannot be changed. 
+            #
+            # WARNING: No other object should have same label than this Mesh Group. 
+            # Otherwise FreeCAD adds numbers to the end of the label to make it unique.
+            surface_objs.append(ObjectsFem.makeMeshGroup(doc, mesh_object, True, face['name']+'_group'))
+            surface_objs[-1].Label=face['name']
             surface_objs[-1].References=[(compound_filter, find_compound_filter_boundary(compound_filter, face['geometric object']))] 
             face_name_list.append(face['name'])
 
@@ -553,7 +559,13 @@ def find_bodies_with_entities_dict(mesh_object, compound_filter, entities_dict, 
             solid_objs[index_found].References=[(compound_filter, found_csolid_names)]
         else:
             # New name, create new MeshGroup
-            solid_objs.append(ObjectsFem.makeMeshGroup(doc, mesh_object, True, solid['name']))
+            # The third argument of makeMeshGroup is True, as we want to use solid's Labels in VTU, 
+            # not the names, which cannot be changed. 
+            #
+            # WARNING: No other object should have same label than this Mesh Group. 
+            # Otherwise FreeCAD adds numbers to the end of the label to make it unique.
+            solid_objs.append(ObjectsFem.makeMeshGroup(doc, mesh_object, True, solid['name']+'_group'))
+            solid_objs[-1].Label=solid['name']
             solid_objs[-1].References=[(compound_filter, find_compound_filter_solid(compound_filter, solid['geometric object']))] 
             solid_name_list.append(solid['name'])
 
