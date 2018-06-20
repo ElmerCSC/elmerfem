@@ -354,39 +354,36 @@ End
     file.write(filepart1+filepart2+filepart3)
     file.close()
 
-def get_test1_params():
-    n1=5
-    n2=2
-    T_BC=[[1.,2.,3.,4., 5.],[2.,3.,4.,5.,6.]]
-    return n1, n2, T_BC
-
-def get_test2_params():
-    n1=5
-    n2=3
-    T_BC=[[1.,2.,3.,4., 5.],[2.,3.,4.,5.,6.], [3.,4.,5.,6.,7.]]
-    return n1, n2, T_BC
-
-def get_test3_params():
-    n1=4
-    n2=2
-    T_BC=[[1.,2.,3.,4.],[2.,3.,4.,5.]]
-    return n1, n2, T_BC
-
-def get_test4_params():
-    n1=3
-    n2=3
-    T_BC=[[1.,2.,3.],[2.,3.,4.], [3.,4.,5]]
-    return n1, n2, T_BC
-
-def get_test5_params():
-    n1=10
-    n2=1
-    T_BC=[[1.,2.,3.,4., 5.,2.,3.,4.,5.,6.]]
+def get_test_params(test_number=1):
+    if test_number == 1:
+        n1=5
+        n2=2
+        T_BC=[[1.,2.,3.,4., 5.],[2.,3.,4.,5.,6.]]
+    elif test_number == 2:
+        n1=5
+        n2=3
+        T_BC=[[1.,2.,3.,4., 5.],[2.,3.,4.,5.,6.], [3.,4.,5.,6.,7.]]
+    elif test_number == 3:
+        n1=4
+        n2=2
+        T_BC=[[1.,2.,3.,4.],[2.,3.,4.,5.]]
+    elif test_number == 4:
+        n1=3
+        n2=3
+        T_BC=[[1.,2.,3.],[2.,3.,4.], [3.,4.,5]]
+    elif test_number == 5:
+        n1=10
+        n2=1
+        T_BC=[[1.,2.,3.,4., 5.,2.,3.,4.,5.,6.]]
+    elif test_number == 6:
+        n1=2
+        n2=1
+        T_BC=[[1.,6.]]
     return n1, n2, T_BC
 
 ##### Tests #####
 def test_all():
-    n1, n2, T_BC = get_test2_params()
+    n1, n2, T_BC = get_test_params(6)
     box_size=10.
     airgap=5.
     depth=25.
