@@ -1,0 +1,76 @@
+! Test case for testing curve fitting
+! 1) cubic monotone spline
+! 2) cubic spline
+! 3) piecewise linear
+!
+! P.R. 20.6.2018
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path "."
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+End
+
+Constants
+End
+
+Body 1
+  Name = "Body"
+  Equation = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Equation = SaveDep
+  Procedure = "SaveData" "SaveDependence"
+  Filename = dep.dat
+
+! This defines the uniform interval for x
+  Number of points = Integer 261
+  Lower Limit = Real 0.0
+  Upper Limit = Real 2.6
+
+  Expression 1 = Variable dummy
+    Real Cubic Monotone
+      include mat.dat
+    End
+
+  Expression 2 = Variable dummy
+    Real Cubic
+      include mat.dat
+    End
+
+  Expression 3 = Variable dummy
+    Real 
+      include mat.dat
+    End
+End
+
+Solver 1 :: Show Norm Index = 1
+Solver 1 :: Reference Norm = 8.66310502E+04
+RUN
+
+Solver 1 :: Show Norm Index = 2
+Solver 1 :: Reference Norm = 8.66282268E+04
+RUN
+
+Solver 1 :: Show Norm Index = 3
+Solver 1 :: Reference Norm = 8.67145288E+04
+RUN
