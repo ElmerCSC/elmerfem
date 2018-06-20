@@ -5,5 +5,5 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO block.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ConstantBCDisplacement)
-ADD_ELMER_LABEL(ConstantBCDisplacement benchmark)
+ADD_ELMER_TEST(ConstantBCDisplacement LABELS benchmark elasticsolve)
+

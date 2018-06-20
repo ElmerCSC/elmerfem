@@ -6,4 +6,4 @@ ADD_ELMERTEST_MODULE(ArteryOutlet Motion Motion.f90)
 
 file(COPY ELMERSOLVER_STARTINFO Motion.f90 contra.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ArteryOutlet)
+ADD_ELMER_TEST(ArteryOutlet LABELS elasticsolve)
