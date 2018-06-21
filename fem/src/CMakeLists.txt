@@ -46,6 +46,15 @@ SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
 
 
+IF(WITH_LUA)
+  INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
+  LIST(APPEND solverlib_SOURCES Lua.F90 elmer_lua_iface.c)
+  INSTALL(DIRECTORY lua-scripts DESTINATION share/elmersolver/
+    PATTERN lua-scripts/*.lua)
+  FILE(GLOB DEFAULT_LUA_SCRIPTS "lua-scripts/*.lua")
+  FILE(COPY ${DEFAULT_LUA_SCRIPTS} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/share/elmersolver/lua-scripts/)
+ENDIF()
+
 IF(HAVE_FETI4I)
   LIST(APPEND solverlib_SOURCES ${FETI4I_INTERFACE_SOURCE})
 ENDIF()
@@ -126,6 +135,10 @@ SET(ELMERSOLVER_LIBRARIES matc umfpack
                           amd fhuti binio arpack
                           ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
+
+IF(WITH_LUA)
+  LIST(APPEND ELMERSOLVER_LIBRARIES ${LUA_LIBRARIES})
+ENDIF()
 
 
 ADD_EXECUTABLE(Solver_TGT Solver.F90)

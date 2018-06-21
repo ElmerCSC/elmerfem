@@ -10,6 +10,7 @@ Simulation
   Steady State Max Iterations = 1
 !  Post File   = "case.vtu"
 End
+#print("this is lua")
 
 Body 1
   Equation = 1
