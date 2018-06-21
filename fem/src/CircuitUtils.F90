@@ -130,6 +130,8 @@ CONTAINS
     Visited = .TRUE.
     DO i = 1, SIZE(CurrentModel % Components)
       ComponentParams => CurrentModel % Components(i) % Values
+
+      IF( ListGetLogical( ComponentParams,'Passive Component', Found ) ) CYCLE 
       
       IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('AddComponentsToBodyList', &
                                                          'Component parameters not found!')
