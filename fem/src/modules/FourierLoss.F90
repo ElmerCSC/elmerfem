@@ -1236,9 +1236,14 @@ CONTAINS
       LossesFile = ListGetString(SolverParams,'Fourier Loss Filename',Found )
       IF( Found ) THEN
         OPEN (10, FILE=LossesFile)
-        WRITE( 10,'(A)')  '!body_id   loss(1)   loss(2) ....'
-        DO j=1,Model % NumberOfBodies
-          WRITE( 10,* ) j, BodyLoss(1:Ncomp,j)
+        WRITE( 10,'(A)')  '!body_id   loss(1)   loss(2) ....'        
+        DO j=1,Model % NumberOfBodies          
+          IF( SUM( BodyLoss(1:Ncomp,j) ) <= TINY( TotalLoss ) ) CYCLE
+          WRITE( 10,'(I6)',ADVANCE='NO') j
+          DO i=1,Ncomp-1
+            WRITE( 10,'(ES15.6)',ADVANCE='NO') BodyLoss(i,j)            
+          END DO
+          WRITE( 10,'(ES15.6)') BodyLoss(Ncomp,j)            
         END DO
         CALL Info('FourierLossSolver', &
             'Fourier losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
