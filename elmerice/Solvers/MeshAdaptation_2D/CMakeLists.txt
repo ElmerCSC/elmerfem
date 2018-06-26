@@ -6,6 +6,7 @@ SET(CMAKE_Fortran_MODULE_DIRECTORY
 # -- set Solvers without external dependency  -- #
 # ---------------------------------------------- #
 SET(ElmerIce_MeshAdapt2D_SRC
+    MMG2DSolver.F90
     Compute2DNodalGradient.F90
     MMG2D_MetricAniso.F90
     MMG2D_MetricIntersect.F90
@@ -27,7 +28,7 @@ IF(MMG_FOUND)
   MESSAGE(STATUS "  Mmg_INC:       " "${MMG_INCLUDE_DIR}")
   MESSAGE(STATUS "  Mmg_LIB:      " "${MMG_LIBRARY}")
   MESSAGE(STATUS "Compile MMG2DSolver")
-  LIST(APPEND  ElmerIce_MeshAdapt2D_SRC MMG2DSolver.F90)
+  ADD_DEFINITIONS(-DHAVE_MMG)
 ELSE()
   MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
   MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG2DSolver")

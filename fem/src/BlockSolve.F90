@@ -1345,7 +1345,7 @@ CONTAINS
 
 
   !> Create the coupling blocks for a linear FSI coupling among various types of
-  !> among various types of elasticity and fluid solvers.
+  !> elasticity and fluid solvers.
   !--------------------------------------------------------------------------------
   SUBROUTINE FsiCouplingBlocks( Solver )
 
@@ -2207,7 +2207,7 @@ CONTAINS
               rtmp(1:offset(k+1)-offset(k))=rtmp(offset(k)+1:offset(k+1))
               DoSum = .TRUE.
             ELSE
-              CALL Fatal('BlockKrylovIter','No matrix to apply.')
+              CALL Fatal('BlockMatrixPrec','No matrix to apply.')
             END IF
 
             IF( TotMatrix % SubMatrixTranspose(i,k) ) THEN
@@ -2491,18 +2491,18 @@ CONTAINS
     ndim = TotMatrix % TotSize 
     NoVar = TotMatrix % NoVar
 
-    CALL Info('BlockSolver','Allocating temporal vectors for block system of size: '&
+    CALL Info('BlockKrylovIter','Allocating temporal vectors for block system of size: '&
         //TRIM(I2S(ndim)),Level=8)
 
     ALLOCATE(x(ndim), b(ndim),r(ndim),STAT=istat)
     IF( istat /= 0 ) THEN
-      CALL Fatal('BlockSolver','Cannot allocate temporal vectors of size: '//TRIM(I2S(ndim)))
+      CALL Fatal('BlockKrylovIter','Cannot allocate temporal vectors of size: '//TRIM(I2S(ndim)))
     END IF
     
     x=0;b=0;r=0
     
     IF (isParallel) THEN
-      CALL Info('BlockSolver','Preforming parallel initializations!',Level=18)
+      CALL Info('BlockKrylovIter','Preforming parallel initializations!',Level=18)
       DO i=1,NoVar
         DO j=1,NoVar
           IF ( i /= j ) THEN
@@ -2526,18 +2526,18 @@ CONTAINS
 
     IF (isParallel) ALLOCATE(poffset(NoVar+1))
 
-    CALL Info('BlockSolver','Initializing monolithic system vectors',Level=18)
+    CALL Info('BlockKrylovIter','Initializing monolithic system vectors',Level=18)
     
     DO i=1,NoVar
 
       IF( .NOT. ASSOCIATED( TotMatrix % Subvector(i) % Var ) ) THEN
-        CALL Fatal('BlockSolver','Subvector '//TRIM(I2S(i))//' not associated!')
+        CALL Fatal('BlockKrylovIter','Subvector '//TRIM(I2S(i))//' not associated!')
       END IF
       IF( .NOT. ASSOCIATED( TotMatrix % Submatrix(i,i) % Mat ) ) THEN
-        CALL Fatal('BlockSolver','Submatrix '//TRIM(I2S(i))//' not associated!')
+        CALL Fatal('BlockKrylovIter','Submatrix '//TRIM(I2S(i))//' not associated!')
       END IF
       IF( .NOT. ASSOCIATED( TotMatrix % Submatrix(i,i) % Mat % Rhs ) ) THEN
-        CALL Warn('BlockSolver','Submatrix rhs '//TRIM(I2S(i))//' not associated!')
+        CALL Warn('BlockKrylovIter','Submatrix rhs '//TRIM(I2S(i))//' not associated!')
       END IF
       
       IF (.NOT.isParallel) THEN
@@ -2587,7 +2587,7 @@ CONTAINS
     WRITE( Message,'(A,ES12.3)') 'Solution norm at start: ',PrevXnorm
     CALL Info('BlockKrylovIter',Message,Level=10)
 
-    CALL info('BlockSolver','Start of blocks system iteration',Level=18)
+    CALL Info('BlockKrylovIter','Start of blocks system iteration',Level=18)
 
     ! Always treat the block system as a real valued system and complex
     ! arithmetics only at the inner level.
@@ -2639,7 +2639,7 @@ CONTAINS
             Solver,ndim=ndim,MatvecF=mvProc,PrecF=precProc) 
       END IF
     END IF
-    CALL info('BlockSolver','Finished block system iteration',Level=18)
+    CALL info('BlockKrylovIter','Finished block system iteration',Level=18)
     
     CALL ListAddLogical(Params,'Linear System Refactorize',.TRUE.)
     CALL ListAddLogical(Params,'Linear System Free Factorization',.TRUE.)
@@ -2725,8 +2725,9 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
 
-    CALL Info('BlockSolver','---------------------------------------',Level=5)
-    
+
+    CALL Info('BlockSolverInt','---------------------------------------',Level=5)
+
     Params => Solver % Values
     Mesh => Solver % Mesh
     PSolver => Solver
@@ -2883,7 +2884,7 @@ CONTAINS
       MaxChange = Solver % Variable % NonlinChange 
       
     ELSE IF( BlockPrec ) THEN
-      CALL Info('BlockSolverInt','Using block precontioning strategy',Level=6)        
+      CALL Info('BlockSolverInt','Using block preconditioning strategy',Level=6)        
       CALL BlockKrylovIter( Solver, MaxChange )
     ELSE
       Solver % Variable => TotMatrix % SubVector(1) % Var

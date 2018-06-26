@@ -105,7 +105,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   REAL (KIND=DP), ALLOCATABLE ::  Values(:), Basis(:)
   REAL (KIND=dp) :: daxisx, daxisy, daxisz, x, y, z, eps, IntersectEpsilon, DetEpsilon, &
 	f0, f1, f2, fn, q, weight
-  REAL (KIND=DP), POINTER :: PointCoordinates(:,:), PointFluxes(:,:), PointWeight(:), Isosurf(:)
+  REAL (KIND=DP), POINTER :: PointCoordinates(:,:), Isosurf(:)
+  REAL(KIND=dp), ALLOCATABLE :: PointFluxes(:,:), PointWeight(:)
   LOGICAL :: Stat, GotIt, FileAppend, CalculateFlux, &
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
       SkipBoundaryInfo, GotDivisions, EdgeBasis
@@ -804,21 +805,34 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent, Element, OldCurrentElement
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: Material
-    REAL(KIND=dp) :: r,u,v,w,ub, &
-         Basis(MaxN), dBasisdx(MaxN,3),DetJ, Normal(3)
-    REAL(KIND=dp), TARGET :: x(MaxN), y(MaxN), z(MaxN)
+    REAL(KIND=dp) :: r,u,v,w,ub,DetJ, Normal(3),Flow(3)
     LOGICAL :: stat, Permutated
     INTEGER :: body_id, k
-    REAL(KIND=dp) :: Conductivity(Model % Mesh % MaxElementNodes)
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
-    REAL(KIND=DP) :: CoeffTensor(3,3,Model % MaxElementNodes), Flow(3)
 
+    
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:), Conductivity(:), &
+        CoeffTensor(:,:,:)
+    LOGICAL :: AllocationsDone = .FALSE.
+
+    SAVE AllocationsDone, Nodes, Basis, dBasisdx, Conductivity, CoeffTensor, Pwrk
+    
+
+    IF( .NOT. AllocationsDone ) THEN
+      n = Model % Mesh % MaxElementNodes
+      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), Basis(n), dBasisdx(n,3), &
+          Conductivity(n), CoeffTensor(3,3,n) )
+      AllocationsDone = .TRUE.
+    END IF    
 
     Tvar => VariableGet( Model % Variables, TRIM(VarName) )
-
+    IF( .NOT. ASSOCIATED( TVar ) ) THEN
+      CALL Fatal('BoundaryFlux','Cannot calculate fluxes without potential field!')
+    END IF
+          
     Permutated = ASSOCIATED(Tvar % Perm)
     Element => Model % CurrentElement
-    
+
     IF ( FluxBody > 0 ) THEN
       lbody = 0
       IF ( ASSOCIATED( Element % BoundaryInfo % Left ) ) &
@@ -855,30 +869,27 @@ CONTAINS
           'No solution available for specified boundary' )
     END IF
     
-    OldCurrentElement => Element
-    Model % CurrentElement => Parent
-
     n = Parent % TYPE % NumberOfNodes
-    
-    Nodes % x => x
-    Nodes % y => y
-    Nodes % z => z
+
     Nodes % x(1:n) = Model % Nodes % x(Parent % NodeIndexes)
     Nodes % y(1:n) = Model % Nodes % y(Parent % NodeIndexes)
     Nodes % z(1:n) = Model % Nodes % z(Parent % NodeIndexes)
-    
+
+    k = 0
     DO j=1,n
-      IF ( node == Parent % NodeIndexes(j) ) EXIT
+      IF ( node == Parent % NodeIndexes(j) ) THEN
+        k = j
+        EXIT
+      END IF
     END DO
 
-    IF ( node /= Parent % NodeIndexes(j) ) THEN
+    IF ( k == 0 ) THEN
       CALL Warn('SaveLine','Side node not in parent element!')
     END IF
+    
+    CALL GlobalToLocal( u, v ,w , Nodes % x(k), Nodes % y(k), Nodes % z(k), Parent, Nodes )
 
-    CALL GlobalToLocal( u, v ,w , x(j), y(j), z(j), Parent, Nodes )
-
-    stat = ElementInfo( Parent, Nodes, u, v, w, detJ, &
-        Basis, dBasisdx )
+    stat = ElementInfo( Parent, Nodes, u, v, w, detJ, Basis, dBasisdx )
     weight = detJ
    
     ! Compute the normal of the surface for the normal flux
@@ -895,15 +906,26 @@ CONTAINS
     END IF
 
     Normal = Normalvector( Element, ElementNodes, ub, 0.0d0, .TRUE. )
-
+    
     body_id = Parent % Bodyid
     k = ListGetInteger( Model % Bodies(body_id) % Values,'Material', &
-            minv=1, maxv=Model % NumberOFMaterials )
+        minv=1, maxv=Model % NumberOFMaterials )
     Material => Model % Materials(k) % Values
-
-
+    IF( .NOT. ASSOCIATED( Material ) ) THEN
+      CALL Warn('SaveLine','Could not find material for flux computation!')
+      RETURN
+    END IF
+    
+    OldCurrentElement => Model % CurrentElement
+    Model % CurrentElement => Parent    
     CALL ListGetRealArray( Material, TRIM(CoeffName), Pwrk, n, &
         Parent % NodeIndexes, GotIt )
+    Model % CurrentElement => OldCurrentElement
+      
+    IF(.NOT. ASSOCIATED( Pwrk ) ) THEN
+      CALL Warn('SaveLine','Coefficient not present for flux computation!')
+      RETURN
+    END IF
 
     CoeffTensor = 0.0d0
     IF(GotIt) THEN
@@ -936,7 +958,7 @@ CONTAINS
         END IF
       END DO
     END DO
-
+    
     f1 = Flow(1)
     f2 = Flow(2)
     fn = SUM(Normal(1:DIM) * Flow(1:DIM))
@@ -1043,6 +1065,7 @@ CONTAINS
     END IF
     PrevMaskName = MaskName
 
+    
     !------------------------------------------------------------------------------
     ! If nodes found, then go through the sides and compute the fluxes if requested 
     !------------------------------------------------------------------------------
@@ -1051,6 +1074,7 @@ CONTAINS
       ALLOCATE( InvPerm(SaveNodes), BoundaryIndex(SaveNodes), STAT=istat )
       IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 3: '//TRIM(I2S(SaveNodes))) 
 
+      
       BoundaryIndex = 0
       InvPerm = 0
       DO i=1,SIZE(SavePerm)
@@ -1064,18 +1088,21 @@ CONTAINS
         END IF
       END DO
 
+
       IF(CalculateFlux) THEN
         ALLOCATE(PointFluxes(SaveNodes,3),PointWeight(SaveNodes), STAT=istat)    
         IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 4') 
-
+        
         PointFluxes = 0.0d0
         PointWeight = 0.0d0
       END IF
 
 
+
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
 
+        
         CurrentElement => Mesh % Elements(t)
         Model % CurrentElement => CurrentElement
         n = CurrentElement % TYPE % NumberOfNodes
@@ -1102,6 +1129,7 @@ CONTAINS
         END IF
         IF(.NOT. Found) CYCLE
 
+        
         MaxBoundary = MAX( MaxBoundary, k ) 
         BoundaryIndex( SavePerm(NodeIndexes) ) = k
 
@@ -1114,13 +1142,16 @@ CONTAINS
         ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
 
+
         DO i=1,n
           node = NodeIndexes(i)
-
+          
           CALL BoundaryFlux( Model, node, TempName,  &
               CondName, f1, f2, fn, weight, Mesh % MaxElementDOFs ) 
 
           j = SavePerm(node) 
+          
+          IF( j == 0 ) CYCLE
 
           PointFluxes(j,1) = PointFluxes(j,1) + weight * f1
           PointFluxes(j,2) = PointFluxes(j,2) + weight * f2
@@ -1136,7 +1167,6 @@ CONTAINS
           PointFluxes(i,2) = PointFluxes(i,2) / PointWeight(i)
           PointFluxes(i,3) = PointFluxes(i,3) / PointWeight(i)
         END DO
-        DEALLOCATE(PointWeight)
       END IF
 
       ! Save the nodes      
@@ -1153,10 +1183,11 @@ CONTAINS
         END IF
       END DO
 
+      
       DEALLOCATE(InvPerm, BoundaryIndex)
-      IF(CalculateFlux) DEALLOCATE(PointFluxes)
+      IF(CalculateFlux) DEALLOCATE(PointFluxes, PointWeight )
     END IF
-
+    
   END SUBROUTINE SaveExistingLines
 
 

@@ -1,0 +1,197 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! .sif file for greenland mesh adaptation
+! mesh is adapted to equidistribute the interpolation error
+! of the thickness and velocity observation
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! FOR DEFAULT USE UPDATE PARAMETERS IN MESH_OPTIM.IN
+include MESH_OPTIM.IN
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "$MESH_IN$"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  Hmax margin extent = Real $MarginExtent
+  Hmax within margin = Real $HMaxIN
+  Hmax outside margin = Real $HMaxOUT
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady
+
+  Steady State Min Iterations = $IMAX
+  Steady State Max Iterations = $IMAX
+
+  max output level = 3
+
+  Post File = "OPTIM_$RUN$.vtu"
+!  OutPut File = "OPTIM_$RUN$.result"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Mu Hmin = Real $Hmin
+  Mu Hmax = Variable Distance
+    REAL procedure "USF_PCond" "Hmax"
+  Mu err =  Real $U_err
+
+  Mh Hmin = Real $Hmin
+  Mh Hmax = Variable Distance
+    REAL procedure "USF_PCond" "Hmax"
+  Mh err =  Real $H_err
+
+  Distance = Real 0.0
+  Distance Condition = Variable H
+    Real procedure "USF_PCond" "DistanceCond"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = Reader
+    Procedure = "GridDataReader" "GridDataReader"
+    Variable = -nooutput dumy
+   
+!---- NOTE: File is case sensitive, String is not!
+ Filename = File "$TOPOGRAPHY_DATA$"
+
+   X Dim Name = String "x"
+   Y Dim Name = String "y"
+!---
+  Variable 1 = File "thickness"
+  Target Variable 1 = String "H"
+  Exported Variable 1 = H
+End
+Solver 2
+  Equation = Reader2
+    Procedure = "GridDataReader" "GridDataReader"
+    Variable = -nooutput dumy
+   
+!---- NOTE: File is case sensitive, String is not!
+ Filename = File "$VELOCITY_DATA$"
+
+   X Dim Name = String "x"
+   Y Dim Name = String "y"
+!--- Interpolation variables
+
+  Variable 1 = File "vnorm"
+  Target Variable 1 = String "Vobs"
+  Exported Variable 1 = "Vobs"
+End
+Solver 3
+  Equation = "Distance"
+  Variable =  distance
+    Procedure = "DistanceSolve" "DistanceSolver1"
+    Optimize Bandwidth = logical false
+End
+
+! Compute the metric associated with f1
+! Compute the metric associated with f1
+!  1- compute projected gradient of f1
+Solver 4
+  Equation = "Nodal Gradient 1"
+  Variable = -nooutput "Gradient1"
+  Variable DOFs = 2
+  Procedure = "ElmerIce_MeshAdapt2D" "Compute2DNodalGradient"
+
+  Variable Name = string "vobs"
+End
+! 2- compute:
+!    - the hessian matrix by solving a diffusion equation:
+!   - the metric tensor
+Solver 5
+   Equation = "Metric1"
+   Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricAniso"
+
+   Metric Variable Name = String "Mu"
+   Hessian Variable Name = String "ddx1"
+   Gradient Name = String "Gradient1"
+   Diffusivity = Real 0.5
+
+   Linear System Solver = Direct
+   Linear System Direct Method = umfpack
+   Linear System Refactorize = False
+End
+! Compute the metric associated with f2
+Solver 6
+  Equation = "Nodal Gradient 2"
+  Variable = -nooutput "Gradient2"
+  Variable DOFs = 2
+  Procedure = "ElmerIce_MeshAdapt2D" "Compute2DNodalGradient"
+  Variable Name = string "h"
+End
+Solver 7
+   Equation = "Metric2"
+   Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricAniso"
+
+   Metric Variable Name = String "Mh"
+   Hessian Variable Name = String "ddx2"
+   Gradient Name = String "Gradient2"
+   Diffusivity = Real 0.5
+
+   Linear System Solver = Direct
+   Linear System Direct Method = umfpack
+   Linear System Refactorize = False
+End
+!! do the intersection of M1 and M2
+Solver 8
+   Equation = "Metric"
+   Procedure = "ElmerIce_MeshAdapt2D" "MMG2D_MetricIntersect"
+
+   Metric Variable Name = String "M1M2"
+   Metric 1 Variable Name = String "Mh"
+   Metric 2 Variable Name = String "Mu"
+End
+
+Solver 9
+  Equation = SaveScalars
+  Procedure =  "SaveData" "SaveScalars"
+  Filename = "f_$RUN$.dat"
+  Show Norm Index = Integer 2
+
+  Variable 1 = "Time"
+
+  Operator 2 = nodes
+
+  Variable 3 = "H"
+  Operator 3 = "int"
+
+  Variable 4 = "Vobs"
+  Operator 4 = "int"
+
+End
+
+!! Anisotropic mesh adaptation using the MMG library
+Solver 10
+!! mandatory else Model % Mesh % Changed reset to .FALSE. in coupled simulations
+  Exec Solver = after timestep
+
+  Equation = "MMG"
+  Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
+
+  Output file name = "MESH_$RUN$"
+  Metric Variable Name = String "M1M2"  
+
+  Angle detection = Real 5.0
+
+  Increment Mesh Number = logical false
+
+  Release previous mesh = Logical True
+
+  Steady State Convergence Tolerance = Real $Tol
+  Steady State Min Iterations = INTEGER $IMIN
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(10) = 1 2 3 4 5 6 7 8 9 10
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries(1) = 1
+End

@@ -124,7 +124,7 @@ CONTAINS
     INTEGER :: i,j,n
     TYPE(Matrix_t), POINTER :: A
     TYPE(ListMatrixEntry_t), POINTER :: P
-    INTEGER, POINTER :: Rows(:),Cols(:),Diag(:)
+    INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
 
     DO n=SIZE(L),1,-1
       IF ( L(n) % Degree>0 ) EXIT
@@ -172,11 +172,11 @@ CONTAINS
     TYPE(ListMatrix_t), POINTER :: L(:)   
     INTEGER :: i,j,n
     TYPE(ListMatrixEntry_t), POINTER :: P
-    INTEGER, POINTER :: Rows(:),Cols(:),Diag(:)
-    REAL(KIND=dp), POINTER :: Values(:)
+    INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
+    REAL(KIND=dp), POINTER CONTIG :: Values(:)
 
     IF( A % FORMAT /= MATRIX_LIST ) THEN
-      CALL Warn('ListToCRSMatrix','The initial matrix type is not List')
+      CALL Warn('List_ToCRSMatrix','The initial matrix type is not List')
       RETURN
     END IF
     
@@ -230,7 +230,7 @@ CONTAINS
     A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
-    CALL Info('ListToCRSMatrix','Matrix format changed from List to CRS', Level=8)
+    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=8)
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToCRSMatrix

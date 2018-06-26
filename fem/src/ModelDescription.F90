@@ -1591,9 +1591,17 @@ CONTAINS
                    IF (ALLOCATED(ATt) ) DEALLOCATE(ATt,ATx)
                    ALLOCATE( ATt(MaxBufLen), ATx(n1,n2,MaxBufLen) )
                  END IF
- 
+                 
+                 ! Enable both "cubic monotone" and "monotone cubic"
                  Cubic = SEQL(str(str_beg:),'cubic')
-                 monotone = SEQL(str(str_beg+6:),'monotone')
+                 IF(Cubic) THEN
+                   monotone = SEQL(str(str_beg+6:),'monotone')
+                 ELSE
+                   monotone = SEQL(str(str_beg:),'monotone')
+                   IF( Monotone ) Cubic = SEQL(str(str_beg+9:),'cubic')
+                   IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                 END IF
+
                  n = 0
                  DO WHILE( ReadAndTrim(InFileUnit,str,Echo) )
 
@@ -1992,14 +2000,18 @@ CONTAINS
 
      IF ( csys=='cartesian' .OR. csys=='polar' ) THEN
         Mesh => Model % Meshes
+
+        c = .FALSE.
         x = Mesh % Nodes % x(1)
         y = Mesh % Nodes % y(1)
         z = Mesh % Nodes % z(1)
-        c = .FALSE.
+
         DO WHILE( ASSOCIATED( Mesh ) )
-           c(1) = c(1) .OR. ANY( Mesh % Nodes % x /= x )
-           c(2) = c(2) .OR. ANY( Mesh % Nodes % y /= y )
-           c(3) = c(3) .OR. ANY( Mesh % Nodes % z /= z )
+           IF( ASSOCIATED(Mesh % Nodes % x) ) THEN
+             c(1) = c(1) .OR. ANY( Mesh % Nodes % x /= x )
+             c(2) = c(2) .OR. ANY( Mesh % Nodes % y /= y )
+             c(3) = c(3) .OR. ANY( Mesh % Nodes % z /= z )
+           END IF
            Mesh => Mesh % Next
         END DO
 
@@ -2064,7 +2076,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh
-    INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels
+    INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
@@ -2335,6 +2347,18 @@ CONTAINS
           single=.TRUE.
           Name=Name(9:)
         END IF
+
+        nprocs = numprocs
+        IF ( SEQL(Name, '-part ') ) THEN
+          READ( Name(7:), * ) nprocs
+          i = 7
+          DO WHILE(Name(i:i)/=' ')
+           i=i+1
+          END DO
+          Name=Name(i+1:)
+        END IF
+
+
         OneMeshName = .FALSE.
         k = 1
         i = 1
@@ -2403,12 +2427,18 @@ CONTAINS
           END DO
         END DO
 
+
         IF ( Single ) THEN
           Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs, s )
         ELSE
-          Model % Solvers(s) % Mesh => &
-              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs, s )
+          IF ( mype < nprocs ) THEN
+            Model % Solvers(s) % Mesh => &
+                LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,nprocs,mype,Def_Dofs, s )
+          ELSE
+            ! There are more partitions than partitions in mesh, just allocate
+            Model % Solvers(s) % Mesh => AllocateMesh()
+          END IF
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 
@@ -3207,11 +3237,12 @@ CONTAINS
 !> Loads the result file that has been saved by an earlier Elmer simulation.
 !> This makes it possible to restart the simulation.
 !------------------------------------------------------------------------------
-  SUBROUTINE LoadRestartFile( RestartFile,TimeCount,Mesh,Continuous,EOF )
+  SUBROUTINE LoadRestartFile( RestartFile,TimeCount,Mesh,Continuous,EOF,RestartList)
     CHARACTER(LEN=*) :: RestartFile
     INTEGER :: TimeCount
     TYPE(Mesh_T), POINTER :: Mesh
     LOGICAL, OPTIONAL :: Continuous,EOF
+    TYPE(ValueList_t), POINTER, OPTIONAL :: RestartList
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
     CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,FullName,PosName
@@ -3229,12 +3260,13 @@ CONTAINS
     LOGICAL, SAVE :: PosFile = .FALSE.
     LOGICAL, SAVE :: Binary, RestartVariableList, GotPerm, GotIt
     INTEGER, SAVE, ALLOCATABLE :: RestartVariableSizes(:)
-
+    TYPE(ValueList_t), POINTER :: ResList
+    
     REAL(KIND=dp) :: Dummy,Val,Time
     REAL(KIND=dp), POINTER :: Component(:), Temp(:)
     REAL(KIND=dp), POINTER :: Velocity1(:),Velocity2(:),Velocity3(:),Pressure(:)
     INTEGER(KIND=IntOff_k) :: Pos
-    INTEGER :: iostat
+    INTEGER :: iostat, FileCount
     CHARACTER(1) :: E
 #ifdef USE_ISO_C_BINDINGS
     REAL(dp) :: tstart, tstop
@@ -3251,9 +3283,19 @@ CONTAINS
     CALL Info( 'LoadRestartFile','--------------------------------------------', Level= 4 )
     CALL Info( 'LoadRestartFile','Reading data from file: '//TRIM(RestartFile), Level = 4 )
 
-    RestartVariableList = ListCheckPresent( CurrentModel % Simulation,&
-        'Restart Variable 1')
-
+    IF( PRESENT( RestartList ) ) THEN
+      ResList => RestartList
+    ELSE
+      ResList => CurrentModel % Simulation
+    END IF
+    
+    RestartVariableList = ListCheckPresent( ResList,'Restart Variable 1')
+    IF( RestartVariableList ) THEN
+      CALL Info('LoadRestartFile','Reading only variables given by: Restart Variable i',Level=10)
+    ELSE
+      CALL Info('LoadRestartFile','Reading all variables (if not wanted use >Restart Variable i<',Level=10)      
+    END IF
+    
     Cont = .FALSE.
     IF ( PRESENT( Continuous ) ) Cont = Continuous
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
@@ -3267,20 +3309,36 @@ CONTAINS
     END IF
     OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
 
-    IF( iostat > 0 ) THEN
+    IF( iostat == 0 ) THEN
+      FileCount = 1
+    ELSE
+      FileCount = 0
+    END IF
+ 
+    FileCount = NINT( ParallelReduction( 1.0_dp * FileCount ) )
+    IF( FileCount == 0 ) THEN
       CALL Error( 'LoadRestartFile','=======================================' )
       CALL Error( 'LoadRestartFile','' )
       CALL Error( 'LoadRestartFile','Could not open file "'//TRIM(FName)//'"' )
       CALL Error( 'LoadRestartFile','No restart possible!' )
       CALL Error( 'LoadRestartFile','' )
-      IF( ListGetLogical( CurrentModel % Simulation,&
-          'Restart Error Continue',Found ) ) THEN
-        CALL Error( 'LoadRestartFile','=======================================' )
-        RETURN
+      CALL Fatal( 'LoadRestartFile','=======================================' )
+    ELSE IF( FileCount < ParEnv % PEs ) THEN
+      CALL Info('LoadRestartFile','Succefully opened '//TRIM(I2S(FileCount))//&
+          ' restart files out of '//TRIM(I2S(ParEnv % PEs)),Level=6)
+      IF( ListGetLogical( ResList,'Restart Error Continue',Found ) ) THEN
+        ! This partition does not have a mesh
+        IF( iostat /= 0 ) RETURN 
       ELSE
+        CALL Error( 'LoadRestartFile','=======================================' )
+        CALL Error( 'LoadRestartFile','' )
+        CALL Error( 'LoadRestartFile','Expted to find all restart files "'//TRIM(FName)//'"' )
+        CALL Error( 'LoadRestartFile','No restart possible!' )
+        CALL Error( 'LoadRestartFile','' )
         CALL Fatal( 'LoadRestartFile','=======================================' )
       END IF
     END IF
+    
     RestartFileOpen = .TRUE.
 
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
@@ -3317,14 +3375,14 @@ CONTAINS
         CALL Info( 'LoadRestartFile', 'ASCII 0', Level = 4 )
     END IF
     
-    CALL Info( 'LoadRestartFile',' ', Level = 4)
+    CALL Info( 'LoadRestartFile','Reading restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
 
     ! If we want to skip some of the variables we need to have a list 
     ! of their sizes still. This is particularly true with variables that 
     ! do not have permutation since they could be a field (like coordinate)
     ! or a global variable (like time).
     !----------------------------------------------------------------------
-    IF( RestartVariableList ) THEN
+    IF( RestartVariableList ) THEN      
       DO WHILE( ReadAndTrim(RestartUnit,Row) )
         nlen = LEN_TRIM(Row)        
         k = INDEX( Row(1:nlen),'total dofs:',.TRUE.) 
@@ -3429,6 +3487,8 @@ CONTAINS
           END IF
         END IF
 
+        CALL Info('LoadRestartFile','Reading variable: '//TRIM(VarName),Level=12)
+        
         ! read the size of field, size or perm and number of dofs per node
         !-----------------------------------------------------------------
         j = MAX(INDEX(Row,']'),1)
@@ -3455,7 +3515,10 @@ CONTAINS
             EXIT            
           END IF
         END DO
-        IF( .NOT. Found .AND. PermSize > 0 ) THEN
+
+        IF( Found ) THEN
+          CALL Info('LoadRestartFile','Associated to existing solver',Level=20)
+        ELSE IF( PermSize > 0 ) THEN
           CALL Warn('LoadRestartFile','Could not associate variable to solver: '//TRIM(VarName))
           ! Associated to some solver at least 
           Solver => CurrentModel % Solvers(1)
@@ -3474,8 +3537,7 @@ CONTAINS
         LoadThis = .FALSE.
         k = LEN_TRIM( VarName )
         DO j=1,1000
-          VarName2 = ListGetString(CurrentModel % Simulation, &
-                  'Restart Variable '//I2S(j), Found )
+          VarName2 = ListGetString( ResList,'Restart Variable '//I2S(j), Found )
           IF( .NOT. Found ) EXIT
           k2 = LEN_TRIM(VarName2)
 
@@ -3707,7 +3769,8 @@ CONTAINS
              n = SIZE(Var % Values)
            END IF
            ! in case of (.NOT. LoadThis) n has already been set
-
+           CALL Info('LoadRestartFile','Size of variable is '//TRIM(I2S(n)),Level=20)
+           
            ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
            IF( ASSOCIATED( Var % Solver ) ) THEN
              IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
@@ -3738,6 +3801,10 @@ CONTAINS
            END IF
          END DO
 
+         IF( InfoActive( 20 ) ) THEN
+           PRINT *,'LoadRestartFile range:',ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
+         END IF
+           
          IF( LoadThis ) THEN
            CALL InvalidateVariable( CurrentModel % Meshes, Mesh, Row )
          END IF
@@ -3756,6 +3823,7 @@ CONTAINS
        END IF
        RestartFileOpen = .FALSE.
     END IF
+
 
     ! This is now obsolite for the new format 
     IF( FmtVersion < 3 ) THEN
@@ -3780,7 +3848,7 @@ CONTAINS
         END IF
         Var => Var % Next
       END DO
-      
+
       !... and then for scalars
       ! -----------------------
       Var => Mesh % Variables
@@ -3798,6 +3866,7 @@ CONTAINS
       END DO
     END IF
 
+    
     tstop = CPUTime()
     
     WRITE( Message,'(A,ES15.4)') 'Time spent for restart (s): ', tstop - tstart
@@ -3933,7 +4002,7 @@ CONTAINS
          ELSE
             READ( Row(7:),*,IOSTAT=iostat) nPerm, nPositive
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error in ReadPerm')
+              CALL Fatal('LoadRestartFile','Error in ReadPerm: '//TRIM(Row))
             END IF
          END IF
       END IF

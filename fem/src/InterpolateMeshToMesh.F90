@@ -31,6 +31,7 @@
        REAL(KIND=dp), POINTER :: store(:)
        REAL(KIND=dp), ALLOCATABLE, TARGET :: astore(:),vstore(:,:), BB(:,:), &
              nodes_x(:),nodes_y(:),nodes_z(:), xpart(:), ypart(:), zpart(:)
+       LOGICAL :: al
 
        TYPE ProcRecv_t
          INTEGER :: n = 0
@@ -87,21 +88,33 @@
       ! special case "all found":
       !--------------------------
       n = COUNT(.NOT.FoundNodes); dn = n
+
+      AL = .FALSE.
+      IF (.NOT.ASSOCIATED(ParEnv % Active) ) THEN
+        ALLOCATE(Parenv % Active(PArEnv % PEs))
+        AL = .TRUE.
+        ParEnv % Active = .TRUE.
+      END IF
+
       CALL SParActiveSUM(dn,2)
       IF ( dn==0 ) RETURN
 
+
       ! Exchange partition bounding boxes:
       ! ----------------------------------
-      myBB(1) = MINVAL(OldMesh % Nodes % x)
-      myBB(2) = MINVAL(OldMesh % Nodes % y)
-      myBB(3) = MINVAL(OldMesh % Nodes % z)
-      myBB(4) = MAXVAL(OldMesh % Nodes % x)
-      myBB(5) = MAXVAL(OldMesh % Nodes % y)
-      myBB(6) = MAXVAL(OldMesh % Nodes % z)
+      myBB = HUGE(mybb(1))
+      IF(OldMesh % NumberOfNodes /= 0) THEN
+        myBB(1) = MINVAL(OldMesh % Nodes % x)
+        myBB(2) = MINVAL(OldMesh % Nodes % y)
+        myBB(3) = MINVAL(OldMesh % Nodes % z)
+        myBB(4) = MAXVAL(OldMesh % Nodes % x)
+        myBB(5) = MAXVAL(OldMesh % Nodes % y)
+        myBB(6) = MAXVAL(OldMesh % Nodes % z)
 
-      eps2 = 0.1_dp * MAXVAL(myBB(4:6)-myBB(1:3))
-      myBB(1:3) = myBB(1:3) - eps2
-      myBB(4:6) = myBB(4:6) + eps2
+        eps2 = 0.1_dp * MAXVAL(myBB(4:6)-myBB(1:3))
+        myBB(1:3) = myBB(1:3) - eps2
+        myBB(4:6) = myBB(4:6) + eps2
+      END IF
 
       ALLOCATE(BB(6,ParEnv % PEs))
       DO i=1,ParEnv % PEs
@@ -424,6 +437,11 @@
 
       CALL MPI_BARRIER(ParEnv % ActiveComm,ierr)
 
+      IF(AL) THEN
+         DEALLOCATE(Parenv % Active)
+         ParEnv % Active => NULL()
+       END IF
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -549,8 +567,10 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-
        Parallel = (ParEnv % PEs > 1)
+
+       FoundCnt = 0
+       IF ( OldMesh % NumberOfNodes == 0 ) RETURN
 !
 !      If projector argument given, search for existing
 !      projector matrix, or generate new projector, if

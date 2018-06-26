@@ -9,10 +9,6 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Updated April 2013 to use internal Mesh Extrusion
 ! Updated with the Grid2dInterpolator solver
-
-check keywords warn
-echo on
-
 $Step = "step1a"
 
 ! Define the parameter in MPa - a - m
@@ -43,8 +39,8 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  Output File = "teterousse_$Step$.result"
-  Post File = "teterousse_$Step$.vtu"
+!  Output File = "teterousse_$Step$.result"
+!  Post File = "teterousse_$Step$.vtu"
   max output level = 3   
 End
 
@@ -127,6 +123,7 @@ Solver 2
 End
  
 Solver 3
+  Exec Solver = never
   Equation = "Navier-Stokes"
   
   Stabilization Method = String Stabilized
@@ -155,30 +152,11 @@ Solver 4
   Equation = SaveScalars
   Procedure = File "SaveData" "SaveScalars"
   Filename =  "results.dat"
-  File Append = Logical False
+  Show Norm = True
+  Show Norm Index = 1
 
-  Variable 1 = String "dS"
-  Operator 1 = String "int"
-  Variable 2 = String "dS"
-  Operator 2 = String "max"
-  Variable 3 = String "dS"
-  Operator 3 = String "min"
-
-  Variable 4 = String "ZsDEM"
-  Operator 4 = String "int"
-  Variable 5 = String "ZsDEM"
-  Operator 5 = String "max"
-  Variable 6 = String "ZsDEM"
-  Operator 6 = String "min"
-
-  Variable 7 = String "bedrockDEM"
-  Operator 7 = String "int"
-  Variable 8 = String "bedrockDEM"
-  Operator 8 = String "max"
-  Variable 9 = String "bedrockDEM"
-  Operator 9 = String "min"
-
-  Operator 10 = String "Cpu time"
+  Variable 1 = String "Flow Solution"
+  Operator 1 = String "Volume"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -211,12 +189,44 @@ Boundary Condition 3
   Top Surface = Variable ZsDEM, bedrockDEM
     Real MATC "if (tx(0)>tx(1)+1.0) {tx(0)} else {tx(1)+1.0}"
 
-  Save Line = Logical True
+ Save Scalars = logical True
 End
 
 
-Solver 3 :: Reference Norm = Real 0.10225317
-Solver 3 :: Reference Norm Tolerance = Real 1E-06
+Solver 4 :: Reference Norm = Real 2294276.4
+Solver 4 :: Reference Norm Tolerance = Real 1E-06
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.10225317,EPS=1E-0.6\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=2294276.4,EPS=1E-0.6\n" );
+
+Solver 4 :: Reference Norm = Real 0.26978401E+09
+Solver 4 :: Reference Norm Tolerance = Real 1e-6
+Solver 4 :: Variable 1 = ZsDEM
+Solver 4 :: Operator 1 = "boundary int"
+$fprintf( stderr, "TEST CASE 2\n");
+RUN
+$fprintf( stderr, "END TEST CASE 2: Target NRM=0.26978401E+09,EPS=1E-0.6\n" );
+
+Solver 4 :: Reference Norm = Real 0.26744897E+09
+Solver 4 :: Reference Norm Tolerance = Real 1e-6
+Solver 4 :: Variable 1 = bedrockDEM
+Solver 4 :: Operator 1 = "boundary int"
+$fprintf( stderr, "TEST CASE 3\n");
+RUN
+$fprintf( stderr, "END TEST CASE 3: Target NRM=0.26744897E+09,EPS=1E-0.6\n" );
+
+Solver 4 :: Reference Norm = Real 3292.5479
+Solver 4 :: Reference Norm Tolerance = Real 1e-6
+Solver 4 :: Variable 1 = bedrockDEM
+Solver 4 :: Operator 1 = "boundary max"
+$fprintf( stderr, "TEST CASE 4\n");
+RUN
+$fprintf( stderr, "END TEST CASE 4: Target NRM=3292.5479,EPS=1E-0.6\n" );
+
+Solver 4 :: Reference Norm = Real 3099.0610
+Solver 4 :: Reference Norm Tolerance = Real 1e-6
+Solver 4 :: Variable 1 = bedrockDEM
+Solver 4 :: Operator 1 = "boundary min"
+$fprintf( stderr, "TEST CASE 5\n");
+RUN
+$fprintf( stderr, "END TEST CASE 5: Target NRM=3099.0610 ,EPS=1E-0.6\n" );

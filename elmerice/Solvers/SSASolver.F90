@@ -162,7 +162,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
      GLnIP=ListGetInteger( Solver % Values, &
            'GL integration points number',UnFoundFatal=.TRUE. )
      GMSol => VariableGet( Solver % Mesh % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
-     BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock' )
+     BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock',UnFoundFatal=.TRUE. )
   END IF
 
   !--------------------------------------------------------------

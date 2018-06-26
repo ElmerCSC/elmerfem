@@ -56,15 +56,15 @@ Simulation
 
   Output Intervals = 1
 
-  Steady State Max Iterations = 5!400
+  Steady State Max Iterations = 2
   Steady State Min Iterations = 1
 
-!  Output File = "Test_$name$.result"
-!  Post File = "Test_$name$.vtu"
+  !Output File = "Test_$name$.result"
+  !Post File = "Test_$name$.vtu"
 
   Initialize Dirichlet Conditions = Logical False
 
-  max output level = 4
+  max output level = 3
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -157,7 +157,7 @@ Solver 2
    Linear System Iterative Method = GMRES
    Linear System GMRES Restart = 100
    Linear System Preconditioning= ILU0
-   Linear System Convergence Tolerance= 1.0e-10
+   Linear System Convergence Tolerance= 1.0e-08
    Linear System Max Iterations = 1000
 
 ! system self adjoint if Newton is used for the last iterations
@@ -184,7 +184,7 @@ Solver 2
   Exported Variable 4 = DJDBeta
   Exported Variable 4 DOFS = Integer 1
 ! value of the cost function
-  Exported Variable 5 = CostValue
+  Exported Variable 5 = -global CostValue
   Exported Variable 5 DOFS = Integer 1
 ! Variable used to force the adjoint system/update in CostSolver
   Exported Variable 6 = Velocityb
@@ -198,15 +198,8 @@ End
 !!! Compute Cost function
 !!!!!!!!   Has to be run before the Adjoint Solver as adjoint forcing is computed here !!!!!
 Solver 3
-
   Equation = "Cost"
-
-!!  Solver need to be associated => Define dumy variable
-  Variable = -nooutput "CostV"
-  Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "CostSolver_Adjoint"
-
 
   Cost Variable Name = String "CostValue"  ! Name of Cost Variable
 
@@ -218,7 +211,6 @@ end
 
 !!!!  Adjoint Solution
 Solver 4
- 
   Equation = "Adjoint"
   Variable = Adjoint
   Variable Dofs = 4
@@ -242,11 +234,6 @@ End
 !!!!!  Compute Derivative of Cost function / Beta
 Solver 5
   Equation = "DJDBeta"
-
-!!  Solver need to be associated => Define dumy variable
-  Variable = -nooutput "DJDB"
-  Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "DJDBeta_Adjoint"
   
   Flow Solution Name = String "Flow Solution"
@@ -262,11 +249,6 @@ end
 !!!!! Optimization procedure 
 Solver 6
   Equation = "Optimize_m1qn3"
-
-!!  Solver need to be associated => Define dumy variable
-  Variable = -nooutput "UB"
-  Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "Optimize_m1qn3Parallel"
 
   Cost Variable Name = String "CostValue"
@@ -288,9 +270,6 @@ Solver 6
   M1QN3 ndz = Integer 20
 
 end
-
-
-
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Equation 1
@@ -349,8 +328,6 @@ Boundary Condition 4
   !Body Id used to solve
   Body ID = Integer 2
 
-  Save Line = Logical True
-
   Bottom Surface = Variable Coordinate 1
     REAL   procedure "./USF_Init" "zbIni"
 
@@ -374,8 +351,6 @@ End
 Boundary Condition 5
   !Name= "Surface" mandatory to compute cost function
   Name = "Surface"
-  
-  Save Line = Logical True
 
   ! Used by StructuredMeshMapper for initial surface topography
   ! here interpolated from a regular DEM
@@ -394,8 +369,17 @@ Boundary Condition 5
 
 End 
 
-Solver 2 :: Reference Norm = Real 327.41557
-Solver 2 :: Reference Norm Tolerance = Real 1E-04
+Solver 2 :: Reference Norm = Real 321.83520
+Solver 2 :: Reference Norm Tolerance = Real 1E-05
+
+Solver 3 :: Reference Norm = Real 0.59419389E+12
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+
+Solver 4 :: Reference Norm = 395915.02
+Solver 4 :: Reference Norm Tolerance = Real 1E-05
+
+Solver 6 :: Reference Norm = Real 0.32124175E-03
+Solver 6 :: Reference Norm Tolerance = Real 1E-05
+
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=327.41557,EPS=1E-04\n" );

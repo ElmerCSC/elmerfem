@@ -56,15 +56,15 @@ Simulation
 
   Output Intervals = 1
 
-  Steady State Max Iterations = 5!100
+  Steady State Max Iterations = 2!100
   Steady State Min Iterations = 1
 
-  Output File = "Test_$name$.result"
-  Post File = "Test_$name$.ep"
+  !Output File = "Test_$name$.result"
+  !Post File = "Test_$name$.vtu"
 
   Initialize Dirichlet Conditions = Logical False
 
-  max output level = 4
+  max output level = 3
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -181,7 +181,7 @@ Solver 2
   Exported Variable 4 = DJDBeta
   Exported Variable 4 DOFS = Integer 1
 ! value of the cost function
-  Exported Variable 5 = CostValue
+  Exported Variable 5 = -global CostValue
   Exported Variable 5 DOFS = Integer 1
 
   Exported Variable 6 = VsurfIni
@@ -221,15 +221,8 @@ End
 
 !!! Compute Cost function
 Solver 4
-
   Equation = "Cost"
-
-!!  Solver need to be associated => Define dumy variable
-  Variable = -nooutput "CostV"
-  Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "CostSolver_Robin"
-
 
   Cost Variable Name = String "CostValue"  ! Name of Cost Variable
 
@@ -245,11 +238,6 @@ end
 !!!!!  Compute Derivative of Cost function / Beta
 Solver 5
   Equation = "DJDBeta"
-
-!!  Solver need to be associated => Define dumy variable
-  Variable = -nooutput "DJDB"
-  Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "DJDBeta_Robin"
   
   Neumann Solution Name = String "Flow Solution"
@@ -265,11 +253,6 @@ end
 !!!!! Optimization procedure 
 Solver 6
   Equation = "Optimize_m1qn3"
-
-!!  Solver need to be associated => Define dumy variable
-  Variable = -nooutput "UB"
-  Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "Optimize_m1qn3Parallel"
 
   Cost Variable Name = String "CostValue"
@@ -403,8 +386,17 @@ Boundary Condition 5
 
 End 
 
-Solver 2 :: Reference Norm = Real 327.54857
-Solver 2 :: Reference Norm Tolerance = Real 1E-06
+Solver 2 :: Reference Norm = Real 3.22121618E+02
+Solver 2 :: Reference Norm Tolerance = Real 1E-05
+
+Solver 3 :: Reference Norm = Real 3.26902377E+02
+Solver 3 :: Reference Norm Tolerance = Real 1E-05
+
+Solver 4 :: Reference Norm = Real  1.68087993E+07
+Solver 4 :: Reference Norm Tolerance = Real 1E-06
+
+Solver 6 :: Reference Norm = Real 3.10614763E-04
+Solver 6 :: Reference Norm Tolerance = Real 1E-05
+
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=327.54857,EPS=1E-06\n" );

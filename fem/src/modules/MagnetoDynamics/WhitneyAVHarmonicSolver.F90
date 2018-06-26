@@ -33,7 +33,7 @@
 ! *  Original Date: 08 Jun 1997
 ! *
 ! *****************************************************************************/
-
+ 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
@@ -50,7 +50,7 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, PiolaVersion, SecondOrder
-
+  
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
@@ -71,12 +71,14 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
     END IF
   END IF
-  IF( .NOT. ListCheckPresent( SolverParams, 'Linear System Complex') ) &
-    CALL ListAddLogical( SolverParams, 'Linear System Complex', .TRUE. )
+
+  CALL ListAddNewLogical( SolverParams, 'Linear System Complex', .TRUE. )
 
 ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
-  
+
+  CALL ListAddNewString( SolverParams,'Variable','AV[AV re:1 AV im:1]')
+    
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVHarmonicSolver_Init0
 !------------------------------------------------------------------------------
@@ -245,7 +247,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
-  EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
+  EdgeBasis = .NOT. LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
 
   CALL DefaultStart()
 

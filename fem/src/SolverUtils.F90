@@ -4907,7 +4907,7 @@ CONTAINS
 
     !IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
 
-    CALL Info('SetDirichletBoundaries','Number of dofs set: '&
+    CALL Info('SetDirichletBoundaries','Number of dofs set for '//TRIM(Name)//': '&
         //TRIM(I2S(DirCount)),Level=12)
 
     
@@ -6590,7 +6590,7 @@ CONTAINS
           s = 1.0_dp
         END IF
         s = 1._dp / s**2
-
+          
         CALL ZeroRow(A, k)
 
         ! Off-diagonal entries for a block matrix are neglected since the code will
@@ -8154,19 +8154,19 @@ END FUNCTION SearchNodeL
     INTEGER, OPTIONAL :: nsize
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:), RHS(:)
 !------------------------------------------------------------------------------
-    INTEGER :: i, n, nn, RelaxAfter, IterNo, MinIter, MaxIter
+    INTEGER :: i, n, nn, RelaxAfter, IterNo, MinIter, MaxIter, dofs
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
     REAL(KIND=dp), POINTER :: x0(:)
     REAL(KIND=dp) :: Norm, PrevNorm, rNorm, bNorm, Change, PrevChange, Relaxation, tmp(1),dt, &
-        Tolerance, MaxNorm, eps, Ctarget
+        Tolerance, MaxNorm, eps, Ctarget, Poffset, nsum, dpsum
     CHARACTER(LEN=MAX_NAME_LEN) :: ConvergenceType
     INTEGER, TARGET  ::  Dnodes(1)
     INTEGER, POINTER :: Indexes(:)
     TYPE(Variable_t), POINTER :: iterV, VeloVar, TimestepVar, WeightVar
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
-        SkipConstraints, ResidualMode 
+        SkipConstraints, ResidualMode, RelativeP
 
     TYPE(Matrix_t), POINTER :: MMatrix
     REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mb(:), Mr(:)
@@ -8176,7 +8176,7 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: UpdateComponents(:)
 
     SolverParams => Solver % Values
-
+    RelativeP = .FALSE.
     
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
@@ -8199,7 +8199,7 @@ END FUNCTION SearchNodeL
 
       Relaxation = ListGetCReal( SolverParams, &
           'Steady State Relaxation Factor', Relax )
-      Relax = Relax .AND. ABS(Relaxation-1.0_dp) > TINY(Relaxation)
+      Relax = Relax .AND. ABS(Relaxation-1.0_dp) > EPSILON(Relaxation)
 
       iterV => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
       IterNo = iterV % Values(1)
@@ -8217,7 +8217,7 @@ END FUNCTION SearchNodeL
 
       ! Steady state system has never any constraints
       SkipConstraints = .FALSE.
-
+      
     ELSE
       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       IterNo = iterV % Values(1)
@@ -8241,15 +8241,18 @@ END FUNCTION SearchNodeL
           ListGetLogical(SolverParams,'Nonlinear System Convergence Absolute',Stat)
       IF(.NOT. Stat) ConvergenceAbsolute = &
           ListGetLogical(SolverParams,'Use Absolute Norm for Convergence',Stat)
-
+              
       Relaxation = ListGetCReal( SolverParams, &
           'Nonlinear System Relaxation Factor', Relax )
-      Relax = Relax .AND. (Relaxation /= 1.0d0)
+      Relax = Relax .AND. ( ABS( Relaxation - 1.0_dp) > EPSILON( Relaxation ) )
       IF( Relax ) THEN
         RelaxAfter = ListGetInteger(SolverParams,'Nonlinear System Relaxation After',Stat)
         IF( Stat .AND. RelaxAfter >= Solver % Variable % NonlinIter ) Relax = .FALSE.
-      END IF	
 
+        RelativeP = ListGetLogical( SolverParams,'Relative Pressure Relaxation',Stat) 
+        CALL Info('ComputeChange','Using relative pressure relaxation',Level=10)
+      END IF
+      
       SkipConstraints = ListGetLogical(SolverParams,&
           'Nonlinear System Convergence Without Constraints',Stat) 
 
@@ -8311,6 +8314,20 @@ END FUNCTION SearchNodeL
       IF (SIZE(x0) /= SIZE(x)) CALL Info('ComputeChange','WARNING: Possible mismatch in length of vectors!',Level=10)
     END IF
 
+    ! This ensures that the relaxation does not affect the mean of the pressure
+    IF( RelativeP ) THEN
+      dofs = Solver % Variable % Dofs
+
+      dpsum = SUM(x(dofs:n:dofs)) - SUM(x0(dofs:n:dofs)) 
+      nsum = 1.0_dp * n / dofs
+
+      dpsum = ParallelReduction( dpsum ) 
+      nsum = ParallelReduction( nsum )
+
+      Poffset = (1-Relaxation) * dpsum / nsum
+    END IF
+
+    
     IF( ResidualMode ) THEN
       IF(Relax .AND. RelaxBefore) THEN
         x(1:n) = x0(1:n) + Relaxation*x(1:n)
@@ -8320,6 +8337,7 @@ END FUNCTION SearchNodeL
     ELSE 
       IF(Relax .AND. RelaxBefore) THEN
         x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
+        IF( RelativeP ) x(dofs:n:dofs) = x(dofs:n:dofs) + Poffset
       END IF
     END IF
 
@@ -8551,9 +8569,10 @@ END FUNCTION SearchNodeL
 
     IF(Relax .AND. .NOT. RelaxBefore) THEN
       x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
+      IF( RelativeP ) x(dofs:n:dofs) = x(dofs:n:dofs) + Poffset
       Solver % Variable % Norm = ComputeNorm(Solver,n,x)
     END IF
-
+    
     ! Steady state output is done in MainUtils
     SolverName = ListGetString( SolverParams, 'Equation',Stat)
     IF(.NOT. Stat) SolverName = Solver % Variable % Name
@@ -12477,6 +12496,7 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
         END DO
       END DO
 
+      
       DO j=1,Solver % Variable % DOFs
         Name = ComponentName( Solver % Variable % Name, j ) 
 
@@ -12611,6 +12631,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   Aharm => Are % EMatrix
   IF( ASSOCIATED( Aharm ) ) THEN
     CALL Info('ChangeToHarmonicSystem','Found existing harmonic system',Level=10)
+    IF( ALLOCATED( Aharm % ConstrainedDOF ) ) Aharm % ConstrainedDOF = .FALSE.
   ELSE    
     ! Create the matrix if it does not
     
@@ -12648,6 +12669,9 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 
   IF( ASSOCIATED(Are % DampValues) ) THEN
     CALL Info('ChangeToHarmonicSystem','We have damp matrix values',Level=12)
+    IF( Diagonal ) THEN
+      CALL Fatal('ChangeToHarmonicSystem','Damping matrix cannot be block diagonal!')
+    END IF
   ELSE
     CALL Info('ChangeToHarmonicSystem','We do not have damp matrix values',Level=12)
   END IF
@@ -12691,7 +12715,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   END IF
     
   AnyDirichlet = .FALSE.
-
+  
   ! Finally set the Dirichlet conditions for the solver    
   DO j=1,DOFs
     Name = ComponentName( Solver % Variable % Name, j ) 
@@ -12703,17 +12727,21 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       IF( real_given .OR. imag_given ) AnyDirichlet = .TRUE.
 
       IF ( real_given .AND. .NOT. imag_given ) THEN
+        CALL Info('ChangeToHarmonicSystem','Setting zero >'//TRIM(Name)//' im< on BC '//TRIM(I2S(i)),Level=12)
         CALL ListAddConstReal( BC, TRIM(Name) // ' im', 0._dp)
       ELSE IF ( imag_given .AND. .NOT. real_given ) THEN
+        CALL Info('ChangeToHarmonicSystem','Setting zero >'//TRIM(Name)//'< on BC '//TRIM(I2S(i)),Level=12)
         CALL ListAddConstReal( BC, Name, 0._dp )
       END IF
     END DO
   END DO
 
+
+
   IF( AnyDirichlet ) THEN
     DO j=1,DOFs
       Name = ComponentName( SaveVar % Name, j ) 
-
+      
       CALL SetDirichletBoundaries( CurrentModel, Aharm, b, Name, &
           2*j-1, 2*DOFs, SaveVar % Perm )
 
@@ -12725,6 +12753,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   END IF
 
 
+  
   ! Create the new fields, the total one and the imaginary one
   !-------------------------------------------------------------
   k = INDEX( SaveVar % name, '[' )
@@ -14189,13 +14218,14 @@ CONTAINS
     INTEGER :: i,j,ii,jj,k,n,t,istat,pn,ifluid,jstruct,pcomp
     TYPE(Element_t), POINTER :: Element, Parent
     TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Solver_t), POINTER :: PSolver
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:)
     REAL(KIND=dp), POINTER :: Basis(:)
     REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area, fdiag
     LOGICAL :: Stat, IsHarmonic
     INTEGER :: dim,mat_id,tcount
-    LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, Found
+    LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, UseDensity, Found
     LOGICAL, ALLOCATABLE :: NodeDone(:)
     REAL(KIND=dp) :: MultSF, MultFS
     
@@ -14222,6 +14252,20 @@ CONTAINS
 
     IF( IsNS ) CALL Info('FsiCouplingAssembly','Assuming fluid to have velocities',Level=8)
 
+
+    UseDensity = .FALSE.
+    DO i=1,CurrentModel % NumberOfSolvers
+      PSolver => CurrentModel % Solvers(i)      
+      IF( ASSOCIATED( PSolver % Variable, FVar ) ) THEN
+        UseDensity = ListGetLogical( PSolver % Values,'Use Density',Found ) 
+        EXIT
+      END IF
+    END DO
+    IF( UseDensity ) THEN
+      CALL Info('FsiCouplingAssembly','The Helmholtz equation is multiplied by density',Level=10)
+    END IF
+    
+    
     ConstrainedF => A_f % ConstrainedDof
     ConstrainedS => A_s % ConstrainedDof
     
@@ -14296,7 +14340,6 @@ CONTAINS
     ELSE
       Omega = 0.0_dp
     END IF
-    
     
     i = SIZE( FVar % Values ) 
     j = SIZE( SVar % Values ) 
@@ -14395,8 +14438,13 @@ CONTAINS
       END IF
       
       ! The sign depends on the convection of the normal direction
-      coeff = rho * omega**2
-
+      ! If density is divided out already in the Helmholtz equation the multiplier will
+      ! be different. 
+      IF( UseDensity ) THEN
+        coeff = omega**2
+      ELSE
+        coeff = rho * omega**2
+      END IF
       
       ! Numerical integration:
       !----------------------
@@ -14452,12 +14500,14 @@ CONTAINS
                           
             ! Shell and 3D elasticity are both treated with the same routine
             IF( .NOT. IsPlate ) THEN
+
               IF( IsHarmonic ) THEN
                 val = omega
                 jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
               ELSE
                 CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')               
               END IF
+
                 
             ELSE ! If IsPlate
               IF( IsHarmonic ) THEN              
@@ -14500,7 +14550,7 @@ CONTAINS
         END DO
 
       ELSE ! .NOT. IsNS
-        ! For pressure equations (Helmholz) the structure applies as Neumann condition for the normal traction
+        ! For pressure equations (Helmholtz) the structure applies a Neumann condition
         
         DO i=1,n
           ii = Indexes(i)
@@ -14533,7 +14583,13 @@ CONTAINS
                 IF( IsHarmonic ) THEN
                   jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
 
-                  ! Structure load on the fluid: dp/dn = -rho*omega^2*n
+                  ! Structure load on the fluid: This assembles
+                  !
+                  !    -1/rho <dp/dn,v> = -omega^2 <u.n,v> = omega^2 <u.m,v> 
+                  !
+                  ! with the normal vectors satisfying m = -n. Note that the density (rho) 
+                  ! must be defined for Helmholtz solver to make it assemble a system
+                  ! consistent with the boundary integral -1/rho <dp/dn,v>.
                   IF( FreeF ) THEN
                     CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
                   ELSE
@@ -14546,14 +14602,14 @@ CONTAINS
                     CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
                   END IF
 
-                  ! These must be created for compleness bacause the matrix topology of complex
-                  ! matrices must be the same for all compoents.
+                  ! These must be created for completeness because the matrix topology of complex
+                  ! matrices must be the same for all components.
                   CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
                   CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
                 ELSE
                   jstruct = sdofs*(SPerm(jj)-1)+k
 
-                  ! Structure load on the fluid: dp/dn = -u
+                  ! Structure load on the fluid: dp/dn = -u. (This seems strange???)
                   IF( FreeF ) THEN
                     CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
                   END IF
@@ -14571,7 +14627,7 @@ CONTAINS
               IF( IsHarmonic ) THEN
                 jstruct = sdofs*(SPerm(jj)-1)+1
 
-                ! Structure load on the fluid: dp/dn = -rho*omega^2*n
+                ! Structure load on the fluid: -1/rho dp/dn = -omega^2 u.n = omega^2 u.m
                 IF( FreeF ) THEN
                   CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
                 ELSE
@@ -14591,7 +14647,7 @@ CONTAINS
               ELSE
                 jstruct = sdofs*(SPerm(jj)-1)+1
 
-                ! Structure load on the fluid: dp/dn = -u
+                ! Structure load on the fluid: dp/dn = -u. (This seems strange???)
                 IF( FreeF ) THEN
                   CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
                 END IF
@@ -14621,7 +14677,7 @@ CONTAINS
 
         DO j=1,n
           jj = Indexes(j)
-
+          
           ! Shell and 3D elasticity are both treated with the same routine
           IF( .NOT. IsPlate ) THEN
 
@@ -14730,15 +14786,15 @@ CONTAINS
       CALL List_toCRSMatrix(A_sf)
     END IF
       
-    PRINT *,'interface area:',area
-    PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
-    PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
+    !PRINT *,'interface area:',area
+    !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
+    !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
     CALL Info('FsiCouplingAssembly','Number of elements on interface: '&
         //TRIM(I2S(tcount)),Level=10)    
-    CALL Info('FsiCouplingAssembly','Number of entries if fluid-structure matrix: '&
+    CALL Info('FsiCouplingAssembly','Number of entries in fluid-structure matrix: '&
         //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
-    CALL Info('FsiCouplingAssembly','Number of entries if structure-fluid matrix: '&
+    CALL Info('FsiCouplingAssembly','Number of entries in structure-fluid matrix: '&
         //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
     
     CALL Info('FsiCouplingAssembly','All done',Level=20)

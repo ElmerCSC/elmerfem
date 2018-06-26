@@ -1,0 +1,71 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  5.0                                   |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    location    "15000/mb1";
+    object      T;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [0 0 0 1 0 0 0];
+
+internalField   nonuniform List<scalar> 
+16
+(
+293.81678326
+294.002503435
+293.967925573
+293.975317991
+293.887062669
+293.833164823
+293.94622371
+293.920564478
+293.95792572
+293.84661401
+294.002183629
+293.927047756
+293.872128085
+293.98446563
+293.902169279
+293.864901232
+)
+;
+
+boundaryField
+{
+    back
+    {
+        type            wedge;
+    }
+    front
+    {
+        type            wedge;
+    }
+    mb1_to_fluid
+    {
+        type            compressible::turbulentTemperatureRadCoupledMixed;
+        refValue        nonuniform List<scalar> 10(293.566898963 294.236222909 293.807409457 293.76733204 293.94729316 294.068735602 293.963906037 294.169792024 293.950442022 293.99387751);
+        refGradient     uniform 0;
+        valueFraction   nonuniform List<scalar> 10(0.0553060598155 0.023858411697 0.0471503976437 0.0299074338187 0.0210651576891 0.0477066627817 0.0432301683567 0.0437795613348 0.0691484292718 0.0444484709029);
+        value           nonuniform List<scalar> 10(293.771297971 293.892111481 293.835884029 293.795192324 293.875484642 293.897293313 293.818658566 293.900650507 293.887622015 293.860737559);
+        Tnbr            T;
+        qrNbr           none;
+        qr              none;
+        thicknessLayers 0();
+        kappaLayers     0();
+        kappaMethod     solidThermo;
+        kappa           none;
+        alphaAni        Anialpha;
+    }
+}
+
+
+// ************************************************************************* //

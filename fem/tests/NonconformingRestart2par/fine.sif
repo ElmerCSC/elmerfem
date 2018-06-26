@@ -1,0 +1,172 @@
+! Test case for nonconforming restart.
+!
+! This case in parallel. There are very minimal changes in sif but still
+! enough to require a separate test case. 
+!
+! P.R. 6.6.2018
+
+
+Header
+  Mesh DB "." "mesh_fine"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  ! For interpolation it seems to be important to tell the dimension
+  Coordinate System = Cartesian 2D
+
+  Max Output Level = 7
+
+! For debugging
+! Max Output Partition = 10
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "fine.vtu"
+
+  Initialize Dirichlet Conditions = False
+  Restart Before Initial Conditions = Logical True
+  Restart Error Continue = Logical True  ! continues even if mismatch in number of partitions
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(2) = 1 2 
+End
+
+Initial Condition 1
+! This will effectively do the same as VariableGet() in InterpSolver since the system
+! knows that coarse pressure is invalidated while fine pressure is not.  
+  Pressure = Equals "Pressure"
+  Velocity 1 = Equals "Velocity 1"
+  Velocity 2 = Equals "Velocity 2"
+End
+ 
+
+
+Solver 1
+  Equation = "Navier-Stokes"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+
+  Stabilization Method = String Stabilized
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-2
+  Nonlinear System Relaxation Factor = 1.0
+
+! For the testing use "never"
+!  Exec Solver = never
+End
+
+
+Solver 2
+  Equation = "ISolver"
+
+! Perform the interpolation solver before all other solvers, only once.
+  Exec Solver = Before all
+  Procedure = "Mesh2MeshSolver" "Mesh2MeshSolver"
+
+! The leading variable + exported variables that follow that
+! The variables that we want to restart should be in this list,
+! or they can be allocated by some other solver associcated to the "coarse" mesh.
+  Variable = Flow Solution[Pressure Velocity:2]
+  Exported Variable 1 = Trigo
+  Exported Variable 2 = Height
+
+  Mesh = -part 2 "mesh_coarse"  ! in parallel when initial computation in several partitions
+
+  Restart File = File "coarse.dat"
+  Restart Error Continue = Logical True  ! continues even if mismatch in number of partitions
+
+! If there are several meshes to choose from
+! Target Mesh Solver Index = Integer 1
+
+! The variables to be interpolated
+  Variable 1 = Trigo
+  Variable 2 = Height 
+
+! These are treated by the initial guess automatically
+!  Variable 1 = Pressure 
+!  Variable 2 = Velocity 1
+!  Variable 3 = Velocity 2
+End
+
+
+Solver 3
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Parallel Reduce = Logical True
+  Filename = f.dat
+
+  Variable 1 = Trigo
+  Operator 1 = int 
+
+  Show Norm Index = 1
+End 
+
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1
+  Viscosity = 0.01
+
+  Heat Conductivity = 1
+End
+
+Boundary Condition 1
+  Name = "BC1"
+
+  Target Boundaries = 1
+
+  Velocity 1 = 1.0
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "BC2"
+  Target Boundaries = 2
+
+  Pressure = 0
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "BC3"
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+Solver 3 :: Reference Norm = 2.93908778E-01

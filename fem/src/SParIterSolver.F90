@@ -2108,7 +2108,8 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   CHARACTER(LEN=MAX_NAME_LEN) :: Preconditioner
 
   TYPE(Matrix_t), POINTER :: CM,SaveMatrix
-  INTEGER, POINTER :: SPerm(:), SCols(:)
+  INTEGER, POINTER :: SPerm(:)
+  INTEGER, POINTER CONTIG :: SCols(:)
 
 #ifdef USE_ISO_C_BINDINGS
   REAL(kind=dp)::tt,rt
