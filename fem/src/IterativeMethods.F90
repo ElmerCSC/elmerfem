@@ -2284,7 +2284,7 @@ CONTAINS
          Residual = rnorm / bnorm
         
          IF( MOD(k,OutputInterval) == 0) THEN
-            WRITE (*, '(A, I8, E11.4)') '   gcrz:',k, residual, beta
+           WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
          END IF
         
          Converged = (Residual < MinTolerance)
