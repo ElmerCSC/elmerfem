@@ -131,7 +131,8 @@ INCLUDE "mpif.h"
       REAL(KIND=dp), TARGET :: Solution(n), Solution_im(n),ForceVector(n)
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL, s, Residual(n), LinConv, ILUTOL
 !
-      REAL(KIND=dp), POINTER :: SaveValues(:), SaveRhs(:)
+      REAL(KIND=dp), POINTER CONTIG ::  SaveRhs(:)
+      REAL(KIND=dp), POINTER :: SaveValues(:)
       CHARACTER(LEN=MAX_NAME_LEN) :: str, Method
 
       INTEGER :: me

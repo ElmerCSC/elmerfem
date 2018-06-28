@@ -150,7 +150,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   
   REAL (KIND=DP), POINTER :: ForceVector(:), Potential(:), Displacement(:,:)
   REAL (KIND=DP), POINTER :: Field(:),Flux(:),Energy(:),PermIso(:)
-  REAL (KIND=dp), POINTER :: PValues(:),Charges(:)
+  REAL (KIND=dp), POINTER CONTIG :: PValues(:)
+  REAL (KIND=dp), POINTER :: Charges(:)
   REAL (KIND=DP), POINTER :: Pwrk(:,:,:), Pz_w(:,:,:)
   REAL (KIND=DP), ALLOCATABLE :: CapMatrix(:,:),CapMatrixPara(:,:)
   REAL (KIND=DP), ALLOCATABLE ::  Permittivity(:,:,:), PiezoCoeff(:,:,:), &

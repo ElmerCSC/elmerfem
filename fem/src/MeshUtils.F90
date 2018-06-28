@@ -2635,7 +2635,8 @@ END SUBROUTINE GetMaxDefs
    !------------------------------------------------------------------------------    
    SUBROUTINE MapCoordinates()
 
-     REAL(KIND=dp), POINTER :: NodesX(:), NodesY(:), NodesZ(:), Wrk(:,:)
+     REAL(KIND=dp), POINTER CONTIG :: NodesX(:), NodesY(:), NodesZ(:)
+     REAL(KIND=dp), POINTER :: Wrk(:,:)
      INTEGER, POINTER :: CoordMap(:)
      REAL(KIND=dp) :: CoordScale(3)
      INTEGER :: mesh_dim, model_dim
@@ -9922,7 +9923,7 @@ END SUBROUTINE GetMaxDefs
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Bmesh
     INTEGER :: FlatDim, MeshDim, MinDiffI, i, j
-    REAL(KIND=dp), POINTER :: Coord(:)
+    REAL(KIND=dp), POINTER CONTIG :: Coord(:)
     REAL(KIND=dp) :: Diff, MaxDiff, MinDiff, RelDiff, RelDiff1
     LOGICAL :: Found, ReduceDim
 
@@ -10170,7 +10171,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     LOGICAL :: Found
-    REAL(KIND=dp), POINTER :: NodesX(:), NodesY(:), NodesZ(:), Wrk(:,:)
+    REAL(KIND=dp), POINTER CONTIG:: NodesX(:), NodesY(:), NodesZ(:), Wrk(:,:)
     INTEGER, POINTER :: CoordMap(:)
     INTEGER :: MeshNo
     TYPE(Mesh_t), POINTER :: BMesh
@@ -16621,8 +16622,8 @@ CONTAINS
     !---------------------------------------------------------------   
     REAL(KIND=dp) :: R0(3),R1(3),Coeff,Rad0
     LOGICAL :: Irreversible,FirstTime,Reuse,UpdateNodes,Found
-    REAL(KIND=dp), POINTER :: x0(:),y0(:),z0(:),x1(:),y1(:),z1(:), &
-            NewCoords(:)
+    REAL(KIND=dp), POINTER :: x0(:),y0(:),z0(:),x1(:),y1(:),z1(:)
+    REAL(KIND=dp), POINTER CONTIG :: NewCoords(:)
     INTEGER :: i,j,k,n,Mode
     TYPE(Variable_t), POINTER :: Var
 

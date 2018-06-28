@@ -3090,7 +3090,8 @@ CONTAINS
         AllDirFlag, Robust, ReduceStep
     INTEGER, POINTER :: Rows(:),Cols(:),Indexes(:),AllPerm(:)
     TYPE(ListMatrix_t), POINTER :: Alist(:) => NULL()
-    REAL(KIND=dp), POINTER :: ForceVector(:),AllValues(:)
+    REAL(KIND=dp), POINTER :: AllValues(:)
+    REAL(KIND=dp), POINTER CONTIG :: ForceVector(:)
     LOGICAL, POINTER :: AllDir(:)
     TYPE (Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: Component(:)

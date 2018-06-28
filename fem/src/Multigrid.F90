@@ -3389,8 +3389,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTEGER, PARAMETER :: FSIZE=1000, CSIZE=100
        INTEGER :: i, j, k, l, Fdofs, Cdofs, ind, ci, cj, Component1, Components, node
-       REAL(KIND=dp), POINTER :: PValues(:), FValues(:)
-       INTEGER, POINTER :: FRows(:), FCols(:), PRows(:), PCols(:), CoeffsInds(:)
+       REAL(KIND=dp), POINTER CONTIG :: PValues(:)
+       REAL(KIND=dp), POINTER :: FValues(:)
+       INTEGER, POINTER :: FRows(:), FCols(:), CoeffsInds(:)
+       INTEGER, POINTER CONTIG :: PRows(:), PCols(:)
        REAL(KIND=dp) :: bond, VALUE, possum, negsum, poscsum, negcsum, diagsum, &
            ProjLim, negbond, posbond, maxbond
        LOGICAL :: Debug, AllocationsDone, DirectInterpolate, Lumping
@@ -3906,8 +3908,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTEGER, PARAMETER :: FSIZE=1000, CSIZE=100
        INTEGER :: i, j, k, l, Fdofs, Cdofs, ind, ci, cj, Component1, Components, node
-       REAL(KIND=dp), POINTER :: PValues(:), FValues(:)
-       INTEGER, POINTER :: FRows(:), FCols(:), PRows(:), PCols(:), CoeffsInds(:)
+       REAL(KIND=dp), POINTER CONTIG :: PValues(:)
+       REAL(KIND=dp), POINTER :: FValues(:)
+       INTEGER, POINTER :: FRows(:), FCols(:), CoeffsInds(:)
+       INTEGER, POINTER CONTIG :: PRows(:), PCols(:)
        REAL(KIND=dp) :: bond, VALUE, possum, negsum, poscsum, negcsum, diagsum, &
            ProjLim, negbond, posbond, maxbond
        LOGICAL :: Debug, AllocationsDone, DirectInterpolate, Lumping
@@ -4155,8 +4159,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTEGER, PARAMETER :: FSIZE=1000, CSIZE=100
        INTEGER :: i, j, k, l, Fdofs, Cdofs, ind, ci, cj, node
-       REAL(KIND=dp), POINTER :: PValues(:), FValues(:)
-       INTEGER, POINTER :: FRows(:), FCols(:), PRows(:), PCols(:), CoeffsInds(:)
+       REAL(KIND=dp), POINTER CONTIG :: PValues(:)
+       REAL(KIND=dp), POINTER :: FValues(:)
+       INTEGER, POINTER :: FRows(:), FCols(:), CoeffsInds(:)
+       INTEGER, POINTER CONTIG :: PRows(:), PCols(:)
        REAL(KIND=dp) :: bond, ProjLim, posbond, maxbond
        LOGICAL :: Debug, AllocationsDone, DirectInterpolate, Lumping
        INTEGER :: inds(FSIZE), posinds(CSIZE), no, diag, InfoNode, posi, &
@@ -5112,7 +5118,8 @@ CONTAINS
     INTEGER, POINTER :: CF(:), InvCF(:), Iters(:)
     
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:),  Solution2(:)
-    REAL(KIND=dp), POINTER CONTIG :: TmpArray(:,:), Residual2(:)
+    REAL(KIND=dp), POINTER CONTIG :: Residual2(:)
+    REAL(KIND=dp), POINTER :: TmpArray(:,:)
     REAL(KIND=dp) :: ResidualNorm, RHSNorm, Tolerance, ILUTOL, Alpha, Rnorm
 #ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: tt, tmp

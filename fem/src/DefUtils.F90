@@ -3063,7 +3063,8 @@ CONTAINS
 
     TYPE(Matrix_t), POINTER   :: A
     TYPE(Variable_t), POINTER :: x
-    REAL(KIND=dp), POINTER CONTIG :: b(:), SOL(:)
+    REAL(KIND=dp), POINTER CONTIG :: b(:)
+    REAL(KIND=dp), POINTER :: SOL(:)
 
     LOGICAL :: Found, BackRot
 
@@ -3248,7 +3249,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
      REAL(KIND=dp), POINTER CONTIG   :: b(:)
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
@@ -3452,7 +3453,7 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-     REAL(KIND=dp), POINTER    :: b(:), SaveValues(:)
+     REAL(KIND=dp), POINTER  CONTIG :: b(:), SaveValues(:)
 
      REAL(KIND=dp), POINTER :: G(:,:), F(:)
 
@@ -3761,7 +3762,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp),  POINTER :: SaveValues(:)
+     REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
@@ -3827,7 +3828,7 @@ CONTAINS
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
      REAL(KIND=dp), ALLOCATABLE :: M(:,:)
-     REAL(KIND=dp),  POINTER :: SaveValues(:)
+     REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n,DOFs
      INTEGER, POINTER :: Indexes(:)
@@ -4040,7 +4041,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
@@ -4106,7 +4107,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      REAL(KIND=dp), ALLOCATABLE :: B(:,:)
 
@@ -4186,7 +4187,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
@@ -4259,7 +4260,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      REAL(KIND=dp), ALLOCATABLE :: B(:,:),F(:)
 
