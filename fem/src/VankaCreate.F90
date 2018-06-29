@@ -48,7 +48,7 @@
       TYPE(SplittedMatrixT), POINTER :: SP
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: i
-      REAL(KIND=dp), POINTER :: SaveValues(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
       TYPE(BasicMatrix_t), POINTER :: SaveIF(:)
 !-------------------------------------------------------------------------------
       A => GlobalMatrix
@@ -97,7 +97,7 @@
      TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
      INTEGER, POINTER :: Diag(:), Rows(:), Cols(:), Perm(:), Indexes(:), Ind(:)
-     REAL(KIND=dp), POINTER :: ILUValues(:), SValues(:), TotValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: ILUValues(:), SValues(:), TotValues(:)
      REAL(KIND=dp), ALLOCATABLE :: al(:,:)
      LOGICAL ::  found
      TYPE(Element_t), POINTER :: Element

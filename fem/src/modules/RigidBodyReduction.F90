@@ -90,7 +90,8 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
   REAL(KIND=dp), POINTER :: LocalEigenVectors(:,:), ElimDiriEigenVectors(:,:)
   REAL(KIND=dp), POINTER :: CenterOfRigidBody(:,:), NodeOutput(:), NodeTypes(:)
   REAL(KIND=dp), POINTER :: FVector(:), XVector(:)
-  REAL(KIND=dp), POINTER :: f(:), u(:), u2(:)
+  REAL(KIND=dp), POINTER :: u(:), u2(:)
+  REAL(KIND=dp), POINTER CONTIG :: f(:)
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: TotTime, at, s, val
 #else
@@ -1200,7 +1201,7 @@ CONTAINS
 
     INTEGER, ALLOCATABLE :: RowPerm(:)
     INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
-    REAL(KIND=dp), POINTER :: Values(:), MassValues(:), DampValues(:)
+    REAL(KIND=dp), POINTER CONTIG :: Values(:), MassValues(:), DampValues(:)
 
 
     Diag   => A % Diag
@@ -1593,8 +1594,9 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A
     LOGICAL, OPTIONAL :: DoneAlready
 
-    REAL(KIND=dp), POINTER :: Vals(:), MassVals(:), DampVals(:), b(:)
-    INTEGER, POINTER :: Rows(:), Cols(:), Diag(:), RowEntrys(:)
+    REAL(KIND=dp), POINTER CONTIG :: Vals(:) 
+    REAL(KIND=dp), POINTER CONTIG :: MassVals(:), DampVals(:), b(:)
+    INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:), RowEntrys(:)
     INTEGER, POINTER :: NewPerm(:), NbrNeighbors(:,:), TempCol(:)
     INTEGER :: RowCompleted, RowAdded, Lag, TempMin
     INTEGER :: i, j, k, n, istat

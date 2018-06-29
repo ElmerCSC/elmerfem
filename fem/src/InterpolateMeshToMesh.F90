@@ -547,7 +547,8 @@ CONTAINS
            TryLinear, KeepUnfoundNodesL
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
-       INTEGER, POINTER   :: Rows(:), Cols(:), Diag(:)
+       INTEGER, POINTER   CONTIG :: Rows(:), Cols(:)
+       INTEGER, POINTER    :: Diag(:)
 
        TYPE Epntr_t
          TYPE(Element_t), POINTER :: Element
@@ -559,7 +560,8 @@ CONTAINS
        LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, ProjectorAllocated
        INTEGER :: eps_tries, nrow, PassiveCoordinate
        REAL(KIND=dp) :: eps1 = 0.1, eps2, eps_global, eps_local, eps_basis,eps_numeric
-       REAL(KIND=dp), POINTER :: Values(:), LocalU(:), LocalV(:), LocalW(:)
+       REAL(KIND=dp), POINTER CONTIG :: Values(:) 
+       REAL(KIND=dp), POINTER :: LocalU(:), LocalV(:), LocalW(:)
 
        TYPE(Nodes_t), SAVE :: Nodes
 

@@ -615,7 +615,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, ALLOCATABLE :: Pivot(:), TorqueGroups(:)
    INTEGER, POINTER :: MasterBodies(:)
 
-   REAL(KIND=dp), POINTER :: Fsave(:), HB(:,:)=>NULL(), CubicCoeff(:)=>NULL(), &
+   REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
+   REAL(KIND=dp), POINTER :: HB(:,:)=>NULL(), CubicCoeff(:)=>NULL(), &
      HBBVal(:), HBCval(:), HBHval(:)
    REAL(KIND=dp) :: Babs
    TYPE(Mesh_t), POINTER :: Mesh
@@ -2527,7 +2528,7 @@ CONTAINS
  SUBROUTINE GlobalSol(Var, m, b, dofs )
 !------------------------------------------------------------------------------
    IMPLICIT NONE
-   REAL(KIND=dp), TARGET :: b(:,:)
+   REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
    TYPE(Variable_t), POINTER :: Var
 !------------------------------------------------------------------------------

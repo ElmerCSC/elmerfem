@@ -817,7 +817,7 @@ SUBROUTINE RichardsPostprocess( Model,Solver,dt,Transient )
   INTEGER :: i,j,dim,DOFs,ActiveCoordinate
   LOGICAL :: Found, ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
   REAL(KIND=dp) :: Unorm, Totnorm, FluxMultiplier
-  REAL(KIND=dp), POINTER :: ForceVector(:,:), SaveRHS(:)
+  REAL(KIND=dp), POINTER CONTIG :: ForceVector(:,:), SaveRHS(:)
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
 #else

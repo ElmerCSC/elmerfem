@@ -2128,7 +2128,7 @@ CONTAINS
    TYPE(Model_t) :: Model
 ! TARGET only for CurrentElement
    TYPE(Element_t), TARGET :: LineElement
-   REAL(KIND=dp), DIMENSION(:,:), TARGET :: LineElementNodes
+   REAL(KIND=dp), DIMENSION(:,:), TARGET CONTIG :: LineElementNodes
    CHARACTER(LEN=*) :: IntegrandFunctionName
    REAL(KIND=dp) :: Integral
    LOGICAL :: QuadrantTreeExists
