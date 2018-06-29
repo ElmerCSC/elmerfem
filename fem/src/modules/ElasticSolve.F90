@@ -216,7 +216,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: GotForceBC, GotFSIBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
        AxialSymmetry
-  LOGICAL :: UseUMAT, InitializeStateVars
+  LOGICAL :: UseUMAT, InitializeStateVars, HenckyStrain
   LOGICAL :: LargeDeflection
   LOGICAL :: MixedFormulation
   LOGICAL :: PseudoTraction, GlobalPseudoTraction
@@ -563,6 +563,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
     END IF
 
     CALL ListAddLogical(SolverParams, 'Skip Compute Nonlinear Change', .TRUE.)
+    HenckyStrain = ListGetLogical(SolverParams, 'Use Hencky strain', GotIt)
   END IF
 
   !------------------------------------------------------------------------------
@@ -579,6 +580,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        'Elasticity Solver Linear', GotIt )
   LargeDeflection = ListGetLogical(SolverParams, 'Large Deflection', GotIt)
   IF (.NOT. GotIt) LargeDeflection = .TRUE.
+
+  IF (.NOT. LargeDeflection) HenckyStrain = .FALSE.
 
   GlobalPseudoTraction = GetLogical( SolverParams, 'Pseudo-Traction', GotIt)
 
@@ -785,7 +788,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                    LocalStiffMatrix, LocalForce, LocalExternalForce, dt, LoadVector, InertialLoad, &
                    MaterialConstants, NPROPS, PointwiseStateV, PointwiseStateV0, NSTATEV, &
                    MaxIntegrationPoints, InitializeStateVars, Density, Damping, AxialSymmetry, &
-                   PlaneStress, LargeDeflection, CurrentElement, n, nd, ntot, STDOFs, &
+                   PlaneStress, LargeDeflection, HenckyStrain, CurrentElement, n, nd, ntot, STDOFs, &
                    ElementNodes, LocalDisplacement, PrevLocalDisplacement, LocalTemperature, &
                    t, Iter)
 
@@ -1230,7 +1233,7 @@ CONTAINS
        ExternalForceVector, dt, LoadVector, InertialLoad, MaterialConstants, &
        NrInProps, PointwiseStateV, PointwiseStateV0, NStateV, MaxMaterialPoints, &
        InitializeStateVars, NodalDensity, NodalDamping, AxialSymmetry, PlaneStress, &
-       LargeDeflection, Element, n, nd, ntot, dofs, Nodes, NodalDisplacement, &
+       LargeDeflection, HenckyStrain, Element, n, nd, ntot, dofs, Nodes, NodalDisplacement, &
        PrevNodalDisplacement, NodalTemperature, ElementIndex, IterationIndex)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MassMatrix(:,:), DampMatrix(:,:), StiffMatrix(:,:)
@@ -1243,6 +1246,7 @@ CONTAINS
     LOGICAL :: InitializeStateVars
     REAL(KIND=dp) :: NodalDensity(:), NodalDamping(:)
     LOGICAL :: AxialSymmetry, PlaneStress, LargeDeflection
+    LOGICAL :: HenckyStrain
     TYPE(Element_t) :: Element
     INTEGER :: n, nd, ntot, dofs
     TYPE(Nodes_t) :: Nodes
@@ -1253,36 +1257,30 @@ CONTAINS
     !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-    REAL(KIND=dp) :: SymBasis1(1:3,1:3), SymBasis2(1:3,1:3), SymBasis3(1:3,1:3)
-    REAL(KIND=dp) :: SymBasis4(1:3,1:3), SymBasis5(1:3,1:3), SymBasis6(1:3,1:3)
+    REAL(KIND=dp) :: SymBasis1(3,3), SymBasis2(3,3), SymBasis3(3,3)
+    REAL(KIND=dp) :: SymBasis4(3,3), SymBasis5(3,3), SymBasis6(3,3)
     REAL(KIND=dp) :: Identity(3,3)
 
     REAL(KIND=dp) :: Basis(ntot), dBasis(ntot,3), SqrtElementMetric
     REAL(KIND=dp) :: B(6,ntot*dofs)
     REAL(KIND=dp) :: Force(3), InertialForce(3)
     REAL(KIND=dp) :: Density, Damping, Temperature
-
     REAL(KIND=dp) :: Strain(3,3), Strain0(3,3)
-    REAL(KIND=dp) :: dStrain(3,3), dStrainU(3,3)
     REAL(KIND=dp) :: Stress(3,3), Stress0(3,3), Stress1(3,3), Stress2(3,3)
-    REAL(KIND=dp) :: dStress1(3,3), dStress2(3,3), dStress1U(3,3), dStress2U(3,3)
+    REAL(KIND=dp) :: dStress1(3,3)
     REAL(KIND=dp) :: Grad(3,3), Grad0(3,3)
     REAL(KIND=dp) :: InvDefG(3,3), DetDefG
     REAL(KIND=dp) :: InvDefG0(3,3), DetDefG0
-    REAL(KIND=dp) :: dDefG(3,3), dDefGU(3,3)
     REAL(KIND=dp) :: C(3,3), InvC(3,3)
-    REAL(KIND=dp) :: EigenC(3,3)
+!    REAL(KIND=dp) :: EigenC(3,3)
 
     REAL(KIND=dp) :: WorkTensor1(3,3), WorkTensor2(3,3), WorkTensor3(3,3)
-    REAL(KIND=dp) :: Tensor1(3,3), Tensor2(3,3), Tensor3(3,3) 
-    REAL(KIND=dp) :: RHSTensor1(3,3), RHSTensor2(3,3), RHSTensor3(3,3)
     REAL(KIND=dp) :: WorkVec1(1:6,1), WorkVec2(1:6,1)
     REAL(KIND=dp) :: s, u, v, w, r
 
     INTEGER :: i, j, k, l, p, q, t, dim, cdim, totdofs
 
     LOGICAL :: stat
-    LOGICAL :: HenckyStrain
 
     ! -----------------------------------------------------------------------------
     ! Variables for calling an UMAT subroutine that defines the material behaviour.
@@ -1338,8 +1336,6 @@ CONTAINS
     IF (PlaneStress) CALL Fatal('LocalMatrixWithUMAT', 'Cannot yet handle plane stress case')
     IF (ntot > nd) CALL Fatal('LocalMatrixWithUMAT', 'Static condensation of bubbles is missing')
 
-    HenckyStrain = .FALSE.   ! A tentative flag for switching to the Hencky (logarithmic) strain
-
     ! ---------------------------------------------------------------------------------
     ! Six basis vectors for expressing symmetric tensors: The components of the 
     ! engineering strain vector [E_11 E_22 E_33 2E_12 2E_13 2E_23] are thus the 
@@ -1389,10 +1385,15 @@ CONTAINS
        InProps(i) = MaterialConstants(i,1)  
     END DO
 
-    IF (LargeDeflection) THEN
-      cmname = 'stvenant-kirchhoff'//CHAR(0)
+    ! The material model name is used as a switch between some examples of implementation:
+    IF (HenckyStrain) THEN
+      cmname = 'hencky-stvenant-kirchhoff'//CHAR(0)
     ELSE
-      cmname = 'linear isotropic'//CHAR(0)
+      IF (LargeDeflection) THEN
+        cmname = 'stvenant-kirchhoff'//CHAR(0)
+      ELSE
+        cmname = 'linear isotropic'//CHAR(0)
+      END IF
     END IF
 
     dtime = dt
@@ -1489,10 +1490,12 @@ CONTAINS
       END IF
 
       SELECT_STRAIN_MEASURE: IF (HenckyStrain) THEN
+        ! TO DO:
+        ! - warn if a Hencky umat has not been implemented
         ! --------------------------------------------
         ! The right Cauchy-Green deformation tensor 
         ! --------------------------------------------
-        C = MATMUL( TRANSPOSE(DefG), DefG )
+        C = MATMUL( TRANSPOSE(DefG0), DefG0 )
 
         ! -----------------------------------------------------------
         ! Compute the spectral decomposition of C
@@ -1508,23 +1511,45 @@ CONTAINS
           CALL Fatal( 'ElasticSolve', 'DSYEV cannot generate eigen basis')          
         END IF
 
-        EigenC = MATMUL( TRANSPOSE(QWork), MATMUL(C,QWork) )       
+        Strain0 = 0.0d0
+!        EigenC = MATMUL( TRANSPOSE(QWork), MATMUL(C,QWork) )       
+        Strain0(1,1) = LOG(SQRT(EigenVals(1)))
+        Strain0(2,2) = LOG(SQRT(EigenVals(2)))       
+        Strain0(3,3) = LOG(SQRT(EigenVals(3)))
+        ! Transform back to the original coordinates:
+        Strain0 = MATMUL(QWork, MATMUL(Strain0,TRANSPOSE(QWork)))
 
-        ! COMMENTED OUT FOR TESTING PURPOSES
-        ! IF ( ANY(SQRT(EigenVals(:)) >= 2.0d0) ) &
-        !     CALL Fatal( 'ElasticSolve', &
-        !     'Too large strain: Series expansion for Hencky strain fails!') 
-        ! REMOVE THE COMMENT MARKS ABOVE IF RETURNING TO THE OROGINAL VERSION
+        ! -----------------------------------------------------------
+        ! Repeat for the current right Cauchy-Green deformation tensor:
+        ! -----------------------------------------------------------
+        C = MATMUL( TRANSPOSE(DefG), DefG )
 
+        DO i=1,3
+          k = i
+          DO j=k,3
+            QWork(i,j) = C(i,j)
+          END DO
+        END DO
+        CALL DSYEV('V', 'U', 3, QWork, 3, EigenVals, PriWork, PriLWork, PriInfo)
+        IF (PriInfo /= 0) THEN
+          CALL Fatal( 'ElasticSolve', 'DSYEV cannot generate eigen basis')          
+        END IF
 
-        ! NOTE: The series expansion for the Hencky strain may become inaccurate
-        ! for large strains. However, this inaccuracy should not break the consistency
+        Strain = 0.0d0
+        Strain(1,1) = LOG(SQRT(EigenVals(1)))
+        Strain(2,2) = LOG(SQRT(EigenVals(2)))       
+        Strain(3,3) = LOG(SQRT(EigenVals(3)))
+        Strain = MATMUL(QWork, MATMUL(Strain,TRANSPOSE(QWork)))
+
+        ! NOTE: The differentiation of the Hencky strain is done via a truncated 
+        ! series expansion which may become inaccurate for large strains. 
+        ! However, this inaccuracy should not break the consistency
         ! of the solution method: if nonlinear iterations converge, we shoud have
         ! a solution. That is, inaccuracy of the strain expansion has the effect
         ! that the Newton iteration is replaced by inexact Newton iteration.
         ! Currently no warnings are given for the possibility that the strain
         ! expansion may not be accurate:
-
+        !
         !IF ( ANY(EigenVals(:) >= 2.0d0) .OR. ANY(Eigenvals(:) <= 0.5d0) ) &
         !     CALL Fatal( 'ElasticSolve', 'Series expansion for Hencky strain too short!')
       ELSE
@@ -1544,24 +1569,24 @@ CONTAINS
               MATMUL(TRANSPOSE(Grad0(1:dim,1:dim)),Grad0(1:dim,1:dim))
         END IF
 
-        ! The umat (engineering) strain variable giving the strain before the increment:
-        Stran(1) = Strain0(1,1)
-        Stran(2) = Strain0(2,2)
-        Stran(3) = Strain0(3,3)
-        Stran(4) = 2.0d0 * Strain0(1,2)
-        Stran(5) = 2.0d0 * Strain0(1,3)
-        Stran(6) = 2.0d0 * Strain0(2,3)
-
-        ! The umat variable giving the candidate for the strain increment:
-        dStran(1) = Strain(1,1) - Strain0(1,1)
-        dStran(2) = Strain(2,2) - Strain0(2,2)
-        dStran(3) = Strain(3,3) - Strain0(3,3)
-        dStran(4) = 2.0d0 * (Strain(1,2) - Strain0(1,2))
-        dStran(5) = 2.0d0 * (Strain(1,3) - Strain0(1,3))
-        dStran(6) = 2.0d0 * (Strain(2,3) - Strain0(2,3))
-        
       END IF SELECT_STRAIN_MEASURE
 
+      ! The umat (engineering) strain variable giving the strain before the increment:
+      Stran(1) = Strain0(1,1)
+      Stran(2) = Strain0(2,2)
+      Stran(3) = Strain0(3,3)
+      Stran(4) = 2.0d0 * Strain0(1,2)
+      Stran(5) = 2.0d0 * Strain0(1,3)
+      Stran(6) = 2.0d0 * Strain0(2,3)
+
+      ! The umat variable giving the candidate for the strain increment:
+      dStran(1) = Strain(1,1) - Strain0(1,1)
+      dStran(2) = Strain(2,2) - Strain0(2,2)
+      dStran(3) = Strain(3,3) - Strain0(3,3)
+      dStran(4) = 2.0d0 * (Strain(1,2) - Strain0(1,2))
+      dStran(5) = 2.0d0 * (Strain(1,3) - Strain0(1,3))
+      dStran(6) = 2.0d0 * (Strain(2,3) - Strain0(2,3))
+        
       ! ----------------------------------------------------------------------------
       ! Obtain the Cauchy stress and the stress response function derivative 
       ! via UMAT interface. If the state variables have not been initiated to correspond
@@ -1751,9 +1776,17 @@ CONTAINS
               WorkTensor3 = WorkTensor3 + 2.0d0*WorkVec2(5,1)*SymBasis5 + 2.0d0*WorkVec2(6,1)*SymBasis6
             END IF            
             
-            IF (HenckyStrain) THEN
-              CALL Fatal('ElasticSolve', 'The Hencky strain version has not been revised yet')
-
+            ! -------------------------------------------------------------------------------------
+            ! The computation of the differential of the Hencky strain function is based on
+            ! its truncated series expansion. 
+            ! TO DO: The following involves the differential of the Hencky strain function.
+            ! For some reason it doesn't appear to give convergence. Therefore we still omit this and
+            ! replace the Hencky strain differential by the differential of the Lagrangian
+            ! strain. This is expected to work for reasonably small straining. Find a remedy!
+            ! -------------------------------------------------------------------------------------
+            !IF (HenckyStrain) THEN
+            IF (.FALSE.) THEN
+              WorkTensor1 = WorkTensor3
               ! Compute the derivative C'= Dg(WorkTensor1) with g the matrix
               ! square root function:
               WorkTensor3 = MATMUL( TRANSPOSE(QWork), MATMUL(WorkTensor1,QWork) ) 
@@ -1762,13 +1795,18 @@ CONTAINS
               WorkVec1(3,1) = 1.0d0/(2.0d0*sqrt(EigenVals(3))) * WorkTensor3(3,3)
               WorkVec1(4,1) = 1.0d0/(sqrt(EigenVals(1)) + sqrt(EigenVals(2))) * &
                   (WorkTensor3(1,2) + WorkTensor3(2,1))
-              WorkVec1(5,1) = 1.0d0/(sqrt(EigenVals(1)) + sqrt(EigenVals(3))) * &
-                  (WorkTensor3(1,3) + WorkTensor3(3,1))
-              WorkVec1(6,1) = 1.0d0/(sqrt(EigenVals(2)) + sqrt(EigenVals(3))) * &
-                  (WorkTensor3(2,3) + WorkTensor3(3,2))
+              IF (nshr == 3) THEN
+                WorkVec1(5,1) = 1.0d0/(sqrt(EigenVals(1)) + sqrt(EigenVals(3))) * &
+                    (WorkTensor3(1,3) + WorkTensor3(3,1))
+                WorkVec1(6,1) = 1.0d0/(sqrt(EigenVals(2)) + sqrt(EigenVals(3))) * &
+                    (WorkTensor3(2,3) + WorkTensor3(3,2))
+              END IF
               WorkTensor3 = WorkVec1(1,1)*SymBasis1 + WorkVec1(2,1)*SymBasis2 + &
-                  WorkVec1(3,1)*SymBasis3 + WorkVec1(4,1)*SymBasis4 + &
-                  WorkVec1(5,1)*SymBasis5 + WorkVec1(6,1)*SymBasis6              
+                  WorkVec1(3,1)*SymBasis3 + WorkVec1(4,1)*SymBasis4
+              IF (nshr == 3) THEN
+                WorkTensor3 = WorkTensor3 + WorkVec1(5,1)*SymBasis5 + &
+                    WorkVec1(6,1)*SymBasis6
+              END IF
               WorkTensor3 = MATMUL( QWork, MATMUL(WorkTensor3,TRANSPOSE(QWork)) )
 
               WorkTensor3 = 4.0d0 * WorkTensor3 - WorkTensor1
@@ -1800,9 +1838,7 @@ CONTAINS
               ForceVector(cdim*(p-1)+i) = ForceVector(cdim*(p-1)+i) &
                   +(Basis(p)*Force(i)*DetDefG &
                   +Basis(p)*InertialForce(i)*Density)*s
-              !    +DDOT_PRODUCT(DefG-Identity,RHSTensor1,3)*s &
-              !    +DDOT_PRODUCT(DefG-Identity,RHSTensor2,3)*s &
-              !    +DDOT_PRODUCT(DefG-Identity,RHSTensor3,3)*s                      
+
               ExternalForceVector(cdim*(p-1)+i) = ExternalForceVector(cdim*(p-1)+i) &
                   +(Basis(p)*Force(i)*DetDefG &
                   +Basis(p)*InertialForce(i)*Density)*s
@@ -1829,9 +1865,6 @@ CONTAINS
                   +(Basis(p)*Force(i)*DetDefG &
                   +Basis(p)*InertialForce(i)*Density &
                   -DOT_PRODUCT(dBasis(p,:),Stress1(i,:)))*s
-              !    & +DDOT_PRODUCT(DefG-Identity,RHSTensor1,3)*s &
-              !    +DDOT_PRODUCT(DefG-Identity,RHSTensor2,3)*s &
-              !    +DDOT_PRODUCT(DefG-Identity,RHSTensor3,3)*s
 
               ExternalForceVector(cdim*(p-1)+i) = ExternalForceVector(cdim*(p-1)+i) &
                   +(Basis(p)*Force(i)*DetDefG &
@@ -2024,17 +2057,20 @@ CONTAINS
     REAL(KIND=dp) :: StrainVec(ntens), Stress2(ntens)
     REAL(KIND=dp) :: DetDefG
     REAL(KIND=dp) :: nu, E, LambdaLame, MuLame
+    REAL(KIND=dp) :: EigenVals(3), PriWork(102)
 
-    INTEGER :: i, j
+    INTEGER :: i, j, k
+    INTEGER :: PriLWork=102, PriInfo
 
-    LOGICAL :: LargeDeflection
+    LOGICAL :: LargeDeflection, HenckyStrain
 !------------------------------------------------------------------------------
 
     ! This example creates the basic isotropic model, so there is no state variables
     ! to be handled. 
 
     ! Use the material model name cmname as a switch:
-    IF (cmname(1:2)=='st') THEN
+    HenckyStrain = cmname(1:6)=='hencky'
+    IF (cmname(1:2)=='st' .OR. HenckyStrain) THEN
       LargeDeflection = .TRUE.
 
       SymBasis(1,1:3,1:3) = RESHAPE((/ 1,0,0,0,0,0,0,0,0 /),(/ 3,3 /))
@@ -2047,8 +2083,31 @@ CONTAINS
 
       B = MATMUL(dfrgrd1, TRANSPOSE(dfrgrd1))
       C = MATMUL(TRANSPOSE(dfrgrd1), dfrgrd1)
-      ! This example uses the Lagrangian (Green-St Venant) strain tensor:
-      Strain = 0.5d0 * (C - Identity)
+      IF (HenckyStrain) THEN
+        ! -----------------------------------------------------------
+        ! Compute the spectral decomposition of C
+        ! -----------------------------------------------------------
+        DO i=1,3
+          k = i
+          DO j=k,3
+            WorkMat(i,j) = C(i,j)
+          END DO
+        END DO
+        CALL DSYEV('V', 'U', 3, WorkMat, 3, EigenVals, PriWork, PriLWork, PriInfo)
+        IF (PriInfo /= 0) THEN
+          CALL Fatal( 'UMAT', 'DSYEV cannot generate eigen basis')          
+        END IF
+
+        Strain = 0.0d0
+        Strain(1,1) = LOG(SQRT(EigenVals(1)))
+        Strain(2,2) = LOG(SQRT(EigenVals(2)))       
+        Strain(3,3) = LOG(SQRT(EigenVals(3)))
+        ! Transform back to the original coordinates:
+        Strain = MATMUL(WorkMat, MATMUL(Strain,TRANSPOSE(WorkMat)))
+      ELSE
+        ! This example uses the Lagrangian (Green-St Venant) strain tensor:
+        Strain = 0.5d0 * (C - Identity)
+      END IF
       
       DO i=1,ndi
         StrainVec(i) = Strain(i,i)
@@ -2089,7 +2148,7 @@ CONTAINS
       ! 
       !     sigma(F) = 1/det(F) F S(E(F)) F^T
       !
-      ! We however consider only the depedence
+      ! We however consider only the depedence on the strain as
       !
       !     sigma(.) = 1/det(F) F S(.) F^T
       !
@@ -2099,7 +2158,7 @@ CONTAINS
       ! there are no approximations in the computation of the residual.
       ! --------------------------------------------------------------------------------
       ! The constitutive matrix relating the second Piola-Kirchhoff stress and
-      ! the (Lagrangian) strain tensor:
+      ! the strain tensor:
       ddsdde = 0.0d0
       ddsdde(1:ndi,1:ndi) = LambdaLame
       DO i=1,ntens
