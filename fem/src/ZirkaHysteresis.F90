@@ -26,7 +26,7 @@ TYPE :: RevCurve_t  ! {{{
   REAL(kind=dp) :: Bp, Bq
   REAL(kind=dp) :: a, b, c, dBrev, dHrev
   INTEGER :: depth ! if 0, this is ascending or descending master curve depending on Bp and Bq
-  TYPE(RevCurve_t), POINTER :: parent => NULL()
+  CLASS(RevCurve_t), POINTER :: parent => NULL()
   TYPE(SplineLoop_t), POINTER :: bigloop => NULL()
   PROCEDURE(SimpleEvalRevCurve), POINTER :: simple_eval => SimpleEvalRevCurve
   CONTAINS
@@ -44,8 +44,8 @@ end type ! }}}
 
 TYPE, public  :: MasterCurve_t  ! {{{
   TYPE(RevCurve_t), POINTER :: children(:) ! We should always have revcurve_t % depth + 2 to be right index here..
-  TYPE(RevCurve_t), POINTER, public :: Head => NULL()
-  TYPE(RevCurve_t), POINTER, private :: rc_asc => NULL(), rc_desc => NULL()
+  CLASS(RevCurve_t), POINTER, public :: Head => NULL()
+  TYPE(RevCurve_t), POINTER, private :: rc_asc => NULL(), rc_desc => NULL() !  Should this a pointer?
   REAL(KIND=dp), PUBLIC :: B0(3)
   REAL(KIND=dp), ALLOCATABLE, PRIVATE :: BH(:,:)
   REAL(KIND=dp), POINTER, PRIVATE :: r_bh(:) => null()
@@ -268,8 +268,8 @@ END function !  }}}
 !
 RECURSIVE FUNCTION RecurseDepth(rc, B) result (rc_p)! {{{
   IMPLICIT NONE
-  TYPE(RevCurve_t), POINTER, INTENT(IN) :: rc
-  TYPE(RevCurve_t), POINTER :: rc_p
+  CLASS(RevCurve_t), POINTER, INTENT(IN) :: rc
+  CLASS(RevCurve_t), POINTER :: rc_p
   REAL(kind=dp) :: B
   integer :: tmp
 
@@ -525,10 +525,10 @@ END FUNCTION ! }}}
 SUBROUTINE HBDrive(mc, B, cache) ! {{{
   IMPLICIT NONE
   CLASS(MasterCurve_t), INTENT(INOUT) :: mc
-  TYPE(RevCurve_t), POINTER :: rc
+  CLASS(RevCurve_t), POINTER :: rc
   REAL(KIND=dp), INTENT(IN) :: B
   !-------------------------------------------------------------------------------
-  TYPE(RevCurve_t), POINTER :: rc_p
+  CLASS(RevCurve_t), POINTER :: rc_p
   integer :: m, n, n_cache
   logical, optional :: cache
   logical :: cache_
@@ -586,9 +586,9 @@ end subroutine ! }}}
 
 SUBROUTINE AddStack(parent, master, B) ! {{{
   IMPLICIT NONE
-  TYPE(RevCurve_t), INTENT(INOUT), POINTER :: parent
+  CLASS (RevCurve_t), INTENT(INOUT), POINTER :: parent
   TYPE(MasterCurve_t), INTENT(INOUT) :: master
-  TYPE(RevCurve_t), POINTER:: x
+  CLASS(RevCurve_t), POINTER:: x
   REAL(KIND=dp), INTENT(IN) :: B
   !-------------------------------------------------------------------------------
   real(KIND=dp) :: HMAsc, HMDesc, Hpp, hp, dBout
@@ -656,9 +656,9 @@ SUBROUTINE AddStack(parent, master, B) ! {{{
     !-------------------------------------------------------------------------------
     TYPE(Revcurve_t), POINTER :: newchildren(:)
     ! type(Revcurve_t), pointer :: x
-    TYPE(SplineLoop_t), POINTER :: bigloop
+    CLASS(SplineLoop_t), POINTER :: bigloop
     INTEGER :: bufbound, k
-    type(RevCurve_t), POINTER :: oldparent, newparent
+    CLASS(RevCurve_t), POINTER :: oldparent, newparent
     !-------------------------------------------------------------------------------
     bufbound = ubound(master % children, 1)
     ! bigloop => master % children(1) % bigloop
@@ -711,11 +711,11 @@ end subroutine ! }}}
 
 SUBROUTINE rc_printeval(rc, B, rc0) ! {{{
   implicit none
-  type(revcurve_t), pointer, intent(in) :: rc
-  type(revcurve_t), pointer, intent(in), optional :: rc0
+  class(revcurve_t), pointer, intent(in) :: rc
+  class(revcurve_t), pointer, intent(in), optional :: rc0
   real(kind=dp), intent(in) :: B 
   real(kind=dp) :: X, X0
-  type(revcurve_t), pointer :: rc_p, rc0_p
+  class(revcurve_t), pointer :: rc_p, rc0_p
   integer :: k
   rc_p => rc
   if (present(rc0)) rc0_p => rc0
@@ -724,19 +724,19 @@ SUBROUTINE rc_printeval(rc, B, rc0) ! {{{
     if(present(rc0)) X0 = rc0_p % simple_eval(B)
     X = rc_p % simple_eval(B)
     if (present(rc0)) print *, X, X0, X-X0
-    if (.not. present(rc0)) print *, X, rc_p % depth, c_loc(rc_p), c_loc(rc_p % parent)
+    if (.not. present(rc0)) print *, X, rc_p % depth ! , c_loc(rc_p), c_loc(rc_p % parent)
     rc_p => rc_p % parent
     if(present(rc0)) rc0_p => rc0_p % parent
   end do
   X = rc_p % simple_eval(B)
   if(present(rc0)) X0 = rc0_p % simple_eval(B)
   if (present(rc0)) print *, X, X0, X-X0
-  if (.not. present(rc0)) print *, X, rc_p % depth, c_loc(rc_p), c_loc(rc_p % parent)
+  if (.not. present(rc0)) print *, X, rc_p % depth ! , c_loc(rc_p), c_loc(rc_p % parent)
 END SUBROUTINE rc_printeval ! }}}
 ! Debugging purposes only
 subroutine PrintRevCurve(rc0) ! {{{
-  TYPE(RevCurve_t), POINTER, intent(in) :: rc0
-  TYPE(RevCurve_t), POINTER :: rc
+  CLASS(RevCurve_t), POINTER, intent(in) :: rc0
+  CLASS(RevCurve_t), POINTER :: rc
 
   rc=>rc0
 
