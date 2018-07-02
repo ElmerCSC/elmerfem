@@ -280,7 +280,8 @@ RECURSIVE FUNCTION RecurseDepth(rc, B) result (rc_p)! {{{
 
   tmp = rc % depth
   ! print *, 'recursedepth: depth, B, Bp, Bq', tmp, B, rc % Bp, rc % Bq
-  outer: if (rc % Bp < rc % Bq) then ! Ascending curve (here be dragons)
+  outer: block
+    if (rc % Bp < rc % Bq) then ! Ascending curve (here be dragons)
 
     if (rc % Bp < B .and. B < rc % Bq) THEN
       rc_p => rc
@@ -363,7 +364,8 @@ RECURSIVE FUNCTION RecurseDepth(rc, B) result (rc_p)! {{{
       rc_p => RecurseDepth(rc % parent, B)
       exit outer
     end if
-  end if outer 
+  end if 
+  end block outer 
 
 END FUNCTION ! }}}
 
@@ -656,7 +658,7 @@ SUBROUTINE AddStack(parent, master, B) ! {{{
     !-------------------------------------------------------------------------------
     TYPE(Revcurve_t), POINTER :: newchildren(:)
     ! type(Revcurve_t), pointer :: x
-    CLASS(SplineLoop_t), POINTER :: bigloop
+    TYPE(SplineLoop_t), POINTER :: bigloop
     INTEGER :: bufbound, k
     CLASS(RevCurve_t), POINTER :: oldparent, newparent
     !-------------------------------------------------------------------------------
