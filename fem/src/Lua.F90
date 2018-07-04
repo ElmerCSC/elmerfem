@@ -83,7 +83,7 @@ interface ! {{{
 
   subroutine lua_pushnumber(L, x) bind(C)
     import
-    type(c_funptr), value :: L
+    type(c_ptr), value :: L
     real(kind=c_double), value :: x
   end subroutine
 
@@ -111,7 +111,7 @@ interface ! {{{
 
   function luaL_checkinteger(L, n) result(r) bind(C, name="luaL_checkinteger")
     import
-    type(c_funptr), value :: L
+    type(c_ptr), value :: L
     integer(kind=c_int), value :: n
     integer(kind=c_int) :: r
   end function
