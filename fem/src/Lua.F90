@@ -350,7 +350,7 @@ subroutine lua_addfun(L, fun, fname)
   type(c_funptr) :: c_fun
   character(kind=c_char):: fname
 
-  c_fun = transfer(fun, c_fun)
+  c_fun = c_funloc(fun)
   call lua_pushcclosure(L % L, c_fun, 0)
   call lua_setfield(L % L, LUA_GLOBALSINDEX ,fname)
 end subroutine

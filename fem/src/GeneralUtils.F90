@@ -1027,8 +1027,6 @@ CONTAINS
                closed_region = .FALSE.
              END IF
 
-             print *, closed_region, i, j, inlen, first_bang
-             print *, tcmdstr(1:tninlen)
              IF(closed_region) THEN
                lstat = lua_dostring( LuaState, &
                    'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
