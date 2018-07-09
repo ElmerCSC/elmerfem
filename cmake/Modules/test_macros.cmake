@@ -48,6 +48,7 @@ MACRO(ADD_ELMER_TEST TestName)
       ADD_TEST(NAME ${_this_test_name}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND}
+        -DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}
         -DELMERGRID_BIN=${ELMERGRID_BIN}
         -DELMERSOLVER_BIN=${ELMERSOLVER_BIN}
         -DFINDNORM_BIN=${FINDNORM_BIN}
@@ -62,7 +63,6 @@ MACRO(ADD_ELMER_TEST TestName)
         -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
         -DWITH_MPI=${WITH_MPI}
         -DMPIEXEC_NTASKS=${_this_test_tasks}
-        -P ${CMAKE_SOURCE_DIR}/cmake/Modules/test_macros.cmake
         -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
       SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${_this_test_label})
       # If LABELS argument was given iterate through the given labels and add them
