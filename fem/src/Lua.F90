@@ -54,13 +54,14 @@ end type
 type(LuaState_t), PUBLIC :: LuaState
 !$OMP THREADPRIVATE(LuaState)
 
-public :: lua_init, lua_close, lua_addfun, luaL_checkinteger, luaL_checknumber, lua_pushnumber, luafun, &
-    lua_runfile, lua_dostring, &
-    luaL_checkstring, lua_eval_f, lua_popnumber, lua_getnumber, lua_tolstring, check_error, lua_getusertable, &
-    lua_poptensor, lua_popstring, lua_exec_fun
+public :: lua_init, lua_close, lua_addfun, luaL_checkinteger, luaL_checknumber, &
+    lua_pushnumber, luafun, lua_runfile, lua_dostring, &
+    luaL_checkstring, lua_eval_f, lua_popnumber, lua_getnumber, lua_tolstring, &
+    check_error, lua_getusertable, lua_poptensor, lua_popstring, lua_exec_fun, &
+    lua_popvector
 
-!-Interfaces--------------------------------------------------------------------
-interface ! {{{
+!-Interfaces-{{{----------------------------------------------------------------
+interface ! 
   type(c_ptr) function lua_touserdata(L, n) bind(C)
     import
     type(c_ptr), value :: L
@@ -195,16 +196,16 @@ interface ! {{{
     integer(kind=c_int) :: len
   end subroutine
 
-end interface ! }}}
+end interface 
 
-abstract interface ! luafun {{{
+abstract interface 
 function luafun(L) result(n)
   import
   type(c_ptr), value :: L
   integer(kind=c_int) :: n
 end function
-end interface ! }}}
-!-------------------------------------------------------------------------------
+end interface 
+!-}}}---------------------------------------------------------------------------
 
 CONTAINS
 
@@ -292,6 +293,16 @@ subroutine lua_poptensor(L, t)
     do j = n2,1,-1
       t(i,j) = lua_popnumber(L)
     end do
+  end do
+end subroutine
+
+subroutine lua_popvector(L, t)
+  type(LuaState_t) :: L
+  real(kind=c_double), intent(out) :: t(:)
+  integer :: n, i
+  n = size(t, 1)
+  do i = n, 1, -1
+    t(i) = lua_popnumber(L)
   end do
 end subroutine
 

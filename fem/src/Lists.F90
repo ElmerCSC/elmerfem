@@ -156,7 +156,7 @@ MODULE Lists
 
 #ifdef HAVE_LUA
    interface ElmerEvalLua
-     module procedure ElmerEvalLuaS, ElmerEvalLuaT
+     module procedure ElmerEvalLuaS, ElmerEvalLuaT, ElmerEvalLuaV
    end INTERFACE
 #endif
 
@@ -5527,7 +5527,7 @@ CONTAINS
            END IF
 #ifdef HAVE_LUA
          ELSE
-           call ElmerEvalLua(LuaState, ptr, T, F(i), j)
+           call ElmerEvalLuaS(LuaState, ptr, T, F(i), j)
            F(i) = ptr % coeff * F(i)
          END IF
 #endif
@@ -6038,7 +6038,7 @@ CONTAINS
              READ( tmp_str(1:k1), * ) ((F(j,k,i),k=1,N2),j=1,N1)
 #ifdef HAVE_LUA
            ELSE
-             call ElmerEvalLua(LuaState, ptr, T, F(:,:,i), j)
+             call ElmerEvalLuaT(LuaState, ptr, T, F(:,:,i), j)
            END IF
 #endif
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
@@ -6166,6 +6166,9 @@ CONTAINS
          IF ( ANY(T(1:j)==HUGE(1._dP)) ) CYCLE
 
          IF ( ptr % TYPE==LIST_TYPE_VARIABLE_TENSOR_STR) THEN
+#ifdef HAVE_LUA
+           IF ( .not. ptr % LuaFun ) THEN
+#endif
            DO l=1,j
              WRITE( cmd, '(a,g19.12)' ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
              k1 = LEN_TRIM(cmd)
@@ -6176,6 +6179,11 @@ CONTAINS
            k1 = LEN_TRIM(cmd)
            CALL matc( cmd, tmp_str, k1 )
            READ( tmp_str(1:k1), * ) (G(j,i),j=1,N1)
+#ifdef HAVE_LUA
+           ELSE
+             call ElmerEvalLuaV(LuaState, ptr, T, G(:,i), j)
+           END IF
+#endif
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
            CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G(:,i) )
@@ -7326,6 +7334,27 @@ SUBROUTINE ElmerEvalLuaT(L, ptr, T, F, varcount)
   call lua_exec_fun(L, ptr % cvalue, 0, size(F,1)*size(F,2))
 
   CALL lua_poptensor(L, F)
+!-------------------------------------------------------------------------------
+END SUBROUTINE
+!-------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------------------
+!> evaluates lua string to real vector 
+!-------------------------------------------------------------------------------
+SUBROUTINE ElmerEvalLuaV(L, ptr, T, F, varcount)
+!-------------------------------------------------------------------------------
+  TYPE(LuaState_t) :: L
+  TYPE(ValueListEntry_t), POINTER :: ptr
+  REAL(KIND=C_DOUBLE), INTENT(IN) :: T(:)
+  REAL(KIND=C_DOUBLE), INTENT(INOUT) :: F(:)
+  INTEGER :: VARCOUNT
+!-------------------------------------------------------------------------------
+  integer :: lstat
+
+  L % tx(1:varcount) = T(1:varcount) ! this should be superfluous
+  call lua_exec_fun(L, ptr % cvalue, 0, size(F,1))
+
+  CALL lua_popvector(L, F)
 !-------------------------------------------------------------------------------
 END SUBROUTINE
 !-------------------------------------------------------------------------------

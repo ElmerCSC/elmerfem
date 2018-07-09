@@ -31,7 +31,8 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
   
   REAL(KIND=dp), ALLOCATABLE :: Basis(:), OldValAtIp_lua(:,:), OldValAtIp_matc(:,:)
   REAL(KIND=dp), POINTER :: RealVal_lua(:,:,:) => NULL(), realval_matc(:,:,:), &
-      ValAtIp_lua(:,:) => NULL(), ValAtIp_matc(:,:) => NULL()
+      ValAtIp_lua(:,:) => NULL(), ValAtIp_matc(:,:) => NULL(), realval_lua_vec(:,:) => NULL(), &
+      RealVal_matc_vec(:,:) => NULL()
   REAL(KIND=dp) :: DetJ
   TYPE(GaussIntegrationPoints_t) :: IP
   TYPE(Nodes_t) :: Nodes
@@ -39,6 +40,7 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: Indexes(:)
   LOGICAL :: Stat
   CHARACTER(LEN=20) :: KeywordName_lua, keywordname_matc
+  CHARACTER(len=8) :: suffixes = 'abcdefgh'
   
   SAVE Nodes
 
@@ -51,21 +53,67 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
 
   n = 20
   ALLOCATE( Basis(n), OldValAtIp_lua(3,3), OldValAtIp_matc(3,3), &
-      realval_lua(1,1,1), realval_matc(1,1,1) ) 
+      realval_lua(1,1,1), realval_matc(1,1,1), realval_lua_vec(1,1), realval_matc_vec(1,1) ) 
   
   
   NoActive = GetNOFActive()
 
-  OldCounter = 0.0_dp
-  NewCounter = 0.0_dp
-  DiffCounter = 0.0_dp
-
+  PseudoNorm = 0.0_dp
 
   CALL Info('KeywordCompare','Starting real value keyword comparision')
 
-  DO key = 1, 4
-    KeywordName_lua = 'Float Value '//TRIM(I2S(key))
-    KeywordName_matc = 'Float Value '//TRIM(I2S(key+4))
+  OldCounter = 0.0_dp
+  NewCounter = 0.0_dp
+  DiffCounter = 0.0_dp
+  DO key = 1, 4, 2 ! Test odd keys with ListGetRealVec TODO: should fail {{{
+    call set_keyword_names()
+    PRINT *,'Testing keywords: '//TRIM(KeywordName_lua) // ' and ' // trim(KeywordName_matc)
+    ! CALL ListInitElementKeyword( RealVal_h,'Material',KeywordName_lua )
+
+    DO elem=1,NoActive
+      Element => GetActiveElement(elem)
+      Material => GetMaterial()
+
+      CALL GetElementNodes( Nodes )
+      n  = GetElementNOFNodes()
+      indexes => Element % NodeIndexes
+      ALLOCATE(realval_matc_vec(3,N), realval_lua_vec(3,N))
+
+      CALL ListGetRealVector( Material, KeywordName_lua,  RealVal_lua_vec,  N, Indexes, Found )
+      CALL ListGetRealVector( Material, KeywordName_matc, RealVal_matc_vec, N, Indexes, Found )
+
+      IF(.NOT. Found ) CYCLE
+
+      n1 = SIZE( RealVal_lua_vec, 1 )
+      n2 = 1
+
+      IP = GaussPoints( Element )
+      DO t=1,IP % n
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis )
+
+        DO i1=1,n1
+          DO i2=1,n2
+            OldValAtIp_lua(i1,i2) = SUM( Basis(1:n) * RealVal_lua_vec(i1,1:n) )
+            OldValAtIp_matc(i1,i2) = SUM( Basis(1:n) * RealVal_matc_vec(i1,1:n) )
+          END DO
+        END DO
+
+        newcounter(key) = Newcounter(key)+  SUM(OldValAtIp_lua(1:n1,1:n2)) * IP % s(t) 
+        oldcounter(key) = oldcounter(key)+  SUM(OldValAtIp_matc(1:n1,1:n2)) * IP % s(t) 
+        DiffCounter(key) = DiffCounter(key) +  SUM(OldValAtIp_lua(1:n1,1:n2)-OldValAtIp_matc(1:n1,1:n2)) * IP % s(t) 
+      END DO
+    END DO
+
+    PRINT *,'Compare integrals:', 2.0_dp*DiffCounter(key)  / (NewCounter(key) + OldCounter(key))
+    PseudoNorm = PseudoNorm + (2.0_dp*DiffCounter(key) / (NewCounter(key) + OldCounter(key)))
+  END DO ! }}}
+
+  DiffCounter = 0.0_dp
+  NewCounter = 0.0_dp
+  OldCOunter = 0.0_dp
+  DO key = 1, 4 ! test all values with ListGetRealArray {{{
+    call set_keyword_names()
     PRINT *,'Testing keywords: '//TRIM(KeywordName_lua) // ' and ' // trim(KeywordName_matc)
     ! CALL ListInitElementKeyword( RealVal_h,'Material',KeywordName_lua )
 
@@ -106,12 +154,17 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
     END DO
 
     PRINT *,'Compare integrals:', 2.0_dp*DiffCounter(key)  / (NewCounter(key) + OldCounter(key))
-  END DO
-  PseudoNorm = sum(2.0_dp*DiffCounter(1:4) / (NewCounter(1:4) + OldCounter(1:4)))
+    PseudoNorm = PseudoNorm + (2.0_dp*DiffCounter(key) / (NewCounter(key) + OldCounter(key)))
+  END DO ! }}}
+  ! PseudoNorm = PseudoNorm + sum(2.0_dp*DiffCounter(1:4) / (NewCounter(1:4) + OldCounter(1:4)))
 
-  DO key = 1, 4
-    KeywordName_lua = 'Float Value '//TRIM(I2S(key))
-    KeywordName_matc = 'Float Value '//TRIM(I2S(key+4))
+  DiffCounter = 0.0_dp
+  NewCounter = 0.0_dp
+  OldCOunter = 0.0_dp
+  DO key = 1, 4 ! use handles {{{ 
+    call set_keyword_names()
+    ! KeywordName_lua = 'Float Value '//TRIM(I2S(key))
+    ! KeywordName_matc = 'Float Value '//TRIM(I2S(key+4))
     PRINT *,'Testing keywords using handles: '//TRIM(KeywordName_lua) // ' and ' // trim(KeywordName_matc)
 
     CALL ListInitElementKeyword( RealValLua_h,'Material',KeywordName_lua )
@@ -153,10 +206,11 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
     END DO
 
     PRINT *,'Compare integrals:', 2.0_dp*DiffCounter(key)  / (NewCounter(key) + OldCounter(key))
-  END DO
+    PseudoNorm = PseudoNorm + (2.0_dp*DiffCounter(key) / (NewCounter(key) + OldCounter(key)))
+  END DO ! }}}
 
 
-  PseudoNorm = PseudoNorm + sum(2.0_dp*DiffCounter(1:4) / (NewCounter(1:4) + OldCounter(1:4)))
+  ! PseudoNorm = PseudoNorm + sum(2.0_dp*DiffCounter(1:4) / (NewCounter(1:4) + OldCounter(1:4)))
   PRINT *,'PseudoNorm:',PseudoNorm
 
   Solver % Variable % Values = PseudoNorm
@@ -166,5 +220,10 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
   CALL Info( 'KeywordCompare','Add done')
   CALL Info( 'KeywordCompare','----------------------------------------------------------')
 
+  contains
+    subroutine set_keyword_names()
+      KeywordName_lua = 'Float Value '//suffixes(key:key)
+      KeywordName_matc = 'Float Value '//suffixes(key+4:key+4)
+    end subroutine
 
 END SUBROUTINE KeywordCompare
