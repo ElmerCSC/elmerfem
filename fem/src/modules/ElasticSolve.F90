@@ -56,8 +56,8 @@ SUBROUTINE ElasticSolver_Init0( Model,Solver,dt,Transient )
   MixedFormulation = GetLogical(SolverParams, 'Mixed Formulation', Found) .AND. &
       GetLogical(SolverParams, 'Neo-Hookean Material', Found)
 
-  IF (MixedFormulation .AND. (.NOT. ListCheckPresent(SolverParams,'Element'))) THEN
-    CALL ListAddString( SolverParams, "Element", "p:2" )
+  IF( MixedFormulation ) THEN
+    CALL ListAddNewString( SolverParams, "Element", "p:2" )
   END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE ElasticSolver_Init0
@@ -104,12 +104,9 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     CALL ListAddInteger( SolverParams, 'Variable DOFs', DOFs )
   END IF
 
-  CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
-  CALL ListAddLogical( SolverParams,'Bubbles in Global System',.TRUE.)
-
-  IF( .NOT. ListCheckPresent( SolverParams,'Displace Mesh At Init') ) THEN
-    CALL ListAddLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
-  END IF
+  CALL ListAddInteger( SolverParams,'Time derivative order', 2 )
+  CALL ListAddNewLogical( SolverParams,'Bubbles in Global System',.TRUE.)
+  CALL ListAddNewLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
 
   CalculateStrains = GetLogical(SolverParams, 'Calculate Strains', Found)
   CalculateStresses = GetLogical( SolverParams, 'Calculate Stresses', Found )
@@ -127,9 +124,6 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   IF (CalcPrincipalAngle) CalcPrincipal = .TRUE. ! Principal angle computation enforces component calculation
 
   !----------------------------------------------------------------------------------------------------
-  ! Presently "Calculate Principal = TRUE" is not enough to enforce principal component computation:
-  !----------------------------------------------------------------------------------------------------
-  !IF (CalcPrincipal) CalculateStresses = .TRUE. ! Stress needed for principal component calculation
   CalcPrincipalStress = CalculateStresses .AND. CalcPrincipal
   CalcPrincipalStrain = CalculateStrains .AND. CalcPrincipal
 
@@ -147,11 +141,6 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
 
      CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable ',SolverParams), 'vonMises' )
-
-     !CALL ListAddString( SolverParams,&
-     !     NextFreeKeyword('Exported Variable ',SolverParams), &
-     !     'Mean Normal Stress')      
-
 
      IF (CalcPrincipalStress) THEN
         CALL ListAddString( SolverParams,&
@@ -215,7 +204,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Matrix_t), POINTER :: StiffMatrix
+  TYPE(Matrix_t), POINTER :: StiffMatrix, PMatrix
   TYPE(Solver_t), POINTER :: PSolver
   TYPE(Variable_t), POINTER :: StressSol, TempSol, FlowSol, Var
   TYPE(ValueList_t), POINTER :: SolverParams, Material, BC, Equation, BodyForce
@@ -226,7 +215,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   LOGICAL :: GotForceBC, GotFSIBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
-       CauchyResponseFunction  = .FALSE., UseUMAT = .FALSE., AxialSymmetry
+       AxialSymmetry
+  LOGICAL :: UseUMAT, InitializeStateVars, HenckyStrain
+  LOGICAL :: LargeDeflection
   LOGICAL :: MixedFormulation
   LOGICAL :: PseudoTraction, GlobalPseudoTraction
   LOGICAL :: PlaneStress, CalculateStrains, CalculateStresses
@@ -235,11 +226,11 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: AllocationsDone = .FALSE.
   LOGICAL :: CompressibilityDefined = .FALSE.
   LOGICAL :: NormalSpring, NormalTangential
-  LOGICAL :: Converged
-
+  LOGICAL :: Converged, NoExternalLoads
+  LOGICAL :: Parallel, Scanning
 
   INTEGER, POINTER :: TempPerm(:),StressPerm(:),PressPerm(:),NodeIndexes(:), &
-          Indeces(:), FlowPerm(:), AdjacentNodes(:)
+          Indices(:), FlowPerm(:), AdjacentNodes(:)
 
   INTEGER :: dim,i,j,k,l,m,n,nd,nb,ntot,t,iter,NDeg,k1,k2,STDOFs,LocalNodes,istat
   INTEGER :: NewtonIter, NonlinearIter, MinNonlinearIter, FlowNOFNodes
@@ -252,18 +243,28 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        NodalStrain(:), NodalStress(:), VonMises(:), &
        PrincipalStress(:), PrincipalStrain(:), Tresca(:), PrincipalAngle(:)
   REAL(KIND=dp), POINTER :: PointwiseStateV(:,:), PointwiseStateV0(:,:), MaterialConstants(:,:)
+  REAL(KIND=dp), POINTER :: TotalSol(:) => NULL()
+  REAL(KIND=dp), POINTER CONTIG :: ValuesSaved(:) => NULL()
+  REAL(KIND=dp), POINTER :: Pb(:)
 
   REAL(KIND=dp), ALLOCATABLE :: LocalMassMatrix(:,:),LocalStiffMatrix(:,:),&
-       LocalDampMatrix(:,:),LoadVector(:,:),InertialLoad(:,:), Viscosity(:),LocalForce(:), &
+       LocalDampMatrix(:,:),LoadVector(:,:),InertialLoad(:,:), Viscosity(:), LocalForce(:), &
        LocalTemperature(:),ElasticModulus(:,:,:),PoissonRatio(:), Density(:), &
        Damping(:), HeatExpansionCoeff(:,:,:),Alpha(:,:),Beta(:), &
        ReferenceTemperature(:),BoundaryDispl(:),LocalDisplacement(:,:), PrevSOL(:), &
-       PrevLocalDisplacement(:,:), SpringCoeff(:,:,:)
+       PrevLocalDisplacement(:,:), SpringCoeff(:,:,:), LocalExternalForce(:)
          
-  REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), &
-       Tdiff,Normal(3),s, UnitNorm,DragCoeff
+  REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), Tdiff, Normal(3), s, UnitNorm, DragCoeff
+  REAL(KIND=dp) :: Norm, NonlinTol, NonlinRes0, NonlinRes 
+
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: at,at0
+#else
+  REAL(KIND=dp) :: at,at0,CPUTime,RealTime
+#endif
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
+  CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
 !------------------------------------------------------------------------------
   SAVE LocalMassMatrix,LocalStiffMatrix,LocalDampMatrix,LoadVector,InertialLoad, Viscosity, &
        LocalForce,ElementNodes,ParentNodes,FlowNodes,Alpha,Beta, &
@@ -272,45 +273,37 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        LocalDisplacement, Velocity, Pressure, PrevSOL, CalculateStrains, CalculateStresses, &
        NodalStrain, NodalStress, VonMises, PrincipalStress, PrincipalStrain, Tresca, &
        PrincipalAngle, CalcPrincipalAngle, CalcPrincipal, &
-       PrevLocalDisplacement, SpringCoeff, Indeces
-  SAVE NPROPS, NSTATEV, MaxIntegrationPoints, PointwiseStateV, PointwiseStateV0
+       PrevLocalDisplacement, SpringCoeff, Indices
+  SAVE NPROPS, NSTATEV, MaxIntegrationPoints, PointwiseStateV, PointwiseStateV0, &
+      InitializeStateVars, TotalSol, LocalExternalForce
 !-----------------------------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: at,at0
-#else
-     REAL(KIND=dp) :: at,at0,CPUTime,RealTime
-#endif
-     INTEGER :: TotalSteps,LoadStep
+  INTERFACE
+    FUNCTION ElastBoundaryResidual( Model,Edge,Mesh,Quant,Perm, Gnorm ) RESULT(Indicator)
+      USE Types
+      TYPE(Element_t), POINTER :: Edge
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+      INTEGER :: Perm(:)
+    END FUNCTION ElastBoundaryResidual
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+    FUNCTION ElastEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+      USE Types
+      TYPE(Element_t), POINTER :: Edge
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2)
+      INTEGER :: Perm(:)
+    END FUNCTION ElastEdgeResidual
 
-     INTERFACE
-        FUNCTION ElastBoundaryResidual( Model,Edge,Mesh,Quant,Perm, Gnorm ) RESULT(Indicator)
-          USE Types
-          TYPE(Element_t), POINTER :: Edge
-          TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
-          REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-          INTEGER :: Perm(:)
-        END FUNCTION ElastBoundaryResidual
-
-     FUNCTION ElastEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
-       USE Types
-       TYPE(Element_t), POINTER :: Edge
-       TYPE(Model_t) :: Model
-       TYPE(Mesh_t), POINTER :: Mesh
-       REAL(KIND=dp) :: Quant(:), Indicator(2)
-       INTEGER :: Perm(:)
-     END FUNCTION ElastEdgeResidual
-
-     FUNCTION ElastInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
-       USE Types
-       TYPE(Element_t), POINTER :: Element
-       TYPE(Model_t) :: Model
-       TYPE(Mesh_t), POINTER :: Mesh
-       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-       INTEGER :: Perm(:)
-     END FUNCTION ElastInsideResidual
+    FUNCTION ElastInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+      USE Types
+      TYPE(Element_t), POINTER :: Element
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+      INTEGER :: Perm(:)
+    END FUNCTION ElastInsideResidual
   END INTERFACE
 
 
@@ -325,6 +318,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   dim = CoordinateSystemDimension()
   CoordinateSystem = CurrentCoordinateSystem()
   AxialSymmetry = CoordinateSystem == AxisSymmetric
+  Parallel = ParEnv % PEs > 1
+  Scanning = ListGetString(Model % Simulation, 'Simulation Type', GotIt) == 'scanning'
 
   StressSol => Solver % Variable
   StressPerm     => StressSol % Perm
@@ -361,10 +356,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !    Check how material behaviour is defined: 
   !-------------------------------------------------------------------------
   UseUMAT = ListGetLogical( SolverParams, 'Use UMAT', GotIt )
-  IF (UseUMAT) THEN
-     CauchyResponseFunction = .TRUE.
-     Isotropic = .FALSE.
-  END IF
+  IF (UseUMAT .AND. TransientSimulation) CALL Fatal('ElasticSolve', &
+      'UMAT version does not yet support transient simulation')
 
   NeoHookeanMaterial = ListGetLogical( SolverParams, 'Neo-Hookean Material', GotIt )
   IF (NeoHookeanMaterial) Isotropic = .TRUE.
@@ -372,9 +365,6 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
       ListGetLogical( SolverParams, 'Mixed Formulation', GotIt )
   IF (MixedFormulation .AND. (STDOFs /= (dim + 1))) CALL Fatal('ElasticSolve', &
       'With mixed formulation variable DOFs should equal to space dimensions + 1')
-
-  GlobalPseudoTraction = GetLogical( SolverParams, 'Pseudo-Traction', GotIt)
-
 
   !------------------------------------------------------------------------------
   !     Allocate some permanent storage, this is done first time only
@@ -391,7 +381,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              Pressure, Velocity, &
              ElasticModulus, PoissonRatio, &
              Density, Damping, &
-             LocalForce, Viscosity, &
+             LocalForce, LocalExternalForce, Viscosity, &
              LocalMassMatrix,  &
              LocalStiffMatrix,  &
              LocalDampMatrix,  &
@@ -399,7 +389,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              LocalDisplacement, &
              PrevLocalDisplacement, &
              SpringCoeff, &
-             Indeces)
+             Indices)
      END IF
 
      ALLOCATE( &
@@ -410,7 +400,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
           Pressure( N ), Velocity( 3,N ), &
           ElasticModulus( 6,6,N ), PoissonRatio( N ), &
           Density( N ), Damping( N ), &
-          LocalForce( STDOFs*N ), Viscosity( N ), &
+          LocalForce( STDOFs*N ), LocalExternalForce( STDOFs*N ), Viscosity( N ), &
           LocalMassMatrix(  STDOFs*N,STDOFs*N ),  &
           LocalStiffMatrix( STDOFs*N,STDOFs*N ),  &
           LocalDampMatrix( STDOFs*N,STDOFs*N ),  &
@@ -418,7 +408,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
           LocalDisplacement( 4,N ), &
           PrevLocalDisplacement( 4,N ), &
           SpringCoeff( N,3,3 ), &
-          Indeces(N), &
+          Indices(N), &
           STAT=istat )
 
      IF ( istat /= 0 ) THEN
@@ -431,6 +421,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         ! variables that depend on the material point. This description is produced
         ! at each integration point. The following is used for finding the right size
         ! of an array holding this information and allocating the array.
+        ! TO DO: Take into account the possibility Mesh % Changed = .TRUE. 
         !------------------------------------------------------------------------------
         M = GetNOFActive()
         DO t=1,M
@@ -470,6 +461,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         CALL AllocateArray(PointwiseStateV0, M * MaxIntegrationPoints, NSTATEV+10)
         PointwiseStateV0 = 0.0d0
         PointwiseStateV0(:,NSTATEV+10) = -1.0d0
+        InitializeStateVars = GetLogical(SolverParams, 'Initialize State Variables', &
+            GotIt)
      END IF
 
      !----------------------------------------------------------------
@@ -484,7 +477,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      ELSE
         CalcPrincipal = GetLogical(SolverParams, 'Calculate Principal', GotIt )     
         CalcPrincipalAngle = GetLogical(SolverParams, 'Calculate PAngle', GotIt )
-        IF (CalcPrincipalAngle) CalcPrincipal = .TRUE. ! Principal angle computation enforces component calculation
+        ! Principal angle computation enforces component calculation:
+        IF (CalcPrincipalAngle) CalcPrincipal = .TRUE. 
      END IF
      AllocationsDone = .TRUE.
   END IF
@@ -556,6 +550,21 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   ALLOCATE( PrevSOL(SIZE(Displacement)) )
   PrevSOL = Displacement
+  IF (UseUMAT) THEN
+    IF (.NOT. ASSOCIATED(StiffMatrix % BulkRHS)) &
+        ALLOCATE(StiffMatrix % BulkRHS(SIZE(StiffMatrix % RHS)))
+    StiffMatrix % BulkRHS = 0.0d0
+    
+    IF (.NOT. ASSOCIATED(TotalSol)) ALLOCATE( TotalSol(SIZE(Displacement)) )
+
+    IF (Scanning .AND. .NOT. ASSOCIATED( StressSol % PrevValues )) THEN
+      ALLOCATE(StressSol % PrevValues(SIZE(Displacement), 1))
+      StressSol % PrevValues = 0.0d0
+    END IF
+
+    CALL ListAddLogical(SolverParams, 'Skip Compute Nonlinear Change', .TRUE.)
+    HenckyStrain = ListGetLogical(SolverParams, 'Use Hencky strain', GotIt)
+  END IF
 
   !------------------------------------------------------------------------------
   !    Do some additional initialization, and go for it
@@ -563,16 +572,22 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   NonlinearIter = ListGetInteger( SolverParams, &
        'Nonlinear System Max Iterations', GotIt )
   IF ( .NOT. GotIt ) NonlinearIter = 1
-
+  NonlinTol = GetConstReal(SolverParams, 'Nonlinear System Convergence Tolerance')
   MinNonlinearIter = ListGetInteger( SolverParams, &
        'Nonlinear System Min Iterations', GotIt )
 
   LinearModel = ListGetLogical( SolverParams, &
        'Elasticity Solver Linear', GotIt )
+  LargeDeflection = ListGetLogical(SolverParams, 'Large Deflection', GotIt)
+  IF (.NOT. GotIt) LargeDeflection = .TRUE.
+
+  IF (.NOT. LargeDeflection) HenckyStrain = .FALSE.
+
+  GlobalPseudoTraction = GetLogical( SolverParams, 'Pseudo-Traction', GotIt)
 
   
   CALL DefaultStart()
-  
+
   DO iter=1,NonlinearIter
 
      at  = CPUTime()
@@ -588,6 +603,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
           '-------------------------------------', Level=4 )
      CALL Info( 'ElasticSolve', ' ', Level=4 )
      CALL Info( 'ElasticSolve', 'Starting assembly...', Level=4 )
+
+     IF (UseUMAT) TotalSol(:) = Displacement(:)
 
      !------------------------------------------------------------------------------
 100  CALL DefaultInitialize()
@@ -605,10 +622,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
         CurrentElement => GetActiveElement(t)
         CALL GetElementNodes(ElementNodes, CurrentElement)
-        n = GetElementNOFNodes()
         NodeIndexes => CurrentElement % NodeIndexes
 
-        nd = GetElementDOFs( Indeces )
+        n = GetElementNOFNodes()
+        nd = GetElementDOFs( Indices )
         nb = GetElementNOFBDOFs()
         ntot = nd + nb
 
@@ -723,7 +740,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
         LocalDisplacement = 0.0D0
         DO i=1,nd
-           k = StressPerm(Indeces(i))
+           k = StressPerm(Indices(i))
            DO j=1,STDOFs
               LocalDisplacement(j,i) = Displacement(STDOFs*(k-1)+j)
            END DO
@@ -731,19 +748,30 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
         ! ----------------------------------------------------------------
         ! Some material models may need the displacement field at the
-        ! previous time step
+        ! previous time/load step
         ! ----------------------------------------------------------------
         PrevLocalDisplacement = 0.0D0
-        IF (TransientSimulation .AND. UseUMAT) THEN
-           DO i=1,nd
-              k = StressPerm(Indeces(i))
+        IF (UseUMAT) THEN
+          IF (TransientSimulation) THEN
+            DO i=1,nd
+              k = StressPerm(Indices(i))
               DO j=1,STDOFs
-                 PrevLocalDisplacement(j,i) = Solver % Variable % PrevValues(STDOFs*(k-1)+j,3)
+                PrevLocalDisplacement(j,i) = Solver % Variable % PrevValues(STDOFs*(k-1)+j,3)
               END DO
-           END DO
+            END DO
+          ELSE
+            IF (Scanning) THEN
+              DO i=1,nd
+                k = StressPerm(Indices(i))
+                DO j=1,STDOFs
+                  PrevLocalDisplacement(j,i) = Solver % Variable % PrevValues(STDOFs*(k-1)+j,1)
+                END DO
+              END DO
+            END IF
+          END IF
         END IF
 
-        IF( LinearModel ) LocalDisplacement = 0.0d0
+        IF ( LinearModel ) LocalDisplacement = 0.0d0
 
         !-------------------------------------------------------------------------------------------
         !        Select subroutine to integrate the element matrix and vector
@@ -754,10 +782,28 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
               ! This branch assumes that the material behavior is defined 
               ! via an umat subroutine. The umat routine should specify
               ! a material response function which gives the Cauchy stress
-              ! as a function of the strain tensor.
+              ! as a function of the strain tensor and state variables.
               !-------------------------------------------------------------------------------
+              CALL LocalMatrixWithUMAT(LocalMassMatrix, LocalDampMatrix, &
+                   LocalStiffMatrix, LocalForce, LocalExternalForce, dt, LoadVector, InertialLoad, &
+                   MaterialConstants, NPROPS, PointwiseStateV, PointwiseStateV0, NSTATEV, &
+                   MaxIntegrationPoints, InitializeStateVars, Density, Damping, AxialSymmetry, &
+                   PlaneStress, LargeDeflection, HenckyStrain, CurrentElement, n, nd, ntot, STDOFs, &
+                   ElementNodes, LocalDisplacement, PrevLocalDisplacement, LocalTemperature, &
+                   t, Iter)
 
-              CALL Fatal( 'ElasticSolve', 'This version does not offer an umat interface' )
+              !CALL Fatal( 'ElasticSolve', 'This version does not offer an umat interface' )
+
+              ! ---------------------------------------------------------------------------
+              ! Create a RHS vector which contains just the contribution of external loads
+              ! for the purpose of nonlinear error estimation:
+              ! ---------------------------------------------------------------------------
+              IF (Iter == 1) THEN
+                ValuesSaved => StiffMatrix % RHS
+                StiffMatrix % RHS => StiffMatrix % BulkRHS
+                CALL DefaultUpdateForce(LocalExternalForce)
+                Solver % Matrix % RHS => ValuesSaved
+              END IF
 
            ELSE
               !-------------------------------------------------------
@@ -870,13 +916,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                    ParentElement => CurrentElement % BoundaryInfo % Right
            END IF
 
-           nd = GetElementDOFs(Indeces, ParentElement)
+           nd = GetElementDOFs(Indices, ParentElement)
            CALL GetElementNodes( ParentNodes, ParentElement )
 
            LocalDisplacement = 0.0D0
            IF( .NOT. LinearModel ) THEN
               DO l=1,nd
-                 k = StressPerm(Indeces(l))
+                 k = StressPerm(Indices(l))
                  DO j=1,STDOFs
                     LocalDisplacement(j,l) = Displacement(STDOFs*(k-1)+j)
                  END DO
@@ -959,12 +1005,24 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                 GetVarName(Solver % Variable), GotIt )
 
            IF ( CoordinateSystem == Cartesian .OR. AxialSymmetry) THEN
-              CALL LocalBoundaryMatrix( LocalStiffMatrix, LocalForce, LoadVector, &
-                   SpringCoeff, NormalSpring, Alpha, Beta, LocalDisplacement, CurrentElement, &
-                   n, ntot, ParentElement, ParentElement % TYPE % NumberOfNodes, &
+              CALL LocalBoundaryMatrix( LocalStiffMatrix, LocalForce, &
+                   LoadVector, SpringCoeff, NormalSpring, Alpha, Beta, LocalDisplacement, &
+                   CurrentElement, n, ntot, ParentElement, ParentElement % TYPE % NumberOfNodes, &
                    nd, ParentNodes, FlowElement, FlowNOFNodes, FlowNodes, Velocity,  &
                    Pressure, Viscosity, Density, CompressibilityDefined, AxialSymmetry, &
-                   NormalTangential, PseudoTraction, MixedFormulation)
+                   NormalTangential, PseudoTraction, MixedFormulation, LargeDeflection)
+
+              IF (UseUmat .AND. Iter == 1) THEN
+                ! ---------------------------------------------------------------------------
+                ! Update the RHS vector which contains just the contribution of external loads
+                ! for the purpose of nonlinear error estimation:
+                ! ---------------------------------------------------------------------------
+                ValuesSaved => StiffMatrix % RHS
+                StiffMatrix % RHS => StiffMatrix % BulkRHS
+                CALL DefaultUpdateForce(LocalForce)
+                Solver % Matrix % RHS => ValuesSaved
+              END IF              
+
            ELSE
               CALL Fatal('ElasticSolve', 'Unsupported coordinate system')
            END IF
@@ -990,25 +1048,122 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      CALL DefaultFinishAssembly()
      CALL DefaultDirichletBCs()
 
+     IF (UseUMAT) THEN
+       ! ---------------------------------------------------------------------------------
+       ! Now the solution variable is the solution increment while the sif-file specifies
+       ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
+       ! is obtained for the solution increment.
+       ! ---------------------------------------------------------------------------------
+       IF (ALLOCATED(StiffMatrix % ConstrainedDOF)) THEN
+         DO i=1,StiffMatrix % NumberOfRows
+           IF (StiffMatrix % ConstrainedDOF(i)) THEN
+             StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - Displacement(i)
+           END IF
+         END DO
+         CALL EnforceDirichletConditions(Solver, StiffMatrix, ForceVector)
+       END IF
+
+       ! The initial guess for the displacement increment:
+       Displacement = 0.0d0
+
+       ! ---------------------------------------------------------------------------------
+       ! Check whether the nonlinear iteration can be terminated:
+       ! ---------------------------------------------------------------------------------
+       IF (Iter == 1) THEN
+
+         IF (Parallel) THEN
+           IF (.NOT. ASSOCIATED(StiffMatrix % ParMatrix)) &
+               CALL ParallelInitMatrix(Solver, StiffMatrix)
+
+           PMatrix => StiffMatrix % ParMatrix % SplittedMatrix % InsideMatrix
+           IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
+               ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
+
+           ! Temporarily set the parallel rhs vector to be the plain source vector:
+           CALL ParallelUpdateRHS(StiffMatrix, StiffMatrix % BulkRHS)
+           Pb => PMatrix % RHS
+           Norm = MAXVAL(ABS(Pb))
+           Norm = ParallelReduction(Norm,2)
+         ELSE
+           Norm = MAXVAL(ABS(StiffMatrix % BulkRHS(:)))
+         END IF
+
+         NoExternalLoads = Norm < AEPS       
+         IF (NoExternalLoads) THEN
+           ! This appears to be a purely BC-loaded case, switch to using a different criterion
+           ! (use absolute norm, this can be hard ...):
+           CALL Info('ElasticSolver', 'No pressure external loads ... ', Level=4)
+           CALL Info('ElasticSolver', &
+               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
+           CALL Info('ElasticSolver', &
+               'This may give a hard stopping criterion',  Level=4)
+           NonlinRes0 = 1.0d0
+         ELSE
+           ! Compute the 2-norm of the external load vector
+           IF (Parallel)  THEN
+             Norm = 0.0d0
+             DO i=1,PMatrix % NumberOfRows
+               Norm = Norm + Pb(i)**2
+             END DO
+             NonlinRes0 = SQRT(ParallelReduction(Norm))
+           ELSE
+             NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+           END IF
+         END IF
+       END IF
+
+
+       IF (Parallel) THEN
+         ! Employ BulkRHS vector to estimate the size of the current residual (RHS):
+         Solver % Matrix % BulkRHS = Solver % Matrix % RHS
+         CALL ParallelUpdateRHS(StiffMatrix, Solver % Matrix % BulkRHS)
+         Norm = 0.0d0
+         DO i=1,PMatrix % NumberOfRows
+           Norm = Norm + Pb(i)**2
+         END DO
+         NonlinRes = SQRT(ParallelReduction(Norm)) / NonlinRes0
+       ELSE
+         NonlinRes = SQRT(SUM(StiffMatrix % RHS(:)**2)) / NonlinRes0
+       END IF
+       WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
+           Iter-1, NonLinRes
+       CALL Info('ElasticitySolver', Message, Level=3)        
+       IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
+         WRITE(Message,'(a)') 'Nonlinear iteration is terminated succesfully'
+         CALL Info('ElasticitySolver', Message, Level=3)
+         ! Save the state variables corresponding to the converged nonlinear
+         ! solution to the array holding the previous solution state:
+         PointwiseStateV0(:,1:NStatev+9) = PointwiseStateV(:,1:NStateV+9)
+         Displacement(:) = TotalSol(:)
+         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
+         EXIT
+       END IF
+
+     ELSE
+       IF ( DefaultLinesearch( Converged ) ) GOTO 100
+       IF( iter >= MinNonlinearIter .AND. Converged ) EXIT
+     END IF
+
      !------------------------------------------------------------------------------
      !     Solve the system and check for convergence
      !------------------------------------------------------------------------------
-
-     IF ( DefaultLinesearch( Converged ) ) GOTO 100
-
-     IF( iter >= MinNonlinearIter .AND. Converged ) EXIT
-
      UNorm = DefaultSolve()
 
-     !----------------------------------------------------------------------------------
-     IF ( ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) .AND. &
-          ( iter >= MinNonlinearIter ) ) THEN
-        IF (UseUMAT) THEN
-           ! Save the state variables corresponding to the converged nonlinear
-           ! solution to the array holding the previous solution state:
-           PointwiseStateV0(:,1:NStatev+9) = PointwiseStateV(:,1:NStateV+9)
-        END IF
-        EXIT
+     IF (UseUmat) THEN
+       Displacement(:) = TotalSol(:) + Displacement(:)
+       IF (iter==NonlinearIter) THEN
+         WRITE(Message,'(a)') 'The maximum of nonlinear iterations reached: Terminating...'
+         CALL Info('ElasticitySolver', Message, Level=3)        
+         ! Save the state variables corresponding to the converged nonlinear
+         ! solution to the array holding the previous solution state:
+         PointwiseStateV0(:,1:NStatev+9) = PointwiseStateV(:,1:NStateV+9)
+         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
+         EXIT
+       END IF
+     ELSE
+       !----------------------------------------------------------------------------------
+       IF ( ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) .AND. &
+           ( iter >= MinNonlinearIter ) ) EXIT
      END IF
 
   !------------------------------------------------------------------------------
@@ -1025,7 +1180,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         CALL GenerateStressVariable(PointwiseStateV, NodalStress, StressPerm, MaxIntegrationPoints, &
              NStateV, CalculateStresses, AxialSymmetry)
 
-        CALL GenerateStrainVariable(Displacement, NodalStrain, StressPerm, CalculateStrains, AxialSymmetry)
+        CALL GenerateStrainVariable(Displacement, NodalStrain, StressPerm, CalculateStrains, &
+            AxialSymmetry, LargeDeflection)
      ELSE
         CALL ComputeStressAndStrain( Displacement, NodalStrain, NodalStress, VonMises, StressPerm, &
              PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, AxialSymmetry, NeoHookeanMaterial, &
@@ -1065,6 +1221,1061 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
 
 CONTAINS
+
+!------------------------------------------------------------------------------
+! This subroutine uses the subroutine umat (Abaqus software convention for 
+! defining a user-supplied material model) to get the material model.
+! This subroutine assumes that a stress response function for the Cauchy
+! stress is supplied (originally Elmer has employed Piola-Kirchhoff stresses).
+! This is still a development version.
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixWithUMAT(MassMatrix, DampMatrix, StiffMatrix, ForceVector, &
+       ExternalForceVector, dt, LoadVector, InertialLoad, MaterialConstants, &
+       NrInProps, PointwiseStateV, PointwiseStateV0, NStateV, MaxMaterialPoints, &
+       InitializeStateVars, NodalDensity, NodalDamping, AxialSymmetry, PlaneStress, &
+       LargeDeflection, HenckyStrain, Element, n, nd, ntot, dofs, Nodes, NodalDisplacement, &
+       PrevNodalDisplacement, NodalTemperature, ElementIndex, IterationIndex)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: MassMatrix(:,:), DampMatrix(:,:), StiffMatrix(:,:)
+    REAL(KIND=dp) :: ExternalForceVector(:)
+    REAL(KIND=dp) :: ForceVector(:), dt, LoadVector(:,:), InertialLoad(:,:)
+    REAL(KIND=dp), POINTER :: MaterialConstants(:,:)
+    INTEGER :: NrInProps
+    REAL(KIND=dp), POINTER :: PointwiseStateV(:,:), PointwiseStateV0(:,:)
+    INTEGER :: NStateV, MaxMaterialPoints
+    LOGICAL :: InitializeStateVars
+    REAL(KIND=dp) :: NodalDensity(:), NodalDamping(:)
+    LOGICAL :: AxialSymmetry, PlaneStress, LargeDeflection
+    LOGICAL :: HenckyStrain
+    TYPE(Element_t) :: Element
+    INTEGER :: n, nd, ntot, dofs
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp) :: NodalDisplacement(:,:), PrevNodalDisplacement(:,:)
+    REAL(KIND=dp) :: NodalTemperature(:)
+    INTEGER :: ElementIndex
+    INTEGER :: IterationIndex     ! The iteration index to resolve the nonlinearity
+    !------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+
+    REAL(KIND=dp) :: SymBasis1(3,3), SymBasis2(3,3), SymBasis3(3,3)
+    REAL(KIND=dp) :: SymBasis4(3,3), SymBasis5(3,3), SymBasis6(3,3)
+    REAL(KIND=dp) :: Identity(3,3)
+
+    REAL(KIND=dp) :: Basis(ntot), dBasis(ntot,3), SqrtElementMetric
+    REAL(KIND=dp) :: B(6,ntot*dofs)
+    REAL(KIND=dp) :: Force(3), InertialForce(3)
+    REAL(KIND=dp) :: Density, Damping, Temperature
+    REAL(KIND=dp) :: Strain(3,3), Strain0(3,3)
+    REAL(KIND=dp) :: Stress(3,3), Stress0(3,3), Stress1(3,3), Stress2(3,3)
+    REAL(KIND=dp) :: dStress1(3,3)
+    REAL(KIND=dp) :: Grad(3,3), Grad0(3,3)
+    REAL(KIND=dp) :: InvDefG(3,3), DetDefG
+    REAL(KIND=dp) :: InvDefG0(3,3), DetDefG0
+    REAL(KIND=dp) :: C(3,3), InvC(3,3)
+!    REAL(KIND=dp) :: EigenC(3,3)
+
+    REAL(KIND=dp) :: WorkTensor1(3,3), WorkTensor2(3,3), WorkTensor3(3,3)
+    REAL(KIND=dp) :: WorkVec1(1:6,1), WorkVec2(1:6,1)
+    REAL(KIND=dp) :: s, u, v, w, r
+
+    INTEGER :: i, j, k, l, p, q, t, dim, cdim, totdofs
+
+    LOGICAL :: stat
+
+    ! -----------------------------------------------------------------------------
+    ! Variables for calling an UMAT subroutine that defines the material behaviour.
+    ! The commenting with !* means that the variable is supported by Elmer. All
+    ! variables have sufficient sizes for 3-D cases. For the use of these variables
+    ! see also the definition of the subroutine umat.
+    ! -----------------------------------------------------------------------------
+    DOUBLE PRECISION :: StressVec(6)          !*
+    DOUBLE PRECISION :: StateV(NStateV)       !* 
+    DOUBLE PRECISION :: StressDer(6,6)        !*
+    DOUBLE PRECISION :: EnergyElast           !* 
+    DOUBLE PRECISION :: EnergyPlast           !* 
+    DOUBLE PRECISION :: EnergyVisc            !* 
+    DOUBLE PRECISION :: rpl
+    DOUBLE PRECISION :: ddsddt(6)
+    DOUBLE PRECISION :: drplde(6)
+    DOUBLE PRECISION :: drpldt
+    DOUBLE PRECISION :: stran(6)              !*
+    DOUBLE PRECISION :: dstran(6)             !*
+    DOUBLE PRECISION :: TimeAtStep(2)         !*
+    DOUBLE PRECISION :: dtime                 !*
+    DOUBLE PRECISION :: Temp                  !*
+    DOUBLE PRECISION :: dTemp = 0.0d0         !  Zero for isothermal conditions
+    DOUBLE PRECISION :: predef(1) = 0.0d0
+    DOUBLE PRECISION :: dpred(1) = 0.0d0
+    character(len=80) :: cmname               !*
+    INTEGER :: ndi                            !*
+    INTEGER :: nshr                           !*
+    INTEGER :: ntens                          !*
+    !    INTEGER :: NStateV                   !* Specified in the subroutine call
+    DOUBLE PRECISION :: InProps(NrInProps)    !*
+    !    INTEGER :: NrInProps                 !* Specified in the subroutine call
+    DOUBLE PRECISION :: coords(3) = 0.0d0     !  TO DO: use this to provide the current coordinates
+    DOUBLE PRECISION :: drot(3,3)     
+    DOUBLE PRECISION :: pnewdt = 3.0d0
+    DOUBLE PRECISION :: celent = 1.0d0        !* TO DO: use this to provide the element size 
+    DOUBLE PRECISION :: DefG0(3,3)            !*
+    DOUBLE PRECISION :: DefG(3,3)             !*
+    !    INTEGER :: ElementIndex              !* Specified in the subroutine call
+    INTEGER :: npt                            !*
+    INTEGER :: layer = 1                     
+    INTEGER :: kspt = 1
+    INTEGER :: kstep = 1
+    INTEGER :: kinc = 1
+
+    !------------------------------------------------------------------------------
+    ! Variables for computing eigenvector basis via calling the lapack dsyev
+    !------------------------------------------------------------------------------
+    REAL(KIND=dp) :: QWork(3,3), EigenVals(3), PriWork(102)
+    INTEGER :: PriLWork=102, PriInfo=0
+    !------------------------------------------------------------------------------
+
+    IF (PlaneStress) CALL Fatal('LocalMatrixWithUMAT', 'Cannot yet handle plane stress case')
+    IF (ntot > nd) CALL Fatal('LocalMatrixWithUMAT', 'Static condensation of bubbles is missing')
+
+    ! ---------------------------------------------------------------------------------
+    ! Six basis vectors for expressing symmetric tensors: The components of the 
+    ! engineering strain vector [E_11 E_22 E_33 2E_12 2E_13 2E_23] are thus the 
+    ! components of the strain tensor with respect to this basis
+    ! ---------------------------------------------------------------------------------
+    SymBasis1(1:3,1:3) = RESHAPE((/ 1,0,0,0,0,0,0,0,0 /),(/ 3,3 /))
+    SymBasis2(1:3,1:3) = RESHAPE((/ 0,0,0,0,1,0,0,0,0 /),(/ 3,3 /))
+    SymBasis3(1:3,1:3) = RESHAPE((/ 0,0,0,0,0,0,0,0,1 /),(/ 3,3 /)) 
+    SymBasis4(1:3,1:3) = RESHAPE((/ 0.0d0,0.5d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.0d0,0.0d0 /),(/ 3,3 /))
+    SymBasis5(1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.0d0 /),(/ 3,3 /))
+    SymBasis6(1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.5d0,0.0d0 /),(/ 3,3 /))
+
+    Identity(1:3,1:3) = RESHAPE((/ 1,0,0,0,1,0,0,0,1 /),(/ 3,3 /))
+
+    ! The dimensionality (dim) of the state of stress:
+    ! ---------------------------------------------------------------------------------
+    cdim = CoordinateSystemDimension()
+    IF (PlaneStress) THEN
+      dim = cdim
+    ELSE
+      ! Axial symmetry, plane strain and 3-D:
+      dim = 3
+    END IF
+
+    ! Define the array size for some umat variables: 
+    ! ---------------------------------------------------------------------------------
+    SELECT CASE(cdim)
+    CASE(2)
+      ! In plane stress case the third normal stress component is zero, but these size 
+      ! definitions allow the umat subroutine to return the third normal strain which 
+      ! cannot be reproduced from the 2-D displacement solution. 
+      ! TO DO: indicate the plane stress condition via the material model name?
+      ndi = 3
+      nshr = 1
+    CASE(3)
+      ndi = 3
+      nshr = 3
+    END SELECT
+    ntens = ndi + nshr
+
+    totdofs = dofs * ntot
+
+    ! --------------------------------------------------------------------------
+    ! Specify some UMAT variables ...
+    ! --------------------------------------------------------------------------
+    DO i = 1,NrInProps
+       InProps(i) = MaterialConstants(i,1)  
+    END DO
+
+    ! The material model name is used as a switch between some examples of implementation:
+    IF (HenckyStrain) THEN
+      cmname = 'hencky-stvenant-kirchhoff'//CHAR(0)
+    ELSE
+      IF (LargeDeflection) THEN
+        cmname = 'stvenant-kirchhoff'//CHAR(0)
+      ELSE
+        cmname = 'linear isotropic'//CHAR(0)
+      END IF
+    END IF
+
+    dtime = dt
+    TimeAtStep(1:2) = GetTime() - dt
+    DRot = Identity
+
+    ! ------------------------------------
+    ! Integration stuff
+    ! ------------------------------------   
+    IntegStuff = GaussPoints( Element )
+
+    ForceVector = 0.0D0
+    ExternalForceVector = 0.0D0
+    StiffMatrix = 0.0D0
+    MassMatrix  = 0.0D0
+    DampMatrix  = 0.0d0
+
+    DO t=1,IntegStuff % n
+      B = 0.0d0
+      u = IntegStuff % u(t)
+      v = IntegStuff % v(t)
+      w = IntegStuff % w(t)
+      !------------------------------------------------------------------------------
+      ! Basis function values & derivatives at the integration point
+      !------------------------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, u, v, w, SqrtElementMetric, &
+          Basis, dBasis )
+
+      s = SqrtElementMetric * IntegStuff % s(t)
+      IF (AxialSymmetry) THEN
+        r = SUM( Basis(1:n) * Nodes % x(1:n) )
+        s = s * r
+      END IF
+
+      !---------------------------------------------------------------------------
+      ! Force at integration point
+      !----------------------------------------------------------------------------   
+      DO i=1,cdim
+        Force(i) = SUM( LoadVector(i,1:n)*Basis(1:n) )
+        InertialForce(i) = SUM( InertialLoad(i,1:n)*Basis(1:n) )
+      END DO
+
+      !---------------------------------------------------------------------------
+      ! Temperature, density and damping
+      !---------------------------------------------------------------------------
+      Temp = SUM( NodalTemperature(1:n)*Basis(1:n) )
+      Density = SUM( NodalDensity(1:n)*Basis(1:n) )
+      Damping = SUM( NodalDamping(1:n)*Basis(1:n) )
+
+      !--------------------------------------------------------------------
+      ! Compute the formulation variables (the displacement and deformation
+      ! gradients):
+      !--------------------------------------------------------------------
+      Grad = 0.0d0
+      Grad0 = 0.0d0
+      IF (AxialSymmetry) THEN
+        Grad(1,1) = SUM( NodalDisplacement(1,1:nd) * dBasis(1:nd,1) )
+        Grad(1,3) = SUM( NodalDisplacement(1,1:nd) * dBasis(1:nd,2) ) 
+        Grad(2,2) = 1.0d0/r * SUM( NodalDisplacement(1,1:nd) * Basis(1:nd) )
+        Grad(3,1) = SUM( NodalDisplacement(2,1:nd) * dBasis(1:nd,1) )
+        Grad(3,3) = SUM( NodalDisplacement(2,1:nd) * dBasis(1:nd,2) )
+
+        Grad0(1,1) = SUM( PrevNodalDisplacement(1,1:nd) * dBasis(1:nd,1) )
+        Grad0(1,3) = SUM( PrevNodalDisplacement(1,1:nd) * dBasis(1:nd,2) ) 
+        Grad0(2,2) = 1.0d0/r * SUM( PrevNodalDisplacement(1,1:nd) * Basis(1:nd) )
+        Grad0(3,1) = SUM( PrevNodalDisplacement(2,1:nd) * dBasis(1:nd,1) )
+        Grad0(3,3) = SUM( PrevNodalDisplacement(2,1:nd) * dBasis(1:nd,2) )          
+      ELSE
+        ! Note that in the plane stress case we don't have means to create the fully
+        ! consistent displacement gradient in the third direction:
+        Grad(1:cdim,1:cdim) = MATMUL(NodalDisplacement(1:cdim,1:nd),dBasis(1:nd,1:cdim))
+        Grad0(1:cdim,1:cdim) = MATMUL(PrevNodalDisplacement(1:cdim,1:nd),dBasis(1:nd,1:cdim))
+      END IF
+      DefG = Identity + Grad
+      DefG0 = Identity + Grad0
+
+      IF (LargeDeflection) THEN
+        SELECT CASE( dim )
+        CASE( 1 )
+          DetDefG = DefG(1,1)
+        CASE( 2 )
+          DetDefG = DefG(1,1)*DefG(2,2) - DefG(1,2)*DefG(2,1)
+        CASE( 3 )
+          DetDefG = DefG(1,1) * ( DefG(2,2)*DefG(3,3) - DefG(2,3)*DefG(3,2) ) + &
+              DefG(1,2) * ( DefG(2,3)*DefG(3,1) - DefG(2,1)*DefG(3,3) ) + &
+              DefG(1,3) * ( DefG(2,1)*DefG(3,2) - DefG(2,2)*DefG(3,1) )
+        END SELECT
+
+        !-------------------------------------------------------------
+        !  InvDefG will be the inverse of the deformation gradient
+        !-------------------------------------------------------------
+        InvDefG = DefG
+        CALL InvertMatrix( InvDefG, dim )       
+      END IF
+
+      SELECT_STRAIN_MEASURE: IF (HenckyStrain) THEN
+        ! TO DO:
+        ! - warn if a Hencky umat has not been implemented
+        ! --------------------------------------------
+        ! The right Cauchy-Green deformation tensor 
+        ! --------------------------------------------
+        C = MATMUL( TRANSPOSE(DefG0), DefG0 )
+
+        ! -----------------------------------------------------------
+        ! Compute the spectral decomposition of C
+        ! -----------------------------------------------------------
+        DO i=1,3
+          k = i
+          DO j=k,3
+            QWork(i,j) = C(i,j)
+          END DO
+        END DO
+        CALL DSYEV('V', 'U', 3, QWork, 3, EigenVals, PriWork, PriLWork, PriInfo)
+        IF (PriInfo /= 0) THEN
+          CALL Fatal( 'ElasticSolve', 'DSYEV cannot generate eigen basis')          
+        END IF
+
+        Strain0 = 0.0d0
+!        EigenC = MATMUL( TRANSPOSE(QWork), MATMUL(C,QWork) )       
+        Strain0(1,1) = LOG(SQRT(EigenVals(1)))
+        Strain0(2,2) = LOG(SQRT(EigenVals(2)))       
+        Strain0(3,3) = LOG(SQRT(EigenVals(3)))
+        ! Transform back to the original coordinates:
+        Strain0 = MATMUL(QWork, MATMUL(Strain0,TRANSPOSE(QWork)))
+
+        ! -----------------------------------------------------------
+        ! Repeat for the current right Cauchy-Green deformation tensor:
+        ! -----------------------------------------------------------
+        C = MATMUL( TRANSPOSE(DefG), DefG )
+
+        DO i=1,3
+          k = i
+          DO j=k,3
+            QWork(i,j) = C(i,j)
+          END DO
+        END DO
+        CALL DSYEV('V', 'U', 3, QWork, 3, EigenVals, PriWork, PriLWork, PriInfo)
+        IF (PriInfo /= 0) THEN
+          CALL Fatal( 'ElasticSolve', 'DSYEV cannot generate eigen basis')          
+        END IF
+
+        Strain = 0.0d0
+        Strain(1,1) = LOG(SQRT(EigenVals(1)))
+        Strain(2,2) = LOG(SQRT(EigenVals(2)))       
+        Strain(3,3) = LOG(SQRT(EigenVals(3)))
+        Strain = MATMUL(QWork, MATMUL(Strain,TRANSPOSE(QWork)))
+
+        ! NOTE: The differentiation of the Hencky strain is done via a truncated 
+        ! series expansion which may become inaccurate for large strains. 
+        ! However, this inaccuracy should not break the consistency
+        ! of the solution method: if nonlinear iterations converge, we shoud have
+        ! a solution. That is, inaccuracy of the strain expansion has the effect
+        ! that the Newton iteration is replaced by inexact Newton iteration.
+        ! Currently no warnings are given for the possibility that the strain
+        ! expansion may not be accurate:
+        !
+        !IF ( ANY(EigenVals(:) >= 2.0d0) .OR. ANY(Eigenvals(:) <= 0.5d0) ) &
+        !     CALL Fatal( 'ElasticSolve', 'Series expansion for Hencky strain too short!')
+      ELSE
+        ! ---------------------------------------------------------------------------
+        ! If the Hencky strain is not used, we use the standard material strain tensor 
+        ! or its linearization
+        ! ---------------------------------------------------------------------------
+        Strain = 0.0d0
+        Strain0 = 0.0d0
+        Strain(1:dim,1:dim) = 0.5d0 * (Grad(1:dim,1:dim) + TRANSPOSE(Grad(1:dim,1:dim)))
+        Strain0(1:dim,1:dim) = 0.5d0 * (Grad0(1:dim,1:dim) + TRANSPOSE(Grad0(1:dim,1:dim)))
+
+        IF (LargeDeflection) THEN
+          Strain(1:dim,1:dim) = Strain(1:dim,1:dim) + 0.5d0 * &
+              MATMUL(TRANSPOSE(Grad(1:dim,1:dim)),Grad(1:dim,1:dim))
+          Strain0(1:dim,1:dim) = Strain0(1:dim,1:dim) + 0.5d0 * &
+              MATMUL(TRANSPOSE(Grad0(1:dim,1:dim)),Grad0(1:dim,1:dim))
+        END IF
+
+      END IF SELECT_STRAIN_MEASURE
+
+      ! The umat (engineering) strain variable giving the strain before the increment:
+      Stran(1) = Strain0(1,1)
+      Stran(2) = Strain0(2,2)
+      Stran(3) = Strain0(3,3)
+      Stran(4) = 2.0d0 * Strain0(1,2)
+      Stran(5) = 2.0d0 * Strain0(1,3)
+      Stran(6) = 2.0d0 * Strain0(2,3)
+
+      ! The umat variable giving the candidate for the strain increment:
+      dStran(1) = Strain(1,1) - Strain0(1,1)
+      dStran(2) = Strain(2,2) - Strain0(2,2)
+      dStran(3) = Strain(3,3) - Strain0(3,3)
+      dStran(4) = 2.0d0 * (Strain(1,2) - Strain0(1,2))
+      dStran(5) = 2.0d0 * (Strain(1,3) - Strain0(1,3))
+      dStran(6) = 2.0d0 * (Strain(2,3) - Strain0(2,3))
+        
+      ! ----------------------------------------------------------------------------
+      ! Obtain the Cauchy stress and the stress response function derivative 
+      ! via UMAT interface. If the state variables have not been initiated to correspond
+      ! the initial state (stress-free initial condition is supposed), we first make
+      ! an extra UMAT call to obtain the state variables if requested in the sif file.
+      ! ----------------------------------------------------------------------------
+      INITIALIZE_STATE_VARIABLES: IF ( InitializeStateVars .AND. &
+          PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,NStateV+10) < 0.0d0 ) THEN
+
+        DO i=1,NStateV
+          StateV(i) = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,i)
+        END DO
+
+        EnergyElast = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,NStateV+1)
+        EnergyPlast = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,NStateV+2)
+        EnergyVisc = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,NStateV+3)
+        StressVec(1:3+nshr) = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t, &
+            NStateV+4:NStateV+6+nshr)
+        
+        ! We insert the identity tensor as the deformation gradient so the initial solution 
+        ! should be the zero-displacement solution:
+        stran = 0.0d0
+        dstran = 0.0d0
+        CALL UMAT(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
+            EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
+            stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
+            predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
+            drot, pnewdt, celent, Identity, Identity, ElementIndex, t, layer, kspt, kstep, kinc)
+
+        I = (ElementIndex-1)*MaxMaterialPoints+t
+        IF ( ANY(StressVec(1:3+nshr) /= PointwiseStateV0(I,NStateV+4:NStateV+6+nshr)) ) THEN
+          CALL Fatal('ElasticSolve','State variables initialization is changing stress')
+        END IF
+
+        ! Update the state variables storage (energy variables are not updated):
+        DO i=1,NStateV
+          PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,i) = StateV(i)
+        END DO
+
+        i = (ElementIndex-1)*MaxMaterialPoints+t
+        PointwiseStateV0(i,NStateV+10) = 1.0d0
+      END IF INITIALIZE_STATE_VARIABLES
+
+      ! -----------------------------------------------------------------------------
+      ! Perform the actual UMAT call. Before this, get the state variables and 
+      ! the stress as specified at the previous time/load level for converged solution:
+      ! -----------------------------------------------------------------------------
+      DO i=1,NStateV
+        StateV(i) = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,i)
+      END DO
+      EnergyElast = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,NStateV+1)
+      EnergyPlast = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,NStateV+2)
+      EnergyVisc = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t,NStateV+3)
+
+      StressVec(1:3+nshr) = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t, &
+          NStateV+4:NStateV+6+nshr)
+
+      CALL UMAT(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
+          EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
+          stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
+          predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
+          drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
+
+      ! ---------------------------------------------------------------------------
+      ! Update data which gives the state variables corresponding to the current 
+      ! nonlinear iterate.
+      ! ---------------------------------------------------------------------------
+      DO i=1,NStateV
+        PointwiseStateV((ElementIndex-1)*MaxMaterialPoints+t,i) = StateV(i)
+      END DO
+      PointwiseStateV((ElementIndex-1)*MaxMaterialPoints+t,NStateV+1) = EnergyElast
+      PointwiseStateV((ElementIndex-1)*MaxMaterialPoints+t,NStateV+2) = EnergyPlast
+      PointwiseStateV((ElementIndex-1)*MaxMaterialPoints+t,NStateV+3) = EnergyVisc
+
+      PointwiseStateV((ElementIndex-1)*MaxMaterialPoints+t,NStateV+4:NStateV+6) = &
+          StressVec(1:3)
+      PointwiseStateV((ElementIndex-1)*MaxMaterialPoints+t,NStateV+7:NStateV+6+nshr) = &
+          StressVec(4:3+nshr)
+
+      STIFFMATRIX_FOR_CHOSEN_STRAIN: IF (.NOT. LargeDeflection) THEN
+        ! ----------------------------------------
+        ! Create the strain-displacement matrix B:
+        ! ----------------------------------------
+        DO p=1,ntot
+          DO i=1,cdim
+            B(i,(p-1)*dofs+i) = dBasis(p,i)
+          END DO
+          DO i=1,nshr
+            SELECT CASE(i)
+            CASE(1)
+              B(ndi+i,(p-1)*dofs+1) = dBasis(p,2)
+              B(ndi+i,(p-1)*dofs+2) = dBasis(p,1)
+            CASE(2)
+              B(ndi+i,(p-1)*dofs+1) = dBasis(p,3)
+              B(ndi+i,(p-1)*dofs+3) = dBasis(p,1)
+            CASE(3)
+              B(ndi+i,(p-1)*dofs+2) = dBasis(p,3)
+              B(ndi+i,(p-1)*dofs+3) = dBasis(p,2)
+            END SELECT
+          END DO
+        END DO
+       
+        CALL StrainEnergyDensity(StiffMatrix, StressDer, B, ntens, totdofs, s)
+
+        ! Internal force terms for the residual vector:
+        ForceVector(1:totdofs) = ForceVector(1:totdofs) - MATMUL( TRANSPOSE(B(1:ntens,1:totdofs)), &
+            StressVec(1:ntens) ) * s
+
+        ! External forces:
+        DO p=1,ntot
+          DO i=1,cdim
+            ExternalForceVector(dofs*(p-1)+i) = ExternalForceVector(dofs*(p-1)+i) +  ( &
+                Basis(p) * Force(i) + Basis(p) * InertialForce(i) * Density) * s
+            ForceVector(dofs*(p-1)+i) = ForceVector(dofs*(p-1)+i) +  ( &
+                Basis(p) * Force(i) + Basis(p) * InertialForce(i) * Density) * s
+          END DO
+        END DO
+
+      ELSE
+        ! -------------------------------------------------------------------------
+        ! THIS BRANCH CONTAINS AN IMPLEMENTATION FOR THE COMBINATION OF A NONLINEAR
+        ! STRAIN AND CAUCHY STRESS. 
+        !
+        ! Now utilize the UMAT output to obtain the Newton linearization. First form
+        ! the current Cauchy stress sigma_{n+1}^{(k)} (with k = IterationIndex-1 so 
+        ! that IterationIndex = k+1 is associated with the variables to be solved) as 
+        ! a symmetric tensor:
+        !---------------------------------------------------------------------------
+        Stress = StressVec(1)*SymBasis1 + StressVec(2)*SymBasis2 + &
+            StressVec(3)*SymBasis3 + 2.0d0*StressVec(4)*SymBasis4 
+        IF (nshr == 3) Stress = Stress + 2.0d0*StressVec(5)*SymBasis5 + &
+            2.0d0*StressVec(6)*SymBasis6
+
+        !--------------------------------------------------
+        ! The first Piola-Kirchhoff stress
+        !--------------------------------------------------
+        Stress1 = DetDefG * MATMUL(Stress,TRANSPOSE(InvDefG))
+
+        DO p = 1,ntot
+          DO i = 1,cdim
+            !------------------------------------------------------------------------
+            ! Grad will now be the displacement gradient corresponding to 
+            ! the displacement test function
+            ! -----------------------------------------------------------------------
+            Grad = 0.0d0
+            IF (AxialSymmetry) THEN
+              SELECT CASE(i)
+              CASE (1)
+                Grad(1,1) = dBasis(p,1)
+                Grad(1,3) = dBasis(p,2)
+                Grad(2,2) = 1.0d0/r * Basis(p)
+              CASE (2)
+                Grad(3,1) = dBasis(p,1)
+                Grad(3,3) = dBasis(p,2)                   
+              END SELECT
+            ELSE
+              Grad(i,:) = dBasis(p,:)
+            END IF
+            !--------------------------------------------------------------------------------------
+            ! The following is for handling the part of DS(F)[U], with S the first Piola-Kirchhoff 
+            ! stress and U the increment of the deformation gradient. We manipulate the innerproduct
+            ! <DS(F)[U],Grad> such that <DS(F)[U],Grad> = <U,W> with W the result of the manipulation. 
+            ! First the part of W that do not depend on the response function derivative:
+            !--------------------------------------------------------------------------------------
+            WorkTensor2 = detDefG * TRACE( MATMUL(Stress,MATMUL(Grad,InvDefG)), dim) * &
+                TRANSPOSE(InvDefG) - detDefG * MATMUL(TRANSPOSE(InvDefG), MATMUL(TRANSPOSE(Grad), &
+                MATMUL(Stress, TRANSPOSE(InvDefG))))  
+
+            !---------------------------------------------------------------------------------------
+            ! The rest of W originating from the response function derivative: 
+            !---------------------------------------------------------------------------------------
+            WorkTensor1 = detDefG * MATMUL(Grad,InvDefG)
+            WorkTensor1 = 0.5d0 * (WorkTensor1 + TRANSPOSE(WorkTensor1))
+            WorkVec1(1,1) = WorkTensor1(1,1)
+            WorkVec1(2,1) = WorkTensor1(2,2)
+            WorkVec1(3,1) = WorkTensor1(3,3)
+            WorkVec1(4,1) = WorkTensor1(1,2) +  WorkTensor1(2,1)
+            IF (nshr == 3) THEN
+              WorkVec1(5,1) = WorkTensor1(1,3) +  WorkTensor1(3,1)
+              WorkVec1(6,1) = WorkTensor1(2,3) +  WorkTensor1(3,2)
+            END IF
+            WorkVec2(1:ntens,1) = MATMUL(TRANSPOSE(StressDer(1:ntens,1:ntens)),WorkVec1(1:ntens,1))
+            ! The following is based on the assumed symmetry of StressDer(:,:):
+            WorkTensor3 = WorkVec2(1,1)*SymBasis1 + WorkVec2(2,1)*SymBasis2 + &
+                WorkVec2(3,1)*SymBasis3 + 2.0d0*WorkVec2(4,1)*SymBasis4
+            IF (nshr == 3) THEN
+              WorkTensor3 = WorkTensor3 + 2.0d0*WorkVec2(5,1)*SymBasis5 + 2.0d0*WorkVec2(6,1)*SymBasis6
+            END IF            
+            
+            ! -------------------------------------------------------------------------------------
+            ! The computation of the differential of the Hencky strain function is based on
+            ! its truncated series expansion. 
+            ! TO DO: The following involves the differential of the Hencky strain function.
+            ! For some reason it doesn't appear to give convergence. Therefore we still omit this and
+            ! replace the Hencky strain differential by the differential of the Lagrangian
+            ! strain. This is expected to work for reasonably small straining. Find a remedy!
+            ! -------------------------------------------------------------------------------------
+            !IF (HenckyStrain) THEN
+            IF (.FALSE.) THEN
+              WorkTensor1 = WorkTensor3
+              ! Compute the derivative C'= Dg(WorkTensor1) with g the matrix
+              ! square root function:
+              WorkTensor3 = MATMUL( TRANSPOSE(QWork), MATMUL(WorkTensor1,QWork) ) 
+              WorkVec1(1,1) = 1.0d0/(2.0d0*sqrt(EigenVals(1))) * WorkTensor3(1,1)    
+              WorkVec1(2,1) = 1.0d0/(2.0d0*sqrt(EigenVals(2))) * WorkTensor3(2,2)
+              WorkVec1(3,1) = 1.0d0/(2.0d0*sqrt(EigenVals(3))) * WorkTensor3(3,3)
+              WorkVec1(4,1) = 1.0d0/(sqrt(EigenVals(1)) + sqrt(EigenVals(2))) * &
+                  (WorkTensor3(1,2) + WorkTensor3(2,1))
+              IF (nshr == 3) THEN
+                WorkVec1(5,1) = 1.0d0/(sqrt(EigenVals(1)) + sqrt(EigenVals(3))) * &
+                    (WorkTensor3(1,3) + WorkTensor3(3,1))
+                WorkVec1(6,1) = 1.0d0/(sqrt(EigenVals(2)) + sqrt(EigenVals(3))) * &
+                    (WorkTensor3(2,3) + WorkTensor3(3,2))
+              END IF
+              WorkTensor3 = WorkVec1(1,1)*SymBasis1 + WorkVec1(2,1)*SymBasis2 + &
+                  WorkVec1(3,1)*SymBasis3 + WorkVec1(4,1)*SymBasis4
+              IF (nshr == 3) THEN
+                WorkTensor3 = WorkTensor3 + WorkVec1(5,1)*SymBasis5 + &
+                    WorkVec1(6,1)*SymBasis6
+              END IF
+              WorkTensor3 = MATMUL( QWork, MATMUL(WorkTensor3,TRANSPOSE(QWork)) )
+
+              WorkTensor3 = 4.0d0 * WorkTensor3 - WorkTensor1
+            END IF
+
+            !--------------------------------------------------------------------------
+            ! dStress1 is for evaluating the contribution <DS(F^k)[U],Grad> 
+            ! in the form <U,W>. Compute W from its splitting:
+            !---------------------------------------------------------------------------
+            dStress1 = WorkTensor2 + MATMUL(DefG,WorkTensor3)
+
+            IF (AxialSymmetry) THEN
+              DO q = 1,ntot
+                DO j = 1,cdim
+                  SELECT CASE(j)
+                  CASE(1)
+                    StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
+                        = StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
+                        + (dBasis(q,1)*dStress1(1,1) + dBasis(q,2)*dStress1(1,3) &
+                        + 1.0d0/r*Basis(q)*dStress1(2,2))*s
+                  CASE(2)
+                    StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
+                        = StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
+                        + (dBasis(q,1)*dStress1(3,1) + dBasis(q,2)*dStress1(3,3) ) * s
+                  END SELECT
+                END DO
+              END DO
+
+              ForceVector(cdim*(p-1)+i) = ForceVector(cdim*(p-1)+i) &
+                  +(Basis(p)*Force(i)*DetDefG &
+                  +Basis(p)*InertialForce(i)*Density)*s
+
+              ExternalForceVector(cdim*(p-1)+i) = ExternalForceVector(cdim*(p-1)+i) &
+                  +(Basis(p)*Force(i)*DetDefG &
+                  +Basis(p)*InertialForce(i)*Density)*s
+
+              SELECT CASE(i)
+              CASE(1)
+                ForceVector(cdim*(p-1)+i) = ForceVector(cdim*(p-1)+i) &
+                    -(dBasis(p,1) * Stress1(1,1) + dBasis(p,2) * Stress1(1,3) &
+                    + 1.0d0/r * Basis(p) * Stress1(2,2)) * s 
+              CASE(2)
+                ForceVector(cdim*(p-1)+i) = ForceVector(cdim*(p-1)+i) &
+                    -(dBasis(p,1) * Stress1(3,1) + dBasis(p,2) * Stress1(3,3)) * s 
+              END SELECT
+            ELSE
+              DO q = 1,ntot
+                DO j = 1,cdim
+                  StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
+                      = StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) &
+                      + DOT_PRODUCT(dBasis(q,:),dStress1(j,:))*s
+                END DO
+              END DO
+
+              ForceVector(cdim*(p-1)+i) = ForceVector(cdim*(p-1)+i) &
+                  +(Basis(p)*Force(i)*DetDefG &
+                  +Basis(p)*InertialForce(i)*Density &
+                  -DOT_PRODUCT(dBasis(p,:),Stress1(i,:)))*s
+
+              ExternalForceVector(cdim*(p-1)+i) = ExternalForceVector(cdim*(p-1)+i) &
+                  +(Basis(p)*Force(i)*DetDefG &
+                  +Basis(p)*InertialForce(i)*Density) * s
+
+            END IF
+
+          END DO
+        END DO
+
+      END IF STIFFMATRIX_FOR_CHOSEN_STRAIN
+
+      ! Integrate mass matrix:
+      ! ----------------------
+      DO p = 1,ntot
+        DO q = 1,ntot
+          DO i = 1,cdim
+            MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                + Basis(p)*Basis(q)*Density*s
+          END DO
+        END DO
+      END DO
+
+      ! Utilize the Rayleigh damping:
+      ! -----------------------------
+      DampMatrix = Damping * MassMatrix
+
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixWithUMAT
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+! Perform the operation
+!
+!    A = A + C' * B * C * s
+!
+! with
+!
+!    Size( A ) = n x n
+!    Size( B ) = m x m
+!    Size( C ) = m x n
+!------------------------------------------------------------------------------
+  SUBROUTINE StrainEnergyDensity(A, B, C, m, n, s)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)
+    REAL(KIND=dp), INTENT(IN) :: B(:,:), C(:,:)
+    INTEGER, INTENT(IN) :: m, n
+    REAL(KIND=dp), INTENT(IN) :: s
+!------------------------------------------------------------------------------
+    A(1:n,1:n) = A(1:n,1:n) + s * MATMUL(TRANSPOSE(C(1:m,1:n)),MATMUL(B(1:m,1:m),C(1:m,1:n))) 
+!------------------------------------------------------------------------------
+  END SUBROUTINE StrainEnergyDensity
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+! The template for including a material model definition written in the form of
+! an Abaqus user subroutine (UMAT). The arguments which can be supposed to be 
+! supported by Elmer are capitalized:
+!------------------------------------------------------------------------------
+  SUBROUTINE UMAT(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
+       rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
+       predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
+       coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
+       kstep, kinc)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
+    ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
+    ! the time/load increment is given
+    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the 
+    ! current approximation of the strain increment (DSTRAN) must be returned. 
+    ! If the strain increment is defined to be zero in the beginning of the
+    ! nonlinear iteration, Elmer will generate a candidate for the strain increment
+    ! by assuming purely elastic increment characterized by DDSDDE.
+
+    REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
+    ! Requirement for Elmer: The state variables Q_n as specified at the 
+    ! previous time/load level for converged solution are given.
+    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to 
+    ! the current approximation of the strain increment must be returned. If 
+    ! convergence is attained, these values will be saved and associated with the 
+    ! converged solution (cf. the input values)
+
+    REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
+    ! The derivative of (Cauchy) stress response function with respect to the 
+    ! strain evaluated for the current approximation must be returned
+
+    REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
+    ! Requirement for Elmer: Provide specific strain energy (sse), plastic 
+    ! dissipation (spd) and creep dissipation (scd) at the previous time/load 
+    ! level (these are supposed to be declared to be state variables)
+    ! Requirement for umat:  The values of the energy variables corresponding to 
+    ! the current approximation may be returned
+
+    REAL(KIND=dp), INTENT(OUT) :: rpl
+    ! The mechanical heating power (volumetric)
+
+    REAL(KIND=dp), INTENT(OUT) :: ddsddt(NTENS), drplde(NTENS), drpldt
+
+    REAL(KIND=dp), INTENT(IN) :: STRAN(NTENS)
+    ! This gives the strains before the time/load increment.
+    ! The strain can be computed from the deformation gradient, so this
+    ! argument can be considered to be redundant. Elmer provides
+    ! this information anyway. Abaqus assumes that the logarithmic strain 
+    ! is used, but Elmer may also use other strain measures.
+
+    REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
+    ! The current candidate for the strain increment to obtain the current 
+    ! candidate for the stress. In principle this could be computed from the 
+    ! deformation gradient; cf. the variable stran.
+
+    REAL(KIND=dp), INTENT(IN) :: TIME(2)
+    ! Both entries give time before the time/load increment (the time for the last
+    ! converged solution
+
+    REAL(KIND=dp), INTENT(IN) :: DTIME
+    ! The time increment
+
+    REAL(KIND=dp), INTENT(IN) :: TEMP
+    ! Temperature before the time/load increment
+
+    REAL(KIND=dp), INTENT(IN) :: dtemp
+    ! Temperature increment associated wíth the time/load increment. Currently
+    ! Elmer assumes isothermal conditions during the load increment.
+
+    REAL(KIND=dp), INTENT(IN) :: predef(1), dpred(1)
+    ! These are just dummy variables for Elmer
+
+    CHARACTER(len=80), INTENT(IN) :: CMNAME
+    ! The material model name
+
+    INTEGER, INTENT(IN) :: NDI
+    ! The number of direct stress components
+
+    INTEGER, INTENT(IN) :: NSHR
+    ! The number of the engineering shear strain components
+
+    INTEGER, INTENT(IN) :: NTENS 
+    ! The size of the array containing the stress or strain components
+
+    INTEGER, INTENT(IN) :: NSTATEV
+    ! The number of state variables associated with the material model
+
+    REAL(KIND=dp), INTENT(IN) :: PROPS(NPROPS)
+    ! An array of material constants
+
+    INTEGER, INTENT(IN) :: NPROPS
+    ! The number of the material constants
+
+    REAL(KIND=dp), INTENT(IN) :: coords(3)
+    ! The coordinates of the current point could be specified
+
+    REAL(KIND=dp), INTENT(IN) :: drot(3,3)
+    ! No support for keeping track of rigid body rotations 
+    ! (the variable is initialized to the identity)
+
+    REAL(KIND=dp), INTENT(INOUT) :: pnewdt
+    ! Currently, suggesting a new size of time increment does not make any impact
+
+    REAL(KIND=dp), INTENT(IN) :: celent
+    ! The element size is not yet provided by Elmer
+
+    REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
+    ! The deformation gradient before the time/load increment (at the previous 
+    ! time/load level for converged solution)
+
+    REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
+    ! The deformation gradient corresponding to the current approximation
+    ! (cf. the return value of STRESS variable) 
+
+    INTEGER, INTENT(IN) :: NOEL
+    ! The element number
+
+    INTEGER, INTENT(IN) :: NPT
+    ! The integration point number
+
+    INTEGER, INTENT(IN) :: layer, kspt, kstep, kinc
+    ! kstep and kinc could be provided to give information on the incrementation
+    ! procedure
+!------------------------------------------------------------------------------
+    ! Local variables:
+    REAL(KIND=dp) :: SymBasis(6,3,3)
+    REAL(KIND=dp) :: Identity(3,3), B(3,3), C(3,3), Strain(3,3), S(3,3), Sigma(3,3)
+    REAL(KIND=dp) :: WorkMat(3,3)
+    REAL(KIND=dp) :: StrainVec(ntens), Stress2(ntens)
+    REAL(KIND=dp) :: DetDefG
+    REAL(KIND=dp) :: nu, E, LambdaLame, MuLame
+    REAL(KIND=dp) :: EigenVals(3), PriWork(102)
+
+    INTEGER :: i, j, k
+    INTEGER :: PriLWork=102, PriInfo
+
+    LOGICAL :: LargeDeflection, HenckyStrain
+!------------------------------------------------------------------------------
+
+    ! This example creates the basic isotropic model, so there is no state variables
+    ! to be handled. 
+
+    ! Use the material model name cmname as a switch:
+    HenckyStrain = cmname(1:6)=='hencky'
+    IF (cmname(1:2)=='st' .OR. HenckyStrain) THEN
+      LargeDeflection = .TRUE.
+
+      SymBasis(1,1:3,1:3) = RESHAPE((/ 1,0,0,0,0,0,0,0,0 /),(/ 3,3 /))
+      SymBasis(2,1:3,1:3) = RESHAPE((/ 0,0,0,0,1,0,0,0,0 /),(/ 3,3 /))
+      SymBasis(3,1:3,1:3) = RESHAPE((/ 0,0,0,0,0,0,0,0,1 /),(/ 3,3 /)) 
+      SymBasis(4,1:3,1:3) = RESHAPE((/ 0.0d0,0.5d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.0d0,0.0d0 /),(/ 3,3 /))
+      SymBasis(5,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.0d0 /),(/ 3,3 /))
+      SymBasis(6,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.5d0,0.0d0 /),(/ 3,3 /))
+      Identity(1:3,1:3) = RESHAPE((/ 1,0,0,0,1,0,0,0,1 /),(/ 3,3 /))
+
+      B = MATMUL(dfrgrd1, TRANSPOSE(dfrgrd1))
+      C = MATMUL(TRANSPOSE(dfrgrd1), dfrgrd1)
+      IF (HenckyStrain) THEN
+        ! -----------------------------------------------------------
+        ! Compute the spectral decomposition of C
+        ! -----------------------------------------------------------
+        DO i=1,3
+          k = i
+          DO j=k,3
+            WorkMat(i,j) = C(i,j)
+          END DO
+        END DO
+        CALL DSYEV('V', 'U', 3, WorkMat, 3, EigenVals, PriWork, PriLWork, PriInfo)
+        IF (PriInfo /= 0) THEN
+          CALL Fatal( 'UMAT', 'DSYEV cannot generate eigen basis')          
+        END IF
+
+        Strain = 0.0d0
+        Strain(1,1) = LOG(SQRT(EigenVals(1)))
+        Strain(2,2) = LOG(SQRT(EigenVals(2)))       
+        Strain(3,3) = LOG(SQRT(EigenVals(3)))
+        ! Transform back to the original coordinates:
+        Strain = MATMUL(WorkMat, MATMUL(Strain,TRANSPOSE(WorkMat)))
+      ELSE
+        ! This example uses the Lagrangian (Green-St Venant) strain tensor:
+        Strain = 0.5d0 * (C - Identity)
+      END IF
+      
+      DO i=1,ndi
+        StrainVec(i) = Strain(i,i)
+      END DO
+      DO i=1,nshr
+        SELECT CASE(i)
+        CASE(1)
+          StrainVec(ndi+i) = Strain(1,2)+Strain(2,1)
+        CASE(2)
+          StrainVec(ndi+i) = Strain(1,3)+Strain(3,1)
+        CASE(3)
+          StrainVec(ndi+i) = Strain(2,3)+Strain(3,2)
+        END SELECT
+      END DO
+
+      DetDefG = Dfrgrd1(1,1) * ( Dfrgrd1(2,2)*Dfrgrd1(3,3) - Dfrgrd1(2,3)*Dfrgrd1(3,2) ) + &
+              Dfrgrd1(1,2) * ( Dfrgrd1(2,3)*Dfrgrd1(3,1) - Dfrgrd1(2,1)*Dfrgrd1(3,3) ) + &
+              Dfrgrd1(1,3) * ( Dfrgrd1(2,1)*Dfrgrd1(3,2) - Dfrgrd1(2,2)*Dfrgrd1(3,1) )
+    ELSE
+      LargeDeflection = .FALSE.
+    END IF
+ 
+    ! Get Young's modulus and the Poisson ratio:
+    E = Props(2)
+    nu = Props(3)
+    
+    LambdaLame = E * nu / ( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
+    MuLame = E / (2.0d0 * (1.0d0 + nu))
+    
+    IF (LargeDeflection) THEN
+      ! --------------------------------------------------------------------------------
+      ! Currently the only nonlinear constitutive law in the umat form is the St. Venant-
+      ! Kirchhoff model. In this case we compute the current stress directly by using the 
+      ! supplied deformation gradient, so that the strain increment is not used. 
+      ! In addition, since it seems that the exact differentiation of the response function 
+      ! for the Cauchy stress cannot be done in a straightforward manner, we now make only
+      ! a partial approximation. The Cauchy stress is given by
+      ! 
+      !     sigma(F) = 1/det(F) F S(E(F)) F^T
+      !
+      ! We however consider only the depedence on the strain as
+      !
+      !     sigma(.) = 1/det(F) F S(.) F^T
+      !
+      ! This simplification makes the nonlinear iteration to be an inexact Newton 
+      ! method whose performance may deteriorate for large strains. If the convergence is 
+      ! attained, the solution nevertheless obeys the St. Venant-Kirchhoff law since
+      ! there are no approximations in the computation of the residual.
+      ! --------------------------------------------------------------------------------
+      ! The constitutive matrix relating the second Piola-Kirchhoff stress and
+      ! the strain tensor:
+      ddsdde = 0.0d0
+      ddsdde(1:ndi,1:ndi) = LambdaLame
+      DO i=1,ntens
+        ddsdde(i,i) = ddsdde(i,i) + MuLame
+      END DO
+      DO i=1,ndi
+        ddsdde(i,i) = ddsdde(i,i) + MuLame
+      END DO
+      Stress2 = MATMUL(ddsdde,StrainVec)
+
+      ! The second Piola-Kirchhoff stress in the tensor form:
+      S = 0.0d0
+      DO i=1,ndi
+        S = S + Stress2(i)*SymBasis(i,:,:)
+      END DO
+      DO i=1,nshr
+        S = S + 2.0d0 * Stress2(ndi+i) * SymBasis(ndi+i,:,:)
+      END DO
+
+      ! The Cauchy stress tensor:
+      Sigma = 1.0d0/DetDefG * MATMUL(dfrgrd1, MATMUL(S,TRANSPOSE(dfrgrd1)))
+
+      DO i=1,ndi
+        Stress(i) = Sigma(i,i)
+      END DO
+      DO i=1,nshr
+        SELECT CASE(i)
+        CASE(1)
+          Stress(ndi+i) = Sigma(1,2)
+        CASE(2)
+          Stress(ndi+i) = Sigma(1,3)
+        CASE(3)
+          Stress(ndi+i) = Sigma(2,3)
+        END SELECT
+      END DO
+
+      ! The derivative: The part corresponding to lambda * tr(E) I
+      ddsdde = 0.0d0
+      WorkMat = LambdaLame * 1/DetDefG * B
+      DO i=1,ndi
+        DO j=1,ndi
+          ddsdde(j,i) = ddsdde(j,i) + WorkMat(j,j)
+        END DO
+        DO j=1,nshr
+          SELECT CASE(j)
+          CASE(1)
+            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,2)
+          CASE(2)
+            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,3)
+          CASE(3)
+            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(2,3)
+          END SELECT
+        END DO
+      END DO
+
+      ! The rest corresponding to  2 * mu * E
+      DO i=1,ndi
+        WorkMat = 2.0d0 * MuLame * 1/DetDefG * MATMUL(dfrgrd1, MATMUL(SymBasis(i,:,:), TRANSPOSE(dfrgrd1)))
+        DO j=1,ndi
+          ddsdde(j,i) = ddsdde(j,i) + WorkMat(j,j)
+        END DO
+        DO j=1,nshr
+          SELECT CASE(j)
+          CASE(1)
+            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,2)
+          CASE(2)
+            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,3)
+          CASE(3)
+            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(2,3)
+          END SELECT
+        END DO
+      END DO
+
+      DO i=1,nshr
+        WorkMat = 2.0d0 * MuLame * 1/DetDefG * MATMUL(dfrgrd1, MATMUL(SymBasis(ndi+i,:,:), TRANSPOSE(dfrgrd1)))
+        DO j=1,ndi
+          ddsdde(j,ndi+i) = ddsdde(j,ndi+i) + 1.0d0 * WorkMat(j,j)
+        END DO
+        DO j=1,nshr
+          SELECT CASE(j)
+          CASE(1)
+            ddsdde(ndi+j,ndi+i) = ddsdde(ndi+j,ndi+i) + 1.0d0 * WorkMat(1,2)
+          CASE(2)
+            ddsdde(ndi+j,ndi+i) = ddsdde(ndi+j,ndi+i) + 1.0d0 * WorkMat(1,3)
+          CASE(3)
+            ddsdde(ndi+j,ndi+i) = ddsdde(ndi+j,ndi+i) + 1.0d0 * WorkMat(2,3)
+          END SELECT
+        END DO
+      END DO
+
+    ELSE
+      ddsdde = 0.0d0
+      ddsdde(1:ndi,1:ndi) = LambdaLame
+      DO i=1,ntens
+        ddsdde(i,i) = ddsdde(i,i) + MuLame
+      END DO
+      DO i=1,ndi
+        ddsdde(i,i) = ddsdde(i,i) + MuLame
+      END DO
+      ! We have a linear response function, so the following update is precise
+      ! (no higher-order terms related to the notion of differentiability).
+      ! Note that we could also define
+      !
+      !        stress = stress_response_function(stran + dstran)
+      ! or
+      !        stress = stress_response_function(dfrgrd1)
+      !
+      ! which may be the precise definition of the functionality required. 
+      stress = stress + MATMUL(ddsdde,dstran)
+      ! So, for this model, the other way to return the stress:
+      !stress = MATMUL(ddsdde,stran+dstran)
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE UMAT
+!------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MassMatrix,DampMatrix,StiffMatrix,ForceVector, &
@@ -1498,7 +2709,7 @@ CONTAINS
     ! the value 1/2. The code used in the standard case is reused by redefining 
     ! the Lame parameter mu and adding remaining terms afterwards.
     !------------------------------------------------------------------------------
-    IF (MixedFormulation) THEN
+    IF( MixedFormulation ) THEN
 
       IF (PlaneStress) CALL Warn( 'ElasticSolve',  &
           'Mixed formulation does not support plane stress: plane strain assumed instead' )
@@ -1856,7 +3067,7 @@ CONTAINS
        END IF
      END DO
 
-     IF (MixedFormulation) THEN 
+     IF( MixedFormulation) THEN 
         ! Use just the lowest-order basis for the pressure variable:
         DO p = n+1,ntot
            i = DOFs * p
@@ -1873,23 +3084,32 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalBoundaryMatrix(BoundaryMatrix,BoundaryVector,LoadVector, &
-       NodalSpringCoeff,NormalSpring,NodalAlpha,NodalBeta,LocalDisplacement,Element,n,ntot, &
-       Parent,pn,pntot,ParentNodes,Flow,fn,FlowNodes,Velocity,Pressure,NodalViscosity, &
-       NodalDensity, CompressibilityDefined, AxialSymmetry, NormalTangential, &
-       PseudoTraction, MixedFormulation)
+  SUBROUTINE LocalBoundaryMatrix(BoundaryMatrix,BoundaryVector, &
+       LoadVector, NodalSpringCoeff,NormalSpring,NodalAlpha,NodalBeta, &
+       LocalDisplacement,Element,n,ntot,Parent,pn,pntot,ParentNodes,Flow,fn, &
+       FlowNodes,Velocity,Pressure,NodalViscosity, NodalDensity, &
+       CompressibilityDefined, AxialSymmetry, NormalTangential, &
+       PseudoTraction, MixedFormulation, LargeDeflection)
 !------------------------------------------------------------------------------
     USE Integration
     USE LinearAlgebra
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:),LocalDisplacement(:,:)
-    REAL(KIND=dp) :: NodalSpringCoeff(:,:,:),NodalAlpha(:,:),NodalBeta(:),LoadVector(:,:)
-    REAL(KIND=dp) :: Pressure(:), Velocity(:,:),NodalViscosity(:), NodalDensity(:)
-    TYPE(Element_t), POINTER :: Element,Parent,Flow
-    TYPE(Nodes_t) :: ParentNodes,FlowNodes
-    INTEGER :: n,ntot,pn,pntot,fn
-    LOGICAL :: NormalSpring, CompressibilityDefined, AxialSymmetry, NormalTangential
-    LOGICAL :: PseudoTraction, MixedFormulation
+    REAL(KIND=dp) :: BoundaryMatrix(:,:), BoundaryVector(:)
+    REAL(KIND=dp) :: LoadVector(:,:), NodalSpringCoeff(:,:,:)
+    LOGICAL :: NormalSpring
+    REAL(KIND=dp) :: NodalAlpha(:,:), NodalBeta(:)
+    REAL(KIND=dp) :: LocalDisplacement(:,:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, ntot
+    TYPE(Element_t), POINTER :: Parent
+    INTEGER :: pn, pntot
+    TYPE(Nodes_t) :: ParentNodes
+    TYPE(Element_t), POINTER :: Flow
+    INTEGER :: fn
+    TYPE(Nodes_t) :: FlowNodes
+    REAL(KIND=dp) :: Velocity(:,:), Pressure(:), NodalViscosity(:), NodalDensity(:)
+    LOGICAL :: CompressibilityDefined, AxialSymmetry, NormalTangential
+    LOGICAL :: PseudoTraction, MixedFormulation, LargeDeflection
 !----------------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(ntot)
     REAL(KIND=dp) :: dBasisdx(ntot,3),SqrtElementMetric, MetricTerm
@@ -1984,27 +3204,32 @@ CONTAINS
 
        ! Compute the cofactor matrix of the deformation gradient from the previous step:
        ! --------------------------------------------------------------------------------
-       Grad = 0.0d0
-       DefG = 0.0d0
-       Grad(1:dim,1:dim) = MATMUL(LocalDisplacement(1:dim,1:pntot),PdBasisdx(1:pntot,1:dim))
-       DefG = Identity + Grad
+       IF (LargeDeflection) THEN
+         Grad = 0.0d0
+         DefG = 0.0d0
+         Grad(1:dim,1:dim) = MATMUL(LocalDisplacement(1:dim,1:pntot),PdBasisdx(1:pntot,1:dim))
+         DefG = Identity + Grad
 
-       SELECT CASE( dim )
-       CASE(1)
-          DetDefG = DefG(1,1)
-       CASE(2)
-          DetDefG = DefG(1,1)*DefG(2,2) - DefG(1,2)*DefG(2,1)
-       CASE(3)
-          DetDefG = DefG(1,1) * ( DefG(2,2)*DefG(3,3) - DefG(2,3)*DefG(3,2) ) + &
+         SELECT CASE( dim )
+         CASE(1)
+           DetDefG = DefG(1,1)
+         CASE(2)
+           DetDefG = DefG(1,1)*DefG(2,2) - DefG(1,2)*DefG(2,1)
+         CASE(3)
+           DetDefG = DefG(1,1) * ( DefG(2,2)*DefG(3,3) - DefG(2,3)*DefG(3,2) ) + &
                DefG(1,2) * ( DefG(2,3)*DefG(3,1) - DefG(2,1)*DefG(3,3) ) + &
                DefG(1,3) * ( DefG(2,1)*DefG(3,2) - DefG(2,2)*DefG(3,1) )
-       END SELECT
-       IF (AxialSymmetry) THEN
-          DetDefG = (1.0d0 + SUM(PBasis(1:pntot)*LocalDisplacement(1,1:pntot))/r) * DetDefG
+         END SELECT
+         IF (AxialSymmetry) THEN
+           DetDefG = (1.0d0 + SUM(PBasis(1:pntot)*LocalDisplacement(1,1:pntot))/r) * DetDefG
+         END IF
+         CALL InvertMatrix( DefG, dim )        ! Inverse of the deformation gradient
+         CofDefG = 0.0d0
+         CofDefG(1:dim,1:dim) = DetDefG*TRANSPOSE( DefG(1:dim,1:dim) )   ! Cofactor of the deformation gradient
+       ELSE
+         CofDefG = Identity
        END IF
-       CALL InvertMatrix( DefG, dim )        ! Inverse of the deformation gradient
-       CofDefG = 0.0d0
-       CofDefG(1:dim,1:dim) = DetDefG*TRANSPOSE( DefG(1:dim,1:dim) )   ! Cofactor of the deformation gradient
+
 
        ! Calculate traction from the flow solution:
        ! ------------------------------------------
@@ -2152,14 +3377,15 @@ CONTAINS
 
 
 !---------------------------------------------------------------------------------------------------
-  SUBROUTINE GenerateStrainVariable(Displacement, NodalStrain, Perm, CalculateStrains, AxialSymmetry)
+  SUBROUTINE GenerateStrainVariable(Displacement, NodalStrain, Perm, CalculateStrains, &
+      AxialSymmetry, LargeDeflection)
 !---------------------------------------------------------------------------------------------------
 !  This subroutine creates the strain field. In the case of plane stress this routine does not
 !  however generate the strain component E_33. The principal strains are not computed.
 !---------------------------------------------------------------------------------------------------
     REAL(KIND=dp) :: Displacement(:), NodalStrain(:)
     INTEGER, POINTER :: Perm(:)
-    LOGICAL :: CalculateStrains, AxialSymmetry
+    LOGICAL :: CalculateStrains, AxialSymmetry, LargeDeflection
 !--------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: StSolver
     TYPE(Nodes_t) :: Nodes
@@ -2169,7 +3395,7 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, UseMask   
     LOGICAL :: Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize
-    INTEGER, POINTER :: Permutation(:), Indeces(:)
+    INTEGER, POINTER :: Permutation(:), Indices(:)
     INTEGER :: dim, elem, n, nd, i, k, l, p, q, N_Gauss, Ind(9), StrainDim
 
     REAL(KIND=dp), POINTER :: StrainTemp(:)
@@ -2186,10 +3412,14 @@ CONTAINS
  !--------------------------------------------------------------------------------
     IF (.NOT. CalculateStrains) RETURN
 
-    dim = CoordinateSystemDimension()
+    IF (AxialSymmetry) THEN
+      dim = CoordinateSystemDimension()
+    ELSE
+      dim = 3
+    END IF
 
     n = Solver % Mesh % MaxElementDOFs
-    ALLOCATE( Indeces(n), &
+    ALLOCATE( Indices(n), &
          LocalDisplacement(3,n), &
          Mass(n,n), &
          Force(n), &
@@ -2259,7 +3489,7 @@ CONTAINS
     DO elem = 1, Solver % NumberOfActiveElements
        Element => GetActiveElement(elem, Solver)
        n  = GetElementNOFNodes()
-       nd = GetElementDOFs( Indeces )
+       nd = GetElementDOFs( Indices )
 
        CALL GetElementNodes( Nodes )
        CALL GetVectorLocalSolution( LocalDisplacement, USolver=Solver )
@@ -2293,7 +3523,9 @@ CONTAINS
              r = SUM(Basis(1:n) * Nodes % x(1:n))
              Grad(3,3) = 1.0d0/r * SUM(LocalDisplacement(1,1:nd) * Basis(1:nd))
           END IF
-          Strain = (TRANSPOSE(Grad)+Grad+MATMUL(TRANSPOSE(Grad),Grad))/2.0D0
+          
+          Strain = (TRANSPOSE(Grad)+Grad)/2.0D0
+          IF (LargeDeflection) Strain = Strain + MATMUL(TRANSPOSE(Grad),Grad)/2.0D0
 
           DO p=1,nd
              DO q=1,nd
@@ -2317,7 +3549,7 @@ CONTAINS
        ! Assemble global RHS vectors:
        !--------------------------------
        DO p=1,nd
-          l = Permutation(Indeces(p))
+          l = Permutation(Indices(p))
           DO i=1,StrainDim
              SForceG(StrainDim*(l-1)+i) = SForceG(StrainDim*(l-1)+i) + SForce(StrainDim*(p-1)+i)
           END DO
@@ -2397,7 +3629,7 @@ CONTAINS
 
     CALL ListAddLogical(StSolver % Values, 'Skip Compute Nonlinear Change', .FALSE.)
 
-    DEALLOCATE( Indeces, &
+    DEALLOCATE( Indices, &
          LocalDisplacement, &
          MASS, &
          Force, &
@@ -2436,7 +3668,7 @@ CONTAINS
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, UseMask   
     LOGICAL :: Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize
 
-    INTEGER, POINTER :: Permutation(:), Indeces(:)
+    INTEGER, POINTER :: Permutation(:), Indices(:)
     INTEGER :: dim, elem, n, nd, i, k, l, p, q, N_Gauss, Ind(6), StressDim
 
     REAL(KIND=dp), POINTER :: StressTemp(:)
@@ -2455,7 +3687,7 @@ CONTAINS
     dim = CoordinateSystemDimension()
 
     n = Solver % Mesh % MaxElementDOFs
-    ALLOCATE( Indeces(n), &
+    ALLOCATE( Indices(n), &
          Mass(n,n), &
          Force(n), &
          SForce(6*n), &
@@ -2524,7 +3756,7 @@ CONTAINS
     DO elem = 1, Solver % NumberOfActiveElements
        Element => GetActiveElement(elem, Solver)
        n  = GetElementNOFNodes()
-       nd = GetElementDOFs( Indeces )
+       nd = GetElementDOFs( Indices )
        CALL GetElementNodes( Nodes )
 
        k = (elem-1)*MaxIntegrationPoints
@@ -2570,7 +3802,7 @@ CONTAINS
        ! Assemble global RHS vectors:
        !--------------------------------
        DO p=1,nd
-          l = Permutation(Indeces(p))
+          l = Permutation(Indices(p))
           DO i=1,StressDim
              SForceG(StressDim*(l-1)+i) = SForceG(StressDim*(l-1)+i) + SForce(StressDim*(p-1)+i)
           END DO
@@ -2648,7 +3880,7 @@ CONTAINS
 
     CALL ListAddLogical(StSolver % Values, 'Skip Compute Nonlinear Change', .FALSE.)
 
-    DEALLOCATE( Indeces, &
+    DEALLOCATE( Indices, &
          MASS, &
          Force, &
          SForce, &
@@ -2682,7 +3914,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     TYPE(ValueList_t), POINTER :: Equation
 
-    INTEGER, POINTER :: Permutation(:), Indeces(:)
+    INTEGER, POINTER :: Permutation(:), Indices(:)
 
     INTEGER :: dim, cdim, n, nd, elem, i, j, k, l, p, q, t, Ind(9), StrainDim, DOFs
 
@@ -2727,7 +3959,7 @@ CONTAINS
     END IF
 
     n = Solver % Mesh % MaxElementDOFs
-    ALLOCATE( Indeces(n), &
+    ALLOCATE( Indices(n), &
          LocalDisplacement(4,n), &
          Mass(n,n), &
          Force(6*n), &
@@ -2821,7 +4053,7 @@ CONTAINS
     DO elem = 1, Solver % NumberOfActiveElements
        Element => GetActiveElement(elem, Solver)
        n  = GetElementNOFNodes()
-       nd = GetElementDOFs( Indeces )
+       nd = GetElementDOFs( Indices )
 
        CALL GetElementNodes( Nodes )
        CALL GetVectorLocalSolution( LocalDisplacement, USolver=Solver )
@@ -2844,10 +4076,10 @@ CONTAINS
        IF (NeoHookeanMaterial) THEN
           Isotropic = .TRUE.
           ElasticModulus(1,1,1:n) = ListGetReal( Material, &
-               'Youngs Modulus', n, Indeces, Found )
+               'Youngs Modulus', n, Indices, Found )
        ELSE
           CALL InputTensor( ElasticModulus, Isotropic, &
-               'Youngs Modulus', Material, n, Indeces )        
+               'Youngs Modulus', Material, n, Indices )        
        END IF
 
        !------------------------------------------------------------------------------
@@ -2889,7 +4121,7 @@ CONTAINS
 
        PoissonRatio = 0.0d0
        IF (Isotropic) THEN
-          PoissonRatio(1:n) = ListGetReal( Material, 'Poisson Ratio', n, Indeces )
+          PoissonRatio(1:n) = ListGetReal( Material, 'Poisson Ratio', n, Indices )
           IF (MixedFormulation) THEN
             NodalLame1(1:n) = 0.0d0
             PlaneStress = .FALSE.
@@ -3053,7 +4285,7 @@ CONTAINS
        !--------------------------------   
        IF (CalculateStrains) THEN
           DO p=1,nd
-             l = Permutation(Indeces(p))
+             l = Permutation(Indices(p))
              DO i=1,StrainDim
                 ForceG(StrainDim*(l-1)+i) = ForceG(StrainDim*(l-1)+i) + Force(StrainDim*(p-1)+i)
              END DO
@@ -3062,7 +4294,7 @@ CONTAINS
 
        IF (CalculateStresses) THEN
           DO p=1,nd
-             l = Permutation(Indeces(p))
+             l = Permutation(Indices(p))
              DO i=1,StrainDim
                 SForceG(StrainDim*(l-1)+i) = SForceG(StrainDim*(l-1)+i) + SForce(StrainDim*(p-1)+i)
              END DO
@@ -3342,7 +4574,7 @@ CONTAINS
        END DO
     END IF
 
-    DEALLOCATE( Indeces, &
+    DEALLOCATE( Indices, &
          LocalDisplacement, &
          MASS, &
          FORCE, &

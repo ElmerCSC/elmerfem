@@ -1719,7 +1719,7 @@ END SUBROUTINE FetiProject
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: a
     TYPE(Solver_t) :: Solver
-    REAL(KIND=dp), TARGET :: x(:),b(:)
+    REAL(KIND=dp), TARGET CONTIG :: x(:),b(:)
 !------------------------------------------------------------------------------
     INTEGER :: n
     REAL(KIND=dp), POINTER CONTIG :: tx(:),tb(:)
@@ -1949,8 +1949,9 @@ END SUBROUTINE FetiProject
     EXTERNAL :: AddrFunc
 #endif
 
-    REAL(KIND=dp), POINTER :: SaveValues(:)
-    INTEGER, POINTER :: SaveCols(:),SaveRows(:),p(:)
+    REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
+    INTEGER, POINTER CONTIG :: SaveCols(:),SaveRows(:)
+    INTEGER, POINTER  :: p(:)
 
     SAVE SaveValues, SaveCols,  SaveRows
 

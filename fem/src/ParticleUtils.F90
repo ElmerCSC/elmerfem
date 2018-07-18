@@ -6510,7 +6510,7 @@ RETURN
       CHARACTER :: lf
       LOGICAL :: ScalarsExist, VectorsExist, Found, ParticleMode, ComponentVector, &
           ComplementExists, ThisOnly, Stat
-      LOGICAL :: WriteData, WriteXML, Buffered   
+      LOGICAL :: WriteData, WriteXML, Buffered, IsDG   
       INTEGER, POINTER :: Perm(:), Perm2(:), Indexes(:)
       INTEGER, ALLOCATABLE :: ElemInd(:),ElemInd2(:)
       REAL(KIND=dp), POINTER :: Values(:),Values2(:),&
@@ -6787,7 +6787,12 @@ RETURN
 
                   stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
 
-                  IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+                  IsDG = .FALSE.
+                  IF( ASSOCIATED( Solution ) ) THEN
+                    IsDG = ( Solution % TYPE == Variable_on_nodes_on_elements )
+                  END IF
+                  
+                  IF( IsDG ) THEN
                     ElemInd(1:n) = Perm( Element % DGIndexes(1:n) )
                     IF( ComplementExists ) THEN
                       ElemInd2(1:n) = Perm2( Element % DGIndexes(1:n) )

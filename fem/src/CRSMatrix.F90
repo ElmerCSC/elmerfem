@@ -2032,9 +2032,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     REAL(KIND=dp), OPTIONAL :: RemoveEps
     !-------------------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,iml,kb,kb0,n,rowkb
-    INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
+    INTEGER, POINTER CONTIG :: Cols(:), Rows(:), Diag(:)
     REAL(KIND=DP) :: val, imval, reps
-    REAL(KIND=DP), POINTER :: Values(:)
+    REAL(KIND=DP), POINTER CONTIG :: Values(:)
     LOGICAL :: IsComplex, Hit, ImHit, CheckDiag
     
     N = A % NumberOfRows
@@ -3732,9 +3732,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       INTEGER :: i,j,k,l,istat, RowMin, RowMax
       REAL(KIND=dp) :: NORMA
 
-      REAL(KIND=dp), POINTER :: Values(:), ILUValues(:), CWork(:)
+      REAL(KIND=dp), POINTER CONTIG :: Values(:), ILUValues(:), CWork(:)
 
-      INTEGER, POINTER :: Cols(:), Rows(:), Diag(:), &
+      INTEGER, POINTER CONTIG :: Cols(:), Rows(:), Diag(:), &
            ILUCols(:), ILURows(:), ILUDiag(:), IWork(:)
 
       LOGICAL :: C(n)
@@ -3946,10 +3946,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       INTEGER :: i,j,k,l,istat,RowMin,RowMax
       REAL(KIND=dp) :: NORMA
 
-      REAL(KIND=dp), POINTER :: Values(:)
-      COMPLEX(KIND=dp), POINTER :: ILUValues(:), CWork(:)
+      REAL(KIND=dp), POINTER CONTIG :: Values(:)
+      COMPLEX(KIND=dp), POINTER CONTIG :: ILUValues(:), CWork(:)
 
-      INTEGER, POINTER :: Cols(:), Rows(:), Diag(:), &
+      INTEGER, POINTER CONTIG :: Cols(:), Rows(:), Diag(:), &
            ILUCols(:), ILURows(:), ILUDiag(:), IWork(:)
 
       LOGICAL :: C(n)

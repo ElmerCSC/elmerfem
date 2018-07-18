@@ -48,19 +48,86 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
-  LOGICAL :: Found, ElementalFields, RealField, LorentzConductivity
+  LOGICAL :: Found, ElementalFields, RealField, LorentzConductivity, FoundVar
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln
   TYPE(ValueList_t), POINTER :: SolverParams, DGSolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
-  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
       ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
   ! This is really using DG so we don't need to make any dirty tricks to create DG fields
   ! as is done in this initialization. 
   SolverParams => GetSolverParams()
 
+
+  ! The only purpose of this parsing of the variable name is to identify
+  ! whether the field is real or complex. As the variable has not been
+  ! created at this stage we have to do some dirty parsing. 
+  pname = GetString(SolverParams, 'Potential variable', Found)
+  vdofs = 0
+  FoundVar = .FALSE.
+
+  IF( Found ) THEN
+    DO i=1,Model % NumberOfSolvers
+      sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
+      
+      J=INDEX(sname,'[')-1
+      IF ( j<=0 ) j=LEN_TRIM(sname)
+      IF ( sname(1:j) == pname(1:LEN_TRIM(pname)) )THEN
+        k = 0
+        vDofs = 0
+        j=INDEX(sname,':')
+        DO WHILE(j>0)
+          Vdofs=Vdofs+ICHAR(sname(j+k+1:j+k+1))-ICHAR('0')
+          k = k+j
+          IF(k<LEN(sname)) j=INDEX(sname(k+1:),':')
+        END DO
+        FoundVar = .TRUE.
+        EXIT
+      END IF
+    END DO
+  ELSE
+    CALL ListAddString(SolverParams,'Potential Variable','av')
+  END IF
+    
+  ! When we created the case for GUI where "av" is not given in sif then it is impossible to
+  ! determine from the variable declaration what kind of solver we have. 
+  IF( .NOT. FoundVar ) THEN
+    DO i=1,Model % NumberOfSolvers
+      sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+      
+      j = INDEX( sname,'WhitneyAVSolver')
+      IF( j > 0 ) THEN
+        CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be real valued',Level=12)
+        Vdofs = 1
+        EXIT
+      END IF
+
+      j = INDEX( sname,'WhitneyAVHarmonicSolver')
+      IF( j > 0 ) THEN
+        CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be complex valued',Level=12)
+        Vdofs = 2
+        EXIT
+      END IF
+    END DO
+
+    IF( Vdofs == 0 ) THEN
+      CALL Fatal('MagnetoDynamicsCalcFields_Init0','Could not determine target variable type (real or complex)')
+    END IF
+
+  END IF
+
+  soln = i
+  IF ( Vdofs==0 ) Vdofs=1
+
+  RealField = ( Vdofs == 1 )
+  CALL ListAddLogical( SolverParams, 'Target Variable Real Field', RealField ) 
+  
+
+  
+  
   ! If we have DG for the standard fields they are already elemental...
   IF (GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
 
@@ -72,11 +139,13 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   
   IF(.NOT. ElementalFields) RETURN
 
+  ! What is the number of this solver
   PSolver => Solver
   DO mysolver=1,Model % NumberOfSolvers
     IF ( ASSOCIATED(PSolver,Model % Solvers(mysolver)) ) EXIT
   END DO
 
+  ! Create solver structure for the DG solver
   n = Model % NumberOfSolvers
   DO i=1,Model % NumberOFEquations
     Active => ListGetIntegerArray(Model % Equations(i) % Values, &
@@ -86,33 +155,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
       CALL ListAddIntegerArray( Model % Equations(i) % Values,  &
            'Active Solvers', m+1, [Active, n+1] )
   END DO
-
-  ! The only purpose of this parsing of the variable name is to identify
-  ! whether the field is real or complex. As the variable has not been
-  ! created at this stage we have to do some dirty parsing. 
-  pname = GetString(SolverParams, 'Potential variable', Found)
-  vdofs = 0
-  DO i=1,Model % NumberOfSolvers
-    sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
-
-    J=INDEX(sname,'[')-1
-    IF ( j<=0 ) j=LEN_TRIM(sname)
-    IF ( sname(1:j) == pname(1:LEN_TRIM(pname)) )THEN
-      k = 0
-      vDofs = 0
-      j=INDEX(sname,':')
-      DO WHILE(j>0)
-        Vdofs=Vdofs+ICHAR(sname(j+k+1:j+k+1))-ICHAR('0')
-        k = k+j
-        IF(k<LEN(sname)) j=INDEX(sname(k+1:),':')
-      END DO
-      EXIT
-    END IF
-  END DO
-  soln = i
-  IF ( Vdofs==0 ) Vdofs=1
-  RealField = ( Vdofs == 1 )
-
+  
   ! Create DG solver structures on-the-fly without actually solving the matrix
   ! equations. It is assumed that the DG field within each element is independent
   ! and hence no coupling between elemental fields is needed. 
@@ -267,8 +310,6 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
         "Nodal Force E[Nodal Force E:3]" )
       CALL Warn('MagnetcDynamicsCalcFields',&
         'Calculating experimental average nodal forces. Use at own risk.')
-      !CALL Warn('MagnetcDynamicsCalcFields',&
-        !'Nodal Forces are available only for real systems!')
     END IF
   END IF
 
@@ -313,9 +354,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: name
   INTEGER  :: i
-  TYPE(Variable_t), POINTER :: Var
   LOGICAL :: Found, FluxFound, NodalFields, RealField, LorentzConductivity
   TYPE(ValueList_t), POINTER :: EQ, SolverParams
 
@@ -325,15 +364,12 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   IF(.NOT.ASSOCIATED(Solver % Values)) Solver % Values=>ListAllocate()
   SolverParams => GetSolverParams()
 
+  ! Inherit this from the _init0 solver. Hence we know it must exist!
+  RealField = ListGetLogical( SolverParams,'Target Variable Real Field') 
+
   CALL ListAddString( SolverParams, 'Variable', '-nooutput hr_dummy' )
-
+ 
   CALL ListAddLogical( SolverParams, 'Linear System refactorize', .FALSE.)
-
-  name = GetString( SolverParams, "Potential variable", Found )
-  Var => VariableGet( Solver % Mesh % variables, name )
-  IF ( .NOT. ASSOCIATED(Var) ) THEN
-    CALL Fatal( "MagnetoDynamicsCalcFields", "potential variable not available")
-  ENDIF
 
   ! add these in the beginning, so that SaveData sees these existing, even
   ! if executed before the actual computations...
@@ -351,7 +387,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     CALL ListAddConstReal(Model % Simulation, &
                            'res: Magnetic Flux Density Average',0._dp)
 
-    IF (Var % DOFs == 2) THEN 
+    IF (.NOT. RealField ) THEN 
       CALL ListAddConstReal(Model % Simulation,'res: Magnetic Flux im Average',0._dp)
       CALL ListAddConstReal(Model % Simulation, &
                    'res: Magnetic Flux Density im Average', 0._dp )
@@ -366,7 +402,6 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
 
   IF(.NOT. NodalFields) RETURN
 
-  RealField = ( Var % Dofs == 1 )
 
   i=1
   DO WHILE(.TRUE.)
@@ -386,7 +421,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
 
   IF (GetLogical(SolverParams,'Calculate Magnetic Vector Potential',Found)) THEN
     i = i + 1
-    IF ( Var  % DOFs==1 ) THEN
+    IF ( RealField ) THEN
       CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
             "Magnetic Vector Potential[Magnetic Vector Potential:3]" )
     ELSE
@@ -516,6 +551,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
    USE MagnetoDynamicsUtils
    USE CircuitUtils
+   USE Zirka
+   use zirkautils
    
    IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -569,7 +606,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
-              ImposeBodyForcePotential, JouleHeatingFromCurrent
+              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka
    
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -578,7 +615,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, ALLOCATABLE :: Pivot(:), TorqueGroups(:)
    INTEGER, POINTER :: MasterBodies(:)
 
-   REAL(KIND=dp), POINTER :: Fsave(:), HB(:,:)=>NULL(), CubicCoeff(:)=>NULL(), &
+   REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
+   REAL(KIND=dp), POINTER :: HB(:,:)=>NULL(), CubicCoeff(:)=>NULL(), &
      HBBVal(:), HBCval(:), HBHval(:)
    REAL(KIND=dp) :: Babs
    TYPE(Mesh_t), POINTER :: Mesh
@@ -649,7 +687,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ElectricPotName = GetString(SolverParams, 'Precomputed Electric Potential', PrecomputedElectricPot)
    IF (PrecomputedElectricPot) THEN
-     DO i=1,Model % NumberOfSolvers
+     DO i=1, Model % NumberOfSolvers
        ElPotSolver => Model % Solvers(i)
        IF (ElectricPotName==getVarName(ElPotSolver % Variable)) EXIT
      END DO
@@ -1033,6 +1071,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      MASS  = 0._dp
      FORCE = 0._dp
      E = 0._dp; B=0._dp
+
+     haszirka = .false.
+     if(ASSOCIATED(MFS) .OR. ASSOCIATED(el_MFS)) THEN
+       CALL GetHystereticMFS(Element, force(:,4:6), pSolver, HasZirka, CSymmetry=CSymmetry)
+     end if
+
      DO j = 1,IP % n
        u = IP % U(j)
        v = IP % V(j)
@@ -1339,12 +1383,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            k = k+3
          END DO
 
-         IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(1,:)-REAL(MG_ip))*Basis(p)
-           k = k+3
-           IF ( Vdofs>1 ) THEN
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(2,:)-AIMAG(MG_ip))*Basis(p)
+         IF ( (ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) .and. .not. HasZirka) THEN
+           IF(.NOT. HasZirka) then
+             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(1,:)-REAL(MG_ip))*Basis(p)
              k = k+3
+             IF ( Vdofs>1 ) THEN
+               FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(2,:)-AIMAG(MG_ip))*Basis(p)
+               k = k+3
+             END IF
+           ELSE
+             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)-s*(REAL(MG_ip))*Basis(p)
            END IF
          END IF
          IF ( ASSOCIATED(VP).OR.ASSOCIATED(EL_VP)) THEN
@@ -2286,7 +2334,7 @@ CONTAINS
    TYPE(Variable_t), POINTER :: CoordVar
    LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
    INTEGER :: pnodal, nnt, ElemNodeDofs(27), ndofs, globalnode, m, n
-   LOGICAL :: ONCE=.TRUE., DEBUG, Found
+   LOGICAL :: ONCE=.TRUE., Found
    
    VisitedNode = .FALSE.
    FoundOne = .FALSE.
@@ -2480,7 +2528,7 @@ CONTAINS
  SUBROUTINE GlobalSol(Var, m, b, dofs )
 !------------------------------------------------------------------------------
    IMPLICIT NONE
-   REAL(KIND=dp), TARGET :: b(:,:)
+   REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
    TYPE(Variable_t), POINTER :: Var
 !------------------------------------------------------------------------------

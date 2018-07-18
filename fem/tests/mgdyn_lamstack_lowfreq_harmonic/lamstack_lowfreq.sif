@@ -181,6 +181,6 @@ Boundary Condition 4
 End
 
 Solver 2 :: Reference Norm = Real 0.52698493E-01
-Solver 2 :: Reference Norm Tolerance = Real 1e-3
+Solver 2 :: Reference Norm Tolerance = Real 2e-3
 RUN
 

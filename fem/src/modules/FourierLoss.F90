@@ -97,12 +97,14 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   ELSE
     SeparateComponents = ListGetLogical( SolverParams,'Separate Loss Components',Found )
     IF( SeparateComponents ) THEN
+      CALL Info('FourierLossSolver','Creating separate fields for each loss component',Level=10)
       CALL ListAddNewString( SolverParams,'Variable','Fourier Loss 1' )
       DO i=2, NComp
         CALL ListAddNewString( SolverParams,'Exported Variable '//TRIM(I2S(i-1)),&
             'Fourier Loss '//TRIM(I2S(i)) )
       END DO
     ELSE
+      CALL Info('FourierLossSolver','Creating one field for total losses',Level=10)
       CALL ListAddNewString( SolverParams,'Variable','Fourier Loss' )
     END IF
   END IF
@@ -124,6 +126,8 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
 
   ! Ok, Dirty way of adding DG field for postprocessing
   ! Add a new solver with exactly the same active locations as the current one.
+  CALL Info('FourierLossSolver','Creating new solver for the DG fields on-the-fly!',Level=8)
+
   PSolver => Solver
   DO mysolver=1,Model % NumberOfSolvers
     IF ( ASSOCIATED(PSolver,Model % Solvers(mysolver)) ) EXIT
@@ -152,6 +156,7 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   Model % Solvers => Solvers
   Model % NumberOfSolvers = n+1
 
+  ! The fields are only allocated for, not solved for
   CALL ListAddString( DGSolverParams, 'Exec Solver', 'never' )
   CALL ListAddLogical( DGSolverParams, 'No Matrix',.TRUE.)
   CALL ListAddLogical( DGSolverParams, 'Optimize Bandwidth',.FALSE.)
@@ -159,7 +164,6 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   CALL ListAddString( DGSolverParams, 'Procedure', &
       'FourierLoss FourierLossSolver_Dummy',.FALSE. )
   
-
   IF( OldKeywordStyle ) THEN
     CALL ListAddString( DGSolverParams, 'Variable', 'Fourier Loss Linear e' )
     CALL ListAddString( DGSolverParams, 'Exported Variable 1','Fourier Loss Quadratic e')
@@ -182,7 +186,8 @@ END SUBROUTINE FourierLossSolver_init0
 !------------------------------------------------------------------------------
 SUBROUTINE FourierLossSolver_Dummy(Model,Solver,dt,Transient)
   !------------------------------------------------------------------------------
-  USE MagnetoDynamicsUtils
+  USE DefUtils
+  !USE MagnetoDynamicsUtils
 
   IMPLICIT NONE
   !------------------------------------------------------------------------------
@@ -235,14 +240,15 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
 #endif
   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), SeriesLoss(:,:), CompLoss(:)
   TYPE(Variable_t), POINTER :: TargetVar, LossVar, NodalLossVar
-  REAL(KIND=dp), POINTER :: TargetField(:), PrevTargetField(:,:), SaveRhs(:)
+  REAL(KIND=dp), POINTER :: TargetField(:), PrevTargetField(:,:)
+  REAL (KIND=dp), POINTER CONTIG :: SaveRhs(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: OtherRhs(:,:)
   REAL(KIND=dp) :: TotalLoss
   LOGICAL :: EndCycle, FourierOutput, SimpsonsRule, ExactIntegration, &
       ElementalField, AvField, DirectField
   TYPE(Solver_t), POINTER :: TargetSolverPtr
   LOGICAL :: OldKeywordStyle, SeparateComponents, SumComponents, NodalLosses
-  INTEGER :: Ncomp, NVar 
+  INTEGER :: Ncomp, NVar, tdofs
 
   TYPE(VarPointer_t), ALLOCATABLE :: CompVars(:), CompVarsE(:), FourierVars(:)
 
@@ -263,11 +269,10 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   at0 = RealTime()
 
 
-
   Ncomp = 0
   OldKeywordStyle = ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient')
   IF( OldKeywordStyle ) THEN
-    CALL Info('FourierLossSolver','Using old keyword style',Level=5)
+    CALL Warn('FourierLossSolver','Using old keyword style which may become obsolite!')
     NComp = 2
   ELSE
     Ncomp = 0
@@ -325,7 +330,6 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
     
 
   
-
   ! Check for Elemental (Discontinuous Galerkin) Field 
   !------------------------------------------------------------------
   ElementalField = GetLogical( SolverParams, 'Calculate Elemental Fields', Found)
@@ -384,32 +388,33 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   TargetField => TargetVar % Values
   PrevTargetField => TargetVar % PrevValues(:,:)
   Nsize = SIZE( TargetField )
-
+  tdofs = TargetVar % Dofs
+  
 
   ! The target field is an AV solution 
+  AvField = .FALSE.
   DirectField = ListGetLogical( SolverParams,'Target Variable Direct',Found)
   IF( DirectField ) THEN
-    CALL Info('FourierLossSolver','Using the target field directly!')
-    AvField = .FALSE.
+    CALL Info('FourierLossSolver','Using the target field with '//TRIM(I2S(tdofs))//' dofs directly!')
   ELSE
-    ! The target field is an AV solution 
-    AvField = ListGetLogical( SolverParams,'Target Variable AV',Found)
-    IF( .NOT. Found ) THEN
-      AvField = ( SIZE( TargetVar % Perm ) > Solver % Mesh % NumberOfNodes )
-    END IF
-    IF( AvField ) THEN
-      IF( TargetVar % Dofs > 1 ) THEN
-        CALL Fatal('FourierLossSolver','Assuming only one component for AV field!')
+    IF( dim == 3 ) THEN
+      ! Check whether the target field is an AV solution 
+      AvField = ListGetLogical( SolverParams,'Target Variable AV',Found)
+      IF( .NOT. Found ) THEN
+        AvField = ( SIZE( TargetVar % Perm ) > Solver % Mesh % NumberOfNodes )
       END IF
-    ELSE
-      IF( dim == 3 ) THEN
-        IF( TargetVar % Dofs /= 3 ) THEN
-          CALL Fatal('FourierLossSolver','Assuming precisely three component in 3D!')
+      IF( AvField ) THEN
+        IF( tdofs > 1 ) THEN
+          CALL Fatal('FourierLossSolver','Assuming only one component for AV field!')
         END IF
       ELSE
-        IF( TargetVar % Dofs /= 1 ) THEN
-          CALL Fatal('FourierLossSolver','Assuming only one component in 2D!')
+        IF( Tdofs /= 3 ) THEN
+          CALL Fatal('FourierLossSolver','Assuming precisely three nodal components in 3D!')
         END IF
+      END IF
+    ELSE
+      IF( Tdofs /= 1 ) THEN
+        CALL Fatal('FourierLossSolver','Assuming only one nodal component Az in 2D!')
       END IF
     END IF
   END IF
@@ -546,7 +551,6 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   at2 = RealTime()
   WRITE( Message,'(A,ES12.3)') 'Assembly time: ',at2-at1
   CALL Info( 'FourierLossSolver', Message, Level=5 )
-
 
   !------------------------------------------------------------------------------     
   IF( SeparateComponents ) THEN
@@ -860,7 +864,7 @@ CONTAINS
     
     SAVE Nodes
     
-    SaveRhs => Solver % Matrix % Rhs
+    SaveRHS => Solver % Matrix % Rhs
 
     n = MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
     ALLOCATE( STIFF(n,n), FORCE(ncomp,n), dgForce(n), Pivot(n), Basis(n), dBasisdx(n,3) )
@@ -953,9 +957,15 @@ CONTAINS
 
       
       DO t=1,IntegStuff % n
-        Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
-            IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
-
+        IF( DirectField ) THEN
+          ! For direct field we don't need the curl i.e. no dBasisdx needed
+          Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
+              IntegStuff % v(t), IntegStuff % w(t), detJ, Basis )
+        ELSE
+          Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
+              IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
+        END IF
+          
         !---------------------------------------------------------------------
         ! Get edge basis functions if needed. Given that only linear edge
         ! interpolation functions are available currently, the following should 
@@ -1008,8 +1018,17 @@ CONTAINS
           Component => FourierVars(j) % Var % Values
 
           IF( DirectField ) THEN
-            ElemField(1:nd) = Component( FourierPerm( Indeces(1:nd) ) )
-            ValAtIp = SUM( Basis(1:nd) * ElemField(1:nd) )
+            IF( tdofs == 1 ) THEN            
+              ElemField(1:nd) = Component( FourierPerm( Indeces(1:nd) ) )
+              ValAtIp = SUM( Basis(1:nd) * ElemField(1:nd) )
+            ELSE
+              CurlAtIp = 0.0_dp
+              DO k=1,tdofs
+                ElemField(1:nd) = Component( tdofs * ( FourierPerm( Indeces(1:nd))-1) + k )
+                CurlAtIp(k) = SUM( Basis(1:nd) * ElemField(1:nd) )
+              END DO
+            END IF
+              
           ELSE IF ( AVField ) THEN
             ElemField(1:nt) = Component( FourierPerm( Indeces(1:nt) ) )
 
@@ -1019,8 +1038,7 @@ CONTAINS
 
             CurlAtIp(1) = SUM( ElemField(n+1:nt) * RotWBasis(1:(nt-n),1) )
             CurlAtIp(2) = SUM( ElemField(n+1:nt) * RotWBasis(1:(nt-n),2) )
-            IF ( dim > 2 ) &
-                CurlAtIp(3) = SUM( ElemField(n+1:nt) * RotWBasis(1:(nt-n),3) )             
+            CurlAtIp(3) = SUM( ElemField(n+1:nt) * RotWBasis(1:(nt-n),3) )             
           ELSE IF( dim == 3 ) THEN
             ElemField(1:nd) = Component( 3 * (FourierPerm( Indeces(1:nd))-1) + 1 )
             DO k=1,3
@@ -1038,15 +1056,16 @@ CONTAINS
             CurlAtIp(1) = GradAtIp(3,2) - GradAtIp(2,3)
             CurlAtIp(2) = GradAtIp(1,3) - GradAtIp(3,1)
             CurlAtIp(3) = GradAtIp(2,1) - GradAtIp(1,2)
-          ELSE
+          ELSE ! dim == 2
             ElemField(1:nd) = Component( FourierPerm( Indeces(1:nd) ) )
 
             CurlAtIp(1) =  SUM( ElemField(1:nd) * dBasisdx(1:nd,2) )
             CurlAtIp(2) = -SUM( ElemField(1:nd) * dBasisdx(1:nd,1) )
+            CurlAtIp(3) = 0.0_dp
           END IF
 
-          IF(.NOT. DirectField ) THEN
-            ValAtIp = SQRT( SUM( CurlAtIP(1:dim) ** 2 ) )
+          IF(.NOT. ( DirectField .AND. tdofs == 1) ) THEN
+            ValAtIp = SQRT( SUM( CurlAtIP ** 2 ) )
           END IF
 
           
@@ -1218,9 +1237,14 @@ CONTAINS
       LossesFile = ListGetString(SolverParams,'Fourier Loss Filename',Found )
       IF( Found ) THEN
         OPEN (10, FILE=LossesFile)
-        WRITE( 10,'(A)')  '!body_id   loss(1)   loss(2) ....'
-        DO j=1,Model % NumberOfBodies
-          WRITE( 10,* ) j, BodyLoss(1:Ncomp,j)
+        WRITE( 10,'(A)')  '!body_id   loss(1)   loss(2) ....'        
+        DO j=1,Model % NumberOfBodies          
+          IF( SUM( BodyLoss(1:Ncomp,j) ) <= TINY( TotalLoss ) ) CYCLE
+          WRITE( 10,'(I6)',ADVANCE='NO') j
+          DO i=1,Ncomp-1
+            WRITE( 10,'(ES15.6)',ADVANCE='NO') BodyLoss(i,j)            
+          END DO
+          WRITE( 10,'(ES15.6)') BodyLoss(Ncomp,j)            
         END DO
         CALL Info('FourierLossSolver', &
             'Fourier losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )

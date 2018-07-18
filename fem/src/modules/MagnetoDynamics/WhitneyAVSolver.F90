@@ -141,10 +141,12 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
+  CALL ListAddNewString( SolverParams,'Variable','AV')
+ 
   IF (LagrangeGauge .AND. Transient .AND. &
-       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
+      ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
     CALL Info("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
-    END IF
+  END IF
 
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0

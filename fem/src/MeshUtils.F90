@@ -1228,21 +1228,21 @@ END SUBROUTINE GetMaxDefs
  !> Fortran reader for Elmer ascii mesh file format.
  !> This might be a Fortran replacement for the C++ eio library. 
  !------------------------------------------------------------------------
- SUBROUTINE ElmerAsciiMesh(Step, PMesh, MeshNamePar, ThisPe, IsParallel )
+ SUBROUTINE ElmerAsciiMesh(Step, PMesh, MeshNamePar, ThisPe, NumPEs, IsParallel )
 
    IMPLICIT NONE
 
    INTEGER :: Step
    CHARACTER(LEN=*), OPTIONAL :: MeshNamePar
    TYPE(Mesh_t), POINTER, OPTIONAL :: PMesh
-   INTEGER, OPTIONAL :: ThisPe
+   INTEGER, OPTIONAL :: ThisPe, NumPEs
    LOGICAL, OPTIONAL :: IsParallel
 
    TYPE(Mesh_t), POINTER :: Mesh
    INTEGER :: PrevStep=0, iostat
    INTEGER, PARAMETER :: FileUnit = 10
    CHARACTER(MAX_NAME_LEN) :: BaseName, FileName
-   INTEGER :: i,j,k,n,BaseNameLen, SharedNodes = 0, mype
+   INTEGER :: i,j,k,n,BaseNameLen, SharedNodes = 0, mype = 0, numprocs = 0
    INTEGER, POINTER :: NodeTags(:), ElementTags(:), LocalPerm(:)
    INTEGER :: MinNodeTag = 0, MaxNodeTag = 0, istat
    LOGICAL :: ElementPermutation=.FALSE., NodePermutation=.FALSE., Parallel
@@ -1274,6 +1274,10 @@ END SUBROUTINE GetMaxDefs
        CALL Fatal('ElmerAsciiMesh','When calling in mode one give ThisPe!')
      END IF
      mype = ThisPe 
+     IF(.NOT. PRESENT( NumPEs) ) THEN
+       CALL Fatal('ElmerAsciiMesh','When calling in mode one give NumPEs!')
+     END IF
+     numprocs = NumPEs
      IF(.NOT. PRESENT( IsParallel ) ) THEN
        CALL Fatal('ElmerAsciiMesh','When calling in mode one give IsParallel!')
      END IF
@@ -1369,7 +1373,7 @@ END SUBROUTINE GetMaxDefs
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
-          '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
+          '/partitioning.'//TRIM(I2S(numprocs))//&
            '/part.'//TRIM(I2S(mype+1))//'.header'
      ELSE
        FileName = BaseName(1:BaseNameLen)//'/mesh.header'
@@ -1433,7 +1437,7 @@ END SUBROUTINE GetMaxDefs
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
-          '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
+          '/partitioning.'//TRIM(I2S(numprocs))//&
            '/part.'//TRIM(I2S(mype+1))//'.nodes'
      ELSE
        FileName = BaseName(1:BaseNameLen)//'/mesh.nodes'
@@ -1485,7 +1489,7 @@ END SUBROUTINE GetMaxDefs
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)// &
-          '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
+          '/partitioning.'//TRIM(I2S(numprocs))//&
              '/part.'//TRIM(I2S(mype+1))//'.elements'
      ELSE
        FileName = BaseName(1:BaseNameLen)//'/mesh.elements'
@@ -1571,7 +1575,7 @@ END SUBROUTINE GetMaxDefs
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
-          '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
+          '/partitioning.'//TRIM(I2S(numprocs))//&
            '/part.'//TRIM(I2S(mype+1))//'.boundary'
      ELSE
        FileName = BaseName(1:BaseNameLen)//'/mesh.boundary'
@@ -1802,7 +1806,7 @@ END SUBROUTINE GetMaxDefs
      IF(.NOT. Parallel) RETURN
 
      FileName = BaseName(1:BaseNameLen)//&
-       '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
+       '/partitioning.'//TRIM(I2S(numprocs))//&
          '/part.'//TRIM(I2S(mype+1))//'.shared'
 
      OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT = iostat )
@@ -1853,14 +1857,14 @@ END SUBROUTINE GetMaxDefs
 
  !> An interface over potential mesh loading strateties. 
  !----------------------------------------------------------------- 
- SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, IsParallel ) 
+ SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, NumPEs,IsParallel ) 
    
    IMPLICIT NONE
 
    INTEGER :: Step
    CHARACTER(LEN=*), OPTIONAL :: MeshNamePar
    TYPE(Mesh_t), POINTER, OPTIONAL :: PMesh
-   INTEGER, OPTIONAL :: ThisPe
+   INTEGER, OPTIONAL :: ThisPe, NumPEs
    LOGICAL, OPTIONAL :: IsParallel
 
    ! Currently only one strategy to get the mesh is implemented 
@@ -1869,7 +1873,7 @@ END SUBROUTINE GetMaxDefs
    ! This has not yet been tested in parallel and for sure
    ! it does not work for halo elements. 
    !-----------------------------------------------------------------
-   CALL ElmerAsciiMesh( Step, PMesh, MeshNamePar, ThisPe, IsParallel ) 
+   CALL ElmerAsciiMesh( Step, PMesh, MeshNamePar, ThisPe, NumPEs, IsParallel ) 
 
  END SUBROUTINE LoadMeshStep
 
@@ -1932,7 +1936,7 @@ END SUBROUTINE GetMaxDefs
 
    ! Get sizes of mesh structures for allocation
    !--------------------------------------------------------------------
-   CALL LoadMeshStep( 1, Mesh, MeshNamePar, mype, Parallel ) 
+   CALL LoadMeshStep( 1, Mesh, MeshNamePar, mype, numprocs, Parallel ) 
 
    ! Initialize and allocate mesh stuctures
    !---------------------------------------------------------------------
@@ -2631,7 +2635,8 @@ END SUBROUTINE GetMaxDefs
    !------------------------------------------------------------------------------    
    SUBROUTINE MapCoordinates()
 
-     REAL(KIND=dp), POINTER :: NodesX(:), NodesY(:), NodesZ(:), Wrk(:,:)
+     REAL(KIND=dp), POINTER CONTIG :: NodesX(:), NodesY(:), NodesZ(:)
+     REAL(KIND=dp), POINTER :: Wrk(:,:)
      INTEGER, POINTER :: CoordMap(:)
      REAL(KIND=dp) :: CoordScale(3)
      INTEGER :: mesh_dim, model_dim
@@ -3230,9 +3235,10 @@ END SUBROUTINE GetMaxDefs
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
 
-
     CALL Info('MeshStabParams','Computing stabilization parameters',Level=7)
     CALL ResetTimer('MeshStabParams')
+
+    IF ( Mesh % NumberOfNodes <= 0 ) RETURN
 
     DO i=1,CurrentModel % NumberOfSolvers
        Solver => CurrentModel % Solvers(i)
@@ -9917,7 +9923,7 @@ END SUBROUTINE GetMaxDefs
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Bmesh
     INTEGER :: FlatDim, MeshDim, MinDiffI, i, j
-    REAL(KIND=dp), POINTER :: Coord(:)
+    REAL(KIND=dp), POINTER CONTIG :: Coord(:)
     REAL(KIND=dp) :: Diff, MaxDiff, MinDiff, RelDiff, RelDiff1
     LOGICAL :: Found, ReduceDim
 
@@ -10165,7 +10171,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     LOGICAL :: Found
-    REAL(KIND=dp), POINTER :: NodesX(:), NodesY(:), NodesZ(:), Wrk(:,:)
+    REAL(KIND=dp), POINTER CONTIG:: NodesX(:), NodesY(:), NodesZ(:), Wrk(:,:)
     INTEGER, POINTER :: CoordMap(:)
     INTEGER :: MeshNo
     TYPE(Mesh_t), POINTER :: BMesh
@@ -16616,8 +16622,8 @@ CONTAINS
     !---------------------------------------------------------------   
     REAL(KIND=dp) :: R0(3),R1(3),Coeff,Rad0
     LOGICAL :: Irreversible,FirstTime,Reuse,UpdateNodes,Found
-    REAL(KIND=dp), POINTER :: x0(:),y0(:),z0(:),x1(:),y1(:),z1(:), &
-            NewCoords(:)
+    REAL(KIND=dp), POINTER :: x0(:),y0(:),z0(:),x1(:),y1(:),z1(:)
+    REAL(KIND=dp), POINTER CONTIG :: NewCoords(:)
     INTEGER :: i,j,k,n,Mode
     TYPE(Variable_t), POINTER :: Var
 

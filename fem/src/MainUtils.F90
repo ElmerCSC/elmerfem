@@ -1550,7 +1550,7 @@ CONTAINS
           CALL FreeMatrix( Solver % Matrix )
         END IF
        
-        IF (Nrows>0) THEN
+!       IF (Nrows>0) THEN
           CALL Info('AddEquationBasics','Creating solver variable',Level=12)
           ALLOCATE(Solution(Nrows),STAT=AllocStat)
           IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Solution')
@@ -1572,7 +1572,7 @@ CONTAINS
                   tmpname, 1, Component, Perm, Output=VariableOutput )
             END DO
           END IF
-        END IF
+!       END IF
 
         IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = ELMER_COMM_WORLD
 
@@ -1902,6 +1902,10 @@ CONTAINS
     Solver % DoneTime = 0
     IF ( .NOT. ASSOCIATED( Solver % Variable ) ) RETURN
     IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) RETURN
+    IF (SIZE(Solver % Variable % Values)==0 ) THEN
+        DEALLOCATE(Solver % Variable % Values)
+        Solver % Variable % Values => Null(); RETURN
+    END IF
     !------------------------------------------------------------------------------
 	
     !------------------------------------------------------------------------------
@@ -2983,6 +2987,7 @@ CONTAINS
                IF ( ParEnv % Active(ParEnv % MyPE+1) ) THEN
                  CALL ComputeChange(Solver,.TRUE., n)
                ELSE
+                 IF(.NOT.ASSOCIATED(Solver % Variable)) ALLOCATE(Solver % Variable)
                  Solver % Variable % SteadyConverged = 1
                END IF
              ELSE
@@ -3085,7 +3090,8 @@ CONTAINS
         AllDirFlag, Robust, ReduceStep
     INTEGER, POINTER :: Rows(:),Cols(:),Indexes(:),AllPerm(:)
     TYPE(ListMatrix_t), POINTER :: Alist(:) => NULL()
-    REAL(KIND=dp), POINTER :: ForceVector(:),AllValues(:)
+    REAL(KIND=dp), POINTER :: AllValues(:)
+    REAL(KIND=dp), POINTER CONTIG :: ForceVector(:)
     LOGICAL, POINTER :: AllDir(:)
     TYPE (Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: Component(:)
@@ -3824,7 +3830,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> This is a line of solvers where a matrix is matrices and a vector of vectors 
+!> This is a line of solvers where a matrix of matrices and a vector of vectors 
 !> are created to allow different kinds of block strategies for the solvers.
 !> This strategy has optimal memory consumption even if block strategies are 
 !> employed on the linear system level. 
@@ -4109,7 +4115,7 @@ CONTAINS
         MaxChange = Solver % Variable % NonlinChange 
 
       ELSE IF( BlockPrec ) THEN
-	CALL Info('BlockSolver','Using block precontioning strategy',Level=6)        
+	CALL Info('BlockSolver','Using block preconditioning strategy',Level=6)        
         CALL BlockKrylovIter( Solver, MaxChange )
 
       ELSE

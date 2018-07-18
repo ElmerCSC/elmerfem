@@ -1863,7 +1863,7 @@ SUBROUTINE ComputeVarLoads(Solver)
     TYPE(Matrix_t), POINTER :: Aaid, Projector
     TYPE(Variable_t), POINTER ::  NodalLoads
 
-    REAL(KIND=dp), POINTER :: SaveValues(:)
+    REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
     REAL(KIND=dp), ALLOCATABLE :: x(:),TempVector(:), TempRHS(:)
 
     INTEGER :: DOFs

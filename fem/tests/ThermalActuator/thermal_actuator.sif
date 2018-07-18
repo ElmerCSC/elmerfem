@@ -154,6 +154,6 @@ Boundary Condition 2
 End
 
 Solver 3 :: Reference Norm = Real 6.143556E-07
-Solver 3 :: Reference Norm Tolerance = Real 1.0e-4
+Solver 3 :: Reference Norm Tolerance = Real 1.0e-3
 
 !End Of File

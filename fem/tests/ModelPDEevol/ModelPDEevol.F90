@@ -139,9 +139,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJ(:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
-    REAL(KIND=dp), SAVE, POINTER CONTIG :: DiffCoeff(:), ConvCoeff(:), ReactCoeff(:), &
+    REAL(KIND=dp), SAVE, POINTER  :: DiffCoeff(:), ConvCoeff(:), ReactCoeff(:), &
         TimeCoeff(:), SourceCoeff(:), Velo1Coeff(:), Velo2Coeff(:), Velo3Coeff(:)
-    REAL(KIND=dp), SAVE, POINTER CONTIG :: VeloCoeff(:,:)
+    REAL(KIND=dp), SAVE, POINTER  :: VeloCoeff(:,:)
     REAL(KIND=dp) :: Weight
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim,ngp,allocstat

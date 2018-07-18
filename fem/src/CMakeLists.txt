@@ -40,7 +40,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
-  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90)
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90 ZirkaHysteresis.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
@@ -295,6 +295,7 @@ IF(WITH_MPI)
     # EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver
     # WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/bin)")
     ADD_CUSTOM_TARGET(elmersolver_link ALL COMMAND ${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver)
+    ADD_DEPENDENCIES(elmersolver_link Solver_TGT)
     INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver DESTINATION "bin")
   ELSE()
     INSTALL(CODE "EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E copy

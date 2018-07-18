@@ -636,42 +636,62 @@ CONTAINS
 
      Element => GetCurrentElement(UElement)
 
-     IF ( ASSOCIATED( Variable ) ) THEN
-        Indexes => GetIndexStore()
-        IF ( ASSOCIATED(Variable % Solver ) ) THEN
-          n = GetElementDOFs( Indexes, Element, Variable % Solver )
-        ELSE
-          n = GetElementDOFs( Indexes, Element, Solver )
-        END IF
-        n = MIN( n, SIZE(x) )
+     Indexes => GetIndexStore()
+     IF ( ASSOCIATED(Variable % Solver ) ) THEN
+       n = GetElementDOFs( Indexes, Element, Variable % Solver )
+     ELSE
+       n = GetElementDOFs( Indexes, Element, Solver )
+     END IF
+     n = MIN( n, SIZE(x) )
 
-        Values => Variable % Values
-        IF ( PRESENT(tStep) ) THEN
-          IF ( tStep<0 ) THEN
-            IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
-              Values => Variable % PrevValues(:,-tStep)
-          END IF
-        END IF
+     Values => Variable % Values
+     IF ( PRESENT(tStep) ) THEN
+       IF ( tStep<0 ) THEN
+         IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
+             Values => Variable % PrevValues(:,-tStep)
+       END IF
+     END IF
 
-        DO i=1,Variable % DOFs
-           IF ( ASSOCIATED( Variable % Perm ) ) THEN
-             DO j=1,n
-               k = Indexes(j)
-               IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
-                 k = Variable % Perm(k)
-                 IF (k>0) x(i,j) = Values(Variable % DOFs*(k-1)+i)
-               END IF
+
+     ! If variable is defined on gauss points return that instead
+     IF( Variable % TYPE == Variable_on_gauss_points ) THEN
+       ASSOCIATE(dofs => variable % dofs)
+         j = Element % ElementIndex
+         n = Variable % Perm(j+1) - Variable % Perm(j)
+         IF (size(x,1) < dofs .or. size(x,2) < n) THEN
+           write (message,*) 'Attempting to get IP solution to a too small array of size', &
+               shape(x), '. Required size:', dofs, n
+           CALL Fatal('GetVectorLocalSolution', message)
+         END IF
+         DO i=1,n
+           ASSOCIATE(p => variable % perm(j) + i)
+             DO k=1,dofs
+               x(k, i) = Values((p-1)*dofs + k)
              END DO
-           ELSE
-              DO j=1,n
-                IF ( Variable % DOFs*(Indexes(j)-1)+i <= &
-                                SIZE( Variable % Values ) ) THEN
-                  x(i,j) = Values(Variable % DOFs*(Indexes(j)-1)+i)
-                END IF
-              END DO
+           END ASSOCIATE
+         END DO
+         RETURN
+       END ASSOCIATE
+     END IF
+
+     DO i=1,Variable % DOFs
+       IF ( ASSOCIATED( Variable % Perm ) ) THEN
+         DO j=1,n
+           k = Indexes(j)
+           IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
+             k = Variable % Perm(k)
+             IF (k>0) x(i,j) = Values(Variable % DOFs*(k-1)+i)
            END IF
          END DO
-     END IF
+       ELSE
+         DO j=1,n
+           IF ( Variable % DOFs*(Indexes(j)-1)+i <= &
+               SIZE( Variable % Values ) ) THEN
+             x(i,j) = Values(Variable % DOFs*(Indexes(j)-1)+i)
+           END IF
+         END DO
+       END IF
+     END DO
   END SUBROUTINE GetVectorLocalSolution
 
 
@@ -3043,7 +3063,8 @@ CONTAINS
 
     TYPE(Matrix_t), POINTER   :: A
     TYPE(Variable_t), POINTER :: x
-    REAL(KIND=dp), POINTER CONTIG :: b(:), SOL(:)
+    REAL(KIND=dp), POINTER CONTIG :: b(:)
+    REAL(KIND=dp), POINTER :: SOL(:)
 
     LOGICAL :: Found, BackRot
 
@@ -3228,7 +3249,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
      REAL(KIND=dp), POINTER CONTIG   :: b(:)
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
@@ -3432,7 +3453,7 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-     REAL(KIND=dp), POINTER    :: b(:), SaveValues(:)
+     REAL(KIND=dp), POINTER  CONTIG :: b(:), SaveValues(:)
 
      REAL(KIND=dp), POINTER :: G(:,:), F(:)
 
@@ -3741,7 +3762,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp),  POINTER :: SaveValues(:)
+     REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
@@ -3807,7 +3828,7 @@ CONTAINS
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
      REAL(KIND=dp), ALLOCATABLE :: M(:,:)
-     REAL(KIND=dp),  POINTER :: SaveValues(:)
+     REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n,DOFs
      INTEGER, POINTER :: Indexes(:)
@@ -4020,7 +4041,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
@@ -4086,7 +4107,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      REAL(KIND=dp), ALLOCATABLE :: B(:,:)
 
@@ -4166,7 +4187,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
@@ -4239,7 +4260,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp), POINTER :: SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      REAL(KIND=dp), ALLOCATABLE :: B(:,:),F(:)
 
@@ -4832,7 +4853,7 @@ CONTAINS
 
                    ! ---------------------------------------------------------------------
                    ! Set constraints for face DOFs via seeking the best approximation in L2.
-                   ! We use the variational equation (u x n,v) = (g x n - u0 x n,v) where
+                   ! We use the variational equation (u x n,v') = (g x n - u0 x n,v) where
                    ! u0 denotes the part of the interpolating function u+u0 which is already 
                    ! known and v is a test function for the Galerkin method.
                    ! ---------------------------------------------------------------------
