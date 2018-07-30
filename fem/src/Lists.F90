@@ -1262,12 +1262,15 @@ CONTAINS
       IF( .NOT. Found ) UseProjector = .TRUE.
 
       IF( PRESENT( MaskName ) ) THEN
-       CALL InterpolateMeshToMesh( PVar % PrimaryMesh, &
+        CALL Info('VariableGet','Performing masked on-the-fly interpolation',Level=15)
+        CALL InterpolateMeshToMesh( PVar % PrimaryMesh, &
             CurrentModel % Mesh, Var, Variables, MaskName=MaskName )
       ELSE IF( UseProjector ) THEN
+        CALL Info('VariableGet','Performing interpolation with projector',Level=15)
         CALL InterpolateMeshToMesh( PVar % PrimaryMesh, &
             CurrentModel % Mesh, Var, Variables, Projector=Projector )
       ELSE
+        CALL Info('VariableGet','Performing on-the-fly interpolation',Level=15)
         AidVar => VariableGet( CurrentModel % Mesh % Variables, Name, ThisOnly = .TRUE. ) 
         IF( ASSOCIATED( AidVar ) ) THEN
           AidVar % Values = 0.0_dp
@@ -1275,7 +1278,12 @@ CONTAINS
         CALL InterpolateMeshToMesh( PVar % PrimaryMesh, &
             CurrentModel % Mesh, Var, Variables )        
       END IF
-
+     
+      IF( InfoActive( 20 ) ) THEN
+        AidVar => VariableGet( CurrentModel % Mesh % Variables, Name, ThisOnly = .TRUE. )         
+        PRINT *,'Interpolation range:',TRIM(AidVar % Name),MINVAL(AidVar % Values),MAXVAL( AidVar % Values)
+      END IF     
+      
       WRITE( Message,'(A,ES12.3)' ) 'Interpolation time for > '//TRIM(Name)//' < :', CPUTime()-t1
       CALL Info( 'VariableGet', Message, Level=7 )
 
