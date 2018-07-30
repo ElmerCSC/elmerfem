@@ -1598,8 +1598,10 @@ CONTAINS
                    monotone = SEQL(str(str_beg+6:),'monotone')
                  ELSE
                    monotone = SEQL(str(str_beg:),'monotone')
-                   IF( Monotone ) Cubic = SEQL(str(str_beg+9:),'cubic')
-                   IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                   IF( Monotone ) THEN
+                     Cubic = SEQL(str(str_beg+9:),'cubic')
+                     IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                   END IF
                  END IF
 
                  n = 0
