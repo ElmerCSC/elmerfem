@@ -730,9 +730,18 @@ CONTAINS
 
   
   !------------------------------------------------------------------------------
-  SUBROUTINE ElmerSolver_finalize()
+  SUBROUTINE ElmerSolver_finalize(PreserveParEnvOpt)
+    
+    LOGICAL,INTENT(IN),OPTIONAL :: PreserveParEnvOpt
     
     INTEGER :: ii
+    LOGICAL :: PreserveParEnv
+    
+    IF (PRESENT(PreserveParEnvOpt)) THEN
+      PreserveParEnv = PreserveParEnvOpt
+    ELSE
+      PreserveParEnv = .FALSE.
+    END IF
 
     !------------------------------------------------------------------------------
     !    Always save the last step to output
@@ -783,8 +792,10 @@ CONTAINS
     CALL TrilinosCleanup()
 #endif
     
-    CALL ParallelFinalize()
-!    IF ( ParEnv % PEs>1 )  CALL ParallelFinalize()
+    IF (.NOT.PreserveParEnv) THEN
+      CALL ParallelFinalize()
+    END IF
+
     CALL Info('ElmerSolver','The end',Level=3)
             
   END SUBROUTINE ElmerSolver_finalize
