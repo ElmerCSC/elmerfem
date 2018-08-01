@@ -27,6 +27,7 @@ Simulation
   Initialize Dirichlet Conditions = False
   Restart Before Initial Conditions = Logical True  ! if we want to use restart for IC
   Restart Error Continue = Logical True             ! continues even if mismatch in number of partitions
+  Use Mesh Projector = Logical False
 
 ! Make mapping (x,y,z) -> (r,z) before interpolation.
   Interpolation Cylindric = Logical True
