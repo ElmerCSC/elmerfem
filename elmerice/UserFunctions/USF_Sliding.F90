@@ -399,7 +399,7 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
   Bdrag = C*Ne * ((Xi * ut**(-m)) / ( 1.0 + a * Xi**q))**(1.0/m)
   Bdrag = MIN(Bdrag,1.0e20_dp)
   
-  ! Stress may be not known at first iteration  
+  ! Stress may be not known at first time / or first steady iteration  
   IF ((t==t0).AND.(.Not.ASSOCIATED( NVariable )).AND.(Snn.GE.0.0_dp)) Bdrag = 1.0e20
 END FUNCTION Friction_Coulomb
 
@@ -454,18 +454,28 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   TYPE(ValueList_t), POINTER  :: BC, ParentMaterial
   TYPE(Variable_t), POINTER   :: NormalVar, FlowVariable, Hvar
   TYPE(Element_t), POINTER    :: parentElement, BoundaryElement
-  REAL(KIND=dp), POINTER      :: NormalValues(:), FlowValues(:), HValues(:)
-  INTEGER, POINTER :: NormalPerm(:), FlowPerm(:), HPerm(:)
+  REAL(KIND=dp), POINTER      :: NormalValues(:), FlowValues(:), HValues(:), WeertCoefValues(:)
+  TYPE(Variable_t), POINTER   :: coefVar, WeertCoefVar
+  REAL(KIND=dp), POINTER      :: coefValues(:)
+  INTEGER, POINTER            :: coefPerm(:)
+  INTEGER, POINTER :: NormalPerm(:), FlowPerm(:), HPerm(:), WeertCoefPerm(:)
   INTEGER          :: DIM, i, body_id, other_body_id, material_id
   REAL (KIND=dp)   :: C, m, q, g, rhoi, Zab, Zab_offset, ep, sl, H, rhow
-  REAL (KIND=dp)   :: ut, un, ut0
+  REAL (KIND=dp)   :: ut, un, ut0, WeertExp, Cw
   LOGICAL          :: GotIt, FirstTime = .TRUE., SSA = .FALSE., UseFloatation = .FALSE., H_scaling
-  LOGICAL          :: UnFoundFatal
-  CHARACTER(LEN=MAX_NAME_LEN) :: USF_name, FlowSolverName
+  LOGICAL          :: UnFoundFatal=.TRUE., ConvertWeertman
+  CHARACTER(LEN=MAX_NAME_LEN) :: USF_name, FlowSolverName, CoefName, WeertCoefName, WeertForm
 
   SAVE :: normal, velo, DIM, SSA, FirstTime, FlowSolverName, UseFloatation
+  SAVE :: WeertCoefName, WeertExp, WeertForm, ConvertWeertman
+
 
   USF_name = "Sliding_Budd"
+
+  BC => GetBC(Model % CurrentElement)
+  IF (.NOT.ASSOCIATED(BC))THEN
+     CALL Fatal(USF_name, 'No BC Found')
+  END IF
 
   IF (FirstTime) THEN
      FirstTime = .FALSE.  
@@ -482,11 +492,22 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      CASE ('ssabasalflow') 
         SSA = .TRUE.
      END SELECT
-  END IF
-  
-  BC => GetBC(Model % CurrentElement)
-  IF (.NOT.ASSOCIATED(BC))THEN
-     CALL Fatal(USF_name, 'No BC Found')
+
+     WeertCoefName = GetString( BC, 'Budd Conv Weertman coef name', GotIt )
+     IF (GotIt) THEN
+        ConvertWeertman = .TRUE.
+        WeertExp  = GetConstReal( BC, 'Budd Conv Weertman exponent', GotIt )    
+        IF (.NOT. GotIt) THEN
+           CALL FATAL(USF_name, 'Converting coef, need >Budd Conv Weertman exponent<')
+        END IF
+        WeertForm = GetString( BC, 'Budd Conv Weertman formulation', GotIt )    
+        IF (.NOT. GotIt) THEN
+           CALL FATAL(USF_name, 'Converting coef, need >Budd Conv Weertman formulation<')     
+        END IF
+     ELSE
+        ConvertWeertman = .FALSE.
+     END IF
+     
   END IF
 
   !-----------------------------------------------------------------
@@ -591,6 +612,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   ! effective pressure at the bed is calculated as the normal stress 
   ! at the lower boundary minus the External Pressure (which is set in 
   ! the boundary condition section of the sif).
+  ! Alternatively it can be approximated using the floatation condition.
   IF (UseFloatation) THEN
 
      Hvar => VariableGet( Model % Variables, "Depth",UnFoundFatal=UnFoundFatal)
@@ -616,8 +638,12 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      ELSE
         Zab = H
      END IF
-     
-     ! this "offset" to the height above buoyancy is intended to provide a non-zero  
+
+     IF (Zab .LT. 0.0) THEN
+        Zab = 0.0
+     END IF
+
+     ! this "offset" to the height above bouyancy is intended to provide a non-zero  
      ! basal drag due to contact with the bed, even when effective pressure is zero.
      ! Physically, this can be seen as a compromise between Elmer's "Weertman" 
      ! implementation and Elmer's "Budd" implementation.
@@ -632,6 +658,32 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
 
   IF (H_scaling) THEN
      Zab = Zab / H
+  END IF
+
+  ! Convert a Weertman sliding coefficient to a Budd sliding coefficient to 
+  ! give the same basal shear stress
+  IF (ConvertWeertman) THEN
+     WeertCoefVar     => VariableGet( Model % Variables, WeertCoefName, UnFoundFatal=UnFoundFatal)
+     WeertCoefPerm    => WeertCoefVar % Perm
+     WeertCoefValues  => WeertCoefVar % Values
+     Cw = WeertCoefValues(WeertCoefPerm(Nodenumber))
+     
+     SELECT CASE (WeertForm)
+     CASE ('power')
+        Cw = 10**Cw
+     CASE ('beta2')
+        Cw = Cw**2
+     CASE ('none')        
+     CASE DEFAULT 
+        CALL FATAL(USF_name, 'Unrecognised >Budd Conv Weertman formulation<')     
+     END SELECT
+
+     IF ( (WeertExp.NE.1.0).OR.(m.NE.1.0) ) THEN
+        CALL FATAL(USF_name, 'Currently only works for velocity exponents = 1.0')     
+     END IF
+
+     C = Cw / (Zab**q)
+
   END IF
 
   Bdrag = C * ut**(m-1.0) * Zab**q
@@ -851,9 +903,9 @@ FUNCTION FreeSlipShelves (Model, nodenumber, BetaIn) RESULT(BetaOut)
      BetaOut = 0.0_dp
   ELSE
      SELECT CASE (BetaForm)
-     CASE("Power")
+     CASE("Power","power")
         BetaOut = 10.0_dp**BetaIn
-     CASE("Beta2")
+     CASE("Beta2","beta2")
         BetaOut = BetaIn*BetaIn
      CASE DEFAULT
         WRITE(Message,'(A)') 'beta formulation not recognised'

@@ -1,10 +1,13 @@
 services: docker
+env:
+  - CONT=xenial
+  - CONT=bionic
 before_install:
-- docker build -t elmertest/xenial -f ci/Dockerfile-build .
+- docker build -t elmertest/$CONT -f ci/Dockerfile-$CONT .
 - docker ps -a
 script:
-- docker build -t elmerfem-build/xenial -f ci/Dockerfile-build-elmer .
-- docker run elmerfem-build/xenial /bin/sh -c 'CTEST_OUTPUT_ON_FAILURE=1 ctest -LE slow'
+- docker build -t elmerfem-build/$CONT -f ci/Dockerfile-elmer-$CONT .
+- docker run elmerfem-build/$CONT /bin/sh -c 'CTEST_OUTPUT_ON_FAILURE=1 ctest -LE slow'
 notifications:
   email: change
   flowdock:

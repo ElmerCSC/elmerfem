@@ -108,7 +108,7 @@ CONTAINS
 
       COMPLEX(KIND=dp) :: s
 !
-      REAL(KIND=dp), POINTER :: SaveValues(:), SaveRhs(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
       TYPE(ValueList_t), POINTER :: Params
 
 !     %--------------------------------------%
@@ -760,7 +760,7 @@ END SUBROUTINE CheckResiduals
 
       COMPLEX(KIND=dp) :: s
 !
-      REAL(KIND=dp), POINTER :: SaveValues(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
 !     %-----------------------%
 !     | Executable Statements |
@@ -1111,7 +1111,7 @@ END SUBROUTINE CheckResiduals
       REAL(KIND=dp), TARGET :: x(2*n), b(2*n)
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL, RWORK(N)
 !
-      REAL(KIND=dp), POINTER :: SaveValues(:), SaveRhs(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
 
       TYPE(ValueList_t), POINTER :: Params
 !
@@ -1513,7 +1513,7 @@ END SUBROUTINE CheckResiduals
       COMPLEX(KIND=dp) :: Eigs(:), EigVectors(:,:)
 
       REAL(KIND=dp), ALLOCATABLE, TARGET :: vals(:)
-      REAL(KIND=dp), POINTER :: svals(:)
+      REAL(KIND=dp), POINTER CONTIG :: svals(:)
       COMPLEX(KIND=dp) :: c,m
       COMPLEX(KIND=dp), ALLOCATABLE :: x(:), y(:)
 

@@ -119,7 +119,7 @@ CONTAINS
     
     TYPE(Matrix_t), POINTER :: A
     INTEGER :: i,j,Dofs
-    REAL(KIND=dp), POINTER :: SaveValues(:)
+    REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
     REAL(KIND=dp) :: val
     TYPE(ValueList_t), POINTER :: OdeList
     INTEGER, POINTER :: ActiveComponents(:)

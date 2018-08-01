@@ -1598,8 +1598,10 @@ CONTAINS
                    monotone = SEQL(str(str_beg+6:),'monotone')
                  ELSE
                    monotone = SEQL(str(str_beg:),'monotone')
-                   IF( Monotone ) Cubic = SEQL(str(str_beg+9:),'cubic')
-                   IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                   IF( Monotone ) THEN
+                     Cubic = SEQL(str(str_beg+9:),'cubic')
+                     IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                   END IF
                  END IF
 
                  n = 0
@@ -3293,7 +3295,7 @@ CONTAINS
     IF( RestartVariableList ) THEN
       CALL Info('LoadRestartFile','Reading only variables given by: Restart Variable i',Level=10)
     ELSE
-      CALL Info('LoadRestartFile','Reading all variables (if not wanted use >Restart Variable i<',Level=10)      
+      CALL Info('LoadRestartFile','Reading all variables (if not wanted use >Restart Variable i< )',Level=10)      
     END IF
     
     Cont = .FALSE.

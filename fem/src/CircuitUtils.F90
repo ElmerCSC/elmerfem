@@ -1,4 +1,4 @@
-!/*****************************************************************************/
+
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -1713,11 +1713,12 @@ CONTAINS
     IMPLICIT NONE
     TYPE(Matrix_t), POINTER :: CM
     TYPE(Solver_t), POINTER :: ASolver
-    INTEGER, POINTER :: PS(:), Rows(:), Cols(:), Cnts(:)
+    INTEGER, POINTER :: PS(:), Cnts(:)
+    INTEGER, POINTER CONTIG :: Rows(:), Cols(:)
     INTEGER :: nm, Circuit_tot_n, n, i
     LOGICAL :: dofsdone
     LOGICAL*1, ALLOCATABLE :: Done(:)
-    REAL(KIND=dp), POINTER :: Values(:)
+    REAL(KIND=dp), POINTER CONTIG :: Values(:)
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')

@@ -464,7 +464,9 @@
                    ELSE
                       Varind=Element % NodeIndexes(i)
                    ENDIF
-                   Values(Perm(Varind))=pout(nodeind)%z
+                   k=Perm(Varind)
+                   IF (k.GT.0) &
+                     Values(Perm(Varind))=pout(nodeind)%z
                 END DO
              END DO
             deallocate(pin)

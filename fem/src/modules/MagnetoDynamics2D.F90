@@ -1909,7 +1909,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Visited = .FALSE.
   REAL(KIND=dp) :: Unorm, Totnorm, val
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
-  REAL(KIND=dp), POINTER :: SaveRHS(:)  
+  REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
               AverageBCompute, BodyICompute, BodyVolumesCompute = .FALSE., &
@@ -2560,7 +2560,7 @@ CONTAINS
 !      Update global matrices from local matrices 
 !------------------------------------------------------------------------------
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
-        Solver % Matrix % Rhs => SaveRhs
+        Solver % Matrix % Rhs => SaveRHS
         CALL DefaultUpdateEquations( STIFF, FORCE(1,1:nd), &
             BulkUpdate=ConstantBulkMatrix )
       END IF

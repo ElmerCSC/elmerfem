@@ -1969,7 +1969,8 @@ CONTAINS
     REAL(KIND=dp), TARGET, INTENT(in) :: v(*)
     INTEGER :: ipar(*)
 !---------------------------------------------------------------------------------
-    REAL(KIND=dp), POINTER :: rtmp(:),vtmp(:),xtmp(:),b(:), x(:), rhs_save(:), a_rhs_save(:)
+    REAL(KIND=dp), POINTER :: rtmp(:),vtmp(:),xtmp(:),b(:), x(:), a_rhs_save(:)
+    REAL(KIND=dp), POINTER CONTIG :: rhs_save(:)
     INTEGER :: i,j,k,l,NoVar
     TYPE(Solver_t), POINTER :: Solver, Solver_save, ASolver
     INTEGER, POINTER :: Offset(:)
@@ -2293,7 +2294,8 @@ CONTAINS
     INTEGER :: i,j,NoVar,RowVar,iter,LinIter,MinIter
     INTEGER, POINTER :: BlockOrder(:)
     LOGICAL :: GotIt, GotBlockOrder, BlockGS
-    REAL(KIND=dp), POINTER :: b(:), rhs_save(:), dx(:)
+    REAL(KIND=dp), POINTER CONTIG :: rhs_save(:), b(:)
+    REAL(KIND=dp), POINTER :: dx(:)
     TYPE(Matrix_t), POINTER :: A, mat_save
     TYPE(Variable_t), POINTER :: Var, SolverVar
     REAL(KIND=dp) :: LinTol, TotNorm, dxnorm, xnorm, Relax
@@ -2699,7 +2701,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A
     TYPE(Solver_t), TARGET :: Solver
-    REAL(KIND=dp), TARGET :: x(:),b(:)
+    REAL(KIND=dp), TARGET :: x(:)
+    REAL(KIND=dp), TARGET CONTIG :: b(:)
 !------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(Variable_t), POINTER :: Var
@@ -2711,7 +2714,8 @@ CONTAINS
     REAL(KIND=dp) :: NonlinearTol, Norm, PrevNorm, Residual, PrevResidual, &
         TotNorm, MaxChange, alpha, beta, omega, rho, oldrho, s, r, PrevTotNorm, &
         Coeff
-    REAL(KIND=dp), POINTER :: SaveValues(:), SaveRHS(:)
+    REAL(KIND=dp), POINTER :: SaveValues(:)
+    REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
     CHARACTER(LEN=max_name_len) :: str, VarName, ColName, RowName
     LOGICAL :: Robust, LinearSearch, ErrorReduced, IsProcedure, ScaleSystem,&
         ReuseMatrix, LS, BlockScaling

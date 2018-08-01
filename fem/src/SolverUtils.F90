@@ -1307,7 +1307,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k
      REAL(KIND=dp) :: s,t
-     REAL(KIND=dp), POINTER  :: SaveValues(:)
+     REAL(KIND=dp), POINTER  CONTIG :: SaveValues(:)
 !------------------------------------------------------------------------------
 !    Check first if this element has been defined passive
 !------------------------------------------------------------------------------
@@ -7477,7 +7477,7 @@ END FUNCTION SearchNodeL
      CHARACTER(LEN=MAX_NAME_LEN) :: Method
      LOGICAL :: GotIt
      INTEGER :: i, Order,ndofs
-     REAL(KIND=dp), POINTER :: Work(:), SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
      TYPE(Matrix_t), POINTER :: A
 
 !------------------------------------------------------------------------------
@@ -10452,7 +10452,8 @@ END FUNCTION SearchNodeL
 
     REAL(KIND=dp), POINTER :: LoadValues(:)
     INTEGER :: i,j,k,l,m,ii,This,DOF
-    REAL(KIND=dp), POINTER :: TempRHS(:), TempVector(:), SaveValues(:), Rhs(:), TempX(:)
+    REAL(KIND=dp), POINTER :: TempRHS(:), TempVector(:), Rhs(:), TempX(:)
+    REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
     REAL(KIND=dp) :: Energy, Energy_im
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: Found, Rotated
@@ -11877,7 +11878,7 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,n,m
     LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric
-    REAL(KIND=dp), POINTER :: PValues(:)
+    REAL(KIND=dp), POINTER CONTIG :: PValues(:)
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:)
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
@@ -12865,7 +12866,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(Matrix_t), POINTER :: CollectionMatrix, RestMatrix, AddMatrix, &
        RestMatrixTranspose, TMat, XMat
   REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:),&
-     MultiplierValues(:), AddVector(:), Tvals(:), Vals(:)
+     AddVector(:), Tvals(:), Vals(:)
+  REAL(KIND=dp), POINTER  :: MultiplierValues(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:), TotValues(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
   INTEGER :: i, j, k, l, m, n, p,q, ix, Loop
@@ -15181,8 +15183,9 @@ CONTAINS
     INTEGER :: n,i,j,k,k2
     INTEGER, POINTER :: Rows(:),Cols(:),Perm(:)
     TYPE(Matrix_t), POINTER :: A
-    REAL(KIND=dp), POINTER :: BulkValues(:),u(:),M_L(:),M_C(:),udot(:),SaveValues(:),&
+    REAL(KIND=dp), POINTER :: BulkValues(:),u(:),M_L(:),udot(:), &
         pp(:),pm(:),qp(:),qm(:),corr(:),ku(:),ulow(:)
+    REAL(KIND=dp), POINTER CONTIG :: M_C(:), SaveValues(:)
     REAL(KIND=dp) :: rsum, Norm,m_ij,k_ij,du,d_ij,f_ij,c_ij,Ceps,CorrCoeff,&
         rmi,rmj,rpi,rpj,dt
     TYPE(Variable_t), POINTER :: Var, Variables

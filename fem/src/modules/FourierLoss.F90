@@ -240,7 +240,8 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
 #endif
   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), SeriesLoss(:,:), CompLoss(:)
   TYPE(Variable_t), POINTER :: TargetVar, LossVar, NodalLossVar
-  REAL(KIND=dp), POINTER :: TargetField(:), PrevTargetField(:,:), SaveRhs(:)
+  REAL(KIND=dp), POINTER :: TargetField(:), PrevTargetField(:,:)
+  REAL (KIND=dp), POINTER CONTIG :: SaveRhs(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: OtherRhs(:,:)
   REAL(KIND=dp) :: TotalLoss
   LOGICAL :: EndCycle, FourierOutput, SimpsonsRule, ExactIntegration, &
@@ -863,7 +864,7 @@ CONTAINS
     
     SAVE Nodes
     
-    SaveRhs => Solver % Matrix % Rhs
+    SaveRHS => Solver % Matrix % Rhs
 
     n = MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
     ALLOCATE( STIFF(n,n), FORCE(ncomp,n), dgForce(n), Pivot(n), Basis(n), dBasisdx(n,3) )

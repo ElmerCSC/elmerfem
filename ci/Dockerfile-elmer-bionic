@@ -1,0 +1,3 @@
+FROM elmertest/bionic
+RUN cmake -C ../opts-ubuntu-bionic.cmake ../elmerfem
+RUN make -j$(nproc)

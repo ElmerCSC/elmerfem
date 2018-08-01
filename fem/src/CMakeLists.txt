@@ -295,6 +295,7 @@ IF(WITH_MPI)
     # EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver
     # WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/bin)")
     ADD_CUSTOM_TARGET(elmersolver_link ALL COMMAND ${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver)
+    ADD_DEPENDENCIES(elmersolver_link Solver_TGT)
     INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver DESTINATION "bin")
   ELSE()
     INSTALL(CODE "EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E copy

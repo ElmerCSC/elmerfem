@@ -1149,7 +1149,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    INTEGER, ALLOCATABLE :: Pivot(:)
 
-   REAL(KIND=dp), POINTER :: Fsave(:)
+   REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), RotM(:,:,:)
@@ -1477,7 +1477,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs )
 !------------------------------------------------------------------------------
-   REAL(KIND=dp), TARGET :: b(:,:)
+   REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
    TYPE(Variable_t), POINTER :: Var
 !------------------------------------------------------------------------------

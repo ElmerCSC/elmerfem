@@ -1,0 +1,136 @@
+! Perform a restart from a axi symmetric mesh to a 3D mesh.
+! a) axisymmetric 2D mesh with TempA: plane.sif
+! b) cylinrdical 3D mesh with TempB: case.sif 
+! The restart from the 2D mesh requires a dummy solver where the 2D mesh and data is stored.
+! Finally we solve a heat equation in the finer mesh using the sum of TempA and TempB as BC. 
+!
+! P.R. 30.7.2018
+
+Header
+  Mesh DB "." "cylinder"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Coordinate System = Cartesian
+
+  Max Output Level = 7
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "case.vtu"
+
+  Initialize Dirichlet Conditions = False
+  Restart Before Initial Conditions = Logical True  ! if we want to use restart for IC
+  Restart Error Continue = Logical True             ! continues even if mismatch in number of partitions
+  Use Mesh Projector = Logical False
+
+! Make mapping (x,y,z) -> (r,z) before interpolation.
+  Interpolation Cylindric = Logical True
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = 100
+
+! Use this to compute the temperature difference between 2D and 3D cases
+! Activated by "Update Exported Variables" keyword
+  dT = Variable TempA, TempB
+    Real MATC "tx(1)-tx(0)"
+End
+
+
+Initial Condition 1
+! Activates the mapping 
+  TempB = Equals "TempA"
+End
+
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+
+Solver 1
+  Equation = "Heat Equation"
+
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = "TempB"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+
+! Compute the dT variable
+  Exported Variable 1 = dT
+  Update Exported Variables = Logical True
+End
+
+
+
+! We need a dummy solver that performs the restart from a 2D case
+Solver 2
+  Equation = "Init Guess"
+
+! Dummy solver is execued never
+  Exec Solver = Never
+  Procedure = "AllocateSolver" "AllocateSolver"
+
+! The variables that we want to restart should be initialized in this list as a "Variable"
+! or "Exported Variable i". Or they can be allocated by some other solver associcated to
+! the same mesh.
+  Variable = TempA 
+
+  Mesh = "plane"  
+  Restart File = File "plane.dat"
+  Restart Error Continue = Logical True  ! continues even if mismatch in number of partitions
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1
+  Density = 1
+End
+
+Boundary Condition 1
+  Name = "BC1"
+
+  Target Boundaries = 1
+  TempB = Real 0.0
+End
+
+! The error is around ~0.0168, we test for 0.02
+Solver 1 :: Reference Solution = Equals "TempA"
+Solver 1 :: Reference Solution Tolerance = Real 0.02
