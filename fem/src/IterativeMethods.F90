@@ -89,45 +89,32 @@ CONTAINS
   ! may have an effect on convergence. This computes the complex part but does not
   ! use it yet...
   !-----------------------------------------------------------------------------------
-  FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT(d)
+  FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT( d )
   !-----------------------------------------------------------------------------------
     IMPLICIT NONE
     
     INTEGER :: ndim, xind, yind
     REAL(KIND=dp) :: x(*)
     REAL(KIND=dp) :: y(*)
-    REAL(KIND=dp) :: d
+    COMPLEX(KIND=dp) :: d
     
     INTEGER :: i
-    REAL(KIND=dp) :: a,b,c
+    REAL(KIND=dp) :: a,b
 
-    INTEGER :: ncount = 0
+        
+    !DO i = 1, ndim, 2
+    !  a = a + x(i) * y(i) + x(i+1) * y(i+1)    ! real        
+    !  b = b + x(i) * y(i+1) - x(i+1) * y(i)    ! imag part
+    !END DO
     
-    SAVE ncount
-
-    ncount = ncount + 1
-    
-    d = 0.0_dp
-
-    IF( ncount == 1 ) THEN
-      DO i = 1, ndim, 2
-        a = x(i) * y(i) + x(i+1) * y(i+1)    ! real part
-        d = d + a
-      END DO
-      PRINT *,'PseudoZdotProd re:',d
-    ELSE
-      DO i = 1, ndim, 2
-        b = x(i+1) * y(i) - x(i) * y(i+1)    ! imag part
-        d = d + b 
-      END DO
-      PRINT *,'PseudoZdotProd im:',d
-      ncount = 0 
-    END IF
+    a = SUM( x(1:ndim) * y(1:ndim) )
+    b = SUM( x(1:ndim:2) * y(2:ndim:2) - x(2:ndim:2) * y(1:ndim:2) )
+        
+    d = CMPLX( a, b )
       
-    
-    !-----------------------------------------------------------------------------------
-  END FUNCTION PseudoZDotProd
   !-----------------------------------------------------------------------------------
+  END FUNCTION PseudoZDotProd
+!-----------------------------------------------------------------------------------
 
   
 !------------------------------------------------------------------------------
@@ -1344,9 +1331,7 @@ CONTAINS
          ! Check whether the convergence criterion is met 
          !--------------------------------------------------------------
          rnorm = normfun(n, r, 1)
-         !CALL C_matvec( x, trueres, ipar, matvecsubr )
-         !trueres(1:n) = b(1:n) - trueres(1:n)
-         !trueresnorm = normfun(n, trueres, 1)
+
          IF (UseStopCFun) THEN
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
@@ -1421,7 +1406,7 @@ CONTAINS
 
     EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
     EXTERNAL dotprodfun, normfun, stopcfun
-    REAL(KIND=dp) :: dotprodfun
+    COMPLEX(KIND=dp) :: dotprodfun
     REAL(KIND=dp) :: normfun
     REAL(KIND=dp) :: stopcfun
     
@@ -1507,7 +1492,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
-      REAL(KIND=dp) :: alpha, beta, beta_im, trueres(n), trueresnorm, normerr
+      REAL(KIND=dp) :: alpha, beta_re, beta_im, trueres(n), trueresnorm, normerr
+      COMPLEX(KIND=dp) :: beta
 !------------------------------------------------------------------------------
       INTEGER :: allocstat
         
@@ -1532,7 +1518,7 @@ CONTAINS
       
       bnorm = normfun(n, b, 1)
       rnorm = normfun(n, r, 1)
-      
+
       IF (UseStopCFun) THEN
         Residual = stopcfun(x,b,r,ipar,dpar)
       ELSE
@@ -1570,16 +1556,18 @@ CONTAINS
          !--------------------------------------------------------------
          DO i=1,j-1
            ! First call is for real component and second one for complex one!
-           beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
-           beta_im = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+!           beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+
+           beta = PseudoZDotProd(n, V(1:n,i), 1, T2(1:n), 1 )
            
-           T1(1:n) = T1(1:n) - beta * S(1:n,i)
-           T1(1:n:2) = T1(1:n:2) + beta_im * S(2:n:2,i)
-           T1(2:n:2) = T1(2:n:2) - beta_im * S(1:n:2,i)                    
+           beta_re = REAL( beta )
+           beta_im = AIMAG( beta ) 
+                      
+           T1(1:n:2) = T1(1:n:2) - beta_re * S(1:n:2,i) + beta_im * S(2:n:2,i) 
+           T1(2:n:2) = T1(2:n:2) - beta_re * S(2:n:2,i) - beta_im * S(1:n:2,i)                    
            
-           T2(1:n) = T2(1:n) - beta * V(1:n,i)        
-           T2(1:n:2) = T2(1:n:2) + beta_im * V(2:n:2,i)
-           T2(2:n:2) = T2(2:n:2) - beta_im * V(1:n:2,i)                    
+           T2(1:n:2) = T2(1:n:2) - beta_re * V(1:n:2,i) + beta_im * V(2:n:2,i)
+           T2(2:n:2) = T2(2:n:2) - beta_re * V(2:n:2,i) - beta_im * V(1:n:2,i)                    
          END DO
 
          alpha = normfun(n, T2(1:n), 1 )         
@@ -1590,16 +1578,19 @@ CONTAINS
          !-------------------------------------------------------------
          ! The update of the solution and save the search data...
          !------------------------------------------------------------- 
-         beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
-         beta_im = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+         ! beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+
+         beta = PseudoZDotProd(n, T2(1:n), 1, r(1:n), 1 )
+
          
-         x(1:n) = x(1:n) + beta * T1(1:n)
-         x(1:n:2) = x(1:n:2) - beta_im * T1(2:n:2)
-         x(2:n:2) = x(2:n:2) + beta_im * T1(1:n:2)         
+         beta_re = REAL( beta )
+         beta_im = AIMAG( beta ) 
          
-         r(1:n) = r(1:n) - beta * T2(1:n)
-         r(1:n:2) = r(1:n:2) + beta_im * T2(2:n:2)
-         r(2:n:2) = r(2:n:2) - beta_im * T2(1:n:2)         
+         x(1:n:2) = x(1:n:2) + beta_re * T1(1:n:2) - beta_im * T1(2:n:2)
+         x(2:n:2) = x(2:n:2) + beta_re * T1(2:n:2) + beta_im * T1(1:n:2)         
+         
+         r(1:n:2) = r(1:n:2) - beta_re * T2(1:n:2) + beta_im * T2(2:n:2)
+         r(2:n:2) = r(2:n:2) - beta_re * T2(2:n:2) - beta_im * T2(1:n:2)         
                   
 	 IF ( j /= m ) THEN
             S(1:n,j) = T1(1:n)
@@ -1610,18 +1601,16 @@ CONTAINS
          ! Check whether the convergence criterion is met 
          !--------------------------------------------------------------
          rnorm = normfun(n, r, 1)
-         !CALL C_matvec( x, trueres, ipar, matvecsubr )
-         !trueres(1:n) = b(1:n) - trueres(1:n)
-         !trueresnorm = normfun(n, trueres, 1)
+
          IF (UseStopCFun) THEN
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
+           WRITE (*, '(A, I6, 2E12.4)') '   stopfun gcrt:',k, rnorm / bnorm, residual
            END IF           
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(A, I6, 3E12.4)') '   gcr:',k, residual, beta, beta_im
+              WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrt:',k, residual, beta,'i'
            END IF
          END IF
            
@@ -2258,6 +2247,7 @@ CONTAINS
          !--------------------------------------------------------------
          DO i=1,j-1
             beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+
             T1(1:n) = T1(1:n) - beta * S(1:n,i)
             T2(1:n) = T2(1:n) - beta * V(1:n,i)        
          END DO
