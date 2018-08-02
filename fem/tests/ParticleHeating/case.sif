@@ -167,5 +167,5 @@ Boundary Condition 2
   Particle Outlet = Logical True
 End
 
-Solver 2 :: Reference Norm = Real 1.473776E-01
-Solver 2 :: Reference Norm Tolerance = Real 1e-3
+Solver 2 :: Reference Norm = 1.473776E-01
+Solver 2 :: Reference Norm Tolerance = 0.02
