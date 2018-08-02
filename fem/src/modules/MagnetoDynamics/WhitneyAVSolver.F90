@@ -67,9 +67,9 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     StaticConductivity = .TRUE.
   END IF
 
-  IF( ListCheckPrefixAnyBC(Model, "Electric Current Density") .OR. &
-      ListCheckPrefixAnyBC(Model, "Electric Flux") ) THEN
-    CALL Info("WhitneyAVSolver_Init0", "Current sources require always scalar potential",Level=10)    
+  IF( ListCheckPrefixAnyBC(Model, "Electric Current Density") ) THEN
+    CALL Info("WhitneyAVSolver_Init0", &
+        "> Electric Current Density < always requires scalar potential",Level=10)    
     StaticConductivity = .TRUE.
   END IF
     
@@ -661,7 +661,6 @@ CONTAINS
      FoundAny = FoundAny .OR. Found
      
      Load(4,1:n) = GetReal( BC, 'Electric Current Density', Found )
-     IF (.NOT. Found) Load(4,1:n) = GetReal( BC, 'Electric Flux', Found )       
      FoundAny = FoundAny .OR. Found 
 
      Load(5,1:n) = GetReal( BC, 'Electric Transfer Coefficient', Found )
