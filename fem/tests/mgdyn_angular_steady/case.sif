@@ -129,9 +129,13 @@ Boundary Condition 1
   Target Boundaries(1) = 4
   !Magnetic Field Strength 3 = Real $ 1/(mur_2*mu0)
   AV {e} 2 = Variable Coordinate 1
-    REAL MATC "0.5*tx"
+    REAL lua "0.5*tx[0]"
   AV {e} 1 = Variable Coordinate 2
-    REAL MATC "-0.5*tx"
+    REAL lua "-0.5*tx[0]"
+  ! AV {e} 2 = Variable Coordinate 1
+  !   REAL matc "0.5*tx(0)"
+  ! AV {e} 1 = Variable Coordinate 2
+  !   REAL matc "-0.5*tx(0)"
   !AV {e} = 0
   AV = 0
 End
