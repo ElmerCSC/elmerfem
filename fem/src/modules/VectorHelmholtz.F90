@@ -393,7 +393,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   LOGICAL :: PiolaVersion, EdgeBasis
   INTEGER, POINTER :: Perm(:)
   TYPE(ValueList_t), POINTER :: SolverParams
-
+  
   TYPE(Matrix_t), POINTER :: A
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
@@ -471,7 +471,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
     IF( EdgeBasis ) CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.)
   END DO
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
-
+  
 CONTAINS
 
 !---------------------------------------------------------------------------------------------
@@ -767,7 +767,7 @@ CONTAINS
     COMPLEX(KIND=dp), OPTIONAL :: Tcoef(n)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
-    COMPLEX(KIND=dp) :: B, F, TC, L(3), muinv
+    COMPLEX(KIND=dp) :: B, L(3), muinv
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), tanWBasis(3)
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -851,6 +851,49 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
   SolverParams => GetSolverParams()
+
+
+  ! Find the solver index of the primary solver by the known procedure name.
+  ! (the solver is defined here in the same module so not that dirty...)
+  soln = 0
+
+  DO i=1,Model % NumberOfSolvers
+    sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+
+    j = INDEX( sname,'VectorHelmholtzSolver')
+    IF( j > 0 ) THEN
+      soln = i 
+      EXIT
+    END IF
+  END DO
+
+  
+  pname = GetString(SolverParams, 'Potential variable', Found)
+  IF( Found ) THEN
+    IF( soln == 0 ) THEN
+      DO i=1,Model % NumberOfSolvers
+        sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
+
+        J=INDEX(sname,'[')-1
+        IF ( j<=0 ) j=LEN_TRIM(sname)
+        IF ( sname(1:j) == pname(1:LEN_TRIM(pname)) )THEN
+          soln = i
+          EXIT
+        END IF
+      END DO
+    ELSE
+      CALL Info('VectorHelmholtzCalcFields_Init0',&
+          'Keyword > Potential Variable < is redundant when we match the Procedure name',Level=7)
+    END IF
+  END IF
+    
+  IF( soln == 0 ) THEN
+    CALL Fatal('VectorHelmholtzCalcFields_Init0','Cannot locate the primary solver: '//TRIM(I2S(soln)))      
+  ELSE
+    CALL Info('VectorHelmholtzCalcFields_Init0','The primary solver index is: '//TRIM(I2S(soln)),Level=12)
+    CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
+  END IF
+
   
   IF( GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
 
@@ -872,26 +915,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
            'Active Solvers', m+1, [Active, n+1] )
   END DO
 
-  pname = GetString(SolverParams, 'Field variable', Found)
-  vDOFs = 0
-  DO i=1,Model % NumberOfSolvers
-    sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
-    J=INDEX(sname,'[')-1
-    IF ( j<=0 ) j=LEN_TRIM(sname)
-    IF ( sname(1:j) == pname(1:LEN_TRIM(pname)) )THEN
-      k = 0
-      vDOFs = 0
-      j=INDEX(sname,':')
-      DO WHILE(j>0)
-        vDOFs=vDOFs+ICHAR(sname(j+k+1:j+k+1))-ICHAR('0')
-        k = k+j
-        IF(k<LEN(sname)) j=INDEX(sname(k+1:),':')
-      END DO
-      EXIT
-    END IF
-  END DO
-  soln = i
-  IF ( vDOFs==0 ) vDOFs=1
+  ! This is always two for now since the Helmholtz equation is complex valued!
   vDOFs = 2
 
   ALLOCATE(Solvers(n+1))
@@ -913,73 +937,38 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   IF(Found) THEN
     CALL ListAddString( SolverParams, 'Mesh', pname )
   END IF
-
+  
   IF (GetLogical(Solver % Values,'Calculate Magnetic Flux Density',Found)) THEN
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable', SolverParams), &
-        "Magnetic Flux Density E[Magnetic Flux Density E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams,&
+    CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
         "Magnetic Flux Density E[Magnetic Flux Density re E:3 Magnetic Flux Density im E:3]" )
-    END IF
   END IF
 
   IF (GetLogical(Solver % Values,'Calculate Electric field',Found)) THEN
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams,&
+    CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
-            "Electric field E[Electric field E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable', SolverParams), &
-            "Electric field E[Electric field re E:3 Electric field im E:3]" )
-    END IF
+        "Electric field E[Electric field re E:3 Electric field im E:3]" )
   END IF
 
   IF (GetLogical(Solver % Values,'Calculate Magnetic Field Strength',Found)) THEN
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams,&
+    CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
-            "Magnetic Field Strength E[Magnetic Field Strength E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable', SolverParams), &
-            "Magnetic Field Strength E[Magnetic Field Strength re E:3 Magnetic Field Strength im E:3]" )
-    END IF
+        "Magnetic Field Strength E[Magnetic Field Strength re E:3 Magnetic Field Strength im E:3]" )
   END IF
 
-  !IF ( GetLogical( Solver % Values, 'Calculate Maxwell Stress', Found ) ) THEN
-    !i = i + 1
-    !IF ( vDOFs==1 ) THEN
-      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-           !"Maxwell Stress E[Maxwell Stress E:6]" )
-    !ELSE
-      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-           !"Maxwell Stress E[Maxwell Stress re E:6 Maxwell Stress im E:6]" )
-    !END IF
-  !END IF
-
   IF ( GetLogical( Solver % Values, 'Calculate Poynting vector', Found ) ) THEN
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable', SolverParams), &
-        "Poynting vector E[Poynting vector E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams,&
+    CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
         "Poynting vector E[Poynting vector re E:3 Poynting vector im E:3]" )
-    END IF
   END IF
 
   IF ( GetLogical( Solver % Values, 'Calculate Div of Poynting Vector', Found ) ) THEN
     CALL ListAddString( SolverParams,&
-      NextFreeKeyword('Exported Variable', SolverParams), &
-      "Div Poynting Vector E[Div Poynting Vector re E:1 Div Poynting Vector im E:1]" )
+        NextFreeKeyword('Exported Variable', SolverParams), &
+        "Div Poynting Vector E[Div Poynting Vector re E:1 Div Poynting Vector im E:1]" )
     CALL ListAddString( SolverParams,&
-      NextFreeKeyword('Exported Variable', SolverParams), &
-      "Electric Work E[Electric Work re E:1 Electric Work im E:1]")
+        NextFreeKeyword('Exported Variable', SolverParams), &
+        "Electric Work E[Electric Work re E:1 Electric Work im E:1]")
   END IF
 
   DEALLOCATE(Model % Solvers)
@@ -999,7 +988,6 @@ SUBROUTINE MagnetoDynamics_Dummy(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -1018,14 +1006,9 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-
-  CHARACTER(LEN=MAX_NAME_LEN) :: name
-  INTEGER  :: i
-  TYPE(Variable_t), POINTER :: Var
   LOGICAL :: Found, NodalFields!, FluxFound
   TYPE(ValueList_t), POINTER :: SolverParams!, EQ
 
@@ -1035,13 +1018,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
 
   CALL ListAddLogical( SolverParams, 'Linear System refactorize', .FALSE.)
 
-  name = GetString( SolverParams, "Field variable", Found )
-  Var => VariableGet( Solver % Mesh % variables, name )
-  IF ( .NOT. ASSOCIATED(Var) ) THEN
-    CALL Fatal( "VectorHelmholtzCalcFields", "field variable not available")
-  ENDIF
-
-  ! add these in the beginning, so that SaveData sees these existing, even
+  ! add these in the beginning, so that SaveScalars sees these existing, even
   ! if executed before the actual computations...
   ! -----------------------------------------------------------------------
   IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
@@ -1104,18 +1081,12 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
    TYPE(Solver_t) :: Solver
    TYPE(Model_t) :: Model
-
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  
-!------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), Norm
    REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), E(2,3)
-   REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im
-   REAL(KIND=dp) :: Freq, ComponentLoss(2)
-   REAL(KIND=dp) :: TotalLoss
-   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area
+   REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im, Freq
    COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), PR(16), EdotJ, EF_ip(3), R_ip, &!
                        B(3), R(35)
 
@@ -1130,18 +1101,16 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, &
                                 EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
-   !
    INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,dofcount,vDOFs,dim,BodyId
 
    TYPE(Solver_t), POINTER :: pSolver
    REAL(KIND=dp), POINTER :: xx(:), bb(:), TempVector(:), TempRHS(:)
-   REAL(KIND=dp) :: hdotE(2), hdotE_r, hdotE_i
+   REAL(KIND=dp) :: hdotE_r, hdotE_i
 
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
 
-   TYPE(ValueList_t), POINTER :: Material, BC, BodyForce
-   LOGICAL :: Found, stat, &
-              CalcFluxLogical
+   TYPE(ValueList_t), POINTER :: Material, BodyForce
+   LOGICAL :: Found, stat
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -1152,11 +1121,12 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
-   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), RotM(:,:,:)
+   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
 
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:), Load(:,:), BndLoad(:,:)
 
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder
+   INTEGER :: EdgeBasisDegree, soln
    REAL(KIND=dp) ::  F(3,3), G(3,3)!, GT(3,3),DetF
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
    TYPE(ValueList_t), POINTER :: SolverParams 
@@ -1164,10 +1134,39 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 !-------------------------------------------------------------------------------------------
    SolverParams => GetSolverParams()
 
-   PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+   soln = ListGetInteger( SolverParams,'Primary Solver Index', Found) 
+   IF( soln == 0 ) THEN
+     CALL Fatal('VectorHelmholtzCalcFields','We should know > Primary Solver Index <')
+   END IF
+
+   ! Pointer to primary solver
+   pSolver => Model % Solvers(soln)
+
+   Pname = getVarName(pSolver % Variable)
+   CALL Info('VectorHelmholtzCalcFields','Name of potential variable: '//TRIM(pName),Level=10)
+   
+   ! Inherit the solution basis from the primary solver
+   vDOFs = pSolver % Variable % DOFs
+   IF( vDofs /= 2 ) THEN
+     CALL Fatal('VectorHelmholtzCalcFields','Primary variable should have 2 dofs: '//TRIM(I2S(vDofs)))
+   END IF
+
+   SecondOrder = GetLogical( pSolver % Values, 'Quadratic Approximation', Found )  
+   IF (SecondOrder) THEN
+     EdgeBasisDegree = 2
+   ELSE
+     EdgeBasisDegree = 1
+   END IF
+
+   IF( SecondOrder ) THEN
+     PiolaVersion = .TRUE.
+   ELSE
+     PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found ) 
+   END IF
+
    IF (PiolaVersion) &
-    CALL Info('VectorHelmholtzCalcFields', &
-        'Using Piola transformed finite elements',Level=2)
+       CALL Info('MagnetoDynamicsCalcFields', &
+       'Using Piola transformed finite elements',Level=5)
 
    Mesh => GetMesh()
 
@@ -1188,13 +1187,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    EW => VariableGet( Mesh % Variables, 'Electric Work')
    EL_EW => VariableGet( Mesh % Variables, 'Electric Work E')
-
-   Pname = GetString( SolverParams, 'Field Variable')
-   DO i=1,Model % NumberOfSolvers
-     pSolver => Model % Solvers(i)
-     IF (Pname==getVarName(pSolver % Variable)) EXIT
-   END DO
-   vDOFs = pSolver % Variable % dofs
  
    dofs = 0 
    IF ( ASSOCIATED(MFD) ) dofs=dofs+3
@@ -1204,7 +1196,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    IF ( ASSOCIATED(DIVPV) ) dofs=dofs+1
    IF ( ASSOCIATED(EW) ) dofs=dofs+1
    dofs = dofs*2  ! complex problem
-   NodalFields = dofs>0
+   NodalFields = dofs > 0
 
    IF(NodalFields) THEN
      ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),dofs)); Gforce=0._dp

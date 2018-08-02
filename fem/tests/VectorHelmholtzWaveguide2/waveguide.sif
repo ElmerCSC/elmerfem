@@ -7,7 +7,7 @@ Mesh DB "." "shoebox_hexas"
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 12
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady
@@ -96,18 +96,12 @@ Solver 2
   Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
   Linear System Symmetric = False
 
-  Field Variable =  String "E"
-  !Eletric field Variable = String "E"
-
-  !Angular Frequency = Real $w
-
   Calculate Elemental Fields = Logical False
   
   Calculate Magnetic Field Strength = Logical False
   Calculate Magnetic Flux Density = Logical False
   Calculate Poynting vector = Logical False
   Calculate Div of Poynting Vector = Logical False
-
   Calculate Electric field = Logical True
   Calculate Energy Functional = Logical True
 
@@ -118,7 +112,6 @@ Solver 2
   Linear System Max Iterations = 5000
   Linear System Iterative Method = CG
   Linear System Convergence Tolerance = 1.0e-9
-!  Exported Variable 1 = -dofs 3 Eref_re
 End
 
 Solver 3
@@ -157,3 +150,5 @@ End
 
 Solver 1 :: Reference Norm = 6.36557591E-03
 Solver 1 :: Reference Norm Tolerance = 1.0E-6
+Solver 2 :: Reference Norm = 2.17002474E-05
+Solver 2 :: Reference Norm Tolerance = 1.0E-4
