@@ -52,6 +52,10 @@ MODULE Types
    USE omp_lib 
 #endif 
 
+#ifdef HAVE_LUA
+   USE Lua
+#endif
+
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
    ! Parameter for internal blocking
    INTEGER, PARAMETER :: VECTOR_BLOCK_LENGTH = 128
@@ -413,6 +417,11 @@ END INTERFACE
 
 #ifdef DEVEL_LISTCOUNTER 
      INTEGER :: Counter = 0
+#endif
+
+#ifdef HAVE_LUA
+     LOGICAL :: LuaFun = .FALSE.
+     CHARACTER(len=:), ALLOCATABLE :: LuaCmd
 #endif
      
    END TYPE ValueListEntry_t
@@ -1000,6 +1009,7 @@ END INTERFACE
       TYPE(Solver_t), POINTER :: ASolver    
       
       LOGICAL :: HarmonicCircuits
+
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel
