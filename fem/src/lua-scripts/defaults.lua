@@ -103,18 +103,27 @@ end
 -- matching `...`. Uses global variable ELMER_FUNCTION_COUNTER to ensure
 -- uniqueness of the name
 function create_new_fun(prefix,  body)
+  -- Do naive string sanitization 
+  local sane_prefix = string.gsub(prefix, "{", "_OCB_")
+  local sane_prefix = string.gsub(sane_prefix, "}", "_CCB_")
+  local sane_prefix = string.gsub(sane_prefix, " ", "_")
+  local sane_prefix = string.gsub(sane_prefix, "%(", "_ORB_")
+  local sane_prefix = string.gsub(sane_prefix, "%)", "_CRB_")
+  local sane_prefix = string.gsub(sane_prefix, "%[", "_OSB_")
+  local sane_prefix = string.gsub(sane_prefix, "%]", "_CSB_")
+
   if ELMER_FUNCTION_SUFFIX_TABLE == nil then
     ELMER_FUNCTION_SUFFIX_TABLE = {}
   end 
 
-  if ELMER_FUNCTION_SUFFIX_TABLE[prefix] == nil then
-    ELMER_FUNCTION_SUFFIX_TABLE[prefix] = 1
+  if ELMER_FUNCTION_SUFFIX_TABLE[sane_prefix] == nil then
+    ELMER_FUNCTION_SUFFIX_TABLE[sane_prefix] = 1
   else
-    ELMER_FUNCTION_SUFFIX_TABLE[prefix] = ELMER_FUNCTION_SUFFIX_TABLE[prefix] + 1
+    ELMER_FUNCTION_SUFFIX_TABLE[sane_prefix] = ELMER_FUNCTION_SUFFIX_TABLE[sane_prefix] + 1
   end
-  local counter = ELMER_FUNCTION_SUFFIX_TABLE[prefix]
+  local counter = ELMER_FUNCTION_SUFFIX_TABLE[sane_prefix]
 
-  local underscored, num_space = string.gsub(prefix, " ", "_")
+  local underscored, num_space = string.gsub(sane_prefix, " ", "_")
   local fname = underscored .. "_" .. counter
   local codestr = "function " .. fname .. "() return " .. body .. " end"
   local code = loadstring(codestr)

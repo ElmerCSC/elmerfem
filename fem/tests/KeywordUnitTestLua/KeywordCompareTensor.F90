@@ -79,8 +79,8 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
       indexes => Element % NodeIndexes
       ALLOCATE(realval_matc_vec(3,N), realval_lua_vec(3,N))
 
-      CALL ListGetRealVector( Material, KeywordName_lua,  RealVal_lua_vec,  N, Indexes, Found )
-      CALL ListGetRealVector( Material, KeywordName_matc, RealVal_matc_vec, N, Indexes, Found )
+      CALL ListGetRealVector( Material, trim(KeywordName_lua),  RealVal_lua_vec,  N, Indexes, Found )
+      CALL ListGetRealVector( Material, trim(KeywordName_matc), RealVal_matc_vec, N, Indexes, Found )
 
       IF(.NOT. Found ) CYCLE
 
