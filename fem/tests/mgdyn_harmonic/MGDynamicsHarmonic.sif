@@ -44,28 +44,23 @@ Solver 1
   Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
 
   Angular Frequency = Real $w
-  use piola transform = logical true
 
-  Linear System Symmetric = false
+  Linear System Symmetric = True
 
   Linear System Solver = "Direct"
   Linear System Direct Method = mumps
 
-  use tree gauge = logical false
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = vanka
+  Linear System Preconditioning = Ilu
   Linear System Residual Output = 10
-  Linear System Max Iterations = 2000
-  Linear System Iterative Method = bicgstabl
-  ! bicgstabl polynomial degree = 4
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
   Linear System Convergence Tolerance = 1.0e-8
 
 ! USE Tree Gauge = Logical FALSE
 ! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
   Steady State Convergence Tolerance = 1e-09
-  ! linear system normwise backward error =  true
-  linear system abort not converged = false
 End
 
 Solver 2
@@ -99,11 +94,8 @@ End
 Boundary Condition 1
   Target Boundaries(4) = 1 2 3 4
 
-  ! P re {e} = Real 0
-  ! P im {e} = Real 0
-  $ coeff = 1e6
-  Electromagnetic Transfer Coefficient = real $coeff
-  electromagnetic transfer coefficient im = real $ -coeff
+  P re {e} = Real 0
+  P im {e} = Real 0
 End
 
 Boundary Condition 2
@@ -121,6 +113,7 @@ Boundary Condition 3
 
   P re = Real 0
   P im = Real 0
+
   P re {e} = Real 0
   P im {e} = Real 0
 End

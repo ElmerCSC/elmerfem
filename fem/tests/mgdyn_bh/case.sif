@@ -50,18 +50,14 @@ Solver 2
    Nonlinear System Max Iterations = 30
    Nonlinear System Convergence Tolerance = 1e-6
 
-   Linear System Symmetric = Logical false
+   Linear System Symmetric = Logical True
    Linear System Solver = "Iterative"
-   ! Linear System Solver = "direct"
-   linear system direct method = mumps
-   use tree gauge = false
-   Linear System Preconditioning = ilu0
+   Linear System Preconditioning = None
    Linear System Convergence Tolerance = 1e-8
    Linear System Residual Output = 100
    Linear System Max Iterations = 5000
-   Linear System Iterative Method = bicgstab
+   Linear System Iterative Method = CG
    Steady State Convergence Tolerance = 1e-6
-   linear system abort not converged = false
 End
 
 Solver 3
@@ -71,7 +67,6 @@ Solver 3
    Potential Variable = String "P"
 
    Calculate Magnetic Field Strength = Logical True
-   Calculate Magnetic Vector Potential = Logical True
    Steady State Convergence Tolerance = 0
    Linear System Solver = "Iterative"
    Linear System Preconditioning = None
@@ -88,9 +83,9 @@ Solver 4
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
 
   Vtu format = Logical True
-  ! Vector Field 1 = String "Volume Current"
-  ! Vector Field 2 = String "Magnetic Flux Density E"
-  ! Vector Field 3 = String "Magnetic Field Strength E"
+  Vector Field 1 = String "Volume Current"
+  Vector Field 2 = String "Magnetic Flux Density E"
+  Vector Field 3 = String "Magnetic Field Strength E"
 End
 
 Solver 5
@@ -129,8 +124,8 @@ Material 2
   Electric Conductivity = 0.0
   Relative Permeability = 1000.
 
-  ! H-B Curve(31,2) = Real
-  !  INCLUDE HB
+  H-B Curve(31,2) = Real
+   INCLUDE HB
 End
 
 Material 3
@@ -200,9 +195,7 @@ Boundary Condition 3
    Name = "BCn Flux Parallel"
    Target Boundaries(3) = 4 28 29
 
-   ! P {e} = Real 0
-   ! Electromagnetic transfer coefficent = real -1e3
-   magnetic transfer coefficent im = real 1e3
+   P {e} = Real 0
 End
 
 Body Force 1
