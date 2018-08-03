@@ -16352,7 +16352,7 @@ CONTAINS
     ! of layers to save some time.
     !------------------------------------------------------------------
     IF( PRESENT( NumberOfLayers ) ) THEN
-      CALL Info('DetectExtrudedStructure','compute the number of layers',Level=9)    
+      CALL Info('DetectExtrudedStructure','Compute number of layers',Level=15)    
       DO i=1,nsize
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0 ) CYCLE
@@ -16483,7 +16483,7 @@ CONTAINS
   
     ! Count the number of top and bottom nodes, for information only
     !---------------------------------------------------------------
-    CALL Info('DetectExtrudedStructure','counting top and bottom bodes',Level=9)        
+    CALL Info('DetectExtrudedStructure','Counting top and bottom nodes',Level=15)        
     IF( UpActive ) THEN
       TopNodes = 0
       MinTop = HUGE( MinTop ) 
@@ -16681,7 +16681,8 @@ CONTAINS
     IF(.NOT. GotIt) Eps = 1.0e-1_dp
 
     nsize = Mesh % NumberOfBulkElements
-    CALL Info('DetectExtrudedElements','Detecting extrusion in the whole mesh',Level=8)
+    CALL Info('DetectExtrudedElements','Detecting extrusion in the mesh using coordinate: '&
+        //TRIM(I2S(ActiveDirection)),Level=8)
 
     IF( ActiveDirection == 1 ) THEN
       Var => VariableGet( Mesh % Variables,'Coordinate 1')
@@ -16784,8 +16785,8 @@ CONTAINS
         IF( UpActive ) UpPointer(ElementIndex(1)) = ElementIndex(2)
         IF( DownActive ) DownPointer(ElementIndex(2)) = ElementIndex(1)
       END IF
-    END DO
-
+    END DO  
+        
     DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
 
     
@@ -16812,10 +16813,13 @@ CONTAINS
           END IF
         END IF
       END DO
+      CALL Info('DetectExtrudedElements',&
+          'Hits in determining structure: '//TRIM(I2S(UpHit+DownHit)),Level=10)
       IF( UpHit == 0 .AND. DownHit == 0 ) EXIT
     END DO
     ! The last round is always a check
     Rounds = Rounds - 1
+
 
     WRITE( Message,'(A,I0,A)') 'Layered elements detected in ',Rounds,' cycles'
     CALL Info('DetectExtrudedElements',Message,Level=9)
@@ -16830,13 +16834,15 @@ CONTAINS
     ! of layers to save some time.
     !------------------------------------------------------------------
     IF( PRESENT( NumberOfLayers ) ) THEN
-      CALL Info('DetectExtrudedStructure','compute the number of layers',Level=9)    
+      CALL Info('DetectExtrudedStructure','Compute number of layers',Level=15)    
 
-      j = BotPointer(i)
-
+      ! We start from any bottom row entry
+      j = BotPointer(1)
+      
       NumberOfLayers = 0
       DO WHILE(.TRUE.)
         k = UpPointer(j)
+
         IF( k == j ) THEN
           EXIT
         ELSE
@@ -16887,7 +16893,7 @@ CONTAINS
   
     ! Count the number of top and bottom elements, for information only
     !---------------------------------------------------------------
-    CALL Info('DetectExtrudedElements','counting top and bottom elements',Level=9)        
+    CALL Info('DetectExtrudedElements','Counting top and bottom elements',Level=15)        
     IF( UpActive ) THEN
       TopNodes = 0
       MinTop = HUGE( MinTop ) 
@@ -16899,6 +16905,7 @@ CONTAINS
           TopNodes = TopNodes + 1
         END IF
       END DO
+      CALL Info('DetectExtrudedElements','Number of top elements: '//TRIM(I2S(TopNodes)),Level=9)
     END IF
 
     IF( DownActive ) THEN
@@ -16912,12 +16919,13 @@ CONTAINS
           BotNodes = BotNodes + 1
         END IF
       END DO
+      CALL Info('DetectExtrudedElements','Number of bottom elements: '//TRIM(I2S(BotNodes)),Level=9)
     END IF
 
 
     ! Return the requested pointer structures, otherwise deallocate
     !---------------------------------------------------------------
-    CALL Info('DetectExtrudedElements','Setting pointer structures',Level=9)        
+    CALL Info('DetectExtrudedElements','Setting pointer structures',Level=15)        
     IF( UpActive ) THEN
       IF( PRESENT( TopElemPointer ) ) THEN
         TopElemPointer => TopPointer 
@@ -16949,17 +16957,19 @@ CONTAINS
 
     !---------------------------------------------------------------
     at1 = CPUTime()  
-    WRITE(Message,* ) 'Top and bottom pointer init time: ',at1-at0
-    CALL Info('DetectExtrudedElements',Message)
-    WRITE(Message,* ) 'Top and bottom pointer init rounds: ',Rounds
-    CALL Info('DetectExtrudedElements',Message)
+    WRITE(Message,'(A,ES12.3)') 'Top and bottom pointer init time: ',at1-at0
+    CALL Info('DetectExtrudedElements',Message,Level=6)
+
+    CALL Info('DetectExtrudedElements',&
+        'Top and bottom pointer init rounds: '//TRIM(I2S(Rounds)),Level=8)
+
     IF( UpActive ) THEN
-      WRITE(Message,* ) 'Number of nodes at the top: ',TopNodes
-      CALL Info('DetectExtrudedElements',Message)
+      CALL Info('DetectExtrudedElements', &
+          'Number of elements at the top: '//TRIM(I2S(TopNodes)),Level=8)
     END IF
     IF( DownActive ) THEN
-      WRITE(Message,* ) 'Number of nodes at the bottom: ',BotNodes
-      CALL Info('DetectExtrudedElements',Message)
+      CALL Info('DetectExtrudedElements', &
+          'Number of elements at the bottom: '//TRIM(I2S(BotNodes)),Level=8)
     END IF
    
 
