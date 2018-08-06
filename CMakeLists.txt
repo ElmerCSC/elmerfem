@@ -404,6 +404,11 @@ IF(WITH_ELMERPOST)
   ADD_SUBDIRECTORY(post)
 ENDIF(WITH_ELMERPOST)
 
+IF(HAVE_LUA)
+  MESSAGE(STATUS "  Building Lua")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(HAVE_LUA)
+
 # Packaging
 if(NOT BYPASS_CPACK)
   INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/cpack/ElmerCPack.cmake)

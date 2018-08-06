@@ -39,7 +39,7 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
   INTEGER :: elem, n, fdim, n1, n2, i1, i2, rdim
   INTEGER, POINTER :: Indexes(:)
   LOGICAL :: Stat
-  CHARACTER(LEN=20) :: KeywordName_lua, keywordname_matc
+  CHARACTER(LEN=13) :: KeywordName_lua, keywordname_matc
   CHARACTER(len=8) :: suffixes = 'abcdefgh'
   
   SAVE Nodes
@@ -79,10 +79,17 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
       indexes => Element % NodeIndexes
       ALLOCATE(realval_matc_vec(3,N), realval_lua_vec(3,N))
 
-      CALL ListGetRealVector( Material, trim(KeywordName_lua),  RealVal_lua_vec,  N, Indexes, Found )
-      CALL ListGetRealVector( Material, trim(KeywordName_matc), RealVal_matc_vec, N, Indexes, Found )
+      CALL ListGetRealVector( Material, KeywordName_lua,  RealVal_lua_vec,  N, Indexes, Found )
+      IF(.NOT. Found ) then
+        print *, '>'// KeywordName_Lua //'< not found'
+        CYCLE
+      end if
+      CALL ListGetRealVector( Material, KeywordName_matc, RealVal_matc_vec, N, Indexes, Found )
+      IF(.NOT. Found ) then
+        print *, '>'// KeywordName_matc //'< not found'
+        CYCLE
+      end if
 
-      IF(.NOT. Found ) CYCLE
 
       n1 = SIZE( RealVal_lua_vec, 1 )
       n2 = 1
@@ -105,7 +112,7 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
       END DO
     END DO
 
-    PRINT *,'Compare integrals:', 2.0_dp*DiffCounter(key)  / (NewCounter(key) + OldCounter(key))
+    call printit()
     PseudoNorm = PseudoNorm + (2.0_dp*DiffCounter(key) / (NewCounter(key) + OldCounter(key)))
   END DO ! }}}
 
@@ -153,7 +160,7 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
       END DO
     END DO
 
-    PRINT *,'Compare integrals:', 2.0_dp*DiffCounter(key)  / (NewCounter(key) + OldCounter(key))
+    call printit()
     PseudoNorm = PseudoNorm + (2.0_dp*DiffCounter(key) / (NewCounter(key) + OldCounter(key)))
   END DO ! }}}
   ! PseudoNorm = PseudoNorm + sum(2.0_dp*DiffCounter(1:4) / (NewCounter(1:4) + OldCounter(1:4)))
@@ -205,7 +212,7 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
       END DO
     END DO
 
-    PRINT *,'Compare integrals:', 2.0_dp*DiffCounter(key)  / (NewCounter(key) + OldCounter(key))
+    call printit()
     PseudoNorm = PseudoNorm + (2.0_dp*DiffCounter(key) / (NewCounter(key) + OldCounter(key)))
   END DO ! }}}
 
@@ -224,6 +231,11 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
     subroutine set_keyword_names()
       KeywordName_lua = 'Float Value '//suffixes(key:key)
       KeywordName_matc = 'Float Value '//suffixes(key+4:key+4)
+    end subroutine
+
+    subroutine printit()
+      print *,'Compare integrals (old, new, rel diff):', oldcounter(key), newcounter(key), &
+          2.0_dp*DiffCounter(key)  / (NewCounter(key) + OldCounter(key))
     end subroutine
 
 END SUBROUTINE KeywordCompare
