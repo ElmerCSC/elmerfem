@@ -361,7 +361,7 @@ CONTAINS
 
     IF( PRESENT( IpVar ) ) THEN
       IF( IpVar % TYPE /= Variable_on_gauss_points ) THEN
-        CALL Fatal('GetIpIndex','Variable is not of type gauss points!')
+        CALL Fatal('GetIpCount','Variable is not of type gauss points!')
       END IF
       IpCount = SIZE( IpVar % Values ) / IpVar % Dofs
     ELSE    
