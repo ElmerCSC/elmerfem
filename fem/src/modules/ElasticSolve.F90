@@ -183,7 +183,9 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     OutputStateVars = GetLogical(SolverParams, 'Output State Variables', Found)
     IF (OutputStateVars) THEN
       CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
-          '-dofs 3 -ip StateVar[D1:1 D2:1 D3:1]' )      
+          '-dofs 3 -ip StateVar[D1:1 D2:1 D3:1]' )
+      CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
+          '-dofs 9 -ip StateDir[PDir1_x:1 PDir1_y:1 PDir1_z:1 PDir2_x:1 PDir2_y:1 PDir2_z:1 PDir3_x:1 PDir3_y:1 PDir3_z:1]')      
     END IF
   END IF
 !------------------------------------------------------------------------------
@@ -216,7 +218,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER :: StiffMatrix, PMatrix
   TYPE(Solver_t), POINTER :: PSolver
-  TYPE(Variable_t), POINTER :: StressSol, TempSol, FlowSol, Var, StateSol
+  TYPE(Variable_t), POINTER :: StressSol, TempSol, FlowSol, Var, StateSol, StateDir
   TYPE(ValueList_t), POINTER :: SolverParams, Material, BC, Equation, BodyForce
   TYPE(Nodes_t) :: ElementNodes, ParentNodes, FlowNodes
   TYPE(Element_t), POINTER :: CurrentElement, ParentElement, FlowElement
@@ -564,6 +566,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
     StateSol => VariableGet(Mesh % Variables, 'StateVar')
     IF ( .NOT. ASSOCIATED(StateSol) ) THEN
       CALL Fatal('ElasticSolver','Variable > StateVar < does not exits!')
+    END IF
+    StateDir => VariableGet(Mesh % Variables, 'StateDir')
+    IF ( .NOT. ASSOCIATED(StateDir) ) THEN
+      CALL Fatal('ElasticSolver','Variable > StateDir < does not exits!')
     END IF
   END IF
 
@@ -1212,7 +1218,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !   Write the state variable solution ...
   !-----------------------------------------------------------------------------
   IF (UseUMAT .AND. OutputStateVars) THEN
-    CALL GenerateStateVariable(PointwiseStateV, MaxIntegrationPoints, NStateV, StateSol)
+    CALL GenerateStateVariable(PointwiseStateV, MaxIntegrationPoints, NStateV, StateSol, StateDir)
   END IF
 
 
@@ -4632,7 +4638,7 @@ CONTAINS
 
 !--------------------------------------------------------------------------------
   SUBROUTINE GenerateStateVariable(PointwiseStateV, MaxIntegrationPoints, NStateV, &
-      StateSol)
+      StateSol, StateDir)
 !--------------------------------------------------------------------------------
 !   This subroutine generates the field for visualizing the state variables of
 !   the umat material model. This assumes that the first (six) state variables 
@@ -4641,7 +4647,7 @@ CONTAINS
 !--------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: PointwiseStateV(:,:) 
     INTEGER :: MaxIntegrationPoints, NStateV
-    TYPE(Variable_t), POINTER :: StateSol
+    TYPE(Variable_t), POINTER :: StateSol, StateDir
 !---------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -4675,6 +4681,10 @@ CONTAINS
         StateSol % Values(dofs*(j-1)+1) = EigenVals(1)
         StateSol % Values(dofs*(j-1)+2) = EigenVals(2)
         StateSol % Values(dofs*(j-1)+3) = EigenVals(3)
+
+        StateDir % Values(dofs*(j-1)+1:dofs*(j-1)+3) = Work(1:3,1)
+        StateDir % Values(dofs*(j-1)+4:dofs*(j-1)+6) = Work(1:3,2)
+        StateDir % Values(dofs*(j-1)+7:dofs*(j-1)+9) = Work(1:3,3)
 
         ! Write stress 11 as the first component:
         !StateSol % Values(dofs*(j-1)+1) = PointwiseStateV(k+t,NStateV+4)
