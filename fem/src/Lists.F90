@@ -1707,6 +1707,9 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
      TYPE(String_stack_t), POINTER :: stack
+#ifdef HAVE_LUA
+     CHARACTER(:), ALLOCATABLE :: stra
+#endif
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1721,7 +1724,13 @@ CONTAINS
      IF( ListGetnamespace(strn) ) THEN
        stack => Namespace_stack
        DO WHILE(.TRUE.)
-         strn = TRIM(strn) //' '//str(1:k)
+#ifdef HAVE_LUA
+         stra = trim(strn)
+         strn = stra //' '//str(1:k)
+         DEALLOCATE(stra)
+#else
+         strn = trim(strn) // ' ' //str(1:k)
+#endif
          k1 = LEN(strn)
          ptr => List % Head
          DO WHILE( ASSOCIATED(ptr) )
@@ -1786,6 +1795,9 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
      TYPE(String_stack_t), POINTER :: stack
+#ifdef HAVE_LUA
+     CHARACTER(:), ALLOCATABLE :: stra
+#endif
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1798,7 +1810,13 @@ CONTAINS
      IF ( ListGetNamespace(strn) ) THEN
        stack => Namespace_stack
        DO WHILE(.TRUE.)
-         strn = TRIM(strn) //' '//str(1:k)
+#ifdef HAVE_LUA
+         stra = trim(strn)
+         strn = stra //' '//str(1:k)
+         DEALLOCATE(stra)
+#else
+         strn = trim(strn) // ' ' //str(1:k)
+#endif
          k1 = LEN(strn)
          ptr => List % Head
          DO WHILE( ASSOCIATED(ptr) )
