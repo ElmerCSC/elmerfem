@@ -5190,6 +5190,8 @@ CONTAINS
 
       LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
 
+      IF(.NOT. Found ) LowestSolver = ListGetString(Params,'mglowest: Linear System Solver',Found)
+      
       IF ( .NOT. Found ) THEN
         LowestSolver = 'direct'
         LIter = ListGetLogical(Params,'MG Lowest Linear Solver Iterative',Found)

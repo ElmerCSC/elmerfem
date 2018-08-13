@@ -331,14 +331,14 @@ CONTAINS
 
       INTEGER, POINTER, OPTIONAL :: CFLayer(:)
 
-      INTEGER, POINTER :: TopPointer(:), DownPointer(:)
+      INTEGER, POINTER :: TopPointer(:), BotPointer(:)
       INTEGER :: i, j, nsize, NoLayers, NoClusters
       TYPE(Variable_t), POINTER :: ExtVar
       TYPE(Solver_t), POINTER :: Psolver
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Element_t), POINTER :: Element, Element2
       INTEGER, POINTER :: Indexes(:), Indexes2(:), Perm(:), CFPerm(:)
-      INTEGER :: Indx, elem, t, t2, dofs, n, n2, n0
+      INTEGER :: Indx, elem, t, t2, dofs, n, n2, m, m2, n0
       INTEGER :: Ncount(5)
       
       
@@ -348,8 +348,9 @@ CONTAINS
 
       
       dofs = Solver % Variable % DOFs
-      nsize = Solver % Matrix % NumberOfRows
+      nsize = Solver % Matrix % NumberOfRows / dofs
       n0 = Mesh % NumberOfNodes
+
       ALLOCATE( CF( nsize), CFPerm(nsize) )
       CF = 0
       CFPerm = 0
@@ -362,7 +363,7 @@ CONTAINS
       
       ! Find the extruded structure 
       CALL DetectExtrudedElements( Mesh, PSolver, ExtVar, &
-          TopElemPointer = TopPointer, DownElemPointer = DownPointer, &
+          TopElemPointer = TopPointer, BotElemPointer = BotPointer, &
           NumberOfLayers = NoLayers )
 
       DO elem=1,Solver % NumberOfActiveElements
@@ -370,7 +371,7 @@ CONTAINS
         ! The index of the element to be mapped
         t = Solver % ActiveElements(elem)
         ! The index of the target element
-        t2 = DownPointer( t )
+        t2 = BotPointer( t )
         
         ! Don't map indexes to self
         IF( t2 == t ) THEN
@@ -388,25 +389,25 @@ CONTAINS
         Element2 => Mesh % Elements( t2 )
         n2 = Element2 % TYPE % NumberOFEdges
         Indexes2 => Element2 % EdgeIndexes
-                
+        
+        m = Element % TYPE % NumberOFNodes
+        m2 = Element2 % TYPE % NumberOFNodes
+
         IF( n /= n2 ) CALL Fatal('ClusterExtrudeEdges','Cannot map different number of dofs!')
         
         ! Here we assume that the numbering of each element is similar!
         DO i=1,n
-          j = Perm(Indexes(i)) + n0 
-          j2 = Perm(Indexes(i)) + n0 
-                                
-          j = dofs*(j-1)
-          j2 = dofs*(j2-1)
+          j = Perm(Indexes(i)) 
+          j2 = Perm(Indexes2(i))
 
-          DO k=1,dofs
-            IF( CF(j+k) /= j2+k ) THEN
-              Ncount(3) = Ncount(3) + 1
-              CF(j+k) = j2+k
-            ELSE
-              Ncount(4) = Ncount(4) + 1
-            END IF 
-          END DO
+          !PRINT *,'CF:',j,CF(j),j2
+          
+          IF( CF(j) /= j2 ) THEN
+            Ncount(3) = Ncount(3) + 1
+            CF(j) = j2
+          ELSE
+            Ncount(4) = Ncount(4) + 1
+          END IF
         END DO
 
       END DO
@@ -423,7 +424,11 @@ CONTAINS
           CFPerm(i) = k
         END IF
       END DO
-      CALL Info('ClusterExtrudedEdges','Number of reduced dofs: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(nsize)))
+      CALL Info('ClusterExtrudedEdges',&
+          'Number of reduced dofs: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(nsize)),Level=9)
+
+      WRITE(Message,'(A,F10.3)') 'Coarse dofs reduction factor',1.0_dp *  nsize / k 
+      CALL Info('ClusterExtrudedEdges', Message, Level=7)
             
       DO i=1,nsize
         CF(i) = CFPerm(i)
@@ -432,7 +437,7 @@ CONTAINS
       PRINT *,'Ncount:',Ncount(1:4)
       
 
-      DEALLOCATE( DownPointer, TopPointer )
+      DEALLOCATE( BotPointer, TopPointer )
 
     END SUBROUTINE ClusterExtrudedEdges
 
