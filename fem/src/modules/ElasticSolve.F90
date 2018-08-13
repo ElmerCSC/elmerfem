@@ -4651,7 +4651,7 @@ CONTAINS
 !---------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    INTEGER :: elem, dofs, i, j, k, t
+    INTEGER :: elem, dofs, dirdofs, i, j, k, t
     INTEGER :: PriLWork=102, PriInfo=0
     REAL(KIND=dp) :: Work(3,3), EigenVals(3), PriWork(102)
 !---------------------------------------------------------------------------------
@@ -4659,6 +4659,7 @@ CONTAINS
         'At least 6 state variables should exist')
 
     dofs = StateSol % DOFs
+    dirdofs = StateDir % DOFs
     DO elem = 1, Solver % NumberOfActiveElements
       Element => GetActiveElement(elem, Solver)
       IntegStuff = GaussPoints(Element)
@@ -4682,9 +4683,9 @@ CONTAINS
         StateSol % Values(dofs*(j-1)+2) = EigenVals(2)
         StateSol % Values(dofs*(j-1)+3) = EigenVals(3)
 
-        StateDir % Values(dofs*(j-1)+1:dofs*(j-1)+3) = Work(1:3,1)
-        StateDir % Values(dofs*(j-1)+4:dofs*(j-1)+6) = Work(1:3,2)
-        StateDir % Values(dofs*(j-1)+7:dofs*(j-1)+9) = Work(1:3,3)
+        StateDir % Values(dirdofs*(j-1)+1:dirdofs*(j-1)+3) = Work(1:3,1)
+        StateDir % Values(dirdofs*(j-1)+4:dirdofs*(j-1)+6) = Work(1:3,2)
+        StateDir % Values(dirdofs*(j-1)+7:dirdofs*(j-1)+9) = Work(1:3,3)
 
         ! Write stress 11 as the first component:
         !StateSol % Values(dofs*(j-1)+1) = PointwiseStateV(k+t,NStateV+4)
