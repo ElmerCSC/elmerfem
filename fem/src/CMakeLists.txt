@@ -110,6 +110,16 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.cmake
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerld)
 
+# Create pkg-config file if requested and place it under ${PKGCONFIG_PC_PATH}
+# Defaults: PKGCONFIG_PC_PATH = ${CMAKE_INSTALL_PREFIX}/share/pkgconfig
+IF(CREATE_PKGCONFIG_FILE)
+  SET(PKGCONFIG_PC_PATH "${CMAKE_INSTALL_PREFIX}/share/pkgconfig" 
+    CACHE PATH "Path where to install elmer pkg-config file")
+  CONFIGURE_FILE(elmer.pc.cmake elmer.pc @ONLY)
+  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/elmer.pc 
+    DESTINATION ${PKGCONFIG_PC_PATH})
+ENDIF(CREATE_PKGCONFIG_FILE)
+
 # Copy elements.def and SOLVER.KEYWORDS (to enable testing)
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elements.def 
   ${CMAKE_CURRENT_BINARY_DIR}/elements.def COPYONLY)
