@@ -681,6 +681,55 @@ CONTAINS
    END SUBROUTINE CreateIpPerm
 
 
+   SUBROUTINE CheckAndCreateDGIndexes( Mesh, ActiveElem ) 
+     TYPE(Mesh_t), POINTER :: Mesh
+     LOGICAL, OPTIONAL :: ActiveElem(:)
+
+     TYPE(Element_t), POINTER :: Element     
+     INTEGER :: i,n,t,DGIndex
+     LOGICAL :: Failed
+
+     Failed = .FALSE.
+     
+     DO t=1,Mesh % NumberOfBulkElements 
+       IF( PRESENT( ActiveElem ) ) THEN
+         IF( .NOT. ActiveElem(t) ) CYCLE
+       END IF
+       Element => Mesh % Elements(t)
+       n = Element % TYPE % NumberOfNodes         
+       IF( .NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+         Failed = .TRUE.
+       ELSE IF( SIZE( Element % DGIndexes ) /= n ) THEN
+         Failed = .TRUE.
+       END IF
+     END DO
+     
+     ! Number the bulk indexes such that each node gets a new index
+     CALL Info('CheckAndCreateDGIndexes','Creating DG indexes!',Level=12)
+
+     DGIndex = 0       
+     DO t=1,Mesh % NumberOfBulkElements 
+       Element => Mesh % Elements(t)
+       n = Element % TYPE % NumberOfNodes         
+       IF( .NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+         ALLOCATE( Element % DGindexes( n ) )
+       ELSE IF( SIZE( Element % DGIndexes ) /= n ) THEN
+         DEALLOCATE( Element % DGindexes )
+         ALLOCATE( Element % DGindexes( n ) )
+       END IF
+         
+       DO i=1,n
+         DGIndex = DGIndex + 1
+         Element % DGIndexes(i) = DGIndex
+       END DO
+     END DO
+
+     ! Number the bulk indexes such that each node gets a new index
+     CALL Info('CheckAndCreateDGIndexes','Creating DG '//TRIM(I2S(DgIndex))//' indexes',Level=6)
+    
+   END SUBROUTINE CheckAndCreateDGIndexes
+     
+   
 
    !> Create permutation for discontinuous galerking type of fields optionally
    !> with a given mask.
@@ -691,7 +740,7 @@ CONTAINS
      INTEGER, POINTER :: DGPerm(:)
      INTEGER :: DGCount
      CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName 
-
+     
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Element, Parent
      INTEGER :: t, n, i, j, k, DGIndex
