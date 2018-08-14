@@ -1025,7 +1025,7 @@ CONTAINS
     TYPE( Variable_t), POINTER :: Var
     TYPE( Variable_t), TARGET :: TmpVar
     LOGICAL :: Visited = .FALSE.
-    INTEGER :: dgsize,ipsize,varsize,dofs,i,j,k,n,m,e,t
+    INTEGER :: dgsize,ipsize,varsize,dofs,i,j,k,n,m,e,t,allocstat
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: fip(32),fdg(32)
     
