@@ -1,7 +1,9 @@
 !--------------------------------------------------------------------
-! A test case for Stuctured mesh mapper with a middle layer.
+! A test case for Stuctured mesh mapper with a mask.
+! The extruded structure and related operations are only covered where
+! the mask is. 
 !
-! Peter Råback / 29.7.2015
+! Peter Råback / 10.8.2018
 !--------------------------------------------------------------------
 
 Header
