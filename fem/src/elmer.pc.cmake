@@ -8,5 +8,5 @@ FC=@CMAKE_Fortran_COMPILER@
 MPIF90=@MPI_Fortran_COMPILER@
 includedir=${prefix}/share/elmersolver/include
 Libs: -L${libdir} -lelmersolver
-Cflags: @CMAKE_Fortran_FLAGS@ @ELMER_F90FLAGS@ -I${includedir}
+Cflags: -Wl,-rpath=${libdir} @CMAKE_Fortran_FLAGS@ @ELMER_F90FLAGS@ -I${includedir}
 
