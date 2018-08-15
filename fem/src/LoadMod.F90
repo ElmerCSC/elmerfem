@@ -861,4 +861,64 @@ MODULE LoadMod
                          mvfun, pcondfun, pcondrfun, dotfun, normfun, stopcfun)
         END SUBROUTINE itercallFTNC
 
+!------------------------------------------------------------------------------
+!> Loads a dynamic object (e.g. solver or user defined function) and returns
+!> its address in order to be able to call it. 
+!> This is placed here for convenience so that GetProcAddr could be called from
+!> other modules as well.
+!------------------------------------------------------------------------------
+  FUNCTION GetProcAddrLoadMod( str, Quiet, Abort ) RESULT( Proc )
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=*) :: str
+    LOGICAL, OPTIONAL :: Quiet, Abort
+
+    INTEGER(KIND=AddrInt) :: Proc
+    INTEGER   :: i,j,slen,q,a
+    CHARACTER :: Libname(MAX_NAME_LEN),Procname(MAX_NAME_LEN)
+!------------------------------------------------------------------------------
+
+    DO slen=LEN(str),1,-1
+      IF ( str(slen:slen) /= ' ' ) EXIT
+    END DO
+
+    i = 1
+    DO WHILE( i <= slen )
+      IF ( str(i:i) == ' ' ) EXIT
+      Libname(i) = str(i:i)
+      i = i + 1
+    END DO
+    Libname(i) = CHAR(0)
+
+    DO WHILE( i <= slen )
+       IF ( str(i:i) /= ' ' ) EXIT
+       i = i + 1
+    END DO
+
+    j = 1
+    DO WHILE( i <= slen )
+      IF (  str(i:i) == ' ' ) EXIT
+      Procname(j) = str(i:i)
+      i = i + 1
+      j = j + 1
+    END DO
+    ProcName(j) = CHAR(0)
+
+    q = 0
+    IF ( OutputPE < 0 ) THEN
+      q=1
+    ELSE IF( PRESENT(Quiet) ) THEN
+      IF ( Quiet ) q = 1
+    ELSE
+      IF ( .NOT. OutputLevelMask(4) ) q = 1
+    END IF
+
+    a = 1
+    IF ( PRESENT(abort) ) THEN
+       IF ( .NOT. abort ) a=0
+    END IF
+
+    Proc = LoadFunction( q,a,Libname,Procname )
+  END FUNCTION 
+!------------------------------------------------------------------------------
+
 END MODULE LoadMod

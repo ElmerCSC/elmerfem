@@ -12202,7 +12202,7 @@ END SUBROUTINE VariableNameParser
               DO k=1,IP % n
                 stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
                     IP % W(k), detJ, Basis )
-                Solution(i1+k) = ListGetElementReal( LocalSol_h,Basis,Element,Found,GaussPoint=k) 
+                Solution(i1+k) = ListGetElementReal( LocalSol_h,Basis,Element,Found,GaussPoint=k,IP=IP) 
               END DO
             END IF
           END IF
