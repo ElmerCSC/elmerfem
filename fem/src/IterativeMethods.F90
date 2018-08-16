@@ -1324,20 +1324,22 @@ CONTAINS
          ! Perform the orthogonalization of the search directions....
          !--------------------------------------------------------------
          DO i=1,j-1
+           beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+
            IF( PseudoComplex ) THEN
-             beta = PseudoZDotProd(n, V(1:n,i), 1, T2(1:n), 1 )
-             beta_im = PseudoZDotProd(n, V(1:n,i), 1, T2(1:n), 1 )
+             ! The even call is for the complex part of beta
+             ! This has to be before the T1 and T2 vectors are tampered
+             ! For convenience we subtract 
+             beta_im = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+             T1(1:n:2) = T1(1:n:2) + beta_im * S(2:n:2,i) 
+             T1(2:n:2) = T1(2:n:2) - beta_im * S(1:n:2,i)                    
              
-             T1(1:n:2) = T1(1:n:2) - beta * S(1:n:2,i) + beta_im * S(2:n:2,i) 
-             T1(2:n:2) = T1(2:n:2) - beta * S(2:n:2,i) - beta_im * S(1:n:2,i)                    
-             
-             T2(1:n:2) = T2(1:n:2) - beta * V(1:n:2,i) + beta_im * V(2:n:2,i)
-             T2(2:n:2) = T2(2:n:2) - beta * V(2:n:2,i) - beta_im * V(1:n:2,i)                    
-           ELSE             
-             beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
-             T1(1:n) = T1(1:n) - beta * S(1:n,i)
-             T2(1:n) = T2(1:n) - beta * V(1:n,i)        
+             T2(1:n:2) = T2(1:n:2) + beta_im * V(2:n:2,i)
+             T2(2:n:2) = T2(2:n:2) - beta_im * V(1:n:2,i)                    
            END IF
+           
+           T1(1:n) = T1(1:n) - beta * S(1:n,i)
+           T2(1:n) = T2(1:n) - beta * V(1:n,i)        
          END DO
 
          alpha = normfun(n, T2(1:n), 1 )
@@ -1347,24 +1349,22 @@ CONTAINS
          !-------------------------------------------------------------
          ! The update of the solution and save the search data...
          !------------------------------------------------------------- 
+         beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+
          IF( PseudoComplex ) THEN
-           beta = PseudoZDotProd(n, T2(1:n), 1, r(1:n), 1 )
-           beta_im = PseudoZDotProd(n, T2(1:n), 1, r(1:n), 1 )
-                    
-           x(1:n:2) = x(1:n:2) + beta * T1(1:n:2) - beta_im * T1(2:n:2)
-           x(2:n:2) = x(2:n:2) + beta * T1(2:n:2) + beta_im * T1(1:n:2)         
-           
-           r(1:n:2) = r(1:n:2) - beta * T2(1:n:2) + beta_im * T2(2:n:2)
-           r(2:n:2) = r(2:n:2) - beta * T2(2:n:2) - beta_im * T2(1:n:2)                    
-         ELSE
-           beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
-           x(1:n) = x(1:n) + beta * T1(1:n)      
-           r(1:n) = r(1:n) - beta * T2(1:n)
+           beta_im = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+           x(1:n:2) = x(1:n:2) - beta_im * T1(2:n:2)
+           x(2:n:2) = x(2:n:2) + beta_im * T1(1:n:2)                    
+           r(1:n:2) = r(1:n:2) + beta_im * T2(2:n:2)
+           r(2:n:2) = r(2:n:2) - beta_im * T2(1:n:2)                    
          END IF
+                      
+         x(1:n) = x(1:n) + beta * T1(1:n)      
+         r(1:n) = r(1:n) - beta * T2(1:n)
 
          IF ( j /= m ) THEN
-            S(1:n,j) = T1(1:n)
-            V(1:n,j) = T2(1:n)
+           S(1:n,j) = T1(1:n)
+           V(1:n,j) = T2(1:n)
 	 END IF       
 
          !--------------------------------------------------------------
