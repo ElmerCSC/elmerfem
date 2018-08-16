@@ -109,7 +109,8 @@
 #define HUTI_WRKDIM ipar(4)
 #define HUTI_DBUGLVL ipar(5)
 #define HUTI_EXTOP_MATTYPE ipar(6)
-
+#define HUTI_PSEUDOCOMPLEX ipar(7)
+						
 ! Iteration parameters (10-19)
 
 #define HUTI_MAXIT ipar(10)

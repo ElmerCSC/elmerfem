@@ -100,6 +100,9 @@ CONTAINS
 #ifndef HUTI_SGSPARAM
 #define HUTI_SGSPARAM dpar(3)
 #endif
+#ifndef HUTI_PSEUDOCOMPLEX
+#define HUTI_PSEUDOCOMPLEX dpar(7)
+#endif
 #ifndef HUTI_BICGSTABL_L
 #define HUTI_BICGSTABL_L ipar(16)
 #endif
@@ -314,6 +317,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     HUTI_WRKDIM = 0
+    HUTI_PSEUDOCOMPLEX = 0
+    IF( PseudoComplexSystem ) HUTI_PSEUDOCOMPLEX = 1
     Internal = .FALSE.
     
     SELECT CASE ( IterType )
@@ -843,13 +848,8 @@ CONTAINS
         iterProc = AddrFunc( itermethod_jacobi )
       CASE (ITER_RICHARDSON)
         iterProc = AddrFunc( itermethod_richardson )
-      CASE (ITER_GCR)
-        IF( ListGetLogical( CurrentModel % Solver % Values,'Linear System Pseudo Complex',Found ) ) THEN
-          PRINT *,'Pseudo Complex'
-          iterProc = AddrFunc( itermethod_gcr_t )
-        ELSE          
-          iterProc = AddrFunc( itermethod_gcr )
-        END IF
+      CASE (ITER_GCR)        
+        iterProc = AddrFunc( itermethod_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_bicgstabl )
       CASE (ITER_IDRS)

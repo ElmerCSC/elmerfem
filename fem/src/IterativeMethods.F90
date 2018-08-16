@@ -53,6 +53,9 @@
 #ifndef HUTI_SGSPARAM
 #define HUTI_SGSPARAM dpar(3)
 #endif
+#ifndef HUTI_PSEUDOCOMPLEX
+#define HUTI_PSEUDOCOMPLEX dpar(7)
+#endif
 #ifndef HUTI_BICGSTABL_L
 #define HUTI_BICGSTABL_L ipar(16)
 #endif
@@ -96,23 +99,30 @@ CONTAINS
     INTEGER :: ndim, xind, yind
     REAL(KIND=dp) :: x(*)
     REAL(KIND=dp) :: y(*)
-    COMPLEX(KIND=dp) :: d
-    
-    INTEGER :: i
+    REAL(KIND=dp) :: d
+        
+    INTEGER :: i, callcount = 0
     REAL(KIND=dp) :: a,b
-
-        
-    !DO i = 1, ndim, 2
-    !  a = a + x(i) * y(i) + x(i+1) * y(i+1)    ! real        
-    !  b = b + x(i) * y(i+1) - x(i+1) * y(i)    ! imag part
-    !END DO
     
-    a = SUM( x(1:ndim) * y(1:ndim) )
-    b = SUM( x(1:ndim:2) * y(2:ndim:2) - x(2:ndim:2) * y(1:ndim:2) )
-        
-    d = CMPLX( a, b )
+    SAVE callcount, a, b
+
+    IF( callcount == 0 ) THEN    
+      !DO i = 1, ndim, 2
+      !  a = a + x(i) * y(i) + x(i+1) * y(i+1)    ! real        
+      !  b = b + x(i) * y(i+1) - x(i+1) * y(i)    ! imag part
+      !END DO
       
-  !-----------------------------------------------------------------------------------
+      a = SUM( x(1:ndim) * y(1:ndim) )
+      b = SUM( x(1:ndim:2) * y(2:ndim:2) - x(2:ndim:2) * y(1:ndim:2) )
+
+      d = a 
+      callcount = callcount + 1
+    ELSE
+      d = b
+      callcount = 0
+    END IF
+      
+!-----------------------------------------------------------------------------------
   END FUNCTION PseudoZDotProd
 !-----------------------------------------------------------------------------------
 
@@ -605,7 +615,7 @@ CONTAINS
     INTEGER :: ndim,i,j,k
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged, UseStopCFun
+    LOGICAL :: Converged, Diverged, UseStopCFun, PseudoComplex
 
     TYPE(Matrix_t),POINTER :: A
 
@@ -647,6 +657,9 @@ CONTAINS
     PolynomialDegree = HUTI_BICGSTABL_L 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
+    PseudoComplex = ( HUTI_PSEUDOCOMPLEX == 1 )  
+    IF( PseudoComplex ) CALL Fatal('','Implement pseudocomplex!')
+    
     Converged = .FALSE.
     Diverged = .FALSE.
     
@@ -1173,6 +1186,7 @@ CONTAINS
     INTEGER :: Rounds, MinIter, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
     LOGICAL :: Converged, Diverged, UseStopCFun
+    LOGICAL :: PseudoComplex
 
     TYPE(Matrix_t),POINTER::A
 
@@ -1189,7 +1203,8 @@ CONTAINS
 
     Converged = .FALSE.
     Diverged = .FALSE.
-    
+    PseudoComplex = ( HUTI_PSEUDOCOMPLEX == 1 )  
+      
     x => xvec
     b => rhsvec
     nc = 0
@@ -1246,6 +1261,8 @@ CONTAINS
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
+      REAL(KIND=dp) :: beta_im
+      COMPLEX(KIND=dp) :: cbeta
 !------------------------------------------------------------------------------
       INTEGER :: allocstat
         
@@ -1307,9 +1324,20 @@ CONTAINS
          ! Perform the orthogonalization of the search directions....
          !--------------------------------------------------------------
          DO i=1,j-1
-           beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
-           T1(1:n) = T1(1:n) - beta * S(1:n,i)
-           T2(1:n) = T2(1:n) - beta * V(1:n,i)        
+           IF( PseudoComplex ) THEN
+             beta = PseudoZDotProd(n, V(1:n,i), 1, T2(1:n), 1 )
+             beta_im = PseudoZDotProd(n, V(1:n,i), 1, T2(1:n), 1 )
+             
+             T1(1:n:2) = T1(1:n:2) - beta * S(1:n:2,i) + beta_im * S(2:n:2,i) 
+             T1(2:n:2) = T1(2:n:2) - beta * S(2:n:2,i) - beta_im * S(1:n:2,i)                    
+             
+             T2(1:n:2) = T2(1:n:2) - beta * V(1:n:2,i) + beta_im * V(2:n:2,i)
+             T2(2:n:2) = T2(2:n:2) - beta * V(2:n:2,i) - beta_im * V(1:n:2,i)                    
+           ELSE             
+             beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+             T1(1:n) = T1(1:n) - beta * S(1:n,i)
+             T2(1:n) = T2(1:n) - beta * V(1:n,i)        
+           END IF
          END DO
 
          alpha = normfun(n, T2(1:n), 1 )
@@ -1319,10 +1347,22 @@ CONTAINS
          !-------------------------------------------------------------
          ! The update of the solution and save the search data...
          !------------------------------------------------------------- 
-         beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
-         x(1:n) = x(1:n) + beta * T1(1:n)      
-         r(1:n) = r(1:n) - beta * T2(1:n)
-	 IF ( j /= m ) THEN
+         IF( PseudoComplex ) THEN
+           beta = PseudoZDotProd(n, T2(1:n), 1, r(1:n), 1 )
+           beta_im = PseudoZDotProd(n, T2(1:n), 1, r(1:n), 1 )
+                    
+           x(1:n:2) = x(1:n:2) + beta * T1(1:n:2) - beta_im * T1(2:n:2)
+           x(2:n:2) = x(2:n:2) + beta * T1(2:n:2) + beta_im * T1(1:n:2)         
+           
+           r(1:n:2) = r(1:n:2) - beta * T2(1:n:2) + beta_im * T2(2:n:2)
+           r(2:n:2) = r(2:n:2) - beta * T2(2:n:2) - beta_im * T2(1:n:2)                    
+         ELSE
+           beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+           x(1:n) = x(1:n) + beta * T1(1:n)      
+           r(1:n) = r(1:n) - beta * T2(1:n)
+         END IF
+
+         IF ( j /= m ) THEN
             S(1:n,j) = T1(1:n)
             V(1:n,j) = T2(1:n)
 	 END IF       
@@ -1340,7 +1380,11 @@ CONTAINS
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, residual, beta
+             IF( PseudoComplex ) THEN
+               WRITE (*, '(A, I6, 3E12.4, A)') '   gcr:',k, residual, beta, beta_im,'i'
+             ELSE
+               WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, residual, beta
+             END IF
            END IF
          END IF
            
@@ -1375,277 +1419,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE itermethod_gcr
 !------------------------------------------------------------------------------
-
-
-
-
-!------------------------------------------------------------------------------
-!>   This routine solves real linear systems Ax = b by using the GCR algorithm 
-  !> (Generalized Conjugate Residual).
-  ! This is a test version
-!------------------------------------------------------------------------------
- SUBROUTINE itermethod_gcr_t( xvec, rhsvec, &
-      ipar, dpar, work, matvecsubr, pcondlsubr, &
-      pcondrsubr, dotprodfun, normfun, stopcfun )
-#ifdef USE_ISO_C_BINDINGS
-    USE huti_interfaces
-    IMPLICIT NONE
-    PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
-    PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
-    PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
-    PROCEDURE( dotp_iface_d ), POINTER :: dotprodfun
-    PROCEDURE( norm_iface_d ), POINTER :: normfun
-    PROCEDURE( stopc_iface_d ), POINTER :: stopcfun
-
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), TARGET, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
-    DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
-
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    COMPLEX(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-    
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp), TARGET :: &
-       xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
-#endif
-    INTEGER :: ndim, RestartN
-    INTEGER :: Rounds, MinIter, OutputInterval
-    REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged, UseStopCFun
-
-    TYPE(Matrix_t),POINTER::A
-
-    REAL(KIND=dp), POINTER :: x(:),b(:)
-
-    ndim = HUTI_NDIM
-    Rounds = HUTI_MAXIT
-    MinIter = HUTI_MINIT
-    MinTol = HUTI_TOLERANCE
-    MaxTol = HUTI_MAXTOLERANCE
-    OutputInterval = HUTI_DBUGLVL
-    RestartN = HUTI_GCR_RESTART 
-    UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
-
-    Converged = .FALSE.
-    Diverged = .FALSE.
-    
-    x => xvec
-    b => rhsvec
-    nc = 0
-
-    A => GlobalMatrix
-    CM => A % ConstraintMatrix
-    Constrained = ASSOCIATED(CM)
-    
-    IF (Constrained) THEN
-      nc = CM % NumberOfRows
-      Constrained = nc>0
-      IF(Constrained) THEN
-        ALLOCATE(x(ndim+nc),b(ndim+nc))
-        IF(.NOT.ALLOCATED(CM % ExtraVals))THEN
-          ALLOCATE(CM % ExtraVals(nc)); CM % extraVals=0._dp
-        END IF
-        b(1:ndim) = rhsvec; b(ndim+1:) = CM % RHS
-        x(1:ndim) = xvec; x(ndim+1:) = CM % extraVals
-      END IF
-    END IF
-    
-    CALL GCR(ndim+nc, GlobalMatrix, x, b, Rounds, MinTol, MaxTol, Residual, &
-        Converged, Diverged, OutputInterval, RestartN, MinIter )
-
-    
-    IF(Constrained) THEN
-      xvec = x(1:ndim)
-      rhsvec = b(1:ndim)
-      CM % extraVals = x(ndim+1:ndim+nc)
-      DEALLOCATE(x,b)
-    END IF
-
-    IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
-    IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
-    IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER   
-
-  CONTAINS 
-    
-    
-    SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
-        Converged, Diverged, OutputInterval, m, MinIter) 
-!------------------------------------------------------------------------------
-      TYPE(Matrix_t), POINTER :: A
-      INTEGER :: Rounds, MinIter
-      REAL(KIND=dp) :: x(n),b(n)
-      LOGICAL :: Converged, Diverged
-      REAL(KIND=dp) :: MinTolerance, MaxTolerance, Residual
-      INTEGER :: n, OutputInterval, m
-      REAL(KIND=dp) :: bnorm,rnorm
-      REAL(KIND=dp), ALLOCATABLE :: R(:)
-
-      REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:)
-
-!------------------------------------------------------------------------------
-      INTEGER :: i,j,k
-      REAL(KIND=dp) :: alpha, beta_re, beta_im, trueres(n), trueresnorm, normerr
-      COMPLEX(KIND=dp) :: beta
-!------------------------------------------------------------------------------
-      INTEGER :: allocstat
-        
-      ALLOCATE( R(n), T1(n), T2(n), STAT=allocstat )
-      IF( allocstat /= 0 ) THEN
-        CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
-      END IF
-
-      IF ( m > 1 ) THEN
-        ALLOCATE( S(n,m-1), V(n,m-1), STAT=allocstat )
-        IF( allocstat /= 0 ) THEN
-          CALL Fatal('GCR','Failed to allocate memory of size: '&
-              //TRIM(I2S(n))//' x '//TRIM(I2S(m)))
-        END IF
-        
-         V(1:n,1:m-1) = 0.0d0	
-         S(1:n,1:m-1) = 0.0d0
-      END IF	
-      
-      CALL C_matvec( x, r, ipar, matvecsubr )
-      r(1:n) = b(1:n) - r(1:n)
-      
-      bnorm = normfun(n, b, 1)
-      rnorm = normfun(n, r, 1)
-
-      IF (UseStopCFun) THEN
-        Residual = stopcfun(x,b,r,ipar,dpar)
-      ELSE
-        Residual = rnorm / bnorm
-      END IF
-      Converged = (Residual < MinTolerance) .AND. ( MinIter <= 0 )
-      Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)
-      IF( Converged .OR. Diverged) RETURN
-      
-      DO k=1,Rounds
-        !----------------------------------------------
-	 ! Check for restarting
-         !----------------------------------------------
-         IF ( MOD(k,m)==0 ) THEN
-            j = m
-         ELSE
-            j = MOD(k,m)
-            !--------------------------------------------
-            ! Compute the true residual when restarting:
-            !--------------------------------------------
-            IF ( (j==1) .AND. (k>1) ) THEN
-               CALL C_matvec( x, r, ipar, matvecsubr )
-               r(1:n) = b(1:n) - r(1:n)
-            END IF
-         END IF
-
-         !----------------------------------------------------------
-         ! Perform the preconditioning...
-         !---------------------------------------------------------------
-         CALL C_lpcond( T1, r, ipar,pcondlsubr )
-         CALL C_matvec( T1, T2, ipar, matvecsubr )
-
-         !--------------------------------------------------------------
-         ! Perform the orthogonalization of the search directions....
-         !--------------------------------------------------------------
-         DO i=1,j-1
-           ! First call is for real component and second one for complex one!
-!           beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
-
-           beta = PseudoZDotProd(n, V(1:n,i), 1, T2(1:n), 1 )
-           
-           beta_re = REAL( beta )
-           beta_im = AIMAG( beta ) 
-                      
-           T1(1:n:2) = T1(1:n:2) - beta_re * S(1:n:2,i) + beta_im * S(2:n:2,i) 
-           T1(2:n:2) = T1(2:n:2) - beta_re * S(2:n:2,i) - beta_im * S(1:n:2,i)                    
-           
-           T2(1:n:2) = T2(1:n:2) - beta_re * V(1:n:2,i) + beta_im * V(2:n:2,i)
-           T2(2:n:2) = T2(2:n:2) - beta_re * V(2:n:2,i) - beta_im * V(1:n:2,i)                    
-         END DO
-
-         alpha = normfun(n, T2(1:n), 1 )         
-
-         T1(1:n) = 1.0d0/alpha * T1(1:n)
-         T2(1:n) = 1.0d0/alpha * T2(1:n)
-
-         !-------------------------------------------------------------
-         ! The update of the solution and save the search data...
-         !------------------------------------------------------------- 
-         ! beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
-
-         beta = PseudoZDotProd(n, T2(1:n), 1, r(1:n), 1 )
-
-         
-         beta_re = REAL( beta )
-         beta_im = AIMAG( beta ) 
-         
-         x(1:n:2) = x(1:n:2) + beta_re * T1(1:n:2) - beta_im * T1(2:n:2)
-         x(2:n:2) = x(2:n:2) + beta_re * T1(2:n:2) + beta_im * T1(1:n:2)         
-         
-         r(1:n:2) = r(1:n:2) - beta_re * T2(1:n:2) + beta_im * T2(2:n:2)
-         r(2:n:2) = r(2:n:2) - beta_re * T2(2:n:2) - beta_im * T2(1:n:2)         
-                  
-	 IF ( j /= m ) THEN
-            S(1:n,j) = T1(1:n)
-            V(1:n,j) = T2(1:n)
-	 END IF       
-
-         !--------------------------------------------------------------
-         ! Check whether the convergence criterion is met 
-         !--------------------------------------------------------------
-         rnorm = normfun(n, r, 1)
-
-         IF (UseStopCFun) THEN
-           Residual = stopcfun(x,b,r,ipar,dpar)
-           IF( MOD(k,OutputInterval) == 0) THEN
-           WRITE (*, '(A, I6, 2E12.4)') '   stopfun gcrt:',k, rnorm / bnorm, residual
-           END IF           
-         ELSE
-           Residual = rnorm / bnorm
-           IF( MOD(k,OutputInterval) == 0) THEN
-              WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrt:',k, residual, beta,'i'
-           END IF
-         END IF
-           
-         Converged = (Residual < MinTolerance) .AND. ( k >= MinIter )
-         !-----------------------------------------------------------------
-         ! Make an additional check that the true residual agrees with 
-         ! the iterated residual:
-         !-----------------------------------------------------------------
-         IF (Converged ) THEN
-            CALL C_matvec( x, trueres, ipar, matvecsubr )
-            trueres(1:n) = b(1:n) - trueres(1:n)
-            TrueResNorm = normfun(n, trueres, 1)
-            NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
-            IF ( NormErr > 1.0d-1 ) THEN
-               CALL Info('WARNING', 'Iterated GCR solution may not be accurate', Level=2)
-               WRITE( Message, * ) 'Iterated GCR residual norm = ', rnorm
-               CALL Info('WARNING', Message, Level=2)
-               WRITE( Message, * ) 'True residual norm = ', TrueResNorm
-               CALL Info('WARNING', Message, Level=2)   
-            END IF
-         END IF
-         Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
-         IF( Converged .OR. Diverged) EXIT
-        
-      END DO
-      
-      DEALLOCATE( R, T1, T2 )
-      IF ( m > 1 ) DEALLOCATE( S, V)
-      
-    END SUBROUTINE GCR
-    
-!------------------------------------------------------------------------------
-  END SUBROUTINE itermethod_gcr_t
-!------------------------------------------------------------------------------
-
 
 
   
