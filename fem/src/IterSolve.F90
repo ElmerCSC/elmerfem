@@ -101,7 +101,7 @@ CONTAINS
 #define HUTI_SGSPARAM dpar(3)
 #endif
 #ifndef HUTI_PSEUDOCOMPLEX
-#define HUTI_PSEUDOCOMPLEX dpar(7)
+#define HUTI_PSEUDOCOMPLEX ipar(7)
 #endif
 #ifndef HUTI_BICGSTABL_L
 #define HUTI_BICGSTABL_L ipar(16)
@@ -318,7 +318,10 @@ CONTAINS
 
     HUTI_WRKDIM = 0
     HUTI_PSEUDOCOMPLEX = 0
-    IF( PseudoComplexSystem ) HUTI_PSEUDOCOMPLEX = 1
+    IF( PseudoComplexSystem ) THEN
+      HUTI_PSEUDOCOMPLEX = 1     
+      IF ( ListGetLogical( Params,'Block Split Complex',Found ) ) HUTI_PSEUDOCOMPLEX = 2
+    END IF
     Internal = .FALSE.
     
     SELECT CASE ( IterType )
@@ -858,9 +861,15 @@ CONTAINS
       END SELECT
       
       IF( Internal ) THEN
+        
         IF( PseudoComplexSystem ) THEN
-          PRINT *,'setting pseudozdot'
-          dotProc = AddrFunc( PseudoZDotProd) 
+          IF( HUTI_PSEUDOCOMPLEX == 1 ) THEN
+            CALL Info('IterSolver','Setting dot product function to: PseudoZDotProd',Level=15)
+            dotProc = AddrFunc( PseudoZDotProd )
+          ELSE
+            CALL Info('IterSolver','Setting dot product function to: PseudoZDotProd2',Level=15)
+            dotProc = AddrFunc( PseudoZDotProd2 )             
+          END IF
         ELSE        
           IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
         END IF

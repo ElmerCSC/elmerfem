@@ -54,7 +54,7 @@
 #define HUTI_SGSPARAM dpar(3)
 #endif
 #ifndef HUTI_PSEUDOCOMPLEX
-#define HUTI_PSEUDOCOMPLEX dpar(7)
+#define HUTI_PSEUDOCOMPLEX ipar(7)
 #endif
 #ifndef HUTI_BICGSTABL_L
 #define HUTI_BICGSTABL_L ipar(16)
@@ -85,12 +85,15 @@ MODULE IterativeMethods
 CONTAINS
   
 
-  ! This is currently for testing purposes. When treating a complex system
-  ! with gcr as a real one all other operations than dot product are similar.
-  ! I.e. matrix-vector product and norm (dot product with one self) are the same.
-  ! However, for dot product with another vector the complex part is omitted which
-  ! may have an effect on convergence. This computes the complex part but does not
-  ! use it yet...
+  ! When treating a complex system with iterative solver norm, matrix-vector product are
+  ! similar in real valued and complex valued systems. However, the inner product is different.
+  ! For pseudo complex systems this routine generates also the complex part of the product.
+  ! This may have a favourable effect on convergence.
+  !
+  ! This routine has same API as the fully real valued system but every second call returns
+  ! the missing complex part.
+  !
+  ! This routine assumes that in x and y the values follow each other. 
   !-----------------------------------------------------------------------------------
   FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT( d )
   !-----------------------------------------------------------------------------------
@@ -107,14 +110,45 @@ CONTAINS
     SAVE callcount, a, b
 
     IF( callcount == 0 ) THEN    
-      !DO i = 1, ndim, 2
-      !  a = a + x(i) * y(i) + x(i+1) * y(i+1)    ! real        
-      !  b = b + x(i) * y(i+1) - x(i+1) * y(i)    ! imag part
-      !END DO
+      ! z = x^H*y = (x_re-i*x_im)(y_re+i*y_im)       
+      ! =>  z_re = x_re*y_re + x_im*y_im
+      !     z_im = x_re*y_im - x_im*y_re
       
       a = SUM( x(1:ndim) * y(1:ndim) )
       b = SUM( x(1:ndim:2) * y(2:ndim:2) - x(2:ndim:2) * y(1:ndim:2) )
+      
+      d = a 
+      callcount = callcount + 1
+    ELSE
+      d = b
+      callcount = 0
+    END IF
+      
+    !-----------------------------------------------------------------------------------
+  END FUNCTION PseudoZDotProd
+  !-----------------------------------------------------------------------------------
 
+  
+  ! As the previous but assumes that the real and complex values are ordered blockwise. 
+  !-----------------------------------------------------------------------------------
+  FUNCTION PseudoZDotProd2( ndim, x, xind, y, yind ) RESULT( d )
+  !-----------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: ndim, xind, yind
+    REAL(KIND=dp) :: x(*)
+    REAL(KIND=dp) :: y(*)
+    REAL(KIND=dp) :: d
+        
+    INTEGER :: i, callcount = 0
+    REAL(KIND=dp) :: a,b
+    
+    SAVE callcount, a, b
+
+    IF( callcount == 0 ) THEN    
+      a = SUM( x(1:ndim) * y(1:ndim) )
+      b = SUM( x(1:ndim/2) * y(ndim/2+1:ndim) - x(ndim/2+1:ndim) * y(1:ndim/2) )
+      
       d = a 
       callcount = callcount + 1
     ELSE
@@ -123,7 +157,7 @@ CONTAINS
     END IF
       
 !-----------------------------------------------------------------------------------
-  END FUNCTION PseudoZDotProd
+  END FUNCTION PseudoZDotProd2
 !-----------------------------------------------------------------------------------
 
   
@@ -657,8 +691,7 @@ CONTAINS
     PolynomialDegree = HUTI_BICGSTABL_L 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
-    PseudoComplex = ( HUTI_PSEUDOCOMPLEX == 1 )  
-    IF( PseudoComplex ) CALL Fatal('','Implement pseudocomplex!')
+    PseudoComplex = ( HUTI_PSEUDOCOMPLEX > 0 )  
     
     Converged = .FALSE.
     Diverged = .FALSE.
@@ -723,6 +756,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
       REAL(KIND=dp) :: rwork(l+1,3+2*(l+1))
       REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
+      REAL(KIND=dp) :: beta_im
 !------------------------------------------------------------------------------
     
       IF ( l < 2) CALL Fatal( 'RealBiCGStabl', 'Polynomial degree < 2' )
@@ -1203,7 +1237,7 @@ CONTAINS
 
     Converged = .FALSE.
     Diverged = .FALSE.
-    PseudoComplex = ( HUTI_PSEUDOCOMPLEX == 1 )  
+    PseudoComplex = ( HUTI_PSEUDOCOMPLEX > 0 )  
       
     x => xvec
     b => rhsvec
@@ -1262,7 +1296,6 @@ CONTAINS
       INTEGER :: i,j,k
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
       REAL(KIND=dp) :: beta_im
-      COMPLEX(KIND=dp) :: cbeta
 !------------------------------------------------------------------------------
       INTEGER :: allocstat
         
@@ -1331,11 +1364,20 @@ CONTAINS
              ! This has to be before the T1 and T2 vectors are tampered
              ! For convenience we subtract 
              beta_im = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
-             T1(1:n:2) = T1(1:n:2) + beta_im * S(2:n:2,i) 
-             T1(2:n:2) = T1(2:n:2) - beta_im * S(1:n:2,i)                    
-             
-             T2(1:n:2) = T2(1:n:2) + beta_im * V(2:n:2,i)
-             T2(2:n:2) = T2(2:n:2) - beta_im * V(1:n:2,i)                    
+
+             IF( HUTI_PSEUDOCOMPLEX == 2 ) THEN
+               T1(1:n/2) = T1(1:n/2) + beta_im * S(n/2+1:n,i) 
+               T1(n/2+1:n) = T1(n/2+1:n) - beta_im * S(1:n/2,i)                    
+               
+               T2(1:n/2) = T2(1:n/2) + beta_im * V(1+n/2:n,i)
+               T2(1+n/2:n) = T2(1+n/2:n) - beta_im * V(1:n/2,i)                                
+             ELSE
+               T1(1:n:2) = T1(1:n:2) + beta_im * S(2:n:2,i) 
+               T1(2:n:2) = T1(2:n:2) - beta_im * S(1:n:2,i)                    
+               
+               T2(1:n:2) = T2(1:n:2) + beta_im * V(2:n:2,i)
+               T2(2:n:2) = T2(2:n:2) - beta_im * V(1:n:2,i)
+             END IF
            END IF
            
            T1(1:n) = T1(1:n) - beta * S(1:n,i)
@@ -1353,10 +1395,18 @@ CONTAINS
 
          IF( PseudoComplex ) THEN
            beta_im = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
-           x(1:n:2) = x(1:n:2) - beta_im * T1(2:n:2)
-           x(2:n:2) = x(2:n:2) + beta_im * T1(1:n:2)                    
-           r(1:n:2) = r(1:n:2) + beta_im * T2(2:n:2)
-           r(2:n:2) = r(2:n:2) - beta_im * T2(1:n:2)                    
+
+           IF( HUTI_PSEUDOCOMPLEX == 2 ) THEN
+             x(1:n/2) = x(1:n/2) - beta_im * T1(1+n/2:n)
+             x(1+n/2:n) = x(1+n/2:n) + beta_im * T1(1:n/2)                    
+             r(1:n/2) = r(1:n/2) + beta_im * T2(1+n/2:n)
+             r(1+n/2:n) = r(1+n/2:n) - beta_im * T2(1:n/2)                    
+           ELSE
+             x(1:n:2) = x(1:n:2) - beta_im * T1(2:n:2)
+             x(2:n:2) = x(2:n:2) + beta_im * T1(1:n:2)                    
+             r(1:n:2) = r(1:n:2) + beta_im * T2(2:n:2)
+             r(2:n:2) = r(2:n:2) - beta_im * T2(1:n:2)                    
+           END IF
          END IF
                       
          x(1:n) = x(1:n) + beta * T1(1:n)      
@@ -1421,7 +1471,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
+   
 !-----------------------------------------------------------------------------------
 !>  This subroutine solves real linear systems Ax = b by using the IDR(s) algorithm
 !>  with s >= 1 and the right-oriented preconditioning.
