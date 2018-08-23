@@ -4639,7 +4639,8 @@ CONTAINS
      INTEGER :: lstat
 #endif
 !------------------------------------------------------------------------------
-     
+     ! Make sure we get segfault if rtensor is not re-set properly
+     IF (PRESENT(RTensor)) RTensor => NULL() 
      ! If value is not present anywhere then return False
      IF( Handle % NotPresentAnywhere ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
@@ -4946,6 +4947,7 @@ CONTAINS
 
           n1 = SIZE( Handle % Rtensor, 1 )
           n2 = SIZE( Handle % Rtensor, 2 )
+          RTensor => Handle % RTensor
           ! First, populate T-array with argument values
           ! Nodal values have already been dealt with
           DO j=1,Handle % ParNo 
