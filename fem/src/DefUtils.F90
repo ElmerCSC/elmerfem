@@ -5329,7 +5329,7 @@ CONTAINS
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE. ) 
       ELSE
-        CALL CopyBulkMatrix( PSolver % Matrix ) 
+        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = ASSOCIATED(PSolver % Matrix % MassValues) ) 
       END IF
     END IF
 
