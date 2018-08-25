@@ -23,15 +23,16 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juhani Kataja, Juha Ruokolainen and Mika Malinen
+! *  Authors: Juhani Kataja, Peter Råback, Juha Ruokolainen and Mika Malinen
 ! *  Email:   juhani.kataja@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
-! *  Original Date: 26 Sep 2014
-! *  Heavily inspired from the MagnetoDynamics module.
+! *  Original Date: 25 Aug 2018
+! * 
+! *  Heavily inspired from the MagnetoDynamics and VectorHelmholtz modules.
 ! *****************************************************************************/
     
 !------------------------------------------------------------------------------
@@ -205,18 +206,13 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   INTEGER :: NoIterationsMax
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp) :: Norm
-  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), DAMP(:,:), FORCE(:), LOAD(:,:)
-  REAL(KIND=dp), ALLOCATABLE :: Acoef(:), Tcoef(:)  ! \TODO Acoef and Tcoef could be (1,1)-tensors
-  REAL(KIND=dp), ALLOCATABLE :: LamCond(:)
-  REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
+  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), DAMP(:,:), FORCE(:)
   LOGICAL :: PiolaVersion, EdgeBasis
   INTEGER, POINTER :: Perm(:)
   TYPE(ValueList_t), POINTER :: SolverParams
   REAL(KIND=dp) :: mu0, eps0
   
-  SAVE STIFF, LOAD, DAMP, MASS, FORCE, Tcoef, &
-       Acoef, Cwrk, Cwrk_im, LamCond, &
-       LamThick, AllocationsDone
+  SAVE STIFF, DAMP, MASS, FORCE, AllocationsDone
 !------------------------------------------------------------------------------
 
   CALL Info('VectorHelmholztSolver','Solving electromagnetic waves in time',Level=5)
@@ -237,19 +233,11 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   IF ( .NOT. AllocationsDone ) THEN
     IF( dofs /= 1 ) CALL Fatal ('EMWaveSolver', 'Invalid variable size:'//TRIM(I2S(dofs)) )
 
-    N = Mesh % MaxElementDOFs  ! just big enough
-    ALLOCATE( FORCE(N), &
-        LOAD(4,N), &            ! 3 for vector value loads and 1 for scalar valued
-        STIFF(N,N), &
-        MASS(N,N), DAMP(N,N), Tcoef(N), &
-        Acoef(N), LamCond(N), LamThick(N), &
-        STAT=istat )
+    n = Mesh % MaxElementDOFs  ! just big enough
+    ALLOCATE( FORCE(n), STIFF(n,n), MASS(n,n), DAMP(n,n), STAT=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'EMWaveSolver', 'Memory allocation error.' )
     END IF
-
-    NULLIFY( Cwrk )
-    NULLIFY( Cwrk_im )
 
     AllocationsDone = .TRUE.
   END IF
@@ -593,13 +581,9 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   ! Find the solver index of the primary solver by the known procedure name.
   ! (the solver is defined here in the same module so not that dirty...)
   soln = 0
-
-PRINT *,'a1'
   
   DO i=1,Model % NumberOfSolvers
-PRINT *,'i',i
     sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
-PRINT *,'sname:',TRIM(sname)
     j = INDEX( sname,'EMWaveSolver')
     IF( j > 0 ) THEN
       soln = i 
@@ -614,7 +598,11 @@ PRINT *,'sname:',TRIM(sname)
     CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
   END IF
 
-  
+  ! In case we are solving truly discontinuous Galerkin fields then we do it by assemblying
+  ! normal linear system. Here we allocate for the DG type of fields that are computed elementwise
+  ! while the FE fields are solved using standard Galerkin. Hence unintuitively we exit here
+  ! for elemental fields if the primary field is itself elemenetal.
+  !-----------------------------------------------------------------------------------------------
   IF( GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
 
   ElementalFields = GetLogical( SolverParams, 'Calculate Elemental Fields', Found)
@@ -625,6 +613,8 @@ PRINT *,'sname:',TRIM(sname)
     IF ( ASSOCIATED(PSolver,Model % Solvers(mysolver)) ) EXIT
   END DO
 
+  ! Here we add a DG solver instance in a dirty way by extending the list of solvers
+  ! and adding the new solver as an active one. 
   n = Model % NumberOfSolvers
   DO i=1,Model % NumberOFEquations
     Active => ListGetIntegerArray(Model % Equations(i) % Values, &
@@ -659,6 +649,11 @@ PRINT *,'sname:',TRIM(sname)
   CALL ListAddString( SolverParams,&
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Elfied E[Elfied E:3]");
+
+  ! When requested we may also compute the 1st and 2nd time derivative.
+  ! They exist by default as whitney fields but also needs to be projected
+  ! to nodal fields.
+  !------------------------------------------------------------------------------
   IF (GetLogical(SolverParams,'Calculate Electric field derivatives',Found)) THEN
     CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
@@ -695,8 +690,11 @@ SUBROUTINE EMWaveCalcFields_Init(Model,Solver,dt,Transient)
 
   SolverParams => GetSolverParams()
 
+  ! We compute the fields one component at a time.
+  ! This is the dummy variable used for the computation. It is not saved. 
   CALL ListAddString( SolverParams, 'Variable', '-nooutput hr_dummy' )
 
+  ! The matrix is constant hence do not ever refactorize.
   CALL ListAddLogical( SolverParams, 'Linear System refactorize', .FALSE.)
   
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
@@ -705,6 +703,7 @@ SUBROUTINE EMWaveCalcFields_Init(Model,Solver,dt,Transient)
   CALL ListAddString( SolverParams,&
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Elfield[Elfield:3]");
+  
   IF (GetLogical(SolverParams,'Calculate Electric field derivatives',Found)) THEN
     CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
@@ -738,7 +737,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    TYPE(Variable_t), POINTER :: EF, dEF, ddEF
    TYPE(Variable_t), POINTER :: EF_e, dEF_e, ddEF_e
                               
-   INTEGER :: i,j,k,l,t,n,nd,p,q,dofs,dofcount,vDOFs,dim
+   INTEGER :: i,j,k,l,t,n,nd,p,q,dofs,dofcount,vDOFs
 
    TYPE(Solver_t), POINTER :: pSolver
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
@@ -752,11 +751,14 @@ END SUBROUTINE EMWaveCalcFields_Init
    REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: MASS(:,:), FORCE(:,:), GForce(:,:) 
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder, AnyTimeDer
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder, AnyTimeDer, &
+       ConstantBulkInUse = .FALSE.
    INTEGER :: EdgeBasisDegree, soln
    TYPE(ValueList_t), POINTER :: SolverParams 
 
    REAL(KIND=dp) :: mu, eps, mu0, eps0
+
+   SAVE ConstantBulkInUse
    
 !-------------------------------------------------------------------------------------------
    CALL Info('EMWaveCalcFields','Computing postprocessing fields')
@@ -836,10 +838,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    n = Mesh % MaxElementDOFs   
    ALLOCATE( MASS(n,n), FORCE(n,dofs), Pivot(n) )
    
-   ! Note: energy functional may be computed with
-   ! "Calculate Energy Norm = True"
-   
-   CALL DefaultInitialize()
+   CALL DefaultInitialize(UseConstantBulk = ConstantBulkInUse )
    
    DO t = 1, GetNOFActive()
      Element => GetActiveElement(t)
@@ -849,7 +848,9 @@ END SUBROUTINE EMWaveCalcFields_Init
      CALL LocalAssembly(t==1)
      
      IF(NodalFields) THEN
-       CALL DefaultUpdateEquations( MASS,FORCE(:,1))
+       IF(.NOT. ConstantBulkInUse ) THEN
+         CALL DefaultUpdateEquations( MASS,FORCE(:,1))
+       END IF
        Fsave => Solver % Matrix % RHS
        DO l=1,dofs
          Solver % Matrix % RHS => GForce(:,l)
@@ -865,18 +866,20 @@ END SUBROUTINE EMWaveCalcFields_Init
        CALL LocalSol(dEF_e,  3, n, MASS, FORCE, pivot, dofcount)
        CALL LocalSol(ddEF_e, 3, n, MASS, FORCE, pivot, dofcount)
      END IF
-
    END DO
 
-   ! Assembly of the face terms:
-   !----------------------------
-   IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
-     IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
-       FORCE = 0.0_dp
-       CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
+   ! Assembly of the face terms in case we have DG method where we
+   ! want to average the fields within materials making them continuous.
+   !-----------------------------------------------------------------
+   IF(.NOT. ConstantBulkInUse ) THEN
+     IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
+       IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
+         FORCE = 0.0_dp
+         CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
+       END IF
      END IF
    END IF
-
+     
    IF(NodalFields) THEN
      Fsave => Solver % Matrix % RHS
      dofcount = 0
@@ -885,7 +888,9 @@ END SUBROUTINE EMWaveCalcFields_Init
      CALL GlobalSol(ddEF ,3, Gforce, dofcount)
      Solver % Matrix % RHS => Fsave
    END IF
-
+   
+   ConstantBulkInUse = ListGetLogical( SolverParams,'Constant Bulk Matrix',Found )       
+   
    
 CONTAINS
 
@@ -898,22 +903,20 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), SOL(:), dsol(:), ddsol(:)
     REAL(KIND=dp), ALLOCATABLE :: RotWBasis(:,:), Basis(:), dBasisdx(:,:)
-    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
     INTEGER, ALLOCATABLE :: Indexes(:)
     REAL(KIND=dp) :: detJ, s, u, v, w
     REAL(KIND=dp) :: EF_ip(3), dEF_ip(3), ddEF_ip(3)
     LOGICAL :: AllocationsDone = .FALSE.
-    REAL(KIND=dp) ::  F(3,3), G(3,3)   
-    TYPE(ValueHandle_t) :: Mu_h, Eps_h, Cd_h(3), Cond_h    
+    TYPE(ValueHandle_t) :: Mu_h, Eps_h, Cd_h(3)    
+    INTEGER :: i,j,k,n
     
-    SAVE Cd_h, Mu_h, Eps_h, Cond_h, WBasis, Indexes, sol, dsol, ddsol, &
-        RotWBasis, Basis, dBasisdx, EBasis, CurlEBasis, Nodes
+    SAVE Cd_h, Mu_h, Eps_h, sol, dsol, ddsol, &
+        Indexes, WBasis, RotWBasis, Basis, dBasisdx, Nodes
 
     IF(.NOT. AllocationsDone ) THEN
-      N = Mesh % MaxElementDOFs  
-      ALLOCATE( WBasis(n,3), Indexes(n), SOL(n), dsol(n), ddsol(n), &
-          RotWBasis(n,3), Basis(n), dBasisdx(n,3))      
-      IF (PiolaVersion) ALLOCATE( EBasis(n,3), CurlEBasis(n,3) )
+      N = Mesh % MaxElementDOFs
+      ALLOCATE( SOL(n), dsol(n), ddsol(n), &
+          Indexes(n), WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3))      
       sol = 0.0_dp
       dsol = 0.0_dp
       ddsol = 0.0_dp
@@ -931,7 +934,7 @@ CONTAINS
       CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density 3')
     END IF
 
-            
+    
     CALL GetElementNodes( Nodes )
     
     n = GetElementDOFs( Indexes, Element, pSolver )
@@ -947,9 +950,7 @@ CONTAINS
         END IF
       END IF
     END DO
-
-    dim = 3
-
+    
     ! Calculate nodal fields:
     ! -----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
@@ -961,12 +962,14 @@ CONTAINS
       u = IP % U(j)
       v = IP % V(j)
       w = IP % W(j)
-
+            
       IF (PiolaVersion) THEN
         stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-            F, G, DetJ, Basis, WBasis, RotWBasis, dBasisdx, ApplyPiolaTransform=.TRUE.)
+            DetF=DetJ, Basis=Basis, &
+            EdgeBasis=WBasis, RotBasis=RotWBasis, dBasisdx=dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
-        stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
+        stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
       END IF
 
@@ -1059,105 +1062,105 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AddLocalFaceTerms(STIFF,FORCE)
+ SUBROUTINE AddLocalFaceTerms(STIFF,FORCE)
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
+   REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
 
-     TYPE(Element_t),POINTER :: P1,P2,Face,Faces(:)
-     INTEGER ::t,n,n1,n2,NumberOfFaces,dim
+   TYPE(Element_t),POINTER :: P1,P2,Face,Faces(:)
+   INTEGER ::t,n,n1,n2,NumberOfFaces,dim
 
-     dim = CoordinateSystemDimension()
+   dim = CoordinateSystemDimension()
 
-     IF (dim==2) THEN
-       Faces => Solver % Mesh % Edges
-       NumberOfFaces = Solver % Mesh % NumberOfEdges
-     ELSE
-       Faces => Solver % Mesh % Faces
-       NumberOfFaces = Solver % Mesh % NumberOfFaces
+   IF (dim==2) THEN
+     Faces => Solver % Mesh % Edges
+     NumberOfFaces = Solver % Mesh % NumberOfEdges
+   ELSE
+     Faces => Solver % Mesh % Faces
+     NumberOfFaces = Solver % Mesh % NumberOfFaces
+   END IF
+
+   DO t=1,NumberOfFaces
+     Face => Faces(t)
+     IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
+
+     P1 => Face % BoundaryInfo % Left
+     P2 => Face % BoundaryInfo % Right
+     IF ( ASSOCIATED(P2) .AND. ASSOCIATED(P1) ) THEN
+       IF(.NOT.ASSOCIATED(GetMaterial(P1),GetMaterial(P2))) CYCLE
+
+       n  = GetElementNOFNodes(Face)
+       n1 = GetElementNOFNodes(P1)
+       n2 = GetElementNOFNodes(P2)
+
+       CALL LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
+       CALL DefaultUpdateEquations( STIFF, FORCE, Face )
      END IF
-
-     DO t=1,NumberOfFaces
-       Face => Faces(t)
-       IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
-
-       P1 => Face % BoundaryInfo % Left
-       P2 => Face % BoundaryInfo % Right
-       IF ( ASSOCIATED(P2) .AND. ASSOCIATED(P1) ) THEN
-          IF(.NOT.ASSOCIATED(GetMaterial(P1),GetMaterial(P2))) CYCLE
-
-          n  = GetElementNOFNodes(Face)
-          n1 = GetElementNOFNodes(P1)
-          n2 = GetElementNOFNodes(P2)
-
-          CALL LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
-          CALL DefaultUpdateEquations( STIFF, FORCE, Face )
-       END IF
-     END DO
+   END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE AddLocalFaceTerms
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-    SUBROUTINE LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
+  SUBROUTINE LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
-      REAL(KIND=dp) :: STIFF(:,:)
-      INTEGER :: n,n1,n2
-      TYPE(Element_t), POINTER :: Face, P1, P2
+    IMPLICIT NONE
+    REAL(KIND=dp) :: STIFF(:,:)
+    INTEGER :: n,n1,n2
+    TYPE(Element_t), POINTER :: Face, P1, P2
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: FaceBasis(n), P1Basis(n1), P2Basis(n2)
-      REAL(KIND=dp) :: Jump(n1+n2), detJ, U, V, W, S
-      LOGICAL :: Stat
-      INTEGER ::  p, q, t
-      TYPE(GaussIntegrationPoints_t) :: IntegStuff
+    REAL(KIND=dp) :: FaceBasis(n), P1Basis(n1), P2Basis(n2)
+    REAL(KIND=dp) :: Jump(n1+n2), detJ, U, V, W, S
+    LOGICAL :: Stat
+    INTEGER ::  p, q, t
+    TYPE(GaussIntegrationPoints_t) :: IntegStuff
 
-      TYPE(Nodes_t) :: FaceNodes, P1Nodes, P2Nodes
-      SAVE FaceNodes, P1Nodes, P2Nodes
+    TYPE(Nodes_t) :: FaceNodes, P1Nodes, P2Nodes
+    SAVE FaceNodes, P1Nodes, P2Nodes
 !------------------------------------------------------------------------------
-      STIFF = 0._dp
+    STIFF = 0._dp
 
-      CALL GetElementNodes(FaceNodes, Face)
-      CALL GetElementNodes(P1Nodes, P1)
-      CALL GetElementNodes(P2Nodes, P2)
+    CALL GetElementNodes(FaceNodes, Face)
+    CALL GetElementNodes(P1Nodes, P1)
+    CALL GetElementNodes(P2Nodes, P2)
 !------------------------------------------------------------------------------
 !     Numerical integration over the edge
 !------------------------------------------------------------------------------
-      IntegStuff = GaussPoints( Face )
+    IntegStuff = GaussPoints( Face )
 
-      DO t=1,IntegStuff % n
-        U = IntegStuff % u(t)
-        V = IntegStuff % v(t)
-        W = IntegStuff % w(t)
-        S = IntegStuff % s(t)
+    DO t=1,IntegStuff % n
+      U = IntegStuff % u(t)
+      V = IntegStuff % v(t)
+      W = IntegStuff % w(t)
+      S = IntegStuff % s(t)
 
-        ! Basis function values & derivatives at the integration point:
-        !--------------------------------------------------------------
-        stat = ElementInfo(Face, FaceNodes, U, V, W, detJ, FaceBasis)
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo(Face, FaceNodes, U, V, W, detJ, FaceBasis)
 
-        S = S * detJ
+      S = S * detJ
 
-        ! Find basis functions for the parent elements:
-        ! ---------------------------------------------
-        CALL GetParentUVW(Face, n, P1, n1, U, V, W, FaceBasis)
-        stat = ElementInfo(P1, P1Nodes, U, V, W, detJ, P1Basis)
+      ! Find basis functions for the parent elements:
+      ! ---------------------------------------------
+      CALL GetParentUVW(Face, n, P1, n1, U, V, W, FaceBasis)
+      stat = ElementInfo(P1, P1Nodes, U, V, W, detJ, P1Basis)
 
-        CALL GetParentUVW(Face, n, P2, n2, U, V, W, FaceBasis)
-        stat = ElementInfo(P2, P2Nodes, U, V, W, detJ, P2Basis)
+      CALL GetParentUVW(Face, n, P2, n2, U, V, W, FaceBasis)
+      stat = ElementInfo(P2, P2Nodes, U, V, W, detJ, P2Basis)
 
-        ! Integrate jump terms:
-        ! ---------------------
-        Jump(1:n1) = P1Basis(1:n1)
-        Jump(n1+1:n1+n2) = -P2Basis(1:n2)
+      ! Integrate jump terms:
+      ! ---------------------
+      Jump(1:n1) = P1Basis(1:n1)
+      Jump(n1+1:n1+n2) = -P2Basis(1:n2)
 
-        DO p=1,n1+n2
-          DO q=1,n1+n2
-            STIFF(p,q) = STIFF(p,q) + s * Jump(q)*Jump(p)
-          END DO
+      DO p=1,n1+n2
+        DO q=1,n1+n2
+          STIFF(p,q) = STIFF(p,q) + s * Jump(q)*Jump(p)
         END DO
       END DO
+    END DO
 !------------------------------------------------------------------------------
-    END SUBROUTINE LocalJumps
+  END SUBROUTINE LocalJumps
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------
