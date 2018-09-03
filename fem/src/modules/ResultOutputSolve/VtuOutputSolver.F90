@@ -992,7 +992,7 @@ CONTAINS
     n = GetElementNOFNodes( Element ) 
     IF( n /= ndg ) CALL Fatal('Ip2DgField','Mismatch in sizes!')
 
-    CALL GetElementNodes( Nodes )
+    CALL GetElementNodes( Nodes, Element )
     MASS  = 0._dp
     LOAD = 0._dp
 
@@ -1090,6 +1090,7 @@ CONTAINS
       IF( m == 0 ) CYCLE
       TmpVar % Perm( Element % DgIndexes ) = 1
     END DO
+
 
     j = 0
     DO i = 1, dgsize
