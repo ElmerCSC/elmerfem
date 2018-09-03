@@ -478,11 +478,11 @@ CONTAINS
 
 !> Create a copy of the linear system (Values,Rhs) to (BulkValues,BulkRhs).
 !------------------------------------------------------------------------------
-   SUBROUTINE CopyBulkMatrix( A, BulkMass )
+   SUBROUTINE CopyBulkMatrix( A, BulkMass, BulkDamp )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      INTEGER :: i,n
-     LOGICAL, OPTIONAL :: BulkMass
+     LOGICAL, OPTIONAL :: BulkMass, BulkDamp
      
      n = SIZE( A % Rhs )
      IF( ASSOCIATED( A % BulkRhs ) ) THEN
@@ -509,10 +509,7 @@ CONTAINS
        ALLOCATE( A % BulkValues( n ) )
      END IF
 
-     DO i=1,n
-       A % BulkValues(i) = A % Values(i)
-     END DO
-
+     A % BulkValues(1:n) = A % Values(1:n)
 
      IF( PRESENT( BulkMass ) .AND. ASSOCIATED( A % MassValues) ) THEN
        IF( BulkMass ) THEN
@@ -526,15 +523,28 @@ CONTAINS
          IF ( .NOT. ASSOCIATED( A % BulkMassValues ) ) THEN
            ALLOCATE( A % BulkMassValues( n ) )
          END IF
-         
-         DO i=1,n
-           A % BulkMassValues(i) = A % MassValues(i)
-         END DO         
+
+         A % BulkMassValues(1:n) = A % MassValues(1:n)
+       END IF
+     END IF
+
+     IF( PRESENT( BulkDamp ) .AND. ASSOCIATED( A % DampValues) ) THEN
+       IF( BulkDamp ) THEN
+         n = SIZE( A % DampValues )
+         IF( ASSOCIATED( A % BulkDampValues ) ) THEN
+           IF( SIZE( A % BulkDampValues ) /= n ) THEN
+             DEALLOCATE( A % BulkDampValues ) 
+             A % BulkDampValues => NULL()
+           END IF
+         END IF
+         IF ( .NOT. ASSOCIATED( A % BulkDampValues ) ) THEN
+           ALLOCATE( A % BulkDampValues( n ) )
+         END IF
+
+         A % BulkDampValues(1:n) = A % DampValues(1:n)
        END IF
      END IF
      
-
-
    END SUBROUTINE CopyBulkMatrix
 !------------------------------------------------------------------------------
 

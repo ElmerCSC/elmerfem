@@ -3000,6 +3000,8 @@ CONTAINS
        Solver % Matrix % Values = Solver % Matrix % BulkValues        
        IF( ASSOCIATED( Solver % Matrix % BulkMassValues ) ) &
            Solver % Matrix % MassValues = Solver % Matrix % BulkMassValues 
+       IF( ASSOCIATED( Solver % Matrix % BulkDampValues ) ) &
+           Solver % Matrix % DampValues = Solver % Matrix % BulkDampValues 
        IF( ASSOCIATED( Solver % Matrix % BulkRhs ) ) &
            Solver % Matrix % rhs = Solver % Matrix % BulkRhs 
        RETURN
@@ -5329,7 +5331,8 @@ CONTAINS
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE. ) 
       ELSE
-        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = ASSOCIATED(PSolver % Matrix % MassValues) ) 
+        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = ASSOCIATED(PSolver % Matrix % MassValues), &
+            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues) ) 
       END IF
     END IF
 
