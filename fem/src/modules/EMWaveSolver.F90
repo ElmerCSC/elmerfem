@@ -253,6 +253,9 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
 
   CALL DefaultStart()
   
+  if (associated(solver % matrix % dampvalues)) then
+    solver % matrix % dampvalues = 0.0_dp
+  end if
   DO i=1,NoIterationsMax
     CALL DoBulkAssembly()
 
@@ -356,9 +359,10 @@ CONTAINS
         CALL DefaultUpdateEquationsR(STIFF,FORCE(1:nd), UElement=Element)
 
         if (associated(a % dampvalues)) then
+          ! print *, 'associated dampvalues!'
           sumafter = sum(abs(a % DampValues))
           if (sumafter /= sumfore) then
-            print *, 'dampvalues was changed (old,new):', sumfore, sumafter
+            ! print *, 'dampvalues was changed (old,new):', sumfore, sumafter
           end if
         end if
 
