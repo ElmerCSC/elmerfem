@@ -4889,10 +4889,10 @@ END SUBROUTINE GetMaxDefs
     TYPE(Matrix_t), POINTER :: Projector    
     !--------------------------------------------------------------------------
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
-    LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
+    LOGICAL ::  StrongNodes, StrongEdges, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
-        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, IntGalerkin, &
-        CreateDual, HaveMaxDistance
+        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, WeakProjector, &
+        StrongProjector, CreateDual, HaveMaxDistance
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
         ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance
@@ -4973,36 +4973,33 @@ END SUBROUTINE GetMaxDefs
       ArcCoeff = 1.0_dp
     END IF
 
-    IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', Found )
+    ! We have a weak projector if it is requested 
+    WeakProjector = ListGetLogical( BC, 'Galerkin Projector', Found )    
+
+    StrongProjector = ListGetLogical( BC,'Level Projector Strong',Found )
+    IF( StrongProjector .AND. WeakProjector ) THEN
+      CALL Fatal('LevelProjector','Projector cannot be weak (Galerkin) and strong at the same time!')
+    END IF
+
+    
     MeshDIm = Mesh % MeshDim
 
     ! Generic integrator does not make any assumptions on the way the mesh 
     ! is constructured. Otherwise constant strides in y-direction is assumed. 
     ! For weak strategy always use the generic integrator. 
     GenericIntegrator = ListGetLogical( BC,'Level Projector Generic',Found ) 
-    IF(.NOT. Found ) GenericIntegrator = IntGalerkin
+    IF(.NOT. Found ) GenericIntegrator = WeakProjector
 
-    ! There is no strong strategy for skewed edges currently
-    StrongSkewEdges = .FALSE.
     ! Maximum skew in degrees before treating edges as skewed
     SkewTol = 0.1  
-    
 
-    IF( MeshDim == 2 ) THEN
-      ! In 2D these always yield since current only the strong method 
-      ! of nodes has been implemented in 2D 
-      CALL Info('LevelProjector','Initial mesh is 2D, using 1D projectors!',Level=10) 
-      StrongNodes = ListGetLogical( BC,'Level Projector Nodes Strong',Found ) 
-      IF(.NOT. Found) StrongNodes = ListGetLogical( BC,'Level Projector Strong',Found ) 
-      IF(.NOT. Found) StrongNodes = .NOT. IntGalerkin
-    ELSE ! 3D 
-      IF(.NOT. GenericIntegrator ) THEN
-        IF( Naxial > 0 ) THEN
-          GenericIntegrator = .TRUE.
-          CALL Info('LevelProjector','Generic integrator enforced for axial projector',Level=6)
-        END IF
+    ! Check whether generic integrator should be enforced
+    IF( DoEdges .AND. .NOT. GenericIntegrator ) THEN
+      IF( Naxial > 0 ) THEN
+        GenericIntegrator = .TRUE.
+        CALL Info('LevelProjector','Generic integrator enforced for axial projector',Level=6)
       END IF
-
+      
       ! It is assumed that that the target mesh is always un-skewed 
       ! Make a test here to be able to skip it later. No test is needed
       ! if the generic integrator is enforced. 
@@ -5025,52 +5022,49 @@ END SUBROUTINE GetMaxDefs
           IF( MaxSkew2 > MaxSkew1 .AND. MaxSkew1 < SkewTol ) THEN
             CALL Warn('LevelProjector','You could try switching the master and target BC!')
           END IF
-          CALL Warn('LevelProjector','Target mesh has too much skew, using generic integrator!')
+          CALL Warn('LevelProjector','Target mesh has too much skew, using generic integrator when needed!')
           GenericIntegrator = .TRUE. 
         END IF
       END IF
-        
-      ! The projectors for nodes and edges can be created either in a strong way 
-      ! or weak way in the special case that the nodes are located in extruded layers. 
-      ! The strong way results to a sparse projector. For constant 
-      ! levels it can be quite optimal, except for the edges with a skew. 
-      ! If strong projector is used for all edges then "StrideProjector" should 
-      ! be recovered.
-      IF( DoNodes ) THEN
-        StrongNodes = .NOT. IntGalerkin
-        IF( GenericIntegrator ) THEN
-          StrongNodes = .FALSE.
-        ELSE IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) THEN
-          StrongNodes = .TRUE.
-        END IF
-        ! The nodes could be treated with strong projector even though the edges are integrated
-        ! with a weak projector. 
-        IF( ListGetLogical( BC,'Level Projector Nodes Strong',Found ) ) StrongNodes = .TRUE.
+      
+      IF( GenericIntegrator ) THEN
+        CALL Info('LevelProjector','Edge projection for the BC requires weak projector!',Level=7)
+        CALL Fatal('LevelProjector','We cannot use fully strong projector as wished in this geometry!')
+      END IF
+    END IF
+      
+    ! The projectors for nodes and edges can be created either in a strong way 
+    ! or weak way in the special case that the nodes are located in extruded layers. 
+    ! The strong way results to a sparse projector. For constant 
+    ! levels it can be quite optimal, except for the edges with a skew. 
+    ! If strong projector is used for all edges then "StrideProjector" should 
+    ! be recovered.
+               
+    IF( DoNodes ) THEN
+      StrongNodes = ListGetLogical( BC,'Level Projector Nodes Strong',Found ) 
+      IF(.NOT. Found) StrongNodes = ListGetLogical( BC,'Level Projector Strong',Found ) 
+      IF(.NOT. Found) StrongNodes = .NOT. GenericIntegrator
+    END IF
+
+    IF( DoEdges ) THEN
+      StrongEdges = ListGetLogical( BC,'Level Projector Strong',Found )
+      IF(.NOT. Found ) StrongEdges = ListGetLogical( BC,'Level Projector Plane Edges Strong', Found ) 
+      IF(.NOT. Found ) StrongEdges = .NOT. GenericIntegrator
+      
+      StrongLevelEdges = ListGetLogical( BC,'Level Projector Plane Edges Strong', Found ) 
+      IF( .NOT. Found ) StrongLevelEdges = StrongEdges
+      IF( StrongLevelEdges .AND. GenericIntegrator ) THEN
+        CALL Info('LevelProjector','Using strong level edges with partially weak projector',Level=7)
       END IF
       
-      IF( DoEdges ) THEN
-        StrongLevelEdges = .NOT. IntGalerkin
-        StrongExtrudedEdges = .NOT. IntGalerkin
-        StrongSkewEdges = .FALSE.
-        
-        IF( GenericIntegrator ) THEN
-          CALL Info('LevelProjector','Using generic weak projector for all edge dofs!')
-          StrongLevelEdges = .FALSE.
-          StrongExtrudedEdges = .FALSE.
-        ELSE
-          IF( ListGetLogical( BC,'Level Projector Strong',Found ) .OR. &
-              ListGetLogical( BC,'Level Projector Edges Strong',Found ) ) THEN
-            StrongLevelEdges = .TRUE.
-            StrongExtrudedEdges = .TRUE.
-          END IF
-          IF( ListGetLogical( BC,'Level Projector Plane Edges Strong',&
-              Found ) ) StrongLevelEdges = .TRUE.
-          IF( ListGetLogical( BC,'Level Projector Extruded Edges Strong',&
-              Found ) ) StrongExtrudedEdges = .TRUE.
-          IF( ListGetLogical( BC,'Level Projector Skew Edges Strong',&
-              Found ) ) StrongSkewEdges = .TRUE.
-        END IF
+      StrongExtrudedEdges = ListGetLogical( BC,'Level Projector Extruded Edges Strong', Found ) 
+      IF( .NOT. Found ) StrongExtrudedEdges = StrongEdges
+      IF( StrongExtrudedEdges .AND. GenericIntegrator ) THEN
+        CALL Info('LevelProjector','Using strong extruded edges with partially weak projector',Level=7)
       END IF
+      
+      ! There is no strong strategy for skewed edges currently
+      StrongSkewEdges = .FALSE.
     END IF
 
 
@@ -5447,6 +5441,7 @@ END SUBROUTINE GetMaxDefs
     !-------------------------------------------------------------
     IF( SomethingUndone ) THEN      
       IF( MeshDim == 2 ) THEN
+        CALL Info('LevelProjector','Initial mesh is 2D, using 1D projectors!',Level=10) 
         CALL AddProjectorWeak1D()
       ELSE IF( GenericIntegrator ) THEN
         CALL AddProjectorWeakGeneric()
@@ -10413,7 +10408,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL, OPTIONAL :: Galerkin
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,dim
-    LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
+    LOGICAL :: GotIt, UseQuadrantTree, Success, WeakProjector, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
         Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
@@ -10460,9 +10455,9 @@ END SUBROUTINE GetMaxDefs
     ! flag. The default is the nodal projector.
     !--------------------------------------------------------------------------
     IF( PRESENT( Galerkin) ) THEN
-      IntGalerkin = Galerkin
+      WeakProjector = Galerkin
     ELSE
-      IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', GotIt )
+      WeakProjector = ListGetLogical( BC, 'Galerkin Projector', GotIt )
     END IF
 
     ! If the boundary is discontinuous then we have the luxury of creating the projector
@@ -10470,7 +10465,7 @@ END SUBROUTINE GetMaxDefs
     ! boundary is self-contained.
     !------------------------------------------------------------------------------------
     IF( ListGetLogical( BC, 'Discontinuous Boundary', GotIt ) .AND. Mesh % DisContMesh )THEN
-      IF( IntGalerkin ) THEN
+      IF( WeakProjector ) THEN
         Projector => WeightedProjectorDiscont( PMesh, This )
       ELSE
         Projector => NodalProjectorDiscont( PMesh, This )
@@ -10679,7 +10674,7 @@ END SUBROUTINE GetMaxDefs
 
       UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
       IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
-      IF( IntGalerkin ) THEN
+      IF( WeakProjector ) THEN
         Projector => WeightedProjector( BMesh2, BMesh1, BMesh2 % InvPerm, BMesh1 % InvPerm, &
             UseQuadrantTree, Repeating, AntiRepeating, NodeScale, NodalJump )
       ELSE
