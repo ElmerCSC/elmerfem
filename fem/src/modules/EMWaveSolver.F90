@@ -137,15 +137,23 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, PiolaVersion
+  LOGICAL :: Found, SecondOrder, PiolaVersion
   REAL(KIND=dp) :: mu0, eps0
   INTEGER :: mat_id
   TYPE(ValueList_t), POINTER  :: List
   
   SolverParams => GetSolverParams()  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
-    IF (PiolaVersion) THEN    
+    SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )  
+    IF( SecondOrder ) THEN
+      PiolaVersion = .TRUE.
+    ELSE
+      PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
+    END IF    
+    IF( SecondOrder ) THEN
+      CALL ListAddString( SolverParams, "Element", &
+          "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )           
+    ELSE IF (PiolaVersion) THEN    
       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
     ELSE
       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
@@ -207,7 +215,8 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp) :: Norm
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), DAMP(:,:), FORCE(:)
-  LOGICAL :: PiolaVersion, EdgeBasis
+  LOGICAL :: PiolaVersion, SecondOrder, EdgeBasis
+  INTEGER :: EdgeBasisDegree
   INTEGER, POINTER :: Perm(:)
   TYPE(ValueList_t), POINTER :: SolverParams
   REAL(KIND=dp) :: mu0, eps0
@@ -217,8 +226,21 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
 
   CALL Info('VectorHelmholztSolver','Solving electromagnetic waves in time',Level=5)
 
-  SolverParams => GetSolverParams()  
-  PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+  SolverParams => GetSolverParams()
+
+  SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )  
+  IF (SecondOrder) THEN
+    EdgeBasisDegree = 2
+  ELSE
+    EdgeBasisDegree = 1
+  END IF
+
+  IF( SecondOrder ) THEN
+    PiolaVersion = .TRUE.
+  ELSE
+    PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+  END IF
+
   dofs = Solver % Variable % Dofs
 
   eps0 = GetConstReal( Model % Constants,'Permittivity of Vacuum')
@@ -258,13 +280,12 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   end if
   DO i=1,NoIterationsMax
     CALL DoBulkAssembly()
-
     CALL DoBoundaryAssembly()
     
     ! Default routines for finisging assembly and solving the system
     Norm = DefaultSolve()
     IF( DefaultConverged() ) EXIT
-
+    
     IF( EdgeBasis ) CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.)
   END DO
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
@@ -303,17 +324,17 @@ CONTAINS
       !----------------------------------------
       CALL LocalMatrix( MASS, DAMP, STIFF, FORCE, &
           Element, n, nd, PiolaVersion, t==1 )
-
+      
       ! Update global matrix and rhs vector from local matrix & vector:
       !---------------------------------------------------------------       
       CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
-
+    
     CALL DefaultFinishBulkAssembly()
-
+    
     ConstantBulkInUse = ListGetLogical( SolverParams,'Constant Bulk Matrix',Found )       
-
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE DoBulkAssembly
 !------------------------------------------------------------------------------
@@ -325,6 +346,7 @@ CONTAINS
     LOGICAL :: Found, InitHandles
 !---------------------------------------------------------------------------------------------
     InitHandles = .True. 
+
     ! Robin type of BC in terms of H:
     !--------------------------------
     Active = GetNOFBoundaryElements()
@@ -369,11 +391,11 @@ CONTAINS
       end block
       InitHandles = .FALSE.
     END DO
-
+    
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()   
-
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE DoBoundaryAssembly
 !------------------------------------------------------------------------------
@@ -389,17 +411,23 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    REAL(KIND=dp) :: weight, eps, mu, muinv, L(3), cond
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
+    REAL(KIND=dp) :: DetJ, weight, eps, mu, muinv, L(3), cond
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     LOGICAL :: Stat
     INTEGER :: t, i, j
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t) :: CD_h(3), Mu_h, Eps_h, Cond_h
-
-    SAVE Cd_h, Mu_h, Eps_h, Cond_h
+    LOGICAL :: AllocationsDone = .FALSE.
     
+    SAVE Cd_h, Mu_h, Eps_h, Cond_h, WBasis, RotWBasis, Basis, dBasisdx, AllocationsDone
+
+    IF(.NOT. AllocationsDone ) THEN
+      N = Mesh % MaxElementDOFs
+      ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3))      
+      AllocationsDone = .TRUE.
+    END IF
+   
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density 1')
       CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density 2')
@@ -411,7 +439,7 @@ CONTAINS
 
       CALL ListInitElementKeyword( Cond_h,'Material','Electric Conductivity')
     END IF
-          
+    
     CALL GetElementNodes( Nodes, Element )
 
     STIFF = 0.0_dp
@@ -423,12 +451,13 @@ CONTAINS
     !----------------------
     IP = GaussPoints(Element, EdgeBasis = .TRUE., PReferenceElement = PiolaVersion)
 
+    
     DO t=1,IP % n
       IF (PiolaVersion) THEN
         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
             RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-            ApplyPiolaTransform = .TRUE.)
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detJ, Basis, dBasisdx )
@@ -482,9 +511,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3),Tem(n)
-    REAL(KIND=dp) :: B, L(3), muinv, mu, weight
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), tanWBasis(3)
+    REAL(KIND=dp) :: DetJ,Normal(3),Tem(n)
+    REAL(KIND=dp) :: B, L(3), muinv, mu, weight, tanWBasis(3)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), WBasis(:,:), RotWBasis(:,:),dBasisdx(:,:) 
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, p, q
@@ -492,9 +521,16 @@ CONTAINS
     TYPE(ValueHandle_t) :: BL_h(3), Damp_h, Mu_h, Eps_h
     LOGICAL :: Visited = .FALSE., GotTem
     TYPE(Element_t), POINTER :: Parent
+    LOGICAL :: AllocationsDone = .FALSE.
     
-    SAVE Visited, BL_h, Damp_h, Mu_h, Eps_h
-    
+    SAVE Visited, BL_h, Damp_h, Mu_h, Eps_h, WBasis, RotWBasis, Basis, dBasisdx, AllocationsDone
+
+    IF(.NOT. AllocationsDone ) THEN
+      N = Mesh % MaxElementDOFs
+      ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3) )
+      AllocationsDone = .TRUE.
+    END IF
+
 !------------------------------------------------------------------------------
 
     IF( InitHandles ) THEN
@@ -922,7 +958,7 @@ CONTAINS
     LOGICAL :: InitHandles    
 
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t) :: Nodes
+    TYPE(Nodes_t), SAVE :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), SOL(:), dsol(:), ddsol(:)
     REAL(KIND=dp), ALLOCATABLE :: RotWBasis(:,:), Basis(:), dBasisdx(:,:)
     INTEGER, ALLOCATABLE :: Indexes(:)
@@ -933,7 +969,7 @@ CONTAINS
     INTEGER :: i,j,k,n
     
     SAVE Cd_h, Mu_h, Eps_h, sol, dsol, ddsol, &
-        Indexes, WBasis, RotWBasis, Basis, dBasisdx, Nodes
+        Indexes, WBasis, RotWBasis, Basis, dBasisdx
 
     IF(.NOT. AllocationsDone ) THEN
       N = Mesh % MaxElementDOFs
