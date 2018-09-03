@@ -319,9 +319,9 @@ CONTAINS
   SUBROUTINE DoBoundaryAssembly()
 !---------------------------------------------------------------------------------------------
     INTEGER :: n,nd,t,k
-    LOGICAL :: Found
+    LOGICAL :: Found, InitHandles
 !---------------------------------------------------------------------------------------------
-              
+    InitHandles = .True. 
     ! Robin type of BC in terms of H:
     !--------------------------------
     Active = GetNOFBoundaryElements()
@@ -342,18 +342,34 @@ CONTAINS
 
       nd = GetElementNOFDOFs(Element)
       n  = GetElementNOFNodes(Element)
+      block
+        real :: sumfore, sumafter
+        type(matrix_t), pointer :: a
+        a => solver % matrix
 
-      CALL LocalMatrixBC(MASS,DAMP,STIFF,FORCE,&
-          Element,n,nd,PiolaVersion,t==1)
+        if (associated(a % dampvalues)) sumfore = sum(abs(a % DampValues(:))) 
 
-      CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
-      CALL DefaultUpdateEquations(STIFF,FORCE)
+        CALL LocalMatrixBC(MASS,DAMP,STIFF,FORCE,&
+            Element,n,nd,PiolaVersion,InitHandles)
+
+        CALL Default2ndOrderTimeR( MASS, DAMP, STIFF, FORCE(1:nd), UElement=Element)
+        CALL DefaultUpdateEquationsR(STIFF,FORCE(1:nd), UElement=Element)
+
+        if (associated(a % dampvalues)) then
+          sumafter = sum(abs(a % DampValues))
+          if (sumafter /= sumfore) then
+            print *, 'dampvalues was changed (old,new):', sumfore, sumafter
+          end if
+        end if
+
+      end block
+      InitHandles = .FALSE.
     END DO
-    
+
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()   
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DoBoundaryAssembly
 !------------------------------------------------------------------------------
@@ -431,7 +447,7 @@ CONTAINS
       ! Compute element stiffness matrix and force vector:
       ! --------------------------------------------------
       DO i = 1,nd
-        FORCE(i) = FORCE(i) + SUM(L*WBasis(i,:)) * weight
+        FORCE(i) = FORCE(i) - SUM(L*WBasis(i,:)) * weight
         
         DO j = 1,nd
           ! the mu^-1 curl u . curl v 
@@ -492,7 +508,7 @@ CONTAINS
     Parent => GetBulkElementAtBoundary(Element) 
 
     TEM(1:n) = GetReal( BC,'TEM Potential', GotTem )
-                
+
     CALL GetElementNodes( Nodes, Element )
 
     DAMP = 0.0_dp
@@ -519,30 +535,31 @@ CONTAINS
 
       Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       weight = detJ * IP%s(t)
-      
+
       mu = mu0 * ListGetElementReal( mu_h, Basis, Parent )
       muinv = 1.0_dp / mu
       
       L(1) = ListGetElementReal( Bl_h(1), Basis, Element, Found )
       L(2) = ListGetElementReal( Bl_h(2), Basis, Element, Found ) 
       L(3) = ListGetElementReal( Bl_h(3), Basis, Element, Found ) 
-      
+
       ! We don't yet have a method for getting grad at ip
       IF( GotTem ) THEN
         L = L + MATMUL( Tem(1:n), dBasisdx(1:n,1:3) )      
       END IF
-        
-      DO i = 1,nd
-        tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal* WBasis(i,:))
-        FORCE(i) = FORCE(i) - muinv * SUM( L * WBasis(i,:)) * weight
+
+      DO j = 1,3
+        DO i = 1,nd
+          FORCE(i) = FORCE(i) + muinv * L(j) * WBasis(i,j) * weight
+        END DO
       END DO
- 
+
       B = ListGetElementReal( Damp_h, Basis, Element, Found ) 
       IF( Found ) THEN
         DO i = 1,nd
-          tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal* WBasis(i,:))
+          tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal * WBasis(i,:))
           DO j = 1,nd
-            DAMP(i,j) = DAMP(i,j) - muinv * B * SUM(tanWBasis(:) * WBasis(j,:)) * weight
+            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(tanWBasis(:) * WBasis(j,:)) * weight
           END DO
         END DO
       END IF
@@ -866,6 +883,7 @@ END SUBROUTINE EMWaveCalcFields_Init
        CALL LocalSol(dEF_e,  3, n, MASS, FORCE, pivot, dofcount)
        CALL LocalSol(ddEF_e, 3, n, MASS, FORCE, pivot, dofcount)
      END IF
+
    END DO
 
    ! Assembly of the face terms in case we have DG method where we
