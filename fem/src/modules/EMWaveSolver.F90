@@ -587,11 +587,9 @@ CONTAINS
       IF( GotTem ) THEN
         L = L + MATMUL( Tem(1:n), dBasisdx(1:n,1:3) )      
       END IF
-
-      DO j = 1,3
-        DO i = 1,nd
-          FORCE(i) = FORCE(i) + muinv * L(j) * WBasis(i,j) * weight
-        END DO
+      DO i = 1,nd
+        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
+        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * tanWBasis(1:3)) * weight
       END DO
 
       B = ListGetElementReal( Damp_h, Basis, Element, Found ) 
@@ -937,7 +935,7 @@ END SUBROUTINE EMWaveCalcFields_Init
        END IF
      END IF
    END IF
-     
+
    IF(NodalFields) THEN
      Fsave => Solver % Matrix % RHS
      dofcount = 0
@@ -946,16 +944,16 @@ END SUBROUTINE EMWaveCalcFields_Init
      CALL GlobalSol(ddEF ,3, Gforce, dofcount)
      Solver % Matrix % RHS => Fsave
    END IF
-   
-   ConstantBulkInUse = ListGetLogical( SolverParams,'Constant Bulk Matrix',Found )       
-   
-   
+
+   ConstantBulkInUse = ListGetLogical( SolverParams,'Constant Bulk Matrix',Found )
+
+
 CONTAINS
 
 
   SUBROUTINE LocalAssembly(InitHandles) 
-    
-    LOGICAL :: InitHandles    
+
+    LOGICAL :: InitHandles
 
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
