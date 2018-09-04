@@ -160,6 +160,12 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
+  ! Use by some solvers e.g. SaveLine to aknowledge E as edge field
+  CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
+  IF( ListGetLogical( SolverParams,'Constant Bulk Matrix',Found ) ) THEN
+    CALL ListAddNewLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)    
+  END IF
+  
   CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
   CALL ListAddNewString( SolverParams,'Variable','E')
   CALL ListAddNewLogical( SolverParams,'Linear System Complex', .FALSE.)
