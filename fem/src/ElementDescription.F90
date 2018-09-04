@@ -2622,7 +2622,8 @@ END IF
 !>  (=sqrt(det(J^TJ))) related to the mapping f.
 !------------------------------------------------------------------------------
    RECURSIVE FUNCTION ElementInfo( Element, Nodes, u, v, w, detJ, &
-     Basis, dBasisdx, ddBasisddx, SecondDerivatives, Bubbles, BasisDegree, EdgeBasis, RotBasis ) RESULT(stat)
+       Basis, dBasisdx, ddBasisddx, SecondDerivatives, Bubbles, BasisDegree, &
+       EdgeBasis, RotBasis, USolver ) RESULT(stat)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -2638,6 +2639,7 @@ END IF
      INTEGER, OPTIONAL :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
 	                                                !! May be used with P element basis functions
      LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions. 
      LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be avaluated.
      REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:)      !< If present, the values of H(curl)-conforming basis functions B(f(p))
      REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referencial description of the spatial curl of B
@@ -2645,7 +2647,7 @@ END IF
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
+     TYPE(Solver_t), POINTER :: PSolver => NULL()
      REAL(KIND=dp) :: BubbleValue, dBubbledx(3), t, s, LtoGMap(3,3)
      LOGICAL :: invert, degrees
      INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
@@ -2657,10 +2659,36 @@ END IF
 
      TYPE(Element_t) :: Bubble
      TYPE(Element_t), POINTER :: Edge, Face
+     INTEGER :: EdgeBasisDegree
+     LOGICAL :: PerformPiolaTransform, Found
+     
+     SAVE PSolver, EdgeBasisDegree, PerformPiolaTransform
 !------------------------------------------------------------------------------
-     IF(PRESENT(EdgeBasis)) THEN
-       stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
-            EdgeBasis=EdgeBasis,RotBasis=RotBasis,dBasisdx=dBasisdx,ApplyPiolaTransform=.TRUE.)
+     IF(PRESENT(EdgeBasis)) THEN       
+       IF( PRESENT( USolver ) ) THEN
+         IF( .NOT. ASSOCIATED( USolver, PSolver ) ) THEN
+           IF( ListGetLogical(USolver % Values,'Quadratic Approximation', Found ) ) THEN
+             EdgeBasisDegree = 2
+             PerformPiolaTransform = .TRUE.
+           ELSE
+             EdgeBasisDegree = 1
+             PerformPiolaTransform = ListGetLogical(USolver % Values,'Use Piola Transform', Found )
+           END IF
+           PSolver => USolver 
+         END IF
+       ELSE
+         EdgeBasisDegree = 1
+         PerformPiolaTransform = .TRUE.        
+       END IF
+       IF( PerformPiolaTransform ) THEN       
+         stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
+             EdgeBasis=EdgeBasis,RotBasis=RotBasis,dBasisdx=dBasisdx,&
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = PerformPiolaTransform )
+       ELSE
+         ! Is this really necessary to call in case no piola version? 
+         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
+         CALL GetEdgeBasis(Element,EdgeBasis,RotBasis,Basis,dBasisdx)         
+       END IF
        RETURN
      END IF
 
@@ -5134,12 +5162,12 @@ END IF
        REAL(KIND=dp) :: t(3), s(3), v1, v2, v3, h1, h2, h3, dh1, dh2, dh3, grad(2)
        REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes), Beta(4), EdgeSign(16)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
-       LOGICAL :: SecondOrder, ApplyTraceMapping
+       LOGICAL :: SecondOrder, ApplyTraceMapping, Found
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs
 !----------------------------------------------------------------------------------------------------------
+
        Mesh => CurrentModel % Solver % Mesh
-       !Parallel = ParEnv % PEs>1
        Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
 
        stat = .TRUE.
@@ -5167,7 +5195,7 @@ END IF
        END IF
        PerformPiolaTransform = .FALSE.
        IF ( PRESENT(ApplyPiolaTransform) ) PerformPiolaTransform = ApplyPiolaTransform
-
+       
        ApplyTraceMapping = .FALSE.
        IF ( PRESENT(TangentialTrMapping) ) ApplyTraceMapping = TangentialTrMapping
        !-------------------------------------------------------------------------------------------
