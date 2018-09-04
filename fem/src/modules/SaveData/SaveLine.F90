@@ -565,7 +565,7 @@ CONTAINS
 
     INTEGER :: i,j,k,l,ivar,ii
     TYPE(Nodes_t) :: Nodes
-    LOGICAL :: UseGivenNode, PiolaVersion, SecondOrder, EdgeBasis
+    LOGICAL :: UseGivenNode, PiolaVersion, EdgeBasis
     INTEGER :: n, nd, np, EdgeBasisDegree, Labels(4)
     INTEGER, POINTER :: PtoIndexes(:)
     REAL(KIND=dp), POINTER :: PtoBasis(:)
@@ -623,7 +623,6 @@ CONTAINS
     IF( .NOT. PRESENT( LocalCoord ) ) THEN      
       EdgeBasis = .FALSE.
       PiolaVersion = .FALSE.
-      SecondOrder = .FALSE.
     END IF
 
     No = 0
@@ -645,7 +644,6 @@ CONTAINS
       
       EdgeBasis = .FALSE.
       PiolaVersion = .FALSE.
-      SecondOrder = .FALSE.
       np = 0
       
       IF( PRESENT( LocalCoord ) ) THEN
@@ -659,22 +657,18 @@ CONTAINS
 
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
 
+        ! Should we map (u,v,w) for piola reference element? 
+        
         IF( ASSOCIATED( Var % Solver ) ) THEN
           nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
           n = Element % TYPE % NumberOfNodes
                     
-          EdgeBasis = GetLogical(Var % Solver % Values, &
-              'Hcurl Basis', Found )            
+          EdgeBasis = GetLogical(Var % Solver % Values,'Hcurl Basis', Found )            
           IF( EdgeBasis ) THEN
-            SecondOrder = GetLogical(Var % Solver % Values, &
-                'Quadratic Approximation', Found)
-            IF( SecondOrder ) THEN
-              EdgeBasisDegree = 2
+            IF( GetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
               PiolaVersion = .TRUE.
             ELSE
-              EdgeBasisDegree = 1
-              PiolaVersion = GetLogical(Var % Solver % Values, &
-                  'Use Piola Transform', Found )   
+              PiolaVersion = GetLogical(Var % Solver % Values,'Use Piola Transform', Found )   
             END IF
             np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
           END IF
@@ -684,14 +678,9 @@ CONTAINS
           n = Element % Type % NumberOfNodes
         END IF
 
-        IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-              DetF = DetJ, Basis = NodeBasis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-        ELSE IF( EdgeBasis ) THEN
+        IF( EdgeBasis ) THEN
           stat = ElementInfo( Element, Nodes, u, v, w, &
-              detJ, NodeBasis, NodedBasisdx )
-          CALL GetEdgeBasis(Element,WBasis,RotWBasis,NodeBasis,NodedBasisdx)
+              detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, RotBasis = RotWBasis, USolver = Var % Solver)
         ELSE
           stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
           PtoBasis => NodeBasis

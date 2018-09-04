@@ -206,7 +206,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   USE EMWaveSolverUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
@@ -222,10 +222,10 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Norm
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), DAMP(:,:), FORCE(:)
   LOGICAL :: PiolaVersion, SecondOrder, EdgeBasis
-  INTEGER :: EdgeBasisDegree
   INTEGER, POINTER :: Perm(:)
   TYPE(ValueList_t), POINTER :: SolverParams
   REAL(KIND=dp) :: mu0, eps0
+  TYPE(Solver_t), POINTER :: pSolver 
   
   SAVE STIFF, DAMP, MASS, FORCE, AllocationsDone
 !------------------------------------------------------------------------------
@@ -235,12 +235,6 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   SolverParams => GetSolverParams()
 
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )  
-  IF (SecondOrder) THEN
-    EdgeBasisDegree = 2
-  ELSE
-    EdgeBasisDegree = 1
-  END IF
-
   IF( SecondOrder ) THEN
     PiolaVersion = .TRUE.
   ELSE
@@ -257,7 +251,8 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   Mesh => GetMesh()
   nNodes = Mesh % NumberOfNodes
   Perm => Solver % Variable % Perm
-    
+  pSolver => Solver
+  
   IF ( .NOT. AllocationsDone ) THEN
     IF( dofs /= 1 ) CALL Fatal ('EMWaveSolver', 'Invalid variable size:'//TRIM(I2S(dofs)) )
 
@@ -459,18 +454,9 @@ CONTAINS
 
     
     DO t=1,IP % n
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )
-        
-        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
-
+      stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+      
       weight = detJ * IP%s(t)
       
       eps = eps0 * ListGetElementReal( eps_h, Basis, Element, Found )
@@ -567,17 +553,9 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
     DO t=1,IP % n
-      IF( PiolaVersion ) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )        
-        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
-
+      stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+      
       Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       weight = detJ * IP%s(t)
 
@@ -813,7 +791,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE, TARGET :: MASS(:,:), FORCE(:,:), GForce(:,:) 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder, AnyTimeDer, &
        ConstantBulkInUse = .FALSE.
-   INTEGER :: EdgeBasisDegree, soln
+   INTEGER :: soln
    TYPE(ValueList_t), POINTER :: SolverParams 
 
    REAL(KIND=dp) :: mu, eps, mu0, eps0
@@ -847,12 +825,6 @@ END SUBROUTINE EMWaveCalcFields_Init
    dofs = 3
    
    SecondOrder = GetLogical( pSolver % Values, 'Quadratic Approximation', Found )  
-   IF (SecondOrder) THEN
-     EdgeBasisDegree = 2
-   ELSE
-     EdgeBasisDegree = 1
-   END IF
-
    IF( SecondOrder ) THEN
      PiolaVersion = .TRUE.
    ELSE
@@ -1023,17 +995,10 @@ CONTAINS
       u = IP % U(j)
       v = IP % V(j)
       w = IP % W(j)
-            
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-            DetF=DetJ, Basis=Basis, &
-            EdgeBasis=WBasis, RotBasis=RotWBasis, dBasisdx=dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-      END IF
 
+      stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+ 
       ! Not currently used as only trivial fields are computed. 
       !----------------------------------------------------------
       !eps = eps0 * ListGetElementReal( eps_h, Basis, Element, Found )
