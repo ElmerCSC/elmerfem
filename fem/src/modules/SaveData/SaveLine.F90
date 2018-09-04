@@ -212,6 +212,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
         EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found )
       END IF
       IF( EdgeBasis ) THEN
+        CALL Info('SaveLine','Variable '//TRIM(I2S(ivar))//' is treated as living in Hcurl',Level=7)
         NoResults = NoResults + 3
       ELSE
         NoResults = NoResults + MAX( Var % Dofs, Comps ) 
@@ -565,7 +566,7 @@ CONTAINS
     INTEGER :: i,j,k,l,ivar,ii
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: UseGivenNode, PiolaVersion, SecondOrder, EdgeBasis
-    INTEGER :: n, nd, EdgeBasisDegree, Labels(4)
+    INTEGER :: n, nd, np, EdgeBasisDegree, Labels(4)
     INTEGER, POINTER :: PtoIndexes(:)
     REAL(KIND=dp), POINTER :: PtoBasis(:)
     REAL(KIND=dp), TARGET :: PointBasis(1)
@@ -574,8 +575,8 @@ CONTAINS
     INTEGER :: n0
 
     LOGICAL :: AllocationsDone = .FALSE.
-    REAL(KIND=dp), TARGET :: NodeBasis(35)
-    REAL(KIND=dp) :: WBasis(35,3),RotWBasis(35,3), NodedBasisdx(35,3)
+    REAL(KIND=dp), TARGET :: NodeBasis(54)
+    REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
 
     SAVE :: AllocationsDone, Nodes
     
@@ -584,7 +585,9 @@ CONTAINS
       AllocationsDone = .TRUE.      
     END IF
 
+    Indexes = 0
     n0 = 0
+    
     IF( .NOT. SkipBoundaryInfo ) THEN
       
       IF(TransientSimulation) THEN
@@ -638,8 +641,12 @@ CONTAINS
         Var3 => VariableGetN( ivar, component = 3 ) 
       ELSE
         Var3 => NULL()
-      END IF
-
+      END IF      
+      
+      EdgeBasis = .FALSE.
+      PiolaVersion = .FALSE.
+      SecondOrder = .FALSE.
+      np = 0
       
       IF( PRESENT( LocalCoord ) ) THEN
         
@@ -655,29 +662,29 @@ CONTAINS
         IF( ASSOCIATED( Var % Solver ) ) THEN
           nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
           n = Element % TYPE % NumberOfNodes
-
+                    
           EdgeBasis = GetLogical(Var % Solver % Values, &
-              'Hcurl Basis', Found )  
-          PiolaVersion = GetLogical(Var % Solver % Values, &
-              'Use Piola Transform', Found )   
+              'Hcurl Basis', Found )            
+          IF( EdgeBasis ) THEN
+            SecondOrder = GetLogical(Var % Solver % Values, &
+                'Quadratic Approximation', Found)
+            IF( SecondOrder ) THEN
+              EdgeBasisDegree = 2
+              PiolaVersion = .TRUE.
+            ELSE
+              EdgeBasisDegree = 1
+              PiolaVersion = GetLogical(Var % Solver % Values, &
+                  'Use Piola Transform', Found )   
+            END IF
+            np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+          END IF
+
         ELSE
           nd = GetElementDOFs( Indexes, Element )
           n = Element % Type % NumberOfNodes
-        
-          EdgeBasis = .FALSE.
-          PiolaVersion = .FALSE.
-          SecondOrder = .FALSE.
         END IF
 
         IF (PiolaVersion) THEN
-          SecondOrder = GetLogical(Var % Solver % Values, &
-              'Quadratic Approximation', Found)
-          IF( SecondOrder ) THEN
-            EdgeBasisDegree = 2
-          ELSE
-            EdgeBasisDegree = 1
-          END IF
-
           stat = EdgeElementInfo( Element, Nodes, u, v, w, &
               DetF = DetJ, Basis = NodeBasis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
@@ -686,8 +693,7 @@ CONTAINS
               detJ, NodeBasis, NodedBasisdx )
           CALL GetEdgeBasis(Element,WBasis,RotWBasis,NodeBasis,NodedBasisdx)
         ELSE
-          stat = ElementInfo( Element, Nodes, u, v, w, &
-              detJ, NodeBasis )
+          stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
           PtoBasis => NodeBasis
         END IF
         
@@ -705,8 +711,8 @@ CONTAINS
         DO j=1,3
           No = No + 1
           IF( ASSOCIATED( PtoIndexes ) ) THEN
-            DO k=1,nd-n
-              l = PtoIndexes(n+k)
+            DO k=1,nd-np
+              l = PtoIndexes(np+k)
               IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
               IF(l > 0) Values(No) = Values(No) + WBasis(k,j) * Var % Values(l)
             END DO

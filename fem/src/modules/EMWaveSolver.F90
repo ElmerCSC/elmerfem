@@ -160,6 +160,12 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
+  ! Use by some solvers e.g. SaveLine to aknowledge E as edge field
+  CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
+  IF( ListGetLogical( SolverParams,'Constant Bulk Matrix',Found ) ) THEN
+    CALL ListAddNewLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)    
+  END IF
+  
   CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
   CALL ListAddNewString( SolverParams,'Variable','E')
   CALL ListAddNewLogical( SolverParams,'Linear System Complex', .FALSE.)
@@ -567,13 +573,12 @@ CONTAINS
     DO t=1,IP % n
       IF( PiolaVersion ) THEN
         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-          RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-          ApplyPiolaTransform = .TRUE.)
+            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), detJ, Basis, dBasisdx )
-
+            IP % W(t), detJ, Basis, dBasisdx )        
         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
       END IF
 
