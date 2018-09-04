@@ -371,6 +371,10 @@ CONTAINS
       block
         real :: sumfore, sumafter
         type(matrix_t), pointer :: a
+        type(element_t), pointer :: dummy_element
+
+        dummy_element => SetCurrentElement(Element)
+
         a => solver % matrix
 
         if (associated(a % dampvalues)) sumfore = sum(abs(a % DampValues(:))) 
@@ -568,7 +572,7 @@ CONTAINS
 
       ! We don't yet have a method for getting grad at ip
       IF( GotTem ) THEN
-        L = L + MATMUL( Tem(1:n), dBasisdx(1:n,1:3) )      
+        L = L + MATMUL( Tem(1:n), dBasisdx(1:n,1:3) )
       END IF
       DO i = 1,nd
         tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
