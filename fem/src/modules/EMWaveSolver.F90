@@ -280,12 +280,13 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   end if
   DO i=1,NoIterationsMax
     CALL DoBulkAssembly()
+
     CALL DoBoundaryAssembly()
     
     ! Default routines for finisging assembly and solving the system
     Norm = DefaultSolve()
     IF( DefaultConverged() ) EXIT
-    
+
     IF( EdgeBasis ) CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.)
   END DO
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
@@ -324,17 +325,17 @@ CONTAINS
       !----------------------------------------
       CALL LocalMatrix( MASS, DAMP, STIFF, FORCE, &
           Element, n, nd, PiolaVersion, t==1 )
-      
+
       ! Update global matrix and rhs vector from local matrix & vector:
       !---------------------------------------------------------------       
       CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
-    
+
     CALL DefaultFinishBulkAssembly()
-    
+
     ConstantBulkInUse = ListGetLogical( SolverParams,'Constant Bulk Matrix',Found )       
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DoBulkAssembly
 !------------------------------------------------------------------------------
@@ -346,7 +347,6 @@ CONTAINS
     LOGICAL :: Found, InitHandles
 !---------------------------------------------------------------------------------------------
     InitHandles = .True. 
-
     ! Robin type of BC in terms of H:
     !--------------------------------
     Active = GetNOFBoundaryElements()
@@ -391,11 +391,11 @@ CONTAINS
       end block
       InitHandles = .FALSE.
     END DO
-    
+
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()   
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DoBoundaryAssembly
 !------------------------------------------------------------------------------
@@ -439,7 +439,7 @@ CONTAINS
 
       CALL ListInitElementKeyword( Cond_h,'Material','Electric Conductivity')
     END IF
-    
+
     CALL GetElementNodes( Nodes, Element )
 
     STIFF = 0.0_dp
@@ -578,7 +578,7 @@ CONTAINS
 
       mu = mu0 * ListGetElementReal( mu_h, Basis, Parent )
       muinv = 1.0_dp / mu
-      
+
       L(1) = ListGetElementReal( Bl_h(1), Basis, Element, Found )
       L(2) = ListGetElementReal( Bl_h(2), Basis, Element, Found ) 
       L(3) = ListGetElementReal( Bl_h(3), Basis, Element, Found ) 
