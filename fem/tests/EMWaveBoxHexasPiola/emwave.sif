@@ -1,6 +1,9 @@
 ! A test case for the electromagnetic wave solver.
 ! Utilizes constant matrices for speedier assembly.
 !
+! This with piola transformed elements. Don't really make sense
+! in this case but test case for completeness.
+!
 ! P.R. 25.8.2018
 
 Check Keywords "Warn"
@@ -23,7 +26,7 @@ Simulation
   Timestep Sizes = $2*pi/(w*nwave)
 
 ! For the test we have 1/2 wave. Change this to a larger value when needed.
-  Timestep Intervals = $nwave/2
+  Timestep Intervals = 3 !$nwave/2
   Steady State Max Iterations = 1
 
   Output Intervals(1) = 1
@@ -58,8 +61,8 @@ Solver 1
   Linear System Symmetric = False
   Procedure = "EMWaveSolver" "EMWaveSolver"
 
-! ei toimi ainakaan visualisoinnissa?
-  Quadratic Approximation = Logical False
+  Quadratic Approximation = False
+  Use Piola Transform = True
 
   Linear System Scaling = True
   Linear System Solver = String "Iterative"
@@ -74,7 +77,6 @@ Solver 1
 
 ! Only global matrices work for constant bulk matrix currently. 
 ! Constant bulk matrix saves ~20% for the test problem.
-  Use Global Mass Matrix = True
   Constant Bulk Matrix = True
 
 ! Optionally we could compute energy norm
@@ -132,7 +134,7 @@ Solver 4
   Polyline Coordinates(2,3) = 0.05 0.025 0.0 0.05 0.025 0.2
   Polyline Divisions(1) = 200
 
-  Exec Solver = after saving
+  Exec Solver = never 
 End 
 
 Solver 5
@@ -142,7 +144,7 @@ Solver 5
   Vtu Format = Logical True
   Save Geometry Ids = Logical True
 
-  Exec Solver = after saving
+  Exec Solver = never
 End 
 
 
@@ -186,5 +188,6 @@ Boundary Condition 3
 End
 
 
-Solver 1 :: Reference Norm = 1.41761533E-03
-!Solver 2 :: Reference Norm = 7.85935993E-15
+!Solver 1 :: Reference Norm = 4.47315738E-04  ! linear
+Solver 1 :: Reference Norm = 3.38025804E-04  ! piola 
+!Solver 1 :: Reference Norm = 1.69223161E-04  ! quadratic
