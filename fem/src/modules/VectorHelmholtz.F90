@@ -323,12 +323,20 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, PiolaVersion
+  LOGICAL :: Found, SecondOrder, PiolaVersion
 
   SolverParams => GetSolverParams()  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
-    IF (PiolaVersion) THEN    
+    SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )  
+    IF( SecondOrder ) THEN
+      PiolaVersion = .TRUE.
+    ELSE
+      PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
+    END IF
+    IF( SecondOrder ) THEN
+      CALL ListAddString( SolverParams, "Element", &
+          "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+    ELSE IF (PiolaVersion) THEN    
       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
     ELSE
       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
@@ -359,9 +367,8 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -395,14 +402,20 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: SolverParams
   
   TYPE(Matrix_t), POINTER :: A
-
+  TYPE(Solver_t), POINTER :: pSolver
+  
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()  
-  PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
 
+  IF( GetLogical( SolverParams,'Quadratic Approximation', Found ) ) THEN
+    PiolaVersion = .TRUE.
+  ELSE
+    PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+  END IF
+    
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
   Mesh => GetMesh()
@@ -410,6 +423,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   Perm => Solver % Variable % Perm
   
   A => GetMatrix()
+  pSolver => Solver
   
   IF ( .NOT. AllocationsDone ) THEN
 
@@ -528,7 +542,7 @@ CONTAINS
        !Get element local matrix and rhs vector:
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
-          Tcoef, Acoef, Element, n, nd, PiolaVersion )
+          Tcoef, Acoef, Element, n, nd )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
@@ -594,9 +608,9 @@ CONTAINS
 #endif
 
        IF(.NOT. ASSOCIATED(Material)) THEN
-         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd, PiolaVersion=PiolaVersion)
+         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
        ELSE
-         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd, Tcoef, PiolaVersion)
+         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd, Tcoef )
        END IF
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
@@ -681,13 +695,12 @@ CONTAINS
 
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
-            Tcoef, Acoef, Element, n, nd, PiolaVersion )
+            Tcoef, Acoef, Element, n, nd )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:), Acoef(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: PiolaVersion
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     COMPLEX(KIND=dp) :: eps, muinv, L(3), DAMP(nd,nd)
@@ -711,17 +724,9 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
     DO t=1,IP % n
-       IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-               RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-               ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
-
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
+       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+           IP % W(t), detJ, Basis, dBasisdx, &
+           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
        muinv = SUM( Basis(1:n) * Acoef(1:n) )
        eps = SUM( Basis(1:n) * Tcoef(1:n) )
@@ -757,13 +762,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Acoef, Element, n, nd, Tcoef, PiolaVersion)
+  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Acoef, Element, n, nd, Tcoef )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: LOAD(:,:), Acoef(:)
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL,OPTIONAL :: PiolaVersion
     COMPLEX(KIND=dp), OPTIONAL :: Tcoef(n)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
@@ -787,18 +791,10 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
-    DO t=1,IP % n
-      IF(Present(PiolaVersion) .AND. PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-          RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-          ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), detJ, Basis, dBasisdx )
-
-        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
+    DO t=1,IP % n      
+       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+           IP % W(t), detJ, Basis, dBasisdx, &
+           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
       Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       B  = SUM(Basis(1:n) * Acoef(1:n))
@@ -839,7 +835,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -1125,10 +1120,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:), Load(:,:), BndLoad(:,:)
 
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields
    INTEGER :: EdgeBasisDegree, soln
    REAL(KIND=dp) ::  F(3,3), G(3,3)!, GT(3,3),DetF
-   REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
    TYPE(ValueList_t), POINTER :: SolverParams 
    
 !-------------------------------------------------------------------------------------------
@@ -1151,19 +1145,13 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      CALL Fatal('VectorHelmholtzCalcFields','Primary variable should have 2 dofs: '//TRIM(I2S(vDofs)))
    END IF
 
-   SecondOrder = GetLogical( pSolver % Values, 'Quadratic Approximation', Found )  
-   IF (SecondOrder) THEN
-     EdgeBasisDegree = 2
-   ELSE
-     EdgeBasisDegree = 1
-   END IF
 
-   IF( SecondOrder ) THEN
+   IF( GetLogical( pSolver % Values,'Quadratic Approximation', Found ) ) THEN
      PiolaVersion = .TRUE.
    ELSE
-     PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found ) 
+     PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found )
    END IF
-
+    
    IF (PiolaVersion) &
        CALL Info('MagnetoDynamicsCalcFields', &
        'Using Piola transformed finite elements',Level=5)
@@ -1222,7 +1210,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    n = Mesh % MaxElementDOFs
 
    ALLOCATE( MASS(n,n), FORCE(n,dofs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n), Load(3,n), BndLoad(3,n) )
-   IF (PiolaVersion) ALLOCATE( EBasis(n,3), CurlEBasis(n,3) )
 
    SOL = 0._dp
 
@@ -1318,15 +1305,10 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        u = IP % U(j)
        v = IP % V(j)
        w = IP % W(j)
-
-       IF (PiolaVersion) THEN
-         stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-           F, G, DetJ, Basis, WBasis, RotWBasis, dBasisdx, ApplyPiolaTransform=.TRUE.)
-       ELSE
-         stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-       END IF
-
+       
+       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
+           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+       
        B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
          MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:) ) / (-Omega))
 
@@ -1456,7 +1438,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Tcoef,RotM )
-   IF (PiolaVersion) DEALLOCATE( EBasis, CurlEBasis )
       
   IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) THEN
     WRITE(Message,*) 'Angular Frequency: ', Omega
