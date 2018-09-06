@@ -37,7 +37,7 @@
     
 !------------------------------------------------------------------------------
 !>  Solve time-dependent Maxwell equations using the curl-curl equation 
-!>  using curl-conforming edge elemeing .
+!>  using curl-conforming edge elements.
 !> \ingroup Solvers
 !-------------------------------------------------------------------------------
 MODULE EMWaveSolverUtils
@@ -255,13 +255,9 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   
   IF ( .NOT. AllocationsDone ) THEN
     IF( dofs /= 1 ) CALL Fatal ('EMWaveSolver', 'Invalid variable size:'//TRIM(I2S(dofs)) )
-
-    n = Mesh % MaxElementDOFs  ! just big enough
+    n = Mesh % MaxElementDOFs  
     ALLOCATE( FORCE(n), STIFF(n,n), MASS(n,n), DAMP(n,n), STAT=istat )
-    IF ( istat /= 0 ) THEN
-      CALL Fatal( 'EMWaveSolver', 'Memory allocation error.' )
-    END IF
-
+    IF ( istat /= 0 ) CALL Fatal( 'EMWaveSolver', 'Memory allocation error.' )
     AllocationsDone = .TRUE.
   END IF
 
@@ -273,12 +269,9 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
 
   EdgeBasis = .NOT. ListCheckPresent( SolverParams,'Linear System Refactorize' ) .AND. &
       GetLogical( SolverParams, 'Edge Basis', Found )
-
+  
   CALL DefaultStart()
   
-  if (associated(solver % matrix % dampvalues)) then
-    solver % matrix % dampvalues = 0.0_dp
-  end if
   DO i=1,NoIterationsMax
     CALL DoBulkAssembly()
 
@@ -347,7 +340,10 @@ CONTAINS
     INTEGER :: n,nd,t,k
     LOGICAL :: Found, InitHandles
 !---------------------------------------------------------------------------------------------
-    InitHandles = .True. 
+    TYPE(element_t), POINTER :: dummy_element
+
+    InitHandles = .TRUE.
+
     ! Robin type of BC in terms of H:
     !--------------------------------
     Active = GetNOFBoundaryElements()
@@ -368,35 +364,18 @@ CONTAINS
 
       nd = GetElementNOFDOFs(Element)
       n  = GetElementNOFNodes(Element)
-      block
-        real :: sumfore, sumafter
-        type(matrix_t), pointer :: a
-        type(element_t), pointer :: dummy_element
+        
+      dummy_element => SetCurrentElement(Element)
+      
+      CALL LocalMatrixBC(MASS,DAMP,STIFF,FORCE,&
+          Element,n,nd,PiolaVersion,InitHandles)
+      
+      CALL Default2ndOrderTimeR( MASS, DAMP, STIFF, FORCE(1:nd), UElement=Element)
+      CALL DefaultUpdateEquationsR(STIFF,FORCE(1:nd), UElement=Element)
 
-        dummy_element => SetCurrentElement(Element)
-
-        a => solver % matrix
-
-        if (associated(a % dampvalues)) sumfore = sum(abs(a % DampValues(:))) 
-
-        CALL LocalMatrixBC(MASS,DAMP,STIFF,FORCE,&
-            Element,n,nd,PiolaVersion,InitHandles)
-
-        CALL Default2ndOrderTimeR( MASS, DAMP, STIFF, FORCE(1:nd), UElement=Element)
-        CALL DefaultUpdateEquationsR(STIFF,FORCE(1:nd), UElement=Element)
-
-        if (associated(a % dampvalues)) then
-          ! print *, 'associated dampvalues!'
-          sumafter = sum(abs(a % DampValues))
-          if (sumafter /= sumfore) then
-            ! print *, 'dampvalues was changed (old,new):', sumfore, sumafter
-          end if
-        end if
-
-      end block
       InitHandles = .FALSE.
     END DO
-
+      
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()   
