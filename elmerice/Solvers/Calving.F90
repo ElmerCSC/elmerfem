@@ -228,7 +228,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
       TimeSinceLast = 0
 
       Mesh => Solver % Mesh
-      NoNodes = SIZE( Mesh % Nodes % x )
+      NoNodes = Mesh % NumberOfNodes
 
       FrontMaskName = 'Calving Front Mask'
       TopMaskName = 'Top Surface Mask'

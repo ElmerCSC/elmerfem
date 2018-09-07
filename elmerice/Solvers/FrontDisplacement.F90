@@ -171,7 +171,7 @@ END SUBROUTINE FDMeshSolver_Init
      InitXVar => VariableGet( Solver % Mesh % Variables, "InitX", UnfoundFatal=.TRUE.)
      InitYVar => VariableGet( Solver % Mesh % Variables, "InitY", UnfoundFatal=.TRUE.)
 
-     NoNodes = SIZE(Solver % Mesh % Nodes % x)
+     NoNodes = Solver % Mesh % NumberOfNodes
      ALLOCATE( Nodes0 )
      ALLOCATE( Nodes0 % x(NoNodes), Nodes0 % y(NoNodes),Nodes0 % z(NoNodes))
      DO i=1,NoNodes
@@ -391,7 +391,7 @@ END SUBROUTINE FDMeshSolver_Init
   END IF
 
   Solver % Mesh => Model % Mesh
-  NoNodes = SIZE(Solver % Mesh % Nodes % x)
+  NoNodes = Solver % Mesh % NumberOfNodes
 
   DO i=1,NoNodes
      k = MeshPerm(i)
