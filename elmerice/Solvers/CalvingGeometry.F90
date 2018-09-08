@@ -3098,6 +3098,14 @@ CONTAINS
 
   END FUNCTION VecCross2D
 
+  !This subroutine should identify discrete calving events for the
+  !purposes of local remeshing. For now it returns 1
+  SUBROUTINE CountCalvingEvents(Model, Mesh,CCount)
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t),POINTER :: Mesh
+    INTEGER :: CCount
 
+    Ccount = 1
+  END SUBROUTINE CountCalvingEvents
 END MODULE CalvingGeometry
 
