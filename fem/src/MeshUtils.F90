@@ -19481,6 +19481,260 @@ CONTAINS
 
   END SUBROUTINE LumpedElementalVar
 
+
+  SUBROUTINE PackNodesToSend(Mesh, Mask, GDOFs, NodeCoords, DIM)
+
+    IMPLICIT NONE
+
+    TYPE(Mesh_t),POINTER :: Mesh
+    LOGICAL :: Mask(:)
+    INTEGER, ALLOCATABLE :: GDOFs(:)
+    INTEGER, OPTIONAL :: DIM
+    REAL(KIND=dp), ALLOCATABLE :: NodeCoords(:)
+    !-----------------------
+    INTEGER :: i,SendCount, counter, the_dim
+
+    SendCount = COUNT(Mask)
+
+    IF(PRESENT(DIM)) THEN
+      the_dim = DIM
+    ELSE
+      the_dim = CoordinateSystemDimension()
+    END IF
+
+    ALLOCATE(GDOFs(SendCount),NodeCoords(SendCount*the_dim))
+
+    counter = 0
+    DO i=1,Mesh % NumberOfNodes
+      IF(.NOT. Mask(i)) CYCLE
+      counter = counter + 1
+      GDOFs(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+      NodeCoords((counter-1)*the_dim +1) = Mesh % Nodes % x(i)
+      NodeCoords((counter-1)*the_dim +2) = Mesh % Nodes % y(i)
+      IF(the_dim == 3) NodeCoords((counter-1)*the_dim  +3) = Mesh % Nodes % z(i)
+    END DO
+
+  END SUBROUTINE PackNodesToSend
+
+  SUBROUTINE UnpackNodesSent(GDOFs, NodeCoords, Nodes, DIM)
+    INTEGER :: GDOFs(:)
+    REAL(KIND=dp) :: NodeCoords(:)
+    TYPE(Nodes_t) :: Nodes
+    INTEGER, OPTIONAL :: DIM
+    !-----------------------
+    INTEGER :: i, the_dim, node_count
+
+    IF(PRESENT(DIM)) THEN
+      the_dim = DIM
+    ELSE
+      the_dim = CoordinateSystemDimension()
+    END IF
+ 
+    node_count = SIZE(NodeCoords)/DIM
+
+    ALLOCATE(Nodes % x(node_count),&
+         Nodes % y(node_count),&
+         Nodes % z(node_count))
+
+    DO i=1,node_count
+      Nodes % x(i) = NodeCoords(i*the_dim-2)
+      Nodes % y(i) = NodeCoords(i*the_dim-1)
+      IF(the_dim == 3) Nodes % z(i) = NodeCoords(i*3)
+    END DO
+    IF(the_dim /= 3) Nodes % z = 0.0
+
+  END SUBROUTINE UnpackNodesSent
+
+ !Converts element datastructure into a single integer stream to facilitate
+  !sending to another partition. In addition to element numbers, type, nodes and BC/Body ID,
+  !an integer custom_tag may be provided to indicate, for example, what the receiving process
+  !should do with the elements (remesh, remove, keep fixed)
+  SUBROUTINE PackElemsToSend(Mesh, Mask, ElemStream, custom_tag)
+
+    IMPLICIT NONE
+
+    TYPE(Mesh_t),POINTER :: Mesh
+    LOGICAL :: Mask(:)
+    INTEGER, ALLOCATABLE :: ElemStream(:)
+    INTEGER, OPTIONAL :: custom_tag(:)
+    !----------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, ALLOCATABLE :: work_int(:)
+    INTEGER :: SendCount, el_counter, stream_counter
+    INTEGER :: i,nblk,nbdry,nodecount,ENodeCount
+    LOGICAL :: have_tags
+
+    have_tags = PRESENT(custom_tag)
+
+    SendCount = COUNT(Mask)
+    nblk = Mesh % NumberOfBulkElements
+    nbdry = Mesh % NumberOfBoundaryElements
+
+    !space for partitionID, nodecount, streamsize, then per elem: 
+    !nodenums + ID + tag +  (OPTIONAL custom_tag) + TYPE
+    IF(have_tags) THEN
+      ALLOCATE(ElemStream(3 + SendCount * (Mesh % MaxElementNodes + 4))) 
+    ELSE
+      ALLOCATE(ElemStream(3 + SendCount * (Mesh % MaxElementNodes + 3))) 
+    END IF
+
+    el_counter = 0
+    nodecount = 0
+
+    ElemStream(1) = ParEnv % MyPE
+    ElemStream(2) = SendCount
+
+    !NB: we go back and fill space 3 with stream size later
+    stream_counter = 3
+
+    DO i=1,nblk+nbdry
+      IF(.NOT. Mask(i)) CYCLE
+      el_counter = el_counter + 1
+      Element => Mesh % Elements(i)
+
+      ENodeCount = Element % TYPE % NumberOfNodes
+
+      !Pack the global element index
+      stream_counter = stream_counter + 1
+      ElemStream(stream_counter) = Element % GElementIndex
+
+      !Pack the type
+      stream_counter = stream_counter + 1
+      ElemStream(stream_counter) = Element % TYPE % ElementCode
+
+      !Pack either the body id or boundary id
+      stream_counter = stream_counter + 1
+      IF(i <= nblk) THEN
+        ElemStream(stream_counter) = Element % BodyID
+      ELSE
+        ElemStream(stream_counter) = Element % BoundaryInfo % Constraint
+      END IF
+
+      !Pack the custom_tag if present
+      IF(have_tags) THEN
+        stream_counter = stream_counter + 1
+        ElemStream(stream_counter) = custom_tag(i)
+      END IF
+
+      !Pack the global node numbers
+      stream_counter = stream_counter + 1
+      ElemStream(stream_counter:stream_counter + ENodeCount - 1) = &
+           Mesh % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:ENodeCount))
+
+      stream_counter = stream_counter + ENodeCount - 1
+    END DO
+
+    !Go back and fill in the stream size
+    ElemStream(3) = stream_counter - 3
+
+    IF(stream_counter > SIZE(ElemStream)) CALL Fatal("PackElemsToSend","Too much data to pack - &
+         &this should be impossible - MaxElementNodes probably wrong!")
+
+    ALLOCATE(work_int(stream_counter))
+    work_int(1:stream_counter) = ElemStream(1:stream_counter)
+    DEALLOCATE(ElemStream) !<- this shouldn't be necessary - Cray bug!
+    CALL MOVE_ALLOC(work_int, ElemStream)
+
+  END SUBROUTINE PackElemsToSend
+
+  SUBROUTINE UnpackElemsSent(ElemStream, Elements, DIM, elem_parts, custom_tag)
+    INTEGER :: ElemStream(:)
+    TYPE(Element_t), ALLOCATABLE :: Elements(:)
+    INTEGER, ALLOCATABLE, OPTIONAL :: elem_parts(:), custom_tag(:)
+    INTEGER, OPTIONAL :: DIM
+    !------------------------------------------
+    INTEGER :: i,j,stream_counter,elem_count,elem_totcount, part_count, the_dim,&
+         type_code,NElNodes,elem_dim,partid,stream_pos, stream_size
+    LOGICAL :: have_tags, have_partids, bdry_elem
+
+    IF(PRESENT(DIM)) THEN
+      the_dim = DIM
+    ELSE
+      the_dim = CoordinateSystemDimension()
+    END IF
+
+    have_tags = PRESENT(custom_tag)
+    have_partids = PRESENT(elem_parts)
+
+    !Scan the data to identify number of partitions, total elem count:
+    stream_pos = 1
+    part_count = 0
+    elem_totcount = 0
+    DO WHILE(.TRUE.)
+      partid = ElemStream(stream_pos)
+      part_count = part_count + 1
+
+      stream_pos = stream_pos + 1
+      elem_totcount = elem_totcount + ElemStream(stream_pos)
+      
+      stream_pos = stream_pos + 1
+      stream_pos = stream_pos + ElemStream(stream_pos) + 1
+
+      IF(stream_pos > SIZE(ElemStream)) EXIT
+    END DO
+
+
+    ALLOCATE(Elements(elem_totcount))
+    IF(have_partids) ALLOCATE(elem_parts(elem_totcount))
+    IF(have_tags) ALLOCATE(custom_tag(elem_totcount))
+    stream_counter = 0
+    elem_totcount = 0
+
+    DO j=1,part_count
+
+      stream_counter = stream_counter + 1
+      partid = ElemStream(stream_counter)
+      stream_counter = stream_counter + 1
+      elem_count = ElemStream(stream_counter)
+      stream_counter = stream_counter + 1
+      stream_size = ElemStream(stream_counter)
+
+      DO i=elem_totcount+1,  elem_totcount + elem_count
+
+        !Set the element global index
+        stream_counter = stream_counter + 1
+        Elements(i) % GElementIndex = ElemStream(stream_counter)
+
+        !Set the element type
+        stream_counter = stream_counter + 1
+        type_code = ElemStream(stream_counter)
+        Elements(i) % TYPE => GetElementType(type_code,.FALSE.)
+        NElNodes = Elements(i) % TYPE % NumberOfNodes
+
+
+        !Set either the boundary info or body ID
+        elem_dim = Elements(i) % TYPE % DIMENSION
+        bdry_elem = elem_dim < the_dim
+
+        stream_counter = stream_counter + 1
+        IF(bdry_elem) THEN
+          ALLOCATE(Elements(i) % BoundaryInfo)
+          Elements(i) % BoundaryInfo % constraint = ElemStream(stream_counter)
+        ELSE
+          Elements(i) % BodyID = ElemStream(stream_counter)
+        END IF
+
+        !set custom tag if sent
+        IF(have_tags) THEN
+          stream_counter = stream_counter + 1
+          custom_tag(i) = ElemStream(stream_counter)
+        END IF
+
+        !Set node indexes
+        stream_counter = stream_counter + 1
+        ALLOCATE(Elements(i) % NodeIndexes(NElNodes))
+        Elements(i) % NodeIndexes = ElemStream(stream_counter: stream_counter + NElNodes - 1)
+
+        !Set element partition ID
+        IF(have_partids) elem_parts(i) = partid
+
+        stream_counter = stream_counter + NElNodes - 1
+      END DO
+      elem_totcount = elem_totcount + elem_count
+    END DO
+
+  END SUBROUTINE UnpackElemsSent
+
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
 !------------------------------------------------------------------------------
