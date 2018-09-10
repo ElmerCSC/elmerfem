@@ -26,6 +26,42 @@ ELSE()
   MESSAGE(WARNING "  \n Missing: >NetCDF_INCLUDE_DIR< , >NetCDF_LIBRARY<,  >NetCDFF_LIBRARY< \n some functionalities will be disabled")
 ENDIF(NetCDF_FOUND)
 
+
+MESSAGE(STATUS "------------------------------------------------")
+
+# ---------------------- #
+# -- LOOK FOR MMG     -- #
+#----------------------- #
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Elmer/Ice package: Mesh adaptation 2D/3D looking for [Mmg] tools ")
+
+FIND_PACKAGE(MMG)
+
+IF(MMG_FOUND)
+
+  SET(HAVE_MMG TRUE CACHE BOOL "Has Mmg tools for Elmer/Ice Mesh adaptation" )
+  GET_FILENAME_COMPONENT(MMG_LIBDIR ${MMG_LIBRARY} DIRECTORY)
+
+  MARK_AS_ADVANCED(HAVE_MMG)
+  MESSAGE(STATUS "  Mmg:           " "${MMG_FOUND}")
+  MESSAGE(STATUS "  Mmg_INC:       " "${MMG_INCLUDE_DIR}")
+  MESSAGE(STATUS "  Mmg_LIB:      " "${MMG_LIBRARY}")
+  MESSAGE(STATUS "  Mmg_LIBDIR:      " "${MMG_LIBDIR}")
+  MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
+  ADD_DEFINITIONS(-DHAVE_MMG)
+
+  INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+  MESSAGE(STATUS "------------------------------------------------")
+
+  ADD_SUBDIRECTORY(MeshAdaptation_2D)
+  ADD_SUBDIRECTORY(MeshAdaptation_3D)
+
+
+ELSE()
+  MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
+  MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
+ENDIF(MMG_FOUND)
+
 MESSAGE(STATUS "------------------------------------------------")
 
 
@@ -51,9 +87,13 @@ SET(ElmerIce_SRC AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     ./AdjointSSA/AdjointSSA_CostContSolver.F90 ./AdjointSSA/AdjointSSA_CostFluxDivSolver.F90
     ./AdjointSSA/AdjointSSA_GradientSolver.F90 Calving.F90 FrontDisplacement.F90 
     TwoMeshes.F90 ProjectCalving.F90 ComputeCalvingNormal.F90 
-    CalvingGeometry.F90 Calving3D.F90 CalvingRemesh.F90 CalvingRemeshMMG.F90
+    CalvingGeometry.F90 Calving3D.F90 CalvingRemesh.F90
     CalvingFrontAdvance3D.F90 Emergence.F90 SSAmask.F90 
     GlaDSCoupledSolver.F90 GlaDSchannelSolver.F90 Flotation.F90 )
+
+IF(HAVE_MMG)
+  SET(ElmerIce_SRC ${ElmerIce_SRC} CalvingRemeshMMG.F90)
+ENDIF()
 
 ADD_LIBRARY(ElmerIceSolvers SHARED ${ElmerIce_SRC})
 
@@ -76,13 +116,19 @@ SET_TARGET_PROPERTIES(ElmerIceSolvers PROPERTIES LINK_FLAGS "${CURR_LFLAGS}")
 SET_TARGET_PROPERTIES(ElmerIceSolvers PROPERTIES COMPILE_FLAGS "${CURR_CFLAGS}")
 SET_TARGET_PROPERTIES(ElmerIceSolvers PROPERTIES LINKER_LANGUAGE Fortran)
 IF(NOT(WIN32))
-    SET_TARGET_PROPERTIES(ElmerIceSolvers PROPERTIES 
-                          INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
+    SET_TARGET_PROPERTIES(ElmerIceSolvers PROPERTIES
+                          INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
+    SET_TARGET_PROPERTIES(ElmerIceSolvers PROPERTIES
+                          INSTALL_RPATH_USE_LINK_PATH TRUE)
 ENDIF()
 TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver)
 
 IF(HAVE_NETCDF)
 TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NetCDF_LIBRARIES})
+ENDIF()
+IF(HAVE_MMG)
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${MMG_LIBRARY})
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ElmerIce_MeshAdapt3D)
 ENDIF()
 
 INSTALL(TARGETS ElmerIceSolvers LIBRARY DESTINATION "share/elmersolver/lib"
@@ -94,5 +140,3 @@ ENDIF()
 IF(WITH_ScatteredDataInterpolator)	
   ADD_SUBDIRECTORY(ScatteredDataInterpolator)
 ENDIF()
-ADD_SUBDIRECTORY(MeshAdaptation_2D)
-ADD_SUBDIRECTORY(MeshAdaptation_3D)
