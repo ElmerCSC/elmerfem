@@ -19502,13 +19502,16 @@ CONTAINS
       the_dim = CoordinateSystemDimension()
     END IF
 
-    ALLOCATE(GDOFs(SendCount),NodeCoords(SendCount*the_dim))
+    !------------- append partition no and stream_size
+    ALLOCATE(GDOFs(2+SendCount),NodeCoords(SendCount*the_dim))
 
+    GDOFs(1) = ParEnv % MyPE
+    GDOFs(2) = SendCount
     counter = 0
     DO i=1,Mesh % NumberOfNodes
       IF(.NOT. Mask(i)) CYCLE
       counter = counter + 1
-      GDOFs(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+      GDOFs(counter+2) = Mesh % ParallelInfo % GlobalDOFs(i)
       NodeCoords((counter-1)*the_dim +1) = Mesh % Nodes % x(i)
       NodeCoords((counter-1)*the_dim +2) = Mesh % Nodes % y(i)
       IF(the_dim == 3) NodeCoords((counter-1)*the_dim  +3) = Mesh % Nodes % z(i)
@@ -19516,20 +19519,24 @@ CONTAINS
 
   END SUBROUTINE PackNodesToSend
 
-  SUBROUTINE UnpackNodesSent(GDOFs, NodeCoords, Nodes, DIM)
-    INTEGER :: GDOFs(:)
+  SUBROUTINE UnpackNodesSent(GDOFs, NodeCoords, Nodes, DIM, node_parts)
+    INTEGER, ALLOCATABLE :: GDOFs(:)
     REAL(KIND=dp) :: NodeCoords(:)
     TYPE(Nodes_t) :: Nodes
     INTEGER, OPTIONAL :: DIM
+    INTEGER, ALLOCATABLE, OPTIONAL :: node_parts(:)
     !-----------------------
-    INTEGER :: i, the_dim, node_count
+    INTEGER :: i, the_dim, node_count,stream_pos,work_pos,partid,part_nnodes
+    INTEGER, ALLOCATABLE :: work_int(:)
+    LOGICAL :: have_partids
 
     IF(PRESENT(DIM)) THEN
       the_dim = DIM
     ELSE
       the_dim = CoordinateSystemDimension()
-    END IF
- 
+    END IF 
+    have_partids = PRESENT(node_parts)
+
     node_count = SIZE(NodeCoords)/DIM
 
     ALLOCATE(Nodes % x(node_count),&
@@ -19543,6 +19550,31 @@ CONTAINS
     END DO
     IF(the_dim /= 3) Nodes % z = 0.0
 
+    !Strip the header info (partition and count) out from GDOFs:
+    ALLOCATE(work_int(node_count))
+    IF(have_partids) ALLOCATE(node_parts(node_count))
+
+    stream_pos = 1
+    work_pos = 1
+    work_int = 0
+
+    DO WHILE(.TRUE.)
+      partid = GDOFs(stream_pos)
+      stream_pos = stream_pos + 1
+      part_nnodes = GDOFs(stream_pos)
+
+      stream_pos = stream_pos + 1
+      work_int(work_pos:work_pos + part_nnodes - 1) = GDOFs(stream_pos:stream_pos + part_nnodes - 1)
+      IF(have_partids) node_parts(work_pos:work_pos + part_nnodes - 1) = partid
+
+      work_pos = work_pos + part_nnodes
+
+      stream_pos = stream_pos + part_nnodes
+      IF(stream_pos > SIZE(GDOFs)) EXIT
+    END DO
+
+    DEALLOCATE(GDOFs)
+    CALL MOVE_ALLOC(work_int, GDOFs)
   END SUBROUTINE UnpackNodesSent
 
  !Converts element datastructure into a single integer stream to facilitate

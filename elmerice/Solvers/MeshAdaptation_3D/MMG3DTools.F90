@@ -8,6 +8,11 @@ MODULE MMG3DTools
   LOGICAL :: Debug = .TRUE.
   INTEGER :: ier
 
+  INTEGER :: MMGPARAM_hausd = MMG3D_DPARAM_hausd
+  INTEGER :: MMGPARAM_hmin = MMG3D_DPARAM_hmin
+  INTEGER :: MMGPARAM_hmax = MMG3D_DPARAM_hmax
+  INTEGER :: MMGPARAM_iso = MMG3D_IPARAM_iso
+
   MMG5_DATA_PTR_T :: mmgMesh
   MMG5_DATA_PTR_T :: mmgSol
 
@@ -319,7 +324,7 @@ SUBROUTINE GET_MMG3D_MESH(NewMesh)
   End do
   IF (DEBUG) PRINT *,'MMG3D_Get_vertex DONE'
 
-  !! GET NEW TRIANGLES
+  !! GET NEW TETRAS
   DO ii=1,NewMesh % NumberOfBulkElements
     Element => NewMesh % Elements(ii)
     Element % TYPE => GetElementType( 504 )
@@ -340,7 +345,7 @@ SUBROUTINE GET_MMG3D_MESH(NewMesh)
 
   !! Get BC Elements
   kk=NewMesh % NumberOfBulkElements
-  DO ii=1,NTetras
+  DO ii=1,NTris
     kk = kk + 1
 
     Element => NewMesh % Elements(kk)
