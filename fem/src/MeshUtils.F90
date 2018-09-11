@@ -19775,14 +19775,14 @@ CONTAINS
     LOGICAL :: RmNode(:)
     LOGICAL, OPTIONAL, TARGET :: RmElem(:)
     !--------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), POINTER :: Element, Work_Elements(:)
     TYPE(Nodes_t), POINTER :: Nodes
     TYPE(NeighbourList_t), POINTER :: work_neighlist(:)
     REAL(KIND=dp), ALLOCATABLE :: work_xyz(:,:)
     REAL(KIND=dp), POINTER :: work_x(:),work_y(:), work_z(:)
-    INTEGER :: i,j,counter,NNodes,NBulk, NBdry,NewNNodes, NewNBulk, NewNBdry,&
-         ElNNodes
-    INTEGER, ALLOCATABLE :: Nodeno_map(:),work_int(:)
+    INTEGER :: i,j,counter,NNodes,NBulk, NBdry,NewNNodes, NewNElems, NewNBulk,&
+         NewNBdry, ElNNodes
+    INTEGER, ALLOCATABLE :: Nodeno_map(:),work_int(:),EIdx_map(:)
     INTEGER, POINTER :: NodeIndexes(:), work_pInt(:)
     LOGICAL, POINTER :: RmElement(:),work_logical(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="CutMesh"
@@ -19801,11 +19801,25 @@ CONTAINS
         NodeIndexes => Element % NodeIndexes
         ElNNodes = Element % TYPE % NumberOfNodes
         IF(ANY(RmNode(NodeIndexes(1:ElNNodes)))) RmElement(i) = .TRUE.
+        !Get rid of orphans
+        IF(i > NBulk) THEN
+          IF(ASSOCIATED(Element % BoundaryInfo)) THEN
+            !If the main body element is removed, remove this BC elem
+            IF(ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+              j = Element % BoundaryInfo % Left % ElementIndex
+              IF(RmElement(j)) RmElement(i) = .TRUE.
+            END IF
+            !Point % Right => NULL() if % Right element is removed
+            IF(ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+              j = Element % BoundaryInfo % Right % ElementIndex
+              IF(RmElement(j)) Element % BoundaryInfo % Right => NULL()
+            END IF
+          END IF
+        END IF
       END DO
     END IF
 
     !Removing nodes implies shifting element nodeindexes
-
     !Map pre -> post deletion node nums
     ALLOCATE(Nodeno_map(NNodes))
     Nodeno_map = 0
@@ -19864,9 +19878,9 @@ CONTAINS
       DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
       Mesh % ParallelInfo % GlobalDOFs => work_pInt
       work_pInt => NULL()
-      PRINT *,'test globaldof size: ',SIZE(Mesh % ParallelInfo % GlobalDOFs)
     END IF
 
+    !Get rid of NeighbourList
     IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList)) THEN
       ALLOCATE(work_neighlist(NewNNodes))
       DO i=1,NNodes
@@ -19879,7 +19893,6 @@ CONTAINS
       DO i=1,NNodes
         IF(RmNode(i)) CYCLE
         counter = counter + 1
-        !Note this will usually be a null pointer, in fact
         work_neighlist(counter) % Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
       END DO
       DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
@@ -19887,11 +19900,7 @@ CONTAINS
       work_neighlist => NULL()
     END IF
 
-    !TEST:
-    DO i=1,NewNNodes
-      PRINT *,'debug neighlist ',i,' : ',ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
-    END DO
-
+    !Get rid of ParallelInfo % INTERFACE
     IF(ASSOCIATED(Mesh % ParallelInfo % INTERFACE)) THEN
       ALLOCATE(work_logical(NewNNodes))
       counter = 0
@@ -19905,13 +19914,134 @@ CONTAINS
       work_logical => NULL()
     END IF
 
-    !Clear out deleted elements
-    DO i=1,NBulk + NBdry
+    !TODO - Mesh % Edges - see ReleaseMeshEdgeTables
+    IF ( ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % Edges not yet implemented.")
+    END IF
 
+    !TODO - Mesh % Faces - see ReleaseMeshFaceTables
+    IF ( ASSOCIATED( Mesh % Faces ) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % Faces not yet implemented.")
+    END IF
+
+    !TODO - Mesh % ViewFactors -  see ReleaseMeshFactorTables
+    IF (ASSOCIATED(Mesh % ViewFactors) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % ViewFactors not yet implemented.")
+    END IF
+
+    !TODO - Mesh % Projector - see FreeMatrix in ReleaseMesh
+    IF (ASSOCIATED(Mesh % Projector) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % Projector not yet implemented.")
+    END IF
+
+    !TODO - Mesh % RootQuadrant - see FreeQuadrantTree
+    IF( ASSOCIATED( Mesh % RootQuadrant ) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % RootQuadrant not yet implemented.")
+    END IF
+
+    NewNElems = COUNT(.NOT. RmElement)
+
+
+    !Clear out deleted elements structures - taken from ReleaseMesh
+    DO i=1,NBulk+NBdry
+      IF(.NOT. RmElement(i)) CYCLE
+
+      !          Boundaryinfo structure for boundary elements
+      !          ---------------------------------------------
+      IF ( Mesh % Elements(i) % Copy ) CYCLE
+
+      IF ( i > NBulk ) THEN
+        IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
+          IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
+            IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
+                 GebhardtFactors % Elements ) ) THEN
+              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
+                   GebhardtFactors % Elements )
+              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
+                   GebhardtFactors % Factors )
+            END IF
+            DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
+          END IF
+          DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
+        END IF
+      END IF
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
+      Mesh % Elements(i) % NodeIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
+      Mesh % Elements(i) % EdgeIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % FaceIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % FaceIndexes )
+      Mesh % Elements(i) % FaceIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % DGIndexes )
+      Mesh % Elements(i) % DGIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
+      Mesh % Elements(i) % BubbleIndexes => NULL()
+
+      ! This creates problems later on!!!
+      !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
+      !   DEALLOCATE( Mesh % Elements(i) % PDefs )
+
+      Mesh % Elements(i) % PDefs => NULL()
     END DO
 
+    !Construct a map of old element indexes => new element indexes
+    ALLOCATE(EIdx_map(NBdry+NBulk))
+    EIdx_map = 0
+    counter = 0
+    DO i=1,NBulk+NBdry
+      IF(RmElement(i)) CYCLE
+      counter = counter + 1
+      IF(Mesh % Elements(i) % ElementIndex /= i) CALL Warn(FuncName,&
+           "Assumption Elements(i) % ElementIndex == i not valid! Expect memory corruption...")
+      EIdx_map(Mesh % Elements(i) % ElementIndex) = counter
+    END DO
 
-    !TODO - need to release Edges and faces?
+    !Repoint elements
+    ALLOCATE(work_elements(NewNElems))
+    counter = 0
+    DO i=1,Nbulk+NBdry
+      IF(RmElement(i)) CYCLE
+      counter = counter + 1
+
+      Element => Mesh % Elements(i)
+      work_elements(counter) = Element
+
+      !Repoint BoundaryInfo % Left, % Right
+      IF(i > NBdry) THEN
+        IF(ASSOCIATED(Element % BoundaryInfo)) THEN
+          IF(ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+            j = Element % BoundaryInfo % Left % ElementIndex
+            work_elements(counter) % BoundaryInfo % Left => work_elements(EIdx_map(j))
+          END IF
+          IF(ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+            j = Element % BoundaryInfo % Right % ElementIndex
+            work_elements(counter) % BoundaryInfo % Right => work_elements(EIdx_map(j))
+          END IF
+        END IF
+      END IF
+    END DO
+
+    !Update ElementIndexes
+    DO i=1,NewNElems
+      work_elements(i) % ElementIndex = i
+    END DO
+
+    DEALLOCATE(Mesh % Elements)
+    Mesh % Elements => work_elements
+    work_elements => NULL()
+
+    Mesh % NumberOfBulkElements = COUNT(.NOT. RmElement(1:nbulk))
+    Mesh % NumberOfBoundaryElements = COUNT(.NOT. RmElement(nbulk+1:nbulk+nbdry))
+
 
     IF(.NOT. PRESENT(RmElem)) DEALLOCATE(RmElement)
 
