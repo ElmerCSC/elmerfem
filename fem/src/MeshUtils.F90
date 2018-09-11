@@ -19768,6 +19768,155 @@ CONTAINS
   END SUBROUTINE UnpackElemsSent
 
 
+  !Cleanly removes elements & nodes from a mesh based on mask
+  !Any element containing a removed node (RmNode) will be deleted
+  !May optionally specify which elements to remove
+  SUBROUTINE CutMesh(Mesh, RmNode, RmElem)
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL :: RmNode(:)
+    LOGICAL, OPTIONAL, TARGET :: RmElem(:)
+    !--------------------------------
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t), POINTER :: Nodes
+    TYPE(NeighbourList_t), POINTER :: work_neighlist(:)
+    REAL(KIND=dp), ALLOCATABLE :: work_xyz(:,:)
+    REAL(KIND=dp), POINTER :: work_x(:),work_y(:), work_z(:)
+    INTEGER :: i,j,counter,NNodes,NBulk, NBdry,NewNNodes, NewNBulk, NewNBdry,&
+         ElNNodes
+    INTEGER, ALLOCATABLE :: Nodeno_map(:),work_int(:)
+    INTEGER, POINTER :: NodeIndexes(:), work_pInt(:)
+    LOGICAL, POINTER :: RmElement(:),work_logical(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="CutMesh"
+    NNodes = Mesh % NumberOfNodes
+    NBulk = Mesh % NumberOfBulkElements
+    NBdry = Mesh % NumberOfBoundaryElements
+
+    IF(PRESENT(RmElem)) THEN
+      RmElement => RmElem
+    ELSE
+      !Mark elements containing deleted nodes for deletion
+      ALLOCATE(RmElement(NBulk + Nbdry))
+      RmElement = .FALSE.
+      DO i=1,NBulk + NBdry
+        Element => Mesh % Elements(i)
+        NodeIndexes => Element % NodeIndexes
+        ElNNodes = Element % TYPE % NumberOfNodes
+        IF(ANY(RmNode(NodeIndexes(1:ElNNodes)))) RmElement(i) = .TRUE.
+      END DO
+    END IF
+
+    !Removing nodes implies shifting element nodeindexes
+
+    !Map pre -> post deletion node nums
+    ALLOCATE(Nodeno_map(NNodes))
+    Nodeno_map = 0
+    counter = 0
+    DO i=1,NNodes
+      IF(RmNode(i)) CYCLE
+      counter = counter + 1
+      Nodeno_map(i) = counter
+    END DO
+
+    !Update the element nodeindexes
+    DO i=1,NBulk+NBdry
+      Element => Mesh % Elements(i)
+      IF(RmElement(i)) CYCLE
+      DO j=1,Element % TYPE % NumberOfNodes
+        Element % NodeIndexes(j) = Nodeno_map(Element % NodeIndexes(j))
+        IF(Element % NodeIndexes(j) == 0) CALL Fatal(FuncName, &
+             "Programming error: mapped nodeno = 0")
+      END DO
+    END DO
+
+    !Clear out deleted nodes
+    Nodes => Mesh % Nodes
+    NewNNodes = COUNT(.NOT. RmNode)
+
+    ALLOCATE(work_x(NewNNodes),&
+         work_y(NewNNodes),&
+         work_z(NewNNodes))
+
+    counter = 0
+    DO i=1,NNodes
+      IF(RmNode(i)) CYCLE
+      counter = counter + 1
+      work_x(counter) = Nodes % x(i)
+      work_y(counter) = Nodes % y(i)
+      work_z(counter) = Nodes % z(i)
+    END DO
+
+    DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
+    Nodes % x => work_x
+    Nodes % y => work_y
+    Nodes % z => work_z
+
+    Nodes % NumberOfNodes = NewNNodes
+    Mesh % NumberOfNodes = NewNNodes
+
+    !Clear out ParallelInfo
+    IF(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)) THEN
+      ALLOCATE(work_pInt(NewNNodes))
+      counter = 0
+      DO i=1,NNodes
+        IF(RmNode(i)) CYCLE
+        counter = counter + 1
+        work_pInt(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+      END DO
+      DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
+      Mesh % ParallelInfo % GlobalDOFs => work_pInt
+      work_pInt => NULL()
+      PRINT *,'test globaldof size: ',SIZE(Mesh % ParallelInfo % GlobalDOFs)
+    END IF
+
+    IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList)) THEN
+      ALLOCATE(work_neighlist(NewNNodes))
+      DO i=1,NNodes
+        IF(.NOT. RmNode(i)) CYCLE
+        IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+             DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+      END DO
+
+      counter = 0
+      DO i=1,NNodes
+        IF(RmNode(i)) CYCLE
+        counter = counter + 1
+        !Note this will usually be a null pointer, in fact
+        work_neighlist(counter) % Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+      END DO
+      DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
+      Mesh % ParallelInfo % NeighbourList => work_neighlist
+      work_neighlist => NULL()
+    END IF
+
+    !TEST:
+    DO i=1,NewNNodes
+      PRINT *,'debug neighlist ',i,' : ',ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+    END DO
+
+    IF(ASSOCIATED(Mesh % ParallelInfo % INTERFACE)) THEN
+      ALLOCATE(work_logical(NewNNodes))
+      counter = 0
+      DO i=1,NNodes
+        IF(RmNode(i)) CYCLE
+        counter = counter + 1
+        work_logical(counter) = Mesh % ParallelInfo % INTERFACE(i)
+      END DO
+      DEALLOCATE(Mesh % ParallelInfo % INTERFACE)
+      Mesh % ParallelInfo % INTERFACE => work_logical
+      work_logical => NULL()
+    END IF
+
+    !Clear out deleted elements
+    DO i=1,NBulk + NBdry
+
+    END DO
+
+    !TODO - need to release Edges and faces?
+
+    IF(.NOT. PRESENT(RmElem)) DEALLOCATE(RmElement)
+
+  END SUBROUTINE CutMesh
+
   
 
   SUBROUTINE PartitionMeshSerial( Model, Mesh, Params ) 
@@ -20479,7 +20628,7 @@ CONTAINS
   END SUBROUTINE PartitionMeshSerial
   
 
-  
+ 
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
 !------------------------------------------------------------------------------

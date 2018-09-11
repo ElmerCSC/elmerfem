@@ -112,19 +112,20 @@ SUBROUTINE SET_MMG3D_MESH(Mesh)
     SELECT CASE(Element % TYPE % ElementCode)
     CASE(303)
       ntris = ntris + 1
-      CALL MMG3D_Set_triangle(mmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), 1, ntris,ier)
+      CALL MMG3D_Set_triangle(mmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
+           Element % BoundaryInfo % Constraint, ntris,ier)
     CASE(404)
       nquads = nquads + 1
       CALL MMG3D_Set_quadrilateral(mmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
-           NodeRefs(4),  1, nquads,ier)
+           NodeRefs(4),  Element % BoundaryInfo % Constraint, nquads,ier)
     CASE(504)
       ntetras = ntetras + 1
       CALL MMG3D_Set_tetrahedron(mmgMesh,NodeRefs(1), NodeRefs(2), NodeRefs(3), &
-           NodeRefs(4),  2, ntetras,ier)
+           NodeRefs(4),  Element % BodyID, ntetras,ier)
     CASE(706)
       nprisms = nprisms + 1
       CALL MMG3D_Set_Prism(mmgMesh, NodeRefs(1), NodeRefs(2), NodeRefs(3), &
-           NodeRefs(4), NodeRefs(5), NodeRefs(6), 2, nprisms,ier)
+           NodeRefs(4), NodeRefs(5), NodeRefs(6), Element % BodyID, nprisms,ier)
     CASE DEFAULT
     END SELECT
   END DO
