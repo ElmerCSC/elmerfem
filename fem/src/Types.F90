@@ -773,6 +773,8 @@ END INTERFACE
      LOGICAL :: EntityWeightsComputed 
      REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
          BodyWeight(:), MaterialWeight(:)
+
+     INTEGER, POINTER :: RePartition(:)
      
    END TYPE Mesh_t
 

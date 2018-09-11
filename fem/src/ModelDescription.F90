@@ -2059,7 +2059,7 @@ CONTAINS
    END SUBROUTINE SetCoordinateSystem
 !------------------------------------------------------------------------------
 
-
+   
 !------------------------------------------------------------------------------
 !> Function to read the complete Elmer model: sif file and mesh files.
 !------------------------------------------------------------------------------
@@ -2075,7 +2075,7 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model
 
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh
+    TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
     INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
@@ -2233,8 +2233,21 @@ CONTAINS
       ! @TODO: Don't forget funny define
       CALL ResetTimer('LoadMesh') 
 
-      Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
-          BoundariesOnly, numprocs, mype, Def_Dofs )
+      Single = ListGetLogical( Model % Simulation,'Serial Mesh', GotIt ) 
+      IF ( Single ) THEN
+        IF( ParEnv % MyPe == 0 ) THEN
+          SerialMesh => LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
+        ELSE
+          SerialMesh => AllocateMesh()
+        END IF
+        CALL PartitionMeshSerial( Model, SerialMesh, Model % Simulation )
+        ! Model % Meshes => DistributeMesh( Model, SerialMesh, Model % Simulation )
+      ELSE
+        Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+            BoundariesOnly, numprocs, mype, Def_Dofs )
+      END IF
+
+
       IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
         CALL FreeModel(Model)
         Model => NULL()
@@ -2304,7 +2317,6 @@ CONTAINS
          i = 0
       ELSE
          i = LEN_TRIM(MeshName)
-         ! DO WHILE( i>0 .AND. MeshName(i:i) /= '/')
          DO WHILE( i>0 )
            IF (MeshName(i:i) == '/') EXIT 
            i = i-1
