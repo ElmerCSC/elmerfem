@@ -20047,7 +20047,6 @@ CONTAINS
 
   END SUBROUTINE CutMesh
 
-  
 
   SUBROUTINE PartitionMeshSerial( Model, Mesh, Params ) 
 !------------------------------------------------------------------------------
@@ -20758,7 +20757,112 @@ CONTAINS
   END SUBROUTINE PartitionMeshSerial
   
 
- 
+  !Returns a table listing element adajacency in the given mesh
+  !Elements are considered adjacent if they share a face (in 3D) or
+  !an edge (in 2D)
+  SUBROUTINE GetElemAdjacency( Mesh )
+
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    !-----------------------------------------
+
+    INTEGER :: i,j,k,l,m,nn,ierr,NNodes,NBulk,NElnodes,sharecount,counter
+
+    TYPE(Element_t), POINTER :: Element,Element2
+    INTEGER(KIND=8), ALLOCATABLE :: vertloc(:),edgeloc(:),elneighs(:),ElemSharePart(:)
+    INTEGER(KIND=8), POINTER :: nullintptr=>NULL()
+    INTEGER, POINTER :: neighList(:)
+    LOGICAL :: Debug
+    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="GetElemAdjacency"
+
+    TYPE ElemTable_t
+       INTEGER :: counter=0
+       INTEGER, ALLOCATABLE :: Idx(:)
+    END TYPE ElemTable_T
+    TYPE(ElemTable_t),ALLOCATABLE :: NodeElems(:),ElemElems(:)
+
+    Debug = .TRUE.
+
+    NNodes = Mesh % NumberOfNodes
+    NBulk = Mesh % NumberOfBulkElements
+
+    !Efficiently (as possible?) build element adjacency
+    ALLOCATE(NodeElems(NNodes),ElemElems(NBulk))
+    DO i=1,NNodes
+      ALLOCATE(NodeElems(i) % Idx(100))
+      NodeElems(i) % counter = 0
+    END DO
+    DO i=1,NBulk
+      ALLOCATE(ElemElems(i) % Idx(200))
+      ElemElems(i) % counter = 0
+    END DO
+
+    IF(Debug) PRINT *,'finding node elements'
+    !Finding node elements
+    DO i=1,NBulk
+      Element => Mesh % Elements(i)
+      NElnodes = Element % TYPE % NumberOfNodes
+      DO j=1,NElnodes
+        nn = Element % Nodeindexes(j)
+        NodeElems(nn) % counter = NodeElems(nn) % counter + 1
+        NodeElems(nn) % Idx(NodeElems(nn) % counter) = i !Element % GElementIndex ?
+      END DO
+    END DO
+
+    IF(Debug) PRINT *,'finding element adjacency'
+    !Finding elem neighbours
+    DO i=1,NBulk
+      Element => Mesh % Elements(i)
+      NElnodes = Element % TYPE % NumberOfNodes
+      DO j=1,NElnodes
+        nn = Element % Nodeindexes(j)
+        DO k=1,NodeElems(nn) % counter
+          IF(NodeElems(nn) % Idx(k) == i) CYCLE
+          IF(ANY(ElemElems(i) % Idx(1:ElemElems(i) % counter) == NodeElems(nn) % Idx(k))) CYCLE
+          Element2 => Mesh % Elements(NodeElems(nn) % Idx(k))
+          sharecount = 0
+          DO l=1,NElNodes
+            DO m=1,Element2 % TYPE % NumberOfNodes
+              IF(Element % NodeIndexes(l) == Element2 % NodeIndexes(m)) sharecount = sharecount + 1
+            END DO
+          END DO
+          IF(sharecount > 3) CALL Fatal("Wat","Too many shared nodes")
+          IF(sharecount < 3) CYCLE
+          ElemElems(i) % counter = ElemElems(i) % counter + 1
+          ElemElems(i) % Idx(ElemElems(i) % counter) = NodeElems(nn) % Idx(k)
+        END DO
+      END DO
+    END DO
+
+    IF(Debug) PRINT *,' done finding' 
+
+    !Now need to do some interpartition comparison
+    !Which elements share a face across a partition?
+    !We only care about elements with 3 or more (depending on element type) 
+    ALLOCATE(ElemSharePart(NBulk),elneighs(100))
+    ElemSharePart = -1
+    DO i=1,NBulk
+      Element => Mesh % Elements(i)
+      NElNodes = Element % TYPE % NumberOfNodes
+
+      IF(COUNT(Mesh % ParallelInfo % INTERFACE(Element % NodeIndexes(1:NElNodes))) < 3) CYCLE
+      IF(Debug) PRINT *,'DEBUG Elem ',i,' may be interface'
+      elneighs = 0
+      counter = 0
+      DO j=1,NElNodes
+        NeighList => Mesh % ParallelInfo % NeighbourList(Element % NodeIndexes(j)) % Neighbours
+        DO k=1,SIZE(NeighList)
+          IF(NeighList(k) == ParEnv % MyPE) CYCLE
+          counter = counter + 1
+          elneighs(counter) = NeighList(k)
+        END DO
+      END DO
+      IF(Debug) PRINT *,ParEnv % MyPE, 'Debug elneighs: ',elneighs(1:counter)
+    END DO
+
+  END SUBROUTINE GetElemAdjacency
+
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
 !------------------------------------------------------------------------------
