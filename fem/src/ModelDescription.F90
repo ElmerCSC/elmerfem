@@ -2233,20 +2233,24 @@ CONTAINS
       ! @TODO: Don't forget funny define
       CALL ResetTimer('LoadMesh') 
 
-      Single = ListGetLogical( Model % Simulation,'Serial Mesh', GotIt ) 
+      Single = ListGetLogical( Model % Simulation,'Partition Mesh', GotIt ) 
       IF ( Single ) THEN
+        IF( ParEnv % PEs == 1 ) THEN
+          CALL Warn('LoadMesh','Why perform partitioning in serial case?')
+        END IF
         IF( ParEnv % MyPe == 0 ) THEN
           SerialMesh => LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
+          CALL PartitionMeshSerial( Model, SerialMesh, Model % Simulation )
         ELSE
           SerialMesh => AllocateMesh()
         END IF
-        CALL PartitionMeshSerial( Model, SerialMesh, Model % Simulation )
-        ! Model % Meshes => DistributeMesh( Model, SerialMesh, Model % Simulation )
+
+        Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
       ELSE
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs )
       END IF
-
+      
 
       IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
         CALL FreeModel(Model)

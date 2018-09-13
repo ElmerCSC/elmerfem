@@ -774,7 +774,7 @@ END INTERFACE
      REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
          BodyWeight(:), MaterialWeight(:)
 
-     INTEGER, POINTER :: RePartition(:)
+     INTEGER, POINTER :: RePartition(:) => NULL()
      
    END TYPE Mesh_t
 
