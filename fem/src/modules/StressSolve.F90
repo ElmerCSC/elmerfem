@@ -63,7 +63,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       CALL ListAddInteger( SolverParams, 'Variable DOFs', dim )
       CALL ListAddString( SolverParams, 'Variable', 'Displacement' )
     END IF
-    CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
+    IF(.NOT.ListCheckPresent( SolverParams, 'Time derivative order') ) &
+      CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
     IF( .NOT. ListCheckPresent( SolverParams,'Displace Mesh At Init') ) THEN
       CALL ListAddLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
@@ -1141,9 +1142,14 @@ CONTAINS
 !      If time dependent simulation, add mass matrix to global 
 !      matrix and global RHS vector
 !------------------------------------------------------------------------------
+       
        IF ( .NOT. (ConstantBulkMatrix .OR. ConstantBulkSystem .OR. ConstantSystem) ) THEN
          IF ( Transient .AND. .NOT. EigenOrHarmonicAnalysis() ) THEN
-            CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+            IF( GetInteger( GetSolverParams(), 'Time derivative order', Found) == 2 ) THEN
+              CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+            ELSE
+              CALL Default1stOrderTime( DAMP, STIFF, FORCE )
+            END IF
          END IF
        END IF
 
@@ -1301,8 +1307,12 @@ CONTAINS
 
           IF ( .NOT. (ConstantSystem .OR. ConstantBulkSystem .OR. ConstantBulkMatrix ) ) THEN
             IF ( Transient .AND. .NOT.EigenOrHarmonicAnalysis() )  THEN
-               MASS = 0.0d0
-               CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+              IF( GetInteger( GetSolverParams(), 'Time derivative order', Found) == 2 ) THEN
+                 MASS = 0.0d0
+                 CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+              ELSE
+                 CALL Default1stOrderTime( DAMP, STIFF, FORCE )
+              END IF
             END IF
           END IF
 
@@ -1506,7 +1516,7 @@ CONTAINS
      CALL ListSetNameSpace('stress:')
 
      n = MAX( Mesh % MaxElementDOFs, Mesh % MaxElementNodes )
-     ALLOCATE( Indexes(n), LocalDisplacement(3,n), &
+     ALLOCATE( Indexes(n), LocalDisplacement(4,n), &
          MASS(n,n), FORCE(6*n), &
          SFORCE(6*n), &
          Basis(n), dBasisdx(n,3) )
@@ -1655,7 +1665,7 @@ CONTAINS
           CALL LocalStress( Stress, Strain, PoissonRatio, &
               ElasticModulus, HeatExpansionCoeff, LocalTemperature, &
               Isotropic, CSymmetry, PlaneStress, LocalDisplacement, &
-              Basis, dBasisdx, Nodes, dim, n, nd )
+              Basis, dBasisdx, Nodes, dim, n, nd, .TRUE. )
 
           DO p=1,nd
             DO q=1,nd

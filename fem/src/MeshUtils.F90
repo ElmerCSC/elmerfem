@@ -16113,7 +16113,7 @@ CONTAINS
     REAL(KIND=dp) :: Tolerance
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
-    INTEGER :: i,j,k,n,ii,jj,dim, nsize, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
+    INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
 	UpHit, DownHit, bc_ind
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
@@ -16165,29 +16165,36 @@ CONTAINS
           CALL Info('DetectExtrudedStructure',&
               'Using variable as mask: '//TRIM(VarName),Level=8)
         END IF
-      END IF
+      END IF      
     END IF
 
+    nnodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
       nsize = MAXVAL( MaskPerm ) 
       WRITE(Message,'(A,I8)') 'Applying mask of size:',nsize
       CALL Info('DetectExtrudedStructure',Message,Level=8)
     ELSE
-      nsize = Mesh % NumberOfNodes
+      nsize = nnodes
       CALL Info('DetectExtrudedStructure','Applying mask to the whole mesh',Level=8)
     END IF 
 
     CoordTransform = ListGetString(Params,'Mapping Coordinate Transformation',DoCoordTransform )
     IF( DoCoordTransform .OR. MaskExists) THEN
-      NULLIFY( Values )
-      ALLOCATE( Values( nsize ) )
-      Values = 0.0_dp
-      IF( MaskExists ) THEN
-        CALL VariableAdd( Mesh % Variables, Mesh, Solver,'Extruded Coordinate',1,Values, MaskPerm)
-      ELSE
-        CALL VariableAdd( Mesh % Variables, Mesh, Solver,'Extruded Coordinate',1,Values)
-      END IF
       Var => VariableGet( Mesh % Variables,'Extruded Coordinate')
+      IF( ASSOCIATED( Var ) ) THEN
+        CALL Info('DetectExtrudedStructure','Reusing > Extruded Coordinate < variable',Level=12 )
+        Values => Var % Values        
+      ELSE
+        NULLIFY( Values )
+        ALLOCATE( Values( nsize ) )
+        Values = 0.0_dp
+        IF( MaskExists ) THEN
+          CALL VariableAdd( Mesh % Variables, Mesh, Solver,'Extruded Coordinate',1,Values, MaskPerm)
+        ELSE
+          CALL VariableAdd( Mesh % Variables, Mesh, Solver,'Extruded Coordinate',1,Values)
+        END IF
+        Var => VariableGet( Mesh % Variables,'Extruded Coordinate')
+      END IF
     ELSE IF( ActiveDirection == 1 ) THEN
       Var => VariableGet( Mesh % Variables,'Coordinate 1')
     ELSE IF( ActiveDirection == 2 ) THEN
@@ -16199,7 +16206,10 @@ CONTAINS
     IF( MaskExists .OR. DoCoordTransform) THEN
       DO i=1,Mesh % NumberOfNodes
         j = i
-	IF( MaskExists ) j = MaskPerm(i)
+	IF( MaskExists ) THEN
+          j = MaskPerm(i)
+          IF( j == 0 ) CYCLE
+        END IF
         Vector(1) = Mesh % Nodes % x(i)
 	Vector(2) = Mesh % Nodes % y(i)
 	Vector(3) = Mesh % Nodes % z(i)
@@ -16210,12 +16220,12 @@ CONTAINS
       END DO
     END IF
     IF( PRESENT( ExtVar ) ) ExtVar => Var
-
+    
     ! Check which direction is active
     !---------------------------------------------------------------------
     UpActive = PRESENT( UpNodePointer) .OR. PRESENT ( TopNodePointer ) 
     DownActive = PRESENT( DownNodePointer) .OR. PRESENT ( BotNodePointer ) 
-
+    
     IF( PRESENT( NumberOfLayers) .OR. PRESENT( NodeLayer ) ) THEN
       UpActive = .TRUE.
       DownActive = .TRUE.
@@ -16230,20 +16240,29 @@ CONTAINS
     !------------------------------------------------------------------------
     IF( UpActive ) THEN
       ALLOCATE(TopPointer(nsize),UpPointer(nsize))
-      DO i=1,nsize
-        TopPointer(i) = i
-        UpPointer(i) = i
+      DO i=1,nnodes
+        j = i
+        IF( MaskExists ) THEN
+          j = MaskPerm(i)
+          IF( j == 0 ) CYCLE 
+        END IF
+        TopPointer(j) = i
+        UpPointer(j) = i
       END DO
     END IF
     IF( DownActive ) THEN
       ALLOCATE(BotPointer(nsize),DownPointer(nsize))
-      DO i=1,nsize
-        BotPointer(i) = i
-        DownPointer(i) = i
+      DO i=1,nnodes        
+        j = i
+        IF( MaskExists ) THEN
+          j = MaskPerm(i)
+          IF( j == 0 ) CYCLE 
+        END IF
+        BotPointer(j) = i
+        DownPointer(j) = i
       END DO
     END IF
-
-
+    
     CALL Info('DetectExtrudedStructure','determine up and down pointers',Level=9)
 
     ! Determine the up and down pointers using dot product as criterion
@@ -16252,55 +16271,66 @@ CONTAINS
     ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
     
     DO elem = 1,Mesh % NumberOfBulkElements      
-
+      
       Element => Mesh % Elements(elem)
       NodeIndexes => Element % NodeIndexes
       CurrentModel % CurrentElement => Element
-
+      
       n = Element % TYPE % NumberOfNodes
       Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
       Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
       Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-
+      
       ! This is probably a copy-paste error, I comment it away for time being.   
       ! IF (.NOT. (Element % PartIndex == Parenv % Mype) ) CYCLE
 
       IF( MaskExists ) THEN
         IF( ANY(MaskPerm(NodeIndexes) == 0) ) CYCLE
       END IF
-
+      
       DO i=1,n
         ii = NodeIndexes(i)
+        
         Vector(1) = Nodes % x(i)
-	Vector(2) = Nodes % y(i)
-	Vector(3) = Nodes % z(i)
-	
+	Vector(2) = Nodes % y(i) 
+        Vector(3) = Nodes % z(i)
+        
  	IF( DoCoordTransform ) THEN
           CALL CoordinateTransformationNodal( CoordTransform, Vector )
         END IF
-
+  
         DO j=i+1,n
           jj = NodeIndexes(j)
-
+          
 	  Vector2(1) = Nodes % x(j)
-	  Vector2(2) = Nodes % y(j)
-	  Vector2(3) = Nodes % z(j)
+          Vector2(2) = Nodes % y(j)
+          Vector2(3) = Nodes % z(j)
 
 	  IF( DoCoordTransform ) THEN
             CALL CoordinateTransformationNodal( CoordTransform, Vector2 )
           END IF
-
+          
           ElemVector = Vector2 - Vector
 
           Length = SQRT(SUM(ElemVector*ElemVector))
           DotPro = SUM(ElemVector * UnitVector) / Length
-
+          
           IF(DotPro > 1.0_dp - Eps) THEN 
-            IF( UpActive ) UpPointer(ii) = jj
-            IF( DownActive ) DownPointer(jj) = ii
+            IF( MaskExists ) THEN
+              IF( UpActive ) UpPointer(MaskPerm(ii)) = jj
+              IF( DownActive ) DownPointer(MaskPerm(jj)) = ii              
+            ELSE
+              IF( UpActive ) UpPointer(ii) = jj
+              IF( DownActive ) DownPointer(jj) = ii
+            END IF
           ELSE IF(DotPro < Eps - 1.0_dp) THEN
-            IF( DownActive ) DownPointer(ii) = jj
-            IF( UpActive ) UpPointer(jj) = ii
+            IF( MaskExists ) THEN
+              IF( DownActive ) DownPointer(MaskPerm(ii)) = jj
+              IF( UpActive ) UpPointer(MaskPerm(jj)) = ii
+            ELSE
+              IF( DownActive ) DownPointer(ii) = jj
+              IF( UpActive ) UpPointer(jj) = ii              
+            END IF
           END IF
         END DO
       END DO
@@ -16315,30 +16345,48 @@ CONTAINS
     DO Rounds = 1, nsize
       DownHit = 0
       UpHit = 0
-      DO i=1,nsize
+      
+      DO i=1,nnodes
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0) CYCLE
-        END IF
-        IF( UpActive ) THEN
-          j = UpPointer(i)
-          IF( TopPointer(i) /= TopPointer( j ) ) THEN
-            UpHit = UpHit + 1
-            TopPointer(i) = TopPointer( j )
+          IF( UpActive ) THEN
+            j = UpPointer(MaskPerm(i))
+            IF( TopPointer(MaskPerm(i)) /= TopPointer(MaskPerm(j)) ) THEN
+              UpHit = UpHit + 1
+              TopPointer(MaskPerm(i)) = TopPointer(MaskPerm(j))
+            END IF
           END IF
-        END IF
-        IF( DownActive ) THEN
-          j = DownPointer(i)
-          IF( BotPointer(i) /= BotPointer( j ) ) THEN
-	    DownHit = DownHit + 1
-            BotPointer(i) = BotPointer( j )
+          IF( DownActive ) THEN
+            j = DownPointer(MaskPerm(i))
+            IF( BotPointer(MaskPerm(i)) /= BotPointer(MaskPerm(j)) ) THEN
+              DownHit = DownHit + 1
+              BotPointer(MaskPerm(i)) = BotPointer(MaskPerm(j))
+            END IF
+          END IF
+        ELSE
+          IF( UpActive ) THEN
+            j = UpPointer(i)
+            IF( TopPointer(i) /= TopPointer(j) ) THEN
+              UpHit = UpHit + 1
+              TopPointer(i) = TopPointer( j )
+            END IF
+          END IF
+          IF( DownActive ) THEN
+            j = DownPointer(i)
+            IF( BotPointer(i) /= BotPointer( j ) ) THEN
+              DownHit = DownHit + 1
+              BotPointer(i) = BotPointer( j )
+            END IF
           END IF
         END IF
       END DO
+      
       IF( UpHit == 0 .AND. DownHit == 0 ) EXIT
     END DO
+
     ! The last round is always a check
     Rounds = Rounds - 1
-
+    
     WRITE( Message,'(A,I0,A)') 'Layered structure detected in ',Rounds,' cycles'
     CALL Info('DetectExtrudedStructure',Message,Level=9)
     IF( Rounds == 0 ) THEN
@@ -16346,32 +16394,30 @@ CONTAINS
       CALL Fatal('DetectExtrudedStructure','Zero rounds implies unsuccesfull operation')
     END IF
 
-
     ! Compute the number of layers. The Rounds above may in some cases 
     ! be too small. Here just one layer is used to determine the number
     ! of layers to save some time.
     !------------------------------------------------------------------
     IF( PRESENT( NumberOfLayers ) ) THEN
       CALL Info('DetectExtrudedStructure','compute the number of layers',Level=9)    
-      DO i=1,nsize
-        IF( MaskExists ) THEN
-          IF( MaskPerm(i) == 0 ) CYCLE
-        END IF
-        EXIT
-      END DO
 
-      j = BotPointer(i)
+      j = BotPointer(1)      
+      CALL Info('DetectExtrudedStructure','Starting from node: '//TRIM(I2S(j)),Level=15)
 
       NumberOfLayers = 0
       DO WHILE(.TRUE.)
-        k = UpPointer(j)
+        jj = j 
+        IF( MaskExists ) THEN
+          jj = MaskPerm(j)
+        END IF
+        k = UpPointer(jj)
         IF( k == j ) THEN
           EXIT
         ELSE
           NumberOfLayers = NumberOfLayers + 1
           j = k
         END IF
-      END DO      
+      END DO
 
       IF( NumberOfLayers < Rounds ) THEN
         WRITE( Message,'(A,I0,A,I0)') 'There seems to be varying number of layers: ',&
@@ -16394,31 +16440,42 @@ CONTAINS
       Layer = 1
       IF( MaskExists ) THEN
         WHERE( MaskPerm == 0 ) Layer = 0
-      END IF
-      
-      DO i=1,nsize
-        IF( MaskExists ) THEN
+        
+        DO i=1,nnodes
           IF( MaskPerm(i) == 0 ) CYCLE
-        END IF
-        Rounds = 1
-        j = BotPointer(i)
-        Layer(j) = Rounds
-        DO WHILE(.TRUE.)
-          k = UpPointer(j)
-          IF( k == j ) EXIT          
-          Rounds = Rounds + 1
-          j = k
-          Layer(j) = Rounds
+          Rounds = 1
+          j = BotPointer(MaskPerm(i))
+          Layer(MaskPerm(j)) = Rounds
+          DO WHILE(.TRUE.)
+            k = UpPointer(MaskPerm(j))
+            IF( k == j ) EXIT          
+            Rounds = Rounds + 1
+            j = k
+            Layer(MaskPerm(j)) = Rounds
+          END DO
         END DO
-      END DO
-      
+      ELSE        
+        DO i=1,nsize
+          Rounds = 1
+          j = BotPointer(i)
+          Layer(j) = Rounds
+          DO WHILE(.TRUE.)
+            k = UpPointer(j)
+            IF( k == j ) EXIT          
+            Rounds = Rounds + 1
+            j = k
+            Layer(j) = Rounds
+          END DO
+        END DO
+      END IF
+        
       NodeLayer => Layer
       WRITE(Message,'(A,I0,A,I0,A)') 'Layer range: [',MINVAL(Layer),',',MAXVAL(Layer),']'
       CALL Info('DetectExtrudedStructure',Message)
       NULLIFY(Layer)
     END IF
 
-
+    
     IF( PRESENT( MidNodePointer ) ) THEN
       ALLOCATE( MidPointer( nsize ) )
       MidPointer = 0 
@@ -16443,8 +16500,8 @@ CONTAINS
       END DO
 
       IF( MidLayerExists ) THEN
-        CALL Info('DetectExtrudedStructure','determine mid pointers',Level=9)
-
+        CALL Info('DetectExtrudedStructure','determine mid pointers',Level=9)       
+                
         DO Rounds = 1, nsize
           DownHit = 0
           UpHit = 0
@@ -16452,19 +16509,35 @@ CONTAINS
             IF( MaskExists ) THEN
               IF( MaskPerm(i) == 0) CYCLE
             END IF
+
+            ! We can only start from existing mid pointer
             IF( MidPointer(i) == 0 ) CYCLE
             IF( UpActive ) THEN
               j = UpPointer(i)
-              IF( MidPointer(j) == 0 ) THEN
-                UpHit = UpHit + 1
-                MidPointer(j) = MidPointer(i)
+              IF( MaskExists ) THEN
+                IF( MidPointer(MaskPerm(j)) == 0 ) THEN
+                  UpHit = UpHit + 1
+                  MidPointer(MaskPerm(j)) = MidPointer(MaskPerm(i))
+                END IF
+              ELSE
+                IF( MidPointer(j) == 0 ) THEN
+                  UpHit = UpHit + 1
+                  MidPointer(j) = MidPointer(i)
+                END IF
               END IF
             END IF
             IF( DownActive ) THEN
               j = DownPointer(i)
-              IF( MidPointer(j) == 0 ) THEN
-                DownHit = DownHit + 1
-                MidPointer(j) = MidPointer(i)
+              IF( MaskExists ) THEN
+                IF( MidPointer(MaskPerm(j)) == 0 ) THEN
+                  DownHit = DownHit + 1
+                  MidPointer(MaskPerm(j)) = MidPointer(MaskPerm(i))
+                END IF           
+              ELSE
+                IF( MidPointer(j) == 0 ) THEN
+                  DownHit = DownHit + 1
+                  MidPointer(j) = MidPointer(i)
+                END IF
               END IF
             END IF
           END DO
@@ -16488,11 +16561,21 @@ CONTAINS
       TopNodes = 0
       MinTop = HUGE( MinTop ) 
       MaxTop = -HUGE( MaxTop )
-      DO i=1,nsize
-        IF(TopPointer(i) == i) THEN
-          MinTop = MIN( MinTop, Var % Values(i) )
-          MaxTop = MAX( MaxTop, Var % Values(i) )
-          TopNodes = TopNodes + 1
+      DO i=1,nnodes
+        IF( MaskExists ) THEN
+          j = MaskPerm(i) 
+          IF( j == 0 ) CYCLE
+          IF(TopPointer(j) == i) THEN
+            MinTop = MIN( MinTop, Var % Values(j) )
+            MaxTop = MAX( MaxTop, Var % Values(j) )
+            TopNodes = TopNodes + 1
+          END IF
+        ELSE
+          IF(TopPointer(i) == i) THEN
+            MinTop = MIN( MinTop, Var % Values(i) )
+            MaxTop = MAX( MaxTop, Var % Values(i) )
+            TopNodes = TopNodes + 1
+          END IF
         END IF
       END DO
     END IF
@@ -16501,16 +16584,24 @@ CONTAINS
       BotNodes = 0
       MinBot = HUGE( MinBot ) 
       MaxBot = -HUGE( MaxBot )
-      DO i=1,nsize
-        IF(BotPointer(i) == i) THEN
-          MinBot = MIN( MinBot, Var % Values(i))
-          MaxBot = MAX( MaxBot, Var % Values(i))
-          BotNodes = BotNodes + 1
+      DO i=1,nnodes
+        IF( MaskExists ) THEN
+          j = MaskPerm(i)
+          IF( j == 0 ) CYCLE
+          IF( BotPointer(j) == i) THEN
+            MinBot = MIN( MinBot, Var % Values(j))
+            MaxBot = MAX( MaxBot, Var % Values(j))
+            BotNodes = BotNodes + 1
+          END IF
+        ELSE          
+          IF(BotPointer(i) == i) THEN
+            MinBot = MIN( MinBot, Var % Values(i))
+            MaxBot = MAX( MaxBot, Var % Values(i))
+            BotNodes = BotNodes + 1
+          END IF
         END IF
       END DO
     END IF
-
-
 
 
     ! Return the requested pointer structures, otherwise deallocate
@@ -16560,6 +16651,7 @@ CONTAINS
       CALL Info('DetectExtrudedStructure',Message)
     END IF
 
+    
 
   CONTAINS
     

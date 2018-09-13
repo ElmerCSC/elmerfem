@@ -41,6 +41,8 @@ SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
+SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
+
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
 if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
@@ -85,6 +87,18 @@ IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
   IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
     MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
   ENDIF()
+ENDIF()
+
+IF(WITH_LUA)
+  IF(NOT(${USE_SYSTEM_LUA}))
+    ADD_SUBDIRECTORY(${CMAKE_CURRENT_SOURCE_DIR}/contrib/lua-5.1.5/)
+    set(LUA_LIBRARIES luaelmer CACHE STRING "")
+    set(LUA_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/contrib/lua-5.1.5/src CACHE STRING "")
+  ELSE()
+    FIND_PACKAGE(Lua51 REQUIRED)
+  ENDIF()
+  SET(HAVE_LUA TRUE)
+  MARK_AS_ADVANCED(HAVE_LUA)
 ENDIF()
 
 IF(WITH_OpenMP)
@@ -389,6 +403,11 @@ IF(WITH_ELMERPOST)
   MESSAGE(STATUS "------------------------------------------------")
   ADD_SUBDIRECTORY(post)
 ENDIF(WITH_ELMERPOST)
+
+IF(HAVE_LUA)
+  MESSAGE(STATUS "  Building Lua")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(HAVE_LUA)
 
 # Packaging
 if(NOT BYPASS_CPACK)

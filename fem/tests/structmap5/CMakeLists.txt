@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO layers.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(structmap5)
-ADD_ELMER_LABEL(structmap5 quick)
+ADD_ELMER_TEST(structmap5 LABELS quick useextrude)

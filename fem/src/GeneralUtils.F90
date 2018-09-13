@@ -34,9 +34,9 @@
 ! *
 ! *****************************************************************************/
 
-#ifndef USE_ISO_C_BINDINGS
+! #ifndef USE_ISO_C_BINDINGS
 #include "../config.h"
-#endif
+! #endif
 
 !> \ingroup ElmerLib
 !> \}
@@ -49,6 +49,10 @@ MODULE GeneralUtils
 USE Types
 #ifdef USE_ISO_C_BINDINGS
 USE LoadMod
+#endif
+
+#ifdef HAVE_LUA
+USE, INTRINSIC :: ISO_C_BINDING
 #endif
 
 IMPLICIT NONE
@@ -987,6 +991,81 @@ CONTAINS
        i = i + 1
      END DO
 
+#ifdef HAVE_LUA
+
+     block 
+       integer :: lstat
+       character(kind=c_char, len=:), pointer :: lua_result
+       integer :: result_len
+       logical :: closed_region, first_bang
+       closed_region = .false.
+       first_bang = .true.
+       i = INDEX( readstr(1:inlen), '#' )
+
+       IF ( i>0 .AND. i<inlen ) THEN
+         m = i
+         copystr(i:inlen) = readstr(i:inlen)
+         DO WHILE(i<=inlen)
+           IF ( copystr(i:i) == '#' ) THEN
+             DO j=i+1,inlen-1
+               IF ( copystr(j:j) == '#' ) EXIT
+             END DO
+             ninlen = j - i
+
+             ! Initialize variables for each copy of Lua interpreter separately
+
+             !$OMP PARALLEL DEFAULT(NONE) &
+             !$OMP SHARED(copystr, i, matcstr, ninlen, inlen, closed_region, first_bang, j) &
+             !$OMP PRIVATE(tcmdstr, tninlen, lstat, result_len, lua_result) 
+
+             tninlen = ninlen
+             tcmdstr = copystr(i+1:inlen)
+
+             IF(tcmdstr(tninlen:tninlen) == '#') then 
+               closed_region = .TRUE.
+             ELSE
+               closed_region = .FALSE.
+             END IF
+
+             IF(closed_region) THEN
+               lstat = lua_dostring( LuaState, &
+                   'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
+             ELSE
+               IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, dont do 'return tostring(..)'.
+                                                                   ! Instead, just execute the line in the lua interpreter
+                 lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+               ELSE ! 'abc = # <luacode>' case, oneliners only
+                 lstat = lua_dostring( LuaState, &
+                     'return tostring('// tcmdstr(1:tninlen) // ')'//c_null_char, 1)
+               END IF
+             END IF
+             lua_result => lua_popstring(LuaState, result_len)
+
+             !$OMP SINGLE 
+             matcstr(1:result_len) = lua_result(1:result_len)
+             ninlen = result_len
+             !$OMP END SINGLE
+
+             !$OMP END PARALLEL
+
+             DO k=1,ninlen
+               readstr(m:m) = matcstr(k:k)
+               m = m + 1
+             END DO
+             i = j+1
+           ELSE
+             readstr(m:m) = copystr(i:i)
+             i = i + 1
+             m = m + 1
+           END IF
+           first_bang = .false.
+         END DO
+         IF ( m <= inlen ) readstr(m:inlen) = ' '
+         inlen = m-1
+       END IF
+     end block
+#endif
+
      i = INDEX( readstr(1:inlen), '$' )
      IF ( i>0 .AND. i<inlen ) THEN
        m = i
@@ -1097,7 +1176,7 @@ CONTAINS
           i = i + 1
           k = k + 1
         END DO
- 
+
         IF ( k <= outlen ) str(k:k) = ' '
         k = k + 1
 

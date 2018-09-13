@@ -240,6 +240,9 @@ END INTERFACE
 #ifdef HAVE_MKL
          CALL Info( 'MAIN', ' Intel MKL linked in.' )
 #endif
+#ifdef HAVE_LUA
+         CALL Info( 'MAIN', ' Lua interpreted linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
@@ -1361,7 +1364,10 @@ END INTERFACE
      Mesh => CurrentModel % Meshes
      DO WHILE( ASSOCIATED( Mesh ) )
        
+       CALL SetCurrentMesh( CurrentModel, Mesh )
+
        IF( InfoActive( 20 ) ) THEN
+         PRINT *,'InitCond mesh:',TRIM(Mesh % Name), Mesh % MeshDim, Mesh % NumberOfNodes 
          Var => Mesh % Variables
          DO WHILE( ASSOCIATED(Var) ) 
            IF( ListCheckPresentAnyIC( CurrentModel, Var % Name ) ) THEN
@@ -1372,8 +1378,6 @@ END INTERFACE
        END IF
 
        
-       CALL SetCurrentMesh( CurrentModel, Mesh )
-
        m = Mesh % MaxElementDofs
        n = Mesh % MaxElementNodes      
        ALLOCATE( Indexes(m), Work(m) , Basis(m), Nodes % x(n), Nodes % y(n), Nodes % z(n) )

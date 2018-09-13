@@ -1540,6 +1540,52 @@ CONTAINS
                   END SELECT
                END IF
 
+#ifdef HAVE_LUA
+               ! TODO: Here comes the Lua part. Actually create the lua functions here by calling
+               !       some routine that transforms str(str_beg+4:) to lua function. But that function needs a name.
+             ELSE IF( SEQL(str(str_beg:), 'lua ') ) THEN
+               
+               IF ( .NOT. ScanOnly ) THEN 
+                 SELECT CASE ( TYPE )
+                 CASE (LIST_TYPE_CONSTANT_SCALAR )
+                   call Fatal('ModelDescription', 'Constant expressions are not supported with Lua. &
+                       Please provide at least a dummy argument.')
+
+                   IF ( SizeGiven ) THEN
+                     CALL ListAddConstRealArray( List, Name, N1, N2, &
+                         ATx(1:N1,1:N2,1), Proc, str(str_beg+4:) )
+                   ELSE
+                     CALL ListAddConstReal(List, Name, Val, Proc, &
+                         str(str_beg+4:))
+                   END IF
+
+                 CASE( LIST_TYPE_VARIABLE_SCALAR )
+                   block
+                     TYPE(ValueListEntry_t), POINTER :: v_ptr
+                     CHARACTER(len=:, kind=c_char), pointer :: lua_fname
+                     integer :: fname_len, lstat
+                     !$OMP PARALLEL default(shared)
+                     !$OMP CRITICAL
+                     lstat = lua_dostring(LuaState, &
+                         'return create_new_fun("'//trim(name)//'", "' // &
+                         trim(str(str_beg+4:)) // '")'// c_null_char, 1)
+                     lua_fname => lua_popstring(LuaState, fname_len)
+                     !$OMP END CRITICAL
+                     !$OMP END PARALLEL
+                     IF ( SizeGiven ) THEN 
+                       CALL ListAddDepRealArray( List, Name, Depname, 1, Att, &
+                           N1, N2, Atx(1:N1, 1:N2, 1:n), proc, lua_fname(1:fname_len) // c_null_char)
+                     ELSE
+                       CALL ListAddDepReal( List, Name, Depname, 1, ATt, ATx, &
+                           Proc, lua_fname(1:fname_len) // c_null_char)
+                     END IF
+                     v_ptr => ListFind(list, name)
+                     v_ptr % LuaFun = .true.
+                   end block
+                   END SELECT
+
+               END IF
+#endif
              ELSE
 
                SELECT CASE( TYPE )
@@ -1598,8 +1644,10 @@ CONTAINS
                    monotone = SEQL(str(str_beg+6:),'monotone')
                  ELSE
                    monotone = SEQL(str(str_beg:),'monotone')
-                   IF( Monotone ) Cubic = SEQL(str(str_beg+9:),'cubic')
-                   IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                   IF( Monotone ) THEN
+                     Cubic = SEQL(str(str_beg+9:),'cubic')
+                     IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                   END IF
                  END IF
 
                  n = 0
@@ -2065,6 +2113,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION LoadModel( ModelName,BoundariesOnly,numprocs,mype,MeshIndex) RESULT( Model )
 !------------------------------------------------------------------------------
+    USE SParIterGlobals
     IMPLICIT NONE
 
     CHARACTER(LEN=*) :: ModelName
@@ -2106,6 +2155,41 @@ CONTAINS
     Model % NumberOfSolvers    = 0
     Model % NumberOfMaterials  = 0
     Model % NumberOfBodyForces = 0
+
+#ifdef HAVE_LUA
+    BLOCK
+      INTEGER :: lstat, ompthread
+      CHARACTER(LEN=256) :: txcmd
+
+      !$OMP PARALLEL Shared(parenv, ModelName) Private(txcmd, ompthread, lstat) Default(none)
+      !$OMP CRITICAL
+      LuaState = lua_init()
+      IF(.NOT. LuaState % Initialized) THEN
+        CALL Fatal('ModelDescription', 'Failed to initialize Lua subsystem.')
+      END IF
+
+      ! Store mpi task and omp thread ids in a table
+      LSTAT = lua_dostring(LuaState, 'ELMER_PARALLEL = {}' // c_null_char)
+      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ', parenv % mype
+      lstat = lua_dostring(LuaState, txcmd // c_null_char)
+
+      ompthread = 1
+      !$ ompthread = omp_get_thread_num()
+      WRITE(txcmd,'(A,I0)') 'ELMER_PARALLEL["thread"] = ', ompthread
+      lstat = lua_dostring(LuaState, txcmd // c_null_char)
+      
+      WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
+      lstat = lua_dostring(LuaState, &
+          'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
+
+      ! Execute lua parts 
+      lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
+      lstat = lua_dostring(LuaState,  trim(txcmd)// c_null_char)
+      LuaState % tx => lua_getusertable(LuaState, 'tx'//c_null_char)
+      !$OMP END CRITICAL
+      !$OMP END PARALLEL
+    END BLOCK
+#endif
 
     INQUIRE( Unit=InFileUnit, OPENED=OpenFile )
     IF ( .NOT. OpenFile ) OPEN( Unit=InFileUnit, File=Modelname, STATUS='OLD' )
@@ -3293,7 +3377,7 @@ CONTAINS
     IF( RestartVariableList ) THEN
       CALL Info('LoadRestartFile','Reading only variables given by: Restart Variable i',Level=10)
     ELSE
-      CALL Info('LoadRestartFile','Reading all variables (if not wanted use >Restart Variable i<',Level=10)      
+      CALL Info('LoadRestartFile','Reading all variables (if not wanted use >Restart Variable i< )',Level=10)      
     END IF
     
     Cont = .FALSE.
