@@ -20078,7 +20078,7 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh, NewMesh
     LOGICAL :: ParallelMesh, FreeOldMesh
-    
+     
     TYPE MeshPack_t
       INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfBoundaryElements
       LOGICAL, ALLOCATABLE :: NodeMask(:)
@@ -20092,7 +20092,8 @@ CONTAINS
     
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:), RecPack(:)
     INTEGER, POINTER :: NewPart(:)
-    INTEGER :: NoPartitions, newnodes, newnbdry, newnbulk, dim
+    INTEGER :: NoPartitions, newnodes, newnbdry, newnbulk, dim, minind, maxind
+    INTEGER, ALLOCATABLE :: GlobalToLocal(:)
     CHARACTER(*), PARAMETER :: FuncName = 'RedistributeMesh'
 
     
@@ -20467,12 +20468,10 @@ CONTAINS
       
       TYPE(Element_t), POINTER :: Element
       INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
-      INTEGER :: maxind,minind,gind,lind,rcount,icount,nbrdy,i1,i2
+      INTEGER :: gind,lind,rcount,icount,nbrdy,i1,i2
       LOGICAL :: CheckNeighbours, IsBulk
       TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
       TYPE(MeshPack_t), POINTER :: PPack
-      INTEGER, ALLOCATABLE :: GlobalToLocal(:)
-
 
       newnbulk = 0
       newnbdry = 0
@@ -20572,7 +20571,7 @@ CONTAINS
           END IF
         END DO
       END DO
-          
+      
       CALL Info('LocalNumberingMeshPieces','Combined number of nodes: '//TRIM(I2S(newnodes)),Level=8)
       
     END SUBROUTINE LocalNumberingMeshPieces
@@ -20589,11 +20588,10 @@ CONTAINS
       
       TYPE(Element_t), POINTER :: Element
       INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
-      INTEGER :: maxind,minind,gind,lind,rcount,icount
+      INTEGER :: gind,lind,rcount,icount
       LOGICAL :: CheckNeighbours, IsBulk
       TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
       TYPE(MeshPack_t), POINTER :: PPack
-      INTEGER, ALLOCATABLE :: GlobalToLocal(:)
       
       CheckNeighbours = .FALSE.
       IF( ParallelMesh ) THEN
@@ -20602,6 +20600,7 @@ CONTAINS
           NeighbourList => Mesh % ParallelInfo % NeighbourList
         END IF
       END IF
+
       
       DO part=1,ParEnv % PEs
         PPack => RecPack(part)         
@@ -20733,11 +20732,18 @@ CONTAINS
         IF( ALLOCATED( RecPack(i) % idata ) ) DEALLOCATE( RecPack(i) % idata )
         IF( ALLOCATED( RecPack(i) % idata ) ) DEALLOCATE( RecPack(i) % idata )
       END DO
+
+
+      ALLOCATE( NewMesh % ParallelInfo % GlobalDofs( newnodes ) )
+      DO i = minind, maxind
+        j = GlobalToLocal(i)
+        IF( j > 0 ) NewMesh % ParallelInfo % GlobalDofs(i) = j
+      END DO
+      DEALLOCATE( GlobalToLocal ) 
       
       CALL Info('PackMeshPieces','Finished unpacking and gluing mesh pieces',Level=8)
       
     END SUBROUTINE UnpackMeshPieces
-
  
     
   END FUNCTION RedistributeMesh
