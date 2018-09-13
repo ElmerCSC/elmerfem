@@ -20413,6 +20413,11 @@ CONTAINS
       n = SUM( RecPack(1:NoPartitions) % rcount )
       CALL Info('PackDataToSend','Number of real values to recieve: '//TRIM(I2S(n)),Level=8)
 
+
+      !PRINT *,'RecPack I:',ParEnv % MyPe, RecPack(1:NoPartitions) % icount
+      !PRINT *,'RecPack R:',ParEnv % MyPe, RecPack(1:NoPartitions) % rcount
+      !CALL FLUSH(6)
+      
       ! Allocate data sizes for recieving data
       !----------------------------------------
       DO i=1,NoPartitions 
@@ -20429,9 +20434,9 @@ CONTAINS
       DO i=1,NoPartitions 
         IF( i-1 == ParEnv % Mype ) CYCLE
         IF( SentPack(i) % icount > 5 ) THEN        
-          CALL MPI_SEND( SentPack(i) % idata, SentPack(i) % icount, MPI_INTEGER, i-1, &
+          CALL MPI_BSEND( SentPack(i) % idata, SentPack(i) % icount, MPI_INTEGER, i-1, &
               1002, ELMER_COMM_WORLD, ierr )
-          CALL MPI_SEND( SentPack(i) % rdata, SentPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
+          CALL MPI_BSEND( SentPack(i) % rdata, SentPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
               1003, ELMER_COMM_WORLD, ierr )          
         END IF
       END DO
