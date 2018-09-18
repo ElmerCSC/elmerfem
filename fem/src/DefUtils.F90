@@ -3073,6 +3073,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
     INTEGER :: NameSpaceI
+    LOGICAL :: LinearSystemTrialing
 
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
     
@@ -3081,13 +3082,19 @@ CONTAINS
     IF ( PRESENT( USolver ) ) Solver => USolver
 
     Params => GetSolverParams(Solver)
-    
-    NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
+
+    LinearSystemTrialing = ListGetLogical( Params,'Linear System Trialing', Found )
+    IF( LinearSystemTrialing ) THEN
+      NameSpaceI = 1
+    ELSE
+      NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
+    END IF
+      
     IF( NameSpaceI > 0 ) THEN
       CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
       CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
     END IF
-
+    
     IF( ListCheckPresent( Params, 'Dump system matrix') .OR. &
         ListCheckPresent( Params, 'Dump system RHS') ) THEN
       CALL Error('DefaultSolve','> Dump System Matrix < and > Dump System Rhs < are obsolite')
@@ -3110,7 +3117,7 @@ CONTAINS
     END IF
 
     
-    IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
+    IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver )
     END IF
 
@@ -3119,7 +3126,7 @@ CONTAINS
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
 
     
-    IF( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) THEN
+    IF( GetLogical(Params,'Linear System Solver Disabled',Found) ) THEN
       CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
       RETURN
     END IF
@@ -3134,7 +3141,22 @@ CONTAINS
     b => A % RHS
     SOL => x % Values
 
-    CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+10   CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+    
+    IF( LinearSystemTrialing ) THEN
+      IF( x % LinConverged <= 0 ) THEN
+        NameSpaceI = NameSpaceI + 1      
+        IF( .NOT. ListCheckPrefix( Params,'linsys'//TRIM(I2S(NameSpaceI)) ) ) THEN
+          CALL Fatal('DefaultSolve','Exhausted all linear system strategies!')
+        END IF
+        CALL ListPopNamespace()
+        CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
+        CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
+        GOTO 10
+      END IF
+    END IF
+    
+    
     
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
