@@ -11380,7 +11380,7 @@ END FUNCTION SearchNodeL
       CASE('block')
         CALL BlockSolveExt( A, x, b, Solver )
       CASE DEFAULT
-        CALL DirectSolver( A, x, b, Solver )
+        CALL DirectSolver( A, x, b, Solver )        
       END SELECT
     ELSE
       SELECT CASE(Method)
@@ -12350,6 +12350,8 @@ SUBROUTINE CondensateP( N, Nb, K, F, F1 )
     REAL(KIND=dp) :: Kbb(Nb,Nb), &
     Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
     INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
+
+    IF ( nb <= 0 ) RETURN
 
     Ldofs = (/ (i, i=1,n) /)
     Bdofs = (/ (i, i=n+1,n+nb) /)
