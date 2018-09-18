@@ -2317,6 +2317,48 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Just checks if there is a untreated keyword in the routine in the list.
+!> In case there is resturn a warning. 
+!------------------------------------------------------------------------------
+   SUBROUTINE ListUntreatedWarn( List, Name, Caller ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     CHARACTER(LEN=*), OPTIONAL :: Caller
+!------------------------------------------------------------------------------
+     IF( ListCheckPresent( List, Name ) ) THEN
+       IF( PRESENT( Caller ) ) THEN
+         CALL Warn(Caller,'Unused keyword in this routine: '//TRIM(Name))
+       ELSE
+         CALL Warn('ListUntreatedWarn','Untreated keyword in this routine: '//TRIM(Name))
+       END IF
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListUntreatedWarn
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Just checks if there is a untreated keyword in the routine in the list.
+!> In case there is resturn a Fatal. 
+!------------------------------------------------------------------------------
+   SUBROUTINE ListUntreatedFatal( List, Name, Caller ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     CHARACTER(LEN=*), OPTIONAL :: Caller
+!------------------------------------------------------------------------------
+     IF( ListCheckPresent( List, Name ) ) THEN
+       IF( PRESENT( Caller ) ) THEN
+         CALL Fatal(Caller,'Unused keyword in this routine: '//TRIM(Name))
+       ELSE
+         CALL Fatal('ListUntreatedFatal','Untreated keyword in this routine: '//TRIM(Name))
+       END IF
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListUntreatedFatal
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Just checks if a prefix is present in the list.
 !------------------------------------------------------------------------------
    FUNCTION ListCheckPrefix( List,Name ) RESULT(Found)
