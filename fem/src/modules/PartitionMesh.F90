@@ -14,6 +14,8 @@
    SUBROUTINE PartitionMeshSolver( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
+     USE MeshPartition
+
      IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Solver_t) :: Solver          !< Linear & nonlinear equation solver options
