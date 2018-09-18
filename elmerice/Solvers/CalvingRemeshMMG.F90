@@ -34,7 +34,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   USE MeshUtils
   USE CalvingGeometry
-  USE MMG3DTools
+  USE MeshPartition
+  USE MeshRemeshing
 
   IMPLICIT NONE
 

@@ -176,6 +176,35 @@ IF(WITH_Trilinos)
   ENDIF()
 ENDIF()
 
+
+# ZOLTAN Remeshing
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Mesh (re)partitioning looking for [Zoltan] tools ")
+
+FIND_PACKAGE(Zoltan)
+
+IF(ZOLTAN_FOUND)
+
+  SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" )
+  GET_FILENAME_COMPONENT(ZOLTAN_LIBDIR ${ZOLTAN_LIBRARY} DIRECTORY)
+
+  MARK_AS_ADVANCED(HAVE_ZOLTAN)
+  MESSAGE(STATUS "  Zoltan:           " "${ZOLTAN_FOUND}")
+  MESSAGE(STATUS "  Zoltan_INC:       " "${ZOLTAN_INCLUDE_DIR}")
+  MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
+  MESSAGE(STATUS "  Zoltan_LIBDIR:      " "${ZOLTAN_LIBDIR}")
+  ADD_DEFINITIONS(-DHAVE_ZOLTAN)
+
+  INCLUDE_DIRECTORIES(${ZOLTAN_INCLUDE_DIR})
+  MESSAGE(STATUS "------------------------------------------------")
+
+ELSE()
+  MESSAGE(STATUS "  Library not found: >ZOLTAN_FOUND< ")
+  MESSAGE(STATUS "    Missing: >ZOLTAN_INCLUDE_DIR< , >ZOLTAN_LIBRARY< for mesh (re)partitioning")
+ENDIF(ZOLTAN_FOUND)
+
+MESSAGE(STATUS "------------------------------------------------")
+
 # MMG Remeshing
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
