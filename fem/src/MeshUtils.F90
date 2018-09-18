@@ -12086,9 +12086,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Find 2D mesh edges.
 !------------------------------------------------------------------------------
-  SUBROUTINE FindMeshEdges2D( Mesh )
+  SUBROUTINE FindMeshEdges2D( Mesh, BulkMask )
 !------------------------------------------------------------------------------
     TYPE(Mesh_t) :: Mesh
+    LOGICAL, OPTIONAL :: BulkMask(:)
 !------------------------------------------------------------------------------
     TYPE HashEntry_t
        INTEGER :: Node,Edge
@@ -12104,7 +12105,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Element, Edges(:)
 
-    LOGICAL :: Found
+    LOGICAL :: Found,Masked
     INTEGER :: i,j,k,n,NofEdges,Edge,Swap,Node1,Node2,istat,Degree,allocstat
 !------------------------------------------------------------------------------
 !
@@ -12112,11 +12113,16 @@ CONTAINS
 !   -----------
     CALL Info('FindMeshEdges2D','Allocating edge table of size: '&
         //TRIM(I2S(4*Mesh % NumberOfBulkElements)),Level=12)
+
+    Masked = PRESENT(BulkMask)
     
     CALL AllocateVector( Mesh % Edges, 4*Mesh % NumberOfBulkElements )
     Edges => Mesh % Edges
 
     DO i=1,Mesh % NumberOfBulkElements
+      IF(Masked) THEN
+        IF(.NOT. BulkMask(i)) CYCLE
+      END IF
        Element => Mesh % Elements(i)
 
        IF ( .NOT. ASSOCIATED( Element % EdgeIndexes ) ) &
@@ -12136,6 +12142,11 @@ CONTAINS
 !   -------------------
     NofEdges = 0
     DO i=1,Mesh % NumberOfBulkElements
+
+       IF(Masked) THEN
+         IF(.NOT. BulkMask(i)) CYCLE
+       END IF
+
        Element => Mesh % Elements(i)
 
        SELECT CASE( Element % TYPE % ElementCode / 100 )
@@ -12271,13 +12282,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Find 3D mesh faces.
 !------------------------------------------------------------------------------
-  SUBROUTINE FindMeshFaces3D( Mesh )
+  SUBROUTINE FindMeshFaces3D( Mesh, BulkMask)
     USE PElementMaps, ONLY : GetElementFaceMap
     USE PElementBase, ONLY : isPTetra
 
     IMPLICIT NONE
 !------------------------------------------------------------------------------
     TYPE(Mesh_t) :: Mesh
+    LOGICAL, OPTIONAL :: BulkMask(:)
 !------------------------------------------------------------------------------
     TYPE HashEntry_t
        INTEGER :: Node1,Node2,Face
@@ -12291,7 +12303,7 @@ CONTAINS
     TYPE(HashTable_t), ALLOCATABLE :: HashTable(:)
     TYPE(HashEntry_t), POINTER :: HashPtr, HashPtr1
 
-    LOGICAL :: Found
+    LOGICAL :: Found,Masked
     INTEGER :: n1,n2,n3,n4
     INTEGER :: i,j,k,n,NofFaces,Face,Swap,Node1,Node2,Node3,istat,Degree
      
@@ -12305,7 +12317,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     
     CALL Info('FindMeshFaces3D','Finding mesh faces in 3D mesh',Level=12)
-    
+
+    Masked = PRESENT(BulkMask)
+
     TetraFaceMap(1,:) = (/ 1, 2, 3, 5, 6, 7 /)
     TetraFaceMap(2,:) = (/ 1, 2, 4, 5, 9, 8 /)
     TetraFaceMap(3,:) = (/ 2, 3, 4, 6, 10, 9 /)
@@ -12333,10 +12347,17 @@ CONTAINS
 !
 !   Initialize:
 !   -----------
-    CALL AllocateVector( Mesh % Faces, 6*Mesh % NumberOfBulkElements, 'FindMeshFaces3D' )
+    IF(Masked) THEN
+      CALL AllocateVector( Mesh % Faces, 6*COUNT(BulkMask), 'FindMeshFaces3D' )
+    ELSE
+      CALL AllocateVector( Mesh % Faces, 6*Mesh % NumberOfBulkElements, 'FindMeshFaces3D' )
+    END IF
     Faces => Mesh % Faces
 
     DO i=1,Mesh % NumberOfBulkElements
+       IF(Masked) THEN
+         IF(.NOT. BulkMask(i)) CYCLE
+       END IF
        Element => Mesh % Elements(i)
        IF ( .NOT. ASSOCIATED( Element % FaceIndexes ) ) &
           CALL AllocateVector(Element % FaceIndexes, Element % TYPE % NumberOfFaces )
@@ -12353,6 +12374,10 @@ CONTAINS
 !   -------------------
     NofFaces = 0
     DO i=1,Mesh % NumberOfBulkElements
+       IF(Masked) THEN
+         IF(.NOT. BulkMask(i)) CYCLE
+       END IF
+
        Element => Mesh % Elements(i)
 
        ! For P elements mappings are different
