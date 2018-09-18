@@ -34,7 +34,8 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   SParIterPrecond.F90 SParIterSolver.F90 Messages.F90 Multigrid.F90
   Smoothers.F90 ClusteringMethods.F90 ParallelUtils.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
-  DefUtils.F90 LUDecomposition.F90 RadiationFactors.F90 f_stubs.c
+  DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 LUDecomposition.F90 
+  RadiationFactors.F90 f_stubs.c
   ExchangeCorrelations.F90 SolveHypre.c SolverActivate_x.F90
   SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
@@ -124,6 +125,11 @@ SET_TARGET_PROPERTIES(mpi_stubs
                       PROPERTIES LINKER_LANGUAGE Fortran)
 SET_TARGET_PROPERTIES(elmersolver
                       PROPERTIES LINKER_LANGUAGE Fortran)
+
+IF(HAVE_MMG)
+  INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+  TARGET_LINK_LIBRARIES(elmersolver ${MMG_LIBRARY})
+ENDIF()
 
 # ElmerSolver libraries 
 SET(ELMERSOLVER_LIBRARIES matc umfpack 

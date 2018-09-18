@@ -2065,6 +2065,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION LoadModel( ModelName,BoundariesOnly,numprocs,mype,MeshIndex) RESULT( Model )
 !------------------------------------------------------------------------------
+    USE MeshPartition
     IMPLICIT NONE
 
     CHARACTER(LEN=*) :: ModelName
