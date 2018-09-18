@@ -47,14 +47,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   LOGICAL :: Transient
   !--------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  TYPE(Mesh_t),POINTER :: Mesh,NewMesh,NewMeshR
+  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR
   TYPE(Element_t),POINTER :: Element, ParentElem
   TYPE(Element_t), ALLOCATABLE, TARGET :: PElements(:)
   TYPE(Nodes_t), TARGET :: Remesh_nodes
   INTEGER :: i,j, NNodes,NBulk, Nbdry, ierr, my_cboss,MyPE, PEs,CCount, counter, &
        my_calv_front,calv_front, ncalv_parts, group_calve, comm_calve, group_world,ecode, NElNodes,&
        NBulk_send, NBdry_send, NBulk_fixed, NBdry_fixed,test_min, GlNode_max,NNode_remesh,NEl_remesh,&
-       adjList(4)
+       adjList(4),front_BC_ID
   INTEGER, POINTER :: NodeIndexes(:)
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),&
        PNVerts(:),PNTris(:), PNTetras(:),FixedElems(:), GDOFs_send(:),PGDOFs_send(:),&
@@ -96,6 +96,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   test_point = (/491600.0, -2290000.0,79.9166641235/)
   test_thresh = 1500.0
   remesh_thresh = 2000.0
+  front_BC_id = 1
 
   ALLOCATE(test_dist(NNodes),&
        test_lset(NNodes),&
@@ -318,25 +319,25 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       PRINT *,' debug fixed count, size: ',COUNT(fixed_node),SIZE(fixed_node), COUNT(pelem_fixed==1),SiZE(pelem_fixed)
 
       !Point temporary mesh to elements and nodes
-      NewMesh => AllocateMesh()
-      NewMesh % Elements => PElements
-      NewMesh % Nodes => Remesh_Nodes
+      GatheredMesh => AllocateMesh()
+      GatheredMesh % Elements => PElements
+      GatheredMesh % Nodes => Remesh_Nodes
 
-      NewMesh % NumberOfNodes = NNode_remesh
+      GatheredMesh % NumberOfNodes = NNode_remesh
 
-      NewMesh % NumberOfBulkElements = 0
-      NewMesh % NumberOfBoundaryElements = 0
+      GatheredMesh % NumberOfBulkElements = 0
+      GatheredMesh % NumberOfBoundaryElements = 0
       DO i=1,NEl_remesh
-        NElNodes = NewMesh % Elements(i) % TYPE % NumberOfNodes
-        NewMesh % Elements(i) % NodeIndexes(1:NElNodes) = &
-             GtoLNN(NewMesh % Elements(i) % NodeIndexes(1:NElNodes))
-        IF(NewMesh % Elements(i) % TYPE % DIMENSION == 3) THEN
-          NewMesh % NumberOfBulkElements = NewMesh % NumberOfBulkElements + 1
-          ! PRINT *,'input elem ',i,' body id: ',NewMesh % Elements(i) % BodyID
+        NElNodes = GatheredMesh % Elements(i) % TYPE % NumberOfNodes
+        GatheredMesh % Elements(i) % NodeIndexes(1:NElNodes) = &
+             GtoLNN(GatheredMesh % Elements(i) % NodeIndexes(1:NElNodes))
+        IF(GatheredMesh % Elements(i) % TYPE % DIMENSION == 3) THEN
+          GatheredMesh % NumberOfBulkElements = GatheredMesh % NumberOfBulkElements + 1
+          ! PRINT *,'input elem ',i,' body id: ',GatheredMesh % Elements(i) % BodyID
         ELSE
-          NewMesh % NumberOfBoundaryElements = NewMesh % NumberOfBoundaryElements + 1
-          ! PRINT *,'input elem ',i,' bdry id: ',NewMesh % Elements(i) % BoundaryInfo % Constraint
-          ! PRINT *,'input elem ',i,' bdry body id: ',NewMesh % Elements(i) %  BodyID
+          GatheredMesh % NumberOfBoundaryElements = GatheredMesh % NumberOfBoundaryElements + 1
+          ! PRINT *,'input elem ',i,' bdry id: ',GatheredMesh % Elements(i) % BoundaryInfo % Constraint
+          ! PRINT *,'input elem ',i,' bdry body id: ',GatheredMesh % Elements(i) %  BodyID
         END IF
       END DO
 
@@ -348,7 +349,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
            MMG5_ARG_end)
 
-      CALL Set_MMG3D_Mesh(NewMesh)
+      CALL Set_MMG3D_Mesh(GatheredMesh)
 
       !Request isosurface discretization
       CALL MMG3D_Set_iparameter(mmgMesh, mmgSol, MMGPARAM_iso, 1,ierr)
@@ -366,21 +367,21 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       DO i=1,NNode_remesh
         CALL MMG3D_Set_scalarSol(mmgSol,&
              Plset_send(i), &
-             i,ier)
+             i,ierr)
       END DO
 
       !Set required nodes and elements
       DO i=1,NNode_remesh
         IF(fixed_node(i)) CALL MMG3D_SET_REQUIREDVERTEX(mmgMesh,i,ierr)
-        ! PRINT *,'Fixing node: ',i,NewMesh % Nodes % x(i), NewMesh % Nodes % y(i)
+        ! PRINT *,'Fixing node: ',i,GatheredMesh % Nodes % x(i), GatheredMesh % Nodes % y(i)
       END DO
 
       DO i=1,NEl_remesh
         IF(PElem_fixed(i)==1) THEN
-          ! PRINT *,'Fixing element ',i,' type: ',NewMesh % Elements(i) % TYPE % ElementCode
-          IF(NewMesh % Elements(i) % TYPE % DIMENSION == 3) THEN
+          ! PRINT *,'Fixing element ',i,' type: ',GatheredMesh % Elements(i) % TYPE % ElementCode
+          IF(GatheredMesh % Elements(i) % TYPE % DIMENSION == 3) THEN
             CALL MMG3D_SET_REQUIREDTETRAHEDRON(mmgMesh,i,ierr)
-          ELSEIF(NewMesh % Elements(i) % TYPE % DIMENSION == 2) THEN
+          ELSEIF(GatheredMesh % Elements(i) % TYPE % DIMENSION == 2) THEN
             CALL MMG3D_SET_REQUIREDTRIANGLE(mmgMesh,i,ierr)
           END IF
         END IF
@@ -388,7 +389,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       !> 4) (not mandatory): check if the number of given entities match with mesh size
       CALL MMG3D_Chk_meshData(mmgMesh,mmgSol,ierr)
-      IF ( ier /= 1 ) CALL EXIT(105)
+      IF ( ierr /= 1 ) CALL EXIT(105)
 
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
@@ -458,13 +459,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
         !Not needed
         IF(ParentElem % BodyID == 3 .AND. Element % BoundaryInfo % Constraint /= 10) THEN
-          ! PRINT *,'Triangle not needed: ',i,Element % BoundaryInfo % Constraint
+
           RmElem(i) = .TRUE.
 
         !Calving front - find the parent elem in the remaining domain:
         ELSEIF(ParentElem % BodyID == 3) THEN
-!          Element % BoundaryInfo % Constraint = 1 !TODO <- deal with these properly
-          CALL MMG3D_Get_AdjaTet(mmgMesh, ParentElem % ElementIndex, adjList,ier)
+          CALL MMG3D_Get_AdjaTet(mmgMesh, ParentElem % ElementIndex, adjList,ierr)
           DO j=1,4
             IF(adjlist(j) == 0) CYCLE
             IF(NewMeshR % Elements(adjlist(j)) % BodyID == 2) THEN
@@ -475,46 +475,29 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         END IF
       END DO
 
-      !WORKING HERE - need an efficient way to remove the relevant element structures etc
-      ! AND RENUMBER THE NODES to account for deletion.
-
-      !Map pre -> post deletion node nums
-      ALLOCATE(Nodeno_map(NNodes))
-      Nodeno_map = 0
-      counter = 0
-      DO i=1,NNodes
-        IF(RmNode(i)) CYCLE
-        counter = counter + 1
-        Nodeno_map(i) = counter
-      END DO
-
-      !Update the element nodeindexes
-      DO i=1,NBulk+NBdry
+      !Set constraint 10 (the newly formed calving front) to front_BC_id
+      !and (temporarily (TODO)) set 0 to 1 so that it doesn't break WriteMeshToDisk2
+      DO i=NBulk+1, NBulk + NBdry
         Element => NewMeshR % Elements(i)
-        IF(RmElem(i)) CYCLE
-        DO j=1,Element % TYPE % NumberOfNodes
-          Element % NodeIndexes(j) = Nodeno_map(Element % NodeIndexes(j))
-          IF(Element % NodeIndexes(j) == 0) CALL Fatal(SolverName, &
-               "Programming error: mapped nodeno = 0")
-        END DO
+        IF(Element % BoundaryInfo % Constraint == 10) &
+             Element % BoundaryInfo % Constraint = front_BC_id
+
+        IF(Element % BoundaryInfo % Constraint == 0) &
+             Element % BoundaryInfo % Constraint = 4
       END DO
 
-      !QUICK TEST - THIS WILL LEAK MEMORY!!!!
-      NewMeshR % Elements = PACK(NewMeshR % Elements, (.NOT. RmElem))
-      NewMeshR % Nodes % x = PACK(NewMeshR % Nodes % x, (.NOT. RmNode))
-      NewMeshR % Nodes % y = PACK(NewMeshR % Nodes % y, (.NOT. RmNode))
-      NewMeshR % Nodes % z = PACK(NewMeshR % Nodes % z, (.NOT. RmNode))
-      NewMeshR % NumberOfBulkElements = COUNT(.NOT. RmElem(1:nbulk))
-      NewMeshR % NumberOfBoundaryElements = COUNT(.NOT. RmElem(nbulk+1:nbulk+nbdry))
-      NewMeshR % NumberOfNodes = COUNT(.NOT. RmNode)
+      CALL CutMesh(NewMeshR, RmNode, RmElem)
 
-      ! DO i=NewMeshR % NumberOfBulkElements + 1, NewMeshR % NumberOfBulkElements + NewMeshR % NumberOfBoundaryElements
-      !   PRINT *,'elem type: ',NewMeshR % Elements(i) % TYPE % ElementCode,ASSOCIATED(NewMesh % Elements(i) % BoundaryInfo)
-      !   PRINT *,'constraint: ',NewMesh % Elements(i) % BoundaryInfo % Constraint
-      ! END DO
-      PRINT *,'NewMeshR counts ',SIZE(NewMeshR % Elements),NewMeshR % NumberOfBulkElements+&
-           NewMeshR % NumberOfBoundaryElements, SIZE(NewMeshR % Nodes % X), NewMeshR % NumberOfNodes 
-!      CALL WriteMeshToDisk2(Model, NewMeshR, "./outmesh")
+      ! - FOR TESTING ONLY
+      ! DEALLOCATE(RmNode)
+      ! ALLOCATE(RmNode(Mesh % NumberOfNodes))
+      ! RmNode = .FALSE.
+      ! RmNode(1:10) = .true.
+      ! PRINT *,'Mesh nonodes: ',Mesh  %NumberOfNodes
+      ! CALL CutMesh(Mesh, RmNode)
+      ! !----------
+
+     CALL WriteMeshToDisk2(Model, NewMeshR, "./outmesh")
 
     END IF
 
@@ -529,14 +512,13 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
 
-
   !Potentially useful functions
   !CALL SyncNeighbours(ParEnv)
   !CALL SParFaceNumbering, SParEdgeNumbering
   !FindMeshEdges? SetMedgeEdgeFaceDOFs, SetMeshMaxDofs
   !MeshStabParams!
 
-  !CALL InspectMesh(NewMesh)
+  !CALL InspectMesh(GatheredMesh)
 
 
   !Info contained in an ElmerGrid parallel mesh file:
