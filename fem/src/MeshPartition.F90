@@ -52,6 +52,18 @@ MODULE MeshPartition
 
   IMPLICIT NONE
 
+  TYPE MeshPack_t
+     INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfBoundaryElements
+     LOGICAL, ALLOCATABLE :: NodeMask(:)
+     INTEGER :: icount ! position counter for integer values
+     INTEGER :: rcount ! position counter for real values
+     INTEGER :: bcpos  ! offset for boundary element data
+     INTEGER :: indpos ! offset for node index data
+     INTEGER, ALLOCATABLE :: idata(:)       ! integer data
+     REAL(KIND=dp), ALLOCATABLE :: rdata(:) ! real data
+  END TYPE MeshPack_t
+
+
 CONTAINS
   !============================================
   !============================================
@@ -59,6 +71,9 @@ CONTAINS
   !============================================
   !============================================
 
+  !TODO - This repartitioning scheme will run around 10 times faster
+  !if only face-connected elements are passed. Does this outweigh the
+  !additional computational effort of finding those faces?
   SUBROUTINE Zoltan_Interface( Model, Solver, dt, Transient )
 
     USE MeshUtils
@@ -1765,876 +1780,897 @@ CONTAINS
   !> Takes an existing mesh and a repartitioning vector and redisributes the mesh
   !> among the partitions. Assumes that global node and element indexes are sane. 
   !------------------------------------------------------------------------------
-  FUNCTION RedistributeMesh( Model, Mesh, ParallelMesh, FreeOldMesh ) RESULT( NewMesh ) 
+  FUNCTION RedistributeMesh( Model, Mesh, ParallelMesh, FreeOldMesh ) RESULT( NewMesh )
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh, NewMesh
     LOGICAL :: ParallelMesh, FreeOldMesh
-     
-    TYPE MeshPack_t
-      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfBoundaryElements
-      LOGICAL, ALLOCATABLE :: NodeMask(:)
-      INTEGER :: icount ! position counter for integer values
-      INTEGER :: rcount ! position counter for real values
-      INTEGER :: bcpos  ! offset for boundary element data
-      INTEGER :: indpos ! offset for node index data
-      INTEGER, ALLOCATABLE :: idata(:)       ! integer data 
-      REAL(KIND=dp), ALLOCATABLE :: rdata(:) ! real data 
-    END TYPE MeshPack_t
-    
+
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:), RecPack(:)
     INTEGER, POINTER :: NewPart(:)
-    INTEGER :: NoPartitions, newnodes, newnbdry, newnbulk, dim, minind, maxind, n, ierr
+    INTEGER :: NoPartitions, newnodes, newnbdry, newnbulk, dim, minind, maxind, n, ierr,i
     INTEGER, ALLOCATABLE :: GlobalToLocal(:)
     CHARACTER(*), PARAMETER :: FuncName = 'RedistributeMesh'
 
-    
+
     CALL Info(FuncName,'Distributing mesh structures in parallel',Level=6)
-    CALL ResetTimer(FuncName) 
-    
-    NoPartitions = ParEnv % PEs 
+    CALL ResetTimer(FuncName)
+
+    NoPartitions = ParEnv % PEs
 
     IF( NoPartitions == 1 ) THEN
       CALL Warn(FuncName,'Redistribution does not make sense for one partition!')
     END IF
-    
+
     IF( .NOT. ASSOCIATED( Mesh ) ) THEN
       CALL Fatal(FuncName,'Mesh not associated')
     END IF
 
     IF( Mesh % NumberOfNodes > 0 ) THEN
       IF(.NOT. ASSOCIATED( Mesh % RePartition ) ) THEN
-        CALL Fatal(FuncName,'Repartitioning information not associated')      
+        CALL Fatal(FuncName,'Repartitioning information not associated')
       END IF
-      NewPart => Mesh % RePartition      
+      NewPart => Mesh % RePartition
 
-      n = MAXVAL( NewPart ) 
+      n = MAXVAL( NewPart )
       IF( n /= NoPartitions ) THEN
-        CALL Fatal(FuncName,'Partition number differs from process number: '//TRIM(I2S(n)))            
+        CALL Fatal(FuncName,'Partition number differs from process number: '//TRIM(I2S(n)))
       END IF
     END IF
 
     ! For convenience lets always communicate all coordinates
     ! Also, dimension might not have been set at this point for all domains
-    dim = 3 
-    
-    ! 1) First pack the mesh for parallel communication
-    CALL PackMeshPieces()   
+    dim = 3
 
-    ! 2) Then sent the pieces among different partitions 
-    CALL CommunicateMeshPieces()
+    ! 1) First pack the mesh for parallel communication
+    CALL PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, RecPack, dim)
+
+    ! 2) Then sent the pieces among different partitions
+    CALL CommunicateMeshPieces(Model, Mesh, ParallelMesh, NoPartitions, SentPack, RecPack)
 
     ! 3) Calculate element element and node counts, and creates new global2local numbering
-    CALL LocalNumberingMeshPieces()
-    
+    CALL LocalNumberingMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, RecPack, &
+         GlobalToLocal, newnodes, newnbulk, newnbdry, minind, maxind)
+
     NewMesh => AllocateMesh( newnbulk, newnbdry, newnodes )
-    
+
     ! 4) Finally unpack and glue the pieces on an existing mesh
-    CALL UnpackMeshPieces()     
-    
-    IF( FreeOldMesh ) CALL ReleaseMesh( Mesh ) 
+    CALL UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, newnodes, newnbulk, minind, &
+         maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
+
+
+    IF( FreeOldMesh ) CALL ReleaseMesh( Mesh )
+
+    CALL Info('RedistributeMesh','Deallocating temporal packed structures',Level=20)
+    DO i=1,NoPartitions
+      IF( ALLOCATED( SentPack(i) % idata ) ) DEALLOCATE( SentPack(i) % idata )
+      IF( ALLOCATED( SentPack(i) % rdata ) ) DEALLOCATE( SentPack(i) % rdata )
+      IF( ALLOCATED( RecPack(i) % idata ) ) DEALLOCATE( RecPack(i) % idata )
+      IF( ALLOCATED( RecPack(i) % rdata ) ) DEALLOCATE( RecPack(i) % rdata )
+    END DO
+
+    DEALLOCATE( GlobalToLocal )
 
     CALL Info('CommunicateMeshPieces','Waiting for MPI barrier',Level=15)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
     CALL CheckTimer(FuncName,Level=5,Delete=.TRUE.)
     CALL Info(FuncName,'Distributing mesh finished',Level=8)
-    
-  CONTAINS
 
-           
+  END FUNCTION RedistributeMesh
 
-    !> Converts element datastructure into a integer and real stream to facilitate
-    !> sending to another partition.
-    !------------------------------------------------------------------------------
-    SUBROUTINE PackMeshPieces()
 
-      IMPLICIT NONE
-      
-      TYPE(Element_t), POINTER :: Element, Parent
-      INTEGER :: i,j,k,n,nblk,nbdry,allocstat,part,elemcode,geom_id,sweep
-      LOGICAL :: CheckNeighbours, IsBulk    
-      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
-      TYPE(MeshPack_t), POINTER :: PPack
-      INTEGER, POINTER :: TmpPart(:)
-      
-      CALL Info('PackMeshPieces','Packing mesh pieces for sending',Level=8)
-        
-      ! Allocate and initialize the structures used to communicate thes mesh
-      n = NoPartitions 
-      ALLOCATE( SentPack( n ) )
-      ALLOCATE( RecPack( n ) ) 
+  !> Converts element datastructure into a integer and real stream to facilitate
+  !> sending to another partition.
+  !------------------------------------------------------------------------------
+  SUBROUTINE PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, RecPack, dim)
 
-      SentPack(1:n) % NumberOfNodes = 0 
-      SentPack(1:n) % NumberOfBulkElements = 0
-      SentPack(1:n) % NumberOfBoundaryElements = 0
-      SentPack(1:n) % icount = 0
-      SentPack(1:n) % rcount = 0
-      SentPack(1:n) % indpos = 0
-      SentPack(1:n) % bcpos = 0
+    IMPLICIT NONE
 
-      RecPack(1:n) % NumberOfNodes = 0 
-      RecPack(1:n) % NumberOfBulkElements = 0
-      RecPack(1:n) % NumberOfBoundaryElements = 0
-      RecPack(1:n) % icount = 0
-      RecPack(1:n) % rcount = 0
-      RecPack(1:n) % indpos = 0
-      RecPack(1:n) % bcpos = 0
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL :: ParallelMesh
+    INTEGER, POINTER :: NewPart(:)
+    INTEGER :: NoPartitions, dim
+    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:), RecPack(:)
+    !------------------------
+    TYPE(Element_t), POINTER :: Element, Parent
+    INTEGER :: i,j,k,n,nblk,nbdry,allocstat,part,elemcode,geom_id,sweep
+    LOGICAL :: CheckNeighbours, IsBulk
+    TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+    TYPE(MeshPack_t), POINTER :: PPack
+    INTEGER, POINTER :: TmpPart(:)
 
-      IF( Mesh % NumberOfNodes == 0 ) THEN
-        CALL Info('PackMeshPieces','Mesh is empty, nothing to pack',Level=10)              
-        RETURN
-      END IF
-        
-      nblk = Mesh % NumberOfBulkElements 
-      nbdry = Mesh % NumberOfBoundaryElements
+    CALL Info('PackMeshPieces','Packing mesh pieces for sending',Level=8)
 
-      IF( SIZE( NewPart ) < nblk + nbdry ) THEN
-        CALL Info('PackMeshPieces','Growing the partition vector to accounts BCs',Level=8)
-        ALLOCATE( TmpPart( nblk + nbdry ) )
-        TmpPart(1:nblk) = NewPart(1:nblk)
-        TmpPart(nblk+1:nblk+nbdry) = 0
-        DEALLOCATE( NewPart )
-        NewPart => TmpPart
-        Mesh % RePartition => TmpPart
-        NULLIFY( TmpPart )
-      END IF
+    ! Allocate and initialize the structures used to communicate thes mesh
+    n = NoPartitions
+    ALLOCATE( SentPack( n ) )
+    ALLOCATE( RecPack( n ) )
 
-      IF( ANY(NewPart(nblk+1:nblk+nbdry) <= 0 ) ) THEN
-        CALL Info('PackMeshPieces','Inheriting partition vector for BCs',Level=8)
-        DO i=nblk+1,nblk+nbdry
-          Element => Mesh % Elements(i)
-          IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
-            CALL Fatal('PackMeshPieces','Boundary element lacking boundary info')
-          END IF
-          Parent => Element % BoundaryInfo % Left
-          IF( .NOT. ASSOCIATED(Parent) ) THEN
-            Parent => Element % BoundaryInfo % Right
-          END IF
-          IF( .NOT. ASSOCIATED( Parent ) ) THEN
-            CALL Fatal('PackMeshPieces','Boundary element lacking parent info')            
-          END IF
-          NewPart(i) = NewPart(Parent % ElementIndex)
-        END DO
-      END IF
-      
-      CheckNeighbours = .FALSE.
-      IF( ParallelMesh ) THEN
-        IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN
-          CheckNeighbours = .TRUE.
-          NeighbourList => Mesh % ParallelInfo % NeighbourList
+    SentPack(1:n) % NumberOfNodes = 0
+    SentPack(1:n) % NumberOfBulkElements = 0
+    SentPack(1:n) % NumberOfBoundaryElements = 0
+    SentPack(1:n) % icount = 0
+    SentPack(1:n) % rcount = 0
+    SentPack(1:n) % indpos = 0
+    SentPack(1:n) % bcpos = 0
+
+    RecPack(1:n) % NumberOfNodes = 0
+    RecPack(1:n) % NumberOfBulkElements = 0
+    RecPack(1:n) % NumberOfBoundaryElements = 0
+    RecPack(1:n) % icount = 0
+    RecPack(1:n) % rcount = 0
+    RecPack(1:n) % indpos = 0
+    RecPack(1:n) % bcpos = 0
+
+    IF( Mesh % NumberOfNodes == 0 ) THEN
+      CALL Info('PackMeshPieces','Mesh is empty, nothing to pack',Level=10)
+      RETURN
+    END IF
+
+    nblk = Mesh % NumberOfBulkElements
+    nbdry = Mesh % NumberOfBoundaryElements
+
+    IF( SIZE( NewPart ) < nblk + nbdry ) THEN
+      CALL Info('PackMeshPieces','Growing the partition vector to accounts BCs',Level=8)
+      ALLOCATE( TmpPart( nblk + nbdry ) )
+      TmpPart(1:nblk) = NewPart(1:nblk)
+      TmpPart(nblk+1:nblk+nbdry) = 0
+      DEALLOCATE( NewPart )
+      NewPart => TmpPart
+      Mesh % RePartition => TmpPart
+      NULLIFY( TmpPart )
+    END IF
+
+    IF( ANY(NewPart(nblk+1:nblk+nbdry) <= 0 ) ) THEN
+      CALL Info('PackMeshPieces','Inheriting partition vector for BCs',Level=8)
+      DO i=nblk+1,nblk+nbdry
+        Element => Mesh % Elements(i)
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
+          CALL Fatal('PackMeshPieces','Boundary element lacking boundary info')
         END IF
-        IF( CheckNeighbours ) THEN
-          CALL info('PackMeshPieces','Using existing information of shared nodes',Level=10)
+        Parent => Element % BoundaryInfo % Left
+        IF( .NOT. ASSOCIATED(Parent) ) THEN
+          Parent => Element % BoundaryInfo % Right
         END IF
-      END IF
-      
-      ! In the 1st sweep we calculate amount of data to be sent.
-      ! In the 2nd sweep we populate the idata and rdata vectors.
-      !--------------------------------------------------------------
-      DO Sweep = 1, 2            
+        IF( .NOT. ASSOCIATED( Parent ) ) THEN
+          CALL Fatal('PackMeshPieces','Boundary element lacking parent info')
+        END IF
+        NewPart(i) = NewPart(Parent % ElementIndex)
+      END DO
+    END IF
 
+    CheckNeighbours = .FALSE.
+    IF( ParallelMesh ) THEN
+      IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN
+        CheckNeighbours = .TRUE.
+        NeighbourList => Mesh % ParallelInfo % NeighbourList
+      END IF
+      IF( CheckNeighbours ) THEN
+        CALL info('PackMeshPieces','Using existing information of shared nodes',Level=10)
+      END IF
+    END IF
+
+    ! In the 1st sweep we calculate amount of data to be sent.
+    ! In the 2nd sweep we populate the idata and rdata vectors.
+    !--------------------------------------------------------------
+    DO Sweep = 1, 2
+
+      DO part=1,NoPartitions
+
+        IF( part <= 0 ) CYCLE ! This one for possible elements to be eliminated
+        IF( part-1 == ParEnv % MyPe ) CYCLE  ! Skip this partition
+
+        PPack => SentPack(part)
+        PPack % icount = 5 ! offset for the above header info
+        PPack % rcount = 0
+      END DO
+
+      !  Go through the elements
+      DO i=1,nblk+nbdry
+        ! Mark the offset for boundary data. It is needed later when performing the unpacking.
+        IF( Sweep == 1 .AND. i == nblk + 1 ) THEN
+          SentPack(1:NoPartitions) % bcpos = SentPack(1:NoPartitions) % icount
+        END IF
+
+        part = NewPart(i)
+        IF( part <= 0 .OR. part-1 == ParEnv % MyPe ) CYCLE
+
+        IsBulk = ( i <= nblk )
+
+        Element => Mesh % Elements(i)
+        elemcode = Element % Type % ElementCode
+        n = Element % TYPE % NumberOfNodes
+
+        PPack => SentPack(part)
+
+        IF( Sweep == 1) THEN
+          IF( IsBulk ) THEN
+            PPack % NumberOfBulkElements = PPack % NumberOfBulkElements + 1
+          ELSE
+            PPack % NumberOfBoundaryElements = PPack % NumberOfBoundaryElements + 1
+          END IF
+          IF( IsBulk ) THEN
+            PPack % icount = PPack % icount + 3
+          ELSE
+            PPack % icount = PPack % icount + 5
+          END IF
+
+        ELSE IF( Sweep == 2 ) THEN
+          ! Populate the table on the second sweep
+
+          ! Pack the global element index
+          IF( ParallelMesh ) THEN
+            PPack % idata(PPack % icount+1) = Element % GElementIndex
+          ELSE
+            PPack % idata(PPack % icount+1) = Element % ElementIndex
+          END IF
+
+          ! Pack the type
+          PPack % idata(PPack % icount+2) = elemcode
+
+          ! Pack either the body id or boundary id
+          IF( IsBulk ) THEN
+            PPack % idata(PPack % icount+3) = Element % BodyID
+            PPack % icount = PPack % icount + 3
+          ELSE
+            PPack % idata(PPack % icount+3) = Element % BoundaryInfo % Constraint
+            PPack % idata(PPack % icount+4:5) = 0
+            IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
+              IF( ParallelMesh ) THEN
+                PPack % idata(PPack % icount+4) = Element % BoundaryInfo % Left % GElementIndex
+              ELSE
+                PPack % idata(PPack % icount+4) = Element % BoundaryInfo % Left % ElementIndex
+              END IF
+            END IF
+            IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+              IF( ParallelMesh ) THEN
+                PPack % idata(PPack % icount+5) = Element % BoundaryInfo % Right % GElementIndex
+              ELSE
+                PPack % idata(PPack % icount+5) = Element % BoundaryInfo % Right % ElementIndex
+              END IF
+            END IF
+            PPack % icount = PPack % icount + 5
+          END IF
+
+          ! Pack node indexes
+          IF( ParallelMesh ) THEN
+            PPack % idata(PPack % icount+1:PPack % icount+n) = &
+                 Mesh % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:n))
+          ELSE
+            PPack % idata(PPack % icount+1:PPack % icount+n) = &
+                 Element % NodeIndexes(1:n)
+          END IF
+        END IF
+
+        ! Advance the counter for the data
+        PPack % icount = PPack % icount + n
+      END DO
+
+
+      IF( Sweep == 1 ) THEN
+        ! Set the offset for the nodal data. It is needed in unpackig.
+        SentPack(1:NoPartitions) % indpos = SentPack(1:NoPartitions) % icount
+
+        ! We need to allocate a logical mask to mark the nodes to sent to given partition
+        ! Note that we only want to allocate the flag for partitions that also recieve
+        ! some elements.
         DO part=1,NoPartitions
-
-          IF( part <= 0 ) CYCLE ! This one for possible elements to be eliminated
-          IF( part-1 == ParEnv % MyPe ) CYCLE  ! Skip this partition 
-
-          PPack => SentPack(part)         
-          PPack % icount = 5 ! offset for the above header info
-          PPack % rcount = 0
+          PPack => SentPack(part)
+          IF( PPack % icount > 5 ) THEN
+            ALLOCATE( PPack % NodeMask( Mesh % NumberOfNodes ) )
+            PPack % NodeMask = .FALSE.
+          END IF
         END DO
 
-        !  Go through the elements
+        ! For each active partition mark the nodes that must be sent
         DO i=1,nblk+nbdry
-          ! Mark the offset for boundary data. It is needed later when performing the unpacking. 
-          IF( Sweep == 1 .AND. i == nblk + 1 ) THEN
-            SentPack(1:NoPartitions) % bcpos = SentPack(1:NoPartitions) % icount
-          END IF
-
           part = NewPart(i)
-          IF( part <= 0 .OR. part-1 == ParEnv % MyPe ) CYCLE 
 
-          IsBulk = ( i <= nblk )
-                    
-          Element => Mesh % Elements(i)      
-          elemcode = Element % Type % ElementCode
+          IF( part <= 0 .OR. part-1 == ParEnv % MyPe ) CYCLE
+
+          PPack => SentPack(part)
+
+          Element => Mesh % Elements(i)
+          elemcode = Element % TYPE % ElementCode
           n = Element % TYPE % NumberOfNodes
 
-          PPack => SentPack(part) 
-
-          IF( Sweep == 1) THEN
-            IF( IsBulk ) THEN
-              PPack % NumberOfBulkElements = PPack % NumberOfBulkElements + 1
-            ELSE
-              PPack % NumberOfBoundaryElements = PPack % NumberOfBoundaryElements + 1
-            END IF
-            IF( IsBulk ) THEN
-              PPack % icount = PPack % icount + 3
-            ELSE
-              PPack % icount = PPack % icount + 5 
-            END IF
-            
-          ELSE IF( Sweep == 2 ) THEN
-            ! Populate the table on the second sweep
-            
-            ! Pack the global element index
-            IF( ParallelMesh ) THEN
-              PPack % idata(PPack % icount+1) = Element % GElementIndex
-            ELSE
-              PPack % idata(PPack % icount+1) = Element % ElementIndex
-            END IF
-
-            ! Pack the type
-            PPack % idata(PPack % icount+2) = elemcode 
-
-            ! Pack either the body id or boundary id
-            IF( IsBulk ) THEN
-              PPack % idata(PPack % icount+3) = Element % BodyID
-              PPack % icount = PPack % icount + 3 
-            ELSE
-              PPack % idata(PPack % icount+3) = Element % BoundaryInfo % Constraint
-              PPack % idata(PPack % icount+4:5) = 0
-              IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
-                IF( ParallelMesh ) THEN                  
-                  PPack % idata(PPack % icount+4) = Element % BoundaryInfo % Left % GElementIndex 
-                ELSE
-                  PPack % idata(PPack % icount+4) = Element % BoundaryInfo % Left % ElementIndex 
-                END IF
-              END IF
-              IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
-                IF( ParallelMesh ) THEN
-                  PPack % idata(PPack % icount+5) = Element % BoundaryInfo % Right % GElementIndex
-                ELSE
-                  PPack % idata(PPack % icount+5) = Element % BoundaryInfo % Right % ElementIndex
-                END IF
-              END IF
-              PPack % icount = PPack % icount + 5 
-            END IF
-              
-            ! Pack node indexes
-            IF( ParallelMesh ) THEN
-              PPack % idata(PPack % icount+1:PPack % icount+n) = & 
-                  Mesh % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:n))
-            ELSE
-              PPack % idata(PPack % icount+1:PPack % icount+n) = &
-                  Element % NodeIndexes(1:n)
-            END IF
-          END IF
-
-          ! Advance the counter for the data
-          PPack % icount = PPack % icount + n
-        END DO
-        
-
-        IF( Sweep == 1 ) THEN          
-          ! Set the offset for the nodal data. It is needed in unpackig. 
-          SentPack(1:NoPartitions) % indpos = SentPack(1:NoPartitions) % icount
-          
-          ! We need to allocate a logical mask to mark the nodes to sent to given partition
-          ! Note that we only want to allocate the flag for partitions that also recieve
-          ! some elements. 
-          DO part=1,NoPartitions
-            PPack => SentPack(part)         
-            IF( PPack % icount > 5 ) THEN
-              ALLOCATE( PPack % NodeMask( Mesh % NumberOfNodes ) )
-              PPack % NodeMask = .FALSE.
-            END IF
-          END DO
-
-          ! For each active partition mark the nodes that must be sent          
-          DO i=1,nblk+nbdry
-            part = NewPart(i) 
-
-            IF( part <= 0 .OR. part-1 == ParEnv % MyPe ) CYCLE
-            
-            PPack => SentPack(part)         
-
-            Element => Mesh % Elements(i)      
-            elemcode = Element % TYPE % ElementCode
-            n = Element % TYPE % NumberOfNodes
-
-            IF( CheckNeighbours ) THEN
-              DO j=1,n
-                k = Element % NodeIndexes(j)
-                ! We may already have the node in the partition 
-                IF( ANY( part-1 == NeighbourList(k) % Neighbours ) ) CYCLE
-                PPack % NodeMask(k) = .TRUE. 
-              END DO
-            ELSE
-              PPack % NodeMask(Element % NodeIndexes(1:n)) = .TRUE.
-            END IF
-          END DO
-
-          ! Add the nodes count to be sent to the data structure
-          DO part=1,NoPartitions 
-            IF( part-1 == ParEnv % MyPe ) CYCLE
-            PPack => SentPack(part)         
-            
-            IF(  PPack % icount <= 5 ) CYCLE
-            
-            PPack % NumberOfNodes = COUNT( PPack % NodeMask ) 
-            PPack % icount = PPack % icount + PPack % NumberOfNodes
-            PPack % rcount = dim * PPack % NumberOfNodes             
-            
-            ALLOCATE( PPack % idata(PPack % icount), PPack % rdata(PPack % rcount), STAT = allocstat )
-            IF( allocstat /= 0 ) THEN
-              CALL Fatal('PackMeshPieces','Could not allocate vectors for data')
-            END IF
-            PPack % idata = 0
-            PPack % rdata = 0.0_dp
-            
-            PPack % idata(1) = PPack % NumberOfNodes
-            PPack % idata(2) = PPack % NumberOfBulkElements
-            PPack % idata(3) = PPack % NumberOfBoundaryElements        
-            PPack % idata(4) = PPack % bcpos
-            PPack % idata(5) = PPack % indpos
-          END DO
-          
-        ELSE IF( Sweep == 2 ) THEN
-          
-          ! For simplicity this includes a loop over all partitions 
-          DO part=1,NoPartitions 
-            IF( part-1 == ParEnv % MyPe ) CYCLE
-            PPack => SentPack(part)         
-
-            ! No need to sent empty element lists 
-            IF( PPack % NumberOfNodes == 0 ) CYCLE
-            
-            DO i = 1, Mesh % NumberOfNodes
-              IF( PPack % NodeMask(i) ) THEN
-                PPack % icount = PPack % icount + 1
-                IF( ParallelMesh ) THEN
-                  PPack % idata(Ppack % icount) = Mesh % ParallelInfo % GlobalDOFs(i)
-                ELSE
-                  PPack % idata(Ppack % icount) = i
-                END IF
-
-                ! Also add the coordinates for sending
-                PPack % rdata(PPack % rcount+1) = Mesh % Nodes % x(i)
-                PPack % rdata(PPack % rcount+2) = Mesh % Nodes % y(i)
-                IF( dim == 3 ) PPack % rdata(PPack % rcount+3) = Mesh % Nodes % z(i)
-
-                PPack % rcount = PPack % rcount + dim
-              END IF
+          IF( CheckNeighbours ) THEN
+            DO j=1,n
+              k = Element % NodeIndexes(j)
+              ! We may already have the node in the partition
+              IF( ANY( part-1 == NeighbourList(k) % Neighbours ) ) CYCLE
+              PPack % NodeMask(k) = .TRUE.
             END DO
-            
-          END DO
-        END IF
-      END DO
-      
-      CALL Info('PackMeshPieces','Finished packing mesh pieces',Level=8)
-            
-    END SUBROUTINE PackMeshPieces
-    
-
-    ! Communicate the packed mesh between partitions using MPI.
-    !-----------------------------------------------------------------------    
-    SUBROUTINE CommunicateMeshPieces()
-      
-      INTEGER :: i,j,n,ierr,ni,nr, status(MPI_STATUS_SIZE)
-      INTEGER, ALLOCATABLE :: Requests(:)
-      
-      CALL Info('CommunicateMeshPieces','communicating mesh pieces in parallel',Level=6)
-
-      ni = SUM( SentPack(1:NoPartitions) % icount )
-      CALL Info('CommunicateMeshPieces','Number of integer values to sent: '//TRIM(I2S(ni)),Level=8)
-      nr = SUM( SentPack(1:NoPartitions) % rcount )
-      CALL Info('CommunicateMeshPieces','Number of real values to sent: '//TRIM(I2S(nr)),Level=8)
-
-      CALL CheckBuffer( ni*4 + nr*8 + (NoPartitions-1)* ( 4*2 + &
-              2*MPI_BSEND_OVERHEAD ) )
-      
-      ! Sent data sizes:
-      !--------------------------
-      ALLOCATE( Requests(NoPartitions) )
-      DO i=1,NoPartitions 
-        IF( i-1 == ParEnv % Mype ) CYCLE
-        CALL MPI_BSEND( SentPack(i) % icount, 1, MPI_INTEGER, i-1, &
-            1000, ELMER_COMM_WORLD, ierr )
-        CALL MPI_BSEND( SentPack(i) % rcount, 1, MPI_INTEGER, i-1, &
-            1001, ELMER_COMM_WORLD, ierr )
-      END DO
-          
-      ! Recieve data sizes:
-      !--------------------------      
-      DO i = 1, NoPartitions
-        IF( i-1 == ParEnv % MyPe ) CYCLE 
-        CALL MPI_RECV( RecPack(i) % icount, 1, MPI_INTEGER, i-1, &
-            1000, ELMER_COMM_WORLD, status, ierr )
-        CALL MPI_RECV( RecPack(i) % rcount, 1, MPI_INTEGER, i-1, &
-            1001, ELMER_COMM_WORLD, status, ierr )
-      END DO
-
-      CALL Info('PackMeshPieces','Waiting for the 1st barrier',Level=15)
-      CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
-
-      n = SUM( RecPack(1:NoPartitions) % icount )
-      CALL Info('PackDataToSend','Number of integer values to recieve: '//TRIM(I2S(n)),Level=8)
-      n = SUM( RecPack(1:NoPartitions) % rcount )
-      CALL Info('PackDataToSend','Number of real values to recieve: '//TRIM(I2S(n)),Level=8)
-      
-      ! Allocate data sizes for recieving data
-      !----------------------------------------
-      DO i=1,NoPartitions 
-        IF( i-1 == ParEnv % Mype ) CYCLE
-        IF( RecPack(i) % icount > 5 ) THEN
-          ALLOCATE( RecPack(i) % idata( RecPack(i) % icount) ) 
-          ALLOCATE( RecPack(i) % rdata( RecPack(i) % rcount) ) 
-        END IF
-      END DO
-          
-      ! Sent data:
-      !--------------------------
-      CALL Info('CommunicateMeshPieces','Now sending the actual data',Level=12)
-      DO i=1,NoPartitions 
-        IF( i-1 == ParEnv % Mype ) CYCLE
-        IF( SentPack(i) % icount > 5 ) THEN        
-          CALL MPI_BSEND( SentPack(i) % idata, SentPack(i) % icount, MPI_INTEGER, i-1, &
-              1002, ELMER_COMM_WORLD, ierr )
-          CALL MPI_BSEND( SentPack(i) % rdata, SentPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
-              1003, ELMER_COMM_WORLD, ierr )          
-        END IF
-      END DO
-
-      ! Recieve data:
-      !--------------------------      
-      CALL Info('CommunicateMeshPieces','Now recieving the actual integer data',Level=12)
-      DO i = 1, NoPartitions
-        IF( i-1 == ParEnv % MyPe ) CYCLE 
-        IF( RecPack(i) % icount > 5 ) THEN
-          CALL MPI_RECV( RecPack(i) % idata, RecPack(i) % icount, MPI_INTEGER, i-1, &
-              1002, ELMER_COMM_WORLD, status, ierr )
-          CALL MPI_RECV( RecPack(i) % rdata, RecPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
-              1003, ELMER_COMM_WORLD, status, ierr )
-        END IF
-      END DO
-     
-      CALL Info('CommunicateMeshPieces','Waiting for the 2nd barrier',Level=15)
-      CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
-      
-      CALL Info('CommunicateMeshPieces','Finished communicating mesh pieces',Level=8)
-      
-    END SUBROUTINE CommunicateMeshPieces
-      
-
-
-
-    !> Calculates new local count of elements and nodes, and creates the new
-    !> local numbering for the nodes. The GlobalToLocal numbering is needed
-    !> when unpacking the data to the new mesh. 
-    !------------------------------------------------------------------------------
-    SUBROUTINE LocalNumberingMeshPieces()
-
-      IMPLICIT NONE 
-      
-      TYPE(Element_t), POINTER :: Element
-      INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
-      INTEGER :: gind,lind,rcount,icount,nbrdy,i1,i2
-      LOGICAL :: CheckNeighbours, IsBulk
-      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
-      TYPE(MeshPack_t), POINTER :: PPack
-
-      CALL Info('LocalNumberingMeshPieces','Renumbering local nodes in each partition',Level=8)
-      
-      newnbulk = 0
-      newnbdry = 0
-
-      ! Compute the number of elements staying
-      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-        IF( NewPart(i)-1 == ParEnv % MyPe ) THEN
-          IF( i <= Mesh % NumberOfBulkElements ) THEN
-            newnbulk = newnbulk + 1
           ELSE
-            newnbdry = newnbdry + 1
+            PPack % NodeMask(Element % NodeIndexes(1:n)) = .TRUE.
           END IF
-        END IF
-      END DO
-      
-      ! Add the number of elements coming from different partitions
-      DO part=1,NoPartitions 
-        IF( i-1 == ParEnv % Mype ) CYCLE
-        PPack => RecPack(part)         
-        IF( PPack % icount <= 5 ) CYCLE
-        
-        PPack % NumberOfNodes = PPack % idata(1)
-        PPack % NumberOfBulkElements = PPack % idata(2)            
-        PPack % NumberOfBoundaryElements = PPack % idata(3)        
-        PPack % bcpos = PPack % idata(4)
-        PPack % indpos = PPack % idata(5)
-        
-        newnbulk = newnbulk + PPack % NumberOfBulkElements
-        newnbdry = newnbdry + PPack % NumberOfBoundaryElements
-      END DO
-
-      CALL Info('LocalNumberingMeshPieces','Combined number of elements: '&
-          //TRIM(I2S(newnbulk+newnbdry)),Level=8)
-      
-
-      ! Find the range of initial global indeces
-      ! This is conservative since it includes all the initial global indexes
-      IF( Mesh % NumberOfNodes > 0 ) THEN
-        IF( ParallelMesh ) THEN
-          maxind = MAXVAL( Mesh % ParallelInfo % GlobalDofs(1:n) )
-          minind = MINVAL( Mesh % ParallelInfo % GlobalDofs(1:n) )
-        ELSE
-          maxind = Mesh % NumberOfNodes
-          minind = 1
-        END IF
-      ELSE
-        minind = HUGE( minind )
-        maxind = 0        
-      END IF
-      
-      ! also check the imported global indexes
-      DO part=1,NoPartitions
-        IF( i-1 == ParEnv % Mype ) CYCLE
-        PPack => RecPack(part)                 
-        IF( PPack % icount <= 5 ) CYCLE
-        i1 = PPack % indpos + 1
-        i2 = PPack % icount
-        minind = MIN( minind, MINVAL( PPack % idata(i1:i2) ) )
-        maxind = MAX( maxind, MAXVAL( PPack % idata(i1:i2) ) )
-      END DO
-
-      CALL Info('LocalNumberingMeshPieces','Global index range '&
-          //TRIM(I2S(minind))//' to '//TRIM(I2S(maxind)),Level=12)
-            
-      ! Allocate the vector for local renumbering
-      ALLOCATE( GlobalToLocal(minind:maxind), STAT=allocstat)
-      IF( allocstat /= 0 ) THEN
-        CALL Fatal('LocalNumberingMeshPieces','Could not allocate vectors for indexes')
-      END IF             
-      GlobalToLocal = 0
-
-      ! Check which of the staying nodes are used
-      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-        IF( NewPart(i)-1 == ParEnv % MyPe ) THEN
-          Element => Mesh % Elements(i)
-          n = Element % Type % NumberOfNodes 
-
-          DO j=1,n
-            k = Element % NodeIndexes(j)
-            IF( ParallelMesh ) k = Mesh % ParallelInfo % GlobalDOFs(k)
-            IF( k < minind .OR. k > maxind ) THEN
-              CALL Fatal('LocalNumberingMeshPieces','k out of bounds')
-            END IF
-            GlobalToLocal(k) = 1
-          END DO
-        END IF
-      END DO
-      
-      ! Add the imported nodes and their global index
-      DO part=1,NoPartitions
-        IF( part-1 == ParEnv % MyPe ) CYCLE
-        PPack => RecPack(part)                 
-        IF( PPack % icount <= 5 ) CYCLE
-        
-        icount = PPack % indpos
-        DO i = 1, PPack % NumberOfNodes               
-          icount = icount + 1
-          gind = PPack % idata(icount)
-
-          IF( gind < minind .OR. gind > maxind ) THEN
-            CALL Fatal('LocalNumberingMeshPieces','gind out of bounds')
-          END IF
-          
-          GlobalToLocal(gind) = 1
         END DO
-      END DO
 
-      ! Renumber the staying nodes
-      newnodes = 0
-      DO i=minind, maxind
-        IF( GlobalToLocal(i) > 0 ) THEN
-          newnodes = newnodes + 1
-          GlobalToLocal(i) = newnodes
-        END IF
-      END DO
-                    
-      CALL Info('LocalNumberingMeshPieces','Combined number of nodes: '//TRIM(I2S(newnodes)),Level=8)
-      
-    END SUBROUTINE LocalNumberingMeshPieces
+        ! Add the nodes count to be sent to the data structure
+        DO part=1,NoPartitions
+          IF( part-1 == ParEnv % MyPe ) CYCLE
+          PPack => SentPack(part)
+
+          IF(  PPack % icount <= 5 ) CYCLE
+
+          PPack % NumberOfNodes = COUNT( PPack % NodeMask )
+          PPack % icount = PPack % icount + PPack % NumberOfNodes
+          PPack % rcount = dim * PPack % NumberOfNodes
+
+          ALLOCATE( PPack % idata(PPack % icount), PPack % rdata(PPack % rcount), STAT = allocstat )
+          IF( allocstat /= 0 ) THEN
+            CALL Fatal('PackMeshPieces','Could not allocate vectors for data')
+          END IF
+          PPack % idata = 0
+          PPack % rdata = 0.0_dp
+
+          PPack % idata(1) = PPack % NumberOfNodes
+          PPack % idata(2) = PPack % NumberOfBulkElements
+          PPack % idata(3) = PPack % NumberOfBoundaryElements
+          PPack % idata(4) = PPack % bcpos
+          PPack % idata(5) = PPack % indpos
+        END DO
+
+      ELSE IF( Sweep == 2 ) THEN
+
+        ! For simplicity this includes a loop over all partitions
+        DO part=1,NoPartitions
+          IF( part-1 == ParEnv % MyPe ) CYCLE
+          PPack => SentPack(part)
+
+          ! No need to sent empty element lists
+          IF( PPack % NumberOfNodes == 0 ) CYCLE
+
+          DO i = 1, Mesh % NumberOfNodes
+            IF( PPack % NodeMask(i) ) THEN
+              PPack % icount = PPack % icount + 1
+              IF( ParallelMesh ) THEN
+                PPack % idata(Ppack % icount) = Mesh % ParallelInfo % GlobalDOFs(i)
+              ELSE
+                PPack % idata(Ppack % icount) = i
+              END IF
+
+              ! Also add the coordinates for sending
+              PPack % rdata(PPack % rcount+1) = Mesh % Nodes % x(i)
+              PPack % rdata(PPack % rcount+2) = Mesh % Nodes % y(i)
+              IF( dim == 3 ) PPack % rdata(PPack % rcount+3) = Mesh % Nodes % z(i)
+
+              PPack % rcount = PPack % rcount + dim
+            END IF
+          END DO
+
+        END DO
+      END IF
+    END DO
+
+    CALL Info('PackMeshPieces','Finished packing mesh pieces',Level=8)
+
+  END SUBROUTINE PackMeshPieces
+
+
+  ! Communicate the packed mesh between partitions using MPI.
+  !-----------------------------------------------------------------------
+  SUBROUTINE CommunicateMeshPieces(Model, Mesh, ParallelMesh, NoPartitions, SentPack, RecPack)
+
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: NoPartitions
+    LOGICAL :: ParallelMesh
+    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:), RecPack(:)
+    !------------------------
+
+    INTEGER :: i,j,n,ierr,ni,nr, status(MPI_STATUS_SIZE)
+    INTEGER, ALLOCATABLE :: Requests(:)
+
+    CALL Info('CommunicateMeshPieces','communicating mesh pieces in parallel',Level=6)
+
+    ni = SUM( SentPack(1:NoPartitions) % icount )
+    CALL Info('CommunicateMeshPieces','Number of integer values to sent: '//TRIM(I2S(ni)),Level=8)
+    nr = SUM( SentPack(1:NoPartitions) % rcount )
+    CALL Info('CommunicateMeshPieces','Number of real values to sent: '//TRIM(I2S(nr)),Level=8)
+
+    CALL CheckBuffer( ni*4 + nr*8 + (NoPartitions-1)* ( 4*2 + &
+         2*MPI_BSEND_OVERHEAD ) )
+
+    ! Sent data sizes:
+    !--------------------------
+    ALLOCATE( Requests(NoPartitions) )
+    DO i=1,NoPartitions
+      IF( i-1 == ParEnv % Mype ) CYCLE
+      CALL MPI_BSEND( SentPack(i) % icount, 1, MPI_INTEGER, i-1, &
+           1000, ELMER_COMM_WORLD, ierr )
+      CALL MPI_BSEND( SentPack(i) % rcount, 1, MPI_INTEGER, i-1, &
+           1001, ELMER_COMM_WORLD, ierr )
+    END DO
+
+    ! Recieve data sizes:
+    !--------------------------
+    DO i = 1, NoPartitions
+      IF( i-1 == ParEnv % MyPe ) CYCLE
+      CALL MPI_RECV( RecPack(i) % icount, 1, MPI_INTEGER, i-1, &
+           1000, ELMER_COMM_WORLD, status, ierr )
+      CALL MPI_RECV( RecPack(i) % rcount, 1, MPI_INTEGER, i-1, &
+           1001, ELMER_COMM_WORLD, status, ierr )
+    END DO
+
+    CALL Info('PackMeshPieces','Waiting for the 1st barrier',Level=15)
+    CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+
+    n = SUM( RecPack(1:NoPartitions) % icount )
+    CALL Info('PackDataToSend','Number of integer values to recieve: '//TRIM(I2S(n)),Level=8)
+    n = SUM( RecPack(1:NoPartitions) % rcount )
+    CALL Info('PackDataToSend','Number of real values to recieve: '//TRIM(I2S(n)),Level=8)
+
+    ! Allocate data sizes for recieving data
+    !----------------------------------------
+    DO i=1,NoPartitions
+      IF( i-1 == ParEnv % Mype ) CYCLE
+      IF( RecPack(i) % icount > 5 ) THEN
+        ALLOCATE( RecPack(i) % idata( RecPack(i) % icount) )
+        ALLOCATE( RecPack(i) % rdata( RecPack(i) % rcount) )
+      END IF
+    END DO
+
+    ! Sent data:
+    !--------------------------
+    CALL Info('CommunicateMeshPieces','Now sending the actual data',Level=12)
+    DO i=1,NoPartitions
+      IF( i-1 == ParEnv % Mype ) CYCLE
+      IF( SentPack(i) % icount > 5 ) THEN
+        CALL MPI_BSEND( SentPack(i) % idata, SentPack(i) % icount, MPI_INTEGER, i-1, &
+             1002, ELMER_COMM_WORLD, ierr )
+        CALL MPI_BSEND( SentPack(i) % rdata, SentPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
+             1003, ELMER_COMM_WORLD, ierr )
+      END IF
+    END DO
+
+    ! Recieve data:
+    !--------------------------
+    CALL Info('CommunicateMeshPieces','Now recieving the actual integer data',Level=12)
+    DO i = 1, NoPartitions
+      IF( i-1 == ParEnv % MyPe ) CYCLE
+      IF( RecPack(i) % icount > 5 ) THEN
+        CALL MPI_RECV( RecPack(i) % idata, RecPack(i) % icount, MPI_INTEGER, i-1, &
+             1002, ELMER_COMM_WORLD, status, ierr )
+        CALL MPI_RECV( RecPack(i) % rdata, RecPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
+             1003, ELMER_COMM_WORLD, status, ierr )
+      END IF
+    END DO
+
+    CALL Info('CommunicateMeshPieces','Waiting for the 2nd barrier',Level=15)
+    CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+
+    CALL Info('CommunicateMeshPieces','Finished communicating mesh pieces',Level=8)
+
+  END SUBROUTINE CommunicateMeshPieces
 
 
 
-    !> Converts element data structure from integer and real streams to FE meshes.
-    !> The idea is that the elements and nodes are appended on top of an existing
-    !> mesh structure such that there could be elements already at the bottom.
-    !------------------------------------------------------------------------------
-    SUBROUTINE UnpackMeshPieces()
 
-      IMPLICIT NONE
-      
-      TYPE(Element_t), POINTER :: Element, Element0
-      INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
-      INTEGER :: gind,lind,rcount,icount
-      LOGICAL :: CheckNeighbours, IsBulk
-      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
-      TYPE(MeshPack_t), POINTER :: PPack
-      
-      CALL Info('UnpackMeshPieces','Unpacking mesh pieces to form a new mesh',Level=12)
+  !> Calculates new local count of elements and nodes, and creates the new
+  !> local numbering for the nodes. The GlobalToLocal numbering is needed
+  !> when unpacking the data to the new mesh.
+  !------------------------------------------------------------------------------
+  SUBROUTINE LocalNumberingMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, &
+       RecPack, GlobalToLocal, newnodes, newnbulk, newnbdry, minind, maxind)
 
-      
-      CheckNeighbours = .FALSE.
-      IF( ParallelMesh ) THEN
-        IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN
-          CheckNeighbours = .TRUE.
-          NeighbourList => Mesh % ParallelInfo % NeighbourList
+    IMPLICIT NONE
+
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, ALLOCATABLE :: GlobalToLocal(:)
+    INTEGER, POINTER :: NewPart(:)
+    INTEGER :: NoPartitions, newnodes, newnbulk, newnbdry, minind, maxind
+    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
+    LOGICAL :: ParallelMesh
+    !---------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
+    INTEGER :: gind,lind,rcount,icount,nbrdy,i1,i2
+    LOGICAL :: CheckNeighbours, IsBulk
+    TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+    TYPE(MeshPack_t), POINTER :: PPack
+
+    CALL Info('LocalNumberingMeshPieces','Renumbering local nodes in each partition',Level=8)
+
+    newnbulk = 0
+    newnbdry = 0
+
+    ! Compute the number of elements staying
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      IF( NewPart(i)-1 == ParEnv % MyPe ) THEN
+        IF( i <= Mesh % NumberOfBulkElements ) THEN
+          newnbulk = newnbulk + 1
+        ELSE
+          newnbdry = newnbdry + 1
         END IF
       END IF
-          
-      nbulk = 0
-      nbdry = 0 
+    END DO
 
-      CALL Info('UnpackMeshPieces','Copying staying elements',Level=20)
-      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+    ! Add the number of elements coming from different partitions
+    DO part=1,NoPartitions
+      IF( i-1 == ParEnv % Mype ) CYCLE
+      PPack => RecPack(part)
+      IF( PPack % icount <= 5 ) CYCLE
 
-        IF( NewPart(i)-1 /= ParEnv % MyPe ) CYCLE
+      PPack % NumberOfNodes = PPack % idata(1)
+      PPack % NumberOfBulkElements = PPack % idata(2)
+      PPack % NumberOfBoundaryElements = PPack % idata(3)
+      PPack % bcpos = PPack % idata(4)
+      PPack % indpos = PPack % idata(5)
 
-        IsBulk = ( i <= Mesh % NumberOfBulkElements ) 
+      newnbulk = newnbulk + PPack % NumberOfBulkElements
+      newnbdry = newnbdry + PPack % NumberOfBoundaryElements
+    END DO
+
+    CALL Info('LocalNumberingMeshPieces','Combined number of elements: '&
+         //TRIM(I2S(newnbulk+newnbdry)),Level=8)
+
+
+    ! Find the range of initial global indeces
+    ! This is conservative since it includes all the initial global indexes
+    IF( Mesh % NumberOfNodes > 0 ) THEN
+      IF( ParallelMesh ) THEN
+        maxind = MAXVAL( Mesh % ParallelInfo % GlobalDofs(1:n) )
+        minind = MINVAL( Mesh % ParallelInfo % GlobalDofs(1:n) )
+      ELSE
+        maxind = Mesh % NumberOfNodes
+        minind = 1
+      END IF
+    ELSE
+      minind = HUGE( minind )
+      maxind = 0
+    END IF
+
+    ! also check the imported global indexes
+    DO part=1,NoPartitions
+      IF( i-1 == ParEnv % Mype ) CYCLE
+      PPack => RecPack(part)
+      IF( PPack % icount <= 5 ) CYCLE
+      i1 = PPack % indpos + 1
+      i2 = PPack % icount
+      minind = MIN( minind, MINVAL( PPack % idata(i1:i2) ) )
+      maxind = MAX( maxind, MAXVAL( PPack % idata(i1:i2) ) )
+    END DO
+
+    CALL Info('LocalNumberingMeshPieces','Global index range '&
+         //TRIM(I2S(minind))//' to '//TRIM(I2S(maxind)),Level=12)
+
+    ! Allocate the vector for local renumbering
+    ALLOCATE( GlobalToLocal(minind:maxind), STAT=allocstat)
+    IF( allocstat /= 0 ) THEN
+      CALL Fatal('LocalNumberingMeshPieces','Could not allocate vectors for indexes')
+    END IF
+    GlobalToLocal = 0
+
+    ! Check which of the staying nodes are used
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      IF( NewPart(i)-1 == ParEnv % MyPe ) THEN
+        Element => Mesh % Elements(i)
+        n = Element % Type % NumberOfNodes
+
+        DO j=1,n
+          k = Element % NodeIndexes(j)
+          IF( ParallelMesh ) k = Mesh % ParallelInfo % GlobalDOFs(k)
+          IF( k < minind .OR. k > maxind ) THEN
+            CALL Fatal('LocalNumberingMeshPieces','k out of bounds')
+          END IF
+          GlobalToLocal(k) = 1
+        END DO
+      END IF
+    END DO
+
+    ! Add the imported nodes and their global index
+    DO part=1,NoPartitions
+      IF( part-1 == ParEnv % MyPe ) CYCLE
+      PPack => RecPack(part)
+      IF( PPack % icount <= 5 ) CYCLE
+
+      icount = PPack % indpos
+      DO i = 1, PPack % NumberOfNodes
+        icount = icount + 1
+        gind = PPack % idata(icount)
+
+        IF( gind < minind .OR. gind > maxind ) THEN
+          CALL Fatal('LocalNumberingMeshPieces','gind out of bounds')
+        END IF
+
+        GlobalToLocal(gind) = 1
+      END DO
+    END DO
+
+    ! Renumber the staying nodes
+    newnodes = 0
+    DO i=minind, maxind
+      IF( GlobalToLocal(i) > 0 ) THEN
+        newnodes = newnodes + 1
+        GlobalToLocal(i) = newnodes
+      END IF
+    END DO
+
+    CALL Info('LocalNumberingMeshPieces','Combined number of nodes: '//TRIM(I2S(newnodes)),Level=8)
+
+  END SUBROUTINE LocalNumberingMeshPieces
+
+
+
+  !> Converts element data structure from integer and real streams to FE meshes.
+  !> The idea is that the elements and nodes are appended on top of an existing
+  !> mesh structure such that there could be elements already at the bottom.
+  !------------------------------------------------------------------------------
+  SUBROUTINE UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, NewNodes, NewNBulk, &
+       minind, maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
+
+    IMPLICIT NONE
+
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh, NewMesh
+    LOGICAL :: ParallelMesh
+    INTEGER, POINTER :: NewPart(:)
+    INTEGER, ALLOCATABLE :: GlobalToLocal(:)
+    INTEGER :: dim, NewNBulk, NewNodes,minind,maxind
+    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
+    !----------------------------------
+    TYPE(Element_t), POINTER :: Element, Element0
+    INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
+    INTEGER :: gind,lind,rcount,icount
+    LOGICAL :: CheckNeighbours, IsBulk
+    TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+    TYPE(MeshPack_t), POINTER :: PPack
+
+    CALL Info('UnpackMeshPieces','Unpacking mesh pieces to form a new mesh',Level=12)
+
+
+    CheckNeighbours = .FALSE.
+    IF( ParallelMesh ) THEN
+      IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN
+        CheckNeighbours = .TRUE.
+        NeighbourList => Mesh % ParallelInfo % NeighbourList
+      END IF
+    END IF
+
+    nbulk = 0
+    nbdry = 0
+
+    CALL Info('UnpackMeshPieces','Copying staying elements',Level=20)
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+      IF( NewPart(i)-1 /= ParEnv % MyPe ) CYCLE
+
+      IsBulk = ( i <= Mesh % NumberOfBulkElements )
+
+      IF( IsBulk ) THEN
+        nbulk = nbulk + 1
+        t = nbulk
+      ELSE
+        nbdry = nbdry + 1
+        t = newnbulk + nbdry
+      END IF
+
+      Element => NewMesh % Elements(t)
+      Element0 => Mesh % Elements(i)
+
+      IF(.NOT. ASSOCIATED( Element ) ) THEN
+        CALL Fatal('UnpackMeshPieces','Element not allocated')
+      END IF
+
+      Element % Type => Element0 % Type
+      n = Element % Type % NumberOfNodes
+
+      IF( n <= 0 .OR. n > 27 ) THEN
+        CALL Fatal('UnpackMeshPieces','Invalid number of nodes')
+      END IF
+
+      Element % BodyId = Element0 % BodyId
+
+      IF( IsBulk ) THEN
+        Element % BoundaryInfo => NULL()
+      ELSE
+        ALLOCATE( Element % BoundaryInfo )
+        Element % BoundaryInfo % Constraint = Element0 % BoundaryInfo % Constraint
+      END IF
+
+      IF( ParallelMesh ) THEN
+        Element % GElementIndex = Element0 % GElementIndex
+      ELSE
+        Element % GElementIndex = Element0 % ElementIndex
+      END IF
+      Element % ElementIndex = t
+
+      ! Change the owner partition of the element
+      Element % PartIndex = ParEnv % MyPe
+
+      NULLIFY( Element % NodeIndexes )
+      ALLOCATE( Element % NodeIndexes(n), STAT = allocstat )
+      IF( allocstat /= 0 ) THEN
+        CALL Fatal('UnpackMeshPieces','Cannot allocate '//TRIM(I2S(n))//' node indexes?')
+      END IF
+
+      DO j=1,n
+        k = Element0 % NodeIndexes(j)
+        IF( ParallelMesh ) k = Mesh % ParallelInfo % GlobalDOFs(k)
+
+        ! Renumber the nodes such that the local indexes are always contiguous
+        IF( k < minind .OR. k > maxind ) THEN
+          CALL Fatal('UnpackMeshPieces','k out of bounds')
+        END IF
+        Element % NodeIndexes(j) = GlobalToLocal(k)
+      END DO
+    END DO
+
+    CALL Info('UnpackMeshPieces','Copying staying nodes',Level=20)
+
+    DO i=1,Mesh % NumberOfNodes
+      j = i
+      IF( ParallelMesh ) j = Mesh % ParallelInfo % GlobalDofs(i)
+      IF( j < minind .OR. j > maxind ) THEN
+        CALL Fatal('UnpackMeshPieces','j out of bounds')
+      END IF
+      k = GlobalToLocal(j)
+      IF( k == 0 ) CYCLE
+      IF( k > newnodes ) THEN
+        CALL Fatal('UnpackMeshPieces','k2 out of bounds: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(newnodes)))
+      END IF
+      NewMesh % Nodes % x(k) = Mesh % Nodes % x(i)
+      NewMesh % Nodes % y(k) = Mesh % Nodes % y(i)
+      IF( dim == 3 ) NewMesh % Nodes % z(k) = Mesh % Nodes % z(i)
+    END DO
+
+
+    CALL Info('UnpackMeshPieces','Unpacking incoming elements',Level=20)
+    DO part=1,ParEnv % PEs
+      IF( part-1 == ParEnv % MyPe ) CYCLE
+
+      PPack => RecPack(part)
+      IF( PPack % icount <= 5 ) CYCLE
+
+      CALL Info('UnpackMeshPieces','Unpacking piece '//TRIM(I2S(part))//' with '&
+           //TRIM(I2S(PPack % NumberOfBulkElements + PPack % NumberOfBoundaryElements))//&
+           ' elements',Level=20)
+
+      ! The five values upfront are used for size info
+      icount = 5
+      DO i = 1, PPack % NumberOfBulkElements + PPack % NumberOfBoundaryElements
+
+        IsBulk = ( i <= PPack % NumberOfBulkElements )
 
         IF( IsBulk ) THEN
           nbulk = nbulk + 1
           t = nbulk
         ELSE
           nbdry = nbdry + 1
-          t = newnbulk + nbdry 
+          t = newnbulk + nbdry
         END IF
+
+        elemindex = PPack % idata(icount+1)
+        elemcode = PPack % idata(icount+2)
+        geom_id = PPack % idata(icount+3)
 
         Element => NewMesh % Elements(t)
-        Element0 => Mesh % Elements(i) 
-       
-        IF(.NOT. ASSOCIATED( Element ) ) THEN
-          CALL Fatal('UnpackMeshPieces','Element not allocated')
-        END IF
-        
-        Element % Type => Element0 % Type
-        n = Element % Type % NumberOfNodes 
-
-        IF( n <= 0 .OR. n > 27 ) THEN
-          CALL Fatal('UnpackMeshPieces','Invalid number of nodes')
+        IF( .NOT. ASSOCIATED( Element ) ) THEN
+          CALL Fatal('UnpackMeshPieces','Element not associated')
         END IF
 
-        Element % BodyId = Element0 % BodyId
-          
-        IF( IsBulk ) THEN
-          Element % BoundaryInfo => NULL()
-        ELSE
-          ALLOCATE( Element % BoundaryInfo )
-          Element % BoundaryInfo % Constraint = Element0 % BoundaryInfo % Constraint
+        Element % TYPE => GetElementType( elemcode )
+        IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
+          CALL Fatal('UnpackMeshPieces','Could not get element code: '//TRIM(I2S(elemcode)))
         END IF
 
-        IF( ParallelMesh ) THEN
-          Element % GElementIndex = Element0 % GElementIndex
-        ELSE
-          Element % GElementIndex = Element0 % ElementIndex
-        END IF         
+        n = Element % Type % NumberOfNodes
+
+        Element % GElementIndex = elemindex
         Element % ElementIndex = t
 
-        ! Change the owner partition of the element          
+        ! Change the owner partition of the element
         Element % PartIndex = ParEnv % MyPe
-                
-        NULLIFY( Element % NodeIndexes )
+
+        IF( IsBulk ) THEN
+          Element % BodyId = geom_id
+          icount = icount + 3
+        ELSE
+          Element % BodyId = 0
+          IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
+            ALLOCATE( Element % BoundaryInfo, STAT = allocstat )
+            IF( allocstat /= 0 ) THEN
+              CALL Fatal('UnpackMeshPieces','Could not allocate boundary info!')
+            END IF
+          END IF
+
+          Element % BoundaryInfo % Constraint = geom_id
+
+          ! These are the left and right boundary indexes that currently are not used at all!
+          j = PPack % idata(icount+4)
+          k = PPack % idata(icount+5)
+          icount = icount + 5
+        END IF
+
         ALLOCATE( Element % NodeIndexes(n), STAT = allocstat )
         IF( allocstat /= 0 ) THEN
-          CALL Fatal('UnpackMeshPieces','Cannot allocate '//TRIM(I2S(n))//' node indexes?')
+          CALL Fatal('UnpackMeshPieces','Could not allocate a few node indexes!')
         END IF
-        
-        DO j=1,n
-          k = Element0 % NodeIndexes(j)
-          IF( ParallelMesh ) k = Mesh % ParallelInfo % GlobalDOFs(k)
 
-          ! Renumber the nodes such that the local indexes are always contiguous
+        IF( icount + n > SIZE( PPack % idata) ) THEN
+          CALL Fatal('UnpackMeshPieces','icount out of range')
+        END IF
+
+        Element % NodeIndexes(1:n) = PPack % idata(icount+1:icount+n)
+
+        ! Renumber the nodes such that the local indexes are always contiguous
+        DO j=1, n
+          k = Element % NodeIndexes(j)
           IF( k < minind .OR. k > maxind ) THEN
-            CALL Fatal('UnpackMeshPieces','k out of bounds')
+            CALL Fatal('UnpackMeshPieces','k3 out of bounds: '//TRIM(I2S(k)))
+          END IF
+          IF( GlobalToLocal(k) <= 0 .OR. GlobalToLocal(k) > newnodes ) THEN
+            CALL Fatal('UnpackMeshPieces','Local index out of bounds')
           END IF
           Element % NodeIndexes(j) = GlobalToLocal(k)
         END DO
-      END DO
-      
-      CALL Info('UnpackMeshPieces','Copying staying nodes',Level=20)
 
-      DO i=1,Mesh % NumberOfNodes
-        j = i
-        IF( ParallelMesh ) j = Mesh % ParallelInfo % GlobalDofs(i)
-        IF( j < minind .OR. j > maxind ) THEN
-          CALL Fatal('UnpackMeshPieces','j out of bounds')
-        END IF       
-        k = GlobalToLocal(j)
-        IF( k == 0 ) CYCLE
-        IF( k > newnodes ) THEN
-          CALL Fatal('UnpackMeshPieces','k2 out of bounds: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(newnodes)))
-        END IF
-        NewMesh % Nodes % x(k) = Mesh % Nodes % x(i)
-        NewMesh % Nodes % y(k) = Mesh % Nodes % y(i)
-        IF( dim == 3 ) NewMesh % Nodes % z(k) = Mesh % Nodes % z(i)
+        ! Advance the counter for the data
+        icount = icount + n
       END DO
 
+      CALL Info('UnpackMeshPieces','Finished piece',Level=20)
 
-      CALL Info('UnpackMeshPieces','Unpacking incoming elements',Level=20)
-      DO part=1,ParEnv % PEs
-        IF( part-1 == ParEnv % MyPe ) CYCLE
-        
-        PPack => RecPack(part)                 
-        IF( PPack % icount <= 5 ) CYCLE
-
-        CALL Info('UnpackMeshPieces','Unpacking piece '//TRIM(I2S(part))//' with '&
-            //TRIM(I2S(PPack % NumberOfBulkElements + PPack % NumberOfBoundaryElements))//&
-            ' elements',Level=20)
-        
-        ! The five values upfront are used for size info
-        icount = 5
-        DO i = 1, PPack % NumberOfBulkElements + PPack % NumberOfBoundaryElements 
-
-          IsBulk = ( i <= PPack % NumberOfBulkElements )
-
-          IF( IsBulk ) THEN              
-            nbulk = nbulk + 1
-            t = nbulk
-          ELSE
-            nbdry = nbdry + 1
-            t = newnbulk + nbdry
-          END IF
-
-          elemindex = PPack % idata(icount+1)
-          elemcode = PPack % idata(icount+2)
-          geom_id = PPack % idata(icount+3)              
-          
-          Element => NewMesh % Elements(t)
-          IF( .NOT. ASSOCIATED( Element ) ) THEN
-            CALL Fatal('UnpackMeshPieces','Element not associated')
-          END IF
-          
-          Element % TYPE => GetElementType( elemcode )
-          IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
-            CALL Fatal('UnpackMeshPieces','Could not get element code: '//TRIM(I2S(elemcode)))
-          END IF
-          
-          n = Element % Type % NumberOfNodes
-          
-          Element % GElementIndex = elemindex
-          Element % ElementIndex = t
-           
-          ! Change the owner partition of the element          
-          Element % PartIndex = ParEnv % MyPe
-          
-          IF( IsBulk ) THEN
-            Element % BodyId = geom_id
-            icount = icount + 3
-          ELSE
-            Element % BodyId = 0
-            IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
-              ALLOCATE( Element % BoundaryInfo, STAT = allocstat )
-              IF( allocstat /= 0 ) THEN
-                CALL Fatal('UnpackMeshPieces','Could not allocate boundary info!')
-              END IF
-            END IF
-            
-            Element % BoundaryInfo % Constraint = geom_id
-
-            ! These are the left and right boundary indexes that currently are not used at all!
-            j = PPack % idata(icount+4)
-            k = PPack % idata(icount+5)
-            icount = icount + 5
-          END IF
-
-          ALLOCATE( Element % NodeIndexes(n), STAT = allocstat )
-          IF( allocstat /= 0 ) THEN
-            CALL Fatal('UnpackMeshPieces','Could not allocate a few node indexes!')
-          END IF       
-          
-          IF( icount + n > SIZE( PPack % idata) ) THEN
-            CALL Fatal('UnpackMeshPieces','icount out of range')
-          END IF
-          
-          Element % NodeIndexes(1:n) = PPack % idata(icount+1:icount+n)
-          
-          ! Renumber the nodes such that the local indexes are always contiguous
-          DO j=1, n
-            k = Element % NodeIndexes(j)
-            IF( k < minind .OR. k > maxind ) THEN
-              CALL Fatal('UnpackMeshPieces','k3 out of bounds: '//TRIM(I2S(k)))
-            END IF
-            IF( GlobalToLocal(k) <= 0 .OR. GlobalToLocal(k) > newnodes ) THEN
-              CALL Fatal('UnpackMeshPieces','Local index out of bounds')
-            END IF
-            Element % NodeIndexes(j) = GlobalToLocal(k)
-          END DO
-            
-          ! Advance the counter for the data
-          icount = icount + n 
-        END DO
-
-        CALL Info('UnpackMeshPieces','Finished piece',Level=20)
-
-        IF( icount /= PPack % indpos ) THEN
-          CALL Fatal('UnpackMeshPieces','Inconsistent icount value: '//TRIM(I2S(icount)))
-        END IF
-      END DO
-
-
-      CALL Info('UnpackMeshPieces','Unpacking incoming nodes',Level=20)
-      DO part=1,ParEnv % PEs
-        IF( part-1 == ParEnv % MyPe ) CYCLE
-
-        PPack => RecPack(part)                 
-        IF( PPack % icount <= 5 ) CYCLE
- 
-        icount = PPack % indpos        
-        rcount = 0
-        
-        DO i = 1, PPack % NumberOfNodes               
-          icount = icount + 1
-          j = Ppack % idata(icount)
-          IF( j < minind .OR. j > maxind ) THEN
-            CALL Fatal('UnpackMeshPieces','Incoming node index out of bounds')
-          END IF
-          k = GlobalToLocal( j )
-
-          IF( k <= 0 .OR. k > newnodes ) THEN
-            CALL Fatal('UnpackMeshPieces','Local index out of bounds')
-          END IF
-          
-          NewMesh % Nodes % x(k) = PPack % rdata(rcount+1)
-          NewMesh % Nodes % y(k) = PPack % rdata(rcount+2)
-          IF( dim == 3 ) NewMesh % Nodes % z(k) = PPack % rdata(rcount+3)
-          
-          rcount = rcount + dim
-        END DO      
-      END DO
-
-      CALL Info('UnpackMeshPieces','Creating local to global numbering for '&
-          //TRIM(I2S(newnodes))//' nodes',Level=20)
-      ALLOCATE( NewMesh % ParallelInfo % GlobalDofs( newnodes ), STAT = allocstat)
-      NewMesh % ParallelInfo % GlobalDofs = 0
-      IF( allocstat /= 0 ) THEN
-        CALL Fatal('UnpackMeshPieces','Could not allocate global dof indexes')
+      IF( icount /= PPack % indpos ) THEN
+        CALL Fatal('UnpackMeshPieces','Inconsistent icount value: '//TRIM(I2S(icount)))
       END IF
-      
-      DO i = minind, maxind
-        j = GlobalToLocal(i)
-        IF( j == 0 ) CYCLE
-        IF( j > newnodes ) THEN
-          CALL Fatal('UnpackMeshPieces','Invalid node index')
+    END DO
+
+
+    CALL Info('UnpackMeshPieces','Unpacking incoming nodes',Level=20)
+    DO part=1,ParEnv % PEs
+      IF( part-1 == ParEnv % MyPe ) CYCLE
+
+      PPack => RecPack(part)
+      IF( PPack % icount <= 5 ) CYCLE
+
+      icount = PPack % indpos
+      rcount = 0
+
+      DO i = 1, PPack % NumberOfNodes
+        icount = icount + 1
+        j = Ppack % idata(icount)
+        IF( j < minind .OR. j > maxind ) THEN
+          CALL Fatal('UnpackMeshPieces','Incoming node index out of bounds')
         END IF
-        NewMesh % ParallelInfo % GlobalDofs(j) = i
-      END DO
-      
-      DEALLOCATE( GlobalToLocal ) 
+        k = GlobalToLocal( j )
 
-      CALL Info('UnpackMeshPieces','Deallocating temporal packed structures',Level=20)
-      DO i=1,NoPartitions
-        IF( ALLOCATED( SentPack(i) % idata ) ) DEALLOCATE( SentPack(i) % idata )
-        IF( ALLOCATED( SentPack(i) % rdata ) ) DEALLOCATE( SentPack(i) % rdata )
-        IF( ALLOCATED( RecPack(i) % idata ) ) DEALLOCATE( RecPack(i) % idata )
-        IF( ALLOCATED( RecPack(i) % rdata ) ) DEALLOCATE( RecPack(i) % rdata )
-      END DO
+        IF( k <= 0 .OR. k > newnodes ) THEN
+          CALL Fatal('UnpackMeshPieces','Local index out of bounds')
+        END IF
 
-      CALL Info('UnpackMeshPieces','Finished unpacking and gluing mesh pieces',Level=8)
-      
-    END SUBROUTINE UnpackMeshPieces
- 
-    
-  END FUNCTION RedistributeMesh
+        NewMesh % Nodes % x(k) = PPack % rdata(rcount+1)
+        NewMesh % Nodes % y(k) = PPack % rdata(rcount+2)
+        IF( dim == 3 ) NewMesh % Nodes % z(k) = PPack % rdata(rcount+3)
+
+        rcount = rcount + dim
+      END DO
+    END DO
+
+    CALL Info('UnpackMeshPieces','Creating local to global numbering for '&
+         //TRIM(I2S(newnodes))//' nodes',Level=20)
+    ALLOCATE( NewMesh % ParallelInfo % GlobalDofs( newnodes ), STAT = allocstat)
+    NewMesh % ParallelInfo % GlobalDofs = 0
+    IF( allocstat /= 0 ) THEN
+      CALL Fatal('UnpackMeshPieces','Could not allocate global dof indexes')
+    END IF
+
+    DO i = minind, maxind
+      j = GlobalToLocal(i)
+      IF( j == 0 ) CYCLE
+      IF( j > newnodes ) THEN
+        CALL Fatal('UnpackMeshPieces','Invalid node index')
+      END IF
+      NewMesh % ParallelInfo % GlobalDofs(j) = i
+    END DO
+
+    CALL Info('UnpackMeshPieces','Finished unpacking and gluing mesh pieces',Level=8)
+
+  END SUBROUTINE UnpackMeshPieces
+
 
 
 
