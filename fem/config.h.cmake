@@ -166,5 +166,6 @@
 /* #define DEVEL_LISTCOUNTER */
 /* #define DEVEL_KEYWORDMISSES */
 
+#cmakedefine HAVE_LUA
 
 #endif

@@ -15,7 +15,7 @@ Header
 End
  
 Simulation
-  Max Output Level = 32
+  Max Output Level = 7
   Coordinate System = Cartesian 
   Simulation Type = transient
   Steady State Max Iterations = 1
@@ -149,4 +149,5 @@ Boundary Condition 1
 !  FitData Continue = Logical True  
 End
 
-Solver 2 :: Reference Norm = Real 7.50036220E-01
+Solver 2 :: Reference Norm = 7.50036220E-01
+Solver 2 :: Reference Norm Tolerance = 1.0e-3

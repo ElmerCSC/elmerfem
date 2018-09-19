@@ -80,6 +80,7 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   LOGICAL :: CalculateStrains, CalculateStresses
   LOGICAL :: CalcPrincipalAngle, CalcPrincipal
   LOGICAL :: CalcPrincipalStress, CalcPrincipalStrain
+  LOGICAL :: UseUMAT, OutputStateVars
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
   AxialSymmetry = CurrentCoordinateSystem() == AxisSymmetric
@@ -109,7 +110,7 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   CALL ListAddNewLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
 
   CalculateStrains = GetLogical(SolverParams, 'Calculate Strains', Found)
-  CalculateStresses = GetLogical( SolverParams, 'Calculate Stresses', Found )
+  CalculateStresses = GetLogical(SolverParams, 'Calculate Stresses', Found)
 
   !-------------------------------------------------------------------------------
   ! If stress computation is requested somewhere, then enforce it:
@@ -176,6 +177,17 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
              
      END IF
   END IF
+
+  UseUMAT = ListGetLogical(SolverParams, 'Use UMAT', Found)
+  IF (UseUMAT) THEN
+    OutputStateVars = GetLogical(SolverParams, 'Output State Variables', Found)
+    IF (OutputStateVars) THEN
+      CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
+          '-dofs 3 -ip StateVar[D1:1 D2:1 D3:1]' )
+      CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
+          '-dofs 9 -ip StateDir[PDir1_x:1 PDir1_y:1 PDir1_z:1 PDir2_x:1 PDir2_y:1 PDir2_z:1 PDir3_x:1 PDir3_y:1 PDir3_z:1]')      
+    END IF
+  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE ElasticSolver_Init
 !------------------------------------------------------------------------------
@@ -206,7 +218,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER :: StiffMatrix, PMatrix
   TYPE(Solver_t), POINTER :: PSolver
-  TYPE(Variable_t), POINTER :: StressSol, TempSol, FlowSol, Var
+  TYPE(Variable_t), POINTER :: StressSol, TempSol, FlowSol, Var, StateSol, StateDir
   TYPE(ValueList_t), POINTER :: SolverParams, Material, BC, Equation, BodyForce
   TYPE(Nodes_t) :: ElementNodes, ParentNodes, FlowNodes
   TYPE(Element_t), POINTER :: CurrentElement, ParentElement, FlowElement
@@ -216,7 +228,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: GotForceBC, GotFSIBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
        AxialSymmetry
-  LOGICAL :: UseUMAT, InitializeStateVars, HenckyStrain
+  LOGICAL :: UseUMAT, InitializeStateVars, OutputStateVars, HenckyStrain
   LOGICAL :: LargeDeflection
   LOGICAL :: MixedFormulation
   LOGICAL :: PseudoTraction, GlobalPseudoTraction
@@ -271,8 +283,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        LocalTemperature,AllocationsDone,ReferenceTemperature,BoundaryDispl, &
        ElasticModulus, PoissonRatio,Density,Damping,HeatExpansionCoeff, &
        LocalDisplacement, Velocity, Pressure, PrevSOL, CalculateStrains, CalculateStresses, &
-       NodalStrain, NodalStress, VonMises, PrincipalStress, PrincipalStrain, Tresca, &
-       PrincipalAngle, CalcPrincipalAngle, CalcPrincipal, &
+       OutputStateVars, NodalStrain, NodalStress, VonMises, PrincipalStress, PrincipalStrain, &
+       Tresca, PrincipalAngle, CalcPrincipalAngle, CalcPrincipal, &
        PrevLocalDisplacement, SpringCoeff, Indices
   SAVE NPROPS, NSTATEV, MaxIntegrationPoints, PointwiseStateV, PointwiseStateV0, &
       InitializeStateVars, TotalSol, LocalExternalForce
@@ -470,11 +482,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      !----------------------------------------------------------------
      CalculateStrains = GetLogical(SolverParams, 'Calculate Strains', GotIt )    
      CalculateStresses = GetLogical(SolverParams, 'Calculate Stresses', GotIt ) 
+
      IF (UseUMAT) THEN
+        OutputStateVars = GetLogical(SolverParams, 'Output State Variables', GotIt)
         ! Principal tensors are not yet available:
         CalcPrincipal = .FALSE.
         CalcPrincipalAngle = .FALSE.
      ELSE
+        OutputStateVars = .FALSE.
         CalcPrincipal = GetLogical(SolverParams, 'Calculate Principal', GotIt )     
         CalcPrincipalAngle = GetLogical(SolverParams, 'Calculate PAngle', GotIt )
         ! Principal angle computation enforces component calculation:
@@ -547,6 +562,16 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END IF
   END IF
 
+  IF (UseUMAT .AND. OutputStateVars) THEN
+    StateSol => VariableGet(Mesh % Variables, 'StateVar')
+    IF ( .NOT. ASSOCIATED(StateSol) ) THEN
+      CALL Fatal('ElasticSolver','Variable > StateVar < does not exits!')
+    END IF
+    StateDir => VariableGet(Mesh % Variables, 'StateDir')
+    IF ( .NOT. ASSOCIATED(StateDir) ) THEN
+      CALL Fatal('ElasticSolver','Variable > StateDir < does not exits!')
+    END IF
+  END IF
 
   ALLOCATE( PrevSOL(SIZE(Displacement)) )
   PrevSOL = Displacement
@@ -1187,6 +1212,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, AxialSymmetry, NeoHookeanMaterial, &
              CalculateStrains, CalculateStresses, CalcPrincipal, CalcPrincipalAngle, MixedFormulation)
      END IF
+  END IF
+
+  !-----------------------------------------------------------------------------
+  !   Write the state variable solution ...
+  !-----------------------------------------------------------------------------
+  IF (UseUMAT .AND. OutputStateVars) THEN
+    CALL GenerateStateVariable(PointwiseStateV, MaxIntegrationPoints, NStateV, StateSol, StateDir)
   END IF
 
 
@@ -4604,6 +4636,66 @@ CONTAINS
 !--------------------------------------------------------------------------------
 
 
+!--------------------------------------------------------------------------------
+  SUBROUTINE GenerateStateVariable(PointwiseStateV, MaxIntegrationPoints, NStateV, &
+      StateSol, StateDir)
+!--------------------------------------------------------------------------------
+!   This subroutine generates the field for visualizing the state variables of
+!   the umat material model. This assumes that the first (six) state variables 
+!   define a tensor variable whose principal components are here solved. Whether
+!   calling this subroutine is feasible depends on case.   
+!--------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: PointwiseStateV(:,:) 
+    INTEGER :: MaxIntegrationPoints, NStateV
+    TYPE(Variable_t), POINTER :: StateSol, StateDir
+!---------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+    INTEGER :: elem, dofs, dirdofs, i, j, k, t
+    INTEGER :: PriLWork=102, PriInfo=0
+    REAL(KIND=dp) :: Work(3,3), EigenVals(3), PriWork(102)
+!---------------------------------------------------------------------------------
+    IF (NStateV < 6) CALL Fatal('GenerateStateVariable', &
+        'At least 6 state variables should exist')
+
+    dofs = StateSol % DOFs
+    dirdofs = StateDir % DOFs
+    DO elem = 1, Solver % NumberOfActiveElements
+      Element => GetActiveElement(elem, Solver)
+      IntegStuff = GaussPoints(Element)
+      k = (elem-1)*MaxIntegrationPoints
+
+      DO t=1,IntegStuff % n
+        Work(1,1) = PointwiseStateV(k+t,1)
+        Work(2,2) = PointwiseStateV(k+t,2)
+        Work(3,3) = PointwiseStateV(k+t,3)
+        Work(1,2) = PointwiseStateV(k+t,4)
+        Work(1,3) = PointwiseStateV(k+t,5)
+        Work(2,3) = PointwiseStateV(k+t,6)
+
+        CALL DSYEV('V', 'U', 3, Work, 3, EigenVals, PriWork, PriLWork, PriInfo)
+        IF (PriInfo /= 0) THEN
+          CALL Fatal( 'GenerateStateVariable', 'DSYEV cannot generate eigen basis')          
+        END IF
+
+        j = StateSol % Perm(Element % ElementIndex) + t
+        StateSol % Values(dofs*(j-1)+1) = EigenVals(1)
+        StateSol % Values(dofs*(j-1)+2) = EigenVals(2)
+        StateSol % Values(dofs*(j-1)+3) = EigenVals(3)
+
+        StateDir % Values(dirdofs*(j-1)+1:dirdofs*(j-1)+3) = Work(1:3,1)
+        StateDir % Values(dirdofs*(j-1)+4:dirdofs*(j-1)+6) = Work(1:3,2)
+        StateDir % Values(dirdofs*(j-1)+7:dirdofs*(j-1)+9) = Work(1:3,3)
+
+        ! Write stress 11 as the first component:
+        !StateSol % Values(dofs*(j-1)+1) = PointwiseStateV(k+t,NStateV+4)
+        ! Write stress 22 as the second component:
+        !StateSol % Values(dofs*(j-1)+2) = PointwiseStateV(k+t,NStateV+5)
+      END DO
+    END DO
+!--------------------------------------------------------------------------------
+  END SUBROUTINE GenerateStateVariable
+!--------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
