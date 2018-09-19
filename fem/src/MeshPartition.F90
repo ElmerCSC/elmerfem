@@ -59,9 +59,11 @@ MODULE MeshPartition
      INTEGER :: rcount ! position counter for real values
      INTEGER :: bcpos  ! offset for boundary element data
      INTEGER :: indpos ! offset for node index data
+     INTEGER :: lcount ! position counter for logical values
      INTEGER, ALLOCATABLE :: idata(:)       ! integer data
      REAL(KIND=dp), ALLOCATABLE :: rdata(:) ! real data
-  END TYPE MeshPack_t
+     LOGICAL, ALLOCATABLE :: ldata(:)       ! logical data
+   END TYPE MeshPack_t
 
 
 CONTAINS
@@ -1821,6 +1823,9 @@ CONTAINS
     ! Also, dimension might not have been set at this point for all domains
     dim = 3
 
+    ! 0) Given the new partitioning add potential nodes to the interface
+    CALL UpdateInterfaceNodeCandidates( Mesh )
+
     ! 1) First pack the mesh for parallel communication
     CALL PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, dim)
 
@@ -1891,6 +1896,7 @@ CONTAINS
     SentPack(1:n) % NumberOfBoundaryElements = 0
     SentPack(1:n) % icount = 0
     SentPack(1:n) % rcount = 0
+    SentPack(1:n) % lcount = 0
     SentPack(1:n) % indpos = 0
     SentPack(1:n) % bcpos = 0
 
@@ -1955,6 +1961,7 @@ CONTAINS
         PPack => SentPack(part)
         PPack % icount = 5 ! offset for the above header info
         PPack % rcount = 0
+        PPack % lcount = 0
       END DO
 
       !  Go through the elements
@@ -2088,13 +2095,18 @@ CONTAINS
           PPack % NumberOfNodes = COUNT( PPack % NodeMask )
           PPack % icount = PPack % icount + PPack % NumberOfNodes
           PPack % rcount = dim * PPack % NumberOfNodes
-
-          ALLOCATE( PPack % idata(PPack % icount), PPack % rdata(PPack % rcount), STAT = allocstat )
+          PPack % lcount = PPack % NumberOfNodes
+          
+          ALLOCATE( PPack % idata(PPack % icount), &
+              PPack % rdata(PPack % rcount), &
+              PPack % ldata(PPack % lcount ), & 
+              STAT = allocstat )
           IF( allocstat /= 0 ) THEN
             CALL Fatal('PackMeshPieces','Could not allocate vectors for data')
           END IF
           PPack % idata = 0
           PPack % rdata = 0.0_dp
+          PPack % ldata = .FALSE.
 
           PPack % idata(1) = PPack % NumberOfNodes
           PPack % idata(2) = PPack % NumberOfBulkElements
@@ -2125,9 +2137,11 @@ CONTAINS
               ! Also add the coordinates for sending
               PPack % rdata(PPack % rcount+1) = Mesh % Nodes % x(i)
               PPack % rdata(PPack % rcount+2) = Mesh % Nodes % y(i)
-              IF( dim == 3 ) PPack % rdata(PPack % rcount+3) = Mesh % Nodes % z(i)
-
+              IF( dim == 3 ) PPack % rdata(PPack % rcount+3) = Mesh % Nodes % z(i)                           
               PPack % rcount = PPack % rcount + dim
+              
+              PPack % lcount = PPack % lcount + 1
+              PPack % ldata(PPack % lcount) = Mesh % ParallelInfo % Interface(i)
             END IF
           END DO
 
@@ -2151,7 +2165,7 @@ CONTAINS
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:), RecPack(:)
     !------------------------
 
-    INTEGER :: i,j,n,ierr,ni,nr, status(MPI_STATUS_SIZE)
+    INTEGER :: i,j,n,ierr,ni,nr,nl,status(MPI_STATUS_SIZE)
     INTEGER, ALLOCATABLE :: Requests(:)
 
     CALL Info('CommunicateMeshPieces','communicating mesh pieces in parallel',Level=6)
@@ -2160,6 +2174,8 @@ CONTAINS
     CALL Info('CommunicateMeshPieces','Number of integer values to sent: '//TRIM(I2S(ni)),Level=8)
     nr = SUM( SentPack(1:NoPartitions) % rcount )
     CALL Info('CommunicateMeshPieces','Number of real values to sent: '//TRIM(I2S(nr)),Level=8)
+    nl = SUM( SentPack(1:NoPartitions) % lcount )
+    CALL Info('CommunicateMeshPieces','Number of logical values to sent: '//TRIM(I2S(nl)),Level=8)
 
     n = NoPartitions
     ALLOCATE( RecPack( n ) )
@@ -2169,11 +2185,12 @@ CONTAINS
     RecPack(1:n) % NumberOfBoundaryElements = 0
     RecPack(1:n) % icount = 0
     RecPack(1:n) % rcount = 0
+    RecPack(1:n) % lcount = 0
     RecPack(1:n) % indpos = 0
     RecPack(1:n) % bcpos = 0
 
 
-    CALL CheckBuffer( ni*4 + nr*8 + (NoPartitions-1)* ( 4*2 + &
+    CALL CheckBuffer( nl + ni*4 + nr*8 + (NoPartitions-1)* ( 4*2 + &
          2*MPI_BSEND_OVERHEAD ) )
 
     ! Sent data sizes:
@@ -2185,6 +2202,8 @@ CONTAINS
            1000, ELMER_COMM_WORLD, ierr )
       CALL MPI_BSEND( SentPack(i) % rcount, 1, MPI_INTEGER, i-1, &
            1001, ELMER_COMM_WORLD, ierr )
+      CALL MPI_BSEND( SentPack(i) % lcount, 1, MPI_INTEGER, i-1, &
+           1002, ELMER_COMM_WORLD, ierr )
     END DO
 
     ! Recieve data sizes:
@@ -2195,6 +2214,8 @@ CONTAINS
            1000, ELMER_COMM_WORLD, status, ierr )
       CALL MPI_RECV( RecPack(i) % rcount, 1, MPI_INTEGER, i-1, &
            1001, ELMER_COMM_WORLD, status, ierr )
+      CALL MPI_RECV( RecPack(i) % lcount, 1, MPI_INTEGER, i-1, &
+           1002, ELMER_COMM_WORLD, status, ierr )
     END DO
 
     CALL Info('PackMeshPieces','Waiting for the 1st barrier',Level=15)
@@ -2204,6 +2225,8 @@ CONTAINS
     CALL Info('PackDataToSend','Number of integer values to recieve: '//TRIM(I2S(n)),Level=8)
     n = SUM( RecPack(1:NoPartitions) % rcount )
     CALL Info('PackDataToSend','Number of real values to recieve: '//TRIM(I2S(n)),Level=8)
+    n = SUM( RecPack(1:NoPartitions) % lcount )
+    CALL Info('PackDataToSend','Number of logical values to recieve: '//TRIM(I2S(n)),Level=8)
 
     ! Allocate data sizes for recieving data
     !----------------------------------------
@@ -2212,6 +2235,7 @@ CONTAINS
       IF( RecPack(i) % icount > 5 ) THEN
         ALLOCATE( RecPack(i) % idata( RecPack(i) % icount) )
         ALLOCATE( RecPack(i) % rdata( RecPack(i) % rcount) )
+        ALLOCATE( RecPack(i) % ldata( RecPack(i) % lcount) )
       END IF
     END DO
 
@@ -2222,9 +2246,11 @@ CONTAINS
       IF( i-1 == ParEnv % Mype ) CYCLE
       IF( SentPack(i) % icount > 5 ) THEN
         CALL MPI_BSEND( SentPack(i) % idata, SentPack(i) % icount, MPI_INTEGER, i-1, &
-             1002, ELMER_COMM_WORLD, ierr )
-        CALL MPI_BSEND( SentPack(i) % rdata, SentPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
              1003, ELMER_COMM_WORLD, ierr )
+        CALL MPI_BSEND( SentPack(i) % rdata, SentPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
+             1004, ELMER_COMM_WORLD, ierr )
+        CALL MPI_BSEND( SentPack(i) % ldata, SentPack(i) % lcount, MPI_LOGICAL, i-1, &
+             1005, ELMER_COMM_WORLD, ierr )
       END IF
     END DO
 
@@ -2235,9 +2261,11 @@ CONTAINS
       IF( i-1 == ParEnv % MyPe ) CYCLE
       IF( RecPack(i) % icount > 5 ) THEN
         CALL MPI_RECV( RecPack(i) % idata, RecPack(i) % icount, MPI_INTEGER, i-1, &
-             1002, ELMER_COMM_WORLD, status, ierr )
-        CALL MPI_RECV( RecPack(i) % rdata, RecPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
              1003, ELMER_COMM_WORLD, status, ierr )
+        CALL MPI_RECV( RecPack(i) % rdata, RecPack(i) % rcount, MPI_DOUBLE_PRECISION, i-1, &
+             1004, ELMER_COMM_WORLD, status, ierr )
+        CALL MPI_RECV( RecPack(i) % ldata, RecPack(i) % lcount, MPI_LOGICAL, i-1, &
+             1005, ELMER_COMM_WORLD, status, ierr )
       END IF
     END DO
 
@@ -2418,7 +2446,7 @@ CONTAINS
     !----------------------------------
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
-    INTEGER :: gind,lind,rcount,icount
+    INTEGER :: gind,lind,rcount,icount,lcount
     LOGICAL :: CheckNeighbours, IsBulk
     TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
     TYPE(MeshPack_t), POINTER :: PPack
@@ -2505,6 +2533,15 @@ CONTAINS
 
     CALL Info('UnpackMeshPieces','Copying staying nodes',Level=20)
 
+    IF( .NOT. ASSOCIATED( NewMesh % ParallelInfo % INTERFACE ) ) THEN
+      ALLOCATE( NewMesh % ParallelInfo % INTERFACE( NewMesh % NumberOfNodes ), STAT = allocstat )
+      IF( allocstat /= 0 ) THEN
+        CALL Fatal('UnpackMeshPieces','Cannot allocate partition interface?')
+      END IF
+      NewMesh % ParallelInfo % Interface = .FALSE.
+    END IF
+
+    
     DO i=1,Mesh % NumberOfNodes
       j = i
       IF( ParallelMesh ) j = Mesh % ParallelInfo % GlobalDofs(i)
@@ -2519,6 +2556,8 @@ CONTAINS
       NewMesh % Nodes % x(k) = Mesh % Nodes % x(i)
       NewMesh % Nodes % y(k) = Mesh % Nodes % y(i)
       IF( dim == 3 ) NewMesh % Nodes % z(k) = Mesh % Nodes % z(i)
+
+      NewMesh % ParallelInfo % Interface(k) = Mesh % ParallelInfo % Interface(i)
     END DO
 
 
@@ -2633,7 +2672,8 @@ CONTAINS
 
       icount = PPack % indpos
       rcount = 0
-
+      lcount = 0
+      
       DO i = 1, PPack % NumberOfNodes
         icount = icount + 1
         j = Ppack % idata(icount)
@@ -2649,11 +2689,18 @@ CONTAINS
         NewMesh % Nodes % x(k) = PPack % rdata(rcount+1)
         NewMesh % Nodes % y(k) = PPack % rdata(rcount+2)
         IF( dim == 3 ) NewMesh % Nodes % z(k) = PPack % rdata(rcount+3)
-
         rcount = rcount + dim
+
+        NewMesh % ParallelInfo % Interface(k) = PPack % ldata(lcount)
+        lcount = lcount + 1
       END DO
     END DO
 
+    n = COUNT( NewMesh % ParallelInfo % INTERFACE )
+    CALL Info('UnpackMeshPieces','Potential interface nodes '//TRIM(I2S(n))//' out of '&
+        //TRIM(I2S(NewMesh % NumberOfNodes)),Level=20)
+
+    
     CALL Info('UnpackMeshPieces','Creating local to global numbering for '&
          //TRIM(I2S(newnodes))//' nodes',Level=20)
     ALLOCATE( NewMesh % ParallelInfo % GlobalDofs( newnodes ), STAT = allocstat)
@@ -2675,8 +2722,66 @@ CONTAINS
 
   END SUBROUTINE UnpackMeshPieces
 
+  
+  ! Given a partitioning create a list of potential nodes at the interface.
+  ! The list is conservative including all old and possible new nodes.
+  !------------------------------------------------------------------------------
+  SUBROUTINE UpdateInterfaceNodeCandidates(Mesh)
+    TYPE(Mesh_t), POINTER :: Mesh
+    
+    INTEGER :: i,j,k,n,m,part,allocstat
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, ALLOCATABLE :: PrevPartition(:)
+    INTEGER, POINTER :: ElementPart(:)
+    LOGICAL, POINTER :: PartInterface(:)
+    CHARACTER(*), PARAMETER :: Caller = "UpdateInterfaceNodeCandidates"
+    
+    CALL Info(Caller,'Updating the list of potential interface nodes')
 
+    n = Mesh % NumberOfNodes
+    IF( n == 0 ) RETURN
+    
+    IF( .NOT. ASSOCIATED( Mesh % ParallelInfo % INTERFACE ) ) THEN
+      ALLOCATE( Mesh % ParallelInfo % INTERFACE( n ), STAT=allocstat )
+      IF( allocstat /= 0 ) THEN
+        CALL Fatal(Caller,'Allocation error for parallel interface!')
+      END IF
+      Mesh % ParallelInfo % Interface = .FALSE.
+    END IF
+    PartInterface => Mesh % ParallelInfo % Interface
 
+    IF( .NOT. ASSOCIATED( Mesh % RePartition ) ) THEN
+      CALL Fatal(Caller,'Allocation error for parallel interface!')
+    END IF
+    ElementPart => Mesh % RePartition
+    
+    ALLOCATE( PrevPartition( n ), STAT=allocstat ) 
+    IF( allocstat /= 0 ) THEN
+      CALL Fatal(Caller,'Allocation error for prev partition!')
+    END IF
+    
+    DO i=1,Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(i)
+      part = ElementPart(i)
+      IF( part <= 0 ) CYCLE
+      m = Element % TYPE % NumberOfNodes
+      DO j=1,m
+        k = Element % NodeIndexes(j)
+        IF( PrevPartition(k) == 0 ) THEN
+          PrevPartition(k) = part
+        ELSE IF( PrevPartition(k) /= part ) THEN
+          PartInterface(k) = .TRUE.
+        END IF
+      END DO
+    END DO
+
+    n = COUNT( PartInterface ) 
+    DEALLOCATE( PrevPartition )
+    
+    CALL Info(Caller,'Number of potential nodes at the intarface: '//TRIM(I2S(n)),Level=10)      
+      
+  END SUBROUTINE UpdateInterfaceNodeCandidates
+  
 
   !> Makes a serial mesh partitiong. Current uses geometric criteria.
   !> Includes some hybrid strategies where the different physical domains
