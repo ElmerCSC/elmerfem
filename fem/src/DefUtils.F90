@@ -3127,12 +3127,9 @@ CONTAINS
 
     Params => GetSolverParams(Solver)
 
+    NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
     LinearSystemTrialing = ListGetLogical( Params,'Linear System Trialing', Found )
-    IF( LinearSystemTrialing ) THEN
-      NameSpaceI = 1
-    ELSE
-      NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
-    END IF
+    IF( LinearSystemTrialing ) NameSpaceI = MAX( 1, NameSpaceI )
       
     IF( NameSpaceI > 0 ) THEN
       CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
@@ -3188,7 +3185,11 @@ CONTAINS
 10   CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
     
     IF( LinearSystemTrialing ) THEN
-      IF( x % LinConverged <= 0 ) THEN
+      IF( x % LinConverged > 0 ) THEN
+        IF( ListGetLogical( Params,'Linear System Trialing Conserve',Found ) ) THEN
+          CALL ListAddConstReal( Params,'Linear System Namespace Number', 1.0_dp *NameSpaceI )
+        END IF
+      ELSE
         NameSpaceI = NameSpaceI + 1      
         IF( .NOT. ListCheckPrefix( Params,'linsys'//TRIM(I2S(NameSpaceI)) ) ) THEN
           CALL Fatal('DefaultSolve','Exhausted all linear system strategies!')

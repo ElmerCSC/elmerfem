@@ -51,16 +51,17 @@ Solver 1
 
 
   ! Start from 1st linear system strategy and continue until convergence is found
-  Linear System Trialing = Logical True
+  Linear System Trialing = True
+
+! This keyword can be used to memorize the successfull strategy
+! Linear System Trialing Conserve = True
 
   linsys1: Linear System Solver = "Iterative"
   linsys1: Linear System Iterative Method = "BiCGStab"
-  linsys1: Linear System Abort Not Converged = False
   linsys1: Linear System Preconditioning = "none"
 
   linsys2: Linear System Solver = "Iterative"
   linsys2: Linear System Iterative Method = "BiCGStab"
-  linsys2: Linear System Abort Not Converged = False
   linsys2: Linear System Preconditioning = "ILU0"
 
   linsys3: Linear System Solver = "direct"
@@ -70,8 +71,7 @@ Solver 1
 ! also direct strategy (the third one)
   Linear System Max Iterations = 5
   Linear System Convergence Tolerance = 1.0e-08
-  Linear System Abort Not Converged = True
-  Linear System Preconditioning = "none"
+  Linear System Abort Not Converged = False
   Linear System Residual Output = 1
 
   Steady State Convergence Tolerance = 1.0e-05
