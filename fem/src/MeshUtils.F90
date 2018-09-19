@@ -142,7 +142,7 @@ CONTAINS
      INTEGER, OPTIONAL :: NumberOfBulkElements, NumberOfBoundaryElements, NumberOfNodes
      TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------
-     INTEGER :: istat, n
+     INTEGER :: istat, i, n
 
      ALLOCATE( Mesh, STAT=istat )
      IF ( istat /= 0 ) &
@@ -227,9 +227,21 @@ CONTAINS
      Mesh % MaterialWeight => NULL()
     
      Mesh % ParallelInfo % NumberOfIfDOFs =  0
-     NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
-     NULLIFY( Mesh % ParallelInfo % INTERFACE )
-     NULLIFY( Mesh % ParallelInfo % NeighbourList )
+ 
+     IF( PRESENT( NumberOfNodes ) ) THEN
+       CALL AllocateVector( Mesh % ParallelInfo % GlobalDOFs, NumberOfNodes )
+       CALL AllocateVector( Mesh % ParallelInfo % INTERFACE, NumberOfNodes )
+       ALLOCATE(Mesh % ParallelInfo % NeighbourList(NumberOfNodes), STAT=istat )
+       IF ( istat /= 0 ) &
+            CALL Fatal( 'AllocateMesh', 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
+       DO i=1,Mesh % NumberOfNodes
+         NULLIFY(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+       END DO
+     ELSE
+       NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
+       NULLIFY( Mesh % ParallelInfo % INTERFACE )
+       NULLIFY( Mesh % ParallelInfo % NeighbourList )
+     END IF
 !------------------------------------------------------------------------------
    END FUNCTION AllocateMesh
 !------------------------------------------------------------------------------
@@ -17236,7 +17248,11 @@ CONTAINS
     ELSE
       Normal(1) = 1.0
       Normal(2) = 1.0e-2
-      IF( dim == 3) Normal(3) = 1.0e-4
+      IF( dim == 3) THEN
+        Normal(3) = 1.0e-4
+      ELSE
+        Normal(3) = 0.0_dp
+      END IF
     END IF
     Normal = Normal / SQRT( SUM( Normal ** 2) )
 

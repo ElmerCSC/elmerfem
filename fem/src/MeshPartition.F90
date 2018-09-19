@@ -1842,6 +1842,21 @@ CONTAINS
     CALL UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, newnodes, newnbulk, minind, &
          maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
 
+    CALL FindRepartitionInterfaces(Model, NewMesh, dim)
+
+    NewMesh % Name = Mesh % Name
+    NewMesh % MeshDim = Mesh % MeshDim
+
+    !Testing
+    IF(NewMesh % NumberOfBulkElements + NewMesh % NumberOfBoundaryElements /= &
+         SIZE(NewMesh % Elements)) CALL Fatal(FuncName, "Element size mismatch")
+
+    DO i=1,NewMesh % NumberOfBulkElements + NewMesh % NumberOfBoundaryElements
+      IF(ANY(NewMesh % Elements(i) % NodeIndexes <= 0) .OR. &
+           ANY(NewMesh % Elements(i) % NodeIndexes > newnodes)) THEN
+        CALL Fatal(FuncName,' bad elem nodeindexes')
+      END IF
+    END DO
 
     IF( FreeOldMesh ) CALL ReleaseMesh( Mesh )
 
@@ -2691,7 +2706,7 @@ CONTAINS
         IF( dim == 3 ) NewMesh % Nodes % z(k) = PPack % rdata(rcount+3)
         rcount = rcount + dim
 
-        NewMesh % ParallelInfo % Interface(k) = PPack % ldata(lcount)
+        NewMesh % ParallelInfo % INTERFACE(k) = PPack % ldata(lcount+1)
         lcount = lcount + 1
       END DO
     END DO
@@ -2717,6 +2732,18 @@ CONTAINS
       END IF
       NewMesh % ParallelInfo % GlobalDofs(j) = i
     END DO
+
+     DO i=1,NewMesh % NumberOfBulkElements
+       Element => NewMesh % Elements(i)
+       NewMesh % MaxElementNodes = MAX( NewMesh % MaxElementNodes, &
+            Element % TYPE % NumberOfNodes)
+       NewMesh % MaxElementDOFs = MAX( NewMesh % MaxElementDOFs, &
+           Element % TYPE % NumberOfNodes + &
+           Element % TYPE % NumberOfEdges * NewMesh % MaxEdgeDOFs + &
+           Element % TYPE % NumberOfFaces * NewMesh % MaxFaceDOFs + &
+           Element % BDOFs, &
+           Element % DGDOFs )
+     END DO
 
     CALL Info('UnpackMeshPieces','Finished unpacking and gluing mesh pieces',Level=8)
 
@@ -2759,6 +2786,7 @@ CONTAINS
     IF( allocstat /= 0 ) THEN
       CALL Fatal(Caller,'Allocation error for prev partition!')
     END IF
+    PrevPartition = 0
     
     DO i=1,Mesh % NumberOfBulkElements
       Element => Mesh % Elements(i)
@@ -2781,8 +2809,176 @@ CONTAINS
     CALL Info(Caller,'Number of potential nodes at the intarface: '//TRIM(I2S(n)),Level=10)      
       
   END SUBROUTINE UpdateInterfaceNodeCandidates
-  
 
+  !Based on a conservative list of potential interface nodes
+  !in ParallelInfo % Interface, find real interface nodes &
+  !populate NeighbourList % Neighbours
+  SUBROUTINE FindRepartitionInterfaces(Model, Mesh, DIM)
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: DIM
+    !--------------------------------------
+    INTEGER :: i,j,k,n,loc,ierr,nneighs, counter
+    INTEGER, ALLOCATABLE :: GDOFsSend(:), GDOFsRecv(:), LocalNNum(:),PartSendCount(:),work_arr(:),&
+         requests(:)
+    LOGICAL, POINTER :: iface(:)
+    LOGICAL, ALLOCATABLE :: PartMaybeNeigh(:)
+    CHARACTER(*), PARAMETER :: FuncName = 'FindRepartitionInterfaces'
+    TYPE(NeighbourList_t), POINTER :: NeighList(:)
+    TYPE RecvNodes_t
+       INTEGER, ALLOCATABLE :: GDOFs(:)
+       INTEGER :: part,n
+    END TYPE RecvNodes_t
+    TYPE(RecvNodes_t), ALLOCATABLE :: RecvNodes(:)
+
+    !Find potential neighbour partitions - shouldn't really need to buffer
+    PartMaybeNeigh = FindMeshNeighboursGeometric(Mesh,DIM,1.0_dp)
+
+    Iface => Mesh % ParallelInfo % Interface
+    NeighList => Mesh % ParallelInfo % NeighbourList
+
+    n = COUNT(Iface)
+    nneighs = COUNT(PartMaybeNeigh)
+    ALLOCATE(GDOFsSend(n), LocalNNum(n), PartSendCount(ParEnv % PEs),&
+         RecvNodes(nneighs), requests(nneighs), work_arr(ParEnv % PEs))
+
+    counter = 0
+    DO i=1,Mesh % NumberOfNodes
+      IF(.NOT. Iface(i)) CYCLE
+      counter = counter + 1
+      GDOFsSend(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+      LocalNNum(counter) = i
+    END DO
+    CALL SortI(n, GDOFsSend, LocalNNum)
+
+    CALL MPI_AllGather(n, 1, MPI_INTEGER, PartSendCount, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+    IF(ierr /= 0) CALL Fatal(FuncName, "MPI Error communicating node send counts")
+
+    !Create receiving structure
+    counter = 0
+    DO i=1,ParEnv % PEs
+      IF(.NOT. PartMaybeNeigh(i)) CYCLE
+      IF(i == ParEnv % MyPE + 1) CYCLE
+      counter = counter + 1
+      RecvNodes(counter) % part = i-1
+      RecvNodes(counter) % n = PartSendCount(i)
+      ALLOCATE(RecvNodes(counter) % GDOFs(RecvNodes(counter) % n))
+    END DO
+
+    !Send sorted gdof lists
+    DO i=1,nneighs
+
+      CALL MPI_IRECV( RecvNodes(i) % GDOFs,  RecvNodes(i) % n, MPI_INTEGER, &
+           RecvNodes(i) % part, 1000, ELMER_COMM_WORLD, requests(i), ierr)
+      IF(ierr /= 0) CALL Fatal(FuncName, "MPI Error receiving GDOFs")
+      CALL MPI_SEND( GDOFsSend, n, MPI_INTEGER, RecvNodes(i) % part, 1000, &
+           ELMER_COMM_WORLD, ierr)
+      IF(ierr /= 0) CALL Fatal(FuncName, "MPI Error sending GDOFs")
+
+    END DO
+    CALL MPI_WaitAll( nneighs, requests, MPI_STATUSES_IGNORE, ierr )
+
+    !Fill neighbourlist % neighbours based on received data
+    DO i=1,n
+      work_arr = -1
+      counter = 0
+
+      k = GDOFsSend(i)
+      DO j=1,nneighs
+        loc = SearchI(RecvNodes(j) % n, RecvNodes(j) % GDOFs, k)
+        IF(loc==0) CYCLE !not found in this partition
+        counter = counter + 1
+        work_arr(counter) = RecvNodes(j) % part
+      END DO
+
+      IF(counter == 0) Iface(LocalNNum(i)) = .FALSE.
+
+      !Reallocate neighbourlist if wrong size
+      IF(ASSOCIATED(Neighlist(LocalNNum(i)) % Neighbours)) THEN
+        IF(SIZE(Neighlist(LocalNNum(i)) % Neighbours) /= counter + 1) THEN
+          DEALLOCATE(NeighList(LocalNNum(i)) % Neighbours)
+          NULLIFY(NeighList(LocalNNum(i)) % Neighbours)
+        END IF
+      END IF
+      IF(.NOT. ASSOCIATED(NeighList(LocalNNum(i)) % Neighbours)) &
+           ALLOCATE(NeighList(LocalNNum(i)) % Neighbours(counter+1))
+
+      !Fill the list
+      NeighList(LocalNNum(i)) % Neighbours(1) = ParEnv % MyPE
+      NeighList(LocalNNum(i)) % Neighbours(2:counter+1) = work_arr(1:counter)
+    END DO
+
+    !Now we cycle all nodes neighbourlists, allocating any missing neighbourlists and
+    !filling with our own partition number
+    DO i=1,Mesh % NumberOfNodes
+      IF(.NOT. ASSOCIATED(NeighList(i) % Neighbours)) THEN
+        IF(Iface(i)) CALL Fatal(FuncName, "Programming error: missed interface node!")
+        ALLOCATE(NeighList(i) % Neighbours(1))
+        NeighList(i) % Neighbours(1) = ParEnv % MyPE
+      ELSE IF(SIZE(NeighList(i) % Neighbours) > 1 .AND. .NOT. Iface(i)) THEN
+        DEALLOCATE(Neighlist(i) % Neighbours)
+        ALLOCATE(NeighList(i) % Neighbours(1))
+        NeighList(i) % Neighbours(1) = ParEnv % MyPE
+      END IF
+    END DO
+
+    Mesh % ParallelInfo % NumberOfIFDofs = COUNT(Iface)
+
+  END SUBROUTINE FindRepartitionInterfaces
+
+  !Works out potential neighbour partitions based on Mesh % Nodes bounding box
+  FUNCTION FindMeshNeighboursGeometric(Mesh,DIM,Buffer) RESULT(PartIsNearby)
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: DIM
+    REAL(KIND=dp) :: Buffer
+    LOGICAL, ALLOCATABLE :: PartIsNearby(:)
+    !---------------------------
+    REAL(KIND=dp), ALLOCATABLE :: MyBBox(:),BBoxes(:)
+    INTEGER :: i,j,ierr, bbsz
+    CHARACTER(*), PARAMETER :: FuncName = 'FindMeshNeighboursGeometric'
+
+    bbsz = 2*DIM !size of bounding box
+
+    ALLOCATE(PartIsNearby(ParEnv % PEs),&
+         MyBBox(bbsz),&
+         BBoxes(bbsz*ParEnv % PEs))
+    PartIsNearby = .FALSE.
+
+    IF(Mesh % NumberOfNodes > 0) THEN
+      MyBBox(1) = MINVAL(Mesh % Nodes % x)
+      MyBBox(2) = MAXVAL(Mesh % Nodes % x)
+      IF(DIM >= 2) THEN
+        MyBBox(3) = MINVAL(Mesh % Nodes % y)
+        MyBBox(4) = MAXVAL(Mesh % Nodes % y)
+      END IF
+      IF(DIM==3) THEN
+        MyBBox(5) = MINVAL(Mesh % Nodes % z)
+        MyBBox(6) = MAXVAL(Mesh % Nodes % z)
+      END IF
+    ELSE
+      MyBBox = 0.0_dp
+    END IF
+
+    CALL MPI_AllGather(MyBBox, bbsz, MPI_DOUBLE_PRECISION, BBoxes, &
+         bbsz, MPI_DOUBLE_PRECISION, ELMER_COMM_WORLD, ierr)
+    IF(ierr /= 0) CALL Fatal(FuncName, "MPI Error communicating bounding boxes")
+
+    DO i=0, ParEnv % PEs-1
+      IF(i == ParEnv % MyPE) CYCLE
+      IF(BBoxes(i*bbsz+1) - buffer > MyBBox(2)) CYCLE
+      IF(BBoxes(i*bbsz+2) + buffer < MyBBox(1)) CYCLE
+      IF(DIM >= 2) THEN
+        IF(BBoxes(i*bbsz+3) - buffer > MyBBox(4)) CYCLE
+        IF(BBoxes(i*bbsz+4) + buffer < MyBBox(3)) CYCLE
+      END IF
+      IF(DIM==3) THEN
+        IF(BBoxes(i*bbsz+5) - buffer > MyBBox(6)) CYCLE
+        IF(BBoxes(i*bbsz+6) + buffer < MyBBox(5)) CYCLE
+      END IF
+      PartIsNearby(i+1) = .TRUE.
+    END DO
+
+  END FUNCTION FindMeshNeighboursGeometric
   !> Makes a serial mesh partitiong. Current uses geometric criteria.
   !> Includes some hybrid strategies where the different physical domains
   !> are partitioned using different strategies. 
