@@ -62,6 +62,8 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,TransientSimulation )
     CALL Fatal(Caller,'Implemented only in cartesian coordinates')
   END IF
 
+  Params => GetSolverParams()
+  
   IF (ListGetLogical(Params,'Calculate Joule Heating',Found)) &
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
       'Joule Heating' )
@@ -137,6 +139,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,TransientSimulation )
     nColours = GetNOFColours(Solver)
     VecAsm = (nColours > 1) .OR. (nthr == 1)
     
+    CALL Info(Caller,'Performing bulk element assembly',Level=12)
     CALL ResetTimer( Caller//'BulkAssembly' )
 
     !$OMP PARALLEL &
@@ -173,6 +176,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,TransientSimulation )
     nColours = GetNOFBoundaryColours(Solver)
     VecAsm = (nColours > 1) .OR. (nthr == 1)
 
+    CALL Info(Caller,'Performing boundary element assembly',Level=12)
     CALL ResetTimer(Caller//'BCAssembly')
     
     !$OMP PARALLEL &
@@ -258,10 +262,14 @@ CONTAINS
       CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
       !CALL ListInitElementKeyword( ReactCoeff_h,'Material','Reaction Coefficient')
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
-      Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
+      Found = .FALSE.
+      IF( ASSOCIATED( Model % Constants ) ) THEN
+        Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
+      END IF
+      IF( .NOT. Found ) Eps0 = 8.854187817e-12
       InitHandles = .FALSE.
     END IF
-    
+ 
     dim = CoordinateSystemDimension()
     IP = GaussPoints( Element )
     ngp = IP % n
@@ -310,7 +318,7 @@ CONTAINS
     EpsCoeff => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
     IF( Found ) THEN
       CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJ, MASS, EpsCoeff )
-      MASS(1:nd,1:nd) = Eps0 * MASS(1:nd,1:nd)
+      MASS(1:nd,1:nd) = -Eps0 * MASS(1:nd,1:nd)
     END IF
       
     ! source term: FORCE=FORCE+(u,f)

@@ -2328,9 +2328,9 @@ CONTAINS
 !------------------------------------------------------------------------------
      IF( ListCheckPresent( List, Name ) ) THEN
        IF( PRESENT( Caller ) ) THEN
-         CALL Warn(Caller,'Unused keyword in this routine: '//TRIM(Name))
+         CALL Warn(Caller,'Untreated keyword may cause problems: '//TRIM(Name))
        ELSE
-         CALL Warn('ListUntreatedWarn','Untreated keyword in this routine: '//TRIM(Name))
+         CALL Warn('ListUntreatedWarn','Untreated keyword may cause problems: '//TRIM(Name))
        END IF
      END IF
 !------------------------------------------------------------------------------
@@ -2349,9 +2349,9 @@ CONTAINS
 !------------------------------------------------------------------------------
      IF( ListCheckPresent( List, Name ) ) THEN
        IF( PRESENT( Caller ) ) THEN
-         CALL Fatal(Caller,'Unused keyword in this routine: '//TRIM(Name))
+         CALL Fatal(Caller,'Untreated keyword: '//TRIM(Name))
        ELSE
-         CALL Fatal('ListUntreatedFatal','Untreated keyword in this routine: '//TRIM(Name))
+         CALL Fatal('ListUntreatedFatal','Untreated keyword: '//TRIM(Name))
        END IF
      END IF
 !------------------------------------------------------------------------------
