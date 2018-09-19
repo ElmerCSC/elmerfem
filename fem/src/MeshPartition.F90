@@ -1812,8 +1812,8 @@ CONTAINS
       NewPart => Mesh % RePartition
 
       n = MAXVAL( NewPart )
-      IF( n /= NoPartitions ) THEN
-        CALL Fatal(FuncName,'Partition number differs from process number: '//TRIM(I2S(n)))
+      IF( n > NoPartitions ) THEN
+        CALL Fatal(FuncName,'Partition number exceeds process number: '//TRIM(I2S(n)))
       END IF
     END IF
 
@@ -1822,7 +1822,7 @@ CONTAINS
     dim = 3
 
     ! 1) First pack the mesh for parallel communication
-    CALL PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, RecPack, dim)
+    CALL PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, dim)
 
     ! 2) Then sent the pieces among different partitions
     CALL CommunicateMeshPieces(Model, Mesh, ParallelMesh, NoPartitions, SentPack, RecPack)
@@ -1862,7 +1862,7 @@ CONTAINS
   !> Converts element datastructure into a integer and real stream to facilitate
   !> sending to another partition.
   !------------------------------------------------------------------------------
-  SUBROUTINE PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, RecPack, dim)
+  SUBROUTINE PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, dim)
 
     IMPLICIT NONE
 
@@ -1871,7 +1871,7 @@ CONTAINS
     LOGICAL :: ParallelMesh
     INTEGER, POINTER :: NewPart(:)
     INTEGER :: NoPartitions, dim
-    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:), RecPack(:)
+    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:)
     !------------------------
     TYPE(Element_t), POINTER :: Element, Parent
     INTEGER :: i,j,k,n,nblk,nbdry,allocstat,part,elemcode,geom_id,sweep
@@ -1885,7 +1885,6 @@ CONTAINS
     ! Allocate and initialize the structures used to communicate thes mesh
     n = NoPartitions
     ALLOCATE( SentPack( n ) )
-    ALLOCATE( RecPack( n ) )
 
     SentPack(1:n) % NumberOfNodes = 0
     SentPack(1:n) % NumberOfBulkElements = 0
@@ -1894,14 +1893,6 @@ CONTAINS
     SentPack(1:n) % rcount = 0
     SentPack(1:n) % indpos = 0
     SentPack(1:n) % bcpos = 0
-
-    RecPack(1:n) % NumberOfNodes = 0
-    RecPack(1:n) % NumberOfBulkElements = 0
-    RecPack(1:n) % NumberOfBoundaryElements = 0
-    RecPack(1:n) % icount = 0
-    RecPack(1:n) % rcount = 0
-    RecPack(1:n) % indpos = 0
-    RecPack(1:n) % bcpos = 0
 
     IF( Mesh % NumberOfNodes == 0 ) THEN
       CALL Info('PackMeshPieces','Mesh is empty, nothing to pack',Level=10)
@@ -2170,6 +2161,18 @@ CONTAINS
     nr = SUM( SentPack(1:NoPartitions) % rcount )
     CALL Info('CommunicateMeshPieces','Number of real values to sent: '//TRIM(I2S(nr)),Level=8)
 
+    n = NoPartitions
+    ALLOCATE( RecPack( n ) )
+
+    RecPack(1:n) % NumberOfNodes = 0
+    RecPack(1:n) % NumberOfBulkElements = 0
+    RecPack(1:n) % NumberOfBoundaryElements = 0
+    RecPack(1:n) % icount = 0
+    RecPack(1:n) % rcount = 0
+    RecPack(1:n) % indpos = 0
+    RecPack(1:n) % bcpos = 0
+
+
     CALL CheckBuffer( ni*4 + nr*8 + (NoPartitions-1)* ( 4*2 + &
          2*MPI_BSEND_OVERHEAD ) )
 
@@ -2310,7 +2313,8 @@ CONTAINS
 
     ! Find the range of initial global indeces
     ! This is conservative since it includes all the initial global indexes
-    IF( Mesh % NumberOfNodes > 0 ) THEN
+    n = Mesh % NumberOfNodes
+    IF( n > 0 ) THEN
       IF( ParallelMesh ) THEN
         maxind = MAXVAL( Mesh % ParallelInfo % GlobalDofs(1:n) )
         minind = MINVAL( Mesh % ParallelInfo % GlobalDofs(1:n) )
