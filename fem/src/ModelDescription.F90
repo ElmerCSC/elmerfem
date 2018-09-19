@@ -2188,10 +2188,13 @@ CONTAINS
       ! TODO: (2018-09-17) Nowadays ISO_C_BINDINGS are pretty much mandatory to compile elmer
 #if USE_ISO_C_BINDINGS
       ! Call defaults.lua using 1) ELMER_HOME environment variable or 2) ELMER_SOLVER_HOME preprocessor macro
+      ! TODO: (2018-09-18) ELMER_SOLVER_HOME might be too long
 
       if (trim(elmer_home_env) == "") then
         lstat = lua_dostring(LuaState, &
-            'loadfile("' // ELMER_SOLVER_HOME // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
+            'loadfile("' // &
+ELMER_SOLVER_HOME &
+                    // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
       else
 #endif
         lstat = lua_dostring(LuaState, &
