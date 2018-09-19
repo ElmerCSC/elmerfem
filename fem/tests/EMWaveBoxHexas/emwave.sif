@@ -1,0 +1,190 @@
+! A test case for the electromagnetic wave solver.
+! Utilizes constant matrices for speedier assembly.
+!
+! P.R. 25.8.2018
+
+Check Keywords "Warn"
+
+$ w=2*pi*(2.5e9)
+$ eps0=8.854187817e-12
+$ mu0=4e-7*pi
+$ nwave=50
+
+Header
+  Mesh DB "." "shoebox_hexas"
+End
+
+Simulation
+  Max Output Level = 7
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Transient
+  Timestepping Method = implicit euler
+  Timestep Sizes = $2*pi/(w*nwave)
+
+! For the test we have 1/2 wave. Change this to a larger value when needed.
+  Timestep Intervals = $nwave/2
+  Steady State Max Iterations = 1
+
+  Output Intervals(1) = 1
+End
+
+Constants
+  Permittivity of Vacuum = $eps0
+  Permeability of Vacuum = $mu0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+
+Solver 1
+  Equation = "VectorWave"
+  Variable = E
+
+  Optimize Bandwidth = True
+  Linear System Symmetric = False
+  Procedure = "EMWaveSolver" "EMWaveSolver"
+
+! ei toimi ainakaan visualisoinnissa?
+  Quadratic Approximation = Logical False
+
+  Linear System Scaling = True
+  Linear System Solver = String "Iterative"
+  Linear System Iterative Method = String "bicgstabl"
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "none"
+  Linear System ILUT Tolerance = Real 1e-3
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 1
+
+! Only global matrices work for constant bulk matrix currently. 
+! Constant bulk matrix saves ~20% for the test problem.
+  Use Global Mass Matrix = True
+  Constant Bulk Matrix = True
+
+! Optionally we could compute energy norm
+!  Calculate Loads = Logical True
+!  Calculate Energy Norm = Logical True
+End
+
+Solver 2
+  Equation = "calcfields"
+
+  Procedure = "EMWaveSolver" "EMWaveCalcFields"
+  Linear System Symmetric = False
+
+  Calculate Elemental Fields = Logical False
+
+!  Calculate Electric field derivatives = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+
+! Not much effect as we need to assembly the many r.h.s vectors anyways
+  Constant Bulk Matrix = True
+
+  Exec Solver = before saving
+!  Exec Solver = never
+End
+
+Solver 3
+  Equation = "save scalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = g.dat
+
+  Variable 1 = E
+  Operator 1 = min
+  Operator 2 = max
+
+  Exec Solver = after saving
+End 
+
+Solver 4
+  Equation = "save line"
+  Procedure = "SaveData" "SaveLine"
+
+  Filename = l.dat
+
+  Variable 1 = E
+  Variable 2 = elfield
+
+  Polyline Coordinates(2,3) = 0.05 0.025 0.0 0.05 0.025 0.2
+  Polyline Divisions(1) = 200
+
+  Exec Solver = after saving
+End 
+
+Solver 5
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = g
+  Vtu Format = Logical True
+  Save Geometry Ids = Logical True
+
+  Exec Solver = after saving
+End 
+
+
+Body Force 1
+  !Current Density 1 = ...
+  !Current Density 2 = ...
+  !Current Density 3 = ...
+End
+
+
+Boundary Condition 1
+  Name = "Inlet"
+  Target Boundaries(1) = 5
+
+  E {e} 2 = Variable "time"
+    Real MATC "sin(w*tx)"
+
+  ! E {e} = Real 0
+  ! E {f} = Real 0
+
+  ! Electric Damping Coefficient = ...
+  ! Magnetic Boundary Load 1 = ...
+  ! Magnetic Boundary Load 2 = ...
+  ! Magnetic Boundary Load 3 = ...
+End
+
+Boundary Condition 2
+  Name = "Outlet"
+  Target Boundaries(1) = 6 
+
+  E {e} = Real 0
+  E {f} = Real 0
+End
+
+Boundary Condition 3
+  Name = "Sides"
+  Target Boundaries(4) = 1 2 3 4 
+
+  E {e} = Real 0
+  E {f} = Real 0
+End
+
+
+Solver 1 :: Reference Norm = 1.41761533E-03
+!Solver 2 :: Reference Norm = 7.85935993E-15

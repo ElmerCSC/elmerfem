@@ -509,7 +509,7 @@ CONTAINS
               
       Flag = .FALSE.      
       IF ( body_id > 0 .AND. body_id <= Model % NumberOfBodies ) THEN
-         k = ListGetInteger( Model % Bodies(body_id) % Values, 'Equation', &
+         k = ListGetInteger( Model % Bodies(body_id) % Values, 'Equation', Found, &
                  minv=1, maxv=Model % NumberOFEquations )
          IF ( k > 0 ) THEN
            Flag = ListGetLogical(Model % Equations(k) % Values,Equation,Found)

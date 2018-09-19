@@ -478,11 +478,11 @@ CONTAINS
 
 !> Create a copy of the linear system (Values,Rhs) to (BulkValues,BulkRhs).
 !------------------------------------------------------------------------------
-   SUBROUTINE CopyBulkMatrix( A, BulkMass )
+   SUBROUTINE CopyBulkMatrix( A, BulkMass, BulkDamp )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      INTEGER :: i,n
-     LOGICAL, OPTIONAL :: BulkMass
+     LOGICAL, OPTIONAL :: BulkMass, BulkDamp
      
      n = SIZE( A % Rhs )
      IF( ASSOCIATED( A % BulkRhs ) ) THEN
@@ -509,10 +509,7 @@ CONTAINS
        ALLOCATE( A % BulkValues( n ) )
      END IF
 
-     DO i=1,n
-       A % BulkValues(i) = A % Values(i)
-     END DO
-
+     A % BulkValues(1:n) = A % Values(1:n)
 
      IF( PRESENT( BulkMass ) .AND. ASSOCIATED( A % MassValues) ) THEN
        IF( BulkMass ) THEN
@@ -526,15 +523,28 @@ CONTAINS
          IF ( .NOT. ASSOCIATED( A % BulkMassValues ) ) THEN
            ALLOCATE( A % BulkMassValues( n ) )
          END IF
-         
-         DO i=1,n
-           A % BulkMassValues(i) = A % MassValues(i)
-         END DO         
+
+         A % BulkMassValues(1:n) = A % MassValues(1:n)
+       END IF
+     END IF
+
+     IF( PRESENT( BulkDamp ) .AND. ASSOCIATED( A % DampValues) ) THEN
+       IF( BulkDamp ) THEN
+         n = SIZE( A % DampValues )
+         IF( ASSOCIATED( A % BulkDampValues ) ) THEN
+           IF( SIZE( A % BulkDampValues ) /= n ) THEN
+             DEALLOCATE( A % BulkDampValues ) 
+             A % BulkDampValues => NULL()
+           END IF
+         END IF
+         IF ( .NOT. ASSOCIATED( A % BulkDampValues ) ) THEN
+           ALLOCATE( A % BulkDampValues( n ) )
+         END IF
+
+         A % BulkDampValues(1:n) = A % DampValues(1:n)
        END IF
      END IF
      
-
-
    END SUBROUTINE CopyBulkMatrix
 !------------------------------------------------------------------------------
 
@@ -4097,7 +4107,77 @@ CONTAINS
   END SUBROUTINE ReleaseDirichletDof
 !------------------------------------------------------------------------------
 
-   
+
+  
+!> Release the range or min/max values of Dirichlet values.
+!------------------------------------------------------------------------------
+  FUNCTION DirichletDofsRange( Solver, Oper ) RESULT ( val ) 
+!------------------------------------------------------------------------------
+    TYPE(Solver_t), OPTIONAL :: Solver
+    CHARACTER(LEN=*), OPTIONAL :: Oper 
+    REAL(KIND=dp) :: val
+    
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp) :: minv,maxv
+    LOGICAL :: FindMin, FindMax
+    INTEGER :: i,OperNo
+    
+    IF( PRESENT( Solver ) ) THEN
+      A => Solver % Matrix
+    ELSE
+      A => CurrentModel % Solver % Matrix
+    END IF
+    
+    val = 0.0_dp
+    
+    ! Defaulting to range
+    OperNo = 0
+
+    IF( PRESENT( Oper ) ) THEN
+      IF( Oper == 'range' ) THEN
+        OperNo = 0
+      ELSE IF( Oper == 'min' ) THEN
+        OperNo = 1 
+      ELSE IF( Oper == 'max' ) THEN
+        OperNo = 2
+      ELSE
+        CALL Fatal('DirichletDofRange','Unknown operator: '//TRIM(Oper))
+      END IF
+    END IF
+          
+    IF(.NOT. ALLOCATED(A % ConstrainedDOF)) THEN
+      RETURN
+    END IF
+  
+    IF( OperNo == 0 .OR. OperNo == 1 ) THEN
+      minv = HUGE( minv ) 
+      DO i=1,SIZE( A % ConstrainedDOF )
+        IF( A % ConstrainedDOF(i) ) minv = MIN( A % DValues(i), minv ) 
+      END DO
+      minv = ParallelReduction( minv, 1 ) 
+    END IF
+
+    IF( OperNo == 0 .OR. OperNo == 2 ) THEN
+      maxv = -HUGE( maxv ) 
+      DO i=1,SIZE( A % ConstrainedDOF )
+        IF( A % ConstrainedDOF(i) ) maxv = MAX( A % DValues(i), maxv ) 
+      END DO
+      maxv = ParallelReduction( maxv, 1 ) 
+    END IF
+
+    IF( OperNo == 0 ) THEN    
+      val = maxv - minv
+    ELSE IF( OperNo == 1 ) THEN
+      val = minv
+    ELSE
+      val = maxv
+    END IF
+      
+  END FUNCTION DirichletDofsRange
+!------------------------------------------------------------------------------
+
+
+  
 
 !------------------------------------------------------------------------------
 !> Set dirichlet boundary condition for given dof. The conditions are
@@ -9893,7 +9973,7 @@ END FUNCTION SearchNodeL
     INTEGER :: n,i,j
     REAL(KIND=dp) :: bnorm,s
     COMPLEX(KIND=dp) :: DiagC
-    LOGICAL :: ComplexMatrix, DoRHS, DoCM
+    LOGICAL :: ComplexMatrix, DoRHS, DoCM, Found
     REAL(KIND=dp), POINTER  :: Diag(:)
 
     TYPE(Matrix_t), POINTER :: CM
@@ -9914,7 +9994,11 @@ END FUNCTION SearchNodeL
       Diag = 0._dp
     
       ComplexMatrix = Solver % Matrix % COMPLEX
-            
+
+      IF( ListGetLogical( Solver % Values,'Linear System Pseudo Complex',Found ) ) THEN
+        ComplexMatrix = .TRUE.
+      END IF
+      
       IF ( ComplexMatrix ) THEN
         CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
 

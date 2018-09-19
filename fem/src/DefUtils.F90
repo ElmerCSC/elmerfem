@@ -2215,43 +2215,69 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Returns handle to Parent element of a boundary element with a larger body id.
+!------------------------------------------------------------------------------ 
+  FUNCTION GetBulkElementAtBoundary( Element, Found ) RESULT(BulkElement)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), OPTIONAL :: Element
+    LOGICAL, OPTIONAL :: Found
+    TYPE(element_t), POINTER :: BulkElement
+!------------------------------------------------------------------------------    
+    TYPE(element_t), POINTER :: BulkElementL, BulkElementR, BoundaryElement
+    LOGICAL :: L
+    INTEGER :: mat_id, BodyIdL, BodyIdR
+
+    BulkElement => NULL()
+    
+    BoundaryElement => GetCurrentElement(Element)
+      
+    IF ( .NOT. ASSOCIATED(BoundaryElement % boundaryinfo)) RETURN
+    BulkElementR => BoundaryElement % boundaryinfo % right
+    BulkElementL => BoundaryElement % boundaryinfo % left
+    BodyIdR = 0; BodyIdL = 0
+    
+    IF (ASSOCIATED(BulkElementR)) BodyIdR = BulkElementR % BodyId
+    IF (ASSOCIATED(BulkElementL)) BodyIdL = BulkElementL % BodyId
+    
+    IF (BodyIdR == 0 .AND. BodyIdL == 0) THEN
+      RETURN
+    ELSE IF (BodyIdR > BodyIdL) THEN
+      BulkElement => BulkElementR
+    ELSE IF (bodyIdL >= BodyIdR) THEN
+      BulkElement => BulkElementL
+    END IF
+
+    IF( PRESENT( Found ) ) Found = ASSOCIATED( BulkElement ) 
+    
+!------------------------------------------------------------------------------
+  END FUNCTION GetBulkElementAtBoundary
+!------------------------------------------------------------------------------
+
+  
+!------------------------------------------------------------------------------
 !> Returns handle to Material value list of the bulk material meeting  
 !> element with larger body id. Typically Element is a boundary element.
   FUNCTION GetBulkMaterialAtBoundary( Element, Found ) RESULT(Material)
 !------------------------------------------------------------------------------
     TYPE(Element_t), OPTIONAL :: Element
     LOGICAL, OPTIONAL :: Found
-
     TYPE(ValueList_t), POINTER :: Material
-    type(element_t), pointer :: BoundaryElement, BulkElementL, &
-        BulkElementR, BulkElement
-
+!------------------------------------------------------------------------------
+    TYPE(element_t), POINTER :: BulkElement
     LOGICAL :: L
-    INTEGER :: mat_id, BodyIdL, BodyIdR
+    INTEGER :: mat_id
 
     Material => NULL()
 
-    BoundaryElement => GetCurrentElement(Element)
+    BulkElement => GetBulkElementAtBoundary(Element, Found)
 
-    IF ( .NOT. ASSOCIATED(BoundaryElement % boundaryinfo)) return
-    BulkElementR => BoundaryElement % boundaryinfo % right
-    BulkElementL => BoundaryElement % boundaryinfo % left
-    BodyIdR = 0; BodyIdL = 0
-
-    IF (ASSOCIATED(BulkElementR)) BodyIdR = BulkElementR % BodyId
-    IF (ASSOCIATED(BulkElementL)) BodyIdL = BulkElementL % BodyId
-
-    if (BodyIdR == 0 .and. BodyIdL == 0) return
-    if (BodyIdR > BodyIdL) then
-      BulkElement => BulkElementR
-    end if
-    if (bodyIdL >= BodyIdR) then
-      BulkElement => BulkElementL
-    end if
-
-    mat_id = GetMaterialId( BulkElement, L )
-
-    IF ( L ) Material => CurrentModel % Materials(mat_id) % Values
+    IF( ASSOCIATED( BulkElement ) ) THEN
+      mat_id = GetMaterialId( BulkElement, L )      
+      IF ( L ) Material => CurrentModel % Materials(mat_id) % Values
+    ELSE
+      L = .FALSE.
+    END IF
+    
     IF ( PRESENT( Found ) ) Found = L
 !------------------------------------------------------------------------------
   END FUNCTION GetBulkMaterialAtBoundary
@@ -2951,10 +2977,11 @@ CONTAINS
 
 !> Performs initialization for matrix equation related to the active solver
 !------------------------------------------------------------------------------
-  RECURSIVE SUBROUTINE DefaultInitialize( USolver )
+  RECURSIVE SUBROUTINE DefaultInitialize( USolver, UseConstantBulk )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
-
+     LOGICAL, OPTIONAL :: UseConstantBulk
+!------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: Solver
      LOGICAL :: Found
      
@@ -2963,7 +2990,24 @@ CONTAINS
      ELSE
        Solver => CurrentModel % Solver
      END IF
-          
+
+     IF( PRESENT( UseConstantBulk ) .AND. UseConstantBulk ) THEN
+       CALL Info('DefaultInitialize','Using constant bulk matrix',Level=8)
+       IF( .NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
+         CALL Warn('DefaultInitialie','Constant bulk system requested but not associated!')
+         RETURN
+       END IF
+       Solver % Matrix % Values = Solver % Matrix % BulkValues        
+       IF( ASSOCIATED( Solver % Matrix % BulkMassValues ) ) &
+           Solver % Matrix % MassValues = Solver % Matrix % BulkMassValues 
+       IF( ASSOCIATED( Solver % Matrix % BulkDampValues ) ) &
+           Solver % Matrix % DampValues = Solver % Matrix % BulkDampValues 
+       IF( ASSOCIATED( Solver % Matrix % BulkRhs ) ) &
+           Solver % Matrix % rhs = Solver % Matrix % BulkRhs 
+       RETURN
+     END IF
+
+     
      CALL DefaultSlaveSolvers(Solver,'Slave Solvers') ! this is the initial name of the slot
      CALL DefaultSlaveSolvers(Solver,'Nonlinear Pre Solvers')     
 
@@ -3185,6 +3229,23 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Is the system converged. Wrapper to hide the dirty test.
+!------------------------------------------------------------------------------
+  FUNCTION DefaultConverged( USolver ) RESULT( Converged ) 
+!------------------------------------------------------------------------------
+    TYPE(Solver_t), OPTIONAL, TARGET, INTENT(in) :: USolver
+    TYPE(Solver_t), POINTER :: Solver
+    LOGICAL :: Converged
+    
+    Solver => CurrentModel % Solver
+    IF ( PRESENT( USolver ) ) Solver => USolver
+
+    Converged = ( Solver % Variable % NonlinConverged > 0 )
+
+  END FUNCTION DefaultConverged
+!------------------------------------------------------------------------------
+         
 
 !------------------------------------------------------------------------------
   FUNCTION DefaultLinesearch( Converged, USolver, FirstIter, nsize, values, values0 ) RESULT( ReduceStep ) 
@@ -5292,7 +5353,8 @@ CONTAINS
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE. ) 
       ELSE
-        CALL CopyBulkMatrix( PSolver % Matrix ) 
+        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = ASSOCIATED(PSolver % Matrix % MassValues), &
+            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues) ) 
       END IF
     END IF
 

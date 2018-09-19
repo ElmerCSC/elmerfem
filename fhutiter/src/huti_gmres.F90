@@ -334,7 +334,7 @@ contains
 
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
        if ( mod(iter_count, HUTI_DBUGLVL) .eq. 0 ) then
-          write (*, '(I8, E11.4)') iter_count, residual
+          WRITE (*, '(A, I8, E11.4)') '   gmres:',iter_count, residual
        end if
     end if
 
@@ -366,7 +366,7 @@ contains
 
 1000 continue
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
-       write (*, '(I8, E11.4)') iter_count, residual
+       WRITE (*, '(A, I8, E11.4)') '   gmres:',iter_count, residual
     end if
 
     HUTI_ITERS = iter_count
@@ -774,7 +774,7 @@ contains
 
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
        if ( mod(iter_count, HUTI_DBUGLVL) .eq. 0 ) then
-          write (*, '(I8, E11.4)') iter_count, residual
+          WRITE (*, '(A, I8, E11.4)') '   gmres:',iter_count, residual
        end if
     end if
 
@@ -806,7 +806,7 @@ contains
 
 1000 continue
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
-       write (*, '(I8, E11.4)') iter_count, residual
+       WRITE (*, '(A, I8, E11.4)') '   gmres:',iter_count, residual
     end if
 
     HUTI_ITERS = iter_count
@@ -1082,7 +1082,7 @@ contains
 
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
        if ( mod(iter_count, HUTI_DBUGLVL) .eq. 0 ) then
-          write (*, '(I8, E11.4)') iter_count, residual
+          WRITE (*, '(A, I8, E11.4)') '   gmresz:',iter_count, residual
        end if
     end if
 
@@ -1114,7 +1114,7 @@ contains
 
 1000 continue
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
-       write (*, '(I8, E11.4)') iter_count, residual
+       WRITE (*, '(A, I8, E11.4)') '   gmresz:', iter_count, residual
     end if
 
     HUTI_ITERS = iter_count
@@ -1390,7 +1390,7 @@ contains
 
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
        if ( mod(iter_count, HUTI_DBUGLVL) .eq. 0 ) then
-          write (*, '(I8, E11.4)') iter_count, residual
+          WRITE (*, '(A, I8, E11.4)') '   gmresz:',iter_count, residual
        end if
     end if
 
@@ -1423,7 +1423,7 @@ contains
 
 1000 continue
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
-       write (*, '(I8, E11.4)') iter_count, residual
+       WRITE (*, '(A,I8, E11.4)') '   gmresz:',iter_count, residual
     end if
 
     HUTI_ITERS = iter_count
