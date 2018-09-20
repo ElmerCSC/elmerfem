@@ -1847,10 +1847,6 @@ CONTAINS
     NewMesh % Name = Mesh % Name
     NewMesh % MeshDim = Mesh % MeshDim
 
-    !Testing
-    IF(NewMesh % NumberOfBulkElements + NewMesh % NumberOfBoundaryElements /= &
-         SIZE(NewMesh % Elements)) CALL Fatal(FuncName, "Element size mismatch")
-
     DO i=1,NewMesh % NumberOfBulkElements + NewMesh % NumberOfBoundaryElements
       IF(ANY(NewMesh % Elements(i) % NodeIndexes <= 0) .OR. &
            ANY(NewMesh % Elements(i) % NodeIndexes > newnodes)) THEN
