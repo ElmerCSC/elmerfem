@@ -30,6 +30,31 @@
 ! *****************************************************************************
 
 !Remesh the calving model using MMG3D
+! Strategy:
+!----------------
+
+! - Use Mesh % Repartition and RedistributeMesh to send relevant 
+!   mesh regions to the nominated remeshing partition
+
+! - Remeshing partition uses my 'CutMesh' subroutine to extract the 
+!   specific region to feed to MMG, keeping track of elements/nodes 
+!   which will be kept fixed, in order to facilitate gluing.
+
+! - Remesh with MMG
+
+! - Local mesh gluing on remeshing partition only
+
+! - Global node/element number renegotiation
+
+! - Zoltan to compute new partitioning
+
+! - RedistributeMesh back to target processors
+
+! - Interpolate variables etc
+
+! - Continue simulation
+
+
 SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   USE MeshUtils
@@ -133,11 +158,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !Identify all elements which need to be sent (including those fixed in place)
   !Here we also find extra nodes which are just beyond the remeshing threshold
   !but which are in fixed elements, thus also need to be sent
-  IF(my_calv_front > 0) THEN
-    ALLOCATE(elem_fixed(nbulk+nbdry), elem_send(nbulk+nbdry))
-    elem_fixed = 0 !integer rather than logical to facilitate sending in packed element structure
-    elem_send = .FALSE.
+  ALLOCATE(elem_fixed(nbulk+nbdry), elem_send(nbulk+nbdry))
+  elem_fixed = 0 !integer rather than logical to facilitate sending in packed element structure
+  elem_send = .FALSE.
 
+  IF(my_calv_front > 0) THEN
     !Each partition identifies (based on nodes), elements which need to be transferred
     DO i=1,Nbulk+Nbdry
       Element => Mesh % Elements(i)
@@ -488,6 +513,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
+      !Need to glue NewMeshR to GatheredMesh (boss only)
+      ! then renegotiate global node and element numbers (all partitions)
+
+
+
+
       ! - FOR TESTING ONLY
       ! DEALLOCATE(RmNode)
       ! ALLOCATE(RmNode(Mesh % NumberOfNodes))
@@ -511,6 +542,29 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
 
   CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
+
+
+  ! !Temporary test
+  ! CALL Zoltan_Interface( Model, Solver, dt, Transient )
+
+  !Now need to renumber/negotiate with other partitions for global NNs/GElementIndexes
+  !In this case, could be:
+  !
+  ! Boss partition (per calving region) has many more nodes & elements than 
+  ! it started WITH (because of gathering)
+  ! One or more (or none) partitions are empty
+  !
+  ! But *no* new partition boundary node or element has changed, because by design we insist
+  ! on this
+  !
+  ! Required outcome: closed set of nodenumbers & element numbers, so 
+  !   - start by determining new total node count & element count (inc. BC elements)
+  !   - each partition shares its d_nodecount (+ve for more nodes, -ve for fewer nodes)
+  !     - in this particular case, calving boss partition has have d_nodecount >> 0
+  !     - several (or no partitions) have d_nodecount << 0  (these will send node & element nos to boss(es))
+  !     - determine new local node & element numbers (but keep track of the old )
+  !                                                  (old ==0 for NEW nodes/elems).
+  !     - 
 
   !Potentially useful functions
   !CALL SyncNeighbours(ParEnv)
