@@ -1348,7 +1348,7 @@ END SUBROUTINE GetMaxDefs
      CALL InitParallelInfo()
      CALL ReadSharedFile()
 
-   CASE(6) 
+   CASE(6)
      IF( ASSOCIATED( LocalPerm) ) DEALLOCATE( LocalPerm ) 
      IF( ASSOCIATED( ElementTags) ) DEALLOCATE( ElementTags )
 
@@ -2077,13 +2077,10 @@ END SUBROUTINE GetMaxDefs
      IF( LoadOnly ) RETURN
    END IF
 
-
    ! Prepare the mesh for next steps.
    ! For example, create non-nodal mesh structures, periodic projectors etc. 
    CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)
       
-
-
    CALL Info('LoadMesh','Preparing mesh done',Level=8)
 
    
@@ -19694,6 +19691,113 @@ CONTAINS
     DEALLOCATE( NodeVisited, BodySum )
 
   END SUBROUTINE LumpedElementalVar
+
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE SaveParallelInfo( Solver )
+!------------------------------------------------------------------------------
+   TYPE( Solver_t ), POINTER  :: Solver
+!------------------------------------------------------------------------------    
+   TYPE(ParallelInfo_t), POINTER :: ParInfo=>NULL()
+   TYPE(ValueList_t), POINTER :: Params
+   CHARACTER(LEN=MAX_NAME_LEN) :: dumpfile
+   INTEGER :: i,j,k,n,maxnei
+   LOGICAL :: Found, MeshMode, MatrixMode
+   CHARACTER(*), PARAMETER :: Caller = "SaveParallelInfo"
+   TYPE(Nodes_t), POINTER :: Nodes
+   
+   Params => Solver % Values 
+
+   MeshMode = ListGetLogical( Params,'Save Parallel Matrix Info',Found ) 
+   MatrixMode = ListGetLogical( Params,'Save Parallel Mesh Info',Found ) 
+
+   IF( .NOT. ( MeshMode .OR. MatrixMode ) ) RETURN
+
+10 IF( MeshMode ) THEN
+     CALL Info(Caller,'Saving parallel mesh info',Level=8 ) 
+   ELSE
+     CALL Info(Caller,'Saving parallel matrix info',Level=8 ) 
+   END IF
+
+   IF( MeshMode ) THEN
+     ParInfo => Solver % Mesh % ParallelInfo
+     Nodes => Solver % Mesh % Nodes
+     dumpfile = 'parinfo_mesh.dat'
+   ELSE
+     ParInfo => Solver % Matrix % ParallelInfo
+     dumpfile = 'parinfo_mat.dat'      
+   END IF
+
+   IF( .NOT. ASSOCIATED( ParInfo ) ) THEN
+     CALL Warn(Caller,'Parallel info not associated!')
+     RETURN
+   END IF
+
+   n = SIZE( ParInfo % GlobalDOFs )
+   IF( n <= 0 ) THEN
+     CALL Warn(Caller,'Parallel info size is invalid!')
+     RETURN
+   END IF
+
+   ! memorize the maximum number of parallel neigbours
+   maxnei = 0
+   IF( ASSOCIATED( ParInfo % NeighbourList ) ) THEN
+     DO i=1,n
+       IF( ASSOCIATED( ParInfo % NeighbourList(i) % Neighbours ) ) THEN
+         j = SIZE( ParInfo % NeighbourList(i) % Neighbours )
+         maxnei = MAX( j, maxnei ) 
+       END IF
+     END DO
+   END IF
+   CALL Info(Caller,'Maximum number of parallel neighbours:'//TRIM(I2S(maxnei)))
+
+   IF(ParEnv % PEs > 1) dumpfile = TRIM(dumpfile)//'.'//TRIM(I2S(ParEnv % myPE))      
+   CALL Info(Caller,'Saving parallel info to: '//TRIM(dumpfile),Level=8)
+
+   OPEN(1,FILE=dumpfile, STATUS='Unknown')  
+   DO i=1,n
+     j = ParInfo % GlobalDOFs(i)
+     IF( ParInfo % INTERFACE(i) ) THEN
+       k = 1
+     ELSE
+       k = 0
+     END IF
+     WRITE(1,'(3I6)',ADVANCE='NO') i,j,k
+     IF( ASSOCIATED( ParInfo % NeighbourList(i) % Neighbours ) ) THEN
+       k = SIZE( ParInfo % NeighbourList(i) % Neighbours )
+     ELSE
+       k = 0
+     END IF
+     DO j=1,k
+       WRITE(1,'(I6)',ADVANCE='NO')  ParInfo % NeighbourList(i) % Neighbours(k)
+     END DO
+     DO j=k+1,maxnei
+       WRITE(1,'(I6)',ADVANCE='NO')  -1 
+     END DO
+     IF( MeshMode ) THEN
+       WRITE(1,'(3ES12.3)',ADVANCE='NO') &
+           Nodes % x(i), Nodes % y(i), Nodes % z(i)
+     END IF
+     WRITE(1,'(A)') ' ' ! finish the line
+   END DO
+   CLOSE(1)
+
+   ! Redo with matrix if both modes are requested
+   IF( MeshMode .AND. MatrixMode ) THEN
+     MeshMode = .FALSE.
+     GOTO 10
+   END IF
+   
+   CALL Info(Caller,'Finished saving parallel info',Level=10)
+
+!------------------------------------------------------------------------------
+ END SUBROUTINE SaveParallelInfo
+!------------------------------------------------------------------------------
+
+
+
+  
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
 !------------------------------------------------------------------------------

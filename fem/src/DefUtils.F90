@@ -3157,6 +3157,10 @@ CONTAINS
     ! One can run postprocessing solver in this slot in every nonlinear iteration.
     !-----------------------------------------------------------------------------
     CALL DefaultSlaveSolvers(Solver,'Nonlinear Post Solvers')
+
+
+    ! This could be somewhere else too. Now it is here for debugging.
+    CALL SaveParallelInfo( Solver )
     
 !------------------------------------------------------------------------------
   END FUNCTION DefaultSolve

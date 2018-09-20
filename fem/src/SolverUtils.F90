@@ -11367,7 +11367,8 @@ END FUNCTION SearchNodeL
     END IF
 
     IF ( ParEnv % PEs <= 1 ) THEN
-
+      CALL Info('SolveSystem','Serial linear System Solver: '//TRIM(Method),Level=8)
+      
       SELECT CASE(Method)
       CASE('multigrid')
         CALL MultiGridSolve( A, x, b, &
@@ -11383,7 +11384,9 @@ END FUNCTION SearchNodeL
         CALL DirectSolver( A, x, b, Solver )
       END SELECT
     ELSE
-      SELECT CASE(Method)
+      CALL Info('SolveSystem','Parallel linear System Solver: '//TRIM(Method),Level=8)
+
+    SELECT CASE(Method)
       CASE('multigrid')
         CALL MultiGridSolve( A, x, b, &
             DOFs, Solver, Solver % MultiGridLevel )

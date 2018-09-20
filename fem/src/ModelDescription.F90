@@ -2313,7 +2313,7 @@ CONTAINS
 
     NULLIFY( Model % Meshes )
     IF ( MeshDir(1:1) /= ' ' ) THEN
-      ! @TODO: Don't forget funny define
+
       CALL ResetTimer('LoadMesh') 
 
       Single = ListGetLogical( Model % Simulation,'Partition Mesh', GotIt ) 
