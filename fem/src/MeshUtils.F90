@@ -19770,7 +19770,7 @@ CONTAINS
        k = 0
      END IF
      DO j=1,k
-       WRITE(1,'(I6)',ADVANCE='NO')  ParInfo % NeighbourList(i) % Neighbours(k)
+       WRITE(1,'(I6)',ADVANCE='NO')  ParInfo % NeighbourList(i) % Neighbours(j)
      END DO
      DO j=k+1,maxnei
        WRITE(1,'(I6)',ADVANCE='NO')  -1 
