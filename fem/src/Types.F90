@@ -775,7 +775,7 @@ END INTERFACE
      INTEGER, POINTER :: InvPerm(:)
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
-                NumberOfFaces, NumberOfBoundaryElements, MeshDim, PassBCcnt=0
+                NumberOfFaces, NumberOfBoundaryElements, MeshDim = 0, MaxDim = 0, PassBCcnt=0
      INTEGER :: MinEdgeDOFs, MinFaceDOFs
      INTEGER :: MaxElementNodes, MaxElementDOFs, MaxEdgeDOFs, MaxFaceDOFs, MaxBDOFs
 

@@ -180,7 +180,7 @@ CONTAINS
      END IF
 
      n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-     IF( n > 0 ) THEN
+     IF( n > 0 ) THEN       
        ALLOCATE( Mesh % Elements(n) )
      ELSE
        Mesh % Elements => NULL()
@@ -1914,13 +1914,47 @@ END SUBROUTINE GetMaxDefs
 
  END SUBROUTINE LoadMeshStep
 
+ !------------------------------------------------------------------------------
+ ! Set the mesh dimension by studying the coordinate values.
+ ! This could be less conservative also...
+ !------------------------------------------------------------------------------    
+ SUBROUTINE SetMeshDimension( Mesh )
+   TYPE(Mesh_t), POINTER :: Mesh
+   
+   REAL(KIND=dp) :: x, y, z
+   LOGICAL :: C(3)
+   INTEGER :: i
+   
+   IF( Mesh % NumberOfNodes == 0 ) RETURN
 
+   ! Compare value to some node, why not the 1st one
+   x = Mesh % Nodes % x(1)
+   y = Mesh % Nodes % y(1)
+   z = Mesh % Nodes % z(1)
+   
+   C(1) = ANY( Mesh % Nodes % x /= x ) 
+   C(2) = ANY( Mesh % Nodes % y /= y )  
+   C(3) = ANY( Mesh % Nodes % z /= z )  
 
+   ! This version is perhaps too liberal 
+   Mesh % MeshDim = COUNT( C )
+   Mesh % MaxDim = 0
+   DO i=1,3
+     IF( C(i) ) Mesh % MaxDim = i
+   END DO
+      
+   CALL Info('SetMeshDimension','Dimension of mesh is: '//TRIM(I2S(Mesh % MeshDim)),Level=8)
+   CALL Info('SetMeshDimension','Max dimension of mesh is: '//TRIM(I2S(Mesh % MaxDim)),Level=8)
+
+ END SUBROUTINE SetMeshDimension
+
+ 
  !------------------------------------------------------------------------------
  !> Function to load mesh from disk.
  !------------------------------------------------------------------------------
  FUNCTION LoadMesh2( Model, MeshDirPar, MeshNamePar,&
-     BoundariesOnly, NumProcs, MyPE, Def_Dofs, mySolver ) RESULT( Mesh )
+     BoundariesOnly, NumProcs, MyPE, Def_Dofs, mySolver, &
+     LoadOnly ) RESULT( Mesh )
    !------------------------------------------------------------------------------
    USE PElementMaps, ONLY : GetRefPElementNodes
 
@@ -1931,6 +1965,7 @@ END SUBROUTINE GetMaxDefs
    INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:,:), mySolver
    TYPE(Mesh_t),  POINTER :: Mesh
    TYPE(Model_t) :: Model
+   LOGICAL, OPTIONAL :: LoadOnly 
    !------------------------------------------------------------------------------    
    INTEGER :: i,j,k,n
    INTEGER :: BaseNameLen, Save_Dim
@@ -1987,7 +2022,7 @@ END SUBROUTINE GetMaxDefs
    ! elementtypes since wrong permutation or dimension may spoil that. 
    !-------------------------------------------------------------------
    CALL MapCoordinates()
-
+   
    ! Get the bulk elements: element types, body index, topology
    !--------------------------------------------------------------------------
    CALL LoadMeshStep( 3 )
@@ -2032,58 +2067,26 @@ END SUBROUTINE GetMaxDefs
    !--------------------------------------------------------------------
    CALL CreateDiscontMesh(Model,Mesh)
 
-   ! Study the non-nodal elements (face, edge, DG, and p-elements)
-   ! This must be done before parallel communication since it will 
-   ! affect what needs to be communicated. 
-   !-------------------------------------------------------------------
-   CALL NonNodalElements()
-
-   ! Create parallel info for the non-nodal elements
-   !------------------------------------------------------------------
-   CALL ParallelNonNodalElements()
-
    ! Deallocate some stuff no longer needed
    !------------------------------------------------------------------
    CALL LoadMeshStep( 6 )
 
-   ! Enlarge the coordinate vectors.
-   ! This must be done after the advanced elements have been detected.
-   ! Currently increase is applied only for p-elements. 
-   !-------------------------------------------------------------------
-   CALL EnlargeCoordinates(Mesh)       
-
-   ! Some physics related historical initializations
-   ! Initialized by default.
-   !-----------------------------------------------------
-   !Model % FreeSurfaceNodes => NULL()
-   !Model % BoundaryCurvatures => NULL()
-
-   ! If periodic BC given, compute boundary mesh projector:
-   ! ------------------------------------------------------
-   DO i = 1,Model % NumberOfBCs
-     Model % BCs(i) % PMatrix => NULL()
-     k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt )
-     IF( GotIt ) THEN
-       Projector =>  PeriodicProjector( Model, Mesh, i, k )
-       IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
-     END IF
-   END DO
-
-   ! Don't know why this is saved really...
-   ! I guess because the could be higher dimensional meshes loaded already
-   Model % DIMENSION = save_dim
-
-
-   IF( ListGetLogical( Model % Simulation,'Inspect Quadratic Mesh', GotIt ) ) THEN
-     CALL InspectQuadraticMesh( Mesh ) 
-   END IF
-
    CALL Info('LoadMesh','Loading mesh done',Level=8)
 
-   IF( ListGetLogical( Model % Simulation,'Inspect Mesh',GotIt ) ) THEN
-     CALL InspectMesh( Mesh ) 
+   IF( PRESENT( LoadOnly ) ) THEN
+     IF( LoadOnly ) RETURN
    END IF
 
+
+   ! Prepare the mesh for next steps.
+   ! For example, create non-nodal mesh structures, periodic projectors etc. 
+   CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)
+      
+
+
+   CALL Info('LoadMesh','Preparing mesh done',Level=8)
+
+   
  CONTAINS
 
 
@@ -2388,13 +2391,147 @@ END SUBROUTINE GetMaxDefs
 
    END SUBROUTINE MapBodiesAndBCs
 
+   
+
+   !------------------------------------------------------------------------------
+   ! Map and scale coordinates, and increase the size of the coordinate
+   ! vectors, if requested.
+   !------------------------------------------------------------------------------    
+   SUBROUTINE MapCoordinates()
+
+     REAL(KIND=dp), POINTER CONTIG :: NodesX(:), NodesY(:), NodesZ(:)
+     REAL(KIND=dp), POINTER :: Wrk(:,:)
+     INTEGER, POINTER :: CoordMap(:)
+     REAL(KIND=dp) :: CoordScale(3)
+     INTEGER :: mesh_dim, model_dim
+     
+     ! Perform coordinate mapping
+     !------------------------------------------------------------
+     CoordMap => ListGetIntegerArray( Model % Simulation, &
+         'Coordinate Mapping',GotIt )
+     IF ( GotIt ) THEN
+       CALL Info('LoadMesh','Performing coordinate mapping',Level=8)
+
+       IF ( SIZE( CoordMap ) /= 3 ) THEN
+         WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
+         CALL Error( 'LoadMesh', Message )
+         WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
+         CALL Fatal( 'LoadMesh', Message )
+       END IF
+
+       IF ( ALL( CoordMap(1:3) /= 1 ) .OR. ALL( CoordMap(1:3) /= 2 ) .OR. ALL( CoordMap(1:3) /= 3 ) ) THEN
+         WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
+         CALL Error( 'LoadMesh', Message )
+         WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
+         CALL Fatal( 'LoadMesh', Message )
+       END IF
+
+       IF( CoordMap(1) == 1 ) THEN
+         NodesX => Mesh % Nodes % x
+       ELSE IF( CoordMap(1) == 2 ) THEN
+         NodesX => Mesh % Nodes % y
+       ELSE
+         NodesX => Mesh % Nodes % z
+       END IF
+
+       IF( CoordMap(2) == 1 ) THEN
+         NodesY => Mesh % Nodes % x
+       ELSE IF( CoordMap(2) == 2 ) THEN
+         NodesY => Mesh % Nodes % y
+       ELSE
+         NodesY => Mesh % Nodes % z
+       END IF
+
+       IF( CoordMap(3) == 1 ) THEN
+         NodesZ => Mesh % Nodes % x
+       ELSE IF( CoordMap(3) == 2 ) THEN
+         NodesZ => Mesh % Nodes % y
+       ELSE
+         NodesZ => Mesh % Nodes % z
+       END IF
+
+       Mesh % Nodes % x => NodesX
+       Mesh % Nodes % y => NodesY
+       Mesh % Nodes % z => NodesZ
+     END IF
+
+     ! Determine the mesh dimension 
+     !----------------------------------------------------------------------------
+     CALL SetMeshDimension( Mesh )
+     
+     mesh_dim = Mesh % MaxDim
+
+     ! Scaling of coordinates
+     !-----------------------------------------------------------------------------
+     Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',GotIt )    
+     IF( GotIt ) THEN            
+       CoordScale = 1.0_dp
+       DO i=1,mesh_dim
+         j = MIN( i, SIZE(Wrk,1) )
+         CoordScale(i) = Wrk(j,1)
+       END DO
+       WRITE(Message,'(A,3ES10.3)') 'Scaling coordinates:',CoordScale(1:3)
+       CALL Info('LoadMesh',Message) 
+       Mesh % Nodes % x = CoordScale(1) * Mesh % Nodes % x
+       IF( mesh_dim > 1 ) Mesh % Nodes % y = CoordScale(2) * Mesh % Nodes % y
+       IF( mesh_dim > 2 ) Mesh % Nodes % z = CoordScale(3) * Mesh % Nodes % z
+     END IF
+
+   END SUBROUTINE MapCoordinates
+
+ !------------------------------------------------------------------------------
+ END FUNCTION LoadMesh2
+ !------------------------------------------------------------------------------
+
+
+ !> Prepare a clean nodal mesh as it comes after being loaded from disk.
+ !> Study the non-nodal elements (face, edge, DG, and p-elements)
+ !> Create parallel info for the non-nodal elements
+ !> Enlarge the coordinate vectors for p-elements.
+ !> Generate static projector for periodic BCS.
+ !-------------------------------------------------------------------
+ SUBROUTINE PrepareMesh( Model, Mesh, Parallel, Def_Dofs, mySolver )
+
+   TYPE(Model_t) :: Model
+   TYPE(Mesh_t), POINTER :: Mesh
+   LOGICAL :: Parallel
+   INTEGER, OPTIONAL :: Def_Dofs(:,:), mySolver
+   LOGICAL :: Found
+
+
+   IF( Mesh % MaxDim == 0) THEN
+     CALL SetMeshDimension( Mesh )
+   END IF
+   Model % DIMENSION = MAX( Model % DIMENSION, Mesh % MaxDim ) 
+   
+   CALL NonNodalElements()
+
+   IF( Parallel ) THEN
+     CALL ParallelNonNodalElements()
+   END IF
+     
+   CALL EnlargeCoordinates( Mesh ) 
+
+   CALL GeneratePeriodicProjectors( Model, Mesh ) 
+
+   IF( ListGetLogical( Model % Simulation,'Inspect Quadratic Mesh', Found ) ) THEN
+     CALL InspectQuadraticMesh( Mesh ) 
+   END IF
+   
+   IF( ListGetLogical( Model % Simulation,'Inspect Mesh',Found ) ) THEN
+     CALL InspectMesh( Mesh ) 
+   END IF
+     
+   
+ CONTAINS
+     
 
    ! Check for the non-nodal element basis
    !--------------------------------------------------------
    SUBROUTINE NonNodalElements()
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
-     INTEGER :: DGIndex, body_id, body_id0, eq_id, solver_id, el_id
+     INTEGER :: i, j, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
                 FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), FirstOrderElements
      TYPE(Element_t), POINTER :: Element
@@ -2665,124 +2802,20 @@ END SUBROUTINE GetMaxDefs
    END SUBROUTINE NonNodalElements
 
 
-   !------------------------------------------------------------------------------
-   ! Map and scale coordinates, and increase the size of the coordinate
-   ! vectors, if requested.
-   !------------------------------------------------------------------------------    
-   SUBROUTINE MapCoordinates()
-
-     REAL(KIND=dp), POINTER CONTIG :: NodesX(:), NodesY(:), NodesZ(:)
-     REAL(KIND=dp), POINTER :: Wrk(:,:)
-     INTEGER, POINTER :: CoordMap(:)
-     REAL(KIND=dp) :: CoordScale(3)
-     INTEGER :: mesh_dim, model_dim
-
-     ! Perform coordinate mapping
-     !------------------------------------------------------------
-     CoordMap => ListGetIntegerArray( Model % Simulation, &
-         'Coordinate Mapping',GotIt )
-     IF ( GotIt ) THEN
-       CALL Info('LoadMesh','Performing coordinate mapping',Level=8)
-
-       IF ( SIZE( CoordMap ) /= 3 ) THEN
-         WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
-         CALL Error( 'LoadMesh', Message )
-         WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
-         CALL Fatal( 'LoadMesh', Message )
-       END IF
-
-       IF ( ALL( CoordMap(1:3) /= 1 ) .OR. ALL( CoordMap(1:3) /= 2 ) .OR. ALL( CoordMap(1:3) /= 3 ) ) THEN
-         WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
-         CALL Error( 'LoadMesh', Message )
-         WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
-         CALL Fatal( 'LoadMesh', Message )
-       END IF
-
-       IF( CoordMap(1) == 1 ) THEN
-         NodesX => Mesh % Nodes % x
-       ELSE IF( CoordMap(1) == 2 ) THEN
-         NodesX => Mesh % Nodes % y
-       ELSE
-         NodesX => Mesh % Nodes % z
-       END IF
-
-       IF( CoordMap(2) == 1 ) THEN
-         NodesY => Mesh % Nodes % x
-       ELSE IF( CoordMap(2) == 2 ) THEN
-         NodesY => Mesh % Nodes % y
-       ELSE
-         NodesY => Mesh % Nodes % z
-       END IF
-
-       IF( CoordMap(3) == 1 ) THEN
-         NodesZ => Mesh % Nodes % x
-       ELSE IF( CoordMap(3) == 2 ) THEN
-         NodesZ => Mesh % Nodes % y
-       ELSE
-         NodesZ => Mesh % Nodes % z
-       END IF
-
-       Mesh % Nodes % x => NodesX
-       Mesh % Nodes % y => NodesY
-       Mesh % Nodes % z => NodesZ
-     END IF
-
-     ! Determine the mesh dimension 
-     !----------------------------------------------------------------------------
-     mesh_dim = 0
-     model_dim = 0
-     IF ( ANY( Mesh % Nodes % x /= Mesh % Nodes % x(1) ) ) THEN
-       model_dim = 1
-       mesh_dim = mesh_dim + 1
-     END IF
-     IF ( ANY( Mesh % Nodes % y /= Mesh % Nodes % y(1) ) ) THEN
-       model_dim = 2
-       mesh_dim = mesh_dim + 1
-     END IF
-     IF ( ANY( Mesh % Nodes % z /= Mesh % Nodes % z(1) ) ) THEN
-       model_dim = 3
-       mesh_dim = mesh_dim + 1
-     END IF
-
-     Mesh % MeshDim = mesh_dim
-
-     save_dim = Model % DIMENSION
-     IF ( Model % DIMENSION <= 0 ) Model % DIMENSION = model_dim
-
-     CALL Info('LoadMesh','Dimension of model is: '//TRIM(I2S(model_dim)),Level=8)
-     CALL Info('LoadMesh','Dimension of mesh is: '//TRIM(I2S(mesh_dim)),Level=8)
-
-     ! Scaling of coordinates
-     !-----------------------------------------------------------------------------
-     Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',GotIt )    
-     IF( GotIt ) THEN            
-       CoordScale = 1.0_dp
-       DO i=1,mesh_dim
-         j = MIN( i, SIZE(Wrk,1) )
-         CoordScale(i) = Wrk(j,1)
-       END DO
-       WRITE(Message,'(A,3ES10.3)') 'Scaling coordinates:',CoordScale(1:mesh_dim)
-       CALL Info('LoadMesh',Message) 
-       Mesh % Nodes % x = CoordScale(1) * Mesh % Nodes % x
-       IF( mesh_dim > 1) Mesh % Nodes % y = CoordScale(2) * Mesh % Nodes % y
-       IF( mesh_dim > 2) Mesh % Nodes % z = CoordScale(3) * Mesh % Nodes % z
-     END IF
-
-   END SUBROUTINE MapCoordinates
-
-
-
-
    ! When the parallel nodal neighbours have been found 
    ! perform numbering for face and edge elements as well.
    !-------------------------------------------------------------------    
    SUBROUTINE ParallelNonNodalElements()
 
+     INTEGER :: i,n,mype     
      TYPE(Element_t), POINTER :: Element
-     IF(.NOT. Parallel ) RETURN
+
+     !IF(.NOT. Parallel ) RETURN
 
      n = SIZE( Mesh % ParallelInfo % NeighbourList )
+     mype = ParEnv % Mype
 
+     
      ! For unset neighbours just set the this partition to be the only owner
      DO i=1,n
        IF (.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
@@ -2793,6 +2826,7 @@ END SUBROUTINE GetMaxDefs
 
      ! Create parallel numbering of faces
      CALL SParFaceNumbering(Mesh)
+
      DO i=1,Mesh % NumberOfFaces
        Mesh % MinFaceDOFs = MIN(Mesh % MinFaceDOFs,Mesh % Faces(i) % BDOFs)
        Mesh % MaxFaceDOFs = MAX(Mesh % MaxFaceDOFs,Mesh % Faces(i) % BDOFs)
@@ -2801,6 +2835,7 @@ END SUBROUTINE GetMaxDefs
 
      ! Create parallel numbering for edges
      CALL SParEdgeNumbering(Mesh)
+
      DO i=1,Mesh % NumberOfEdges
        Mesh % MinEdgeDOFs = MIN(Mesh % MinEdgeDOFs,Mesh % Edges(i) % BDOFs)
        Mesh % MaxEdgeDOFs = MAX(Mesh % MaxEdgeDOFs,Mesh % Edges(i) % BDOFs)
@@ -2823,10 +2858,10 @@ END SUBROUTINE GetMaxDefs
 
    END SUBROUTINE ParallelNonNodalElements
 
-   !------------------------------------------------------------------------------
- END FUNCTION LoadMesh2
- !------------------------------------------------------------------------------
+   
+ END SUBROUTINE PrepareMesh
 
+ 
 
  SUBROUTINE InspectMesh(Mesh)
    
@@ -9981,7 +10016,7 @@ END SUBROUTINE GetMaxDefs
 
     CALL Info('FlatInterfaceMeshes','Flattening interface meshes to 2D',Level=8)    
     
-    MeshDim = CurrentModel % DIMENSION
+    MeshDim = CurrentModel % Dimension
     FlatDim = ListGetInteger( BParams,'Flat Projector Coordinate',Found,minv=1,maxv=3) 
     ReduceDim = ListGetLogical( BParams,'Flat Projector Reduce Dimension',Found )
 
@@ -10083,7 +10118,7 @@ END SUBROUTINE GetMaxDefs
 
     CALL Info('PlaneInterfaceMeshes','Flattening interface meshes to a plane',Level=8)    
 
-    MeshDim = CurrentModel % DIMENSION
+    MeshDim = CurrentModel % Dimension
     PNormal => ListGetConstRealArray( BParams,'Plane Projector Normal',Found) 
 
     ! If the projector normal is not given determine it first 
@@ -10496,7 +10531,6 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
     Projector => NULL()
     IF ( This <= 0  ) RETURN    
-
     CALL Info('PeriodicProjector','Starting projector creation',Level=12)
 
     DIM = CoordinateSystemDimension()
@@ -10791,6 +10825,23 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
+  !> If periodic BCs given, compute boundary mesh projector:
+  !------------------------------------------------------
+  SUBROUTINE GeneratePeriodicProjectors( Model, Mesh ) 
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: i,k
+    LOGICAL :: Found 
+    
+    DO i = 1,Model % NumberOfBCs
+      k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', Found )
+      IF( Found ) THEN
+        Model % BCs(i) % PMatrix => PeriodicProjector( Model, Mesh, i, k )
+      END IF
+    END DO
+  END SUBROUTINE GeneratePeriodicProjectors
+
+  
 
   FUNCTION ExtProjectorCaller( Mesh, SlaveMesh, MasterMesh, SlaveBcInd ) RESULT ( Projector )
     !---------------------------------------------------------------------------
@@ -11490,7 +11541,7 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % MaxElementDOFs  = Mesh_out % MaxElementNodes
     Mesh_out % Stabilize = Mesh_in % Stabilize
     Mesh_out % MeshDim = 3
-    CurrentModel % DIMENSION = 3
+    CurrentModel % Dimension = 3
 
     IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh_out,NeedEdges=.TRUE.)
     CALL SetMeshMaxDOFs(Mesh_out)
@@ -14770,16 +14821,6 @@ END SUBROUTINE FindNeighbourNodes
 !   ------------------------------------------------
     CALL UpdateParallelMesh( Mesh, NewMesh )
 !
-!   If periodic BC given, compute boundary mesh projector:
-!   ------------------------------------------------------
-!
-    DO i = 1,CurrentModel % NumberOfBCs
-       k = ListGetInteger(CurrentModel % BCs(i) % Values, 'Periodic BC', Found )
-       IF( Found ) THEN
-         CurrentModel % BCs(i) % PMatrix => &
-             PeriodicProjector( CurrentModel, Mesh, i, k )
-       END IF
-    END DO
 !
 !   Finalize:
 !   ---------
