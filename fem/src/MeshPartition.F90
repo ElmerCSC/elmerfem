@@ -821,7 +821,7 @@ CONTAINS
            PSL % GElemNums(NNcount(i) *30),&  !overallocate
            PSL % NodeElemStart(NNcount(i)+1),&
            PSLR % NodeElemStart(NNcount(i)+1),&
-           PSL % AllNodesMap(NNodes),& !For every node in mesh, the position (if present) in GNodeNums
+           PSL % AllNodesMap(NNodes)& !For every node in mesh, the position (if present) in GNodeNums
            )
 
       PSL % NodeNums = 0
