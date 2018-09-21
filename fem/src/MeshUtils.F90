@@ -229,8 +229,12 @@ CONTAINS
      Mesh % ParallelInfo % NumberOfIfDOFs =  0
  
      IF( PRESENT( NumberOfNodes ) ) THEN
-       CALL AllocateVector( Mesh % ParallelInfo % GlobalDOFs, NumberOfNodes )
-       CALL AllocateVector( Mesh % ParallelInfo % INTERFACE, NumberOfNodes )
+       ALLOCATE(Mesh % ParallelInfo % GlobalDOFs(NumberOfNodes), STAT=istat )
+       IF ( istat /= 0 ) &
+            CALL Fatal( 'AllocateMesh', 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
+       ALLOCATE(Mesh % ParallelInfo % INTERFACE(NumberOfNodes), STAT=istat )
+       IF ( istat /= 0 ) &
+            CALL Fatal( 'AllocateMesh', 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
        ALLOCATE(Mesh % ParallelInfo % NeighbourList(NumberOfNodes), STAT=istat )
        IF ( istat /= 0 ) &
             CALL Fatal( 'AllocateMesh', 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )

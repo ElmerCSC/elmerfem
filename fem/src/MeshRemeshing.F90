@@ -15,7 +15,8 @@ INTEGER :: MMGPARAM_hausd = MMG3D_DPARAM_hausd
 INTEGER :: MMGPARAM_hmin = MMG3D_DPARAM_hmin
 INTEGER :: MMGPARAM_hmax = MMG3D_DPARAM_hmax
 INTEGER :: MMGPARAM_iso = MMG3D_IPARAM_iso
-
+INTEGER :: MMGPARAM_hgrad = MMG3D_DPARAM_hgrad
+INTEGER :: MMGPARAM_angle = MMG3D_IPARAM_angle
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
 #endif
@@ -29,21 +30,25 @@ CONTAINS
 !============================================
 
 
-SUBROUTINE Set_MMG3D_Mesh(Mesh)
+SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel)
 
   TYPE(Mesh_t), POINTER :: Mesh
+  LOGICAL :: Parallel
 
 #ifdef HAVE_MMG
   TYPE(Element_t),POINTER :: Element
   INTEGER, POINTER :: NodeIndexes(:)
 
-  INTEGER :: i,NNodes,NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ierr
+  INTEGER :: i,NNodes,NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ref,ierr
   INTEGER, ALLOCATABLE :: NodeRefs(:)
   LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.
-
+  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Set_MMG3D_Mesh"
   IF(CoordinateSystemDimension() /= 3) CALL Fatal("MMG3D","Only works for 3D meshes!")
 
   ALLOCATE(NodeRefs(6))
+
+  IF(Parallel) CALL Assert(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs), FuncName,&
+       "Parallel sim but no ParallelInfo % GlobalDOFs")
 
   nverts = Mesh % NumberOfNodes
   ntetras = 0
@@ -90,9 +95,11 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh)
        'CALL TO MMG3D_Set_meshSize FAILED')
   IF (DEBUG) PRINT *,'--**-- MMG3D_Set_meshSize DONE'
 
+  ref = 0
   DO i=1,NVerts
+    IF(Parallel) ref = Mesh % ParallelInfo % GlobalDOFs(i)
     CALL MMG3D_Set_vertex(mmgMesh, Mesh%Nodes%x(i), &
-         Mesh%Nodes%y(i),Mesh%Nodes%z(i), 0, i, ierr)
+         Mesh%Nodes%y(i),Mesh%Nodes%z(i), ref, i, ierr)
 !         Mesh%Nodes%y(i),Mesh%Nodes%z(i), 0, Mesh % ParallelInfo % GlobalDOFs(i), ierr)
     !PRINT *,'debug: mesh point: ',Mesh%Nodes%x(i), &
     !     Mesh%Nodes%y(i),Mesh%Nodes%z(i), i
@@ -122,7 +129,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh)
     CASE(303)
       ntris = ntris + 1
       CALL MMG3D_Set_triangle(mmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
-           Element % BoundaryInfo % Constraint, ntris,ierr)
+           Element % BoundaryInfo % Constraint, ntris, ierr)
     CASE(404)
       nquads = nquads + 1
       CALL MMG3D_Set_quadrilateral(mmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
@@ -285,10 +292,11 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
 END SUBROUTINE Set_MMG3D_Parameters
 
 
-SUBROUTINE Get_MMG3D_Mesh(NewMesh)
+SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
 
   !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: NewMesh
+  LOGICAL :: Parallel
   !------------------------------------------------------------------------------
 
 #ifdef HAVE_MMG
@@ -308,12 +316,9 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh)
   IF (DEBUG) PRINT *,'--**-- MMG3D_Get_meshSize DONE'    
 
   ! INITIALISE THE NEW MESH STRUCTURE
-  NewMesh => AllocateMesh()
-  ! IF (IncrementMeshNumber) THEN
-  !   write(NewMesh % Name,'(A,A,I0)') TRIM(OutPutFileName),'_N',MeshNumber
-  ! ELSE
-  !   NewMesh % Name=TRIM(OutPutFileName)
-  ! END IF
+  !NPrisms, NQuads should be zero
+  NewMesh => AllocateMesh( NTetras, NTris, NVerts)
+
   NewMesh % Name = "MMG3D_Output"
   NewMesh%MaxElementNodes=4
   NewMesh%MaxElementDOFs=4
@@ -331,6 +336,10 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh)
   CALL AllocateVector( NewMesh % Elements, NewMesh % NumberOfBulkElements + &
        NewMesh % NumberOfBoundaryElements )
 
+  IF(Parallel) THEN
+    ALLOCATE(NewMesh % ParallelInfo % GlobalDOFs(NVerts))
+  END IF
+
   !! GET NEW VERTICES
   NewMesh % Nodes % z = 0._dp
   Do ii=1,NVerts
@@ -341,7 +350,16 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh)
          ref,corner,required,ierr)
     IF ( ierr == 0 ) CALL FATAL('MMGSolver',&
          'CALL TO  MMG3D_Get_vertex FAILED')
+    IF(Parallel) THEN
+      IF(required > 0) THEN
+        NewMesh % ParallelInfo % GlobalDOFs(ii) = ref
+      ELSE
+        !GlobalDOF undefined - need to negotiate w/ other parts
+        NewMesh % ParallelInfo % GlobalDOFs(ii) = 0
+      END IF
+    END IF
   End do
+
   IF (DEBUG) PRINT *,'MMG3D_Get_vertex DONE'
 
   !! GET NEW TETRAS
