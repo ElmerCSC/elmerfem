@@ -137,16 +137,18 @@ CONTAINS
 
 !> Allocate mesh structure and return handle to it.
 !------------------------------------------------------------------------------
-   FUNCTION AllocateMesh(NumberOfBulkElements, NumberOfBoundaryElements, NumberOfNodes ) RESULT(Mesh)
+   FUNCTION AllocateMesh(NumberOfBulkElements, NumberOfBoundaryElements, &
+       NumberOfNodes, InitParallel ) RESULT(Mesh)
 !------------------------------------------------------------------------------
      INTEGER, OPTIONAL :: NumberOfBulkElements, NumberOfBoundaryElements, NumberOfNodes
+     LOGICAL, OPTIONAL :: InitParallel
      TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------
      INTEGER :: istat, i, n
-
+     CHARACTER(*), PARAMETER :: Caller = 'AllocateMesh'
+     
      ALLOCATE( Mesh, STAT=istat )
-     IF ( istat /= 0 ) &
-        CALL Fatal( 'AllocateMesh', 'Unable to allocate a few bytes of memory?' )
+     IF ( istat /= 0 ) CALL Fatal( Caller, 'Unable to allocate a few bytes of memory?' )
 
 !    Nothing computed on this mesh yet!
 !    ----------------------------------
@@ -155,7 +157,6 @@ CONTAINS
 
      Mesh % AdaptiveDepth = 0
      Mesh % Changed   = .FALSE. !  TODO: Change this sometime
-
      Mesh % Stabilize = .FALSE.
 
      Mesh % Variables => NULL()
@@ -170,21 +171,8 @@ CONTAINS
      Mesh % NumberOfFaces = 0
 
      Mesh % NumberOfBulkElements = 0
-     IF( PRESENT( NumberOfBulkElements ) ) THEN
-       Mesh % NumberOfBulkElements = NumberOfBulkElements
-     END IF
-     
      Mesh % NumberOfBoundaryElements = 0
-     IF( PRESENT( NumberOfBoundaryElements ) ) THEN
-       Mesh % NumberOfBoundaryElements = NumberOfBoundaryElements
-     END IF
-
-     n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-     IF( n > 0 ) THEN       
-       ALLOCATE( Mesh % Elements(n) )
-     ELSE
-       Mesh % Elements => NULL()
-     END IF
+     Mesh % Elements => NULL()
      
      Mesh % DiscontMesh = .FALSE.
      Mesh % InvPerm => NULL()
@@ -200,22 +188,13 @@ CONTAINS
      Mesh % ViewFactors => NULL()
 
      ALLOCATE( Mesh % Nodes, STAT=istat )
-     IF ( istat /= 0 ) &
-        CALL Fatal( 'AllocateMesh', 'Unable to allocate a few bytes of memory?' )
+     IF ( istat /= 0 ) CALL Fatal( Caller, 'Unable to allocate a few bytes of memory?' )
      
-     IF( PRESENT( NumberOfNodes ) ) THEN
-       CALL AllocateVector( Mesh % Nodes % x, NumberOfNodes )
-       CALL AllocateVector( Mesh % Nodes % y, NumberOfNodes )
-       CALL AllocateVector( Mesh % Nodes % z, NumberOfNodes )
-       Mesh % Nodes % NumberOfNodes = NumberOfNodes
-       Mesh % NumberOfNodes = NumberOfNodes
-     ELSE
-       NULLIFY( Mesh % Nodes % x )
-       NULLIFY( Mesh % Nodes % y )
-       NULLIFY( Mesh % Nodes % z )
-       Mesh % Nodes % NumberOfNodes = 0
-       Mesh % NumberOfNodes = 0
-     END IF
+     NULLIFY( Mesh % Nodes % x )
+     NULLIFY( Mesh % Nodes % y )
+     NULLIFY( Mesh % Nodes % z )
+     Mesh % Nodes % NumberOfNodes = 0
+     Mesh % NumberOfNodes = 0
        
      Mesh % NodesOrig => Mesh % Nodes
      NULLIFY( Mesh % NodesMapped )
@@ -226,30 +205,130 @@ CONTAINS
      Mesh % BodyWeight => NULL()
      Mesh % MaterialWeight => NULL()
     
-     Mesh % ParallelInfo % NumberOfIfDOFs =  0
- 
-     IF( PRESENT( NumberOfNodes ) ) THEN
-       ALLOCATE(Mesh % ParallelInfo % GlobalDOFs(NumberOfNodes), STAT=istat )
-       IF ( istat /= 0 ) &
-            CALL Fatal( 'AllocateMesh', 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
-       ALLOCATE(Mesh % ParallelInfo % INTERFACE(NumberOfNodes), STAT=istat )
-       IF ( istat /= 0 ) &
-            CALL Fatal( 'AllocateMesh', 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
-       ALLOCATE(Mesh % ParallelInfo % NeighbourList(NumberOfNodes), STAT=istat )
-       IF ( istat /= 0 ) &
-            CALL Fatal( 'AllocateMesh', 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
-       DO i=1,Mesh % NumberOfNodes
-         NULLIFY(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
-       END DO
-     ELSE
-       NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
-       NULLIFY( Mesh % ParallelInfo % INTERFACE )
-       NULLIFY( Mesh % ParallelInfo % NeighbourList )
+     Mesh % ParallelInfo % NumberOfIfDOFs =  0        
+     NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
+     NULLIFY( Mesh % ParallelInfo % INTERFACE )
+     NULLIFY( Mesh % ParallelInfo % NeighbourList )     
+
+     i = 0
+     IF( PRESENT( NumberOfBulkElements ) ) THEN       
+       Mesh % NumberOfBulkElements = NumberOfBulkElements
+       i = i + 1
      END IF
+     
+     IF( PRESENT( NumberOfBoundaryElements ) ) THEN
+       Mesh % NumberOfBoundaryElements = NumberOfBoundaryElements
+       i = i + 1
+     END IF
+
+     IF( PRESENT( NumberOfNodes ) ) THEN
+       Mesh % NumberOfNodes = NumberOfNodes
+       i = i + 1
+     END IF
+     
+     IF( i > 0 ) THEN
+       IF( i < 3 ) CALL Fatal(Caller,'Either give all or no optional parameters!')
+       CALL InitializeMesh( Mesh, InitParallel )         
+     END IF       
+     
 !------------------------------------------------------------------------------
    END FUNCTION AllocateMesh
 !------------------------------------------------------------------------------
 
+
+   ! Initialize mesh structures after the size information has been 
+   ! retrieved.
+   !----------------------------------------------------------------
+   SUBROUTINE InitializeMesh(Mesh, InitParallel)     
+     TYPE(Mesh_t), POINTER :: Mesh
+     LOGICAL, OPTIONAL :: InitParallel
+     
+     INTEGER :: i,j,k,NoElems,istat
+     TYPE(Element_t), POINTER :: Element
+     CHARACTER(*), PARAMETER :: Caller = 'InitializeMesh'
+     LOGICAL :: DoParallel
+     
+     IF( Mesh % NumberOfNodes == 0 ) THEN
+       CALL Fatal(Caller,'Mesh has zero nodes!')
+     ELSE
+       CALL Info(Caller,'Number of nodes in mesh: '&
+           //TRIM(I2S(Mesh % NumberOfNodes)),Level=8)
+     END IF
+
+     CALL Info(Caller,'Number of bulk elements in mesh: '&
+         //TRIM(I2S(Mesh % NumberOfBulkElements)),Level=8)        
+
+     CALL Info(Caller,'Number of boundary elements in mesh: '&
+         //TRIM(I2S(Mesh % NumberOfBoundaryElements)),Level=8)        
+
+     Mesh % Nodes % NumberOfNodes = Mesh % NumberOfNodes          
+
+     NoElems = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+     IF( NoElems == 0 ) THEN
+       CALL Fatal('InitializeMesh','Mesh has zero elements!')
+     END IF
+
+     Mesh % MaxElementDOFs  = 0
+     Mesh % MinEdgeDOFs     = 1000
+     Mesh % MinFaceDOFs     = 1000
+     Mesh % MaxEdgeDOFs     = 0
+     Mesh % MaxFaceDOFs     = 0
+     Mesh % MaxBDOFs        = 0
+
+     Mesh % DisContMesh = .FALSE.
+     Mesh % DisContPerm => NULL()
+     Mesh % DisContNodes = 0
+
+     CALL Info(Caller,'Initial number of max element nodes: '&
+         //TRIM(I2S(Mesh % MaxElementNodes)),Level=10) 
+
+     ! Allocate the elements
+     !-------------------------------------------------------------------------
+     CALL AllocateVector( Mesh % Elements, NoElems, Caller )
+
+     DO j=1,NoElems        
+       Element => Mesh % Elements(j)        
+
+       Element % DGDOFs = 0
+       Element % BodyId = 0
+       Element % TYPE => NULL()
+       Element % BoundaryInfo => NULL()
+       Element % PDefs => NULL()
+       Element % DGIndexes => NULL()
+       Element % EdgeIndexes => NULL()
+       Element % FaceIndexes => NULL()
+       Element % BubbleIndexes => NULL()
+     END DO
+
+     ! Allocate the nodes
+     !-------------------------------------------------------------------------
+     CALL AllocateVector( Mesh % Nodes % x, Mesh % NumberOfNodes, Caller )
+     CALL AllocateVector( Mesh % Nodes % y, Mesh % NumberOfNodes, Caller )
+     CALL AllocateVector( Mesh % Nodes % z, Mesh % NumberOfNodes, Caller )
+     
+     IF( .NOT. PRESENT( InitParallel ) ) RETURN
+     IF( .NOT. InitParallel ) RETURN
+     
+     CALL Info( Caller,'Allocating parallel info',Level=12)
+     
+     ALLOCATE(Mesh % ParallelInfo % GlobalDOFs(Mesh % NumberOfNodes), STAT=istat )
+     IF ( istat /= 0 ) &
+         CALL Fatal( Caller, 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
+     ALLOCATE(Mesh % ParallelInfo % INTERFACE(Mesh % NumberOfNodes), STAT=istat )
+     IF ( istat /= 0 ) &
+         CALL Fatal( Caller, 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
+     ALLOCATE(Mesh % ParallelInfo % NeighbourList(Mesh % NumberOfNodes), STAT=istat )
+     IF ( istat /= 0 ) &
+         CALL Fatal( Caller, 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
+     DO i=1,Mesh % NumberOfNodes
+       NULLIFY(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+     END DO
+     
+   END SUBROUTINE InitializeMesh
+
+
+   
 !------------------------------------------------------------------------------
    SUBROUTINE GetMaxDefs(Model, Mesh, Element, ElementDef, SolverId, BodyId, Def_Dofs)
 !------------------------------------------------------------------------------
@@ -2016,7 +2095,8 @@ END SUBROUTINE GetMaxDefs
 
    ! Initialize and allocate mesh stuctures
    !---------------------------------------------------------------------
-   CALL InitializeMesh()
+   IF( BoundariesOnly ) Mesh % NumberOfBulkElements = 0
+   CALL InitializeMesh( Mesh )
 
    ! Get the (x,y,z) coordinates
    !--------------------------------------------------------------------------
@@ -2090,74 +2170,6 @@ END SUBROUTINE GetMaxDefs
    
  CONTAINS
 
-
-   ! Initialize mesh structures after the size information has been 
-   ! retrieved.
-   !----------------------------------------------------------------
-   SUBROUTINE InitializeMesh()
-
-     INTEGER :: i,j,k,NoElems
-     TYPE(Element_t), POINTER :: Element
-
-     IF( Mesh % NumberOfNodes == 0 ) THEN
-       CALL Fatal('LoadMesh','Mesh has zero nodes!')
-     ELSE
-       CALL Info('LoadMesh','Number of nodes in mesh: '&
-           //TRIM(I2S(Mesh % NumberOfNodes)),Level=8)
-     END IF
-     IF( Mesh % NumberOfBulkElements == 0 ) THEN
-       CALL Fatal('LoadMesh','Mesh has zero bulk elements!')
-     ELSE
-       CALL Info('LoadMesh','Number of bulk elements in mesh: '&
-           //TRIM(I2S(Mesh % NumberOfBulkElements)),Level=8)        
-     END IF
-
-     CALL Info('LoadMesh','Number of boundary elements in mesh: '&
-         //TRIM(I2S(Mesh % NumberOfBoundaryElements)),Level=8)        
-
-     Mesh % Nodes % NumberOfNodes = Mesh % NumberOfNodes          
-     IF ( BoundariesOnly ) Mesh % NumberOfBulkElements = 0
-
-     Mesh % MaxElementDOFs  = 0
-     Mesh % MinEdgeDOFs     = 1000
-     Mesh % MinFaceDOFs     = 1000
-     Mesh % MaxEdgeDOFs     = 0
-     Mesh % MaxFaceDOFs     = 0
-     Mesh % MaxBDOFs        = 0
-
-     Mesh % DisContMesh = .FALSE.
-     Mesh % DisContPerm => NULL()
-     Mesh % DisContNodes = 0
-
-     CALL Info('LoadMesh','Initial number of max element nodes: '&
-         //TRIM(I2S(Mesh % MaxElementNodes)),Level=10) 
-
-     ! Allocate the elements
-     NoElems = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-     !-------------------------------------------------------------------------
-     CALL AllocateVector( Mesh % Elements, NoElems, 'LoadMesh' )
-
-     DO j=1,NoElems        
-       Element => Mesh % Elements(j)        
-
-       Element % DGDOFs = 0
-       Element % BodyId = 0
-       Element % TYPE => NULL()
-       Element % BoundaryInfo => NULL()
-       Element % PDefs => NULL()
-       Element % DGIndexes => NULL()
-       Element % EdgeIndexes => NULL()
-       Element % FaceIndexes => NULL()
-       Element % BubbleIndexes => NULL()
-     END DO
-
-     ! Allocate the nodes
-     !-------------------------------------------------------------------------
-     CALL AllocateVector( Mesh % Nodes % x, Mesh % NumberOfNodes, 'LoadMesh' )
-     CALL AllocateVector( Mesh % Nodes % y, Mesh % NumberOfNodes, 'LoadMesh' )
-     CALL AllocateVector( Mesh % Nodes % z, Mesh % NumberOfNodes, 'LoadMesh' )
-
-   END SUBROUTINE InitializeMesh
 
 
 
@@ -2540,7 +2552,7 @@ END SUBROUTINE GetMaxDefs
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(10,6)
      CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
-
+     
      EdgeDOFs => NULL()
      CALL AllocateVector( EdgeDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
      FaceDOFs => NULL()

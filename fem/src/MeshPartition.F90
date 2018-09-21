@@ -1836,10 +1836,10 @@ CONTAINS
     CALL LocalNumberingMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, RecPack, &
          GlobalToLocal, newnodes, newnbulk, newnbdry, minind, maxind)
 
-    NewMesh => AllocateMesh( newnbulk, newnbdry, newnodes )
-
+    NewMesh => AllocateMesh( newnbulk, newnbdry, newnodes, InitParallel = .TRUE.)    
+    
     ! 4) Finally unpack and glue the pieces on an existing mesh
-    CALL UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, newnodes, newnbulk, minind, &
+    CALL UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, minind, &
          maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
 
     CALL FindRepartitionInterfaces(Model, NewMesh, dim)
@@ -2442,7 +2442,7 @@ CONTAINS
   !> The idea is that the elements and nodes are appended on top of an existing
   !> mesh structure such that there could be elements already at the bottom.
   !------------------------------------------------------------------------------
-  SUBROUTINE UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, NewNodes, NewNBulk, &
+  SUBROUTINE UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, &
        minind, maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
 
     IMPLICIT NONE
@@ -2452,17 +2452,19 @@ CONTAINS
     LOGICAL :: ParallelMesh
     INTEGER, POINTER :: NewPart(:)
     INTEGER, ALLOCATABLE :: GlobalToLocal(:)
-    INTEGER :: dim, NewNBulk, NewNodes,minind,maxind
+    INTEGER :: dim,minind,maxind
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
     !----------------------------------
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
-    INTEGER :: gind,lind,rcount,icount,lcount
+    INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
     LOGICAL :: CheckNeighbours, IsBulk
     TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
     TYPE(MeshPack_t), POINTER :: PPack
-
-    CALL Info('UnpackMeshPieces','Unpacking mesh pieces to form a new mesh',Level=12)
+    INTEGER, ALLOCATABLE :: GlobalToLocalElem(:), LeftParent(:), RightParent(:)
+    CHARACTER(*), PARAMETER :: Caller = 'UnpackMeshPieces'
+    
+    CALL Info(Caller,'Unpacking mesh pieces to form a new mesh',Level=12)
 
 
     CheckNeighbours = .FALSE.
@@ -2473,10 +2475,24 @@ CONTAINS
       END IF
     END IF
 
+    minelem = HUGE( minelem )
+    maxelem = 0
+
+    newnodes = NewMesh % NumberOfNodes
+    newnbulk = NewMesh % NumberOfBulkElements 
+    newnbdry = NewMesh % NumberOfBoundaryElements 
+    
     nbulk = 0
     nbdry = 0
 
-    CALL Info('UnpackMeshPieces','Copying staying elements',Level=20)
+    ! There are temporal arrays needed to inherit the parent information
+    ALLOCATE( LeftParent(NewNBulk+1:NewNBulk+NewNBdry ) ) 
+    LeftParent = 0
+    ALLOCATE( RightParent(NewNBulk+1:NewNBulk+NewNBdry ) ) 
+    RightParent = 0
+       
+    
+    CALL Info(Caller,'Copying staying elements',Level=20)
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
       IF( NewPart(i)-1 /= ParEnv % MyPe ) CYCLE
@@ -2495,14 +2511,14 @@ CONTAINS
       Element0 => Mesh % Elements(i)
 
       IF(.NOT. ASSOCIATED( Element ) ) THEN
-        CALL Fatal('UnpackMeshPieces','Element not allocated')
+        CALL Fatal(Caller,'Element not allocated')
       END IF
 
       Element % Type => Element0 % Type
       n = Element % Type % NumberOfNodes
 
       IF( n <= 0 .OR. n > 27 ) THEN
-        CALL Fatal('UnpackMeshPieces','Invalid number of nodes')
+        CALL Fatal(Caller,'Invalid number of nodes')
       END IF
 
       Element % BodyId = Element0 % BodyId
@@ -2512,6 +2528,21 @@ CONTAINS
       ELSE
         ALLOCATE( Element % BoundaryInfo )
         Element % BoundaryInfo % Constraint = Element0 % BoundaryInfo % Constraint
+
+        IF( ASSOCIATED( Element0 % BoundaryInfo % Left ) ) THEN
+          IF( ParallelMesh ) THEN
+            LeftParent(t) = Element0 % BoundaryInfo % Left % GElementIndex
+          ELSE
+            LeftParent(t) = Element0 % BoundaryInfo % Left % ElementIndex
+          END IF
+        END IF
+        IF( ASSOCIATED( Element0 % BoundaryInfo % Right ) ) THEN
+          IF( ParallelMesh ) THEN         
+            RightParent(t) = Element0 % BoundaryInfo % Right % GElementIndex
+          ELSE
+            RightParent(t) = Element0 % BoundaryInfo % Right % ElementIndex            
+          END IF
+        END IF
       END IF
 
       IF( ParallelMesh ) THEN
@@ -2519,6 +2550,12 @@ CONTAINS
       ELSE
         Element % GElementIndex = Element0 % ElementIndex
       END IF
+
+      IF( IsBulk ) THEN
+        minelem = MIN( minelem, Element % GElementIndex )
+        maxelem = MAX( maxelem, Element % GElementIndex )
+      END IF
+        
       Element % ElementIndex = t
 
       ! Change the owner partition of the element
@@ -2527,7 +2564,7 @@ CONTAINS
       NULLIFY( Element % NodeIndexes )
       ALLOCATE( Element % NodeIndexes(n), STAT = allocstat )
       IF( allocstat /= 0 ) THEN
-        CALL Fatal('UnpackMeshPieces','Cannot allocate '//TRIM(I2S(n))//' node indexes?')
+        CALL Fatal(Caller,'Cannot allocate '//TRIM(I2S(n))//' node indexes?')
       END IF
 
       DO j=1,n
@@ -2536,18 +2573,18 @@ CONTAINS
 
         ! Renumber the nodes such that the local indexes are always contiguous
         IF( k < minind .OR. k > maxind ) THEN
-          CALL Fatal('UnpackMeshPieces','k out of bounds')
+          CALL Fatal(Caller,'k out of bounds')
         END IF
         Element % NodeIndexes(j) = GlobalToLocal(k)
       END DO
     END DO
 
-    CALL Info('UnpackMeshPieces','Copying staying nodes',Level=20)
+    CALL Info(Caller,'Copying staying nodes',Level=20)
 
     IF( .NOT. ASSOCIATED( NewMesh % ParallelInfo % INTERFACE ) ) THEN
       ALLOCATE( NewMesh % ParallelInfo % INTERFACE( NewMesh % NumberOfNodes ), STAT = allocstat )
       IF( allocstat /= 0 ) THEN
-        CALL Fatal('UnpackMeshPieces','Cannot allocate partition interface?')
+        CALL Fatal(Caller,'Cannot allocate partition interface?')
       END IF
       NewMesh % ParallelInfo % Interface = .FALSE.
     END IF
@@ -2557,12 +2594,12 @@ CONTAINS
       j = i
       IF( ParallelMesh ) j = Mesh % ParallelInfo % GlobalDofs(i)
       IF( j < minind .OR. j > maxind ) THEN
-        CALL Fatal('UnpackMeshPieces','j out of bounds')
+        CALL Fatal(Caller,'j out of bounds')
       END IF
       k = GlobalToLocal(j)
       IF( k == 0 ) CYCLE
       IF( k > newnodes ) THEN
-        CALL Fatal('UnpackMeshPieces','k2 out of bounds: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(newnodes)))
+        CALL Fatal(Caller,'k2 out of bounds: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(newnodes)))
       END IF
       NewMesh % Nodes % x(k) = Mesh % Nodes % x(i)
       NewMesh % Nodes % y(k) = Mesh % Nodes % y(i)
@@ -2572,14 +2609,14 @@ CONTAINS
     END DO
 
 
-    CALL Info('UnpackMeshPieces','Unpacking incoming elements',Level=20)
+    CALL Info(Caller,'Unpacking incoming elements',Level=20)
     DO part=1,ParEnv % PEs
       IF( part-1 == ParEnv % MyPe ) CYCLE
 
       PPack => RecPack(part)
       IF( PPack % icount <= 5 ) CYCLE
 
-      CALL Info('UnpackMeshPieces','Unpacking piece '//TRIM(I2S(part))//' with '&
+      CALL Info(Caller,'Unpacking piece '//TRIM(I2S(part))//' with '&
            //TRIM(I2S(PPack % NumberOfBulkElements + PPack % NumberOfBoundaryElements))//&
            ' elements',Level=20)
 
@@ -2603,12 +2640,12 @@ CONTAINS
 
         Element => NewMesh % Elements(t)
         IF( .NOT. ASSOCIATED( Element ) ) THEN
-          CALL Fatal('UnpackMeshPieces','Element not associated')
+          CALL Fatal(Caller,'Element not associated')
         END IF
 
         Element % TYPE => GetElementType( elemcode )
         IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
-          CALL Fatal('UnpackMeshPieces','Could not get element code: '//TRIM(I2S(elemcode)))
+          CALL Fatal(Caller,'Could not get element code: '//TRIM(I2S(elemcode)))
         END IF
 
         n = Element % Type % NumberOfNodes
@@ -2616,6 +2653,11 @@ CONTAINS
         Element % GElementIndex = elemindex
         Element % ElementIndex = t
 
+        IF( IsBulk ) THEN
+          minelem = MIN( minelem, Element % GElementIndex )
+          maxelem = MAX( maxelem, Element % GElementIndex )
+        END IF
+          
         ! Change the owner partition of the element
         Element % PartIndex = ParEnv % MyPe
 
@@ -2627,25 +2669,25 @@ CONTAINS
           IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
             ALLOCATE( Element % BoundaryInfo, STAT = allocstat )
             IF( allocstat /= 0 ) THEN
-              CALL Fatal('UnpackMeshPieces','Could not allocate boundary info!')
+              CALL Fatal(Caller,'Could not allocate boundary info!')
             END IF
           END IF
 
           Element % BoundaryInfo % Constraint = geom_id
 
           ! These are the left and right boundary indexes that currently are not used at all!
-          j = PPack % idata(icount+4)
-          k = PPack % idata(icount+5)
+          LeftParent(t) = PPack % idata(icount+4)
+          RightParent(t) = PPack % idata(icount+5)
           icount = icount + 5
         END IF
 
         ALLOCATE( Element % NodeIndexes(n), STAT = allocstat )
         IF( allocstat /= 0 ) THEN
-          CALL Fatal('UnpackMeshPieces','Could not allocate a few node indexes!')
+          CALL Fatal(Caller,'Could not allocate a few node indexes!')
         END IF
 
         IF( icount + n > SIZE( PPack % idata) ) THEN
-          CALL Fatal('UnpackMeshPieces','icount out of range')
+          CALL Fatal(Caller,'icount out of range')
         END IF
 
         Element % NodeIndexes(1:n) = PPack % idata(icount+1:icount+n)
@@ -2654,10 +2696,10 @@ CONTAINS
         DO j=1, n
           k = Element % NodeIndexes(j)
           IF( k < minind .OR. k > maxind ) THEN
-            CALL Fatal('UnpackMeshPieces','k3 out of bounds: '//TRIM(I2S(k)))
+            CALL Fatal(Caller,'k3 out of bounds: '//TRIM(I2S(k)))
           END IF
           IF( GlobalToLocal(k) <= 0 .OR. GlobalToLocal(k) > newnodes ) THEN
-            CALL Fatal('UnpackMeshPieces','Local index out of bounds')
+            CALL Fatal(Caller,'Local index out of bounds')
           END IF
           Element % NodeIndexes(j) = GlobalToLocal(k)
         END DO
@@ -2666,15 +2708,61 @@ CONTAINS
         icount = icount + n
       END DO
 
-      CALL Info('UnpackMeshPieces','Finished piece',Level=20)
-
+      CALL Info(Caller,'Finished piece',Level=20)
       IF( icount /= PPack % indpos ) THEN
-        CALL Fatal('UnpackMeshPieces','Inconsistent icount value: '//TRIM(I2S(icount)))
+        CALL Fatal(Caller,'Inconsistent icount value: '//TRIM(I2S(icount)))
       END IF
     END DO
 
+    IF( minelem <= maxelem ) THEN
+      ! First create global to local array for the elements 
+      CALL Info(Caller,'Global element index range: '&
+          //TRIM(I2S(minelem))//' to '//TRIM(I2S(maxelem)),Level=8)
+      ALLOCATE( GlobalToLocalElem(minelem:maxelem))
+      GlobalToLocalElem = 0
+      DO i = 1, newnbulk
+        j =  NewMesh % Elements(i) % GElementIndex
+        IF( j >= minelem .AND. j <= maxelem ) THEN
+          GlobalToLocalElem( j ) = i
+        ELSE
+          PRINT *,'j out of bounds:',ParEnv % MyPe, i, j
+        END IF
+      END DO
 
-    CALL Info('UnpackMeshPieces','Unpacking incoming nodes',Level=20)
+      PRINT *,'GlobalToLocalElem:',ParEnv % MyPe, newnbulk, minelem, maxelem, &
+          COUNT( GlobalToLocalElem(minelem:maxelem) > 0 )
+      
+      ! Then use the temporal vectors to repoint the left and right indexes to elements
+      DO i = newnbulk+1, newnbulk + newnbdry
+        Element => NewMesh % Elements(i)
+
+        j = LeftParent(i)
+        IF( j >= minelem .AND. j <= maxelem ) THEN
+          k = GlobalToLocalElem(j)
+          IF( k <= 0 .OR. k > newnbulk ) THEN
+            PRINT *,'k left out of bounds:',ParEnv % MyPe, i, j, k
+          ELSE
+            Element % BoundaryInfo % Left => NewMesh % Elements(k)
+          END IF
+        END IF
+        j = RightParent(i)
+        IF( j >= minelem .AND. j <= maxelem ) THEN
+          k = GlobalToLocalElem(j)
+          IF( k <= 0 .OR. k > newnbulk ) THEN
+            PRINT *,'k right out of bounds:',ParEnv % MyPe, i, j, k
+          ELSE          
+            Element % BoundaryInfo % Right => NewMesh % Elements(k)
+          END IF
+        END IF
+      END DO
+      DEALLOCATE( GlobalToLocalElem ) 
+    END IF
+    DEALLOCATE( LeftParent )
+    DEALLOCATE( RightParent ) 
+    
+    
+    
+    CALL Info(Caller,'Unpacking incoming nodes',Level=20)
     DO part=1,ParEnv % PEs
       IF( part-1 == ParEnv % MyPe ) CYCLE
 
@@ -2689,12 +2777,12 @@ CONTAINS
         icount = icount + 1
         j = Ppack % idata(icount)
         IF( j < minind .OR. j > maxind ) THEN
-          CALL Fatal('UnpackMeshPieces','Incoming node index out of bounds')
+          CALL Fatal(Caller,'Incoming node index out of bounds')
         END IF
         k = GlobalToLocal( j )
 
         IF( k <= 0 .OR. k > newnodes ) THEN
-          CALL Fatal('UnpackMeshPieces','Local index out of bounds')
+          CALL Fatal(Caller,'Local index out of bounds')
         END IF
 
         NewMesh % Nodes % x(k) = PPack % rdata(rcount+1)
@@ -2708,23 +2796,23 @@ CONTAINS
     END DO
 
     n = COUNT( NewMesh % ParallelInfo % INTERFACE )
-    CALL Info('UnpackMeshPieces','Potential interface nodes '//TRIM(I2S(n))//' out of '&
+    CALL Info(Caller,'Potential interface nodes '//TRIM(I2S(n))//' out of '&
         //TRIM(I2S(NewMesh % NumberOfNodes)),Level=20)
 
     
-    CALL Info('UnpackMeshPieces','Creating local to global numbering for '&
+    CALL Info(Caller,'Creating local to global numbering for '&
          //TRIM(I2S(newnodes))//' nodes',Level=20)
     ALLOCATE( NewMesh % ParallelInfo % GlobalDofs( newnodes ), STAT = allocstat)
     NewMesh % ParallelInfo % GlobalDofs = 0
     IF( allocstat /= 0 ) THEN
-      CALL Fatal('UnpackMeshPieces','Could not allocate global dof indexes')
+      CALL Fatal(Caller,'Could not allocate global dof indexes')
     END IF
 
     DO i = minind, maxind
       j = GlobalToLocal(i)
       IF( j == 0 ) CYCLE
       IF( j > newnodes ) THEN
-        CALL Fatal('UnpackMeshPieces','Invalid node index')
+        CALL Fatal(Caller,'Invalid node index')
       END IF
       NewMesh % ParallelInfo % GlobalDofs(j) = i
     END DO
@@ -2738,10 +2826,10 @@ CONTAINS
            Element % TYPE % NumberOfEdges * NewMesh % MaxEdgeDOFs + &
            Element % TYPE % NumberOfFaces * NewMesh % MaxFaceDOFs + &
            Element % BDOFs, &
-           Element % DGDOFs )
+           Element % DGDOFs ) 
      END DO
 
-    CALL Info('UnpackMeshPieces','Finished unpacking and gluing mesh pieces',Level=8)
+    CALL Info(Caller,'Finished unpacking and gluing mesh pieces',Level=8)
 
   END SUBROUTINE UnpackMeshPieces
 
