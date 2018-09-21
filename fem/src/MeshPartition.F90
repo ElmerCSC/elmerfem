@@ -3006,6 +3006,20 @@ CONTAINS
       END IF
     END DO
 
+
+    ! Order the indexes such that owner is the lowest one
+    ! The other ordering does not matter.
+    DO i=1,Mesh % NumberOfNodes
+      n = SIZE( NeighList(i) % Neighbours )
+      DO j=n-1,1,-1
+        k = NeighList(i) % Neighbours(j) 
+        IF( k > NeighList(i) % Neighbours(j+1) ) THEN
+          NeighList(i) % Neighbours(j) = NeighList(i) % Neighbours(j+1)
+          NeighList(i) % Neighbours(j+1) = k
+        END IF
+      END DO
+    END DO
+
     Mesh % ParallelInfo % NumberOfIFDofs = COUNT(Iface)
 
   END SUBROUTINE FindRepartitionInterfaces
