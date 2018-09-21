@@ -428,4 +428,43 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
 
 END SUBROUTINE Get_MMG3D_Mesh
 
+!Subroutine to negotiate new global node numbers between partitions
+!as a necessary precursor to repartitioning the mesh.
+!Local numbering should already be handled by mesh gluing. We assume
+!here that each partition may have any number of nodes (inc. zero)
+SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
+  TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
+  !----------------------
+  INTEGER :: i,j,k, OldNN, NewNN
+  INTEGER, ALLOCATABLE :: work_int(:)
+  LOGICAL, ALLOCATABLE :: NeedGDOF(:)
+  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="RenumberNodes"
+
+  OldNN = OldMesh % NumberOfNodes
+  NewNN = NewMesh % NumberOfNodes
+
+  !Serially check the consistency of the old mesh
+  ALLOCATE(work_int(OldNN), NeedGDOF(NewNN))
+  work_int = OldMesh % ParallelInfo % GlobalDOFs
+  CALL Sort(OldNN,work_int)
+  DO i=1,OldNN-1
+    IF(work_int(i) == work_int(i+1)) &
+         CALL Fatal(FuncName,"OldMesh has duplicate GlobalDOFs")
+    IF(work_int(i) == 0) &
+         CALL Fatal(FuncName,"OldMesh has at least 1 GlobalDOFs = 0")
+  END DO
+
+  !Get a total node count - requires ParallelInfo % NeighbourList
+
+
+  ! CALL MPI_ALLREDUCE(NewNN,gnodes,1, &
+  !      MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
+
+  !Determine which nodes need to get GlobalDOFs
+  NeedGDOF = NewMesh % ParallelInfo % GlobalDOFs == 0
+
+  !See if we can fill our new node GlobalDOFs from nodes which no longer exist
+
+END SUBROUTINE RenumberGDOFs
+
 END MODULE MeshRemeshing
