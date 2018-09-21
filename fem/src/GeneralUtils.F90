@@ -1487,6 +1487,44 @@ END FUNCTION ComponentNameVar
    END FUNCTION SearchInterval
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> As SearchInterval, but doesn't assume we'll find the value in the interval
+   !------------------------------------------------------------------------------
+   PURE FUNCTION SearchIntPosition( tval, t ) RESULT(i)
+     !------------------------------------------------------------------------------
+     INTEGER :: i
+     INTEGER, INTENT(in) :: tval(:), t
+     !------------------------------------------------------------------------------
+     INTEGER :: n,n0,n1
+     !------------------------------------------------------------------------------
+
+     n = SIZE(tval)
+
+     IF (t < tval(1)) THEN
+       i = 0
+     ELSE IF (t>=tval(n)) THEN
+       i = n
+     ELSE
+       n0 = 1
+       n1 = n
+       i = (n0+n1)/2
+       DO WHILE(.TRUE.)
+         IF  ( tval(i) <= t .AND. tval(i+1)>t ) EXIT
+
+         IF ( tval(i) >  t ) THEN
+           n1 = i-1 
+         ELSE
+           n0 = i+1
+         END IF
+         i = (n0+n1)/2
+       END DO
+     END IF
+     IF(i>n) i=n
+
+   !------------------------------------------------------------------------------
+   END FUNCTION SearchIntPosition
+   !------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Interpolate values in a curve given by linear table or splines.

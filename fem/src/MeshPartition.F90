@@ -73,10 +73,12 @@ CONTAINS
   !============================================
   !============================================
 
+  !Interface to Zoltan parallel (re)partitioner - returns the new partition
+  !info in Mesh % Repartition (defined on elements)
   !TODO - This repartitioning scheme will run around 10 times faster
   !if only face-connected elements are passed. Does this outweigh the
   !additional computational effort of finding those faces?
-  SUBROUTINE Zoltan_Interface( Model, Solver, dt, Transient )
+  SUBROUTINE Zoltan_Interface( Model, Mesh )
 
     USE MeshUtils
 
@@ -87,13 +89,10 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(Model_t) :: Model
-    TYPE(Solver_t), TARGET :: Solver
-    REAL(KIND=dp) :: dt
-    LOGICAL :: Transient
+    TYPE(Mesh_t), POINTER :: Mesh
     !------------------------
 
 #ifdef HAVE_ZOLTAN
-    TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element,Element2,Face, MFacePtr(:)
     TYPE(Graph_t) :: LocalGraph
     REAL(KIND=dp) :: t1,t2
@@ -121,8 +120,6 @@ CONTAINS
     END TYPE ElemTable_T
     TYPE(ElemTable_t),ALLOCATABLE :: NodeElems(:),ElemElems(:)
 
-
-    Mesh => Model % Mesh
     NNodes = Mesh % NumberOfNodes
     NBulk = Mesh % NumberOfBulkElements
     DIM = CoordinateSystemDimension()
@@ -165,9 +162,9 @@ CONTAINS
 
     !Callback functions to query number of edges and the edge data
     zierr = Zoltan_Set_Fn(zz_obj, ZOLTAN_NUM_EDGES_FN_TYPE,zoltNumEdges)
-    IF(zierr /= 0) CALL Fatal(FuncName,"meow14")
+    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Callback Function: zoltNumEdges")
     zierr = Zoltan_Set_Fn(zz_obj, ZOLTAN_EDGE_LIST_FN_TYPE,zoltGetEdgeList)
-    IF(zierr /= 0) CALL Fatal(FuncName,"meow15")
+    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Callback Function: zoltGetEdgeList")
 
 
     !Parameters to set to get graph repartitioning (without relying on libparmetis?!)
@@ -226,11 +223,18 @@ CONTAINS
     zierr = Zoltan_LB_Partition(zz_obj, changes, numGidEntries, numLidEntries, &
          numImport, importGlobalGids, importLocalGids, importProcs, importToPart, &
          numExport, exportGlobalGids, exportLocalGids, exportProcs, exportToPart)
-    IF(zierr /= 0) CALL Fatal("meow","meow16")
+    IF(zierr /= 0) CALL Fatal(FuncName,"Error computing partitioning in Zoltan")
 
-    PRINT *,ParEnv % MyPE,' zoltan import: ',numImport, ' export: ',numExport,' total: ',NBulk
+    !Put the information in Mesh % Repartition - boundary elems will follow bulks (thanks Peter!)
+    IF(ASSOCIATED(Mesh % Repartition)) DEALLOCATE(Mesh % Repartition)
+    ALLOCATE(Mesh % Repartition(NBulk))
+    Mesh % Repartition = ParEnv % MyPE + 1 !default stay on this proc
 
-
+    DO i=1,numExport
+      IF(exportLocalGids(i) > NBulk .OR. exportLocalGids(i) <= 0) &
+           CALL Fatal(FuncName, "Bad local ID")
+      Mesh % Repartition(exportLocalGids(i)) = exportProcs(i) + 1
+    END DO
   CONTAINS
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -324,7 +328,6 @@ CONTAINS
 
       nlocal = (LocalGraph % ptr(local_id+1) - LocalGraph % ptr(local_id))
 
-      !Something wrong here
       DO i=1,nlocal
         k = i + LocalGraph % ptr(local_id) - 1
         ! PRINT *,ParEnv % MyPE,' debug setting nbor_procs',i,' nlocal: ',nlocal,&
@@ -1848,6 +1851,7 @@ CONTAINS
     NewMesh % MeshDim = Mesh % MeshDim
 
     DO i=1,NewMesh % NumberOfBulkElements + NewMesh % NumberOfBoundaryElements
+      IF(NewMesh % Elements(i) % ElementIndex /= i) CALL Fatal(FuncName, "Bad element index")
       IF(ANY(NewMesh % Elements(i) % NodeIndexes <= 0) .OR. &
            ANY(NewMesh % Elements(i) % NodeIndexes > newnodes)) THEN
         CALL Fatal(FuncName,' bad elem nodeindexes')
@@ -2451,7 +2455,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh, NewMesh
     LOGICAL :: ParallelMesh
     INTEGER, POINTER :: NewPart(:)
-    INTEGER, ALLOCATABLE :: GlobalToLocal(:)
+    INTEGER :: GlobalToLocal(minind:maxind)
     INTEGER :: dim,minind,maxind
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
     !----------------------------------

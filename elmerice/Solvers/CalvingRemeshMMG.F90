@@ -72,7 +72,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   LOGICAL :: Transient
   !--------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR
+  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,FinalMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),front_BC_ID, &
@@ -84,7 +84,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:)
-  LOGICAL :: ImBoss
+  LOGICAL :: ImBoss, Debug=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
@@ -114,11 +114,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   test_point = (/491600.0, -2290000.0,79.9166641235/)
   ! test_point = (/484877.0, -2287086.0, 300.0/)
   test_thresh = 1500.0
-  remesh_thresh = 100000.0
+  remesh_thresh = 1000.0
   front_BC_id = 1
 
   ! hmin = 20.0
-  ! hmax = 400.0
+  ! hmax = 100.0
   ! hgrad = 0.5
   ! hausd = 10.0
   hmin = 100.0
@@ -130,7 +130,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        test_lset(NNodes),&
        remeshed_node(NNodes),&
        calved_node(NNodes),&
-       fixed_node(NNodes),&
+       fixed_node(NNodes)&
        )
 
   test_dist = 0.0
@@ -199,9 +199,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   CALL MPI_AllGather(my_calv_front, 1, MPI_INTEGER, pcalv_front, &
        1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
-  PRINT *,mype,' debug calv_front: ',my_calv_front
-  PRINT *,mype,' debug calv_fronts: ',pcalv_front
-
+  IF(Debug) THEN
+    PRINT *,mype,' debug calv_front: ',my_calv_front
+    PRINT *,mype,' debug calv_fronts: ',pcalv_front
+  END IF
 
   ncalv_parts = COUNT(pcalv_front==calv_front) !only one front for now...
   ALLOCATE(cgroup_membs(ncalv_parts))
@@ -212,16 +213,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       cgroup_membs(counter) = i-1
     END IF
   END DO
-  PRINT *,mype,' debug group: ',cgroup_membs
+  IF(Debug) PRINT *,mype,' debug group: ',cgroup_membs
 
 
   !Create an MPI_COMM for each calving region, allow gathering instead of 
   !explicit send/receive
-  PRINT *,'making group'
   CALL MPI_Comm_Group( ELMER_COMM_WORLD, group_world, ierr)
   CALL MPI_Group_Incl( group_world, ncalv_parts, cgroup_membs, group_calve, ierr)
   CALL MPI_Comm_create( ELMER_COMM_WORLD, group_calve, COMM_CALVE, ierr)
-  PRINT *,' made group'
   !--------------------------
 
   !Work out to whom I send mesh parts for calving
@@ -230,7 +229,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   IF(My_Calv_Front>0) THEN
 
     my_cboss = MINLOC(pcalv_front, 1, MASK=pcalv_front==calv_front)-1
-    PRINT *,MyPe,' debug calving boss: ',my_cboss
+    IF(Debug) PRINT *,MyPe,' debug calving boss: ',my_cboss
     ImBoss = MyPE == my_cboss
 
     IF(ImBoss) THEN
@@ -255,12 +254,15 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   END DO
 
   GatheredMesh => RedistributeMesh(Model, Mesh, .TRUE., .FALSE.)
+  !Confirmed that boundary info is for Zoltan at this point
 
 !  CALL WriteMeshToDisk2(Model, GatheredMesh, "./gathered_mesh")
 
-  PRINT *,ParEnv % MyPE,' gatheredmesh % nonodes: ',GatheredMesh % NumberOfNodes
-  PRINT *,ParEnv % MyPE,' gatheredmesh % neelems: ',GatheredMesh % NumberOfBulkElements, &
-       GatheredMesh % NumberOfBoundaryElements
+  IF(Debug) THEN
+    PRINT *,ParEnv % MyPE,' gatheredmesh % nonodes: ',GatheredMesh % NumberOfNodes
+    PRINT *,ParEnv % MyPE,' gatheredmesh % neelems: ',GatheredMesh % NumberOfBulkElements, &
+         GatheredMesh % NumberOfBoundaryElements
+  END IF
 
   !Now we have the gathered mesh, need to send:
   ! - Remeshed_node, test_lset, elem_fixed
@@ -274,7 +276,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
     IF(ImBoss) THEN
 
-      PRINT *,'boss debug prnode_count: ', Prnode_count
+      IF(Debug) PRINT *,'boss debug prnode_count: ', Prnode_count
       GLNode_max = MAXVAL(GatheredMesh % ParallelInfo % GlobalDOFs)
       GLNode_min = MINVAL(GatheredMesh % ParallelInfo % GlobalDOFs)
       GNBulk = GatheredMesh % NumberOfBulkElements
@@ -376,25 +378,20 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
              i,ierr)
       END DO
 
-      PRINT *,' boss fixed node: ',COUNT(fixed_node),SIZE(fixed_node)
-      PRINT *,' boss fixed elem: ',COUNT(fixed_elem),SIZE(fixed_elem)
+      IF(Debug) THEN
+        PRINT *,' boss fixed node: ',COUNT(fixed_node),SIZE(fixed_node)
+        PRINT *,' boss fixed elem: ',COUNT(fixed_elem),SIZE(fixed_elem)
+      END IF
 
       !Set required nodes and elements
       DO i=1,GNNode
         IF(fixed_node(i)) THEN
           CALL MMG3D_SET_REQUIREDVERTEX(mmgMesh,i,ierr)
-          IF(GatheredMesh % Nodes % x(i) > 488382.0 .AND. GatheredMesh % Nodes % x(i) < 495135 .AND. &
-              GatheredMesh % Nodes % y(i) < -2287339.0) &
-              PRINT *,'Fixing node: ',i,GatheredMesh % Nodes % x(i), GatheredMesh % Nodes % y(i)
         END IF
       END DO
 
       DO i=1,GNBulk + GNBdry
         IF(fixed_elem(i)) THEN
-          IF(ANY(GatheredMesh % Nodes % x(GatheredMesh % Elements(i) % NodeIndexes) > 488382.0).AND.&
-               ANY(GatheredMesh % Nodes % x(GatheredMesh % Elements(i) % NodeIndexes) < 495135) .AND.&
-               ANY(GatheredMesh % Nodes % y(GatheredMesh % Elements(i) % NodeIndexes) < -2287339.0)) &
-               PRINT *,'Fixing element ',i,' nodes: ',GatheredMesh % Elements(i) % NodeIndexes
           IF(GatheredMesh % Elements(i) % TYPE % DIMENSION == 3) THEN
             CALL MMG3D_SET_REQUIREDTETRAHEDRON(mmgMesh,i,ierr)
           ELSEIF(GatheredMesh % Elements(i) % TYPE % DIMENSION == 2) THEN
@@ -418,8 +415,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       NNodes = NewMeshR % NumberOfNodes
       NBulk = NewMeshR % NumberOfBulkElements
       NBdry = NewMeshR % NumberOfBoundaryElements
-      PRINT *, 'NewMeshR nonodes: ',NNodes, NBulk, NBdry
-
+      IF(DEBUG) PRINT *, 'NewMeshR nonodes: ',NNodes, NBulk, NBdry
+      
       !Clear out unneeded elements
       !Body elems with BodyID 3 (2) are the calving event (remaining domain)
       !Boundary elems seem to have tags 0,1,10...
@@ -431,7 +428,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       DO i=1,NBulk
         Element => NewMeshR % Elements(i)
         NElNodes = Element % TYPE % NumberOfNodes
-        ! PRINT *,'new element ',i,' body id: ',Element % BodyID
+
         IF(Element % TYPE % ElementCode /= 504) &
              PRINT *,'Programming error, bulk type: ',Element % TYPE % ElementCode
         IF(NElNodes /= 4) PRINT *,'Programming error, bulk nonodes: ',NElNodes
@@ -457,7 +454,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         NElNodes = Element % TYPE % NumberOfNodes
 
         IF(Element % TYPE % ElementCode /= 303) THEN
-          ! PRINT *,'Deleting element code ',Element % TYPE % ElementCode
           RmElem(i) = .TRUE.
           CYCLE
         END IF
@@ -484,6 +480,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       !Set constraint 10 (the newly formed calving front) to front_BC_id
       !and (temporarily (TODO)) set 0 to 1 so that it doesn't break WriteMeshToDisk2
+      !NOTE: I think this will be 10 * the previous BC ID...
       DO i=NBulk+1, NBulk + NBdry
         Element => NewMeshR % Elements(i)
         IF(Element % BoundaryInfo % Constraint == 10) &
@@ -493,52 +490,48 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
              Element % BoundaryInfo % Constraint = 4
       END DO
      
-      !Test
-      k = SIZE(NewMeshR % Nodes % x)
-      IF(k /= NewMeshR % NumberOfNodes) CALL Fatal(SolverName, "NewMeshR node count mismatch")
-      DO i=1, NewMeshR % NumberOfBulkElements+NewMeshR % NumberOfBoundaryElements
-        IF(ANY(NewMeshR % Elements(i) % NodeIndexes <= 0) .OR. &
-             ANY(NewMeshR % Elements(i) % NodeIndexes > k)) THEN
-          CALL Fatal(SolverName, "NewMeshR Bad Node No")
-        END IF
-      END DO
 
       !TODO - issue - MMG3Dls will mark new nodes 'required' if they split a previous
       !boundary element. but only *front* boundary elements? Have confirmed it ONLY returns
       !required & 10 for calving front nodes, and it's not to do with manually setting required stuff.
       !But, the model does complain about required entities if the hole is internal, but no weird 
       !GIDs are returned.
-      DO i=1,GatheredMesh % NumberOfNodes
-        PRINT *, ParEnv % MyPE,' debug old ',i,&
-             ' GDOF: ',GatheredMesh % ParallelInfo % GlobalDOFs(i),&
-             ' xyz: ',&
-             GatheredMesh % Nodes % x(i),&
-             GatheredMesh % Nodes % y(i),&
-             GatheredMesh % Nodes % z(i),fixed_node(i)
-        !TODO -expensive tests, delete!
-        IF(fixed_node(i)) THEN
-          IF(.NOT. ANY(NewMeshR % ParallelInfo % GlobalDOFs == &
-               GatheredMesh % ParallelInfo % GlobalDOFs(i))) CALL Fatal(SolverName, &
-          "Missing required node in output!")
-        END IF
-      END DO
+      IF(Debug) THEN
+        DO i=1,GatheredMesh % NumberOfNodes
+          PRINT *, ParEnv % MyPE,' debug old ',i,&
+               ' GDOF: ',GatheredMesh % ParallelInfo % GlobalDOFs(i),&
+               ' xyz: ',&
+               GatheredMesh % Nodes % x(i),&
+               GatheredMesh % Nodes % y(i),&
+               GatheredMesh % Nodes % z(i),fixed_node(i)
+          IF(fixed_node(i)) THEN
+            IF(.NOT. ANY(NewMeshR % ParallelInfo % GlobalDOFs == &
+                 GatheredMesh % ParallelInfo % GlobalDOFs(i))) CALL Fatal(SolverName, &
+                 "Missing required node in output!")
+          END IF
+        END DO
+      END IF
 
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
-      DO i=1,NewMeshR % NumberOfNodes
-        PRINT *, ParEnv % MyPE,' debug new ',i,&
-             ' GDOF: ',NewMeshR % ParallelInfo % GlobalDOFs(i),&
-             ' xyz: ',&
-             NewMeshR % Nodes % x(i),&
-             NewMeshR % Nodes % y(i),&
-             NewMeshR % Nodes % z(i)
-        !TODO -expensive tests, delete!
-        IF(NewMeshR % ParallelInfo % GlobalDOFs(i) == 0) CYCLE
-        IF(.NOT. ANY(GatheredMesh % ParallelInfo % GlobalDOFs == &
-             NewMeshR % ParallelInfo % GlobalDOFs(i))) CALL Warn(SolverName, &
-             "Unexpected GID")
-      END DO
+      IF(Debug) THEN
+        DO i=1,NewMeshR % NumberOfNodes
+          PRINT *, ParEnv % MyPE,' debug new ',i,&
+               ' GDOF: ',NewMeshR % ParallelInfo % GlobalDOFs(i),&
+               ' xyz: ',&
+               NewMeshR % Nodes % x(i),&
+               NewMeshR % Nodes % y(i),&
+               NewMeshR % Nodes % z(i)
+          !TODO -expensive tests, delete!
+          IF(NewMeshR % ParallelInfo % GlobalDOFs(i) == 0) CYCLE
+          IF(.NOT. ANY(GatheredMesh % ParallelInfo % GlobalDOFs == &
+               NewMeshR % ParallelInfo % GlobalDOFs(i))) CALL Warn(SolverName, &
+               "Unexpected GID")
+        END DO
+      END IF
 
+      !Update parallel info from old mesh nodes
+      CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
 
       !Need to glue NewMeshR to GatheredMesh (boss only)
       ! then renegotiate global node and element numbers (all partitions)
@@ -561,8 +554,42 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !Now each partition has GatheredMesh, we need to renegotiate globalDOFs
    CALL RenumberGDOFs(Mesh, GatheredMesh)
 
-  ! !Temporary test
-  ! CALL Zoltan_Interface( Model, Solver, dt, Transient )
+   !and global element numbers
+   CALL RenumberGElems(GatheredMesh)
+
+   !Some checks on the new mesh
+   DO i=1,GatheredMesh % NumberOfNodes
+     IF(GatheredMesh % ParallelInfo % INTERFACE(i)) THEN
+       IF(.NOT. ASSOCIATED(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours)) &
+            CALL Fatal(SolverName, "Neighbourlist not associated!")
+       IF(SIZE(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours) < 2) &
+            CALL Fatal(SolverName, "Neighbourlist too small!")
+     END IF
+   END DO
+
+   DO i=1,GatheredMesh % NumberOfNodes
+     IF(.NOT. ASSOCIATED(GatheredMesh % ParallelInfo % NeighbourList(i) % Neighbours)) &
+          CALL Fatal(SolverName, 'Unassociated Neighbourlist % Neighbours')
+     IF(GatheredMesh % ParallelInfo % GlobalDOFs(i) == 0) &
+          CALL Fatal(SolverName, 'Bad GID 0')
+   END DO
+
+   IF(ANY(GatheredMesh % Elements % GElementIndex <= 0)) CALL Fatal(SolverName, 'Element has ID 0')
+
+   CALL Zoltan_Interface( Model, GatheredMesh )
+
+   !Some tests
+   IF(Debug) THEN
+     IF(GatheredMesh % NumberOfNodes /= SIZE(GatheredMesh % ParallelInfo % GlobalDOFs)) &
+          CALL Fatal(SolverName, "Size mismatch")
+     IF(GatheredMesh % NumberOfNodes /= SIZE(GatheredMesh % Nodes % x)) &
+          CALL Fatal(SolverName, "Size mismatch 2")
+     IF(SIZE(GatheredMesh % Elements) /= SIZE(GatheredMesh % Repartition)) &
+          CALL Warn(SolverName, "Size repartition error")
+     IF(ANY(GatheredMesh % ParallelInfo % GlobalDOFs <= 0)) CALL Fatal(SolverName, "GID == 0")
+   END IF
+
+   FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
 
   !Now need to renumber/negotiate with other partitions for global NNs/GElementIndexes
   !In this case, could be:
