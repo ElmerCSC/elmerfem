@@ -606,7 +606,7 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(GaussIntegrationPoints_t) :: IP
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: t, n, IpCount , RelOrder
+     INTEGER :: t, n, IpCount , RelOrder, nIp
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
      LOGICAL :: Found, ActiveElem
      INTEGER, POINTER :: IpOffset(:) 
@@ -645,7 +645,8 @@ CONTAINS
      IpCount = 0
 
      RelOrder = ListGetInteger( Solver % Values, 'Relative Integration Order', Found)
-
+     nIp = ListGetInteger( Solver % Values,'Gauss Points on Ip Variables', Found ) 
+     
      DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
        Element => Mesh % Elements(t)
             
@@ -660,8 +661,12 @@ CONTAINS
            END IF
            
            IF( ActiveElem ) THEN
-             IP = GaussPoints( Element, RelOrder = RelOrder )
-             IpCount = IpCount + Ip % n
+             IF( nIp > 0 ) THEN
+               IpCount = IpCount + nIp
+             ELSE
+               IP = GaussPoints( Element, RelOrder = RelOrder )
+               IpCount = IpCount + Ip % n
+             END IF
            END IF
          END IF
        END IF

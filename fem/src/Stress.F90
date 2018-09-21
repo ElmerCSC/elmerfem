@@ -165,6 +165,12 @@ MODULE StressLocal
      Mesh => GetMesh()
      ve_stress => variableget( Mesh % Variables, 've_stress' )
      IF( ASSOCIATED(ve_Stress) ) THEN
+       i = Element % ElementIndex
+       j = ve_stress % Perm( i+1 ) - ve_stress % Perm ( i )
+       IF( IntegStuff % n /= j ) THEN
+         PRINT *,'Inconsistent number of gauss points:',i, IntegStuff % n, j
+       END IF
+
        Viscosity = GetCReal( GetMaterial(), 'Viscosity', Found )
 
        SOL = 0; PSOL = 0
