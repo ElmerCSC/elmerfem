@@ -2455,7 +2455,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh, NewMesh
     LOGICAL :: ParallelMesh
     INTEGER, POINTER :: NewPart(:)
-    INTEGER :: GlobalToLocal(minind:maxind)
+    INTEGER, ALLOCATABLE :: GlobalToLocal(:)
     INTEGER :: dim,minind,maxind
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
     !----------------------------------
