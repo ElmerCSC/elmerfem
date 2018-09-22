@@ -2312,9 +2312,9 @@ CONTAINS
     LOGICAL :: ParallelMesh
     !---------------------------
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
+    TYPE(ElementType_t), POINTER :: Etype
+    INTEGER :: i,j,k,n,t,allocstat,part,elemcode
     INTEGER :: gind,lind,rcount,icount,nbrdy,i1,i2
-    LOGICAL :: CheckNeighbours, IsBulk
     TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
     TYPE(MeshPack_t), POINTER :: PPack
 
@@ -2409,21 +2409,37 @@ CONTAINS
     END DO
 
     ! Add the imported nodes and their global index
+    ! Cycle element % nodes rather than nodes directly
+    ! in case the other partition didn't send a node which
+    ! we already have (but haven't marked above)
     DO part=1,NoPartitions
       IF( part-1 == ParEnv % MyPe ) CYCLE
       PPack => RecPack(part)
       IF( PPack % icount <= 5 ) CYCLE
 
-      icount = PPack % indpos
-      DO i = 1, PPack % NumberOfNodes
-        icount = icount + 1
-        gind = PPack % idata(icount)
+      icount = 5
+      DO i=1, PPack % NumberOfBulkElements
 
-        IF( gind < minind .OR. gind > maxind ) THEN
-          CALL Fatal('LocalNumberingMeshPieces','gind out of bounds')
+        elemcode = PPack % idata(icount+2)
+
+        Etype => GetElementType( elemcode )
+        n = Etype % NumberOfNodes
+        icount = icount + 3
+
+        IF( icount + n > SIZE( PPack % idata) ) THEN
+          CALL Fatal('LocalNumberingMeshPieces','icount out of range')
         END IF
 
-        GlobalToLocal(gind) = 1
+        DO j=1,n
+          gind = PPack % idata(icount+1)
+
+          IF( gind < minind .OR. gind > maxind ) THEN
+            CALL Fatal('LocalNumberingMeshPieces','gind out of bounds')
+          END IF
+
+          GlobalToLocal(gind) = 1
+          icount = icount + 1
+        END DO
       END DO
     END DO
 
@@ -2462,22 +2478,13 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
     INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
-    LOGICAL :: CheckNeighbours, IsBulk
-    TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+    LOGICAL :: IsBulk
     TYPE(MeshPack_t), POINTER :: PPack
     INTEGER, ALLOCATABLE :: GlobalToLocalElem(:), LeftParent(:), RightParent(:)
     CHARACTER(*), PARAMETER :: Caller = 'UnpackMeshPieces'
     
     CALL Info(Caller,'Unpacking mesh pieces to form a new mesh',Level=12)
 
-
-    CheckNeighbours = .FALSE.
-    IF( ParallelMesh ) THEN
-      IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN
-        CheckNeighbours = .TRUE.
-        NeighbourList => Mesh % ParallelInfo % NeighbourList
-      END IF
-    END IF
 
     minelem = HUGE( minelem )
     maxelem = 0
