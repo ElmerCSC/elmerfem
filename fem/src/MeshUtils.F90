@@ -249,7 +249,8 @@ CONTAINS
      LOGICAL :: DoParallel
      
      IF( Mesh % NumberOfNodes == 0 ) THEN
-       CALL Fatal(Caller,'Mesh has zero nodes!')
+       CALL Warn(Caller,'Mesh has zero nodes!')
+       RETURN
      ELSE
        CALL Info(Caller,'Number of nodes in mesh: '&
            //TRIM(I2S(Mesh % NumberOfNodes)),Level=8)
