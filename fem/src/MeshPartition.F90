@@ -98,7 +98,7 @@ CONTAINS
     REAL(KIND=dp) :: t1,t2
     INTEGER :: i,j,k,l,m,ierr,NNodes,NBulk,counter,DIM,&
          max_elemno
-    INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:),ParElemAdj(:), ParElemStart(:),&
+    INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
 
@@ -180,50 +180,7 @@ CONTAINS
     ! ZOLTAN_PART_MULTI_FN or ZOLTAN_PART_FN - Optional for LB_APPROACH=Repartition and for REMAP=1. 
 
 
-  !--------------- THE FACE APPROACH - not ideal -------
-    CALL GlobalElemAdjacency( Mesh, ElemAdj, ElemStart, DIM )
-  !-----------------------------------------------
-
-
-  !-------- The Nodal Approach -------------------
-  !-----makes a needlessly dense dual graph ------
-
-    t1 = CPUTime()
-    CALL ElmerMeshToDualGraph(Mesh, LocalGraph)
-    t2 = CPUTime()
-
-    ! t1 = CPUTime()
-    ! CALL GetBulkElemAdjacency( Mesh,ElemAdj,ElemStart )
-    ! t2 = CPUTime()
-
-    IF(Debug) THEN
-      PRINT *,'size graph: ',SIZE(LocalGraph % ptr), SIZE(LocalGraph % ind), LocalGraph % n
-      PRINT *,'start graph locs: ',LocalGraph % ptr(1:100)
-      PRINT *,'start graph neighs: ',LocalGraph % ind(1:100)
-    END IF
-
-    !CALL GetParallelElemAdjacency( Mesh, ParElemAdj, ParElemStart)
-    CALL MeshParallelDualGraph( Mesh, ParElemAdj, ParElemStart, ParElemIdx, ParElemAdjProc )
-
-    PRINT *,ParEnv % MyPE,' final sizes ',SIZE(ParElemAdj), SIZE(ParElemStart), SIZE(ParElemIdx)
-
-    !Construct map of ParElemIdx
-    ALLOCATE(ParElemMap(NBulk))
-    ParElemMap = 0
-    DO i=1,SIZE(ParElemIDX)
-      ParElemMap(ParElemIDX(i)) = i
-    END DO
-
-    CALL MPI_ALLREDUCE(MAXVAL(Mesh % Elements % GElementIndex), max_elemno, 1, MPI_INTEGER, &
-         MPI_MAX, ELMER_COMM_WORLD, ierr)
-    PRINT *,parenv % mype,' max elemno: ',max_elemno
-
-    !Combine local and parallel element idx, and convert to global
-    DO i=1,NBulk
-      k = LocalGraph % ptr(i+1) - LocalGraph % ptr(i)
-      IF(ParElemMap(i) > 0) k = k + ParElemStart(ParElemMap(i)+1) - ParElemStart(ParElemMap(i))
-    END DO
-
+    CALL GlobalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
 
     numGidEntries = 1
     numLidEntries = 1
@@ -306,12 +263,7 @@ CONTAINS
       INTEGER(Zoltan_INT), INTENT(IN) :: local_id  
       INTEGER(Zoltan_INT), INTENT(OUT) :: ierr
 
-      zoltNumEdges = (LocalGraph % ptr(local_id+1) - LocalGraph % ptr(local_id))
-
-      IF(ParElemMap(local_id) /= 0) THEN
-        zoltNumEdges = zoltNumEdges + &
-             (ParElemStart(ParElemMap(local_id)+1) - ParElemStart(ParElemMap(local_id)))
-      END IF
+      zoltNumEdges = (ElemStart(local_id+1) - ElemStart(local_id))
 
       ! PRINT *,parenv % mype,' debug ',local_id,ParElemMap(local_id),' num edges: ',zoltNumEdges
       ierr = 0
@@ -334,46 +286,14 @@ CONTAINS
       !----------------
       INTEGER :: counter,i,k,nlocal,nother
 
-      nlocal = (LocalGraph % ptr(local_id+1) - LocalGraph % ptr(local_id))
+      nlocal = (ElemStart(local_id+1) - ElemStart(local_id))
 
       DO i=1,nlocal
-        k = i + LocalGraph % ptr(local_id) - 1
-        ! PRINT *,ParEnv % MyPE,' debug setting nbor_procs',i,' nlocal: ',nlocal,&
-        !      Mesh % Elements(LocalGraph % ind(k)) % GElementIndex
-        nbor_global_id(i) = Mesh % Elements(LocalGraph % ind(k)) % GElementIndex
-        nbor_procs(i) = ParEnv % MyPE
+        k = i + ElemStart(local_id) - 1
+
+        nbor_global_id(i) = ElemAdj(k)
+        nbor_procs(i) = ElemAdjProc(k)
       END DO
-
-      nother = 0
-      IF(ParElemMap(local_id) /= 0) THEN
-
-        nother = ParElemStart(ParElemMap(local_id)+1) - ParElemStart(ParElemMap(local_id))
-        DO i=1,nother
-          j = ParElemStart(ParElemMap(local_id)) + i - 1
-          k = i + nlocal
-          nbor_global_id(k) = ParElemAdj(j)
-          nbor_procs(k) = ParElemAdjProc(j)
-        END DO
-      END IF
-
-      IF(ANY(nbor_global_id(1:nlocal+nother) < 1)) CALL FATAL(FuncName,"Bad gid 0")
-      IF(ANY(nbor_global_id(1:nlocal+nother) > max_elemno)) CALL FATAL(FuncName,"Bad gid max")
-
-      !Some checks on the data - slow!
-      DO i=1,nlocal+nother-1
-        IF(ANY(nbor_global_id(i+1:nlocal+nother) == nbor_global_id(i))) THEN
-          PRINT *,ParEnv % MyPE,' duplicates! :',nbor_global_id(i),' with ',nbor_global_id(1:nlocal+nother)
-        END IF
-      END DO
-      IF(ANY(nbor_procs(1:nlocal+nother) > 3)) CALL FATAL(FuncName,"Bad proc max")
-      IF(ANY(nbor_procs(1:nlocal+nother) < 0)) CALL FATAL(FuncName,"Bad proc min")
-
-      ! PRINT *,ParEnv % MyPE,' debug el: ',global_id,&
-      !      'local ',local_id,' of ',NBulk,&
-      !      ParElemMap(local_id),' global neighs neigh: ',&
-      !      nbor_global_id(1:nlocal+nother)
-
-
 
     END SUBROUTINE ZoltGetEdgeList
 
@@ -383,22 +303,23 @@ CONTAINS
 #endif
   END SUBROUTINE Zoltan_Interface
 
-  SUBROUTINE GlobalElemAdjacency( Mesh, ElemAdj, ElemStart, DIM )
+  SUBROUTINE GlobalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, ALLOCATABLE :: ElemAdj(:),ElemStart(:)
+    INTEGER, ALLOCATABLE :: ElemAdj(:),ElemStart(:),ElemAdjProc(:)
     INTEGER :: DIM
     !-------------------------------------
     TYPE(Element_t), POINTER :: MFacePtr(:), Element
-    INTEGER :: i,j,k,n,max_elfaces,el1,el2,gface_id, gpar_id,ierr,counter,&
+    INTEGER :: i,j,k,m,n,max_elfaces,el1,el2,gface_id, gpar_id,gpar_lid,ierr,counter,&
          NBulk,NFaces,Sweep,NIFFaces
-    INTEGER, ALLOCATABLE :: ElemConn(:,:), NLocalConn(:), FaceIFIDX(:),status(:)
+    INTEGER, ALLOCATABLE :: ElemConn(:,:), ElemConnPart(:,:), NElConn(:), FaceIFIDX(:),status(:),&
+         work_int(:)
     INTEGER, POINTER :: ElFaceIdx(:)
     TYPE(NeighbourList_t), POINTER :: MFaceIFList(:)
     LOGICAL, POINTER :: MFaceIF(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="GlobalElemAdjacency"
     TYPE FaceShare_t
        INTEGER :: count
-       INTEGER, ALLOCATABLE :: GFaceIDX(:), GParIDX(:)
+       INTEGER, ALLOCATABLE :: GFaceIDX(:), GParIDX(:),GParLIDX(:)
     END TYPE FaceShare_t
     TYPE(FaceShare_t), ALLOCATABLE :: SendFaces(:),RecvFaces(:)
 
@@ -432,9 +353,10 @@ CONTAINS
 
     ALLOCATE(FaceIFIDX(COUNT(MFaceIF)), &
          ElemConn(max_elfaces,NBulk), &
-         NLocalConn(NBulk))
+         ElemConnPart(max_elfaces,NBulk), &
+         NElConn(NBulk))
     ElemConn = 0
-    NLocalConn = 0
+    NElConn = 0
 
     !Compute local adjacency and gather interface faces
     counter = 0
@@ -448,25 +370,23 @@ CONTAINS
              .NOT. ASSOCIATED(MFacePtr(i) % BoundaryInfo % Right)) CYCLE
         el1 = MFacePtr(i) % BoundaryInfo % Left % ElementIndex
         el2 = MFacePtr(i) % BoundaryInfo % Right % ElementIndex
-        NLocalConn(el1) = NLocalConn(el1) + 1
-        ElemConn(NLocalConn(el1),el1) = el2
-        NLocalConn(el2) = NLocalConn(el2) + 1
-        ElemConn(NLocalConn(el2),el2) = el1
+
+        NElConn(el1) = NElConn(el1) + 1
+        ElemConn(NElConn(el1),el1) = MFacePtr(i) % BoundaryInfo % Right % GElementIndex
+        ElemConnPart(NElConn(el1),el1) = ParEnv % MyPE
+
+        NElConn(el2) = NElConn(el2) + 1
+        ElemConn(NElConn(el2),el2) = MFacePtr(i) % BoundaryInfo % Left % GElementIndex
+        ElemConnPart(NElConn(el2),el2) = Parenv % MyPE
       END IF
     END DO
     NIFFaces = counter
 
-    PRINT *, ParEnv % MyPE, ' niffaces: ',niffaces
-    PRINT *, ParEnv % MyPE,' nbulk: ',nbulk,' count 4: ',COUNT(NLocalConn==4),&
-         ' count 3: ',COUNT(NLocalConn==3),&
-         ' count 2: ',COUNT(NLocalConn==2),&
-         ' count 1: ',COUNT(NLocalConn==1),&
-         ' count 0: ',COUNT(NLocalConn==0)
-
-    IF(ANY(NLocalConn == 0)) CALL Warn(FuncName, 'Disconnected bulk element.')
+    IF(ANY(NElConn == 0)) CALL Warn(FuncName, 'Disconnected bulk element.')
 
     !Generate shared Face GElementIndex list & respective parent GElementIndex
-    ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs))
+    ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs),work_int(NBulk))
+
     RecvFaces % Count = 0
 
     DO Sweep=1,2
@@ -480,8 +400,10 @@ CONTAINS
 
         IF(ASSOCIATED(MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Left)) THEN
           gpar_id = MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Left % GElementIndex
+          gpar_lid = MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Left % ElementIndex
         ELSE IF(ASSOCIATED(MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Right)) THEN
           gpar_id = MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Right % GElementIndex
+          gpar_lid = MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Right % ElementIndex
         ELSE
           CALL Fatal(FuncName, "Face has no parent element!")
         END IF
@@ -495,6 +417,7 @@ CONTAINS
           IF(Sweep == 2) THEN
             SendFaces(k) % GFaceIDX(n) = gface_id
             SendFaces(k) % GParIDX(n) = gpar_id
+            SendFaces(k) % GParLIDX(n) = gpar_lid
           END IF
         END DO
 
@@ -503,18 +426,25 @@ CONTAINS
       IF(Sweep==1) THEN
         DO i=1,ParEnv % PEs
           n = SendFaces(i) % count
-          ALLOCATE(SendFaces(i) % GFaceIDX(n),SendFaces(i) % GParIDX(n))
+          ALLOCATE(SendFaces(i) % GFaceIDX(n),&
+               SendFaces(i) % GParIDX(n),&
+               SendFaces(i) % GParLIDX(n))
         END DO
       END IF
 
       IF(Sweep==2) THEN
         DO i=1,ParEnv % PEs
-          CALL SortI(SendFaces(i) % count, SendFaces(i) % GFaceIDX, SendFaces(i) % GParIDX)
+          n = SendFaces(i) % count
+          DO j=1,n
+            work_int(j) = j
+          END DO
+          CALL SortI(n, SendFaces(i) % GFaceIDX, work_int)
+          SendFaces(i) % GParIDX = SendFaces(i) % GParIDX(work_int(1:n))
+          SendFaces(i) % GParLIDX = SendFaces(i) % GParLIDX(work_int(1:n))
         END DO
       END IF
     END DO
 
-    PRINT *,ParEnv % mype,' got here 1'
     !Send number of shared faces
     ALLOCATE(status(ParEnv % PEs * 2))
     DO i=1,ParEnv % PEs
@@ -544,25 +474,47 @@ CONTAINS
     CALL MPI_Waitall(ParEnv % PEs*2, status(1:ParEnv % PEs*2), MPI_STATUSES_IGNORE, ierr)
     status = MPI_REQUEST_NULL
 
+
     DO i=1,ParEnv % PEs
-      PRINT *,ParEnv % MyPE,' sending to ',i-1,' count ',RecvFaces(i) % count
+      IF(i-1 == ParEnv % MyPE) CYCLE
+      counter = 0
+      m = 1
+      n = 1
+      IF(SendFaces(i) % count==0 .OR. RecvFaces(i) % count==0) CYCLE !no shared faces
+      DO WHILE(.TRUE.)
+        IF(SendFaces(i) % GFaceIDX(m) == RecvFaces(i) % GFaceIDX(n)) THEN
+          !Faces match, update parent elem neighbour list
+          el1 = SendFaces(i) % GParLIDX(m)
+          el2 = RecvFaces(i) % GParIDX(n)
 
-      IF(RecvFaces(i) % count == 0 .OR. i-1 == ParEnv % MyPE) THEN
-        CYCLE
-      END IF
-      PRINT *,ParEnv % MyPE,' sending to ',i-1,' count ',RecvFaces(i) % count,&
-           ' first: ',RecvFaces(i) % GFaceIDX(1), &
-           RecvFaces(i) % GParIDX(1),' niffaces ', niffaces
+          NElConn(el1) = NElConn(el1) + 1
+          ElemConn(NElConn(el1),el1) = el2
+          ElemConnPart(NElConn(el1),el1) = i-1
+
+          counter = counter + 1
+          m = m + 1
+          n = n + 1
+        ELSE IF(SendFaces(i) % GFaceIDX(m) > RecvFaces(i) % GFaceIDX(n)) THEN
+          n = n + 1
+        ELSE
+          m = m + 1
+        END IF
+        IF(m > SendFaces(i) % count .OR. n > RecvFaces(i) % count) EXIT
+      END DO
     END DO
-
-
-    !TODO - link up parent elements from RecvFaces and SendFaces
-    DO i=1,ParEnv % PEs
-
-    END DO
-
-    !TODO - ensure global elementidx returned
     
+    !Put the data into CRS format
+    ALLOCATE(ElemAdj(SUM(NElConn)), ElemStart(NBulk+1), ElemAdjProc(SUM(NElConn)))
+
+    ElemStart(1) = 1
+    DO i=1,NBulk
+      ElemAdj(ElemStart(i):ElemStart(i) + NElConn(i) -1) = &
+           ElemConn(1:NElConn(i),i)
+      ElemAdjProc(ElemStart(i):ElemStart(i) + NElConn(i) -1) = &
+           ElemConnPart(1:NElConn(i),i)
+      ElemStart(i+1) = ElemStart(i) + NElConn(i) - 1
+    END DO
+
     CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
   END SUBROUTINE GlobalElemAdjacency
 
