@@ -93,16 +93,14 @@ CONTAINS
     !------------------------
 
 #ifdef HAVE_ZOLTAN
-    TYPE(Element_t), POINTER :: Element,Element2,Face, MFacePtr(:)
+    TYPE(Element_t), POINTER :: Element
     TYPE(Graph_t) :: LocalGraph
     REAL(KIND=dp) :: t1,t2
-    INTEGER :: i,j,k,l,m,nn,ierr,NNodes,NBulk,NElnodes,counter,DIM,&
-         NFaces,NIFFaces,max_elemno
+    INTEGER :: i,j,k,l,m,ierr,NNodes,NBulk,counter,DIM,&
+         max_elemno
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:),ParElemAdj(:), ParElemStart(:),&
-         ParElemIdx(:),ParElemAdjProc(:),FaceIFIDX(:),FaceOrder(:),sharecount(:),&
+         ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
-    TYPE(NeighbourList_t), POINTER :: MFaceIFList(:)
-    LOGICAL, POINTER :: MFaceIF(:)
 
     CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Zoltan_Interface"
 
@@ -141,7 +139,7 @@ CONTAINS
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: NUM_GID_ENTRIES")
     zierr = Zoltan_Set_Param(zz_obj, "NUM_LID_ENTRIES", "1")
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: NUM_LID_ENTRIES")
-    zierr = Zoltan_Set_Param(zz_obj, "RETURN_LISTS", "ALL")
+    zierr = Zoltan_Set_Param(zz_obj, "RETURN_LISTS", "ALL") !TODO - we only use export list
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: RETURN_LISTS")
     zierr = Zoltan_Set_Param(zz_obj, "OBJ_WEIGHT_DIM", "0")
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: OBJ_WEIGHT_DIM")
@@ -156,9 +154,9 @@ CONTAINS
 
     !Callback functions to query number of elements and the element data
     zierr = Zoltan_Set_Fn(zz_obj, ZOLTAN_NUM_OBJ_FN_TYPE,zoltNumObjs)
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: 12")
+    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan element count callback.")
     zierr = Zoltan_Set_Fn(zz_obj, ZOLTAN_OBJ_LIST_FN_TYPE,zoltGetObjs)
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: 13")
+    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan element info callback.")
 
     !Callback functions to query number of edges and the edge data
     zierr = Zoltan_Set_Fn(zz_obj, ZOLTAN_NUM_EDGES_FN_TYPE,zoltNumEdges)
@@ -181,6 +179,15 @@ CONTAINS
     ! ZOLTAN_OBJ_SIZE_MULTI_FN or ZOLTAN_OBJ_SIZE_FN  - Optional for LB_APPROACH=Repartition.
     ! ZOLTAN_PART_MULTI_FN or ZOLTAN_PART_FN - Optional for LB_APPROACH=Repartition and for REMAP=1. 
 
+
+  !--------------- THE FACE APPROACH - not ideal -------
+    CALL GlobalElemAdjacency( Mesh, ElemAdj, ElemStart, DIM )
+  !-----------------------------------------------
+
+
+  !-------- The Nodal Approach -------------------
+  !-----makes a needlessly dense dual graph ------
+
     t1 = CPUTime()
     CALL ElmerMeshToDualGraph(Mesh, LocalGraph)
     t2 = CPUTime()
@@ -194,6 +201,7 @@ CONTAINS
       PRINT *,'start graph locs: ',LocalGraph % ptr(1:100)
       PRINT *,'start graph neighs: ',LocalGraph % ind(1:100)
     END IF
+
     !CALL GetParallelElemAdjacency( Mesh, ParElemAdj, ParElemStart)
     CALL MeshParallelDualGraph( Mesh, ParElemAdj, ParElemStart, ParElemIdx, ParElemAdjProc )
 
@@ -375,130 +383,188 @@ CONTAINS
 #endif
   END SUBROUTINE Zoltan_Interface
 
-
-  !NOT USED - DELETE
-  !Returns a table listing bulk element adajacency in the given mesh
-  !Elements are considered adjacent if they share a face (in 3D) or
-  !an edge (in 2D)
-  SUBROUTINE GetBulkElemAdjacency( Mesh,ElemAdj,ElemStart )
-
-    IMPLICIT NONE
-
+  SUBROUTINE GlobalElemAdjacency( Mesh, ElemAdj, ElemStart, DIM )
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:)
-    !-----------------------------------------
-    INTEGER :: i,j,k,l,m,nn,DIM,NNodes,NBulk,NElnodes,sharecount,counter,adjshare,&
-         adjcount_tot
-    TYPE(Element_t), POINTER :: Element,Element2
-    LOGICAL :: Debug
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="GetBulkElemAdjacency"
+    INTEGER, ALLOCATABLE :: ElemAdj(:),ElemStart(:)
+    INTEGER :: DIM
+    !-------------------------------------
+    TYPE(Element_t), POINTER :: MFacePtr(:), Element
+    INTEGER :: i,j,k,n,max_elfaces,el1,el2,gface_id, gpar_id,ierr,counter,&
+         NBulk,NFaces,Sweep,NIFFaces
+    INTEGER, ALLOCATABLE :: ElemConn(:,:), NLocalConn(:), FaceIFIDX(:),status(:)
+    INTEGER, POINTER :: ElFaceIdx(:)
+    TYPE(NeighbourList_t), POINTER :: MFaceIFList(:)
+    LOGICAL, POINTER :: MFaceIF(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="GlobalElemAdjacency"
+    TYPE FaceShare_t
+       INTEGER :: count
+       INTEGER, ALLOCATABLE :: GFaceIDX(:), GParIDX(:)
+    END TYPE FaceShare_t
+    TYPE(FaceShare_t), ALLOCATABLE :: SendFaces(:),RecvFaces(:)
 
-    TYPE ElemTable_t
-       INTEGER :: counter=0
-       INTEGER, ALLOCATABLE :: Idx(:)
-    END TYPE ElemTable_T
-    TYPE(ElemTable_t),ALLOCATABLE :: NodeElems(:),ElemElems(:)
-
-    Debug = .TRUE.
-
-    NNodes = Mesh % NumberOfNodes
     NBulk = Mesh % NumberOfBulkElements
 
-    !Elements which share at least adjshare nodes are adjacent
-    !NOTE: is it possible for 3D elements to share 3 nodes without
-    !sharing a face? If the mesh had hexahedrons/bricks as well as
-    !prisms/tets, this might be possible?
-    DIM = CoordinateSystemDimension()
-    adjshare = DIM
+    !Find and globally number mesh faces
+    IF(DIM == 3) THEN
+      CALL FindMeshFaces3D(Mesh)
+      CALL FindMeshEdges3D(Mesh)
+      CALL SParFaceNumbering(Mesh)
+      MFacePtr => Mesh % Faces
+      MFaceIF => Mesh % ParallelInfo % FaceInterface
+      MFaceIFList => Mesh % ParallelInfo % FaceNeighbourList
+      NFaces = Mesh % NumberOfFaces
+    ELSEIF(DIM == 2) THEN
+      CALL FindMeshEdges2D(Mesh)
+      CALL SParEdgeNumbering(Mesh)
+      MFacePtr => Mesh % Edges
+      MFaceIF => Mesh % ParallelInfo % EdgeInterface
+      MFaceIFList => Mesh % ParallelInfo % EdgeNeighbourList
+      NFaces = Mesh % NumberOfEdges
+    ELSE
+      CALL Fatal(FuncName,"Not implemented in 1D")
+    END IF
 
-    !Allocate temporary structures to hold adjacency data
-    ALLOCATE(NodeElems(NNodes),ElemElems(NBulk))
-    DO i=1,NNodes
-      ALLOCATE(NodeElems(i) % Idx(50))
-      NodeElems(i) % counter = 0
-    END DO
-    DO i=1,NBulk
-      IF(DIM==2) THEN
-        ALLOCATE(ElemElems(i) % Idx(4))
-      ELSE
-        ALLOCATE(ElemElems(i) % Idx(6))
-      END IF
-      ElemElems(i) % counter = 0
-    END DO
-
-    IF(Debug) PRINT *,'finding node elements'
-    !Finding node elements
+    max_elfaces = 0
     DO i=1,NBulk
       Element => Mesh % Elements(i)
-      NElnodes = Element % TYPE % NumberOfNodes
-      DO j=1,NElnodes
-        nn = Element % Nodeindexes(j)
-        NodeElems(nn) % counter = NodeElems(nn) % counter + 1
-        !enlarge if necessary
-        IF(NodeElems(nn) % counter > SIZE(NodeElems(nn) % Idx)) &
-             CALL ResizeIntArray(NodeElems(nn) % Idx, NodeElems(nn) % counter * 2)
-        NodeElems(nn) % Idx(NodeElems(nn) % counter) = i
-      END DO
+      max_elfaces = MAX(Element % TYPE % NumberOfFaces, max_elfaces)
     END DO
 
-    IF(Debug) PRINT *,'finding element adjacency'
-    !Finding elem neighbours
-    adjcount_tot = 0
-    DO i=1,NBulk
-      Element => Mesh % Elements(i)
-      NElnodes = Element % TYPE % NumberOfNodes
-      DO j=1,NElnodes
-        nn = Element % Nodeindexes(j)
-        DO k=1,NodeElems(nn) % counter
-          IF(NodeElems(nn) % Idx(k) == i) CYCLE
-          IF(ANY(ElemElems(i) % Idx(1:ElemElems(i) % counter) == NodeElems(nn) % Idx(k))) CYCLE
-          Element2 => Mesh % Elements(NodeElems(nn) % Idx(k))
-          sharecount = 0
-          DO l=1,NElNodes
-            DO m=1,Element2 % TYPE % NumberOfNodes
-              IF(Element % NodeIndexes(l) == Element2 % NodeIndexes(m)) sharecount = sharecount + 1
-            END DO
-          END DO
-          IF(sharecount < adjshare) CYCLE
-          ElemElems(i) % counter = ElemElems(i) % counter + 1
-          !enlarge if necessary
-          IF(ElemElems(i) % counter > SIZE(ElemElems(i) % Idx)) &
-               CALL ResizeIntArray(ElemElems(i) % Idx, ElemElems(i) % counter * 2)
+    ALLOCATE(FaceIFIDX(COUNT(MFaceIF)), &
+         ElemConn(max_elfaces,NBulk), &
+         NLocalConn(NBulk))
+    ElemConn = 0
+    NLocalConn = 0
 
-          ElemElems(i) % Idx(ElemElems(i) % counter) = NodeElems(nn) % Idx(k)
-        END DO
-      END DO
-      adjcount_tot = adjcount_tot + ElemElems(i) % counter
-    END DO
-
-    IF(Debug) PRINT *,' done finding' 
-
-    !Put this into CRS format
-    ALLOCATE(ElemAdj(adjcount_tot),ElemStart(NBulk))
+    !Compute local adjacency and gather interface faces
     counter = 0
-    DO i=1,NBulk
-      ElemStart(i) = counter + 1
-      DO j=1,ElemElems(i) % counter
+    DO i=1,NFaces
+      IF(MFaceIF(i)) THEN
         counter = counter + 1
-        ElemAdj(counter) = ElemElems(i) % Idx(j)
+        FaceIFIDX(counter) = i
+      ELSE
+        !Populate the local graph using non-interface faces
+        IF(.NOT. ASSOCIATED(MFacePtr(i) % BoundaryInfo % Left) .OR. &
+             .NOT. ASSOCIATED(MFacePtr(i) % BoundaryInfo % Right)) CYCLE
+        el1 = MFacePtr(i) % BoundaryInfo % Left % ElementIndex
+        el2 = MFacePtr(i) % BoundaryInfo % Right % ElementIndex
+        NLocalConn(el1) = NLocalConn(el1) + 1
+        ElemConn(NLocalConn(el1),el1) = el2
+        NLocalConn(el2) = NLocalConn(el2) + 1
+        ElemConn(NLocalConn(el2),el2) = el1
+      END IF
+    END DO
+    NIFFaces = counter
+
+    PRINT *, ParEnv % MyPE, ' niffaces: ',niffaces
+    PRINT *, ParEnv % MyPE,' nbulk: ',nbulk,' count 4: ',COUNT(NLocalConn==4),&
+         ' count 3: ',COUNT(NLocalConn==3),&
+         ' count 2: ',COUNT(NLocalConn==2),&
+         ' count 1: ',COUNT(NLocalConn==1),&
+         ' count 0: ',COUNT(NLocalConn==0)
+
+    IF(ANY(NLocalConn == 0)) CALL Warn(FuncName, 'Disconnected bulk element.')
+
+    !Generate shared Face GElementIndex list & respective parent GElementIndex
+    ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs))
+    RecvFaces % Count = 0
+
+    DO Sweep=1,2
+
+      SendFaces % Count = 0
+      DO i=1,NIFFaces
+        IF (.NOT. ASSOCIATED(MFaceIFList(FaceIFIDX(i)) % Neighbours)) &
+             CALL Fatal(FuncName,"Interface face has no Neighborlist % Neighbours")
+
+        gface_id = MFacePtr(FaceIFIDX(i)) % GElementIndex
+
+        IF(ASSOCIATED(MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Left)) THEN
+          gpar_id = MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Left % GElementIndex
+        ELSE IF(ASSOCIATED(MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Right)) THEN
+          gpar_id = MFacePtr(FaceIFIDX(i)) % BoundaryInfo % Right % GElementIndex
+        ELSE
+          CALL Fatal(FuncName, "Face has no parent element!")
+        END IF
+
+        DO j=1,SIZE(MFaceIFList(FaceIFIDX(i)) % Neighbours)
+          k = MFaceIFList(FaceIFIDX(i)) % Neighbours(j) + 1
+          IF(k==ParEnv % MyPE+1) CYCLE
+          SendFaces(k) % count = SendFaces(k) % count + 1
+          n = SendFaces(k) % count
+          !Actually write the data
+          IF(Sweep == 2) THEN
+            SendFaces(k) % GFaceIDX(n) = gface_id
+            SendFaces(k) % GParIDX(n) = gpar_id
+          END IF
+        END DO
+
       END DO
+
+      IF(Sweep==1) THEN
+        DO i=1,ParEnv % PEs
+          n = SendFaces(i) % count
+          ALLOCATE(SendFaces(i) % GFaceIDX(n),SendFaces(i) % GParIDX(n))
+        END DO
+      END IF
+
+      IF(Sweep==2) THEN
+        DO i=1,ParEnv % PEs
+          CALL SortI(SendFaces(i) % count, SendFaces(i) % GFaceIDX, SendFaces(i) % GParIDX)
+        END DO
+      END IF
     END DO
 
-  CONTAINS
+    PRINT *,ParEnv % mype,' got here 1'
+    !Send number of shared faces
+    ALLOCATE(status(ParEnv % PEs * 2))
+    DO i=1,ParEnv % PEs
+      CALL MPI_IRECV(RecvFaces(i) % count, 1, MPI_INTEGER, i-1, 194, ELMER_COMM_WORLD, &
+           status(i), ierr)
+      CALL MPI_SEND(SendFaces(i) % count,  1, MPI_INTEGER, i-1, 194, ELMER_COMM_WORLD, ierr)
+    END DO
 
-    SUBROUTINE ResizeIntArray(Arr, new_size)
-      INTEGER, ALLOCATABLE :: Arr(:)
-      INTEGER :: new_size
-      !------------------------
-      INTEGER, ALLOCATABLE :: workArr(:)
+    CALL MPI_Waitall(ParEnv % PEs, status(1:ParEnv % PES), MPI_STATUSES_IGNORE, ierr)
+    status = MPI_REQUEST_NULL
 
-      ALLOCATE(workArr(new_size))
-      workArr(1:SIZE(Arr)) = Arr
-      DEALLOCATE(Arr)
-      CALL MOVE_ALLOC(workArr, Arr)
-    END SUBROUTINE ResizeIntArray
+    !transmit shared
+    DO i=1,ParEnv % PEs
+      n = RecvFaces(i) % count
+      k = SendFaces(i) % count
+      
+      ALLOCATE(RecvFaces(i) % GParIDX(n), RecvFaces(i) % GFaceIDX(n))
 
-  END SUBROUTINE GetBulkElemAdjacency
+      CALL MPI_IRECV(RecvFaces(i) % GFaceIDX, n, MPI_INTEGER, i-1, 195, ELMER_COMM_WORLD, &
+           status(i*2-1), ierr)
+      CALL MPI_IRECV(RecvFaces(i) % GParIDX, n, MPI_INTEGER, i-1, 196, ELMER_COMM_WORLD, &
+           status(i*2), ierr)
+      CALL MPI_SEND(SendFaces(i) % GFaceIDX,  k, MPI_INTEGER, i-1, 195, ELMER_COMM_WORLD, ierr)
+      CALL MPI_SEND(SendFaces(i) % GParIDX,  k, MPI_INTEGER, i-1, 196, ELMER_COMM_WORLD, ierr)
+    END DO
+
+    CALL MPI_Waitall(ParEnv % PEs*2, status(1:ParEnv % PEs*2), MPI_STATUSES_IGNORE, ierr)
+    status = MPI_REQUEST_NULL
+
+    DO i=1,ParEnv % PEs
+      PRINT *,ParEnv % MyPE,' sending to ',i-1,' count ',RecvFaces(i) % count
+
+      IF(RecvFaces(i) % count == 0 .OR. i-1 == ParEnv % MyPE) THEN
+        CYCLE
+      END IF
+      PRINT *,ParEnv % MyPE,' sending to ',i-1,' count ',RecvFaces(i) % count,&
+           ' first: ',RecvFaces(i) % GFaceIDX(1), &
+           RecvFaces(i) % GParIDX(1),' niffaces ', niffaces
+    END DO
+
+
+    !TODO - link up parent elements from RecvFaces and SendFaces
+    DO i=1,ParEnv % PEs
+
+    END DO
+
+    !TODO - ensure global elementidx returned
+    
+    CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
+  END SUBROUTINE GlobalElemAdjacency
 
   !Identify elements on partition boundaries and return GElementIndexes
   !of elements with which these elements share a face
@@ -625,118 +691,6 @@ CONTAINS
 
   END SUBROUTINE GetParallelElemAdjacency
 
-  !Sort the faces
-  SUBROUTINE SortFaces( Mesh, Faces, order, DIM )
-
-    IMPLICIT NONE
-
-    !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: Faces(:)
-    INTEGER, OPTIONAL :: DIM
-    INTEGER, ALLOCATABLE :: order(:)
-    !------------------------------------------------------------------------------
-    INTEGER :: i,j,l,ir,ra,rb
-    INTEGER :: n,the_dim
-    !------------------------------------------------------------------------------
-
-    IF(PRESENT(DIM)) THEN
-      the_dim = DIM
-    ELSE
-      the_dim = CoordinateSystemDimension()
-    END IF
-
-    n = SIZE(Faces)
-
-    ALLOCATE(order(n))
-    DO i=1,n
-      order(i) = i
-    END DO
-
-    IF ( n <= 1 ) RETURN
-
-    l = n / 2 + 1
-    ir = n
-    DO WHILE( .TRUE. )
-      IF ( l > 1 ) THEN
-        l = l - 1
-        ra = order(l)
-      ELSE
-        ra = order(ir)
-        order(ir) = order(1)
-        ir = ir - 1
-        IF ( ir == 1 ) THEN
-          order(1) = ra
-          RETURN
-        END IF
-      END IF
-      i = l
-      j = l + l
-      DO WHILE( j <= ir )
-        IF ( j<ir  ) THEN
-          IF ( FaceIsGreater(Mesh, Faces(order(j+1)),Faces(order(j)), DIM)) j = j+1
-        END IF
-        IF( FaceIsGreater( Mesh, Faces(order(j)), Faces(ra),DIM) ) THEN
-          order(i) = order(j)
-          i = j
-          j =  j + i
-        ELSE
-          j = ir + 1
-        END IF
-        order(i) = ra
-      END DO
-    END DO
-
-    !------------------------------------------------------------------------------
-  END SUBROUTINE SortFaces
-  !------------------------------------------------------------------------------
-
-  !Generates predictable ordering of faces based on global node numbers
-  !Returns .TRUE. if f1 should come after f2
-  !If f1 has more nodes than f2, it's greater
-  !Otherwise (same nnodes) elements are sorted in order of min,mid,max globalnn
-  FUNCTION FaceIsGreater(Mesh, f1, f2, DIM) RESULT(Greater)
-
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: f1,f2, DIM
-    LOGICAL :: Greater
-    !-----------------
-    TYPE(Element_t), POINTER :: Faces(:)
-    INTEGER :: n1,n2,i
-    INTEGER, TARGET :: GN1(4),GN2(4)
-
-    IF(DIM==3) THEN
-      Faces => Mesh % Faces
-    ELSE
-      Faces => Mesh % Edges
-    END IF
-    n1 = Faces(f1) % TYPE % NumberOfNodes
-    n2 = Faces(f2) % TYPE % NumberOfNodes
-    IF(n1 > n2) THEN
-      Greater = .TRUE.
-      RETURN
-    ELSE IF(n1 < n2) THEN
-      Greater = .FALSE.
-      RETURN
-    END IF
-
-    GN1(1:n1) = Mesh % ParallelInfo % GlobalDOFS(Faces(f1) % NodeIndexes(1:n1))
-    GN2(1:n2) = Mesh % ParallelInfo % GlobalDOFS(Faces(f2) % NodeIndexes(1:n2))
-
-    CALL Sort(n1,GN1)
-    CALL Sort(n2,GN2)
-
-    DO i=1,n1 !==n2
-      IF(GN1(i) > GN2(i)) THEN
-        Greater = .TRUE.
-        RETURN
-      ELSE IF(GN1(i) < GN2(i)) THEN
-        Greater = .FALSE.
-        RETURN
-      END IF
-    END DO
-
-  END FUNCTION FaceIsGreater
 
   !Identify elements on partition boundaries and return GElementIndexes
   !of elements with which these elements share a face

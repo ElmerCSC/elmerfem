@@ -256,8 +256,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   GatheredMesh => RedistributeMesh(Model, Mesh, .TRUE., .FALSE.)
   !Confirmed that boundary info is for Zoltan at this point
 
-!  CALL WriteMeshToDisk2(Model, GatheredMesh, "./gathered_mesh")
-
   IF(Debug) THEN
     PRINT *,ParEnv % MyPE,' gatheredmesh % nonodes: ',GatheredMesh % NumberOfNodes
     PRINT *,ParEnv % MyPE,' gatheredmesh % neelems: ',GatheredMesh % NumberOfBulkElements, &
@@ -442,6 +440,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           CYCLE
         END IF
 
+        CALL MMG3D_Get_AdjaTet(mmgMesh, i, adjList,ierr)
+        IF(ALL(adjList == 0)) RmElem(i) = .TRUE.
+
         !Mark any nodes found in valid bulk elements 
         RmNode(Element % NodeIndexes(1:NElNodes)) = .FALSE.
       END DO
@@ -460,22 +461,31 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
         ParentElem => Element % BoundaryInfo % Left
 
-        !Not needed
-        IF(ParentElem % BodyID == 3 .AND. Element % BoundaryInfo % Constraint /= 10) THEN
+        IF(ParentElem % BodyID == 3) THEN
+          
+          !Not needed
+          IF(Element % BoundaryInfo % Constraint /= 10) THEN
+            !TODO, test constraint == 10 for other BC numbers on front
 
+            RmElem(i) = .TRUE.
+
+          !Switch parent elem to elem in remaining domain
+          ELSE
+            CALL MMG3D_Get_AdjaTet(mmgMesh, ParentElem % ElementIndex, adjList,ierr)
+            DO j=1,4
+              IF(adjlist(j) == 0) CYCLE
+              IF(NewMeshR % Elements(adjlist(j)) % BodyID == 2) THEN
+                Element % BoundaryInfo % Left => NewMeshR % Elements(adjList(j))
+                EXIT
+              END IF
+            END DO
+          END IF
+
+        !Edge case - unconnected bulk element
+        ELSE IF(RmElem(ParentElem % ElementIndex)) THEN
           RmElem(i) = .TRUE.
-
-        !Calving front - find the parent elem in the remaining domain:
-        ELSEIF(ParentElem % BodyID == 3) THEN
-          CALL MMG3D_Get_AdjaTet(mmgMesh, ParentElem % ElementIndex, adjList,ierr)
-          DO j=1,4
-            IF(adjlist(j) == 0) CYCLE
-            IF(NewMeshR % Elements(adjlist(j)) % BodyID == 2) THEN
-              Element % BoundaryInfo % Left => NewMeshR % Elements(adjList(j))
-              EXIT
-            END IF
-          END DO
         END IF
+
       END DO
 
       !Set constraint 10 (the newly formed calving front) to front_BC_id
@@ -536,7 +546,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Need to glue NewMeshR to GatheredMesh (boss only)
       ! then renegotiate global node and element numbers (all partitions)
 
-      CALL WriteMeshToDisk2(Model, NewMeshR, "./outmesh")
+      !CALL WriteMeshToDisk2(Model, NewMeshR, "./outmesh")
 
       CALL ReleaseMesh(GatheredMesh)
       GatheredMesh => NewMeshR
@@ -590,6 +600,16 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    END IF
 
    FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
+
+   FinalMesh % OutputActive = .TRUE.
+   FinalMesh % Name = Mesh % Name
+
+   Model % Mesh => FinalMesh
+   Solver % Mesh => FinalMesh
+   Model % Meshes => FinalMesh
+
+
+   CALL ReleaseMesh(GatheredMesh)
 
   !Now need to renumber/negotiate with other partitions for global NNs/GElementIndexes
   !In this case, could be:
