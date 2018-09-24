@@ -149,7 +149,7 @@ CONTAINS
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: DEBUG_LEVEL")
     zierr = Zoltan_Set_Param(zz_obj, "CHECK_GRAPH", "0")
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: CHECK_GRAPH")
-    zierr = Zoltan_Set_Param(zz_obj, "PHG_MULTILEVEL", "0")
+    zierr = Zoltan_Set_Param(zz_obj, "PHG_MULTILEVEL", "1")
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: PHG_MULTILEVEL")
 
     !Callback functions to query number of elements and the element data
@@ -384,6 +384,7 @@ CONTAINS
 
     IF(ANY(NElConn == 0)) CALL Warn(FuncName, 'Disconnected bulk element.')
 
+
     !Generate shared Face GElementIndex list & respective parent GElementIndex
     ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs),work_int(NBulk))
 
@@ -512,7 +513,7 @@ CONTAINS
            ElemConn(1:NElConn(i),i)
       ElemAdjProc(ElemStart(i):ElemStart(i) + NElConn(i) -1) = &
            ElemConnPart(1:NElConn(i),i)
-      ElemStart(i+1) = ElemStart(i) + NElConn(i) - 1
+      ElemStart(i+1) = ElemStart(i) + NElConn(i)
     END DO
 
     CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
