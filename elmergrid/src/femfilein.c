@@ -1554,11 +1554,15 @@ static void ReorderAnsysNodes(struct FemType *data,int *oldtopology,
   int order510[]={1,2,3,5,9,10,12,17,18,19};
   int order613[]={1,2,3,4,5,9,10,11,12,17,18,19,20};
   int order706[]={1,2,3,5,6,7};
-    
+  int order715[]={1,2,3,5,6,7,9,10,12,17,18,19,13,14,16};
+
   elementtype = 0;
   if(dim == 3) {
     if(nodes == 20) {
-      if(oldtopology[2] == oldtopology[3]) elementtype = 510;
+      if(oldtopology[2] == oldtopology[3] &&
+         oldtopology[4] == oldtopology[5]) elementtype = 510;
+      else if(oldtopology[2] == oldtopology[3] &&
+              oldtopology[4] != oldtopology[5]) elementtype = 715;
       else if(oldtopology[4] == oldtopology[5]) elementtype = 613;
       else elementtype = 820;
     }
@@ -1655,6 +1659,12 @@ static void ReorderAnsysNodes(struct FemType *data,int *oldtopology,
   case 706:
     for(i=0;i<elementtype%100;i++) {
 	topology[i] = oldtopology[order706[i]-1];
+    }	
+    break;
+
+  case 715:
+    for(i=0;i<elementtype%100;i++) {
+	topology[i] = oldtopology[order715[i]-1];
     }	
     break;
 
@@ -1863,7 +1873,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 	topology[i] = revindx[ind];
       }
     }
-
+   
     ReorderAnsysNodes(data,&topology[0],j,ansysdim[k],ansysnodes[k]);
   }      
   fclose(in);
