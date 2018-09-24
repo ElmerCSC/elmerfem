@@ -29,20 +29,18 @@
 ! *
 ! *****************************************************************************
 
-!Remesh the calving model using MMG3D
+!Remesh the calving model using MMG3D - runs in parallel but remeshing is serial!
+!Takes a level set which defines a calving event (or multiple calving events). Level
+! set is negative inside a calving event, and positive in the remaining domain. This
+! hasn't actually been implemented yet, we use a test function.
+
 ! Strategy:
 !----------------
 
-! - Use Mesh % Repartition and RedistributeMesh to send relevant 
+! - Use Mesh % Repartition and RedistributeMesh to send relevant (calving)
 !   mesh regions to the nominated remeshing partition
 
-! - Remeshing partition uses my 'CutMesh' subroutine to extract the 
-!   specific region to feed to MMG, keeping track of elements/nodes 
-!   which will be kept fixed, in order to facilitate gluing.
-
-! - Remesh with MMG
-
-! - Local mesh gluing on remeshing partition only
+! - Remesh with MMG - done serially on nominated partition (TODO - improve nomination of partition)
 
 ! - Global node/element number renegotiation
 
@@ -53,7 +51,6 @@
 ! - Interpolate variables etc
 
 ! - Continue simulation
-
 
 SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
@@ -489,7 +486,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       END DO
 
       !Set constraint 10 (the newly formed calving front) to front_BC_id
-      !and (temporarily (TODO)) set 0 to 1 so that it doesn't break WriteMeshToDisk2
+      !and (temporarily (TODO)) set 0 to 4 so that it doesn't break WriteMeshToDisk2
       !NOTE: I think this will be 10 * the previous BC ID...
       DO i=NBulk+1, NBulk + NBdry
         Element => NewMeshR % Elements(i)
@@ -522,6 +519,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         END DO
       END IF
 
+      !Chop out the flagged elems and nodes
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
       IF(Debug) THEN
@@ -532,7 +530,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
                NewMeshR % Nodes % x(i),&
                NewMeshR % Nodes % y(i),&
                NewMeshR % Nodes % z(i)
-          !TODO -expensive tests, delete!
+
           IF(NewMeshR % ParallelInfo % GlobalDOFs(i) == 0) CYCLE
           IF(.NOT. ANY(GatheredMesh % ParallelInfo % GlobalDOFs == &
                NewMeshR % ParallelInfo % GlobalDOFs(i))) CALL Warn(SolverName, &
@@ -540,13 +538,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         END DO
       END IF
 
-      !Update parallel info from old mesh nodes
+      !Update parallel info from old mesh nodes (shared node neighbours)
       CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
-
-      !Need to glue NewMeshR to GatheredMesh (boss only)
-      ! then renegotiate global node and element numbers (all partitions)
-
-      !CALL WriteMeshToDisk2(Model, NewMeshR, "./outmesh")
 
       CALL ReleaseMesh(GatheredMesh)
       GatheredMesh => NewMeshR
@@ -568,6 +561,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    CALL RenumberGElems(GatheredMesh)
 
    !Some checks on the new mesh
+   !----------------------------
    DO i=1,GatheredMesh % NumberOfNodes
      IF(GatheredMesh % ParallelInfo % INTERFACE(i)) THEN
        IF(.NOT. ASSOCIATED(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours)) &
@@ -586,68 +580,22 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    IF(ANY(GatheredMesh % Elements % GElementIndex <= 0)) CALL Fatal(SolverName, 'Element has ID 0')
 
+
+   !Call zoltan to determine redistribution of mesh
+   ! then do the redistribution
+   !-------------------------------
    CALL Zoltan_Interface( Model, GatheredMesh )
 
-   !Some tests
-   IF(Debug) THEN
-     IF(GatheredMesh % NumberOfNodes /= SIZE(GatheredMesh % ParallelInfo % GlobalDOFs)) &
-          CALL Fatal(SolverName, "Size mismatch")
-     IF(GatheredMesh % NumberOfNodes /= SIZE(GatheredMesh % Nodes % x)) &
-          CALL Fatal(SolverName, "Size mismatch 2")
-     IF(SIZE(GatheredMesh % Elements) /= SIZE(GatheredMesh % Repartition)) &
-          CALL Warn(SolverName, "Size repartition error")
-     IF(ANY(GatheredMesh % ParallelInfo % GlobalDOFs <= 0)) CALL Fatal(SolverName, "GID == 0")
-   END IF
-
    FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
-
-   FinalMesh % OutputActive = .TRUE.
-   FinalMesh % Name = Mesh % Name
 
    Model % Mesh => FinalMesh
    Solver % Mesh => FinalMesh
    Model % Meshes => FinalMesh
 
-
    CALL ReleaseMesh(GatheredMesh)
 
-  !Now need to renumber/negotiate with other partitions for global NNs/GElementIndexes
-  !In this case, could be:
-  !
-  ! Boss partition (per calving region) has many more nodes & elements than 
-  ! it started WITH (because of gathering)
-  ! One or more (or none) partitions are empty
-  !
-  ! But *no* new partition boundary node or element has changed, because by design we insist
-  ! on this
-  !
-  ! Required outcome: closed set of nodenumbers & element numbers, so 
-  !   - start by determining new total node count & element count (inc. BC elements)
-  !   - each partition shares its d_nodecount (+ve for more nodes, -ve for fewer nodes)
-  !     - in this particular case, calving boss partition has have d_nodecount >> 0
-  !     - several (or no partitions) have d_nodecount << 0  (these will send node & element nos to boss(es))
-  !     - determine new local node & element numbers (but keep track of the old )
-  !                                                  (old ==0 for NEW nodes/elems).
-  !     - 
-
-  !Potentially useful functions
-  !CALL SyncNeighbours(ParEnv)
-  !CALL SParFaceNumbering, SParEdgeNumbering
-  !FindMeshEdges? SetMedgeEdgeFaceDOFs, SetMeshMaxDofs
-  !MeshStabParams!
-
-  !CALL InspectMesh(GatheredMesh)
-
-
-  !Info contained in an ElmerGrid parallel mesh file:
-  ! Node positions
-  ! global NN
-  ! Shared node info (partitions)  eqv  % NeighbourList(n) % Neighbours
-  ! Element NodeNums <- should pass global
-  ! Element type
-  ! Boundary element parents
-  ! Boundary element physical IDs (BC info)
-  ! Bulk element bodies 
-
+   !TODO here - call something like SwitchMesh from CalvingRemesh.F90 to 
+   !handle the interpolation of the variables, the reconstruction of the
+   !solver matrices etc.
 
 END SUBROUTINE CalvingRemeshMMG

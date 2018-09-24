@@ -657,6 +657,10 @@ SUBROUTINE RenumberGElems(Mesh)
 
 END SUBROUTINE RenumberGElems
 
+!Based on a previous mesh with valid nodal parallelinfo (% Interface & % NeighbourList)
+!map that info onto NewMesh which shares at least some GlobalDOFs. Intended use is
+!to enable reconnection of a parallel mesh part which has been remeshed internally, but
+!whose partition boundaries remain as they were. e.g. CalvingRemeshMMG.F90
 SUBROUTINE MapNewParallelInfo(OldMesh, NewMesh)
   TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
   !---------------------------------

@@ -67,6 +67,7 @@ MODULE MeshPartition
 
 
 CONTAINS
+
   !============================================
   !============================================
   !          ZOLTAN SUBROUTINES
@@ -75,9 +76,7 @@ CONTAINS
 
   !Interface to Zoltan parallel (re)partitioner - returns the new partition
   !info in Mesh % Repartition (defined on elements)
-  !TODO - This repartitioning scheme will run around 10 times faster
-  !if only face-connected elements are passed. Does this outweigh the
-  !additional computational effort of finding those faces?
+  !Dual-graph (element connectivity) is determined based on shared faces(3D)/edges(2D)
   SUBROUTINE Zoltan_Interface( Model, Mesh )
 
     USE MeshUtils
@@ -303,6 +302,10 @@ CONTAINS
 #endif
   END SUBROUTINE Zoltan_Interface
 
+  !Returns a CRS dual graph of element face (3D) or edge (2D) connections, including
+  !across partitions. ElemAdj contains the global element numbers of connected elements,
+  !ElemStart describes the CRS positions of each elem, and ElemAdjProc contains the partition
+  !of the connected element.
   SUBROUTINE GlobalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, ALLOCATABLE :: ElemAdj(:),ElemStart(:),ElemAdjProc(:)
@@ -519,134 +522,11 @@ CONTAINS
     CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
   END SUBROUTINE GlobalElemAdjacency
 
-  !Identify elements on partition boundaries and return GElementIndexes
-  !of elements with which these elements share a face
-  SUBROUTINE GetParallelElemAdjacency( Mesh, ElemAdj, ElemStart, COMM )
-
-    IMPLICIT NONE
-
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:)
-    INTEGER, OPTIONAL :: COMM
-    !---------------------------
-    TYPE(Element_t), POINTER :: Element, Faces(:)
-    INTEGER, POINTER :: neighList(:),facemap(:,:)
-    INTEGER :: MPI_COMM
-    INTEGER :: i,j,k,n,DIM,adjshare,counter,NBulk,NNodes,NElNodes,loc,NNeighParts,&
-         NFaces,maxnneigh,NFNodes,FNodes(4),parts(10),nparts
-    INTEGER, ALLOCATABLE :: NeighParts(:),NodeNeighs(:),NNstrt(:),NNcount(:),FNodeNeigh(:),&
-         NeighPartIDX(:),work_int(:),PartFaceOrder(:)
-    REAL(KIND=dp) :: t1, t2
-    LOGICAL :: Debug
-    LOGICAL, ALLOCATABLE :: IsNeighbour(:),PassMask(:),SharedElem(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="GetParallelElemAdjacency"
-
-    TYPE ElemParts_t
-       INTEGER, ALLOCATABLE :: parts(:), counts(:), nparts
-    END TYPE ElemParts_t
-    TYPE(ElemParts_t), ALLOCATABLE :: ElemParts(:)
-
-    TYPE FaceTable_t
-       INTEGER, ALLOCATABLE :: Faces(:),FNodes(:,:),NFNodes(:),ParentGE(:)
-       INTEGER :: Part,NFaces
-    END TYPE FaceTable_t
-    TYPE(FaceTable_t), ALLOCATABLE, TARGET :: PartFaceTables(:)
-    TYPE(FaceTable_t), POINTER :: PFT
-
-    Debug = .TRUE.
-    IF(PRESENT(COMM)) THEN
-      MPI_COMM = COMM
-    ELSE
-      MPI_COMM = ELMER_COMM_WORLD
-    END IF
-
-    DIM = CoordinateSystemDimension()
-    IF(DIM == 1) CALL Fatal(FuncName,"1D not implemented")
-    !Elements which share at least adjshare nodes are
-    !considered adjacent
-
-    adjshare = DIM
-    NBulk = Mesh % NumberOfBulkElements
-    NNodes = Mesh % NumberOfNodes
-
-    ALLOCATE(ElemParts(NBulk),&
-         IsNeighbour(ParEnv % PEs),&
-         SharedElem(NBulk),&
-         NNStrt(NNodes),&
-         NNcount(NNodes),&
-         NodeNeighs(NNodes*2)) !<- likely too big
-
-    NodeNeighs = -1
-    NNcount = 0
-    NNStrt = 0
-    IsNeighbour = .FALSE.
-    SharedElem = .FALSE.
-
-    !List node (partition) neighbours and determine globally which partitions are neighbours
-    maxnneigh = 0
-    counter = 0
-    DO i=1,NNodes
-      IF( .NOT. Mesh % ParallelInfo % Interface(i)) CYCLE
-      DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
-        k = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(j)
-        IF(k == ParEnv % MyPE) CYCLE
-
-        IsNeighbour(k+1) = .TRUE.
-        counter = counter + 1
-        IF(NNcount(i) == 0) NNStrt(i) = counter
-        NNcount(i) = NNcount(i) + 1
-        NodeNeighs(counter) = k
-      END DO
-      IF(counter > maxnneigh) maxnneigh = counter
-    END DO
-
-    PRINT *,ParEnv % MyPE,' debug num shared nodes: ',COUNT(NNcount > 0),&
-         COUNT(Mesh % ParallelInfo % INTERFACE)
-
-    NNeighParts = COUNT(IsNeighbour)
-    ALLOCATE(NeighParts(NNeighParts),NeighPartIDX(ParEnv % PEs))
-    NeighPartIDX = 0
-    counter = 0
-    DO i=1,ParEnv % PEs
-      IF(.NOT. IsNeighbour(i)) CYCLE
-      counter = counter + 1
-      NeighParts(counter) = i-1
-      NeighPartIDX(i) = counter
-    END DO
-
-    !For each partition, for each shared node on that partition, gather element numbers
-
-    !For each neighbouring partition, sort the elements we send by some hash of their globalNN
-
-    !SEND SOMETHING
-
-    !RECEIVE SOMETHING
-
-    !COMPARE SOMETHING - can only be nodenumbers because we don't know GElementIndexes
-    !Does sorting help us here? Sorted GlobalNodeNumbers, with a reference to Node % Elements
-
-    ! DO i=1,NNeighParts
-    !   neigh = NeighParts(i)
-    !   DO j=1,SharedNodes(i) % NN
-    !     CALL Assert(SharedNodes(i) % Idx(j) == ReceivedNodes(i) % Idx(j))
-
-    !   END DO
-    ! END DO
-
-
-    !Need to send either 1) the 3 node numbers for each elem or 2) all the nodenums and array list
-    !Create a hash function for each face we share with other partitions
-    !Three large prime numbers - note collision is not an issue as we will
-    !check global node numbers directly
-
-    !CLEAR OUT THE MESH FACES - THEY ARE NOT GENERALLY USEFUL
-    CALL ReleaseMeshFaceTables(Mesh)
-
-  END SUBROUTINE GetParallelElemAdjacency
-
 
   !Identify elements on partition boundaries and return GElementIndexes
   !of elements with which these elements share a face
+  !This was originally developed for partitioning purposes, but it is *not used*
+  !GlobalElemAdjacency is used instead, which produces face-based connectivity info
   SUBROUTINE MeshParallelDualGraph( Mesh, ElemAdj, ElemStart, ElemIdx, ElemAdjProc, COMM )
 
     IMPLICIT NONE
@@ -1121,7 +1001,9 @@ CONTAINS
 
   END SUBROUTINE MeshParallelDualGraph
 
-
+  !Turns a masked node list into a real stream for sending. Largely
+  !superceded by RedistributeMesh, which handles the entire mesh together.
+  !May still have some use.
   SUBROUTINE PackNodesToSend(Mesh, Mask, GDOFs, NodeCoords, DIM)
 
     IMPLICIT NONE
@@ -1158,7 +1040,7 @@ CONTAINS
     END DO
 
   END SUBROUTINE PackNodesToSend
-
+  !Inverse of PackNodesToSend - superceded by RedistributeMesh
   SUBROUTINE UnpackNodesSent(GDOFs, NodeCoords, Nodes, DIM, node_parts)
     INTEGER, ALLOCATABLE :: GDOFs(:)
     REAL(KIND=dp) :: NodeCoords(:)
@@ -1217,10 +1099,12 @@ CONTAINS
     CALL MOVE_ALLOC(work_int, GDOFs)
   END SUBROUTINE UnpackNodesSent
 
- !Converts element datastructure into a single integer stream to facilitate
+  !Converts element datastructure into a single integer stream to facilitate
   !sending to another partition. In addition to element numbers, type, nodes and BC/Body ID,
   !an integer custom_tag may be provided to indicate, for example, what the receiving process
   !should do with the elements (remesh, remove, keep fixed)
+  !
+  !This is largely superceded by RedistributeMesh
   SUBROUTINE PackElemsToSend(Mesh, Mask, ElemStream, custom_tag)
 
     IMPLICIT NONE
@@ -1309,6 +1193,9 @@ CONTAINS
 
   END SUBROUTINE PackElemsToSend
 
+  !Performs inverse operation of PackElemsToSend
+  !
+  !This is largely superceded by RedistributeMesh
   SUBROUTINE UnpackElemsSent(ElemStream, Elements, DIM, elem_parts, custom_tag)
     INTEGER :: ElemStream(:)
     TYPE(Element_t), ALLOCATABLE :: Elements(:)
@@ -1411,6 +1298,7 @@ CONTAINS
   !Cleanly removes elements & nodes from a mesh based on mask
   !Any element containing a removed node (RmNode) will be deleted
   !May optionally specify which elements to remove
+  !Not currently used
   SUBROUTINE CutMesh(Mesh, RmNode, RmElem)
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: RmNode(:)
@@ -1756,6 +1644,7 @@ CONTAINS
 
     NewMesh % Name = Mesh % Name
     NewMesh % MeshDim = Mesh % MeshDim
+    NewMesh % OutputActive = .TRUE.
 
     DO i=1,NewMesh % NumberOfBulkElements + NewMesh % NumberOfBoundaryElements
       IF(NewMesh % Elements(i) % ElementIndex /= i) CALL Fatal(FuncName, "Bad element index")
