@@ -361,8 +361,8 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
     Element => NewMesh % Elements(ii)
     Element % TYPE => GetElementType( 504 )
     Element % NDOFs = Element % TYPE % NumberOfNodes
-    Element % ElementIndex = ii !TODO
-    Element % PartIndex = ParEnv % myPE !TODO
+    Element % ElementIndex = ii
+    Element % PartIndex = ParEnv % myPE
     CALL AllocateVector(Element % NodeIndexes, 4)
     NodeIndexes => Element % NodeIndexes
     CALL MMG3D_Get_tetrahedron(mmgMesh, &
@@ -370,7 +370,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
          NodeIndexes(2), &
          NodeIndexes(3), &
          NodeIndexes(4), &
-         Element % BodyId, &
+         Element % BodyId, & !TODO - many tetras end up with very high BodyIDs
          required,ierr)
   END DO
   IF (DEBUG) PRINT *,'MMG3D_Get_tets DONE'
@@ -384,8 +384,8 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
 
     Element % TYPE => GetElementType( 303 )
     Element % NDOFs = Element % TYPE % NumberOfNodes
-    Element % ElementIndex = kk !TODO 
-    Element % PartIndex = ParEnv % myPE !TODOx
+    Element % ElementIndex = kk
+    Element % PartIndex = ParEnv % myPE
 
     CALL AllocateVector(Element % NodeIndexes, 3)
     NodeIndexes => Element % NodeIndexes
@@ -657,6 +657,10 @@ SUBROUTINE RenumberGElems(Mesh)
 
 END SUBROUTINE RenumberGElems
 
+!Based on a previous mesh with valid nodal parallelinfo (% Interface & % NeighbourList)
+!map that info onto NewMesh which shares at least some GlobalDOFs. Intended use is
+!to enable reconnection of a parallel mesh part which has been remeshed internally, but
+!whose partition boundaries remain as they were. e.g. CalvingRemeshMMG.F90
 SUBROUTINE MapNewParallelInfo(OldMesh, NewMesh)
   TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
   !---------------------------------
