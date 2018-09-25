@@ -30,7 +30,9 @@ RUN git clone git://www.github.com/ElmerCSC/elmerfem -b elmerice elmerice \
 		-DCMAKE_C_COMPILER=/usr/bin/gcc \
 		-DCMAKE_Fortran_COMPILER=/usr/bin/gfortran \
 		-DWITH_MPI:BOOL=TRUE -DWITH_Mumps:BOOL=TRUE \
+		-DWITH_Hypre:BOOL=FALSE -DWITH_Trilinos:BOOL=FALSE \
 		-DWITH_ELMERGUI:BOOL=FALSE -DWITH_ElmerIce:BOOL=TRUE \
+	&& make \
 	&& make install \
 	&& rm -R /home/elmerice
 
