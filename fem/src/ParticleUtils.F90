@@ -670,7 +670,7 @@ CONTAINS
     NodeIndex => Particles % NodeIndex
     Partition => Particles % Partition
     Group => Particles % Group
-    
+
     ! Allocate the desired number of particles
     ALLOCATE( Particles % Coordinate(NoParticles,dofs))
     ALLOCATE( Particles % Velocity(NoParticles,dofs))
@@ -1149,7 +1149,7 @@ RETURN
       END IF
     END DO
     DEALLOCATE(IsNeighbour)
-    
+
     CALL Info('ChangeParticlePartition','Number of active partitions: '&
         //TRIM(I2S(NoPartitions)),Level=12)
     
@@ -1310,7 +1310,6 @@ RETURN
       Var => Var % Next 
     END DO
 
-
     ncompInt = 0
     IF ( ASSOCIATED(Particles % NodeIndex) ) ncompInt = ncompInt + 1
     IF ( ASSOCIATED(Particles % Partition) ) ncompInt = ncompInt + 1
@@ -1415,10 +1414,6 @@ RETURN
           DO l=1,n
             m = m + 1
             BufInt(m) = Particles % Partition(ExcInfo(j) % Particles(l))
-!If(Particles % Partition(ExcInfo(j) % Particles(l)) == 2 .AND. &
-!   Particles % NodeIndex(ExcInfo(j) % Particles(l)) == 325 ) then
-!  print*,parenv % mype, 'sending 325 to', neigh(j); flush(6)
-!endif
          END DO
         END IF
         CALL MPI_BSEND( BufInt, m, MPI_INTEGER, Neigh(j), 1003, ELMER_COMM_WORLD, ierr )
@@ -1440,7 +1435,6 @@ RETURN
     
     n = SUM(Recv_Parts)
 
-
     CALL DeleteLostParticles(Particles)
     IF ( Particles % NumberOfParticles+n > Particles % MaxNumberOfParticles ) THEN
       CALL IncreaseParticles( Particles, Particles % NumberOfParticles + 2*n - &
@@ -1455,8 +1449,7 @@ RETURN
       Faces => Mesh % Faces
       nFaces = Mesh % NumberOfFaces
     END IF
-    
-    
+
     DO i=1,NoPartitions
       n = Recv_Parts(i)
       IF ( n<=0 ) CYCLE
@@ -1556,24 +1549,22 @@ RETURN
         
        CALL MPI_RECV( BufInt, m, MPI_INTEGER, proc, 1003, ELMER_COMM_WORLD, status, ierr )
         
-        n_part=Particles % NumberOfParticles
-        m = 0
-        IF( ASSOCIATED( Particles % NodeIndex ) ) THEN
-          DO l=1,n
-            m = m + 1
-            Particles % NodeIndex(n_part+l) = BufInt(m)
-          END DO
-        END IF
-        IF( ASSOCIATED( Particles % Partition ) ) THEN
-          DO l=1,n
-            m = m + 1
-            Particles % Partition(n_part+l) = BufInt(m)
-!if ( particles % partition(n_part+l)==2 .and. particles % nodeindex(n_part+l) == 325 ) then
-!  print*,'yyyy: ', particles % coordinate(n_part+l,:); flush(6)
-!endif
-          END DO
-        END IF
-        DEALLOCATE(BufInt)
+       m = 0
+       IF( ASSOCIATED( Particles % NodeIndex ) ) THEN
+         DO l=1,n
+           m = m + 1
+           Particles % NodeIndex(n_part+l) = BufInt(m)
+         END DO
+       END IF
+
+       IF( ASSOCIATED( Particles % Partition ) ) THEN
+         DO l=1,n
+           m = m + 1
+           Particles % Partition(n_part+l) = BufInt(m)
+         END DO
+       END IF
+
+       DEALLOCATE(BufInt)
       END IF
       
       Particles % NumberOfParticles = Particles % NumberOfParticles + n
@@ -1663,6 +1654,7 @@ RETURN
     Mesh => GetMesh()
     dim = Particles % dim
     
+!debug = particles % partition(no) == 2 .and. particles % nodeindex(no) == 325
     NoPartitions = ParEnv % PEs
     NoParticles = Particles % NumberOfParticles
 
@@ -2534,8 +2526,8 @@ RETURN
         IF( Parallel ) THEN
           IF(.NOT. ASSOCIATED( Particles % Partition ) ) THEN
             ALLOCATE( Particles % Partition( NewParticles ) )
-            Particles % Partition = ParEnv % MyPe + 1
           END IF
+          Particles % Partition = ParEnv % MyPe + 1
         END IF
 
       END IF
@@ -3813,7 +3805,6 @@ RETURN
 100 NoParticles = Particles % NumberOfParticles
 
     DO No = 1, NoParticles
-!debug = particles % partition(no) == 2 .and. particles % nodeindex(no) == 325
       
       Status = Particles % Status( No )
       InitStatus = Status
