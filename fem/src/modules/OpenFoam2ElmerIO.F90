@@ -507,7 +507,7 @@ CONTAINS
     N = Mesh % MaxElementNodes 
     ALLOCATE( Basis(n) )
 
-    
+    ElementIndex = 0 
     DO t = 1, OFMesh % NumberOfNodes
       GlobalCoords(1) = OFMesh % Nodes % x(t)
       GlobalCoords(2) = OFMesh % Nodes % y(t)

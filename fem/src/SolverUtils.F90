@@ -12386,6 +12386,9 @@ END SUBROUTINE NSCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> Subroutine for the static condensation of element bubbles when there are
+!> as many bubbles as DOFs left in the matrix.
+!------------------------------------------------------------------------------
 SUBROUTINE Condensate( N, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
@@ -12393,26 +12396,10 @@ SUBROUTINE Condensate( N, K, F, F1 )
     REAL(KIND=dp) :: K(:,:),F(:)
     REAL(KIND=dp), OPTIONAL :: F1(:)
 !------------------------------------------------------------------------------    
-    REAL(KIND=dp) :: Kbb(N,N), &
-        Kbl(N,N),Klb(N,N),Fb(N)
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(N)
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = Ldofs + n
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL InvertMatrix( Kbb,n )
-
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-
-    IF( PRESENT( F1 ) ) THEN
-      Fb  = F1(Bdofs)
-      F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    IF ( PRESENT(F1) ) THEN
+      CALL CondensateP( N, N, K, F, F1 )
+    ELSE
+      CALL CondensateP( N, N, K, F )
     END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE Condensate
@@ -12449,6 +12436,7 @@ SUBROUTINE CondensateP( N, Nb, K, F, F1 )
 
     F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
     IF (PRESENT(F1)) THEN
+      Fb  = F1(Bdofs)
       F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
     END IF
 
