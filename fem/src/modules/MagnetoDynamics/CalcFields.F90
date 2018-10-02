@@ -1192,9 +1192,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
              wvec = wvec/SQRT(SUM(wvec**2._dp))
            END SELECT
-           imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
-           E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(3,3))
-           E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(3,3))
+           IF(CMat_ip(3,3) /= 0._dp ) THEN
+             imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
+             E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(3,3))
+             E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(3,3))
+           END IF
 
          CASE ('massive')
            localV(1) = localV(1) + LagrangeVar % Values(VvarId)
@@ -1258,11 +1260,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            SELECT CASE(dim)
            CASE(2)
              wvec = [0._dp, 0._dp, 1._dp]
-             E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(1,1)
+             IF(CMat_ip(1,1) /= 0._dp ) &
+               E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(1,1)
            CASE(3)
              wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
              wvec = wvec/SQRT(SUM(wvec**2._dp))
-             E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(3,3)
+             IF(CMat_ip(3,3) /= 0._dp ) &
+               E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(3,3)
            END SELECT
 
          CASE ('massive')
