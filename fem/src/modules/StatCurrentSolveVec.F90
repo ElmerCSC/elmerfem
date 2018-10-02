@@ -84,8 +84,8 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,TransientSimulation )
 
   CALL ListUntreatedFatal( Params,'Power Control',Caller)
   CALL ListUntreatedFatal( Params,'Current Control',Caller)
-  CALL ListUntreatedFatal( Params,'Calculate Volume Current',Caller)
-  CALL ListUntreatedFatal( Params,'Calculate Volume Current',Caller)
+  CALL ListUntreatedWarn( Params,'Calculate Volume Current',Caller)
+  CALL ListUntreatedWarn( Params,'Calculate Volume Current',Caller)
 
 END SUBROUTINE StatCurrentSolver_Init
 
@@ -242,7 +242,7 @@ CONTAINS
         EpsCoeff(:), SourceCoeff(:)
     REAL(KIND=dp) :: eps0
     LOGICAL :: Stat,Found
-    INTEGER :: i,t,p,q,dim,ngp,allocstat
+    INTEGER :: i,p,q,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
 
@@ -271,7 +271,11 @@ CONTAINS
     END IF
  
     dim = CoordinateSystemDimension()
-    IP = GaussPoints( Element )
+
+    ! Currently the vectorized basis always use p-elements which have different
+    ! local coordinate convention
+    IP = GaussPoints( Element, PReferenceElement = .TRUE. )
+    
     ngp = IP % n
 
     ! Deallocate storage if needed
@@ -304,8 +308,8 @@ CONTAINS
          SIZE(Basis,2), Basis, dBasisdx )
 
     ! Compute actual integration weights (recycle the memory space of DetJ)
-    DO t=1,ngp
-      DetJ(t) = IP % s(t) * Detj(t)
+    DO i=1,ngp
+      DetJ(i) = IP % s(i) * Detj(i)
     END DO
 
     ! electric conductivity term: STIFF=STIFF+(rho*grad(u),grad(v))
@@ -315,18 +319,18 @@ CONTAINS
     END IF
    
     ! time derivative of potential: MASS=MASS+(eps*grad(u),grad(v))
-    EpsCoeff => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
-    IF( Found ) THEN
-      CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJ, MASS, EpsCoeff )
-      MASS(1:nd,1:nd) = -Eps0 * MASS(1:nd,1:nd)
-    END IF
+    !EpsCoeff => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
+    !IF( Found ) THEN
+    !  CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJ, MASS, EpsCoeff )
+    !  MASS(1:nd,1:nd) = -Eps0 * MASS(1:nd,1:nd)
+    !END IF
       
     ! source term: FORCE=FORCE+(u,f)
     SourceCoeff => ListGetElementRealVec( SourceCoeff_h, ngp, Basis, Element, Found ) 
     IF( Found ) THEN
       CALL LinearForms_UdotF(ngp, nd, Basis, DetJ, SourceCoeff, FORCE)
     END IF
-
+       
     ! These are waiting for future use
     ! reaction term: STIFF=STIFF+(R*u,v)
     ! CALL LinearForms_UdotU(ngp, nd, Element % TYPE % DIMENSION, Basis, DetJ, STIFF, ReactCoeff )
@@ -335,6 +339,7 @@ CONTAINS
      
     IF(TransientSimulation) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
