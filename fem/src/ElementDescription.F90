@@ -3868,7 +3868,9 @@ END IF
            IF (ll==1) THEN
              ! Get polynomial degree of each edge
              EdgeMaxDegree = 0
-             IF (CurrentModel % Solver % Mesh % MinEdgeDOFs == &
+             IF( CurrentModel % Solver % Mesh % MaxEdgeDofs == 0 ) THEN
+               CONTINUE             
+             ELSE IF (CurrentModel % Solver % Mesh % MinEdgeDOFs == &
                    CurrentModel % Solver % Mesh % MaxEdgeDOFs) THEN
                EdgeMaxDegree = Element % BDOFs+1
                EdgeDegree(1:Element % Type % NumberOfFaces) = EdgeMaxDegree
@@ -3901,7 +3903,10 @@ END IF
            IF (ll==1) THEN
              ! Get polynomial degree of each face
              FaceMaxDegree = 0
-             IF (CurrentModel % Solver % Mesh % MinFaceDOFs == &
+
+             IF( CurrentModel % Solver % Mesh % MaxFaceDofs == 0 ) THEN
+               CONTINUE             
+             ELSE IF (CurrentModel % Solver % Mesh % MinFaceDOFs == &
                    CurrentModel % Solver % Mesh % MaxFaceDOFs) THEN
                FaceMaxDegree = CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(1) ) % PDefs % P
                FaceDegree(1:Element % Type % NumberOfFaces) = FaceMaxDegree
@@ -4022,6 +4027,7 @@ END IF
            END IF
          END IF
 
+
          IF (ASSOCIATED( Element % FaceIndexes )) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! face directions
@@ -4039,17 +4045,18 @@ END IF
            END IF
          END IF
 
+         
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P from bubble dofs
            P=CEILING(1/3d0*(81*Element % BDOFS + &
                  3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
                  1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
-
            CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
            CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
          END IF
 
+         
        CASE DEFAULT
          WRITE( Message, '(a,i4,a)' ) 'Vectorized basis for element: ', &
                Element % TYPE % ElementCode, ' not implemented.'
@@ -4100,7 +4107,11 @@ END IF
        INTEGER :: i
 
        EdgeMaxDegree = 0
-       IF (Mesh % MinEdgeDOFs == Mesh % MaxEdgeDOFs) THEN
+
+       IF( Mesh % MaxEdgeDofs == 0 ) THEN
+         CONTINUE             
+
+       ELSE IF (Mesh % MinEdgeDOFs == Mesh % MaxEdgeDOFs) THEN
           EdgeDegree(1:Element % Type % NumberOfEdges) = Mesh % MaxEdgeDOFs + 1
           EdgeMaxDegree = Mesh % MaxEdgeDOFs + 1
        ELSE
@@ -4133,7 +4144,11 @@ END IF
 
        ! Get polynomial degree of each face
        FaceMaxDegree = 0
-       IF (Mesh % MinFaceDOFs == Mesh % MaxFaceDOFs) THEN
+       
+       IF( Mesh % MaxFaceDofs == 0 ) THEN
+         CONTINUE              
+
+       ELSE IF (Mesh % MinFaceDOFs == Mesh % MaxFaceDOFs) THEN
           FaceMaxDegree = Mesh % Faces( Element % FaceIndexes(1) ) % PDefs % P
           FaceDegree(1:Element % Type % NumberOfFaces) = FaceMaxDegree
        ELSE
