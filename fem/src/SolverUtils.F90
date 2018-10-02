@@ -67,6 +67,10 @@ MODULE SolverUtils
 
    IMPLICIT NONE
 
+   INTERFACE CondensateP
+     MODULE PROCEDURE CondensatePR, CondensatePC
+   END INTERFACE CondensateP
+
    CHARACTER(LEN=MAX_NAME_LEN), PRIVATE :: NormalTangentialName
    INTEGER, PRIVATE :: NormalTangentialNOFNodes
    INTEGER, POINTER, PRIVATE :: NTelement(:,:)
@@ -12387,7 +12391,9 @@ END SUBROUTINE NSCondensate
 
 !------------------------------------------------------------------------------
 !> Subroutine for the static condensation of element bubbles when there are
-!> as many bubbles as DOFs left in the matrix.
+!> as many bubbles as DOFs left in the matrix (historically this convention
+!> was used; now the count of elementwise bubble functions can be chosen
+!> flexibly and then the subroutine CondensateP should be called instead).
 !------------------------------------------------------------------------------
 SUBROUTINE Condensate( N, K, F, F1 )
 !------------------------------------------------------------------------------
@@ -12406,10 +12412,10 @@ END SUBROUTINE Condensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>     Subroutine for condensation of p element bubbles from linear problem.
-!>     Modifies given stiffness matrix and force vector(s) 
+!> Subroutine for condensation of p element bubbles from linear problem.
+!> Modifies given stiffness matrix and force vector(s) 
 !------------------------------------------------------------------------------
-SUBROUTINE CondensateP( N, Nb, K, F, F1 )
+SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
     INTEGER :: N               !< Sum of nodal, edge and face degrees of freedom.
@@ -12418,9 +12424,8 @@ SUBROUTINE CondensateP( N, Nb, K, F, F1 )
     REAL(KIND=dp) :: F(:)      !< Local force vector.
     REAL(KIND=dp), OPTIONAL :: F1(:)  !< Local second force vector.
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Kbb(Nb,Nb), &
-    Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
+    REAL(KIND=dp) :: Kbb(Nb,Nb), Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
+    INTEGER :: i, Ldofs(N), Bdofs(Nb)
 
     IF ( nb <= 0 ) RETURN
 
@@ -12442,9 +12447,47 @@ SUBROUTINE CondensateP( N, Nb, K, F, F1 )
 
     K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
 !------------------------------------------------------------------------------
-END SUBROUTINE CondensateP
+END SUBROUTINE CondensatePR
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Subroutine for condensation of p element bubbles from complex-valued linear 
+!> problem. Modifies given stiffness matrix and force vector(s) 
+!------------------------------------------------------------------------------
+SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
+!------------------------------------------------------------------------------
+    USE LinearAlgebra
+    INTEGER :: N               !< Sum of nodal, edge and face degrees of freedom.
+    INTEGER :: Nb              !< Sum of internal (bubble) degrees of freedom.
+    COMPLEX(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
+    COMPLEX(KIND=dp) :: F(:)      !< Local force vector.
+    COMPLEX(KIND=dp), OPTIONAL :: F1(:)  !< Local second force vector.
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: Kbb(Nb,Nb), Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
+    INTEGER :: i, Ldofs(N), Bdofs(Nb)
+
+    IF ( nb <= 0 ) RETURN
+
+    Ldofs = (/ (i, i=1,n) /)
+    Bdofs = (/ (i, i=n+1,n+nb) /)
+
+    Kbb = K(Bdofs,Bdofs)
+    Kbl = K(Bdofs,Ldofs)
+    Klb = K(Ldofs,Bdofs)
+    Fb  = F(Bdofs)
+
+    CALL ComplexInvertMatrix( Kbb,nb )
+
+    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    IF (PRESENT(F1)) THEN
+      Fb  = F1(Bdofs)
+      F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    END IF
+
+    K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
+!------------------------------------------------------------------------------
+  END SUBROUTINE CondensatePC
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Solves a harmonic system.

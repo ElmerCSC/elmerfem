@@ -659,7 +659,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF ( Bubbles ) THEN
-       CALL LCondensate( n,STIFF,FORCE )
+       CALL CondensateP( n, n, STIFF, FORCE )
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -842,34 +842,6 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalInterfaceMatrix
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( n, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-!------------------------------------------------------------------------------
-    INTEGER :: n
-    COMPLEX(KIND=dp) :: K(:,:), F(:), Kbb(n,n), &
-         Kbl(n,n), Klb(n,n), Fb(n)
-
-    INTEGER :: i, Ldofs(n), Bdofs(n)
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = Ldofs + n
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL ComplexInvertMatrix( Kbb,n )
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = &
-         K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
