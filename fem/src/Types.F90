@@ -140,6 +140,8 @@ END INTERFACE
 #ifdef HAVE_MUMPS
   INCLUDE 'dmumps_struc.h'
 #endif
+  
+  
 
 
   TYPE BasicMatrix_t
@@ -408,7 +410,7 @@ END INTERFACE
      LOGICAL :: LValue
      INTEGER, POINTER :: IValues(:)
 
-     INTEGER(KIND=AddrInt) :: PROCEDURE
+     INTEGER(KIND=AddrInt) :: PROCEDURE = 0
 
      REAL(KIND=dp) :: Coeff = 1.0_dp
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
@@ -425,6 +427,7 @@ END INTERFACE
      CHARACTER(len=:), ALLOCATABLE :: LuaCmd
 #endif
      
+     TYPE(VariableTable_t), POINTER :: DepVarTable(:) => NULL() 
    END TYPE ValueListEntry_t
 
    TYPE ValueList_t
@@ -543,6 +546,8 @@ END INTERFACE
    INTEGER, PARAMETER :: Variable_on_elements = 5
    INTEGER, PARAMETER :: Variable_global = 6
 
+   integer, parameter :: DependencyMaxRank = 3
+
    
    
    TYPE IntegrationPointsTable_t
@@ -594,8 +599,13 @@ END INTERFACE
    END TYPE Variable_t
 
    
+
    TYPE VariableTable_t     
      TYPE(Variable_t), POINTER :: Variable
+     INTEGER :: Dims(DependencyMaxRank)
+     INTEGER :: dofs
+     ! PROCEDURE(VariableIPVecEval_IF), POINTER, NOPASS :: EvalAtIPVec => NULL()
+     PROCEDURE(VariableIPEval_IF), POINTER, NOPASS :: EvalATIP => NULL()
    END TYPE VariableTable_t
    
 !------------------------------------------------------------------------------
@@ -1017,7 +1027,26 @@ END INTERFACE
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
 
+    TYPE GaussIntegrationPoints_t
+      INTEGER :: N
+      REAL(KIND=dp), POINTER CONTIG :: u(:),v(:),w(:),s(:)
+      !DIR$ ATTRIBUTES ALIGN:64 :: u, v, w, s
+    END TYPE GaussIntegrationPoints_t
+
     INTEGER :: ELMER_COMM_WORLD = -1
+
+    ABSTRACT INTERFACE
+
+    SUBROUTINE VariableIPEval_IF(Variable, Element, IP, ip_ind, X)
+      IMPORT Element_t, GaussIntegrationPoints_t, dp, Variable_t
+      TYPE(Variable_t) :: Variable
+      TYPE(Element_t), INTENT(IN) :: Element
+      TYPE(GaussIntegrationPoints_t), INTENT(IN) :: IP
+      INTEGER, INTENT(IN) :: ip_ind
+      REAL(KIND=dp), INTENT(OUT) :: X(:)
+    END SUBROUTINE
+
+  END INTERFACE
 !------------------------------------------------------------------------------
 END MODULE Types
 !------------------------------------------------------------------------------

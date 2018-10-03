@@ -1,0 +1,92 @@
+!LUA BEGIN
+!
+! -- This corresponds to alpha*(grad phi), alpha = x1, grad phi = [x3, x4]
+! function umatfun(x1,x2,x3,x4)
+! return x1*x3, x1*x4, x1, 0, 0, x1
+! end 
+!
+! function trad(t)
+!   if (t < 1.5) then
+!     print("Traditional, t =", t)
+!     return 0.0
+!   else
+!     print("Nontraditional, t =", t)
+!     return 1.0
+!   end
+! end
+!LUA END
+
+Header
+  Mesh DB "." "square"
+End
+Simulation
+  Max Output Level = 3
+  Simulation type = scanning
+  ! post file = "output.vtu"
+  steady state max iterations = 1
+  steady state min iterations = 1
+  timestep intervals = 2
+  timestep sizes = 1
+  mesh levels = 1
+End
+initial condition 1
+  mat_ip 1 = variable time
+    real matc "1.0"
+  mat_ip 2 = variable coordinate
+    real matc "tx(0)"
+end
+body 1
+  target bodies(1) = 1
+  material = 1
+  body force = 1
+  equation = 1
+  initial condition = 1
+end
+material 1
+  u_mat (6) = variable mat_ip, phi % gradient{2}
+    real procedure "Poisson" "u_mat_new"
+    ! real lua "umatfun(tx[0], tx[1], tx[2], tx[3])"
+  alpha = variable mat_ip
+    real procedure "Poisson" "alpha"
+    ! real lua "tx[0]"
+end 
+body force 1
+  source = Real 1.0
+end
+Solver 1
+  Equation = "poisson_ip"
+  Procedure = "Poisson" "PoissonSolver"
+  linear system solver = iterative
+  linear system iterative method = bicgstab
+  linear system abort not converged = false
+  linear system max iterations = 1000
+  linear system convergence tolerance = 1e-8
+  linear system residual output = 20
+  ! linear system symmetric = true
+  variable = phi
+  exported variable 1 = -dofs 2 -ip "mat_ip"
+  ! exported variable 1 = -ip "mat_ip"
+  element = "p:1"
+
+  steady state convergence tolerance = 1e-6
+  nonlinear system max iterations = 1
+  nonlinear system min iterations = 1
+  nonlinear system convergence tolerance = 1e-6
+  
+  nonlinear system convergence measure = norm
+  linear system scaling = logical true
+  ! derived gradient = file "Poisson" "PoissonSolver_Derived_gradient"
+  gradient = file "Poisson" "PoissonSolver_Derived_gradient"
+  update exported variables = logical true
+  traditional = variable time
+  real procedure "Poisson" "trad"
+  reference norm = real 0.40381037E-01
+  reference norm tolerance = real 1e-6
+  End
+boundary condition 1
+  target boundaries = 1
+  phi = real 0
+end
+equation 1
+  active solvers(1) = 1
+end

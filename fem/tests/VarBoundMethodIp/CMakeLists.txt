@@ -1,0 +1,9 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( unit.sif unit.sif COPYONLY)
+ADD_ELMERTEST_MODULE(VarBountMethodIp_Poisson Poisson Poisson.F90)
+
+file(COPY square.grd ELMERSOLVER_STARTINFO Poisson.F90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(VarBoundMethodIp LABELS quick)

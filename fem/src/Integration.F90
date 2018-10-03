@@ -55,11 +55,13 @@ MODULE Integration
    !$OMP THREADPRIVATE(GInit)
    
 !------------------------------------------------------------------------------
-   TYPE GaussIntegrationPoints_t
-      INTEGER :: N
-      REAL(KIND=dp), POINTER CONTIG :: u(:),v(:),w(:),s(:)
-!DIR$ ATTRIBUTES ALIGN:64 :: u, v, w, s
-   END TYPE GaussIntegrationPoints_t
+
+! Define GaussIntegrationPoints_t in Types.F90 and not here.
+!    TYPE GaussIntegrationPoints_t
+!       INTEGER :: N
+!       REAL(KIND=dp), POINTER CONTIG :: u(:),v(:),w(:),s(:)
+! !DIR$ ATTRIBUTES ALIGN:64 :: u, v, w, s
+!    END TYPE GaussIntegrationPoints_t
 
    TYPE(GaussIntegrationPoints_t), TARGET, PRIVATE, SAVE :: IntegStuff
    !$OMP THREADPRIVATE(IntegStuff)
