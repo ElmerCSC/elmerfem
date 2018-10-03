@@ -1855,22 +1855,35 @@ CONTAINS
   END FUNCTION GetElementDOFs
 
 
-!> Returns the number of bubble degree of freedom in the active element
-  FUNCTION GetElementNOFBDOFs( Element, USolver ) RESULT(n)
+! -----------------------------------------------------------------------------
+!> Returns the number of bubble degrees of freedom in the active element.
+!> If the sif file contains more than one solver section
+!> with each of them having their own specification of the "Element" 
+!> keyword, the returned value may not be the number of bubbles that
+!> should be assigned to the solver. With the optional argument 
+!> Update = .TRUE., the correct solver-wise bubble count can be returned and
+!> the bubble count assigned to the Element argument is updated.
+! -----------------------------------------------------------------------------
+  FUNCTION GetElementNOFBDOFs( Element, USolver, Update ) RESULT(n)
+! -----------------------------------------------------------------------------
     INTEGER :: n
-    TYPE(Solver_t), OPTIONAL, POINTER :: USolver
     TYPE(Element_t), OPTIONAL :: Element
+    TYPE(Solver_t), OPTIONAL, POINTER :: USolver
+    LOGICAL, OPTIONAL :: Update
+
     TYPE(Element_t), POINTER  :: CurrElement
-
     TYPE(Solver_t), POINTER :: Solver
-
-    LOGICAL :: Found, GB
+    LOGICAL :: Found, GB, UpdateRequested
+    INTEGER :: k
 
     IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
     ELSE
        Solver => CurrentModel % Solver
     END IF
+
+    UpdateRequested = .FALSE.
+    IF ( PRESENT(Update) ) UpdateRequested = Update
 
     !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
     !IF (.NOT.Found) GB = .TRUE.
@@ -1879,7 +1892,26 @@ CONTAINS
     n = 0
     IF ( .NOT. GB ) THEN
       CurrElement => GetCurrentElement(Element)
-      n = CurrElement % BDOFs
+      IF (UpdateRequested) THEN
+        n = Solver % Def_Dofs(GetElementFamily(CurrElement), &
+            CurrElement % Bodyid, 5) 
+        IF ( n>=0 ) THEN
+          CurrElement % BDOFs = n
+        ELSE
+          n = CurrElement % BDOFs
+        END IF
+      ELSE
+        n = CurrElement % BDOFs
+      END IF
+    ELSE
+      ! Rectify the bubble count assigned to the Element argument in case
+      ! some other solver has tampered it:
+      IF (UpdateRequested) THEN
+        CurrElement => GetCurrentElement(Element)
+        k = Solver % Def_Dofs(GetElementFamily(CurrElement), &
+            CurrElement % Bodyid, 5)    
+        IF ( k>=0 ) CurrElement % BDOFs = k
+      END IF
     END IF
   END FUNCTION GetElementNOFBDOFs
 
