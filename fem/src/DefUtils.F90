@@ -1855,16 +1855,17 @@ CONTAINS
   END FUNCTION GetElementDOFs
 
 
+! -----------------------------------------------------------------------------
 !> Returns the number of bubble degrees of freedom in the active element.
-!> Unfortunately, if the sif file contains more than one solver section
+!> If the sif file contains more than one solver section
 !> with each of them having their own specification of the "Element" 
 !> keyword, the returned value may not be the number of bubbles that
 !> should be assigned to the solver. With the optional argument 
-!> Update = .TRUE., the correct solver-wise bubble count can be
-!> returned, but to work consistently all solver codes should then get 
-!> their bubble counts using the flag Update = .TRUE. A better solution
-!> to the trouble could perhaps be devised.
+!> Update = .TRUE. (this effect is now the default), the correct solver-wise 
+!> bubble count can be returned. 
+! -----------------------------------------------------------------------------
   FUNCTION GetElementNOFBDOFs( Element, USolver, Update ) RESULT(n)
+! -----------------------------------------------------------------------------
     INTEGER :: n
     TYPE(Element_t), OPTIONAL :: Element
     TYPE(Solver_t), OPTIONAL, POINTER :: USolver
