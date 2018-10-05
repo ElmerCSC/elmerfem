@@ -1893,9 +1893,13 @@ CONTAINS
     IF ( .NOT. GB ) THEN
       CurrElement => GetCurrentElement(Element)
       IF (UpdateRequested) THEN
-        n = MAX(0, Solver % def_dofs(GetElementFamily(CurrElement), &
-            CurrElement % BodyId, 5))
-        CurrElement % BDOFs = n
+        n = Solver % Def_Dofs(GetElementFamily(CurrElement), &
+                CurrElement % Bodyid, 5 ) 
+        IF ( n>=0 ) THEN
+          CurrElement % BDOFs = n
+        ELSE
+          n = CurrElement % BDOFs
+        END IF
       ELSE
         n = CurrElement % BDOFs
       END IF
