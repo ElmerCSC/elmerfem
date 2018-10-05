@@ -1873,8 +1873,8 @@ CONTAINS
 
     TYPE(Element_t), POINTER  :: CurrElement
     TYPE(Solver_t), POINTER :: Solver
-
     LOGICAL :: Found, GB, UpdateRequested
+    INTEGER :: k
 
     IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -1894,7 +1894,7 @@ CONTAINS
       CurrElement => GetCurrentElement(Element)
       IF (UpdateRequested) THEN
         n = Solver % Def_Dofs(GetElementFamily(CurrElement), &
-                CurrElement % Bodyid, 5 ) 
+            CurrElement % Bodyid, 5) 
         IF ( n>=0 ) THEN
           CurrElement % BDOFs = n
         ELSE
@@ -1902,6 +1902,15 @@ CONTAINS
         END IF
       ELSE
         n = CurrElement % BDOFs
+      END IF
+    ELSE
+      ! Rectify the bubble count assigned to the Element argument in case
+      ! some other solver has tampered it:
+      IF (UpdateRequested) THEN
+        CurrElement => GetCurrentElement(Element)
+        k = Solver % Def_Dofs(GetElementFamily(CurrElement), &
+            CurrElement % Bodyid, 5)    
+        IF ( k>=0 ) CurrElement % BDOFs = k
       END IF
     END IF
   END FUNCTION GetElementNOFBDOFs
