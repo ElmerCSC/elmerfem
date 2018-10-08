@@ -615,7 +615,7 @@ CONTAINS
     ! Create list of faces / edges 
     !-------------------------------------------------------------------------
     Mesh => GetMesh()
-    CALL FindMeshEdges( Mesh, .FALSE.)
+    CALL FindMeshEdges( Mesh )
     IF ( ParEnv % PEs > 1 ) THEN
       CALL SParEdgeNumbering(Mesh,Allmesh=.TRUE.)
       CALL SParFaceNumbering(Mesh,Allmesh=.TRUE.)
