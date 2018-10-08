@@ -1861,8 +1861,8 @@ CONTAINS
 !> with each of them having their own specification of the "Element" 
 !> keyword, the returned value may not be the number of bubbles that
 !> should be assigned to the solver. With the optional argument 
-!> Update = .TRUE. (this effect is now the default), the correct solver-wise 
-!> bubble count can be returned. 
+!> Update = .TRUE., the correct solver-wise bubble count can be returned and
+!> the bubble count assigned to the Element argument is updated.
 ! -----------------------------------------------------------------------------
   FUNCTION GetElementNOFBDOFs( Element, USolver, Update ) RESULT(n)
 ! -----------------------------------------------------------------------------
@@ -1873,8 +1873,8 @@ CONTAINS
 
     TYPE(Element_t), POINTER  :: CurrElement
     TYPE(Solver_t), POINTER :: Solver
-
     LOGICAL :: Found, GB, UpdateRequested
+    INTEGER :: k
 
     IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -1882,7 +1882,7 @@ CONTAINS
        Solver => CurrentModel % Solver
     END IF
 
-    UpdateRequested = .TRUE.
+    UpdateRequested = .FALSE.
     IF ( PRESENT(Update) ) UpdateRequested = Update
 
     !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
@@ -1894,7 +1894,7 @@ CONTAINS
       CurrElement => GetCurrentElement(Element)
       IF (UpdateRequested) THEN
         n = Solver % Def_Dofs(GetElementFamily(CurrElement), &
-                CurrElement % Bodyid, 5 ) 
+            CurrElement % Bodyid, 5) 
         IF ( n>=0 ) THEN
           CurrElement % BDOFs = n
         ELSE
@@ -1902,6 +1902,15 @@ CONTAINS
         END IF
       ELSE
         n = CurrElement % BDOFs
+      END IF
+    ELSE
+      ! Rectify the bubble count assigned to the Element argument in case
+      ! some other solver has tampered it:
+      IF (UpdateRequested) THEN
+        CurrElement => GetCurrentElement(Element)
+        k = Solver % Def_Dofs(GetElementFamily(CurrElement), &
+            CurrElement % Bodyid, 5)    
+        IF ( k>=0 ) CurrElement % BDOFs = k
       END IF
     END IF
   END FUNCTION GetElementNOFBDOFs

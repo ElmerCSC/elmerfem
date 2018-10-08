@@ -1541,20 +1541,24 @@ END FUNCTION GaussPointsPTetra
      elmt => elm % TYPE
 
      IF (PRESENT(EdgeBasis)) THEN
-        IF (EdgeBasis) THEN
-           UsePRefElement = .TRUE.
-           IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
-           IF (PRESENT(EdgeBasisDegree)) THEN
-              IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement, EdgeBasisDegree)
-           ELSE
-              IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
-           END IF
-           RETURN
-        END IF
+       IF (EdgeBasis) THEN
+         UsePRefElement = .TRUE.
+         IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
+         IF (PRESENT(EdgeBasisDegree)) THEN
+           IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement, EdgeBasisDegree)
+         ELSE
+           IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
+         END IF
+         RETURN
+       END IF
      END IF
 
-     pElement = isActivePElement(elm)
-
+      IF( PRESENT(PReferenceElement)) THEN
+        pElement = PReferenceElement
+      ELSE     
+        pElement = isActivePElement(elm)
+      END IF
+        
      IF ( PRESENT(np) ) THEN
        n = np
      ELSE IF( PRESENT( RelOrder ) ) THEN
@@ -1603,9 +1607,9 @@ END FUNCTION GaussPointsPTetra
 
      CASE (3)
         IF (pElement) THEN
-           IntegStuff = GaussPointsPTriangle(n)
-        ELSE    
-           IntegStuff = GaussPointsTriangle(n)
+          IntegStuff = GaussPointsPTriangle(n)
+        ELSE
+          IntegStuff = GaussPointsTriangle(n)
         END IF
  
      CASE (4)

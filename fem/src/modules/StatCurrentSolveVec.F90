@@ -43,7 +43,7 @@
 !> Initialization of the primary solver, i.e. StatCurrentSolver.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,TransientSimulation )
+SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -51,41 +51,66 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,TransientSimulation )
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
-  LOGICAL :: TransientSimulation
+  LOGICAL :: Transient
 !------------------------------------------------------------------------------
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver_init'
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found
+  LOGICAL :: Found, CalculateElemental, CalculateNodal
   INTEGER :: dim
   
   IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
     CALL Fatal(Caller,'Implemented only in cartesian coordinates')
   END IF
-
+  
   Params => GetSolverParams()
+  dim = CoordinateSystemDimension()
+
+  CalculateElemental = ListGetLogical( Params,'Calculate Elemental Fields',Found )
+  CalculateNodal = ListGetLogical( Params,'Calculate Nodal Fields',Found )
   
-  IF (ListGetLogical(Params,'Calculate Joule Heating',Found)) &
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-      'Joule Heating' )
-  
-  IF (ListGetLogical(Params,'Calculate Nodal Heating',Found)) &
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-      'Nodal Joule Heating' )
-  
-  IF( ListGetLogical(Params,'Calculate Volume Current',Found) ) THEN
-    IF( Dim == 2 ) THEN
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          'Volume Current[Volume Current:2]' )
-    ELSE
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          'Volume Current[Volume Current:3]' )
-    END IF
+  IF(.NOT. (CalculateElemental .OR. CalculateNodal ) ) THEN
+    CalculateNodal = .TRUE.
   END IF
 
+  IF (ListGetLogical(Params,'Calculate Joule Heating',Found)) THEN
+    IF( CalculateElemental ) & 
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-dg Joule Heating e' )
+    IF( CalculateNodal ) &
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Joule Heatg' )
+  END IF
+  
+  IF( ListGetLogical(Params,'Calculate Volume Current',Found) ) THEN
+    IF( CalculateElemental ) & 
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-dg Volume Current e[Volume Current e:'//TRIM(I2S(dim))//']' )
+    IF( CalculateNodal ) &
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Volume Current[Volume Current:'//TRIM(I2S(dim))//']' )       
+  END IF
+  
+  IF( ListGetLogical(Params,'Calculate Electric Field',Found) ) THEN
+    IF( CalculateElemental ) & 
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-dg Electric Field e[Electric Field e:'//TRIM(I2S(dim))//']' )
+    IF( CalculateNodal ) & 
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Electric Field[Electric Field:'//TRIM(I2S(dim))//']' )    
+  END IF
+
+  ! Nodal fields that may direcly be associated as nodal loads
+  IF (ListGetLogical(Params,'Calculate Nodal Heating',Found))  THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
+        'Nodal Joule Heating' )
+  END IF
+  IF( ListGetLogical(Params,'Calculate Nodal Current',Found) ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Nodal Current[Nodal Current:'//TRIM(I2S(dim))//']' )
+  END IF
+  
   CALL ListUntreatedFatal( Params,'Power Control',Caller)
   CALL ListUntreatedFatal( Params,'Current Control',Caller)
-  CALL ListUntreatedFatal( Params,'Calculate Volume Current',Caller)
-  CALL ListUntreatedFatal( Params,'Calculate Volume Current',Caller)
 
 END SUBROUTINE StatCurrentSolver_Init
 
@@ -94,7 +119,7 @@ END SUBROUTINE StatCurrentSolver_Init
 !> A modern version for static current conduction supporting multithreading and
 !> SIMD friendly ElmerSolver kernels. 
 !------------------------------------------------------------------------------
-SUBROUTINE StatCurrentSolver( Model,Solver,dt,TransientSimulation )
+SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -102,7 +127,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
-  LOGICAL :: TransientSimulation
+  LOGICAL :: Transient
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
@@ -111,6 +136,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: n, nb, nd, t, active
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles
+  TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver'
 !------------------------------------------------------------------------------
 
@@ -118,6 +144,8 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,TransientSimulation )
   CALL Info(Caller,'Solving static current conduction solver')
 
   CALL DefaultStart()
+
+  Mesh => GetMesh()
   
   maxiter = ListGetInteger( GetSolverParams(),&
       'Nonlinear System Max Iterations',Found,minv=1)
@@ -138,8 +166,13 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,TransientSimulation )
 
     nColours = GetNOFColours(Solver)
     VecAsm = (nColours > 1) .OR. (nthr == 1)
-    
-    CALL Info(Caller,'Performing bulk element assembly',Level=12)
+
+    IF( VecAsm ) THEN
+      CALL Info(Caller,'Performing vectorized bulk element assembly',Level=12)
+    ELSE
+      CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=12)      
+    END IF
+
     CALL ResetTimer( Caller//'BulkAssembly' )
 
     !$OMP PARALLEL &
@@ -162,7 +195,11 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,TransientSimulation )
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
         nb = GetElementNOFBDOFs(Element)
-        CALL LocalMatrixVec(  Element, n, nd+nb, nb, VecAsm, InitHandles )
+        IF( VecAsm ) THEN
+          CALL LocalMatrixVec(  Element, n, nd+nb, nb, VecAsm, InitHandles )
+        ELSE
+          CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
+        END IF
       END DO
       !$OMP END DO
     END DO
@@ -236,23 +273,22 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJ(:)
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
-    REAL(KIND=dp), SAVE, POINTER  :: CondCoeff(:), ReactCoeff(:), &
-        EpsCoeff(:), SourceCoeff(:)
-    REAL(KIND=dp) :: eps0
+    REAL(KIND=dp), SAVE, POINTER  :: CondAtIpVec(:), EpsAtIpVec(:), SourceAtIpVec(:)
+    REAL(KIND=dp) :: eps0, weight
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
 
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, ReactCoeff_h, EpsCoeff_h
+    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
     
-    !$OMP THREADPRIVATE(Basis, dBasisdx, DetJ, &
+    !$OMP THREADPRIVATE(Basis, dBasisdx, DetJVec, &
     !$OMP               MASS, STIFF, FORCE, Nodes, &
-    !$OMP               SourceCoeff_h, CondCoeff_h, ReactCoeff_h, EpsCoeff_h, &
-    !$OMP               SourceCoeff, CondCoeff, ReactCoeff, EpsCoeff )
-    !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJ
+    !$OMP               SourceCoeff_h, CondCoeff_h, EpsCoeff_h, &
+    !$OMP               SourceAtIpVec, CondAtIpVec, EpsAtIpVec )
+    !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
 
@@ -260,7 +296,6 @@ CONTAINS
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Current Source')
       CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
-      !CALL ListInitElementKeyword( ReactCoeff_h,'Material','Reaction Coefficient')
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
       Found = .FALSE.
       IF( ASSOCIATED( Model % Constants ) ) THEN
@@ -269,20 +304,24 @@ CONTAINS
       IF( .NOT. Found ) Eps0 = 8.854187817e-12
       InitHandles = .FALSE.
     END IF
- 
+    
     dim = CoordinateSystemDimension()
-    IP = GaussPoints( Element )
+
+    ! Currently the vectorized basis always use p-elements which have different
+    ! local coordinate convention
+    IP = GaussPoints( Element, PReferenceElement = .TRUE. )
+    
     ngp = IP % n
 
     ! Deallocate storage if needed
     IF (ALLOCATED(Basis)) THEN
       IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-            DEALLOCATE(Basis, dBasisdx, DetJ, MASS, STIFF, FORCE )
+            DEALLOCATE(Basis, dBasisdx, DetJVec, MASS, STIFF, FORCE )
     END IF
 
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJ(ngp), &
+      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
           MASS(nd,nd), STIFF(nd,nd), FORCE(nd), STAT=allocstat)
       
       IF (allocstat /= 0) THEN
@@ -300,44 +339,130 @@ CONTAINS
     ! Numerical integration:
     ! Compute basis function values and derivatives at integration points
     !--------------------------------------------------------------
-    stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, detJ, &
-         SIZE(Basis,2), Basis, dBasisdx )
+    stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, detJvec, &
+        SIZE(Basis,2), Basis, dBasisdx )
 
-    ! Compute actual integration weights (recycle the memory space of DetJ)
-    DO t=1,ngp
-      DetJ(t) = IP % s(t) * Detj(t)
+    ! Compute actual integration weights (recycle the memory space of DetJVec)
+    DO i=1,ngp
+      DetJVec(i) = IP % s(i) * DetJVec(i)
     END DO
 
     ! electric conductivity term: STIFF=STIFF+(rho*grad(u),grad(v))
-    CondCoeff => ListGetElementRealVec( CondCoeff_h, ngp, Basis, Element, Found ) 
+    CondAtIpVec => ListGetElementRealVec( CondCoeff_h, ngp, Basis, Element, Found ) 
     IF( Found ) THEN
-      CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJ, STIFF, CondCoeff )
-    END IF
-   
-    ! time derivative of potential: MASS=MASS+(eps*grad(u),grad(v))
-    EpsCoeff => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
-    IF( Found ) THEN
-      CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJ, MASS, EpsCoeff )
-      MASS(1:nd,1:nd) = -Eps0 * MASS(1:nd,1:nd)
-    END IF
-      
-    ! source term: FORCE=FORCE+(u,f)
-    SourceCoeff => ListGetElementRealVec( SourceCoeff_h, ngp, Basis, Element, Found ) 
-    IF( Found ) THEN
-      CALL LinearForms_UdotF(ngp, nd, Basis, DetJ, SourceCoeff, FORCE)
+      CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJVec, STIFF, CondAtIpVec )
     END IF
 
-    ! These are waiting for future use
-    ! reaction term: STIFF=STIFF+(R*u,v)
-    ! CALL LinearForms_UdotU(ngp, nd, Element % TYPE % DIMENSION, Basis, DetJ, STIFF, ReactCoeff )
-    ! time derivative term    
-    ! CALL LinearForms_UdotU(ngp, nd, Element % TYPE % DIMENSION, Basis, DetJ, MASS, EpsCoeff )
-     
-    IF(TransientSimulation) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    ! time derivative of potential: MASS=MASS+(eps*grad(u),grad(v))
+    EpsAtIpVec => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
+    IF( Found ) THEN
+      CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJVec, MASS, EpsAtIpVec )
+      MASS(1:nd,1:nd) = Eps0 * MASS(1:nd,1:nd)
+    END IF
+
+    ! source term: FORCE=FORCE+(u,f)
+    SourceAtIpVec => ListGetElementRealVec( SourceCoeff_h, ngp, Basis, Element, Found ) 
+    IF( Found ) THEN
+      CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, SourceAtIpVec, FORCE)
+    END IF
+      
+    IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
+
+
+!------------------------------------------------------------------------------
+! Assembly of the matrix entries arising from the bulk elements. Not vectorized.
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, nd, nb
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, INTENT(INOUT) :: InitHandles
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: eps0, weight
+    REAL(KIND=dp) :: SourceAtIp, EpsAtIp, CondAtIp, DetJ
+    LOGICAL :: Stat,Found
+    INTEGER :: i,t,p,q,dim,m,allocstat
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h    
+!------------------------------------------------------------------------------
+
+    ! This InitHandles flag might be false on threaded 1st call
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Current Source')
+      CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
+      Found = .FALSE.
+      IF( ASSOCIATED( Model % Constants ) ) THEN
+        Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
+      END IF
+      IF( .NOT. Found ) Eps0 = 8.854187817e-12
+      InitHandles = .FALSE.
+    END IF
+    
+    dim = CoordinateSystemDimension()
+
+    ! Currently the vectorized basis always use p-elements which have different
+    ! local coordinate convention
+    IP = GaussPoints( Element )
+
+    ! Allocate storage if needed
+    IF (.NOT. ALLOCATED(Basis)) THEN
+      m = Mesh % MaxElementDofs
+      ALLOCATE(Basis(m), dBasisdx(m,3),&
+          MASS(m,m), STIFF(m,m), FORCE(m), STAT=allocstat)
+      
+      IF (allocstat /= 0) THEN
+        CALL Fatal(Caller,'Local storage allocation failed')
+      END IF
+    END IF
+
+    CALL GetElementNodesVec( Nodes, UElement=Element )
+
+    ! Initialize
+    MASS  = 0._dp
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )
+      Weight = IP % s(t) * DetJ
+
+      ! diffusion term (D*grad(u),grad(v)):
+      ! -----------------------------------
+      CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found ) 
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
+          CondAtIp * MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
+
+      EpsAtIp = Eps0 * ListGetElementReal( EpsCoeff_h, Basis, Element, Found )
+      IF( Found ) THEN
+        MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + Weight * &
+            EpsAtIp * MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
+      END IF
+
+      SourceAtIP = ListGetElementReal( SourceCoeff_h, Basis, Element, Found ) 
+      IF( Found ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+      END IF
+    END DO
+      
+    IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+
+    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
 
@@ -426,3 +551,371 @@ CONTAINS
 !------------------------------------------------------------------------------
 END SUBROUTINE StatCurrentSolver
 !------------------------------------------------------------------------------
+
+
+
+!-----------------------------------------------------------------------------
+!> A solver performing the postprocessing for the primary solver.
+!> This solver is called at the DefaultFinish() slot of the primary solver.
+!------------------------------------------------------------------------------
+SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(Element_t),POINTER :: Element
+  REAL(KIND=dp) :: Norm
+  INTEGER :: i, dofs, n, nb, nd, t, active
+  LOGICAL :: Found, InitHandles
+  TYPE(Mesh_t), POINTER :: Mesh
+  REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),MASS(:,:),FORCE(:,:)  
+  INTEGER, POINTER :: WeightPerm(:)
+  CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver_post'
+  LOGICAL :: CalcCurrent, CalcField, CalcHeating, NeedScaling, ConstantWeights
+  TYPE(ValueList_t), POINTER :: Params
+  REAL(KIND=dp) :: HeatingTot, Voltot
+  
+  TYPE PostVars_t
+    TYPE(Variable_t), POINTER :: Var => NULL()
+    INTEGER :: FieldType = -1
+    LOGICAL :: NodalField = .FALSE.
+    LOGICAL :: HaveVar = .FALSE.
+  END TYPE PostVars_t
+  TYPE(PostVars_t), POINTER :: PostVars(:)
+  !------------------------------------------------------------------------------
+
+  CALL Info(Caller,'------------------------------------------------')
+  CALL Info(Caller,'Calculating postprocessing fields')
+
+  Mesh => GetMesh()
+  Params => GetSolverParams()
+
+  ConstantWeights = ListGetLogical( Params,'Constant Weights',Found ) 
+
+  ! We use a type for the different output variables for reasons of coding economy
+  ALLOCATE( PostVars(8) )
+
+  ! Joule losses: type 1, component 1
+  PostVars(1) % Var => VariableGet( Mesh % Variables, 'Nodal Joule Heating')
+  PostVars(1) % NodalField = .TRUE.
+  PostVars(2) % Var => VariableGet( Mesh % Variables, 'Joule Heatg')
+  PostVars(3) % Var => VariableGet( Mesh % Variables, 'Joule Heating e')
+  PostVars(1:3) % FieldType = 1
+
+  ! Electric current: type 2, components 2:4
+  PostVars(4) % Var => VariableGet( Mesh % Variables, 'Nodal Current')
+  PostVars(4) % NodalField = .TRUE.
+  PostVars(5) % Var => VariableGet( Mesh % Variables, 'Volume Current')
+  PostVars(6) % Var => VariableGet( Mesh % Variables, 'Volume Current e')
+  PostVars(4:6) % FieldType = 2 
+
+  ! Electric field: type 3, components 5-7
+  PostVars(7) % Var => VariableGet( Mesh % Variables, 'Electric Field')
+  PostVars(8) % Var => VariableGet( Mesh % Variables, 'Electric Field e')
+  PostVars(7:8) % FieldType = 3 
+
+  ! Do this since the "associated" command cannot handle vectors!
+  ! Also initialize the field to zero since some of these are additive
+  DO i=1,8
+    PostVars(i) % HaveVar = ASSOCIATED( PostVars(i) % Var )
+    IF( PostVars(i) % HaveVar ) PostVars(i) % Var % Values = 0.0_dp
+  END DO
+  
+  CalcHeating = ANY( PostVars(1:2) % HaveVar ) 
+  CalcCurrent = ANY( PostVars(4:6) % HaveVar ) 
+  CalcField = ANY( PostVars(7:8) % HaveVar ) 
+
+  n = COUNT( PostVars(1:8) % HaveVar )
+  CALL Info(Caller,'Number of '//TRIM(I2S(n))//' postprocessing fields',Level=8)
+    
+  ! Only create the nodal weights if we need to scale some nodal field
+  NeedScaling = .FALSE.
+  DO i=1,8
+    IF( .NOT. PostVars(i) % HaveVar ) CYCLE
+    IF( PostVars(i) % NodalField ) CYCLE
+    IF( PostVars(i) % Var % TYPE == Variable_on_nodes ) THEN
+      CALL Info(Caller,'Creating a weighting for scaling purposes from '//TRIM(I2S(i)),Level=10)
+      NeedScaling = .TRUE.
+      WeightPerm => PostVars(i) % Var % Perm 
+      ALLOCATE( WeightVector( MAXVAL( WeightPerm ) ) )
+      WeightVector = 0.0_dp
+      EXIT
+    END IF
+  END DO
+
+  n = Mesh % MaxElementDOFs
+  ALLOCATE( MASS(n,n), FORCE(8,n) ) ! 1+1+3+3 components for force
+
+  CALL Info(Caller,'Calculating local field values',Level=12) 
+  InitHandles = .TRUE.
+  HeatingTot = 0.0_dp
+  VolTot = 0.0_dp
+  DO t = 1, GetNOFActive()
+    Element => GetActiveElement(t)
+    n  = GetElementNOFNodes(Element)
+    CALL LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
+    CALL LocalPostSolve( Element, n, MASS, FORCE )
+  END DO
+  
+  IF( NeedScaling ) THEN
+    CALL Info(Caller,'Scaling the field values with weights',Level=12)
+    CALL GlobalPostScale()
+  END IF
+
+  CALL Info(Caller,'All done',Level=12)
+  
+
+CONTAINS
+   
+  SUBROUTINE LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, INTENT(INOUT) :: InitHandles
+    REAL(KIND=dp) :: MASS(:,:), FORCE(:,:)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:),ElementPot(:)
+    REAL(KIND=dp) :: eps0, weight
+    REAL(KIND=dp) :: SourceAtIp, EpsAtIp, CondAtIp, DetJ
+    REAL(KIND=dp) :: Grad(3), CondGrad(3), Heat
+    LOGICAL :: Stat,Found
+    INTEGER :: i,j,t,p,q,dim,m,allocstat
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+
+    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
+    
+!------------------------------------------------------------------------------
+    ! This InitHandles flag might be false on threaded 1st call
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Current Source')
+      CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
+      Found = .FALSE.
+      IF( ASSOCIATED( Model % Constants ) ) THEN
+        Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
+      END IF
+      IF( .NOT. Found ) Eps0 = 8.854187817e-12
+      InitHandles = .FALSE.
+    END IF
+
+    dim = CoordinateSystemDimension()
+
+    ! Allocate storage if needed
+    IF (.NOT. ALLOCATED(Basis)) THEN
+      m = Mesh % MaxElementDOFs   
+      ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)      
+      IF (allocstat /= 0) THEN
+        CALL Fatal(Caller,'Local storage allocation failed')
+      END IF
+    END IF
+
+    CALL GetElementNodes( Nodes, UElement=Element )
+    CALL GetScalarLocalSolution( ElementPot ) 
+
+    
+    ! Initialize
+    MASS  = 0._dp
+    FORCE = 0._dp
+
+    IP = GaussPoints( Element )
+    
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )
+      Weight = IP % s(t) * DetJ
+      
+      DO i=1,n
+        DO j=1,n
+          MASS(i,j) = MASS(i,j) + Weight * Basis(i) * Basis(j)
+        END DO
+      END DO
+
+      ! Compute the integration weights 
+      !----------------------------------------------------------------------------
+      FORCE(1,1:n) = FORCE(1,1:n) + Weight * Basis(1:n)
+
+      CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = t ) 
+      ! EpsAtIp = Eps0 * ListGetElementReal( EpsCoeff_h, Basis, Element, Found )
+
+
+      ! Compute the electric field from the potential: E = -grad Phi
+      !------------------------------------------------------------------------------
+      DO j = 1, DIM
+        Grad(j) = SUM( dBasisdx(1:n,j) * ElementPot(1:n) )
+      END DO
+      IF( CalcField ) THEN
+        DO j=1,dim
+          Force(5+j,1:n) = Force(5+j,1:n) - Grad(j) * Weight * Basis(1:n)
+        END DO
+      END IF
+
+      ! Compute the volume current: J = cond (-grad Phi)
+      !------------------------------------------------------------------------------
+      CondGrad(1:dim) = CondAtIp * Grad(1:dim)
+      IF( CalcCurrent ) THEN
+        DO j=1,dim
+          Force(2+j,1:n) = Force(2+j,1:n) - CondGrad(j) * Weight * Basis(1:n)
+        END DO
+      END IF
+
+      ! Compute the Joule heating: H,tot = Integral (E . D)dV
+      !------------------------------------------------------------------------------
+      Heat = SUM( Grad(1:dim) * CondGrad(1:dim) )      
+      IF( CalcHeating ) THEN
+        Force(2,1:n) = Force(2,1:n) + Heat * Weight * Basis(1:n)
+      END IF
+      
+      VolTot = VolTot + Weight
+      HeatingTot = HeatingTot + Weight * Heat 
+    END DO
+
+    IF( NeedScaling ) THEN
+      IF( ConstantWeights ) THEN
+        WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
+            WeightVector( WeightPerm( Element % NodeIndexes ) ) + 1.0_dp
+      ELSE
+        WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
+            WeightVector( WeightPerm( Element % NodeIndexes ) ) + Force(1,1:n)
+      END IF
+    END IF
+      
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalPostAssembly
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalPostSolve( Element, n, A, b )
+!------------------------------------------------------------------------------    
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n
+    REAL(KIND=dp) :: b(:,:), A(:,:)
+!------------------------------------------------------------------------------
+    INTEGER :: pivot(n),ind(n),i,j,m,dofs,dofcount,FieldType,Vari
+    REAL(KIND=dp) :: x(n)
+    TYPE(Variable_t), POINTER :: pVar
+    LOGICAL :: LocalSolved
+!------------------------------------------------------------------------------
+    
+    CALL LUdecomp(A,n,pivot)
+
+    ! Weight is the 1st column
+    dofcount = 1
+    DO FieldType = 1, 3
+
+      IF( FieldType == 1 ) THEN
+        dofs = 1
+      ELSE
+        dofs = 3
+      END IF
+     
+      DO m=1,dofs
+        dofcount = dofcount+1
+        x = b(dofcount,1:n)
+        LocalSolved = .FALSE.
+        
+        DO Vari = 1, 8
+          pVar => PostVars(Vari) % Var
+          IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+          IF( PostVars(Vari) % FieldType /= FieldType ) CYCLE
+          IF( m > pVar % Dofs ) CYCLE
+          
+          ! The nodal fields need not be solved for.
+          ! Note the nodal field should come before the distributed fields!!
+          IF( PostVars(Vari) % NodalField ) THEN
+            CONTINUE
+          ELSE IF(.NOT. LocalSolved ) THEN
+            CALL LUSolve(n,MASS,x,pivot)
+            LocalSolved = .TRUE.
+          END IF
+
+          ! Note that even though while calling we implicitely assumes elemental
+          ! and nodal fields the convention is not assumed here. 
+          IF( pVar % TYPE == variable_on_nodes_on_elements ) THEN
+            ind = pVar % dofs * (pVar % Perm(Element % DGIndexes(1:n))-1)+m
+            pVar % Values(ind(1:n)) = x(1:n)          
+          ELSE IF( pVar % TYPE == variable_on_nodes ) THEN
+            ind = pVar % dofs * (pVar % Perm(Element % NodeIndexes(1:n))-1)+m
+            IF( ConstantWeights ) THEN
+              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + x(1:n)                    
+            ELSE
+              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + b(1,1:n) * x(1:n)                               
+            END IF
+          ELSE IF( pVar % TYPE == variable_on_elements ) THEN
+            j = pVar % dofs * ( pVar % Perm( Element % ElementIndex )-1)+m
+            pVar % Values(j) = SUM( x(1:n) ) / n
+          ELSE
+            CALL Warn('LocalPostSolve','Dont know what to do with variable type: '//TRIM(I2S(pVar % TYPE)))
+          END IF
+        END DO
+      END DO
+    END DO   
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalPostSolve
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE GlobalPostScale()
+!------------------------------------------------------------------------------
+   INTEGER :: dofs,i,j,Vari
+   TYPE(Variable_t), POINTER :: pVar
+   REAL(KIND=dp), ALLOCATABLE :: tmp(:)
+   LOGICAL :: DoneWeight = .FALSE.
+     
+   VolTot     = ParallelReduction(VolTot)
+   HeatingTot = ParallelReduction(HeatingTot)
+        
+   DO Vari = 1, 8
+     pVar => PostVars(Vari) % Var
+     IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+     IF( PostVars(Vari) % NodalField ) CYCLE
+     
+     ! This is the only type of variable needing scaling!
+     IF( pVar % TYPE /= variable_on_nodes ) CYCLE
+
+     dofs = pVar % Dofs
+     
+     IF ( ParEnv % PEs > 1) THEN
+       ! If we need to scale then also communicate the weight
+       IF( .NOT. DoneWeight ) THEN
+         CALL ParallelSumVector(Solver % Matrix, WeightVector )
+         DoneWeight = .TRUE.
+       END IF
+
+       IF( dofs == 1 ) THEN
+         CALL ParallelSumVector(Solver % Matrix, pVar % Values )
+       ELSE
+         IF(.NOT. ALLOCATED( tmp ) ) THEN
+           ALLOCATE( tmp( SIZE( WeightVector ) ) )         
+         END IF         
+         DO i=1,dofs
+           tmp = pVar % Values(i::dofs)
+           CALL ParallelSumVector(Solver % Matrix, tmp)
+           pVar % Values(i::dofs) = tmp
+         END DO
+       END IF
+     END IF
+     
+     DO i=1,dofs
+       pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
+     END DO
+   END DO
+
+!------------------------------------------------------------------------------
+ END SUBROUTINE GlobalPostScale
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------
+END SUBROUTINE StatCurrentSolver_Post
+!------------------------------------------------------------------------

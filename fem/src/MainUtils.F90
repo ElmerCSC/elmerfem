@@ -833,8 +833,12 @@ CONTAINS
            IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
            
            IF( ASSOCIATED( Parent % DGIndexes ) ) THEN
-             ALLOCATE( Element % DGIndexes(n) ) 
+             IF( .NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+               ALLOCATE( Element % DGIndexes(n) ) 
+               Element % DgIndexes = 0
+             END IF               
              DO i = 1, n
+               IF( Element % DGIndexes(i) > 0 ) CYCLE
                DO j = 1, Parent % TYPE % NumberOfNodes
                  IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
                    Element % DGIndexes(i) = Parent % DGIndexes(j)
@@ -845,7 +849,6 @@ CONTAINS
              EXIT
            END IF
          END DO
-         
        END DO
      END IF
      
@@ -1039,8 +1042,9 @@ CONTAINS
 
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
         MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
-        VariableGlobal, VariableIP, VariableElem, VariableDG, DG, NoMatrix, IsAssemblySolver, &
-        IsCoupledSolver, IsBlockSolver, IsProcedure, IsStepsSolver, LegacySolver, UseMask
+        VariableGlobal, VariableIP, VariableElem, VariableDG, VariableNodal, &
+        DG, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, IsProcedure, &
+        IsStepsSolver, LegacySolver, UseMask
     
     CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name, sec_name
 
@@ -1702,6 +1706,7 @@ CONTAINS
       VariableIp = .FALSE.      
       VariableElem = .FALSE.
       VariableDG = .FALSE.
+      VariableNodal = .FALSE.
       VariableType = Solver % Variable % TYPE
             
       DO WHILE( var_name(1:1) == '-' )
@@ -1722,6 +1727,10 @@ CONTAINS
         ELSE IF ( SEQL(var_name, '-elem ') ) THEN
           VariableElem = .TRUE.
           var_name(1:LEN(var_name)-6) = var_name(7:)
+
+        ELSE IF ( SEQL(var_name, '-nodal ') ) THEN
+          VariableNodal = .TRUE.
+          var_name(1:LEN(var_name)-7) = var_name(8:)
           
         ELSE IF ( SEQL(var_name, '-dg ') ) THEN
           VariableDG = .TRUE.
@@ -1787,12 +1796,19 @@ CONTAINS
           END IF
           nsize = nsize * DOFs
 
+        ELSE IF( VariableNodal ) THEN
+          VariableType = Variable_on_nodes
+          NULLIFY( Perm ) 
+          CALL MakePermUsingMask( CurrentModel, Solver, Solver % Mesh, Mask_Name, &
+              .TRUE., Perm, nsize )
+          nsize = DOFs * nsize
+          
         ELSE IF( VariableGlobal ) THEN
           VariableType = Variable_global
           nSize = DOFs
           NULLIFY( Perm )
 
-        ELSE
+        ELSE ! Follow the primary type
           IF( UseMask ) THEN
             NULLIFY( Perm )
             CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, sec_name, Perm, nsize )
@@ -4799,10 +4815,10 @@ CONTAINS
       IF( Solver % Variable % NonlinConverged > 0 ) EXIT
     END DO
 
-    SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
-    IF( SolverAddr /= 0 ) THEN
-      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
-    END IF
+    !SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
+    !IF( SolverAddr /= 0 ) THEN
+    !  CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+    !END IF
     
 
   END SUBROUTINE ExecSolverInSteps
@@ -5045,6 +5061,20 @@ CONTAINS
        CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
      END IF
 
+     ! Special slot for post-processing solvers
+     ! This makes it convenient to separate the solution and postprocessing.
+     ! This solver must use the same structures as the primary solver. 
+     !-----------------------------------------------------------------------
+     BLOCK 
+       CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
+       ProcName = ListGetString( Solver % Values,'Procedure', Found )
+       SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
+       IF( SolverAddr /= 0 ) THEN
+         CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+       END IF
+     END BLOCK
+       
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
