@@ -4209,7 +4209,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: NodeIndexes(:), IndNodes(:), BCOrder(:)
     INTEGER, ALLOCATABLE :: Indexes(:), PassPerm(:)
-    INTEGER :: BC,i,j,j2,k,l,m,n,t,k1,k2,OffSet
+    INTEGER :: BC,i,j,j2,k,l,m,n,nd,p,t,k1,k2,OffSet
     LOGICAL :: GotIt, periodic, OrderByBCNumbering, ReorderBCs
     REAL(KIND=dp), POINTER :: MinDist(:)
     REAL(KIND=dp), POINTER :: WorkA(:,:,:) => NULL()
@@ -4231,6 +4231,8 @@ CONTAINS
     LOGICAL :: NodesFound, Passive, OffDiagonal, ApplyLimiter
     LOGICAL, POINTER :: LimitActive(:)
     TYPE(Variable_t), POINTER :: Var
+
+    TYPE(Element_t), POINTER :: Parent
 
     INTEGER :: ind, ElemFirst, ElemLast, bf, BCstr, BCend, BCinc
     REAL(KIND=dp) :: SingleVal
@@ -4378,7 +4380,18 @@ CONTAINS
 
             IF ( ActivePart(BC) ) THEN
               n = Element % TYPE % NumberOfNodes
-              Indexes(1:n) = Element % NodeIndexes
+              IF ( Model % Solver % DG ) THEN
+                 Parent => Element % BoundaryInfo % Left
+                 DO p=1,Parent % Type % NumberOfNodes
+                   DO j=1,n
+                      IF (Parent % NodeIndexes(p) == Element % NodeIndexes(j) ) THEN
+                        Indexes(j) = Parent % DGIndexes(p); EXIT
+                      END IF
+                   END DO
+                 END DO
+              ELSE
+                Indexes(1:n) = Element % NodeIndexes
+              END IF
             ELSE
               n = SgetElementDOFs( Indexes )
             END IF
@@ -4399,7 +4412,18 @@ CONTAINS
             Model % CurrentElement => Element
             IF ( ActivePart(BC) ) THEN
               n = Element % TYPE % NumberOfNodes
-              Indexes(1:n) = Element % NodeIndexes
+              IF ( Model % Solver % DG ) THEN
+                 Parent => Element % BoundaryInfo % Left
+                 DO p=1,Parent % Type % NumberOfNodes
+                   DO j=1,n
+                      IF (Parent % NodeIndexes(p) == Element % NodeIndexes(j) ) THEN
+                        Indexes(j) = Parent % DGIndexes(p); EXIT
+                      END IF
+                   END DO
+                 END DO
+              ELSE
+                Indexes(1:n) = Element % NodeIndexes
+              END IF
             ELSE
               n = SgetElementDOFs( Indexes )
             END IF
@@ -4440,7 +4464,18 @@ CONTAINS
             Model % CurrentElement => Element
             IF ( ActivePart(BC) ) THEN
               n = Element % TYPE % NumberOfNodes
-              Indexes(1:n) = Element % NodeIndexes
+              IF ( Model % Solver % DG ) THEN
+                 Parent => Element % BoundaryInfo % Left
+                 DO p=1,Parent % Type % NumberOfNodes
+                   DO j=1,n
+                      IF (Parent % NodeIndexes(p) == Element % NodeIndexes(j) ) THEN
+                        Indexes(j) = Parent % DGIndexes(p); EXIT
+                      END IF
+                   END DO
+                 END DO
+              ELSE
+                Indexes(1:n) = Element % NodeIndexes
+              END IF
             ELSE
               n = SgetElementDOFs( Indexes )
             END IF
@@ -4461,7 +4496,18 @@ CONTAINS
             Model % CurrentElement => Element
             IF ( ActivePart(BC) ) THEN
               n = Element % TYPE % NumberOfNodes
-              Indexes(1:n) = Element % NodeIndexes
+              IF ( Model % Solver % DG ) THEN
+                 Parent => Element % BoundaryInfo % Left
+                 DO p=1,Parent % Type % NumberOfNodes
+                   DO j=1,n
+                      IF (Parent % NodeIndexes(p)  == Element % NodeIndexes(j) ) THEN
+                        Indexes(j) = Parent % DGIndexes(p); EXIT
+                      END IF
+                   END DO
+                 END DO
+              ELSE
+                Indexes(1:n) = Element % NodeIndexes
+              END IF
             ELSE
               n = SgetElementDOFs( Indexes )
             END IF
