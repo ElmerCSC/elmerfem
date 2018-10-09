@@ -1121,6 +1121,9 @@ RETURN
     
     INTEGER, POINTER :: Neighbours(:)
     LOGICAL, POINTER :: FaceInterface(:), IsNeighbour(:)
+
+    INTEGER :: q
+    LOGICAL, ALLOCATABLE :: Failed(:)
     
     TYPE ExchgInfo_t
       INTEGER :: n=0
@@ -1467,12 +1470,15 @@ RETURN
       
       CALL MPI_RECV( Indexes, n, MPI_INTEGER, proc, &
           1001, ELMER_COMM_WORLD, status, ierr )
+
+      ALLOCATE(Failed(n))
+      Failed = .FALSE.
       
       n_part=Particles % NumberOfParticles
       DO j=1,n
         k=SearchElement( nFaces, Faces, Indexes(j) )
         IF ( k <= 0 ) THEN
-          PRINT*,ParEnv % myPE, 'failed'
+          Failed(j) = .TRUE.
           CYCLE
         END IF
         
@@ -1495,44 +1501,59 @@ RETURN
       n_part=Particles % NumberOfParticles
       m = 0
       DO k=1,dim
+        q = 0
         DO l=1,n
           m = m + 1
-          Particles % Coordinate(n_part+l,k) = Buf(m)
+          IF(Failed(l)) CYCLE
+          q = q + 1
+          Particles % Coordinate(n_part+q,k) = Buf(m)
         END DO
       END DO
       
       IF ( ASSOCIATED(Particles % Velocity) ) THEN
         DO k=1,dim
+          q = 0
           DO l=1,n
             m = m + 1
-            Particles % Velocity(n_part+l,k) = Buf(m)
+            IF(Failed(l)) CYCLE
+            q = q + 1
+            Particles % Velocity(n_part+q,k) = Buf(m)
           END DO
         END DO
       END IF
 
       IF ( ASSOCIATED(Particles % Force) ) THEN
         DO k=1,dim
+          q = 0
           DO l=1,n
             m = m + 1
-            Particles % Force(n_part+l,k) = Buf(m)
+            IF(Failed(l)) CYCLE
+            q = q + 1
+            Particles % Force(n_part+q,k) = Buf(m)
           END DO
         END DO
       END IF
 
       IF ( ASSOCIATED(Particles % PrevCoordinate) ) THEN
         DO k=1,dim
+          q = 0
           DO l=1,n
             m = m + 1
-            Particles % PrevCoordinate(n_part+l,k) = Buf(m)
+            IF (Failed(l)) CYCLE
+            q = q + 1
+            Particles % PrevCoordinate(n_part+q,k) = Buf(m)
           END DO
         END DO
       END IF
 
       IF ( ASSOCIATED(Particles % PrevVelocity) ) THEN
         DO k=1,dim
+          q  = 0
           DO l=1,n
             m = m + 1
-            Particles % PrevVelocity(n_part+l,k) = Buf(m)
+            IF (Failed(l)) CYCLE
+            q = q + 1
+            Particles % PrevVelocity(n_part+q,k) = Buf(m)
           END DO
         END DO
       END IF
@@ -1540,9 +1561,12 @@ RETURN
       Var => Particles % Variables
       DO WHILE( ASSOCIATED(Var) )
         IF( Var % Dofs == 1 ) THEN
+          q = 0
           DO l=1,n
             m = m + 1
-            Var % Values(n_part+l) = Buf(m)
+            IF(Failed(l)) CYCLE
+            q = q + 1
+            Var % Values(n_part+q) = Buf(m)
           END DO
         END IF
         Var => Var % Next 
@@ -1559,24 +1583,30 @@ RETURN
         
        m = 0
        IF( ASSOCIATED( Particles % NodeIndex ) ) THEN
+         q = 0
          DO l=1,n
            m = m + 1
-           Particles % NodeIndex(n_part+l) = BufInt(m)
+           IF(Failed(l)) CYCLE
+           q = q + 1
+           Particles % NodeIndex(n_part+q) = BufInt(m)
          END DO
        END IF
 
        IF( ASSOCIATED( Particles % Partition ) ) THEN
+         q = 0
          DO l=1,n
            m = m + 1
-           Particles % Partition(n_part+l) = BufInt(m)
+           IF(Failed(l)) CYCLE
+           q = q + 1
+           Particles % Partition(n_part+q) = BufInt(m)
          END DO
        END IF
 
        DEALLOCATE(BufInt)
       END IF
       
-      Particles % NumberOfParticles = Particles % NumberOfParticles + n
-      DEALLOCATE(Indexes)
+      Particles % NumberOfParticles = Particles % NumberOfParticles + COUNT(.NOT.Failed)
+      DEALLOCATE(Indexes, Failed)
     END DO
     
     DEALLOCATE(Recv_Parts, Neigh, Requests)
@@ -1730,17 +1760,15 @@ RETURN
     !--------------------------
     DO i=1,NoPartitions
       IF( i-1 == ParEnv % MyPe ) CYCLE
-      CALL MPI_iRECV( RecvParts(i), 1, MPI_INTEGER, i-1, &
-          1000, ELMER_COMM_WORLD, requests(i), ierr )
-    END DO
-    
-    DO i=1,NoPartitions
-      IF( i-1 == ParEnv % MyPe ) CYCLE
       CALL MPI_BSEND( SentParts(i), 1, MPI_INTEGER, i-1, &
           1000, ELMER_COMM_WORLD, ierr )
     END DO
-    CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
 
+    DO i=1,NoPartitions
+      IF( i-1 == ParEnv % MyPe ) CYCLE
+      CALL MPI_RECV( RecvParts(i), 1, MPI_INTEGER, i-1, &
+          1000, ELMER_COMM_WORLD, Status, ierr )
+    END DO
     
     n = SUM(RecvParts)
     CALL Info('ParticleAdvectParallel','Particles to be recieved: '//TRIM(I2S(n)),Level=12)
