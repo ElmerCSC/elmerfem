@@ -1084,27 +1084,27 @@ CONTAINS
 
          CASE(4)
              nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+             bubbleP = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 ) - 2
 
          CASE(5)
              nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
                     (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
          CASE(6)
              nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2) - 1
 
          CASE(7)
              nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3) - 2
 
          CASE(8)
              nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4) - 4
          END SELECT
       END IF
 
