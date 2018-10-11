@@ -83,5 +83,5 @@ Boundary Condition 3
   DNU 1 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 9.14023441E-07      ! This corresponds to the default strain reduction
+Solver 1 :: Reference Norm = Real 9.14010863E-07      ! This corresponds to the default strain reduction
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
