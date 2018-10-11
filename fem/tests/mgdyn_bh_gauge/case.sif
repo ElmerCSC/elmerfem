@@ -89,14 +89,15 @@ solver 5
   equation = scalars
   Procedure = "SaveData" "SaveScalars"
   show norm index = 2
-  parallel append = logical true
+  parallel Reduce = true
+  filename = f.dat
 end
 
 solver 6
   equation = scalars2
   Procedure = "SaveData" "SaveScalars"
   show norm index = 3
-  parallel append = logical true
+  parallel reduce = true
 end
 
 equation 1
