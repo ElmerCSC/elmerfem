@@ -1940,11 +1940,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    IF(ASSOCIATED(NF)) THEN
      CALL NodalTorque(Torque, TorqueGroups)
-     DO i=1,size(TorqueGroups)
-       write (Message,'("res: Group ", i0, " torque")'), TorqueGroups(i)
-       CALL ListAddConstReal(Model % Simulation, trim(Message), Torque(i))
-       write (Message,'("Torque Group ", i0, " torque: ", f0.8)'), TorqueGroups(i), Torque(i)
-       call Info( 'MagnetoDynamicsCalcFields', Message)
+     DO i=1,SIZE(TorqueGroups)
+       j = TorqueGroups(i)
+       WRITE (Message,'(A)') 'res: Group '//TRIM(I2S(j))//' torque'
+       CALL ListAddConstReal(Model % Simulation, TRIM(Message), Torque(i))
+       WRITE (Message,'(A,F0.8)') 'Torque Group '//TRIM(I2S(j))//' torque:', Torque(i)
+       CALL Info( 'MagnetoDynamicsCalcFields', Message)
      END DO
 
      CALL NodalTorqueDeprecated(TorqueDeprecated, Found)
@@ -2468,8 +2469,8 @@ CONTAINS
      DO k = 1, num_axes
        nrm = sqrt(sum(axes(k,:)*axes(k,:))) 
        IF (nrm .EQ. 0._dp) THEN
-         WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")'), k
-         CALL Warn('MagnetoDynamicsCalcFields',Message)
+         CALL Warn('MagnetoDynamicsCalcFields',&
+             'Axis for the torque group '//TRIM(I2S(k))//' is a zero vector')
          CYCLE
        END IF
        axes(k,:) = axes(k,:) / nrm

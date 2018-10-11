@@ -131,7 +131,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
 
     CASE default
-      WRITE (Message,*), 'Unsupported degree-gauge-transient combination', Paramlist
+      WRITE (Message,*) 'Unsupported degree-gauge-transient combination', Paramlist
       CALL Fatal('WhitneyAVSolver_Init0', Message)
 
     END SELECT
@@ -305,9 +305,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   HasStabC = HasStabC .OR. Found
 
   IF (HasStabC .and. (SteadyGauge .or. TransientGauge)) THEN
-    WRITE (Message, *), 'Lagrange Gauge penalization coefficient', gauge_penalize_c
+    WRITE (Message, *) 'Lagrange Gauge penalization coefficient', gauge_penalize_c
     CALL Info('WhitneyAVSolver', message)
-    WRITE (Message, *), 'Lagrange Gauge penalization coefficient mass', gauge_penalize_m
+    WRITE (Message, *) 'Lagrange Gauge penalization coefficient mass', gauge_penalize_m
     CALL Info('WhitneyAVSolver', message)
   END IF
 

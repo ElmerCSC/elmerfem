@@ -91,7 +91,7 @@ CONTAINS
       DO n1 = 1,SIZE(M % diag)
         M % Diag(n1) = A % Diag(n1) 
         IF (M % diag(n1) == 0) THEN
-          write (*,*), 'diag', n1, 'is zero'
+          WRITE (*,*) 'diag', n1, 'is zero'
         end if
       END DO
 

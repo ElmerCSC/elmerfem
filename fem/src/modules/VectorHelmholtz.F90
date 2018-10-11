@@ -1157,7 +1157,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
      hdotE_r = ParallelReduction(hdotE_r)
      hdotE_i = ParallelReduction(hdotE_i)
-     write (Message,*), 'Energy Functional value:', hdotE_r, hdotE_i
+     write (Message,*) 'Energy Functional value:', hdotE_r, hdotE_i
      CALL Info('VectorHelmholtzSolver',Message)
      CALL ListAddConstReal(Model % Simulation, 'res: Energy Functional', hdotE_r)
      CALL ListAddConstReal(Model % Simulation, 'res: Energy Functional im', hdotE_i)
