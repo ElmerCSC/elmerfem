@@ -2298,12 +2298,13 @@ RETURN
   !> Initialize particle positions and velocities with a number of different
   !> methods, both random and uniform.
   !-------------------------------------------------------------------------
-  SUBROUTINE InitializeParticles( Particles, InitParticles, AppendParticles, Group ) 
+  SUBROUTINE InitializeParticles( Particles, InitParticles, AppendParticles, Group, SaveOrigin ) 
     
     TYPE(Particle_t), POINTER :: Particles
     INTEGER, OPTIONAL :: InitParticles
     LOGICAL, OPTIONAL :: AppendParticles
     INTEGER, OPTIONAL :: Group
+    LOGICAL, OPTIONAL :: SaveOrigin
     
     TYPE(ValueList_t), POINTER :: Params, BodyForce 
     TYPE(Variable_t), POINTER :: Var
@@ -2317,7 +2318,7 @@ RETURN
     CHARACTER(LEN=MAX_NAME_LEN) :: InitMethod
     INTEGER :: i,j,k,l,n,vdofs,nonodes, InitStatus, TotParticles
     INTEGER, POINTER :: MaskPerm(:), InvPerm(:), NodeIndexes(:)
-    LOGICAL :: Found, GotIt, GotMask, RequirePositivity, ContinuousNumbering, GotWeight
+    LOGICAL :: Found, GotIt, GotMask, RequirePositivity, GotWeight
     REAL(KIND=dp), POINTER :: InitialValues(:,:)
     REAL(KIND=dp) :: mass,boltz,temp,coeff,eps,frac,meanval 
     REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), Diam, DetJ, MinDetJ, MaxDetJ, &
@@ -2325,7 +2326,7 @@ RETURN
     REAL(KIND=dp), POINTER :: MaskVal(:)
     REAL(KIND=dp), ALLOCATABLE :: Weight(:)
     INTEGER :: nx,ny,nz,nmax,ix,iy,iz,ind
-    LOGICAL :: CheckForSize, Parallel    
+    LOGICAL :: CheckForSize, Parallel, SaveParticleOrigin
     LOGICAL, POINTER :: DoneParticle(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, str
     
@@ -2336,6 +2337,12 @@ RETURN
     Params => ListGetSolverParams()
     dim = Particles % Dim
     Parallel = ( ParEnv % PEs > 1 )
+
+    IF( PRESENT( SaveOrigin ) ) THEN
+      SaveParticleOrigin = SaveOrigin
+    ELSE
+      SaveParticleOrigin = .FALSE.
+    END IF
     
     !------------------------------------------------------------------------
     ! Initialize the timestepping strategy stuff
@@ -2506,6 +2513,8 @@ RETURN
     ELSE
       Offset = 0
     END IF
+
+    
     
     IF( PRESENT( InitParticles ) ) THEN
       NewParticles = InitParticles
@@ -2570,6 +2579,21 @@ RETURN
     !-------------------------------------------------------------------------    
     CALL AllocateParticles( Particles, LastParticle )
 
+    IF( SaveParticleOrigin ) THEN   
+      IF(.NOT. ASSOCIATED( Particles % NodeIndex ) ) THEN
+        ALLOCATE( Particles % NodeIndex( NewParticles ) )
+        Particles % NodeIndex = 0
+      END IF
+       
+      IF( Parallel ) THEN
+        IF(.NOT. ASSOCIATED( Particles % Partition ) ) THEN
+          ALLOCATE( Particles % Partition( NewParticles ) )
+        END IF
+        Particles % Partition = ParEnv % MyPe + 1
+      END IF
+    END IF
+        
+    
     IF( Particles % NumberOfGroups > 0 ) THEN
       IF( .NOT. PRESENT( Group ) ) THEN
         CALL Fatal('InitializeParticles','Group used inconsistently!')
@@ -2599,19 +2623,8 @@ RETURN
         IF( dim == 3 ) Coordinate(k,3) = Mesh % Nodes % z(j)
       END DO
 
-      ContinuousNumbering = .FALSE.
-      IF( GotMask ) THEN
-        IF( NewParticles == MAXVAL( MaskPerm ) ) ContinuousNumbering = .TRUE.
-      ELSE IF( NewParticles == Mesh % NumberOfNodes ) THEN
-        ContinuousNumbering = .TRUE.
-      END IF
 
-      IF( ContinuousNumbering ) THEN
-        IF(.NOT. ASSOCIATED( Particles % NodeIndex ) ) THEN
-          ALLOCATE( Particles % NodeIndex( NewParticles ) )
-          Particles % NodeIndex = 0
-        END IF
-        
+      IF( SaveParticleOrigin ) THEN
         DO i=1,Mesh % NumberOfBulkElements
           CurrentElement => Mesh % Elements(i)
           NodeIndexes =>  CurrentElement % NodeIndexes
@@ -2626,14 +2639,6 @@ RETURN
             Particles % NodeIndex(k) = NodeIndexes(j)
           END DO
         END DO
-
-        IF( Parallel ) THEN
-          IF(.NOT. ASSOCIATED( Particles % Partition ) ) THEN
-            ALLOCATE( Particles % Partition( NewParticles ) )
-          END IF
-          Particles % Partition = ParEnv % MyPe + 1
-        END IF
-
       END IF
 
 
@@ -2795,6 +2800,12 @@ RETURN
           Particles % ElementIndex(i) = j
         END IF
       END DO
+
+
+      IF( SaveParticleOrigin ) THEN
+        ! For now the initial index is confusingly named always "NodeIndex"
+        Particles % NodeIndex = Particles % ElementIndex
+      END IF
 
       
     CASE ('sphere random')
@@ -2987,19 +2998,41 @@ RETURN
       IF(.NOT. GotIt) VariableName = 'Flow Solution'
       Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
       IF( .NOT. ASSOCIATED( Var ) ) THEN
-        CALL Warn('InitializeParticles','Velocity variable needed for method >nodal velocity<')
-      ELSE        
-        vdofs = Var % Dofs
-        DO i=1,NewParticles
-          k = Offset + i
-          l = Particles % NodeIndex(i)
-          l = Var % Perm(l)
-          DO j=1,dim
-            Velocity(k,j) = Var % Values(vdofs*(l-1)+j)
-          END DO
-        END DO
+        CALL Fatal('InitializeParticles','Velocity variable needed for method >nodal velocity<')
       END IF
 
+      vdofs = Var % Dofs
+      DO i=1,NewParticles
+        k = Offset + i
+        l = Particles % NodeIndex(i)
+        l = Var % Perm(l)
+        DO j=1,dim
+          Velocity(k,j) = Var % Values(vdofs*(l-1)+j)
+        END DO
+      END DO
+
+    CASE ('elemental velocity') 
+      CALL Info('InitializeParticles',&
+          'Initializing velocities from the corresponding elemental velocity',Level=10)
+      
+      VariableName = ListGetString( Params,'Velocity Variable Name',GotIt )
+      IF(.NOT. GotIt) VariableName = 'Flow Solution'
+      Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
+      IF( .NOT. ASSOCIATED( Var ) ) THEN
+        CALL Fatal('InitializeParticles','Velocity variable needed for method >elemental velocity<')
+      END IF
+
+      vdofs = Var % Dofs
+      DO i=1,NewParticles
+        k = Offset + i
+        l = Particles % NodeIndex(i) ! now an elemental index
+        NodeIndexes => Mesh % Elements(l) % NodeIndexes
+        DO j=1,dim
+          Velocity(k,j) = SUM( Var % Values(vdofs*(Var % Perm(NodeIndexes)-1)+j) ) / SIZE( NodeIndexes )
+        END DO
+      END DO
+
+      
     CASE ('thermal random')  
        CALL Info('InitializeParticles',&
           'Initializing velocities from a thermal distribution',Level=10)
