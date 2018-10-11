@@ -1775,8 +1775,15 @@ CONTAINS
                 
                 m = CurrentElement % ElementIndex
                 
-                IF( ASSOCIATED( Perm ) ) m = Perm( m ) 
-                
+                IF( ASSOCIATED( Perm ) ) THEN                  
+                  IF( m > SIZE( Perm ) ) THEN
+                    IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN
+                      m = CurrentElement % BoundaryInfo % Left % ElementIndex
+                    END IF
+                  END IF
+                  m = Perm( m ) 
+                END IF
+                                  
                 IF( sdofs == 1 ) THEN
                   ElemVectVal(1) = Values(m) 
                 ELSE

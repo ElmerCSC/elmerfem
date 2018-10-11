@@ -6906,14 +6906,11 @@ CONTAINS
         Var => Var % Next
         CYCLE        
       ELSE IF( Var % TYPE == Variable_on_gauss_points ) THEN
-        CALL Warn('CreateListForSaving','Gauss point fields might not be fully functional!')
-        !Var => Var % Next
-        !CYCLE        
+        CONTINUE
+
       ELSE IF( Var % TYPE == Variable_on_elements ) THEN
-        CALL Warn('CreateListForSaving','Elemental fields might not be fully functional!')
-        
-        !Var => Var % Next
-        !CYCLE        
+        CONTINUE
+
       END IF
 
       ! Skip if variable is otherwise strange in size
