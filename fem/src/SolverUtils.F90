@@ -5104,7 +5104,11 @@ CONTAINS
       dim = CoordinateSystemDimension()
 
       IF ( DOF > 0 ) THEN
-        Work(1:n)  = ListGetReal( ValueList, Name, n, Indexes, gotIt )
+        IF (Model % Solver % DG) THEN
+          Work(1:n)  = ListGetReal( ValueList, Name, n, Element % NodeIndexes, gotIt )
+        ELSE
+          Work(1:n)  = ListGetReal( ValueList, Name, n, Indexes, gotIt )
+        END IF
         IF ( .NOT. GotIt ) THEN
           Work(1:n)  = ListGetReal( ValueList, Name(1:nlen) // ' DOFs', n, Indexes, gotIt )
         END IF
@@ -5114,7 +5118,11 @@ CONTAINS
       
       IF ( gotIt ) THEN
         IF ( Conditional ) THEN
-          Condition(1:n) = ListGetReal( ValueList, CondName, n, Indexes, gotIt )
+          IF (Model % Solver % DG) THEN
+            Condition(1:n) = ListGetReal( ValueList, CondName, n, Element % NodeIndexes, gotIt )
+          ELSE
+            Condition(1:n) = ListGetReal( ValueList, CondName, n, Indexes, gotIt )
+          END IF
           Conditional = Conditional .AND. GotIt
         END IF
 
