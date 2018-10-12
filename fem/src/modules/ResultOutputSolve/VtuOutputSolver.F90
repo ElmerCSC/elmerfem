@@ -1775,8 +1775,15 @@ CONTAINS
                 
                 m = CurrentElement % ElementIndex
                 
-                IF( ASSOCIATED( Perm ) ) m = Perm( m ) 
-                
+                IF( ASSOCIATED( Perm ) ) THEN                  
+                  IF( m > SIZE( Perm ) ) THEN
+                    IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN
+                      m = CurrentElement % BoundaryInfo % Left % ElementIndex
+                    END IF
+                  END IF
+                  m = Perm( m ) 
+                END IF
+                                  
                 IF( sdofs == 1 ) THEN
                   ElemVectVal(1) = Values(m) 
                 ELSE
@@ -2327,7 +2334,9 @@ CONTAINS
         END IF
         
         VarType = Solution % Type
-        IF( VarType == Variable_on_nodes_on_elements ) THEN
+        IF( VarType == Variable_on_nodes_on_elements .OR. &
+            VarType == Variable_on_elements .OR. &
+            VarType == Variable_on_gauss_points ) THEN
           IF( .NOT. ( ( DG .OR. DN ) .AND. SaveElemental ) ) CYCLE
         END IF
 
@@ -2438,7 +2447,9 @@ CONTAINS
           END IF
           
           VarType = Solution % Type
-          IF( VarType /= Variable_on_nodes_on_elements ) CYCLE
+          IF( VarType /= Variable_on_nodes_on_elements .AND. &
+              VarType /= Variable_on_elements .AND. &
+              VarType /= Variable_on_gauss_points ) CYCLE
 
           IF( ASSOCIATED(Solution % EigenVectors)) THEN
             NoModes = SIZE( Solution % EigenValues )

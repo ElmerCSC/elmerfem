@@ -4166,9 +4166,9 @@ CONTAINS
       DO i=1,SIZE( A % ConstrainedDOF )
         IF( A % ConstrainedDOF(i) ) maxv = MAX( A % DValues(i), maxv ) 
       END DO
-      maxv = ParallelReduction( maxv, 1 ) 
+      maxv = ParallelReduction( maxv, 2 ) 
     END IF
-
+    
     IF( OperNo == 0 ) THEN    
       val = maxv - minv
     ELSE IF( OperNo == 1 ) THEN

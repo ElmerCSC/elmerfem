@@ -242,6 +242,11 @@ CONTAINS
     DO t=1,Solver % NumberOfActiveElements
 
       Element => GetActiveElement(t)
+
+      IF( Element % TYPE % ElementCode > 500 ) THEN
+        CALL Fatal('ReynoldsSolver','This is a reduced dimensional solver for 1D and 2D only!')
+      END IF
+      
       n  = GetElementNOFNodes()
       nd = GetElementNOFDOFs()
       
