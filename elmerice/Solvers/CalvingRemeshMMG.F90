@@ -79,9 +79,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:)
+  REAL(KIND=dp), POINTER :: PArray(:,:)=> NULL()
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:)
-  LOGICAL :: ImBoss, Debug=.FALSE.
+  LOGICAL :: ImBoss, Found, Debug=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
@@ -108,20 +109,44 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !For testing - set a calving levelset function to mimick calving events
   !-------------------
 
-  test_point = (/491600.0, -2290000.0,79.9166641235/)
-  ! test_point = (/484877.0, -2287086.0, 300.0/)
-  test_thresh = 1500.0
-  remesh_thresh = 1000.0
   front_BC_id = 1
 
-  ! hmin = 20.0
-  ! hmax = 100.0
-  ! hgrad = 0.5
-  ! hausd = 10.0
-  hmin = 100.0
-  hmax = 4000.0
-  hgrad = 0.5
-  hausd = 50.0
+  hmin = ListGetConstReal(SolverParams, &
+       "Mesh Hmin", Found)
+  IF(.NOT. Found) hmin = 20.0
+
+  hmax = ListGetConstReal(SolverParams, &
+       "Mesh Hmax", Found)
+  IF(.NOT. Found) hmax = 4000.0
+
+  hgrad = ListGetConstReal(SolverParams, &
+       "Mesh Hgrad", Found)
+  IF(.NOT. Found) hgrad = 0.5
+
+  hausd = ListGetConstReal(SolverParams, &
+       "Mesh Hausd", Found)
+  IF(.NOT. Found) hausd = 20.0
+
+  PArray => ListGetConstRealArray(SolverParams, &
+       "Test Point", Found)
+  IF(Found) THEN
+    test_point = PArray(1:3,1)
+  ELSE 
+    test_point = (/491600.0, -2290000.0,79.9166641235/)
+  END IF
+
+  test_thresh = ListGetConstReal(SolverParams, &
+       "Test Calve Dist", Found)
+  IF(.NOT. Found) test_thresh = 1500.0
+
+  remesh_thresh = ListGetConstReal(SolverParams, &
+       "Test Remesh Dist", Found)
+  IF(.NOT. Found) remesh_thresh = 1000.0
+
+  PRINT *,ParEnv % MyPE,' hmin: ',hmin
+  PRINT *,ParEnv % MyPE,' hmax: ',hmax
+  PRINT *,ParEnv % MyPE,' hausd: ',hausd
+  PRINT *,ParEnv % MyPE,' test_point: ',test_point
 
   ALLOCATE(test_dist(NNodes),&
        test_lset(NNodes),&
@@ -406,6 +431,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       CALL MMG3D_SaveMesh(mmgMesh,"test_out.mesh",LEN(TRIM("test_out.mesh")),ierr)
 
       CALL Get_MMG3D_Mesh(NewMeshR, .TRUE.)
+
+      NewMeshR % Name = Mesh % Name
 
       NNodes = NewMeshR % NumberOfNodes
       NBulk = NewMeshR % NumberOfBulkElements
