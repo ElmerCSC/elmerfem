@@ -5041,7 +5041,7 @@ CONTAINS
                END IF
 #ifdef HAVE_LUA
              ELSE
-               CALL ElmerEvalLua(LuaState, ptr, T, F(i), varcount)
+               CALL ElmerEvalLua(LuaState, ptr, T, F(i), Handle % varcount)
              END IF
 #endif
 
@@ -5138,7 +5138,7 @@ CONTAINS
                
 #ifdef HAVE_LUA
              ELSE
-               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, varcount)
+               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, Handle % varcount)
              END IF
 #endif
              ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
