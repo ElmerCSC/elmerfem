@@ -431,7 +431,12 @@ END INTERFACE
      TYPE(ValueListEntry_t), POINTER :: Head => Null()
    END TYPE ValueList_t
 
+   
+   TYPE VariableTable_t     
+     TYPE(Variable_t), POINTER :: Variable
+   END TYPE VariableTable_t
 
+   
    ! This is a tentative data type to speed up the retrieval of parameters
    ! at elements.
    !----------------------------------------------------------------------
@@ -467,12 +472,14 @@ END INTERFACE
      LOGICAL :: GlobalEverywhere = .FALSE.
      LOGICAL :: GlobalInList = .FALSE.
      LOGICAL :: EvaluateAtIP = .FALSE.
+     LOGICAL :: SomeVarAtIp = .FALSE.
      LOGICAL :: SomewhereEvaluateAtIP = .FALSE.
      LOGICAL :: NotPresentAnywhere = .FALSE.
      LOGICAL :: UnfoundFatal = .FALSE.
      REAL(KIND=dp) :: minv, maxv
      LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
-
+     TYPE(VariableTable_t) :: VarTable(32)
+     INTEGER :: VarCount
      
    END TYPE ValueHandle_t
 
@@ -593,11 +600,6 @@ END INTERFACE
      TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
    END TYPE Variable_t
 
-   
-   TYPE VariableTable_t     
-     TYPE(Variable_t), POINTER :: Variable
-   END TYPE VariableTable_t
-   
 !------------------------------------------------------------------------------
    TYPE ListMatrixEntry_t
      INTEGER :: Index = -1

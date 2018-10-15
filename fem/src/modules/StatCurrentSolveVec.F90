@@ -57,11 +57,7 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found, CalculateElemental, CalculateNodal
   INTEGER :: dim
-  
-  IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-    CALL Fatal(Caller,'Implemented only in cartesian coordinates')
-  END IF
-  
+   
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
 
@@ -109,9 +105,6 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
         'Nodal Current[Nodal Current:'//TRIM(I2S(dim))//']' )
   END IF
   
-  CALL ListUntreatedFatal( Params,'Power Control',Caller)
-  CALL ListUntreatedFatal( Params,'Current Control',Caller)
-
 END SUBROUTINE StatCurrentSolver_Init
 
 
@@ -135,7 +128,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Norm
   INTEGER :: n, nb, nd, t, active
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
-  LOGICAL :: Found, VecAsm, InitHandles
+  LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver'
 !------------------------------------------------------------------------------
@@ -146,6 +139,8 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   CALL DefaultStart()
 
   Mesh => GetMesh()
+  
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
   
   maxiter = ListGetInteger( GetSolverParams(),&
       'Nonlinear System Max Iterations',Found,minv=1)
@@ -167,6 +162,11 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     nColours = GetNOFColours(Solver)
     VecAsm = (nColours > 1) .OR. (nthr == 1)
 
+    IF( VecAsm .AND. AxiSymmetric ) THEN
+      CALL Info(Caller,'Vectorized loop not yet available in axisymmetric case',Level=12)    
+      VecAsm = .FALSE.
+    END IF
+    
     IF( VecAsm ) THEN
       CALL Info(Caller,'Performing vectorized bulk element assembly',Level=12)
     ELSE
@@ -230,7 +230,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
        !$OMP DO
        DO t=1,Active
           Element => GetBoundaryElement(t)
-          ! WRITE (*,*) Element % ElementIndex
+          !WRITE (*,*) Element % ElementIndex
           totelem = totelem + 1
           IF(ActiveBoundaryElement(Element)) THEN
              n  = GetElementNOFNodes(Element)
@@ -410,8 +410,6 @@ CONTAINS
     
     dim = CoordinateSystemDimension()
 
-    ! Currently the vectorized basis always use p-elements which have different
-    ! local coordinate convention
     IP = GaussPoints( Element )
 
     ! Allocate storage if needed
@@ -431,14 +429,18 @@ CONTAINS
     MASS  = 0._dp
     STIFF = 0._dp
     FORCE = 0._dp
-
+    
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
-
+      
+      IF ( AxiSymmetric ) THEN
+        Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
+      END IF
+      
       ! diffusion term (D*grad(u),grad(v)):
       ! -----------------------------------
       CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found ) 
@@ -450,16 +452,16 @@ CONTAINS
         MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + Weight * &
             EpsAtIp * MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
       END IF
-
+      
       SourceAtIP = ListGetElementReal( SourceCoeff_h, Basis, Element, Found ) 
       IF( Found ) THEN
         FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
       END IF
     END DO
-      
+    
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
-
+    
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -517,6 +519,10 @@ CONTAINS
               IP % W(t), detJ, Basis, dBasisdx )
 
       Weight = IP % s(t) * DetJ
+      
+      IF ( AxiSymmetric ) THEN
+        Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
+      END IF
 
       ! Evaluate terms at the integration point:
       !------------------------------------------
@@ -578,7 +584,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),MASS(:,:),FORCE(:,:)  
   INTEGER, POINTER :: WeightPerm(:)
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver_post'
-  LOGICAL :: CalcCurrent, CalcField, CalcHeating, NeedScaling, ConstantWeights
+  LOGICAL :: CalcCurrent, CalcField, CalcHeating, NeedScaling, ConstantWeights, Axisymmetric
   TYPE(ValueList_t), POINTER :: Params
   REAL(KIND=dp) :: HeatingTot, Voltot
   
@@ -588,20 +594,19 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
     LOGICAL :: NodalField = .FALSE.
     LOGICAL :: HaveVar = .FALSE.
   END TYPE PostVars_t
-  TYPE(PostVars_t), POINTER :: PostVars(:)
+  TYPE(PostVars_t) :: PostVars(8)
   !------------------------------------------------------------------------------
 
   CALL Info(Caller,'------------------------------------------------')
   CALL Info(Caller,'Calculating postprocessing fields')
-
+  
   Mesh => GetMesh()
   Params => GetSolverParams()
-
+    
   ConstantWeights = ListGetLogical( Params,'Constant Weights',Found ) 
 
-  ! We use a type for the different output variables for reasons of coding economy
-  ALLOCATE( PostVars(8) )
-
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )     
+  
   ! Joule losses: type 1, component 1
   PostVars(1) % Var => VariableGet( Mesh % Variables, 'Nodal Joule Heating')
   PostVars(1) % NodalField = .TRUE.
@@ -734,7 +739,11 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
-      
+
+      IF ( AxiSymmetric ) THEN
+        Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
+      END IF
+       
       DO i=1,n
         DO j=1,n
           MASS(i,j) = MASS(i,j) + Weight * Basis(i) * Basis(j)
@@ -872,10 +881,25 @@ CONTAINS
    TYPE(Variable_t), POINTER :: pVar
    REAL(KIND=dp), ALLOCATABLE :: tmp(:)
    LOGICAL :: DoneWeight = .FALSE.
-     
+   REAL(KIND=dp) :: PotDiff, Resistance, ControlTarget, ControlScaling
+   
    VolTot     = ParallelReduction(VolTot)
    HeatingTot = ParallelReduction(HeatingTot)
-        
+
+  
+   WRITE( Message, * ) 'Total Heating Power   :', Heatingtot
+   CALL Info( Caller, Message, Level=6 )
+   CALL ListAddConstReal( Model % Simulation,'RES: Total Joule Heating', Heatingtot )
+   
+   PotDiff = DirichletDofsRange( Solver )     
+   IF( PotDiff > TINY( PotDiff ) ) THEN
+     Resistance = PotDiff**2 / HeatingTot
+     WRITE( Message, * ) 'Effective Resistance  :', Resistance
+     CALL Info( 'StatCurrentSolve', Message, Level=6 )
+     CALL ListAddConstReal( Model % Simulation,'RES: Effective Resistance', Resistance )
+   END IF
+     
+    
    DO Vari = 1, 8
      pVar => PostVars(Vari) % Var
      IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
@@ -912,6 +936,46 @@ CONTAINS
      END DO
    END DO
 
+   ! Apply physical scaling in the end, if requested
+   !------------------------------------------------------------------------
+   ControlTarget = GetCReal( Params,'Power Control',Found)
+   IF( Found ) THEN
+     CALL Info( Caller,'Scaling power to desired value',Level=6)
+     ControlScaling = SQRT( ControlTarget / HeatingTot )
+   END IF
+
+   IF( .NOT. Found ) THEN
+     ControlTarget = GetCReal( Params,'Current Control', Found ) 
+     IF( Found ) THEN
+       CALL Info( Caller,'Scaling current to desired value',Level=6)      
+       IF( PotDiff < TINY( PotDiff ) ) THEN
+         CALL Fatal(Caller,'Current cannot be controlled without pot. difference')
+       END IF
+       ControlScaling = ControlTarget / ( HeatingTot / PotDiff )
+     END IF
+   END IF
+     
+   IF( Found ) THEN
+     WRITE( Message, * ) 'Control Scaling       :', ControlScaling
+     CALL Info( 'StatCurrentSolve', Message, Level=4 )
+     CALL ListAddConstReal( Model % Simulation, &
+         'RES: CurrentSolver Scaling', ControlScaling )
+     Solver % Variable % Values = ControlScaling * Solver % Variable % Values
+          
+     DO i=1,dofs
+       pVar => PostVars(Vari) % Var
+       IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+       IF( PostVars(i) % FieldType == 1 ) THEN
+         ! Joule heating scales quadratically
+         pVar % Values = (ControlScaling**2) * pVar % Values
+       ELSE
+         ! other fields save linearly         
+         pVar % Values = ControlScaling * pVar % Values
+       END IF
+     END DO
+   END IF
+     
+   
 !------------------------------------------------------------------------------
  END SUBROUTINE GlobalPostScale
 !------------------------------------------------------------------------------
