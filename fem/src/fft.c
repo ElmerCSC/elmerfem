@@ -386,7 +386,7 @@ static int _FFT_Level;
  *                        / the number of bits.
  * T: COMPLEX[N]          / the array to be operated on.
  */
-BitReverseArray( N, T )
+void BitReverseArray( N, T )
     int N;
     COMPLEX *T;
 {
@@ -456,7 +456,7 @@ void sort_shift(int lbeg,int lend,double *Key,int *Ord)
    }
 
 }
-sort( N, Key, Ord )
+void sort( N, Key, Ord )
     int N;
     int *Ord;
     double *Key;
@@ -483,7 +483,7 @@ sort( N, Key, Ord )
  *
  * Parameters: NONE.
  */
-static FFTInit( )
+static int FFTInit( )
 {
     static int InitDone = FALSE;
 
@@ -518,7 +518,7 @@ static FFTInit( )
  * T(n) = sum(F(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N-1
  *
  */
-static FFTKernel( N, F, T )
+static int FFTKernel( N, F, T )
     int N;
     COMPLEX *F;
     COMPLEX *T;
@@ -713,7 +713,7 @@ void FC_FUNC(fcfftb,FCFFTB)( N, F, T )
  * F(n) = sum(T(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N/2
  *
  */
-rfftf( N, T, F )
+void rfftf( N, T, F )
     int N;
     double   *T;
     COMPLEX *F;
@@ -793,7 +793,7 @@ rfftf( N, T, F )
  * T(n) = sum(F(k)*exp(i*2*pi*n*k/N)), k=0..N-1,N=0..N-1
  *
  */
-rfftb( N, F, T )
+void rfftb( N, F, T )
     int N;
     COMPLEX *F;
     double   *T;
@@ -883,7 +883,7 @@ rfftb( N, F, T )
 }
 
 #ifdef USE_ISO_C_BINDINGS
-frfftb( N, F, T )
+void frfftb( N, F, T )
     int *N;
     COMPLEX *F;
     double   *T;
@@ -922,7 +922,7 @@ FC_FUNC(frfftb,FRFFTB)( N, F, T )
  *       }
  *
  */
-gfftb( nF, freq, nT, time )
+void gfftb( nF, freq, nT, time )
     int nT;
     int nF;
     double *time;
@@ -976,7 +976,7 @@ gfftb( nF, freq, nT, time )
  *       int FBin;
  *       }
  */
-gfftf( nT, time, nF, freq )
+void gfftf( nT, time, nF, freq )
     int nT;
     int nF;
     FREQ *freq;
@@ -1032,7 +1032,7 @@ gfftf( nT, time, nF, freq )
  *
  * F(m,n) = sum(T(k,l)*exp(-i*2*pi*(m*k/M+n*l/N))), k,m=0..M-1; l,n=0..N-1
  */
-cfftf2D( M, N, T, F ) 
+void cfftf2D( M, N, T, F ) 
     int M,N;
     COMPLEX *T;
     COMPLEX *F;
@@ -1070,7 +1070,7 @@ cfftf2D( M, N, T, F )
  *
  * T(m,n) = sum(F(k,l)*exp(i*2*pi*(m*k/M+n*l/N))), k,m=0..M-1; l,n=0..N-1
  */
-cfftb2D( M, N, F, T ) 
+void cfftb2D( M, N, F, T ) 
     int M,N;
     COMPLEX *F;
     COMPLEX *T;
@@ -1102,7 +1102,7 @@ cfftb2D( M, N, F, T )
  * F(l,m,n) = sum(T(i,j,k)*exp(-i*2*pi*(l*i/L+m*j/M+n*k/N))), 
  *                                         l,i=0..L-1; m,j=0..M-1; k,n=0..N-1
  */
-cfftf3D( L, M, N, T, F )
+void cfftf3D( L, M, N, T, F )
     int L,M,N;
     COMPLEX *T;
     COMPLEX *F;
@@ -1140,7 +1140,7 @@ cfftf3D( L, M, N, T, F )
  * T(l,m,n) = sum(F(i,j,k)*exp(i*2*pi*(l*i/L+m*j/M+n*k/N))), 
  *                                         l,i=0..L-1; m,j=0..M-1; k,n=0..N-1
  */
-cfftb3D( L, M, N, F, T )
+void cfftb3D( L, M, N, F, T )
     int L,M,N;
     COMPLEX *F;
     COMPLEX *T;
@@ -1169,7 +1169,7 @@ cfftb3D( L, M, N, F, T )
  * F   : COMPLEX F[D[N-1]][D[N-2]]...[D[0]]    / transform array.
  *                                             / may point to same memory as T.
  */
-cfftfND( N, D, T, F )
+void cfftfND( N, D, T, F )
     int  N;
     int *D;
     COMPLEX *T;
@@ -1246,7 +1246,7 @@ cfftfND( N, D, T, F )
  * T   : COMPLEX F[D[N-1]][D[N-2]]...[D[0]]    / output array.
  *                                             / may point to same memory as T.
  */
-cfftbND( N, D, F, T )
+void cfftbND( N, D, F, T )
     int  N;
     int *D;
     COMPLEX *F;

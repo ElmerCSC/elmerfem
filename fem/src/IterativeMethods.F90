@@ -53,6 +53,9 @@
 #ifndef HUTI_SGSPARAM
 #define HUTI_SGSPARAM dpar(3)
 #endif
+#ifndef HUTI_PSEUDOCOMPLEX
+#define HUTI_PSEUDOCOMPLEX ipar(7)
+#endif
 #ifndef HUTI_BICGSTABL_L
 #define HUTI_BICGSTABL_L ipar(16)
 #endif
@@ -82,6 +85,82 @@ MODULE IterativeMethods
 CONTAINS
   
 
+  ! When treating a complex system with iterative solver norm, matrix-vector product are
+  ! similar in real valued and complex valued systems. However, the inner product is different.
+  ! For pseudo complex systems this routine generates also the complex part of the product.
+  ! This may have a favourable effect on convergence.
+  !
+  ! This routine has same API as the fully real valued system but every second call returns
+  ! the missing complex part.
+  !
+  ! This routine assumes that in x and y the values follow each other. 
+  !-----------------------------------------------------------------------------------
+  FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT( d )
+  !-----------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: ndim, xind, yind
+    REAL(KIND=dp) :: x(*)
+    REAL(KIND=dp) :: y(*)
+    REAL(KIND=dp) :: d
+        
+    INTEGER :: i, callcount = 0
+    REAL(KIND=dp) :: a,b
+    
+    SAVE callcount, a, b
+
+    IF( callcount == 0 ) THEN    
+      ! z = x^H*y = (x_re-i*x_im)(y_re+i*y_im)       
+      ! =>  z_re = x_re*y_re + x_im*y_im
+      !     z_im = x_re*y_im - x_im*y_re
+      
+      a = SUM( x(1:ndim) * y(1:ndim) )
+      b = SUM( x(1:ndim:2) * y(2:ndim:2) - x(2:ndim:2) * y(1:ndim:2) )
+      
+      d = a 
+      callcount = callcount + 1
+    ELSE
+      d = b
+      callcount = 0
+    END IF
+      
+    !-----------------------------------------------------------------------------------
+  END FUNCTION PseudoZDotProd
+  !-----------------------------------------------------------------------------------
+
+  
+  ! As the previous but assumes that the real and complex values are ordered blockwise. 
+  !-----------------------------------------------------------------------------------
+  FUNCTION PseudoZDotProd2( ndim, x, xind, y, yind ) RESULT( d )
+  !-----------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: ndim, xind, yind
+    REAL(KIND=dp) :: x(*)
+    REAL(KIND=dp) :: y(*)
+    REAL(KIND=dp) :: d
+        
+    INTEGER :: i, callcount = 0
+    REAL(KIND=dp) :: a,b
+    
+    SAVE callcount, a, b
+
+    IF( callcount == 0 ) THEN    
+      a = SUM( x(1:ndim) * y(1:ndim) )
+      b = SUM( x(1:ndim/2) * y(ndim/2+1:ndim) - x(ndim/2+1:ndim) * y(1:ndim/2) )
+      
+      d = a 
+      callcount = callcount + 1
+    ELSE
+      d = b
+      callcount = 0
+    END IF
+      
+!-----------------------------------------------------------------------------------
+  END FUNCTION PseudoZDotProd2
+!-----------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
 !> Symmetric Gauss-Seidel iterative method for linear systems. This is not really of practical
 !> use but may be used for testing, for example. 
@@ -570,7 +649,7 @@ CONTAINS
     INTEGER :: ndim,i,j,k
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged, UseStopCFun
+    LOGICAL :: Converged, Diverged, UseStopCFun, PseudoComplex
 
     TYPE(Matrix_t),POINTER :: A
 
@@ -612,6 +691,8 @@ CONTAINS
     PolynomialDegree = HUTI_BICGSTABL_L 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
+    PseudoComplex = ( HUTI_PSEUDOCOMPLEX > 0 )  
+    
     Converged = .FALSE.
     Diverged = .FALSE.
     
@@ -675,6 +756,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
       REAL(KIND=dp) :: rwork(l+1,3+2*(l+1))
       REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
+      REAL(KIND=dp) :: beta_im
 !------------------------------------------------------------------------------
     
       IF ( l < 2) CALL Fatal( 'RealBiCGStabl', 'Polynomial degree < 2' )
@@ -1138,6 +1220,7 @@ CONTAINS
     INTEGER :: Rounds, MinIter, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
     LOGICAL :: Converged, Diverged, UseStopCFun
+    LOGICAL :: PseudoComplex
 
     TYPE(Matrix_t),POINTER::A
 
@@ -1154,7 +1237,8 @@ CONTAINS
 
     Converged = .FALSE.
     Diverged = .FALSE.
-    
+    PseudoComplex = ( HUTI_PSEUDOCOMPLEX > 0 )  
+      
     x => xvec
     b => rhsvec
     nc = 0
@@ -1211,6 +1295,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
+      REAL(KIND=dp) :: beta_im
 !------------------------------------------------------------------------------
       INTEGER :: allocstat
         
@@ -1273,6 +1358,28 @@ CONTAINS
          !--------------------------------------------------------------
          DO i=1,j-1
            beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+
+           IF( PseudoComplex ) THEN
+             ! The even call is for the complex part of beta
+             ! This has to be before the T1 and T2 vectors are tampered
+             ! For convenience we subtract 
+             beta_im = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+
+             IF( HUTI_PSEUDOCOMPLEX == 2 ) THEN
+               T1(1:n/2) = T1(1:n/2) + beta_im * S(n/2+1:n,i) 
+               T1(n/2+1:n) = T1(n/2+1:n) - beta_im * S(1:n/2,i)                    
+               
+               T2(1:n/2) = T2(1:n/2) + beta_im * V(1+n/2:n,i)
+               T2(1+n/2:n) = T2(1+n/2:n) - beta_im * V(1:n/2,i)                                
+             ELSE
+               T1(1:n:2) = T1(1:n:2) + beta_im * S(2:n:2,i) 
+               T1(2:n:2) = T1(2:n:2) - beta_im * S(1:n:2,i)                    
+               
+               T2(1:n:2) = T2(1:n:2) + beta_im * V(2:n:2,i)
+               T2(2:n:2) = T2(2:n:2) - beta_im * V(1:n:2,i)
+             END IF
+           END IF
+           
            T1(1:n) = T1(1:n) - beta * S(1:n,i)
            T2(1:n) = T2(1:n) - beta * V(1:n,i)        
          END DO
@@ -1285,29 +1392,49 @@ CONTAINS
          ! The update of the solution and save the search data...
          !------------------------------------------------------------- 
          beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+
+         IF( PseudoComplex ) THEN
+           beta_im = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+
+           IF( HUTI_PSEUDOCOMPLEX == 2 ) THEN
+             x(1:n/2) = x(1:n/2) - beta_im * T1(1+n/2:n)
+             x(1+n/2:n) = x(1+n/2:n) + beta_im * T1(1:n/2)                    
+             r(1:n/2) = r(1:n/2) + beta_im * T2(1+n/2:n)
+             r(1+n/2:n) = r(1+n/2:n) - beta_im * T2(1:n/2)                    
+           ELSE
+             x(1:n:2) = x(1:n:2) - beta_im * T1(2:n:2)
+             x(2:n:2) = x(2:n:2) + beta_im * T1(1:n:2)                    
+             r(1:n:2) = r(1:n:2) + beta_im * T2(2:n:2)
+             r(2:n:2) = r(2:n:2) - beta_im * T2(1:n:2)                    
+           END IF
+         END IF
+                      
          x(1:n) = x(1:n) + beta * T1(1:n)      
          r(1:n) = r(1:n) - beta * T2(1:n)
-	 IF ( j /= m ) THEN
-            S(1:n,j) = T1(1:n)
-            V(1:n,j) = T2(1:n)
+
+         IF ( j /= m ) THEN
+           S(1:n,j) = T1(1:n)
+           V(1:n,j) = T2(1:n)
 	 END IF       
 
          !--------------------------------------------------------------
          ! Check whether the convergence criterion is met 
          !--------------------------------------------------------------
          rnorm = normfun(n, r, 1)
-         !CALL C_matvec( x, trueres, ipar, matvecsubr )
-         !trueres(1:n) = b(1:n) - trueres(1:n)
-         !trueresnorm = normfun(n, trueres, 1)
+
          IF (UseStopCFun) THEN
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(A, I6, 2E12.4)') 'gcr:',k, rnorm / bnorm, residual
+             WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
            END IF           
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(A, I6, 2E12.4)') 'gcr:',k, residual, beta
+             IF( PseudoComplex ) THEN
+               WRITE (*, '(A, I6, 3E12.4, A)') '   gcr:',k, residual, beta, beta_im,'i'
+             ELSE
+               WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, residual, beta
+             END IF
            END IF
          END IF
            
@@ -1343,6 +1470,8 @@ CONTAINS
   END SUBROUTINE itermethod_gcr
 !------------------------------------------------------------------------------
 
+
+   
 !-----------------------------------------------------------------------------------
 !>  This subroutine solves real linear systems Ax = b by using the IDR(s) algorithm
 !>  with s >= 1 and the right-oriented preconditioning.
@@ -1941,6 +2070,7 @@ CONTAINS
          !--------------------------------------------------------------
          DO i=1,j-1
             beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+
             T1(1:n) = T1(1:n) - beta * S(1:n,i)
             T2(1:n) = T2(1:n) - beta * V(1:n,i)        
          END DO
@@ -1967,7 +2097,7 @@ CONTAINS
          Residual = rnorm / bnorm
         
          IF( MOD(k,OutputInterval) == 0) THEN
-            WRITE (*, '(I8, E11.4)') k, residual
+           WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
          END IF
         
          Converged = (Residual < MinTolerance)

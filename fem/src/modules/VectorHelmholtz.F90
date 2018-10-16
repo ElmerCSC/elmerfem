@@ -202,27 +202,6 @@ CONTAINS
   END SUBROUTINE GetPermittivityC
 !------------------------------------------------------------------------------
 
-!SUBROUTINE GetPermittivityCT(Material,Acoef,n)
-!!------------------------------------------------------------------------------
-    !TYPE(ValueList_t), POINTER :: Material
-    !INTEGER :: n
-    !COMPLEX(KIND=dp) :: Acoef(:,:,:)
-    !LOGICAL :: Found, FirstTime = .TRUE. 
-    !REAL(KIND=dp) :: permvacuum
-!!------------------------------------------------------------------------------
-    !SAVE permvacuum
-    !Acoef = 0.0_dp
-
-    !IF( FirstTime ) THEN
-      !permvacuum = GetConstReal( CurrentModel % Constants, &
-        !'Permittivity of Vacuum', Found)
-      !IF(.NOT. Found ) permvacuum = 8.854187817d-12
-      !FirstTime = .FALSE.
-    !END IF
-    !CALL ListGetRealArray( Material, &
-      !'Relative Permittivity', Cwrk, 9, n
-    !!Cwrk, n, Element & NodeIndexes, Found)
-!END SUBROUTINE GetPermittivityCT
 
 !------------------------------------------------------------------------------
  SUBROUTINE GetInvPermeabilityR(Material,Acoef,n)
@@ -323,20 +302,31 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, PiolaVersion
+  LOGICAL :: Found, SecondOrder, PiolaVersion
 
-  SolverParams => GetSolverParams()
+  SolverParams => GetSolverParams()  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    PiolaVersion = GetLogical(SolverParams, &
-        'Use Piola Transform', Found )   
-    IF (PiolaVersion) THEN    
-       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+    SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )  
+    IF( SecondOrder ) THEN
+      PiolaVersion = .TRUE.
     ELSE
-       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+      PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
+    END IF
+    IF( SecondOrder ) THEN
+      CALL ListAddString( SolverParams, "Element", &
+          "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+    ELSE IF ( PiolaVersion ) THEN    
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+    ELSE
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
     END IF
   END IF
-! CALL ListAddString( SolverParams, "Exported Variable 1", &
-!              "-dofs 2 -nooutput Jfix" )
+
+  !CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
+  CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
+  CALL ListAddNewString( SolverParams,'Variable','E[E re:1 E im:1]')
+  CALL ListAddNewLogical( SolverParams, "Linear System Complex", .TRUE.)
+
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzSolver_Init0
 !------------------------------------------------------------------------------
@@ -357,183 +347,162 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found, HasPrecDampCoeff_re, HasPrecDampCoeff_im
+  LOGICAL :: AllocationsDone = .FALSE., Found, HasPrecDampCoeff
   TYPE(Element_t),POINTER :: Element
-
-
   REAL(KIND=dp) :: Omega, mu0inv, eps0
-  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams
-
-  INTEGER :: n,istat,i,nNodes,Active
-  INTEGER :: NoIterationsMin, NoIterationsMax
-
+  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
+  INTEGER :: n,istat,i,nNodes,Active,NoIterationsMax
   TYPE(Mesh_t), POINTER :: Mesh
 
-  COMPLEX(kind=dp) :: Aval
-  COMPLEX(KIND=dp), ALLOCATABLE :: PrecDampCoeff(:)
-  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
-  COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:)
-  COMPLEX(KIND=dp), ALLOCATABLE :: Acoef(:), Tcoef(:)  ! \TODO Acoef and Tcoef could be (1,1)-tensors
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
+  COMPLEX(KIND=dp) :: PrecDampCoeff
+  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), LOAD(:,:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: Acoef(:), Tcoef(:)  
 
-  COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
-
-  REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
-
-  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound, IsComplex
-  INTEGER, POINTER :: Perm(:)
-
-  TYPE(Matrix_t), POINTER :: A
-
-  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
-       Acoef, Cwrk, Cwrk_im, LamCond, &
-       LamThick, AllocationsDone, RotM
+  LOGICAL :: PiolaVersion, EdgeBasis
+  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(Solver_t), POINTER :: pSolver
+  
+  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, Acoef, AllocationsDone
 !------------------------------------------------------------------------------
-  PiolaVersion = GetLogical( GetSolverParams(), &
-      'Use Piola Transform', Found )
+  SolverParams => GetSolverParams()  
 
+  IF( GetLogical( SolverParams,'Quadratic Approximation', Found ) ) THEN
+    PiolaVersion = .TRUE.
+  ELSE
+    PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+  END IF
+    
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
   Mesh => GetMesh()
   nNodes = Mesh % NumberOfNodes
-  Perm => Solver % Variable % Perm
-
-  A => GetMatrix()
+  pSolver => Solver
 
   IF ( .NOT. AllocationsDone ) THEN
+    i = Solver % Variable % dofs
+    IF (i /= 2) THEN
+      CALL Fatal ('VectorHelmholtzSolver_Init', &
+          'Variable is not of size two ('//TRIM(I2S(i))//'), Use: Variable = E[E re:1 E im:1]')
+    ENDIF
 
-     IF (Solver % Variable % dofs /= 2) THEN
-       WRITE (Message, '(A,I3)') 'dofs:', Solver % Variable % dofs
-       CALL Info ('VectorHelmholtzSolver_Init', Message)
-       CALL Fatal ('VectorHelmholtzSolver_Init', &
-         'Variable is not properly defined for Vectorial Helmholtz solver, Use: Variable = E[E re:1 E im:1]')
-     ENDIF
+    N = Mesh % MaxElementDOFs  ! just big enough
+    ALLOCATE( FORCE(N), LOAD(4,N), STIFF(N,N), MASS(N,N), &
+        Tcoef(N), Acoef(N),  &
+        STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'VectorHelmholtzSolver', 'Memory allocation error.' )
+    END IF
 
-     N = Mesh % MaxElementDOFs  ! just big enough
-      ALLOCATE( FORCE(N), &
-        LOAD(4,N), &            ! 3 for vector value loads and 1 for scalar valued
-        STIFF(N,N), &
-        MASS(N,N), Tcoef(N), RotM(3,3,N), &
-        Acoef(N), LamCond(N), LamThick(N), &
-        PrecDampCoeff(1), STAT=istat )
-      IF ( istat /= 0 ) THEN
-                CALL Fatal( 'VectorHelmholtzSolver', 'Memory allocation error.' )
-     END IF
-
-     NULLIFY( Cwrk )
-     NULLIFY( Cwrk_im )
-
-     AllocationsDone = .TRUE.
+    AllocationsDone = .TRUE.
   END IF
-  
+
   Omega = GetAngularFrequency(Found=Found)
   PrecDampCoeff = 0._dp
-  PrecDampCoeff = GetReal(GetSolverParams(), 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff_re)
+  PrecDampCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
-    GetReal(GetSolverParams(), 'Linear System Preconditioning Damp Coefficient im', HasPrecDampCoeff_im))
+      GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ) )
+  HasPrecDampCoeff = HasPrecDampCoeff .OR. Found 
 
   mu0inv = GetConstReal( CurrentModel % Constants,  'Permeability of Vacuum', Found )
   IF(.NOT. Found ) mu0inv = PI * 4.0d-7
   eps0 = GetConstReal ( CurrentModel % Constants, 'Permittivity of Vacuum', Found )
   IF(.NOT. Found ) eps0 = 8.854187817d-12
-  
-  IsComplex = ListGetLogical( GetSolverParams(), "Linear System Complex", Found)
-  if(.not. Found) CALL ListAddLogical( GetSolverParams(), "Linear System Complex", .TRUE.) !DEBUG
-  !
+
   ! Resolve internal non.linearities, if requeted:
   ! ----------------------------------------------
-  NoIterationsMax = GetInteger( GetSolverParams(), &
-              'Nonlinear System Max Iterations',Found)
+  NoIterationsMax = GetInteger( SolverParams, &
+      'Nonlinear System Max Iterations',Found)
   IF(.NOT. Found) NoIterationsMax = 1
 
-  NoIterationsMin = GetInteger( GetSolverParams(), &
-              'Nonlinear System Min Iterations',Found)
-  IF(.NOT. Found) NoIterationsMin = 1
+  EdgeBasis = .NOT. ListCheckPresent( SolverParams,'Linear System Refactorize' ) .AND. &
+      GetLogical( SolverParams, 'Edge Basis', Found )
 
-  LFact = GetLogical( GetSolverParams(),'Linear System Refactorize', LFactFound )
-  EdgeBasis = .NOT.LFactFound .AND. GetLogical( GetSolverParams(), 'Edge Basis', Found )
+  CALL DefaultStart()
+
   DO i=1,NoIterationsMax
-    IF( DoSolve(i) ) THEN
-      IF(i>=NoIterationsMin) EXIT
-    END IF
-    IF( EdgeBasis ) CALL ListAddLogical(GetSolverParams(),'Linear System Refactorize',.FALSE.)
+    IF( DoSolve() ) EXIT
+    IF( EdgeBasis ) CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.)
   END DO
-  IF ( EdgeBasis ) CALL ListRemove( GetSolverParams(), 'Linear System Refactorize' )
+  IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
+  CALL DefaultFinish()
+
+  CALL Info('VectorHelmholtzSolver','All done',Level=12)
+  
 CONTAINS
 
 !---------------------------------------------------------------------------------------------
-  FUNCTION DoSolve(IterNo) RESULT(Converged)
+  FUNCTION DoSolve() RESULT(Converged)
 !---------------------------------------------------------------------------------------------
-    INTEGER :: IterNo
     LOGICAL :: Converged
 !---------------------------------------------------------------------------------------------
     REAL(KIND=dp) :: Norm!, TOL, PrevNorm
     INTEGER :: k,n,nd,t!, i, j
-    LOGICAL  :: FoundMagnetization, Found
+    LOGICAL  :: Found
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
+    CALL Info('VectorHelmholtzSolver','Starting bulk assembly',Level=12)
+
     CALL DefaultInitialize()
     Active = GetNOFActive()
     DO t=1,active
-       Element => GetActiveElement(t)
-       n  = GetElementNOFNodes() ! kulmat
-       nd = GetElementNOFDOFs()  ! vapausasteet
-  
-       LOAD = 0.0d0
-       BodyForce => GetBodyForce()
-       FoundMagnetization = .FALSE.
-       IF ( ASSOCIATED(BodyForce) ) THEN
-          Load(1,1:n) = GetReal( BodyForce, 'Current Density 1', Found )
-          Load(1,1:n) = CMPLX( REAL(Load(1,1:n)), &
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes() ! verteces
+      nd = GetElementNOFDOFs()  ! dofs
+
+      LOAD(:,1:n) = 0.0d0
+      BodyForce => GetBodyForce()
+      IF ( ASSOCIATED(BodyForce) ) THEN
+        Load(1,1:n) = GetReal( BodyForce, 'Current Density 1', Found )
+        Load(1,1:n) = CMPLX( REAL(Load(1,1:n)), &
             GetReal( BodyForce, 'Current Density im 1', Found ), KIND=dp)
 
-          Load(2,1:n) = GetReal( BodyForce, 'Current Density 2', Found )
-          Load(2,1:n) = CMPLX( REAL(Load(2,1:n)), & 
+        Load(2,1:n) = GetReal( BodyForce, 'Current Density 2', Found )
+        Load(2,1:n) = CMPLX( REAL(Load(2,1:n)), & 
             GetReal( BodyForce, 'Current Density im 2', Found), KIND=dp)
 
-          Load(3,1:n) = GetReal( BodyForce, 'Current Density 3', Found )
-          Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
+        Load(3,1:n) = GetReal( BodyForce, 'Current Density 3', Found )
+        Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
             GetReal( BodyForce, 'Current Density im 3', Found), KIND=dp)
-       END IF
+      END IF
 
-       Material => GetMaterial( Element )
+      Material => GetMaterial( Element )
 
-       Acoef = 0.0_dp
-       Tcoef = 0.0_dp
+       Acoef(1:n) = 0.0_dp
+       Tcoef(1:n) = 0.0_dp
 
        IF ( ASSOCIATED(Material) ) THEN
          CALL GetInvPermeability(Material,Acoef,n)
          CALL GetPermittivity(Material,Tcoef,n)
        END IF
 
-       BodyParams => GetBodyParams( Element )
-       IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('VectorHelmholtzSolver', 'Body Parameters not found')
-
        Omega = GetAngularFrequency(Found=Found,UElement=Element)
 
+       
        !Get element local matrix and rhs vector:
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
-          Tcoef, Acoef, Element, n, nd, PiolaVersion )
+          Tcoef, Acoef, Element, n, nd )
 
-       !Update global matrix and rhs vector from local matrix & vector:
+       ! Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE, Element )
     END DO
     CALL DefaultFinishBulkAssembly()
-    !
+
+    
     ! Robin type of BC in terms of H:
     !--------------------------------
+    CALL Info('VectorHelmholtzSolver','Starting boundary assembly',Level=12)
+  
     Active = GetNOFBoundaryElements()
     DO t=1,Active
        Element => GetBoundaryElement(t)
@@ -550,6 +519,11 @@ CONTAINS
        END SELECT
        IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
+       BLOCK
+         TYPE(Element_t), POINTER :: tmp_Element
+         tmp_Element => SetCurrentElement(Element)
+       END BLOCK
+       
        nd = GetElementNOFDOFs(Element)
        n  = GetElementNOFNodes(Element)
        Model % CurrentElement => Element
@@ -590,30 +564,23 @@ CONTAINS
 #endif
 
        IF(.NOT. ASSOCIATED(Material)) THEN
-         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd, PiolaVersion=PiolaVersion)
+         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
        ELSE
-         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd, Tcoef, PiolaVersion)
+         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd, Tcoef )
        END IF
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
-    END DO
+     END DO
 
+    CALL Info('VectorHelmholtzSolver','Local assembly done',Level=12)
+
+    
+    CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
-
-    ! And finally, solve:
-    !--------------------
   
-    !
-    ! Fix unused potential dofs:
-    ! --------------------------
-    A => GetMatrix()
-    CALL ConstrainUnused(A)
-
-    !
     ! Dirichlet BCs in terms of electric field E
     ! ---------------------------------------------
     CALL DefaultDirichletBCs()
 
-    !
     ! Linear system solution:
     ! -----------------------
     Norm = DefaultSolve()
@@ -622,178 +589,133 @@ CONTAINS
   END FUNCTION DoSolve
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-  SUBROUTINE ConstrainUnused(A)
-!------------------------------------------------------------------------------
-    TYPE(Matrix_t) :: A
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,n
-   
-    REAL(KIND=dp), ALLOCATABLE :: dDiag(:)
-!------------------------------------------------------------------------------
-    n = A % NumberOFRows
-    ALLOCATE(dDiag(n)); dDiag=0._dp
-
-    DO i=1,n,2
-      j = A % Diag(i)
-      IF(j>0) THEN
-        dDiag(i)   =  A % Values(j)
-        dDiag(i+1) = -A % Values(j+1)
-      END IF
-    END DO
-    IF (ParEnv % PEs>1) CALL ParallelSumVector(A, dDiag)
-
-    n = Mesh % NumberOfNodes
-    DO i=1,SIZE(Solver % Variable % Perm) !n
-      j = Solver % Variable % Perm(i)
-      IF (j==0) CYCLE
-
-      j = 2*(j-1)
-      Aval = CMPLX(dDiag(j+1), dDiag(j+2), KIND=dp)
-
-      IF (Aval==0._dp) THEN
-        !A % RHS(j+1) = 0._dp
-        !CALL ZeroRow(A,j+1)
-        !A % Values(A % Diag(j+1)) = 1._dp
-
-        !A % RHS(j+2) = 0._dp
-        !CALL ZeroRow(A,j+2)
-        !A % Values(A % Diag(j+2)) = 1._dp
-
-        CALL UpdateDirichletDof( A, j+1, 0.0_dp )
-        CALL UpdateDirichletDof( A, j+2, 0.0_dp )
-
-        !IF(ALLOCATED(A % ConstrainedDOF)) THEN
-        !A % ConstrainedDOF(j+1) = .TRUE.
-        !A % ConstrainedDOF(j+2) = .TRUE.
-        !END IF
-      END IF
-    END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE ConstrainUnused
-!------------------------------------------------------------------------------
-
 
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
-            Tcoef, Acoef, Element, n, nd, PiolaVersion )
+            Tcoef, Acoef, Element, n, nd )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:), Acoef(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: PiolaVersion
-
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: eps, muinv, L(3), DAMP(nd,nd)
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
-
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: eps, muinv, L(3)
+    REAL(KIND=dp) :: DetJ, weight
+    COMPLEX(KIND=dp), ALLOCATABLE :: DAMP(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     LOGICAL :: Stat
-    INTEGER :: t, i, j
+    INTEGER :: t, i, j, m
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
+    LOGICAL :: AllocationsDone = .FALSE.
+
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, Damp
+
+    IF(.NOT. AllocationsDone ) THEN
+      m = Mesh % MaxElementDOFs
+      ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3),DAMP(m,m))      
+      AllocationsDone = .TRUE.
+    END IF
 
     CALL GetElementNodes( Nodes, Element )
 
-    STIFF = 0.0_dp
-    FORCE = 0.0_dp
-    MASS  = 0.0_dp
-    DAMP  = 0.0_dp
+    STIFF(1:nd,1:nd) = 0.0_dp
+    MASS(1:nd,1:nd)  = 0.0_dp
+    DAMP(1:nd,1:nd)  = 0.0_dp
+    FORCE(1:nd) = 0.0_dp
 
-    !Numerical integration:
+    ! Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
     DO t=1,IP % n
-       IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-               RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-               ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
 
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
-       muinv = SUM( Basis(1:n) * Acoef(1:n) )
-       eps = SUM( Basis(1:n) * Tcoef(1:n) )
+      weight = detJ * IP % s(t)
+      muinv = SUM( Basis(1:n) * Acoef(1:n) )
+      eps = SUM( Basis(1:n) * Tcoef(1:n) )
 
-       L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
+      L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
 
-       ! Compute element stiffness matrix and force vector:
-       ! --------------------------------------------------
-       DO i = 1,nd
-         FORCE(i) = FORCE(i) + (SUM(L*WBasis(i,:)))* detJ*IP%s(t)
+      ! Compute element stiffness matrix and force vector:
+      ! --------------------------------------------------
+      DO i = 1,nd
+        FORCE(i) = FORCE(i) + (SUM(L*WBasis(i,:))) * weight
 
-         DO j = 1,nd
-           ! the mu^-1 curl u . curl v 
-           STIFF(i,j) = STIFF(i,j) + muinv * &
-              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+        DO j = 1,nd
+          ! the mu^-1 curl u . curl v 
+          STIFF(i,j) = STIFF(i,j) + muinv * &
+              SUM(RotWBasis(i,:) * RotWBasis(j,:)) * weight
 
-           ! the term \omega^2 \epsilon u.v
-           MASS(i,j) = MASS(i,j) - Omega**2* &
-             eps * SUM(WBasis(J,:)*WBasis(i,:))*detJ*IP%s(t)
-         END DO
-       END DO
+          ! the term \omega^2 \epsilon u.v
+          MASS(i,j) = MASS(i,j) - Omega**2* &
+              eps * SUM(WBasis(J,:) * WBasis(i,:)) * weight
+        END DO
+      END DO
     END DO
-    IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) THEN
-      DAMP = PrecDampCoeff(1) * (STIFF(1:nd,1:nd) - MASS(1:nd,1:nd))
-      !DAMP = PrecDampCoeff(1) * (MASS(1:nd,1:nd))
+
+    IF( HasPrecDampCoeff ) THEN
+      DAMP = PrecDampCoeff * (STIFF(1:nd,1:nd) - MASS(1:nd,1:nd))
+      !DAMP = PrecDampCoeff * (MASS(1:nd,1:nd))
       !CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + MASS(1:nd,1:nd) + DAMP(1:nd,1:nd))
     END IF
-   STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + MASS(1:nd, 1:nd)
-   IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) &
-     CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + DAMP(1:nd,1:nd))
+
+    STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + MASS(1:nd, 1:nd)
+
+    IF( HasPrecDampCoeff ) THEN
+      CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + DAMP(1:nd,1:nd))
+    END IF
+   
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Acoef, Element, n, nd, Tcoef, PiolaVersion)
+  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Acoef, Element, n, nd, Tcoef )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: LOAD(:,:), Acoef(:)
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL,OPTIONAL :: PiolaVersion
     COMPLEX(KIND=dp), OPTIONAL :: Tcoef(n)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
-    COMPLEX(KIND=dp) :: B, F, TC, L(3), muinv
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), tanWBasis(3)
+    COMPLEX(KIND=dp) :: B, L(3), muinv
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
+    REAL(KIND=dp) :: DetJ, Normal(3), tanWBasis(3)
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, np, p, q
-
+    INTEGER :: t, i, j, m, np, p, q
     TYPE(Nodes_t), SAVE :: Nodes
-!------------------------------------------------------------------------------
+    LOGICAL :: AllocationsDone = .FALSE.
+    
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx
+
+    IF(.NOT. AllocationsDone ) THEN
+      m = Mesh % MaxElementDOFs
+      ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3))      
+      AllocationsDone = .TRUE.
+    END IF
+
     CALL GetElementNodes( Nodes, Element )
     IF( .NOT. PRESENT(Tcoef) ) Tcoef(1:n) = mu0inv
 
-    STIFF = 0.0_dp
-    FORCE = 0.0_dp
-    MASS  = 0.0_dp
+    STIFF(1:nd,1:nd) = 0.0_dp
+    MASS(1:nd,1:nd)  = 0.0_dp
+    FORCE(1:nd) = 0.0_dp
 
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
-    DO t=1,IP % n
-      IF(Present(PiolaVersion) .AND. PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-          RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-          ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), detJ, Basis, dBasisdx )
-
-        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
+    DO t=1,IP % n      
+       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+           IP % W(t), detJ, Basis, dBasisdx, &
+           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
       Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       B  = SUM(Basis(1:n) * Acoef(1:n))
@@ -812,9 +734,10 @@ CONTAINS
         END DO
       END DO
    END DO
-   IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) THEN
+
+   IF( HasPrecDampCoeff ) THEN
      !CALL DefaultUpdatePrec(2*STIFF)
-     CALL DefaultUpdatePrec(PrecDampCoeff(1)*STIFF + STIFF)
+     CALL DefaultUpdatePrec(PrecDampCoeff*STIFF + STIFF)
    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
@@ -834,7 +757,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -845,10 +767,55 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
-  IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) RETURN
+  SolverParams => GetSolverParams()
 
-  ElementalFields = GetLogical( GetSolverParams(), 'Calculate Elemental Fields', Found)
-  IF(Found.AND..NOT.ElementalFields) RETURN
+
+  ! Find the solver index of the primary solver by the known procedure name.
+  ! (the solver is defined here in the same module so not that dirty...)
+  soln = 0
+
+  DO i=1,Model % NumberOfSolvers
+    sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+
+    j = INDEX( sname,'VectorHelmholtzSolver')
+    IF( j > 0 ) THEN
+      soln = i 
+      EXIT
+    END IF
+  END DO
+
+  
+  pname = GetString(SolverParams, 'Potential variable', Found)
+  IF( Found ) THEN
+    IF( soln == 0 ) THEN
+      DO i=1,Model % NumberOfSolvers
+        sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
+
+        J=INDEX(sname,'[')-1
+        IF ( j<=0 ) j=LEN_TRIM(sname)
+        IF ( sname(1:j) == pname(1:LEN_TRIM(pname)) )THEN
+          soln = i
+          EXIT
+        END IF
+      END DO
+    ELSE
+      CALL Info('VectorHelmholtzCalcFields_Init0',&
+          'Keyword > Potential Variable < is redundant when we match the Procedure name',Level=7)
+    END IF
+  END IF
+    
+  IF( soln == 0 ) THEN
+    CALL Fatal('VectorHelmholtzCalcFields_Init0','Cannot locate the primary solver: '//TRIM(I2S(soln)))      
+  ELSE
+    CALL Info('VectorHelmholtzCalcFields_Init0','The primary solver index is: '//TRIM(I2S(soln)),Level=12)
+    CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
+  END IF
+
+  
+  IF( GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
+
+  ElementalFields = GetLogical( SolverParams, 'Calculate Elemental Fields', Found)
+  IF(Found .AND. .NOT. ElementalFields) RETURN
 
   PSolver => Solver
   DO mysolver=1,Model % NumberOfSolvers
@@ -865,26 +832,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
            'Active Solvers', m+1, [Active, n+1] )
   END DO
 
-  pname = GetString(GetSolverParams(), 'Field variable', Found)
-  vDOFs = 0
-  DO i=1,Model % NumberOfSolvers
-    sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
-    J=INDEX(sname,'[')-1
-    IF ( j<=0 ) j=LEN_TRIM(sname)
-    IF ( sname(1:j) == pname(1:LEN_TRIM(pname)) )THEN
-      k = 0
-      vDOFs = 0
-      j=INDEX(sname,':')
-      DO WHILE(j>0)
-        vDOFs=vDOFs+ICHAR(sname(j+k+1:j+k+1))-ICHAR('0')
-        k = k+j
-        IF(k<LEN(sname)) j=INDEX(sname(k+1:),':')
-      END DO
-      EXIT
-    END IF
-  END DO
-  soln = i
-  IF ( vDOFs==0 ) vDOFs=1
+  ! This is always two for now since the Helmholtz equation is complex valued!
   vDOFs = 2
 
   ALLOCATE(Solvers(n+1))
@@ -906,73 +854,38 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   IF(Found) THEN
     CALL ListAddString( SolverParams, 'Mesh', pname )
   END IF
-
+  
   IF (GetLogical(Solver % Values,'Calculate Magnetic Flux Density',Found)) THEN
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable', SolverParams), &
-        "Magnetic Flux Density E[Magnetic Flux Density E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams,&
+    CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
         "Magnetic Flux Density E[Magnetic Flux Density re E:3 Magnetic Flux Density im E:3]" )
-    END IF
   END IF
 
   IF (GetLogical(Solver % Values,'Calculate Electric field',Found)) THEN
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams,&
+    CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
-            "Electric field E[Electric field E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable', SolverParams), &
-            "Electric field E[Electric field re E:3 Electric field im E:3]" )
-    END IF
+        "Electric field E[Electric field re E:3 Electric field im E:3]" )
   END IF
 
   IF (GetLogical(Solver % Values,'Calculate Magnetic Field Strength',Found)) THEN
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams,&
+    CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
-            "Magnetic Field Strength E[Magnetic Field Strength E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable', SolverParams), &
-            "Magnetic Field Strength E[Magnetic Field Strength re E:3 Magnetic Field Strength im E:3]" )
-    END IF
+        "Magnetic Field Strength E[Magnetic Field Strength re E:3 Magnetic Field Strength im E:3]" )
   END IF
 
-  !IF ( GetLogical( Solver % Values, 'Calculate Maxwell Stress', Found ) ) THEN
-    !i = i + 1
-    !IF ( vDOFs==1 ) THEN
-      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-           !"Maxwell Stress E[Maxwell Stress E:6]" )
-    !ELSE
-      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-           !"Maxwell Stress E[Maxwell Stress re E:6 Maxwell Stress im E:6]" )
-    !END IF
-  !END IF
-
   IF ( GetLogical( Solver % Values, 'Calculate Poynting vector', Found ) ) THEN
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable', SolverParams), &
-        "Poynting vector E[Poynting vector E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams,&
+    CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
         "Poynting vector E[Poynting vector re E:3 Poynting vector im E:3]" )
-    END IF
   END IF
 
   IF ( GetLogical( Solver % Values, 'Calculate Div of Poynting Vector', Found ) ) THEN
     CALL ListAddString( SolverParams,&
-      NextFreeKeyword('Exported Variable', SolverParams), &
-      "Div Poynting Vector E[Div Poynting Vector re E:1 Div Poynting Vector im E:1]" )
+        NextFreeKeyword('Exported Variable', SolverParams), &
+        "Div Poynting Vector E[Div Poynting Vector re E:1 Div Poynting Vector im E:1]" )
     CALL ListAddString( SolverParams,&
-      NextFreeKeyword('Exported Variable', SolverParams), &
-      "Electric Work E[Electric Work re E:1 Electric Work im E:1]")
+        NextFreeKeyword('Exported Variable', SolverParams), &
+        "Electric Work E[Electric Work re E:1 Electric Work im E:1]")
   END IF
 
   DEALLOCATE(Model % Solvers)
@@ -992,7 +905,6 @@ SUBROUTINE MagnetoDynamics_Dummy(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -1011,14 +923,9 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-
-  CHARACTER(LEN=MAX_NAME_LEN) :: name
-  INTEGER  :: i
-  TYPE(Variable_t), POINTER :: Var
   LOGICAL :: Found, NodalFields!, FluxFound
   TYPE(ValueList_t), POINTER :: SolverParams!, EQ
 
@@ -1028,13 +935,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
 
   CALL ListAddLogical( SolverParams, 'Linear System refactorize', .FALSE.)
 
-  name = GetString( SolverParams, "Field variable", Found )
-  Var => VariableGet( Solver % Mesh % variables, name )
-  IF ( .NOT. ASSOCIATED(Var) ) THEN
-    CALL Fatal( "VectorHelmholtzCalcFields", "field variable not available")
-  ENDIF
-
-  ! add these in the beginning, so that SaveData sees these existing, even
+  ! add these in the beginning, so that SaveScalars sees these existing, even
   ! if executed before the actual computations...
   ! -----------------------------------------------------------------------
   IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
@@ -1042,7 +943,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
     CALL ListAddConstReal(Model % Simulation,'res: Energy Functional im', 0._dp)
   END IF
 
-  IF (GetLogical(GetSolverParams(),'Show Angular Frequency',Found)) &
+  IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) &
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency',0._dp)
 
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
@@ -1097,44 +998,28 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
    TYPE(Solver_t) :: Solver
    TYPE(Model_t) :: Model
-
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  
-!------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), Norm
    REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), E(2,3)
-   REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im
-   REAL(KIND=dp) :: Freq, ComponentLoss(2)
-   REAL(KIND=dp) :: TotalLoss
-   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area
+   REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im, Freq
    COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), PR(16), EdotJ, EF_ip(3), R_ip, &!
                        B(3), R(35)
 
-   !COMPLEX(KIND=dp) :: CST(3,3)
-   !COMPLEX(KIND=dp) :: CMat_ip(3,3)  
-
-   INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
-   INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
-
-   TYPE(Variable_t), POINTER :: MFD, MFS,  &
-                                EF, PV, DIVPV, EW
-   TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, &
-                                EL_EF, EL_PV, EL_DIVPV, EL_EW
+   TYPE(Variable_t), POINTER :: MFD, MFS, EF, PV, DIVPV, EW
+   TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
-   !
    INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,dofcount,vDOFs,dim,BodyId
 
    TYPE(Solver_t), POINTER :: pSolver
    REAL(KIND=dp), POINTER :: xx(:), bb(:), TempVector(:), TempRHS(:)
-   REAL(KIND=dp) :: hdotE(2), hdotE_r, hdotE_i
+   REAL(KIND=dp) :: hdotE_r, hdotE_i
 
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
 
-   TYPE(ValueList_t), POINTER :: Material, BC, BodyForce
-   LOGICAL :: Found, stat, &
-              CalcFluxLogical
+   TYPE(ValueList_t), POINTER :: Material, BodyForce
+   LOGICAL :: Found, stat
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -1145,21 +1030,42 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
-   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), RotM(:,:,:)
 
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:), Load(:,:), BndLoad(:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
-   REAL(KIND=dp) ::  F(3,3), G(3,3)!, GT(3,3),DetF
-   REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
+   INTEGER :: soln
+   TYPE(ValueList_t), POINTER :: SolverParams 
    
 !-------------------------------------------------------------------------------------------
-   PiolaVersion = GetLogical( GetSolverParams(), &
-      'Use Piola Transform', Found )
-   IF (PiolaVersion) &
-    CALL Info('VectorHelmholtzCalcFields', &
-        'Using Piola transformed finite elements',Level=2)
+   SolverParams => GetSolverParams()
 
+   soln = ListGetInteger( SolverParams,'Primary Solver Index', Found) 
+   IF( soln == 0 ) THEN
+     CALL Fatal('VectorHelmholtzCalcFields','We should know > Primary Solver Index <')
+   END IF
+
+   ! Pointer to primary solver
+   pSolver => Model % Solvers(soln)
+
+   Pname = getVarName(pSolver % Variable)
+   CALL Info('VectorHelmholtzCalcFields','Name of potential variable: '//TRIM(pName),Level=10)
+   
+   ! Inherit the solution basis from the primary solver
+   vDOFs = pSolver % Variable % DOFs
+   IF( vDofs /= 2 ) THEN
+     CALL Fatal('VectorHelmholtzCalcFields','Primary variable should have 2 dofs: '//TRIM(I2S(vDofs)))
+   END IF
+
+   IF( GetLogical( pSolver % Values,'Quadratic Approximation', Found ) ) THEN
+     PiolaVersion = .TRUE.
+   ELSE
+     PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found )
+   END IF
+    
+   IF (PiolaVersion) CALL Info('MagnetoDynamicsCalcFields', &
+       'Using Piola transformed finite elements',Level=5)
+   
    Mesh => GetMesh()
 
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
@@ -1179,13 +1085,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    EW => VariableGet( Mesh % Variables, 'Electric Work')
    EL_EW => VariableGet( Mesh % Variables, 'Electric Work E')
-
-   Pname = GetString(GetSolverParams(), 'Field Variable')
-   DO i=1,Model % NumberOfSolvers
-     pSolver => Model % Solvers(i)
-     IF (Pname==getVarName(pSolver % Variable)) EXIT
-   END DO
-   vDOFs = pSolver % Variable % dofs
  
    dofs = 0 
    IF ( ASSOCIATED(MFD) ) dofs=dofs+3
@@ -1195,7 +1094,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    IF ( ASSOCIATED(DIVPV) ) dofs=dofs+1
    IF ( ASSOCIATED(EW) ) dofs=dofs+1
    dofs = dofs*2  ! complex problem
-   NodalFields = dofs>0
+   NodalFields = dofs > 0
 
    IF(NodalFields) THEN
      ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),dofs)); Gforce=0._dp
@@ -1220,8 +1119,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    n = Mesh % MaxElementDOFs
 
-   ALLOCATE( MASS(n,n), FORCE(n,dofs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n), Load(3,n), BndLoad(3,n) )
-   IF (PiolaVersion) ALLOCATE( EBasis(n,3), CurlEBasis(n,3) )
+   ALLOCATE( MASS(n,n), FORCE(n,dofs), Tcoef(3,3,n), Pivot(n), Load(3,n), BndLoad(3,n) )
 
    SOL = 0._dp
 
@@ -1234,9 +1132,10 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    
    hdotE_r = 0._dp
    hdotE_i = 0._dp
+
    ! This piece of code effectively does what keyword "Calculate Energy Norm" would but
    ! it treats the system complex valued.
-   IF (GetLogical( GetSolverParams(), 'Calculate Energy Functional', Found)) THEN
+   IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
      ALLOCATE(TempVector(pSolver % Matrix % NumberOfRows))
      IF ( ParEnv % PEs > 1 ) THEN
        ALLOCATE(TempRHS(SIZE(bb)))
@@ -1258,7 +1157,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
      hdotE_r = ParallelReduction(hdotE_r)
      hdotE_i = ParallelReduction(hdotE_i)
-     write (Message,*), 'Energy Functional value:', hdotE_r, hdotE_i
+     write (Message,*) 'Energy Functional value:', hdotE_r, hdotE_i
      CALL Info('VectorHelmholtzSolver',Message)
      CALL ListAddConstReal(Model % Simulation, 'res: Energy Functional', hdotE_r)
      CALL ListAddConstReal(Model % Simulation, 'res: Energy Functional im', hdotE_i)
@@ -1317,15 +1216,10 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        u = IP % U(j)
        v = IP % V(j)
        w = IP % W(j)
-
-       IF (PiolaVersion) THEN
-         stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-           F, G, DetJ, Basis, WBasis, RotWBasis, dBasisdx, ApplyPiolaTransform=.TRUE.)
-       ELSE
-         stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-       END IF
-
+       
+       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
+           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+       
        B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
          MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:) ) / (-Omega))
 
@@ -1429,8 +1323,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
     ! Assembly of the face terms:
     !----------------------------
 
-    IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) THEN
-      IF (GetLogical(GetSolverParams(),'Average Within Materials',Found)) THEN
+    IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
+      IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
         FORCE = 0.0_dp
         CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
       END IF
@@ -1454,10 +1348,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    CALL ListAddConstReal(Model % Simulation,'res: Integral of Div Poynting Vector im',Energy_im)
 
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
-   DEALLOCATE( MASS,FORCE,Tcoef,RotM )
-   IF (PiolaVersion) DEALLOCATE( EBasis, CurlEBasis )
+   DEALLOCATE( MASS,FORCE,Tcoef)
       
-  IF (GetLogical(GetSolverParams(),'Show Angular Frequency',Found)) THEN
+   IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) THEN
     WRITE(Message,*) 'Angular Frequency: ', Omega
     CALL Info( 'MagnetoDynamics', Message )
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)

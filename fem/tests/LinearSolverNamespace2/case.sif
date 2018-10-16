@@ -1,0 +1,103 @@
+! Change linear system namespace in middle of simulation
+! Here we use a strategy "Linear System Trialing" where a new strategy
+! is tried until convergence is reached.
+!
+! P.R. 18.9.2018
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 10
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "scanning"
+
+  Timestep Intervals = 2
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+
+
+  ! Start from 1st linear system strategy and continue until convergence is found
+  Linear System Trialing = True
+
+! This keyword can be used to memorize the successfull strategy
+! Linear System Trialing Conserve = True
+
+  linsys1: Linear System Solver = "Iterative"
+  linsys1: Linear System Iterative Method = "BiCGStab"
+  linsys1: Linear System Preconditioning = "none"
+
+  linsys2: Linear System Solver = "Iterative"
+  linsys2: Linear System Iterative Method = "BiCGStab"
+  linsys2: Linear System Preconditioning = "ILU0"
+
+  linsys3: Linear System Solver = "direct"
+  linsys3: Linear System Direct Method = "umfpack"
+
+! This is tuned very small in purpose so that we would need
+! also direct strategy (the third one)
+  Linear System Max Iterations = 5
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 3
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = Equals "time"
+End
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 1 
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = 5.18826873E-02

@@ -4990,10 +4990,10 @@ END SUBROUTINE GetMaxDefs
     TYPE(Matrix_t), POINTER :: Projector    
     !--------------------------------------------------------------------------
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
-    LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
+    LOGICAL ::  StrongNodes, StrongEdges, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
-        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, IntGalerkin, &
-        CreateDual, HaveMaxDistance
+        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, WeakProjector, &
+        StrongProjector, CreateDual, HaveMaxDistance
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
         ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance
@@ -5074,36 +5074,33 @@ END SUBROUTINE GetMaxDefs
       ArcCoeff = 1.0_dp
     END IF
 
-    IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', Found )
+    ! We have a weak projector if it is requested 
+    WeakProjector = ListGetLogical( BC, 'Galerkin Projector', Found )    
+
+    StrongProjector = ListGetLogical( BC,'Level Projector Strong',Found )
+    IF( StrongProjector .AND. WeakProjector ) THEN
+      CALL Fatal('LevelProjector','Projector cannot be weak (Galerkin) and strong at the same time!')
+    END IF
+
+    
     MeshDIm = Mesh % MeshDim
 
     ! Generic integrator does not make any assumptions on the way the mesh 
     ! is constructured. Otherwise constant strides in y-direction is assumed. 
     ! For weak strategy always use the generic integrator. 
     GenericIntegrator = ListGetLogical( BC,'Level Projector Generic',Found ) 
-    IF(.NOT. Found ) GenericIntegrator = IntGalerkin
+    IF(.NOT. Found ) GenericIntegrator = WeakProjector
 
-    ! There is no strong strategy for skewed edges currently
-    StrongSkewEdges = .FALSE.
     ! Maximum skew in degrees before treating edges as skewed
     SkewTol = 0.1  
-    
 
-    IF( MeshDim == 2 ) THEN
-      ! In 2D these always yield since current only the strong method 
-      ! of nodes has been implemented in 2D 
-      CALL Info('LevelProjector','Initial mesh is 2D, using 1D projectors!',Level=10) 
-      StrongNodes = ListGetLogical( BC,'Level Projector Nodes Strong',Found ) 
-      IF(.NOT. Found) StrongNodes = ListGetLogical( BC,'Level Projector Strong',Found ) 
-      IF(.NOT. Found) StrongNodes = .NOT. IntGalerkin
-    ELSE ! 3D 
-      IF(.NOT. GenericIntegrator ) THEN
-        IF( Naxial > 0 ) THEN
-          GenericIntegrator = .TRUE.
-          CALL Info('LevelProjector','Generic integrator enforced for axial projector',Level=6)
-        END IF
+    ! Check whether generic integrator should be enforced
+    IF( DoEdges .AND. .NOT. GenericIntegrator ) THEN
+      IF( Naxial > 0 ) THEN
+        GenericIntegrator = .TRUE.
+        CALL Info('LevelProjector','Generic integrator enforced for axial projector',Level=6)
       END IF
-
+      
       ! It is assumed that that the target mesh is always un-skewed 
       ! Make a test here to be able to skip it later. No test is needed
       ! if the generic integrator is enforced. 
@@ -5126,52 +5123,49 @@ END SUBROUTINE GetMaxDefs
           IF( MaxSkew2 > MaxSkew1 .AND. MaxSkew1 < SkewTol ) THEN
             CALL Warn('LevelProjector','You could try switching the master and target BC!')
           END IF
-          CALL Warn('LevelProjector','Target mesh has too much skew, using generic integrator!')
+          CALL Warn('LevelProjector','Target mesh has too much skew, using generic integrator when needed!')
           GenericIntegrator = .TRUE. 
         END IF
       END IF
-        
-      ! The projectors for nodes and edges can be created either in a strong way 
-      ! or weak way in the special case that the nodes are located in extruded layers. 
-      ! The strong way results to a sparse projector. For constant 
-      ! levels it can be quite optimal, except for the edges with a skew. 
-      ! If strong projector is used for all edges then "StrideProjector" should 
-      ! be recovered.
-      IF( DoNodes ) THEN
-        StrongNodes = .NOT. IntGalerkin
-        IF( GenericIntegrator ) THEN
-          StrongNodes = .FALSE.
-        ELSE IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) THEN
-          StrongNodes = .TRUE.
-        END IF
-        ! The nodes could be treated with strong projector even though the edges are integrated
-        ! with a weak projector. 
-        IF( ListGetLogical( BC,'Level Projector Nodes Strong',Found ) ) StrongNodes = .TRUE.
+      
+      IF( GenericIntegrator ) THEN
+        CALL Info('LevelProjector','Edge projection for the BC requires weak projector!',Level=7)
+        CALL Fatal('LevelProjector','We cannot use fully strong projector as wished in this geometry!')
+      END IF
+    END IF
+      
+    ! The projectors for nodes and edges can be created either in a strong way 
+    ! or weak way in the special case that the nodes are located in extruded layers. 
+    ! The strong way results to a sparse projector. For constant 
+    ! levels it can be quite optimal, except for the edges with a skew. 
+    ! If strong projector is used for all edges then "StrideProjector" should 
+    ! be recovered.
+               
+    IF( DoNodes ) THEN
+      StrongNodes = ListGetLogical( BC,'Level Projector Nodes Strong',Found ) 
+      IF(.NOT. Found) StrongNodes = ListGetLogical( BC,'Level Projector Strong',Found ) 
+      IF(.NOT. Found) StrongNodes = .NOT. GenericIntegrator
+    END IF
+
+    IF( DoEdges ) THEN
+      StrongEdges = ListGetLogical( BC,'Level Projector Strong',Found )
+      IF(.NOT. Found ) StrongEdges = ListGetLogical( BC,'Level Projector Plane Edges Strong', Found ) 
+      IF(.NOT. Found ) StrongEdges = .NOT. GenericIntegrator
+      
+      StrongLevelEdges = ListGetLogical( BC,'Level Projector Plane Edges Strong', Found ) 
+      IF( .NOT. Found ) StrongLevelEdges = StrongEdges
+      IF( StrongLevelEdges .AND. GenericIntegrator ) THEN
+        CALL Info('LevelProjector','Using strong level edges with partially weak projector',Level=7)
       END IF
       
-      IF( DoEdges ) THEN
-        StrongLevelEdges = .NOT. IntGalerkin
-        StrongExtrudedEdges = .NOT. IntGalerkin
-        StrongSkewEdges = .FALSE.
-        
-        IF( GenericIntegrator ) THEN
-          CALL Info('LevelProjector','Using generic weak projector for all edge dofs!')
-          StrongLevelEdges = .FALSE.
-          StrongExtrudedEdges = .FALSE.
-        ELSE
-          IF( ListGetLogical( BC,'Level Projector Strong',Found ) .OR. &
-              ListGetLogical( BC,'Level Projector Edges Strong',Found ) ) THEN
-            StrongLevelEdges = .TRUE.
-            StrongExtrudedEdges = .TRUE.
-          END IF
-          IF( ListGetLogical( BC,'Level Projector Plane Edges Strong',&
-              Found ) ) StrongLevelEdges = .TRUE.
-          IF( ListGetLogical( BC,'Level Projector Extruded Edges Strong',&
-              Found ) ) StrongExtrudedEdges = .TRUE.
-          IF( ListGetLogical( BC,'Level Projector Skew Edges Strong',&
-              Found ) ) StrongSkewEdges = .TRUE.
-        END IF
+      StrongExtrudedEdges = ListGetLogical( BC,'Level Projector Extruded Edges Strong', Found ) 
+      IF( .NOT. Found ) StrongExtrudedEdges = StrongEdges
+      IF( StrongExtrudedEdges .AND. GenericIntegrator ) THEN
+        CALL Info('LevelProjector','Using strong extruded edges with partially weak projector',Level=7)
       END IF
+      
+      ! There is no strong strategy for skewed edges currently
+      StrongSkewEdges = .FALSE.
     END IF
 
 
@@ -5548,6 +5542,7 @@ END SUBROUTINE GetMaxDefs
     !-------------------------------------------------------------
     IF( SomethingUndone ) THEN      
       IF( MeshDim == 2 ) THEN
+        CALL Info('LevelProjector','Initial mesh is 2D, using 1D projectors!',Level=10) 
         CALL AddProjectorWeak1D()
       ELSE IF( GenericIntegrator ) THEN
         CALL AddProjectorWeakGeneric()
@@ -10514,7 +10509,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL, OPTIONAL :: Galerkin
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,dim
-    LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
+    LOGICAL :: GotIt, UseQuadrantTree, Success, WeakProjector, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
         Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
@@ -10560,9 +10555,9 @@ END SUBROUTINE GetMaxDefs
     ! flag. The default is the nodal projector.
     !--------------------------------------------------------------------------
     IF( PRESENT( Galerkin) ) THEN
-      IntGalerkin = Galerkin
+      WeakProjector = Galerkin
     ELSE
-      IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', GotIt )
+      WeakProjector = ListGetLogical( BC, 'Galerkin Projector', GotIt )
     END IF
 
     ! If the boundary is discontinuous then we have the luxury of creating the projector
@@ -10570,7 +10565,7 @@ END SUBROUTINE GetMaxDefs
     ! boundary is self-contained.
     !------------------------------------------------------------------------------------
     IF( ListGetLogical( BC, 'Discontinuous Boundary', GotIt ) .AND. Mesh % DisContMesh )THEN
-      IF( IntGalerkin ) THEN
+      IF( WeakProjector ) THEN
         Projector => WeightedProjectorDiscont( PMesh, This )
       ELSE
         Projector => NodalProjectorDiscont( PMesh, This )
@@ -10779,7 +10774,7 @@ END SUBROUTINE GetMaxDefs
 
       UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
       IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
-      IF( IntGalerkin ) THEN
+      IF( WeakProjector ) THEN
         Projector => WeightedProjector( BMesh2, BMesh1, BMesh2 % InvPerm, BMesh1 % InvPerm, &
             UseQuadrantTree, Repeating, AntiRepeating, NodeScale, NodalJump )
       ELSE
@@ -16531,7 +16526,13 @@ CONTAINS
     ! of layers to save some time.
     !------------------------------------------------------------------
     IF( PRESENT( NumberOfLayers ) ) THEN
-      CALL Info('DetectExtrudedStructure','compute the number of layers',Level=9)    
+      CALL Info('DetectExtrudedStructure','Compute number of layers',Level=15)    
+      DO i=1,nsize
+        IF( MaskExists ) THEN
+          IF( MaskPerm(i) == 0 ) CYCLE
+        END IF
+        EXIT
+      END DO
 
       j = BotPointer(1)      
       CALL Info('DetectExtrudedStructure','Starting from node: '//TRIM(I2S(j)),Level=15)
@@ -16688,7 +16689,7 @@ CONTAINS
   
     ! Count the number of top and bottom nodes, for information only
     !---------------------------------------------------------------
-    CALL Info('DetectExtrudedStructure','counting top and bottom bodes',Level=9)        
+    CALL Info('DetectExtrudedStructure','Counting top and bottom nodes',Level=15)        
     IF( UpActive ) THEN
       TopNodes = 0
       MinTop = HUGE( MinTop ) 
@@ -16832,6 +16833,376 @@ CONTAINS
   END SUBROUTINE DetectExtrudedStructure
  !---------------------------------------------------------------
 
+
+
+!--------------------------------------------------------------------------
+!> This subroutine finds the structure of an extruded mesh for elements.
+!> Otherwise very similar as the DetectExtrudedStructure for nodes.
+!> Mesh faces may need to be created in order to determine the up and down
+!> pointers.
+!-----------------------------------------------------------------------------
+  SUBROUTINE DetectExtrudedElements( Mesh, Solver, ExtVar, &
+      TopElemPointer, BotElemPointer, UpElemPointer, DownElemPointer, &
+      NumberOfLayers, ElemLayer )
+    
+    USE CoordinateSystems
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Variable_t), POINTER, OPTIONAL :: ExtVar
+    INTEGER, POINTER, OPTIONAL :: TopElemPointer(:), BotElemPointer(:), &
+        UpElemPointer(:), DownElemPointer(:)
+    INTEGER, POINTER, OPTIONAL :: ElemLayer(:)
+    INTEGER, OPTIONAL :: NumberOfLayers
+!-----------------------------------------------------------------------------
+    REAL(KIND=dp) :: Direction(3)
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Variable_t), POINTER :: Var
+    REAL(KIND=dp) :: Tolerance
+    TYPE(Element_t), POINTER :: Element, Parent
+    TYPE(Nodes_t) :: Nodes
+    INTEGER :: i,j,k,n,ii,jj,dim, nsize, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
+	UpHit, DownHit, bc_ind
+    INTEGER, POINTER :: NodeIndexes(:)
+    LOGICAL :: UpActive, DownActive, GotIt, Found
+    LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
+#ifndef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: CPUTime
+#endif
+    REAL(KIND=dp) :: at0, at1
+    REAL(KIND=dp) :: FaceCenter(3),FaceDx(3),Height(2),Eps, MinTop, MaxTop, MinBot, MaxBot, Diam
+    REAL(KIND=dp), POINTER :: Values(:)
+    INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+    INTEGER :: TestCounter(3),ElementIndex(2)
+    
+   
+    CALL Info('DetectExtrudedElements','Determining extruded structure',Level=6)
+    at0 = CPUTime()
+
+    DIM = Mesh % MeshDim
+
+    IF( DIM /= 3 ) THEN
+      CALL Fatal('DetectExtrudedElements','Only implemented for 3D cases: '//TRIM(I2S(dim)))
+    END IF
+
+    IF( .NOT. ASSOCIATED( Mesh % Faces ) ) THEN
+      CALL FindMeshFaces3D( Mesh )
+    END IF
+
+    
+    Params => Solver % Values
+    TestCounter = 0
+    
+    ActiveDirection = ListGetInteger(Params,'Active Coordinate')
+    IF( ActiveDirection < 1 .OR. ActiveDirection > 3 ) THEN
+      CALL Fatal('StructuredMeshMapper','Invalid value for Active Coordinate')
+    END IF  
+
+    ! Set the dot product tolerance
+    !-----------------------------------------------------------------
+    Eps = ListGetConstReal( Params,'Dot Product Tolerance',GotIt)
+    IF(.NOT. GotIt) Eps = 1.0e-1_dp
+
+    nsize = Mesh % NumberOfBulkElements
+    CALL Info('DetectExtrudedElements','Detecting extrusion in the mesh using coordinate: '&
+        //TRIM(I2S(ActiveDirection)),Level=8)
+
+    IF( ActiveDirection == 1 ) THEN
+      Var => VariableGet( Mesh % Variables,'Coordinate 1')
+    ELSE IF( ActiveDirection == 2 ) THEN
+      Var => VariableGet( Mesh % Variables,'Coordinate 2')
+    ELSE 
+      Var => VariableGet( Mesh % Variables,'Coordinate 3')
+    END IF	      
+
+    IF( PRESENT( ExtVar ) ) ExtVar => Var
+
+    ! Check which direction is active
+    !---------------------------------------------------------------------
+    UpActive = PRESENT( UpElemPointer) .OR. PRESENT ( TopElemPointer ) 
+    DownActive = PRESENT( DownElemPointer) .OR. PRESENT ( BotElemPointer ) 
+
+    IF( PRESENT( NumberOfLayers) .OR. PRESENT( ElemLayer ) ) THEN
+      UpActive = .TRUE.
+      DownActive = .TRUE.
+    END IF
+
+    IF(.NOT. (UpActive .OR. DownActive ) ) THEN
+      CALL Warn('DetectExtrudedElements','Either up or down direction should be active')
+      RETURN
+    END IF
+
+    ! Allocate pointers to top and bottom, and temporary pointers up and down
+    !------------------------------------------------------------------------
+    IF( UpActive ) THEN
+      ALLOCATE(TopPointer(nsize),UpPointer(nsize))
+      DO i=1,nsize
+        TopPointer(i) = i
+        UpPointer(i) = i
+      END DO
+    END IF
+    IF( DownActive ) THEN
+      ALLOCATE(BotPointer(nsize),DownPointer(nsize))
+      DO i=1,nsize
+        BotPointer(i) = i
+        DownPointer(i) = i
+      END DO
+    END IF
+
+    CALL Info('DetectExtrudedElements','determine up and down pointers',Level=9)
+
+    ! Determine the up and down pointers using dot product as criterion
+    !-----------------------------------------------------------------
+    n = Mesh % MaxElementNodes
+    ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
+    
+    DO elem = 1,Mesh % NumberOfFaces 
+
+      Element => Mesh % Faces(elem)
+      NodeIndexes => Element % NodeIndexes
+      CurrentModel % CurrentElement => Element
+
+      n = Element % TYPE % NumberOfNodes
+      Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+      Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+      Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+
+      IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+      IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
+      IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right ) ) CYCLE
+      
+      FaceCenter(1) = SUM( Nodes % x(1:n) ) / n
+      FaceCenter(2) = SUM( Nodes % y(1:n) ) / n
+      FaceCenter(3) = SUM( Nodes % z(1:n) ) / n
+
+      FaceDx(1) = SUM( ABS( Nodes % x(1:n) - FaceCenter(1) ) ) 
+      FaceDx(2) = SUM( ABS( Nodes % y(1:n) - FaceCenter(2) ) ) 
+      FaceDx(3) = SUM( ABS( Nodes % z(1:n) - FaceCenter(3) ) ) 
+      
+      Diam = SQRT( SUM( FaceDx**2 ) )
+
+      ! This is not a face that separates extruded elements
+      IF( FaceDx(ActiveDirection) > Eps * Diam ) CYCLE      
+
+      TestCounter(1) = TestCounter(1) + 1      
+      
+      DO k = 1, 2
+        IF( k == 1 ) THEN
+          Parent => Element % BoundaryInfo % Left
+        ELSE
+          Parent => Element % BoundaryInfo % Right
+        END IF
+        IF( .NOT. ASSOCIATED( Parent ) ) CYCLE
+               
+        n = Parent % TYPE % NumberOfNodes
+        NodeIndexes => Parent % NodeIndexes        
+
+        ElementIndex(k) = Parent % ElementIndex
+        Height(k) = SUM( Var % Values(NodeIndexes) ) / n
+      END DO      
+
+      IF( Height(1) > Height(2) ) THEN
+        IF( UpActive ) UpPointer(ElementIndex(2)) = ElementIndex(1)
+        IF( DownActive ) DownPointer(ElementIndex(1)) = ElementIndex(2)
+      ELSE
+        IF( UpActive ) UpPointer(ElementIndex(1)) = ElementIndex(2)
+        IF( DownActive ) DownPointer(ElementIndex(2)) = ElementIndex(1)
+      END IF
+    END DO  
+        
+    DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
+
+    
+    ! Pointer to top and bottom are found recursively using up and down
+    !------------------------------------------------------------------
+    CALL Info('DetectExtrudedElements','determine top and bottom pointers',Level=9)
+
+    DO Rounds = 1, nsize
+      DownHit = 0
+      UpHit = 0
+      DO i=1,nsize
+        IF( UpActive ) THEN
+          j = UpPointer(i)
+          IF( TopPointer(i) /= TopPointer( j ) ) THEN
+            UpHit = UpHit + 1
+            TopPointer(i) = TopPointer( j )
+          END IF
+        END IF
+        IF( DownActive ) THEN
+          j = DownPointer(i)
+          IF( BotPointer(i) /= BotPointer( j ) ) THEN
+	    DownHit = DownHit + 1
+            BotPointer(i) = BotPointer( j )
+          END IF
+        END IF
+      END DO
+      CALL Info('DetectExtrudedElements',&
+          'Hits in determining structure: '//TRIM(I2S(UpHit+DownHit)),Level=10)
+      IF( UpHit == 0 .AND. DownHit == 0 ) EXIT
+    END DO
+    ! The last round is always a check
+    Rounds = Rounds - 1
+
+
+    WRITE( Message,'(A,I0,A)') 'Layered elements detected in ',Rounds,' cycles'
+    CALL Info('DetectExtrudedElements',Message,Level=9)
+    IF( Rounds == 0 ) THEN
+      CALL Info('DetectExtrudedElements','Try to increase value for > Dot Product Tolerance < ')
+      CALL Fatal('DetectExtrudedElements','Zero rounds implies unsuccesfull operation')
+    END IF
+
+
+    ! Compute the number of layers. The Rounds above may in some cases 
+    ! be too small. Here just one layer is used to determine the number
+    ! of layers to save some time.
+    !------------------------------------------------------------------
+    IF( PRESENT( NumberOfLayers ) ) THEN
+      CALL Info('DetectExtrudedStructure','Compute number of layers',Level=15)    
+
+      ! We start from any bottom row entry
+      j = BotPointer(1)
+      
+      NumberOfLayers = 0
+      DO WHILE(.TRUE.)
+        k = UpPointer(j)
+
+        IF( k == j ) THEN
+          EXIT
+        ELSE
+          NumberOfLayers = NumberOfLayers + 1
+          j = k
+        END IF
+      END DO      
+
+      IF( NumberOfLayers < Rounds ) THEN
+        WRITE( Message,'(A,I0,A,I0)') 'There seems to be varying number of layers: ',&
+            NumberOfLayers,' vs. ',Rounds
+        CALL Warn('DetectExtrudedStructure', Message )
+        NumberOfLayers = Rounds
+      END IF
+      WRITE(Message,'(A,I0)') 'Extruded structure layers: ',NumberOfLayers
+      CALL Info('DetectExtrudedStructure',Message)
+    END IF
+
+    
+    ! Create layer index if requested
+    !------------------------------------------------------------------
+    IF( PRESENT( ElemLayer ) ) THEN
+      CALL Info('DetectExtrudedElements','creating layer index',Level=9)        
+
+      NULLIFY(Layer)
+      ALLOCATE( Layer(nsize) )
+      Layer = 1
+      
+      DO i=1,nsize
+        Rounds = 1
+        j = BotPointer(i)
+        Layer(j) = Rounds
+        DO WHILE(.TRUE.)
+          k = UpPointer(j)
+          IF( k == j ) EXIT          
+          Rounds = Rounds + 1
+          j = k
+          Layer(j) = Rounds
+        END DO
+      END DO
+      
+      ElemLayer => Layer
+      WRITE(Message,'(A,I0,A,I0,A)') 'Layer range: [',MINVAL(Layer),',',MAXVAL(Layer),']'
+      CALL Info('DetectExtrudedElements',Message)
+      NULLIFY(Layer)
+    END IF
+
+  
+    ! Count the number of top and bottom elements, for information only
+    !---------------------------------------------------------------
+    CALL Info('DetectExtrudedElements','Counting top and bottom elements',Level=15)        
+    IF( UpActive ) THEN
+      TopNodes = 0
+      MinTop = HUGE( MinTop ) 
+      MaxTop = -HUGE( MaxTop )
+      DO i=1,nsize
+        IF(TopPointer(i) == i) THEN
+          MinTop = MIN( MinTop, Var % Values(i) )
+          MaxTop = MAX( MaxTop, Var % Values(i) )
+          TopNodes = TopNodes + 1
+        END IF
+      END DO
+      CALL Info('DetectExtrudedElements','Number of top elements: '//TRIM(I2S(TopNodes)),Level=9)
+    END IF
+
+    IF( DownActive ) THEN
+      BotNodes = 0
+      MinBot = HUGE( MinBot ) 
+      MaxBot = -HUGE( MaxBot )
+      DO i=1,nsize
+        IF(BotPointer(i) == i) THEN
+          MinBot = MIN( MinBot, Var % Values(i))
+          MaxBot = MAX( MaxBot, Var % Values(i))
+          BotNodes = BotNodes + 1
+        END IF
+      END DO
+      CALL Info('DetectExtrudedElements','Number of bottom elements: '//TRIM(I2S(BotNodes)),Level=9)
+    END IF
+
+
+    ! Return the requested pointer structures, otherwise deallocate
+    !---------------------------------------------------------------
+    CALL Info('DetectExtrudedElements','Setting pointer structures',Level=15)        
+    IF( UpActive ) THEN
+      IF( PRESENT( TopElemPointer ) ) THEN
+        TopElemPointer => TopPointer 
+        NULLIFY( TopPointer )
+      ELSE
+        DEALLOCATE( TopPointer )
+      END IF
+      IF( PRESENT( UpElemPointer ) ) THEN
+        UpElemPointer => UpPointer 
+        NULLIFY( UpPointer )
+      ELSE
+        DEALLOCATE( UpPointer )
+      END IF
+    END IF
+    IF( DownActive ) THEN
+      IF( PRESENT( BotElemPointer ) ) THEN
+        BotElemPointer => BotPointer 
+        NULLIFY( BotPointer ) 
+      ELSE
+        DEALLOCATE( BotPointer )
+      END IF
+      IF( PRESENT( DownElemPointer ) ) THEN
+        DownElemPointer => DownPointer 
+        NULLIFY( DownPointer ) 
+      ELSE
+        DEALLOCATE( DownPointer )
+      END IF
+    END IF
+
+    !---------------------------------------------------------------
+    at1 = CPUTime()  
+    WRITE(Message,'(A,ES12.3)') 'Top and bottom pointer init time: ',at1-at0
+    CALL Info('DetectExtrudedElements',Message,Level=6)
+
+    CALL Info('DetectExtrudedElements',&
+        'Top and bottom pointer init rounds: '//TRIM(I2S(Rounds)),Level=8)
+
+    IF( UpActive ) THEN
+      CALL Info('DetectExtrudedElements', &
+          'Number of elements at the top: '//TRIM(I2S(TopNodes)),Level=8)
+    END IF
+    IF( DownActive ) THEN
+      CALL Info('DetectExtrudedElements', &
+          'Number of elements at the bottom: '//TRIM(I2S(BotNodes)),Level=8)
+    END IF
+   
+
+  END SUBROUTINE DetectExtrudedElements
+ !---------------------------------------------------------------
+
+
+  
   !----------------------------------------------------------------
   !> Maps coordinates from the original nodes into a new coordinate
   !> system while optionally maintaining the original coordinates. 

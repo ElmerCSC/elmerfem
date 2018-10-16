@@ -2160,7 +2160,12 @@ CONTAINS
       INTEGER :: lstat, ompthread
       CHARACTER(LEN=256) :: txcmd
 
-      !$OMP PARALLEL Shared(parenv, ModelName) Private(txcmd, ompthread, lstat) Default(none)
+#if USE_ISO_C_BINDINGS
+      character(len=256) :: elmer_home_env
+      CALL getenv("ELMER_HOME", elmer_home_env)
+#endif
+
+      !$OMP PARALLEL Shared(parenv, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
       !$OMP CRITICAL
       LuaState = lua_init()
       IF(.NOT. LuaState % Initialized) THEN
@@ -2178,8 +2183,24 @@ CONTAINS
       lstat = lua_dostring(LuaState, txcmd // c_null_char)
       
       WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
-      lstat = lua_dostring(LuaState, &
-          'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
+
+      ! TODO: (2018-09-17) Nowadays ISO_C_BINDINGS are pretty much mandatory to compile elmer
+#if USE_ISO_C_BINDINGS
+      ! Call defaults.lua using 1) ELMER_HOME environment variable or 2) ELMER_SOLVER_HOME preprocessor macro
+      ! TODO: (2018-09-18) ELMER_SOLVER_HOME might be too long
+
+      if (trim(elmer_home_env) == "") then
+        lstat = lua_dostring(LuaState, &
+            'loadfile("' // &
+ELMER_SOLVER_HOME &
+                    // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
+      else
+#endif
+        lstat = lua_dostring(LuaState, &
+            'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
+#if USE_ISO_C_BINDINGS
+      end if
+#endif
 
       ! Execute lua parts 
       lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)

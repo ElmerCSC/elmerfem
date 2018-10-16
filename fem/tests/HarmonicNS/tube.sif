@@ -51,8 +51,6 @@ Solver 1
   Linear System Row Equilibration = Logical True 
   Linear System Abort Not Converged = False
   Linear System Residual Output = 10
-
-  Relative Integration Order = -2
 End
 
 Boundary Condition 1

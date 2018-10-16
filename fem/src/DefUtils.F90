@@ -1855,22 +1855,35 @@ CONTAINS
   END FUNCTION GetElementDOFs
 
 
-!> Returns the number of bubble degree of freedom in the active element
-  FUNCTION GetElementNOFBDOFs( Element, USolver ) RESULT(n)
+! -----------------------------------------------------------------------------
+!> Returns the number of bubble degrees of freedom in the active element.
+!> If the sif file contains more than one solver section
+!> with each of them having their own specification of the "Element" 
+!> keyword, the returned value may not be the number of bubbles that
+!> should be assigned to the solver. With the optional argument 
+!> Update = .TRUE., the correct solver-wise bubble count can be returned and
+!> the bubble count assigned to the Element argument is updated.
+! -----------------------------------------------------------------------------
+  FUNCTION GetElementNOFBDOFs( Element, USolver, Update ) RESULT(n)
+! -----------------------------------------------------------------------------
     INTEGER :: n
-    TYPE(Solver_t), OPTIONAL, POINTER :: USolver
     TYPE(Element_t), OPTIONAL :: Element
+    TYPE(Solver_t), OPTIONAL, POINTER :: USolver
+    LOGICAL, OPTIONAL :: Update
+
     TYPE(Element_t), POINTER  :: CurrElement
-
     TYPE(Solver_t), POINTER :: Solver
-
-    LOGICAL :: Found, GB
+    LOGICAL :: Found, GB, UpdateRequested
+    INTEGER :: k
 
     IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
     ELSE
        Solver => CurrentModel % Solver
     END IF
+
+    UpdateRequested = .FALSE.
+    IF ( PRESENT(Update) ) UpdateRequested = Update
 
     !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
     !IF (.NOT.Found) GB = .TRUE.
@@ -1879,7 +1892,26 @@ CONTAINS
     n = 0
     IF ( .NOT. GB ) THEN
       CurrElement => GetCurrentElement(Element)
-      n = CurrElement % BDOFs
+      IF (UpdateRequested) THEN
+        n = Solver % Def_Dofs(GetElementFamily(CurrElement), &
+            CurrElement % Bodyid, 5) 
+        IF ( n>=0 ) THEN
+          CurrElement % BDOFs = n
+        ELSE
+          n = CurrElement % BDOFs
+        END IF
+      ELSE
+        n = CurrElement % BDOFs
+      END IF
+    ELSE
+      ! Rectify the bubble count assigned to the Element argument in case
+      ! some other solver has tampered it:
+      IF (UpdateRequested) THEN
+        CurrElement => GetCurrentElement(Element)
+        k = Solver % Def_Dofs(GetElementFamily(CurrElement), &
+            CurrElement % Bodyid, 5)    
+        IF ( k>=0 ) CurrElement % BDOFs = k
+      END IF
     END IF
   END FUNCTION GetElementNOFBDOFs
 
@@ -2215,43 +2247,69 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Returns handle to Parent element of a boundary element with a larger body id.
+!------------------------------------------------------------------------------ 
+  FUNCTION GetBulkElementAtBoundary( Element, Found ) RESULT(BulkElement)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), OPTIONAL :: Element
+    LOGICAL, OPTIONAL :: Found
+    TYPE(element_t), POINTER :: BulkElement
+!------------------------------------------------------------------------------    
+    TYPE(element_t), POINTER :: BulkElementL, BulkElementR, BoundaryElement
+    LOGICAL :: L
+    INTEGER :: mat_id, BodyIdL, BodyIdR
+
+    BulkElement => NULL()
+    
+    BoundaryElement => GetCurrentElement(Element)
+      
+    IF ( .NOT. ASSOCIATED(BoundaryElement % boundaryinfo)) RETURN
+    BulkElementR => BoundaryElement % boundaryinfo % right
+    BulkElementL => BoundaryElement % boundaryinfo % left
+    BodyIdR = 0; BodyIdL = 0
+    
+    IF (ASSOCIATED(BulkElementR)) BodyIdR = BulkElementR % BodyId
+    IF (ASSOCIATED(BulkElementL)) BodyIdL = BulkElementL % BodyId
+    
+    IF (BodyIdR == 0 .AND. BodyIdL == 0) THEN
+      RETURN
+    ELSE IF (BodyIdR > BodyIdL) THEN
+      BulkElement => BulkElementR
+    ELSE IF (bodyIdL >= BodyIdR) THEN
+      BulkElement => BulkElementL
+    END IF
+
+    IF( PRESENT( Found ) ) Found = ASSOCIATED( BulkElement ) 
+    
+!------------------------------------------------------------------------------
+  END FUNCTION GetBulkElementAtBoundary
+!------------------------------------------------------------------------------
+
+  
+!------------------------------------------------------------------------------
 !> Returns handle to Material value list of the bulk material meeting  
 !> element with larger body id. Typically Element is a boundary element.
   FUNCTION GetBulkMaterialAtBoundary( Element, Found ) RESULT(Material)
 !------------------------------------------------------------------------------
     TYPE(Element_t), OPTIONAL :: Element
     LOGICAL, OPTIONAL :: Found
-
     TYPE(ValueList_t), POINTER :: Material
-    type(element_t), pointer :: BoundaryElement, BulkElementL, &
-        BulkElementR, BulkElement
-
+!------------------------------------------------------------------------------
+    TYPE(element_t), POINTER :: BulkElement
     LOGICAL :: L
-    INTEGER :: mat_id, BodyIdL, BodyIdR
+    INTEGER :: mat_id
 
     Material => NULL()
 
-    BoundaryElement => GetCurrentElement(Element)
+    BulkElement => GetBulkElementAtBoundary(Element, Found)
 
-    IF ( .NOT. ASSOCIATED(BoundaryElement % boundaryinfo)) return
-    BulkElementR => BoundaryElement % boundaryinfo % right
-    BulkElementL => BoundaryElement % boundaryinfo % left
-    BodyIdR = 0; BodyIdL = 0
-
-    IF (ASSOCIATED(BulkElementR)) BodyIdR = BulkElementR % BodyId
-    IF (ASSOCIATED(BulkElementL)) BodyIdL = BulkElementL % BodyId
-
-    if (BodyIdR == 0 .and. BodyIdL == 0) return
-    if (BodyIdR > BodyIdL) then
-      BulkElement => BulkElementR
-    end if
-    if (bodyIdL >= BodyIdR) then
-      BulkElement => BulkElementL
-    end if
-
-    mat_id = GetMaterialId( BulkElement, L )
-
-    IF ( L ) Material => CurrentModel % Materials(mat_id) % Values
+    IF( ASSOCIATED( BulkElement ) ) THEN
+      mat_id = GetMaterialId( BulkElement, L )      
+      IF ( L ) Material => CurrentModel % Materials(mat_id) % Values
+    ELSE
+      L = .FALSE.
+    END IF
+    
     IF ( PRESENT( Found ) ) Found = L
 !------------------------------------------------------------------------------
   END FUNCTION GetBulkMaterialAtBoundary
@@ -2951,10 +3009,11 @@ CONTAINS
 
 !> Performs initialization for matrix equation related to the active solver
 !------------------------------------------------------------------------------
-  RECURSIVE SUBROUTINE DefaultInitialize( USolver )
+  RECURSIVE SUBROUTINE DefaultInitialize( USolver, UseConstantBulk )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
-
+     LOGICAL, OPTIONAL :: UseConstantBulk
+!------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: Solver
      LOGICAL :: Found
      
@@ -2963,7 +3022,24 @@ CONTAINS
      ELSE
        Solver => CurrentModel % Solver
      END IF
-          
+
+     IF( PRESENT( UseConstantBulk ) .AND. UseConstantBulk ) THEN
+       CALL Info('DefaultInitialize','Using constant bulk matrix',Level=8)
+       IF( .NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
+         CALL Warn('DefaultInitialie','Constant bulk system requested but not associated!')
+         RETURN
+       END IF
+       Solver % Matrix % Values = Solver % Matrix % BulkValues        
+       IF( ASSOCIATED( Solver % Matrix % BulkMassValues ) ) &
+           Solver % Matrix % MassValues = Solver % Matrix % BulkMassValues 
+       IF( ASSOCIATED( Solver % Matrix % BulkDampValues ) ) &
+           Solver % Matrix % DampValues = Solver % Matrix % BulkDampValues 
+       IF( ASSOCIATED( Solver % Matrix % BulkRhs ) ) &
+           Solver % Matrix % rhs = Solver % Matrix % BulkRhs 
+       RETURN
+     END IF
+
+     
      CALL DefaultSlaveSolvers(Solver,'Slave Solvers') ! this is the initial name of the slot
      CALL DefaultSlaveSolvers(Solver,'Nonlinear Pre Solvers')     
 
@@ -3073,6 +3149,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
     INTEGER :: NameSpaceI
+    LOGICAL :: LinearSystemTrialing
 
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
     
@@ -3081,13 +3158,16 @@ CONTAINS
     IF ( PRESENT( USolver ) ) Solver => USolver
 
     Params => GetSolverParams(Solver)
-    
+
     NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
+    LinearSystemTrialing = ListGetLogical( Params,'Linear System Trialing', Found )
+    IF( LinearSystemTrialing ) NameSpaceI = MAX( 1, NameSpaceI )
+      
     IF( NameSpaceI > 0 ) THEN
       CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
       CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
     END IF
-
+    
     IF( ListCheckPresent( Params, 'Dump system matrix') .OR. &
         ListCheckPresent( Params, 'Dump system RHS') ) THEN
       CALL Error('DefaultSolve','> Dump System Matrix < and > Dump System Rhs < are obsolite')
@@ -3110,7 +3190,7 @@ CONTAINS
     END IF
 
     
-    IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
+    IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver )
     END IF
 
@@ -3119,7 +3199,7 @@ CONTAINS
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
 
     
-    IF( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) THEN
+    IF( GetLogical(Params,'Linear System Solver Disabled',Found) ) THEN
       CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
       RETURN
     END IF
@@ -3134,7 +3214,26 @@ CONTAINS
     b => A % RHS
     SOL => x % Values
 
-    CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+10   CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+    
+    IF( LinearSystemTrialing ) THEN
+      IF( x % LinConverged > 0 ) THEN
+        IF( ListGetLogical( Params,'Linear System Trialing Conserve',Found ) ) THEN
+          CALL ListAddConstReal( Params,'Linear System Namespace Number', 1.0_dp *NameSpaceI )
+        END IF
+      ELSE
+        NameSpaceI = NameSpaceI + 1      
+        IF( .NOT. ListCheckPrefix( Params,'linsys'//TRIM(I2S(NameSpaceI)) ) ) THEN
+          CALL Fatal('DefaultSolve','Exhausted all linear system strategies!')
+        END IF
+        CALL ListPopNamespace()
+        CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
+        CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
+        GOTO 10
+      END IF
+    END IF
+    
+    
     
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
@@ -3167,6 +3266,23 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Is the system converged. Wrapper to hide the dirty test.
+!------------------------------------------------------------------------------
+  FUNCTION DefaultConverged( USolver ) RESULT( Converged ) 
+!------------------------------------------------------------------------------
+    TYPE(Solver_t), OPTIONAL, TARGET, INTENT(in) :: USolver
+    TYPE(Solver_t), POINTER :: Solver
+    LOGICAL :: Converged
+    
+    Solver => CurrentModel % Solver
+    IF ( PRESENT( USolver ) ) Solver => USolver
+
+    Converged = ( Solver % Variable % NonlinConverged > 0 )
+
+  END FUNCTION DefaultConverged
+!------------------------------------------------------------------------------
+         
 
 !------------------------------------------------------------------------------
   FUNCTION DefaultLinesearch( Converged, USolver, FirstIter, nsize, values, values0 ) RESULT( ReduceStep ) 
@@ -5274,7 +5390,8 @@ CONTAINS
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE. ) 
       ELSE
-        CALL CopyBulkMatrix( PSolver % Matrix ) 
+        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = ASSOCIATED(PSolver % Matrix % MassValues), &
+            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues) ) 
       END IF
     END IF
 

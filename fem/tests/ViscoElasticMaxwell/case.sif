@@ -48,7 +48,6 @@ Solver 1
 
   Variable = String "t[d:2 p:1]"
   Element = p:1 b:3
-  Relative Integration Order = -3
 
   Incompressible = Logical True
   Time Derivative Order = 1
@@ -94,6 +93,6 @@ Boundary Condition 3
 End
 
 
-Solver 1 :: Reference Norm = Real 0.45989393
+Solver 1 :: Reference Norm = Real 4.59885655E-01 
 RUN
 

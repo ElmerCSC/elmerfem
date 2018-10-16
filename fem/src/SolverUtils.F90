@@ -67,6 +67,10 @@ MODULE SolverUtils
 
    IMPLICIT NONE
 
+   INTERFACE CondensateP
+     MODULE PROCEDURE CondensatePR, CondensatePC
+   END INTERFACE CondensateP
+
    CHARACTER(LEN=MAX_NAME_LEN), PRIVATE :: NormalTangentialName
    INTEGER, PRIVATE :: NormalTangentialNOFNodes
    INTEGER, POINTER, PRIVATE :: NTelement(:,:)
@@ -478,11 +482,11 @@ CONTAINS
 
 !> Create a copy of the linear system (Values,Rhs) to (BulkValues,BulkRhs).
 !------------------------------------------------------------------------------
-   SUBROUTINE CopyBulkMatrix( A, BulkMass )
+   SUBROUTINE CopyBulkMatrix( A, BulkMass, BulkDamp )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      INTEGER :: i,n
-     LOGICAL, OPTIONAL :: BulkMass
+     LOGICAL, OPTIONAL :: BulkMass, BulkDamp
      
      n = SIZE( A % Rhs )
      IF( ASSOCIATED( A % BulkRhs ) ) THEN
@@ -509,10 +513,7 @@ CONTAINS
        ALLOCATE( A % BulkValues( n ) )
      END IF
 
-     DO i=1,n
-       A % BulkValues(i) = A % Values(i)
-     END DO
-
+     A % BulkValues(1:n) = A % Values(1:n)
 
      IF( PRESENT( BulkMass ) .AND. ASSOCIATED( A % MassValues) ) THEN
        IF( BulkMass ) THEN
@@ -526,15 +527,28 @@ CONTAINS
          IF ( .NOT. ASSOCIATED( A % BulkMassValues ) ) THEN
            ALLOCATE( A % BulkMassValues( n ) )
          END IF
-         
-         DO i=1,n
-           A % BulkMassValues(i) = A % MassValues(i)
-         END DO         
+
+         A % BulkMassValues(1:n) = A % MassValues(1:n)
+       END IF
+     END IF
+
+     IF( PRESENT( BulkDamp ) .AND. ASSOCIATED( A % DampValues) ) THEN
+       IF( BulkDamp ) THEN
+         n = SIZE( A % DampValues )
+         IF( ASSOCIATED( A % BulkDampValues ) ) THEN
+           IF( SIZE( A % BulkDampValues ) /= n ) THEN
+             DEALLOCATE( A % BulkDampValues ) 
+             A % BulkDampValues => NULL()
+           END IF
+         END IF
+         IF ( .NOT. ASSOCIATED( A % BulkDampValues ) ) THEN
+           ALLOCATE( A % BulkDampValues( n ) )
+         END IF
+
+         A % BulkDampValues(1:n) = A % DampValues(1:n)
        END IF
      END IF
      
-
-
    END SUBROUTINE CopyBulkMatrix
 !------------------------------------------------------------------------------
 
@@ -4097,7 +4111,77 @@ CONTAINS
   END SUBROUTINE ReleaseDirichletDof
 !------------------------------------------------------------------------------
 
-   
+
+  
+!> Release the range or min/max values of Dirichlet values.
+!------------------------------------------------------------------------------
+  FUNCTION DirichletDofsRange( Solver, Oper ) RESULT ( val ) 
+!------------------------------------------------------------------------------
+    TYPE(Solver_t), OPTIONAL :: Solver
+    CHARACTER(LEN=*), OPTIONAL :: Oper 
+    REAL(KIND=dp) :: val
+    
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp) :: minv,maxv
+    LOGICAL :: FindMin, FindMax
+    INTEGER :: i,OperNo
+    
+    IF( PRESENT( Solver ) ) THEN
+      A => Solver % Matrix
+    ELSE
+      A => CurrentModel % Solver % Matrix
+    END IF
+    
+    val = 0.0_dp
+    
+    ! Defaulting to range
+    OperNo = 0
+
+    IF( PRESENT( Oper ) ) THEN
+      IF( Oper == 'range' ) THEN
+        OperNo = 0
+      ELSE IF( Oper == 'min' ) THEN
+        OperNo = 1 
+      ELSE IF( Oper == 'max' ) THEN
+        OperNo = 2
+      ELSE
+        CALL Fatal('DirichletDofRange','Unknown operator: '//TRIM(Oper))
+      END IF
+    END IF
+          
+    IF(.NOT. ALLOCATED(A % ConstrainedDOF)) THEN
+      RETURN
+    END IF
+  
+    IF( OperNo == 0 .OR. OperNo == 1 ) THEN
+      minv = HUGE( minv ) 
+      DO i=1,SIZE( A % ConstrainedDOF )
+        IF( A % ConstrainedDOF(i) ) minv = MIN( A % DValues(i), minv ) 
+      END DO
+      minv = ParallelReduction( minv, 1 ) 
+    END IF
+
+    IF( OperNo == 0 .OR. OperNo == 2 ) THEN
+      maxv = -HUGE( maxv ) 
+      DO i=1,SIZE( A % ConstrainedDOF )
+        IF( A % ConstrainedDOF(i) ) maxv = MAX( A % DValues(i), maxv ) 
+      END DO
+      maxv = ParallelReduction( maxv, 2 ) 
+    END IF
+    
+    IF( OperNo == 0 ) THEN    
+      val = maxv - minv
+    ELSE IF( OperNo == 1 ) THEN
+      val = minv
+    ELSE
+      val = maxv
+    END IF
+      
+  END FUNCTION DirichletDofsRange
+!------------------------------------------------------------------------------
+
+
+  
 
 !------------------------------------------------------------------------------
 !> Set dirichlet boundary condition for given dof. The conditions are
@@ -4125,7 +4209,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: NodeIndexes(:), IndNodes(:), BCOrder(:)
     INTEGER, ALLOCATABLE :: Indexes(:), PassPerm(:)
-    INTEGER :: BC,i,j,j2,k,l,m,n,t,k1,k2,OffSet
+    INTEGER :: BC,i,j,j2,k,l,m,n,nd,p,t,k1,k2,OffSet
     LOGICAL :: GotIt, periodic, OrderByBCNumbering, ReorderBCs
     REAL(KIND=dp), POINTER :: MinDist(:)
     REAL(KIND=dp), POINTER :: WorkA(:,:,:) => NULL()
@@ -4147,6 +4231,8 @@ CONTAINS
     LOGICAL :: NodesFound, Passive, OffDiagonal, ApplyLimiter
     LOGICAL, POINTER :: LimitActive(:)
     TYPE(Variable_t), POINTER :: Var
+
+    TYPE(Element_t), POINTER :: Parent
 
     INTEGER :: ind, ElemFirst, ElemLast, bf, BCstr, BCend, BCinc
     REAL(KIND=dp) :: SingleVal
@@ -4294,7 +4380,18 @@ CONTAINS
 
             IF ( ActivePart(BC) ) THEN
               n = Element % TYPE % NumberOfNodes
-              Indexes(1:n) = Element % NodeIndexes
+              IF ( Model % Solver % DG ) THEN
+                 Parent => Element % BoundaryInfo % Left
+                 DO p=1,Parent % Type % NumberOfNodes
+                   DO j=1,n
+                      IF (Parent % NodeIndexes(p) == Element % NodeIndexes(j) ) THEN
+                        Indexes(j) = Parent % DGIndexes(p); EXIT
+                      END IF
+                   END DO
+                 END DO
+              ELSE
+                Indexes(1:n) = Element % NodeIndexes
+              END IF
             ELSE
               n = SgetElementDOFs( Indexes )
             END IF
@@ -4315,7 +4412,18 @@ CONTAINS
             Model % CurrentElement => Element
             IF ( ActivePart(BC) ) THEN
               n = Element % TYPE % NumberOfNodes
-              Indexes(1:n) = Element % NodeIndexes
+              IF ( Model % Solver % DG ) THEN
+                 Parent => Element % BoundaryInfo % Left
+                 DO p=1,Parent % Type % NumberOfNodes
+                   DO j=1,n
+                      IF (Parent % NodeIndexes(p) == Element % NodeIndexes(j) ) THEN
+                        Indexes(j) = Parent % DGIndexes(p); EXIT
+                      END IF
+                   END DO
+                 END DO
+              ELSE
+                Indexes(1:n) = Element % NodeIndexes
+              END IF
             ELSE
               n = SgetElementDOFs( Indexes )
             END IF
@@ -4356,7 +4464,18 @@ CONTAINS
             Model % CurrentElement => Element
             IF ( ActivePart(BC) ) THEN
               n = Element % TYPE % NumberOfNodes
-              Indexes(1:n) = Element % NodeIndexes
+              IF ( Model % Solver % DG ) THEN
+                 Parent => Element % BoundaryInfo % Left
+                 DO p=1,Parent % Type % NumberOfNodes
+                   DO j=1,n
+                      IF (Parent % NodeIndexes(p) == Element % NodeIndexes(j) ) THEN
+                        Indexes(j) = Parent % DGIndexes(p); EXIT
+                      END IF
+                   END DO
+                 END DO
+              ELSE
+                Indexes(1:n) = Element % NodeIndexes
+              END IF
             ELSE
               n = SgetElementDOFs( Indexes )
             END IF
@@ -4377,7 +4496,18 @@ CONTAINS
             Model % CurrentElement => Element
             IF ( ActivePart(BC) ) THEN
               n = Element % TYPE % NumberOfNodes
-              Indexes(1:n) = Element % NodeIndexes
+              IF ( Model % Solver % DG ) THEN
+                 Parent => Element % BoundaryInfo % Left
+                 DO p=1,Parent % Type % NumberOfNodes
+                   DO j=1,n
+                      IF (Parent % NodeIndexes(p)  == Element % NodeIndexes(j) ) THEN
+                        Indexes(j) = Parent % DGIndexes(p); EXIT
+                      END IF
+                   END DO
+                 END DO
+              ELSE
+                Indexes(1:n) = Element % NodeIndexes
+              END IF
             ELSE
               n = SgetElementDOFs( Indexes )
             END IF
@@ -4974,7 +5104,11 @@ CONTAINS
       dim = CoordinateSystemDimension()
 
       IF ( DOF > 0 ) THEN
-        Work(1:n)  = ListGetReal( ValueList, Name, n, Indexes, gotIt )
+        IF (Model % Solver % DG) THEN
+          Work(1:n)  = ListGetReal( ValueList, Name, n, Element % NodeIndexes, gotIt )
+        ELSE
+          Work(1:n)  = ListGetReal( ValueList, Name, n, Indexes, gotIt )
+        END IF
         IF ( .NOT. GotIt ) THEN
           Work(1:n)  = ListGetReal( ValueList, Name(1:nlen) // ' DOFs', n, Indexes, gotIt )
         END IF
@@ -4984,7 +5118,11 @@ CONTAINS
       
       IF ( gotIt ) THEN
         IF ( Conditional ) THEN
-          Condition(1:n) = ListGetReal( ValueList, CondName, n, Indexes, gotIt )
+          IF (Model % Solver % DG) THEN
+            Condition(1:n) = ListGetReal( ValueList, CondName, n, Element % NodeIndexes, gotIt )
+          ELSE
+            Condition(1:n) = ListGetReal( ValueList, CondName, n, Indexes, gotIt )
+          END IF
           Conditional = Conditional .AND. GotIt
         END IF
 
@@ -9893,7 +10031,7 @@ END FUNCTION SearchNodeL
     INTEGER :: n,i,j
     REAL(KIND=dp) :: bnorm,s
     COMPLEX(KIND=dp) :: DiagC
-    LOGICAL :: ComplexMatrix, DoRHS, DoCM
+    LOGICAL :: ComplexMatrix, DoRHS, DoCM, Found
     REAL(KIND=dp), POINTER  :: Diag(:)
 
     TYPE(Matrix_t), POINTER :: CM
@@ -9914,7 +10052,11 @@ END FUNCTION SearchNodeL
       Diag = 0._dp
     
       ComplexMatrix = Solver % Matrix % COMPLEX
-            
+
+      IF( ListGetLogical( Solver % Values,'Linear System Pseudo Complex',Found ) ) THEN
+        ComplexMatrix = .TRUE.
+      END IF
+      
       IF ( ComplexMatrix ) THEN
         CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
 
@@ -11381,7 +11523,7 @@ END FUNCTION SearchNodeL
       CASE('block')
         CALL BlockSolveExt( A, x, b, Solver )
       CASE DEFAULT
-        CALL DirectSolver( A, x, b, Solver )
+        CALL DirectSolver( A, x, b, Solver )        
       END SELECT
     ELSE
       CALL Info('SolveSystem','Parallel linear System Solver: '//TRIM(Method),Level=8)
@@ -12305,6 +12447,11 @@ END SUBROUTINE NSCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> Subroutine for the static condensation of element bubbles when there are
+!> as many bubbles as DOFs left in the matrix (historically this convention
+!> was used; now the count of elementwise bubble functions can be chosen
+!> flexibly and then the subroutine CondensateP should be called instead).
+!------------------------------------------------------------------------------
 SUBROUTINE Condensate( N, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
@@ -12312,36 +12459,20 @@ SUBROUTINE Condensate( N, K, F, F1 )
     REAL(KIND=dp) :: K(:,:),F(:)
     REAL(KIND=dp), OPTIONAL :: F1(:)
 !------------------------------------------------------------------------------    
-    REAL(KIND=dp) :: Kbb(N,N), &
-        Kbl(N,N),Klb(N,N),Fb(N)
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(N)
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = Ldofs + n
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL InvertMatrix( Kbb,n )
-
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-
-    IF( PRESENT( F1 ) ) THEN
-      Fb  = F1(Bdofs)
-      F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    IF ( PRESENT(F1) ) THEN
+      CALL CondensateP( N, N, K, F, F1 )
+    ELSE
+      CALL CondensateP( N, N, K, F )
     END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE Condensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>     Subroutine for condensation of p element bubbles from linear problem.
-!>     Modifies given stiffness matrix and force vector(s) 
+!> Subroutine for condensation of p element bubbles from linear problem.
+!> Modifies given stiffness matrix and force vector(s) 
 !------------------------------------------------------------------------------
-SUBROUTINE CondensateP( N, Nb, K, F, F1 )
+SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
     INTEGER :: N               !< Sum of nodal, edge and face degrees of freedom.
@@ -12350,9 +12481,10 @@ SUBROUTINE CondensateP( N, Nb, K, F, F1 )
     REAL(KIND=dp) :: F(:)      !< Local force vector.
     REAL(KIND=dp), OPTIONAL :: F1(:)  !< Local second force vector.
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Kbb(Nb,Nb), &
-    Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
+    REAL(KIND=dp) :: Kbb(Nb,Nb), Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
+    INTEGER :: i, Ldofs(N), Bdofs(Nb)
+
+    IF ( nb <= 0 ) RETURN
 
     Ldofs = (/ (i, i=1,n) /)
     Bdofs = (/ (i, i=n+1,n+nb) /)
@@ -12366,14 +12498,53 @@ SUBROUTINE CondensateP( N, Nb, K, F, F1 )
 
     F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
     IF (PRESENT(F1)) THEN
+      Fb  = F1(Bdofs)
       F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
     END IF
 
     K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
 !------------------------------------------------------------------------------
-END SUBROUTINE CondensateP
+END SUBROUTINE CondensatePR
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Subroutine for condensation of p element bubbles from complex-valued linear 
+!> problem. Modifies given stiffness matrix and force vector(s) 
+!------------------------------------------------------------------------------
+SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
+!------------------------------------------------------------------------------
+    USE LinearAlgebra
+    INTEGER :: N               !< Sum of nodal, edge and face degrees of freedom.
+    INTEGER :: Nb              !< Sum of internal (bubble) degrees of freedom.
+    COMPLEX(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
+    COMPLEX(KIND=dp) :: F(:)      !< Local force vector.
+    COMPLEX(KIND=dp), OPTIONAL :: F1(:)  !< Local second force vector.
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: Kbb(Nb,Nb), Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
+    INTEGER :: i, Ldofs(N), Bdofs(Nb)
+
+    IF ( nb <= 0 ) RETURN
+
+    Ldofs = (/ (i, i=1,n) /)
+    Bdofs = (/ (i, i=n+1,n+nb) /)
+
+    Kbb = K(Bdofs,Bdofs)
+    Kbl = K(Bdofs,Ldofs)
+    Klb = K(Ldofs,Bdofs)
+    Fb  = F(Bdofs)
+
+    CALL ComplexInvertMatrix( Kbb,nb )
+
+    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    IF (PRESENT(F1)) THEN
+      Fb  = F1(Bdofs)
+      F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    END IF
+
+    K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
+!------------------------------------------------------------------------------
+  END SUBROUTINE CondensatePC
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Solves a harmonic system.

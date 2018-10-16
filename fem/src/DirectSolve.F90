@@ -2491,6 +2491,12 @@ CONTAINS
         CALL Fatal( 'DirectSolver', 'Unknown direct solver method.' )
     END SELECT
 
+    ! We should be able to trust that a direct strategy will return a converged
+    ! linear system.
+    IF( ASSOCIATED( Solver % Variable ) ) THEN
+      Solver % Variable % LinConverged = 1
+    END IF
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE DirectSolver
 !------------------------------------------------------------------------------

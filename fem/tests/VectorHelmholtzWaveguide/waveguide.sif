@@ -117,22 +117,14 @@ End
 Solver 2
   Equation = "calcfields"
 
-  Use Piola Transform = Logical True
-  Optimize Bandwidth = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
   Linear System Symmetric = False
-
-  Field Variable =  String "E"
-  !Eletric field Variable = String "E"
-
-  !Angular Frequency = Real $w
 
   Calculate Elemental Fields = Logical True
   Calculate Magnetic Field Strength = Logical True
   Calculate Magnetic Flux Density = Logical True
   Calculate Poynting vector = Logical True
-  Calculate Div of Poynting Vector = Logical True
-
+  !Calculate Div of Poynting Vector = Logical True
   Calculate Electric field = Logical True
   Calculate Energy Functional = Logical True
 
@@ -187,5 +179,7 @@ Boundary Condition 2
   Electric Robin Coefficient im = Real $ 474315.9900340191  
 End
 
-Solver 1 :: Reference Norm = Real 0.73506158E-02
-Solver 1 :: Reference Norm Tolerance = Real 1e-3
+Solver 1 :: Reference Norm = 0.73506158E-02
+Solver 1 :: Reference Norm Tolerance = 1e-3
+Solver 2 :: Reference Norm = 2.32743791E-03
+Solver 2 :: Reference Norm Tolerance = 1e-3

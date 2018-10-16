@@ -98,11 +98,23 @@ CONTAINS
       MaskPerm => Solver % Variable % Perm
       IF( Amat % NumberOfRows /= Components * Mesh % NumberOfNodes ) THEN
         PRINT *,'sizes:',Amat % NumberOfRows, Components, Mesh % NumberOfNodes
-
-        CALL Fatal('ChoosClusterNodes','Mismatch in dimensions, extruded clustering works only for two levels!')
+        CALL Fatal('ChoosClusterNodes','Mismatch in dimensions, extruded node clustering works only for two levels!')
       END IF
       CALL ClusterExtrudedMesh()
 
+    CASE( 'edge' )
+      CALL Info('ChooseClusterNodes','Using dimensional edge reduction of extruded edge meshes')
+      Mesh => Solver % Mesh 
+      MaskPerm => Solver % Variable % Perm
+      
+      IF( Amat % NumberOfRows /= Components * Mesh % NumberOfEdges ) THEN
+        PRINT *,'sizes:',Amat % NumberOfRows, Components, Mesh % NumberOfEdges
+        CALL Fatal('ChoosClusterNodes','Mismatch in dimensions, extruded edge clustering works only for two levels!')
+      END IF
+
+      CALL ClusterExtrudedEdges()
+
+      
     CASE( 'hybrid' )
       CALL Info('ChooseClusterNodes','Using hybrid clustering method')       
       Component1 = 1
@@ -311,6 +323,123 @@ CONTAINS
 
     END SUBROUTINE ClusterExtrudedMesh
 
+    !-------------------------------------------------------------------------------
+    !> First detects an extruded elemens using mesh information, and 
+    !> then clusters the edges to those of bottom elements,
+    !-------------------------------------------------------------------------------
+    SUBROUTINE ClusterExtrudedEdges( CFLayer )
+
+      INTEGER, POINTER, OPTIONAL :: CFLayer(:)
+
+      INTEGER, POINTER :: TopPointer(:), BotPointer(:)
+      INTEGER :: i, j, nsize, NoLayers, NoClusters
+      TYPE(Variable_t), POINTER :: ExtVar
+      TYPE(Solver_t), POINTER :: Psolver
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Element_t), POINTER :: Element, Element2
+      INTEGER, POINTER :: Indexes(:), Indexes2(:), Perm(:), CFPerm(:)
+      INTEGER :: Indx, elem, t, t2, dofs, n, n2, m, m2, n0
+      INTEGER :: Ncount(5)
+      
+      
+      PSolver => Solver
+      Mesh => Solver % Mesh 
+      Perm => Solver % Variable % Perm
+
+      
+      dofs = Solver % Variable % DOFs
+      nsize = Solver % Matrix % NumberOfRows / dofs
+      n0 = Mesh % NumberOfNodes
+
+      ALLOCATE( CF( nsize), CFPerm(nsize) )
+      CF = 0
+      CFPerm = 0
+      
+      TopPerm = 0
+      TopNodes = 0
+
+      Ncount = 0
+      
+      
+      ! Find the extruded structure 
+      CALL DetectExtrudedElements( Mesh, PSolver, ExtVar, &
+          TopElemPointer = TopPointer, BotElemPointer = BotPointer, &
+          NumberOfLayers = NoLayers )
+
+      DO elem=1,Solver % NumberOfActiveElements
+        
+        ! The index of the element to be mapped
+        t = Solver % ActiveElements(elem)
+        ! The index of the target element
+        t2 = BotPointer( t )
+        
+        ! Don't map indexes to self
+        IF( t2 == t ) THEN
+          Ncount(1) = Ncount(1) + 1
+          CYCLE
+        ELSE
+          NCount(2) = Ncount(2) +1
+        END IF
+        
+        ! Note that here the treatment of n and Indexes applied only to classical edge elements
+        Element => Mesh % Elements( t )
+        n = Element % TYPE % NumberOFEdges
+        Indexes => Element % EdgeIndexes        
+        
+        Element2 => Mesh % Elements( t2 )
+        n2 = Element2 % TYPE % NumberOFEdges
+        Indexes2 => Element2 % EdgeIndexes
+        
+        m = Element % TYPE % NumberOFNodes
+        m2 = Element2 % TYPE % NumberOFNodes
+
+        IF( n /= n2 ) CALL Fatal('ClusterExtrudeEdges','Cannot map different number of dofs!')
+        
+        ! Here we assume that the numbering of each element is similar!
+        DO i=1,n
+          j = Perm(Indexes(i)) 
+          j2 = Perm(Indexes2(i))
+
+          !PRINT *,'CF:',j,CF(j),j2
+          
+          IF( CF(j) /= j2 ) THEN
+            Ncount(3) = Ncount(3) + 1
+            CF(j) = j2
+          ELSE
+            Ncount(4) = Ncount(4) + 1
+          END IF
+        END DO
+
+      END DO
+        
+      FCPerm = 0
+      DO i=1,nsize        
+        CFPerm( CF(i) ) = 1
+      END DO
+
+      k = 0
+      DO i=1,nsize
+        IF( CFPerm(i) > 0 ) THEN
+          k = k + 1
+          CFPerm(i) = k
+        END IF
+      END DO
+      CALL Info('ClusterExtrudedEdges',&
+          'Number of reduced dofs: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(nsize)),Level=9)
+
+      WRITE(Message,'(A,F10.3)') 'Coarse dofs reduction factor',1.0_dp *  nsize / k 
+      CALL Info('ClusterExtrudedEdges', Message, Level=7)
+            
+      DO i=1,nsize
+        CF(i) = CFPerm(i)
+      END DO
+
+      PRINT *,'Ncount:',Ncount(1:4)
+      
+
+      DEALLOCATE( BotPointer, TopPointer )
+
+    END SUBROUTINE ClusterExtrudedEdges
 
 
 !------------------------------------------------------------------------------

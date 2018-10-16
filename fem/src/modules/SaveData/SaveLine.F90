@@ -109,11 +109,11 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: PointFluxes(:,:), PointWeight(:)
   LOGICAL :: Stat, GotIt, FileAppend, CalculateFlux, &
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
-      SkipBoundaryInfo, GotDivisions, EdgeBasis
+      SkipBoundaryInfo, GotDivisions, EdgeBasis, DG
   INTEGER :: i,ii,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
       Side, SaveNodes, SaveNodes2, node, NoResults, LocalNodes, NoVar, &
       No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, NoFaces, &
-      NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, FluxBody, istat, &
+      NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
       i1, i2, NoTests, NormInd, Comps
   INTEGER, POINTER :: NodeIndexes(:), SavePerm(:), InvPerm(:), BoundaryIndex(:), IsosurfPerm(:), NoDivisions(:)
   TYPE(Solver_t), POINTER :: ParSolver
@@ -158,7 +158,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     ALLOCATE( SavePerm(Mesh % NumberOfNodes), STAT=istat )
     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for SavePerm') 
   END IF
-
+  
   NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
   Norm = 0.0_dp
 
@@ -197,12 +197,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     CALL CreateListForSaving( Model, Params,.TRUE.,UseGenericKeyword = .TRUE.)    
   END IF
 
+  DG = .FALSE.
   NoVar = 0
   NoResults = 0
   DO ivar = 1,99
     Var => VariableGetN( ivar, Comps )
     IF ( .NOT. ASSOCIATED( Var ) )  EXIT
     NoVar = ivar
+
+    IF( Var % TYPE == variable_on_nodes_on_elements ) THEN
+      DG = .TRUE.
+    END IF
+
     IF (ASSOCIATED (Var % EigenVectors)) THEN
       NoEigenValues = SIZE(Var % EigenValues) 
       NoResults = NoResults + Var % Dofs * NoEigenValues
@@ -212,13 +218,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
         EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found )
       END IF
       IF( EdgeBasis ) THEN
+        CALL Info('SaveLine','Variable '//TRIM(I2S(ivar))//' is treated as living in Hcurl',Level=7)
         NoResults = NoResults + 3
       ELSE
         NoResults = NoResults + MAX( Var % Dofs, Comps ) 
      END IF
    END IF
   END DO
-
+  
+  IF( DG ) THEN
+    CALL Info('SaveLine','Saving results assuming Discontinuous Galerkin variables',Level=7)
+  END IF
+  
   IF ( CalculateFlux ) NoResults = NoResults + 3
   CALL Info('SaveLine','Maximum number of fields for each node: '//TRIM(I2S(NoResults)),Level=18)
 
@@ -553,59 +564,59 @@ CONTAINS
   ! Write a line of data for a point in a known element.
   !----------------------------------------------------------------------
   SUBROUTINE WriteFieldsAtElement( Element, Basis, BC_id, &
-      node_id, UseNode, NodalFlux, LocalCoord )
+      node_id, dgnode_id, UseNode, NodalFlux, LocalCoord, GlobalCoord )
 
     TYPE(Element_t) :: Element
     REAL(KIND=dp), TARGET :: Basis(:)
-    INTEGER :: bc_id, node_id
+    INTEGER :: bc_id, node_id, dgnode_id
     LOGICAL, OPTIONAL :: UseNode 
     REAL(KIND=dp), OPTIONAL :: NodalFlux(3)
     REAL(KIND=dp), OPTIONAL :: LocalCoord(3)
-
+    REAL(KIND=dp), OPTIONAL :: GlobalCoord(3)
+    
     INTEGER :: i,j,k,l,ivar,ii
     TYPE(Nodes_t) :: Nodes
-    LOGICAL :: UseGivenNode, PiolaVersion, SecondOrder, EdgeBasis
-    INTEGER :: n, nd, EdgeBasisDegree, Labels(4)
+    LOGICAL :: UseGivenNode, PiolaVersion, EdgeBasis
+    INTEGER :: n, nd, np, EdgeBasisDegree, Labels(4)
     INTEGER, POINTER :: PtoIndexes(:)
     REAL(KIND=dp), POINTER :: PtoBasis(:)
     REAL(KIND=dp), TARGET :: PointBasis(1)
     REAL(KIND=dp) :: u,v,w
-    INTEGER, TARGET :: NodeIndex(1), Indexes(100)
+    INTEGER, TARGET :: NodeIndex(1), Indexes(27)
     INTEGER :: n0
 
-    LOGICAL :: AllocationsDone = .FALSE.
-    REAL(KIND=dp), TARGET :: NodeBasis(35)
-    REAL(KIND=dp) :: WBasis(35,3),RotWBasis(35,3), NodedBasisdx(35,3)
+    REAL(KIND=dp), TARGET :: NodeBasis(54)
+    REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
 
-    SAVE :: AllocationsDone, Nodes
-    
+    SAVE :: Nodes
 
-    IF(.NOT. AllocationsDone ) THEN
-      AllocationsDone = .TRUE.      
-    END IF
-
+    Indexes = 0
     n0 = 0
-    IF( .NOT. SkipBoundaryInfo ) THEN
-      
+    
+    IF( .NOT. SkipBoundaryInfo ) THEN      
+      Labels = 0
       IF(TransientSimulation) THEN
         Labels(1) = Solver % DoneTime
         n0 = 1
+      ELSE
+        n0 = 0
       END IF
+
       Labels(n0+1) = Solver % TimesVisited + 1
       Labels(n0+2) = bc_id
       Labels(n0+3) = node_id
-
+      
       n0 = n0 + 3
 
       DO i=1,n0
         WRITE(10,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
       END DO
+      
       IF( NormInd > 0 .AND. NormInd <= n0 ) THEN
         Norm = Norm + 1.0_dp * Labels(NormInd )
       END IF
     END IF
-
-
+    
     UseGivenNode = .FALSE.
     IF( PRESENT( UseNode ) ) UseGivenNode = UseNode
 
@@ -620,12 +631,10 @@ CONTAINS
     IF( .NOT. PRESENT( LocalCoord ) ) THEN      
       EdgeBasis = .FALSE.
       PiolaVersion = .FALSE.
-      SecondOrder = .FALSE.
     END IF
 
     No = 0
     Values = 0.0d0
-
 
     DO ivar = -2,NoVar
       Var => VariableGetN( ivar, comps ) 
@@ -638,8 +647,11 @@ CONTAINS
         Var3 => VariableGetN( ivar, component = 3 ) 
       ELSE
         Var3 => NULL()
-      END IF
-
+      END IF      
+      
+      EdgeBasis = .FALSE.
+      PiolaVersion = .FALSE.
+      np = 0
       
       IF( PRESENT( LocalCoord ) ) THEN
         
@@ -652,61 +664,63 @@ CONTAINS
 
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
 
+        ! Should we map (u,v,w) for piola reference element? 
+        
         IF( ASSOCIATED( Var % Solver ) ) THEN
           nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
           n = Element % TYPE % NumberOfNodes
+                    
+          EdgeBasis = GetLogical(Var % Solver % Values,'Hcurl Basis', Found )            
+          IF( EdgeBasis ) THEN
+            IF( GetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
+              PiolaVersion = .TRUE.
+            ELSE
+              PiolaVersion = GetLogical(Var % Solver % Values,'Use Piola Transform', Found )   
+            END IF
+            np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+          END IF
 
-          EdgeBasis = GetLogical(Var % Solver % Values, &
-              'Hcurl Basis', Found )  
-          PiolaVersion = GetLogical(Var % Solver % Values, &
-              'Use Piola Transform', Found )   
         ELSE
           nd = GetElementDOFs( Indexes, Element )
           n = Element % Type % NumberOfNodes
-        
-          EdgeBasis = .FALSE.
-          PiolaVersion = .FALSE.
-          SecondOrder = .FALSE.
         END IF
 
-        IF (PiolaVersion) THEN
-          SecondOrder = GetLogical(Var % Solver % Values, &
-              'Quadratic Approximation', Found)
-          IF( SecondOrder ) THEN
-            EdgeBasisDegree = 2
-          ELSE
-            EdgeBasisDegree = 1
-          END IF
-
-          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-              DetF = DetJ, Basis = NodeBasis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-        ELSE IF( EdgeBasis ) THEN
+        IF( EdgeBasis ) THEN
           stat = ElementInfo( Element, Nodes, u, v, w, &
-              detJ, NodeBasis, NodedBasisdx )
-          CALL GetEdgeBasis(Element,WBasis,RotWBasis,NodeBasis,NodedBasisdx)
+              detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, RotBasis = RotWBasis, USolver = Var % Solver)
         ELSE
-          stat = ElementInfo( Element, Nodes, u, v, w, &
-              detJ, NodeBasis )
+          stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
+          IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
+            PtoIndexes => Element % DgIndexes
+          ELSE
+            PtoIndexes => Element % NodeIndexes 
+          END IF           
           PtoBasis => NodeBasis
         END IF
         
       ELSE IF( .NOT. UseGivenNode ) THEN
         PtoBasis => Basis
         n = Element % TYPE % NumberOfNodes
+
         IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
           PtoIndexes => Element % DgIndexes
         ELSE
           PtoIndexes => Element % NodeIndexes 
         END IF
+      ELSE
+        IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
+          NodeIndex(1) = dgnode_id
+        ELSE
+          NodeIndex(1) = node_id 
+        END IF       
       END IF
       
       IF( EdgeBasis ) THEN
         DO j=1,3
           No = No + 1
           IF( ASSOCIATED( PtoIndexes ) ) THEN
-            DO k=1,nd-n
-              l = PtoIndexes(n+k)
+            DO k=1,nd-np
+              l = PtoIndexes(np+k)
               IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
               IF(l > 0) Values(No) = Values(No) + WBasis(k,j) * Var % Values(l)
             END DO
@@ -756,7 +770,7 @@ CONTAINS
         No = No + MAX( Var % Dofs, comps )
      END IF
     END DO
-
+    
     IF( CalculateFlux ) THEN
       IF( PRESENT( NodalFlux ) ) THEN
         Values(No+1:No+3) = NodalFlux
@@ -764,7 +778,7 @@ CONTAINS
         Values(No+1:No+3) = 0.0
       END IF
     END IF
-
+    
     DO j=1,NoResults-1
       WRITE(10,'(ES20.11E3)',ADVANCE='NO') Values(j)
     END DO
@@ -809,7 +823,9 @@ CONTAINS
     LOGICAL :: stat, Permutated
     INTEGER :: body_id, k
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
-
+    TYPE(ValueList_t), POINTER :: BC
+    INTEGER :: FluxBody
+    
     
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:), Conductivity(:), &
         CoeffTensor(:,:,:)
@@ -833,6 +849,9 @@ CONTAINS
     Permutated = ASSOCIATED(Tvar % Perm)
     Element => Model % CurrentElement
 
+    BC => GetBC( Element )
+    FluxBody = ListGetInteger( Model % BCs(k) % Values,'Flux Integrate Body', gotIt )
+    
     IF ( FluxBody > 0 ) THEN
       lbody = 0
       IF ( ASSOCIATED( Element % BoundaryInfo % Left ) ) &
@@ -1030,6 +1049,12 @@ CONTAINS
 !-----------------------------------------------------------------------
   SUBROUTINE SaveExistingLines()
 
+    INTEGER :: dgnode 
+    REAL(KIND=dp) :: Coord(3), Coord0(3), Center(3)
+    TYPE(ValueList_t), POINTER :: ValueList
+    TYPE(Element_t), POINTER :: Parent
+
+    
     MaskName = ListGetString(Params,'Save Mask',GotIt) 
     IF(.NOT. GotIt) MaskName = 'Save Line'
 
@@ -1055,7 +1080,7 @@ CONTAINS
 
       CALL MakePermUsingMask( Model,Solver,Mesh,MaskName, &
           OptimizeOrder, SavePerm, SaveNodes, RequireLogical = .TRUE. )
-
+      
       IF( SaveNodes > 0 ) THEN
         IF( ListGetLogical( Params,'Calculate Weights',GotIt ) ) THEN
           CALL CalculateNodalWeights( Solver, .TRUE., SavePerm, TRIM(MaskName)//' Weights')
@@ -1073,7 +1098,6 @@ CONTAINS
 
       ALLOCATE( InvPerm(SaveNodes), BoundaryIndex(SaveNodes), STAT=istat )
       IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 3: '//TRIM(I2S(SaveNodes))) 
-
       
       BoundaryIndex = 0
       InvPerm = 0
@@ -1087,102 +1111,167 @@ CONTAINS
           InvPerm(SavePerm(i)) = i
         END IF
       END DO
-
-
+      
       IF(CalculateFlux) THEN
+        CALL Info('SaveLine','Calculating nodal fluxes',Level=8)
+
         ALLOCATE(PointFluxes(SaveNodes,3),PointWeight(SaveNodes), STAT=istat)    
         IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 4') 
         
         PointFluxes = 0.0d0
         PointWeight = 0.0d0
-      END IF
 
+        ! Go through the elements and register the boundary index and fluxes if asked
+        ! Fluxes only possible for DIM-1 
+        DO t = Mesh % NumberOfBulkElements + 1,  &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements                        
 
-
-      ! Go through the elements and register the boundary index and fluxes if asked
-      DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
-
+          CurrentElement => Mesh % Elements(t)
+          Model % CurrentElement => CurrentElement
+          n = CurrentElement % TYPE % NumberOfNodes
+          NodeIndexes => CurrentElement % NodeIndexes        
+          
+          IF( .NOT. ALL(SavePerm(NodeIndexes) > 0)) CYCLE 
         
-        CurrentElement => Mesh % Elements(t)
-        Model % CurrentElement => CurrentElement
-        n = CurrentElement % TYPE % NumberOfNodes
-        NodeIndexes => CurrentElement % NodeIndexes
-
-        IF( .NOT. ALL(SavePerm(NodeIndexes) > 0)) CYCLE 
-
-        Found = .FALSE.
-        IF(t <= Mesh % NumberOfBulkElements) THEN
-          k = CurrentElement % BodyId           
-          IF( ListGetLogical( Model % Bodies(k) % Values,'Flux Integrate Body', gotIt )) THEN
-            Found = .TRUE.
-            FluxBody = ListGetInteger( Model % Bodies(k) % Values,'Flux Integrate Body', gotIt ) 
+          IF(t <= Mesh % NumberOfBulkElements) THEN
+            ValueList => GetBodyForce()
+          ELSE
+            ValueList => GetBC()
           END IF
-        ELSE
-          DO k=1, Model % NumberOfBCs
-            IF ( Model % BCs(k) % Tag /= CurrentElement % BoundaryInfo % Constraint ) CYCLE
-            IF( ListCheckPresent(Model % BCs(k) % Values, MaskName ) ) THEN
-              Found = .TRUE.
-              FluxBody = ListGetInteger( Model % BCs(k) % Values,'Flux Integrate Body', gotIt )         
-              EXIT
-            END IF
+
+          IF( .NOT. ListCheckPresent( ValueList, MaskName ) ) CYCLE
+                  
+          ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+          ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+          ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+          
+          DO i=1,n
+            node = NodeIndexes(i)
+            
+            CALL BoundaryFlux( Model, node, TempName,  &
+                CondName, f1, f2, fn, weight, Mesh % MaxElementDOFs ) 
+            
+            j = SavePerm(node) 
+            
+            IF( j == 0 ) CYCLE
+            
+            PointFluxes(j,1) = PointFluxes(j,1) + weight * f1
+            PointFluxes(j,2) = PointFluxes(j,2) + weight * f2
+            PointFluxes(j,3) = PointFluxes(j,3) + weight * fn
+            PointWeight(j) = PointWeight(j) + weight
           END DO
-        END IF
-        IF(.NOT. Found) CYCLE
-
-        
-        MaxBoundary = MAX( MaxBoundary, k ) 
-        BoundaryIndex( SavePerm(NodeIndexes) ) = k
-
-        IF( .NOT. CalculateFlux ) CYCLE
-
-        ElemCorners = CurrentElement % TYPE % ElementCode / 100
-        IF(ElemCorners > 4 .OR. ElemCorners < 2) CYCLE
-
-        ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-        ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-        ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-
-
-        DO i=1,n
-          node = NodeIndexes(i)
-          
-          CALL BoundaryFlux( Model, node, TempName,  &
-              CondName, f1, f2, fn, weight, Mesh % MaxElementDOFs ) 
-
-          j = SavePerm(node) 
-          
-          IF( j == 0 ) CYCLE
-
-          PointFluxes(j,1) = PointFluxes(j,1) + weight * f1
-          PointFluxes(j,2) = PointFluxes(j,2) + weight * f2
-          PointFluxes(j,3) = PointFluxes(j,3) + weight * fn
-          PointWeight(j) = PointWeight(j) + weight
         END DO
-      END DO
-
-      ! Normalize flux by division with the integration weight
-      IF( CalculateFlux ) THEN
+        
+        ! Normalize flux by division with the integration weight
         DO i = 1, SaveNodes
           PointFluxes(i,1) = PointFluxes(i,1) / PointWeight(i)
           PointFluxes(i,2) = PointFluxes(i,2) / PointWeight(i)
           PointFluxes(i,3) = PointFluxes(i,3) / PointWeight(i)
         END DO
       END IF
+      
 
-      ! Save the nodes      
-      !---------------     
-      DO t = 1, SaveNodes    
-        node = InvPerm(t)
+      
+      ! Go through the elements and register the boundary index and fluxes if asked
+      DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
         
-        IF( CalculateFlux ) THEN
-          CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
-              UseNode = .TRUE., NodalFlux = PointFluxes(t,:) )
+        CurrentElement => Mesh % Elements(t)
+        Model % CurrentElement => CurrentElement
+        n = CurrentElement % TYPE % NumberOfNodes
+        NodeIndexes => CurrentElement % NodeIndexes        
+        
+        IF( .NOT. ALL(SavePerm(NodeIndexes) > 0)) CYCLE 
+
+        IF(t > Mesh % NumberOfBulkElements) THEN
+          k = GetBCId( CurrentElement )
+          IF( k == 0 ) CYCLE
+          ValueList => Model % BCs(k) % Values
         ELSE
-          CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
-              UseNode = .TRUE. )
+          k = GetBodyForceId( CurrentElement )         
+          IF( k == 0 ) CYCLE
+          ValueList => Model % BodyForces(k) % Values
         END IF
+        
+        IF( .NOT. ListCheckPresent( ValueList, MaskName ) ) CYCLE
+                        
+        IF( DG ) THEN
+          ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+          ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+          ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+
+          Center(1) = SUM( ElementNodes % x(1:n) ) / n
+          Center(2) = SUM( ElementNodes % y(1:n) ) / n
+          Center(3) = SUM( ElementNodes % z(1:n) ) / n
+          
+          DO i = 1, n
+            node = NodeIndexes(i) 
+
+            IF( t > Mesh % NumberOfBulkElements ) THEN
+              Found = .FALSE.
+              Parent => CurrentElement % BoundaryInfo % Left 
+              IF( .NOT. ASSOCIATED( Parent ) ) THEN
+                CALL Fatal('SaveLine','Parent not associated!')
+              END IF
+              DO j = 1, SIZE( Parent % NodeIndexes ) 
+                IF( node == Parent % NodeIndexes(j) ) THEN
+                  dgnode = Parent % DgIndexes(j)
+                  Found = .TRUE.
+                  EXIT
+                END IF
+              END DO
+              IF(.NOT. Found) CALL Fatal('SaveLine','Could not find DG node!')              
+            END IF            
+                        
+            Coord(1) = ElementNodes % x(i)
+            Coord(2) = ElementNodes % y(i)
+            Coord(3) = ElementNodes % z(i)
+
+            ! Shrink the element so that external sort work better!
+            Coord0 = Coord
+            Coord = 0.999_dp * Coord + 0.001_dp * Center
+
+            ! Do this dirty way such that DG nodes may be sorted
+            Mesh % Nodes % x(node) = Coord(1) 
+            Mesh % Nodes % y(node) = Coord(2) 
+            IF( dim == 3 ) Mesh % Nodes % z(node) = Coord(3) 
+            
+            IF( CalculateFlux ) THEN
+              CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
+                  dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:) )
+            ELSE
+              CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
+                  dgnode, UseNode = .TRUE. )
+            END IF
+            
+            ! and revert 
+            Mesh % Nodes % x(node) = Coord0(1) 
+            Mesh % Nodes % y(node) = Coord0(2) 
+            IF( dim == 3 ) Mesh % Nodes % z(node) = Coord0(3)                       
+          END DO
+        ELSE
+          BoundaryIndex( SavePerm(NodeIndexes) ) = k
+        END IF
+
+        MaxBoundary = MAX( MaxBoundary, k ) 
+
       END DO
 
+      
+      ! Save the nodes if not in DG mode     
+      !---------------------------------  
+      IF( .NOT. DG ) THEN
+        dgnode = 0
+        DO t = 1, SaveNodes    
+          node = InvPerm(t)
+          IF( CalculateFlux ) THEN
+            CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
+                dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:) )
+          ELSE
+            CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
+                dgnode, UseNode = .TRUE. )
+          END IF
+        END DO
+      END IF        
       
       DEALLOCATE(InvPerm, BoundaryIndex)
       IF(CalculateFlux) DEALLOCATE(PointFluxes, PointWeight )
@@ -1373,7 +1462,7 @@ CONTAINS
 
                 SaveNodes2 = SaveNodes2 + 1
 
-                CALL WriteFieldsAtElement( CurrentElement, Basis, Line, i, &
+                CALL WriteFieldsAtElement( CurrentElement, Basis, Line, i, 0, &
                     LocalCoord = LocalCoord )
               END IF
             END DO
@@ -1417,7 +1506,7 @@ CONTAINS
 
             SaveNodes2 = SaveNodes2 + 1
             
-            CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, NodeIndexes(i) )
+            CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, NodeIndexes(i), 0 )
           END DO
         END IF
       END DO
@@ -1585,7 +1674,7 @@ CONTAINS
             LineTag(ii) = .TRUE.
             SaveNodes2 = SaveNodes2 + 1
             CALL WriteFieldsAtElement( CurrentElement, Basis, Line, ii, &
-                LocalCoord = LocalCoord )
+                0, LocalCoord = LocalCoord )
           END IF
         END DO
       END DO
@@ -1720,7 +1809,7 @@ CONTAINS
         No = 0
         Values = 0.0d0
         
-        CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, k )         
+        CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, k, 0 )         
       END DO
 
       WRITE( Message, * ) 'Number of nodes in isocurve: ', SaveNodes2

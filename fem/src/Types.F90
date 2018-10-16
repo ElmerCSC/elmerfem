@@ -225,7 +225,8 @@ END INTERFACE
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
-        BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), PrecValues(:)=>NULL()
+        BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), BulkDampValues(:)=>NULL(), &
+        PrecValues(:)=>NULL()
 
 #ifdef HAVE_FETI4I
     TYPE(C_PTR) :: PermonMatrix = C_NULL_PTR, PermonSolverInstance = C_NULL_PTR
@@ -430,7 +431,12 @@ END INTERFACE
      TYPE(ValueListEntry_t), POINTER :: Head => Null()
    END TYPE ValueList_t
 
+   
+   TYPE VariableTable_t     
+     TYPE(Variable_t), POINTER :: Variable
+   END TYPE VariableTable_t
 
+   
    ! This is a tentative data type to speed up the retrieval of parameters
    ! at elements.
    !----------------------------------------------------------------------
@@ -466,12 +472,14 @@ END INTERFACE
      LOGICAL :: GlobalEverywhere = .FALSE.
      LOGICAL :: GlobalInList = .FALSE.
      LOGICAL :: EvaluateAtIP = .FALSE.
+     LOGICAL :: SomeVarAtIp = .FALSE.
      LOGICAL :: SomewhereEvaluateAtIP = .FALSE.
      LOGICAL :: NotPresentAnywhere = .FALSE.
      LOGICAL :: UnfoundFatal = .FALSE.
      REAL(KIND=dp) :: minv, maxv
      LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
-
+     TYPE(VariableTable_t) :: VarTable(32)
+     INTEGER :: VarCount
      
    END TYPE ValueHandle_t
 
@@ -577,6 +585,7 @@ END INTERFACE
      INTEGER, POINTER          :: Perm(:) => NULL()
      REAL(KIND=dp)             :: Norm=0, PrevNorm=0,NonlinChange=0, SteadyChange=0
      INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter=-1
+     INTEGER :: LinConverged=-1
      COMPLEX(KIND=dp), POINTER :: EigenValues(:) => NULL(), &
           EigenVectors(:,:) => NULL()
      REAL(KIND=dp), POINTER :: ConstraintModes(:,:) => NULL()
@@ -591,11 +600,6 @@ END INTERFACE
      TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
    END TYPE Variable_t
 
-   
-   TYPE VariableTable_t     
-     TYPE(Variable_t), POINTER :: Variable
-   END TYPE VariableTable_t
-   
 !------------------------------------------------------------------------------
    TYPE ListMatrixEntry_t
      INTEGER :: Index = -1

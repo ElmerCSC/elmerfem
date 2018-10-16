@@ -2745,11 +2745,11 @@ CONTAINS
       ! --------------------------------------------------------------------
       ! Create a regular 4X4-subgrid around the local origin to simplify
       ! the evaluation of higher order derivatives related to the Taylor
-      ! polynomial. It is supposed that a square [-rK/4,rK/4]^2 is embedded
+      ! polynomial. It is supposed that a square [-rK/8,rK/8]^2 is embedded
       ! into the plane domain obtained via the projection.
       ! TO DO: FIGURE OUT THE PRECISE SIZE OF A SQUARE THAT CAN BE EMBEDDED 
       ! --------------------------------------------------------------------
-      hk = rK/2.0d0               ! The width of stencil
+      hk = rK/4.0d0               ! The width of stencil
       x1(1) = -hk/2.0d0
       x1(2) = x1(1) + hk/3.0d0
       x1(3) = x1(2) + hk/3.0d0
