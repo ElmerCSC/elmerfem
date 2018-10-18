@@ -11,11 +11,11 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 9
   Coordinate System = Cartesian 
   Simulation Type = transient
   Steady State Max Iterations = 1
-  Timestep Intervals = 20
+  Timestep Intervals = 5
   Output Intervals = 1
   Timestep Sizes = 1.0
 End
@@ -86,8 +86,8 @@ $ power = 10.0
 !------------------------------------------------------------------ 
   Particle To Field Coefficient = Real $ power / (nopart*sdecay)
 
-!  Statistical Info = Logical True
-!  Particle Info = Logical True
+  Statistical Info = Logical True
+  Particle Info = Logical True
 
   Particle Distance = Logical True
 End 
@@ -130,7 +130,7 @@ End
 
 Solver 3
 ! activate for postprocessing with paraview
-  Exec Solver = never
+!  Exec Solver = never
   Equation = "ResultOutput"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = "light_heat" 
@@ -167,5 +167,5 @@ Boundary Condition 2
   Particle Outlet = Logical True
 End
 
-Solver 2 :: Reference Norm = 1.473776E-01
-Solver 2 :: Reference Norm Tolerance = 0.02
+Solver 2 :: Reference Norm = 1.07502575E-01
+Solver 2 :: Reference Norm Tolerance = 1.0e-3
