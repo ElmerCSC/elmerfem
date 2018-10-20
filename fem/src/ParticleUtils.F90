@@ -2322,7 +2322,7 @@ RETURN
     REAL(KIND=dp), POINTER :: InitialValues(:,:)
     REAL(KIND=dp) :: mass,boltz,temp,coeff,eps,frac,meanval 
     REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), Diam, DetJ, MinDetJ, MaxDetJ, &
-        MinWeight, MaxWeight, MeanWeight
+        MinWeight, MaxWeight, MeanWeight, Phi
     REAL(KIND=dp), POINTER :: MaskVal(:)
     REAL(KIND=dp), ALLOCATABLE :: Weight(:)
     INTEGER :: nx,ny,nz,nmax,ix,iy,iz,ind
@@ -3047,9 +3047,9 @@ RETURN
       DO i=1,NewParticles
         k = Offset + i
         DO j=1,dim
-          Velo(j) = coeff * NormalRandom()
+          Velo(j) = NormalRandom()
         END DO
-        Velocity(k,:) = Velocity(k,:) + Velo(1:dim)
+        Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
       END DO
 
     CASE ('even random')
@@ -3059,9 +3059,9 @@ RETURN
       DO i=1,NewParticles
         k = Offset + i
         DO j=1,dim
-          Velo(j) = coeff * (2*EvenRandom()-1)
+          Velo(j) = (2*EvenRandom()-1)
         END DO
-        Velocity(k,:) = Velocity(k,:) + Velo(1:dim)
+        Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
       END DO
 
     CASE ('constant random')
@@ -3071,9 +3071,21 @@ RETURN
       DO i=1,NewParticles
         k = Offset + i
         DO j=1,dim
-          Velo(j) =  coeff * (2*EvenRandom()-1)
+          Velo(j) =  (2*EvenRandom()-1)
         END DO
         Velo(1:dim) = Velo(1:dim) / SQRT(SUM(Velo(1:dim)**2))
+        Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
+      END DO
+
+    CASE ('constant 2d')
+      CALL Info('InitializeParticles',&
+          'Initializing constant velocities evenly to space',Level=10)
+      
+      DO i=1,NewParticles
+        k = Offset + i
+        Phi = 2.0_dp * PI * i / NewParticles
+        Velo(1) = coeff * COS( Phi )
+        Velo(2) = coeff * SIN( Phi )
         Velocity(k,:) = Velocity(k,:) + Velo(1:dim)
       END DO
 
