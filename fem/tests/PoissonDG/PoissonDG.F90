@@ -344,8 +344,8 @@
 
 !        Integrate jump terms:
 !        ---------------------
-         Jump(1:nParent) = LeftBasis(1:nParent)
-         Jump(nParent+1:2*nParent) = -RightBasis(1:nParent)
+         Jump(1:nParent) = -LeftBasis(1:nParent)
+         Jump(nParent+1:2*nParent) = RightBasis(1:nParent)
 
          DO i = 1,nParent
             LeftdBasisdn(i)  = SUM( LeftdBasisdx(i,:)  * Normal(:) )
