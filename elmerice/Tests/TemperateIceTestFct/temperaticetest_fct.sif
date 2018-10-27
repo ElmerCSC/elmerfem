@@ -63,7 +63,6 @@ Material 1
   Name = "ice"
 
   Convection Velocity 1 = Real 0.0
-  Convection Velocity 2 = Real 0.0
   
   Convection Velocity 2 = Variable Coordinate 2
      Real MATC "downwardvelo(tx)"
@@ -78,10 +77,9 @@ Material 1
     Real Procedure "ElmerIceUSF" "IceConductivity" 
   Heat Conductivity Scaling Factor = Real $(secondsperyear)*1.0E-06
   
-  !Temp Upper Limit = Variable HydroPressure
-  !  Real Procedure "ElmerIceUSF" "IcePressureMeltingPoint"
-  !Pressure Scaling Factor = Real 1.0E06 ! from MPa to Pa
-  Temp Upper Limit = Real 273.15
+  Temp Upper Limit = Variable HydroPressure
+    Real Procedure "ElmerIceUSF" "IcePressureMeltingPoint"
+  Pressure Scaling Factor = Real 1.0E06 ! from MPa to Pa
 End
 
 Body Force 1
@@ -147,17 +145,15 @@ Boundary Condition 2
   Target Boundaries = 2
   Temp Flux BC = Logical True
   Temp Heat Flux= Real $heatflux
-  !Temp = Real 270.0
-  !Temp = Variable Depth
-  !     Real MATC "273.15 - clausclap* tx * 910.0 * 9.81"
 End
 
+! 3 and 4 are natural BC's
 Boundary Condition 3
   Name = "left"
   Target Boundaries(2) = 3 4
 End 
-! 3 and 4 are natural BC's
-Solver 2 :: Reference Norm = Real 262.21426
+
+Solver 2 :: Reference Norm = Real 262.214259
 Solver 2 :: Reference Norm Tolerance = Real 1E-05
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
