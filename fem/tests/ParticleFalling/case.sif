@@ -14,7 +14,7 @@ Header
 End
  
 Simulation
-  Max Output Level = 20
+  Max Output Level = 7
   Coordinate System = Cartesian 
   Simulation Type = transient
   Steady State Max Iterations = 1

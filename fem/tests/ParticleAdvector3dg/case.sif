@@ -2,9 +2,9 @@
 ! Uses particle-specific timestep that strives to constant Courant number.
 ! This should optimize the accuracy in a FE mesh. As advected field is 
 ! "Srides" which demonstrates well how advection takes place without 
-! any diffusion. 
+! any diffusion.  
 !
-! This cases uses elemental fields which is more robust because no particle will
+! This cases uses DG fields which is more robust because no particle will
 ! start from the boundary. 
 !
 ! P.R. 11.10.2018
@@ -20,7 +20,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 7
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
 
@@ -29,6 +29,7 @@ Simulation
   Output Intervals = 5
 
   Post File = case.vtu
+  vtu: Discontinuous Galerkin = Logical True
 End
 
 Constants
@@ -83,7 +84,6 @@ Solver 1
   Linear System Residual Output = 20
   Linear System Precondition Recompute = 1
 
-!  Optimize bandwidth = False
   Exported Variable 1 = Strides
 End
 
@@ -105,7 +105,7 @@ Solver 2
 
 ! Time in average 5 steps in each element 
   Max Timestep Size = Real 1.0
-  Timestep Courant Number = Real 0.25
+  Timestep Courant Number = Real 0.5
   
 !!!! time integration 
 !  Runge Kutta = Logical True
@@ -123,13 +123,14 @@ Solver 2
   Variable 1 = String "Particle Distance"
 
   Variable 2 = String "Particle time"
-  Operator 2 = "cumulative"
+!  Operator 2 = "cumulative"
 
 ! The field variables being advected
   Variable 3 = String "Strides"
   Result Variable 3 = String "Advected Strides"  
 
-  Advect Elemental = Logical True
+  Advect DG = Logical True
+!  DG Nodes Scale = Real 0.5
 End 
 
 
@@ -177,7 +178,7 @@ End
 ! Note that the target norm depends on how long we integrate as it is the 
 ! L2 norm of particle age.
 
-Solver 2 :: Reference Norm = 7.25341739E-01
+Solver 2 :: Reference Norm = 7.27838070E-01
 Solver 2 :: Reference Norm Tolerance = 1.0e-3
 
 

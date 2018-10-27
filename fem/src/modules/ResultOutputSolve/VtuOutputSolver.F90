@@ -1110,7 +1110,7 @@ CONTAINS
 
       DO k=1,dofs
         DO i=1,m        
-          j = Var % Perm(e) + i 
+          j = Var % Perm(t) + i 
           fip(i) = Var % Values(dofs*(j-1)+k)
         END DO
         

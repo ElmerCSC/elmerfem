@@ -809,6 +809,7 @@ CONTAINS
 
      ! If they have not been allocated before the allocate DGIndexes for all bulk elements
      IF(.NOT. HaveSome ) THEN       
+       CALL Info('CreateDGPerm','Creating DG indexes for bulk elements',Level=15)
 
        ! Number the bulk indexes such that each node gets a new index
        DGIndex = 0       
