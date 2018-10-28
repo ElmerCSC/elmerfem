@@ -312,7 +312,6 @@ Solver 19
   Calving Mesh LC Max Dist = Real 1500.0
 
   Calving Append Name = String "$namerun"" !"
-  Calving Move Mesh Dir = String "./results/"
 
   Project Calving Equation Name = String "CalvingProjection"
   Isosurface Equation Name = String "Calving Isosurface"
@@ -598,7 +597,6 @@ Solver 21
    Tangled Variable Name = String "Tangled"
 
    Remesh Append Name = String "$namerun"" !"
-   Remesh Move Mesh Dir = String "./results/"
 
    !We need to mess with these solvers if there's a calving event
    !because we pause time
