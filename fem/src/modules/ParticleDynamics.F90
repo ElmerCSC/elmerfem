@@ -593,7 +593,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
 
   CALL ReleaseWaitingParticles(Particles)   
 
-  IF(.FALSE. .AND. StatInfo) THEN
+  IF( StatInfo ) THEN
     CALL ParticleStatistics( Particles, 0 )
     CALL ParticleStatistics( Particles, 1 )
   END IF

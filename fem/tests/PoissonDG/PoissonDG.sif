@@ -43,7 +43,7 @@ Solver 1
   Variable Dofs = 1
 
   Discontinuous Galerkin = Logical TRUE
-  gamma1 = Real 10    ! DG-stab
+  gamma1 = Real 10   ! DG-stab
   gamma2 = Real 0.001 ! BC-stab
 
   Linear System Solver = Iterative
@@ -51,7 +51,7 @@ Solver 1
   Linear System Max Iterations  = 1000
   Linear System Preconditioning = ILUT
   Linear System ILUT Tolerance  = 0.005
-  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Convergence Tolerance = 1.0e-9
   Linear System Residual Output = 20
   Optimize Bandwidth = True
 End
@@ -81,4 +81,4 @@ Boundary Condition 1
   e = Real 0
 End
 
-Solver 1 :: Reference Norm = 4.12514868E-02
+Solver 1 :: Reference Norm = 4.12587774E-02
