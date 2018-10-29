@@ -1,7 +1,5 @@
-! Test case for handles that make code simpler
-! Test case is compared against legacy advection-diffusion equation
-! This is a steady state case.
-! The version where the handles are initialized.
+! Test case for ListGetElement routines.
+! This test case for Logical, Integer, String types. 
 
 Check Keywords Warn
 
@@ -15,7 +13,6 @@ Simulation
   Simulation Type = Steady State 
   Output Intervals = 1
   Steady State Max Iterations = 1
-!  Post File = "case.ep"
 
   Simulation Timing = Logical True
   Timer Results = Logical True
@@ -46,27 +43,10 @@ End
 
 
 Solver 1
-!  Exec Solver = never
-
   Equation = KeywordTimer
   Variable = ConsB
   Variable DOFs = 1
   Procedure = "./KeywordCompare" "KeywordCompare"
-
-  Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStab
-  Linear System Max Iterations = 200
-  Linear System Convergence Tolerance = 1.0e-08
-  Linear System Preconditioning = ILU1
-  Linear System Residual Output = 20
-
-  Nonlinear System Max Iterations = 1
-  Nonlinear System Convergence Tolerance = 1.0e-4
-  Nonlinear System Newton After Tolerance = 1.0e-3
-  Nonlinear System Newton After Iterations = 10
-  Nonlinear System Relaxation Factor = 1
-  Steady State Convergence Tolerance = 1.0e-4
-! Stabilize = False  ! this is default
 
   Solver Timing = True
   Timer Sweeps = Integer 100
@@ -117,16 +97,6 @@ Material 3
 
   String Value A = String "Str Target A"
 !  String Value B = String "Str Target B"
-End
-
-
-
-
-Boundary Condition 1
-  Name = "BCs" 
-  Target Boundaries = 1
-  ConsA = Real 0.0
-  ConsB = Real 0.0
 End
 
 Solver 1 :: Reference Norm = Real 1.0

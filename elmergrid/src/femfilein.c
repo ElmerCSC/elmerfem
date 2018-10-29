@@ -3875,7 +3875,7 @@ omstart:
       
       GETLONGLINE;
       if(!strstr(longline,"$EndEntities")) {
-	printf("$Entities section should end to string $EndEntities:\n%s\n",line);
+	printf("$Entities section should end to string $EndEntities:\n%s\n",longline);
       }           
     }
 
