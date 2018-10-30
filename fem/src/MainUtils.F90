@@ -602,13 +602,14 @@ CONTAINS
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
      CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName      
+     LOGICAL, OPTIONAL :: UpdateOnly
      
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(GaussIntegrationPoints_t) :: IP
      TYPE(Element_t), POINTER :: Element
      INTEGER :: t, n, IpCount , RelOrder, nIp
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
-     LOGICAL :: Found, ActiveElem
+     LOGICAL :: Found, ActiveElem, ActiveElem2
      INTEGER, POINTER :: IpOffset(:) 
      TYPE(ValueList_t), POINTER :: BF
      LOGICAL :: UpdatePerm
