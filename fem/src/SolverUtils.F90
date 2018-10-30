@@ -64,14 +64,13 @@ MODULE SolverUtils
    USE ParallelEigenSolve
    USE ListMatrix
    USE CRSMatrix
-   USE MainUtils, ONLY : CreateIpPerm
    
    IMPLICIT NONE
 
    INTERFACE CondensateP
      MODULE PROCEDURE CondensatePR, CondensatePC
    END INTERFACE CondensateP
-
+   
    CHARACTER(LEN=MAX_NAME_LEN), PRIVATE :: NormalTangentialName
    INTEGER, PRIVATE :: NormalTangentialNOFNodes
    INTEGER, POINTER, PRIVATE :: NTelement(:,:)
@@ -12287,6 +12286,15 @@ END SUBROUTINE VariableNameParser
   TYPE(ValueHandle_t) :: LocalSol_h
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Solver_t), POINTER :: pSolver
+
+  INTERFACE
+    SUBROUTINE UpdateIpPerm( Solver, Perm )
+      USE Types
+      TYPE(Solver_t), POINTER :: Solver
+      INTEGER, POINTER :: Perm(:)
+    END SUBROUTINE UpdateIpPerm
+  END INTERFACE
+
   
   SAVE LocalSol_h
 
@@ -12426,7 +12434,7 @@ END SUBROUTINE VariableNameParser
             CALL Warn('UpdateExportedVariables','Number of Gauss points has changed, redoing permutations!')
 
             pSolver => Solver
-            CALL CreateIpPerm( pSolver, Perm, UpdateOnly = .TRUE. )
+            CALL UpdateIpPerm( pSolver, Perm )
             m = MAXVAL( Perm )
             IF( SIZE( ExpVariable % Values ) / ExpVariable % Dofs == m ) THEN
               DEALLOCATE( ExpVariable % Values )

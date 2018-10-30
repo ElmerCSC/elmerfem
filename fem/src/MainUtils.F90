@@ -711,7 +711,17 @@ CONTAINS
        
    END SUBROUTINE CreateIpPerm
 
+   
+   SUBROUTINE UpdateIpPerm( Solver, Perm )
 
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER, POINTER :: Perm(:)
+
+     CALL CreateIpPerm( Solver, Perm, UpdateOnly = .TRUE.)
+
+   END SUBROUTINE UpdateIpPerm
+     
+     
    SUBROUTINE CheckAndCreateDGIndexes( Mesh, ActiveElem ) 
      TYPE(Mesh_t), POINTER :: Mesh
      LOGICAL, OPTIONAL :: ActiveElem(:)
