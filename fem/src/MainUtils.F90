@@ -597,7 +597,7 @@ CONTAINS
    !> The non-masked version is saved to Solver structure for reuse while the
    !> masked version may be unique to every variable. 
    !-----------------------------------------------------------------------------------
-   SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName, SecName )
+   SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName, SecName, UpdateOnly )
 
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
@@ -611,17 +611,25 @@ CONTAINS
      LOGICAL :: Found, ActiveElem
      INTEGER, POINTER :: IpOffset(:) 
      TYPE(ValueList_t), POINTER :: BF
-
+     LOGICAL :: UpdatePerm
+     
      n = 0
      IF( PRESENT( MaskPerm ) ) n = n + 1
      IF( PRESENT( MaskName ) ) n = n + 1
      IF( PRESENT( SecName ) ) n = n + 1
-     
-     IF( n /= 0 .AND. n /= 3 ) THEN
-       CALL Fatal('CreateIpPerm','Either none or all optional parameters must be present!')
+     IF( PRESENT( UpdateOnly ) ) n = n + 1
+
+     ! Currently a lazy check
+     IF( n /= 0 .AND. n /= 3 .AND. n /= 2) THEN
+       CALL Fatal('CreateIpPerm','Only some optional parameter combinations are possible')
      END IF
 
-     IF( PRESENT( MaskPerm ) ) THEN
+     UpdatePerm = .FALSE.
+     IF( PRESENT( UpdateOnly ) ) UpdatePerm = UpdateOnly
+
+     IF( UpdatePerm ) THEN
+       CALL Info('CreateIpPerm','Updating IP permutation table',Level=8)       
+     ELSE IF( PRESENT( MaskPerm ) ) THEN
        CALL Info('CreateIpPerm','Creating masked permutation for integration points',Level=8)
      ELSE       
        IF( ASSOCIATED( Solver % IpTable ) ) THEN
@@ -639,51 +647,67 @@ CONTAINS
      NULLIFY( IpOffset ) 
 
      n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
-     ALLOCATE( IpOffset( n + 1) )
-     
-     IpOffset = 0     
+
+     IF( UpdatePerm ) THEN
+       IpOffset => MaskPerm
+       ActiveElem = (IpOffset(2)-IpOffset(1) > 0 )
+       IF( n >= 2 ) ActiveElem2 = (IpOffset(3)-IpOffset(2) > 0 )
+     ELSE
+       ALLOCATE( IpOffset( n + 1) )     
+       IpOffset = 0
+       IF( PRESENT( MaskPerm ) ) MaskPerm => IpOffset
+     END IF
      IpCount = 0
 
-     RelOrder = ListGetInteger( Solver % Values, 'Relative Integration Order', Found)
      nIp = ListGetInteger( Solver % Values,'Gauss Points on Ip Variables', Found ) 
      
      DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
        Element => Mesh % Elements(t)
             
-       IF( Element % PartIndex == ParEnv % myPE ) THEN
-         IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
-           
-           IF( PRESENT( MaskName ) ) THEN
-             BF => ListGetSection( Element, SecName )
-             ActiveElem = ListGetLogicalGen( BF, MaskName )
-           ELSE
-             ActiveElem = .TRUE.
-           END IF
-           
-           IF( ActiveElem ) THEN
-             IF( nIp > 0 ) THEN
-               IpCount = IpCount + nIp
+       IF( .NOT. UpdatePerm ) THEN
+         ActiveElem = .FALSE.
+         IF( Element % PartIndex == ParEnv % myPE ) THEN
+           IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN             
+             IF( PRESENT( MaskName ) ) THEN
+               BF => ListGetSection( Element, SecName )
+               ActiveElem = ListGetLogicalGen( BF, MaskName )
              ELSE
-               IP = GaussPoints( Element, RelOrder = RelOrder )
-               IpCount = IpCount + Ip % n
+               ActiveElem = .TRUE.
              END IF
            END IF
          END IF
        END IF
          
+       IF( ActiveElem ) THEN
+         IF( nIp > 0 ) THEN
+           IpCount = IpCount + nIp
+         ELSE
+           IP = GaussPointsAdapt( Element )
+           IpCount = IpCount + Ip % n
+         END IF
+       END IF
+
+       ! We are reusing the permutation table hence we must be one step ahead 
+       IF( UpdatePerm .AND. n >= t+1) THEN
+         ActiveElem = ActiveElem2
+         ActiveElem2 = (IpOffset(t+2)-IpOffset(t+1) > 0 )
+       END IF
+         
        IpOffset(t+1) = IpCount
      END DO
 
-     IF( PRESENT( MaskPerm ) ) THEN
-       MaskPerm => IpOffset
-     ELSE
+     IF( .NOT. PRESENT( MaskPerm ) ) THEN
        ALLOCATE( Solver % IpTable ) 
        Solver % IpTable % IpOffset => IpOffset
        Solver % IpTable % IpCount = IpCount
      END IF
+
+     IF( UpdatePerm ) THEN
+       CALL Info('CreateIpPerm','Updated permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
+     ELSE       
+       CALL Info('CreateIpPerm','Created permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
+     END IF
        
-     CALL Info('CreateIpPerm','Created permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
-     
    END SUBROUTINE CreateIpPerm
 
 

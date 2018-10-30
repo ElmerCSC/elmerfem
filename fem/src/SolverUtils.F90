@@ -8837,6 +8837,91 @@ END FUNCTION SearchNodeL
     
 
 
+
+!------------------------------------------------------------------------------
+!> Adaptive version for getting gaussian integration points
+!----------------------------------------------------------------------------------------------
+
+  FUNCTION GaussPointsAdapt( Element, Solver, PReferenceElement ) RESULT(IntegStuff)
+
+    IMPLICIT NONE
+    TYPE(Element_t) :: Element
+    TYPE(Solver_t), OPTIONAL, TARGET :: Solver
+    LOGICAL, OPTIONAL :: PReferenceElement           !< For switching to the p-version reference element
+    TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+    TYPE(Solver_t), POINTER :: pSolver, prevSolver => NULL()
+    TYPE(Variable_t), POINTER :: IntegVar
+    INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder
+    REAL(KIND=dp) :: MinV, MaxV, V
+    LOGICAL :: UseAdapt, Found
+    INTEGER :: i
+    
+    SAVE prevSolver, UseAdapt, MinV, MaxV, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np
+
+    IF( PRESENT( Solver ) ) THEN
+      pSolver => Solver
+    ELSE
+      pSolver => CurrentModel % Solver
+    END IF
+
+    IF( .NOT. ASSOCIATED( pSolver, prevSolver ) ) THEN
+      RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
+      AdaptNp = 0
+      Np = 0
+      
+      VarName = ListGetString( pSolver % Values,'Adaptive Integration Variable',UseAdapt )
+      IF( UseAdapt ) THEN
+        CALL Info('GaussPointsAdapt','Using adaptive gaussian integration rules')
+        IntegVar => VariableGet( pSolver % Mesh % Variables, VarName )
+        IF( .NOT. ASSOCIATED( IntegVar ) ) THEN
+          CALL Fatal('GaussPointsAdapt','> Adaptive Integration Variable < does not exist')
+        END IF
+        MinV = ListGetCReal( pSolver % Values,'Adaptive Integration Lower Limit' )
+        MaxV = ListGetCReal( pSolver % Values,'Adaptive Integration Upper Limit' )
+        AdaptNp = ListGetInteger( pSolver % Values,'Adaptive Integration Points',Found )
+        IF(.NOT. Found ) THEN
+          AdaptOrder = ListGetInteger( pSolver % Values,'Adaptive Integration Order',Found )        
+        END IF
+        IF(.NOT. Found ) AdaptOrder = 1
+
+        PRINT *,'Adaptive Integration Strategy:',MinV,MaxV,AdaptOrder,AdaptNp
+      END IF
+
+      prevSolver => pSolver      
+    END IF
+
+    IF( UseAdapt ) THEN
+      RelOrder = 0
+      Np = 0
+      IF( IntegVar % TYPE == Variable_on_nodes ) THEN
+        DO i = 1, Element % TYPE % NumberOfNodes 
+          V = IntegVar % Values( IntegVar % Perm( Element % NodeIndexes(i) ) )
+          IF( ( MaxV - V ) * ( V - MinV ) > 0.0_dp ) THEN
+            RelOrder = AdaptOrder
+            Np = AdaptNp
+            EXIT
+          END IF
+        END DO
+      ELSE IF( IntegVar % TYPE == Variable_on_elements ) THEN
+        V = IntegVar % Values( IntegVar % Perm( Element % ElementIndex ) )
+      ELSE
+        CALL Fatal('GaussPointsAdapt','Wrong type of integration variable!')
+      END IF
+    END IF
+
+    IF( Np > 0 ) THEN
+      IntegStuff = GaussPoints( Element, Np = Np, PReferenceElement = PReferenceElement ) 
+    ELSE IF( RelOrder /= 0 ) THEN
+      IntegStuff = GaussPoints( Element, RelOrder = RelOrder, PReferenceElement = PReferenceElement ) 
+    ELSE      
+      IntegStuff = GaussPoints( Element, PReferenceElement = PReferenceElement ) 
+    END IF
+      
+  END FUNCTION GaussPointsAdapt
+  
+
 !------------------------------------------------------------------------------
 !> Checks stepsize of a linear system so that the error has decreased.
 !> Various indicatators and search algorithms have been implemented,
@@ -12185,7 +12270,7 @@ END SUBROUTINE VariableNameParser
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   
-  INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize,i1,i2
+  INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize,i1,i2,NoGauss
   CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name,tmpname,condname
   REAL(KIND=dp), POINTER :: Values(:), Solution(:), LocalSol(:), LocalCond(:)
   INTEGER, POINTER :: Indexes(:), VarIndexes(:), Perm(:)
@@ -12308,7 +12393,7 @@ END SUBROUTINE VariableNameParser
         CALL ListInitElementKeyword( LocalSol_h,'Body Force',TmpName )
       END IF
 
-      DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+100   DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
         Element => Mesh % Elements(t) 
         IF( Element % BodyId <= 0 ) CYCLE
@@ -12325,32 +12410,41 @@ END SUBROUTINE VariableNameParser
         ValueList => CurrentModel % BodyForces(bf_id) % Values
 
         IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
-
+    
           i1 = Perm( Element % ElementIndex )
           i2 = Perm( Element % ElementIndex + 1 )
+          NoGauss = i2 - i1
           
-          IF( i2 - i1 > 0 ) THEN            
-            Nodes % x(1:m) = Mesh % Nodes % x(Indexes)
-            Nodes % y(1:m) = Mesh % Nodes % y(Indexes)
-            Nodes % z(1:m) = Mesh % Nodes % z(Indexes)
+          ! This is not active here
+          IF( NoGauss == 0 ) CYCLE
+          
+          IP = GaussPointsAdapt( Element, Solver )
 
-                       
-            IP = GaussPoints( Element )
-            IF( i2 - i1 /= Ip % n ) THEN
-              CALL Warn('UpdateExportedVariables','Incompatible number of Gauss points, skipping')
-            ELSE
-              IF( Conditional ) THEN
-                CALL Warn('UpdateExportedVariable','Elemental variables not conditional!')
-              END IF
-                            
-              
-              DO k=1,IP % n
-                stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
-                    IP % W(k), detJ, Basis )
-                Solution(i1+k) = ListGetElementReal( LocalSol_h,Basis,Element,Found,GaussPoint=k) 
-              END DO
+          IF( NoGauss /= IP % n ) THEN
+            CALL Warn('UpdateExportedVariables','Number of Gauss points has changed, redoing permutations!')            
+            CALL CreateIpPerm( Solver, Perm, UpdateOnly = .TRUE. )
+            m = MAXVAL( Perm )
+            IF( SIZE( ExpVariable % Values ) / ExpVariable % Dofs == m ) THEN
+              DEALLOCATE( ExpVariable % Values )
+              ALLOCATE( ExpVariable % Values( m * ExpVariable % Dofs ) )
             END IF
+            ExpVariable % Values = 0.0_dp
+            GOTO 100 
           END IF
+          
+          Nodes % x(1:m) = Mesh % Nodes % x(Indexes)
+          Nodes % y(1:m) = Mesh % Nodes % y(Indexes)
+          Nodes % z(1:m) = Mesh % Nodes % z(Indexes)
+
+          IF( Conditional ) THEN
+            CALL Warn('UpdateExportedVariable','Elemental variable cannot be conditional!')
+          END IF
+
+          DO k=1,IP % n
+            stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
+                IP % W(k), detJ, Basis )
+            Solution(i1+k) = ListGetElementReal( LocalSol_h,Basis,Element,Found,GaussPoint=k) 
+          END DO
           
         ELSE IF( ExpVariable % TYPE == Variable_on_elements ) THEN
           IF( Conditional ) THEN
