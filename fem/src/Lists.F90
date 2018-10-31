@@ -955,7 +955,7 @@ CONTAINS
 !> Also allocates the field values if not given in the parameter list. 
 !------------------------------------------------------------------------------
     SUBROUTINE VariableAddVector( Variables,Mesh,Solver,Name,DOFs,Values,&
-      Perm,Output,Secondary,TYPE,Global,InitValue,IpPoints)
+      Perm,Output,Secondary,VarType,Global,InitValue,IpPoints)
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       TYPE(Mesh_t),   TARGET :: Mesh
@@ -966,14 +966,14 @@ CONTAINS
       LOGICAL, OPTIONAL :: Output
       INTEGER, OPTIONAL, POINTER :: Perm(:)
       LOGICAL, OPTIONAL :: Secondary
-      INTEGER, OPTIONAL :: TYPE
+      INTEGER, OPTIONAL :: VarType
       LOGICAL, OPTIONAL :: Global
       REAL(KIND=dp), OPTIONAL :: InitValue
       LOGICAL, OPTIONAL :: IpPoints
 !------------------------------------------------------------------------------
       CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
       REAL(KIND=dp), POINTER :: Component(:), TmpValues(:)
-      INTEGER :: i,nsize, ndofs
+      INTEGER :: i,nsize, ndofs, FieldType
       LOGICAL :: IsPerm, IsGlobal, IsIPPoints
 !------------------------------------------------------------------------------
             
@@ -990,6 +990,13 @@ CONTAINS
       IsPerm = PRESENT( Perm ) 
       IF( PRESENT( Global ) ) IsGlobal = Global
       IF( PRESENT( IPPoints ) ) IsIPPoints = IPPoints
+
+      IF( PRESENT( VarType ) ) THEN
+        FieldType = VarType
+      ELSE
+        FieldType = variable_on_nodes
+      END IF
+
       
 
       CALL Info('VariableAddVector','Adding variable > '//TRIM(Name)//' < with '&
@@ -1013,6 +1020,8 @@ CONTAINS
         ELSE
           nsize = Mesh % NumberOfNodes          
         END IF
+        CALL Info('VariableAddVector','Allocating field of size: '//TRIM(I2S(nsize)),Level=12)
+        
         NULLIFY(TmpValues)
         ALLOCATE(TmpValues(ndofs*nsize))
         TmpValues = 0.0_dp         
@@ -1027,12 +1036,12 @@ CONTAINS
           tmpname = ComponentName(Name,i)
           Component => TmpValues(i::nDOFs)
           CALL VariableAdd( Variables,Mesh,Solver,TmpName,1,Component,&
-              Perm,Output,Secondary,Type)
+              Perm,Output,Secondary,VarType)
         END DO
       END IF
 
       CALL VariableAdd( Variables,Mesh,Solver,Name,nDOFs,TmpValues,&
-            Perm,Output,Secondary,Type)
+            Perm,Output,Secondary,VarType)
 
 !------------------------------------------------------------------------------
     END SUBROUTINE VariableAddVector
@@ -4842,7 +4851,7 @@ CONTAINS
          DO j=1,Handle % ParNo 
            T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
          END DO
-
+         
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
            IF( .NOT. PRESENT( GaussPoint ) ) THEN
@@ -4853,8 +4862,13 @@ CONTAINS
          
          ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
          IF ( ptr % PROCEDURE /= 0 ) THEN
+           IF( PRESENT( GaussPoint ) ) THEN
+             j = -GaussPoint
+           ELSE
+             j = 0
+           END IF
            !CALL ListPushActiveName(Handle % name)
-           Rvalue = ExecRealFunction( ptr % PROCEDURE,CurrentModel, -GaussPoint, T )
+           Rvalue = ExecRealFunction( ptr % PROCEDURE,CurrentModel, j, T )
            !CALL ListPopActiveName()
          ELSE
            RValue = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &

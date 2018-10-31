@@ -593,100 +593,7 @@ CONTAINS
    END SUBROUTINE SwapMesh
 !------------------------------------------------------------------------------
 
-   !> Create permutation for fields on integration points, optionally with mask.
-   !> The non-masked version is saved to Solver structure for reuse while the
-   !> masked version may be unique to every variable. 
-   !-----------------------------------------------------------------------------------
-   SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName, SecName )
-
-     TYPE(Solver_t), POINTER :: Solver
-     INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName      
-     
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(GaussIntegrationPoints_t) :: IP
-     TYPE(Element_t), POINTER :: Element
-     INTEGER :: t, n, IpCount , RelOrder, nIp
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
-     LOGICAL :: Found, ActiveElem
-     INTEGER, POINTER :: IpOffset(:) 
-     TYPE(ValueList_t), POINTER :: BF
-
-     n = 0
-     IF( PRESENT( MaskPerm ) ) n = n + 1
-     IF( PRESENT( MaskName ) ) n = n + 1
-     IF( PRESENT( SecName ) ) n = n + 1
-     
-     IF( n /= 0 .AND. n /= 3 ) THEN
-       CALL Fatal('CreateIpPerm','Either none or all optional parameters must be present!')
-     END IF
-
-     IF( PRESENT( MaskPerm ) ) THEN
-       CALL Info('CreateIpPerm','Creating masked permutation for integration points',Level=8)
-     ELSE       
-       IF( ASSOCIATED( Solver % IpTable ) ) THEN
-         CALL Info('CreateIpPerm','IpTable already allocated, returning')
-       END IF
-       CALL Info('CreateIpPerm','Creating permuation for integration points',Level=8)       
-     END IF
-       
-     EquationName = ListGetString( Solver % Values, 'Equation', Found)
-     IF( .NOT. Found ) THEN
-       CALL Fatal('CreateIpPerm','Equation not present!')
-     END IF     
-     
-     Mesh => Solver % Mesh
-     NULLIFY( IpOffset ) 
-
-     n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
-     ALLOCATE( IpOffset( n + 1) )
-     
-     IpOffset = 0     
-     IpCount = 0
-
-     RelOrder = ListGetInteger( Solver % Values, 'Relative Integration Order', Found)
-     nIp = ListGetInteger( Solver % Values,'Gauss Points on Ip Variables', Found ) 
-     
-     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
-       Element => Mesh % Elements(t)
-            
-       IF( Element % PartIndex == ParEnv % myPE ) THEN
-         IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
            
-           IF( PRESENT( MaskName ) ) THEN
-             BF => ListGetSection( Element, SecName )
-             ActiveElem = ListGetLogicalGen( BF, MaskName )
-           ELSE
-             ActiveElem = .TRUE.
-           END IF
-           
-           IF( ActiveElem ) THEN
-             IF( nIp > 0 ) THEN
-               IpCount = IpCount + nIp
-             ELSE
-               IP = GaussPoints( Element, RelOrder = RelOrder )
-               IpCount = IpCount + Ip % n
-             END IF
-           END IF
-         END IF
-       END IF
-         
-       IpOffset(t+1) = IpCount
-     END DO
-
-     IF( PRESENT( MaskPerm ) ) THEN
-       MaskPerm => IpOffset
-     ELSE
-       ALLOCATE( Solver % IpTable ) 
-       Solver % IpTable % IpOffset => IpOffset
-       Solver % IpTable % IpCount = IpCount
-     END IF
-       
-     CALL Info('CreateIpPerm','Created permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
-     
-   END SUBROUTINE CreateIpPerm
-
-
    SUBROUTINE CheckAndCreateDGIndexes( Mesh, ActiveElem ) 
      TYPE(Mesh_t), POINTER :: Mesh
      LOGICAL, OPTIONAL :: ActiveElem(:)
@@ -809,6 +716,7 @@ CONTAINS
 
      ! If they have not been allocated before the allocate DGIndexes for all bulk elements
      IF(.NOT. HaveSome ) THEN       
+       CALL Info('CreateDGPerm','Creating DG indexes for bulk elements',Level=15)
 
        ! Number the bulk indexes such that each node gets a new index
        DGIndex = 0       
@@ -1842,7 +1750,26 @@ CONTAINS
         ELSE
           CALL Warn('AddEquationBasics','Could not create variable: '//TRIM(var_name))
         END IF
-        
+
+
+        str = TRIM( ComponentName( 'exported variable', l ) ) // ' Transient'
+        IF( ListGetLogical( SolverParams, str, Found ) ) THEN        
+          n = 0
+          IF( ASSOCIATED( Solver % Variable ) ) THEN
+            IF ( ASSOCIATED(Solver % Variable % PrevValues) ) THEN
+              n = SIZE(Solver % Variable % PrevValues,2)
+            END IF
+          END IF
+          IF( n == 0 ) THEN
+            CALL Warn('AddEquationBasics','Exported variable of static solver cannot be transient')
+          ELSE
+            CALL Info('AddEquationBasics','Setting exported variable to be transient',Level=12)
+            ALLOCATE(NewVariable % PrevValues(nsize,n))
+            NewVariable % PrevValues = 0.0_dp
+          END IF
+        END IF
+
+
         IF ( DOFs > 1 ) THEN
           n = LEN_TRIM( var_name )
           DO j=1,DOFs
@@ -1865,6 +1792,7 @@ CONTAINS
             END IF
           END DO
         END IF
+
       END IF
     END DO
 

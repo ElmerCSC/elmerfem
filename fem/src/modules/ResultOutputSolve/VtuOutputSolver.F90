@@ -1091,7 +1091,6 @@ CONTAINS
       TmpVar % Perm( Element % DgIndexes ) = 1
     END DO
 
-
     j = 0
     DO i = 1, dgsize
       IF( TmpVar % Perm( i ) == 0 ) CYCLE
@@ -1110,7 +1109,7 @@ CONTAINS
 
       DO k=1,dofs
         DO i=1,m        
-          j = Var % Perm(e) + i 
+          j = Var % Perm(t) + i 
           fip(i) = Var % Values(dofs*(j-1)+k)
         END DO
         
@@ -1178,7 +1177,8 @@ CONTAINS
     Params => GetSolverParams()
     Buffered = .TRUE.
 
-    ALLOCATE( ElemInd(Model % Mesh % MaxElementDOFS))
+    ! we could have huge amount of gauss points
+    ALLOCATE( ElemInd(512)) !Model % Mesh % MaxElementDOFS))
 
     ! This is a hack to ensure that the streamed saving will cover the whole file
     !----------------------------------------------------------------------------
@@ -1369,9 +1369,6 @@ CONTAINS
 
             IF( NoModes + NoModes2 == 0 ) NoFields = 1
           END IF
-
-
-
           
           Perm => Solution % Perm
           dofs = Solution % DOFs
@@ -1431,7 +1428,6 @@ CONTAINS
           ELSE
             sdofs = 1
           END IF
-
 
           !---------------------------------------------------------------------
           ! Finally save the field values 
@@ -1622,18 +1618,18 @@ CONTAINS
             ELSE 
               IF( L ) THEN
                 WRITE(Txt, '(A,A)') 'Nonexistent elemental variable: ',TRIM(FieldName)
-                CALL Warn('WriteVtuXMLFile', Txt)
+                CALL Warn('VtuOutputSolver', Txt)
               END IF
               CYCLE
             END IF
           END IF
-
+          
           VarType = Solution % Type
           Found = ( VarType == Variable_on_nodes_on_elements .OR. &
               VarType == Variable_on_gauss_points  .OR. &
               VarType == Variable_on_elements )
           IF (.NOT. Found ) CYCLE
-
+          
           Perm => Solution % Perm
           Dofs = Solution % DOFs
           Values => Solution % Values
@@ -1659,7 +1655,7 @@ CONTAINS
           ELSE
             sdofs = 1
           END IF
-
+          
           !---------------------------------------------------------------------
           ! Finally save the field values 
           !---------------------------------------------------------------------
@@ -1680,7 +1676,7 @@ CONTAINS
             END IF
             NoFieldsWritten = NoFieldsWritten + 1
           END IF
-
+          
           IF( BinaryOutput ) THEN
             k = PrecSize * sdofs * NumberOfElements
             Offset = Offset + IntSize + k
@@ -1747,13 +1743,22 @@ CONTAINS
               ELSE IF( VarType == Variable_on_gauss_points ) THEN
 
                 m = CurrentElement % ElementIndex
-                n = Perm(m+1)-Perm(m)
-                IF( n > 0 ) THEN
+                IF( m < SIZE( Perm ) ) THEN
+                  n = Perm(m+1)-Perm(m)
+                ELSE
+                  n = 0
+                END IF
+
+                IF( n == 0 ) THEN
+                  ElemVectVal(k) = 0.0_dp
+                ELSE
                   DO j=1,n
                     ElemInd(j) = Perm(m)+j
                   END DO
                   
                   IF( sdofs == 1 ) THEN
+                    ! Temporal test for visualizing the number of IP points!
+                    !ElemVectVal(1) = 1.0_dp * n
                     ElemVectVal(1) = SUM(Values(ElemInd(1:n))) / n
                   ELSE
                     DO k=1,sdofs
@@ -2152,8 +2157,11 @@ CONTAINS
     CLOSE( VtuUnit )
 
     CALL AscBinWriteFree()
-    DEALLOCATE(ElemInd)
 
+    IF( ALLOCATED( ElemInd ) ) DEALLOCATE(ElemInd)
+    
+    CALL Info('WriteVtuFile','Finished writing file',Level=15)
+    
   END SUBROUTINE WriteVtuFile
 
 

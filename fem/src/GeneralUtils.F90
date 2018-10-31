@@ -2608,7 +2608,7 @@ CONTAINS
   !---------------------------------------------------------------
   SUBROUTINE AscBinWriteFree()
 
-    CALL Info('AscBinWriteInit','Terminating buffered ascii/binary writing',Level=10)
+    CALL Info('AscBinWriteFree','Terminating buffered ascii/binary writing',Level=10)
 
     IF( AsciiOutput ) RETURN
 
@@ -2621,7 +2621,7 @@ CONTAINS
 
     BufferSize = 0
     VtuUnit = 0
-
+    
   END SUBROUTINE AscBinWriteFree
 
 
@@ -2678,11 +2678,9 @@ CONTAINS
       IF( NoVals == 0 ) THEN
         RETURN
       ELSE IF( SinglePrec ) THEN
-!        PRINT *,'writing floats:',NoVals
         WRITE( VtuUnit ) Fvals(1:NoVals)
       ELSE
         WRITE( VtuUnit ) DVals(1:NoVals) 
-!        PRINT *,'writing doubles:',NoVals
       END IF
       NoVals = 0
       IF( Empty ) RETURN 
@@ -2695,8 +2693,6 @@ CONTAINS
     ELSE
       DVals(NoVals) = val
     END IF
-
-!    PRINT *,'val:',NoVals,val
 
 
   END SUBROUTINE AscBinRealWrite
@@ -2734,7 +2730,6 @@ CONTAINS
         RETURN
       ELSE 
         WRITE( VtuUnit ) Ivals(1:INoVals)
-!        PRINT *,'writing integers:',INoVals
       END IF
       INoVals = 0
       IF( Empty ) RETURN 
@@ -2742,8 +2737,6 @@ CONTAINS
 
     INoVals = INoVals + 1
     Ivals(INoVals) = ival
-
- !   PRINT *,'ival:',iNoVals,ival
         
   END SUBROUTINE AscBinIntegerWrite
   

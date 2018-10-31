@@ -43,6 +43,7 @@
 #include "femfilein.h"
 
 #define GETLINE getlineptr=fgets(line,MAXLINESIZE,in) 
+#define GETLONGLINE getlineptr=fgets(longline,LONGLINESIZE,in)
 
 static int linenumber;
 static char *getlineptr;
@@ -3709,11 +3710,11 @@ static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
-  int usetaggeom,tagmat,verno;
+  int tagmat,verno;
   int physvolexist, physsurfexist,**tagmap,tagsize;
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
-  char *cp,line[MAXLINESIZE];
+  char *cp,line[MAXLINESIZE],longline[LONGLINESIZE];
 
   if ((in = fopen(filename,"r")) == NULL) {
     printf("LoadGmshInput4: The opening of the mesh file %s failed!\n",filename);
@@ -3726,7 +3727,6 @@ static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
-  usetaggeom = FALSE;
   physvolexist = FALSE;
   physsurfexist = FALSE;
 
@@ -3800,7 +3800,8 @@ omstart:
     else if(strstr(line,"$Entities")) {
       int numPoints, numCurves, numSurfaces, numVolumes, numEnt;
       int tag,tagdim,nophys,phystag,maxtag[4];
-      Real range;
+      int nobound, idum;
+      Real rdum;
       
       GETLINE;
       cp = line;
@@ -3824,6 +3825,8 @@ omstart:
       
       for(tagdim=0;tagdim<=3;tagdim++) {	
 
+	// printf("Reading entities in %d\n",tagdim);
+	
 	if( tagdim == 0 ) 
 	  numEnt = numPoints;
 	else if( tagdim == 1 )
@@ -3837,26 +3840,42 @@ omstart:
 	  maxtag[tagdim] = 0;
 	else if( maxtag[tagdim] > 0 )
 	  printf("Maximum original tag for %d %dDIM entities is %d\n",numEnt,tagdim,maxtag[tagdim]);
-		      
+ 		      
 	for(i=1; i <= numEnt; i++) {
-	  GETLINE;
-	  cp = line;
+	  GETLONGLINE;
+
+	  // if( i==1 ) printf("1 or %d: %s\n",numEnt,line);
+	  
+	  if( tagdim == 0 ) continue;
+	  
+	  cp = longline;
 	  tag = next_int(&cp);
+	  
+	 	  
 	  if(!allocated)
 	    maxtag[tagdim] = MAX( maxtag[tagdim], tag );
-	  else {
-	    for(j=1;j<=6;j++) range = next_real(&cp);
-	    nophys = next_int(&cp);
-	    phystag = next_int(&cp);
-	    
-	    tagmap[tagdim][tag] = phystag;
-	  }
+	  
+	  for(j=1;j<=6;j++) rdum = next_real(&cp);
+	  nophys = next_int(&cp);
+
+	  if( nophys > 0 ) phystag = next_int(&cp);
+	  
+	  if(allocated) tagmap[tagdim][tag] = phystag;
+
+	  for(j=2;j<=nophys;j++)
+	    idum = next_int(&cp);
+
+	  // if( tagdim == 0 ) continue;
+
+	  nobound = next_int(&cp);
+	  for(j=1;j<=nobound;j++)
+	    idum = next_int(&cp);	  
 	}
       }
       
-      GETLINE;
-      if(!strstr(line,"$EndEntities")) {
-	printf("$Entities section should end to string $EndEntities:\n%s\n",line);
+      GETLONGLINE;
+      if(!strstr(longline,"$EndEntities")) {
+	printf("$Entities section should end to string $EndEntities:\n%s\n",longline);
       }           
     }
 
@@ -3881,7 +3900,6 @@ omstart:
 	tagEntity = next_int(&cp);
 	dimEntity = next_int(&cp);
 
-
 	typeEle = next_int(&cp);
 	numElements = next_int(&cp);
 	
@@ -3892,8 +3910,13 @@ omstart:
 	if( allocated && tagsize > 0 ) {
 	  printf("Reading %d elements with tag %d of type %d\n", numElements, tagEntity, elementtype);
 	  if( tagsize > 0 ) {
-	    printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);
-	    tagEntity = tagmap[dimEntity][tagEntity];
+	    if( tagmap[dimEntity][tagEntity] ) {
+	      printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);	    
+	      tagEntity = tagmap[dimEntity][tagEntity];
+	    }
+	    else {
+	      printf("Mesh tag %d is not associated to any physical tag!\n",tagEntity);
+	    }
 	  }
 	}
 			     
@@ -4075,11 +4098,6 @@ omstart:
 
   ElementsToBoundaryConditions(data,bound,FALSE,info);
 
-  /* The geometric entities are rather randomly numbered */
-  if( usetaggeom ) {
-    RenumberBoundaryTypes(data,bound,TRUE,0,info);
-    RenumberMaterialTypes(data,bound,info);
-  }
   data->bodynamesexist = physvolexist;
   data->boundarynamesexist = physsurfexist;
   

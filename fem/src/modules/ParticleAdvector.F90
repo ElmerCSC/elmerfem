@@ -64,8 +64,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Solver_t), POINTER :: PSolver
   TYPE(Variable_t), POINTER :: Var, PTimeVar
-  LOGICAL :: GotIt, Debug, Hit, InitLocation, InitTimestep, Found, ParticleInfo, InitAllVelo, &
-      AdvectElemental
+  LOGICAL :: GotIt, Debug, Hit, InitLocation, InitTimestep, Found, ParticleInfo, InitAllVelo
   INTEGER :: i,j,k,n,dim,No,nodims,&
       ElementIndex, VisitedTimes = 0, nstep, &
       Status,TimeOrder, PartitionChanges, TimeStepsTaken=0,&
@@ -96,9 +95,6 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   iorder = 1
 
   InitAllVelo = .TRUE.
-
-  AdvectElemental = ListGetLogical( Params,'Advect Elemental',Found) 
-
   
   ! Do some initalialization: allocate space, check fields  
   !------------------------------------------------------------------------
@@ -508,14 +504,14 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Valuelist_t), POINTER :: Params
     LOGICAL :: Stat, Visited = .FALSE.
-    INTEGER :: i,j,k,l,n,nsize,dim,wallcount,NoVar,NoNorm,dofs,maxdim
-    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER :: i,j,k,l,n,nsize,dim,wallcount,NoVar,NoNorm,dofs,maxdim,VarType
+    INTEGER, POINTER :: NodeIndexes(:), PPerm(:)
     REAL(KIND=dp) :: SqrtElementMetric, Norm, PrevNorm = 0.0_dp, Change
     REAL(KIND=dp), POINTER :: Basis(:)
     LOGICAL :: GotIt, Difference,Cumulative,Derivative,GotVar,GotRes,GotOper,Debug,&
         UsePerm,InternalVariable,Initiated, Parallel
     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, ResultName, OperName, Name
-    TYPE(Variable_t), POINTER :: TargetVar, ResultVar, Var
+    TYPE(Variable_t), POINTER :: TargetVar, ResultVar, DataVar, Var
     TYPE(Variable_t), POINTER :: ParticleVar
     REAL(KIND=dp), POINTER :: TmpValues(:), NodeValues(:), NewValues(:)
     INTEGER, POINTER :: TmpPerm(:), UnitPerm(:)
@@ -539,8 +535,11 @@ CONTAINS
     NoParticles = Particles % NumberOfParticles
     maxdim = 0
 
-    IF( AdvectElemental ) THEN
-      nsize = Mesh % NumberOfBulkElements
+    
+    DataVar => VariableGet( Mesh % Variables,'AdvectorData')
+    IF( ASSOCIATED( DataVar ) ) THEN
+      nsize = SIZE( DataVar % Values )
+      DataVar % Output = .FALSE.
     ELSE
       nsize = Mesh % NumberOfNodes
     END IF    
@@ -626,36 +625,45 @@ CONTAINS
 
       ! Create variables if they do not exist
       !---------------------------------------------------------      
+
       ResultVar => VariableGet( Mesh % Variables, TRIM(ResultName) )
-      IF( ASSOCIATED(ResultVar)) THEN        
-        IF( AdvectElemental .AND. SIZE( ResultVar % Values ) /= nsize ) THEN
-          CALL Fatal('ParticleAdvector','ResultVar is of wrong size, use new name for result variable!')
+      IF( ASSOCIATED(ResultVar) ) THEN        
+        IF( ASSOCIATED( DataVar) ) THEN        
+          IF( DataVar % TYPE /= ResultVar % TYPE ) THEN
+            CALL Fatal('ParticleAdvector','ResultVar is of wrong type, use new name for result variable!')
+          END IF
+          IF( SIZE( DataVar % Values ) /= SIZE( ResultVar % Values) ) THEN
+            CALL Fatal('ParticleAdvector','ResultVar is of wrong size, use new name for result variable!')
+          END IF
         END IF
-      ELSE        
-        IF( InternalVariable .OR. AdvectElemental ) THEN
-          UsePerm = .FALSE.
-        ELSE
-          ! Inherit the Perm from the target variable
-          UsePerm = ASSOCIATED( TargetVar % Perm ) 
+        CALL Info('ParticleAdvector','Found a pre-existing result variable: '//TRIM(ResultName),Level=20)
+      ELSE
+        GotIt = .FALSE.
+        PPerm => NULL()
+        IF( ASSOCIATED( DataVar ) ) THEN
+          CALL Info('ParticleAdvector','Using non-nodal given permutation for data',Level=15)
+          PPerm => DataVar % Perm
+          VarType = DataVar % TYPE
+        ELSE IF( ASSOCIATED( TargetVar ) ) THEN
+          CALL Info('ParticleAdvector','Using inherited permutation for data',Level=15)
+          PPerm => TargetVar % Perm
+          VarType = TargetVar % TYPE
         END IF
-        
-        ! This trick is done to allow postprocessing routines to work better
-        IF(.NOT. UsePerm ) THEN          
+
+        IF( .NOT. ASSOCIATED( PPerm ) ) THEN
           IF(.NOT. ASSOCIATED(UnitPerm)) THEN
+            CALL Info('ParticleAdvector','Creating unity permutation for data',Level=15)
             ALLOCATE( UnitPerm(nsize) )
             DO i=1,nsize
               UnitPerm(i) = i
             END DO
           END IF
+          PPerm => UnitPerm
+          VarType = 0
         END IF
-
-        IF(UsePerm) THEN
-          CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,ResultName,dofs,&
-              Perm = TargetVar % Perm )
-        ELSE
-          CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,ResultName,dofs, &
-              Perm = UnitPerm )
-        END IF       
+        
+        CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,ResultName,dofs,&
+            Perm = PPerm, VarType = VarType )
         
         IF( dofs == 1 ) THEN
           CALL Info('ParticleAdvector','Created a scalar variable: '//TRIM(ResultName) )
@@ -664,10 +672,9 @@ CONTAINS
         END IF
         ResultVar => VariableGet( Mesh % Variables, TRIM(ResultName))
         IF(.NOT. ASSOCIATED(ResultVar)) CALL Fatal('ParticleAdvector','Problems in VariableAdd')
-        
-        IF( AdvectElemental ) ResultVar % TYPE = variable_on_elements
       END IF
-      
+
+
       ! Finally, set the values
       !---------------------------------------------------------      
       IF( InternalVariable ) THEN
@@ -737,8 +744,6 @@ CONTAINS
         ELSE IF( SEQL(VariableName, 'particle') ) THEN
           ParticleVar => ParticleVariableGet( Particles, VariableName )
           IF( ASSOCIATED( ParticleVar ) ) THEN
-             !if ( SIZE(NewValues) /= SIZE(ParticleVar % Values) ) PRINT*,PARENV % MYPE, 'AAAAAAAAA*****BBBBB: ', &
-             !size(newvalues), size(particlevar % values), noparticles, particles % numberofparticles
             NewValues = ParticleVar % Values(1:SIZE(NewValues))
           ELSE
             CALL Warn('ParticleAdvector','Field does not exist: '//TRIM(VariableName))
@@ -789,27 +794,67 @@ CONTAINS
 
       ! Finally move the nodal values to the target variable 
       !---------------------------------------------------------------------
-      DO j=1,nsize
-        k = j
-        IF( ASSOCIATED( ResultVar % Perm ) ) k = ResultVar % Perm( k )
-        IF( k == 0 ) CYCLE
+      IF( ASSOCIATED( DataVar ) ) THEN
         IF( Difference .OR. Derivative ) THEN
-          ResultVar % Values( k ) = NodeValues( j ) - TargetVar % Values( k ) 
+          ResultVar % Values = NodeValues - TargetVar % Values 
         ELSE IF( Cumulative ) THEN
-          ResultVar % Values( k ) = NodeValues( j ) + ResultVar % Values( k )
+          ResultVar % Values = NodeValues + ResultVar % Values
         ELSE
-          ResultVar % Values( k ) = NodeValues( j ) 
+          ResultVar % Values = NodeValues
         END IF
-      END DO
+      ELSE
+        DO j=1,nsize
+          k = j
+          IF( ASSOCIATED( ResultVar % Perm ) ) k = ResultVar % Perm( k )
+          IF( k == 0 ) CYCLE
+          IF( Difference .OR. Derivative ) THEN
+            ResultVar % Values( k ) = NodeValues( j ) - TargetVar % Values( k ) 
+          ELSE IF( Cumulative ) THEN
+            ResultVar % Values( k ) = NodeValues( j ) + ResultVar % Values( k )
+          ELSE
+            ResultVar % Values( k ) = NodeValues( j ) 
+          END IF
+        END DO
+      END IF
+      
       IF( Derivative ) ResultVar % Values = ResultVar % Values / dertime 
 
+      BLOCK 
+        INTEGER :: t, LocalPerm(10)
+        REAL(KIND=DP) :: cval
+        TYPE(Element_t), POINTER :: Element
+        REAL(KIND=dp) :: DgScale
+        LOGICAL :: GotScale
+
+        IF( ResultVar % TYPE == variable_on_nodes_on_elements ) THEN
+       
+          DGScale = ListGetCReal( Solver % Values,'DG Nodes Scale',GotScale )
+          IF(.NOT. GotScale ) DgScale = 1.0 / SQRT( 3.0_dp ) 
+          GotScale = ( ABS( DGScale - 1.0_dp ) > TINY( DgScale ) )
+          
+          IF( GotScale ) THEN
+            CALL Info('ParticleAdvector','Expanding shrinked DG field',Level=12)        
+            DO t=1, Mesh % NumberOfBulkElements
+              Element => Mesh % Elements(t)
+              n = Element % TYPE % NumberOfNodes
+              LocalPerm(1:n) = ResultVar % Perm( Element % DGIndexes )
+              IF( ANY( LocalPerm(1:n) == 0) ) CYCLE
+              cval = SUM( ResultVar % Values( LocalPerm(1:n) ) ) / n
+              DO i=1,n
+                j = LocalPerm(i)
+                ResultVar % Values(j) = cval + ( ResultVar % Values(j) - cval ) * ( 1.0_dp / DgScale )
+              END DO
+            END DO
+          END IF
+        END IF
+      END BLOCK
+      
       ! To allow computation of change in the standard manner the Variable
       ! is set to point to the one of interest. This is mainly used in the 
       ! tests, or could be used in for convergence monitoring also. 
       !---------------------------------------------------------------
       IF( NoVar == NoNorm ) THEN
         n = SIZE( ResultVar % Values ) 
-!        Norm = ComputeNorm( Solver, n, ResultVar % Values ) 
         Norm = SQRT( SUM( ResultVar % Values ** 2) / n )
         Change = 2.0 * ABS( Norm-PrevNorm ) / ( Norm + PrevNorm )
         PrevNorm = Norm
@@ -879,7 +924,7 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
 !------------------------
   
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, AdvectElemental
+  LOGICAL :: Found, AdvectElemental, AdvectDG, AdvectIp
   INTEGER :: NormInd
 
   Params => GetSolverParams()
@@ -888,11 +933,19 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
   ! possible. There should always be one passive particle for each active node.
   !---------------------------------------------------------------------------
   AdvectElemental = ListGetLogical( Params,'Advect Elemental',Found) 
+  AdvectDG = ListGetLogical( Params,'Advect DG',Found) 
+  AdvectIp = ListGetLogical( Params,'Advect Ip',Found) 
 
-  IF( AdvectElemental ) THEN
-    CALL ListAddString( Params,'Coordinate Initialization Method','elemental ordered')    
-    CALL ListAddString( Params,'Velocity Initialization Method','elemental velocity')
-    CALL ListAddConstReal( Params,'Particle Element Fraction',1.0_dp)
+  IF( AdvectElemental .OR. AdvectDg .OR. AdvectIp ) THEN  
+    IF( AdvectElemental ) THEN
+      CALL ListAddString( Params,'Exported Variable 1','-elem AdvectorData')
+    ELSE IF( AdvectDg ) THEN
+      CALL ListAddString( Params,'Exported Variable 1','-dg AdvectorData')
+    ELSE
+      CALL ListAddString( Params,'Exported Variable 1','-ip AdvectorData')     
+    END IF      
+    CALL ListAddString( Params,'Coordinate Initialization Method','advector')    
+    CALL ListAddString( Params,'Velocity Initialization Method','advector')
   ELSE
     CALL ListAddString( Params,'Coordinate Initialization Method','nodal ordered')
     CALL ListAddString( Params,'Velocity Initialization Method','nodal velocity')
