@@ -1692,7 +1692,7 @@ RETURN
     
     Mesh => GetMesh()
     dim = Particles % dim
-    
+
 !debug = particles % partition(no) == 2 .and. particles % nodeindex(no) == 325
     NoPartitions = ParEnv % PEs
     NoParticles = Particles % NumberOfParticles
@@ -1713,6 +1713,7 @@ RETURN
       Part = Particles % Partition(i)
       IF( Part-1 == ParEnv % MyPe ) THEN
         j = Particles % NodeIndex(i)
+        IF ( j==0 ) CYCLE
         RecvField(j) = SentField(i)
       END IF
     END DO
@@ -1810,7 +1811,6 @@ RETURN
     DO j=1,NoPartitions
 
       IF( j-1 == ParEnv % MyPe ) CYCLE
-
       IF( SentParts(j) == 0 ) CYCLE
 
       m = 0
@@ -1861,7 +1861,6 @@ RETURN
     IF( nerr > 0 ) THEN
       CALL Info('ParticleAdvectParallel','Invalid recieved index in particles: '//TRIM(I2S(nerr)))
     END IF
-
 
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
