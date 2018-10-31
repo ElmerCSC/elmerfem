@@ -4851,7 +4851,7 @@ CONTAINS
          DO j=1,Handle % ParNo 
            T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
          END DO
-
+         
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
            IF( .NOT. PRESENT( GaussPoint ) ) THEN
@@ -4862,8 +4862,13 @@ CONTAINS
          
          ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
          IF ( ptr % PROCEDURE /= 0 ) THEN
+           IF( PRESENT( GaussPoint ) ) THEN
+             j = -GaussPoint
+           ELSE
+             j = 0
+           END IF
            !CALL ListPushActiveName(Handle % name)
-           Rvalue = ExecRealFunction( ptr % PROCEDURE,CurrentModel, -GaussPoint, T )
+           Rvalue = ExecRealFunction( ptr % PROCEDURE,CurrentModel, j, T )
            !CALL ListPopActiveName()
          ELSE
            RValue = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &

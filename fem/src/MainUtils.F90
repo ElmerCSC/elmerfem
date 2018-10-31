@@ -1750,7 +1750,26 @@ CONTAINS
         ELSE
           CALL Warn('AddEquationBasics','Could not create variable: '//TRIM(var_name))
         END IF
-        
+
+
+        str = TRIM( ComponentName( 'exported variable', l ) ) // ' Transient'
+        IF( ListGetLogical( SolverParams, str, Found ) ) THEN        
+          n = 0
+          IF( ASSOCIATED( Solver % Variable ) ) THEN
+            IF ( ASSOCIATED(Solver % Variable % PrevValues) ) THEN
+              n = SIZE(Solver % Variable % PrevValues,2)
+            END IF
+          END IF
+          IF( n == 0 ) THEN
+            CALL Warn('AddEquationBasics','Exported variable of static solver cannot be transient')
+          ELSE
+            CALL Info('AddEquationBasics','Setting exported variable to be transient',Level=12)
+            ALLOCATE(NewVariable % PrevValues(nsize,n))
+            NewVariable % PrevValues = 0.0_dp
+          END IF
+        END IF
+
+
         IF ( DOFs > 1 ) THEN
           n = LEN_TRIM( var_name )
           DO j=1,DOFs
@@ -1773,6 +1792,7 @@ CONTAINS
             END IF
           END DO
         END IF
+
       END IF
     END DO
 

@@ -8854,11 +8854,13 @@ END FUNCTION SearchNodeL
     TYPE(Solver_t), POINTER :: pSolver, prevSolver => NULL()
     TYPE(Variable_t), POINTER :: IntegVar
     INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder
-    REAL(KIND=dp) :: MinV, MaxV, V
+    REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found
-    INTEGER :: i
+    INTEGER :: i,n
+    LOGICAL :: Debug
+
     
-    SAVE prevSolver, UseAdapt, MinV, MaxV, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np
+    SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
@@ -8866,6 +8868,8 @@ END FUNCTION SearchNodeL
       pSolver => CurrentModel % Solver
     END IF
 
+    Debug = ( Element % ElementIndex == 0)
+    
     IF( .NOT. ASSOCIATED( pSolver, prevSolver ) ) THEN
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
@@ -8878,8 +8882,11 @@ END FUNCTION SearchNodeL
         IF( .NOT. ASSOCIATED( IntegVar ) ) THEN
           CALL Fatal('GaussPointsAdapt','> Adaptive Integration Variable < does not exist')
         END IF
-        MinV = ListGetCReal( pSolver % Values,'Adaptive Integration Lower Limit' )
-        MaxV = ListGetCReal( pSolver % Values,'Adaptive Integration Upper Limit' )
+        IF( IntegVar % TYPE /= Variable_on_nodes ) THEN
+          CALL Fatal('GaussPointsAdapt','Wrong type of integration variable!')
+        END IF
+        MinLim = ListGetCReal( pSolver % Values,'Adaptive Integration Lower Limit' )
+        MaxLim = ListGetCReal( pSolver % Values,'Adaptive Integration Upper Limit' )
         AdaptNp = ListGetInteger( pSolver % Values,'Adaptive Integration Points',Found )
         IF(.NOT. Found ) THEN
           AdaptOrder = ListGetInteger( pSolver % Values,'Adaptive Integration Order',Found )        
@@ -8895,21 +8902,18 @@ END FUNCTION SearchNodeL
     IF( UseAdapt ) THEN
       RelOrder = 0
       Np = 0
-      IF( IntegVar % TYPE == Variable_on_nodes ) THEN
-        DO i = 1, Element % TYPE % NumberOfNodes 
-          V = IntegVar % Values( IntegVar % Perm( Element % NodeIndexes(i) ) )
-          IF( ( MaxV - V ) * ( V - MinV ) > 0.0_dp ) THEN
-            RelOrder = AdaptOrder
-            Np = AdaptNp
-            EXIT
-          END IF
-        END DO
-      ELSE IF( IntegVar % TYPE == Variable_on_elements ) THEN
-        V = IntegVar % Values( IntegVar % Perm( Element % ElementIndex ) )
-      ELSE
-        CALL Fatal('GaussPointsAdapt','Wrong type of integration variable!')
+
+      n = Element % TYPE % NumberOfNodes        
+      MinV = MINVAL( IntegVar % Values( IntegVar % Perm( Element % NodeIndexes(1:n) ) ) )
+      MaxV = MAXVAL( IntegVar % Values( IntegVar % Perm( Element % NodeIndexes(1:n) ) ) )
+      
+      IF( .NOT. ( MaxV < MinLim .OR. MinV > MaxLim ) ) THEN
+        RelOrder = AdaptOrder
+        Np = AdaptNp
       END IF
     END IF
+      
+    IF( Debug ) PRINT *,'Adapt',UseAdapt,Element % ElementIndex, n,MaxV,MinV,MaxLim,MinLim,Np,RelOrder
 
     IF( Np > 0 ) THEN
       IntegStuff = GaussPoints( Element, Np = Np, PReferenceElement = PReferenceElement ) 
@@ -8918,6 +8922,8 @@ END FUNCTION SearchNodeL
     ELSE      
       IntegStuff = GaussPoints( Element, PReferenceElement = PReferenceElement ) 
     END IF
+
+    IF( Debug ) PRINT *,'Adapt real nodes',IntegStuff % n
       
   END FUNCTION GaussPointsAdapt
   
@@ -12288,7 +12294,7 @@ END SUBROUTINE VariableNameParser
      IF( PRESENT( MaskName ) ) n = n + 1
      IF( PRESENT( SecName ) ) n = n + 1
      IF( PRESENT( UpdateOnly ) ) n = n + 1
-
+     
      ! Currently a lazy check
      IF( n /= 0 .AND. n /= 3 .AND. n /= 2) THEN
        CALL Fatal('CreateIpPerm','Only some optional parameter combinations are possible')
@@ -12553,11 +12559,15 @@ END SUBROUTINE VariableNameParser
           IP = GaussPointsAdapt( Element, Solver )
 
           IF( NoGauss /= IP % n ) THEN
-            CALL Warn('UpdateExportedVariables','Number of Gauss points has changed, redoing permutations!')
+            
+            CALL Info('UpdateExportedVariables','Number of Gauss points has changed, redoing permutations!',Level=8)
 
             pSolver => Solver
             CALL UpdateIpPerm( pSolver, Perm )
             m = MAXVAL( Perm )
+
+            CALL Info('UpdateExportedVariables','Total number of new IP dofs: '//TRIM(I2S(m)))
+
             IF( SIZE( ExpVariable % Values ) / ExpVariable % Dofs == m ) THEN
               DEALLOCATE( ExpVariable % Values )
               ALLOCATE( ExpVariable % Values( m * ExpVariable % Dofs ) )
