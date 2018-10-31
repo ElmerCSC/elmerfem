@@ -81,9 +81,9 @@ if [ ! -f "$Slip" ]; then
    if [ ! -f "greenland_elmerice_C1_v0.nc.tgz" ]; then
      echo "****************************************************************"
      echo " Downloading greenland_elmerice_C1_v0.tgz "
-     echo " http://elmerice.elmerfem.org/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_elmerice_C1_v0.nc.tgz"
+     echo " http://elmerfem.org/elmerice/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_elmerice_C1_v0.nc.tgz"
      echo "****************************************************************"
-     wget http://elmerice.elmerfem.org/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_elmerice_C1_v0.nc.tgz -O greenland_elmerice_C1_v0.nc.tgz
+     wget http://elmerfem.org/elmerice/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_elmerice_C1_v0.nc.tgz -O greenland_elmerice_C1_v0.nc.tgz
    fi
    tar xzf greenland_elmerice_C1_v0.nc.tgz
 fi
@@ -101,9 +101,9 @@ if [ ! -f "$Mu" ]; then
    if [ ! -f "greenland_elmerice_mumean_v0.tgz" ]; then
      echo "****************************************************************"
      echo " Downloading greenland_elmerice_mumean_v0.tgz "
-     echo " http://elmerice.elmerfem.org/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_elmerice_mumean_v0.tgz"
+     echo " http://elmerfem.org/elmerice/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_elmerice_mumean_v0.tgz"
      echo "****************************************************************"
-     wget http://elmerice.elmerfem.org/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_elmerice_mumean_v0.tgz -O greenland_elmerice_mumean_v0.tgz
+     wget http://elmerfem.org/elmerice/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_elmerice_mumean_v0.tgz -O greenland_elmerice_mumean_v0.tgz
    fi
    tar xzf greenland_elmerice_mumean_v0.tgz
 fi
