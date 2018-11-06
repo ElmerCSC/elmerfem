@@ -702,8 +702,9 @@ CONTAINS
                     ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                     nidx=GetNextIndex(gja, ci, rli, rti)
-                    Lind(nzind+cdof)=nidx
-                    Lvals(nzind+cdof)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
+                    nzind = nzind + 1
+                    Lind(nzind)=nidx
+                    Lvals(nzind)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
                                            NDOFs*(pind(j)-1)+cdof)
 #ifdef __INTEL_COMPILER
                     ! Issue prefetch for every new cache line of gval(nidx)
@@ -713,7 +714,6 @@ CONTAINS
                     END IF
 #endif
                   END DO
-                  nzind = nzind + cdof
                 END IF
               END DO
             END DO
@@ -754,6 +754,7 @@ CONTAINS
         ! More than 1 DOF per node
 
         ! Construct index array
+        nzind = 0
         DO i=1,N
           DO rdof=1,NDOFs
             ! Row index
@@ -768,9 +769,9 @@ CONTAINS
                 ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                 nidx = GetNextIndex(gja, ci, rli, rti)
-                Lind((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=nidx
-                Lvals((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
-                                                             NDOFs*(pind(j)-1)+cdof)
+                nzind = nzind + 1
+                Lind(nzind) = nidx
+                Lvals(nzind) = Lmtr(NDOFs*(pind(i)-1)+rdof, NDOFs*(pind(j)-1)+cdof)
 #ifdef __INTEL_COMPILER
                 ! Issue prefetch for every new cache line of gval(nidx)
                 IF (nidx > pnidx+8) THEN
@@ -781,8 +782,6 @@ CONTAINS
               END DO
             END DO
           END DO
-
-          nzind = (NDOFs*N)*(NDOFs*N)
         END DO
       END IF ! NDOFs==1 check
     END IF ! Masking check
