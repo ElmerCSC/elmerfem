@@ -6252,6 +6252,8 @@ CONTAINS
        END IF
        IF( .NOT. AnyFound ) RETURN
        GOTO 200
+     ELSE
+       Found = lFound
      END IF
 
      F = 0._dp
