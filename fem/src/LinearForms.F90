@@ -259,7 +259,7 @@ CONTAINS
     END DO ! Vector blocks
   END SUBROUTINE LinearForms_GradUdotU
   
-  ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u) 
+  ! Compute bilinear form G=G+(alpha u, u)
   SUBROUTINE LinearForms_UdotU(m, n, dim, U, weight, G, alpha)
     IMPLICIT NONE
 
