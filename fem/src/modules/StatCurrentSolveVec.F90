@@ -61,6 +61,8 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
 
+  CALL ListAddNewString( Params,'Variable','Potential')
+  
   CalculateElemental = ListGetLogical( Params,'Calculate Elemental Fields',Found )
   CalculateNodal = ListGetLogical( Params,'Calculate Nodal Fields',Found )
   
@@ -104,6 +106,18 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Nodal Current[Nodal Current:'//TRIM(I2S(dim))//']' )
   END IF
+
+  ! These use one flag to call library features to compute automatically
+  ! a conductivity matrix.
+  IF( ListGetLogical(Params,'Calculate Conductivity Matrix',Found ) ) THEN
+    CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes Symmetric',.TRUE.)
+    CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
+        'ConductivityMatrix.dat',.FALSE.)
+    CALL ListRenameAllBC( Model,'Conductivity Body','Constraint Mode Potential')
+  END IF
   
 END SUBROUTINE StatCurrentSolver_Init
 
@@ -126,9 +140,10 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
   REAL(KIND=dp) :: Norm
-  INTEGER :: n, nb, nd, t, active
+  INTEGER :: n, nb, nd, t, active, dim, RelOrder
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric
+  TYPE(ValueList_t), POINTER :: Params 
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver'
 !------------------------------------------------------------------------------
@@ -139,15 +154,36 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   CALL DefaultStart()
 
   Mesh => GetMesh()
+  Params => GetSolverParams()
   
   AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
-  
-  maxiter = ListGetInteger( GetSolverParams(),&
+  dim = CoordinateSystemDimension() 
+
+  maxiter = ListGetInteger( Params, &
       'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
 
   nthr = 1
   !$ nthr = omp_get_max_threads()
+
+  nColours = GetNOFColours(Solver)
+
+  VecAsm = ListGetLogical( Params,'Vector Assembly',Found )
+  IF(.NOT. Found ) THEN
+    VecAsm = (nColours > 1) .OR. (nthr > 1)
+  END IF
+    
+  IF( VecAsm .AND. AxiSymmetric ) THEN
+    CALL Info(Caller,'Vectorized loop not yet available in axisymmetric case',Level=7)    
+  END IF
+
+  IF( VecAsm ) THEN
+    CALL Info(Caller,'Performing vectorized bulk element assembly',Level=7)
+  ELSE
+    CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=7)      
+  END IF
+
+  RelOrder = GetInteger( Params,'Relative Integration Order',Found ) 
 
   ! Nonlinear iteration loop:
   !--------------------------
@@ -158,20 +194,6 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     CALL DefaultInitialize()
 
     totelem = 0
-
-    nColours = GetNOFColours(Solver)
-    VecAsm = (nColours > 1) .OR. (nthr == 1)
-
-    IF( VecAsm .AND. AxiSymmetric ) THEN
-      CALL Info(Caller,'Vectorized loop not yet available in axisymmetric case',Level=12)    
-      VecAsm = .FALSE.
-    END IF
-    
-    IF( VecAsm ) THEN
-      CALL Info(Caller,'Performing vectorized bulk element assembly',Level=12)
-    ELSE
-      CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=12)      
-    END IF
 
     CALL ResetTimer( Caller//'BulkAssembly' )
 
@@ -211,7 +233,6 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     CALL DefaultFinishBulkAssembly()
 
     nColours = GetNOFBoundaryColours(Solver)
-    VecAsm = (nColours > 1) .OR. (nthr == 1)
 
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
     CALL ResetTimer(Caller//'BCAssembly')
@@ -309,8 +330,12 @@ CONTAINS
 
     ! Currently the vectorized basis always use p-elements which have different
     ! local coordinate convention
-    IP = GaussPoints( Element, PReferenceElement = .TRUE. )
-    
+    IF( RelOrder /= 0 ) THEN
+      IP = GaussPoints( Element, PReferenceElement = .TRUE., RelOrder = RelOrder)
+    ELSE
+      IP = GaussPoints( Element, PReferenceElement = .TRUE. )      
+    END IF
+      
     ngp = IP % n
 
     ! Deallocate storage if needed
@@ -354,12 +379,14 @@ CONTAINS
     END IF
 
     ! time derivative of potential: MASS=MASS+(eps*grad(u),grad(v))
-    EpsAtIpVec => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
-    IF( Found ) THEN
-      CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJVec, MASS, EpsAtIpVec )
-      MASS(1:nd,1:nd) = Eps0 * MASS(1:nd,1:nd)
+    IF( Transient ) THEN
+      EpsAtIpVec => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
+      IF( Found ) THEN
+        CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJVec, MASS, EpsAtIpVec )
+        MASS(1:nd,1:nd) = Eps0 * MASS(1:nd,1:nd)
+      END IF
     END IF
-
+      
     ! source term: FORCE=FORCE+(u,f)
     SourceAtIpVec => ListGetElementRealVec( SourceCoeff_h, ngp, Basis, Element, Found ) 
     IF( Found ) THEN
@@ -387,9 +414,10 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: eps0, weight
-    REAL(KIND=dp) :: SourceAtIp, EpsAtIp, CondAtIp, DetJ
+    REAL(KIND=dp) :: SourceAtIp, EpsAtIp, CondAtIp, DetJ, A
+    REAL(KIND=dp), POINTER :: CondTensor(:,:)
     LOGICAL :: Stat,Found
-    INTEGER :: i,t,p,q,dim,m,allocstat
+    INTEGER :: i,j,t,p,q,dim,m,allocstat,CondRank
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h    
@@ -410,8 +438,12 @@ CONTAINS
     
     dim = CoordinateSystemDimension()
 
-    IP = GaussPoints( Element )
-
+    IF( RelOrder /= 0 ) THEN
+      IP = GaussPoints( Element, RelOrder = RelOrder)
+    ELSE
+      IP = GaussPoints( Element )
+    END IF
+      
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDofs
@@ -423,7 +455,7 @@ CONTAINS
       END IF
     END IF
 
-    CALL GetElementNodesVec( Nodes, UElement=Element )
+    CALL GetElementNodes( Nodes, UElement=Element )
 
     ! Initialize
     MASS  = 0._dp
@@ -436,23 +468,46 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
-      
+
       IF ( AxiSymmetric ) THEN
         Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
       END IF
-      
+
       ! diffusion term (D*grad(u),grad(v)):
       ! -----------------------------------
-      CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found ) 
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
-          CondAtIp * MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
-
-      EpsAtIp = Eps0 * ListGetElementReal( EpsCoeff_h, Basis, Element, Found )
-      IF( Found ) THEN
-        MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + Weight * &
-            EpsAtIp * MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
+      CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found, &
+         GaussPoint = t, Rdim = CondRank, Rtensor = CondTensor ) 
+      IF( CondRank == 0 ) THEN
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
+            CondAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+      ELSE 
+        DO p=1,nd
+          DO q=1,nd
+            A = 0.0_dp
+            IF( CondRank == 1 ) THEN
+              DO i=1,dim
+                A = A + CondTensor(i,1) * dBasisdx(p,i) * dBasisdx(q,i)
+              END DO
+            ELSE
+              DO i=1,dim
+                DO j=1,dim
+                  A = A + CondTensor(i,j) * dBasisdx(p,i) * dBasisdx(q,j)
+                END DO
+              END DO
+            END IF
+            STIFF(p,q) = STIFF(p,q) + Weight * A
+          END DO
+        END DO
       END IF
-      
+
+      IF( Transient ) THEN
+        EpsAtIp = Eps0 * ListGetElementReal( EpsCoeff_h, Basis, Element, Found )
+        IF( Found ) THEN
+          MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + Weight * &
+              EpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+        END IF
+      END IF
+        
       SourceAtIP = ListGetElementReal( SourceCoeff_h, Basis, Element, Found ) 
       IF( Found ) THEN
         FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
@@ -479,14 +534,14 @@ CONTAINS
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: F,C,Ext, Weight
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Coord(3),Normal(3)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
-    LOGICAL :: Stat,Found
+    LOGICAL :: Stat,Found,RobinBC
     INTEGER :: i,t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
     TYPE(Nodes_t) :: Nodes
-    TYPE(ValueHandle_t), SAVE :: Flux_h, Robin_h, Ext_h
+    TYPE(ValueHandle_t), SAVE :: Flux_h, Robin_h, Ext_h, Farfield_h
 
     SAVE Nodes
     !$OMP THREADPRIVATE(Nodes,Flux_h,Robin_h,Ext_h)
@@ -498,6 +553,7 @@ CONTAINS
       CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Current Density')
       CALL ListInitElementKeyword( Robin_h,'Boundary Condition','Electric Resistivity')
       CALL ListInitElementKeyword( Ext_h,'Boundary Condition','External Potential')
+      CALL ListInitElementKeyword( Farfield_h,'Boundary Condition','Farfield Potential')
       InitHandles = .FALSE.
     END IF
     
@@ -523,7 +579,7 @@ CONTAINS
       IF ( AxiSymmetric ) THEN
         Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
       END IF
-
+      
       ! Evaluate terms at the integration point:
       !------------------------------------------
 
@@ -536,10 +592,19 @@ CONTAINS
 
       ! Robin condition (r*(u-u_0)):
       ! ---------------------------
-      C = ListGetElementReal( Robin_h, Basis, Element, Found )
-
-      IF( Found ) THEN
+      Ext = ListGetElementReal( Farfield_h, Basis, Element, RobinBC )
+      IF( RobinBC ) THEN
+        Coord(1) = SUM( Nodes % x(1:n)*Basis(1:n) )
+        Coord(2) = SUM( Nodes % y(1:n)*Basis(1:n) )
+        Coord(3) = SUM( Nodes % z(1:n)*Basis(1:n) )
+        Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
+        C = SUM( Coord * Normal ) / SUM( Coord * Coord )         
+      ELSE
+        C = ListGetElementReal( Robin_h, Basis, Element, RobinBC )
         Ext = ListGetElementReal( Ext_h, Basis, Element, Found )
+      END IF
+        
+      IF( RobinBC ) THEN
         DO p=1,nd
           DO q=1,nd
             STIFF(p,q) = STIFF(p,q) + Weight * C * Basis(q) * Basis(p)
@@ -578,7 +643,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
   REAL(KIND=dp) :: Norm
-  INTEGER :: i, dofs, n, nb, nd, t, active
+  INTEGER :: i, dofs, n, nb, nd, t, active, CondRank
   LOGICAL :: Found, InitHandles
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),MASS(:,:),FORCE(:,:)  
@@ -587,6 +652,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   LOGICAL :: CalcCurrent, CalcField, CalcHeating, NeedScaling, ConstantWeights, Axisymmetric
   TYPE(ValueList_t), POINTER :: Params
   REAL(KIND=dp) :: HeatingTot, Voltot
+  REAL(KIND=dp), POINTER :: CondTensor(:,:)  
   
   TYPE PostVars_t
     TYPE(Variable_t), POINTER :: Var => NULL()
@@ -610,7 +676,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   ! Joule losses: type 1, component 1
   PostVars(1) % Var => VariableGet( Mesh % Variables, 'Nodal Joule Heating')
   PostVars(1) % NodalField = .TRUE.
-  PostVars(2) % Var => VariableGet( Mesh % Variables, 'Joule Heatg')
+  PostVars(2) % Var => VariableGet( Mesh % Variables, 'Joule Heating')
   PostVars(3) % Var => VariableGet( Mesh % Variables, 'Joule Heating e')
   PostVars(1:3) % FieldType = 1
 
@@ -664,6 +730,11 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   VolTot = 0.0_dp
   DO t = 1, GetNOFActive()
     Element => GetActiveElement(t)
+
+    IF( ParEnv % PEs > 1 ) THEN
+      IF( ParEnv % MyPe /= Element % PartIndex ) CYCLE
+    END IF
+    
     n  = GetElementNOFNodes(Element)
     CALL LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
     CALL LocalPostSolve( Element, n, MASS, FORCE )
@@ -725,7 +796,6 @@ CONTAINS
 
     CALL GetElementNodes( Nodes, UElement=Element )
     CALL GetScalarLocalSolution( ElementPot ) 
-
     
     ! Initialize
     MASS  = 0._dp
@@ -754,10 +824,11 @@ CONTAINS
       !----------------------------------------------------------------------------
       FORCE(1,1:n) = FORCE(1,1:n) + Weight * Basis(1:n)
 
-      CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = t ) 
+      CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found, &
+         GaussPoint = t, Rdim = CondRank, Rtensor = CondTensor ) 
+
       ! EpsAtIp = Eps0 * ListGetElementReal( EpsCoeff_h, Basis, Element, Found )
-
-
+        
       ! Compute the electric field from the potential: E = -grad Phi
       !------------------------------------------------------------------------------
       DO j = 1, DIM
@@ -771,7 +842,16 @@ CONTAINS
 
       ! Compute the volume current: J = cond (-grad Phi)
       !------------------------------------------------------------------------------
-      CondGrad(1:dim) = CondAtIp * Grad(1:dim)
+      IF( CondRank == 0 ) THEN
+        CondGrad(1:dim) = CondAtIp * Grad(1:dim)
+      ELSE IF( CondRank == 1 ) THEN
+        CondGrad(1:dim) = CondTensor(1:dim,1) * Grad(1:dim)
+      ELSE IF( CondRank == 2 ) THEN
+        DO i = 1, DIM
+          CondGrad(i) = SUM( CondTensor(i,1:dim) * Grad(1:dim) )
+        END DO
+      END IF
+
       IF( CalcCurrent ) THEN
         DO j=1,dim
           Force(2+j,1:n) = Force(2+j,1:n) - CondGrad(j) * Weight * Basis(1:n)
@@ -895,7 +975,7 @@ CONTAINS
    IF( PotDiff > TINY( PotDiff ) ) THEN
      Resistance = PotDiff**2 / HeatingTot
      WRITE( Message, * ) 'Effective Resistance  :', Resistance
-     CALL Info( 'StatCurrentSolve', Message, Level=6 )
+     CALL Info(Caller, Message, Level=6 )
      CALL ListAddConstReal( Model % Simulation,'RES: Effective Resistance', Resistance )
    END IF
      
@@ -957,7 +1037,7 @@ CONTAINS
      
    IF( Found ) THEN
      WRITE( Message, * ) 'Control Scaling       :', ControlScaling
-     CALL Info( 'StatCurrentSolve', Message, Level=4 )
+     CALL Info(Caller, Message, Level=4 )
      CALL ListAddConstReal( Model % Simulation, &
          'RES: CurrentSolver Scaling', ControlScaling )
      Solver % Variable % Values = ControlScaling * Solver % Variable % Values

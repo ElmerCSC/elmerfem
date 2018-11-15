@@ -3148,7 +3148,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
-    INTEGER :: NameSpaceI
+    INTEGER :: NameSpaceI, Count, MaxCount, i
     LOGICAL :: LinearSystemTrialing
 
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
@@ -3219,6 +3219,20 @@ CONTAINS
     IF( LinearSystemTrialing ) THEN
       IF( x % LinConverged > 0 ) THEN
         IF( ListGetLogical( Params,'Linear System Trialing Conserve',Found ) ) THEN
+          MaxCount = ListGetInteger( Params,'Linear System Trialing Conserve Rounds',Found ) 
+          IF( Found ) THEN
+            i = NINT( ListGetConstReal( Params,'Linear System Namespace Number',Found ) )
+            IF( i == NameSpaceI ) THEN
+              Count = 1 + ListGetInteger( Params,'Linear System Namespace Conserve Count',Found )
+            ELSE
+              Count = 0
+            END IF
+            IF( Count > MaxCount ) THEN
+              NameSpaceI = 0
+              Count = 0
+            END IF
+            CALL ListAddInteger( Params,'Linear System Namespace Conserve Count',Count )            
+          END IF
           CALL ListAddConstReal( Params,'Linear System Namespace Number', 1.0_dp *NameSpaceI )
         END IF
       ELSE
@@ -3233,7 +3247,14 @@ CONTAINS
       END IF
     END IF
     
-    
+
+    IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
+      saveslot = GetString( Params,'Linear System Save Slot', Found )
+      IF(.NOT. Found .OR. TRIM( saveslot ) == 'after') THEN
+        CALL SaveLinearSystem( Solver ) 
+      END IF
+    END IF
+
     
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN

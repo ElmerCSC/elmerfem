@@ -1,0 +1,78 @@
+! A test case for the new StatCurrentSolveVec module.
+!
+! Includes isotropic conduction. 
+! Vectorized assembly.
+!
+! P.R. 13.11.2018
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "angle"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian 
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Post File = "case.vtu"
+  Output Version Numbers = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers = 1
+End
+
+Solver 1
+  Equation = StaticCurrent
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1000
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Vector Assembly = Logical True
+
+  Calculate Volume Current = True
+  Calculate Electric Field = True
+  Calculate Joule Heating = True
+End
+
+Material 1
+  Electric Conductivity = 1.0
+End
+
+Boundary Condition 1
+  Name = "Inlet" 
+  Target Boundaries = 1
+  Current Density = 1.0
+End
+
+Boundary Condition 2
+  Name = "Ground"
+  Target Boundaries = 2
+  Potential = 0
+End
+
+Solver 1 :: Reference Norm = 1.46010733E+00
+
+!End Of File
+

@@ -701,8 +701,10 @@ st = realtime()
     DO j = 1, CurrIf % NumberOfRows
       IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) CYCLE
       RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
+ if ( rowind<=0 ) cycle
       DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
         ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
+ if ( colind<=0 ) cycle
         CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
       END DO
     END DO
@@ -1594,7 +1596,9 @@ INTEGER::inside
 
       IF ( hypre_sol /= 1) THEN
          IF ( SEQL(Prec,'ilu') ) THEN
-           READ( Prec(4:), * ) ILUn
+           Ilun = 0
+           READ( Prec(4:), *, END=10 ) ILUn
+10         CONTINUE
            WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
            CALL Info("SParIterSolver", Message,Level=3)
          ELSE IF( Prec == 'parasails' ) THEN
@@ -3130,7 +3134,10 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
            IF ( RowInd > 0 ) THEN
               DO k = RecvdIfMatrix(i) % Rows(j), RecvdIfMatrix(i) % Rows(j+1) - 1
                  l = RecvdIfMatrix(i) % Cols(k)
-                 ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
+
+!                ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
+!XYXY
+                 ColIndA =  SearchNode(ParallelInfo,l, Order=ParallelInfo % Gorder )
                  IF (ColIndA>0) ColIndA = RevDOFList(ColIndA)
 
                  IF ( ColIndA  <= 0 ) CYCLE
@@ -3242,8 +3249,11 @@ SUBROUTINE ClearInsideC( SourceMatrix, InsideMatrix, &
         IF ( RowInd /= -1 ) THEN
            DO j = RecvdIfMatrix(p) % Rows(i),RecvdIfMatrix(p) % Rows(i+1) - 1
 
-              GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j),&
-                        Order = SourceMatrix % Perm )
+!             GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j),&
+!                       Order = SourceMatrix % Perm )
+!XYXY
+              GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j), Order=ParallelInfo % Gorder )
+
 !             GCol = SourceMatrix % Perm( Gcol )
 
               ColInd = -1

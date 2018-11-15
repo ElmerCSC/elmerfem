@@ -5796,12 +5796,15 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    if(!halomode != 1 && halomode != 2) parent2 = 0;
 	  }
 	}
-	else if( halomode == 1 || halomode == 2 ) {
+	/* For now we skip this since orphan nodes are no longer needed to save
+	   because Dirichlet conditions are communicated in ElmerSolver. 	
+	   else if( halomode == 1 || halomode == 2 ) { */
+	else if( halomode == 2 ) {
 	  /* Halo elements ensure that both parents exist even if they are not trueparents */
 	  if( bcneeded2 < nodesd1 ) continue;
 	  haloelem = TRUE;
 	  halobcs += 1;
-	}
+	} 
 	else if( halomode == 3 ) {
 	  closeparent = closeparent2 = FALSE;
 	  if( part <= subparts ) {

@@ -1308,7 +1308,7 @@ CONTAINS
     TYPE(Nodes_t), POINTER :: Nodes
     TYPE(NeighbourList_t), POINTER :: work_neighlist(:)
     REAL(KIND=dp), ALLOCATABLE :: work_xyz(:,:)
-    REAL(KIND=dp), POINTER :: work_x(:),work_y(:), work_z(:)
+    REAL(KIND=dp), POINTER CONTIG :: work_x(:),work_y(:), work_z(:)
     INTEGER :: i,j,counter,NNodes,NBulk, NBdry,NewNNodes, NewNElems, NewNBulk,&
          NewNbdry, ElNNodes
     INTEGER, ALLOCATABLE :: Nodeno_map(:),work_int(:),EIdx_map(:)

@@ -34,6 +34,7 @@
 ! *
 ! ****************************************************************************
 
+
 !------------------------------------------------------------------------------
 !>  Advection-reaction equation solver for scalar fields with discontinous Galerkin method.
 !> \ingroup Solvers
@@ -178,7 +179,7 @@
         CALL Info( SolverName, ' ', Level=4 )
         CALL Info( SolverName, '-------------------------------------',Level=4 )
         WRITE( Message,'(A,I3,A,I3)') &
-             'Nonlinear iteration no.', iter,' of max',NonlinearIterMax
+            'Nonlinear iteration no.', iter,' of max',NonlinearIterMax
         CALL Info( SolverName, Message, Level=4 )
         CALL Info( SolverName, '-------------------------------------',Level=4 )
         CALL Info( SolverName, ' ', Level=4 )
@@ -187,7 +188,7 @@
 
         CALL DefaultInitialize()
         Active = GetNOFActive()
-        DO t = 1, Active  
+        DO t = 1, Active
            !------------------------------------------------------------------------------
            ! write some info on status of assembly
            !------------------------------------------------------------------------------
@@ -234,21 +235,25 @@
               WRITE(Message,'(A,A,A)') 'Body Force >',TRIM(VariableName) // ' Source','< not found'
               CALL INFO(SolverName, Message, Level=42)
               LOAD(1:n)  = 0.0d0
-           END IF
+            END IF
+
            !------------------------------------------------------------------------------
            ! Get convection and mesh velocity
            CALL GetLocalALEVelocity(Velo,MeshVelo,SolverName,Material,&
                 Equation,Solver,Model,Element)
+
            !-----------------------
            ! get reaction constant
            !-----------------------
            Gamma(1:n)  = GetReal( Material, TRIM(VariableName) // ' Gamma', Found )
            IF (.NOT.Found) THEN
-              WRITE(Message,'(A,A,A)') 'Material Property >',TRIM(VariableName) // ' Gamma','< not found'
+
+             WRITE(Message,'(A,A,A)') 'Material Property >',TRIM(VariableName) // ' Gamma','< not found'
               CALL INFO(SolverName, Message, Level=42)
               Gamma(1:n)  = 0.0d0
            END IF
 
+           
            CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, Velo, MeshVelo, Gamma, Element, n ) 
            IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
            CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -406,31 +411,31 @@
          ALLOCATE( Var % Perm(SIZE(Solver % Variable % Perm))  )
          Var % Perm = 0
          DO i = 1,n1
-            Var % Perm(i) = i
+           Var % Perm(i) = i
          END DO
        END IF
 
        Var % Values = 0.0d0
        DO t=1,Active
-          Element => GetActiveElement(t) 
-          n = GetElementDOFs( Indexes )
-          n = GetElementNOFNodes()
-          DO i=1,n
-             k = Element % NodeIndexes(i)
-             Var % Values(k) = Var % Values(k) + &
+         Element => GetActiveElement(t) 
+         n = GetElementDOFs( Indexes )
+         n = GetElementNOFNodes()
+         DO i=1,n
+           k = Element % NodeIndexes(i)
+           Var % Values(k) = Var % Values(k) + &
                Solver % Variable % Values( Solver % Variable % Perm(Indexes(i)) )
-             Ref(k) = Ref(k) + 1
-          END DO
+           Ref(k) = Ref(k) + 1
+         END DO
        END DO
 
        WHERE( Ref > 0 )
          Var % Values(1:n1) = Var % Values(1:n1) / Ref
        END WHERE
        DEALLOCATE( Ref )
-    ELSE
+     ELSE
        WRITE(Message,'(A,A,A)') 'Exported Variable >',TRIM(VariableName) //   ' Nodal Result','< not found'
-       CALL FATAL(SolverName,Message)
-    END IF
+       CALL Warn(SolverName,Message)
+     END IF
 
    CONTAINS
 
@@ -783,7 +788,7 @@
         WRITE(Message,'(A,A,A)') 'Convection flag >', ConvectionFlag ,'< not recognised'
         CALL FATAL(SolverName,Message) 
      END IF
-     CALL INFO(SolverName,Message,Level=10)
+
      !-------------------------------------------------
      ! Add mesh velocity (if any) for ALE formulation
      !-------------------------------------------------

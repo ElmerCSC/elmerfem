@@ -1934,15 +1934,15 @@ CONTAINS
         
         CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
             var_name, Solver % Variable % DOFs, Solution, &
-            Solver % Variable % Perm, Output=VariableOutput )
-
+            Solver % Variable % Perm, Output=VariableOutput, Type = Solver % Variable % Type )
+        
         IF ( DOFs > 1 ) THEN
           n = LEN_TRIM( Var_name )
           DO j=1,DOFs
             tmpname = ComponentName( var_name(1:n), j )
             Component => Solution( j:nRows-DOFs+j:DOFs )
             CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                tmpname, 1, Component, Perm, Output=VariableOutput )
+                tmpname, 1, Component, Perm, Output=VariableOutput, Type = Solver % Variable % Type )
           END DO
         END IF
         NULLIFY( Solution )
@@ -1967,7 +1967,7 @@ CONTAINS
 
         CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
             var_name, Solver % Variable % DOFs, Solution, &
-            Solver % Variable % Perm, Output=VariableOutput )
+            Solver % Variable % Perm, Output=VariableOutput, Type = Solver % Variable % Type )
 
         IF ( DOFs > 1 ) THEN
           n = LEN_TRIM( Var_name )
@@ -1975,7 +1975,7 @@ CONTAINS
             tmpname = ComponentName( var_name(1:n), j )
             Component => Solution( j:nRows-DOFs+j:DOFs )
             CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                tmpname, 1, Component, Perm, Output=VariableOutput )
+                tmpname, 1, Component, Perm, Output=VariableOutput, Type = Solver % Variable % Type )
           END DO
         END IF
         NULLIFY( Solution )

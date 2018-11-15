@@ -10,7 +10,6 @@ Simulation
   Simulation Type = "Steady State"
   Steady State Max Iterations = 1
   Output Intervals = 1
-! Post File = "DGsolution.ep"
 End
 
 Constants
@@ -38,7 +37,7 @@ End
 
 Solver 1
   Equation = "Poisson DG"
-  Procedure = File "./PoissonDG" "PoissonSolver"
+  Procedure = File "PoissonDG" "PoissonSolver"
   Variable = "Potential"
   Variable Dofs = 1
 
@@ -77,8 +76,7 @@ End
 
 Boundary Condition 1
   Target Boundaries(2) = 1 2 
-  g = Real 0
-  e = Real 0
+  Potential = 0.0
 End
 
 Solver 1 :: Reference Norm = 4.12587774E-02

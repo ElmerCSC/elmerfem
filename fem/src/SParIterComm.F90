@@ -383,7 +383,7 @@ CONTAINS
     DEALLOCATE( Active )
     ALLOCATE( Active(SIZE(ParallelInfo % Interface)) )
 
-    IF ( .NOT. SourceMatrix % DGMatrix ) THEN
+!   IF ( .NOT. SourceMatrix % DGMatrix ) THEN
       DO i=1,SIZE(SourceMatrix % Perm)
         ii = SourceMatrix % Perm(i)
 
@@ -449,7 +449,9 @@ CONTAINS
           CALL MPI_RECV( buf,sz,MPI_INTEGER,proc,20001,ELMER_COMM_WORLD,status,ierr)
           DO j=1,sz,2
             IF ( buf(j+1)>0 ) THEN
-              k = SearchNode( ParallelInfo, buf(j), Order=SourceMatrix % Perm )
+!             k = SearchNode( ParallelInfo, buf(j), Order=SourceMatrix % Perm )
+!XYXY
+              k = SearchNode( ParallelInfo, buf(j), Order = ParallelInfo % Gorder )
               IF ( k>0  ) THEN
                 sz = SIZE(ParallelInfo % NeighbourList(k) % Neighbours)
                 DO n=1,sz
@@ -479,7 +481,7 @@ CONTAINS
           END IF
         END IF
       END DO
-    END IF
+!   END IF
 
     DEALLOCATE( Active )
 
@@ -3614,7 +3616,9 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   DO i=1,n
      datalen = recv_size(i)
      DO j = 1, datalen
-       Ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j),Order=SourceMatrix % Perm )
+!      Ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j),Order=SourceMatrix % Perm )
+!XYXY
+       Ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j), Order=ParallelInfo % Gorder )
        IF ( Ind /= -1 ) THEN
 !         Ind = SourceMatrix % Perm(Ind)
           IF ( Ind > 0 ) THEN
@@ -3788,8 +3792,10 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
   DO i=1,n
      datalen = recv_size(i)
      DO j = 1, datalen
-       Ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j), &
-                 Order=SourceMatrix % Perm )
+!      Ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j), &
+!                Order=SourceMatrix % Perm )
+!XYXY
+       Ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j), Order=ParallelInfo % Gorder )
        IF ( Ind /= -1 ) THEN
 !         Ind = SourceMatrix % Perm(Ind)
           IF ( Ind > 0 ) &
@@ -3952,8 +3958,10 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
   DO i=1,n
      datalen = recv_size(i)
      DO j = 1, datalen
-       ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j), &
-                  Order=SourceMatrix % Perm )
+!      ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j), &
+!                 Order=SourceMatrix % Perm )
+!XYXY
+       ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j), Order=ParallelInfo % Gorder )
        IF ( ind /= -1 ) THEN
 !         ind = SourceMatrix % Perm(ind)
           IF ( ind > 0 ) &
@@ -4755,6 +4763,9 @@ FUNCTION SearchNode( ParallelInfo, QueriedNode, First, Last,Order ) RESULT ( Ind
   INTEGER :: Lower, Upper, Lou, i, U, L
 
   !*********************************************************************
+
+!indx = searchiaitemlinear( size(parallelinfo % globaldofs),parallelinfo % globaldofs, queriednode)
+!return
 
   Indx = -1
   IF(PRESENT(Order)) THEN

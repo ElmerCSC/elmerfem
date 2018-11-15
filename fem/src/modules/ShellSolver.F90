@@ -325,8 +325,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! corresponding to subtriangulations of quadrilateral elements.
   ! ---------------------------------------------------------------------------------
   CurveDataOutput = GetLogical(SolverPars, 'Edge Curves Output', Found)
-  MacroElements = GetLogical(SolverPars, 'Use Macro Elements', Found)
-  IF (.NOT.Found) MacroElements = .TRUE.
+  !MacroElements = GetLogical(SolverPars, 'Use Macro Elements', Found)
+  MacroElements = .FALSE.
   CALL CreateCurvedEdges(CurveDataOutput, MacroElements)
 
 
@@ -1038,9 +1038,6 @@ CONTAINS
 ! to create the parametrizations of curved edges for the Hermite interpolation.
 ! The edge curve data are written as elementwise properties 'edge frames' and
 ! 'edge parameters'.
-!
-! TO DO: Make MacroElement option functional for second-order nodal director data.
-!
 !-------------------------------------------------------------------------------
   SUBROUTINE CreateCurvedEdges( FileOutput, MacroElements )
 !-------------------------------------------------------------------------------
@@ -1437,9 +1434,7 @@ CONTAINS
 ! reference element coordinates u and v are used as curvilinear coordinates on
 ! the blending surface. The necessary edge curve data for creating the blending 
 ! surface must be contained as elementwise properties 'edge frames' and 
-! 'edge parameters'. The optional arguments MacroElement and BubbleDOFs
-! can be used to augment the serendipity approximation by an additional bubble 
-! part to ensure optimal accuracy with 4-node background elements.
+! 'edge parameters'. 
 ! TO DO: Complement and clean the implementation when the initial data
 !        is defined over second-order Lagrange elements
 !-----------------------------------------------------------------------------  
@@ -1458,7 +1453,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: A(2,2)             !< The covariant components of the metric surface tensor at (u,v)  
     REAL(KIND=dp), INTENT(OUT) :: B(2,2)             !< The covariant components of the second fundamental form at (u,v)
     REAL(KIND=dp), INTENT(OUT) :: x(3)               !< Blending surface point corresponding to (u,v): x=x(u,v)
-    LOGICAL, OPTIONAL, INTENT(IN) :: MacroElement    !< Use macroelement strategy to add a bubble part 
+    LOGICAL, OPTIONAL, INTENT(IN) :: MacroElement    !< This should be .FALSE. to avoid troubles
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: BubbleDOFs(4,3)  !< Coefficients for bubble basis functions
     LOGICAL :: Stat                                  !< A dummy status variable at the moment
 !----------------------------------------------------------------------------
@@ -2216,6 +2211,8 @@ CONTAINS
 ! internal nodes corresponding to bubble basis functions of the Q3 space via
 ! the macro element strategy. The nodal difference between the desired position 
 ! and the serendipity approximation is returned via the variable BubbleNodesDelta.
+! This has a limited applicability as it works correctly for rectangular elements
+! only.
 !------------------------------------------------------------------------------
   SUBROUTINE FindBubbleNodesQuad(Element, Nodes, BubbleNodesDelta)
 !------------------------------------------------------------------------------

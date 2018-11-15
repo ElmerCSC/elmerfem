@@ -221,7 +221,7 @@ CONTAINS
      FoundDG = .FALSE.
 
      IF( DG ) THEN    
-       DB = ListGetLogical( Solver % Values,'Discontinuous Bodies',Found ) 
+       DB = ListGetLogical( Solver % Values,'DG Reduced Basis',Found ) 
      ELSE
        DB = .FALSE.
      END IF
@@ -230,19 +230,66 @@ CONTAINS
      IF ( DB ) THEN
        BLOCK
          INTEGER, ALLOCATABLE :: NodeIndex(:)
-         INTEGER :: body_id
-
+         INTEGER :: body_id, MaxGroup, group0, group
+         INTEGER, POINTER :: DgMap(:), DgMaster(:), DgSlave(:)
+         LOGICAL :: GotDgMap, GotMaster, GotSlave
+         
+         DgMap => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Mapping',GotDgMap )
+         DgMaster => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Master Bodies',GotMaster )
+         DgSlave => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Slave Bodies',GotSlave )
+                  
+         IF( GotDgMap ) THEN
+           IF( SIZE( DgMap ) /= Model % NumberOfBodies ) THEN
+             CALL Fatal('InitialPermutation','Invalid size of > Dg Reduced Basis Mapping <')
+           END IF
+           MaxGroup = MAXVAL( DgMap )
+         ELSE IF( GotMaster ) THEN
+           MaxGroup = 2
+         ELSE
+           MaxGroup = Model % NumberOfBodies
+         END IF
+         
          ALLOCATE( NodeIndex( Mesh % NumberOfNodes ) )
          
-         DO body_id=1, Model % NumberOfBodies
+         DO group0 = 1, MaxGroup
 
-           NodeIndex = 0
+           ! If we have master-slave lists then nullify the slave nodes at the master
+           ! interface since we want new indexes here. 
+           IF( GotSlave .AND. group0 == 2 ) THEN             
+             DO t=1,Mesh % NumberOfBulkElements
+               Element => Mesh % Elements(t)                
+               group = Element % BodyId               
+               IF( ANY( DgSlave == group ) ) THEN                 
+                 NodeIndex( Element % NodeIndexes ) = 0
+               END IF
+             END DO
+           ELSE
+             ! In generic case nullify all indexes already set            
+             NodeIndex = 0
+           END IF
+           
            k1 = k
            
            DO t=1,Mesh % NumberOfBulkElements
              Element => Mesh % Elements(t) 
-             IF( Element % BodyId /= body_id ) CYCLE
-
+             
+             group = Element % BodyId
+             
+             IF( GotMaster ) THEN
+               IF( group0 == 1 ) THEN
+                 ! First loop number dofs in "master bodies" only
+                 IF( .NOT. ANY( DgMaster == group ) ) CYCLE
+               ELSE 
+                 ! Second loop number dofs in all bodies except "master bodies"
+                 IF( ANY( DgMaster == group ) ) CYCLE
+               END IF
+             ELSE IF( GotDgMap ) THEN
+               group = DgMap( group ) 
+               IF( group0 /= group ) CYCLE
+             ELSE
+               IF( group0 /= group ) CYCLE
+             END IF
+               
              IF ( CheckElementEquation(Model,Element,Equation) ) THEN
                FoundDG = FoundDG .OR. Element % DGDOFs > 0
                DO i=1,Element % DGDOFs
@@ -257,7 +304,7 @@ CONTAINS
            END DO
 
            IF( k > k1 ) THEN
-             CALL Info( Caller,'Body '//TRIM(I2S(body_id))//&
+             CALL Info( Caller,'Group '//TRIM(I2S(group0))//&
                  ' has '//TRIM(I2S(k-k1))//' db dofs',Level=15)
            END IF
          END DO
@@ -1853,6 +1900,82 @@ CONTAINS
    END FUNCTION ListFind
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Finds an entry in the list by its name and returns a handle to it.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListRename( list, name, name2, Found ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: name, name2
+     LOGICAL, OPTIONAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     CHARACTER(:), ALLOCATABLE :: strn
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+     CHARACTER(LEN=LEN_TRIM(Name2)) :: str2
+     INTEGER :: k, k2, n
+
+     IF(PRESENT(Found)) Found = .FALSE.
+
+     ptr => NULL()
+     IF(.NOT.ASSOCIATED(List)) RETURN
+     
+     k = StringToLowerCase( str,Name,.TRUE. )
+     
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF ( n==k ) THEN
+         IF ( ptr % Name(1:n) == str(1:n) ) EXIT
+       END IF
+       ptr => ptr % Next
+     END DO
+     
+     IF( ASSOCIATED( ptr ) ) THEN
+       k2 = StringToLowerCase( str2,Name2,.TRUE. )
+       ptr % Name(1:k2) = str2(1:k2)
+       ptr % NameLen = k2 
+       !PRINT *,'renaming >'//str(1:k)//'< to >'//str2(1:k2)//'<', k, k2
+     END IF
+          
+     IF ( PRESENT(Found) ) THEN
+       Found = ASSOCIATED(ptr)
+     ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
+       CALL Warn( 'ListRename', ' ' )
+       WRITE(Message,*) 'Requested property: ', '[',TRIM(Name),'], not found'
+       CALL Warn( 'ListRename', Message )
+       CALL Warn( 'ListRename', ' ' )
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListRename
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Rename all given keywords in BC section.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListRenameAllBC( Model, Name, Name2 ) 
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name, Name2
+     LOGICAL :: Found
+     INTEGER :: bc, n
+
+     n = 0
+     DO bc = 1,Model % NumberOfBCs
+       CALL ListRename( Model % BCs(bc) % Values, Name, Name2, Found )
+       IF( Found ) n = n + 1
+     END DO
+     IF( n > 0 ) CALL Info('ListRenameAllBCs',&
+         TRIM(Name)//' ranamed to '//TRIM(Name2)//' on '//TRIM(I2S(n))//' BCs',Level=6)
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListRenameAllBC
+!------------------------------------------------------------------------------
+
+   
+  
 
 !-----------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
@@ -6252,6 +6375,8 @@ CONTAINS
        END IF
        IF( .NOT. AnyFound ) RETURN
        GOTO 200
+     ELSE
+       Found = lFound
      END IF
 
      F = 0._dp
