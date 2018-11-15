@@ -108,15 +108,15 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
   END IF
 
   ! These use one flag to call library features to compute automatically
-  ! a resistivity matrix.
-  IF( ListGetLogical(Params,'Calculate Resistivity Matrix',Found ) ) THEN
+  ! a conductivity matrix.
+  IF( ListGetLogical(Params,'Calculate Conductivity Matrix',Found ) ) THEN
     CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Fluxes Symmetric',.TRUE.)
     CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
-        'ResistivityMatrix.dat',.FALSE.)
-    CALL ListRenameAllBC( Model,'Resistivity Body','Constraint Mode Potential')
+        'ConductivityMatrix.dat',.FALSE.)
+    CALL ListRenameAllBC( Model,'Conductivity Body','Constraint Mode Potential')
   END IF
   
 END SUBROUTINE StatCurrentSolver_Init
