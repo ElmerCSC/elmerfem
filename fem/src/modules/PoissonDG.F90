@@ -63,32 +63,36 @@
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: BC, BodyForce
 
-     TYPE(Element_t), POINTER :: Element, Edge, &
+     TYPE(Element_t), POINTER :: Element, &
        ParentElement, LeftParent, RightParent
 
      LOGICAL :: AllocationsDone = .FALSE., GotIt, Stat
-     INTEGER :: k, n, t, istat, i, j, Indexes(128)
+     INTEGER :: k, n, np, nr, nl, t, istat, i, j, Indexes(128)
 #ifdef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: Norm, at, st, Gamma
+     REAL(KIND=dp) :: at, st
 #else
-     REAL(KIND=dp) :: Norm, at, st, CPUTime, Gamma
+     REAL(KIND=dp) :: at, st, CPUTime
 #endif
      REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), &
               FORCE(:), EpsilonBoundary(:)
-
+     REAL(KIND=dp) :: Beta, Gamma, Norm
+     
      SAVE STIFF, LOAD, FORCE, AllocationsDone, EpsilonBoundary
 !*******************************************************************************
 
-     TYPE( Element_t ), POINTER :: Edges(:), Faces(:)
+     TYPE( Element_t ), POINTER :: Edges(:), Faces(:), p(:), elm
      TYPE(Nodes_t) :: ElementNodes
 
      TYPE(Mesh_t), POINTER :: Mesh
+
+     LOGICAL :: found
 
      REAL(KIND=dp), POINTER :: LocalSolution(:)
      INTEGER :: Active, DOFs
 !*******************************************************************************
 
      Mesh => GetMesh()
+
 
      Edges => Mesh % Edges
      Faces => Mesh % Faces
@@ -126,19 +130,38 @@
     Gamma = ListGetConstReal( Solver % Values, 'gamma1', GotIt )
     IF( .NOT. GotIt ) Gamma = 1.0d3
 
+    Beta = ListGetConstReal( Solver % Values, 'beta', GotIt )
+    IF( .NOT. GotIt ) Beta = Gamma
+
+    IF(CoordinateSystemDimension() == 2 ) THEN
+      np = Mesh % NumberOfEdges
+      p => Edges
+    ELSE
+      np = Mesh % NumberOfFaces
+      p => Faces
+    END IF
+
     FORCE = 0.0d0
-    DO t = 1, Mesh % NumberOfEdges
-       Edge => Edges(t)
-       IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE
+    DO t = 1, np
+       elm => p(t)
+       IF ( .NOT. ActiveBoundaryElement(elm, DGBoundary=.TRUE.) ) CYCLE
        
-       LeftParent  => Edge % BoundaryInfo % Left
-       RightParent => Edge % BoundaryInfo % Right
+       LeftParent  => elm % BoundaryInfo % Left
+       RightParent => elm  % BoundaryInfo % Right
        IF ( .NOT. ASSOCIATED(RightParent) ) CYCLE
 
-       n = GetElementNOFnodes( Edge )
-       CALL LocalJumps( STIFF, Edge, n, LeftParent, RightParent, gamma )
+       n = GetElementNOFnodes(elm)
+       nl = GetElementNOFDOFs(LeftParent)
+       nr = GetElementNOFDOFs(RightParent)
 
-       CALL DefaultUpdateEquations( STIFF, FORCE, Edge )
+       BC => GetBC(elm)
+       IF (  ASSOCIATED(BC) .AND. GetLogical( BC, 'Discont BC', Found) ) THEN
+         CALL LocalJumpsDiscontBC( STIFF, Elm, n, LeftParent, nl, RightParent, nr, beta )
+       ELSE
+         CALL LocalJumps( STIFF, Elm, n, LeftParent, nl, RightParent, nr, gamma )
+       END IF
+
+       CALL DefaultUpdateEquations( STIFF, FORCE, elm )
     END DO
 !------------------------------------------------------------------------------
 !   Loop over the boundary elements (Nitsche boundary stab. terms)
@@ -146,107 +169,38 @@
     Gamma = ListGetConstReal( Solver % Values, 'gamma2', GotIt )
     IF( .NOT. GotIt ) Gamma = 1.0d-3
     
-    DO t = 1, Mesh % NumberOfBoundaryElements
-       Element => GetBoundaryElement(t)
-       IF( .NOT. ActiveBoundaryElement() )  CYCLE
-       IF( GetElementFamily(Element) == 1 ) CYCLE
-       
-       BC => GetBC()
-       IF ( ASSOCIATED(BC) ) THEN
-          ParentElement => Element % BoundaryInfo % Left
-          IF ( .NOT. ASSOCIATED( ParentElement ) ) &
-             ParentElement => Element % BoundaryInfo % Right
-          
-          n = GetElementNOFNodes( Element )
-          k = GetElementNOFnodes( ParentElement )
-
-          LOAD(1:n) = GetReal( BC, 'g', GotIt )
-          EpsilonBoundary(1:n) = GetReal( BC, 'e', GotIt )
-          
-          CALL LocalMatrixBoundary(  STIFF, FORCE, LOAD, &
-            Element, ParentElement, n, k, EpsilonBoundary, Gamma )
-          
-          CALL DefaultUpdateEquations( STIFF, FORCE )
-       END IF
-     END DO
-     CALL DefaultFinishAssembly()
-     PRINT*,'Assembly (s): ',CPUTime()-at
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
+!    PRINT*,'Assembly (s): ',CPUTime()-at
 
      st = CPUTime()
      Norm = DefaultSolve()
-     PRINT*,'Solve (s):    ',CPUTime()-st
-!------------------------------------------------------------------------------
-!    Write the post file (so far works only with triangles in 2d):
-!------------------------------------------------------------------------------
-     PRINT *,'INFO: Writing post file "dg.ep"'
-     OPEN( 10, FILE='dg.ep', STATUS='unknown' )
-     
-     WRITE( 10, '(i8,i8,i3,i6,a)' ) &
-          3*Active, Active, 1, 1, ' scalar: Somequantity'
-     
-     DO t=1,Active
-        Element => GetActiveElement(t) 
-        n = GetElementNOFNodes( Element )
-        
-        DO i = 1,n
-           WRITE( 10, '(3e20.12)') &
-                Mesh % Nodes % x(Element % NodeIndexes(i)), &
-                Mesh % Nodes % y(Element % NodeIndexes(i)), &
-                Mesh % Nodes % z(Element % NodeIndexes(i))
-        END DO
-     END DO
-
-     DO i=1,Active
-        WRITE( 10,'(a,i6)',advance='no' ) 'body ', &
-             Mesh % Elements(i) % Type % ElementCode
-  
-        n = Mesh % Elements(i) % Type % NumberOfNodes
-        DO j=1,n
-           WRITE( 10,'(i8)', ADVANCE='no' ) n*(i-1) + j - 1
-        END DO
-        WRITE( 10,'(a)' ) ''
-     END DO
-     
-     WRITE( 10,* ) '#time ',1,1,1
-
-     DO i=1,ACtive
-       Element => GetActiveElement(i)
-       n = GetElementDOFs( Indexes )
-       DO k=1,n
-          DO j=1, Solver % Variable % DOFs
-             WRITE( 10, '(1e30.15)') Solver % Variable % Values( &
-               Solver % Variable % DOFs*( &
-                   Solver % Variable % Perm(Indexes(k))-1)+j )
-          END DO
-       END DO
-     END DO
-
-     CLOSE(10)
+!    PRINT*,'Solve (s):    ',CPUTime()-st
 
    CONTAINS
 
 !------------------------------------------------------------------------------
-    SUBROUTINE FindParentUVW( EdgeNodes, nEdge, &
-         ParentNodes, nParent, U, V, W, EdgeBasis )
+    SUBROUTINE FindParentUVW( Nodes, n, &
+         ParentNodes, nParent, U, V, W, Basis )
 !------------------------------------------------------------------------------
       IMPLICIT NONE
-      TYPE( Nodes_t ) :: EdgeNodes, ParentNodes
-      INTEGER :: nEdge, nParent
-      REAL( KIND=dp ) :: U, V, W, EdgeBasis(:)
+      TYPE( Nodes_t ) :: Nodes, ParentNodes
+      INTEGER :: n, nParent
+      REAL( KIND=dp ) :: U, V, W, Basis(:)
 !------------------------------------------------------------------------------
       INTEGER :: i, j, Check
       REAL(KIND=dp) :: Dist, DistTolerance
-      REAL(KIND=dp) :: NodalParentU(nEdge), &
-           NodalParentV(nEdge), NodalParentW(nEdge)
+      REAL(KIND=dp) :: NodalParentU(n), &
+           NodalParentV(n), NodalParentW(n)
 !------------------------------------------------------------------------------
       DistTolerance = 1.0d-12
 
       Check = 0
-      DO i = 1,nEdge
+      DO i = 1,n
          DO j = 1,nParent
-            Dist = (EdgeNodes % x(i) - ParentNodes % x(j))**2 & 
-                 + (EdgeNodes % y(i) - ParentNodes % y(j))**2 & 
-                 + (EdgeNodes % z(i) - ParentNodes % z(j))**2
+            Dist = (Nodes % x(i) - ParentNodes % x(j))**2 & 
+                 + (Nodes % y(i) - ParentNodes % y(j))**2 & 
+                 + (Nodes % z(i) - ParentNodes % z(j))**2
 
             IF( Dist < DistTolerance ) THEN
                Check = Check+1
@@ -257,59 +211,58 @@
 
          END DO
       END DO
-      IF( Check /= nEdge ) STOP 'Error' 
+      IF( Check /= n ) STOP 'Error' 
 
-      U = SUM( EdgeBasis(1:nEdge) * NodalParentU(1:nEdge) )
-      V = SUM( EdgeBasis(1:nEdge) * NodalParentV(1:nEdge) )
-      W = SUM( EdgeBasis(1:nEdge) * NodalParentW(1:nEdge) )
+      U = SUM( Basis(1:n) * NodalParentU(1:n) )
+      V = SUM( Basis(1:n) * NodalParentV(1:n) )
+      W = SUM( Basis(1:n) * NodalParentW(1:n) )
 !------------------------------------------------------------------------------      
     END SUBROUTINE FindParentUVW
 !------------------------------------------------------------------------------      
 
 
 !------------------------------------------------------------------------------
-     SUBROUTINE LocalJumps( STIFF,Edge,n,LeftParent,RightParent,gamma )
+     SUBROUTINE LocalJumps( STIFF,Elm,n,LeftParent,nl,RightParent,nr,gamma )
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: STIFF(:,:), gamma
-       INTEGER :: n
-       TYPE(Element_t), POINTER :: Edge, LeftParent, RightParent
+       INTEGER :: n,nl,nr
+       TYPE(Element_t), POINTER :: Elm, LeftParent, RightParent
 
 !------------------------------------------------------------------------------
-       REAL(KIND=dp) :: EdgeBasis(n), EdgedBasisdx(n,3)
-       REAL(KIND=dp) :: LeftBasis(n+1), LeftdBasisdx(n+1,3)
-       REAL(KIND=dp) :: RightBasis(n+1), RightdBasisdx(n+1,3)
-       REAL(KIND=dp) :: LeftdBasisdn(n+1), RightdBasisdn(n+1)
-       REAL(KIND=dp) :: Jump(2*(n+1)), AverageFlux(2*(n+1))
+       REAL(KIND=dp) :: Basis(n), dBasisdx(n,3)
+       REAL(KIND=dp) :: LeftBasis(nl), LeftdBasisdx(nl,3)
+       REAL(KIND=dp) :: RightBasis(nr), RightdBasisdx(nr,3)
+       REAL(KIND=dp) :: LeftdBasisdn(nl), RightdBasisdn(nr)
+       REAL(KIND=dp) :: Jump(nl+nr), AverageFlux(nl+nr)
        REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S
        LOGICAL :: Stat
-       INTEGER :: i, j, p, q, dim, t, nEdge, nParent
+       INTEGER :: i, j, p, q, dim, t
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
        REAL(KIND=dp) :: hE, Normal(3), LeftOut(3)
 
-       TYPE(Nodes_t) :: EdgeNodes, LeftParentNodes, RightParentNodes
-       SAVE EdgeNodes, LeftParentNodes, RightParentNodes 
+       TYPE(Nodes_t) ::Nodes, LeftParentNodes, RightParentNodes
+       SAVE Nodes, LeftParentNodes, RightParentNodes 
 !------------------------------------------------------------------------------
        dim = CoordinateSystemDimension()
-       nEdge = n
-       nParent = n+1
        STIFF = 0.0d0
 
-       CALL GetElementNodes( EdgeNodes, Edge )
+       CALL GetElementNodes( Nodes, elm )
        CALL GetElementNodes( LeftParentNodes, LeftParent )
        CALL GetElementNodes( RightParentNodes, RightParent )
-       hE = ElementDiameter( Edge, EdgeNodes )
+       hE = ElementDiameter( elm, Nodes )
 
-       LeftOut(1) = SUM(LeftParentNodes % x(1:nParent)) / nParent
-       LeftOut(2) = SUM(LeftParentNodes % y(1:nParent)) / nParent
-       LeftOut(3) = SUM(LeftParentNodes % z(1:nParent)) / nParent
-       LeftOut(1) = SUM(EdgeNodes % x(1:n)) / n - LeftOut(1)
-       LeftOut(2) = SUM(EdgeNodes % y(1:n)) / n - LeftOut(2)
-       LeftOut(3) = SUM(EdgeNodes % z(1:n)) / n - LeftOut(3)
+       LeftOut(1) = SUM(LeftParentNodes % x(1:nl)) / nl
+       LeftOut(2) = SUM(LeftParentNodes % y(1:nl)) / nl
+       LeftOut(3) = SUM(LeftParentNodes % z(1:nl)) / nl
+
+       LeftOut(1) = SUM(Nodes % x(1:n)) / n - LeftOut(1)
+       LeftOut(2) = SUM(Nodes % y(1:n)) / n - LeftOut(2)
+       LeftOut(3) = SUM(Nodes % z(1:n)) / n - LeftOut(3)
 
 !------------------------------------------------------------------------------
 !      Numerical integration over the edge
 !------------------------------------------------------------------------------
-       IntegStuff = GaussPoints( Edge )
+       IntegStuff = GaussPoints(elm)
  
        DO t=1,IntegStuff % n
          U = IntegStuff % u(t)
@@ -320,43 +273,46 @@
 !------------------------------------------------------------------------------
 !        Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-         stat = ElementInfo( Edge, EdgeNodes, U, V, W, SqrtElementMetric, &
-              EdgeBasis, EdgedBasisdx )
+         stat = ElementInfo( elm, Nodes, U, V, W, SqrtElementMetric, &
+              Basis, dBasisdx )
 
          S = S * SqrtElementMetric
 
-         Normal = NormalVector( Edge, EdgeNodes, U, V, .FALSE. )
+         Normal = NormalVector( Elm, Nodes, U, V, .FALSE. )
          IF ( SUM( LeftOut*Normal ) < 0 ) Normal = -Normal
 
 !        Find basis functions for the parent elements:
 !        ----------------------------------------------
-         CALL FindParentUVW( EdgeNodes, nEdge, LeftParentNodes, &
-              nParent, U, V, W, EdgeBasis )
+         CALL FindParentUVW( Nodes, n, LeftParentNodes, &
+              nl, U, V, W, Basis )
 
          stat = ElementInfo( LeftParent, LeftParentNodes, &
               U, V, W, SqrtElementMetric, LeftBasis, LeftdBasisdx )
 
-         CALL FindParentUVW( EdgeNodes, nEdge, RightParentNodes, &
-              nParent, U, V, W, EdgeBasis )
+         CALL FindParentUVW( Nodes, n, RightParentNodes, &
+              nr, U, V, W, Basis )
 
          stat = ElementInfo( RightParent, RightParentNodes, &
               U, V, W, SqrtElementMetric, RightBasis, RightdBasisdx )
 
 !        Integrate jump terms:
 !        ---------------------
-         Jump(1:nParent) = -LeftBasis(1:nParent)
-         Jump(nParent+1:2*nParent) = RightBasis(1:nParent)
+         Jump(1:nl) = -LeftBasis(1:nl)
+         Jump(nl+1:nl+nr) = RightBasis(1:nr)
 
-         DO i = 1,nParent
+         DO i = 1,nl
             LeftdBasisdn(i)  = SUM( LeftdBasisdx(i,:)  * Normal(:) )
+         END DO
+
+         DO i = 1,nr
             RightdBasisdn(i) = SUM( RightdBasisdx(i,:) * Normal(:) )
          END DO
 
-         AverageFlux(1:nParent) = LeftdBasisdn(1:nParent) / 2.0d0
-         AverageFlux(nParent+1:2*nParent) = RightdBasisdn(1:nParent) / 2.0d0
+         AverageFlux(1:nl) = LeftdBasisdn(1:nl) / 2.0d0
+         AverageFlux(nl+1:nl+nr) = RightdBasisdn(1:nr) / 2.0d0
 
-         DO p = 1,2*nParent
-            DO q = 1,2*nParent
+         DO p = 1,nl+nr
+            DO q = 1,nl+nr
                STIFF(p,q) = STIFF(p,q) + (gamma/hE)*Jump(p)*Jump(q) * s
                STIFF(p,q) = STIFF(p,q) - AverageFlux(p) * Jump(q)   * s
                STIFF(p,q) = STIFF(p,q) + Jump(p) * AverageFlux(q)   * s
@@ -366,6 +322,109 @@
 !------------------------------------------------------------------------------
     END SUBROUTINE LocalJumps
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+     SUBROUTINE LocalJumpsDiscontBC( STIFF,Elm,n,LeftParent,nl,RightParent,nr,gamma )
+!------------------------------------------------------------------------------
+       REAL(KIND=dp) :: STIFF(:,:), gamma
+       INTEGER :: n,nl,nr
+       TYPE(Element_t), POINTER :: Elm, LeftParent, RightParent
+
+!------------------------------------------------------------------------------
+       REAL(KIND=dp) :: Basis(n), dBasisdx(n,3)
+       REAL(KIND=dp) :: LeftBasis(nl), LeftdBasisdx(nl,3)
+       REAL(KIND=dp) :: RightBasis(nr), RightdBasisdx(nr,3)
+       REAL(KIND=dp) :: LeftdBasisdn(nl), RightdBasisdn(nr)
+       REAL(KIND=dp) :: Jump(nl+nr), AverageFlux(nl+nr)
+       REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S
+       LOGICAL :: Stat
+       INTEGER :: i, j, p, q, dim, t
+       TYPE(GaussIntegrationPoints_t) :: IntegStuff
+       REAL(KIND=dp) :: hE, Normal(3), LeftOut(3)
+
+       TYPE(Nodes_t) ::Nodes, LeftParentNodes, RightParentNodes
+       SAVE Nodes, LeftParentNodes, RightParentNodes 
+!------------------------------------------------------------------------------
+       dim = CoordinateSystemDimension()
+       STIFF = 0.0d0
+
+       CALL GetElementNodes( Nodes, elm )
+       CALL GetElementNodes( LeftParentNodes, LeftParent )
+       CALL GetElementNodes( RightParentNodes, RightParent )
+       hE = ElementDiameter( elm, Nodes )
+
+       LeftOut(1) = SUM(LeftParentNodes % x(1:nl)) / nl
+       LeftOut(2) = SUM(LeftParentNodes % y(1:nl)) / nl
+       LeftOut(3) = SUM(LeftParentNodes % z(1:nl)) / nl
+
+       LeftOut(1) = SUM(Nodes % x(1:n)) / n - LeftOut(1)
+       LeftOut(2) = SUM(Nodes % y(1:n)) / n - LeftOut(2)
+       LeftOut(3) = SUM(Nodes % z(1:n)) / n - LeftOut(3)
+
+!------------------------------------------------------------------------------
+!      Numerical integration over the edge
+!------------------------------------------------------------------------------
+       IntegStuff = GaussPoints(elm)
+ 
+       DO t=1,IntegStuff % n
+         U = IntegStuff % u(t)
+         V = IntegStuff % v(t)
+         W = IntegStuff % w(t)
+         S = IntegStuff % s(t)
+
+!------------------------------------------------------------------------------
+!        Basis function values & derivatives at the integration point
+!------------------------------------------------------------------------------
+         stat = ElementInfo( elm, Nodes, U, V, W, SqrtElementMetric, &
+              Basis, dBasisdx )
+
+         S = S * SqrtElementMetric
+
+         Normal = NormalVector( Elm, Nodes, U, V, .FALSE. )
+         IF ( SUM( LeftOut*Normal ) < 0 ) Normal = -Normal
+
+!        Find basis functions for the parent elements:
+!        ----------------------------------------------
+         CALL FindParentUVW( Nodes, n, LeftParentNodes, &
+              nl, U, V, W, Basis )
+
+         stat = ElementInfo( LeftParent, LeftParentNodes, &
+              U, V, W, SqrtElementMetric, LeftBasis, LeftdBasisdx )
+
+         CALL FindParentUVW( Nodes, n, RightParentNodes, &
+              nr, U, V, W, Basis )
+
+         stat = ElementInfo( RightParent, RightParentNodes, &
+              U, V, W, SqrtElementMetric, RightBasis, RightdBasisdx )
+
+!        Integrate jump terms:
+!        ---------------------
+         Jump(1:nl) = -LeftBasis(1:nl)
+         Jump(nl+1:nl+nr) = RightBasis(1:nr)
+
+         DO i = 1,nl
+            LeftdBasisdn(i)  = SUM( LeftdBasisdx(i,:)  * Normal(:) )
+         END DO
+
+         DO i = 1,nr
+            RightdBasisdn(i) = SUM( RightdBasisdx(i,:) * Normal(:) )
+         END DO
+
+         AverageFlux(1:nl) = LeftdBasisdn(1:nl) / 2.0d0
+         AverageFlux(nl+1:nl+nr) = RightdBasisdn(1:nr) / 2.0d0
+
+         DO p = 1,nl+nr
+            DO q = 1,nl+nr
+               STIFF(p,q) = STIFF(p,q) + (gamma/hE)*Jump(p)*Jump(q) * s
+               STIFF(p,q) = STIFF(p,q) - AverageFlux(p) * Jump(q)   * s
+               STIFF(p,q) = STIFF(p,q) + Jump(p) * AverageFlux(q)   * s
+            END DO
+         END DO
+      END DO
+!------------------------------------------------------------------------------
+    END SUBROUTINE LocalJumpsDisContBC
+!------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------      

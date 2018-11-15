@@ -1,3 +1,8 @@
+! This is a test case for the reduced dg basis in the case
+! when Master and Slave groups are used.
+!
+! P.R. 8.11.2018
+
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "square"
@@ -23,8 +28,10 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
-  Post File = "DGsolution.vtu"
-  vtu: Discontinuous Galerkin = Logical True
+  Post File = "DBsolution.vtu"
+!  vtu: Discontinuous Galerkin = Logical True
+
+  Coordinate Scaling = $1.0/3.0
 End
 
 Constants
@@ -35,6 +42,55 @@ Body 1
   Material   = 1
   Body force = 1
 End
+
+Body 2
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 3
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 4
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 5
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 6
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 7
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 8
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 9
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
 
 Equation 1
   Active Solvers(1) = 1
@@ -57,18 +113,21 @@ Solver 1
   Procedure = File "AdvectionReaction" "AdvectionReactionSolver"
   Variable = "Potential"
   Exported Variable 1 = "Nodal Result"
-  Discontinuous Galerkin = True
 
-!  Discontinuous bodies = True
+  Discontinuous Galerkin = Logical TRUE
+  DG Reduced Basis = Logical True
+
+  DG Reduced Basis Mapping(9) = Integer 1 1 1 1 2 3 3 2 3
+
   Optimize Bandwidth = False
   
-  Linear System Save = True
-
   Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStab
-  Linear System Max Iterations  = 1000
+  Linear System Iterative Method = GCR 
+  Linear System Max Iterations  = 500
   Linear System Preconditioning = ILU0
   Linear System Convergence Tolerance = 1.0e-6
+  Linear System Residual Output = 10
+  BiCGStabl Polynomial Degree = 6
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = True
@@ -80,12 +139,12 @@ Body Force 1
 End
 
 Boundary Condition 1
-  Target Boundaries(4) = 1 2 3 4
+  Target Boundaries(8) = 1 2 3 4 5 6 7 8
   Potential = Variable Coordinate
     Real MATC "r(tx)"
 End
 
 
-Solver 1 :: Reference Norm = Real 1.41411703815
+Solver 1 :: Reference Norm = Real 1.41202622E+00
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-3
 

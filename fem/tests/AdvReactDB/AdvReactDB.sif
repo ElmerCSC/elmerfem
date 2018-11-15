@@ -23,7 +23,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
-  Post File = "DGsolution.vtu"
+  Post File = "DBsolution.vtu"
   vtu: Discontinuous Galerkin = Logical True
 End
 
@@ -35,6 +35,26 @@ Body 1
   Material   = 1
   Body force = 1
 End
+
+Body 2
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 3
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 4
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+
 
 Equation 1
   Active Solvers(1) = 1
@@ -57,13 +77,11 @@ Solver 1
   Procedure = File "AdvectionReaction" "AdvectionReactionSolver"
   Variable = "Potential"
   Exported Variable 1 = "Nodal Result"
-  Discontinuous Galerkin = True
 
-!  Discontinuous bodies = True
+  Discontinuous Galerkin = Logical TRUE
+  DG Reduced Basis = Logical True
   Optimize Bandwidth = False
   
-  Linear System Save = True
-
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
   Linear System Max Iterations  = 1000
@@ -86,6 +104,6 @@ Boundary Condition 1
 End
 
 
-Solver 1 :: Reference Norm = Real 1.41411703815
+Solver 1 :: Reference Norm = Real 1.39275188
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-3
 
