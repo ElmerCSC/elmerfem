@@ -12646,8 +12646,11 @@ SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
     INTEGER :: N, Nb, dim
-    REAL(KIND=dp) :: K(:,:),F(:),F1(:), Kbb(nb*dim,nb*dim), &
-      Kbl(nb*dim,n*(dim+1)),Klb(n*(dim+1),nb*dim),Fb(nb*dim)
+    REAL(KIND=dp) :: K(:,:), F(:)
+    REAL(KIND=dp), OPTIONAL :: F1(:)
+
+    REAL(KIND=dp) :: Kbb(nb*dim,nb*dim)
+    REAL(KIND=dp) :: Kbl(nb*dim,n*(dim+1)), Klb(n*(dim+1),nb*dim), Fb(nb*dim)
 
     INTEGER :: m, i, j, l, p, Cdofs((dim+1)*n), Bdofs(dim*nb)
 
@@ -12678,8 +12681,10 @@ SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
     K(1:(dim+1)*n,1:(dim+1)*n) = &
     K(1:(dim+1)*n,1:(dim+1)*n) - MATMUL( Klb, MATMUL( Kbb,Kbl ) )
 
-    Fb  = F1(Bdofs)
-    F1(1:(dim+1)*n) = F1(1:(dim+1)*n) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
+    IF (PRESENT(F1)) THEN
+      Fb  = F1(Bdofs)
+      F1(1:(dim+1)*n) = F1(1:(dim+1)*n) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
+    END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE NSCondensate
 !------------------------------------------------------------------------------
