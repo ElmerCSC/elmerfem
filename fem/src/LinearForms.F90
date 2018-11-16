@@ -54,7 +54,7 @@ MODULE LinearForms
   END INTERFACE LinearForms_ProjectToU
 
   PUBLIC LinearForms_GradUdotGradU, LinearForms_UdotU, LinearForms_GradUdotU, &
-        LinearForms_UdotF, LinearForms_ProjectToU
+        LinearForms_UdotF, LinearForms_ProjectToU, LinearForms_UdotV
 CONTAINS
 
   ! Compute bilinear form G=G+(alpha grad u, grad u) = grad u .dot. (alpha grad u) 
