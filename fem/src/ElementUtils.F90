@@ -404,11 +404,14 @@ CONTAINS
 
         DO t=1,Mesh % NumberOfEdges
           n = 0
-          Left => Mesh % Edges(t) % BoundaryInfo % Left
+          Elm => Mesh % Edges(t)
+          IF(.NOT. ASSOCIATED( Elm % BoundaryInfo ) ) CYCLE
+          
+          Left => Elm % BoundaryInfo % Left
           IF(.NOT. ASSOCIATED( Left ) ) CYCLE
           IF ( .NOT. CheckElementEquation(Model,Left,Equation) ) CYCLE
 
-          Right => Mesh % Edges(t) % BoundaryInfo %  Right
+          Right => Elm % BoundaryInfo %  Right
           IF(.NOT. ASSOCIATED( Right ) ) CYCLE
           IF ( .NOT. CheckElementEquation(Model,Right,Equation) ) CYCLE
 
@@ -452,11 +455,15 @@ CONTAINS
 
         DO t=1,Mesh % NumberOfFaces
           n = 0
-          Left => Mesh % Faces(t) % BoundaryInfo % Left
+
+          Elm => Mesh % Faces(t)
+          IF(.NOT. ASSOCIATED( Elm % BoundaryInfo ) ) CYCLE
+          
+          Left => Elm  % BoundaryInfo % Left
           IF(.NOT. ASSOCIATED( Left ) ) CYCLE
           IF ( .NOT. CheckElementEquation(Model,Left,Equation) ) CYCLE
 
-          Right => Mesh % Edges(t) % BoundaryInfo %  Right
+          Right => Elm % BoundaryInfo %  Right
           IF(.NOT. ASSOCIATED( Right ) ) CYCLE
           IF ( .NOT. CheckElementEquation(Model,Right,Equation) ) CYCLE
 
