@@ -11161,25 +11161,24 @@ END IF
     REAL(KIND=dp), ALLOCATABLE :: Passive(:)
     INTEGER :: body_id, bf_id, nlen, NbrNodes,PassNodes, LimitNodes
     LOGICAL :: Found
-    CHARACTER(LEN=MAX_NAME_LEN) :: PassName, PrevPassName
+    CHARACTER(LEN=MAX_NAME_LEN) :: PassName
     LOGICAL :: NoPassiveElements = .FALSE.
-
-    SAVE Passive, PrevPassName, NoPassiveElements
-    !$OMP THREADPRIVATE(Passive, PrevPassName, NoPassiveElements)
+    TYPE(Solver_t), POINTER :: pSolver, PrevSolver => NULL()
+    
+    SAVE Passive, NoPassiveElements, PrevSolver, PassName
+    !$OMP THREADPRIVATE(Passive, NoPassiveElements, PrevSolver, PassName)
     !------------------------------------------------------------------------------
     IsPassive = .FALSE.
-
-
-    nlen = CurrentModel % Solver % Variable % NameLen
-    PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'     
-
-    IF( PassName(1:nlen) == PrevPassName(1:nlen) ) THEN
-      IF( NoPassiveElements ) RETURN
-    ELSE
+    pSolver => CurrentModel % Solver
+    
+    IF( .NOT. ASSOCIATED( pSolver, PrevSolver ) ) THEN
+      PrevSolver => pSolver          
+      nlen = CurrentModel % Solver % Variable % NameLen
+      PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'     
       NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce( CurrentModel, PassName )
-      PrevPassName = PassName
-      IF( NoPassiveElements ) RETURN       
     END IF
+    
+    IF( NoPassiveElements ) RETURN       
 
     IF (PRESENT(UElement)) THEN
       Element => UElement

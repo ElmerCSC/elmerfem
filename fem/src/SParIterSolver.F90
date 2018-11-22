@@ -841,7 +841,9 @@ SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
      END IF
 
      IF ( SplittedMatrix % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-       SplittedMatrix % NbsIfMatrix(i) % Values = 0._dp
+       IF(ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % Values)) &
+         SplittedMatrix % NbsIfMatrix(i) % Values = 0._dp
+
        IF ( NeedILU.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % ILUvalues) ) &
          SplittedMatrix % NbsIfMatrix(i) % ILUValues  = 0._dp
        IF ( NeedPrec.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % Precvalues) ) &
@@ -1719,7 +1721,9 @@ INTEGER::inside
       verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
       IF( .NOT. Found ) verbosity = 10
 
-      NewSetup=ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+      NewSetup = ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+      IF(.NOT.Found) NewSetup = .TRUE.
+
       IF (ListGetLogical(Params, 'HYPRE Block Diagonal', Found)) THEN
         bilu = Solver % Variable % Dofs
       ELSE
@@ -1727,13 +1731,16 @@ INTEGER::inside
       END IF
 
       CALL SParIterActiveBarrier()
+
       IF(hypre_pre/=3) THEN
         IF (NewSetup) THEN
           IF (SourceMatrix % Hypre /= 0) THEN
             CALL SolveHYPRE4(SourceMatrix % Hypre)
+            SourceMatrix % Hypre = 0
           END IF
         END IF
         ! setup solver/preconditioner
+
         IF (SourceMatrix % Hypre == 0) THEN
           precond=0
           PrecVals => SourceMatrix % PrecValues
