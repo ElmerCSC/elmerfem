@@ -3962,8 +3962,8 @@ BLOCK
          dBasisdxWrk(1:ncl,:,:) = 0.0d0
          BasisWrk(1:ncl,:) = 0.0d0
          DO l=1,ncl
-           CALL NodalBasisFunctions(nbmax, BasisWrk(l,:), element, uWrk(l), vWrk(l), wWrk(l))
-           CALL NodalFirstDerivatives(nbmax, dBasisdxWrk(l,:,:), element, uWrk(l), vWrk(l), wWrk(l) )
+           CALL NodalBasisFunctions(5, BasisWrk(l,:), element, uWrk(l), vWrk(l), wWrk(l))
+           CALL NodalFirstDerivatives(5, dBasisdxWrk(l,:,:), element, uWrk(l), vWrk(l), wWrk(l) )
 
            q = 5
 
