@@ -289,7 +289,7 @@ CONTAINS
           ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
           IF (noAlphaWeight) THEN
              DO j=1,n
-                !$OMP SIMD PRIVATE(l)
+                !PRIVATE(l)
                 DO i=1,n
                    !DIR$ LOOP COUNT MAX=3
                    DO l=ii,iin
@@ -299,7 +299,7 @@ CONTAINS
              END DO
           ELSE
              DO j=1,n
-                !$OMP SIMD PRIVATE(l)
+                !_ELMER_OMP_SIMD PRIVATE(l)
                 DO i=1,n
                    !DIR$ LOOP COUNT MAX=3
                    DO l=ii,iin
@@ -311,14 +311,14 @@ CONTAINS
        ELSE
           IF (noAlphaWeight) THEN
              DO j=1,n
-                !$OMP SIMD
+                !_ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*V(i,j)
                 END DO
              END DO
           ELSE
              DO j=1,n
-                !$OMP SIMD
+                !_ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*alpha(i)*V(i,j)
                 END DO
