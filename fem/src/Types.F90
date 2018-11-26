@@ -480,9 +480,23 @@ END INTERFACE
      LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
      TYPE(VariableTable_t) :: VarTable(32)
      INTEGER :: VarCount
-     
+
+     TYPE(ValueHandle_t), POINTER :: HandleIm
    END TYPE ValueHandle_t
 
+
+   TYPE VariableHandle_t     
+     TYPE(Variable_t), POINTER :: Variable=>NULL()
+     REAL(KIND=dp),POINTER :: Values(:)=>NULL()
+     INTEGER,POINTER :: Perm(:)=>NULL()
+     INTEGER :: tstep = 0
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: ActiveElement = .FALSE.
+     REAL(KIND=dp) :: ElementValues(100)
+     INTEGER :: n = 0
+   END TYPE VariableHandle_t
+   
+   
 !------------------------------------------------------------------------------
 
    TYPE MaterialArray_t
@@ -832,6 +846,8 @@ END INTERFACE
 
       REAL(KIND=dp) :: Alpha,Beta,dt
 
+      LOGICAL :: NewtonActive = .FALSE.
+      
       INTEGER :: SolverExecWhen
       INTEGER :: SolverMode
 

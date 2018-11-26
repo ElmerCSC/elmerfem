@@ -75,6 +75,7 @@ MODULE Lists
    INTEGER, PARAMETER :: SECTION_TYPE_COMPONENT = 6
    INTEGER, PARAMETER :: SECTION_TYPE_SIMULATION = 7
    INTEGER, PARAMETER :: SECTION_TYPE_CONSTANTS = 8
+   INTEGER, PARAMETER :: SECTION_TYPE_EQUATION = 9
    
 
    INTEGER, PARAMETER :: MAX_FNC = 32
@@ -4293,9 +4294,9 @@ CONTAINS
 !> Initializes the handle to save just a little bit for constant valued.
 !> This is not mandatory but may still be used. 
 !------------------------------------------------------------------------------
-   SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
+   RECURSIVE SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
        DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,&
-       FoundSomewhere)
+       FoundSomewhere,InitIm)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      CHARACTER(LEN=*)  :: Section,Name
@@ -4306,6 +4307,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: UnfoundFatal
      LOGICAL, OPTIONAL :: EvaluateAtIp
      LOGICAL, OPTIONAL :: FoundSomewhere
+     LOGICAL, OPTIONAL :: InitIm
      !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      TYPE(ValueListEntry_t), POINTER :: ptr
@@ -4319,7 +4321,17 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: GotIt
      !------------------------------------------------------------------------------
-
+     
+     IF( PRESENT( InitIm ) ) THEN
+       IF( InitIm ) THEN
+         IF( .NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
+           ALLOCATE( Handle % HandleIm )
+         END IF
+         CALL ListInitElementKeyword( Handle % HandleIm,Section,TRIM(Name)//' im',minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,&
+             FoundSomewhere)
+       END IF
+     END IF
      
      CALL Info('ListInitElementKeyword','Treating keyword: '//TRIM(Name),Level=10)
 
@@ -4347,6 +4359,9 @@ CONTAINS
        
      CASE('Component')
        Handle % SectionType = SECTION_TYPE_COMPONENT
+
+     CASE('Equation')
+       Handle % SectionType = SECTION_TYPE_EQUATION
 
      CASE DEFAULT
        CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(Section))
@@ -4407,6 +4422,10 @@ CONTAINS
        CASE( SECTION_TYPE_IC )
          IF( i > Model % NumberOfICs ) EXIT
          List => Model % ICs(i) % Values
+
+       CASE( SECTION_TYPE_EQUATION )
+         IF( i > Model % NumberOfEquations ) EXIT
+         List => Model % Equations(i) % Values
 
        CASE( SECTION_TYPE_BC )
          IF( i > Model % NumberOfBCs ) EXIT        
@@ -4573,7 +4592,8 @@ CONTAINS
    END SUBROUTINE ListInitElementKeyword
 !------------------------------------------------------------------------------
 
-
+     
+   
 !------------------------------------------------------------------------------
 !> Given a pointer to the element and the correct handle for the keyword find
 !> the list where the keyword valued should be found in. 
@@ -4642,7 +4662,12 @@ CONTAINS
        id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
            'Material', ListFound )         
        IF(ListFound) List => CurrentModel % Materials(id) % Values
-       
+
+     CASE( SECTION_TYPE_EQUATION ) 
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Equation', ListFound )         
+       IF(ListFound) List => CurrentModel % Equations(id) % Values
+      
      CASE( SECTION_TYPE_BC )      
        IF( ListId <= 0 .OR. ListId > CurrentModel % NumberOfBCs ) RETURN
        IF( CurrentModel % BCs(ListId) % Tag == ListId ) THEN
@@ -5357,11 +5382,80 @@ CONTAINS
        END IF
      END IF
 
-
    END FUNCTION ListGetElementReal
 !------------------------------------------------------------------------------
 
-  
+   
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting the imaginary part of the keyword if it
+!> has been properly initialized. For the solver modules it is more convenient
+!> as the code becomes more compact when using the "HandleIm" field instead of a
+!> totally new handle.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementIm( Handle,Basis,Element,Found,Indexes,&
+       GaussPoint,Rdim,Rtensor) RESULT(Rvalue)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: Rdim
+     REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
+     REAL(KIND=dp)  :: Rvalue
+
+     IF(.NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
+       CALL Fatal('ListGetElementIm','Initialize with imaginary component!')
+     END IF
+     Rvalue = ListGetElementReal(Handle % HandleIm,Basis,Element,Found,Indexes,&
+         GaussPoint,Rdim,Rtensor)
+   END FUNCTION ListGetElementIm
+     
+
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting both the real and imaginary part of the keyword if it
+!> has been properly initialized. For the solver modules it is convenient since the
+!> final code is more compact. This does not work with vector valued keywords yet!
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementComplex( Handle,Basis,Element,Found,Indexes,&
+       GaussPoint,Rdim,Rtensor) RESULT(Zvalue)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: Rdim
+     REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
+     COMPLEX(KIND=dp)  :: Zvalue
+
+     REAL(KIND=dp) :: RValue, Ivalue
+     LOGICAL :: RFound
+     
+     IF(.NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
+       CALL Fatal('ListGetElementComplex','Initialize with imaginary component!')
+     END IF
+     
+     Rvalue = ListGetElementReal(Handle,Basis,Element,Found,Indexes,&
+         GaussPoint,Rdim,Rtensor)
+     IF( PRESENT( Rdim ) ) THEN
+       IF( Rdim > 0 ) CALL Fatal('ListGetElementComplex','Not implemented for tensors!')
+     END IF
+     IF( PRESENT( Found ) ) RFound = Found 
+
+     Ivalue = ListGetElementReal(Handle % HandleIm,Basis,Element,Found,Indexes,&
+         GaussPoint,Rdim,Rtensor)
+     IF( PRESENT( Rdim ) ) THEN
+       IF( Rdim > 0 ) CALL Fatal('ListGetElementComplex','Not implemented for tensors!')
+     END IF
+     IF( PRESENT( Found ) ) Found = Found .OR. RFound 
+
+     Zvalue = CMPLX( Rvalue, Ivalue ) 
+          
+   END FUNCTION ListGetElementComplex
+       
    
    
 !------------------------------------------------------------------------------
@@ -6110,6 +6204,157 @@ CONTAINS
 !------------------------------------------------------------------------------
 
      
+!------------------------------------------------------------------------------
+!> Initializes the variable handle in a similar manner as the keyword handle is
+!> initialied. This handle is more compact. Does not support p-fields or
+!> Hcurl & Hdiv fields yet. 
+!------------------------------------------------------------------------------
+   SUBROUTINE ListInitElementVariable( Handle, Name, USolver, UVariable, tStep )
+!------------------------------------------------------------------------------
+     TYPE(VariableHandle_t) :: Handle
+     CHARACTER(LEN=*), OPTIONAL  :: Name
+     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+     TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
+     INTEGER, OPTIONAL :: tStep
+
+     REAL(KIND=dp), POINTER :: Values(:)
+     TYPE(Variable_t), POINTER :: Variable
+     TYPE(Solver_t)  , POINTER :: Solver
+     TYPE(Element_t),  POINTER :: Element
+
+     Handle % Variable => NULL() 
+     Handle % Values => NULL()
+     Handle % Perm => NULL()
+     Handle % Element => NULL()
+          
+     IF ( PRESENT(USolver) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+            
+     IF ( PRESENT(name) ) THEN
+       Variable => VariableGet( Solver % Mesh % Variables, name )
+     ELSE IF( PRESENT( UVariable ) ) THEN
+       Variable => UVariable
+     ELSE
+       Variable => Solver % Variable 
+     END IF
+     
+     IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
+     
+     Handle % Variable => Variable
+     
+     IF ( PRESENT(tStep) ) THEN
+       IF ( tStep < 0 ) THEN
+         IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
+             Handle % Values => Variable % PrevValues(:,-tStep)
+       END IF
+     ELSE
+       Handle % Values => Variable % Values      
+     END IF
+     Handle % Perm => Variable % Perm
+     
+   END SUBROUTINE ListInitElementVariable
+!------------------------------------------------------------------------------
+
+     
+!------------------------------------------------------------------------------
+!> Get a scalar field (e.g. potential or pressure) at the integration point.
+!> Works with different types of fields.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementScalarSolution( Handle, Basis, Element, Found, GaussPoint, nd  ) RESULT ( Val )
+     
+     TYPE(VariableHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     TYPE( Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, OPTIONAL :: nd
+     INTEGER, OPTIONAL :: GaussPoint
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp) :: Val
+     
+     TYPE( Element_t), POINTER :: pElement
+     INTEGER :: j, n
+     INTEGER :: Indexes(100)
+     LOGICAL :: SameElement
+          
+     Val = 0.0_dp
+     
+     IF( PRESENT( Found ) ) Found = .FALSE.
+     
+     IF( .NOT. ASSOCIATED( Handle % Variable ) ) RETURN
+
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PElement => CurrentModel % CurrentElement
+     END IF
+     
+     SameElement = ASSOCIATED( Handle % Element, pElement )
+     IF( SameElement ) THEN
+       IF( .NOT. Handle % ActiveElement ) RETURN
+     ELSE
+       Handle % Element => pElement
+     END IF
+     
+     ! If variable is defined on gauss points return that instead
+     IF( Handle % Variable % TYPE == Variable_on_gauss_points ) THEN
+       IF( .NOT. PRESENT( GaussPoint ) ) THEN
+         CALL Fatal('GetElementScalar','GaussPoint required for gauss point variable!')
+       END IF
+       
+       j = pElement % ElementIndex
+       n = Handle % Perm(j+1) - Handle % Perm(j)
+       Handle % ActiveElement = ( n > 0 ) 
+       
+       IF( n == 0 ) RETURN             
+       val = Handle % Values(Handle % Perm(j) + GaussPoint )
+
+     ELSE IF( Handle % Variable % TYPE == Variable_on_elements ) THEN       
+       j = Handle % Perm( pElement % ElementIndex ) 
+       Handle % ActiveElement = ( j > 0 ) 
+       
+       IF( j == 0 ) RETURN             
+       val = Handle % Values(j) 
+       
+     ELSE
+       IF( .NOT. PRESENT( Basis ) ) THEN
+         CALL Fatal('GetElementScalar','Basis required for non gauss-point variable!')
+       END IF
+       
+       IF( .NOT. SameElement ) THEN
+         IF( Handle % Variable % TYPE == Variable_on_nodes_on_elements ) THEN       
+           n = pElement % TYPE % NumberOfNodes
+           Indexes(1:n) = pElement % DGIndexes(1:n)
+         ELSE
+           n = pElement % TYPE % NumberOfNodes
+           Indexes(1:n) = pElement % NodeIndexes
+         END IF
+
+         IF( PRESENT( nd ) ) THEN
+           n = MIN( nd, n ) 
+         END IF
+         
+         IF( ASSOCIATED( Handle % Perm ) ) THEN
+           Handle % ActiveElement = ALL( Handle % Perm( Indexes(1:n) ) /= 0 )
+           IF(.NOT. Handle % ActiveElement ) RETURN
+           Handle % ElementValues(1:n) = Handle % Values( Handle % Perm( Indexes(1:n) ) )
+         ELSE
+           Handle % ActiveElement = .TRUE.
+           Handle % ElementValues(1:n) = Handle % Values( Indexes(1:n) )           
+         END IF
+       ELSE
+         n = Handle % n
+       END IF
+       val = SUM( Basis(1:n) * Handle % ElementValues(1:n) )
+     END IF
+
+     IF( PRESENT( Found ) ) Found = .TRUE.
+     
+   END FUNCTION ListGetElementScalarSolution
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Gets a constant real array from the list by its name.

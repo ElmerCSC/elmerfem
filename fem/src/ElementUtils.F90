@@ -1869,7 +1869,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE TangentDirections( Normal,Tangent1,Tangent2 )
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: Normal(3),Tangent1(3),Tangent2(3)
+   REAL(KIND=dp) :: Normal(3),Tangent1(3)
+   REAL(KIND=dp), OPTIONAL :: Tangent2(3)
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: n1,n2,n3
 !------------------------------------------------------------------------------
@@ -1877,21 +1878,30 @@ CONTAINS
    n2 = ABS(Normal(2))
    n3 = ABS(Normal(3))
 
-   IF ( n1 <= n3 .AND. n2 <= n3 ) THEN
-     Tangent1(1) =  0.0_dp
-     Tangent1(2) = -Normal(3)
-     Tangent1(3) =  Normal(2)
-   ELSE
-     Tangent1(1) = -Normal(2)
-     Tangent1(2) =  Normal(1)
-     Tangent1(3) =  0.0_dp
-   END IF
+   IF( PRESENT( Tangent2 ) ) THEN   
+     IF ( n1 <= n3 .AND. n2 <= n3 ) THEN
+       Tangent1(1) =  0.0_dp
+       Tangent1(2) = -Normal(3)
+       Tangent1(3) =  Normal(2)
+     ELSE
+       Tangent1(1) = -Normal(2)
+       Tangent1(2) =  Normal(1)
+       Tangent1(3) =  0.0_dp
+     END IF
 
-   Tangent1 = Tangent1 / SQRT(SUM(Tangent1**2))
-   Tangent2(1) = Normal(2)*Tangent1(3) - Normal(3)*Tangent1(2)
-   Tangent2(2) = Normal(3)*Tangent1(1) - Normal(1)*Tangent1(3)
-   Tangent2(3) = Normal(1)*Tangent1(2) - Normal(2)*Tangent1(1)
-   Tangent2 = Tangent2 / SQRT(SUM(Tangent2**2))
+     Tangent1 = Tangent1 / SQRT(SUM(Tangent1**2))
+     Tangent2(1) = Normal(2)*Tangent1(3) - Normal(3)*Tangent1(2)
+     Tangent2(2) = Normal(3)*Tangent1(1) - Normal(1)*Tangent1(3)
+     Tangent2(3) = Normal(1)*Tangent1(2) - Normal(2)*Tangent1(1)
+     Tangent2 = Tangent2 / SQRT(SUM(Tangent2**2))
+   ELSE
+     ! This is a 2D tangent only
+     Tangent1(1) = Normal(2)
+     Tangent1(2) = -Normal(1)
+     Tangent1(3) = 0.0_dp
+     Tangent1 = Tangent1 / SQRT(SUM(Tangent1**2))
+   END IF
+     
 !------------------------------------------------------------------------------
  END SUBROUTINE TangentDirections
 !------------------------------------------------------------------------------
