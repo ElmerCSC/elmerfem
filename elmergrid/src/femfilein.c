@@ -3825,7 +3825,6 @@ omstart:
       
       for(tagdim=0;tagdim<=3;tagdim++) {	
 
-	// printf("Reading entities in %d\n",tagdim);
 	
 	if( tagdim == 0 ) 
 	  numEnt = numPoints;
@@ -3840,17 +3839,19 @@ omstart:
 	  maxtag[tagdim] = 0;
 	else if( maxtag[tagdim] > 0 )
 	  printf("Maximum original tag for %d %dDIM entities is %d\n",numEnt,tagdim,maxtag[tagdim]);
- 		      
+
+	if(numEnt > 0 && !allocated) printf("Reading %d entities in %dD\n",numEnt,tagdim);
+
+	
 	for(i=1; i <= numEnt; i++) {
 	  GETLONGLINE;
 
-	  // if( i==1 ) printf("1 or %d: %s\n",numEnt,line);
+	  // if( i==1 ) printf("1st line of dim %d with %d entries: %s\n",tagdim,numEnt,line);
 	  
 	  if( tagdim == 0 ) continue;
 	  
 	  cp = longline;
 	  tag = next_int(&cp);
-	  
 	 	  
 	  if(!allocated)
 	    maxtag[tagdim] = MAX( maxtag[tagdim], tag );
@@ -3862,14 +3863,30 @@ omstart:
 	  
 	  if(allocated) tagmap[tagdim][tag] = phystag;
 
-	  for(j=2;j<=nophys;j++)
-	    idum = next_int(&cp);
 
-	  // if( tagdim == 0 ) continue;
+	  // The lines may be too long. So fill the string buffer until we get a newline. 
+	  j = k = 0;
+	  for(;;) { 
+	    for(l=0;l<LONGLINESIZE;l++) {
+	      if( longline[l] == '\n') {
+		j = l;
+	    	break;	    
+	      }
+	    }
+	    if(j) break;
+	    k += LONGLINESIZE;
+	    GETLONGLINE;
+	  }	   	    	      
+	  if( k > 0 && !allocated) printf("Entity line %d has length %d.\n",i,k+j);
+	  
+	  //for(j=2;j<=nophys;j++)
+	  //  idum = next_int(&cp);
 
-	  nobound = next_int(&cp);
-	  for(j=1;j<=nobound;j++)
-	    idum = next_int(&cp);	  
+	  //// if( tagdim == 0 ) continue;
+
+	  //nobound = next_int(&cp);
+	  // for(j=1;j<=nobound;j++)
+	  //  idum = next_int(&cp);	  
 	}
       }
       

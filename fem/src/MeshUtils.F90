@@ -15628,6 +15628,8 @@ CONTAINS
     ! Get number of points, edges or faces
     numEdges = 0
     SELECT CASE (Element % TYPE % DIMENSION)
+    CASE (1)
+      RETURN
     CASE (2)
        numEdges = Element % TYPE % NumberOfEdges
     CASE (3)   

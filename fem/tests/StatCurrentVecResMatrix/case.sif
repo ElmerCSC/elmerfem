@@ -1,0 +1,96 @@
+! Test for the vectorized StatCurrent solver
+!
+! Includes conductivity matrix computation using constrained modes.
+!
+! P.R. 14.11.2018
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "plates"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+  vtu: Eigen Analysis = Logical True
+  Post File = "case.vtu"
+End
+
+Constants
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+Solver 1
+  Equation = StatCurrent
+  Variable = Potential
+  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+
+  Calculate Conductivity Matrix = Logical True
+
+! The above makes all these keywords obsolite:
+!  Constraint Modes Analysis = Logical True
+!  Constraint Modes Lumped = Logical True
+!  Constraint Modes Fluxes = Logical True
+!  Constraint Modes Fluxes Symmetric = Logical True
+!  Constraint Modes Fluxes Filename = File "ConductivityMatrix.dat"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-07
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-03
+
+  Nonlinear System Max Iterations = 1
+End
+
+Material 1
+  Electric Conductivity = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Conductivity Body = Integer 0  ! the ground
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Conductivity Body = Integer 1
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Conductivity Body = Integer 2
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+  Conductivity Body = Integer 3
+End
+
+Boundary Condition 5
+  Target Boundaries = 5
+  Conductivity Body = Integer 4 
+End
+
+Boundary Condition 6
+  Target Boundaries = 6
+  Conductivity Body = Integer 5
+End
+
+Solver 1 :: Reference Norm = Real 0.27012653
+
+!End Of File
+

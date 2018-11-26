@@ -499,15 +499,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Add a row together with another row of a CRS matrix, and thereafter zero it.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_MoveRow( A,n1,n2,coeff )
+  SUBROUTINE CRS_MoveRow( A,n1,n2,coeff,staycoeff )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A    !< Structure holding the matrix
     INTEGER, INTENT(IN) :: n1         !< Row number to be copied and zerod
     INTEGER, INTENT(IN) :: n2         !< Row number to be added
     REAL(KIND=dp),OPTIONAL :: coeff   !< Optional coefficient to multiply the row to be copied with
+    REAL(KIND=dp),OPTIONAL :: staycoeff   !< Optional coefficient to multiply the staying row
 !------------------------------------------------------------------------------
 
-    REAL(KIND=dp) :: VALUE, c
+    REAL(KIND=dp) :: val, c, d
     INTEGER :: i,j
 
     IF( PRESENT(Coeff)) THEN
@@ -516,11 +517,19 @@ CONTAINS
       c = 1.0_dp
     END IF
 
+    IF( PRESENT(StayCoeff)) THEN
+      d = StayCoeff
+    ELSE
+      d = 0.0_dp
+    END IF
+
     DO i=A % Rows(n1),A % Rows(n1+1)-1
       j = A % Cols(i)
-      VALUE = c * A % Values(i) 
-      A % Values(i) = 0.0_dp
-      CALL CRS_AddToMatrixElement( A,n2,j,VALUE )      
+      val = A % Values(i) 
+      IF( ABS( val ) > TINY( val ) ) THEN
+        A % Values(i) = d * val 
+        CALL CRS_AddToMatrixElement( A,n2,j,c*val )      
+      END IF
     END DO
 
   END SUBROUTINE CRS_MoveRow
@@ -702,8 +711,9 @@ CONTAINS
                     ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                     nidx=GetNextIndex(gja, ci, rli, rti)
-                    Lind(nzind+cdof)=nidx
-                    Lvals(nzind+cdof)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
+                    nzind = nzind + 1
+                    Lind(nzind)=nidx
+                    Lvals(nzind)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
                                            NDOFs*(pind(j)-1)+cdof)
 #ifdef __INTEL_COMPILER
                     ! Issue prefetch for every new cache line of gval(nidx)
@@ -713,7 +723,6 @@ CONTAINS
                     END IF
 #endif
                   END DO
-                  nzind = nzind + cdof
                 END IF
               END DO
             END DO
@@ -754,6 +763,7 @@ CONTAINS
         ! More than 1 DOF per node
 
         ! Construct index array
+        nzind = 0
         DO i=1,N
           DO rdof=1,NDOFs
             ! Row index
@@ -768,9 +778,9 @@ CONTAINS
                 ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                 nidx = GetNextIndex(gja, ci, rli, rti)
-                Lind((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=nidx
-                Lvals((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
-                                                             NDOFs*(pind(j)-1)+cdof)
+                nzind = nzind + 1
+                Lind(nzind) = nidx
+                Lvals(nzind) = Lmtr(NDOFs*(pind(i)-1)+rdof, NDOFs*(pind(j)-1)+cdof)
 #ifdef __INTEL_COMPILER
                 ! Issue prefetch for every new cache line of gval(nidx)
                 IF (nidx > pnidx+8) THEN
@@ -781,8 +791,6 @@ CONTAINS
               END DO
             END DO
           END DO
-
-          nzind = (NDOFs*N)*(NDOFs*N)
         END DO
       END IF ! NDOFs==1 check
     END IF ! Masking check
@@ -1173,22 +1181,28 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
 !>    Create the structures required for a CRS format matrix.
 !------------------------------------------------------------------------------
-  FUNCTION CRS_CreateMatrix( N,Total,RowNonzeros,Ndeg,Reorder,AllocValues ) RESULT(A)
+  FUNCTION CRS_CreateMatrix( N,Total,RowNonzeros,Ndeg,Reorder,AllocValues,SetRows ) RESULT(A)
 !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: N    !< Number of rows in the matrix
     INTEGER, INTENT(IN) :: Total  !< Total number of nonzero entries in the matrix
     INTEGER, INTENT(IN) :: Ndeg   !< Negrees of freedom
     INTEGER, INTENT(IN) :: RowNonzeros(:)  !< Number of nonzero entries in rows of the matrix
-    INTEGER, INTENT(IN) :: Reorder(:)      !< Permutation index for bandwidth reduction
+    INTEGER, INTENT(IN) :: Reorder(:)      !< Permutation index for bandwidth reduction    
     LOGICAL, INTENT(IN) :: AllocValues     !< Should the values arrays be allocated ?
+    LOGICAL, INTENT(IN), OPTIONAL :: SetRows
     TYPE(Matrix_t), POINTER :: A  !>  Pointer to the created Matrix_t structure.
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,istat
     INTEGER, POINTER CONTIG :: InvPerm(:)
+    LOGICAL :: SetRowSizes
 !------------------------------------------------------------------------------
 
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix of size: '//TRIM(I2S(n)),Level=12)
 
+    SetRowSizes = .TRUE.
+    IF( PRESENT( SetRows ) ) SetRowSizes = SetRows
+
+    
     A => AllocateMatrix()
 
     ALLOCATE( A % Rows(n+1),A % Diag(n),STAT=istat )
@@ -1215,7 +1229,21 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     NULLIFY( A % ILUValues )
     NULLIFY( A % CILUValues )
+    
+    A % NumberOfRows = N
+    A % Rows(1) = 1
+    A % Ordered = .FALSE.
 
+    ! We don't always want to set the rows as it is more easily done elsewhere
+    ! but for backward compatibility the default way is maintained.
+    IF(.NOT. SetRowSizes ) THEN
+      A % Cols = 0
+      A % Diag = 0
+      RETURN
+    END IF
+
+
+    
     InvPerm => A % Diag ! just available memory space...
     j = 0
     DO i=1,SIZE(Reorder)
@@ -1240,8 +1268,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 #endif
 
     !$OMP SINGLE
-    A % NumberOfRows = N
-    A % Rows(1) = 1
     DO i=2,N
        j = InvPerm((i-2)/Ndeg+1)
        A % Rows(i) = A % Rows(i-1) + Ndeg*RowNonzeros(j)
@@ -1270,7 +1296,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 #endif
     !$OMP END PARALLEL
     
-    A % Ordered = .FALSE.
 
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix finished',Level=14)
 

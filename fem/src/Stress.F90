@@ -89,7 +89,7 @@ MODULE StressLocal
 
      REAL(KIND=dp) :: M(3,3),D(3,3),HeatExpansion(3,3), A(4,4)
      REAL(KIND=dp) :: Temperature,Density, C(6,6), Damping,MeshVelo(3)
-     REAL(KIND=dp) :: StressTensor(3,3), StrainTensor(3,3), InnerProd
+     REAL(KIND=dp) :: StressTensor(3,3), StrainTensor(3,3), InnerProd, NodalViscosity(n)
      REAL(KIND=dp) :: StressLoad(6), StrainLoad(6), PreStress(6), PreStrain(6)
 
      INTEGER :: i,j,k,l,p,q,t,dim,NBasis,ind(3)
@@ -171,7 +171,7 @@ MODULE StressLocal
          PRINT *,'Inconsistent number of gauss points:',i, IntegStuff % n, j
        END IF
 
-       Viscosity = GetCReal( GetMaterial(), 'Viscosity', Found )
+       NodalViscosity(1:n) = GetReal( GetMaterial(), 'Viscosity', Found )
 
        SOL = 0; PSOL = 0
        CALL GetVectorLocalSolution( SOL )
@@ -201,6 +201,7 @@ MODULE StressLocal
            MeshVelo(i) = SUM( NodalMeshVelo(i,1:n)*Basis(1:n) )
          END DO
        END IF
+
 
        IF ( NeedHeat ) THEN
          ! Temperature at the integration point:
@@ -377,6 +378,7 @@ MODULE StressLocal
        END IF
 
        IF(ASSOCIATED(ve_stress)) THEN
+         Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
          xPhi = ViscoElasticLoad( ve_stress, t, StressLoad )
          NeedPreStress = .TRUE.
        ELSE
@@ -486,6 +488,7 @@ MODULE StressLocal
                 A(i,ndim) = A(i,ndim) - Basis(q) * dBasisdx(p,i)
                 A(ndim,i) = A(ndim,i) - dBasisdx(q,i) * Basis(p)
              END DO
+a(ndim,ndim) = 1.d-5 * basis(q) * basis(p)
            END IF
 
            !
@@ -574,7 +577,6 @@ MODULE StressLocal
     IF ( Incompressible ) THEN
       DO i=n+1,ntot
         j = ndim*i
-        s = STIFF(j,j)
         FORCE(j)   = 0._dp
         STIFF(j,:) = 0._dp
         STIFF(:,j) = 0._dp

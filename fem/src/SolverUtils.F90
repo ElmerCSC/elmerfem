@@ -340,36 +340,24 @@ CONTAINS
 !> Moves a row and and sumes it with the values of a second one, optionally 
 !> multiplying with a constant.
 !------------------------------------------------------------------------------
-   SUBROUTINE MoveRow( A, n1, n2, Coeff )
+   SUBROUTINE MoveRow( A, n1, n2, Coeff, StayCoeff )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      INTEGER :: n1, n2
-     REAL(KIND=dp), OPTIONAL :: Coeff
+     REAL(KIND=dp), OPTIONAL :: Coeff, StayCoeff
 !------------------------------------------------------------------------------
 
      SELECT CASE( A % FORMAT )
        CASE( MATRIX_CRS )
-         IF( PRESENT( Coeff ) ) THEN
-           CALL CRS_MoveRow( A,n1,n2,Coeff )
-         ELSE
-           CALL CRS_MoveRow( A,n1,n2 )  
-         END IF
+         CALL CRS_MoveRow( A,n1,n2,Coeff,StayCoeff )
 
          ! If entries are not found the format is changed on-the-fly
          IF( A % FORMAT == MATRIX_LIST ) THEN
-           IF( PRESENT( Coeff ) ) THEN
-             CALL CRS_MoveRow( A,n1,n2,Coeff )
-           ELSE
-             CALL CRS_MoveRow( A,n1,n2 )  
+           CALL CRS_MoveRow( A,n1,n2,Coeff,StayCoeff ) ! does this make sense?
          END IF
-       END IF
-
+         
        CASE( MATRIX_LIST )
-         IF( PRESENT( Coeff ) ) THEN
-           CALL List_MoveRow( A % ListMatrix,n1,n2,Coeff )
-         ELSE
-           CALL List_MoveRow( A % ListMatrix,n1,n2 )
-         END IF
+         CALL List_MoveRow( A % ListMatrix,n1,n2,Coeff,StayCoeff )
 
        CASE DEFAULT
          CALL Warn('MoveRow','Not implemented for this type')
@@ -6102,12 +6090,6 @@ CONTAINS
     CALL Info('SetConstraintModesBoundaries','Setting constraint modes boundaries for variable: '&
         //TRIM(Name),Level=7)
 
-    IF( .NOT. ListGetLogicalAnyBC( Model,'Constraint Modes ' // Name(1:nlen)) ) THEN
-      CALL Warn('SetConstraintModesBoundaries',&
-          'Constraint Modes Analysis requested but no constrained BCs given!')
-      RETURN
-    END IF
-
     ! Allocate the indeces for the constraint modes
     ALLOCATE( Var % ConstraintModesIndeces( A % NumberOfRows ) )
     Var % ConstraintModesIndeces = 0
@@ -6118,15 +6100,25 @@ CONTAINS
     j = 0 
     DO bc_id = 1,Model % NumberOfBCs
       BC => Model % BCs(bc_id) % Values        
-      IF( ListGetLogical( BC,& 
+      k = ListGetInteger( BC,&
+          'Constraint Mode '// Name(1:nlen), Found )
+      IF( Found ) THEN
+        IF( k == 0 ) k = -1  ! Ground gets negative value
+        BCPerm(bc_id) = k        
+      ELSE IF( ListGetLogical( BC,& 
           'Constraint Modes ' // Name(1:nlen), Found ) ) THEN
         j = j + 1
         BCPerm(bc_id) = j
       END IF
     END DO
+    
+    j = MAXVAL( BCPerm ) 
     CALL Info('SetConstraintModesBoundaries','Number of active constraint modes boundaries: '&
         //TRIM(I2S(j)),Level=7)
-
+    IF( j == 0 ) THEN
+      CALL Fatal('SetConstraintModesBoundaries',&
+          'Constraint Modes Analysis requested but no constrained BCs given!')
+    END IF
 
     Var % NumberOfConstraintModes = NDOFS * j 
     
@@ -6170,9 +6162,6 @@ CONTAINS
       IF( Var % ConstraintModesIndeces(k) == 0 ) CYCLE
       A % ConstrainedDOF(k) = .TRUE.
       A % DValues(k) = 0.0_dp
-      !b(k) = 0.0_dp
-      !CALL ZeroRow(A,k)
-      !CALL SetMatrixElement( A,k,k,1._dp )
     END DO
     
     ALLOCATE( Var % ConstraintModes( Var % NumberOfConstraintModes, A % NumberOfRows ) )
@@ -6626,7 +6615,7 @@ CONTAINS
          CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
          CALL MPI_RECV( g_e,n,MPI_DOUBLE_PRECISION,j-1,112,ELMER_COMM_WORLD, status,ierr )
          DO j=1,n
-           k = SearchNode( A % ParallelInfo, r_e(j), Order= A % Perm )
+           k = SearchNode( A % ParallelInfo, r_e(j), Order=A % ParallelInfo % Gorder )
            IF ( k>0 ) THEN
              IF(.NOT. A % ConstrainedDOF(k)) THEN
                CALL ZeroRow(A, k )
@@ -12112,6 +12101,7 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
     LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric
     REAL(KIND=dp), POINTER CONTIG :: PValues(:)
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: MatrixFile
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
     
@@ -12165,14 +12155,10 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
         DO j=1,n
           k = Var % ConstraintModesIndeces(j)
           IF( k > 0 ) THEN
-            IF(.FALSE.) THEN
-              FluxesMatrix(i,k) = FluxesMatrix(i,k) + Fluxes(j)
-            ELSE
-              IF( i /= k ) THEN
-                FluxesMatrix(i,k) = FluxesMatrix(i,k) - Fluxes(j)
-              END IF
-              FluxesMatrix(i,i) = FluxesMatrix(i,i) + Fluxes(j)
+            IF( i /= k ) THEN
+              FluxesMatrix(i,k) = FluxesMatrix(i,k) - Fluxes(j)
             END IF
+            FluxesMatrix(i,i) = FluxesMatrix(i,i) + Fluxes(j)
           END IF
         END DO
       END IF
@@ -12185,16 +12171,32 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
       IF( Symmetric ) THEN
         FluxesMatrix = 0.5_dp * ( FluxesMatrix + TRANSPOSE( FluxesMatrix ) )
       END IF
+      
+      CALL Info( 'SolveConstraintModesSystem','Constraint Modes Fluxes', Level=5 )
       DO i=1,m
         DO j=1,m
           IF( Symmetric .AND. j < i ) CYCLE
           WRITE( Message, '(I3,I3,ES15.5)' ) i,j,FluxesMatrix(i,j)
-          CALL Info( 'SolveConstraintModesSystem', Message, Level=4 )
+          CALL Info( 'SolveConstraintModesSystem', Message, Level=5 )
         END DO
       END DO
+      
+      MatrixFile = ListGetString(Solver % Values,'Constraint Modes Fluxes Filename',Found )
+      IF( Found ) THEN
+        OPEN (10, FILE=MatrixFile)
+        DO i=1,m
+          DO j=1,m
+            WRITE (10,'(ES17.9)',advance='no') FluxesMatrix(i,j)
+          END DO
+          WRITE(10,'(A)') ' '
+        END DO
+        CLOSE(10)     
+        CALL Info( 'SolveConstraintModesSystem',&
+            'Constraint modes fluxes was saved to file '//TRIM(MatrixFile),Level=5)
+      END IF
+      
       DEALLOCATE( Fluxes )
     END IF
-
 
     CALL ListAddLogical( Solver % Values,'No Precondition Recompute',.FALSE.)
     
@@ -12646,8 +12648,11 @@ SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
     INTEGER :: N, Nb, dim
-    REAL(KIND=dp) :: K(:,:),F(:),F1(:), Kbb(nb*dim,nb*dim), &
-      Kbl(nb*dim,n*(dim+1)),Klb(n*(dim+1),nb*dim),Fb(nb*dim)
+    REAL(KIND=dp) :: K(:,:), F(:)
+    REAL(KIND=dp), OPTIONAL :: F1(:)
+
+    REAL(KIND=dp) :: Kbb(nb*dim,nb*dim)
+    REAL(KIND=dp) :: Kbl(nb*dim,n*(dim+1)), Klb(n*(dim+1),nb*dim), Fb(nb*dim)
 
     INTEGER :: m, i, j, l, p, Cdofs((dim+1)*n), Bdofs(dim*nb)
 
@@ -12678,8 +12683,10 @@ SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
     K(1:(dim+1)*n,1:(dim+1)*n) = &
     K(1:(dim+1)*n,1:(dim+1)*n) - MATMUL( Klb, MATMUL( Kbb,Kbl ) )
 
-    Fb  = F1(Bdofs)
-    F1(1:(dim+1)*n) = F1(1:(dim+1)*n) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
+    IF (PRESENT(F1)) THEN
+      Fb  = F1(Bdofs)
+      F1(1:(dim+1)*n) = F1(1:(dim+1)*n) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
+    END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE NSCondensate
 !------------------------------------------------------------------------------
@@ -14302,9 +14309,9 @@ CONTAINS
               proc, 7004, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,rcnt
-             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)
+             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % ParallelInfo % Gorder )
              IF ( l>0 ) THEN
-               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % Perm)
+               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % ParallelInfo % Gorder )
                IF ( k>0 ) THEN
                  IF ( l>=k ) THEN
                    DO m=Diag(k),Rows(k+1)-1
@@ -14348,8 +14355,9 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
     CHARACTER(LEN=MAX_NAME_LEN) :: dumpfile, dumpprefix
     INTEGER, POINTER :: Perm(:)
+    REAL(KIND=dp), POINTER :: Sol(:)
     INTEGER :: i
-    LOGICAL :: SaveMass, SaveDamp, SavePerm, Found , Parallel, CNumbering
+    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering
 !------------------------------------------------------------------------------
 
     CALL Info('SaveLinearSystem','Saving linear system',Level=4)
@@ -14411,6 +14419,26 @@ CONTAINS
         CLOSE( 1 ) 
       END IF
     END IF
+
+
+    SaveSol = ListGetLogical( Params,'Linear System Save Solution',Found)
+    IF( SaveSol ) THEN
+      Sol => Solver % Variable % Values
+      IF( .NOT. ASSOCIATED( Sol ) ) THEN
+        CALL Warn('SaveLinearSystem','Solution not associated!')
+        SaveSol = .FALSE.
+      ELSE
+        dumpfile = TRIM(dumpprefix)//'_sol.dat'
+        IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//TRIM(I2S(ParEnv % myPE))
+        CALL Info('SaveLinearSystem','Saving solution to: '//TRIM(dumpfile))
+        OPEN(1,FILE=dumpfile, STATUS='Unknown')
+        DO i=1,SIZE(Sol)
+          WRITE(1,'(I0,ES15.6)') i,Sol(i)
+        END DO
+        CLOSE( 1 ) 
+      END IF
+    END IF
+    
     
     dumpfile = TRIM(dumpprefix)//'_sizes.dat'
     IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//TRIM(I2S(ParEnv % myPE))
@@ -14418,7 +14446,7 @@ CONTAINS
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
     WRITE(1,*) A % NumberOfRows
     WRITE(1,*) SIZE(A % Values)
-    IF( SavePerm ) WRITE(1,*) SIZE( Perm )
+    IF( SavePerm ) WRITE(1,*) SIZE( Perm )    
     CLOSE(1)
 
     IF(Parallel) THEN

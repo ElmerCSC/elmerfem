@@ -742,6 +742,7 @@ END INTERFACE
      LOGICAL, POINTER               :: INTERFACE(:)
      INTEGER, POINTER               :: GlobalDOFs(:)
      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+     INTEGER, POINTER               :: Gorder(:) => Null()
 
      LOGICAL, POINTER               :: FaceInterface(:)
      TYPE(NeighbourList_t),POINTER  :: FaceNeighbourList(:)

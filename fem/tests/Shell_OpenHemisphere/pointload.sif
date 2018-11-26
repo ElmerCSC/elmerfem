@@ -108,5 +108,5 @@ Boundary Condition 5
   U 3 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 3.07773375E-02
+Solver 1 :: Reference Norm = Real 3.07775184E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
