@@ -76,7 +76,7 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
         '-dg Joule Heating e' )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Joule Heatg' )
+        'Joule Heating' )
   END IF
   
   IF( ListGetLogical(Params,'Calculate Volume Current',Found) ) THEN
