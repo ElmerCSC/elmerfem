@@ -488,7 +488,6 @@ MODULE StressLocal
                 A(i,ndim) = A(i,ndim) - Basis(q) * dBasisdx(p,i)
                 A(ndim,i) = A(ndim,i) - dBasisdx(q,i) * Basis(p)
              END DO
-a(ndim,ndim) = 1.d-5 * basis(q) * basis(p)
            END IF
 
            !
@@ -610,21 +609,20 @@ CONTAINS
          NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
          PSOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
 
-    ShearModulus = Young / (2* (1.0d0 + Poisson))
-
-    xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * GetTimeStepSize() )
-    i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
-    PrevStress(1:dim,1:dim) = RESHAPE( ve_stress % values(i+1:i+dim**2), [dim,dim] )
-
     IF(Incompressible) THEN
+      ShearModulus = Young / 3
       Pres  = SUM( Basis(1:n) * SOL(ndim,1:n) )
       Pres0 = SUM( Basis(1:n) * (SOL(ndim,1:n) - PSOL(ndim,1:n)) )
     ELSE
       Pres = 0._dp; Pres0 = 0._dp
+      ShearModulus = Young / (2*(1+Poisson))
     END IF
 
-    PrevStress = xPhi * (StressTensor + PrevStress + Pres0 * Ident) - Pres * Ident
+    xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * GetTimeStepSize() )
 
+    i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
+    PrevStress(1:dim,1:dim) = RESHAPE( ve_stress % values(i+1:i+dim**2), [dim,dim] )
+    PrevStress = xPhi * (StressTensor + PrevStress + Pres0 * Ident) - Pres * Ident
     ve_stress % values(i+1:i+dim**2) = RESHAPE( PrevStress(1:dim,1:dim), [dim**2] )
 
     StressTensor  = 0._dp
@@ -1418,6 +1416,7 @@ CONTAINS
      END SELECT
 
 
+     V = 0
      DO i=1,n
        p = i1(i)
        q = i2(i)
