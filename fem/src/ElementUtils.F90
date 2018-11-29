@@ -1538,7 +1538,7 @@ CONTAINS
      !       CALL Fatal('CreateMatrix','Allocation error for RowNonZeros of size: '//TRIM(I2S(k)))
      !     END IF
      !     Model % RowNonzeros=0
-    
+
      IF (UseThreads) THEN
        CALL Info('CreateMatrix','Creating threaded list matrix array for equation',Level=14)
        IF ( PRESENT(Equation) ) THEN
@@ -1559,8 +1559,8 @@ CONTAINS
        !------------------------------------------------------------------------------
        CALL Info('CreateMatrix','Initializing list matrix array for equation',Level=14)
        IF ( MatrixFormat == MATRIX_CRS) THEN
-         Matrix => CRS_CreateMatrix( DOFs*k, &
-             Model % TotalMatrixElements,Model % RowNonzeros,DOFs,Perm,.TRUE.,SetRows = .FALSE. )
+         Matrix => CRS_CreateMatrix( DOFs*k, Model % TotalMatrixElements, Ndeg=DOFs, &
+             Reorder=Perm, AllocValues=.TRUE., SetRows = .FALSE.)
          Matrix % FORMAT = MatrixFormat
          IF( OptimizeBW ) THEN
            CALL InitializeMatrix( Matrix, k, ListMatrixArray % Rows, &
@@ -1597,8 +1597,8 @@ CONTAINS
        CALL Info('CreateMatrix','Initializing list matrix for equation',Level=14)
        SELECT CASE( MatrixFormat )
        CASE( MATRIX_CRS )
-         Matrix => CRS_CreateMatrix( DOFs*k, &
-             Model % TotalMatrixElements,Model % RowNonzeros,DOFs, Perm,.TRUE., SetRows = .FALSE.)
+         Matrix => CRS_CreateMatrix( DOFs*k, Model % TotalMatrixElements, Ndeg=DOFs, &
+             Reorder=Perm, AllocValues=.TRUE., SetRows = .FALSE.)
          Matrix % FORMAT = MatrixFormat
          IF( OptimizeBW ) THEN
            CALL InitializeMatrix( Matrix, k, ListMatrix, &

@@ -1186,7 +1186,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, INTENT(IN) :: N    !< Number of rows in the matrix
     INTEGER, INTENT(IN) :: Total  !< Total number of nonzero entries in the matrix
     INTEGER, INTENT(IN) :: Ndeg   !< Negrees of freedom
-    INTEGER, INTENT(IN) :: RowNonzeros(:)  !< Number of nonzero entries in rows of the matrix
+    INTEGER, INTENT(IN), OPTIONAL :: RowNonzeros(:)  !< Number of nonzero entries in rows of the matrix
     INTEGER, INTENT(IN) :: Reorder(:)      !< Permutation index for bandwidth reduction    
     LOGICAL, INTENT(IN) :: AllocValues     !< Should the values arrays be allocated ?
     LOGICAL, INTENT(IN), OPTIONAL :: SetRows
