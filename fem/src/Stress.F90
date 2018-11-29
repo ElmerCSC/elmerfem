@@ -609,16 +609,16 @@ CONTAINS
          NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
          PSOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
 
-    ShearModulus = Young / (2* (1.0d0 + Poisson))
-
-    xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * GetTimeStepSize() )
-
     IF(Incompressible) THEN
+      ShearModulus = Young / 3
       Pres  = SUM( Basis(1:n) * SOL(ndim,1:n) )
       Pres0 = SUM( Basis(1:n) * (SOL(ndim,1:n) - PSOL(ndim,1:n)) )
     ELSE
       Pres = 0._dp; Pres0 = 0._dp
+      ShearModulus = Young / (2*(1+Poisson))
     END IF
+
+    xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * GetTimeStepSize() )
 
     i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
     PrevStress(1:dim,1:dim) = RESHAPE( ve_stress % values(i+1:i+dim**2), [dim,dim] )
