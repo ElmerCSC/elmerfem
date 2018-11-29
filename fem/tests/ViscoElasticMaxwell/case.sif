@@ -27,10 +27,8 @@ End
 Material 1
   Density = Real 0
   Damping = Real 0
-
-  Youngs Modulus = Real 1
   Viscosity = 1
-  Poisson Ratio = Real 0.499975
+  Youngs Modulus = Real 1
 End
 
 Equation 1
