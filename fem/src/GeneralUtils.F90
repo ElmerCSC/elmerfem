@@ -1271,6 +1271,8 @@ END FUNCTION ComponentNameVar
       IF ( Component > 0 ) THEN
         str = TRIM(str) // ' ' // TRIM(i2s(Component) )
       END IF
+    ELSE IF( Component == 0 ) THEN
+      str = BaseName(1:ind-1)
     ELSE
       DOFsTot = 0
       DO WHILE( .TRUE. )

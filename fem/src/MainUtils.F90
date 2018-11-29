@@ -937,7 +937,7 @@ CONTAINS
 !> Add the generic stuff related to each Solver. 
 !> A few solvers are for historical reasons given a special treatment. 
 !------------------------------------------------------------------------------
-  SUBROUTINE AddEquationBasics( Solver, Name,Transient )
+  SUBROUTINE AddEquationBasics( Solver, Name, Transient )
 !------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: Solver
     LOGICAL :: Transient
@@ -957,7 +957,7 @@ CONTAINS
         MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
         VariableGlobal, VariableIP, VariableElem, VariableDG, VariableNodal, &
         DG, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, IsProcedure, &
-        IsStepsSolver, LegacySolver, UseMask
+        IsStepsSolver, LegacySolver, UseMask, TransientVar
     
     CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name, sec_name
 
@@ -1596,9 +1596,7 @@ CONTAINS
           mask_name = tmpname(1:i3)
         END IF
       END IF
-      
-
-      
+            
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' DOFs'
       DOFs = ListGetInteger( SolverParams, str, Found )
       IF ( .NOT. Found ) THEN
@@ -1746,30 +1744,34 @@ CONTAINS
         END IF
         NewVariable => VariableGet( Solver % Mesh % Variables, Var_name )
         IF(ASSOCIATED( NewVariable ) ) THEN
-          CALL Info('AddEquationBasics','Succesfully created variable: '//TRIM(var_name),Level=12)          
+          CALL Info('AddEquationBasics','Succesfully created variable: '&
+              //ComponentName(var_name),Level=12)                    
         ELSE
           CALL Warn('AddEquationBasics','Could not create variable: '//TRIM(var_name))
         END IF
-
-
-        str = TRIM( ComponentName( 'exported variable', l ) ) // ' Transient'
-        IF( ListGetLogical( SolverParams, str, Found ) ) THEN        
-          n = 0
-          IF( ASSOCIATED( Solver % Variable ) ) THEN
-            IF ( ASSOCIATED(Solver % Variable % PrevValues) ) THEN
-              n = SIZE(Solver % Variable % PrevValues,2)
-            END IF
-          END IF
-          IF( n == 0 ) THEN
-            CALL Warn('AddEquationBasics','Exported variable of static solver cannot be transient')
-          ELSE
-            CALL Info('AddEquationBasics','Setting exported variable to be transient',Level=12)
-            ALLOCATE(NewVariable % PrevValues(nsize,n))
-            NewVariable % PrevValues = 0.0_dp
-          END IF
+        
+        str = TRIM(ComponentName(Var_name ))//' Transient'
+        TransientVar = ListGetLogical( SolverParams, str, Found )        
+        
+        IF(.NOT. Found ) THEN
+          str = TRIM( ComponentName(Var_name) )//' Calculate Velocity'
+          TransientVar = ListGetLogical( SolverParams, str, Found )        
         END IF
+        IF(.NOT. Found ) THEN
+          str = TRIM( ComponentName( Var_name ) )//' Calculate Acceleration'
+          TransientVar = ListGetLogical( SolverParams, str, Found )        
+        END IF
+        
+        IF( TransientVar ) THEN
+          n = 2
+          CALL Info('AddEquationBasics','Allocating prevvalues of size 2 for exported variable',Level=12)
+          ALLOCATE(NewVariable % PrevValues(nsize,n))
+          NewVariable % PrevValues = 0.0_dp
 
-
+          ! Create upon request the variables for the external fields
+          CALL CreateTimeDerivativeVariables( Solver, NewVariable )
+        END IF
+          
         IF ( DOFs > 1 ) THEN
           n = LEN_TRIM( var_name )
           DO j=1,DOFs
@@ -1871,6 +1873,109 @@ CONTAINS
 
   END SUBROUTINE AddEquationBasics
 
+
+
+  ! Create 1st and 2nd derirvatives of the solution either for postprocessing, 
+  ! dependencies, or for higher order restarts. The optional argument is intended
+  ! for exported variables.
+  !---------------------------------------------------------------------------
+  SUBROUTINE CreateTimeDerivativeVariables( Solver, Var )
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Variable_t), POINTER, OPTIONAL :: Var
+
+    TYPE(Variable_t), POINTER :: pVar
+    CHARACTER(LEN=MAX_NAME_LEN) :: kword, str, varname
+    REAL(KIND=dp), POINTER :: Component(:)
+    INTEGER :: k
+    LOGICAL :: Found, DoIt
+    INTEGER :: TimeOrder
+    
+    IF( PRESENT( Var ) ) THEN
+      pVar => Var
+      kword = TRIM(ComponentName(Var % Name))//' Calculate Velocity'
+    ELSE
+      pVar => Solver % Variable
+      kword = 'Calculate Velocity'
+    END IF
+    DoIt = ListGetLogical( Solver % Values, kword, Found)
+    IF(.NOT. DoIt) THEN
+      IF( PRESENT( Var ) ) THEN
+        kword = TRIM(ComponentName(Var % Name))//' Nonlinear Calculate Velocity'
+      ELSE
+        kword = 'Nonlinear Calculate Velocity'
+      END IF
+    END IF
+    DoIt = ListGetLogical( Solver % Values, kword, Found)
+         
+    IF( DoIt ) THEN
+      ! For exported variable we assume 1st order scheme
+      IF( PRESENT( Var ) ) THEN
+        TimeOrder = 1        
+      ELSE
+        TimeOrder = Solver % TimeOrder
+      END IF
+      
+      IF( TimeOrder < 1 ) THEN
+        CALL Warn('CreateTimeDerivativeVariables',&
+            'Velocity computation implemented only for time-dependent variables')
+      ELSE IF ( TimeOrder == 1 ) THEN
+        str = TRIM(ComponentName(pVar % Name))//' Velocity'
+        CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+            str, pVar % Dofs, Perm = pVar % Perm )
+      ELSE IF ( Solver % TimeOrder >= 2 ) THEN
+        Component => pVar % PrevValues(:,1)
+        str = TRIM( ComponentName( pVar % Name ) ) // ' Velocity'
+        CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+            str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE. )
+      END IF
+    END IF
+   
+    IF( PRESENT( Var ) ) THEN
+      kword = TRIM(ComponentName(Var % Name))//' Calculate Acceleration'
+    ELSE
+      kword = 'Calculate Acceleration'
+    END IF
+    DoIt = ListGetLogical( Solver % Values, kword, Found)
+   
+    IF( DoIt ) THEN
+      IF( TimeOrder < 1 ) THEN
+        CALL Warn('CreateTimeDerivativeVariables',&
+            'Acceleration computation implemented only for time-dependent variables')      
+      ELSE IF ( TimeOrder == 1 ) THEN
+        str = TRIM(ComponentName(pVar % Name))//' Acceleration'
+        CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+            str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
+      ELSE IF ( TimeOrder >= 2 ) THEN
+        Component => Solver % Variable % PrevValues(:,2)
+        str = TRIM( ComponentName( pVar % Name ) ) // ' Acceleration'
+        CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+            str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE. )
+      END IF
+    END IF
+
+    IF( PRESENT( Var ) ) THEN
+      kword = TRIM(ComponentName(Var % Name))//' Transient Restart'
+    ELSE
+      kword = 'Transient Restart'
+    END IF    
+    DoIt = ListGetLogical( Solver % Values, kword, Found)
+        
+    IF( DoIt ) THEN
+      IF( .NOT. ASSOCIATED( pVar % PrevValues ) ) THEN
+        CALL Warn('AddEquationSolution',&
+            'Transient restart requires PrevValues!')
+      ELSE 
+        DO k = 1, SIZE( pVar % PrevValues, 2 )
+          Component => pVar % PrevValues(:,k)
+          str = TRIM( pVar % Name ) //' PrevValues'//TRIM(I2S(k))          
+          CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+              str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE. )
+        END DO
+      END IF
+    END IF
+
+  END SUBROUTINE CreateTimeDerivativeVariables
+      
 
 !------------------------------------------------------------------------------  
 !> Add information that is typically only needed if there's a matrix equation
@@ -2073,55 +2178,10 @@ CONTAINS
         END IF
       END IF
 
-
-      IF( ListGetLogical( Solver % Values,'Calculate Velocity',Found) .OR. &
-        ListGetLogical( Solver % Values,'Nonlinear Calculate Velocity',Found) ) THEN
-	IF( Solver % TimeOrder < 1 ) THEN
-          CALL Warn('AddEquationSolution',&
-              'Velocity computation implemented only for time-dependent equations')
-        ELSE IF ( Solver % TimeOrder == 1 ) THEN
-          str = TRIM( Solver % Variable % Name ) // ' Velocity'
-          CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
-        ELSE IF ( Solver % TimeOrder >= 2 ) THEN
-          Component => Solver % Variable % PrevValues(:,1)
-          str = TRIM( Solver % Variable % Name ) // ' Velocity'
-          CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              str, Solver % Variable % Dofs, Component, Solver % Variable % Perm, &
-              Secondary = .TRUE. )
-        END IF
-      END IF
-
-      IF( ListGetLogical( Solver % Values,'Calculate Acceleration',Found) ) THEN
-        IF ( Solver % TimeOrder == 1 ) THEN
-          CALL Warn('AddEquationSolution',&
-              'Acceleration computation implemented only for 2nd order time equations')
-        ELSE IF ( Solver % TimeOrder >= 2 ) THEN
-          Component => Solver % Variable % PrevValues(:,2)
-          str = TRIM( Solver % Variable % Name ) // ' Acceleration'
-          CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              str, Solver % Variable % Dofs, Component, Solver % Variable % Perm, &
-              Secondary = .TRUE. )
-        END IF
-      END IF
-
-      IF( ListGetLogical( Solver % Values,'Transient Restart',Found) ) THEN
-        IF( .NOT. ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-          CALL Warn('AddEquationSolution',&
-              'Transient restart requires PrevValues!')
-        ELSE 
-          DO k = 1, SIZE( Solver % Variable % PrevValues, 2 )
-            Component => Solver % Variable % PrevValues(:,k)
-            str = TRIM( Solver % Variable % Name ) //' PrevValues'//TRIM(I2S(k))
-            CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-                str, Solver % Variable % Dofs, Component, Solver % Variable % Perm, &
-                Secondary = .TRUE. )
-          END DO
-        END IF
-      END IF
-
-
-
+      ! Create 1st and 2nd derirvatives of the solution either for postprocessing, 
+      ! dependencies, or for higher order restarts
+      CALL CreateTimeDerivativeVariables( Solver )
+      
     ELSE
       Solver % TimeOrder = 0
 
@@ -5006,8 +5066,10 @@ CONTAINS
          CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
        END IF
      END BLOCK
-       
-     
+
+     ! Compute potentially velocity & acceleration from exported variables
+     CALL DerivateExportedVariables( Solver ) 
+          
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------

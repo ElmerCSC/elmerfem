@@ -7606,7 +7606,8 @@ END FUNCTION SearchNodeL
      INTEGER :: i, Order,ndofs
      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
      TYPE(Matrix_t), POINTER :: A
-
+     TYPE(Variable_t), POINTER :: Var
+     
 !------------------------------------------------------------------------------
      Solver % DoneTime = Solver % DoneTime + 1
 !------------------------------------------------------------------------------
@@ -7622,9 +7623,9 @@ END FUNCTION SearchNodeL
     
      IF ( .NOT.GotIt ) THEN
 
-        Solver % Beta = ListGetConstReal( Solver % Values, 'Newmark Beta', GotIt )
-        IF ( .NOT. GotIt ) THEN
-           Solver % Beta = ListGetConstReal( CurrentModel % Simulation, 'Newmark Beta', GotIt )
+       Solver % Beta = ListGetConstReal( Solver % Values, 'Newmark Beta', GotIt )
+       IF ( .NOT. GotIt ) THEN
+         Solver % Beta = ListGetConstReal( CurrentModel % Simulation, 'Newmark Beta', GotIt )
        END IF
 
        IF ( .NOT.GotIt ) THEN
@@ -7686,48 +7687,44 @@ END FUNCTION SearchNodeL
      END IF
 
      ndofs = Solver % Matrix % NumberOfRows
-
+     Var => Solver % Variable
+     
      IF ( Method /= 'bdf' .OR. Solver % TimeOrder > 1 ) THEN
+
        IF ( Solver % DoneTime == 1 .AND. Solver % Beta /= 0.0d0 ) THEN
          Solver % Beta = 1.0d0
        END IF
- 
+       IF( Solver % TimeOrder == 2 ) THEN         
+         Solver % Alpha = ListGetConstReal( Solver % Values, &
+             'Bossak Alpha', GotIt )
+         IF ( .NOT. GotIt ) THEN
+           Solver % Alpha = ListGetConstReal( CurrentModel % Simulation, &
+               'Bossak Alpha', GotIt )
+         END IF
+         IF ( .NOT. GotIt ) Solver % Alpha = -0.05d0
+       END IF
+       
        SELECT CASE( Solver % TimeOrder )
-         CASE(1)
-           Order = MIN(Solver % DoneTime, Solver % Order)
-           DO i=Order, 2, -1
-             Solver % Variable % PrevValues(:,i) = &
-                   Solver % Variable % PrevValues(:,i-1)
-           END DO
-           Solver % Variable % PrevValues(:,1) = Solver % Variable % Values
-           Solver % Matrix % Force(:,2) = Solver % Matrix % Force(:,1)
-
-         CASE(2)
-           SELECT CASE(Method)
-           CASE DEFAULT
-             Solver % Alpha = ListGetConstReal( Solver % Values, &
-                        'Bossak Alpha', GotIt )
-             IF ( .NOT. GotIt ) THEN
-                 Solver % Alpha = ListGetConstReal( CurrentModel % Simulation, &
-                            'Bossak Alpha', GotIt )
-             END IF
-             IF ( .NOT. GotIt ) Solver % Alpha = -0.05d0
-
-             Solver % Variable % PrevValues(:,3) = &
-                                 Solver % Variable % Values
-             Solver % Variable % PrevValues(:,4) = &
-                        Solver % Variable % PrevValues(:,1)
-             Solver % Variable % PrevValues(:,5) = &
-                        Solver % Variable % PrevValues(:,2)
-           END SELECT
+         
+       CASE(1)
+         Order = MIN(Solver % DoneTime, Solver % Order)
+         DO i=Order, 2, -1
+           Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
+         END DO
+         Var % PrevValues(:,1) = Var % Values
+         Solver % Matrix % Force(:,2) = Solver % Matrix % Force(:,1)
+         
+       CASE(2)
+         Var % PrevValues(:,3) = Var % Values
+         Var % PrevValues(:,4) = Var % PrevValues(:,1)
+         Var % PrevValues(:,5) = Var % PrevValues(:,2)
        END SELECT
      ELSE
        Order = MIN(Solver % DoneTime, Solver % Order)
        DO i=Order, 2, -1
-         Solver % Variable % PrevValues(:,i) = &
-               Solver % Variable % PrevValues(:,i-1)
+         Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
        END DO
-       Solver % Variable % PrevValues(:,1) = Solver % Variable % Values
+       Var % PrevValues(:,1) = Var % Values
      END IF
 
 
@@ -7745,13 +7742,42 @@ END FUNCTION SearchNodeL
          
          SaveValues => A % Values
          A % Values => A % BulkValues
-         CALL MatrixVectorMultiply( A, &
-             Solver % Variable % Values, A % BulkResidual )
+         CALL MatrixVectorMultiply( A, Var % Values, A % BulkResidual )
          A % Values => SaveValues
          A % BulkResidual = A % BulkResidual - A % BulkRhs
        END IF
      END IF
 
+
+     ! Advance also the exported variables if they happen to be time-dependent
+     ! They only have normal prevvalues, when writing this always 2. 
+     BLOCK
+       INTEGER :: VarNo,n
+       CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name
+       LOGICAL :: Found
+       
+       VarNo =0      
+       DO WHILE( .TRUE. )
+         VarNo = VarNo + 1         
+         str = ComponentName( 'exported variable', VarNo )    
+         
+         var_name = ListGetString( Solver % Values, str, Found )    
+         IF(.NOT. Found) EXIT
+         
+         CALL VariableNameParser( var_name ) 
+         
+         Var => VariableGet( Solver % Mesh % Variables, Var_name )
+         IF( .NOT. ASSOCIATED(Var)) CYCLE
+         IF( .NOT. ASSOCIATED(Var % PrevValues) ) CYCLE
+         
+         n = SIZE( Var % PrevValues,2 )
+         DO i=n,2,-1
+           Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
+         END DO
+         Var % PrevValues(:,1) = Var % Values
+       END DO
+     END BLOCK
+     
 !------------------------------------------------------------------------------
   END SUBROUTINE InitializeTimestep
 !------------------------------------------------------------------------------
@@ -8788,7 +8814,7 @@ END FUNCTION SearchNodeL
         VeloVar % Values = (x - Solver % Variable % PrevValues(:,1)) / dt
       END IF
     END IF
-
+    
 
     ! Calculate derivative a.k.a. sensitivity
     IF( SteadyState ) THEN
@@ -8881,8 +8907,7 @@ END FUNCTION SearchNodeL
           AdaptOrder = ListGetInteger( pSolver % Values,'Adaptive Integration Order',Found )        
         END IF
         IF(.NOT. Found ) AdaptOrder = 1
-
-        PRINT *,'Adaptive Integration Strategy:',MinV,MaxV,AdaptOrder,AdaptNp
+        !PRINT *,'Adaptive Integration Strategy:',MinV,MaxV,AdaptOrder,AdaptNp
       END IF
 
       prevSolver => pSolver      
@@ -12442,14 +12467,14 @@ END SUBROUTINE VariableNameParser
     var_name = ListGetString( Solver % Values, str, GotIt )    
     IF(.NOT. GotIt) EXIT
 
-    CALL Info('UpdateExportedVariables','Trying to set values for variable: '//TRIM(Var_name),Level=12)
+    CALL Info('UpdateExportedVariables','Trying to set values for variable: '//TRIM(Var_name),Level=20)
     
     CALL VariableNameParser( var_name ) 
     
     ExpVariable => VariableGet( Mesh % Variables, Var_name )
     IF( .NOT. ASSOCIATED(ExpVariable)) CYCLE
       
-    CALL Info('UpdateExportedVariables','Setting values for variable: '//TRIM(Var_name),Level=6)
+    CALL Info('UpdateExportedVariables','Setting values for variable: '//TRIM(Var_name),Level=20)
       
     IF(.NOT. AllocationsDone ) THEN
       m = CurrentModel % NumberOFBodyForces
@@ -12492,7 +12517,7 @@ END SUBROUTINE VariableNameParser
       CYCLE
     END IF
 
-    CALL Info('UpdateExportedVariables','Updating field variable with dofs: '//TRIM(I2S(DOFs)),Level=20)
+    CALL Info('UpdateExportedVariables','Updating field variable with dofs: '//TRIM(I2S(DOFs)),Level=12)
 
         
     DO j=1,DOFs
@@ -12507,12 +12532,10 @@ END SUBROUTINE VariableNameParser
         Solution => Values
       END IF
       condname = TRIM(tmpname) //' Condition' 
-
       
       !------------------------------------------------------------------------------
       ! Go through the Dirichlet conditions in the body force lists
-      !------------------------------------------------------------------------------
-      
+      !------------------------------------------------------------------------------      
       ActivePart = .FALSE.
       ActiveCond = .FALSE.
 
@@ -12636,6 +12659,84 @@ END SUBROUTINE VariableNameParser
   END IF
     
 END SUBROUTINE UpdateExportedVariables
+
+
+!------------------------------------------------------------------------------
+!> Derivates values for exported variables to come up with velocity and
+!> acceleration fields.
+!------------------------------------------------------------------------------
+  SUBROUTINE DerivateExportedVariables( Solver )  
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(ValueList_t), POINTER :: Params
+  TYPE(Variable_t), POINTER :: Var, DerVar, dtVar
+  CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name
+  INTEGER :: VarNo
+  LOGICAL :: Found, DoIt
+  REAL(KIND=dp) :: dt
+  
+  
+  CALL Info('DerivateExportedVariables','Derivating variables, if any!',Level=20)
+
+  Mesh => Solver % Mesh
+  Params => Solver % Values
+  
+  VarNo = 0
+  DO WHILE( .TRUE. )
+    VarNo = VarNo + 1
+
+    str = ComponentName( 'exported variable', VarNo )    
+    
+    var_name = ListGetString( Solver % Values, str, Found )    
+    IF(.NOT. Found) EXIT
+    
+    CALL VariableNameParser( var_name ) 
+
+    Var => VariableGet( Mesh % Variables, Var_name )
+    IF( .NOT. ASSOCIATED(Var)) CYCLE
+    IF( .NOT. ASSOCIATED(Var % PrevValues) ) CYCLE
+    
+    str = TRIM( ComponentName(Var_name) )//' Calculate Velocity'
+    DoIt = ListGetLogical( Params, str, Found )        
+    IF( DoIt ) THEN
+      str = TRIM( ComponentName(var_name) ) // ' Velocity'
+      DerVar => VariableGet( Solver % Mesh % Variables, str )        
+      IF(.NOT. ASSOCIATED(DerVar)) THEN
+        CALL Warn('DerivatingExportedVariables','Variable does not exist:'//TRIM(str))
+        CYCLE
+      END IF
+
+      dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size' )
+      dt = dtVar % Values(1) 
+      
+      CALL Info('DerivatingExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
+      DerVar % Values = (Var % Values(:) - Var % PrevValues(:,1)) / dt
+    END IF
+
+    str = TRIM( ComponentName(Var_name) )//' Calculate Acceleration'
+    DoIt = ListGetLogical( Params, str, Found )        
+    IF( DoIt ) THEN
+      str = TRIM( ComponentName(var_name) ) // ' Acceleration'
+      DerVar => VariableGet( Solver % Mesh % Variables, str )        
+      IF(.NOT. ASSOCIATED(DerVar)) THEN
+        CALL Warn('DerivatingExportedVariables','Variable does not exist:'//TRIM(str))
+        CYCLE
+      END IF
+
+      dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size' )
+      dt = dtVar % Values(1) 
+
+      CALL Info('DerivatingExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
+      DerVar % Values = (Var % Values(:) - 2*Var % PrevValues(:,1) - Var % PrevValues(:,2)) / dt**2
+    END IF
+
+  END DO
+    
+  CALL Info('UpdateExportedVariables','Finihed computing numerical derivaties',Level=20)
+    
+END SUBROUTINE DerivateExportedVariables
 
 
 
