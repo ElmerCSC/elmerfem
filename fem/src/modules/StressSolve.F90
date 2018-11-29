@@ -58,11 +58,24 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 
     SolverParams => GetSolverParams()
+    dim = CoordinateSystemDimension()
+
     IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-      dim = CoordinateSystemDimension()
       CALL ListAddInteger( SolverParams, 'Variable DOFs', dim )
       CALL ListAddString( SolverParams, 'Variable', 'Displacement' )
     END IF
+
+    IF( GetLogical(SolverParams, 'Maxwell material', Found ) ) THEN
+      CALL ListAddString(SolverParams, 'Timestepping Method', 'BDF' )
+      CALL ListAddInteger(SolverParams, 'BDF Order', 2 )
+      CALL ListAddInteger(SolverParams, 'Time derivative Order', 1)
+      DO i=1,100
+        IF ( .NOT. ListCheckPresent( SolverParams, 'Exported Variable '//trim(i2s(i))) ) EXIT
+      END DO
+      CALL ListAddString( SolverParams, 'Exported Variable '//trim(i2s(i)), &
+              '-dofs '//trim(i2s(dim**2))//' -ip ve_stress' )
+    END IF
+    
     IF(.NOT.ListCheckPresent( SolverParams, 'Time derivative order') ) &
       CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
@@ -77,7 +90,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     IF(CalcPrincipalAngle) CalcPrincipalAll = .TRUE. ! can't calculate angle without principal
     IF(CalcPrincipalAll)   CalcStressAll = .TRUE. ! can't calculate principal without components
     IF(CalculateStrains)   CalcStressAll = .TRUE. ! can't calculate principal without components
-    
+
     ! If stress computation is requested somewhere then enforce it 
     IF( .NOT. ( CalcStressAll .OR. CalculateStrains) ) THEN
       CalcStressAll = ListGetLogicalAnyEquation( Model,'Calculate Stresses')
@@ -638,7 +651,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        !--------------------------------------------
        UNorm = DefaultSolve()
 
-       
+
        IF ( Transient .AND. .NOT. Refactorize .AND. dt /= Prevdt ) THEN
          Prevdt = dt
          CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
