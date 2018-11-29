@@ -1,5 +1,8 @@
-! Test case for deriving exported variables
-! 
+! Test case for deriving exported variables.
+! These could be handy if we have a functional dependence on speed of
+! a exported variable, or want to just show the velocity in postprocessing.
+!
+! P.R. 29.11.2018
 
 Header
   CHECK KEYWORDS Warn
@@ -75,9 +78,11 @@ Solver 2
 
 ! Enforces
 ! 1) PrevValues being saved for "Temperature Flux"
-! 2) Numberical derivative "Temperature Flux Velocity" be computed.
+! 2) Numerical derivative "Temperature Flux Velocity" be computed.
   Temperature Flux Calculate Velocity = Logical True
-  Temperature Flux Transient = Logical True
+
+! If 2) is given then 1) is automatically set internally. 
+! Temperature Flux Transient = Logical True
 End
 
 
