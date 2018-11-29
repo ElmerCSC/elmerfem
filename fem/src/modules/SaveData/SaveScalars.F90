@@ -254,7 +254,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       EchoValues = .FALSE.
       WriteCore = .FALSE. 
     END IF
-    OutputPE = ParEnv % MYPe
+    !OutputPE = ParEnv % MYPe
   END IF
 
   NoLines = 0

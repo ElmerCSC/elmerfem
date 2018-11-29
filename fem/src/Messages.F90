@@ -74,7 +74,8 @@ CONTAINS
      IF ( OutputPE < 0 ) RETURN
 
      IF ( PRESENT( Level ) ) THEN
-       IF ( .NOT. OutputLevelMask(MIN(Level, MaxOutputLevel)) ) RETURN
+       if (Level > MaxOutputLevel) RETURN
+       IF ( .NOT. OutputLevelMask(Level) ) RETURN
      ELSE
        ! The default level of info
        !-------------------------------------------

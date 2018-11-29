@@ -3063,7 +3063,11 @@ CONTAINS
      IF( ALLOCATED(Solver % Matrix % Dvalues) ) THEN
        Solver % Matrix % Dvalues = 0._dp
      END IF
-     
+
+     IF( ListGetLogical( Solver % Values,'Bulk Assembly Timing',Found ) ) THEN 
+       CALL ResetTimer('BulkAssembly'//GetVarName(Solver % Variable) ) 
+     END IF
+       
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultInitialize
 !------------------------------------------------------------------------------
@@ -3078,18 +3082,26 @@ CONTAINS
      
      TYPE(Solver_t), POINTER :: Solver
      LOGICAL :: Found
-
+     TYPE(ValueList_t), POINTER :: Params
+     
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
      ELSE
        Solver => CurrentModel % Solver
      END IF
+
+     Params => Solver % Values
      
      CALL Info('DefaultStart','Starting solver: '//&
-        TRIM(ListGetString(Solver % Values,'Equation')),Level=10)
-     
+        TRIM(ListGetString(Params,'Equation')),Level=10)
+
+     ! When Newton linearization is used we may reset it after previously visiting the solver
+     IF( Solver % NewtonActive ) THEN
+       IF( ListGetLogical( Params,'Nonlinear System Newton Reset', Found) ) Solver % NewtonActive = .FALSE.
+     END IF
+          
      ! If we changed the system last time to harmonic one then revert back the real system
-     IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
+     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
        CALL ChangeToHarmonicSystem( Solver, .TRUE. )
      END IF
 
@@ -5384,7 +5396,11 @@ CONTAINS
     END IF
 
     Params => GetSolverParams( PSolver ) 
-
+    
+    IF( ListGetLogical( Params,'Bulk Assembly Timing',Found ) ) THEN 
+      CALL CheckTimer('BulkAssembly'//GetVarName(PSolver % Variable), Level=5, Delete=.TRUE. ) 
+    END IF
+        
     ! Reset colouring 
     PSolver % CurrentColour = 0
 
@@ -5431,7 +5447,11 @@ CONTAINS
     IF( ListGetLogical( Params,'Linear System Remove Zeros',Found ) ) THEN
       CALL CRS_RemoveZeros( PSolver % Matrix )
     END IF	
-
+    
+    IF( ListGetLogical( PSolver % Values,'Boundary Assembly Timing',Found ) ) THEN 
+      CALL ResetTimer('BoundaryAssembly'//GetVarName(PSolver % Variable) ) 
+    END IF
+    
   END SUBROUTINE DefaultFinishBulkAssembly
 
 
@@ -5457,6 +5477,10 @@ CONTAINS
 
     Params => GetSolverParams(PSolver)
 
+    IF( ListGetLogical( Params,'Boundary Assembly Timing',Found ) ) THEN 
+      CALL CheckTimer('BoundaryAssembly'//GetVarName(PSolver % Variable), Level=5, Delete=.TRUE. ) 
+    END IF
+    
     ! Reset colouring 
     PSolver % CurrentBoundaryColour = 0
 
@@ -6104,6 +6128,21 @@ CONTAINS
   END SUBROUTINE GetParentUVW
 !------------------------------------------------------------------------------
 
+
+!> Returns flag telling whether Newton linearization is active
+!------------------------------------------------------------------------------
+  FUNCTION GetNewtonActive( USolver ) RESULT( NewtonActive )
+    LOGICAL :: NewtonActive
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+
+    IF ( PRESENT( USolver ) ) THEN
+      NewtonActive = USolver % NewtonActive
+    ELSE
+      NewtonActive = CurrentModel % Solver % NewtonActive
+    END IF
+  END FUNCTION GetNewtonActive
+
+  
 !-----------------------------------------------------------------------
 !> This routine may be used to terminate the program in the case of an error.
 !-----------------------------------------------------------------------
