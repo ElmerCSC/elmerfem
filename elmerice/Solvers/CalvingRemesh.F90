@@ -3001,7 +3001,7 @@ CONTAINS
          PrimarySolver
     LOGICAL, POINTER :: UnfoundNodes(:)=>NULL()
     INTEGER :: i,j,k,DOFs, nrows,n
-    INTEGER, POINTER :: WorkPerm(:)=>NULL()
+    INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL()
     REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
@@ -3284,9 +3284,18 @@ CONTAINS
     !-----------------------------------------------
     ! Point solvers at the correct mesh and variable
     !-----------------------------------------------
+    
+    !CHANGE
+    !Needs to be told to ignore certain solvers if using multiple meshes
+    SolversToIgnore => ListGetIntegerArray(Params, 'Solvers To Ignore')
 
     DO i=1,Model % NumberOfSolvers
        WorkSolver => Model % Solvers(i)
+
+       !CHANGE - see above
+       IF (ASSOCIATED(SolversToIgnore)) THEN
+         IF(ANY(SolversToIgnore(1:SIZE(SolversToIgnore))==i)) CYCLE
+       END IF
 
        WorkSolver % Mesh => NewMesh !note, assumption here that there's only one active mesh
 
@@ -3354,12 +3363,13 @@ CONTAINS
     NewMesh % Next => OldMesh % Next
     Model % Meshes => NewMesh
     Model % Mesh => NewMesh
-    Model % Variables => NewMesh % Variables
+    Model % Variables => NewMesh % Variables    
 
     !Free old mesh and associated variables
     CALL ReleaseMesh(OldMesh)
     DEALLOCATE(OldMesh)
     DEALLOCATE(UnfoundNodes)
+    NULLIFY(SolversToIgnore)
 
     OldMesh => Model % Meshes
 
