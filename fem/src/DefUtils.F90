@@ -3262,7 +3262,7 @@ CONTAINS
 
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
-      IF(.NOT. Found .OR. TRIM( saveslot ) == 'after') THEN
+      IF( Found .AND. TRIM( saveslot ) == 'after') THEN
         CALL SaveLinearSystem( Solver ) 
       END IF
     END IF
