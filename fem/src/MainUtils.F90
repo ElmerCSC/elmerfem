@@ -720,7 +720,7 @@ CONTAINS
 
        ! Number the bulk indexes such that each node gets a new index
        DGIndex = 0       
-       DO t=1,Mesh % NumberOfBulkElements 
+       DO t=1,Mesh % NumberOfBulkElements !+ Mesh % NumberOfBoundaryElements
          Element => Mesh % Elements(t)
          n = Element % TYPE % NumberOfNodes         
          ALLOCATE( Element % DGindexes( n ) )
@@ -731,11 +731,13 @@ CONTAINS
        END DO
        
        ! Make boundary elements to inherit the bulk indexes
+       ! We neglect this as for now since it seems this causes problems in deallocation later on...
+#if 0
        DO t=Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
          Element => Mesh % Elements(t)
          n = Element % TYPE % NumberOfNodes
-         
+               
          IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
          DO k=1,2
            IF( k == 1 ) THEN
@@ -743,34 +745,36 @@ CONTAINS
            ELSE 
              Parent => Element % BoundaryInfo % Right
            END IF
-           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
-           
-           IF( ASSOCIATED( Parent % DGIndexes ) ) THEN
-             IF( .NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
-               ALLOCATE( Element % DGIndexes(n) ) 
-               Element % DgIndexes = 0
-             END IF               
-             DO i = 1, n
-               IF( Element % DGIndexes(i) > 0 ) CYCLE
-               DO j = 1, Parent % TYPE % NumberOfNodes
-                 IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
-                   Element % DGIndexes(i) = Parent % DGIndexes(j)
-                   EXIT
-                 END IF
-               END DO
-             END DO
-             EXIT
+           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE           
+           IF( .NOT. ASSOCIATED( Parent % DGIndexes ) ) CYCLE
+
+           IF( .NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+             ALLOCATE( Element % DGIndexes(n) ) 
+             Element % DgIndexes = 0
            END IF
+           DO i = 1, n
+             IF( Element % DGIndexes(i) > 0 ) CYCLE
+             DO j = 1, Parent % TYPE % NumberOfNodes
+               IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                 Element % DGIndexes(i) = Parent % DGIndexes(j)
+                 EXIT
+               END IF
+             END DO
+           END DO
+           IF( ANY( Element % DGIndexes == 0 ) ) PRINT *,'t dg:',t,n,Element % DGIndexes
+           EXIT
          END DO
        END DO
+#endif
      END IF
      
      CALL Info('CreateDGPerm','Size of DgPerm table: '//TRIM(I2S(DGIndex)),Level=12)
      
      ALLOCATE( DGPerm( DGIndex ) ) 
      DGPerm = 0
-     
-     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+
+     ! If we consider boundary element above do that also here
+     DO t=1,Mesh % NumberOfBulkElements !+ Mesh % NumberOFBoundaryElements
        Element => Mesh % Elements(t)
             
        IF( Element % PartIndex == ParEnv % myPE ) THEN
