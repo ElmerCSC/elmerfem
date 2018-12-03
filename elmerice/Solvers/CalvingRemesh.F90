@@ -3001,7 +3001,7 @@ CONTAINS
          PrimarySolver
     LOGICAL, POINTER :: UnfoundNodes(:)=>NULL()
     INTEGER :: i,j,k,DOFs, nrows,n
-    INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL()
+    INTEGER, POINTER :: WorkPerm(:)=>NULL()
     REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
@@ -3284,7 +3284,7 @@ CONTAINS
     !-----------------------------------------------
     ! Point solvers at the correct mesh and variable
     !-----------------------------------------------
-    
+
     !CHANGE
     !Needs to be told to ignore certain solvers if using multiple meshes
     SolversToIgnore => ListGetIntegerArray(Params, 'Solvers To Ignore')
@@ -3363,13 +3363,12 @@ CONTAINS
     NewMesh % Next => OldMesh % Next
     Model % Meshes => NewMesh
     Model % Mesh => NewMesh
-    Model % Variables => NewMesh % Variables    
+    Model % Variables => NewMesh % Variables
 
     !Free old mesh and associated variables
     CALL ReleaseMesh(OldMesh)
     DEALLOCATE(OldMesh)
     DEALLOCATE(UnfoundNodes)
-    NULLIFY(SolversToIgnore)
 
     OldMesh => Model % Meshes
 

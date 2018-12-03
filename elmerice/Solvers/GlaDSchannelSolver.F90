@@ -74,7 +74,7 @@
      TYPE(Nodes_t) :: ElementNodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Edge
 
-     TYPE(Variable_t), POINTER :: TimeVar, WorkVar 
+     TYPE(Variable_t), POINTER :: TimeVar
      TYPE(Variable_t), POINTER :: HydPotSol, AreaSol, QcSol, QmSol 
      INTEGER, POINTER :: NodeIndexes(:), HydPotPerm(:),  &
               AreaPerm(:), QcPerm(:), QmPerm(:)
@@ -97,7 +97,7 @@
      INTEGER :: VtuUnit, offset, Cpt, kk
      INTEGER, ALLOCATABLE :: EdgePointArray(:), EdgeOffsetArray(:), EdgeTypeArray(:)
 
-     LOGICAL :: SaveVTU=.False. , VtuBinary=.False., FileVTU = .FALSE., OutPutQm = .FALSE., Calving = .FALSE. 
+     LOGICAL :: SaveVTU=.False. , VtuBinary=.False., FileVTU = .FALSE., OutPutQm = .FALSE., Calving = .FALSE.
 
      CHARACTER :: lf
      CHARACTER(LEN=1024) :: OutStr
@@ -116,7 +116,7 @@
           IsGhostNode,  OutPutFileName, OutPutDirectoryName, FileVTU, VtuBinary, it, itOut,  &
           AllocationsDone, FirstTime, FirstVisit, SolverName, HydPotName, M, &
           NodeSheet, TableNodeSheet, EdgeSheet, NbMoulin, TableMoulin, OutPutQm, Flux, &
-          ChFluxVarName, ChAreaVarName, QmVarName, ChannelSolver 
+          ChFluxVarName, ChAreaVarName, QmVarName, ChannelSolver
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -161,7 +161,7 @@
        IF ( LocalNodes <= 0 ) RETURN
      END IF
 
-     DIM = Solver % Mesh % MeshDim
+     DIM = CoordinateSystemDimension()
 
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
@@ -303,7 +303,7 @@
           IF (FileVTU) THEN
              NodeSheet = 0 
              TableNodeSheet = 0
-             DO i = 1, Solver % Mesh % NumberOfNodes
+             DO i = 1, Model % NumberOfNodes
                 IF (HydPotPerm(i)>0) THEN 
                    NodeSheet = NodeSheet + 1 
                    TableNodeSheet(i) = NodeSheet 
@@ -444,7 +444,7 @@
         NodePointArray(:)=0.0
 
         Cpt=0
-        DO i = 1, Solver % Mesh % NumberOfNodes
+        DO i = 1, Model % NumberOfNodes
            IF (TableNodeSheet(i)>0) THEN 
               x = Solver % Mesh % Nodes % x(i)
               y = Solver % Mesh % Nodes % y(i)
@@ -559,7 +559,7 @@
            END DO
 
            Cpt=0
-           DO i = 1, Solver % Mesh % NumberOfNodes
+           DO i = 1, Model % NumberOfNodes
               IF (TableNodeSheet(i)>0) THEN 
                  Cpt = Cpt+1
                  MoulinInputArray(Cpt) = Flux(i)

@@ -135,6 +135,7 @@ CONTAINS
        IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
        RETURN
     END IF
+
     CALL InterpolateVarToVarReducedQ( OldMesh, NewMesh, HeightName, HeightDimensions, &
          FoundNodes, PointLocalDistance, OldNodeMask, NewNodeMask, &
          OldElemMask, Variables, GlobalEps, LocalEps, NumericalEps )
@@ -626,7 +627,7 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL :: GlobalEps, LocalEps, NumericalEps
     REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: LocalDistances(:)
     !------------------------------------------------------------------------------
-    TYPE(Variable_t), POINTER :: Var, VarOld, OldVar, NewVar, PermVar, WorkVar
+    TYPE(Variable_t), POINTER :: Var, VarOld, OldVar, NewVar
     TYPE(Element_t),POINTER :: Element
     TYPE(Nodes_t) :: ElementNodes
     REAL(KIND=dp), POINTER :: OldHeight(:), NewHeight(:)
@@ -638,7 +639,7 @@ CONTAINS
     REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
     REAL(KIND=dp), POINTER :: ElementValues(:)
     REAL(KIND=dp) :: detJ, u,v,w,s, LocalDist
-    LOGICAL :: Found, Debug, FirstTime=.TRUE.,GMUnfound=.FALSE.
+    LOGICAL :: Found, Debug, FirstTime=.TRUE., GMUnfound=.FALSE.
     REAL(KIND=dp) :: eps_global_limit, eps_local_limit,&
          eps_global_init, eps_local_init, eps_global, eps_local, eps_numeric
     SAVE DefaultPerm
@@ -822,7 +823,6 @@ CONTAINS
                   LocalDistance=LocalDist)
              IF( Found ) EXIT
           END DO
-
           IF( Found ) EXIT
 
           eps_global = eps_global * 10.0_dp
@@ -846,7 +846,7 @@ CONTAINS
               WorkVar % Values(WorkVar % Perm(i)) = 0.0
             END IF
           END IF
-          NULLIFY(Element, WorkVar)
+          NULLIFY(Element)
           IF(PRESENT(FoundNodes)) FoundNodes(i) = .FALSE.
           CYCLE
        END IF
@@ -860,7 +860,7 @@ CONTAINS
 
        !Return element distances if requested.
        IF(PRESENT(LocalDistances)) LocalDistances(i) = LocalDist
-       
+
 
        !-------------------------------------------------------
        ! Interpolate full variable list if requested
@@ -902,7 +902,7 @@ CONTAINS
              END IF
 
              IF((NewVar % Perm(i) == 0) .OR. ANY(OldVar % Perm(NodeIndexes)==0)) THEN
-                !PRINT *, 'Debug interpvartovar, skipping ',OldVar % Name,' because of zero perm'
+                ! PRINT *, 'Debug interpvartovar, skipping ',OldVar % Name,' because of zero perm'
                 OldVar => OldVar % Next
                 CYCLE
              END IF

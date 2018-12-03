@@ -220,7 +220,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   !  of nodes minus the number of zeros (i.e. if the element has at 
   !  least one floating node), then each mask equal to 1 is modified 
   !  to 0 (i.e. this node is on the grounding line).  
-  DO t = 1, Solver % NumberOfActiveElements
+  DO t = 1, Solver % NumberOfActiveElements     
      Element => GetActiveElement(t)
      n = GetElementNOFNodes()
      CALL GetElementNodes( Nodes )
@@ -245,7 +245,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
            END IF
         END DO
      END IF
-    
+
     !CHANGE
     !To label all basal frontal nodes not already ungrounded or on GL as on GL -
     !by definition, they're the last grounded node. Also necessary to make
@@ -262,8 +262,6 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   END DO
   
   IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues, 1 )
-
-  NULLIFY(FrontVar)
  
   CALL INFO( SolverName , 'Done')
  
