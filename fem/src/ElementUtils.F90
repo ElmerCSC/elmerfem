@@ -375,7 +375,8 @@ CONTAINS
           ALLOCATE( IndirectPairs( LocalNodes ) )
           IndirectPairs = 0
         END IF
-                
+                        
+
         DO t=1,Mesh % NumberOfBulkElements
           n = 0
           Elm => Mesh % Elements(t)
@@ -402,57 +403,62 @@ CONTAINS
           END DO
         END DO
 
-        DO t=1,Mesh % NumberOfEdges
-          n = 0
-          Elm => Mesh % Edges(t)
-          IF(.NOT. ASSOCIATED( Elm % BoundaryInfo ) ) CYCLE
-          
-          Left => Elm % BoundaryInfo % Left
-          IF(.NOT. ASSOCIATED( Left ) ) CYCLE
-          IF ( .NOT. CheckElementEquation(Model,Left,Equation) ) CYCLE
+        IF( Mesh % NumberOfFaces == 0 ) THEN
+          DO t=1,Mesh % NumberOfEdges
+            n = 0
+            Elm => Mesh % Edges(t)
+            IF(.NOT. ASSOCIATED( Elm % BoundaryInfo ) ) CYCLE
 
-          Right => Elm % BoundaryInfo %  Right
-          IF(.NOT. ASSOCIATED( Right ) ) CYCLE
-          IF ( .NOT. CheckElementEquation(Model,Right,Equation) ) CYCLE
+            Left => Elm % BoundaryInfo % Left
+            IF(.NOT. ASSOCIATED( Left ) ) CYCLE
+            IF ( .NOT. CheckElementEquation(Model,Left,Equation) ) CYCLE
 
-          IF( Left % BodyId == Right % BodyId ) CYCLE
+            Right => Elm % BoundaryInfo %  Right
+            IF(.NOT. ASSOCIATED( Right ) ) CYCLE
+            IF ( .NOT. CheckElementEquation(Model,Right,Equation) ) CYCLE
 
-          IF( DGIndirect ) THEN
-            DO i=1,Left % DGDOFs
-              DO j=1,Right % DGDOFs
-                IF( Left % NodeIndexes(i) == Right % NodeIndexes(j) ) THEN
-                  IndirectPairs( ReOrder( Left % DgIndexes(i) ) ) = &
-                      ReOrder( Right % DgIndexes(j) ) 
-                  EXIT
-                END IF
+            IF( Left % BodyId == Right % BodyId ) CYCLE
+
+            IF( DGIndirect ) THEN
+              DO i=1,Left % DGDOFs
+                k1 = ReOrder( Left % DgIndexes(i) )
+                DO j=1,Right % DGDOFs
+                  IF( Left % NodeIndexes(i) == Right % NodeIndexes(j) ) THEN
+                    k2 = ReOrder( Right % DgIndexes(j) )
+                    IF( k1 /= k2 ) THEN
+                      IndirectPairs( k1 ) = k2
+                      EXIT
+                    END IF
+                  END IF
+                END DO
+              END DO
+            END IF
+
+            FoundDG = FoundDG .OR. Left % DGDOFs > 0
+            DO j=1,Left % DGDOFs
+              n = n + 1
+              Indexes(n) = Left % DGIndexes(j)
+            END DO
+
+            FoundDG = FoundDG .OR. Right % DGDOFs > 0
+            DO j=1,Right % DGDOFs
+              n = n + 1
+              Indexes(n) = Right % DGIndexes(j)
+            END DO
+
+            DO i=1,n
+              k1 = Reorder(Indexes(i))
+              IF ( k1 <= 0 ) CYCLE
+              DO j=1,n
+                k2 = Reorder(Indexes(j))
+                IF ( k2 <= 0 ) CYCLE
+                Lptr => List_GetMatrixIndex( List,k1,k2 )
               END DO
             END DO
-          END IF            
-
-          FoundDG = FoundDG .OR. Left % DGDOFs > 0
-          DO j=1,Left % DGDOFs
-            n = n + 1
-            Indexes(n) = Left % DGIndexes(j)
           END DO
+        END IF
 
-          FoundDG = FoundDG .OR. Right % DGDOFs > 0
-          DO j=1,Right % DGDOFs
-            n = n + 1
-            Indexes(n) = Right % DGIndexes(j)
-          END DO
-
-          DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
-              k2 = Reorder(Indexes(j))
-              IF ( k2 <= 0 ) CYCLE
-              Lptr => List_GetMatrixIndex( List,k1,k2 )
-            END DO
-          END DO
-        END DO
-
-
+        
         DO t=1,Mesh % NumberOfFaces
           n = 0
 
@@ -467,15 +473,18 @@ CONTAINS
           IF(.NOT. ASSOCIATED( Right ) ) CYCLE
           IF ( .NOT. CheckElementEquation(Model,Right,Equation) ) CYCLE
 
-          IF( Left % BodyId == RightBodyId ) CYCLE
+          IF( Left % BodyId == Right % BodyId ) CYCLE
 
           IF( DGIndirect ) THEN
             DO i=1,Left % DGDOFs
+              k1 = ReOrder( Left % DgIndexes(i) )
               DO j=1,Right % DGDOFs
                 IF( Left % NodeIndexes(i) == Right % NodeIndexes(j) ) THEN
-                  IndirectPairs( ReOrder( Left % DgIndexes(i) ) ) = &
-                      ReOrder( Right % DgIndexes(j)) 
-                  EXIT
+                  k2 = ReOrder( Right % DgIndexes(j) )
+                  IF( k1 /= k2 ) THEN
+                    IndirectPairs( k1 ) = k2
+                    EXIT
+                  END IF
                 END IF
               END DO
             END DO
@@ -507,7 +516,7 @@ CONTAINS
         IF( DGIndirect ) THEN
           DO k1 = 1, LocalNodes
             k2 = IndirectPairs(k1)
-            IF( k2 == 0 ) CYCLE
+            IF( k2 == 0 ) CYCLE 
             !PRINT *,'Exchange structure between rows:',k1,k2
             CALL List_ExchangeRowStructure( List, k1, k2 ) 
           END DO
