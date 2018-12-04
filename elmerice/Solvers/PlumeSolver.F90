@@ -78,7 +78,7 @@
         BMSummerStart, Season, aboveMelt, meMelt, Dist, MinDist, ChannelQ,&
         Q0, Plume1MR, Plume2MR, PlProp, Node, NearestNode(3),&
         TargetNode(3), MaxX, MinX, MaxY, MinY, PlDist(2), MeshRes, BMRDist,&
-        BMRMinDist
+        BMRMinDist, PlDepth
 
    REAL(KIND=dp), ALLOCATABLE :: Xs(:), Ys(:), DwDz(:), W0(:), DmDz(:), MMR(:), MME(:), &
         PlumePoints(:,:,:), PlStart(:,:),PlStop(:,:), PointStore(:),&
@@ -87,7 +87,7 @@
         XArray(:), YArray(:), ZArray(:), PlCoordArray(:,:),&
         Plz(:), PlMR(:), Row(:), PlZArray(:,:), PlMRArray(:,:),&
         TempPlCoordArray(:), TempPlZArray(:), TempPlMRArray(:), MPIArray(:),&
-        BMRDistArray(:), ZiInput(:)
+        BMRDistArray(:)
         
    REAL(KIND=dp), POINTER :: PArray(:,:) => NULL(), PArray2(:,:) => NULL(), MeltRate(:),&
         BMeltRate(:) => NULL(), PMeltRate(:) => NULL(),xx(:), yy(:), &
@@ -122,10 +122,10 @@
         PlActive, Xs, Ys, RemoveToe
 
    INTERFACE
-     SUBROUTINE PlumeSolver(Depth, Front, TempA, SalA, Discharge, DepthOutput, MeltOutput, MeshRes)
+     SUBROUTINE PlumeSolver(Depth, Front, TempA, SalA, Discharge, DepthOutput, MeltOutput, MeshRes, PlDepth)
        USE Types
        REAL(KIND=dp), ALLOCATABLE :: Depth(:), Front(:), TempA(:), SalA(:)
-       REAL(KIND=dp) :: Discharge, MeshRes
+       REAL(KIND=dp) :: Discharge, MeshRes, PlDepth
        REAL(KIND=dp), POINTER :: DepthOutput(:), MeltOutput(:)
      END SUBROUTINE PlumeSolver
    END INTERFACE
@@ -494,8 +494,7 @@
        END DO
 
        REWIND(InputFileUnit)
-       ALLOCATE( Zi(Filerows), Sa(Filerows), Ta(Filerows), Xi(Filerows),&
-               ZiInput(Filerows))
+       ALLOCATE( Zi(Filerows), Sa(Filerows), Ta(Filerows), Xi(Filerows))
 
        DO i=1,Filerows
          READ(InputFileUnit, *) Zi(i), Sa(i), Ta(i)
@@ -504,11 +503,7 @@
        CLOSE(InputFileUnit)
 
        DO Pl=1,PlCount
-         ZiInput = Zi
-         !Model needs to know what depth to start plume at
-         DO i=1, SIZE(Zi)
-           IF(PlPos(Pl, 3) > ZiInput(i)) ZiInput(i) = -9999.0
-         END DO
+         PlDepth = PlPos(Pl, 3)
  
          !Assume vertical calving front. Internal mesh extrusion kind of imposes
          !it, so unlikely to change this soon.
@@ -525,7 +520,7 @@
          !This solves for a line/wedge plume of assumed width of MeshRes
          !Truncated line/wedge plumes seem better fit for combined channel+sheet
          !discharge and for Jackson et al. (2017)'s observations
-         CALL PlumeSolver(ZiInput, Xi, Ta, Sa, Q0, ZOutput, MROutput, MeshRes)
+         CALL PlumeSolver(Zi, Xi, Ta, Sa, Q0, ZOutput, MROutput, MeshRes, PlDepth)
        END DO
        Output = SIZE(ZOutput)
      END IF !PlCount > 0
@@ -1480,7 +1475,7 @@
     DEALLOCATE(BMeltRate, PMeltRate, HydroGLNodes)
     IF(Calving) DEALLOCATE(PlActive)
     IF(Calving .AND. PlCount > 0) THEN
-      DEALLOCATE(Zi, Xi, Sa, Ta, ZiInput)
+      DEALLOCATE(Zi, Xi, Sa, Ta)!, ZiInput)
       DO i=1, SIZE(HydroPlume)
         NULLIFY(HydroPlume(i) % z, HydroPlume(i) % meltrate)
       END DO
@@ -1562,13 +1557,13 @@
 !manner (e.g. last entry in Ta is assumed to be Ta at max depth in Zi). All four
 !arrays should therefore be the same size.
   SUBROUTINE PlumeSolver (Depth, Front, TempA, SalA, Discharge, DepthOutput,&
-                          MeltOutput, MeshRes)
+                          MeltOutput, MeshRes, PlDepth)
     USE Types
 
     EXTERNAL SheetPlume, JEX
        
     REAL(KIND=dp), ALLOCATABLE :: Depth(:), Front(:), TempA(:), SalA(:)
-    REAL(KIND=dp) :: Discharge, MeshRes
+    REAL(KIND=dp) :: Discharge, MeshRes, PlDepth
     REAL(KIND=dp), POINTER :: DepthOutput(:), MeltOutput(:)
 
     !-----------------------------------------------------------------------
@@ -1673,7 +1668,7 @@
     DO IOUT=K,1,-1
       Counter = IOUT+1
       !Cycle through profiles until reach depth plume should start at
-      IF(T == -9999.0) THEN
+      IF(PlDepth > T) THEN
         T=TOUT !Define present depth
         TOUT = ZProf(IOUT-1) !Define next depth 
         RProf(IOUT) = 0.0
