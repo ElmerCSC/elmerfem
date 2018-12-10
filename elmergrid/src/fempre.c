@@ -184,6 +184,7 @@ static void Instructions()
   printf("-halo                : create halo for the partitioning for DG\n");
   printf("-halobc              : create halo for the partitioning at boundaries only\n");
   printf("-haloz / -halor      : create halo for the the special z- or r-partitioning\n");
+  printf("-halogreedy          : create halo being greedy over the partition interfaces\n");
   printf("-indirect            : create indirect connections (102 elements) in the partitioning\n");
   printf("-periodic int[3]     : periodic coordinate directions for parallel & conforming meshes\n");
   printf("-partoptim           : apply aggressive optimization to node sharing\n");

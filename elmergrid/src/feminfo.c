@@ -479,6 +479,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-halor") == 0) {
       eg->partitionhalo = 3;
     }
+    if(strcmp(argv[arg],"-halogreedy") == 0) {
+      eg->partitionhalo = 4;
+    }    
     if(strcmp(argv[arg],"-indirect") == 0) {
       eg->partitionindirect = TRUE;
     }
