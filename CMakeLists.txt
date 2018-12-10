@@ -198,12 +198,16 @@ ENDIF()
 IF(WITH_Zoltan)
   # ZOLTAN Remeshing
   MESSAGE(STATUS "------------------------------------------------")
-  MESSAGE(STATUS "Building Zoltan mesh repartitioner")
-  ADD_SUBDIRECTORY(contrib/Zoltan_v3.83)
-  SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" ) # TODO: it should be "HAVE_Zoltan"
-  MARK_AS_ADVANCED(HAVE_ZOLTAN)
 
-  IF(FALSE)
+  SET(USE_SYSTEM_ZOLTAN FALSE CACHE BOOL "Use system Zoltan library")
+  IF(NOT ${USE_SYSTEM_ZOLTAN})
+    MESSAGE(STATUS "Building Zoltan mesh repartitioner")
+    ADD_SUBDIRECTORY(contrib/Zoltan_v3.83)
+    SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" ) 
+    MARK_AS_ADVANCED(HAVE_ZOLTAN)
+    MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
+    MESSAGE(STATUS "------------------------------------------------")
+  ELSE()
     FIND_PACKAGE(Zoltan)
 
     IF(ZOLTAN_FOUND)
@@ -216,7 +220,6 @@ IF(WITH_Zoltan)
       MESSAGE(STATUS "  Zoltan_INC:       " "${ZOLTAN_INCLUDE_DIR}")
       MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
       MESSAGE(STATUS "  Zoltan_LIBDIR:      " "${ZOLTAN_LIBDIR}")
-      ADD_DEFINITIONS(-DHAVE_ZOLTAN)
 
       INCLUDE_DIRECTORIES(${ZOLTAN_INCLUDE_DIR})
       MESSAGE(STATUS "------------------------------------------------")
@@ -227,7 +230,7 @@ IF(WITH_Zoltan)
     ENDIF(ZOLTAN_FOUND)
 
     MESSAGE(STATUS "------------------------------------------------")
-  ENDIF(FALSE)
+  ENDIF()
 ENDIF(WITH_Zoltan)
 
 # MMG Remeshing

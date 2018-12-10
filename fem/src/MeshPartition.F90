@@ -41,6 +41,8 @@
 !>  Mesh partitioning utilities including interfaces to Zoltan
 !------------------------------------------------------------------------------
 
+#include "../config.h"
+
 MODULE MeshPartition
 
   USE Types
