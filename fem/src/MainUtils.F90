@@ -1925,12 +1925,12 @@ CONTAINS
       ELSE IF ( TimeOrder == 1 ) THEN
         str = TRIM(ComponentName(pVar % Name))//' Velocity'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-            str, pVar % Dofs, Perm = pVar % Perm )
+            str, pVar % Dofs, Perm = pVar % Perm, VarType = pVar % Type )
       ELSE IF ( Solver % TimeOrder >= 2 ) THEN
         Component => pVar % PrevValues(:,1)
         str = TRIM( ComponentName( pVar % Name ) ) // ' Velocity'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-            str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE. )
+            str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., VarType = pVar % Type )
       END IF
     END IF
    
@@ -1948,12 +1948,12 @@ CONTAINS
       ELSE IF ( TimeOrder == 1 ) THEN
         str = TRIM(ComponentName(pVar % Name))//' Acceleration'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-            str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
+            str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm, VarType = pVar % Type )
       ELSE IF ( TimeOrder >= 2 ) THEN
         Component => Solver % Variable % PrevValues(:,2)
         str = TRIM( ComponentName( pVar % Name ) ) // ' Acceleration'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-            str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE. )
+            str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., VarType = pVar % Type )
       END IF
     END IF
 
@@ -1973,7 +1973,7 @@ CONTAINS
           Component => pVar % PrevValues(:,k)
           str = TRIM( pVar % Name ) //' PrevValues'//TRIM(I2S(k))          
           CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE. )
+              str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., VarType = pvar % Type )
         END DO
       END IF
     END IF
@@ -2192,7 +2192,8 @@ CONTAINS
       IF( ListGetLogical( Solver % Values,'Calculate Derivative',Found) ) THEN
         str = TRIM( Solver % Variable % Name ) // ' Derivative'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-            str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
+            str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm, &
+            VarType = Solver % Variable % Type )
       END IF
 
       IF ( EigAnal ) THEN
