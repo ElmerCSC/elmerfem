@@ -5071,9 +5071,11 @@ CONTAINS
        END IF
      END BLOCK
 
-     ! Compute potentially velocity & acceleration from exported variables
-     CALL DerivateExportedVariables( Solver ) 
-          
+     ! Compute all dependent fields, components and derivatives related to the primary solver.
+     !-----------------------------------------------------------------------   
+     CALL UpdateDependentObjects( Solver, .TRUE. ) 
+
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
@@ -5317,26 +5319,6 @@ CONTAINS
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
-
-
-!---------------------------------------------------------------------
-! After each solver one may do some special derived fields etc. 
-!---------------------------------------------------------------------
-     
-
-     ! Update the variables that depend on this solver
-     IF( ListGetLogical( Params,&
-           'Update Exported Variables', Found) ) THEN
-       CALL UpdateExportedVariables( Solver )	
-     END IF
-    
-
-     ! Update the components that depend on this solver
-     UpdateComponents => ListGetIntegerArray( Params, &
-         'Update Components', Found )   
-     IF( Found ) CALL UpdateDependentComponents( UpdateComponents )	
-     
-
 
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested

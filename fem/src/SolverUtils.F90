@@ -665,7 +665,6 @@ CONTAINS
   END SUBROUTINE GetPassiveBoundary
 !------------------------------------------------------------------------------
 
-!   CheckPassiveElement moved to ElementDescription
 
 !------------------------------------------------------------------------------
 !>  For time dependent simulations add the time derivative coefficient terms
@@ -8293,6 +8292,86 @@ END FUNCTION SearchNodeL
   END FUNCTION ComputeNorm
 !------------------------------------------------------------------------------
 
+
+  SUBROUTINE UpdateDependentObjects( Solver, SteadyState )
+
+    TYPE(Solver_t), TARGET :: Solver
+    LOGICAL :: SteadyState
+
+    TYPE(ValueList_t), POINTER :: SolverParams
+    LOGICAL :: Found, DoIt
+    REAL(KIND=dp) :: dt
+    TYPE(Variable_t), POINTER :: dtVar, VeloVar
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    INTEGER, POINTER :: UpdateComponents(:)
+   
+    SolverParams => Solver % Values
+    
+    IF( SteadyState ) THEN
+      CALL Info('UpdateDependentObjects','Updating objects depending on primary field in steady state',Level=20)
+    ELSE
+      CALL Info('UpdateDependentObjects','Updating objects depending on primary field in nonlinear system',Level=20)
+    END IF
+    
+    
+    ! The update of exported variables on nonlinear or steady state level.
+    ! In nonlinear level the nonlinear iteration may depend on the updated values.
+    ! Steady-state level is often sufficient if the dependendence is on some other solver.
+    !-----------------------------------------------------------------------------------------    
+    IF( SteadyState ) THEN
+      DoIt = ListGetLogical( SolverParams,&
+          'Update Exported Variables', Found )
+    ELSE        
+      DoIt = ListGetLogical( SolverParams,&
+          'Nonlinear Update Exported Variables',Found )
+    END IF
+    IF( DoIt ) CALL UpdateExportedVariables( Solver )	
+    
+       
+    ! Update components that depende on the solution of the solver.
+    ! Nonlinear level allows some nonlinear couplings within the solver. 
+    !-----------------------------------------------------------------------------------------
+    IF( SteadyState ) THEN
+      UpdateComponents => ListGetIntegerArray( SolverParams, &
+          'Update Components', DoIt )
+    ELSE
+      UpdateComponents => ListGetIntegerArray( SolverParams, &
+          'Nonlinear Update Components', DoIt )
+    END IF
+    IF( DoIt ) CALL UpdateDependentComponents( UpdateComponents )	
+    
+
+    ! Compute derivative of solution with time i.e. velocity 
+    ! For 2nd order schemes there is direct pointer to the velocity component
+    ! Thus only 1st order schemes need to be computed.
+    !-----------------------------------------------------------------------------------------
+    DoIt = .FALSE.
+    IF( SteadyState ) THEN
+      DoIt = ListGetLogical( SolverParams,'Calculate Velocity',Found )
+    ELSE
+      DoIt = ListGetLogical( SolverParams,'Nonlinear Calculate Velocity',Found )
+    END IF
+    
+    IF( DoIt ) THEN
+      IF( Solver % TimeOrder == 1) THEN
+        dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size' )
+        dt = dtVar % Values(1) 
+        str = TRIM( Solver % Variable % Name ) // ' Velocity'
+        VeloVar => VariableGet( Solver % Mesh % Variables, str )        
+        VeloVar % Values = (Solver % Variable % Values - Solver % Variable % PrevValues(:,1)) / dt
+      END IF
+    END IF
+    
+    ! Finally compute potentially velocities related to exported variables.
+    ! Do this on nonlinear level only when 'Nonlinear Calculate Velocity' is set true.
+    !-----------------------------------------------------------------------------------------
+    IF( SteadyState .OR. DoIt ) THEN          
+      CALL DerivateExportedVariables( Solver )  
+    END IF       
+    
+  END SUBROUTINE UpdateDependentObjects
+
+
   
 !------------------------------------------------------------------------------
 !> When a new field has been computed compare it to the previous one.
@@ -8316,7 +8395,7 @@ END FUNCTION SearchNodeL
     CHARACTER(LEN=MAX_NAME_LEN) :: ConvergenceType
     INTEGER, TARGET  ::  Dnodes(1)
     INTEGER, POINTER :: Indexes(:)
-    TYPE(Variable_t), POINTER :: iterV, VeloVar, TimestepVar, WeightVar
+    TYPE(Variable_t), POINTER :: iterVar, VeloVar, dtVar, WeightVar
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
         SkipConstraints, ResidualMode, RelativeP
@@ -8326,15 +8405,16 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRVec, TmpRHSVec
     INTEGER :: ipar(1)
     TYPE(ValueList_t), POINTER :: SolverParams
-    INTEGER, POINTER :: UpdateComponents(:)
+    CHARACTER(*), PARAMETER :: Caller = 'ComputeChange'
 
+    
     SolverParams => Solver % Values
     RelativeP = .FALSE.
     
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
-        CALL Info('ComputeChange','Skipping the computation of steady state change',Level=15)
+        CALL Info(Caller,'Skipping the computation of steady state change',Level=15)
         RETURN
       END IF
         
@@ -8354,8 +8434,8 @@ END FUNCTION SearchNodeL
           'Steady State Relaxation Factor', Relax )
       Relax = Relax .AND. ABS(Relaxation-1.0_dp) > EPSILON(Relaxation)
 
-      iterV => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
-      IterNo = iterV % Values(1)
+      iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
+      IterNo = NINT( iterVar % Values(1) )
       IF( Relax ) THEN
         RelaxAfter = ListGetInteger(SolverParams,'Steady State Relaxation After',Stat)
         IF( Stat .AND. RelaxAfter >= IterNo ) Relax = .FALSE.
@@ -8372,15 +8452,15 @@ END FUNCTION SearchNodeL
       SkipConstraints = .FALSE.
       
     ELSE
-      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-      IterNo = iterV % Values(1)
-      Solver % Variable % NonlinIter = iterV % Values(1)
-      iterV % Values(1) = iterV % Values(1) + 1 
+      iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+      IterNo = NINT( iterVar % Values(1) )
+      Solver % Variable % NonlinIter = IterNo
+      iterVar % Values(1) = IterNo + 1 
       
       Skip = ListGetLogical( SolverParams,'Skip Compute Nonlinear Change',Stat)
 
       IF(Skip) THEN
-        CALL Info('ComputeChange','Skipping the computation of nonlinear change',Level=15)
+        CALL Info(Caller,'Skipping the computation of nonlinear change',Level=15)
         RETURN
       END IF
         
@@ -8403,7 +8483,7 @@ END FUNCTION SearchNodeL
         IF( Stat .AND. RelaxAfter >= Solver % Variable % NonlinIter ) Relax = .FALSE.
 
         RelativeP = ListGetLogical( SolverParams,'Relative Pressure Relaxation',Stat) 
-        CALL Info('ComputeChange','Using relative pressure relaxation',Level=10)
+        CALL Info(Caller,'Using relative pressure relaxation',Level=10)
       END IF
       
       SkipConstraints = ListGetLogical(SolverParams,&
@@ -8464,7 +8544,7 @@ END FUNCTION SearchNodeL
     END IF
     
     IF(Stat .AND. .NOT. SkipConstraints ) THEN
-      IF (SIZE(x0) /= SIZE(x)) CALL Info('ComputeChange','WARNING: Possible mismatch in length of vectors!',Level=10)
+      IF (SIZE(x0) /= SIZE(x)) CALL Info(Caller,'WARNING: Possible mismatch in length of vectors!',Level=10)
     END IF
 
     ! This ensures that the relaxation does not affect the mean of the pressure
@@ -8507,7 +8587,7 @@ END FUNCTION SearchNodeL
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
     IF( Norm /= Norm ) THEN
-      CALL NumericalError('ComputeChange','Norm of solution appears to be NaN')
+      CALL NumericalError(Caller,'Norm of solution appears to be NaN')
     END IF
 
     IF( SteadyState ) THEN
@@ -8520,8 +8600,8 @@ END FUNCTION SearchNodeL
 
     IF( Stat ) THEN
       WRITE( Message, *) 'Computed Norm:',Norm
-      CALL Info('ComputeChange',Message)
-      CALL NumericalError('ComputeChange','Norm of solution exceeded given bounds')
+      CALL Info(Caller,Message)
+      CALL NumericalError(Caller,'Norm of solution exceeded given bounds')
     END IF
       
     SELECT CASE( ConvergenceType )
@@ -8649,7 +8729,7 @@ END FUNCTION SearchNodeL
       END IF
       
     CASE DEFAULT
-      CALL Warn('ComputeChange','Unknown convergence measure: '//TRIM(ConvergenceType))    
+      CALL Warn(Caller,'Unknown convergence measure: '//TRIM(ConvergenceType))    
       
     END SELECT
     
@@ -8670,13 +8750,13 @@ END FUNCTION SearchNodeL
       Tolerance = ListGetCReal( SolverParams,'Steady State Divergence Limit',Stat)
       IF( Stat .AND. Change > Tolerance ) THEN
         IF( IterNo > 1 .AND. Change > PrevChange ) THEN
-          CALL Info('ComputeChange','Steady state iteration diverged over tolerance')
+          CALL Info(Caller,'Steady state iteration diverged over tolerance')
           Solver % Variable % SteadyConverged = 2
         END IF
       END IF
       Tolerance = ListGetCReal( SolverParams,'Steady State Exit Condition',Stat)
       IF( Stat .AND. Tolerance > 0.0 ) THEN
-        CALL Info('ComputeChange','Nonlinear iteration condition enforced by exit condition')
+        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition')
         Solver % Variable % SteadyConverged = 3
       END IF
 
@@ -8694,27 +8774,27 @@ END FUNCTION SearchNodeL
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Divergence Limit',Stat)
       IF( Stat .AND. Change > Tolerance ) THEN
         IF( IterNo > 1 .AND. Change > PrevChange ) THEN
-          CALL Info('ComputeChange','Nonlinear iteration diverged over tolerance')
+          CALL Info(Caller,'Nonlinear iteration diverged over tolerance')
           Solver % Variable % NonlinConverged = 2
         ELSE 
           MaxIter = ListGetInteger( SolverParams,'Nonlinear System Max Iterations',Stat)
           IF( IterNo >= MaxIter ) THEN
             Solver % Variable % NonlinConverged = 2
-            CALL Info('ComputeChange','Nonlinear iteration did not converge to tolerance')
+            CALL Info(Caller,'Nonlinear iteration did not converge to tolerance')
           END IF
         END IF
       END IF
 
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Exit Condition',Stat)
       IF( Stat .AND. Tolerance > 0.0 ) THEN
-        CALL Info('ComputeChange','Nonlinear iteration condition enforced by exit condition')
+        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition')
         Solver % Variable % NonlinConverged = 3
       END IF
       
       IF( Solver % Variable % NonlinConverged > 1 ) THEN
         MinIter = ListGetInteger( SolverParams,'Nonlinear System Min Iterations',Stat)
         IF( Stat .AND. IterNo < MinIter ) THEN
-          CALL Info('ComputeChange','Enforcing continuation of iteration')
+          CALL Info(Caller,'Enforcing continuation of iteration')
           Solver % Variable % NonlinConverged = 0
         END IF
       END IF
@@ -8739,27 +8819,7 @@ END FUNCTION SearchNodeL
          'NS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, Change,&
           ' ) :: '// TRIM(SolverName)
     END IF
-    CALL Info( 'ComputeChange', Message, Level=3 )
-
-
-    ! For SteadyState loop the corresponding operations are done within "SolverActivate"
-    ! This is for nonlinear level only.
-    IF(.NOT. SteadyState ) THEN
-      ! The update of exported variables on nonliear level to allow some coupling within
-      !-----------------------------------------------------------------------------------------    
-      IF( ListGetLogical( SolverParams,&
-          'Nonlinear Update Exported Variables',Stat) ) THEN
-        CALL UpdateExportedVariables( Solver )	
-      END IF
-
-      ! Update components depending on the solver solution to allow some nonlinear couplings
-      !-----------------------------------------------------------------------------------------
-      UpdateComponents => ListGetIntegerArray( SolverParams, &
-          'Nonlinear Update Components', Stat )
-      IF( Stat ) THEN
-        CALL UpdateDependentComponents( UpdateComponents )	
-      END IF
-    END IF
+    CALL Info( Caller, Message, Level=3 )
 
 
     ! Optional a posteriori scaling for the computed fields
@@ -8777,17 +8837,17 @@ END FUNCTION SearchNodeL
     END IF
     IF( DoIt ) THEN
       IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('ComputeChange','Setting average value not implemented in parallel!')
+        CALL Fatal(Caller,'Setting average value not implemented in parallel!')
       END IF
       Ctarget = ListGetCReal( SolverParams,'Average Solution Value',Stat)      
       str = ListGetString( SolverParams,'Average Solution Weight Variable',Stat)
       IF( Stat ) THEN
         WeightVar => VariableGet( Solver % Mesh % Variables, str )
         IF( .NOT. ASSOCIATED( WeightVar ) ) THEN
-          CALL Fatal('ComputeChange','> Average Solution Weight < missing: '//TRIM(str))
+          CALL Fatal(Caller,'> Average Solution Weight < missing: '//TRIM(str))
         END IF
         IF( SIZE(x) /= SIZE(WeightVar % Values ) ) THEN
-          CALL Fatal('ComputeChange','Field and weight size mismatch: '//TRIM(str))          
+          CALL Fatal(Caller,'Field and weight size mismatch: '//TRIM(str))          
         END IF
         Ctarget = Ctarget - SUM( WeightVar % Values * x ) / SUM( WeightVar % Values )
       ELSE
@@ -8796,56 +8856,42 @@ END FUNCTION SearchNodeL
       x = x + Ctarget
     END IF
 
-    ! Compute derivative of solution with time i.e. velocity 
-    ! For 2nd order schemes there is direct pointer to the velocity component
-    ! Thus only 1st order schemes need to be computed.
-    IF( Solver % TimeOrder == 1) THEN
-      DoIt = .FALSE.
-      IF( SteadyState ) THEN
-        DoIt = ListGetLogical( SolverParams,'Calculate Velocity',Stat)
-      ELSE
-        DoIt = ListGetLogical( SolverParams,'Nonlinear Calculate Velocity',Stat)
-      END IF
-      IF( DoIt ) THEN
-        TimestepVar => VariableGet( Solver % Mesh % Variables, 'timestep size' )
-        dt = TimestepVar % Values(1) 
-        str = TRIM( Solver % Variable % Name ) // ' Velocity'
-        VeloVar => VariableGet( Solver % Mesh % Variables, str )        
-        VeloVar % Values = (x - Solver % Variable % PrevValues(:,1)) / dt
-      END IF
-    END IF
-    
 
     ! Calculate derivative a.k.a. sensitivity
     IF( SteadyState ) THEN
-
       IF( ListGetLogical( SolverParams,'Calculate Derivative',Stat) ) THEN
+        iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
+        IterNo = NINT( iterVar % Values(1) )
 
         IF( IterNo > 1 ) THEN
-          TimestepVar => VariableGet( Solver % Mesh % Variables, 'derivative eps' )
-          IF( ASSOCIATED( TimestepVar ) ) THEN
-            eps = TimestepVar % Values(1)
+          dtVar => VariableGet( Solver % Mesh % Variables, 'derivative eps' )
+          IF( ASSOCIATED( dtVar ) ) THEN
+            eps = dtVar % Values(1)
             Stat = .TRUE.
           ELSE
             eps = ListGetCReal( SolverParams,'derivative eps',Stat)
           END IF
           IF(.NOT. Stat) THEN
-            CALL Warn('ComputeChange','Derivative Eps not given, using one')
+            CALL Warn(Caller,'Derivative Eps not given, using one')
             Eps = 1.0_dp
           END IF
 
           str = TRIM( Solver % Variable % Name ) // ' Derivative'
           VeloVar => VariableGet( Solver % Mesh % Variables, str )
           IF( ASSOCIATED( VeloVar ) ) THEN
-            CALL Info('ComputeChange','Computing variable:'//TRIM(str))
+            CALL Info(Caller,'Computing variable:'//TRIM(str))
             VeloVar % Values = (x - x0) / eps
           ELSE
-            CALL Warn('ComputeChange','Derivative variable not present')
+            CALL Warn(Caller,'Derivative variable not present')
           END IF
         END IF
       END IF
     END IF
-
+    
+    IF(.NOT. SteadyState ) THEN    
+      CALL UpdateDependentObjects( Solver, .FALSE. )        
+    END IF
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE ComputeChange
 !------------------------------------------------------------------------------
