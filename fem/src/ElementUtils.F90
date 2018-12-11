@@ -482,6 +482,9 @@ CONTAINS
                 IF( Left % NodeIndexes(i) == Right % NodeIndexes(j) ) THEN
                   k2 = ReOrder( Right % DgIndexes(j) )
                   IF( k1 /= k2 ) THEN
+                    IF( IndirectPairs(k1) > 0 .AND. IndirectPairs(k1) /= k2 ) THEN
+                      PRINT *,'Problematic node:',k1,IndirectPairs(k1),k2
+                    END IF
                     IndirectPairs( k1 ) = k2
                     EXIT
                   END IF
