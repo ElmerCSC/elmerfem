@@ -1971,7 +1971,7 @@ END INTERFACE
            AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
                'Adaptive Time Error', GotIt )       
            IF ( .NOT. GotIt ) THEN 
-             CALL Fatal('ElmerSolver','Adaptive Time Limit must be given for ' // &
+             CALL Fatal('ElmerSolver','Adaptive Time Error must be given for ' // &
                  'adaptive stepping scheme.')
            END IF
            AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
