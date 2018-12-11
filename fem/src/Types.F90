@@ -422,7 +422,7 @@ END INTERFACE
 
 #ifdef HAVE_LUA
      LOGICAL :: LuaFun = .FALSE.
-     CHARACTER(len=:), ALLOCATABLE :: LuaCmd
+     !CHARACTER(len=:), ALLOCATABLE :: LuaCmd
 #endif
      
    END TYPE ValueListEntry_t
