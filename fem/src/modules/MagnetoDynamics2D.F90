@@ -99,8 +99,9 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation ) ! {{{
                NEWX(:), NEWY(:), POT(:)
 
   TYPE(Mesh_t),   POINTER :: Mesh
-
-  LOGICAL :: NewtonRaphson = .FALSE., CSymmetry
+  TYPE(ValueList_t), POINTER :: SolverParams
+  
+  LOGICAL :: NewtonRaphson = .FALSE., CSymmetry, SkipDegenerate
   INTEGER :: CoupledIter
   TYPE(Variable_t), POINTER :: IterV, CoordVar
 
@@ -119,14 +120,18 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation ) ! {{{
   ! --------------------------------------------------------------
   NULLIFY(BC)
   Mesh => GetMesh()
-  NewtonRaphson = GetLogical(GetSolverParams(), 'Newton-Raphson Iteration', Found)
+  SolverParams => GetSolverParams()
+  
+  NewtonRaphson = GetLogical(SolverParams, 'Newton-Raphson Iteration', Found)
   IF(.NOT. Found) NewtonRaphson = .FALSE.
   IF(GetCoupledIter()>1) NewtonRaphson = .TRUE.
 
-  NonlinIter = GetInteger(GetSolverParams(), &
+  NonlinIter = GetInteger(SolverParams, &
            'Nonlinear System Max Iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
 
+  SkipDegenerate = GetLogical(SolverParams, 'Skip Degenerate Elements',Found ) 
+  
   CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
 
@@ -145,6 +150,10 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation ) ! {{{
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes(Element)
        nd = GetElementNOFDOFs(Element)
+       IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
+         CALL Info('MagnetoDynamics2D','Skipping degenerate element:'//TRIM(I2S(t)),Level=12)
+         CYCLE
+       END IF
        CALL LocalMatrix(Element, n, nd)
     END DO
 !$omp end parallel do
