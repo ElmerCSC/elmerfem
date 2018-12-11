@@ -3681,6 +3681,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
   END DO
 
   ALLOCATE(OwnerPerm(0:Parenv % Pes-1))
+  Ownerperm = -1
   DO i=1,n
     OwnerPerm(neigh(i))=i
   END DO
@@ -3692,6 +3693,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
     IF( Perm(i) == 0 ) CYCLE
     DO j=1,SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
       owner = ParallelInfo % NeighbourList(i) % Neighbours(j)
+      IF(.NOT. Parenv % Isneighbour(owner+1)) CYCLE
       IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
         owner = OwnerPerm(owner)
         send_size(owner) = send_size(owner) + 1
@@ -3701,7 +3703,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
 
   DO i=1,n
     IF ( send_size(i) > 0 ) &
-        ALLOCATE(send_buf(i) % ind(send_size(i)),send_buf(i) % vec(send_size(i)))
+       ALLOCATE(send_buf(i) % ind(send_size(i)),send_buf(i) % vec(send_size(i)))
   END DO
 
   send_size = 0
@@ -3710,6 +3712,8 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
     IF( k == 0 ) CYCLE
     DO j=1,SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
       owner = ParallelInfo % NeighbourList(i) % Neighbours(j)
+      IF(.NOT. Parenv % Isneighbour(owner+1)) CYCLE
+
       IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
         owner = OwnerPerm(owner)
         send_size(owner) = send_size(owner) + 1
