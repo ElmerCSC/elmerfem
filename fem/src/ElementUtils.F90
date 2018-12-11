@@ -2670,6 +2670,32 @@ CONTAINS
    END FUNCTION ElementArea
 !------------------------------------------------------------------------------
 
+
+   !------------------------------------------------------------------------------
+   !> If element has two of the same indexes regard the element as degenerate.
+   !------------------------------------------------------------------------------
+   FUNCTION DegenerateElement( Element ) RESULT ( Stat ) 
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL Stat
+
+     INTEGER :: i,n
+     INTEGER, POINTER :: Indexes(:)
+     
+     Stat = .FALSE.
+
+     n = Element % TYPE % NumberOfNodes
+     Indexes => Element % NodeIndexes
+     
+     DO i = 1, n
+       IF( ANY( Indexes(i+1:n) == Indexes(i) ) ) THEN
+         Stat = .TRUE.           
+         EXIT
+       END IF
+     END DO
+     
+   END FUNCTION DegenerateElement
+
+   
 END MODULE ElementUtils
 
 !> \} ElmerLib
