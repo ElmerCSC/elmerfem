@@ -3360,13 +3360,12 @@ ELMER_SOLVER_HOME &
 !> Loads the result file that has been saved by an earlier Elmer simulation.
 !> This makes it possible to restart the simulation.
 !------------------------------------------------------------------------------
-  SUBROUTINE LoadRestartFile( RestartFile,TimeCount,Mesh,Continuous,EOF,RestartList, State)
+  SUBROUTINE LoadRestartFile( RestartFile,TimeCount,Mesh,Continuous,EOF,RestartList)
     CHARACTER(LEN=*) :: RestartFile
     INTEGER :: TimeCount
     TYPE(Mesh_T), POINTER :: Mesh
     LOGICAL, OPTIONAL :: Continuous,EOF
     TYPE(ValueList_t), POINTER, OPTIONAL :: RestartList
-    INTEGER, OPTIONAL :: State
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
     CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,FullName,PosName
@@ -3414,24 +3413,13 @@ ELMER_SOLVER_HOME &
     END IF
     
     RestartVariableList = ListCheckPresent( ResList,'Restart Variable 1')
+
     IF( RestartVariableList ) THEN
       CALL Info('LoadRestartFile','Reading only variables given by: Restart Variable i',Level=10)
     ELSE
       CALL Info('LoadRestartFile','Reading all variables (if not wanted use >Restart Variable i< )',Level=10)      
     END IF
 
-    !CHANGE
-    IF(PRESENT(State)) THEN
-      DO i=1, CurrentModel % NumberOfSolvers
-        IF(CurrentModel % Solvers(i) % Variable % Name == 'restartdummy') THEN
-          ResSolver = i
-          RestartSolver => CurrentModel % Solvers(ResSolver)
-          EXIT
-        END IF
-      END DO
-      Params => ListGetSolverParams(RestartSolver)
-    END IF
-    
     Cont = .FALSE.
     IF ( PRESENT( Continuous ) ) Cont = Continuous
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
@@ -3674,18 +3662,8 @@ ELMER_SOLVER_HOME &
         LoadThis = .FALSE.
         k = LEN_TRIM( VarName )
         DO j=1,1000
-          !CHANGE
-          IF(PRESENT(State)) THEN
-            IF(State == 1) VarName2 = ListGetString(Params, &
-                                      'HP Restart Variable '//I2S(j), Found )
-            IF(State == 2) VarName2 = ListGetString(Params, &
-                                      'Channel Restart Variable '//I2S(j), Found )
-            IF(State == 3) VarName2 = ListGetString(Params, &
-                                      'Sheet Restart Variable '//I2S(j), Found )
-          ELSE
-            VarName2 = ListGetString(CurrentModel % Simulation, &
-                       'Restart Variable '//I2S(j), Found )
-          END IF
+          VarName2 = ListGetString(CurrentModel % Simulation, &
+                     'Restart Variable '//I2S(j), Found )
           IF( .NOT. Found ) EXIT
           k2 = LEN_TRIM(VarName2)
 
@@ -4014,7 +3992,6 @@ ELMER_SOLVER_HOME &
       END DO
     END IF
 
-    
     tstop = CPUTime()
     
     WRITE( Message,'(A,ES15.4)') 'Time spent for restart (s): ', tstop - tstart

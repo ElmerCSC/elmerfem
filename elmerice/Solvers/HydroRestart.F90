@@ -62,13 +62,9 @@
 !------------------------------------------------------------------------------
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Solver_t), POINTER :: HydroSolver, ChannelSolver, ThicknessSolver
-     TYPE(Variable_t), POINTER :: Var
      TYPE(ValueList_t), POINTER :: Params
-     LOGICAL :: Gotit, Calving
-     INTEGER :: k, i, ierr, HPSolver, ChanSolver, ThickSolver, State
-     INTEGER, POINTER :: MeshesToRestart(:)
-     INTEGER, TARGET :: DummyMesh(1)
-     REAL(KIND=dp) :: StartTime
+     LOGICAL :: Gotit
+     INTEGER :: k, i, HPSolver, ChanSolver, ThickSolver
      CHARACTER(LEN=MAX_STRING_LEN) :: OutputName, RestartFile
 !------------------------------------------------------------------------------
 
@@ -101,48 +97,31 @@
        !Because all the actual variable output will be on this solver mesh, not
        !on the identical NO meshes defined in the other solvers for
        !initialisation and result output purposes
+       Params => ListGetSolverParams()
        OutputName = TRIM(HydroSolver % Mesh % Name) // '/' // TRIM(RestartFile)
-       DO i=1,3
-         SELECT CASE (i)
-           CASE(1)
-             k = ListGetInteger( CurrentModel % Simulation,'Restart Position',GotIt, &
-                  minv=0 )
-             State = 1
+       k = ListGetInteger( CurrentModel % Simulation,'Restart Position',GotIt, &
+                         minv=0 )
 
-             Mesh => HydroSolver % Mesh
+       IF ( ParEnv % PEs > 1 ) &
+         OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
 
-             IF ( ParEnv % PEs > 1 ) &
-               OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
-             CALL LoadRestartFile( OutputName,k,Mesh,State=State )
+       CALL ListPushNameSpace('hp:')
+       Mesh => HydroSolver % Mesh
+       CALL LoadRestartFile( OutputName,k,Mesh, RestartList = Params )
+       CALL ListPopNameSpace()
 
-           CASE (2)
-             OutputName = TRIM(HydroSolver % Mesh % Name) // '/' // TRIM(RestartFile)
-             k = ListGetInteger( CurrentModel % Simulation,'Restart Position',GotIt, &
-                  minv=0 )
-             State = 2
+       CALL ListPushNameSpace('channel:')
+       Mesh => ChannelSolver % Mesh
+       CALL LoadRestartFile( OutputName,k,Mesh, RestartList = Params )
+       CALL ListPopNameSpace()
 
-             Mesh => ChannelSolver % Mesh
-
-             IF ( ParEnv % PEs > 1 ) &
-               OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
-             CALL LoadRestartFile( OutputName,k,Mesh,State=State )
-
-           CASE(3)
-             OutputName = TRIM(HydroSolver % Mesh % Name) // '/' // TRIM(RestartFile)
-             k = ListGetInteger( CurrentModel % Simulation,'Restart Position',GotIt, &
-                  minv=0 )
-             State = 3
-
-             Mesh => ThicknessSolver % Mesh
-
-             IF ( ParEnv % PEs > 1 ) &
-               OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
-             CALL LoadRestartFile( OutputName,k,Mesh,State=State )
-
-         END SELECT
-       END DO
+       CALL ListPushNameSpace('sheet:')
+       Mesh => ThicknessSolver % Mesh
+       CALL LoadRestartFile( OutputName,k,Mesh, RestartList = Params )
+       CALL ListPopNameSpace()
+  
      END IF
-     NULLIFY(HydroSolver, ChannelSolver, ThicknessSolver, Mesh, Var)
+     NULLIFY(HydroSolver, ChannelSolver, ThicknessSolver, Mesh, Params)
 !------------------------------------------------------------------------------
    END SUBROUTINE HydroRestart
 !------------------------------------------------------------------------------
