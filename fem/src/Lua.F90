@@ -227,7 +227,7 @@ end function
 function lua_tolstring(L, n, slen) result(sp)
   type(c_ptr) :: L
   integer(kind=c_int) :: n
-  character(kind=c_char, len=:), pointer :: sp
+  character(kind=c_char), pointer :: sp
 
   character(kind=c_char, len=:), allocatable :: s
   type(c_ptr) :: c_s
@@ -240,7 +240,7 @@ end function
 function luaL_checkstring(L, n, slen) result(sp)
   type(c_ptr) :: L
   integer(kind=c_int) :: n
-  character(kind=c_char, len=:), pointer :: sp
+  character(kind=c_char), pointer :: sp
 
   character(kind=c_char, len=:), allocatable :: s
   type(c_ptr) :: c_s
