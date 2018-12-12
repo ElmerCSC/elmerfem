@@ -108,7 +108,7 @@ MODULE StressLocal
 
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: ndim
-     LOGICAL :: Found, Incompressible
+     LOGICAL :: Found, Incompressible, MaxwellMaterial
      REAL(KIND=dp) :: Pres, Pres0
      REAL(KIND=dp) :: PSOL(4,32), SOL(4,32), ShearModulus, Viscosity, PrevStress(3,3)
 !------------------------------------------------------------------------------
@@ -163,8 +163,13 @@ MODULE StressLocal
      N_Integ =  IntegStuff % n
 
      Mesh => GetMesh()
-     ve_stress => variableget( Mesh % Variables, 've_stress' )
-     IF( ASSOCIATED(ve_Stress) ) THEN
+     MaxwellMaterial = GetLogical( GetMaterial(), 'Maxwell material', Found )
+     IF( MaxwellMaterial ) THEN
+       ve_stress => variableget( Mesh % Variables, 've_stress' )
+       IF(.NOT.ASSOCIATED(ve_stress)) THEN
+         CALL Fatal( 'StressCompose', '"Maxwell material" set, but no storage space for stresses present?' )
+       END IF
+
        i = Element % ElementIndex
        j = ve_stress % Perm( i+1 ) - ve_stress % Perm ( i )
        IF( IntegStuff % n /= j ) THEN
@@ -377,7 +382,7 @@ MODULE StressLocal
          END SELECT
        END IF
 
-       IF(ASSOCIATED(ve_stress)) THEN
+       IF(MaxwellMaterial) THEN
          Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
          xPhi = ViscoElasticLoad( ve_stress, t, StressLoad )
          NeedPreStress = .TRUE.
@@ -583,9 +588,9 @@ MODULE StressLocal
       END DO
     END IF
 
-    DAMP  = ( DAMP  + TRANSPOSE(DAMP) )  / 2.0d0
-    MASS  = ( MASS  + TRANSPOSE(MASS) )  / 2.0d0
-    STIFF = ( STIFF + TRANSPOSE(STIFF) ) / 2.0d0
+    DAMP  = ( DAMP  + TRANSPOSE(DAMP) )  / 2.0_dp
+    MASS  = ( MASS  + TRANSPOSE(MASS) )  / 2.0_dp
+    STIFF = ( STIFF + TRANSPOSE(STIFF) ) / 2.0_dp
 
     IF( RayleighDamping ) THEN
         DAMP = RayleighAlpha(1) * MASS + RayleighBeta(1) * STIFF
@@ -953,9 +958,9 @@ CONTAINS
                     Tangent(3), Tangent2(3), Vect(3), Vect2(3), Stress(3,3), Tf(3,3)
    REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
 
-   INTEGER :: i,j,k,l,q,p,t,ii,jj,kk,dim,N_Integ
+   INTEGER :: i,j,k,l,q,p,t,ii,jj,kk,dim,N_Integ, ndim
 
-   LOGICAL :: stat, Csymm
+   LOGICAL :: stat, Csymm, Incompressible
 
    TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 !------------------------------------------------------------------------------
@@ -963,6 +968,13 @@ CONTAINS
    dim = CoordinateSystemDimension()
    Csymm = CurrentCoordinateSystem() == AxisSymmetric .OR. &
            CurrentCoordinateSystem() == CylindricSymmetric
+
+   Incompressible = GetLogical( GetSolverParams(), 'Incompressible', stat )
+   IF (Incompressible) THEN
+     ndim = dim+1
+   ELSE
+     ndim = dim
+   END IF
 
    STIFF = 0.0d0
    DAMP  = 0.0d0
@@ -1076,8 +1088,8 @@ CONTAINS
 
              DO ii = 1,dim
                DO jj = 1,dim
-                  k = (p-1)*dim + ii
-                  l = (q-1)*dim + jj
+                  k = (p-1)*ndim + ii
+                  l = (q-1)*ndim + jj
                   DAMP(k,l)  = DAMP(k,l) + s * DampCoeff(i) * &
                      Vect(ii) * Vect(jj) * Basis(q) * Basis(p)
 
@@ -1096,12 +1108,12 @@ CONTAINS
                END DO
              END DO
            ELSE
-              k = (p-1)*dim + i
-              l = (q-1)*dim + i
+              k = (p-1)*ndim + i
+              l = (q-1)*ndim + i
               DAMP(k,l)  = DAMP(k,l)  + s * DampCoeff(i) * Basis(q) * Basis(p)
 
               DO j=1,dim
-                l = (q-1)*dim + j
+                l = (q-1)*ndim + j
                 STIFF(k,l) = STIFF(k,l) + s * SpringCoeff(i,j) * Basis(q) * Basis(p)
               END DO
            END IF
@@ -1122,14 +1134,14 @@ CONTAINS
             END SELECT
 
             DO j=1,dim
-               k = (q-1)*dim + j
+               k = (q-1)*ndim + j
                FORCE(k) = FORCE(k) + &
                    s * Basis(q) * LoadAtIp(i) * Vect(j)
                FORCE_im(k) = FORCE_im(k) + &
                    s * Basis(q) * LoadAtIp_im(i) * Vect(j)
             END DO
          ELSE
-            k = (q-1)*dim + i
+            k = (q-1)*ndim + i
             FORCE(k) = FORCE(k) + s * Basis(q) * LoadAtIp(i)
             FORCE_im(k) = FORCE_im(k) + s * Basis(q) * LoadAtIp_im(i)
          END IF

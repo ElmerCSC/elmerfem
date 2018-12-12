@@ -54,7 +54,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     INTEGER :: dim,i
     TYPE(ValueList_t), POINTER :: SolverParams
     LOGICAL :: Found, CalculateStrains, CalcPrincipalAngle, CalcPrincipalAll, &
-        CalcStressAll
+        CalcStressAll, MaxwellMaterial
 !------------------------------------------------------------------------------
 
     SolverParams => GetSolverParams()
@@ -65,7 +65,17 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       CALL ListAddString( SolverParams, 'Variable', 'Displacement' )
     END IF
 
-    IF( GetLogical(SolverParams, 'Maxwell material', Found ) ) THEN
+    MaxwellMaterial = ListGetLogicalAnyMaterial(Model, 'Maxwell material')
+    IF (.NOT.MaxwellMaterial) THEN
+      MaxwellMaterial = GetLogical(SolverParams, 'Maxwell material', Found )
+      IF( MaxwellMaterial ) THEN
+        DO i=1,Model % NumberOfMaterials
+          CALL ListAddLogical( Model % Materials(i) % Values, 'Maxwell material', .TRUE.)
+        END DO
+      END IF
+    END IF
+
+    IF( MaxwellMaterial ) THEN
       CALL ListAddString(SolverParams, 'Timestepping Method', 'BDF' )
       CALL ListAddInteger(SolverParams, 'BDF Order', 2 )
       CALL ListAddInteger(SolverParams, 'Time derivative Order', 1)
@@ -1025,7 +1035,7 @@ CONTAINS
            'Youngs Modulus', Material, n, NodeIndexes )
 
        PoissonRatio = 0.0d0
-       IF ( Isotropic(1) )  PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
+       IF ( .NOT.Incompressible .AND. Isotropic(1) )  PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
 
        IF( GotHeatExp ) THEN
          ReferenceTemperature(1:n) = GetReal(Material, &
