@@ -80,7 +80,7 @@ CONTAINS
   !> info in Mesh % Repartition (defined on elements)
   !> Dual-graph (element connectivity) is determined based on shared faces(3D)/edges(2D)
   !-------------------------------------------------------------------------------------
-  SUBROUTINE Zoltan_Interface( Model, Mesh )
+  SUBROUTINE Zoltan_Interface( Model, Mesh, SerialMode )
 
     USE MeshUtils
 
@@ -92,13 +92,14 @@ CONTAINS
 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, OPTIONAL :: SerialMode
     !------------------------
 
 #ifdef HAVE_ZOLTAN
     TYPE(Element_t), POINTER :: Element
     TYPE(Graph_t) :: LocalGraph
     REAL(KIND=dp) :: t1,t2
-    INTEGER :: i,j,k,l,m,ierr,NNodes,NBulk,counter,DIM,&
+    INTEGER :: i,j,k,l,m,n,ierr,NNodes,NBulk,counter,DIM,&
          max_elemno
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
@@ -112,7 +113,7 @@ CONTAINS
     INTEGER(Zoltan_INT),DIMENSION(:), POINTER :: importGlobalGids, importLocalGids, importProcs, &
          importToPart,exportGlobalGids,exportLocalGids, exportProcs, exportToPart
     REAL(Zoltan_FLOAT) :: version
-    LOGICAL :: changes,Debug
+    LOGICAL :: changes,Debug,Serial,Found
 
     TYPE ElemTable_t
        INTEGER :: counter=0
@@ -121,6 +122,17 @@ CONTAINS
     TYPE(ElemTable_t),ALLOCATABLE :: NodeElems(:),ElemElems(:)
 
     TYPE(ValueList_t), POINTER :: PartParams
+    TYPE(ValueListEntry_t), POINTER :: ptr
+    INTEGER :: ncopy
+ 
+    
+    CALL Info(FuncName,'Calling Zoltan for mesh partitioning',Level=8)
+
+    IF( PRESENT( SerialMode ) ) THEN
+      Serial = SerialMode
+    ELSE
+      Serial = ( ParEnv % PEs == 1 )
+    END IF
       
     PartParams => Model % Simulation
       
@@ -136,68 +148,70 @@ CONTAINS
 
     NULLIFY(zz_obj)
 
-    zz_obj => Zoltan_Create(ELMER_COMM_WORLD)
+    ! Initialize zoltan for partitioning
+    IF( Serial ) THEN
+      zz_obj => Zoltan_Create(MPI_COMM_SELF)
+    ELSE
+      zz_obj => Zoltan_Create(ELMER_COMM_WORLD)
+    END IF
 
-    zierr = Zoltan_Set_Param(zz_obj, "LB_METHOD", "GRAPH")
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan param LB_METHOD")
-    zierr = Zoltan_Set_Param(zz_obj, "LB_APPROACH", "REFINE") !REPARTITION/REFINE <- faster
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: LB_APPROACH")
-    zierr = Zoltan_Set_Param(zz_obj, "GRAPH_PACKAGE", "PHG")
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: GRAPH_PACKAGE")
-    zierr = Zoltan_Set_Param(zz_obj, "NUM_GID_ENTRIES", "1")
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: NUM_GID_ENTRIES")
-    zierr = Zoltan_Set_Param(zz_obj, "NUM_LID_ENTRIES", "1")
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: NUM_LID_ENTRIES")
-    zierr = Zoltan_Set_Param(zz_obj, "RETURN_LISTS", "ALL") !TODO - we only use export list
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: RETURN_LISTS")
-    zierr = Zoltan_Set_Param(zz_obj, "OBJ_WEIGHT_DIM", "0")
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: OBJ_WEIGHT_DIM")
-    zierr = Zoltan_Set_Param(zz_obj, "EDGE_WEIGHT_DIM", "0")
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: EDGE_WEIGHT_DIM")
-    zierr = Zoltan_Set_Param(zz_obj, "DEBUG_LEVEL", "0")
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: DEBUG_LEVEL")
-    zierr = Zoltan_Set_Param(zz_obj, "CHECK_GRAPH", "0")
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: CHECK_GRAPH")
-    zierr = Zoltan_Set_Param(zz_obj, "PHG_MULTILEVEL", "1")
-    IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: PHG_MULTILEVEL")
+    ! Set default values for keywords, if not given
+    CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
+    CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
+    CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
+    CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
+    CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
+    CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
+    CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
+    CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
+    CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
+    CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
 
-
-    BLOCK
-      TYPE(ValueListEntry_t), POINTER :: ptr
-      INTEGER :: k, l, n, ncopy
-
-      ncopy = 0
-
-      ! Find the keyword from the 1st list 
-      Ptr => PartParams % Head
-      DO WHILE( ASSOCIATED(ptr) )
-        n = ptr % NameLen
-        k = 7 ! as for 'zoltan:'
-        IF( n > k ) THEN
-          IF( ptr % Name(1:k) == 'zoltan:' ) THEN
-            l = k+1
-            ! Remove the extra blanco after prefix if present
-            ! Here we just assume one possible blanco as that is most often the case
-            IF( ptr % Name(l:l) == ' ') l = l+1
-
-            zierr = Zoltan_Set_Param(zz_obj,ptr % Name(l:n),ptr % Cvalue )
-            IF(zierr /= 0) CALL Fatal(FuncName,'Unable to set Zoltan Parameter: '//TRIM(ptr % Name(l:n)))
-
-            CALL Info(FuncName,'Transferred prefix keyword to zoltan: '//TRIM(ptr % Name(l:n)),Level=12)
-            ncopy = ncopy + 1
-          END IF
-        END IF
-        ptr => ptr % Next
-      END DO
-
-      IF( ncopy > 0 ) THEN
-        CALL Info(FuncName,&
-            'Copied '//TRIM(I2S(ncopy))//' keywords to zoltan library',Level=6)
+    ! The settings for serial vs. parallel operation differ slightly
+    IF( Serial ) THEN
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach","partition")  
+      n = ParEnv % PEs
+      IF( n == 1 ) THEN
+        n = ListGetInteger( PartParams,'Number Of Partitions',Found ) 
+        IF( n <= 1 ) CALL Fatal(FuncName,'Number of partitions should be at least 2!')
       END IF
-    END BLOCK
+      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(n)))  
+    ELSE
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach","refine")  !repartition/refine <- faster
+    END IF
       
+    ! Pass keyword with prefix 'zoltan:' from the value list to zoltan
+    Ptr => PartParams % Head
+    ncopy = 0
+    DO WHILE( ASSOCIATED(ptr) )
+      n = ptr % NameLen
+      k = 7 ! as for 'zoltan:'
+      IF( n > k ) THEN
+        IF( ptr % Name(1:k) == 'zoltan:' ) THEN
+          l = k+1
+          ! Remove the extra blanco after prefix if present
+          DO WHILE( ptr % Name(l:l) == ' ')
+            l = l+1
+          END DO
 
-    
+          zierr = Zoltan_Set_Param(zz_obj,ptr % Name(l:n),ptr % Cvalue )
+          IF(zierr /= 0) THEN
+            CALL Fatal(FuncName,'Unable to set Zoltan Parameter: '//TRIM(ptr % Name(l:n)))
+          ELSE
+            CALL Info(FuncName,'Succesfully set Zoltan parameter: '&
+                //TRIM(ptr % Name(l:n))//' to '//TRIM(ptr % CValue),Level=8)
+          END IF
+
+          CALL Info(FuncName,'Transferred prefix keyword to zoltan: '//TRIM(ptr % Name(l:n)),Level=12)
+          ncopy = ncopy + 1
+        END IF
+      END IF
+      ptr => ptr % Next
+    END DO
+    IF( ncopy > 0 ) THEN
+      CALL Info(FuncName,'Succefully set '//TRIM(I2S(ncopy))//' keywords in zoltan library',Level=6)
+    END IF
+        
     !Callback functions to query number of elements and the element data
     zierr = Zoltan_Set_Fn(zz_obj, ZOLTAN_NUM_OBJ_FN_TYPE,zoltNumObjs)
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan element count callback.")
@@ -225,7 +239,7 @@ CONTAINS
     ! ZOLTAN_OBJ_SIZE_MULTI_FN or ZOLTAN_OBJ_SIZE_FN  - Optional for LB_APPROACH=Repartition.
     ! ZOLTAN_PART_MULTI_FN or ZOLTAN_PART_FN - Optional for LB_APPROACH=Repartition and for REMAP=1. 
 
-    IF( .TRUE. ) THEN    
+    IF( Serial ) THEN          
       CALL LocalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
     ELSE
       CALL GlobalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
@@ -234,22 +248,28 @@ CONTAINS
     numGidEntries = 1
     numLidEntries = 1
 
+    CALL Info(FuncName,'Going into Zoltan partitioning',Level=12)
     zierr = Zoltan_LB_Partition(zz_obj, changes, numGidEntries, numLidEntries, &
          numImport, importGlobalGids, importLocalGids, importProcs, importToPart, &
          numExport, exportGlobalGids, exportLocalGids, exportProcs, exportToPart)
     IF(zierr /= 0) CALL Fatal(FuncName,"Error computing partitioning in Zoltan")
 
-    !Put the information in Mesh % Repartition - boundary elems will follow bulks (thanks Peter!)
+    
+    ! Put the information in Mesh % Repartition - boundary elems will follow bulks (thanks Peter!)
     IF(ASSOCIATED(Mesh % Repartition)) DEALLOCATE(Mesh % Repartition)
     ALLOCATE(Mesh % Repartition(NBulk))
     Mesh % Repartition = ParEnv % MyPE + 1 !default stay on this proc
-
+    
     DO i=1,numExport
       IF(exportLocalGids(i) > NBulk .OR. exportLocalGids(i) <= 0) &
-           CALL Fatal(FuncName, "Bad local ID")
-      Mesh % Repartition(exportLocalGids(i)) = exportProcs(i) + 1
+          CALL Fatal(FuncName, "Bad local ID")
+      IF( Serial ) THEN        
+        Mesh % Repartition(exportLocalGids(i)) = exportToPart(i) + 1
+      ELSE
+        Mesh % Repartition(exportLocalGids(i)) = exportProcs(i) + 1
+      END IF
     END DO
-    
+      
   CONTAINS
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -266,7 +286,7 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       zoltNumObjs = NBulk
       ierr = ZOLTAN_OK
-      PRINT *,ParEnv % MyPE,' nbulk: ',zoltNumObjs
+      !PRINT *,'zoltNumObjs:',ParEnv % MyPE, zoltNumObjs
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     END FUNCTION zoltNumObjs
@@ -293,13 +313,16 @@ CONTAINS
 
       ! local declarations
       integer :: i
-
+      
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       do i= 1, NBulk
-        global_ids(i) = Mesh % Elements(i) % GElementIndex
+!        global_ids(i) = Mesh % Elements(i) % GElementIndex
+        global_ids(i) = Mesh % Elements(i) % ElementIndex
         local_ids(i) = i
       end do
 
+      !PRINT *,'zoltGetObjs:',ParEnv % MyPe, NBulk, MINVAL( local_ids(1:Nbulk)), MAXVAL( local_ids(1:NBulk))
+      
       ierr = ZOLTAN_OK
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -315,7 +338,7 @@ CONTAINS
 
       zoltNumEdges = (ElemStart(local_id+1) - ElemStart(local_id))
 
-      ! PRINT *,parenv % mype,' debug ',local_id,ParElemMap(local_id),' num edges: ',zoltNumEdges
+      !PRINT *,'zoltNumbEdges:',parenv % mype,local_id,ElemStart(local_id),zoltNumEdges
       ierr = 0
     END FUNCTION zoltNumEdges
 
@@ -345,6 +368,8 @@ CONTAINS
         nbor_procs(i) = ElemAdjProc(k)
       END DO
 
+      !PRINT *,'zoltGetEdgeList:',parenv % mype, local_id, nlocal
+            
     END SUBROUTINE ZoltGetEdgeList
 
 #else
@@ -576,7 +601,7 @@ CONTAINS
 
 
 
-  !> As the previous routine exept without communication.
+  !> As the previous routine exept intended for serial meshes without need for communication.
   !---------------------------------------------------------------------------------------------
   SUBROUTINE LocalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
     TYPE(Mesh_t), POINTER :: Mesh
@@ -586,16 +611,13 @@ CONTAINS
     TYPE(Element_t), POINTER :: MFacePtr(:), Element
     INTEGER :: i,j,k,m,n,max_elfaces,el1,el2,gface_id, gpar_id,gpar_lid,ierr,counter,&
          NBulk,NFaces,Sweep,NIFFaces
-    INTEGER, ALLOCATABLE :: ElemConn(:,:), ElemConnPart(:,:), NElConn(:), FaceIFIDX(:),status(:),&
+    INTEGER, ALLOCATABLE :: ElemConn(:,:), ElemConnPart(:,:), NElConn(:), status(:),&
          work_int(:)
     INTEGER, POINTER :: ElFaceIdx(:)
     TYPE(NeighbourList_t), POINTER :: MFaceIFList(:)
     LOGICAL, POINTER :: MFaceIF(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="LocalElemAdjacency"
 
-
-    PRINT *,'DIM:',ParEnv % MyPE, Mesh % NumberOfBulkElements
-    
     NBulk = Mesh % NumberOfBulkElements
     IF( NBulk == 0 ) RETURN
     
@@ -617,13 +639,16 @@ CONTAINS
     max_elfaces = 0
     DO i=1,NBulk
       Element => Mesh % Elements(i)
-      max_elfaces = MAX(Element % TYPE % NumberOfFaces, max_elfaces)
+      IF( dim == 3 ) THEN
+        max_elfaces = MAX(Element % TYPE % NumberOfFaces, max_elfaces)
+      ELSE        
+        max_elfaces = MAX(Element % TYPE % NumberOfEdges, max_elfaces)
+      END IF
     END DO
-
-    ALLOCATE(FaceIFIDX(COUNT(MFaceIF)), &
-         ElemConn(max_elfaces,NBulk), &
-         ElemConnPart(max_elfaces,NBulk), &
-         NElConn(NBulk))
+    
+    ALLOCATE(ElemConn(max_elfaces,NBulk), &
+        ElemConnPart(max_elfaces,NBulk), &
+        NElConn(NBulk))
     ElemConn = 0
     NElConn = 0
 
@@ -633,9 +658,12 @@ CONTAINS
       !Populate the local graph using non-interface faces
       IF(.NOT. ASSOCIATED(MFacePtr(i) % BoundaryInfo % Left) .OR. &
           .NOT. ASSOCIATED(MFacePtr(i) % BoundaryInfo % Right)) CYCLE
+      
+      counter = counter + 1
+
       el1 = MFacePtr(i) % BoundaryInfo % Left % ElementIndex
       el2 = MFacePtr(i) % BoundaryInfo % Right % ElementIndex
-      
+            
       NElConn(el1) = NElConn(el1) + 1
       ElemConn(NElConn(el1),el1) = MFacePtr(i) % BoundaryInfo % Right % ElementIndex
       ElemConnPart(NElConn(el1),el1) = ParEnv % MyPE
@@ -644,8 +672,7 @@ CONTAINS
       ElemConn(NElConn(el2),el2) = MFacePtr(i) % BoundaryInfo % Left % ElementIndex
       ElemConnPart(NElConn(el2),el2) = Parenv % MyPE
     END DO
-    NIFFaces = counter
-
+    
     IF(ANY(NElConn == 0)) CALL Warn(FuncName, 'Disconnected bulk element.')
     
     !Put the data into CRS format
@@ -2678,9 +2705,6 @@ CONTAINS
           PRINT *,'j out of bounds:',ParEnv % MyPe, i, j
         END IF
       END DO
-
-      PRINT *,'GlobalToLocalElem:',ParEnv % MyPe, newnbulk, minelem, maxelem, &
-          COUNT( GlobalToLocalElem(minelem:maxelem) > 0 )
       
       ! Then use the temporal vectors to repoint the left and right indexes to elements
       DO i = newnbulk+1, newnbulk + newnbdry
@@ -3522,9 +3546,8 @@ CONTAINS
        
       INTEGER :: SetNo
       LOGICAL :: IsBoundary 
-      TYPE(ValueList_t), POINTER :: LocalParams 
+      TYPE(ValueList_t), POINTER :: LocalParams       
 
-      
       LOGICAL :: BoundaryPart
       CHARACTER(LEN=MAX_NAME_LEN) :: CoordTransform, SetMethod
       LOGICAL :: GotCoordTransform, SetNodes
@@ -3648,7 +3671,10 @@ CONTAINS
           
         CASE( 'zoltan' )
 #ifdef HAVE_ZOLTAN
-          CALL Zoltan_Interface( Model, Mesh )
+          IF( SetNo /= 1 .OR. IsBoundary ) THEN
+            CALL Fatal('PartitionMeshPart','Zoltan interface not applicable to hybrid partitioning!')
+          END IF
+          CALL Zoltan_Interface( Model, Mesh, SerialMode = .TRUE. )
 #else
           CALL Fatal(FuncName,'Partition with Zoltan not available!')
 #endif 
@@ -3689,7 +3715,6 @@ CONTAINS
       IF( allocstat /= 0 ) THEN
         CALL Fatal(FuncName,'Allocation error for NeighbourList')
       END IF
-
 
       DO i=1,n
         NULLIFY( NeighbourList(i) % Neighbours )
