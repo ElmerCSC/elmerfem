@@ -161,7 +161,6 @@ CONTAINS
     CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
     CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
     CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
-    CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
     CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
     CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
     CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
@@ -169,6 +168,7 @@ CONTAINS
 
     ! The settings for serial vs. parallel operation differ slightly
     IF( Serial ) THEN
+      CALL ListAddNewString( PartParams,"zoltan: return_lists","export part")    
       CALL ListAddNewString( PartParams,"zoltan: lb_approach","partition")  
       n = ParEnv % PEs
       IF( n == 1 ) THEN
@@ -177,6 +177,7 @@ CONTAINS
       END IF
       CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(n)))  
     ELSE
+      CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
       CALL ListAddNewString( PartParams,"zoltan: lb_approach","refine")  !repartition/refine <- faster
     END IF
       
