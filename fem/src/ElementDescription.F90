@@ -3761,7 +3761,7 @@ END IF
          ! Compute local first derivatives
          CALL H1Basis_dTriangleNodalP(ncl, uWrk, vWrk, nbmax, dBasisdxWrk, nbdxp)
 
-         IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+         IF (ASSOCIATED( Element % EdgeIndexes)) THEN
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
@@ -3770,7 +3770,7 @@ END IF
            END IF
 
            ! Compute basis function values
-           IF (EdgeMaxDegree > 1) THEN
+           IF (EdgeMaxDegree > 1 .AND. nbmax>=nbp+SUM(EdgeDegree(1:3))) THEN
              CALL H1Basis_TriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, BasisWrk, &
                    nbp, EdgeDirection)
              CALL H1Basis_dTriangleEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, dBasisdxWrk, &
@@ -3821,7 +3821,7 @@ END IF
            END IF
 
            ! Compute basis function values
-           IF (EdgeMaxDegree > 1) THEN
+           IF (EdgeMaxDegree > 1 .AND. nbmax>=nbp+SUM(EdgeDegree(1:4))) THEN
              CALL H1Basis_QuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
                    EdgeDirection)
              CALL H1Basis_dQuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
@@ -3891,7 +3891,7 @@ END IF
            END IF
 
            ! Compute basis function values
-           IF (EdgeMaxDegree > 1) THEN
+           IF (EdgeMaxDegree > 1 .AND. nbmax>=nbp+SUM(EdgeDegree(1:6))) THEN
              CALL H1Basis_TetraEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
                    EdgeDirection)
              CALL H1Basis_dTetraEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
@@ -3932,7 +3932,7 @@ END IF
            END IF
 
            ! Compute basis function values
-           IF (FaceMaxDegree > 1) THEN
+           IF (FaceMaxDegree > 1 .AND. nbmax>=nbp+SUM(FaceDegree(1:4))) THEN
              CALL H1Basis_TetraFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
                    FaceDirection)
              CALL H1Basis_dTetraFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
@@ -4098,7 +4098,7 @@ END BLOCK
            END IF
 
            ! Compute basis function values
-           IF (EdgeMaxDegree > 1) THEN
+           IF (EdgeMaxDegree > 1 .AND. nbmax>=nbp+SUM(EdgeDegree(1:9))) THEN
              CALL H1Basis_WedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
                    EdgeDirection)
              CALL H1Basis_dWedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
@@ -4115,7 +4115,7 @@ END BLOCK
            END IF
 
            ! Compute basis function values
-           IF (FaceMaxDegree > 1) THEN
+           IF (FaceMaxDegree > 1 .AND. nbmax>=nbp+SUM(FaceDegree(1:5))) THEN
              CALL H1Basis_WedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
                    FaceDirection)
              CALL H1Basis_dWedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
@@ -4151,7 +4151,7 @@ END BLOCK
            END IF
 
            ! Compute basis function values
-           IF (EdgeMaxDegree > 1) THEN
+           IF (EdgeMaxDegree > 1 .AND. nbmax>=nbp+SUM(EdgeDegree(1:12))) THEN
              CALL H1Basis_BrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
                    EdgeDirection)
              CALL H1Basis_dBrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
@@ -4169,7 +4169,7 @@ END BLOCK
            END IF
 
            ! Compute basis function values
-           IF (FaceMaxDegree > 1) THEN
+           IF (FaceMaxDegree > 1 .AND. nbmax>=nbp+SUM(FaceDegree(1:6))) THEN
              CALL H1Basis_BrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
                    FaceDirection)
              CALL H1Basis_dBrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
