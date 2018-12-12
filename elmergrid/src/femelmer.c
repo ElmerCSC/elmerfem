@@ -5349,7 +5349,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     }
 	
     /* If there is no halo we are done */
-    if(halomode != 1 && halomode != 2 ) continue;
+    if(halomode != 1 && halomode != 2 && halomode != 4) continue;
 
     /* The face can be shared only if there are enough shared nodes among different partitions */
     otherpart = 0;
@@ -5360,7 +5360,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     if(!otherpart) continue;
     
     
-    if( halomode == 1) {
+    if( halomode == 1 ) {
       /* If the saving of halo is requested check it for elements which have at least 
 	 two nodes in shared partitions. First make this quick test. */
       elemsides = elemtype / 100;
@@ -5455,6 +5455,65 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	  }
 	}
       }  
+    }
+    else if( halomode == 4 ) {
+      /* This greedy routine makes the halo even if there is just one node in the shared boundary. */
+     
+      for(j=0;j < nodesd2;j++) {
+	ind = data->topology[i][j];
+	if(neededtimes[ind] == 1) continue;
+
+	for(l=1;l<=neededtimes[ind];l++) {
+	  part2 = data->partitiontable[l][ind];
+
+	  /* We did already save this in partition part */
+	  if(part2 == part) continue;	    
+	  if(part2 < partstart || part2 > partfin) continue;
+
+	  nofile2 = part2 - partstart + 1;
+
+	  /* This element has already been saved for this partition */
+	  if( elementhalo[part2] == i) continue;
+	
+	  /* Remember that this element is saved for this partition */
+	  elementhalo[part2] = i;
+		
+	  if(0) printf("Adding halo for partition %d and element %d\n",part2,i);
+	  halobulkelems += 1;
+	      	   
+	  fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);	      
+	  for(j=0;j < nodesd2;j++) {
+	    ind = data->topology[i][j];
+	    if(reorder) ind = order[ind];
+	    fprintf(outfiles[nofile2],"%d ",ind);
+	  }
+	  fprintf(outfiles[nofile2],"\n");    	    
+	  bulktypes[part2][elemtype] += 1;
+	  elementsinpart[part2] += 1;	
+	
+	  /* Add the halo on-the-fly to the partitiontable of the nodes */	    
+	  for(j=0;j < nodesd2;j++) {
+	    ind = data->topology[i][j];
+	    hit = FALSE;
+	    for(k=1;k<=maxneededtimes;k++) {
+	      part3 = data->partitiontable[k][ind];
+	      if(!part3) break;
+	      if(part3 == part2) hit = TRUE;
+	      if(hit) break;
+	    }
+	    if(!hit) {
+	      if( k > maxneededtimes ) {
+		maxneededtimes++;
+		if(0) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
+		data->partitiontable[k] = Ivector(1,noknots);
+		for(m=1;m<=noknots;m++)
+		  data->partitiontable[k][m] = 0;
+	      }
+	      data->partitiontable[k][ind] = part2;
+	    }
+	  }	
+	}
+      }
     }
     else if( halomode == 2) {
 

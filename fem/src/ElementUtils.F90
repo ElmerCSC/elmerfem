@@ -482,6 +482,9 @@ CONTAINS
                 IF( Left % NodeIndexes(i) == Right % NodeIndexes(j) ) THEN
                   k2 = ReOrder( Right % DgIndexes(j) )
                   IF( k1 /= k2 ) THEN
+                    IF( IndirectPairs(k1) > 0 .AND. IndirectPairs(k1) /= k2 ) THEN
+                      PRINT *,'Problematic node:',k1,IndirectPairs(k1),k2
+                    END IF
                     IndirectPairs( k1 ) = k2
                     EXIT
                   END IF
@@ -2667,6 +2670,32 @@ CONTAINS
    END FUNCTION ElementArea
 !------------------------------------------------------------------------------
 
+
+   !------------------------------------------------------------------------------
+   !> If element has two of the same indexes regard the element as degenerate.
+   !------------------------------------------------------------------------------
+   FUNCTION DegenerateElement( Element ) RESULT ( Stat ) 
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL Stat
+
+     INTEGER :: i,n
+     INTEGER, POINTER :: Indexes(:)
+     
+     Stat = .FALSE.
+
+     n = Element % TYPE % NumberOfNodes
+     Indexes => Element % NodeIndexes
+     
+     DO i = 1, n
+       IF( ANY( Indexes(i+1:n) == Indexes(i) ) ) THEN
+         Stat = .TRUE.           
+         EXIT
+       END IF
+     END DO
+     
+   END FUNCTION DegenerateElement
+
+   
 END MODULE ElementUtils
 
 !> \} ElmerLib
