@@ -628,7 +628,6 @@ CONTAINS
     IF(DIM == 3) THEN
       CALL FindMeshFaces3D(Mesh)
       CALL FindMeshEdges3D(Mesh)
-      CALL SParFaceNumbering(Mesh)
       MFacePtr => Mesh % Faces
       NFaces = Mesh % NumberOfFaces
     ELSEIF(DIM == 2) THEN
@@ -3094,7 +3093,10 @@ CONTAINS
      END IF
 
      IF( ASSOCIATED( Mesh % RePartition ) ) THEN
-       IF( SIZE( Mesh % RePartition ) < n ) DEALLOCATE( Mesh % RePartition )
+       IF( SIZE( Mesh % RePartition ) < n ) THEN
+         DEALLOCATE(Mesh % RePartition)
+         Mesh % RePartition => Null()
+       END IF
      END IF
 
      IF(.NOT. ASSOCIATED( Mesh % RePartition ) ) THEN
@@ -3102,8 +3104,8 @@ CONTAINS
        IF( allocstat /= 0 ) THEN
          CALL Fatal(FuncName,'Allocation error for repartitioning vector')       
        END IF
-       ElementPart => Mesh % RePartition 
      END IF
+     ElementPart => Mesh % RePartition 
      
      PartitionCand = .FALSE.
      ElementSet = 0
@@ -3118,9 +3120,7 @@ CONTAINS
      ParameterInd = 0
      
      CALL Info(FuncName,'Partitioning the boundary elements sets') 
-
      CALL InitializeBoundaryElementSet(NumberOfBoundarySets)
-
      
      IF( NumberOfBoundarySets > 0 ) THEN
        DO SetNo = 1, NumberOfBoundarySets
