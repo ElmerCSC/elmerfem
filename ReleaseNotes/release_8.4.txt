@@ -5,10 +5,47 @@ Previous release: 8.3
 Period covered: 18 May 2017 - 18 Dec 2018
 Number of commits: ~750 (excluding merges)
 
+These are just the most essential changes.
+You can get a complete listing of commit messages, for example, with:
+git log --since="2017-05-18"  > log.txt
+
+
+Configuration & Compilation
+===========================
+    
+- cmake improvements:
+  o Create pkg-config file `elmer.pc` if cmake variable
+    `CREATE_PKGCONFIG_FILE` is set to true
+  o The `elmer.pc` file is installed under
+    `${CMAKE_INSTALL_PREFIX}/share/pkgconfig` by default. The install path
+    can be changed with cmake variable `PKGCONFIG_PC_PATH`
+  o Improved the way CMake detects and uses BLAS/LAPACK from Intel Math
+    Kernel library. BLAS and LAPACK routines from Intel MKL are now used by default if
+    detected by FindMKL unless BLAS_LIBRARIES and LAPACK_LIBRARIES CMake
+    variables have been set.
+  o Added detection of OpenMP SIMD features within the build
+    system. Added routines for checking the existence and the
+    functionality of the used OMP SIMD -features in the code.
+  o Make suitesparse solver cholmod & spqr usable also when "USE_ISO_C_BIDINGS"
+    true at compile time.
+  o Added global preprocessor macros to allow OpenMP SIMD functionality
+    to be disabled if needed:
+  o Included Elmer/Ice library in elmerf90 command when compiled with
+
+- ctest improvements:
+  o output stdout/stderr if CTEST_OUTPUT_ON_FAILURE=1 env variable is set
+    
+- Dockerfile added to promote easy cross-platform builds of Elmer/Ice (by nwrichmond)
+  o The dockerfile shows the recipe for a Docker image which runs Elmer/Ice in
+    a lightweight Ubuntu Linux environment. This way, anyone can use Elmer/Ice
+    whether they are on a Windows, Mac, or Linux platform - all they need to do
+    is install Docker, then follow the instructions laid out on the Docker Hub
+    description for the Elmer/Ice Docker image:
+    
 
 
 ElmerSolver library functionality
-----------------------------
+=================================
 
 
 Block preconditioning
@@ -88,7 +125,43 @@ Reduced basis DG
   Galerkin method.
 - Also it is more flexible than having the discontinuity created in the mesh.
   There are multiple ways how the bodies can be grouped when creating discontinuities between them.
-    
+
+
+Lua
+---
+- Includes Lua 5.1.5 interpreter inside Elmer codebase under
+  contrib/lua-5.1.5
+- Enabled in compilation with cmake variable `WITH_LUA`.
+  o Setting `USE_SYSTEM_LUA=TRUE` makes cmake look for system Lua.
+  o CMake variables `LUA_LIBRARIES`, `LUA_INCLUDE_DIR` disables cmake
+    from searching Lua.
+- Enables Lua expressions inside sif file in following cases
+  o Inline syntax with `#<lua expression>#` or `#<lua expression>`
+    similarly to matc
+  o Commented sections in main sif file as follows
+      ```
+      !---LUA BEGIN
+      ! <first line of lua code>
+      ! <second line of lua code>
+      ! ...
+      ! <last line of lua code>
+      !---LUA END
+      ```
+    Such code blocks are to be executed prior to reading the rest of
+    the sif-file. Thus, such code blocks are not executed in included
+    files.
+  o Using variable dependent keyword evaluations:
+      ```
+      keyword = variable var_a, var_b, var_c, ..., var_n
+        real lua "expr"
+      tensor keyword (i,j) = variable var_a, var_b, var_c, ..., var_n
+        real lua "expr 1, expr 2, expr 3, ..., expr i*j"
+      ```
+    Here the entries to the `tensor keyword` are given in a row-wise
+    order.
+- Should work in threaded mode too.
+- Includes 2 tests: `Lua` and `KeywordUnitTestLua`
+
 
 Zoltan interface
 ----------------
@@ -121,7 +194,14 @@ EOF library
 -----------
 . Separate library developed by Juris Vencels, see https://eof-library.com/
 - Some of the general developments of Elmer motivated by a streamlined operation for the EOF library,
-  e.g. the improved support for different field types. 
+  e.g. the improved support for different field types.
+
+
+Local assembly vectorization
+----------------------------
+- Add (hopefully) temporary unvectorized p-pyramid to "ElementInfoVec".
+- Added `LinearForms_UdotV` in `LinearForms.F90`
+
 
 Miscallenous
 ------------
@@ -134,7 +214,7 @@ Miscallenous
 
 
 New Solver Modules
----------------
+==================
 
 StatCurrentSolveVec
 -------------------
@@ -192,14 +272,26 @@ Elmer2OpenFOAMIO
 
 
 Enhanced Solver Modules
---------------------
+=======================
 
-WhitneyAVSOlver
+MagnetoDynamics
+---------------
 - Added simple regularization to steady and transient cases
 - Enable tree gauging in parallel runs. The gauge tree is still constructed sequentially,
   but only once in a single run.
 - Option to apply "Gauge Tree" only to non-conducting region.
 - Lorentz velocity term for 3D WhitneyAVHarmonicSolver.
+
+MagnetoDynamics2D
+-----------------
+- Zirka-Moroz hysteresis model for MagnetoDynamics 2D
+  o Zirka, Sergey & Moroz, Y.I. & Harrison, R.G. & Chiesa, Nicola. (2014).
+    Inverse Hysteresis Models for Transient Simulation. Power Delivery, IEEE
+    Transactions on. 29. 552-559. 10.1109/TPWRD.2013.2274530. 
+  o Test cases:
+    * circuits2D_with_hysteresis: 2d test with circuit
+    * circuits2D_with_hysteresis_axi: 2d axisymmetric test with circuit
+    * Zirka: unit test that tries to recover hysteritic BH curve from FE simulation.
 
 
 VectorHelmholtz
@@ -240,7 +332,7 @@ VtuOutputSolver
 
 
 ElmerGrid
---------
+=========
 - Preliminary version of Gmsh version 4 import
 
 - Fixes and enhancements to mesh formats
@@ -255,7 +347,7 @@ ElmerGrid
   o Remove writing of parallel orphan nodes after ElmerSolver communicates Dirichlet nodes
 
 ElmerGUI
--------
+========
 - Add Paraview icon to ElmerGUI (with a permission from Kitware).
 - Add stress computation to ElmerGUI for nonlinear solvers
 - Add xml file for harmonic av solver.
@@ -266,7 +358,7 @@ ElmerGUI
 
 
 MATC
-----
+====
 - add internal function "env" such that in sif files one can use
   str=env("name")
   o The routine makes it possible to pass environmental variables to ElmerSolver
@@ -274,10 +366,15 @@ MATC
 
 
 Acknowledgements
---------------
-Apart from the core Elmer team at CSC git log shows contributions from from 
-Mikko Byckling, Eelis Takala, Joe Todd, Juris Vencels,... (complete the list)
+================
+Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.)
+git log shows contributions from from Mikko Byckling*, Eelis Takala, Fabien Gillet-Chaulet,
+Olivier Gagliardini, Janne Keränen, Joe Todd, Nick Richmond, Juris Vencels, Pavel Ponomarev,
+and Sami Ilvonen.
+
 Additionally there are many ongoing deveopments in several branches
-that have not been merged to this release, and are therefore not covered heere. 
+that have not been merged to this release, and are therefore not covered here. 
+Also sometimes the code has been passed on by the original author by means other than the
+git, and in such cases the names may have been accidentally omitted.
 
-
+The contribution of all developers is greatfully acknowledged. 
