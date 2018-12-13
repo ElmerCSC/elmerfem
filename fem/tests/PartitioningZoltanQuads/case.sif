@@ -25,6 +25,7 @@ Simulation
 
   Partition Mesh = Logical True
   Partitioning Method = String "Zoltan"
+!  Number of Partitions = Integer 8
 End
 
 Constants

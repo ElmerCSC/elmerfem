@@ -100,7 +100,7 @@ CONTAINS
     TYPE(Graph_t) :: LocalGraph
     REAL(KIND=dp) :: t1,t2
     INTEGER :: i,j,k,l,m,n,ierr,NNodes,NBulk,counter,DIM,&
-         max_elemno
+         max_elemno,NoPart
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
@@ -127,21 +127,28 @@ CONTAINS
  
     
     CALL Info(FuncName,'Calling Zoltan for mesh partitioning',Level=8)
+    PartParams => Model % Simulation
 
     IF( PRESENT( SerialMode ) ) THEN
       Serial = SerialMode
     ELSE
       Serial = ( ParEnv % PEs == 1 )
     END IF
-      
-    PartParams => Model % Simulation
-      
+    
+    NoPart = ParEnv % PEs
+    IF( NoPart == 1 ) THEN
+      NoPart = ListGetInteger( PartParams,'Number Of Partitions',Found ) 
+      IF( NoPart <= 1 ) THEN
+        CALL Info(FuncName,'Nothing to do without any partitions requested!')
+        RETURN
+      END IF
+    END IF
+          
     NNodes = Mesh % NumberOfNodes
     NBulk = Mesh % NumberOfBulkElements
     DIM = CoordinateSystemDimension()
 
     IF( dim == 0 ) dim = Mesh % MeshDim
-    if( dim == 0 ) dim = 2
     
     zierr = Zoltan_Initialize(version)
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to initialize Zoltan partitioner")
@@ -170,12 +177,7 @@ CONTAINS
     IF( Serial ) THEN
       CALL ListAddNewString( PartParams,"zoltan: return_lists","export part")    
       CALL ListAddNewString( PartParams,"zoltan: lb_approach","partition")  
-      n = ParEnv % PEs
-      IF( n == 1 ) THEN
-        n = ListGetInteger( PartParams,'Number Of Partitions',Found ) 
-        IF( n <= 1 ) CALL Fatal(FuncName,'Number of partitions should be at least 2!')
-      END IF
-      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(n)))  
+      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(NoPart)))  
     ELSE
       CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
       CALL ListAddNewString( PartParams,"zoltan: lb_approach","refine")  !repartition/refine <- faster
