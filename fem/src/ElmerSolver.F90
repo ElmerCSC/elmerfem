@@ -243,6 +243,9 @@ END INTERFACE
 #ifdef HAVE_LUA
          CALL Info( 'MAIN', ' Lua interpreted linked in.' )
 #endif
+#ifdef HAVE_ZOLTAN
+         CALL Info( 'MAIN', ' Zoltan library linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
