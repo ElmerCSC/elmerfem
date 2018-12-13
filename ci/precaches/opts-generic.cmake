@@ -12,3 +12,4 @@ SET(CREATE_PKGCONFIG_FILE TRUE CACHE BOOL "")
 
 SET(WITH_MPI TRUE CACHE BOOL "")  # TODO: test MPI too (nproc=2)
 SET(MPI_TEST_MAX_PROC 4 CACHE STRING "")
+SET(MPIEXEC_PREFLAGS "--allow-run-as-root" CACHE STRING "Flags to be transmitted to mpiexec in during testing. This assumes openmpi which strongly shuns running as root.")
