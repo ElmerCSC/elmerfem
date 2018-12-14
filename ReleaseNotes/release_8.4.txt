@@ -66,9 +66,9 @@ Block preconditioning
   o Library routines used to create the couping matrices
   o Limited to nodal degrees of freedom
   o Currently assumed linear solvers for the different fields
-  o Test cases exists for a number of combincatins of structure and fluid solvers
+  o Test cases exists for a number of combinations of structure and fluid solvers
   o Structure solver can be linear plate solver, shell solver, or stress solver
-  o Ffluid solver can be Helmholtz solver, for example
+  o Fluid solver can be Helmholtz solver, for example
 
 
 Linear solvers
@@ -203,7 +203,7 @@ Local assembly vectorization
 - Added `LinearForms_UdotV` in `LinearForms.F90`
 
 
-Miscallenous
+Miscellaneous
 ------------
 - Enable _post solver slot for single solvers to have cleaner routines. 
 - Enable > Output Directory < keyword also in Simulation section such that SaveScalars,
@@ -255,7 +255,7 @@ ModelPDEevol
 - Ideal solver as a basis for own developments 
 
 
-OPenFOAM2ElmerIO
+OpenFOAM2ElmerIO
 ----------------
 - A file based coupler for importing fields from OpenFOAM to Elmer.
 - The interpolation is carried out in Elmer using galerkin method with diffusion for regularization.
@@ -273,6 +273,22 @@ Elmer2OpenFOAMIO
 
 Enhanced Solver Modules
 =======================
+
+ElasticSolver
+-------------
+  o a somewhat limited support for giving the material model in the Abaqus 
+    UMAT format has been added
+  o for simple examples see the test cases UMAT_* and a template for the UMAT 
+    subroutine currently contained in the solver code
+  o see also the updated version of the solver documentation (Elmer Models 
+    Manual, Ch 6)
+
+ShellSolver
+-----------
+  o a major revision of the shell solver has been done and it can now handle 
+    geometrically nonlinear problems
+  o see also the updated version of the solver documentation (Elmer Models 
+    Manual, Ch 7)    
 
 MagnetoDynamics
 ---------------
