@@ -57,13 +57,13 @@ Block preconditioning
 
 - Implement new experimental ways to split existing linear system
   o Into Re and Im blocks for complex solvers
-  o Into horizontal and vectical (hor-ver) degrees of freedom for lowest order edge elements
-  o Into cartesian direction for fully cartesian edge element meshes
+  o Into horizontal and vertical (hor-ver) degrees of freedom for lowest order edge elements
+  o Into Cartesian direction for fully Cartesian edge element meshes
   o These might not be fully operational particularly in parallel
   o Constraints dealt as additional blocks
 
 - FSI: Implement ways to combine fluid and structure solvers to form a block matrix
-  o Library routines used to create the couping matrices
+  o Library routines used to create the coupling matrices
   o Limited to nodal degrees of freedom
   o Currently assumed linear solvers for the different fields
   o Test cases exists for a number of combinations of structure and fluid solvers
@@ -73,10 +73,10 @@ Block preconditioning
 
 Linear solvers
 --------------
-- Pseudocomplex gcr implemented to be used mainly in conjucnction of block preconditioners
-- Enable any transient solver to be solved as harmonic when > Hamonic Mode = True < keyword is given.
+- Pseudocomplex gcr implemented to be used mainly in conjunction of block preconditioners
+- Enable any transient solver to be solved as harmonic when > Harmonic Mode = True < keyword is given.
   o Also harmonic field is named for visualization
-  o Can be used in conjuction with block preconditioning
+  o Can be used in conjunction with block preconditioning
 - In Hypre interface adapted during the solution procedure although
   a previously constructed Hypre solver is utilized. This feature depends on
   giving the command Linear System Adaptive Tolerance = True.
@@ -92,14 +92,14 @@ Dirichlet conditions
 --------------------
 - Dirichlet conditions were totally reformulated
   o Separates the detection and assigning of the conditions
-  o Makes many follow-up steps easier, e.g. optiomal scaling of the linear system
-- Some fix for nontrivial bounndary conditions for p-elements
+  o Makes many follow-up steps easier, e.g. optimal scaling of the linear system
+- Some fix for nontrivial boundary conditions for p-elements
 
 
 Non-nodal field types
 ----------------------
 - Better support for different field types
-  o nodal, elemental, dg, ip 
+  o nodal, elemental, DG, ip 
   o New types supported for exported variables
   o ListGetElementalReal operations may depend on these variables types
   o Ip fields may depend on adaptive Gaussian quadratures
@@ -120,7 +120,7 @@ Adaptive quadratures
 
 Reduced basis DG
 ----------------
-- Enable solution of PDEs using "reduced basis dg" where discontinuities are only present between bodies.
+- Enable solution of PDEs using "reduced basis DG" where discontinuities are only present between bodies.
   This allows for a more economical treatment of discontinuities than having a complete discontinuous
   Galerkin method.
 - Also it is more flexible than having the discontinuity created in the mesh.
@@ -178,7 +178,7 @@ MMG interface
 - 3D meshes can be adapted based on user-defined metrics, and domain geometry can be chopped (e.g. fracture events)
   using a level set method. MMG functions are serial only, but routines have been added to isolate subregions of
   the mesh requiring adaptation, reducing overall computational cost.
-- Still under developent. 
+- Still under development. 
 
 
 Internal partitioning
@@ -187,7 +187,7 @@ Internal partitioning
 - Does not deal with halos yet.
 - Either geometric routine, or any routine by Zoltan.
 - Keywords to Zoltan passed by namespace 'zoltan:'
-- Own strategies have limited support for hybrid partitionin
+- Own strategies have limited support for hybrid partitioning
 
 
 EOF library
@@ -219,8 +219,8 @@ New Solver Modules
 StatCurrentSolveVec
 -------------------
 - Modernized version of StatCurrentSolve (not totally similar feature set)
-- Uses ListGetElement keyword fecthes and vectorized assembly routines 
-- New way to compute resisitivity matrix utilizing constrained modes.
+- Uses ListGetElement keyword fetches and vectorized assembly routines 
+- New way to compute resistivity matrix utilizing constrained modes.
 - Farfield conditions where added around origin. 
 - Elemental result fields enabled. 
 
@@ -258,8 +258,8 @@ ModelPDEevol
 OpenFOAM2ElmerIO
 ----------------
 - A file based coupler for importing fields from OpenFOAM to Elmer.
-- The interpolation is carried out in Elmer using galerkin method with diffusion for regularization.
-- Elmer reads the data from fies in OpenFOAM format. 
+- The interpolation is carried out in Elmer using Galerkin method with diffusion for regularization.
+- Elmer reads the data from files in OpenFOAM format. 
 - For optimal performance study the EOF library 
 
 
@@ -307,7 +307,7 @@ MagnetoDynamics2D
   o Test cases:
     * circuits2D_with_hysteresis: 2d test with circuit
     * circuits2D_with_hysteresis_axi: 2d axisymmetric test with circuit
-    * Zirka: unit test that tries to recover hysteritic BH curve from FE simulation.
+    * Zirka: unit test that tries to recover hysteretic BH curve from FE simulation.
 
 
 VectorHelmholtz
@@ -344,7 +344,7 @@ SaveScalars
 VtuOutputSolver
 ---------------
 - Enable saving of elemental and ip fields
-- If Dg type of output is requested ip fields are fitted on-the-fly solving a small linear system
+- If DG type of output is requested ip fields are fitted on-the-fly solving a small linear system
 
 
 ElmerGrid
@@ -388,9 +388,9 @@ git log shows contributions from from Mikko Byckling*, Eelis Takala, Fabien Gill
 Olivier Gagliardini, Janne Keränen, Joe Todd, Nick Richmond, Juris Vencels, Pavel Ponomarev,
 and Sami Ilvonen.
 
-Additionally there are many ongoing deveopments in several branches
+Additionally there are many ongoing developments in several branches
 that have not been merged to this release, and are therefore not covered here. 
 Also sometimes the code has been passed on by the original author by means other than the
 git, and in such cases the names may have been accidentally omitted.
 
-The contribution of all developers is greatfully acknowledged. 
+The contribution of all developers is gratefully acknowledged. 
