@@ -449,8 +449,6 @@ CONTAINS
           CALL MPI_RECV( buf,sz,MPI_INTEGER,proc,20001,ELMER_COMM_WORLD,status,ierr)
           DO j=1,sz,2
             IF ( buf(j+1)>0 ) THEN
-!             k = SearchNode( ParallelInfo, buf(j), Order=SourceMatrix % Perm )
-!XYXY
               k = SearchNode( ParallelInfo, buf(j), Order = ParallelInfo % Gorder )
               IF ( k>0  ) THEN
                 sz = SIZE(ParallelInfo % NeighbourList(k) % Neighbours)
@@ -467,16 +465,17 @@ CONTAINS
         END IF
       END DO
 
-      DO i=1,SIZE(SourceMatrix % Perm)
-        ii = SourceMatrix % Perm(i)
+      DO ii=1,SourceMatrix % NumberOfRows
         Interf = .FALSE.
-        IF(ii>0) Interf=ParallelInfo % Interface(ii)
+        IF(ii>0) Interf = ParallelInfo % Interface(ii)
         IF ( Interf ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
           IF ( Active(ii)>1 .AND. Active(ii)<=sz ) THEN
             n = ParallelInfo % NeighbourList(ii) % Neighbours(Active(ii))
+
             ParallelInfo % NeighbourList(ii) % Neighbours(Active(ii)) = &
                ParallelInfo % NeighbourList(ii) % Neighbours(1)
+
             ParallelInfo % NeighbourList(ii) % Neighbours(1) = n
           END IF
         END IF
