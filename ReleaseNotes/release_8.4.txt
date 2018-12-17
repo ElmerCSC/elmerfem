@@ -379,7 +379,9 @@ MATC
   str=env("name")
   o The routine makes it possible to pass environmental variables to ElmerSolver
 
-
+Elmer/Ice
+=========
+New features in Elmer/Ice are documented in elmerfem/elmerice/ReleaseNotes/release_elmerice_8.4.txt
 
 Acknowledgements
 ================
