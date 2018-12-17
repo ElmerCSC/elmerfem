@@ -1997,7 +1997,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
     LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal, EigAnal, &
-         VariableOutput, MGAlgebraic,MultigridActive, HarmonicMode
+         VariableOutput, MGAlgebraic,MultigridActive, HarmonicMode, DoIt
     INTEGER :: MgLevels, AllocStat
     REAL(KIND=dp), POINTER :: Component(:)
     REAL(KIND=dp), POINTER :: freqv(:,:)
@@ -2058,6 +2058,46 @@ CONTAINS
       END IF
     END IF
 
+        
+    !------------------------------------------------------------------------------
+    ! Create the variable needed for the computation of nodal loads: r=b-Ax
+    !------------------------------------------------------------------------------
+    DoIt = .FALSE.
+    IF( ASSOCIATED( Solver % Variable ) ) THEN
+      DoIt = ListGetLogical( Solver % Values,'Save Global Dofs', Found ) 
+      IF( Solver % Variable % TYPE /= Variable_on_nodes_on_elements  ) THEN              
+        CALL Info('AddEquationSolution','Saving of global dof indexes only for DG variable!')
+        DoIt = .FALSE.
+      END IF
+    END IF
+      
+    IF( DoIt ) THEN
+      Var_name = GetVarName(Solver % Variable) // ' GDofs'      
+      Var => VariableGet( Solver % Mesh % Variables, var_name )
+      
+      IF ( .NOT. ASSOCIATED(Var) ) THEN
+        n = SIZE(Solver % Variable % Values) / Solver % Variable % Dofs
+        ALLOCATE( Solution(n), STAT = AllocStat )
+        Solution = 0.0_dp
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error Gdofs')
+        
+        Solution = 0.0d0
+        Perm => Solver % Variable % Perm
+        
+        CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+            var_name, 1, Solution, Solver % Variable % Perm, TYPE = Solver % Variable % TYPE )
+        
+        IF( ParEnv % PEs == 1 ) THEN
+          DO i = 1, SIZE( Solution )
+            Solution(i) = 1.0_dp * i
+          END DO
+        END IF
+        
+        NULLIFY( Solution )
+      END IF
+    END IF
+    
+    
     ! Create a additional variable for the limiters. For elasticity, for example
     ! the variable will be the contact load. 
     IF ( ListGetLogical( Solver % Values,'Apply Limiter', Found ) .OR. &
@@ -5034,12 +5074,31 @@ CONTAINS
            Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
                     Solver % Matrix % Comm
            ParEnv = Solver % Matrix % ParMatrix % ParEnv
+           
+           BLOCK
+             TYPE(Variable_t), POINTER :: Gvar
+             
+             GVar => VariableGet( Solver % Mesh % Variables,TRIM(Solver % Variable % Name)//' Gdofs')      
+             IF ( ASSOCIATED(GVar) ) THEN               
+               DO i = 1, SIZE( GVar % Perm )
+                 j = GVar % Perm(i)
+                 IF( j == 0 ) CYCLE
+                 k = Solver % Matrix % ParallelInfo % GlobalDOFs(j)
+                 GVar % Values(j) = 1.0_dp * k
+               END DO
+             END IF
+           END BLOCK             
+           
          END IF
        END IF
      ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
 
+
+
+
+     
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )

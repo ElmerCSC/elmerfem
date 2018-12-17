@@ -270,6 +270,9 @@ CONTAINS
            END IF
            
            k1 = k
+
+           CALL Info('InitialPermutation',&
+               'Group '//TRIM(I2S(group0))//' starts from index '//TRIM(I2S(k1)),Level=10)
            
            DO t=1,Mesh % NumberOfBulkElements
              Element => Mesh % Elements(t) 
