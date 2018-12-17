@@ -5081,10 +5081,16 @@ END SUBROUTINE GetMaxDefs
     IF( StrongProjector .AND. WeakProjector ) THEN
       CALL Fatal('LevelProjector','Projector cannot be weak (Galerkin) and strong at the same time!')
     END IF
-
     
-    MeshDIm = Mesh % MeshDim
-
+    MeshDim = Mesh % MeshDim
+    IF( MeshDim == 3 ) THEN
+      Element => BMesh1 % Elements(1)
+      IF( Element % TYPE % DIMENSION == 1 ) THEN
+        CALL Warn('LevelProjector','Enforcing 1D integration for 1D boundary elements in 3D mesh!')
+        MeshDim = 2
+      END IF
+    END IF
+    
     ! Generic integrator does not make any assumptions on the way the mesh 
     ! is constructured. Otherwise constant strides in y-direction is assumed. 
     ! For weak strategy always use the generic integrator. 
@@ -9928,7 +9934,7 @@ END SUBROUTINE GetMaxDefs
 
       x2_min = HUGE( x2_min )
       x2_max = -HUGE( x2_max )
-
+      
       ! Loop over all nodes
       !----------------------------------------------------------------------------
       DO i=1,PMesh % NumberOfNodes
@@ -9942,6 +9948,8 @@ END SUBROUTINE GetMaxDefs
         phi = rad2deg * ATAN2( x(2), x(1)  )
         z = x(3)
 
+        !PRINT *,'interface node:',k,i,r,phi,x(1:2)
+        
         PMesh % Nodes % x(i) = r
         PMesh % Nodes % y(i) = z
         PMesh % Nodes % z(i) = 0.0_dp
@@ -9969,10 +9977,10 @@ END SUBROUTINE GetMaxDefs
 
       IF( k == 1 ) THEN
         CALL Info('RadialInterfaceMeshes',&
-            'Transformed extrema for this boundary (phi,r,z)',Level=8)
+            'Transformed extrema for this boundary (r,phi,z)',Level=8)
       ELSE IF( k == 2 ) THEN
         CALL Info('RadialInterfaceMeshes',&
-            'Transformed extrema for target boundary (phi,r,z)',Level=8)
+            'Transformed extrema for target boundary (r,phi,z)',Level=8)
       END IF
 
       DO i=1,3
@@ -10005,7 +10013,7 @@ END SUBROUTINE GetMaxDefs
     ! Some pieces of the code cannot work with 1D meshes, this choice is ok for all steps
     Bmesh1 % MeshDim = 2
     Bmesh2 % MeshDim = 2      
-
+    
   END SUBROUTINE RadialInterfaceMeshes
 !------------------------------------------------------------------------------
 

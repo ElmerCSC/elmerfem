@@ -2350,9 +2350,17 @@ ELMER_SOLVER_HOME &
           SerialMesh => AllocateMesh()
         END IF
 
-        Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
-        CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )
-
+        IF( ParEnv % PEs > 1) THEN
+          Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
+        ELSE
+          CALL Info('LoadMesh','Only one active partition, using the serial mesh as it is!')
+          IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
+            DEALLOCATE( SerialMesh % RePartition ) 
+          END IF
+          Model % Meshes => SerialMesh
+        END IF
+          
+        CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )          
       ELSE
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs )

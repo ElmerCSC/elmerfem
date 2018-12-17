@@ -243,6 +243,9 @@ END INTERFACE
 #ifdef HAVE_LUA
          CALL Info( 'MAIN', ' Lua interpreted linked in.' )
 #endif
+#ifdef HAVE_ZOLTAN
+         CALL Info( 'MAIN', ' Zoltan library linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
@@ -1129,7 +1132,31 @@ END INTERFACE
        sPar(1) = 1.0_dp * ParEnv % MyPe 
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Partition', DOFs=1, Values=sPar ) 
 
+       ! Add partition as a elemental field in case we have just one partition
+       ! and have asked still for partitioning into many.
+       IF( ParEnv % PEs == 1 .AND. ASSOCIATED( Mesh % Repartition ) ) THEN
+         BLOCK
+           REAL(KIND=dp), POINTER :: PartField(:)
+           INTEGER, POINTER :: PartPerm(:)
+           INTEGER :: i, n
+
+           CALL Info('AddMeshCoordinatesAndTime','Adding partitioning also as a field')
+           
+           n = Mesh % NumberOfBulkElements
+           NULLIFY( PartField, PartPerm )
+           ALLOCATE( PartField(n), PartPerm(n) )
+           DO i=1,n
+             PartPerm(i) = i
+             PartField(i) = 1.0-dp * Mesh % RePartition(i)
+           END DO
+           
+           CALL VariableAdd( Mesh % Variables, Mesh, Name='PartField',DOFs=1, &
+               Values=PartField, Perm=PartPerm, TYPE=Variable_on_elements)
+         END BLOCK
+       END IF
+
        Mesh => Mesh % Next
+        
      END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE AddMeshCoordinatesAndTime
