@@ -1661,7 +1661,7 @@ END SUBROUTINE GetMaxDefs
          Element % PartIndex = mype
        END IF
 
-       Element % TYPE => GetElementType( ElemType, .FALSE. )
+       Element % TYPE => GetElementType(ElemType)
 
        IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
          CALL Fatal('ReadElementsFile','Element of type '&
@@ -1760,7 +1760,7 @@ END SUBROUTINE GetMaxDefs
        ElemType = ivals(ioffset+5)
        
        Element % ElementIndex = j
-       Element % TYPE => GetElementType( ElemType, .FALSE. )
+       Element % TYPE => GetElementType(ElemType)
        IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
          CALL Fatal('ReadBoundaryFile','Element of type '//TRIM(I2S(ElemType))//'could not be associated!')
        END IF

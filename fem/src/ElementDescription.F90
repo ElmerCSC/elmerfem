@@ -567,6 +567,7 @@ CONTAINS
 !     Local variables
 !------------------------------------------------------------------------------
       TYPE(Nodes_t) :: Nodes
+      INTEGER :: sdim
       TYPE(Element_t), POINTER :: Elm
 !------------------------------------------------------------------------------
       element => ElementTypeList
@@ -600,8 +601,12 @@ CONTAINS
         Nodes % x => Element % NodeU
         Nodes % y => Element % NodeV
         Nodes % z => Element % NodeW
+
+        sdim = CurrentModel % Dimension
+        CurrentModel % Dimension = Element % Dimension
         CALL StabParam( Elm, Nodes, Element % NumberOfNodes, &
                  Element % StabilizationMK )
+        CurrentModel % Dimension = sdim
 
         DEALLOCATE(Elm)
       END IF
