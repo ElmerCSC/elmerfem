@@ -2060,8 +2060,10 @@ CONTAINS
 
         
     !------------------------------------------------------------------------------
-    ! Create the variable needed for the computation of nodal loads: r=b-Ax
+    ! Optionally create variable for saving permutation vector.
+    ! This is mainly for debugging purposes and is therefore commented out.
     !------------------------------------------------------------------------------
+#if 0
     DoIt = .FALSE.
     IF( ASSOCIATED( Solver % Variable ) ) THEN
       DoIt = ListGetLogical( Solver % Values,'Save Global Dofs', Found ) 
@@ -2070,7 +2072,7 @@ CONTAINS
         DoIt = .FALSE.
       END IF
     END IF
-      
+
     IF( DoIt ) THEN
       Var_name = GetVarName(Solver % Variable) // ' GDofs'      
       Var => VariableGet( Solver % Mesh % Variables, var_name )
@@ -2091,12 +2093,11 @@ CONTAINS
           DO i = 1, SIZE( Solution )
             Solution(i) = 1.0_dp * i
           END DO
-        END IF
-        
+        END IF        
         NULLIFY( Solution )
       END IF
     END IF
-    
+#endif    
     
     ! Create a additional variable for the limiters. For elasticity, for example
     ! the variable will be the contact load. 
@@ -5074,11 +5075,14 @@ CONTAINS
            Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
                     Solver % Matrix % Comm
            ParEnv = Solver % Matrix % ParMatrix % ParEnv
-           
+
+#if 0
+           ! This one is mainly for debugging of parallel problems
            BLOCK
              TYPE(Variable_t), POINTER :: Gvar
              
-             GVar => VariableGet( Solver % Mesh % Variables,TRIM(Solver % Variable % Name)//' Gdofs')      
+             GVar => VariableGet( Solver % Mesh % Variables,&
+                 Solver % Variable % Name(Solver % Variable NameLen)//' Gdofs')      
              IF ( ASSOCIATED(GVar) ) THEN               
                DO i = 1, SIZE( GVar % Perm )
                  j = GVar % Perm(i)
@@ -5088,6 +5092,7 @@ CONTAINS
                END DO
              END IF
            END BLOCK             
+#endif
            
          END IF
        END IF
