@@ -501,7 +501,9 @@ CONTAINS
        ALLOCATE( A % BulkValues( n ) )
      END IF
 
-     A % BulkValues(1:n) = A % Values(1:n)
+     DO i=1,n
+       A % BulkValues(i) = A % Values(i)
+     END DO
 
      IF( PRESENT( BulkMass ) .AND. ASSOCIATED( A % MassValues) ) THEN
        IF( BulkMass ) THEN
@@ -516,7 +518,9 @@ CONTAINS
            ALLOCATE( A % BulkMassValues( n ) )
          END IF
 
-         A % BulkMassValues(1:n) = A % MassValues(1:n)
+         DO i=1,n
+           A % BulkMassValues(i) = A % MassValues(i)
+         END DO
        END IF
      END IF
 
@@ -533,7 +537,9 @@ CONTAINS
            ALLOCATE( A % BulkDampValues( n ) )
          END IF
 
-         A % BulkDampValues(1:n) = A % DampValues(1:n)
+         DO i=1,n
+           A % BulkDampValues(i) = A % DampValues(i)
+         END DO
        END IF
      END IF
      

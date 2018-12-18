@@ -98,21 +98,21 @@ CONTAINS
      IF ( ASSOCIATED( Matrix % Perm ) )        DEALLOCATE( Matrix % Perm )
      IF ( ASSOCIATED( Matrix % InvPerm ) )     DEALLOCATE( Matrix % InvPerm )
 
-     IF ( ASSOCIATED( Matrix % Cols ) ) THEN
-        IF ( ASSOCIATED( Matrix % Cols, Matrix % ILUCols ) ) &
-           NULLIFY( Matrix % ILUCols )
-        DEALLOCATE( Matrix % Cols )
-     END IF
-
      IF ( ASSOCIATED( Matrix % Rows ) ) THEN
-        IF ( ASSOCIATED( Matrix % Rows, Matrix % ILURows ) ) &
-           NULLIFY( Matrix % ILURows )
+        IF ( ASSOCIATED(Matrix % Rows, Matrix % ILURows) .OR. SIZE(Matrix % Rows)==0 )  &
+           Matrix % ILURows => Null()
         DEALLOCATE( Matrix % Rows )
      END IF
 
+     IF ( ASSOCIATED( Matrix % Cols ) ) THEN
+        IF ( ASSOCIATED(Matrix % Cols, Matrix % ILUCols) .OR. SIZE(Matrix % Cols)==0 ) &
+           Matrix % ILUCols => Null()
+        DEALLOCATE( Matrix % Cols )
+     END IF
+
      IF ( ASSOCIATED( Matrix % Diag ) ) THEN
-        IF ( ASSOCIATED( Matrix % Diag, Matrix % ILUDiag ) ) &
-           NULLIFY( Matrix % ILUDiag )
+        IF ( ASSOCIATED(Matrix % Diag, Matrix % ILUDiag) .OR. SIZE(Matrix % Diag)==0 ) &
+          Matrix % ILUDiag => Null()
         DEALLOCATE( Matrix % Diag )
      END IF
 
@@ -128,8 +128,8 @@ CONTAINS
      IF ( ASSOCIATED( Matrix % BulkRHS   ) )   DEALLOCATE( Matrix % BulkRHS )
 
      IF ( ASSOCIATED( Matrix % ILUValues ) )   DEALLOCATE( Matrix % ILUValues )
-     IF ( ASSOCIATED( Matrix % ILUCols ) )     DEALLOCATE( Matrix % ILUCols )
      IF ( ASSOCIATED( Matrix % ILURows ) )     DEALLOCATE( Matrix % ILURows )
+     IF ( ASSOCIATED( Matrix % ILUCols ) )     DEALLOCATE( Matrix % ILUCols )
      IF ( ASSOCIATED( Matrix % ILUDiag ) )     DEALLOCATE( Matrix % ILUDiag )
 
      IF ( ASSOCIATED( Matrix % CRHS   ) )      DEALLOCATE( Matrix % CRHS )
