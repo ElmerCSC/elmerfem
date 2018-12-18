@@ -55,7 +55,7 @@
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: i,j,k,n,nd,nb,t,ind,STDOFs,LocalNodes,istat,dim
+  INTEGER :: i,j,k,n,nd,nb,t,ind,STDOFs,LocalNodes,istat,dim,NoActive
   INTEGER :: VisitedTimes = 0
 
   TYPE(Element_t),POINTER :: Element
@@ -74,7 +74,7 @@
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:),PoissonRatio(:), &
 		Alpha(:,:), Beta(:), Gamma(:), RefSurface(:)
-  REAL(KIND=dp), POINTER :: OrigX(:), OrigY(:), OrigZ(:), &
+  REAL(KIND=dp), POINTER CONTIG :: OrigX(:), OrigY(:), OrigZ(:), &
       TrueX(:), TrueY(:), TrueZ(:)
 
   SAVE STIFF, LOAD, FORCE, AllocationsDone, &
@@ -190,10 +190,12 @@
   CALL StartAdvanceOutput( 'NonphysicalMeshSolve', 'Assembly: ' )
 !------------------------------------------------------------------------------
 
+  NoActive = GetNOFActive()
   
-  DO t=1,Solver % NumberOfActiveElements
+  
+  DO t=1,NoActive
     
-    CALL AdvanceOutput( t,GetNOFActive() )
+    CALL AdvanceOutput( t, NoActive )
     
     Element => GetActiveElement(t)
     nd = GetElementNOFDOFs()
@@ -275,9 +277,6 @@
     Element => GetBoundaryElement(t)
     IF ( .NOT.ActiveBoundaryElement() ) CYCLE
 
-    ! Check that the dimension of element is suitable for fluxes
-    IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-    
     BC => GetBC()
     IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 

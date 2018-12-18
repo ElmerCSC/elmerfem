@@ -204,7 +204,7 @@ MODULE DiffuseConvectiveGeneral
  
 !------------------------------------------------------------------------------
 !    Stabilization parameters: hK, mK (take a look at Franca et.al.)
-!    If there is no convection term we dont need stabilization.
+!    If there is no convection term we don't need stabilization.
 !------------------------------------------------------------------------------
      ConvectAndStabilize = .FALSE.
      IF ( Stabilize .AND. ANY(NodalC1 /= 0.0D0) ) THEN
@@ -485,7 +485,7 @@ MODULE DiffuseConvectiveGeneral
          IF ( FrictionHeat ) THEN
            Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
            Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
-                 Element, Nodes, n, n, u, v, w )
+                 Element, Nodes, n, n, u, v, w, LocalIP=t )
            IF ( Viscosity > 0.0d0 ) THEN
              IF ( .NOT.Compressible ) THEN
                dVelodx = 0.0D0

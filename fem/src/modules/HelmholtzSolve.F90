@@ -34,6 +34,27 @@
 ! *
 ! ****************************************************************************/
 
+SUBROUTINE HelmholtzSolver_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+
+  Params => GetSolverParams()
+  CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
+
+END SUBROUTINE HelmholtzSolver_init
+  
+  
+
 !------------------------------------------------------------------------------
 !> Solver for Helmholtz equation accounting also for variable density and 
 !> convection field. Also includes a built-in interface for coupling with harmonic
@@ -156,10 +177,12 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END DO
 
+  ! This flag could be needed in FSI iterations, for example
+  CALL ListAddLogical( SolverParams,'Use Density', UseDensity )
+  
   n = GetElementNOFNodes()
   Simulation => GetSimulation()
   dim = CoordinateSystemDimension()     
-  Solver % Matrix % COMPLEX = .TRUE.
   GotFrequency = .FALSE.
 
   ! Check for flow or strcuture interface
@@ -342,9 +365,6 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
 
-        ! Check that the dimension of element is suitable for fluxes
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
-
         BC => GetBC()
         IF ( ASSOCIATED( BC ) ) THEN
           Load(1,1:n) = GetReal( BC, 'Wave Flux 1', Found )
@@ -427,12 +447,12 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
                END DO
              END DO
            END IF
-             WallVelocity = ImUnit * AngularFrequency * WallVelocity
+           WallVelocity = ImUnit * AngularFrequency * WallVelocity
          END IF
          
-         ! Find the Helmholtz parent to determine the reference density
-         ! If density is used everywhere then is is actually elimited in
-         ! this BC hence one is used instead.
+         ! Find the Helmholtz parent to determine the reference density.
+         ! If density is used everywhere, then it is actually eliminated in
+         ! this BC due to the scaling and hence unity is used instead.
          !----------------------------------------------------------------
          IF( UseDensity ) THEN
            Density = 1.0_dp
@@ -639,7 +659,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF ( Bubbles ) THEN
-       CALL LCondensate( n,STIFF,FORCE )
+       CALL CondensateP( n, n, STIFF, FORCE )
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -815,41 +835,13 @@ CONTAINS
        rho = SUM( Density(1:n) * Basis(1:n) )
 !------------------------------------------------------------------------------
        DO p=1,n
-         FORCE(p) = FORCE(p) + s * Basis(p) * &
+         FORCE(p) = FORCE(p) - s * Basis(p) * &
              ImUnit * rho * AngularFrequency * NormVelo
        END DO
 !------------------------------------------------------------------------------
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalInterfaceMatrix
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( n, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-!------------------------------------------------------------------------------
-    INTEGER :: n
-    COMPLEX(KIND=dp) :: K(:,:), F(:), Kbb(n,n), &
-         Kbl(n,n), Klb(n,n), Fb(n)
-
-    INTEGER :: i, Ldofs(n), Bdofs(n)
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = Ldofs + n
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL ComplexInvertMatrix( Kbb,n )
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = &
-         K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

@@ -31,6 +31,7 @@
        REAL(KIND=dp), POINTER :: store(:)
        REAL(KIND=dp), ALLOCATABLE, TARGET :: astore(:),vstore(:,:), BB(:,:), &
              nodes_x(:),nodes_y(:),nodes_z(:), xpart(:), ypart(:), zpart(:)
+       LOGICAL :: al
 
        TYPE ProcRecv_t
          INTEGER :: n = 0
@@ -46,8 +47,8 @@
 
 !-------------------------------------------------------------------------------
        INTERFACE
-         SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm)
+         SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, NewVariables, &
+             UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm, KeepUnfoundNodes )
            USE Types
            TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
            TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
@@ -55,6 +56,7 @@
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
            INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
+           LOGICAL, OPTIONAL :: KeepUnfoundNodes  !< Do not disregard unfound nodes from projector
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 !-------------------------------------------------------------------------------
@@ -86,21 +88,33 @@
       ! special case "all found":
       !--------------------------
       n = COUNT(.NOT.FoundNodes); dn = n
+
+      AL = .FALSE.
+      IF (.NOT.ASSOCIATED(ParEnv % Active) ) THEN
+        ALLOCATE(Parenv % Active(PArEnv % PEs))
+        AL = .TRUE.
+        ParEnv % Active = .TRUE.
+      END IF
+
       CALL SParActiveSUM(dn,2)
       IF ( dn==0 ) RETURN
 
+
       ! Exchange partition bounding boxes:
       ! ----------------------------------
-      myBB(1) = MINVAL(OldMesh % Nodes % x)
-      myBB(2) = MINVAL(OldMesh % Nodes % y)
-      myBB(3) = MINVAL(OldMesh % Nodes % z)
-      myBB(4) = MAXVAL(OldMesh % Nodes % x)
-      myBB(5) = MAXVAL(OldMesh % Nodes % y)
-      myBB(6) = MAXVAL(OldMesh % Nodes % z)
+      myBB = HUGE(mybb(1))
+      IF(OldMesh % NumberOfNodes /= 0) THEN
+        myBB(1) = MINVAL(OldMesh % Nodes % x)
+        myBB(2) = MINVAL(OldMesh % Nodes % y)
+        myBB(3) = MINVAL(OldMesh % Nodes % z)
+        myBB(4) = MAXVAL(OldMesh % Nodes % x)
+        myBB(5) = MAXVAL(OldMesh % Nodes % y)
+        myBB(6) = MAXVAL(OldMesh % Nodes % z)
 
-      eps2 = 0.1_dp * MAXVAL(myBB(4:6)-myBB(1:3))
-      myBB(1:3) = myBB(1:3) - eps2
-      myBB(4:6) = myBB(4:6) + eps2
+        eps2 = 0.1_dp * MAXVAL(myBB(4:6)-myBB(1:3))
+        myBB(1:3) = myBB(1:3) - eps2
+        myBB(4:6) = myBB(4:6) + eps2
+      END IF
 
       ALLOCATE(BB(6,ParEnv % PEs))
       DO i=1,ParEnv % PEs
@@ -237,7 +251,7 @@
       
       !For each node, we send a single integer perm and 
       !a real(dp) per variable. Also sending two counts
-      CALL CheckBuffer(maxrecv * ((2 * nvars) + 1) + 2) 
+      CALL CheckBuffer(SIZE(ProcRecv) * maxrecv * ((2 * nvars) + 1) + 2)
 
       ! Check the received points and extract values for the to-be-interpolated-
       ! variables, if we have the points within our domain: 
@@ -423,6 +437,11 @@
 
       CALL MPI_BARRIER(ParEnv % ActiveComm,ierr)
 
+      IF(AL) THEN
+         DEALLOCATE(Parenv % Active)
+         ParEnv % Active => NULL()
+       END IF
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -492,8 +511,8 @@ CONTAINS
 !>    Interpolates values of all variables from a mesh associated with
 !>    the old model to the mesh of the new model.
 !------------------------------------------------------------------------------
-     SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm )
+     SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, NewVariables, &
+         UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm, KeepUnfoundNodes )
 !------------------------------------------------------------------------------
        USE DefUtils
 !-------------------------------------------------------------------------------
@@ -506,6 +525,7 @@ CONTAINS
        CHARACTER(LEN=*),OPTIONAL :: MaskName  !< Mask the old variable set by the given MaskName when trying to define the interpolation.
        LOGICAL, OPTIONAL :: FoundNodes(:)     !< List of nodes where the interpolation was a success
        INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
+       LOGICAL, OPTIONAL :: KeepUnfoundNodes  !< Do not disregard unfound nodes from projector
 !------------------------------------------------------------------------------
        INTEGER :: dim
        TYPE(Nodes_t) :: ElementNodes
@@ -523,10 +543,12 @@ CONTAINS
                           RotWBasis(:,:), WBasis(:,:)
        REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum, F(3,3), G(3,3)
        
-       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel, TryLinear
+       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel, &
+           TryLinear, KeepUnfoundNodesL
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
-       INTEGER, POINTER   :: Rows(:), Cols(:), Diag(:)
+       INTEGER, POINTER   CONTIG :: Rows(:), Cols(:)
+       INTEGER, POINTER    :: Diag(:)
 
        TYPE Epntr_t
          TYPE(Element_t), POINTER :: Element
@@ -535,10 +557,11 @@ CONTAINS
        TYPE(Epntr_t), ALLOCATABLE :: ElemPtrs(:)
        
        INTEGER, ALLOCATABLE:: RInd(:)
-       LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, ProjectorAllocated
+       LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, CylProject, ProjectorAllocated
        INTEGER :: eps_tries, nrow, PassiveCoordinate
        REAL(KIND=dp) :: eps1 = 0.1, eps2, eps_global, eps_local, eps_basis,eps_numeric
-       REAL(KIND=dp), POINTER :: Values(:), LocalU(:), LocalV(:), LocalW(:)
+       REAL(KIND=dp), POINTER CONTIG :: Values(:) 
+       REAL(KIND=dp), POINTER :: LocalU(:), LocalV(:), LocalW(:)
 
        TYPE(Nodes_t), SAVE :: Nodes
 
@@ -546,8 +569,10 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-
        Parallel = (ParEnv % PEs > 1)
+
+       FoundCnt = 0
+       IF ( OldMesh % NumberOfNodes == 0 ) RETURN
 !
 !      If projector argument given, search for existing
 !      projector matrix, or generate new projector, if
@@ -558,7 +583,8 @@ CONTAINS
          
          DO WHILE( ASSOCIATED( Projector ) )
            IF ( ASSOCIATED(Projector % Mesh, OldMesh) ) THEN
-             IF ( PRESENT(OldVariables) ) CALL ApplyProjector()
+              CALL Info('InterpolateMesh2Mesh','Applying exiting projector in interpolation',Level=12)
+              IF ( PRESENT(OldVariables) ) CALL ApplyProjector()
              RETURN
            END IF
            Projector => Projector % Next
@@ -627,9 +653,20 @@ CONTAINS
            'Interpolation Numeric Epsilon', Stat)
        IF(.NOT. Stat) eps_numeric = 1.0e-10
 
-       PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
-           'Interpolation Passive Coordinate', Stat ) 
-
+       PassiveCoordinate = ListGetInteger( CurrentModel % Simulation, &
+            'Interpolation Passive Coordinate', Stat ) 
+       IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
+         PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
+               'Interpolation Passive Coordinate', Stat ) 
+       END IF
+          
+       CylProject = ListGetLogical( CurrentModel % Simulation, &
+            'Interpolation Cylindric', Stat )                     
+       IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
+         CylProject = ListGetLogical( CurrentModel % Solver % Values, &
+               'Interpolation Cylindric', Stat ) 
+       END IF
+       
        QTreeFails = 0
        TotFails = 0
 
@@ -645,6 +682,12 @@ CONTAINS
        TryLinear = ListGetLogical( CurrentModel % Simulation, 'Try Linear Search If Qtree Fails', Found)
        IF(.NOT.Found) TryLinear = .TRUE.
 
+       IF ( PRESENT(KeepUnfoundNodes) ) THEN
+         KeepUnfoundNodesL = KeepUnfoundNodes
+       ELSE
+         KeepUnfoundNodesL = .TRUE.
+       END IF        
+       
        FoundCnt = 0
 !------------------------------------------------------------------------------
 ! Loop over all nodes in the new mesh
@@ -665,6 +708,12 @@ CONTAINS
            Point(PassiveCoordinate) = 0.0_dp
          END IF
 
+         IF( CylProject ) THEN
+           Point(1) = SQRT( Point(1)**2 + Point(2)**2 )
+           Point(2) = Point(3)
+           Point(3) = 0.0_dp
+         END IF
+         
 !------------------------------------------------------------------------------
 ! Find in which old mesh bulk element the point belongs to
 !------------------------------------------------------------------------------
@@ -717,7 +766,7 @@ CONTAINS
              END DO
            END IF
          END IF
-
+         
          IF( .NOT. TryQTree .OR. (.NOT. Found .AND. .NOT. Parallel .AND. TryLinear ) ) THEN
            !------------------------------------------------------------------------------
            ! Go through all old mesh bulk elements
@@ -756,12 +805,20 @@ CONTAINS
 !
 !         Found Element in OldModel:
 !         ---------------------------------
-          IF ( PRESENT(Projector) ) THEN
+
+         IF ( PRESENT(Projector) ) THEN
              FoundCnt = FoundCnt + 1
-             ElemPtrs(i) % Element => Element
-             LocalU(i) = LocalCoordinates(1)
-             LocalV(i) = LocalCoordinates(2)
-             LocalW(i) = LocalCoordinates(3)
+             IF ( KeepUnfoundNodesL ) THEN
+               ElemPtrs(i) % Element => Element
+               LocalU(i) = LocalCoordinates(1)
+               LocalV(i) = LocalCoordinates(2)
+               LocalW(i) = LocalCoordinates(3)
+             ELSE
+               ElemPtrs(FoundCnt) % Element => Element
+               LocalU(FoundCnt) = LocalCoordinates(1)
+               LocalV(FoundCnt) = LocalCoordinates(2)
+               LocalW(FoundCnt) = LocalCoordinates(3)
+             END IF
           END IF
 
           IF ( .NOT.PRESENT(OldVariables) .OR. PRESENT(Projector) ) CYCLE
@@ -797,37 +854,46 @@ CONTAINS
                 END IF
                 OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
 
-
+                
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
                 IF ( ASSOCIATED (Element) ) THEN
-!------------------------------------------------------------------------------
+                  !------------------------------------------------------------------------------
 !
 !                  Check for rounding errors:
 !                  --------------------------
-                   Indexes => Element % NodeIndexes
-                   IF ( ALL(OldSol % Perm(Indexes)>0) ) THEN
-                     IF ( NewSol % Perm(i) /= 0 ) THEN
-                       ElementValues(1:n) = & 
-                              OldSol % Values(OldSol % Perm(Indexes))
-                       NewSol % Values(NewSol % Perm(i)) = InterpolateInElement( &
-                            Element, ElementValues, LocalCoordinates(1), &
-                                LocalCoordinates(2), LocalCoordinates(3) )
+                  IF( OldSol % TYPE == Variable_on_nodes_on_elements ) THEN
+                    Indexes => Element % DGIndexes
+                  ELSE
+                    Indexes => Element % NodeIndexes
+                  END IF
+                  
+                                    
+                  IF ( ALL(OldSol % Perm(Indexes) > 0) ) THEN
+                    IF ( NewSol % Perm(i) /= 0 ) THEN
+                      ElementValues(1:n) = & 
+                          OldSol % Values(OldSol % Perm(Indexes))
 
-                       IF ( ASSOCIATED( OldSol % PrevValues ) ) THEN
-                         DO j=1,SIZE(OldSol % PrevValues,2)
-                           ElementValues(1:n) = &
-                               OldSol % PrevValues(OldSol % Perm(Indexes),j)
-                           NewSol % PrevValues(NewSol % Perm(i),j) = &
-                             InterpolateInElement( Element, ElementValues, &
-                               LocalCoordinates(1), &
-                                  LocalCoordinates(2), LocalCoordinates(3) )
-                         END DO
-                       END IF
-                     END IF
-                   END IF
+                      val = InterpolateInElement( Element, ElementValues, &
+                          LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
+
+                      NewSol % Values(NewSol % Perm(i)) = val
+
+                      IF ( ASSOCIATED( OldSol % PrevValues ) ) THEN
+                        DO j=1,SIZE(OldSol % PrevValues,2)
+                          ElementValues(1:n) = &
+                              OldSol % PrevValues(OldSol % Perm(Indexes),j)
+
+                          val = InterpolateInElement( Element, ElementValues, &
+                              LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
+
+                          NewSol % PrevValues(NewSol % Perm(i),j) = val
+                        END DO
+                      END IF
+                    END IF
+                  END IF
                 ELSE
-                   IF ( NewSol % Perm(i)/=0 ) NewValue(NewSol % Perm(i))=0.0_dp
+                  IF ( NewSol % Perm(i)/=0 ) NewValue(NewSol % Perm(i))=0.0_dp
                 END IF
 
 !------------------------------------------------------------------------------
@@ -861,7 +927,11 @@ CONTAINS
 !      ---------------------------------------------------------
        IF ( PRESENT(Projector) ) THEN
 
-          n = NewMesh % NumberOfNodes
+          IF ( KeepUnfoundNodesL ) THEN
+            n = NewMesh % NumberOfNodes
+          ELSE
+            n = FoundCnt
+          END IF
           ALLOCATE( Basis(100),Vals(100), Indexes(100))
 
           ! The critical value of basis function that is accepted to the 

@@ -110,11 +110,10 @@ END SUBROUTINE StatCurrentSolver_Init
        LocalStiffMatrix(:,:), Load(:), LocalForce(:)
 
      REAL (KIND=DP) :: Norm, HeatingTot, VolTot, CurrentTot, ControlTarget, ControlScaling = 1.0
-     REAL (KIND=DP) :: MinPotential, MaxPotential, Resistance
-#ifdef USE_ISO_C_BINDINGS
+     REAL (KIND=DP) :: Resistance, PotDiff
      REAL (KIND=DP) :: at, st, at0
-#else
-     REAL (KIND=DP) :: at, st, at0, CPUTime, RealTime
+#ifndef USE_ISO_C_BINDINGS
+     REAL (KIND=DP) :: CPUTime, RealTime
 #endif
 
      INTEGER, POINTER :: NodeIndexes(:)
@@ -132,7 +131,10 @@ END SUBROUTINE StatCurrentSolver_Init
 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
 
-
+     LOGICAL :: GetCondAtIp
+     TYPE(ValueHandle_t) :: CondAtIp_h
+     REAL(KIND=dp) :: CondAtIp
+     
      SAVE LocalStiffMatrix, Load, LocalForce, &
           ElementNodes, CalculateCurrent, CalculateHeating, &
           AllocationsDone, VolCurrent, Heating, Conductivity, &
@@ -172,6 +174,8 @@ END SUBROUTINE StatCurrentSolver_Init
      NonlinearIter = ListGetInteger( Params, &
          'Nonlinear System Max Iterations', GotIt )
      IF ( .NOT. GotIt ) NonlinearIter = 1
+
+     GetCondAtIp = ListGetLogical( Params,'Conductivity At Ip',GotIt )
      
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
@@ -293,6 +297,11 @@ END SUBROUTINE StatCurrentSolver_Init
        !    Do the assembly
        !------------------------------------------------------------------------------
 
+       IF( GetCondAtIp ) THEN
+         CALL ListInitElementKeyword( CondAtIp_h,'Material','Electric Conductivity')
+       END IF
+         
+       
        DO t = 1, Solver % NumberOfActiveElements
 
          IF ( RealTime() - at0 > 1.0 ) THEN
@@ -328,33 +337,36 @@ END SUBROUTINE StatCurrentSolver_Init
                'Current Source',n,NodeIndexes, Gotit )
          END IF
 
-         k = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
-             Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
+         IF( .NOT. GetCondAtIp ) THEN
 
-         !------------------------------------------------------------------------------
-         !      Read conductivity values (might be a tensor)
-         !------------------------------------------------------------------------------
+           k = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
+               Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
 
-         CALL ListGetRealArray( Model % Materials(k) % Values, &
-             'Electric Conductivity', Cwrk, n, NodeIndexes )
+           !------------------------------------------------------------------------------
+           !      Read conductivity values (might be a tensor)
+           !------------------------------------------------------------------------------
+           
+           CALL ListGetRealArray( Model % Materials(k) % Values, &
+               'Electric Conductivity', Cwrk, n, NodeIndexes )
 
-         Conductivity = 0.0d0
-         IF ( SIZE(Cwrk,1) == 1 ) THEN
-           DO i=1,3
-             Conductivity( i,i,1:n ) = Cwrk( 1,1,1:n )
-           END DO
-         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-           DO i=1,MIN(3,SIZE(Cwrk,1))
-             Conductivity(i,i,1:n) = Cwrk(i,1,1:n)
-           END DO
-         ELSE
-           DO i=1,MIN(3,SIZE(Cwrk,1))
-             DO j=1,MIN(3,SIZE(Cwrk,2))
-               Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
+           Conductivity = 0.0d0
+           IF ( SIZE(Cwrk,1) == 1 ) THEN
+             DO i=1,3
+               Conductivity( i,i,1:n ) = Cwrk( 1,1,1:n )
              END DO
-           END DO
+           ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+             DO i=1,MIN(3,SIZE(Cwrk,1))
+               Conductivity(i,i,1:n) = Cwrk(i,1,1:n)
+             END DO
+           ELSE
+             DO i=1,MIN(3,SIZE(Cwrk,1))
+               DO j=1,MIN(3,SIZE(Cwrk,2))
+                 Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
+               END DO
+             END DO
+           END IF
          END IF
-
+           
          !------------------------------------------------------------------------------
          !      Get element local matrix, and rhs vector
          !------------------------------------------------------------------------------
@@ -369,10 +381,6 @@ END SUBROUTINE StatCurrentSolver_Init
          !------------------------------------------------------------------------------
        END DO
        CALL DefaultFinishBulkAssembly()
-
-
-       MinPotential = HUGE(MinPotential)
-       MaxPotential = -HUGE(MaxPotential)
 
        !------------------------------------------------------------------------------
        !     Neumann boundary conditions
@@ -396,18 +404,6 @@ END SUBROUTINE StatCurrentSolver_Init
              n = CurrentElement % TYPE % NumberOfNodes
              NodeIndexes => CurrentElement % NodeIndexes
              IF ( ANY( PotentialPerm(NodeIndexes) <= 0 ) ) CYCLE
-
-             !------------------------------------------------------------------------------
-             !         Memorize the min and max potential as given by Dirichtlet BCs
-             !------------------------------------------------------------------------------          
-             Load(1:n) = ListGetReal(Model % BCs(i) % Values, &
-                 ComponentName(Solver % Variable), n, NodeIndexes, gotIt)
-             IF(GotIt) THEN
-               MinPotential = MIN(MinPotential, MINVAL(Load(1:n)))
-               MaxPotential = MAX(MaxPotential, MAXVAL(Load(1:n)))             
-             END IF
-
-             IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
              FluxBC = ListGetLogical(Model % BCs(i) % Values, &
                  'Current Density BC',gotIt) 
@@ -441,13 +437,6 @@ END SUBROUTINE StatCurrentSolver_Init
          END DO ! of i=1,model bcs
        END DO   ! Neumann BCs
        !------------------------------------------------------------------------------
-
-
-       ! parallel reduction needed
-       IF ( ParEnv % PEs > 1) THEN
-         MinPotential = ParallelReduction(MinPotential,1)
-         MaxPotential = ParallelReduction(MaxPotential,2)
-       END IF
 
        !------------------------------------------------------------------------------
        !    FinishAssembly must be called after all other assembly steps, but before
@@ -493,9 +482,11 @@ END SUBROUTINE StatCurrentSolver_Init
          CALL Info( 'StatCurrentSolve', Message, Level=4 )
          CALL ListAddConstReal( Model % Simulation, &
              'RES: Total Joule Heating', Heatingtot )
-
-         IF( MaxPotential > MinPotential) THEN
-           Resistance = (MaxPotential - MinPotential)**2 / HeatingTot
+         
+         PotDiff = DirichletDofsRange( Solver )
+         
+         IF( PotDiff > 0 ) THEN
+           Resistance = PotDiff**2 / HeatingTot
            WRITE( Message, * ) 'Effective Resistance  :', Resistance
            CALL Info( 'StatCurrentSolve', Message, Level=4 )
            CALL ListAddConstReal( Model % Simulation, &
@@ -511,8 +502,8 @@ END SUBROUTINE StatCurrentSolver_Init
          IF( ControlPower ) THEN
            ControlScaling = SQRT( ControlTarget / HeatingTot )
          ELSE IF( ControlCurrent ) THEN
-           IF( MaxPotential - MinPotential > 0.0d0 ) THEN
-             CurrentTot = HeatingTot / (MaxPotential - MinPotential)
+           IF( PotDiff > 0.0d0 ) THEN
+             CurrentTot = HeatingTot / PotDiff
              ControlScaling = ControlTarget / CurrentTot
              WRITE( Message, * ) 'Total Current         :', CurrentTot
              CALL Info( 'StatCurrentSolve', Message, Level=4 )
@@ -610,6 +601,10 @@ END SUBROUTINE StatCurrentSolver_Init
     IF ( CalculateNodalHeating)  NodalHeating = 0.0d0
     IF ( CalculateCurrent )  VolCurrent = 0.0d0
 
+    IF( GetCondAtIp ) THEN
+      CALL ListInitElementKeyword( CondAtIp_h,'Material','Electric Conductivity')
+    END IF
+     
 !------------------------------------------------------------------------------
 !   Go through model elements, we will compute on average of elementwise
 !   fluxes to nodes of the model
@@ -647,29 +642,31 @@ END SUBROUTINE StatCurrentSolver_Init
 
 !------------------------------------------------------------------------------
 
-       k = ListGetInteger( Model % Bodies( Element % BodyId ) % &
-            Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
+       IF( .NOT. GetCondAtIp ) THEN
+         k = ListGetInteger( Model % Bodies( Element % BodyId ) % &
+             Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
 
-       CALL ListGetRealArray( Model % Materials(k) % Values, &
-            'Electric Conductivity', Cwrk, n, NodeIndexes, gotIt )
+         CALL ListGetRealArray( Model % Materials(k) % Values, &
+             'Electric Conductivity', Cwrk, n, NodeIndexes, gotIt )
 
-       Conductivity = 0.0d0
-       IF ( SIZE(Cwrk,1) == 1 ) THEN
-          DO i=1,3
+         Conductivity = 0.0d0
+         IF ( SIZE(Cwrk,1) == 1 ) THEN
+           DO i=1,3
              Conductivity( i,i,1:n ) = Cwrk( 1,1,1:n )
-          END DO
-       ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-          DO i=1,MIN(3,SIZE(Cwrk,1))
+           END DO
+         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+           DO i=1,MIN(3,SIZE(Cwrk,1))
              Conductivity(i,i,1:n) = Cwrk(i,1,1:n)
-          END DO
-       ELSE
-          DO i=1,MIN(3,SIZE(Cwrk,1))
+           END DO
+         ELSE
+           DO i=1,MIN(3,SIZE(Cwrk,1))
              DO j=1,MIN(3,SIZE(Cwrk,2))
-                Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
+               Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
              END DO
-          END DO
+           END DO
+         END IF
        END IF
-
+         
 !------------------------------------------------------------------------------
 ! Loop over Gauss integration points
 !------------------------------------------------------------------------------
@@ -708,14 +705,23 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
 
           EpsGrad = 0.0d0
-          DO j = 1, DIM
-             Grad(j) = SUM( dBasisdx(1:n,j) * ElementPot(1:n) )
-             DO i = 1, DIM
+          IF( GetCondAtIp ) THEN
+            CondAtIp = ListGetElementReal( CondAtIp_h, Basis, Element, Stat, GaussPoint = tg )
+            DO j = 1, DIM
+              Grad(j) = SUM( dBasisdx(1:n,j) * ElementPot(1:n) )
+            END DO
+            EpsGrad(1:dim) = CondAtIp * Grad(1:dim)
+          ELSE
+            DO j = 1, DIM
+              Grad(j) = SUM( dBasisdx(1:n,j) * ElementPot(1:n) )
+              DO i = 1, DIM
                 EpsGrad(j) = EpsGrad(j) + SUM( Conductivity(j,i,1:n) * &
-                     Basis(1:n) ) * SUM( dBasisdx(1:n,i) * ElementPot(1:n) )
-             END DO
-          END DO
+                    Basis(1:n) ) * SUM( dBasisdx(1:n,i) * ElementPot(1:n) )
+              END DO
+            END DO
+          END IF
 
+            
           VolTot = VolTot + s
 
           HeatingTot = HeatingTot + &
@@ -863,11 +869,21 @@ END SUBROUTINE StatCurrentSolver_Init
          S = S * SqrtElementMetric * SqrtMetric
 
          L = SUM( Load(1:n) * Basis )
-         DO i=1,DIM
-            DO j=1,DIM
+
+         IF( GetCondAtIp ) THEN
+           CondAtIp = ListGetElementReal( CondAtIp_h, Basis, Element, Stat, GaussPoint = t )
+           C(1:dim,1:dim) = 0.0_dp
+           DO i=1,dim
+             C(i,i) = CondAtIp
+           END DO
+         ELSE
+           DO i=1,DIM
+             DO j=1,DIM
                C(i,j) = SUM( Conductivity(i,j,1:n) * Basis(1:n) )
-            END DO
-          END DO
+             END DO
+           END DO
+         END IF
+         
 !------------------------------------------------------------------------------
 !        The Poisson equation
 !------------------------------------------------------------------------------

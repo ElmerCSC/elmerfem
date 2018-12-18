@@ -624,12 +624,49 @@ static int ElmerToVtkType(int elmertype)
   case 820:
     vtktype = 25;
     break;
+  case 827:
+    vtktype = 29;
+    break;
 
   default:
     printf("Elmer element %d does not have an Vtk counterpart!\n",elmertype);
   }
 
   return(vtktype);
+}
+
+
+
+static void ElmerToVtkIndx(int elemtype,int *topology)
+{
+  int i=0,nodes=0,oldtopology[MAXNODESD2];
+  int reorder, *porder;
+
+  int order820[]={0,1,2,3,4,5,6,7,8,9,10,11,16,17,18,19,12,13,14,15};
+  int order827[]={0,1,2,3,4,5,6,7,8,9,10,11,16,17,18,19,12,13,14,15,23,21,20,22,24,25,26};
+
+  reorder = FALSE;
+
+  switch (elemtype) {
+    
+  case 820:        
+    reorder = TRUE;
+    porder = &order820[0];
+    break;
+    
+  case 827:        
+    reorder = TRUE;
+    porder = &order827[0];
+    break;
+  }
+
+  if( reorder ) {
+    nodes = elemtype % 100;
+    for(i=0;i<nodes;i++) 
+      oldtopology[i] = topology[i];
+    for(i=0;i<nodes;i++) 
+      topology[i] = oldtopology[porder[i]];
+  }
 }
 
 
@@ -715,7 +752,7 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
   fprintf(out,"      </PointData>\n");
 
 
-  printf("Saving cell data (Element numbers and Goemetry Ids).\n");
+  printf("Saving cell data (Element numbers and Geometry Ids).\n");
   fprintf(out,"      <CellData>\n");
   /* Write out the element indexes, this is mainly just on example */
   if(0) { /* This as floats - just for testing */
@@ -798,7 +835,10 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
   for(i=1;i<=bulkelems;i++) {
     elemtype = data->elementtypes[i];
     for(j=0;j<elemtype%100;j++)
-      fprintf(out,"%d ",data->topology[i][j]-di);
+      ind[j] = data->topology[i][j];
+    ElmerToVtkIndx( elemtype, ind );
+    for(j=0;j<elemtype%100;j++)
+      fprintf(out,"%d ",ind[j]-di);
   }
   if(nobound ) {
     for(j=0;j<nobound;j++) {

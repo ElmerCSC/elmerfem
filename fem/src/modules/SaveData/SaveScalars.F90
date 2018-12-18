@@ -54,21 +54,60 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: NormInd
-  LOGICAL :: GotIt
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+  INTEGER :: NormInd, LineInd, i
+  LOGICAL :: GotIt, MarkFailed, AvoidFailed
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
 
+  
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
   NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
   IF( NormInd > 0 ) THEN
-    SolverName = ListGetString( Solver % Values, 'Equation',GotIt)
+    Name = ListGetString( Solver % Values, 'Equation',GotIt)
     IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
       CALL ListAddString( Solver % Values,'Variable',&
-          '-nooutput -global '//TRIM(SolverName)//'_var')
+          '-nooutput -global '//TRIM(Name)//'_var')
     END IF
   END IF
 
+  IF( ParEnv % MyPe == 0 ) THEN
+    MarkFailed = ListGetLogical( Solver % Values,'Mark Failed Strategy',GotIt)
+    AvoidFailed = ListGetLogical( Solver % Values,'Avoid Failed Strategy',GotIt)
+    IF(.NOT. GotIt) AvoidFailed = MarkFailed
+    
+    IF( MarkFailed .OR. AvoidFailed ) THEN
+      LineInd = ListGetInteger( Solver % Values,'Line Marker',GotIt)
+      IF(.NOT. GotIt) THEN
+        CALL Fatal('SaveScalars_init','Failed strategy marked requires > Line Marker <')
+      END IF
+      Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
+    END IF
+
+    IF( AvoidFailed ) THEN
+      INQUIRE(FILE=TRIM(Name),EXIST=GotIt)
+      IF( GotIt ) THEN     
+        OPEN (10, FILE=Name)
+        READ(10,*) i
+        IF( i == 0 ) THEN
+          CALL Fatal('SaveScalars_init','Strategy already failed before!')
+        ELSE
+          CLOSE(10)
+        END IF
+      END IF
+    END IF
+    
+    ! Save a negative status during the execution such that if the
+    ! program terminates the negative status will prevail
+    IF( MarkFailed ) THEN
+      CALL Info('SaveScalars_init','Saving False marker at start')
+      i = 0
+      OPEN(10,FILE=Name,STATUS='Unknown')
+      WRITE(10,'(I0)') i
+    END IF
+  END IF
+
+
+  
 END SUBROUTINE SaveScalars_init
 
 
@@ -103,7 +142,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, LiveGraph, &
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
-      MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar
+      MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
+      Numbering, NodalOper, GotNodalOper, SaveFluxRange
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -122,31 +162,34 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: ScalarsFile, ScalarNamesFile, DateStr, &
       VariableName, OldVariableName, ResultPrefix, Suffix, Oper, Oper0, OldOper0, ParOper, Name, &
       CoefficientName, ScalarParFile, OutputDirectory, MinOper, MaxOper, &
-      MaskName, SaveName
+      MaskName, OldMaskName, SaveName
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
-      MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen
-  INTEGER :: IntVal 
+      MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen      
+  INTEGER :: IntVal, FirstInd, LastInd 
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT
 #ifndef USE_ISO_C_BINDINGS
   REAL (KIND=DP) :: CPUTime, RealTime, CPUMemory
 #endif
-
-
+  
 !------------------------------------------------------------------------------
 
   CALL Info('SaveScalars', '-----------------------------------------', Level=4 )
   CALL Info('SaveScalars','Saving scalar values of various kinds',Level=4)
 
-
+  
   Mesh => GetMesh()
   DIM = CoordinateSystemDimension()
   Params => GetSolverParams()	
 
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
 
- 
+  FileAppend = ListGetLogical( Params,'File Append',GotIt)  
+
+  SaveFluxRange = ListGetLogical( Params,'Save Flux Range',GotIt)
+  IF(.NOT. GotIt) SaveFluxRange = .TRUE.
+  
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN    
     ! Optionally number files by the number of partitions
@@ -167,6 +210,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     IF ( .NOT. FileNameQualified(ScalarsFile) ) THEN
       OutputDirectory = GetString( Params,'Output Directory',GotIt) 
+      IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
+          'Output Directory',GotIt) 
       IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
         ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
         CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
@@ -175,10 +220,16 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
-      ScalarsFile = NextFreeFilename( ScalarsFile ) 
-    END IF
+    Numbering = ListGetLogical(Params,'Filename Numbering',GotIt)
 
+    IF( Numbering  ) THEN
+      IF( Solver % TimesVisited > 0  ) THEN
+        ScalarsFile = NextFreeFilename( ScalarsFile, LastExisting = .TRUE. ) 
+      ELSE
+        ScalarsFile = NextFreeFilename( ScalarsFile ) 
+      END IF
+    END IF
+      
     ScalarNamesFile = TRIM(ScalarsFile) // '.' // TRIM("names")
     LiveGraph = ListGetLogical(Params,'Live Graph',GotIt) 
   END IF
@@ -203,10 +254,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       EchoValues = .FALSE.
       WriteCore = .FALSE. 
     END IF
-    OutputPE = ParEnv % MYPe
+    !OutputPE = ParEnv % MYPe
   END IF
-
-  FileAppend = ListGetLogical( Params,'File Append',GotIt)
 
   NoLines = 0
   LineCoordinates => ListGetConstRealArray(Params,'Polyline Coordinates',gotIt)
@@ -308,7 +357,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   NoVar = 0
   MinOper = 'min'
   MaxOper = 'max'
+  GotNodalOper = .FALSE.
+  OldMaskName = 'save scalars'
 
+  
   DO WHILE(GotVar .OR. GotOper)
     
     GotOper = .FALSE.
@@ -319,12 +371,14 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   
     VariableName = ListGetString( Params, TRIM(Name), GotVar )
 
+
     IF(TRIM(VariableName) == 'cpu time' .OR. TRIM(VariableName) == 'cpu memory') THEN
       CALL Warn('SaveScalars','This variable should now be invoked as an operator: '//TRIM(VariableName))
       CYCLE
     END IF
     
     GotOldVar = .FALSE.
+
     IF(GotVar) THEN
       Var => VariableGet( Model % Variables, TRIM(VariableName) )
       IF ( .NOT. ASSOCIATED( Var ) )  THEN
@@ -361,6 +415,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         END IF
         CYCLE
       END IF
+
+      WRITE (Name,'(A,I0)') 'Nodal Variable ',NoVar
+      NodalOper = ListGetLogical(Params,TRIM(Name),GotNodalOper)   
     ELSE
       IF(ASSOCIATED(OldVar)) THEN
         Var => OldVar
@@ -375,7 +432,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     Oper0 = ListGetString(Params,TRIM(Name),GotOper)
     IF(.NOT. GotOper .AND. GotOldOper ) Oper0 = OldOper0
 
-    IF(.NOT. (GotOper .OR. GotVar ) ) CYCLE
+
+    WRITE (Name,'(A,I0)') 'Mask Name ',NoOper
+    MaskName = ListGetString(Params,TRIM(Name),GotMaskName)
+    IF( GotMaskName ) THEN
+      OldMaskName = MaskName
+    ELSE
+      MaskName = OldMaskName
+    END IF
+
+    
+    IF(.NOT. (GotOper .OR. GotVar .OR. GotMaskName ) ) CYCLE
 
 
     IF( ASSOCIATED( Var ) ) THEN
@@ -425,12 +492,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     ParOper = ListGetString(Params,TRIM(Name),GotParOper)
     IF(.NOT. GotParOper) ParOper = OperToParOperMap(Oper)
 
-    WRITE (Name,'(A,I0)') 'Mask Name ',NoOper
-    MaskName = ListGetString(Params,TRIM(Name),GotMaskName)
-    IF(.NOT. GotMaskName) THEN
-      MaskName = 'save scalars'
-    END IF
-
     IF( MaskOper ) THEN
       GotIt = .FALSE.
       IF( BodyOper ) THEN
@@ -444,7 +505,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         CALL Warn('SaveScalars','Masked operators require mask: '//TRIM(MaskName))
       END IF
     END IF
-
+    
     ActiveBC = .FALSE.
     DO j=1,Model % NumberOfBCs
       ActiveBC(j) =  &
@@ -483,8 +544,16 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         IF( GotMaskName ) THEN
           SaveName = TRIM(SaveName)//' mask '//TRIM(MaskName)
         END IF
+        IF( GotNodalOper ) THEN
+          IF( NodalOper ) THEN
+            SaveName = TRIM(SaveName)//' nodal'
+          ELSE
+            SaveName = TRIM(SaveName)//' non-nodal'            
+          END IF
+        END IF
       END IF
-
+        
+      
       SELECT CASE(Oper)
 
       CASE ('partitions')
@@ -602,9 +671,14 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = 1.0_dp * j
         CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
        
-      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs','mean','variance','range')
+      CASE ('sum','sum abs','mean abs','max','max abs','min','min abs',&
+          'mean','variance','range','sum square','mean square','rms')
         IF( MaskOper ) CALL CreateNodeMask()
-        Val = VectorStatistics(Var,Oper)
+        IF( GotNodalOper ) THEN
+          Val = VectorStatistics(Var,Oper,NodalOper)
+        ELSE
+          Val = VectorStatistics(Var,Oper)
+        END IF
         CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
         
       CASE ('deviation')
@@ -612,8 +686,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = VectorMeanDeviation(Var,Oper)
         CALL AddToSaveList(SaveName, Val,.FALSE.,ParOper)
         
-      CASE ('int','int mean','int abs','int abs mean','int variance','volume',&
-          'potential energy','diffusive energy','convective energy')
+      CASE ('int','int mean','int square','int square mean','int rms','int abs','int abs mean',&
+          'int variance','volume','potential energy','diffusive energy','convective energy')
         
         IF( MaskOper ) CALL CreateNodeMask()
         Val = BulkIntegrals(Var, Oper, GotCoeff, CoefficientName)
@@ -652,17 +726,19 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         END DO
         
       CASE ('boundary int','boundary int mean','area','diffusive flux','convective flux')
-         
+        
         IF( .NOT. ANY( ActiveBC ) ) THEN
           CALL Error('SaveScalars','No flag > '//TRIM(MaskName)// &
               '< active for operator: '// TRIM(Oper))
         ELSE
           BoundaryHits = 0
           BoundaryFluxes = 0.0_dp
-          BoundaryAreas = 0.0_dp      
-          Minimum = HUGE(Minimum) 
-          Maximum = -HUGE(Maximum)
-          
+          BoundaryAreas = 0.0_dp
+          IF( SaveFluxRange ) THEN
+            Minimum = HUGE(Minimum) 
+            Maximum = -HUGE(Maximum)          
+          END IF
+            
           CALL BoundaryIntegrals(Var, Oper, GotCoeff, CoefficientName,&
               BoundaryFluxes,BoundaryAreas,BoundaryHits)
           
@@ -679,15 +755,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
               CALL AddToSaveList( TRIM(Name), BoundaryFluxes(j),.FALSE.,ParOper)
             END IF
           END DO
-          
-          IF(TRIM(Oper) == 'diffusive flux' .OR. TRIM(Oper) == 'convective flux') THEN
-            ParOper = 'min'
-            WRITE (Name,'(A,A,A,A)') 'min ',TRIM(Oper),': ',TRIM(VariableName)
-            CALL AddToSaveList( TRIM(Name), Minimum,.FALSE.,ParOper)
-            
-            ParOper = 'max'
-            WRITE (Name,'(A,A,A,A)') 'max ',TRIM(Oper),': ',TRIM(VariableName)
-            CALL AddToSaveList( TRIM(Name), Maximum,.FALSE.,ParOper)
+
+          IF( SaveFluxRange ) THEN
+            IF(TRIM(Oper) == 'diffusive flux' .OR. TRIM(Oper) == 'convective flux') THEN
+              ParOper = 'min'
+              WRITE (Name,'(A,A,A,A)') 'min ',TRIM(Oper),': ',TRIM(VariableName)
+              CALL AddToSaveList( TRIM(Name), Minimum,.FALSE.,ParOper)
+              
+              ParOper = 'max'
+              WRITE (Name,'(A,A,A,A)') 'max ',TRIM(Oper),': ',TRIM(VariableName)
+              CALL AddToSaveList( TRIM(Name), Maximum,.FALSE.,ParOper)
+            END IF
           END IF
         END IF
 
@@ -723,7 +801,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   IF( NoVar > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Performed ',NoVar-1,' reduction operations'
-    CALL Info('SaveScalars',Message)
+    CALL Info('SaveScalars',Message,Level=7)
   END IF
 
 
@@ -1020,7 +1098,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END DO
   IF(l > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Found ',l,' result scalars in simulation section'
-    CALL Info('SaveScalars',Message)
+    CALL Info('SaveScalars',Message,Level=7)
   END IF
 
   !------------------------------------------------------------------------------
@@ -1053,7 +1131,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END DO
     IF(l > 0 ) THEN
       WRITE (Message,'(A,I0,A)') 'Found ',l,' result scalars in components section'
-      CALL Info('SaveScalars',Message)
+      CALL Info('SaveScalars',Message,Level=7)
     END IF
   END IF
   
@@ -1068,6 +1146,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     CALL Info('SaveScalars','Found '//TRIM(I2S(NoValues))//' values to save in total',Level=6)
   END IF
 
+
+  
   !------------------------------------------------------------------------------
   ! Finally save all the scalars into a file 
   !------------------------------------------------------------------------------
@@ -1097,6 +1177,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF( GotIt ) THEN
         WRITE(10,'(A)') TRIM(Message)
       END IF
+
       Message = ListGetString(Params,'Comment',GotIt)
       IF( GotIt ) THEN
         WRITE(10,'(A)') TRIM(Message)
@@ -1104,15 +1185,22 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
       DateStr = GetVersion()
       WRITE( 10,'(A)') 'Elmer version: '//TRIM(DateStr)     
+
       DateStr = GetRevision( GotIt )
       IF( GotIt ) THEN
         WRITE( 10,'(A)') 'Elmer revision: '//TRIM(DateStr)
       END IF        
+
       DateStr = GetCompilationDate( GotIt )
       IF( GotIt ) THEN
         WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
       END IF
 
+      DateStr = GetSifName( GotIt ) 
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Solver input file: '//TRIM(DateStr)
+      END IF
+            
       DateStr = FormatDate()      
       WRITE( 10,'(A)') 'File started at: '//TRIM(DateStr)
 
@@ -1260,12 +1348,30 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
 
+  IF( ParEnv % MyPe == 0 ) THEN
+    IF( ListGetLogical( Params,'Mark Failed Strategy',GotIt) ) THEN
+      LineInd = ListGetInteger( Params,'Line Marker',GotIt)
+      IF(.NOT. GotIt) THEN
+        CALL Fatal('SaveScalars','Failed strategy marked requires > Line Marker <')
+      END IF
+
+      CALL Info('SaveScalars','Saving True marker at end')
+      Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
+      i = 1
+      OPEN(10,FILE=Name,STATUS='Unknown')
+      WRITE(10,'(I0)') i
+    END IF
+  END IF
+
+  
   IF( NoElements > 0 ) THEN
     DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z)
   END IF
 
-  CALL Info('SaveScalars','All done')
-  CALL Info('SaveScalars', '-----------------------------------------', Level=4 )
+  n = 1
+  n = NINT( ParallelReduction(1.0_dp*n) )
+  
+  CALL Info('SaveScalars', '-----------------------------------------', Level=7 )
 
 
 !------------------------------------------------------------------------------
@@ -1284,9 +1390,10 @@ CONTAINS
 
     SELECT CASE(LocalOper)
       
-    CASE('nodes','elements','dofs','sum','sum abs','int','int abs','volume','potential energy','convective energy',&
-        'diffusive energy','boundary sum','boundary dofs','boundary int','area','diffusive flux',&
-        'convective flux','nans','partition checksum','partition neighbours checksum')
+    CASE('nodes','elements','dofs','sum','sum square','sum abs','int','int square','int abs','volume',&
+        'potential energy', 'convective energy','diffusive energy','boundary sum','boundary dofs',&
+        'boundary int','area','diffusive flux','convective flux','nans','partition checksum',&
+        'partition neighbours checksum')
       ParOper = 'sum'
             
     CASE('max','max abs','boundary max','boundary max abs')
@@ -1309,7 +1416,7 @@ CONTAINS
 
     END SELECT
 
-    CALL Info('OperToParOperMap',TRIM(LocalOper)//' -> '//TRIM(ParOper))
+    CALL Info('OperToParOperMap',TRIM(LocalOper)//' -> '//TRIM(ParOper),Level=12)
 
   END FUNCTION OperToParOperMap
 
@@ -1442,7 +1549,7 @@ CONTAINS
         TargetVar => VariableGet( Model % Variables, TRIM(VariableName) )       
       END IF
       TargetVar % Values(1) = Values(n)
-      CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(n)))
+      CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(n)),Level=8)
     END IF
 
   END SUBROUTINE AddToSaveList
@@ -1506,16 +1613,19 @@ CONTAINS
 
 
 
-  FUNCTION VectorStatistics(Var,OperName) RESULT (operx)
+  FUNCTION VectorStatistics(Var,OperName,NodalOper) RESULT (operx)
 
     TYPE(Variable_t), POINTER :: Var
     CHARACTER(LEN=MAX_NAME_LEN) :: OperName
+    LOGICAL, OPTIONAL :: NodalOper
     REAL(KIND=dp) :: operx
+
     REAL(KIND=dp) :: Minimum, Maximum, AbsMinimum, AbsMaximum, &
         Mean, Variance, sumx, sumxx, sumabsx, x, Variance2
     INTEGER :: Nonodes, i, j, k, l, NoDofs, sumi
     TYPE(NeighbourList_t), POINTER :: nlist(:)
-
+    INTEGER, POINTER :: PPerm(:)
+    
     CALL Info('SaveScalars','Computing operator: '//TRIM(OperName),Level=12)
 
     sumi = 0
@@ -1527,18 +1637,26 @@ CONTAINS
     Minimum = HUGE(x)
     AbsMaximum = -HUGE(x)
     AbsMinimum = HUGE(x)
+
+    PPerm => Var % Perm
+    IF( Var % TYPE == Variable_on_gauss_points .OR. &
+        Var % TYPE == Variable_on_elements ) THEN
+      NULLIFY( PPerm )
+    END IF
+
     
     NoDofs = Var % Dofs
-    IF(ASSOCIATED (Var % Perm)) THEN
-      Nonodes = SIZE(Var % Perm) 
+    IF(ASSOCIATED (PPerm)) THEN
+      Nonodes = SIZE(PPerm) 
     ELSE
       Nonodes = SIZE(Var % Values) / NoDofs
     END IF
 
+    
     IF( MaskOper ) THEN
       IF( NoNodes > SIZE(NodeMask) ) THEN
         CALL Info('SaveScalars','Decreasing operator range to size of mask: '&
-            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))) )
+            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))), Level=8)
         NoNodes = SIZE(NodeMask)
       END IF
     END IF
@@ -1554,13 +1672,27 @@ CONTAINS
       END IF
     END IF
 
-    DO i=1,Nonodes
+    IF( PRESENT( NodalOper ) ) THEN
+      IF( NodalOper ) THEN
+        FirstInd = 1
+        LastInd = Mesh % NumberOfNodes
+      ELSE
+        FirstInd = Mesh % NumberOfNodes + 1
+        LastInd = SIZE( PPerm ) 
+      END IF
+    ELSE
+      FirstInd = 1
+      LastInd = NoNodes
+    END IF
+
+    
+    DO i=FirstInd,LastInd 
       IF( MaskOper ) THEN
         IF( .NOT. NodeMask(i) ) CYCLE
       END IF
 
       j = i
-      IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
+      IF(ASSOCIATED(PPerm)) j = Var % Perm(i)
 
       IF(j > 0) THEN
         IF( ParEnv % PEs > 1 .AND. ASSOCIATED(nlist) ) THEN
@@ -1609,8 +1741,11 @@ CONTAINS
     CASE ('sum')
       operx = sumx
 
+    CASE ('sum square')
+      operx = sumxx 
+      
     CASE ('sum abs')
-      operx = sumabsx
+      operx = sumabsx      
       
     CASE ('max')
       operx = Maximum
@@ -1629,6 +1764,12 @@ CONTAINS
       
     CASE ('mean')
       operx = Mean
+
+    CASE ('mean square')
+      operx = sumxx / sumi 
+
+    CASE ('rms')
+      operx = SQRT( sumxx / sumi )
       
     CASE ('mean abs')
       operx = sumabsx / sumi
@@ -1647,6 +1788,9 @@ CONTAINS
 
   END FUNCTION VectorStatistics
 
+
+
+  
 !------------------------------------------------------------------------------
 
   FUNCTION VectorMeanDeviation(Var,OperName) RESULT (Deviation)
@@ -1656,10 +1800,18 @@ CONTAINS
     REAL(KIND=dp) :: Mean, Deviation
     REAL(KIND=dp) :: sumx, sumdx, x, dx
     INTEGER :: Nonodes, i, j, k, NoDofs, sumi
-
+    INTEGER, POINTER :: PPerm(:)
+    
     NoDofs = Var % Dofs
-    IF(ASSOCIATED (Var % Perm)) THEN
-      Nonodes = SIZE(Var % Perm) 
+
+    PPerm => Var % Perm
+    IF( Var % TYPE == Variable_on_gauss_points .OR. &
+        Var % TYPE == Variable_on_elements ) THEN
+      NULLIFY( PPerm )
+    END IF
+
+    IF(ASSOCIATED (PPerm)) THEN
+      Nonodes = SIZE(PPerm) 
     ELSE
       Nonodes = SIZE(Var % Values) / NoDofs
     END IF
@@ -1687,7 +1839,7 @@ CONTAINS
         IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
       END IF
 
-      IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
+      IF(ASSOCIATED(PPerm)) j = PPerm(i)
       IF(j > 0) THEN
         IF(NoDofs <= 1) THEN
           x = Var % Values(j)
@@ -1710,7 +1862,7 @@ CONTAINS
     sumdx = 0.0
     DO i=1,Nonodes
       j = i
-      IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
+      IF(ASSOCIATED(PPerm)) j = PPerm(i)
       IF(j > 0) THEN
         IF(NoDofs <= 1) THEN
           x = Var % Values(j)
@@ -1887,6 +2039,10 @@ CONTAINS
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
           integral1 = integral1 + S * coeff * func 
 
+          CASE ('int square','int square mean','int rms')
+          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          integral1 = integral1 + S * coeff * func**2 
+          
           CASE ('int abs','int abs mean')
           func = ABS( SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) ) )
           integral1 = integral1 + S * coeff * func 
@@ -1943,34 +2099,25 @@ CONTAINS
     IF(hits == 0) RETURN
 
     SELECT CASE(OperName)
-      
-      CASE ('volume')
+
+    CASE ('volume','int','int abs','int square')
       operx = integral1
 
-      CASE ('int')
-      operx = integral1
-
-      CASE ('int abs')
-      operx = integral1
-      
-      CASE ('int mean')
+    CASE ('int mean','int square mean','int abs mean')
       operx = integral1 / vol        
 
-      CASE ('int abs mean')
-      operx = integral1 / vol        
+    CASE ('int rms')
+      operx = SQRT( integral1 / vol ) 
 
-      CASE ('int variance')
+    CASE ('int variance')
       operx = SQRT(integral2/vol-(integral1/vol)**2)
 
-      CASE ('diffusive energy')
+    CASE ('diffusive energy','convective energy')
       operx = 0.5d0 * integral1
 
-      CASE ('convective energy')
-      operx = 0.5d0 * integral1
-
-      CASE ('potential energy')
+    CASE ('potential energy')
       operx = integral1
-      
+
     END SELECT
 
 
@@ -1987,6 +2134,7 @@ CONTAINS
     REAL(KIND=dp) :: fluxes(:), areas(:)
     INTEGER :: fluxescomputed(:)
     
+    TYPE(Variable_t), POINTER :: VeloVar
     INTEGER :: t, FluxBody, LBody, RBody, NActive
     TYPE(Element_t), POINTER :: Element, Parent    
     TYPE(ValueList_t), POINTER :: Material, BCVal
@@ -1999,7 +2147,7 @@ CONTAINS
     REAL(KIND=dp) :: func, coeff, Normal(3), Flow(3), flux
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     INTEGER, POINTER :: ParentIndexes(:), PermIndexes(:)
-    REAL(KIND=dp) :: LocalVectorSolution(3,35)
+    REAL(KIND=dp) :: LocalVectorSolution(3,35), LocalVeloSolution(3,35)
 
     LOGICAL :: Stat, Permutated    
     INTEGER :: i,j,k,p,q,DIM,bc,NoDofs,pn,hits,istat
@@ -2014,9 +2162,11 @@ CONTAINS
     IF( istat /= 0 ) CALL Fatal('BoundaryIntegrals','Memory allocation error') 
 
 
-    Minimum = HUGE(minimum)
-    Maximum = -HUGE(maximum)
-
+    IF( SaveFluxRange ) THEN
+      Minimum = HUGE(minimum)
+      Maximum = -HUGE(maximum)
+    END IF
+      
     IF( OperName == 'area' ) THEN
       NoDofs = 1
       Permutated = .FALSE.
@@ -2038,9 +2188,16 @@ CONTAINS
       END IF
 
       CASE ('convective flux')
-      IF( NoDofs /= 1 .AND. NoDofs < DIM) THEN
-        CALL Warn('SaveScalars','convective flux & NoDofs < DIM?')
-        RETURN
+      IF( NoDofs < DIM) THEN
+        IF( NoDofs == 1 ) THEN
+          VeloVar => VariableGet( Mesh % Variables,'Flow Solution')
+          IF( .NOT. ASSOCIATED( VeloVar ) ) THEN
+            CALL Fatal('SaveScalars','For convective flux of a scalar we need the convective field!')
+          END IF
+        ELSE
+          CALL Warn('SaveScalars','convective flux & NoDofs < DIM?')
+          RETURN
+        END IF
       END IF
       
       CASE ('area','boundary int','boundary int mean')
@@ -2193,7 +2350,7 @@ CONTAINS
 
 
         CASE ('convective flux')
-
+          
           FluxBody = ListGetInteger( Model % BCs(bc) % Values, &
               'Flux Integrate Body', gotIt ) 
           IF ( GotIt ) THEN
@@ -2227,6 +2384,12 @@ CONTAINS
             IF ( .NOT. stat )  CALL Fatal( 'SaveScalars',&
                 'No solution available for specified boundary' )
           END IF                   
+
+          IF( NoDofs == 1 ) THEN
+            CALL GetVectorLocalSolution(LocalVeloSolution, &
+                UElement=Element, USolver=VeloVar % Solver, UVariable=VeloVar)
+
+          END IF
           
           pn = Parent % TYPE % NumberOfNodes
           ParentIndexes => Parent % NodeIndexes
@@ -2320,9 +2483,11 @@ CONTAINS
             END DO
             
             flux = SUM(Normal(1:DIM) * Flow(1:DIM))
-            Minimum = MIN(flux,Minimum)
-            Maximum = MAX(flux,Maximum)
-            
+            IF( SaveFluxRange ) THEN
+              Minimum = MIN(flux,Minimum)
+              Maximum = MAX(flux,Maximum)
+            END IF
+              
             fluxes(bc) = fluxes(bc) + s * flux
             
           CASE ('convective flux')
@@ -2330,20 +2495,24 @@ CONTAINS
             Normal = NormalVector( Element,ElementNodes,u,v,.TRUE. )
             coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))
             
-            IF(NoDofs == 1) THEN
-              func = SUM( LocalVectorSolution(1,1:n) * Basis(1:n) )
-              fluxes(bc) = fluxes(bc) + s * coeff * func
-              Minimum = MIN(Minimum, coeff*func)
-              Maximum = MAX(Maximum, coeff*func)
-            ELSE 
+            IF(NoDofs == 1) THEN              
+              DO j=1,DIM
+                Flow(j) = coeff * SUM(LocalVectorSolution(1,1:n) * LocalVeloSolution(j,1:n)*Basis(1:n))
+              END DO             
+            ELSE
               DO j=1,DIM
                 Flow(j) = coeff * SUM(LocalVectorSolution(j,1:n)*Basis(1:n))
               END DO
-              fluxes(bc) = fluxes(bc) + s * SUM(Normal * Flow)
-              Minimum = MIN(Minimum,  SUM(Normal * Flow))
-              Maximum = MAX(Maximum,  SUM(Normal * Flow))
             END IF
+
+            flux = SUM( Normal(1:dim) * Flow(1:dim) ) 
             
+            IF( SaveFluxRange ) THEN
+              Minimum = MIN(flux,Minimum)
+              Maximum = MAX(flux,Maximum)
+            END IF
+            fluxes(bc) = fluxes(bc) + s * flux
+              
           CASE ('boundary int','boundary int mean')
             
             coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))

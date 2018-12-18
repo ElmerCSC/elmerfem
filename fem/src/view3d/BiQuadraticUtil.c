@@ -190,7 +190,7 @@ void BiQuadraticBezierSubdivideHalfV(double *I,double *L,double *R)
 /*******************************************************************************
 
 Test biquadratic polynomial for planarity by testing how well the bezier control
-points fullfill the plane equation.
+points fulfill the plane equation.
 
 23 Aug 1995
 

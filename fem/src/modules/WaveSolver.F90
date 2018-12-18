@@ -24,25 +24,48 @@
 !/******************************************************************************
 ! *
 ! *  Solvers: WaveSolver 
-! *  Authors: Juha Ruokolainen, Peter Råback
+! *  Authors: Juha Ruokolainen, Peter Råback, Mika Malinen
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
 ! *  Original Date: ~2013
-! *  Modified by: Peter Råback
-! *  Modification date: 16 Feb 2015
 ! *
 ! *****************************************************************************/
 
 
 !------------------------------------------------------------------------------
-!> Solves the transient wave equation using nodal basis functions and Galerkin 
-!> or bubble stabilezed formulation.
+SUBROUTINE WaveSolver_Init(Model, Solver, dt, TransientSimulation)
+!------------------------------------------------------------------------------
+  USE DefUtils
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+
+  SolverParams => GetSolverParams()
+  CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
+
+!------------------------------------------------------------------------------
+END SUBROUTINE WaveSolver_Init
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+!> Solves the transient wave equation for a scalar variable using H1-conforming 
+!> basis functions and the Galerkin method.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-SUBROUTINE WaveSolver( Model,Solver,dt,TransientSimulation )
+SUBROUTINE WaveSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
 
@@ -55,107 +78,109 @@ SUBROUTINE WaveSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  TYPE(Element_t),POINTER :: Element
+  TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp) :: Norm, Pave
-  INTEGER :: n, nb, nd, t, active
-  LOGICAL :: Found
+  INTEGER :: dim, maxiter, iter, n, nb, nd, t, active
+  LOGICAL :: Found, InitHandles
 !------------------------------------------------------------------------------
   
+  dim = CoordinateSystemDimension()
+  maxiter = ListGetInteger(GetSolverParams(), &
+      'Nonlinear System Max Iterations', Found, minv=1)
+  IF(.NOT. Found ) maxiter = 1
+
   CALL DefaultStart()
-  
-   !System assembly:
-   !----------------
-   CALL DefaultInitialize()
-   Active = GetNOFActive()
-   DO t=1,Active
+
+  DO iter=1,maxiter
+    !----------------
+    !System assembly:
+    !----------------
+    CALL DefaultInitialize()
+    InitHandles = .TRUE.
+    Active = GetNOFActive()
+    DO t=1,Active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
       nb = GetElementNOFBDOFs(Element)
-      CALL LocalMatrix(  Element, n, nd+nb )
-   END DO
+      CALL LocalMatrix(Element, n, nd+nb, dim, InitHandles)
+    END DO
 
-   CALL DefaultFinishBulkAssembly()
+    CALL DefaultFinishBulkAssembly()
 
-   Active = GetNOFBoundaryElements()
-   DO t=1,Active
+    InitHandles = .TRUE.
+    Active = GetNOFBoundaryElements()
+    DO t=1,Active
       Element => GetBoundaryElement(t)
-      IF(ActiveBoundaryElement()) THEN
+      IF (ActiveBoundaryElement()) THEN
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
-        nb = GetElementNOFBDOFs(Element)
-        CALL LocalMatrixBC(  Element, n, nd+nb )
+        CALL LocalMatrixBC(Element, n, nd, InitHandles)
       END IF
-   END DO
+    END DO
 
-   CALL DefaultFinishBoundaryAssembly()
+    CALL DefaultFinishBoundaryAssembly()
 
-   CALL DefaultFinishAssembly()
-   CALL DefaultDirichletBCs()
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
 
 
-   ! And finally, solve:
-   !--------------------
-   Norm = DefaultSolve()
+    ! And finally, solve:
+    !--------------------
+    Norm = DefaultSolve()
 
-   IF( GetLogical( Solver % Values,'Set Average To Zero',Found ) ) THEN
-     Pave = SUM( Solver % Variable % Values) / &
-         SIZE( Solver % Variable % Values ) 
-     Solver % Variable % Values = Solver % Variable % Values - 0.5 * Pave
-   END IF
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
 
-   CALL DefaultFinish()
-   
+    IF( GetLogical( Solver % Values, 'Set Average To Zero', Found ) ) THEN
+      Pave = SUM( Solver % Variable % Values) / &
+          SIZE( Solver % Variable % Values ) 
+      Solver % Variable % Values = Solver % Variable % Values - Pave
+    END IF
+
+  END DO
+
+  CALL DefaultFinish()
 
 CONTAINS
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( Element, n, nd )
+  SUBROUTINE LocalMatrix(Element, n, nd, dim, InitHandles)
 !------------------------------------------------------------------------------
-    INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: n, nd, dim
+    LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-!    REAL(KIND=dp) :: diff_coeff(n), conv_coeff(n),react_coeff(n), &
-!                     time_coeff(n), D,C,R, rho,Velo(3,n),a(3), Weight
-    REAL(KIND=dp) :: speed(n), density(n), damping(n), reaction(n), &
-        vel, rho, att, react, Weight
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
-    REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n), DAMP(nd,nd)
-    LOGICAL :: Stat,Found,ParametersSet = .FALSE.
-    INTEGER :: i,t,p,q,dim
+    TYPE(ValueHandle_t) :: Load_h, SoundSpeed_h, DampingCoeff_h, ReactCoeff_h
+    TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(ValueList_t), POINTER :: BodyForce, Material
+    LOGICAL :: Stat, Found, AssembleSource, DampingActive, ReactiveMedium
 
-    TYPE(Nodes_t) :: Nodes
-    SAVE Nodes, ParametersSet, LoadAtIp, vel, rho, att, react
+    INTEGER :: i, t, p, q
+
+    REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), DAMP(nd,nd)
+    REAL(KIND=dp) :: c, att, react, LoadAtIP
+    REAL(KIND=dp) :: Weight, Basis(nd), dBasisdx(nd,3), DetJ
+
+    SAVE Load_h, SoundSpeed_h, DampingCoeff_h, ReactCoeff_h, Nodes
 !------------------------------------------------------------------------------
-
-    dim = CoordinateSystemDimension()
+    IF (InitHandles) THEN
+      CALL ListInitElementKeyword(Load_h, 'Body Force', 'Sound source')
+      CALL ListInitElementKeyword(SoundSpeed_h, 'Material', 'Sound speed', &
+          UnfoundFatal=.TRUE.)
+      CALL ListInitElementKeyword(DampingCoeff_h, 'Material', 'Sound damping')
+      CALL ListInitElementKeyword(ReactCoeff_h, 'Material', &
+          'Sound reaction damping')
+      InitHandles = .FALSE.
+    END IF
 
     CALL GetElementNodes( Nodes )
     MASS  = 0._dp
     STIFF = 0._dp
     FORCE = 0._dp
     DAMP = 0._dp
-    LOAD = 0._dp
 
-    IF(.NOT. ParametersSet ) THEN
-      BodyForce => GetBodyForce()
-      IF ( ASSOCIATED(BodyForce) ) &
-          Load(1:n) = GetReal( BodyForce, 'sound source', Found )
-
-      Material => GetMaterial()
-      speed(1:n) = GetReal(Material,'sound speed',Found)
-      density(1:n) = GetReal(Material,'density',Found)    
-      damping(1:n) = GetReal(Material,'sound damping',Found)
-      reaction(1:n) = GetReal(Material,'sound reaction',Found)
-    END IF
-
-!    Velo = 0._dp
-!   DO i=1,dim
-!      Velo(i,1:n)=GetReal(GetMaterial(),'a '//TRIM(I2S(i)),Found)
-!    END DO
+    AssembleSource = .FALSE.
 
     !Numerical integration:
     !----------------------
@@ -166,105 +191,102 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx )
 
-!      rho = SUM(Basis(1:n)*time_coeff(1:n))
-!      a = MATMUL(Velo(:,1:n),Basis(1:n))
-!      D = SUM(Basis(1:n)*dens_coeff(1:n))
-!      C = SUM(Basis(1:n)*conv_coeff(1:n))
-!      R = SUM(Basis(1:n)*react_coeff(1:n))
+      c = ListGetElementReal(SoundSpeed_h, Basis, Element)
+      att = ListGetElementReal(DampingCoeff_h, Basis, Element, DampingActive)
+      react = ListGetElementReal(ReactCoeff_h, Basis, Element, ReactiveMedium)
 
-      IF( .NOT. ParametersSet ) THEN
-        LoadAtIP = SUM( Basis(1:n) * LOAD(1:n) )
-        rho = SUM(Basis(1:n)*density(1:n))
-        vel = SUM(Basis(1:n)*speed(1:n))
-        att = SUM(Basis(1:n)*damping(1:n))
-        react = SUM(Basis(1:n)*reaction(1:n))
-        ParametersSet = .TRUE.
-      END IF
+      ! TO DO: Source is now a scalar field div(b). Rather than giving div(b)
+      ! it would be better to give the vector b and to apply
+      ! integration by parts to get always consistent flux BCs.
+      IF (.NOT. Load_h % NotPresentAnywhere) &
+          LoadAtIP = ListGetElementReal(Load_h, Basis, Element, AssembleSource) 
 
       Weight = IP % s(t) * DetJ
 
-      ! (D*grad(u),grad(v))  (diffusion term)
-      ! -----------------------------------
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
-          (1.0_dp/rho) * MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
+      ! The Laplace term:
+      ! -----------------------------------------------
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) - Weight * &
+          MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
+
+      ! Damping term to implement "viscous wave equation":
+      !---------------------------------------------------
+      IF (DampingActive) Damp(1:nd,1:nd) = Damp(1:nd,1:nd) - Weight * &
+          (att/c**2) * MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
 
       DO p=1,nd
         DO q=1,nd
-          !  (c^2 grad(u), grad(v))
-          ! (advection term (C*grad(u),v)) 
-          ! -----------------------------------
-          !STIFF (p,q) = STIFF(p,q) + Weight * &
-          !   C * SUM(a(1:dim)*dBasisdx(q,1:dim)) * Basis(p)
 
-          ! reaction term (R*u,v)
+          ! Reaction term:
           ! -----------------------------------
-          STIFF(p,q) = STIFF(p,q) + Weight * react * Basis(q) * Basis(p)
-          
+          IF (ReactiveMedium) Damp(p,q) = Damp(p,q) - Weight * &
+              (react/c**2) * Basis(q) * Basis(p)
 
-          ! time d^2u/dt^2,v
-          ! time derivative (rho*du/dt,v):
+          ! The 2nd time derivative:
           ! ------------------------------
-          MASS(p,q) = MASS(p,q) + Weight  * &
-              (1.0_dp/ (rho * vel**2) ) * Basis(q) * Basis(p)
+          MASS(p,q) = MASS(p,q) - Weight * &
+              1.0_dp/ c**2  * Basis(q) * Basis(p)
 
-          ! damping term - check the scaling
-          !---------------------------------
-          DAMP(p,q) = DAMP(p,q) + Weight * &
-              att * Basis(q) * Basis(p)                        
         END DO
       END DO
 
-      ! dens*c^2*(Q,v)
-      FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
+      IF (AssembleSource) &
+          FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
     END DO
 
     IF( TransientSimulation) THEN
        CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
     END IF
 
-    CALL LCondensate( nd-nb, nb, STIFF, FORCE )
-    CALL DefaultUpdateEquations(STIFF,FORCE)
+    ! Applying static condensation is a risky endeavour since the values of 
+    ! the bubble DOFs at previous time steps are not recovered, disable the 
+    ! static condensation?
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+    CALL DefaultUpdateEquations(STIFF, FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC( Element, n, nd )
+  SUBROUTINE LocalMatrixBC(Element, n, nd, InitHandles)
 !------------------------------------------------------------------------------
-    INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: n, nd
+    LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Flux(n), Speed(n), Density(n), rho, vel, Weight
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
-    REAL(KIND=dp) :: FORCE(nd), LOAD(n), DAMP(nd,nd), MASS(nd,nd),STIFF(nd,nd)
-    LOGICAL :: Stat,Found
-    INTEGER :: i,t,p,q,dim
-    TYPE(GaussIntegrationPoints_t) :: IP
-
     TYPE(ValueList_t), POINTER :: BC
-
+    TYPE(ValueHandle_t) :: Flux_h, SoundSpeed_h
+    TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
+    LOGICAL :: AssembleFlux, OutflowBC, Stat, Found
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), DAMP(nd,nd), MASS(nd,nd)
+    REAL(KIND=dp) :: c, g
+    REAL(KIND=dp) :: Weight, Basis(nd), dBasisdx(nd,3), DetJ
+    INTEGER :: t, p, q
+ 
+    SAVE Flux_h, SoundSpeed_h, Nodes
 !------------------------------------------------------------------------------
     BC => GetBC()
-    IF (.NOT.ASSOCIATED(BC) ) RETURN
+    IF (.NOT.ASSOCIATED(BC)) RETURN
 
-    dim = CoordinateSystemDimension()
+    IF (InitHandles) THEN
+      CALL ListInitElementKeyword(Flux_h, 'Boundary Condition', &
+          'Source Acceleration')
+      CALL ListInitElementKeyword(SoundSpeed_h, 'Material', 'Sound speed', &
+          UnfoundFatal=.TRUE.)
+      InitHandles = .FALSE.
+    END IF
+
+    OutflowBC = GetLogical(BC, 'Plane Wave BC', Found)
+    IF (.NOT. Found) OutflowBC = GetLogical(BC, 'Outflow Boundary', Found)
+    IF (.NOT. OutflowBC .AND. Flux_h % NotPresentAnywhere) RETURN
 
     CALL GetElementNodes( Nodes )
+
     STIFF = 0._dp
     FORCE = 0._dp
     DAMP = 0._dp
     MASS = 0._dp
-    LOAD = 0._dp
-
-    IF( .NOT. GetLogical( BC,'Plane Wave BC',Found ) ) RETURN
-
-    Density(1:n) = GetParentMatProp( 'Density', Element, Found )
-    Speed(1:n) = GetParentMatProp( 'Sound Speed',Element, Found )
-
-    IF( .NOT. Found ) RETURN
 
     !Numerical integration:
     !----------------------
@@ -272,26 +294,25 @@ CONTAINS
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, Basis, dBasisdx )
+      stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx)
 
       Weight = IP % s(t) * DetJ
 
-      ! Evaluate terms at the integration point:
-      !------------------------------------------
-
-      ! Plane wave velo at IP 
-      ! ---------------------------
-      rho = SUM( Basis(1:n) * Density(1:n) )
-      vel = SUM( Basis(1:n) * Speed(1:n) )
-
-      DO p=1,nd
-        DO q=1,nd
-          DAMP(p,q) = DAMP(p,q) + Weight * Basis(q) * Basis(p) / (rho * vel)
+      IF (OutflowBC) THEN
+        c = ListGetElementRealParent(SoundSpeed_h, Basis, Element)
+        DO p=1,nd
+          DO q=1,nd
+            DAMP(p,q) = DAMP(p,q) - Weight * Basis(q) * Basis(p) / c
+          END DO
         END DO
-      END DO
+      END IF
 
-!      FORCE(1:nd) = FORCE(1:nd) + Weight * (F + C*Ext) * Basis(1:nd)
+      g = ListGetElementReal(Flux_h, Basis, Element, AssembleFlux)
+      IF (AssembleFlux) THEN
+        FORCE(1:nd) = FORCE(1:nd) + Weight * g * Basis(1:nd)
+      END IF
+
     END DO
 
     IF( TransientSimulation) THEN
@@ -300,35 +321,6 @@ CONTAINS
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( N, Nb, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-    INTEGER :: N, Nb
-    REAL(KIND=dp) :: K(:,:),F(:),Kbb(Nb,Nb), &
-         Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
-
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
-
-    IF ( Nb <= 0 ) RETURN
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = (/ (i, i=n+1,n+nb) /)
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL InvertMatrix( Kbb,nb )
-
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = &
-         K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

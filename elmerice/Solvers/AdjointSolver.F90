@@ -99,7 +99,8 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
   NSDOFs   =  Sol % DOFs
   Perm => Sol % Perm
 
-  CALL InitializeToZero( StiffMatrix, ForceVector )
+ ! CALL InitializeToZero( StiffMatrix, ForceVector )
+  CALL DefaultInitialize()
 
   if (Firsttime) then
           Firsttime=.False.
@@ -134,6 +135,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
          InitMat % Values => NSSolver % Matrix % BulkValues
          InitMat % Rows => NSSolver % Matrix % Rows 
          InitMat % Cols => NSSolver % Matrix % Cols
+         InitMat % Diag => NSSolver % Matrix % Diag
 
 
          VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb',UnFoundFatal=UnFoundFatal )
@@ -161,11 +163,12 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
         StiffMatrix % Values = TransMat % Values
         StiffMatrix % Rows = TransMat % Rows
         StiffMatrix % Cols = TransMat % Cols
-        StiffMatrix % Diag = TransMat % Diag
+        IF(ASSOCIATED(TransMat % Diag)) StiffMatrix % Diag = TransMat % Diag
         ForceVector = 0.0
         Perm = NSSolver % Variable % Perm
 
-        deallocate( TransMat % Rows, TransMat % Cols , TransMat % Values, TransMat %  Diag)
+        deallocate( TransMat % Rows, TransMat % Cols , TransMat % Values)
+        IF(ASSOCIATED(TransMat % Diag)) DEALLOCATE(TransMat % Diag)
         nullify(TransMat)
 
       DO t = 1,Solver % Mesh % NumberOfBoundaryElements

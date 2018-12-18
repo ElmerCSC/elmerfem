@@ -53,6 +53,9 @@
 #ifndef HUTI_SGSPARAM
 #define HUTI_SGSPARAM dpar(3)
 #endif
+#ifndef HUTI_PSEUDOCOMPLEX
+#define HUTI_PSEUDOCOMPLEX ipar(7)
+#endif
 #ifndef HUTI_BICGSTABL_L
 #define HUTI_BICGSTABL_L ipar(16)
 #endif
@@ -82,6 +85,82 @@ MODULE IterativeMethods
 CONTAINS
   
 
+  ! When treating a complex system with iterative solver norm, matrix-vector product are
+  ! similar in real valued and complex valued systems. However, the inner product is different.
+  ! For pseudo complex systems this routine generates also the complex part of the product.
+  ! This may have a favourable effect on convergence.
+  !
+  ! This routine has same API as the fully real valued system but every second call returns
+  ! the missing complex part.
+  !
+  ! This routine assumes that in x and y the values follow each other. 
+  !-----------------------------------------------------------------------------------
+  FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT( d )
+  !-----------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: ndim, xind, yind
+    REAL(KIND=dp) :: x(*)
+    REAL(KIND=dp) :: y(*)
+    REAL(KIND=dp) :: d
+        
+    INTEGER :: i, callcount = 0
+    REAL(KIND=dp) :: a,b
+    
+    SAVE callcount, a, b
+
+    IF( callcount == 0 ) THEN    
+      ! z = x^H*y = (x_re-i*x_im)(y_re+i*y_im)       
+      ! =>  z_re = x_re*y_re + x_im*y_im
+      !     z_im = x_re*y_im - x_im*y_re
+      
+      a = SUM( x(1:ndim) * y(1:ndim) )
+      b = SUM( x(1:ndim:2) * y(2:ndim:2) - x(2:ndim:2) * y(1:ndim:2) )
+      
+      d = a 
+      callcount = callcount + 1
+    ELSE
+      d = b
+      callcount = 0
+    END IF
+      
+    !-----------------------------------------------------------------------------------
+  END FUNCTION PseudoZDotProd
+  !-----------------------------------------------------------------------------------
+
+  
+  ! As the previous but assumes that the real and complex values are ordered blockwise. 
+  !-----------------------------------------------------------------------------------
+  FUNCTION PseudoZDotProd2( ndim, x, xind, y, yind ) RESULT( d )
+  !-----------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: ndim, xind, yind
+    REAL(KIND=dp) :: x(*)
+    REAL(KIND=dp) :: y(*)
+    REAL(KIND=dp) :: d
+        
+    INTEGER :: i, callcount = 0
+    REAL(KIND=dp) :: a,b
+    
+    SAVE callcount, a, b
+
+    IF( callcount == 0 ) THEN    
+      a = SUM( x(1:ndim) * y(1:ndim) )
+      b = SUM( x(1:ndim/2) * y(ndim/2+1:ndim) - x(ndim/2+1:ndim) * y(1:ndim/2) )
+      
+      d = a 
+      callcount = callcount + 1
+    ELSE
+      d = b
+      callcount = 0
+    END IF
+      
+!-----------------------------------------------------------------------------------
+  END FUNCTION PseudoZDotProd2
+!-----------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
 !> Symmetric Gauss-Seidel iterative method for linear systems. This is not really of practical
 !> use but may be used for testing, for example. 
@@ -506,7 +585,7 @@ CONTAINS
 
 
 !-----------------------------------------------------------------------------------
-    SUBROUTINE C_lpcond(u,v,ipar,pcondlsubr)
+    RECURSIVE SUBROUTINE C_lpcond(u,v,ipar,pcondlsubr)
 !-----------------------------------------------------------------------------------
 #ifdef USE_ISO_C_BINDINGS
       USE huti_interfaces
@@ -570,11 +649,11 @@ CONTAINS
     INTEGER :: ndim,i,j,k
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged, UseStopCFun
+    LOGICAL :: Converged, Diverged, UseStopCFun, PseudoComplex
 
     TYPE(Matrix_t),POINTER :: A
 
-    REAL(KIND=dp), POINTER :: x(:),b(:)
+    REAL(KIND=dp), POINTER CONTIG :: x(:),b(:)
 
     ! Variables related to robust mode
     LOGICAL :: Robust 
@@ -612,6 +691,11 @@ CONTAINS
     PolynomialDegree = HUTI_BICGSTABL_L 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
+    PseudoComplex = ( HUTI_PSEUDOCOMPLEX > 0 )  
+    
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    
     Robust = ( HUTI_ROBUST == 1 )
     IF( Robust ) THEN
       RobustTol = HUTI_ROBUST_TOLERANCE
@@ -669,7 +753,10 @@ CONTAINS
       REAL(KIND=dp) :: alpha, beta, omega, rho0, rho1, sigma, ddot, varrho, hatgamma
       LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
       CHARACTER(LEN=MAX_NAME_LEN) :: str
-      REAL(KIND=dp), ALLOCATABLE :: work(:,:), rwork(:,:)
+      REAL(KIND=dp), ALLOCATABLE :: work(:,:)
+      REAL(KIND=dp) :: rwork(l+1,3+2*(l+1))
+      REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
+      REAL(KIND=dp) :: beta_im
 !------------------------------------------------------------------------------
     
       IF ( l < 2) CALL Fatal( 'RealBiCGStabl', 'Polynomial degree < 2' )
@@ -679,10 +766,22 @@ CONTAINS
       zero = 0.0d0
       one =  1.0d0
 
-      ALLOCATE( work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)) )
-      work = 0.0d0
-      rwork = 0.0d0
-    
+      ALLOCATE( work(n,3+2*(l+1)) )
+      !$OMP PARALLEL PRIVATE(j)
+      DO j=1,3+2*(l+1)
+         !$OMP DO SCHEDULE(STATIC)
+         DO i=1,n
+            work(i,j) = 0.0d0
+         END DO
+         !$OMP END DO
+      END DO
+      !$OMP END PARALLEL
+      DO j=1,3+2*(l+1)
+         DO i=1,l+1
+            rwork(i,j) = 0.0d0
+         END DO
+      END DO
+
       rr = 1
       r = rr+1
       u = r+(l+1)
@@ -695,11 +794,18 @@ CONTAINS
       yl = y0+1
       y = yl+1
     
-      CALL C_matvec(x,work(:,r),ipar,matvecsubr)
-
-      work(1:n,r) = b(1:n) - work(1:n,r)
-      bnrm  = normfun(n, b(1:n), 1 )
-      rnrm0 = normfun(n, work(1:n,r), 1 )
+      ! CALL C_matvec(x,work(:,r),ipar,matvecsubr)
+      CALL C_matvec(x,work(1,r),ipar,matvecsubr)
+      
+      !$OMP PARALLEL DO SCHEDULE(STATIC)
+      DO i=1,n
+         work(i,r) = b(i) - work(i,r)
+      END DO
+      !$OMP END PARALLEL DO
+      ! bnrm  = normfun(n, b(1:n), 1 )
+      ! rnrm0 = normfun(n, work(1:n,r), 1 )
+      bnrm  = normfun(n, b(1), 1 )
+      rnrm0 = normfun(n, work(1,r), 1 )
 
       !-------------------------------------------------------------------
       ! Check whether the initial guess is already converged, diverged or NaN
@@ -724,14 +830,28 @@ CONTAINS
 
       EarlyExit = .FALSE.
 
-      work(1:n,rr) = work(1:n,r) 
-      work(1:n,bp) = work(1:n,r)
-      work(1:n,xp) = x(1:n)
+      !$OMP PARALLEL 
+      !$OMP DO SCHEDULE(STATIC)
+      DO i=1,n
+         work(i,rr) = work(i,r) 
+         work(i,bp) = work(i,r)
+      END DO
+      !$OMP END DO NOWAIT
+      !$OMP DO SCHEDULE(STATIC)
+      DO i=1,n
+         work(i,xp) = x(i)
+      END DO
+      !$OMP END DO NOWAIT
+      !$OMP DO SCHEDULE(STATIC)
+      DO i=1,n
+         x(i) = zero
+      END DO
+      !$OMP END DO NOWAIT
+      !$OMP END PARALLEL
 
       rnrm = rnrm0
       mxnrmx = rnrm0
-      mxnrmr = rnrm0      
-      x(1:n) = zero      
+      mxnrmr = rnrm0  
       alpha = zero
       omega = one
       sigma = one
@@ -744,7 +864,8 @@ CONTAINS
         rho0 = -omega*rho0
       
         DO k=1,l
-          rho1 = dotprodfun(n, work(1:n,rr), 1, work(1:n,r+k-1), 1 )
+          ! rho1 = dotprodfun(n, work(1:n,rr), 1, work(1:n,r+k-1), 1 )
+          rho1 = dotprodfun(n, work(1,rr), 1, work(1,r+k-1), 1 )
           IF (rho0 == zero) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: rho0 == zero.' )
           ENDIF
@@ -754,13 +875,22 @@ CONTAINS
          
           beta = alpha*(rho1/rho0)
           rho0 = rho1
+          !$OMP PARALLEL PRIVATE(j)
           DO j=0,k-1
-            work(1:n,u+j) = work(1:n,r+j) - beta*work(1:n,u+j)
+             !$OMP DO SCHEDULE(STATIC)
+             DO i=1,n
+                work(i,u+j) = work(i,r+j) - beta*work(i,u+j)
+             END DO
+             !$OMP END DO
           ENDDO
+          !$OMP END PARALLEL
 
-          CALL C_lpcond( t, work(:,u+k-1), ipar, pcondlsubr )
-          CALL C_matvec( t, work(:,u+k), ipar, matvecsubr )
-          sigma = dotprodfun(n, work(1:n,rr), 1, work(1:n,u+k), 1 )
+          ! CALL C_lpcond( t, work(:,u+k-1), ipar, pcondlsubr )
+          CALL C_lpcond( t, work(1,u+k-1), ipar, pcondlsubr )
+          ! CALL C_matvec( t, work(:,u+k), ipar, matvecsubr )
+          CALL C_matvec( t, work(1,u+k), ipar, matvecsubr )
+          ! sigma = dotprodfun(n, work(1:n,rr), 1, work(1:n,u+k), 1 )
+          sigma = dotprodfun(n, work(1,rr), 1, work(1,u+k), 1 )
           
           IF (sigma == zero) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: sigma == zero.' )
@@ -770,15 +900,29 @@ CONTAINS
           ENDIF
 
           alpha = rho1/sigma
-          x(1:n) = x(1:n) + alpha * work(1:n,u)
+
+          !$OMP PARALLEL PRIVATE(j)
+          !$OMP DO SCHEDULE(STATIC)
+          DO i=1,n
+             x(i) = x(i) + alpha * work(i,u)
+          END DO
+          !$OMP END DO NOWAIT
           DO j=0,k-1
-            work(1:n,r+j) = work(1:n,r+j) - alpha * work(1:n,u+j+1)
+             !$OMP DO SCHEDULE(STATIC)
+             DO i=1,n
+                work(i,r+j) = work(i,r+j) - alpha * work(i,u+j+1)
+             END DO
+             !$OMP END DO
           ENDDO
+          !$OMP END PARALLEL
 
-          CALL C_lpcond( t, work(:,r+k-1), ipar,pcondlsubr )
-          CALL C_matvec( t, work(:,r+k), ipar, matvecsubr )
+          ! CALL C_lpcond( t, work(:,r+k-1), ipar,pcondlsubr )
+          ! CALL C_matvec( t, work(:,r+k), ipar, matvecsubr )
+          CALL C_lpcond( t, work(1,r+k-1), ipar,pcondlsubr )
+          CALL C_matvec( t, work(1,r+k), ipar, matvecsubr )
 
-          rnrm = normfun(n, work(1:n,r), 1 )
+          ! rnrm = normfun(n, work(1:n,r), 1 )
+          rnrm = normfun(n, work(1,r), 1 )
           IF (rnrm /= rnrm) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: rnrm == NaN.' )
           ENDIF
@@ -810,62 +954,108 @@ CONTAINS
         !--------------------------------------
         ! --- The convex polynomial part ---
         !--------------------------------------
-        
         DO i=1,l+1
           DO j=1,i
-            rwork(i,j) = dotprodfun(n, work(1:n,r+i-1), 1, work(1:n,r+j-1), 1 ) 
+             ! rwork(i,j) = dotprodfun(n, work(1:n,r+i-1), 1, work(1:n,r+j-1), 1 ) 
+             rwork(i,j) = dotprodfun(n, work(1,r+i-1), 1, work(1,r+j-1), 1 ) 
           END DO
         END DO
         DO j=2,l+1
-          rwork(1:j-1,j) = rwork(j,1:j-1)
+           DO i=1,j-1
+              rwork(i,j) = rwork(j,i)
+           END DO
         END DO
-          
-        rwork(1:l+1,zz:zz+l) = rwork(1:l+1,z:z+l)
-        CALL dgetrf (l-1, l-1, rwork(2:l,zz+1:zz+l-1), l-1, &
-            iwork, stat)
+        DO j=0,l-1
+           DO i=1,l+1
+              rwork(i,zz+j) = rwork(i,z+j)
+           END DO
+        END DO
+        DO j=1,l-1
+           DO i=1,l-1
+              tmpmtr(i,j) = rwork(i+1,zz+j)
+           END DO
+        END DO
+        ! CALL dgetrf (l-1, l-1, rwork(2:l,zz+1:zz+l-1), l-1, &
+        !     iwork, stat)
+        CALL dgetrf (l-1, l-1, tmpmtr, l-1, &
+             iwork, stat)
       
         ! --- tilde r0 and tilde rl (small vectors)
-      
+        
         rwork(1,y0) = -one
-        rwork(2:l,y0) = rwork(2:l,z) 
-        CALL dgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
-            rwork(2:l,y0), l-1, stat)
+        DO i=2,l
+           rwork(i,y0) = rwork(i,z)
+        END DO
+        DO i=1,l-1
+           tmpvec(i) = rwork(i+1,y0)
+        END DO
+        ! CALL dgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
+        !     rwork(2:l,y0), l-1, stat)
+        CALL dgetrs('n', l-1, 1, tmpmtr, l-1, iwork, &
+             tmpvec, l-1, stat)
+        DO i=1,l-1
+           rwork(i+1,y0) = tmpvec(i)
+        END DO
         rwork(l+1,y0) = zero
         
         rwork(1,yl) = zero
-        rwork(2:l,yl) = rwork(2:l,z+l) 
-        CALL dgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
-            rwork(2:l,yl), l-1, stat)
+        DO i=1,l-1
+           rwork(i+1,yl) = rwork(i+1,z+l)
+           tmpvec(i) = rwork(i+1,yl)
+        END DO
+        ! CALL dgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
+        !     rwork(2:l,yl), l-1, stat)
+        CALL dgetrs ('n', l-1, 1, tmpmtr, l-1, iwork, &
+             tmpvec, l-1, stat)
+        DO i=1,l-1
+           rwork(i+1,yl) = tmpvec(i)
+        END DO
         rwork(l+1,yl) = -one
       
         ! --- Convex combination
       
-        CALL dsymv ('u', l+1, one, rwork(1:l+1,z:z+l), l+1, &
-            rwork(1:l+1,y0), 1, zero, rwork(1:l+1,y), 1)
-        kappa0 = SQRT( ddot(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1) )
-        CALL dsymv ('u', l+1, one, rwork(1:l+1,z:z+l), l+1, &
-            rwork(1:l+1,yl), 1, zero, rwork(1:l+1,y), 1)
-        kappal = SQRT( ddot(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) )
-        CALL dsymv ('u', l+1, one, rwork(1:l+1,z:z+l), l+1, &
-          rwork(1:l+1,y0), 1, zero, rwork(1:l+1,y), 1)
-        varrho = ddot(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) / &
+        CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
+            rwork(1,y0), 1, zero, rwork(1,y), 1)
+        kappa0 = SQRT( ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1) )
+        CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
+            rwork(1,yl), 1, zero, rwork(1,y), 1)
+        kappal = SQRT( ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1) )
+        CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
+          rwork(1,y0), 1, zero, rwork(1,y), 1)
+        varrho = ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1) / &
             (kappa0*kappal)
         hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
             kappa0/kappal
-        rwork(1:l+1,y0) = rwork(1:l+1,y0) - hatgamma * rwork(1:l+1,yl)
+        DO i=1,l+1
+           rwork(i,y0) = rwork(i,y0) - hatgamma * rwork(i,yl)
+        END DO
         
         !  --- Update
         
         omega = rwork(l+1,y0)
+        !$OMP PARALLEL PRIVATE(j,i) FIRSTPRIVATE(rwork)
         DO j=1,l
-          work(1:n,u) = work(1:n,u) - rwork(j+1,y0) * work(1:n,u+j)
-          x(1:n) = x(1:n) + rwork(j+1,y0) * work(1:n,r+j-1)
-          work(1:n,r) = work(1:n,r) - rwork(j+1,y0) * work(1:n,r+j)
+           !$OMP DO SCHEDULE(STATIC)
+           DO i=1,n
+              work(i,u) = work(i,u) - rwork(j+1,y0) * work(i,u+j)
+           END DO
+           !$OMP END DO
+           !$OMP DO SCHEDULE(STATIC)
+           DO i=1,n
+              x(i) = x(i) + rwork(j+1,y0) * work(i,r+j-1)
+           END DO
+           !$OMP END DO
+           !$OMP DO SCHEDULE(STATIC)
+           DO i=1,n
+              work(i,r) = work(i,r) - rwork(j+1,y0) * work(i,r+j)
+           END DO
+           !$OMP END DO
         ENDDO
+        !$OMP END PARALLEL
     
-        CALL dsymv ('u', l+1, one, rwork(1:l+1,z:z+l), l+1, &
-            rwork(1:l+1,y0), 1, zero, rwork(1:l+1,y), 1)
-        rnrm = SQRT( ddot(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1) )
+        CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
+            rwork(1,y0), 1, zero, rwork(1,y), 1)
+        rnrm = SQRT( ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1) )
         
         !---------------------------------------
         !  --- The reliable update part ---
@@ -878,28 +1068,50 @@ CONTAINS
         IF (rcmp) THEN
           ! PRINT *, 'Performing residual update...'
           CALL C_lpcond( t, x, ipar,pcondlsubr )
-          CALL C_matvec( t, work(:,r), ipar, matvecsubr )
+          ! CALL C_matvec( t, work(:,r), ipar, matvecsubr )
+          CALL C_matvec( t, work(1,r), ipar, matvecsubr )
 
-          work(1:n,r) = work(1:n,bp) - work(1:n,r)
           mxnrmr = rnrm
+          !$OMP PARALLEL DO SCHEDULE(STATIC)
+          DO i=1,n
+             work(i,r) = work(i,bp) - work(i,r)
+          END DO
+          !$OMP END PARALLEL DO
           IF (xpdt) THEN
             ! PRINT *, 'Performing solution update...'
-            work(1:n,xp) = work(1:n,xp) + t(1:n)
-            x(1:n) = zero
-            work(1:n,bp) = work(1:n,r)
-            mxnrmx = rnrm
+            !$OMP PARALLEL DO SCHEDULE(STATIC)
+             DO i=1,n
+                work(i,xp) = work(i,xp) + t(i)
+                x(i) = zero
+                work(i,bp) = work(i,r)
+             END DO
+             !$OMP END PARALLEL DO
+
+             mxnrmx = rnrm
           ENDIF
         ENDIF
         
         IF (rcmp) THEN
           IF (xpdt) THEN       
-            t(1:n) = work(1:n,xp)
+             !$OMP PARALLEL DO SCHEDULE(STATIC)
+             DO i=1,n
+                t(i) = work(i,xp)
+             END DO
+             !$OMP END PARALLEL DO
           ELSE
-            t(1:n) = t(1:n) + work(1:n,xp)  
+             !$OMP PARALLEL DO SCHEDULE(STATIC)
+             DO i=1,n
+                t(i) = t(i) + work(i,xp)  
+             END DO
+             !$OMP END PARALLEL DO
           END IF
         ELSE
           CALL C_lpcond( t, x, ipar,pcondlsubr )
-          t(1:n) = t(1:n)+work(1:n,xp)
+          !$OMP PARALLEL DO
+          DO i=1,n
+             t(i) = t(i)+work(i,xp)
+          END DO
+          !$OMP END PARALLEL DO
         END IF
       
         errorind = rnrm / bnrm
@@ -948,9 +1160,17 @@ CONTAINS
       ! We have solved z = P*x, with P the preconditioner, so finally 
       ! solve the true unknown x
       !------------------------------------------------------------
-      t(1:n) = x(1:n)
+      !$OMP PARALLEL DO
+      DO i=1,n
+         t(i) = x(i)
+      END DO
+      !$OMP END PARALLEL DO
       CALL C_lpcond( x, t, ipar,pcondlsubr )
-      x(1:n) = x(1:n) + work(1:n,xp)        
+      !$OMP PARALLEL DO
+      DO i=1,n
+         x(i) = x(i) + work(i,xp)
+      END DO
+      !$OMP END PARALLEL DO
 !------------------------------------------------------------------------------
     END SUBROUTINE RealBiCGStabl
 !------------------------------------------------------------------------------
@@ -997,22 +1217,28 @@ CONTAINS
        xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
 #endif
     INTEGER :: ndim, RestartN
-    INTEGER :: Rounds, OutputInterval
+    INTEGER :: Rounds, MinIter, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
     LOGICAL :: Converged, Diverged, UseStopCFun
+    LOGICAL :: PseudoComplex
 
     TYPE(Matrix_t),POINTER::A
 
     REAL(KIND=dp), POINTER :: x(:),b(:)
-    
+
     ndim = HUTI_NDIM
     Rounds = HUTI_MAXIT
+    MinIter = HUTI_MINIT
     MinTol = HUTI_TOLERANCE
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL
     RestartN = HUTI_GCR_RESTART 
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    PseudoComplex = ( HUTI_PSEUDOCOMPLEX > 0 )  
+      
     x => xvec
     b => rhsvec
     nc = 0
@@ -1020,7 +1246,7 @@ CONTAINS
     A => GlobalMatrix
     CM => A % ConstraintMatrix
     Constrained = ASSOCIATED(CM)
-
+    
     IF (Constrained) THEN
       nc = CM % NumberOfRows
       Constrained = nc>0
@@ -1033,13 +1259,14 @@ CONTAINS
         x(1:ndim) = xvec; x(ndim+1:) = CM % extraVals
       END IF
     END IF
-       
+    
     CALL GCR(ndim+nc, GlobalMatrix, x, b, Rounds, MinTol, MaxTol, Residual, &
-        Converged, Diverged, OutputInterval, RestartN )
+        Converged, Diverged, OutputInterval, RestartN, MinIter )
 
+    
     IF(Constrained) THEN
-      xvec=x(1:ndim)
-      rhsvec=b(1:ndim)
+      xvec = x(1:ndim)
+      rhsvec = b(1:ndim)
       CM % extraVals = x(ndim+1:ndim+nc)
       DEALLOCATE(x,b)
     END IF
@@ -1052,10 +1279,10 @@ CONTAINS
     
     
     SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
-        Converged, Diverged, OutputInterval, m) 
+        Converged, Diverged, OutputInterval, m, MinIter) 
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A
-      INTEGER :: Rounds
+      INTEGER :: Rounds, MinIter
       REAL(KIND=dp) :: x(n),b(n)
       LOGICAL :: Converged, Diverged
       REAL(KIND=dp) :: MinTolerance, MaxTolerance, Residual
@@ -1063,19 +1290,27 @@ CONTAINS
       REAL(KIND=dp) :: bnorm,rnorm
       REAL(KIND=dp), ALLOCATABLE :: R(:)
 
-      REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:),TT(:)
+      REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:)
 
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
+      REAL(KIND=dp) :: beta_im
 !------------------------------------------------------------------------------
-      
-      Converged = .FALSE.
-      Diverged = .FALSE.
-      
-      ALLOCATE( R(n), T1(n), T2(n),TT(n) )
+      INTEGER :: allocstat
+        
+      ALLOCATE( R(n), T1(n), T2(n), STAT=allocstat )
+      IF( allocstat /= 0 ) THEN
+        CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
+      END IF
+
       IF ( m > 1 ) THEN
-         ALLOCATE( S(n,m-1), V(n,m-1) )
+        ALLOCATE( S(n,m-1), V(n,m-1), STAT=allocstat )
+        IF( allocstat /= 0 ) THEN
+          CALL Fatal('GCR','Failed to allocate memory of size: '&
+              //TRIM(I2S(n))//' x '//TRIM(I2S(m)))
+        END IF
+        
          V(1:n,1:m-1) = 0.0d0	
          S(1:n,1:m-1) = 0.0d0
       END IF	
@@ -1091,12 +1326,12 @@ CONTAINS
       ELSE
         Residual = rnorm / bnorm
       END IF
-      Converged = (Residual < MinTolerance) 
+      Converged = (Residual < MinTolerance) .AND. ( MinIter <= 0 )
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)
       IF( Converged .OR. Diverged) RETURN
-       
+      
       DO k=1,Rounds
-	 !----------------------------------------------
+        !----------------------------------------------
 	 ! Check for restarting
          !----------------------------------------------
          IF ( MOD(k,m)==0 ) THEN
@@ -1122,9 +1357,31 @@ CONTAINS
          ! Perform the orthogonalization of the search directions....
          !--------------------------------------------------------------
          DO i=1,j-1
-            beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
-            T1(1:n) = T1(1:n) - beta * S(1:n,i)
-            T2(1:n) = T2(1:n) - beta * V(1:n,i)        
+           beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+
+           IF( PseudoComplex ) THEN
+             ! The even call is for the complex part of beta
+             ! This has to be before the T1 and T2 vectors are tampered
+             ! For convenience we subtract 
+             beta_im = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+
+             IF( HUTI_PSEUDOCOMPLEX == 2 ) THEN
+               T1(1:n/2) = T1(1:n/2) + beta_im * S(n/2+1:n,i) 
+               T1(n/2+1:n) = T1(n/2+1:n) - beta_im * S(1:n/2,i)                    
+               
+               T2(1:n/2) = T2(1:n/2) + beta_im * V(1+n/2:n,i)
+               T2(1+n/2:n) = T2(1+n/2:n) - beta_im * V(1:n/2,i)                                
+             ELSE
+               T1(1:n:2) = T1(1:n:2) + beta_im * S(2:n:2,i) 
+               T1(2:n:2) = T1(2:n:2) - beta_im * S(1:n:2,i)                    
+               
+               T2(1:n:2) = T2(1:n:2) + beta_im * V(2:n:2,i)
+               T2(2:n:2) = T2(2:n:2) - beta_im * V(1:n:2,i)
+             END IF
+           END IF
+           
+           T1(1:n) = T1(1:n) - beta * S(1:n,i)
+           T2(1:n) = T2(1:n) - beta * V(1:n,i)        
          END DO
 
          alpha = normfun(n, T2(1:n), 1 )
@@ -1135,33 +1392,53 @@ CONTAINS
          ! The update of the solution and save the search data...
          !------------------------------------------------------------- 
          beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+
+         IF( PseudoComplex ) THEN
+           beta_im = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
+
+           IF( HUTI_PSEUDOCOMPLEX == 2 ) THEN
+             x(1:n/2) = x(1:n/2) - beta_im * T1(1+n/2:n)
+             x(1+n/2:n) = x(1+n/2:n) + beta_im * T1(1:n/2)                    
+             r(1:n/2) = r(1:n/2) + beta_im * T2(1+n/2:n)
+             r(1+n/2:n) = r(1+n/2:n) - beta_im * T2(1:n/2)                    
+           ELSE
+             x(1:n:2) = x(1:n:2) - beta_im * T1(2:n:2)
+             x(2:n:2) = x(2:n:2) + beta_im * T1(1:n:2)                    
+             r(1:n:2) = r(1:n:2) + beta_im * T2(2:n:2)
+             r(2:n:2) = r(2:n:2) - beta_im * T2(1:n:2)                    
+           END IF
+         END IF
+                      
          x(1:n) = x(1:n) + beta * T1(1:n)      
          r(1:n) = r(1:n) - beta * T2(1:n)
-	 IF ( j /= m ) THEN
-            S(1:n,j) = T1(1:n)
-            V(1:n,j) = T2(1:n)
+
+         IF ( j /= m ) THEN
+           S(1:n,j) = T1(1:n)
+           V(1:n,j) = T2(1:n)
 	 END IF       
 
          !--------------------------------------------------------------
          ! Check whether the convergence criterion is met 
          !--------------------------------------------------------------
          rnorm = normfun(n, r, 1)
-         !CALL C_matvec( x, trueres, ipar, matvecsubr )
-         !trueres(1:n) = b(1:n) - trueres(1:n)
-         !trueresnorm = normfun(n, trueres, 1)
+
          IF (UseStopCFun) THEN
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(I8, 3E11.4)') k, rnorm / bnorm, residual
+             WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
            END IF           
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
-             WRITE (*, '(I8, E11.4)') k, residual
+             IF( PseudoComplex ) THEN
+               WRITE (*, '(A, I6, 3E12.4, A)') '   gcr:',k, residual, beta, beta_im,'i'
+             ELSE
+               WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, residual, beta
+             END IF
            END IF
          END IF
            
-         Converged = (Residual < MinTolerance) 
+         Converged = (Residual < MinTolerance) .AND. ( k >= MinIter )
          !-----------------------------------------------------------------
          ! Make an additional check that the true residual agrees with 
          ! the iterated residual:
@@ -1193,6 +1470,8 @@ CONTAINS
   END SUBROUTINE itermethod_gcr
 !------------------------------------------------------------------------------
 
+
+   
 !-----------------------------------------------------------------------------------
 !>  This subroutine solves real linear systems Ax = b by using the IDR(s) algorithm
 !>  with s >= 1 and the right-oriented preconditioning.
@@ -1291,6 +1570,8 @@ CONTAINS
 
     Smoothing = ( HUTI_SMOOTHING == 1) 
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
     
     CALL RealIDRS(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
          Converged, Diverged, OutputInterval, s )
@@ -1679,6 +1960,9 @@ CONTAINS
     OutputInterval = HUTI_DBUGLVL
     RestartN = HUTI_GCR_RESTART 
 
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    
     !----------------------------------------------------------------------------
     ! Transform the solution vector and the right-hand side vector to 
     ! complex-valued vectors y and f
@@ -1741,10 +2025,7 @@ CONTAINS
       REAL(KIND=dp) :: alpha, trueresnorm, normerr
       COMPLEX(KIND=dp) :: trueres(n)
 !------------------------------------------------------------------------------
-      
-      Converged = .FALSE.
-      Diverged = .FALSE.
-      
+            
       ALLOCATE( R(n), T1(n), T2(n) )
       IF ( m > 1 ) THEN
          ALLOCATE( S(n,m-1), V(n,m-1) )
@@ -1789,6 +2070,7 @@ CONTAINS
          !--------------------------------------------------------------
          DO i=1,j-1
             beta = dotprodfun(n, V(1:n,i), 1, T2(1:n), 1 )
+
             T1(1:n) = T1(1:n) - beta * S(1:n,i)
             T2(1:n) = T2(1:n) - beta * V(1:n,i)        
          END DO
@@ -1815,7 +2097,7 @@ CONTAINS
          Residual = rnorm / bnorm
         
          IF( MOD(k,OutputInterval) == 0) THEN
-            WRITE (*, '(I8, E11.4)') k, residual
+           WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
          END IF
         
          Converged = (Residual < MinTolerance)

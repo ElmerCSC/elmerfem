@@ -348,8 +348,10 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
      CALL DefaultInitialize()
 
      IF (BlockPreconditioning) THEN
-       CALL InitializeToZero( AMatrix, AMatrix % RHS ) 
-       CALL InitializeToZero( PMatrix, PMatrix % RHS )        
+       !CALL InitializeToZero( AMatrix, AMatrix % RHS ) 
+       !CALL InitializeToZero( PMatrix, PMatrix % RHS )        
+       CALL DefaultInitialize(USolver=VelocitySolver)
+       CALL DefaultInitialize(USolver=PressureSolver)
      END IF
 
      !------------------------------------------------------------
@@ -372,6 +374,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         SkipPowerlaw = .FALSE.
      END IF
 
+     CALL StartAdvanceOutput( 'StokesSolver', 'Assembly:' )
      DO t=1,Active
         CALL AdvanceOutput(t, Active)        
 
@@ -1280,7 +1283,7 @@ CONTAINS
           IF( ListCheckPresent( Material, 'Viscosity Model' ) ) THEN
              mu = EffectiveViscosity( ViscAtIP, RhoAtIp, Vx, Vy, Vz, &
                   Element, Nodes, n, n, IP % U(t), IP % V(t), &
-                  IP % W(t), muder0 )
+                  IP % W(t), muder0, LocalIP=t )
              ViscNewtonLin = Newton .AND. muder0/= 0.0d0
              IF ( ViscNewtonLin )  Strain = (Grad+TRANSPOSE(Grad))/2
           ELSE
@@ -1860,7 +1863,7 @@ SUBROUTINE ComputeVarLoads(Solver)
     TYPE(Matrix_t), POINTER :: Aaid, Projector
     TYPE(Variable_t), POINTER ::  NodalLoads
 
-    REAL(KIND=dp), POINTER :: SaveValues(:)
+    REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
     REAL(KIND=dp), ALLOCATABLE :: x(:),TempVector(:), TempRHS(:)
 
     INTEGER :: DOFs

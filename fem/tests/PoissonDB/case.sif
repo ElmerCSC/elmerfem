@@ -1,0 +1,110 @@
+! Test case for reduced basis DG & Poisson Equation
+!
+! P.R. 15.11.2018
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+End
+
+Constants
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Density = 1
+End
+
+Solver 1
+  Equation = "Poisson DG"
+  Procedure = File "PoissonDG" "PoissonSolver"
+  Variable = "Potential"
+
+  Discontinuous Galerkin = Logical TRUE
+!  DG Reduced Basis = Logical True
+  
+  gamma1 = Real 10.0  ! DG-stab
+  gamma2 = Real 0.001 ! BC-stab
+
+! add poor glue
+  beta = Real 1.0e-5
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations  = 1000
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+End
+
+
+Solver 2
+!  exec solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Save Geometry IDs = Logical False
+  Vtu Format = Logical True
+
+!  Save Bulk Only = Logical True
+!  Discontinuous Bodies = Logical True
+  Discontinuous Galerkin = Logical True
+End 
+
+Body Force 1
+  Source = Real 1.0
+End
+
+Body Force 2
+  Source = Real -1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Potential = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(4) = 5 6 7 8
+  Discont BC = Logical True
+End
+
+
+Solver 1 :: Reference Norm = 1.28234715E-02

@@ -77,7 +77,7 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
   LOGICAL :: GotCoeff, GotIt, GotOper, GotVar, ExactCoordinates
   LOGICAL, ALLOCATABLE :: Valid(:)
 
-  SAVE DIM, LocalNodes, ParamName, NoParams, LocalParam, Valid
+  SAVE DIM, LocalNodes, ParamName, NoParams
 
 
   CALL Info('SaveBoundaryValues','Creating selected boundary values as fields')
@@ -215,7 +215,9 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
       
     END DO
   END DO
-  
+
+  DEALLOCATE(LocalParam, Valid)
+
 END SUBROUTINE SaveBoundaryValues
 
 !> \}

@@ -85,7 +85,7 @@ Solver 2
 ! Add base displacement to each column displacement
   Base Displacement Variable = String "Lateral Mesh Update"  
 
-! Which is the order. Base first, or stucture first (default)? 
+! Which is the order. Base first, or structure first (default)? 
 !  Base Displacement First = Logical True
 End
 

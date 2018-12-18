@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ExtrudedMesh2)
-ADD_ELMER_LABEL(ExtrudedMesh2 quick)
+ADD_ELMER_TEST(ExtrudedMesh2 LABELS quick useextrude)

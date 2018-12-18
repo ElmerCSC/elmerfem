@@ -279,7 +279,9 @@ SUBROUTINE SIASolver( Model,Solver,dt,TransientSimulation )
   ! Dirichlet 
      CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
           ComponentName('SIAFlow',COMP), 1,1, Permutation )
-  
+
+  CALL EnforceDirichletConditions( Solver, Solver % Matrix , Solver % Matrix % RHS)
+
   !Solve the system
   Norm = DefaultSolve()
 

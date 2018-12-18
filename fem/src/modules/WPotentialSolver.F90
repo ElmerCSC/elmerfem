@@ -179,7 +179,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: Element
 
   REAL(KIND=dp) :: Norm
-  INTEGER :: n, nb, nd, t, istat, active, i, j
+  INTEGER :: n, nb, nd, t, istat, active, i, j, MaxN
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: BodyForce, BC, BodyParams, Material
   TYPE(ValueList_t), POINTER :: CompParams
@@ -205,7 +205,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
         CALL Fatal( 'Wsolve', 'Memory allocation error.' )
      END IF
 
-
+     MaxN = N
      AllocationsDone = .TRUE.
   END IF
 
@@ -219,6 +219,14 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
 
+      IF (SIZE(Tcoef,3) /= n) THEN
+        DEALLOCATE(Tcoef,RotM)
+        ALLOCATE(Tcoef(3,3,N), RotM(3,3,N), STAT=istat)
+        IF ( istat /= 0 ) THEN
+          CALL Fatal( 'Wsolve', 'Memory allocation error.' )
+        END IF
+      END IF
+      
       LOAD = 0.0d0
       BodyForce => GetBodyForce()
       IF ( ASSOCIATED(BodyForce) ) &
@@ -254,7 +262,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
       !Get element local matrix and rhs vector:
       !----------------------------------------
       CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilBody, CoilType, Tcoef, RotM, n, nd+nb )
-      CALL LCondensate( nd, nb, STIFF, FORCE )
+      CALL CondensateP( nd, nb, STIFF, FORCE )
       CALL DefaultUpdateEquations( STIFF, FORCE )
    END DO
 
@@ -529,7 +537,7 @@ CONTAINS
     REAL(KIND=dp) :: Volumes(nofbodies)
     REAL(KIND=dp) :: Wnorms(nofbodies)
     REAL(KIND=dp) :: WnormCoeffs(nofbodies)
-    INTEGER :: Active, t, n
+    INTEGER :: Active, t, n, i
     TYPE(Element_t),POINTER :: Element
     LOGICAL :: CoilBody, Found, stat
     CHARACTER(LEN=MAX_NAME_LEN):: CoilType
@@ -558,10 +566,16 @@ CONTAINS
       END IF 
     END DO
    
-    WnormCoeffs(Element % BodyId) = ParallelReduction(WnormCoeffs(Element % BodyId)) 
-    Volumes(Element % BodyId) = ParallelReduction(Volumes(Element % BodyId)) 
-    Wnorms(Element % BodyId) = WnormCoeffs(Element % BodyId) &
-                               /   Volumes(Element % BodyId)
+    DO i=1, nofbodies
+       WnormCoeffs(i) = ParallelReduction(WnormCoeffs(i)) 
+       Volumes(i) = ParallelReduction(Volumes(i))
+       IF (Volumes(i) /= 0.0_dp) THEN 
+         Wnorms(i) = WnormCoeffs(i) &
+               /   Volumes(i)
+       ELSE
+         Wnorms(i) = 0.0_dp
+       END IF
+    END DO
 
     CALL Info('GetWnormsForBodies', &
          'W norm computed in components.', level=9)

@@ -34,9 +34,9 @@
 ! *
 ! *****************************************************************************/
 
-#ifndef USE_ISO_C_BINDINGS
+! #ifndef USE_ISO_C_BINDINGS
 #include "../config.h"
-#endif
+! #endif
 
 !> \ingroup ElmerLib
 !> \}
@@ -49,6 +49,10 @@ MODULE GeneralUtils
 USE Types
 #ifdef USE_ISO_C_BINDINGS
 USE LoadMod
+#endif
+
+#ifdef HAVE_LUA
+USE, INTRINSIC :: ISO_C_BINDING
 #endif
 
 IMPLICIT NONE
@@ -91,6 +95,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AdvanceOutput(t,n,dot_t,percent_t)
 !------------------------------------------------------------------------------
+     IMPLICIT NONE
      INTEGER :: t,n
      REAL(KIND=dp), OPTIONAL :: dot_t,percent_t
 !------------------------------------------------------------------------------
@@ -382,7 +387,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Sort an interger array a, together with an another integer array.
+!> Sort an integer array a, together with an another integer array.
 !------------------------------------------------------------------------------
    PURE SUBROUTINE SortI( n,a,b )
 !------------------------------------------------------------------------------
@@ -986,6 +991,81 @@ CONTAINS
        i = i + 1
      END DO
 
+#ifdef HAVE_LUA
+
+     block 
+       integer :: lstat
+       character(kind=c_char, len=:), pointer :: lua_result
+       integer :: result_len
+       logical :: closed_region, first_bang
+       closed_region = .false.
+       first_bang = .true.
+       i = INDEX( readstr(1:inlen), '#' )
+
+       IF ( i>0 .AND. i<inlen ) THEN
+         m = i
+         copystr(i:inlen) = readstr(i:inlen)
+         DO WHILE(i<=inlen)
+           IF ( copystr(i:i) == '#' ) THEN
+             DO j=i+1,inlen-1
+               IF ( copystr(j:j) == '#' ) EXIT
+             END DO
+             ninlen = j - i
+
+             ! Initialize variables for each copy of Lua interpreter separately
+
+             !$OMP PARALLEL DEFAULT(NONE) &
+             !$OMP SHARED(copystr, i, matcstr, ninlen, inlen, closed_region, first_bang, j) &
+             !$OMP PRIVATE(tcmdstr, tninlen, lstat, result_len, lua_result) 
+
+             tninlen = ninlen
+             tcmdstr = copystr(i+1:inlen)
+
+             IF(tcmdstr(tninlen:tninlen) == '#') then 
+               closed_region = .TRUE.
+             ELSE
+               closed_region = .FALSE.
+             END IF
+
+             IF(closed_region) THEN
+               lstat = lua_dostring( LuaState, &
+                   'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
+             ELSE
+               IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, dont do 'return tostring(..)'.
+                                                                   ! Instead, just execute the line in the lua interpreter
+                 lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+               ELSE ! 'abc = # <luacode>' case, oneliners only
+                 lstat = lua_dostring( LuaState, &
+                     'return tostring('// tcmdstr(1:tninlen) // ')'//c_null_char, 1)
+               END IF
+             END IF
+             lua_result => lua_popstring(LuaState, result_len)
+
+             !$OMP SINGLE 
+             matcstr(1:result_len) = lua_result(1:result_len)
+             ninlen = result_len
+             !$OMP END SINGLE
+
+             !$OMP END PARALLEL
+
+             DO k=1,ninlen
+               readstr(m:m) = matcstr(k:k)
+               m = m + 1
+             END DO
+             i = j+1
+           ELSE
+             readstr(m:m) = copystr(i:i)
+             i = i + 1
+             m = m + 1
+           END IF
+           first_bang = .false.
+         END DO
+         IF ( m <= inlen ) readstr(m:inlen) = ' '
+         inlen = m-1
+       END IF
+     end block
+#endif
+
      i = INDEX( readstr(1:inlen), '$' )
      IF ( i>0 .AND. i<inlen ) THEN
        m = i
@@ -1096,7 +1176,7 @@ CONTAINS
           i = i + 1
           k = k + 1
         END DO
- 
+
         IF ( k <= outlen ) str(k:k) = ' '
         k = k + 1
 
@@ -1191,6 +1271,8 @@ END FUNCTION ComponentNameVar
       IF ( Component > 0 ) THEN
         str = TRIM(str) // ' ' // TRIM(i2s(Component) )
       END IF
+    ELSE IF( Component == 0 ) THEN
+      str = BaseName(1:ind-1)
     ELSE
       DOFsTot = 0
       DO WHILE( .TRUE. )
@@ -1258,6 +1340,8 @@ END FUNCTION ComponentNameVar
       DO i=1,n-1
         IF( x(i+1) <= x(i) ) THEN
           Monotone = .FALSE.
+          WRITE (Message,'(E14.7,A,E14.7)')  x(i),'>=',x(i+1)
+          CALL WARN('CheckMonotone', Message)
           EXIT
         END IF
       END DO           
@@ -1404,6 +1488,44 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
    END FUNCTION SearchInterval
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> As SearchInterval, but doesn't assume we'll find the value in the interval
+   !------------------------------------------------------------------------------
+   PURE FUNCTION SearchIntPosition( tval, t ) RESULT(i)
+     !------------------------------------------------------------------------------
+     INTEGER :: i
+     INTEGER, INTENT(in) :: tval(:), t
+     !------------------------------------------------------------------------------
+     INTEGER :: n,n0,n1
+     !------------------------------------------------------------------------------
+
+     n = SIZE(tval)
+
+     IF (t < tval(1)) THEN
+       i = 0
+     ELSE IF (t>=tval(n)) THEN
+       i = n
+     ELSE
+       n0 = 1
+       n1 = n
+       i = (n0+n1)/2
+       DO WHILE(.TRUE.)
+         IF  ( tval(i) <= t .AND. tval(i+1)>t ) EXIT
+
+         IF ( tval(i) >  t ) THEN
+           n1 = i-1 
+         ELSE
+           n0 = i+1
+         END IF
+         i = (n0+n1)/2
+       END DO
+     END IF
+     IF(i>n) i=n
+
+   !------------------------------------------------------------------------------
+   END FUNCTION SearchIntPosition
+   !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -2488,7 +2610,7 @@ CONTAINS
   !---------------------------------------------------------------
   SUBROUTINE AscBinWriteFree()
 
-    CALL Info('AscBinWriteInit','Terminating buffered ascii/binary writing',Level=10)
+    CALL Info('AscBinWriteFree','Terminating buffered ascii/binary writing',Level=10)
 
     IF( AsciiOutput ) RETURN
 
@@ -2501,7 +2623,7 @@ CONTAINS
 
     BufferSize = 0
     VtuUnit = 0
-
+    
   END SUBROUTINE AscBinWriteFree
 
 
@@ -2558,11 +2680,9 @@ CONTAINS
       IF( NoVals == 0 ) THEN
         RETURN
       ELSE IF( SinglePrec ) THEN
-!        PRINT *,'writing floats:',NoVals
         WRITE( VtuUnit ) Fvals(1:NoVals)
       ELSE
         WRITE( VtuUnit ) DVals(1:NoVals) 
-!        PRINT *,'writing doubles:',NoVals
       END IF
       NoVals = 0
       IF( Empty ) RETURN 
@@ -2575,8 +2695,6 @@ CONTAINS
     ELSE
       DVals(NoVals) = val
     END IF
-
-!    PRINT *,'val:',NoVals,val
 
 
   END SUBROUTINE AscBinRealWrite
@@ -2614,7 +2732,6 @@ CONTAINS
         RETURN
       ELSE 
         WRITE( VtuUnit ) Ivals(1:INoVals)
-!        PRINT *,'writing integers:',INoVals
       END IF
       INoVals = 0
       IF( Empty ) RETURN 
@@ -2622,8 +2739,6 @@ CONTAINS
 
     INoVals = INoVals + 1
     Ivals(INoVals) = ival
-
- !   PRINT *,'ival:',iNoVals,ival
         
   END SUBROUTINE AscBinIntegerWrite
   

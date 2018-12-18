@@ -190,7 +190,7 @@ CONTAINS
 
 
           CALL ListPushNamespace('mglowest:')
-
+          
           CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
           CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', NewLinearSystem )
 
@@ -201,7 +201,7 @@ CONTAINS
             LowestSolver='direct'
             IF ( LIter ) LowestSolver='iterative'
           END IF
-
+          
           CALL Info('GMGSolve','Starting lowest linear solver using: '//TRIM(LowestSolver),Level=10 )
 
           SELECT CASE(LowestSolver)
@@ -241,8 +241,8 @@ CONTAINS
              END IF
           END SELECT
 
-          CALL ListPopNamespace()
-
+          CALL ListPopNamespace('mglowest:')
+          
           Solution(1:n) = Solution(1:n) * RHSNorm
           ForceVector(1:n) = ForceVector(1:n) * RHSnorm
 
@@ -483,6 +483,10 @@ CONTAINS
                  Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
           CALL Info( 'GMGSolve', Message, Level=5 )
 
+          IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+             CALL Fatal('GMGSolve','We seem to have diverged')
+          END IF
+          
           IF( Level == Solver % MultiGridTotal ) THEN
             IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
           ELSE
@@ -990,7 +994,7 @@ CONTAINS
              END IF
           END SELECT
 
-          CALL ListPopNamespace()
+          CALL ListPopNamespace('mglowest:')
 
           RETURN
        END IF
@@ -1240,6 +1244,11 @@ CONTAINS
           WRITE(Message,'(A,I0,A,I0,A,2E20.12E3)') 'MG Residual at level: ', &
                  Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
           CALL Info( 'PMGSolve', Message, Level=5 )
+
+
+          IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+             CALL Fatal('PMGSolve','We seem to have diverged')
+          END IF
 
           IF( Level == Solver % MultiGridTotal ) THEN
             IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
@@ -1584,7 +1593,7 @@ CONTAINS
       NewLinearSystem = .FALSE.
       IF(PRESENT(NewSystem)) NewSystem = .FALSE.
       IF ( ListGetLogical( Params, 'MG Lowest Linear Solver Unsolve',gotit ) ) THEN
-        RETURN
+        CALL Info('AMGSolve','Leaving lowest level of AMG cycle unsolved',Level=12)
       ELSE IF ( .NOT. Parallel ) THEN
         IF ( ListGetLogical( Params, 'MG Lowest Linear Solver Iterative',gotit ) ) THEN
           CALL IterSolver( Matrix1, Solution, ForceVector, Solver )
@@ -1596,7 +1605,7 @@ CONTAINS
             Solution, ForceVector, Solver, Matrix1 % ParMatrix )
       END IF
 
-      CALL ListPopNamespace()
+      CALL ListPopNamespace('mglowest:')
 
       RETURN
     END IF
@@ -1791,8 +1800,13 @@ CONTAINS
       WRITE(Message,'(A,I0,A,I0,A,E20.12E3)') 'MG Residual at level: ', &
           Level, ' iter: ', iter,' is:', ResidualNorm
       CALL Info( 'AMGSolve', Message, Level=5 )
-      
+
+      IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+         CALL Fatal('AMGSolve','We seem to have diverged')
+      END IF
+            
       IF ( ResidualNorm < Tolerance ) EXIT
+
     END DO
     
 !------------------------------------------------------------------------------
@@ -3375,8 +3389,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTEGER, PARAMETER :: FSIZE=1000, CSIZE=100
        INTEGER :: i, j, k, l, Fdofs, Cdofs, ind, ci, cj, Component1, Components, node
-       REAL(KIND=dp), POINTER :: PValues(:), FValues(:)
-       INTEGER, POINTER :: FRows(:), FCols(:), PRows(:), PCols(:), CoeffsInds(:)
+       REAL(KIND=dp), POINTER CONTIG :: PValues(:)
+       REAL(KIND=dp), POINTER :: FValues(:)
+       INTEGER, POINTER :: FRows(:), FCols(:), CoeffsInds(:)
+       INTEGER, POINTER CONTIG :: PRows(:), PCols(:)
        REAL(KIND=dp) :: bond, VALUE, possum, negsum, poscsum, negcsum, diagsum, &
            ProjLim, negbond, posbond, maxbond
        LOGICAL :: Debug, AllocationsDone, DirectInterpolate, Lumping
@@ -3876,7 +3892,7 @@ CONTAINS
 
 !-----------------------------------------------------------------------------
 !>     A pseudo geometric version of the previous
-!>     Here the stregth of connections is assumed to be inversily proportional
+!>     Here the strength of connections is assumed to be inversily proportional
 !>     to the distance between nodes. 
 !------------------------------------------------------------------------------
      FUNCTION InterpolateF2CDistance( Fmat, CF, DOFs) RESULT (Projector)
@@ -3892,8 +3908,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTEGER, PARAMETER :: FSIZE=1000, CSIZE=100
        INTEGER :: i, j, k, l, Fdofs, Cdofs, ind, ci, cj, Component1, Components, node
-       REAL(KIND=dp), POINTER :: PValues(:), FValues(:)
-       INTEGER, POINTER :: FRows(:), FCols(:), PRows(:), PCols(:), CoeffsInds(:)
+       REAL(KIND=dp), POINTER CONTIG :: PValues(:)
+       REAL(KIND=dp), POINTER :: FValues(:)
+       INTEGER, POINTER :: FRows(:), FCols(:), CoeffsInds(:)
+       INTEGER, POINTER CONTIG :: PRows(:), PCols(:)
        REAL(KIND=dp) :: bond, VALUE, possum, negsum, poscsum, negcsum, diagsum, &
            ProjLim, negbond, posbond, maxbond
        LOGICAL :: Debug, AllocationsDone, DirectInterpolate, Lumping
@@ -4141,8 +4159,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTEGER, PARAMETER :: FSIZE=1000, CSIZE=100
        INTEGER :: i, j, k, l, Fdofs, Cdofs, ind, ci, cj, node
-       REAL(KIND=dp), POINTER :: PValues(:), FValues(:)
-       INTEGER, POINTER :: FRows(:), FCols(:), PRows(:), PCols(:), CoeffsInds(:)
+       REAL(KIND=dp), POINTER CONTIG :: PValues(:)
+       REAL(KIND=dp), POINTER :: FValues(:)
+       INTEGER, POINTER :: FRows(:), FCols(:), CoeffsInds(:)
+       INTEGER, POINTER CONTIG :: PRows(:), PCols(:)
        REAL(KIND=dp) :: bond, ProjLim, posbond, maxbond
        LOGICAL :: Debug, AllocationsDone, DirectInterpolate, Lumping
        INTEGER :: inds(FSIZE), posinds(CSIZE), no, diag, InfoNode, posi, &
@@ -5098,7 +5118,8 @@ CONTAINS
     INTEGER, POINTER :: CF(:), InvCF(:), Iters(:)
     
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:),  Solution2(:)
-    REAL(KIND=dp), POINTER CONTIG :: TmpArray(:,:), Residual2(:)
+    REAL(KIND=dp), POINTER CONTIG :: Residual2(:)
+    REAL(KIND=dp), POINTER :: TmpArray(:,:)
     REAL(KIND=dp) :: ResidualNorm, RHSNorm, Tolerance, ILUTOL, Alpha, Rnorm
 #ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: tt, tmp
@@ -5169,6 +5190,8 @@ CONTAINS
 
       LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
 
+      IF(.NOT. Found ) LowestSolver = ListGetString(Params,'mglowest: Linear System Solver',Found)
+      
       IF ( .NOT. Found ) THEN
         LowestSolver = 'direct'
         LIter = ListGetLogical(Params,'MG Lowest Linear Solver Iterative',Found)
@@ -5221,8 +5244,9 @@ CONTAINS
       END IF
 
       DEALLOCATE( Residual ) 
+      
+      CALL ListPopNamespace('mglowest:')
 
-      CALL ListPopNamespace()
       CALL Info('CMGSolve','Lowest level solved',Level=9)
 
       RETURN
@@ -5396,6 +5420,11 @@ CONTAINS
           Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
       CALL Info( 'CMGSolve', Message, Level=5 )
 
+
+      IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
+         CALL Fatal('CMGSolve','We seem to have diverged')
+      END IF
+      
       IF( Level == Solver % MultiGridTotal ) THEN
         IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
       ELSE

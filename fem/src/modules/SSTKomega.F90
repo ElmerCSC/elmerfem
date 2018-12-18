@@ -285,13 +285,16 @@ CONTAINS
          Density(j) )
 
        k = DOFs*(Solver % Variable % Perm(Element % NodeIndexes(j))-1)
-       Solver % Matrix % RHS(k+1) = Kin
-       CALL ZeroRow( Solver % Matrix,k+1 )
-       CALL SetMatrixElement( Solver % Matrix,k+1,k+1,1.0d0 )
+       !Solver % Matrix % RHS(k+1) = Kin
+       !CALL ZeroRow( Solver % Matrix,k+1 )
+       !CALL SetMatrixElement( Solver % Matrix,k+1,k+1,1.0d0 )
 
-       Solver % Matrix % RHS(k+2) = Omega
-       CALL ZeroRow( Solver % Matrix,k+2 )
-       CALL SetMatrixElement( Solver % Matrix,k+2,k+2,1.0d0 )
+       CALL UpdateDirichletDof( Solver % Matrix, k+1, Kin )
+       CALL UpdateDirichletDof( Solver % Matrix, k+2, Omega )
+       
+       !Solver % Matrix % RHS(k+2) = Omega
+       !CALL ZeroRow( Solver % Matrix,k+2 )
+       !CALL SetMatrixElement( Solver % Matrix,k+2,k+2,1.0d0 )
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE KomegaWallLaw
@@ -636,9 +639,11 @@ CONTAINS
        omega_wall = 6*mu(i)/rho(i)/0.075_dp/Distance(i)**2
 
        j = 2*Solver % Variable % Perm(j)
-       Solver % Matrix % RHS(j) = omega_wall
-       CALL ZeroRow( Solver % Matrix, j )
-       CALL SetMatrixElement( Solver % Matrix, j,j, 1.0_dp )
+       !Solver % Matrix % RHS(j) = omega_wall
+       !CALL ZeroRow( Solver % Matrix, j )
+       !CALL SetMatrixElement( Solver % Matrix, j,j, 1.0_dp )
+
+       CALL UpdateDirichletDof( Solver % Matrix, j, omega_wall )
      END DO
 
 !    DO i=1,n

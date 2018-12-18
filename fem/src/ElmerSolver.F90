@@ -131,7 +131,6 @@ END INTERFACE
      RT0 = RealTime()
      CT0 = CPUTime()
 
-
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
      IF(FirstTime)  ParallelEnv => ParallelInit()
@@ -172,7 +171,7 @@ END INTERFACE
        ! Set number of OpenMP threads
        nthreads = 1
        !$ nthreads = omp_get_max_threads()
-       IF (nthreads > 1) THEN
+       IF (nthreads > 1 ) THEN
          ! Check if OMP_NUM_THREADS environment variable is set
 #if USE_ISO_C_BINDINGS
          CALL envir( 'OMP_NUM_THREADS', threads, tlen )
@@ -180,7 +179,7 @@ END INTERFACE
          CALL envir( 'OMP_NUM_THREADS'//CHAR(0), threads, tlen )
 #endif
          IF (tlen==0) THEN
-           CALL Warn('MAIN','OMP_NUM_THREADS not set. Using only 1 thread.')
+           CALL Info('MAIN','OMP_NUM_THREADS not set. Using only 1 thread per task.',Level=6)
            nthreads = 1
            ! Set number of threads to 1
            !$ CALL omp_set_num_threads(nthreads)
@@ -189,9 +188,9 @@ END INTERFACE
 #endif
          END IF
        END IF
+
        ParEnv % NumberOfThreads = nthreads
        
-
        IF( .NOT. Silent ) THEN
          CALL Info( 'MAIN', ' ')
          CALL Info( 'MAIN', '=============================================================')
@@ -202,15 +201,21 @@ END INTERFACE
          CALL Info( 'MAIN', 'Version: ' // GetVersion() // ' (Rev: ' // GetRevision() // &
                             ', Compiled: ' // GetCompilationDate() // ')' )
 
-         IF ( ParEnv % PEs > 1 ) &
-             CALL Info( 'MAIN', ' Running in parallel using ' // &
-             TRIM(i2s(ParEnv % PEs)) // ' tasks.')
-
+         IF ( ParEnv % PEs > 1 ) THEN
+           CALL Info( 'MAIN', ' Running in parallel using ' // &
+               TRIM(i2s(ParEnv % PEs)) // ' tasks.')
+         ELSE
+           CALL Info('MAIN', ' Running one task without MPI parallelization.',Level=10)
+         END IF
+         
          ! Print out number of threads in use
-         IF ( nthreads > 1 ) &
-             CALL Info('MAIN', ' Running in parallel with ' // &
-                       TRIM(i2s(nthreads)) // ' threads per task.')
-
+         IF ( nthreads > 1 ) THEN
+           CALL Info('MAIN', ' Running in parallel with ' // &
+               TRIM(i2s(nthreads)) // ' threads per task.')
+         ELSE
+           CALL Info('MAIN', ' Running with just one thread per task.',Level=10)
+         END IF
+         
 #ifdef HAVE_FETI4I
          CALL Info( 'MAIN', ' FETI4I library linked in.')
 #endif
@@ -235,6 +240,12 @@ END INTERFACE
 #ifdef HAVE_MKL
          CALL Info( 'MAIN', ' Intel MKL linked in.' )
 #endif
+#ifdef HAVE_LUA
+         CALL Info( 'MAIN', ' Lua interpreted linked in.' )
+#endif
+#ifdef HAVE_ZOLTAN
+         CALL Info( 'MAIN', ' Zoltan library linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
@@ -246,7 +257,7 @@ END INTERFACE
      ! Read input file name either as an argument, or from the default file:
      !----------------------------------------------------------------------
      GotModelName = .FALSE.
-     IF ( ParEnv % PEs <= 1 .AND. NoArgs > 0 ) THEN
+     IF ( NoArgs > 0 ) THEN
 #ifdef USE_ISO_C_BINDINGS
        CALL GET_COMMAND_ARGUMENT(1, ModelName)
 #else
@@ -417,6 +428,7 @@ END INTERFACE
 !      Note that this is really quite a dirty hack, and is not a good example.
 !-----------------------------------------------------------------------------
        CALL AddVtuOutputSolverHack()
+       CALL AddSaveScalarsHack()
 
 !------------------------------------------------------------------------------
 !      Figure out what (flow,heat,stress,...) should be computed, and get
@@ -521,8 +533,18 @@ END INTERFACE
 
        ! Initial Conditions:
        ! -------------------
-       IF ( FirstLoad ) CALL SetInitialConditions()
-       
+       IF ( FirstLoad ) THEN
+         CALL SetInitialConditions()     
+
+         DO i=1,CurrentModel % NumberOfSolvers
+           Solver => CurrentModel % Solvers(i)
+           IF( ListGetLogical( Solver % Values, 'Initialize Exported Variables', GotIt ) ) THEN
+             CurrentModel % Solver => Solver
+             CALL UpdateExportedVariables( Solver )	 
+           END IF
+         END DO
+       END IF
+         
        ! Compute the total number of steps that will be saved to the files
        ! Particularly look if the last step will be saved, or if it has
        ! to be saved separately.
@@ -609,7 +631,7 @@ END INTERFACE
        IF ( Initialize >= 2 ) EXIT
      END DO
 
-
+     
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
 
 
@@ -634,6 +656,7 @@ END INTERFACE
 
      IF ( FirstTime ) CALL ParallelFinalize()
      FirstTime = .FALSE.
+
      CALL Info('ElmerSolver','The end',Level=3)
 
      RETURN
@@ -701,6 +724,7 @@ END INTERFACE
              ELSE
                WRITE( 10,'(I1)' ) 0
              END IF
+             CALL FLUSH( 10 )
              CLOSE( 10 )
            END IF
          END IF
@@ -903,10 +927,10 @@ END INTERFACE
        Params => CurrentModel % Solvers(n) % Values
        CALL ListAddString( Params,&
            'Procedure', 'ResultOutputSolve ResultOutputSolver',.FALSE.)
-       CALL ListAddString(Params,'Output Format','vtu')
-       CALL ListAddString(Params,'Output File Name',str(1:k-1))
-       CALL ListAddString(Params,'Exec Solver','after saving')
        CALL ListAddString(Params,'Equation','InternalVtuOutputSolver')
+       CALL ListAddString(Params,'Output Format','vtu')
+       CALL ListAddString(Params,'Output File Name',str(1:k-1),.FALSE.)
+       CALL ListAddString(Params,'Exec Solver','after saving')
        CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
        CALL ListAddLogical(Params,'Check Simulation Keywords',.TRUE.)
 
@@ -918,6 +942,85 @@ END INTERFACE
      END SUBROUTINE AddVtuOutputSolverHack
 
 
+     ! This is a dirty hack that adds an instance of SaveScalars to the list of Solvers.
+     ! The idea is that it is much easier for the end user to add a basic instance.
+     !----------------------------------------------------------------------------------------------
+     SUBROUTINE AddSaveScalarsHack()     
+       TYPE(Solver_t), POINTER :: ABC(:), PSolver
+       CHARACTER(LEN=MAX_NAME_LEN) :: str
+       INTEGER :: i,j,j2,j3,k,n
+       TYPE(ValueList_t), POINTER :: Params, Simu
+       LOGICAL :: Found, VtuFormat
+       INTEGER :: AllocStat
+       
+       Simu => CurrentModel % Simulation
+       str = ListGetString( Simu,'Scalars File',Found) 
+       IF(.NOT. Found) RETURN
+
+       CALL Info('AddSaveScalarsHack','Adding SaveScalars solver to write scalars into file: '&
+           //TRIM(str))
+       
+       n = CurrentModel % NumberOfSolvers+1
+       ALLOCATE( ABC(n), STAT = AllocStat )
+       IF( AllocStat /= 0 ) CALL Fatal('AddSaveScalarsHack','Allocation error 1')
+       
+       CALL Info('AddSaveScalarsHack','Increasing number of solver to: '&
+           //TRIM(I2S(n)),Level=8)
+       DO i=1,n-1
+         ! Def_Dofs is the only allocatable structure within Solver_t:
+         IF( ALLOCATED( CurrentModel % Solvers(i) % Def_Dofs ) ) THEN
+           j = SIZE(CurrentModel % Solvers(i) % Def_Dofs,1)
+           j2 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,2)
+           j3 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,3)
+           ALLOCATE( ABC(i) % Def_Dofs(j,j2,j3), STAT = AllocStat )
+           IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 2')           
+         END IF
+
+         ! Copy the content of the Solver structure
+         ABC(i) = CurrentModel % Solvers(i)
+
+         ! Nullify the old structure since otherwise bad things may happen at deallocation
+         NULLIFY( CurrentModel % Solvers(i) % ActiveElements )
+         NULLIFY( CurrentModel % Solvers(i) % Mesh )
+         NULLIFY( CurrentModel % Solvers(i) % BlockMatrix )
+         NULLIFY( CurrentModel % Solvers(i) % Matrix )
+         NULLIFY( CurrentModel % Solvers(i) % Variable )
+       END DO
+
+       ! Deallocate the old structure and set the pointer to the new one
+       DEALLOCATE( CurrentModel % Solvers )
+       CurrentModel % Solvers => ABC
+       CurrentModel % NumberOfSolvers = n
+
+       ! Now create the ResultOutputSolver instance on-the-fly
+       CurrentModel % Solvers(n) % PROCEDURE = 0
+       NULLIFY( CurrentModel % Solvers(n) % Matrix )
+       NULLIFY( CurrentModel % Solvers(n) % BlockMatrix )
+       NULLIFY( CurrentModel % Solvers(n) % Variable )
+       NULLIFY( CurrentModel % Solvers(n) % ActiveElements )
+       CurrentModel % Solvers(n) % NumberOfActiveElements = 0
+       j = CurrentModel % NumberOfBodies
+       ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
+       IF( AllocStat /= 0 ) CALL Fatal('AddSaveScalarsHack','Allocation error 3')
+       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
+       
+       ! Add some keywords to the list
+       CurrentModel % Solvers(n) % Values => ListAllocate()
+       Params => CurrentModel % Solvers(n) % Values
+       CALL ListAddString( Params,'Procedure', 'SaveData SaveScalars',.FALSE.)
+       CALL ListAddString(Params,'Equation','InternalSaveScalars')
+       CALL ListAddString(Params,'Filename',TRIM(str),.FALSE.)
+       CALL ListAddString(Params,'Exec Solver','after saving')
+
+       ! Add a few often needed keywords also if they are given in simulation section
+       CALL ListCopyPrefixedKeywords( Simu, Params, 'scalars:' )
+
+       CALL Info('AddSaveScalarsHack','Finished appeding SaveScalars solver',Level=12)
+       
+     END SUBROUTINE AddSaveScalarsHack
+
+
+     
 !------------------------------------------------------------------------------
 !> Adds flags for active solvers. 
 !------------------------------------------------------------------------------
@@ -998,38 +1101,62 @@ END INTERFACE
 
      Mesh => CurrentModel % Meshes 
      DO WHILE( ASSOCIATED( Mesh ) )
-       CALL VariableAdd( Mesh % Variables, Mesh,Solver, &
-             'Coordinate 1',1,Mesh % Nodes % x )
+       CALL VariableAdd( Mesh % Variables, Mesh, &
+             Name='Coordinate 1',DOFs=1,Values=Mesh % Nodes % x )
 
-       CALL VariableAdd(Mesh % Variables,Mesh,Solver, &
-             'Coordinate 2',1,Mesh % Nodes % y )
+       CALL VariableAdd(Mesh % Variables,Mesh, &
+             Name='Coordinate 2',DOFs=1,Values=Mesh % Nodes % y )
 
-       CALL VariableAdd(Mesh % Variables,Mesh,Solver, &
-             'Coordinate 3',1,Mesh % Nodes % z )
+       CALL VariableAdd(Mesh % Variables,Mesh, &
+             Name='Coordinate 3',DOFs=1,Values=Mesh % Nodes % z )
 
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Time', 1, sTime )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Periodic Time', 1, sPeriodic )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Timestep', 1, sStep )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Timestep size', 1, sSize )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Timestep interval', 1, sInterval )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Time',DOFs=1, Values=sTime )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Periodic Time',DOFs=1, Values=sPeriodic )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep', DOFs=1, Values=sStep )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep size', DOFs=1, Values=sSize )
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep interval', DOFs=1, Values=sInterval )
 
        ! Save some previous timesteps for variable timestep multistep methods
        DtVar => VariableGet( Mesh % Variables, 'Timestep size' )
        DtVar % PrevValues => sPrevSizes
 
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
-               'nonlin iter', 1, nonlinIt )
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
-               'coupled iter', 1, steadyIt )
+       CALL VariableAdd( Mesh % Variables, Mesh, &
+               Name='nonlin iter', DOFs=1, Values=nonlinIt )
+       CALL VariableAdd( Mesh % Variables, Mesh, &
+               Name='coupled iter', DOFs=1, Values=steadyIt )
 
        IF( ListCheckPresentAnySolver( CurrentModel,'Scanning Loops') ) THEN
-         CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'scan', 1, sScan )
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF
                
        sPar(1) = 1.0_dp * ParEnv % MyPe 
-       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Partition', 1, sPar ) 
+       CALL VariableAdd( Mesh % Variables, Mesh, Name='Partition', DOFs=1, Values=sPar ) 
+
+       ! Add partition as a elemental field in case we have just one partition
+       ! and have asked still for partitioning into many.
+       IF( ParEnv % PEs == 1 .AND. ASSOCIATED( Mesh % Repartition ) ) THEN
+         BLOCK
+           REAL(KIND=dp), POINTER :: PartField(:)
+           INTEGER, POINTER :: PartPerm(:)
+           INTEGER :: i, n
+
+           CALL Info('AddMeshCoordinatesAndTime','Adding partitioning also as a field')
+           
+           n = Mesh % NumberOfBulkElements
+           NULLIFY( PartField, PartPerm )
+           ALLOCATE( PartField(n), PartPerm(n) )
+           DO i=1,n
+             PartPerm(i) = i
+             PartField(i) = 1.0-dp * Mesh % RePartition(i)
+           END DO
+           
+           CALL VariableAdd( Mesh % Variables, Mesh, Name='PartField',DOFs=1, &
+               Values=PartField, Perm=PartPerm, TYPE=Variable_on_elements)
+         END BLOCK
+       END IF
 
        Mesh => Mesh % Next
+        
      END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE AddMeshCoordinatesAndTime
@@ -1241,23 +1368,46 @@ END INTERFACE
 !------------------------------------------------------------------------------
      USE DefUtils
      TYPE(Element_t), POINTER :: Edge
-     INTEGER :: DOFs,i,j,k,l
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
+     INTEGER :: DOFs,i,j,k,k1,k2,l,n,m
+     CHARACTER(LEN=MAX_NAME_LEN) :: str, VarName
      LOGICAL :: Found, ThingsToDO, NamespaceFound, AnyNameSpace
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, ALLOCATABLE :: Indexes(:)
      REAL(KIND=dp) :: Val
      REAL(KIND=dp),ALLOCATABLE :: Work(:)
      TYPE(ValueList_t), POINTER :: IC
-!------------------------------------------------------------------------------
+     TYPE(Nodes_t) :: Nodes
+     TYPE(GaussIntegrationPoints_t) :: IP
+     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+     REAL(KIND=dp) :: DetJ
+     TYPE(ValueHandle_t) :: LocalSol_h
+     LOGICAL :: Stat, FoundIC, PrevFoundIC
+     INTEGER :: VarOrder, PrevBodyId
+     !------------------------------------------------------------------------------
 
      AnyNameSpace = ListCheckPresentAnySolver( CurrentModel,'namespace')
      NameSpaceFound = .FALSE.
      
      Mesh => CurrentModel % Meshes
      DO WHILE( ASSOCIATED( Mesh ) )
-       ALLOCATE( Indexes(Mesh % MaxElementDOFs), Work(Mesh % MaxElementDOFs) )
+       
        CALL SetCurrentMesh( CurrentModel, Mesh )
+
+       IF( InfoActive( 20 ) ) THEN
+         PRINT *,'InitCond mesh:',TRIM(Mesh % Name), Mesh % MeshDim, Mesh % NumberOfNodes 
+         Var => Mesh % Variables
+         DO WHILE( ASSOCIATED(Var) ) 
+           IF( ListCheckPresentAnyIC( CurrentModel, Var % Name ) ) THEN
+             PRINT *,'InitCond pre range:',TRIM(Var % Name),MINVAL(Var % Values),MAXVAL( Var % Values)
+           END IF
+           Var => Var % Next
+         END DO
+       END IF
+
+       
+       m = Mesh % MaxElementDofs
+       n = Mesh % MaxElementNodes      
+       ALLOCATE( Indexes(m), Work(m) , Basis(m), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
        ! First set the global variables and check whether there is anything left to do
        ThingsToDo = .FALSE.
@@ -1267,7 +1417,17 @@ END INTERFACE
          
          Var => Mesh % Variables
          DO WHILE( ASSOCIATED(Var) ) 
-           
+
+           IF( .NOT. ASSOCIATED( Var % Values ) ) THEN
+             Var => Var % Next
+             CYCLE
+           END IF
+
+           IF( SIZE( Var % Values ) == 0 ) THEN
+             Var => Var % Next
+             CYCLE
+           END IF
+          
            Solver => Var % Solver
            IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
@@ -1277,7 +1437,7 @@ END INTERFACE
            END IF
              
            ! global variable
-           IF( SIZE( Var % Values ) == Var % DOFs ) THEN
+           IF( SIZE( Var % Values ) == Var % DOFs .OR. Var % Type == Variable_global ) THEN
              Val = ListGetCReal( IC, Var % Name, GotIt )
              IF( GotIt ) THEN
                WRITE( Message,'(A,ES12.3)') 'Initializing global variable: > '&
@@ -1300,6 +1460,7 @@ END INTERFACE
          END DO
        END DO
 
+       
        ! And now do the ordinary fields
        !--------------------------------
        IF( ThingsToDo ) THEN
@@ -1321,7 +1482,20 @@ END INTERFACE
            Var => Mesh % Variables
            DO WHILE( ASSOCIATED(Var) ) 
              
+             IF( .NOT. ASSOCIATED( Var % Values ) ) THEN
+               Var => Var % Next
+               CYCLE
+             END IF
              
+             IF( SIZE( Var % Values ) == 0 ) THEN
+               Var => Var % Next
+               CYCLE
+             END IF
+
+             IF( t == 1 ) THEN
+               CALL Info('InitCond','Trying to initialize variable: '//TRIM(Var % Name),Level=20)
+             END IF
+               
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
@@ -1331,12 +1505,29 @@ END INTERFACE
              END IF
                
              ! global variables were already set
-             IF( SIZE( Var % Values ) == Var % DOFs ) THEN
+             IF( SIZE( Var % Values ) == Var % DOFs .OR. Var % Type == Variable_global ) THEN
+               CONTINUE
+               
+             ELSE IF( Var % TYPE == Variable_on_elements ) THEN
+               IF( Var % DOFs > 1 ) THEN
+                 CALL Fatal('InitCond','Initialization only for scalar elements fields!')
+               END IF
+               
+               Work(1:n) = GetReal( IC, Var % Name, GotIt )
+               IF ( GotIt ) THEN
+                 k1 = CurrentElement % ElementIndex 
+                 IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
+                 IF ( k1>0 ) Var % Values(k1) = SUM( Work(1:n) ) / n
+               END IF               
+               
+             ELSE IF( Var % TYPE == Variable_on_gauss_points ) THEN
+               ! We do this elsewhere in a more efficient manner
                CONTINUE
                
              ELSE IF ( Var % DOFs <= 1 ) THEN
-               
-               Work(1:n) = GetReal( IC, Var % Name, GotIt )
+
+                
+               Work(1:n) = ListGetReal( IC, Var % Name, n, CurrentElement % NodeIndexes, GotIt )
                IF ( GotIt ) THEN
                  DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
                  DO k=1,n
@@ -1345,7 +1536,7 @@ END INTERFACE
                    IF ( k1>0 ) Var % Values(k1) = Work(k)
                  END DO
                END IF
-               
+
                IF ( Transient .AND. Solver % TimeOrder==2 ) THEN
                  Work(1:n) = GetReal( IC, TRIM(Var % Name) // ' Velocity', GotIt )
                  IF ( GotIt ) THEN
@@ -1405,12 +1596,135 @@ END INTERFACE
              Var => Var % Next
            END DO
          END DO
+
+         
+         ! Here we do just the gauss point values for now.
+         ! It would really make sense to do the ICs in this order since probably
+         ! there are quite few IC variables to set but quite many elements.
+         
+         Var => Mesh % Variables
+         DO WHILE( ASSOCIATED(Var) ) 
+
+           VarName = Var % Name 
+           Solver => Var % Solver
+           IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
+           
+           IF( AnyNameSpace ) THEN
+             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
+           END IF
+           
+           VarOrder = -1
+           DO VarOrder = 0, 2
+             IF( VarOrder == 0 ) THEN
+               VarName = Var % Name
+             ELSE IF( VarOrder == 1 ) THEN
+               VarName = TRIM( Var % Name )//' Velocity'
+             ELSE IF( VarOrder == 2 ) THEN
+               VarName = TRIM( Var % Name )//' Acceleration'
+             END IF
+
+             !CALL ListInitElementKeyword( LocalSol_h,'Initial Condition',VarName, &
+             !    FoundSomewhere = Found )
+             Found = ListCheckPresentAnyIC( CurrentModel, VarName )
+
+             IF( Found .AND. VarOrder > 0 ) THEN              
+               IF ( .NOT. ( Transient .AND. Solver % TimeOrder==2 ) ) THEN
+                 CALL Warn('InitCond','We can only set timederivative for transients')
+                 Found = .FALSE.
+               END IF
+             END IF
+
+             IF( Found ) THEN
+               
+               CALL ListInitElementKeyword( LocalSol_h,'Initial Condition',VarName )
+               
+               IF( Var % TYPE /= Variable_on_gauss_points ) CYCLE
+
+               CALL Info('InitCond','Initializing gauss point field: '//TRIM(VarName),Level=7)               
+               IF( Var % DOFs > 1 ) THEN
+                 CALL Fatal('InitCond','Initialization only for scalar elemental fields!')
+               END IF
+               
+               PrevBodyId = -1 
+               DO t=1, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+                 
+                 CurrentElement => Mesh % Elements(t)
+
+                 i = CurrentElement % BodyId 
+                 IF( i == 0 ) CYCLE         
+
+                 IF( i == PrevBodyId ) THEN
+                   FoundIC = PrevFoundIC
+                 ELSE
+                   j = ListGetInteger(CurrentModel % Bodies(i) % Values, &
+                       'Initial Condition',FoundIC, 1, CurrentModel % NumberOfICs )           
+                   IF ( FoundIC ) THEN                       
+                     IC => CurrentModel % ICs(j) % Values
+                     FoundIC = ListCheckPresent( IC, VarName )
+                   END IF
+                   PrevFoundIC = FoundIC 
+                 END IF
+
+                 IF( .NOT. FoundIC ) CYCLE
+
+                 CurrentModel % CurrentElement => CurrentElement
+                 n = GetElementNOFNodes()                 
+                 
+                 k1 = Var % Perm( CurrentElement % ElementIndex )
+                 k2 = Var % Perm( CurrentElement % ElementIndex + 1 )
+
+                 IF( k2- k1 > 0 ) THEN
+                   
+                   Nodes % x(1:n) = Mesh % Nodes % x(CurrentElement % NodeIndexes)
+                   Nodes % y(1:n) = Mesh % Nodes % y(CurrentElement % NodeIndexes)
+                   Nodes % z(1:n) = Mesh % Nodes % z(CurrentElement % NodeIndexes)
+
+                   IP = GaussPoints( CurrentElement )
+                   IF( k2 - k1 /= Ip % n ) THEN
+                     CALL Warn('InitCond','Incompatible number of Gauss points, skipping')
+                   ELSE              
+                     DO k=1,IP % n
+                       stat = ElementInfo( CurrentElement, Nodes, IP % U(k), IP % V(k), &
+                           IP % W(k), detJ, Basis )
+
+                       val = ListGetElementReal( LocalSol_h,Basis,CurrentElement,Found,GaussPoint=k)
+                       
+                       IF( VarOrder == 0 ) THEN
+                         Var % Values(k1+k) = val
+                       ELSE 
+                         Var % PrevValues(k1+k,VarOrder) = val
+                       END IF
+
+                     END DO
+                   END IF
+                   
+                 END IF 
+               END DO
+             END IF
+           END DO
+           IF(NamespaceFound) CALL ListPopNamespace()
+           Var => Var % Next
+         END DO
        END IF
 
-       DEALLOCATE( Indexes, Work )
+       DEALLOCATE( Indexes, Work, Basis, Nodes % x, Nodes % y, Nodes % z)
+       
+       IF( InfoActive( 20 ) ) THEN
+         Var => Mesh % Variables
+         DO WHILE( ASSOCIATED(Var) ) 
+           IF( ListCheckPresentAnyIC( CurrentModel, Var % Name ) ) THEN
+             PRINT *,'InitCond post range:',TRIM(Var % Name),MINVAL(Var % Values),MAXVAL( Var % Values)
+           END IF
+           Var => Var % Next
+         END DO
+       END IF
+     
        Mesh => Mesh % Next
      END DO
 
+
+       
 !------------------------------------------------------------------------------
    END SUBROUTINE InitCond
 !------------------------------------------------------------------------------
@@ -1421,22 +1735,107 @@ END INTERFACE
    SUBROUTINE Restart()
 !------------------------------------------------------------------------------
      USE DefUtils
-     LOGICAL :: Gotit
-     INTEGER :: k
+     LOGICAL :: Gotit, DoIt
+     INTEGER :: i, j, k
      REAL(KIND=dp) :: StartTime
+     TYPE(Mesh_t), POINTER :: Mesh, pMesh
+     TYPE(ValueList_t), POINTER :: RestartList
+     LOGICAL, ALLOCATABLE :: MeshDone(:)
 !------------------------------------------------------------------------------
 
+     
+     ! Count the number of meshes first so that we can identify them
+     j = 0
+     pMesh => CurrentModel % Meshes       
+     DO WHILE( ASSOCIATED(pMesh) ) 
+       j = j + 1
+       pMesh => pMesh % Next
+     END DO
+     ALLOCATE( MeshDone( j ) )
+     MeshDone = .FALSE.
 
-     RestartFile = ListGetString( CurrentModel % Simulation, &
-         'Restart File', GotIt )
+     
+     ! Do Solver-mesh specific restart only
+     !-----------------------------------------------------------------
+     IF ( ListCheckPresentAnySolver( CurrentModel,'Restart File') ) THEN
+       DO i=1, CurrentModel % NumberOfSolvers
+         RestartList => CurrentModel % Solvers(i) % Values 
+         
+         RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
+         IF ( GotIt ) THEN
 
-     IF ( GotIt ) THEN
-       k = ListGetInteger( CurrentModel % Simulation,'Restart Position',GotIt, &
-                  minv=0 )
+           Mesh => CurrentModel % Solvers(i) % Mesh 
+           IF( .NOT. ASSOCIATED(Mesh) ) THEN
+             CALL Warn('Restart','Solver has no mesh associated!')
+             CYCLE
+           END IF
+           
+           DoIt = .TRUE.
+           pMesh => CurrentModel % Meshes       
+           j = 0
+           DO WHILE( ASSOCIATED(pMesh) ) 
+             j = j + 1 
+             pMesh => pMesh % Next
+             IF( ASSOCIATED( Mesh, pMesh ) ) THEN
+               IF( MeshDone(j) ) THEN
+                 DoIt = .FALSE.
+               ELSE
+                 MeshDone(j) = .TRUE.
+               END IF
+             END IF
+           END DO
 
+           ! Variables for this mesh already done!
+           IF(.NOT. DoIt ) CYCLE
+           
+           CALL Info('Restart','Perfoming solver specific Restart for: '//TRIM(Mesh % Name),Level=6)
+           IF ( LEN_TRIM(Mesh % Name) > 0 ) THEN
+             OutputName = TRIM(Mesh % Name) // '/' // TRIM(RestartFile)
+           ELSE
+             OutputName = TRIM(RestartFile)
+           END IF
+                      
+           IF ( ParEnv % PEs > 1 ) &
+               OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+           CALL SetCurrentMesh( CurrentModel, Mesh )
+
+           k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
+           CALL LoadRestartFile( OutputName, k, Mesh, RestartList = RestartList )
+           
+           StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
+           IF( GotIt ) THEN
+             Var  => VariableGet( Mesh % Variables, 'Time' )
+             IF ( ASSOCIATED( Var ) )  Var % Values(1) = StartTime
+           END IF
+         END IF
+         
+       END DO
+     END IF
+ 
+     
+     ! Do the standard global restart
+     !-----------------------------------------------------------------
+     RestartList => CurrentModel % Simulation    
+     RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
+     IF ( GotIt ) THEN      
+       k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
        Mesh => CurrentModel % Meshes
-       DO WHILE( ASSOCIATED(Mesh) ) 
 
+       j = 0
+       DO WHILE( ASSOCIATED(Mesh) ) 
+         j = j + 1
+
+         ! Make sure that if a mesh has already been restarted 
+         ! it is not being done again. 
+         IF( MeshDone(j) ) THEN
+           CALL Info('Restart','Already done mesh: '//TRIM(Mesh % Name))
+           Mesh => Mesh % Next
+           CYCLE
+         END IF
+         MeshDone(j) = .TRUE.
+         
+         CALL Info('Restart','Perfoming global Restart for: '//TRIM(Mesh % Name),Level=6)
+         
          IF ( LEN_TRIM(Mesh % Name) > 0 ) THEN
            OutputName = TRIM(Mesh % Name) // '/' // TRIM(RestartFile)
          ELSE
@@ -1446,20 +1845,18 @@ END INTERFACE
            OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
 
          CALL SetCurrentMesh( CurrentModel, Mesh )
-         CALL LoadRestartFile( OutputName,k,Mesh )
+         CALL LoadRestartFile( OutputName, k, Mesh )
 
-         StartTime = ListGetConstReal( CurrentModel % Simulation,'Restart Time',GotIt)
+         StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
          IF( GotIt ) THEN
 	   Var  => VariableGet( Mesh % Variables, 'Time' )
-           IF ( ASSOCIATED( Var ) )  Var % Values(1)  = StartTime
+           IF ( ASSOCIATED( Var ) )  Var % Values(1) = StartTime
          END IF
 
          Mesh => Mesh % Next
-
        END DO
-
-
-     END IF
+     END IF     
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE Restart
 !------------------------------------------------------------------------------
@@ -1470,6 +1867,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
    SUBROUTINE ExecSimulation(TimeIntervals,  CoupledMinIter, &
               CoupledMaxIter, OutputIntervals, Transient, Scanning)
+     IMPLICIT NONE
       INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
       LOGICAL :: Transient,Scanning
 !------------------------------------------------------------------------------
@@ -1500,9 +1898,9 @@ END INTERFACE
      REAL(KIND=dp) :: RealTime
 #endif
      
-!$omp parallel
-!$   IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit
-!$omp end parallel
+     !$OMP PARALLEL
+     IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
+     !$OMP END PARALLEL
 
      nSolvers = CurrentModel % NumberOfSolvers
      DO i=1,nSolvers
@@ -1510,7 +1908,8 @@ END INTERFACE
         IF ( Solver % PROCEDURE==0 ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
           ! solver to be called prior to time looping can never be transient
-           CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
+          dt = 1.0_dp
+          CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
         END IF
      END DO
 
@@ -1599,7 +1998,7 @@ END INTERFACE
            AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
                'Adaptive Time Error', GotIt )       
            IF ( .NOT. GotIt ) THEN 
-             CALL Fatal('ElmerSolver','Adaptive Time Limit must be given for ' // &
+             CALL Fatal('ElmerSolver','Adaptive Time Error must be given for ' // &
                  'adaptive stepping scheme.')
            END IF
            AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
@@ -2055,7 +2454,15 @@ END INTERFACE
     Simul = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
     
     OutputFile = ListGetString(CurrentModel % Simulation,'Output File',GotIt)
+    
+
     IF ( GotIt ) THEN
+      i = INDEX( OutputFile,'/')
+      IF( i > 0 ) THEN
+        CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
+            //TRIM(OutputFile))
+      END IF
+      
       IF ( ParEnv % PEs > 1 ) THEN
         DO i=1,MAX_NAME_LEN
           IF ( OutputFile(i:i) == ' ' ) EXIT

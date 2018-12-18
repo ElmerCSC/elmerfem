@@ -287,7 +287,7 @@ contains
     ! Local variables
 
     double precision :: alpha, beta, rho, oldrho
-    integer iter_count
+    integer iter_count, i
     double precision :: residual, rhsnorm, precrhsnorm
 
     !
@@ -328,8 +328,16 @@ contains
 
     call matvecsubr( X, R, ipar )
 
+#ifdef _OPENMP
+    !$OMP PARALLEL DO 
+    do i=1,ndim
+      work(i,R_ind)=rhsvec(i)-work(i,R_ind)
+    end do
+    !$OMP END PARALLEL DO 
+#else
     R = B - R
-
+#endif
+    
     !
     ! This is where the loop starts (that is we continue from here after
     ! the first iteration)
@@ -347,19 +355,50 @@ contains
     end if
 
     if ( iter_count .eq. 1 ) then
+#ifdef _OPENMP
+       !$OMP PARALLEL DO 
+       DO i=1,ndim
+          work(i,P_ind)=work(i,Z_ind)
+       END DO  
+       !$OMP END PARALLEL DO 
+#else
        P = Z
-    else
+#endif
+     else
        beta = rho / oldrho
+#ifdef _OPENMP
+       !$OMP PARALLEL DO 
+       DO i=1,ndim
+          work(i,P_ind)=work(i,Z_ind) + beta * work(i,P_ind)
+       END DO  
+       !$OMP END PARALLEL DO 
+#else
        P = Z + beta * P
+#endif
     end if
 
     call matvecsubr( P, Q, ipar )
 
     alpha = rho / dotprodfun( HUTI_NDIM, P, 1, Q, 1 )
 
+#ifdef _OPENMP
+    !$OMP PARALLEL PRIVATE(i)
+    !$OMP DO 
+    DO i=1,ndim
+       xvec(i) = xvec(i) + alpha * work(i,P_ind)
+    END DO
+    !$OMP END DO  NOWAIT
+    !$OMP DO 
+    DO i=1,ndim
+       work(i,R_ind) = work(i,R_ind) - alpha * work(i,Q_ind)
+    END DO
+    !$OMP END DO  NOWAIT
+    !$OMP END PARALLEL
+#else
     X = X + alpha * P
     R = R - alpha * Q
-
+#endif
+    
     !
     ! Check the convergence against selected stopping criterion
     !
@@ -367,11 +406,27 @@ contains
     select case (HUTI_STOPC)
     case (HUTI_TRUERESIDUAL)
        call matvecsubr( X, Z, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO 
+       DO i=1,ndim
+         work(i,Z_ind) = work(i,Z_ind) - rhsvec(i)
+       END DO
+       !$OMP END PARALLEL DO 
+#else
        Z = Z - B
+#endif
        residual = normfun( HUTI_NDIM, Z, 1 )
     case (HUTI_TRESID_SCALED_BYB)
        call matvecsubr( X, Z, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO 
+       DO i=1,ndim
+         work(i,Z_ind) = work(i,Z_ind) - rhsvec(i)
+       END DO
+       !$OMP END PARALLEL DO 
+#else
        Z = Z - B
+#endif
        residual = normfun( HUTI_NDIM, Z, 1 ) / rhsnorm
     case (HUTI_PSEUDORESIDUAL)
        residual = normfun( HUTI_NDIM, R, 1 )
@@ -380,13 +435,29 @@ contains
     case (HUTI_PRESID_SCALED_BYPRECB)
        residual = normfun( HUTI_NDIM, R, 1 ) / precrhsnorm
     case (HUTI_XDIFF_NORM)
+#ifdef _OPENMP
+       !$OMP PARALLEL DO 
+       DO i=1,ndim
+         work(i,Z_ind) = alpha * work(i,P_ind)
+       END DO
+       !$OMP END PARALLEL DO 
+#else
        Z = alpha * P
+#endif   
        residual = normfun( HUTI_NDIM, Z, 1 )
     case (HUTI_USUPPLIED_STOPC)
        residual = stopcfun( X, B, R, ipar, dpar )
     case default
        call matvecsubr( X, Z, ipar )
+#ifdef _OPENMP
+       !$OMP PARALLEL DO 
+       DO i=1,ndim
+         work(i,Z_ind) = work(i,Z_ind) - rhsvec(i)
+       END DO
+       !$OMP END PARALLEL DO 
+#else
        Z = Z - B
+#endif
        residual = normfun( HUTI_NDIM, Z, 1 )
     end select
 

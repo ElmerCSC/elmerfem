@@ -73,7 +73,7 @@ typedef struct colscale_s
  *     Parameters: 
  *
  *         Input:   (geometry_t *) triangles to draw
- *                  (colscale_t     *) colscale display paramters
+ *                  (colscale_t     *) colscale display parameters
  *                  (double) 
  *
  *         Output:  graphics

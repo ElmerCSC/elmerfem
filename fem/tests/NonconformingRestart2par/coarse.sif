@@ -1,0 +1,104 @@
+! Creates coarse solutio of N-S + some other fields for the restart
+
+Header
+  Mesh DB "." "mesh_coarse"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "coarse.vtu"
+  Output File = "coarse.dat"
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Height = Equals "Coordinate 2"
+  Trigo = Variable "Coordinate"
+    Real MATC "sin(2*tx(0))+cos(3*tx(1))+sin(2*tx(0))*cos(3*tx(1))"
+End 
+
+
+Equation 1
+  Name = "NS"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Navier-Stokes"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+
+  Stabilization Method = String Stabilized
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-2
+  Nonlinear System Relaxation Factor = 1.0
+
+  Exported Variable 1 = "Height"
+  Exported Variable 2 = "Trigo"
+End
+
+Material 1
+  Name = "Ideal"
+  Density = 1
+  Viscosity = 0.01
+
+  Heat Conductivity = 1
+End
+
+Boundary Condition 1
+  Name = "BC1"
+
+  Target Boundaries = 1
+
+  Velocity 1 = 1.0
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "BC2"
+  Target Boundaries = 2
+
+  Pressure = 0
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "BC3"
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+

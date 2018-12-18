@@ -44,7 +44,7 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
 !     OUTPUT are : J and DJDvar
 !                      
 !
-!    !!!!! BE carefull it will reset Cost and DJ to 0 by default !!!!
+!    !!!!! BE careful it will reset Cost and DJ to 0 by default !!!!
 !      !!! If other cost and gradient are computed before (i.e. from the adjoint pb, 
 !       use "<Reset Cost Value> = False" to add cost and gradient to previously computed values !!!
 !
@@ -52,18 +52,18 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
 !       Required Sif parameters are:
 !
 !          In the solver section:
-!               Problem Dimension=Integer (default:coordinate sytem dimension),
+!               Problem Dimension=Integer (default:coordinate system dimension),
 !               Cost Filename=File (default: CostOfT.dat),
 !               Optimized Variable Name= String (default='Beta'),
 !               Gradient Variable Name= String (default = 'DJDBeta'),
 !               Cost Variable Name= String (default='Cost Value'),
 !               Lambda= Real (default 1.0),
 !               Reset Cost Value= Logical (default = True),
-!               A priori Regularisation= Logical (defualt = .False.),
+!               A priori Regularisation= Logical (default = .False.),
 !
 !          In Body Force section:
-!               <VarSolName> a priori value = Real (defualt =0.0),
-!               <VarSolName> variance = real (defualt=1.0)
+!               <VarSolName> a priori value = Real (default =0.0),
+!               <VarSolName> variance = real (default=1.0)
 !
 !
 !******************************************************************************
@@ -142,7 +142,7 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
       END IF
 
 
-!! Name of the variable with teh cost function
+!! Name of the variable with the cost function
    CostSolName =  GetString( SolverParams,'Cost Variable Name', Found)
           IF(.NOT.Found) THEN
                     CALL WARN(SolverName,'Keyword >Cost Variable Name< not found  in section >Solver<')
@@ -238,7 +238,7 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
 
        NodeIndexes => Element % NodeIndexes
 
- ! set coords of highest occuring dimension to zero (to get correct path element)
+ ! set coords of highest occurring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
         IF (DIM == 1) THEN !1D SSA
@@ -346,7 +346,7 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
 
     IF (Parallel) THEN
            CALL MPI_ALLREDUCE(Cost,Cost_S,1,&
-                  MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)  
+                  MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
           CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
           IF (ASSOCIATED(CostVar)) THEN
                IF (Reset) then

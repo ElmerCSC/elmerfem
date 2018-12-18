@@ -65,7 +65,7 @@ End
 
 
 Solver 2
-! The solver adapts the geometry to accomodate for the moving boundary
+! The solver adapts the geometry to accommodate for the moving boundary
 
   Equation = MeshSolver
 

@@ -58,17 +58,17 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: Var, OFVar
   TYPE(Mesh_t), POINTER :: Mesh, OFMesh
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, FileName, DirName, BaseDir, OFfile
-  INTEGER :: i, NoDir, IOStatus
-  LOGICAL :: Found, Visited = .FALSE.
+  INTEGER :: i, NoDir, IOStatus, PassiveCoord
+  LOGICAL :: Found, Visited = .FALSE., UseProjFound, UseProjSave
   REAL(KIND=dp) :: MinF, MaxF, MeanF
   
-  SAVE OFMesh, Visited
+  SAVE OFMesh, OFVar, NoDir, Visited
   
 
   CALL Info('Elmer2OpenFoamWrite','-----------------------------------------', Level=4 )
   CALL Info('Elmer2OpenFoamWrite','Projecting field to OpenFOAM cell centers',Level=4) 
 
-
+  
   ! The variable containing the field contributions
   !------------------------------------------------------------------------
   Params => GetSolverParams()
@@ -77,6 +77,12 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
     CALL Fatal('Elmer2OpenFoamWrite','> Target Variable < must exist for the solver!')
   END IF
 
+  ! Save the status of the "Use Mesh Projector" keyword.
+  UseProjSave = ListGetLogical( Model % Simulation,'Use Mesh Projector',UseProjFound )
+  CALL Info('Elmer2OpenFOAMWrite','Enforcing mapping without projector matrix!',Level=6)
+  CALL ListAddLogical( Model % Simulation,'Use Mesh Projector',.FALSE.)
+    
+  
   Mesh => GetMesh()
   ! Test that the variable exists in the primary mesh
   Var => VariableGet(Mesh % Variables, VarName )
@@ -84,6 +90,23 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
     CALL Fatal('Elmer2OpenFoamWrite','Variable does not exist in Elmer mesh!')
   END IF
 
+  ! If we visit this the second time, then destroy the structures that were saved last time.
+  IF( Visited ) THEN
+    CALL ReleaseMesh( OFMesh )
+    DEALLOCATE( OFMesh ) 
+  END IF
+  OFMesh => AllocateMesh()
+  
+  
+  ! If the Elmer mesh has different dimension we may make a simple
+  ! dimensional reduction for the OpenFOAM mesh.
+  !-------------------------------------------------------------------------
+  PassiveCoord = ListGetInteger( Solver % Values,'Passive OpenFOAM Coordinate',Found )
+  IF( .NOT. Found .AND. Mesh % MeshDim < 3 ) THEN
+    CALL Warn('Elmer2OpenFOAM','Dimension of Elmer mesh is reduced, and OpenFOAM not?!')
+  END IF
+  
+  
   ! This is just for helping to write Elmer cell centers for testing purposes
   FileName = GetString( Params,'Elmer Center Filename',Found)
   IF(Found ) THEN
@@ -92,7 +115,9 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
   END IF
   
   BaseDir = GetString( Params,'OpenFOAM Directory',Found)
-  IF(.NOT. Found ) THEN
+  IF( Found ) THEN
+    CALL Info('Elmer2OpenFoamWrite','Using given > OpenFOAM Directory < : '//TRIM(BaseDir),Level=6)
+  ELSE
     CALL Fatal('Elmer2OpenFoamWrite','> OpenFOAM Directory < must exist for the solver!')
   END IF
 
@@ -103,26 +128,39 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
     CALL OpenFOAMBlocks()
   END IF
   NoDir = NINT( ParallelReduction(1.0_dp * NoDir ) )
-    
-  CALL Info('Elmer2OpenFoamWrite','Projecting to OpenFOAM nodes',Level=8)
+  CALL Info('Elmer2OpenFOAMWrite','Number of active OpenFOAM blocks: '//TRIM(I2S(NoDir)),Level=5)
+
   
   DO i = 1, NoDir
+    
     IF( ParEnv % MyPe == 0 ) THEN
+      IF( NoDir > 1 ) THEN
+        CALL Info('Elmer2OpenFOAMWrite','Treating OpenFOAM block: '//TRIM(I2S(i)),Level=5)
+      END IF
       DirName = ListGetString(Params,'OpenFOAM Mesh '//TRIM(I2S(i)),Found)
       IF(.NOT. Found ) CALL Fatal('Elmer2OpenFoamWrite','Could not find keyword: '//TRIM(DirName))
       
       FileName = TRIM(DirName)//'C'    
       CALL Info('Elmer2OpenFoamWrite','Projecting to OpenFOAM nodes in file: '//TRIM(FileName),Level=5)
     END IF
-      
-    OFMesh => CreateFOAMMesh(FileName)
+
+    
+    CALL CreateFOAMMesh(FileName,OFMesh)
 
     CurrentModel % Mesh => OFMesh
 
+    IF( PassiveCoord == 1 ) THEN
+      OFMesh % Nodes % x = 0.0_dp
+    ELSE IF( PassiveCoord == 2 ) THEN
+      OFMesh % Nodes % y = 0.0_dp
+    ELSE IF( PassiveCoord == 3 ) THEN
+      OFMesh % Nodes % z = 0.0_dp
+    END IF
+
     CALL Info('Elmer2OpenFoamWrite','Mapping data to the temporal mesh using libary routines',Level=6)
-
+    
     OFVar => VariableGet(OFMesh % Variables, VarName )
-
+    
     ! Put the solver variable so that we can study norms etc.
     Solver % Variable => OFVar
     
@@ -144,9 +182,22 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
       CALL Info('Elmer2OpenFoamWrite','Writing projected field to file: '//TRIM(FileName),Level=5)
       CALL WriteOFField(Filename, OFMesh, OFVar)
     END IF
+
+    ! We can only have one OpenFOAM mesh at a time, hence release the structures if we have a second mesh.
+    IF( i < NoDir ) CALL ReleaseMesh( OFMesh )
   END DO
     
+  ! Restore the pointer to the initial Elmer mesh
   CurrentModel % Mesh => Mesh
+
+  ! Restore the status of the "Use Mesh Projector" keyword.
+  IF( UseProjFound ) THEN
+    CALL ListAddLogical( Model % Simulation,'Use Mesh Projector',UseProjSave )
+  ELSE
+    CALL ListRemove( Model % Simulation,'Use Mesh Projector')
+  END IF
+
+  Visited = .TRUE.
     
   CALL Info('Elmer2OpenFoamWrite','All done', Level=4 )
   CALL Info('Elmer2OpenFoamWrite','-----------------------------------------', Level=4 )  
@@ -163,14 +214,23 @@ CONTAINS
     
     NoDir = 0
     IF( ParEnv % MyPe /= 0 ) RETURN
-    
-    INQUIRE( File = BaseDir, Exist = FileExists )
+
+#ifdef __INTEL_COMPILER
+    ! Fortran standard states that inquiry for a file returns true if the queried entity is a file
+    INQUIRE( Directory = TRIM(BaseDir), Exist = FileExists )
+#else
+    INQUIRE( File = TRIM(BaseDir), Exist = FileExists )
+#endif
     IF(.NOT. FileExists ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','OpenFOAM directory does not exist: '//TRIM(BaseDir))
     END IF
 
     DirName = TRIM(BaseDir)//'/0/'
+#ifdef __INTEL_COMPILER
+    INQUIRE( Directory = DirName, Exist = FileExists )
+#else
     INQUIRE( File = DirName, Exist = FileExists )
+#endif
     IF(.NOT. FileExists ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','OpenFOAM mesh does not exist: '//TRIM(DirName))
     END IF
@@ -181,7 +241,7 @@ CONTAINS
    
     IF( FileExists ) THEN
       CALL Info('Elmer2OpenFoamWrite','Using OpenFOAM centers in: '//TRIM(FileName),Level=10)
-      CALL ListAddString( Params, 'OpenFOAM Mesh 1', DirName )
+      CALL ListAddString( Params, 'OpenFOAM Mesh 1', DirName, .FALSE.)
       NoDir = 1
       RETURN
     END IF
@@ -189,7 +249,7 @@ CONTAINS
     DirCommand = 'ls -d '//TRIM(DirName)//'*/ > OpenFOAMBlocks.txt' 
     CALL Info('Elmer2OpenFoamWrite','Performing command: '//TRIM(DirCommand),Level=12)
     CALL SystemCommand( DirCommand )
-      
+
     OPEN(InFileUnit,File='OpenFOAMBlocks.txt',IOStat=IOstatus)
     IF(IOStatus /= 0 ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','Could not open file: OpenFOAMBlocks.txt')
@@ -204,7 +264,7 @@ CONTAINS
       IF( FileExists ) THEN
         NoDir = NoDir + 1
         CALL Info('Elmer2OpenFoamWrite','Using OpenFOAM centers in: '//TRIM(FileName),Level=10)
-        CALL ListAddString( Params, 'OpenFOAM Mesh '//TRIM(I2S(NoDir)), DirName )
+        CALL ListAddString( Params, 'OpenFOAM Mesh '//TRIM(I2S(NoDir)), DirName, .FALSE.)
       ELSE
         CALL Info('Elmer2OpenFoamWrite','No OpenFOAM center in: '//TRIM(DirName),Level=12)
       END IF
@@ -256,26 +316,26 @@ CONTAINS
   !------------------------------------------------------------------------
   !> Open file in OpenFOAM format and read the cell centers from there.
   !-------------------------------------------------------------------------
-  FUNCTION CreateFOAMMesh( Filename ) RESULT ( OFMesh ) 
+  SUBROUTINE CreateFOAMMesh( Filename, Mesh ) 
     
     CHARACTER(LEN=MAX_NAME_LEN) :: FileName
-    TYPE(Mesh_t), POINTER :: OFMesh
+    TYPE(Mesh_t), POINTER :: Mesh
    
-    LOGICAL, SAVE :: FirstTime = .TRUE.
     INTEGER :: line,i,j,k,n
-    TYPE(Mesh_t), TARGET, SAVE :: Mesh
     REAL(KIND=dp) :: x,y,z
     INTEGER :: NumberOfNodes, IOStatus
     INTEGER, PARAMETER :: InFileUnit = 28
     CHARACTER(LEN=:), ALLOCATABLE :: ReadStr
-
-
+    LOGICAL :: InlineCoords
+    
+    ALLOCATE( Mesh % Nodes )
+!   ALLOCATE( Mesh % Variables )
+    Mesh % NumberOfBulkElements = 0
+    Mesh % NumberOfBoundaryElements = 0
+    
+    ! Partition zero does all the work!
     IF( ParEnv % MyPe /= 0 ) THEN
-      ALLOCATE( Mesh % Nodes )
-      ALLOCATE( Mesh % Variables )
       Mesh % NumberOfNodes = 0
-      Mesh % NumberOfBulkElements = 0
-      Mesh % NumberOfBoundaryElements = 0
       GOTO 100      
     END IF
     
@@ -287,9 +347,10 @@ CONTAINS
       CALL Fatal('Elmer2OpenFoamWrite','Could not open file for reading: '//TRIM(FileName))
     END IF
     
-    CALL Info('Elmer2OpenFoamWrite','Reading data points from file: '//TRIM(FileName),Level=6)
+    CALL Info('Elmer2OpenFoamWrite','Reading data points from file: '//TRIM(FileName),Level=7)
     
     j = 0
+    k = 0
     DO Line = 1, 100
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
@@ -298,80 +359,87 @@ CONTAINS
       END IF
 
       j =  INDEX( ReadStr,'internalField',.TRUE.) 
-      IF( j > 0 ) EXIT
+      IF( j > 0 ) THEN
+        ! If we have parenthesis in the same line as "internalField" then the coordinate
+        ! values are in-lined.
+        k = INDEX( ReadStr,'(')
+        EXIT
+      END IF
     END DO
 
     IF( j == 0 ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','Could not find > internalField < in header!')
     ELSE
-      CALL Info('Elmer2OpenFoamWrite','internalField found at line: '//TRIM(I2S(Line)),Level=7)    
+      CALL Info('Elmer2OpenFoamWrite','internalField found at line: '//TRIM(I2S(Line)),Level=10)    
     END IF
-      
-    READ(InFileUnit,*,IOSTAT=IOStatus) NumberOfNodes    
+
+    InlineCoords = ( k > 0 ) 
+    IF( InlineCoords ) THEN
+      j = INDEX( ReadStr,'<vector>')
+      READ( ReadStr(j+8:k-1),*,IOSTAT=IOStatus ) NumberOfNodes
+      CALL Info('Elmer2OpenFoamWrite','Reading inline coordinates',Level=10)
+    ELSE
+      READ(InFileUnit,*,IOSTAT=IOStatus) NumberOfNodes    
+    END IF
+
     IF( IOStatus /= 0 ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','Could not read number of nodes!')
     END IF
     CALL Info('Elmer2OpenFoamWrite','Number of OpenFOAM nodes: '&
-        //TRIM(I2S(NumberOfNodes)))
+        //TRIM(I2S(NumberOfNodes)),Level=10)
 
     i = ListGetInteger(Params,'Number of cells',Found)
     IF( i > 0 .AND. i < NumberOfNodes ) THEN
       NumberOfNodes = i
       CALL Info('Elmer2OpenFoamWrite','Limiting number of OpenFOAM nodes: '&
-          //TRIM(I2S(NumberOfNodes)))
+          //TRIM(I2S(NumberOfNodes)),Level=7)
     END IF
 
-    IF( FirstTime ) THEN
-      ALLOCATE( Mesh % Nodes )
-      ALLOCATE( Mesh % Variables )
-      n = 0
-      FirstTime = .FALSE.
-    ELSE
-      n = SIZE( Mesh % Nodes % x )
-    END IF
 
-    IF( n < NumberOfNodes ) THEN
-      IF( n > 0 ) THEN
-        DEALLOCATE( Mesh % Nodes % x, &
-            Mesh % Nodes % y, &
-            Mesh % Nodes % z )
-      END IF
-      n = NumberOfNodes 
-      ALLOCATE( Mesh % Nodes % x(n), &          
-          Mesh % Nodes % y(n), &
-          Mesh % Nodes % z(n) )
-    END IF
+    n = NumberOfNodes    
+    ALLOCATE( Mesh % Nodes % x(n), &          
+        Mesh % Nodes % y(n), &
+        Mesh % Nodes % z(n) )
 
     Mesh % Nodes % x(1:n) = 0.0_dp
     Mesh % Nodes % y(1:n) = 0.0_dp
     Mesh % Nodes % z(1:n) = 0.0_dp
     
     Mesh % NumberOfNodes = n
-    Mesh % NumberOfBulkElements = 0
-    Mesh % NumberOfBoundaryElements = 0
          
 
     ! This is just empty left paranthesis
-    READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
-    !PRINT *,'EmptyLine:',TRIM(ReadStr)
+    IF(.NOT. InlineCoords ) THEN
+      READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
+    END IF
    
     DO i=1,n
-      READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
-      IF( IOStatus /= 0 ) THEN
-        CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate line: '//TRIM(I2S(i)))
+      IF( InlineCoords ) THEN
+        ReadStr = TRIM( ReadStr(k+1:) )
+      ELSE      
+        READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
+        IF( IOStatus /= 0 ) THEN
+          CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate line: '//TRIM(I2S(i)))
+        END IF
       END IF
-      
-      j =  INDEX( ReadStr,'(',.TRUE.) 
+
+      IF( InlineCoords ) THEN
+        j =  INDEX( ReadStr,'(',.FALSE.) 
+        k =  INDEX( ReadStr,')',.FALSE.) 
+      ELSE
+        j =  INDEX( ReadStr,'(',.TRUE.) 
+        k =  INDEX( ReadStr,')',.TRUE.) 
+      END IF
+        
       IF( j == 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite',&
             'Expecting a paranthesis at the start of OpenFOAM line: '//TRIM(I2S(i)))
       END IF
-      k =  INDEX( ReadStr,')',.TRUE.) 
       IF( k == 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite',&
             'Expecting a paranthesis at the end of OpenFOAM line: '//TRIM(I2S(i)))
       END IF
-      
+
       READ( ReadStr(j+1:k-1),*,IOSTAT=IOStatus ) x,y,z
       IF( IOStatus /= 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate values: '//TRIM(I2S(i)))
@@ -385,20 +453,18 @@ CONTAINS
     
     CALL Info('Elmer2OpenFoamWrite','Creating coordinates for temporal mesh',Level=7)
 
-100 CALL VariableAdd( Mesh % Variables, Mesh,Solver, &
+100 CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
         'Coordinate 1',1, Mesh % Nodes % x )
     
-    CALL VariableAdd(Mesh % Variables,Mesh,Solver, &
+    CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
         'Coordinate 2',1, Mesh % Nodes % y )
     
-    CALL VariableAdd(Mesh % Variables,Mesh,Solver, &
+    CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
         'Coordinate 3',1,Mesh % Nodes % z )
-
-    OFMesh => Mesh
     
     CALL Info('Elmer2OpenFoamWrite','Created temporal OpenFOAM mesh just for nodes',Level=8)
-        
-  END FUNCTION CreateFOAMMesh
+    
+  END SUBROUTINE CreateFOAMMesh
 
 
   !------------------------------------------------------------------------

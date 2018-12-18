@@ -1,0 +1,233 @@
+!---------------------------------------------------------------------------------------
+! Falling block of lesser viscosity
+! Case defision by L. Kaislaniemi, 11 Aug 2017
+! Case solution by P. Råback, 14 Aug 2017
+!
+! In this case uniform set of particles that inherit their domain of origin are launced.
+! The particles follow the Stokes as passive tracers.
+! At at each timestep their total weight for nodes is projected.
+! Viscosity is set to be proportional to the two types of particles. 
+!----------------------------------------------------------------------------------------
+
+Check Keywords Warn
+
+
+! Here we use SI units. Some other units might be more robust. 
+$gravity=-9.81
+$dens1=2200.0
+$dens2=2300.0
+$visc1=1.0e21
+$visc2=2.0e21
+$dt=5.0e12
+$cellsize=5.0e3 ! must be relative to mesh parameter h=10e3
+
+! resolution is defined by 4 parameters
+! 1) mesh size parameter
+! 2) cell size parameter for particles
+! 3) timestep size between Stokes iterations
+! 4) sub timestep intervals for particle tracking
+
+
+Header
+  Mesh DB "." "block"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Timestep Intervals = 3 ! 3 for tests, 100 for studying the case
+  Timestep Sizes = $dt
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+! Initial mesh is given in km:s
+  Coordinate Scaling = 1.0e3
+End
+
+Constants
+End
+
+Body 1
+  Name = Fluid
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = Block
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 2
+End
+
+
+Equation 1
+  Active Solvers(2) = 2 3
+  NS Convect = False
+End
+
+Solver 1
+  Equation = ParticleDynamics
+  Procedure = "ParticleDynamics" "ParticleDynamics"
+
+  Simulation Timestep Sizes = Logical True
+  Max Timestep Intervals = Integer 10
+  Time Order = Integer 1
+
+! Initialize one group of particles - just as a test
+  Number of Particle Groups = Integer 2
+  Set Particle Group By Domain = Logical True
+
+! Initialize particles assumed uniform cubic packing
+  Coordinate Initialization Method = String "box uniform cubic"
+  Particle Cell Size = Real $cellsize
+  Initial Velocity(1,2) = Real 0.0 0.0
+
+! Drag is the only force acting hence the particle is passive tracer
+  Particle Drag Coefficient = Real 1.0
+  Velocity Variable Name = String "flow solution"
+  Velocity Gradient correction = Logical True
+
+!  Particle Accurate At Face = Logical True
+  Particle Accurate Always = Logical True
+
+! Project particles to field
+  Particle To Field = Logical True
+
+  Field 1 = String "weight"
+  Group 1 = Integer 1
+  Group Name 1 = String "A"
+
+  Field 2 = String "weight"
+  Group 2 = Integer 2
+  Group Name 2 = String "B"
+
+  Field 3 = String "weight"
+
+! do not cumulate the particles i.e. each timestep separate weights
+  Particle To Field Reset = Logical True
+
+  Statistical Info = Logical True
+  Particle Info = Logical True
+End
+
+
+! Small auxiliary solver that computes the fraction of the more viscous liquid
+! Must prece the Stokes solver since that requires viscosity
+Solver 2
+  Equation = "Fraction"
+  Procedure = "CalculateFraction" "CalculateFraction"
+  Variable = Fraction
+End  
+
+
+
+Solver 3
+  Equation = Flow
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+
+  Linear System Solver = iterative
+  Linear System Direct Method = Umfpack
+  Linear System Iterative Method = BiCGStabl
+  Bicgstabl polynomial degree = 4
+  Linear System Max Iterations = 500
+
+  Stabilization Method = String Stabilized
+  NS Convect = False
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-2
+  Nonlinear System Relaxation Factor = 1.0
+
+  Optimize Bandwidth = False  
+End
+
+
+Solver 4
+  Exec Solver = "after saving"
+
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "case"
+  Output Format = "vtu"
+
+  Show Variables = Logical True
+  Exec Solver = never
+End
+ 
+Solver 5
+  Exec Solver = "after saving"
+  
+  Equation = String "ParticleOutput"
+  Procedure = File "SaveGridData" "ParticleOutputSolver"
+  Filename Prefix = String "particles" 
+  Output Format = String "vtu"
+
+  Exec Solver = never
+End
+
+
+! The fraction is set to -1 if it cannot be defined
+! This is assumed to be here also the external fluid.
+! Between [0,1] fraction the material parameters are assumed
+! to move linearly. 
+Material 1
+  Name = "Ext Fluid"
+  Density = Variable "fraction"
+    Real
+     -1.0 $dens1
+      0.0 $dens1
+      1.0 $dens2
+    End 
+
+  Viscosity = Variable "fraction"
+    Real
+     -1.0 $visc1
+      0.0 $visc1
+      1.0 $visc2
+    End 
+End
+
+! This sets the effect of gravity for the Stokes equation
+Body Force 1
+  Name = "Gravity"  
+  Flow BodyForce 2 = Real $gravity
+End 
+
+
+! Internal interface, not used for anything
+Boundary Condition 1
+  Name = "OrigInterface"
+  Target Boundaries = 1
+End
+
+Boundary Condition 2
+  Name = "Vertical"
+  Target Boundaries = 2
+
+  Velocity 1 = 0.0
+End
+
+Boundary Condition 3
+  Name = "Horizontal"
+  Target Boundaries = 3
+
+  Velocity 2 = 0.0
+End
+
+Solver 2 :: Reference Norm = 1.87371167E-01
+Solver 3 :: Reference Norm = 1.78326534E-10
+

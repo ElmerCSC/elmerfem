@@ -50,6 +50,7 @@ Solver 1
   Linear System Scaling = Logical True
   Linear System Row Equilibration = Logical True 
   Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
 End
 
 Boundary Condition 1
@@ -81,4 +82,4 @@ End
 
 Solver 1 :: Reference Norm = Real 1.9565786
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
-RUN
+

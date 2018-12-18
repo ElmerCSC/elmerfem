@@ -104,7 +104,7 @@ static void elm_5node_quad_shape_functions()
  *
  *     Name:        elm_5node_quad_triangulate( geometry_t *,element_t * )
  *
- *     Purpose:     Triangulate an elment. The process also builds up an edge
+ *     Purpose:     Triangulate an element. The process also builds up an edge
  *                  table and adds new nodes to node table. The triangulation
  *                  and edge table is stored in geometry_t *geom-structure.
  *

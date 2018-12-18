@@ -1,0 +1,177 @@
+! Test case for adiabatic compression.
+! There is no convection initiated so 
+! should obey the adiabatic process pV^g = const.
+! where p is the pressure, V is the volume and g is
+! the ratio of specific heats. 
+! 
+! This version is modified from the base example in that the
+! a user defined barometric model is used i.e. d\rho/dp is defined in a UDF.
+!
+! 25.2.2018 / P.R.
+
+
+Header
+  Mesh DB "." "square"
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+
+  Timestepping Method = newmark ! bdf
+  Newmark Beta = 0.5
+  BDF Order = 2
+
+  Timestep Sizes = 0.1
+  Timestep Intervals = 10
+  Output Intervals = 0
+
+  Post File =  "case.vtu"
+End
+
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Name = "AtmosphericState"
+  Pressure = 0.0 ! this is now difference to reference pressure
+End
+
+
+Solver 1
+  Equation = MeshSolver
+  Exec Solver = before timestep
+
+  Procedure = "MeshSolve" "MeshSolver"
+  Variable = -dofs 2 "Mesh Update" 
+
+  Linear System Solver = Iterative
+
+  Linear System Iterative Method = BiCGStabL
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 50
+End
+
+
+Solver 2
+  Equation = Navier-Stokes
+  Stabilize = True
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = Iterative
+
+  Linear System Iterative Method = Idrs
+  Idrs Parameter = 6
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 50
+
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Nonlinear Timestepping = Logical True
+End
+
+
+
+Solver 3
+  Equation = SaveScalars
+  Exec Solver = Never
+!After timestep
+
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = f.dat
+  Filename Numbering = Logical True
+
+  Variable 1 = Pressure
+  Operator 1 = min
+  Operator 2 = max
+  Variable 3 = Temperature
+  Operator 3 = min
+  Operator 4 = max
+
+  Operator 5 = cpu time
+  Variable 6 = time
+End
+
+
+
+Equation 1
+  Active Solvers(2) = 1 2 
+  Convection = Computed
+End
+
+Material 1
+  Viscosity = 1
+  Heat Capacity = 1000
+  Heat Conductivity  = 1.0
+
+  Specific Heat Ratio = $ 5.0/3.0
+  Equilibrium Density = 1
+  Equilibrium Pressure = Real 1.0e5
+
+  Compressibility Model = "pressure dependent"
+  Density = Variable "pressure"
+    Real Procedure "DensityFun" "GasDensity"
+  drho/dp = Variable "pressure"
+    Real Procedure "DensityFun" "GasDrhodp"
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Name = "Bottom"
+
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Mesh Update 1 = 0.0
+  Mesh Update 2 = 0.0
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Name = "Right"
+
+  Velocity 1 = 0.0
+  Mesh Update 1 = 0.0
+End
+
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Name = "Top"
+
+  Velocity 1 = 0.0
+  Velocity 2 = Equals "Mesh Velocity 2"
+
+  Mesh Update 1 = 0.0
+  Mesh Update 2 = Variable time
+    Real MATC "-0.5*tx"
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+  Name = "Left"
+
+  Velocity 1 = 0.0
+  Mesh Update 1 = 0.0
+End
+
+
+Solver 2 :: Reference Norm = 2.06832449E-01  

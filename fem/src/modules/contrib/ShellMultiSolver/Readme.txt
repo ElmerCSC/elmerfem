@@ -20,7 +20,7 @@ opgupta112000@yahoo.com
 
 
 The user is referred to prof. Gupta regarding questions related to the current solver.
-The orginal solver is still available as the module "ShellSolver.F90". However, it has
-never been documented. The documentation of this current solver should recide in this
+The original solver is still available as the module "FacetShellSolver.F90". However, it has
+never been documented. The documentation of this current solver should reside in this
 very directory.
 

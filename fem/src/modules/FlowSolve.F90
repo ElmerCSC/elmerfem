@@ -96,7 +96,7 @@
        ReferencePressure=0.0, SpecificHeatRatio, &
        PseudoCompressibilityScale=1.0, NonlinearRelax, FreeSTol, res
 
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter,FreeSIter
+     INTEGER :: NSDOFs,NewtonIter,NewtonMaxIter,NonlinearIter,FreeSIter
 
      TYPE(Variable_t), POINTER :: DensitySol, TimeVar
      TYPE(Variable_t), POINTER :: FlowSol, TempSol, MeshSol
@@ -112,12 +112,13 @@
      LOGICAL :: Stabilize,NewtonLinearization = .FALSE., GotForceBC, GotIt, &
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
-                  Transient, Rotating, AnyRotating, RecheckNewton=.FALSE.
+                  Transient, Rotating, AnyRotating, OutOfPlaneFlow=.FALSE.,&
+                  RecheckNewton=.FALSE.
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
      CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel
-     INTEGER :: CompressibilityModel, ModelCoords, ModelDim
+     INTEGER :: CompressibilityModel, ModelCoords, ModelDim, NoActive
      INTEGER :: body_id,bf_id,eq_id,DIM
      INTEGER :: MidEdgeNodes(12), BrickFaceMap(6,4)
      INTEGER, POINTER :: NodeIndexes(:), Indexes(:)
@@ -130,7 +131,8 @@
      LOGICAL :: AllocationsDone = .FALSE., FreeSurfaceFlag, &
          PseudoPressureExists, PseudoCompressible, Bubbles, P2P1, &
          Porous =.FALSE., PotentialForce=.FALSE., Hydrostatic=.FALSE., &
-         MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate
+         MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate, &
+         AllIncompressible
 
 
      REAL(KIND=dp),ALLOCATABLE :: MASS(:,:),STIFF(:,:), LoadVector(:,:), &
@@ -197,6 +199,8 @@
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
+     CALL DefaultStart()
+     
 !    Check for local coordinate system
 
      LocalCoords = GetString( Solver % Values, 'Solver Coordinate System', &
@@ -308,7 +312,8 @@
                ReferenceTemperature,                & 
                LocalTempPrev, LocalTemperature,     &
                PotentialField, PotentialCoefficient, &
-               PSolution, LoadVector, Alpha, Beta, &
+               !PSolution, &
+               LoadVector, Alpha, Beta, &
                ExtPressure, STAT=istat )
        END IF
 
@@ -332,7 +337,7 @@
                  GasConstant( N ), HeatCapacity( N ),    &
                  ReferenceTemperature(N),                & 
                  LocalTempPrev(N), LocalTemperature(N),  &
-                 PSolution( SIZE( FlowSolution ) ),      &
+                 !PSolution( SIZE( FlowSolution ) ),      &
                  PotentialField( N ), PotentialCoefficient( N ), &
                  LoadVector( 4,N ), Alpha( N ), Beta( N ), &
                  ExtPressure( N ), STAT=istat )
@@ -341,12 +346,20 @@
        NULLIFY(Pwrk) 
 
        PseudoPressureExists = .FALSE.
+       AllIncompressible = .TRUE.
+
        DO k=1,Model % NumberOfMaterials
          Material => Model % Materials(k) % Values
          CompressibilityFlag = ListGetString( Material, &
              'Compressibility Model', GotIt)
-         IF (gotIt .AND. CompressibilityFlag == 'artificial compressible') THEN
-            PseudoPressureExists = .TRUE.
+         IF (.NOT. gotIt ) CYCLE
+         IF( CompressibilityFlag == 'artificial compressible') THEN
+           PseudoPressureExists = .TRUE.
+           AllIncompressible = .FALSE.
+         ELSE IF ( CompressibilityFlag == 'incompressible' ) THEN
+           CONTINUE
+         ELSE
+           AllIncompressible = .FALSE.
          END IF
        END DO
 
@@ -358,10 +371,15 @@
           ALLOCATE( PseudoPressure(n),STAT=istat ) 
        END IF
 
+       IF( AllIncompressible ) THEN
+         CALL Info('FlowSole','Enforcing relative pressure relaxation',Level=8)
+         CALL ListAddNewLogical( Solver % Values,'Relative Pressure Relaxation',.TRUE.)
+       END IF
+       
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'FlowSolve','Memory allocation error, Aborting.' )
        END IF
-
+       
 !------------------------------------------------------------------------------
 
        AllocationsDone = .TRUE.
@@ -441,6 +459,10 @@
         'Nonlinear System Newton After Iterations', minv=0 )
      IF ( NewtonIter == 0 ) NewtonLinearization = .TRUE.
 
+     !Option to switch back to picard after NewtonMaxIter iterations
+     NewtonMaxIter = ListGetInteger( Solver % Values, &
+        'Nonlinear System Newton Max Iterations', GotIt )
+     RecheckNewton = RecheckNewton .OR. GotIt
 
      IF (GetLogical( GetSolverParams(), &
          'Nonlinear System Reset Newton',  GotIt)) NewtonLinearization=.FALSE.
@@ -463,15 +485,15 @@
 !------------------------------------------------------------------------------
 !    We do our own relaxation...
 !------------------------------------------------------------------------------
-     NonlinearRelax = GetCReal( Solver % Values, &
-        'Nonlinear System Relaxation Factor', GotIt )
-     IF ( .NOT. GotIt ) NonlinearRelax = 1.0d0
+     !NonlinearRelax = GetCReal( Solver % Values, &
+     !   'Nonlinear System Relaxation Factor', GotIt )
+     !IF ( .NOT. GotIt ) NonlinearRelax = 1.0d0
 
-     CALL ListAddConstReal( Solver % Values, &
-            'Nonlinear System Relaxation Factor', 1.0d0 )
+     !CALL ListAddConstReal( Solver % Values, &
+     !       'Nonlinear System Relaxation Factor', 1.0d0 )
 
-     IF ( NonlinearRelax /= 1._dp ) &
-       CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .TRUE. )
+     !IF ( NonlinearRelax /= 1._dp ) &
+     !  CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .TRUE. )
 !------------------------------------------------------------------------------
 !    Check if free surfaces present
 !------------------------------------------------------------------------------
@@ -528,16 +550,19 @@
        CALL Info( 'FlowSolve','Starting Assembly...', Level=4 )
 
 !------------------------------------------------------------------------------
-       CALL InitializeToZero( StiffMatrix, ForceVector )
+       !CALL InitializeToZero( StiffMatrix, ForceVector )
+       CALL DefaultInitialize() 
 !------------------------------------------------------------------------------
 
        bf_id   = -1
        body_id = -1
 
        CALL StartAdvanceOutput( 'FlowSolve', 'Assembly: ' )
-       DO t = 1,GetNOFActive()
+       NoActive = GetNOFActive()
+       
+       DO t = 1,NoActive
 
-         CALL AdvanceOutput( t,GetNOFActive() )
+         CALL AdvanceOutput( t, NoActive )
 !
          Element => GetActiveElement(t)
          NodeIndexes => Element % NodeIndexes
@@ -623,10 +648,7 @@
                AngularVelocity = 0.0_dp
              END IF
            END IF
-
-
          END IF
-
 !------------------------------------------------------------------------------
 
          n = GetElementNOFNodes()
@@ -639,8 +661,13 @@
            CASE(3)
              U(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-2)
              V(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-1)
-             W(1:nd) = 0.0d0
-
+             W(1:nd) = 0.0_dp
+             IF (bf_id > 0 ) THEN
+               W(1:n)  = ListGetReal(BodyForce,'Out Of Plane Velocity',&
+                    n, NodeIndexes(1:n),OutOfPlaneFlow)
+               IF (.NOT.OutOfPlaneFlow) &
+                    W(1:n) = 0.0_dp
+             END IF
            CASE(4)
              U(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-3)
              V(1:nd) = FlowSolution(NSDOFs*FlowPerm(Indexes(1:nd))-2)
@@ -666,7 +693,7 @@
                END IF
             END SELECT
          END IF
-
+         
          LocalTemperature = 0.0d0
          LocalTempPrev    = 0.0d0
          IF ( ASSOCIATED( TempSol ) ) THEN
@@ -1033,16 +1060,14 @@
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
-      DO t = 1,GetNOFBoundaryElements()
+      NoActive = GetNOFBoundaryElements()
+      
+      DO t = 1,NoActive
 
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
         n = GetElementNOFNodes()
-
-!       The element type 101 (point element) can only be used
-!       to set Dirichlet BCs, so skip �em at this stage.
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
 
         CALL GetElementNodes( ElementNodes )
         NodeIndexes => Element % NodeIndexes
@@ -1230,6 +1255,7 @@
         END IF
       END DO
 
+      CALL DefaultFinishBoundaryAssembly()
       CALL DefaultFinishAssembly()
 
 !------------------------------------------------------------------------------
@@ -1244,7 +1270,7 @@
       at = CPUTime() - at
       st = CPUTime()
 
-      IF ( NonlinearRelax /= 1.0d0 ) PSolution = FlowSolution
+      !IF ( NonlinearRelax /= 1.0d0 ) PSolution = FlowSolution
       Unorm = DefaultSolve()
 
       st = CPUTIme()-st
@@ -1261,43 +1287,54 @@
 !     This hack is needed  cause of the fluctuating pressure levels
 !------------------------------------------------------------------------------
 
-      IF ( NonlinearRelax /= 1.0d0 ) THEN
-         IF ( CompressibilityModel == Incompressible ) THEN
-            s = FlowSolution(NSDOFs)
-            FlowSolution(NSDOFs:n:NSDOFs) = FlowSolution(NSDOFs:n:NSDOFs)-s
-            PSolution(NSDOFs:n:NSDOFs)=PSolution(NSDOFs:n:NSDOFs)-PSolution(NSDOFs)
-         END IF
+      !IF ( NonlinearRelax /= 1.0d0 ) THEN
+      !   IF ( CompressibilityModel == Incompressible ) THEN
+      !      s = FlowSolution(NSDOFs)
+      !      FlowSolution(NSDOFs:n:NSDOFs) = FlowSolution(NSDOFs:n:NSDOFs)-s
+      !      PSolution(NSDOFs:n:NSDOFs)=PSolution(NSDOFs:n:NSDOFs)-PSolution(NSDOFs)
+      !   END IF
 
-         FlowSolution(1:n) = (1-NonlinearRelax)*PSolution(1:n) + &
-                    NonlinearRelax*FlowSolution(1:n)
+      !   FlowSolution(1:n) = (1-NonlinearRelax)*PSolution(1:n) + &
+      !              NonlinearRelax*FlowSolution(1:n)
        
-         IF ( CompressibilityModel == Incompressible ) THEN
-            FlowSolution(NSDOFs:n:NSDOFs)=FlowSolution(NSDOFs:n:NSDOFs)+s
-         END IF
+      !   IF ( CompressibilityModel == Incompressible ) THEN
+      !      FlowSolution(NSDOFs:n:NSDOFs)=FlowSolution(NSDOFs:n:NSDOFs)+s
+      !   END IF
 
-        RelaxBefore = GetLogical( Solver % Values, &
-              'Nonlinear system Relaxation Before', gotIt )
-        IF ( .NOT.gotIt .OR. RelaxBefore ) THEN
-          CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .FALSE. )
+      !  RelaxBefore = GetLogical( Solver % Values, &
+      !        'Nonlinear system Relaxation Before', gotIt )
+      !  IF ( .NOT.gotIt .OR. RelaxBefore ) THEN
+      !    CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .FALSE. )
 
-          Solver % Variable % Norm = ComputeNorm(Solver, n, PSolution)
+      !    Solver % Variable % Norm = ComputeNorm(Solver, n, PSolution)
 
-          CALL ComputeChange( Solver, .FALSE., n, FlowSolution, PSolution )
+      !    CALL ComputeChange( Solver, .FALSE., n, FlowSolution, PSolution )
 
-          Solver % Variable % Norm = ComputeNorm(Solver, n, FlowSolution)
-        END IF
-      END IF
-      RelativeChange = Solver % Variable % NonlinChange
+       !   Solver % Variable % Norm = ComputeNorm(Solver, n, FlowSolution)
+        !END IF
+      ! END IF
+      !RelativeChange = Solver % Variable % NonlinChange
 
 !------------------------------------------------------------------------------
 
       WRITE( Message, * ) 'Result Norm     : ',Solver % Variable % Norm
       CALL Info( 'FlowSolve', Message, Level=4 )
-      WRITE( Message, * ) 'Relative Change : ',RelativeChange
+      WRITE( Message, * ) 'Relative Change : ',Solver % Variable % NonlinChange
       CALL Info( 'FlowSolve', Message, Level=4 )
-
+      
+      RelativeChange = Solver % Variable % NonlinChange
       IF ( RelativeChange < NewtonTol .OR. &
              iter > NewtonIter ) NewtonLinearization = .TRUE.
+
+      IF ( RecheckNewton .AND. NewtonLinearization .AND. (RelativeChange > NewtonUBound)) THEN
+        NewtonLinearization = .FALSE.
+	CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
+      END IF
+
+      IF ( RecheckNewton .AND. NewtonLinearization .AND. (iter >= NewtonMaxIter)) THEN
+        NewtonLinearization = .FALSE.
+	CALL Info('FlowSolve', 'Newton iteration limit exceeded, switching back to picard', Level=6)
+      END IF
 
       IF ( RecheckNewton .AND. (RelativeChange > NewtonUBound) .AND. NewtonLinearization ) THEN
         NewtonLinearization = .FALSE.
@@ -1332,7 +1369,9 @@
       ! Replace the zero pressure solution at the nodes which are not needed in the linear
       ! pressure approximation by the interpolated values for right visualization:
       !----------------------------------------------------------------------------------------
-      DO t=1,GetNOFActive()
+      NoActive = GetNOFActive()
+
+      DO t=1,NoActive
         ! First the midedge nodes:
         Element => GetActiveElement(t)
         IF ( Element % TYPE % BasisFunctionDegree <= 1 ) CYCLE
@@ -1404,8 +1443,8 @@
       END DO
     END IF
 
-    CALL ListAddConstReal( Solver % Values, &
-        'Nonlinear System Relaxation Factor', NonlinearRelax )
+    !CALL ListAddConstReal( Solver % Values, &
+    !    'Nonlinear System Relaxation Factor', NonlinearRelax )
 
     IF (ListGetLogical(Solver % Values,'Adaptive Mesh Refinement',GotIt)) &
       CALL RefineMesh( Model,Solver,FlowSolution,FlowPerm, &

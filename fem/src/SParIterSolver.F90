@@ -701,9 +701,11 @@ st = realtime()
     DO j = 1, CurrIf % NumberOfRows
       IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) CYCLE
       RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
+ if ( rowind<=0 ) cycle
       DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
         ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
-        CALL List_AddToMatrixElement(A % ListMatrix,RowInd,ColInd,0._dp)
+ if ( colind<=0 ) cycle
+        CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
       END DO
     END DO
   END DO
@@ -839,7 +841,9 @@ SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
      END IF
 
      IF ( SplittedMatrix % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-       SplittedMatrix % NbsIfMatrix(i) % Values = 0._dp
+       IF(ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % Values)) &
+         SplittedMatrix % NbsIfMatrix(i) % Values = 0._dp
+
        IF ( NeedILU.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % ILUvalues) ) &
          SplittedMatrix % NbsIfMatrix(i) % ILUValues  = 0._dp
        IF ( NeedPrec.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % Precvalues) ) &
@@ -1058,6 +1062,9 @@ END SUBROUTINE ZeroSplittedMatrix
 
 !----------------------------------------------------------------------
     SplittedMatrix => SourceMatrix % ParMatrix % SplittedMatrix
+
+    IF (.NOT. ASSOCIATED(SplittedMatrix % InsideMatrix % RHS)) &
+         ALLOCATE(SplittedMatrix % InsideMatrix % RHS(SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpRHSVec => SplittedMatrix % InsideMatrix % RHS
 
     CALL ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
@@ -1078,8 +1085,15 @@ END SUBROUTINE ZeroSplittedMatrix
     REAL(KIND=dp), POINTER :: TmpXVec(:),TmpRVec(:)
 !----------------------------------------------------------------------
     ParallelInfo => SourceMatrix % ParMatrix % ParallelInfo
+    IF (.NOT. ASSOCIATED(SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec)) &
+         ALLOCATE(SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec( &
+	 SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpXVec => SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec
+    IF (.NOT. ASSOCIATED(SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec)) &
+         ALLOCATE(SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec( &
+	 SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpRVec => SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec
+
     j = 0
     DO i = 1, SourceMatrix % NumberOfRows
        IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
@@ -1403,7 +1417,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   INTEGER, POINTER :: nb(:), Rows(:), Cols(:)
 
   LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, Found
-  LOGICAL :: NewSetup
+  LOGICAL :: NewSetup, UpdateTolerance
   INTEGER :: verbosity
   
   INTEGER :: nrows, ncols, nnz
@@ -1477,6 +1491,13 @@ INTEGER::inside
                             hypre_dppara(5), Gvals(*), xx_d(*), yy_d(*), zz_d(*)
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPREAMS
+
+      SUBROUTINE UpdateHypre(TOL, hypremethod, hypreContainer) BIND(C,name="updatehypre")
+        USE, INTRINSIC :: iso_c_binding
+        REAL(KIND=c_double) :: TOL
+        INTEGER(KIND=c_int) :: hypremethod
+        INTEGER(KIND=C_INTPTR_T) :: hypreContainer
+      END SUBROUTINE UpdateHypre
 
     END INTERFACE
 #endif
@@ -1577,7 +1598,9 @@ INTEGER::inside
 
       IF ( hypre_sol /= 1) THEN
          IF ( SEQL(Prec,'ilu') ) THEN
-           READ( Prec(4:), * ) ILUn
+           Ilun = 0
+           READ( Prec(4:), *, END=10 ) ILUn
+10         CONTINUE
            WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
            CALL Info("SParIterSolver", Message,Level=3)
          ELSE IF( Prec == 'parasails' ) THEN
@@ -1698,7 +1721,9 @@ INTEGER::inside
       verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
       IF( .NOT. Found ) verbosity = 10
 
-      NewSetup=ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+      NewSetup = ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+      IF(.NOT.Found) NewSetup = .TRUE.
+
       IF (ListGetLogical(Params, 'HYPRE Block Diagonal', Found)) THEN
         bilu = Solver % Variable % Dofs
       ELSE
@@ -1706,13 +1731,16 @@ INTEGER::inside
       END IF
 
       CALL SParIterActiveBarrier()
+
       IF(hypre_pre/=3) THEN
         IF (NewSetup) THEN
           IF (SourceMatrix % Hypre /= 0) THEN
             CALL SolveHYPRE4(SourceMatrix % Hypre)
+            SourceMatrix % Hypre = 0
           END IF
         END IF
         ! setup solver/preconditioner
+
         IF (SourceMatrix % Hypre == 0) THEN
           precond=0
           PrecVals => SourceMatrix % PrecValues
@@ -1721,6 +1749,14 @@ INTEGER::inside
           CALL SolveHYPRE1( SourceMatrix % NumberOfRows, Rows, Cols, Vals, Precond, &
               PrecVals, Aperm, Owner,  ILUn, BILU, hypremethod,hypre_intpara, hypre_dppara,&
               rounds, TOL, verbosity, SourceMatrix % Hypre, SourceMatrix % Comm)
+        END IF
+
+        ! In some cases the stopping tolerance is adapted during the solution procedure.
+        ! Make an update if needed:
+        UpdateTolerance = ListGetLogical( Params, 'Linear System Adaptive Tolerance', Found )
+        IF (UpdateTolerance) THEN
+           !PRINT *, 'Setting tolerance to:', TOL
+           CALL UpdateHypre( TOL, hypremethod, SourceMatrix % Hypre)
         END IF
 
         ! solve using previously computed HYPRE data structures.
@@ -2083,7 +2119,8 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   CHARACTER(LEN=MAX_NAME_LEN) :: Preconditioner
 
   TYPE(Matrix_t), POINTER :: CM,SaveMatrix
-  INTEGER, POINTER :: SPerm(:), SCols(:)
+  INTEGER, POINTER :: SPerm(:)
+  INTEGER, POINTER CONTIG :: SCols(:)
 
 #ifdef USE_ISO_C_BINDINGS
   REAL(kind=dp)::tt,rt
@@ -2360,16 +2397,26 @@ END SUBROUTINE Solve
   CALL Recv_LocIf( GlobalData % SplittedMatrix, &
       nneigh, neigh, recv_size, requests, buffer )
 
-  v(1:n) = 0.0
+  !$OMP PARALLEL DO
+  DO i=1,n
+     v(i) = 0.0
+  END DO
+  !$OMP END PARALLEL DO
   DO i = 1, ParEnv % PEs
      CurrIf => GlobalData % SplittedMatrix % IfMatrix(i)
 
      IF ( CurrIf % NumberOfRows /= 0 ) THEN
-       IfV => GlobalData % SplittedMatrix % IfVecs(i)
-       IfL => GlobalData % SplittedMatrix % IfLCols(i)
-       IfO => GlobalData % SplittedMatrix % IfORows(i)
+        IfV => GlobalData % SplittedMatrix % IfVecs(i)
+        IfL => GlobalData % SplittedMatrix % IfLCols(i)
+        IfO => GlobalData % SplittedMatrix % IfORows(i)
 
-        IfV % IfVec(1:CurrIf % NumberOfRows) = 0.0
+        !$OMP PARALLEL PRIVATE(ColInd,j,k)
+        !$OMP DO
+        DO j=1,CurrIf % NumberOfRows
+           IfV % IfVec(j) = 0.0
+        END DO
+        !$OMP END DO
+        !$OMP DO
         DO j = 1, CurrIf % NumberOfRows
            IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) THEN
              DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
@@ -2379,6 +2426,8 @@ END SUBROUTINE Solve
              END DO
            END IF
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
      END IF
   END DO
 
@@ -2388,31 +2437,7 @@ END SUBROUTINE Solve
   ! Compute the local part
   !
   !----------------------------------------------------------------------
-
-  Rows => InsideMatrix % Rows
-  Cols => InsideMatrix % Cols
-  Vals => InsideMatrix % Values
-
-  IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
-    CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,Vals,u,v,0)
-#else
-    CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,Vals,u,v,0)
-#endif
-  ELSE
-!$omp parallel do private(j,rsum)
-    DO i = 1, n
-      rsum = 0._dp
-      DO j = Rows(i), Rows(i+1) - 1
-        rsum = rsum + Vals(j) * u(Cols(j))
-      END DO
-      v(i)=v(i)+rsum
-    END DO
-!omp end parallel do
-  END IF
-
+  CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v )
 
   CALL Recv_LocIf_Wait( GlobalData % SplittedMatrix, n, v,  &
        nneigh, neigh, recv_size, requests, buffer )
@@ -2923,46 +2948,64 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
         j2 = SMat2 % Rows(Ind)
 
         DO WHILE ( j1 < SMat1 % Rows(i1+1) .OR.  j2 < SMat2 % Rows(Ind+1) )
-
-           IF ( j1 <  SMat1 % Rows(i1+1) .AND. &
-                j2 >= SMat2 % Rows(Ind+1) ) THEN
-
-              DMat % Cols(col) = SMat1 % Cols(j1)
-              Col = Col + 1
-              j1 = j1 + 1
-
-           ELSE IF ( j1 < SMat1 % Rows(i1+1) .AND. &
-             SMat1 % Cols(j1) < SMat2 % Cols(j2) ) THEN
+          IF ( j1 <  SMat1 % Rows(i1+1)) THEN
+            IF (j2 >= SMat2 % Rows(Ind+1) ) THEN
 
               DMat % Cols(col) = SMat1 % Cols(j1)
               Col = Col + 1
               j1 = j1 + 1
-        
-           ELSE IF ( j1 >= SMat1 % Rows(i1+1) .AND. &
-                     j2 <  SMat2 % Rows(Ind+1) ) THEN
-              
-              DMat % Cols(col) = SMat2 % Cols(j2)
-              Col = Col + 1
-              j2 = j2 + 1
-        
-           ELSE IF ( j2 < SMat2 % Rows(Ind+1) .AND. &
-              SMat2 % Cols(j2) < SMat1 % Cols(j1) ) THEN
-
-              DMat % Cols(col) = SMat2 % Cols(j2)
-              Col = Col + 1
-              j2 = j2 + 1
-
-           ELSE IF ( SMat1 % Cols(j1) == SMat2 % Cols(j2) ) THEN
+              CYCLE
+            ELSE IF ( SMat1 % Cols(j1) < SMat2 % Cols(j2) ) THEN
 
               DMat % Cols(col) = SMat1 % Cols(j1)
               Col = Col + 1
-              j1 = j1 + 1; j2 = j2 + 1
+              j1 = j1 + 1
+              CYCLE
+            ELSE IF (j2 >= SMat2 % Rows(Ind+1) ) THEN
               
-           END IF
+              DMat % Cols(col) = SMat1 % Cols(j1)
+              Col = Col + 1
+              j1 = j1 + 1
+              CYCLE
+            ELSE IF ( SMat1 % Cols(j1) < SMat2 % Cols(j2) ) THEN
+
+              DMat % Cols(col) = SMat1 % Cols(j1)
+              Col = Col + 1
+              j1 = j1 + 1
+              CYCLE
+            END IF
+          END IF
+          IF ( j2 <  SMat2 % Rows(Ind+1) ) THEN
+            IF ( j1 >= SMat1 % Rows(i1+1) ) THEN
+
+              DMat % Cols(col) = SMat2 % Cols(j2)
+              Col = Col + 1
+              j2 = j2 + 1
+              CYCLE
+            ELSE IF ( SMat2 % Cols(j2) < SMat1 % Cols(j1) ) THEN
+
+              DMat % Cols(col) = SMat2 % Cols(j2)
+              Col = Col + 1
+              j2 = j2 + 1
+              CYCLE
+            END IF
+          END IF
+          IF ( SMat1 % Cols(j1) == SMat2 % Cols(j2) ) THEN
+            
+            DMat % Cols(col) = SMat1 % Cols(j1)
+            Col = Col + 1
+            j1 = j1 + 1
+            j2 = j2 + 1
+            CYCLE
+          END IF
+
+          ! Should not happen
+          CALL Fatal('CombineCRSMatIndices','Internal error while merging matrix rows')
         END DO
 
         Done(Ind) = .TRUE.
-        i1 = i1 + 1; i2 = i2 + 1
+        i1 = i1 + 1
+        i2 = i2 + 1
      END IF
   END DO
   DMat % Rows(Row) = Col
@@ -3098,7 +3141,10 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
            IF ( RowInd > 0 ) THEN
               DO k = RecvdIfMatrix(i) % Rows(j), RecvdIfMatrix(i) % Rows(j+1) - 1
                  l = RecvdIfMatrix(i) % Cols(k)
-                 ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
+
+!                ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
+!XYXY
+                 ColIndA =  SearchNode(ParallelInfo,l, Order=ParallelInfo % Gorder )
                  IF (ColIndA>0) ColIndA = RevDOFList(ColIndA)
 
                  IF ( ColIndA  <= 0 ) CYCLE
@@ -3210,8 +3256,11 @@ SUBROUTINE ClearInsideC( SourceMatrix, InsideMatrix, &
         IF ( RowInd /= -1 ) THEN
            DO j = RecvdIfMatrix(p) % Rows(i),RecvdIfMatrix(p) % Rows(i+1) - 1
 
-              GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j),&
-                        Order = SourceMatrix % Perm )
+!             GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j),&
+!                       Order = SourceMatrix % Perm )
+!XYXY
+              GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j), Order=ParallelInfo % Gorder )
+
 !             GCol = SourceMatrix % Perm( Gcol )
 
               ColInd = -1

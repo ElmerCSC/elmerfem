@@ -70,12 +70,12 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM, bf_id_FS 
    REAL(KIND=dp) :: y, pw, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: Zsl, rhow, gravity
-   REAL(KIND=dp), ALLOCATABLE :: S(:), auxReal(:), Ns(:),  a_perp(:), SourceFunc(:), normal(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: S(:), Ns(:),  a_perp(:), SourceFunc(:), normal(:,:)
    LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE., UnFoundFatal=.TRUE.
    CHARACTER(LEN=MAX_NAME_LEN)  :: BottomSurfaceName
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
-   SAVE S, rhow, gravity, Zsl, auxReal, NormalFlux, a_perp, SourceFunc
+   SAVE S, rhow, gravity, Zsl, NormalFlux, a_perp, SourceFunc
    SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal
    SAVE BottomSurfaceName, bf_id_FS 
    
@@ -85,14 +85,16 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    t = TimeVar % Values(1)
    dt = Model % Solver % dt 
 
+   !Element type 101 doesn't have a parent element, can't enquire SeaLevel
+   !Should only occur during SaveBoundaryValues, so isn't an issue
+   IF(GetElementFamily(Model % CurrentElement) < 2) THEN
+      pw = 0.0_dp
+      RETURN
+   END IF
 
    IF (FirstTime) THEN
-      FirstTime = .FALSE.
       NewTime = .TRUE.
       told = t
-      ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
-      n = Model % MaxElementNodes 
-      ALLOCATE( auxReal(n), SourceFunc(n) )
       DIM = CoordinateSystemDimension()
 
       rhow = GetConstReal( Model % Constants, 'Water Density', GotIt )
@@ -145,7 +147,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
         IF (bf_id_FS<0) THEN 
            CALL FATAL('Sea Pressure','No Basal Melt found in any body Force')
         END IF 
-      END IF
+     END IF
 
 !-----------------------------------------------------------------
 ! Read the gravity 
@@ -162,10 +164,27 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
         gravity = -GetConstReal( Model % BodyForces(bf_id) % Values, 'Flow BodyForce 3',Gotit)
       END IF
  
-!-----------------------------------------------------------------
-! Number of nodes concerned (needed to compute Ns from the normal)
-!-----------------------------------------------------------------
+   ELSE
+      IF (t > told) THEN
+         NewTime = .TRUE.
+         told = t
+      END IF
+   ENDIF  ! FirstTime
 
+   IF(FirstTime .OR. (NewTime .AND. Model % Mesh % Changed)) THEN
+
+      IF(.NOT. FirstTime) &
+           DEALLOCATE(NodeOnBoundary, SourceFunc)
+      ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
+      n = Model % MaxElementNodes 
+      ALLOCATE( SourceFunc(n) )
+
+      FirstTime = .FALSE.
+
+      !-----------------------------------------------------------------
+      ! Number of nodes concerned (needed to compute Ns from the normal)
+      !-----------------------------------------------------------------
+      
       CurElement => Model % CurrentElement
       NodeOnBoundary = 0
       NumberOfNodesOnBoundary = 0
@@ -180,23 +199,21 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
             DO i = 1, n
                j = BCElement % NodeIndexes (i)
                IF (NodeOnBoundary(j)==0) THEN
-                 NumberOfNodesOnBoundary = NumberOfNodesOnBoundary + 1
-                 NodeOnBoundary(j) = NumberOfNodesOnBoundary
+                  NumberOfNodesOnBoundary = NumberOfNodesOnBoundary + 1
+                  NodeOnBoundary(j) = NumberOfNodesOnBoundary
                END IF
             END DO
          END IF
       END DO
       Model % CurrentElement => CurElement 
 
+      IF(ALLOCATED(S)) DEALLOCATE(S,Ns)
+      IF(ALLOCATED(a_perp)) DEALLOCATE(a_perp)
+
       ALLOCATE( S( NumberOfNodesOnBoundary ), Ns( NumberOfNodesOnBoundary ))
       IF (NormalFlux) ALLOCATE( a_perp ( NumberOfNodesOnBoundary ))
-      
-   ELSE
-      IF (t > told) THEN
-         NewTime = .TRUE.
-         told = t
-      END IF
-   ENDIF  ! FirstTime
+   END IF
+
    
    IF (NewTime) THEN
       NewTime = .FALSE.
@@ -212,7 +229,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
       IF (other_body_id < 1) THEN ! only one body in calculation
          ParentElement => BoundaryElement % BoundaryInfo % Right
          IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-      ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+      ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
          ParentElement => BoundaryElement % BoundaryInfo % Right
          IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
       END IF
@@ -332,6 +349,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
       pw = -gravity * rhow * (Zsl - S(j))  
    END IF
    IF (pw > 0.0) pw = 0.0
+
 END FUNCTION SeaPressure
 
 
@@ -355,24 +373,41 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM 
    REAL(KIND=dp) :: y, C, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: rhow, gravity
-   REAL(KIND=dp), ALLOCATABLE :: auxReal(:), Ns(:), normal(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: Ns(:), normal(:,:)
    LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS   
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
-   SAVE rhow, gravity, auxReal
+   SAVE rhow, gravity
    SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal 
 
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
    dt = Model % Solver % dt 
 
-   IF (FirstTime) THEN
-      FirstTime = .FALSE.
+   !Element type 101 doesn't have a parent element, can't enquire SeaLevel
+   !Should only occur during SaveBoundaryValues, so isn't an issue
+   IF(GetElementFamily(Model % CurrentElement) < 2) THEN
+      C = 1.0e20_dp
+      RETURN
+   END IF
+
+   ! .OR. (NewTime .AND. Model % Mesh % Changed)
+   IF(FirstTime) THEN
+      NewTime = .TRUE.
+   ELSE IF(t > told) THEN
       NewTime = .TRUE.
       told = t
+   END IF
+
+   IF (FirstTime .OR. (NewTime .AND. Model % Mesh % Changed)) THEN
+
+      IF(.NOT. FirstTime) DEALLOCATE(NodeOnBoundary, Ns)
+      FirstTime = .FALSE.
+      NewTime = .FALSE.
+
       ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
       n = Model % MaxElementNodes 
-      ALLOCATE( auxReal(n) )
+
       DIM = CoordinateSystemDimension()
 
       rhow = GetConstReal( Model % Constants, 'Water Density', GotIt )
@@ -397,7 +432,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
       IF (other_body_id < 1) THEN ! only one body in calculation
          ParentElement => BoundaryElement % BoundaryInfo % Right
          IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-      ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+      ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
          ParentElement => BoundaryElement % BoundaryInfo % Right
          IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
       END IF
@@ -439,17 +474,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
       Model % CurrentElement => CurElement 
 
       ALLOCATE( Ns( NumberOfNodesOnBoundary ))
-      
-   ELSE
-      IF (t > told) THEN
-         NewTime = .TRUE.
-         told = t
-      END IF
-   ENDIF
-   
-   IF (NewTime) THEN
-      NewTime = .FALSE.
-      
+
       ! Compute Ns for new t
       ALLOCATE( Normal(3, NumberOfNodesOnBoundary))
       Ns = 0.0_dp
@@ -500,4 +525,5 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    ELSE
       C = 1.0e20_dp
    END IF
+
 END FUNCTION SeaSpring

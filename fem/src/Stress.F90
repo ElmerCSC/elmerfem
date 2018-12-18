@@ -46,9 +46,8 @@
 MODULE StressLocal
 
 !------------------------------------------------------------------------------
-  USE Integration
-  USE Lists
-  USE ElementDescription
+  USE DefUtils
+
 
   IMPLICIT NONE
 
@@ -86,16 +85,16 @@ MODULE StressLocal
      REAL(KIND=dp) :: Basis(ntot)
      REAL(KIND=dp) :: dBasisdx(ntot,3),detJ
 
-     REAL(KIND=dp) :: LoadAtIp(3), LoadatIp_im(3), Poisson, Young
+     REAL(KIND=dp) :: LoadAtIp(3), LoadatIp_im(3), Poisson, Young, Ident(3,3)
 
-     REAL(KIND=dp), DIMENSION(3,3) :: A,M,D,HeatExpansion
+     REAL(KIND=dp) :: M(3,3),D(3,3),HeatExpansion(3,3), A(4,4)
      REAL(KIND=dp) :: Temperature,Density, C(6,6), Damping,MeshVelo(3)
-     REAL(KIND=dp) :: StressTensor(3,3), StrainTensor(3,3), InnerProd
+     REAL(KIND=dp) :: StressTensor(3,3), StrainTensor(3,3), InnerProd, NodalViscosity(n)
      REAL(KIND=dp) :: StressLoad(6), StrainLoad(6), PreStress(6), PreStrain(6)
 
      INTEGER :: i,j,k,l,p,q,t,dim,NBasis,ind(3)
 
-     REAL(KIND=dp) :: s,u,v,w, Radius, B(6,3), G(3,6)
+     REAL(KIND=dp) :: s,u,v,w, Radius, B(6,3), G(3,6), xPhi
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
@@ -106,26 +105,51 @@ MODULE StressLocal
      LOGICAL :: stat, CSymmetry, NeedMass, NeedHeat, NeedStress, NeedHarmonic, &
          NeedPreStress, ActiveGeometricStiffness
 
+
+     TYPE(Mesh_t), POINTER :: Mesh
+     INTEGER :: ndim
+     LOGICAL :: Found, Incompressible, MaxwellMaterial
+     REAL(KIND=dp) :: Pres, Pres0
+     REAL(KIND=dp) :: PSOL(4,32), SOL(4,32), ShearModulus, Viscosity, PrevStress(3,3)
 !------------------------------------------------------------------------------
 
+     TYPE(Variable_t), POINTER, SAVE :: ve_stress
+
+     REAL(KIND=dp), ALLOCATABLE, SAVE :: StressStore(:,:,:,:)
+
+
      dim = CoordinateSystemDimension()
+
+     Incompressible = GetLogical( GetSolverParams(), 'Incompressible', Found )
+     IF (Incompressible) THEN
+       ndim = dim+1
+     ELSE
+       ndim = dim
+     END IF
+
+     Ident = 0._dp
+     DO i=1,dim
+       Ident(i,i) = 1._dp
+     END DO
 
      CSymmetry = .FALSE.
      CSymmetry = CSymmetry .OR. CurrentCoordinateSystem() == AxisSymmetric
      CSymmetry = CSymmetry .OR. CurrentCoordinateSystem() == CylindricSymmetric
 
-     FORCE_im = 0.0D0
-     FORCE = 0.0D0
-     STIFF = 0.0D0
-     MASS  = 0.0D0
-     DAMP  = 0.0D0
+     FORCE_im = 0.0d0
+     FORCE = 0.0d0
+     STIFF = 0.0d0
+     MASS  = 0.0d0
+     DAMP  = 0.0d0
 
      NeedMass = ANY( NodalDensity(1:n) /= 0.0d0 )
      NeedMass = NeedMass .OR. ANY( NodalDamping(1:n) /= 0.0d0 )
+
      NeedHeat = ANY( NodalTemperature(1:n) /= 0.0d0 )
      NeedHarmonic = ANY( LOAD_im(:,1:n) /= 0.0d0 ) 
      NeedPreStress = ANY( NodalPreStrain(1:6,1:n) /= 0.0d0 ) 
      NeedPreStress = NeedPreStress .OR. ANY( NodalPreStress(1:6,1:n) /= 0.0d0 ) 
+
 
      !      ! Integration stuff:
      ! ------------------  
@@ -138,7 +162,29 @@ MODULE StressLocal
      S_Integ => IntegStuff % s
      N_Integ =  IntegStuff % n
 
-     !
+     Mesh => GetMesh()
+     MaxwellMaterial = GetLogical( GetMaterial(), 'Maxwell material', Found )
+     IF( MaxwellMaterial ) THEN
+       ve_stress => variableget( Mesh % Variables, 've_stress' )
+       IF(.NOT.ASSOCIATED(ve_stress)) THEN
+         CALL Fatal( 'StressCompose', '"Maxwell material" set, but no storage space for stresses present?' )
+       END IF
+
+       i = Element % ElementIndex
+       j = ve_stress % Perm( i+1 ) - ve_stress % Perm ( i )
+       IF( IntegStuff % n /= j ) THEN
+         PRINT *,'Inconsistent number of gauss points:',i, IntegStuff % n, j
+       END IF
+
+       NodalViscosity(1:n) = GetReal( GetMaterial(), 'Viscosity', Found )
+
+       SOL = 0; PSOL = 0
+       CALL GetVectorLocalSolution( SOL )
+       CALL GetVectorLocalSolution( PSOL, tStep=-2 )
+       PSOL = SOL - PSOL
+       PrevStress = 0._dp
+     END IF
+
      ! Now we start integrating:
      ! -------------------------
      DO t=1,N_Integ
@@ -148,8 +194,7 @@ MODULE StressLocal
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-       stat = ElementInfo( Element,Nodes,u,v,w,detJ, &
-                Basis,dBasisdx )
+       stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis,dBasisdx )
 
        s = detJ * S_Integ(t)
 !------------------------------------------------------------------------------
@@ -161,6 +206,7 @@ MODULE StressLocal
            MeshVelo(i) = SUM( NodalMeshVelo(i,1:n)*Basis(1:n) )
          END DO
        END IF
+
 
        IF ( NeedHeat ) THEN
          ! Temperature at the integration point:
@@ -334,7 +380,14 @@ MODULE StressLocal
            StressTensor(1,3) = StressTensor(1,3) + PreStress(6)
            StressTensor(3,1) = StressTensor(3,1) + PreStress(6)
          END SELECT
-         ActiveGeometricStiffness = .TRUE.
+       END IF
+
+       IF(MaxwellMaterial) THEN
+         Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
+         xPhi = ViscoElasticLoad( ve_stress, t, StressLoad )
+         NeedPreStress = .TRUE.
+       ELSE
+         xPhi = 1
        END IF
 
        !
@@ -386,7 +439,7 @@ MODULE StressLocal
          END IF
 
 
-         G = MATMUL( G, C )
+         IF (.NOT. Incompressible ) G = MATMUL( G, C )
 
          DO q=1,NBasis
            IF ( NeedMass ) THEN
@@ -426,26 +479,40 @@ MODULE StressLocal
               B(6,3) = dBasisdx(q,1)
            END SELECT
  
-           A = MATMUL( G, B )
- 
+           A = 0._dp
+           IF ( .NOT. Incompressible ) THEN
+              A(1:3,1:3) = MATMUL( G, B ) * xPhi
+           ELSE
+              DO i=1,dim 
+                DO j=1,dim 
+                  A(i,i) = A(i,i) + Young/3 * dBasisdx(q,j) * dBasisdx(p,j)
+                  A(i,j) = A(i,j) + Young/3 * dBasisdx(q,i) * dBasisdx(p,j)
+                END DO
+                A(i,:) = A(i,:) * xPhi
+
+                A(i,ndim) = A(i,ndim) - Basis(q) * dBasisdx(p,i)
+                A(ndim,i) = A(ndim,i) - dBasisdx(q,i) * Basis(p)
+             END DO
+           END IF
+
            !
            ! Add nodal matrix to element matrix:
            ! -----------------------------------
-           DO i=1,dim
-             DO j=1,dim
-               STIFF( dim*(p-1)+i,dim*(q-1)+j ) =  &
-                    STIFF( dim*(p-1)+i,dim*(q-1)+j ) + s*A(i,j)
+           DO i=1,ndim
+             DO j=1,ndim
+               STIFF( ndim*(p-1)+i,ndim*(q-1)+j ) =  &
+                    STIFF( ndim*(p-1)+i,ndim*(q-1)+j ) + s*A(i,j)
              END DO
            END DO
 
            IF ( NeedMass .AND. (.NOT.StabilityAnalysis) ) THEN
               DO i=1,dim
                 DO j=1,dim
-                  MASS( dim*(p-1)+i,dim*(q-1)+j ) =  &
-                       MASS( dim*(p-1)+i,dim*(q-1)+j ) + s*M(i,j)
+                  MASS( ndim*(p-1)+i,ndim*(q-1)+j ) =  &
+                       MASS( ndim*(p-1)+i,ndim*(q-1)+j ) + s*M(i,j)
 
-                  DAMP( dim*(p-1)+i,dim*(q-1)+j ) =  &
-                       DAMP( dim*(p-1)+i,dim*(q-1)+j ) + s*D(i,j)
+                  DAMP( ndim*(p-1)+i,ndim*(q-1)+j ) =  &
+                       DAMP( ndim*(p-1)+i,ndim*(q-1)+j ) + s*D(i,j)
                 END DO
               END DO
            END IF
@@ -461,14 +528,15 @@ MODULE StressLocal
                END DO
 
                IF ( StabilityAnalysis ) THEN
-                 MASS( dim*(p-1)+k,dim*(q-1)+k ) &
-                     = MASS( dim*(p-1)+k,dim*(q-1)+k ) - s * InnerProd
+                 MASS( ndim*(p-1)+k,ndim*(q-1)+k ) &
+                     = MASS( ndim*(p-1)+k,ndim*(q-1)+k ) - s * InnerProd
                ELSE
-                 STIFF( dim*(p-1)+k,dim*(q-1)+k ) &
-                    = STIFF( dim*(p-1)+k,dim*(q-1)+k ) + s * InnerProd
+                 STIFF( ndim*(p-1)+k,ndim*(q-1)+k ) &
+                    = STIFF( ndim*(p-1)+k,ndim*(q-1)+k ) + s * InnerProd 
                END IF
              END DO
            END IF
+
          END DO
 
          !
@@ -502,24 +570,81 @@ MODULE StressLocal
          END IF
 
          DO i=1,dim
-           FORCE(dim*(p-1)+i) = FORCE(dim*(p-1)+i) + s*LoadAtIp(i)
+           FORCE(ndim*(p-1)+i) = FORCE(ndim*(p-1)+i) + s*LoadAtIp(i)
            IF( NeedHarmonic ) THEN
-             FORCE_im(dim*(p-1)+i) = FORCE_im(dim*(p-1)+i) + s*LoadAtIp_im(i)
+             FORCE_im(ndim*(p-1)+i) = FORCE_im(ndim*(p-1)+i) + s*LoadAtIp_im(i)
            END IF
          END DO
       END DO
     END DO
 
-    DAMP  = ( DAMP  + TRANSPOSE(DAMP) )  / 2.0d0
-    MASS  = ( MASS  + TRANSPOSE(MASS) )  / 2.0d0
-    STIFF = ( STIFF + TRANSPOSE(STIFF) ) / 2.0d0
+    IF ( Incompressible ) THEN
+      DO i=n+1,ntot
+        j = ndim*i
+        FORCE(j)   = 0._dp
+        STIFF(j,:) = 0._dp
+        STIFF(:,j) = 0._dp
+        STIFF(j,j) = 1._dp
+      END DO
+    END IF
+
+    DAMP  = ( DAMP  + TRANSPOSE(DAMP) )  / 2.0_dp
+    MASS  = ( MASS  + TRANSPOSE(MASS) )  / 2.0_dp
+    STIFF = ( STIFF + TRANSPOSE(STIFF) ) / 2.0_dp
 
     IF( RayleighDamping ) THEN
         DAMP = RayleighAlpha(1) * MASS + RayleighBeta(1) * STIFF
     END IF
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+ FUNCTION ViscoElasticLoad(ve_stress, ip, StressLoad) RESULT(xPhi)
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: ve_stress
+    INTEGER :: ip
+    REAL(KIND=dp) :: StressLoad(6), Xphi
+!------------------------------------------------------------------------------
+    INTEGER :: i
+    REAL(KIND=dp) :: StressTensor(3,3), PrevStress(3,3), Pres, Pres0, &
+           ShearModulus
+
+    StressTensor  = 0._dp
+    CALL LocalStress( StressTensor,StrainTensor,NodalPoisson,ElasticModulus, &
+         NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
+         PSOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
+
+    IF(Incompressible) THEN
+      ShearModulus = Young / 3
+      Pres  = SUM( Basis(1:n) * SOL(ndim,1:n) )
+      Pres0 = SUM( Basis(1:n) * (SOL(ndim,1:n) - PSOL(ndim,1:n)) )
+    ELSE
+      Pres = 0._dp; Pres0 = 0._dp
+      ShearModulus = Young / (2*(1+Poisson))
+    END IF
+
+    xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * GetTimeStepSize() )
+
+    i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
+    PrevStress(1:dim,1:dim) = RESHAPE( ve_stress % values(i+1:i+dim**2), [dim,dim] )
+    PrevStress = xPhi * (StressTensor + PrevStress + Pres0 * Ident) - Pres * Ident
+    ve_stress % values(i+1:i+dim**2) = RESHAPE( PrevStress(1:dim,1:dim), [dim**2] )
+
+    StressTensor  = 0._dp
+    CALL LocalStress( StressTensor,StrainTensor,NodalPoisson,ElasticModulus, &
+        NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
+        SOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
+
+    StressTensor = xPhi * (StressTensor - PrevStress - Pres * Ident)
+            
+    CALL Tensor26Vector( StressTensor, StressLoad, dim, CSymmetry )
+!------------------------------------------------------------------------------
+ END FUNCTION ViscoElasticLoad
+!------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
  END SUBROUTINE StressCompose
 !------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
@@ -833,9 +958,9 @@ MODULE StressLocal
                     Tangent(3), Tangent2(3), Vect(3), Vect2(3), Stress(3,3), Tf(3,3)
    REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
 
-   INTEGER :: i,j,k,l,q,p,t,ii,jj,kk,dim,N_Integ
+   INTEGER :: i,j,k,l,q,p,t,ii,jj,kk,dim,N_Integ, ndim
 
-   LOGICAL :: stat, Csymm
+   LOGICAL :: stat, Csymm, Incompressible
 
    TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 !------------------------------------------------------------------------------
@@ -843,6 +968,13 @@ MODULE StressLocal
    dim = CoordinateSystemDimension()
    Csymm = CurrentCoordinateSystem() == AxisSymmetric .OR. &
            CurrentCoordinateSystem() == CylindricSymmetric
+
+   Incompressible = GetLogical( GetSolverParams(), 'Incompressible', stat )
+   IF (Incompressible) THEN
+     ndim = dim+1
+   ELSE
+     ndim = dim
+   END IF
 
    STIFF = 0.0d0
    DAMP  = 0.0d0
@@ -956,8 +1088,8 @@ MODULE StressLocal
 
              DO ii = 1,dim
                DO jj = 1,dim
-                  k = (p-1)*dim + ii
-                  l = (q-1)*dim + jj
+                  k = (p-1)*ndim + ii
+                  l = (q-1)*ndim + jj
                   DAMP(k,l)  = DAMP(k,l) + s * DampCoeff(i) * &
                      Vect(ii) * Vect(jj) * Basis(q) * Basis(p)
 
@@ -976,12 +1108,12 @@ MODULE StressLocal
                END DO
              END DO
            ELSE
-              k = (p-1)*dim + i
-              l = (q-1)*dim + i
+              k = (p-1)*ndim + i
+              l = (q-1)*ndim + i
               DAMP(k,l)  = DAMP(k,l)  + s * DampCoeff(i) * Basis(q) * Basis(p)
 
               DO j=1,dim
-                l = (q-1)*dim + j
+                l = (q-1)*ndim + j
                 STIFF(k,l) = STIFF(k,l) + s * SpringCoeff(i,j) * Basis(q) * Basis(p)
               END DO
            END IF
@@ -1002,14 +1134,14 @@ MODULE StressLocal
             END SELECT
 
             DO j=1,dim
-               k = (q-1)*dim + j
+               k = (q-1)*ndim + j
                FORCE(k) = FORCE(k) + &
                    s * Basis(q) * LoadAtIp(i) * Vect(j)
                FORCE_im(k) = FORCE_im(k) + &
                    s * Basis(q) * LoadAtIp_im(i) * Vect(j)
             END DO
          ELSE
-            k = (q-1)*dim + i
+            k = (q-1)*ndim + i
             FORCE(k) = FORCE(k) + s * Basis(q) * LoadAtIp(i)
             FORCE_im(k) = FORCE_im(k) + s * Basis(q) * LoadAtIp_im(i)
          END IF
@@ -1024,9 +1156,10 @@ MODULE StressLocal
 !------------------------------------------------------------------------------
  SUBROUTINE LocalStress( Stress, Strain, PoissonRatio, ElasticModulus, &
       Heatexpansion, NodalTemp, Isotropic, CSymmetry, PlaneStress,     &
-      NodalDisp, Basis, dBasisdx, Nodes, dim, n, nBasis )
+      NodalDisp, Basis, dBasisdx, Nodes, dim, n, nBasis, ApplyPressure )
 !------------------------------------------------------------------------------
-     LOGICAL :: Isotropic(2), CSymmetry, PlaneStress
+     LOGICAL :: Isotropic(2), CSymmetry, PlaneStress  
+     LOGICAL, OPTIONAL :: ApplyPressure
      INTEGER :: n,nd,dim
      INTEGER, OPTIONAL :: nBasis
      TYPE(Nodes_t) :: Nodes
@@ -1035,8 +1168,12 @@ MODULE StressLocal
      REAL(KIND=dp) :: Basis(:), dBasisdx(:,:), PoissonRatio(:), NodalDisp(:,:)
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,p,q,IND(9),ic
-     REAL(KIND=dp) :: C(6,6), Young, LGrad(3,3), Poisson, S(6), Radius, HEXP(3,3)
+     LOGICAL :: Found, Incompressible
+     REAL(KIND=dp) :: C(6,6), Young, LGrad(3,3), Poisson, S(6), &
+             Pressure, Radius, HEXP(3,3)
 !------------------------------------------------------------------------------
+
+     Incompressible = GetLogical( GetSolverParams(), 'Incompressible', Found )
 
      Stress = 0.0d0
      Strain = 0.0d0
@@ -1157,7 +1294,8 @@ MODULE StressLocal
 !
 !    Compute strain: 
 !    ---------------
-     LGrad = MATMUL( NodalDisp(:,1:nd), dBasisdx(1:nd,:) )
+     LGrad = 0._dp
+     LGrad(1:dim,1:dim) = MATMUL( NodalDisp(1:dim,1:nd), dBasisdx(1:nd,1:dim) )
      Strain = ( LGrad + TRANSPOSE(LGrad) ) / 2
 
      IF ( CSymmetry ) THEN
@@ -1181,7 +1319,17 @@ MODULE StressLocal
      !
      ! Compute stresses: 
      ! -----------------
-     CALL Strain2Stress( Stress, Strain, C, dim, CSymmetry )
+     IF (Incompressible) THEN
+       Stress = 2 * Young * Strain / 3
+       IF (ApplyPressure) THEN
+         Pressure = SUM(NodalDisp(dim+1,1:n)*Basis(1:n))
+         DO j=1,dim
+           Stress(j,j) = Stress(j,j) - Pressure
+         END DO
+       END IF
+     ELSE
+       CALL Strain2Stress( Stress, Strain, C, dim, CSymmetry )
+     END IF
 
      IF ( dim==2 .AND. .NOT. CSymmetry .AND. .NOT. PlaneStress ) THEN
         S(1) = Strain(1,1)
@@ -1235,7 +1383,6 @@ MODULE StressLocal
         i2(1:n) = (/ 1,2,3,2,3,3 /)
      END SELECT
 
-
      DO i=1,n
        p = i1(i)
        q = i2(i)
@@ -1248,6 +1395,47 @@ MODULE StressLocal
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE Strain2Stress
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+   SUBROUTINE Tensor26vector( X, V, dim, CSymmetry )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: X(:,:), V(:)
+     INTEGER :: dim
+     LOGICAL :: CSymmetry
+!------------------------------------------------------------------------------
+     INTEGER :: i,j,n,p,q
+     INTEGER :: i1(6), i2(6)
+     REAL(KIND=dp) :: S(9), csum
+!------------------------------------------------------------------------------
+     S = 0.0d0
+     SELECT CASE(dim)
+     CASE(2)
+        IF ( CSymmetry ) THEN
+          n = 4
+          i1(1:n) = (/ 1,2,3,1 /)
+          i2(1:n) = (/ 1,2,3,2 /)
+        ELSE
+          n = 3
+          i1(1:n) = (/ 1,2,1 /)
+          i2(1:n) = (/ 1,2,2 /)
+        END IF
+     CASE(3)
+        n = 6
+        i1(1:n) = (/ 1,2,3,1,2,1 /)
+        i2(1:n) = (/ 1,2,3,2,3,3 /)
+     END SELECT
+
+
+     V = 0
+     DO i=1,n
+       p = i1(i)
+       q = i2(i)
+       V(i) = (X(p,q)+X(q,p))/2
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE Tensor26Vector
 !------------------------------------------------------------------------------
 
 

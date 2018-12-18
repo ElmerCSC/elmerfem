@@ -75,6 +75,20 @@
            </widget>
           </item>
           <item>
+           <widget class="QRadioButton" name="execBeforeSaving">
+            <property name="text">
+             <string>Before saving</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="execAfterSaving">
+            <property name="text">
+             <string>After saving</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QRadioButton" name="execNever">
             <property name="text">
              <string>Never</string>
@@ -593,8 +607,13 @@
           <item row="2" column="1">
            <widget class="QComboBox" name="linearSystemPreconditioning">
             <property name="currentIndex">
-             <number>0</number>
+             <number>3</number>
             </property>
+            <item>
+             <property name="text">
+              <string>none</string>
+             </property>
+            </item>
             <item>
              <property name="text">
               <string>Diagonal</string>
@@ -697,7 +716,7 @@
           <item row="4" column="1" colspan="3">
            <widget class="QLineEdit" name="linearSystemResiduaOutputEdit">
             <property name="text">
-             <string>1</string>
+             <string>10</string>
             </property>
            </widget>
           </item>

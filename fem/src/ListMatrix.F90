@@ -49,11 +49,15 @@ CONTAINS
       CALL Fatal('List_AllocateMatrix','Allocation error for ListMatrix of size: '//TRIM(I2S(n)))
     END IF
 
+    !$OMP PARALLEL
+    !$OMP DO
     DO i=1,n
       Matrix(i) % Head => NULL()
+      Matrix(i) % Level = 0
+      Matrix(i) % Degree = 0
     END DO
-    Matrix(:) % Level  = 0
-    Matrix(:) % Degree = 0
+    !$OMP END DO NOWAIT
+    !$OMP END PARALLEL
 !-------------------------------------------------------------------------------
   END FUNCTION List_AllocateMatrix
 !-------------------------------------------------------------------------------
@@ -73,14 +77,18 @@ CONTAINS
 !-------------------------------------------------------------------------------
      IF ( .NOT. ASSOCIATED(List) ) RETURN
 
+     !$OMP PARALLEL DO &
+     !$OMP SHARED(List,N) &
+     !$OMP PRIVATE(p, p1) DEFAULT(NONE)
      DO i=1,N
-       p => List(i) % Head
-       DO WHILE( ASSOCIATED(p) )
-         p1 => p % Next
-         DEALLOCATE( p )
-         p => p1 
-       END DO
+        p => List(i) % Head
+        DO WHILE( ASSOCIATED(p) )
+           p1 => p % Next
+           DEALLOCATE( p )
+           p => p1 
+        END DO
      END DO
+     !$OMP END PARALLEL DO
      DEALLOCATE( List )
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_FreeMatrix
@@ -106,7 +114,6 @@ CONTAINS
   END FUNCTION List_EnlargeMatrix
 !-------------------------------------------------------------------------------
 
-
 !-------------------------------------------------------------------------------
 !> Transfer the flexible list matrix to the more efficient CRS matrix that is 
 !> used in most places of the code. Here the target is the rows and columns of the matrix.
@@ -117,7 +124,7 @@ CONTAINS
     INTEGER :: i,j,n
     TYPE(Matrix_t), POINTER :: A
     TYPE(ListMatrixEntry_t), POINTER :: P
-    INTEGER, POINTER :: Rows(:),Cols(:),Diag(:)
+    INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
 
     DO n=SIZE(L),1,-1
       IF ( L(n) % Degree>0 ) EXIT
@@ -156,7 +163,7 @@ CONTAINS
 
 !-------------------------------------------------------------------------------
 !> Transfer the flexible list matrix to the more efficient CRS matrix that is 
-!> used in most places of the code. The matrix structure can accomodate both forms.
+!> used in most places of the code. The matrix structure can accommodate both forms.
 !-------------------------------------------------------------------------------
   SUBROUTINE List_ToCRSMatrix(A)
 !-------------------------------------------------------------------------------
@@ -165,11 +172,11 @@ CONTAINS
     TYPE(ListMatrix_t), POINTER :: L(:)   
     INTEGER :: i,j,n
     TYPE(ListMatrixEntry_t), POINTER :: P
-    INTEGER, POINTER :: Rows(:),Cols(:),Diag(:)
-    REAL(KIND=dp), POINTER :: Values(:)
+    INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
+    REAL(KIND=dp), POINTER CONTIG :: Values(:)
 
     IF( A % FORMAT /= MATRIX_LIST ) THEN
-      CALL Warn('ListToCRSMatrix','The initial matrix type is not List')
+      CALL Warn('List_ToCRSMatrix','The initial matrix type is not List')
       RETURN
     END IF
     
@@ -223,7 +230,7 @@ CONTAINS
     A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
-    CALL Info('ListToCRSMatrix','Matrix format changed from List to CRS', Level=8)
+    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=8)
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToCRSMatrix
@@ -238,12 +245,51 @@ CONTAINS
     TYPE(Matrix_t) :: A
     LOGICAL, OPTIONAL :: Truncate
     
-    TYPE(ListMatrix_t), POINTER :: L(:)   
     INTEGER :: i,j,n
     LOGICAL :: Trunc
+    TYPE(ListMatrixEntry_t), POINTER :: CList
 
     Trunc=.FALSE.
     IF(PRESENT(Truncate)) Trunc=Truncate
+
+    A % ListMatrix => List_AllocateMatrix(A % NumberOfRows)
+
+    DO i=1,A % NumberOfRows
+      ALLOCATE(A % ListMatrix(i) % Head)
+      Clist => A % ListMatrix(i) % Head
+      Clist % Next => Null()
+      A % ListMatrix(i) % Level  = 0
+      A % ListMatrix(i) % Degree = 0
+
+      DO j=A % Rows(i), A % Rows(i+1)-1
+        IF(Trunc) THEN
+          IF (A % Cols(j) > A % NumberOfRows) EXIT
+        END IF
+
+        IF (j>A % Rows(i)) THEN
+          IF ( Clist % Index >= A % Cols(j) ) THEN
+            CALL Warn( 'List_ToListMatrix()', 'Input matrix not ordered ? ')
+            GOTO 100
+          END IF
+          ALLOCATE(Clist % Next)
+          Clist => Clist % Next
+          CList % Next => Null()
+        END IF
+
+        CList % Value = A % Values(j)
+        CList % Index = A % Cols(j)
+        A % ListMatrix(i) % Degree = A % ListMatrix(i) % Degree + 1
+      END DO
+    END DO
+
+    GOTO 200
+
+100 CONTINUE
+
+    ! If not ordered input ...
+
+    CALL List_FreeMatrix(i,A % ListMatrix)
+    A % ListMatrix => Null()
 
     DO i=1,A % NumberOfRows
       DO j=A % Rows(i+1)-1,A % Rows(i),-1
@@ -253,6 +299,9 @@ CONTAINS
         CALL List_SetMatrixElement(A % ListMatrix,i,A % Cols(j),A % Values(j))
       END DO
     END DO
+
+200 CONTINUE
+
     A % FORMAT = MATRIX_LIST
 
     IF( ASSOCIATED( A % Rows ) ) DEALLOCATE( A % Rows )
@@ -285,14 +334,8 @@ CONTAINS
      Clist => List(k1) % Head
 
      IF ( .NOT. ASSOCIATED(Clist) ) THEN
-        ALLOCATE( ENTRY, STAT=istat )
-        IF( istat /= 0 ) THEN
-          CALL Fatal('List_GetMatrixIndex','Could not allocate entry!')
-        END IF
+        Entry => List_GetMatrixEntry(k2, NULL())
 
-        Entry % Value = 0._dp
-        Entry % INDEX = k2
-        NULLIFY( Entry % Next )
         List(k1) % Degree = 1
         List(k1) % Head => Entry
         RETURN
@@ -312,10 +355,7 @@ CONTAINS
         END IF
      END IF
 
-     ALLOCATE( Entry )
-     Entry % Value = 0._dp
-     Entry % INDEX = k2
-     Entry % Next => Clist
+     Entry => List_GetMatrixEntry(k2, CList)
      IF ( ASSOCIATED( Prev ) ) THEN
          Prev % Next => Entry
      ELSE
@@ -327,6 +367,102 @@ CONTAINS
    END FUNCTION List_GetMatrixIndex
 !-------------------------------------------------------------------------------
 
+   SUBROUTINE List_AddMatrixIndexes(List,k1,nk2,Ind,Pind)
+     IMPLICIT NONE
+     TYPE(ListMatrix_t), POINTER :: List(:)
+     INTEGER, INTENT(IN) :: k1, nk2
+     INTEGER, INTENT(IN) :: Ind(nk2), Pind(nk2)
+
+     TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, Entry
+!-------------------------------------------------------------------------------
+     INTEGER :: i,k2,k2i,j
+
+     IF (k1>SIZE(List)) THEN
+       CALL Fatal('List_AddMatrixIndexes','Row index out of bounds')
+     END IF
+     
+     ! Add each element in Ind to the row list
+     RowPtr => List(k1) % Head
+    
+     ! First element needs special treatment as it may modify 
+     ! the list starting point
+     IF (.NOT. ASSOCIATED(RowPtr)) THEN
+       Entry => List_GetMatrixEntry(Ind(Pind(1)),NULL())
+       List(k1) % Degree = 1
+       List(k1) % Head => Entry
+       k2i = 2
+     ELSE IF (RowPtr % INDEX > Ind(Pind(1))) THEN
+         Entry => List_GetMatrixEntry(Ind(Pind(1)),RowPtr)
+         List(k1) % Degree = List(k1) % Degree + 1
+         List(k1) % Head => Entry
+         k2i = 2
+     ELSE IF (RowPtr % INDEX == Ind(Pind(1))) THEN
+         k2i = 2
+     ELSE
+       k2i = 1
+     END IF
+
+     PrevPtr => List(k1) % Head
+     RowPtr => List(k1) % Head % Next
+     DO i=k2i,nk2
+       k2=Ind(Pind(i))
+
+       ! Find a correct place place to add index to
+       DO WHILE( ASSOCIATED(RowPtr) )
+         IF (RowPtr % INDEX >= k2) EXIT
+         PrevPtr => RowPtr
+         RowPtr => RowPtr % Next
+       END DO
+       
+       IF (ASSOCIATED(RowPtr)) THEN
+         ! Do not add duplicates
+         IF (RowPtr % INDEX /= k2) THEN
+           ! Create new element between PrevPtr and RowPtr
+           Entry => List_GetMatrixEntry(k2,RowPtr)
+           PrevPtr % Next => Entry
+           List(k1) % Degree = List(k1) % Degree + 1
+
+           ! Advance to next element in list
+           PrevPtr => Entry
+           RowPtr => Entry % Next
+         ELSE
+           ! Advance to next element in list
+           PrevPtr => RowPtr
+           RowPtr => RowPtr % Next
+         END IF
+       ELSE
+         EXIT
+       END IF
+     END DO
+
+     ! Add rest of the entries in Ind to list (if any)
+     DO j=i,nk2
+       k2=Ind(Pind(j))
+       Entry => List_GetMatrixEntry(k2,NULL())
+       PrevPtr % Next => Entry
+       PrevPtr => Entry
+       List(k1) % Degree = List(k1) % Degree + 1
+     END DO
+   END SUBROUTINE List_AddMatrixIndexes
+
+   FUNCTION List_GetMatrixEntry(ind, next) RESULT(ListEntry)
+     IMPLICIT NONE
+
+     INTEGER, INTENT(IN) :: ind
+     TYPE(ListMatrixEntry_t), POINTER, INTENT(IN) :: next
+     TYPE(ListMatrixEntry_t), POINTER :: ListEntry
+
+     INTEGER :: istat
+     
+     ALLOCATE(ListEntry, STAT=istat)
+     IF( istat /= 0 ) THEN
+        CALL Fatal('List_GetMatrixEntry','Could not allocate entry!')
+     END IF
+
+     ListEntry % Value = REAL(0,dp)
+     ListEntry % INDEX = ind
+     ListEntry % Next => next
+   END FUNCTION List_GetMatrixEntry     
 
 !-------------------------------------------------------------------------------
    SUBROUTINE List_DeleteMatrixElement(List,k1,k2)
@@ -457,6 +593,20 @@ CONTAINS
    END SUBROUTINE List_AddToMatrixElement
 !-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_AddMatrixIndex( List,k1,k2  )
+!-------------------------------------------------------------------------------
+     TYPE(ListMatrix_t), POINTER :: List(:)
+     INTEGER :: k1,k2
+!-------------------------------------------------------------------------------
+     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
+     LOGICAL :: Set     
+
+     Entry => List_GetMatrixIndex(List,k1,k2)
+!-------------------------------------------------------------------------------
+   END SUBROUTINE List_AddMatrixIndex
+!-------------------------------------------------------------------------------
+
 
 !-------------------------------------------------------------------------------
    SUBROUTINE List_SetMatrixElement( List,k1,k2,Value,SetValue )
@@ -535,14 +685,14 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-   SUBROUTINE List_MoveRow( List,n1,n2,coeff )
+   SUBROUTINE List_MoveRow( List,n1,n2,coeff,staycoeff )
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: n1, n2
-     REAL(KIND=dp), OPTIONAL :: coeff
+     REAL(KIND=dp), OPTIONAL :: coeff, staycoeff
 !-------------------------------------------------------------------------------
      INTEGER :: k2
-     REAL(KIND=dp) :: Value, c
+     REAL(KIND=dp) :: val, c, d
      TYPE(ListMatrixEntry_t), POINTER :: CList
 
      IF( PRESENT(coeff)) THEN
@@ -550,7 +700,13 @@ CONTAINS
      ELSE
        c = 1.0_dp
      END IF
-     
+
+     IF( PRESENT(staycoeff)) THEN
+       d = staycoeff
+     ELSE
+       d = 0.0_dp
+     END IF
+              
      IF ( .NOT. ASSOCIATED(List) ) THEN
        CALL Warn('List_MoveRow','No List matrix present!')
        RETURN
@@ -569,11 +725,11 @@ CONTAINS
      
      DO WHILE( ASSOCIATED(CList) )
        k2 = Clist % Index
-       Value = c * Clist % Value
-       Clist % Value = 0.0_dp
+       Val = Clist % Value
+       Clist % VALUE = d * Val 
 
 ! This could be made more optimal as all the entries are for the same row!
-       CALL List_AddToMatrixElement(List,n2,k2,Value)
+       CALL List_AddToMatrixElement(List,n2,k2,c*Val)
 
        CList => CList % Next
      END DO
@@ -582,6 +738,54 @@ CONTAINS
    END SUBROUTINE List_MoveRow
 !-------------------------------------------------------------------------------
 
+
+! Exchange row structure between two matrix rows.
+! Currently this is not optimal since we copy the structure back-and-forth.
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_ExchangeRowStructure( List,n1,n2 )
+!-------------------------------------------------------------------------------
+     TYPE(ListMatrix_t), POINTER :: List(:)
+     INTEGER :: n1, n2
+!-------------------------------------------------------------------------------
+     INTEGER :: k1, k2
+     TYPE(ListMatrixEntry_t), POINTER :: CList1, CList2, Lptr
+              
+     IF ( .NOT. ASSOCIATED(List) ) THEN
+       CALL Warn('List_MoveRow','No List matrix present!')
+       RETURN
+     END IF
+         
+     Clist1 => List(n1) % Head
+     IF ( .NOT. ASSOCIATED(Clist1) ) THEN
+       CALL Warn('List__ExchangeRowStructure','Row1 not associated!')
+       RETURN
+     END IF
+
+     Clist2 => List(n2) % Head
+     IF ( .NOT. ASSOCIATED(Clist2) ) THEN
+       CALL Warn('List__ExchangeRowStructure','Row2 not associated!')
+       RETURN
+     END IF
+     
+     DO WHILE( ASSOCIATED(CList1) )
+       k1 = Clist1 % Index
+       Lptr => List_GetMatrixIndex( List,n2,k1 )
+       CList1 => CList1 % Next
+     END DO
+     
+     DO WHILE( ASSOCIATED(CList2) )
+       k2 = Clist2 % Index
+       Lptr => List_GetMatrixIndex( List,n1,k2 )
+       CList2 => CList2 % Next
+     END DO
+     
+!-------------------------------------------------------------------------------
+   END SUBROUTINE List_ExchangeRowStructure
+!-------------------------------------------------------------------------------
+
+
+
+   
 !------------------------------------------------------------------------------
   SUBROUTINE List_GlueLocalMatrix( A,N,Dofs,Indexes,LocalMatrix )
 !------------------------------------------------------------------------------

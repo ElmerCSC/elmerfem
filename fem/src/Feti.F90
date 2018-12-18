@@ -625,7 +625,7 @@ CONTAINS
   !------------------------------------------------------------------------------
   !> Extract interface values from partition vector b; send and
   !> receive  to/from neighbours.  Only 'owned' interface dofs
-  !> placed to result vector f. At intialization also assemble
+  !> placed to result vector f. At initialization also assemble
   !> the 'B' connectivity matrix. In effect f=Bb;
   !------------------------------------------------------------------------------
   FUNCTION FetiSendRecvIf(A,f,b,g,l_i) RESULT(nLC)
@@ -702,7 +702,7 @@ CONTAINS
       ALLOCATE( gdofs(nLC), ldofs(nLC), procs(nLC) )
       ldofs = [(i,i=1,nLC)];
 
-      ! Extract send & receive dof tags; Allocate, intialize
+      ! Extract send & receive dof tags; Allocate, initialize
       ! and assemble the  'B' connectivity matrix:
       ! -----------------------------------------------------
 
@@ -1719,7 +1719,7 @@ END SUBROUTINE FetiProject
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: a
     TYPE(Solver_t) :: Solver
-    REAL(KIND=dp), TARGET :: x(:),b(:)
+    REAL(KIND=dp), TARGET CONTIG :: x(:),b(:)
 !------------------------------------------------------------------------------
     INTEGER :: n
     REAL(KIND=dp), POINTER CONTIG :: tx(:),tb(:)
@@ -1949,8 +1949,9 @@ END SUBROUTINE FetiProject
     EXTERNAL :: AddrFunc
 #endif
 
-    REAL(KIND=dp), POINTER :: SaveValues(:)
-    INTEGER, POINTER :: SaveCols(:),SaveRows(:),p(:)
+    REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
+    INTEGER, POINTER CONTIG :: SaveCols(:),SaveRows(:)
+    INTEGER, POINTER  :: p(:)
 
     SAVE SaveValues, SaveCols,  SaveRows
 
@@ -1959,6 +1960,25 @@ END SUBROUTINE FetiProject
 
     TYPE(Element_t), POINTER :: EL
     TYPE(ValueList_t), POINTER :: BC
+
+#ifdef HAVE_CHOLMOD
+#ifdef USE_ISO_C_BINDINGS
+    INTERFACE
+      SUBROUTINE SPQR_NZ(chol,nz) BIND(c,NAME="spqr_nz")
+        USE Types
+        INTEGER :: nz
+        INTEGER(Kind=AddrInt) :: chol
+      END SUBROUTINE SPQR_NZ
+
+      SUBROUTINE SPQR_NullSpace(chol,n,nz,z) BIND(c,NAME="spqr_nullspace")
+        USE Types
+        INTEGER :: nz,n
+        REAL(KIND=dp) :: z(*)
+        INTEGER(Kind=AddrInt) :: chol
+      END SUBROUTINE SPQR_NullSpace
+    END INTERFACE
+#endif
+#endif
 
 !------------------------------------------------------------------------------
 

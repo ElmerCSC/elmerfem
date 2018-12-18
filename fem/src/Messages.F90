@@ -47,8 +47,8 @@ MODULE Messages
    CHARACTER(LEN=512) :: Message = ' '
    INTEGER, PRIVATE :: i
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
-   LOGICAL :: OutputLevelMask(0:31) = (/ (.TRUE.,i=1,32) /)
-   INTEGER :: MaxOutputLevel=32, MinOutputLevel=0, OutputPE = 0
+   LOGICAL :: OutputLevelMask(0:31) = .TRUE.
+   INTEGER :: MaxOutputLevel=31, MinOutputLevel=0, OutputPE = 0
    INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
 
 CONTAINS
@@ -74,6 +74,7 @@ CONTAINS
      IF ( OutputPE < 0 ) RETURN
 
      IF ( PRESENT( Level ) ) THEN
+       if (Level > MaxOutputLevel) RETURN
        IF ( .NOT. OutputLevelMask(Level) ) RETURN
      ELSE
        ! The default level of info

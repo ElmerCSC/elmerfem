@@ -94,7 +94,7 @@ Solver 2
 End
 
 Solver 3
-! computation is supressed in the tests
+! computation is suppressed in the tests
   Exec Solver = never
   Equation = "RichardsFlux"
   Procedure = File "RichardsSolver" "RichardsPostprocess"

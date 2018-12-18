@@ -360,7 +360,7 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
   Wpress => WaterPressure % Values
   WpPerm  => WaterPressure % Perm
 
-  !Checking wether to use upper limit
+  !Checking whether to use upper limit
   !------------------------------------
   SolverParams => GetSolverParams()
 
@@ -379,7 +379,7 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
   DO Peniter=1,NonlinearIter
      IF ( ParEnv % PEs > 1 ) THEN
         CALL MPI_ALLREDUCE(UnconstrainedNodesExist,GlobalUnconstrainedNodesExist,1, &
-             MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+             MPI_LOGICAL,MPI_LOR,ELMER_COMM_WORLD,ierr)
      ELSE
         GlobalUnconstrainedNodesExist = UnconstrainedNodesExist
      END IF

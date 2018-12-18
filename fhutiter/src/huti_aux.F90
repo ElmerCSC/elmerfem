@@ -174,10 +174,11 @@ contains
     integer :: i
 
     !*************************************************************************
-
+    !$OMP PARALLEL DO
     do i = 1, HUTI_NDIM
        u(i) = v(i)
     end do
+    !$OMP END PARALLEL DO 
 
     return
 

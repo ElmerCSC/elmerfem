@@ -1,0 +1,112 @@
+! A benchmark problem where a hemisphere is subject to point loads
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "hemisphere"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 3D
+!  Simulation Type = Steady
+  Simulation Type = Scanning
+  Timestep Sizes = 1
+  Timestep Intervals = 1
+!  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = "hemisphere.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+ Poisson Ratio = Real 0.3
+ Youngs Modulus = Real 6.825e+7
+ Shell Thickness = Real 4.0e-2
+End
+
+Body Force 1 
+  Normal Pressure = Real 0.0
+End
+
+Equation 1 :: Active Solvers(1) = 1
+
+! -------------------------------------------------------------------------
+! Note that there is no surface tractions applied and we adjust the stopping
+! criterion for the linear solver (cf. Linear System Normwise Backward Error)
+! so that the smallness of the norm of the RHS vector does not cause troubles 
+! in getting the convergence.
+!---------------------------------------------------------------------------
+Solver 1
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+  Large Deflection = True
+  Displace Mesh = True
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance = 1e-6
+
+  Linear System Solver = Direct !"Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Normwise Backward Error = Logical True
+  Linear System Convergence Tolerance = 1e-7
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 300
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+End
+
+! -------------------------------------------------------------------------
+! The following can be used to save the deflection at the points considered 
+! in the paper:
+!----------------
+Solver 2
+  Equation = "Save Scalars"
+  Exec Solver = After Timestep
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = hemisphere.dat
+  Variable 1 = U
+  Save Points(2) = 1 33
+End
+
+! ----------------------------------------------------
+! BCs are defined with respect the global XYZ system:
+! ----------------------------------------------------
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  U 1 = Real 0
+  DNU 1 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  U 2 = Real 0
+  DNU 2 = Real 0
+End
+
+Boundary Condition 3
+  Target Nodes(1) = 1
+  U 1 Load = Variable Time
+    Real MATC "(tx-1)*1.0+2.0"
+End
+
+Boundary Condition 4
+  Target Nodes(1) = 33
+  U 2 Load = Variable Time
+    Real MATC "-(tx-1)*1.0-2.0"
+End
+
+Boundary Condition 5
+  Target Nodes(1) = 17
+  U 3 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 3.07775184E-02
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

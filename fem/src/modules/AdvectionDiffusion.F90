@@ -97,7 +97,7 @@
 
      REAL(KIND=dp) :: Norm,RelativeChange
      INTEGER, POINTER :: NodeIndexes(:)
-     LOGICAL :: Stabilize = .FALSE., Bubbles, GotIt, AbsoluteMass = .FALSE.
+     LOGICAL :: Stabilize = .FALSE., Bubbles, GotIt, GotIt2, AbsoluteMass = .FALSE.
      LOGICAL :: AllocationsDone = .FALSE., ScaledToSolubility = .FALSE.
      LOGICAL :: ErrorWritten
 
@@ -261,19 +261,31 @@
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
-
-     Stabilize = ListGetLogical( Solver % Values,'Stabilize',GotIt )
-     Bubbles = ListGetLogical( Solver % Values,'Bubbles',GotIt )
-     IF ( .NOT.GotIt ) Bubbles = .TRUE.
-
+     Bubbles = .FALSE.
+     Stabilize = .FALSE.
+     
      StabilizeFlag = GetString( Solver % Values, 'Stabilization Method', GotIt )
-     SELECT CASE(StabilizeFlag)
-     CASE('stabilized')
-       Stabilize = .TRUE.
-     CASE('bubbles')
-       Bubbles = .TRUE.
-     END SELECT
+     IF( GotIt ) THEN
+       SELECT CASE(StabilizeFlag)
+       CASE('stabilized')
+         Stabilize = .TRUE.
+       CASE('bubbles')
+         Bubbles = .TRUE.
+       CASE DEFAULT
+         CALL Fatal('AdvectionDiffusion','Unknown stabilization method: '//TRIM(StabilizeFlag))
+       END SELECT
+     ELSE
+       Stabilize = ListGetLogical( Solver % Values,'Stabilize',GotIt )
+       Bubbles = ListGetLogical( Solver % Values,'Bubbles',GotIt2 )
 
+       IF( .NOT. ( GotIt .OR. GotIt2 ) ) THEN
+         CALL Info('AdvectionDiffusion','Defaulting stabilization to bubbles',Level=10)
+         Bubbles = .TRUE.
+       ELSE IF( Stabilize .AND. Bubbles ) THEN
+         CALL Fatal('AdvectionDiffusion','Choose either Bubbles or Stabilize!')       
+       END IF
+     END IF
+       
      NonlinearIter = ListGetInteger( Solver % Values, &
         'Nonlinear System Max Iterations',GotIt )
      IF ( .NOT.GotIt ) NonlinearIter = 1
@@ -338,7 +350,7 @@
                TRIM(ComponentName(Solver % Variable)) //' Convection', GotIt )
            IF ( .NOT. GotIt ) &
              ConvectionFlag = ListGetString( Eq,'Convection', GotIt )
-
+           
            ScaledToSolubility = .FALSE.
            ConcentrationUnits = ListGetString( Eq, 'Concentration Units', GotIt )
            IF ( .NOT.GotIt ) AbsoluteMass = .FALSE.
@@ -534,19 +546,20 @@
          END IF
 ! Read p_0
 !------------------------------------------------------------------------------
+         ReferencePressure = 0.0_dp
          IF ( CompressibilityModel /= Incompressible ) THEN
            ReferencePressure = ListGetConstReal( Material, &
                'Reference Pressure', GotIt)
-           IF ( .NOT.GotIt ) ReferencePressure = 0.0d0
          END IF
+
 ! etc.
          Load = 0.d0
          Pressure = 0.d0
 
 !------------------------------------------------------------------------------
 !        Check for convection model
-!------------------------------------------------------------------------------
-
+!------------------------------------------------------------------------------         
+         
          IF ( ConvectionFlag == 'constant' ) THEN
            U = ListGetReal( Eq, TRIM(ComponentName(Solver % Variable)) // &
                ' Convection Velocity 1',n,NodeIndexes,GotIt )
@@ -561,6 +574,11 @@
            IF ( .NOT. GotIt ) &
              W = ListGetReal( Material,'Convection Velocity 3',n,NodeIndexes, GotIt)
          ELSE IF ( ConvectionFlag == 'computed' ) THEN
+           
+           IF( .NOT. ASSOCIATED( FlowSol ) ) THEN
+             CALL Fatal('AdvectionDiffusion','Give > Convection Field Variable <')
+           END IF
+           
            DO i=1,n
              k = FlowPerm(NodeIndexes(i))
              IF ( k > 0 ) THEN
@@ -582,7 +600,7 @@
                  V(i) = FlowSolution( NSDOFs*k-1 )
                  W(i) = 0.0D0
 
-                 CASE(4)
+               CASE(4)
                  U(i) = FlowSolution( NSDOFs*k-3 )
                  V(i) = FlowSolution( NSDOFs*k-2 )
                  W(i) = FlowSolution( NSDOFs*k-1 )
@@ -773,8 +791,6 @@
            n = CurrentElement % TYPE % NumberOfNodes
            NodeIndexes => CurrentElement % NodeIndexes
            
-           IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
-
            ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
            ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
            ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -935,9 +951,6 @@
               NodeIndexes => CurrentElement % NodeIndexes
 
               IF ( ANY( SpeciesPerm( NodeIndexes ) <= 0 ) ) CYCLE
-
-              ! Check that the dimension of element is suitable for fluxes
-              IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
 
               ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
               ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
@@ -1215,7 +1228,7 @@ CONTAINS
         NBasis = 2*n
         Bubbles = .TRUE.
      END IF
-
+     
      ThermalDiffusion = .FALSE.
      IF ( ANY( ABS( SoretD(1:n) ) > AEPS ) ) THEN
         ThermalDiffusion = .TRUE. 
@@ -1886,7 +1899,7 @@ CONTAINS
  
 !------------------------------------------------------------------------------
 !    Stabilization parameters: hK, mK (take a look at Franca et.al.)
-!    If there is no convection term we dont need stabilization.
+!    If there is no convection term we don't need stabilization.
 !------------------------------------------------------------------------------
      ConvectOrNPAndStabilize = .FALSE.
      IF ( Stabilize .AND. (ANY(NodalC1 /= 0.0D0) .OR. NPDiffusion) ) THEN

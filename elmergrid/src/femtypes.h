@@ -9,6 +9,7 @@
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
 #define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
 #define MAXLINESIZE 600     /* maximum length of line to be read */
+#define LONGLINESIZE 1201  
 #define MAXNAMESIZE 30      /* maximum size of the variablename */
 #define MAXPARAMS 30        /* maximum number of parameters */
 #define MAXVARS 20          /* maximum number of variables at the sides */
@@ -313,6 +314,7 @@ struct ElmergridType {
     layernumber[MAXBOUNDARIES], 
     layermove,  /* map the created layer to the original geometry */
     metis,      /* number of Metis partitions */
+    metiscontig,  /* is Metis partitioning contiguous */
     partopt,    /* free parameter for optimization */
     partoptim,  /* apply aggressive optimization to node sharing on bulk */
     partbcoptim,  /* apply aggressive optimization to node sharing on bcs */

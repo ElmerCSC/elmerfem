@@ -3,7 +3,7 @@ check keywords warn
 echo on
 $namerun = "test-slide"
 
-!defintion of the slab
+!definition of the slab
 $slope = 5.0*pi/180.0
 $H = 200
 $L = 2000

@@ -1,0 +1,89 @@
+Header
+  Mesh DB "." "beam"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+!  Simulation Type = Steady State
+  Simulation Type = Scanning 
+  Timestep Intervals = 1
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+! Output File = "elasticity.result"
+! Post File = "beam.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Stress Bodyforce 1 = 0.0
+  Stress Bodyforce 2 = 0.0
+End
+
+Material 1
+  Number of Material Constants = Integer 3
+  Number of State Variables = Integer 0
+  ! List material constants as {density, Young's modulus, Poisson's ratio}:
+  Material Constants(3) = Real 1.0 70e9 0.3
+  Density = 1.0
+  Youngs Modulus = 70e9
+  Poisson Ratio = 0.3
+  Reference Temperature = 293.0
+End
+
+Solver 1
+  Equation = Elasticity With UMAT
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Direct !Iterative
+  Linear System Iterative Method = BiCGStab2
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 10
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Calculate Strains = True
+  Calculate Stresses = True
+  Calculate Loads = Logical False
+
+  ! UMAT part:
+  ! ----------
+  Use UMAT = Logical True
+  Large Deflection = True ! The value False switches to the small strain formulation 
+  Initialize State Variables = Logical False
+
+End
+
+Equation 1
+  Active Solvers(1) = 1
+  Plane Stress = False
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Surface Traction 1 = 0.0
+  Surface Traction 2 = Variable Time
+    Real MATC "-1.0e7-(tx-1)*1.0e6"
+!  Surface Traction 2 = Real -5.0e7
+End
+
+Solver 1 :: Reference Norm = Real 0.72060149E-01

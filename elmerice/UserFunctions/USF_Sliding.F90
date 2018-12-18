@@ -202,7 +202,7 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
   REAL(KIND=dp), POINTER :: NValues(:)
   INTEGER, POINTER :: StressPerm(:), NormalPerm(:), FlowPerm(:), NPerm(:)
   INTEGER :: DIM, i, j, Ind(3,3), n, other_body_id
-  REAL (KIND=dp) :: C, m, Bdrag, As, Ne, q, Xi, a, Pw 
+  REAL (KIND=dp) :: C, m, Bdrag, As, Ne, q, Xi, a, Pw, Pice 
   REAL (KIND=dp) :: Snt, Snn, ut, un, ut0, t, t0
   LOGICAL :: GotIt, FirstTime = .TRUE., Cauchy, UnFoundFatal
   REAL (KIND=dp), ALLOCATABLE :: Sig(:,:), normal(:), velo(:), Sn(:), AuxReal(:) 
@@ -325,7 +325,7 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
      IF (other_body_id < 1) THEN ! only one body in calculation
         ParentElement => BoundaryElement % BoundaryInfo % Right
         IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-     ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+     ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
         ParentElement => BoundaryElement % BoundaryInfo % Right
         IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
      END IF
@@ -364,16 +364,24 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
            Sig(i,j) =  &
               StressValues( 2*DIM *(StressPerm(Nodenumber)-1) + Ind(i,j) )
         END DO
-        IF (.NOT.Cauchy) THEN 
-           Sig(i,i) = Sig(i,i) - FlowValues((DIM+1)*FlowPerm(Nodenumber))
-        END IF
      END DO
      ! Stress vector Sn       
      DO i=1, DIM
         Sn(i) = SUM(Sig(i,1:DIM)*normal(1:DIM)) 
      END DO
-     ! Convention is such that Snn should be negative (compressive)
+     ! Normal stress (still Cauchy or deviatoric)
      Snn = SUM( Sn(1:DIM) * normal(1:DIM) ) 
+     ! Isotropic ice pressure
+     Pice = FlowValues((DIM+1)*FlowPerm(Nodenumber))
+
+     IF (Cauchy) THEN 
+        ! At first time Snn = 0 and should be approximated by -pi
+        IF (ABS(Snn) < 1.0e-10*ABS(Pice)) Snn = -Pice
+     ELSE
+           Snn = Snn - Pice 
+     END IF
+
+     ! Convention is such that Snn should be negative (compressive)
      Ne = -Snn -Pw
   ENDIF
 
@@ -401,14 +409,14 @@ END FUNCTION Friction_Coulomb
 !
 ! tau_b = C.{u_b}^{m}*Zab^{q}
 ! 
-! where Zab is height above bouyancy and C, m and q respectively are 
+! where Zab is height above buoyancy and C, m and q respectively are 
 ! given in the sif by:
 !  Budd Friction Coefficient = Real 2.412579e-2        
 !  Budd Velocity Exponent = Real $1.0/3.0
 !  Budd Zab Exponent = Real 2.0
 !
 !  Budd Floatation = Logical False
-! If this is set to true then the height above bouyancy will be based 
+! If this is set to true then the height above buoyancy will be based 
 ! on the floatation condition instead of inferred from the effective 
 ! pressure (i.e. depth is used instead of normal stress). Default is 
 ! false.
@@ -446,18 +454,28 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   TYPE(ValueList_t), POINTER  :: BC, ParentMaterial
   TYPE(Variable_t), POINTER   :: NormalVar, FlowVariable, Hvar
   TYPE(Element_t), POINTER    :: parentElement, BoundaryElement
-  REAL(KIND=dp), POINTER      :: NormalValues(:), FlowValues(:), HValues(:)
-  INTEGER, POINTER :: NormalPerm(:), FlowPerm(:), HPerm(:)
+  REAL(KIND=dp), POINTER      :: NormalValues(:), FlowValues(:), HValues(:), WeertCoefValues(:)
+  TYPE(Variable_t), POINTER   :: coefVar, WeertCoefVar
+  REAL(KIND=dp), POINTER      :: coefValues(:)
+  INTEGER, POINTER            :: coefPerm(:)
+  INTEGER, POINTER :: NormalPerm(:), FlowPerm(:), HPerm(:), WeertCoefPerm(:)
   INTEGER          :: DIM, i, body_id, other_body_id, material_id
   REAL (KIND=dp)   :: C, m, q, g, rhoi, Zab, Zab_offset, ep, sl, H, rhow
-  REAL (KIND=dp)   :: ut, un, ut0
+  REAL (KIND=dp)   :: ut, un, ut0, WeertExp, Cw
   LOGICAL          :: GotIt, FirstTime = .TRUE., SSA = .FALSE., UseFloatation = .FALSE., H_scaling
-  LOGICAL          :: UnFoundFatal
-  CHARACTER(LEN=MAX_NAME_LEN) :: USF_name, FlowSolverName
+  LOGICAL          :: UnFoundFatal=.TRUE., ConvertWeertman
+  CHARACTER(LEN=MAX_NAME_LEN) :: USF_name, FlowSolverName, CoefName, WeertCoefName, WeertForm
 
   SAVE :: normal, velo, DIM, SSA, FirstTime, FlowSolverName, UseFloatation
+  SAVE :: WeertCoefName, WeertExp, WeertForm, ConvertWeertman
+
 
   USF_name = "Sliding_Budd"
+
+  BC => GetBC(Model % CurrentElement)
+  IF (.NOT.ASSOCIATED(BC))THEN
+     CALL Fatal(USF_name, 'No BC Found')
+  END IF
 
   IF (FirstTime) THEN
      FirstTime = .FALSE.  
@@ -474,11 +492,22 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      CASE ('ssabasalflow') 
         SSA = .TRUE.
      END SELECT
-  END IF
-  
-  BC => GetBC(Model % CurrentElement)
-  IF (.NOT.ASSOCIATED(BC))THEN
-     CALL Fatal(USF_name, 'No BC Found')
+
+     WeertCoefName = GetString( BC, 'Budd Conv Weertman coef name', GotIt )
+     IF (GotIt) THEN
+        ConvertWeertman = .TRUE.
+        WeertExp  = GetConstReal( BC, 'Budd Conv Weertman exponent', GotIt )    
+        IF (.NOT. GotIt) THEN
+           CALL FATAL(USF_name, 'Converting coef, need >Budd Conv Weertman exponent<')
+        END IF
+        WeertForm = GetString( BC, 'Budd Conv Weertman formulation', GotIt )    
+        IF (.NOT. GotIt) THEN
+           CALL FATAL(USF_name, 'Converting coef, need >Budd Conv Weertman formulation<')     
+        END IF
+     ELSE
+        ConvertWeertman = .FALSE.
+     END IF
+     
   END IF
 
   !-----------------------------------------------------------------
@@ -492,7 +521,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   IF (other_body_id < 1) THEN ! only one body in calculation
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-  ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+  ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
   END IF
@@ -578,11 +607,12 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      ut = SQRT(SUM( velo(1:DIM-1)**2.0 ))
   END IF
 
-  ! Zab is height above bouyancy of the upper free surface.  This is 
+  ! Zab is height above buoyancy of the upper free surface.  This is 
   ! calculated based on the effective pressure at the bed.  The 
   ! effective pressure at the bed is calculated as the normal stress 
   ! at the lower boundary minus the External Pressure (which is set in 
   ! the boundary condition section of the sif).
+  ! Alternatively it can be approximated using the floatation condition.
   IF (UseFloatation) THEN
 
      Hvar => VariableGet( Model % Variables, "Depth",UnFoundFatal=UnFoundFatal)
@@ -608,7 +638,11 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      ELSE
         Zab = H
      END IF
-     
+
+     IF (Zab .LT. 0.0) THEN
+        Zab = 0.0
+     END IF
+
      ! this "offset" to the height above bouyancy is intended to provide a non-zero  
      ! basal drag due to contact with the bed, even when effective pressure is zero.
      ! Physically, this can be seen as a compromise between Elmer's "Weertman" 
@@ -624,6 +658,32 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
 
   IF (H_scaling) THEN
      Zab = Zab / H
+  END IF
+
+  ! Convert a Weertman sliding coefficient to a Budd sliding coefficient to 
+  ! give the same basal shear stress
+  IF (ConvertWeertman) THEN
+     WeertCoefVar     => VariableGet( Model % Variables, WeertCoefName, UnFoundFatal=UnFoundFatal)
+     WeertCoefPerm    => WeertCoefVar % Perm
+     WeertCoefValues  => WeertCoefVar % Values
+     Cw = WeertCoefValues(WeertCoefPerm(Nodenumber))
+     
+     SELECT CASE (WeertForm)
+     CASE ('power')
+        Cw = 10**Cw
+     CASE ('beta2')
+        Cw = Cw**2
+     CASE ('none')        
+     CASE DEFAULT 
+        CALL FATAL(USF_name, 'Unrecognised >Budd Conv Weertman formulation<')     
+     END SELECT
+
+     IF ( (WeertExp.NE.1.0).OR.(m.NE.1.0) ) THEN
+        CALL FATAL(USF_name, 'Currently only works for velocity exponents = 1.0')     
+     END IF
+
+     C = Cw / (Zab**q)
+
   END IF
 
   Bdrag = C * ut**(m-1.0) * Zab**q
@@ -724,7 +784,7 @@ CONTAINS
     IF (other_body_id < 1) THEN ! only one body in calculation
        ParentElement => BoundaryElement % BoundaryInfo % Right
        IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-    ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+    ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
        ParentElement => BoundaryElement % BoundaryInfo % Right
        IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
     END IF
@@ -843,9 +903,9 @@ FUNCTION FreeSlipShelves (Model, nodenumber, BetaIn) RESULT(BetaOut)
      BetaOut = 0.0_dp
   ELSE
      SELECT CASE (BetaForm)
-     CASE("Power")
+     CASE("Power","power")
         BetaOut = 10.0_dp**BetaIn
-     CASE("Beta2")
+     CASE("Beta2","beta2")
         BetaOut = BetaIn*BetaIn
      CASE DEFAULT
         WRITE(Message,'(A)') 'beta formulation not recognised'

@@ -413,7 +413,7 @@ proc cam_SaveCameras {} {
    set file [open $name w]
 
    do i 0 [@ $camera_n-1] {
-	  echo "Saveing camera: $camera_names($i)"
+	  echo "Saving camera: $camera_names($i)"
 
       c_CurrentCamera $camera_names($i)
 

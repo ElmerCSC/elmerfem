@@ -55,7 +55,9 @@ void SaveNonZeros(Real **matrix,int row_first,int row_last,
 void AddExtension(const char *fname1,char *fname2,const char *newext);
 int StringToReal(const char *buf,Real *dest,int maxcnt,char separator);
 int StringToInteger(const char *buf,int *dest,int maxcnt,char separator);
+int StringToIntegerNoZero(const char *buf,int *dest,int maxcnt,char separator);
 int EchoFile(char *filename);
 int next_int(char **start);
 Real next_real(char **start);
+void SortIndex( int N, double *Key, int *Ord );
 #endif

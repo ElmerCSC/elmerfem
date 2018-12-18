@@ -294,10 +294,10 @@ CONTAINS
       map = 0
 
       ! Function is not defined for non p elements
-      IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementMaps::getElementBoundaryMap','Element not p element') 
-         RETURN
-      END IF
+      !IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
+      !   CALL Warn('PElementMaps::getElementBoundaryMap','Element not p element') 
+      !   RETURN
+      !END IF
 
       SELECT CASE(Element % TYPE % ElementCode / 100)
       CASE (3)
@@ -350,11 +350,11 @@ CONTAINS
       IF (.NOT. MInit) CALL InitializeMappings()
 
       ! Function is not defined for non p elements
-      IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementMaps::getFaceEdgeMap','Element not p element') 
-         map = 0
-         RETURN
-      END IF
+      !IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
+      !   CALL Warn('PElementMaps::getFaceEdgeMap','Element not p element') 
+      !   map = 0
+      !   RETURN
+      !END IF
 
       SELECT CASE(elementCode / 100)
       CASE (5)
@@ -549,7 +549,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       IMPLICIT NONE
       
-      CALL Info('PElementMaps::InitializeMappings','Initializing mappings for elements')
+      CALL Info('PElementMaps::InitializeMappings','Initializing mappings for elements',Level=10)
 
       ! Quad edge mappings
       QuadEdgeMap(1,:) = (/ 1,2 /)
@@ -1080,31 +1080,31 @@ CONTAINS
          SELECT CASE( Element % TYPE % ElementCode / 100 )
          CASE(3)
              nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+             bubbleP = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
 
          CASE(4)
              nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+             bubbleP = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 ) - 2
 
          CASE(5)
              nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
                     (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
 
          CASE(6)
              nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2) - 1
 
          CASE(7)
              nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3) - 2
 
          CASE(8)
              nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP=NINT(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4) - 4
          END SELECT
       END IF
 
@@ -1216,7 +1216,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element
-    REAL(KIND=dp) :: U(:), V(:), W(:)
+    REAL(KIND=dp), POINTER CONTIG :: U(:), V(:), W(:)
     LOGICAL, OPTIONAL :: PerformCheck
 !--------------------------------------------------------------------------------
     INTEGER :: n

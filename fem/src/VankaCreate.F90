@@ -48,7 +48,7 @@
       TYPE(SplittedMatrixT), POINTER :: SP
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: i
-      REAL(KIND=dp), POINTER :: SaveValues(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
       TYPE(BasicMatrix_t), POINTER :: SaveIF(:)
 !-------------------------------------------------------------------------------
       A => GlobalMatrix
@@ -97,12 +97,12 @@
      TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
      INTEGER, POINTER :: Diag(:), Rows(:), Cols(:), Perm(:), Indexes(:), Ind(:)
-     REAL(KIND=dp), POINTER :: ILUValues(:), SValues(:), TotValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: ILUValues(:), SValues(:), TotValues(:)
      REAL(KIND=dp), ALLOCATABLE :: al(:,:)
      LOGICAL ::  found
      TYPE(Element_t), POINTER :: Element
      INTEGER :: status(MPI_STATUS_SIZE)
-     INTEGER :: i,j,k,l,m,proc,rcnt,nn, dof, dofs, Active
+     INTEGER :: i,j,k,l,m,proc,rcnt,nn, dof, dofs, Active, Totcnt
      REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
      INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:)
 
@@ -168,6 +168,10 @@
          END DO
        END DO
 
+       totcnt = SUM(cnt)
+       CALL CheckBuffer( ParEnv % PEs*(1+MPI_BSEND_OVERHEAD) + 4*totcnt + &
+                  3*COUNT(cnt/=0)*MPI_BSEND_OVERHEAD)
+
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN
            CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, &
@@ -210,9 +214,9 @@
               proc, 7004, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,rcnt
-             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)
+             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % ParallelInfo % Gorder )
              IF ( l>0 ) THEN
-               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % Perm)
+               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % ParallelInfo % Gorder )
                IF ( k>0 ) THEN
                  IF ( l>=k ) THEN
                    DO m=Diag(k),Rows(k+1)-1
@@ -388,7 +392,7 @@
      INTEGER :: status(MPI_STATUS_SIZE)
      REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
      INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:), perm(:)
-     INTEGER :: i,j,k,l,m,ii,jj,proc,rcnt,nn, dof, dofs, Active, n, nm
+     INTEGER :: i,j,k,l,m,ii,jj,proc,rcnt,nn, dof, dofs, Active, n, nm, ierr,totcnt
 
      TYPE Buf_t
         REAL(KIND=dp), ALLOCATABLE :: gval(:)
@@ -406,8 +410,13 @@
 
      nm = A % NumberOfRows - A % ExtraDOFs
      n  = A % ParallelDOFs
+     
+     m = SIZE(A % Values)
+     ALLOCATE(TotValues(m))
 
-     ALLOCATE(TotValues(SIZE(A % Values))); TotValues=A % Values
+     DO i=1,m
+       TotValues(i)=A % Values(i)
+     END DO
      IF (ParEnv  % PEs>1 ) THEN
        ALLOCATE(cnt(0:ParEnv % PEs-1))
        cnt = 0
@@ -446,6 +455,10 @@
            END IF
          END DO
        END DO
+
+       totcnt = SUM(cnt)
+       CALL CheckBuffer( ParEnv % PEs*(1+MPI_BSEND_OVERHEAD) + 4*totcnt + &
+                  3*COUNT(cnt/=0)*MPI_BSEND_OVERHEAD)
 
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN
@@ -492,9 +505,9 @@
               proc, 7004, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,rcnt
-             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)
+             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % ParallelInfo % Gorder )
              IF ( l>0 ) THEN
-               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % Perm)
+               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % ParallelInfo % Gorder )
                IF ( k>0 ) THEN
                  IF ( l>=k ) THEN
                    DO m=Diag(k),Rows(k+1)-1

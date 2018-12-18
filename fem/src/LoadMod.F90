@@ -423,7 +423,7 @@ MODULE LoadMod
             CALL pptr(model, node, val, arr)
         END SUBROUTINE execrealvectorfunction
 
-        SUBROUTINE execsolver(fptr, model, solver, dt, transient)
+        RECURSIVE SUBROUTINE execsolver(fptr, model, solver, dt, transient)
             IMPLICIT NONE
             INTEGER(KIND=AddrInt) :: fptr
             TYPE(Model_t) :: model
@@ -474,7 +474,41 @@ MODULE LoadMod
             CALL pptr(mesh, slavemesh, mastermesh, bcind, projector )
           END SUBROUTINE execmortarprojector
           
-          
+          FUNCTION enhancementfactoruserfunction( fptr, model, element, nodes, n, nd, &
+                                       Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip ) &
+                                       RESULT(realval)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t) :: model
+            TYPE(Element_t), POINTER :: element
+            TYPE(Nodes_t) :: nodes
+            INTEGER :: n,nd,localip
+            REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
+                             Velo(:), dVelodx(:,:),sinvsq
+            REAL(KIND=dp) :: realval
+
+            INTERFACE
+                FUNCTION ElmerEnhancemntFactorFn(model, element, nodes, n, nd, &
+                               Basis, dBasisdx, Viscosity, Velo, dVelodx, sinvsq,localip) RESULT(realval)
+                    IMPORT Model_t, Element_t, Nodes_t, dp
+                    TYPE(Model_t) :: model
+                    TYPE(Element_t), POINTER :: element
+                    TYPE(Nodes_t) :: nodes
+                    INTEGER :: n,nd,localip
+                    REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
+                                     Velo(:), dVelodx(:,:), sinvsq
+                    REAL(KIND=dp) :: realval
+                  END FUNCTION ElmerEnhancemntFactorFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerEnhancemntFactorFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            realval = pptr(model, element, nodes, n, nd, &
+                           Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip)
+        END FUNCTION enhancementfactoruserfunction  
 
         FUNCTION materialuserfunction( fptr, model, element, nodes, n, nd, &
                                        Basis, dBasisdx, Viscosity,Velo, dVelodx ) &

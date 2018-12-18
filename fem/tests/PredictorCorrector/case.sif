@@ -57,7 +57,7 @@ Simulation
   Coordinate System  = Cartesian 2D 
   Simulation Type = Transient     
 
-  Output Intervals =  5
+  Output Intervals = 5
   Timestep Intervals =  $numberofsteps
   Timestep Sizes = $dt
   Predictor-Corrector Control = Logical True
@@ -67,7 +67,7 @@ Simulation
 
   Post File = "$Step$_dt$dt$_.vtu"
 
-  max output level = 3
+  max output level = 5
   Test Output = Logical False
 End
 
@@ -95,7 +95,6 @@ Initial Condition 1
   Pressure = Real 0.0
 
   Zs = Real 100.0
-  Zb = Real 0.0
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -128,10 +127,7 @@ Solver 1
   Equation = "Free Surface Top"
   Procedure =  "FreeSurfaceSolver" "FreeSurfaceSolver"
   Variable = "Zs"
-  Variable DOFs =  1
   Exported Variable 1 = "Zs Residual"
-  Exported Variable 1 DOFs = 1
-  Exported Variable 2 = "Zb"
 
   Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
@@ -158,7 +154,7 @@ Solver 2
   Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
   Active Coordinate = Integer 2
   Top Surface Variable Name = String "Zs"
-  Bottom Surface Variable Name = String "Zb"
+  Bottom Surface Level = Real 0.0
 
   Mesh Velocity First Zero = Logical True
   Displacement Mode = Logical False 
@@ -232,5 +228,4 @@ End
 Solver 1 :: Reference Norm = Real 126.92692
 Solver 1 :: Reference Norm Tolerance = Real 1E-03 
 
-RUN
 

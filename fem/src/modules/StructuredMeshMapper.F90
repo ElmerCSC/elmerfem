@@ -62,7 +62,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Solver_t), POINTER :: PSolver
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TangledMaskVarName, MappedMeshName
-  INTEGER :: i,j,k,n,dim,DOFs,itop,ibot,imid,ii,jj,Rounds,BotMode,TopMode,nsize, &
+  INTEGER :: i,j,k,n,dim,DOFs,itop,ibot,imid,ii,jj,Rounds,BotMode,TopMode,nsize, nnodes, &
        ActiveDirection,elem, istat, TangledCount
   INTEGER, POINTER :: MaskPerm(:),TopPerm(:),BotPerm(:),TangledMaskPerm(:),TopPointer(:),&
        BotPointer(:),MidPointer(:),NodeIndexes(:)
@@ -70,14 +70,14 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
        DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
        MidLayerExists, WriteMappedMeshToDisk = .FALSE., GotBaseVar, &
-       BaseDisplaceFirst
+       BaseDisplaceFirst, RecompStab
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, MidVal, ElemVector(3),DotPro,Eps,Length, MinHeight
   REAL(KIND=dp) :: at0,at1,at2,Heps
 #ifndef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: CPUTime,RealTime
 #endif
-  REAL(KIND=dp), POINTER :: Coord(:),BotField(:),TopField(:),TangledMask(:)
+  REAL(KIND=dp), POINTER :: Coord(:),BotField(:),TopField(:),TangledMask(:),CoordP(:)
   REAL(KIND=dp), ALLOCATABLE :: OrigCoord(:), Field(:), Surface(:)
   TYPE(Variable_t), POINTER :: Var, VeloVar, UpdateVar, TangledMaskVar, BaseVar
   TYPE(Element_t), POINTER :: Element
@@ -85,7 +85,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   TYPE(ValueList_t),POINTER :: BC
 
   SAVE Visited,Initialized,UnitVector,Coord,MaskExists,MaskPerm,TopPointer,BotPointer,&
-      TopMode,BotMode,TopField,BotField,TopPerm,BotPerm,Field,Surface,nsize, OrigCoord, &
+      TopMode,BotMode,TopField,BotField,TopPerm,BotPerm,Field,Surface,nsize,nnodes,OrigCoord, &
       ComputeTangledMask, MidPointer, MidLayerExists
 
   CALL Info( 'StructuredMeshMapper','---------------------------------------',Level=4 )
@@ -105,6 +105,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   Reinitialize = ListGetLogical(SolverParams, "Always Detect Structure", Found)
   IF(.NOT. Found) Reinitialize = .FALSE.
 
+  RecompStab = ListGetLogical(SolverParams, "Recompute Stabilization", Found)
+  IF(.NOT. Found) RecompStab = .FALSE.
+
   IF( (.NOT. Initialized) .OR. Reinitialize ) THEN
     IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
     IF(ASSOCIATED(TopPointer)) DEALLOCATE(TopPointer)
@@ -114,9 +117,10 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     MaskExists = ASSOCIATED( Var % Perm ) 
     IF( MaskExists ) MaskPerm => Var % Perm
     Coord => Var % Values
-
+    
     ! For p-elements the number of nodes and coordinate vector differ
     ! The projection is implemented only for the true nodes
+    nnodes = Mesh % NumberOfNodes
     nsize = MIN( SIZE( Coord ), Mesh % NumberOfNodes )
     Initialized = .TRUE.
 
@@ -126,7 +130,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       CALL Fatal( 'StructuredMeshMapper', 'Memory allocation error' )
     END IF
   END IF
-
+  
   OrigCoord(1:nsize) = Coord(1:nsize)
   at0 = CPUTime()
 
@@ -139,6 +143,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   !---------------- detangling stuff --------------------------------
   MinHeight = 0.0_dp
   DeTangle = GetLogical(SolverParams,'Correct Surface',GotIt )
+  TangledCount = 0
   IF( DeTangle ) THEN
     CALL Info('StructuredMeshMapper',&
         '> Correct Surface < in case of intersecting upper and lower surface',Level=4)
@@ -211,11 +216,18 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       DO elem = 1, Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(elem)
         BC => GetBC()
-        IF ( ASSOCIATED( BC ) ) THEN
-          NodeIndexes => Element % NodeIndexes
-          n = GetElementNOFNodes()
-          Surface(1:n) = GetReal( BC,'Top Surface',Found )
-          IF(Found) Field(NodeIndexes(1:n)) = Surface(1:n) 
+        IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+        NodeIndexes => Element % NodeIndexes
+        n = GetElementNOFNodes()
+        Surface(1:n) = GetReal( BC,'Top Surface',Found )
+        IF(.NOT. Found) CYCLE
+
+        IF( MaskExists ) THEN
+          IF( ALL( MaskPerm(NodeIndexes(1:n)) > 0 ) ) THEN
+            Field(MaskPerm(NodeIndexes(1:n))) = Surface(1:n) 
+          END IF
+        ELSE
+          Field(NodeIndexes(1:n)) = Surface(1:n)              
         END IF
       END DO
     ELSE
@@ -261,11 +273,19 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       DO elem = 1, Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(elem)
         BC => GetBC()
-        IF ( ASSOCIATED( BC ) ) THEN
-          NodeIndexes => Element % NodeIndexes
-          n = GetElementNOFNodes()
-          Surface(1:n) = GetReal( BC,'Bottom Surface',Found )
-          IF(Found) Field(NodeIndexes(1:n)) = Surface(1:n) 
+        IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+
+        NodeIndexes => Element % NodeIndexes
+        n = GetElementNOFNodes()
+        Surface(1:n) = GetReal( BC,'Bottom Surface',Found )
+        IF(.NOT. Found) CYCLE
+
+        IF( MaskExists ) THEN
+          IF( ALL( MaskPerm(NodeIndexes(1:n)) > 0 ) ) THEN
+            Field(MaskPerm(NodeIndexes(1:n))) = Surface(1:n) 
+          END IF
+        ELSE
+          Field(NodeIndexes(1:n)) = Surface(1:n)              
         END IF
       END DO
     END IF
@@ -357,29 +377,43 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   TangledCount = 0
 
-  DO i=1,nsize
+  DO i=1,nnodes
 
     j = i
     IF( MaskExists ) THEN
       j = MaskPerm(i) 
       IF( j == 0) CYCLE
     END IF
-    itop = TopPointer(i)
-    ibot = BotPointer(i)
-    IF( MidLayerExists ) imid = MidPointer(i)
+    itop = TopPointer(j)
+    ibot = BotPointer(j)
+
+    IF( MidLayerExists ) imid = MidPointer(j)
 
     ! Use the previous coordinates for determining the weights
     !----------------------------------------------------------
-    x0top = OrigCoord(itop)
-    x0bot = OrigCoord(ibot)
-    x0loc = OrigCoord(i)
-
+    IF( MaskExists ) THEN
+      x0top = OrigCoord(MaskPerm(itop))
+      x0bot = OrigCoord(MaskPerm(ibot))
+      x0loc = OrigCoord(MaskPerm(i))
+    ELSE
+      x0top = OrigCoord(itop)
+      x0bot = OrigCoord(ibot)
+      x0loc = OrigCoord(i)      
+    END IF
+      
     IF( TopMode == 1 ) THEN
       TopVal = TopVal0
     ELSE IF(TopMode == 2) THEN
+      IF( TopPerm( itop ) == 0 ) THEN
+        CALL Fatal('StructuredMeshMapper','Top surface variable perm is zero!')
+      END IF
       TopVal = TopField(TopPerm(itop))
     ELSE IF(TopMode == 3) THEN
-      TopVal = Field(itop)
+      IF( MaskExists ) THEN
+        TopVal = Field(MaskPerm(itop))
+      ELSE
+        TopVal = Field(itop)
+      END IF
     ELSE
       IF( DisplacementMode ) THEN
         TopVal = 0.0_dp
@@ -391,9 +425,16 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     IF( BotMode == 1 ) THEN
       BotVal = BotVal0 
     ELSE IF(BotMode == 2) THEN
+      IF( BotPerm( ibot ) == 0 ) THEN
+        CALL Fatal('StructuredMeshMapper','Bottom surface variable perm is zero!')
+      END IF
       BotVal = BotField(BotPerm(ibot))
     ELSE IF(BotMode == 3) THEN    
-      BotVal = Field(ibot)
+      IF( MaskExists ) THEN
+        BotVal = Field(MaskPerm(ibot))
+      ELSE
+        BotVal = Field(ibot)
+      END IF
     ELSE
       IF( DisplacementMode ) THEN
         BotVal = 0.0_dp
@@ -424,6 +465,12 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       END IF
     END IF
 
+    IF( MaskExists .AND. Tangled ) THEN
+      IF( DeTangle ) CALL Warn('StructuredMeshMapper','Cancelling tanglement when mask exists!')
+      Tangled = .FALSE.
+    END IF
+
+    
     ! If the mesh is tangled then take some action.
     ! Here the lower surface stays intact. This is due to the main application field, 
     ! computational glaciology, where the lower surface of ice is usually nicely constrained. 
@@ -453,7 +500,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
         WRITE(Message,'(A,E11.4,A,E11.4,A,E11.4,A,E11.4)')&
             "Corrected negative height:", TopVal - BotVal, "=",&
             TopVal ,"-", BotVal, ". New upper value:", Field(itop)
-        CALL Info('SructuredMeshMapper',Message,Level=9)
+        CALL Info('StructuredMeshMapper',Message,Level=9)
       END IF
     END IF
 
@@ -478,17 +525,41 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
         IF(Velovar % Perm(i)>0) &
           VeloVar % Values( VeloVar % Perm(i) ) = xloc / dt
       END IF
-      Coord(i) = OrigCoord(i) + xloc
+      Coord(j) = OrigCoord(j) + xloc
     ELSE
       IF( GotVeloVar ) THEN
         IF(Velovar % Perm(i)>0) &
           VeloVar % Values( VeloVar % Perm(i) ) = ( xloc - OrigCoord(i) ) / dt
       END IF
-      Coord(i) = xloc
+      Coord(j) = xloc
     END IF
-    IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(i) - OrigCoord(i)
+    IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(j) - OrigCoord(j)
   END DO
 
+
+  ! If there is a mask then the coordinate is not directly linked to the real coordinate.
+  ! Hence we need to do it here for the real coordinate. 
+  IF( MaskExists ) THEN
+    ActiveDirection = ListGetInteger( Solver % Values,'Active Coordinate')
+    IF( ActiveDirection == 1 ) THEN
+      CoordP => Mesh % Nodes % x
+    ELSE IF( ActiveDirection == 2 ) THEN
+      CoordP => Mesh % Nodes % y
+    ELSE IF( ActiveDirection == 3 ) THEN
+      CoordP => Mesh % Nodes % z
+    ELSE
+      CALL Fatal('StructuredMeshMapper','Unknown active coordinate!')
+    END IF
+
+    DO i=1,nnodes
+      j = MaskPerm(i)
+      IF( j == 0 ) CYCLE
+      CoordP(i) = Coord(j)
+    END DO
+  END IF
+
+
+  
   IF( GotBaseVar .AND. .NOT. BaseDisplaceFirst ) THEN
     CALL BaseVarDisplace() 
   END IF
@@ -501,7 +572,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   END IF
 
   IF( TangledCount > 0 ) THEN
-    CALL Warn('SructuredMeshMapper','There seems to be '&
+    CALL Warn('StructuredMeshMapper','There seems to be '&
         //TRIM(I2S(TangledCount))//' (out of '//TRIM(I2S(nsize))//&
         ') tangled nodes!')
   END IF
@@ -516,6 +587,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   Visited = .TRUE.
 
+  IF(RecompStab) CALL MeshStabParams(Mesh)
 
 CONTAINS
 

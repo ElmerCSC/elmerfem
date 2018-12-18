@@ -1,0 +1,157 @@
+! Perform a restart using two non-matching meshes in serial
+! a) square mesh with TempA
+! b) cube mesh with TempB
+! For the restart two different Mesh2MeshSolvers are used. The first one only lives on the 2D domain
+! and the 2nd one in the whole cube. For the 2D domain we must set a passive coordinate since the
+! meshes don't match in z-coordinate.
+! Finally we solve a heat equation in the finer mesh using the sum of TempA and TempB as BC. 
+!
+! P.R. 6.6.2018
+
+Header
+  Mesh DB "." "cube_fine"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Coordinate System = Cartesian
+
+  Max Output Level = 7
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "case.vtu"
+
+  Initialize Dirichlet Conditions = False
+  Restart Before Initial Conditions = Logical True  ! if we want to use restart for IC
+  Restart Error Continue = Logical True             ! continues even if mismatch in number of partitions
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body3D"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Body2D"
+  Equation = 2
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(2) = 1 3
+End
+
+Equation 2
+  Name = "Equation2"
+  Active Solvers(1) = 2
+End
+
+
+
+Solver 1
+  Equation = "Heat Equation"
+
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+
+! Map the 2D temperature from square
+Solver 2
+  Equation = "ISolverA"
+
+! Perform the interpolation solver before all other solvers, only once.
+  Exec Solver = Before all
+  Procedure = "Mesh2MeshSolver" "Mesh2MeshSolver"
+
+! The variables that we want to restart should be initialized in this list as a "Variable"
+! or "Exported Variable i". Or they can be allocated by some other solver associcated to
+! the same mesh.
+  Variable = TempA 
+
+  Mesh = "square"  
+  Restart File = File "case_a.dat"
+  Restart Error Continue = Logical True  ! continues even if mismatch in number of partitions
+
+! If there are several meshes to choose from, in this case we have 3. 
+  Target Mesh Solver Index = Integer 1
+
+! The variables to be interpolated. Note the dimension reduction related to TempA.
+  Variable 1 = TempA 
+  var1: Interpolation Passive Coordinate = Integer 3
+End
+
+
+! Map the 3D temperature from cube
+Solver 3
+  Equation = "ISolverB"
+
+  Exec Solver = Before all
+  Procedure = "Mesh2MeshSolver" "Mesh2MeshSolver"
+
+  Variable = TempB
+
+  Mesh = "cube"  
+  Restart File = File "case_b.dat"
+  Restart Error Continue = Logical True  
+  Target Mesh Solver Index = Integer 1
+  Variable 1 = TempB 
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1
+  Density = 1
+End
+
+Boundary Condition 1
+  Name = "BC1"
+
+  Target Boundaries = 1
+End
+
+Boundary Condition 2
+  Name = "BC2"
+  Target Boundaries = 2
+  Body Id = 2 
+  Temperature = Variable "TempA, TempB"
+    Real MATC "tx(0)+tx(1)"
+End
+
+Boundary Condition 3
+  Name = "BC3"
+  Target Boundaries = 3
+End
+
+Solver 1 :: Reference Norm = 2.33232694

@@ -42,7 +42,7 @@
 !> Subroutine for solving the energy a.k.a. heat equation in various coordinate systems.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-   SUBROUTINE HeatSolver( Model,Solver,Timestep,TransientSimulation )
+   RECURSIVE SUBROUTINE HeatSolver( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DiffuseConvective
      USE DiffuseConvectiveGeneral
@@ -1031,9 +1031,6 @@
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
         n = GetElementNOFNodes()
-
-        ! Check that the dimension of element is suitable for fluxes
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
 
         BC => GetBC()
         IF ( .NOT. ASSOCIATED(BC) ) CYCLE

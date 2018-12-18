@@ -1239,7 +1239,7 @@ CONTAINS
           IF ( Vms ) THEN
             mu = GetCReal( GetMaterial(), 'Viscosity', Found )
             mu = EffectiveViscosity( mu, rho, Ux, Uy, Uz, &
-                   Element, Nodes, n, n, u,v,w )
+                   Element, Nodes, n, n, u,v,w,LocalIP=t )
 
             Grad = 0.0D0
             DO i=1,3
@@ -1484,7 +1484,7 @@ CONTAINS
 
           mu = SUM( Nodalmu(1:n) * Basis(1:n) )
           mu = EffectiveViscosity( mu, rho, Ux, Uy, Uz, &
-                 Element, Nodes, n, n, u,v,w )
+                 Element, Nodes, n, n, u,v,w,LocalIP=t )
           IF ( mu > 0.0d0 ) THEN
             IF ( .NOT.Compressible ) THEN
               Grad = 0.0D0
@@ -2301,7 +2301,7 @@ FUNCTION a11Flux(Model, Node, depth) RESULT(flux)
   IF (other_body_id < 1) THEN ! only one body in calculation
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-  ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+  ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
   END IF
@@ -2383,7 +2383,7 @@ FUNCTION a22Flux(Model, Node, depth) RESULT(flux)
   IF (other_body_id < 1) THEN ! only one body in calculation
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-  ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+  ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
      ParentElement => BoundaryElement % BoundaryInfo % Right
      IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
   END IF

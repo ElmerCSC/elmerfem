@@ -480,8 +480,6 @@ END MODULE PorousMaterials
       DO t=1, Solver % Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
-        IF( .NOT. PossibleFluxElement(Element) ) CYCLE
        
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
@@ -562,7 +560,7 @@ END MODULE PorousMaterials
 
 !------------------------------------------------------------------------------------
 !> The water content derivative is computed using the real differential. This way the 
-!> differential of water content with time will be consistant.
+!> differential of water content with time will be consistent.
 !------------------------------------------------------------------------------------
     FUNCTION WaterContentDerivative( Element, Material, Basis, elemMatric, elemPrevMatric ) RESULT ( dtetadmatric )
       
@@ -819,7 +817,7 @@ SUBROUTINE RichardsPostprocess( Model,Solver,dt,Transient )
   INTEGER :: i,j,dim,DOFs,ActiveCoordinate
   LOGICAL :: Found, ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
   REAL(KIND=dp) :: Unorm, Totnorm, FluxMultiplier
-  REAL(KIND=dp), POINTER :: ForceVector(:,:), SaveRHS(:)
+  REAL(KIND=dp), POINTER CONTIG :: ForceVector(:,:), SaveRHS(:)
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
 #else
