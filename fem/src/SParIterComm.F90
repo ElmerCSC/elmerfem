@@ -309,7 +309,7 @@ CONTAINS
                 800, ELMER_COMM_WORLD, ierr )
       IF ( n>0 ) THEN
         CALL MPI_BSEND( Active, n, MPI_INTEGER, MinActive, &
-                 801, ELMER_COMM_WORLD, ierr )
+                801, ELMER_COMM_WORLD, ierr )
       END IF
 
       CALL MPI_RECV( n, 1, MPI_INTEGER, MinActive, &
@@ -384,15 +384,10 @@ CONTAINS
     ALLOCATE( Active(SIZE(ParallelInfo % Interface)) )
 
 !   IF ( .NOT. SourceMatrix % DGMatrix ) THEN
-      DO i=1,SIZE(SourceMatrix % Perm)
-        ii = SourceMatrix % Perm(i)
+      DO ii=1,SourceMatrix % NumberOfRows
 
-        Interf=.FALSE.
-        IF(ii>0) THEN
-          Active(ii) = HUGE(i)
-          Interf=ParallelInfo % Interface(ii)
-        END IF
-        IF ( Interf) THEN
+        Active(ii) = HUGE(i)
+        IF ( ParallelInfo % Interface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
           DO j=1,sz
             k = ParallelInfo % NeighbourList(ii) % Neighbours(j)
@@ -466,11 +461,9 @@ CONTAINS
       END DO
 
       DO ii=1,SourceMatrix % NumberOfRows
-        Interf = .FALSE.
-        IF(ii>0) Interf = ParallelInfo % Interface(ii)
-        IF ( Interf ) THEN
+        IF ( ParallelInfo % Interface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
-          IF ( Active(ii)>1 .AND. Active(ii)<=sz ) THEN
+          IF ( Active(ii)>1 .AND. Active(ii) <= sz ) THEN
             n = ParallelInfo % NeighbourList(ii) % Neighbours(Active(ii))
 
             ParallelInfo % NeighbourList(ii) % Neighbours(Active(ii)) = &
