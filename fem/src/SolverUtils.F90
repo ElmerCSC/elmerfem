@@ -8462,6 +8462,11 @@ END FUNCTION SearchNodeL
       IterNo = NINT( iterVar % Values(1) )
       Solver % Variable % NonlinIter = IterNo
       iterVar % Values(1) = IterNo + 1 
+
+      IF( .NOT. Solver % NewtonActive ) THEN
+        i = ListGetInteger( SolverParams, 'Nonlinear System Newton After Iterations',Stat )
+        IF( Stat .AND. i <= IterNo ) Solver % NewtonActive = .TRUE.
+      END IF     
       
       Skip = ListGetLogical( SolverParams,'Skip Compute Nonlinear Change',Stat)
 
@@ -8804,6 +8809,12 @@ END FUNCTION SearchNodeL
           Solver % Variable % NonlinConverged = 0
         END IF
       END IF
+      
+      IF( .NOT. Solver % NewtonActive ) THEN
+        Tolerance = ListGetCReal( SolverParams, 'Nonlinear System Newton After Tolerance',Stat )
+        IF( Stat .AND. Change < Tolerance ) Solver % NewtonActive = .TRUE.
+      END IF     
+
     END IF
 
     IF(Relax .AND. .NOT. RelaxBefore) THEN
