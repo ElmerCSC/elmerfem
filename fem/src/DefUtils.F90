@@ -3133,7 +3133,7 @@ CONTAINS
   
 !> Performs finalizing steps related to the the active solver
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultFinish( USolver )
+  RECURSIVE SUBROUTINE DefaultFinish( USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
 
