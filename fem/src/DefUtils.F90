@@ -3161,7 +3161,7 @@ CONTAINS
 
 !> Solver the matrix equation related to the active solver
 !------------------------------------------------------------------------------
-  FUNCTION DefaultSolve( USolver, BackRotNT ) RESULT(Norm)
+  RECURSIVE FUNCTION DefaultSolve( USolver, BackRotNT ) RESULT(Norm)
 !------------------------------------------------------------------------------
     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(in) :: USolver
     REAL(KIND=dp) :: Norm
