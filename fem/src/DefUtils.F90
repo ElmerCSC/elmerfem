@@ -253,8 +253,8 @@ CONTAINS
 
 #ifdef _OPENMP
     IF (omp_in_parallel()) THEN
-      CurrentElementThread => Element
       OldElement => CurrentElementThread
+      CurrentElementThread => Element
     ELSE
       OldElement => CurrentModel % CurrentElement
       CurrentModel % CurrentElement => Element
@@ -3015,6 +3015,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: UseConstantBulk
 !------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: Solver
+     INTEGER :: i,n
      LOGICAL :: Found
      
      IF ( PRESENT( USolver ) ) THEN
@@ -3023,20 +3024,35 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
 
-     IF( PRESENT( UseConstantBulk ) .AND. UseConstantBulk ) THEN
-       CALL Info('DefaultInitialize','Using constant bulk matrix',Level=8)
-       IF( .NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
-         CALL Warn('DefaultInitialie','Constant bulk system requested but not associated!')
+     IF( PRESENT( UseConstantBulk ) ) THEN
+       IF ( UseConstantBulk ) THEN
+         CALL Info('DefaultInitialize','Using constant bulk matrix',Level=8)
+         IF( .NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
+           CALL Warn('DefaultInitialize','Constant bulk system requested but not associated!')
+           RETURN
+         END IF
+         DO i=1,n
+           Solver % Matrix % Values(i) = Solver % Matrix % BulkValues(i)
+         END DO
+
+         IF( ASSOCIATED( Solver % Matrix % BulkMassValues ) ) THEN
+           DO i=1,n
+             Solver % Matrix % MassValues(i) = Solver % Matrix % BulkMassValues(i)
+           END DO
+         END IF
+         IF( ASSOCIATED( Solver % Matrix % BulkDampValues ) ) THEN
+           DO i=1,n
+             Solver % Matrix % DampValues(i) = Solver % Matrix % BulkDampValues(i)
+           END DO
+         END IF
+         IF( ASSOCIATED( Solver % Matrix % BulkRhs ) ) THEN
+           n = SIZE(Solver % Matrix % RHS)
+           DO i=1,n
+             Solver % Matrix % rhs(i) = Solver % Matrix % BulkRhs(i)
+           END DO
+         END IF
          RETURN
        END IF
-       Solver % Matrix % Values = Solver % Matrix % BulkValues        
-       IF( ASSOCIATED( Solver % Matrix % BulkMassValues ) ) &
-           Solver % Matrix % MassValues = Solver % Matrix % BulkMassValues 
-       IF( ASSOCIATED( Solver % Matrix % BulkDampValues ) ) &
-           Solver % Matrix % DampValues = Solver % Matrix % BulkDampValues 
-       IF( ASSOCIATED( Solver % Matrix % BulkRhs ) ) &
-           Solver % Matrix % rhs = Solver % Matrix % BulkRhs 
-       RETURN
      END IF
 
      
