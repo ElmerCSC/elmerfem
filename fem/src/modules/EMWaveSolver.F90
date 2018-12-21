@@ -492,7 +492,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     LOGICAL :: AllocationsDone = .FALSE.
     
-    SAVE Visited, BL_h, Damp_h, Mu_h, Eps_h, WBasis, RotWBasis, Basis, dBasisdx, AllocationsDone
+    SAVE Visited, BL_h, Damp_h, Mu_h, Eps_h
 
 !------------------------------------------------------------------------------
 
