@@ -3076,7 +3076,7 @@ CONTAINS
 
 !> Performs pre-steps related to the the active solver
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultStart( USolver )
+  RECURSIVE SUBROUTINE DefaultStart( USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
      
