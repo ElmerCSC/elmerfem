@@ -3031,6 +3031,8 @@ CONTAINS
            CALL Warn('DefaultInitialize','Constant bulk system requested but not associated!')
            RETURN
          END IF
+
+         n = SIZE(Solver % Matrix % Values)
          DO i=1,n
            Solver % Matrix % Values(i) = Solver % Matrix % BulkValues(i)
          END DO
