@@ -2266,7 +2266,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS )
            
            DO i = 0,p-3
               DO j = 0,p-i-3
@@ -2299,7 +2299,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
           
            DO i=2,(p-2)
               DO j=2,(p-i)
@@ -2362,7 +2362,7 @@ END IF
 
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
            p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
 
            DO i=0,p-4
               DO j=0,p-i-4
@@ -2442,7 +2442,7 @@ END IF
            p = Element % PDefs % p
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
            p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
 
            ! Calculate value of bubble functions from indexes
            ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
@@ -2529,7 +2529,7 @@ END IF
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
            p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3 - AEPS)
            
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j=0,..,p-5 k=2,..,p-3 i+j+k=2,..,p-3
@@ -2596,7 +2596,7 @@ END IF
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
            p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4 - AEPS)
 
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
@@ -2798,7 +2798,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
            
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2875,7 +2875,7 @@ END IF
            p = Element % PDefs % P
 
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
 
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2969,7 +2969,7 @@ END IF
 
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
            p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
 
            ! For each DOF in bubbles calculate value of bubble functions
            ! and their derivatives for index pairs
@@ -3094,7 +3094,7 @@ END IF
            p = Element % PDefs % p
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
            p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
 
            ! Calculate value of bubble functions from indexes
            ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
@@ -3236,7 +3236,7 @@ END IF
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
            p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3 - AEPS)
            
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j=0,..,p-5 k=2,..,p-3 i+j+k=2,..,p-3
@@ -3341,7 +3341,7 @@ END IF
            p = Element % PDefs % P
            nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
            p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4 - AEPS)
 
            
            ! For each bubble calculate value of basis function and its derivative
@@ -3697,7 +3697,7 @@ END IF
            EdgeDirection(H1Basis_MaxPElementEdgeNodes,H1Basis_MaxPElementEdges), &
            FaceDirection(H1Basis_MaxPElementFaceNodes,H1Basis_MaxPElementFaces)
 
-     INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, &
+     INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, nb, &
            nbp, nbq, nbdxp, allocstat, ncpad, EdgeMaxDegree, FaceMaxDegree
 
 
@@ -3792,7 +3792,7 @@ END IF
            ! edge directions
            IF (ll==1) THEN
              ! Compute P from bubble dofs
-             P = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+             P = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 - AEPS)
 
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
@@ -3846,7 +3846,7 @@ END IF
            ! edge directions
            IF (ll==1) THEN
              ! Compute P from bubble dofs
-             P = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+             P = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 - AEPS )
 
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
@@ -3965,10 +3965,9 @@ END IF
          ! Element bubble functions
          IF (Element % BDOFS > 0) THEN 
            ! Compute P based on bubble dofs
-           P=CEILING(1/3d0*(81*(Element % BDOFS) + &
-                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
-                 1d0/(81*(Element % BDOFS)+ &
-                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
+           nb = Element % BDOFs
+           p = CEILING( 1/3._dp*(81*nb+3*SQRT(-3._dp+729*nb**2))**(1/3._dp) + &
+                   1d0/(81*nb+3*SQRT(-3._dp+729*nb**2))**(1/3._dp)+2 - AEPS )
 
            CALL H1Basis_TetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
            CALL H1Basis_dTetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
@@ -4081,7 +4080,7 @@ BLOCK
               p = Element % PDefs % p
               nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
               p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                      (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
+                      (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
 
               ! Calculate value of bubble functions from indexes
               ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
@@ -4170,7 +4169,7 @@ END BLOCK
            P=CEILING(1/3d0*(81*(Element % BDOFS) + &
                  3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
                  1d0/(81*(Element % BDOFS)+ &
-                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
+                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3 - AEPS)
 
            CALL H1Basis_WedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
            CALL H1Basis_dWedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
@@ -4236,7 +4235,7 @@ END BLOCK
            ! Compute P from bubble dofs
            P=CEILING(1/3d0*(81*Element % BDOFS + &
                  3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
-                 1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4)
+                 1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4 - AEPS)
            CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
            CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
          END IF
