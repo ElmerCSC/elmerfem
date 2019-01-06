@@ -1,4 +1,4 @@
-# Adaptive solver with internal spliting
+# Adaptive solver with internal splitting
 #
 
 run:

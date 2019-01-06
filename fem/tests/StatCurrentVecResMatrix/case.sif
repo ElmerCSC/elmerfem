@@ -39,7 +39,7 @@ Solver 1
 
   Calculate Conductivity Matrix = Logical True
 
-! The above makes all these keywords obsolite:
+! The above makes all these keywords obsolete:
 !  Constraint Modes Analysis = Logical True
 !  Constraint Modes Lumped = Logical True
 !  Constraint Modes Fluxes = Logical True

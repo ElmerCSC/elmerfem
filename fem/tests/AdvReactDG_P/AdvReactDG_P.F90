@@ -35,7 +35,7 @@
 ! ****************************************************************************
 
 !------------------------------------------------------------------------------
-!>  Advection-reaction equation solver for scalar fields with discontinous Galerkin method.
+!>  Advection-reaction equation solver for scalar fields with discontinuous Galerkin method.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
   SUBROUTINE AdvectionReactionSolver( Model,Solver,dt,Transient )
