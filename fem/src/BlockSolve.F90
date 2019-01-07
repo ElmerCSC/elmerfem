@@ -2114,7 +2114,7 @@ CONTAINS
         PRINT *,'Range pre:',i,TRIM(Var % Name), MINVAL(x),MAXVAL(x)
       END IF
 
-      IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,k,k,b)
+      IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,i,i,b)
 
 
       IF( InfoActive( 15 ) ) THEN
@@ -2148,7 +2148,7 @@ CONTAINS
         !IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,b,x)       
       END IF
 
-      IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,k,k,b)
+      IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,i,i,b)
 
       
       IF( InfoActive( 15 ) ) THEN
