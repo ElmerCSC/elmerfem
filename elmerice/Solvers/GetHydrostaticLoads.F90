@@ -22,7 +22,7 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: Olivier Gagliardini, Ga¨el Durand
+! *  Authors: Olivier Gagliardini, Ga¨el Durand, Mondher Chekki
 ! *  Email:   
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
@@ -54,6 +54,7 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
   USE DefUtils
+  USE ElmerIceUtils
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -74,7 +75,7 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: AllocationsDone = .FALSE., GotIt, stat
 
-  INTEGER :: i, j, n, m, t, p, Nn, istat, DIM
+  INTEGER :: i, j, n, m, t, p, Nn, istat, DIM, jdim
   INTEGER, POINTER :: Permutation(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
@@ -84,7 +85,7 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: pwt(:), Basis(:), dBasisdx(:,:), &
                                 ddBasisddx(:,:,:)
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VarName
        
 
   SAVE AllocationsDone, DIM, SolverName, pwt
@@ -142,7 +143,6 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
     IF(.NOT. GotIt) CYCLE
     IF(ALL(pwt(1:n) == 0.0)) CYCLE
 
-!
 ! Integration
 ! 
     CALL GetElementNodes( Nodes, Element )
@@ -175,7 +175,20 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 
   END DO
 
-  IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues )
+  DO jdim=1, DIM
+     IF (DIM > 1) THEN
+        VarName=ComponentNameStr( Solver % Variable % Name, jdim )
+     ELSE
+        VarName=GetVarName(Solver % Variable)
+     ENDIF
+     IF (jdim .eq. 1 ) THEN
+        IF ( ParEnv % PEs >1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues)
+     END IF
+!------------------------------------------------------------------------------
+!     Update Periodic Nodes 
+!------------------------------------------------------------------------------
+     CALL UpdatePeriodicNodes(Model, Solver, VarName, PointerToVariable, jdim)
+  ENDDO 
 
   CALL INFO(SolverName, 'End', level=3)
 
