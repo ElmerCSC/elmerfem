@@ -2230,11 +2230,17 @@ CONTAINS
     ELSE
       Solver % TimeOrder = 0
 
-      IF( ListGetLogical( Solver % Values,'Calculate Derivative',Found) ) THEN
+      DoIt = ListGetLogical( Solver % Values,'Calculate Derivative',Found)
+      IF( .NOT. Found ) THEN
+        DoIt = ListGetLogical( Solver % Values,'Nonlinear Calculate Derivative',Found)
+      END IF
+      IF( DoIt ) THEN
         str = TRIM( Solver % Variable % Name ) // ' Derivative'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
             str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm, &
-            VarType = Solver % Variable % Type )
+            VarType = Solver % Variable % TYPE )
+        Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+        Var % Values = 0.0_dp
       END IF
 
       IF ( EigAnal ) THEN

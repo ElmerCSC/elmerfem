@@ -6203,25 +6203,8 @@ CONTAINS
     PermIndex = Perm(NodeIndex)
     IF ( PermIndex > 0 ) THEN
       PermIndex = NDOFs * (PermIndex-1) + DOF
-
-      !IF ( A % FORMAT == MATRIX_SBAND ) THEN
-      !  CALL SBand_SetDirichlet( A,b,PermIndex,NodeValue )
-      !ELSE IF ( A % FORMAT == MATRIX_CRS .AND. &
-      !    A % Symmetric.AND..NOT. A % NoDirichlet ) THEN
-      !
-      !   CALL CRS_SetSymmDirichlet(A,b,PermIndex,NodeValue)
-      !ELSE                  
-      !  s = A % Values(A % Diag(PermIndex))
-      !  b(PermIndex) = NodeValue * s
-      !  IF(.NOT. A % NoDirichlet) THEN
-      !     CALL ZeroRow( A,PermIndex )
-      !     CALL SetMatrixElement( A,PermIndex,PermIndex,s )
-      !  END IF
-      !END IF
-      !IF(ALLOCATED(A % ConstrainedDOF))
       A % ConstrainedDOF(PermIndex) = .TRUE.
-      A % DValues(PermIndex) = NodeValue
-      
+      A % DValues(PermIndex) = NodeValue      
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE SetDirichletPoint
@@ -6652,12 +6635,13 @@ CONTAINS
     REAL(KIND=dp), POINTER :: DiagScaling(:)
     REAL(KIND=dp) :: dval, s
     INTEGER :: i,j,k,n
+    CHARACTER(*), PARAMETER :: Caller = 'EnforceDirichletConditions'
 
     
     Params => Solver % Values
 
     IF(.NOT. ALLOCATED( A % ConstrainedDOF ) ) THEN
-      CALL Info('EnforceDirichletConditions',&
+      CALL Info(Caller,&
           'ConstrainedDOF not associated, returning...',Level=8)
       RETURN
     END IF
@@ -6667,7 +6651,7 @@ CONTAINS
     n = NINT( ParallelReduction(1.0_dp * n ) )
 
     IF( n == 0 ) THEN
-      CALL Info('EnforceDirichletConditions','No Dirichlet conditions to enforce, exiting!',Level=10)
+      CALL Info(Caller,'No Dirichlet conditions to enforce, exiting!',Level=10)
       RETURN
     END IF
     
@@ -6687,10 +6671,9 @@ CONTAINS
         IF(.NOT.Found) ScaleSystem=.TRUE.
       END IF
     END IF
-      
-    
+          
     IF( ScaleSystem ) THEN
-      CALL Info('EnforceDirichletConditions','Applying Dirichlet conditions using scaled diagonal',Level=8)
+      CALL Info(Caller,'Applying Dirichlet conditions using scaled diagonal',Level=8)
       CALL ScaleLinearSystem(Solver,A,b,ApplyScaling=.FALSE.)
       DiagScaling => A % DiagScaling
     END IF
@@ -6738,7 +6721,7 @@ CONTAINS
     ! Deallocate scaling since otherwise it could be misused out of context
     IF (ScaleSystem) DEALLOCATE( A % DiagScaling ) 
         
-    CALL Info('EnforceDirichletConditions','Dirichlet boundary conditions enforced', Level=12)
+    CALL Info(Caller,'Dirichlet boundary conditions enforced', Level=12)
     
   END SUBROUTINE EnforceDirichletConditions
 !-------------------------------------------------------------------------------
@@ -8291,6 +8274,8 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
+    PRINT *,'ComputedNorm:',Norm, NormDIm
+    
     IF( ComponentsAllocated ) THEN
       DEALLOCATE( NormComponents ) 
     END IF
@@ -8310,13 +8295,14 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: dtVar, VeloVar
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     INTEGER, POINTER :: UpdateComponents(:)
-   
+    CHARACTER(*), PARAMETER :: Caller = 'UpdateDependentObjects'
+  
     SolverParams => Solver % Values
     
     IF( SteadyState ) THEN
-      CALL Info('UpdateDependentObjects','Updating objects depending on primary field in steady state',Level=20)
+      CALL Info(Caller,'Updating objects depending on primary field in steady state',Level=20)
     ELSE
-      CALL Info('UpdateDependentObjects','Updating objects depending on primary field in nonlinear system',Level=20)
+      CALL Info(Caller,'Updating objects depending on primary field in nonlinear system',Level=20)
     END IF
     
     
@@ -8331,8 +8317,10 @@ END FUNCTION SearchNodeL
       DoIt = ListGetLogical( SolverParams,&
           'Nonlinear Update Exported Variables',Found )
     END IF
-    IF( DoIt ) CALL UpdateExportedVariables( Solver )	
-    
+    IF( DoIt ) THEN
+      CALL Info(Caller,'Updating exported variables',Level=20)
+      CALL UpdateExportedVariables( Solver )	
+    END IF
        
     ! Update components that depende on the solution of the solver.
     ! Nonlinear level allows some nonlinear couplings within the solver. 
@@ -8344,8 +8332,10 @@ END FUNCTION SearchNodeL
       UpdateComponents => ListGetIntegerArray( SolverParams, &
           'Nonlinear Update Components', DoIt )
     END IF
-    IF( DoIt ) CALL UpdateDependentComponents( UpdateComponents )	
-    
+    IF( DoIt ) THEN
+      CALL Info(Caller,'Updating components',Level=20)
+      CALL UpdateDependentComponents( UpdateComponents )	
+    END IF
 
     ! Compute derivative of solution with time i.e. velocity 
     ! For 2nd order schemes there is direct pointer to the velocity component
@@ -8359,7 +8349,10 @@ END FUNCTION SearchNodeL
     END IF
     
     IF( DoIt ) THEN
-      IF( Solver % TimeOrder == 1) THEN
+      CALL Info(Caller,'Updating variable velocity')
+      IF( .NOT. ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+        CALL Warn(Caller,'Cannot calculate velocity without previous values!')
+      ELSE IF( Solver % TimeOrder == 1) THEN
         dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size' )
         dt = dtVar % Values(1) 
         str = TRIM( Solver % Variable % Name ) // ' Velocity'
@@ -8610,7 +8603,6 @@ END FUNCTION SearchNodeL
     END IF    
 
     IF( Stat ) THEN
-      WRITE( Message, *) 'Computed Norm:',Norm
       CALL Info(Caller,Message)
       CALL NumericalError(Caller,'Norm of solution exceeded given bounds')
     END IF
@@ -8814,9 +8806,9 @@ END FUNCTION SearchNodeL
         Tolerance = ListGetCReal( SolverParams, 'Nonlinear System Newton After Tolerance',Stat )
         IF( Stat .AND. Change < Tolerance ) Solver % NewtonActive = .TRUE.
       END IF     
-
     END IF
 
+    
     IF(Relax .AND. .NOT. RelaxBefore) THEN
       x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
       IF( RelativeP ) x(dofs:n:dofs) = x(dofs:n:dofs) + Poffset
@@ -8875,34 +8867,46 @@ END FUNCTION SearchNodeL
 
 
     ! Calculate derivative a.k.a. sensitivity
+    DoIt = .FALSE.
     IF( SteadyState ) THEN
-      IF( ListGetLogical( SolverParams,'Calculate Derivative',Stat) ) THEN
+      DoIt = ListGetLogical( SolverParams,'Calculate Derivative',Stat )
+    ELSE
+      DoIt = ListGetLogical( SolverParams,'Nonlinear Calculate Derivative',Stat )
+    END IF
+
+    IF( DoIt ) THEN
+      IF( SteadyState ) THEN
         iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
         IterNo = NINT( iterVar % Values(1) )
-
-        IF( IterNo > 1 ) THEN
-          dtVar => VariableGet( Solver % Mesh % Variables, 'derivative eps' )
-          IF( ASSOCIATED( dtVar ) ) THEN
-            eps = dtVar % Values(1)
-            Stat = .TRUE.
-          ELSE
-            eps = ListGetCReal( SolverParams,'derivative eps',Stat)
-          END IF
-          IF(.NOT. Stat) THEN
-            CALL Warn(Caller,'Derivative Eps not given, using one')
-            Eps = 1.0_dp
-          END IF
-
-          str = TRIM( Solver % Variable % Name ) // ' Derivative'
-          VeloVar => VariableGet( Solver % Mesh % Variables, str )
-          IF( ASSOCIATED( VeloVar ) ) THEN
-            CALL Info(Caller,'Computing variable:'//TRIM(str))
-            VeloVar % Values = (x - x0) / eps
-          ELSE
-            CALL Warn(Caller,'Derivative variable not present')
-          END IF
+      ELSE
+        iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+        IterNo = NINT( iterVar % Values(1) )
+      END IF
+      
+      Eps = 1.0_dp
+      IF( IterNo > 1 ) THEN
+        dtVar => VariableGet( Solver % Mesh % Variables, 'derivative eps' )
+        IF( ASSOCIATED( dtVar ) ) THEN
+          eps = dtVar % Values(1)
+          Stat = .TRUE.
+        ELSE
+          eps = ListGetCReal( SolverParams,'derivative eps',Stat)
+        END IF
+        IF(.NOT. Stat) THEN
+          Eps = 1.0_dp
+          CALL Info(Caller,'Derivative Eps not given, using one',Level=7)
         END IF
       END IF
+      
+      str = TRIM( Solver % Variable % Name ) // ' Derivative'
+      VeloVar => VariableGet( Solver % Mesh % Variables, str )
+      IF( ASSOCIATED( VeloVar ) ) THEN
+        CALL Info(Caller,'Computing variable:'//TRIM(str))
+        VeloVar % Values = (x - x0) / eps
+      ELSE
+        CALL Warn(Caller,'Derivative variable not present')
+      END IF
+
     END IF
     
     IF(.NOT. SteadyState ) THEN    
@@ -12797,7 +12801,7 @@ END SUBROUTINE UpdateExportedVariables
 
   END DO
     
-  CALL Info('UpdateExportedVariables','Finihed computing numerical derivaties',Level=20)
+  CALL Info('UpdateExportedVariables','Finished computing numerical derivaties',Level=20)
     
 END SUBROUTINE DerivateExportedVariables
 
