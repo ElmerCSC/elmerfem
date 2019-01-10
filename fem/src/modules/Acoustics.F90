@@ -4032,7 +4032,7 @@ CONTAINS
     IF ( .NOT. ASSOCIATED( Values ) ) THEN
        Diag => A % Diag
 
-       !DO i=1,n/2    ! THIS IS PROPABLY ERRATIC IN CVS-VERSION
+       !DO i=1,n/2    ! THIS IS PROBABLY ERRATIC IN CVS-VERSION
        DO i=1,n
           x = CMPLX( A % Values(Diag(2*i-1)), -A % Values(Diag(2*i-1)+1), kind=dp )
           b(i) = b(i) / x

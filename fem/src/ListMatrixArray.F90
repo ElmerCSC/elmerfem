@@ -266,7 +266,7 @@ CONTAINS
        RETURN
     END IF
     
-    ! Seach a correct place for the element
+    ! Search a correct place for the element
     PEntryPtr => CEntryPtr
     CEntryPtr => CEntryPtr % Next
     
@@ -330,7 +330,7 @@ CONTAINS
        sentry = 2
     END IF
     
-    ! Seach a correct place for the element
+    ! Search a correct place for the element
     PEntryPtr => CEntryPtr
     CEntryPtr => CEntryPtr % Next
 

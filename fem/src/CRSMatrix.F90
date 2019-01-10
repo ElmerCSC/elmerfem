@@ -179,7 +179,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>    Sort columns to ascending order for rows of a CRS format matrix-
-!>    Optionally also sort the corresponging values of the matrix.
+!>    Optionally also sort the corresponding values of the matrix.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_SortMatrix( A, ValuesToo )
 !------------------------------------------------------------------------------
@@ -244,8 +244,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>    Sort columns to ascending order for rows of a CRS format matrix-
-!>    Optionally also sort the corresponging values of the matrix.
-!>    This operates just on a basic matrix type. 
+!>    Optionally also sort the corresponding values of the matrix.
+!>    This operates just on a basic matrix type.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_SortBasicMatrix( A, ValuesToo )
 !------------------------------------------------------------------------------
@@ -1896,8 +1896,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 !------------------------------------------------------------------------------
 !>    Diagonal preconditioning of a CRS format matrix. Matrix is accessed
-!>    from a global variable GlobalMatrix. Note that if the matrix has been 
-!> scaled so that the diagonal entries are already ones, this subroutine is obsolite.
+!>    from a global variable GlobalMatrix. Note that if the matrix has been
+!> scaled so that the diagonal entries are already ones, this subroutine is obsolete.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_DiagPrecondition( u,v,ipar )
 !------------------------------------------------------------------------------
@@ -4195,9 +4195,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     END IF
 
 !--------------------------------------------------------------------
-! The following #ifdefs  seem really necessery, if speed is an issue:
+! The following #ifdefs  seem really necessary, if speed is an issue:
 ! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitely, while DEC compiler seems to make a copy of some of the
+! explicitly, while DEC compiler seems to make a copy of some of the
 ! arrays on the subroutine call (destroying performance).
 !--------------------------------------------------------------------
 #ifndef SGI
@@ -4308,9 +4308,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     IF ( .NOT. ASSOCIATED( Values ) ) RETURN
 
 !---------------------------------------------------------------------
-! The following #ifdefs  seem really necessery, if speed is an issue:
+! The following #ifdefs  seem really necessary, if speed is an issue:
 ! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitely, while DEC compiler seems to make a copy of some of the
+! explicitly, while DEC compiler seems to make a copy of some of the
 ! arrays on the subroutine call (destroying performance).
 !--------------------------------------------------------------------
 #ifndef SGI
@@ -4438,9 +4438,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       RETURN
    END IF
 !--------------------------------------------------------------------
-! The following #ifdefs  seem really necessery, if speed is an issue:
+! The following #ifdefs  seem really necessary, if speed is an issue:
 ! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitely, while DEC compiler seems to make a copy of some of the
+! explicitly, while DEC compiler seems to make a copy of some of the
 ! arrays on the subroutine call (destroying performance).
 !--------------------------------------------------------------------
 #ifndef SGI
@@ -4552,9 +4552,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Values => GlobalMatrix % Values
 
 !----------------------------------------------------------------------
-! The following #ifdefs  seem really necessery, if speed is an issue:
+! The following #ifdefs  seem really necessary, if speed is an issue:
 ! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitely, while DEC compiler seems to make a copy of some of the
+! explicitly, while DEC compiler seems to make a copy of some of the
 ! arrays on the subroutine call (destroying performance).
 !----------------------------------------------------------------------
 #ifndef SGI
@@ -4716,7 +4716,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END IF
     END DO
     IF( j > 0 ) THEN
-      PRINT *,'Number of errornous diag entries:',j
+      PRINT *,'Number of erroneous diag entries:',j
     ELSE
       DiagSum = SUM( Values(Diag) )
       PRINT *,'diagonal sum:',DiagSum

@@ -4584,9 +4584,9 @@ CONTAINS
       ValueList => Model % BCs(BC) % Values
       IF( .NOT. ListCheckPresent( ValueList,Name )) CYCLE
       NodesFound = ListCheckPresent( ValueList,'Target Nodes' )
-      
-      ! The coordinates are only requested for a body that has no list of nodes. 
-      ! At the first calling the list of coorinates is transformed to list of nodes. 
+
+      ! The coordinates are only requested for a body that has no list of nodes.
+      ! At the first calling the list of coordinates is transformed to list of nodes.
       IF(.NOT. NodesFound) THEN
         CoordNodes => ListGetConstRealArray(ValueList,'Target Coordinates',GotIt)
         IF(GotIt) THEN
@@ -6353,8 +6353,8 @@ CONTAINS
       ValueList => Model % BCs(BC) % Values
       IF( .NOT. ListCheckPresent( ValueList,LoadName )) CYCLE
       NodesFound = ListCheckPresent(ValueList,'Target Nodes')
-      
-      ! At the first calling the list of coorinates is transformed to list of nodes. 
+
+      ! At the first calling the list of coordinates is transformed to list of nodes.
       IF(.NOT. NodesFound) THEN
         CoordNodes => ListGetConstRealArray(ValueList, 'Target Coordinates',GotIt)
         IF(GotIt) THEN
@@ -6888,7 +6888,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:)
 !------------------------------------------------------------------------------
 
-    ! need an early initialization to avarage normals across partitions:
+    ! need an early initialization to average normals across partitions:
     !-------------------------------------------------------------------
     IF ( Parenv  % PEs >1 ) THEN
       IF (.NOT. ASSOCIATED(Model % Solver % Matrix % ParMatrix) ) &
@@ -9860,8 +9860,8 @@ END FUNCTION SearchNodeL
 
 
 
-  !> Calcualte the number of separature pieces in a serial mesh.
-  !> This could be used to detect problems in mesh when suspecting 
+  !> Calculate the number of separature pieces in a serial mesh.
+  !> This could be used to detect problems in mesh when suspecting
   !> floating parts not fixed by any BC, for example.
   !---------------------------------------------------------------------------------
   SUBROUTINE CalculateMeshPieces( Mesh )
@@ -11777,7 +11777,7 @@ END FUNCTION SearchNodeL
    END IF
 
 !------------------------------------------------------------------------------
-! In order to be able to change the preconditoners or solvers the old matrix structures
+! In order to be able to change the preconditioners or solvers the old matrix structures
 ! must be deallocated on request.
 
     IF( ListGetLogical( Params, 'Linear System Preconditioning Deallocate', GotIt) ) THEN
@@ -12405,9 +12405,9 @@ END SUBROUTINE VariableNameParser
        IF( ASSOCIATED( Solver % IpTable ) ) THEN
          CALL Info('CreateIpPerm','IpTable already allocated, returning')
        END IF
-       CALL Info('CreateIpPerm','Creating permuation for integration points',Level=8)       
+       CALL Info('CreateIpPerm','Creating permutation for integration points',Level=8)
      END IF
-       
+
      EquationName = ListGetString( Solver % Values, 'Equation', Found)
      IF( .NOT. Found ) THEN
        CALL Fatal('CreateIpPerm','Equation not present!')
@@ -13442,7 +13442,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   REAL(KIND=dp),TARGET :: ForceVector(:)        !< The right hand side of the linear equation
   REAL(KIND=dp),TARGET :: Solution(:)           !< Previous solution as input, new solution as output.
   REAL(KIND=dp) :: Norm                  !< The L2 norm of the solution.
-  INTEGER :: DOFs                        !< Number of degrees of freedon of the equation.
+  INTEGER :: DOFs                        !< Number of degrees of freedom of the equation.
   TYPE(Solver_t), TARGET :: Solver       !< Linear equation solver options.
 !------------------------------------------------------------------------------
   TYPE(Solver_t), POINTER :: SolverPointer
@@ -13808,7 +13808,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 !------------------------------------------------------------------------------
 ! Eliminate constraints instead of adding the Lagrange coefficient equations.
 ! Assumes biorthogonal basis for Lagrange coefficient interpolation, but not
-! necesserily biorthogonal constraint equation test functions.
+! necessarily biorthogonal constraint equation test functions.
 !------------------------------------------------------------------------------
   IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
     CALL Info('SolveWithLinearRestriction',&
@@ -14913,14 +14913,14 @@ CONTAINS
       IF( IsHarmonic ) THEN
         IF( fdofs /= 2*(dim+2) .AND. fdofs /= 2*(dim+1) ) THEN
           CALL Fatal('FsiCouplingAssembly',&
-              'Inconsistant number of harmonic dofs in NS solver: '//TRIM(I2S(fdofs)))
+              'Inconsistent number of harmonic dofs in NS solver: '//TRIM(I2S(fdofs)))
         END IF
         ! pressure component
         pcomp = fdofs / 2
       ELSE
         IF( fdofs /= (dim+2) .AND. fdofs /= (dim+1) ) THEN
           CALL Fatal('FsiCouplingAssembly',&
-              'Inconsistant number of real dofs in NS solver: '//TRIM(I2S(fdofs)))
+              'Inconsistent number of real dofs in NS solver: '//TRIM(I2S(fdofs)))
         END IF
         pcomp = fdofs
       END IF
@@ -14929,10 +14929,10 @@ CONTAINS
     ELSE
       IF( IsHarmonic ) THEN
         IF( fdofs /= 2 ) CALL Fatal('FsiCouplingAssembly',&
-            'Inconsistant number of harmonic dofs in pressure solver: '//TRIM(I2S(fdofs)))
+            'Inconsistent number of harmonic dofs in pressure solver: '//TRIM(I2S(fdofs)))
       ELSE
         IF( fdofs /= 1 ) CALL Fatal('FsiCouplingAssembly',&
-            'Inconsistant number of real dofs in pressure solver: '//TRIM(I2S(fdofs)))
+            'Inconsistent number of real dofs in pressure solver: '//TRIM(I2S(fdofs)))
       END IF
       pcomp = 1
     END IF
@@ -15144,10 +15144,10 @@ CONTAINS
               ELSE                
                 CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
               END IF
-              
-              ! These must be created for compleness bacause the matrix topology of complex
-              ! matrices must be the same for all compoents.
-              CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)     
+
+              ! These must be created for completeness because the matrix topology of complex
+              ! matrices must be the same for all components.
+              CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
               CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp)
             ELSE
               CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')
@@ -15246,9 +15246,9 @@ CONTAINS
                   CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
                 END IF
 
-                ! These must be created for compleness bacause the matrix topology of complex
-                ! matrices must be the same for all compoents.
-                CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)     
+                ! These must be created for completeness because the matrix topology of complex
+                ! matrices must be the same for all components.
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)
                 CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
               ELSE
                 jstruct = sdofs*(SPerm(jj)-1)+1
@@ -15309,13 +15309,13 @@ CONTAINS
                 IF( FreeSim ) THEN
                   CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,MultSF*val)       ! Im
                 ELSE
-                  CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp) 
+                  CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp)
                 END IF
-                
-                ! These must be created for compleness bacause the matrix topology of complex
-                ! matrices must be the same for all compoents.
+
+                ! These must be created for completeness because the matrix topology of complex
+                ! matrices must be the same for all components.
                 CALL AddToMatrixElement(A_sf,jstruct,ifluid+1,0.0_dp)
-                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid,0.0_dp)            
+                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid,0.0_dp)
               ELSE
                 jstruct = sdofs*(SPerm(jj)-1)+k
                 
@@ -15357,13 +15357,13 @@ CONTAINS
               IF( FreeSim ) THEN
                 CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,MultSF*val)       ! Im
               ELSE
-                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp) 
+                CALL AddToMatrixElement(A_sf,jstruct+1,ifluid+1,0.0_dp)
               END IF
-              
-              ! These must be created for compleness bacause the matrix topology of complex
-              ! matrices must be the same for all compoents.
+
+              ! These must be created for completeness because the matrix topology of complex
+              ! matrices must be the same for all components.
               CALL AddToMatrixElement(A_sf,jstruct,ifluid+1,0.0_dp)
-              CALL AddToMatrixElement(A_sf,jstruct+1,ifluid,0.0_dp)            
+              CALL AddToMatrixElement(A_sf,jstruct+1,ifluid,0.0_dp)
             ELSE
               jstruct = sdofs*(SPerm(jj)-1)+1
 
@@ -15708,9 +15708,9 @@ CONTAINS
     Rows => A % Rows
     Rhs => A % Rhs
     Values => A % Values
-        
-    ! Set the mimimum value for each component, only nodel dofs consired
-    !-------------------------------------------------------------------
+
+    ! Set the minimum value for each component, only nodel dofs considered
+    !---------------------------------------------------------------------
     NoSet = 0
     DiagMax = 0.0_dp
     DiagSum = 0.0_dp
@@ -15757,10 +15757,10 @@ CONTAINS
       END DO
     END DO
 
-    CALL Info('LinearSystemMinDiagonal','Number of diagonal values set to mimimum: '//TRIM(I2S(NoSet)),Level=5)
-    WRITE( Message,'(A,ES12.3)') 'Avarage abs(diagonal) entry: ',DiagSum / n    
+    CALL Info('LinearSystemMinDiagonal','Number of diagonal values set to minimum: '//TRIM(I2S(NoSet)),Level=5)
+    WRITE( Message,'(A,ES12.3)') 'Average abs(diagonal) entry: ',DiagSum / n
     CALL Info('LinearSystemMinDiagonal',Message, Level=6 )
-    
+
     WRITE( Message,'(A,ES12.3)') 'Maximum abs(diagonal) entry: ',DiagMax
     CALL Info('LinearSystemMinDiagonal',Message, Level=6 )
 
@@ -16072,10 +16072,10 @@ CONTAINS
 
     corr = CorrCoeff * corr / M_L
 
-    ! Optinally skip applying the correction, just for debugging purposes
+    ! Optionally skip applying the correction, just for debugging purposes
     IF( SkipCorrection ) THEN
       CALL Info('FCT_Correction','Skipping Applying corrector',Level=4)
-    ELSE     
+    ELSE
       CALL Info('FCT_Correction','Applying corrector for the low order solution',Level=10)
       u = u + corr
       ! PRINT *,'FCT Norm After Correction:',SQRT( SUM( Solver % Variable % Values**2) )
@@ -16464,11 +16464,11 @@ CONTAINS
          END DO
          
          ! By default all components are applied mortar BC and some are turned off.
-         ! If the user does the opposite then the default for other components is True. 
+         ! If the user does the opposite then the default for other components is True.
          IF( SomeSet .AND. .NOT. ALL(SetDefined) ) THEN
            IF( SomeSkip ) THEN
-             CALL Fatal('GenerateConstraintMatrix','Dont know what to do with all components')
-           ELSE 
+             CALL Fatal('GenerateConstraintMatrix','Do not know what to do with all components')
+           ELSE
              CALL Info('GenerateConstraintMatrix',&
                  'Unspecified components will not be set for BC '//TRIM(I2S(bc_ind)),Level=10)
              DO i=1,Dofs
@@ -16678,7 +16678,7 @@ CONTAINS
 
 
            ! Add a diagonal entry if requested. When this is done at the final stage
-           ! all the hazzle with the right column index is easier. 
+           ! all the hassle with the right column index is easier.
            IF( ThisIsMortar ) THEN
              IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) THEN
                IF( .NOT. HaveMortarDiag ) THEN

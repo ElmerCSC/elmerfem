@@ -1576,7 +1576,7 @@ CONTAINS
         ! NOTE: The differentiation of the Hencky strain is done via a truncated 
         ! series expansion which may become inaccurate for large strains. 
         ! However, this inaccuracy should not break the consistency
-        ! of the solution method: if nonlinear iterations converge, we shoud have
+        ! of the solution method: if nonlinear iterations converge, we should have
         ! a solution. That is, inaccuracy of the strain expansion has the effect
         ! that the Newton iteration is replaced by inexact Newton iteration.
         ! Currently no warnings are given for the possibility that the strain

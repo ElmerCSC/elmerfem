@@ -1560,7 +1560,7 @@ CONTAINS
 
      ! Orphan elements are not currently present in the mesh so any
      ! boundary condition that exists is a possible flux element also.
-     ! Thus this routine is more or less obsolite. 
+     ! Thus this routine is more or less obsolete.
      possible = .TRUE.
 
      RETURN
@@ -2662,7 +2662,7 @@ CONTAINS
      RETURN
    END IF
 
-   ! The rest of the code in this subroutine is obsolite 
+   ! The rest of the code in this subroutine is obsolete
    IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
      IF ( ALLOCATED(STIFF) ) DEALLOCATE( STIFF,MASS,X )
      n = 0
@@ -3197,13 +3197,13 @@ CONTAINS
       CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
       CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
     END IF
-    
+
     IF( ListCheckPresent( Params, 'Dump system matrix') .OR. &
         ListCheckPresent( Params, 'Dump system RHS') ) THEN
-      CALL Error('DefaultSolve','> Dump System Matrix < and > Dump System Rhs < are obsolite')
-      CALL Fatal('DefaultSolve','Use > Linear System Save = True < instread!')
+      CALL Error('DefaultSolve','> Dump System Matrix < and > Dump System Rhs < are obsolete')
+      CALL Fatal('DefaultSolve','Use > Linear System Save = True < instead!')
     END IF
-    
+
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
       IF(.NOT. Found .OR. TRIM( saveslot ) == 'solve') THEN

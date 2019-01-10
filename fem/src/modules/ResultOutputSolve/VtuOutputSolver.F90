@@ -24,7 +24,7 @@
 !------------------------------------------------------------------------------
 !> Subroutine for saving the results in XML based VTK format (VTU). Both ascii and binary
 !> output is available, in single or double precision. The format is understood by 
-!> visualization softwares Paraview and ViSit, for example.
+!> visualization software Paraview and ViSit, for example.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
@@ -1605,7 +1605,7 @@ CONTAINS
           Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
           ComponentVector = .FALSE.
 
-          ! If we are looking for a vector just one dofs wont do!
+          ! If we are looking for a vector just one dofs won't do!
           ! This circumvents a problem somewhere else in the code. 
           IF( ASSOCIATED( Solution ) ) THEN
             IF( Rank > 0 .AND. Solution % Dofs <= 1 ) NULLIFY( Solution ) 

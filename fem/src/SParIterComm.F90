@@ -2020,7 +2020,7 @@ tstart = realtime()
            IF( .NOT.ASSOCIATED(commonlist) ) CYCLE
            !
            ! If everything went ok and the mesh data was unique, there
-           ! are only two PEs common to both parents. If not, thats bad:
+           ! are only two PEs common to both parents. If not, that's bad:
            !------------------------------------------------------------
            !IF( SIZE(commonlist) > 2 ) THEN
            !   WRITE(*,'(A,I4,A,I6,A,2I6,A,2I6,A,10I4)') &
@@ -2042,7 +2042,7 @@ tstart = realtime()
            Mesh % ParallelInfo % NeighbourList(i) % Neighbours => Gindices
         ELSE
            !
-           ! Either list1 or list2 is empty. Thats really bad:
+           ! Either list1 or list2 is empty. That's really bad:
            !---------------------------------------------------
            WRITE(*,'(A,I4,A,I6)') 'SParIterGlobalNumbering: PE:', ParEnv % MyPE+1, &
                 ' Could not determine owner for node(loc)=', i
@@ -2307,9 +2307,9 @@ tstart = realtime()
                  EXIT
               END IF
            END DO
-           
+
            IF( .NOT.(mm==1 .AND. nn==1) ) THEN
-              !PRINT *,'Nope, I dont have it. Sending back request to remove me from the neighbour list.'
+              !PRINT *,'Nope, I do not have it. Sending back request to remove me from the neighbour list.'
               CALL AddToCommonList( Request1(i) % DATA, TmpArray(1) )
               CALL AddToCommonList( Request1(i) % DATA, TmpArray(2) )
               CALL AddToCommonList( Request1(i) % DATA, TmpArray(3) )
@@ -2671,7 +2671,7 @@ tstart = realtime()
 
      DEALLOCATE( GIndices )
 !
-!    Send go singal to next PE in line...
+!    Send go signal to next PE in line...
 !    ------------------------------------
      DO i = ParEnv % MyPE+2, ParEnv % PEs
         IF ( ParEnv % Active(i) ) THEN

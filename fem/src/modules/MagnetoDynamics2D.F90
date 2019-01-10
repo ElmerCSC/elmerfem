@@ -2474,7 +2474,7 @@ CONTAINS
         IF (LorentzForceCompute) THEN
           BodyId = GetBody()
           ! Let's compute the JxB for all the bodies and 
-          ! then we sum from these for the components which are outputed.
+          ! then we sum from these for the components which are outputted.
 
           Bx = CMPLX(BatIp(1), BatIp(3), KIND=dp)
           By = CMPLX(BatIp(2), BatIp(4), KIND=dp)
@@ -2628,7 +2628,7 @@ CONTAINS
       !CALL ListAddConstReal( Model % Simulation,'res: sin mode fourier loss', ComponentLoss(2))       
     
       !---------------------------------------------------------------------------------
-      ! Screen ouput for componentwise and bodywise losses 
+      ! Screen output for componentwise and bodywise losses 
       !--------------------------------------------------------------------------------
       WRITE( Message,'(A,ES12.3)') 'Loss for cos mode: ', ComponentLoss(1)
       CALL Info('BSolver', Message, Level=6 )

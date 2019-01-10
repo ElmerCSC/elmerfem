@@ -389,9 +389,9 @@ CONTAINS
 
     ELSE IF( JouleMode == 4 ) THEN
       !------------------------------------------------------------------------------
-      !  Magnetic induction equation, might be obsolite
+      !  Magnetic induction equation, might be obsolete
       !------------------------------------------------------------------------------
-      stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis,dBasisdx )      
+      stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis,dBasisdx )
       elcond = SUM( ElectricConductivity(1:n) * Basis(1:n) )
       IF( elcond < TINY( elcond ) ) RETURN
 
@@ -579,7 +579,7 @@ CONTAINS
     By = 0.0D0
     Bz = 0.0D0
 !------------------------------------------------------------------------------
-!   Go trough model elements, we will compute on average of elementwise
+!   Go through model elements, we will compute on average of elementwise
 !   curls on nodes of the model
 !------------------------------------------------------------------------------
     DO t=1,CurrentModel % NumberOfBulkElements
@@ -592,7 +592,7 @@ CONTAINS
       Nodes % y(1:n) = CurrentModel % Nodes % y( NodeIndexes )
       Nodes % z(1:n) = CurrentModel % Nodes % z( NodeIndexes )
 !------------------------------------------------------------------------------
-!     Trough element nodes
+!     Through element nodes
 !------------------------------------------------------------------------------
 
       IF (MINVAL(Reorder(NodeIndexes)) > 0) THEN

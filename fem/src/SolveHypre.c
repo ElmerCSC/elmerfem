@@ -28,7 +28,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Thomas Zwinger, Jonas Thies, Peter Råback, Mika Malinen
+! *  Authors: Juha Ruokolainen, Thomas Zwinger, Jonas Thies, Peter Rï¿½back, Mika Malinen
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -68,13 +68,13 @@ HYPRE_Solver solver, precond;
    by turning the following flag on */
 #define HAVE_GMRES 1
 
-/* there are two possible procedures of calling HYPRE here, 
+/* there are two possible procedures of calling HYPRE here,
   the standard one (does everything once), and a step-wise
   procedure of setup, solve and cleanup.
-  The first one is obsolite. 
+  The first one is obsolete. 
   TO DO: we should add the possibility to keep the precon-
   ditioner the same but update the system matrix (SolveHYPRE3), right now
-  calling SolveHYPRE2 solves with the matrix passed into   
+  calling SolveHYPRE2 solves with the matrix passed into
   SolveHYPRE1.
 
  standard call: - convert matrix

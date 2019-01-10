@@ -1320,7 +1320,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END DO
  
   !------------------------------------------------------------------------------
-  ! For consistancy checks one may print out a value imitating ComputeChange
+  ! For consistency checks one may print out a value imitating ComputeChange
   !------------------------------------------------------------------------------
   NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
   IF( NormInd > 0 .AND. NormInd <= NoValues ) THEN
@@ -2985,7 +2985,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !      Because the intersection nodes do not really exist the field variables 
-!      must be avaluated using the nodes of the parent element.
+!      must be evaluated using the nodes of the parent element.
 !------------------------------------------------------------------------------
             
           Point(1) = x

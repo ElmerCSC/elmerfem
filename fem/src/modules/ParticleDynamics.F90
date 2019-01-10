@@ -979,9 +979,9 @@ CONTAINS
 
          FieldMode = GetString( Params,'Particle To Field Mode',GotFieldMode)
          IF( GotFieldMode ) THEN
-           CALL Fatal('ParticleFieldInteraction','> Particle to Field Mode < is obsolite. Use > Field 1 < instaed!')
+           CALL Fatal('ParticleFieldInteraction','> Particle to Field Mode < is obsolete. Use > Field 1 < instead!')
          END IF
-           
+
          ActiveOpers = 0
          ActiveGroups = 0
          NormalizedVars = .FALSE.
@@ -1192,7 +1192,7 @@ CONTAINS
          Force = Force + Gravity * Mass
        END IF
 
-       ! For 1st order models the velocity is solved implicitely, when drag is known
+       ! For 1st order models the velocity is solved implicitly, when drag is known
        ! Therefore it is a explicit force only for 2nd order models.
        !----------------------------------------------------------------------------
        IF( GotDamping .AND. TimeOrder == 2 ) THEN
@@ -1226,10 +1226,10 @@ CONTAINS
            CALL GetScalarFieldInMesh(CoordCondVar, BulkElement, Basis, val ) 
            IF( val > TINY( val ) ) Status = PARTICLE_FIXEDCOORD
          END IF
-         
+
          !-------------------------------------------------------------------------
          ! Add interaction with fields i.e. fluidic, electrostatic forces etc.
-         ! If acceleration is not needed solve implicitely for the velocity
+         ! If acceleration is not needed, solve implicitly for the velocity
          ! when drag coefficient is known. Hence do not set that as force here.
          !-------------------------------------------------------------------------
          IF( GotVelo ) THEN
@@ -1374,10 +1374,10 @@ CONTAINS
              ForcePerm => Var % Perm 
            ELSE
              ForcePerm => NULL()
-           END IF                          
+           END IF
 
            DO i = 1,n
-             ! As the weight should be proporpotional to the particle amount rather than
+             ! As the weight should be proportional to the particle amount rather than
              ! element volume this is not to be multiplied with local element size!
              !--------------------------------------------------------------------------
              weight = Basis(i)
@@ -1478,10 +1478,10 @@ CONTAINS
        n = Mesh % MaxElementNodes
        
        ALLOCATE( Basis(n), dBasisdx(n,3) )
-       
-       ! Currently, one may need a different radius if the mesh leaks i.e. is 
-       ! include triangles or tetrahedrans with nodes, but no faces on the surface
-       !---------------------------------------------------------------    
+
+       ! Currently, one may need a different radius if the mesh leaks i.e. is
+       ! include triangles or tetrahedrons with nodes, but no faces on the surface
+       !---------------------------------------------------------------
        Rad = GetCReal( Params,'Wall Particle Radius',Found)
        IF(.NOT. Found) Rad = GetCReal( Params,'Particle Radius',Found)
        IF(.NOT. Found) THEN

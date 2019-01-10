@@ -126,7 +126,7 @@ CONTAINS
 !   
 !> Apply Adams-Bashforth method to local matrix equation.
 !> This method stores prev_stiff*prevSol in Element % propertydata and 
-!> the correspoding forcing terms.
+!> the corresponding forcing terms.
 !> PredCorrOrder=1, Explicit Euler
 !> PredCorrOrder=2, 2nd order Adams-Bashforth
 !------------------------------------------------------------------------------

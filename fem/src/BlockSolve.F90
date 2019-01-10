@@ -1492,7 +1492,7 @@ CONTAINS
       
       DO NoCol = 1,NoVar           
         ! This ensures that the diagonal itself is not subtracted
-        ! befor computing the bnorm used to estimate the convergence.
+        ! before computing the bnorm used to estimate the convergence.
         IF( NoCol == NoRow ) CYCLE
         
         Var => BlockMatrix % SubVector(NoCol) % Var

@@ -301,7 +301,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   FreeSurfPerm => Solver % Variable % Perm       ! Permutations for free surface displacement
   PreFreeSurf  => Solver % Variable % PrevValues ! Nodal values for free surface displacement
   !------------------------------------------------------------------------------
-  !    Get variabel/solver name
+  !    Get variable/solver name
   !------------------------------------------------------------------------------
   IF (VariableName .NE. TRIM(Solver % Variable % Name)) THEN
     VariableName = TRIM(Solver % Variable % Name)
@@ -311,10 +311,10 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   END IF
     
   SolverName = 'FreeSurfaceSolver ('// TRIM(Solver % Variable % Name) // ')'
-  
+
   !------------------------------------------------------------------------------
   !    if this partition (or the serial problem) has no free surface,
-  !    then nothing to be doneGet variabel/solver name
+  !    then nothing to be doneGet variable/solver name
   !------------------------------------------------------------------------------
   IF ( COUNT(FreeSurfPerm/=0)==0) THEN
      IF (ParEnv % PEs > 1) THEN

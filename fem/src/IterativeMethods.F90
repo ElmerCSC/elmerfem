@@ -46,7 +46,7 @@
 
 #include "huti_fdefs.h"
 
-! if using old huti_fdefs.h, later obsolite
+! if using old huti_fdefs.h, later obsolete
 #ifndef HUTI_MAXTOLERANCE
 #define HUTI_MAXTOLERANCE dpar(2)
 #endif

@@ -330,7 +330,7 @@ subroutine lua_eval_f(L, fname, X, y)
   end do
 end subroutine
 
-!> Execute fname in lua state L, dont collect results from stack but expect user to collect them.
+!> Execute fname in lua state L, do not collect results from stack but expect user to collect them.
 subroutine lua_exec_fun(L, fname, nin, nout)
   type(LuaState_t) :: L
   character(kind=c_char), intent(in) :: fname(*)

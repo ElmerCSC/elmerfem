@@ -1126,8 +1126,8 @@ CONTAINS
           end do
 
           !
-          ! Factorize the G'G, and we are done intializing:
-          ! -----------------------------------------------
+          ! Factorize the G'G, and we are done initializing:
+          ! ------------------------------------------------
           call list_tocrsmatrix(gtg_m)
 
           g_n=gtg_m % numberofrows

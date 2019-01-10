@@ -589,7 +589,7 @@ END INTERFACE
 
 !------------------------------------------------------------------------------
 !      Here we actually start the simulation ....
-!      First go trough timeintervals
+!      First go through timeintervals
 !------------------------------------------------------------------------------
        ExecCommand = ListGetString( CurrentModel % Simulation, &
                  'Control Procedure', GotIt )
@@ -751,10 +751,10 @@ END INTERFACE
          TestCount = TestCount + 1
          Success = .TRUE.
 
-         ! Compare either to existing norm (ensures consistancy) 
+         ! Compare either to existing norm (ensures consistency)
          ! or to existing solution (may also be used to directly verify)
          ! Usually only either of these is given but for the sake of completeness
-         ! both may be used at the same time. 
+         ! both may be used at the same time.
          IF( CompareNorm ) THEN
            Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
            IF(.NOT. Found ) Tol = 1.0d-5
@@ -1938,7 +1938,7 @@ END INTERFACE
      DO interval = 1,TimeIntervals
 
 !------------------------------------------------------------------------------
-!      go trough number of timesteps within an interval
+!      go through number of timesteps within an interval
 !------------------------------------------------------------------------------
        timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)
        IF(.NOT.GotIt) timePeriod = HUGE(timePeriod)
@@ -1973,8 +1973,8 @@ END INTERFACE
            dtfunc = ListGetConstReal( CurrentModel % Simulation, &
                'Timestep Function', gotIt)
            IF(GotIt) THEN
-             CALL Warn('ExecSimulation','Obsolite keyword > Timestep Function < , use > Timestep Size < instead')
-           ELSE	
+             CALL Warn('ExecSimulation','Obsolete keyword > Timestep Function < , use > Timestep Size < instead')
+           ELSE
              dtfunc = ListGetCReal( CurrentModel % Simulation, &
                  'Timestep Size', gotIt)
            END IF

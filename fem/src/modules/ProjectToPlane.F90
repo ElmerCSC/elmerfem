@@ -300,9 +300,9 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
   END IF
 
 
-  ! By contruction split everything into triangles        
+  ! By construction split everything into triangles
   corners = 3
-  
+
   TriangleElement % TYPE => GetElementType( 303, .FALSE. )
 
   FaceElement => TriangleElement
@@ -1123,9 +1123,9 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
   END DO
 
 
-  ! By contruction split everything into triangles        
+  ! By construction split everything into triangles
   corners = 3
-  
+
   TriangleElement % TYPE => GetElementType( 303, .FALSE. )
 
   FaceElement => TriangleElement

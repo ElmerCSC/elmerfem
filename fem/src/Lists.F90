@@ -2516,7 +2516,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Just checks if there is a untreated keyword in the routine in the list.
-!> In case there is resturn a warning. 
+!> In case there is return a warning. 
 !------------------------------------------------------------------------------
    SUBROUTINE ListUntreatedWarn( List, Name, Caller ) 
 !------------------------------------------------------------------------------
@@ -2537,7 +2537,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Just checks if there is a untreated keyword in the routine in the list.
-!> In case there is resturn a Fatal. 
+!> In case there is return a Fatal. 
 !------------------------------------------------------------------------------
    SUBROUTINE ListUntreatedFatal( List, Name, Caller ) 
 !------------------------------------------------------------------------------
@@ -3152,7 +3152,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> A generalized version of ListGetLogical. Uses logical, only if the keyword is
 !> of type locical, otherwise returns True if the keyword is present.
-!> Since the absense if a sign of False there is no separate Found flag.
+!> Since the absence if a sign of False there is no separate Found flag.
 !------------------------------------------------------------------------------
    RECURSIVE FUNCTION ListGetLogicalGen( List, Name) RESULT(L)
 !------------------------------------------------------------------------------
@@ -3497,7 +3497,7 @@ CONTAINS
   
 !------------------------------------------------------------------------------
 !> Given a string containing comma-separated variablenames, reads the strings
-!> and obtains the corresponging variables to a table.
+!> and obtains the corresponding variables to a table.
 !------------------------------------------------------------------------------
   SUBROUTINE ListParseStrToVars( str, slen, name, count, VarTable, &
       SomeAtIp, SomeAtNodes, AllGlobal )
@@ -6209,7 +6209,7 @@ CONTAINS
      
 !------------------------------------------------------------------------------
 !> Initializes the variable handle in a similar manner as the keyword handle is
-!> initialied. This handle is more compact. Does not support p-fields or
+!> initialized. This handle is more compact. Does not support p-fields or
 !> Hcurl & Hdiv fields yet. 
 !------------------------------------------------------------------------------
    SUBROUTINE ListInitElementVariable( Handle, Name, USolver, UVariable, tStep )

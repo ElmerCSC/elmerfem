@@ -50,7 +50,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !     INPUT: Linear equation matrix information
 !
 !  INTEGER :: DOFs
-!     INPUT: Number of degrees of freedon of the equation
+!     INPUT: Number of degrees of freedom of the equation
 !
 !  INTEGER :: n
 !     INPUT: Length of unknown vector

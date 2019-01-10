@@ -251,7 +251,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   CALL OpenLineFile()
   
-  ! Search exisiting boundary to save if any
+  ! Search existing boundary to save if any
   !------------------------------------------------------------------------------
   CALL SaveExistingLines()
 

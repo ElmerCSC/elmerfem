@@ -94,10 +94,10 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
         '-dg Electric Field e[Electric Field e:'//TRIM(I2S(dim))//']' )
     IF( CalculateNodal ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Electric Field[Electric Field:'//TRIM(I2S(dim))//']' )    
+        'Electric Field[Electric Field:'//TRIM(I2S(dim))//']' )
   END IF
 
-  ! Nodal fields that may direcly be associated as nodal loads
+  ! Nodal fields that may directly be associated as nodal loads
   IF (ListGetLogical(Params,'Calculate Nodal Heating',Found))  THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
         'Nodal Joule Heating' )
@@ -926,8 +926,8 @@ CONTAINS
             LocalSolved = .TRUE.
           END IF
 
-          ! Note that even though while calling we implicitely assumes elemental
-          ! and nodal fields the convention is not assumed here. 
+          ! Note that even though while calling we implicitly assumes elemental
+          ! and nodal fields the convention is not assumed here.
           IF( pVar % TYPE == variable_on_nodes_on_elements ) THEN
             ind = pVar % dofs * (pVar % Perm(Element % DGIndexes(1:n))-1)+m
             pVar % Values(ind(1:n)) = x(1:n)          
@@ -942,7 +942,7 @@ CONTAINS
             j = pVar % dofs * ( pVar % Perm( Element % ElementIndex )-1)+m
             pVar % Values(j) = SUM( x(1:n) ) / n
           ELSE
-            CALL Warn('LocalPostSolve','Dont know what to do with variable type: '//TRIM(I2S(pVar % TYPE)))
+            CALL Warn('LocalPostSolve','Do not know what to do with variable type: '//TRIM(I2S(pVar % TYPE)))
           END IF
         END DO
       END DO

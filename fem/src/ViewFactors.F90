@@ -162,11 +162,11 @@
 !------------------------------------------------------------------------------
      OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', ERR=10 )
      GOTO 20
-                     
-                                                                                          
+
+
 10   CONTINUE
-     CALL Fatal( 'ElmerSolver', 'Unable to find ELMERSOLVER_STARTINFO, cant execute.' )
-                                                                                                              
+     CALL Fatal( 'ElmerSolver', 'Unable to find ELMERSOLVER_STARTINFO, cannot execute.' )
+
 20   CONTINUE
        READ(1,'(a)') ModelName
      CLOSE(1)
@@ -242,9 +242,9 @@
      END IF
 
      ! The routine originally plays with the element list and therefore
-     ! when several radiation boundaries are needed both the original and 
-     ! the new elementlist needs to be in the memory. Thus the hazzle.
-     
+     ! when several radiation boundaries are needed both the original and
+     ! the new elementlist needs to be in the memory. Thus the hassle.
+
      MinFactor = ListGetConstReal(Solver % Values,'Minimum View Factor',GotIt)
      IF(.NOT. GotIt) MinFactor = 1.0d-20
 
