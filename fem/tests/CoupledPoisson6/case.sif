@@ -1,5 +1,5 @@
-!# Solve just one Laplace equation now the level is detemined by a integral over
-!# the boundary \int T dS = const. Note that even though there is just one equation currently its 
+!# Solve just one Laplace equation now the level is determined by a integral over
+!# the boundary \int T dS = const. Note that even though there is just one equation currently its
 !# not possible to determine the vector internally.
 
 Header

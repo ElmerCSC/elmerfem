@@ -1,12 +1,12 @@
 !-------------------------------------------------------------
 ! Gives the x(or y) component of tangential reaction force
-! multiplied by a friction coefficient. 
+! multiplied by a friction coefficient.
 !
-! The subroutine is needed bacause when we use the model for 
+! The subroutine is needed because when we use the model for 
 ! friction force where the nodal loads in normal direction is
 ! multiplied by a friction coefficient we end in problems for
 ! normal-tangential coordinate system. There we need to eliminate
-! the tangential reaction force from the loads. 
+! the tangential reaction force from the loads.
 !-------------------------------------------------------------
   FUNCTION TangentForce( Model, n, t ) RESULT(f)
     USE DefUtils

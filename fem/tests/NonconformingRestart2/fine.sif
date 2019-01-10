@@ -88,7 +88,7 @@ Solver 2
 
 ! The leading variable + exported variables that follow that
 ! The variables that we want to restart should be in this list,
-! or they can be allocated by some other solver associcated to the "coarse" mesh.
+! or they can be allocated by some other solver associated to the "coarse" mesh.
   Variable = Flow Solution[Pressure Velocity:2]
   Exported Variable 1 = Trigo
   Exported Variable 2 = Height

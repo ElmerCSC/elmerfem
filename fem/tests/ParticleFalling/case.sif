@@ -1,6 +1,6 @@
 ! In this example particles are falling one second under the influence of unity gravity field.
 ! As the particles are initially at rest they obtain velocity of 1.0 m/s in the end. 
-! The information is used to constract a continuous velocity field from the data
+! The information is used to construct a continuous velocity field from the data
 ! with the help of an auxiliary solver that utilizes the r.h.s. created by the particle solver.
 ! Periodic BCs are enforced on the particles. 
 !---------------------------------------------------------------------------------------------

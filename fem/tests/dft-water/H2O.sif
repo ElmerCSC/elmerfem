@@ -87,14 +87,14 @@ Solver 2
   Linear System Convergence Tolerance = 1e-9
   Linear System Residual Output = 0
   Linear System Symmetric = Logical True
-  Linear System Abort Not Converged = Logical False  
+  Linear System Abort Not Converged = Logical False
 
   ! Linear System Solver = "Direct"
 
-  ! Choose the type of the XC Potential, possible choises are:
+  ! Choose the type of the XC Potential, possible choices are:
   !   "None"
   !   "Perdew-Zunger"
-  !   "Von Barth-Hedin" 
+  !   "Von Barth-Hedin"
   !   "Gunnarsson-Lundqvist"
   !   "Perdew-Wang"
 

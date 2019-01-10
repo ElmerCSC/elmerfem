@@ -26,6 +26,29 @@ ELSE()
   MESSAGE(WARNING "  \n Missing: >NetCDF_INCLUDE_DIR< , >NetCDF_LIBRARY<,  >NetCDFF_LIBRARY< \n some functionalities will be disabled")
 ENDIF(NetCDF_FOUND)
 
+# ---------------------- #
+# -- HDF5 libraries -- #
+#----------------------- #
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Elmer/Ice package: Looking for [HDF5] & [HDF5 Fortran] libraries")
+
+FIND_PACKAGE(PHDF5)
+
+IF(PHDF5_FOUND)
+
+  SET(HAVE_HDF5 TRUE)
+  MARK_AS_ADVANCED(HAVE_HDF5)
+  INCLUDE_DIRECTORIES(${PHDF5_INCLUDE_DIR})
+  ADD_DEFINITIONS(-DHAVE_HDF5)
+
+  MESSAGE(STATUS "  HDF5:           " "${PHDF5_FOUND}")
+  MESSAGE(STATUS "  HDF5_INC:       " "${PHDF5_INCLUDE_DIR}")
+  MESSAGE(STATUS "  HDF5_LIBS:     " "${PHDF5_LIBRARIES}")
+ELSE()
+  MESSAGE(STATUS "Library not found: >HDF5_FOUND< ")
+  MESSAGE(WARNING "  \n Missing: >HDF5_INCLUDE_DIR< , >HDF5_LIBRARY<,  >HDF5F_LIBRARY< \n some functionalities will be disabled")
+ENDIF(PHDF5_FOUND)
+
 
 # ---------------------- #
 # -- LOOK FOR MMG     -- #
@@ -93,6 +116,9 @@ TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver)
 
 IF(HAVE_NETCDF)
 TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NetCDF_LIBRARIES})
+ENDIF()
+IF(HAVE_HDF5)
+TARGET_LINK_LIBRARIES(ElmerIceSolvers ${PHDF5_LIBRARIES})
 ENDIF()
 # IF(HAVE_MMG)
 #   TARGET_LINK_LIBRARIES(ElmerIceSolvers ${MMG_LIBRARY})
