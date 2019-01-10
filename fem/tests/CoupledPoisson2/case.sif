@@ -1,5 +1,5 @@
 !# This is similar to as1.sif except a non-trivial source term is introduced. Basically this
-!# is linear but treting it explicitely creates a nasty feedback that is treated with a nonlinear
+!# is linear but treating it explicitly creates a nasty feedback that is treated with a nonlinear
 !# solver with linesearch using the Armijo-Goldstein criterion.
 
 Header

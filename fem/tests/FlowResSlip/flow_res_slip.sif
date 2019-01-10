@@ -1,4 +1,4 @@
-! This case describes the flow trough a very small hole
+! This case describes the flow through a very small hole
 ! where the flow is effectively Stokes flow. Then a flow resistance
 ! may be defined for the flow.
 !

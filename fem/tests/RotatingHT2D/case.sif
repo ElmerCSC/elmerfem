@@ -4,15 +4,15 @@
 ! between rotating "rotor" at the inside and "stator" at the outside.
 !
 ! In between there is a rotationally symmetric interface where continuity
-! should be achieved with mortar BCs. Only a quarter of the symmetry is 
-! modelled which results to two additional mortar BCs. 
+! should be achieved with mortar BCs. Only a quarter of the symmetry is
+! modelled which results to two additional mortar BCs.
 !
-! The periodic BCs for Navier-Stokes are only set for pressure since 
+! The periodic BCs for Navier-Stokes are only set for pressure since
 ! for velocity is not continuous component-wise. For the N-T system we use
 ! "rotational normals" which are easily consistent between stator and rotor.
 !
-! In each timestep the temperature and nodal heat fluxes are everaged 
-! and also lumped fluxes are computed. 
+! In each timestep the temperature and nodal heat fluxes are averaged
+! and also lumped fluxes are computed.
 !
 ! P.R. 17.4.2015 & 2.6.2016
 !-------------------------------------------------------------------------
@@ -33,14 +33,14 @@ Header
   Include Path ""
   Results Directory ""
 End
- 
+
 Simulation
   Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
 !  Timestep Intervals = $steps
-! This is chaneged for the test only
+! This is changed for the test only
   Timestep Intervals = 2
   Timestep Sizes = $dt
   Steady State Max Iterations = 1
