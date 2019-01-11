@@ -8893,7 +8893,7 @@ END FUNCTION SearchNodeL
             Eps = 1.0_dp
           END IF
 
-          str = TRIM( Solver % Variable % Name ) // ' Derivative'
+          str = GetVarname(Solver % Variable) // ' Derivative'
           VeloVar => VariableGet( Solver % Mesh % Variables, str )
           IF( ASSOCIATED( VeloVar ) ) THEN
             CALL Info(Caller,'Computing variable:'//TRIM(str))

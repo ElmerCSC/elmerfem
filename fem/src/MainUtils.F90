@@ -2231,7 +2231,7 @@ CONTAINS
       Solver % TimeOrder = 0
 
       IF( ListGetLogical( Solver % Values,'Calculate Derivative',Found) ) THEN
-        str = TRIM( Solver % Variable % Name ) // ' Derivative'
+        str = GetVarname(Solver % Variable) // ' Derivative'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
             str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm, &
             VarType = Solver % Variable % Type )
