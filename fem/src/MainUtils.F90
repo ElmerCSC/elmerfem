@@ -2235,7 +2235,7 @@ CONTAINS
         DoIt = ListGetLogical( Solver % Values,'Nonlinear Calculate Derivative',Found)
       END IF
       IF( DoIt ) THEN
-        str = TRIM( Solver % Variable % Name ) // ' Derivative'
+        str = GetVarname(Solver % Variable) // ' Derivative'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
             str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm, &
             VarType = Solver % Variable % TYPE )
