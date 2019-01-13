@@ -499,18 +499,33 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Add a row together with another row of a CRS matrix, and thereafter zero it.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_MoveRow( A,n1,n2,coeff,staycoeff )
+  SUBROUTINE CRS_MoveRow( A,n1,n2,coeff,staycoeff,movecoeff )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A    !< Structure holding the matrix
     INTEGER, INTENT(IN) :: n1         !< Row number to be copied and zerod
     INTEGER, INTENT(IN) :: n2         !< Row number to be added
     REAL(KIND=dp),OPTIONAL :: coeff   !< Optional coefficient to multiply the row to be copied with
     REAL(KIND=dp),OPTIONAL :: staycoeff   !< Optional coefficient to multiply the staying row
+    REAL(KIND=dp),OPTIONAL :: movecoeff   !< Optional coefficient to multiply the row copied to other direction
 !------------------------------------------------------------------------------
-
     REAL(KIND=dp) :: val, c, d
-    INTEGER :: i,j
+    INTEGER :: i,j,i2
+    REAL(KIND=dp), ALLOCATABLE :: Row2(:)
+    
+    
+    ! memorize the row that will be written over
+    IF( PRESENT( movecoeff ) ) THEN      
+      i = A % Rows(n2+1)-A % Rows(n2)
+      ALLOCATE( Row2(i) )
+      DO i = A % Rows(n2), A % Rows(n2)-1
+        i2 = i - A % Rows(n2) + 1 
+        j = A % Cols(i)
+        val = A % Values(i) 
+        Row2(i2) = val
+      END DO
+    END IF
 
+    
     IF( PRESENT(Coeff)) THEN
       c = coeff
     ELSE
@@ -522,7 +537,7 @@ CONTAINS
     ELSE
       d = 0.0_dp
     END IF
-
+    
     DO i=A % Rows(n1),A % Rows(n1+1)-1
       j = A % Cols(i)
       val = A % Values(i) 
@@ -532,6 +547,18 @@ CONTAINS
       END IF
     END DO
 
+    IF( PRESENT( movecoeff ) ) THEN      
+      DO i = A % Rows(n2), A % Rows(n2)-1
+        i2 = i - A % Rows(n2) + 1 
+        j = A % Cols(i)
+        val = Row2(i2)
+        IF( ABS( val ) > TINY( val ) ) THEN
+          CALL CRS_AddToMatrixElement( A,n1,j,movecoeff*val )      
+        END IF
+      END DO
+    END IF
+
+    
   END SUBROUTINE CRS_MoveRow
 !------------------------------------------------------------------------------
   

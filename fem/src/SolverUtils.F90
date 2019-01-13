@@ -340,11 +340,11 @@ CONTAINS
 !> Moves a row and and sumes it with the values of a second one, optionally 
 !> multiplying with a constant.
 !------------------------------------------------------------------------------
-   SUBROUTINE MoveRow( A, n1, n2, Coeff, StayCoeff )
+   SUBROUTINE MoveRow( A, n1, n2, Coeff, StayCoeff, MoveCoeff )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      INTEGER :: n1, n2
-     REAL(KIND=dp), OPTIONAL :: Coeff, StayCoeff
+     REAL(KIND=dp), OPTIONAL :: Coeff, StayCoeff, MoveCoeff
 !------------------------------------------------------------------------------
 
      SELECT CASE( A % FORMAT )
