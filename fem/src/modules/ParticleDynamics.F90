@@ -716,8 +716,8 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     !---------------------------------------------------------------
     CALL DeleteLostParticles( Particles )
 
-    IF( OutputInterval > 0 .AND. MOD(i,OutputInterval) == 0) THEN
-      CALL SaveParticleData( Model,Solver,dt,TransientSimulation )
+    IF( OutputInterval > 0 ) THEN
+      IF ( MOD(i,OutputInterval) == 0) CALL SaveParticleData( Model,Solver,dt,TransientSimulation )
     END IF
 
     ! Write estimates of remaining time in log scale
