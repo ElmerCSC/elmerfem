@@ -381,8 +381,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   NumberOfDofNodes = 0
 
   IF( DG .OR. DN ) THEN    
-    IF(.NOT. CheckAnyElementalField() ) THEN
-      CALL Info('VtuOutputSolver','No elemental fields, omitting discontinuity creation!',Level=6)
+    IF(.NOT. CheckAnyDGField() ) THEN
+      CALL Info('VtuOutputSolver','No DG or IP fields, omitting discontinuity creation!',Level=6)
       DG = .FALSE. 
       DN = .FALSE.
     END IF
@@ -879,18 +879,18 @@ CONTAINS
 
 
 
-  ! Check whether there is any elemental field to be saved. 
+  ! Check whether there is any discontinuous galerkin field to be saved. 
   ! It does not make sense to use discontinuous saving if there are no discontinuous fields.
   ! It will even result to errors since probably there are no DG indexes either. 
-  FUNCTION CheckAnyElementalField() RESULT ( HaveAnyElemental ) 
+  FUNCTION CheckAnyDGField() RESULT ( HaveAnyDG ) 
 
-    LOGICAL :: HaveAnyElemental
+    LOGICAL :: HaveAnyDG
     INTEGER :: Rank, Vari, VarType
     CHARACTER(LEN=1024) :: Txt, FieldName
     TYPE(Variable_t), POINTER :: Solution
     LOGICAL :: Found
     
-    HaveAnyElemental = .FALSE.
+    HaveAnyDG = .FALSE.
 
     DO Rank = 0,1
       DO Vari = 1, 999
@@ -909,15 +909,14 @@ CONTAINS
         VarType = Solution % Type
         
         IF ( VarType == Variable_on_nodes_on_elements .OR. &
-            VarType == Variable_on_elements .OR. &
             VarType == Variable_on_gauss_points ) THEN
-          HaveAnyElemental = .TRUE.
+          HaveAnyDG = .TRUE.
           EXIT
         END IF
       END DO
     END DO
 
-  END FUNCTION CheckAnyElementalField
+  END FUNCTION CheckAnyDGField
 
 
 
@@ -1574,7 +1573,7 @@ CONTAINS
       CALL AscBinStrWrite( OutStr ) 
     END IF
 
-    IF( SaveElemental .AND. .NOT. ( DG .OR. DN ) ) THEN
+    IF( SaveElemental ) THEN
       CALL Info('VtuOutputSolver','Writing elemental fields',Level=10)
       NoFieldsWritten = 0
       DO Rank = 0,1
@@ -1624,10 +1623,15 @@ CONTAINS
             END IF
           END IF
           
-          VarType = Solution % Type
-          Found = ( VarType == Variable_on_nodes_on_elements .OR. &
-              VarType == Variable_on_gauss_points  .OR. &
-              VarType == Variable_on_elements )
+          VarType = Solution % TYPE
+
+          IF( DG .OR. DN ) THEN
+            Found = ( VarType == Variable_on_elements )
+          ELSE
+            Found = ( VarType == Variable_on_nodes_on_elements .OR. &
+                VarType == Variable_on_gauss_points  .OR. &
+                VarType == Variable_on_elements )            
+          END IF
           IF (.NOT. Found ) CYCLE
           
           Perm => Solution % Perm
@@ -2342,8 +2346,9 @@ CONTAINS
         END IF
         
         VarType = Solution % Type
+        IF( VarType == Variable_on_elements ) CYCLE
+
         IF( VarType == Variable_on_nodes_on_elements .OR. &
-            VarType == Variable_on_elements .OR. &
             VarType == Variable_on_gauss_points ) THEN
           IF( .NOT. ( ( DG .OR. DN ) .AND. SaveElemental ) ) CYCLE
         END IF
@@ -2420,11 +2425,11 @@ CONTAINS
   END IF
 
 
-    ! Elementwise information
-    !-------------------------------------
-    WRITE( VtuUnit,'(A)') '    <PCellData>'
+  ! Elementwise information
+  !-------------------------------------
+  WRITE( VtuUnit,'(A)') '    <PCellData>'
 
-  IF( SaveElemental  .AND. .NOT. ( DG .OR. DN ) ) THEN
+  IF( SaveElemental ) THEN
     IF( ScalarsExist .OR. VectorsExist ) THEN
       DO Rank = 0,2
         DO Vari = 1, 999
@@ -2458,9 +2463,15 @@ CONTAINS
           END IF
           
           VarType = Solution % Type
-          IF( VarType /= Variable_on_nodes_on_elements .AND. &
-              VarType /= Variable_on_elements .AND. &
-              VarType /= Variable_on_gauss_points ) CYCLE
+          
+          IF( DG .OR. DN ) THEN
+            Found = ( VarType /= Variable_on_elements )
+          ELSE            
+            Found = ( VarType /= Variable_on_nodes_on_elements .AND. &
+                VarType /= Variable_on_elements .AND. &
+                VarType /= Variable_on_gauss_points )
+          END IF
+          IF( .NOT. Found ) CYCLE
 
           IF( ASSOCIATED(Solution % EigenVectors)) THEN
             NoModes = SIZE( Solution % EigenValues )
