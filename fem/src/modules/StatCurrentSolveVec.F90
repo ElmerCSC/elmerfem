@@ -698,7 +698,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
     IF( PostVars(i) % HaveVar ) PostVars(i) % Var % Values = 0.0_dp
   END DO
   
-  CalcHeating = ANY( PostVars(1:2) % HaveVar ) 
+  CalcHeating = ANY( PostVars(1:3) % HaveVar ) 
   CalcCurrent = ANY( PostVars(4:6) % HaveVar ) 
   CalcField = ANY( PostVars(7:8) % HaveVar ) 
 
@@ -901,8 +901,10 @@ CONTAINS
     DO FieldType = 1, 3
 
       IF( FieldType == 1 ) THEN
+        ! Joule heating has one component
         dofs = 1
       ELSE
+        ! Current and electric field has three components
         dofs = 3
       END IF
      
