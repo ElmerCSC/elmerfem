@@ -1393,7 +1393,7 @@ CONTAINS
      INTEGER i,j,k,l,k1,t,n, p,m, minEdgeDOFs, maxEdgeDOFs, &
            minFaceDOFs, maxFaceDOFs, BDOFs, cols, istat
      INTEGER, POINTER :: Ivals(:)
-     INTEGER, ALLOCATABLE :: InvInitialReorder(:)
+     INTEGER, ALLOCATABLE, SAVE :: InvInitialReorder(:)
      INTEGER :: nthr
      LOGICAL :: UseThreads
      LOGICAL, ALLOCATABLE :: ConstrainedNode(:)
