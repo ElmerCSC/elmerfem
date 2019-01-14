@@ -1481,6 +1481,7 @@ CONTAINS
        CALL Info('CreateMatrix','creating initial permutation',Level=14)
        k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB )
        IF ( k <= 0 ) THEN
+         IF(ALLOCATED(InvInitialReorder)) DEALLOCATE(InvInitialReorder)
          RETURN
        END IF
      ELSE
@@ -1537,7 +1538,10 @@ CONTAINS
 
      ! check if matrix structures really need to be created:
      ! -----------------------------------------------------
-     IF ( ListGetLogical( Solver % Values, 'No matrix',GotIt)) RETURN
+     IF ( ListGetLogical( Solver % Values, 'No matrix',GotIt)) THEN
+       IF(ALLOCATED(InvInitialReorder)) DEALLOCATE(InvInitialReorder)
+       RETURN
+     END IF
 
      !------------------------------------------------------------------------------
      ! Note that Model % RowNonZeros is not used anymore!!!!
@@ -1737,7 +1741,7 @@ CONTAINS
      END IF
 
 !     DEALLOCATE( Model % RowNonZeros )
-     IF( OptimizeBW ) DEALLOCATE( InvInitialReorder )
+     IF( ALLOCATED(InvInitialReorder) ) DEALLOCATE( InvInitialReorder )
 !------------------------------------------------------------------------------
    END FUNCTION CreateMatrix
 !------------------------------------------------------------------------------
