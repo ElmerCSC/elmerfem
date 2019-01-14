@@ -5177,9 +5177,9 @@ RETURN
   !> Advance the particles with a time step. The timestep may
   !> also be an intermediate Runge-Kutta step.
   !---------------------------------------------------------
-  SUBROUTINE ParticleAdvanceTimestep( Particles, RKstep )
+  SUBROUTINE ParticleAdvanceTimestep( Particles, RKstepInput )
     TYPE(Particle_t), POINTER :: Particles
-    INTEGER, OPTIONAL :: RKstep
+    INTEGER, OPTIONAL :: RKStepInput
 
     REAL(KIND=dp) :: dtime
     TYPE(Variable_t), POINTER :: Var, TimeVar, DistVar, DtVar
@@ -5187,7 +5187,7 @@ RETURN
     REAL(KIND=dp) :: ds, dCoord(3),Coord(3),Velo(3),Speed0,Speed
     INTEGER :: dim, Status, TimeOrder, No, NoMoving
     TYPE(ValueList_t), POINTER :: Params
-    INTEGER :: NoParticles
+    INTEGER :: NoParticles, RKStep
     LOGICAL :: Found, Visited = .FALSE.,RK2,HaveSpeed0
 
     REAL(KIND=dp) :: mass, drag
@@ -5231,6 +5231,8 @@ RETURN
     NoGroups = Particles % NumberOfGroups     
     NoMoving = 0
     RK2 = Particles % RK2
+    RKStep = 0
+    IF(PRESENT(RKStepInput)) RKStep=RKStepInput
 
     IF( RK2 .AND. .NOT. ASSOCIATED( Particles % PrevVelocity ) ) THEN
       ALLOCATE( Particles % PrevVelocity( &
@@ -5314,11 +5316,12 @@ RETURN
       ELSE
         CALL Fatal('ParticleAdvanceTimestep','Unknown time order')
       END IF
-
+       
+         
       IF( RK2 .AND. RKStep == 2 ) THEN
-        Velo(1:dim) = &
-          ( 2 * Particles % Velocity(No,:) - Particles % PrevVelocity(No,:) )
-      ELSE
+         Velo(1:dim) = &
+           ( 2 * Particles % Velocity(No,:) - Particles % PrevVelocity(No,:) )
+       ELSE
         Velo(1:dim) = Particles % Velocity(No,:) 	
       END IF
 
@@ -5362,15 +5365,15 @@ RETURN
   !---------------------------------------------------------
   !> Advance some tracer quantities related to the particles.
   !---------------------------------------------------------
-  SUBROUTINE ParticlePathIntegral( Particles, RKstep )
+  SUBROUTINE ParticlePathIntegral( Particles, RKstepInput )
     TYPE(Particle_t), POINTER :: Particles
-    INTEGER, OPTIONAL :: RKstep
+    INTEGER, OPTIONAL :: RKstepInput
 
     TYPE(Variable_t), POINTER :: TimeIntegVar, DistIntegVar, DtVar
     LOGICAL :: GotVar, RK2
     REAL(KIND=dp) :: ds,dtime,Coord(3),PrevCoord(3),LocalCoord(3),Velo(3),u,v,w,&
         SourceAtPath,detJ,RKCoeff
-    INTEGER :: dim, Status
+    INTEGER :: dim, Status, RKStep
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: NoParticles, No, n, NoVar, i, j, bf_id
     LOGICAL :: Found, Stat, Visited = .FALSE.
@@ -5391,6 +5394,9 @@ RETURN
 
 
     ! If Runge-Kutta is used take the mid-point rule.
+    RKSTep = 0
+    IF( PRESENT( RKStepInput ) ) RKStep = RKStepInput
+
     IF( RKStep > 1 ) RETURN
     
     IF(.NOT. Visited ) THEN
