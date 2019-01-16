@@ -2488,16 +2488,11 @@ CONTAINS
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
 
-   IF( ANY( Var % Perm( Element % DGIndexes(1:n) ) <= 0 ) ) THEN
-     PRINT *,'size',SIZE( Var % Perm ), MAXVAL( Element % DGIndexes(1:n))
-     PRINT *,'Perm zero:',m,n,dofs,Var % Perm( Element % DGIndexes(1:n) )
-     PRINT *,'size values',SIZE(Var % Values)
-     PRINT *,'Element index:',Element % ElementIndex
-     PRINT *,'Element indexes:',Element % NodeIndexes
-     STOP
-   END IF
+   ind(1:n) = Var % Perm(Element % DGIndexes(1:n))
 
-   ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
+   IF( ANY( ind(1:n) <= 0 ) ) RETURN
+
+   ind(1:n) = Var % DOFs * (ind(1:n)-1)
  
    DO i=1,m
       dofs = dofs+1
@@ -2525,11 +2520,16 @@ CONTAINS
    LOGICAL :: Additive
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
+
    IF(PRESENT(UElement)) THEN
-     ind(1:n) = Var % DOFs*(Var % Perm(UElement % DGIndexes(1:n))-1)
+     ind(1:n) = Var % Perm(UElement % DGIndexes(1:n))
    ELSE
-     ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
+     ind(1:n) = Var % Perm(Element % DGIndexes(1:n))
    END IF
+
+   IF( ANY(ind(1:n) == 0 ) ) RETURN
+   
+   ind(1:n) = Var % Dofs * ( ind(1:n) - 1)
    
    IF(PRESENT(uAdditive)) THEN
      Additive = uAdditive
