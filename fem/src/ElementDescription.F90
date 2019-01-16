@@ -4490,39 +4490,51 @@ END BLOCK
 !>  Note that the reference element is chosen as in the p-approximation so that
 !>  the reference element edges/faces have the same length/area. This choice simplifies 
 !>  the associated assembly procedure.
+!>     With giving the optional argument ApplyPiolaTransform = .TRUE., this function
+!>  also performs the Piola transform, so that the basis functions and their spatial
+!>  div as defined on the physical element are returned.
+!>    The implementation is not yet complete as all element shapes are not supported. 
 !---------------------------------------------------------------------------------
      RECURSIVE FUNCTION FaceElementInfo( Element, Nodes, u, v, w, F, detF, &
-          Basis, FBasis, DivFBasis, BDM, Dual, BasisDegree ) RESULT(stat)
+          Basis, FBasis, DivFBasis, BDM, Dual, BasisDegree, ApplyPiolaTransform) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
-       TYPE(Element_t), TARGET :: Element     !< Element structure
-       TYPE(Nodes_t) :: Nodes                 !< Data corresponding to the classic element nodes
-       REAL(KIND=dp) :: u                     !< 1st reference element coordinate at which the basis functions are evaluated
-       REAL(KIND=dp) :: v                     !< 2nd reference element coordinate
-       REAL(KIND=dp) :: w                     !< 3rd reference element coordinate
-       REAL(KIND=dp) :: F(3,3)                !< The gradient F=Grad f, with f the element map f:k->K
-       REAL(KIND=dp) :: detF                  !< The determinant of the gradient matrix F
-       REAL(KIND=dp) :: Basis(:)              !< Standard nodal basis functions evaluated at (u,v,w)
-       REAL(KIND=dp) :: FBasis(:,:)           !< Face element basis functions spanning the reference element space   
-       REAL(KIND=dp) :: DivFBasis(:)          !< The divergence of basis functions with respect to the local coordinates
-       LOGICAL, OPTIONAL :: BDM               !< If .TRUE., a basis for BDM space is constructed
-       LOGICAL, OPTIONAL :: Dual              !< If .TRUE., create an alternate dual basis
-       INTEGER, OPTIONAL :: BasisDegree(:)    !< This a dummy parameter at the moment
-       LOGICAL :: Stat                        !< Should be .FALSE. for a degenerate element but this is not yet checked
+       TYPE(Element_t), TARGET :: Element        !< Element structure
+       TYPE(Nodes_t) :: Nodes                    !< Data corresponding to the classic element nodes
+       REAL(KIND=dp) :: u                        !< 1st reference element coordinate at which the basis functions are evaluated
+       REAL(KIND=dp) :: v                        !< 2nd reference element coordinate
+       REAL(KIND=dp) :: w                        !< 3rd reference element coordinate
+       REAL(KIND=dp), OPTIONAL :: F(3,3)         !< The gradient F=Grad f, with f the element map f:k->K
+       REAL(KIND=dp) :: detF                     !< The determinant of the gradient matrix F
+       REAL(KIND=dp) :: Basis(:)                 !< Standard nodal basis functions evaluated at (u,v,w)
+       REAL(KIND=dp) :: FBasis(:,:)              !< Face element basis functions b spanning the reference element space   
+       REAL(KIND=dp), OPTIONAL :: DivFBasis(:)   !< The divergence of basis functions with respect to the local coordinates
+       LOGICAL, OPTIONAL :: BDM                  !< If .TRUE., a basis for BDM space is constructed
+       LOGICAL, OPTIONAL :: Dual                 !< If .TRUE., create an alternate dual basis
+       INTEGER, OPTIONAL :: BasisDegree(:)       !< This a dummy parameter at the moment
+       LOGICAL, OPTIONAL :: ApplyPiolaTransform  !< If  .TRUE., perform the Piola transform so that, instead of b
+                                                 !< and Div b, return  B(f(p)) and (div B)(f(p)) with B(x) the basis 
+                                                 !< functions on the physical element and div the spatial divergence operator.
+       LOGICAL :: Stat                           !< Should be .FALSE. for a degenerate element but this is not yet checked
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
 !------------------------------------------------------------------------------------------------------------
-       INTEGER :: n, dim, q, i, j, k, ni, nj, nk, A, B, C, D, I1, I2
-       INTEGER :: FDofMap(4,3), DofsPerFace, FaceIndeces(4)
-       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), t1(3), t2(3), m(3), e(3), S, D1, D2
-       REAL(KIND=dp) :: BDMBasis(12,3), BDMDivBasis(12), WorkBasis(2,3), WorkDivBasis(2)     
+       TYPE(Mesh_t), POINTER :: Mesh
        INTEGER, POINTER :: EdgeMap(:,:), FaceMap(:,:), Ind(:)
        INTEGER, TARGET :: TetraFaceMap(4,3)
        INTEGER :: SquareFaceMap(4)
+       INTEGER :: DOFs
+       INTEGER :: n, dim, q, i, j, k, ni, nj, nk, A, B, C, D, I1, I2
+       INTEGER :: FDofMap(4,3), DofsPerFace, FaceIndeces(4)
+       REAL(KIND=dp) :: LF(3,3)
+       REAL(KIND=dp) :: DivBasis(12) ! Note the hard-coded size, alter if new elements are added
+       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), t1(3), t2(3), m(3), e(3), S, D1, D2
+       REAL(KIND=dp) :: BDMBasis(12,3), BDMDivBasis(12), WorkBasis(2,3), WorkDivBasis(2)
+
        LOGICAL :: RevertSign(4), RevertSign2(4), CheckSignReversions, CreateBDMBasis, Parallel
        LOGICAL :: CreateDualBasis
-       TYPE(Mesh_t), POINTER :: Mesh
+       LOGICAL :: PerformPiolaTransform
 !-----------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
        Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
@@ -4531,24 +4543,28 @@ END BLOCK
        TetraFaceMap(2,:) = (/ 1, 2, 4 /)
        TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
        TetraFaceMap(4,:) = (/ 3, 1, 4 /)
-       !--------------------------------------------------------------
-       ! Check whether BDM or dual basis functions should be created 
-       !--------------------------------------------------------------
+       !--------------------------------------------------------------------
+       ! Check whether BDM or dual basis functions should be created and 
+       ! whether the Piola transform is already applied within this function.
+       !---------------------------------------------------------------------
        CreateBDMBasis = .FALSE.
        IF ( PRESENT(BDM) ) CreateBDMBasis = BDM
        CreateDualBasis = .FALSE.
        IF ( PRESENT(Dual) ) CreateDualBasis = Dual
+       PerformPiolaTransform = .FALSE.
+       IF ( PRESENT(ApplyPiolaTransform) ) PerformPiolaTransform = ApplyPiolaTransform       
        !-----------------------------------------------------------------------------------------------------
        stat = .TRUE.
        Basis = 0.0d0
        FBasis = 0.0d0
        DivFBasis = 0.0d0
-       F = 0.0d0
+       DivBasis = 0.0d0
+       LF = 0.0d0
 
        dLbasisdx = 0.0d0      
        n = Element % TYPE % NumberOfNodes
        dim = Element % TYPE % DIMENSION
-
+       
        IF ( Element % TYPE % ElementCode == 101 ) THEN
           detF = 1.0d0
           Basis(1) = 1.0d0
@@ -4586,7 +4602,7 @@ END BLOCK
        !-----------------------------------------------------------------------
        ! Get data for performing the Piola transformation...
        !-----------------------------------------------------------------------
-       stat = PiolaTransformationData(n, Element, Nodes, F, detF, dLBasisdx) 
+       stat = PiolaTransformationData(n, Element, Nodes, LF, detF, dLBasisdx) 
        !------------------------------------------------------------------------
        ! ... in order to define the basis for the element space X(K) via 
        ! applying the Piola transformation as
@@ -4616,6 +4632,7 @@ END BLOCK
           !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
           IF (CreateBDMBasis) THEN
+             DOFs = 6
              !-------------------------------------------------
              ! The following is for the BDM space of degree k=1.
              ! First two basis functions defined on face 12.
@@ -4631,19 +4648,19 @@ END BLOCK
                 ! compared with the other possibility
                 FBasis(1,1) = -sqrt(3.0d0)/6.0d0 * (sqrt(3.0d0) + u - v)             
                 FBasis(1,2) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) - 3.0d0 * u + v)
-                DivFBasis(1) = -sqrt(3.0d0)/3.0d0 
+                DivBasis(1) = -sqrt(3.0d0)/3.0d0 
 
                 FBasis(2,1) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + u + v)             
                 FBasis(2,2) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + 3.0d0 * u + v)
-                DivFBasis(2) = -sqrt(3.0d0)/3.0d0
+                DivBasis(2) = -sqrt(3.0d0)/3.0d0
              ELSE
                 FBasis(1,1) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + u + v)             
                 FBasis(1,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + 3.0d0 * u + v)
-                DivFBasis(1) = sqrt(3.0d0)/3.0d0
+                DivBasis(1) = sqrt(3.0d0)/3.0d0
 
                 FBasis(2,1) = sqrt(3.0d0)/6.0d0 * (sqrt(3.0d0) + u - v)             
                 FBasis(2,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) - 3.0d0 * u + v)
-                DivFBasis(2) = sqrt(3.0d0)/3.0d0
+                DivBasis(2) = sqrt(3.0d0)/3.0d0
              END IF
 
              ! Two basis functions defined on face 23
@@ -4656,19 +4673,19 @@ END BLOCK
              IF (nj<ni) THEN
                 FBasis(3,1) = -1.0d0/6.0d0 * (-3.0d0+sqrt(3.0d0)+(-3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
                 FBasis(3,2) = -1.0d0/6.0d0 * ( 3.0d0+sqrt(3.0d0) ) * v
-                DivFBasis(3) = -sqrt(3.0d0)/3.0d0
+                DivBasis(3) = -sqrt(3.0d0)/3.0d0
 
                 FBasis(4,1) = -1.0d0/(3.0d0+sqrt(3.0d0)) * (2.0d0+sqrt(3.0d0)+(2.0d0+sqrt(3.0d0))*u-(1.0d0+sqrt(3.0d0))*v)
                 FBasis(4,2) = -1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivFBasis(4) = -sqrt(3.0d0)/3.0d0
+                DivBasis(4) = -sqrt(3.0d0)/3.0d0
              ELSE
                 FBasis(3,1) = 1.0d0/(3.0d0+sqrt(3.0d0)) * (2.0d0+sqrt(3.0d0)+(2.0d0+sqrt(3.0d0))*u-(1.0d0+sqrt(3.0d0))*v)
                 FBasis(3,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivFBasis(3) = sqrt(3.0d0)/3.0d0
+                DivBasis(3) = sqrt(3.0d0)/3.0d0
 
                 FBasis(4,1) = 1.0d0/6.0d0 * (-3.0d0+sqrt(3.0d0)+(-3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
                 FBasis(4,2) = 1.0d0/6.0d0 * ( 3.0d0+sqrt(3.0d0) ) * v
-                DivFBasis(4) = sqrt(3.0d0)/3.0d0
+                DivBasis(4) = sqrt(3.0d0)/3.0d0
              END IF
 
              ! Two basis functions defined on face 31
@@ -4681,22 +4698,23 @@ END BLOCK
              IF (nj<ni) THEN
                 FBasis(5,1) = -1.0d0/6.0d0 * (-3.0d0-sqrt(3.0d0)+(3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
                 FBasis(5,2) = -1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivFBasis(5) = -sqrt(3.0d0)/3.0d0
+                DivBasis(5) = -sqrt(3.0d0)/3.0d0
 
                 FBasis(6,1) = -1.0d0/( 3.0d0+sqrt(3.0d0) ) * ( 1.0d0 - u - v - sqrt(3.0d0)*v )
                 FBasis(6,2) = -( 3.0d0+2.0d0*sqrt(3.0d0) ) * v /(3.0d0*(1.0d0+sqrt(3.0d0)))
-                DivFBasis(6) = -sqrt(3.0d0)/3.0d0
+                DivBasis(6) = -sqrt(3.0d0)/3.0d0
              ELSE
                 FBasis(5,1) = 1.0d0/( 3.0d0+sqrt(3.0d0) ) * ( 1.0d0 - u - v - sqrt(3.0d0)*v ) 
                 FBasis(5,2) = ( 3.0d0+2.0d0*sqrt(3.0d0) ) * v /(3.0d0*(1.0d0+sqrt(3.0d0)))
-                DivFBasis(5) = sqrt(3.0d0)/3.0d0
+                DivBasis(5) = sqrt(3.0d0)/3.0d0
 
                 FBasis(6,1) = 1.0d0/6.0d0 * (-3.0d0-sqrt(3.0d0)+(3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
                 FBasis(6,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivFBasis(6) = sqrt(3.0d0)/3.0d0
+                DivBasis(6) = sqrt(3.0d0)/3.0d0
              END IF
 
           ELSE
+             DOFs = 3
 
              i = EdgeMap(1,1)
              j = EdgeMap(1,2)
@@ -4706,10 +4724,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(1,1) = SQRT(3.0d0)/6.0d0 * u
              FBasis(1,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
-             DivFBasis(1) =  SQRT(3.0d0)/3.0d0
+             DivBasis(1) =  SQRT(3.0d0)/3.0d0
              IF (nj<ni) THEN
                 FBasis(1,:) = -FBasis(1,:)
-                DivFBasis(1) = -DivFBasis(1)
+                DivBasis(1) = -DivBasis(1)
              END IF
 
              i = EdgeMap(2,1)
@@ -4720,10 +4738,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(2,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
              FBasis(2,2) = SQRT(3.0d0)/6.0d0 * v
-             DivFBasis(2) =  SQRT(3.0d0)/3.0d0        
+             DivBasis(2) =  SQRT(3.0d0)/3.0d0        
              IF (nj<ni) THEN
                 FBasis(2,:) = -FBasis(2,:)
-                DivFBasis(2) = -DivFBasis(2)
+                DivBasis(2) = -DivBasis(2)
              END IF
 
              i = EdgeMap(3,1)
@@ -4734,15 +4752,16 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
              FBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
-             DivFBasis(3) =  SQRT(3.0d0)/3.0d0          
+             DivBasis(3) =  SQRT(3.0d0)/3.0d0          
              IF (nj<ni) THEN
                 FBasis(3,:) = -FBasis(3,:)
-                DivFBasis(3) = -DivFBasis(3)
+                DivBasis(3) = -DivBasis(3)
              END IF
 
           END IF
           
        CASE(4)
+          DOFs = 6
           !--------------------------------------------------------------------
           ! Quadrilateral Arnold-Boffi-Falk (ABF) element basis of degree k=0
           !--------------------------------------------------------------------
@@ -4762,10 +4781,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(1,1) = 0.0d0
              FBasis(1,2) = -((-1.0d0 + v)*v)/4.0d0
-             DivFBasis(1) = (1.0d0 - 2*v)/4.0d0
+             DivBasis(1) = (1.0d0 - 2*v)/4.0d0
              IF (nj<ni) THEN
                 FBasis(1,:) = -FBasis(1,:)
-                DivFBasis(1) = -DivFBasis(1)
+                DivBasis(1) = -DivBasis(1)
              END IF
 
              i = EdgeMap(2,1)
@@ -4776,10 +4795,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(2,1) = (u*(1.0d0 + u))/4.0d0
              FBasis(2,2) = 0.0d0
-             DivFBasis(2) = (1 + 2.0d0*u)/4.0d0
+             DivBasis(2) = (1 + 2.0d0*u)/4.0d0
              IF (nj<ni) THEN
                 FBasis(2,:) = -FBasis(2,:)
-                DivFBasis(2) = -DivFBasis(2)
+                DivBasis(2) = -DivBasis(2)
              END IF
 
              i = EdgeMap(3,1)
@@ -4790,10 +4809,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(3,1) = 0.0d0
              FBasis(3,2) = (v*(1.0d0 + v))/4.0d0
-             DivFBasis(3) = (1.0d0 + 2.0d0*v)/4.0d0
+             DivBasis(3) = (1.0d0 + 2.0d0*v)/4.0d0
              IF (nj<ni) THEN
                 FBasis(3,:) = -FBasis(3,:)
-                DivFBasis(3) = -DivFBasis(3)
+                DivBasis(3) = -DivBasis(3)
              END IF
 
              i = EdgeMap(4,1)
@@ -4804,10 +4823,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(4,1) = -((-1.0d0 + u)*u)/4.0d0
              FBasis(4,2) = 0.0d0
-             DivFBasis(4) = (1.0d0 - 2.0d0*u)/4.0d0
+             DivBasis(4) = (1.0d0 - 2.0d0*u)/4.0d0
              IF (nj<ni) THEN
                 FBasis(4,:) = -FBasis(4,:)
-                DivFBasis(4) = -DivFBasis(4)
+                DivBasis(4) = -DivBasis(4)
              END IF
 
              !--------------------------------------------------------------------
@@ -4836,9 +4855,9 @@ END BLOCK
              CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
 
              FBasis(5,:) = D1 * WorkBasis(I1,:)
-             DivFBasis(5) = D1 * WorkDivBasis(I1)
+             DivBasis(5) = D1 * WorkDivBasis(I1)
              FBasis(6,:) = D2 * WorkBasis(I2,:)
-             DivFBasis(6) = D2 * WorkDivBasis(I2)   
+             DivBasis(6) = D2 * WorkDivBasis(I2)   
           ELSE
              !---------------------------------------------------------------------------
              ! Create alternate basis functions for the ABF space so that these basis
@@ -4854,10 +4873,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(1,1) = 0.0d0
              FBasis(1,2) = (-3.0d0*(-1.0d0 - 2.0d0*v + 5.0d0*v**2))/4.0d0
-             DivFBasis(1) = (-3.0d0*(-1.0d0 + 5.0d0*v))/2.0d0
+             DivBasis(1) = (-3.0d0*(-1.0d0 + 5.0d0*v))/2.0d0
              IF (nj<ni) THEN
                 FBasis(1,:) = -FBasis(1,:)
-                DivFBasis(1) = -DivFBasis(1)
+                DivBasis(1) = -DivBasis(1)
              END IF
 
              i = EdgeMap(2,1)
@@ -4868,10 +4887,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(2,1) = (3.0d0*(-1.0d0 + 2.0d0*u + 5.0d0*u**2))/4.0d0
              FBasis(2,2) = 0.0d0
-             DivFBasis(2) = (3.0d0*(1.0d0 + 5.0d0*u))/2.0d0
+             DivBasis(2) = (3.0d0*(1.0d0 + 5.0d0*u))/2.0d0
              IF (nj<ni) THEN
                 FBasis(2,:) = -FBasis(2,:)
-                DivFBasis(2) = -DivFBasis(2)
+                DivBasis(2) = -DivBasis(2)
              END IF
 
              i = EdgeMap(3,1)
@@ -4882,10 +4901,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(3,1) = 0.0d0
              FBasis(3,2) = (3.0d0*(-1.0d0 + 2.0d0*v + 5.0d0*v**2))/4.0d0
-             DivFBasis(3) = (3.0d0*(1.0d0 + 5.0d0*v))/2.0d0
+             DivBasis(3) = (3.0d0*(1.0d0 + 5.0d0*v))/2.0d0
              IF (nj<ni) THEN
                 FBasis(3,:) = -FBasis(3,:)
-                DivFBasis(3) = -DivFBasis(3)
+                DivBasis(3) = -DivBasis(3)
              END IF
 
              i = EdgeMap(4,1)
@@ -4896,10 +4915,10 @@ END BLOCK
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(4,1) = (-3.0d0*(-1.0d0 - 2.0d0*u + 5.0d0*u**2))/4.0d0
              FBasis(4,2) = 0.0d0
-             DivFBasis(4) = (-3.0d0*(-1.0d0 + 5.0d0*u))/2.0d0
+             DivBasis(4) = (-3.0d0*(-1.0d0 + 5.0d0*u))/2.0d0
              IF (nj<ni) THEN
                 FBasis(4,:) = -FBasis(4,:)
-                DivFBasis(4) = -DivFBasis(4)
+                DivBasis(4) = -DivBasis(4)
              END IF
 
              !-------------------------------------------------------------------------
@@ -4928,9 +4947,9 @@ END BLOCK
              CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
 
              FBasis(5,:) = D1 * WorkBasis(I1,:)
-             DivFBasis(5) = D1 * WorkDivBasis(I1)
+             DivBasis(5) = D1 * WorkDivBasis(I1)
              FBasis(6,:) = D2 * WorkBasis(I2,:)
-             DivFBasis(6) = D2 * WorkDivBasis(I2)
+             DivBasis(6) = D2 * WorkDivBasis(I2)
           END IF
 
        CASE(5)
@@ -5053,6 +5072,7 @@ END BLOCK
           END IF
 
           IF (CreateBDMBasis) THEN
+             DOFs = 12
              DofsPerFace = 3 ! This choice is used for the BDM space of degree k=1
              !----------------------------------------------------------------------------
              ! Create a table of BDM basis functions in the default order
@@ -5181,54 +5201,69 @@ END BLOCK
                    k = FDofMap(q,j)
                    i = (q-1)*DofsPerFace + j
                    FBasis(i,:) = S * BDMBasis((q-1)*DofsPerFace+k,:)
-                   DivFBasis(i) = S * sqrt(3.0d0)/(2.0d0*sqrt(2.0d0))
+                   DivBasis(i) = S * sqrt(3.0d0)/(2.0d0*sqrt(2.0d0))
                 END DO
              END DO
 
           ELSE
+             DOFs = 4
              !-------------------------------------------------------------------------
              ! The basis functions that define RT space on reference element
              !-----------------------------------------------------------------------
              FBasis(1,1) = SQRT(2.0d0)/4.0d0 * u
              FBasis(1,2) = -SQRT(6.0d0)/12.0d0 + SQRT(2.0d0)/4.0d0 * v
              FBasis(1,3) = -1.0d0/SQRT(3.0d0) + SQRT(2.0d0)/4.0d0 * w
-             DivFBasis(1) = 3.0d0*SQRT(2.0d0)/4.0d0
+             DivBasis(1) = 3.0d0*SQRT(2.0d0)/4.0d0
              IF ( RevertSign(1) ) THEN
                 FBasis(1,:) = -FBasis(1,:)
-                DivFBasis(1) = -DivFBasis(1)
+                DivBasis(1) = -DivBasis(1)
              END IF
 
              FBasis(2,1) = SQRT(2.0d0)/4.0d0 * u
              FBasis(2,2) = -SQRT(6.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * v
              FBasis(2,3) = SQRT(2.0d0)/4.0d0 * w
-             DivFBasis(2) = 3.0d0*SQRT(2.0d0)/4.0d0
+             DivBasis(2) = 3.0d0*SQRT(2.0d0)/4.0d0
              IF ( RevertSign(2) ) THEN
                 FBasis(2,:) = -FBasis(2,:)
-                DivFBasis(2) = -DivFBasis(2)
+                DivBasis(2) = -DivBasis(2)
              END IF
 
              FBasis(3,1) = SQRT(2.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * u
              FBasis(3,2) = SQRT(2.0d0)/4.0d0 * v
              FBasis(3,3) = SQRT(2.0d0)/4.0d0 * w
-             DivFBasis(3) = 3.0d0*SQRT(2.0d0)/4.0d0
+             DivBasis(3) = 3.0d0*SQRT(2.0d0)/4.0d0
              IF ( RevertSign(3) ) THEN
                 FBasis(3,:) = -FBasis(3,:)
-                DivFBasis(3) = -DivFBasis(3)
+                DivBasis(3) = -DivBasis(3)
              END IF
 
              FBasis(4,1) = -SQRT(2.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * u
              FBasis(4,2) = SQRT(2.0d0)/4.0d0 * v
              FBasis(4,3) = SQRT(2.0d0)/4.0d0 * w
-             DivFBasis(4) = 3.0d0*SQRT(2.0d0)/4.0d0
+             DivBasis(4) = 3.0d0*SQRT(2.0d0)/4.0d0
              IF ( RevertSign(4) ) THEN
                 FBasis(4,:) = -FBasis(4,:)
-                DivFBasis(4) = -DivFBasis(4)
+                DivBasis(4) = -DivBasis(4)
              END IF
           END IF
        CASE DEFAULT
           CALL Fatal('ElementDescription::FaceElementInfo','Unsupported element type')
        END SELECT
-    
+
+       IF (PerformPiolaTransform) THEN
+         DO j=1,DOFs
+           DO k=1,dim
+             WorkBasis(1,k) = SUM( LF(k,1:dim) * FBasis(j,1:dim) )
+           END DO
+           FBasis(j,1:dim) = 1.0d0/DetF * WorkBasis(1,1:dim)
+           
+           DivBasis(j) = 1.0d0/DetF * DivBasis(j)
+         END DO
+         ! DetF = ABS(DetF)
+       END IF
+
+       IF (PRESENT(F)) F = LF
+       IF (PRESENT(DivFBasis)) DivFBasis(1:DOFs) = DivBasis(1:DOFs)
 !-----------------------------------------------------------------------------
      END FUNCTION FaceElementInfo
 !------------------------------------------------------------------------------

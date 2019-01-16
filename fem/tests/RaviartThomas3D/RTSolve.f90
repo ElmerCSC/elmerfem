@@ -170,8 +170,8 @@ CONTAINS
     INTEGER :: n, nd, nb, dim
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: nu
-    REAL(KIND=dp) :: RTBasis(nd-nb,3), DivRTBasis(nd-nb), WBasis(dim)
-    REAL(KIND=dp) :: Basis(n), DetJ, F(3,3), C(3,3), L(3), M(3), xq, yq, zq, &
+    REAL(KIND=dp) :: RTBasis(nd-nb,3), DivRTBasis(nd-nb)
+    REAL(KIND=dp) :: Basis(n), DetJ, L(3), M(3), xq, yq, zq, &
          uq, vq, wq, sq
     LOGICAL :: Stat, Found
     INTEGER :: t, i, j, p, q, np
@@ -193,7 +193,7 @@ CONTAINS
        ! so we need to switch to using a quadrature which would not be used otherwise
        !--------------------------------------------------------------------------------------------
        IF (dim == 2) THEN
-          !----------------------------------------------------------------------------------------------
+          !---------------------------------------------------------------------------------------------
           ! The following is enough for the lowest-order RT approximation on triangles. 
           !---------------------------------------------------------------------------------------------
           IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
@@ -214,9 +214,8 @@ CONTAINS
 
     DO t=1,IP % n
        stat = FaceElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), F, detJ, Basis, RTBasis, DivRTBasis)
-
-       C = MATMUL( TRANSPOSE(F(1:3,1:3)), F(1:3,1:3) )
+            IP % W(t), detF=detJ, Basis=Basis, FBasis=RTBasis, &
+            DivFBasis=DivRTBasis, ApplyPiolaTransform=.TRUE.)
 
        xq = SUM( Nodes % x(1:n) * Basis(1:n) )
        yq = SUM( Nodes % y(1:n) * Basis(1:n) )
@@ -244,20 +243,16 @@ CONTAINS
        !--------------------------------------------------------------
        ! The contribution from the variation with the flux variable q
        !---------------------------------------------------------------
-       WBasis = 0.0d0
        DO p = 1,nd-np-nb
-          DO i=1,dim
-             WBasis(i) = SUM( C(i,1:dim) * RTBasis(p,1:dim) )
-          END DO
           i = np + p
           DO q = 1,nd-np-nb
              j = np + q
              STIFF(i,j) = STIFF(i,j) + 1.0d0 * &
-                  SUM( RTBasis(q,1:dim) * WBasis(1:dim) ) * 1.0d0/detJ * IP % s(t)
+                  SUM( RTBasis(q,1:dim) * RTBasis(p,1:dim) ) * detJ * IP % s(t)
           END DO
 
           DO q = nd-nb+1,nd
-             STIFF(i,q) = STIFF(i,q) + 1.0d0 * DivRTBasis(p) * IP % s(t)
+             STIFF(i,q) = STIFF(i,q) + 1.0d0 * DivRTBasis(p) * detJ * IP % s(t)
           END DO
        END DO
 
@@ -267,7 +262,7 @@ CONTAINS
        DO p = nd-nb+1,nd
           DO q = 1,nd-np-nb
              j = np + q
-             STIFF(p,j) = STIFF(p,j) + 1.0d0 * DivRTBasis(q) * IP % s(t)
+             STIFF(p,j) = STIFF(p,j) + 1.0d0 * DivRTBasis(q) * detJ * IP % s(t)
           END DO
           !-------------------------------------------------------------------
           ! The definition of the in-built body source term is contained here:
@@ -297,7 +292,7 @@ CONTAINS
     LOGICAL :: Stat
     REAL(KIND=dp) :: RTBasis(nd-nb,3), DivRTBasis(nd-nb), WBasis(dim), Basis(n), &
          uq, vq, wq, sq
-    REAL(KIND=dp) :: xq, yq, zq, DetJ, F(3,3), sol, gradsol(dim,1), fluxsol(dim,1), tmp(1,dim)
+    REAL(KIND=dp) :: xq, yq, zq, DetJ, sol, gradsol(dim,1), fluxsol(dim,1)
 
     TYPE(Nodes_t), SAVE :: Nodes
 !---------------------------------------------------------------------------
@@ -321,7 +316,8 @@ CONTAINS
 
     DO t=1,IP % n
        stat = FaceElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), F, detJ, Basis, RTBasis, DivRTBasis)
+           IP % W(t), detF=detJ, Basis=Basis, FBasis=RTBasis, &
+           DivFBasis=DivRTBasis, ApplyPiolaTransform=.TRUE.)
        
        xq = SUM( Nodes % x(1:n) * Basis(1:n) )
        yq = SUM( Nodes % y(1:n) * Basis(1:n) )
@@ -342,12 +338,8 @@ CONTAINS
           ! For computing the error of the gradient field
           SolNorm = SolNorm + SUM( gradsol(1:3,1)*gradsol(1:3,1) ) * detJ * IP % s(t)
        
-          tmp(1,1:dim) = RTBasis(1,1:dim)*Load(2,1) + RTBasis(2,1:dim)*Load(2,2) + &
+          fluxsol(1:dim,1) = RTBasis(1,1:dim)*Load(2,1) + RTBasis(2,1:dim)*Load(2,2) + &
                RTBasis(3,1:dim)*Load(2,3) + RTBasis(4,1:dim)*Load(2,4)
-          
-          fluxsol(1,1) = 1.0d0/detJ * (F(1,1) * tmp(1,1) + F(1,2) * tmp(1,2) + F(1,3) * tmp(1,3))
-          fluxsol(2,1) = 1.0d0/detJ * (F(2,1) * tmp(1,1) + F(2,2) * tmp(1,2) + F(2,3) * tmp(1,3)) 
-          fluxsol(3,1) = 1.0d0/detJ * (F(3,1) * tmp(1,1) + F(3,2) * tmp(1,2) + F(3,3) * tmp(1,3))           
           
           EK = EK + SUM( (gradsol(1:dim,1) - fluxsol(1:dim,1))**2 ) * &
                detJ * IP % s(t) 
