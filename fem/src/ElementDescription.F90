@@ -3663,7 +3663,7 @@ END IF
      END IF
 
      IF(PRESENT(dBasisdx))  &
-       dBasisdx = 0._dp ! avoid unitialized stuff for depending on coordinate dimension...
+       dBasisdx = 0._dp ! avoid unitialized stuff depending on coordinate dimension...
 
      retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
            uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx)
@@ -3715,7 +3715,7 @@ END IF
      dim  = Element % TYPE % DIMENSION
      cdim = CoordinateSystemDimension()
 
-     dBasisdxWrk = 0._dp ! avoid unitialized stuff for depending on coordinate dimension...
+     dBasisdxWrk = 0._dp ! avoid unitialized stuff depending on coordinate dimension...
 
      ! Block the computation for large values of input points
      DO ll=1,nc,VECTOR_BLOCK_LENGTH
