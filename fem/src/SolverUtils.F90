@@ -8274,7 +8274,7 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
-    PRINT *,'ComputedNorm:',Norm, NormDIm
+!   PRINT *,'ComputedNorm:',Norm, NormDIm
     
     IF( ComponentsAllocated ) THEN
       DEALLOCATE( NormComponents ) 
