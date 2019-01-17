@@ -3420,7 +3420,6 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
      REAL(KIND=dp), POINTER CONTIG   :: b(:)
-     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
@@ -3624,7 +3623,7 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-     REAL(KIND=dp), POINTER  CONTIG :: b(:), SaveValues(:)
+     REAL(KIND=dp), POINTER  CONTIG :: b(:)
 
      REAL(KIND=dp), POINTER :: G(:,:), F(:)
 
@@ -3933,8 +3932,6 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
-     REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:)
-
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
 
@@ -3973,15 +3970,15 @@ CONTAINS
        END IF
      END IF
 
-     IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
-       ALLOCATE( A % PrecValues(SIZE(A % Values)) )
-       A % PrecValues = 0.0d0
-     END IF
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
+         ALLOCATE( A % PrecValues(SIZE(A % Values)) )
+         A % PrecValues = 0.0d0
+       END IF
+!$OMP END CRITICAL
 
-     SaveValues => A % MassValues
-     A % MassValues => A % PrecValues
-     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)) )
-     A % MassValues => SaveValues
+     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), & 
+            A % PrecValues )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdatePrecR
 !------------------------------------------------------------------------------
@@ -3999,7 +3996,6 @@ CONTAINS
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
      REAL(KIND=dp), ALLOCATABLE :: M(:,:)
-     REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n,DOFs
      INTEGER, POINTER :: Indexes(:)
@@ -4040,10 +4036,12 @@ CONTAINS
         END IF
       END IF
 
-     IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
-        ALLOCATE( A % PrecValues(SIZE(A % Values)) )
-        A % PrecValues = 0.0d0
-     END IF
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
+          ALLOCATE( A % PrecValues(SIZE(A % Values)) )
+          A % PrecValues = 0.0d0
+       END IF
+!$OMP END CRITICAL
 
      ALLOCATE( M(DOFs*n,DOFs*n) )
      DO i=1,n*DOFs/2
@@ -4055,10 +4053,8 @@ CONTAINS
        END DO
      END DO
 
-     SaveValues => A % MassValues
-     A % MassValues => A % PrecValues
-     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)) )
-     A % MassValues => SaveValues
+     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
+              A % PrecValues )
      DEALLOCATE( M )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdatePrecC
@@ -4114,12 +4110,15 @@ CONTAINS
        END IF
      END IF
 
-     IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
-       ALLOCATE( A % MassValues(SIZE(A % Values)) )
-       A % MassValues = 0.0d0
-     END IF
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
+         ALLOCATE( A % MassValues(SIZE(A % Values)) )
+         A % MassValues = 0.0d0
+       END IF
+!$OMP END CRITICAL
 
-     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)) )
+     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
+             A % MassValues ) 
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateMassR
 !------------------------------------------------------------------------------
@@ -4177,10 +4176,12 @@ CONTAINS
         END IF
       END IF
 
-     IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
-        ALLOCATE( A % MassValues(SIZE(A % Values)) )
-        A % MassValues = 0.0d0
-     END IF
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
+          ALLOCATE( A % MassValues(SIZE(A % Values)) )
+          A % MassValues = 0.0d0
+       END IF
+!$OMP END CRITICAL
 
      ALLOCATE( M(DOFs*n,DOFs*n) )
      DO i=1,n*DOFs/2
@@ -4192,7 +4193,8 @@ CONTAINS
        END DO
      END DO
 
-     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)) )
+     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
+                    A % MassValues )
      DEALLOCATE( M )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateMassC
@@ -4201,7 +4203,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateDampR( B, UElement, USolver ) 
+  RECURSIVE SUBROUTINE DefaultUpdateDampR( B, UElement, USolver ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,  TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -4211,8 +4213,6 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-
-     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
@@ -4251,15 +4251,15 @@ CONTAINS
        END IF
      END IF
 
-     IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
-        ALLOCATE( A % DampValues(SIZE(A % Values)) ) 
-        A % DampValues = 0.0d0
-     END IF
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
+          ALLOCATE( A % DampValues(SIZE(A % Values)) ) 
+          A % DampValues = 0.0d0
+       END IF
+!$OMP END CRITICAL
 
-     SaveValues => A % MassValues
-     A % MassValues => A % DampValues
-     CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)) )
-     A % MassValues => SaveValues
+     CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)), &
+              A  % DampValues )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateDampR
 !------------------------------------------------------------------------------
@@ -4277,8 +4277,6 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-
-     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      REAL(KIND=dp), ALLOCATABLE :: B(:,:)
 
@@ -4320,10 +4318,12 @@ CONTAINS
        END IF
      END IF
 
-     IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
         ALLOCATE( A % DampValues(SIZE(A % Values)) ) 
         A % DampValues = 0.0d0
-     END IF
+       END IF
+!$OMP END CRITICAL
 
      ALLOCATE( B(DOFs*n, DOFs*n) )
      DO i=1,n*DOFs/2
@@ -4335,11 +4335,8 @@ CONTAINS
        END DO
      END DO
 
-     SaveValues => A % MassValues
-     A % MassValues => A % DampValues
-     CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)) )
-     A % MassValues => SaveValues
-
+     CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)), &
+                 A % DampValues )
      DEALLOCATE( B )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateDampC
@@ -4357,8 +4354,6 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-
-     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
@@ -4399,20 +4394,22 @@ CONTAINS
        END IF
      END IF
 
-     IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
-        ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
-        A % BulkValues = 0.0_dp
-     END IF
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
+          ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
+          A % BulkValues = 0.0_dp
+       END IF
+!$OMP END CRITICAL
 
-     IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
-        ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
-        A % BulkRHS = 0.0_dp
-     END IF
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
+          ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
+          A % BulkRHS = 0.0_dp
+       END IF
+!$OMP END CRITICAL
 
-     SaveValues => A % Values
-     A % Values => A % BulkValues
-     CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)) )
-     A % Values => SaveValues
+     CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)),  &
+                  GlobalValues=A % BulkValues )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateBulkR
 !------------------------------------------------------------------------------
@@ -4430,8 +4427,6 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-
-     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
      REAL(KIND=dp), ALLOCATABLE :: B(:,:),F(:)
 
@@ -4476,15 +4471,19 @@ CONTAINS
      END IF
 
 
-     IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
-        ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
-        A % BulkValues = 0.0_dp
-     END IF
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
+          ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
+          A % BulkValues = 0.0_dp
+       END IF
+!$OMP END CRITICAL
 
-     IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
-        ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
-        A % BulkRHS = 0.0_dp
-     END IF
+!$OMP CRITICAL
+       IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
+            ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
+          A % BulkRHS = 0.0_dp
+       END IF
+!$OMP END CRITICAL
 
      ALLOCATE( B(DOFs*n, DOFs*n), F(DOFs*n) )
      DO i=1,n*DOFs/2
@@ -4499,10 +4498,8 @@ CONTAINS
        END DO
      END DO
 
-     SaveValues => A % Values
-     A % Values => A % BulkValues
-     CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)) )
-     A % Values => SaveValues
+     CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)), &
+                 GlobalValues=A % BulkValues )
 
      DEALLOCATE( B )
 !------------------------------------------------------------------------------

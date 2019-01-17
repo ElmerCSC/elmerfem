@@ -568,15 +568,15 @@ CONTAINS
 !>    Add a set of values (.i.e. element stiffness matrix) to a CRS format
 !>    matrix. 
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_GlueLocalMatrix( A,N,Dofs,Indeces,LocalMatrix )
+  SUBROUTINE CRS_GlueLocalMatrix( A,N,Dofs,Indeces,LocalMatrix,GlobalValues )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A  !< Structure holding matrix
      REAL(KIND=dp), INTENT(IN) :: LocalMatrix(:,:)  !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added to the CRS format matrix
      INTEGER, INTENT(IN) :: N             !< Number of nodes in element
      INTEGER, INTENT(IN) :: Dofs          !< Number of degrees of freedom for one node
      INTEGER, INTENT(IN) :: Indeces(:)    !< Maps element node numbers to global (or partition) node numbers 
-     INTEGER::jc,ic
-	                                      !! (to matrix rows and columns, if Dofs = 1)
+                                          !! (to matrix rows and columns, if Dofs = 1)
+     REAL(KIND=dp), OPTIONAL, TARGET :: GlobalValues(:)
 !------------------------------------------------------------------------------ 
      INTEGER :: i,j,k,l,c,Row,Col
      INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
@@ -586,7 +586,11 @@ CONTAINS
      Diag   => A % Diag
      Rows   => A % Rows
      Cols   => A % Cols
-     Values => A % Values
+     IF(PRESENT(GlobalValues)) THEN
+       Values => GlobalValues
+     ELSE
+       Values => A % Values
+     END IF
 
      IF ( Dofs == 1 ) THEN
        DO i=1,N

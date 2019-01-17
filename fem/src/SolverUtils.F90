@@ -1046,7 +1046,8 @@ CONTAINS
 !> Add element local matrices & vectors to global matrices and vectors.
 !------------------------------------------------------------------------------
    SUBROUTINE UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
-      ForceVector, LocalForce, n, NDOFs, NodeIndexes, RotateNT, UElement )
+      ForceVector, LocalForce, n, NDOFs, NodeIndexes, RotateNT, UElement, &
+              GlobalValues )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), POINTER :: StiffMatrix  !< The global matrix
      REAL(KIND=dp) :: LocalStiffMatrix(:,:)  !< Local matrix to be added to the global matrix.
@@ -1057,6 +1058,7 @@ CONTAINS
      INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping.
      LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
      TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
+     REAL(KIND=dp), OPTIONAL :: GlobalValues(:)
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,dim, Indexes(n)
      LOGICAL :: Rotate
@@ -1090,8 +1092,8 @@ CONTAINS
      IF ( ASSOCIATED( StiffMatrix ) ) THEN
        SELECT CASE( StiffMatrix % FORMAT )
        CASE( MATRIX_CRS )
-         CALL CRS_GlueLocalMatrix( StiffMatrix,n,NDOFs,NodeIndexes, &
-                          LocalStiffMatrix )
+         CALL CRS_GlueLocalMatrix( StiffMatrix,n,NDOFs, &
+                      NodeIndexes, LocalStiffMatrix, GlobalValues )
 
        CASE( MATRIX_LIST )
          CALL List_GlueLocalMatrix( StiffMatrix % ListMatrix,n,NDOFs,NodeIndexes, &
@@ -1304,17 +1306,17 @@ CONTAINS
 !> Updates the mass matrix only.
 !------------------------------------------------------------------------------
    SUBROUTINE UpdateMassMatrix( StiffMatrix, LocalMassMatrix, &
-                  n, NDOFs, NodeIndexes )
+              n, NDOFs, NodeIndexes, GlobalValues )
 !------------------------------------------------------------------------------
-     TYPE(Matrix_t), POINTER :: StiffMatrix  !< The global matrix
+     TYPE(Matrix_t), POINTER :: StiffMatrix  !< The global matrix structure
      REAL(KIND=dp) :: LocalMassMatrix(:,:)   !< Local matrix to be added to the global matrix
      INTEGER :: n                            !<  number of nodes in element
      INTEGER :: NDOFs                        !< number of DOFs per node
      INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping
+     REAL(KIND=dp), OPTIONAL, TARGET :: GlobalValues(:)
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k
      REAL(KIND=dp) :: s,t
-     REAL(KIND=dp), POINTER  CONTIG :: SaveValues(:)
 !------------------------------------------------------------------------------
 !    Check first if this element has been defined passive
 !------------------------------------------------------------------------------
@@ -1340,28 +1342,27 @@ CONTAINS
         END DO
      END IF
 
-     SaveValues => StiffMatrix % Values
-     StiffMatrix % Values => StiffMatrix % MassValues 
 
-     SELECT CASE( StiffMatrix % FORMAT )
+     SELECT CASE( StiffMatrix % Format )
         CASE( MATRIX_CRS )
            CALL CRS_GlueLocalMatrix( StiffMatrix, &
-                n, NDOFs, NodeIndexes, LocalMassMatrix )
+                n, NDOFs, NodeIndexes, LocalMassMatrix, GlobalValues )
 
-        CASE( MATRIX_LIST )
-           CALL List_GlueLocalMatrix( StiffMatrix % ListMatrix, &
-                n, NDOFs, NodeIndexes, LocalMassMatrix )
+!       CASE( MATRIX_LIST )
+!          CALL List_GlueLocalMatrix( StiffMatrix % ListMatrix, &
+!               n, NDOFs, NodeIndexes, LocalMassMatrix )
 
-       CASE( MATRIX_BAND,MATRIX_SBAND )
-           CALL Band_GlueLocalMatrix( StiffMatrix, &
-                n, NDOFs, NodeIndexes, LocalMassMatrix )
+!      CASE( MATRIX_BAND,MATRIX_SBAND )
+!          CALL Band_GlueLocalMatrix( StiffMatrix, &
+!               n, NDOFs, NodeIndexes, LocalMassMatrix )
+
+        CASE DEFAULT
+          CALL FATAL( 'UpdateMassMatrix', 'Unexpected matrix format')
      END SELECT
-
-     StiffMatrix % Values => SaveValues
 !------------------------------------------------------------------------------
    END SUBROUTINE UpdateMassMatrix
 !------------------------------------------------------------------------------
- 
+
 
 !------------------------------------------------------------------------------
 !> Determine soft limiters set. This is called after the solution.
