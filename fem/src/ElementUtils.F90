@@ -1298,7 +1298,6 @@ CONTAINS
         DO l=1,DOFs
           j = Reorder( InvInitialReorder(i) )
           k1 = DOFs * (j-1) + l
-          
           Rows(k1+1) = Dofs * List(i) % Degree
         END DO
       END DO
@@ -1329,6 +1328,17 @@ CONTAINS
       END DO
       !$OMP END PARALLEL DO      
     ELSE
+      Rows(1) = 1
+      DO i=1,n       
+        DO l=1,DOFs
+          k1 = DOFs * (i-1) + l
+          Rows(k1+1) = Dofs * List(i) % Degree
+        END DO
+      END DO
+      DO i=1,Dofs*n
+        Rows(i+1) = Rows(i) + Rows(i+1)
+      END DO
+
       ! If there is no renumbering then the reordering is one-to-one mapping
       !$OMP PARALLEL DO SHARED(Rows, Cols, List, n, DOFs) &
       !$OMP PRIVATE(CList, l, j, k1, k2, k, m) &
@@ -1350,8 +1360,6 @@ CONTAINS
             END DO
             CList => Clist % Next
           END DO
-          
-          Rows(k1+1) = k2+1
         END DO
       END DO
       !$OMP END PARALLEL DO      
