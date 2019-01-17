@@ -181,7 +181,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
   gotlinefeed = FALSE;
   j = 0;
   for(i=0;i<MAXLINESIZE;i++) {
-    if(line0[i] == '\n' ) {
+    if(line0[i] == '\n' || line0[i] == '\0' ) {
       gotlinefeed = TRUE;
       break;
     }
@@ -199,7 +199,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
   if(j) { /* Arguments are actually on the same line after '=' */
     for(i=j+1;i<MAXLINESIZE;i++) {
       line2[i-j-1] = line0[i];    
-      if( line0[i] == '\n' ) {
+      if( line0[i] == '\n' || line0[i] == '\0' ) {
 	gotlinefeed = TRUE;
 	break;
       }
@@ -220,7 +220,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
 
     gotlinefeed = FALSE;
     for(i=0;i<MAXLINESIZE;i++) {
-      if(line2[i] == '\n' ) {
+      if(line2[i] == '\n' || line2[i] == '\0' ) {
 	gotlinefeed = TRUE;
 	break;
       }
