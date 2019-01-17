@@ -373,7 +373,8 @@ void DynLineEdit::editSlot()
 void DynLineEdit::lineEditClose()
 {
   QString q = textEdit->toPlainText();
-  q.replace( '\n', ';' );
+
+  //q.replace( '\n', ';' );
 
   lineEdit->setText(q);
 
