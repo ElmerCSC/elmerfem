@@ -947,7 +947,7 @@ CONTAINS
           ! obtain the solution. The following is for handling this special case. 
           !----------------------------------------------------------------------
           errorind = rnrm / bnrm
-
+          
 !         IF( OutputInterval /= 0) THEN
 !           WRITE (*, '(I8, 2E11.4)') 0, rnrm, errorind
 !         END IF
@@ -1086,7 +1086,14 @@ CONTAINS
     
         CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
             rwork(1,y0), 1, zero, rwork(1,y), 1)
-        rnrm = SQRT( ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1) )
+        rnrm = ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1)
+
+        IF( rnrm < 0.0 ) THEN
+          CALL Warn('RealBiCGStab(l)','rnrm^2 is negative, iteration halted')
+          Halted = .TRUE.
+          GOTO 100 
+        END IF        
+        rnrm = SQRT( rnrm ) 
         
         !---------------------------------------
         !  --- The reliable update part ---
