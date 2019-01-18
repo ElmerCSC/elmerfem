@@ -1375,7 +1375,7 @@ CONTAINS
 
     LOGICAL :: FoundIm
 
-!$omp threadprivate(Nodes)
+!$omp threadprivate(Nodes,HB,CubicCoeff,InPlaneProximity)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
