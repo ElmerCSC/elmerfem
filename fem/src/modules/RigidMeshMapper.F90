@@ -227,7 +227,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
     END DO
 
-    IF( ListGetLogical(SolverParams,'Mesh Relax Normalize') ) THEN
+    IF( ListGetLogical(SolverParams,'Mesh Relax Normalize',Found) ) THEN
       MaxDeform = MAXVAL( ABS( Solver % Variable % Values ) )
       MaxDeform = ParallelReduction( MaxDeform, 2 )      
       WRITE(Message,'(A,ES12.3)') 'Normalizing deformation by:',MaxDeform
