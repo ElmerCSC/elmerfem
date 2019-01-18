@@ -1233,7 +1233,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     SetRowSizes = .TRUE.
     IF( PRESENT( SetRows ) ) SetRowSizes = SetRows
 
-    
     A => AllocateMatrix()
 
     ALLOCATE( A % Rows(n+1),A % Diag(n),STAT=istat )
@@ -1261,7 +1260,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     NULLIFY( A % ILUValues )
     NULLIFY( A % CILUValues )
     
-    A % NumberOfRows = N
+    A % NumberOfRows = n
     A % Rows(1) = 1
     A % Ordered = .FALSE.
 
@@ -1272,7 +1271,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       A % Diag = 0
       RETURN
     END IF
-
 
     
     InvPerm => A % Diag ! just available memory space...
@@ -1299,12 +1297,13 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 #endif
 
     !$OMP SINGLE
+    A % Rows(1) = 1
     DO i=2,N
        j = InvPerm((i-2)/Ndeg+1)
        A % Rows(i) = A % Rows(i-1) + Ndeg*RowNonzeros(j)
     END DO
-    j = InvPerm((N-1)/ndeg+1)
-    A % Rows(N+1) = A % Rows(N)  +  Ndeg*RowNonzeros(j)
+    j = InvPerm((n-1)/ndeg+1)
+    A % Rows(n+1) = A % Rows(N)  +  Ndeg*RowNonzeros(j)
     !$OMP END SINGLE
     
 #ifdef _OPENMP
