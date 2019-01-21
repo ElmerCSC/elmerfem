@@ -4933,7 +4933,7 @@ CONTAINS
            np = Parent % TYPE % NumberOfNodes
 
            IF ( ListCheckPrefix(BC, TRIM(Name)//' {e}') ) THEN
-             !--------------------------------------------------------------------------------
+              !--------------------------------------------------------------------------------
               ! We now devote this branch for handling edge (curl-conforming) finite elements 
               ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
               !--------------------------------------------------------------------------------
@@ -5044,26 +5044,64 @@ CONTAINS
                    END IF
 
                  END SELECT
+              END IF
+           ELSE IF ( ListCheckPrefix(BC, TRIM(Name)//' {f}') ) THEN
+             !--------------------------------------------------------------------------
+             ! This branch should be able to handle BCs for face (div-conforming)
+             ! elements. Now this works only for RT(0), ABF(0) and BMD(1) in 2D.
+             ! TO DO: Write a 3-D version
+             !--------------------------------------------------------------------------
+             SELECT CASE(GetElementFamily())
+             CASE(2)
+               IF ( ASSOCIATED(Solver % Mesh % Edges) ) THEN
+                 DO j=1,Parent % TYPE % NumberOfEdges
+                   Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(j))
+                   n = 0
+                   DO k=1,Element % TYPE % NumberOfNodes
+                     DO l=1,Edge % TYPE % NumberOfNodes
+                       IF ( Element % NodeIndexes(k)==Edge % NodeIndexes(l)) n=n+1
+                     END DO
+                   END DO
+                   IF ( n==Element % TYPE % NumberOfNodes ) EXIT
+                 END DO
+
+                 IF (n /= Element % TYPE % NumberOfNodes) CYCLE
+                 IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
+
+                 EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
+                 n = Edge % TYPE % NumberOfNodes
+                 CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,TRIM(Name)//' {f}',Work, &
+                     EDOFs, SecondKindBasis, FaceElement=.TRUE.)
+
+                 n=GetElementDOFs(gInd,Edge)
+
+                 n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
+                 DO j=1,EDOFs
+                   k = n_start + j
+                   nb = x % Perm(gInd(k))
+                   IF ( nb <= 0 ) CYCLE
+                   nb = Offset + x % DOFs*(nb-1) + DOF
+
+                   A % ConstrainedDOF(nb) = .TRUE.
+                   A % Dvalues(nb) = Work(j) 
+                 END DO
+
                END IF
-             END IF
 
-           IF ( ListCheckPresent(BC, TRIM(Name)//' {f}') ) THEN
-              !--------------------------------------------------------------------------
-              ! To do: this branch should be able to handle BCs for face (div-conforming)
-              ! elements. 
-              !--------------------------------------------------------------------------
+             CASE DEFAULT
+               CALL Warn('DefaultDirichletBCs', 'Cannot set face element DOFs for this element shape')
+             END SELECT
            END IF
-
          END DO
          SaveElement => SetCurrentElement(SaveElement)
-      END DO
+     END DO
 
 
-      ! Add the possible constraint modes structures
-      !----------------------------------------------------------
-      IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
-        CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
-      END IF
+     ! Add the possible constraint modes structures
+     !----------------------------------------------------------
+     IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
+       CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
+     END IF
       
      
 #ifdef HAVE_FETI4I
@@ -5112,6 +5150,172 @@ CONTAINS
      END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveLinSys
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> This subroutine computes the values of DOFs that are associated with 
+!> mesh edges in the case of vector-valued (edge or face) finite elements, so that
+!> the vector-valued interpolant of the BC data can be constructed. 
+!> The values of the DOFs are defined as D = S*(g.e,v)_E where the unit vector e
+!> can be either tangential or normal to the edge, g is vector-valued data, 
+!> v is a polynomial on the edge E, and S reverts sign if necessary.
+!------------------------------------------------------------------------------
+  SUBROUTINE VectorElementEdgeDOFs(BC, Element, n, Parent, np, Name, Integral, EDOFs, &
+      SecondFamily, FaceElement)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+
+    TYPE(ValueList_t), POINTER :: BC !< The list of boundary condition values
+    TYPE(Element_t) :: Element       !< The boundary element handled
+    INTEGER :: n                     !< The number of boundary element nodes
+    TYPE(Element_t) :: Parent        !< The parent element of the boundary element
+    INTEGER :: np                    !< The number of parent element nodes
+    CHARACTER(LEN=*) :: Name         !< The name of boundary condition
+    REAL(KIND=dp) :: Integral(:)     !< The values of DOFs
+    INTEGER, OPTIONAL :: EDOFs       !< The number of DOFs
+    LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
+    LOGICAL, OPTIONAL :: FaceElement !< If .TRUE., e is normal to the edge
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t), SAVE :: Nodes, Pnodes
+    TYPE(ElementType_t), POINTER :: SavedType
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    LOGICAL :: Lstat, RevertSign, SecondKindBasis, DivConforming
+    INTEGER, POINTER :: Edgemap(:,:)
+    INTEGER :: i,j,k,p,DOFs
+    INTEGER :: i1,i2,i3
+
+    REAL(KIND=dp) :: Basis(n),Load(n),Vload(3,1:n),VL(3),e(3),d(3)
+    REAL(KIND=dp) :: E21(3),E32(3) 
+    REAL(KIND=dp) :: u,v,L,s,DetJ
+!------------------------------------------------------------------------------
+    DOFs = 1
+    IF (PRESENT(EDOFs)) THEN
+      IF (EDOFs > 2) THEN
+        CALL Fatal('VectorElementEdgeDOFs','Cannot handle more than 2 DOFs per edge')
+      ELSE
+        DOFs = EDOFs
+      END IF
+    END IF   
+
+    IF (PRESENT(SecondFamily)) THEN
+      SecondKindBasis = SecondFamily
+      IF (SecondKindBasis .AND. (DOFs /= 2) ) &
+          CALL Fatal('VectorElementEdgeDOFs','2 DOFs per edge expected')
+    ELSE
+      SecondKindBasis = .FALSE.
+    END IF
+
+    IF (PRESENT(FaceElement)) THEN
+      DivConforming = FaceElement
+    ELSE
+      DivConforming = .FALSE.
+    END IF
+
+    ! Get the nodes of the boundary and parent elements:
+    CALL GetElementNodes(Nodes, Element)
+    CALL GetElementNodes(PNodes, Parent)
+
+    RevertSign = .FALSE.
+    EdgeMap => GetEdgeMap(GetElementFamily(Parent))
+    DO i=1,SIZE(EdgeMap,1)
+      j=EdgeMap(i,1)
+      k=EdgeMap(i,2)
+      IF ( Parent % NodeIndexes(j)==Element % NodeIndexes(1) .AND. &
+          Parent % NodeIndexes(k)==Element % NodeIndexes(2) ) THEN
+        EXIT
+      ELSE IF (Parent % NodeIndexes(j)==Element % NodeIndexes(2) .AND. &
+          Parent % NodeIndexes(k)==Element % NodeIndexes(1) ) THEN
+        ! This is the right edge but has opposite orientation as compared
+        ! with the listing of the parent element edges
+        RevertSign = .TRUE.
+        EXIT
+      END IF
+    END DO
+
+    Load(1:n) = GetReal( BC, Name, Lstat, Element )
+
+    i = LEN_TRIM(Name)
+    VLoad(1,1:n)=GetReal(BC,Name(1:i)//' 1',Lstat,element)
+    VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',Lstat,element)
+    VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
+
+    e(1) = PNodes % x(k) - PNodes % x(j)
+    e(2) = PNodes % y(k) - PNodes % y(j)
+    e(3) = PNodes % z(k) - PNodes % z(j)
+    e = e/SQRT(SUM(e**2))
+    IF (DivConforming) THEN
+      ! The boundary normal is needed instead of the tangent vector.
+      ! First, find the element director d that makes the parent 
+      ! element an oriented surface. 
+      i1 = EdgeMap(1,1)
+      i2 = EdgeMap(1,2)
+      i3 = EdgeMap(2,2)
+      E21(1) = PNodes % x(i2) - PNodes % x(i1)
+      E21(2) = PNodes % y(i2) - PNodes % y(i1)
+      E21(3) = PNodes % z(i2) - PNodes % z(i1)
+      E32(1) = PNodes % x(i3) - PNodes % x(i2)
+      E32(2) = PNodes % y(i3) - PNodes % y(i2)
+      E32(3) = PNodes % z(i3) - PNodes % z(i2)
+      d = CrossProduct(E21, E32)
+      d = d/SQRT(SUM(d**2))
+      ! Set e to be the outward normal to the parent element: 
+      e = CrossProduct(e, d)
+    END IF
+
+    ! Is this element type stuff needed and for what?
+    SavedType => Element % TYPE
+    IF ( GetElementFamily()==1 ) Element % TYPE=>GetElementType(202)
+      
+    Integral(1:DOFs) = 0._dp
+    IP = GaussPoints(Element)
+    DO p=1,IP % n
+      Lstat = ElementInfo( Element, Nodes, IP % u(p), &
+            IP % v(p), IP % w(p), DetJ, Basis )
+      s = IP % s(p) * DetJ
+
+      L  = SUM(Load(1:n)*Basis(1:n))
+      VL = MATMUL(Vload(:,1:n),Basis(1:n))
+
+      IF (SecondKindBasis) THEN
+        u = IP % u(p)
+        v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
+        Integral(1)=Integral(1)+s*(L+SUM(VL*e))*v
+        v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
+        Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+      ELSE
+        Integral(1)=Integral(1)+s*(L+SUM(VL*e))
+
+        IF (.NOT. DivConforming) THEN
+          ! This branch is concerned with the second-order curl-conforming elements
+          IF (DOFs>1) THEN
+            v = Basis(2)-Basis(1)
+            IF (RevertSign) v = -1.0d0*v
+            Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+          END IF
+        END IF
+      END IF
+    END DO
+    Element % TYPE => SavedType
+
+    j = Parent % NodeIndexes(j)
+    IF ( ParEnv % PEs>1 ) &
+      j=CurrentModel % Mesh % ParallelInfo % GlobalDOFs(j)
+
+    k = Parent % NodeIndexes(k)
+    IF ( ParEnv % PEs>1 ) &
+      k=CurrentModel % Mesh % ParallelInfo % GlobalDOFs(k)
+
+    IF (k < j) THEN
+      IF (SecondKindBasis) THEN
+        Integral(1)=-Integral(1)
+        Integral(2)=-Integral(2)
+      ELSE
+        Integral(1)=-Integral(1)
+      END IF
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE VectorElementEdgeDOFs
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
