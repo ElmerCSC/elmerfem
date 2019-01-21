@@ -131,7 +131,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   CALL ListAddInteger( Params,'Output Count',OutputCount)
 
   ! Finally go for it and write desired data
-  ! Some formats requite that the list of variables is explicitely given
+  ! Some formats requite that the list of variables is explicitly given
   !-----------------------------------------
 
   MeshLevel = GetInteger( Params,'Output Mesh Level',Found)

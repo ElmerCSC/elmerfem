@@ -7,9 +7,9 @@
 !> when using stand alone partitioning tools.
 !
 !> This will hopefully gradually move to the library and become there an fully
-!> integrated strategy making this solver obsolite.
+!> integrated strategy making this solver obsolete.
 !
-! P.R. 
+! P.R.
 !------------------------------------------------------------------------------
    SUBROUTINE PartitionMeshSolver( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -55,10 +55,10 @@
        CALL WriteMeshToDiskPartitioned( Model, Mesh,DirectoryName, &
            ElementPart, NeighbourList )
      END IF
-     
+
      IF( ListGetLogical( Params,'Partitioning Exit',Found ) ) STOP
-     
-     CALL Info('ParitionMesh','Create partitioing variable')
+
+     CALL Info('PartitionMesh','Create partitioning variable')
      CALL SetPartitionVariable()
 
      CALL Info('PartitionMesh','All done for now')
@@ -158,7 +158,7 @@
       
       CALL Info('PartitionMesh','Maximum number of partitions for a node: '//TRIM(I2S(lmax)))
       
-      WRITE(Message,'(A,F8.3)') 'Average number of partitiones for a node: ',1.0_dp*lsum/n
+      WRITE(Message,'(A,F8.3)') 'Average number of partitions for a node: ',1.0_dp*lsum/n
       CALL Info('PartitionMesh',Message) 
       
     END SUBROUTINE CreateNeighbourList

@@ -320,7 +320,7 @@ MODULE Interpolation
 !------------------------------------------------------------------------------
     SUBROUTINE BuildQuadrantTree(Mesh, BoundingBox, RootQuadrant)
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t) :: Mesh                        !< Finite elememt mesh
+    TYPE(Mesh_t) :: Mesh                        !< Finite element mesh
     REAL(KIND=dp), DIMENSION(6) :: BoundingBox  !< XMin, YMin, ZMin, XMax, YMax, ZMax
     TYPE(Quadrant_t), POINTER :: RootQuadrant   !< Quadrant tree structure root
 !------------------------------------------------------------------------------

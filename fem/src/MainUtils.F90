@@ -1147,7 +1147,7 @@ CONTAINS
         AssProc = GetProcAddr( TRIM(proc_name)//'_bulk', abort=.FALSE. )
         CALL Info('AddEquationBasics','Checking for _bulk solver',Level=12)
         IF ( AssProc /= 0 ) THEN
-          CALL Info('AddEquationBasics','Solver will be be perfomed in steps',Level=8)
+          CALL Info('AddEquationBasics','Solver will be be performed in steps',Level=8)
           Solver % SolverMode = SOLVER_MODE_STEPS
         END IF        
       END IF
@@ -2978,7 +2978,7 @@ CONTAINS
        END DO
 
 !------------------------------------------------------------------------------
-!      Go trough number of solvers (heat,laminar or turbulent flow, etc...)
+!      Go through number of solvers (heat,laminar or turbulent flow, etc...)
 !------------------------------------------------------------------------------
        DO k=1,Model % NumberOfSolvers
 !------------------------------------------------------------------------------
@@ -3683,7 +3683,7 @@ CONTAINS
       
       BulkMode = .TRUE.
 200   IF(BulkMode) THEN
-        ! CALL Info('CoupledSolver','Starting constraing bulk assembly',Level=5)
+        ! CALL Info('CoupledSolver','Starting constraint bulk assembly',Level=5)
         ElementsFirst = 1
         ElementsLast = Mesh % NumberOfBulkElements 
       ELSE

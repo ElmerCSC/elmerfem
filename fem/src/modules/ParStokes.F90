@@ -1743,7 +1743,7 @@ CONTAINS
 
      s = detJ * S_Integ(t)
 !------------------------------------------------------------------------------
-!    Add to load: tangetial derivative of something
+!    Add to load: tangential derivative of something
 !------------------------------------------------------------------------------
      DO i=1,dim
        TangentForce(i) = 0.0d0

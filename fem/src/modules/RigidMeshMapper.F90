@@ -263,7 +263,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       ListCheckPresentAnyBodyForce( Model,'Mesh Displacement 2') .OR. &
       ListCheckPresentAnyBodyForce( Model,'Mesh Displacement 3')
    IF( AnyMeshTranslate ) THEN
-     CALL Info('RigidMeshMapper','> Mesh Displacement < is an obsolite keyword',Level=3)
+     CALL Info('RigidMeshMapper','> Mesh Displacement < is an obsolete keyword',Level=3)
      CALL Warn('RigidMeshMapper','Replace with > Mesh Translate < ')
      AnyMeshTranslate = .FALSE.
    END IF

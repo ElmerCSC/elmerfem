@@ -729,8 +729,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>   Given element structure return value of a quantity x given at element nodes
 !>   at local coordinate point u inside the element. Element basis functions are
-!>   used to compute the value. This is for 1D elements, and shouldnt propably
-!>   be called directly by the user but trough the wrapper routine
+!>   used to compute the value. This is for 1D elements, and shouldn't probably
+!>   be called directly by the user but through the wrapper routine
 !>   InterpolateInElement.
 !------------------------------------------------------------------------------
    FUNCTION InterpolateInElement1D( element,x,u ) RESULT(y)
@@ -937,8 +937,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>   Given element structure return value of a quantity x given at element nodes
 !>   at local coordinate point (u,vb) inside the element. Element basis functions
-!>   are used to compute the value.This is for 2D elements, and shouldnt propably
-!>   be called directly by the user but trough the wrapper routine
+!>   are used to compute the value.This is for 2D elements, and shouldn't probably
+!>   be called directly by the user but through the wrapper routine
 !>   InterpolateInElement.
 !------------------------------------------------------------------------------
    FUNCTION InterpolateInElement2D( element,x,u,v ) RESULT(y)
@@ -1325,8 +1325,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>   Given element structure return value of a quantity x given at element nodes
 !>   at local coordinate point (u,v,w) inside the element. Element basis functions
-!>   are used to compute the value. This is for 3D elements, and shouldnt propably
-!>   be called directly by the user but trough the wrapper routine
+!>   are used to compute the value. This is for 3D elements, and shouldn't probably
+!>   be called directly by the user but through the wrapper routine
 !>   InterpolateInElement.
 !------------------------------------------------------------------------------
    FUNCTION InterpolateInElement3D( element,x,u,v,w ) RESULT(y)
@@ -2644,8 +2644,8 @@ END IF
      INTEGER, OPTIONAL :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
 	                                                !! May be used with P element basis functions
      LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
-     TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions. 
-     LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be avaluated.
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
+     LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:)      !< If present, the values of H(curl)-conforming basis functions B(f(p))
      REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referencial description of the spatial curl of B
      LOGICAL :: Stat                                !< If .FALSE. element is degenerate.
@@ -3407,7 +3407,7 @@ END IF
 !    the element, and B the basic bubble, i.e. the product of nodal basis
 !    functions of the corresponding linear element for triangles and tetras,
 !    and product of two diagonally opposed nodal basisfunctions of the
-!    correspoding (bi-,tri-)linear element for 1d-elements, quads and hexas.
+!    corresponding (bi-,tri-)linear element for 1d-elements, quads and hexas.
 !------------------------------------------------------------------------------
      IF ( PRESENT( Bubbles ) ) THEN
        Bubble % BDOFs = 0
@@ -5348,14 +5348,14 @@ END BLOCK
 !>  does not make reference to the Piola transformation and hence may have limitations
 !>  in its extendability. The data for performing the Piola transformation is also returned.
 !>  Note that the reference element is chosen as in the p-approximation so that
-!>  the reference element edges/faces have the same lenghth/area. This choice simplifies 
+!>  the reference element edges/faces have the same length/area. This choice simplifies
 !>  the associated assembly procedure.
 !>     With giving the optional argument ApplyPiolaTransform = .TRUE., this function
 !>  also performs the Piola transform, so that the basis functions and their spatial
 !>  curl as defined on the physical element are returned.
 !>     In the lowest-order case this function returns the basis functions belonging
 !>  to the optimal family which is not subject to degradation of convergence on
-!>  meshes consting of non-affine physical elements. The second-order elements
+!>  meshes consisting of non-affine physical elements. The second-order elements
 !>  are members of the Nedelec's first family and are constructed in a hierarchic
 !>  fashion (the lowest-order basis functions give a partial construction of
 !>  the second-order basis).
@@ -5416,7 +5416,7 @@ END BLOCK
        CurlBasis = 0.0d0
        LG = 0.0d0
        !--------------------------------------------------------------------------------------------
-       ! Check whether ready edge basis fuction values are available to reduce computation.
+       ! Check whether ready edge basis function values are available to reduce computation.
        ! If they are available, this function is used primarily to obtain the Piola transformation.
        !--------------------------------------------------------------------------------------------
        UsePretabulatedBasis = .FALSE.
@@ -5786,7 +5786,7 @@ END BLOCK
          CASE(3)
            !--------------------------------------------------------------
            ! This branch is for handling triangles. Note that
-           ! the global orientation of the edge tanget t is defined such that
+           ! the global orientation of the edge tangent t is defined such that
            ! t points towards the node that has a larger global index.
            !--------------------------------------------------------------
            EdgeMap => LGetEdgeMap(3)
@@ -10388,7 +10388,7 @@ END BLOCK
 !>    respect to global coordinates of a quantity x given at element nodes at
 !>    local coordinate point u,v,w inside the element. Element basis functions
 !>    are used to compute the value. This is internal version,and shoudnt
-!>    usually be called directly by the user, but trough the wrapper routine
+!>    usually be called directly by the user, but through the wrapper routine
 !>    GlobalFirstDerivatives.
 !------------------------------------------------------------------------------
    SUBROUTINE GlobalFirstDerivativesInternal( elm,nodes,df,gx,gy,gz, &
@@ -12104,9 +12104,9 @@ END FUNCTION PointFaceDistance
         ! described within the element.
         IF( SUM( ABS( delta - prevdelta ) ) < acc ) EXIT
 
-        ! Use sloppier criteria when iteration still unsuccesfull
+        ! Use sloppier criteria when iteration still unsuccessful
         IF( i > 20 ) THEN
-          IF( SUM( ABS( delta - prevdelta ) ) < SQRT( acc ) ) EXIT         
+          IF( SUM( ABS( delta - prevdelta ) ) < SQRT( acc ) ) EXIT
         END IF
 
         ! If the iteration does not proceed try with some relaxation

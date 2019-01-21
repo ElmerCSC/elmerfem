@@ -1031,7 +1031,7 @@ CONTAINS
                lstat = lua_dostring( LuaState, &
                    'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
              ELSE
-               IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, dont do 'return tostring(..)'.
+               IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, do not do 'return tostring(..)'.
                                                                    ! Instead, just execute the line in the lua interpreter
                  lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
                ELSE ! 'abc = # <luacode>' case, oneliners only

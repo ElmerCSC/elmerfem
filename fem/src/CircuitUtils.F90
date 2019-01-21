@@ -257,7 +257,7 @@ CONTAINS
     INTEGER :: slen,n_Circuits
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
 
-    ! Read Circuit defintions from MATC:
+    ! Read Circuit definitions from MATC:
     ! ----------------------------------
     cmd = "Circuits"
     slen = LEN_TRIM(cmd)
@@ -1724,7 +1724,7 @@ CONTAINS
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')
     Circuit_tot_n = CurrentModel%Circuit_tot_n
     
-    ! Initialialize Circuit matrix:
+    ! Initialize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows

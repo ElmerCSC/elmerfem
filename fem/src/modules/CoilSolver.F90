@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter Råback, Juha Ruokolainen
+! *  Authors: Peter Rï¿½back, Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -603,7 +603,7 @@ CONTAINS
      Cols   => A % Cols
 
      IF(.NOT. ASSOCIATED( A % BulkValues ) ) THEN
-       CALL Fatal('CutInterfaceConnections','Dont have bulk values!')
+       CALL Fatal('CutInterfaceConnections','Do not have bulk values!')
      END IF
      Values => A % BulkValues
 
@@ -1787,8 +1787,8 @@ FUNCTION CoilPotential( Model, n, t ) RESULT(f)
     Element => Model % CurrentElement
     IF( .NOT. ASSOCIATED( Element, PrevElement ) ) THEN
       ! One could use as well max or mean, for example
-      ! Consistancy is most important    
-      xmin = MINVAL( PotSelect % Values( PotSelect % Perm(Element % NodeIndexes ) ) ) 
+      ! Consistency is most important
+      xmin = MINVAL( PotSelect % Values( PotSelect % Perm(Element % NodeIndexes ) ) )
       IF( xmin > 0.0 ) THEN
         PotP => PotB
       ELSE
@@ -1865,8 +1865,8 @@ FUNCTION CoilPotentialNormalized( Model, n, t ) RESULT(f)
 
     IF( ASSOCIATED( PotSelect ) ) THEN
       ! One could use as well max or mean, for example
-      ! Consistancy is most important
-      xmin = MINVAL( PotSelect % Values( PotSelect % Perm(Element % NodeIndexes ) ) ) 
+      ! Consistency is most important
+      xmin = MINVAL( PotSelect % Values( PotSelect % Perm(Element % NodeIndexes ) ) )
       IF( xmin > 0.0_dp ) THEN
         PotP => PotB
       ELSE

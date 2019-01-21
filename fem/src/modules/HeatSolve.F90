@@ -1522,7 +1522,7 @@ CONTAINS
                  Temperature, TempPerm, Emissivity, AngleFraction)
       ELSE   !  Full Newton-Raphson solver
 !------------------------------------------------------------------------------
-!       Go trough surfaces (j) this surface (i) is getting
+!       Go through surfaces (j) this surface (i) is getting
 !       radiated from.
 !------------------------------------------------------------------------------
 
@@ -1537,7 +1537,7 @@ CONTAINS
           Asum = Asum + Text
 !------------------------------------------------------------------------------
 !         Gebhardt factors are given elementwise at the center
-!         of the element, so take avarage of nodal temperatures
+!         of the element, so take average of nodal temperatures
 !         (or integrate over surface j)
 !------------------------------------------------------------------------------
 

@@ -702,7 +702,7 @@ CONTAINS
 
 200 CONTINUE
 
-  ! This is now automatically invoked as the time integration is set gloabl in the Solver_init
+  ! This is now automatically invoked as the time integration is set global in the Solver_init
   ! IF ( Transient ) CALL Default1stOrderTimeGlobal()
   CALL DefaultFinishAssembly()
 
@@ -1998,7 +1998,7 @@ END SUBROUTINE LocalConstraintMatrix
            END DO
          ELSE
            ! ---------------------------------------------------------------
-           ! This is the steady state branch. Adding the scalar pontential 
+           ! This is the steady state branch. Adding the scalar potential 
            ! solver as done in the following is reasonable only in the case 
            ! where the electrical conductivity is nonzero.
            ! ------------------------------------------------------------------

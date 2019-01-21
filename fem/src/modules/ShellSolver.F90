@@ -319,7 +319,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! PART II:
   ! Generate the descriptions of curved element edges for improved geometry 
   ! approximation. The implementation may not be memory efficient as data is 
-  ! dublicated for shared element edges with the same director data. Here the
+  ! duplicated for shared element edges with the same director data. Here the
   ! variable CurveDataOutput can be used to output edge data into a file.
   ! With the macro element option we may create additional space curves
   ! corresponding to subtriangulations of quadrilateral elements.
@@ -1494,7 +1494,7 @@ CONTAINS
       ELSE
         !
         ! This must be a 4-node background element; see the tests already done in CreateCurvedEdges.
-        ! If the macro element strategy is used, the coefficients of the bubble fuctions must already
+        ! If the macro element strategy is used, the coefficients of the bubble functions must already
         ! be available at the time of the function call and the virtual edges used in the construction
         ! of the bubble functions are not employed within this function (thus, EdgesParametrized = 4). 
         !
@@ -1531,7 +1531,7 @@ CONTAINS
     END IF
 
     !-----------------------------------------------------------------------
-    ! Retrive parametrizations of curved edges:
+    ! Retrieve parametrizations of curved edges:
     !------------------------------------------------------------------------
     EdgeParams => GetElementProperty('edge parameters', Element)   
     FrameData => NULL()
@@ -1848,7 +1848,7 @@ CONTAINS
         
       CASE(4)
         !-------------------------------------------------------------------------
-        ! First define edge orientation convention and retrive parameters for
+        ! First define edge orientation convention and retrieve parameters for
         ! representing the curved edge
         !-------------------------------------------------------------------------
         SELECT CASE(e)
@@ -2234,7 +2234,7 @@ CONTAINS
     CurveDataSize = CurveDataSize1
     cn = 2
     !-----------------------------------------------------------------------
-    ! Retrive parametrizations of curved edges:
+    ! Retrieve parametrizations of curved edges:
     !------------------------------------------------------------------------
     EdgeParams => GetElementProperty('edge parameters', Element)
     !------------------------------------------------------------------------
@@ -2530,7 +2530,7 @@ CONTAINS
 
     !-----------------------------------------------------------------
     ! Another planarity check may have been done. A positive result
-    ! of an erlier data test will be respected.
+    ! of an earlier data test will be respected.
     !-----------------------------------------------------------------
     IF (PRESENT(PlanarSurface)) THEN
       IF (PlanarSurface .AND. .NOT. Planar) THEN
@@ -4969,7 +4969,7 @@ CONTAINS
         CASE(CurlKernel,DoubleReduction)
           !---------------------------------------------------------------------
           ! The basis functions for RT_0(k,0), with DOFs defined as integrals
-          ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
+          ! of the type d_i = (u,v_i)_k. Here the given function v_i transforms
           ! according to the standard Piola transformation (the div-conforming 
           ! version).
           !---------------------------------------------------------------------
@@ -5005,7 +5005,7 @@ CONTAINS
         CASE(CurlKernel)
           !---------------------------------------------------------------------
           ! The basis functions for ABF_0(k,0), with DOFs defined as integrals
-          ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
+          ! of the type d_i = (u,v_i)_k. Here the given function v_i transforms
           ! according to the standard Piola transformation (the div-conforming 
           ! version).
           !---------------------------------------------------------------------
@@ -5996,7 +5996,7 @@ FUNCTION EdgeMidNode(Element, e) RESULT(X)
       CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
 
   !-----------------------------------------------------------------------
-  ! Retrive parametrizations of curved edges:
+  ! Retrieve parametrizations of curved edges:
   !------------------------------------------------------------------------
   EdgeParams => GetElementProperty('edge parameters', Element)
 

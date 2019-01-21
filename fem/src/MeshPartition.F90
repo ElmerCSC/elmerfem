@@ -604,7 +604,7 @@ CONTAINS
 
 
 
-  !> As the previous routine exept intended for serial meshes without need for communication.
+  !> As the previous routine except intended for serial meshes without need for communication.
   !---------------------------------------------------------------------------------------------
   SUBROUTINE LocalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
     TYPE(Mesh_t), POINTER :: Mesh
@@ -1870,7 +1870,7 @@ CONTAINS
 
     CALL Info('PackMeshPieces','Packing mesh pieces for sending',Level=8)
 
-    ! Allocate and initialize the structures used to communicate thes mesh
+    ! Allocate and initialize the structures used to communicate this mesh
     n = NoPartitions
     ALLOCATE( SentPack( n ) )
 
@@ -2034,7 +2034,7 @@ CONTAINS
         SentPack(1:NoPartitions) % indpos = SentPack(1:NoPartitions) % icount
 
         ! We need to allocate a logical mask to mark the nodes to sent to given partition
-        ! Note that we only want to allocate the flag for partitions that also recieve
+        ! Note that we only want to allocate the flag for partitions that also receive
         ! some elements.
         DO part=1,NoPartitions
           PPack => SentPack(part)
@@ -2189,7 +2189,7 @@ CONTAINS
            1002, ELMER_COMM_WORLD, ierr )
     END DO
 
-    ! Recieve data sizes:
+    ! Receive data sizes:
     !--------------------------
     DO i = 1, NoPartitions
       IF( i-1 == ParEnv % MyPe ) CYCLE
@@ -2205,13 +2205,13 @@ CONTAINS
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
     n = SUM( RecPack(1:NoPartitions) % icount )
-    CALL Info('PackDataToSend','Number of integer values to recieve: '//TRIM(I2S(n)),Level=8)
+    CALL Info('PackDataToSend','Number of integer values to receive: '//TRIM(I2S(n)),Level=8)
     n = SUM( RecPack(1:NoPartitions) % rcount )
-    CALL Info('PackDataToSend','Number of real values to recieve: '//TRIM(I2S(n)),Level=8)
+    CALL Info('PackDataToSend','Number of real values to receive: '//TRIM(I2S(n)),Level=8)
     n = SUM( RecPack(1:NoPartitions) % lcount )
-    CALL Info('PackDataToSend','Number of logical values to recieve: '//TRIM(I2S(n)),Level=8)
+    CALL Info('PackDataToSend','Number of logical values to receive: '//TRIM(I2S(n)),Level=8)
 
-    ! Allocate data sizes for recieving data
+    ! Allocate data sizes for receiving data
     !----------------------------------------
     DO i=1,NoPartitions
       IF( i-1 == ParEnv % Mype ) CYCLE
@@ -2237,9 +2237,9 @@ CONTAINS
       END IF
     END DO
 
-    ! Recieve data:
+    ! Receive data:
     !--------------------------
-    CALL Info('CommunicateMeshPieces','Now recieving the actual integer data',Level=12)
+    CALL Info('CommunicateMeshPieces','Now receiving the actual integer data',Level=12)
     DO i = 1, NoPartitions
       IF( i-1 == ParEnv % MyPe ) CYCLE
       IF( RecPack(i) % icount > 5 ) THEN
@@ -3283,10 +3283,10 @@ CONTAINS
        j = MAXVAL( PartMap ) 
        CALL Info(FuncName,'Number of mapped partitions: '//TRIM(I2S(j)))
 
-       ! The coupling is studied via bulk elements as they are all that matters. 
-       ! In the end we also remap the boundary elements for consistancy. 
+       ! The coupling is studied via bulk elements as they are all that matters.
+       ! In the end we also remap the boundary elements for consistency.
        DO t=1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-         i = ElementPart( t ) 
+         i = ElementPart( t )
          IF( i > 0 ) THEN
            ElementPart(t) = PartMap(i)
          END IF
@@ -3758,12 +3758,12 @@ CONTAINS
         lmax = MAX( lmax, l )
         lsum = lsum + l
       END DO
-      
+
       CALL Info(FuncName,'Maximum number of partitions for a node: '//TRIM(I2S(lmax)))
-      
-      WRITE(Message,'(A,F8.3)') 'Average number of partitiones for a node: ',1.0_dp*lsum/n
-      CALL Info(FuncName,Message) 
-      
+
+      WRITE(Message,'(A,F8.3)') 'Average number of partitions for a node: ',1.0_dp*lsum/n
+      CALL Info(FuncName,Message)
+
     END SUBROUTINE CreateNeighbourList
 
   END SUBROUTINE PartitionMeshSerial

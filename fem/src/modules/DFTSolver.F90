@@ -81,7 +81,7 @@ SUBROUTINE ChargeDensitySolver( Model, Solver, dt, TransientSimulation )
         IF ( EigSolverNumber == 0 ) THEN
           EigSolverNumber = k
         ELSE
-          WRITE(Message,*) 'EigenSolver coud not be identified.', &
+          WRITE(Message,*) 'EigenSolver could not be identified.', &
               'More than one solver has Eigen Anylysis = True'
           CALL ERROR('ChargeDensityCalculation', Message)
         END IF
@@ -256,7 +256,7 @@ SUBROUTINE WaveFunctionSolver( Model, Solver, dt, TransientSimulation )
   !--------------------------------------------------------------
   FirstTimeOnly: IF ( .NOT. AllocationsDone ) THEN
      
-     ! Allocate the mamory for local stiffness and mass matrices
+     ! Allocate the memory for local stiffness and mass matrices
      !----------------------------------------------------------
     N = Solver % Mesh % MaxElementDOFs
     ALLOCATE( STIFF(N,N), MASS(N,N), FORCE(N), &
@@ -603,7 +603,7 @@ SUBROUTINE PoissonSolver( Model, Solver, dt, TransientSimulation )
     END DO
     
     IF (ChargeDensitySolverNumber == 0) THEN
-      WRITE(Message,*) 'ChargeDnsitySolver coud not be identified.', &
+      WRITE(Message,*) 'ChargeDnsitySolver could not be identified.', &
           'No solver has Number of Eigenmodes Included', & 
           'defined.'
       CALL FATAL('PoissonSolver', Message)
@@ -1114,7 +1114,7 @@ CONTAINS
       
       IF( .NOT. DoneNonRelaxed ) THEN
         
-        ! If there is no non-relaxed solution done, go trough the whole
+        ! If there is no non-relaxed solution done, go through the whole
         ! self-consistent iteration step once.
         !--------------------------------------------------------------
         DoneNonRelaxed = .TRUE.        
