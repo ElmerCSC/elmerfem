@@ -4955,7 +4955,7 @@ CONTAINS
 
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
                    n = Edge % TYPE % NumberOfNodes
-                   CALL LocalBcIntegral(BC,Edge,n,Parent,np,TRIM(Name)//' {e}',Work, &
+                   CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,TRIM(Name)//' {e}',Work, &
                        EDOFs, SecondKindBasis)
 
                    n=GetElementDOFs(gInd,Edge)
@@ -4999,7 +4999,7 @@ CONTAINS
                      EDOFs = Edge % BDOFs
                      n = Edge % TYPE % NumberOfNodes
 
-                     CALL LocalBcIntegral(BC, Edge, n, Parent, np, TRIM(Name)//' {e}', &
+                     CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, TRIM(Name)//' {e}', &
                          Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis)
                      
                      n = GetElementDOFs(gInd,Edge)
@@ -5318,138 +5318,6 @@ CONTAINS
   END SUBROUTINE VectorElementEdgeDOFs
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-!> This subroutine computes the values of DOFs that are associated with 
-!> mesh edges in the case of curl-conforming (edge) finite elements, so that
-!> the edge finite element interpolant of the BC data can be constructed. 
-!> The values of the DOFs are defined as D = S*(g.t,v)_E where g.t is tangential 
-!> component of data, v is a polynomial on the edge E, and S reverts sign
-!> if necessary.
-!------------------------------------------------------------------------------
-  SUBROUTINE LocalBcIntegral(BC, Element, n, Parent, np, Name, Integral, EDOFs, &
-      SecondFamily)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-
-    TYPE(ValueList_t), POINTER :: BC !< The list of boundary condition values
-    TYPE(Element_t) :: Element       !< The boundary element handled
-    INTEGER :: n                     !< The number of boundary element nodes
-    TYPE(Element_t) :: Parent        !< The parent element of the boundary element
-    INTEGER :: np                    !< The number of parent element nodes
-    CHARACTER(LEN=*) :: Name         !< The name of boundary condition
-    REAL(KIND=dp) :: Integral(:)     !< The values of DOFs
-    INTEGER, OPTIONAL :: EDOFs       !< The number of DOFs
-    LOGICAL, OPTIONAL :: SecondFamily !< To select the edge element family
-!------------------------------------------------------------------------------
-    TYPE(Nodes_t), SAVE :: Nodes, Pnodes
-    TYPE(ElementType_t), POINTER :: SavedType
-    TYPE(GaussIntegrationPoints_t) :: IP
-
-    LOGICAL :: Lstat, RevertSign, SecondKindBasis
-    INTEGER, POINTER :: Edgemap(:,:)
-    INTEGER :: i,j,k,p,DOFs
-
-    REAL(KIND=dp) :: Basis(n),Load(n),Vload(3,1:n),VL(3),t(3)
-    REAL(KIND=dp) :: u,v,L,s,DetJ
-!------------------------------------------------------------------------------
-    DOFs = 1
-    IF (PRESENT(EDOFs)) THEN
-      IF (EDOFs > 2) THEN
-        CALL Fatal('LocalBCIntegral','Cannot handle more than 2 DOFs per edge')
-      ELSE
-        DOFs = EDOFs
-      END IF
-    END IF   
-
-    IF (PRESENT(SecondFamily)) THEN
-      SecondKindBasis = SecondFamily
-      IF (SecondKindBasis .AND. (DOFs /= 2) ) &
-          CALL Fatal('LocalBCIntegral','2 DOFs per edge expected')
-    ELSE
-      SecondKindBasis = .FALSE.
-    END IF
-
-    ! Get the nodes of the boundary and parent elements:
-    CALL GetElementNodes(Nodes, Element)
-    CALL GetElementNodes(PNodes, Parent)
-
-    RevertSign = .FALSE.
-    EdgeMap => GetEdgeMap(GetElementFamily(Parent))
-    DO i=1,SIZE(EdgeMap,1)
-      j=EdgeMap(i,1)
-      k=EdgeMap(i,2)
-      IF ( Parent % NodeIndexes(j)==Element % NodeIndexes(1) .AND. &
-          Parent % NodeIndexes(k)==Element % NodeIndexes(2) ) THEN
-        EXIT
-      ELSE IF (Parent % NodeIndexes(j)==Element % NodeIndexes(2) .AND. &
-          Parent % NodeIndexes(k)==Element % NodeIndexes(1) ) THEN
-        RevertSign = .TRUE.
-        EXIT
-      END IF
-    END DO
-
-    Load(1:n) = GetReal( BC, Name, Lstat, Element )
-
-    i = LEN_TRIM(Name)
-    VLoad(1,1:n)=GetReal(BC,Name(1:i)//' 1',Lstat,element)
-    VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',Lstat,element)
-    VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
-
-    t(1) = PNodes % x(k) - PNodes % x(j)
-    t(2) = PNodes % y(k) - PNodes % y(j)
-    t(3) = PNodes % z(k) - PNodes % z(j)
-    t = t/SQRT(SUM(t**2))
-
-    SavedType => Element % TYPE
-    IF ( GetElementFamily()==1 ) Element % TYPE=>GetElementType(202)
-      
-    Integral(1:DOFs) = 0._dp
-    IP = GaussPoints(Element)
-    DO p=1,IP % n
-      Lstat = ElementInfo( Element, Nodes, IP % u(p), &
-            IP % v(p), IP % w(p), DetJ, Basis )
-      s = IP % s(p) * DetJ
-
-      L  = SUM(Load(1:n)*Basis(1:n))
-      VL = MATMUL(Vload(:,1:n),Basis(1:n))
-
-      IF (SecondKindBasis) THEN
-        u = IP % u(p)
-        v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
-        Integral(1)=Integral(1)+s*(L+SUM(VL*t))*v
-        v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
-        Integral(2)=Integral(2)+s*(L+SUM(VL*t))*v
-      ELSE
-        Integral(1)=Integral(1)+s*(L+SUM(VL*t))
-
-        IF (DOFs>1) THEN
-          v = Basis(2)-Basis(1)
-          IF (RevertSign) v = -1.0d0*v
-          Integral(2)=Integral(2)+s*(L+SUM(VL*t))*v
-        END IF
-      END IF
-    END DO
-    Element % TYPE => SavedType
-
-    j = Parent % NodeIndexes(j)
-    IF ( ParEnv % PEs>1 ) &
-      j=CurrentModel % Mesh % ParallelInfo % GlobalDOFs(j)
-
-    k = Parent % NodeIndexes(k)
-    IF ( ParEnv % PEs>1 ) &
-      k=CurrentModel % Mesh % ParallelInfo % GlobalDOFs(k)
-
-    IF (k < j) THEN
-      IF (SecondKindBasis) THEN
-        Integral(1)=-Integral(1)
-        Integral(2)=-Integral(2)
-      ELSE
-        Integral(1)=-Integral(1)
-      END IF
-    END IF
-!------------------------------------------------------------------------------
-  END SUBROUTINE LocalBcIntegral
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> This subroutine computes the values of DOFs that are associated with 

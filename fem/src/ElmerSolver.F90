@@ -1566,7 +1566,7 @@ END INTERFACE
                        Edge => Mesh % Edges(CurrentElement % EdgeIndexes(k))
                        l = Var % Perm(CurrentElement % EdgeIndexes(k)+Mesh % NumberOfNodes)
                        IF ( l>0 ) THEN
-                         CALL LocalBcIntegral( IC, &
+                         CALL VectorElementEdgeDOFs( IC, &
                              Edge, Edge % TYPE % NumberOfNodes, CurrentElement, n, &
                              TRIM(Var % Name)//' {e}', Work )
                          Var % Values(l) = Work(1)
