@@ -6133,7 +6133,7 @@ END SUBROUTINE GetMaxDefs
       DO ind=1,BMesh1 % NumberOfBulkElements
         
         Element => BMesh1 % Elements(ind)        
-        EdgeMap => LGetEdgeMap( Element % TYPE % ElementCode / 100)
+        EdgeMap => GetEdgeMap( Element % TYPE % ElementCode / 100)
 
         Indexes => Element % NodeIndexes
 
@@ -6338,7 +6338,7 @@ END SUBROUTINE GetMaxDefs
             ymaxm = MAXVAL( NodesM % y(1:n) ) 
             
             ! Ok, we have found a candicate face that will probably have some hits       
-            EdgeMapM => LGetEdgeMap( ElementM % TYPE % ElementCode / 100)        
+            EdgeMapM => GetEdgeMap( ElementM % TYPE % ElementCode / 100)        
             
             ! Go through combinations of edges and find the edges for which the 
             ! indexes are the same. 
@@ -8834,7 +8834,7 @@ END SUBROUTINE GetMaxDefs
           CYCLE
         END IF
 
-        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100)
+        OldMap => GetEdgeMap( OldFace % TYPE % ElementCode / 100)
 
         DO i = 1,OldFace % TYPE % NumberOfEdges          
           e1 = OldFace % EdgeIndexes(i)
@@ -9067,8 +9067,8 @@ END SUBROUTINE GetMaxDefs
  
         ParentFound = ParentFound + 1
 
-        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100 )
-        NewMap => LGetEdgeMap( NewFace % TYPE % ElementCode / 100 )
+        OldMap => GetEdgeMap( OldFace % TYPE % ElementCode / 100 )
+        NewMap => GetEdgeMap( NewFace % TYPE % ElementCode / 100 )
 
         IntegStuff = GaussPoints( oldface )
         DO it = 1,IntegStuff % n

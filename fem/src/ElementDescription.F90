@@ -4628,7 +4628,7 @@ END BLOCK
           ! the element edge and points towards the node that has
           ! a larger global index.
           !---------------------------------------------------------------
-          EdgeMap => LGetEdgeMap(3)
+          EdgeMap => GetEdgeMap(3)
           !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
           IF (CreateBDMBasis) THEN
@@ -4765,7 +4765,7 @@ END BLOCK
           !--------------------------------------------------------------------
           ! Quadrilateral Arnold-Boffi-Falk (ABF) element basis of degree k=0
           !--------------------------------------------------------------------
-          EdgeMap => LGetEdgeMap(4)
+          EdgeMap => GetEdgeMap(4)
           SquareFaceMap(:) = (/ 1,2,3,4 /)          
           Ind => Element % Nodeindexes
 
@@ -5789,7 +5789,7 @@ END BLOCK
            ! the global orientation of the edge tangent t is defined such that
            ! t points towards the node that has a larger global index.
            !--------------------------------------------------------------
-           EdgeMap => LGetEdgeMap(3)
+           EdgeMap => GetEdgeMap(3)
            !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
            IF (Create2ndKindBasis) THEN
@@ -6002,7 +6002,7 @@ END BLOCK
            !--------------------------------------------------------------
            ! This branch is for handling quadrilaterals
            !--------------------------------------------------------------
-           EdgeMap => LGetEdgeMap(4)
+           EdgeMap => GetEdgeMap(4)
            IF (SecondOrder) THEN
              !---------------------------------------------------------------
              ! The second-order element from the Nedelec's first family with
@@ -6211,7 +6211,7 @@ END BLOCK
            !--------------------------------------------------------------
            ! This branch is for handling tetrahedra
            !--------------------------------------------------------------
-           EdgeMap => LGetEdgeMap(5)
+           EdgeMap => GetEdgeMap(5)
 
            IF (Create2ndKindBasis) THEN
              !-------------------------------------------------
@@ -6913,7 +6913,7 @@ END BLOCK
            !--------------------------------------------------------------
            ! This branch is for handling pyramidic elements
            !--------------------------------------------------------------         
-           EdgeMap => LGetEdgeMap(6)
+           EdgeMap => GetEdgeMap(6)
            Ind => Element % Nodeindexes
 
            IF (SecondOrder) THEN
@@ -7734,7 +7734,7 @@ END BLOCK
            !--------------------------------------------------------------
            ! This branch is for handling prismatic (or wedge) elements
            !--------------------------------------------------------------           
-           EdgeMap => LGetEdgeMap(7)
+           EdgeMap => GetEdgeMap(7)
            Ind => Element % Nodeindexes
 
            IF (SecondOrder) THEN
@@ -8401,7 +8401,7 @@ END BLOCK
            !--------------------------------------------------------------
            ! This branch is for handling brick elements
            !--------------------------------------------------------------           
-           EdgeMap => LGetEdgeMap(8)
+           EdgeMap => GetEdgeMap(8)
            Ind => Element % Nodeindexes
            
            IF (SecondOrder) THEN
@@ -9543,7 +9543,7 @@ END BLOCK
 
        CASE(5)
           ! NOTE: The Nedelec second family is not yet supported
-          EdgeMap => LGetEdgeMap(5)
+          EdgeMap => GetEdgeMap(5)
           DO k=1,6
              i = EdgeMap(k,1)
              j = EdgeMap(k,2)
@@ -9556,7 +9556,7 @@ END BLOCK
           END DO
 
        CASE(6)
-          EdgeMap => LGetEdgeMap(6)
+          EdgeMap => GetEdgeMap(6)
           DO k=1,8
              i = EdgeMap(k,1)
              j = EdgeMap(k,2)
@@ -9588,7 +9588,7 @@ END BLOCK
           SignVec(i+2) = D2
  
        CASE(7)
-          EdgeMap => LGetEdgeMap(7)
+          EdgeMap => GetEdgeMap(7)
           DO k=1,9
              i = EdgeMap(k,1)
              j = EdgeMap(k,2)
@@ -9623,7 +9623,7 @@ END BLOCK
           END DO
 
        CASE(8)
-          EdgeMap => LGetEdgeMap(8)
+          EdgeMap => GetEdgeMap(8)
           DO k=1,12
              i = EdgeMap(k,1)
              j = EdgeMap(k,2)
@@ -9799,7 +9799,7 @@ END BLOCK
 
      END SELECT
 
-     EdgeMap => LGetEdgeMap(Element % TYPE % ElementCode / 100)
+     EdgeMap => GetEdgeMap(Element % TYPE % ElementCode / 100)
      DO i=1,SIZE(Edgemap,1)
        j = EdgeMap(i,1); k = EdgeMap(i,2)
 
@@ -10838,7 +10838,7 @@ END BLOCK
 
 
 !------------------------------------------------------------------------------
- FUNCTION LGetEdgeMap( ElementFamily ) RESULT(EdgeMap)
+ FUNCTION GetEdgeMap( ElementFamily ) RESULT(EdgeMap)
 !------------------------------------------------------------------------------
     INTEGER :: ElementFamily
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -10875,7 +10875,7 @@ END BLOCK
       EdgeMap => Brick
     CASE DEFAULT
       WRITE( Message,'(A,I0,A)') 'Element family ',ElementFamily,' is not known!'
-      CALL Fatal( 'LGetEdgeMap', Message )
+      CALL Fatal( 'GetEdgeMap', Message )
     END SELECT
  
     IF ( .NOT. Initialized(ElementFamily) ) THEN
@@ -10943,7 +10943,7 @@ END BLOCK
        END SELECT
      END IF
 !------------------------------------------------------------------------------
-  END FUNCTION LGetEdgeMap
+  END FUNCTION GetEdgeMap
 !------------------------------------------------------------------------------
 
 
@@ -11025,7 +11025,7 @@ END BLOCK
           hk = 2*CX*CY/(CX+CY)
 
        CASE DEFAULT
-         EdgeMap => LGetEdgeMap(Family)
+         EdgeMap => GetEdgeMap(Family)
 
          IF(LongEdge) THEN
            hK = -1.0 * HUGE(1.0_dp)

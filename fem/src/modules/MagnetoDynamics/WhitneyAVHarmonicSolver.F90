@@ -1884,6 +1884,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE DirichletAfromB()
 !------------------------------------------------------------------------------
+    USE ElementDescription, ONLY: GetEdgeMap
+
     IMPLICIT NONE
     REAL(KIND=dp) :: p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     COMPLEX(KIND=dp) :: S

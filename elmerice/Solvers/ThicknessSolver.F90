@@ -33,6 +33,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE Differentials
   USE MaterialModels
+  USE ElementDescription
   IMPLICIT NONE
 
   !------------------------------------------------------------------------------

@@ -5163,6 +5163,7 @@ CONTAINS
   SUBROUTINE VectorElementEdgeDOFs(BC, Element, n, Parent, np, Name, Integral, EDOFs, &
       SecondFamily, FaceElement)
 !------------------------------------------------------------------------------
+    USE ElementDescription, ONLY: GetEdgeMap
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER :: BC !< The list of boundary condition values
@@ -6084,105 +6085,7 @@ CONTAINS
      END SELECT
    END SUBROUTINE getBoundaryIndexesGL
 
-!------------------------------------------------------------------------------
- FUNCTION GetEdgeMap( ElementFamily ) RESULT(EdgeMap)
-!------------------------------------------------------------------------------
-    INTEGER :: ElementFamily
-    INTEGER, POINTER :: EdgeMap(:,:)
 
-    INTEGER, TARGET :: LineEM(1,2)
-    INTEGER, TARGET :: TriangleEM(3,2)
-    INTEGER, TARGET :: QuadEM(4,2)
-    INTEGER, TARGET :: TetraEM(6,2)
-    INTEGER, TARGET :: PyramidEM(8,2)
-    INTEGER, TARGET :: WedgeEM(9,2)
-    INTEGER, TARGET :: BrickEM(12,2)
-
-    LOGICAL :: Initialized(8) = .FALSE.
-  
-    SAVE LineEM, TriangleEM, WedgeEM, BrickEM, TetraEM, QuadEM, PyramidEM, Initialized
-
-    SELECT CASE(ElementFamily)
-    CASE(2)
-      EdgeMap => LineEM
-    CASE(3)
-      EdgeMap => TriangleEM
-    CASE(4) 
-      EdgeMap => QuadEM
-    CASE(5) 
-      EdgeMap => TetraEM
-    CASE(6) 
-      EdgeMap => PyramidEM
-    CASE(7) 
-      EdgeMap => WedgeEM
-    CASE(8) 
-      EdgeMap => BrickEM
-    END SELECT
- 
-     IF ( .NOT. Initialized(ElementFamily)) THEN
-       Initialized(ElementFamily) = .TRUE.
-       SELECT CASE(ElementFamily)
-       CASE(2)
-         EdgeMap(1,:) = (/ 1,2 /)
-
-       CASE(3)
-         EdgeMap(1,:) = (/ 1,2 /)
-         EdgeMap(2,:) = (/ 2,3 /)
-         EdgeMap(3,:) = (/ 3,1 /)
-
-       CASE(4)
-         EdgeMap(1,:) = (/ 1,2 /)
-         EdgeMap(2,:) = (/ 2,3 /)
-         EdgeMap(3,:) = (/ 3,4 /)
-         EdgeMap(4,:) = (/ 4,1 /)
-
-       CASE(5)
-         EdgeMap(1,:) = (/ 1,2 /)
-         EdgeMap(2,:) = (/ 2,3 /)
-         EdgeMap(3,:) = (/ 3,1 /)
-         EdgeMap(4,:) = (/ 1,4 /)
-         EdgeMap(5,:) = (/ 2,4 /)
-         EdgeMap(6,:) = (/ 3,4 /)
-
-       CASE(6)
-         EdgeMap(1,:) = (/ 1,2 /)
-         EdgeMap(2,:) = (/ 2,3 /)
-         EdgeMap(3,:) = (/ 4,3 /)
-         EdgeMap(4,:) = (/ 1,4 /)
-         EdgeMap(5,:) = (/ 1,5 /)
-         EdgeMap(6,:) = (/ 2,5 /)
-         EdgeMap(7,:) = (/ 3,5 /)
-         EdgeMap(8,:) = (/ 4,5 /)
- 
-       CASE(7)
-         EdgeMap(1,:) = (/ 1,2 /)
-         EdgeMap(2,:) = (/ 2,3 /)
-         EdgeMap(3,:) = (/ 3,1 /)
-         EdgeMap(4,:) = (/ 4,5 /)
-         EdgeMap(5,:) = (/ 5,6 /)
-         EdgeMap(6,:) = (/ 6,4 /)
-         EdgeMap(7,:) = (/ 1,4 /)
-         EdgeMap(8,:) = (/ 2,5 /)
-         EdgeMap(9,:) = (/ 3,6 /)
-
-       CASE(8)
-         EdgeMap(1,:)  = (/ 1,2 /)
-         EdgeMap(2,:)  = (/ 2,3 /)
-         EdgeMap(3,:)  = (/ 4,3 /)
-         EdgeMap(4,:)  = (/ 1,4 /)
-         EdgeMap(5,:)  = (/ 5,6 /)
-         EdgeMap(6,:)  = (/ 6,7 /)
-         EdgeMap(7,:)  = (/ 8,7 /)
-         EdgeMap(8,:)  = (/ 5,8 /)
-         EdgeMap(9,:)  = (/ 1,5 /)
-         EdgeMap(10,:) = (/ 2,6 /)
-         EdgeMap(11,:) = (/ 3,7 /)
-         EdgeMap(12,:) = (/ 4,8 /)
-       END SELECT
-     END IF
-!------------------------------------------------------------------------------
-  END FUNCTION GetEdgeMap
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE GetParentUVW( Element,n,Parent,np,U,V,W,Basis )

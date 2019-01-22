@@ -2357,6 +2357,8 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
   SUBROUTINE DirichletAfromB()
 !------------------------------------------------------------------------------
+    USE ElementDescription, ONLY: GetEdgeMap
+
     IMPLICIT NONE
     REAL(KIND=dp) :: s,p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     TYPE(ListMatrixEntry_t), POINTER :: Ltmp

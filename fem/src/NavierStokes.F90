@@ -46,6 +46,7 @@ MODULE NavierStokes
   USE DefUtils
   USE Differentials
   USE MaterialModels
+  USE ElementDescription, ONLY: GetEdgeMap
 
   IMPLICIT NONE
 

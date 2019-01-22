@@ -112,6 +112,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   USE SolverUtils
   USE ElementUtils
   USE MaterialModels
+  USE ElementDescription, ONLY: GetEdgeMap
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
