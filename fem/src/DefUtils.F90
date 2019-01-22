@@ -2399,7 +2399,12 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 
      Element => GetCurrentElement( UElement )
-
+     
+     IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
+       bc_id = 0
+       RETURN
+     END IF
+     
      DO bc_id=1,CurrentModel % NumberOfBCs
         IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
      END DO

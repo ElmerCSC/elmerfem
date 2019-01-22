@@ -1866,8 +1866,12 @@ CONTAINS
             j = CurrentElement % BodyId 
             j = GeometryBodyMap( j )
           ELSE
-            j = GetBCId( CurrentElement ) 
-            IF ( j>=1 .AND. j<= SIZE(GeometryBCMap)) j = GeometryBCMap( j )
+            j = GetBCId( CurrentElement )
+            IF ( j>=1 .AND. j<= SIZE(GeometryBCMap)) THEN
+              j = GeometryBCMap( j )
+            ELSE
+              j = BCOffset
+            END IF
           END IF
 
           CALL AscBinIntegerWrite( j )
