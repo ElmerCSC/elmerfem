@@ -4289,8 +4289,47 @@ CONTAINS
    END FUNCTION ListGetFun
 !------------------------------------------------------------------------------
 
+   RECURSIVE SUBROUTINE ListInitHandle( Handle )
 
+     TYPE(ValueHandle_t) :: Handle
 
+     Handle % ValueType = -1
+     Handle % SectionType = -1
+     Handle % ListId = -1
+     Handle % Element => NULL()
+     Handle % List => NULL()
+     Handle % Ptr  => NULL()
+     Handle % Nodes => NULL()
+     Handle % Indexes => NULL()
+     Handle % nValuesVec = 0
+     Handle % ValuesVec => NULL()
+     Handle % Values => NULL()
+     Handle % ParValues => NULL()
+     Handle % ParNo = 0
+     Handle % DefIValue = 0
+     Handle % DefRValue = 0.0_dp
+     Handle % Rdim = 0
+     Handle % RTensor => NULL()
+     Handle % RTensorValues => NULL()
+     Handle % DefLValue = .FALSE.
+     Handle % Initialized = .FALSE.
+     Handle % AllocationsDone = .FALSE.
+     Handle % ConstantEverywhere = .FALSE.
+     Handle % GlobalEverywhere = .FALSE.
+     Handle % GlobalInList = .FALSE.
+     Handle % EvaluateAtIP = .FALSE.
+     Handle % SomeVarAtIp = .FALSE.
+     Handle % SomewhereEvaluateAtIP = .FALSE.
+     Handle % NotPresentAnywhere = .FALSE.
+     Handle % UnfoundFatal = .FALSE.
+     Handle % GotMinv = .FALSE.
+     Handle % GotMaxv = .FALSE.
+     Handle % VarCount = 0
+     Handle % HandleIm => NULL()
+     Handle % Handle2 => NULL()
+     Handle % Handle3 => NULL()
+     
+   END SUBROUTINE ListInitHandle
 
 
 !------------------------------------------------------------------------------
@@ -4299,7 +4338,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    RECURSIVE SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
        DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,&
-       FoundSomewhere,InitIm)
+       FoundSomewhere,InitIm,InitVec3D)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      CHARACTER(LEN=*)  :: Section,Name
@@ -4311,6 +4350,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: EvaluateAtIp
      LOGICAL, OPTIONAL :: FoundSomewhere
      LOGICAL, OPTIONAL :: InitIm
+     LOGICAL, OPTIONAL :: InitVec3D     
      !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      TYPE(ValueListEntry_t), POINTER :: ptr
@@ -4322,17 +4362,50 @@ CONTAINS
      REAL(KIND=dp), POINTER :: Basis(:)
      INTEGER, POINTER :: NodeIndexes(:)
      TYPE(Element_t), POINTER :: Element
-     LOGICAL :: GotIt
+     LOGICAL :: GotIt, FoundSomewhere1, FoundSomewhere2
      !------------------------------------------------------------------------------
      
      IF( PRESENT( InitIm ) ) THEN
        IF( InitIm ) THEN
          IF( .NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
            ALLOCATE( Handle % HandleIm )
-         END IF
+           CALL ListInitHandle( Handle % HandleIm ) 
+        END IF
+         CALL Info('ListInitElementKeyword','Treating real part of keyword',Level=12)         
+         CALL ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere,InitVec3D=InitVec3D)
+         IF( PRESENT( FoundSomewhere) ) FoundSomewhere1 = FoundSomewhere
+         
+         CALL Info('ListInitElementKeyword','Treating imaginary part of keyword',Level=12)                 
          CALL ListInitElementKeyword( Handle % HandleIm,Section,TRIM(Name)//' im',minv,maxv,&
-             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,&
-             FoundSomewhere)
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere,InitVec3D=InitVec3D)
+         IF( PRESENT( FoundSomewhere ) ) FoundSomewhere =  FoundSomewhere .OR. FoundSomewhere1
+         RETURN
+       END IF
+     END IF
+
+     IF( PRESENT( InitVec3D ) ) THEN
+       IF( InitVec3D ) THEN
+         IF( .NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
+           ALLOCATE( Handle % Handle2 )
+           CALL ListInitHandle( Handle % Handle2 ) 
+         END IF
+         IF( .NOT. ASSOCIATED( Handle % Handle3 ) ) THEN           
+           ALLOCATE( Handle % Handle3 )           
+           CALL ListInitHandle( Handle % Handle2 ) 
+         END IF
+
+         CALL ListInitElementKeyword( Handle,Section,TRIM(Name)//' 1',minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere)
+         IF( PRESENT( FoundSomewhere) ) FoundSomewhere1 = FoundSomewhere
+         CALL ListInitElementKeyword( Handle % Handle2,Section,TRIM(Name)//' 2',minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere)
+         IF( PRESENT( FoundSomewhere) ) FoundSomewhere2 = FoundSomewhere
+         CALL ListInitElementKeyword( Handle % Handle3,Section,TRIM(Name)//' 3',minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere)         
+         IF( PRESENT( FoundSomewhere ) ) FoundSomewhere = FoundSomewhere .OR. &
+             FoundSomewhere1 .OR. FoundSomewhere2
+         RETURN
        END IF
      END IF
      
@@ -4623,7 +4696,6 @@ CONTAINS
        RETURN
      END IF
 
-
      ! Ok, not the same element, get the index that determines the list
      IF( Handle % BulkElement ) THEN     
        ListId = Element % BodyId       
@@ -4685,7 +4757,7 @@ CONTAINS
        CALL Fatal('ElementHandleList','Unknown section type!')
        
      END SELECT
-       
+     
      IF( ListFound ) THEN
        ! We still have chance that this is the same list
        IF( ASSOCIATED( List, Handle % List ) ) THEN
@@ -4695,8 +4767,7 @@ CONTAINS
        END IF
      ELSE
        Handle % List => NULL()
-     END IF     
-     
+     END IF          
      
    END FUNCTION ElementHandleList
 !------------------------------------------------------------------------------
@@ -4823,7 +4894,6 @@ CONTAINS
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
      List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
-     
 
      ! If the provided list is the same as last time, also the keyword will
      ! be sitting at the same place, otherwise find it in the new list
@@ -4915,8 +4985,8 @@ CONTAINS
          CALL Fatal('ListGetElementReal','Could not find list for required keyword: '//TRIM(Handle % Name))
        END IF         
        Rvalue = Handle % DefRValue 
-
-       Handle % Values(1) = RValue
+       
+       !Handle % Values(1) = RValue
        IF( PRESENT(Found) ) THEN
          Found = .FALSE.
          Handle % Found = .FALSE.
@@ -5432,7 +5502,7 @@ CONTAINS
      INTEGER, OPTIONAL :: GaussPoint
      INTEGER, OPTIONAL :: Rdim
      REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
-     COMPLEX(KIND=dp)  :: Zvalue
+     COMPLEX(KIND=dp) :: Zvalue
 
      REAL(KIND=dp) :: RValue, Ivalue
      LOGICAL :: RFound
@@ -5441,25 +5511,84 @@ CONTAINS
        CALL Fatal('ListGetElementComplex','Initialize with imaginary component!')
      END IF
      
-     Rvalue = ListGetElementReal(Handle,Basis,Element,Found,Indexes,&
-         GaussPoint,Rdim,Rtensor)
-     IF( PRESENT( Rdim ) ) THEN
-       IF( Rdim > 0 ) CALL Fatal('ListGetElementComplex','Not implemented for tensors!')
-     END IF
+     Rvalue = ListGetElementReal(Handle,Basis,Element,Found,Indexes,GaussPoint)
      IF( PRESENT( Found ) ) RFound = Found 
 
-     Ivalue = ListGetElementReal(Handle % HandleIm,Basis,Element,Found,Indexes,&
-         GaussPoint,Rdim,Rtensor)
-     IF( PRESENT( Rdim ) ) THEN
-       IF( Rdim > 0 ) CALL Fatal('ListGetElementComplex','Not implemented for tensors!')
-     END IF
+     Ivalue = ListGetElementReal(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
      IF( PRESENT( Found ) ) Found = Found .OR. RFound 
 
      Zvalue = CMPLX( Rvalue, Ivalue ) 
           
    END FUNCTION ListGetElementComplex
        
-   
+
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting a 3D real vector.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementReal3D( Handle,Basis,Element,Found,Indexes,&
+       GaussPoint,Rdim,Rtensor) RESULT(RValue3D)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: Rdim
+     REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
+     REAL(KIND=dp)  :: RValue3D(3)
+
+     LOGICAL :: Found1, Found2
+     
+     IF(.NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
+       CALL Fatal('ListGetElementReal3D','Initialize with 3D components!')
+     END IF
+     
+     Rvalue3D(1) = ListGetElementReal(Handle,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) Found1 = Found 
+
+     Rvalue3D(2) = ListGetElementReal(Handle % Handle2,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) Found2 = Found
+
+     Rvalue3D(3) = ListGetElementReal(Handle % Handle3,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) Found = Found1 .OR. Found2 .OR. Found 
+     
+   END FUNCTION ListGetElementReal3D
+
+
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting a 3D complex vector.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementComplex3D( Handle,Basis,Element,Found,Indexes,&
+       GaussPoint,Rdim,Rtensor) RESULT(ZValue3D)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: Rdim
+     REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
+     COMPLEX(KIND=dp)  :: ZValue3D(3)
+
+     REAL(KIND=dp)  :: RValue3D(3), IValue3D(3)
+     LOGICAL :: RFound
+     
+     IF(.NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
+       CALL Fatal('ListGetElementComplex3D','Initialize with imaginary component!')
+     END IF
+     
+     Rvalue3D = ListGetElementReal3D(Handle,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) RFound = Found 
+     
+     Ivalue3D = ListGetElementReal3D(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) Found = Found .OR. RFound
+     
+     Zvalue3D = CMPLX( Rvalue3D, Ivalue3D )     
+     
+   END FUNCTION ListGetElementComplex3D
+
    
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in all the Gaussian integration points.

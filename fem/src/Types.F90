@@ -481,7 +481,9 @@ END INTERFACE
      TYPE(VariableTable_t) :: VarTable(32)
      INTEGER :: VarCount
 
-     TYPE(ValueHandle_t), POINTER :: HandleIm
+     TYPE(ValueHandle_t), POINTER :: HandleIm => NULL()
+     TYPE(ValueHandle_t), POINTER :: Handle2 => NULL()
+     TYPE(ValueHandle_t), POINTER :: Handle3 => NULL()
    END TYPE ValueHandle_t
 
 
