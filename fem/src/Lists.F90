@@ -5510,6 +5510,12 @@ CONTAINS
      IF(.NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
        CALL Fatal('ListGetElementComplex','Initialize with imaginary component!')
      END IF
+
+     IF( Handle % NotPresentAnywhere .AND. Handle % HandleIm % NotPresentAnywhere ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       Zvalue = CMPLX( Handle % DefRValue, 0.0_dp )
+       RETURN
+     END IF
      
      Rvalue = ListGetElementReal(Handle,Basis,Element,Found,Indexes,GaussPoint)
      IF( PRESENT( Found ) ) RFound = Found 
@@ -5542,6 +5548,13 @@ CONTAINS
      
      IF(.NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
        CALL Fatal('ListGetElementReal3D','Initialize with 3D components!')
+     END IF
+
+     IF( Handle % NotPresentAnywhere .AND. Handle % Handle2 % NotPresentAnywhere &
+         .AND.  Handle % Handle3 % NotPresentAnywhere ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RValue3D = 0.0_dp
+       RETURN
      END IF
      
      Rvalue3D(1) = ListGetElementReal(Handle,Basis,Element,Found,Indexes,GaussPoint)
