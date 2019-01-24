@@ -4955,121 +4955,12 @@ END BLOCK
        CASE(5)
           !-----------------------------------------
           ! This branch is for handling tetrahedra
-          !-----------------------------------------
-          FaceMap => TetraFaceMap
-          Ind => Element % Nodeindexes
-
-          DO q=1,4
-             !-----------------------------------------------------------------------------------
-             ! Check first whether a sign reversion will be needed as face dofs have orientation.
-             ! If the sign is not reverted, a positive value of the degree of freedom produces
-             ! positive outward flux from the element through the face handled.
-             !-----------------------------------------------------------------------------------
-             RevertSign(q) = .FALSE.
-
-             DO j=1,3
-                FaceIndeces(j) = Ind(FaceMap(q,j))
-             END DO
-             IF (Parallel) THEN
-                DO j=1,3
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
-                END DO
-             END IF
-             
-             IF ( (FaceIndeces(1) < FaceIndeces(2)) .AND. (FaceIndeces(1) < FaceIndeces(3)) ) THEN
-                IF (FaceIndeces(3) < FaceIndeces(2)) THEN
-                   RevertSign(q) = .TRUE.
-                END IF
-             ELSE IF ( ( FaceIndeces(2) < FaceIndeces(1) ) .AND. ( FaceIndeces(2) < FaceIndeces(3) ) ) THEN
-                IF ( FaceIndeces(1) < FaceIndeces(3) ) THEN
-                   RevertSign(q) = .TRUE.
-                END IF
-             ELSE  
-                IF ( FaceIndeces(2) < FaceIndeces(1) ) THEN
-                   RevertSign(q) = .TRUE.
-                END IF
-             END IF
-
-          END DO
-
-          !----------------------------------------------------------------------
-          ! Another way for finding sign reversions. This code is retained here,
-          ! although it was used for verification purposes...
-          !----------------------------------------------------------------------
-          CheckSignReversions = .FALSE.
-          IF (CheckSignReversions) THEN
-             DO q=1,4
-                RevertSign2(q) = .FALSE.
-                i = FaceMap(q,1)
-                j = FaceMap(q,2)
-                k = FaceMap(q,3)
-
-                IF ( ( Ind(i) < Ind(j) ) .AND. ( Ind(i) < Ind(k) ) ) THEN
-                   A = i
-                   IF (Ind(j) < Ind(k)) THEN
-                      B = j
-                      C = k
-                   ELSE
-                      B = k
-                      C = j
-                   END IF
-                ELSE IF ( ( Ind(j) < Ind(i) ) .AND. ( Ind(j) < Ind(k) ) ) THEN
-                   A = j
-                   IF (Ind(i) < Ind(k)) THEN
-                      B = i
-                      C = k
-                   ELSE
-                      B = k
-                      C = i
-                   END IF
-                ELSE
-                   A = k
-                   IF (Ind(i) < Ind(j)) THEN
-                      B = i
-                      C = j
-                   ELSE
-                      B = j
-                      C = i
-                   END IF
-                END IF
-
-                t1(1) = Nodes % x(B) - Nodes % x(A)
-                t1(2) = Nodes % y(B) - Nodes % y(A)              
-                t1(3) = Nodes % z(B) - Nodes % z(A)
-
-                t2(1) = Nodes % x(C) - Nodes % x(A)
-                t2(2) = Nodes % y(C) - Nodes % y(A)              
-                t2(3) = Nodes % z(C) - Nodes % z(A)
-
-                m(1:3) = CrossProduct(t1,t2)
-
-                SELECT CASE(q)
-                CASE(1)
-                   D = 4
-                CASE(2)
-                   D = 3 
-                CASE(3)
-                   D = 1
-                CASE(4)
-                   D = 2                   
-                END SELECT
-
-                e(1) = Nodes % x(D) - Nodes % x(A)
-                e(2) = Nodes % y(D) - Nodes % y(A)                
-                e(3) = Nodes % z(D) - Nodes % z(A)  
-
-                IF ( SUM(m(1:3) * e(1:3)) > 0.0d0 ) RevertSign2(q) = .TRUE.
-
-             END DO
-
-             IF ( ANY(RevertSign(1:4) .NEQV. RevertSign2(1:4)) ) THEN
-                PRINT *, 'CONFLICTING SIGN REVERSIONS SUGGESTED'
-                PRINT *, RevertSign(1:4)
-                PRINT *, RevertSign2(1:4)
-                STOP
-             END IF
-
-          END IF
+          !-----------------------------------------------------------------------------------
+          ! Check first whether a sign reversion will be needed as face dofs have orientation.
+          ! If the sign is not reverted, the positive value of the degree of freedom produces
+          ! positive outward flux from the element through the face handled.
+          !-----------------------------------------------------------------------------------
+          CALL FaceElementOrientation(Element, RevertSign)
 
           IF (CreateBDMBasis) THEN
              DOFs = 12
@@ -5127,6 +5018,8 @@ END BLOCK
              ! Find out how face basis functions must be ordered so that the global
              ! indexing convention is respected. 
              !-----------------------------------------------------------------------
+             FaceMap => TetraFaceMap
+             Ind => Element % Nodeindexes
              FDofMap = 0
              DO q=1,4
                 !i = FaceMap(q,1)
@@ -5321,6 +5214,171 @@ END BLOCK
 !------------------------------------------------
      END FUNCTION PiolaTransformationData
 !------------------------------------------------
+
+!-----------------------------------------------------------------------------------
+!> Get information about whether a sign reversion will be needed to obtain right
+!> DOFs for face (vector) elements. If the sign is not reverted, the positive value of 
+!> the degree of freedom produces positive outward flux from the element through 
+!> the face handled.
+!-----------------------------------------------------------------------------------
+SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
+!-----------------------------------------------------------------------------------
+  USE DefUtils, ONLY: GetElementFamily
+  IMPLICIT NONE
+
+  TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D element having 2-D faces 
+  LOGICAL, INTENT(OUT) :: RevertSign(:)        !< Face-wise information about the sign reversions
+  INTEGER, OPTIONAL, INTENT(IN) :: FaceIndex   !< Check just one face that is specified here
+  TYPE(Nodes_t), OPTIONAL :: Nodes             !< An inactive variable related to code verification
+!-----------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+  LOGICAL :: Parallel
+  
+  INTEGER, POINTER :: FaceMap(:,:), Ind(:)
+  INTEGER, TARGET :: TetraFaceMap(4,3)
+  INTEGER :: FaceIndices(4)
+  INTEGER :: j, q, first_face, last_face
+
+  ! Some inactive variables that were used in the code verification
+  LOGICAL :: RevertSign2(4), CheckSignReversions
+  INTEGER :: i, k, A, B, C, D
+  REAL(KIND=dp) :: t1(3), t2(3), m(3), e(3)
+!-----------------------------------------------------------------------------------
+  RevertSign(:) = .FALSE.
+
+  IF (PRESENT(FaceIndex)) THEN
+    first_face = FaceIndex
+    last_face = FaceIndex
+  ELSE
+    first_face = 1
+  END IF
+
+  Mesh => CurrentModel % Solver % Mesh
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+  Ind => Element % NodeIndexes
+
+  SELECT CASE(GetElementFamily(Element))
+  CASE(5)
+    TetraFaceMap(1,:) = (/ 2, 1, 3 /)
+    TetraFaceMap(2,:) = (/ 1, 2, 4 /)
+    TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
+    TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+
+    FaceMap => TetraFaceMap
+
+    IF (.NOT. PRESENT(FaceIndex)) last_face = 4
+    IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
+        'Too small array for listing element faces')
+
+    DO q=first_face,last_face
+      DO j=1,3
+        FaceIndices(j) = Ind(FaceMap(q,j))
+      END DO
+      IF (Parallel) THEN
+        DO j=1,3
+          FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
+        END DO
+      END IF
+             
+      IF ( (FaceIndices(1) < FaceIndices(2)) .AND. (FaceIndices(1) < FaceIndices(3)) ) THEN
+        IF (FaceIndices(3) < FaceIndices(2)) THEN
+          RevertSign(q) = .TRUE.
+        END IF
+      ELSE IF ( ( FaceIndices(2) < FaceIndices(1) ) .AND. ( FaceIndices(2) < FaceIndices(3) ) ) THEN
+        IF ( FaceIndices(1) < FaceIndices(3) ) THEN
+          RevertSign(q) = .TRUE.
+        END IF
+      ELSE  
+        IF ( FaceIndices(2) < FaceIndices(1) ) THEN
+          RevertSign(q) = .TRUE.
+        END IF
+      END IF
+    END DO
+
+    !----------------------------------------------------------------------
+    ! Another way for finding sign reversions. This code is retained here,
+    ! although it was used for verification purposes...
+    !----------------------------------------------------------------------
+    CheckSignReversions = .FALSE.
+    IF (CheckSignReversions) THEN
+      DO q=1,4
+        RevertSign2(q) = .FALSE.
+        i = FaceMap(q,1)
+        j = FaceMap(q,2)
+        k = FaceMap(q,3)
+
+        IF ( ( Ind(i) < Ind(j) ) .AND. ( Ind(i) < Ind(k) ) ) THEN
+          A = i
+          IF (Ind(j) < Ind(k)) THEN
+            B = j
+            C = k
+          ELSE
+            B = k
+            C = j
+          END IF
+        ELSE IF ( ( Ind(j) < Ind(i) ) .AND. ( Ind(j) < Ind(k) ) ) THEN
+          A = j
+          IF (Ind(i) < Ind(k)) THEN
+            B = i
+            C = k
+          ELSE
+            B = k
+            C = i
+          END IF
+        ELSE
+          A = k
+          IF (Ind(i) < Ind(j)) THEN
+            B = i
+            C = j
+          ELSE
+            B = j
+            C = i
+          END IF
+        END IF
+
+        t1(1) = Nodes % x(B) - Nodes % x(A)
+        t1(2) = Nodes % y(B) - Nodes % y(A)              
+        t1(3) = Nodes % z(B) - Nodes % z(A)
+
+        t2(1) = Nodes % x(C) - Nodes % x(A)
+        t2(2) = Nodes % y(C) - Nodes % y(A)              
+        t2(3) = Nodes % z(C) - Nodes % z(A)
+
+        m(1:3) = CrossProduct(t1,t2)
+
+        SELECT CASE(q)
+        CASE(1)
+          D = 4
+        CASE(2)
+          D = 3 
+        CASE(3)
+          D = 1
+        CASE(4)
+          D = 2                   
+        END SELECT
+
+        e(1) = Nodes % x(D) - Nodes % x(A)
+        e(2) = Nodes % y(D) - Nodes % y(A)                
+        e(3) = Nodes % z(D) - Nodes % z(A)  
+
+        IF ( SUM(m(1:3) * e(1:3)) > 0.0d0 ) RevertSign2(q) = .TRUE.
+
+      END DO
+
+      IF ( ANY(RevertSign(1:4) .NEQV. RevertSign2(1:4)) ) THEN
+        PRINT *, 'CONFLICTING SIGN REVERSIONS SUGGESTED'
+        PRINT *, RevertSign(1:4)
+        PRINT *, RevertSign2(1:4)
+        STOP
+      END IF
+    END IF
+
+  CASE DEFAULT
+    CALL Fatal('FaceElementOrientation', 'Unsupported element family')
+  END SELECT
+!-----------------------------------------------------------------------------------
+END SUBROUTINE FaceElementOrientation
+!-----------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
