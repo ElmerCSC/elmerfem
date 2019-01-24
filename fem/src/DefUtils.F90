@@ -1674,7 +1674,8 @@ CONTAINS
   END FUNCTION GetElementNOFDOFs
 
 
-!> Returns the number of element degrees of freedom
+!> In addition to returning the number of degrees of freedom associated with 
+!> the element, the indexes of the degrees of freedom are also returned.
   FUNCTION GetElementDOFs( Indexes, UElement, USolver,NotDG )  RESULT(NB)
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
@@ -4564,6 +4565,9 @@ CONTAINS
 !------------------------------------------------------------------------------------------
   SUBROUTINE DefaultDirichletBCs( USolver,Ux,UOffset,OffDiagonalMatrix)
 !------------------------------------------------------------------------------------------
+     USE ElementDescription, ONLY: FaceElementOrientation
+     IMPLICIT NONE
+
      INTEGER, OPTIONAL :: UOffset
      LOGICAL, OPTIONAL :: OffDiagonalMatrix
      TYPE(Variable_t), OPTIONAL, TARGET :: Ux
@@ -4583,8 +4587,10 @@ CONTAINS
 
      INTEGER, ALLOCATABLE :: lInd(:), gInd(:)
      INTEGER :: i, j, k, kk, l, m, n, nd, nb, np, mb, nn, ni, nj, i0
-     INTEGER :: EDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
+     INTEGER :: EDOFs, FDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
+     INTEGER :: ActiveFaceId
 
+     LOGICAL :: RevertSign(4) ! Size for tetrahedra, update for other element shapes
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
 
@@ -4943,6 +4949,7 @@ CONTAINS
               ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
               !--------------------------------------------------------------------------------
               IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
+! --better:              IF ( ASSOCIATED( Parent % EdgeIndexes ) ) THEN
                  SELECT CASE(GetElementFamily())
                  CASE(2)
                    DO j=1,Parent % TYPE % NumberOfEdges
@@ -4978,6 +4985,7 @@ CONTAINS
 
                  CASE(3,4)
                    !Check that solver % mesh % faces exists?
+!-- Better:                   IF ( ASSOCIATED(Parent % FaceIndexes) ) THEN
                    DO j=1,Parent % TYPE % NumberOfFaces
                      Face => Solver % Mesh % Faces(Parent % FaceIndexes(j))
                      IF ( GetElementFamily(Element)==GetElementFamily(Face) ) THEN
@@ -5053,12 +5061,12 @@ CONTAINS
            ELSE IF ( ListCheckPrefix(BC, TRIM(Name)//' {f}') ) THEN
              !--------------------------------------------------------------------------
              ! This branch should be able to handle BCs for face (div-conforming)
-             ! elements. Now this works only for RT(0), ABF(0) and BMD(1) in 2D.
-             ! TO DO: Write a 3-D version
+             ! elements. Now this works only for RT(0), ABF(0) and BMD(1) in 2D and
+             ! for RT(0) in 3D.
              !--------------------------------------------------------------------------
              SELECT CASE(GetElementFamily())
              CASE(2)
-               IF ( ASSOCIATED(Solver % Mesh % Edges) ) THEN
+               IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
                  DO j=1,Parent % TYPE % NumberOfEdges
                    Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(j))
                    n = 0
@@ -5091,6 +5099,56 @@ CONTAINS
                    A % Dvalues(nb) = Work(j) 
                  END DO
 
+               END IF
+
+             CASE(3)
+               IF ( ASSOCIATED( Parent % FaceIndexes ) ) THEN
+                 DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
+                   Face => Solver % Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
+                   IF ( GetElementFamily(Element)==GetElementFamily(Face) ) THEN
+                     n = 0
+                     DO k=1,Element % TYPE % NumberOfNodes
+                       DO l=1,Face % TYPE % NumberOfNodes
+                         IF ( Element % NodeIndexes(k)==Face % NodeIndexes(l)) n=n+1
+                       END DO
+                     END DO
+                     IF ( n==Face % TYPE % NumberOfNodes ) EXIT
+                   END IF
+                 END DO
+
+                 IF (n /= Element % TYPE % NumberOfNodes) CYCLE
+                 IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
+
+                 CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
+
+                 FDOFs = Face % BDOFs
+
+                 IF (FDOFs > 0) THEN
+                   n = Face % TYPE % NumberOfNodes
+                   
+                   CALL FaceElementDOFs(BC, Face, n, TRIM(Name)//' {f}', &
+                       Work, FDOFs, SecondKindBasis)
+
+                   IF (RevertSign(ActiveFaceId)) Work = -1.0d0*Work(:)
+
+                   n = GetElementDOFs(GInd,Face)
+                   !
+                   ! Make an offset by the count of nodal DOFs. This provides
+                   ! the right starting point if edge DOFs are not present.
+                   ! --- THIS NEEDS TO BE GENERALIZED
+                   !
+                   n_start = Solver % Def_Dofs(3,Parent % BodyId,1)*Face % NDOFs
+
+                   DO j=1,FDOFs
+                     k = n_start + j
+                     nb = x % Perm(gInd(k))
+                     IF ( nb <= 0 ) CYCLE
+                     nb = Offset + x % DOFs*(nb-1) + DOF
+
+                     A % ConstrainedDOF(nb) = .TRUE.
+                     A % Dvalues(nb) = Work(j) 
+                   END DO
+                 END IF
                END IF
 
              CASE DEFAULT
@@ -5171,16 +5229,16 @@ CONTAINS
     USE ElementDescription, ONLY: GetEdgeMap
     IMPLICIT NONE
 
-    TYPE(ValueList_t), POINTER :: BC !< The list of boundary condition values
-    TYPE(Element_t) :: Element       !< The boundary element handled
-    INTEGER :: n                     !< The number of boundary element nodes
-    TYPE(Element_t) :: Parent        !< The parent element of the boundary element
-    INTEGER :: np                    !< The number of parent element nodes
-    CHARACTER(LEN=*) :: Name         !< The name of boundary condition
-    REAL(KIND=dp) :: Integral(:)     !< The values of DOFs
-    INTEGER, OPTIONAL :: EDOFs       !< The number of DOFs
+    TYPE(ValueList_t), POINTER :: BC  !< The list of boundary condition values
+    TYPE(Element_t), POINTER :: Element !< The boundary element handled
+    INTEGER :: n                      !< The number of boundary element nodes
+    TYPE(Element_t) :: Parent         !< The parent element of the boundary element
+    INTEGER :: np                     !< The number of parent element nodes
+    CHARACTER(LEN=*) :: Name          !< The name of boundary condition
+    REAL(KIND=dp) :: Integral(:)      !< The values of DOFs
+    INTEGER, OPTIONAL :: EDOFs        !< The number of DOFs
     LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
-    LOGICAL, OPTIONAL :: FaceElement !< If .TRUE., e is normal to the edge
+    LOGICAL, OPTIONAL :: FaceElement  !< If .TRUE., e is normal to the edge
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes, Pnodes
     TYPE(ElementType_t), POINTER :: SavedType
@@ -5296,6 +5354,10 @@ CONTAINS
           ! This branch is concerned with the second-order curl-conforming elements
           IF (DOFs>1) THEN
             v = Basis(2)-Basis(1)
+            ! The parent element must define the default for the positive tangent associated
+            ! with the edge. Thus, if the boundary element handled has an opposite orientation, 
+            ! the sign must be reverted to get the positive coordinate associated with the
+            ! parent element edge.
             IF (RevertSign) v = -1.0d0*v
             Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
           END IF
@@ -5353,7 +5415,7 @@ CONTAINS
 
     INTEGER :: i,j,p,DOFs,BasisDegree
 
-    REAL(KIND=dp) :: Basis(n),Vload(3,1:n),VL(3),Normal(3)
+    REAL(KIND=dp) :: Basis(n),Vload(3,n),VL(3),Normal(3)
     REAL(KIND=dp) :: EdgeBasis(EDOFs+FDOFs,3)
     REAL(KIND=dp) :: Mass(FDOFs,FDOFs), Force(FDOFs)
     REAL(KIND=dp) :: v,s,DetJ
@@ -5404,7 +5466,82 @@ CONTAINS
   END SUBROUTINE SolveLocalFaceDOFs
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> This subroutine computes the values of DOFs that are associated with 
+!> mesh faces in the case of face (vector-valued) finite elements, so that
+!> the vector-valued interpolant of the BC data can be constructed. 
+!> The values of the DOFs are defined as D = S*(g.n,v)_F where the unit vector n
+!> is normal to the face, g is vector-valued data, v is a polynomial on the face F, 
+!> and S reverts sign if necessary.
+! TO DO: This can now handle only tetrahedral faces and needs an update when
+!        new 3-D element types are added. Moreover RT(0) is supposed currently. 
+!------------------------------------------------------------------------------
+  SUBROUTINE FaceElementDOFs(BC, Element, n, Name, Integral, FDOFs, &
+      SecondFamily)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
 
+    TYPE(ValueList_t), POINTER :: BC !< The list of boundary condition values
+    TYPE(Element_t), POINTER :: Element !< The boundary element handled
+    INTEGER :: n                     !< The number of boundary element nodes
+    CHARACTER(LEN=*) :: Name         !< The name of boundary condition
+    REAL(KIND=dp) :: Integral(:)     !< The values of DOFs
+    INTEGER, OPTIONAL :: FDOFs       !< The number of DOFs
+    LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: SecondKindBasis, stat
+    INTEGER :: DOFs, i, p
+    REAL(KIND=dp) :: VLoad(3,n), VL(3), Normal(3), Basis(n), DetJ, s
+!------------------------------------------------------------------------------
+    DOFs = 1
+    IF (PRESENT(FDOFs)) THEN
+      IF (FDOFs > 1) THEN
+        CALL Fatal('FaceElementDOFs','Cannot yet handle more than 1 DOFs per face')
+      ELSE
+        DOFs = FDOFs
+      END IF
+    END IF
+
+    IF (PRESENT(SecondFamily)) THEN
+      SecondKindBasis = SecondFamily
+      IF (SecondKindBasis .AND. (DOFs /= 3) ) &
+          CALL Fatal('FaceElementDOFs','3 DOFs per face expected')
+    ELSE
+      SecondKindBasis = .FALSE.
+    END IF
+
+    CALL GetElementNodes(Nodes, Element)
+
+    i = LEN_TRIM(Name)
+    VLoad(1,1:n)=GetReal(BC,Name(1:i)//' 1',stat,Element)
+    VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',stat,Element)
+    VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',stat,Element)
+
+    IP = GaussPoints(Element)
+    Integral(:) = 0.0d0
+    DO p=1,IP % n
+      stat = ElementInfo(Element, Nodes, IP % u(p), &
+            IP % v(p), IP % w(p), DetJ, Basis)
+      !
+      ! We need a normal that points outwards from the parent element.
+      ! The following function call should be consistent with this goal
+      ! in the case of a volume-vacuum interface provided a target body
+      ! for the normal has not been given to blur the situation.
+      ! TO DO: Modify to allow other scenarios 
+      !
+      Normal = NormalVector(Element, Nodes, IP % u(p), IP % v(p), .TRUE.)
+
+      VL = MATMUL(VLoad(:,1:n), Basis(1:n))
+      s = IP % s(p) * DetJ
+      !DO i=1,DOFs
+      Integral(1) = Integral(1) + SUM(VL(1:3) * Normal(1:3)) * s
+      !END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE FaceElementDOFs
+!------------------------------------------------------------------------------
 
 
 !> In the case of p-approximation, compute the element stiffness matrix and
