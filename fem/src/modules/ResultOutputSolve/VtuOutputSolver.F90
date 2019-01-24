@@ -2349,12 +2349,18 @@ CONTAINS
           END IF
         END IF
         
-        VarType = Solution % Type
-        IF( VarType == Variable_on_elements ) CYCLE
+        VarType = Solution % TYPE
 
-        IF( VarType == Variable_on_nodes_on_elements .OR. &
-            VarType == Variable_on_gauss_points ) THEN
+        IF ( VarType == Variable_on_nodes_on_elements ) THEN
           IF( .NOT. ( ( DG .OR. DN ) .AND. SaveElemental ) ) CYCLE
+        ELSE IF( VarType == Variable_on_elements ) THEN
+          CYCLE
+        ELSE IF( VarType == Variable_on_gauss_points ) THEN
+          IF ( DG ) THEN
+            CONTINUE
+          ELSE
+            CYCLE
+          END IF
         END IF
 
         IF( ASSOCIATED(Solution % EigenVectors)) THEN
@@ -2469,13 +2475,13 @@ CONTAINS
           VarType = Solution % Type
           
           IF( DG .OR. DN ) THEN
-            Found = ( VarType /= Variable_on_elements )
-          ELSE            
-            Found = ( VarType /= Variable_on_nodes_on_elements .AND. &
-                VarType /= Variable_on_elements .AND. &
-                VarType /= Variable_on_gauss_points )
+            Found = ( VarType == Variable_on_elements )
+          ELSE
+            Found = ( VarType == Variable_on_nodes_on_elements .OR. &
+                VarType == Variable_on_gauss_points  .OR. &
+                VarType == Variable_on_elements )            
           END IF
-          IF( .NOT. Found ) CYCLE
+          IF (.NOT. Found ) CYCLE
 
           IF( ASSOCIATED(Solution % EigenVectors)) THEN
             NoModes = SIZE( Solution % EigenValues )
