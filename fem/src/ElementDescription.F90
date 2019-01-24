@@ -5223,7 +5223,6 @@ END BLOCK
 !-----------------------------------------------------------------------------------
 SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
 !-----------------------------------------------------------------------------------
-  USE DefUtils, ONLY: GetElementFamily
   IMPLICIT NONE
 
   TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D element having 2-D faces 
@@ -5257,7 +5256,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
   Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
   Ind => Element % NodeIndexes
 
-  SELECT CASE(GetElementFamily(Element))
+  SELECT CASE(Element % TYPE % ElementCode / 100)
   CASE(5)
     TetraFaceMap(1,:) = (/ 2, 1, 3 /)
     TetraFaceMap(2,:) = (/ 1, 2, 4 /)
