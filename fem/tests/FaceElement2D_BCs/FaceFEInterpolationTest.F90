@@ -208,7 +208,8 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=.TRUE., &
          EdgeBasisDegree=ElementOrder)    
     
-    np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
+    ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
+    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1) 
 
     DO t=1,IP % n
 
@@ -301,7 +302,8 @@ CONTAINS
     !-------------------------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=.TRUE., EdgeBasisDegree=ElementOrder) 
 
-    np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
+    ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
+    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1) 
 
     DO t=1,IP % n
 

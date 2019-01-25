@@ -4921,7 +4921,6 @@ CONTAINS
               ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
               !--------------------------------------------------------------------------------
               IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
-! --better:              IF ( ASSOCIATED( Parent % EdgeIndexes ) ) THEN
                  SELECT CASE(GetElementFamily())
                  CASE(2)
                    DO j=1,Parent % TYPE % NumberOfEdges
@@ -5107,9 +5106,20 @@ CONTAINS
                    !
                    ! Make an offset by the count of nodal DOFs. This provides
                    ! the right starting point if edge DOFs are not present.
-                   ! --- THIS NEEDS TO BE GENERALIZED
                    !
-                   n_start = Solver % Def_Dofs(3,Parent % BodyId,1)*Face % NDOFs
+                   n_start = Solver % Def_Dofs(3,Parent % BodyId,1) * Face % NDOFs
+                   !
+                   ! Check if we need to increase the offset by the count of
+                   ! edge DOFs:
+                   !
+                   IF ( ASSOCIATED(Face % EdgeIndexes) ) THEN
+                     EDOFs = 0
+                     DO l=1,Face % TYPE % NumberOfEdges
+                       Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+                       EDOFs = EDOFs + Edge % BDOFs
+                     END DO
+                     n_start = n_start + Solver % Def_Dofs(3,Parent % BodyId,2) * EDOFs
+                   END IF
 
                    DO j=1,FDOFs
                      k = n_start + j
