@@ -11562,7 +11562,7 @@ END FUNCTION SearchNodeL
 !   If solving constraint modes analysis go there:
 !   ----------------------------------------------
     IF ( ConstraintModesAnalysis ) THEN      
-      CALL SolveConstraintModesSystem( A, Solver )
+      CALL SolveConstraintModesSystem( A, x, b , Solver )
      
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
       
@@ -12183,11 +12183,11 @@ END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
 !> Solve a linear system with permutated constraints.
 !------------------------------------------------------------------------------
-SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
+SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 !------------------------------------------------------------------------------
-    TYPE(Matrix_t), POINTER :: StiffMatrix
+    TYPE(Matrix_t), POINTER :: A
     TYPE(Solver_t) :: Solver
-    LOGICAL :: ScaleSystem
+    REAL(KIND=dp) CONTIG :: x(:),b(:)
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,n,m
@@ -12196,10 +12196,10 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:)
     CHARACTER(LEN=MAX_NAME_LEN) :: MatrixFile
     !------------------------------------------------------------------------------
-    n = StiffMatrix % NumberOfRows
+    n = A % NumberOfRows
     
     Var => Solver % Variable
-    IF( SIZE(Var % Values) /= n ) THEN
+    IF( SIZE(x) /= n ) THEN
       CALL Fatal('SolveConstraintModesSystem','Conflicting sizes for matrix and variable!')
     END IF
 
@@ -12226,24 +12226,21 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
 
       ! The matrix has been manipulated already before. This ensures
       ! that the system has values 1 at the constraint mode i.
-      WHERE( Var % ConstraintModesIndeces == i ) &
-          StiffMatrix % Rhs = StiffMatrix % Values( StiffMatrix % Diag )
+      WHERE( Var % ConstraintModesIndeces == i ) b = A % Values(A % Diag)
         
-      CALL SolveSystem( StiffMatrix,ParMatrix,StiffMatrix % rhs,&
-          Var % Values,Var % Norm,Var % DOFs,Solver )
+      CALL SolveSystem( A,ParMatrix,b,x,Var % Norm,Var % DOFs,Solver )
 
-      
-      WHERE( Var % ConstraintModesIndeces == i ) StiffMatrix % Rhs = 0.0_dp            
+      WHERE( Var % ConstraintModesIndeces == i ) b = 0._dp
 
-      Var % ConstraintModes(i,:) = Var % Values
+      Var % ConstraintModes(i,:) = x
 
       IF( ComputeFluxes ) THEN
         CALL Info('SolveConstraintModesSystem','Computing lumped fluxes',Level=8)
-        PValues => StiffMatrix % Values
-        StiffMatrix % Values => StiffMatrix % BulkValues
+        PValues => A % Values
+        A % Values => A % BulkValues
         Fluxes = 0.0_dp
-        CALL MatrixVectorMultiply( StiffMatrix, Var % Values, Fluxes ) 
-        StiffMatrix % Values => PValues
+        CALL MatrixVectorMultiply( A, x, Fluxes ) 
+        A % Values => PValues
 
         DO j=1,n
           k = Var % ConstraintModesIndeces(j)
