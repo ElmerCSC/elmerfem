@@ -450,8 +450,9 @@ CONTAINS
     
     PRINT *,'set source at rhs:',i,j,MaxDotProd
     IF( j > 0 ) THEN
-      ! Component in real valued system is: 2j-1
-      Solver % Matrix % Rhs( 2*j-1 ) = MaxDotProd 
+      ! Component in real valued system is: im*omega*Source
+      ! i.e. real dipole source results to imaginary source
+      Solver % Matrix % Rhs( 2*j ) = Omega * MaxDotProd / MaxEdgeLen
     END IF
 
   END SUBROUTINE SingleDipoleLoad
@@ -502,6 +503,7 @@ CONTAINS
     DAMP(1:nd,1:nd)  = 0.0_dp
     FORCE(1:nd) = 0.0_dp
 
+    
     IF( HasPrecDampCoeff ) PREC = 0.0_dp    
     
     ! Numerical integration:
@@ -539,7 +541,7 @@ CONTAINS
         DO i = 1,nd
           DO j = 1,nd
             ! the term i\omega\sigma u.v
-            MASS(i,j) = MASS(i,j) + im * Omega * Cond * &
+            STIFF(i,j) = STIFF(i,j) + im * Omega * Cond * &
                 SUM(WBasis(j,:) * WBasis(i,:)) * weight
           END DO
         END DO
@@ -567,7 +569,7 @@ CONTAINS
       L = ListGetElementComplex3D( CurrCoeff_h, Basis, Element, Found, GaussPoint = t )      
       IF( Found ) THEN
         DO i = 1,nd
-          FORCE(i) = FORCE(i) + (SUM(L*WBasis(i,:))) * weight
+          FORCE(i) = FORCE(i) + im * Omega * (SUM(L*WBasis(i,:))) * weight
         END DO
       END IF
                   
@@ -958,7 +960,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), Norm
    REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), E(2,3)
-   REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im, Freq, C_ip
+   REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im, C_ip
    COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), PR(16), EdotJ, EF_ip(3), R_ip, &!
                        B(3), R(35)
 
@@ -1021,7 +1023,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        'Using Piola transformed finite elements',Level=5)
 
    Omega = GetAngularFrequency(Found=Found)
-   Freq = Omega / (2*PI)
    
    Found = .FALSE.
    IF( ASSOCIATED( Model % Constants ) ) THEN
