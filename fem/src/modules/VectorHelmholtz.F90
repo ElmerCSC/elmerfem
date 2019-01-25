@@ -343,6 +343,9 @@ CONTAINS
     ! ---------------------------------------------
     CALL DefaultDirichletBCs()
 
+
+    CALL SingleDipoleLoad() 
+    
     ! Linear system solution:
     ! -----------------------
     Norm = DefaultSolve()
@@ -351,6 +354,109 @@ CONTAINS
   END FUNCTION DoSolve
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> This subroutine sets a single dipole load.
+!> It is mainly intended for testing purposes only. 
+!------------------------------------------------------------------------------
+
+  SUBROUTINE SingleDipoleLoad()
+
+    TYPE(ValueList_t), POINTER :: DList
+    REAL(KIND=dp), POINTER :: WrkArray(:,:)
+    REAL(KIND=dp) :: Source(3),Coord(3),Coord0(3),EdgeVec(3),MinCoord(3)
+    REAL(KIND=dp) :: MinDist,Dist, DotProd,MaxDotProd,EdgeLen,MaxEdgeLen,ParMinDist
+    INTEGER :: MinInd,MaxEdgeInd,i,j,t
+    TYPE(Nodes_t) :: Nodes
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: Found
+    
+    SAVE Nodes
+    
+    
+    DList => Solver % Values
+    
+    WrkArray => ListGetConstRealArray(DList,'Dipole Coordinates',Found)
+    IF(.NOT. Found ) RETURN
+    
+    CALL Info('DipoleSource','>Dipole Coordinates< given, setting up single edge source!') 
+    IF( SIZE( WrkArray, 1 ) /= 3 .OR. SIZE( WrkArray, 2 ) /= 1 ) THEN
+      CALL Fatal('DipoleSource','>Dipole Coordinates< of wrong size!') 
+    END IF
+    Coord0(1:3) = WrkArray(1:3,1)
+    
+    WrkArray => ListGetConstRealArray(DList,'Dipole Current',Found)
+    IF(.NOT. Found) CALL Fatal('DipoleSource','>Dipole Current< not given!') 
+    IF( SIZE( WrkArray, 1 ) /= 3 .OR. SIZE( WrkArray, 2 ) /= 1 ) THEN
+      CALL Fatal('DipoleSource','>Dipole Current< of wrong size!') 
+    END IF
+    Source(1:3) = WrkArray(1:3,1)                
+    
+    MinDist = HUGE( MinDist ) 
+    DO t=1,Mesh % NumberOfNodes
+      Coord(1) = Mesh % Nodes % x(t)
+      Coord(2) = Mesh % Nodes % y(t)
+      Coord(3) = Mesh % Nodes % z(t)      
+      Dist = SQRT( SUM( (Coord-Coord0)**2)  )
+      IF( Dist < MinDist ) THEN
+        MinDist = Dist
+        MinInd = t
+        MinCoord = Coord
+      END IF
+    END DO
+    
+    PRINT *,'Minimum distance at node:',MinInd,MinDist
+    PRINT *,'Dipole moment point:',Coord0
+    PRINT *,'Nearest mesh point:',MinCoord
+
+    IF( ParEnv % PEs > 1 ) THEN
+      ParMinDist = ParallelReduction( MinDist, 1)
+      IF( ParMinDist < MinDist ) RETURN
+      PRINT *,'Minimum distance node found in partition:',ParEnv % MyPe
+    END IF
+      
+    
+    MaxDotProd = 0.0_dp
+
+    DO t=1,Mesh % NumberOfEdges
+      Element => Mesh % Edges(t)
+            
+      IF( ALL( Element % NodeIndexes /= MinInd ) ) CYCLE
+      
+      CALL GetElementNodes( Nodes, Element )
+      
+      EdgeVec(1) = Nodes % x(1) - Nodes % x(2)
+      EdgeVec(2) = Nodes % y(1) - Nodes % y(2)
+      EdgeVec(3) = Nodes % z(1) - Nodes % z(2)
+
+      EdgeLen = SQRT( SUM( EdgeVec**2 ) )
+      
+      
+      DotProd = SUM(EdgeVec*Source) / EdgeLen
+      
+      !PRINT *,'candidate:',t,EdgeLen,DotProd
+
+      IF( ABS( DotProd ) > ABS( MaxDotProd ) ) THEN
+        !PRINT *,'found better'
+        MaxDotProd = DotProd
+        MaxEdgeLen = EdgeLen
+        MaxEdgeInd = t
+      END IF
+    END DO
+
+    PRINT *,'Edge with best orientation:',MaxEdgeInd,maxDotProd,MaxEdgeLen
+    
+    i = Mesh % NumberOfNodes + MaxEdgeInd
+    j = Solver % Variable % Perm(i)
+    
+    PRINT *,'set source at rhs:',i,j,MaxDotProd
+    IF( j > 0 ) THEN
+      ! Component in real valued system is: 2j-1
+      Solver % Matrix % Rhs( 2*j-1 ) = MaxDotProd 
+    END IF
+
+  END SUBROUTINE SingleDipoleLoad
+    
+  
 
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, InitHandles )

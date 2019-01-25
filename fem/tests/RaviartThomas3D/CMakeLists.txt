@@ -6,5 +6,4 @@ ADD_ELMERTEST_MODULE(RaviartThomas3D RTSolve RTSolve.f90)
 
 file(COPY ELMERSOLVER_STARTINFO cube RTSolve.f90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(RaviartThomas3D)
-ADD_ELMER_LABEL(RaviartThomas3D quick)
+ADD_ELMER_TEST(RaviartThomas3D LABELS quick vector_element)
