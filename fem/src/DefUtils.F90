@@ -938,13 +938,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
-     INTEGER :: i
-
-     IF ( PRESENT( Found ) ) THEN
-        str = ListGetString( List, Name, Found )
-     ELSE
-        str = ListGetString( List, Name )
-     END IF
+     str = ListGetString( List, Name, Found )
   END FUNCTION
 
 
@@ -956,11 +950,7 @@ CONTAINS
 
      INTEGER :: i
 
-     IF ( PRESENT( Found ) ) THEN
-        i = ListGetInteger( List, Name, Found )
-     ELSE
-        i = ListGetInteger( List, Name )
-     END IF
+     i = ListGetInteger( List, Name, Found )
   END FUNCTION
 
 
@@ -972,11 +962,7 @@ CONTAINS
 
      LOGICAL :: l
 
-     IF ( PRESENT( Found ) ) THEN
-        l = ListGetLogical( List, Name, Found )
-     ELSE
-        l = ListGetLogical( List, Name )
-     END IF
+     l = ListGetLogical( List, Name, Found )
   END FUNCTION
 
 
@@ -996,11 +982,7 @@ CONTAINS
      IF ( PRESENT( y ) ) yy = y
      IF ( PRESENT( z ) ) zz = z
 
-     IF ( PRESENT( Found ) ) THEN
-        r = ListGetConstReal( List, Name, Found,xx,yy,zz )
-     ELSE
-        r = ListGetConstReal( List, Name,x=xx,y=yy,z=zz )
-     END IF
+     r = ListGetConstReal( List, Name, Found,xx,yy,zz )
   END FUNCTION
 
 
@@ -1029,11 +1011,7 @@ CONTAINS
      x(1:n) = REAL(0, dp)
      IF( ASSOCIATED(List) ) THEN
        IF ( ASSOCIATED(List % Head) ) THEN
-          IF ( PRESENT( Found ) ) THEN
-             x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
-          ELSE
-             x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
-          END IF
+         x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
        END IF
      END IF
      s = x(1)
@@ -1208,11 +1186,7 @@ CONTAINS
      IF ( PRESENT( Found ) ) Found = .FALSE.
      IF(ASSOCIATED(List)) THEN
        IF ( ASSOCIATED(List % Head) ) THEN
-          IF ( PRESENT( Found ) ) THEN
-             x => ListGetConstRealArray( List, Name, Found )
-          ELSE
-             x => ListGetConstRealArray( List, Name )
-          END IF
+         x => ListGetConstRealArray( List, Name, Found )
        END IF
      END IF
   END SUBROUTINE GetConstRealArray
@@ -1236,11 +1210,7 @@ CONTAINS
      n = GetElementNOFNodes( Element )
      IF ( ASSOCIATED(List) ) THEN
        IF ( ASSOCIATED(List % Head) ) THEN
-          IF ( PRESENT( Found ) ) THEN
-             CALL ListGetRealArray( List, Name, x, n, Element % NodeIndexes, Found )
-          ELSE
-             CALL ListGetRealArray( List, Name, x, n, Element % NodeINdexes  )
-          END IF
+         CALL ListGetRealArray( List, Name, x, n, Element % NodeIndexes, Found )
        END IF
      END IF
   END SUBROUTINE GetRealArray
@@ -3176,7 +3146,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER   :: A
     TYPE(Variable_t), POINTER :: x
     REAL(KIND=dp), POINTER CONTIG :: b(:)
-    REAL(KIND=dp), POINTER :: SOL(:)
+    REAL(KIND=dp), POINTER CONTIG :: SOL(:)
 
     LOGICAL :: Found, BackRot
 
@@ -3250,7 +3220,9 @@ CONTAINS
     b => A % RHS
     SOL => x % Values
 
-10   CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+10  CONTINUE
+
+    CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
     
     IF( LinearSystemTrialing ) THEN
       IF( x % LinConverged > 0 ) THEN
