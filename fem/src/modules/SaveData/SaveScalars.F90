@@ -1091,8 +1091,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   l = 0
   DO WHILE( ASSOCIATED( Lst ) )    
     IF ( Lst % Name(1:4) == TRIM(ResultPrefix) ) THEN
-      CALL AddToSaveList(Lst % Name, Lst % Fvalues(1,1,1))
-      l = l + 1
+      IF ( ASSOCIATED(Lst % Fvalues) ) THEN
+        CALL AddToSaveList(Lst % Name, Lst % Fvalues(1,1,1))
+        l = l + 1
+      END IF
     END IF
     Lst => Lst % Next
   END DO
@@ -1123,8 +1125,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       Lst => ListHead( Model % Components(i) % Values )
       DO WHILE( ASSOCIATED( Lst ) )    
         IF ( Lst % Name(1:4) == TRIM(ResultPrefix) ) THEN
-          CALL AddToSaveList('component '//TRIM(I2S(i))//': '//TRIM(Lst % Name), Lst % Fvalues(1,1,1))
-          l = l + 1
+          IF ( ASSOCIATED(Lst % Fvalues) ) THEN
+            CALL AddToSaveList('component '//TRIM(I2S(i))//': '//TRIM(Lst % Name), Lst % Fvalues(1,1,1))
+            l = l + 1
+           END IF
         END IF
         Lst => Lst % Next
       END DO
@@ -1448,6 +1452,7 @@ CONTAINS
       n = 20
       ALLOCATE( Values(n), ValueNames(n), ValuesInteger(n), STAT=istat )
       IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 6') 	
+      Values = 0._dp
     END IF
 
     n = NoValues
@@ -1464,6 +1469,7 @@ CONTAINS
 
       ALLOCATE(Values(n+10), ValueNames(n+10), ValuesInteger(n+10), STAT=istat )
       IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 9') 		
+      Values = 0._dp
 
       Values(1:n) = TmpValues(1:n)
       ValuesInteger(1:n) = TmpValuesInteger(1:n)
