@@ -6,5 +6,4 @@ ADD_ELMERTEST_MODULE(FaceElement3D_BCs FaceFEInterpolationTest FaceFEInterpolati
 
 file(COPY ELMERSOLVER_STARTINFO cube FaceFEInterpolationTest.F90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(FaceElement3D_BCs)
-ADD_ELMER_LABEL(FaceElement3D_BCs quick face_element)
+ADD_ELMER_TEST(FaceElement3D_BCs LABELS quick vector_element)
