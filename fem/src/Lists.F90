@@ -4772,9 +4772,161 @@ CONTAINS
    END FUNCTION ElementHandleList
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Given an index related to the related to the correct section returns the correct
+!> value list and a logical flag if there are no more.
+!------------------------------------------------------------------------------
+   FUNCTION SectionHandleList( Handle, ListId, EndLoop ) RESULT( List )
+
+     TYPE(ValueHandle_t) :: Handle
+     TYPE(ValueList_t), POINTER :: List
+     INTEGER :: ListId
+     LOGICAL :: EndLoop
+!------------------------------------------------------------------------------     
+     LOGICAL :: Found
+     INTEGER :: id
+     
+     List => NULL()     
+
+     IF( Handle % SectionType == SECTION_TYPE_BC ) THEN            
+       EndLoop = ( ListId <= 0 .OR. ListId > CurrentModel % NumberOfBCs )
+     ELSE
+       EndLoop = ( ListId > CurrentModel % NumberOfBodies )
+     END IF       
+     IF( EndLoop ) RETURN
+     
+     
+     SELECT CASE ( Handle % SectionType )
+
+     CASE( SECTION_TYPE_BODY )
+       List => CurrentModel % Bodies(ListId) % Values
+
+     CASE( SECTION_TYPE_BF )
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Body Force', Found )         
+       IF( Found ) List => CurrentModel % BodyForces(id) % Values
+
+     CASE( SECTION_TYPE_IC )
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Initial Condition', Found )         
+       IF(Found) List => CurrentModel % ICs(id) % Values
+
+     CASE( SECTION_TYPE_MATERIAL ) 
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Material', Found )         
+       IF(Found) List => CurrentModel % Materials(id) % Values
+
+     CASE( SECTION_TYPE_EQUATION ) 
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Equation',Found )         
+       IF(Found) List => CurrentModel % Equations(id) % Values
+
+     CASE( SECTION_TYPE_BC )             
+       List => CurrentModel % BCs(ListId) % Values
+
+     CASE( -1 )
+       CALL Fatal('SectionHandleList','Handle not initialized!')
+
+     CASE DEFAULT 
+       CALL Fatal('SectionHandleList','Unknown section type!')
+
+     END SELECT
+
+   END FUNCTION SectionHandleList
+!------------------------------------------------------------------------------
 
 
-   FUNCTION ListGetElementRealParent( Handle, Basis, Element, Found ) RESULT( RValue ) 
+
+!------------------------------------------------------------------------------
+!> Compares a string valued parameter in elements and return True if they are the same.
+!------------------------------------------------------------------------------
+   FUNCTION ListCompareElementAnyString( Handle, RefValue ) RESULT( Same )
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     CHARACTER(LEN=*) :: RefValue     
+     LOGICAL :: Same
+!------------------------------------------------------------------------------     
+     CHARACTER(LEN=MAX_NAME_LEN) :: ThisValue     
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL :: Found, EndLoop
+     INTEGER :: id, n
+!------------------------------------------------------------------------------
+
+     Same = .FALSE.
+     
+     ! If value is not present anywhere then return False
+     IF( Handle % NotPresentAnywhere ) RETURN
+
+     id = 0
+     DO WHILE (.TRUE.) 
+       id = id + 1
+       List => SectionHandleList( Handle, id, EndLoop ) 
+       IF( EndLoop ) EXIT
+       IF(.NOT. ASSOCIATED( List ) ) CYCLE
+       
+       ThisValue = ListGetString( List, Handle % Name, Found )
+       IF( Found ) THEN         
+         n = len_TRIM(ThisValue)
+         Same = ( ThisValue(1:n) == RefValue )
+         IF( Same ) EXIT
+       END IF
+     END DO
+              
+   END FUNCTION ListCompareElementAnyString
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Checks whether any of the logical flags has the desired logical value.
+!------------------------------------------------------------------------------
+   FUNCTION ListCompareElementAnyLogical( Handle, RefValue ) RESULT( Same )
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     LOGICAL :: RefValue 
+     LOGICAL :: Same
+!------------------------------------------------------------------------------     
+     LOGICAL :: ThisValue
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL :: Found, EndLoop
+     INTEGER :: id, CValueLen
+!------------------------------------------------------------------------------
+
+     Same = .FALSE.
+     
+     ! If value is not present anywhere then return False
+     IF( Handle % NotPresentAnywhere ) RETURN
+
+     id = 0
+     DO WHILE (.TRUE.) 
+       id = id + 1
+       List => SectionHandleList( Handle, id, EndLoop ) 
+       IF( EndLoop ) EXIT
+       IF(.NOT. ASSOCIATED( List ) ) CYCLE
+       
+       ThisValue = ListGetLogical( List, Handle % Name, Found )
+       IF( Found ) THEN         
+         IF( ThisValue .AND. RefValue ) THEN
+           Same = .TRUE.
+         ELSE IF(.NOT. ThisValue .AND. .NOT. RefValue ) THEN
+           Same = .TRUE.
+         END IF
+         IF( Same ) EXIT
+       END IF
+     END DO
+     
+   END FUNCTION ListCompareElementAnyLogical
+!------------------------------------------------------------------------------
+
+   
+       
+
+!------------------------------------------------------------------------------
+!> Get value of parameter from either of the parents.
+!> If the value is found then the Left/Right parent is memorized internally.
+!> Might not be economical if there are two keywords that toggle but usually
+!> we just fetch one keyword from the parents.
+!------------------------------------------------------------------------------
+  FUNCTION ListGetElementRealParent( Handle, Basis, Element, Found ) RESULT( RValue ) 
      
      TYPE(ValueHandle_t) :: Handle
      TYPE(Element_t), OPTIONAL, POINTER :: Element
@@ -6274,6 +6426,21 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Is the keyword present somewhere
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementSomewhere( Handle ) RESULT( Found )
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     LOGICAL :: Found 
+!------------------------------------------------------------------------------     
+     Found = .NOT. ( Handle % NotPresentAnywhere )
+
+   END FUNCTION ListGetElementSomewhere
+!------------------------------------------------------------------------------     
+
+
+   
 
 !------------------------------------------------------------------------------
 !> Compares a string valued parameter in elements and return True if they are the same.
@@ -6347,6 +6514,7 @@ CONTAINS
               
    END FUNCTION ListCompareElementString
 !------------------------------------------------------------------------------
+
 
      
 !------------------------------------------------------------------------------
