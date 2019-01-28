@@ -1879,7 +1879,7 @@ END INTERFACE
          DivergenceControl, HaveDivergence
 
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
-           AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
+         AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
      INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
      LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found
      INTEGER :: AllocStat
@@ -1897,6 +1897,8 @@ END INTERFACE
 #ifndef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: RealTime
 #endif
+     
+     INTEGER, SAVE :: PrevMeshI = 0
      
      !$OMP PARALLEL
      IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
@@ -1984,11 +1986,31 @@ END INTERFACE
              dt = TimestepSizes(interval,1)
            END IF
          END IF
-           
+
+         BLOCK
+           REAL(KIND=dp) :: MeshR
+           CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
+
+           MeshR = ListGetCReal( CurrentModel % Simulation,&
+               'Mesh Name Index',gotIt )
+           IF( gotIt ) THEN
+             i = NINT( MeshR )
+             IF( i > 0 .AND. i /= PrevMeshI ) THEN                             
+               MeshStr = ListGetString( CurrentModel % Simulation,'Mesh Name '//TRIM(I2S(i)),GotIt)
+               IF( GotIt ) THEN
+                 CALL Info('ExecSimulation','Swictching mesh to: '//TRIM(MeshStr),Level=5)
+               ELSE
+                 CALL Fatal('ExecSimulation','Could not find >Mesh Name '//TRIM(I2S(i))//'<')
+               END IF
+               CALL SwapMesh( CurrentModel, CurrentModel % Mesh, MeshStr )
+               PrevMeshI = i
+             END IF
+           END IF
+         END BLOCK
 
 !------------------------------------------------------------------------------
          ! Predictor-Corrector time stepping control 
-         IF ( PredCorrControl ) THEN
+         IF ( PredCorrControl ) THEN 
            CALL PredictorCorrectorControl( CurrentModel, dt, timestep )
          END IF
 
