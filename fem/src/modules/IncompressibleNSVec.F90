@@ -75,7 +75,7 @@ CONTAINS
     REAL(KIND=dp) :: s, LOAD(dim+1,n), LoadAtIP(dim+1), Velo(dim)    
     REAL(KIND=dp) :: NodalSol(dim+1,ntot), NodalTemp(nd)
     REAL(KIND=dp) :: PrevNodalSol(dim+1,ntot), PrevNodalTemp(nd)
-    REAL(KIND=dp) :: mu, GradDivPar, kappa, rho
+    REAL(KIND=dp) :: mu, kappa, rho
     REAL(KIND=dp) :: Pressure, PrevPressure
     REAL(KIND=dp) :: Temp
     
@@ -142,13 +142,13 @@ CONTAINS
 
     ! Deallocate storage (ntot) if needed
     IF (ALLOCATED(VelocityMass)) THEN
-      IF(SIZE(VelocityMass,1) < ntot .or. size(VelocityMass,2) < ntot) THEN
+      IF(SIZE(VelocityMass,1) < ntot ) THEN
         DEALLOCATE(VelocityMass, PressureMass, ForcePart)
       END IF
     END IF
 
     ! Allocate storage (ntot) if needed
-    IF(.not. ALLOCATED(VelocityMass)) THEN
+    IF(.NOT. ALLOCATED(VelocityMass)) THEN
       ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), &
           ForcePart(ntot))
     END IF
@@ -178,14 +178,6 @@ CONTAINS
     Material => GetMaterial()
     mu = ListGetCReal(Material, 'Viscosity')
     rho = ListGetCReal(Material, 'Density')
-    ! The following assumes that the bulk viscosity of the fluid vanishes:
-    IF (DivCurlForm) THEN
-      ! GradDivPar = lambda + 2*mu:
-      GradDivPar = 4.0_dp / 3.0_dp * mu
-    ELSE
-      ! GradDivPar = lambda:
-      GradDivPar = -2.0_dp / 3.0_dp * mu
-    END IF
     
     ! Get the previous elementwise velocity-pressure iterate:
     !--------------------------------------------------------
@@ -200,21 +192,21 @@ CONTAINS
     Temp = 0._dp 
 
     VelocityMass = 0.0d0
-    PressureMass = 0.0d0
+    !PressureMass = 0.0d0
 
     stat = ElementInfoVec(Element, nodes, ngp, IP % U, IP % V, &
-        IP % W, detJvec, size(basisVec, 2), BasisVec, dBasisdxVec)
-
+        IP % W, detJvec, SIZE(basisVec, 2), BasisVec, dBasisdxVec)
+    
     DO t = 1, ngp
       DetJVec(t) = DetJVec(t) * IP % s(t)
     END DO
-
+    
     IF(.NOT. LinearAssembly) THEN
       CALL DGEMM('N', 'T', ngp, DOFs, n, 1._dp, &
           BasisVec, ngp, NodalSol, dofs, 0._dp, &
           VeloPresVec, ngp)
     END IF
-
+    
     ! Rho and Kappa
     rhovec(1:ngp) = rho
     !kappavec(1:ngp) = 0.0d0
@@ -240,9 +232,12 @@ CONTAINS
 
     
     IF (DivCurlForm) THEN
-      weight_a = mu*detJVec
-      weight_b = -mu*detJVec
-      weight_c = GradDivPar*detJVec
+      weight_a = mu * detJVec
+      weight_b = -mu * detJVec
+
+      ! The following assumes that the bulk viscosity of the fluid vanishes:
+      weight_c =  4.0_dp / 3.0_dp * mu * detJVec
+
       ! curl-curl part and div-div parts
       SELECT CASE(dim)
       CASE(3) ! {{{
@@ -340,8 +335,11 @@ CONTAINS
 
     ELSE !DivCurlForm
       
-      weight_a = mu*detJvec
-      weight_c = GradDivPar*detJVec
+      weight_a = mu*detJvec      
+
+      ! The following assumes that the bulk viscosity of the fluid vanishes:
+      weight_c = -2.0_dp / 3.0_dp * mu * detJVec
+
       DO i=1,dim
         DO j=1,dim
           CALL LinearForms_UdotV(ngp, ntot, elemdim, &
@@ -363,9 +361,9 @@ CONTAINS
   DO i = 1, dim
     mass(i::dofs, i::dofs) = mass(i::dofs, i::dofs) + VelocityMass(1:ntot, 1:ntot)
   END DO
-  CALL LinearForms_UdotU(ngp, ntot, elemdim, BasisVec, DetJVec, PressureMass, -kappavec)
+  !CALL LinearForms_UdotU(ngp, ntot, elemdim, BasisVec, DetJVec, PressureMass, -kappavec)
 
-  mass(dofs::dofs, dofs::dofs) = mass(dofs::dofs, dofs::dofs) + PressureMass(1:ntot,1:ntot)
+  !mass(dofs::dofs, dofs::dofs) = mass(dofs::dofs, dofs::dofs) + PressureMass(1:ntot,1:ntot)
 
 
   IF (GradPVersion) THEN
@@ -581,7 +579,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, TransientSimulation)
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
-  
+!------------------------------------------------------------------------------  
   TYPE(ValueList_t), POINTER :: Params 
   LOGICAL :: Found
   INTEGER :: dim
@@ -598,6 +596,9 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, TransientSimulation)
         'Flow Solution[Velocity:3 Pressure:1]')
   END IF
 
+  ! Study only velocity components in linear system
+  CALL ListAddNewInteger( Solver % Values, 'Nonlinear System Norm DOFs', dim )
+  
   ! Automate the choice for the variational formulation:
   CALL ListAddNewLogical(Params, 'GradP Discretization', .FALSE.)
   CALL ListAddNewLogical(Params, 'Div-Curl Form', .TRUE.)
@@ -639,22 +640,25 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
   TYPE(GaussIntegrationPoints_t) :: IP
 
   INTEGER :: Element_id
-  INTEGER :: i, n, nb, nd, nbdofs, dim, Active, nonlinit, iter, RelOrder
+  INTEGER :: i, n, nb, nd, nbdofs, dim, Active, maxiter, iter, RelOrder
   INTEGER :: stimestep = -1
 
-  REAL(KIND=dp) :: Norm, NewtonTol, pres
+  REAL(KIND=dp) :: Norm, pres
 
   LOGICAL :: AllocationsDone = .FALSE., Found
   LOGICAL :: ReadBodyForce
   LOGICAL :: ThermalCorrection, GradPVersion, DivCurlForm
 
+  CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
+
+  
   SAVE AllocationsDone, stimestep
   !$OMP THREADPRIVATE(AllocationsDone, stimestep)
 
 !------------------------------------------------------------------------------
 ! Local variables to be accessed by the contained subroutines:
 !------------------------------------------------------------------------------
-  LOGICAL :: LinearAssembly, Newton = .FALSE.
+  LOGICAL :: LinearAssembly, Newton
 !------------------------------------------------------------------------------ 
 
   CALL DefaultStart()
@@ -717,28 +721,27 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
   DivCurlForm = GetLogical(Params, 'Div-Curl Form', Found)
   ReadBodyForce = ListCheckPrefixAnyBodyForce(Model, 'Body Force')
 
-  Nonlinit = GetInteger(Params, 'Nonlinear system max iterations', Found)
-  IF (.NOT.Found) Nonlinit = 1
-  NewtonTol = GetConstReal(Params, 'Nonlinear System Newton After Tolerance', &
-      Found)
-  IF (.NOT.Found) NewtonTol = 1e-2
+  Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
+  IF (.NOT.Found) Maxiter = 1
   !-----------------------------------------------------------------------------
 
-  IF (DivCurlForm) CALL Info('IncompressibleNSSolver', 'The div-curl form is used for the viscous terms')
-  IF (GradPVersion) CALL Info('IncompressibleNSSolver', 'The pressure gradient is not integrated by parts')
+  IF (DivCurlForm) CALL Info(Caller, 'The div-curl form is used for the viscous terms')
+  IF (GradPVersion) CALL Info(Caller, 'The pressure gradient is not integrated by parts')
 
 
-  DO iter=1,nonlinit
+  DO iter=1,maxiter
 
-    CALL Info('IncompressibleNS','--------------------------------------------------------', Level=4)
+    CALL Info(Caller,'--------------------------------------------------------', Level=4)
     WRITE( Message,'(A,I4)') 'Nonlinear iteration:', Iter
-    CALL Info('IncompressibleNS', Message, Level=4)
-    CALL Info('IncompressibleNS','--------------------------------------------------------', Level=4)
+    CALL Info(Caller, Message, Level=4)
+    CALL Info(Caller,'--------------------------------------------------------', Level=4)
 
     Active = GetNOFActive()
     CALL DefaultInitialize()
     call ResetTimer('IncompressibleNSBulkAssembly')
 
+    Newton = GetNewtonActive( Solver )
+    
     !$OMP PARALLEL SHARED(ReadBodyForce, ThermalCorrection, Active, dim, &
     !$OMP                 DivCurlForm, GradPVersion, &
     !$OMP                 dt, RelOrder, LinearAssembly, Newton, TransientSimulation) &
@@ -792,9 +795,6 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
 
     Norm = DefaultSolve()
 
-    IF ( .NOT. LinearAssembly ) THEN
-      IF ( Solver % Variable % NonlinChange < NewtonTol ) Newton = .TRUE.
-    END IF
     IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
   END DO
  

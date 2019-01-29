@@ -66,7 +66,7 @@ End
 Material 1
   Name = "Material1"
   Density = 1
-  Viscosity = 1e20
+  Viscosity = 1.0e3
 End
 
 Boundary Condition 1

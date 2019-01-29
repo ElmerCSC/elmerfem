@@ -77,7 +77,7 @@ End
 Material 1
   Name = "Material1"
   Density = 1
-  Viscosity = 1e20
+  Viscosity = 1e3
 End
 
 Boundary Condition 1
@@ -105,5 +105,4 @@ Boundary Condition 3
   Velocity 2 = 0
 End
  
-Solver 1 :: Reference Norm = Real 2.07395096E+20
-Solver 1 :: Reference Norm Tolerance = Real 1e-2
+Solver 1 :: Reference Norm = 7.54366732E-02
