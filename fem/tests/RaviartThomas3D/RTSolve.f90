@@ -51,10 +51,10 @@ SUBROUTINE RTSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: stat
 
-  INTEGER, ALLOCATABLE :: Indeces(:)
+  INTEGER, ALLOCATABLE :: Indices(:)
 
   SAVE STIFF, LOAD, FORCE, Acoef, Bcoef, &
-       AllocationsDone, Nodes, EdgeNodes, Indeces
+       AllocationsDone, Nodes, EdgeNodes, Indices
 !------------------------------------------------------------------------------
   dim = CoordinateSystemDimension()
 
@@ -65,7 +65,7 @@ SUBROUTINE RTSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. AllocationsDone ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(6,N), STIFF(N,N), &
-          Acoef(N), Bcoef(N), Indeces(N), STAT=istat )
+          Acoef(N), Bcoef(N), Indices(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'RTSolver', 'Memory allocation error.' )
      END IF
@@ -130,21 +130,21 @@ SUBROUTINE RTSolver( Model,Solver,dt,TransientSimulation )
 
          Element => GetActiveElement(t)
          n  = GetElementNOFNodes()
-         nd = GetElementDOFs( Indeces )
+         nd = GetElementDOFs( Indices )
          nb = size(Element % BubbleIndexes(:))
          np = 0  ! Change to np=n if using the element type "n:1 f:1 b:1"
 
          Load(1,1) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(nd)) )
+              Perm(Indices(nd)) )
 
          Load(2,1) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+1)) )
+              Perm(Indices(np+1)) )
          Load(2,2) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+2)) )
+              Perm(Indices(np+2)) )
          Load(2,3) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+3)) )         
+              Perm(Indices(np+3)) )         
          Load(2,4) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+4)) )     
+              Perm(Indices(np+4)) )     
 
          !print *, 'Elementwise pressure sol = ', Load(1,1)
 
