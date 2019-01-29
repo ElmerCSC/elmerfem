@@ -26,7 +26,7 @@ Body 1
   Name = "Body1"
   Equation = 1
   Material = 1
-initial condition = 1
+  initial condition = 1
 End
 
 initial condition 1
@@ -49,11 +49,10 @@ Solver 1
 
   Linear System Solver = Iterative
 
-  Linear System Direct Method = mumps
+!  Linear System Direct Method = mumps
 
   Linear System Iterative Method = BiCGStabL
   Linear System Max Iterations = 500
-  Stabilization Method = String Stabilized
 
   Linear System Convergence Tolerance = 1.0e-10
   Linear System Preconditioning = ILU1
@@ -64,7 +63,12 @@ Solver 1
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Newton After Iterations = 3
 
-
+!
+! Note: Stabilization terms for equal-order interpolation have not been implemented.
+! The only way to get a stable solution is to apply bubbles or p2-p1 approximation.
+!       
+  Element = "p:1 -quad b:3"
+!  Stabilization Method = String Stabilized   !Note: this keyword is not supported
   GradP Discretization = Logical False
   Div-Curl Form = Logical False
 End
@@ -101,5 +105,5 @@ Boundary Condition 3
   Velocity 2 = 0
 End
  
-Solver 1 :: Reference Norm = Real 0.75227162E-01
+Solver 1 :: Reference Norm = Real 2.07395096E+20
 Solver 1 :: Reference Norm Tolerance = Real 1e-2
