@@ -47,27 +47,24 @@ MODULE IncompressibleLocalForms
 
 CONTAINS
 
-  SUBROUTINE LocalMatrix(Element, n, nd, ntot, dim, ReadBodyForce, &
-      ThermalCorrection, DivCurlForm, GradPVersion, &
-      dt, RelOrder, LinearAssembly, nb, Newton, TransientSimulation)
+  SUBROUTINE LocalMatrix(Element, n, nd, ntot, dim, &
+      DivCurlForm, GradPVersion, dt, LinearAssembly, &
+      nb, Newton, TransientSimulation, InitHandles)
 !------------------------------------------------------------------------------
     USE LinearForms
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, ntot, dim, nb
-    LOGICAL, INTENT(IN) :: ReadBodyForce
-    LOGICAL, INTENT(IN) :: ThermalCorrection
     LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion
     REAL(KIND=dp), INTENT(IN) :: dt   
-    INTEGER, INTENT(IN) :: RelOrder
-    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, TransientSimulation 
+    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, TransientSimulation, InitHandles 
 !------------------------------------------------------------------------------
-    TYPE(ValueList_t), POINTER :: Material, BodyForce
+    TYPE(ValueList_t), POINTER :: Material
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
 
-    LOGICAL :: Stat, GotLoad, Found
+    LOGICAL :: Stat, Found
 
     REAL(KIND=dp), TARGET :: MASS(ntot*(dim+1),ntot*(dim+1)), &
         STIFF(ntot*(dim+1),ntot*(dim+1)), FORCE(ntot*(dim+1))
@@ -75,27 +72,30 @@ CONTAINS
     REAL(KIND=dp) :: s, LOAD(dim+1,n), LoadAtIP(dim+1), Velo(dim)    
     REAL(KIND=dp) :: NodalSol(dim+1,ntot), NodalTemp(nd)
     REAL(KIND=dp) :: PrevNodalSol(dim+1,ntot), PrevNodalTemp(nd)
-    REAL(KIND=dp) :: mu, kappa, rho
+    REAL(KIND=dp) :: rho
     REAL(KIND=dp) :: Pressure, PrevPressure
     REAL(KIND=dp) :: Temp
     
     REAL(KIND=dp), ALLOCATABLE, SAVE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
-        rhoVec(:), kappaVec(:), VeloPresVec(:,:), loadAtIpVec(:,:), VelocityMass(:,:), &
+        rhoVec(:), VeloPresVec(:,:), loadAtIpVec(:,:), VelocityMass(:,:), &
         PressureMass(:,:), ForcePart(:), &
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
         VeloVec(:,:), PresVec(:), GradVec(:,:,:)
-
+    REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
+    
     REAL(kind=dp) :: stifford(ntot,ntot,dim+1,dim+1)
 
     INTEGER :: t, i, j, ii, jj, p, q, ngp, allocstat
     INTEGER, SAVE :: elemdim
     INTEGER :: DOFs
 
-!DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, kappaVec, VeloPresVec, loadAtIpVec
+     TYPE(ValueHandle_t), SAVE :: Dens_h, Load_h(3)
+    
+!DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE, weight_a, weight_b, weight_c
-!$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, kappaVec, VeloPresVec, loadAtIpVec, ElemDim )
+!$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec, ElemDim )
 !$OMP THREADPRIVATE(VelocityMass, PressureMass, ForcePart, Weight_a, weight_b, weight_c)
-!$OMP THREADPRIVATE(tauVec, PrevTempVec, PrevPressureVec, VeloVec, PresVec, GradVec, Nodes)
+!$OMP THREADPRIVATE(tauVec, PrevTempVec, PrevPressureVec, VeloVec, PresVec, GradVec, Nodes, Dens_h)
 
     SAVE Nodes
 !------------------------------------------------------------------------------
@@ -120,7 +120,7 @@ CONTAINS
     ! Deallocate storage if needed 
     IF (ALLOCATED(BasisVec)) THEN
        IF (SIZE(BasisVec,1) < ngp .OR. SIZE(BasisVec,2) < ntot) &
-            DEALLOCATE(BasisVec,dBasisdxVec, DetJVec, rhoVec, VeloVec, PresVec, kappaVec, &
+            DEALLOCATE(BasisVec,dBasisdxVec, DetJVec, rhoVec, VeloVec, PresVec, &
             LoadAtIpVec, weight_a, weight_b, weight_c, tauVec, PrevTempVec, &
            PrevPressureVec, VeloPresVec, GradVec)
     END IF
@@ -128,7 +128,7 @@ CONTAINS
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(BasisVec)) THEN
        ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
-           rhoVec(ngp), VeloVec(ngp, dim), PresVec(ngp), velopresvec(ngp,dofs), kappaVec(ngp), LoadAtIpVec(ngp,dim+1), &
+           rhoVec(ngp), VeloVec(ngp, dim), PresVec(ngp), velopresvec(ngp,dofs), LoadAtIpVec(ngp,dim+1), &
            weight_a(ngp), weight_b(ngp), weight_c(ngp), tauVec(ngp), PrevTempVec(ngp), &
            PrevPressureVec(ngp), GradVec(ngp,dim,dim), &
            STAT=allocstat)
@@ -153,31 +153,19 @@ CONTAINS
           ForcePart(ntot))
     END IF
 
-    ! Volume forces:
-    !---------------
-    GotLoad = .FALSE.
-
-    IF ( ReadBodyForce ) THEN
-      BodyForce => GetBodyForce()
-      IF ( ASSOCIATED(BodyForce) ) THEN
-        LOAD = 0._dp
-
-        Load(1, 1:n) = GetReal( BodyForce, 'Flow Source 1', Found )
-        GotLoad = GotLoad .OR. Found
-        
-        Load(2, 1:n) = GetReal( BodyForce, 'Flow Source 2', Found )
-        GotLoad = GotLoad .OR. Found
-        
-        Load(3, 1:n) = GetReal( BodyForce, 'Flow Source 3', Found )
-        GotLoad = GotLoad .OR. Found
-      END IF
-    END IF
       
-    ! Material parameters:
-    !---------------------
-    Material => GetMaterial()
-    mu = ListGetCReal(Material, 'Viscosity')
-    rho = ListGetCReal(Material, 'Density')
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( Dens_h,'Material','Density')      
+      CALL ListInitElementKeyword( Load_h(1),'Body Force','Flow Bodyforce 1')      
+      CALL ListInitElementKeyword( Load_h(2),'Body Force','Flow Bodyforce 2')      
+      CALL ListInitElementKeyword( Load_h(3),'Body Force','Flow Bodyforce 3')      
+    END IF
+
+
+    ! We assume constant density so far:
+    !-----------------------------------
+    rho = ListGetElementReal( Dens_h, Element = Element ) 
+
     
     ! Get the previous elementwise velocity-pressure iterate:
     !--------------------------------------------------------
@@ -185,58 +173,63 @@ CONTAINS
       VeloPresVec = 0._dp
     ELSE
       CALL GetLocalSolution( NodalSol )
-      IF (nb > 0 .AND. TransientSimulation .OR. ThermalCorrection) &
+      IF (nb > 0 .AND. TransientSimulation ) & 
           CALL GetLocalSolution(PrevNodalSol, tStep=-1)
     END IF
-
-    Temp = 0._dp 
 
     VelocityMass = 0.0d0
     !PressureMass = 0.0d0
 
+
+    ! Vectorized basis functions
     stat = ElementInfoVec(Element, nodes, ngp, IP % U, IP % V, &
         IP % W, detJvec, SIZE(basisVec, 2), BasisVec, dBasisdxVec)
-    
+
+    ! Weights at integration points
     DO t = 1, ngp
       DetJVec(t) = DetJVec(t) * IP % s(t)
     END DO
-    
+
+    ! Velocity and pressure from previous iteration at integration points
     IF(.NOT. LinearAssembly) THEN
       CALL DGEMM('N', 'T', ngp, DOFs, n, 1._dp, &
           BasisVec, ngp, NodalSol, dofs, 0._dp, &
           VeloPresVec, ngp)
     END IF
     
-    ! Rho and Kappa
-    rhovec(1:ngp) = rho
-    !kappavec(1:ngp) = 0.0d0
 
-    ! Load
-    LoadAtIpVec = 0._dp
-    IF (GotLoad) THEN
-      CALL DGEMM('N', 'T', ngp, DOFs, n, 1._dp, &
-          BasisVec, ngp, load, dofs, 0._dp, &
-          LoadAtIpVec, ngp)
-      ! The preceding DGEMM call is equivalent to
-      ! LoadAtIpVec(1:ngp, 1:dofs) = MATMUL(basisvec(1:ngp, 1:n), transpose(load(1:dofs, 1:n)))
-    END IF
+    ! Return the effective viscosity. Currently only non-newtonian models supported.
+    muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, VeloPresVec, InitHandles )        
+  
+    ! Rho 
+    rhovec(1:ngp) = rho
+
+    ! Flow bodyforce if present
+    DO i=1,dim
+      LoadVec => ListGetElementRealVec( Load_h(i), ngp, BasisVec, Element, Found ) 
+      IF( Found ) THEN
+        LoadAtIpVec(1:ngp,i) = LoadVec(1:ngp)
+      ELSE
+        LoadAtIpVec(1:ngp,i) = 0.0_dp
+      END IF
+    END DO
 
     IF ( Newton ) THEN
-      do i = 1,dim
-        do j = 1,dim
+      DO i = 1,dim
+        DO j = 1,dim
           GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),nodalsol(i,1:ntot))
-        end do
-        LoadAtIpVec(1:ngp, i) = LoadAtIpVec(1:ngp, i) + rhovec(1:ngp)*sum(gradvec(1:ngp,i,1:dim)*velopresvec(1:ngp,1:dim),2)
-      end do
+        END DO
+        LoadAtIpVec(1:ngp, i) = LoadAtIpVec(1:ngp, i) + rhovec(1:ngp)*SUM(gradvec(1:ngp,i,1:dim)*velopresvec(1:ngp,1:dim),2)
+      END DO
     END IF
-
+    
     
     IF (DivCurlForm) THEN
-      weight_a = mu * detJVec
-      weight_b = -mu * detJVec
+      weight_a(1:ngp) = muVec(1:ngp) * detJVec(1:ngp)
+      weight_b(1:ngp) = -muVec(1:ngp) * detJVec(1:ngp) 
 
       ! The following assumes that the bulk viscosity of the fluid vanishes:
-      weight_c =  4.0_dp / 3.0_dp * mu * detJVec
+      weight_c(1:ngp) =  4.0_dp / 3.0_dp * muVec(1:ngp) * detJVec(1:ngp)
 
       ! curl-curl part and div-div parts
       SELECT CASE(dim)
@@ -335,10 +328,10 @@ CONTAINS
 
     ELSE !DivCurlForm
       
-      weight_a = mu*detJvec      
+      weight_a(1:ngp) = muVec(1:ngp) * detJvec(1:ngp)      
 
       ! The following assumes that the bulk viscosity of the fluid vanishes:
-      weight_c = -2.0_dp / 3.0_dp * mu * detJVec
+      weight_c(1:ngp) = -2.0_dp / 3.0_dp * muVec(1:ngp) * detJVec(1:ngp)
 
       DO i=1,dim
         DO j=1,dim
@@ -382,37 +375,27 @@ CONTAINS
   END IF
 
   ! These loop unrolls look bad, maybe do nicer weight precomputation?
-  weight_a = rhovec*veloPresVec(1:ngp,1)
-  weight_b = rhovec*veloPresVec(1:ngp,2)
-  weight_c = rhovec*veloPresVec(1:ngp,3)
-  do i = 1, dim
+  weight_a(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,1)
+  weight_b(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,2)
+  weight_c(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,3)
+  DO i = 1, dim
     CALL LinearForms_UdotV(ngp, ntot, elemdim, &
         basisvec, dbasisdxvec(:,:,1), detJvec, stifford(:,:,i,i), weight_a)
     CALL LinearForms_UdotV(ngp, ntot, elemdim, &
         basisvec, dbasisdxvec(:,:,2), detJvec, stifford(:,:,i,i), weight_b)
     CALL LinearForms_UdotV(ngp, ntot, elemdim, &
         basisvec, dbasisdxvec(:,:,3), detJvec, stifford(:,:,i,i), weight_c)
-  end do
+  END DO
 
-  do i = 1, dim
-    do j = 1, dim
+  DO i = 1, dim
+    DO j = 1, dim
       IF ( Newton ) THEN
         CALL LinearForms_UdotV(ngp, ntot, Element%TYPE%DIMENSION, &
             basisvec, basisvec, detJvec, stifford(:,:,i,j), rhovec*gradvec(:,i,j))
-      end if
-    end do
-  end do
-
-  !weight_a = -kappavec*veloPresVec(1:ngp,1)
-  !weight_b = -kappavec*veloPresVec(1:ngp,2)
-  !weight_c = -kappavec*veloPresVec(1:ngp,3)
-  !CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-  !    basisvec, dbasisdxvec(:,:,1), detJvec, stifford(1:ntot,1:ntot,dofs,dofs), weight_a)
-  !CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-  !    basisvec, dbasisdxvec(:,:,2), detJvec, stifford(1:ntot,1:ntot,dofs,dofs), weight_b)
-  !CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-  !    basisvec, dbasisdxvec(:,:,3), detJvec, stifford(1:ntot,1:ntot,dofs,dofs), weight_c)
-
+      END IF
+    END DO
+  END DO
+  
   ! convection and loads
   DO ii = 1,dim+1
     ForcePart = 0._dp
@@ -471,7 +454,234 @@ CONTAINS
   !------------------------------------------------------------------------------
 
   CONTAINS
+                  
+    
+    FUNCTION EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, VeloPresVec, &
+        InitHandles ) RESULT ( EffViscVec ) 
 
+     INTEGER :: ngp
+     REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
+     TYPE(Element_t), POINTER :: Element
+     REAL(KIND=dp) :: VeloPresVec(:,:) 
+     LOGICAL :: InitHandles 
+     REAL(KIND=dp), POINTER  :: EffViscVec(:)
+    
+     LOGICAL :: Found     
+     CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
+     TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
+         ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
+         ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
+         ViscTemp_h
+     REAL(KIND=dp), SAVE :: R
+     REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Temp, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2 
+     REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:)
+     REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:)
+
+     
+     IF(InitHandles ) THEN
+       CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')      
+       CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
+       
+       CALL ListInitElementKeyword( ViscExp_h,'Material','Viscosity Exponent')      
+       CALL ListInitElementKeyword( ViscCritical_h,'Material','Critical Shear Rate')      
+       CALL ListInitElementKeyword( ViscNominal_h,'Material','Nominal Shear Rate')      
+       CALL ListInitElementKeyword( ViscDiff_h,'Material','Viscosity Difference')      
+       CALL ListInitElementKeyword( ViscTrans_h,'Material','Viscosity Transition')      
+       CALL ListInitElementKeyword( ViscYasuda_h,'Material','Yasuda Exponent')      
+
+       CALL ListInitElementKeyword( ViscGlenExp_h,'Material','Glen Exponent',DefRValue=3.0_dp)      
+       CALL ListInitElementKeyword( ViscGlenFactor_h,'Material','Glen Exponent',DefRValue=1.0_dp)      
+ 
+       CALL ListInitElementKeyword( ViscArrSet_h,'Material','Set Arrhenius Factor')
+       CALL ListInitElementKeyword( ViscArr_h,'Material','Arrhenius Factor')
+ 
+       CALL ListInitElementKeyword( ViscTLimit_h,'Material','Limit Temperature',DefRValue=-10.0_dp)
+       CALL ListInitElementKeyword( ViscRate1_h,'Material','Rate Factor 1',DefRValue=3.985d-13)
+       CALL ListInitElementKeyword( ViscRate2_h,'Material','Rate Factor 2',DefRValue=1.916d3)
+       CALL ListInitElementKeyword( ViscEne1_h,'Material','Activation Energy 1',DefRValue=60.0d03)
+       CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
+       CALL ListInitElementKeyword( ViscTemp_h,'Material','Arrhenius Temperature')
+      
+       IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
+         CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
+       END IF
+             
+       R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
+       IF (.NOT.Found) R = 8.314_dp
+     END IF
+
+     ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
+
+     ViscModel = ListGetElementString( ViscModel_h, Element, Found ) 
+     IF( .NOT. Found ) THEN
+       ! Return the plain viscosity
+       EffViscVec => ViscVec0
+       RETURN
+     END IF
+       
+     
+     ! Deallocate too small storage if needed 
+     IF (ALLOCATED(ss)) THEN
+       IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec )
+     END IF
+
+     ! Allocate storage if needed
+     IF (.NOT. ALLOCATED(ss)) THEN
+       ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),STAT=allocstat)
+       IF (allocstat /= 0) THEN
+         CALL Fatal('IncompressibleNSSolver::LocalMatrix','Local storage allocation failed')
+       END IF
+     END IF
+
+     ! For non-newtonian models compute the viscosity here
+     EffViscVec => ViscVec
+
+     ! Calculate the strain rate velocity at all integration points
+     ss(1:ngp) = 0.0_dp
+     DO i=1,dim
+       DO j=1,dim
+         s(1:ngp) = MATMUL( dBasisdxVec(1:ngp,1:ntot,i), velopresvec(j,1:ntot) ) + &
+             MATMUL( dBasisdxVec(1:ngp,1:ntot,j), velopresvec(i,1:ntot) )
+         ss(1:ngp) = ss(1:ngp) + s(1:ngp)**2
+       END DO
+     END DO
+     ss(1:ngp) = 0.5_dp * ss(1:ngp)
+
+
+     SELECT CASE( ViscModel )       
+              
+     CASE('glen')
+       c2 = ListGetElementReal( ViscGlenExp_h,Element=Element,Found=Found)
+
+       ! the second invariant is not taken from the strain rate tensor, but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)        
+       s(1:ngp) = ss(1:ngp)/4.0_dp
+
+       c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
+       IF( Found ) THEN
+         c3 = c3**2
+         WHERE(s(1:ngp) < c3) s = c3
+         ! IF (PRESENT(muder)) muder = 0._dp
+       END IF
+
+       IF( ListGetElementLogical( ViscArrSet_h,Element,Found=Found) ) THEN
+         ArrheniusFactor = ListGetElementReal( ViscArr_h,Element=Element)
+         ViscVec(1:ngp) = 0.5_dp * (EhF * ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
+       ELSE         
+         ! lets for the time being have this hardcoded
+         Tlimit = ListGetElementReal( ViscTlimit_h,Element=Element)
+         A1 = ListGetElementReal( ViscRate1_h,Element=Element)
+         A2 = ListGetElementReal( ViscRate2_h,Element=Element)
+         Q1 = ListGetElementReal( ViscEne1_h,Element=Element)
+         Q2 = ListGetElementReal( ViscEne2_h,Element=Element)
+
+         DO i=1,ngp
+           Temp = ListGetElementReal( ViscTemp_h,BasisVec(i,:),Element=Element,&
+               Found=Found,GaussPoint=i)
+
+           IF( Temp <= Tlimit ) THEN
+             ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15_dp + Temp)))
+           ELSE IF((Tlimit < Temp ) .AND. (Temp <= 0.0_dp)) THEN
+             ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp + Temp)))
+           ELSE
+             ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp)))
+             CALL Info('EffectiveViscosityVec',&
+                 'Positive Temperature detected in Glen - limiting to zero!', Level = 12)
+           END IF
+
+           Ehf = ListGetElementReal( ViscGlenFactor_h,BasisVec(i,:),Element=Element,&
+               Found=Found,GaussPoint=i)
+
+           !IF (PRESENT(muder)) muder = 0.5_dp * (  EhF * ArrheniusFactor)**(-1.0_dp/c2) &
+           !  * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
+
+           ! compute the effective viscosity
+           ViscVec(i) = 0.5_dp * (EhF * ArrheniusFactor)**(-1.0_dp/c2) * s(i)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
+         END DO
+       END IF
+
+
+     CASE('power law')
+       c2 = ListGetElementReal( ViscExp_h,Element=Element)
+
+       !IF (PRESENT(muder)) THEN
+       !   IF (ss /= 0) THEN
+       !      muder = Viscosity * (c2-1)/2 * ss**((c2-1)/2-1)
+       !   ELSE
+       !      muder = 0.0_dp
+       !   END IF
+       !END IF
+
+       c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
+       c3 = c3**2
+       IF( Found ) THEN
+         WHERE( ss(1:ngp) < c3 ) ss(1:ngp) = c3
+       END IF
+
+       ViscVec(1:ngp) = ViscVec0(1:ngp) * ss(1:ngp)**((c2-1)/2)
+
+       c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
+       IF( Found ) THEN
+         ViscVec(1:ngp) = ViscVec0(1:ngp) / c4**(c2-1)
+         !IF (PRESENT(muder)) muder = muder / c4**(c2-1)
+       END IF
+
+     CASE('power law too')
+       c2 = ListGetElementReal( ViscExp_h,Element=Element)           
+       ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
+       !IF ( PRESENT(muder) )  muder = &
+       !     Viscosity**(-1/c2)*(-(c2-1)/(2*c2))*ss*(-(c2-1)/(2*c2)-1) / 2
+
+     CASE ('carreau')      
+       c1 = ListGetElementReal( ViscDiff_h,Element=Element)
+       c2 = ListGetElementReal( ViscExp_h,Element=Element)
+       c3 = ListGetElementReal( ViscTrans_h,Element=Element)
+       c4 = ListGetElementReal( ViscYasuda_h,Element=Element,Found=Found)
+       IF( Found ) THEN
+         ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4) 
+         ! IF ( PRESENT(muder ) ) muder =  &
+         !       c1*(1+c3**c4*ss**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*ss**(c4/2-1)
+       ELSE
+         ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2) 
+         !  IF ( PRESENT(muder) ) muder = &
+         !       c1*(c2-1)/2*c3**2*(1+c3**2*ss)**((c2-1)/2-1)
+         !END IF
+       END IF
+
+     CASE ('cross')
+       c1 = ListGetElementReal( ViscDiff_h,Element=Element)
+       c2 = ListGetElementReal( ViscExp_h,Element=Element)
+       c3 = ListGetElementReal( ViscTrans_h,Element=Element)
+
+       ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 / (1 + c3*ss(1:ngp)**(c2/2))
+       !IF ( PRESENT(muder) ) muder = &
+       !    -c1*c3*ss**(c2/2)*c2 / (2*(1+c3*ss**(c2/2))**2*ss)
+
+     CASE ('powell eyring')
+       c1 = ListGetElementReal( ViscDiff_h,Element=Element)
+       c2 = ListGetElementReal( ViscTrans_h,Element=Element)
+
+       s(1:ngp) = SQRT(ss(1:ngp))
+       DO i=1,ngp
+         IF(c2*s(i) < 1.0d-5) THEN
+           ViscVec(i) = ViscVec0(i) + c1
+         ELSE
+           ViscVec(i) = ViscVec0(i) + c1 * LOG(c2*s(i)+SQRT(c2*c2*ss(i)+1))/(c2*ss(i))
+           !IF ( PRESENT(muder) ) muder = &
+           !     c1*(c2/(2*s)+c2**2/(2*SQRT(c2**2*ss+1)))/((c2*s+SQRT(c2*ss+1))*c2*s) - &
+           !     c1*LOG(c2*s+SQRT(c2**2*ss+1))/(c2*s**3)/2
+         END IF
+       END DO
+
+     CASE DEFAULT 
+       CALL Fatal('EffectiveViscosityVec','Unknown material model')
+
+     END SELECT
+       
+
+   END FUNCTION EffectiveViscosityVec
+      
+
+    
   !------------------------------------------------------------------------------
   ! A special subroutine for performing static condensation when the velocity
   ! (the first dim components of the solution) is augmented by a bubble part.
@@ -640,14 +850,13 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
   TYPE(GaussIntegrationPoints_t) :: IP
 
   INTEGER :: Element_id
-  INTEGER :: i, n, nb, nd, nbdofs, dim, Active, maxiter, iter, RelOrder
+  INTEGER :: i, n, nb, nd, nbdofs, dim, Active, maxiter, iter
   INTEGER :: stimestep = -1
 
   REAL(KIND=dp) :: Norm, pres
 
   LOGICAL :: AllocationsDone = .FALSE., Found
-  LOGICAL :: ReadBodyForce
-  LOGICAL :: ThermalCorrection, GradPVersion, DivCurlForm
+  LOGICAL :: GradPVersion, DivCurlForm, InitHandles
 
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
 
@@ -707,19 +916,12 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
 
   Material => GetMaterial( Element )
 
-  !TempVar => VariableGet(Mesh % Variables, 'Temperature')
-  !ThermalCorrection = ASSOCIATED( TempVar )
-  !
-  ! Disable the temperature coupling:
-  ThermalCorrection = .FALSE.
-
   !-----------------------------------------------------------------------------
   ! Set the flags/parameters which define how the system is assembled: 
   !-----------------------------------------------------------------------------
   LinearAssembly = GetLogical(Params, 'Linear Equation', Found )
   GradPVersion = GetLogical(Params, 'GradP Discretization', Found)
   DivCurlForm = GetLogical(Params, 'Div-Curl Form', Found)
-  ReadBodyForce = ListCheckPrefixAnyBodyForce(Model, 'Body Force')
 
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
   IF (.NOT.Found) Maxiter = 1
@@ -741,11 +943,12 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
     call ResetTimer('IncompressibleNSBulkAssembly')
 
     Newton = GetNewtonActive( Solver )
+    InitHandles = .TRUE.
     
-    !$OMP PARALLEL SHARED(ReadBodyForce, ThermalCorrection, Active, dim, &
+    !$OMP PARALLEL SHARED(Active, dim, &
     !$OMP                 DivCurlForm, GradPVersion, &
-    !$OMP                 dt, RelOrder, LinearAssembly, Newton, TransientSimulation) &
-    !$OMP          PRIVATE(Element, Element_id, n, nd, nb) &
+    !$OMP                 dt, LinearAssembly, Newton, TransientSimulation) &
+    !$OMP          PRIVATE(Element, InitHandles, Element_id, n, nd, nb) &
     !$OMP          DEFAULT(None)
     !$OMP DO 
     DO Element_id=1,Active
@@ -760,9 +963,12 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
 
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
-      CALL LocalMatrix(Element, n, nd, nd+nb, dim, ReadBodyForce, &
-          ThermalCorrection, DivCurlForm, GradPVersion, &
-          dt, RelOrder, LinearAssembly, nb, Newton, TransientSimulation)
+      CALL LocalMatrix(Element, n, nd, nd+nb, dim, &
+          DivCurlForm, GradPVersion, &
+          dt, LinearAssembly, nb, Newton, TransientSimulation, &
+          InitHandles )
+
+      InitHandles = .FALSE.
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
