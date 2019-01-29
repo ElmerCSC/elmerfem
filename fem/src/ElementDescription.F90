@@ -4522,27 +4522,22 @@ END BLOCK
 !------------------------------------------------------------------------------------------------------------
        TYPE(Mesh_t), POINTER :: Mesh
        INTEGER, POINTER :: EdgeMap(:,:), FaceMap(:,:), Ind(:)
-       INTEGER, TARGET :: TetraFaceMap(4,3)
        INTEGER :: SquareFaceMap(4)
        INTEGER :: DOFs
-       INTEGER :: n, dim, q, i, j, k, ni, nj, nk, A, B, C, D, I1, I2
-       INTEGER :: FDofMap(4,3), DofsPerFace, FaceIndeces(4)
+       INTEGER :: n, dim, q, i, j, k, ni, nj, nk, I1, I2
+       INTEGER :: FDofMap(4,3), DofsPerFace, FaceIndices(4)
        REAL(KIND=dp) :: LF(3,3)
        REAL(KIND=dp) :: DivBasis(12) ! Note the hard-coded size, alter if new elements are added
-       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), t1(3), t2(3), m(3), e(3), S, D1, D2
+       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), S, D1, D2
        REAL(KIND=dp) :: BDMBasis(12,3), BDMDivBasis(12), WorkBasis(2,3), WorkDivBasis(2)
 
-       LOGICAL :: RevertSign(4), RevertSign2(4), CheckSignReversions, CreateBDMBasis, Parallel
+       LOGICAL :: RevertSign(4), CreateBDMBasis, Parallel
        LOGICAL :: CreateDualBasis
        LOGICAL :: PerformPiolaTransform
 !-----------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
        Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
 
-       TetraFaceMap(1,:) = (/ 2, 1, 3 /)
-       TetraFaceMap(2,:) = (/ 1, 2, 4 /)
-       TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
-       TetraFaceMap(4,:) = (/ 3, 1, 4 /)
        !--------------------------------------------------------------------
        ! Check whether BDM or dual basis functions should be created and 
        ! whether the Piola transform is already applied within this function.
@@ -4845,14 +4840,14 @@ END BLOCK
              WorkDivBasis(2) = -u
 
              DO j=1,4
-                FaceIndeces(j) = Ind(SquareFaceMap(j))
+                FaceIndices(j) = Ind(SquareFaceMap(j))
              END DO
              IF (Parallel) THEN
                 DO j=1,4
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                 END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              FBasis(5,:) = D1 * WorkBasis(I1,:)
              DivBasis(5) = D1 * WorkDivBasis(I1)
@@ -4937,14 +4932,14 @@ END BLOCK
              WorkDivBasis(2) = -15.0d0*u/4.0d0
 
              DO j=1,4
-                FaceIndeces(j) = Ind(SquareFaceMap(j))
+                FaceIndices(j) = Ind(SquareFaceMap(j))
              END DO
              IF (Parallel) THEN
                 DO j=1,4
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                 END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              FBasis(5,:) = D1 * WorkBasis(I1,:)
              DivBasis(5) = D1 * WorkDivBasis(I1)
@@ -5018,67 +5013,7 @@ END BLOCK
              ! Find out how face basis functions must be ordered so that the global
              ! indexing convention is respected. 
              !-----------------------------------------------------------------------
-             FaceMap => TetraFaceMap
-             Ind => Element % Nodeindexes
-             FDofMap = 0
-             DO q=1,4
-                !i = FaceMap(q,1)
-                !j = FaceMap(q,2)
-                !k = FaceMap(q,3)
-
-                DO j=1,3
-                   FaceIndeces(j) = Ind(FaceMap(q,j))
-                END DO
-                IF (Parallel) THEN
-                   DO j=1,3
-                      FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
-                   END DO
-                END IF
-                
-                IF ( ( FaceIndeces(1) < FaceIndeces(2) ) .AND. ( FaceIndeces(1) < FaceIndeces(3) ) ) THEN
-                   ! A = i
-                   FDofMap(q,1) = 1
-                   IF (FaceIndeces(2) < FaceIndeces(3)) THEN
-                      !B = j
-                      !C = k
-                      FDofMap(q,2) = 2
-                      FDofMap(q,3) = 3                      
-                   ELSE
-                      !B = k
-                      !C = j
-                      FDofMap(q,2) = 3
-                      FDofMap(q,3) = 2
-                   END IF
-                ELSE IF ( ( FaceIndeces(2) < FaceIndeces(1) ) .AND. ( FaceIndeces(2) < FaceIndeces(3) ) ) THEN
-                   !A = j
-                   FDofMap(q,1) = 2
-                   IF (FaceIndeces(1) < FaceIndeces(3)) THEN
-                      !B = i
-                      !C = k
-                      FDofMap(q,2) = 1
-                      FDofMap(q,3) = 3
-                   ELSE
-                      !B = k
-                      !C = i
-                      FDofMap(q,2) = 3
-                      FDofMap(q,3) = 1
-                   END IF
-                ELSE
-                   !A = k
-                   FDofMap(q,1) = 3
-                   IF (FaceIndeces(1) < FaceIndeces(2)) THEN
-                      !B = i
-                      !C = j
-                      FDofMap(q,2) = 1
-                      FDofMap(q,3) = 2 
-                   ELSE
-                      !B = j
-                      !C = i
-                      FDofMap(q,2) = 2
-                      FDofMap(q,3) = 1 
-                   END IF
-                END IF
-             END DO
+             CALL FaceElementBasisOrdering(Element, FDofMap)
 
              !-----------------------------------------------------
              ! Now do the actual reordering and sign reversion
@@ -5379,6 +5314,95 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
 END SUBROUTINE FaceElementOrientation
 !-----------------------------------------------------------------------------------
 
+!-----------------------------------------------------------------------------------
+!> This subroutine produces information about how the basis functions of face (vector)
+!> elements have to be reordered to conform with the global ordering convention.
+!> Currently this can handle only the tetrahedron of Nedelec's second family.
+!-----------------------------------------------------------------------------------
+SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
+!-----------------------------------------------------------------------------------
+  IMPLICIT NONE
+
+  TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D element having 2-D faces
+  INTEGER, INTENT(OUT) :: FDofMap(4,3)         !< Face-wise information for the basis permutation  
+  INTEGER, OPTIONAL, INTENT(IN) :: FaceIndex   !< Check just one face that is specified here
+!-----------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh 
+  LOGICAL :: Parallel
+  INTEGER, POINTER :: FaceMap(:,:), Ind(:)
+  INTEGER, TARGET :: TetraFaceMap(4,3), FaceIndices(4)
+  INTEGER :: j, q, first_face, last_face
+!-----------------------------------------------------------------------------------
+  FDofMap(4,3) = 0
+
+  IF (PRESENT(FaceIndex)) THEN
+    first_face = FaceIndex
+    last_face = FaceIndex
+  ELSE
+    first_face = 1
+  END IF
+
+  Mesh => CurrentModel % Solver % Mesh
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+  Ind => Element % NodeIndexes
+
+  SELECT CASE(Element % TYPE % ElementCode / 100)
+  CASE(5)
+    TetraFaceMap(1,:) = (/ 2, 1, 3 /)
+    TetraFaceMap(2,:) = (/ 1, 2, 4 /)
+    TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
+    TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+
+    FaceMap => TetraFaceMap
+
+    IF (.NOT. PRESENT(FaceIndex)) last_face = 4
+
+    DO q=first_face,last_face
+      DO j=1,3
+        FaceIndices(j) = Ind(FaceMap(q,j))
+      END DO
+      IF (Parallel) THEN
+        DO j=1,3
+          FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
+        END DO
+      END IF
+
+      IF ( ( FaceIndices(1) < FaceIndices(2) ) .AND. ( FaceIndices(1) < FaceIndices(3) ) ) THEN
+        FDofMap(q,1) = 1
+        IF (FaceIndices(2) < FaceIndices(3)) THEN
+          FDofMap(q,2) = 2
+          FDofMap(q,3) = 3                      
+        ELSE
+          FDofMap(q,2) = 3
+          FDofMap(q,3) = 2
+        END IF
+      ELSE IF ( ( FaceIndices(2) < FaceIndices(1) ) .AND. ( FaceIndices(2) < FaceIndices(3) ) ) THEN
+        FDofMap(q,1) = 2
+        IF (FaceIndices(1) < FaceIndices(3)) THEN
+          FDofMap(q,2) = 1
+          FDofMap(q,3) = 3
+        ELSE
+          FDofMap(q,2) = 3
+          FDofMap(q,3) = 1
+        END IF
+      ELSE
+        FDofMap(q,1) = 3
+        IF (FaceIndices(1) < FaceIndices(2)) THEN
+          FDofMap(q,2) = 1
+          FDofMap(q,3) = 2 
+        ELSE
+          FDofMap(q,2) = 2
+          FDofMap(q,3) = 1 
+        END IF
+      END IF
+    END DO
+
+  CASE DEFAULT
+    CALL Fatal('FaceElementBasisOrdering', 'Unsupported element family')
+  END SELECT
+!-----------------------------------------------------------------------------------
+END SUBROUTINE FaceElementBasisOrdering
+!-----------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Perform the cross product of two vectors
@@ -5451,7 +5475,7 @@ END SUBROUTINE FaceElementOrientation
 !      Local variables
 !------------------------------------------------------------------------------------------------------------
        TYPE(Mesh_t), POINTER :: Mesh
-       INTEGER :: n, dim, cdim, q, i, j, k, l, ni, nj, A, I1, I2, FaceIndeces(4)
+       INTEGER :: n, dim, cdim, q, i, j, k, l, ni, nj, A, I1, I2, FaceIndices(4)
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(4,3), WorkCurlBasis(4,3)
        REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3), LG(3,3), LF(3,3)
        REAL(KIND=dp) :: ElmMetric(3,3), detJ, CurlBasis(54,3)
@@ -6028,14 +6052,14 @@ END SUBROUTINE FaceElementOrientation
                Ind => Element % Nodeindexes
 
                DO j=1,3
-                 FaceIndeces(j) = Ind(TriangleFaceMap(j))
+                 FaceIndices(j) = Ind(TriangleFaceMap(j))
                END DO
                IF (Parallel) THEN
                  DO j=1,3
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                  END DO
                END IF
-               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
                WorkBasis(1,1) = ((Sqrt(3.0d0) - v)*v)/6.0d0
                WorkBasis(1,2) = (u*v)/6.0d0
@@ -6149,14 +6173,14 @@ END SUBROUTINE FaceElementOrientation
                  0.6D1 * v * (0.1D1 / 0.2D1 - u / 0.2D1)
 
              DO j=1,4
-               FaceIndeces(j) = Ind(SquareFaceMap(j))
+               FaceIndices(j) = Ind(SquareFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(9,:) = D1 * WorkBasis(2*(I1-1)+1,:)
              CurlBasis(9,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
@@ -6249,14 +6273,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = -u
 
              DO j=1,4
-               FaceIndeces(j) = Ind(SquareFaceMap(j))
+               FaceIndices(j) = Ind(SquareFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(5,:) = D1 * WorkBasis(I1,:)
              CurlBasis(5,:) = D1 * WorkCurlBasis(I1,:)
@@ -6783,14 +6807,14 @@ END SUBROUTINE FaceElementOrientation
                Ind => Element % Nodeindexes
 
                DO j=1,3
-                 FaceIndeces(j) = Ind(TriangleFaceMap(j))
+                 FaceIndices(j) = Ind(TriangleFaceMap(j))
                END DO
                IF (Parallel) THEN
                  DO j=1,3
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                  END DO
                END IF
-               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
                WorkBasis(1,1) = ((4.0d0*v - Sqrt(2.0d0)*w)*&
                    (-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(3.0d0))
@@ -6836,14 +6860,14 @@ END SUBROUTINE FaceElementOrientation
                Ind => Element % Nodeindexes
 
                DO j=1,3
-                 FaceIndeces(j) = Ind(TriangleFaceMap(j))
+                 FaceIndices(j) = Ind(TriangleFaceMap(j))
                END DO
                IF (Parallel) THEN
                  DO j=1,3
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                  END DO
                END IF
-               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
                WorkBasis(1,1) = -(w*(-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(8.0d0*Sqrt(6.0d0))
                WorkBasis(1,2) = (u*w)/(4.0d0*Sqrt(2.0d0))
@@ -6881,14 +6905,14 @@ END SUBROUTINE FaceElementOrientation
                Ind => Element % Nodeindexes
 
                DO j=1,3
-                 FaceIndeces(j) = Ind(TriangleFaceMap(j))
+                 FaceIndices(j) = Ind(TriangleFaceMap(j))
                END DO
                IF (Parallel) THEN
                  DO j=1,3
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                  END DO
                END IF
-               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
                WorkBasis(1,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
                WorkBasis(1,2) = (w*(4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - &
@@ -6926,14 +6950,14 @@ END SUBROUTINE FaceElementOrientation
                Ind => Element % Nodeindexes
 
                DO j=1,3
-                 FaceIndeces(j) = Ind(TriangleFaceMap(j))
+                 FaceIndices(j) = Ind(TriangleFaceMap(j))
                END DO
                IF (Parallel) THEN
                  DO j=1,3
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                  END DO
                END IF
-               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
                WorkBasis(1,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
                WorkBasis(1,2) = (w*(-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + &
@@ -7335,14 +7359,14 @@ END SUBROUTINE FaceElementOrientation
              ! Finally apply an order change and sign reversions if needed. 
              ! -------------------------------------------------------------------
              DO j=1,4
-               FaceIndeces(j) = Ind(SquareFaceMap(j))
+               FaceIndices(j) = Ind(SquareFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(17,:) = D1 * WorkBasis(2*(I1-1)+1,:)
              CurlBasis(17,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
@@ -7360,14 +7384,14 @@ END SUBROUTINE FaceElementOrientation
              TriangleFaceMap(:) = (/ 1,2,5 /)          
  
              DO j=1,3
-               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+               FaceIndices(j) = Ind(TriangleFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,3
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              WorkBasis(1,1:3) = LBasis(5) * EdgeSign(1) * EdgeBasis(1,1:3)
              WorkCurlBasis(1,1) = w * u / (w * sqrt(0.2D1) - 0.2D1) / 0.4D1
@@ -7413,14 +7437,14 @@ END SUBROUTINE FaceElementOrientation
              TriangleFaceMap(:) = (/ 2,3,5 /)          
  
              DO j=1,3
-               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+               FaceIndices(j) = Ind(TriangleFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,3
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              WorkBasis(1,1:3) = LBasis(5) * EdgeSign(3) * EdgeBasis(3,1:3)
              WorkCurlBasis(1,1) = (0.3D1 * sqrt(0.2D1) * w ** 2 + 0.2D1 * u * sqrt(0.2D1) - 0.4D1 * u * w + &
@@ -7463,14 +7487,14 @@ END SUBROUTINE FaceElementOrientation
              TriangleFaceMap(:) = (/ 3,4,5 /)          
  
              DO j=1,3
-               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+               FaceIndices(j) = Ind(TriangleFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,3
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              WorkBasis(1,1:3) = -LBasis(5) * EdgeSign(5) * EdgeBasis(5,1:3)
              WorkCurlBasis(1,1) = w * u / (w * sqrt(0.2D1) - 0.2D1) / 0.4D1
@@ -7513,14 +7537,14 @@ END SUBROUTINE FaceElementOrientation
              TriangleFaceMap(:) = (/ 4,1,5 /)          
  
              DO j=1,3
-               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+               FaceIndices(j) = Ind(TriangleFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,3
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              WorkBasis(1,1:3) = -LBasis(5) * EdgeSign(7) * EdgeBasis(7,1:3)
              WorkCurlBasis(1,1) = (-0.3D1 * sqrt(0.2D1) * w ** 2 + 0.2D1 * u * sqrt(0.2D1) - &
@@ -7772,14 +7796,14 @@ END SUBROUTINE FaceElementOrientation
              ! Finally apply an order change and sign reversions if needed. 
              ! -------------------------------------------------------------------
              DO j=1,4
-               FaceIndeces(j) = Ind(SquareFaceMap(j))
+               FaceIndices(j) = Ind(SquareFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(9,:) = D1 * WorkBasis(I1,:)
              CurlBasis(9,:) = D1 * WorkCurlBasis(I1,:)
@@ -7989,14 +8013,14 @@ END SUBROUTINE FaceElementOrientation
              TriangleFaceMap(:) = (/ 1,2,3 /)
 
              DO j=1,3
-               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+               FaceIndices(j) = Ind(TriangleFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,3
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              WorkBasis(1,1) = ((Sqrt(3.0d0) - v)*v)/6.0d0
              WorkBasis(1,2) = (u*v)/6.0d0
@@ -8024,14 +8048,14 @@ END SUBROUTINE FaceElementOrientation
              TriangleFaceMap(:) = (/ 4,5,6 /)
 
              DO j=1,3
-               FaceIndeces(j) = Ind(TriangleFaceMap(j))
+               FaceIndices(j) = Ind(TriangleFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,3
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(21,1:2) = D1 * WorkBasis(I1,1:2) * h2
              CurlBasis(21,1) = -D1 * WorkBasis(I1,2) * dh2
@@ -8071,14 +8095,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(4,2) = -6.0d0 * grad(1) * w
 
              DO j=1,4
-               FaceIndeces(j) = Ind(SquareFaceMap(j))
+               FaceIndices(j) = Ind(SquareFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(23,:) = D1 * WorkBasis(2*(I1-1)+1,:)
              CurlBasis(23,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
@@ -8117,14 +8141,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(4,2) = -6.0d0 * grad(1) * w
 
              DO j=1,4
-               FaceIndeces(j) = Ind(SquareFaceMap(j))
+               FaceIndices(j) = Ind(SquareFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(27,:) = D1 * WorkBasis(2*(I1-1)+1,:)
              CurlBasis(27,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
@@ -8163,14 +8187,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(4,2) = -6.0d0 * grad(1) * w
 
              DO j=1,4
-               FaceIndeces(j) = Ind(SquareFaceMap(j))
+               FaceIndices(j) = Ind(SquareFaceMap(j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(31,:) = D1 * WorkBasis(2*(I1-1)+1,:)
              CurlBasis(31,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
@@ -8379,14 +8403,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = 0.0d0
 
              DO j=1,4
-               FaceIndeces(j) = Ind(PrismSquareFaceMap(1,j))
+               FaceIndices(j) = Ind(PrismSquareFaceMap(1,j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(10,:) = D1 * WorkBasis(I1,:)
              CurlBasis(10,:) = D1 * WorkCurlBasis(I1,:)
@@ -8409,14 +8433,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = 0.0d0 
 
              DO j=1,4
-               FaceIndeces(j) = Ind(PrismSquareFaceMap(2,j))
+               FaceIndices(j) = Ind(PrismSquareFaceMap(2,j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(12,:) = D1 * WorkBasis(I1,:)
              CurlBasis(12,:) = D1 * WorkCurlBasis(I1,:)
@@ -8439,14 +8463,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = 0.0d0
 
              DO j=1,4
-               FaceIndeces(j) = Ind(PrismSquareFaceMap(3,j))
+               FaceIndices(j) = Ind(PrismSquareFaceMap(3,j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(14,:) = D1 * WorkBasis(I1,:)
              CurlBasis(14,:) = D1 * WorkCurlBasis(I1,:)
@@ -8634,14 +8658,14 @@ END SUBROUTINE FaceElementOrientation
                WorkCurlBasis(4,3) = 12.0d0 * (-0.5d0 * u) * v * LineNodalPBasis(q,w)
                
                DO j=1,4
-                 FaceIndeces(j) = Ind(SquareFaceMap(j))
+                 FaceIndices(j) = Ind(SquareFaceMap(j))
                END DO
                IF (Parallel) THEN
                  DO j=1,4
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                  END DO
                END IF
-               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
                k = 24
                EdgeBasis(k+4*(q-1)+1,:) = D1 * WorkBasis(2*(I1-1)+1,:)
@@ -8685,14 +8709,14 @@ END SUBROUTINE FaceElementOrientation
                WorkCurlBasis(4,2) = -12.0d0 * (-0.5d0 * u) * w * LineNodalPBasis(q,v)
                
                DO j=1,4
-                 FaceIndeces(j) = Ind(SquareFaceMap(j))
+                 FaceIndices(j) = Ind(SquareFaceMap(j))
                END DO
                IF (Parallel) THEN
                  DO j=1,4
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                  END DO
                END IF
-               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
                EdgeBasis(k+1,:) = D1 * WorkBasis(2*(I1-1)+1,:)
                CurlBasis(k+1,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
@@ -8735,14 +8759,14 @@ END SUBROUTINE FaceElementOrientation
                WorkCurlBasis(4,2) = -12.0d0 * LineNodalPBasis(1,v) * LineNodalPBasis(2,v) * w * dLineNodalPBasis(q,u)
                
                DO j=1,4
-                 FaceIndeces(j) = Ind(SquareFaceMap(j))
+                 FaceIndices(j) = Ind(SquareFaceMap(j))
                END DO
                IF (Parallel) THEN
                  DO j=1,4
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                  END DO
                END IF
-               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
                EdgeBasis(k+1,:) = D1 * WorkBasis(2*(I1-1)+1,:)
                CurlBasis(k+1,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
@@ -9024,14 +9048,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = -(u*(-1.0d0 + w)*w)/2.0d0
 
              DO j=1,4
-               FaceIndeces(j) = Ind(BrickFaceMap(1,j))
+               FaceIndices(j) = Ind(BrickFaceMap(1,j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(13,:) = D1 * WorkBasis(I1,:)
              CurlBasis(13,:) = D1 * WorkCurlBasis(I1,:)
@@ -9054,14 +9078,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = -(u*w*(1.0d0 + w))/2.0d0
 
              DO j=1,4
-               FaceIndeces(j) = Ind(BrickFaceMap(2,j))
+               FaceIndices(j) = Ind(BrickFaceMap(2,j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(15,:) = D1 * WorkBasis(I1,:)
              CurlBasis(15,:) = D1 * WorkCurlBasis(I1,:)
@@ -9084,14 +9108,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = 0.0d0
 
              DO j=1,4
-               FaceIndeces(j) = Ind(BrickFaceMap(3,j))
+               FaceIndices(j) = Ind(BrickFaceMap(3,j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(17,:) = D1 * WorkBasis(I1,:)
              CurlBasis(17,:) = D1 * WorkCurlBasis(I1,:)
@@ -9114,14 +9138,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = 0.0d0
 
              DO j=1,4
-               FaceIndeces(j) = Ind(BrickFaceMap(4,j))
+               FaceIndices(j) = Ind(BrickFaceMap(4,j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(19,:) = D1 * WorkBasis(I1,:)
              CurlBasis(19,:) = D1 * WorkCurlBasis(I1,:)
@@ -9144,14 +9168,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = 0.0d0
 
              DO j=1,4
-               FaceIndeces(j) = Ind(BrickFaceMap(5,j))
+               FaceIndices(j) = Ind(BrickFaceMap(5,j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(21,:) = D1 * WorkBasis(I1,:)
              CurlBasis(21,:) = D1 * WorkCurlBasis(I1,:)
@@ -9174,14 +9198,14 @@ END SUBROUTINE FaceElementOrientation
              WorkCurlBasis(2,3) = 0.0d0
 
              DO j=1,4
-               FaceIndeces(j) = Ind(BrickFaceMap(6,j))
+               FaceIndices(j) = Ind(BrickFaceMap(6,j))
              END DO
              IF (Parallel) THEN
                DO j=1,4
-                 FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                 FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
              EdgeBasis(23,:) = D1 * WorkBasis(I1,:)
              CurlBasis(23,:) = D1 * WorkCurlBasis(I1,:)
@@ -9390,7 +9414,7 @@ END SUBROUTINE FaceElementOrientation
           D1 = -1.0d0
           D2 = -1.0d0          
        CASE DEFAULT
-          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic square face indeces')
+          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic square face Indices')
        END SELECT
 !---------------------------------------------------------
      END SUBROUTINE TriangleFaceDofsOrdering
@@ -9462,7 +9486,7 @@ END SUBROUTINE FaceElementOrientation
              s(2) = -0.5d0       
           END IF
        CASE DEFAULT
-          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic square face indeces')
+          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic square face Indices')
        END SELECT
 !---------------------------------------------------------
      END SUBROUTINE TriangleFaceDofsOrdering2
@@ -9556,7 +9580,7 @@ END SUBROUTINE FaceElementOrientation
              D2 = -1.0d0
           END IF
        CASE DEFAULT
-          CALL Fatal('ElementDescription::SquareFaceDofsOrdering','Erratic square face indeces')
+          CALL Fatal('ElementDescription::SquareFaceDofsOrdering','Erratic square face Indices')
        END SELECT
 !----------------------------------------------------------
      END SUBROUTINE SquareFaceDofsOrdering
@@ -9582,7 +9606,7 @@ END SUBROUTINE FaceElementOrientation
        TYPE(Mesh_t), POINTER :: Mesh       
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
        INTEGER :: SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs, i, j, k
-       INTEGER :: FaceIndeces(4), I1, I2, ni, nj
+       INTEGER :: FaceIndices(4), I1, I2, ni, nj
        REAL(KIND=dp) :: D1, D2
        LOGICAL :: Parallel
 !---------------------------------------------------------------------------------------------------
@@ -9629,15 +9653,15 @@ END SUBROUTINE FaceElementOrientation
           ! -----------------------------------------------------
           SquareFaceMap(:) = (/ 1,2,3,4 /)
           DO j=1,4
-             FaceIndeces(j) = Ind(SquareFaceMap(j))
+             FaceIndices(j) = Ind(SquareFaceMap(j))
           END DO
           IF (Parallel) THEN
              DO j=1,4
-                FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
              END DO
           END IF
 
-          CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+          CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
           i = 8
           PermVec(i+1) = i+I1 
           PermVec(i+2) = i+I2
@@ -9664,14 +9688,14 @@ END SUBROUTINE FaceElementOrientation
           PrismSquareFaceMap(3,:) = (/ 3,1,4,6 /)
           DO k=1,3
              DO j=1,4
-                FaceIndeces(j) = Ind(PrismSquareFaceMap(k,j))
+                FaceIndices(j) = Ind(PrismSquareFaceMap(k,j))
              END DO
              IF (Parallel) THEN
                 DO j=1,4
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                 END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
              i = 9+(k-1)*2
              PermVec(i+1) = i+I1 
              PermVec(i+2) = i+I2
@@ -9702,14 +9726,14 @@ END SUBROUTINE FaceElementOrientation
           BrickFaceMap(6,:) = (/ 1,4,8,5 /)
           DO k=1,6
              DO j=1,4
-                FaceIndeces(j) = Ind(BrickFaceMap(k,j))
+                FaceIndices(j) = Ind(BrickFaceMap(k,j))
              END DO
              IF (Parallel) THEN
                 DO j=1,4
-                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
                 END DO
              END IF
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
              i = 12+(k-1)*2
              PermVec(i+1) = i+I1 
              PermVec(i+2) = i+I2
