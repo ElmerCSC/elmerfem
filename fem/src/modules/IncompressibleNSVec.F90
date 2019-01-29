@@ -200,7 +200,7 @@ CONTAINS
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, VeloPresVec, InitHandles )        
-  
+    
     ! Rho 
     rhovec(1:ngp) = rho
 
@@ -479,6 +479,8 @@ CONTAINS
 
      
      IF(InitHandles ) THEN
+       CALL Info('EffectiveViscosityVec','Initializing handles for viscosity models',Level=8)
+
        CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')      
        CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
        
@@ -611,20 +613,20 @@ CONTAINS
        !   END IF
        !END IF
 
-       c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
-       c3 = c3**2
+       c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)       
        IF( Found ) THEN
+         c3 = c3**2
          WHERE( ss(1:ngp) < c3 ) ss(1:ngp) = c3
        END IF
-
+       
        ViscVec(1:ngp) = ViscVec0(1:ngp) * ss(1:ngp)**((c2-1)/2)
 
        c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
        IF( Found ) THEN
-         ViscVec(1:ngp) = ViscVec0(1:ngp) / c4**(c2-1)
+         ViscVec(1:ngp) = ViscVec(1:ngp) / c4**(c2-1)
          !IF (PRESENT(muder)) muder = muder / c4**(c2-1)
        END IF
-
+       
      CASE('power law too')
        c2 = ListGetElementReal( ViscExp_h,Element=Element)           
        ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
@@ -812,6 +814,8 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, TransientSimulation)
   ! Automate the choice for the variational formulation:
   CALL ListAddNewLogical(Params, 'GradP Discretization', .FALSE.)
   CALL ListAddNewLogical(Params, 'Div-Curl Form', .TRUE.)
+
+  CALL ListAddNewString(Params,'Element','p:1 -quad b:3 -brick b:4')
   
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
@@ -943,14 +947,15 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
     call ResetTimer('IncompressibleNSBulkAssembly')
 
     Newton = GetNewtonActive( Solver )
+
     InitHandles = .TRUE.
     
-    !$OMP PARALLEL SHARED(Active, dim, &
+    !$OMP PARALLEL SHARED(Active, dim, InitHandles, &
     !$OMP                 DivCurlForm, GradPVersion, &
     !$OMP                 dt, LinearAssembly, Newton, TransientSimulation) &
-    !$OMP          PRIVATE(Element, InitHandles, Element_id, n, nd, nb) &
+    !$OMP          PRIVATE(Element, Element_id, n, nd, nb) &
     !$OMP          DEFAULT(None)
-    !$OMP DO 
+    !$OMP DO    
     DO Element_id=1,Active
       Element => GetActiveElement(Element_id)
       n  = GetElementNOFNodes(Element)
@@ -960,14 +965,14 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
       !
       nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
       nd = GetElementNOFDOFs(Element)
-
+      
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalMatrix(Element, n, nd, nd+nb, dim, &
           DivCurlForm, GradPVersion, &
           dt, LinearAssembly, nb, Newton, TransientSimulation, &
           InitHandles )
-
+      
       InitHandles = .FALSE.
     END DO
     !$OMP END DO
