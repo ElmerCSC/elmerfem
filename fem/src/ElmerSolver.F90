@@ -920,7 +920,8 @@ END INTERFACE
        j = CurrentModel % NumberOfBodies
        ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
        IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 3')
-       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
+       CurrentModel % Solvers(n) % Def_Dofs = -1
+       CurrentModel % Solvers(n) % Def_Dofs(:,:,1) =  1
        
        ! Add some keywords to the list
        CurrentModel % Solvers(n) % Values => ListAllocate()
@@ -1002,7 +1003,8 @@ END INTERFACE
        j = CurrentModel % NumberOfBodies
        ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
        IF( AllocStat /= 0 ) CALL Fatal('AddSaveScalarsHack','Allocation error 3')
-       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
+       CurrentModel % Solvers(n) % Def_Dofs = -1
+       CurrentModel % Solvers(n) % Def_Dofs(:,:,1) =  1
        
        ! Add some keywords to the list
        CurrentModel % Solvers(n) % Values => ListAllocate()
