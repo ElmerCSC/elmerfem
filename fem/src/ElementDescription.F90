@@ -1000,9 +1000,21 @@ CONTAINS
      INTEGER, POINTER :: p(:),q(:)
      TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
 !------------------------------------------------------------------------------
+     REAL(KIND=dp) :: ult(0:6), vlt(0:6)
 
      elt => element % TYPE
      BasisFunctions => elt % BasisFunctions
+
+     ult(0) = 1
+     ult(1) = u
+
+     vlt(0) = 1
+     vlt(1) = v
+
+     DO i=2,elt % BasisFunctionDegree
+       ult(i) = u**i
+       vlt(i) = v**i
+     END DO
 
      DO n=1,Elt % NumberOfNodes
        p => BasisFunctions(n) % p
@@ -1011,12 +1023,13 @@ CONTAINS
 
        s = 0.0d0
        DO i=1,BasisFunctions(n) % n
-          s = s + Coeff(i)*u**p(i)*v**q(i)
+          s = s + Coeff(i)*ult(p(i))*vlt(q(i))
        END DO
        y(n) = s
      END DO
    END SUBROUTINE NodalBasisFunctions2D
 !------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
@@ -1201,8 +1214,22 @@ CONTAINS
 
       INTEGER :: i,n
 
+      REAL(KIND=dp) :: ult(0:6), vlt(0:6)
+ 
       elt => element % TYPE
       BasisFunctions => elt % BasisFunctions
+
+      ult(0) = 1
+      ult(1) = u
+
+      vlt(0) = 1
+      vlt(1) = v
+
+      DO i=2,elt % BasisFunctionDegree
+        ult(i) = u**i
+        vlt(i) = v**i
+      END DO
+
 
       DO n = 1,elt % NumberOfNodes
         p => BasisFunctions(n) % p
@@ -1212,8 +1239,8 @@ CONTAINS
         s = 0.0d0
         t = 0.0d0
         DO i = 1,BasisFunctions(n) % n
-          IF (p(i)>=1) s = s + p(i)*Coeff(i)*u**(p(i)-1)*v**q(i)
-          IF (q(i)>=1) t = t + q(i)*Coeff(i)*u**p(i)*v**(q(i)-1)
+          IF (p(i)>=1) s = s + p(i)*Coeff(i)*ult(p(i)-1)*vlt(q(i))
+          IF (q(i)>=1) t = t + q(i)*Coeff(i)*ult(p(i))*vlt(q(i)-1)
         END DO
         y(n,1) = s
         y(n,2) = t
@@ -1221,7 +1248,6 @@ CONTAINS
 
    END SUBROUTINE NodalFirstDerivatives2D
 !------------------------------------------------------------------------------
-
 
 
 
@@ -1459,9 +1485,25 @@ CONTAINS
      INTEGER, POINTER :: p(:),q(:),r(:)
      TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
 !------------------------------------------------------------------------------
+     REAL(KIND=dp) :: ult(0:6), vlt(0:6), wlt(0:6)
 
      elt => element % TYPE
      BasisFunctions => elt % BasisFunctions
+ 
+     ult(0) = 1
+     ult(1) = u
+
+     vlt(0) = 1
+     vlt(1) = v
+
+     wlt(0) = 1
+     wlt(1) = w
+
+     DO i=2,elt % BasisFunctionDegree
+       ult(i) = u**i
+       vlt(i) = v**i
+       wlt(i) = w**i
+     END DO
 
      DO n=1,Elt % NumberOfNodes
        p => BasisFunctions(n) % p
@@ -1471,7 +1513,7 @@ CONTAINS
 
        s = 0.0d0
        DO i=1,BasisFunctions(n) % n
-          s = s + Coeff(i)*u**p(i)*v**q(i)*w**r(i)
+          s = s + Coeff(i)*ult(p(i))*vlt(q(i))*wlt(r(i))
        END DO
        y(n) = s
      END DO
@@ -1876,8 +1918,25 @@ END IF
 
       INTEGER :: i,n
 
+      REAL(KIND=dp) :: ult(0:6), vlt(0:6), wlt(0:6)
+ 
       elt => element % TYPE
       BasisFunctions => elt % BasisFunctions
+ 
+      ult(0) = 1
+      ult(1) = u
+
+      vlt(0) = 1
+      vlt(1) = v
+ 
+      wlt(0) = 1
+      wlt(1) = w
+
+      DO i=2,elt % BasisFunctionDegree
+        ult(i) = u**i
+        vlt(i) = v**i
+        wlt(i) = w**i
+      END DO
 
       DO n = 1,elt % NumberOfNodes
         p => BasisFunctions(n) % p
@@ -1889,9 +1948,9 @@ END IF
         t = 0.0d0
         z = 0.0d0
         DO i = 1,BasisFunctions(n) % n
-          IF (p(i)>=1) s = s + p(i)*Coeff(i)*u**(p(i)-1)*v**q(i)*w**r(i)
-          IF (q(i)>=1) t = t + q(i)*Coeff(i)*u**p(i)*v**(q(i)-1)*w**r(i)
-          IF (r(i)>=1) z = z + r(i)*Coeff(i)*u**p(i)*v**q(i)*w**(r(i)-1)
+          IF (p(i)>=1) s = s + p(i)*Coeff(i)*ult(p(i)-1)*vlt(q(i))*wlt(r(i))
+          IF (q(i)>=1) t = t + q(i)*Coeff(i)*ult(p(i))*vlt(q(i)-1)*wlt(r(i))
+          IF (r(i)>=1) z = z + r(i)*Coeff(i)*ult(p(i))*vlt(q(i))*wlt(r(i)-1)
         END DO
         y(n,1) = s
         y(n,2) = t
