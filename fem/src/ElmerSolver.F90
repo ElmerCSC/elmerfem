@@ -1988,21 +1988,22 @@ END INTERFACE
          END IF
 
          BLOCK
+           TYPE(Mesh_t), POINTER :: Mesh
            REAL(KIND=dp) :: MeshR
            CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
 
-           MeshR = ListGetCReal( CurrentModel % Simulation,&
-               'Mesh Name Index',gotIt )
+           MeshR = GetCREal( GetSimulation(), 'Mesh Name Index',gotIt )
            IF( gotIt ) THEN
              i = NINT( MeshR )
              IF( i > 0 .AND. i /= PrevMeshI ) THEN                             
-               MeshStr = ListGetString( CurrentModel % Simulation,'Mesh Name '//TRIM(I2S(i)),GotIt)
+               MeshStr = ListGetString( GetSimulation(),'Mesh Name '//TRIM(I2S(i)),GotIt)
                IF( GotIt ) THEN
                  CALL Info('ExecSimulation','Swictching mesh to: '//TRIM(MeshStr),Level=5)
                ELSE
                  CALL Fatal('ExecSimulation','Could not find >Mesh Name '//TRIM(I2S(i))//'<')
                END IF
-               CALL SwapMesh( CurrentModel, CurrentModel % Mesh, MeshStr )
+               Mesh => CurrentModel % Meshes
+               CALL SwapMesh( CurrentModel, Mesh, MeshStr )
                PrevMeshI = i
              END IF
            END IF
