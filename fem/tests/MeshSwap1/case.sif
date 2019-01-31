@@ -1,3 +1,8 @@
+! Test case for changing mesh on-the-fly
+! Not applicable to transient cases.
+!
+! P.R. 31.1.2019
+
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "angle0"
@@ -6,7 +11,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 30
+  Max Output Level = 7
   Coordinate System = "Cartesian 2D"
   Coordinate Mapping(3) = 1 2 3
 
@@ -27,6 +32,7 @@ Simulation
   Mesh Name 2 = File "angle2"    
 
   Post File = "case.vtu"
+  vtu: Output Directory = File "results"
 End
 
 Constants
@@ -100,4 +106,4 @@ Boundary Condition 1
   Temp = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 5.214225320136149E-002
+Solver 1 :: Reference Norm = 7.88144861e-2

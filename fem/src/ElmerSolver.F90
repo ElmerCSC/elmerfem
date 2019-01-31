@@ -864,15 +864,20 @@ END INTERFACE
        TYPE(ValueList_t), POINTER :: Params, Simu
        LOGICAL :: Found, VtuFormat
        INTEGER :: AllocStat
+       LOGICAL, SAVE :: Visited = .FALSE.
        
        Simu => CurrentModel % Simulation
        str = ListGetString( Simu,'Post File',Found) 
        IF(.NOT. Found) RETURN
-
+       
        k = INDEX( str,'.vtu' )
        VtuFormat = ( k /= 0 ) 
 
        IF(.NOT. VtuFormat ) RETURN
+
+       ! No use to create the same solver twice
+       IF( Visited ) RETURN
+       Visited = .TRUE.
        
        CALL Info('AddVtuOutputSolverHack','Adding ResultOutputSolver to write VTU output in file: '&
            //TRIM(str(1:k-1)))
@@ -953,11 +958,16 @@ END INTERFACE
        TYPE(ValueList_t), POINTER :: Params, Simu
        LOGICAL :: Found, VtuFormat
        INTEGER :: AllocStat
+       LOGICAL, SAVE :: Visited = .FALSE.
        
        Simu => CurrentModel % Simulation
        str = ListGetString( Simu,'Scalars File',Found) 
        IF(.NOT. Found) RETURN
-
+       
+       ! No use to create the same solver twice
+       IF( Visited ) RETURN
+       Visited = .TRUE.
+       
        CALL Info('AddSaveScalarsHack','Adding SaveScalars solver to write scalars into file: '&
            //TRIM(str))
        
@@ -1989,28 +1999,6 @@ END INTERFACE
            END IF
          END IF
 
-         BLOCK
-           TYPE(Mesh_t), POINTER :: Mesh
-           REAL(KIND=dp) :: MeshR
-           CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
-
-           MeshR = GetCREal( GetSimulation(), 'Mesh Name Index',gotIt )
-           IF( gotIt ) THEN
-             i = NINT( MeshR )
-             IF( i > 0 .AND. i /= PrevMeshI ) THEN                             
-               MeshStr = ListGetString( GetSimulation(),'Mesh Name '//TRIM(I2S(i)),GotIt)
-               IF( GotIt ) THEN
-                 CALL Info('ExecSimulation','Swictching mesh to: '//TRIM(MeshStr),Level=5)
-               ELSE
-                 CALL Fatal('ExecSimulation','Could not find >Mesh Name '//TRIM(I2S(i))//'<')
-               END IF
-               Mesh => CurrentModel % Meshes
-               CALL SwapMesh( CurrentModel, Mesh, MeshStr )
-               PrevMeshI = i
-             END IF
-           END IF
-         END BLOCK
-
 !------------------------------------------------------------------------------
          ! Predictor-Corrector time stepping control 
          IF ( PredCorrControl ) THEN 
@@ -2077,6 +2065,42 @@ END INTERFACE
 
          sInterval(1) = interval
          IF (.NOT. Transient ) steadyIt(1) = steadyIt(1) + 1
+
+!------------------------------------------------------------------------------
+
+         BLOCK
+           TYPE(Mesh_t), POINTER :: Mesh
+           REAL(KIND=dp) :: MeshR
+           CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
+           
+           IF( ListCheckPresent( GetSimulation(), 'Mesh Name Index') ) THEN
+             IF( Transient ) THEN
+               CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
+             END IF
+             
+             ! we cannot have mesh depend on "time" or "timestep" if they are not available as
+             ! variables. 
+             Mesh => CurrentModel % Meshes             
+             CALL VariableAdd( Mesh % Variables, Mesh, Name='Time',DOFs=1, Values=sTime )
+             CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep', DOFs=1, Values=sStep )
+
+             MeshR = GetCREal( GetSimulation(), 'Mesh Name Index',gotIt )            
+             i = NINT( MeshR )
+
+             IF( i > 0 .AND. i /= PrevMeshI ) THEN                             
+               MeshStr = ListGetString( GetSimulation(),'Mesh Name '//TRIM(I2S(i)),GotIt)
+               IF( GotIt ) THEN
+                 CALL Info('ExecSimulation','Swapping mesh to: '//TRIM(MeshStr),Level=5)
+               ELSE
+                 CALL Fatal('ExecSimulation','Could not find >Mesh Name '//TRIM(I2S(i))//'<')
+               END IF
+               CALL SwapMesh( CurrentModel, Mesh, MeshStr )
+               PrevMeshI = i
+             END IF
+           END IF
+         END BLOCK
+
+
 !------------------------------------------------------------------------------
          IF ( ParEnv % MyPE == 0 ) THEN
            CALL Info( 'MAIN', ' ', Level=3 )
