@@ -474,32 +474,34 @@ CONTAINS
         CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')      
         CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
 
-        CALL ListInitElementKeyword( ViscExp_h,'Material','Viscosity Exponent')      
-        CALL ListInitElementKeyword( ViscCritical_h,'Material','Critical Shear Rate')      
-        CALL ListInitElementKeyword( ViscNominal_h,'Material','Nominal Shear Rate')      
-        CALL ListInitElementKeyword( ViscDiff_h,'Material','Viscosity Difference')      
-        CALL ListInitElementKeyword( ViscTrans_h,'Material','Viscosity Transition')      
-        CALL ListInitElementKeyword( ViscYasuda_h,'Material','Yasuda Exponent')      
+        IF( ListGetElementSomewhere( ViscModel_h) ) THEN
+          CALL ListInitElementKeyword( ViscExp_h,'Material','Viscosity Exponent')      
+          CALL ListInitElementKeyword( ViscCritical_h,'Material','Critical Shear Rate')      
+          CALL ListInitElementKeyword( ViscNominal_h,'Material','Nominal Shear Rate')      
+          CALL ListInitElementKeyword( ViscDiff_h,'Material','Viscosity Difference')      
+          CALL ListInitElementKeyword( ViscTrans_h,'Material','Viscosity Transition')      
+          CALL ListInitElementKeyword( ViscYasuda_h,'Material','Yasuda Exponent')      
 
-        CALL ListInitElementKeyword( ViscGlenExp_h,'Material','Glen Exponent',DefRValue=3.0_dp)      
-        CALL ListInitElementKeyword( ViscGlenFactor_h,'Material','Glen Exponent',DefRValue=1.0_dp)      
-
-        CALL ListInitElementKeyword( ViscArrSet_h,'Material','Set Arrhenius Factor')
-        CALL ListInitElementKeyword( ViscArr_h,'Material','Arrhenius Factor')
-
-        CALL ListInitElementKeyword( ViscTLimit_h,'Material','Limit Temperature',DefRValue=-10.0_dp)
-        CALL ListInitElementKeyword( ViscRate1_h,'Material','Rate Factor 1',DefRValue=3.985d-13)
-        CALL ListInitElementKeyword( ViscRate2_h,'Material','Rate Factor 2',DefRValue=1.916d3)
-        CALL ListInitElementKeyword( ViscEne1_h,'Material','Activation Energy 1',DefRValue=60.0d03)
-        CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
-        CALL ListInitElementKeyword( ViscTemp_h,'Material','Arrhenius Temperature')
-
-        IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
-          CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
+          ! Do these initializations for glen's model only
+          IF ( ListCompareElementAnyString( ViscModel_h,'glen') ) THEN
+            CALL ListInitElementKeyword( ViscGlenExp_h,'Material','Glen Exponent',DefRValue=3.0_dp)
+            CALL ListInitElementKeyword( ViscGlenFactor_h,'Material','Glen Enhancement Factor',DefRValue=1.0_dp)           
+            CALL ListInitElementKeyword( ViscArrSet_h,'Material','Set Arrhenius Factor')
+            CALL ListInitElementKeyword( ViscArr_h,'Material','Arrhenius Factor')            
+            CALL ListInitElementKeyword( ViscTLimit_h,'Material','Limit Temperature',DefRValue=-10.0_dp)
+            CALL ListInitElementKeyword( ViscRate1_h,'Material','Rate Factor 1',DefRValue=3.985d-13)
+            CALL ListInitElementKeyword( ViscRate2_h,'Material','Rate Factor 2',DefRValue=1.916d3)
+            CALL ListInitElementKeyword( ViscEne1_h,'Material','Activation Energy 1',DefRValue=60.0d03)
+            CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
+            CALL ListInitElementKeyword( ViscTemp_h,'Material','Arrhenius Temperature')            
+            IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
+              CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
+            END IF
+            R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
+            IF (.NOT.Found) R = 8.314_dp
+          END IF
         END IF
 
-        R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
-        IF (.NOT.Found) R = 8.314_dp
       END IF
 
       ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
