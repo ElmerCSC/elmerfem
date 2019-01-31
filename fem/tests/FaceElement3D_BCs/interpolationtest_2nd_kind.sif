@@ -47,15 +47,15 @@ Solver 1
   ! The following keyword must be turned on for the Nedelec tetrahedra of
   ! the second kind (together with changing the element type):
   !---------------------------------------------------------------------
-  Second Kind Basis = Logical False
+  Second Kind Basis = Logical True
 
   Compute Div Error = Logical False
   Test Mode = Integer 2
 
   ! Element definition:
   !-------------------------------------------------------------------
-  Element = "n:0 f:1"      ! the Nedelec tetrahedra of the first kind
-  ! Element = "n:0 f:3"      ! the Nedelec tetrahedra of the second kind
+  !Element = "n:0 f:1"      ! the Nedelec tetrahedra of the first kind
+  Element = "n:0 f:3"      ! the Nedelec tetrahedra of the second kind
 
   Optimize Bandwidth = True
   Bubbles in Global System = Logical True
@@ -75,9 +75,9 @@ Boundary Condition 1
 End
 
 ! The test norm for the Nedelec tetrahedra of the first kind
-Solver 1 :: Reference Norm = Real 5.21207913E-03
+!Solver 1 :: Reference Norm = Real 5.21207913E-03
 
 ! The test norm for the Nedelec tetrahedra of the second kind
-!Solver 1 :: Reference Norm = Real 3.00919529E-03
+Solver 1 :: Reference Norm = Real 3.00919529E-03
 
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-6

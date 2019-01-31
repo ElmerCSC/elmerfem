@@ -4556,8 +4556,10 @@ CONTAINS
      REAL(KIND=dp), POINTER :: b(:)
      REAL(KIND=dp), POINTER :: DiagScaling(:)
      REAL(KIND=dp) :: xx, s, dval
+     REAL(KIND=dp) :: DefaultDOFs(3)
 
      INTEGER, ALLOCATABLE :: lInd(:), gInd(:)
+     INTEGER :: FDofMap(4,3)
      INTEGER :: i, j, k, kk, l, m, n, nd, nb, np, mb, nn, ni, nj, i0
      INTEGER :: EDOFs, FDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
      INTEGER :: ActiveFaceId
@@ -5089,18 +5091,37 @@ CONTAINS
 
                  IF (n /= Element % TYPE % NumberOfNodes) CYCLE
                  IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
-
-                 CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
-
+                 
                  FDOFs = Face % BDOFs
 
                  IF (FDOFs > 0) THEN
+                   CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
+                   IF (SecondKindBasis) &
+                       CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
                    n = Face % TYPE % NumberOfNodes
-                   
-                   CALL FaceElementDOFs(BC, Face, n, TRIM(Name)//' {f}', &
-                       Work, FDOFs, SecondKindBasis)
 
-                   IF (RevertSign(ActiveFaceId)) Work = -1.0d0*Work(:)
+                   CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
+                       TRIM(Name)//' {f}', Work, FDOFs, SecondKindBasis)
+
+                   IF (SecondKindBasis) THEN
+                     !
+                     ! Conform to the orientation and ordering used in the
+                     ! assembly of the global equations
+                     !
+                     DefaultDOFs(1:FDOFs) = Work(1:FDOFs)
+                     IF (RevertSign(ActiveFaceId)) THEN
+                       S = -1.0d0
+                     ELSE
+                       S = 1.0d0
+                     END IF
+
+                     DO j=1,FDOFs
+                       k = FDofMap(ActiveFaceId,j)
+                       Work(j) = S * DefaultDOFs(k)
+                     END DO
+                   ELSE
+                     IF (RevertSign(ActiveFaceId)) Work(1:FDOFs) = -1.0d0*Work(1:FDOFs)
+                   END IF
 
                    n = GetElementDOFs(GInd,Face)
                    !
@@ -5454,33 +5475,43 @@ CONTAINS
 !> the vector-valued interpolant of the BC data can be constructed. 
 !> The values of the DOFs are defined as D = S*(g.n,v)_F where the unit vector n
 !> is normal to the face, g is vector-valued data, v is a polynomial on the face F, 
-!> and S reverts sign if necessary.
+!> and S reverts sign if necessary. This subroutine performs neither sign 
+!> reversions nor the permutations of DOFs, i.e. the DOFs are returned in
+!> the default form.
 ! TO DO: This can now handle only tetrahedral faces and needs an update when
-!        new 3-D element types are added. Moreover RT(0) is supposed currently. 
+!        new 3-D element types are added. 
 !------------------------------------------------------------------------------
-  SUBROUTINE FaceElementDOFs(BC, Element, n, Name, Integral, FDOFs, &
-      SecondFamily)
+  SUBROUTINE FaceElementDOFs(BC, Element, n, Parent, FaceId, Name, Integral, &
+      FDOFs, SecondFamily)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
-    TYPE(ValueList_t), POINTER :: BC !< The list of boundary condition values
-    TYPE(Element_t), POINTER :: Element !< The boundary element handled
-    INTEGER :: n                     !< The number of boundary element nodes
-    CHARACTER(LEN=*) :: Name         !< The name of boundary condition
-    REAL(KIND=dp) :: Integral(:)     !< The values of DOFs
-    INTEGER, OPTIONAL :: FDOFs       !< The number of DOFs
-    LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
+    TYPE(ValueList_t), POINTER, INTENT(IN) :: BC    !< The list of boundary condition values
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element !< The boundary element handled
+    INTEGER, INTENT(IN) :: n                        !< The number of boundary element nodes
+    TYPE(Element_t), POINTER, INTENT(IN) :: Parent  !< The parent element of the boundary element
+    INTEGER, INTENT(IN) :: FaceId                 !< The parent element face corresponding to Element
+    CHARACTER(LEN=*), INTENT(IN) :: Name          !< The name of boundary condition
+    REAL(KIND=dp), INTENT(OUT) :: Integral(:)     !< The values of DOFs
+    INTEGER, OPTIONAL, INTENT(IN) :: FDOFs        !< The number of DOFs
+    LOGICAL, OPTIONAL, INTENT(IN) :: SecondFamily !< To select the element family
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Element_t), POINTER :: ElementCopy
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: SecondKindBasis, stat
+    LOGICAL :: SecondKindBasis, stat, ElementCopyCreated
+    INTEGER :: TetraFaceMap(4,3), ActiveFaceMap(3)
     INTEGER :: DOFs, i, p
     REAL(KIND=dp) :: VLoad(3,n), VL(3), Normal(3), Basis(n), DetJ, s
+    REAL(KIND=dp) :: f(3), u, v
 !------------------------------------------------------------------------------
+    IF (GetElementFamily(Parent) /= 5) &
+        CALL Fatal('FaceElementDOFs','A tetrahedral parent element supposed')
+
     DOFs = 1
     IF (PRESENT(FDOFs)) THEN
-      IF (FDOFs > 1) THEN
-        CALL Fatal('FaceElementDOFs','Cannot yet handle more than 1 DOFs per face')
+      IF (FDOFs > 3) THEN
+        CALL Fatal('FaceElementDOFs','Cannot yet handle more than 3 DOFs per face')
       ELSE
         DOFs = FDOFs
       END IF
@@ -5493,18 +5524,49 @@ CONTAINS
     ELSE
       SecondKindBasis = .FALSE.
     END IF
+    IF (.NOT. SecondKindBasis .AND. DOFs > 1) &
+        CALL Fatal('FaceElementDOFs','An unexpected DOFs count per face')
 
-    CALL GetElementNodes(Nodes, Element)
+    ElementCopyCreated= .FALSE.
+    IF (SecondKindBasis) THEN
+      TetraFaceMap(1,:) = (/ 2, 1, 3 /)
+      TetraFaceMap(2,:) = (/ 1, 2, 4 /)
+      TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
+      TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+      
+      ActiveFaceMap(1:3) = TetraFaceMap(FaceId,1:3)
+
+      IF (ANY(Element % NodeIndexes(1:3) /= Parent % NodeIndexes(ActiveFaceMap(1:3)))) THEN
+        !
+        ! The parent element face is indexed differently than the boundary element.
+        ! Create a copy of the boundary element which is indexed as the parent element
+        ! face so that we can return the values of DOFs in the default order.
+        ! Reordering is supposed to be done outside this subroutine. 
+        !
+        ElementCopyCreated = .TRUE.
+        ElementCopy => AllocateElement()
+        ElementCopy % Type => Element % Type
+        ALLOCATE(ElementCopy % NodeIndexes(3))
+        ElementCopy % NodeIndexes(1:3) = Parent % NodeIndexes(ActiveFaceMap(1:3))
+        ElementCopy % BodyId = Element % BodyId
+        ElementCopy % BoundaryInfo => Element % BoundaryInfo
+      ELSE
+        ElementCopy => Element
+      END IF
+    ELSE
+      ElementCopy => Element
+    END IF
+    CALL GetElementNodes(Nodes, ElementCopy)
 
     i = LEN_TRIM(Name)
-    VLoad(1,1:n)=GetReal(BC,Name(1:i)//' 1',stat,Element)
-    VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',stat,Element)
-    VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',stat,Element)
+    VLoad(1,1:n) = GetReal(BC, Name(1:i)//' 1', stat, ElementCopy)
+    VLoad(2,1:n) = GetReal(BC, Name(1:i)//' 2', stat, ElementCopy)
+    VLoad(3,1:n) = GetReal(BC, Name(1:i)//' 3', stat, ElementCopy)
 
-    IP = GaussPoints(Element)
+    IP = GaussPoints(ElementCopy, 3) ! Feasible for a triangular face
     Integral(:) = 0.0d0
     DO p=1,IP % n
-      stat = ElementInfo(Element, Nodes, IP % u(p), &
+      stat = ElementInfo(ElementCopy, Nodes, IP % u(p), &
             IP % v(p), IP % w(p), DetJ, Basis)
       !
       ! We need a normal that points outwards from the parent element.
@@ -5513,14 +5575,33 @@ CONTAINS
       ! for the normal has not been given to blur the situation.
       ! TO DO: Modify to allow other scenarios 
       !
-      Normal = NormalVector(Element, Nodes, IP % u(p), IP % v(p), .TRUE.)
+      Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
 
       VL = MATMUL(VLoad(:,1:n), Basis(1:n))
       s = IP % s(p) * DetJ
-      !DO i=1,DOFs
-      Integral(1) = Integral(1) + SUM(VL(1:3) * Normal(1:3)) * s
-      !END DO
+
+      IF (SecondKindBasis) THEN
+        ! Standard coordinates mapped to the p-element coordinates:
+        u = -1.0d0 + 2.0d0*IP % u(p) + IP % v(p)
+        v = sqrt(3.0d0)*IP % v(p)
+        !
+        ! The following weight functions aren't actually the Kronecker
+        ! delta functions stated in the documentation which should
+        ! be multiplied with 3 (= the number of Gauss points) divided by the 
+        ! face area to obtain these weights. 
+        ! TO DO: Revise the documentation
+        f(1) = sqrt(3.0d0) * 0.5d0 * (1.0d0 - 2.0d0*u + 1.0d0/3.0d0 - 2.0d0/sqrt(3.0d0)*v)
+        f(2) = sqrt(3.0d0) * 0.5d0 * (1.0d0 + 2.0d0*u + 1.0d0/3.0d0 - 2.0d0/sqrt(3.0d0)*v)
+        f(3) = sqrt(3.0d0) * (-1.0d0/3.0d0 + 2.0d0/sqrt(3.0d0)*v)
+
+        DO i=1,DOFs
+          Integral(i) = Integral(i) + SUM(VL(1:3) * Normal(1:3)) * f(i) * s
+        END DO
+      ELSE
+        Integral(1) = Integral(1) + SUM(VL(1:3) * Normal(1:3)) * s
+      END IF
     END DO
+    IF (ElementCopyCreated) DEALLOCATE(ElementCopy % NodeIndexes)
 !------------------------------------------------------------------------------
   END SUBROUTINE FaceElementDOFs
 !------------------------------------------------------------------------------
