@@ -864,15 +864,20 @@ END INTERFACE
        TYPE(ValueList_t), POINTER :: Params, Simu
        LOGICAL :: Found, VtuFormat
        INTEGER :: AllocStat
+       LOGICAL, SAVE :: Visited = .FALSE.
        
        Simu => CurrentModel % Simulation
        str = ListGetString( Simu,'Post File',Found) 
        IF(.NOT. Found) RETURN
-
+       
        k = INDEX( str,'.vtu' )
        VtuFormat = ( k /= 0 ) 
 
        IF(.NOT. VtuFormat ) RETURN
+
+       ! No use to create the same solver twice
+       IF( Visited ) RETURN
+       Visited = .TRUE.
        
        CALL Info('AddVtuOutputSolverHack','Adding ResultOutputSolver to write VTU output in file: '&
            //TRIM(str(1:k-1)))
@@ -920,7 +925,8 @@ END INTERFACE
        j = CurrentModel % NumberOfBodies
        ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
        IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 3')
-       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
+       CurrentModel % Solvers(n) % Def_Dofs = -1
+       CurrentModel % Solvers(n) % Def_Dofs(:,:,1) =  1
        
        ! Add some keywords to the list
        CurrentModel % Solvers(n) % Values => ListAllocate()
@@ -952,11 +958,16 @@ END INTERFACE
        TYPE(ValueList_t), POINTER :: Params, Simu
        LOGICAL :: Found, VtuFormat
        INTEGER :: AllocStat
+       LOGICAL, SAVE :: Visited = .FALSE.
        
        Simu => CurrentModel % Simulation
        str = ListGetString( Simu,'Scalars File',Found) 
        IF(.NOT. Found) RETURN
-
+       
+       ! No use to create the same solver twice
+       IF( Visited ) RETURN
+       Visited = .TRUE.
+       
        CALL Info('AddSaveScalarsHack','Adding SaveScalars solver to write scalars into file: '&
            //TRIM(str))
        
@@ -1002,7 +1013,8 @@ END INTERFACE
        j = CurrentModel % NumberOfBodies
        ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
        IF( AllocStat /= 0 ) CALL Fatal('AddSaveScalarsHack','Allocation error 3')
-       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
+       CurrentModel % Solvers(n) % Def_Dofs = -1
+       CurrentModel % Solvers(n) % Def_Dofs(:,:,1) =  1
        
        ! Add some keywords to the list
        CurrentModel % Solvers(n) % Values => ListAllocate()
@@ -1879,7 +1891,7 @@ END INTERFACE
          DivergenceControl, HaveDivergence
 
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
-           AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
+         AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
      INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
      LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found
      INTEGER :: AllocStat
@@ -1897,6 +1909,8 @@ END INTERFACE
 #ifndef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: RealTime
 #endif
+     
+     INTEGER, SAVE :: PrevMeshI = 0
      
      !$OMP PARALLEL
      IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
@@ -1984,11 +1998,10 @@ END INTERFACE
              dt = TimestepSizes(interval,1)
            END IF
          END IF
-           
 
 !------------------------------------------------------------------------------
          ! Predictor-Corrector time stepping control 
-         IF ( PredCorrControl ) THEN
+         IF ( PredCorrControl ) THEN 
            CALL PredictorCorrectorControl( CurrentModel, dt, timestep )
          END IF
 
@@ -2052,6 +2065,42 @@ END INTERFACE
 
          sInterval(1) = interval
          IF (.NOT. Transient ) steadyIt(1) = steadyIt(1) + 1
+
+!------------------------------------------------------------------------------
+
+         BLOCK
+           TYPE(Mesh_t), POINTER :: Mesh
+           REAL(KIND=dp) :: MeshR
+           CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
+           
+           IF( ListCheckPresent( GetSimulation(), 'Mesh Name Index') ) THEN
+             IF( Transient ) THEN
+               CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
+             END IF
+             
+             ! we cannot have mesh depend on "time" or "timestep" if they are not available as
+             ! variables. 
+             Mesh => CurrentModel % Meshes             
+             CALL VariableAdd( Mesh % Variables, Mesh, Name='Time',DOFs=1, Values=sTime )
+             CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep', DOFs=1, Values=sStep )
+
+             MeshR = GetCREal( GetSimulation(), 'Mesh Name Index',gotIt )            
+             i = NINT( MeshR )
+
+             IF( i > 0 .AND. i /= PrevMeshI ) THEN                             
+               MeshStr = ListGetString( GetSimulation(),'Mesh Name '//TRIM(I2S(i)),GotIt)
+               IF( GotIt ) THEN
+                 CALL Info('ExecSimulation','Swapping mesh to: '//TRIM(MeshStr),Level=5)
+               ELSE
+                 CALL Fatal('ExecSimulation','Could not find >Mesh Name '//TRIM(I2S(i))//'<')
+               END IF
+               CALL SwapMesh( CurrentModel, Mesh, MeshStr )
+               PrevMeshI = i
+             END IF
+           END IF
+         END BLOCK
+
+
 !------------------------------------------------------------------------------
          IF ( ParEnv % MyPE == 0 ) THEN
            CALL Info( 'MAIN', ' ', Level=3 )
