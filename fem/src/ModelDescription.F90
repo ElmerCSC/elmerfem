@@ -4106,7 +4106,7 @@ CONTAINS
          ELSE
             READ( RestartUnit, * , IOSTAT=iostat ) Val
             IF( iostat /= 0 ) THEN
-              WRITE (Message,*) 'Error in GetValue for Varname: ', Var % Name
+              WRITE (Message,*) 'Error in GetValue for Varname: ', TRIM(Var % Name)
               CALL Fatal('LoadRestartFile',Message)
             END IF
          END IF
