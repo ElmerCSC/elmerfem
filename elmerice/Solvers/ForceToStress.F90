@@ -130,6 +130,13 @@
      ForceValues  => ForceSol % Values
 
 !------------------------------------------------------------------------------
+!     Allocate  temporary storage
+!------------------------------------------------------------------------------
+     ALLOCATE( ForceValues_tmp(SIZE(ForceValues)),  STAT=istat )
+     IF ( istat /= 0 ) THEN
+        CALL Fatal( SolverName, 'Memory allocation error.' )
+     END IF
+!------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
       IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
@@ -168,7 +175,6 @@
                  ElementNodes % y( N ), &
                  ElementNodes % z( N ), &
                  NodalForce(N ), &                                    
-                 ForceValues_tmp(SIZE(ForceValues)), &                                    
                  LocalMassMatrix( 2*STDOFs*N,2*STDOFs*N ),  &
                  LocalStiffMatrix( 2*STDOFs*N,2*STDOFs*N ),  &
                  LocalForce( 2*STDOFs*N ),  STAT=istat )
