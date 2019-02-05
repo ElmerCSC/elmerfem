@@ -3912,7 +3912,7 @@ ELMER_SOLVER_HOME &
          END IF
          
          DO j=1, n
-           IF ( FmtVersion > 0 ) THEN
+           IF ( FmtVersion > 0 ) THEN             
              CALL GetValue( RestartUnit, Perm, GotPerm, j, k, Val )
            ELSE
              READ( RestartUnit,* ) Node, k, Val
@@ -4106,7 +4106,8 @@ CONTAINS
          ELSE
             READ( RestartUnit, * , IOSTAT=iostat ) Val
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error in GetValue')
+              WRITE (Message,*) 'Error in GetValue for Varname: ', Var % Name
+              CALL Fatal('LoadRestartFile',Message)
             END IF
          END IF
       END IF
