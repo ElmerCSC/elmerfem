@@ -195,13 +195,10 @@ CONTAINS
     rhovec(1:ngp) = rho
 
     ! Flow bodyforce if present
+    LoadAtIpVec = 0._dp
     DO i=1,dim
       LoadVec => ListGetElementRealVec( Load_h(i), ngp, BasisVec, Element, Found ) 
-      IF( Found ) THEN
-        LoadAtIpVec(1:ngp,i) = LoadVec(1:ngp)
-      ELSE
-        LoadAtIpVec(1:ngp,i) = 0.0_dp
-      END IF
+      IF( Found ) LoadAtIpVec(1:ngp,i) = LoadVec(1:ngp)
     END DO
 
     IF ( Newton ) THEN
