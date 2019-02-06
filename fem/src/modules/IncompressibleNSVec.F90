@@ -968,7 +968,7 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------  
-  CALL ListAddNewString(GetSolverParams(),'Element','p:1 -quad b:3 -brick b:4')
+  CALL ListAddNewString(GetSolverParams(),'Element','p:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver_Init0
 !------------------------------------------------------------------------------
