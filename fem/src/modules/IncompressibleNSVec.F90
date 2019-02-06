@@ -465,9 +465,11 @@ CONTAINS
       REAL(KIND=dp), SAVE :: R
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Temp, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2 
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:)
-      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:)
+      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:),ViscDerVec(:) => NULL()
+      LOGICAL, SAVE :: ViscNewton = .FALSE.
 
-!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec)
+      
+!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ViscDerVec)
      
       IF(InitHandles ) THEN
         CALL Info('EffectiveViscosityVec','Initializing handles for viscosity models',Level=8)
@@ -502,7 +504,8 @@ CONTAINS
             IF (.NOT.Found) R = 8.314_dp
           END IF
         END IF
-
+        
+        ViscNewton = .FALSE.
       END IF
 
       ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
@@ -517,12 +520,12 @@ CONTAINS
 
       ! Deallocate too small storage if needed 
       IF (ALLOCATED(ss)) THEN
-        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec )
+        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec, ViscDerVec )
       END IF
 
       ! Allocate storage if needed
       IF (.NOT. ALLOCATED(ss)) THEN
-        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),STAT=allocstat)
+        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ViscDerVec(ngp),STAT=allocstat)
         IF (allocstat /= 0) THEN
           CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
         END IF
@@ -543,6 +546,11 @@ CONTAINS
       ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
 
+      IF( ViscNewton ) THEN
+        ViscDerVec(1:ngp) = 0.0_dp
+      END IF
+
+      
       SELECT CASE( ViscModel )       
 
       CASE('glen')
@@ -554,13 +562,17 @@ CONTAINS
         c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
         IF( Found ) THEN
           c3 = c3**2
-          WHERE(s(1:ngp) < c3) s = c3
-          ! IF (PRESENT(muder)) muder = 0._dp
+          WHERE( s(1:ngp) < c3 ) s(1:ngp) = c3
         END IF
 
         IF( ListGetElementLogical( ViscArrSet_h,Element,Found=Found) ) THEN
           ArrheniusFactor = ListGetElementReal( ViscArr_h,Element=Element)
-          ViscVec(1:ngp) = 0.5_dp * (ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
+          ViscVec(1:ngp) = 0.5_dp * (ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);                    
+          
+          IF( ViscNewton ) THEN
+            WHERE( s(1:ngp) > c3 ) ViscDerVec(1:ngp) = 0.5_dp * ArrheniusFactor**(-1.0_dp/c2) &
+                * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
+          END IF
         ELSE         
           ! lets for the time being have this hardcoded
           Tlimit = ListGetElementReal( ViscTlimit_h,Element=Element)
@@ -586,46 +598,52 @@ CONTAINS
             Ehf = ListGetElementReal( ViscGlenFactor_h,BasisVec(i,:),Element=Element,&
                 Found=Found,GaussPoint=i)
 
-            !IF (PRESENT(muder)) muder = 0.5_dp * (  EhF * ArrheniusFactor)**(-1.0_dp/c2) &
-            !  * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
-
             ! compute the effective viscosity
             ViscVec(i) = 0.5_dp * (EhF * ArrheniusFactor)**(-1.0_dp/c2) * s(i)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
+            
+            IF( ViscNewton ) THEN
+              IF( s(i) > c3 ) THEN
+                ViscDerVec(i) = 0.5_dp * (  EhF * ArrheniusFactor)**(-1.0_dp/c2) &
+                    * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(i)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
+              END IF
+            END IF
+            
           END DO
         END IF
-
+        
 
       CASE('power law')
         c2 = ListGetElementReal( ViscExp_h,Element=Element)
-
-        !IF (PRESENT(muder)) THEN
-        !   IF (ss /= 0) THEN
-        !      muder = Viscosity * (c2-1)/2 * ss**((c2-1)/2-1)
-        !   ELSE
-        !      muder = 0.0_dp
-        !   END IF
-        !END IF
 
         c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)       
         IF( Found ) THEN
           c3 = c3**2
           WHERE( ss(1:ngp) < c3 ) ss(1:ngp) = c3
         END IF
-
+        
         ViscVec(1:ngp) = ViscVec0(1:ngp) * ss(1:ngp)**((c2-1)/2)
-
+       
+        IF (ViscNewton ) THEN
+          WHERE(ss(1:ngp) /= 0) ViscDerVec(1:ngp) = &
+              ViscVec0(1:ngp) * (c2-1)/2 * ss(i)**((c2-1)/2-1)
+        END IF
+        
         c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
         IF( Found ) THEN
           ViscVec(1:ngp) = ViscVec(1:ngp) / c4**(c2-1)
-          !IF (PRESENT(muder)) muder = muder / c4**(c2-1)
+          IF (ViscNewton ) THEN
+            ViscDerVec(1:ngp) = ViscDerVec(1:ngp) / c4**(c2-1)
+          END IF
         END IF
 
       CASE('power law too')
         c2 = ListGetElementReal( ViscExp_h,Element=Element)           
         ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
-        !IF ( PRESENT(muder) )  muder = &
-        !     Viscosity**(-1/c2)*(-(c2-1)/(2*c2))*ss*(-(c2-1)/(2*c2)-1) / 2
 
+        IF (ViscNewton ) THEN
+          ViscDerVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)*(-(c2-1)/(2*c2))*ss(1:ngp)*(-(c2-1)/(2*c2)-1) / 2
+        END IF
+                
       CASE ('carreau')      
         c1 = ListGetElementReal( ViscDiff_h,Element=Element)
         c2 = ListGetElementReal( ViscExp_h,Element=Element)
@@ -633,13 +651,16 @@ CONTAINS
         c4 = ListGetElementReal( ViscYasuda_h,Element=Element,Found=Found)
         IF( Found ) THEN
           ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4) 
-          ! IF ( PRESENT(muder ) ) muder =  &
-          !       c1*(1+c3**c4*ss**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*ss**(c4/2-1)
+          
+          IF( ViscNewton ) THEN
+            ViscDerVec(1:ngp) = c1*(1+c3**c4*ss**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*ss(1:ngp)**(c4/2-1)
+          END IF
         ELSE
           ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2) 
-          !  IF ( PRESENT(muder) ) muder = &
-          !       c1*(c2-1)/2*c3**2*(1+c3**2*ss)**((c2-1)/2-1)
-          !END IF
+
+          IF( ViscNewton ) THEN
+            ViscDerVec(1:ngp) = c1*(c2-1)/2*c3**2*(1+c3**2*ss(1:ngp))**((c2-1)/2-1)
+          END IF
         END IF
 
       CASE ('cross')
@@ -648,22 +669,27 @@ CONTAINS
         c3 = ListGetElementReal( ViscTrans_h,Element=Element)
 
         ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 / (1 + c3*ss(1:ngp)**(c2/2))
-        !IF ( PRESENT(muder) ) muder = &
-        !    -c1*c3*ss**(c2/2)*c2 / (2*(1+c3*ss**(c2/2))**2*ss)
 
+        IF( ViscNewton ) THEN
+          ViscDerVec(1:ngp) = -c1*c3*ss(1:ngp)**(c2/2)*c2 / (2*(1+c3*ss(1:ngp)**(c2/2))**2*ss(1:ngp))
+        END IF
+          
       CASE ('powell eyring')
         c1 = ListGetElementReal( ViscDiff_h,Element=Element)
         c2 = ListGetElementReal( ViscTrans_h,Element=Element)
 
         s(1:ngp) = SQRT(ss(1:ngp))
-        DO i=1,ngp
+
+        DO i=1,ngp          
           IF(c2*s(i) < 1.0d-5) THEN
             ViscVec(i) = ViscVec0(i) + c1
           ELSE
             ViscVec(i) = ViscVec0(i) + c1 * LOG(c2*s(i)+SQRT(c2*c2*ss(i)+1))/(c2*ss(i))
-            !IF ( PRESENT(muder) ) muder = &
-            !     c1*(c2/(2*s)+c2**2/(2*SQRT(c2**2*ss+1)))/((c2*s+SQRT(c2*ss+1))*c2*s) - &
-            !     c1*LOG(c2*s+SQRT(c2**2*ss+1))/(c2*s**3)/2
+
+            IF( ViscNewton ) THEN
+              ViscDerVec(i) =  c1*(c2/(2*s(i))+c2**2/(2*SQRT(c2**2*ss(i)+1)))/((c2*s(i)+SQRT(c2*ss(i)+1))*c2*s(i)) - &
+                  c1*LOG(c2*s(i)+SQRT(c2**2*ss(i)+1))/(c2*s(i)**3)/2
+            END IF
           END IF
         END DO
 
