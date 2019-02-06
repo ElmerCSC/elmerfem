@@ -43,7 +43,6 @@ MODULE IncompressibleLocalForms
   USE DefUtils
 
   REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
-  !$OMP THREADPRIVATE (bx, bxprev)
 
 CONTAINS
 
@@ -90,7 +89,7 @@ CONTAINS
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE, weight_a, weight_b, weight_c
 !$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec, ElemDim )
 !$OMP THREADPRIVATE(VelocityMass, PressureMass, ForcePart, Weight_a, weight_b, weight_c)
-!$OMP THREADPRIVATE(tauVec, PrevTempVec, PrevPressureVec, VeloVec, PresVec, GradVec, Nodes, Dens_h)
+!$OMP THREADPRIVATE(tauVec, PrevTempVec, PrevPressureVec, VeloVec, PresVec, GradVec, Nodes)
 
     SAVE Nodes
 !------------------------------------------------------------------------------
@@ -464,6 +463,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:)
       REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:)
 
+!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec)
      
       IF(InitHandles ) THEN
         CALL Info('EffectiveViscosityVec','Initializing handles for viscosity models',Level=8)
@@ -851,9 +851,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
 
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
 
-
   SAVE AllocationsDone, stimestep
-  !$OMP THREADPRIVATE(AllocationsDone, stimestep)
 
 !------------------------------------------------------------------------------
 ! Local variables to be accessed by the contained subroutines:
@@ -869,7 +867,6 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
   !-----------------------------------------------------------------------------
   ! Allocate some permanent storage, this is done first time only:
   !-----------------------------------------------------------------------------
-  !$OMP PARALLEL DEFAULT(shared) PRIVATE(nbdofs) 
   IF (.NOT. AllocationsDone .AND. TransientSimulation .AND. &
       Mesh % MaxBDOFs > 0) THEN
     !
@@ -890,7 +887,6 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
     bxprev = bx
     stimestep = GetTimestep()
   END IF
-  !$OMP END PARALLEL
 
   Params => GetSolverParams() 
 
@@ -930,15 +926,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
 
     Newton = GetNewtonActive( Solver )
 
-    InitHandles = .TRUE.
-    
-    !$OMP PARALLEL SHARED(Active, dim, InitHandles, &
-    !$OMP                 DivCurlForm, GradPVersion, &
-    !$OMP                 dt, LinearAssembly, Newton, TransientSimulation) &
-    !$OMP          PRIVATE(Element, Element_id, n, nd, nb) &
-    !$OMP          DEFAULT(None)
-    !$OMP DO    
-    DO Element_id=1,Active
+    DO Element_id=1,1
       Element => GetActiveElement(Element_id)
       n  = GetElementNOFNodes(Element)
       !
@@ -950,12 +938,30 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
       
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
-      CALL LocalMatrix(Element, n, nd, nd+nb, dim, &
-          DivCurlForm, GradPVersion, &
-          dt, LinearAssembly, nb, Newton, TransientSimulation, &
-          InitHandles )
+      CALL LocalMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
+          dt, LinearAssembly, nb, Newton, TransientSimulation,  .TRUE. )
+    END DO
+
+    
+    !$OMP PARALLEL SHARED(Active, dim, &
+    !$OMP                 DivCurlForm, GradPVersion, &
+    !$OMP                 dt, LinearAssembly, Newton, TransientSimulation) &
+    !$OMP PRIVATE(Element, Element_id, n, nd, nb)  DEFAULT(None)
+    !$OMP DO    
+    DO Element_id=2,Active
+      Element => GetActiveElement(Element_id)
+      n  = GetElementNOFNodes(Element)
+      !
+      ! When the number of bubbles is obtained with the Update=.TRUE. flag,
+      ! we need to call GetElementNOFBDOFs before calling GetElementNOFDOFs.
+      !
+      nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
+      nd = GetElementNOFDOFs(Element)
       
-      InitHandles = .FALSE.
+      ! Get element local matrix and rhs vector:
+      !-----------------------------------------
+      CALL LocalMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
+          dt, LinearAssembly, nb, Newton, TransientSimulation, .FALSE. )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
