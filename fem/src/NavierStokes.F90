@@ -199,6 +199,7 @@ MODULE NavierStokes
      REAL(KIND=8) :: JacMTrabsp(n*2*4, n*2*4)
      REAL(KIND=dp) :: BasePVec(2*n) ! todo, change this and the assorted behavior to a pointer
      REAL(KIND=dp),POINTER :: BasePPtr(:)
+     REAL(KIND=dp) :: tmp
      ! end of transposed varible 
 
      
@@ -706,13 +707,13 @@ MODULE NavierStokes
     END If
 
     IF ( P2P1 ) THEN
-        DO p = 1, NBasis
-          IF (p<=LinearBasis ) THEN
-            BasePVec(p) = PBasis(p)
-          ELSE
-            BasePVec(p) =  Basis(p)
-          END IF
-        END DO
+      DO p = 1, NBasis
+        IF (p<=LinearBasis ) THEN
+          BasePVec(p) = PBasis(p)
+        ELSE
+          BasePVec(p) =  Basis(p)
+        END IF
+      END DO
     ELSE
         BasePVec =  Basis
     END IF
@@ -857,7 +858,7 @@ MODULE NavierStokes
       END DO ! q nbasis
     END DO ! i dim
     
-    IF ( .NOT. gradPDiscretization ) THEN
+    IF ( .NOT. gradPDiscretization .AND. (Cmodel==PerfectGas1 .OR. Cmodel==UserDefined1 .OR. Cmodel==Thermal .OR. Cmodel==UserDefined2) ) THEN
       DO i=1,dim
         DO q=1,NBasis
           SELECT CASE(Cmodel)
@@ -929,31 +930,36 @@ MODULE NavierStokes
       END DO
     END DO ! i dim
 
-    DO q=1,NBasis
-      IF ( Cmodel==PerfectGas1 ) THEN
+    IF ( Cmodel==PerfectGas1 ) THEN
+      DO q=1,NBasis
         !$omp simd
         DO p=1,NBasis
           !M(c,c) = M(c,c) &
           MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
             + s * ( rho / Pressure ) * Basis(q) * BasePVec(p)
         END DO ! p nbasis simd
-      ELSE IF ( Cmodel==UserDefined2) THEN
+      END DO
+    ELSE IF ( Cmodel==UserDefined2) THEN
+      DO q=1,NBasis
         !$omp simd
         DO p=1,NBasis
           !M(c,c) = M(c,c) &
           MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
             + s * drhodp * Basis(q) * BasePVec(p)
         END DO ! p nbasis simd
-      END IF ! Cmodel==PerfectGas1
-      IF (PseudoCompressible) THEN
-        !$omp simd
-        DO p=1,NBasis
-          !A(c,c) = A(c,c) &
-          StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-            + s * Compress * Basis(q) * BasePVec(p)
-        END DO ! p nbasis simd
-      END IF ! PseudoCompressible
-    END DO ! q nbasis
+      END DO
+    END IF ! Cmodel==PerfectGas1
+
+    IF (PseudoCompressible) THEN
+      DO q=1,NBasis
+          !$omp simd
+          DO p=1,NBasis
+            !A(c,c) = A(c,c) &
+            StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
+              + s * Compress * Basis(q) * BasePVec(p)
+          END DO ! p nbasis simd
+      END DO ! q nbasis
+    END IF ! PseudoCompressible
 
     IF( Rotating ) THEN
       DO q=1,NBasis
@@ -1064,68 +1070,106 @@ MODULE NavierStokes
         END DO ! j dims
       END DO ! i dims
     ELSE IF ( Vms ) THEN
-      DO p=1,NBasis
-        DO q=1,NBasis
-          M => MassMatrixTrabsp ( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
-          A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
+      DO i=1,dim
+        DO p=1,NBasis
+          !omp simd
+          DO q=1,NBasis
+            !M => MassMatrixTrabsp ( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
+            !M(dim+1,i) = M(dim+1,i) &
+            MassMatrixTrabsp(((dim+1-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((dim+1-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+              + s * rho*Tau_M*rho*Basis(q)*dBasisdx(p,i)
+          END DO ! p nbasis simd
+        END DO ! Q nbasis
+        DO k=1,dim+1
+          DO q=1,NBasis
+            !omp simd
+            DO p=1,NBasis
+              !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
+              !A(dim+1,k) = A(dim+1,k) &
+              StiffMatrixTrabsp(((dim+1-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((dim+1-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) &
+                + s * rho*Tau_M*RM(q,i,k)*dBasisdx(p,i)
+            END DO ! p nbasis simd
+          END DO ! Q nbasis
+        END DO ! k dim+1
+        DO j=1,dim
+          DO q=1,NBasis
+            !omp simd
+            DO p=1,NBasis
+              !M => MassMatrixTrabsp ( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
+              !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
 
-          DO i=1,dim
-            ! (rho*u',grad(q))
-            ! ------------
-            M(dim+1,i) = M(dim+1,i) + s * rho*Tau_M*rho*Basis(q)*dBasisdx(p,i)
-            DO k=1,dim+1
-              A(dim+1,k) = A(dim+1,k) + s * rho*Tau_M*RM(q,i,k)*dBasisdx(p,i)
-            END DO
+              !A(i,j) = A(i,j) &
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
+                + s * rho * Tau_M * PRM(i) * Basis(q) * dBasisdx(p,j)/2
+              !A(i,i) = A(i,i) &
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+                - s * rho * Tau_M * PRM(j) * dBasisdx(q,j) * Basis(p)/2
+              !A(i,j) = A(i,j) &
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
+                - s * rho * Tau_M * rho*Force(i) * Basis(q) * dBasisdx(p,j)
+              !A(i,i) = A(i,i) &
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+                + s * rho * Tau_M * rho*Force(j) * dBasisdx(q,j) * Basis(p)
+              !A(i,j) = A(i,j) &
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
+                + s * rho*Tau_C*RM(q,dim+1,j) * dBasisdx(p,i)
 
-            DO j=1,dim
-                  ! -(rho*u'*grad(u),w)
-                  ! ---------------
-              M(i,j) = M(i,j) - s * rho * Tau_M * rho*Basis(q) * Grad(i,j) * Basis(p)
-              DO k=1,dim+1
-                A(i,k) = A(i,k) - s * rho * Tau_M * RM(q,j,k) * Grad(i,j) * Basis(p)/2
-              END DO
-              A(i,i) = A(i,i) - s * rho * Tau_M * PRM(j) * dBasisdx(q,j) * Basis(p)/2
-              A(i,i) = A(i,i) + s * rho * Tau_M * rho*Force(j) * dBasisdx(q,j) * Basis(p)
+              !M(i,j) = M(i,j) &
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
+                - s * rho * Tau_M * rho*Basis(q) * Grad(i,j) * Basis(p)
+              !M(i,i) = M(i,i) &
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+                + s * rho * Tau_M * rho*Basis(q) * Velo(j) * dBasisdx(p,j)
+              !M(i,j) = M(i,j) &
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
+                - s * rho * Tau_M**2 * PRM(i) * rho*Basis(q) * dBasisdx(p,j)
+              !M(i,i) = M(i,i) &
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+                - s * rho * Tau_M**2 * rho*Basis(q) * PRM(j) * dBasisdx(p,j)
+              !M(i,i) = M(i,i) &
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+                + s * rho * Tau_M**2 * rho*Basis(q) * rho*Force(j) * dBasisdx(p,j)
+              !M(i,j) = M(i,j) &
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
+                + s * rho * Tau_M**2 * rho*Basis(q) * rho*Force(i) * dBasisdx(p,j)
+              !M(i,i) = M(i,i) &
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+                - s * rho * Tau_M**2 * rho*Basis(q) * PVelo(j) * dBasisdx(p,j)
+              !M(i,j) = M(i,j) &
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
+                - s * rho * Tau_M**2 * PVelo(i) * rho*Basis(q) * dBasisdx(p,j)
 
-              ! (rho*u',u.grad(w))
-              ! ---------------
-              M(i,i) = M(i,i) + s * rho * Tau_M * rho*Basis(q) * Velo(j) * dBasisdx(p,j)
-              DO k=1,dim+1
-                  A(i,k) = A(i,k) + s * rho * Tau_M * RM(q,i,k) * Velo(j) * dBasisdx(p,j)/2
-              END DO
-              A(i,j) = A(i,j) + s * rho * Tau_M * PRM(i) * Basis(q) * dBasisdx(p,j)/2
-              A(i,j) = A(i,j) - s * rho * Tau_M * rho*Force(i) * Basis(q) * dBasisdx(p,j)
-            END DO
-
-            ! (rho*div(u'),div(w))
-            ! ---------------
-            DO j=1,dim
-                A(i,j) = A(i,j) + s * rho*Tau_C*RM(q,dim+1,j) * dBasisdx(p,i)
-            END DO
-
-            ! -(rho*u'*u',grad(w))
-            ! ---------------
-            DO j=1,dim
-              DO k=1,dim+1
-                A(i,k) = A(i,k) - s * rho * Tau_M**2 * RM(q,i,k) * PRM(j) * dBasisdx(p,j)/2
-                A(i,k) = A(i,k) - s * rho * Tau_M**2 * PRM(i) * RM(q,j,k) * dBasisdx(p,j)/2
-                A(i,k) = A(i,k) + s * rho * Tau_M**2 * RM(q,i,k) * rho*Force(j) * dBasisdx(p,j)
-                A(i,k) = A(i,k) + s * rho * Tau_M**2 * rho*Force(i) * RM(q,j,k) * dBasisdx(p,j)
-              END DO
-
-              M(i,i) = M(i,i) - s * rho * Tau_M**2 * rho*Basis(q) * PRM(j) * dBasisdx(p,j)
-              M(i,j) = M(i,j) - s * rho * Tau_M**2 * PRM(i) * rho*Basis(q) * dBasisdx(p,j)
-
-              M(i,i) = M(i,i) + s * rho * Tau_M**2 * rho*Basis(q) * rho*Force(j) * dBasisdx(p,j)
-              M(i,j) = M(i,j) + s * rho * Tau_M**2 * rho*Basis(q) * rho*Force(i) * dBasisdx(p,j)
-
-              M(i,i) = M(i,i) - s * rho * Tau_M**2 * rho*Basis(q) * PVelo(j) * dBasisdx(p,j)
-              M(i,j) = M(i,j) - s * rho * Tau_M**2 * PVelo(i) * rho*Basis(q) * dBasisdx(p,j)
-            END DO
-          END DO
-        END DO
-      END DO
-    END IF
+            END DO ! p nbasis simd
+          END DO ! Q nbasis
+          DO k=1,dim+1
+            DO q=1,NBasis
+              !omp simd
+              DO p=1,NBasis
+                !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
+                !A(i,k) = A(i,k) &
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) &
+                  - s * rho * Tau_M * RM(q,j,k) * Grad(i,j) * Basis(p)/2
+                !A(i,k) = A(i,k) &
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) &
+                  + s * rho * Tau_M * RM(q,i,k) * Velo(j) * dBasisdx(p,j)/2
+                !A(i,k) = A(i,k) &
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) &
+                  - s * rho * Tau_M**2 * RM(q,i,k) * PRM(j) * dBasisdx(p,j)/2
+                !A(i,k) = A(i,k) &
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) &
+                  - s * rho * Tau_M**2 * PRM(i) * RM(q,j,k) * dBasisdx(p,j)/2
+                !A(i,k) = A(i,k) &
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) &
+                  + s * rho * Tau_M**2 * RM(q,i,k) * rho*Force(j) * dBasisdx(p,j)
+                !A(i,k) = A(i,k) &
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) &
+                  + s * rho * Tau_M**2 * rho*Force(i) * RM(q,j,k) * dBasisdx(p,j)
+              END DO ! p nbasis simd
+            END DO ! Q nbasis
+          END DO ! k dim+1
+        END DO ! j dim
+      END DO ! i dim
+    END IF ! VMS
 !------------------------------------------------------------------------------
 !    The righthand side...
 !------------------------------------------------------------------------------
