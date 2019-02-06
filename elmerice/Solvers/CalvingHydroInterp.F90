@@ -353,6 +353,24 @@
     !normalstress and substitute that value for the erroneous zero value.
     !Ideally, should interpolate from nearest non-zero nodes, but not worth the
     !extra faff for a minimal gain
+
+    !This first section is due to SolveLinearSystem invalidating the
+    !Force2Stress variable (i.e. normalstress) on the hydro mesh. Not really
+    !sure why it does this, but this fix seems to work without any knock-on
+    !effects.
+    WorkVar2 => HydroSolver % Mesh % Variables
+    DO WHILE (ASSOCIATED(WorkVar2))
+      IF (TRIM(WorkVar2 % Name) == 'normalstress') THEN
+        IF (.NOT. WorkVar2 % Valid) THEN
+          WorkVar2 % Valid = .TRUE.
+          WorkVar2 % PrimaryMesh => HydroSolver % Mesh
+        END IF
+        PRINT *, 'VarName: ',ParEnv % myPE,WorkVar2 % Name,WorkVar2 % NameLen,WorkVar2 % Valid
+        EXIT
+      END IF
+      WorkVar2 => WorkVar2 % Next
+    END DO
+
     WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "normalstress", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
 
     DO i=1, HydroSolver % Mesh % NumberOfBoundaryElements
