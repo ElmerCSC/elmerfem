@@ -46,7 +46,7 @@ MODULE IncompressibleLocalForms
 
 CONTAINS
 
-  SUBROUTINE LocalMatrix(Element, n, nd, ntot, dim, &
+  SUBROUTINE LocalBulkMatrix(Element, n, nd, ntot, dim, &
       DivCurlForm, GradPVersion, dt, LinearAssembly, &
       nb, Newton, TransientSimulation, InitHandles)
 !------------------------------------------------------------------------------
@@ -127,7 +127,7 @@ CONTAINS
           PrevPressureVec(ngp), GradVec(ngp,dim,dim), &
           STAT=allocstat)
       IF (allocstat /= 0) THEN
-        CALL Fatal('IncompressibleNSSolver::LocalMatrix','Local storage allocation failed')
+        CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
       END IF
     END IF
 
@@ -520,7 +520,7 @@ CONTAINS
       IF (.NOT. ALLOCATED(ss)) THEN
         ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),STAT=allocstat)
         IF (allocstat /= 0) THEN
-          CALL Fatal('IncompressibleNSSolver::LocalMatrix','Local storage allocation failed')
+          CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
         END IF
       END IF
 
@@ -765,8 +765,195 @@ CONTAINS
     END SUBROUTINE LCondensate
     !------------------------------------------------------------------------------
 
-  END SUBROUTINE LocalMatrix
+  END SUBROUTINE LocalBulkMatrix
 
+
+
+  SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, InitHandles)
+!------------------------------------------------------------------------------
+    USE LinearForms
+    IMPLICIT NONE
+
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: n, nd, dim
+    LOGICAL, INTENT(INOUT) :: InitHandles 
+    
+    TYPE(GaussIntegrationPoints_t) :: IP
+    REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+    INTEGER :: c,i,j,k,l,p,q,t,ngp
+    LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, NeedNormal, Found, Stat
+    REAL(KIND=dp) :: ExtPressure, s, detJ
+    REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), Vect(3)
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, NormalTangential_h
+
+    
+!------------------------------------------------------------------------------
+    
+    IF( InitHandles ) THEN   
+      CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','Normal Surface Traction')
+      IF( .NOT. ListGetElementSomewhere( ExtPressure_h) ) THEN
+        CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','External Pressure')      
+      END IF
+      CALL ListInitElementKeyword( SurfaceTraction_h,'Boundary Condition','Surface Traction',InitVec3D=.TRUE.)
+      CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
+      CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
+          'Normal Tangential '//GetVarName(CurrentModel % Solver % Variable) )
+      InitHandles = .FALSE.
+    END IF
+
+
+    IF( ALLOCATED( Basis ) ) THEN
+      IF( SIZE( Basis ) < nd ) THEN
+        DEALLOCATE( Basis ) 
+      END IF
+    END IF
+
+    IF( .NOT. ALLOCATED( Basis ) ) THEN
+      ALLOCATE( Basis(nd) )
+    END IF
+      
+    
+    CALL GetElementNodes( Nodes )
+    STIFF = 0.0d0
+    FORCE = 0.0d0
+    c = dim + 1
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints( Element )
+    ngp = IP % n
+    
+    NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
+    NeedNormal = NormalTangential
+   
+    DO t=1,ngp      
+!------------------------------------------------------------------------------
+!    Basis function values & derivatives at the integration point
+!------------------------------------------------------------------------------
+      stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t), detJ, Basis )
+
+      s = detJ * IP % s(t)
+     
+      ! Slip coefficient
+      !----------------------------------
+      SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
+      
+      ! Given force on a boundary
+      !---------------------------------
+      SurfaceTraction = ListGetElementReal3D( SurfaceTraction_h, Basis, Element, HaveForce, GaussPoint = t )      
+      
+      ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t )      
+
+      ! Nothing to do, exit the routine
+      IF(.NOT. (HaveSlip .OR. HaveForce .OR. HavePres)) RETURN
+
+      ! Calculate normal vector only if needed
+      IF( HavePres .OR. NormalTangential ) THEN
+        Normal = NormalVector( Element, Nodes, IP % u(t),IP %v(t),.TRUE. )
+      END IF
+
+      ! Project external pressure to the normal direction
+      IF( HavePres ) THEN
+        IF( NormalTangential ) THEN
+          SurfaceTraction(1) = SurfaceTraction(1) + ExtPressure
+        ELSE
+          SurfaceTraction = SurfaceTraction + ExtPressure * Normal
+        END IF
+        HaveForce = .TRUE. 
+      END IF
+      
+      ! Calculate directions for N-T system
+      IF( NormalTangential ) THEN       
+        SELECT CASE( dim ) 
+        CASE(2)
+          Tangent(1) =  Normal(2)
+          Tangent(2) = -Normal(1)
+          Tangent(3) =  0.0_dp
+          Tangent2   =  0.0_dp
+        CASE(3)
+          CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+        END SELECT
+      END IF
+       
+      ! Assemble the slip coefficients to the stiffness matrix
+      IF( HaveSlip ) THEN       
+        IF ( NormalTangential ) THEN
+          DO i=1,dim
+            SELECT CASE(i)
+            CASE(1)
+              Vect = Normal
+            CASE(2)
+              Vect = Tangent
+            CASE(3)
+              Vect = Tangent2
+            END SELECT
+
+            DO p=1,nd
+              DO q=1,nd               
+                DO j=1,dim
+                  DO k=1,dim
+                    STIFF( (p-1)*c+j,(q-1)*c+k ) = &
+                        STIFF( (p-1)*c+j,(q-1)*c+k ) + &
+                        s * SlipCoeff(i) * Basis(q) * Basis(p) * Vect(j) * Vect(k)
+                  END DO
+                END DO
+              END DO
+            END DO
+          END DO
+        END IF
+      ELSE       
+        DO p=1,nd
+          DO q=1,nd
+            DO i=1,dim
+              STIFF( (p-1)*c+i,(q-1)*c+i ) = &
+                  STIFF( (p-1)*c+i,(q-1)*c+i ) + &
+                  s * SlipCoeff(i) * Basis(q) * Basis(p)
+            END DO
+          END DO
+        END DO
+      END IF
+
+      ! Assemble given forces to r.h.s.
+      IF( HaveForce .OR. HavePres ) THEN
+        IF ( NormalTangential ) THEN
+          DO i=1,dim
+            SELECT CASE(i)
+            CASE(1)
+              Vect = Normal
+            CASE(2)
+              Vect = Tangent
+            CASE(3)
+              Vect = Tangent2
+            END SELECT
+
+            DO q=1,nd
+              k = (q-1)*c + i
+              DO j=1,dim
+                l = (q-1)*c + j
+                FORCE(l) = FORCE(l) + s * Basis(q) * SurfaceTraction(i) * Vect(j)
+              END DO
+            END DO
+          END DO
+        ELSE       
+          DO i=1,dim
+            DO q=1,nd
+              k = (q-1)*c + i
+              FORCE(k) = FORCE(k) + s * Basis(q) * SurfaceTraction(i)
+            END DO
+          END DO
+        END IF
+      END IF
+    END DO
+          
+    CALL DefaultUpdateEquations( STIFF, FORCE )
+        
+  END SUBROUTINE LocalBoundaryMatrix
+
+
+
+  
 END MODULE IncompressibleLocalForms
 
 
@@ -801,9 +988,20 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, TransientSimulation)
   TYPE(ValueList_t), POINTER :: Params 
   LOGICAL :: Found
   INTEGER :: dim
+  CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver_init'
 !------------------------------------------------------------------------------ 
   Params => GetSolverParams() 
 
+  IF( ListCheckPresentAnyBC( Model, 'Pressure 1' ) ) THEN
+    CALL Fatal( Caller,'Use >Surface Traction 1< instead of >Pressure 1<')
+  END IF
+  IF( ListCheckPresentAnyBC( Model, 'Pressure 2' ) ) THEN
+    CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 2<')
+  END IF
+  IF( ListCheckPresentAnyBC( Model, 'Pressure 3' ) ) THEN
+    CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 3<')
+  END IF
+  
   dim = CoordinateSystemDimension()
   
   IF ( dim == 2 ) THEN
@@ -953,7 +1151,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
       
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
-      CALL LocalMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
+      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
           dt, LinearAssembly, nb, Newton, TransientSimulation,  .TRUE. )
     END DO
 
@@ -975,7 +1173,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
       
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
-      CALL LocalMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
+      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
           dt, LinearAssembly, nb, Newton, TransientSimulation, .FALSE. )
     END DO
     !$OMP END DO
@@ -989,18 +1187,16 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
       IF (ActiveBoundaryElement()) THEN
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
-        !
-        ! Elements defining the boundary can never have DOFs that could be
-        ! eliminated via the static consensation, so here the function call
-        ! nb = GetElementNOFBDOFs() would be worthless
-        !
 
-        ! A ROUTINE FOR THE LOCAL MATRIX ASSEMBLY SHOULD BE CALLED HERE 
+        IF ( GetElementFamily() == 1 ) CYCLE
 
+        ! Get element local matrix and rhs vector:
+        !-----------------------------------------
+        CALL LocalBoundaryMatrix(Element, n, nd, dim, InitHandles )        
       END IF
     END DO
 
-    !CALL DefaultFinishBoundaryAssembly()
+    CALL DefaultFinishBoundaryAssembly()
 
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
