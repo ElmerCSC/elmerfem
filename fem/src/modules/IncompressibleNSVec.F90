@@ -46,9 +46,13 @@ MODULE IncompressibleLocalForms
 
 CONTAINS
 
+!------------------------------------------------------------------------------
+! Assemble local finite element matrix for a single bulk element and glue
+! it to the global matrix. Routine is vectorized and multithreaded.
+!------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(Element, n, nd, ntot, dim, &
       DivCurlForm, GradPVersion, dt, LinearAssembly, &
-      nb, Newton, TransientSimulation, InitHandles)
+      nb, Newton, Transient, InitHandles)
 !------------------------------------------------------------------------------
     USE LinearForms
     IMPLICIT NONE
@@ -57,7 +61,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: n, nd, ntot, dim, nb
     LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion
     REAL(KIND=dp), INTENT(IN) :: dt   
-    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, TransientSimulation, InitHandles 
+    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient, InitHandles 
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -162,7 +166,7 @@ CONTAINS
       VeloPresVec = 0._dp
     ELSE
       CALL GetLocalSolution( NodalSol )
-      IF (nb > 0 .AND. TransientSimulation ) & 
+      IF (nb > 0 .AND. Transient ) & 
           CALL GetLocalSolution(PrevNodalSol, tStep=-1)
     END IF
 
@@ -396,7 +400,7 @@ CONTAINS
     END DO
 
 
-    IF (nb > 0 .AND. nd==n .AND. TransientSimulation) THEN
+    IF (nb > 0 .AND. nd==n .AND. Transient) THEN
       !-------------------------------------------------------------------------
       ! This branch is primarily intended to handle the (enhanced) MINI element 
       ! approximation together with the static condensation for the velocity
@@ -423,11 +427,11 @@ CONTAINS
         STIFF(i,i) = ABS(s)
       END DO
 
-      IF ( TransientSimulation ) THEN
+      IF ( Transient ) THEN
         CALL Default1stOrderTime( MASS, STIFF, FORCE )
       END IF
       IF (nb > 0) THEN
-        IF (TransientSimulation) THEN
+        IF (Transient) THEN
           CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE, &
               PrevNodalSol, NodalSol, Element % ElementIndex)
         ELSE
@@ -768,26 +772,29 @@ CONTAINS
   END SUBROUTINE LocalBulkMatrix
 
 
-
+!------------------------------------------------------------------------------
+! Assemble local finite element matrix for a single boundary element and glue
+! it to the global matrix.
+!------------------------------------------------------------------------------
   SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, InitHandles)
 !------------------------------------------------------------------------------
-    USE LinearForms
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, dim
     LOGICAL, INTENT(INOUT) :: InitHandles 
-    
+!------------------------------------------------------------------------------    
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     INTEGER :: c,i,j,k,l,p,q,t,ngp
-    LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, NeedNormal, Found, Stat
+    LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, Found, Stat
     REAL(KIND=dp) :: ExtPressure, s, detJ
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), Vect(3)
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, NormalTangential_h
 
+    SAVE Basis
     
 !------------------------------------------------------------------------------
     
@@ -826,7 +833,6 @@ CONTAINS
     ngp = IP % n
     
     NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
-    NeedNormal = NormalTangential
    
     DO t=1,ngp      
 !------------------------------------------------------------------------------
@@ -840,10 +846,12 @@ CONTAINS
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
       
-      ! Given force on a boundary
-      !---------------------------------
+      ! Given force on a boundary componentwise
+      !----------------------------------------
       SurfaceTraction = ListGetElementReal3D( SurfaceTraction_h, Basis, Element, HaveForce, GaussPoint = t )      
       
+      ! Given force to the normal direction
+      !------------------------------------
       ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t )      
 
       ! Nothing to do, exit the routine
@@ -958,7 +966,7 @@ END MODULE IncompressibleLocalForms
 
 
 !------------------------------------------------------------------------------
-SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, TransientSimulation)
+SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -966,7 +974,7 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, TransientSimulation)
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
-  LOGICAL :: TransientSimulation
+  LOGICAL :: Transient
 !------------------------------------------------------------------------------  
   CALL ListAddNewString(GetSolverParams(),'Element','p:1 -quad b:3 -brick b:4')
 !------------------------------------------------------------------------------
@@ -975,7 +983,7 @@ END SUBROUTINE IncompressibleNSSolver_Init0
 
 
 !------------------------------------------------------------------------------
-SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, TransientSimulation)
+SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -983,7 +991,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, TransientSimulation)
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
-  LOGICAL :: TransientSimulation
+  LOGICAL :: Transient
 !------------------------------------------------------------------------------  
   TYPE(ValueList_t), POINTER :: Params 
   LOGICAL :: Found
@@ -1035,7 +1043,7 @@ END SUBROUTINE IncompressibleNSSolver_Init
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
+SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   USE IncompressibleLocalForms
@@ -1044,7 +1052,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
-  LOGICAL :: TransientSimulation
+  LOGICAL :: Transient
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
@@ -1080,7 +1088,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
   !-----------------------------------------------------------------------------
   ! Allocate some permanent storage, this is done first time only:
   !-----------------------------------------------------------------------------
-  IF (.NOT. AllocationsDone .AND. TransientSimulation .AND. &
+  IF (.NOT. AllocationsDone .AND. Transient .AND. &
       Mesh % MaxBDOFs > 0) THEN
     !
     ! Allocate arrays having a sufficient size for listing all bubble entries of
@@ -1095,7 +1103,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
   END IF
 
   ! Check if the previous bubble part (bxprev) needs to be updated:
-  IF (TransientSimulation .AND. GetTimestep() /= stimestep .AND. &
+  IF (Transient .AND. GetTimestep() /= stimestep .AND. &
       Mesh % MaxBDOFs > 0) THEN
     bxprev = bx
     stimestep = GetTimestep()
@@ -1152,13 +1160,13 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          dt, LinearAssembly, nb, Newton, TransientSimulation,  .TRUE. )
+          dt, LinearAssembly, nb, Newton, Transient,  .TRUE. )
     END DO
 
     
     !$OMP PARALLEL SHARED(Active, dim, &
     !$OMP                 DivCurlForm, GradPVersion, &
-    !$OMP                 dt, LinearAssembly, Newton, TransientSimulation) &
+    !$OMP                 dt, LinearAssembly, Newton, Transient) &
     !$OMP PRIVATE(Element, Element_id, n, nd, nb)  DEFAULT(None)
     !$OMP DO    
     DO Element_id=2,Active
@@ -1174,7 +1182,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          dt, LinearAssembly, nb, Newton, TransientSimulation, .FALSE. )
+          dt, LinearAssembly, nb, Newton, Transient, .FALSE. )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
@@ -1182,6 +1190,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
     CALL DefaultFinishBulkAssembly()
 
     Active = GetNOFBoundaryElements()
+    InitHandles = .TRUE.
     DO Element_id=1,Active
       Element => GetBoundaryElement(Element_id)
       IF (ActiveBoundaryElement()) THEN
