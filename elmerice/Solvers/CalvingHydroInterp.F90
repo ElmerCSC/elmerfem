@@ -365,7 +365,6 @@
           WorkVar2 % Valid = .TRUE.
           WorkVar2 % PrimaryMesh => HydroSolver % Mesh
         END IF
-        PRINT *, 'VarName: ',ParEnv % myPE,WorkVar2 % Name,WorkVar2 % NameLen,WorkVar2 % Valid
         EXIT
       END IF
       WorkVar2 => WorkVar2 % Next
