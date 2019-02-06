@@ -1025,7 +1025,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
 
   ! Automate the choice for the variational formulation:
   CALL ListAddNewLogical(Params, 'GradP Discretization', .FALSE.)
-  CALL ListAddNewLogical(Params, 'Div-Curl Discretization', .TRUE.)
+  CALL ListAddNewLogical(Params, 'Div-Curl Discretization', .FALSE.)
 
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
