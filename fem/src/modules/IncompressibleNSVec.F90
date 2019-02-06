@@ -771,6 +771,23 @@ END MODULE IncompressibleLocalForms
 
 
 !------------------------------------------------------------------------------
+SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, TransientSimulation)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------  
+  CALL ListAddNewString(GetSolverParams(),'Element','p:1 -quad b:3 -brick b:4')
+!------------------------------------------------------------------------------
+END SUBROUTINE IncompressibleNSSolver_Init0
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
@@ -803,8 +820,6 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, TransientSimulation)
   ! Automate the choice for the variational formulation:
   CALL ListAddNewLogical(Params, 'GradP Discretization', .FALSE.)
   CALL ListAddNewLogical(Params, 'Div-Curl Discretization', .TRUE.)
-
-  CALL ListAddNewString(Params,'Element','p:1 -quad b:3 -brick b:4')
 
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
@@ -895,7 +910,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, TransientSimulation)
   ! This in not fully informative if several element types are present.
   !-----------------------------------------------------------------------------
   Element => Mesh % Elements( Solver % ActiveElements(1) ) 
-  IP = GaussPointsAdapt( Element )
+  IP = GaussPointsAdapt(Element)
   CALL Info('IncompressibleNSSolver', &
       'Number of 1st integration points: '//TRIM(I2S(IP % n)), Level=5)
 
