@@ -51,7 +51,7 @@ CONTAINS
 ! it to the global matrix. Routine is vectorized and multithreaded.
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(Element, n, nd, ntot, dim, &
-      DivCurlForm, GradPVersion, dt, LinearAssembly, &
+      DivCurlForm, GradPVersion, StokesFlow, dt, LinearAssembly, &
       nb, Newton, Transient, InitHandles)
 !------------------------------------------------------------------------------
     USE LinearForms
@@ -59,9 +59,9 @@ CONTAINS
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, ntot, dim, nb
-    LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion
+    LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion, StokesFlow
     REAL(KIND=dp), INTENT(IN) :: dt   
-    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient, InitHandles 
+    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient, InitHandles
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -185,11 +185,9 @@ CONTAINS
 
     ! Velocity and pressure from previous iteration at integration points
     IF(.NOT. LinearAssembly) THEN
-      CALL DGEMM('N', 'T', ngp, DOFs, n, 1._dp, &
-          BasisVec, ngp, NodalSol, dofs, 0._dp, &
-          VeloPresVec, ngp)
+      CALL DGEMM('N', 'T', ngp, DOFs, n, 1._dp, BasisVec, ngp, NodalSol, &
+          dofs, 0._dp, VeloPresVec, ngp)
     END IF
-
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, InitHandles )        
@@ -205,14 +203,16 @@ CONTAINS
     END DO
 
     IF ( Newton ) THEN
-      DO i = 1,dim
-        DO j = 1,dim
-          GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),nodalsol(i,1:ntot))
+      IF( .NOT. StokesFlow ) THEN
+        DO i = 1,dim
+          DO j = 1,dim
+            GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),nodalsol(i,1:ntot))
+          END DO
+          LoadAtIpVec(1:ngp, i) = LoadAtIpVec(1:ngp, i) + rhovec(1:ngp)* &
+                         SUM(gradvec(1:ngp,i,1:dim)*velopresvec(1:ngp,1:dim),2)
         END DO
-        LoadAtIpVec(1:ngp, i) = LoadAtIpVec(1:ngp, i) + rhovec(1:ngp)*SUM(gradvec(1:ngp,i,1:dim)*velopresvec(1:ngp,1:dim),2)
-      END DO
+      END IF
     END IF
-
 
     IF (DivCurlForm) THEN
       weight_a(1:ngp) = muVec(1:ngp) * detJVec(1:ngp)
@@ -333,60 +333,60 @@ CONTAINS
               dBasisdxVec(1:ngp,1:ntot,i), dBasisdxVec(1:ngp,1:ntot,j), weight_c, stifford(1:ntot,:ntot,i,j))
         END DO
       END DO
-
     END IF
 
-    ! Masses (use symmetry)
-    ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u) 
-    CALL LinearForms_UdotU(ngp, ntot, elemdim, BasisVec, DetJVec, VelocityMass, rhovec)
-
-    ! Scatter to the usual local mass matrix
-    DO i = 1, dim
-      mass(i::dofs, i::dofs) = mass(i::dofs, i::dofs) + VelocityMass(1:ntot, 1:ntot)
-    END DO
-    !CALL LinearForms_UdotU(ngp, ntot, elemdim, BasisVec, DetJVec, PressureMass, -kappavec)
-
-    !mass(dofs::dofs, dofs::dofs) = mass(dofs::dofs, dofs::dofs) + PressureMass(1:ntot,1:ntot)
-
-
     IF (GradPVersion) THEN
-      ! b(u,q) = (u, grad q) part
-      DO i = 1, dim
+       ! b(u,q) = (u, grad q) part
+        DO i = 1, dim
         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
             BasisVec, dbasisdxvec(:,:,i), detJVec, stifford(:,:,i,dofs))
-        stifford(:,:,dofs,i) = transpose(stifford(:,:,i,dofs))
+        StiffOrd(:,:,dofs,i) = transpose(stifford(:,:,i,dofs))
       END DO
     ELSE
-      DO i = 1, dim
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+       DO i = 1, dim
+         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
             dBasisdxVec(:, :, i), BasisVec, -detJVec, StiffOrd(:,:,i,dofs))
         StiffOrd(:,:,dofs,i) = transpose(stifford(:,:,i,dofs))
       END DO
     END IF
 
-    ! These loop unrolls look bad, maybe do nicer weight precomputation?
-    weight_a(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,1)
-    weight_b(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,2)
-    weight_c(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,3)
-    DO i = 1, dim
-      CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-          basisvec, dbasisdxvec(:,:,1), detJvec, stifford(:,:,i,i), weight_a)
-      CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-          basisvec, dbasisdxvec(:,:,2), detJvec, stifford(:,:,i,i), weight_b)
-      CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-          basisvec, dbasisdxvec(:,:,3), detJvec, stifford(:,:,i,i), weight_c)
-    END DO
+    ! Masses (use symmetry)
+    ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u) 
+    IF ( .NOT. StokesFlow ) THEN
+      CALL LinearForms_UdotU(ngp, ntot, elemdim, BasisVec, DetJVec, VelocityMass, rhovec)
 
-    DO i = 1, dim
-      DO j = 1, dim
-        IF ( Newton ) THEN
-          CALL LinearForms_UdotV(ngp, ntot, Element%TYPE%DIMENSION, &
-              basisvec, basisvec, detJvec, stifford(:,:,i,j), rhovec*gradvec(:,i,j))
-        END IF
+      ! Scatter to the usual local mass matrix
+      DO i = 1, dim
+        mass(i::dofs, i::dofs) = mass(i::dofs, i::dofs) + VelocityMass(1:ntot, 1:ntot)
       END DO
-    END DO
+      !CALL LinearForms_UdotU(ngp, ntot, elemdim, BasisVec, DetJVec, PressureMass, -kappavec)
 
-    ! convection and loads
+      !mass(dofs::dofs, dofs::dofs) = mass(dofs::dofs, dofs::dofs) + PressureMass(1:ntot,1:ntot)
+
+      ! These loop unrolls look bad, maybe do nicer weight precomputation?
+      weight_a(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,1)
+      weight_b(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,2)
+      weight_c(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,3)
+      DO i = 1, dim
+        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+            basisvec, dbasisdxvec(:,:,1), detJvec, stifford(:,:,i,i), weight_a)
+        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+            basisvec, dbasisdxvec(:,:,2), detJvec, stifford(:,:,i,i), weight_b)
+        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+            basisvec, dbasisdxvec(:,:,3), detJvec, stifford(:,:,i,i), weight_c)
+      END DO
+
+      IF ( Newton ) THEN
+        DO i = 1, dim
+          DO j = 1, dim
+            CALL LinearForms_UdotV(ngp, ntot, Element%TYPE%DIMENSION, &
+                basisvec, basisvec, detJvec, stifford(:,:,i,j), rhovec*gradvec(:,i,j))
+          END DO
+        END DO
+      END IF
+    END IF
+
+    ! add loads
     DO ii = 1,dim+1
       ForcePart = 0._dp
       CALL LinearForms_UdotF(ngp, ntot, basisVec, detJVec, LoadAtIpVec(:,ii), ForcePart)
@@ -399,7 +399,6 @@ CONTAINS
       END DO
     END DO
 
-
     IF (nb > 0 .AND. nd==n .AND. Transient) THEN
       !-------------------------------------------------------------------------
       ! This branch is primarily intended to handle the (enhanced) MINI element 
@@ -408,7 +407,7 @@ CONTAINS
       ! the bubble-augmented part and performs the static condensation.
       !-------------------------------------------------------------------------
       CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE, PrevNodalSol, &
-          NodalSol, Element % ElementIndex)
+                   NodalSol, Element % ElementIndex)
     ELSE
       !-------------------------------------------------------------------------
       ! The cases handled here include the MINI element approximation with the 
@@ -440,7 +439,7 @@ CONTAINS
       END IF
     END IF
 
-    CALL DefaultUpdateEquationsR( STIFF, FORCE, UElement=Element, VecAssembly = .TRUE.)
+    CALL DefaultUpdateEquationsR( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE.)
 !------------------------------------------------------------------------------
 
   CONTAINS
@@ -1094,7 +1093,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
  
   REAL(KIND=dp) :: Norm
 
-  LOGICAL :: AllocationsDone = .FALSE., Found
+  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow
   LOGICAL :: GradPVersion, DivCurlForm, InitHandles=.TRUE., InitBCHandles=.TRUE.
 
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
@@ -1151,6 +1150,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   ! Set the flags/parameters which define how the system is assembled: 
   !-----------------------------------------------------------------------------
   LinearAssembly = GetLogical(Params, 'Linear Equation', Found )
+  StokesFlow = GetLogical(Params, 'Stokes Flow', Found )
   GradPVersion = GetLogical(Params, 'GradP Discretization', Found)
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
 
@@ -1187,11 +1187,11 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          dt, LinearAssembly, nb, Newton, Transient,  InitHandles )
+          StokesFlow, dt, LinearAssembly, nb, Newton, Transient,  InitHandles )
     END DO
     InitHandles = .FALSE.
     
-    !$OMP PARALLEL SHARED(Active, dim, &
+    !$OMP PARALLEL SHARED(Active, dim, StokesFlow, &
     !$OMP                 DivCurlForm, GradPVersion, &
     !$OMP                 dt, LinearAssembly, Newton, Transient) &
     !$OMP PRIVATE(Element, Element_id, n, nd, nb)  DEFAULT(None)
@@ -1199,13 +1199,13 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     DO Element_id=2,Active
       Element => GetActiveElement(Element_id)
       n  = GetElementNOFNodes(Element)
-      nb = GetElementNOFBDOFs(Element)
+      nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
       nd = GetElementNOFDOFs(Element)
       
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          dt, LinearAssembly, nb, Newton, Transient, .FALSE. )
+          StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE. )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
