@@ -833,6 +833,7 @@ CONTAINS
       CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
           'Normal Tangential '//GetVarName(CurrentModel % Solver % Variable) )
+
       InitHandles = .FALSE.
     END IF
 
@@ -1094,7 +1095,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: Norm
 
   LOGICAL :: AllocationsDone = .FALSE., Found
-  LOGICAL :: GradPVersion, DivCurlForm, InitHandles
+  LOGICAL :: GradPVersion, DivCurlForm, InitHandles=.TRUE., InitBCHandles=.TRUE.
 
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
 
@@ -1186,9 +1187,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          dt, LinearAssembly, nb, Newton, Transient,  .TRUE. )
+          dt, LinearAssembly, nb, Newton, Transient,  InitHandles )
     END DO
-
+    InitHandles = .FALSE.
     
     !$OMP PARALLEL SHARED(Active, dim, &
     !$OMP                 DivCurlForm, GradPVersion, &
@@ -1198,11 +1199,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     DO Element_id=2,Active
       Element => GetActiveElement(Element_id)
       n  = GetElementNOFNodes(Element)
-      !
-      ! When the number of bubbles is obtained with the Update=.TRUE. flag,
-      ! we need to call GetElementNOFBDOFs before calling GetElementNOFDOFs.
-      !
-      nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
+      nb = GetElementNOFBDOFs(Element)
       nd = GetElementNOFDOFs(Element)
       
       ! Get element local matrix and rhs vector:
@@ -1216,7 +1213,6 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     CALL DefaultFinishBulkAssembly()
 
     Active = GetNOFBoundaryElements()
-    InitHandles = .TRUE.
     DO Element_id=1,Active
       Element => GetBoundaryElement(Element_id)
       IF (ActiveBoundaryElement()) THEN
@@ -1227,7 +1223,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
-        CALL LocalBoundaryMatrix(Element, n, nd, dim, InitHandles )        
+        CALL LocalBoundaryMatrix(Element, n, nd, dim, InitBCHandles )
       END IF
     END DO
 
