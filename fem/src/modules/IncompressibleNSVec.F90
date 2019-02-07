@@ -80,11 +80,12 @@ CONTAINS
         PressureMass(:,:), ForcePart(:), &
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
         VeloVec(:,:), PresVec(:), GradVec(:,:,:)
-    REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
+    REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:), muDerVec(:), StrainRate(:,:)
 
-    REAL(kind=dp) :: stifford(ntot,ntot,dim+1,dim+1)
+    REAL(kind=dp) :: stifford(ntot,ntot,dim+1,dim+1), muder, jacord(ntot,ntot,dim+1,dim+1), &
+                       JAC(ntot*(dim+1),ntot*(dim+1) )
 
-    INTEGER :: t, i, j, ii, p, q, ngp, allocstat
+    INTEGER :: t, i, j, k, ii, p, q, ngp, allocstat
     INTEGER, SAVE :: elemdim
     INTEGER :: DOFs
 
@@ -99,9 +100,11 @@ CONTAINS
     SAVE Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodesVec( Nodes )
-    STIFF = 0.0d0
-    MASS  = 0.0d0
-    FORCE = 0.0d0
+    STIFF = 0._dp
+    MASS  = 0._dp
+    FORCE = 0._dp
+    JAC   = 0._dp
+    JacOrd = 0._dp
     stifford = 0._dp
 
     DOFs = dim + 1
@@ -136,6 +139,7 @@ CONTAINS
       END IF
     END IF
 
+
     ! Deallocate storage (ntot) if needed
     IF (ALLOCATED(VelocityMass)) THEN
       IF(SIZE(VelocityMass,1) < ntot ) THEN
@@ -149,6 +153,8 @@ CONTAINS
           ForcePart(ntot))
     END IF
 
+    ALLOCATE(muDerVec(ngp), StrainRate(dim,dim))
+    muDerVec = 0._dp
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Dens_h,'Material','Density')      
@@ -189,7 +195,8 @@ CONTAINS
     END IF
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
-    muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, InitHandles )        
+    muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
+              muDerVec, Newton,  InitHandles )        
 
     ! Rho 
     rhovec(1:ngp) = rho
@@ -202,6 +209,7 @@ CONTAINS
     END DO
 
     IF ( Newton ) THEN
+
       IF( .NOT. StokesFlow ) THEN
         DO i = 1,dim
           DO j = 1,dim
@@ -211,6 +219,31 @@ CONTAINS
                          SUM(gradvec(1:ngp,i,1:dim)*velopresvec(1:ngp,1:dim),2)
         END DO
       END IF
+
+      IF (ANY(muDerVec/=0)) THEN
+        IF ( StokesFlow ) THEN
+          DO i = 1,dim
+            DO j = 1,dim
+              GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),nodalsol(i,1:ntot))
+            END DO
+          END DO
+        END IF
+
+        DO k=1,ngp
+          StrainRate = (GradVec(k,:,:) + TRANSPOSE(GradVec(k,:,:)))/2
+          DO p = 1,ntot
+          DO q = 1,ntot
+          DO i=1,dim
+            muder = muDerVec(k)*4*SUM(StrainRate(i,:)*dBasisdxvec(k,q,:))
+            DO j=1,dim
+              JacOrd(p,q,j,i)=JacOrd(p,q,j,i)+detjVec(k)*2*muder*SUM(StrainRate(j,:)*dBasisdxvec(k,p,:))
+            END DO
+          END DO
+          END DO
+          END DO
+        END DO
+      END IF
+
     END IF
 
     IF (DivCurlForm) THEN
@@ -378,7 +411,7 @@ CONTAINS
       IF ( Newton ) THEN
         DO i = 1, dim
           DO j = 1, dim
-            CALL LinearForms_UdotV(ngp, ntot, Element%TYPE%DIMENSION, &
+            CALL LinearForms_UdotV(ngp, ntot, elemdim, &
                 basisvec, basisvec, detJvec, stifford(:,:,i,j), rhovec*gradvec(:,i,j))
           END DO
         END DO
@@ -386,10 +419,10 @@ CONTAINS
     END IF
 
     ! add loads
-    DO ii = 1,dim+1
+    DO i = 1,dim+1
       ForcePart = 0._dp
-      CALL LinearForms_UdotF(ngp, ntot, basisVec, detJVec, LoadAtIpVec(:,ii), ForcePart)
-      FORCE(ii::dofs) = ForcePart(1:ntot)
+      CALL LinearForms_UdotF(ngp, ntot, basisVec, detJVec, LoadAtIpVec(:,i), ForcePart)
+      FORCE(i::dofs) = ForcePart(1:ntot)
     END DO
 
     DO i = 1, DOFS
@@ -397,6 +430,23 @@ CONTAINS
         Stiff(i::DOFS, j::DOFS) = StiffOrd(1:ntot, 1:ntot, i,j)
       END DO
     END DO
+
+    IF ( Newton ) THEN
+BLOCK
+     REAL(KIND=dp) :: SOL(ntot*(dim+1))
+
+     SOL=0._dp
+     DO i = 1, DOFS
+       DO j = 1, DOFS
+         JAC(i::DOFS, j::DOFS) = JacOrd(1:ntot, 1:ntot, i,j)
+       END DO
+       SOL(i::DOFs) = NodalSol(i,1:ntot)
+     END DO
+
+     STIFF = STIFF + JAC
+     FORCE = FORCE + MATMUL(JAC,SOL)
+END BLOCK
+   END IF   
 
     IF(StokesFlow) THEN
       IF ( nb>0 ) THEN
@@ -450,8 +500,7 @@ CONTAINS
       END IF
     END IF
 
-    CALL DefaultUpdateEquationsR( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE.)
-
+    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE.)
 
     IF( ASSOCIATED( SchurSolver ) ) THEN
       ! Preconditioner for pressure block when using block preconditioning               
@@ -459,7 +508,7 @@ CONTAINS
       PressureMass = 0.0_dp
       FORCE = 0.0_dp
       CALL LinearForms_UdotU(ngp, nd, elemdim, BasisVec, DetJVec, PressureMass, weight_a)      
-      CALL DefaultUpdateEquationsR( PressureMass, FORCE, UElement=Element, Usolver = SchurSolver, VecAssembly = .TRUE.)
+      CALL DefaultUpdateEquations( PressureMass, FORCE, UElement=Element, Usolver = SchurSolver, VecAssembly = .TRUE.)
     END IF
 
 
@@ -470,13 +519,13 @@ CONTAINS
 
 
     FUNCTION EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
-        InitHandles ) RESULT ( EffViscVec ) 
+        ViscDerVec, ViscNewton, InitHandles ) RESULT ( EffViscVec ) 
 
       INTEGER :: ngp
       REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
       TYPE(Element_t), POINTER :: Element
-      REAL(KIND=dp) :: NodalSol(:,:) 
-      LOGICAL :: InitHandles 
+      REAL(KIND=dp) :: NodalSol(:,:) , ViscDerVec(:)
+      LOGICAL :: InitHandles , ViscNewton
       REAL(KIND=dp), POINTER  :: EffViscVec(:)
 
       LOGICAL :: Found     
@@ -488,11 +537,10 @@ CONTAINS
       REAL(KIND=dp), SAVE :: R
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Temp, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2 
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:)
-      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:),ViscDerVec(:) => NULL()
-      LOGICAL, SAVE :: ViscNewton = .FALSE.
+      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:) ! ,ViscDerVec(:) => NULL()
 
       
-!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ViscDerVec)
+!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec)
      
       IF(InitHandles ) THEN
         CALL Info('EffectiveViscosityVec','Initializing handles for viscosity models',Level=8)
@@ -527,8 +575,6 @@ CONTAINS
             IF (.NOT.Found) R = 8.314_dp
           END IF
         END IF
-        
-        ViscNewton = .FALSE.
       END IF
 
       ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
@@ -543,12 +589,12 @@ CONTAINS
 
       ! Deallocate too small storage if needed 
       IF (ALLOCATED(ss)) THEN
-        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec, ViscDerVec )
+        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec)
       END IF
 
       ! Allocate storage if needed
       IF (.NOT. ALLOCATED(ss)) THEN
-        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ViscDerVec(ngp),STAT=allocstat)
+        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),STAT=allocstat)
         IF (allocstat /= 0) THEN
           CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
         END IF
