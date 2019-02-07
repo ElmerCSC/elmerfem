@@ -166,7 +166,7 @@ CONTAINS
       VeloPresVec = 0._dp
     ELSE
       CALL GetLocalSolution( NodalSol )
-      IF (nb > 0 .AND. Transient ) & 
+      IF (nb > 0 .AND. Transient .AND. .NOT. StokesFlow ) & 
           CALL GetLocalSolution(PrevNodalSol, tStep=-1)
     END IF
 
@@ -399,7 +399,10 @@ CONTAINS
       END DO
     END DO
 
-    IF (nb > 0 .AND. nd==n .AND. Transient) THEN
+    IF(StokesFlow .AND. nb>0 ) THEN
+      CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
+
+    ELSE IF (nb > 0 .AND. nd==n .AND. Transient) THEN
       !-------------------------------------------------------------------------
       ! This branch is primarily intended to handle the (enhanced) MINI element 
       ! approximation together with the static condensation for the velocity
