@@ -197,7 +197,7 @@ MODULE NavierStokes
      REAL(KIND=dp),target :: StiffMatrixTrabsp(n*2*4, n*2*4)
      REAL(KIND=dp),target :: MassMatrixTrabsp(n*2*4, n*2*4)
      REAL(KIND=dp) :: JacMTrabsp(n*2*4, n*2*4)
-     REAL(KIND=dp) :: BasePVec(2*n) ! todo, change this and the assorted behavior to a pointer
+     REAL(KIND=dp),target :: BasePVec(2*n) ! todo, change this and the assorted behavior to a pointer
      REAL(KIND=dp),POINTER :: BasePPtr(:)
      REAL(KIND=dp),POINTER :: dBasisdxPtrP(:),dBasisdxPtrQ(:)
      REAL(KIND=dp) :: tmp, ComprConvConst
@@ -695,7 +695,7 @@ MODULE NavierStokes
       DO i=1,dim
         DO j=1,dim
           !$omp simd
-          DO q=1,NBasis
+          DO q=1,NBasis ! move up one
             muderq(q) = muder0*4*SUM(Strain(i,:)*dBasisdx(q,:))
           END DO
           DO q=1,NBasis
@@ -867,23 +867,32 @@ MODULE NavierStokes
     END IF
 
     DO i=1,dim
+        IF ( gradPDiscretization  ) THEN
+          gradPDiscPtrQ => Basis(:)
+          gradPDiscPtrP => dBasisdx(:,i)
+          gradPDiscConst = -s * rho
+        ELSE
+          gradPDiscPtrQ => dBasisdx(:,i)
+          gradPDiscPtrP => BasePVec(:)
+          gradPDiscConst = s * ComprConvConst
+        END IF
 
       DO q=1,NBasis
-        IF ( gradPDiscretization ) THEN
+        !IF ( gradPDiscretization ) THEN
           !$omp simd
           DO p=1,NBasis
             !A(c,i) = A(c,i) &
             StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
-              - s * rho * Basis(q) * dBasisdx(p,i)
+              + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
           END DO ! p nbasis simd
-        ELSE !gradPDiscretization
-          !$omp simd
-          DO p=1,NBasis
-            !A(c,i) = A(c,i) &
-            StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
-              + s * ComprConvConst * dBasisdx(q,i) * BasePVec(p)
-          END DO ! p nbasis simd
-        END IF !gradPDiscretization
+        !ELSE !gradPDiscretization
+        !  !$omp simd
+        !  DO p=1,NBasis
+        !    !A(c,i) = A(c,i) &
+        !    StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+        !      + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
+        !  END DO ! p nbasis simd
+        !END IF !gradPDiscretization
       END DO ! q nbasis
     END DO ! i dim
     
