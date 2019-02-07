@@ -167,8 +167,8 @@ CONTAINS
       VeloPresVec = 0._dp
     ELSE
       CALL GetLocalSolution( NodalSol )
-      IF (nb > 0 .AND. Transient ) & 
-          CALL GetLocalSolution(PrevNodalSol, tStep=-1)
+      IF (nb > 0 .AND. Transient .AND. .NOT. StokesFlow) & 
+         CALL GetLocalSolution(PrevNodalSol, tStep=-1)
     END IF
 
     VelocityMass = 0.0d0
@@ -398,8 +398,18 @@ CONTAINS
       END DO
     END DO
 
-    IF(StokesFlow .AND. nb>0 ) THEN
-      CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
+    IF(StokesFlow) THEN
+      IF ( nb>0 ) THEN
+        CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
+      ELSE
+        DO p = n+1,ntot
+          i = DOFs * p
+          FORCE(i)   = 0._dp
+          STIFF(i,:) = 0._dp
+          STIFF(:,i) = 0._dp
+          STIFF(i,i) = 1._dp
+        END DO
+      END IF
 
     ELSE IF (nb > 0 .AND. nd==n .AND. Transient) THEN
       !-------------------------------------------------------------------------
@@ -422,10 +432,9 @@ CONTAINS
         FORCE(i)   = 0._dp
         MASS(:,i)  = 0._dp
         MASS(i,:)  = 0._dp
-        s = STIFF(i,i)
         STIFF(i,:) = 0._dp
         STIFF(:,i) = 0._dp
-        STIFF(i,i) = ABS(s)
+        STIFF(i,i) = 1._dp
       END DO
 
       IF ( Transient ) THEN
