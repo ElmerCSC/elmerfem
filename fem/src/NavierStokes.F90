@@ -693,11 +693,12 @@ MODULE NavierStokes
 !
     IF (ViscNewtonLin) THEN
       DO i=1,dim
+        !$omp simd
+        DO q=1,NBasis ! move up one
+          muderq(q) = muder0*4*SUM(Strain(i,:)*dBasisdx(q,:))
+        END DO
         DO j=1,dim
-          !$omp simd
-          DO q=1,NBasis ! move up one
-            muderq(q) = muder0*4*SUM(Strain(i,:)*dBasisdx(q,:))
-          END DO
+          !DIR$ Unroll(2)
           DO q=1,NBasis
           !$omp simd
             DO p=1,NBasis
@@ -732,7 +733,7 @@ MODULE NavierStokes
         ELSE IF (.NOT.LaplaceDiscretization) THEN
           tmpPtr => dBasisdx(:,j)
         END IF
-
+          !DIR$ Unroll(2)
           DO q=1,NBasis
             IF ( divDiscretization ) THEN
               tmp = s * mu * dBasisdx(q,j)
@@ -773,6 +774,7 @@ MODULE NavierStokes
     IF ( Convect ) THEN
       DO i=1,dim
         DO j = 1,dim
+          !DIR$ Unroll(2)
           DO q=1,NBasis
             !$omp simd
             DO p=1,NBasis
@@ -808,25 +810,14 @@ MODULE NavierStokes
           gradPDiscPtrQ => PBasis(:)
           gradPDiscConst = -s
         END IF
-
-        DO q=1,LinearBasis
-          !IF (q <= LinearBasis) THEN ! change to being the stop point for previous loop instead 
-            !IF ( gradPDiscretization  ) THEN
-            !$omp simd
-              DO p=1,NBasis
-                !A(i,c) = A(i,c)
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-                  + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
-              END DO ! p nbasis simd
-            !ELSE ! gradPDiscretization
-            !!$omp simd
-            !  DO p=1,NBasis
-            !    !A(i,c) = A(i,c)
-            !    StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-            !      + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
-            !  END DO ! p nbasis simd
-            !END IF ! gradPDiscretization
-          !END IF ! q <= LinearBasis
+        !DIR$ Unroll(2)
+        DO q=1,LinearBasis ! this can further be simplified to setting the stop point
+          !$omp simd
+            DO p=1,NBasis
+              !A(i,c) = A(i,c)
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
+                + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
+            END DO ! p nbasis simd
         END DO ! q LinearBasis
       END DO ! i dim
     ELSE
@@ -840,22 +831,14 @@ MODULE NavierStokes
           gradPDiscPtrQ => Basis(:)
           gradPDiscConst = -s
         END IF
+        !DIR$ Unroll(2)
         DO q=1,NBasis
-          !IF ( gradPDiscretization  ) THEN
           !$omp simd
-            DO p=1,NBasis
-              !A(i,c) = A(i,c)
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-                + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
-            END DO ! p nbasis simd
-          !ELSE !gradPDiscretization
-          !!$omp simd
-          !  DO p=1,NBasis
-          !    !A(i,c) = A(i,c)
-          !    StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-          !      - s * Basis(q) * dBasisdx(p,i)
-          !  END DO ! p nbasis simd
-          !END IF !gradPDiscretization
+          DO p=1,NBasis
+            !A(i,c) = A(i,c)
+            StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
+              + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
+          END DO ! p nbasis simd
         END DO ! q NBasis
       END DO ! i dim
     END IF ! P2P1
@@ -876,28 +859,20 @@ MODULE NavierStokes
           gradPDiscPtrP => BasePVec(:)
           gradPDiscConst = s * ComprConvConst
         END IF
-
+      !DIR$ Unroll(2)
       DO q=1,NBasis
-        !IF ( gradPDiscretization ) THEN
-          !$omp simd
-          DO p=1,NBasis
-            !A(c,i) = A(c,i) &
-            StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
-              + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
-          END DO ! p nbasis simd
-        !ELSE !gradPDiscretization
-        !  !$omp simd
-        !  DO p=1,NBasis
-        !    !A(c,i) = A(c,i) &
-        !    StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
-        !      + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
-        !  END DO ! p nbasis simd
-        !END IF !gradPDiscretization
+        !$omp simd
+        DO p=1,NBasis
+          !A(c,i) = A(c,i) &
+          StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+            + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
+        END DO ! p nbasis simd
       END DO ! q nbasis
     END DO ! i dim
     
     IF ( .NOT. gradPDiscretization .AND. (Cmodel==PerfectGas1 .OR. Cmodel==UserDefined1 .OR. Cmodel==Thermal .OR. Cmodel==UserDefined2) ) THEN
       DO i=1,dim
+        !DIR$ Unroll(2)
         DO q=1,NBasis
           SELECT CASE(Cmodel)
             CASE(PerfectGas1)
@@ -940,6 +915,7 @@ MODULE NavierStokes
 !!------------------------------------------------------------------------------
     IF(Porous) THEN
       DO i=1,dim
+        !DIR$ Unroll(2)
         DO q=1,NBasis
             !$omp simd
             DO p=1,NBasis
@@ -958,6 +934,7 @@ MODULE NavierStokes
 !!------------------------------------------------------------------------------
 !
     DO i=1,dim
+      !DIR$ Unroll(2)
       DO q=1,NBasis
       !$omp simd
         DO p=1,NBasis
@@ -969,6 +946,7 @@ MODULE NavierStokes
     END DO ! i dim
 
     IF ( Cmodel==PerfectGas1 ) THEN ! could be cleaned up to a constant 
+      !DIR$ Unroll(2)
       DO q=1,NBasis
         !$omp simd
         DO p=1,NBasis
@@ -988,7 +966,7 @@ MODULE NavierStokes
       END DO
     END IF ! Cmodel==PerfectGas1
 
-    IF (PseudoCompressible) THEN
+    IF (PseudoCompressible) THEN ! this one to a constant as well
       DO q=1,NBasis
           !$omp simd
           DO p=1,NBasis
@@ -1055,7 +1033,7 @@ MODULE NavierStokes
         G(3,6) = dBasisdx(p,1)
         G = MATMUL( G, VC )
         DO q=1,NBasis
-          M => MassMatrixTrabsp ( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
+          A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
 
           B = 0.0d0
           B(1,1) = dBasisdx(q,1)
