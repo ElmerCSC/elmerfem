@@ -774,8 +774,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>     Based on element bubble polynomial degree p, return degrees of freedom for
-!>     given elements bubbles. 
+!> Based on the polynomial degree p of the element, return the number of
+!> bubble functions (the count of bubble DOFs). 
+!> NOTE: The returned value is not the bubble count for an approximation
+!> based on the space Q_p of polynomials of degree at most p in each variable 
+!> separately.
 !------------------------------------------------------------------------------
   FUNCTION getBubbleDOFs( Element, p) RESULT(bubbleDOFs)
 !------------------------------------------------------------------------------
@@ -834,8 +837,9 @@ CONTAINS
     END SELECT
 
     bubbleDOFs = MAX(0, bubbleDOFs)
+!------------------------------------------------------------------------------
   END FUNCTION getBubbleDOFs
-
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -1108,8 +1112,11 @@ CONTAINS
          END SELECT
       END IF
 
-      ! Get number of Gauss points. Number needed is 2*max(p)=2*(max(p)+1)/2
+      ! Get the number r of Gauss points for the product of two basis functions: 
+      ! r = (2*max(p)+1)/2
       maxp = MAX(1, edgeP, faceP, bubbleP) + 1
+      ! The number of Gauss points based on the Cartesian product (more efficient
+      ! rules could be defined):
       ngp = maxp ** Element % TYPE % DIMENSION
 !------------------------------------------------------------------------------
     END FUNCTION getNumberOfGaussPoints
@@ -1204,7 +1211,7 @@ CONTAINS
       maxp = MAX(edgeP, Face % PDefs % P) + 1
       ngp = maxp ** 2
 !------------------------------------------------------------------------------
-    END FUNCTION
+    END FUNCTION getNumberOfGaussPointsFace
 !------------------------------------------------------------------------------
  
   

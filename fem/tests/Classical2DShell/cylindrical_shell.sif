@@ -15,24 +15,29 @@
 ! p:1       Relative energy error =   0.88896260271790639
 ! p:2       Relative energy error =   0.29814339193540801 
 ! p:2 b:1   Relative energy error =   0.23711572317485702
+! p:2 b:15  Relative energy error =   0.10031149151079155
 ! p:3       Relative energy error =   0.17701104808582918
-! p:3 b:4   Relative energy error =    3.7584671594097008E-002
+! p:3 b:15  Relative energy error =    1.9351692322981600E-002
 ! p:4       Relative energy error =    3.4526616304186068E-002
-! p:4 b:9   Relative energy error =    9.6151063146595727E-003
+! p:4 b:15  Relative energy error =    7.0424540514543998E-003
 ! p:5       Relative energy error =    7.8498375202090825E-003
-! p:5 b:16  Relative energy error =    1.5817631175019274E-003 
+! p:5 b:15  Relative energy error =    2.0809479830700603E-003
 ! p:6       Relative energy error =    2.4502183740983921E-003
-! p:6 b:25  Relative energy error =    2.5742058505865036E-004  
+! p:6 b:15  Relative energy error =    6.2443241030678861E-004
 ! p:7       Relative energy error =    6.0846479859093326E-004
-! p:7 b:36  Relative energy error =    7.5910871046453319E-005 
+! p:7 b:15  Relative energy error =    1.6535890420287850E-004
 ! p:8       Relative energy error =    1.3328077843970739E-004
-! p:8 b:49  Relative energy error =    6.5375016856630421E-005
+! p:8 b:15  Relative energy error =    1.3328077843970739E-004  
 ! p:9       Relative energy error =    6.7817426835655489E-005
-! p:9 b:64  Relative energy error =    6.4943025399719049E-005  
 !
-! Note that the element definitions with explicit bubble counts are needed
-! to obtain the approximation based on the space Q_{p,p} of polynomials of 
-! degree at most p in each variable separately. 
+! Note that, except for the case p=2, the current version of Elmer doesn't 
+! offer a way to obtain an approximation based on the space Q_{p} of polynomials
+! of degree at most p in each variable separately, since Elmer doesn't employ
+! the bubbles corresponding to Q_{p}. For example the p-approximation space 
+! S_{p=8} of Elmer has 15 bubble functions and includes only Q_{4}. 
+! A deterioration of accuracy may thus happen over non-affine finite elements. 
+! The results above also show the error when the bubble augmentation 
+! corresponding S_{p=8} is used in connection with p-elements of lower order. 
 !
 ! For a very high p errors from floating-point arithmetic may limit the 
 ! obtainable accuracy.
@@ -85,8 +90,7 @@ Solver 1
   Variable DOFs = 5
   Procedure = "BenchmarkShell" "ShellSolver"
 
-  Element = "p:3 b:4"
-!  Element = "p:9"
+  Element = "p:8"
 
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU2
@@ -133,5 +137,5 @@ Boundary Condition 4
   U 4 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.17219701E-01
+Solver 1 :: Reference Norm = Real 9.73304396E-03
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
