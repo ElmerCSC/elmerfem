@@ -149,9 +149,9 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Basis(2*n),dBasisdx(2*n,3),ddBasisddx(n,3,3)
+     REAL(KIND=dp),target :: Basis(2*n),dBasisdx(2*n,3),ddBasisddx(n,3,3)
      REAL(KIND=dp) :: detJ, NodalBasis(n), dLBasisdx(n,3)
-     REAL(KIND=dp) :: PBasis(n), pdBasisdx(n,3),BaseP, dNodalBasisdx(n,n,3)
+     REAL(KIND=dp),target :: PBasis(n), pdBasisdx(n,3),BaseP, dNodalBasisdx(n,n,3)
 
      REAL(KIND=dp) :: Velo(3),UVelo(3),Grad(3,3),Force(4),Metric(3,3),Symb(3,3,3), Drag(3), Coord(3)
 
@@ -192,14 +192,18 @@ MODULE NavierStokes
                 ViscNonnewtonian, LaplaceDiscretization,OutOfPlaneFlow
 
      ! local transposed values 
-     REAL(KIND=8) :: dBasisdxp(n*2)
-     REAL(KIND=8) :: muderq(n*2)
-     REAL(KIND=8),target :: StiffMatrixTrabsp(n*2*4, n*2*4)
-     REAL(KIND=8),target :: MassMatrixTrabsp(n*2*4, n*2*4)
-     REAL(KIND=8) :: JacMTrabsp(n*2*4, n*2*4)
+     REAL(KIND=dp) :: dBasisdxp(n*2)
+     REAL(KIND=dp) :: muderq(n*2)
+     REAL(KIND=dp),target :: StiffMatrixTrabsp(n*2*4, n*2*4)
+     REAL(KIND=dp),target :: MassMatrixTrabsp(n*2*4, n*2*4)
+     REAL(KIND=dp) :: JacMTrabsp(n*2*4, n*2*4)
      REAL(KIND=dp) :: BasePVec(2*n) ! todo, change this and the assorted behavior to a pointer
      REAL(KIND=dp),POINTER :: BasePPtr(:)
-     REAL(KIND=dp) :: tmp
+     REAL(KIND=dp),POINTER :: dBasisdxPtrP(:),dBasisdxPtrQ(:)
+     REAL(KIND=dp) :: tmp, ComprConvConst
+     REAL(KIND=dp),POINTER :: tmpPtr(:)
+     REAL(KIND=dp),POINTER :: gradPDiscPtrP(:), gradPDiscPtrQ(:)
+     REAL(KIND=dp) :: gradPDiscConst
      ! end of transposed varible 
 
      
@@ -723,28 +727,36 @@ MODULE NavierStokes
     IF ( Isotropic ) THEN
       DO i=1,dim
         DO j = 1,dim
+        IF ( divDiscretization ) THEN
+          tmpPtr => dBasisdx(:,i)
+        ELSE IF (.NOT.LaplaceDiscretization) THEN
+          tmpPtr => dBasisdx(:,j)
+        END IF
+
           DO q=1,NBasis
+            IF ( divDiscretization ) THEN
+              tmp = s * mu * dBasisdx(q,j)
+            ELSE IF (.NOT.LaplaceDiscretization) THEN
+              tmp = s * mu * dBasisdx(q,i)
+            END IF
+  
+            
             !$omp simd
             DO p=1,NBasis
               !A(i,i) = A(i,i)
               StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
                 + s * mu * dBasisdx(q,j) * dBasisdx(p,j)
             END DO ! p nbasis simd
-            IF ( divDiscretization ) THEN 
+
+            IF ( divDiscretization .or. .NOT.LaplaceDiscretization) THEN 
               !$omp simd
               DO p=1,NBasis
                 !A(i,j) = A(i,j)
                 StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) & 
-                  + s * mu * dBasisdx(q,j) * dBasisdx(p,i)
-              END DO ! p nbasis simd
-            ELSE IF (.NOT.LaplaceDiscretization) THEN
-              !$omp simd
-              DO p=1,NBasis
-                !A(i,j) = A(i,j)
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
-                  + s * mu * dBasisdx(q,i) * dBasisdx(p,j)
+                  + tmp * tmpPtr(p)
               END DO ! p nbasis simd
             END IF
+
             IF ( Compressible ) THEN
               !$omp simd
               DO p=1,NBasis
@@ -785,51 +797,77 @@ MODULE NavierStokes
       END DO ! i dim
     END IF ! convect
 
-    IF (P2P1) THEN
+    IF (P2P1) THEN ! this could be done with pointers 
       DO i=1,dim
-        DO q=1,NBasis
-          IF (q <= LinearBasis) THEN
-            IF ( gradPDiscretization  ) THEN
+        IF ( gradPDiscretization  ) THEN
+          gradPDiscPtrP => Basis(:)
+          gradPDiscPtrQ => PdBasisdx(:,i)
+          gradPDiscConst = s
+        ELSE
+          gradPDiscPtrP => dBasisdx(:,i)
+          gradPDiscPtrQ => PBasis(:)
+          gradPDiscConst = -s
+        END IF
+
+        DO q=1,LinearBasis
+          !IF (q <= LinearBasis) THEN ! change to being the stop point for previous loop instead 
+            !IF ( gradPDiscretization  ) THEN
             !$omp simd
               DO p=1,NBasis
                 !A(i,c) = A(i,c)
                 StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-                  + s * PdBasisdx(q,i) * Basis(p)
+                  + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
               END DO ! p nbasis simd
-            ELSE ! gradPDiscretization
-            !$omp simd
-              DO p=1,NBasis
-                !A(i,c) = A(i,c)
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-                  - s * PBasis(q) * dBasisdx(p,i)
-              END DO ! p nbasis simd
-            END IF ! gradPDiscretization
-          END IF ! q <= LinearBasis
-        END DO ! q NBasis
+            !ELSE ! gradPDiscretization
+            !!$omp simd
+            !  DO p=1,NBasis
+            !    !A(i,c) = A(i,c)
+            !    StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
+            !      + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
+            !  END DO ! p nbasis simd
+            !END IF ! gradPDiscretization
+          !END IF ! q <= LinearBasis
+        END DO ! q LinearBasis
       END DO ! i dim
     ELSE
       DO i=1,dim
+        IF ( gradPDiscretization  ) THEN
+          gradPDiscPtrP => Basis(:)
+          gradPDiscPtrQ => dBasisdx(:,i)
+          gradPDiscConst = s
+        ELSE
+          gradPDiscPtrP => dBasisdx(:,i)
+          gradPDiscPtrQ => Basis(:)
+          gradPDiscConst = -s
+        END IF
         DO q=1,NBasis
-          IF ( gradPDiscretization  ) THEN
+          !IF ( gradPDiscretization  ) THEN
           !$omp simd
             DO p=1,NBasis
               !A(i,c) = A(i,c)
               StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-                + s * dBasisdx(q,i) * Basis(p)
+                + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
             END DO ! p nbasis simd
-          ELSE !gradPDiscretization
-          !$omp simd
-            DO p=1,NBasis
-              !A(i,c) = A(i,c)
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-                - s * Basis(q) * dBasisdx(p,i)
-            END DO ! p nbasis simd
-          END IF !gradPDiscretization
+          !ELSE !gradPDiscretization
+          !!$omp simd
+          !  DO p=1,NBasis
+          !    !A(i,c) = A(i,c)
+          !    StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
+          !      - s * Basis(q) * dBasisdx(p,i)
+          !  END DO ! p nbasis simd
+          !END IF !gradPDiscretization
         END DO ! q NBasis
       END DO ! i dim
     END IF ! P2P1
 !
+    IF ( Compressible .OR. Convect ) THEN
+      ComprConvConst = rho
+    ELSE
+      ComprConvConst = 1
+    END IF
+
     DO i=1,dim
+
       DO q=1,NBasis
         IF ( gradPDiscretization ) THEN
           !$omp simd
@@ -839,21 +877,12 @@ MODULE NavierStokes
               - s * rho * Basis(q) * dBasisdx(p,i)
           END DO ! p nbasis simd
         ELSE !gradPDiscretization
-          IF ( Compressible .OR. Convect ) THEN
-            !$omp simd
-            DO p=1,NBasis
-              !A(c,i) = A(c,i) &
-              StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
-                + s * rho * dBasisdx(q,i) * BasePVec(p)
-            END DO ! p nbasis simd
-          ELSE !Compressible .OR. Convect
-            !$omp simd
-            DO p=1,NBasis
-              !A(c,i) = A(c,i) &
-              StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
-                + s * dBasisdx(q,i) * BasePVec(p)
-            END DO ! p nbasis simd
-          END IF ! Compressible .OR. Convect
+          !$omp simd
+          DO p=1,NBasis
+            !A(c,i) = A(c,i) &
+            StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+              + s * ComprConvConst * dBasisdx(q,i) * BasePVec(p)
+          END DO ! p nbasis simd
         END IF !gradPDiscretization
       END DO ! q nbasis
     END DO ! i dim
@@ -930,7 +959,7 @@ MODULE NavierStokes
       END DO
     END DO ! i dim
 
-    IF ( Cmodel==PerfectGas1 ) THEN
+    IF ( Cmodel==PerfectGas1 ) THEN ! could be cleaned up to a constant 
       DO q=1,NBasis
         !$omp simd
         DO p=1,NBasis
