@@ -321,7 +321,7 @@ CONTAINS
       weight_a(1:ngp) = muVec(1:ngp) * detJvec(1:ngp)      
 
       ! The following assumes that the bulk viscosity of the fluid vanishes:
-      weight_c(1:ngp) = -2.0_dp / 3.0_dp * muVec(1:ngp) * detJVec(1:ngp)
+!     weight_c(1:ngp) = -2.0_dp / 3.0_dp * muVec(1:ngp) * detJVec(1:ngp)
 
       DO i=1,dim
         DO j=1,dim
@@ -329,8 +329,8 @@ CONTAINS
               dBasisdxVec(1:ngp,1:ntot,j), dBasisdxVec(1:ngp,1:ntot,j), weight_a, stifford(1:ntot,:ntot,i,i))
           CALL LinearForms_UdotV(ngp, ntot, elemdim, &
               dBasisdxVec(1:ngp,1:ntot,j), dBasisdxVec(1:ngp,1:ntot,i), weight_a, stifford(1:ntot,1:ntot,i,j))
-          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-              dBasisdxVec(1:ngp,1:ntot,i), dBasisdxVec(1:ngp,1:ntot,j), weight_c, stifford(1:ntot,:ntot,i,j))
+!         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+!             dBasisdxVec(1:ngp,1:ntot,i), dBasisdxVec(1:ngp,1:ntot,j), weight_c, stifford(1:ntot,:ntot,i,j))
         END DO
       END DO
     END IF
