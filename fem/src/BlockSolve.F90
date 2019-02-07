@@ -265,12 +265,13 @@ CONTAINS
     ELSE IF( BlockMatrix % Novar /= 0 ) THEN
       CALL Fatal('BlockInitMatrix','Previous blockmatrix was of different size?')
     ELSE
-      CALL Info('BlockInitMatrix','Starting',Level=6)
+      CALL Info('BlockInitMatrix','Block matrix will be of size '//TRIM(I2S(NoVar)),Level=6)
     END IF
     
     BlockMatrix % Solver => Solver
     BlockMatrix % NoVar = NoVar
 
+    
     ALLOCATE( BlockMatrix % SubMatrix(NoVar,NoVar) )
     DO i=1,NoVar
       DO j=1,NoVar
@@ -309,12 +310,15 @@ CONTAINS
     IF( PRESENT( SkipVar ) ) THEN
       IF( SkipVar ) RETURN
     END IF
+
     
     IF( PRESENT( FieldDofs ) ) THEN
-      NoVar = FieldDofs
+      CALL Info('BlockInitMatrix','Number of field components: '//TRIM(I2S(FieldDofs)))
+      IF( Novar /= FieldDofs ) CALL Info('BlockInitMatrix','Number of fields and blocks differ!')
+      !      NoVar = FieldDofs
     END IF
 
-
+    
     ! If we have just one variable and also one matrix then no need to look further
     ! This would probably just happen for testing purposes. 
     UseSolverMatrix = (NoVar == 1 )
@@ -396,7 +400,6 @@ CONTAINS
     END DO
     
     BlockMatrix % TotSize = BlockMatrix % Offset( NoVar + 1 )
-
 
     CALL Info('BlockInitMatrix','All done',Level=12)
       
@@ -530,7 +533,7 @@ CONTAINS
     INTEGER::i,j,k,i_aa,i_vv,i_av,i_va,n;
     REAL(KIND=DP) :: SumAbsMat
     
-    CALL Info('BlockSolver','Picking block matrix from monolithic one',Level=10)
+    CALL Info('BlockSolver','Picking block matrix of size '//TRIM(I2S(NoVar))//' from monolithic one',Level=10)
 
     SolverMatrix => Solver % Matrix 
     Params => Solver % Values
@@ -1309,7 +1312,9 @@ CONTAINS
     INTEGER, POINTER :: VarPerm(:)
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: Amat
-
+    TYPE(Variable_t), POINTER :: AVar
+    
+    
     Params => Solver % Values
  
     ! The user may give a user defined preconditioner matrix
@@ -1341,6 +1346,24 @@ CONTAINS
         END IF
       END IF
     END DO
+    
+    str = ListGetString( Params,'Block Matrix Schur Variable', GotIt)      
+    IF( GotIt ) THEN
+      AVAr => VariableGet( Solver % Mesh % Variables, str )
+      IF( .NOT. ASSOCIATED( AVar ) ) THEN
+        CALL Fatal('BlockPrecMatrix','Schur variable does not exist: '//TRIM(str))       
+      END IF            
+      IF( .NOT. ASSOCIATED( AVar % Solver ) ) THEN
+        CALL Fatal('BlockPrecMatrix','Schur solver does not exist for: '//TRIM(str))      
+      END IF
+      IF( .NOT. ASSOCIATED( AVar % Solver % Matrix ) ) THEN
+        CALL Fatal('BlockPrecMatrix','Schur matrix does not exist for: '//TRIM(str))       
+      END IF
+
+      CALL Info('BlockPrecMatrix','Using shcur matrix to precondition block '//TRIM(I2S(NoVar)))
+      TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => AVAr % Solver % Matrix
+    END IF  
+
   END SUBROUTINE BlockPrecMatrix
 
 
@@ -2053,7 +2076,7 @@ CONTAINS
         IF( A % NumberOfRows == 0 ) THEN
           A => TotMatrix % Submatrix(i,i) % Mat
         ELSE
-          PRINT *,'Using specialized preconditioning block'
+          CALL Info('BlockMatrixPrec','Using specialized preconditioning block')
         END IF      
         ASolver => Solver
       END IF
@@ -2793,7 +2816,7 @@ CONTAINS
     
     NoVar = TotMatrix % NoVar
     TotMatrix % Solver => Solver
-
+    
     SaveMatrix => Solver % Matrix
     SolverMatrix => A
     Solver % Matrix => A
@@ -2813,7 +2836,8 @@ CONTAINS
       ELSE IF( BlockNodal ) THEN
         CALL BlockPickMatrixNodal( Solver, VarDofs )        
       ELSE IF( VarDofs > 1 ) THEN
-        CALL BlockPickMatrix( Solver, VarDofs )
+        CALL BlockPickMatrix( Solver, NoVar ) !VarDofs )
+        VarDofs = NoVar
       ELSE
         CALL Info('BlockSolver','Using the original matrix as the (1,1) block!',Level=10)
         TotMatrix % SubMatrix(1,1) % Mat => SolverMatrix        

@@ -52,7 +52,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(Element, n, nd, ntot, dim, &
       DivCurlForm, GradPVersion, StokesFlow, dt, LinearAssembly, &
-      nb, Newton, Transient, InitHandles)
+      nb, Newton, Transient, InitHandles, SchurSolver )
 !------------------------------------------------------------------------------
     USE LinearForms
     IMPLICIT NONE
@@ -62,6 +62,7 @@ CONTAINS
     LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion, StokesFlow
     REAL(KIND=dp), INTENT(IN) :: dt   
     LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient, InitHandles
+    TYPE(Solver_t), POINTER :: SchurSolver
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -166,13 +167,11 @@ CONTAINS
       VeloPresVec = 0._dp
     ELSE
       CALL GetLocalSolution( NodalSol )
-      IF (nb > 0 .AND. Transient .AND. .NOT. StokesFlow ) & 
+      IF (nb > 0 .AND. Transient ) & 
           CALL GetLocalSolution(PrevNodalSol, tStep=-1)
     END IF
 
     VelocityMass = 0.0d0
-    !PressureMass = 0.0d0
-
 
     ! Vectorized basis functions
     stat = ElementInfoVec(Element, nodes, ngp, IP % U, IP % V, &
@@ -443,6 +442,19 @@ CONTAINS
     END IF
 
     CALL DefaultUpdateEquationsR( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE.)
+
+
+    IF( ASSOCIATED( SchurSolver ) ) THEN
+      ! Preconditioner for pressure block when using block preconditioning               
+      weight_a(1:ngp) = -1.0_dp / muvec(1:ngp)
+      PressureMass = 0.0_dp
+      FORCE = 0.0_dp
+      CALL LinearForms_UdotU(ngp, nd, elemdim, BasisVec, DetJVec, PressureMass, weight_a)      
+      CALL DefaultUpdateEquationsR( PressureMass, FORCE, UElement=Element, Usolver = SchurSolver, VecAssembly = .TRUE.)
+    END IF
+
+
+
 !------------------------------------------------------------------------------
 
   CONTAINS
@@ -1067,6 +1079,14 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   IF ( .NOT. ListGetLogical(Params, 'Bubbles In Global System', Found) ) THEN
     CALL ListAddNewInteger(Params, 'Nonlinear System Min Iterations', 2)
   END IF
+
+  ! Create solver related to variable "iterpres" when using block preconditioning
+  ! There keyword ensure that the matrix is truly used in the library version of the
+  ! block solver.
+  IF( ListGetLogical( Params,'Block Preconditioner',Found ) ) THEN
+    CALL ListAddNewString( Params,'Block Matrix Schur Variable','schur')
+  END IF
+    
 !------------------------------------------------------------------------------ 
 END SUBROUTINE IncompressibleNSSolver_Init
 !------------------------------------------------------------------------------
@@ -1076,6 +1096,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   USE IncompressibleLocalForms
+  USE MainUtils
+
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -1096,9 +1119,11 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
  
   REAL(KIND=dp) :: Norm
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow
+  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec
   LOGICAL :: GradPVersion, DivCurlForm, InitHandles=.TRUE., InitBCHandles=.TRUE.
 
+  TYPE(Solver_t), POINTER, SAVE :: SchurSolver => NULL()
+  
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
 
   SAVE AllocationsDone, stimestep
@@ -1156,6 +1181,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   StokesFlow = GetLogical(Params, 'Stokes Flow', Found )
   GradPVersion = GetLogical(Params, 'GradP Discretization', Found)
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
+  BlockPrec = GetLogical(Params,'Block Preconditioner',Found )
 
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
   IF (.NOT.Found) Maxiter = 1
@@ -1163,6 +1189,16 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
   IF (DivCurlForm) CALL Info(Caller, 'The div-curl form is used for the viscous terms')
   IF (GradPVersion) CALL Info(Caller, 'The pressure gradient is not integrated by parts')
+  IF (BlockPrec) CALL Info(Caller,'Creating pressure block for block preconditioner')
+
+  IF(BlockPrec ) THEN
+    ! Create solver that only acts as a container for the shcur complement
+    ! matrix used in the block preconditioning solver of the library.
+    IF( .NOT. ASSOCIATED( SchurSolver ) ) THEN
+      SchurSolver => CreateChildSolver( Solver,'schur', 1 ) 
+    END IF
+  END IF
+  
   
   
   DO iter=1,maxiter
@@ -1190,13 +1226,13 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          StokesFlow, dt, LinearAssembly, nb, Newton, Transient,  InitHandles )
+          StokesFlow, dt, LinearAssembly, nb, Newton, Transient,  InitHandles, SchurSolver )
     END DO
     InitHandles = .FALSE.
     
     !$OMP PARALLEL SHARED(Active, dim, StokesFlow, &
     !$OMP                 DivCurlForm, GradPVersion, &
-    !$OMP                 dt, LinearAssembly, Newton, Transient) &
+    !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver ) &
     !$OMP PRIVATE(Element, Element_id, n, nd, nb)  DEFAULT(None)
     !$OMP DO    
     DO Element_id=2,Active
@@ -1208,7 +1244,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE. )
+          StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE., SchurSolver )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
