@@ -204,7 +204,8 @@ MODULE NavierStokes
      REAL(KIND=dp),POINTER :: tmpPtr(:)
      REAL(KIND=dp),POINTER :: gradPDiscPtrP(:), gradPDiscPtrQ(:)
      REAL(KIND=dp) :: gradPDiscConst, CmodelConst
-     INTEGER :: P2P1stop
+     REAL(KIND=dp) ::SWxSU(n*4,n*4)
+     INTEGER :: P2P1stop, ii, jj, kk, ll
      ! end of transposed varible 
 
      
@@ -826,7 +827,7 @@ MODULE NavierStokes
           gradPDiscConst = -s
         END IF
       END IF ! P2P1
-      
+
         !DIR$ Unroll(2)
         DO q=1,P2P1stop
           !$omp simd
@@ -1045,13 +1046,26 @@ MODULE NavierStokes
     
             
     IF ( Stabilize ) THEN 
-      DO q=1,NBasis
-        !$omp simd 
-        DO p=1,NBasis
-          !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
-          !A = A &
-          !  + s*Tau*MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
-          StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis ) = StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis ) + s*Tau*MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
+      SWxSU = 0.0
+          !SWxSU( p:NBasis*c: NBasis, q:NBasis*c: NBasis ) = MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
+      DO i=1,c
+        DO j=1,c
+          DO k=1,dim
+            DO q=1,NBasis 
+              !$omp simd 
+              DO p=1,NBasis
+                SWxSU(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = SWxSU(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
+                  + (SW(p,i,k) * SU(q,k,j))
+              END DO
+            END DO 
+          END DO 
+          DO q=1,NBasis
+            !$omp simd 
+            DO p=1,NBasis
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
+                + s*Tau*SWxSU(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q))
+            END DO
+          END DO
         END DO ! p nbasis simd
       END DO ! q nbasis 
       DO i=1,dim
