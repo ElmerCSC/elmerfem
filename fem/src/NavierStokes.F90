@@ -203,7 +203,8 @@ MODULE NavierStokes
      REAL(KIND=dp) :: tmp, ComprConvConst
      REAL(KIND=dp),POINTER :: tmpPtr(:)
      REAL(KIND=dp),POINTER :: gradPDiscPtrP(:), gradPDiscPtrQ(:)
-     REAL(KIND=dp) :: gradPDiscConst
+     REAL(KIND=dp) :: gradPDiscConst, CmodelConst
+     INTEGER :: P2P1stop
      ! end of transposed varible 
 
      
@@ -799,8 +800,10 @@ MODULE NavierStokes
       END DO ! i dim
     END IF ! convect
 
-    IF (P2P1) THEN ! this could be done with pointers 
-      DO i=1,dim
+
+    DO i=1,dim
+      IF (P2P1) THEN ! this could be done with pointers 
+        P2P1stop = LinearBasis
         IF ( gradPDiscretization  ) THEN
           gradPDiscPtrP => Basis(:)
           gradPDiscPtrQ => PdBasisdx(:,i)
@@ -810,18 +813,9 @@ MODULE NavierStokes
           gradPDiscPtrQ => PBasis(:)
           gradPDiscConst = -s
         END IF
-        !DIR$ Unroll(2)
-        DO q=1,LinearBasis ! this can further be simplified to setting the stop point
-          !$omp simd
-            DO p=1,NBasis
-              !A(i,c) = A(i,c)
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-                + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
-            END DO ! p nbasis simd
-        END DO ! q LinearBasis
-      END DO ! i dim
-    ELSE
-      DO i=1,dim
+      ELSE
+        P2P1stop = NBasis
+
         IF ( gradPDiscretization  ) THEN
           gradPDiscPtrP => Basis(:)
           gradPDiscPtrQ => dBasisdx(:,i)
@@ -831,8 +825,10 @@ MODULE NavierStokes
           gradPDiscPtrQ => Basis(:)
           gradPDiscConst = -s
         END IF
+      END IF ! P2P1
+      
         !DIR$ Unroll(2)
-        DO q=1,NBasis
+        DO q=1,P2P1stop
           !$omp simd
           DO p=1,NBasis
             !A(i,c) = A(i,c)
@@ -840,8 +836,8 @@ MODULE NavierStokes
               + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
           END DO ! p nbasis simd
         END DO ! q NBasis
-      END DO ! i dim
-    END IF ! P2P1
+    END DO ! i dim
+
 !
     IF ( Compressible .OR. Convect ) THEN
       ComprConvConst = rho
@@ -945,28 +941,25 @@ MODULE NavierStokes
       END DO
     END DO ! i dim
 
-    IF ( Cmodel==PerfectGas1 ) THEN ! could be cleaned up to a constant 
-      !DIR$ Unroll(2)
-      DO q=1,NBasis
-        !$omp simd
-        DO p=1,NBasis
-          !M(c,c) = M(c,c) &
-          MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-            + s * ( rho / Pressure ) * Basis(q) * BasePVec(p)
-        END DO ! p nbasis simd
-      END DO
-    ELSE IF ( Cmodel==UserDefined2) THEN
-      DO q=1,NBasis
-        !$omp simd
-        DO p=1,NBasis
-          !M(c,c) = M(c,c) &
-          MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-            + s * drhodp * Basis(q) * BasePVec(p)
-        END DO ! p nbasis simd
-      END DO
-    END IF ! Cmodel==PerfectGas1
+    IF ( Cmodel==PerfectGas1 .OR. Cmodel==UserDefined2) THEN 
+      IF ( Cmodel==PerfectGas1 ) THEN 
+        CmodelConst = ( rho / Pressure )
+      ELSE IF ( Cmodel==UserDefined2) THEN
+        CmodelConst = drhodp
+      END IF ! Cmodel==PerfectGas1
 
-    IF (PseudoCompressible) THEN ! this one to a constant as well
+      DO q=1,NBasis
+        !$omp simd
+        DO p=1,NBasis
+          !M(c,c) = M(c,c) &
+          MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
+            + s * CmodelConst * Basis(q) * BasePVec(p)
+        END DO ! p nbasis simd
+      END DO
+
+    END IF
+    
+    IF (PseudoCompressible) THEN 
       DO q=1,NBasis
           !$omp simd
           DO p=1,NBasis
