@@ -847,14 +847,14 @@ MODULE NavierStokes
     END IF
 
     DO i=1,dim
-        IF ( gradPDiscretization  ) THEN
-          gradPDiscPtrQ => Basis(:)
-          gradPDiscPtrP => dBasisdx(:,i)
-          gradPDiscConst = -s * rho
-        ELSE
-          gradPDiscPtrQ => dBasisdx(:,i)
-          gradPDiscPtrP => BasePVec(:)
-          gradPDiscConst = s * ComprConvConst
+      IF ( gradPDiscretization  ) THEN
+        gradPDiscPtrQ => Basis(:)
+        gradPDiscPtrP => dBasisdx(:,i)
+        gradPDiscConst = -s * rho
+      ELSE
+        gradPDiscPtrQ => dBasisdx(:,i)
+        gradPDiscPtrP => BasePVec(:)
+        gradPDiscConst = s * ComprConvConst
         END IF
       !DIR$ Unroll(2)
       DO q=1,NBasis
@@ -1047,11 +1047,11 @@ MODULE NavierStokes
             
     IF ( Stabilize ) THEN 
       
-      DO i=1,c
+      DO q=1,NBasis 
         DO j=1,c
-          DO q=1,NBasis 
+          DO i=1,c
             SWxSU = 0.0
-            DO k=1,dim
+            DO k=1,dim 
               !$omp simd 
               DO p=1,NBasis
                 SWxSU(p) = SWxSU(p) + (SW(p, i, k) * SU(q, k, j))
@@ -1061,14 +1061,9 @@ MODULE NavierStokes
             DO p=1,NBasis
               StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) &
                 + s*Tau* SWxSU(p)
-            END DO
-          END DO
-        END DO ! p nbasis simd
-      END DO ! q nbasis 
-      
-      DO i=1,dim
-        DO j=1,c
-          DO q=1,NBasis
+            END DO ! p nbasis simd
+          END DO ! i c
+          DO i=1,dim
             !$omp simd
             DO p=1,NBasis
               !M => MassMatrixTrabsp ( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
@@ -1078,18 +1073,18 @@ MODULE NavierStokes
             END DO ! p nbasis simd
           END DO ! q nbasis 
         END DO ! j c
+
         DO j=1,dim
-          DO q=1,NBasis
-            !$omp simd
-            DO p=1,NBasis
-              !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
-              !A(j,i) = A(j,i) &
-              StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
-                + s * Delta * dBasisdx(q,i) * dBasisdx(p,j)
-            END DO ! p nbasis simd
-          END DO ! q nbasis 
-        END DO ! j dims
-      END DO ! i dims
+          !$omp simd
+          DO p=1,NBasis
+            !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
+            !A(j,i) = A(j,i) &
+            StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+              + s * Delta * dBasisdx(q,i) * dBasisdx(p,j)
+          END DO ! p nbasis simd
+        END DO ! j c
+      END DO ! q nbasis 
+
     ELSE IF ( Vms ) THEN
       DO i=1,dim
         DO p=1,NBasis
