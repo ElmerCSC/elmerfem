@@ -1073,17 +1073,18 @@ MODULE NavierStokes
             END DO ! p nbasis simd
           END DO ! q nbasis 
         END DO ! j c
-
-        DO j=1,dim
-          !$omp simd
-          DO p=1,NBasis
-            !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
-            !A(j,i) = A(j,i) &
-            StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
-              + s * Delta * dBasisdx(q,i) * dBasisdx(p,j)
-          END DO ! p nbasis simd
-        END DO ! j c
-      END DO ! q nbasis 
+        DO i=1,dim
+          DO j=1,dim
+            !$omp simd
+            DO p=1,NBasis
+              !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
+              !A(j,i) = A(j,i) &
+              StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) &
+                + s * Delta * dBasisdx(q,i) * dBasisdx(p,j)
+            END DO ! p nbasis simd
+        END DO ! j dims
+      END DO ! i dims
+    END DO ! q nbasis 
 
     ELSE IF ( Vms ) THEN
       DO i=1,dim
