@@ -210,37 +210,36 @@ CONTAINS
 
     IF ( Newton ) THEN
 
+      DO i = 1,dim
+        DO j = 1,dim
+          GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),nodalsol(i,1:ntot))
+        END DO
+      END DO
+
       IF( .NOT. StokesFlow ) THEN
         DO i = 1,dim
-          DO j = 1,dim
-            GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),nodalsol(i,1:ntot))
-          END DO
-          LoadAtIpVec(1:ngp, i) = LoadAtIpVec(1:ngp, i) + rhovec(1:ngp)* &
-
-                         SUM(gradvec(1:ngp,i,1:dim)*velopresvec(1:ngp,1:dim),2)
+          LoadAtIpVec(1:ngp, i) = LoadAtIpVec(1:ngp, i) + rhovec(1:ngp) * &
+               SUM(gradvec(1:ngp,i,1:dim)*velopresvec(1:ngp,1:dim),2)
         END DO
       END IF
 
       IF (ANY(muDerVec0(1:ngp)/=0)) THEN
         DO i = 1,dim
           DO j = 1,dim
-            StrainRateVec(1:ngp,i,j) = ( MATMUL( dBasisdxVec(1:ngp,1:ntot,i), nodalsol(j,1:ntot) ) + &
-                   MATMUL( dBasisdxVec(1:ngp,1:ntot,j), nodalsol(i,1:ntot) ) ) / 2
+            StrainRateVec(1:ngp,i,j) = ( GradVec(1:ngp,i,j) + GradVec(1:ngp,j,i) ) / 2
           END DO
         END DO
 
         muDerVec0(1:ngp) = muderVec0(1:ngp)*detJVec(1:ngp)*8
         DO i=1,dim
           DO q = 1,ntot
-            DO k=1,ngp
-              g(k,q,i) = SUM(StrainRateVec(k,i,:)*dBasisdxvec(k,q,:))
-            END DO
+            g(1:ngp,q,i) = SUM(StrainRateVec(1:ngp,i,:)*dBasisdxvec(1:ngp,q,:),2)
           END DO
         END DO
 
         DO i=1,dim
           DO j=1,dim
-            CALL LinearForms_udotv( ngp,ntot,dim,g(:,:,j),g(:,:,i),mudervec0,jacord(:,:,j,i))
+            CALL LinearForms_udotv(ngp,ntot,dim,g(:,:,j),g(:,:,i),mudervec0,jacord(:,:,j,i))
           END DO
         END DO
       END IF
