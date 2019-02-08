@@ -80,10 +80,11 @@ CONTAINS
         PressureMass(:,:), ForcePart(:), &
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
         VeloVec(:,:), PresVec(:), GradVec(:,:,:)
-    REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:), muDerVec(:), StrainRate(:,:)
+    REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
 
     REAL(kind=dp) :: stifford(ntot,ntot,dim+1,dim+1), muder, jacord(ntot,ntot,dim+1,dim+1), &
-                       JAC(ntot*(dim+1),ntot*(dim+1) )
+                       JAC(ntot*(dim+1),ntot*(dim+1) ), jsum
 
     INTEGER :: t, i, j, k, ii, p, q, ngp, allocstat
     INTEGER, SAVE :: elemdim
@@ -153,8 +154,7 @@ CONTAINS
           ForcePart(ntot))
     END IF
 
-    ALLOCATE(muDerVec(ngp), StrainRate(dim,dim))
-    muDerVec = 0._dp
+    ALLOCATE(muDerVec0(ngp), muDerVec(ngp), StrainRateVec(ngp,dim,dim))
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Dens_h,'Material','Density')      
@@ -196,7 +196,7 @@ CONTAINS
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
-              muDerVec, Newton,  InitHandles )        
+              muDerVec0, Newton,  InitHandles )        
 
     ! Rho 
     rhovec(1:ngp) = rho
@@ -216,34 +216,34 @@ CONTAINS
             GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),nodalsol(i,1:ntot))
           END DO
           LoadAtIpVec(1:ngp, i) = LoadAtIpVec(1:ngp, i) + rhovec(1:ngp)* &
+
                          SUM(gradvec(1:ngp,i,1:dim)*velopresvec(1:ngp,1:dim),2)
         END DO
       END IF
 
       IF (ANY(muDerVec/=0)) THEN
-        IF ( StokesFlow ) THEN
-          DO i = 1,dim
-            DO j = 1,dim
-              GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),nodalsol(i,1:ntot))
-            END DO
+        DO i = 1,dim
+          DO j = 1,dim
+            StrainRateVec(1:ngp,i,j) = ( MATMUL( dBasisdxVec(1:ngp,1:ntot,i), nodalsol(j,1:ntot) ) + &
+                   MATMUL( dBasisdxVec(1:ngp,1:ntot,j), nodalsol(i,1:ntot) ) ) / 2
           END DO
-        END IF
+        END DO
 
-        DO k=1,ngp
-          StrainRate = (GradVec(k,:,:) + TRANSPOSE(GradVec(k,:,:)))/2
-          DO p = 1,ntot
+        muDerVec0 = muderVec0*detJVec*8 
+        DO i=1,dim
           DO q = 1,ntot
-          DO i=1,dim
-            muder = muDerVec(k)*4*SUM(StrainRate(i,:)*dBasisdxvec(k,q,:))
-            DO j=1,dim
-              JacOrd(p,q,j,i)=JacOrd(p,q,j,i)+detjVec(k)*2*muder*SUM(StrainRate(j,:)*dBasisdxvec(k,p,:))
+            DO k=1,ngp
+              g(k,q,i) = SUM(StrainRateVec(k,i,:)*dBasisdxvec(k,q,:))
             END DO
           END DO
-          END DO
+        END DO
+
+        DO i=1,dim
+          DO j=1,dim
+            CALL LinearForms_udotv( ngp,ntot,dim,g(:,:,j),g(:,:,i),mudervec0,jacord(:,:,j,i))
           END DO
         END DO
       END IF
-
     END IF
 
     IF (DivCurlForm) THEN
@@ -358,11 +358,13 @@ CONTAINS
       DO i=1,dim
         DO j=1,dim
           CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-              dBasisdxVec(1:ngp,1:ntot,j), dBasisdxVec(1:ngp,1:ntot,j), weight_a, stifford(1:ntot,:ntot,i,i))
+              dBasisdxVec(1:ngp,1:ntot,j), dBasisdxVec(1:ngp,1:ntot,j), weight_a, stifford(1:ntot,1:ntot,i,i))
+
           CALL LinearForms_UdotV(ngp, ntot, elemdim, &
               dBasisdxVec(1:ngp,1:ntot,j), dBasisdxVec(1:ngp,1:ntot,i), weight_a, stifford(1:ntot,1:ntot,i,j))
+
 !         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-!             dBasisdxVec(1:ngp,1:ntot,i), dBasisdxVec(1:ngp,1:ntot,j), weight_c, stifford(1:ntot,:ntot,i,j))
+!             dBasisdxVec(1:ngp,1:ntot,i), dBasisdxVec(1:ngp,1:ntot,j), weight_c, stifford(1:ntot,1:ntot,i,j))
         END DO
       END DO
     END IF
