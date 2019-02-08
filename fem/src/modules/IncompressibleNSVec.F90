@@ -154,7 +154,7 @@ CONTAINS
           ForcePart(ntot))
     END IF
 
-    ALLOCATE(muDerVec0(ngp), muDerVec(ngp), StrainRateVec(ngp,dim,dim))
+    ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Dens_h,'Material','Density')      
@@ -221,7 +221,7 @@ CONTAINS
         END DO
       END IF
 
-      IF (ANY(muDerVec/=0)) THEN
+      IF (ANY(muDerVec0/=0)) THEN
         DO i = 1,dim
           DO j = 1,dim
             StrainRateVec(1:ngp,i,j) = ( MATMUL( dBasisdxVec(1:ngp,1:ntot,i), nodalsol(j,1:ntot) ) + &
