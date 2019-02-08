@@ -200,8 +200,7 @@ MODULE NavierStokes
      REAL(KIND=dp),target :: BasePVec(2*n) ! todo, change this and the assorted behavior to a pointer
      REAL(KIND=dp),POINTER :: BasePPtr(:)
      REAL(KIND=dp),POINTER :: dBasisdxPtrP(:),dBasisdxPtrQ(:)
-     REAL(KIND=dp) :: tmp, ComprConvConst
-     REAL(KIND=dp),POINTER :: tmpPtr(:)
+     REAL(KIND=dp) :: DivLapConst, ComprConvConst
      REAL(KIND=dp),POINTER :: gradPDiscPtrP(:), gradPDiscPtrQ(:)
      REAL(KIND=dp) :: gradPDiscConst, CmodelConst
      REAL(KIND=dp) ::SWxSU(n)
@@ -730,20 +729,15 @@ MODULE NavierStokes
     IF ( Isotropic ) THEN
       DO i=1,dim
         DO j = 1,dim
-        IF ( divDiscretization ) THEN
-          tmpPtr => dBasisdx(:,i)
-        ELSE IF (.NOT.LaplaceDiscretization) THEN
-          tmpPtr => dBasisdx(:,j)
-        END IF
+          IF ( divDiscretization ) THEN
+            dBasisdxPtrQ => dBasisdx(:,j)
+            dBasisdxPtrP => dBasisdx(:,i)
+          ELSE IF (.NOT.LaplaceDiscretization) THEN
+            dBasisdxPtrQ => dBasisdx(:,i)
+            dBasisdxPtrP => dBasisdx(:,j)
+          END IF
           !DIR$ Unroll(2)
-          DO q=1,NBasis
-            IF ( divDiscretization ) THEN
-              tmp = s * mu * dBasisdx(q,j)
-            ELSE IF (.NOT.LaplaceDiscretization) THEN
-              tmp = s * mu * dBasisdx(q,i)
-            END IF
-  
-            
+          DO q=1,NBasis           
             !$omp simd
             DO p=1,NBasis
               !A(i,i) = A(i,i)
@@ -756,7 +750,7 @@ MODULE NavierStokes
               DO p=1,NBasis
                 !A(i,j) = A(i,j)
                 StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) & 
-                  + tmp * tmpPtr(p)
+                  + s * mu * dBasisdxPtrQ(q) * dBasisdxPtrP(p)
               END DO ! p nbasis simd
             END IF
 
