@@ -1074,7 +1074,8 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------  
-  CALL ListAddNewString(GetSolverParams(),'Element','p:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  CALL ListAddNewString(GetSolverParams(),'Element', &
+    'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver_Init0
 !------------------------------------------------------------------------------
@@ -1179,7 +1180,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec
   LOGICAL :: GradPVersion, DivCurlForm, InitHandles=.TRUE., InitBCHandles=.TRUE.
 
-  TYPE(Solver_t), POINTER, SAVE :: SchurSolver => NULL()
+  TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
   
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
 
