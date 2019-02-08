@@ -221,7 +221,7 @@ CONTAINS
         END DO
       END IF
 
-      IF (ANY(muDerVec0/=0)) THEN
+      IF (ANY(muDerVec0(1:ngp)/=0)) THEN
         DO i = 1,dim
           DO j = 1,dim
             StrainRateVec(1:ngp,i,j) = ( MATMUL( dBasisdxVec(1:ngp,1:ntot,i), nodalsol(j,1:ntot) ) + &
@@ -229,7 +229,7 @@ CONTAINS
           END DO
         END DO
 
-        muDerVec0 = muderVec0*detJVec*8 
+        muDerVec0(1:ngp) = muderVec0(1:ngp)*detJVec(1:ngp)*8
         DO i=1,dim
           DO q = 1,ntot
             DO k=1,ngp
