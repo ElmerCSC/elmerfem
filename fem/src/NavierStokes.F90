@@ -200,10 +200,10 @@ MODULE NavierStokes
      REAL(KIND=dp),target :: BasePVec(2*n) ! todo, change this and the assorted behavior to a pointer
      REAL(KIND=dp),POINTER :: BasePPtr(:)
      REAL(KIND=dp),POINTER :: dBasisdxPtrP(:),dBasisdxPtrQ(:)
-     REAL(KIND=dp) :: DivLapConst, ComprConvConst
+     REAL(KIND=dp) :: DivLapConst, ComprConvConst, ViscNewtonLinConst
      REAL(KIND=dp),POINTER :: gradPDiscPtrP(:), gradPDiscPtrQ(:)
      REAL(KIND=dp) :: gradPDiscConst, CmodelConst
-     REAL(KIND=dp) ::SWxSU(n)
+     REAL(KIND=dp) ::SWxSU(n), StrainS(2*n, 4)
      INTEGER :: P2P1stop, ii, jj, kk, ll
      ! end of transposed varible 
 
@@ -693,11 +693,13 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
 !
     IF (ViscNewtonLin) THEN
-      DO i=1,dim
+      DO j=1,dim
         !$omp simd
-        DO q=1,NBasis ! move up one
-          muderq(q) = muder0*4*SUM(Strain(i,:)*dBasisdx(q,:))
-        END DO
+        DO p=1,NBasis
+          StrainS(p, j) = SUM(Strain(j,:)*dBasisdx(p,:))
+        END DO  
+      END DO  
+      DO i=1,dim
         DO j=1,dim
           !DIR$ Unroll(2)
           DO q=1,NBasis
@@ -705,7 +707,7 @@ MODULE NavierStokes
             DO p=1,NBasis
               !Jac(j,i)=Jac(j,i)
               JacMTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = JacMTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q))  &
-                +s*2*muderq(q)*SUM(Strain(j,:)*dBasisdx(p,:))
+                + s * 2 * muder0 * 4 * StrainS(q, i) * StrainS(p, j)
             END DO
           END DO
         END DO
@@ -800,37 +802,37 @@ MODULE NavierStokes
       IF (P2P1) THEN ! this could be done with pointers 
         P2P1stop = LinearBasis
         IF ( gradPDiscretization  ) THEN
-          gradPDiscPtrP => Basis(:)
           gradPDiscPtrQ => PdBasisdx(:,i)
+          gradPDiscPtrP => Basis(:)
           gradPDiscConst = s
         ELSE
-          gradPDiscPtrP => dBasisdx(:,i)
           gradPDiscPtrQ => PBasis(:)
+          gradPDiscPtrP => dBasisdx(:,i)
           gradPDiscConst = -s
         END IF
       ELSE
         P2P1stop = NBasis
 
         IF ( gradPDiscretization  ) THEN
-          gradPDiscPtrP => Basis(:)
           gradPDiscPtrQ => dBasisdx(:,i)
+          gradPDiscPtrP => Basis(:)
           gradPDiscConst = s
         ELSE
-          gradPDiscPtrP => dBasisdx(:,i)
           gradPDiscPtrQ => Basis(:)
+          gradPDiscPtrP => dBasisdx(:,i)
           gradPDiscConst = -s
         END IF
       END IF ! P2P1
 
-        !DIR$ Unroll(2)
-        DO q=1,P2P1stop
-          !$omp simd
-          DO p=1,NBasis
-            !A(i,c) = A(i,c)
-            StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
-              + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
-          END DO ! p nbasis simd
-        END DO ! q NBasis
+       !DIR$ Unroll(2)
+       DO q=1,P2P1stop
+         !$omp simd
+         DO p=1,NBasis
+           !A(i,c) = A(i,c)
+           StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) &
+             + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
+         END DO ! p nbasis simd
+       END DO ! q NBasis
     END DO ! i dim
 
 !
