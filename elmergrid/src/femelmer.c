@@ -5118,8 +5118,8 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   int *sharednodes,*ownnodes,reorder,*order=NULL,*invorder=NULL;
   int *bcnodesaved[MAXBCS],maxbcnodesaved,*bcelemsaved,*bcnode;
   int *bcnodedummy,*elementhalo,*neededtimes2;
-  int partstart,partfin,filesetsize,nofile,nofile2,nobcnodes;
-  int halobulkelems,halobcs,savethis,fail=0,cdstat;
+  int partstart,partfin,filesetsize,nofile,nofile2,nobcnodes,hasbcnodes;
+  int halobulkelems,halobcs,savethis,fail=0,cdstat,immersed,halocopies;
 
   FILE *out,*outfiles[MAXPARTITIONS+1];
   int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart,sumindirect;
@@ -5193,19 +5193,42 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
       nodesd1 = sideelemtype%100;
       for(l=0;l<nodesd1;l++) 
-	bcnode[sideind[l]] = TRUE;
+	bcnode[sideind[l]] = 1;
     }
   }
   nobcnodes = 0;
   for(i=1;i<=noknots;i++) {
-    if( bcnode[i] ) {
-      nobcnodes += 1;
-      bcnode[i] = nobcnodes;
-    }
+    if( bcnode[i] == 1) nobcnodes += 1;
   }
   if(info) printf("Number of boundary nodes at the boundary: %d\n",nobcnodes);
+  
+  
+  for(i=1;i<=noknots;i++)
+    bcnodedummy[i] = 0;
+  for(i=1;i<=noelements;i++) {
+    k = data->material[i];
+    elemtype = data->elementtypes[i];
+    nodesd2 = elemtype%100;
 
+    for(j=0;j < nodesd2;j++) {
+      ind = data->topology[i][j];
+      if( bcnode[ind] == 1) continue;
+      if( bcnodedummy[ind] ) {
+	if( bcnodedummy[ind] != k ) bcnode[ind] = 2;
+      } else {
+	bcnodedummy[ind] = k;
+      }
+    }
+  }
+  nobcnodes = 0;
+  for(i=1;i<=noknots;i++) {
+    if( bcnode[i] == 2) nobcnodes += 1;
+  }
+  if(info) printf("Number of additional interface nodes: %d\n",nobcnodes);
 
+  if(info && halomode) printf("Type of halo in partitioning: %d\n",halomode);
+
+  
   sprintf(directoryname,"%s",prefix);
   sprintf(subdirectoryname,"%s.%d","partitioning",partitions);
 
@@ -5301,28 +5324,174 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       fprintf(outfiles[nofile],"\n");    
     }
 
+    
+    if(!halomode) continue;
+    halocopies = 0;
+
+    
     /* This creates a simple halo when the elements have been partitioned such
        that they are in number of "subparts" intervals of z coordinate. */
-    if( halomode == 3 && part <= subparts ) {
-      int leftright;
-      for(leftright=-1;leftright <=1;leftright += 2) {
-	part2 = part+leftright;
-	nofile2 = nofile+leftright;
+    if( halomode == 3 ) {
+      if( part <= subparts ) {
+	int leftright;
+	for(leftright=-1;leftright <=1;leftright += 2) {
+	  part2 = part+leftright;	  
+	  if( part2 < 1 || part2 > subparts ) continue;		
+	  elementhalo[part2] = i;
+	  halocopies += 1;
+	}
+      }
+    }
 
-	if( part2 < 1 || part2 > subparts ) continue;	
-	halobulkelems += 1;
+    /* For the following halos we study the shared and boundary nodes. */
+    otherpart = 0;
+    hasbcnodes = FALSE;
+    for(j=0;j < nodesd2;j++) {
+      ind = data->topology[i][j];
+      if(neededtimes[ind] > 1) otherpart++;
+      if(bcnode[ind]) hasbcnodes = TRUE;
+    }
+    
+    if(otherpart) {        
+      /* Classical halo needed by discontinuous Galerkin.
+	 Elements that are attached by joined face element are added to halo */
+      if( halomode == 1 || halomode == 4 ) {
+	/* If the saving of halo is requested check it for elements which have at least 
+	   two nodes in shared partitions. First make this quick test. */
+      
+	elemsides = elemtype / 100;
+	if(elemsides == 8) {
+	  immersed = (otherpart >= 4);
+	  elemsides = 6;
+	}
+	else if(elemsides == 7) {
+	  immersed = (otherpart >= 3);
+	  elemsides = 5;
+	}
+	else if(elemsides == 6) {
+	  immersed = (otherpart >= 3);
+	  elemsides = 5;
+	}
+	else if(elemsides == 5) {
+	  immersed = (otherpart >= 3);
+	  elemsides = 4;
+	}      
+	else {
+	  immersed = (otherpart >= 2);
+	}
+	
+	if( immersed ) {
+      
+	  /* In order for the halo to be present the element should have a boundary 
+	     fully immersed in the other partition. This test takes more time. */
+	
+	  for(side=0;side<elemsides;side++) {
 
+	    GetElementSide(i,side,1,data,&sideind[0],&sideelemtype);
+
+	    /* Because every node must be on the boundary use the 1st index as the 
+	       first test */
+	    for(l=1;l<=neededtimes[sideind[0]];l++) {
+	      part2 = data->partitiontable[l][sideind[0]];
+	    
+	      /* We did already save this in partition part */
+	      if(part2 == part) continue;
+	      if(elementhalo[part2] == i) continue;	    
+	      if(part2 < partstart || part2 > partfin) continue;
+
+	      /* Now check that also the other nodes on the face are at the interface */
+	      sidehits = 1;	 	  
+	      for(k=1;k<sideelemtype%100;k++) {
+		for(l2=1;l2<=neededtimes[sideind[k]];l2++) {
+		  part3 = data->partitiontable[l2][sideind[k]];
+		  if(part2 == part3) sidehits++;
+		}
+	      }
+	      if( sidehits <  sideelemtype % 100 ) continue;
+	      
+	      if(0) printf("Adding halo for partition %d and element %d\n",part2,i);
+	      
+	      /* Remember that this element is saved for this partition */
+	      elementhalo[part2] = i;
+	      halocopies += 1;
+	    }
+	  }
+	}            
+      }
+      
+      /* This creates a halo that includes all elements attached to boundary or interface nodes */
+      if( halomode == 2 || halomode == 4) {
+	if( hasbcnodes ) {	  
+	  for(j=0;j < nodesd2;j++) {
+	    ind = data->topology[i][j];
+	    
+	    /* If the node is not on the boundary then cycle */
+	    if( !bcnode[ind] ) continue;
+	    
+	    /* Check to which partitions this element is associated with */
+	    for(k=1;k<=neededtimes[ind];k++) {
+	      part2 = data->partitiontable[k][ind]; 
+	      
+	      /* This element is already saved to its primary partition */
+	      if( part == part2 ) continue;
+	      if( elementhalo[part] == i) continue;
+	      if( part2 < partstart || part2 > partfin ) continue;  	  
+	      
+	      if(0) printf("Adding bc halo for partition %d and element %d\n",part2,i);
+	      
+	      /* Remember that this element is saved for this partition */
+	      elementhalo[part2] = i;
+	      halocopies += 1;
+	    }
+	  }
+	}
+      }
+      
+      /* This greedy routine makes the halo even if there is just one node in the shared boundary. 
+	 Currently not active. */
+      if( halomode == 5 ) {	
+	for(j=0;j < nodesd2;j++) {
+	  ind = data->topology[i][j];
+	  if(neededtimes[ind] == 1) continue;
+	  
+	  for(l=1;l<=neededtimes[ind];l++) {
+	    part2 = data->partitiontable[l][ind];
+	    
+	    /* We did already save this in partition part */
+	    if(part2 == part) continue;	    
+	    if( elementhalo[part2] == i) continue;
+	    if(part2 < partstart || part2 > partfin) continue;
+	    
+	    /* Remember that this element is saved for this partition */
+	    elementhalo[part2] = i;
+	    halocopies += 1;
+	  }
+	}
+      }
+    }
+
+      
+    if( halocopies ) {
+      halobulkelems += halocopies;
+      
+      for(part2=partstart; part2 <= partfin; part2++) {
+	if( part == part2) continue;
+	if( elementhalo[part2] != i ) continue;
+
+	nofile2 = part2 - partstart + 1;
 	fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);
+	      
 	for(j=0;j < nodesd2;j++) {
 	  ind = data->topology[i][j];
 	  if(reorder) ind = order[ind];
 	  fprintf(outfiles[nofile2],"%d ",ind);
 	}
-	fprintf(outfiles[nofile2],"\n");    
-
+	fprintf(outfiles[nofile2],"\n");    	    
+	
 	bulktypes[part2][elemtype] += 1;
 	elementsinpart[part2] += 1;	
 	
+	/* Add the halo on-the-fly to the partitiontable of the nodes */	    
 	for(j=0;j < nodesd2;j++) {
 	  ind = data->topology[i][j];
 	  hit = FALSE;
@@ -5346,242 +5515,13 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	  }
 	}
       }
-    }
-	
-    /* If there is no halo we are done */
-    if(halomode != 1 && halomode != 2 && halomode != 4) continue;
-
-    /* The face can be shared only if there are enough shared nodes among different partitions */
-    otherpart = 0;
-    for(j=0;j < nodesd2;j++) {
-      ind = data->topology[i][j];
-      if(neededtimes[ind] > 1) otherpart++;
-    }
-    if(!otherpart) continue;
+    } /* halocopies */
     
-    
-    if( halomode == 1 ) {
-      /* If the saving of halo is requested check it for elements which have at least 
-	 two nodes in shared partitions. First make this quick test. */
-      elemsides = elemtype / 100;
-      if(elemsides == 8) {
-	if(otherpart < 4) continue;
-	elemsides = 6;
-      }
-      else if(elemsides == 7) {
-	if(otherpart < 3) continue;
-	elemsides = 5;
-      }
-      else if(elemsides == 6) {
-	if(otherpart < 3) continue;
-	elemsides = 5;
-      }
-      else if(elemsides == 5) {
-	if(otherpart < 3) continue;
-	elemsides = 4;
-      }      
-      else 
-	if(otherpart < 2) continue;
-
-      
-      /* In order for the halo to be present the element should have a boundary 
-	 fully immersed in the other partition. This test takes more time. */
-	
-      for(side=0;side<elemsides;side++) {
-
-	GetElementSide(i,side,1,data,&sideind[0],&sideelemtype);
-
-	/* Because every node must be on the boundary use the 1st index as the 
-	   first test */
-	for(l=1;l<=neededtimes[sideind[0]];l++) {
-	  part2 = data->partitiontable[l][sideind[0]];
-
-	  /* We did already save this in partition part */
-	  if(part2 == part) continue;
-	    
-	  sidehits = 1;
-	  for(k=1;k<sideelemtype%100;k++) {
-	    for(l2=1;l2<=neededtimes[sideind[k]];l2++) {
-	      part3 = data->partitiontable[l2][sideind[k]];
-	      if(part2 == part3) sidehits++;
-	    }
-	  }
-
-	  if(part2 < partstart || part2 > partfin) continue;
-	  nofile2 = part2 - partstart + 1;
-
-	  if(sidehits == sideelemtype % 100 && elementhalo[part2] != i) {
-	    if(0) printf("Adding halo for partition %d and element %d\n",part2,i);
-	    halobulkelems += 1;
-
-	    /* Remember that this element is saved for this partition */
-	    elementhalo[part2] = i;
-	      	   
-	    fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);
-	      
-	    for(j=0;j < nodesd2;j++) {
-	      ind = data->topology[i][j];
-	      if(reorder) ind = order[ind];
-	      fprintf(outfiles[nofile2],"%d ",ind);
-	    }
-	    fprintf(outfiles[nofile2],"\n");    	    
-	    bulktypes[part2][elemtype] += 1;
-	    elementsinpart[part2] += 1;	
-
-	    /* Add the halo on-the-fly to the partitiontable of the nodes */	    
-	    for(j=0;j < nodesd2;j++) {
-	      ind = data->topology[i][j];
-	      hit = FALSE;
-	      for(k=1;k<=maxneededtimes;k++) {
-		part3 = data->partitiontable[k][ind];
-		if(part3 == part2) hit = TRUE;
-		if(!part3) break;
-	      }
-	      if(!hit) {
-		if(k <= maxneededtimes) {
-		  data->partitiontable[k][ind] = part2;
-		} 
-		else {
-		  maxneededtimes++;
-		  if(0) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
-		  data->partitiontable[maxneededtimes] = Ivector(1,noknots);
-		  for(m=1;m<=noknots;m++)
-		    data->partitiontable[maxneededtimes][m] = 0;
-		  data->partitiontable[maxneededtimes][ind] = part2;
-		}
-	      }
-	    }
-
-	  }
-	}
-      }  
-    }
-    else if( halomode == 4 ) {
-      /* This greedy routine makes the halo even if there is just one node in the shared boundary. */
-     
-      for(j=0;j < nodesd2;j++) {
-	ind = data->topology[i][j];
-	if(neededtimes[ind] == 1) continue;
-
-	for(l=1;l<=neededtimes[ind];l++) {
-	  part2 = data->partitiontable[l][ind];
-
-	  /* We did already save this in partition part */
-	  if(part2 == part) continue;	    
-	  if(part2 < partstart || part2 > partfin) continue;
-
-	  nofile2 = part2 - partstart + 1;
-
-	  /* This element has already been saved for this partition */
-	  if( elementhalo[part2] == i) continue;
-	
-	  /* Remember that this element is saved for this partition */
-	  elementhalo[part2] = i;
-		
-	  if(0) printf("Adding halo for partition %d and element %d\n",part2,i);
-	  halobulkelems += 1;
-	      	   
-	  fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);	      
-	  for(j=0;j < nodesd2;j++) {
-	    ind = data->topology[i][j];
-	    if(reorder) ind = order[ind];
-	    fprintf(outfiles[nofile2],"%d ",ind);
-	  }
-	  fprintf(outfiles[nofile2],"\n");    	    
-	  bulktypes[part2][elemtype] += 1;
-	  elementsinpart[part2] += 1;	
-	
-	  /* Add the halo on-the-fly to the partitiontable of the nodes */	    
-	  for(j=0;j < nodesd2;j++) {
-	    ind = data->topology[i][j];
-	    hit = FALSE;
-	    for(k=1;k<=maxneededtimes;k++) {
-	      part3 = data->partitiontable[k][ind];
-	      if(!part3) break;
-	      if(part3 == part2) hit = TRUE;
-	      if(hit) break;
-	    }
-	    if(!hit) {
-	      if( k > maxneededtimes ) {
-		maxneededtimes++;
-		if(0) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
-		data->partitiontable[k] = Ivector(1,noknots);
-		for(m=1;m<=noknots;m++)
-		  data->partitiontable[k][m] = 0;
-	      }
-	      data->partitiontable[k][ind] = part2;
-	    }
-	  }	
-	}
-      }
-    }
-    else if( halomode == 2) {
-
-      for(j=0;j < nodesd2;j++) {
-	ind = data->topology[i][j];
-
-	/* If the node is not on the boundary then cycle */
-	if( !bcnode[ind] ) continue;
-
-	/* Check to which partitions this element is associated with */
-	for(k=1;k<=neededtimes[ind];k++) {
-	  part2 = data->partitiontable[k][ind]; 
-
-	  /* This element is already saved to its primary partition */
-	  if( part == part2 ) continue;
-	  /* if( part2 < partstart || part2 > partfin ) continue;  */
-	  
-	  if( elementhalo[part2] != i ) {
-	    halobulkelems += 1;
-	    
-	    if(0) printf("saving element %d in partition %d / %d\n",i,part,part2);
-	    /* Save this element as a halo element for part2 as well */
-	    elementhalo[part2] = i;
-
-	    nofile2 = part2 - partstart + 1; 
-	    bulktypes[part2][elemtype] += 1;
-	    elementsinpart[part2] += 1; 
-	
-	    fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);	
-	    for(l=0;l < nodesd2;l++) {
-	      l2 = data->topology[i][l];
-
-	      /* Add the nodes to the list of nodes to be saved if it is not already there */
-	      hit = FALSE;
-	      for(l3=1;l3<=maxneededtimes;l3++) {
-		part3 = data->partitiontable[l3][l2];
-		if( part2 == part3 ) {
-		  hit = TRUE;
-		  break;
-		}
-		if(!part3) break;
-	      }
-	      if(!hit) {
-		if( l3 > maxneededtimes ) {
-		  maxneededtimes++;
-		  if(0) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
-		  data->partitiontable[maxneededtimes] = Ivector(1,noknots);
-		  for(m=1;m<=noknots;m++)
-		    data->partitiontable[maxneededtimes][m] = 0;
-		}
-		if(0) printf("Adding halo node = %d %d %d %d %d\n",
-			     l3,maxneededtimes,part2,part3,data->partitiontable[l3][l2]);
-		data->partitiontable[l3][l2] = part2;
-	      }
-
-	      if(reorder) l2 = order[l2];
-	      fprintf(outfiles[nofile2],"%d ",l2);
-	    }
-	    fprintf(outfiles[nofile2],"\n");    
-	  }
-	}
-      }
-    } /* if( halomode == ... ) */
-  }  
+  } /* noelements */
 
   if( halomode ) {
     if(info) printf("There are %d bulk elements in the halo.\n",halobulkelems);
-  }	  
+  }
 	  
 
   for(part=partstart;part<=partfin;part++) {
