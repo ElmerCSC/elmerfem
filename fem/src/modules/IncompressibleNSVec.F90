@@ -154,7 +154,9 @@ CONTAINS
           ForcePart(ntot))
     END IF
 
-    ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
+    IF (Newton) THEN
+      ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
+    END IF
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Dens_h,'Material','Density')      
