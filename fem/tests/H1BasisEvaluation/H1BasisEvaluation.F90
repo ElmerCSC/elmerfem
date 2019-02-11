@@ -527,7 +527,7 @@ CONTAINS
       Solver % Def_Dofs(tag,1,6) = P
     END IF
 
-    GP = GaussPoints(Element)
+    GP = GaussPointsQuad((P+1)**2)
     
     nndof = Element % Type % NumberOfNodes
     nedof = getEdgeDOFs( Element, P )

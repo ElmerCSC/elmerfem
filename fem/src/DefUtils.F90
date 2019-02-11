@@ -5585,11 +5585,7 @@ CONTAINS
         u = -1.0d0 + 2.0d0*IP % u(p) + IP % v(p)
         v = sqrt(3.0d0)*IP % v(p)
         !
-        ! The following weight functions aren't actually the Kronecker
-        ! delta functions stated in the documentation which should
-        ! be multiplied with 3 (= the number of Gauss points) divided by the 
-        ! face area to obtain these weights. 
-        ! TO DO: Revise the documentation
+        ! The weight functions for the evaluation of DOFs:
         f(1) = sqrt(3.0d0) * 0.5d0 * (1.0d0 - 2.0d0*u + 1.0d0/3.0d0 - 2.0d0/sqrt(3.0d0)*v)
         f(2) = sqrt(3.0d0) * 0.5d0 * (1.0d0 + 2.0d0*u + 1.0d0/3.0d0 - 2.0d0/sqrt(3.0d0)*v)
         f(3) = sqrt(3.0d0) * (-1.0d0/3.0d0 + 2.0d0/sqrt(3.0d0)*v)
