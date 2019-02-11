@@ -62,7 +62,7 @@
    TYPE(Mesh_t), POINTER :: Mesh, HydroMesh
    TYPE(Solver_t), POINTER :: WorkSolver
    TYPE(Variable_t), POINTER :: ElevVar, ToeCalveVar, WorkVar, WorkVar2,&
-                                BMRVar
+                                BMRVar, WorkVar3
    TYPE(ValueList_t), POINTER :: Params, Material
    TYPE(Element_t), POINTER :: Element, Edge
    TYPE(Nodes_t) :: ElementNodes, WorkNodes
@@ -415,6 +415,7 @@
      ALLOCATE(PlInQ(SIZE(HydroGLNodes)), SheetQ(3))
      WorkVar => VariableGet(HydroMesh % Variables, 'channel flux', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
      WorkVar2 => VariableGet(HydroMesh % Variables, 'sheet discharge', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+     WorkVar3 => VariableGet(HydroMesh % Variables, 'sheet thickness', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
      j=1
      DO i=1, SIZE(HydroGLNodes)
        SheetQ = 0.0_dp
@@ -432,9 +433,9 @@
          END IF
        END DO
        DO j=1,2
-         SheetQ(j) = SheetQ(j) + WorkVar2 % Values(2*(WorkVar2 % Perm(HydroGLNodes(i))-1)+j)
+         SheetQ(j) = SheetQ(j) + (WorkVar2 % Values(2*(WorkVar2 % Perm(HydroGLNodes(i))-1)+j))
        END DO
-       SheetQ(3) = SQRT((SheetQ(1)**2)+(SheetQ(2)**2))
+       SheetQ(3) = SQRT((SheetQ(1)**2)+(SheetQ(2)**2))*WorkVar3 % Values(WorkVar3 % Perm(HydroGLNodes(i)))
        PlInQ(i) = ChannelQ + SheetQ(3)
      END DO
 
@@ -1471,7 +1472,8 @@
       ToeCalveVar % Values = ToeMeltRate
     END IF
     
-    NULLIFY(WorkVar, WorkSolver, HydroMesh, Edge, ZOutput, MROutput)
+    NULLIFY(WorkVar, WorkSolver, HydroMesh, Edge, ZOutput, MROutput, WorkVar2,&
+           WorkVar3)
     DEALLOCATE(BMeltRate, PMeltRate, HydroGLNodes)
     IF(Calving) DEALLOCATE(PlActive)
     IF(Calving .AND. PlCount > 0) THEN
