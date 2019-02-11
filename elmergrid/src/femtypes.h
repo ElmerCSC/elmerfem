@@ -21,6 +21,7 @@
 #define MAXBCS 1000         /* maximum number of BCs in naming */
 #define MAXBODIES 1000      /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
+#define MAXHALOMODES 10
 
 #define CONPLAIN 0
 #define CONDISCONT 1
@@ -364,7 +365,7 @@ struct ElmergridType {
     connectboundsset[MAXBOUNDARIES],
     connectboundsnosets,
     partorder,
-    partitionhalo, /* create halo for the partitioning */
+    parthalo[MAXHALOMODES], /* create halo for the partitioning */
     partitionindirect, /* should one create indirect connections between nodes */
     partbw, /* minimize bandwidth for partitions */
     parthypre, /* renumber for hypre */
