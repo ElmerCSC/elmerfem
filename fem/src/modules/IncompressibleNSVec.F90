@@ -942,7 +942,7 @@ END BLOCK
       ! Slip coefficient
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
-      
+
       ! Given force on a boundary componentwise
       !----------------------------------------
       SurfaceTraction = ListGetElementReal3D( SurfaceTraction_h, Basis, Element, HaveForce, GaussPoint = t )      
@@ -1007,17 +1007,17 @@ END BLOCK
               END DO
             END DO
           END DO
-        END IF
-      ELSE       
-        DO p=1,nd
-          DO q=1,nd
-            DO i=1,dim
-              STIFF( (p-1)*c+i,(q-1)*c+i ) = &
-                  STIFF( (p-1)*c+i,(q-1)*c+i ) + &
-                  s * SlipCoeff(i) * Basis(q) * Basis(p)
+        ELSE       
+          DO p=1,nd
+            DO q=1,nd
+              DO i=1,dim
+                STIFF( (p-1)*c+i,(q-1)*c+i ) = &
+                    STIFF( (p-1)*c+i,(q-1)*c+i ) + &
+                    s * 10e6 * SlipCoeff(i) * Basis(q) * Basis(p)
+              END DO
             END DO
           END DO
-        END DO
+        END IF
       END IF
 
       ! Assemble given forces to r.h.s.
