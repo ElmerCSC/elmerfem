@@ -1013,7 +1013,7 @@ END BLOCK
               DO i=1,dim
                 STIFF( (p-1)*c+i,(q-1)*c+i ) = &
                     STIFF( (p-1)*c+i,(q-1)*c+i ) + &
-                    s * 10e6 * SlipCoeff(i) * Basis(q) * Basis(p)
+                    s * SlipCoeff(i) * Basis(q) * Basis(p)
               END DO
             END DO
           END DO
