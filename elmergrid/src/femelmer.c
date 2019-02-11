@@ -5805,9 +5805,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	  if(saveelem) halobcs += 1;
 	}
 	  
-	if(!saveelem && (parthalo[2] || parthalo[4])) {	  
-	  /* These halo strategies save elements even with just one hit on the original partition 
-	     since the aggressive halos ensure that all necessary bulk elements are saved. */ 
+	/* These halo strategies save elements even with just one hit on the original partition 
+	   since the aggressive halos ensure that all necessary bulk elements are saved. */ 
+	if(!saveelem && (parthalo[2] || parthalo[4]) ) {
 	  bcneeded = 0;
 	  for(l=0;l<nodesd1;l++) {
 	    ind = sideind[l];
@@ -5815,7 +5815,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	      if(part == data->partitiontable[k][ind]) bcneeded++;	   
 	  }
 	  saveelem = bcneeded;
-	  if(saveelem) halobcs +=1 ;	  
+	  if(saveelem) halobcs +=1;
 	}
 
 	/* If we have nothing to save then just continue to next boundary element. */
