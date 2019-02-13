@@ -100,6 +100,7 @@ CONTAINS
 
     SAVE Nodes
 !------------------------------------------------------------------------------
+
     CALL GetElementNodesVec( Nodes )
     STIFF = 0._dp
     MASS  = 0._dp
@@ -825,12 +826,19 @@ END BLOCK
         DO i = 1,DOFs
           q = q + 1
           Cdofs(q) = DOFs*(p-1) + i
-          IF (ComputeBubblePart) THEN
-            xl(q) = x(i,p)
-            xlprev(cdofs(q)) = xprev(i,p) ! cdofs identity mapping?
-          END IF
         END DO
       END DO
+
+      IF (ComputeBubblePart) THEN
+        q = 0
+        DO p = 1,n
+          DO i = 1,DOFs
+            q = q + 1
+            xl(q) = x(i,p)
+            xlprev(cdofs(q)) = xprev(i,p) ! cdofs identity mapping?
+          END DO
+        END DO
+      END IF
 
       ! Then the DOFs of the bubble part:
       q = 0
