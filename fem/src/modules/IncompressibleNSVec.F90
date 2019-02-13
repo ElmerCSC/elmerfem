@@ -820,7 +820,6 @@ END BLOCK
       ! Vectorize the input array x and
       ! create xlprev that contains the full previous solution including 
       ! the bubble DOFs. First insert the DOFs that are retained:
-      xlprev = 0
       q = 0
       DO p = 1,n
         DO i = 1,DOFs
@@ -829,7 +828,18 @@ END BLOCK
         END DO
       END DO
 
+      ! Then the DOFs of the bubble part:
+      q = 0
+      DO p = 1,nb
+        DO i = 1,dim
+          q = q + 1
+          Bdofs(q) = DOFs*(p-1) + i + n*DOFs
+        END DO
+      END DO
+
+      ! The following only works for the BDF(1) method: 
       IF (ComputeBubblePart) THEN
+        xlprev = 0
         q = 0
         DO p = 1,n
           DO i = 1,DOFs
@@ -838,21 +848,15 @@ END BLOCK
             xlprev(cdofs(q)) = xprev(i,p) ! cdofs identity mapping?
           END DO
         END DO
-      END IF
 
-      ! Then the DOFs of the bubble part:
-      q = 0
-      DO p = 1,nb
-        DO i = 1,dim
-          q = q + 1
-          Bdofs(q) = DOFs*(p-1) + i + n*DOFs
-          IF (ComputeBubblePart) xlprev(bdofs(q)) = &
-              bxprev((Element_id-1)*dim*nb+q)
+        q = 0
+        DO p = 1,nb
+          DO i = 1,dim
+            q = q + 1
+            xlprev(bdofs(q)) = bxprev((Element_id-1)*dim*nb+q)
+          END DO
         END DO
-      END DO
 
-      ! The following only works for the BDF(1) method: 
-      IF (ComputeBubblePart) THEN
         K = K + M / dt
         F = F + MATMUL(M,xlprev) / dt
       END IF
