@@ -2076,7 +2076,7 @@ CONTAINS
         IF( A % NumberOfRows == 0 ) THEN
           A => TotMatrix % Submatrix(i,i) % Mat
         ELSE
-          CALL Info('BlockMatrixPrec','Using specialized preconditioning block')
+          CALL Info('BlockMatrixPrec','Using specialized preconditioning block',Level=9)
         END IF      
         ASolver => Solver
       END IF
@@ -2206,7 +2206,7 @@ CONTAINS
 
           WRITE( str,'(A,I0,I0)') 'Block Gauss-Seidel Passive ',k,i
           IF( ListGetLogical( Params, str, Found ) ) CYCLE
-        
+
           CALL Info('BlockMatrixPrec','Updating r.h.s for component '//TRIM(I2S(k)),Level=15)
 
           !IF( ASSOCIATED( TotMatrix % Subvector(i) % Solver ) ) THEN

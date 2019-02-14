@@ -508,11 +508,12 @@ END BLOCK
 
     IF( ASSOCIATED( SchurSolver ) ) THEN
       ! Preconditioner for pressure block when using block preconditioning               
-      weight_a(1:ngp) = -1.0_dp / muvec(1:ngp)
+      weight_a(1:ngp) = -1.0_dp / muvec(1:ngp) * detJVec(1:ngp)
       PressureMass = 0.0_dp
       FORCE = 0.0_dp
-      CALL LinearForms_UdotU(ngp, nd, elemdim, BasisVec, DetJVec, PressureMass, weight_a)      
-      CALL DefaultUpdateEquations( PressureMass, FORCE, UElement=Element, Usolver = SchurSolver, VecAssembly = .TRUE.)
+      CALL LinearForms_UdotU(ngp, nd, elemdim, BasisVec, weight_a, PressureMass)
+      CALL DefaultUpdateEquations( PressureMass, FORCE, UElement=Element, &
+                 Usolver = SchurSolver, VecAssembly = .TRUE.)
     END IF
 
 
@@ -1281,6 +1282,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
     Active = GetNOFActive()
     CALL DefaultInitialize()
+    IF (ASSOCIATED(SchurSolver)) THEN
+      CALL DefaultInitialize(USolver=SchurSolver)
+    END IF
 
     Newton = GetNewtonActive( Solver )
 
