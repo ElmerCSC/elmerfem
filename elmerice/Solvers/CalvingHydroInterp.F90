@@ -82,8 +82,7 @@
      LOGICAL, POINTER :: BasalLogical(:)
      INTEGER, POINTER :: InterpDim(:), IceMeshBasePerm(:)=>NULL(),&
                          NPP(:)=>NULL(), RefNode(:)=>NULL()
-     INTEGER, ALLOCATABLE, TARGET :: NewPerm1(:), NewPerm2(:), NewPerm3(:),&
-                                     NewPerm4(:), NewPerm5(:), DefaultPerm(:),&
+     INTEGER, ALLOCATABLE, TARGET :: NewPerm1(:), DefaultPerm(:),&
                                      ZeroNodes(:)
      INTEGER :: i, j, k, HPSolver, Reader1, Reader2, Reader3,&
                 Reader4, Reader5, Reader, NumVar, DummyInt, ierr,&
@@ -95,9 +94,10 @@
      REAL(KIND=dp), ALLOCATABLE :: NSValues(:)
      REAL(KIND=dp), ALLOCATABLE, TARGET :: NewValues1(:), NewValues2(:),&
                                            NewValues3(:), NewValues4(:),&
-                                           NewValues5(:), ParITRS(:), ParHTRS(:)
+                                           NewValues5(:), ParITRS(:),&
+                                           ParHTRS(:), NewValues6(:)
      SAVE HydroMesh, FirstTime, HPSolver,&
-          NewPerm1, NewPerm2, NewPerm3, NewPerm4, NewPerm5,&
+          NewPerm1,&
           NewValues1,NewValues2, NewValues3, NewValues4, NewValues5, DefaultPerm
 !------------------------------------------------------------------------------
     Params => GetSolverParams()
@@ -231,19 +231,15 @@
     IF(ASSOCIATED(InterpVar4)) InterpVar4 => InterpVar4Copy
     IF(ASSOCIATED(InterpVar5)) InterpVar5 => InterpVar5Copy
     IF(FirstTime) THEN
-      FirstTime = .FALSE.
+      FirstTime=.FALSE.
       WorkVar => VariableGet(HydroSolver % Mesh % Variables,&
                  'hydraulic potential', ThisOnly=.TRUE.)
       ALLOCATE(NewPerm1(SIZE(WorkVar % Perm)),NewValues1(SIZE(WorkVar % Values)))
-      ALLOCATE(NewPerm2(SIZE(WorkVar % Perm)),NewValues2(SIZE(WorkVar % Values)))
-      ALLOCATE(NewPerm3(SIZE(WorkVar % Perm)),NewValues3(SIZE(WorkVar % Values)))
-      ALLOCATE(NewPerm4(SIZE(WorkVar % Perm)),NewValues4(SIZE(WorkVar % Values)))
-      ALLOCATE(NewPerm5(SIZE(WorkVar % Perm)),NewValues5(SIZE(WorkVar % Values)))
+      ALLOCATE(NewValues2(SIZE(WorkVar % Values)))
+      ALLOCATE(NewValues3(SIZE(WorkVar % Values)))
+      ALLOCATE(NewValues4(SIZE(WorkVar % Values)))
+      ALLOCATE(NewValues5(SIZE(WorkVar % Values)))
       NewPerm1 = WorkVar % Perm
-      NewPerm2 = NewPerm1
-      NewPerm3 = NewPerm2
-      NewPerm4 = NewPerm3
-      NewPerm5 = NewPerm4
       NPP => NewPerm1
       NewValues1 = 0.0_dp
       NewValues2 = 0.0_dp
@@ -254,25 +250,21 @@
       CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
            Mesh, HydroSolver, InterpVar1 % Name, 1,&
            NVP, NPP)
-      NPP => NewPerm2
       NVP => NewValues2
       CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
            Mesh, HydroSolver, InterpVar2 % Name, 1,&
            NVP, NPP)
-      NPP => NewPerm3
       NVP => NewValues3
       CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
            Mesh, HydroSolver, InterpVar3 % Name, 1,&
            NVP, NPP)
       IF(ASSOCIATED(InterpVar4)) THEN
-        NPP => NewPerm4
         NVP => NewValues4
         CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
              Mesh, HydroSolver, InterpVar4 % Name, 1,&
              NVP, NPP)
       END IF
       IF(ASSOCIATED(InterpVar5)) THEN
-        NPP => NewPerm5
         NVP => NewValues5
         CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
              Mesh, HydroSolver, InterpVar5 % Name, 1,&
@@ -280,10 +272,33 @@
       END IF
     END IF
 
+    !Have to divide temp residual by ice boundary weights before interpolating.
+    !I initially did this by creating a new variable and interpolating that, but
+    !it did some very odd things, such as randomly crashing the plume solver, so
+    !this just alters the values of temp residual in place, interpolates them, 
+    !and then restores the old values.
+    WorkVar => VariableGet(Model % Mesh % Variables, 'temp residual', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    ALLOCATE(NewValues6(SIZE(WorkVar % Values)))
+    NewValues6 = 0.0_dp
+    NewValues6 = WorkVar % Values
+    CALL CalculateNodalWeights(Solver, .TRUE., WorkVar % Perm, 'IceWeights')
+    WorkVar2 => VariableGet(Model % Mesh % Variables, 'IceWeights', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    DO i=1, SIZE(WorkVar % Perm)
+      IF(WorkVar2 % Values(WorkVar2 % Perm(i)) .NE. 0.0) THEN
+        WorkVar % Values(WorkVar % Perm(i)) = WorkVar % Values(WorkVar % Perm(i))/WorkVar2 % Values(WorkVar2 % Perm(i))
+      ELSE
+        WorkVar % Values(WorkVar % Perm(i)) = 0.0
+      END IF
+    END DO
+
     CALL ParallelActive(.TRUE.)
     CALL InterpolateVarToVarReduced(Model % Mesh, HydroSolver % Mesh, 'temp residual',&
          InterpDim, OldNodeMask=BasalLogical, Variables=InterpVar1)
     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
+    !To restore temp residual values on ice mesh
+    WorkVar % Values = NewValues6
+    DEALLOCATE(NewValues6)
 
     !Interpolating GroundedMask will inevitably create values that aren't -1, 0
     !or 1, so need to round them to the nearest integer
@@ -424,55 +439,37 @@
     !Temp residual needs to be conserved. Here, just integrate across all
     !elements and compare totals, then scale values on hydromesh uniformly to
     !bring in line with ice mesh
-    WorkVar => VariableGet(Model % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    WorkVar => VariableGet(Model % Mesh % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
 
     IceTempResSum = 0.0_dp
-    Hit = .FALSE.
-    BasalBC = 0
-    DO i=1, Model % NumberOfBCs
-      BC => Model % BCs(i) % Values
-      Hit = ListGetLogical(BC, "Bottom Surface Mask", Found)
-      IF(Hit) THEN
-        BasalBC = i
-        EXIT
-      END IF
-    END DO
-
-    DO i=1, Model % Mesh % NumberOfBoundaryElements
-      Element => GetBoundaryElement(i)
-      ElementBC = GetBCId(Element)
-      IF(ElementBC .NE. BasalBC) CYCLE
-      n = GetElementNOFNodes(Element)
-      ElementTempResSum = 0.0_dp
-      ElementTempResSum = IntegTempRes(Model, Element, n, WorkVar, Model % Mesh)
-      IceTempResSum = IceTempResSum + ElementTempResSum
-    END DO
+    IceTempResSum = SUM(WorkVar % Values)
 
     WorkVar => VariableGet(HydroSolver % Mesh % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-    HydroTempResSum = 0.0_dp
-    DO i=1, HydroSolver % Mesh % NumberOfBulkElements
-      Element => HydroSolver % Mesh % Elements(i)
-      n = GetElementNOFNodes(Element)
-      ElementTempResSum = 0.0_dp
-      ElementTempResSum = IntegTempRes(Model, Element, n, WorkVar, HydroSolver % Mesh)
-      HydroTempResSum = HydroTempResSum + ElementTempResSum
+    !WorkVar => VariableGet(HydroSolver % Mesh % Variables, "WeightedTR", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    CALL CalculateNodalWeights(HydroSolver, .FALSE., WorkVar % Perm, 'HydroWeights')
+    WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    DO i=1, SIZE(WorkVar % Perm)
+      WorkVar % Values(WorkVar % Perm(i)) =&
+      WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
     END DO
+    HydroTempResSum = 0.0_dp
+    HydroTempResSum = SUM(WorkVar % Values)
 
-    ALLOCATE(ParITRS(2*ParEnv % PEs), ParHTRS(2*ParEnv % PEs))
+    ALLOCATE(ParITRS(ParEnv % PEs), ParHTRS(ParEnv % PEs))
     ParITRS = 0.0_dp
     ParHTRS = 0.0_dp
 
     IF(ParEnv % PEs > 1) THEN
       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-      CALL MPI_Gather(IceTempResSum, 1, MPI_LONG_DOUBLE, ParITRS, 1, MPI_LONG_DOUBLE, 0, ELMER_COMM_WORLD, ierr)
-      CALL MPI_Gather(HydroTempResSum, 1, MPI_LONG_DOUBLE, ParHTRS, 1, MPI_LONG_DOUBLE, 0, ELMER_COMM_WORLD, ierr)
+      CALL MPI_Gather(IceTempResSum, 1, MPI_DOUBLE_PRECISION, ParITRS, 1, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+      CALL MPI_Gather(HydroTempResSum, 1, MPI_DOUBLE_PRECISION, ParHTRS, 1, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
       IF(ParEnv % myPE == 0) THEN
         IF(ANINT(SUM(ParITRS)) .NE. ANINT(SUM(ParHTRS))) THEN
           ScaleFactor = SUM(ParITRS)/SUM(ParHTRS)
         END IF
       END IF
       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-      CALL MPI_Bcast(ScaleFactor, 1, MPI_LONG_DOUBLE, 0, ELMER_COMM_WORLD, ierr)
+      CALL MPI_Bcast(ScaleFactor, 1, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
       DO i=1, SIZE(WorkVar % Values)
         WorkVar % Values(i) = WorkVar % Values(i)*ScaleFactor
       END DO
@@ -502,61 +499,6 @@
       STR = adjustl(STR)
     END FUNCTION STR
 !-------------------------------------------------------------------------------
-    FUNCTION IntegTempRes(Model, Element, n, TempRes, Mesh) RESULT(TRIS)
-      TYPE(Model_t) :: Model
-      TYPE(Mesh_t) :: Mesh
-      TYPE(Element_t), POINTER :: Element
-      TYPE(Variable_t), POINTER :: TempRes
-      INTEGER :: n
-!-------------------------------------------------------------------------------
-      TYPE(Nodes_t) :: ElementNodes
-      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-      INTEGER :: i, j, N_Integ, NBasis, MEN
-      INTEGER, DIMENSION(:), POINTER :: NodeIndexes(:)
-      REAL(KIND=dp) :: dBasisdx(n,3), detJ, Basis(n), TempResIntegral(n)
-      REAL(KIND=dp) :: s, u, v, w, TempResSum, TRIS
-      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ, V_Integ, W_Integ, S_Integ
-      LOGICAL :: stat
-      !Integrates Temp Residual to ensure it's conserved between interpolations
-
-      MEN = Model % MaxElementNodes
-      ALLOCATE(ElementNodes % x( MEN ),&
-               ElementNodes % y( MEN ),&
-               ElementNodes % z( MEN ))
-
-      NodeIndexes => Element % NodeIndexes
-      ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-      ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-      ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-
-      IntegStuff = GaussPoints(Element)
-      U_Integ => IntegStuff % u
-      V_Integ => IntegStuff % v
-      W_Integ => IntegStuff % w
-      S_Integ => IntegStuff % s
-      N_Integ = IntegStuff % n
-
-      TempResIntegral = 0.0_dp
-
-      DO i=1,N_Integ
-        u = U_Integ(i)
-        v = V_Integ(i)
-        w = W_Integ(i)
-
-        stat = ElementInfo(Element, ElementNodes, u, v, w, detJ, Basis, dBasisdx)
-        s = detJ * S_Integ(i)
-
-        TempResSum = SUM(TempRes % Values(TempRes % Perm(NodeIndexes(1:n)))*Basis(1:n))
-        
-        DO j=1,n
-            TempResIntegral(j) = TempResIntegral(j) + s * TempResSum * Basis(j) 
-        END DO
-      END DO
-      TRIS = SUM(TempResIntegral(1:n))
-      NULLIFY(NodeIndexes, U_Integ, V_Integ, W_Integ, S_Integ)
-      DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z)
-      
-    END FUNCTION IntegTempRes
   END SUBROUTINE
 
 ! *****************************************************************************/
