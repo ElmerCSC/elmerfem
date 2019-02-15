@@ -2128,7 +2128,7 @@ CONTAINS
       CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
 
       ! We do probably not want to compute the change within each iteration
-      CALL ListAddNewLogical( Asolver % Values,'Skip Compute Nonlinear Change',.TRUE.)         
+      CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.TRUE.)         
         
       ! Revert back if the matrix was set not complex
       !IF( ListGetLogical( ASolver % Values,'Linear System Complex', Found ) ) A % COMPLEX = .TRUE.
@@ -2195,7 +2195,7 @@ CONTAINS
  
       !---------------------------------------------------------------------
       IF( BlockGS ) THEN        
-        CALL Info('BlockMatrixPrec','Updating block r.h.s',Level=5)
+        CALL Info('BlockMatrixPrec','Updating block r.h.s',Level=9)
       
         DO l=j+1,NoVar
           IF( GotOrder ) THEN
@@ -2290,6 +2290,7 @@ CONTAINS
     CALL ListPopNameSpace('block:') ! block:
 
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
+    CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.FALSE.)
 
       
     Solver => Solver_save
@@ -2963,12 +2964,18 @@ SUBROUTINE BlockSolveExt(A,x,b,Solver)
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: x(:),b(:)
 !------------------------------------------------------------------------------
+    LOGICAL :: Found, bm
+!------------------------------------------------------------------------------
 
     ! Eliminate recursion for block solvers. 
-    CALL ListAddLogical(Solver % Values,'Linear System Block Mode',.FALSE.)
-    CALL BlockSolveInt(A,x,b,Solver)
-    CALL ListAddLogical(Solver % Values,'Linear System Block Mode',.TRUE.)
+    bm = ListGetLogical(  Solver % Values, 'Linear System Block Mode', Found)
+    IF(Found) &
+      CALL ListAddLogical(Solver % Values,'Linear System Block Mode',.FALSE.)
 
+    CALL BlockSolveInt(A,x,b,Solver)
+
+    IF(Found) &
+      CALL ListAddLogical(Solver % Values,'Linear System Block Mode',bm )
 !------------------------------------------------------------------------------
 END SUBROUTINE BlockSolveExt
 !------------------------------------------------------------------------------
