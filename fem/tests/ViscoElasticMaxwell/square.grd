@@ -17,10 +17,6 @@ Boundary Definitions
   3        4        1        1       
   4        5        1        1       
 End
-Advanced Elements
-!mat n e f d b p
-  1  0 0 0 4 0 0
-End
 Numbering = Horizontal
 Element Degree = 1
 Element Innernodes = False
