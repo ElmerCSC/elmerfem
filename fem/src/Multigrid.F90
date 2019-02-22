@@ -1303,7 +1303,7 @@ CONTAINS
 
      NB = 0
 
-     IF ( ListGetLogical( Params, 'Discontinuous Galerkin', Found ) ) THEN
+     IF ( Solver % DG ) THEN
         DO i=1,Element % DGDOFs
            NB = NB + 1
            Indexes(NB) = Element % DGIndexes(i)

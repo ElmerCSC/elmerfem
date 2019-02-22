@@ -2265,6 +2265,7 @@ ELMER_SOLVER_HOME &
            Solver % Def_Dofs(:,:,4) = 0
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
+           Solver % DG = .TRUE.
            CYCLE
         ELSE
            ElementDef = "n:1"
@@ -2286,7 +2287,11 @@ ELMER_SOLVER_HOME &
           EXIT
         END IF
       END DO
-
+     
+      !Solver % GlobalBubbles = ListGetLogical(Solver % Values, &
+      !    'Bubbles in Global System', stat)
+      !IF(.NOT. stat) Solver % GlobalBubbles = .TRUE.
+      
       i = i + 1
     END DO
 

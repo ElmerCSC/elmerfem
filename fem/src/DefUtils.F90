@@ -1586,7 +1586,6 @@ CONTAINS
      END IF
 
      n = 0
-     !IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found )) THEN
      IF( Solver % DG ) THEN
        n = Element % DGDOFs
         IF ( n>0 ) RETURN
@@ -1671,9 +1670,8 @@ CONTAINS
 
      DGDisable=.FALSE.
      IF (PRESENT(NotDG)) DGDisable=NotDG
-
-     ! IF ( .NOT.DGDisable .AND. ListGetLogical( Solver % Values, 'Discontinuous Galerkin', Found ) ) THEN
-     IF ( .NOT.DGDisable .AND. Solver % DG ) THEN
+     
+     IF ( .NOT. DGDisable .AND. Solver % DG ) THEN
         DO i=1,Element % DGDOFs
            NB = NB + 1
            Indexes(NB) = Element % DGIndexes(i)
