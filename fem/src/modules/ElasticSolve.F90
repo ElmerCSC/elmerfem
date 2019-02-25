@@ -277,6 +277,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
   CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+  CHARACTER(LEN=80) :: UMATName
 !------------------------------------------------------------------------------
   SAVE LocalMassMatrix,LocalStiffMatrix,LocalDampMatrix,LoadVector,InertialLoad, Viscosity, &
        LocalForce,ElementNodes,ParentNodes,FlowNodes,Alpha,Beta, &
@@ -668,6 +669,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            CALL GetConstRealArray( Material, MaterialConstants, 'Material Constants', GotIt)
            IF ( SIZE(MaterialConstants,1) /= NPROPS) &
                 CALL Fatal('ElasticSolve','Check the size of Material Constants array')
+           IF (ExternalUMAT) &
+               UMATName = ListGetString(Material, 'Name', GotIt)
         ELSE
            IF (NeoHookeanMaterial) THEN
               ElasticModulus(1,1,1:n) = ListGetReal( Material, &
@@ -816,7 +819,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                    MaxIntegrationPoints, InitializeStateVars, Density, Damping, AxialSymmetry, &
                    PlaneStress, LargeDeflection, HenckyStrain, CurrentElement, n, nd, ntot, STDOFs, &
                    ElementNodes, LocalDisplacement, PrevLocalDisplacement, LocalTemperature, &
-                   t, Iter, ExternalUMAT)
+                   t, Iter, ExternalUMAT, UMATName)
 
               !CALL Fatal( 'ElasticSolve', 'This version does not offer an umat interface' )
 
@@ -1268,7 +1271,7 @@ CONTAINS
        InitializeStateVars, NodalDensity, NodalDamping, AxialSymmetry, PlaneStress, &
        LargeDeflection, HenckyStrain, Element, n, nd, ntot, dofs, Nodes, NodalDisplacement, &
        PrevNodalDisplacement, NodalTemperature, ElementIndex, IterationIndex, &
-       ExternalUMAT)
+       ExternalUMAT, UMATName)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MassMatrix(:,:), DampMatrix(:,:), StiffMatrix(:,:)
     REAL(KIND=dp) :: ExternalForceVector(:)
@@ -1289,6 +1292,7 @@ CONTAINS
     INTEGER :: ElementIndex
     INTEGER :: IterationIndex     ! The iteration index to resolve the nonlinearity
     LOGICAL :: ExternalUMAT
+    CHARACTER(len=80) :: UMATName
     !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
@@ -1420,14 +1424,18 @@ CONTAINS
        InProps(i) = MaterialConstants(i,1)  
     END DO
 
-    ! The material model name is used as a switch between some examples of implementation:
-    IF (HenckyStrain) THEN
-      cmname = 'hencky-stvenant-kirchhoff'//CHAR(0)
+    IF (ExternalUMAT) THEN
+      cmname = UMATName
     ELSE
-      IF (LargeDeflection) THEN
-        cmname = 'stvenant-kirchhoff'//CHAR(0)
+      ! The material model name is used as a switch between some examples of implementation:
+      IF (HenckyStrain) THEN
+        cmname = 'hencky-stvenant-kirchhoff'//CHAR(0)
       ELSE
-        cmname = 'linear isotropic'//CHAR(0)
+        IF (LargeDeflection) THEN
+          cmname = 'stvenant-kirchhoff'//CHAR(0)
+        ELSE
+          cmname = 'linear isotropic'//CHAR(0)
+        END IF
       END IF
     END IF
 
