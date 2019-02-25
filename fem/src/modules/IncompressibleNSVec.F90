@@ -565,7 +565,7 @@ END BLOCK
           IF ( ListCompareElementAnyString( ViscModel_h,'glen') ) THEN
             CALL ListInitElementKeyword( ViscGlenExp_h,'Material','Glen Exponent',DefRValue=3.0_dp)
             CALL ListInitElementKeyword( ViscGlenFactor_h,'Material','Glen Enhancement Factor',DefRValue=1.0_dp)           
-            CALL ListInitElementKeyword( ViscArrSet_h,'Material','Set Arrhenius Factor')
+            CALL ListInitElementKeyword( ViscArrSet_h,'Material','Set Arrhenius Factor',DefLValue=.FALSE.)
             CALL ListInitElementKeyword( ViscArr_h,'Material','Arrhenius Factor')            
             CALL ListInitElementKeyword( ViscTLimit_h,'Material','Limit Temperature',DefRValue=-10.0_dp)
             CALL ListInitElementKeyword( ViscRate1_h,'Material','Rate Factor 1',DefRValue=3.985d-13)
@@ -580,7 +580,6 @@ END BLOCK
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
               CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
             END IF
-                  
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
               CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
             END IF
