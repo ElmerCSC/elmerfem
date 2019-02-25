@@ -253,6 +253,18 @@ CONTAINS
       END IF
       NoVar = MAXVAL( BlockStruct )
       BlockMatrix % BlockStruct => BlockStruct
+
+      ALLOCATE( BlockMatrix % InvBlockStruct(NoVar) )
+      BlockMatrix % InvBlockStruct = 0
+      DO i=1,BlockDofs
+        j = BlockStruct(i)
+        IF( BlockMatrix % InvBlockStruct(j) == 0 ) THEN
+          BlockMatrix % InvBlockStruct(j) = i
+        ELSE
+          ! Block structure is not bijection for this component
+          BlockMatrix % InvBlockStruct(j) = -1
+        END IF
+      END DO        
     ELSE
       NoVar = BlockDofs
     END IF    
@@ -311,11 +323,15 @@ CONTAINS
       IF( SkipVar ) RETURN
     END IF
 
-    
+
+    ! We may have different size of block matrix than the number of actual components.
+    ! For example, when we have a projector of a scalar field our block size is (2,2)
+    ! but we can only crate the (1,1) from the initial matrix system. 
     IF( PRESENT( FieldDofs ) ) THEN
       CALL Info('BlockInitMatrix','Number of field components: '//TRIM(I2S(FieldDofs)))
-      IF( Novar /= FieldDofs ) CALL Info('BlockInitMatrix','Number of fields and blocks differ!')
-      !      NoVar = FieldDofs
+      IF( Novar /= FieldDofs ) CALL Info('BlockInitMatrix','Number of fields and blocks ('&
+          //TRIM(I2S(NoVar))//') differ!')
+      IF(.NOT. GotBlockStruct ) NoVar = FieldDofs
     END IF
 
     
@@ -1883,11 +1899,12 @@ CONTAINS
 !> block preconditioning we may revert to the original symmetric matrix but
 !> still use the optimal row equilibriation scaling for the block system. 
 !------------------------------------------------------------------------------
-  SUBROUTINE BlockMatrixScaling( reverse, blockrow, blockcol, bext )
+  SUBROUTINE BlockMatrixScaling( reverse, blockrow, blockcol, bext, SkipMatrixScale  )
 !------------------------------------------------------------------------------
     LOGICAL, OPTIONAL :: reverse
     INTEGER, OPTIONAL :: blockrow, blockcol
     REAL(KIND=dp), POINTER, OPTIONAL :: bext(:)
+    LOGICAL, OPTIONAL :: SkipMatrixScale
 
     INTEGER :: i,j,k,l,n,m,NoVar
     REAL(KIND=dp) :: nrm, tmp
@@ -1924,6 +1941,11 @@ CONTAINS
       IF( BackScale ) Diag = 1.0_dp / Diag 
             
       DO l=1,NoVar        
+
+        ! If we use unscaled special preconditioning matrix we don't need to scale it
+        IF( PRESENT( SkipMatrixScale ) ) THEN
+          IF( SkipMatrixScale ) CYCLE
+        END IF
         
         IF( PRESENT( blockcol ) ) THEN
           IF( blockcol /= l ) CYCLE
@@ -1956,9 +1978,13 @@ CONTAINS
       
       IF( BackScale ) Diag = 1.0_dp / Diag       
     END DO
-        
-    CALL Info('ForwardBlockMatrixScaling','Finished block matrix row equilibriation',Level=20)           
 
+    IF( BackScale ) THEN
+      CALL Info('BlockMatrixScaling','Finished block matrix reverse row equilibriation',Level=20)           
+    ELSE
+      CALL Info('BlockMatrixScaling','Finished block matrix row equilibriation',Level=20)           
+    END IF
+      
   END SUBROUTINE BlockMatrixScaling
 !------------------------------------------------------------------------------
 
@@ -1992,9 +2018,9 @@ CONTAINS
     REAL(KIND=dp), TARGET, INTENT(in) :: v(*)
     INTEGER :: ipar(*)
 !---------------------------------------------------------------------------------
-    REAL(KIND=dp), POINTER :: rtmp(:),vtmp(:),xtmp(:),b(:), x(:), a_rhs_save(:)
+    REAL(KIND=dp), POINTER :: rtmp(:),vtmp(:),xtmp(:),btmp(:),diagtmp(:),b(:),x(:), a_rhs_save(:)
     REAL(KIND=dp), POINTER CONTIG :: rhs_save(:)
-    INTEGER :: i,j,k,l,NoVar
+    INTEGER :: i,j,k,l,n,NoVar
     TYPE(Solver_t), POINTER :: Solver, Solver_save, ASolver
     INTEGER, POINTER :: Offset(:)
     TYPE(ValueList_t), POINTER :: Params
@@ -2002,7 +2028,8 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A, mat_save
     TYPE(Variable_t), POINTER :: Var, Var_save
 
-    LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, IsComplex, BlockScaling
+    LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
+        IsComplex, BlockScaling, DiagScaling, UsePrecMat
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
@@ -2036,6 +2063,16 @@ CONTAINS
     CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.) 
 
     BlockScaling = ListGetLogical( Params,'Block Scaling',Found )
+
+    DiagScaling = .FALSE.
+    IF( ASSOCIATED( Solver % Matrix ) ) THEN
+      DiagScaling = ASSOCIATED( Solver % Matrix % diagscaling ) 
+    END IF
+      
+    IF( DiagScaling .AND. BlockScaling ) THEN
+      CALL Warn('BlockMatrixPrec','It is not recommended to use two different scalings at same time')
+    END IF
+    
     
 #define SOLSYS
 #ifdef SOLSYS
@@ -2068,6 +2105,7 @@ CONTAINS
       !-------------------------------------------------------------------
       Var => TotMatrix % SubVector(i) % Var
 
+      UsePrecMat = .FALSE.
       IF( ASSOCIATED( TotMatrix % Subvector(i) % Solver ) ) THEN
         ASolver => TotMatrix % SubVector(i) % Solver
         A => ASolver % Matrix
@@ -2076,6 +2114,7 @@ CONTAINS
         IF( A % NumberOfRows == 0 ) THEN
           A => TotMatrix % Submatrix(i,i) % Mat
         ELSE
+          UsePrecMat = .TRUE.
           CALL Info('BlockMatrixPrec','Using specialized preconditioning block',Level=9)
         END IF      
         ASolver => Solver
@@ -2137,13 +2176,36 @@ CONTAINS
         PRINT *,'Range pre:',i,TRIM(Var % Name), MINVAL(x),MAXVAL(x)
       END IF
 
-      IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,i,i,b)
+      IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,i,i,b,UsePrecMat)
 
+      IF( DiagScaling .AND. UsePrecMat ) THEN
+        n = offset(i+1)-offset(i)
+        ALLOCATE( diagtmp(n), btmp(n) )
+
+        IF( TotMatrix % GotBlockStruct ) THEN
+          k = TotMatrix % InvBlockStruct(i)
+          IF( k <= 0 ) THEN
+            CALL Fatal('BlockMatrixPrec','Cannot define the originating block for scaling!')
+          END IF
+          l = SIZE( TotMatrix % BlockStruct ) 
+        ELSE
+          k = i
+          l = NoVar
+        END IF
+        diagtmp(1:n) = Solver % Matrix % DiagScaling(k::l)
+                
+        ! Scale x & b to the unscaled system of the tailored preconditioning matrix for given block.
+        x(1:n) = x(1:n) * diagtmp(1:n)
+        btmp(1:n) = b(1:n) / diagtmp(1:n) * Solver % Matrix % RhsScaling**2        
+      ELSE
+        btmp => b
+      END IF
+              
 
       IF( InfoActive( 15 ) ) THEN
         CALL BlockMatrixInfo()
       END IF
-
+      
       
       IF (isParallel) THEN
 #ifndef SOLSYS
@@ -2153,12 +2215,12 @@ CONTAINS
         GlobalMatrix % Ematrix => A
         GlobalMatrix % COMPLEX = A % COMPLEX
  
-        CALL IterSolver( GlobalMatrix, x,b, &
+        CALL IterSolver( GlobalMatrix, x,btmp, &
             ASolver,MatvecF=AddrFunc(SParMatrixVector), &
             DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm))
 #else
         !CALL SolveSystem( A, ParMatrix, b, x, Var % Norm, Var % DOFs, ASolver )
-        CALL SolveLinearSystem( A, b, x, Var % Norm, Var % DOFs, ASolver )
+        CALL SolveLinearSystem( A, btmp, x, Var % Norm, Var % DOFs, ASolver )
 #endif
       ELSE
         
@@ -2166,14 +2228,19 @@ CONTAINS
         !IF(.NOT. Found) ScaleSystem = .TRUE.
         !IF ( ScaleSystem ) CALL ScaleLinearSystem(ASolver, A,b,x )
         
-        CALL SolveLinearSystem( A, b, x, Var % Norm, Var % DOFs, ASolver )
+        CALL SolveLinearSystem( A, btmp, x, Var % Norm, Var % DOFs, ASolver )
 
         !IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,b,x)       
       END IF
-
-      IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,i,i,b)
-
       
+      
+      IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,i,i,b,UsePrecMat)
+
+      IF( DiagScaling .AND. UsePrecMat ) THEN
+        x(1:n) = x(1:n) / diagtmp(1:n)
+        DEALLOCATE( diagtmp, btmp )
+      END IF
+                    
       IF( InfoActive( 15 ) ) THEN
         PRINT *,'Range post:',i,TRIM(Var % Name), MINVAL(x),MAXVAL(x)
       END IF
