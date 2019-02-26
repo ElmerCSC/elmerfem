@@ -468,6 +468,11 @@
        k=k+1
        PlCount = PlCount + 1
      END DO  
+     !To stop model bothering if no plume with enough discharge to actually do
+     !anything
+     !IF(PlCount > 0 .AND. MAXVAL(PlFinalQ)<1E-4) THEN
+       !PlCount = 0
+     !END IF
 
      !Link everything up to the output array at relevant points further down
      !Model (at moment) has vertical calving front, so, for plume model, xi is
@@ -514,16 +519,22 @@
 
          ALLOCATE(HydroPlume(Pl) % z(SIZE(Zi)),&
                   HydroPlume(Pl) % meltrate(SIZE(Zi)))
+         HydroPlume(Pl) % z = 0.0_dp
+         HydroPlume(Pl) % meltrate = 0.0_dp
 
          ZOutput => HydroPlume(Pl) % z
          MROutput => HydroPlume(Pl) % meltrate
+         !IF(Q0<1E-4) CYCLE
 
          !This solves for a line/wedge plume of assumed width of MeshRes
          !Truncated line/wedge plumes seem better fit for combined channel+sheet
          !discharge and for Jackson et al. (2017)'s observations
          CALL PlumeSolver(Zi, Xi, Ta, Sa, Q0, ZOutput, MROutput, MeshRes, PlDepth)
+         IF(SIZE(ZOutput)>Output) THEN
+           Output = SIZE(ZOutput)
+         END IF
        END DO
-       Output = SIZE(ZOutput)
+       IF(Output == 0) PlCount = 0
      END IF !PlCount > 0
      
      !Work out whether x or y axis is major frontal axis
@@ -1570,7 +1581,7 @@
 
     !-----------------------------------------------------------------------
 
-    INTEGER :: i, N, K, Counter
+    INTEGER :: i, N, K, Counter!, Counter2
     REAL(KIND=dp) :: RHO, Temperature, Salinity, Depth2, Tambient, Sambient,&
                      Rho_Plume, Rho_Ambient
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Z(:), X(:), Temp(:), Sal(:)
@@ -1622,12 +1633,15 @@
     TPointer => Temp
     N = SIZE(Z)
     Y(1) = 1.0
-    Y(2) = Discharge
+    Y(2) = Discharge !0.1
     Y(3) = 1.0D-3
     Y(4) = 1.0D-3
     Y(5) = 0.0
     Y(6) = 0.0
     Y(7) = MeshRes
+
+    !PlDepth = -83.0
+    !IF(Counter2 == 1) RETURN
 
     !Set up output profiles
     ALLOCATE(ZProf(N), ZProfAbs(N), RProf(N), WProf(N), TProf(N), SProf(N),&
@@ -1754,17 +1768,25 @@
       TProf(IOUT) = Y(3)
       SProf(IOUT) = Y(4)
       AProf(IOUT) = Y(5)
-      MIntProf(IOUT) = Y(6)
+      MIntProf(IOUT) = Y(6)*86400
     
     END DO !IOUT
+    !PRINT *, 'Q: ',Discharge
+    !PRINT *, 'R: ',RProf
+    !PRINT *, 'W: ',WProf
+    !PRINT *, 'T: ',TProf
+    !PRINT *, 'S: ',SProf
+    !PRINT *, 'A: ',AProf
+    !PRINT *, 'M: ',MIntProf
 
     !To get from m/d to m/a to fit with rest of Elmer
     DepthOutput = ZProf
     MeltOutput = MIntProf*365.25
 
-    DEALLOCATE(Z, Sal, Temp, ZProf, ZProfAbs, RProf, WProf, TProf, SProf,&
-              AProf, MIntProf)
+    DEALLOCATE(Z, Sal, Temp)
+    DEALLOCATE(ZProf, ZProfAbs, RProf, WProf, TProf, SProf, AProf, MIntProf)
     NULLIFY(ZPointer, SPointer, TPointer)
+    !Counter2 = 1
 
   END SUBROUTINE PlumeSolver
 !-------------------------------------------------------------------------------
@@ -1827,9 +1849,9 @@
     lambda1 = -0.0573D0
     lambda2 = 0.0832D0
     lambda3 = 0.000761D0
-    GamT    = 0.022
-    GamS    = 0.00062
-    Cd      = 0.025  !0.0025 10*higher; see Ezhova et al. (2018)
+    GamT    = 0.011
+    GamS    = 0.00031
+    Cd      = 0.02  !0.0025 10*higher; see Ezhova et al. (2018)
     icetemp = 0.0
     E_0     = 0.1D0
 
@@ -1842,6 +1864,13 @@
     Sb = (1.0/(2.0*a))*(-b-((b**2.0-4.0*a*c)**0.5))
     Tb = lambda1*Sb+lambda2+lambda3*T
     mdot = GamS*(Cd**0.5)*Y(2)*(Y(4)-Sb)/Sb
+    !PRINT *, 'a: ',a
+    !PRINT *, 'b: ',b
+    !PRINT *, 'c: ',c
+    !PRINT *, 'Sb: ',Sb
+    !PRINT *, 'Tb: ',Tb
+    !PRINT *, 'mdot: ',mdot
+    !PRINT *, 'Tin: ',Tin
 
     !Differential Equations
     !Plume Thickness
@@ -1859,7 +1888,7 @@
 
     !Along-integrated Melt Rate and Contact Area
     YDOT(5) = Y(7)
-    YDOT(6) = Y(7) * mdot
+    YDOT(6) = mdot
 
     T = Tin 
 
