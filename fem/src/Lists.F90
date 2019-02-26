@@ -770,6 +770,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseVariableList( VariableList )
 !------------------------------------------------------------------------------
+use spariterglobals
     TYPE(Variable_t), POINTER :: VariableList
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: Ptr(:)
@@ -827,6 +828,8 @@ CONTAINS
           Var1 => Var1 % Next
        END DO
 
+       IF(SIZE(Var % Values)<=0) GotValues = .FALSE.
+
        IF (ASSOCIATED(Var % Perm)) THEN
          Var1 => VariableList
          DO WHILE(ASSOCIATED(Var1))
@@ -846,22 +849,22 @@ CONTAINS
        
        IF ( GotValues ) THEN
         IF ( ASSOCIATED( Var % Values ) ) &
-            DEALLOCATE( Var % Values )
+           DEALLOCATE( Var % Values )
 
          IF ( ASSOCIATED( Var % PrevValues ) ) &
-	   DEALLOCATE( Var % PrevValues )
+           DEALLOCATE( Var % PrevValues )
 
          IF ( ASSOCIATED( Var % EigenValues ) ) &
-            DEALLOCATE( Var % EigenValues )
+           DEALLOCATE( Var % EigenValues )
 
          IF ( ASSOCIATED( Var % EigenVectors ) ) &
-            DEALLOCATE( Var % EigenVectors )
+           DEALLOCATE( Var % EigenVectors )
 
          IF ( ASSOCIATED( Var % SteadyValues ) ) &
-            DEALLOCATE( Var % SteadyValues )
+           DEALLOCATE( Var % SteadyValues )
 
          IF ( ASSOCIATED( Var % NonlinValues ) ) &
-            DEALLOCATE( Var % NonlinValues )
+           DEALLOCATE( Var % NonlinValues )
        END IF
        NULLIFY( Var % EigenVectors, Var % EigenValues )
        NULLIFY( Var % Values, Var % PrevValues, Var % Perm )
