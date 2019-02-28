@@ -6037,9 +6037,9 @@ use spariterglobals
 
            DO gp = 1, ngp          
 
-             x = SUM( BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % x( NodeIndexes(1:n) ) )
-             y = SUM( BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n) ) )
-             z = SUM( BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n) ) )
+             x = SUM(BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % x( NodeIndexes(1:n)))
+             y = SUM(BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n)))
+             z = SUM(BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n)))
 
              RValue = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,x,y,z)
              Handle % ValuesVec(gp) = RValue
@@ -6120,9 +6120,7 @@ use spariterglobals
          IF( Handle % GlobalInList ) THEN
            Handle % ValuesVec(1:ngp) = F(1)
          ELSE
-           DO gp=1,ngp
-             Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
-           END DO
+           Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
          !CALL ListPopActiveName()
 
@@ -6189,9 +6187,7 @@ use spariterglobals
          IF( Handle % GlobalInList ) THEN
            Handle % ValuesVec(1:ngp) = F(1)
          ELSE
-           DO gp=1,ngp
-             Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
-           END DO
+           Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
 
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
@@ -6212,9 +6208,7 @@ use spariterglobals
          END DO
          !CALL ListPopActiveName()
 
-         DO gp=1,ngp
-           Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
-         END DO
+         Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
 
        CASE DEFAULT
          CALL Fatal('ListGetElementRealVec','Impossible entry type: '//TRIM(I2S(ptr % Type)))

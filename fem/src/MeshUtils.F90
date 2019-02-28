@@ -4368,7 +4368,7 @@ END SUBROUTINE GetMaxDefs
             Parent => Element % BoundaryInfo % Right
           END IF
 
-          q => Find_Face(Parent,Element)
+          q => Find_Face(Mesh,Parent,Element)
 
           PMesh % Elements(ind) % NodeIndexes(1:n) = q % NodeIndexes(1:n)
 
@@ -4794,16 +4794,17 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION Find_Face(Parent,Element) RESULT(ptr)
+  FUNCTION Find_Face(Mesh,Parent,Element) RESULT(ptr)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Ptr
+    TYPE(Mesh_t) :: Mesh
     TYPE(Element_t) :: Parent, Element
 
     INTEGER :: i,j,k,n
 
     Ptr => NULL()
     DO i=1,Parent % TYPE % NumberOfFaces
-      Ptr => CurrentModel % Mesh % Faces(Parent % FaceIndexes(i))
+      Ptr => Mesh % Faces(Parent % FaceIndexes(i))
       n=0
       DO j=1,Ptr % TYPE % NumberOfNodes
         DO k=1,Element % TYPE % NumberOfNodes
@@ -9058,11 +9059,11 @@ END SUBROUTINE GetMaxDefs
           CYCLE
         END IF
 
-        OldFace => Find_Face( Left, Element )
+        OldFace => Find_Face( Mesh, Left, Element )
         nn = SIZE(Element % NodeIndexes)
         Indexes(1:nn) = Element % NodeIndexes
         Element % NodeIndexes = NodePerm(Indexes(1:nn)) + NoOrigNodes
-        NewFace => Find_Face( Right, Element )
+        NewFace => Find_Face( Mesh, Right, Element )
         Element % NodeIndexes = Indexes(1:nn)
  
         ParentFound = ParentFound + 1
