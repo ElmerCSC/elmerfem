@@ -53,7 +53,7 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
   TYPE(Element_t), POINTER :: Element
 
   LOGICAL :: AllocationsDone = .FALSE.
-  LOGICAL :: Found, SecondFamily
+  LOGICAL :: Found, InitHandles, SecondFamily
 
   INTEGER :: dim, n, nb, nd, t, istat, active
 
@@ -92,7 +92,7 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
     Element => GetActiveElement(t)
     n  = GetElementNOFNodes() ! Nodes count corresponding to the background mesh
     nd = GetElementNOFDOFs()  ! The total number of degrees of freedom
-    nb = size(Element % BubbleIndexes(:)) ! The number of elementwise degrees 
+    nb = SIZE(Element % BubbleIndexes(:)) ! The number of elementwise degrees 
                                           ! of freedom. NOTE: GetElementNOFBDOFs()
                                           ! doesn't return the right value here 
 
@@ -107,6 +107,19 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
   END DO
 
   CALL DefaultFinishBulkAssembly()
+
+  InitHandles = .TRUE.
+  active = GetNOFBoundaryElements()
+  DO t=1,active
+    Element => GetBoundaryElement(t)
+    IF (ActiveBoundaryElement()) THEN
+      n  = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element)
+      CALL LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
+    END IF
+  END DO
+
+  CALL DefaultFinishBoundaryAssembly()
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
@@ -234,6 +247,124 @@ CONTAINS
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: n   ! The number of background element nodes
+    INTEGER :: nd  ! The total count of DOFs (nodal and facial)
+    LOGICAL :: SecondFamily
+    LOGICAL :: InitHandles
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Element_t), POINTER :: Parent, Edge
+    TYPE(ValueHandle_t) :: ScalarField
+    TYPE(Nodes_t) :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: RevertSign(6), stat, AssembleForce
+    INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches
+    REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), detJ, s, w, g
+
+    SAVE ScalarField, Nodes
+!------------------------------------------------------------------------------
+    BC => GetBC()
+    IF (.NOT. ASSOCIATED(BC)) RETURN
+
+    IF (InitHandles) THEN
+      CALL ListInitElementKeyword(ScalarField, 'Boundary Condition', &
+          'Scalar Field')
+      InitHandles = .FALSE.
+    END IF
+    IF (ScalarField % NotPresentAnywhere) RETURN
+
+    ! 
+    ! The sign reversion of basis will be checked via the parent element:
+    ! 
+    Parent => Element % BoundaryInfo % Left
+    IF (.NOT. ASSOCIATED(Parent)) THEN
+      Parent => Element % BoundaryInfo % Right
+    END IF
+    IF (.NOT. ASSOCIATED(Parent)) RETURN
+
+    Family = GetElementFamily(Element)
+    SELECT CASE(Family)
+    CASE(2)
+      IF (.NOT. ASSOCIATED(Parent % EdgeIndexes)) RETURN
+      !
+      ! Pick the edge (face) of the parent element corresponding to the boundary element:
+      ! (TO CONSIDER: write a subroutine for this routine task)
+      !
+      DO ActiveFaceId=1,Parent % TYPE % NumberOfEdges
+        Edge => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
+        matches = 0
+        DO k=1,Element % TYPE % NumberOfNodes
+          DO l=1,Edge % TYPE % NumberOfNodes
+            IF (Element % NodeIndexes(k)==Edge % NodeIndexes(l)) matches=matches+1
+          END DO
+        END DO
+        IF (matches==Element % TYPE % NumberOfNodes) EXIT
+      END DO
+      IF (matches /= Element % TYPE % NumberOfNodes) RETURN
+
+      !
+      ! Use the parent element to check whether sign reversions are needed:
+      !
+      CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
+
+    CASE DEFAULT
+      CALL Warn('ModelMixedPoisson', 'Neumann BCs in 3-D have not been implemented yet')
+      RETURN
+    END SELECT
+
+    np = n * Solver % Def_Dofs(GetElementFamily(Parent), Parent % BodyId, 1)
+
+    IF (RevertSign(ActiveFaceId)) THEN
+      s = -1.0d0
+    ELSE
+      s = 1.0d0
+    END IF
+
+    CALL GetElementNodes(Nodes)
+    IP = GaussPoints(Element)
+
+    Force = 0.0d0
+    DO t=1,IP % n
+      !--------------------------------------------------------------
+      ! Basis function values at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), DetJ, Basis)
+      
+      !
+      ! The normal traces of face basis functions - now this is available only for RT_0.
+      ! NOTE: Here the effect of the Piola transformation is taken into account
+      !       such that the multiplication with DetJ is not needed
+      ! TO CONSIDER: Get the traces of vector-values basis functions 
+      !              by calling a subroutine
+      !
+      IF (SecondFamily) THEN
+        CALL Fatal('ModelMixedPoisson', 'Cannot yet set natural BCS for 2nd family')
+      ELSE
+        TraceBasis(1) = s * 0.5d0
+      END IF
+
+      w = IP % s(t) ! NOTE: No need to multiply with DetJ
+      g = ListGetElementReal(ScalarField, Basis, Element, AssembleForce)
+
+      IF (AssembleForce) THEN
+        DO p = 1,nd-np
+          j = np + p
+          FORCE(j) = FORCE(j) + g * TraceBasis(p) * w 
+        END DO
+      END IF
+    END DO
+
+    IF (AssembleForce) CALL DefaultUpdateForce(Force)
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixBC
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 END SUBROUTINE MixedPoisson
