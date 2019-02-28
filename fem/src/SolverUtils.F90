@@ -6551,6 +6551,7 @@ CONTAINS
      ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
 
      nn = 0
+     ineigh = 0
      DO i=0, ParEnv % PEs-1
        k = i+1
        IF(.NOT.ParEnv % Active(k) ) CYCLE
@@ -6575,9 +6576,11 @@ CONTAINS
             IF ( k == ParEnv % MyPE ) CYCLE
             k = k + 1
             k = ineigh(k)
-            ii(k) = ii(k) + 1
-            d_e(ii(k),k) = A % DValues(i)
-            s_e(ii(k),k) = A % ParallelInfo % GlobalDOFs(i)
+            IF ( k> 0) THEN
+              ii(k) = ii(k) + 1
+              d_e(ii(k),k) = A % DValues(i)
+              s_e(ii(k),k) = A % ParallelInfo % GlobalDOFs(i)
+            END IF
           END DO
        END IF
      END DO
@@ -8101,6 +8104,7 @@ END FUNCTION SearchNodeL
       x => Solver % Variable % Values
     END IF
     
+
     NormDim = ListGetInteger(Solver % Values,'Nonlinear System Norm Degree',Stat)
     IF(.NOT. Stat) NormDim = 2
 
