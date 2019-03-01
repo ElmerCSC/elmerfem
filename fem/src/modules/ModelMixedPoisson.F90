@@ -263,9 +263,10 @@ CONTAINS
     TYPE(ValueHandle_t) :: ScalarField
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: RevertSign(6), stat, AssembleForce
+    LOGICAL :: RevertSign(6), stat, AssembleForce, OrientationsMatch
+    INTEGER, POINTER :: FaceMap(:,:)
     INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches
-    REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), detJ, s, w, g
+    REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), detJ, s, u, w, g
 
     SAVE ScalarField, Nodes
 !------------------------------------------------------------------------------
@@ -313,6 +314,17 @@ CONTAINS
       !
       CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
 
+      !
+      ! Check whether the parametrization of the element conforms with the global positive 
+      ! orientation of the edge:
+      !
+      FaceMap => GetEdgeMap(GetElementFamily(Parent))
+      IF (RevertSign(ActiveFaceId)) THEN
+        OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,2))
+      ELSE
+        OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,1))
+      END IF
+
     CASE DEFAULT
       CALL Warn('ModelMixedPoisson', 'Neumann BCs in 3-D have not been implemented yet')
       RETURN
@@ -338,17 +350,28 @@ CONTAINS
               IP % W(t), DetJ, Basis)
       
       !
-      ! The normal traces of face basis functions - now this is available only for RT_0.
+      ! The normal traces of face basis functions - now this is available only for 2D.
       ! NOTE: Here the effect of the Piola transformation is taken into account
       !       such that the multiplication with DetJ is not needed
       ! TO CONSIDER: Get the traces of vector-values basis functions 
       !              by calling a subroutine
       !
-      IF (SecondFamily) THEN
-        CALL Fatal('ModelMixedPoisson', 'Cannot yet set natural BCS for 2nd family')
-      ELSE
-        TraceBasis(1) = s * 0.5d0
-      END IF
+      SELECT CASE(Family)
+      CASE(2)
+        IF (SecondFamily) THEN
+          u = IP % U(t)
+          IF (OrientationsMatch) THEN
+            TraceBasis(1) = s * 0.5d0 * (1.0d0 - sqrt(3.0d0)*u)
+            TraceBasis(2) = s * 0.5d0 * (1.0d0 + sqrt(3.0d0)*u)
+          ELSE
+            TraceBasis(1) = s * 0.5d0 * (1.0d0 + sqrt(3.0d0)*u)
+            TraceBasis(2) = s * 0.5d0 * (1.0d0 - sqrt(3.0d0)*u)
+          END IF
+        ELSE
+          TraceBasis(1) = s * 0.5d0
+        END IF
+      !CASE(3)
+      END SELECT
 
       w = IP % s(t) ! NOTE: No need to multiply with DetJ
       g = ListGetElementReal(ScalarField, Basis, Element, AssembleForce)
