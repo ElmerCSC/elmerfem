@@ -156,8 +156,9 @@ MODULE StressLocal
 
 
      BF => GetBodyForce()
+     GPA = .FALSE.
      IF(ASSOCIATED(BF)) THEN
-       GPA = GetLogical(BF, 'Gravitational Prestress Advection', Found )
+        GPA = GetLogical(BF, 'Gravitational Prestress Advection', Found )
        IF ( GPA ) THEN
          GPA_Coeff(1:n) = GetReal( BF, 'GPA Coeff', Found )
        END IF
