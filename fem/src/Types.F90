@@ -173,6 +173,7 @@ END INTERFACE
     LOGICAL, ALLOCATABLE :: SubMatrixActive(:,:)
     TYPE(SubVector_t), POINTER :: SubVector(:) => NULL()
     INTEGER, POINTER :: BlockStruct(:)
+    INTEGER, POINTER :: InvBlockStruct(:)
     LOGICAL :: GotBlockStruct
     LOGICAL, ALLOCATABLE :: SubMatrixTranspose(:,:)
   END TYPE BlockMatrix_t

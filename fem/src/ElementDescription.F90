@@ -4685,131 +4685,95 @@ END BLOCK
           EdgeMap => GetEdgeMap(3)
           !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
+          !-----------------------------------------------------------------------------------
+          ! Check first whether a sign reversion will be needed as face dofs have orientation.
+          !-----------------------------------------------------------------------------------
+          CALL FaceElementOrientation(Element, RevertSign)
+
           IF (CreateBDMBasis) THEN
+             !----------------------------------------------------------------------------
+             ! This is for the BDM space of degree k=1.
+             !----------------------------------------------------------------------------
              DOFs = 6
+             DofsPerFace = 2
+             !----------------------------------------------------------------------------
+             ! First tabulate the basis functions in the default order.
+             !----------------------------------------------------------------------------
+             ! Two basis functions defined on face 12:
              !-------------------------------------------------
-             ! The following is for the BDM space of degree k=1.
-             ! First two basis functions defined on face 12.
-             !-------------------------------------------------
-             i = EdgeMap(1,1)
-             j = EdgeMap(1,2)
-             ni = Element % NodeIndexes(i)
-             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-             nj = Element % NodeIndexes(j)
-             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-             IF (nj<ni) THEN
-                ! The sign and order of basis functions are reverted as
-                ! compared with the other possibility
-                FBasis(1,1) = -sqrt(3.0d0)/6.0d0 * (sqrt(3.0d0) + u - v)             
-                FBasis(1,2) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) - 3.0d0 * u + v)
-                DivBasis(1) = -sqrt(3.0d0)/3.0d0 
+             FBasis(1,1) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + u + v)             
+             FBasis(1,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + 3.0d0 * u + v)
+             DivBasis(1) = sqrt(3.0d0)/3.0d0
+             
+             FBasis(2,1) = sqrt(3.0d0)/6.0d0 * (sqrt(3.0d0) + u - v)             
+             FBasis(2,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) - 3.0d0 * u + v)
+             DivBasis(2) = sqrt(3.0d0)/3.0d0
 
-                FBasis(2,1) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + u + v)             
-                FBasis(2,2) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + 3.0d0 * u + v)
-                DivBasis(2) = -sqrt(3.0d0)/3.0d0
-             ELSE
-                FBasis(1,1) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + u + v)             
-                FBasis(1,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + 3.0d0 * u + v)
-                DivBasis(1) = sqrt(3.0d0)/3.0d0
+             ! Two basis functions defined on face 23:
+             
+             FBasis(3,1) = 1.0d0/(3.0d0+sqrt(3.0d0)) * (2.0d0+sqrt(3.0d0)+(2.0d0+sqrt(3.0d0))*u-(1.0d0+sqrt(3.0d0))*v)
+             FBasis(3,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
+             DivBasis(3) = sqrt(3.0d0)/3.0d0
 
-                FBasis(2,1) = sqrt(3.0d0)/6.0d0 * (sqrt(3.0d0) + u - v)             
-                FBasis(2,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) - 3.0d0 * u + v)
-                DivBasis(2) = sqrt(3.0d0)/3.0d0
-             END IF
+             FBasis(4,1) = 1.0d0/6.0d0 * (-3.0d0+sqrt(3.0d0)+(-3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
+             FBasis(4,2) = 1.0d0/6.0d0 * ( 3.0d0+sqrt(3.0d0) ) * v
+             DivBasis(4) = sqrt(3.0d0)/3.0d0
 
-             ! Two basis functions defined on face 23
-             i = EdgeMap(2,1)
-             j = EdgeMap(2,2)
-             ni = Element % NodeIndexes(i)
-             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-             nj = Element % NodeIndexes(j)
-             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-             IF (nj<ni) THEN
-                FBasis(3,1) = -1.0d0/6.0d0 * (-3.0d0+sqrt(3.0d0)+(-3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
-                FBasis(3,2) = -1.0d0/6.0d0 * ( 3.0d0+sqrt(3.0d0) ) * v
-                DivBasis(3) = -sqrt(3.0d0)/3.0d0
 
-                FBasis(4,1) = -1.0d0/(3.0d0+sqrt(3.0d0)) * (2.0d0+sqrt(3.0d0)+(2.0d0+sqrt(3.0d0))*u-(1.0d0+sqrt(3.0d0))*v)
-                FBasis(4,2) = -1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivBasis(4) = -sqrt(3.0d0)/3.0d0
-             ELSE
-                FBasis(3,1) = 1.0d0/(3.0d0+sqrt(3.0d0)) * (2.0d0+sqrt(3.0d0)+(2.0d0+sqrt(3.0d0))*u-(1.0d0+sqrt(3.0d0))*v)
-                FBasis(3,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivBasis(3) = sqrt(3.0d0)/3.0d0
+             ! Two basis functions defined on face 31:
 
-                FBasis(4,1) = 1.0d0/6.0d0 * (-3.0d0+sqrt(3.0d0)+(-3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
-                FBasis(4,2) = 1.0d0/6.0d0 * ( 3.0d0+sqrt(3.0d0) ) * v
-                DivBasis(4) = sqrt(3.0d0)/3.0d0
-             END IF
+             FBasis(5,1) = 1.0d0/( 3.0d0+sqrt(3.0d0) ) * ( 1.0d0 - u - v - sqrt(3.0d0)*v ) 
+             FBasis(5,2) = ( 3.0d0+2.0d0*sqrt(3.0d0) ) * v /(3.0d0*(1.0d0+sqrt(3.0d0)))
+             DivBasis(5) = sqrt(3.0d0)/3.0d0
 
-             ! Two basis functions defined on face 31
-             i = EdgeMap(3,1)
-             j = EdgeMap(3,2)
-             ni = Element % NodeIndexes(i)
-             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-             nj = Element % NodeIndexes(j)
-             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-             IF (nj<ni) THEN
-                FBasis(5,1) = -1.0d0/6.0d0 * (-3.0d0-sqrt(3.0d0)+(3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
-                FBasis(5,2) = -1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivBasis(5) = -sqrt(3.0d0)/3.0d0
+             FBasis(6,1) = 1.0d0/6.0d0 * (-3.0d0-sqrt(3.0d0)+(3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
+             FBasis(6,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
+             DivBasis(6) = sqrt(3.0d0)/3.0d0
 
-                FBasis(6,1) = -1.0d0/( 3.0d0+sqrt(3.0d0) ) * ( 1.0d0 - u - v - sqrt(3.0d0)*v )
-                FBasis(6,2) = -( 3.0d0+2.0d0*sqrt(3.0d0) ) * v /(3.0d0*(1.0d0+sqrt(3.0d0)))
-                DivBasis(6) = -sqrt(3.0d0)/3.0d0
-             ELSE
-                FBasis(5,1) = 1.0d0/( 3.0d0+sqrt(3.0d0) ) * ( 1.0d0 - u - v - sqrt(3.0d0)*v ) 
-                FBasis(5,2) = ( 3.0d0+2.0d0*sqrt(3.0d0) ) * v /(3.0d0*(1.0d0+sqrt(3.0d0)))
-                DivBasis(5) = sqrt(3.0d0)/3.0d0
-
-                FBasis(6,1) = 1.0d0/6.0d0 * (-3.0d0-sqrt(3.0d0)+(3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
-                FBasis(6,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivBasis(6) = sqrt(3.0d0)/3.0d0
-             END IF
+             !-----------------------------------------------------
+             ! Now do the reordering and sign reversion:
+             !-----------------------------------------------------
+             DO q=1,3
+               IF (RevertSign(q)) THEN
+                 DO j=1,DofsPerFace
+                   i = (q-1)*DofsPerFace + j
+                   WorkBasis(j,1:2) = FBasis(i,1:2)
+                   WorkDivBasis(j) = DivBasis(i)
+                 END DO
+                 i = 2*q - 1
+                 FBasis(i,1:2) = -WorkBasis(2,1:2)
+                 DivBasis(i) = -WorkDivBasis(2)
+                 i = 2*q
+                 FBasis(i,1:2) = -WorkBasis(1,1:2)
+                 DivBasis(i) = -WorkDivBasis(1)
+               END IF
+             END DO
 
           ELSE
-             DOFs = 3
+             DOFs = 3             
 
-             i = EdgeMap(1,1)
-             j = EdgeMap(1,2)
-             ni = Element % NodeIndexes(i)
-             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-             nj = Element % NodeIndexes(j)
-             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(1,1) = SQRT(3.0d0)/6.0d0 * u
              FBasis(1,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
              DivBasis(1) =  SQRT(3.0d0)/3.0d0
-             IF (nj<ni) THEN
-                FBasis(1,:) = -FBasis(1,:)
-                DivBasis(1) = -DivBasis(1)
+             IF (RevertSign(1)) THEN
+               FBasis(1,:) = -FBasis(1,:)
+               DivBasis(1) = -DivBasis(1)
              END IF
 
-             i = EdgeMap(2,1)
-             j = EdgeMap(2,2)
-             ni = Element % NodeIndexes(i)
-             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-             nj = Element % NodeIndexes(j)
-             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(2,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
              FBasis(2,2) = SQRT(3.0d0)/6.0d0 * v
              DivBasis(2) =  SQRT(3.0d0)/3.0d0        
-             IF (nj<ni) THEN
-                FBasis(2,:) = -FBasis(2,:)
-                DivBasis(2) = -DivBasis(2)
+             IF (RevertSign(2)) THEN
+               FBasis(2,:) = -FBasis(2,:)
+               DivBasis(2) = -DivBasis(2)
              END IF
 
-             i = EdgeMap(3,1)
-             j = EdgeMap(3,2)
-             ni = Element % NodeIndexes(i)
-             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-             nj = Element % NodeIndexes(j)
-             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              FBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
              FBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
              DivBasis(3) =  SQRT(3.0d0)/3.0d0          
-             IF (nj<ni) THEN
-                FBasis(3,:) = -FBasis(3,:)
-                DivBasis(3) = -DivBasis(3)
+             IF (RevertSign(3)) THEN
+               FBasis(3,:) = -FBasis(3,:)
+               DivBasis(3) = -DivBasis(3)
              END IF
 
           END IF
@@ -5219,7 +5183,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
 !-----------------------------------------------------------------------------------
   IMPLICIT NONE
 
-  TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D element having 2-D faces 
+  TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D/2-D element having 2-D/1-D faces 
   LOGICAL, INTENT(OUT) :: RevertSign(:)        !< Face-wise information about the sign reversions
   INTEGER, OPTIONAL, INTENT(IN) :: FaceIndex   !< Check just one face that is specified here
   TYPE(Nodes_t), OPTIONAL :: Nodes             !< An inactive variable related to code verification
@@ -5251,6 +5215,26 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
   Ind => Element % NodeIndexes
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
+  CASE(3)
+    FaceMap => GetEdgeMap(3) 
+
+    IF (.NOT. PRESENT(FaceIndex)) last_face = 3
+    IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
+        'Too small array for listing element faces')
+    
+    DO q=first_face,last_face
+      DO j=1,2
+        FaceIndices(j) = Ind(FaceMap(q,j))
+      END DO
+      IF (Parallel) THEN
+        DO j=1,2
+          FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
+        END DO
+      END IF
+
+      IF (FaceIndices(2) < FaceIndices(1)) RevertSign(q) = .TRUE.
+    END DO
+
   CASE(5)
     TetraFaceMap(1,:) = (/ 2, 1, 3 /)
     TetraFaceMap(2,:) = (/ 1, 2, 4 /)
@@ -5289,8 +5273,8 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
     END DO
 
     !----------------------------------------------------------------------
-    ! Another way for finding sign reversions. This code is retained here,
-    ! although it was used for verification purposes...
+    ! Another way for finding sign reversions in the case of tetrahedron. 
+    ! This code is retained here, although it was used for verification purposes...
     !----------------------------------------------------------------------
     CheckSignReversions = .FALSE.
     IF (CheckSignReversions) THEN
