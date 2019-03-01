@@ -308,8 +308,8 @@ c
       Complex
      &           cdotc 
       Real            
-     &           pslamch, pscnorm2, clanhs, slapy2
-      external   cdotc, pscnorm2, clanhs, pslamch, slapy2
+     &           pslamch10, pscnorm2, clanhs, slapy2
+      external   cdotc, pscnorm2, clanhs, pslamch10, slapy2
 c
 c     %---------------------%
 c     | Intrinsic Functions |
@@ -337,10 +337,10 @@ c        | overflow should not occur.              |
 c        | REFERENCE: LAPACK subroutine clahqr     |
 c        %-----------------------------------------%
 c
-         unfl = pslamch(comm,  'safe minimum' )
+         unfl = pslamch10(comm,  'safe minimum' )
          ovfl = real(one / unfl)
          call slabad( unfl, ovfl )
-         ulp = pslamch( comm, 'precision' )
+         ulp = pslamch10( comm, 'precision' )
          smlnum = unfl*( n / ulp )
          first = .false.
       end if

@@ -453,8 +453,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Double precision  
-     &           pdlamch 
-      external   pdlamch 
+     &           pdlamch10
+      external   pdlamch10
 c
 c     %-----------------------%
 c     | Executable Statements |
@@ -529,7 +529,7 @@ c        | Set default parameters |
 c        %------------------------%
 c
          if (nb .le. 0)	nb = 1
-         if (tol .le. 0.0  ) tol = pdlamch (comm, 'EpsMach')
+         if (tol .le. 0.0  ) tol = pdlamch10 (comm, 'EpsMach')
          if (ishift .ne. 0  .and.  
      &       ishift .ne. 1  .and.
      &       ishift .ne. 2)	ishift = 1
