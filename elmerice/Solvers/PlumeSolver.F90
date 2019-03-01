@@ -1581,16 +1581,18 @@
 
     !-----------------------------------------------------------------------
 
-    INTEGER :: i, N, K, Counter!, Counter2
+    INTEGER :: i, N, K, Counter, Counter2
     REAL(KIND=dp) :: RHO, Temperature, Salinity, Depth2, Tambient, Sambient,&
                      Rho_Plume, Rho_Ambient
-    REAL(KIND=dp), ALLOCATABLE, TARGET :: Z(:), X(:), Temp(:), Sal(:)
-    REAL(KIND=dp), POINTER :: ZPointer(:), TPointer(:), SPointer(:)
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: Z(:), X(:), Temp(:), Sal(:), MR(:),&
+                                          MRZ(:)
+    REAL(KIND=dp), POINTER :: ZPointer(:), TPointer(:), SPointer(:),&
+                              MRPointer(:), MRZPointer(:)
     REAL(KIND=dp), ALLOCATABLE :: ZProf(:), RProf(:), WProf(:), AProf(:),&
                                   MIntProf(:)
     REAL(KIND=dp), ALLOCATABLE :: TProf(:), SProf(:), ZProfAbs(:)
-    REAL(KIND=dp) :: TCommon(1000), SCommon(1000), ZCommon(1000)
-    COMMON TCommon, SCommon, ZCommon, Counter
+    REAL(KIND=dp) :: TCommon(1000), SCommon(1000), ZCommon(1000), MDCommon(1000,2)
+    COMMON TCommon, SCommon, ZCommon, MDCommon, Counter, Counter2
 
     !For ODEPACK
     INTEGER :: IOPT, IOUT, ISTATE, ITASK, ITOL, IWORK(20), LIW, LRW,&
@@ -1624,7 +1626,8 @@
     !this point, if relevant, dealt with by Toe Calving routine), so initial
     !conditions for temperature and salinity set to those at max data depth
     !Plume initial conditions assumed to be basically fresh, cold water
-    ALLOCATE(Z(SIZE(Depth)), Sal(SIZE(SalA)), Temp(SIZE(TempA)))
+    ALLOCATE(Z(SIZE(Depth)), Sal(SIZE(SalA)), Temp(SIZE(TempA)), MR(1000),&
+            MRZ(1000))
     Z = Depth
     Sal = SalA
     Temp = TempA
@@ -1641,7 +1644,6 @@
     Y(7) = MeshRes
 
     !PlDepth = -83.0
-    !IF(Counter2 == 1) RETURN
 
     !Set up output profiles
     ALLOCATE(ZProf(N), ZProfAbs(N), RProf(N), WProf(N), TProf(N), SProf(N),&
@@ -1660,6 +1662,10 @@
 
     ZCommon(1:N) = ZProf(1:N)
     ZCommon(N+1:SIZE(ZCommon)) = -9999.9
+    MDCommon(:,:) = 0.0
+    MRPointer => MR
+    MRZPointer => MRZ
+    !MDCommon(N+1:SIZE(MDCommon)) = -9999.9
 
     !Start at bottom of data range
     T = ZProf(N)
@@ -1679,6 +1685,7 @@
     SCommon(N+1:SIZE(SCommon)) = -9999.9
 
     K = N-1
+    Counter2 = 1
 
     !Start at bottom and work up through supplied profiles
     DO IOUT=K,1,-1
@@ -1768,25 +1775,51 @@
       TProf(IOUT) = Y(3)
       SProf(IOUT) = Y(4)
       AProf(IOUT) = Y(5)
-      MIntProf(IOUT) = Y(6)*86400
+
+      !This works. For some reason, Y(6) gives stupid melt rates (50 m/d+), but
+      !mdot in the SheetPlume subroutine is correct (according to Donald Slater,
+      !who compared it against his model), so this is to extract it and get it
+      !into the output
+      MR = MDCommon(:,2)
+      MRZ = MDCommon(:,1)
+      MIntProf(IOUT) = FindPointOnLine(MRZPointer, MRPointer, ZProf(IOUT+1))*86400
     
     END DO !IOUT
-    !PRINT *, 'Q: ',Discharge
-    !PRINT *, 'R: ',RProf
-    !PRINT *, 'W: ',WProf
-    !PRINT *, 'T: ',TProf
-    !PRINT *, 'S: ',SProf
-    !PRINT *, 'A: ',AProf
-    !PRINT *, 'M: ',MIntProf
 
     !To get from m/d to m/a to fit with rest of Elmer
     DepthOutput = ZProf
     MeltOutput = MIntProf*365.25
+    PRINT *, 'MeltOutput: ',MeltOutput
 
     DEALLOCATE(Z, Sal, Temp)
     DEALLOCATE(ZProf, ZProfAbs, RProf, WProf, TProf, SProf, AProf, MIntProf)
-    NULLIFY(ZPointer, SPointer, TPointer)
-    !Counter2 = 1
+    NULLIFY(ZPointer, SPointer, TPointer, MRZPointer, MRPointer)
+
+    CONTAINS
+      FUNCTION FindPointOnLine(xx,yy,x) RESULT(y)
+        REAL(KIND=dp) :: x,y,prop
+        REAL(KIND=dp), POINTER :: xx(:),yy(:)
+        INTEGER :: i, indexx
+
+        IF(SIZE(xx)/=SIZE(yy)) CALL Fatal("FindPointOnLine", "Input file has different size columns!")
+
+        indexx = 0
+
+        DO i=1,SIZE(xx)
+          IF(x >= xx(i)) CYCLE
+          indexx = i
+          EXIT
+        END DO
+
+        IF(indexx <= 1) THEN !Either below first, or above last, 0 melt
+          y = yy(1) !0.0_dp
+        ELSE
+          prop = (x - xx(indexx-1)) / (xx(indexx) - xx(indexx-1))
+          y = (prop * yy(indexx)) + ((1-prop) * yy(indexx-1))
+        END IF
+
+      END FUNCTION FindPointOnLine
+
 
   END SUBROUTINE PlumeSolver
 !-------------------------------------------------------------------------------
@@ -1794,16 +1827,15 @@
   SUBROUTINE SheetPlume(NEQ, T, Y, YDOT)
     USE Types
 
-    INTEGER :: NEQ, Counter
+    INTEGER :: NEQ, Counter, Counter2
     REAL(KIND=dp) :: T, Y(7), YDOT(6), TAmbient, SAmbient, Rho_0, Rho_1,&
                      Tin, mdot, Sb, Tb, a, b, c, RHO
     REAL(KIND=dp) :: E_0, icetemp, Rho_ref, g, c_w, c_i, L, lambda1, lambda2,&
                      lambda3, GamT, GamS, Cd
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Z(:), Temp(:), S(:)
     REAL(KIND=dp), POINTER :: ZPointer(:), TPointer(:), SPointer(:)
-    REAL(KIND=dp) :: TCommon(1000), SCommon(1000), ZCommon(1000)
-    COMMON TCommon, SCommon, ZCommon, Counter
-
+    REAL(KIND=dp) :: TCommon(1000), SCommon(1000), ZCommon(1000), MDCommon(1000,2)
+    COMMON TCommon, SCommon, ZCommon, MDCommon, Counter, Counter2
  
     !Y(1) = r
     !Y(2) = w
@@ -1864,13 +1896,6 @@
     Sb = (1.0/(2.0*a))*(-b-((b**2.0-4.0*a*c)**0.5))
     Tb = lambda1*Sb+lambda2+lambda3*T
     mdot = GamS*(Cd**0.5)*Y(2)*(Y(4)-Sb)/Sb
-    !PRINT *, 'a: ',a
-    !PRINT *, 'b: ',b
-    !PRINT *, 'c: ',c
-    !PRINT *, 'Sb: ',Sb
-    !PRINT *, 'Tb: ',Tb
-    !PRINT *, 'mdot: ',mdot
-    !PRINT *, 'Tin: ',Tin
 
     !Differential Equations
     !Plume Thickness
@@ -1888,9 +1913,13 @@
 
     !Along-integrated Melt Rate and Contact Area
     YDOT(5) = Y(7)
-    YDOT(6) = mdot
+    YDOT(6) = Y(7)*mdot
+ 
+    MDCommon(Counter2,1) = T 
+    MDCommon(Counter2,2) = mdot 
 
-    T = Tin 
+    T = Tin
+    Counter2 = Counter2+1
 
     NULLIFY(ZPointer, TPointer, SPointer)
     DEALLOCATE(Z, Temp, S)
