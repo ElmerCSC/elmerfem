@@ -1789,7 +1789,6 @@
     !To get from m/d to m/a to fit with rest of Elmer
     DepthOutput = ZProf
     MeltOutput = MIntProf*365.25
-    PRINT *, 'MeltOutput: ',MeltOutput
 
     DEALLOCATE(Z, Sal, Temp)
     DEALLOCATE(ZProf, ZProfAbs, RProf, WProf, TProf, SProf, AProf, MIntProf)
