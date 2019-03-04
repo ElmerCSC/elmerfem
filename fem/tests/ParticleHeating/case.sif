@@ -2,6 +2,9 @@
 ! and absorbed heats up a complex 2D geometry. For convenience the speed of light
 ! is set to one and the time is scaled accordingly. Still the heat equation is 
 ! solved in steady state as there is no heat capacity.
+!
+! In the current case the particles are sent evenly in 2D space since the initailization
+! methods using random numbers differ on different platforms.
 !---------------------------------------------------------------------------------
 Check Keywords Warn
 
@@ -11,11 +14,11 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 9
   Coordinate System = Cartesian 
   Simulation Type = transient
   Steady State Max Iterations = 1
-  Timestep Intervals = 20
+  Timestep Intervals = 5
   Output Intervals = 1
   Timestep Sizes = 1.0
 End
@@ -49,7 +52,7 @@ $ nopart = 1000
   Random Seed = Integer 1 
 
   Initial Coordinate(1,2) = Real 0.5 0.5 
-  Velocity Initialization Method = String "constant random"
+  Velocity Initialization Method = String "constant 2d"
   Initial Velocity Amplitude = Real 1.0 
 
   ! adds 0.05 to the initial radius of the light source
@@ -130,7 +133,7 @@ End
 
 Solver 3
 ! activate for postprocessing with paraview
-  Exec Solver = never
+!  Exec Solver = never
   Equation = "ResultOutput"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = "light_heat" 
@@ -167,5 +170,5 @@ Boundary Condition 2
   Particle Outlet = Logical True
 End
 
-Solver 2 :: Reference Norm = Real 1.473776E-01
-Solver 2 :: Reference Norm Tolerance = Real 1e-3
+Solver 2 :: Reference Norm = 1.10604280E-01
+Solver 2 :: Reference Norm Tolerance = 1.0e-3

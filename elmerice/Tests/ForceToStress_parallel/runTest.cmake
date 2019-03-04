@@ -1,0 +1,8 @@
+INCLUDE(${TEST_SOURCE}/../test_macros.cmake)
+
+SET(NPROCS 4)
+
+EXECUTE_PROCESS(COMMAND ${ELMERGRID_BIN} 1 2 cube.grd -partition ${NPROCS} 1 1 -periodic 1 1 0)
+
+RUN_ELMERICE_TEST(WITH_MPI)
+

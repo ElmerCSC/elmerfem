@@ -74,7 +74,7 @@
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:),PoissonRatio(:), &
 		Alpha(:,:), Beta(:), Gamma(:), RefSurface(:)
-  REAL(KIND=dp), POINTER :: OrigX(:), OrigY(:), OrigZ(:), &
+  REAL(KIND=dp), POINTER CONTIG :: OrigX(:), OrigY(:), OrigZ(:), &
       TrueX(:), TrueY(:), TrueZ(:)
 
   SAVE STIFF, LOAD, FORCE, AllocationsDone, &

@@ -31,6 +31,7 @@
        REAL(KIND=dp), POINTER :: store(:)
        REAL(KIND=dp), ALLOCATABLE, TARGET :: astore(:),vstore(:,:), BB(:,:), &
              nodes_x(:),nodes_y(:),nodes_z(:), xpart(:), ypart(:), zpart(:)
+       LOGICAL :: al
 
        TYPE ProcRecv_t
          INTEGER :: n = 0
@@ -87,21 +88,33 @@
       ! special case "all found":
       !--------------------------
       n = COUNT(.NOT.FoundNodes); dn = n
+
+      AL = .FALSE.
+      IF (.NOT.ASSOCIATED(ParEnv % Active) ) THEN
+        ALLOCATE(Parenv % Active(PArEnv % PEs))
+        AL = .TRUE.
+        ParEnv % Active = .TRUE.
+      END IF
+
       CALL SParActiveSUM(dn,2)
       IF ( dn==0 ) RETURN
 
+
       ! Exchange partition bounding boxes:
       ! ----------------------------------
-      myBB(1) = MINVAL(OldMesh % Nodes % x)
-      myBB(2) = MINVAL(OldMesh % Nodes % y)
-      myBB(3) = MINVAL(OldMesh % Nodes % z)
-      myBB(4) = MAXVAL(OldMesh % Nodes % x)
-      myBB(5) = MAXVAL(OldMesh % Nodes % y)
-      myBB(6) = MAXVAL(OldMesh % Nodes % z)
+      myBB = HUGE(mybb(1))
+      IF(OldMesh % NumberOfNodes /= 0) THEN
+        myBB(1) = MINVAL(OldMesh % Nodes % x)
+        myBB(2) = MINVAL(OldMesh % Nodes % y)
+        myBB(3) = MINVAL(OldMesh % Nodes % z)
+        myBB(4) = MAXVAL(OldMesh % Nodes % x)
+        myBB(5) = MAXVAL(OldMesh % Nodes % y)
+        myBB(6) = MAXVAL(OldMesh % Nodes % z)
 
-      eps2 = 0.1_dp * MAXVAL(myBB(4:6)-myBB(1:3))
-      myBB(1:3) = myBB(1:3) - eps2
-      myBB(4:6) = myBB(4:6) + eps2
+        eps2 = 0.1_dp * MAXVAL(myBB(4:6)-myBB(1:3))
+        myBB(1:3) = myBB(1:3) - eps2
+        myBB(4:6) = myBB(4:6) + eps2
+      END IF
 
       ALLOCATE(BB(6,ParEnv % PEs))
       DO i=1,ParEnv % PEs
@@ -424,6 +437,11 @@
 
       CALL MPI_BARRIER(ParEnv % ActiveComm,ierr)
 
+      IF(AL) THEN
+         DEALLOCATE(Parenv % Active)
+         ParEnv % Active => NULL()
+       END IF
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -529,7 +547,8 @@ CONTAINS
            TryLinear, KeepUnfoundNodesL
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
-       INTEGER, POINTER   :: Rows(:), Cols(:), Diag(:)
+       INTEGER, POINTER   CONTIG :: Rows(:), Cols(:)
+       INTEGER, POINTER    :: Diag(:)
 
        TYPE Epntr_t
          TYPE(Element_t), POINTER :: Element
@@ -538,10 +557,11 @@ CONTAINS
        TYPE(Epntr_t), ALLOCATABLE :: ElemPtrs(:)
        
        INTEGER, ALLOCATABLE:: RInd(:)
-       LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, ProjectorAllocated
+       LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, CylProject, ProjectorAllocated
        INTEGER :: eps_tries, nrow, PassiveCoordinate
        REAL(KIND=dp) :: eps1 = 0.1, eps2, eps_global, eps_local, eps_basis,eps_numeric
-       REAL(KIND=dp), POINTER :: Values(:), LocalU(:), LocalV(:), LocalW(:)
+       REAL(KIND=dp), POINTER CONTIG :: Values(:) 
+       REAL(KIND=dp), POINTER :: LocalU(:), LocalV(:), LocalW(:)
 
        TYPE(Nodes_t), SAVE :: Nodes
 
@@ -549,8 +569,10 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-
        Parallel = (ParEnv % PEs > 1)
+
+       FoundCnt = 0
+       IF ( OldMesh % NumberOfNodes == 0 ) RETURN
 !
 !      If projector argument given, search for existing
 !      projector matrix, or generate new projector, if
@@ -561,7 +583,8 @@ CONTAINS
          
          DO WHILE( ASSOCIATED( Projector ) )
            IF ( ASSOCIATED(Projector % Mesh, OldMesh) ) THEN
-             IF ( PRESENT(OldVariables) ) CALL ApplyProjector()
+              CALL Info('InterpolateMesh2Mesh','Applying exiting projector in interpolation',Level=12)
+              IF ( PRESENT(OldVariables) ) CALL ApplyProjector()
              RETURN
            END IF
            Projector => Projector % Next
@@ -630,9 +653,20 @@ CONTAINS
            'Interpolation Numeric Epsilon', Stat)
        IF(.NOT. Stat) eps_numeric = 1.0e-10
 
-       PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
-           'Interpolation Passive Coordinate', Stat ) 
-
+       PassiveCoordinate = ListGetInteger( CurrentModel % Simulation, &
+            'Interpolation Passive Coordinate', Stat ) 
+       IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
+         PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
+               'Interpolation Passive Coordinate', Stat ) 
+       END IF
+          
+       CylProject = ListGetLogical( CurrentModel % Simulation, &
+            'Interpolation Cylindric', Stat )                     
+       IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
+         CylProject = ListGetLogical( CurrentModel % Solver % Values, &
+               'Interpolation Cylindric', Stat ) 
+       END IF
+       
        QTreeFails = 0
        TotFails = 0
 
@@ -674,6 +708,12 @@ CONTAINS
            Point(PassiveCoordinate) = 0.0_dp
          END IF
 
+         IF( CylProject ) THEN
+           Point(1) = SQRT( Point(1)**2 + Point(2)**2 )
+           Point(2) = Point(3)
+           Point(3) = 0.0_dp
+         END IF
+         
 !------------------------------------------------------------------------------
 ! Find in which old mesh bulk element the point belongs to
 !------------------------------------------------------------------------------

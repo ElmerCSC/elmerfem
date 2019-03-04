@@ -91,7 +91,7 @@ CONTAINS
       DO n1 = 1,SIZE(M % diag)
         M % Diag(n1) = A % Diag(n1) 
         IF (M % diag(n1) == 0) THEN
-          write (*,*), 'diag', n1, 'is zero'
+          WRITE (*,*) 'diag', n1, 'is zero'
         end if
       END DO
 
@@ -459,7 +459,7 @@ CONTAINS
     numempty = 0
     ROW_LOOP: DO i = 1, CM % NumberOfRows
       ! If CM % ConstrainedDOF(i) is true, then this must be a row corresponding to
-      ! edge dof so it must tbe zero. 
+      ! edge dof so it must be zero. 
       IF ( CM % ConstrainedDOF(i) ) THEN
         Emptyrow(i) = .TRUE.
       ELSE ! Otherwise the row might correspond with dirichlet scalar dof

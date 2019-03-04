@@ -13,29 +13,6 @@ SET(ElmerIce_MeshAdapt2D_SRC
     GetActiveMesh.F90
     GetConnectedAreas.F90)
 
-# ---------------------- #
-# -- LOOK FOR MMG     -- #
-#----------------------- #
-MESSAGE(STATUS "------------------------------------------------")
-MESSAGE(STATUS "Elmer/Ice package: Mesh adaptation 2D looking for [Mmg] tools ")
-
-FIND_PACKAGE(MMG)
-
-IF(MMG_FOUND)
-  SET(HAVE_MMG TRUE CACHE BOOL "Has Mmg tools for Elmer/Ice Mesh adaptation" ) 
-  MARK_AS_ADVANCED(HAVE_MMG)
-  MESSAGE(STATUS "  Mmg:           " "${MMG_FOUND}")
-  MESSAGE(STATUS "  Mmg_INC:       " "${MMG_INCLUDE_DIR}")
-  MESSAGE(STATUS "  Mmg_LIB:      " "${MMG_LIBRARY}")
-  MESSAGE(STATUS "Compile MMG2DSolver")
-  ADD_DEFINITIONS(-DHAVE_MMG)
-ELSE()
-  MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
-  MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG2DSolver")
-ENDIF(MMG_FOUND)
-
-MESSAGE(STATUS "------------------------------------------------")
-
 ADD_LIBRARY(ElmerIce_MeshAdapt2D SHARED ${ElmerIce_MeshAdapt2D_SRC})
 
 

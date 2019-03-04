@@ -26,7 +26,7 @@ Simulation
   Blower 1 vx = Real 1.0
   Blower 1 vy = Real 0.0
 
-! With these defitions the 2nd blower is not active
+! With these definitions the 2nd blower is not active
   Blower 2 x = Real 0.0
   Blower 2 y = Real 0.0
   Blower 2 r = Real 0.0

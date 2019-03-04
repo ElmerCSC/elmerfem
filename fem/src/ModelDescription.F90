@@ -524,7 +524,7 @@ CONTAINS
           IF ( BoundaryIndex <= 0 .OR. BoundaryIndex >  &
               Model % NumberOfBoundaries ) THEN
             WRITE( Message, * ) 'Boundary section number: ',BoundaryIndex, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           Model % BoundaryId(BoundaryIndex) = Arrayn
@@ -570,10 +570,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % ICs(i) % Values)) &
                 Model % ICs(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfICs ) THEN
             WRITE( Message, * ) 'Initial Condition section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           Model % ICs(ArrayN) % Tag = ArrayN
@@ -622,10 +622,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Materials(i) % Values)) &
                 Model % Materials(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfMaterials ) THEN
             WRITE( Message, * ) 'Material section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Materials(Arrayn) % Values
@@ -670,10 +670,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % BodyForces(i) % Values)) &
                 Model % BodyForces(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodyForces ) THEN
             WRITE( Message, * ) 'Body Force section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % BodyForces(Arrayn) % Values
@@ -718,10 +718,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Equations(i) % Values)) &
                 Model % Equations(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfEquations ) THEN
             WRITE( Message, * ) 'Equation section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Equations(ArrayN) % Values
@@ -768,10 +768,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Bodies(i) % Values)) &
                 Model % Bodies(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodies ) THEN
             WRITE( Message, * ) 'Body section number: ',Arrayn, &
-                ' exeeds header value. Aborting. '
+                ' exceeds header value. Aborting. '
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Bodies(Arrayn) % Values
@@ -817,10 +817,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Components(i) % Values)) &
                 Model % Components(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfComponents ) THEN
             WRITE( Message, * ) 'Component section number: ',Arrayn, &
-                ' exeeds header value. Aborting. '
+                ' exceeds header value. Aborting. '
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Components(Arrayn) % Values
@@ -881,10 +881,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Solvers(i) % Values)) &
                 Model % Solvers(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfSolvers ) THEN
             WRITE( Message, * ) 'Solver section number: ',Arrayn, &
-                ' exeeds header value. Aborting. '
+                ' exceeds header value. Aborting. '
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Solvers(Arrayn) % Values
@@ -1239,7 +1239,7 @@ CONTAINS
           OPEN( 1, FILE=TRIM(str1), STATUS='OLD', ERR=10 )
 
 !
-!         Initially 50 buckets, on avarage MAX 4 entries / bucket:
+!         Initially 50 buckets, on average MAX 4 entries / bucket:
 !         --------------------------------------------------------
           hash => HashCreate( 50,4 )
           IF ( .NOT. ASSOCIATED( hash ) ) THEN
@@ -1540,6 +1540,52 @@ CONTAINS
                   END SELECT
                END IF
 
+#ifdef HAVE_LUA
+               ! TODO: Here comes the Lua part. Actually create the lua functions here by calling
+               !       some routine that transforms str(str_beg+4:) to lua function. But that function needs a name.
+             ELSE IF( SEQL(str(str_beg:), 'lua ') ) THEN
+               
+               IF ( .NOT. ScanOnly ) THEN 
+                 SELECT CASE ( TYPE )
+                 CASE (LIST_TYPE_CONSTANT_SCALAR )
+                   call Fatal('ModelDescription', 'Constant expressions are not supported with Lua. &
+                       Please provide at least a dummy argument.')
+
+                   IF ( SizeGiven ) THEN
+                     CALL ListAddConstRealArray( List, Name, N1, N2, &
+                         ATx(1:N1,1:N2,1), Proc, str(str_beg+4:) )
+                   ELSE
+                     CALL ListAddConstReal(List, Name, Val, Proc, &
+                         str(str_beg+4:))
+                   END IF
+
+                 CASE( LIST_TYPE_VARIABLE_SCALAR )
+                   block
+                     TYPE(ValueListEntry_t), POINTER :: v_ptr
+                     CHARACTER(len=:, kind=c_char), pointer :: lua_fname
+                     integer :: fname_len, lstat
+                     !$OMP PARALLEL default(shared)
+                     !$OMP CRITICAL
+                     lstat = lua_dostring(LuaState, &
+                         'return create_new_fun("'//trim(name)//'", "' // &
+                         trim(str(str_beg+4:)) // '")'// c_null_char, 1)
+                     lua_fname => lua_popstring(LuaState, fname_len)
+                     !$OMP END CRITICAL
+                     !$OMP END PARALLEL
+                     IF ( SizeGiven ) THEN 
+                       CALL ListAddDepRealArray( List, Name, Depname, 1, Att, &
+                           N1, N2, Atx(1:N1, 1:N2, 1:n), proc, lua_fname(1:fname_len) // c_null_char)
+                     ELSE
+                       CALL ListAddDepReal( List, Name, Depname, 1, ATt, ATx, &
+                           Proc, lua_fname(1:fname_len) // c_null_char)
+                     END IF
+                     v_ptr => ListFind(list, name)
+                     v_ptr % LuaFun = .true.
+                   end block
+                   END SELECT
+
+               END IF
+#endif
              ELSE
 
                SELECT CASE( TYPE )
@@ -1591,9 +1637,19 @@ CONTAINS
                    IF (ALLOCATED(ATt) ) DEALLOCATE(ATt,ATx)
                    ALLOCATE( ATt(MaxBufLen), ATx(n1,n2,MaxBufLen) )
                  END IF
- 
+                 
+                 ! Enable both "cubic monotone" and "monotone cubic"
                  Cubic = SEQL(str(str_beg:),'cubic')
-                 monotone = SEQL(str(str_beg+6:),'monotone')
+                 IF(Cubic) THEN
+                   monotone = SEQL(str(str_beg+6:),'monotone')
+                 ELSE
+                   monotone = SEQL(str(str_beg:),'monotone')
+                   IF( Monotone ) THEN
+                     Cubic = SEQL(str(str_beg+9:),'cubic')
+                     IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                   END IF
+                 END IF
+
                  n = 0
                  DO WHILE( ReadAndTrim(InFileUnit,str,Echo) )
 
@@ -1982,32 +2038,33 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
 !------------------------------------------------------------------------------
-     LOGICAL :: Found, C(3)
+     LOGICAL :: Found
      TYPE(Mesh_t), POINTER :: Mesh
      REAL(KIND=dp) :: x,y,z
      CHARACTER(LEN=MAX_NAME_LEN) :: csys
-
+     INTEGER :: Mesh_dim, Model_dim
+     
      csys = ListGetString( Model % Simulation, 'Coordinate System', Found )
      IF ( .NOT. Found ) Csys = 'cartesian'
 
      IF ( csys=='cartesian' .OR. csys=='polar' ) THEN
         Mesh => Model % Meshes
-        x = Mesh % Nodes % x(1)
-        y = Mesh % Nodes % y(1)
-        z = Mesh % Nodes % z(1)
-        c = .FALSE.
-        DO WHILE( ASSOCIATED( Mesh ) )
-           c(1) = c(1) .OR. ANY( Mesh % Nodes % x /= x )
-           c(2) = c(2) .OR. ANY( Mesh % Nodes % y /= y )
-           c(3) = c(3) .OR. ANY( Mesh % Nodes % z /= z )
-           Mesh => Mesh % Next
+
+        ! Inherit the maximum dimension from the mesh in case
+        ! it is not given.
+        Model_dim = 0
+        DO WHILE( ASSOCIATED( Mesh ) )          
+          Mesh_dim = Mesh % MaxDim
+          IF( Mesh_dim == 0 ) THEN
+            CALL SetMeshDimension( Mesh )
+            Mesh_dim = Mesh % MaxDim
+          END IF
+          Model_dim = MAX( Model_dim, Mesh_dim )
+          IF( Model_dim == 3 ) EXIT
+          Mesh => Mesh % Next
         END DO
 
-        ! This may be too conservative
-        ! Model % DIMENSION = COUNT( c ) 
-        IF( C(1) ) Model % Dimension = 1
-        IF( C(2) ) Model % Dimension = 2 
-        IF( C(3) ) Model % Dimension = 3
+        Model % Dimension = Model_dim
      END IF
 
      SELECT CASE ( csys )
@@ -2047,12 +2104,15 @@ CONTAINS
    END SUBROUTINE SetCoordinateSystem
 !------------------------------------------------------------------------------
 
-
+   
 !------------------------------------------------------------------------------
 !> Function to read the complete Elmer model: sif file and mesh files.
 !------------------------------------------------------------------------------
   FUNCTION LoadModel( ModelName,BoundariesOnly,numprocs,mype,MeshIndex) RESULT( Model )
 !------------------------------------------------------------------------------
+    USE MeshPartition
+    USE SParIterGlobals
+
     IMPLICIT NONE
 
     CHARACTER(LEN=*) :: ModelName
@@ -2063,8 +2123,8 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model
 
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh
-    INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels
+    TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
+    INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
@@ -2094,6 +2154,62 @@ CONTAINS
     Model % NumberOfSolvers    = 0
     Model % NumberOfMaterials  = 0
     Model % NumberOfBodyForces = 0
+
+#ifdef HAVE_LUA
+    BLOCK
+      INTEGER :: lstat, ompthread
+      CHARACTER(LEN=256) :: txcmd
+
+#if USE_ISO_C_BINDINGS
+      character(len=256) :: elmer_home_env
+      CALL getenv("ELMER_HOME", elmer_home_env)
+#endif
+
+      !$OMP PARALLEL Shared(parenv, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
+      !$OMP CRITICAL
+      LuaState = lua_init()
+      IF(.NOT. LuaState % Initialized) THEN
+        CALL Fatal('ModelDescription', 'Failed to initialize Lua subsystem.')
+      END IF
+
+      ! Store mpi task and omp thread ids in a table
+      LSTAT = lua_dostring(LuaState, 'ELMER_PARALLEL = {}' // c_null_char)
+      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ', parenv % mype
+      lstat = lua_dostring(LuaState, txcmd // c_null_char)
+
+      ompthread = 1
+      !$ ompthread = omp_get_thread_num()
+      WRITE(txcmd,'(A,I0)') 'ELMER_PARALLEL["thread"] = ', ompthread
+      lstat = lua_dostring(LuaState, txcmd // c_null_char)
+      
+      WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
+
+      ! TODO: (2018-09-17) Nowadays ISO_C_BINDINGS are pretty much mandatory to compile elmer
+#if USE_ISO_C_BINDINGS
+      ! Call defaults.lua using 1) ELMER_HOME environment variable or 2) ELMER_SOLVER_HOME preprocessor macro
+      ! TODO: (2018-09-18) ELMER_SOLVER_HOME might be too long
+
+      if (trim(elmer_home_env) == "") then
+        lstat = lua_dostring(LuaState, &
+            'loadfile("' // &
+ELMER_SOLVER_HOME &
+                    // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
+      else
+#endif
+        lstat = lua_dostring(LuaState, &
+            'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
+#if USE_ISO_C_BINDINGS
+      end if
+#endif
+
+      ! Execute lua parts 
+      lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
+      lstat = lua_dostring(LuaState,  trim(txcmd)// c_null_char)
+      LuaState % tx => lua_getusertable(LuaState, 'tx'//c_null_char)
+      !$OMP END CRITICAL
+      !$OMP END PARALLEL
+    END BLOCK
+#endif
 
     INQUIRE( Unit=InFileUnit, OPENED=OpenFile )
     IF ( .NOT. OpenFile ) OPEN( Unit=InFileUnit, File=Modelname, STATUS='OLD' )
@@ -2149,6 +2265,7 @@ CONTAINS
            Solver % Def_Dofs(:,:,4) = 0
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
+           Solver % DG = .TRUE.
            CYCLE
         ELSE
            ElementDef = "n:1"
@@ -2170,7 +2287,11 @@ CONTAINS
           EXIT
         END IF
       END DO
-
+     
+      !Solver % GlobalBubbles = ListGetLogical(Solver % Values, &
+      !    'Bubbles in Global System', stat)
+      !IF(.NOT. stat) Solver % GlobalBubbles = .TRUE.
+      
       i = i + 1
     END DO
 
@@ -2218,11 +2339,39 @@ CONTAINS
 
     NULLIFY( Model % Meshes )
     IF ( MeshDir(1:1) /= ' ' ) THEN
-      ! @TODO: Don't forget funny define
+
       CALL ResetTimer('LoadMesh') 
 
-      Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
-          BoundariesOnly, numprocs, mype, Def_Dofs )
+      Single = ListGetLogical( Model % Simulation,'Partition Mesh', GotIt ) 
+      IF ( Single ) THEN
+        IF( ParEnv % PEs == 1 ) THEN
+          CALL Warn('LoadMesh','Why perform partitioning in serial case?')
+        END IF
+        IF( ParEnv % MyPe == 0 ) THEN
+          SerialMesh => LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,&
+              1,0,def_dofs,LoadOnly = .TRUE. )
+          CALL PartitionMeshSerial( Model, SerialMesh, Model % Simulation )
+        ELSE
+          SerialMesh => AllocateMesh()
+        END IF
+
+        IF( ParEnv % PEs > 1) THEN
+          Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
+        ELSE
+          CALL Info('LoadMesh','Only one active partition, using the serial mesh as it is!')
+          IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
+            DEALLOCATE( SerialMesh % RePartition ) 
+          END IF
+          Model % Meshes => SerialMesh
+        END IF
+          
+        CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )          
+      ELSE
+        Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+            BoundariesOnly, numprocs, mype, Def_Dofs )
+      END IF
+      
+
       IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
         CALL FreeModel(Model)
         Model => NULL()
@@ -2292,7 +2441,6 @@ CONTAINS
          i = 0
       ELSE
          i = LEN_TRIM(MeshName)
-         ! DO WHILE( i>0 .AND. MeshName(i:i) /= '/')
          DO WHILE( i>0 )
            IF (MeshName(i:i) == '/') EXIT 
            i = i-1
@@ -2335,6 +2483,18 @@ CONTAINS
           single=.TRUE.
           Name=Name(9:)
         END IF
+
+        nprocs = numprocs
+        IF ( SEQL(Name, '-part ') ) THEN
+          READ( Name(7:), * ) nprocs
+          i = 7
+          DO WHILE(Name(i:i)/=' ')
+           i=i+1
+          END DO
+          Name=Name(i+1:)
+        END IF
+
+
         OneMeshName = .FALSE.
         k = 1
         i = 1
@@ -2403,12 +2563,18 @@ CONTAINS
           END DO
         END DO
 
+
         IF ( Single ) THEN
           Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs, s )
         ELSE
-          Model % Solvers(s) % Mesh => &
-              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs, s )
+          IF ( mype < nprocs ) THEN
+            Model % Solvers(s) % Mesh => &
+                LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,nprocs,mype,Def_Dofs, s )
+          ELSE
+            ! There are more partitions than partitions in mesh, just allocate
+            Model % Solvers(s) % Mesh => AllocateMesh()
+          END IF
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 
@@ -3207,11 +3373,12 @@ CONTAINS
 !> Loads the result file that has been saved by an earlier Elmer simulation.
 !> This makes it possible to restart the simulation.
 !------------------------------------------------------------------------------
-  SUBROUTINE LoadRestartFile( RestartFile,TimeCount,Mesh,Continuous,EOF )
+  SUBROUTINE LoadRestartFile( RestartFile,TimeCount,Mesh,Continuous,EOF,RestartList)
     CHARACTER(LEN=*) :: RestartFile
     INTEGER :: TimeCount
     TYPE(Mesh_T), POINTER :: Mesh
     LOGICAL, OPTIONAL :: Continuous,EOF
+    TYPE(ValueList_t), POINTER, OPTIONAL :: RestartList
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
     CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,FullName,PosName
@@ -3229,12 +3396,13 @@ CONTAINS
     LOGICAL, SAVE :: PosFile = .FALSE.
     LOGICAL, SAVE :: Binary, RestartVariableList, GotPerm, GotIt
     INTEGER, SAVE, ALLOCATABLE :: RestartVariableSizes(:)
-
+    TYPE(ValueList_t), POINTER :: ResList
+    
     REAL(KIND=dp) :: Dummy,Val,Time
     REAL(KIND=dp), POINTER :: Component(:), Temp(:)
     REAL(KIND=dp), POINTER :: Velocity1(:),Velocity2(:),Velocity3(:),Pressure(:)
     INTEGER(KIND=IntOff_k) :: Pos
-    INTEGER :: iostat
+    INTEGER :: iostat, FileCount
     CHARACTER(1) :: E
 #ifdef USE_ISO_C_BINDINGS
     REAL(dp) :: tstart, tstop
@@ -3251,9 +3419,19 @@ CONTAINS
     CALL Info( 'LoadRestartFile','--------------------------------------------', Level= 4 )
     CALL Info( 'LoadRestartFile','Reading data from file: '//TRIM(RestartFile), Level = 4 )
 
-    RestartVariableList = ListCheckPresent( CurrentModel % Simulation,&
-        'Restart Variable 1')
-
+    IF( PRESENT( RestartList ) ) THEN
+      ResList => RestartList
+    ELSE
+      ResList => CurrentModel % Simulation
+    END IF
+    
+    RestartVariableList = ListCheckPresent( ResList,'Restart Variable 1')
+    IF( RestartVariableList ) THEN
+      CALL Info('LoadRestartFile','Reading only variables given by: Restart Variable i',Level=10)
+    ELSE
+      CALL Info('LoadRestartFile','Reading all variables (if not wanted use >Restart Variable i< )',Level=10)      
+    END IF
+    
     Cont = .FALSE.
     IF ( PRESENT( Continuous ) ) Cont = Continuous
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
@@ -3267,20 +3445,36 @@ CONTAINS
     END IF
     OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
 
-    IF( iostat > 0 ) THEN
+    IF( iostat == 0 ) THEN
+      FileCount = 1
+    ELSE
+      FileCount = 0
+    END IF
+ 
+    FileCount = NINT( ParallelReduction( 1.0_dp * FileCount ) )
+    IF( FileCount == 0 ) THEN
       CALL Error( 'LoadRestartFile','=======================================' )
       CALL Error( 'LoadRestartFile','' )
       CALL Error( 'LoadRestartFile','Could not open file "'//TRIM(FName)//'"' )
       CALL Error( 'LoadRestartFile','No restart possible!' )
       CALL Error( 'LoadRestartFile','' )
-      IF( ListGetLogical( CurrentModel % Simulation,&
-          'Restart Error Continue',Found ) ) THEN
-        CALL Error( 'LoadRestartFile','=======================================' )
-        RETURN
+      CALL Fatal( 'LoadRestartFile','=======================================' )
+    ELSE IF( FileCount < ParEnv % PEs ) THEN
+      CALL Info('LoadRestartFile','Succefully opened '//TRIM(I2S(FileCount))//&
+          ' restart files out of '//TRIM(I2S(ParEnv % PEs)),Level=6)
+      IF( ListGetLogical( ResList,'Restart Error Continue',Found ) ) THEN
+        ! This partition does not have a mesh
+        IF( iostat /= 0 ) RETURN 
       ELSE
+        CALL Error( 'LoadRestartFile','=======================================' )
+        CALL Error( 'LoadRestartFile','' )
+        CALL Error( 'LoadRestartFile','Expted to find all restart files "'//TRIM(FName)//'"' )
+        CALL Error( 'LoadRestartFile','No restart possible!' )
+        CALL Error( 'LoadRestartFile','' )
         CALL Fatal( 'LoadRestartFile','=======================================' )
       END IF
     END IF
+    
     RestartFileOpen = .TRUE.
 
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
@@ -3317,14 +3511,14 @@ CONTAINS
         CALL Info( 'LoadRestartFile', 'ASCII 0', Level = 4 )
     END IF
     
-    CALL Info( 'LoadRestartFile',' ', Level = 4)
+    CALL Info( 'LoadRestartFile','Reading restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
 
     ! If we want to skip some of the variables we need to have a list 
     ! of their sizes still. This is particularly true with variables that 
     ! do not have permutation since they could be a field (like coordinate)
     ! or a global variable (like time).
     !----------------------------------------------------------------------
-    IF( RestartVariableList ) THEN
+    IF( RestartVariableList ) THEN      
       DO WHILE( ReadAndTrim(RestartUnit,Row) )
         nlen = LEN_TRIM(Row)        
         k = INDEX( Row(1:nlen),'total dofs:',.TRUE.) 
@@ -3379,9 +3573,9 @@ CONTAINS
           Solver => CurrentModel % Solvers(i)
           IF ( Row(k+1:nlen) == ListGetString(Solver % Values, 'Equation',Found)) EXIT
         END DO
-        
+
         ! Figure out the slot where the number of dofs are given and read them
-        ! The rule is to start from ':' and go throug empty space and occupied space
+        ! The rule is to start from ':' and go through empty space and occupied space
         DO j=k-1,1,-1
           IF ( Row(j:j) /= ' ' ) EXIT
         END DO
@@ -3429,6 +3623,8 @@ CONTAINS
           END IF
         END IF
 
+        CALL Info('LoadRestartFile','Reading variable: '//TRIM(VarName),Level=12)
+        
         ! read the size of field, size or perm and number of dofs per node
         !-----------------------------------------------------------------
         j = MAX(INDEX(Row,']'),1)
@@ -3455,7 +3651,10 @@ CONTAINS
             EXIT            
           END IF
         END DO
-        IF( .NOT. Found .AND. PermSize > 0 ) THEN
+
+        IF( Found ) THEN
+          CALL Info('LoadRestartFile','Associated to existing solver',Level=20)
+        ELSE IF( PermSize > 0 ) THEN
           CALL Warn('LoadRestartFile','Could not associate variable to solver: '//TRIM(VarName))
           ! Associated to some solver at least 
           Solver => CurrentModel % Solvers(1)
@@ -3474,8 +3673,7 @@ CONTAINS
         LoadThis = .FALSE.
         k = LEN_TRIM( VarName )
         DO j=1,1000
-          VarName2 = ListGetString(CurrentModel % Simulation, &
-                  'Restart Variable '//I2S(j), Found )
+          VarName2 = ListGetString( ResList,'Restart Variable '//I2S(j), Found )
           IF( .NOT. Found ) EXIT
           k2 = LEN_TRIM(VarName2)
 
@@ -3670,7 +3868,7 @@ CONTAINS
 
          CALL ReadVariableName( RestartUnit,Row,Stat )
 
-         ! If not all varibales were saved for this time step, and we're not
+         ! If not all variables were saved for this time step, and we're not
          ! using a .pos file, we may have reached the end even though i < TotalDOFs.
          IF ( Stat /= 0 ) EXIT
          IF ( SEQL(Row, "Time:") ) THEN
@@ -3707,7 +3905,8 @@ CONTAINS
              n = SIZE(Var % Values)
            END IF
            ! in case of (.NOT. LoadThis) n has already been set
-
+           CALL Info('LoadRestartFile','Size of variable is '//TRIM(I2S(n)),Level=20)
+           
            ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
            IF( ASSOCIATED( Var % Solver ) ) THEN
              IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
@@ -3718,7 +3917,7 @@ CONTAINS
          END IF
          
          DO j=1, n
-           IF ( FmtVersion > 0 ) THEN
+           IF ( FmtVersion > 0 ) THEN             
              CALL GetValue( RestartUnit, Perm, GotPerm, j, k, Val )
            ELSE
              READ( RestartUnit,* ) Node, k, Val
@@ -3738,6 +3937,10 @@ CONTAINS
            END IF
          END DO
 
+         IF( InfoActive( 20 ) ) THEN
+           PRINT *,'LoadRestartFile range:',ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
+         END IF
+           
          IF( LoadThis ) THEN
            CALL InvalidateVariable( CurrentModel % Meshes, Mesh, Row )
          END IF
@@ -3757,7 +3960,8 @@ CONTAINS
        RestartFileOpen = .FALSE.
     END IF
 
-    ! This is now obsolite for the new format 
+
+    ! This is now obsolete for the new format
     IF( FmtVersion < 3 ) THEN
       ! Change variable allocations to correct sizes,
       ! first for vectors...
@@ -3780,7 +3984,7 @@ CONTAINS
         END IF
         Var => Var % Next
       END DO
-      
+
       !... and then for scalars
       ! -----------------------
       Var => Mesh % Variables
@@ -3798,6 +4002,7 @@ CONTAINS
       END DO
     END IF
 
+    
     tstop = CPUTime()
     
     WRITE( Message,'(A,ES15.4)') 'Time spent for restart (s): ', tstop - tstart
@@ -3906,7 +4111,8 @@ CONTAINS
          ELSE
             READ( RestartUnit, * , IOSTAT=iostat ) Val
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error in GetValue')
+              WRITE (Message,*) 'Error in GetValue for Varname: ', TRIM(Var % Name)
+              CALL Fatal('LoadRestartFile',Message)
             END IF
          END IF
       END IF
@@ -3933,7 +4139,7 @@ CONTAINS
          ELSE
             READ( Row(7:),*,IOSTAT=iostat) nPerm, nPositive
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error in ReadPerm')
+              CALL Fatal('LoadRestartFile','Error in ReadPerm: '//TRIM(Row))
             END IF
          END IF
       END IF
@@ -4570,7 +4776,7 @@ CONTAINS
       END DO
       WRITE(PostFileUnit,'(a)') '#endgroup all'
 !------------------------------------------------------------------------------
-!   Open result file and go trough it...
+!   Open result file and go through it...
 !------------------------------------------------------------------------------
 
       REWIND(OutputUnit)

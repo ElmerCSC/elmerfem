@@ -88,7 +88,8 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, SaveThis
   TYPE(Solver_t), POINTER :: ESolver
   TYPE(Variable_t), POINTER :: EVar
-  REAL(KIND=dp), POINTER :: x(:), SaveValues(:)
+  REAL(KIND=dp), POINTER :: x(:)
+  REAL (KIND=dp), POINTER CONTIG :: SaveValues(:)
   REAL(KIND=dp), ALLOCATABLE :: Ahat(:,:)
   REAL(KIND=dp), ALLOCATABLE :: Ax(:)
   TYPE(Matrix_t), POINTER :: A

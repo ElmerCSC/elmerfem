@@ -1,12 +1,12 @@
 ! Computes the self-capacitance of a unit cube. Only 1/8 of the cube is
 ! modeled. The cube is placed within a larger cube and at the external
 ! walls infinite field approximation around origin is enforced. This
-! makes it possible not to extent the mesh into infinity. Note that 
-! this approximation is valied only in 3D. Permittivity of vacuum is set
-! to one to allow easier interpretation of the computed capacitance. 
-! 
-! As the capacitance is 1.02213 the true capacitance is something like 
-! 1.02213*8*eps. This is within 2% of the exact solution. 
+! makes it possible not to extent the mesh into infinity. Note that
+! this approximation is valid only in 3D. Permittivity of vacuum is set
+! to one to allow easier interpretation of the computed capacitance.
+!
+! As the capacitance is 1.02213 the true capacitance is something like
+! 1.02213*8*eps. This is within 2% of the exact solution.
 ! Increasing mesh density and taking the outer cube further apart.
 ! will improve on the accuracy.
 !

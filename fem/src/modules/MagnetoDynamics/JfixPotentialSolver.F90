@@ -65,12 +65,27 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   INTEGER, POINTER :: Perm(:)
   REAL(KIND=dp), POINTER :: fixpot(:)
   TYPE(Variable_t), POINTER :: fixJpot, svar, IterV 
+
+  LOGICAL :: Visited = .FALSE.
+
+  CALL Info('JfixPotentialSolver','Computing fixing potential for given current density',Level=6)
   
   dim = CoordinateSystemDimension()
   Mesh => GetMesh()
   B => GetMatrix()
   SolverParams => GetSolverParams()
 
+  IF( ListGetLogical( SolverParams,'Constant Input Current Density',Found ) ) THEN
+    IF( Visited ) THEN
+      CALL Info('JfixPotentialSolver','Current density is constant, nothing to do!',Level=8)
+      RETURN
+    END IF
+  END IF
+    
+  Visited = .TRUE.
+  
+
+  
   fixJpot => VariableGet( Mesh % Variables, 'Jfix')
 
   IF( ASSOCIATED(fixJPot)) THEN
@@ -105,7 +120,9 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
     fixJpot => VariableGet(Mesh % Variables, 'Jfix')
   END IF
+  
 
+  
   AutomatedBCs = GetLogical( SolverParams, &
        'Automated Source Projection BCs', Found )
   IF (.NOT. Found) AutomatedBCs = .TRUE.

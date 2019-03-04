@@ -62,7 +62,7 @@ Solver 1
 End
 
 Solver 2
-!  Exec Solver = never
+  Exec Solver = never
 
   Equation = "ResultOutput"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
@@ -113,3 +113,4 @@ End
 
 
 Solver 1 :: Reference Norm = 6.13446353
+Solver 1 :: Reference Norm Tolerance = 0.01

@@ -1,0 +1,28 @@
+  Linear System Symmetric =  True
+
+  Linear System Solver = "Feti"
+
+! Total feti seems to give wrong results!
+  Total Feti = Logical False
+
+  Linear System Iterative Method = "CPG"
+
+! ways to set the singular values, also "spqr" possible
+  Linear System Direct Method = "MumpsLocal"
+  Mumps Solve Singular = Logical True
+
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 1
+  Linear System Preconditioning = None
+
+  Feti Preconditioning = Logical True ! default is True
+!  Feti Projection Solution Group Size = Integer 2
+!  Feti proj: Linear System Direct Method = Mumps
+
+! Associated only with not-1D cases
+!  Feti Kernel Rot-Trans = Logical True
+  Feti CPG Projection Iterative = Logical True
+
+  Skip Zero Rhs Test = Logical True

@@ -1,0 +1,197 @@
+! As the test case VectorHelmholtzWaveguide but with hexahedral elements
+! From the primary case this differs in using special version of
+! block preconditioner utilizing vertical/horizontal edge division.
+!
+! P.R. 2.8.2018
+
+Check Keywords "Warn"
+
+Header
+Mesh DB "." "shoebox_hexas"
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Post File = vectorhelmholtz.vtu
+  Output Intervals(1) = 1
+
+  Mesh Levels = 1
+End
+
+Constants
+!Permeability of Vacuum = Real 1
+!Permittivity of Vacuum = Real 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+$ beta0=41.9332032192090
+$ k0=52.3961255469564
+$ kc=31.4159265358979 
+$ w=2*pi*(2.5e9)
+$ mu0=4e-7*pi
+
+Initial Condition 1
+  ! Pre = Variable coordinate
+  ! Real MATC "rand(1)"
+  Eref_re 2 = Variable coordinate 1, coordinate 3
+  Real MATC "-1.66782047593233*sin(tx(0)*pi*10)*(sin(beta0*tx(1)) - sin(-beta0*tx(1) + 2 * beta0*0.2))"
+End
+
+Material 1
+  Relative Permittivity = Real 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Angular Frequency = Real $w
+End
+
+
+Solver 1
+  Equation = "VectorHelmholtz"
+  Variable = E[E re:1 E im:1]
+  Use Piola Transform = Logical False
+  Optimize Bandwidth = True
+  Linear System Symmetric = False
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+
+  linear system abort not converged = false
+
+  Linear System Residual Output = 1
+  Calculate Energy Norm = Logical True
+
+
+  ! linear system normwise backward error = logical true
+
+  linear system complex = true
+
+  Linear System Block Mode = Logical True
+
+  Block Gauss-Seidel = Logical True
+  Block Hor-Ver System = Logical True
+  active coordinate = integer 2
+!  Block Cartesian System = Logical True
+  Block Matrix Reuse = Logical False
+  Block Preconditioner = Logical True
+  Block Scaling = Logical True
+
+
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-7
+  Outer: Linear System Iterative Method = gcr
+  Outer: Linear System GCR Restart =  250
+  Outer: Linear System Residual Output =  1
+  Outer: Linear System Max Iterations =  100
+  Outer: Linear System Pseudo Complex = logical True
+
+  !block 11: Linear System Solver = "direct"
+  !block 11: Linear System direct method = "mumps"
+
+  $blocktol = 1.0e-4
+
+  block 11: Linear System Solver = "iterative"
+  block 11: Linear System Preconditioning = none
+  block 11: Linear System Residual Output = 100
+  block 11: Linear System Max Iterations = 100
+  block 11: Linear System Iterative Method = bicgstabl
+  block 11: Linear System Convergence Tolerance = $blocktol
+  block 11: BicgStabl Polynomial Degree = 4
+  block 11: Linear System Complex = True
+
+!  block 22: Linear System Solver = "direct"
+!  block 22: Linear System direct method = "mumps"
+
+  block 22: Linear System Solver = "Iterative"
+  block 22: Linear System Preconditioning = none
+  block 22: Linear System Residual Output = 100
+  block 22: Linear System Max Iterations = 100
+  block 22: Linear System Iterative Method = bicgstabl
+  block 22: Linear System Convergence Tolerance = $blocktol
+  block 22: BicgStabl Polynomial Degree = 4
+  block 22: Linear System Complex = True
+End
+
+Solver 2
+  Equation = "calcfields"
+
+  Optimize Bandwidth = False
+  Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
+  Linear System Symmetric = False
+
+  Calculate Elemental Fields = Logical True
+  
+  Calculate Magnetic Field Strength = Logical False
+  Calculate Magnetic Flux Density = Logical False
+  Calculate Poynting vector = Logical False
+  Calculate Div of Poynting Vector = Logical False
+  Calculate Electric field = Logical True
+  Calculate Energy Functional = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Solver 3
+  Exec Solver = never
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  FileName = "f.dat"
+
+  Variable 1 = E re
+  Operator 1 = min
+  Operator 2 = max
+  Operator 3 = sum
+  Variable 4 = E im
+  Operator 4 = min
+  Operator 5 = max
+  Operator 6 = sum
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 5 !1
+  !E re {e} 2 = Variable Coordinate 1
+  !Real MATC "10*tx"
+
+  Electric Robin Coefficient im = Real $ beta0
+  !E re {e} 2 = Real 1
+
+  Magnetic Boundary Load 2 = Variable Coordinate 1
+    Real MATC "-2*beta0*k0/kc*sin(pi*tx/100e-3)"
+  !Real MATC "-139.87*sin(pi*tx/100e-3)"
+  !Real MATC "-1.1131e8*sin(pi*tx/100e-3)"
+  !Real MATC "-2/mu0*beta0*k0/kc*sin(pi*tx/100e-3)"
+End
+
+Boundary Condition 2
+  Target Boundaries(5) = 1 2 3 4 6 !2 3 4 5 6
+
+  !E re {e} = Real 0
+  !E im {e} = Real 0
+  !E re {f} = Real 0
+  !E im {f} = Real 0
+
+  Electric Robin Coefficient = Real $ -474315.9900340191 
+  Electric Robin Coefficient im = Real $ 474315.9900340191  
+End
+
+Solver 1 :: Reference Norm = 6.36557591E-03
+Solver 1 :: Reference Norm Tolerance = 1.0E-6
+Solver 2 :: Reference Norm = 2.17002474E-05
+Solver 2 :: Reference Norm Tolerance = 1.0E-4

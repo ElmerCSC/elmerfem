@@ -1,0 +1,160 @@
+$secondsperyear = 365.25 * 24.0 * 3600.0
+$H = 1000.0
+$accum = 0.05
+$Tsurf = 258.14
+$heatflux = 0.07 * secondsperyear * 1.0E-06
+$rhoi = 910.0*1.0E-06*secondsperyear^(-2.0)
+$gravity = -9.81*secondsperyear^(2.0)
+
+
+!! constant shear profile
+$function downwardvelo(Z) import H, accum {\
+    _downwardvelo = -accum*(1.0 - Z/H)\
+}
+
+!echo on
+Header
+  !CHECK KEYWORDS Warn
+  Mesh DB "." "column"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  !Output File = "temp_fct.result"
+  !Post File = "temp_fct.vtu" 
+  Initialize Dirichlet Conditions = Logical False
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-08
+  Clausius Clapeyron = Real 9.8e-08
+End
+
+Body 1
+  Name = "Glacier Column"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+  Convection = "constant"
+  Active Solvers(2) = 1 2
+End
+
+Initial Condition 1
+  Temp = Variable Coordinate 2
+     Real MATC "Tsurf - (heatflux * tx * 1.0E6)/secondsperyear"
+  HydroPressure = Variable Coordinate 2
+     Real MATC "rhoi * gravity * tx"     
+End
+
+Material 1
+  Name = "ice"
+
+  Convection Velocity 1 = Real 0.0
+  
+  Convection Velocity 2 = Variable Coordinate 2
+     Real MATC "downwardvelo(tx)"
+
+  Density = Real $rhoi
+  ! Heat transfer stuff
+  Temp Heat Capacity = Variable Temp
+    Real Procedure "ElmerIceUSF" "IceCapacity"
+  Heat Capacity Scaling Factor = Real $(secondsperyear)^(2.0)
+
+  Temp Heat Conductivity = Variable Temp
+    Real Procedure "ElmerIceUSF" "IceConductivity" 
+  Heat Conductivity Scaling Factor = Real $(secondsperyear)*1.0E-06
+  
+  Temp Upper Limit = Variable HydroPressure
+    Real Procedure "ElmerIceUSF" "IcePressureMeltingPoint"
+  Pressure Scaling Factor = Real 1.0E06 ! from MPa to Pa
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Temp Heat Source = Real 0
+End
+
+Solver 1
+  Equation = "HeightDepth"
+  Exec Solver = "Before Simulation"
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 2
+  Operator 1 = depth
+  Operator 2 = height
+End
+
+Solver 2
+  Equation = String "Homologous Temperature Equation"
+  Procedure =  File "ElmerIceSolvers" "TemperateIceSolver"
+  ! Comment next line in parallel, as EliminateDirichlet does
+  ! not work in parallel
+  !------------------------------------------------------------
+!  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+  Variable = String "Temp"
+  Variable DOFs = 1
+  Stabilize = True
+  Optimize Bandwidth = Logical True
+  Linear System Solver = "Iterative"
+  Linear System Direct Method = UMFPACK
+!  Linear System Iterative Method = "GCR"
+!  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0E-07
+  Linear System Abort Not Converged = False
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 0
+  Nonlinear System Convergence Tolerance = 1.0E-06
+  Nonlinear System Max Iterations = 100
+  !Nonlinear System Relaxation Factor = Real 9.999E-01
+  Steady State Convergence Tolerance = 1.0E-04
+  ! the contact algorithm (aka Dirichlet algorithm)
+  !-----------------------------------------------------
+  Apply Dirichlet = Logical True
+  ! those two variables are needed in order to store
+  ! the relative or homologous temperature as well
+  ! as the residual
+  !-------------------------------------------------
+  Exported Variable 1 = String "Temp Homologous"
+  Exported Variable 1 DOFs = 1
+  Exported Variable 2 = String "Temp Residual"
+  Exported Variable 2 DOFs = 1
+  Exported Variable 3 = String "HydroPressure"
+  Exported Variable 3 DOFs = 1
+End
+
+Boundary Condition 1
+  Name = "surface"
+  Target Boundaries = 1
+  Temp = Real $Tsurf
+End
+
+Boundary Condition 2
+  Name = "bedrock"
+  Target Boundaries = 2
+  Temp Flux BC = Logical True
+  Temp Heat Flux= Real $heatflux
+End
+
+! 3 and 4 are natural BC's
+Boundary Condition 3
+  Name = "left"
+  Target Boundaries(2) = 3 4
+End 
+
+Solver 2 :: Reference Norm = Real 262.214259
+Solver 2 :: Reference Norm Tolerance = Real 1E-05
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+

@@ -124,7 +124,7 @@ CONTAINS
     INTEGER :: i,j,n
     TYPE(Matrix_t), POINTER :: A
     TYPE(ListMatrixEntry_t), POINTER :: P
-    INTEGER, POINTER :: Rows(:),Cols(:),Diag(:)
+    INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
 
     DO n=SIZE(L),1,-1
       IF ( L(n) % Degree>0 ) EXIT
@@ -172,11 +172,11 @@ CONTAINS
     TYPE(ListMatrix_t), POINTER :: L(:)   
     INTEGER :: i,j,n
     TYPE(ListMatrixEntry_t), POINTER :: P
-    INTEGER, POINTER :: Rows(:),Cols(:),Diag(:)
-    REAL(KIND=dp), POINTER :: Values(:)
+    INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
+    REAL(KIND=dp), POINTER CONTIG :: Values(:)
 
     IF( A % FORMAT /= MATRIX_LIST ) THEN
-      CALL Warn('ListToCRSMatrix','The initial matrix type is not List')
+      CALL Warn('List_ToCRSMatrix','The initial matrix type is not List')
       RETURN
     END IF
     
@@ -230,7 +230,7 @@ CONTAINS
     A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
-    CALL Info('ListToCRSMatrix','Matrix format changed from List to CRS', Level=8)
+    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=8)
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToCRSMatrix
@@ -685,14 +685,14 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-   SUBROUTINE List_MoveRow( List,n1,n2,coeff )
+   SUBROUTINE List_MoveRow( List,n1,n2,coeff,staycoeff )
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: n1, n2
-     REAL(KIND=dp), OPTIONAL :: coeff
+     REAL(KIND=dp), OPTIONAL :: coeff, staycoeff
 !-------------------------------------------------------------------------------
      INTEGER :: k2
-     REAL(KIND=dp) :: Value, c
+     REAL(KIND=dp) :: val, c, d
      TYPE(ListMatrixEntry_t), POINTER :: CList
 
      IF( PRESENT(coeff)) THEN
@@ -700,7 +700,13 @@ CONTAINS
      ELSE
        c = 1.0_dp
      END IF
-     
+
+     IF( PRESENT(staycoeff)) THEN
+       d = staycoeff
+     ELSE
+       d = 0.0_dp
+     END IF
+              
      IF ( .NOT. ASSOCIATED(List) ) THEN
        CALL Warn('List_MoveRow','No List matrix present!')
        RETURN
@@ -719,11 +725,11 @@ CONTAINS
      
      DO WHILE( ASSOCIATED(CList) )
        k2 = Clist % Index
-       Value = c * Clist % Value
-       Clist % Value = 0.0_dp
+       Val = Clist % Value
+       Clist % VALUE = d * Val 
 
 ! This could be made more optimal as all the entries are for the same row!
-       CALL List_AddToMatrixElement(List,n2,k2,Value)
+       CALL List_AddToMatrixElement(List,n2,k2,c*Val)
 
        CList => CList % Next
      END DO
@@ -732,6 +738,54 @@ CONTAINS
    END SUBROUTINE List_MoveRow
 !-------------------------------------------------------------------------------
 
+
+! Exchange row structure between two matrix rows.
+! Currently this is not optimal since we copy the structure back-and-forth.
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_ExchangeRowStructure( List,n1,n2 )
+!-------------------------------------------------------------------------------
+     TYPE(ListMatrix_t), POINTER :: List(:)
+     INTEGER :: n1, n2
+!-------------------------------------------------------------------------------
+     INTEGER :: k1, k2
+     TYPE(ListMatrixEntry_t), POINTER :: CList1, CList2, Lptr
+              
+     IF ( .NOT. ASSOCIATED(List) ) THEN
+       CALL Warn('List_MoveRow','No List matrix present!')
+       RETURN
+     END IF
+         
+     Clist1 => List(n1) % Head
+     IF ( .NOT. ASSOCIATED(Clist1) ) THEN
+       CALL Warn('List__ExchangeRowStructure','Row1 not associated!')
+       RETURN
+     END IF
+
+     Clist2 => List(n2) % Head
+     IF ( .NOT. ASSOCIATED(Clist2) ) THEN
+       CALL Warn('List__ExchangeRowStructure','Row2 not associated!')
+       RETURN
+     END IF
+     
+     DO WHILE( ASSOCIATED(CList1) )
+       k1 = Clist1 % Index
+       Lptr => List_GetMatrixIndex( List,n2,k1 )
+       CList1 => CList1 % Next
+     END DO
+     
+     DO WHILE( ASSOCIATED(CList2) )
+       k2 = Clist2 % Index
+       Lptr => List_GetMatrixIndex( List,n1,k2 )
+       CList2 => CList2 % Next
+     END DO
+     
+!-------------------------------------------------------------------------------
+   END SUBROUTINE List_ExchangeRowStructure
+!-------------------------------------------------------------------------------
+
+
+
+   
 !------------------------------------------------------------------------------
   SUBROUTINE List_GlueLocalMatrix( A,N,Dofs,Indexes,LocalMatrix )
 !------------------------------------------------------------------------------

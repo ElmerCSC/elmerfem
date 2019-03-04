@@ -5,6 +5,26 @@
 !> Version supporting multithreading and SIMD friendly ElmerSolver
 !> kernels. 
 !------------------------------------------------------------------------------
+SUBROUTINE AdvDiffSolver_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+  CHARACTER(*), PARAMETER :: Caller = 'AdvDiffSolver_init'
+  
+  IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+    CALL Fatal(Caller,'Implemented only in cartesian coordinates')
+  END IF
+
+END SUBROUTINE AdvDiffSolver_Init
+
+
+!------------------------------------------------------------------------------
 SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
@@ -23,7 +43,13 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: n, nb, nd, t, active
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles
+  CHARACTER(*), PARAMETER :: Caller = 'AdvDiffSolver'
 !------------------------------------------------------------------------------
+
+  CALL Info(Caller,'------------------------------------------------')
+  CALL Info(Caller,'Solving generic advection-diffusion-reaction PDE')
+
+  CALL DefaultStart()
   
   maxiter = ListGetInteger( GetSolverParams(),&
       'Nonlinear System Max Iterations',Found,minv=1)
@@ -45,7 +71,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     nColours = GetNOFColours(Solver)
     VecAsm = (nColours > 1) .OR. (nthr == 1)
     
-    CALL ResetTimer('ThreadedAssembly')
+    CALL ResetTimer( Caller//'BulkAssembly' )
 
     !$OMP PARALLEL &
     !$OMP SHARED(Solver, Active, nColours, VecAsm) &
@@ -55,7 +81,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     DO col=1,nColours
       
       !$OMP SINGLE
-      CALL Info('ModelPDEthreaded','Assembly of colour: '//TRIM(I2S(col)),Level=10)
+      CALL Info( Caller,'Assembly of colour: '//TRIM(I2S(col)),Level=15)
       Active = GetNOFActive(Solver)
       !$OMP END SINGLE
 
@@ -73,7 +99,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     END DO
     !$OMP END PARALLEL 
 
-    CALL CheckTimer('ThreadedAssembly',Delete=.TRUE.)
+    CALL CheckTimer(Caller//'BulkAssembly',Delete=.TRUE.)
     totelem = 0
 
     CALL DefaultFinishBulkAssembly()
@@ -81,7 +107,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     nColours = GetNOFBoundaryColours(Solver)
     VecAsm = (nColours > 1) .OR. (nthr == 1)
 
-    CALL ResetTimer('ThreadedBCAssembly')
+    CALL ResetTimer(Caller//'BCAssembly')
     
     !$OMP PARALLEL &
     !$OMP SHARED(Active, Solver, nColours, VecAsm) &
@@ -110,7 +136,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     END DO
     !$OMP END PARALLEL
 
-    CALL CheckTimer('ThreadedBCAssembly',Delete=.TRUE.)
+    CALL CheckTimer(Caller//'BCAssembly',Delete=.TRUE.)
         
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -124,6 +150,9 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 
   END DO
 
+  CALL DefaultFinish()
+
+  
 CONTAINS
 
 ! Assembly of the matrix entries arising from the bulk elements. SIMD version.
@@ -139,10 +168,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJ(:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
-    REAL(KIND=dp), SAVE, POINTER CONTIG :: DiffCoeff(:), ConvCoeff(:), ReactCoeff(:), &
+    REAL(KIND=dp), SAVE, POINTER  :: DiffCoeff(:), ConvCoeff(:), ReactCoeff(:), &
         TimeCoeff(:), SourceCoeff(:), Velo1Coeff(:), Velo2Coeff(:), Velo3Coeff(:)
-    REAL(KIND=dp), SAVE, POINTER CONTIG :: VeloCoeff(:,:)
-    REAL(KIND=dp) :: Weight
+    REAL(KIND=dp), SAVE, POINTER  :: VeloCoeff(:,:)
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -191,7 +219,7 @@ CONTAINS
           MASS(nd,nd), STIFF(nd,nd), FORCE(nd), VeloCoeff(ngp,3), STAT=allocstat)
       
       IF (allocstat /= 0) THEN
-        CALL Fatal('ModelPDEthreaded::LocalMatrix','Local storage allocation failed')
+        CALL Fatal(Caller,'Local storage allocation failed')
       END IF
     END IF
 
@@ -264,14 +292,14 @@ CONTAINS
 
     
     IF(TransientSimulation) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
-    CALL LCondensate( nd-nb, nb, STIFF, FORCE )
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
 !------------------------------------------------------------------------------
 
 
-  ! Assembly of the matrix entries arising from the Neumann and Robin conditions
+! Assembly of the matrix entries arising from the Neumann and Robin conditions
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
@@ -281,8 +309,8 @@ CONTAINS
     LOGICAL :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Flux(n), RobinCoeff(n), Ext_t(n), F,C,Ext, Weight
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
+    REAL(KIND=dp) :: F,C,Ext, Weight
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim
@@ -353,36 +381,6 @@ CONTAINS
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
-!------------------------------------------------------------------------------
-
-
-! Perform static condensation in case bubble dofs are present
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( N, Nb, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-    INTEGER :: N, Nb
-    REAL(KIND=dp) :: K(:,:),F(:),Kbb(Nb,Nb), &
-         Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
-
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
-
-    IF ( Nb <= 0 ) RETURN
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = (/ (i, i=n+1,n+nb) /)
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL InvertMatrix( Kbb,nb )
-
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

@@ -339,7 +339,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
     
     IF( i /= itop ) CYCLE	
 
-    ! First node of streamline is initilized	
+    ! First node of streamline is initialized	
     !-------------------------------------------------------------------
     k = i
     v1(1) = Flow( FlowDofs*(FlowPerm(k)-1) + 1 ) 

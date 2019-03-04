@@ -701,8 +701,10 @@ st = realtime()
     DO j = 1, CurrIf % NumberOfRows
       IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) CYCLE
       RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
+ if ( rowind<=0 ) cycle
       DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
         ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
+ if ( colind<=0 ) cycle
         CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
       END DO
     END DO
@@ -839,7 +841,9 @@ SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
      END IF
 
      IF ( SplittedMatrix % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-       SplittedMatrix % NbsIfMatrix(i) % Values = 0._dp
+       IF(ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % Values)) &
+         SplittedMatrix % NbsIfMatrix(i) % Values = 0._dp
+
        IF ( NeedILU.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % ILUvalues) ) &
          SplittedMatrix % NbsIfMatrix(i) % ILUValues  = 0._dp
        IF ( NeedPrec.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % Precvalues) ) &
@@ -1594,7 +1598,9 @@ INTEGER::inside
 
       IF ( hypre_sol /= 1) THEN
          IF ( SEQL(Prec,'ilu') ) THEN
-           READ( Prec(4:), * ) ILUn
+           Ilun = 0
+           READ( Prec(4:), *, END=10 ) ILUn
+10         CONTINUE
            WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
            CALL Info("SParIterSolver", Message,Level=3)
          ELSE IF( Prec == 'parasails' ) THEN
@@ -1715,7 +1721,9 @@ INTEGER::inside
       verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
       IF( .NOT. Found ) verbosity = 10
 
-      NewSetup=ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+      NewSetup = ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+      IF(.NOT.Found) NewSetup = .TRUE.
+
       IF (ListGetLogical(Params, 'HYPRE Block Diagonal', Found)) THEN
         bilu = Solver % Variable % Dofs
       ELSE
@@ -1723,13 +1731,16 @@ INTEGER::inside
       END IF
 
       CALL SParIterActiveBarrier()
+
       IF(hypre_pre/=3) THEN
         IF (NewSetup) THEN
           IF (SourceMatrix % Hypre /= 0) THEN
             CALL SolveHYPRE4(SourceMatrix % Hypre)
+            SourceMatrix % Hypre = 0
           END IF
         END IF
         ! setup solver/preconditioner
+
         IF (SourceMatrix % Hypre == 0) THEN
           precond=0
           PrecVals => SourceMatrix % PrecValues
@@ -2108,7 +2119,8 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   CHARACTER(LEN=MAX_NAME_LEN) :: Preconditioner
 
   TYPE(Matrix_t), POINTER :: CM,SaveMatrix
-  INTEGER, POINTER :: SPerm(:), SCols(:)
+  INTEGER, POINTER :: SPerm(:)
+  INTEGER, POINTER CONTIG :: SCols(:)
 
 #ifdef USE_ISO_C_BINDINGS
   REAL(kind=dp)::tt,rt
@@ -3129,7 +3141,10 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
            IF ( RowInd > 0 ) THEN
               DO k = RecvdIfMatrix(i) % Rows(j), RecvdIfMatrix(i) % Rows(j+1) - 1
                  l = RecvdIfMatrix(i) % Cols(k)
-                 ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
+
+!                ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
+!XYXY
+                 ColIndA =  SearchNode(ParallelInfo,l, Order=ParallelInfo % Gorder )
                  IF (ColIndA>0) ColIndA = RevDOFList(ColIndA)
 
                  IF ( ColIndA  <= 0 ) CYCLE
@@ -3241,8 +3256,11 @@ SUBROUTINE ClearInsideC( SourceMatrix, InsideMatrix, &
         IF ( RowInd /= -1 ) THEN
            DO j = RecvdIfMatrix(p) % Rows(i),RecvdIfMatrix(p) % Rows(i+1) - 1
 
-              GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j),&
-                        Order = SourceMatrix % Perm )
+!             GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j),&
+!                       Order = SourceMatrix % Perm )
+!XYXY
+              GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j), Order=ParallelInfo % Gorder )
+
 !             GCol = SourceMatrix % Perm( Gcol )
 
               ColInd = -1

@@ -319,14 +319,14 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! PART II:
   ! Generate the descriptions of curved element edges for improved geometry 
   ! approximation. The implementation may not be memory efficient as data is 
-  ! dublicated for shared element edges with the same director data. Here the
+  ! duplicated for shared element edges with the same director data. Here the
   ! variable CurveDataOutput can be used to output edge data into a file.
   ! With the macro element option we may create additional space curves
   ! corresponding to subtriangulations of quadrilateral elements.
   ! ---------------------------------------------------------------------------------
   CurveDataOutput = GetLogical(SolverPars, 'Edge Curves Output', Found)
-  MacroElements = GetLogical(SolverPars, 'Use Macro Elements', Found)
-  IF (.NOT.Found) MacroElements = .TRUE.
+  !MacroElements = GetLogical(SolverPars, 'Use Macro Elements', Found)
+  MacroElements = .FALSE.
   CALL CreateCurvedEdges(CurveDataOutput, MacroElements)
 
 
@@ -1038,9 +1038,6 @@ CONTAINS
 ! to create the parametrizations of curved edges for the Hermite interpolation.
 ! The edge curve data are written as elementwise properties 'edge frames' and
 ! 'edge parameters'.
-!
-! TO DO: Make MacroElement option functional for second-order nodal director data.
-!
 !-------------------------------------------------------------------------------
   SUBROUTINE CreateCurvedEdges( FileOutput, MacroElements )
 !-------------------------------------------------------------------------------
@@ -1437,9 +1434,7 @@ CONTAINS
 ! reference element coordinates u and v are used as curvilinear coordinates on
 ! the blending surface. The necessary edge curve data for creating the blending 
 ! surface must be contained as elementwise properties 'edge frames' and 
-! 'edge parameters'. The optional arguments MacroElement and BubbleDOFs
-! can be used to augment the serendipity approximation by an additional bubble 
-! part to ensure optimal accuracy with 4-node background elements.
+! 'edge parameters'. 
 ! TO DO: Complement and clean the implementation when the initial data
 !        is defined over second-order Lagrange elements
 !-----------------------------------------------------------------------------  
@@ -1458,7 +1453,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: A(2,2)             !< The covariant components of the metric surface tensor at (u,v)  
     REAL(KIND=dp), INTENT(OUT) :: B(2,2)             !< The covariant components of the second fundamental form at (u,v)
     REAL(KIND=dp), INTENT(OUT) :: x(3)               !< Blending surface point corresponding to (u,v): x=x(u,v)
-    LOGICAL, OPTIONAL, INTENT(IN) :: MacroElement    !< Use macroelement strategy to add a bubble part 
+    LOGICAL, OPTIONAL, INTENT(IN) :: MacroElement    !< This should be .FALSE. to avoid troubles
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: BubbleDOFs(4,3)  !< Coefficients for bubble basis functions
     LOGICAL :: Stat                                  !< A dummy status variable at the moment
 !----------------------------------------------------------------------------
@@ -1499,7 +1494,7 @@ CONTAINS
       ELSE
         !
         ! This must be a 4-node background element; see the tests already done in CreateCurvedEdges.
-        ! If the macro element strategy is used, the coefficients of the bubble fuctions must already
+        ! If the macro element strategy is used, the coefficients of the bubble functions must already
         ! be available at the time of the function call and the virtual edges used in the construction
         ! of the bubble functions are not employed within this function (thus, EdgesParametrized = 4). 
         !
@@ -1536,7 +1531,7 @@ CONTAINS
     END IF
 
     !-----------------------------------------------------------------------
-    ! Retrive parametrizations of curved edges:
+    ! Retrieve parametrizations of curved edges:
     !------------------------------------------------------------------------
     EdgeParams => GetElementProperty('edge parameters', Element)   
     FrameData => NULL()
@@ -1853,7 +1848,7 @@ CONTAINS
         
       CASE(4)
         !-------------------------------------------------------------------------
-        ! First define edge orientation convention and retrive parameters for
+        ! First define edge orientation convention and retrieve parameters for
         ! representing the curved edge
         !-------------------------------------------------------------------------
         SELECT CASE(e)
@@ -2216,6 +2211,8 @@ CONTAINS
 ! internal nodes corresponding to bubble basis functions of the Q3 space via
 ! the macro element strategy. The nodal difference between the desired position 
 ! and the serendipity approximation is returned via the variable BubbleNodesDelta.
+! This has a limited applicability as it works correctly for rectangular elements
+! only.
 !------------------------------------------------------------------------------
   SUBROUTINE FindBubbleNodesQuad(Element, Nodes, BubbleNodesDelta)
 !------------------------------------------------------------------------------
@@ -2237,7 +2234,7 @@ CONTAINS
     CurveDataSize = CurveDataSize1
     cn = 2
     !-----------------------------------------------------------------------
-    ! Retrive parametrizations of curved edges:
+    ! Retrieve parametrizations of curved edges:
     !------------------------------------------------------------------------
     EdgeParams => GetElementProperty('edge parameters', Element)
     !------------------------------------------------------------------------
@@ -2533,7 +2530,7 @@ CONTAINS
 
     !-----------------------------------------------------------------
     ! Another planarity check may have been done. A positive result
-    ! of an erlier data test will be respected.
+    ! of an earlier data test will be respected.
     !-----------------------------------------------------------------
     IF (PRESENT(PlanarSurface)) THEN
       IF (PlanarSurface .AND. .NOT. Planar) THEN
@@ -2745,11 +2742,11 @@ CONTAINS
       ! --------------------------------------------------------------------
       ! Create a regular 4X4-subgrid around the local origin to simplify
       ! the evaluation of higher order derivatives related to the Taylor
-      ! polynomial. It is supposed that a square [-rK/4,rK/4]^2 is embedded
+      ! polynomial. It is supposed that a square [-rK/8,rK/8]^2 is embedded
       ! into the plane domain obtained via the projection.
       ! TO DO: FIGURE OUT THE PRECISE SIZE OF A SQUARE THAT CAN BE EMBEDDED 
       ! --------------------------------------------------------------------
-      hk = rK/2.0d0               ! The width of stencil
+      hk = rK/4.0d0               ! The width of stencil
       x1(1) = -hk/2.0d0
       x1(2) = x1(1) + hk/3.0d0
       x1(3) = x1(2) + hk/3.0d0
@@ -4972,7 +4969,7 @@ CONTAINS
         CASE(CurlKernel,DoubleReduction)
           !---------------------------------------------------------------------
           ! The basis functions for RT_0(k,0), with DOFs defined as integrals
-          ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
+          ! of the type d_i = (u,v_i)_k. Here the given function v_i transforms
           ! according to the standard Piola transformation (the div-conforming 
           ! version).
           !---------------------------------------------------------------------
@@ -5008,7 +5005,7 @@ CONTAINS
         CASE(CurlKernel)
           !---------------------------------------------------------------------
           ! The basis functions for ABF_0(k,0), with DOFs defined as integrals
-          ! of the type d_i = (u,v_i)_k. Here the given function v_i tranforms
+          ! of the type d_i = (u,v_i)_k. Here the given function v_i transforms
           ! according to the standard Piola transformation (the div-conforming 
           ! version).
           !---------------------------------------------------------------------
@@ -5999,7 +5996,7 @@ FUNCTION EdgeMidNode(Element, e) RESULT(X)
       CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
 
   !-----------------------------------------------------------------------
-  ! Retrive parametrizations of curved edges:
+  ! Retrieve parametrizations of curved edges:
   !------------------------------------------------------------------------
   EdgeParams => GetElementProperty('edge parameters', Element)
 

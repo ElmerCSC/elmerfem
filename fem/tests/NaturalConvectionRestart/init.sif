@@ -77,8 +77,8 @@ Solver 1
   Linear System Preconditioning = ILU0
   Linear System Abort Not Converged = False
   Linear System Residual Output = 10
- 
-! For testing saving of global vector varibles
+
+! For testing saving of global vector variables
   Exported Variable 1 = -dofs 3 -global GlobalTest
 End
 

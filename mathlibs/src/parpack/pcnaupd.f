@@ -453,8 +453,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Real  
-     &           pslamch
-      external   pslamch
+     &           pslamch10
+      external   pslamch10
 c
 c     %-----------------------%
 c     | Executable Statements |
@@ -529,7 +529,7 @@ c        | Set default parameters |
 c        %------------------------%
 c
          if (nb .le. 0)	nb = 1
-         if (tol .le. 0.0  ) tol = pslamch(comm, 'EpsMach')
+         if (tol .le. 0.0  ) tol = pslamch10(comm, 'EpsMach')
          if (ishift .ne. 0  .and.  
      &       ishift .ne. 1  .and.
      &       ishift .ne. 2)	ishift = 1

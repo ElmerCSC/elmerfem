@@ -65,7 +65,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
       EnforcePositiveMagnitude, UsePot
   REAL(KIND=dp) :: Unorm, Totnorm, val
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
-  REAL(KIND=dp), POINTER :: SaveRHS(:)
+  REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
 #else
@@ -403,7 +403,7 @@ CONTAINS
 !      Update global matrices from local matrices 
 !------------------------------------------------------------------------------
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
-        Solver % Matrix % Rhs => SaveRhs
+        Solver % Matrix % Rhs => SaveRHS
         CALL DefaultUpdateEquations( STIFF, FORCE(1,1:nd) )
       END IF
 

@@ -170,7 +170,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   n_Circuits => Model%n_Circuits
   CM=>Model%CircuitMatrix
   
-  ! Initialialize Circuit matrix:
+  ! Initialize Circuit matrix:
   ! -----------------------------
   IF(.NOT.ASSOCIATED(CM)) RETURN
 
@@ -1016,7 +1016,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   n_Circuits => Model%n_Circuits
   CM=>Model%CircuitMatrix
   
-  ! Initialialize Circuit matrix:
+  ! Initialize Circuit matrix:
   ! -----------------------------
   IF(.NOT.ASSOCIATED(CM)) RETURN
 

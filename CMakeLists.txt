@@ -23,6 +23,9 @@ ENDIF()
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
 
+SET(CMAKE_Fortran_MODULE_DIRECTORY
+  ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
+
 # Defaults to cache variables
 SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
 SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel tests")
@@ -41,6 +44,10 @@ SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
+SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
+
+SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
+
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
 if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
@@ -52,7 +59,7 @@ MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 ENABLE_TESTING()
 
 SET(ELMER_FEM_MAJOR_VERSION 8)
-SET(ELMER_FEM_MINOR_VERSION 3)
+SET(ELMER_FEM_MINOR_VERSION 4)
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
 
@@ -85,6 +92,18 @@ IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
   IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
     MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
   ENDIF()
+ENDIF()
+
+IF(WITH_LUA)
+  IF(NOT(${USE_SYSTEM_LUA}))
+    ADD_SUBDIRECTORY(${CMAKE_CURRENT_SOURCE_DIR}/contrib/lua-5.1.5/)
+    set(LUA_LIBRARIES luaelmer CACHE STRING "")
+    set(LUA_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/contrib/lua-5.1.5/src CACHE STRING "")
+  ELSE()
+    FIND_PACKAGE(Lua51 REQUIRED)
+  ENDIF()
+  SET(HAVE_LUA TRUE)
+  MARK_AS_ADVANCED(HAVE_LUA)
 ENDIF()
 
 IF(WITH_OpenMP)
@@ -175,6 +194,74 @@ IF(WITH_Trilinos)
     ADD_DEFINITIONS(-DHAVE_TRILINOS)
   ENDIF()
 ENDIF()
+
+IF(WITH_Zoltan)
+  # ZOLTAN Remeshing
+  MESSAGE(STATUS "------------------------------------------------")
+
+  SET(USE_SYSTEM_ZOLTAN FALSE CACHE BOOL "Use system Zoltan library")
+  IF(NOT ${USE_SYSTEM_ZOLTAN})
+    MESSAGE(STATUS "Building Zoltan mesh repartitioner")
+    ADD_SUBDIRECTORY(contrib/Zoltan_v3.83)
+    SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" ) 
+    MARK_AS_ADVANCED(HAVE_ZOLTAN)
+    MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
+    MESSAGE(STATUS "------------------------------------------------")
+  ELSE()
+    FIND_PACKAGE(Zoltan)
+
+    IF(ZOLTAN_FOUND)
+
+      SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" )
+      GET_FILENAME_COMPONENT(ZOLTAN_LIBDIR ${ZOLTAN_LIBRARY} DIRECTORY)
+
+      MARK_AS_ADVANCED(HAVE_ZOLTAN)
+      MESSAGE(STATUS "  Zoltan:           " "${ZOLTAN_FOUND}")
+      MESSAGE(STATUS "  Zoltan_INC:       " "${ZOLTAN_INCLUDE_DIR}")
+      MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
+      MESSAGE(STATUS "  Zoltan_LIBDIR:      " "${ZOLTAN_LIBDIR}")
+
+      INCLUDE_DIRECTORIES(${ZOLTAN_INCLUDE_DIR})
+      MESSAGE(STATUS "------------------------------------------------")
+
+    ELSE()
+      MESSAGE(STATUS "  Library not found: >ZOLTAN_FOUND< ")
+      MESSAGE(STATUS "    Missing: >ZOLTAN_INCLUDE_DIR< , >ZOLTAN_LIBRARY< for mesh (re)partitioning")
+    ENDIF(ZOLTAN_FOUND)
+
+    MESSAGE(STATUS "------------------------------------------------")
+  ENDIF()
+ENDIF(WITH_Zoltan)
+
+# MMG Remeshing
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
+
+FIND_PACKAGE(MMG)
+
+IF(MMG_FOUND)
+
+  SET(HAVE_MMG TRUE CACHE BOOL "Has Mmg tools for Elmer/Ice Mesh adaptation" )
+  GET_FILENAME_COMPONENT(MMG_LIBDIR ${MMG_LIBRARY} DIRECTORY)
+
+  MARK_AS_ADVANCED(HAVE_MMG)
+  MESSAGE(STATUS "  Mmg:           " "${MMG_FOUND}")
+  MESSAGE(STATUS "  Mmg_INC:       " "${MMG_INCLUDE_DIR}")
+  MESSAGE(STATUS "  Mmg_LIB:      " "${MMG_LIBRARY}")
+  MESSAGE(STATUS "  Mmg_LIBDIR:      " "${MMG_LIBDIR}")
+  MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
+  ADD_DEFINITIONS(-DHAVE_MMG)
+
+  INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+  MESSAGE(STATUS "------------------------------------------------")
+
+ELSE()
+  MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
+  MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
+ENDIF(MMG_FOUND)
+
+MESSAGE(STATUS "------------------------------------------------")
+
 
 # MPI and LAPACK
 FIND_PACKAGE(BLAS REQUIRED)
@@ -389,6 +476,11 @@ IF(WITH_ELMERPOST)
   MESSAGE(STATUS "------------------------------------------------")
   ADD_SUBDIRECTORY(post)
 ENDIF(WITH_ELMERPOST)
+
+IF(HAVE_LUA)
+  MESSAGE(STATUS "  Building Lua")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(HAVE_LUA)
 
 # Packaging
 if(NOT BYPASS_CPACK)

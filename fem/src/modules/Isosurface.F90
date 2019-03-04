@@ -708,7 +708,7 @@ CONTAINS
       END IF
     END DO
 
-    ! Loop over predifined nodes
+    ! Loop over predefined nodes
     !----------------------------------------------------------------
     DO Level = 1, NoLevels
       IF( NoLevels > 1 ) LevelValue = LevelValues(Level,1) 

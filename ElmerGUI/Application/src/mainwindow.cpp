@@ -730,7 +730,7 @@ void MainWindow::createActions()
   connect(showVtkPostAct, SIGNAL(triggered()), this, SLOT(showVtkPostSlot()));
 
   // Solver -> Show ParaView postprocessor
-  paraviewAct = new QAction(QIcon(), tr("Start ParaView"), this);
+  paraviewAct = new QAction(QIcon(":/icons/Paraview.png"), tr("Start ParaView"), this);
   paraviewAct->setStatusTip(tr("Invokes ParaView for visualization"));
   connect(paraviewAct, SIGNAL(triggered()), this, SLOT(showParaViewSlot()));
 
@@ -4731,34 +4731,52 @@ void MainWindow::showParaViewSlot()
 {
 #ifdef EG_PARAVIEW
   QString postFileName = generalSetup->ui.postFileEdit->text().trimmed();
-  QString pvFileName;
   QFileInfo pvFile(postFileName);
 
   Ui::parallelDialog ui = parallel->ui;
   bool parallelActive = ui.parallelActiveCheckBox->isChecked();
 
+  QDir currentDir;
+  QStringList args;
+  QString secondName;
+
+  currentDir = QDir(saveDirName);
+  
+  // Paraview can deal with case..vtu kind of argments which however,
+  // fail if there is only one file. Use dirty check to see that there
+  // are more than one file. 
+  if(!parallelActive) {  
+    secondName = pvFile.baseName()+"0002.vtu";
+  }
+  else {
+    secondName = pvFile.baseName()+"0002.pvtu";
+  }
+    
+  QFile secondFile(secondName);
+  
   // Serial solution
   //================
   if(!parallelActive) {
-    pvFileName = pvFile.baseName() + "????.vtu";
+    if(secondFile.exists()) 
+      args << pvFile.baseName() + "..vtu";
+    else
+      args << pvFile.baseName() + "0001.vtu";
   }
 
+      
   // Parallel solution
   //==================
   if(parallelActive) {
-     pvFileName = pvFile.baseName() + "????.pvtu";
+    if(secondFile.exists())     
+      args << pvFile.baseName() + "..pvtu";
+    else
+      args << pvFile.baseName() + "0001.pvtu";   
   }
-
+  
   // Launch ParaView
   //================
-  QDir currentDir;
 
-  currentDir = QDir(saveDirName);
-  QStringList pvFiles;
-
-  pvFiles = currentDir.entryList(QStringList(pvFileName), QDir::Files | QDir::NoSymLinks);
-
-  post->start("paraview", pvFiles);
+  post->start("paraview", args);
 #endif
 }
 

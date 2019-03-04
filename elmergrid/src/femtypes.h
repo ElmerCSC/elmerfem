@@ -9,6 +9,7 @@
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
 #define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
 #define MAXLINESIZE 600     /* maximum length of line to be read */
+#define LONGLINESIZE 1201  
 #define MAXNAMESIZE 30      /* maximum size of the variablename */
 #define MAXPARAMS 30        /* maximum number of parameters */
 #define MAXVARS 20          /* maximum number of variables at the sides */
@@ -20,6 +21,7 @@
 #define MAXBCS 1000         /* maximum number of BCs in naming */
 #define MAXBODIES 1000      /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
+#define MAXHALOMODES 10
 
 #define CONPLAIN 0
 #define CONDISCONT 1
@@ -363,7 +365,7 @@ struct ElmergridType {
     connectboundsset[MAXBOUNDARIES],
     connectboundsnosets,
     partorder,
-    partitionhalo, /* create halo for the partitioning */
+    parthalo[MAXHALOMODES], /* create halo for the partitioning */
     partitionindirect, /* should one create indirect connections between nodes */
     partbw, /* minimize bandwidth for partitions */
     parthypre, /* renumber for hypre */

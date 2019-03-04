@@ -596,7 +596,30 @@ CONTAINS
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: x(*), b(*)
 
+#ifdef USE_ISO_C_BINDINGS
+  INTERFACE
+     SUBROUTINE cholmod_ffree(chol) BIND(c,NAME="cholmod_ffree")
+       USE Types
+       INTEGER(KIND=AddrInt) :: chol
+     END SUBROUTINE cholmod_ffree
+
+     FUNCTION cholmod_ffactorize(n,rows,cols,vals) RESULT(chol) BIND(c,NAME="cholmod_ffactorize")
+        USE Types
+        INTEGER :: n, Rows(*), Cols(*)
+        REAL(KIND=dp) :: Vals(*)
+        INTEGER(KIND=dp) :: chol
+     END FUNCTION cholmod_ffactorize
+
+     SUBROUTINE cholmod_fsolve(chol, n, x,b) BIND(c,NAME="cholmod_fsolve")
+        USE Types
+        REAL(KIND=dp) :: x(*), b(*)
+        INTEGER :: n
+        INTEGER(KIND=dp) :: chol
+     END SUBROUTINE cholmod_fsolve
+  END INTERFACE
+#else
   INTEGER(KIND=AddrInt) :: cholmod_ffactorize
+#endif
 
   LOGICAL :: Factorize, FreeFactorize, Found
 
@@ -662,13 +685,38 @@ CONTAINS
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: x(*), b(*)
 
-  INTEGER(KIND=AddrInt) :: spqr_ffactorize
-
-  INTEGER :: i,spqr_ffree
+  INTEGER :: i
   LOGICAL :: Factorize, FreeFactorize, Found
 
   REAL(KIND=dp), POINTER CONTIG :: Vals(:)
   INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:)
+
+#ifdef USE_ISO_C_BINDINGS
+  INTERFACE
+     FUNCTION spqr_ffree(chol) RESULT(stat) BIND(c,NAME="spqr_ffree")
+       USE Types
+       INTEGER :: stat
+       INTEGER(KIND=AddrInt) :: chol
+     END FUNCTION spqr_ffree
+
+     FUNCTION spqr_ffactorize(n,rows,cols,vals) RESULT(chol) BIND(c,NAME="spqr_ffactorize")
+       USE Types
+       INTEGER :: n, rows(*), cols(*)
+       REAL(KIND=dp) :: vals(*)
+       INTEGER(KIND=AddrInt) :: chol
+     END FUNCTION spqr_ffactorize
+
+     SUBROUTINE spqr_fsolve(chol, n, x,b) BIND(c,NAME="spqr_fsolve")
+       USE Types
+       REAL(KIND=dp) :: x(*), b(*)
+       INTEGER :: n
+       INTEGER(KIND=AddrInt) :: chol
+     END SUBROUTINE spqr_fsolve
+  END INTERFACE
+#else
+  INTEGER(KIND=AddrInt) :: spqr_ffactorize
+  INTEGER :: spqr_ffree
+#endif
 
 #ifdef HAVE_CHOLMOD
   IF ( PRESENT(Free_Fact) ) THEN
@@ -2491,6 +2539,12 @@ CONTAINS
         CALL Fatal( 'DirectSolver', 'Unknown direct solver method.' )
     END SELECT
 
+    ! We should be able to trust that a direct strategy will return a converged
+    ! linear system.
+    IF( ASSOCIATED( Solver % Variable ) ) THEN
+      Solver % Variable % LinConverged = 1
+    END IF
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE DirectSolver
 !------------------------------------------------------------------------------

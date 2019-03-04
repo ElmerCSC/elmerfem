@@ -21,7 +21,8 @@
 #define HUTI_CONVERGENCE 1
 #define HUTI_MAXITER 2
 #define HUTI_DIVERGENCE 3
-
+#define HUTI_HALTED 4
+						
 ! QMR method
 
 #define HUTI_QMR_RHO_PSI 10
@@ -109,7 +110,8 @@
 #define HUTI_WRKDIM ipar(4)
 #define HUTI_DBUGLVL ipar(5)
 #define HUTI_EXTOP_MATTYPE ipar(6)
-
+#define HUTI_PSEUDOCOMPLEX ipar(7)
+						
 ! Iteration parameters (10-19)
 
 #define HUTI_MAXIT ipar(10)

@@ -48,24 +48,42 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion, SecondOrder, LagrangeGauge, LorentzConductivity
+  LOGICAL :: Found, PiolaVersion, SecondOrder, LagrangeGauge, StaticConductivity
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(ValueListEntry_t), POINTER :: VariablePtr
   INTEGER, PARAMETER :: b_empty = b'0', b_Piola = b'1', &
        b_Secondorder = b'10', b_Gauge = b'100', &
-       b_Transient = b'1000', b_Lorentz = b'10000'
+       b_Transient = b'1000', b_StaticCond = b'10000'
 
   integer :: Paramlist
   Paramlist = 0
 
-  LagrangeGauge = .FALSE.
-  
-  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
-       ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
-  IF(LorentzConductivity) &
-       CALL INFO("WhitneyAVSolver_Init0", "Material is moving: has Lorentz force present")
-
   SolverParams => GetSolverParams()
+
+  LagrangeGauge = .FALSE.
+
+  StaticConductivity = ListGetLogical( SolverParams,'Static Conductivity',Found )
+  IF( .NOT. Found ) THEN
+    IF( ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
+        ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity") ) THEN
+      CALL Info("WhitneyAVSolver_Init0", "Moving material requires always scalar potential",Level=10)
+      StaticConductivity = .TRUE.
+    END IF
+
+    IF( ListCheckPrefixAnyBC(Model, "Electric Current Density") ) THEN
+      CALL Info("WhitneyAVSolver_Init0", &
+          "> Electric Current Density < always requires scalar potential",Level=10)    
+      StaticConductivity = .TRUE.
+    END IF
+  END IF
+  IF( StaticConductivity ) THEN
+    CALL Info("WhitneyAVSolver_Init0",'Including scalar potential in AV equation!',Level=6)
+  ELSE
+    CALL Info("WhitneyAVSolver_Init0",'Ignoring scalar potential in AV equation!',Level=6)    
+  END IF
+
+  LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
+  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     PiolaVersion = GetLogical(SolverParams, &
         'Use Piola Transform', Found )   
@@ -76,22 +94,21 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       PiolaVersion = .TRUE.
       CALL ListAddLogical( SolverParams, 'Use Piola Transform', .TRUE. )
     END IF
-    LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
 
     IF (PiolaVersion) Paramlist = Paramlist + b_Piola
     IF (SecondOrder) Paramlist = Paramlist + b_Secondorder
     IF (LagrangeGauge) Paramlist = Paramlist + b_Gauge
     IF (Transient) Paramlist = Paramlist + b_Transient
-    IF (LorentzConductivity) Paramlist = Paramlist + b_Lorentz
+    IF (StaticConductivity) Paramlist = Paramlist + b_StaticCond
 
     SELECT CASE (Paramlist)
     CASE (b_Piola + b_Transient + b_Secondorder, &
-         b_Piola + b_Transient + b_Secondorder + b_Lorentz )
+         b_Piola + b_Transient + b_Secondorder + b_StaticCond )
       CALL ListAddString( SolverParams, &
            "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
 
     CASE (b_Piola + b_Transient, &
-         b_Piola + b_Transient + b_Lorentz, &
+         b_Piola + b_Transient + b_StaticCond, &
          b_Piola + b_Transient + b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
 
@@ -109,12 +126,12 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     CASE (b_Piola)
       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
 
-    CASE (b_Piola + b_Lorentz)
+    CASE (b_Piola + b_StaticCond )
       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
 
     CASE (b_Transient, &
-         b_Transient + b_Lorentz, &
-         b_Lorentz, &
+         b_Transient + b_StaticCond, &
+         b_StaticCond, &
          b_Gauge + b_Transient, &
          b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
@@ -123,28 +140,35 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
 
     CASE default
-      WRITE (Message,*), 'Unsupported degree-gauge-transient combination', Paramlist
+      WRITE (Message,*) 'Unsupported degree-gauge-transient combination', Paramlist
       CALL Fatal('WhitneyAVSolver_Init0', Message)
 
     END SELECT
 
-    IF (.NOT. PiolaVersion) THEN
-      IF(GetString(SolverParams,'Linear System Solver')=='block') THEN
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+    IF( GetString(SolverParams,'Linear System Solver',Found) == 'block' ) THEN
+      IF ( PiolaVersion ) THEN
+        CALL Fatal('WhitneyAVSolver_Init0','Block strategy not applicable to piola version!')
+      ELSE
         CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
       END IF
     END IF
   END IF
- 
+
+  IF(.NOT. ( StaticConductivity .OR. LagrangeGauge ) ) THEN
+    CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
+  END IF
+    
   CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.) 
 
   ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
+  CALL ListAddNewString( SolverParams,'Variable','AV')
+ 
   IF (LagrangeGauge .AND. Transient .AND. &
-       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
+      ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
     CALL Info("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
-    END IF
+  END IF
 
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
@@ -293,9 +317,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   HasStabC = HasStabC .OR. Found
 
   IF (HasStabC .and. (SteadyGauge .or. TransientGauge)) THEN
-    WRITE (Message, *), 'Lagrange Gauge penalization coefficient', gauge_penalize_c
+    WRITE (Message, *) 'Lagrange Gauge penalization coefficient', gauge_penalize_c
     CALL Info('WhitneyAVSolver', message)
-    WRITE (Message, *), 'Lagrange Gauge penalization coefficient mass', gauge_penalize_m
+    WRITE (Message, *) 'Lagrange Gauge penalization coefficient mass', gauge_penalize_m
     CALL Info('WhitneyAVSolver', message)
   END IF
 
@@ -335,7 +359,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
      END IF
 
-     IF(GetString(SolverParams,'Linear System Solver')=='block') THEN
+     IF(GetString(SolverParams,'Linear System Solver',Found)=='block') THEN
        n = Mesh % NumberOfNodes
        n_n = COUNT(Perm(1:n)>0)
        n_e = COUNT(Perm(n+1:)>0)
@@ -472,7 +496,7 @@ CONTAINS
 
    REAL(KIND=dp)::TOL,Norm,PrevNorm, NonLinError, LinTol, RelTol, BaseTol
    LOGICAL :: Found, FoundMagnetization, CalculateNonlinearResidual, LFactFound
-   LOGICAL :: AdaptiveTols
+   LOGICAL :: AdaptiveTols, FoundAny
 
    TYPE(Matrix_t), POINTER :: MMatrix
    REAL(KIND=dp), POINTER :: Mx(:), Mb(:), Mr(:)
@@ -568,7 +592,7 @@ CONTAINS
 !------------------------------------------------------------------------------
        
        Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
-
+       
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
        IF (.NOT. LaminateStack) LaminateStackModel = ''
      END IF
@@ -643,24 +667,29 @@ CONTAINS
      n  = GetElementNOFNodes(Element)
 
      CALL GetRealVector( BC, Load(1:3,1:n), 'Magnetic Field Strength', Found )
-
-     Acoef(1:n) = GetReal( BC, 'Magnetic Transfer Coefficient', Found ) !???
-
+     FoundAny = Found
+     
+     Acoef(1:n) = GetReal( BC, 'Magnetic Transfer Coefficient', Found ) 
+     FoundAny = FoundAny .OR. Found
+     
      Load(4,1:n) = GetReal( BC, 'Electric Current Density', Found )
-     IF (.NOT. Found) &
-          Load(4,1:n) = GetReal( BC, 'Electric Flux', Found )       
-     Load(5,1:n) = GetReal( BC, 'Electric Transfer Coefficient', Found )
+     FoundAny = FoundAny .OR. Found 
 
+     Load(5,1:n) = GetReal( BC, 'Electric Transfer Coefficient', Found )
+     FoundAny = FoundAny .OR. Found
+     
      !If air gap length keyword is detected, use air gap boundary condition
      GapLength=GetConstReal( BC, 'Air Gap Length', Found)
      IF (Found) THEN
        AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
        IF (.NOT. Found) AirGapMu=1d0 ! if not found default to "air" property
        CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd )
-     ELSE
+     ELSE IF(  FoundAny ) THEN
        CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+     ELSE
+       CYCLE
      END IF
-
+     
      CALL DefaultUpdateEquations(STIFF,FORCE,Element)
   END DO
 
@@ -673,7 +702,7 @@ CONTAINS
 
 200 CONTINUE
 
-  ! This is now automatically invoked as the time integration is set gloabl in the Solver_init
+  ! This is now automatically invoked as the time integration is set global in the Solver_init
   ! IF ( Transient ) CALL Default1stOrderTimeGlobal()
   CALL DefaultFinishAssembly()
 
@@ -1969,7 +1998,7 @@ END SUBROUTINE LocalConstraintMatrix
            END DO
          ELSE
            ! ---------------------------------------------------------------
-           ! This is the steady state branch. Adding the scalar pontential 
+           ! This is the steady state branch. Adding the scalar potential 
            ! solver as done in the following is reasonable only in the case 
            ! where the electrical conductivity is nonzero.
            ! ------------------------------------------------------------------
@@ -2163,8 +2192,9 @@ END SUBROUTINE LocalConstraintMatrix
     !-----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
          EdgeBasisDegree=EdgeBasisDegree)
-
+    
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+
     DO t=1,IP % n
 
        Normal = NormalVector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
@@ -2327,6 +2357,8 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
   SUBROUTINE DirichletAfromB()
 !------------------------------------------------------------------------------
+    USE ElementDescription, ONLY: GetEdgeMap
+
     IMPLICIT NONE
     REAL(KIND=dp) :: s,p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     TYPE(ListMatrixEntry_t), POINTER :: Ltmp

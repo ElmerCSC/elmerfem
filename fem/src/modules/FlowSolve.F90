@@ -71,7 +71,7 @@
     USE Adaptive
     USE DefUtils
     USE FreeSurface
-
+    USE ElementDescription, ONLY: GetEdgeMap
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 

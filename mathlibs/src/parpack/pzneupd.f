@@ -328,8 +328,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Double precision
-     &           dznrm2, pdlamch, dlapy2
-      external   dznrm2, pdlamch, dlapy2
+     &           dznrm2, pdlamch10, dlapy2
+      external   dznrm2, pdlamch10, dlapy2
 c
       Complex*16
      &           zdotc
@@ -359,7 +359,7 @@ c     %---------------------------------%
 c     | Get machine dependent constant. |
 c     %---------------------------------%
 c
-      eps23 = pdlamch(comm, 'Epsilon-Machine')
+      eps23 = pdlamch10(comm, 'Epsilon-Machine')
       eps23 = eps23**(2.0 / 3.0)
 c
 c     %-------------------------------%

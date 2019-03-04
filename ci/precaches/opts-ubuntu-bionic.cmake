@@ -1,0 +1,5 @@
+#SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "")
+# SET(WITH_MPI FALSE CACHE BOOL "")  # TODO: test MPI too (nproc=2)
+# SET(BLAS_LIBRARIES /usr/lib/libopenblas.so CACHE FILE "")
+# SET(LAPACK_LIBRARIES /usr/lib/libopenblas.so CACHE FILE "")
+# SET(ELMER_FEM_REVISION omp-test CACHE STRING "")

@@ -297,8 +297,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Real
-     &           sdot, psnorm2, slanhs, pslamch
-      external   sdot, psnorm2, slanhs, pslamch
+     &           sdot, psnorm2, slanhs, pslamch10
+      external   sdot, psnorm2, slanhs, pslamch10
 c
 c     %---------------------%
 c     | Intrinsic Functions |
@@ -326,10 +326,10 @@ c        | overflow should not occur.              |
 c        | REFERENCE: LAPACK subroutine slahqr     |
 c        %-----------------------------------------%
 c
-         unfl = pslamch(comm, 'safe minimum' )
+         unfl = pslamch10(comm, 'safe minimum' )
          ovfl = one / unfl
          call slabad( unfl, ovfl )
-         ulp = pslamch( comm, 'precision' )
+         ulp = pslamch10( comm, 'precision' )
          smlnum = unfl*( n / ulp )
          first = .false.
       end if

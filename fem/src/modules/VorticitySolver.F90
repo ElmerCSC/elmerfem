@@ -62,7 +62,8 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
   LOGICAL :: GotIt, GotCoeff, Visited = .FALSE., DirMask(3)
   REAL(KIND=dp) :: Unorm, Totnorm
-  REAL(KIND=dp), POINTER :: ForceVectors(:,:), ForceVector(:), SaveRHS(:)
+  REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
+  REAL(KIND=dp), POINTER CONTIG :: ForceVectors(:,:), ForceVector(:)
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
 #else

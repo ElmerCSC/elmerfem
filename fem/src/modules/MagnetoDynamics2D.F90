@@ -38,12 +38,11 @@
 ! *
 ! *****************************************************************************/
 
-
 !> \ingroup Solvers
 !> \{
 
 !------------------------------------------------------------------------------
-SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,TransientSimulation )
+SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,TransientSimulation ) ! {{{
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -66,7 +65,7 @@ SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,TransientSimulation )
   END IF
   
 !------------------------------------------------------------------------------
-END SUBROUTINE MagnetoDynamics2D_Init
+END SUBROUTINE MagnetoDynamics2D_Init ! }}}
 !------------------------------------------------------------------------------
 
 
@@ -75,10 +74,11 @@ END SUBROUTINE MagnetoDynamics2D_Init
 !> The solver may take into account rotating boundary conditions.
 !> Also optionally compute moments and inertia. 
 !------------------------------------------------------------------------------
-SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
+SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation ) ! {{{
 !------------------------------------------------------------------------------
   USE DefUtils
   USE CircuitUtils
+  USE ZirkaUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
@@ -99,12 +99,14 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
                NEWX(:), NEWY(:), POT(:)
 
   TYPE(Mesh_t),   POINTER :: Mesh
-
-  LOGICAL :: NewtonRaphson = .FALSE., CSymmetry
+  TYPE(ValueList_t), POINTER :: SolverParams
+  
+  LOGICAL :: NewtonRaphson = .FALSE., CSymmetry, SkipDegenerate
   INTEGER :: CoupledIter
   TYPE(Variable_t), POINTER :: IterV, CoordVar
 
   TYPE(Matrix_t),POINTER::CM
+  TYPE(GlobalHysteresisModel_t), POINTER :: ZirkaModel
 
 !------------------------------------------------------------------------------
 
@@ -118,15 +120,23 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
   ! --------------------------------------------------------------
   NULLIFY(BC)
   Mesh => GetMesh()
-
+  SolverParams => GetSolverParams()
+  
+  NewtonRaphson = GetLogical(SolverParams, 'Newton-Raphson Iteration', Found)
+  IF(.NOT. Found) NewtonRaphson = .FALSE.
   IF(GetCoupledIter()>1) NewtonRaphson = .TRUE.
 
-  NonlinIter = GetInteger(GetSolverParams(), &
+  NonlinIter = GetInteger(SolverParams, &
            'Nonlinear System Max Iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
 
+  SkipDegenerate = GetLogical(SolverParams, 'Skip Degenerate Elements',Found ) 
+  
   CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
+
+  call info('MagnetoDynamics2D','Initializing Zirka hysteresis models', Level=10)
+  call InitHysteresis(Model, Solver)
 
   DO iter = 1,NonlinIter
     IF(Iter > 1) NewtonRaphson=.TRUE.
@@ -140,6 +150,10 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes(Element)
        nd = GetElementNOFDOFs(Element)
+       IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
+         CALL Info('MagnetoDynamics2D','Skipping degenerate element:'//TRIM(I2S(t)),Level=12)
+         CYCLE
+       END IF
        CALL LocalMatrix(Element, n, nd)
     END DO
 !$omp end parallel do
@@ -169,7 +183,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
 
     CALL SetMagneticFluxDensityBC()
     CALL DefaultDirichletBCs()
-    Norm = DefaultSolve()
+      Norm = DefaultSolve()
  
     IF( Solver % Variable % NonlinConverged > 0 ) EXIT
   END DO
@@ -180,6 +194,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
   END IF
 
   CoordVar => VariableGet(Mesh % Variables,'Coordinates')
+  CALL DriveHysteresis(model, solver)
+
   IF(ASSOCIATED(CoordVar)) THEN
     DO i=1,Mesh % NumberOfNodes
       j = 3*(CoordVar % Perm(i)-1)
@@ -190,8 +206,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
   END IF
 
   CALL DefaultFinish()
-  
 CONTAINS
+
 
 !------------------------------------------------------------------------------
  SUBROUTINE CalculateLumped(nbf)
@@ -445,7 +461,13 @@ CONTAINS
 
     REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
     REAL(KIND=dp) :: nu_tensor(2,2)
-    REAL(KIND=dp) :: B_ip(2), Alocal
+    REAL(KIND=dp) :: B_ip(2), Alocal, H_ip(2)
+
+    ! Zirka related
+    LOGICAL :: Zirka
+    TYPE(Variable_t), POINTER :: hystvar
+    TYPE(GlobalHysteresisModel_t), pointer :: zirkamodel
+
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
@@ -456,6 +478,8 @@ CONTAINS
     Material => GetMaterial(Element)
 
     CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
+    Zirka = ListGetLogical(Material, 'Zirka material', Zirka)
+
     siz = 0
     Cval => NULL()
     IF ( HBCurve ) THEN
@@ -481,6 +505,12 @@ CONTAINS
         Hval => Lst % FValues(1,1,:)
       END IF
     END IF
+
+    if (zirka) then
+      CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
+      zirkamodel => GetZirkaPointer(Material)
+      hystvar => GetZirkaVariable(Material)
+    end if
 
     IF(HBcurve) THEN
       CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
@@ -514,27 +544,35 @@ CONTAINS
         detJ = detJ * x
       END IF
 
-
       ! The source term at the integration point:
       !------------------------------------------
       LoadAtIP = SUM( Basis(1:n) * LOAD(1:n) )
 
       nu_tensor = 0.0_dp
-      IF (HBcurve) THEN
+
+      if(Zirka .or. HBCUrve) then
         Agrad = 0.0_dp
         Agrad = MATMUL( POT,dBasisdx )
         Alocal = SUM( POT(1:n) * Basis(1:n) )
-        ! Sign?
+        ! Sign? This convention: \vec A = A u_z
         ! -----
-        B_ip(1) = -Agrad(2) 
-        B_ip(2) = Agrad(1)
-        IF( CSymmetry ) B_ip(2) = B_ip(2) + Alocal/x
+        B_ip(1) = Agrad(2) 
+        B_ip(2) = -Agrad(1)
+        IF( CSymmetry ) then
+          B_ip = -B_ip
+          B_ip(2) = B_ip(2) + Alocal/x
+        end if
+      end if
+
+      IF (HBcurve ) THEN
         ! -----
         Babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
         muder = (DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/Babs
         nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
         nu_tensor(2,2) = mu
+      ELSEIF(Zirka) THEN
+        call GetZirkaHBAtIP(t, solver, element, hystvar, zirkamodel, B_ip, H_ip, nu_tensor)
       ELSE
         muder=0._dp
         DO p=1,2
@@ -542,7 +580,8 @@ CONTAINS
             nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
           END DO
         END DO
-     END IF
+      END IF
+
 
       CoilBody = .FALSE.
       CompParams => GetComponentParams( Element )
@@ -580,13 +619,16 @@ CONTAINS
 
       ! Is the sign correct?
       !---------------------
-      Bt(:,1) = -dbasisdx(:,2)
-      Bt(:,2) =  dbasisdx(:,1)
-      IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
+      Bt(:,1) =  dbasisdx(:,2)
+      Bt(:,2) = -dbasisdx(:,1)
+      IF ( CSymmetry ) then
+        Bt(:,1:2) = -Bt(:,1:2)
+        Bt(:,2) = Bt(:,2) + Basis(:)/x
+      end if
 
-      DO p = 1,nd
-        Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
-      END DO
+        DO p = 1,nd
+          Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
+        END DO
 
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
              MATMUL(Ht, TRANSPOSE(Bt))
@@ -609,11 +651,18 @@ CONTAINS
 
       FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * (LoadAtip * Basis(1:nd) + &
            (M_ip(1)*dBasisdx(1:nd,2)-M_ip(2)*dBasisdx(1:nd,1)))
+      IF(zirka) then
+        FORCE(1:nd) = FORCE(1:nd) - (H_ip(1)*Bt(1:nd,1) + H_ip(2)*Bt(1:nd,2)) * IP % s(t) * detJ
+      END IF
     END DO
 
     IF (HBcurve .AND. NewtonRaphson) THEN
       STIFF = STIFF + JAC
       FORCE = FORCE + MATMUL(JAC,POT)
+    END IF
+
+    IF(Zirka) THEN
+      FORCE = FORCE + MATMUL(STIFF, POT)
     END IF
 
     IF(TransientSimulation) THEN
@@ -625,6 +674,45 @@ CONTAINS
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+! Calculates H and dHdB in 2D given B. This should be always inlined in LocalMatrix.
+!-------------------------------------------------------------------------------
+SUBROUTINE GetZirkaHBAtIP(i_IP, Solver, Element, HystVar, ZirkaModel, B_ip, H_ip, dHdB) ! {{{
+!-------------------------------------------------------------------------------
+  INTEGER, intent(in) :: i_IP
+  TYPE(Solver_t) :: Solver
+  TYPE(Element_t) :: Element
+  TYPE(Variable_t), POINTER :: HystVar
+  TYPE(GlobalHysteresisModel_t), POINTER :: ZirkaModel
+  REAL(KIND=dp), INTENT(IN) :: B_ip(2)
+  REAL(KIND=dp), INTENT(OUT) :: H_ip(2)
+  REAL(KIND=dp), intent(INOUT) :: dHdB(2,2)
+!-------------------------------------------------------------------------------
+  INTEGER :: ipindex, n_dir, k,l
+  REAL(KIND=dp) :: dH, B0(3)
+!-------------------------------------------------------------------------------
+  ipindex = getipindex(i_IP, usolver=solver, element=element, ipvar=hystvar)
+  IF (ipindex /= 0 ) THEN
+  H_ip = 0.0_dp
+    Do n_dir = 1, ubound(zirkamodel % curves, 1)
+      B0 = zirkamodel % curves(n_dir, ipindex) % B0
+      associate(Bdir => sum(B_ip*B0(1:2)))
+        ! H_ip(1:2) = H_ip(1:2) + zirkamodel % curves(n_dir,ipindex) % &
+        !     eval(sum(B_ip*B0(1:2)), cached = .true., dhdb=dH) * &
+        !     B0(1:2)
+        H_ip(1:2) = H_ip(1:2) + zirkamodel % curves(n_dir,ipindex) % &
+            eval(Bdir, cached = .true., dhdb=dH) * &
+            B0(1:2)
+      end associate
+      DO k = 1,2
+        DO l = 1,2
+          dHdB(k,l) = dHdB(k,l) + dH*B0(k)*B0(l)
+        END DO
+      END DO
+    END DO
+  END IF
+END SUBROUTINE ! }}}
+!-------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(Element, n, nd )
@@ -1287,7 +1375,7 @@ CONTAINS
 
     LOGICAL :: FoundIm
 
-!$omp threadprivate(Nodes)
+!$omp threadprivate(Nodes,HB,CubicCoeff,InPlaneProximity)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
@@ -1830,7 +1918,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Visited = .FALSE.
   REAL(KIND=dp) :: Unorm, Totnorm, val
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
-  REAL(KIND=dp), POINTER :: SaveRHS(:)  
+  REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
               AverageBCompute, BodyICompute, BodyVolumesCompute = .FALSE., &
@@ -2386,7 +2474,7 @@ CONTAINS
         IF (LorentzForceCompute) THEN
           BodyId = GetBody()
           ! Let's compute the JxB for all the bodies and 
-          ! then we sum from these for the components which are outputed.
+          ! then we sum from these for the components which are outputted.
 
           Bx = CMPLX(BatIp(1), BatIp(3), KIND=dp)
           By = CMPLX(BatIp(2), BatIp(4), KIND=dp)
@@ -2481,7 +2569,7 @@ CONTAINS
 !      Update global matrices from local matrices 
 !------------------------------------------------------------------------------
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
-        Solver % Matrix % Rhs => SaveRhs
+        Solver % Matrix % Rhs => SaveRHS
         CALL DefaultUpdateEquations( STIFF, FORCE(1,1:nd), &
             BulkUpdate=ConstantBulkMatrix )
       END IF
@@ -2540,7 +2628,7 @@ CONTAINS
       !CALL ListAddConstReal( Model % Simulation,'res: sin mode fourier loss', ComponentLoss(2))       
     
       !---------------------------------------------------------------------------------
-      ! Screen ouput for componentwise and bodywise losses 
+      ! Screen output for componentwise and bodywise losses 
       !--------------------------------------------------------------------------------
       WRITE( Message,'(A,ES12.3)') 'Loss for cos mode: ', ComponentLoss(1)
       CALL Info('BSolver', Message, Level=6 )

@@ -61,8 +61,8 @@ Solver 1
   Nonlinear System Max Iterations = 1
   Steady State Convergence Tolerance = 1.0e-4
 
-! This must be alloated here bacause it is referred to before being created in Solver 2
-  Exported Variable 1 = -dofs 2 Electric Force Density 
+! This must be allocated here because it is referred to before being created in Solver 2
+  Exported Variable 1 = -dofs 2 Electric Force Density
 End
 
 Solver 2

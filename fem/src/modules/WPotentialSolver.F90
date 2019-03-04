@@ -262,7 +262,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
       !Get element local matrix and rhs vector:
       !----------------------------------------
       CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilBody, CoilType, Tcoef, RotM, n, nd+nb )
-      CALL LCondensate( nd, nb, STIFF, FORCE )
+      CALL CondensateP( nd, nb, STIFF, FORCE )
       CALL DefaultUpdateEquations( STIFF, FORCE )
    END DO
 

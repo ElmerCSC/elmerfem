@@ -201,3 +201,4 @@ End
 
 
 Solver 4 :: Reference Norm = 1.42296361E+03
+Solver 4 :: Reference Norm Tolerance = 1e-4
