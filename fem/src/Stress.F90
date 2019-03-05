@@ -103,8 +103,12 @@ MODULE StressLocal
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
      LOGICAL :: stat, CSymmetry, NeedMass, NeedHeat, NeedStress, NeedHarmonic, &
-         NeedPreStress, ActiveGeometricStiffness
+         NeedPreStress, ActiveGeometricStiffness, GPA
 
+
+     TYPE(ValueList_t), POINTER :: BF
+   
+     REAL(KIND=dp) :: GPA_Coeff(n)
 
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: ndim
@@ -149,6 +153,16 @@ MODULE StressLocal
      NeedHarmonic = ANY( LOAD_im(:,1:n) /= 0.0d0 ) 
      NeedPreStress = ANY( NodalPreStrain(1:6,1:n) /= 0.0d0 ) 
      NeedPreStress = NeedPreStress .OR. ANY( NodalPreStress(1:6,1:n) /= 0.0d0 ) 
+
+
+     BF => GetBodyForce()
+     GPA = .FALSE.
+     IF(ASSOCIATED(BF)) THEN
+        GPA = GetLogical(BF, 'Gravitational Prestress Advection', Found )
+       IF ( GPA ) THEN
+         GPA_Coeff(1:n) = GetReal( BF, 'GPA Coeff', Found )
+       END IF
+     END IF
 
 
      !      ! Integration stuff:
@@ -492,6 +506,12 @@ MODULE StressLocal
 
                 A(i,ndim) = A(i,ndim) - Basis(q) * dBasisdx(p,i)
                 A(ndim,i) = A(ndim,i) - dBasisdx(q,i) * Basis(p)
+             END DO
+           END IF
+ 
+           IF( GPA ) THEN
+             DO i=1,dim
+               A(i,dim) = A(i,dim) + SUM(GPA_Coeff(1:n)*Basis(1:n))*dBasisdx(q,i)*Basis(p)
              END DO
            END IF
 

@@ -1,4 +1,4 @@
-      DOUBLE PRECISION   FUNCTION PDLAMCH( ICTXT, CMACH )
+      DOUBLE PRECISION   FUNCTION PDLAMCH10( ICTXT, CMACH )
       include "mpif.h"
 *
 *  -- ScaLAPACK auxilliary routine (version 1.0) --
@@ -82,7 +82,7 @@
           TEMP = TEMP1
       END IF
 *
-      PDLAMCH = TEMP
+      PDLAMCH10 = TEMP
 *
 *     End of PDLAMCH
 *
