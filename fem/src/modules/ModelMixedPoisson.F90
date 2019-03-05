@@ -259,13 +259,14 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
-    TYPE(Element_t), POINTER :: Parent, Edge
+    TYPE(Element_t), POINTER :: Parent, Face
     TYPE(ValueHandle_t) :: ScalarField
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: RevertSign(6), stat, AssembleForce, OrientationsMatch
     INTEGER, POINTER :: FaceMap(:,:)
-    INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches
+    INTEGER :: FDofMap(4,3)
+    INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches, FDOFs
     REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), detJ, s, u, w, g
 
     SAVE ScalarField, Nodes
@@ -298,11 +299,11 @@ CONTAINS
       ! (TO CONSIDER: write a subroutine for this routine task)
       !
       DO ActiveFaceId=1,Parent % TYPE % NumberOfEdges
-        Edge => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
+        Face => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
         matches = 0
         DO k=1,Element % TYPE % NumberOfNodes
-          DO l=1,Edge % TYPE % NumberOfNodes
-            IF (Element % NodeIndexes(k)==Edge % NodeIndexes(l)) matches=matches+1
+          DO l=1,Face % TYPE % NumberOfNodes
+            IF (Element % NodeIndexes(k)==Face % NodeIndexes(l)) matches=matches+1
           END DO
         END DO
         IF (matches==Element % TYPE % NumberOfNodes) EXIT
@@ -325,8 +326,34 @@ CONTAINS
         OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,1))
       END IF
 
+    CASE(3)
+      IF (.NOT. ASSOCIATED(Parent % FaceIndexes)) RETURN
+      !
+      ! Pick the face of the parent element corresponding to the boundary element:
+      ! (TO CONSIDER: write a subroutine for this routine task)
+      !      
+      DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
+        Face => Solver % Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
+        IF (GetElementFamily(Element) /= GetElementFamily(Face)) CYCLE
+        matches = 0
+        DO k=1,Element % TYPE % NumberOfNodes
+          DO l=1,Face % TYPE % NumberOfNodes
+            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) matches=matches+1
+          END DO
+        END DO
+        IF (matches == Element % TYPE % NumberOfNodes ) EXIT
+      END DO
+      IF (matches /= Element % TYPE % NumberOfNodes) RETURN
+
+      FDOFs = Face % BDOFs
+      IF (FDOFs < 1) RETURN
+
+      CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
+      IF (SecondFamily) &
+          CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
+
     CASE DEFAULT
-      CALL Warn('ModelMixedPoisson', 'Neumann BCs in 3-D have not been implemented yet')
+      CALL Warn('ModelMixedPoisson', 'Neumann BCs for 4-node faces have not been implemented yet')
       RETURN
     END SELECT
 
@@ -339,18 +366,18 @@ CONTAINS
     END IF
 
     CALL GetElementNodes(Nodes)
-    IP = GaussPoints(Element)
+    IF (Family == 3) THEN
+      !
+      ! Integration must be done over p-reference element
+      !
+      IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
 
     Force = 0.0d0
     DO t=1,IP % n
-      !--------------------------------------------------------------
-      ! Basis function values at the integration point:
-      !--------------------------------------------------------------
-      stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
-              IP % W(t), DetJ, Basis)
-      
       !
-      ! The normal traces of face basis functions - now this is available only for 2D.
       ! NOTE: Here the effect of the Piola transformation is taken into account
       !       such that the multiplication with DetJ is not needed
       ! TO CONSIDER: Get the traces of vector-values basis functions 
@@ -358,6 +385,11 @@ CONTAINS
       !
       SELECT CASE(Family)
       CASE(2)
+        !--------------------------------------------------------------
+        ! Basis function values at the integration point:
+        !--------------------------------------------------------------
+        stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), DetJ, Basis)
         IF (SecondFamily) THEN
           u = IP % U(t)
           IF (OrientationsMatch) THEN
@@ -370,7 +402,17 @@ CONTAINS
         ELSE
           TraceBasis(1) = s * 0.5d0
         END IF
-      !CASE(3)
+      CASE(3)
+        DO k=1,n
+          Basis(k) = TriangleNodalPBasis(k, IP % U(t), IP % V(t))
+        END DO
+
+        IF (SecondFamily) THEN
+          CALL Warn('ModelMixedPoisson', 'Neumann BCs for tetrahedra of 2nd kind still missing')
+          RETURN
+        ELSE
+          TraceBasis(1) = s / SQRT(3.0d0)
+        END IF
       END SELECT
 
       w = IP % s(t) ! NOTE: No need to multiply with DetJ
