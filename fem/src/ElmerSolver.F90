@@ -73,12 +73,15 @@ MODULE ElmerSolver_mod
 
   INTEGER,SAVE       :: iter,Ndeg,istat,nproc,tlen,nthreads
 
-  ! note: this declaration list needs checking for which variables actually
-  ! require the SAVE attribute (note also the SAVE attribute is imposed by 
-  ! setting a default).  
-  ! It also needs checking for variables that can be removed to a subroutine 
-  ! instead of being available at module level.
-  !  REAL(KIND=dp),SAVE            :: ss,dt,dtfunc
+  !--------------------------------------------------------------
+  ! Note (Rupert GLadstone, 6th March 2019):
+  ! The variables declared below may not all require the 
+  ! SAVE attribute and may not all require to be defined at the 
+  ! module level (some could be local to subroutines).  The 
+  ! scope and SAVE attribute were imposed as the simpler option 
+  ! when restructuring the control code to be compatible with 
+  ! the Earth System Modelling Framework (ESMF). 
+  ! (note also that the SAVE attribute is imposed by setting a default).  
   REAL(KIND=dp),SAVE            :: dt ! used in _init, _finalize, execsimulation, probably needs to be module scope
   REAL(KIND=dP), POINTER, SAVE  :: WorkA(:,:,:) => NULL()
   REAL(KIND=dp), POINTER, SAVE  :: sTime(:), sStep(:), sInterval(:), sSize(:), &
@@ -104,6 +107,7 @@ MODULE ElmerSolver_mod
   TYPE(Mesh_t), POINTER, SAVE   :: ExtrudedMesh
   INTEGER, SAVE                 :: omp_get_max_threads
   INTEGER, SAVE                 :: Initialize = 0
+  !--------------------------------------------------------------
 
 CONTAINS
 
@@ -142,18 +146,7 @@ CONTAINS
   !  input file indicates further executions are needed.  After each execution a comparison 
   !  to a reference solution is made, which is needed for the Elmer tests through ctest.
   !  Finalise is the same for both standalone and ESMF cases.
-  !
-  ! Tests still failing at time of writing:
-  !       60 - circuits_harmonic_stranded_homogenization (Failed)
-  !       84 - coordinate_transform (Failed)
-  !	 161 - circuits_transient_stranded (Failed)
-  !	 179 - RichardsDyke2 (Failed)
-  !	 215 - circuits_harmonic_stranded (Failed)
-  !	 263 - circuits_transient_foil (Failed)
-  !	 303 - RigidMeshMapper2 (Failed)
-  !	 418 - circuits_harmonic_foil (Failed)
-  !	 543 - RigidMeshMapper1 (Failed)
-  !	 563 - TimeAdapt (OTHER_FAULT)
+  !-------------------------------------------------------------------------------------
 
   SUBROUTINE ElmerSolver(init)
 
@@ -161,16 +154,6 @@ CONTAINS
 
     LOGICAL             :: RunElmer = .TRUE.
     Initialize = init
-
-    ! failed tests include calving3d:
-    ! ERROR:: FrontAdvance3D: Programming error: wrong number of nodes in TangledGroup
-    ! InvMeth_AdjRobin/
-    ! Is CostSolver_Robin much different between my version and elmerice branch?  
-    ! Does changing it to the elmerice version do anything to the results norm? 
-    ! (i,e, to the tests)
-    !
-    ! all new failures are parallel?  something wrong with test metrics in parallel?
-    ! double check how these work in normal elmerice branch?
 
     DO WHILE (RunElmer)
       IF ( Initialize /= 1 ) THEN       
@@ -418,8 +401,6 @@ CONTAINS
            'Additive namespaces', Found ) )
 
       !----------------------------------------------------------------------------------
-      ! ???
-      !----------------------------------------------------------------------------------
       MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
 
       !------------------------------------------------------------------------------
@@ -618,7 +599,6 @@ CONTAINS
     !------------------------------------------------------------------------------
     !      Get Output File Options
     !------------------------------------------------------------------------------
-
     OutputIntervals => ListGetIntegerArray( CurrentModel % Simulation, &
          'Output Intervals', GotIt )
     IF( GotIt ) THEN
@@ -990,6 +970,7 @@ CONTAINS
   END SUBROUTINE CompareToReferenceSolution
 
 
+  !----------------------------------------------------------------------------------------------
   ! This is a dirty hack that adds an instance of ResultOutputSolver to the list of Solvers.
   ! The idea is that it is much easier for the end user to take into use the vtu output this way.
   ! The solver itself has limited set of parameters needed and is therefore approapriate for this
@@ -1088,6 +1069,7 @@ CONTAINS
   END SUBROUTINE AddVtuOutputSolverHack
 
 
+  !----------------------------------------------------------------------------------------------
   ! This is a dirty hack that adds an instance of SaveScalars to the list of Solvers.
   ! The idea is that it is much easier for the end user to add a basic instance.
   !----------------------------------------------------------------------------------------------
