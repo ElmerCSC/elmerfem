@@ -264,10 +264,14 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: RevertSign(6), stat, AssembleForce, OrientationsMatch
+    LOGICAL :: RevertIndices
     INTEGER, POINTER :: FaceMap(:,:)
+    INTEGER, TARGET :: TetraFaceMap(4,3)
     INTEGER :: FDofMap(4,3)
+    INTEGER :: OriginalIndices(3)
     INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches, FDOFs
-    REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), detJ, s, u, w, g
+    REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), WorkTrace(nd)
+    REAL(KIND=dp) :: detJ, s, u, v, w, g
 
     SAVE ScalarField, Nodes
 !------------------------------------------------------------------------------
@@ -290,6 +294,7 @@ CONTAINS
     END IF
     IF (.NOT. ASSOCIATED(Parent)) RETURN
 
+    RevertIndices = .FALSE.
     Family = GetElementFamily(Element)
     SELECT CASE(Family)
     CASE(2)
@@ -349,8 +354,26 @@ CONTAINS
       IF (FDOFs < 1) RETURN
 
       CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
-      IF (SecondFamily) &
-          CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
+      IF (SecondFamily) THEN
+        IF (FDOFs /= 3) CALL Fatal('ModelMixedPoisson', '3-DOF faces expected')
+        TetraFaceMap(1,:) = (/ 2, 1, 3 /)
+        TetraFaceMap(2,:) = (/ 1, 2, 4 /)
+        TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
+        TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+
+        !FaceMap => TetraFaceMap 
+
+        CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
+        
+        IF (ANY(Element % NodeIndexes(1:3) /= Parent % NodeIndexes(TetraFaceMap(ActiveFaceId,1:3)))) THEN
+          !
+          ! The parent element face is indexed differently, reorder and revert afterwards:
+          !
+          OriginalIndices(1:3) = Element % NodeIndexes(1:3)
+          Element % NodeIndexes(1:3) =  Parent % NodeIndexes(TetraFaceMap(ActiveFaceId,1:3))
+          RevertIndices = .TRUE.
+        END IF
+      END IF
 
     CASE DEFAULT
       CALL Warn('ModelMixedPoisson', 'Neumann BCs for 4-node faces have not been implemented yet')
@@ -403,13 +426,23 @@ CONTAINS
           TraceBasis(1) = s * 0.5d0
         END IF
       CASE(3)
+        u = IP % U(t)
+        v = IP % V(t)
         DO k=1,n
-          Basis(k) = TriangleNodalPBasis(k, IP % U(t), IP % V(t))
+          Basis(k) = TriangleNodalPBasis(k, u, v)
         END DO
 
         IF (SecondFamily) THEN
-          CALL Warn('ModelMixedPoisson', 'Neumann BCs for tetrahedra of 2nd kind still missing')
-          RETURN
+          WorkTrace(1) = -1.0d0*(-8 - 12*u + 4*Sqrt(3.0d0)*v)/12.0d0
+          WorkTrace(2) = -1.0d0*(u + (-8 + 4*Sqrt(3.0d0)*v)/12.0d0)
+          WorkTrace(3) = -1.0d0*(4.0d0 - 8*Sqrt(3.0d0)*v)/12.0d0
+          !
+          ! Reorder and revert signs:
+          !
+          DO j=1,FDOFs
+            k = FDofMap(ActiveFaceId,j)
+            TraceBasis(j) = s * WorkTrace(k)
+          END DO
         ELSE
           TraceBasis(1) = s / SQRT(3.0d0)
         END IF
@@ -427,6 +460,8 @@ CONTAINS
     END DO
 
     IF (AssembleForce) CALL DefaultUpdateForce(Force)
+
+    IF (RevertIndices) Element % NodeIndexes(1:3) = OriginalIndices(1:3)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
