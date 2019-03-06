@@ -57,7 +57,7 @@ Simulation
   Steady State Max Iterations = 1 !20
   Steady State Min Iterations = 1
   Set Dirichlet BCs By BC Numbering = Logical True
-  max output level = 20
+  max output level = 4
   Output Intervals = 1
   Output File = "$namerun".result" !"
   Output Coordinates = Logical True
