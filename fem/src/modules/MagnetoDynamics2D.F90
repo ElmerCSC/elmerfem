@@ -99,8 +99,9 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation ) ! {{{
                NEWX(:), NEWY(:), POT(:)
 
   TYPE(Mesh_t),   POINTER :: Mesh
-
-  LOGICAL :: NewtonRaphson = .FALSE., CSymmetry
+  TYPE(ValueList_t), POINTER :: SolverParams
+  
+  LOGICAL :: NewtonRaphson = .FALSE., CSymmetry, SkipDegenerate
   INTEGER :: CoupledIter
   TYPE(Variable_t), POINTER :: IterV, CoordVar
 
@@ -119,14 +120,18 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation ) ! {{{
   ! --------------------------------------------------------------
   NULLIFY(BC)
   Mesh => GetMesh()
-  NewtonRaphson = GetLogical(GetSolverParams(), 'Newton-Raphson Iteration', Found)
+  SolverParams => GetSolverParams()
+  
+  NewtonRaphson = GetLogical(SolverParams, 'Newton-Raphson Iteration', Found)
   IF(.NOT. Found) NewtonRaphson = .FALSE.
   IF(GetCoupledIter()>1) NewtonRaphson = .TRUE.
 
-  NonlinIter = GetInteger(GetSolverParams(), &
+  NonlinIter = GetInteger(SolverParams, &
            'Nonlinear System Max Iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
 
+  SkipDegenerate = GetLogical(SolverParams, 'Skip Degenerate Elements',Found ) 
+  
   CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
 
@@ -145,6 +150,10 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation ) ! {{{
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes(Element)
        nd = GetElementNOFDOFs(Element)
+       IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
+         CALL Info('MagnetoDynamics2D','Skipping degenerate element:'//TRIM(I2S(t)),Level=12)
+         CYCLE
+       END IF
        CALL LocalMatrix(Element, n, nd)
     END DO
 !$omp end parallel do
@@ -1366,7 +1375,7 @@ CONTAINS
 
     LOGICAL :: FoundIm
 
-!$omp threadprivate(Nodes)
+!$omp threadprivate(Nodes,HB,CubicCoeff,InPlaneProximity)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
@@ -2465,7 +2474,7 @@ CONTAINS
         IF (LorentzForceCompute) THEN
           BodyId = GetBody()
           ! Let's compute the JxB for all the bodies and 
-          ! then we sum from these for the components which are outputed.
+          ! then we sum from these for the components which are outputted.
 
           Bx = CMPLX(BatIp(1), BatIp(3), KIND=dp)
           By = CMPLX(BatIp(2), BatIp(4), KIND=dp)
@@ -2619,7 +2628,7 @@ CONTAINS
       !CALL ListAddConstReal( Model % Simulation,'res: sin mode fourier loss', ComponentLoss(2))       
     
       !---------------------------------------------------------------------------------
-      ! Screen ouput for componentwise and bodywise losses 
+      ! Screen output for componentwise and bodywise losses 
       !--------------------------------------------------------------------------------
       WRITE( Message,'(A,ES12.3)') 'Loss for cos mode: ', ComponentLoss(1)
       CALL Info('BSolver', Message, Level=6 )

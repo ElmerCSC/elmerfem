@@ -711,7 +711,7 @@ CONTAINS
 
                IF ( nj <= 0 ) CYCLE
 !
-!              s=A(Q_j)^T, only entries correspoding to
+!              s=A(Q_j)^T, only entries corresponding to
 !              nonzeros in P_i actually computed, then
 !              B_ij = DOT( P_i, A(Q_j)^T ):
 !              ------------------------------------------
@@ -774,7 +774,7 @@ CONTAINS
 
                   DO CDOF=0,DOFs-1
 !
-!                    s = A(Q_j)^T, only entries correspoding to
+!                    s = A(Q_j)^T, only entries corresponding to
 !                    nonzeros in P_i actually  computed, then
 !                    B_ij = DOT( P_i, A(Q_j)^T ):
 !                    ------------------------------------------
@@ -1303,7 +1303,7 @@ CONTAINS
 
      NB = 0
 
-     IF ( ListGetLogical( Params, 'Discontinuous Galerkin', Found ) ) THEN
+     IF ( Solver % DG ) THEN
         DO i=1,Element % DGDOFs
            NB = NB + 1
            Indexes(NB) = Element % DGIndexes(i)
@@ -1567,7 +1567,7 @@ CONTAINS
     Parallel = ParEnv % PEs > 1
     InvLevel = 1 + Solver % MultiGridTotal - Level
 
-    ! This is a counter that for the first full resursive round keeps the 
+    ! This is a counter that for the first full recursive round keeps the
     ! flag NewLinearSystem true.
     IF ( Level == Solver % MultiGridLevel ) THEN
       IF( ListGetLogical(Params,'MG Recompute Projector',GotIt) ) THEN
@@ -5166,7 +5166,7 @@ CONTAINS
       ForceVector(1:n) = ForceVector(1:n) / RHSnorm
     END IF
 
-    ! This is a counter that for the first full resursive round keeps the 
+    ! This is a counter that for the first full recursive round keeps the
     ! flag NewLinearSystem true.
     IF ( Level == Solver % MultiGridLevel ) THEN
       NewLinearSystem = .TRUE.
@@ -5687,9 +5687,9 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>     Project cluster matrix A to B: B = PAR
-!>     The projector is formed implicitely.
+!>     The projector is formed implicitly.
 !------------------------------------------------------------------------------
-   SUBROUTINE CRS_ClusterMatrixCreate( A, CF, B, Components ) 
+   SUBROUTINE CRS_ClusterMatrixCreate( A, CF, B, Components )
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A,B
       INTEGER, POINTER :: CF(:)

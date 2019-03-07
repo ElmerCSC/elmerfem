@@ -786,7 +786,7 @@ CONTAINS
     INTEGER :: i,j,k,k0,k1,l
     CHARACTER(LEN=1024) :: name, TmpName
 !------------------------------------------------------------------------------
-
+    
     i = 1
     name = FileName
     DO WHILE( name(i:i) == ' ' .OR. name(i:i)=='"')
@@ -934,6 +934,29 @@ CONTAINS
 
         IF ( SEQL(tmpstr, 'include ') ) THEN
           IncludeUnit = IncludeUnit-1
+          
+          CALL Info('OpenIncludeFile','Trying to include file: '//TRIM(readstr(9:)),Level=10)
+          
+          inlen = LEN_TRIM(readstr)
+
+          i = INDEX( readstr(1:inlen), '$' )
+          IF ( i>0 .AND. i<inlen ) THEN
+            CALL TrimMatcExpression() 
+            CALL Info('ReadAndTrim','Include file after MATC trimming: '&
+                //TRIM(readstr(9:)),Level=6)
+          END IF
+
+          i = INDEX( readstr(1:inlen),'#')
+          IF( i>0 .AND. i<inlen ) THEN
+#ifdef HAVE_LUA
+            CALL TrimLuaExpression()
+            CALL Info('ReadAndTrim','Include file after LUA trimming: '&
+                //TRIM(readstr(9:)),Level=6)
+#else
+            CALL Fatal('ReadAndTrim','LUA not included, cannot continue')
+#endif
+          END IF
+          
           CALL OpenIncludeFile( IncludeUnit, TRIM(readstr(9:)), IncludePath )
           READ( IncludeUnit,'(A)',END=3,ERR=3 ) readstr
           GO TO 4
@@ -991,125 +1014,20 @@ CONTAINS
        i = i + 1
      END DO
 
+     i = INDEX( readstr(1:inlen), '#' )     
+     IF ( i>0 .AND. i<inlen ) THEN
 #ifdef HAVE_LUA
-
-     block 
-       integer :: lstat
-       character(kind=c_char, len=:), pointer :: lua_result
-       integer :: result_len
-       logical :: closed_region, first_bang
-       closed_region = .false.
-       first_bang = .true.
-       i = INDEX( readstr(1:inlen), '#' )
-
-       IF ( i>0 .AND. i<inlen ) THEN
-         m = i
-         copystr(i:inlen) = readstr(i:inlen)
-         DO WHILE(i<=inlen)
-           IF ( copystr(i:i) == '#' ) THEN
-             DO j=i+1,inlen-1
-               IF ( copystr(j:j) == '#' ) EXIT
-             END DO
-             ninlen = j - i
-
-             ! Initialize variables for each copy of Lua interpreter separately
-
-             !$OMP PARALLEL DEFAULT(NONE) &
-             !$OMP SHARED(copystr, i, matcstr, ninlen, inlen, closed_region, first_bang, j) &
-             !$OMP PRIVATE(tcmdstr, tninlen, lstat, result_len, lua_result) 
-
-             tninlen = ninlen
-             tcmdstr = copystr(i+1:inlen)
-
-             IF(tcmdstr(tninlen:tninlen) == '#') then 
-               closed_region = .TRUE.
-             ELSE
-               closed_region = .FALSE.
-             END IF
-
-             IF(closed_region) THEN
-               lstat = lua_dostring( LuaState, &
-                   'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
-             ELSE
-               IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, dont do 'return tostring(..)'.
-                                                                   ! Instead, just execute the line in the lua interpreter
-                 lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
-               ELSE ! 'abc = # <luacode>' case, oneliners only
-                 lstat = lua_dostring( LuaState, &
-                     'return tostring('// tcmdstr(1:tninlen) // ')'//c_null_char, 1)
-               END IF
-             END IF
-             lua_result => lua_popstring(LuaState, result_len)
-
-             !$OMP SINGLE 
-             matcstr(1:result_len) = lua_result(1:result_len)
-             ninlen = result_len
-             !$OMP END SINGLE
-
-             !$OMP END PARALLEL
-
-             DO k=1,ninlen
-               readstr(m:m) = matcstr(k:k)
-               m = m + 1
-             END DO
-             i = j+1
-           ELSE
-             readstr(m:m) = copystr(i:i)
-             i = i + 1
-             m = m + 1
-           END IF
-           first_bang = .false.
-         END DO
-         IF ( m <= inlen ) readstr(m:inlen) = ' '
-         inlen = m-1
-       END IF
-     end block
+       CALL TrimLuaExpression()
+#else
+       CALL Fatal('ReadAndTrim','LUA not included, cannot continue')
 #endif
-
+     END IF
+    
      i = INDEX( readstr(1:inlen), '$' )
      IF ( i>0 .AND. i<inlen ) THEN
-       m = i
-       copystr(i:inlen) = readstr(i:inlen)
-       DO WHILE(i<=inlen)
-         IF ( copystr(i:i) == '$' ) THEN
-            DO j=i+1,inlen-1
-              IF ( copystr(j:j) == '$' ) EXIT
-            END DO
-            ninlen = j - i
-
-            ! Initialize variables for each copy of MATC separately
-
-            !$OMP PARALLEL DEFAULT(NONE) &
-            !$OMP SHARED(copystr, i, matcstr, ninlen, inlen) &
-            !$OMP PRIVATE(tcmdstr, tmatcstr, tninlen)
-
-            tninlen = ninlen
-            tcmdstr = copystr(i+1:inlen)
-            CALL MATC( tcmdstr, tmatcstr, tninlen )
-            !$OMP BARRIER
-
-            !$OMP SINGLE
-            matcstr(1:tninlen) = tmatcstr(1:tninlen)
-            ninlen = tninlen
-            !$OMP END SINGLE
-
-            !$OMP END PARALLEL
-
-            DO k=1,ninlen
-              readstr(m:m) = matcstr(k:k)
-              m = m + 1
-            END DO
-            i = j+1
-         ELSE
-            readstr(m:m) = copystr(i:i)
-            i = i + 1
-            m = m + 1
-         END IF
-       END DO
-       IF ( m <= inlen ) readstr(m:inlen) = ' '
-       inlen = m-1
+       CALL TrimMatcExpression() 
      END IF
-
+     
      IF ( PRESENT( Echo ) ) THEN
         IF ( Echo ) WRITE( 6, '(a)' ) readstr(1:inlen)
      END IF
@@ -1211,6 +1129,128 @@ CONTAINS
 10   CONTINUE
      l = .FALSE.
 !------------------------------------------------------------------------------
+     
+   CONTAINS
+
+     SUBROUTINE TrimMatcExpression() 
+
+       i = INDEX( readstr(1:inlen), '$' )
+       IF ( i>0 .AND. i<inlen ) THEN
+         m = i
+         copystr(i:inlen) = readstr(i:inlen)
+         DO WHILE(i<=inlen)
+           IF ( copystr(i:i) == '$' ) THEN
+             DO j=i+1,inlen-1
+               IF ( copystr(j:j) == '$' ) EXIT
+             END DO
+             ninlen = j - i
+
+             ! Initialize variables for each copy of MATC separately
+
+             !$OMP PARALLEL DEFAULT(NONE) &
+             !$OMP SHARED(copystr, i, matcstr, ninlen, inlen) &
+             !$OMP PRIVATE(tcmdstr, tmatcstr, tninlen)
+
+             tninlen = ninlen
+             tcmdstr = copystr(i+1:inlen)
+             CALL MATC( tcmdstr, tmatcstr, tninlen )
+             !$OMP BARRIER
+
+             !$OMP SINGLE
+             matcstr(1:tninlen) = tmatcstr(1:tninlen)
+             ninlen = tninlen
+             !$OMP END SINGLE
+
+             !$OMP END PARALLEL
+
+             DO k=1,ninlen
+               readstr(m:m) = matcstr(k:k)
+               m = m + 1
+             END DO
+             i = j+1
+           ELSE
+             readstr(m:m) = copystr(i:i)
+             i = i + 1
+             m = m + 1
+           END IF
+         END DO
+         IF ( m <= inlen ) readstr(m:inlen) = ' '
+         inlen = m-1
+       END IF
+       
+     END SUBROUTINE TrimMatcExpression
+       
+#ifdef HAVE_LUA
+     SUBROUTINE TrimLuaExpression()
+
+       INTEGER :: lstat
+       character(kind=c_char, len=:), pointer :: lua_result
+       integer :: result_len
+       logical :: closed_region, first_bang
+       closed_region = .false.
+       first_bang = .true.
+       m = i
+       copystr(i:inlen) = readstr(i:inlen)
+       DO WHILE(i<=inlen)
+         IF ( copystr(i:i) == '#' ) THEN
+           DO j=i+1,inlen-1
+             IF ( copystr(j:j) == '#' ) EXIT
+           END DO
+           ninlen = j - i
+
+           ! Initialize variables for each copy of Lua interpreter separately
+
+           !$OMP PARALLEL DEFAULT(NONE) &
+           !$OMP SHARED(copystr, i, matcstr, ninlen, inlen, closed_region, first_bang, j) &
+           !$OMP PRIVATE(tcmdstr, tninlen, lstat, result_len, lua_result) 
+
+           tninlen = ninlen
+           tcmdstr = copystr(i+1:inlen)
+
+           IF(tcmdstr(tninlen:tninlen) == '#') then 
+             closed_region = .TRUE.
+           ELSE
+             closed_region = .FALSE.
+           END IF
+
+           IF(closed_region) THEN
+             lstat = lua_dostring( LuaState, &
+                 'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
+           ELSE
+             IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, do not do 'return tostring(..)'.
+               ! Instead, just execute the line in the lua interpreter
+               lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+             ELSE ! 'abc = # <luacode>' case, oneliners only
+               lstat = lua_dostring( LuaState, &
+                   'return tostring('// tcmdstr(1:tninlen) // ')'//c_null_char, 1)
+             END IF
+           END IF
+           lua_result => lua_popstring(LuaState, result_len)
+
+           !$OMP SINGLE 
+           matcstr(1:result_len) = lua_result(1:result_len)
+           ninlen = result_len
+           !$OMP END SINGLE
+
+           !$OMP END PARALLEL
+
+           DO k=1,ninlen
+             readstr(m:m) = matcstr(k:k)
+             m = m + 1
+           END DO
+           i = j+1
+         ELSE
+           readstr(m:m) = copystr(i:i)
+           i = i + 1
+           m = m + 1
+         END IF
+         first_bang = .false.
+       END DO
+       IF ( m <= inlen ) readstr(m:inlen) = ' '
+       inlen = m-1
+     END SUBROUTINE TrimLuaExpression
+#endif
+
    END FUNCTION ReadAndTrim
 !------------------------------------------------------------------------------
 
@@ -1271,6 +1311,8 @@ END FUNCTION ComponentNameVar
       IF ( Component > 0 ) THEN
         str = TRIM(str) // ' ' // TRIM(i2s(Component) )
       END IF
+    ELSE IF( Component == 0 ) THEN
+      str = BaseName(1:ind-1)
     ELSE
       DOFsTot = 0
       DO WHILE( .TRUE. )

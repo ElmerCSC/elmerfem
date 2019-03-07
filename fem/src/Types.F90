@@ -89,13 +89,13 @@ MODULE Types
                         SOLVER_EXEC_PREDCORR = 7
 
   INTEGER, PARAMETER :: SOLVER_MODE_DEFAULT = 0, &    ! normal pde
-	                SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
-	                SOLVER_MODE_ASSEMBLY = 2, &   ! coupled solver with single block
-	                SOLVER_MODE_COUPLED = 3, &    ! coupled solver with multiple blocks
-	                SOLVER_MODE_BLOCK = 4, &      ! block solver
-	                SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
-	                SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
-                        SOLVER_MODE_STEPS = 7         ! as the legacy but splitted to different steps
+	                      SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
+	                      SOLVER_MODE_ASSEMBLY = 2, &   ! coupled solver with single block
+	                      SOLVER_MODE_COUPLED = 3, &    ! coupled solver with multiple blocks
+	                      SOLVER_MODE_BLOCK = 4, &      ! block solver
+	                      SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
+	                      SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
+                        SOLVER_MODE_STEPS = 7         ! as the legacy but split to different steps
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
@@ -173,6 +173,7 @@ END INTERFACE
     LOGICAL, ALLOCATABLE :: SubMatrixActive(:,:)
     TYPE(SubVector_t), POINTER :: SubVector(:) => NULL()
     INTEGER, POINTER :: BlockStruct(:)
+    INTEGER, POINTER :: InvBlockStruct(:)
     LOGICAL :: GotBlockStruct
     LOGICAL, ALLOCATABLE :: SubMatrixTranspose(:,:)
   END TYPE BlockMatrix_t
@@ -422,7 +423,7 @@ END INTERFACE
 
 #ifdef HAVE_LUA
      LOGICAL :: LuaFun = .FALSE.
-     CHARACTER(len=:), ALLOCATABLE :: LuaCmd
+     !CHARACTER(len=:), ALLOCATABLE :: LuaCmd
 #endif
      
    END TYPE ValueListEntry_t
@@ -480,9 +481,25 @@ END INTERFACE
      LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
      TYPE(VariableTable_t) :: VarTable(32)
      INTEGER :: VarCount
-     
+
+     TYPE(ValueHandle_t), POINTER :: HandleIm => NULL()
+     TYPE(ValueHandle_t), POINTER :: Handle2 => NULL()
+     TYPE(ValueHandle_t), POINTER :: Handle3 => NULL()
    END TYPE ValueHandle_t
 
+
+   TYPE VariableHandle_t     
+     TYPE(Variable_t), POINTER :: Variable=>NULL()
+     REAL(KIND=dp),POINTER :: Values(:)=>NULL()
+     INTEGER,POINTER :: Perm(:)=>NULL()
+     INTEGER :: tstep = 0
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: ActiveElement = .FALSE.
+     REAL(KIND=dp) :: ElementValues(100)
+     INTEGER :: n = 0
+   END TYPE VariableHandle_t
+   
+   
 !------------------------------------------------------------------------------
 
    TYPE MaterialArray_t
@@ -832,6 +849,8 @@ END INTERFACE
 
       REAL(KIND=dp) :: Alpha,Beta,dt
 
+      LOGICAL :: NewtonActive = .FALSE.
+      
       INTEGER :: SolverExecWhen
       INTEGER :: SolverMode
 
@@ -903,7 +922,7 @@ END INTERFACE
     TYPE Model_t
 !------------------------------------------------------------------------------
 !
-!     Coodrinate system dimension + type
+!     Coordinate system dimension + type
 !
       INTEGER :: DIMENSION, CoordinateSystem
 !

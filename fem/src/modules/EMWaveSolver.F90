@@ -396,7 +396,7 @@ CONTAINS
     LOGICAL :: PiolaVersion, InitHandles
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DetJ, weight, eps, mu, muinv, L(3), cond
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
+    REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3),WBasis(nd,3),RotWBasis(nd,3)
     LOGICAL :: Stat
     INTEGER :: t, i, j
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -404,14 +404,8 @@ CONTAINS
     TYPE(ValueHandle_t) :: CD_h(3), Mu_h, Eps_h, Cond_h
     LOGICAL :: AllocationsDone = .FALSE.
     
-    SAVE Cd_h, Mu_h, Eps_h, Cond_h, WBasis, RotWBasis, Basis, dBasisdx, AllocationsDone
+    SAVE Cd_h, Mu_h, Eps_h, Cond_h, AllocationsDone
 
-    IF(.NOT. AllocationsDone ) THEN
-      N = Mesh % MaxElementDOFs
-      ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3))      
-      AllocationsDone = .TRUE.
-    END IF
-   
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density 1')
       CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density 2')
@@ -488,7 +482,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DetJ,Normal(3),Tem(n)
     REAL(KIND=dp) :: B, L(3), muinv, mu, weight, tanWBasis(3)
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), WBasis(:,:), RotWBasis(:,:),dBasisdx(:,:) 
+    REAL(KIND=dp) :: Basis(nd), WBasis(nd,3), RotWBasis(nd,3),dBasisdx(nd,3) 
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, p, q
@@ -498,13 +492,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     LOGICAL :: AllocationsDone = .FALSE.
     
-    SAVE Visited, BL_h, Damp_h, Mu_h, Eps_h, WBasis, RotWBasis, Basis, dBasisdx, AllocationsDone
-
-    IF(.NOT. AllocationsDone ) THEN
-      N = Mesh % MaxElementDOFs
-      ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3) )
-      AllocationsDone = .TRUE.
-    END IF
+    SAVE Visited, BL_h, Damp_h, Mu_h, Eps_h
 
 !------------------------------------------------------------------------------
 

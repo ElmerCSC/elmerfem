@@ -324,7 +324,7 @@ CONTAINS
     END SUBROUTINE ClusterExtrudedMesh
 
     !-------------------------------------------------------------------------------
-    !> First detects an extruded elemens using mesh information, and 
+    !> First detects an extruded elements using mesh information, and 
     !> then clusters the edges to those of bottom elements,
     !-------------------------------------------------------------------------------
     SUBROUTINE ClusterExtrudedEdges( CFLayer )
@@ -948,7 +948,7 @@ CONTAINS
           
           IF(ClusterOrphans .AND. sumcon == 0 .AND. nbonds > 0) THEN
             ! If a tightly coupled node cannot be a start of a new cluster join it 
-            ! to the cluster of its most stronly coupled neighbour
+            ! to the cluster of its most strongly coupled neighbour
             maxv = 0.0d0
             DO j=Rows(matind),Rows(matind+1)-1
               IF(.NOT. Bonds(j)) CYCLE

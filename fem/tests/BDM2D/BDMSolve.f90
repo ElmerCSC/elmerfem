@@ -51,10 +51,10 @@ SUBROUTINE BDMSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: stat
 
-  INTEGER, ALLOCATABLE :: Indeces(:)
+  INTEGER, ALLOCATABLE :: Indices(:)
 
   SAVE STIFF, LOAD, FORCE, Acoef, Bcoef, &
-       AllocationsDone, Nodes, EdgeNodes, Indeces
+       AllocationsDone, Nodes, EdgeNodes, Indices
 !------------------------------------------------------------------------------
   dim = CoordinateSystemDimension()
 
@@ -65,7 +65,7 @@ SUBROUTINE BDMSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. AllocationsDone ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(6,N), STIFF(N,N), &
-          Acoef(N), Bcoef(N), Indeces(N), STAT=istat )
+          Acoef(N), Bcoef(N), Indices(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'BDMSolver', 'Memory allocation error.' )
      END IF
@@ -130,25 +130,25 @@ SUBROUTINE BDMSolver( Model,Solver,dt,TransientSimulation )
 
          Element => GetActiveElement(t)
          n  = GetElementNOFNodes()
-         nd = GetElementDOFs( Indeces )
+         nd = GetElementDOFs( Indices )
          nb = size(Element % BubbleIndexes(:))
          np = 0  ! Change to np=3 if using the element type "n:1 e:2 b:1"
 
          Load(1,1) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(nd)) )
+              Perm(Indices(nd)) )
 
          Load(2,1) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+1)) )
+              Perm(Indices(np+1)) )
          Load(2,2) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+2)) )
+              Perm(Indices(np+2)) )
          Load(2,3) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+3)) )
+              Perm(Indices(np+3)) )
          Load(2,4) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+4)) )
+              Perm(Indices(np+4)) )
          Load(2,5) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+5)) )
+              Perm(Indices(np+5)) )
          Load(2,6) = Solver % Variable % Values( Solver % Variable % &
-              Perm(Indeces(np+6)) )  
+              Perm(Indices(np+6)) )  
 
 
          !print *, 'Elementwise pressure sol = ', Load(1,1)
@@ -175,8 +175,8 @@ CONTAINS
     INTEGER :: n, nd, nb, dim
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: nu
-    REAL(KIND=dp) :: RTBasis(nd-nb,3), DivRTBasis(nd-nb), WBasis(dim)
-    REAL(KIND=dp) :: Basis(n), DetJ, F(3,3), C(3,3), L(3), M(3), xq, yq, zq, &
+    REAL(KIND=dp) :: RTBasis(nd-nb,3), DivRTBasis(nd-nb)
+    REAL(KIND=dp) :: Basis(n), DetJ, L(3), M(3), xq, yq, zq, &
          uq, vq, wq, sq
     LOGICAL :: Stat, Found
     INTEGER :: t, i, j, p, q, np
@@ -213,9 +213,8 @@ CONTAINS
 
     DO t=1,IP % n
        stat = FaceElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), F, detJ, Basis, RTBasis, DivRTBasis, BDM = .TRUE.)
-
-       C(1:dim,1:dim) = MATMUL( TRANSPOSE(F(1:dim,1:dim)), F(1:dim,1:dim) )
+            IP % W(t), detF=detJ, Basis=Basis, FBasis=RTBasis, &
+            DivFBasis=DivRTBasis, BDM = .TRUE., ApplyPiolaTransform=.TRUE.)
 
        xq = SUM( Nodes % x(1:n) * Basis(1:n) )
        yq = SUM( Nodes % y(1:n) * Basis(1:n) )
@@ -242,20 +241,16 @@ CONTAINS
        !--------------------------------------------------------------
        ! The contribution from the variation with the flux variable q
        !---------------------------------------------------------------
-       WBasis = 0.0d0
        DO p = 1,nd-np-nb
-          DO i=1,dim
-             WBasis(i) = SUM( C(i,1:dim) * RTBasis(p,1:dim) )
-          END DO
           i = np + p
           DO q = 1,nd-np-nb
              j = np + q
              STIFF(i,j) = STIFF(i,j) + 1.0d0 * &
-                  SUM( RTBasis(q,1:dim) * WBasis(1:dim) ) * 1.0d0/detJ * IP % s(t)
+                  SUM( RTBasis(q,1:dim) * RTBasis(p,1:dim) ) * detJ * IP % s(t)
           END DO
 
           DO q = nd-nb+1,nd
-             STIFF(i,q) = STIFF(i,q) + 1.0d0 * DivRTBasis(p) * IP % s(t)
+             STIFF(i,q) = STIFF(i,q) + 1.0d0 * DivRTBasis(p) * detJ * IP % s(t)
           END DO
        END DO
 
@@ -265,7 +260,7 @@ CONTAINS
        DO p = nd-nb+1,nd
           DO q = 1,nd-np-nb
              j = np + q
-             STIFF(p,j) = STIFF(p,j) + 1.0d0 * DivRTBasis(q) * IP % s(t)
+             STIFF(p,j) = STIFF(p,j) + 1.0d0 * DivRTBasis(q) * detJ * IP % s(t)
           END DO
           !-------------------------------------------------------------------
           ! The definition of the in-built body source term is contained here:
@@ -292,8 +287,8 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t
     LOGICAL :: Stat
-    REAL(KIND=dp) :: RTBasis(nd-nb,3), DivRTBasis(nd-nb), WBasis(dim), Basis(n)
-    REAL(KIND=dp) :: xq, yq, DetJ, F(3,3), sol, gradsol(dim,1), fluxsol(dim,1), tmp(1,dim)
+    REAL(KIND=dp) :: RTBasis(nd-nb,3), DivRTBasis(nd-nb), Basis(n)
+    REAL(KIND=dp) :: xq, yq, DetJ, sol, gradsol(dim,1), fluxsol(dim,1)
 
     TYPE(Nodes_t), SAVE :: Nodes
 !---------------------------------------------------------------------------
@@ -304,7 +299,8 @@ CONTAINS
 
     DO t=1,IP % n
        stat = FaceElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), F, detJ, Basis, RTBasis, DivRTBasis, BDM = .TRUE.)
+           IP % W(t), detF=detJ, Basis=Basis, FBasis=RTBasis, &
+           DivFBasis=DivRTBasis, BDM = .TRUE., ApplyPiolaTransform=.TRUE.)
        
        xq = SUM( Nodes % x(1:n) * Basis(1:n) )
        yq = SUM( Nodes % y(1:n) * Basis(1:n) )
@@ -319,12 +315,9 @@ CONTAINS
        ELSE 
           SolNorm = SolNorm + SUM( gradsol(1:2,1)*gradsol(1:2,1) ) * detJ * IP % s(t)
        
-          tmp(1,1:dim) = RTBasis(1,1:dim)*Load(2,1) + RTBasis(2,1:dim)*Load(2,2) + &
+          fluxsol(1:dim,1) = RTBasis(1,1:dim)*Load(2,1) + RTBasis(2,1:dim)*Load(2,2) + &
                RTBasis(3,1:dim)*Load(2,3) + RTBasis(4,1:dim)*Load(2,4) + RTBasis(5,1:dim)*Load(2,5) + &
                RTBasis(6,1:dim)*Load(2,6)
-
-          fluxsol(1,1) = 1.0d0/detJ * (F(1,1) * tmp(1,1) + F(1,2) * tmp(1,2))
-          fluxsol(2,1) = 1.0d0/detJ * (F(2,1) * tmp(1,1) + F(2,2) * tmp(1,2))      
 
           EK = EK + SUM( (gradsol(1:dim,1) - fluxsol(1:dim,1))**2 ) * &
                detJ * IP % s(t) 

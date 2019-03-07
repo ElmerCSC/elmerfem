@@ -96,7 +96,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
 
   i = ListGetInteger( Params,'Target Mesh Solver Index',Found ) 
   IF( Found ) THEN
-    ! Target mesh solver is explicitely given
+    ! Target mesh solver is explicitly given
     TargetMesh => CurrentModel % Solvers(i) % Mesh
     IF( ASSOCIATED( TargetMesh ) ) THEN
       CALL Info('Mesh2MeshSolver','Using target mesh as the mesh of Solver '//TRIM(I2S(i)),Level=8)

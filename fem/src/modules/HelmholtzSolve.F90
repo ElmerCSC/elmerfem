@@ -185,7 +185,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   dim = CoordinateSystemDimension()     
   GotFrequency = .FALSE.
 
-  ! Check for flow or strcuture interface
+  ! Check for flow or structure interface
   !--------------------------------------------------------
   WallVelocity = 0.0_dp
   ImUnit = CMPLX(0.0d0,1.0d0,KIND=dp) 

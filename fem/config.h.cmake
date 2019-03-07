@@ -168,4 +168,6 @@
 
 #cmakedefine HAVE_LUA
 
+#cmakedefine HAVE_ZOLTAN
+
 #endif

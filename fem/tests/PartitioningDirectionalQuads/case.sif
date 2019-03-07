@@ -47,10 +47,10 @@ Solver 1
   Equation = "Heat Equation"
   Variable = "Temperature"
   
-  Linear System Solver = "Direct"
+! Linear System Solver = "Direct"
   Linear System Direct Method = "MUMPS"
 
-!  Linear System Solver = "Iterative"
+   Linear System Solver = "Iterative"
   Linear System Iterative Method = "BiCGStab"
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1.0e-08

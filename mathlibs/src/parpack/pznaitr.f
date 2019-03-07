@@ -308,8 +308,8 @@ c
       Complex*16
      &           zdotc 
       Double precision            
-     &           pdlamch, pdznorm2, zlanhs, dlapy2
-      external   zdotc, pdznorm2, zlanhs, pdlamch, dlapy2
+     &           pdlamch10, pdznorm2, zlanhs, dlapy2
+      external   zdotc, pdznorm2, zlanhs, pdlamch10, dlapy2
 c
 c     %---------------------%
 c     | Intrinsic Functions |
@@ -337,10 +337,10 @@ c        | overflow should not occur.              |
 c        | REFERENCE: LAPACK subroutine zlahqr     |
 c        %-----------------------------------------%
 c
-         unfl = pdlamch(comm,  'safe minimum' )
+         unfl = pdlamch10(comm,  'safe minimum' )
          ovfl = dble(one / unfl)
          call dlabad( unfl, ovfl )
-         ulp = pdlamch( comm, 'precision' )
+         ulp = pdlamch10( comm, 'precision' )
          smlnum = unfl*( n / ulp )
          first = .false.
       end if

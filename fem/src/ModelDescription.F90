@@ -524,7 +524,7 @@ CONTAINS
           IF ( BoundaryIndex <= 0 .OR. BoundaryIndex >  &
               Model % NumberOfBoundaries ) THEN
             WRITE( Message, * ) 'Boundary section number: ',BoundaryIndex, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           Model % BoundaryId(BoundaryIndex) = Arrayn
@@ -570,10 +570,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % ICs(i) % Values)) &
                 Model % ICs(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfICs ) THEN
             WRITE( Message, * ) 'Initial Condition section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           Model % ICs(ArrayN) % Tag = ArrayN
@@ -622,10 +622,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Materials(i) % Values)) &
                 Model % Materials(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfMaterials ) THEN
             WRITE( Message, * ) 'Material section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Materials(Arrayn) % Values
@@ -670,10 +670,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % BodyForces(i) % Values)) &
                 Model % BodyForces(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodyForces ) THEN
             WRITE( Message, * ) 'Body Force section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % BodyForces(Arrayn) % Values
@@ -718,10 +718,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Equations(i) % Values)) &
                 Model % Equations(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfEquations ) THEN
             WRITE( Message, * ) 'Equation section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Equations(ArrayN) % Values
@@ -768,10 +768,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Bodies(i) % Values)) &
                 Model % Bodies(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodies ) THEN
             WRITE( Message, * ) 'Body section number: ',Arrayn, &
-                ' exeeds header value. Aborting. '
+                ' exceeds header value. Aborting. '
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Bodies(Arrayn) % Values
@@ -817,10 +817,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Components(i) % Values)) &
                 Model % Components(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfComponents ) THEN
             WRITE( Message, * ) 'Component section number: ',Arrayn, &
-                ' exeeds header value. Aborting. '
+                ' exceeds header value. Aborting. '
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Components(Arrayn) % Values
@@ -881,10 +881,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Solvers(i) % Values)) &
                 Model % Solvers(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfSolvers ) THEN
             WRITE( Message, * ) 'Solver section number: ',Arrayn, &
-                ' exeeds header value. Aborting. '
+                ' exceeds header value. Aborting. '
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Solvers(Arrayn) % Values
@@ -1239,7 +1239,7 @@ CONTAINS
           OPEN( 1, FILE=TRIM(str1), STATUS='OLD', ERR=10 )
 
 !
-!         Initially 50 buckets, on avarage MAX 4 entries / bucket:
+!         Initially 50 buckets, on average MAX 4 entries / bucket:
 !         --------------------------------------------------------
           hash => HashCreate( 50,4 )
           IF ( .NOT. ASSOCIATED( hash ) ) THEN
@@ -2265,6 +2265,7 @@ ELMER_SOLVER_HOME &
            Solver % Def_Dofs(:,:,4) = 0
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
+           Solver % DG = .TRUE.
            CYCLE
         ELSE
            ElementDef = "n:1"
@@ -2286,7 +2287,11 @@ ELMER_SOLVER_HOME &
           EXIT
         END IF
       END DO
-
+     
+      !Solver % GlobalBubbles = ListGetLogical(Solver % Values, &
+      !    'Bubbles in Global System', stat)
+      !IF(.NOT. stat) Solver % GlobalBubbles = .TRUE.
+      
       i = i + 1
     END DO
 
@@ -2350,9 +2355,17 @@ ELMER_SOLVER_HOME &
           SerialMesh => AllocateMesh()
         END IF
 
-        Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
-        CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )
-
+        IF( ParEnv % PEs > 1) THEN
+          Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
+        ELSE
+          CALL Info('LoadMesh','Only one active partition, using the serial mesh as it is!')
+          IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
+            DEALLOCATE( SerialMesh % RePartition ) 
+          END IF
+          Model % Meshes => SerialMesh
+        END IF
+          
+        CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )          
       ELSE
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs )
@@ -3560,9 +3573,9 @@ ELMER_SOLVER_HOME &
           Solver => CurrentModel % Solvers(i)
           IF ( Row(k+1:nlen) == ListGetString(Solver % Values, 'Equation',Found)) EXIT
         END DO
-        
+
         ! Figure out the slot where the number of dofs are given and read them
-        ! The rule is to start from ':' and go throug empty space and occupied space
+        ! The rule is to start from ':' and go through empty space and occupied space
         DO j=k-1,1,-1
           IF ( Row(j:j) /= ' ' ) EXIT
         END DO
@@ -3855,7 +3868,7 @@ ELMER_SOLVER_HOME &
 
          CALL ReadVariableName( RestartUnit,Row,Stat )
 
-         ! If not all varibales were saved for this time step, and we're not
+         ! If not all variables were saved for this time step, and we're not
          ! using a .pos file, we may have reached the end even though i < TotalDOFs.
          IF ( Stat /= 0 ) EXIT
          IF ( SEQL(Row, "Time:") ) THEN
@@ -3904,7 +3917,7 @@ ELMER_SOLVER_HOME &
          END IF
          
          DO j=1, n
-           IF ( FmtVersion > 0 ) THEN
+           IF ( FmtVersion > 0 ) THEN             
              CALL GetValue( RestartUnit, Perm, GotPerm, j, k, Val )
            ELSE
              READ( RestartUnit,* ) Node, k, Val
@@ -3948,7 +3961,7 @@ ELMER_SOLVER_HOME &
     END IF
 
 
-    ! This is now obsolite for the new format 
+    ! This is now obsolete for the new format
     IF( FmtVersion < 3 ) THEN
       ! Change variable allocations to correct sizes,
       ! first for vectors...
@@ -4098,7 +4111,8 @@ CONTAINS
          ELSE
             READ( RestartUnit, * , IOSTAT=iostat ) Val
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error in GetValue')
+              WRITE (Message,*) 'Error in GetValue for Varname: ', TRIM(Var % Name)
+              CALL Fatal('LoadRestartFile',Message)
             END IF
          END IF
       END IF
@@ -4762,7 +4776,7 @@ CONTAINS
       END DO
       WRITE(PostFileUnit,'(a)') '#endgroup all'
 !------------------------------------------------------------------------------
-!   Open result file and go trough it...
+!   Open result file and go through it...
 !------------------------------------------------------------------------------
 
       REWIND(OutputUnit)

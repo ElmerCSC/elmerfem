@@ -181,7 +181,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
   gotlinefeed = FALSE;
   j = 0;
   for(i=0;i<MAXLINESIZE;i++) {
-    if(line0[i] == '\n' ) {
+    if(line0[i] == '\n' || line0[i] == '\0' ) {
       gotlinefeed = TRUE;
       break;
     }
@@ -199,7 +199,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
   if(j) { /* Arguments are actually on the same line after '=' */
     for(i=j+1;i<MAXLINESIZE;i++) {
       line2[i-j-1] = line0[i];    
-      if( line0[i] == '\n' ) {
+      if( line0[i] == '\n' || line0[i] == '\0' ) {
 	gotlinefeed = TRUE;
 	break;
       }
@@ -220,7 +220,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
 
     gotlinefeed = FALSE;
     for(i=0;i<MAXLINESIZE;i++) {
-      if(line2[i] == '\n' ) {
+      if(line2[i] == '\n' || line2[i] == '\0' ) {
 	gotlinefeed = TRUE;
 	break;
       }
@@ -285,7 +285,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
   eg->partjoin = 0;
-  eg->partitionhalo = 0;
+  for(i=0;i<MAXHALOMODES;i++) eg->parthalo[i] = FALSE;
   eg->partitionindirect = FALSE;
   eg->reduce = FALSE;
   eg->increase = FALSE;
@@ -468,17 +468,24 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     }
 
     if(strcmp(argv[arg],"-halo") == 0) {
-      eg->partitionhalo = 1;
+      eg->parthalo[1] = TRUE;
     }
     if(strcmp(argv[arg],"-halobc") == 0) {
-      eg->partitionhalo = 2;
+      eg->parthalo[2] = TRUE;
     }
+    if(strcmp(argv[arg],"-halodb") == 0) {
+      eg->parthalo[1] = TRUE;
+      eg->parthalo[2] = TRUE;            
+    }   
     if(strcmp(argv[arg],"-haloz") == 0) {
-      eg->partitionhalo = 3;
+      eg->parthalo[3] = TRUE;
     }
     if(strcmp(argv[arg],"-halor") == 0) {
-      eg->partitionhalo = 3;
+      eg->parthalo[3] = TRUE;
     }
+    if(strcmp(argv[arg],"-halogreedy") == 0) {
+      eg->parthalo[4] = TRUE;
+    }    
     if(strcmp(argv[arg],"-indirect") == 0) {
       eg->partitionindirect = TRUE;
     }
@@ -1287,16 +1294,20 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     }
     else if(strstr(command,"HALO")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-      if(strstr(params,"TRUE")) eg->partitionhalo = 1;      
+      if(strstr(params,"TRUE")) eg->parthalo[1] = TRUE;      
     }
     else if(strstr(command,"BOUNDARY HALO")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-      if(strstr(params,"TRUE")) eg->partitionhalo = 2;
+      if(strstr(params,"TRUE")) eg->parthalo[2] = TRUE;
     }
     else if(strstr(command,"EXTRUDED HALO")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-      if(strstr(params,"TRUE")) eg->partitionhalo = 3;
+      if(strstr(params,"TRUE")) eg->parthalo[3] = TRUE;
     }
+    else if(strstr(command,"GREEDY HALO")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->parthalo[4] = TRUE;
+    }    
     else if(strstr(command,"PARTBW")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->partbw = TRUE;      

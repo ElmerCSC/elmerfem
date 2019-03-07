@@ -6,4 +6,4 @@ ADD_ELMERTEST_MODULE(EdgeElementInterpolation EdgeElementSolve EdgeElementSolve.
 
 file(COPY ELMERSOLVER_STARTINFO toroidalcoil  EdgeElementSolve.f90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(EdgeElementInterpolation)
+ADD_ELMER_TEST(EdgeElementInterpolation LABELS vector_element)

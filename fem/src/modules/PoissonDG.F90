@@ -33,7 +33,7 @@
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
-!  Solves the Poisson equation with discontinous Galerkin method!
+!  Solves the Poisson equation with discontinuous Galerkin method!
 !
 !  ARGUMENTS:
 !

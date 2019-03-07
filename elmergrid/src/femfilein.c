@@ -320,9 +320,9 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
    results in ABAQUS format.
    */
 {
-  int noknots,noelements,elemcode,maxnodes,material,maxelem;
+  int noknots,noelements,elemcode,maxnodes,material,maxelem,nodeoffset;
   int mode,allocated,nvalue,nvalue2,maxknot,nosides,elemnodes,ncum;
-  int boundarytype,boundarynodes,elsetactive,cont;
+  int boundarytype,boundarynodes,elsetactive,elmatactive,cont;
   int *nodeindx=NULL,*boundindx=NULL,*materials=NULL,*elemindx=NULL;
   char *pstr;
   char filename[MAXFILESIZE];
@@ -352,7 +352,8 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
   maxknot = 0;
   maxelem = 0;
   elsetactive = FALSE;
-
+  elmatactive = FALSE;
+  
   /* Because the file format doesn't provide the number of elements
      or nodes the results are read twice but registered only in the
      second time. */
@@ -365,6 +366,7 @@ omstart:
   maxnodes = 0;
   noknots = 0;
   noelements = 0;
+  nodeoffset = 0;
   elemcode = 0;
   boundarytype = 0;
   boundarynodes = 0;
@@ -382,6 +384,17 @@ omstart:
 
 
     if(strrchr(line,'*')) {
+      if( mode == 2 ) {
+	printf("Number of nodes so far: %d\n",noknots);
+      }
+      else if( mode == 3 ) {
+	printf("Number of elements so far: %d\n",noelements);	
+	if(elmatactive) {
+	  nodeoffset = noknots;
+	  printf("Node offset is %d\n",nodeoffset);
+	}
+      }
+	
       if( strstr(line,"**") ) {
 	if( strstr(line,"**HWCOLOR") )
 	  mode = 10;
@@ -415,7 +428,7 @@ omstart:
 	  mode = 10;
 	}
 	else {
-	  if(!elsetactive) material++;
+	  if(!(elsetactive || elmatactive)) material++;
 	  if(strstr(line,"S3") || strstr(line,"STRI3") || strstr(line,"M3D3"))
 	    elemcode = 303;
 	  else if(strstr(line,"2D4") || strstr(line,"SP4") || strstr(line,"AX4") 
@@ -450,13 +463,14 @@ omstart:
 	  if(allocated) {
 	    printf("Loading elements of type %d starting from element %d.\n",
 		   elemcode,noelements);
-	    if(!elsetactive) {
+	    if(!(elsetactive || elmatactive)) {
 	      sscanf(pstr+6,"%s",entityname);
 	      strcpy(data->bodyname[material],entityname);
 	      data->bodynamesexist = TRUE;
 	      data->boundarynamesexist = TRUE;
 	    }
-	  }	    
+	  }
+	  
 	  firstline = TRUE;
 	}
       }
@@ -509,6 +523,19 @@ omstart:
 	  data->boundarynamesexist = TRUE;
 	}
       }
+      else if(pstr = strstr(line,"PART, NAME=")) {
+	elmatactive = TRUE;
+	material += 1;
+	mode = 6;
+
+	if(allocated) {
+	  printf("Loading part name %d from %s",material,pstr+11);
+	  sscanf(pstr+6,"%s",entityname);
+	  strcpy(data->bodyname[material],entityname);
+	  data->bodynamesexist = TRUE;
+	  data->boundarynamesexist = TRUE;
+	}
+      }
       else if(pstr = strstr(line,"HWCOLOR")) {
 	/* unused command */
 	mode = 0;
@@ -534,14 +561,15 @@ omstart:
 	  printf("Invalid nvalue = %d\n",nvalue);
 	}
 	  
-	i = (int)(rvalues[0]+0.5);
-	
+	i = (int)(rvalues[0]+0.5);	
 	noknots++;
+	
 	if(allocated) {
 	  if( debug && (i==1 || i==maxknot) ) {
 	    printf("debug node: %i %d %.3le %.3le %.3le\n",i,noknots,rvalues[1],rvalues[2],rvalues[3]);
 	  }
 
+	  i = MAX( i, noknots );
 	  if(i <= 0 || i > maxknot) {
 	    printf("Invalid node index = %d\n",i);
 	  }
@@ -561,9 +589,9 @@ omstart:
 	noelements++;
 	
 	nvalue = StringToIntegerNoZero(line,ivalues,elemnodes+1,',');
-       	
+
 	if(allocated) {
-	  if( debug && firstline ) {	    
+	  if( debug && firstline ) {	  
 	    printf("debug elem: %d %d %d %d\n",noelements,ivalues[0],elemcode,material);
 	    printf("      topo:");
 	    for(i=0;i<nvalue-1;i++)
@@ -574,9 +602,16 @@ omstart:
 	  
 	  elemindx[noelements] = ivalues[0];
 	  data->elementtypes[noelements] = elemcode;
+
 	  data->material[noelements] = material;
 	  for(i=0;i<nvalue-1;i++) 
 	    data->topology[noelements][i] = ivalues[i+1];	  
+
+	  if( nodeoffset ) {
+	    for(i=0;i<nvalue-1;i++) 
+	      data->topology[noelements][i] += nodeoffset;
+	  }
+
 	}
 	else {
 	  if( maxelem < ivalues[0] ) maxelem = ivalues[0];
@@ -764,15 +799,20 @@ omstart:
   for(i=1;i<=noelements;i++)
     elemindx[i] = 0;
 
+  printf("Number of boundary nodes: %d\n",boundarynodes);
   if( boundarynodes > 0 ) {
     nodeindx = Ivector(1,boundarynodes);
     boundindx = Ivector(1,boundarynodes);
   }
-  
+
+  printf("Maximum element index in file: %d\n",maxelem);
+  maxelem = MAX( maxelem, noelements );
   materials = ivector(1,maxelem);
   for(i=1;i<=maxelem;i++)
     materials[i] = 0;
  
+  printf("Maximum node index in file: %d\n",maxknot);
+  maxknot = MAX( maxknot, noknots );
   ind = ivector(1,maxknot);
   for(i=1;i<=maxknot;i++)
     ind[i] = 0;

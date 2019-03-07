@@ -243,6 +243,9 @@ END INTERFACE
 #ifdef HAVE_LUA
          CALL Info( 'MAIN', ' Lua interpreted linked in.' )
 #endif
+#ifdef HAVE_ZOLTAN
+         CALL Info( 'MAIN', ' Zoltan library linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
@@ -586,7 +589,7 @@ END INTERFACE
 
 !------------------------------------------------------------------------------
 !      Here we actually start the simulation ....
-!      First go trough timeintervals
+!      First go through timeintervals
 !------------------------------------------------------------------------------
        ExecCommand = ListGetString( CurrentModel % Simulation, &
                  'Control Procedure', GotIt )
@@ -748,10 +751,10 @@ END INTERFACE
          TestCount = TestCount + 1
          Success = .TRUE.
 
-         ! Compare either to existing norm (ensures consistancy) 
+         ! Compare either to existing norm (ensures consistency)
          ! or to existing solution (may also be used to directly verify)
          ! Usually only either of these is given but for the sake of completeness
-         ! both may be used at the same time. 
+         ! both may be used at the same time.
          IF( CompareNorm ) THEN
            Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
            IF(.NOT. Found ) Tol = 1.0d-5
@@ -861,15 +864,20 @@ END INTERFACE
        TYPE(ValueList_t), POINTER :: Params, Simu
        LOGICAL :: Found, VtuFormat
        INTEGER :: AllocStat
+       LOGICAL, SAVE :: Visited = .FALSE.
        
        Simu => CurrentModel % Simulation
        str = ListGetString( Simu,'Post File',Found) 
        IF(.NOT. Found) RETURN
-
+       
        k = INDEX( str,'.vtu' )
        VtuFormat = ( k /= 0 ) 
 
        IF(.NOT. VtuFormat ) RETURN
+
+       ! No use to create the same solver twice
+       IF( Visited ) RETURN
+       Visited = .TRUE.
        
        CALL Info('AddVtuOutputSolverHack','Adding ResultOutputSolver to write VTU output in file: '&
            //TRIM(str(1:k-1)))
@@ -917,7 +925,8 @@ END INTERFACE
        j = CurrentModel % NumberOfBodies
        ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
        IF( AllocStat /= 0 ) CALL Fatal('AddVtuOutputSolverHack','Allocation error 3')
-       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
+       CurrentModel % Solvers(n) % Def_Dofs = -1
+       CurrentModel % Solvers(n) % Def_Dofs(:,:,1) =  1
        
        ! Add some keywords to the list
        CurrentModel % Solvers(n) % Values => ListAllocate()
@@ -949,11 +958,16 @@ END INTERFACE
        TYPE(ValueList_t), POINTER :: Params, Simu
        LOGICAL :: Found, VtuFormat
        INTEGER :: AllocStat
+       LOGICAL, SAVE :: Visited = .FALSE.
        
        Simu => CurrentModel % Simulation
        str = ListGetString( Simu,'Scalars File',Found) 
        IF(.NOT. Found) RETURN
-
+       
+       ! No use to create the same solver twice
+       IF( Visited ) RETURN
+       Visited = .TRUE.
+       
        CALL Info('AddSaveScalarsHack','Adding SaveScalars solver to write scalars into file: '&
            //TRIM(str))
        
@@ -999,7 +1013,8 @@ END INTERFACE
        j = CurrentModel % NumberOfBodies
        ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6),STAT=AllocStat)       
        IF( AllocStat /= 0 ) CALL Fatal('AddSaveScalarsHack','Allocation error 3')
-       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
+       CurrentModel % Solvers(n) % Def_Dofs = -1
+       CurrentModel % Solvers(n) % Def_Dofs(:,:,1) =  1
        
        ! Add some keywords to the list
        CurrentModel % Solvers(n) % Values => ListAllocate()
@@ -1129,7 +1144,31 @@ END INTERFACE
        sPar(1) = 1.0_dp * ParEnv % MyPe 
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Partition', DOFs=1, Values=sPar ) 
 
+       ! Add partition as a elemental field in case we have just one partition
+       ! and have asked still for partitioning into many.
+       IF( ParEnv % PEs == 1 .AND. ASSOCIATED( Mesh % Repartition ) ) THEN
+         BLOCK
+           REAL(KIND=dp), POINTER :: PartField(:)
+           INTEGER, POINTER :: PartPerm(:)
+           INTEGER :: i, n
+
+           CALL Info('AddMeshCoordinatesAndTime','Adding partitioning also as a field')
+           
+           n = Mesh % NumberOfBulkElements
+           NULLIFY( PartField, PartPerm )
+           ALLOCATE( PartField(n), PartPerm(n) )
+           DO i=1,n
+             PartPerm(i) = i
+             PartField(i) = 1.0-dp * Mesh % RePartition(i)
+           END DO
+           
+           CALL VariableAdd( Mesh % Variables, Mesh, Name='PartField',DOFs=1, &
+               Values=PartField, Perm=PartPerm, TYPE=Variable_on_elements)
+         END BLOCK
+       END IF
+
        Mesh => Mesh % Next
+        
      END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE AddMeshCoordinatesAndTime
@@ -1539,7 +1578,7 @@ END INTERFACE
                        Edge => Mesh % Edges(CurrentElement % EdgeIndexes(k))
                        l = Var % Perm(CurrentElement % EdgeIndexes(k)+Mesh % NumberOfNodes)
                        IF ( l>0 ) THEN
-                         CALL LocalBcIntegral( IC, &
+                         CALL VectorElementEdgeDOFs( IC, &
                              Edge, Edge % TYPE % NumberOfNodes, CurrentElement, n, &
                              TRIM(Var % Name)//' {e}', Work )
                          Var % Values(l) = Work(1)
@@ -1852,7 +1891,7 @@ END INTERFACE
          DivergenceControl, HaveDivergence
 
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
-           AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
+         AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
      INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
      LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found
      INTEGER :: AllocStat
@@ -1870,6 +1909,8 @@ END INTERFACE
 #ifndef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: RealTime
 #endif
+     
+     INTEGER, SAVE :: PrevMeshI = 0
      
      !$OMP PARALLEL
      IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
@@ -1911,7 +1952,7 @@ END INTERFACE
      DO interval = 1,TimeIntervals
 
 !------------------------------------------------------------------------------
-!      go trough number of timesteps within an interval
+!      go through number of timesteps within an interval
 !------------------------------------------------------------------------------
        timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)
        IF(.NOT.GotIt) timePeriod = HUGE(timePeriod)
@@ -1946,8 +1987,8 @@ END INTERFACE
            dtfunc = ListGetConstReal( CurrentModel % Simulation, &
                'Timestep Function', gotIt)
            IF(GotIt) THEN
-             CALL Warn('ExecSimulation','Obsolite keyword > Timestep Function < , use > Timestep Size < instead')
-           ELSE	
+             CALL Warn('ExecSimulation','Obsolete keyword > Timestep Function < , use > Timestep Size < instead')
+           ELSE
              dtfunc = ListGetCReal( CurrentModel % Simulation, &
                  'Timestep Size', gotIt)
            END IF
@@ -1957,11 +1998,10 @@ END INTERFACE
              dt = TimestepSizes(interval,1)
            END IF
          END IF
-           
 
 !------------------------------------------------------------------------------
          ! Predictor-Corrector time stepping control 
-         IF ( PredCorrControl ) THEN
+         IF ( PredCorrControl ) THEN 
            CALL PredictorCorrectorControl( CurrentModel, dt, timestep )
          END IF
 
@@ -1971,7 +2011,7 @@ END INTERFACE
            AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
                'Adaptive Time Error', GotIt )       
            IF ( .NOT. GotIt ) THEN 
-             CALL Fatal('ElmerSolver','Adaptive Time Limit must be given for ' // &
+             CALL Fatal('ElmerSolver','Adaptive Time Error must be given for ' // &
                  'adaptive stepping scheme.')
            END IF
            AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
@@ -2025,6 +2065,42 @@ END INTERFACE
 
          sInterval(1) = interval
          IF (.NOT. Transient ) steadyIt(1) = steadyIt(1) + 1
+
+!------------------------------------------------------------------------------
+
+         BLOCK
+           TYPE(Mesh_t), POINTER :: Mesh
+           REAL(KIND=dp) :: MeshR
+           CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
+           
+           IF( ListCheckPresent( GetSimulation(), 'Mesh Name Index') ) THEN
+             IF( Transient ) THEN
+               CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
+             END IF
+             
+             ! we cannot have mesh depend on "time" or "timestep" if they are not available as
+             ! variables. 
+             Mesh => CurrentModel % Meshes             
+             CALL VariableAdd( Mesh % Variables, Mesh, Name='Time',DOFs=1, Values=sTime )
+             CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep', DOFs=1, Values=sStep )
+
+             MeshR = GetCREal( GetSimulation(), 'Mesh Name Index',gotIt )            
+             i = NINT( MeshR )
+
+             IF( i > 0 .AND. i /= PrevMeshI ) THEN                             
+               MeshStr = ListGetString( GetSimulation(),'Mesh Name '//TRIM(I2S(i)),GotIt)
+               IF( GotIt ) THEN
+                 CALL Info('ExecSimulation','Swapping mesh to: '//TRIM(MeshStr),Level=5)
+               ELSE
+                 CALL Fatal('ExecSimulation','Could not find >Mesh Name '//TRIM(I2S(i))//'<')
+               END IF
+               CALL SwapMesh( CurrentModel, Mesh, MeshStr )
+               PrevMeshI = i
+             END IF
+           END IF
+         END BLOCK
+
+
 !------------------------------------------------------------------------------
          IF ( ParEnv % MyPE == 0 ) THEN
            CALL Info( 'MAIN', ' ', Level=3 )

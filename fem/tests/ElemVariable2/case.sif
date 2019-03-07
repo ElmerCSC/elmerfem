@@ -1,5 +1,5 @@
 ! Just creates a variable on elements and computes some values to it
-! using the "update exported variables" and body force defintions. 
+! using the "update exported variables" and body force definitions. 
 !
 ! This is a masked version of the variable.
 !!

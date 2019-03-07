@@ -802,8 +802,8 @@ END SUBROUTINE GetMaxDefs
      END DO
 
      ! Choose the bigger one to honor the old convention
-     ! This eliminates at the same time the unsuccesfull case of zero. 
-     TargetBody(1) = MAX( CandA, CandB ) 
+     ! This eliminates at the same time the unsuccessful case of zero.
+     TargetBody(1) = MAX( CandA, CandB )
 
      IF( TargetBody(1) > 0 ) THEN
        CALL Info('CreateDiscontMesh',&
@@ -1661,7 +1661,7 @@ END SUBROUTINE GetMaxDefs
          Element % PartIndex = mype
        END IF
 
-       Element % TYPE => GetElementType( ElemType )
+       Element % TYPE => GetElementType(ElemType)
 
        IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
          CALL Fatal('ReadElementsFile','Element of type '&
@@ -1760,7 +1760,7 @@ END SUBROUTINE GetMaxDefs
        ElemType = ivals(ioffset+5)
        
        Element % ElementIndex = j
-       Element % TYPE => GetElementType( ElemType )
+       Element % TYPE => GetElementType(ElemType)
        IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
          CALL Fatal('ReadBoundaryFile','Element of type '//TRIM(I2S(ElemType))//'could not be associated!')
        END IF
@@ -2092,9 +2092,9 @@ END SUBROUTINE GetMaxDefs
 
    ! Get sizes of mesh structures for allocation
    !--------------------------------------------------------------------
-   CALL LoadMeshStep( 1, Mesh, MeshNamePar, mype, numprocs, Parallel ) 
+   CALL LoadMeshStep( 1, Mesh, MeshNamePar, mype, numprocs, Parallel )
 
-   ! Initialize and allocate mesh stuctures
+   ! Initialize and allocate mesh structures
    !---------------------------------------------------------------------
    IF( BoundariesOnly ) Mesh % NumberOfBulkElements = 0
    CALL InitializeMesh( Mesh )
@@ -2992,7 +2992,7 @@ END SUBROUTINE GetMaxDefs
        DO j=1,Element % TYPE % NumberOfFaces
           Face => Mesh % Faces( Element % FaceIndexes(j) )
 
-          ! Set attibutes of p element faces
+          ! Set attributes of p element faces
           IF ( ASSOCIATED(Element % PDefs) ) THEN
              ! Set face polynomial degree and dofs
              Face % PDefs % P = MAX(Element % PDefs % P, Face % PDefs % P)
@@ -3790,9 +3790,9 @@ END SUBROUTINE GetMaxDefs
           f = ATAN2( y, x )
         END SELECT
 
-        ! If the BC is not set then let the first be the one to compare againts
+        ! If the BC is not set then let the first be the one to compare against
         IF( .NOT. BCSet( BC ) ) THEN
-          BCVal( BC ) = f         
+          BCVal( BC ) = f
           BCSet( BC ) = .TRUE.
           IF( Debug ) PRINT *,'Compareing BC '//TRIM(I2S(BC))//' against:',f
         ELSE
@@ -4034,10 +4034,10 @@ END SUBROUTINE GetMaxDefs
     END IF
     IF( SplitQuadratic ) CALL Info('CreateInterfaceMeshes',&
         'Quadratic elements will be split',Level=7)
-    
-      
-    
-    ! If the target is larger than number of BCs givem then 
+
+
+
+    ! If the target is larger than number of BCs given then
     ! it has probably been created on-the-fly from a discontinuous boundary.
     OnTheFlyBC = ( Trgt > Model % NumberOfBCs )
 
@@ -4368,7 +4368,7 @@ END SUBROUTINE GetMaxDefs
             Parent => Element % BoundaryInfo % Right
           END IF
 
-          q => Find_Face(Parent,Element)
+          q => Find_Face(Mesh,Parent,Element)
 
           PMesh % Elements(ind) % NodeIndexes(1:n) = q % NodeIndexes(1:n)
 
@@ -4475,8 +4475,8 @@ END SUBROUTINE GetMaxDefs
 
 
   !---------------------------------------------------------------------------
-  !> Given two meshes that should occupy the same domain in space 
-  !> use rotation, scaling and translation to achive this goal.
+  !> Given two meshes that should occupy the same domain in space
+  !> use rotation, scaling and translation to achieve this goal.
   !---------------------------------------------------------------------------
   SUBROUTINE OverlayIntefaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
@@ -4794,16 +4794,17 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION Find_Face(Parent,Element) RESULT(ptr)
+  FUNCTION Find_Face(Mesh,Parent,Element) RESULT(ptr)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Ptr
+    TYPE(Mesh_t) :: Mesh
     TYPE(Element_t) :: Parent, Element
 
     INTEGER :: i,j,k,n
 
     Ptr => NULL()
     DO i=1,Parent % TYPE % NumberOfFaces
-      Ptr => CurrentModel % Mesh % Faces(Parent % FaceIndexes(i))
+      Ptr => Mesh % Faces(Parent % FaceIndexes(i))
       n=0
       DO j=1,Ptr % TYPE % NumberOfNodes
         DO k=1,Element % TYPE % NumberOfNodes
@@ -4891,7 +4892,7 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
   !---------------------------------------------------------------------------
-  !> Create a nodal projector related to discontinous interface.
+  !> Create a nodal projector related to discontinuous interface.
   !---------------------------------------------------------------------------
    FUNCTION NodalProjectorDiscont( Mesh, bc ) RESULT ( Projector )
   !---------------------------------------------------------------------------
@@ -5081,10 +5082,16 @@ END SUBROUTINE GetMaxDefs
     IF( StrongProjector .AND. WeakProjector ) THEN
       CALL Fatal('LevelProjector','Projector cannot be weak (Galerkin) and strong at the same time!')
     END IF
-
     
-    MeshDIm = Mesh % MeshDim
-
+    MeshDim = Mesh % MeshDim
+    IF( MeshDim == 3 ) THEN
+      Element => BMesh1 % Elements(1)
+      IF( Element % TYPE % DIMENSION == 1 ) THEN
+        CALL Warn('LevelProjector','Enforcing 1D integration for 1D boundary elements in 3D mesh!')
+        MeshDim = 2
+      END IF
+    END IF
+    
     ! Generic integrator does not make any assumptions on the way the mesh 
     ! is constructured. Otherwise constant strides in y-direction is assumed. 
     ! For weak strategy always use the generic integrator. 
@@ -5185,8 +5192,8 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     ! This is the tolerance used to define constant direction in radians
-    ! For consistancy it should not be sloppier than the SkewTol
-    ! but it could be equally sloppy as below. 
+    ! For consistency it should not be sloppier than the SkewTol
+    ! but it could be equally sloppy as below.
     RadTol = PI * SkewTol / 180.0_dp
 
     ! Given the inverse permutation compute the initial number of
@@ -6127,7 +6134,7 @@ END SUBROUTINE GetMaxDefs
       DO ind=1,BMesh1 % NumberOfBulkElements
         
         Element => BMesh1 % Elements(ind)        
-        EdgeMap => LGetEdgeMap( Element % TYPE % ElementCode / 100)
+        EdgeMap => GetEdgeMap( Element % TYPE % ElementCode / 100)
 
         Indexes => Element % NodeIndexes
 
@@ -6332,7 +6339,7 @@ END SUBROUTINE GetMaxDefs
             ymaxm = MAXVAL( NodesM % y(1:n) ) 
             
             ! Ok, we have found a candicate face that will probably have some hits       
-            EdgeMapM => LGetEdgeMap( ElementM % TYPE % ElementCode / 100)        
+            EdgeMapM => GetEdgeMap( ElementM % TYPE % ElementCode / 100)        
             
             ! Go through combinations of edges and find the edges for which the 
             ! indexes are the same. 
@@ -7128,8 +7135,8 @@ END SUBROUTINE GetMaxDefs
 
 
       ! Identify center nodes for axial projectors since at the origin the angle
-      ! is impossible to determin. Instead for the origin the angle is the average
-      ! of the other angles in the element. 
+      ! is impossible to determine. Instead for the origin the angle is the average
+      ! of the other angles in the element.
       CenterI = 0
       CenterIM = 0
       CenterJ = 0
@@ -7239,7 +7246,7 @@ END SUBROUTINE GetMaxDefs
         END IF ! Naxial > 1
 
         ! If we have full angle eliminate the discontinuity of the angle
-        ! since we like to do the mapping using continuous coorinates. 
+        ! since we like to do the mapping using continuous coordinates.
         IF( FullCircle ) THEN
           LeftCircle = ( ALL( ABS( Alpha(1:ne) ) > ArcCoeff * 90.0_dp ) )
           IF( LeftCircle ) THEN
@@ -8627,8 +8634,8 @@ END SUBROUTINE GetMaxDefs
 
 
 !---------------------------------------------------------------------------
-!> Create a Galerkin projector related to discontinous interface.
-!> This uses the information stored when the discontinuous interface 
+!> Create a Galerkin projector related to discontinuous interface.
+!> This uses the information stored when the discontinuous interface
 !> was first coined. This enables simple one-to-one mapping. Integration
 !> weight is used for the nodel projector to allow physical jump conditions.
 !> For the edge dofs there is no such jumps and hence the projector uses
@@ -8828,7 +8835,7 @@ END SUBROUTINE GetMaxDefs
           CYCLE
         END IF
 
-        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100)
+        OldMap => GetEdgeMap( OldFace % TYPE % ElementCode / 100)
 
         DO i = 1,OldFace % TYPE % NumberOfEdges          
           e1 = OldFace % EdgeIndexes(i)
@@ -9052,17 +9059,17 @@ END SUBROUTINE GetMaxDefs
           CYCLE
         END IF
 
-        OldFace => Find_Face( Left, Element )
+        OldFace => Find_Face( Mesh, Left, Element )
         nn = SIZE(Element % NodeIndexes)
         Indexes(1:nn) = Element % NodeIndexes
         Element % NodeIndexes = NodePerm(Indexes(1:nn)) + NoOrigNodes
-        NewFace => Find_Face( Right, Element )
+        NewFace => Find_Face( Mesh, Right, Element )
         Element % NodeIndexes = Indexes(1:nn)
  
         ParentFound = ParentFound + 1
 
-        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100 )
-        NewMap => LGetEdgeMap( NewFace % TYPE % ElementCode / 100 )
+        OldMap => GetEdgeMap( OldFace % TYPE % ElementCode / 100 )
+        NewMap => GetEdgeMap( NewFace % TYPE % ElementCode / 100 )
 
         IntegStuff = GaussPoints( oldface )
         DO it = 1,IntegStuff % n
@@ -9471,10 +9478,10 @@ END SUBROUTINE GetMaxDefs
       CALL TangentDirections( Normal,Tangent1,Tangent2 )
     END IF
 
-    ! Go trough master (k=1) and target mesh (k=2)
+    ! Go through master (k=1) and target mesh (k=2)
     !--------------------------------------------
     DO k=1,2
-     
+
       ! Potentially the projector may be set to rotate by just adding an offset 
       ! to the angle. This may depende on time etc. 
       IF( k == 1 ) THEN
@@ -9785,8 +9792,8 @@ END SUBROUTINE GetMaxDefs
       CALL Info('AxialInterfaceMeshes',&
           'Assuming axial interface to have z-axis the normal!',Level=8)
     END IF
-    
-    ! Go trough master (k=1) and target mesh (k=2)
+
+    ! Go through master (k=1) and target mesh (k=2)
     !--------------------------------------------
     FullCircle = .FALSE.
 
@@ -9915,11 +9922,11 @@ END SUBROUTINE GetMaxDefs
 
     ! We choose degrees as they are more intuitive
     rad2deg = 180.0_dp / PI
-    
-    ! Go trough master (k=1) and target mesh (k=2)
+
+    ! Go through master (k=1) and target mesh (k=2)
     !--------------------------------------------
     DO k=1,2
-     
+
       IF( k == 1 ) THEN
         PMesh => BMesh1
       ELSE
@@ -9928,7 +9935,7 @@ END SUBROUTINE GetMaxDefs
 
       x2_min = HUGE( x2_min )
       x2_max = -HUGE( x2_max )
-
+      
       ! Loop over all nodes
       !----------------------------------------------------------------------------
       DO i=1,PMesh % NumberOfNodes
@@ -9942,6 +9949,8 @@ END SUBROUTINE GetMaxDefs
         phi = rad2deg * ATAN2( x(2), x(1)  )
         z = x(3)
 
+        !PRINT *,'interface node:',k,i,r,phi,x(1:2)
+        
         PMesh % Nodes % x(i) = r
         PMesh % Nodes % y(i) = z
         PMesh % Nodes % z(i) = 0.0_dp
@@ -9969,10 +9978,10 @@ END SUBROUTINE GetMaxDefs
 
       IF( k == 1 ) THEN
         CALL Info('RadialInterfaceMeshes',&
-            'Transformed extrema for this boundary (phi,r,z)',Level=8)
+            'Transformed extrema for this boundary (r,phi,z)',Level=8)
       ELSE IF( k == 2 ) THEN
         CALL Info('RadialInterfaceMeshes',&
-            'Transformed extrema for target boundary (phi,r,z)',Level=8)
+            'Transformed extrema for target boundary (r,phi,z)',Level=8)
       END IF
 
       DO i=1,3
@@ -10005,7 +10014,7 @@ END SUBROUTINE GetMaxDefs
     ! Some pieces of the code cannot work with 1D meshes, this choice is ok for all steps
     Bmesh1 % MeshDim = 2
     Bmesh2 % MeshDim = 2      
-
+    
   END SUBROUTINE RadialInterfaceMeshes
 !------------------------------------------------------------------------------
 
@@ -10672,7 +10681,7 @@ END SUBROUTINE GetMaxDefs
     ! There are tailored projectors for simplified interfaces
     !-------------------------------------------------------------
 
-    ! Stride projector is obsolite and has been eliminated. 
+    ! Stride projector is obsolete and has been eliminated.
     IF( ListGetLogical( BC,'Stride Projector',GotIt) ) THEN
       CALL ListAddLogical( BC,'Level Projector',.TRUE.)
       CALL ListAddLogical( BC,'Level Projector Strong',.TRUE.)
@@ -10729,10 +10738,10 @@ END SUBROUTINE GetMaxDefs
     END IF
 
 
-    ! If the interface is rotational move to (phi,z) plane and alter the phi coordinate 
-    ! so that the meshes coinside. 
-    ! Otherwise make the two meshes to coinside using rotation, translation &
-    ! scaling. 
+    ! If the interface is rotational move to (phi,z) plane and alter the phi coordinate
+    ! so that the meshes coincide.
+    ! Otherwise make the two meshes to coincide using rotation, translation &
+    ! scaling.
     !---------------------------------------------------------------------------------
     Radius = 1.0_dp
     FullCircle = .FALSE.
@@ -10982,8 +10991,8 @@ END SUBROUTINE GetMaxDefs
 
       CALL Info('UnitSegmentDivision','Creating functional division',Level=5)
 
-      ! Initial guess is an even distribtion
-      DO i=0,n     
+      ! Initial guess is an even distribution
+      DO i=0,n
         w(i) = i/(1._dp * n)
       END DO
 
@@ -12259,7 +12268,7 @@ CONTAINS
              HashPtr => HashPtr % Next
           END DO
 
-!         Exisiting edge, update structures:
+!         Existing edge, update structures:
 !         ----------------------------------
           IF ( Found ) THEN
              Element % EdgeIndexes(k) = Edge
@@ -12545,9 +12554,9 @@ CONTAINS
              HashPtr => HashPtr % Next
           END DO
 
-!         Exisiting face, update structures:
+!         Existing face, update structures:
 !         ----------------------------------
-          IF ( Found ) THEN       
+          IF ( Found ) THEN
              Element % FaceIndexes(k) = Face
              Faces(Face) % BoundaryInfo % Right => Element
           ELSE
@@ -15580,10 +15589,10 @@ CONTAINS
     face = getTetraFaceMap(3)
     globalFace(1:3) = Tetra % NodeIndexes(face)
     ! Rotate face until last local index is max global
-    DO 
-       ! Chech if last node matches global max node
+    DO
+       ! Check if last node matches global max node
        IF (globalMax == globalFace(3)) EXIT
-       
+
        globalFace(1:3) = CSHIFT(globalFace,1)
     END DO
     ! Assign new local numbering
@@ -16520,10 +16529,10 @@ CONTAINS
     CALL Info('DetectExtrudedStructure',Message,Level=9)
     IF( Rounds == 0 ) THEN
       CALL Info('DetectExtrudedStructure','Try to increase value for > Dot Product Tolerance < ')
-      CALL Fatal('DetectExtrudedStructure','Zero rounds implies unsuccesfull operation')
+      CALL Fatal('DetectExtrudedStructure','Zero rounds implies unsuccessful operation')
     END IF
 
-    ! Compute the number of layers. The Rounds above may in some cases 
+    ! Compute the number of layers. The Rounds above may in some cases
     ! be too small. Here just one layer is used to determine the number
     ! of layers to save some time.
     !------------------------------------------------------------------
@@ -17052,7 +17061,7 @@ CONTAINS
     CALL Info('DetectExtrudedElements',Message,Level=9)
     IF( Rounds == 0 ) THEN
       CALL Info('DetectExtrudedElements','Try to increase value for > Dot Product Tolerance < ')
-      CALL Fatal('DetectExtrudedElements','Zero rounds implies unsuccesfull operation')
+      CALL Fatal('DetectExtrudedElements','Zero rounds implies unsuccessful operation')
     END IF
 
 
@@ -18313,9 +18322,9 @@ CONTAINS
       PosMeasureIndex = 0
       NegMeasure = 0.0_dp
       NegMeasureIndex = 0
-      
-      
-      ! Choos the nodes within the cones in the given three directions
+
+
+      ! Choose the nodes within the cones in the given three directions
       !---------------------------------------------------------------
       DO i=1,Mesh % NumberOfNodes
         IF( ForbiddenNodes( i ) ) CYCLE
@@ -20130,7 +20139,7 @@ CONTAINS
      RETURN
    END IF
 
-   ! memorize the maximum number of parallel neigbours
+   ! memorize the maximum number of parallel neighbours
    maxnei = 0
    IF( ASSOCIATED( ParInfo % NeighbourList ) ) THEN
      DO i=1,n

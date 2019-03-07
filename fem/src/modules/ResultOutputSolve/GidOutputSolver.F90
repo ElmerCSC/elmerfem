@@ -365,7 +365,7 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
          WRITE(Txt2,'(I10)') j
          DO k = 1,dim
            
-           ! Check if vector field components have been defined explicitely:
+           ! Check if vector field components have been defined explicitly:
            !----------------------------------------------------------------
            WRITE(Txt3,'(A,I1,A,I1)') 'Vector Field ',i,' component ',k
            CompName = GetString( Solver % Values, TRIM(Txt3), Found )
@@ -458,7 +458,7 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
          WRITE(Txt2,'(I10)') j
          DO k = 1,TensorComponents
            
-           ! Check if tensor field components have been defined explicitely:
+           ! Check if tensor field components have been defined explicitly:
            !----------------------------------------------------------------
            WRITE(Txt3,'(A,I1,A,I1)') 'Tensor Field ',i,' component ',k
            CompName = GetString( Solver % Values, TRIM(Txt3), Found )

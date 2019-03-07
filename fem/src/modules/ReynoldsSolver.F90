@@ -23,14 +23,14 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter Råback
+! *  Authors: Peter Rï¿½back
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
 ! *  Original Date: 23.10.2007
-! *  Modified by: Peter Råback
+! *  Modified by: Peter Rï¿½back
 ! *  Modification date: 1.9.2008
 ! *
 ! *****************************************************************************/
@@ -548,7 +548,7 @@ CONTAINS
       ! Normal velocity: right-hand-side force vector
       L = Density * NormalVelo
 
-      ! Tangential velocity: Both rhs and matix contribution
+      ! Tangential velocity: Both rhs and matrix contribution
       SLR = 0.0d0
       SLL = 0.0d0
 
@@ -1218,7 +1218,7 @@ CONTAINS
       END DO
 
 !------------------------------------------------------------------------------
-!  Different viscosity models. Should be consistant with the main solver.
+!  Different viscosity models. Should be consistent with the main solver.
 !------------------------------------------------------------------------------
 
       SELECT CASE (ViscosityType)

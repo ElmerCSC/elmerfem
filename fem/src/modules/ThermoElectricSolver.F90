@@ -235,7 +235,7 @@ CONTAINS
             ! Newton linarization of: div(pelt*J) (= div(T*alpha*J))
             ! ======================================================
 
-            ! Peltier coefficient implicitely
+            ! Peltier coefficient implicitly
             ! -------------------------------
             A(1,1) = A(1,1) - &
                      s*Basis(q)*SUM(MATMUL(alpha,CD)*dBasisdx(p,:))

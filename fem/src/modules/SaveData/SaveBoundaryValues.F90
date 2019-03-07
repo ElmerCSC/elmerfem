@@ -83,7 +83,7 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
   CALL Info('SaveBoundaryValues','Creating selected boundary values as fields')
 
   !------------------------------------------------
-  ! Set some pointers and other initilization stuff
+  ! Set some pointers and other initialization stuff
   !------------------------------------------------
   Params => GetSolverParams()
   PointerToSolver => Solver

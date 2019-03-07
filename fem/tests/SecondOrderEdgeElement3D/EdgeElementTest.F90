@@ -56,9 +56,9 @@ SUBROUTINE EdgeElementSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: stat, PiolaVersion, ErrorEstimation, UseTabulatedBasis
   LOGICAL :: UseEnergyNorm
 
-  INTEGER, ALLOCATABLE :: Indeces(:)
+  INTEGER, ALLOCATABLE :: Indices(:)
 
-  SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indeces
+  SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indices
 !------------------------------------------------------------------------------
 
   PiolaVersion = .TRUE.
@@ -71,7 +71,7 @@ SUBROUTINE EdgeElementSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. AllocationsDone ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(6,N), STIFF(N,N), &
-          Acoef(N), Indeces(N), STAT=istat )
+          Acoef(N), Indices(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'EdgeElementSolver', 'Memory allocation error.' )
      END IF
@@ -145,10 +145,10 @@ SUBROUTINE EdgeElementSolver( Model,Solver,dt,TransientSimulation )
      DO t=1,Solver % NumberOfActiveElements
         Element => GetActiveElement(t)
         n  = GetElementNOFNodes()
-        nd = GetElementDOFs( Indeces )
+        nd = GetElementDOFs( Indices )
 
         Load(1,1:nd) = Solver % Variable % Values( Solver % Variable % &
-             Perm(Indeces(1:nd)) )
+             Perm(Indices(1:nd)) )
 
         CALL MyComputeError(Load, Element, n, nd, dim, Err, SolNorm, UseEnergyNorm)
      END DO

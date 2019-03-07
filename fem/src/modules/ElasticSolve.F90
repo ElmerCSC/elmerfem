@@ -228,7 +228,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: GotForceBC, GotFSIBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
        AxialSymmetry
-  LOGICAL :: UseUMAT, InitializeStateVars, OutputStateVars, HenckyStrain
+  LOGICAL :: UseUMAT, ExternalUMAT, InitializeStateVars, OutputStateVars, HenckyStrain
   LOGICAL :: LargeDeflection
   LOGICAL :: MixedFormulation
   LOGICAL :: PseudoTraction, GlobalPseudoTraction
@@ -277,6 +277,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
   CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+  CHARACTER(LEN=80) :: UMATName
 !------------------------------------------------------------------------------
   SAVE LocalMassMatrix,LocalStiffMatrix,LocalDampMatrix,LoadVector,InertialLoad, Viscosity, &
        LocalForce,ElementNodes,ParentNodes,FlowNodes,Alpha,Beta, &
@@ -370,6 +371,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   UseUMAT = ListGetLogical( SolverParams, 'Use UMAT', GotIt )
   IF (UseUMAT .AND. TransientSimulation) CALL Fatal('ElasticSolve', &
       'UMAT version does not yet support transient simulation')
+  ExternalUMAT = ListGetLogical( SolverParams, 'User Defined UMAT', GotIt )  
 
   NeoHookeanMaterial = ListGetLogical( SolverParams, 'Neo-Hookean Material', GotIt )
   IF (NeoHookeanMaterial) Isotropic = .TRUE.
@@ -667,6 +669,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            CALL GetConstRealArray( Material, MaterialConstants, 'Material Constants', GotIt)
            IF ( SIZE(MaterialConstants,1) /= NPROPS) &
                 CALL Fatal('ElasticSolve','Check the size of Material Constants array')
+           IF (ExternalUMAT) &
+               UMATName = ListGetString(Material, 'Name', GotIt)
         ELSE
            IF (NeoHookeanMaterial) THEN
               ElasticModulus(1,1,1:n) = ListGetReal( Material, &
@@ -815,7 +819,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                    MaxIntegrationPoints, InitializeStateVars, Density, Damping, AxialSymmetry, &
                    PlaneStress, LargeDeflection, HenckyStrain, CurrentElement, n, nd, ntot, STDOFs, &
                    ElementNodes, LocalDisplacement, PrevLocalDisplacement, LocalTemperature, &
-                   t, Iter)
+                   t, Iter, ExternalUMAT, UMATName)
 
               !CALL Fatal( 'ElasticSolve', 'This version does not offer an umat interface' )
 
@@ -1266,7 +1270,8 @@ CONTAINS
        NrInProps, PointwiseStateV, PointwiseStateV0, NStateV, MaxMaterialPoints, &
        InitializeStateVars, NodalDensity, NodalDamping, AxialSymmetry, PlaneStress, &
        LargeDeflection, HenckyStrain, Element, n, nd, ntot, dofs, Nodes, NodalDisplacement, &
-       PrevNodalDisplacement, NodalTemperature, ElementIndex, IterationIndex)
+       PrevNodalDisplacement, NodalTemperature, ElementIndex, IterationIndex, &
+       ExternalUMAT, UMATName)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MassMatrix(:,:), DampMatrix(:,:), StiffMatrix(:,:)
     REAL(KIND=dp) :: ExternalForceVector(:)
@@ -1286,6 +1291,8 @@ CONTAINS
     REAL(KIND=dp) :: NodalTemperature(:)
     INTEGER :: ElementIndex
     INTEGER :: IterationIndex     ! The iteration index to resolve the nonlinearity
+    LOGICAL :: ExternalUMAT
+    CHARACTER(len=80) :: UMATName
     !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
@@ -1417,14 +1424,18 @@ CONTAINS
        InProps(i) = MaterialConstants(i,1)  
     END DO
 
-    ! The material model name is used as a switch between some examples of implementation:
-    IF (HenckyStrain) THEN
-      cmname = 'hencky-stvenant-kirchhoff'//CHAR(0)
+    IF (ExternalUMAT) THEN
+      cmname = UMATName
     ELSE
-      IF (LargeDeflection) THEN
-        cmname = 'stvenant-kirchhoff'//CHAR(0)
+      ! The material model name is used as a switch between some examples of implementation:
+      IF (HenckyStrain) THEN
+        cmname = 'hencky-stvenant-kirchhoff'//CHAR(0)
       ELSE
-        cmname = 'linear isotropic'//CHAR(0)
+        IF (LargeDeflection) THEN
+          cmname = 'stvenant-kirchhoff'//CHAR(0)
+        ELSE
+          cmname = 'linear isotropic'//CHAR(0)
+        END IF
       END IF
     END IF
 
@@ -1576,7 +1587,7 @@ CONTAINS
         ! NOTE: The differentiation of the Hencky strain is done via a truncated 
         ! series expansion which may become inaccurate for large strains. 
         ! However, this inaccuracy should not break the consistency
-        ! of the solution method: if nonlinear iterations converge, we shoud have
+        ! of the solution method: if nonlinear iterations converge, we should have
         ! a solution. That is, inaccuracy of the strain expansion has the effect
         ! that the Newton iteration is replaced by inexact Newton iteration.
         ! Currently no warnings are given for the possibility that the strain
@@ -1642,11 +1653,19 @@ CONTAINS
         ! should be the zero-displacement solution:
         stran = 0.0d0
         dstran = 0.0d0
-        CALL UMAT(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
-            EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
-            stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
-            predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-            drot, pnewdt, celent, Identity, Identity, ElementIndex, t, layer, kspt, kstep, kinc)
+        IF (ExternalUMAT) THEN
+          CALL UMAT(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
+              EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
+              stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
+              predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
+              drot, pnewdt, celent, Identity, Identity, ElementIndex, t, layer, kspt, kstep, kinc)
+        ELSE
+          CALL UMAT_Elmer(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
+              EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
+              stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
+              predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
+              drot, pnewdt, celent, Identity, Identity, ElementIndex, t, layer, kspt, kstep, kinc)
+        END IF
 
         I = (ElementIndex-1)*MaxMaterialPoints+t
         IF ( ANY(StressVec(1:3+nshr) /= PointwiseStateV0(I,NStateV+4:NStateV+6+nshr)) ) THEN
@@ -1676,12 +1695,19 @@ CONTAINS
       StressVec(1:3+nshr) = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t, &
           NStateV+4:NStateV+6+nshr)
 
-      CALL UMAT(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
-          EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
-          stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
-          predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-          drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
-
+      IF (ExternalUMAT) THEN
+        CALL UMAT(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
+            EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
+            stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
+            predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
+            drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
+      ELSE
+        CALL UMAT_Elmer(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
+            EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
+            stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
+            predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
+            drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
+      END IF
       ! ---------------------------------------------------------------------------
       ! Update data which gives the state variables corresponding to the current 
       ! nonlinear iterate.
@@ -1961,7 +1987,7 @@ CONTAINS
 ! an Abaqus user subroutine (UMAT). The arguments which can be supposed to be 
 ! supported by Elmer are capitalized:
 !------------------------------------------------------------------------------
-  SUBROUTINE UMAT(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
+  SUBROUTINE UMAT_Elmer(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
        rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
        predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
        coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
@@ -2304,7 +2330,7 @@ CONTAINS
       !stress = MATMUL(ddsdde,stran+dstran)
     END IF
 !------------------------------------------------------------------------------
-  END SUBROUTINE UMAT
+  END SUBROUTINE UMAT_Elmer
 !------------------------------------------------------------------------------
 
 

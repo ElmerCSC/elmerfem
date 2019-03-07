@@ -981,7 +981,9 @@ CONTAINS
         CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
       ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
         CALL NumericalError( 'IterSolve', 'Too many iterations was needed.')        
-      END IF
+      ELSE IF( HUTI_INFO == HUTI_HALTED ) THEN
+        CALL Warn('IterSolve','Iteration halted due to problem in algorithm, trying to continue')
+      END IF      
       IF( ASSOCIATED( Solver % Variable ) ) THEN
         Solver % Variable % LinConverged = 0
       END IF      

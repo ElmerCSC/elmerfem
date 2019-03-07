@@ -110,7 +110,7 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
 
 
   !------------------------------------------------------------------------------
-  ! For consistancy checks one compute a pseudonorm.
+  ! For consistency checks one compute a pseudonorm.
   !------------------------------------------------------------------------------
   NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
   Norm = 0.0_dp

@@ -36,7 +36,7 @@
 
 
 !------------------------------------------------------------------------------
-!>  Advection-reaction equation solver for scalar fields with discontinous Galerkin method.
+!>  Advection-reaction equation solver for scalar fields with discontinuous Galerkin method.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
   SUBROUTINE AdvectionReactionSolver( Model,Solver,dt,Transient )
@@ -146,10 +146,6 @@
              'First is being reset to the latter.')
         NonlinearIterMin = NonlinearIterMax
      END IF
-
-     ExpVariableName = GetString(SolverParams , 'Exported Variable 1', Found )
-     IF (.NOT.Found) &
-        CALL FATAL(SolverName,'No value > Exported Variable 1 < found in Solver')
 
      LimitSolution = GetLogical( SolverParams, &
           'Limit Solution', Found )
@@ -400,8 +396,17 @@
 
      ! Average the elemental results to nodal values:
      !-----------------------------------------------
-     Var => VariableGet( Mesh % Variables,TRIM(ExpVariableName))
-     IF ( ASSOCIATED( Var ) ) THEN
+     ExpVariableName = GetString(SolverParams , 'Exported Variable 1', Found )
+     IF( Found ) THEN
+       CALL Info(SolverName,'Using >Exported Variable 1< for the nodal output field',Level=7)
+
+       Var => VariableGet( Mesh % Variables,TRIM(ExpVariableName))
+       IF( .NOT. ASSOCIATED( Var ) ) THEN
+         WRITE(Message,'(A,A,A)') 'Exported Variable >',TRIM(VariableName) //   ' Nodal Result','< not found'
+         CALL Fatal(SolverName,Message)
+       END IF
+         
+       
        n1 = Mesh % NumberOfNodes
        ALLOCATE( Ref(n1) )
        Ref = 0
@@ -432,11 +437,9 @@
          Var % Values(1:n1) = Var % Values(1:n1) / Ref
        END WHERE
        DEALLOCATE( Ref )
-     ELSE
-       WRITE(Message,'(A,A,A)') 'Exported Variable >',TRIM(VariableName) //   ' Nodal Result','< not found'
-       CALL Warn(SolverName,Message)
      END IF
 
+     
    CONTAINS
 
 !------------------------------------------------------------------------------      

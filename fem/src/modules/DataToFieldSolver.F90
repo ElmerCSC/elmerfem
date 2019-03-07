@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter Råback, Juha Ruokolainen
+! *  Authors: Peter Rï¿½back, Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -284,22 +284,22 @@ CONTAINS
       n = CurrentElement % TYPE % NumberOfNodes
       NodeIndexes => CurrentElement % NodeIndexes
       CALL GetElementNodes(ElementNodes,CurrentElement)
-      
+
       u = LocalCoords(1)
       v = LocalCoords(2)
       w = LocalCoords(3)
-      
+
       stat = ElementInfo( CurrentElement, ElementNodes, U, V, W, SqrtElementMetric, &
           Basis, dBasisdx )
-      
+
       DO i = 1,n
         j = FieldPerm( NodeIndexes(i) )
-          
+
         IF( j == 0 ) CYCLE
-        
-        ! As the weight should be proporpotional to the particle amount rather than
+
+        ! As the weight should be proportional to the particle amount rather than
         ! element volume the weight is not multiplied with local element size!
-        ! Note that the weight could be also ~1/r^2 from the nodes etc. 
+        ! Note that the weight could be also ~1/r^2 from the nodes etc.
         !-------------------------------------------------------------------------
         weight = Basis(i)
         

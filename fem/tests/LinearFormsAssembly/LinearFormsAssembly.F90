@@ -195,7 +195,11 @@ CONTAINS
       tag = ecode / 100
       Solver % Def_Dofs(tag,1,6) = P
     END IF
-    Quadrature = GaussPoints(SingleElement, PReferenceElement=.TRUE.)
+    IF (ecode==404) THEN
+      Quadrature = GaussPointsQuad((P+1)**2)
+    ELSE
+      Quadrature = GaussPoints(SingleElement, PReferenceElement=.TRUE.)
+    END IF
     NumGP = Quadrature % N
     
     !$OMP PARALLEL SHARED(Solver, SingleElement, ecode, tol) &
@@ -300,7 +304,11 @@ CONTAINS
     dim = Element % Type % Dimension
     !Numerical integration:
     !----------------------
-    IP = GaussPoints( Element, PReferenceElement=.TRUE. )
+    IF (Element % TYPE % ElementCode / 100 == 4) THEN
+      IP = GaussPointsQuad((Element % PDefs % P+1)**2)
+    ELSE
+      IP = GaussPoints( Element, PReferenceElement=.TRUE. )
+    END IF
 
     DO t=1,IP % n
 
@@ -355,7 +363,11 @@ CONTAINS
     FORCE = REAL(0, dp)
 
     ! Get integration points
-    IP = GaussPoints( Element, PReferenceElement=.TRUE. )
+    IF (Element % TYPE % ElementCode / 100 == 4) THEN
+      IP = GaussPointsQuad((Element % PDefs % P+1)**2)
+    ELSE
+      IP = GaussPoints( Element, PReferenceElement=.TRUE. )
+    END IF
     ngp = IP % n
 
     ! Reserve workspace

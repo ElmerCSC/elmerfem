@@ -53,7 +53,7 @@ Solver 1
   ! Start from 1st linear system strategy and continue until convergence is found
   Linear System Trialing = True
 
-! This keyword can be used to memorize the successfull strategy
+! This keyword can be used to memorize the successful strategy
 ! Linear System Trialing Conserve = True
 
   linsys1: Linear System Solver = "Iterative"

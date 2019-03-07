@@ -58,22 +58,32 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   integer :: Paramlist
   Paramlist = 0
 
+  SolverParams => GetSolverParams()
+
   LagrangeGauge = .FALSE.
 
-  StaticConductivity = .FALSE.
-  IF( ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
-       ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity") ) THEN
-    CALL Info("WhitneyAVSolver_Init0", "Moving material requires always scalar potential",Level=10)
-    StaticConductivity = .TRUE.
+  StaticConductivity = ListGetLogical( SolverParams,'Static Conductivity',Found )
+  IF( .NOT. Found ) THEN
+    IF( ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
+        ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity") ) THEN
+      CALL Info("WhitneyAVSolver_Init0", "Moving material requires always scalar potential",Level=10)
+      StaticConductivity = .TRUE.
+    END IF
+
+    IF( ListCheckPrefixAnyBC(Model, "Electric Current Density") ) THEN
+      CALL Info("WhitneyAVSolver_Init0", &
+          "> Electric Current Density < always requires scalar potential",Level=10)    
+      StaticConductivity = .TRUE.
+    END IF
+  END IF
+  IF( StaticConductivity ) THEN
+    CALL Info("WhitneyAVSolver_Init0",'Including scalar potential in AV equation!',Level=6)
+  ELSE
+    CALL Info("WhitneyAVSolver_Init0",'Ignoring scalar potential in AV equation!',Level=6)    
   END IF
 
-  IF( ListCheckPrefixAnyBC(Model, "Electric Current Density") ) THEN
-    CALL Info("WhitneyAVSolver_Init0", &
-        "> Electric Current Density < always requires scalar potential",Level=10)    
-    StaticConductivity = .TRUE.
-  END IF
-    
-  SolverParams => GetSolverParams()
+  LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
+  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     PiolaVersion = GetLogical(SolverParams, &
         'Use Piola Transform', Found )   
@@ -84,7 +94,6 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       PiolaVersion = .TRUE.
       CALL ListAddLogical( SolverParams, 'Use Piola Transform', .TRUE. )
     END IF
-    LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
 
     IF (PiolaVersion) Paramlist = Paramlist + b_Piola
     IF (SecondOrder) Paramlist = Paramlist + b_Secondorder
@@ -145,7 +154,10 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  
+  IF(.NOT. ( StaticConductivity .OR. LagrangeGauge ) ) THEN
+    CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
+  END IF
+    
   CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.) 
 
   ! This is for internal communication with the saving routines
@@ -580,7 +592,7 @@ CONTAINS
 !------------------------------------------------------------------------------
        
        Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
-
+       
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
        IF (.NOT. LaminateStack) LaminateStackModel = ''
      END IF
@@ -690,7 +702,7 @@ CONTAINS
 
 200 CONTINUE
 
-  ! This is now automatically invoked as the time integration is set gloabl in the Solver_init
+  ! This is now automatically invoked as the time integration is set global in the Solver_init
   ! IF ( Transient ) CALL Default1stOrderTimeGlobal()
   CALL DefaultFinishAssembly()
 
@@ -1986,7 +1998,7 @@ END SUBROUTINE LocalConstraintMatrix
            END DO
          ELSE
            ! ---------------------------------------------------------------
-           ! This is the steady state branch. Adding the scalar pontential 
+           ! This is the steady state branch. Adding the scalar potential 
            ! solver as done in the following is reasonable only in the case 
            ! where the electrical conductivity is nonzero.
            ! ------------------------------------------------------------------
@@ -2345,6 +2357,8 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
   SUBROUTINE DirichletAfromB()
 !------------------------------------------------------------------------------
+    USE ElementDescription, ONLY: GetEdgeMap
+
     IMPLICIT NONE
     REAL(KIND=dp) :: s,p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     TYPE(ListMatrixEntry_t), POINTER :: Ltmp

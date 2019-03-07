@@ -54,15 +54,38 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     INTEGER :: dim,i
     TYPE(ValueList_t), POINTER :: SolverParams
     LOGICAL :: Found, CalculateStrains, CalcPrincipalAngle, CalcPrincipalAll, &
-        CalcStressAll
+        CalcStressAll, MaxwellMaterial
 !------------------------------------------------------------------------------
 
     SolverParams => GetSolverParams()
+    dim = CoordinateSystemDimension()
+
     IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-      dim = CoordinateSystemDimension()
       CALL ListAddInteger( SolverParams, 'Variable DOFs', dim )
       CALL ListAddString( SolverParams, 'Variable', 'Displacement' )
     END IF
+
+    MaxwellMaterial = ListGetLogicalAnyMaterial(Model, 'Maxwell material')
+    IF (.NOT.MaxwellMaterial) THEN
+      MaxwellMaterial = GetLogical(SolverParams, 'Maxwell material', Found )
+      IF( MaxwellMaterial ) THEN
+        DO i=1,Model % NumberOfMaterials
+          CALL ListAddLogical( Model % Materials(i) % Values, 'Maxwell material', .TRUE.)
+        END DO
+      END IF
+    END IF
+
+    IF( MaxwellMaterial ) THEN
+      CALL ListAddString(SolverParams, 'Timestepping Method', 'BDF' )
+      CALL ListAddInteger(SolverParams, 'BDF Order', 2 )
+      CALL ListAddInteger(SolverParams, 'Time derivative Order', 1)
+      DO i=1,100
+        IF ( .NOT. ListCheckPresent( SolverParams, 'Exported Variable '//trim(i2s(i))) ) EXIT
+      END DO
+      CALL ListAddString( SolverParams, 'Exported Variable '//trim(i2s(i)), &
+              '-dofs '//trim(i2s(dim**2))//' -ip ve_stress' )
+    END IF
+    
     IF(.NOT.ListCheckPresent( SolverParams, 'Time derivative order') ) &
       CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
@@ -77,7 +100,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     IF(CalcPrincipalAngle) CalcPrincipalAll = .TRUE. ! can't calculate angle without principal
     IF(CalcPrincipalAll)   CalcStressAll = .TRUE. ! can't calculate principal without components
     IF(CalculateStrains)   CalcStressAll = .TRUE. ! can't calculate principal without components
-    
+
     ! If stress computation is requested somewhere then enforce it 
     IF( .NOT. ( CalcStressAll .OR. CalculateStrains) ) THEN
       CalcStressAll = ListGetLogicalAnyEquation( Model,'Calculate Stresses')
@@ -638,7 +661,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        !--------------------------------------------
        UNorm = DefaultSolve()
 
-       
+
        IF ( Transient .AND. .NOT. Refactorize .AND. dt /= Prevdt ) THEN
          Prevdt = dt
          CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
@@ -1012,7 +1035,7 @@ CONTAINS
            'Youngs Modulus', Material, n, NodeIndexes )
 
        PoissonRatio = 0.0d0
-       IF ( Isotropic(1) )  PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
+       IF ( .NOT.Incompressible .AND. Isotropic(1) )  PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
 
        IF( GotHeatExp ) THEN
          ReferenceTemperature(1:n) = GetReal(Material, &
@@ -2043,11 +2066,11 @@ CONTAINS
 
          END DO
        END DO
-         
+
        IF(.NOT. FoundBoundary) THEN
-        CALL Fatal('StressSolve','Model lumping boudary must be defined')        
+        CALL Fatal('StressSolve','Model lumping boundary must be defined')
        END IF
-   
+
        IF(power == 1) Center(1:DIM) = Center(1:DIM) / Area
      END DO
 

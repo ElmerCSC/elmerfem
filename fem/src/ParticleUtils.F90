@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter Råback & Juha Ruokolainen
+! *  Authors: Peter Rï¿½back & Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi & Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -1235,11 +1235,11 @@ RETURN
           1000, ELMER_COMM_WORLD, ierr )
     END DO
     CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
-    
+
     n = SUM(Recv_Parts)
-    CALL Info('ChangeParticlePartition','Number of particles to recieve: '&
+    CALL Info('ChangeParticlePartition','Number of particles to receive: '&
         //TRIM(I2S(n)),Level=10)
-   
+
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, ELMER_COMM_WORLD, ierr )
     IF ( nReceived==0 ) THEN
@@ -1247,10 +1247,10 @@ RETURN
       DEALLOCATE(Recv_Parts, Requests, ExcInfo, Perm, Neigh)
       RETURN
     ELSE
-      CALL Info('ChangeParticlePartition','Global number of particles to recieve: '&
-          //TRIM(I2S(nReceived)),Level=10)      
+      CALL Info('ChangeParticlePartition','Global number of particles to receive: '&
+          //TRIM(I2S(nReceived)),Level=10)
     END IF
-   
+
     n = SUM( ExcInfo(1:NoPartitions) % n )
     CALL Info('ChangeParticlePartition','Total number of particles to sent: '&
         //TRIM(I2S(n)),Level=10)
@@ -1442,8 +1442,8 @@ RETURN
 
     ! Recv particles:
     ! ---------------
-    CALL Info('ChangeParticlePartition','Now recieving particle data',Level=14)
-    
+    CALL Info('ChangeParticlePartition','Now receiving particle data',Level=14)
+
     n = SUM(Recv_Parts)
 
     CALL DeleteLostParticles(Particles)
@@ -1750,8 +1750,8 @@ RETURN
       CALL Info('ParticleAdvectParallel','Global particles to be sent: '&
           //TRIM(I2S(nSent)),Level=12)
     ELSE
-      ! If nobody is sending any particles then there can be no need to reveive particles either
-      ! Thus we can make an early exit. 
+      ! If nobody is sending any particles then there can be no need to receive particles either
+      ! Thus we can make an early exit.
       DEALLOCATE(SentParts, RecvParts, Requests )
       CALL Info('ParticleAdvectParallel','Nothing to do in parallel!',Level=15)
       RETURN
@@ -1770,9 +1770,9 @@ RETURN
       CALL MPI_RECV( RecvParts(i), 1, MPI_INTEGER, i-1, &
           1000, ELMER_COMM_WORLD, Status, ierr )
     END DO
-    
+
     n = SUM(RecvParts)
-    CALL Info('ParticleAdvectParallel','Particles to be recieved: '//TRIM(I2S(n)),Level=12)
+    CALL Info('ParticleAdvectParallel','Particles to be received: '//TRIM(I2S(n)),Level=12)
 
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, ELMER_COMM_WORLD, ierr )
@@ -1782,28 +1782,28 @@ RETURN
       RETURN
     END IF
 
-    CALL Info('ParticleAdvectParallel','Total number of particles to be recieved: '&
-        //TRIM(I2S(nReceived)),Level=12)    
+    CALL Info('ParticleAdvectParallel','Total number of particles to be received: '&
+        //TRIM(I2S(nReceived)),Level=12)
 
     n = 2*(n + MPI_BSEND_OVERHEAD*2*NoPartitions)
     CALL CheckBuffer(n)
 
-    CALL Info('ParticleAdvectParallel','Buffer size for sending and recieving: ' &
-        //TRIM(I2S(n)),Level=14)    
+    CALL Info('ParticleAdvectParallel','Buffer size for sending and receiving: ' &
+        //TRIM(I2S(n)),Level=14)
 
 
-    ! Allocate sent and recieve buffers based on the maximum needed size.
+    ! Allocate sent and receive buffers based on the maximum needed size.
     !--------------------------------------------------------------------
     n = MAXVAL( SentParts )
     ALLOCATE( SentReal(n), SentInt(n) )
     CALL Info('ParticleAdvectParallel','Allocating sent buffer of size: '&
         //TRIM(I2S(n)),Level=18)
 
-    n = MAXVAL( RecvParts ) 
+    n = MAXVAL( RecvParts )
     ALLOCATE( RecvReal(n), RecvInt(n) )
-    CALL Info('ParticleAdvectParallel','Allocating recieve buffer of size: '&
+    CALL Info('ParticleAdvectParallel','Allocating receive buffer of size: '&
         //TRIM(I2S(n)),Level=18)
-   
+
     ! Send particles:
     ! ---------------
     CALL Info('ParticleAdvectParallel','Now sending field',Level=14)
@@ -1831,10 +1831,10 @@ RETURN
 
 
     ! Recv particles:
-    ! ---------------   
-    CALL Info('ParticleAdvectParallel','Now recieving field',Level=14)
+    ! ---------------
+    CALL Info('ParticleAdvectParallel','Now receiving field',Level=14)
 
-    nerr = 0 
+    nerr = 0
     DO j=1,NoPartitions
 
       IF( j-1 == ParEnv % MyPe ) CYCLE
@@ -1857,9 +1857,9 @@ RETURN
         RecvField(k) = RecvReal(l)
       END DO
     END DO
-        
+
     IF( nerr > 0 ) THEN
-      CALL Info('ParticleAdvectParallel','Invalid recieved index in particles: '//TRIM(I2S(nerr)))
+      CALL Info('ParticleAdvectParallel','Invalid received index in particles: '//TRIM(I2S(nerr)))
     END IF
 
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
@@ -2430,7 +2430,7 @@ RETURN
               IF( meanval < 0.0_dp ) CYCLE
             END IF
 
-            ! If some of bulk elements have been found avtive
+            ! If some of bulk elements have been found active
             j = j + 1
             InvPerm(j) = i
 
@@ -3468,10 +3468,10 @@ RETURN
     
   END SUBROUTINE SegmentElementIntersection2
   
-  
+
   !---------------------------------------------------------------------------
-  !> This subroutine tests whether a particle is within element using the 
-  !> consistant strategy with the above algorithm.
+  !> This subroutine tests whether a particle is within element using the
+  !> consistent strategy with the above algorithm.
   !---------------------------------------------------------------------------
   FUNCTION SegmentElementInside(Mesh,BulkElement,Rfin,Debug) RESULT ( Inside )
     !---------------------------------------------------------------------------
@@ -4211,10 +4211,10 @@ RETURN
       CALL SetParticleCoord( Particles, No, Rfin  )                
       IF( ElementIndex == 0 ) Velo = 0.0_dp
 
-      CALL SetParticleVelo( Particles, No, Velo  )                
+      CALL SetParticleVelo( Particles, No, Velo  )
     END DO
 
-    ! Change the partion in where the particles are located
+    ! Change the partition in where the particles are located
     ! Only applies to parallel cases.
     !------------------------------------------------------------------------
     PartitionChanges = ChangeParticlePartition( Particles )
@@ -4743,8 +4743,8 @@ RETURN
       Particles % CumClosestParticle(i+1) = Particles % CumClosestParticle(i)+j
     END DO
     Particles % MaxClosestParticles = MaxClosest
-    
-    ! And finally, add the closest neigbours to the table 
+
+    ! And finally, add the closest neighbors to the table
     !----------------------------------------------------------------
     IF ( ASSOCIATED(Particles % ClosestParticle) ) &
         DEALLOCATE(Particles % ClosestParticle )
@@ -5177,9 +5177,9 @@ RETURN
   !> Advance the particles with a time step. The timestep may
   !> also be an intermediate Runge-Kutta step.
   !---------------------------------------------------------
-  SUBROUTINE ParticleAdvanceTimestep( Particles, RKstep )
+  SUBROUTINE ParticleAdvanceTimestep( Particles, RKstepInput )
     TYPE(Particle_t), POINTER :: Particles
-    INTEGER, OPTIONAL :: RKstep
+    INTEGER, OPTIONAL :: RKStepInput
 
     REAL(KIND=dp) :: dtime
     TYPE(Variable_t), POINTER :: Var, TimeVar, DistVar, DtVar
@@ -5187,7 +5187,7 @@ RETURN
     REAL(KIND=dp) :: ds, dCoord(3),Coord(3),Velo(3),Speed0,Speed
     INTEGER :: dim, Status, TimeOrder, No, NoMoving
     TYPE(ValueList_t), POINTER :: Params
-    INTEGER :: NoParticles
+    INTEGER :: NoParticles, RKStep
     LOGICAL :: Found, Visited = .FALSE.,RK2,HaveSpeed0
 
     REAL(KIND=dp) :: mass, drag
@@ -5231,6 +5231,8 @@ RETURN
     NoGroups = Particles % NumberOfGroups     
     NoMoving = 0
     RK2 = Particles % RK2
+    RKStep = 0
+    IF(PRESENT(RKStepInput)) RKStep=RKStepInput
 
     IF( RK2 .AND. .NOT. ASSOCIATED( Particles % PrevVelocity ) ) THEN
       ALLOCATE( Particles % PrevVelocity( &
@@ -5314,11 +5316,12 @@ RETURN
       ELSE
         CALL Fatal('ParticleAdvanceTimestep','Unknown time order')
       END IF
-
+       
+         
       IF( RK2 .AND. RKStep == 2 ) THEN
-        Velo(1:dim) = &
-          ( 2 * Particles % Velocity(No,:) - Particles % PrevVelocity(No,:) )
-      ELSE
+         Velo(1:dim) = &
+           ( 2 * Particles % Velocity(No,:) - Particles % PrevVelocity(No,:) )
+       ELSE
         Velo(1:dim) = Particles % Velocity(No,:) 	
       END IF
 
@@ -5362,15 +5365,15 @@ RETURN
   !---------------------------------------------------------
   !> Advance some tracer quantities related to the particles.
   !---------------------------------------------------------
-  SUBROUTINE ParticlePathIntegral( Particles, RKstep )
+  SUBROUTINE ParticlePathIntegral( Particles, RKstepInput )
     TYPE(Particle_t), POINTER :: Particles
-    INTEGER, OPTIONAL :: RKstep
+    INTEGER, OPTIONAL :: RKstepInput
 
     TYPE(Variable_t), POINTER :: TimeIntegVar, DistIntegVar, DtVar
     LOGICAL :: GotVar, RK2
     REAL(KIND=dp) :: ds,dtime,Coord(3),PrevCoord(3),LocalCoord(3),Velo(3),u,v,w,&
         SourceAtPath,detJ,RKCoeff
-    INTEGER :: dim, Status
+    INTEGER :: dim, Status, RKStep
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: NoParticles, No, n, NoVar, i, j, bf_id
     LOGICAL :: Found, Stat, Visited = .FALSE.
@@ -5391,6 +5394,9 @@ RETURN
 
 
     ! If Runge-Kutta is used take the mid-point rule.
+    RKSTep = 0
+    IF( PRESENT( RKStepInput ) ) RKStep = RKStepInput
+
     IF( RKStep > 1 ) RETURN
     
     IF(.NOT. Visited ) THEN

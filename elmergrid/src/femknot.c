@@ -157,10 +157,7 @@ int GetCoordinateDimension(struct FemType *data,int info)
 	coordis = TRUE; 
 	break;
       }
-    if( coordis ) 
-      coorddim = MAX( coorddim, j ); 
-    else 
-      printf("Dimension %d not active but higher dimensions are?\n",j);
+    if( coordis ) coorddim = MAX( coorddim, j ); 
   }
   if(info) printf("Coordinates defined in %d dimensions\n",coorddim);
 

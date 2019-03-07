@@ -662,7 +662,33 @@ CONTAINS
     END SUBROUTINE ParallelSumVector
 !-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelSumNodalVector( Mesh, x, Perm, Matrix, Op )
+!-------------------------------------------------------------------------------
+      TYPE(Mesh_t) :: Mesh
+      INTEGER, POINTER :: Perm(:)
+      REAL(KIND=dp) CONTIG :: x(:)
+      TYPE(Matrix_t), OPTIONAL :: Matrix
+      INTEGER, OPTIONAL :: op
+!-------------------------------------------------------------------------------
 
+      ! We can inherit the ParEnv from the primary matrix even
+      ! though the variable is not directly associated to it!
+      IF( PRESENT( Matrix ) ) THEN
+        ParEnv = Matrix % ParMatrix % ParEnv
+        ParEnv % ActiveComm = Matrix % Comm
+      END IF
+
+      CALL Info('ParallelSumNodalVector','Summing up parallel nodal vector',Level=12)
+      
+      CALL ExchangeNodalVec( Mesh % ParallelInfo, Perm, x, op )
+
+      CALL Info('ParallelSumNodalVector','Summing up done',Level=20)
+!-------------------------------------------------------------------------------
+    END SUBROUTINE ParallelSumNodalVector
+!-------------------------------------------------------------------------------
+
+    
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelUpdateSolve( Matrix, x, r )
 !-------------------------------------------------------------------------------

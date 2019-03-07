@@ -112,6 +112,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   USE SolverUtils
   USE ElementUtils
   USE MaterialModels
+  USE ElementDescription, ONLY: GetEdgeMap
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -146,29 +147,27 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !-----------------------------------------------------------------------------
 ! Variables for two-level iterations... 
 !----------------------------------------------------------------------------- 
-  LOGICAL :: BlockPreconditioning, Parallel, UpdateMatrix, UseTrueResidual, Timing, &
-       OptimizeBW, GlobalBubbles, P2P1
+  LOGICAL :: BlockPreconditioning, Parallel, UpdateMatrix, UseTrueResidual, Timing, P2P1
   LOGICAL :: DoScaling, DoEquilibration, BlockDiagonalA, UseVeloLaplacian, AdaptiveTols
   CHARACTER(LEN=MAX_NAME_LEN) :: Eq
   INTEGER :: i, j, k, nlen, Round, MaxIterations, RestartM
   INTEGER, ALLOCATABLE :: Indexes(:)
-  INTEGER, POINTER :: NodeIndexes(:), Permutation(:)
+  INTEGER, POINTER :: NodeIndexes(:)
 #ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: MinTolerance, t0, rt0, st, rst, ct, maxU=0.0d0, maxV=0.0d0, &
+  REAL(KIND=dp) :: MinTolerance, t0, rt0, st, rst, ct, &
        BaseTolerance, TargetTol, RelTolerance, PrecondTol
 #else
   REAL(KIND=dp) :: MinTolerance, t0, rt0, st, rst, ct, CPUTime, RealTime, maxU=0.0d0, maxV=0.0d0, &
        BaseTolerance, TargetTol, RelTolerance, PrecondTol
 #endif
-  TYPE(Solver_t), POINTER :: PrecondSolver, PressureSolver, VelocitySolver, SubSolver, &
-       GradSolver1, GradSolver2, GradSolver3
-  TYPE(Matrix_t), POINTER :: PrecondMatrix, MMatrix, PMatrix, AMatrix, B1Matrix, B2Matrix, B3Matrix
+  TYPE(Solver_t), POINTER :: PressureSolver, VelocitySolver
+  TYPE(Matrix_t), POINTER :: MMatrix, PMatrix, AMatrix 
   REAL(KIND=dp), ALLOCATABLE :: Snew(:), R(:), S(:,:), V(:,:), &
-       ALocal(:,:), PLocal(:,:), B1Local(:,:), B2Local(:,:), B3Local(:,:), Vx(:), Vy(:), Vz(:)
+       ALocal(:,:), PLocal(:,:), Vx(:), Vy(:), Vz(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:), RotatedVarValues(:), TempRes(:), TempS(:), &
       TempMx(:), TempMb(:), TempMr(:), TempRHS(:)
   REAL(KIND=dp), POINTER :: Mx(:), Mb(:), Mr(:)
-  SAVE Snew, R, S, V, Indexes, ALocal, PLocal, B1Local, B2Local, B3Local, Vx, Vy, Vz
+  SAVE Snew, R, S, V, Indexes, ALocal, PLocal, Vx, Vy, Vz
   REAL(KIND=dp), ALLOCATABLE :: RowScalingA(:), RowScalingP(:)
   SAVE RowScalingA, RowScalingP
   SAVE MaxIterations,RestartM
@@ -243,11 +242,11 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
      !---------------------------------------------------------------------------
      n = SIZE(Solver % Variable % Perm)
      IF ( ANY(Solver % Variable % Perm(1:n) /= PressureSolver % Variable % Perm(1:n)) ) &
-          CALL Fatal( 'ParStokes', 'Nonmatching variable permutations, &
-          use Optimize Bandwidth in pressure preconditioning' )
+         CALL Fatal( 'ParStokes', &
+         'Nonmatching variable permutations, use Optimize Bandwidth in pressure preconditioning' )
      IF ( ANY(Solver % Variable % Perm(1:n) /= VelocitySolver % Variable % Perm(1:n)) ) &
-          CALL Fatal( 'ParStokes', 'Nonmatching variable permutations, &
-          use Optimize Bandwidth in velocity preconditioning' )
+         CALL Fatal( 'ParStokes',&
+         'Nonmatching variable permutations, use Optimize Bandwidth in velocity preconditioning' )
   END IF
 
 
@@ -423,10 +422,10 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
              BlockDiagonalA)
 
         IF ( nb > 0 ) THEN
-           CALL StaticCondensation( nd, nb, dim, STIFF, FORCE )
+          CALL StaticCondensation( nd, nb, dim, STIFF, FORCE )
         END IF
 
-        IF (BlockPreconditioning) THEN
+        IF( BlockPreconditioning ) THEN
           IF (.NOT. BlockDiagonalA) THEN
             Alocal = 0.0d0
             DO p=1,nd
@@ -440,8 +439,8 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
               END DO
             END DO
           ELSE
-            ! The block diagonal approximation of the velocity preconditioning matrix: 
-	    IF (.NOT. UseVeloLaplacian) THEN
+            ! The block diagonal approximation of the velocity preconditioning matrix:
+            IF (.NOT. UseVeloLaplacian) THEN
               Alocal = 0.0d0
               DO p=1,nd
                 DO i=1,dim
@@ -452,7 +451,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
                 END DO
               END DO
 	    END IF
-          END IF
+          END IF     
         END IF
 
         CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -1205,24 +1204,23 @@ CONTAINS
        Newton, DiagonalA)
 !------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: STIFF(:,:), VeloBlock(:,:), Mass(:,:), FORCE(:), LOAD(:,:)
-    REAL(KIND=dp) :: Nodalmu(:), Nodalrho(:), Vx(:), Vy(:), Vz(:), GradDivParam
+    REAL(KIND=dp) :: Nodalmu(:), Nodalrho(:), Vx(:), Vy(:), Vz(:)
     INTEGER :: dim, n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: Stabilization, Convect, P2P1, SkipPowerLaw, Newton, DiagonalA
+    LOGICAL :: Convect, P2P1, SkipPowerLaw, Newton, DiagonalA
     !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: PressureElement => NULL()
     REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3), &
-         DetJ, LoadAtIP(dim+1), Velo(dim), Grad(dim,dim), AK, w1, w2, w3, ViscAtIp, RhoAtIP
+         DetJ, LoadAtIP(dim+1), Velo(dim), Grad(dim,dim), w1, w2, w3, ViscAtIp, RhoAtIP
     REAL(KIND=dp) :: LinBasis(nd)
-    REAL(KIND=dp), POINTER :: A(:,:), F(:), M(:,:), Jac(:,:)
+    REAL(KIND=dp), POINTER :: A(:,:), F(:), Jac(:,:)
     REAL(KIND=dp), TARGET :: JacM(nd*(dim+1),nd*(dim+1)), Sol(nd*(dim+1)) 
     LOGICAL :: Stat, ViscNewtonLin
-    INTEGER :: t, i, j, k, l, p, q
-    INTEGER :: Code, nlin
+    INTEGER :: t, i, j, k, l, p, q, nlin
     INTEGER :: LinearCode(3:8) = (/ 303,404,504,605,706,808 /)
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, s, c, c2, ch, rotterm, mK, hK, Re, VNorm, &
+    REAL(KIND=dp) :: mu = 1.0d0, s, &
          a1, a2, muder, muder0, Strain(dim,dim)
 
     TYPE(Nodes_t) :: Nodes
@@ -1571,9 +1569,9 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: CurrentElement
     INTEGER, POINTER :: NodeIndexes(:)
-    INTEGER :: i,j,k,n,t,k1,k2,nd
-    LOGICAL :: GotIt, periodic
-    REAL(KIND=dp) :: Work(Model % MaxElementNodes),s
+    INTEGER :: i,j,k,n,t,nd
+    LOGICAL :: GotIt
+    REAL(KIND=dp) :: Work(Model % MaxElementNodes)
 
 !------------------------------------------------------------------------------
 
@@ -1687,26 +1685,23 @@ CONTAINS
        NodalSlipCoeff(:,:), NodalExtPressure(:)
 
    INTEGER :: n, nd, pn
-
-   TYPE(Element_t),POINTER  :: Element, Parent
-   TYPE(Nodes_t) :: Nodes, ParentNodes
-
+   TYPE(Element_t),POINTER  :: Element
+   TYPE(Nodes_t) :: Nodes
    LOGICAL :: NormalTangential
 
 !------------------------------------------------------------------------------
 !  Local variables
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
-   REAL(KIND=dp) :: detJ,FlowStress(3,3),SlipCoeff
-
-   REAL(KIND=dp) :: u,v,w,ParentU,ParentV,ParentW,s,x(n),y(n),z(n)
+   REAL(KIND=dp) :: detJ,SlipCoeff
+   REAL(KIND=dp) :: u,v,w,s
    REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
    REAL(KIND=dp) :: TangentForce(3),Force(3),Normal(3),Tangent(3),Tangent2(3), &
-               Vect(3), Alpha, mu,Grad(3,3),Velo(3)
+               Vect(3), Alpha
 
-   REAL(KIND=dp) :: xx, yy, ydot, ydotdot, MassFlux
+   REAL(KIND=dp) :: MassFlux
 
-   INTEGER :: i,j,k,l,k1,k2,t,q,p,c,dim,N_Integ
+   INTEGER :: i,j,k,l,t,q,p,c,dim,N_Integ
 
    LOGICAL :: stat, Found
 
@@ -1743,7 +1738,7 @@ CONTAINS
 
      s = detJ * S_Integ(t)
 !------------------------------------------------------------------------------
-!    Add to load: tangetial derivative of something
+!    Add to load: tangential derivative of something
 !------------------------------------------------------------------------------
      DO i=1,dim
        TangentForce(i) = 0.0d0

@@ -53,11 +53,11 @@
  * that is you can compute one size (N) discrete fourier transform as two
  * (M=N/2) size transforms. further, if (M) is even after each successive
  * division (i.e. (N) is power of two) you can continue the division until
- * you feel like writing the sum out explicitely.
+ * you feel like writing the sum out explicitly.
  *
  * all the routines below at the end use cfftf (1D complex forward transform)
  * to actually compute the transform and do not in other ways depend on the
- * algorithm (which implies that input sequence lenghts must be power of two,
+ * algorithm (which implies that input sequence lengths must be power of two,
  * serious limitation with storage for multidimensional transforms).so you can
  * substitute it for different algorithm if you like. for rfftf, rfftb, gfftf,
  * and gfftb (the real 1D transforms) the sequence lengths must be even.
@@ -278,7 +278,7 @@
  *
  *------------------------------------------------------------------------------
  *
- * gfftb( nF, freq, nT, time )  - given largets magnitude coeff. return 
+ * gfftb( nF, freq, nT, time )  - given largest magnitude coeff. return
  *     int nF;                    approximation of original sequence.
  *     FREQ freq[nF];
  *     int nT;

@@ -290,8 +290,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Real
-     &           sdot, psnorm2, pslamch
-      external   sdot, psnorm2, pslamch
+     &           sdot, psnorm2, pslamch10
+      external   sdot, psnorm2, pslamch10
 c
 c     %-----------------%
 c     | Data statements |
@@ -318,7 +318,7 @@ c        | safmin = safe minimum is such  |
 c        | that 1/sfmin does not overflow |
 c        %--------------------------------%
 c
-         safmin = pslamch(comm,'safmin')
+         safmin = pslamch10(comm,'safmin')
       end if
 c
       if (ido .eq. 0) then

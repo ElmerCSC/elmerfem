@@ -108,7 +108,7 @@ Solver 2
   Procedure = "AllocateSolver" "AllocateSolver"
 
 ! The variables that we want to restart should be initialized in this list as a "Variable"
-! or "Exported Variable i". Or they can be allocated by some other solver associcated to
+! or "Exported Variable i". Or they can be allocated by some other solver associated to
 ! the same mesh.
   Variable = TempA 
 

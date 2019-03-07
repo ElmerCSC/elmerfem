@@ -1,0 +1,168 @@
+! Compute cost function from transient data.
+!
+! C = \int_t0^t1 \sum_i c_i (t_i-t)^2 dt
+!
+! The transient data is generated computationally and so we know the
+! reference solution that gives zero cost function. 
+!
+! P.R. 12.2.2019
+
+Check Keywords warn
+
+$h1=1.2  
+$h2=1.5  
+$h3=3.3  
+$h4=3.9  
+
+! These are the reference values that result to zero cost function!
+!$h1=1.0  
+!$h2=2.0  
+!$h3=3.0  
+!$h4=4.0  
+
+Header
+  Mesh DB "." "spots"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Coordinate System = String Cartesian
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type = Transient
+  Timestep Intervals = 100
+  Timestep Sizes = 0.1
+  Timestepping Method = implicit euler
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+!  Post File = "case.vtu"
+End
+
+Constants
+  Stefan Boltzmann = 1.0
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Name = "Body3"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Name = "Body4"
+  Body Force = 3
+  Equation = 1
+  Material = 1
+End
+
+Body 5
+  Name = "Body5"
+  Body Force = 4
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation"
+  Active Solvers = 1
+End
+
+Material 1
+  Name = "Unity"
+  Density = Real 1
+  Heat Conductivity = Real 1
+  Heat Capacity = Real 1.0
+End
+
+Body Force 1
+  Name = "Heater1"
+  Heat Source = $h1
+End
+
+Body Force 2
+  Name = "Heater2"
+  Heat Source = $h2
+End
+
+Body Force 3
+  Name = "Heater3"
+  Heat Source = $h3
+End
+
+Body Force 4
+  Name = "Heater4"
+  Heat Source = $h4
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Variable = Temperature
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 20
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+Solver 2
+  Equation = TransientCost
+  Procedure = "TransientCost" "TransientCost"
+
+  Data Coordinates(4,3) = Real 2.0 2.0 0.0 6.0 2.0 0.0 2.0 6.0 0.0 6.0 6.0 0.0
+  Data Weights(4) = Real 1.0 1.0 1.0 1.0
+  Target Variable  = Temperature
+
+  Data 1 = Variable "time"
+    Real
+      include t1.dat
+    End 
+
+  Data 2 = Variable "time"
+    Real
+      include t2.dat
+    End 
+
+  Data 3 = Variable "time"
+    Real
+      include t3.dat
+    End 
+
+  Data 4 = Variable "time"
+    Real
+      include t4.dat
+    End 
+End
+
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries = 1
+  Temperature = Real 0
+End
+
+
+Solver 1 :: Reference Norm = 1.74689788
+Solver 2 :: Reference Norm = 2.23499638
+
+

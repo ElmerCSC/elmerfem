@@ -309,7 +309,7 @@ CONTAINS
                 800, ELMER_COMM_WORLD, ierr )
       IF ( n>0 ) THEN
         CALL MPI_BSEND( Active, n, MPI_INTEGER, MinActive, &
-                 801, ELMER_COMM_WORLD, ierr )
+                801, ELMER_COMM_WORLD, ierr )
       END IF
 
       CALL MPI_RECV( n, 1, MPI_INTEGER, MinActive, &
@@ -384,15 +384,10 @@ CONTAINS
     ALLOCATE( Active(SIZE(ParallelInfo % Interface)) )
 
 !   IF ( .NOT. SourceMatrix % DGMatrix ) THEN
-      DO i=1,SIZE(SourceMatrix % Perm)
-        ii = SourceMatrix % Perm(i)
+      DO ii=1,SourceMatrix % NumberOfRows
 
-        Interf=.FALSE.
-        IF(ii>0) THEN
-          Active(ii) = HUGE(i)
-          Interf=ParallelInfo % Interface(ii)
-        END IF
-        IF ( Interf) THEN
+        Active(ii) = HUGE(i)
+        IF ( ParallelInfo % Interface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
           DO j=1,sz
             k = ParallelInfo % NeighbourList(ii) % Neighbours(j)
@@ -449,8 +444,6 @@ CONTAINS
           CALL MPI_RECV( buf,sz,MPI_INTEGER,proc,20001,ELMER_COMM_WORLD,status,ierr)
           DO j=1,sz,2
             IF ( buf(j+1)>0 ) THEN
-!             k = SearchNode( ParallelInfo, buf(j), Order=SourceMatrix % Perm )
-!XYXY
               k = SearchNode( ParallelInfo, buf(j), Order = ParallelInfo % Gorder )
               IF ( k>0  ) THEN
                 sz = SIZE(ParallelInfo % NeighbourList(k) % Neighbours)
@@ -467,16 +460,15 @@ CONTAINS
         END IF
       END DO
 
-      DO i=1,SIZE(SourceMatrix % Perm)
-        ii = SourceMatrix % Perm(i)
-        Interf = .FALSE.
-        IF(ii>0) Interf=ParallelInfo % Interface(ii)
-        IF ( Interf ) THEN
+      DO ii=1,SourceMatrix % NumberOfRows
+        IF ( ParallelInfo % Interface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
-          IF ( Active(ii)>1 .AND. Active(ii)<=sz ) THEN
+          IF ( Active(ii)>1 .AND. Active(ii) <= sz ) THEN
             n = ParallelInfo % NeighbourList(ii) % Neighbours(Active(ii))
+
             ParallelInfo % NeighbourList(ii) % Neighbours(Active(ii)) = &
                ParallelInfo % NeighbourList(ii) % Neighbours(1)
+
             ParallelInfo % NeighbourList(ii) % Neighbours(1) = n
           END IF
         END IF
@@ -2028,7 +2020,7 @@ tstart = realtime()
            IF( .NOT.ASSOCIATED(commonlist) ) CYCLE
            !
            ! If everything went ok and the mesh data was unique, there
-           ! are only two PEs common to both parents. If not, thats bad:
+           ! are only two PEs common to both parents. If not, that's bad:
            !------------------------------------------------------------
            !IF( SIZE(commonlist) > 2 ) THEN
            !   WRITE(*,'(A,I4,A,I6,A,2I6,A,2I6,A,10I4)') &
@@ -2050,7 +2042,7 @@ tstart = realtime()
            Mesh % ParallelInfo % NeighbourList(i) % Neighbours => Gindices
         ELSE
            !
-           ! Either list1 or list2 is empty. Thats really bad:
+           ! Either list1 or list2 is empty. That's really bad:
            !---------------------------------------------------
            WRITE(*,'(A,I4,A,I6)') 'SParIterGlobalNumbering: PE:', ParEnv % MyPE+1, &
                 ' Could not determine owner for node(loc)=', i
@@ -2315,9 +2307,9 @@ tstart = realtime()
                  EXIT
               END IF
            END DO
-           
+
            IF( .NOT.(mm==1 .AND. nn==1) ) THEN
-              !PRINT *,'Nope, I dont have it. Sending back request to remove me from the neighbour list.'
+              !PRINT *,'Nope, I do not have it. Sending back request to remove me from the neighbour list.'
               CALL AddToCommonList( Request1(i) % DATA, TmpArray(1) )
               CALL AddToCommonList( Request1(i) % DATA, TmpArray(2) )
               CALL AddToCommonList( Request1(i) % DATA, TmpArray(3) )
@@ -2679,7 +2671,7 @@ tstart = realtime()
 
      DEALLOCATE( GIndices )
 !
-!    Send go singal to next PE in line...
+!    Send go signal to next PE in line...
 !    ------------------------------------
      DO i = ParEnv % MyPE+2, ParEnv % PEs
         IF ( ParEnv % Active(i) ) THEN
@@ -3645,6 +3637,184 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
 END SUBROUTINE ExchangeSourceVec
 !*********************************************************************
 
+
+!*********************************************************************
+SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
+!*********************************************************************
+  TYPE (ParallelInfo_t) :: ParallelInfo
+  INTEGER, POINTER :: Perm(:)
+  REAL(KIND=dp), DIMENSION(:) :: SourceVec
+  INTEGER, OPTIONAL :: op
+
+  TYPE(vBuff_t), ALLOCATABLE :: recv_buf(:), send_buf(:)
+  
+  ! Local variables
+  INTEGER :: i, j, k, n, datalen, ierr, sproc, destproc, ind, req_cnt,oper
+  INTEGER :: owner, request, totalsize
+  INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
+
+  INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
+        send_size(:), OwnerPerm(:), neigh(:)
+  !*********************************************************************
+  n = ParEnv % NumOfNeighbours
+  IF ( n<= 0 ) RETURN
+
+  oper = 0 ! 0=sum, 1=min, 2=max
+  IF ( PRESENT(op) ) oper=op
+
+  ALLOCATE( neigh(n) )
+  
+  n = 0
+  DO i=1,ParEnv % PEs
+    IF ( ParEnv % IsNeighbour(i) ) THEN
+      n = n + 1
+      neigh(n)  = i-1
+    END IF
+  END DO
+
+  ALLOCATE(OwnerPerm(0:Parenv % Pes-1))
+  Ownerperm = -1
+  DO i=1,n
+    OwnerPerm(neigh(i))=i
+  END DO
+  
+  ALLOCATE( send_size(n), recv_buf(n), send_buf(n) )
+  
+  send_size = 0
+  DO i = 1,SIZE(ParallelInfo % NeighbourList)
+    IF( Perm(i) == 0 ) CYCLE
+    DO j=1,SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
+      owner = ParallelInfo % NeighbourList(i) % Neighbours(j)
+      IF(.NOT. Parenv % Isneighbour(owner+1)) CYCLE
+      IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
+        owner = OwnerPerm(owner)
+        send_size(owner) = send_size(owner) + 1
+      END IF
+    END DO
+  END DO
+
+  DO i=1,n
+    IF ( send_size(i) > 0 ) &
+       ALLOCATE(send_buf(i) % ind(send_size(i)),send_buf(i) % vec(send_size(i)))
+  END DO
+
+  send_size = 0
+  DO i = 1,SIZE(ParallelInfo % NeighbourList )
+    k = Perm(i)
+    IF( k == 0 ) CYCLE
+    DO j=1,SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
+      owner = ParallelInfo % NeighbourList(i) % Neighbours(j)
+      IF(.NOT. Parenv % Isneighbour(owner+1)) CYCLE
+
+      IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
+        owner = OwnerPerm(owner)
+        send_size(owner) = send_size(owner) + 1
+        send_buf(owner) % vec(send_size(owner)) = SourceVec(k)
+        send_buf(owner) % ind(send_size(owner)) = ParallelInfo % GlobalDOFs(i)
+      END IF
+    END DO
+  END DO
+  
+  totalsize = SUM(send_size)
+  CALL CheckBuffer( 3*totalsize+n*MPI_BSEND_OVERHEAD )
+
+  !
+  ! Receive interface sizes:
+  !--------------------------
+  ALLOCATE( recv_size(n), requests(n) )
+  DO i=1,n
+    CALL MPI_iRECV( recv_size(i), 1, MPI_INTEGER, neigh(i), &
+        3000, ELMER_COMM_WORLD, requests(i), ierr )
+  END DO
+
+  !
+  ! Send interface sizes:
+  !--------------------------
+  DO i=1,n
+    CALL MPI_BSEND( send_size(i), 1, MPI_INTEGER, neigh(i), &
+        3000, ELMER_COMM_WORLD, ierr )
+  END DO
+  CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
+  
+! --------------------------------------------------------------------
+
+  req_cnt = 0
+  DO i = 1, n
+    sproc = neigh(i)
+    datalen = recv_size(i)
+    IF ( datalen > 0 ) THEN
+      req_cnt = req_cnt + 1
+      ALLOCATE( recv_buf(i) % ind(datalen) )
+      CALL MPI_iRECV( recv_buf(i) % Ind, datalen, MPI_INTEGER, sproc, &
+          3001, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+    END IF
+  END DO
+  
+  DO i = 1, n
+    destproc = neigh(i)
+    datalen = send_size(i)
+    IF ( datalen > 0 ) THEN
+      CALL MPI_BSEND( send_buf(i) % ind, datalen, &
+          MPI_INTEGER, destproc, 3001, ELMER_COMM_WORLD, ierr )
+    END IF
+  END DO
+  CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
+  
+! --------------------------------------------------------------------
+
+  req_cnt = 0
+  DO i = 1, n
+    sproc = neigh(i)
+    dataLen = recv_size(i)
+    IF ( datalen > 0 ) THEN
+      req_cnt = req_cnt + 1
+      ALLOCATE( recv_buf(i) % vec(datalen) )
+      CALL MPI_iRECV( recv_buf(i) % vec, datalen, MPI_DOUBLE_PRECISION, &
+          sproc, 3002, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+    END IF
+  END DO
+  
+  DO i = 1, n
+    destproc = neigh(i)
+    datalen = send_size(i)
+    IF ( datalen > 0 ) THEN
+      CALL MPI_BSEND( send_buf(i) % vec, datalen, &
+          MPI_DOUBLE_PRECISION, destproc, 3002, ELMER_COMM_WORLD, ierr )
+    END IF
+  END DO
+  CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
+
+! --------------------------------------------------------------------
+
+  DO i=1,n
+    datalen = recv_size(i)
+    DO j = 1, datalen
+      Ind = SearchNode( ParallelInfo, recv_buf(i) % Ind(j), Order=ParallelInfo % Gorder )
+      IF ( Ind /= -1 ) THEN
+        Ind = Perm(Ind)
+        IF ( Ind > 0 ) THEN
+          SELECT CASE(oper)
+          CASE(0)
+            SourceVec(Ind) = SourceVec(Ind) + recv_buf(i) % vec(j)
+          CASE(1)
+            SourceVec(Ind) = MIN(SourceVec(Ind),recv_buf(i) % vec(j))
+          CASE(2)
+            SourceVec(Ind) = MAX(SourceVec(Ind),recv_buf(i) % vec(j))
+          END SELECT
+        END IF
+      END IF
+    END DO
+  END DO
+  
+  DO i=1,n
+    IF (send_size(i)>0) DEALLOCATE(send_buf(i) % Ind, send_buf(i) % Vec)
+    IF (recv_size(i)>0) DEALLOCATE(recv_buf(i) % Ind, recv_buf(i) % Vec)
+  END DO
+  DEALLOCATE( recv_buf, send_buf, recv_size, send_size, requests, neigh, OwnerPerm )
+
+!*********************************************************************
+END SUBROUTINE ExchangeNodalVec
+!*********************************************************************
 
 
 !----------------------------------------------------------------------

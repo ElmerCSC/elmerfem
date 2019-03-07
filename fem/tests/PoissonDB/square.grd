@@ -27,7 +27,7 @@ End
 Numbering = Horizontal
 Element Degree = 1
 Element Innernodes = False
-!Triangles = True
+Triangles = True
 Plane Elements = 200
 Element Ratios 1 = 1 1
 Element Ratios 2 = 1 1

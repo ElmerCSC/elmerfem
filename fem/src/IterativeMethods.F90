@@ -46,7 +46,7 @@
 
 #include "huti_fdefs.h"
 
-! if using old huti_fdefs.h, later obsolite
+! if using old huti_fdefs.h, later obsolete
 #ifndef HUTI_MAXTOLERANCE
 #define HUTI_MAXTOLERANCE dpar(2)
 #endif
@@ -649,7 +649,7 @@ CONTAINS
     INTEGER :: ndim,i,j,k
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged, UseStopCFun, PseudoComplex
+    LOGICAL :: Converged, Diverged, Halted, UseStopCFun, PseudoComplex
 
     TYPE(Matrix_t),POINTER :: A
 
@@ -695,6 +695,7 @@ CONTAINS
     
     Converged = .FALSE.
     Diverged = .FALSE.
+    Halted = .FALSE.
     
     Robust = ( HUTI_ROBUST == 1 )
     IF( Robust ) THEN
@@ -709,7 +710,7 @@ CONTAINS
     END IF
     
     CALL RealBiCGStabl(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
-         Converged, Diverged, OutputInterval, PolynomialDegree )
+         Converged, Diverged, Halted, OutputInterval, PolynomialDegree )
 
     IF(Constrained) THEN
       xvec=x(1:ndim)
@@ -722,10 +723,16 @@ CONTAINS
       DEALLOCATE( BestX )
     END IF
       
-    IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
-    IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
-    IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
-
+    IF(Converged) THEN
+      HUTI_INFO = HUTI_CONVERGENCE
+    ELSE IF(Diverged) THEN
+      HUTI_INFO = HUTI_DIVERGENCE
+    ELSE IF(Halted) THEN
+      HUTI_INFO = HUTI_HALTED
+    ELSE
+      HUTI_INFO = HUTI_MAXITER
+    END IF
+      
   CONTAINS
 
 !-----------------------------------------------------------------------------------
@@ -735,11 +742,11 @@ CONTAINS
 !> copyright notice of the subroutine has been removed accordingly.  
 !-----------------------------------------------------------------------------------
     SUBROUTINE RealBiCGStabl( n, A, x, b, MaxRounds, Tol, MaxTol, Converged, &
-        Diverged, OutputInterval, l, StoppingCriterionType )
+        Diverged, Halted, OutputInterval, l, StoppingCriterionType )
 !----------------------------------------------------------------------------------- 
       INTEGER :: l   ! polynomial degree
       INTEGER :: n, MaxRounds, OutputInterval   
-      LOGICAL :: Converged, Diverged
+      LOGICAL :: Converged, Diverged, Halted
       TYPE(Matrix_t), POINTER :: A
       REAL(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
@@ -826,7 +833,7 @@ CONTAINS
       Converged = (errorind < Tol)
       Diverged = (errorind > MaxTol) 
 
-      IF( Converged .OR. Diverged) RETURN
+      IF( Converged .OR. Diverged ) RETURN
 
       EarlyExit = .FALSE.
 
@@ -862,12 +869,14 @@ CONTAINS
         ! --- The BiCG part ---
         !-------------------------
         rho0 = -omega*rho0
-      
+        
         DO k=1,l
           ! rho1 = dotprodfun(n, work(1:n,rr), 1, work(1:n,r+k-1), 1 )
           rho1 = dotprodfun(n, work(1,rr), 1, work(1,r+k-1), 1 )
           IF (rho0 == zero) THEN
-            CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: rho0 == zero.' )
+            CALL Warn( 'RealBiCGStab(l)', 'Iteration halted: rho0 == zero.' )
+            Halted = .TRUE.
+            GOTO 100
           ENDIF
           IF (rho1 /= rho1) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: rho1 == NaN.' )
@@ -893,12 +902,14 @@ CONTAINS
           sigma = dotprodfun(n, work(1,rr), 1, work(1,u+k), 1 )
           
           IF (sigma == zero) THEN
-            CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: sigma == zero.' )
+            CALL Warn( 'RealBiCGStab(l)', 'Iteration halted: sigma == zero.' )
+            Halted = .TRUE.
+            GOTO 100
           ENDIF
           IF (sigma /= sigma) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: sigma == NaN.' )
           ENDIF
-
+          
           alpha = rho1/sigma
 
           !$OMP PARALLEL PRIVATE(j)
@@ -923,6 +934,7 @@ CONTAINS
 
           ! rnrm = normfun(n, work(1:n,r), 1 )
           rnrm = normfun(n, work(1,r), 1 )
+
           IF (rnrm /= rnrm) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: rnrm == NaN.' )
           ENDIF
@@ -935,7 +947,7 @@ CONTAINS
           ! obtain the solution. The following is for handling this special case. 
           !----------------------------------------------------------------------
           errorind = rnrm / bnrm
-
+          
 !         IF( OutputInterval /= 0) THEN
 !           WRITE (*, '(I8, 2E11.4)') 0, rnrm, errorind
 !         END IF
@@ -1012,24 +1024,43 @@ CONTAINS
         END DO
         rwork(l+1,yl) = -one
       
-        ! --- Convex combination
-      
+        ! --- Convex combination          
+        
         CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
             rwork(1,y0), 1, zero, rwork(1,y), 1)
-        kappa0 = SQRT( ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1) )
+        kappa0 = ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1)
+
+        ! If untreated this would result to NaN's
+        IF( kappa0 <= 0.0 ) THEN
+          CALL Warn('RealBiCGStab(l)','kappa0^2 is non-positive, iteration halted')
+          Halted = .TRUE.
+          GOTO 100
+        END IF
+        kappa0 = SQRT( kappa0 ) 
+
         CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
             rwork(1,yl), 1, zero, rwork(1,y), 1)
-        kappal = SQRT( ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1) )
+        kappal = ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1 )
+        
+        ! If untreated this would result to NaN's
+        IF( kappal <= 0.0 ) THEN
+          CALL Warn('RealBiCGStab(l)','kappal^2 is non-positive, iteration halted')
+          Halted = .TRUE.
+          GOTO 100 
+        END IF
+        kappal = SQRT( kappal )
+
         CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
           rwork(1,y0), 1, zero, rwork(1,y), 1)
+
         varrho = ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1) / &
             (kappa0*kappal)
+        
         hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
             kappa0/kappal
         DO i=1,l+1
            rwork(i,y0) = rwork(i,y0) - hatgamma * rwork(i,yl)
         END DO
-        
         !  --- Update
         
         omega = rwork(l+1,y0)
@@ -1055,7 +1086,14 @@ CONTAINS
     
         CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
             rwork(1,y0), 1, zero, rwork(1,y), 1)
-        rnrm = SQRT( ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1) )
+        rnrm = ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1)
+
+        IF( rnrm < 0.0 ) THEN
+          CALL Warn('RealBiCGStab(l)','rnrm^2 is negative, iteration halted')
+          Halted = .TRUE.
+          GOTO 100 
+        END IF        
+        rnrm = SQRT( rnrm ) 
         
         !---------------------------------------
         !  --- The reliable update part ---
@@ -1141,10 +1179,10 @@ CONTAINS
         IF( Converged .OR. Diverged) EXIT    
       END DO
 
-      IF(OutputInterval /= HUGE(OutputInterval)) THEN
+100   IF(OutputInterval /= HUGE(OutputInterval)) THEN
         WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
       END IF
-
+      
       IF( Robust ) THEN
         IF( BestNorm < RobustTol ) THEN
           Converged = .TRUE.

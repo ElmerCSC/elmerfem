@@ -21,7 +21,8 @@
 #define HUTI_CONVERGENCE 1
 #define HUTI_MAXITER 2
 #define HUTI_DIVERGENCE 3
-
+#define HUTI_HALTED 4
+						
 ! QMR method
 
 #define HUTI_QMR_RHO_PSI 10
