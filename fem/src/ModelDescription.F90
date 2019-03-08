@@ -2393,6 +2393,10 @@ ELMER_SOLVER_HOME &
       MeshKeep = ListGetInteger( Model % Simulation, 'Mesh keep',  GotIt )
       IF ( .NOT. GotIt ) MeshKeep=MeshLevels
 
+      IF( MeshLevels > 1 ) THEN
+        CALL Info('LOadMesh','Keeping number of meshes: '//TRIM(I2S(MeshKeep)),Level=8)
+      END IF
+      
       MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
       MeshGrading = ListGetLogical( Model % Simulation, 'Mesh Keep Grading', GotIt)
 
@@ -3417,8 +3421,14 @@ ELMER_SOLVER_HOME &
 !------------------------------------------------------------------------------
     CALL Info( 'LoadRestartFile',' ', Level = 4)
     CALL Info( 'LoadRestartFile','--------------------------------------------', Level= 4 )
+    CALL Info( 'LoadRestartFile','Restart for mesh name: '//TRIM(Mesh % Name), Level = 8 )
+    CALL Info( 'LoadRestartFile','Restart for number of nodes: '//TRIM(I2S(Mesh % NumberOfNodes)), Level = 8 )    
+    IF( ASSOCIATED( Mesh % Child ) ) THEN
+      CALL Info('LoadRestartFile','Skipping restart for child mesh',Level=4)
+      RETURN
+    END IF
     CALL Info( 'LoadRestartFile','Reading data from file: '//TRIM(RestartFile), Level = 4 )
-
+    
     IF( PRESENT( RestartList ) ) THEN
       ResList => RestartList
     ELSE
