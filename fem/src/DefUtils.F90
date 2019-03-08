@@ -724,7 +724,7 @@ CONTAINS
      IF ( .NOT. ASSOCIATED( Variable % EigenValues ) ) RETURN
      
      NofEigenModes = SIZE( Variable % EigenValues, 1)
-  END FUNCTION
+  END FUNCTION GetNofEigenModes
 
 
 !> Returns the desired eigenmode as a scalar field in an element
@@ -939,7 +939,7 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
      str = ListGetString( List, Name, Found )
-  END FUNCTION
+  END FUNCTION GetString
 
 
 !> Returns an integer by its name if found in the list structure
@@ -951,7 +951,7 @@ CONTAINS
      INTEGER :: i
 
      i = ListGetInteger( List, Name, Found )
-  END FUNCTION
+  END FUNCTION GetInteger
 
 
 !> Returns a logical flag by its name if found in the list structure, otherwise false
@@ -963,7 +963,7 @@ CONTAINS
      LOGICAL :: l
 
      l = ListGetLogical( List, Name, Found )
-  END FUNCTION
+  END FUNCTION GetLogical
 
 
 !> Returns a constant real by its name if found in the list structure
@@ -983,7 +983,7 @@ CONTAINS
      IF ( PRESENT( z ) ) zz = z
 
      r = ListGetConstReal( List, Name, Found,xx,yy,zz )
-  END FUNCTION
+  END FUNCTION GetConstReal
 
 
 !> Returns a real that may depend on global variables such as time, or timestep size, 
@@ -5033,7 +5033,7 @@ CONTAINS
              !--------------------------------------------------------------------------
              ! This branch should be able to handle BCs for face (div-conforming)
              ! elements. Now this works only for RT(0), ABF(0) and BMD(1) in 2D and
-             ! for RT(0) in 3D.
+             ! for the Nedelec tetrahedron of the first and second kind in 3D.
              !--------------------------------------------------------------------------
              SELECT CASE(GetElementFamily())
              CASE(2)
