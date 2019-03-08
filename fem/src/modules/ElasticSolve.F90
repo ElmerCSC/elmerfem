@@ -80,7 +80,7 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   LOGICAL :: CalculateStrains, CalculateStresses
   LOGICAL :: CalcPrincipalAngle, CalcPrincipal
   LOGICAL :: CalcPrincipalStress, CalcPrincipalStrain
-  LOGICAL :: UseUMAT, OutputStateVars
+  LOGICAL :: OutputStateVars
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
   AxialSymmetry = CurrentCoordinateSystem() == AxisSymmetric
@@ -178,16 +178,17 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
      END IF
   END IF
 
-  UseUMAT = ListGetLogical(SolverParams, 'Use UMAT', Found)
-  IF (UseUMAT) THEN
-    OutputStateVars = GetLogical(SolverParams, 'Output State Variables', Found)
-    IF (OutputStateVars) THEN
-      CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
-          '-dofs 3 -ip StateVar[D1:1 D2:1 D3:1]' )
-      CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
-          '-dofs 9 -ip StateDir[PDir1_x:1 PDir1_y:1 PDir1_z:1 PDir2_x:1 PDir2_y:1 PDir2_z:1 PDir3_x:1 PDir3_y:1 PDir3_z:1]')      
-    END IF
+  ! 
+  ! Create variables for some state variables of a user-defined material model (UMAT):
+  !
+  OutputStateVars = GetLogical(SolverParams, 'Output State Variables', Found)
+  IF (OutputStateVars) THEN
+    CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
+        '-dofs 3 -ip StateVar[D1:1 D2:1 D3:1]' )
+    CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
+        '-dofs 9 -ip StateDir[PDir1_x:1 PDir1_y:1 PDir1_z:1 PDir2_x:1 PDir2_y:1 PDir2_z:1 PDir3_x:1 PDir3_y:1 PDir3_z:1]')
   END IF
+
 !------------------------------------------------------------------------------
 END SUBROUTINE ElasticSolver_Init
 !------------------------------------------------------------------------------
@@ -219,7 +220,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   TYPE(Matrix_t), POINTER :: StiffMatrix, PMatrix
   TYPE(Solver_t), POINTER :: PSolver
   TYPE(Variable_t), POINTER :: StressSol, TempSol, FlowSol, Var, StateSol, StateDir
-  TYPE(ValueList_t), POINTER :: SolverParams, Material, BC, Equation, BodyForce
+  TYPE(ValueList_t), POINTER :: SolverParams, Material, PrevMaterial, BC, Equation, BodyForce
   TYPE(Nodes_t) :: ElementNodes, ParentNodes, FlowNodes
   TYPE(Element_t), POINTER :: CurrentElement, ParentElement, FlowElement
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -277,7 +278,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
   CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
-  CHARACTER(LEN=80) :: UMATName
+  CHARACTER(LEN=80) :: UMATName, UmatModel
+  INTEGER(KIND=AddrInt) :: UMATSubrtn
+  
 !------------------------------------------------------------------------------
   SAVE LocalMassMatrix,LocalStiffMatrix,LocalDampMatrix,LoadVector,InertialLoad, Viscosity, &
        LocalForce,ElementNodes,ParentNodes,FlowNodes,Alpha,Beta, &
@@ -368,11 +371,23 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !-------------------------------------------------------------------------
   !    Check how material behaviour is defined: 
   !-------------------------------------------------------------------------
+  !
+  ! The old keyword "Use UMAT" is obsolite - now the only way to make the umat 
+  ! version active is to have "UMAT Subroutine" as specified.
+  !
   UseUMAT = ListGetLogical( SolverParams, 'Use UMAT', GotIt )
+  ExternalUMAT = ListCheckPresentAnyMaterial(Model, 'UMAT Subroutine')
+  IF ( ExternalUMAT ) THEN
+    CALL Info('ElasticSolve', 'We have UMAT user material')
+    UseUMat = .TRUE.
+  END IF
+  IF (UseUMAT .AND. .NOT. ExternalUMAT) CALL Fatal('ElasticSolve', &
+      'UMAT Subroutine should be specified in Material Section')
   IF (UseUMAT .AND. TransientSimulation) CALL Fatal('ElasticSolve', &
       'UMAT version does not yet support transient simulation')
-  ExternalUMAT = ListGetLogical( SolverParams, 'User Defined UMAT', GotIt )  
-
+  PrevMaterial => NULL()
+  
+ 
   NeoHookeanMaterial = ListGetLogical( SolverParams, 'Neo-Hookean Material', GotIt )
   IF (NeoHookeanMaterial) Isotropic = .TRUE.
   MixedFormulation = NeoHookeanMaterial .AND. &
@@ -662,6 +677,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         Equation => GetEquation()
         Material => GetMaterial()
 
+        IF ( .NOT. ASSOCIATED( Material, PrevMaterial ) ) THEN          
+          IF ( UseUMAT ) THEN
+            UMATName = ListGetString(Material, 'UMAT Subroutine')
+            UMATSubrtn = GetProcAddr( UMATName ) !, Quiet = .TRUE. )
+          END IF
+          PrevMaterial => Material
+        END IF
+                
         PlaneStress = GetLogical( Equation, 'Plane Stress', GotIt )
         PoissonRatio = 0.0d0
 
@@ -669,8 +692,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            CALL GetConstRealArray( Material, MaterialConstants, 'Material Constants', GotIt)
            IF ( SIZE(MaterialConstants,1) /= NPROPS) &
                 CALL Fatal('ElasticSolve','Check the size of Material Constants array')
-           IF (ExternalUMAT) &
-               UMATName = ListGetString(Material, 'Name', GotIt)
+           UMATModel = ListGetString(Material, 'Name', GotIt)
         ELSE
            IF (NeoHookeanMaterial) THEN
               ElasticModulus(1,1,1:n) = ListGetReal( Material, &
@@ -819,9 +841,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                    MaxIntegrationPoints, InitializeStateVars, Density, Damping, AxialSymmetry, &
                    PlaneStress, LargeDeflection, HenckyStrain, CurrentElement, n, nd, ntot, STDOFs, &
                    ElementNodes, LocalDisplacement, PrevLocalDisplacement, LocalTemperature, &
-                   t, Iter, ExternalUMAT, UMATName)
-
-              !CALL Fatal( 'ElasticSolve', 'This version does not offer an umat interface' )
+                   t, Iter, UMATModel)
 
               ! ---------------------------------------------------------------------------
               ! Create a RHS vector which contains just the contribution of external loads
@@ -1263,7 +1283,18 @@ CONTAINS
 ! defining a user-supplied material model) to get the material model.
 ! This subroutine assumes that a stress response function for the Cauchy
 ! stress is supplied (originally Elmer has employed Piola-Kirchhoff stresses).
-! This is still a development version.
+! A template subroutine UMAT_template located in the file 
+!
+!    .../fem/src/modules/UMATLib.F90) 
+!
+! provides a starting point for writing new user-supplied material models.
+! An additional file which contains new UMAT material models can be named freely
+! and it may contain several freely named subroutines that has the same arguments
+! as the template subroutine UMAT_template. The Elmer solver keyword 
+! "UMAT Subroutine" can be chosen to specify the file (that has been compiled
+! with an elmerf90 command before simulation) and pick the subroutine desired. 
+! NOTE: This is still a development version. For some examples see also
+!       the directories .../fem/tests/UMAT_*
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixWithUMAT(MassMatrix, DampMatrix, StiffMatrix, ForceVector, &
        ExternalForceVector, dt, LoadVector, InertialLoad, MaterialConstants, &
@@ -1271,7 +1302,7 @@ CONTAINS
        InitializeStateVars, NodalDensity, NodalDamping, AxialSymmetry, PlaneStress, &
        LargeDeflection, HenckyStrain, Element, n, nd, ntot, dofs, Nodes, NodalDisplacement, &
        PrevNodalDisplacement, NodalTemperature, ElementIndex, IterationIndex, &
-       ExternalUMAT, UMATName)
+       UMATModel)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MassMatrix(:,:), DampMatrix(:,:), StiffMatrix(:,:)
     REAL(KIND=dp) :: ExternalForceVector(:)
@@ -1291,8 +1322,7 @@ CONTAINS
     REAL(KIND=dp) :: NodalTemperature(:)
     INTEGER :: ElementIndex
     INTEGER :: IterationIndex     ! The iteration index to resolve the nonlinearity
-    LOGICAL :: ExternalUMAT
-    CHARACTER(len=80) :: UMATName
+    CHARACTER(len=80) :: UMATModel
     !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
@@ -1371,7 +1401,7 @@ CONTAINS
     REAL(KIND=dp) :: QWork(3,3), EigenVals(3), PriWork(102)
     INTEGER :: PriLWork=102, PriInfo=0
     !------------------------------------------------------------------------------
-
+    
     IF (PlaneStress) CALL Fatal('LocalMatrixWithUMAT', 'Cannot yet handle plane stress case')
     IF (ntot > nd) CALL Fatal('LocalMatrixWithUMAT', 'Static condensation of bubbles is missing')
 
@@ -1424,20 +1454,7 @@ CONTAINS
        InProps(i) = MaterialConstants(i,1)  
     END DO
 
-    IF (ExternalUMAT) THEN
-      cmname = UMATName
-    ELSE
-      ! The material model name is used as a switch between some examples of implementation:
-      IF (HenckyStrain) THEN
-        cmname = 'hencky-stvenant-kirchhoff'//CHAR(0)
-      ELSE
-        IF (LargeDeflection) THEN
-          cmname = 'stvenant-kirchhoff'//CHAR(0)
-        ELSE
-          cmname = 'linear isotropic'//CHAR(0)
-        END IF
-      END IF
-    END IF
+    cmname = UMATModel
 
     dtime = dt
     TimeAtStep(1:2) = GetTime() - dt
@@ -1653,19 +1670,12 @@ CONTAINS
         ! should be the zero-displacement solution:
         stran = 0.0d0
         dstran = 0.0d0
-        IF (ExternalUMAT) THEN
-          CALL UMAT(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
-              EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
-              stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
-              predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-              drot, pnewdt, celent, Identity, Identity, ElementIndex, t, layer, kspt, kstep, kinc)
-        ELSE
-          CALL UMAT_Elmer(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
-              EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
-              stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
-              predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-              drot, pnewdt, celent, Identity, Identity, ElementIndex, t, layer, kspt, kstep, kinc)
-        END IF
+
+        CALL UMATusersubrtn(UMATSubrtn, StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
+            EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
+            stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
+            predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
+            drot, pnewdt, celent, Identity, Identity, ElementIndex, t, layer, kspt, kstep, kinc)
 
         I = (ElementIndex-1)*MaxMaterialPoints+t
         IF ( ANY(StressVec(1:3+nshr) /= PointwiseStateV0(I,NStateV+4:NStateV+6+nshr)) ) THEN
@@ -1695,19 +1705,12 @@ CONTAINS
       StressVec(1:3+nshr) = PointwiseStateV0((ElementIndex-1)*MaxMaterialPoints+t, &
           NStateV+4:NStateV+6+nshr)
 
-      IF (ExternalUMAT) THEN
-        CALL UMAT(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
-            EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
-            stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
-            predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-            drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
-      ELSE
-        CALL UMAT_Elmer(StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
-            EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
-            stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
-            predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-            drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
-      END IF
+      CALL UMATusersubrtn(UMATSubrtn, StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
+          EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
+          stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
+          predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
+          drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
+
       ! ---------------------------------------------------------------------------
       ! Update data which gives the state variables corresponding to the current 
       ! nonlinear iterate.
@@ -1979,360 +1982,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE StrainEnergyDensity
 !------------------------------------------------------------------------------
-
-
-
-!------------------------------------------------------------------------------
-! The template for including a material model definition written in the form of
-! an Abaqus user subroutine (UMAT). The arguments which can be supposed to be 
-! supported by Elmer are capitalized:
-!------------------------------------------------------------------------------
-  SUBROUTINE UMAT_Elmer(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
-       rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
-       predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
-       coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
-       kstep, kinc)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
-    ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
-    ! the time/load increment is given
-    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the 
-    ! current approximation of the strain increment (DSTRAN) must be returned. 
-    ! If the strain increment is defined to be zero in the beginning of the
-    ! nonlinear iteration, Elmer will generate a candidate for the strain increment
-    ! by assuming purely elastic increment characterized by DDSDDE.
-
-    REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
-    ! Requirement for Elmer: The state variables Q_n as specified at the 
-    ! previous time/load level for converged solution are given.
-    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to 
-    ! the current approximation of the strain increment must be returned. If 
-    ! convergence is attained, these values will be saved and associated with the 
-    ! converged solution (cf. the input values)
-
-    REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
-    ! The derivative of (Cauchy) stress response function with respect to the 
-    ! strain evaluated for the current approximation must be returned
-
-    REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
-    ! Requirement for Elmer: Provide specific strain energy (sse), plastic 
-    ! dissipation (spd) and creep dissipation (scd) at the previous time/load 
-    ! level (these are supposed to be declared to be state variables)
-    ! Requirement for umat:  The values of the energy variables corresponding to 
-    ! the current approximation may be returned
-
-    REAL(KIND=dp), INTENT(OUT) :: rpl
-    ! The mechanical heating power (volumetric)
-
-    REAL(KIND=dp), INTENT(OUT) :: ddsddt(NTENS), drplde(NTENS), drpldt
-
-    REAL(KIND=dp), INTENT(IN) :: STRAN(NTENS)
-    ! This gives the strains before the time/load increment.
-    ! The strain can be computed from the deformation gradient, so this
-    ! argument can be considered to be redundant. Elmer provides
-    ! this information anyway. Abaqus assumes that the logarithmic strain 
-    ! is used, but Elmer may also use other strain measures.
-
-    REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
-    ! The current candidate for the strain increment to obtain the current 
-    ! candidate for the stress. In principle this could be computed from the 
-    ! deformation gradient; cf. the variable stran.
-
-    REAL(KIND=dp), INTENT(IN) :: TIME(2)
-    ! Both entries give time before the time/load increment (the time for the last
-    ! converged solution
-
-    REAL(KIND=dp), INTENT(IN) :: DTIME
-    ! The time increment
-
-    REAL(KIND=dp), INTENT(IN) :: TEMP
-    ! Temperature before the time/load increment
-
-    REAL(KIND=dp), INTENT(IN) :: dtemp
-    ! Temperature increment associated wíth the time/load increment. Currently
-    ! Elmer assumes isothermal conditions during the load increment.
-
-    REAL(KIND=dp), INTENT(IN) :: predef(1), dpred(1)
-    ! These are just dummy variables for Elmer
-
-    CHARACTER(len=80), INTENT(IN) :: CMNAME
-    ! The material model name
-
-    INTEGER, INTENT(IN) :: NDI
-    ! The number of direct stress components
-
-    INTEGER, INTENT(IN) :: NSHR
-    ! The number of the engineering shear strain components
-
-    INTEGER, INTENT(IN) :: NTENS 
-    ! The size of the array containing the stress or strain components
-
-    INTEGER, INTENT(IN) :: NSTATEV
-    ! The number of state variables associated with the material model
-
-    REAL(KIND=dp), INTENT(IN) :: PROPS(NPROPS)
-    ! An array of material constants
-
-    INTEGER, INTENT(IN) :: NPROPS
-    ! The number of the material constants
-
-    REAL(KIND=dp), INTENT(IN) :: coords(3)
-    ! The coordinates of the current point could be specified
-
-    REAL(KIND=dp), INTENT(IN) :: drot(3,3)
-    ! No support for keeping track of rigid body rotations 
-    ! (the variable is initialized to the identity)
-
-    REAL(KIND=dp), INTENT(INOUT) :: pnewdt
-    ! Currently, suggesting a new size of time increment does not make any impact
-
-    REAL(KIND=dp), INTENT(IN) :: celent
-    ! The element size is not yet provided by Elmer
-
-    REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
-    ! The deformation gradient before the time/load increment (at the previous 
-    ! time/load level for converged solution)
-
-    REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
-    ! The deformation gradient corresponding to the current approximation
-    ! (cf. the return value of STRESS variable) 
-
-    INTEGER, INTENT(IN) :: NOEL
-    ! The element number
-
-    INTEGER, INTENT(IN) :: NPT
-    ! The integration point number
-
-    INTEGER, INTENT(IN) :: layer, kspt, kstep, kinc
-    ! kstep and kinc could be provided to give information on the incrementation
-    ! procedure
-!------------------------------------------------------------------------------
-    ! Local variables:
-    REAL(KIND=dp) :: SymBasis(6,3,3)
-    REAL(KIND=dp) :: Identity(3,3), B(3,3), C(3,3), Strain(3,3), S(3,3), Sigma(3,3)
-    REAL(KIND=dp) :: WorkMat(3,3)
-    REAL(KIND=dp) :: StrainVec(ntens), Stress2(ntens)
-    REAL(KIND=dp) :: DetDefG
-    REAL(KIND=dp) :: nu, E, LambdaLame, MuLame
-    REAL(KIND=dp) :: EigenVals(3), PriWork(102)
-
-    INTEGER :: i, j, k
-    INTEGER :: PriLWork=102, PriInfo
-
-    LOGICAL :: LargeDeflection, HenckyStrain
-!------------------------------------------------------------------------------
-
-    ! This example creates the basic isotropic model, so there is no state variables
-    ! to be handled. 
-
-    ! Use the material model name cmname as a switch:
-    HenckyStrain = cmname(1:6)=='hencky'
-    IF (cmname(1:2)=='st' .OR. HenckyStrain) THEN
-      LargeDeflection = .TRUE.
-
-      SymBasis(1,1:3,1:3) = RESHAPE((/ 1,0,0,0,0,0,0,0,0 /),(/ 3,3 /))
-      SymBasis(2,1:3,1:3) = RESHAPE((/ 0,0,0,0,1,0,0,0,0 /),(/ 3,3 /))
-      SymBasis(3,1:3,1:3) = RESHAPE((/ 0,0,0,0,0,0,0,0,1 /),(/ 3,3 /)) 
-      SymBasis(4,1:3,1:3) = RESHAPE((/ 0.0d0,0.5d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.0d0,0.0d0 /),(/ 3,3 /))
-      SymBasis(5,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.0d0 /),(/ 3,3 /))
-      SymBasis(6,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.5d0,0.0d0 /),(/ 3,3 /))
-      Identity(1:3,1:3) = RESHAPE((/ 1,0,0,0,1,0,0,0,1 /),(/ 3,3 /))
-
-      B = MATMUL(dfrgrd1, TRANSPOSE(dfrgrd1))
-      C = MATMUL(TRANSPOSE(dfrgrd1), dfrgrd1)
-      IF (HenckyStrain) THEN
-        ! -----------------------------------------------------------
-        ! Compute the spectral decomposition of C
-        ! -----------------------------------------------------------
-        DO i=1,3
-          k = i
-          DO j=k,3
-            WorkMat(i,j) = C(i,j)
-          END DO
-        END DO
-        CALL DSYEV('V', 'U', 3, WorkMat, 3, EigenVals, PriWork, PriLWork, PriInfo)
-        IF (PriInfo /= 0) THEN
-          CALL Fatal( 'UMAT', 'DSYEV cannot generate eigen basis')          
-        END IF
-
-        Strain = 0.0d0
-        Strain(1,1) = LOG(SQRT(EigenVals(1)))
-        Strain(2,2) = LOG(SQRT(EigenVals(2)))       
-        Strain(3,3) = LOG(SQRT(EigenVals(3)))
-        ! Transform back to the original coordinates:
-        Strain = MATMUL(WorkMat, MATMUL(Strain,TRANSPOSE(WorkMat)))
-      ELSE
-        ! This example uses the Lagrangian (Green-St Venant) strain tensor:
-        Strain = 0.5d0 * (C - Identity)
-      END IF
-      
-      DO i=1,ndi
-        StrainVec(i) = Strain(i,i)
-      END DO
-      DO i=1,nshr
-        SELECT CASE(i)
-        CASE(1)
-          StrainVec(ndi+i) = Strain(1,2)+Strain(2,1)
-        CASE(2)
-          StrainVec(ndi+i) = Strain(1,3)+Strain(3,1)
-        CASE(3)
-          StrainVec(ndi+i) = Strain(2,3)+Strain(3,2)
-        END SELECT
-      END DO
-
-      DetDefG = Dfrgrd1(1,1) * ( Dfrgrd1(2,2)*Dfrgrd1(3,3) - Dfrgrd1(2,3)*Dfrgrd1(3,2) ) + &
-              Dfrgrd1(1,2) * ( Dfrgrd1(2,3)*Dfrgrd1(3,1) - Dfrgrd1(2,1)*Dfrgrd1(3,3) ) + &
-              Dfrgrd1(1,3) * ( Dfrgrd1(2,1)*Dfrgrd1(3,2) - Dfrgrd1(2,2)*Dfrgrd1(3,1) )
-    ELSE
-      LargeDeflection = .FALSE.
-    END IF
- 
-    ! Get Young's modulus and the Poisson ratio:
-    E = Props(2)
-    nu = Props(3)
-    
-    LambdaLame = E * nu / ( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
-    MuLame = E / (2.0d0 * (1.0d0 + nu))
-    
-    IF (LargeDeflection) THEN
-      ! --------------------------------------------------------------------------------
-      ! Currently the only nonlinear constitutive law in the umat form is the St. Venant-
-      ! Kirchhoff model. In this case we compute the current stress directly by using the 
-      ! supplied deformation gradient, so that the strain increment is not used. 
-      ! In addition, since it seems that the exact differentiation of the response function 
-      ! for the Cauchy stress cannot be done in a straightforward manner, we now make only
-      ! a partial approximation. The Cauchy stress is given by
-      ! 
-      !     sigma(F) = 1/det(F) F S(E(F)) F^T
-      !
-      ! We however consider only the depedence on the strain as
-      !
-      !     sigma(.) = 1/det(F) F S(.) F^T
-      !
-      ! This simplification makes the nonlinear iteration to be an inexact Newton 
-      ! method whose performance may deteriorate for large strains. If the convergence is 
-      ! attained, the solution nevertheless obeys the St. Venant-Kirchhoff law since
-      ! there are no approximations in the computation of the residual.
-      ! --------------------------------------------------------------------------------
-      ! The constitutive matrix relating the second Piola-Kirchhoff stress and
-      ! the strain tensor:
-      ddsdde = 0.0d0
-      ddsdde(1:ndi,1:ndi) = LambdaLame
-      DO i=1,ntens
-        ddsdde(i,i) = ddsdde(i,i) + MuLame
-      END DO
-      DO i=1,ndi
-        ddsdde(i,i) = ddsdde(i,i) + MuLame
-      END DO
-      Stress2 = MATMUL(ddsdde,StrainVec)
-
-      ! The second Piola-Kirchhoff stress in the tensor form:
-      S = 0.0d0
-      DO i=1,ndi
-        S = S + Stress2(i)*SymBasis(i,:,:)
-      END DO
-      DO i=1,nshr
-        S = S + 2.0d0 * Stress2(ndi+i) * SymBasis(ndi+i,:,:)
-      END DO
-
-      ! The Cauchy stress tensor:
-      Sigma = 1.0d0/DetDefG * MATMUL(dfrgrd1, MATMUL(S,TRANSPOSE(dfrgrd1)))
-
-      DO i=1,ndi
-        Stress(i) = Sigma(i,i)
-      END DO
-      DO i=1,nshr
-        SELECT CASE(i)
-        CASE(1)
-          Stress(ndi+i) = Sigma(1,2)
-        CASE(2)
-          Stress(ndi+i) = Sigma(1,3)
-        CASE(3)
-          Stress(ndi+i) = Sigma(2,3)
-        END SELECT
-      END DO
-
-      ! The derivative: The part corresponding to lambda * tr(E) I
-      ddsdde = 0.0d0
-      WorkMat = LambdaLame * 1/DetDefG * B
-      DO i=1,ndi
-        DO j=1,ndi
-          ddsdde(j,i) = ddsdde(j,i) + WorkMat(j,j)
-        END DO
-        DO j=1,nshr
-          SELECT CASE(j)
-          CASE(1)
-            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,2)
-          CASE(2)
-            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,3)
-          CASE(3)
-            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(2,3)
-          END SELECT
-        END DO
-      END DO
-
-      ! The rest corresponding to  2 * mu * E
-      DO i=1,ndi
-        WorkMat = 2.0d0 * MuLame * 1/DetDefG * MATMUL(dfrgrd1, MATMUL(SymBasis(i,:,:), TRANSPOSE(dfrgrd1)))
-        DO j=1,ndi
-          ddsdde(j,i) = ddsdde(j,i) + WorkMat(j,j)
-        END DO
-        DO j=1,nshr
-          SELECT CASE(j)
-          CASE(1)
-            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,2)
-          CASE(2)
-            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,3)
-          CASE(3)
-            ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(2,3)
-          END SELECT
-        END DO
-      END DO
-
-      DO i=1,nshr
-        WorkMat = 2.0d0 * MuLame * 1/DetDefG * MATMUL(dfrgrd1, MATMUL(SymBasis(ndi+i,:,:), TRANSPOSE(dfrgrd1)))
-        DO j=1,ndi
-          ddsdde(j,ndi+i) = ddsdde(j,ndi+i) + 1.0d0 * WorkMat(j,j)
-        END DO
-        DO j=1,nshr
-          SELECT CASE(j)
-          CASE(1)
-            ddsdde(ndi+j,ndi+i) = ddsdde(ndi+j,ndi+i) + 1.0d0 * WorkMat(1,2)
-          CASE(2)
-            ddsdde(ndi+j,ndi+i) = ddsdde(ndi+j,ndi+i) + 1.0d0 * WorkMat(1,3)
-          CASE(3)
-            ddsdde(ndi+j,ndi+i) = ddsdde(ndi+j,ndi+i) + 1.0d0 * WorkMat(2,3)
-          END SELECT
-        END DO
-      END DO
-
-    ELSE
-      ddsdde = 0.0d0
-      ddsdde(1:ndi,1:ndi) = LambdaLame
-      DO i=1,ntens
-        ddsdde(i,i) = ddsdde(i,i) + MuLame
-      END DO
-      DO i=1,ndi
-        ddsdde(i,i) = ddsdde(i,i) + MuLame
-      END DO
-      ! We have a linear response function, so the following update is precise
-      ! (no higher-order terms related to the notion of differentiability).
-      ! Note that we could also define
-      !
-      !        stress = stress_response_function(stran + dstran)
-      ! or
-      !        stress = stress_response_function(dfrgrd1)
-      !
-      ! which may be the precise definition of the functionality required. 
-      stress = stress + MATMUL(ddsdde,dstran)
-      ! So, for this model, the other way to return the stress:
-      !stress = MATMUL(ddsdde,stran+dstran)
-    END IF
-!------------------------------------------------------------------------------
-  END SUBROUTINE UMAT_Elmer
-!------------------------------------------------------------------------------
-
 
 
 !------------------------------------------------------------------------------

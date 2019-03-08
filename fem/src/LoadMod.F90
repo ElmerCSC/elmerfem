@@ -863,7 +863,7 @@ MODULE LoadMod
         END SUBROUTINE itercallFTNC
 
 
-        SUBROUTINE UMATuserfunction( fptr, &            
+        SUBROUTINE UMATusersubrtn( fptr, &            
             STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
             rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
             predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
@@ -905,7 +905,7 @@ MODULE LoadMod
           INTEGER, INTENT(IN) :: layer, kspt, kstep, kinc
 
           INTERFACE
-            SUBROUTINE UMATuserfun( STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
+            SUBROUTINE UMATsubrtn( STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
                 rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
                 predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
                 coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
@@ -943,12 +943,12 @@ MODULE LoadMod
               INTEGER, INTENT(IN) :: NOEL
               INTEGER, INTENT(IN) :: NPT
               INTEGER, INTENT(IN) :: layer, kspt, kstep, kinc
-            END SUBROUTINE UMATuserfun
+            END SUBROUTINE UMATsubrtn
           END INTERFACE
 
           
           TYPE(C_FUNPTR) :: cfptr
-          PROCEDURE(UMATuserFun), POINTER :: pptr
+          PROCEDURE(UMATsubrtn), POINTER :: pptr
           
           ! Ugly hack, fptr should be stored as C function pointer
           cfptr = TRANSFER(fptr, cfptr)
@@ -959,7 +959,7 @@ MODULE LoadMod
               predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
               coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
               kstep, kinc )
-        END SUBROUTINE UMATuserfunction
+        END SUBROUTINE UMATusersubrtn
     
         
 END MODULE LoadMod
