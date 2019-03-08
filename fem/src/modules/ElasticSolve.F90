@@ -277,8 +277,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 #endif
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
-  CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
-  CHARACTER(LEN=80) :: UMATName, UmatModel
+  CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, UMATName 
+  CHARACTER(LEN=80) :: UmatModel
   INTEGER(KIND=AddrInt) :: UMATSubrtn
   
 !------------------------------------------------------------------------------
