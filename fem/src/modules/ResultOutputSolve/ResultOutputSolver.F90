@@ -53,7 +53,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: ModelVariables
   CHARACTER(*), PARAMETER :: Caller = 'ResultOutputSolver'
-    
+  INTEGER :: SaveSolverMeshIndex
+  
   SAVE SubroutineVisited, OutputCount, ListSet, MeshDim, ListMeshName
 
   INTERFACE
@@ -141,7 +142,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   SaveAllMeshes = GetLogical( Params,'Save All Meshes',Found ) 
   SaveThisMesh = GetLogical( Params,'Save This Mesh Only',Found ) 
-
+  SaveSolverMeshIndex = GetInteger( Params,'Save Solver Mesh Index',Found ) 
+  
   MinMeshDim = ListGetInteger( Params,'Minimum Mesh Dimension',Found )
   MaxMeshDim = ListGetInteger( Params,'Maximum Mesh Dimension',Found )
   
@@ -161,6 +163,13 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
+    IF( SaveSolverMeshIndex > 0 ) THEN
+      IF( .NOT. ASSOCIATED( iMesh, Model % Solvers(SaveSolverMeshIndex) % Mesh ) ) THEN
+        iMesh => iMesh % next
+        CYCLE
+      END IF
+    END IF
+    
     IF( MinMeshDim /= 0 .AND. iMesh % MeshDim < MinMeshDim ) THEN
       iMesh => iMesh % next
       CYCLE
@@ -217,6 +226,13 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
+    IF( SaveSolverMeshIndex > 0 ) THEN
+      IF( .NOT. ASSOCIATED( iMesh, Model % Solvers(SaveSolverMeshIndex) % Mesh ) ) THEN
+        iMesh => iMesh % next
+        CYCLE
+      END IF
+    END IF
+        
     CALL Info(Caller,'Dimension of mesh is: '//TRIM(I2S(iMesh % MeshDim)),Level=7)
 
     IF( MinMeshDim /= 0 .AND. iMesh % MeshDim < MinMeshDim ) THEN

@@ -248,8 +248,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: dim,i,j,k,l,m,n,nd,nb,ntot,t,iter,NDeg,k1,k2,STDOFs,LocalNodes,istat
   INTEGER :: NewtonIter, NonlinearIter, MinNonlinearIter, FlowNOFNodes
   INTEGER :: CoordinateSystem
-  INTEGER :: NPROPS, NSTATEV, MaxIntegrationPoints = 1, N_Gauss
-
+  INTEGER :: NPROPS, NSTATEV, N_Gauss
+  INTEGER :: MAXSTATEV, MaxIntegrationPoints = 1
 
   REAL(KIND=dp), POINTER :: Temperature(:),Pressure(:),Displacement(:), UWrk(:,:), &
        Work(:,:), ForceVector(:), Velocity(:,:), FlowSolution(:), SaveValues(:), &
@@ -290,7 +290,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        OutputStateVars, NodalStrain, NodalStress, VonMises, PrincipalStress, PrincipalStrain, &
        Tresca, PrincipalAngle, CalcPrincipalAngle, CalcPrincipal, &
        PrevLocalDisplacement, SpringCoeff, Indices
-  SAVE NPROPS, NSTATEV, MaxIntegrationPoints, PointwiseStateV, PointwiseStateV0, &
+  SAVE MAXSTATEV, MaxIntegrationPoints, PointwiseStateV, PointwiseStateV0, &
       InitializeStateVars, TotalSol, LocalExternalForce
 !-----------------------------------------------------------------------------------------------------
   INTERFACE
@@ -372,7 +372,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !    Check how material behaviour is defined: 
   !-------------------------------------------------------------------------
   !
-  ! The old keyword "Use UMAT" is obsolite - now the only way to make the umat 
+  ! The old keyword "Use UMAT" is obsolete - now the only way to make the umat 
   ! version active is to have "UMAT Subroutine" as specified.
   !
   UseUMAT = ListGetLogical( SolverParams, 'Use UMAT', GotIt )
@@ -453,14 +453,18 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         ! TO DO: Take into account the possibility Mesh % Changed = .TRUE. 
         !------------------------------------------------------------------------------
         M = GetNOFActive()
+        MAXSTATEV = 0
         DO t=1,M
            CurrentElement => GetActiveElement(t)
            Material => GetMaterial()
 
-           NPROPS = GetInteger( Material, 'Number of Material Constants', GotIt)
+           UMATName = ListGetString(Material, 'UMAT Subroutine', GotIt)
+           IF (.NOT. GotIt) CYCLE
+
+           NPROPS = GetInteger(Material, 'Number of Material Constants', GotIt)
            IF (.NOT. GotIt) CALL Fatal('ElasticSolve', &
                 'Number of Material Constants for UMAT must be specified')
-           NSTATEV = GetInteger( Material, 'Number of State Variables', GotIt)
+           MAXSTATEV = MAX(MAXSTATEV, GetInteger( Material, 'Number of State Variables', GotIt))
            IF (.NOT. GotIt) CALL Fatal('ElasticSolve', &
                 'Number of Material Constants for UMAT must be specified')
 
@@ -476,7 +480,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         ! of state variables + 9 additional variables which are three energy 
         ! variables and six stress components:
         ! ---------------------------------------------------------------------
-        CALL AllocateArray(PointwiseStateV, M * MaxIntegrationPoints, NSTATEV+9)
+        CALL AllocateArray(PointwiseStateV, M * MaxIntegrationPoints, MAXSTATEV+9)
         PointwiseStateV = 0.0d0
         ! ----------------------------------------------------------------------
         ! We also create a similar variable PointwiseStateV0 which keeps the
@@ -487,9 +491,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         ! by the last extra entry: a value < 0 means that the state variables have
         ! not yet been initiated by the extra call.
         ! ----------------------------------------------------------------------
-        CALL AllocateArray(PointwiseStateV0, M * MaxIntegrationPoints, NSTATEV+10)
+        CALL AllocateArray(PointwiseStateV0, M * MaxIntegrationPoints, MAXSTATEV+10)
         PointwiseStateV0 = 0.0d0
-        PointwiseStateV0(:,NSTATEV+10) = -1.0d0
+        PointwiseStateV0(:,MAXSTATEV+10) = -1.0d0
         InitializeStateVars = GetLogical(SolverParams, 'Initialize State Variables', &
             GotIt)
      END IF
@@ -681,6 +685,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
           IF ( UseUMAT ) THEN
             UMATName = ListGetString(Material, 'UMAT Subroutine')
             UMATSubrtn = GetProcAddr( UMATName ) !, Quiet = .TRUE. )
+            NPROPS = GetInteger(Material, 'Number of Material Constants', GotIt)
+            NSTATEV = GetInteger(Material, 'Number of State Variables', GotIt)
           END IF
           PrevMaterial => Material
         END IF
@@ -690,7 +696,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
         IF (UseUMAT) THEN
            CALL GetConstRealArray( Material, MaterialConstants, 'Material Constants', GotIt)
-           IF ( SIZE(MaterialConstants,1) /= NPROPS) &
+           IF ( SIZE(MaterialConstants,1) < NPROPS) &
                 CALL Fatal('ElasticSolve','Check the size of Material Constants array')
            UMATModel = ListGetString(Material, 'Name', GotIt)
         ELSE
@@ -1182,7 +1188,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          CALL Info('ElasticitySolver', Message, Level=3)
          ! Save the state variables corresponding to the converged nonlinear
          ! solution to the array holding the previous solution state:
-         PointwiseStateV0(:,1:NStatev+9) = PointwiseStateV(:,1:NStateV+9)
+         PointwiseStateV0(:,1:MaxStatev+9) = PointwiseStateV(:,1:MaxStateV+9)
          Displacement(:) = TotalSol(:)
          IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
          EXIT
@@ -1205,7 +1211,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          CALL Info('ElasticitySolver', Message, Level=3)        
          ! Save the state variables corresponding to the converged nonlinear
          ! solution to the array holding the previous solution state:
-         PointwiseStateV0(:,1:NStatev+9) = PointwiseStateV(:,1:NStateV+9)
+         PointwiseStateV0(:,1:MaxStatev+9) = PointwiseStateV(:,1:MaxStateV+9)
          IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
          EXIT
        END IF
@@ -1227,7 +1233,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      CALL Info('ElasticSolve','Computing postprocessing fields')
      IF (UseUMAT) THEN
         CALL GenerateStressVariable(PointwiseStateV, NodalStress, StressPerm, MaxIntegrationPoints, &
-             NStateV, CalculateStresses, AxialSymmetry)
+            CalculateStresses, AxialSymmetry)
 
         CALL GenerateStrainVariable(Displacement, NodalStrain, StressPerm, CalculateStrains, &
             AxialSymmetry, LargeDeflection)
@@ -1242,7 +1248,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !   Write the state variable solution ...
   !-----------------------------------------------------------------------------
   IF (UseUMAT .AND. OutputStateVars) THEN
-    CALL GenerateStateVariable(PointwiseStateV, MaxIntegrationPoints, NStateV, StateSol, StateDir)
+    CALL GenerateStateVariable(PointwiseStateV, MaxIntegrationPoints, StateSol, StateDir)
   END IF
 
 
@@ -3355,7 +3361,7 @@ CONTAINS
 
 !--------------------------------------------------------------------------------
   SUBROUTINE GenerateStressVariable( PointwiseStateV, NodalStress, Perm, &
-       MaxIntegrationPoints, NStateV, CalculateStress, AxialSymmetry)
+       MaxIntegrationPoints, CalculateStress, AxialSymmetry)
 !--------------------------------------------------------------------------------
 !   This subroutine generates the stress field for material models which
 !   depend on a list of state variables
@@ -3363,20 +3369,21 @@ CONTAINS
     REAL(KIND=dp), POINTER :: PointwiseStateV(:,:)    
     REAL(KIND=dp), POINTER :: NodalStress(:)
     INTEGER, POINTER :: Perm(:) 
-    INTEGER :: MaxIntegrationPoints, NStateV
+    INTEGER :: MaxIntegrationPoints
     LOGICAL :: CalculateStress, AxialSymmetry
  !---------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: StSolver
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    TYPE(ValueList_t), POINTER :: Equation
+    TYPE(ValueList_t), POINTER :: Equation, Material
 
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, UseMask   
     LOGICAL :: Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize
 
     INTEGER, POINTER :: Permutation(:), Indices(:)
     INTEGER :: dim, elem, n, nd, i, k, l, p, q, N_Gauss, Ind(6), StressDim
+    INTEGER :: NStateV
 
     REAL(KIND=dp), POINTER :: StressTemp(:)
     REAL(KIND=dp), ALLOCATABLE :: SForceG(:)
@@ -3469,6 +3476,8 @@ CONTAINS
        k = (elem-1)*MaxIntegrationPoints
 
        Equation => GetEquation()
+       Material => GetMaterial()
+       NStateV = GetInteger(Material, 'Number of State Variables', Found)
        !---------------------------------------
        ! Check if stresses wanted for this body:
        ! ---------------------------------------
@@ -4312,7 +4321,7 @@ CONTAINS
 
 
 !--------------------------------------------------------------------------------
-  SUBROUTINE GenerateStateVariable(PointwiseStateV, MaxIntegrationPoints, NStateV, &
+  SUBROUTINE GenerateStateVariable(PointwiseStateV, MaxIntegrationPoints, &
       StateSol, StateDir)
 !--------------------------------------------------------------------------------
 !   This subroutine generates the field for visualizing the state variables of
@@ -4321,22 +4330,26 @@ CONTAINS
 !   calling this subroutine is feasible depends on case.   
 !--------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: PointwiseStateV(:,:) 
-    INTEGER :: MaxIntegrationPoints, NStateV
+    INTEGER :: MaxIntegrationPoints
     TYPE(Variable_t), POINTER :: StateSol, StateDir
 !---------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    INTEGER :: elem, dofs, dirdofs, i, j, k, t
+    TYPE(ValueList_t), POINTER :: Material
+    LOGICAL :: Found
+    INTEGER :: elem, dofs, dirdofs, i, j, k, t, NStateV
     INTEGER :: PriLWork=102, PriInfo=0
     REAL(KIND=dp) :: Work(3,3), EigenVals(3), PriWork(102)
 !---------------------------------------------------------------------------------
-    IF (NStateV < 6) CALL Fatal('GenerateStateVariable', &
-        'At least 6 state variables should exist')
-
     dofs = StateSol % DOFs
     dirdofs = StateDir % DOFs
     DO elem = 1, Solver % NumberOfActiveElements
       Element => GetActiveElement(elem, Solver)
+      Material => GetMaterial()
+      NStateV = GetInteger( Material, 'Number of State Variables', Found)
+      IF (NStateV < 6) CALL Fatal('GenerateStateVariable', &
+          'At least 6 state variables should exist')
+
       IntegStuff = GaussPoints(Element)
       k = (elem-1)*MaxIntegrationPoints
 
