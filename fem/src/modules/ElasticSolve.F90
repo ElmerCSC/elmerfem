@@ -683,8 +683,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
         IF ( .NOT. ASSOCIATED( Material, PrevMaterial ) ) THEN          
           IF ( UseUMAT ) THEN
-            UMATName = ListGetString(Material, 'UMAT Subroutine')
-            UMATSubrtn = GetProcAddr( UMATName ) !, Quiet = .TRUE. )
+            UMATName = ListGetString(Material, 'UMAT Subroutine', UnfoundFatal=.TRUE.)
+            UMATSubrtn = GetProcAddr( UMATName )
             NPROPS = GetInteger(Material, 'Number of Material Constants', GotIt)
             NSTATEV = GetInteger(Material, 'Number of State Variables', GotIt)
           END IF
