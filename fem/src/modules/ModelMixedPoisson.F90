@@ -259,14 +259,19 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
-    TYPE(Element_t), POINTER :: Parent, Edge
+    TYPE(Element_t), POINTER :: Parent, Face
     TYPE(ValueHandle_t) :: ScalarField
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: RevertSign(6), stat, AssembleForce, OrientationsMatch
+    LOGICAL :: RevertIndices
     INTEGER, POINTER :: FaceMap(:,:)
-    INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches
-    REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), detJ, s, u, w, g
+    INTEGER, TARGET :: TetraFaceMap(4,3)
+    INTEGER :: FDofMap(4,3)
+    INTEGER :: OriginalIndices(3)
+    INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches, FDOFs
+    REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), WorkTrace(nd)
+    REAL(KIND=dp) :: detJ, s, u, v, w, g
 
     SAVE ScalarField, Nodes
 !------------------------------------------------------------------------------
@@ -289,6 +294,7 @@ CONTAINS
     END IF
     IF (.NOT. ASSOCIATED(Parent)) RETURN
 
+    RevertIndices = .FALSE.
     Family = GetElementFamily(Element)
     SELECT CASE(Family)
     CASE(2)
@@ -298,11 +304,11 @@ CONTAINS
       ! (TO CONSIDER: write a subroutine for this routine task)
       !
       DO ActiveFaceId=1,Parent % TYPE % NumberOfEdges
-        Edge => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
+        Face => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
         matches = 0
         DO k=1,Element % TYPE % NumberOfNodes
-          DO l=1,Edge % TYPE % NumberOfNodes
-            IF (Element % NodeIndexes(k)==Edge % NodeIndexes(l)) matches=matches+1
+          DO l=1,Face % TYPE % NumberOfNodes
+            IF (Element % NodeIndexes(k)==Face % NodeIndexes(l)) matches=matches+1
           END DO
         END DO
         IF (matches==Element % TYPE % NumberOfNodes) EXIT
@@ -325,8 +331,52 @@ CONTAINS
         OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,1))
       END IF
 
+    CASE(3)
+      IF (.NOT. ASSOCIATED(Parent % FaceIndexes)) RETURN
+      !
+      ! Pick the face of the parent element corresponding to the boundary element:
+      ! (TO CONSIDER: write a subroutine for this routine task)
+      !      
+      DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
+        Face => Solver % Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
+        IF (GetElementFamily(Element) /= GetElementFamily(Face)) CYCLE
+        matches = 0
+        DO k=1,Element % TYPE % NumberOfNodes
+          DO l=1,Face % TYPE % NumberOfNodes
+            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) matches=matches+1
+          END DO
+        END DO
+        IF (matches == Element % TYPE % NumberOfNodes ) EXIT
+      END DO
+      IF (matches /= Element % TYPE % NumberOfNodes) RETURN
+
+      FDOFs = Face % BDOFs
+      IF (FDOFs < 1) RETURN
+
+      CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
+      IF (SecondFamily) THEN
+        IF (FDOFs /= 3) CALL Fatal('ModelMixedPoisson', '3-DOF faces expected')
+        TetraFaceMap(1,:) = (/ 2, 1, 3 /)
+        TetraFaceMap(2,:) = (/ 1, 2, 4 /)
+        TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
+        TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+
+        !FaceMap => TetraFaceMap 
+
+        CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
+        
+        IF (ANY(Element % NodeIndexes(1:3) /= Parent % NodeIndexes(TetraFaceMap(ActiveFaceId,1:3)))) THEN
+          !
+          ! The parent element face is indexed differently, reorder and revert afterwards:
+          !
+          OriginalIndices(1:3) = Element % NodeIndexes(1:3)
+          Element % NodeIndexes(1:3) =  Parent % NodeIndexes(TetraFaceMap(ActiveFaceId,1:3))
+          RevertIndices = .TRUE.
+        END IF
+      END IF
+
     CASE DEFAULT
-      CALL Warn('ModelMixedPoisson', 'Neumann BCs in 3-D have not been implemented yet')
+      CALL Warn('ModelMixedPoisson', 'Neumann BCs for 4-node faces have not been implemented yet')
       RETURN
     END SELECT
 
@@ -339,18 +389,18 @@ CONTAINS
     END IF
 
     CALL GetElementNodes(Nodes)
-    IP = GaussPoints(Element)
+    IF (Family == 3) THEN
+      !
+      ! Integration must be done over p-reference element
+      !
+      IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
 
     Force = 0.0d0
     DO t=1,IP % n
-      !--------------------------------------------------------------
-      ! Basis function values at the integration point:
-      !--------------------------------------------------------------
-      stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
-              IP % W(t), DetJ, Basis)
-      
       !
-      ! The normal traces of face basis functions - now this is available only for 2D.
       ! NOTE: Here the effect of the Piola transformation is taken into account
       !       such that the multiplication with DetJ is not needed
       ! TO CONSIDER: Get the traces of vector-values basis functions 
@@ -358,6 +408,11 @@ CONTAINS
       !
       SELECT CASE(Family)
       CASE(2)
+        !--------------------------------------------------------------
+        ! Basis function values at the integration point:
+        !--------------------------------------------------------------
+        stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), DetJ, Basis)
         IF (SecondFamily) THEN
           u = IP % U(t)
           IF (OrientationsMatch) THEN
@@ -370,7 +425,27 @@ CONTAINS
         ELSE
           TraceBasis(1) = s * 0.5d0
         END IF
-      !CASE(3)
+      CASE(3)
+        u = IP % U(t)
+        v = IP % V(t)
+        DO k=1,n
+          Basis(k) = TriangleNodalPBasis(k, u, v)
+        END DO
+
+        IF (SecondFamily) THEN
+          WorkTrace(1) = -1.0d0*(-8 - 12*u + 4*Sqrt(3.0d0)*v)/12.0d0
+          WorkTrace(2) = -1.0d0*(u + (-8 + 4*Sqrt(3.0d0)*v)/12.0d0)
+          WorkTrace(3) = -1.0d0*(4.0d0 - 8*Sqrt(3.0d0)*v)/12.0d0
+          !
+          ! Reorder and revert signs:
+          !
+          DO j=1,FDOFs
+            k = FDofMap(ActiveFaceId,j)
+            TraceBasis(j) = s * WorkTrace(k)
+          END DO
+        ELSE
+          TraceBasis(1) = s / SQRT(3.0d0)
+        END IF
       END SELECT
 
       w = IP % s(t) ! NOTE: No need to multiply with DetJ
@@ -385,6 +460,8 @@ CONTAINS
     END DO
 
     IF (AssembleForce) CALL DefaultUpdateForce(Force)
+
+    IF (RevertIndices) Element % NodeIndexes(1:3) = OriginalIndices(1:3)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------

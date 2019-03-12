@@ -1352,6 +1352,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
+    IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
 
     Norm = DefaultSolve()
 

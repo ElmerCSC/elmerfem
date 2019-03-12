@@ -237,7 +237,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   
   TYPE(Variable_t), POINTER :: Var, FixJVar, CoordVar
   TYPE(Matrix_t), POINTER :: A
-  TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
+  TYPE(ListMatrix_t), POINTER, SAVE :: BasicCycles(:)
   TYPE(ValueList_t), POINTER :: CompParams
   TYPE(Matrix_t), POINTER :: CM=>NULL()
   
@@ -1327,9 +1327,13 @@ CONTAINS
     INTEGER, ALLOCATABLE :: r_e(:), s_e(:,:), iperm(:)
     INTEGER :: ssz, status(MPI_STATUS_SIZE), ierr, ii(ParEnv % PEs)
 !------------------------------------------------------------------------------
-    IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
-      ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
+
+    IF( ALLOCATED( TreeEdges ) ) THEN
+      CALL Info('WhitneyAVSolver','Gauge tree already created',Level=15)
+      RETURN
     END IF
+      
+    ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
     TreeEdges = .FALSE.
 
     n = Mesh % NumberOfNodes
@@ -1439,9 +1443,13 @@ CONTAINS
     TYPE(Element_t), POINTER :: Edge, Boundary, Element
 !------------------------------------------------------------------------------
 
-    IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
-      ALLOCATE(TreeEdges(Mesh % NumberOfEdges)); TreeEdges = .FALSE.
+    IF( ALLOCATED( TreeEdges ) ) THEN
+      CALL Info('WhitneyAVSolver','Boundary Gauge tree already created',Level=15)
+      RETURN
     END IF
+
+    ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
+    TreeEdges = .FALSE.
 
     n = Mesh % NumberOfNodes
     ALLOCATE(Done(n)); Done=.FALSE.
@@ -1513,7 +1521,7 @@ CONTAINS
         Aentry=>List_GetMatrixIndex(Alist,l,j)
       END DO
     END DO
- 
+    
     ! generate the tree for all (perhaps disconnected) parts:
     ! -------------------------------------------------------
     DO WHILE(.NOT.ALL(Done(NodeList)))
@@ -1544,6 +1552,7 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: DoneL(:)
     INTEGER, ALLOCATABLE :: Fifo(:), Previous(:), FiFo1(:)
 !------------------------------------------------------------------------------
+
    ALLOCATE(DoneL(Mesh % NumberOfEdges)); DoneL=.FALSE.
    ALLOCATE(Fifo(FluxCount),FiFo1(FluxCount))
    ALLOCATE(Previous(Mesh % NumberOfNodes)); Previous=0;
@@ -1588,6 +1597,7 @@ CONTAINS
 
    Bcycle=0;
    ALLOCATE(BasicCycles(FluxCount))
+   
    BasicCycles(:) % Degree = 0
    DO i=1,FluxCount
      BasicCycles(i) % Head => NULL()
@@ -2378,6 +2388,7 @@ END SUBROUTINE LocalConstraintMatrix
     ALLOCATE(FluxBoundaryEdge(Mesh % NumberOFEdges)); FluxBoundaryEdge=.FALSE.
 
     Active = GetNOFBoundaryElements()
+
     DO t=1,Active
        Element => GetBoundaryElement(t)
 
@@ -2403,7 +2414,7 @@ END SUBROUTINE LocalConstraintMatrix
     IF ( FluxCount==0 ) THEN
       DEALLOCATE(FluxBoundaryEdge); RETURN
     END IF
-
+    
     IF (.NOT.ALLOCATED(FluxMap) ) ALLOCATE(FluxMap(FluxCount))
     FluxCount = 0
     FluxMap   = 0
@@ -2414,7 +2425,7 @@ END SUBROUTINE LocalConstraintMatrix
       END IF
     END DO
     DEALLOCATE(FluxBoundaryEdge)
-
+    
     DO i=1,FluxCount
       Edge => Mesh % Edges(FluxMap(i))
       Edge % BoundaryInfo % Left => NULL()
@@ -2447,7 +2458,6 @@ END SUBROUTINE LocalConstraintMatrix
         END IF
       END DO
     END DO
-
 
     ! Make gauge tree for the boundary:
     ! ---------------------------------
@@ -2487,7 +2497,9 @@ END SUBROUTINE LocalConstraintMatrix
     ! ---------------------------------------------------------------
     ALLOCATE(CycleEdges(Mesh % NumberOFEdges), UsedFaces(Faces))
     CycleEdges = .FALSE.
-    ALLOCATE(dMap(MAXVAL(BasicCycles(:) % Degree)))
+    
+    i = MAXVAL(BasicCycles(1:FluxCount) % Degree)
+    ALLOCATE(dMap(i))
 
     Smat => GetMatrix()
     DO i=1,SIZE(BasicCycles)
@@ -2667,7 +2679,7 @@ END SUBROUTINE LocalConstraintMatrix
       CALL SetDOFtoValue(Solver,dMap(j),S)
     END DO
     DEALLOCATE(dMap, CycleEdges, FaceMap, UsedFaces, Bn)
-    CALL List_FreeMatrix(SIZE(BasicCycles), BasicCycles)
+    !CALL List_FreeMatrix(SIZE(BasicCycles), BasicCycles)
 !------------------------------------------------------------------------------
   END SUBROUTINE DirichletAfromB 
 !------------------------------------------------------------------------------
