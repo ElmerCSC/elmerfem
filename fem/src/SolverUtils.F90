@@ -547,6 +547,56 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!> Restores the saved bulk after
+!------------------------------------------------------------------------------
+   SUBROUTINE RestoreBulkMatrix( A )
+!------------------------------------------------------------------------------
+     TYPE(Matrix_t) :: A
+     INTEGER :: i,n
+     
+     IF( ASSOCIATED( A % BulkRhs ) ) THEN
+       n = SIZE( A % Rhs )
+       IF( SIZE( A % BulkRhs ) /= n ) THEN
+         CALL Fatal('RestoreBulkMatrix','Cannot restore rhs of different size!')
+       END IF
+       A % Rhs(1:n) = A % BulkRhs(1:n)
+     END IF
+     
+     IF( ASSOCIATED( A % BulkValues ) ) THEN
+       n = SIZE( A % Values )
+       IF( SIZE( A % BulkValues ) /= n ) THEN
+         CALL Fatal('RestoreBulkMatrix','Cannot restore matrix of different size!')
+       END IF
+       DO i=1,n
+         A % Values(1:n) = A % BulkValues(1:n)
+       END DO
+     END IF
+
+     IF( ASSOCIATED( A % BulkMassValues ) ) THEN
+       n = SIZE( A % MassValues )
+       IF( SIZE( A % BulkMassValues ) /= n ) THEN
+         CALL Fatal('RestoreBulkMatrix','Cannot restore mass matrix of different size!')
+       END IF
+       DO i=1,n
+         A % MassValues(1:n) = A % BulkMassValues(1:n)
+       END DO
+     END IF
+
+     IF( ASSOCIATED( A % BulkDampValues ) ) THEN
+       n = SIZE( A % DampValues )
+       IF( SIZE( A % BulkDampValues ) /= n ) THEN
+         CALL Fatal('RestoreBulkMatrix','Cannot restore damp matrix of different size!')
+       END IF
+       DO i=1,n
+         A % MassValues(1:n) = A % BulkMassValues(1:n)
+       END DO
+     END IF
+     
+   END SUBROUTINE RestoreBulkMatrix
+!------------------------------------------------------------------------------
+
+
+   
 
 !> Create a child matrix of same toopology but optioanally different size than the
 !> parent matrix.
