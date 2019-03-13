@@ -189,8 +189,7 @@ CONTAINS
 
     CHARACTER(LEN=MAX_STRING_LEN),SAVE  :: threads, CoordTransform  
     LOGICAL, SAVE                       :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
-    INTEGER                             :: ii, kk, nthreads
-
+    INTEGER                             :: ii, kk
 
 
     ! Start the watches, store later
@@ -245,8 +244,7 @@ CONTAINS
 
       ! Set number of OpenMP threads
       nthreads = 1
-      !$ CALL omp_set_num_threads(nthreads)
-      
+      !$ nthreads = omp_get_max_threads()
       IF (nthreads > 1) THEN
         ! Check if OMP_NUM_THREADS environment variable is set
 #if USE_ISO_C_BINDINGS
