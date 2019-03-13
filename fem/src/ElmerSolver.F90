@@ -105,7 +105,6 @@ MODULE ElmerSolver_mod
   INTEGER, SAVE                 :: ExtrudeLevels
   INTEGER, SAVE                 :: ExtrudeLayers, MeshIndex
   TYPE(Mesh_t), POINTER, SAVE   :: ExtrudedMesh
-  INTEGER, SAVE                 :: omp_get_max_threads
   INTEGER, SAVE                 :: Initialize = 0
   !--------------------------------------------------------------
 
