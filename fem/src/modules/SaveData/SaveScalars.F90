@@ -54,10 +54,10 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: NormInd, LineInd, i
+  INTEGER :: NormInd, LineInd, MarkerUnit, i
   LOGICAL :: GotIt, MarkFailed, AvoidFailed
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
-
+  
   
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
@@ -86,13 +86,12 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
     IF( AvoidFailed ) THEN
       INQUIRE(FILE=TRIM(Name),EXIST=GotIt)
       IF( GotIt ) THEN     
-        OPEN (10, FILE=Name)
-        READ(10,*) i
+        OPEN(NEWUNIT=MarkerUnit, FILE=Name)
+        READ(MarkerUnit,*) i
         IF( i == 0 ) THEN
           CALL Fatal('SaveScalars_init','Strategy already failed before!')
-        ELSE
-          CLOSE(10)
         END IF
+        CLOSE(MarkerUnit)
       END IF
     END IF
     
@@ -101,8 +100,9 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
     IF( MarkFailed ) THEN
       CALL Info('SaveScalars_init','Saving False marker at start')
       i = 0
-      OPEN(10,FILE=Name,STATUS='Unknown')
-      WRITE(10,'(I0)') i
+      OPEN(NEWUNIT=MarkerUnit,FILE=Name,STATUS='Unknown')
+      WRITE(MarkerUnit,'(I0)') i
+      CLOSE(MarkerUnit)
     END IF
   END IF
 
@@ -166,7 +166,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen      
-  INTEGER :: IntVal, FirstInd, LastInd 
+  INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT
 #ifndef USE_ISO_C_BINDINGS
@@ -230,7 +230,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
       
-    ScalarNamesFile = TRIM(ScalarsFile) // '.' // TRIM("names")
+    ScalarNamesFile = TRIM(ScalarsFile) // TRIM(".names")
     LiveGraph = ListGetLogical(Params,'Live Graph',GotIt) 
   END IF
 
@@ -1176,50 +1176,50 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(ParallelReduce) CALL Info('SaveScalars','Parallel data is reduced into one file',Level=6)
       IF(FileAppend) CALL Info('SaveScalars','Data is appended to existing file',Level=6)
       
-      OPEN (10, FILE=ScalarNamesFile)
+      OPEN(NEWUNIT=NamesUnit, FILE=ScalarNamesFile)
       Message = ListGetString(Model % Simulation,'Comment',GotIt)
       IF( GotIt ) THEN
-        WRITE(10,'(A)') TRIM(Message)
+        WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
 
       Message = ListGetString(Params,'Comment',GotIt)
       IF( GotIt ) THEN
-        WRITE(10,'(A)') TRIM(Message)
+        WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
 
       DateStr = GetVersion()
-      WRITE( 10,'(A)') 'Elmer version: '//TRIM(DateStr)     
+      WRITE( NamesUnit,'(A)') 'Elmer version: '//TRIM(DateStr)     
 
       DateStr = GetRevision( GotIt )
       IF( GotIt ) THEN
-        WRITE( 10,'(A)') 'Elmer revision: '//TRIM(DateStr)
+        WRITE( NamesUnit,'(A)') 'Elmer revision: '//TRIM(DateStr)
       END IF        
 
       DateStr = GetCompilationDate( GotIt )
       IF( GotIt ) THEN
-        WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
+        WRITE( NamesUnit,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
       END IF
 
       DateStr = GetSifName( GotIt ) 
       IF( GotIt ) THEN
-        WRITE( 10,'(A)') 'Solver input file: '//TRIM(DateStr)
+        WRITE( NamesUnit,'(A)') 'Solver input file: '//TRIM(DateStr)
       END IF
             
       DateStr = FormatDate()      
-      WRITE( 10,'(A)') 'File started at: '//TRIM(DateStr)
+      WRITE( NamesUnit,'(A)') 'File started at: '//TRIM(DateStr)
 
-      WRITE(10,'(A)') ' '
-      WRITE(10,'(A)') 'Variables in columns of matrix: '//TRIM(ScalarsFile)
+      WRITE(NamesUnit,'(A)') ' '
+      WRITE(NamesUnit,'(A)') 'Variables in columns of matrix: '//TRIM(ScalarsFile)
       IF( LineInd /= 0 ) THEN
         i = 1
-        WRITE(10,'(I4,": ",A)') 1,'Line Marker'
+        WRITE(NamesUnit,'(I4,": ",A)') 1,'Line Marker'
       ELSE
         i = 0
       END IF
       DO No=1,NoValues 
-        WRITE(10,'(I4,": ",A)') No+i,TRIM(ValueNames(No))
+        WRITE(NamesUnit,'(I4,": ",A)') No+i,TRIM(ValueNames(No))
       END DO
-      CLOSE(10)
+      CLOSE(NamesUnit)
     END IF
     
     !------------------------------------------------------------------------------
@@ -1233,40 +1233,39 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       WRITE( ScalarParFile, '(A,i0)' ) TRIM(ScalarsFile)//'.', ParEnv % MyPE
       
       IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
-        OPEN (10, FILE=ScalarParFile,POSITION='APPEND')
+        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarParFile,POSITION='APPEND')
       ELSE 
-        OPEN (10,FILE=ScalarParFile)
+        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarParFile)
       END IF
     ELSE IF( WriteCore ) THEN 
       IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
-        OPEN (10, FILE=ScalarsFile,POSITION='APPEND')
+        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarsFile,POSITION='APPEND')
       ELSE 
-        OPEN (10,FILE=ScalarsFile)
+        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarsFile)
       END IF
     END IF
-
 
 
     IF( WriteCore ) THEN
       ! If there are multiple lines it may be a good idea to mark each by an index
       IF( LineInd /= 0) THEN
-        WRITE (10,'(I6)',advance='no') LineInd
+        WRITE (ScalarsUnit,'(I6)',advance='no') LineInd
       END IF
       DO No=1,NoValues-1
         IF( ValuesInteger(No) ) THEN
           IntVal = NINT( Values(No) )
-          WRITE (10,'(I10)',advance='no') IntVal
+          WRITE (ScalarsUnit,'(I10)',advance='no') IntVal
         ELSE
-          WRITE (10,'(ES22.12E3)',advance='no') Values(No)
+          WRITE (ScalarsUnit,'(ES22.12E3)',advance='no') Values(No)
         END IF
       END DO
       IF( ValuesInteger(NoValues) ) THEN
         IntVal = NINT( Values(No) )
-        WRITE (10,'(I10)') IntVal
+        WRITE (ScalarsUnit,'(I10)') IntVal
       ELSE
-        WRITE (10,'(ES22.12E3)') Values(NoValues)
+        WRITE (ScalarsUnit,'(ES22.12E3)') Values(NoValues)
       END IF
-      CLOSE(10)
+      CLOSE(ScalarsUnit)
     
       !------------------------------------------------------------------------------
       ! Save comments by line in a metadata file
@@ -1275,8 +1274,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Message = ListGetString(Params,'Comment',GotIt)
         Name = TRIM(ScalarsFile) // '.' // TRIM("marker")
         IF( GotIt ) THEN
-          OPEN (10, FILE=Name,POSITION='APPEND')
-          WRITE(10,'(I6,A,A)') LineInd,': ',TRIM(Message)
+          OPEN(NEWUNIT=ScalarsUnit, FILE=Name,POSITION='APPEND')
+          WRITE(ScalarsUnit,'(I6,A,A)') LineInd,': ',TRIM(Message)
+          CLOSE(ScalarsUnit)
         END IF
       END IF
     
@@ -1287,20 +1287,20 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(LiveGraph) THEN
         ! Save data as comma-separated-values (cvs-file)
         IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
-          OPEN (10, FILE=TRIM(ScalarsFile)//'.csv',POSITION='APPEND')      
+          OPEN(NEWUNIT=ScalarsUnit, FILE=TRIM(ScalarsFile)//'.csv',POSITION='APPEND')      
         ELSE 
-          OPEN (10, FILE=TRIM(ScalarsFile)//'.csv')
+          OPEN(NEWUNIT=ScalarsUnit, FILE=TRIM(ScalarsFile)//'.csv')
           DO No=1,NoValues-1
-            WRITE (10,'(A)',advance='no') TRIM(ValueNames(No))//","
+            WRITE (ScalarsUnit,'(A)',advance='no') TRIM(ValueNames(No))//","
           END DO
-          WRITE (10,'(A)') TRIM(ValueNames(NoValues))
+          WRITE (ScalarsUnit,'(A)') TRIM(ValueNames(NoValues))
         END IF
       
         DO No=1,NoValues-1
-          WRITE (10,'(ES22.12E3,A)',advance='no') Values(No),","
+          WRITE (ScalarsUnit,'(ES22.12E3,A)',advance='no') Values(No),","
         END DO
-        WRITE (10,'(ES22.12E3)') Values(NoValues)
-        CLOSE(10)
+        WRITE (ScalarsUnit,'(ES22.12E3)') Values(NoValues)
+        CLOSE(ScalarsUnit)
       END IF
     END IF   
   END IF ! of SaveFile
@@ -1362,8 +1362,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CALL Info('SaveScalars','Saving True marker at end')
       Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
       i = 1
-      OPEN(10,FILE=Name,STATUS='Unknown')
-      WRITE(10,'(I0)') i
+      OPEN(NEWUNIT=MarkerUnit,FILE=Name,STATUS='Unknown')
+      WRITE(MarkerUnit,'(I0)') i
+      CLOSE(MarkerUnit)
     END IF
   END IF
 

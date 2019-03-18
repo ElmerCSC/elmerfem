@@ -92,7 +92,7 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   CHARACTER(LEN=MAX_NAME_LEN) :: FileName, ParName, OutputDirectory
   REAL(KIND=dp) :: x1, x0, x, w, f, Norm
-  INTEGER :: i,j,n,NoPar,NormInd
+  INTEGER :: i,j,n,NoPar,NormInd,IOUnit
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found, GotIt
   
@@ -149,26 +149,26 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
     RETURN
   END IF
 
-  OPEN( 10, FILE=FileName )
+  OPEN(NEWUNIT=IOUnit, FILE=FileName )
 
   DO i=1,n
     w = (1.0_dp*(i-1))/(n-1)
     x = x0 + w*(x1-x0)
 
-    WRITE (10,'(I6,ES15.6)',ADVANCE='NO') i,x
+    WRITE (IOUnit,'(I6,ES15.6)',ADVANCE='NO') i,x
     
     DO j=1,NoPar
       WRITE (ParName,'(A,I0)') 'Expression ',j
       f = ListGetFun( Params,ParName,x )
-      WRITE (10,'(ES15.6)',ADVANCE='NO') f     
+      WRITE (IOUnit,'(ES15.6)',ADVANCE='NO') f     
 
       IF( NormInd == j ) Norm = Norm + f*f
     END DO
 
-    WRITE (10,'(A)') ' '     
+    WRITE (IOUnit,'(A)') ' '     
   END DO
   
-  CLOSE( 10 ) 
+  CLOSE( IOUnit ) 
 
   IF( NormInd > 0 ) THEN
     Norm = SQRT( Norm / n )

@@ -156,11 +156,7 @@ END INTERFACE
        Version = .FALSE.
        IF( NoArgs > 0 ) THEN 
          DO i = 1, NoArgs 
-#ifdef USE_ISO_C_BINDINGS
            CALL GET_COMMAND_ARGUMENT(i, OptionString)
-#else
-           CALL getarg( i,OptionString )
-#endif
            Silent = Silent .OR. &
                ( OptionString=='-s' .OR. OptionString=='--silent' ) 
            Version = Version .OR. &
@@ -258,18 +254,10 @@ END INTERFACE
      !----------------------------------------------------------------------
      GotModelName = .FALSE.
      IF ( NoArgs > 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
        CALL GET_COMMAND_ARGUMENT(1, ModelName)
-#else
-       CALL getarg( 1,ModelName )
-#endif
        IF( ModelName(1:1) /= '-') THEN 
          GotModelName = .TRUE.
-#ifdef USE_ISO_C_BINDINGS
          IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
-#else
-         IF ( NoArgs > 1 ) CALL getarg( 2,eq )
-#endif
        END IF
      END IF
          

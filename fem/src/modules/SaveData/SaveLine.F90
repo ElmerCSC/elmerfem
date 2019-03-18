@@ -132,7 +132,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: R0(3),R1(3),dR(3),S0(3),S1(3),dS(3),LocalCoord(3),&
       MinCoord(3),MaxCoord(3),GlobalCoord(3),LineN(3),LineT1(3), &
       LineT2(3),detJ, Norm
-  INTEGER :: imin,imax,nsize
+  INTEGER :: imin,imax,nsize,LineUnit
 
   SAVE SavePerm, PrevMaskName, SaveNodes
 
@@ -619,7 +619,7 @@ CONTAINS
       n0 = n0 + 3
 
       DO i=1,n0
-        WRITE(10,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
+        WRITE(LineUnit,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
       END DO
       
       IF( NormInd > 0 .AND. NormInd <= n0 ) THEN
@@ -790,9 +790,9 @@ CONTAINS
     END IF
     
     DO j=1,NoResults-1
-      WRITE(10,'(ES20.11E3)',ADVANCE='NO') Values(j)
+      WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') Values(j)
     END DO
-    WRITE(10,'(ES20.11E3)') Values(NoResults)
+    WRITE(LineUnit,'(ES20.11E3)') Values(NoResults)
 
     
     IF( NormInd > n0 ) THEN
@@ -1034,9 +1034,9 @@ CONTAINS
 
 
     IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
-      OPEN (10, FILE=SideParFile,POSITION='APPEND')
+      OPEN (NEWUNIT=LineUnit, FILE=SideParFile,POSITION='APPEND')
     ELSE 
-      OPEN (10,FILE=SideParFile)
+      OPEN (NEWUNIT=LineUnit,FILE=SideParFile)
     END IF
 
     CALL Info( 'SaveLine', '------------------------------------------', Level=4 )
@@ -1049,7 +1049,7 @@ CONTAINS
 
   
   SUBROUTINE CloseLineFile()
-    CLOSE(10)
+    CLOSE(LineUnit)
   END SUBROUTINE CloseLineFile
 
 
@@ -1833,12 +1833,12 @@ CONTAINS
 
   
   SUBROUTINE SaveVariableNames()
+
+    INTEGER :: NamesUnit
+    
     ! Finally save the names of the variables to help to identify the 
     ! columns in the result matrix.
     !-----------------------------------------------------------------
-    !SaveNodes = NINT( ParallelReduction( 1.0_dp * SaveNodes ) )
-    !SaveNodes2 = NINT( ParallelReduction( 1.0_dp * SaveNodes2 ) )
-
     IF( Solver % TimesVisited == 0 .AND. NoResults > 0 .AND. &
         (.NOT. Parallel .OR. ParEnv % MyPe == 0 ) ) THEN
       ALLOCATE( ValueNames(NoResults), STAT=istat )
@@ -1906,54 +1906,54 @@ CONTAINS
       END IF
 
       SideNamesFile = TRIM(SideFile) // '.' // TRIM("names")
-      OPEN (10, FILE=SideNamesFile)
+      OPEN (newunit=NamesUnit, FILE=SideNamesFile)
 
       Message = ListGetString(Model % Simulation,'Comment',GotIt)
       IF( GotIt ) THEN
-        WRITE(10,'(A)') TRIM(Message)
+        WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
       Message = ListGetString(Params,'Comment',GotIt)
       IF( GotIt ) THEN
-        WRITE(10,'(A)') TRIM(Message)
+        WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
-      WRITE(10,'(A,A)') 'Variables in file: ',TRIM(SideFile)
+      WRITE(NamesUnit,'(A,A)') 'Variables in file: ',TRIM(SideFile)
 
       DateStr = GetVersion()
-      WRITE( 10,'(A)') 'Elmer version: '//TRIM(DateStr)     
+      WRITE( NamesUnit,'(A)') 'Elmer version: '//TRIM(DateStr)     
       DateStr = GetRevision( GotIt )
       IF( GotIt ) THEN
-        WRITE( 10,'(A)') 'Elmer revision: '//TRIM(DateStr)
+        WRITE( NamesUnit,'(A)') 'Elmer revision: '//TRIM(DateStr)
       END IF        
       DateStr = GetCompilationDate( GotIt )
       IF( GotIt ) THEN
-        WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
+        WRITE( NamesUnit,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
       END IF
 
       DateStr = GetSifName( GotIt )
       IF( GotIt ) THEN
-        WRITE( 10,'(A)') 'Solver input file: '//TRIM(DateStr)
+        WRITE( NamesUnit,'(A)') 'Solver input file: '//TRIM(DateStr)
       END IF
       
       DateStr = FormatDate()
-      WRITE( 10,'(A,A)') 'File started at: ',TRIM(DateStr)
+      WRITE( NamesUnit,'(A,A)') 'File started at: ',TRIM(DateStr)
 
-      WRITE(10,'(I7,A)') SaveNodes,' boundary nodes for each step'
-      WRITE(10,'(I7,A)') SaveNodes2,' polyline nodes for each step'
+      WRITE(NamesUnit,'(I7,A)') SaveNodes,' boundary nodes for each step'
+      WRITE(NamesUnit,'(I7,A)') SaveNodes2,' polyline nodes for each step'
       j = 0
       IF( .NOT. SkipBoundaryInfo ) THEN
         IF(TransientSimulation) THEN
-          WRITE(10,'(I3,": ",A)') 1,'Time step'
+          WRITE(NamesUnit,'(I3,": ",A)') 1,'Time step'
           j = 1
         END IF
-        WRITE(10,'(I3,": ",A)') 1+j,'Iteration step'
-        WRITE(10,'(I3,": ",A)') 2+j,'Boundary condition'
-        WRITE(10,'(I3,": ",A)') 3+j,'Node index'
+        WRITE(NamesUnit,'(I3,": ",A)') 1+j,'Iteration step'
+        WRITE(NamesUnit,'(I3,": ",A)') 2+j,'Boundary condition'
+        WRITE(NamesUnit,'(I3,": ",A)') 3+j,'Node index'
         j = j + 3
       END IF
       DO i=1,NoResults
-        WRITE(10,'(I3,": ",A)') i+j,TRIM(ValueNames(i))
+        WRITE(NamesUnit,'(I3,": ",A)') i+j,TRIM(ValueNames(i))
       END DO
-      CLOSE(10)
+      CLOSE(NamesUnit)
       DEALLOCATE( ValueNames )
     END IF
 
