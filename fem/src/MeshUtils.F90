@@ -3529,53 +3529,53 @@ END SUBROUTINE GetMaxDefs
       Enforce = .FALSE.
     END IF
 
-    TriangleCenterMap(1,:) = (/ 1, 2, 4/)
-    TriangleCenterMap(2,:) = (/ 2, 3, 5/)
-    TriangleCenterMap(3,:) = (/ 3, 1, 6/)
+    TriangleCenterMap(1,:) = [ 1, 2, 4]
+    TriangleCenterMap(2,:) = [ 2, 3, 5]
+    TriangleCenterMap(3,:) = [ 3, 1, 6]
     
-    QuadCenterMap(1,:) = (/ 1, 2, 5/)
-    QuadCenterMap(2,:) = (/ 2, 3, 6/)
-    QuadCenterMap(3,:) = (/ 3, 4, 7/)
-    QuadCenterMap(4,:) = (/ 4, 1, 8/)
+    QuadCenterMap(1,:) = [ 1, 2, 5]
+    QuadCenterMap(2,:) = [ 2, 3, 6]
+    QuadCenterMap(3,:) = [ 3, 4, 7]
+    QuadCenterMap(4,:) = [ 4, 1, 8]
     
-    TetraCenterMap(1,:) = (/ 1, 2, 5/)
-    TetraCenterMap(2,:) = (/ 2, 3, 6/)
-    TetraCenterMap(3,:) = (/ 3, 1, 7/)
-    TetraCenterMap(4,:) = (/ 1, 4, 8/)
-    TetraCenterMap(5,:) = (/ 2, 4, 9/)
-    TetraCenterMap(6,:) = (/ 3, 4, 10/)
+    TetraCenterMap(1,:) = [ 1, 2, 5]
+    TetraCenterMap(2,:) = [ 2, 3, 6]
+    TetraCenterMap(3,:) = [ 3, 1, 7]
+    TetraCenterMap(4,:) = [ 1, 4, 8]
+    TetraCenterMap(5,:) = [ 2, 4, 9]
+    TetraCenterMap(6,:) = [ 3, 4, 10]
 
-    BrickCenterMap(1,:) = (/ 1, 2,  9 /)
-    BrickCenterMap(2,:) = (/ 2, 3,  10 /)
-    BrickCenterMap(3,:) = (/ 3, 4,  11 /)
-    BrickCenterMap(4,:) = (/ 4, 1,  12 /)
-    BrickCenterMap(5,:) = (/ 1, 5,  13 /)
-    BrickCenterMap(6,:) = (/ 2, 6,  14 /)
-    BrickCenterMap(7,:) = (/ 3, 7,  15 /)
-    BrickCenterMap(8,:) = (/ 4, 8,  16 /)
-    BrickCenterMap(9,:) = (/ 5, 6,  17 /)
-    BrickCenterMap(10,:) = (/ 6, 7, 18 /)
-    BrickCenterMap(11,:) = (/ 7, 8, 19 /)
-    BrickCenterMap(12,:) = (/ 8, 5, 20 /)
+    BrickCenterMap(1,:) = [ 1, 2,  9 ]
+    BrickCenterMap(2,:) = [ 2, 3,  10 ]
+    BrickCenterMap(3,:) = [ 3, 4,  11 ]
+    BrickCenterMap(4,:) = [ 4, 1,  12 ]
+    BrickCenterMap(5,:) = [ 1, 5,  13 ]
+    BrickCenterMap(6,:) = [ 2, 6,  14 ]
+    BrickCenterMap(7,:) = [ 3, 7,  15 ]
+    BrickCenterMap(8,:) = [ 4, 8,  16 ]
+    BrickCenterMap(9,:) = [ 5, 6,  17 ]
+    BrickCenterMap(10,:) = [ 6, 7, 18 ]
+    BrickCenterMap(11,:) = [ 7, 8, 19 ]
+    BrickCenterMap(12,:) = [ 8, 5, 20 ]
     
-    WedgeCenterMap(1,:) = (/ 1, 2, 7 /)
-    WedgeCenterMap(2,:) = (/ 2, 3, 8 /)
-    WedgeCenterMap(3,:) = (/ 3, 1, 9 /)
-    WedgeCenterMap(4,:) = (/ 4, 5, 10 /)
-    WedgeCenterMap(5,:) = (/ 5, 6, 11 /)
-    WedgeCenterMap(6,:) = (/ 6, 4, 12 /)
-    WedgeCenterMap(7,:) = (/ 1, 4, 13 /)
-    WedgeCenterMap(8,:) = (/ 2, 5, 14 /)
-    WedgeCenterMap(9,:) = (/ 3, 6, 15 /)
+    WedgeCenterMap(1,:) = [ 1, 2, 7 ]
+    WedgeCenterMap(2,:) = [ 2, 3, 8 ]
+    WedgeCenterMap(3,:) = [ 3, 1, 9 ]
+    WedgeCenterMap(4,:) = [ 4, 5, 10 ]
+    WedgeCenterMap(5,:) = [ 5, 6, 11 ]
+    WedgeCenterMap(6,:) = [ 6, 4, 12 ]
+    WedgeCenterMap(7,:) = [ 1, 4, 13 ]
+    WedgeCenterMap(8,:) = [ 2, 5, 14 ]
+    WedgeCenterMap(9,:) = [ 3, 6, 15 ]
     
-    PyramidCenterMap(1,:) = (/ 1,2,6 /)
-    PyramidCenterMap(2,:) = (/ 2,3,7 /)
-    PyramidCenterMap(3,:) = (/ 3,4,8 /)
-    PyramidCenterMap(4,:) = (/ 4,1,9 /)
-    PyramidCenterMap(5,:) = (/ 1,5,10 /)
-    PyramidCenterMap(6,:) = (/ 2,5,11 /)
-    PyramidCenterMap(7,:) = (/ 3,5,12 /)
-    PyramidCenterMap(8,:) = (/ 4,5,13 /)
+    PyramidCenterMap(1,:) = [ 1,2,6 ]
+    PyramidCenterMap(2,:) = [ 2,3,7 ]
+    PyramidCenterMap(3,:) = [ 3,4,8 ]
+    PyramidCenterMap(4,:) = [ 4,1,9 ]
+    PyramidCenterMap(5,:) = [ 1,5,10 ]
+    PyramidCenterMap(6,:) = [ 2,5,11 ]
+    PyramidCenterMap(7,:) = [ 3,5,12 ]
+    PyramidCenterMap(8,:) = [ 4,5,13 ]
     
     x => Mesh % Nodes % x
     y => Mesh % Nodes % y
@@ -4266,22 +4266,22 @@ END SUBROUTINE GetMaxDefs
       
       IF( nSplit > 1 ) THEN
         IF( ElemCode == 408 ) THEN
-          SplitSizes(1:nSplit) = (/ 4,3,3,3,3 /)
+          SplitSizes(1:nSplit) = [ 4,3,3,3,3 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
             
             SELECT CASE (ii)
             CASE( 1 )
-              SplitMap(1:m) = (/ 5,6,7,8 /)
+              SplitMap(1:m) = [ 5,6,7,8 ]
             CASE( 2 )
-              SplitMap(1:m) = (/ 1, 5, 8 /)
+              SplitMap(1:m) = [ 1, 5, 8 ]
             CASE( 3 ) 
-              SplitMap(1:m) = (/ 2, 6, 5 /)
+              SplitMap(1:m) = [ 2, 6, 5 ]
             CASE( 4 )
-              SplitMap(1:m) = (/ 3, 7, 6 /)
+              SplitMap(1:m) = [ 3, 7, 6 ]
             CASE( 5 ) 
-              SplitMap(1:m) = (/ 4, 8, 7 /)
+              SplitMap(1:m) = [ 4, 8, 7 ]
             END SELECT
 
             CALL AllocateVector(PMesh % Elements(jj) % NodeIndexes, m )
@@ -4295,20 +4295,20 @@ END SUBROUTINE GetMaxDefs
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
 
         ELSE IF( ElemCode == 409 ) THEN
-          SplitSizes(1:n) = (/ 4,4,4,4 /)
+          SplitSizes(1:n) = [ 4,4,4,4 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
             
             SELECT CASE (ii)
             CASE( 1 )
-              SplitMap(1:m) = (/ 1, 5, 9, 8 /)
+              SplitMap(1:m) = [ 1, 5, 9, 8 ]
             CASE( 2 )
-              SplitMap(1:m) = (/ 2, 6, 9, 5 /)
+              SplitMap(1:m) = [ 2, 6, 9, 5 ]
             CASE( 3 ) 
-              SplitMap(1:m) = (/ 3, 7, 9, 6 /)
+              SplitMap(1:m) = [ 3, 7, 9, 6 ]
             CASE( 4 ) 
-              SplitMap(1:m) = (/ 4, 8, 9, 7 /)
+              SplitMap(1:m) = [ 4, 8, 9, 7 ]
             END SELECT
 
             CALL AllocateVector(PMesh % Elements(jj) % NodeIndexes, m )
@@ -4322,20 +4322,20 @@ END SUBROUTINE GetMaxDefs
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
           
         ELSE IF( ElemCode == 306 ) THEN
-          SplitSizes(1:n) = (/ 3,3,3,3 /)
+          SplitSizes(1:n) = [ 3,3,3,3 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
             
             SELECT CASE (ii)
             CASE( 1 )
-              SplitMap(1:m) = (/ 1, 4, 6 /)
+              SplitMap(1:m) = [ 1, 4, 6 ]
             CASE( 2 )
-              SplitMap(1:m) = (/ 2, 5, 4 /)
+              SplitMap(1:m) = [ 2, 5, 4 ]
             CASE( 3 ) 
-              SplitMap(1:m) = (/ 3, 6, 5 /)
+              SplitMap(1:m) = [ 3, 6, 5 ]
             CASE( 4 ) 
-              SplitMap(1:m) = (/ 4, 5, 6 /)
+              SplitMap(1:m) = [ 4, 5, 6 ]
             END SELECT
 
             CALL AllocateVector(PMesh % Elements(j) % NodeIndexes, m )
@@ -12401,29 +12401,29 @@ CONTAINS
 
     Masked = PRESENT(BulkMask)
 
-    TetraFaceMap(1,:) = (/ 1, 2, 3, 5, 6, 7 /)
-    TetraFaceMap(2,:) = (/ 1, 2, 4, 5, 9, 8 /)
-    TetraFaceMap(3,:) = (/ 2, 3, 4, 6, 10, 9 /)
-    TetraFaceMap(4,:) = (/ 3, 1, 4, 7, 8,10 /)
+    TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
+    TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
+    TetraFaceMap(3,:) = [ 2, 3, 4, 6, 10, 9 ]
+    TetraFaceMap(4,:) = [ 3, 1, 4, 7, 8,10 ]
 
-    WedgeFaceMap(1,:) = (/ 1, 2, 3, 7, 8, 9, -1, -1 /)
-    WedgeFaceMap(2,:) = (/ 4, 5, 6, 10, 11, 12, -1, -1 /)
-    WedgeFaceMap(3,:) = (/ 1, 2, 5, 4, 7, 14, 10, 13 /)
-    WedgeFaceMap(4,:) = (/ 3, 2, 5, 6, 8, 14, 11, 15 /)
-    WedgeFaceMap(5,:) = (/ 3, 1, 4, 6, 9, 13, 12, 15 /)
+    WedgeFaceMap(1,:) = [ 1, 2, 3, 7, 8, 9, -1, -1 ]
+    WedgeFaceMap(2,:) = [ 4, 5, 6, 10, 11, 12, -1, -1 ]
+    WedgeFaceMap(3,:) = [ 1, 2, 5, 4, 7, 14, 10, 13 ]
+    WedgeFaceMap(4,:) = [ 3, 2, 5, 6, 8, 14, 11, 15 ]
+    WedgeFaceMap(5,:) = [ 3, 1, 4, 6, 9, 13, 12, 15 ]
 
-    PyramidFaceMap(1,:) = (/ 1, 2, 3, 4,  6,  7,  8,  9 /)
-    PyramidFaceMap(2,:) = (/ 1, 2, 5, 6, 11, 10, -1, -1 /)
-    PyramidFaceMap(3,:) = (/ 2, 3, 5, 7, 12, 11, -1, -1 /)
-    PyramidFaceMap(4,:) = (/ 3, 4, 5, 8, 13, 12, -1, -1 /)
-    PyramidFaceMap(5,:) = (/ 4, 1, 5, 9, 10, 13, -1, -1 /)
+    PyramidFaceMap(1,:) = [ 1, 2, 3, 4,  6,  7,  8,  9 ]
+    PyramidFaceMap(2,:) = [ 1, 2, 5, 6, 11, 10, -1, -1 ]
+    PyramidFaceMap(3,:) = [ 2, 3, 5, 7, 12, 11, -1, -1 ]
+    PyramidFaceMap(4,:) = [ 3, 4, 5, 8, 13, 12, -1, -1 ]
+    PyramidFaceMap(5,:) = [ 4, 1, 5, 9, 10, 13, -1, -1 ]
 
-    BrickFaceMap(1,:) = (/ 1, 2, 3, 4,  9, 10, 11, 12, 25 /)
-    BrickFaceMap(2,:) = (/ 5, 6, 7, 8, 17, 18, 19, 20, 26 /)
-    BrickFaceMap(3,:) = (/ 1, 2, 6, 5,  9, 14, 17, 13, 21 /)
-    BrickFaceMap(4,:) = (/ 2, 3, 7, 6, 10, 15, 18, 14, 22 /)
-    BrickFaceMap(5,:) = (/ 3, 4, 8, 7, 11, 16, 19, 15, 23 /)
-    BrickFaceMap(6,:) = (/ 4, 1, 5, 8, 12, 13, 20, 16, 24 /)
+    BrickFaceMap(1,:) = [ 1, 2, 3, 4,  9, 10, 11, 12, 25 ]
+    BrickFaceMap(2,:) = [ 5, 6, 7, 8, 17, 18, 19, 20, 26 ]
+    BrickFaceMap(3,:) = [ 1, 2, 6, 5,  9, 14, 17, 13, 21 ]
+    BrickFaceMap(4,:) = [ 2, 3, 7, 6, 10, 15, 18, 14, 22 ]
+    BrickFaceMap(5,:) = [ 3, 4, 8, 7, 11, 16, 19, 15, 23 ]
+    BrickFaceMap(6,:) = [ 4, 1, 5, 8, 12, 13, 20, 16, 24 ]
 
 !
 !   Initialize:
@@ -12730,73 +12730,73 @@ CONTAINS
 
     CALL Info('FindMeshEdges3D','Finding mesh edges in 3D mesh',Level=12)
 
-    TetraFaceMap(1,:) = (/ 1, 2, 3, 5, 6, 7 /)
-    TetraFaceMap(2,:) = (/ 1, 2, 4, 5, 9, 8 /)
-    TetraFaceMap(3,:) = (/ 2, 3, 4, 6,10, 9 /)
-    TetraFaceMap(4,:) = (/ 3, 1, 4, 7, 8,10 /)
+    TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
+    TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
+    TetraFaceMap(3,:) = [ 2, 3, 4, 6,10, 9 ]
+    TetraFaceMap(4,:) = [ 3, 1, 4, 7, 8,10 ]
 
-    TetraFaceEdgeMap(1,:) = (/ 1,2,3 /)
-    TetraFaceEdgeMap(2,:) = (/ 1,5,4 /)
-    TetraFaceEdgeMap(3,:) = (/ 2,6,5 /)
-    TetraFaceEdgeMap(4,:) = (/ 3,4,6 /)
+    TetraFaceEdgeMap(1,:) = [ 1,2,3 ]
+    TetraFaceEdgeMap(2,:) = [ 1,5,4 ]
+    TetraFaceEdgeMap(3,:) = [ 2,6,5 ]
+    TetraFaceEdgeMap(4,:) = [ 3,4,6 ]
 
-    TetraEdgeMap(1,:) = (/ 1,2,5 /)
-    TetraEdgeMap(2,:) = (/ 2,3,6 /)
-    TetraEdgeMap(3,:) = (/ 3,1,7 /)
-    TetraEdgeMap(4,:) = (/ 1,4,8 /)
-    TetraEdgeMap(5,:) = (/ 2,4,9 /)
-    TetraEdgeMap(6,:) = (/ 3,4,10 /)
+    TetraEdgeMap(1,:) = [ 1,2,5 ]
+    TetraEdgeMap(2,:) = [ 2,3,6 ]
+    TetraEdgeMap(3,:) = [ 3,1,7 ]
+    TetraEdgeMap(4,:) = [ 1,4,8 ]
+    TetraEdgeMap(5,:) = [ 2,4,9 ]
+    TetraEdgeMap(6,:) = [ 3,4,10 ]
 
-    PyramidEdgeMap(1,:) = (/ 1,2,1 /)
-    PyramidEdgeMap(2,:) = (/ 2,3,1 /)
-    PyramidEdgeMap(3,:) = (/ 3,4,1 /)
-    PyramidEdgeMap(4,:) = (/ 4,1,1 /)
-    PyramidEdgeMap(5,:) = (/ 1,5,1 /)
-    PyramidEdgeMap(6,:) = (/ 2,5,1 /)
-    PyramidEdgeMap(7,:) = (/ 3,5,1 /)
-    PyramidEdgeMap(8,:) = (/ 4,5,1 /)
+    PyramidEdgeMap(1,:) = [ 1,2,1 ]
+    PyramidEdgeMap(2,:) = [ 2,3,1 ]
+    PyramidEdgeMap(3,:) = [ 3,4,1 ]
+    PyramidEdgeMap(4,:) = [ 4,1,1 ]
+    PyramidEdgeMap(5,:) = [ 1,5,1 ]
+    PyramidEdgeMap(6,:) = [ 2,5,1 ]
+    PyramidEdgeMap(7,:) = [ 3,5,1 ]
+    PyramidEdgeMap(8,:) = [ 4,5,1 ]
 
-    PyramidFaceEdgeMap(1,:) = (/ 1,2,3,4 /)
-    PyramidFaceEdgeMap(2,:) = (/ 1,6,5,0 /)
-    PyramidFaceEdgeMap(3,:) = (/ 2,7,6,0 /)
-    PyramidFaceEdgeMap(4,:) = (/ 3,8,7,0 /)
-    PyramidFaceEdgeMap(5,:) = (/ 4,5,8,0 /)
+    PyramidFaceEdgeMap(1,:) = [ 1,2,3,4 ]
+    PyramidFaceEdgeMap(2,:) = [ 1,6,5,0 ]
+    PyramidFaceEdgeMap(3,:) = [ 2,7,6,0 ]
+    PyramidFaceEdgeMap(4,:) = [ 3,8,7,0 ]
+    PyramidFaceEdgeMap(5,:) = [ 4,5,8,0 ]
 
-    WedgeEdgeMap(1,:) = (/ 1, 2, 1 /)
-    WedgeEdgeMap(2,:) = (/ 2, 3, 1 /)
-    WedgeEdgeMap(3,:) = (/ 1, 3, 1 /)
-    WedgeEdgeMap(4,:) = (/ 4, 5, 1 /)
-    WedgeEdgeMap(5,:) = (/ 5, 6, 1 /)
-    WedgeEdgeMap(6,:) = (/ 6, 4, 1 /)
-    WedgeEdgeMap(7,:) = (/ 1, 4, 1 /)
-    WedgeEdgeMap(8,:) = (/ 2, 5, 1 /)
-    WedgeEdgeMap(9,:) = (/ 3, 6, 1 /)
+    WedgeEdgeMap(1,:) = [ 1, 2, 1 ]
+    WedgeEdgeMap(2,:) = [ 2, 3, 1 ]
+    WedgeEdgeMap(3,:) = [ 1, 3, 1 ]
+    WedgeEdgeMap(4,:) = [ 4, 5, 1 ]
+    WedgeEdgeMap(5,:) = [ 5, 6, 1 ]
+    WedgeEdgeMap(6,:) = [ 6, 4, 1 ]
+    WedgeEdgeMap(7,:) = [ 1, 4, 1 ]
+    WedgeEdgeMap(8,:) = [ 2, 5, 1 ]
+    WedgeEdgeMap(9,:) = [ 3, 6, 1 ]
 
-    WedgeFaceEdgeMap(1,:) = (/ 1,2,3,0 /)
-    WedgeFaceEdgeMap(2,:) = (/ 4,5,6,0 /)
-    WedgeFaceEdgeMap(3,:) = (/ 1,8,4,7 /)
-    WedgeFaceEdgeMap(4,:) = (/ 2,9,5,8 /)
-    WedgeFaceEdgeMap(5,:) = (/ 3,7,6,9 /)
+    WedgeFaceEdgeMap(1,:) = [ 1,2,3,0 ]
+    WedgeFaceEdgeMap(2,:) = [ 4,5,6,0 ]
+    WedgeFaceEdgeMap(3,:) = [ 1,8,4,7 ]
+    WedgeFaceEdgeMap(4,:) = [ 2,9,5,8 ]
+    WedgeFaceEdgeMap(5,:) = [ 3,7,6,9 ]
 
-    BrickEdgeMap(1,:) = (/ 1, 2,  9 /)
-    BrickEdgeMap(2,:) = (/ 2, 3,  10 /)
-    BrickEdgeMap(3,:) = (/ 4, 3,  11 /)
-    BrickEdgeMap(4,:) = (/ 1, 4,  12 /)
-    BrickEdgeMap(5,:) = (/ 5, 6,  13 /)
-    BrickEdgeMap(6,:) = (/ 6, 7,  14 /)
-    BrickEdgeMap(7,:) = (/ 8, 7,  15 /)
-    BrickEdgeMap(8,:) = (/ 5, 8,  16 /)
-    BrickEdgeMap(9,:) = (/ 1, 5,  17 /)
-    BrickEdgeMap(10,:) = (/ 2, 6, 18 /)
-    BrickEdgeMap(11,:) = (/ 3, 7, 19 /)
-    BrickEdgeMap(12,:) = (/ 4, 8, 20 /)
+    BrickEdgeMap(1,:) = [ 1, 2,  9 ]
+    BrickEdgeMap(2,:) = [ 2, 3,  10 ]
+    BrickEdgeMap(3,:) = [ 4, 3,  11 ]
+    BrickEdgeMap(4,:) = [ 1, 4,  12 ]
+    BrickEdgeMap(5,:) = [ 5, 6,  13 ]
+    BrickEdgeMap(6,:) = [ 6, 7,  14 ]
+    BrickEdgeMap(7,:) = [ 8, 7,  15 ]
+    BrickEdgeMap(8,:) = [ 5, 8,  16 ]
+    BrickEdgeMap(9,:) = [ 1, 5,  17 ]
+    BrickEdgeMap(10,:) = [ 2, 6, 18 ]
+    BrickEdgeMap(11,:) = [ 3, 7, 19 ]
+    BrickEdgeMap(12,:) = [ 4, 8, 20 ]
 
-    BrickFaceEdgeMap(1,:) = (/ 1,2,3,4   /)
-    BrickFaceEdgeMap(2,:) = (/ 5,6,7,8   /)    
-    BrickFaceEdgeMap(3,:) = (/ 1,10,5,9  /)
-    BrickFaceEdgeMap(4,:) = (/ 2,11,6,10 /)
-    BrickFaceEdgeMap(5,:) = (/ 3,12,7,11 /)
-    BrickFaceEdgeMap(6,:) = (/ 4,9,8,12  /)
+    BrickFaceEdgeMap(1,:) = [ 1,2,3,4   ]
+    BrickFaceEdgeMap(2,:) = [ 5,6,7,8   ]    
+    BrickFaceEdgeMap(3,:) = [ 1,10,5,9  ]
+    BrickFaceEdgeMap(4,:) = [ 2,11,6,10 ]
+    BrickFaceEdgeMap(5,:) = [ 3,12,7,11 ]
+    BrickFaceEdgeMap(6,:) = [ 4,9,8,12  ]
 
 !
 !   Initialize:
@@ -15184,7 +15184,7 @@ CONTAINS
 !      nodes, hence the reorder array:
 !      -------------------------------------------
        CALL AllocateVector( Reorder, NewMesh % NumberOfNodes )
-       Reorder = (/ (i, i=1,NewMesh % NumberOfNodes) /)
+       Reorder = [ (i, i=1,NewMesh % NumberOfNodes) ]
 
        k = NewMesh % Nodes % NumberOfNodes - Mesh % Nodes % NumberOfNodes
 

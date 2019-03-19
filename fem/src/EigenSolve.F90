@@ -502,7 +502,7 @@ CONTAINS
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
          ALLOCATE( Perm(NEIG) )
-         Perm = (/ (i, i=1,NEIG) /)
+         Perm = [ (i, i=1,NEIG) ]
          DO i=1,NEIG
             EigValues(i) = CMPLX( D(i,1), D(i,2),KIND=dp )
          END DO
@@ -1000,7 +1000,7 @@ END SUBROUTINE CheckResiduals
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
          ALLOCATE( Perm(NEIG) )
-         Perm = (/ (i, i=1,NEIG) /)
+         Perm = [ (i, i=1,NEIG) ]
          DO i=1,NEIG
             EigValues(i) = CMPLX( 1.0d0 / D(i,1), D(i,2),KIND=dp )
          END DO
@@ -1447,7 +1447,7 @@ END SUBROUTINE CheckResiduals
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
          ALLOCATE( Perm(NEIG) )
-         Perm = (/ (i, i=1,NEIG) /)
+         Perm = [ (i, i=1,NEIG) ]
          DO i=1,NEIG
             EigValues(i) = D(i)
          END DO
@@ -1924,7 +1924,7 @@ END SUBROUTINE CheckResidualsComplex
          END DO
 
          ALLOCATE( Perm( NEIG ) )
-         Perm = (/ (i, i=1,NEIG) /)
+         Perm = [ (i, i=1,NEIG) ]
          CALL SortC( NEIG, EigTemp, Perm )
          
 !        Extract the values to ELMER structures:

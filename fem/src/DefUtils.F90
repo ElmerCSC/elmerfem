@@ -5592,10 +5592,10 @@ END SUBROUTINE PickActiveFace
 
     ElementCopyCreated= .FALSE.
     IF (SecondKindBasis) THEN
-      TetraFaceMap(1,:) = (/ 2, 1, 3 /)
-      TetraFaceMap(2,:) = (/ 1, 2, 4 /)
-      TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
-      TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+      TetraFaceMap(1,:) = [ 2, 1, 3 ]
+      TetraFaceMap(2,:) = [ 1, 2, 4 ]
+      TetraFaceMap(3,:) = [ 2, 3, 4 ] 
+      TetraFaceMap(4,:) = [ 3, 1, 4 ]
       
       ActiveFaceMap(1:3) = TetraFaceMap(FaceId,1:3)
 
