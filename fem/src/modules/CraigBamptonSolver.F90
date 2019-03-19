@@ -95,6 +95,7 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Matrix_t), POINTER :: A
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp) :: val, Norm
+  INTEGER :: IOUnit
 !------------------------------------------------------------------------------
 
   CALL Info('CraigBamptonSolver','Performing Craig-Bampton model reduction')
@@ -257,20 +258,20 @@ CONTAINS
 
     FileName = 'ReductionHeader.dat'
     CALL Info('CraigBamptonSolver','Saving information on the reduction basis to: '//TRIM(FileName),Level=7)
-    OPEN (10, FILE=FileName )
-    WRITE(10,'(I0)') NoEigenModes
-    WRITE(10,'(I0)') NoConstraintModes
-    CLOSE(10)
+    OPEN (NEWUNIT=IOUnit, FILE=FileName )
+    WRITE(IOUnit,'(I0)') NoEigenModes
+    WRITE(IOUnit,'(I0)') NoConstraintModes
+    CLOSE(IOUnit)
 
     FileName = 'ReductionIndeces.dat'
     CALL Info('CraigBamptonSolver','Saving Constraint Modes Indeces to: '//TRIM(FileName),Level=7)
-    OPEN (10, FILE=FileName )
+    OPEN (NEWUNIT=IOUnit, FILE=FileName )
     DO i=1,A % NumberOfRows
       j = Evar % ConstraintModesIndeces(i)
       IF( j == 0 ) CYCLE
-      WRITE(10,'(I0)') i 
+      WRITE(IOUnit,'(I0)') i 
     END DO
-    CLOSE(10)
+    CLOSE(IOUnit)
 
   END SUBROUTINE SaveReductionDofs
 
@@ -280,36 +281,36 @@ CONTAINS
     REAL(KIND=dp) :: val
 
     CALL Info('CraigBamptonSolver','Saving the actual component modes to: '//TRIM(FileName),Level=7)
-    OPEN (10, FILE=FileName)
+    OPEN (NEWUNIT=IOUnit, FILE=FileName)
 
     DO i=1,Mesh % NumberOfNodes
       j = Evar % Perm(i)
       IF( j == 0 ) CYCLE
       DO k=1,NoComponentModes
-        WRITE(10,'(I0)',ADVANCE='NO') i
+        WRITE(IOUnit,'(I0)',ADVANCE='NO') i
         DO l = 1, Dofs
           IF( k <= NoEigenModes ) THEN
             val = EVar % EigenVectors(k,Dofs*(j-1)+l)
           ELSE 
             val = EVar % ConstraintModes(k-NoEigenModes,Dofs*(j-1)+l)
           END IF
-          WRITE(10,'(ES16.7)',ADVANCE='NO') val
+          WRITE(IOUnit,'(ES16.7)',ADVANCE='NO') val
         END DO
       END DO
-      WRITE(10,'(A)') ' '
+      WRITE(IOUnit,'(A)') ' '
     END DO
-    CLOSE( 10 ) 
+    CLOSE( IOUnit ) 
   END SUBROUTINE SaveReductionBasis
 
 
   SUBROUTINE SaveReductionMatrix()
     CALL Info('CraigBamptonSolver','Saving the reduction matrix to: '//TRIM(FileName),Level=7)
 
-    OPEN (10, FILE=FileName )
+    OPEN (NEWUNIT=IOUnit, FILE=FileName )
     DO k=1,NoComponentModes
-      WRITE(10,*) Ahat(k,:)
+      WRITE(IOUnit,*) Ahat(k,:)
     END DO
-    CLOSE(10) 
+    CLOSE(IOUnit) 
   END SUBROUTINE SaveReductionMatrix
 
 !------------------------------------------------------------------------------
