@@ -530,7 +530,7 @@ CONTAINS
      n  = GetElementNOFNodes() ! kulmat
      nd = GetElementNOFDOFs()  ! vapausasteet
      nb = GetElementNOFBDOFs()  ! sisäiset vapausasteet
-
+             
      IF (SIZE(Tcoef,3) /= n) THEN
        DEALLOCATE(Tcoef)
        ALLOCATE(Tcoef(3,3,n), STAT=istat)
@@ -834,6 +834,50 @@ CONTAINS
   norm = DefaultSolve()
   Converged = Solver % Variable % NonlinConverged==1
 
+
+  IF( ListGetLogical( SolverParams,'Calculate Magnetic Norm',Found ) ) THEN
+    BLOCK
+      REAL(KIND=dp) :: binteg, bmin, bmax
+
+      binteg = 0.0_dp
+      bmin = HUGE( bmin )
+      bmax = -HUGE( bmax ) 
+
+      Active = GetNOFActive()
+      DO t=1,active
+        Element => GetActiveElement(t)
+
+        IF( ParEnv % PEs > 1 ) THEN
+          IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+        END IF
+
+        n  = GetElementNOFNodes()
+        nd = GetElementNOFDOFs() 
+        nb = GetElementNOFBDOFs()
+
+        CALL AddLocalBNorm( Element, n, nd+nb, PiolaVersion, SecondOrder, binteg, bmin, bmax)
+      END DO
+
+      IF( ParEnv % PEs > 1 ) THEN
+        binteg = ParallelReduction( binteg )
+        bmin = ParallelReduction( bmin,1 )
+        bmax = ParallelReduction( bmax,2 )      
+      END IF
+
+      WRITE( Message,'(A,ES15.6)') 'Magnetic field norm:',binteg
+      CALL Info('WhitneyAVSolver', Message ) 
+
+      WRITE( Message,'(A,ES15.6)') 'Magnetic field minimum value:',bmin
+      CALL Info('WhitneyAVSolver', Message, Level=8 ) 
+
+      WRITE( Message,'(A,ES15.6)') 'Magnetic field maximum value:',bmax
+      CALL Info('WhitneyAVSolver', Message, Level=8 ) 
+    END BLOCK
+  END IF
+    
+  
+
+  
 10 CONTINUE
 
   IF ( ALLOCATED(FluxMap) ) DEALLOCATE(FluxMap)
@@ -2720,6 +2764,64 @@ END SUBROUTINE LocalConstraintMatrix
   END FUNCTION FloodFill
 !------------------------------------------------------------------------------
 
+
+!-----------------------------------------------------------------------------
+  SUBROUTINE AddLocalBNorm( Element, n, nd, PiolaVersion, SecondOrder, &
+      BabsInteg, BabsMin, BabsMax )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: PiolaVersion, SecondOrder
+    REAL(KIND=dp) :: BabsInteg, BabsMin, BabsMax
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Aloc(nd), B_ip(3), Babs
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3),Basis(n),dBasisdx(n,3),DetJ
+    LOGICAL :: Stat
+    INTEGER :: t, i, j, np, EdgeBasisDegree
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+       EdgeBasisDegree = 2
+    ELSE
+       EdgeBasisDegree = 1
+    END IF
+
+    CALL GetElementNodes( Nodes )
+    CALL GetScalarLocalSolution(Aloc)
+        
+    ! Numerical integration:
+    !------------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree )
+
+    np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+    DO t=1,IP % n
+      IF (PiolaVersion) THEN
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )
+        
+        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
+
+      B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
+      babs = SQRT(SUM(B_ip**2))
+      
+      BabsMin = MIN( BabsMin, Babs )
+      BabsMax = MAX( BabsMax, Babs ) 
+      BabsInteg = BabsInteg + babs * detJ * IP % s(t)
+    END DO
+  END SUBROUTINE AddLocalBNorm
+!------------------------------------------------------------------------------
+
+
+  
 !------------------------------------------------------------------------------
  END SUBROUTINE WhitneyAVSolver
 !------------------------------------------------------------------------------
