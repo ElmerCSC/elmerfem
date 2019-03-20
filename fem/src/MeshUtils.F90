@@ -18555,9 +18555,12 @@ CONTAINS
 !--------------------------------------------------------------    
     Order = ListGetInteger( Params,'1D Element Order',Found,minv=1,maxv=2)
     NoElements = ListGetInteger( Params,'1D Number Of Elements',minv=1)
-    Length = ListGetConstReal( Params,'1D Mesh Length')    
-    ActiveDirection = ListGetInteger( Params,'1D Active Direction',minv=-3,maxv=3)
-    BodyId = ListGetInteger( Params,'1D Body Id',minv=1)
+    Length = ListGetConstReal( Params,'1D Mesh Length',Found)
+    IF(.NOT. Found) Length = 1.0_dp
+    ActiveDirection = ListGetInteger( Params,'1D Active Direction',Found,minv=-3,maxv=3)
+    IF(.NOT.Found) ActiveDirection = 1
+    BodyId = ListGetInteger( Params,'1D Body Id',Found,minv=1)
+    IF(.NOT. Found) BodyId = 1
     MeshName = ListGetString( Params,'1D Mesh Name',Found)
     IF(.NOT. Found) MeshName = '1d_mesh'
     
@@ -18571,7 +18574,7 @@ CONTAINS
     MeshVector( ABS( ActiveDirection ) ) = 1.0_dp
     IF( ActiveDirection < 0 ) MeshVector = -MeshVector
     MeshVector = MeshVector * Length
-
+    
 !   Define nodal coordinates
 !   -------------------------------
     CALL AllocateVector( Mesh % Nodes % x, NoNodes )

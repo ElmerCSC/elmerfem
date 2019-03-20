@@ -114,7 +114,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       Side, SaveNodes, SaveNodes2, node, NoResults, LocalNodes, NoVar, &
       No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, NoFaces, &
       NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
-      i1, i2, NoTests, NormInd, Comps
+      i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex
   INTEGER, POINTER :: NodeIndexes(:), SavePerm(:), InvPerm(:), BoundaryIndex(:), IsosurfPerm(:), NoDivisions(:)
   TYPE(Solver_t), POINTER :: ParSolver
   TYPE(Variable_t), POINTER :: Var, Var2, Var3, IsosurfVar
@@ -142,7 +142,17 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CALL Info('SaveLine','Saving data on specified lines',Level=4)
 
   Params => GetSolverParams()
-  Mesh => GetMesh()
+
+  i = GetInteger( Params,'Save Solver Mesh Index',Found ) 
+  IF( Found ) THEN
+    CALL Info('SaveLine','Using mesh of solver '//TRIM(I2S(i)))
+    Mesh => Model % Solvers(i) % Mesh
+    Model % Mesh => Mesh
+  ELSE
+    Mesh => GetMesh()
+  END IF
+
+  
   DIM = CoordinateSystemDimension()
   MeshDim = Mesh % MeshDim
   Parallel = ( ParEnv % PEs > 1) 
@@ -320,12 +330,12 @@ CONTAINS
       VarName = TRIM(VarName)//' '//TRIM(I2S(Component))
     END IF
       
-    Var => VariableGet( Model % Variables, VarName )
+    Var => VariableGet( Mesh % Variables, VarName )
     IF( .NOT. ASSOCIATED( Var ) ) THEN
-      Var => VariableGet( Model % Variables, TRIM(VarName)//' 1' )
+      Var => VariableGet( Mesh % Variables, TRIM(VarName)//' 1' )
       IF( ASSOCIATED( Var ) ) THEN
         DO j=2,99
-          Var2 => VariableGet( Model % Variables, TRIM(VarName)//' '//TRIM(I2S(j)) )
+          Var2 => VariableGet( Mesh % Variables, TRIM(VarName)//' '//TRIM(I2S(j)) )
           IF(ASSOCIATED( Var2 ) ) THEN
             k = j
           ELSE
@@ -835,13 +845,13 @@ CONTAINS
     
 
     IF( .NOT. AllocationsDone ) THEN
-      n = Model % Mesh % MaxElementNodes
+      n = Mesh % MaxElementNodes
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), Basis(n), dBasisdx(n,3), &
           Conductivity(n), CoeffTensor(3,3,n) )
       AllocationsDone = .TRUE.
     END IF    
 
-    Tvar => VariableGet( Model % Variables, TRIM(VarName) )
+    Tvar => VariableGet( Mesh % Variables, TRIM(VarName) )
     IF( .NOT. ASSOCIATED( TVar ) ) THEN
       CALL Fatal('BoundaryFlux','Cannot calculate fluxes without potential field!')
     END IF
@@ -890,9 +900,9 @@ CONTAINS
     
     n = Parent % TYPE % NumberOfNodes
 
-    Nodes % x(1:n) = Model % Nodes % x(Parent % NodeIndexes)
-    Nodes % y(1:n) = Model % Nodes % y(Parent % NodeIndexes)
-    Nodes % z(1:n) = Model % Nodes % z(Parent % NodeIndexes)
+    Nodes % x(1:n) = Mesh % Nodes % x(Parent % NodeIndexes)
+    Nodes % y(1:n) = Mesh % Nodes % y(Parent % NodeIndexes)
+    Nodes % z(1:n) = Mesh % Nodes % z(Parent % NodeIndexes)
 
     k = 0
     DO j=1,n
