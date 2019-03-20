@@ -10559,7 +10559,7 @@ END FUNCTION SearchNodeL
     END IF
     norm = MAXVAL(Diag(1:n))
     IF( Parallel ) THEN
-      norm = ParallelReduction(norm)
+      norm = ParallelReduction(norm,2)
     END IF
 
     !--------------------------------------------------
