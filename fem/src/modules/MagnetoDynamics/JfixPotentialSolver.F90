@@ -121,7 +121,6 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     fixJpot => VariableGet(Mesh % Variables, 'Jfix')
   END IF
   
-
   
   AutomatedBCs = GetLogical( SolverParams, &
        'Automated Source Projection BCs', Found )
@@ -135,21 +134,16 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   IF(ParEnv % PEs>1) CALL ParallelInitMatrix(Solver,A)
 
   CALL ListSetNameSpace('jfix:')
-  CALL ListAddString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
-  CALL ListAddString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
+  CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
+  CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
 
-  CALL ListAddLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
-  CALL ListAddLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
-
-  IF (.NOT.ListCheckPresent(SolverParams,'Jfix: Linear System Preconditioning')) &
-    CALL ListAddString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
-
-  IF (.NOT.ListCheckPresent(SolverParams,'Jfix: Linear System Convergence Tolerance')) &
-    CALL ListAddConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
+  CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
+  CALL ListAddNewLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
+  CALL ListAddNewString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
+  CALL ListAddNewConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
       0.001_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
-
-
-  CALL ListAddLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
+  CALL ListAddNewLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
+  CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
 
   CALL DefaultInitialize()
   CALL BulkAssembly()
@@ -209,6 +203,8 @@ CONTAINS
       ! Element information
       ! ---------------------
       Element => GetActiveElement(elem)
+      IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+
       CALL GetElementNodes( Nodes )
       n  = GetElementNOFNodes()
       nd = n
@@ -292,7 +288,6 @@ CONTAINS
           n = GetElementNOFNodes()
           IF (.NOT.ActiveBoundaryElement()) CYCLE
 
-
           P1 => Element % BoundaryInfo % Left
           P2 => Element % BoundaryInfo % Right
           IF(ASSOCIATED(P1).AND.ASSOCIATED(P2)) THEN
@@ -342,78 +337,12 @@ CONTAINS
              DO k=1,n
                 p = Element % NodeIndexes(k) 
                 p = dofs*(Perm(p)-1)+j
-
-#ifdef OLD_DIRICHLET
-                ! In parallel collect shared constrained dofs and send to
-                ! other owners...
-                ! -------------------------------------------------------
-                IF (Parenv % PEs>1) THEN
-                   IF(A % ParallelInfo % INTERFACE(p)) THEN
-                      DO l=1,SIZE(A % ParallelInfo % Neighbourlist(p) % Neighbours)
-                         m=A % ParallelInfo % NeighbourList(p) % Neighbours(l)
-                         IF(m/=ParEnv % MyPE) THEN
-                            CALL List_AddToMatrixElement( gm % ListMatrix, m+1, &
-                                 A % ParallelInfo % GlobalDOFs(p), 1._dp)
-                         ELSE
-                            CALL CRS_SetSymmDirichlet(A,A % RHS,p,1._dp)
-                         END IF
-                      END DO
-                   ELSE
-                      CALL CRS_SetSymmDirichlet(A,A % RHS,p,1._dp)
-                   END IF
-                ELSE
-                   CALL CRS_SetSymmDirichlet(A,A % RHS,p,1._dp)
-                END IF
-#else
                 CALL UpdateDirichletDof(A, p, 0._dp)
-#endif
              END DO
           END DO
        END DO
     END IF
 
-    ! In parallel apply constraints spotted by other partitions
-    ! ---------------------------------------------------------
-#ifdef OLD_DIRICHLET
-    IF(ParEnv % PEs>1) THEN
-      IF(ASSOCIATED(gm % ListMatrix)) CALL List_toCRSMatrix(gm)
-
-      DO i=1,ParEnv % PEs
-        IF(i-1==Parenv % myPE.OR..NOT.ParEnv % Active(i)) CYCLE
-
-        IF(i<=gm % NumberOfRows) THEN
-          ncols=gm % Rows(i+1)-gm % Rows(i)
-          CALL MPI_BSEND(ncols,1,MPI_INTEGER,i-1,2120,ELMER_COMM_WORLD,ierr)
-          IF(ncols>0) THEN
-            CALL MPI_BSEND(gm%cols(gm%rows(i):gm%rows(i+1)-1),ncols, &
-                 MPI_INTEGER,i-1,2121,ELMER_COMM_WORLD,ierr)
-          END IF
-        ELSE
-           ncols=0
-          CALL MPI_BSEND(ncols,1,MPI_INTEGER,i-1,2120,ELMER_COMM_WORLD,ierr)
-        END IF
-      END DO
-
-      CALL FreeMatrix(gm)
-
-      DO i=1,ParEnv % PEs
-        IF(i-1==Parenv % myPE.OR..NOT.ParEnv % Active(i)) CYCLE
-
-        CALL MPI_RECV(ncols,1,MPI_INTEGER,i-1,2120,ELMER_COMM_WORLD,status,ierr)
-        IF(ncols>0) THEN
-          ALLOCATE(narr(ncols))
-          CALL MPI_RECV(narr,ncols,MPI_INTEGER,i-1,2121,ELMER_COMM_WORLD,status,ierr)
-          DO j=1,ncols
-            k = SearchIAItem(A % NumberOfRows,A % ParallelInfo % GlobalDOFs, narr(j))
-            IF(k>0) THEN
-              CALL CRS_SetSymmDirichlet(A,A % RHS,k,1._dp)
-            END IF
-          END DO
-          DEALLOCATE(narr)
-        END IF
-      END DO
-    END IF
-#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
 !------------------------------------------------------------------------------
