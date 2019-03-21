@@ -4395,7 +4395,7 @@ use spariterglobals
          END IF
          IF( .NOT. ASSOCIATED( Handle % Handle3 ) ) THEN           
            ALLOCATE( Handle % Handle3 )           
-           CALL ListInitHandle( Handle % Handle2 ) 
+           CALL ListInitHandle( Handle % Handle3 ) 
          END IF
 
          CALL ListInitElementKeyword( Handle,Section,TRIM(Name)//' 1',minv,maxv,&
@@ -4518,7 +4518,7 @@ use spariterglobals
          CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(I2S(Handle % SectionType)))
 
        END SELECT
-
+  
        ! If the parameter is not defined in some list we cannot really be sure
        ! that it is intentionally used as a zero. Hence we cannot assume that the
        ! keyword is constant. 
