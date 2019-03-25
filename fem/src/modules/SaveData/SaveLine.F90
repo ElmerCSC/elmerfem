@@ -111,10 +111,10 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
       SkipBoundaryInfo, GotDivisions, EdgeBasis, DG
   INTEGER :: i,ii,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
-      Side, SaveNodes, SaveNodes2, node, NoResults, LocalNodes, NoVar, &
-      No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, NoFaces, &
-      NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
-      i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex
+      Side, SaveNodes, SaveNodes2, SaveNodes3, SaveNodes4, node, NoResults, &
+      LocalNodes, NoVar, No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, &
+      NoFaces, NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
+      i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex, LineInd
   INTEGER, POINTER :: NodeIndexes(:), SavePerm(:), InvPerm(:), BoundaryIndex(:), IsosurfPerm(:), NoDivisions(:)
   TYPE(Solver_t), POINTER :: ParSolver
   TYPE(Variable_t), POINTER :: Var, Var2, Var3, IsosurfVar
@@ -199,7 +199,11 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     CondName = ListGetString(Params,'Flux Coefficient',GotIt )
     IF(.NOT. gotIt) CondName = TRIM('Heat Conductivity')
   END IF
-
+  
+  LineInd = ListGetInteger( Params,'Line Marker',GotIt)
+  SaveNodes = 0; SaveNodes2 = 0
+  SaveNodes3 = 0; SaveNodes4 = 0
+  
 !----------------------------------------------
 ! Specify the number of entries for each node
 !---------------------------------------------- 
@@ -587,7 +591,7 @@ CONTAINS
     INTEGER :: i,j,k,l,ivar,ii
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: UseGivenNode, PiolaVersion, EdgeBasis
-    INTEGER :: n, nd, np, EdgeBasisDegree, Labels(4)
+    INTEGER :: n, nd, np, EdgeBasisDegree, Labels(5)
     INTEGER, POINTER :: PtoIndexes(:)
     REAL(KIND=dp), POINTER :: PtoBasis(:)
     REAL(KIND=dp), TARGET :: PointBasis(1)
@@ -605,17 +609,19 @@ CONTAINS
     
     IF( .NOT. SkipBoundaryInfo ) THEN      
       Labels = 0
+      IF( LineInd /= 0 ) THEN
+        n0 = n0 + 1
+        Labels(n0) = LineInd
+      END IF
+
       IF(TransientSimulation) THEN
-        Labels(1) = Solver % DoneTime
-        n0 = 1
-      ELSE
-        n0 = 0
+        n0 = n0 + 1
+        Labels(n0) = Solver % DoneTime
       END IF
 
       Labels(n0+1) = Solver % TimesVisited + 1
       Labels(n0+2) = bc_id
-      Labels(n0+3) = node_id
-      
+      Labels(n0+3) = node_id      
       n0 = n0 + 3
 
       DO i=1,n0
@@ -1083,7 +1089,6 @@ CONTAINS
 
     IF( InitializePerm ) THEN
       SavePerm = 0
-      SaveNodes = 0
 
       OptimizeOrder = ListGetLogical(Params,'Optimize Node Ordering',GotIt)
       IF(.NOT. GotIt) OptimizeOrder = .NOT. Parallel
@@ -1332,7 +1337,6 @@ CONTAINS
     END IF
     
 
-    SaveNodes2 = 0  
     IF( NoLines > 0  .OR. ANY(SaveAxis(1:DIM) ) ) THEN
       NoTests = 0
 
@@ -1563,7 +1567,6 @@ CONTAINS
 
     CALL Info('SaveLine','Saving data on given circles: '//TRIM(I2S(NoLines)),Level=7)
 
-    SaveNodes2 = 0  
     NoTests = 0
     
     t = MAXVAL( NoDivisions )     
@@ -1682,7 +1685,7 @@ CONTAINS
                 LocalCoord(2), LocalCoord(3), detJ, Basis ) !, dBasisdx ) 
 
             LineTag(ii) = .TRUE.
-            SaveNodes2 = SaveNodes2 + 1
+            SaveNodes3 = SaveNodes3 + 1
             CALL WriteFieldsAtElement( CurrentElement, Basis, Line, ii, &
                 0, LocalCoord = LocalCoord )
           END IF
@@ -1702,7 +1705,7 @@ CONTAINS
       CALL Info('SaveLine','Number of candidate nodes: '//TRIM(I2S(NoTests)),Level=8)
     END IF
     
-    CALL Info('SaveLine','Number of nodes in specified lines: '//TRIM(I2S(SaveNodes2)))
+    CALL Info('SaveLine','Number of nodes in specified circle: '//TRIM(I2S(SaveNodes3)))
     
     DEALLOCATE( LineTag )
 
@@ -1736,7 +1739,6 @@ CONTAINS
       
       Line = Line + 1
       LineTag = .FALSE.
-      SaveNodes2 = 0
  
       WRITE (Name,'(A,I0)') 'IsoSurface Variable ',Line
       VarName = ListGetString( Params, Name, GotVar )
@@ -1813,7 +1815,7 @@ CONTAINS
           IF( LineTag(k) ) CYCLE
           LineTag(k) = .TRUE.
         END IF
-        SaveNodes2 = SaveNodes2 + 1
+        SaveNodes4 = SaveNodes4 + 1
         
 
         No = 0
@@ -1822,7 +1824,7 @@ CONTAINS
         CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, k, 0 )         
       END DO
 
-      WRITE( Message, * ) 'Number of nodes in isocurve: ', SaveNodes2
+      WRITE( Message, * ) 'Number of nodes in isocurves: ', SaveNodes4
       CALL Info('SaveLine',Message)
          
     END DO
@@ -1937,13 +1939,22 @@ CONTAINS
       DateStr = FormatDate()
       WRITE( NamesUnit,'(A,A)') 'File started at: ',TRIM(DateStr)
 
-      WRITE(NamesUnit,'(I7,A)') SaveNodes,' boundary nodes for each step'
-      WRITE(NamesUnit,'(I7,A)') SaveNodes2,' polyline nodes for each step'
+      WRITE(NamesUnit,'(A)') 'Number of data nodes for each step'
+      WRITE(NamesUnit,'(A)') '  bc nodes: '//TRIM(I2S(SaveNodes))
+      WRITE(NamesUnit,'(A)') '  polyline nodes: '//TRIM(I2S(SaveNodes2))
+      WRITE(NamesUnit,'(A)') '  circle nodes: '//TRIM(I2S(SaveNodes3))
+      WRITE(NamesUnit,'(A)') '  isocurve nodes: '//TRIM(I2S(SaveNodes4))
+
+      WRITE(NamesUnit,'(A)') 'Data on different columns'
       j = 0
       IF( .NOT. SkipBoundaryInfo ) THEN
+        IF( LineInd /= 0 ) THEN
+          j = j+1
+          WRITE(NamesUnit,'(I3,": ",A)') j,'Line Marker'
+        END IF
         IF(TransientSimulation) THEN
-          WRITE(NamesUnit,'(I3,": ",A)') 1,'Time step'
-          j = 1
+          j = j+1
+          WRITE(NamesUnit,'(I3,": ",A)') j,'Time step'
         END IF
         WRITE(NamesUnit,'(I3,": ",A)') 1+j,'Iteration step'
         WRITE(NamesUnit,'(I3,": ",A)') 2+j,'Boundary condition'
