@@ -54,12 +54,12 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t),POINTER :: SolverParams
+  TYPE(ValueList_t),POINTER :: SolverParams, BF
   INTEGER :: i,j,k,n,m,dim,dofs
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER :: A,B
   REAL(KIND=dp) :: Norm
-  LOGICAL:: AutomatedBCs, Found
+  LOGICAL:: AutomatedBCs, SingleNodeBC, Found
   INTEGER, ALLOCATABLE :: Def_Dofs(:,:,:)
   CHARACTER(LEN=MAX_NAME_LEN):: Equation
   INTEGER, POINTER :: Perm(:)
@@ -80,10 +80,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       CALL Info('JfixPotentialSolver','Current density is constant, nothing to do!',Level=8)
       RETURN
     END IF
-  END IF
-    
-  Visited = .TRUE.
-  
+  END IF  
   
   fixJpot => VariableGet( Mesh % Variables, 'Jfix')
 
@@ -124,6 +121,18 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   AutomatedBCs = GetLogical( SolverParams, &
        'Automated Source Projection BCs', Found )
   IF (.NOT. Found) AutomatedBCs = .TRUE.
+  
+  ! Set potential only on a single node
+  ! This uses the functionality of DefaultDirichlet
+  SingleNodeBC = GetLogical( SolverParams,'Single Node Projection BC',Found ) 
+  IF( SingleNodeBC .AND. .NOT. Visited ) THEN
+    DO i=1,Model % NumberOfBodyForces
+      BF => Model % BodyForces(i) % Values
+      IF( ListCheckPrefix( BF,'Current Density') ) THEN
+        CALL ListAddConstReal( BF,'Jfix Single Node',0.0_dp )
+      END IF
+    END DO    
+  END IF
 
   svar => Solver % Variable
   Solver % Variable => fixJpot
@@ -147,7 +156,9 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   CALL DefaultInitialize()
   CALL BulkAssembly()
 
-  IF( AutomatedBCs ) THEN
+  IF( SingleNodeBC ) THEN
+    CONTINUE
+  ELSE IF( AutomatedBCs ) THEN
     CALL BCAssemblyAutomated()
   ELSE IF( .NOT. A % COMPLEX ) THEN
     CALL BCAssemblyStatCurrent()
@@ -167,6 +178,9 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   
   IterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
   IterV % Values(1) = 1
+
+  Visited = .TRUE.
+
 CONTAINS
 
 !------------------------------------------------------------------------------

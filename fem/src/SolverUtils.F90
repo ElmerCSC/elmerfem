@@ -4291,12 +4291,6 @@ CONTAINS
 ! These logical vectors are used to minimize extra effort in setting up different BCs
 !------------------------------------------------------------------------------
 
-    !DiagScaling => A % DiagScaling
-    !IF (.NOT.ASSOCIATED(DiagScaling)) THEN
-    !  ALLOCATE(DiagScaling(A % NumberOFRows))
-    !  DiagScaling = 1._dp
-    !END IF
-
     nlen = LEN_TRIM(Name)
     n = MAX( Model % NumberOfBodyForces,Model % NumberOfBCs)
     ALLOCATE( ActivePart(n), ActivePartAll(n), ActiveCond(n))
@@ -4309,7 +4303,8 @@ CONTAINS
     IF( PRESENT( PermOffSet) ) OffSet = PermOffSet
     IF( PRESENT( OffDiagonalMatrix ) ) OffDiagonal = OffDiagonalMatrix
 
-    ALLOCATE( Indexes(Model % Mesh % MaxElementDOFs) )
+    Mesh => Model % Mesh
+    ALLOCATE( Indexes(Mesh % MaxElementDOFs) )
 !------------------------------------------------------------------------------
 ! Go through the periodic BCs and set the linear dependence
 !------------------------------------------------------------------------------
@@ -4329,7 +4324,7 @@ CONTAINS
        CALL Fatal('SetDirichletBoundaries','Periodicity not considered with offset')
      END IF
 
-     ALLOCATE( DonePeriodic( Model % Mesh % NumberOFNodes ) )
+     ALLOCATE( DonePeriodic( Mesh % NumberOFNodes ) )
      DonePeriodic = .FALSE.
      DO BC=1,Model % NumberOfBCs
        IF( ActivePart(BC) ) THEN
@@ -4582,9 +4577,9 @@ CONTAINS
     END DO
 
     IF ( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN
-
       Solver => Model % Solver
       Mesh   => Solver % Mesh
+
       ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
       DO i=0,Mesh % PassBCCnt-1
         j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
@@ -4660,9 +4655,9 @@ CONTAINS
               DO i=1,Model % NumberOfNodes
                 IF( Perm(i) == 0) CYCLE
                 
-                Dist = (Model % Mesh % Nodes % x(i) - CoordNodes(j,1))**2 
-                IF(NoDims >= 2) Dist = Dist + (Model % Mesh % Nodes % y(i) - CoordNodes(j,2))**2
-                IF(NoDims == 3) Dist = Dist + (Model % Mesh % Nodes % z(i) - CoordNodes(j,3))**2
+                Dist = (Mesh % Nodes % x(i) - CoordNodes(j,1))**2 
+                IF(NoDims >= 2) Dist = Dist + (Mesh % Nodes % y(i) - CoordNodes(j,2))**2
+                IF(NoDims == 3) Dist = Dist + (Mesh % Nodes % z(i) - CoordNodes(j,3))**2
                 Dist = SQRT(Dist)
                 
                 IF(Dist < MinDist(j) .AND. Dist <= Eps ) THEN
@@ -4792,6 +4787,9 @@ CONTAINS
     AnySingleBF = ListCheckPresentAnyBodyForce( Model, DirName )
 
     IF( AnySingleBC .OR. AnySingleBF ) THEN
+      Solver => Model % Solver
+      Mesh   => Solver % Mesh
+
       DO bc = 1,Model % NumberOfBCs  + Model % NumberOfBodyForces    
 
         ! Make a distinction between BCs and BFs. 
@@ -4799,13 +4797,13 @@ CONTAINS
         IF( bc <= Model % NumberOfBCs ) THEN
           IF(.NOT. AnySingleBC ) CYCLE
           ValueList => Model % BCs(BC) % Values
-          ElemFirst =  Model % NumberOfBulkElements + 1 
-          ElemLast =  Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+          ElemFirst =  Mesh % NumberOfBulkElements + 1 
+          ElemLast =  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         ELSE
           IF( .NOT. AnySingleBF ) CYCLE
           ValueList => Model % BodyForces(bc - Model % NumberOfBCs) % Values
           ElemFirst =  1
-          ElemLast =  Model % NumberOfBulkElements
+          ElemLast =  Mesh % NumberOfBulkElements
         END IF
 
         SingleVal = ListGetCReal( ValueList,DirName, GotIt) 
@@ -4816,20 +4814,23 @@ CONTAINS
         ! the value. In parallel it will be an unshared node with the highest possible 
         ! node number 
         IF( .NOT. GotIt ) THEN        
-
+          
           ind = 0
           DO t = ElemFirst, ElemLast
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
             n = Element % TYPE % NumberOfNodes
             NodeIndexes => Element % NodeIndexes
 
             IF( bc <= Model % NumberOfBCs ) THEN
               IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
             ELSE
-              bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values,'Body Force',GotIt)
+              j = Element % BodyId
+              IF( j < 0 .OR. j > Model % NumberOfBodies ) CYCLE
+              bf = ListGetInteger( Model % Bodies(j) % Values,'Body Force',GotIt)
+              IF(.NOT. GotIt) CYCLE
               IF( bc - Model % NumberOfBCs /= bf ) CYCLE
             END IF
-
+            
             DO i=1,n
               j = NodeIndexes(i)
               IF( Perm(j) == 0) CYCLE
@@ -4843,7 +4844,9 @@ CONTAINS
             IF( ind > 0 ) EXIT
           END DO
 
-          ! Find the maximum partition that owns the node. 
+          k = NINT( ParallelReduction( 1.0_dp * ind, 2 ) ) 
+           
+          ! Find the maximum partition that owns a suitable node. 
           ! It could be minimum also, just some convection is needed. 
           IF( ParEnv % PEs > 1 ) THEN
             k = -1
@@ -4851,19 +4854,28 @@ CONTAINS
             k = NINT( ParallelReduction( 1.0_dp * k, 2 ) ) 
             IF( k == -1 ) THEN
               CALL Warn('SetDirichletBoundaries','Could not find node to set: '//TRIM(DirName))
+            ELSE
+              IF( k /= ParEnv % MyPe ) ind = 0                         
+              IF( InfoActive(8) ) THEN
+                ind = NINT( ParallelReduction( 1.0_dp * ind, 2 ) )               
+                CALL Info('SetDirichletBoundaries','Fixing single node '&
+                    //TRIM(I2S(ind))//' at partition '//TRIM(I2S(k)),Level=8)
+                IF( k /= ParEnv % MyPe ) ind = 0
+              END IF
             END IF
-            IF( k /= ParEnv % MyPe ) ind = 0
           ELSE
             IF( ind == 0 ) THEN
               CALL Warn('SetDirichletBoundaries','Could not find node to set: '//TRIM(DirName))
+            ELSE              
+              CALL Info('SetDirichletBoundaries','Fixing single node '//TRIM(I2S(ind)),Level=8)
             END IF
           END IF
-
-          CALL ListAddInteger( ValueList,TRIM(Name)//' Single Node Index', ind )
+            
+          CALL ListAddInteger( ValueList,TRIM(Name)//' Single Node Index', ind )          
         END IF
 
         ! Ok, if this is the partition where the single node to eliminate the floating should 
-        ! be eliminated then set it here.         
+        ! be eliminated then set it here. Index equal to zero tells that we are in a wrong partition.        
         IF( ind > 0 ) THEN
           CALL SetSinglePoint(ind,DOF,SingleVal,.TRUE.)
         END IF
@@ -5079,11 +5091,12 @@ CONTAINS
       END IF
     END IF
 
-    !IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
-
-    CALL Info('SetDirichletBoundaries','Number of dofs set for '//TRIM(Name)//': '&
-        //TRIM(I2S(DirCount)),Level=12)
-
+    IF( InfoActive(12) )  THEN
+      DirCount = NINT( ParallelReduction( 1.0_dp * DirCount ) )
+      CALL Info('SetDirichletBoundaries','Number of dofs set for '//TRIM(Name)//': '&
+          //TRIM(I2S(DirCount)),Level=12)
+    END IF
+      
     
 !------------------------------------------------------------------------------
 
@@ -5370,8 +5383,6 @@ CONTAINS
         ALLOCATE(A % Dvalues(A % NumberOfRows))
         A % Dvalues = 0._dp
       END IF
-
-
       
       k = ind
       IF (ApplyPerm) k = Perm(ind)
@@ -5388,23 +5399,12 @@ CONTAINS
       END IF
 
       DirCount = DirCount + 1
-
-      !IF ( A % FORMAT == MATRIX_SBAND ) THEN
-      !  CALL SBand_SetDirichlet( A,b,k,s*val )
-      !ELSE
-      !  IF (.NOT.A % NoDirichlet ) CALL ZeroRow( A,k )
       
-        IF( .NOT. OffDiagonal ) THEN
-          !IF(ALLOCATED(A % Dvalues))
-          A % Dvalues(k) =  val !/ DiagScaling(k)
-          !IF( .NOT.A % NoDirichlet ) THEN
-          !  CALL SetMatrixElement( A,k,k,1._dp )
-          !  IF(.NOT.ALLOCATED(A % Dvalues)) b(k) = val / DiagScaling(k)
-          !END IF
-        END IF
-        !IF(ALLOCATED(A % ConstrainedDOF))
-        A % ConstrainedDOF(k) = .TRUE.
-      !END IF
+      IF( .NOT. OffDiagonal ) THEN
+        A % Dvalues(k) =  val
+      END IF
+      A % ConstrainedDOF(k) = .TRUE.
+
 !------------------------------------------------------------------------------
     END SUBROUTINE SetSinglePoint
 !------------------------------------------------------------------------------
