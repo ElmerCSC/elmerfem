@@ -11089,7 +11089,8 @@ END SUBROUTINE GetMaxDefs
         ExtrudedCoord,dg_n,totalnumberofelements
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     INTEGER :: nnodes,gnodes,gelements,ierr
-    LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline, PreserveEdges
+    LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline, PreserveEdges, &
+        Rotational, Rotate2Pi
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
@@ -11165,12 +11166,25 @@ END SUBROUTINE GetMaxDefs
     MaxCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found )
     IF(.NOT. Found) MaxCoord = 1.0_dp
 
+    Rotate2Pi = .FALSE.
+    Rotational = ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Rotational',Found )    
+    IF( Rotational ) THEN
+      Rotate2Pi = ( ABS(ABS( MaxCoord-MinCoord ) - 2*PI) < 1.0e-3*PI )
+      IF( Rotate2Pi ) CALL Info('MeshExtrude','Perfoming full 2Pi rotation',Level=6)
+    END IF
+
+    
     cnt=0
     DO i=0,in_levels+1
 
+      ! If we rotate full 2Pi then we have natural closure!
+      IF( Rotate2Pi ) THEN
+        IF( i == in_levels+1) EXIT
+      END IF
+      
       w = Wtable( i ) 
-      CurrCoord = w * MaxCoord + (1-w) * MinCoord
-
+      CurrCoord = w * MaxCoord + (1-w) * MinCoord      
+      
       DO j=1,Mesh_in % NumberOfNodes
 
         cnt = cnt + 1
@@ -11197,6 +11211,23 @@ END SUBROUTINE GetMaxDefs
     END DO
     Mesh_out % NumberOfNodes=cnt
 
+    
+    IF( Rotational ) THEN
+      BLOCK
+        REAL(KIND=DP) :: x,y,z,r        
+        DO i=1,cnt          
+          x = Mesh_out % Nodes % x(i)
+          y = Mesh_out % Nodes % y(i)
+          z = Mesh_out % Nodes % z(i)
+
+          Mesh_out % Nodes % x(i) = COS(z) * x
+          Mesh_out % Nodes % y(i) = SIN(z) * x
+          Mesh_out % Nodes % z(i) = y
+        END DO
+      END BLOCK
+    END IF
+    
+    
     ! Count 101 elements:
     ! (these require an extra layer)
     ! -------------------
@@ -11210,9 +11241,14 @@ END SUBROUTINE GetMaxDefs
     n=SIZE(Mesh_in % Elements)
 
     ! inquire total number of needed 
-    totalnumberofelements = n*(in_levels+3) + cnt101
+    IF( Rotate2Pi ) THEN
+      totalnumberofelements = n*(in_levels+1) + cnt101
+    ELSE
+      totalnumberofelements = n*(in_levels+3) + cnt101
+    END IF
+
     IF (PreserveBaseline) &
-         totalnumberofelements = totalnumberofelements + Mesh_in % NumberOfBoundaryElements
+        totalnumberofelements = totalnumberofelements + Mesh_in % NumberOfBoundaryElements
     ALLOCATE(Mesh_out % Elements(totalnumberofelements))
     
     ! Generate volume bulk elements:
@@ -11236,7 +11272,11 @@ END SUBROUTINE GetMaxDefs
         END DO
         DO k=1,Mesh_in % Elements(j) % TYPE % NumberOfNodes
           l_n=l_n+1
-          ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)+(i+1)*n
+          IF( Rotate2Pi .AND. i==in_levels ) THEN
+            ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)
+          ELSE
+            ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)+(i+1)*n
+          END IF
         END DO
         Mesh_out % Elements(cnt) % NDOFs = l_n
         Mesh_out % MaxElementNodes=MAX(Mesh_out % MaxElementNodes,l_n)
@@ -11391,9 +11431,15 @@ END SUBROUTINE GetMaxDefs
 
           ind(1) = Mesh_in % Elements(k) % NodeIndexes(1)+i*n
           ind(2) = Mesh_in % Elements(k) % NodeIndexes(2)+i*n
-          ind(3) = Mesh_in % Elements(k) % NodeIndexes(2)+(i+1)*n
-          ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)+(i+1)*n
-          Mesh_out % Elements(cnt) % NodeIndexes = ind(1:4)
+
+          IF( Rotate2Pi .AND. i==in_levels ) THEN
+            ind(3) = Mesh_in % Elements(k) % NodeIndexes(2)
+            ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)
+          ELSE
+            ind(3) = Mesh_in % Elements(k) % NodeIndexes(2)+(i+1)*n
+            ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)+(i+1)*n
+          END IF
+            Mesh_out % Elements(cnt) % NodeIndexes = ind(1:4)
           Mesh_out % Elements(cnt) % TYPE => GetElementType(404)
         ELSE
           Mesh_out % Elements(cnt) % NDOFs = 1
@@ -11476,6 +11522,9 @@ END SUBROUTINE GetMaxDefs
     CALL Info('ExtrudeMesh',Message,Level=8)
 
 
+    ! Add start and finish planes except if we have a full rotational symmetry
+    IF( .NOT. Rotate2Pi ) THEN
+
     ! Add bottom boundary:
     ! --------------------
     DO i=1,Mesh_in % NumberOfBulkElements
@@ -11551,6 +11600,9 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % FaceIndexes => NULL()
       Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
     END DO
+
+    END IF
+    
 
     Mesh_out % NumberOfBoundaryElements=cnt-Mesh_out % NumberOfBulkElements
 
