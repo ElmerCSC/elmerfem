@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter RÅÂback
+   Author: Peter RÔøΩÔøΩback
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -5795,7 +5795,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
       for(i=1;i<=noregions;i++) {
 	Getrow(line,in,FALSE);
 
-	/* currently we just cycle trough this and get a new row */
+	/* currently we just cycle through this and get a new row */
 	if( strstr(line,"REGIONS SURFACIQUES")) Getrow(line,in,FALSE);
 	if( strstr(line,"REGIONS VOLUMIQUES")) Getrow(line,in,FALSE);
 

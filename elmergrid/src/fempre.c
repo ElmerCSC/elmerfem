@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter Rï¿½back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -197,8 +197,8 @@ static void Instructions()
   printf("-metisbc             : partition connected BCs separately to partitions by Metis\n");
 #endif
   printf("-partlayers int      : extend boundary partitioning by element layers\n");
-  
-  printf("\nKeywords are related to (nearly obsolite) ElmerPost format:\n");
+
+  printf("\nKeywords are related to (nearly obsolete) ElmerPost format:\n");
   printf("-partjoin int        : number of ElmerPost partitions in the data to be joined\n");
   printf("-saveinterval int[3] : the first, last and step for fusing parallel data\n");
   printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
@@ -612,11 +612,11 @@ int main(int argc, char *argv[])
     data->dim = GetCoordinateDimension(data,info);
   }
 
- 
-  /* Make the discontinous boundary needed, for example, in poor thermal conduction */
+
+  /* Make the discontinuous boundary needed, for example, in poor thermal conduction */
   for(k=0;k<nomeshes;k++) {
     if(!eg.discont) {
-      for(j=0;j<grids[k].noboundaries;j++) 
+      for(j=0;j<grids[k].noboundaries;j++)
 	if(grids[k].boundsolid[j] == 2) {
 	  eg.discontbounds[eg.discont] = grids[k].boundtype[j];
 	  eg.discont++;	  
@@ -1079,11 +1079,11 @@ int main(int argc, char *argv[])
     break;
 #endif
 
-    
-    /* Some obsolite special formats related to mapping, view factors etc. */
-    
+
+    /* Some obsolete special formats related to mapping, view factors etc. */
+
   case 101:
-    for(k=0;k<nogrids;k++) {   
+    for(k=0;k<nogrids;k++) {
       for(i=0;i<grids[k].noboundaries;i++)
 	if(boundaries[k][i].created == TRUE) {
 	  sprintf(prefix,"%s%d",eg.filesout[k],i+1);
@@ -1102,8 +1102,3 @@ int main(int argc, char *argv[])
   Goodbye();
   return(0);
 }
-
-
-
-
-
