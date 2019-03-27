@@ -10973,6 +10973,13 @@ END SUBROUTINE GetMaxDefs
     !---------------------------------------------------------------
     q = ListGetConstReal(CurrentModel % Simulation,'Extruded Mesh Ratio',GotRatio)
     IF( GotRatio ) THEN
+      IF( ABS(q-1.0_dp) < 1.0e-6 ) THEN
+        CALL Info('UnitSegmentDivision','Assuming linear division as mesh ratio is close to one!')
+        GotRatio = .FALSE.
+      END IF
+    END IF
+
+    IF( GotRatio ) THEN
       CALL Info('UnitSegmentDivision','Creating geometric division',Level=5)
 
       h1 = (1-q**(1.0_dp/(n-1)))/(1-q)
