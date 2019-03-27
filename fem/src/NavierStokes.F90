@@ -975,10 +975,10 @@ MODULE NavierStokes
           masscoeff = 2 * s * rho * Basis(q) * Basis(p)
           !A(1,2) = A(1,2)&
           StiffMatrixTrabsp(((1-1)*(NBasis)) + (p),((2-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((1-1)*(NBasis)) + (p), & 
-            ((2-1)*(NBasis)) + (q)) asscoeff * Omega(3)
+          ((2-1)*(NBasis)) + (q)) - masscoeff * Omega(3)
           !A(2,1) = A(2,1)&
           StiffMatrixTrabsp(((2-1)*(NBasis)) + (p),((1-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((2-1)*(NBasis)) + (p), & 
-            ((1-1)*(NBasis)) + (q)) asscoeff * Omega(3)
+          ((1-1)*(NBasis)) + (q)) + masscoeff * Omega(3)
         END DO ! p nbasis simd
         IF( dim == 3) THEN
           !$omp simd
