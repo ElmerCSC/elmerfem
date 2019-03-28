@@ -1210,17 +1210,17 @@ CONTAINS
 
      dim = CoordinateSystemDimension()
      ! TEMP
-     ! IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
+      IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
      
-     ! DO i=1,Element % TYPE % NumberOfNodes
-     !     Ind(i) = BoundaryReorder(Element % NodeIndexes(i))
-     ! END DO
+      DO i=1,Element % TYPE % NumberOfNodes
+          Ind(i) = BoundaryReorder(Element % NodeIndexes(i))
+      END DO
      ! TODO: See that RotateMatrix is vectorized
-     ! CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
-     !                    Ind, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
-     IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
-       CALL Fatal('UpdateGlobalEquationsVec', &
-               'Normal or tangential boundary conditions not supported yet!')
+      CALL RotateMatrix( Lmtr, Gvec, n, dim, NDOFs, &
+                         Ind, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
+     !IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
+     !  CALL Fatal('UpdateGlobalEquationsVec', &
+     !          'Normal or tangential boundary conditions not supported yet!')
      END IF
 
      NeedMasking = .FALSE.

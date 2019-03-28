@@ -976,17 +976,19 @@ CONTAINS
         Solver % Variable % LinConverged = 1
       END IF
     ELSE
-      CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
-      IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
-        CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
-      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
-        CALL NumericalError( 'IterSolve', 'Too many iterations was needed.')        
-      ELSE IF( HUTI_INFO == HUTI_HALTED ) THEN
-        CALL Warn('IterSolve','Iteration halted due to problem in algorithm, trying to continue')
-      END IF      
-      IF( ASSOCIATED( Solver % Variable ) ) THEN
-        Solver % Variable % LinConverged = 0
-      END IF      
+      IF (ParEnv % myPE == 0) THEN
+        CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
+        IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
+          CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
+        ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
+          CALL NumericalError( 'IterSolve', 'Too many iterations were needed.')        
+        ELSE IF( HUTI_INFO == HUTI_HALTED ) THEN
+          CALL Warn('IterSolve','Iteration halted due to problem in algorithm, trying to continue')
+        END IF
+        IF( ASSOCIATED( Solver % Variable ) ) THEN
+          Solver % Variable % LinConverged = 0
+        END IF
+      END IF
     END IF
 !------------------------------------------------------------------------------
 #ifdef USE_ISO_C_BINDINGS

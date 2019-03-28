@@ -924,7 +924,7 @@ END BLOCK
       CALL ListInitElementKeyword( SurfaceTraction_h,'Boundary Condition','Surface Traction',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
-          'Normal Tangential '//GetVarName(CurrentModel % Solver % Variable) )
+          'Normal-Tangential '//GetVarName(CurrentModel % Solver % Variable) )
 
       InitHandles = .FALSE.
     END IF
