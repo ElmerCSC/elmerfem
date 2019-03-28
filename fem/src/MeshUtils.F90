@@ -10956,24 +10956,29 @@ END SUBROUTINE GetMaxDefs
 !> Note that the 3rd algorithm involves iterative solution of the nodal
 !> positions and is therefore not bullet-proof.
 !------------------------------------------------------------------------------
-  SUBROUTINE UnitSegmentDivision( w, n )
+  SUBROUTINE UnitSegmentDivision( w, n, ExtList )
     REAL(KIND=dp), ALLOCATABLE :: w(:)
     INTEGER :: n
+    TYPE(ValueList_t), POINTER, OPTIONAL :: ExtList
     !---------------------------------------------------------------
     INTEGER :: i,J,iter,maxiter
-    REAL(KIND=dp) :: q,h1,hn,minhn,err_eps,err,xn
+    REAL(KIND=dp) :: q,r,h1,hn,minhn,err_eps,err,xn
     REAL(KIND=dp), ALLOCATABLE :: wold(:),h(:)
     LOGICAL :: Found, GotRatio
     TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: ParList
     
-    ! Linear distribution and an initial guess for the generic case
-    !---------------------------------------------------------------
-
+    IF( PRESENT( ExtList ) ) THEN
+      ParList => ExtList
+    ELSE
+      ParList => CurrentModel % Simulation
+    END IF
+    
     ! Geometric division
     !---------------------------------------------------------------
-    q = ListGetConstReal(CurrentModel % Simulation,'Extruded Mesh Ratio',GotRatio)
+    q = ListGetConstReal( ParList,'Extruded Mesh Ratio',GotRatio)
     IF( GotRatio ) THEN
-      IF( ABS(q-1.0_dp) < 1.0e-6 ) THEN
+      IF( ( ABS(ABS(q)-1.0_dp) < 1.0e-6 ) .OR. (q < 0.0_dp .AND. n <= 2) ) THEN
         CALL Info('UnitSegmentDivision','Assuming linear division as mesh ratio is close to one!')
         GotRatio = .FALSE.
       END IF
@@ -10982,19 +10987,38 @@ END SUBROUTINE GetMaxDefs
     IF( GotRatio ) THEN
       CALL Info('UnitSegmentDivision','Creating geometric division',Level=5)
 
-      h1 = (1-q**(1.0_dp/(n-1)))/(1-q)
-      w(0) = 0.0_dp
-      hn = h1;
-      DO i=1,n-1
-        w(i) = w(i-1) + hn;
-        hn = hn * ( q**(1.0_dp/(n-1)) )
-      END DO
-      w(n) = 1.0_dp
-
-
+      IF( q > 0.0_dp ) THEN      
+        r = q**(1.0_dp/(n-1))
+        h1 = (1-r)/(1-r**n)
+        w(0) = 0.0_dp
+        DO i=1,n-1
+          w(i) = h1 * (1-r**i)/(1-r)
+        END DO
+        w(n) = 1.0_dp
+      ELSE
+        q = -q
+        IF(MODULO(n,2) == 0) THEN
+          r = q**(1.0_dp/(n/2-1))
+          h1 = 0.5*(1-r)/(1-r**(n/2))
+        ELSE 
+          r = q**(1.0_dp/((n-1)/2))
+          h1 = 0.5 / ( (1-r**((n+1)/2))/(1-r) - 0.5 * r**((n-1)/2))
+        END IF
+        
+        w(0) = 0.0_dp
+        DO i=1,n
+          IF( i <= n/2 ) THEN
+            w(i) = h1 * (1-r**i)/(1-r)
+          ELSE
+            w(i) = 1.0_dp -  h1 * (1-r**(n-i))/(1-r)
+          END IF
+        END DO
+        w(n) = 1.0_dp
+      END IF
+            
     ! Generic division given by a function
     !-----------------------------------------------------------------------
-    ELSE IF( ListCheckPresent( CurrentModel % Simulation,'Extruded Mesh Density') ) THEN
+    ELSE IF( ListCheckPresent( ParList,'Extruded Mesh Density') ) THEN
 
       CALL Info('UnitSegmentDivision','Creating functional division',Level=5)
 
@@ -11024,7 +11048,7 @@ END SUBROUTINE GetMaxDefs
         DO i=1,n
           xn = (w(i)+w(i-1))/2.0_dp
           minhn = MIN( minhn, w(i)-w(i-1) )
-          h(i) = ListGetFun( CurrentModel % Simulation,'Extruded Mesh Density', xn )
+          h(i) = ListGetFun( ParList,'Extruded Mesh Density', xn )
           IF( h(i) < EPSILON( h(i) ) ) THEN
             CALL Fatal('UnitSegmentDivision','Given value for h(i) was negative!')
           END IF
@@ -11071,7 +11095,6 @@ END SUBROUTINE GetMaxDefs
       WRITE( Message, '(A,I0,A,ES12.4)') 'w(',i,') : ',w(i)
       CALL Info('UnitSegmentDivision', Message, Level=9 )
     END DO
-
 
   END SUBROUTINE UnitSegmentDivision
 !------------------------------------------------------------------------------
