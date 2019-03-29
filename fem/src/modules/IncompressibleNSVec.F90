@@ -910,7 +910,8 @@ END BLOCK
     REAL(KIND=dp) :: ExtPressure, s, detJ
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), Vect(3)
     TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, NormalTangential_h
+    TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
+                NormalTangential_h, NormalTangentialVelo_h
 
     SAVE Basis
     
@@ -923,6 +924,10 @@ END BLOCK
       END IF
       CALL ListInitElementKeyword( SurfaceTraction_h,'Boundary Condition','Surface Traction',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
+
+      CALL ListInitElementKeyword( NormalTangentialVelo_h,'Boundary Condition',&
+             'Normal-Tangential Velocity' )
+
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
           'Normal-Tangential '//GetVarName(CurrentModel % Solver % Variable) )
 
@@ -951,7 +956,10 @@ END BLOCK
     IP = GaussPoints( Element )
     ngp = IP % n
     
-    NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
+    NormalTangential = ListGetElementLogical( NormalTangentialVelo_h, Element, Found )
+    IF (.NOT.Found) THEN
+        NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
+    END IF
    
     DO t=1,ngp      
 !------------------------------------------------------------------------------
@@ -1056,7 +1064,6 @@ END BLOCK
             END SELECT
 
             DO q=1,nd
-              k = (q-1)*c + i
               DO j=1,dim
                 l = (q-1)*c + j
                 FORCE(l) = FORCE(l) + s * Basis(q) * SurfaceTraction(i) * Vect(j)
