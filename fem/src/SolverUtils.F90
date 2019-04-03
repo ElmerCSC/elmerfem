@@ -1439,25 +1439,27 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params, Entity
      CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName, InitName, ActiveName
      LOGICAL, ALLOCATABLE :: InterfaceDof(:)
-     INTEGER :: ConservativeAfterIters, NonlinIter, CoupledIter
+     INTEGER :: ConservativeAfterIters, NonlinIter, CoupledIter, DownStreamDirection
      LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
-         DoAdd, DoRemove, DirectionActive, FirstTime
-
+         DoAdd, DoRemove, DirectionActive, FirstTime, DownStreamRemove
+     TYPE(Mesh_t), POINTER :: Mesh
+     
      Model => CurrentModel
      Var => Solver % Variable
+     Mesh => Solver % Mesh
      
 
      ! Check the iterations counts and determine whether this is the first 
      ! time with this solver. 
      !------------------------------------------------------------------------
      FirstTime = .TRUE.
-     iterV => VariableGet( Solver % Mesh % Variables,'nonlin iter')
+     iterV => VariableGet( Mesh % Variables,'nonlin iter')
      IF( ASSOCIATED( iterV ) ) THEN
        NonlinIter =  NINT( iterV % Values(1) ) 
        IF( NonlinIter > 1 ) FirstTime = .FALSE.
      END IF
 
-     iterV => VariableGet( Solver % Mesh % Variables,'coupled iter')
+     iterV => VariableGet( Mesh % Variables,'coupled iter')
      IF( ASSOCIATED( iterV ) ) THEN
        CoupledIter = NINT( iterV % Values(1) )
        IF( CoupledIter > 1 ) FirstTime = .FALSE.
@@ -1498,7 +1500,7 @@ CONTAINS
 
      ConservativeRemove = .FALSE.
      ConservativeAfterIters = ListGetInteger(Params,&
-         'Apply Limiter Conservative Remove After Iterations',Found ) 
+         'Apply Limiter Conservative Remove After Iterations',Found )      
      IF( Found ) THEN
        Conservative = .TRUE.  
        ConservativeRemove = ( ConservativeAfterIters < NonlinIter )
@@ -1507,6 +1509,15 @@ CONTAINS
        END IF
      END IF
 
+     DownStreamRemove = ListGetLogical( Params,'Apply Limiter Remove Downstream',Found)
+     IF( DownStreamRemove ) THEN
+       CALL Info('DetermineSoftLimiter','Removing contact dofs only in downstream',Level=8)      
+       ConservativeRemove = .TRUE.
+       Conservative = .TRUE.
+       DownStreamDirection = ListGetInteger( Params,'Apply Limiter Downstream Direction',Found)
+       IF(.NOT. Found ) DownStreamDirection = 1
+     END IF
+       
      LoadEps = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
      IF(.NOT. Found ) LoadEps = EPSILON( LoadEps )
          
@@ -1728,28 +1739,84 @@ CONTAINS
                  LimitName, n, NodeIndexes, Found)
              IF(.NOT. Found) CYCLE
 
-             DO i=1,n
-               j = FieldPerm( NodeIndexes(i) )
-               IF( j == 0 ) CYCLE
-               ind = Dofs * ( j - 1) + Dof
-               
-               DO i2 = i+1,n
-                 j2 = FieldPerm( NodeIndexes(i2) )
-                 IF( j2 == 0 ) CYCLE
-                 ind2 = Dofs * ( j2 - 1) + Dof
+
+             IF( DownStreamRemove ) THEN
+               ! This includes only interface dofs donwstream from
+               ! non-contact zone.
+               BLOCK
+                 REAL(kind=DP) :: r1(3),r2(3),dr(3),reps=1.0e-6
                  
-                 IF( LimitActive(ind) .NEQV. LimitActive(ind2) ) THEN
-                   InterfaceDof(ind) = .TRUE.
-                   InterfaceDof(ind2) = .TRUE.
-                 END IF
+                 DO i=1,n
+                   j = FieldPerm( NodeIndexes(i) )
+                   IF( j == 0 ) CYCLE
+                   ind = Dofs * ( j - 1) + Dof
+                   
+                   ! Downstream of non-contact zone
+                   IF(LimitActive(ind)) CYCLE
+                                      
+                   DO i2 = i,n
+                     IF( i2 == i ) CYCLE                   
+                     j2 = FieldPerm( NodeIndexes(i2) )
+                     IF( j2 == 0 ) CYCLE
+                     ind2 = Dofs * ( j2 - 1) + Dof
+                     
+                     IF( LimitActive(ind2) ) THEN
+                       r2(1) =  Mesh % Nodes % x(NodeIndexes(i2))
+                       r2(2) =  Mesh % Nodes % y(NodeIndexes(i2))
+                       r2(3) =  Mesh % Nodes % z(NodeIndexes(i2))
+                       
+                       r1(1) = Mesh % Nodes % x(NodeIndexes(i))
+                       r1(2) = Mesh % Nodes % y(NodeIndexes(i))
+                       r1(3) = Mesh % Nodes % z(NodeIndexes(i))
+
+                       k = DownStreamDirection 
+                       IF( k > 0 ) THEN
+                         dr = r2 - r1
+                       ELSE
+                         dr = r1 - r2
+                         k = -k
+                       END IF
+                       
+                       IF( dr(k) < reps ) CYCLE
+                       
+                       IF( dr(k) > 0.5*SQRT(SUM(dr*dr)) ) THEN
+                         InterfaceDof(ind2) = .TRUE.
+                         !PRINT *,'downstream coord:',dr
+                       END IF
+                     END IF
+                   END DO
+                 END DO
+               END BLOCK
+             ELSE
+               ! This includes all interface dofs
+               DO i=1,n
+                 j = FieldPerm( NodeIndexes(i) )
+                 IF( j == 0 ) CYCLE
+                 ind = Dofs * ( j - 1) + Dof
+                 
+                 DO i2 = i+1,n
+                   j2 = FieldPerm( NodeIndexes(i2) )
+                   IF( j2 == 0 ) CYCLE
+                   ind2 = Dofs * ( j2 - 1) + Dof
+                   
+                   IF( LimitActive(ind) .NEQV. LimitActive(ind2) ) THEN
+                     InterfaceDof(ind) = .TRUE.
+                     InterfaceDof(ind2) = .TRUE.
+                   END IF
+                 END DO
                END DO
-             END DO
+             END IF
            END DO
 
            CALL Info('DetermineSoftLimiter',&
                'Number of interface dofs: '//TRIM(I2S(COUNT(InterfaceDof))),Level=8)
          END IF
 
+         IF( DownStreamRemove ) THEN
+           t = COUNT(InterfaceDof)
+           CALL Info('DetermineSoftLimiter','Downstream contact set dofs:'//TRIM(I2S(t)),Level=8)
+         END IF
+         
        
          ! Add and release dofs from the contact set:
          ! If it is removed it cannot be added. 
@@ -1880,7 +1947,7 @@ CONTAINS
        LimitVar => VariableGet( Model % Variables, &
            GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
        IF(.NOT. ASSOCIATED( LimitVar ) ) THEN
-         CALL VariableAddVector( Model % Variables, Model % Mesh, Solver,&
+         CALL VariableAddVector( Model % Variables, Solver % Mesh, Solver,&
              GetVarName(Var) //' Contact Active', Perm = FieldPerm )
          LimitVar => VariableGet( Model % Variables, &
              GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
