@@ -74,7 +74,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: NodeIndexes(:), PressurePerm(:)
 
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
-      UseVelocity, SideCorrection, Bubbles, ApplyLimiter
+      UseVelocity, SideCorrection, Bubbles, ApplyLimiter, LinearModel
   REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, HeatRatio, BulkModulus, &
       mfp0, Pres, Dens
@@ -163,6 +163,8 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   DO iter = 1,NoIterations
 
+    LinearModel = ( iter == 1 ) .AND. ListGetLogical( Params,'Linear First Iteration',GotIt)
+    
     WRITE(Message,'(A,T35,I5)') 'Reynolds iteration:',iter
     CALL Info('ReynoldsSolver',Message,Level=5)
 
@@ -334,26 +336,27 @@ CONTAINS
           ViscosityType = Viscosity_Newtonian          
         END IF
 
-        CompressibilityModel = GetString(Material,'Compressibility Model',GotIt)        
-        IF(GotIt) THEN
-          IF(CompressibilityModel == 'incompressible') THEN
-            CompressibilityType = Compressibility_None
-          ELSE IF(CompressibilityModel == 'weakly compressible') THEN
-            CompressibilityType = Compressibility_Weak
-            ReferencePressure = GetCReal( Material,'Reference Pressure',GotIt)           
-            BulkModulus = GetCReal( Material, 'Bulk Modulus')
-          ELSE IF(CompressibilityModel == 'isothermal ideal gas') THEN
-            CompressibilityType = Compressibility_GasIsothermal
-            ReferencePressure = GetCReal( Material,'Reference Pressure')           
-          ELSE IF(CompressibilityModel == 'adiabatic ideal gas') THEN
-            CompressibilityType = Compressibility_GasAdiabatic
-            HeatRatio = GetCReal( Material, 'Specific Heat Ratio')
-            ReferencePressure = GetCReal( Material,'Reference Pressure')                      
-          ELSE
-            CALL Warn('ReynoldsSolver','Unknown compressibility model')
+        CompressibilityType = Compressibility_None
+        IF( .NOT. LinearModel ) THEN
+          CompressibilityModel = GetString(Material,'Compressibility Model',GotIt)        
+          IF(GotIt) THEN
+            IF(CompressibilityModel == 'incompressible') THEN
+              CompressibilityType = Compressibility_None
+            ELSE IF(CompressibilityModel == 'weakly compressible') THEN
+              CompressibilityType = Compressibility_Weak
+              ReferencePressure = GetCReal( Material,'Reference Pressure',GotIt)           
+              BulkModulus = GetCReal( Material, 'Bulk Modulus')
+            ELSE IF(CompressibilityModel == 'isothermal ideal gas') THEN
+              CompressibilityType = Compressibility_GasIsothermal
+              ReferencePressure = GetCReal( Material,'Reference Pressure')           
+            ELSE IF(CompressibilityModel == 'adiabatic ideal gas') THEN
+              CompressibilityType = Compressibility_GasAdiabatic
+              HeatRatio = GetCReal( Material, 'Specific Heat Ratio')
+              ReferencePressure = GetCReal( Material,'Reference Pressure')                      
+            ELSE
+              CALL Warn('ReynoldsSolver','Unknown compressibility model')
+            END IF
           END IF
-        ELSE          
-          CompressibilityType = Compressibility_None
         END IF
       END IF
 
