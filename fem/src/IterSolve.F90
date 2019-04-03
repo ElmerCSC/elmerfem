@@ -1008,12 +1008,12 @@ CONTAINS
 !> convergence/numerical issues, based on a flag in the SIF. Default
 !> behaviour terminates execution.
 !-----------------------------------------------------------------------
-   SUBROUTINE NumericalError( Caller, String, Fatal )
+   SUBROUTINE NumericalError( Caller, String, IsFatal )
 !-----------------------------------------------------------------------
      CHARACTER(LEN=*) :: Caller, String
-     LOGICAL, OPTIONAL :: Fatal
+     LOGICAL, OPTIONAL :: IsFatal
 !-----------------------------------------------------------------------
-     LOGICAL :: GlobalNumFatal, SolverNumFatal, IsFatal, Found
+     LOGICAL :: GlobalNumFatal, SolverNumFatal, DoFatal, Found
 !-----------------------------------------------------------------------
 
      !Fatality logic:
@@ -1022,36 +1022,29 @@ CONTAINS
      ! 3) Respect global abort flag if present
      ! 4) Otherwise fatal (backwards compatibility)
 
-     IF(PRESENT(Fatal)) THEN
-       IsFatal = Fatal
+     IF(PRESENT(IsFatal)) THEN
+       DoFatal = IsFatal
      ELSE
        SolverNumFatal = ListGetLogical( CurrentModel % Solver % Values, &
             'Linear System Abort Not Converged', Found)
        IF(Found) THEN
-         IsFatal = SolverNumFatal
+         DoFatal = SolverNumFatal
        ELSE
          GlobalNumFatal = ListGetLogical(CurrentModel % Simulation,&
             'Global Abort Not Converged',Found)
          IF(Found) THEN
-           IsFatal = GlobalNumFatal
+           DoFatal = GlobalNumFatal
          ELSE
-           IsFatal = .TRUE.
+           DoFatal = .TRUE.
          END IF
        END IF
      END IF
 
-     IF ( OutputLevelMask(0) ) THEN
-       IF(IsFatal) THEN
-         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
-              'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
-       ELSE
-         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
-              'NUMERICAL WARNING:: ', TRIM(Caller), ': ', TRIM(String)
-       END IF
-       CALL FLUSH(6)
+     IF(DoFatal) THEN
+       CALL Fatal(Caller,'Numerical Error: '//TRIM(String))
+     ELSE
+       CALL Warn(Caller,'Numerical Error: '//TRIM(String))
      END IF
-
-     IF(IsFatal) STOP
 
 !-----------------------------------------------------------------------
    END SUBROUTINE NumericalError
