@@ -23,7 +23,7 @@
 !
 ! ******************************************************************************
 ! *
-! *  Authors: Peter R�back, Joe Todd
+! *  Authors: Peter Råback, Joe Todd
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.

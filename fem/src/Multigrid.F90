@@ -1498,7 +1498,7 @@ CONTAINS
 !> Also some ideas of compatible relaxation have been tested within the context but their usability has
 !> so far been rather limited.
 !
-!        Author: Peter R�back
+!        Author: Peter Råback
 !        Modified by: 
 !        Date of modification: 30.10.2003
 !------------------------------------------------------------------------------
@@ -5089,7 +5089,7 @@ CONTAINS
 !> This provides in princinple an economical approach to multilevel schemes.
 !> The utilization of the routines are still not complete.
 ! 
-!       Author: Peter R�back
+!       Author: Peter Råback
 !       Modified by: 
 !       Date of modification: 30.10.2007
 !------------------------------------------------------------------------------

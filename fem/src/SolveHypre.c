@@ -28,7 +28,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Thomas Zwinger, Jonas Thies, Peter R�back, Mika Malinen
+! *  Authors: Juha Ruokolainen, Thomas Zwinger, Jonas Thies, Peter Råback, Mika Malinen
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.

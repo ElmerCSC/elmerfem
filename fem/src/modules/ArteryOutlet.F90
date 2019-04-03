@@ -28,7 +28,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Esko J�rvinen, Mikko Lyly, Peter R�back
+! *  Authors: Esko J�rvinen, Mikko Lyly, Peter Råback
 ! *  Email:   Esko.Jarvinen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.

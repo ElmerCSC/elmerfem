@@ -27,7 +27,7 @@
 ! *
 ! *****************************************************************************
 ! *
-! *  Authors: Peter R�back, Serge-�tienne Parent
+! *  Authors: Peter Råback, Serge-�tienne Parent
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.

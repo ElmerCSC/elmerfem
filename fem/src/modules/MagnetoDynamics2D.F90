@@ -27,7 +27,7 @@
 ! *  cylindrically symmetric 2D case. In both cases the vector potential
 ! *  is reduced to a single component. 
 ! *
-! *  Authors: Juha Ruokolainen, Mika Malinen, Peter R�back
+! *  Authors: Juha Ruokolainen, Mika Malinen, Peter Råback
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.

@@ -23,14 +23,14 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back
+! *  Authors: Peter Råback
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
 ! *  Original Date: 23.10.2007
-! *  Modified by: Peter R�back
+! *  Modified by: Peter Råback
 ! *  Modification date: 1.9.2008
 ! *
 ! *****************************************************************************/
