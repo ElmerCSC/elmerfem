@@ -308,7 +308,7 @@ CONTAINS
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
     IF( ASSOCIATED( A % Values ) ) DEALLOCATE( A % Values )
-    CALL Info('ListToCRSMatrix','Matrix format changed from CRS to List', Level=5)
+    CALL Info('ListToCRSMatrix','Matrix format changed from CRS to List', Level=7)
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToListMatrix
 !-------------------------------------------------------------------------------
