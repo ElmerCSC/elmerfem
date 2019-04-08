@@ -133,7 +133,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       END IF
     END DO    
   END IF
-
+  ! We may have used the single node BC directly (in case of many body forces)
+  IF(.NOT. SingleNodeBC ) THEN
+    SingleNodeBC = ListCheckPresentAnyBodyForce( Model,'Jfix Single Node' ) 
+  END IF
+  
   svar => Solver % Variable
   Solver % Variable => fixJpot
 

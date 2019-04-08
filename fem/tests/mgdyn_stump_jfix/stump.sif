@@ -1,0 +1,146 @@
+! Simple test case for Jfix
+! 
+! This one uses the automated strategy where Jfix is set to zero if
+! current density has a normal component (automated source projection). 
+!
+! P.R. 8 April 2019
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "stump"
+End
+
+Simulation
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Max Output Level = 7
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Wire"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+
+Solver 1
+  Equation = MGDynamics
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+! Not active when using potential as source
+  Fix Input Current density = True
+  jfix: Skip Compute Nonlinear Change = Logical False
+
+! This only has effect is single node BC is not given in body force
+  Automated Source Projection BCs = Logical True
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = BiCGStabl 
+
+  Linear System GCR Restart = 100
+  BiCGStabl Polynomial Degree = 6
+  Idrs Parameter = Integer 6
+
+  Linear System Robust = Logical True
+
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Preconditioning = none
+  Linear System Residual Output = 20
+  Linear System Abort Not Converged = True
+
+! Optionally one can use different scaling. Sometimes gives better results. 
+!  Linear System Row Equilibration = Logical True
+  Nonlinear System Consistent Norm = Logical True
+End
+
+
+Solver 2
+  Equation = MGDynamicsCalc
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Iterative
+  Linear System Symmetric = True
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+
+  Calculate Nodal Forces = True
+
+  Nonlinear System Consistent Norm = Logical True
+End
+
+Solver 3
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu format = Logical True
+  Discontinuous Bodies = Logical True
+  Save Geometry Ids = True
+End
+
+
+Equation 1
+  Name = "MGDyn stuff"
+  Active Solvers(2) = 1 2
+End
+
+
+Material 1
+  Name = "Ideal"
+  Permeability = 1.0
+  Relative Permittivity = 1.0
+End
+
+Body Force 1
+  Name = "Source"
+  Current Density 1 = 0
+  Current Density 2 = 0
+  Current Density 3 = 1 
+
+! If this is given then no other method to set Jfix is used
+!  Jfix Single Node = Real 0.0
+End
+
+Boundary Condition 1
+  Target Boundaries(6) = 7 8 9 10 11 12 
+  Name = "far"
+  P {e} = real 0
+End
+
+
+Solver 1 :: Reference Norm = 1.18802876E-04 
+Solver 2 :: Reference Norm = 4.23421468E-04
+
