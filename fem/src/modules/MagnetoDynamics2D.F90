@@ -2131,6 +2131,9 @@ CONTAINS
     REAL(KIND=dp) :: LaminatePowerDensity, BMagnAtIP, Fsk, Lambda, LaminateThickness, &
                      mu0=4d-7*PI, skindepth
     
+    LOGICAL :: BertottiCompute = .FALSE.
+    REAL(KIND=dp) :: BertottiLoss, BRTa1, BRTa2, BRTa3, BRTa4
+
     SAVE Nodes
 
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
@@ -2353,6 +2356,20 @@ CONTAINS
         EddyLoss = .FALSE.
         IF (.NOT. Found) EddyLoss = .TRUE.
       END IF
+
+      BertottiCompute = .FALSE.
+      BRTa1 = GetCReal( Material,'Bertotti a1',Found ) 
+      IF ( Found ) THEN
+        BertottiCompute = .TRUE.
+        Freq = Omega / (2*PI)
+        BertottiLoss = 0.0_dp
+        BRTa2 = GetCReal( Material,'Bertotti a2',Found ) 
+        IF (.NOT. Found) CALL Fatal ('MagnetoDynamics2D','Bertotti activated, Bertotti a2 not found.')
+        BRTa3= GetCReal( Material,'Bertotti a3',Found ) 
+        IF (.NOT. Found) CALL Fatal ('MagnetoDynamics2D','Bertotti activated, Bertotti a3 not found.')
+        BRTa4= GetCReal( Material,'Bertotti a4',Found ) 
+        IF (.NOT. Found) CALL Fatal ('MagnetoDynamics2D','Bertotti activated, Bertotti a4 not found.')
+      END IF
       
       IF (BodyVolumesCompute) THEN
         BodyId = GetBody()
@@ -2501,6 +2518,13 @@ CONTAINS
           LaminatePowerDensity = 1._dp/24._dp * REAL(CondAtIp) * &
                 (LaminateThickness * Omega * BMagnAtIP)**2._dp * Fsk
           TotalHeating = TotalHeating + Weight * ModelDepth * LaminatePowerDensity
+        END IF
+
+        IF (BertottiCompute) THEN
+          ! Compute Bertotti loss for core
+          BertottiLoss = BRTa2*BMagnAtIP**2.*Freq + (BRTa1+BRTa4*BMagnAtIP**(BRTa3))*(BMagnAtIP*Freq)**2.
+          TotalHeating = TotalHeating + BertottiLoss
+          BAtIp(6) = BAtIp(6) + BertottiLoss ! unorthodox
         END IF
 
         IF( LossEstimation ) THEN
