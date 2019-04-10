@@ -176,26 +176,19 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   CALL DefaultInitialize()
   CALL BulkAssembly()
   
-  IF( DirichletMode ) THEN
-    CALL BCAssemblyDirichlet()
-    IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
-      n = COUNT( A % ConstrainedDOF )
-      CALL Info('JfixPotentialSolver','Number of dirichlet nodes1: '//TRIM(I2S(n)))
-    END IF
-  END IF
-
   IF( NeumannMode .OR. StatCurrMode ) THEN
     CALL BCAssemblyNeumann()
+  ELSE IF( DirichletMode ) THEN
+    CALL BCAssemblyDirichlet()
   END IF
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
-
+    
   IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
     n = COUNT( A % ConstrainedDOF )
     CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//TRIM(I2S(n)))
   END IF
-
   
   Norm = DefaultSolve()
 
@@ -396,6 +389,7 @@ CONTAINS
     np = P % TYPE % NumberOfNodes
 
     BodyForce => GetBodyForce(P)
+
     IF (.NOT. ASSOCIATED(BodyForce)) RETURN
     
     ! Normal vector that points out of Parent 
@@ -491,7 +485,6 @@ CONTAINS
       ! don't set the corresponding Dirichlet condition to zero. 
       IF( NormalProj < Jfluxeps ) CYCLE
 
-
       DO j=1,dofs
         DO k=1,n
           ip = Element % NodeIndexes(k) 
@@ -519,7 +512,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t), TARGET :: IP  
     TYPE(Element_t), POINTER :: Element
     TYPE(ValueList_t), POINTER :: BC
-    INTEGER :: Active, k, p, t, nd, n
+    INTEGER :: Active, i, k, p, t, nd, n
     REAL(KIND=dp) :: detJ, Jn, NormalProj
     LOGICAL :: Found, Stat
     COMPLEX(KIND=dp) :: CurrDens    
@@ -534,8 +527,6 @@ CONTAINS
       Element => GetBoundaryElement(k)
       IF (.NOT. ActiveBoundaryElement()) CYCLE
 
-      BC => GetBC()
-      IF (.NOT. ASSOCIATED(BC) ) CYCLE
       IF (GetElementFamily()==1) CYCLE
       
       nd = GetElementNOFDOFs(Element)
@@ -547,6 +538,8 @@ CONTAINS
       CALL GetElementNodes( Nodes )
 
       IF( StatCurrMode ) THEN
+        BC => GetBC()
+        IF (.NOT. ASSOCIATED(BC) ) CYCLE
         Load(1:n) = GetReal( BC, 'Current Density', Found )
       ELSE
         CurrDens = NormalCurrentDensity(Element,Nodes,NormalProj,Found)
@@ -556,10 +549,21 @@ CONTAINS
       IF(.NOT. Found ) CYCLE       
         
       IF(.NOT. StatCurrMode ) THEN
-        PRINT *,'neu:',NormalProj,Jn,n,nd
+        !PRINT *,'neu2:',NormalProj,Jn,n,nd      
+
+        ! This is a mixed mode that sets only positive Jn values to Dirichlet
+        IF( DirichletMode ) THEN
+          IF( ABS( NormalProj ) > 0.5 .AND. Jn > 0.0_dp ) THEN
+            DO i=1,n
+              j = Perm(Element % NodeIndexes(i)) 
+              CALL UpdateDirichletDof(A, j, 0._dp)
+            END DO
+            RETURN
+          END IF
+        END IF        
       END IF
         
-      
+             
       IP = GaussPoints( Element )
       DO t=1,IP % n
         stat = ElementInfo( Element, Nodes, IP % u(t), &
