@@ -43,6 +43,7 @@
 !------------------------------------------------------------------------------
 SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
+  USE MagnetoDynamicsUtils
   USE DefUtils
 
   IMPLICIT NONE
@@ -65,8 +66,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   INTEGER, POINTER :: Perm(:)
   REAL(KIND=dp), POINTER :: fixpot(:)
   TYPE(Variable_t), POINTER :: fixJpot, svar, IterV 
-
-  LOGICAL :: Visited = .FALSE.
+  LOGICAL :: StatCurrMode, NeumannMode, DirichletMode, Visited = .FALSE.
 
   CALL Info('JfixPotentialSolver','Computing fixing potential for given current density',Level=6)
   
@@ -118,10 +118,6 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   END IF
   
   
-  AutomatedBCs = GetLogical( SolverParams, &
-       'Automated Source Projection BCs', Found )
-  IF (.NOT. Found) AutomatedBCs = .TRUE.
-  
   ! Set potential only on a single node
   ! This uses the functionality of DefaultDirichlet
   SingleNodeBC = GetLogical( SolverParams,'Single Node Projection BC',Found ) 
@@ -138,6 +134,26 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     SingleNodeBC = ListCheckPresentAnyBodyForce( Model,'Jfix Single Node' ) 
   END IF
   
+
+  StatCurrMode = GetLogical( SolverParams,'StatCurrent Source Projection', Found )
+  DirichletMode = GetLogical( SolverParams,'Dirichlet Source Projection',Found )
+  NeumannMode = GetLogical( SolverParams,'Neumann Source Projection',Found )
+
+  ! If not any mode given revert to the old standard
+  IF(.NOT.( StatCurrMode .OR. DirichletMode .OR. NeumannMode .OR. SingleNodeBC ) ) THEN  
+    DirichletMode = GetLogical( SolverParams, &
+        'Automated Source Projection BCs', Found )
+    IF(.NOT. Found) DirichletMode = .TRUE.
+    StatCurrMode = .NOT. DirichletMode
+  END IF
+
+  IF( A % COMPLEX ) THEN
+    IF( StatCurrMode .OR. NeumannMode ) THEN
+      CALL Warn('JfixPotentialSolver','Cannot set Neumann conditions for complex fields!')
+      StatCurrMode = .FALSE.; NeumannMode = .FALSE.
+    END IF
+  END IF
+    
   svar => Solver % Variable
   Solver % Variable => fixJpot
 
@@ -148,7 +164,6 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   CALL ListSetNameSpace('jfix:')
   CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
   CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
-
   CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
   CALL ListAddNewLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
   CALL ListAddNewString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
@@ -160,18 +175,28 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
   CALL DefaultInitialize()
   CALL BulkAssembly()
+  
+  IF( DirichletMode ) THEN
+    CALL BCAssemblyDirichlet()
+    IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
+      n = COUNT( A % ConstrainedDOF )
+      CALL Info('JfixPotentialSolver','Number of dirichlet nodes1: '//TRIM(I2S(n)))
+    END IF
+  END IF
 
-  IF( SingleNodeBC ) THEN
-    CONTINUE
-  ELSE IF( AutomatedBCs ) THEN
-    CALL BCAssemblyAutomated()
-  ELSE IF( .NOT. A % COMPLEX ) THEN
-    CALL BCAssemblyStatCurrent()
+  IF( NeumannMode .OR. StatCurrMode ) THEN
+    CALL BCAssemblyNeumann()
   END IF
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
 
+  IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
+    n = COUNT( A % ConstrainedDOF )
+    CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//TRIM(I2S(n)))
+  END IF
+
+  
   Norm = DefaultSolve()
 
   Solver % Matrix => B
@@ -288,39 +313,154 @@ CONTAINS
   END SUBROUTINE BulkAssembly
 !------------------------------------------------------------------------------
 
+
+  FUNCTION NormalCurrentDensity(Element, Nodes, NormalProj, GotCond) RESULT( CurrDensNormal ) 
+    
+    IMPLICIT NONE       
+    TYPE(Nodes_t) :: Nodes
+    TYPE(Element_t), POINTER :: Element, LElement
+    REAL(KIND=dp) :: NormalProj
+    LOGICAL :: GotCond 
+    COMPLEX(KIND=dp) :: CurrDensNormal
+    
+    LOGICAL :: Found
+    TYPE(Element_t), POINTER :: P1,P2, P
+    TYPE(ValueList_t), POINTER ::  BodyForce
+    REAL(KIND=dp) :: Nrm(3),s
+    REAL(KIND=dp), ALLOCATABLE :: Load_RP(:,:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: Load_CP(:,:)
+    INTEGER :: ActParents,ParParents,n,np,k,j
+    LOGICAL :: AllocationsDone = .FALSE.
+    COMPLEX(KIND=dp) :: CurrDensVec(3)
+
+    SAVE AllocationsDone, Load_RP, Load_CP
+    
+    GotCond = .FALSE.
+    CurrDensNormal = 0.0_dp
+    
+    IF( .NOT. AllocationsDone ) THEN      
+      n = Solver % Mesh % MaxElementDOFs
+      IF (A % COMPLEX) THEN
+        ALLOCATE( Load_cp(3,n) )
+      ELSE
+        ALLOCATE( Load_rp(3,n) )
+      END IF
+      AllocationsDone = .TRUE.
+    END IF
+
+   SELECT CASE(GetElementFamily())
+    CASE(1)
+    CASE(2)
+      k = GetBoundaryEdgeIndex(Element,1); LElement => Mesh % Edges(k)
+    CASE(3,4)
+      k = GetBoundaryFaceIndex(Element)  ; LElement => Mesh % Faces(k)
+    END SELECT
+    
+    P1 => LElement % BoundaryInfo % Left
+    P2 => LElement % BoundaryInfo % Right
+    
+    ActParents = 0
+    ParParents = 0
+    
+    IF( ASSOCIATED( P1 ) ) THEN
+      IF (ALL(Perm(P1 % NodeIndexes)>0)) THEN
+        ActParents = ActParents + 1
+        IF( P1 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1
+      ELSE
+        NULLIFY( P1 )
+      END IF
+    END IF
+    IF( ASSOCIATED( P2 ) ) THEN
+      IF (ALL(Perm(P2 % NodeIndexes)>0)) THEN
+        ActParents = ActParents + 1
+        IF( P2 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1         
+      ELSE
+        NULLIFY( P2 )
+      END IF
+    END IF
+
+    ! We have either none or both parents as actice.
+    ! The BCs will be set only to outer boundaries of the domain. 
+    IF( ActParents /= 1 ) RETURN 
+
+    ! The one parent is not a true one!
+    IF( ParEnv % PEs > 0 .AND. ParParents == 0 ) RETURN
+
+    IF (ASSOCIATED(P1)) THEN
+      P => P1
+    ELSE
+      P => P2
+    END IF
+
+    n = Element % Type % NumberOfNodes 
+    np = P % TYPE % NumberOfNodes
+
+    BodyForce => GetBodyForce(P)
+    IF (.NOT. ASSOCIATED(BodyForce)) RETURN
+    
+    ! Normal vector that points out of Parent 
+    Nrm = NormalVector(LElement,Nodes,Parent=P)
+
+    CurrentModel % CurrentElement => P
+    
+    IF (A % COMPLEX ) THEN
+      CALL GetComplexVector( BodyForce, Load_CP(1:3,1:np),'Current Density', Found )
+    ELSE      
+      Load_RP(1,1:np) = GetReal( BodyForce, 'Current Density 1', Found, UElement=P )
+      Load_RP(2,1:np) = GetReal( BodyForce, 'Current Density 2', Found, UElement=P )
+      Load_RP(3,1:np) = GetReal( BodyForce, 'Current Density 3', Found, UElement=P )
+    END IF
+
+    CurrDensVec = 0.0_dp
+    DO k=1,n
+      DO j=1,np
+        IF(Element % NodeIndexes(k) == P % NodeIndexes(j)) THEN
+          IF( A % COMPLEX ) THEN
+            CurrDensVec = CurrDensVec + Load_CP(1:3,j)
+          ELSE
+            CurrDensVec = CurrDensVec + Load_RP(1:3,j)
+          END IF
+        END IF
+      END DO
+    END DO
+    CurrDensVec = CurrDensVec / n
+
+    ! This sign convention is consistent
+    CurrDensNormal = SUM( -Nrm * CurrDensVec ) 
+
+    s = SQRT( SUM( CurrDensVec**2 ) ) 
+    IF( s > TINY( s ) ) THEN
+      NormalProj = ABS( CurrDensNormal / s )
+      GotCond = .TRUE.
+    ELSE
+      NormalProj = 0.0_dp
+      GotCond = .FALSE.
+    END IF
+        
+    CurrentModel % CurrentElement => Element
+
+    
+  END FUNCTION NormalCurrentDensity
+
+
+  
 !------------------------------------------------------------------------------
 ! This subroutine fixes the potential to zero where there is some current density
 ! component in the normal direction.
 !------------------------------------------------------------------------------
-  SUBROUTINE BCAssemblyAutomated()
+  SUBROUTINE BCAssemblyDirichlet()
 !------------------------------------------------------------------------------
     IMPLICIT NONE       
-    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF_C(:,:), FORCE_C(:)
-    REAL(KIND=dp), ALLOCATABLE :: STIFF_R(:,:), FORCE_R(:)
-    INTEGER :: elem,t,i,j,k,q,n,nd,meshdim,ip,np
+    INTEGER :: i,n,meshdim,ip,dofs
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: Found
-    TYPE(Element_t), POINTER :: Element, P1,P2, P
-    TYPE(ValueList_t), POINTER ::  BodyForce
-    REAL(KIND=dp) :: weight,L_R(3),Nrm(3), Jfluxeps,rabs
-    REAL(KIND=dp), ALLOCATABLE :: Load_R(:,:), Load_RP(:,:)
-    COMPLEX(KIND=dp) :: L_C(3)
-    COMPLEX(KIND=dp), ALLOCATABLE :: Load_C(:,:), Load_CP(:,:)
-    INTEGER :: l,m,ActParents,ParParents
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: Jfluxeps,NormalProj
+    COMPLEX(KIND=dp) :: CurrDens
     
     SAVE Nodes
 
-    meshdim = Solver % Mesh % MeshDim
-    
-    n = MAX(Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes)
-    IF (A % COMPLEX) THEN
-      ALLOCATE( Load_c(3,n), Load_CP(3,n), STIFF_C(n,n), FORCE_C(n) )
-    ELSE
-      ALLOCATE( Load_r(3,n), Load_RP(3,n), STIFF_R(n,n), FORCE_R(n) )
-    END IF
-    ALLOCATE( Basis(n), dBasisdx(n,3) )
-
+    meshdim = Solver % Mesh % MeshDim    
     Jfluxeps = GetCReal(SolverParams, 'J normal eps', Found)
     IF (.NOT. Found) Jfluxeps = 1.0d-2
 
@@ -331,94 +471,26 @@ CONTAINS
     ! Automated Projection BCs = Logical False
     ! and set BCs explicitly in the sif file    
     ! ------------------------------------------------------
+
+    dofs = Solver % Variable % Dofs
+
     DO i=1,GetNOFBoundaryElements()
       Element => GetBoundaryElement(i)
       n = GetElementNOFNodes()
       IF (.NOT.ActiveBoundaryElement()) CYCLE
 
-      IF (Element % TYPE % DIMENSION < meshdim -1 ) CYCLE
+      IF (Element % TYPE % DIMENSION < meshdim-1 ) CYCLE
       
-      P1 => Element % BoundaryInfo % Left
-      P2 => Element % BoundaryInfo % Right
-      ActParents = 0
-      ParParents = 0
-      IF( ASSOCIATED( P1 ) ) THEN
-        IF (ALL(Perm(P1 % NodeIndexes)>0)) THEN
-          ActParents = ActParents + 1
-          IF( P1 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1
-        ELSE
-          NULLIFY( P1 )
-        END IF
-      END IF
-      IF( ASSOCIATED( P2 ) ) THEN
-        IF (ALL(Perm(P2 % NodeIndexes)>0)) THEN
-          ActParents = ActParents + 1
-          IF( P2 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1         
-        ELSE
-          NULLIFY( P2 )
-        END IF
-      END IF
-
-      ! We have either none or both parents as actice
-      IF( ActParents == 0 .OR. ActParents == 2 ) CYCLE
-
-      ! The on parent is not a true one!
-      IF( ParEnv % PEs > 0 .AND. ParParents == 0 ) CYCLE
-
-
-      IF (ASSOCIATED(P1)) THEN
-        P => P1
-      ELSE
-        P => P2
-      END IF
-      np = P % Type % NumberOfNodes
-      BodyForce => GetBodyForce(P)
-      IF (.NOT. ASSOCIATED(BodyForce)) CYCLE
-
       CALL GetElementNodes(Nodes)
-      Nrm = NormalVector(Element,Nodes,0._dp,0._dp)
+      
+      CurrDens = NormalCurrentDensity(Element,Nodes,NormalProj,Found)
 
-      IF (A % COMPLEX ) THEN
-        CALL GetComplexVector( BodyForce, Load_C(1:3,1:n),'Current Density', Found )
-        L_C(1) = SUM(Load_C(1,1:n))/n
-        L_C(2) = SUM(Load_C(2,1:n))/n
-        L_C(3) = SUM(Load_C(3,1:n))/n
+      IF(.NOT. Found ) CYCLE
+      
+      ! If there is no normal component of the current density then
+      ! don't set the corresponding Dirichlet condition to zero. 
+      IF( NormalProj < Jfluxeps ) CYCLE
 
-        L_R = REAL(L_C)
-        IF (ANY(L_R /= 0.0d0)) L_R = L_R / SQRT(SUM(L_R**2))
-        IF (ABS(SUM(L_R*Nrm))<Jfluxeps) THEN
-          L_R = AIMAG(L_C)
-          IF (ANY(L_R /= 0.0d0)) L_R = L_R / SQRT(SUM(L_R**2))
-          IF (ABS(SUM(L_R*Nrm))<Jfluxeps) CYCLE
-        END IF
-      ELSE
-
-!       CALL GetRealVector( BodyForce, Load_R(1:3,1:n),'Current Density', Found )
-        CurrentModel % CurrentElement => P
-        Load_RP(1,1:np) = GetReal( BodyForce, 'Current Density 1', Found, UElement=P )
-        Load_RP(2,1:np) = GetReal( BodyForce, 'Current Density 2', Found, UElement=P )
-        Load_RP(3,1:np) = GetReal( BodyForce, 'Current Density 3', Found, UElement=P )
-        CurrentModel % CurrentElement => Element
-
-        DO j=1,np
-        DO k=1,n
-          IF(Element % NodeIndexes(k)==P % NodeIndexes(j)) THEN
-            Load_R(:,k) = Load_RP(:,j)
-            EXIT
-          END IF
-        END DO
-        END DO
-
-        L_R(1) = SUM(Load_R(1,1:n))/n
-        L_R(2) = SUM(Load_R(2,1:n))/n
-        L_R(3) = SUM(Load_R(3,1:n))/n
-        rabs = SQRT(SUM(L_R**2))
-        IF(rabs/=0) L_R = L_R / rabs
-
-        ! If there is no normal component of the current density then
-        ! don't set the corresponding Dirichlet condition to zero. 
-        IF (ABS(SUM(L_R*Nrm)) < Jfluxeps) CYCLE
-      END IF
 
       DO j=1,dofs
         DO k=1,n
@@ -430,12 +502,13 @@ CONTAINS
     END DO
 
 !------------------------------------------------------------------------------
-  END SUBROUTINE BCAssemblyAutomated
+  END SUBROUTINE BCAssemblyDirichlet
 !------------------------------------------------------------------------------
 
   
+  
 !------------------------------------------------------------------------------
-  SUBROUTINE BCAssemblyStatCurrent()
+  SUBROUTINE BCAssemblyNeumann()
 !------------------------------------------------------------------------------
 !   This is intended to alter the natural boundary conditions of the potential associated
 !   with the Helmholtz projection if the source electric current density is
@@ -447,62 +520,67 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(ValueList_t), POINTER :: BC
     INTEGER :: Active, k, p, t, nd, n
-    REAL(KIND=dp) :: detJ, Jn
+    REAL(KIND=dp) :: detJ, Jn, NormalProj
     LOGICAL :: Found, Stat
-
+    COMPLEX(KIND=dp) :: CurrDens    
     TYPE(Nodes_t), SAVE :: Nodes
 !-------------------------------------------------------------------------------
-
+ 
     n = MAX(Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes)  
     ALLOCATE( FORCE_R(n), LOAD(n), Basis(n), dBasisdx(n,3) )    
 
     Active = GetNOFBoundaryElements()
     DO k=1,Active
-       Element => GetBoundaryElement(k)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
-       BC=>GetBC()
-       IF (.NOT. ASSOCIATED(BC) ) CYCLE
-       IF (GetElementFamily()==1) CYCLE
+      Element => GetBoundaryElement(k)
+      IF (.NOT. ActiveBoundaryElement()) CYCLE
 
-       nd = GetElementNOFDOFs(Element)
-       n  = GetElementNOFNodes(Element)
+      BC => GetBC()
+      IF (.NOT. ASSOCIATED(BC) ) CYCLE
+      IF (GetElementFamily()==1) CYCLE
+      
+      nd = GetElementNOFDOFs(Element)
+      n  = GetElementNOFNodes(Element)
 
+      Load = 0.0d0
+      FORCE_R = 0.0d0
 
-#if 1
-       Load = 0.0d0
-       FORCE_R = 0.0d0
-       Load(1:n) = GetReal( BC, 'Current Density', Found )
+      CALL GetElementNodes( Nodes )
 
-       CALL GetElementNodes( Nodes )
-       IP = GaussPoints( Element )
-       DO t=1,IP % n
-          stat = ElementInfo( Element, Nodes, IP % u(t), &
-               IP % v(t), IP % w(t), detJ, Basis, dBasisdx )
+      IF( StatCurrMode ) THEN
+        Load(1:n) = GetReal( BC, 'Current Density', Found )
+      ELSE
+        CurrDens = NormalCurrentDensity(Element,Nodes,NormalProj,Found)
+        Jn = REAL( CurrDens )
+      END IF
 
-          Jn = SUM( Load(1:n)*Basis(1:n) ) 
+      IF(.NOT. Found ) CYCLE       
+        
+      IF(.NOT. StatCurrMode ) THEN
+        PRINT *,'neu:',NormalProj,Jn,n,nd
+      END IF
+        
+      
+      IP = GaussPoints( Element )
+      DO t=1,IP % n
+        stat = ElementInfo( Element, Nodes, IP % u(t), &
+            IP % v(t), IP % w(t), detJ, Basis, dBasisdx )
 
-          DO p=1,n
-             FORCE_R(p) = FORCE_R(p) + Jn*Basis(p)*detJ*IP % s(t)
-          END DO
-       END DO
+        IF( StatCurrMode ) THEN
+          Jn = -SUM( Load(1:n)*Basis(1:n) ) 
+        END IF
 
-       CALL DefaultUpdateForce(FORCE_R,Element)
-#else
-       
-       IF( ListCheckPresent( BC,'Current Density') .OR. &
-           ListCheckPresent( BC,'Potential') ) THEN       
-         DO t=1,n
-           p = Perm(Element % NodeIndexes(t))
-           IF( p == 0 ) CYCLE
-           CALL UpdateDirichletDof(A, p, 0._dp)
-         END DO
-       END IF
-#endif       
-     END DO
+        DO p=1,n
+          FORCE_R(p) = FORCE_R(p) + Jn*Basis(p)*detJ*IP % s(t)
+        END DO
+      END DO
+
+      CALL DefaultUpdateForce(FORCE_R,Element)
+
+    END DO
 
     DEALLOCATE(FORCE_R,LOAD,Basis,dBasisdx)
 !------------------------------------------------------------------------------
-  END SUBROUTINE BCAssemblyStatCurrent
+  END SUBROUTINE BCAssemblyNeumann
 !------------------------------------------------------------------------------
 
 
