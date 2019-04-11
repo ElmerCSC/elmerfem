@@ -45,6 +45,9 @@ MODULE MagnetoDynamicsUtils
    USE MGDynMaterialUtils
    IMPLICIT NONE
 
+!   TYPE(Variable_t), POINTER :: fixJVar
+   TYPE(Matrix_t), POINTER :: fixJMat
+   
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 
    INTERFACE SetDOFtoValue

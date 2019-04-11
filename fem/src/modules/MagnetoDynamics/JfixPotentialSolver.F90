@@ -58,7 +58,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t),POINTER :: SolverParams, BF
   INTEGER :: i,j,k,n,m,dim,dofs
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Matrix_t), POINTER :: A,B
+  TYPE(Matrix_t), POINTER :: A => NULL(),B
   REAL(KIND=dp) :: Norm
   LOGICAL:: AutomatedBCs, SingleNodeBC, Found
   INTEGER, ALLOCATABLE :: Def_Dofs(:,:,:)
@@ -67,14 +67,26 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: fixpot(:)
   TYPE(Variable_t), POINTER :: fixJpot, svar, IterV 
   LOGICAL :: StatCurrMode, NeumannMode, DirichletMode, Visited = .FALSE.
+  INTEGER :: SolStep = 0
 
-  CALL Info('JfixPotentialSolver','Computing fixing potential for given current density',Level=6)
+  SAVE :: A, Perm, SolStep, Def_Dofs, fixjPot
   
+  CALL Info('JfixPotentialSolver','Computing fixing potential for given current density',Level=6)
+
   dim = CoordinateSystemDimension()
   Mesh => GetMesh()
-  B => GetMatrix()
   SolverParams => GetSolverParams()
+  
+  B => GetMatrix()
+  svar => Solver % Variable
+  
+  IF( ListGetLogical( SolverParams,'Generic Source Fixing',Found ) ) THEN
+    SolStep = SolStep + 1
+    IF( SolStep > 2 ) SolStep = SolStep - 2
+  END IF
 
+  PRINT *,'SolStep counter:',SolStep
+  
   IF( ListGetLogical( SolverParams,'Constant Input Current Density',Found ) ) THEN
     IF( Visited ) THEN
       CALL Info('JfixPotentialSolver','Current density is constant, nothing to do!',Level=8)
@@ -83,41 +95,76 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   END IF  
   
   fixJpot => VariableGet( Mesh % Variables, 'Jfix')
-
-  IF( ASSOCIATED(fixJPot)) THEN
-    Perm => fixJPot % Perm
-  ELSE
-    ALLOCATE(Perm(SIZE(Solver % Variable % Perm)))
-  END IF
-  Perm = 0
   dofs = Solver % Variable % DOFs
+  
+  IF( .NOT. ASSOCIATED(fixJPot)) THEN
+    ALLOCATE(Perm(SIZE(Solver % Variable % Perm)))
+    Perm = 0    
+    Equation=GetString(SolverParams,'Equation',Found)
 
-  Equation=GetString(SolverParams,'Equation',Found)
+    n=SIZE(Solver % Def_Dofs,1)
+    m=SIZE(Solver % Def_Dofs,2)
+    k=SIZE(Solver % Def_Dofs,3)
+    ALLOCATE(Def_Dofs(n,m,k))
+    Def_Dofs = Solver % Def_Dofs
 
-  n=SIZE(Solver % Def_Dofs,1)
-  m=SIZE(Solver % Def_Dofs,2)
-  k=SIZE(Solver % Def_Dofs,3)
-  ALLOCATE(Def_Dofs(n,m,k))
-  Def_Dofs=Solver % Def_Dofs
-  Solver % Def_Dofs=0
-  Solver % Def_Dofs(:,:,1)=1
+    Solver % Def_Dofs = 0
+    Solver % Def_Dofs(:,:,1)=1
 
-  A => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
-     Perm, dofs, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.,&
-     NodalDofsOnly = .TRUE.)
-  n = A % NumberOfRows
-  IF (dofs>1) A % COMPLEX = .TRUE.
+    A => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
+        Perm, dofs, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.,&
+        NodalDofsOnly = .TRUE.)
+    ! Put pointers in the module so that these can be used externally also
+    !fixJVar => fixJPot
+    PRINT *,'set fixing matrix pointer'
+    fixJMat => A
+    
+    n = A % NumberOfRows
+    IF (dofs>1) A % COMPLEX = .TRUE.
+    ALLOCATE(A % RHS(n))
 
-  IF (.NOT.ASSOCIATED(fixJPot)) THEN
+    PRINT *,'matrix size',n,ASSOCIATED( A % rhs )
+    
     ALLOCATE(fixpot(n)); fixpot=0._dp
 
     CALL VariableAddVector( Mesh % Variables, Mesh, &
           Solver,'Jfix',dofs,fixpot,Perm)
 
     fixJpot => VariableGet(Mesh % Variables, 'Jfix')
+
+    CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
+    CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
+    CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
+    CALL ListAddNewLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
+    CALL ListAddNewString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
+    CALL ListAddNewConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
+        0.001_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
+    CALL ListAddNewLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
+    CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
+    CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Residual Output',20)
+    CALL ListAddNewString(SolverParams,'Jfix: Nonlinear System Convergence Measure','Norm')
+  ELSE
+    Solver % Def_Dofs = 0
+    Solver % Def_Dofs(:,:,1)=1
   END IF
+      
+  Solver % Variable => fixJpot
+  Solver % Matrix => A
   
+  IF(ParEnv % PEs>1) CALL ParallelInitMatrix(Solver,A)
+
+  IF( SolStep == 2 ) GOTO 100
   
+  CALL DefaultInitialize()
+  CALL BulkAssembly()
+  
+  IF( SolStep == 1 ) THEN
+    Solver % Variable => svar
+    Solver % Matrix => B
+    Solver % Def_Dofs = Def_Dofs
+    RETURN
+  END IF
+      
   ! Set potential only on a single node
   ! This uses the functionality of DefaultDirichlet
   SingleNodeBC = GetLogical( SolverParams,'Single Node Projection BC',Found ) 
@@ -134,7 +181,6 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     SingleNodeBC = ListCheckPresentAnyBodyForce( Model,'Jfix Single Node' ) 
   END IF
   
-
   StatCurrMode = GetLogical( SolverParams,'StatCurrent Source Projection', Found )
   DirichletMode = GetLogical( SolverParams,'Dirichlet Source Projection',Found )
   NeumannMode = GetLogical( SolverParams,'Neumann Source Projection',Found )
@@ -153,36 +199,33 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       StatCurrMode = .FALSE.; NeumannMode = .FALSE.
     END IF
   END IF
-    
-  svar => Solver % Variable
-  Solver % Variable => fixJpot
 
-  Solver % Matrix => A
-  ALLOCATE(A % RHS(n))
-  IF(ParEnv % PEs>1) CALL ParallelInitMatrix(Solver,A)
-
-  CALL ListSetNameSpace('jfix:')
-  CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
-  CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
-  CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
-  CALL ListAddNewLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
-  CALL ListAddNewString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
-  CALL ListAddNewConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
-      0.001_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
-  CALL ListAddNewLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
-  CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
-  CALL ListAddNewString(SolverParams,'Jfix: Nonlinear System Convergence Measure','Norm')
-
-  CALL DefaultInitialize()
-  CALL BulkAssembly()
   
   IF( NeumannMode .OR. StatCurrMode ) THEN
     CALL BCAssemblyNeumann()
   ELSE IF( DirichletMode ) THEN
     CALL BCAssemblyDirichlet()
   END IF
-
+  
   CALL DefaultFinishAssembly()
+    
+100 CONTINUE
+  IF( SolStep == 2 ) THEN
+    BLOCK
+      REAL(KIND=dp) :: maxrhs, epsrhs
+      maxrhs = MAXVAL( ABS( FixJMat % Rhs ) ) 
+      maxrhs = ParallelReduction( maxrhs, 2 )
+      epsrhs = 1.0e-3
+      DO i=1,A % NumberOfRows
+        IF( ABS( A % Rhs(i) ) > epsrhs ) THEN
+          CALL UpdateDirichletDof(A, i, 0._dp)
+        END IF
+      END DO      
+    END BLOCK
+  END IF
+
+  CALL ListSetNameSpace('jfix:')
+
   CALL DefaultDirichletBCs()
 
   n = 0
@@ -200,10 +243,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
   Solver % Matrix => B
   Solver % Variable => svar
+  Solver % Def_Dofs=Def_Dofs
+
   CALL ListSetNameSpace('')
 
-  CALL FreeMatrix(A)
-  Solver % Def_Dofs=Def_Dofs
+  !CALL FreeMatrix(A)
   
   IterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
   IterV % Values(1) = 1
@@ -294,7 +338,7 @@ CONTAINS
           FORCE_R(1:n) = FORCE_R(1:n) + MATMUL(dBasisdx(1:n,:),L_R)*Weight
         END IF
       END DO
-
+      
       IF (A % COMPLEX) THEN
         DO i=n+1,nd
           STIFF_C(i,i)=1._dp

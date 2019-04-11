@@ -169,7 +169,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
     CALL Info("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
   END IF
-
+      
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
 !------------------------------------------------------------------------------
@@ -214,7 +214,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:), &
                                 GapLength(:), AirGapMu(:), LamThick(:), &
                                 LamCond(:), Wbase(:), RotM(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), PrevSol(:), DConstr(:,:)
+  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), FixJFORCE(:), &
+      &PrevSol(:), DConstr(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
   LOGICAL :: LaminateStack, CoilBody
@@ -243,9 +244,11 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   
   INTEGER :: n_n, n_e
   INTEGER, POINTER :: Vperm(:), Aperm(:)
-  REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
-
-  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, GapLength, AirGapMu, &
+  REAL(KIND=dp), POINTER :: Avals(:), Vvals(:),FixJRhs(:)
+  
+  LOGICAL :: GenericFixJ
+  
+  SAVE STIFF, LOAD, MASS, FORCE, FixJFORCE, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
        Acoef_t, DConstr
 !------------------------------------------------------------------------------
@@ -255,7 +258,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL Info('WhitneyAVSolver','Solving the AV equations with edge elements',Level=5 )
 
   SolverParams => GetSolverParams()
-
 
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
   IF( SecondOrder ) THEN
@@ -274,8 +276,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
   TransientGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. Transient
-  
-
+ 
 
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
@@ -350,7 +351,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   IF ( .NOT. AllocationsDone ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
+     ALLOCATE( FORCE(N), FixJFORCE(n), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
           LamCond(N), Wbase(N), RotM(3,3,N), Cwrk(3,3,N), &
@@ -402,13 +403,30 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   SkipAssembly = DoneAssembly.AND.(ConstantBulk.OR.ConstantSystem)
 
   FixJ = GetLogical(SolverParams,'Fix input Current Density', Found)
+  GenericFixJ = .FALSE.
   IF (.NOT. Found .AND. .NOT. Transient ) THEN
     ! Only fix the current density if there is one
     FixJ = ListCheckPrefixAnyBodyForce(Model, 'Current Density')
   END IF
+
   IF (FixJ) THEN
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
-    FixJVar => VariableGet(Mesh % Variables, 'Jfix')
+    FixJVar => VariableGet(Mesh % Variables, 'Jfix')    
+    FixJRhs => FixJMat % Rhs 
+    GenericFixJ = ListGetLogical( SolverParams,'Generic Source Fixing',Found )     
+    PRINT *,'ass stuff',ASSOCIATED( FixJVar), ASSOCIATED( FixJMat), &
+        ASSOCIATED( FixJRhs), ASSOCIATED( FixJMat % Rhs ) 
+
+    PRINT *,'rows:',FixJMat % NumberOfRows
+    
+    PRINT *,'Initial source fixing source:',SUM( FixJRhs ), SUM( ABS( FixJRhs ) ) 
+    
+    IF( GenericFixJ ) THEN      
+      FixJRhs = 0.0_dp
+    ELSE
+      PRINT *,'Initial source fixing potential:',&
+          SUM( FixJVar % Values ), SUM( ABS( FixJVar % Values ) )
+    END IF
   END IF
 
   ! 
@@ -617,7 +635,7 @@ CONTAINS
 
      !Get element local matrix and rhs vector:
      !----------------------------------------
-       CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
+       CALL LocalMatrix( MASS, STIFF, FORCE, FixJFORCE, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, &
          Element, n, nd+nb, PiolaVersion, SecondOrder)
@@ -637,10 +655,43 @@ CONTAINS
      END IF
 
      CALL DefaultUpdateEquations(STIFF,FORCE)
-  END DO
+
+     IF( GenericFixJ ) THEN
+       !PRINT *,'generic fix terms:',FixJForce(1:n)
+       FixJRhs(FixJVar % Perm(Element % NodeIndexes)) = FixJRhs(FixJVar % Perm(Element % NodeIndexes)) + &
+           FixJFORCE(1:n)       
+     END IF
+
+   END DO
 
   CALL DefaultFinishBulkAssembly(BulkUpdate=ConstantBulk)
 
+
+  IF( GenericFixJ ) THEN    
+
+    PRINT *,'Generic source fixing source:',SUM( FixJRhs ), SUM( ABS( FixJRhs ) )
+
+    CALL JfixPotentialSolver(Model,Solver,dt,Transient)
+
+    PRINT *,'Generic source fixing potential:',SUM( FixJVar % Values ), &
+        SUM( ABS( FixJVar % Values ) )
+
+    
+    DO t=1,active
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes() 
+      nd = GetElementNOFDOFs()  
+      nb = GetElementNOFBDOFs() 
+
+      CALL LocalFixMatrix( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)
+      
+      CALL DefaultUpdateForce(FORCE, Element )
+    END DO
+    
+  END IF
+
+
+  
 100 CONTINUE
 
   !
@@ -700,6 +751,8 @@ CONTAINS
   ! Check the timer
   CALL CheckTimer('MGDynAssembly', Delete=.TRUE.)
 
+  
+  
 200 CONTINUE
 
   ! This is now automatically invoked as the time integration is set global in the Solver_init
@@ -1831,14 +1884,16 @@ SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondO
   END DO
 
 END SUBROUTINE LocalConstraintMatrix
+
+
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
+  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, FixJFORCE, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, &
             Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), FixJFORCE(:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
 
@@ -1878,12 +1933,13 @@ END SUBROUTINE LocalConstraintMatrix
     STIFF = 0.0d0
     FORCE = 0.0d0
     MASS  = 0.0d0
-
+    FixJFORCE = 0.0_dp
+    
     JAC = 0._dp
     Newton = .FALSE.
 
     FixJpot = 0._dp
-    IF (FixJ) THEN
+    IF (FixJ .AND. .NOT. GenericFixJ ) THEN
       FixJPot(1:n) = FixJVar % Values(FixJVar % Perm(Element % NodeIndexes))
     END IF
 
@@ -2159,6 +2215,13 @@ END SUBROUTINE LocalConstraintMatrix
          END DO
        END DO
 
+       IF( GenericFixJ ) THEN
+         DO i = 1,n
+           p = i
+           FixJFORCE(p) = FixJFORCE(p) + SUM(L*dBasisdx(i,:)) * detJ * IP%s(t) 
+         END DO
+       END IF
+       
        ! In steady state we can utilize the scalar variable
        ! for Gauging the vector potential.
        IF ( SteadyGauge ) THEN
@@ -2212,6 +2275,70 @@ END SUBROUTINE LocalConstraintMatrix
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
+
+!-----------------------------------------------------------------------------
+  SUBROUTINE LocalFixMatrix( FORCE, &
+      Element, n, nd, PiolaVersion, SecondOrder )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp) :: FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: PiolaVersion, SecondOrder
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), FixJPot(nd)
+    LOGICAL :: Stat 
+    INTEGER :: t, i, p, np, EdgeBasisDegree
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    TYPE(Nodes_t), SAVE :: Nodes
+
+!------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+      EdgeBasisDegree = 2
+    ELSE
+      EdgeBasisDegree = 1
+    END IF
+
+    CALL GetElementNodes( Nodes )
+
+    FORCE = 0.0d0
+    FixJPot(1:n) = FixJVar % Values(FixJVar % Perm(Element % NodeIndexes))
+
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree )
+
+    np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+    DO t=1,IP % n
+      IF (PiolaVersion) THEN
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )
+
+        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
+
+      L = MATMUL(-FixJPot(1:n), dBasisdx(1:n,:))
+      DO i = 1,nd-np
+        p = i+np
+        FORCE(p) = FORCE(p) + SUM(L*WBasis(i,:)) * detJ * IP%s(t) 
+      END DO
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalFixMatrix
+!------------------------------------------------------------------------------
+
+
+
+  
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
