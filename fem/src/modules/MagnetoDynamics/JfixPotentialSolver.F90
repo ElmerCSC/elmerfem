@@ -184,10 +184,16 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
-    
+
+  n = 0
   IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
     n = COUNT( A % ConstrainedDOF )
-    CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//TRIM(I2S(n)))
+    n = NINT( ParallelReduction( 1.0_dp * n ) )
+  END IF
+  IF( n == 0 ) THEN
+    CALL Warn('JfixPotentialSolver','No Dirichlet conditions used to define Jfix level!')
+  ELSE
+    CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//TRIM(I2S(n)),Level=7)
   END IF
   
   Norm = DefaultSolve()
@@ -344,11 +350,20 @@ CONTAINS
    SELECT CASE(GetElementFamily())
     CASE(1)
     CASE(2)
-      k = GetBoundaryEdgeIndex(Element,1); LElement => Mesh % Edges(k)
+      k = GetBoundaryEdgeIndex(Element,1)
+      IF( ParEnv % PEs > 1 ) THEN
+        IF( Mesh % ParallelInfo % EdgeInterface(k) ) RETURN        
+      END IF
+      LElement => Mesh % Edges(k)
     CASE(3,4)
-      k = GetBoundaryFaceIndex(Element)  ; LElement => Mesh % Faces(k)
+      k = GetBoundaryFaceIndex(Element)
+      IF( ParEnv % PEs > 1 ) THEN
+        ! Don't set BCs on partition interfaces
+        IF( Mesh % ParallelInfo % FaceInterface(k) ) RETURN
+      END IF
+      LElement => Mesh % Faces(k)
     END SELECT
-    
+        
     P1 => LElement % BoundaryInfo % Left
     P2 => LElement % BoundaryInfo % Right
     
@@ -456,7 +471,7 @@ CONTAINS
 
     meshdim = Solver % Mesh % MeshDim    
     Jfluxeps = GetCReal(SolverParams, 'J normal eps', Found)
-    IF (.NOT. Found) Jfluxeps = 1.0d-2
+    IF (.NOT. Found) Jfluxeps = 0.1_dp
 
     ! At outer boundaries, if J has component normal to the
     ! surface, set Fix_pot=0:
