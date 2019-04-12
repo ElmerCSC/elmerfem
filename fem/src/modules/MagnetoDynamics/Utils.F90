@@ -47,6 +47,9 @@ MODULE MagnetoDynamicsUtils
 
 !   TYPE(Variable_t), POINTER :: fixJVar
    TYPE(Matrix_t), POINTER :: fixJMat
+   INTEGER, POINTER :: JfixPerm(:)
+   INTEGER, POINTER :: JfixSurfacePerm(:) 
+   REAL(KIND=dp), ALLOCATABLE :: JfixSurfaceVec(:)
    
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 
@@ -666,7 +669,7 @@ CONTAINS
           END DO
         END IF
       END DO
-
+ 
       DO i=Parenv % mype+1,Parenv % PEs-1
         k = i+1
         CALL MPI_BSEND( ii(k),1,MPI_INTEGER,i,112,Solver % matrix % comm,ierr )
@@ -703,4 +706,87 @@ CONTAINS
   END SUBROUTINE SendDoneNodesAndEdges
   !-------------------------------------------------------------------------------
 
+  
+  !-------------------------------------------------------------------------------
+  ! Mark nodes that are on outher boundary using face elements and node parmutation.
+  !-------------------------------------------------------------------------------
+  SUBROUTINE MarkOuterNodes(Mesh,Perm,SurfaceNodes,SurfacePerm) 
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: Perm(:),SurfacePerm(:)
+    INTEGER :: SurfaceNodes
+
+    INTEGER :: i,t,n,ActParents,ParParents
+    TYPE(Element_t), POINTER :: Element, P1, P2, P
+        
+    CALL Info('MarkOuterNodes','Marking outer nodes on outer boundary',Level=8)
+    
+    IF( Mesh % NumberOfFaces == 0 ) THEN
+      CALL Fatal('MarkOuterNodes','The faces are not created!')
+    END IF
+    
+    IF(.NOT. ASSOCIATED( SurfacePerm ) ) THEN
+      ALLOCATE( SurfacePerm( Mesh % NumberOfNodes ) ) 
+    END IF
+    SurfacePerm = 0
+    
+       
+    DO t=1, Mesh % NumberOfFaces 
+      
+      Element => Mesh % Faces(t)         
+      
+      IF( ParEnv % PEs > 1 ) THEN
+        ! Don't set BCs on partition interfaces
+        IF( Mesh % ParallelInfo % FaceInterface(t) ) CYCLE
+      END IF
+      
+      P1 => Element % BoundaryInfo % Left
+      P2 => Element % BoundaryInfo % Right
+      
+      ActParents = 0
+      ParParents = 0
+
+      IF( ASSOCIATED( P1 ) ) THEN
+        IF (ALL(Perm(P1 % NodeIndexes)>0)) THEN
+          ActParents = ActParents + 1
+          IF( P1 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1
+        ELSE
+          NULLIFY( P1 )
+        END IF
+      END IF
+      IF( ASSOCIATED( P2 ) ) THEN
+        IF (ALL(Perm(P2 % NodeIndexes)>0)) THEN
+          ActParents = ActParents + 1
+          IF( P2 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1         
+        ELSE
+          NULLIFY( P2 )
+        END IF
+      END IF
+
+      ! We have either none or both parents as actice.
+      ! The BCs will be set only to outer boundaries of the domain. 
+      IF( ActParents /= 1 ) CYCLE
+      
+      ! The one parent is not a true one!
+      ! This can happen when we have halo elements. 
+      IF( ParEnv % PEs > 0 .AND. ParParents == 0 ) CYCLE
+      
+      SurfacePerm(Element % NodeIndexes) = 1
+    END DO
+
+    ! Create numbering for the surface nodes
+    SurfaceNodes = 0
+    DO i=1,Mesh % NumberOfNodes
+      IF( SurfacePerm(i) > 0 ) THEN
+        SurfaceNodes = SurfaceNodes + 1
+        SurfacePerm(i) = SurfaceNodes
+      END IF
+    END DO
+    
+    n = NINT( ParallelReduction(1.0_dp * SurfaceNodes) ) 
+    CALL Info('MarkOuterNodes','Total number of surface nodes: '//TRIM(I2S(n)),Level=6)
+    
+  END SUBROUTINE MarkOuterNodes
+
+    
 END MODULE MagnetoDynamicsUtils

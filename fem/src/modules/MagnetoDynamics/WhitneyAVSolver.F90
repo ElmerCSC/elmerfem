@@ -169,7 +169,11 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
     CALL Info("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
   END IF
-      
+
+
+  ! THIS ENFORCES THE NEW STRATEGY !!!!
+  CALL ListAddLogical( SolverParams,'Generic Source Fixing',.TRUE.)
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
 !------------------------------------------------------------------------------
@@ -215,7 +219,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
                                 GapLength(:), AirGapMu(:), LamThick(:), &
                                 LamCond(:), Wbase(:), RotM(:,:,:)
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), FixJFORCE(:), &
-      &PrevSol(:), DConstr(:,:)
+      FixJVec(:,:),PrevSol(:), DConstr(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
   LOGICAL :: LaminateStack, CoilBody
@@ -248,7 +252,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   
   LOGICAL :: GenericFixJ
   
-  SAVE STIFF, LOAD, MASS, FORCE, FixJFORCE, Tcoef, GapLength, AirGapMu, &
+  SAVE STIFF, LOAD, MASS, FORCE, FixJFORCE, FixJVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
        Acoef_t, DConstr
 !------------------------------------------------------------------------------
@@ -351,7 +355,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   IF ( .NOT. AllocationsDone ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), FixJFORCE(n), LOAD(7,N), STIFF(N,N), &
+     ALLOCATE( FORCE(N), FixJFORCE(n), FixJVec(3,n), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
           LamCond(N), Wbase(N), RotM(3,3,N), Cwrk(3,3,N), &
@@ -413,14 +417,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
     FixJVar => VariableGet(Mesh % Variables, 'Jfix')    
     FixJRhs => FixJMat % Rhs 
-    GenericFixJ = ListGetLogical( SolverParams,'Generic Source Fixing',Found )     
-    PRINT *,'ass stuff',ASSOCIATED( FixJVar), ASSOCIATED( FixJMat), &
-        ASSOCIATED( FixJRhs), ASSOCIATED( FixJMat % Rhs ) 
+    GenericFixJ = ListGetLogical( SolverParams,'Generic Source Fixing',Found )         
 
-    PRINT *,'rows:',FixJMat % NumberOfRows
-    
-    PRINT *,'Initial source fixing source:',SUM( FixJRhs ), SUM( ABS( FixJRhs ) ) 
-    
+    PRINT *,'Initial source fixing source:',SUM( FixJRhs ), SUM( ABS( FixJRhs ) )     
     IF( GenericFixJ ) THEN      
       FixJRhs = 0.0_dp
     ELSE
@@ -635,7 +634,7 @@ CONTAINS
 
      !Get element local matrix and rhs vector:
      !----------------------------------------
-       CALL LocalMatrix( MASS, STIFF, FORCE, FixJFORCE, LOAD, &
+       CALL LocalMatrix( MASS, STIFF, FORCE, FixJFORCE, FixJVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, &
          Element, n, nd+nb, PiolaVersion, SecondOrder)
@@ -657,9 +656,13 @@ CONTAINS
      CALL DefaultUpdateEquations(STIFF,FORCE)
 
      IF( GenericFixJ ) THEN
-       !PRINT *,'generic fix terms:',FixJForce(1:n)
-       FixJRhs(FixJVar % Perm(Element % NodeIndexes)) = FixJRhs(FixJVar % Perm(Element % NodeIndexes)) + &
-           FixJFORCE(1:n)       
+       FixJRhs(FixJVar % Perm(Element % NodeIndexes)) = &
+           FixJRhs(FixJVar % Perm(Element % NodeIndexes)) + FixJFORCE(1:n)
+       DO i=1,n
+         j = JfixSurfacePerm(Element % NodeIndexes(i) )         
+         IF( j > 0 ) JfixSurfaceVec(3*j-2:3*j) = &
+             JfixSurfaceVec(3*j-2:3*j) + FixJVec(1:3,i)
+       END DO
      END IF
 
    END DO
@@ -668,6 +671,7 @@ CONTAINS
 
 
   IF( GenericFixJ ) THEN    
+    CALL Info('WhitneyAVSolver','Solving the fixing potential')
 
     PRINT *,'Generic source fixing source:',SUM( FixJRhs ), SUM( ABS( FixJRhs ) )
 
@@ -675,8 +679,8 @@ CONTAINS
 
     PRINT *,'Generic source fixing potential:',SUM( FixJVar % Values ), &
         SUM( ABS( FixJVar % Values ) )
-
     
+    CALL Info('WhitneyAVSolver','Adding the fixing potential to the r.h.s. of AV equation')   
     DO t=1,active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes() 
@@ -686,8 +690,7 @@ CONTAINS
       CALL LocalFixMatrix( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)
       
       CALL DefaultUpdateForce(FORCE, Element )
-    END DO
-    
+    END DO    
   END IF
 
 
@@ -1887,13 +1890,13 @@ END SUBROUTINE LocalConstraintMatrix
 
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, FixJFORCE, LOAD, &
+  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, FixJFORCE, FixJVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, &
             Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), FixJFORCE(:)
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), FixJFORCE(:), FixJVec(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
 
@@ -1933,8 +1936,12 @@ END SUBROUTINE LocalConstraintMatrix
     STIFF = 0.0d0
     FORCE = 0.0d0
     MASS  = 0.0d0
-    FixJFORCE = 0.0_dp
-    
+
+    IF( GenericFixJ ) THEN
+      FixJFORCE = 0.0_dp
+      FixJVec = 0.0_dp
+    END IF
+      
     JAC = 0._dp
     Newton = .FALSE.
 
@@ -2218,7 +2225,8 @@ END SUBROUTINE LocalConstraintMatrix
        IF( GenericFixJ ) THEN
          DO i = 1,n
            p = i
-           FixJFORCE(p) = FixJFORCE(p) + SUM(L*dBasisdx(i,:)) * detJ * IP%s(t) 
+           FixJFORCE(p) = FixJFORCE(p) + SUM(L * dBasisdx(i,:)) * detJ * IP%s(t) 
+           FixJVec(:,p) = FixJVec(:,p) + L * Basis(i) * detJ * IP%s(t)
          END DO
        END IF
        

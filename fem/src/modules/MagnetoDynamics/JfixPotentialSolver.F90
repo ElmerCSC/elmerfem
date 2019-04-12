@@ -159,9 +159,14 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   CALL BulkAssembly()
   
   IF( SolStep == 1 ) THEN
+    IF(.NOT. ASSOCIATED( JfixSurfacePerm ) ) THEN
+      CALL MarkOuterNodes(Mesh,Perm,n,JfixSurfacePerm)
+      ALLOCATE( JfixSurfaceVec(3*n) )
+    END IF
+    JfixSurfaceVec = 0.0_dp
     Solver % Variable => svar
     Solver % Matrix => B
-    Solver % Def_Dofs = Def_Dofs
+    Solver % Def_Dofs = Def_Dofs    
     RETURN
   END IF
       
@@ -211,17 +216,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     
 100 CONTINUE
   IF( SolStep == 2 ) THEN
-    BLOCK
-      REAL(KIND=dp) :: maxrhs, epsrhs
-      maxrhs = MAXVAL( ABS( FixJMat % Rhs ) ) 
-      maxrhs = ParallelReduction( maxrhs, 2 )
-      epsrhs = 1.0e-3
-      DO i=1,A % NumberOfRows
-        IF( ABS( A % Rhs(i) ) > epsrhs ) THEN
-          CALL UpdateDirichletDof(A, i, 0._dp)
-        END IF
-      END DO      
-    END BLOCK
+    CALL BCAssemblyGeneric()
   END IF
 
   CALL ListSetNameSpace('jfix:')
@@ -558,6 +553,91 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   
+ !------------------------------------------------------------------------------
+! This subroutine fixes the potential to zero where there is some current density
+! component in the normal direction.
+!------------------------------------------------------------------------------
+  SUBROUTINE BCAssemblyGeneric()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE       
+    INTEGER :: i,j,k1,k2,t,n,meshdim,dofs
+    TYPE(Nodes_t) :: Nodes
+    LOGICAL :: Found
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: NrmEps,Jlen,JVec(3),Nrm(3),NrmProj,MaxProj,MaxJVec,JEps,Jrel,Jabs
+    
+    SAVE Nodes
+
+    meshdim = Solver % Mesh % MeshDim    
+    NrmEps = GetCReal(SolverParams, 'Jfix norm eps', Found)
+    IF (.NOT. Found) NrmEps = 0.1_dp
+
+    Jrel = GetCReal(SolverParams, 'Jfix relative eps', Found)
+    IF (.NOT. Found) Jrel = 1.0e-6
+
+    Jabs = GetCReal(SolverParams, 'Jfix absolute eps', Found)
+    IF (.NOT. Found) Jabs = EPSILON( Jabs ) 
+    
+    dofs = Solver % Variable % Dofs
+    IF( dofs /= 1 ) THEN
+      CALL Fatal('BCAssemblyGeneric','implement complex!')
+    END IF
+
+    MaxProj = 0.0_dp
+    MaxJVec = MAXVAL( ABS( JfixSurfaceVec ) )
+    MaxJVec = ParallelReduction( MaxJVec, 2 ) 
+
+    WRITE( Message,'(A,ES12.3)') 'Maximum source term on boundaries:',MaxJVec
+    CALL Info('BCAssemblyGeneric',Message,Level=8)
+  
+    JEps = MAX( Jabs, Jrel * MaxJVec )
+    
+    WRITE( Message,'(A,ES12.3)') 'Using jfix epsilon for flux:',Jeps
+    CALL Info('BCAssemblyGeneric',Message,Level=8)   
+    
+    DO t=1,GetNOFBoundaryElements()
+      Element => GetBoundaryElement(t)
+      n = GetElementNOFNodes()
+          
+      IF (Element % TYPE % DIMENSION < meshdim-1 ) CYCLE
+
+      IF( ANY( Perm(Element % NodeIndexes) == 0 ) ) CYCLE
+      IF( ALL( JfixSurfacePerm(Element % NodeIndexes) == 0 ) ) CYCLE
+
+      CALL GetElementNodes(Nodes)
+      Nrm = NormalVector(Element,Nodes)
+      
+      IF( dofs == 1 ) THEN
+        DO i=1,n
+          j = Element % NodeIndexes(i) 
+          k1 = Perm(j)
+          IF( k1 == 0 ) CYCLE
+          
+          k2 = JfixSurfacePerm(j)
+          IF( k2 == 0 ) CYCLE
+          
+          JVec = JfixSurfaceVec(3*k2-2:3*k2)
+          JLen = SQRT( SUM( JVec**2 ) )
+          
+          IF( Jlen < Jeps ) CYCLE
+          
+          NrmProj = SUM( ABS( Nrm * Jvec ) ) / Jlen
+          MaxProj = MAX( MaxProj, NrmProj ) 
+
+          IF( NrmProj > Nrmeps ) THEN
+            CALL UpdateDirichletDof(A, k1, 0._dp)
+          END IF
+        END DO
+      END IF
+    END DO
+
+    WRITE( Message,'(A,ES12.3)') 'Maximum norm projection:',MaxProj
+    CALL Info('BCAssemblyGeneric',Message,Level=15)           
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE BCAssemblyGeneric
+!------------------------------------------------------------------------------
+
   
 !------------------------------------------------------------------------------
   SUBROUTINE BCAssemblyNeumann()
