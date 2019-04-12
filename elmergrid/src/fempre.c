@@ -179,6 +179,7 @@ static void Instructions()
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
   printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
   printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
+  printf("-metisseed           : random number generator seed for Metis algorithms\n");
 #endif
   printf("-partdual            : use the dual graph in partition method (when available)\n");
   printf("-halo                : create halo for the partitioning for DG\n");

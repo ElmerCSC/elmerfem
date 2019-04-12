@@ -1317,7 +1317,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL :: Found, Calculate
-    INTEGER :: Dim,GivenDim
+    INTEGER :: Dim,GivenDim,dofs
 !------------------------------------------------------------------------------
     Params => GetSolverParams()
     Dim = CoordinateSystemDimension()
@@ -1329,6 +1329,7 @@ CONTAINS
       CALL ListAddString( Params,'Variable', &
           'FilmPressure Heating' )
     ELSE IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
+      CALL Info('ReynoldsPostprocess_init','Defaulting field name to: ReynoldsPost')
       CALL ListAddString( Params,'Variable', &
           '-nooutput ReynoldsPost' )      
     END IF
@@ -1341,12 +1342,14 @@ CONTAINS
     IF( Calculate ) THEN
       GivenDim = ListGetInteger(Params,'Calculate Force Dim',Found)
       IF( Dim == 1 .OR. GivenDim == 2 ) THEN
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-            '-dofs 2 FilmPressure Force' )
+        dofs = 2
       ELSE
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-            '-dofs 3 FilmPressure Force' )
+        dofs = 3
       END IF
+      CALL Info('ReynoldsPostprocess_init','Creating FilmPressure Force with '&
+          //TRIM(I2S(dofs))//' components',Level=12)
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
+          '-dofs '//TRIM(I2S(dofs))//' FilmPressure Force' )
     END IF
 
     ! The dofs of flux is fixed by default 3 since there can be leakage 
@@ -1356,29 +1359,25 @@ CONTAINS
     IF( Calculate ) THEN
       GivenDim = ListGetInteger(Params,'Calculate Flux Dim',Found)
       IF( Dim == 1 .OR. GivenDim == 2 ) THEN
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            '-dofs 2 FilmPressure Flux' )
+        dofs = 2
       ELSE
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            '-dofs 3 FilmPressure Flux' )
+        dofs = 3
       END IF
+      CALL Info('ReynoldsPostprocess_init','Creating FilmPressure Flux with '&
+          //TRIM(I2S(dofs))//' components',Level=12)
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
+          '-dofs '//TRIM(I2S(dofs))//' FilmPressure Flux' )
     END IF
 
     CALL ListAddInteger( Params, 'Time derivative order', 0 )
 
     ! Add linear system defaults: cg+diagonal
-    IF(.NOT. ListCheckPresent(Params,'Linear System Solver')) &
-      CALL ListAddString(Params,'Linear System Solver','Iterative')
-    IF(.NOT. ListCheckPresent(Params,'Linear System Iterative Method')) &
-      CALL ListAddString(Params,'Linear System Iterative Method','cg')
-    IF(.NOT. ListCheckPresent(Params,'Linear System Preconditioning')) &
-      CALL ListAddString(Params,'Linear System Preconditioning','diagonal')
-    IF(.NOT. ListCheckPresent(Params,'Linear System Max Iterations')) &
-      CALL ListAddInteger(Params,'Linear System Max Iterations',500)
-    IF(.NOT. ListCheckPresent(Params,'Linear System Residual Output')) &
-      CALL ListAddInteger(Params,'Linear System Residual Output',10)
-    IF(.NOT. ListCheckPresent(Params,'Linear System Convergence Tolerance')) &
-      CALL ListAddConstReal(Params,'Linear System Convergence Tolerance',1.0e-10_dp)
+    CALL ListAddString(Params,'Linear System Solver','Iterative')
+    CALL ListAddNewString(Params,'Linear System Iterative Method','cg')
+    CALL ListAddNewString(Params,'Linear System Preconditioning','diagonal')
+    CALL ListAddNewInteger(Params,'Linear System Max Iterations',500)
+    CALL ListAddNewInteger(Params,'Linear System Residual Output',10)
+    CALL ListAddNewConstReal(Params,'Linear System Convergence Tolerance',1.0e-10_dp)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ReynoldsPostprocess_Init

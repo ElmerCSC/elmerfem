@@ -281,6 +281,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->nodes3d = 0;
   eg->metis = 0;
   eg->metiscontig = FALSE;
+  eg->metisseed = 0;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
@@ -491,7 +492,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     }
     if(strcmp(argv[arg],"-metisorder") == 0) {
       eg->order = 3;
-    }
+    }    
     if(strcmp(argv[arg],"-centralize") == 0) {
       eg->center = TRUE;
     }
@@ -751,7 +752,18 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif     
     }
-
+    
+    if(strcmp(argv[arg],"-metisseed") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The random number seed is required as parameter for -metisseed!\n");
+	return(15);
+      }
+      else {
+	eg->metisseed = atoi(argv[arg+1]);
+	printf("Seed for Metis partitioning routines: %d\n",eg->metisseed);
+      }
+    }
+    
     if(strcmp(argv[arg],"-partjoin") == 0) {
       if(arg+1 >= argc) {
 	printf("The number of partitions is required as a parameter!\n");

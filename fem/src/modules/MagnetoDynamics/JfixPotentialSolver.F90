@@ -133,7 +133,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       END IF
     END DO    
   END IF
-
+  ! We may have used the single node BC directly (in case of many body forces)
+  IF(.NOT. SingleNodeBC ) THEN
+    SingleNodeBC = ListCheckPresentAnyBodyForce( Model,'Jfix Single Node' ) 
+  END IF
+  
   svar => Solver % Variable
   Solver % Variable => fixJpot
 
@@ -152,6 +156,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       0.001_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
   CALL ListAddNewLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
   CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
+  CALL ListAddNewString(SolverParams,'Jfix: Nonlinear System Convergence Measure','Norm')
 
   CALL DefaultInitialize()
   CALL BulkAssembly()

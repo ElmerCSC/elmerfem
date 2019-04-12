@@ -3193,7 +3193,8 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
   options[METIS_OPTION_RTYPE] = METIS_RTYPE_GREEDY;
   if(metisopt == 4 ) options[METIS_OPTION_MINCONN] = 1;
   options[METIS_OPTION_DBGLVL] = 3;
-
+  /* if( eg->metisseed ) options[METIS_OPTION_SEED] = eg->metisseed; */
+  
   /* Optional weights */
   vwgt = NULL;
   adjwgt = NULL;
@@ -3691,8 +3692,8 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   options[METIS_OPTION_NUMBERING] = 0;
   options[METIS_OPTION_CONTIG] = eg->metiscontig;
   options[METIS_OPTION_DBGLVL] = 3;
-
-    
+  if( eg->metisseed ) options[METIS_OPTION_SEED] = eg->metisseed;
+      
   if(info) printf("Making a Metis partitioning for %d elements in %d-dimensions.\n",
 		  data->noelements,data->dim);
 
@@ -4006,8 +4007,9 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
   METIS_SetDefaultOptions(options);
 
   options[METIS_OPTION_NUMBERING] = 0; 
-  options[METIS_OPTION_CONTIG] = eg->metiscontig;
-  
+  options[METIS_OPTION_CONTIG] = eg->metiscontig;  
+  if( eg->metisseed ) options[METIS_OPTION_SEED] = eg->metisseed;
+
   options[METIS_OPTION_CTYPE] = METIS_CTYPE_SHEM;
   options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_GROW;
   options[METIS_OPTION_RTYPE] = METIS_RTYPE_GREEDY;    
