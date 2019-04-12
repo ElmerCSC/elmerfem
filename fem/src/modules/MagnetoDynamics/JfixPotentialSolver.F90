@@ -230,8 +230,16 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   ELSE
     CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//TRIM(I2S(n)),Level=7)
   END IF
+
+
+  ! Direct calling avoids generation of constraint matrices
+  CALL SolveSystem(A,ParMatrix,A % rhs,fixjpot % Values,fixjpot % Norm,fixjpot % DOFs,Solver)
+
+  ! This is temporal norm for debugging
+  WRITE(Message,'(A,ES12.3)') 'Norm for Jfix computation: ',SUM( ABS( fixjpot % Values ) )
+  CALL Info('JfixPotentialSolver',Message)
   
-  Norm = DefaultSolve()
+  !Norm = DefaultSolve()
 
   Solver % Matrix => B
   Solver % Variable => svar
