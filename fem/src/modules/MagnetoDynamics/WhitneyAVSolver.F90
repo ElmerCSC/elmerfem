@@ -250,7 +250,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   INTEGER, POINTER :: Vperm(:), Aperm(:)
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:),FixJRhs(:)
   
-  LOGICAL :: GenericFixJ
+  LOGICAL :: GenericFixJ, FixJSolve
   
   SAVE STIFF, LOAD, MASS, FORCE, FixJFORCE, FixJVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
@@ -419,13 +419,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     FixJRhs => FixJMat % Rhs 
     GenericFixJ = ListGetLogical( SolverParams,'Generic Source Fixing',Found )         
 
-    PRINT *,'Initial source fixing source:',SUM( FixJRhs ), SUM( ABS( FixJRhs ) )     
-    IF( GenericFixJ ) THEN      
-      FixJRhs = 0.0_dp
-    ELSE
-      PRINT *,'Initial source fixing potential:',&
-          SUM( FixJVar % Values ), SUM( ABS( FixJVar % Values ) )
-    END IF
+    IF( GenericFixJ ) FixJRhs = 0.0_dp
   END IF
 
   ! 
@@ -472,6 +466,11 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     IF( NoIterationsMax > 1 ) THEN
       CALL Info('WhitneyAVSolver','Nonlinear iteration: '//TRIM(I2S(i)),Level=8 )
     END IF
+
+    ! On the 1st iteration assembly the fixing potential
+    ! Use the same later
+    FixJSolve = (GenericFixJ .AND. i == 1)
+
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
@@ -655,7 +654,7 @@ CONTAINS
 
      CALL DefaultUpdateEquations(STIFF,FORCE)
 
-     IF( GenericFixJ ) THEN
+     IF( FixJSolve ) THEN
        FixJRhs(FixJVar % Perm(Element % NodeIndexes)) = &
            FixJRhs(FixJVar % Perm(Element % NodeIndexes)) + FixJFORCE(1:n)
        DO i=1,n
@@ -670,15 +669,9 @@ CONTAINS
   CALL DefaultFinishBulkAssembly(BulkUpdate=ConstantBulk)
 
 
-  IF( GenericFixJ ) THEN    
+  IF( FixJSolve ) THEN    
     CALL Info('WhitneyAVSolver','Solving the fixing potential')
-
-    PRINT *,'Generic source fixing source:',SUM( FixJRhs ), SUM( ABS( FixJRhs ) )
-
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
-
-    PRINT *,'Generic source fixing potential:',SUM( FixJVar % Values ), &
-        SUM( ABS( FixJVar % Values ) )
     
     CALL Info('WhitneyAVSolver','Adding the fixing potential to the r.h.s. of AV equation')   
     DO t=1,active
@@ -687,8 +680,7 @@ CONTAINS
       nd = GetElementNOFDOFs()  
       nb = GetElementNOFBDOFs() 
 
-      CALL LocalFixMatrix( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)
-      
+      CALL LocalFixMatrix( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)      
       CALL DefaultUpdateForce(FORCE, Element )
     END DO    
   END IF
@@ -1946,7 +1938,10 @@ END SUBROUTINE LocalConstraintMatrix
     Newton = .FALSE.
 
     FixJpot = 0._dp
-    IF (FixJ .AND. .NOT. GenericFixJ ) THEN
+
+    ! If we are solving for the FixJ field we cannot yet use it!
+    ! This happens on the first iteration
+    IF (FixJ .AND. .NOT. FixJSolve ) THEN
       FixJPot(1:n) = FixJVar % Values(FixJVar % Perm(Element % NodeIndexes))
     END IF
 

@@ -116,15 +116,12 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
         NodalDofsOnly = .TRUE.)
     ! Put pointers in the module so that these can be used externally also
     !fixJVar => fixJPot
-    PRINT *,'set fixing matrix pointer'
     fixJMat => A
     
     n = A % NumberOfRows
     IF (dofs>1) A % COMPLEX = .TRUE.
     ALLOCATE(A % RHS(n))
 
-    PRINT *,'matrix size',n,ASSOCIATED( A % rhs )
-    
     ALLOCATE(fixpot(n)); fixpot=0._dp
 
     CALL VariableAddVector( Mesh % Variables, Mesh, &
@@ -562,9 +559,10 @@ CONTAINS
     IMPLICIT NONE       
     INTEGER :: i,j,k1,k2,t,n,meshdim,dofs
     TYPE(Nodes_t) :: Nodes
-    LOGICAL :: Found
-    TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: NrmEps,Jlen,JVec(3),Nrm(3),NrmProj,MaxProj,MaxJVec,JEps,Jrel,Jabs
+    LOGICAL :: Found, JfixHybrid, JfixAll
+    TYPE(Element_t), POINTER :: Element, LElement
+    REAL(KIND=dp) :: NrmEps,Jlen,JVec(3),Nrm(3),NrmProj,MaxProj,&
+        MaxJVec,JEps,Jrel,Jabs,Jnrm
     
     SAVE Nodes
 
@@ -577,12 +575,27 @@ CONTAINS
 
     Jabs = GetCReal(SolverParams, 'Jfix absolute eps', Found)
     IF (.NOT. Found) Jabs = EPSILON( Jabs ) 
-    
+
+    JfixHybrid = GetLogical( SolverParams,'Jfix Hybrid',Found ) 
+    JfixAll = GetLogical( SolverParams,'Jfix All',Found ) 
+   
     dofs = Solver % Variable % Dofs
     IF( dofs /= 1 ) THEN
       CALL Fatal('BCAssemblyGeneric','implement complex!')
     END IF
 
+    
+    IF( JfixAll ) THEN
+      DO j=1,Mesh % NumberOfNodes
+        k1 = Perm(j)
+        k2 = JfixSurfacePerm(j)
+        IF( k1 == 0 .OR. k2 == 0 ) CYCLE
+        CALL UpdateDirichletDof(A, k1, 0._dp)
+      END DO
+      RETURN
+    END IF
+
+    
     MaxProj = 0.0_dp
     MaxJVec = MAXVAL( ABS( JfixSurfaceVec ) )
     MaxJVec = ParallelReduction( MaxJVec, 2 ) 
@@ -602,26 +615,27 @@ CONTAINS
       IF (Element % TYPE % DIMENSION < meshdim-1 ) CYCLE
 
       IF( ANY( Perm(Element % NodeIndexes) == 0 ) ) CYCLE
-      IF( ALL( JfixSurfacePerm(Element % NodeIndexes) == 0 ) ) CYCLE
+      IF( ANY( JfixSurfacePerm(Element % NodeIndexes) == 0 ) ) CYCLE
 
       CALL GetElementNodes(Nodes)
-      Nrm = NormalVector(Element,Nodes)
+      Nrm = NormalVector(Element,Nodes,Check=.TRUE.)
       
       IF( dofs == 1 ) THEN
         DO i=1,n
           j = Element % NodeIndexes(i) 
           k1 = Perm(j)
-          IF( k1 == 0 ) CYCLE
-          
           k2 = JfixSurfacePerm(j)
-          IF( k2 == 0 ) CYCLE
           
           JVec = JfixSurfaceVec(3*k2-2:3*k2)
           JLen = SQRT( SUM( JVec**2 ) )
           
-          IF( Jlen < Jeps ) CYCLE
+          IF( Jlen < Jeps ) CYCLE          
+          Jnrm = SUM( Nrm * Jvec ) 
+
+          ! This is to test whether to only fix positive flux BCs and 
+          IF( JfixHybrid .AND. Jnrm < 0.0 ) CYCLE
           
-          NrmProj = SUM( ABS( Nrm * Jvec ) ) / Jlen
+          NrmProj = ABS( Jnrm ) / Jlen
           MaxProj = MAX( MaxProj, NrmProj ) 
 
           IF( NrmProj > Nrmeps ) THEN
@@ -631,6 +645,20 @@ CONTAINS
       END IF
     END DO
 
+    IF( JfixHybrid ) THEN
+      DO j=1,Mesh % NumberOfNodes
+        k1 = Perm(j)
+        k2 = JfixSurfacePerm(j)
+        IF( k1 == 0 .OR. k2 == 0 ) CYCLE
+
+        IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
+          IF( A % ConstrainedDOF(k1) ) CYCLE
+        END IF
+        A % Rhs(k1) = 0.0_dp      
+      END DO
+    END IF
+      
+    
     WRITE( Message,'(A,ES12.3)') 'Maximum norm projection:',MaxProj
     CALL Info('BCAssemblyGeneric',Message,Level=15)           
 
@@ -688,8 +716,6 @@ CONTAINS
       IF(.NOT. Found ) CYCLE       
         
       IF(.NOT. StatCurrMode ) THEN
-        !PRINT *,'neu2:',NormalProj,Jn,n,nd      
-
         ! This is a mixed mode that sets only positive Jn values to Dirichlet
         IF( DirichletMode ) THEN
           IF( ABS( NormalProj ) > 0.5 .AND. Jn > 0.0_dp ) THEN
