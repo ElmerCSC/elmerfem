@@ -2132,7 +2132,7 @@ CONTAINS
                      mu0=4d-7*PI, skindepth
     
     LOGICAL :: BertottiCompute = .FALSE.
-    REAL(KIND=dp) :: BertottiLoss, BRTa1, BRTa2, BRTa3, BRTa4
+    REAL(KIND=dp) :: BertottiLoss, BRTc1, BRTc2, BRTc3, BRTc4, BRTc5
 
     SAVE Nodes
 
@@ -2358,17 +2358,24 @@ CONTAINS
       END IF
 
       BertottiCompute = .FALSE.
-      BRTa1 = GetCReal( Material,'Bertotti a1',Found ) 
+      BRTc1 = GetCReal( Material,'Extended Bertotti Coefficient 1',Found ) 
       IF ( Found ) THEN
         BertottiCompute = .TRUE.
         Freq = Omega / (2*PI)
         BertottiLoss = 0.0_dp
-        BRTa2 = GetCReal( Material,'Bertotti a2',Found ) 
-        IF (.NOT. Found) CALL Fatal ('MagnetoDynamics2D','Bertotti activated, Bertotti a2 not found.')
-        BRTa3= GetCReal( Material,'Bertotti a3',Found ) 
-        IF (.NOT. Found) CALL Fatal ('MagnetoDynamics2D','Bertotti activated, Bertotti a3 not found.')
-        BRTa4= GetCReal( Material,'Bertotti a4',Found ) 
-        IF (.NOT. Found) CALL Fatal ('MagnetoDynamics2D','Bertotti activated, Bertotti a4 not found.')
+        BRTc2 = GetCReal( Material,'Extended Bertotti Coefficient 2',Found ) 
+        IF (.NOT. Found) CALL Fatal ('MagnetoDynamics2D','Extended Bertotti activated, &
+                    Extended Bertotti Coefficient 2 not found!')
+
+        BRTc3 = GetCReal( Material,'Extended Bertotti Coefficient 3',Found ) 
+        IF (.NOT. Found) CALL Fatal ('MagnetoDynamics2D','Extended Bertotti activated, &
+                    Extended Bertotti Coefficient 3 not found!')
+
+        BRTc4 = GetCReal( Material,'Extended Bertotti Coefficient 4',Found ) 
+        IF (.NOT. Found) BRTc4 = 1.5_dp
+
+        BRTc5 = GetCReal( Material,'Extended Bertotti Coefficient 5',Found ) 
+        IF (.NOT. Found) BRTc5 = 1.5_dp
       END IF
       
       IF (BodyVolumesCompute) THEN
@@ -2522,7 +2529,7 @@ CONTAINS
 
         IF (BertottiCompute) THEN
           ! Compute Bertotti loss for core
-          BertottiLoss = BRTa2*BMagnAtIP**2.*Freq + (BRTa1+BRTa4*BMagnAtIP**(BRTa3))*(BMagnAtIP*Freq)**2.
+          BertottiLoss = BRTc1*Freq*BMagnAtIP**2.+ BRTc2*(Freq*BMagnAtIP)**2.+BRTc3*Freq**BRTc4*BMagnAtIP**BRTc5
           TotalHeating = TotalHeating + BertottiLoss
           BAtIp(6) = BAtIp(6) + BertottiLoss ! unorthodox
         END IF
