@@ -51,15 +51,15 @@ CONTAINS
 ! it to the global matrix. Routine is vectorized and multithreaded.
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(Element, n, nd, ntot, dim, &
-      DivCurlForm, GradPVersion, StokesFlow, dt, LinearAssembly, &
-      nb, Newton, Transient, InitHandles, SchurSolver )
+       DivCurlForm, GradPVersion, SpecificLoad, StokesFlow, &
+       dt, LinearAssembly, nb, Newton, Transient, InitHandles, SchurSolver )
 !------------------------------------------------------------------------------
     USE LinearForms
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, ntot, dim, nb
-    LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion, StokesFlow
+    LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion, SpecificLoad, StokesFlow
     REAL(KIND=dp), INTENT(IN) :: dt   
     LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient, InitHandles
     TYPE(Solver_t), POINTER :: SchurSolver
@@ -208,7 +208,13 @@ CONTAINS
     LoadAtIpVec = 0._dp
     DO i=1,dim
       LoadVec => ListGetElementRealVec( Load_h(i), ngp, BasisVec, Element, Found ) 
-      IF( Found ) LoadAtIpVec(1:ngp,i) = LoadVec(1:ngp)
+      IF( Found ) THEN
+        IF (SpecificLoad) THEN
+          LoadAtIpVec(1:ngp,i) = LoadVec(1:ngp)
+        ELSE
+          LoadAtIpVec(1:ngp,i) = rho * LoadVec(1:ngp)
+        END IF
+      END IF
     END DO
 
     IF ( Newton ) THEN
@@ -1154,6 +1160,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   CALL ListAddNewLogical(Params, 'GradP Discretization', .FALSE.)
   CALL ListAddNewLogical(Params, 'Div-Curl Discretization', .FALSE.)
 
+  
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
 
@@ -1206,7 +1213,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: Norm
 
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec
-  LOGICAL :: GradPVersion, DivCurlForm, InitHandles=.TRUE., InitBCHandles=.TRUE.
+  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitHandles=.TRUE., InitBCHandles=.TRUE.
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
   
@@ -1268,7 +1275,8 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   GradPVersion = GetLogical(Params, 'GradP Discretization', Found)
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
   BlockPrec = GetLogical(Params,'Block Preconditioner',Found )
-
+  SpecificLoad = GetLogical(Params,'Specific Load',Found)
+  
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
   IF (.NOT.Found) Maxiter = 1
   !-----------------------------------------------------------------------------
@@ -1314,12 +1322,15 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
-      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          StokesFlow, dt, LinearAssembly, nb, Newton, Transient,  InitHandles, SchurSolver )
+      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  &
+           DivCurlForm, GradPVersion, &
+           SpecificLoad, StokesFlow, &
+           dt, LinearAssembly, nb, &
+           Newton, Transient,  InitHandles, SchurSolver )
     END DO
     InitHandles = .FALSE.
     
-    !$OMP PARALLEL SHARED(Active, dim, StokesFlow, &
+    !$OMP PARALLEL SHARED(Active, dim, SpecificLoad, StokesFlow, &
     !$OMP                 DivCurlForm, GradPVersion, &
     !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver ) &
     !$OMP PRIVATE(Element, Element_id, n, nd, nb)  DEFAULT(None)
@@ -1333,7 +1344,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE., SchurSolver )
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE., SchurSolver )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL

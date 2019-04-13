@@ -1376,7 +1376,7 @@ CONTAINS
         CALL Fatal('BlockPrecMatrix','Schur matrix does not exist for: '//TRIM(str))       
       END IF
 
-      CALL Info('BlockPrecMatrix','Using shcur matrix to precondition block '//TRIM(I2S(NoVar)))
+      CALL Info('BlockPrecMatrix','Using Schur matrix to precondition block '//TRIM(I2S(NoVar)))
       TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => AVAr % Solver % Matrix
     END IF  
 
