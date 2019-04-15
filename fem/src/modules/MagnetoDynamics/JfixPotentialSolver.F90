@@ -147,26 +147,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       
   Solver % Variable => fixJpot
   Solver % Matrix => A
-  
-  IF(ParEnv % PEs>1) CALL ParallelInitMatrix(Solver,A)
 
-  IF( SolStep == 2 ) GOTO 100
-  
-  CALL DefaultInitialize()
-  CALL BulkAssembly()
-  
-  IF( SolStep == 1 ) THEN
-    IF(.NOT. ASSOCIATED( JfixSurfacePerm ) ) THEN
-      CALL MarkOuterNodes(Mesh,Perm,n,JfixSurfacePerm)
-      ALLOCATE( JfixSurfaceVec(3*n) )
-    END IF
-    JfixSurfaceVec = 0.0_dp
-    Solver % Variable => svar
-    Solver % Matrix => B
-    Solver % Def_Dofs = Def_Dofs    
-    RETURN
-  END IF
-      
   ! Set potential only on a single node
   ! This uses the functionality of DefaultDirichlet
   SingleNodeBC = GetLogical( SolverParams,'Single Node Projection BC',Found ) 
@@ -182,7 +163,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   IF(.NOT. SingleNodeBC ) THEN
     SingleNodeBC = ListCheckPresentAnyBodyForce( Model,'Jfix Single Node' ) 
   END IF
-  
+
   StatCurrMode = GetLogical( SolverParams,'StatCurrent Source Projection', Found )
   DirichletMode = GetLogical( SolverParams,'Dirichlet Source Projection',Found )
   NeumannMode = GetLogical( SolverParams,'Neumann Source Projection',Found )
@@ -201,20 +182,40 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       StatCurrMode = .FALSE.; NeumannMode = .FALSE.
     END IF
   END IF
-
   
+  Visited = .TRUE.
+  
+  IF(ParEnv % PEs > 1) CALL ParallelInitMatrix(Solver,A)
+
+  IF( SolStep == 2 ) GOTO 100
+  
+  CALL DefaultInitialize()
+  CALL BulkAssembly()
+  
+  IF( SolStep == 1 ) THEN
+    IF(.NOT. ASSOCIATED( JfixSurfacePerm ) ) THEN
+      CALL MarkOuterNodes(Mesh,Perm,n,JfixSurfacePerm)
+      ALLOCATE( JfixSurfaceVec(3*n) )
+    END IF
+    JfixSurfaceVec = 0.0_dp
+    Solver % Variable => svar
+    Solver % Matrix => B
+    Solver % Def_Dofs = Def_Dofs    
+    RETURN
+  END IF
+        
   IF( NeumannMode .OR. StatCurrMode ) THEN
     CALL BCAssemblyNeumann()
   ELSE IF( DirichletMode ) THEN
     CALL BCAssemblyDirichlet()
   END IF
-  
-  CALL DefaultFinishAssembly()
-    
+      
 100 CONTINUE
   IF( SolStep == 2 ) THEN
     CALL BCAssemblyGeneric()
   END IF
+  
+  !CALL DefaultFinishAssembly()
 
   CALL ListSetNameSpace('jfix:')
 
@@ -251,8 +252,6 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   
   IterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
   IterV % Values(1) = 1
-
-  Visited = .TRUE.
 
 CONTAINS
 
@@ -571,12 +570,13 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, LElement
     REAL(KIND=dp) :: NrmEps,Jlen,JVec(3),Nrm(3),NrmProj,MaxProj,&
         MaxJVec,JEps,Jrel,Jabs,Jnrm
+    TYPE(ValueList_t), POINTER :: BC
     
     SAVE Nodes
 
     meshdim = Solver % Mesh % MeshDim    
     NrmEps = GetCReal(SolverParams, 'Jfix norm eps', Found)
-    IF (.NOT. Found) NrmEps = 0.1_dp
+    IF (.NOT. Found) NrmEps = 0.5_dp
 
     Jrel = GetCReal(SolverParams, 'Jfix relative eps', Found)
     IF (.NOT. Found) Jrel = 1.0e-6
@@ -624,6 +624,12 @@ CONTAINS
 
       IF( ANY( Perm(Element % NodeIndexes) == 0 ) ) CYCLE
       IF( ANY( JfixSurfacePerm(Element % NodeIndexes) == 0 ) ) CYCLE
+
+      BC => GetBC( Element )
+      IF( ASSOCIATED( BC ) ) THEN
+        IF( ListGetLogical( BC,'Jfix Natural BC',Found ) ) CYCLE
+      END IF
+        
 
       CALL GetElementNodes(Nodes)
       Nrm = NormalVector(Element,Nodes,Check=.TRUE.)
