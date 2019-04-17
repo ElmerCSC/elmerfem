@@ -218,8 +218,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:), &
                                 GapLength(:), AirGapMu(:), LamThick(:), &
                                 LamCond(:), Wbase(:), RotM(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), FixJFORCE(:), &
-      FixJVec(:,:),PrevSol(:), DConstr(:,:)
+  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:), &
+      JFixVec(:,:),PrevSol(:), DConstr(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
   LOGICAL :: LaminateStack, CoilBody
@@ -228,7 +228,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
   LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
-         SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
+         SkipAssembly, ConstantSystem, ConstantBulk, JFix, JFixSolve, FoundRelax, &
          PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis, &
          HasTensorReluctivity
   LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
@@ -240,7 +240,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   INTEGER :: NewtonIter
   LOGICAL :: ExtNewton
   
-  TYPE(Variable_t), POINTER :: Var, FixJVar, CoordVar
+  TYPE(Variable_t), POINTER :: Var, JFixVar, CoordVar
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER, SAVE :: BasicCycles(:)
   TYPE(ValueList_t), POINTER :: CompParams
@@ -248,11 +248,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   
   INTEGER :: n_n, n_e
   INTEGER, POINTER :: Vperm(:), Aperm(:)
-  REAL(KIND=dp), POINTER :: Avals(:), Vvals(:),FixJRhs(:)
-  
-  LOGICAL :: GenericFixJ, FixJSolve
-  
-  SAVE STIFF, LOAD, MASS, FORCE, FixJFORCE, FixJVec, Tcoef, GapLength, AirGapMu, &
+  REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
+    
+  SAVE STIFF, LOAD, MASS, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
        Acoef_t, DConstr
 !------------------------------------------------------------------------------
@@ -355,7 +353,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   IF ( .NOT. AllocationsDone ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), FixJFORCE(n), FixJVec(3,n), LOAD(7,N), STIFF(N,N), &
+     ALLOCATE( FORCE(N), JFixFORCE(n), JFixVec(3,n), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
           LamCond(N), Wbase(N), RotM(3,3,N), Cwrk(3,3,N), &
@@ -406,20 +404,25 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   SkipAssembly = DoneAssembly.AND.(ConstantBulk.OR.ConstantSystem)
 
-  FixJ = GetLogical(SolverParams,'Fix input Current Density', Found)
-  GenericFixJ = .FALSE.
+  JFix = GetLogical(SolverParams,'Fix input Current Density', Found)
   IF (.NOT. Found .AND. .NOT. Transient ) THEN
     ! Only fix the current density if there is one
-    FixJ = ListCheckPrefixAnyBodyForce(Model, 'Current Density')
+    JFix = ListCheckPrefixAnyBodyForce(Model, 'Current Density')
   END IF
-
-  IF (FixJ) THEN
+  JFixSolve = JFix
+  
+  IF (JFix) THEN
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
-    FixJVar => VariableGet(Mesh % Variables, 'Jfix')    
-    FixJRhs => FixJMat % Rhs 
-    GenericFixJ = ListGetLogical( SolverParams,'Generic Source Fixing',Found )         
-
-    IF( GenericFixJ ) FixJRhs = 0.0_dp
+    JFixVar => VariableGet(Mesh % Variables, 'Jfix')    
+    IF(.NOT. ASSOCIATED( JFixRhs ) ) THEN
+      CALL Fatal('WhitneyAVSolver','JFixRhs should be associated!')
+    END IF
+    IF(.NOT. ASSOCIATED( JFixSurfacePerm ) ) THEN
+      CALL Fatal('WhitneyAVSolver','JFixSurfacePerm should be associated!')
+    END IF
+    IF(.NOT. ALLOCATED( JFixSurfaceVec ) ) THEN
+      CALL Fatal('WhitneyAVSolver','JFixSurfaceVec should be associated!')
+    END IF   
   END IF
 
   ! 
@@ -467,14 +470,13 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CALL Info('WhitneyAVSolver','Nonlinear iteration: '//TRIM(I2S(i)),Level=8 )
     END IF
 
-    ! On the 1st iteration assembly the fixing potential
-    ! Use the same later
-    FixJSolve = (GenericFixJ .AND. i == 1)
-
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
     IF( EdgeBasis ) CALL ListAddLogical(SolverParams,'Linear System Refactorize',.FALSE.)
+
+    ! Currently assume that the source terms are constant over the nonlinear iteration
+    JFixSolve = .FALSE.
   END DO
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
@@ -633,12 +635,12 @@ CONTAINS
 
      !Get element local matrix and rhs vector:
      !----------------------------------------
-       CALL LocalMatrix( MASS, STIFF, FORCE, FixJFORCE, FixJVec, LOAD, &
+       CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, &
          Element, n, nd+nb, PiolaVersion, SecondOrder)
 
-     !Update global matrix and rhs vector from local matrix & vector:
+     ! Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
      IF (Transient) CALL DefaultUpdateMass(MASS)
 
@@ -654,13 +656,17 @@ CONTAINS
 
      CALL DefaultUpdateEquations(STIFF,FORCE)
 
-     IF( FixJSolve ) THEN
-       FixJRhs(FixJVar % Perm(Element % NodeIndexes)) = &
-           FixJRhs(FixJVar % Perm(Element % NodeIndexes)) + FixJFORCE(1:n)
+     ! Memorize stuff for the fixing potential
+     ! 1) Divergence of the source term
+     ! 2) The source terms at the surface to determine the direction
+     !-------------------------------------------------------------------
+     IF( JFixSolve ) THEN
+       JFixRhs(JFixVar % Perm(Element % NodeIndexes)) = &
+           JFixRhs(JFixVar % Perm(Element % NodeIndexes)) + JFixFORCE(1:n)
        DO i=1,n
          j = JfixSurfacePerm(Element % NodeIndexes(i) )         
          IF( j > 0 ) JfixSurfaceVec(3*j-2:3*j) = &
-             JfixSurfaceVec(3*j-2:3*j) + FixJVec(1:3,i)
+             JfixSurfaceVec(3*j-2:3*j) + JFixVec(1:3,i)
        END DO
      END IF
 
@@ -669,11 +675,13 @@ CONTAINS
   CALL DefaultFinishBulkAssembly(BulkUpdate=ConstantBulk)
 
 
-  IF( FixJSolve ) THEN    
-    CALL Info('WhitneyAVSolver','Solving the fixing potential')
+  ! If we are solving the fixing potential for this nonlinear iteration then
+  ! add its contribution to the AV equation.
+  IF( JFixSolve ) THEN    
+    CALL Info('WhitneyAVSolver','Solving the fixing potential',Level=7)
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
     
-    CALL Info('WhitneyAVSolver','Adding the fixing potential to the r.h.s. of AV equation')   
+    CALL Info('WhitneyAVSolver','Adding the fixing potential to the r.h.s. of AV equation',Level=10)   
     DO t=1,active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes() 
@@ -681,8 +689,8 @@ CONTAINS
       nb = GetElementNOFBDOFs() 
 
       CALL LocalFixMatrix( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)      
-      CALL DefaultUpdateForce(FORCE, Element )
     END DO    
+    CALL Info('WhitneyAVSolver','Finished adding the fixing potential',Level=10)   
   END IF
 
 
@@ -754,34 +762,6 @@ CONTAINS
   ! IF ( Transient ) CALL Default1stOrderTimeGlobal()
   CALL DefaultFinishAssembly()
 
-  ! The following is now commented out intentionally, as ensuring the uniqueness of the scalar
-  ! potential via using a Dirichlet constraint should not be a prerequisite for obtaining 
-  ! a solution (although not unique) if the data satisfies a compatibility condition.
-  ! ----------------------------------------------------------------------------------------
-  IF (.FALSE.) THEN
-     ! Check that the auxliary potential fixed somehow,
-     ! if not disable the variable (set to zero)
-     ! ------------------------------------------------
-     IF  (FixJ) THEN
-        Found = .FALSE.
-        potname = Solver % Variable % Name(1:Solver % Variable % NameLen)
-
-        Found = ListCheckPresentAnyBC(Model,potname)
-
-        IF (.NOT. Found ) THEN
-           DO i=1,Mesh % NumberOfNodes
-              J = Solver % Variable % Perm(i)
-              IF(J>0) THEN
-                 CALL ZeroRow(A,j)
-                 CALL SetMatrixElement(A,j,j,1._dp)
-                 A % RHS(j)=0._dp
-              END IF
-           END DO
-        END IF
-     END IF
-  END IF
-
-  !
   ! Dirichlet BCs in terms of vector potential A:
   ! ---------------------------------------------
   IF ( TG ) THEN
@@ -1817,7 +1797,7 @@ SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondO
   ! FE-Basis stuff
   REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), lorentz_velo(3,n)
-  REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), FixJPot(nd)
+  REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
 
   INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree, r, s, Indexes(1:nd)
   TYPE(GaussIntegrationPoints_t) :: IP
@@ -1882,16 +1862,15 @@ END SUBROUTINE LocalConstraintMatrix
 
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, FixJFORCE, FixJVec, LOAD, &
+  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, &
             Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), FixJFORCE(:), FixJVec(:,:)
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
-
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, SecondOrder
@@ -1901,7 +1880,7 @@ END SUBROUTINE LocalConstraintMatrix
                      RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
                      A_t(3,3)
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), FixJPot(nd)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
 
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
@@ -1928,23 +1907,21 @@ END SUBROUTINE LocalConstraintMatrix
     STIFF = 0.0d0
     FORCE = 0.0d0
     MASS  = 0.0d0
-
-    IF( GenericFixJ ) THEN
-      FixJFORCE = 0.0_dp
-      FixJVec = 0.0_dp
-    END IF
-      
     JAC = 0._dp
     Newton = .FALSE.
 
-    FixJpot = 0._dp
-
-    ! If we are solving for the FixJ field we cannot yet use it!
-    ! This happens on the first iteration
-    IF (FixJ .AND. .NOT. FixJSolve ) THEN
-      FixJPot(1:n) = FixJVar % Values(FixJVar % Perm(Element % NodeIndexes))
+    IF( Jfix ) THEN
+      ! If we are solving for the JFix field we cannot yet use it!
+      ! This happens on the first iteration
+      IF ( JFixSolve ) THEN
+        JfixFORCE = 0.0_dp
+        JfixVec = 0.0_dp
+      ELSE
+        JfixPot(1:n) = JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) )        
+        !CALL GetScalarLocalSolution( JFixPot, 'Jfix')
+      END IF
     END IF
-
+      
     HasVelocity = .FALSE.
     IF(ASSOCIATED(BodyForce)) THEN
       CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
@@ -2050,8 +2027,11 @@ END SUBROUTINE LocalConstraintMatrix
 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
-       L = L-MATMUL(FixJPot(1:n), dBasisdx(1:n,:))
 
+       IF( JFix .AND. .NOT. JFixSolve ) THEN
+         L = L - MATMUL(JFixPot(1:n), dBasisdx(1:n,:))
+       END IF
+         
        LocalLamThick = SUM( Basis(1:n) * LamThick(1:n) )
        LocalLamCond = SUM( Basis(1:n) * LamCond(1:n) )
 
@@ -2217,18 +2197,17 @@ END SUBROUTINE LocalConstraintMatrix
          END DO
        END DO
 
-       IF( GenericFixJ ) THEN
+       IF( JFixSolve ) THEN
          DO i = 1,n
            p = i
-           FixJFORCE(p) = FixJFORCE(p) + SUM(L * dBasisdx(i,:)) * detJ * IP%s(t) 
-           FixJVec(:,p) = FixJVec(:,p) + L * Basis(i) * detJ * IP%s(t)
+           JFixFORCE(p) = JFixFORCE(p) + SUM(L * dBasisdx(i,:)) * detJ * IP%s(t) 
+           JFixVec(:,p) = JFixVec(:,p) + L * Basis(i) * detJ * IP%s(t)
          END DO
        END IF
        
        ! In steady state we can utilize the scalar variable
        ! for Gauging the vector potential.
        IF ( SteadyGauge ) THEN
-
          DO j = 1, np
            q = j
            DO i = 1,nd-np
@@ -2290,7 +2269,7 @@ END SUBROUTINE LocalConstraintMatrix
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), FixJPot(nd)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), JFixPot(nd)
     LOGICAL :: Stat 
     INTEGER :: t, i, p, np, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -2306,10 +2285,14 @@ END SUBROUTINE LocalConstraintMatrix
 
     CALL GetElementNodes( Nodes )
 
-    FORCE = 0.0d0
-    FixJPot(1:n) = FixJVar % Values(FixJVar % Perm(Element % NodeIndexes))
+    FORCE = 0.0_dp
+    !CALL GetScalarLocalSolution( JFixPot, 'Jfix')
 
-    !Numerical integration:
+    JfixPot(1:n) = JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) )
+    
+    IF( SUM( ABS( JfixPot(1:n) ) ) < TINY( DetJ ) ) RETURN
+    
+    ! Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
          EdgeBasisDegree=EdgeBasisDegree )
@@ -2328,13 +2311,15 @@ END SUBROUTINE LocalConstraintMatrix
         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
       END IF
 
-      L = MATMUL(-FixJPot(1:n), dBasisdx(1:n,:))
+      L = MATMUL(-JFixPot(1:n), dBasisdx(1:n,:))
       DO i = 1,nd-np
         p = i+np
         FORCE(p) = FORCE(p) + SUM(L*WBasis(i,:)) * detJ * IP%s(t) 
       END DO
     END DO
 
+    CALL DefaultUpdateForce(FORCE, Element )
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalFixMatrix
 !------------------------------------------------------------------------------

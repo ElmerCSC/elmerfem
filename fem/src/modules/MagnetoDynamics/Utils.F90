@@ -46,10 +46,14 @@ MODULE MagnetoDynamicsUtils
    IMPLICIT NONE
 
 !   TYPE(Variable_t), POINTER :: fixJVar
-   TYPE(Matrix_t), POINTER :: fixJMat
-   INTEGER, POINTER :: JfixPerm(:)
+!   TYPE(Matrix_t), POINTER :: fixJMat
+   REAL(KIND=dp), POINTER :: Jfixrhs(:)
+   COMPLEX(KIND=dp), POINTER :: JfixRhsC(:)
+!   INTEGER, POINTER :: JfixPerm(:)
    INTEGER, POINTER :: JfixSurfacePerm(:) 
    REAL(KIND=dp), ALLOCATABLE :: JfixSurfaceVec(:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: JfixSurfaceVecC(:)
+
    
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 
