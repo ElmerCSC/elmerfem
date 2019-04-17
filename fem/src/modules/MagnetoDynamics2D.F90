@@ -2344,9 +2344,9 @@ CONTAINS
 
       CALL GetLocalSolution( POT, VarName )
 
+      Material => GetMaterial()
       IF( JouleHeating ) THEN
         BodyId = GetBody() 
-        Material => GetMaterial()
         Cond(1:n) = GetReal( Material, 'Electric Conductivity', Found, Element)
       END IF
 
