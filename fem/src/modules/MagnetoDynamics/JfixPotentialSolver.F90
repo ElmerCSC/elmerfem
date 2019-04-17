@@ -65,12 +65,12 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   INTEGER, ALLOCATABLE :: Def_Dofs(:,:,:)
   CHARACTER(LEN=MAX_NAME_LEN):: Equation
   INTEGER, POINTER :: Perm(:)
-  REAL(KIND=dp), POINTER :: fixpot(:),tmpsol(:)
-  TYPE(Variable_t), POINTER :: jfixpot, svar, IterV 
+  REAL(KIND=dp), POINTER :: fixpot(:),fixpotim(:),tmpsol(:)
+  TYPE(Variable_t), POINTER :: jfixpot, jfixpotim, svar, IterV 
   LOGICAL :: StatCurrMode, NeumannMode, DirichletMode, ComplexSystem, Visited = .FALSE.
   INTEGER :: SolStep = 0
 
-  SAVE :: A, Perm, SolStep, Def_Dofs, jfixPot
+  SAVE :: A, Perm, SolStep, Def_Dofs, jfixPot, jfixPotim
   
   CALL Info('JfixPotentialSolver','Computing fixing potential for given current density',Level=6)
 
@@ -91,6 +91,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   ComplexSystem = ( dofs == 2 ) 
   
   jfixpot => VariableGet( Mesh % Variables, 'Jfix')
+
+  IF( ComplexSystem ) THEN
+    jfixpotim => VariableGet( Mesh % Variables, 'Jfix Im')
+  END IF
+
   IF( .NOT. ASSOCIATED(jfixPot)) THEN
     ALLOCATE(Perm(SIZE(Solver % Variable % Perm)))
     Perm = 0    
@@ -104,26 +109,35 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
     Solver % Def_Dofs = 0
     Solver % Def_Dofs(:,:,1)=1
-
+    
     A => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
         Perm, 1, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.,&
         NodalDofsOnly = .TRUE.)          
     n = A % NumberOfRows
     ALLOCATE(A % RHS(n))
     A % rhs = 0.0_dp
+    A % Complex = .FALSE.
     
     ! Put pointers in the module so that these can be used externally also
     jfixRhs => A % Rhs 
-    IF( dofs == 2 ) THEN      
+    IF( ComplexSystem ) THEN      
       ALLOCATE( jfixRhsC(n))
     END IF
-          
-    ALLOCATE(fixpot(dofs*n)); fixpot=0._dp
 
+    ALLOCATE(fixpot(n))
+    fixpot = 0._dp
     CALL VariableAddVector( Mesh % Variables, Mesh, &
-          Solver,'Jfix',dofs,fixpot,Perm)
+        Solver,'Jfix',1,fixpot,Perm)
     jfixpot => VariableGet(Mesh % Variables, 'Jfix')
-
+    
+    IF( ComplexSystem ) THEN
+      ALLOCATE( fixpotim(n) )
+      fixpotim = 0.0_dp
+      CALL VariableAddVector( Mesh % Variables, Mesh, &
+          Solver,'Jfix Im',1,fixpotim,Perm)
+      jfixpotim => VariableGet(Mesh % Variables,'Jfix Im') 
+    END IF
+     
     CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
     CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
     CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
@@ -135,7 +149,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
     CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Residual Output',20)
     CALL ListAddNewString(SolverParams,'Jfix: Nonlinear System Convergence Measure','Norm')
-
+    CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Complex',.FALSE.)
+    
     ! Set potential only on a single node
     ! This uses the library functionality of DefaultDirichlet
     SingleNodeBC = GetLogical( SolverParams,'Single Node Projection BC',Found ) 
@@ -154,9 +169,6 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     Solver % Def_Dofs(:,:,1)=1
   END IF
       
-  Solver % Variable => jfixpot
-  Solver % Matrix => A
-
   StatCurrMode = GetLogical( SolverParams,'StatCurrent Source Projection', Found )
   DirichletMode = GetLogical( SolverParams,'Dirichlet Source Projection',Found )
   NeumannMode = GetLogical( SolverParams,'Neumann Source Projection',Found )
@@ -178,11 +190,17 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   
   Visited = .TRUE.
   
+  Solver % Variable => jfixpot
+  Solver % Matrix => A
   IF(ParEnv % PEs > 1) CALL ParallelInitMatrix(Solver,A)
   
   IF( SolStep == 1 ) THEN
     A % Values = 0.0_dp
     A % rhs = 0.0_dp
+    IF( ComplexSystem ) THEN
+      JfixRhsC = CMPLX( 0.0_dp, 0.0_dp )
+    END IF
+
     !CALL DefaultInitialize()
     CALL JfixBulkAssembly()
   
@@ -203,9 +221,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     Solver % Matrix => B
     Solver % Def_Dofs = Def_Dofs    
   ELSE
+    CALL ListSetNameSpace('jfix:')    
+
     CALL JfixBCs()
 
-    CALL ListSetNameSpace('jfix:')    
+    ! We can use the same BCs for real and complex currents
     CALL DefaultDirichletBCs()
 
     n = 0
@@ -219,30 +239,27 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//TRIM(I2S(n)),Level=7)
     END IF
 
-    IF( dofs == 1 ) THEN
-      ! Direct calling avoids generation of constraint matrices
-      CALL SolveSystem(A,ParMatrix,A % rhs,jfixpot % Values,jfixpot % Norm,1,Solver)
-    ELSE
-      ALLOCATE( tmpsol(A % NumberOfRows ) )
+    
+    CALL Info('JfixPotentialSolver','Solving for Jfix',Level=10)
+    IF( ComplexSystem ) A % rhs = REAL( JfixRhsC )      
+    CALL SolveSystem(A,ParMatrix,A % rhs,jfixpot % Values,jfixpot % Norm,1,Solver)
 
-      CALL Info('JfixPotentialSolver','Solving for real component of Jfix',Level=10)
-      tmpsol = 0.0_dp
-      A % rhs = REAL( JfixRhsC )
-      CALL SolveSystem(A,ParMatrix,A % rhs,tmpsol,jfixpot % Norm,1,Solver)
-      jfixpot % Values(1::2) = tmpsol
-      
-      CALL Info('JfixPotentialSolver','Solving for imaginary component of Jfix',Level=10)
-      tmpsol = 0.0_dp
-      A % rhs = AIMAG( JfixRhsC )
-      CALL SolveSystem(A,ParMatrix,A % rhs,tmpsol,jfixpot % Norm,1,Solver)
-      jfixpot % Values(2::2) = tmpsol
-      DEALLOCATE( tmpsol ) 
-    END IF
-      
-    ! This is temporal norm for debugging
     WRITE(Message,'(A,ES12.3)') 'Norm for Jfix computation: ',SUM( ABS( jfixpot % Values ) )
-    CALL Info('JfixPotentialSolver',Message)
+    CALL Info('JfixPotentialSolver',Message,Level=8)
 
+    IF( ComplexSystem ) THEN
+      CALL Info('JfixPotentialSolver','Solving for imaginary component of Jfix',Level=10)      
+      A % rhs = AIMAG( JfixRhsC )
+      IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
+        WHERE( A % ConstrainedDOF ) A % rhs = 0.0_dp
+      END IF
+      CALL SolveSystem(A,ParMatrix,A % rhs,jfixpotim % values,jfixpotim % Norm,1,Solver)
+      
+      ! This is temporal norm for debugging
+      WRITE(Message,'(A,ES12.3)') 'Norm for Jfix Im computation: ',SUM( ABS( jfixpotim % Values ) )
+      CALL Info('JfixPotentialSolver',Message,Level=8)
+    END IF   
+    
     Solver % Matrix => B
     Solver % Variable => svar
     Solver % Def_Dofs=Def_Dofs

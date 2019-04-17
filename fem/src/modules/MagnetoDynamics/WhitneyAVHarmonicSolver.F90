@@ -128,7 +128,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
-  TYPE(Variable_t), POINTER :: jfixvar, HbCurveVar
+  TYPE(Variable_t), POINTER :: jfixvar, jfixvarIm, HbCurveVar
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
@@ -216,6 +216,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   IF (Jfix) THEN
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
     JfixVar => VariableGet(Mesh % Variables, 'Jfix')    
+    JfixVarIm => VariableGet(Mesh % Variables, 'Jfix Im')    
     IF(.NOT. ASSOCIATED( JfixRhsC ) ) THEN
       CALL Fatal('WhitneyAVHarmonicSolver','JfixRhsC should be associated!')
     END IF
@@ -412,7 +413,9 @@ CONTAINS
                JfixSurfaceVecC(3*j-2:3*j) + JFixVec(1:3,i)
          END DO
        END IF
-    END DO
+     END DO
+
+     PRINT *,'jfixrhs sum:',SUM(ABS(REAL(JfixRhsC))),SUM(ABS(AIMAG(JfixRhsC)))
 
     
     IF( JfixSolve ) THEN    
@@ -420,6 +423,10 @@ CONTAINS
       CALL JfixPotentialSolver(Model,Solver,dt,Transient)
 
       CALL Info('WhitneyAVHarmonicSolver','Adding the fixing potential to the r.h.s. of AV equation')   
+
+      PRINT *,'rhs abs sum re1:',SUM( ABS( A % rhs(1::2)) )
+      PRINT *,'rhs abs sum im1:',SUM( ABS( A % rhs(2::2)) )
+
       DO t=1,active
         Element => GetActiveElement(t)
         n  = GetElementNOFNodes() 
@@ -428,6 +435,8 @@ CONTAINS
 
         CALL LocalFixMatrixC( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)      
       END DO
+      PRINT *,'rhs abs sum re2:',SUM( ABS( A % rhs(1::2)) )
+      PRINT *,'rhs abs sum im2:',SUM( ABS( A % rhs(2::2)) )
       CALL Info('WhitneyAVHarmonicSolver','Finished adding the fixing potential',Level=10)   
     END IF
 
@@ -1411,7 +1420,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPotC(n), Nu(3,3)
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,JfixPot(2,nd), &
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, &
                      RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), RotWJ(3)
 
@@ -1454,9 +1463,8 @@ CONTAINS
         JfixFORCE = 0.0_dp
         JfixVec = 0.0_dp
       ELSE
-        JfixPot(1,1:n) = JfixVar % Values( 2 * JfixVar % Perm( Element % NodeIndexes ) - 1 )
-        JfixPot(2,1:n) = JfixVar % Values( 2 * JfixVar % Perm( Element % NodeIndexes ) )
-        JfixPotC(1:n) = CMPLX(JfixPot(1,1:n),JfixPot(2,1:n),dp)
+        JfixPotC(1:n) = CMPLX( JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) ), &
+            JfixVarIm % Values( JfixVarIm % Perm( Element % NodeIndexes ) ) )
       END IF
     END IF
 
@@ -1631,11 +1639,11 @@ CONTAINS
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
 
-       IF( Jfix ) THEN
+       ! If we have computed the Jfix potential use it here
+       IF( Jfix .AND. .NOT. JfixSolve ) THEN
          L = L - MATMUL(JfixPotC, dBasisdx(1:n,:))
        END IF
-        
-       
+               
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
@@ -1772,8 +1780,8 @@ CONTAINS
     CALL GetElementNodes( Nodes )
 
     FORCE = 0.0d0
-    JfixPot(1:n) = CMPLX( JfixVar % Values(2*JfixVar % Perm(Element % NodeIndexes)-1), &
-        JfixVar % Values(2*JfixVar % Perm(Element % NodeIndexes)) )
+    JfixPot(1:n) = CMPLX( JfixVar % Values(JfixVar % Perm(Element % NodeIndexes)), &
+        JfixVarIm % Values(JfixVarIm % Perm(Element % NodeIndexes)) )
 
     IF( SUM( ABS( JfixPot(1:n) ) ) < TINY( DetJ ) ) RETURN
 
