@@ -420,7 +420,7 @@ CONTAINS
         IF(.NOT. Found .AND. JfixStatCurr ) THEN
           ! This is here to have backward compatibility with old non-automated strategy
           ! intended to be used with StatCurrentSolver.
-          JfixNeu = ListCheckPrefix( BC,'Current Density',Found )         
+          JfixNeu = ListCheckPrefix( BC,'Current Density')
         END IF
         IF( JfixNeu ) THEN
           IF( ComplexSystem ) THEN
