@@ -61,7 +61,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER :: A => NULL(),B
   REAL(KIND=dp) :: Norm
-  LOGICAL:: AutomatedBCs, SingleNodeBC, Found
+  LOGICAL:: SingleNodeBC, Found
   INTEGER, ALLOCATABLE :: Def_Dofs(:,:,:)
   CHARACTER(LEN=MAX_NAME_LEN):: Equation
   INTEGER, POINTER :: Perm(:)
@@ -73,7 +73,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   SAVE :: A, Perm, SolStep, Def_Dofs, jfixPot, jfixPotim
   
   CALL Info('JfixPotentialSolver','Computing fixing potential for given current density',Level=6)
-
+  
   dim = CoordinateSystemDimension()
   Mesh => GetMesh()
   SolverParams => GetSolverParams()
@@ -81,11 +81,6 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   ! Take pointers to the master solver stuff
   B => GetMatrix()
   svar => Solver % Variable
-  
-  SolStep = SolStep + 1
-  IF( SolStep > 2 ) SolStep = SolStep - 2
-
-  PRINT *,'SolStep counter:',SolStep
   
   dofs = Solver % Variable % DOFs  
   ComplexSystem = ( dofs == 2 ) 
@@ -120,24 +115,27 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     
     ! Put pointers in the module so that these can be used externally also
     jfixRhs => A % Rhs 
-    IF( ComplexSystem ) THEN      
-      ALLOCATE( jfixRhsC(n))
-    END IF
 
+    ! Create the variable for the (real part) fixing potential
     ALLOCATE(fixpot(n))
     fixpot = 0._dp
     CALL VariableAddVector( Mesh % Variables, Mesh, &
         Solver,'Jfix',1,fixpot,Perm)
     jfixpot => VariableGet(Mesh % Variables, 'Jfix')
     
+    ! For complex cases create separately the variable for the imaginary component
+    ! These are allocated component-wise so that we may easily solve them separately.
+    ! Its the same equation for both with different load vector. 
     IF( ComplexSystem ) THEN
-      ALLOCATE( fixpotim(n) )
+      ALLOCATE( jfixRhsC(n), fixpotim(n) )
       fixpotim = 0.0_dp
       CALL VariableAddVector( Mesh % Variables, Mesh, &
           Solver,'Jfix Im',1,fixpotim,Perm)
       jfixpotim => VariableGet(Mesh % Variables,'Jfix Im') 
     END IF
-     
+
+    ! Add default linear solver strategies.
+    ! The AV equation typically prefers different ones. 
     CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
     CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
     CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
@@ -173,28 +171,13 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   DirichletMode = GetLogical( SolverParams,'Dirichlet Source Projection',Found )
   NeumannMode = GetLogical( SolverParams,'Neumann Source Projection',Found )
 
-  ! If not any mode given revert to the old standard
-  IF(.NOT.( StatCurrMode .OR. DirichletMode .OR. NeumannMode .OR. SingleNodeBC ) ) THEN  
-    DirichletMode = GetLogical( SolverParams, &
-        'Automated Source Projection BCs', Found )
-    IF(.NOT. Found) DirichletMode = .TRUE.
-    StatCurrMode = .NOT. DirichletMode
-  END IF
-
-  IF( ComplexSystem ) THEN
-    IF( StatCurrMode .OR. NeumannMode ) THEN
-      CALL Warn('JfixPotentialSolver','Cannot set Neumann conditions for complex fields!')
-      StatCurrMode = .FALSE.; NeumannMode = .FALSE.
-    END IF
-  END IF
-  
   Visited = .TRUE.
   
   Solver % Variable => jfixpot
   Solver % Matrix => A
   IF(ParEnv % PEs > 1) CALL ParallelInitMatrix(Solver,A)
   
-  IF( SolStep == 1 ) THEN
+  IF( JfixPhase == 1 ) THEN
     A % Values = 0.0_dp
     A % rhs = 0.0_dp
     IF( ComplexSystem ) THEN
@@ -220,12 +203,15 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     Solver % Variable => svar
     Solver % Matrix => B
     Solver % Def_Dofs = Def_Dofs    
-  ELSE
+  ELSE IF( JfixPhase == 2 ) THEN
     CALL ListSetNameSpace('jfix:')    
 
+    ! Set load before applying Dircihlet condistions
+    IF( ComplexSystem ) A % rhs = REAL( JfixRhsC )      
+        
     CALL JfixBCs()
 
-    ! We can use the same BCs for real and complex currents
+    ! We can use the same BCs for real and complex currents i.e. always "Jfix"
     CALL DefaultDirichletBCs()
 
     n = 0
@@ -238,10 +224,15 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     ELSE
       CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//TRIM(I2S(n)),Level=7)
     END IF
-
     
     CALL Info('JfixPotentialSolver','Solving for Jfix',Level=10)
-    IF( ComplexSystem ) A % rhs = REAL( JfixRhsC )      
+    ! Set load before applying Dircihlet condistions
+    IF( ComplexSystem ) THEN
+      A % rhs = REAL( JfixRhsC )      
+      IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
+        WHERE( A % ConstrainedDOF ) A % rhs = 0.0_dp
+      END IF
+    END IF
     CALL SolveSystem(A,ParMatrix,A % rhs,jfixpot % Values,jfixpot % Norm,1,Solver)
 
     WRITE(Message,'(A,ES12.3)') 'Norm for Jfix computation: ',SUM( ABS( jfixpot % Values ) )
@@ -268,6 +259,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
     IterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
     IterV % Values(1) = 1
+  ELSE
+    CALL Fatal('JfixPotentialSolver','Invalid JfixPhase')
   END IF
 
     
@@ -276,12 +269,11 @@ CONTAINS
   
 !------------------------------------------------------------------------------
 ! Assemble nodal Poisson equation (matrix part only) for the solution of the
-! Jfix field. 
+! Jfix field. The complex system is solved component-wise so this is always real.
 !------------------------------------------------------------------------------
   SUBROUTINE JfixBulkAssembly()
 !------------------------------------------------------------------------------
     IMPLICIT NONE       
-    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF_C(:,:), FORCE_C(:)
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
     INTEGER :: elem,t,p,q,n
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -296,23 +288,21 @@ CONTAINS
     n = MAX(Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes)
     ALLOCATE( STIFF(n,n), FORCE(n),Basis(n), dBasisdx(n,3) )
     FORCE = 0.0_dp    
-    IF ( ComplexSystem ) THEN
-      ALLOCATE( STIFF_C(n,n), FORCE_C(n) )
-      FORCE_C = 0.0_dp
-    END IF
     
     DO elem = 1,GetNOFActive()
       ! Element information
       ! ---------------------
       Element => GetActiveElement(elem)
-      IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
-
+      
+      IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE      
+      
       CALL GetElementNodes( Nodes )
       n  = GetElementNOFNodes()
 
       STIFF = 0._dp
 
       IntegStuff = GaussPoints( Element )
+      
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
@@ -325,13 +315,7 @@ CONTAINS
         END DO
       END DO
       
-      IF( ComplexSystem ) THEN
-        STIFF_C = STIFF
-        CALL DefaultUpdateEquations(STIFF_C, FORCE_C)
-      ELSE
-        CALL DefaultUpdateEquations(STIFF, FORCE)
-      END IF
-
+      CALL DefaultUpdateEquations(STIFF, FORCE)
     END DO
       
 !------------------------------------------------------------------------------
@@ -347,9 +331,9 @@ CONTAINS
   SUBROUTINE JfixBCs()
 !------------------------------------------------------------------------------
     IMPLICIT NONE       
-    INTEGER :: i,j,k1,k2,t,n,meshdim,dofs,ActParents,ParParents
+    INTEGER :: i,j,k1,k2,t,n,meshdim,ActParents,ParParents
     TYPE(Nodes_t) :: Nodes
-    LOGICAL :: Found, JfixHybrid, JfixAll
+    LOGICAL :: Found, AutomatedBCs, JfixHybrid, JfixNeu, JfixDir
     TYPE(Element_t), POINTER :: Element, LElement, P1, P2
     REAL(KIND=dp) :: NrmEps,Jlen,JVec(3),Nrm(3),NrmProj,MaxProj,&
         MaxJVec,JEps,Jrel,Jabs,Jnrm
@@ -358,62 +342,88 @@ CONTAINS
     SAVE Nodes
 
     meshdim = Solver % Mesh % MeshDim    
-    NrmEps = GetCReal(SolverParams, 'Jfix norm eps', Found)
-    IF (.NOT. Found) NrmEps = 0.5_dp
 
-    Jrel = GetCReal(SolverParams, 'Jfix relative eps', Found)
-    IF (.NOT. Found) Jrel = 1.0e-6
-
-    Jabs = GetCReal(SolverParams, 'Jfix absolute eps', Found)
-    IF (.NOT. Found) Jabs = EPSILON( Jabs ) 
-
-    JfixHybrid = GetLogical( SolverParams,'Jfix Hybrid',Found ) 
-    JfixAll = GetLogical( SolverParams,'Jfix All',Found ) 
-   
-    dofs = Solver % Variable % Dofs
+    JfixNeu = GetLogical( SolverParams,'Jfix All Neumann',Found ) 
+    JfixDir = GetLogical( SolverParams,'Jfix All Dirichlet',Found )
+    JfixHybrid = GetLogical( SolverParams,'Jfix Hybrid Strategy',Found )
+    AutomatedBCs = GetLogical( SolverParams, &
+        'Automated Source Projection BCs', Found )
+    IF(.NOT. Found .AND. .NOT. (JfixNeu .OR. JfixDir .OR. JfixHybrid )) AutomatedBCs = .TRUE.
     
-    ! This keyword fixes all outer boundaries to be zero
-    IF( JfixAll ) THEN
+    ! This keyword fixes all outer boundaries with same strategy.
+    ! If we set Dirichlet conditions it is needless to set anything else.
+    ! If we set Neumann conditions with the hubrid strategy we may still combine
+    ! with selected Dirichlet nodes.
+    IF( JfixDir .OR. JfixNeu .OR. JfixHybrid ) THEN
       DO j=1,Mesh % NumberOfNodes
         k1 = Perm(j)
         k2 = JfixSurfacePerm(j)
         IF( k1 == 0 .OR. k2 == 0 ) CYCLE
-        CALL UpdateDirichletDof(A, k1, 0._dp)
+        IF( JfixDir ) THEN
+          CALL UpdateDirichletDof(A, k1, 0._dp)
+        ELSE
+          IF( ComplexSystem ) THEN
+            JfixRhsC(k1) = 0.0_dp
+          ELSE
+            JfixRhs(k1) = 0.0_dp
+          END IF
+        END IF
       END DO
-      RETURN
+      IF( JfixDir .OR. JfixNeu) RETURN
     END IF
     
-    MaxProj = 0.0_dp
+    
+    ! Find the tolerances for detecting automatically the Jfix BCs.
+    IF( AutomatedBCs .OR. JfixHybrid ) THEN
+      NrmEps = GetCReal(SolverParams, 'Jfix norm eps', Found)
+      IF (.NOT. Found) NrmEps = 0.5_dp
 
-    IF( ComplexSystem ) THEN
-      MaxJVec = MAXVAL( ABS( JfixSurfaceVecC ) )
-    ELSE      
-      MaxJVec = MAXVAL( ABS( JfixSurfaceVec ) )
+      Jrel = GetCReal(SolverParams, 'Jfix relative eps', Found)
+      IF (.NOT. Found) Jrel = 1.0e-6
+
+      Jabs = GetCReal(SolverParams, 'Jfix absolute eps', Found)
+      IF (.NOT. Found) Jabs = EPSILON( Jabs ) 
+
+      MaxProj = 0.0_dp
+      IF( ComplexSystem ) THEN
+        MaxJVec = MAXVAL( ABS( JfixSurfaceVecC ) )
+      ELSE      
+        MaxJVec = MAXVAL( ABS( JfixSurfaceVec ) )
+      END IF
+      MaxJVec = ParallelReduction( MaxJVec, 2 ) 
+      WRITE( Message,'(A,ES12.3)') 'Maximum source term on boundaries:',MaxJVec
+      CALL Info('JfixBCs',Message,Level=8)
+
+      JEps = MAX( Jabs, Jrel * MaxJVec )
+      WRITE( Message,'(A,ES12.3)') 'Using jfix epsilon for flux:',Jeps
+      CALL Info('JfixBCs',Message,Level=8)   
     END IF
-    MaxJVec = ParallelReduction( MaxJVec, 2 ) 
 
-    WRITE( Message,'(A,ES12.3)') 'Maximum source term on boundaries:',MaxJVec
-    CALL Info('JfixBCs',Message,Level=8)
-  
-    JEps = MAX( Jabs, Jrel * MaxJVec )
-    
-    WRITE( Message,'(A,ES12.3)') 'Using jfix epsilon for flux:',Jeps
-    CALL Info('JfixBCs',Message,Level=8)   
-    
+      
     DO t=1,GetNOFBoundaryElements()
       Element => GetBoundaryElement(t)
       n = GetElementNOFNodes()
-      
+
       IF (Element % TYPE % DIMENSION < meshdim-1 ) CYCLE
 
       IF( ANY( Perm(Element % NodeIndexes) == 0 ) ) CYCLE
       IF( ANY( JfixSurfacePerm(Element % NodeIndexes) == 0 ) ) CYCLE
-      
+
+      ! We may choose to set some BC to be Neumann overriding the automated strategy
       BC => GetBC( Element )
       IF( ASSOCIATED( BC ) ) THEN
-        IF( ListGetLogical( BC,'Jfix Natural BC',Found ) ) CYCLE
+        JfixNeu = ListGetLogical( BC,'Jfix Neumann',Found )
+        IF( JfixNeu ) THEN
+          IF( ComplexSystem ) THEN
+            JfixRhsC(JfixSurfacePerm(Element % NodeIndexes)) = 0.0_dp
+          ELSE
+            JfixRhs(JfixSurfacePerm(Element % NodeIndexes)) = 0.0_dp
+          END IF
+          CYCLE
+        END IF
       END IF
-        
+
+      IF( .NOT. ( AutomatedBCs .OR. JfixHybrid ) ) CYCLE
       CALL GetElementNodes(Nodes)
       Nrm = NormalVector(Element,Nodes,Check=.TRUE.)
       
@@ -427,9 +437,9 @@ CONTAINS
         ELSE
           JVec = JfixSurfaceVec(3*k2-2:3*k2)
         END IF
-        
+
         JLen = SQRT( SUM( JVec**2 ) )
-        
+
         IF( Jlen < Jeps ) CYCLE          
         Jnrm = SUM( Nrm * Jvec ) 
 
@@ -445,23 +455,11 @@ CONTAINS
       END DO
     END DO
 
-    ! This one sets all the remaining BCs to be effectively natural BCs 
-    IF( JfixHybrid ) THEN
-      DO j=1,Mesh % NumberOfNodes
-        k1 = Perm(j)
-        k2 = JfixSurfacePerm(j)
-        IF( k1 == 0 .OR. k2 == 0 ) CYCLE
-
-        IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
-          IF( A % ConstrainedDOF(k1) ) CYCLE
-        END IF
-        A % Rhs(k1) = 0.0_dp      
-      END DO
+    IF( AutomatedBCs .OR. JfixHybrid ) THEN
+      WRITE( Message,'(A,ES12.3)') 'Maximum norm projection:',MaxProj
+      CALL Info('JfixBCs',Message,Level=15)           
     END IF
-          
-    WRITE( Message,'(A,ES12.3)') 'Maximum norm projection:',MaxProj
-    CALL Info('JfixBCs',Message,Level=15)           
-
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE JfixBCs
 !------------------------------------------------------------------------------

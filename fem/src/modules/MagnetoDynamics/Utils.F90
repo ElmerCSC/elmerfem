@@ -45,15 +45,12 @@ MODULE MagnetoDynamicsUtils
    USE MGDynMaterialUtils
    IMPLICIT NONE
 
-!   TYPE(Variable_t), POINTER :: fixJVar
-!   TYPE(Matrix_t), POINTER :: fixJMat
+   INTEGER :: JfixPhase
    REAL(KIND=dp), POINTER :: Jfixrhs(:)
    COMPLEX(KIND=dp), POINTER :: JfixRhsC(:)
-!   INTEGER, POINTER :: JfixPerm(:)
    INTEGER, POINTER :: JfixSurfacePerm(:) 
    REAL(KIND=dp), ALLOCATABLE :: JfixSurfaceVec(:)
    COMPLEX(KIND=dp), ALLOCATABLE :: JfixSurfaceVecC(:)
-
    
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 

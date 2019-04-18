@@ -214,6 +214,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   JfixSolve = Jfix
 
   IF (Jfix) THEN
+    JfixPhase = 1
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
     JfixVar => VariableGet(Mesh % Variables, 'Jfix')    
     JfixVarIm => VariableGet(Mesh % Variables, 'Jfix Im')    
@@ -414,31 +415,23 @@ CONTAINS
          END DO
        END IF
      END DO
-
-     PRINT *,'jfixrhs sum:',SUM(ABS(REAL(JfixRhsC))),SUM(ABS(AIMAG(JfixRhsC)))
-
     
-    IF( JfixSolve ) THEN    
-      CALL Info('WhitneyAVHarmonicSolver','Solving the fixing potential')
-      CALL JfixPotentialSolver(Model,Solver,dt,Transient)
+     IF( JfixSolve ) THEN    
+       CALL Info('WhitneyAVHarmonicSolver','Solving the fixing potential')
+       JfixPhase = 2 
+       CALL JfixPotentialSolver(Model,Solver,dt,Transient)
 
-      CALL Info('WhitneyAVHarmonicSolver','Adding the fixing potential to the r.h.s. of AV equation')   
+       CALL Info('WhitneyAVHarmonicSolver','Adding the fixing potential to the r.h.s. of AV equation')   
+       DO t=1,active
+         Element => GetActiveElement(t)
+         n  = GetElementNOFNodes() 
+         nd = GetElementNOFDOFs()  
+         nb = GetElementNOFBDOFs() 
 
-      PRINT *,'rhs abs sum re1:',SUM( ABS( A % rhs(1::2)) )
-      PRINT *,'rhs abs sum im1:',SUM( ABS( A % rhs(2::2)) )
-
-      DO t=1,active
-        Element => GetActiveElement(t)
-        n  = GetElementNOFNodes() 
-        nd = GetElementNOFDOFs()  
-        nb = GetElementNOFBDOFs() 
-
-        CALL LocalFixMatrixC( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)      
-      END DO
-      PRINT *,'rhs abs sum re2:',SUM( ABS( A % rhs(1::2)) )
-      PRINT *,'rhs abs sum im2:',SUM( ABS( A % rhs(2::2)) )
-      CALL Info('WhitneyAVHarmonicSolver','Finished adding the fixing potential',Level=10)   
-    END IF
+         CALL LocalFixMatrixC( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)      
+       END DO
+       CALL Info('WhitneyAVHarmonicSolver','Finished adding the fixing potential',Level=10)   
+     END IF
 
     
     ! Robin type of BC in terms of H:
@@ -1411,15 +1404,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
-    COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
-                        LamCond(:)
+    COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPotC(n), Nu(3,3)
+    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, &
                      RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), RotWJ(3)
@@ -1463,7 +1455,7 @@ CONTAINS
         JfixFORCE = 0.0_dp
         JfixVec = 0.0_dp
       ELSE
-        JfixPotC(1:n) = CMPLX( JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) ), &
+        JfixPot(1:n) = CMPLX( JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) ), &
             JfixVarIm % Values( JfixVarIm % Perm( Element % NodeIndexes ) ) )
       END IF
     END IF
@@ -1543,7 +1535,7 @@ CONTAINS
          EdgeBasisDegree=EdgeBasisDegree )
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-
+    
     DO t=1,IP % n
        IF (PiolaVersion) THEN
           stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -1634,16 +1626,25 @@ CONTAINS
  
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
-
+      
        ! Compute C * grad(V), where C is a tensor
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
 
-       ! If we have computed the Jfix potential use it here
-       IF( Jfix .AND. .NOT. JfixSolve ) THEN
-         L = L - MATMUL(JfixPotC, dBasisdx(1:n,:))
+       IF( Jfix ) THEN
+         IF( JFixSolve ) THEN
+           ! If we haven't solved for the disbalance of source terms assemble it here
+           DO i = 1,n
+             p = i
+             JFixFORCE(p) = JFixFORCE(p) + SUM(L * dBasisdx(i,:)) * detJ * IP%s(t) 
+             JFixVec(:,p) = JFixVec(:,p) + L * Basis(i) * detJ * IP%s(t)
+           END DO
+         ELSE         
+           ! If we have already solved for the Jfix potential use it here
+           L = L - MATMUL(JfixPot, dBasisdx(1:n,:))
+         END IF
        END IF
-               
+                
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
@@ -1733,14 +1734,6 @@ CONTAINS
          END DO
        END DO
 
-       IF( JFixSolve ) THEN
-         DO i = 1,n
-           p = i
-           JFixFORCE(p) = JFixFORCE(p) + SUM(L * dBasisdx(i,:)) * detJ * IP%s(t) 
-           JFixVec(:,p) = JFixVec(:,p) + L * Basis(i) * detJ * IP%s(t)
-         END DO
-       END IF      
-
      END DO
 
     IF ( Newton ) THEN
@@ -1782,15 +1775,15 @@ CONTAINS
     FORCE = 0.0d0
     JfixPot(1:n) = CMPLX( JfixVar % Values(JfixVar % Perm(Element % NodeIndexes)), &
         JfixVarIm % Values(JfixVarIm % Perm(Element % NodeIndexes)) )
-
-    IF( SUM( ABS( JfixPot(1:n) ) ) < TINY( DetJ ) ) RETURN
+    
+!    IF( SUM( ABS( JfixPot(1:n) ) ) < TINY( DetJ ) ) RETURN
 
     
     ! Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
          EdgeBasisDegree=EdgeBasisDegree )
-
+    
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
       IF (PiolaVersion) THEN
@@ -1804,10 +1797,10 @@ CONTAINS
         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
       END IF
       
-      L = MATMUL(-JfixPot(1:n), dBasisdx(1:n,:))
+      L = MATMUL(JfixPot(1:n), dBasisdx(1:n,:))
       DO i = 1,nd-np
         p = i+np
-        FORCE(p) = FORCE(p) + SUM(L*WBasis(i,:)) * detJ * IP%s(t) 
+        FORCE(p) = FORCE(p) - SUM(L*WBasis(i,:)) * detJ * IP%s(t) 
       END DO
     END DO
 
@@ -1818,8 +1811,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   
-  
-
+ 
   
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )

@@ -412,6 +412,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   JFixSolve = JFix
   
   IF (JFix) THEN
+    JfixPhase = 1
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
     JFixVar => VariableGet(Mesh % Variables, 'Jfix')    
     IF(.NOT. ASSOCIATED( JFixRhs ) ) THEN
@@ -679,6 +680,7 @@ CONTAINS
   ! add its contribution to the AV equation.
   IF( JFixSolve ) THEN    
     CALL Info('WhitneyAVSolver','Solving the fixing potential',Level=7)
+    JfixPhase = 2
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
     
     CALL Info('WhitneyAVSolver','Adding the fixing potential to the r.h.s. of AV equation',Level=10)   
@@ -1918,7 +1920,6 @@ END SUBROUTINE LocalConstraintMatrix
         JfixVec = 0.0_dp
       ELSE
         JfixPot(1:n) = JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) )        
-        !CALL GetScalarLocalSolution( JFixPot, 'Jfix')
       END IF
     END IF
       
@@ -2027,10 +2028,6 @@ END SUBROUTINE LocalConstraintMatrix
 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
-
-       IF( JFix .AND. .NOT. JFixSolve ) THEN
-         L = L - MATMUL(JFixPot(1:n), dBasisdx(1:n,:))
-       END IF
          
        LocalLamThick = SUM( Basis(1:n) * LamThick(1:n) )
        LocalLamCond = SUM( Basis(1:n) * LamCond(1:n) )
@@ -2038,7 +2035,22 @@ END SUBROUTINE LocalConstraintMatrix
        ! Add -C * grad(V^s), where C is a tensor
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
+       
+       IF( Jfix ) THEN
+         IF( JFixSolve ) THEN
+           ! If we haven't solved for the disbalance of source terms assemble it here
+           DO i = 1,n
+             p = i
+             JFixFORCE(p) = JFixFORCE(p) + SUM(L * dBasisdx(i,:)) * detJ * IP%s(t) 
+             JFixVec(:,p) = JFixVec(:,p) + L * Basis(i) * detJ * IP%s(t)
+           END DO
+         ELSE         
+           ! If we have already solved for the Jfix potential use it here
+           L = L - MATMUL(JfixPot, dBasisdx(1:n,:))
+         END IF
+       END IF
 
+       
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
          babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
@@ -2197,14 +2209,6 @@ END SUBROUTINE LocalConstraintMatrix
          END DO
        END DO
 
-       IF( JFixSolve ) THEN
-         DO i = 1,n
-           p = i
-           JFixFORCE(p) = JFixFORCE(p) + SUM(L * dBasisdx(i,:)) * detJ * IP%s(t) 
-           JFixVec(:,p) = JFixVec(:,p) + L * Basis(i) * detJ * IP%s(t)
-         END DO
-       END IF
-       
        ! In steady state we can utilize the scalar variable
        ! for Gauging the vector potential.
        IF ( SteadyGauge ) THEN
