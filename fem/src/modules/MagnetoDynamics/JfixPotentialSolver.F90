@@ -326,7 +326,7 @@ CONTAINS
     IMPLICIT NONE       
     INTEGER :: i,j,k1,k2,t,n,meshdim,ActParents,ParParents
     TYPE(Nodes_t) :: Nodes
-    LOGICAL :: Found, JfixHybrid, JfixNeu, JfixDir, JfixAuto
+    LOGICAL :: Found, JfixHybrid, JfixNeu, JfixDir, JfixAuto, JfixStatCurr
     TYPE(Element_t), POINTER :: Element, LElement, P1, P2
     REAL(KIND=dp) :: NrmEps,Jlen,JVec(3),Nrm(3),NrmProj,MaxProj,&
         MaxJVec,JEps,Jrel,Jabs,Jnrm
@@ -335,15 +335,24 @@ CONTAINS
     SAVE Nodes
 
     meshdim = Solver % Mesh % MeshDim    
-
+    
     JfixNeu = GetLogical( SolverParams,'Jfix Neumann BCs',Found ) 
     JfixDir = GetLogical( SolverParams,'Jfix Dirichlet BCs',Found )
     JfixHybrid = GetLogical( SolverParams,'Jfix Hybrid BCs',Found )
+
     JfixAuto = GetLogical( SolverParams,'Jfix Automated BCs',Found )
     IF(.NOT. Found ) JfixAuto = GetLogical( SolverParams, &
         'Automated Source Projection BCs', Found )
-    IF(.NOT. Found .AND. .NOT. (JfixNeu .OR. JfixDir .OR. JfixHybrid )) JfixAuto = .TRUE.
-    
+
+    IF( Found ) THEN
+      ! Old automated flag set false => use StatCurrentSolver mode
+      JfixStatCurr = .NOT. JfixAuto
+    ELSE IF(.NOT. (JfixNeu .OR. JfixDir .OR. JfixHybrid )) THEN
+      JfixAuto = .TRUE.
+      JfixStatCurr = .FALSE.
+    END IF
+      
+      
     ! This keyword fixes all outer boundaries with same strategy.
     ! If we set Dirichlet conditions it is needless to set anything else.
     ! If we set Neumann conditions with the hubrid strategy we may still combine
@@ -407,6 +416,12 @@ CONTAINS
       BC => GetBC( Element )
       IF( ASSOCIATED( BC ) ) THEN
         JfixNeu = ListGetLogical( BC,'Jfix Neumann BC',Found )
+
+        IF(.NOT. Found .AND. JfixStatCurr ) THEN
+          ! This is here to have backward compatibility with old non-automated strategy
+          ! intended to be used with StatCurrentSolver.
+          JfixNeu = ListCheckPrefix( BC,'Current Density',Found )         
+        END IF
         IF( JfixNeu ) THEN
           IF( ComplexSystem ) THEN
             JfixRhsC(JfixSurfacePerm(Element % NodeIndexes)) = 0.0_dp
@@ -414,7 +429,7 @@ CONTAINS
             JfixRhs(JfixSurfacePerm(Element % NodeIndexes)) = 0.0_dp
           END IF
           CYCLE
-        END IF
+        END IF        
       END IF
 
       IF( .NOT. ( JfixAuto .OR. JfixHybrid ) ) CYCLE
