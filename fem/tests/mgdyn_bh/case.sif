@@ -6,13 +6,12 @@ Header
 End
 
 Simulation
-   Max Output Level = 20
+   Max Output Level = 8
    Coordinate System = "Cartesian 3D"
    Coordinate Mapping(3) = 1 2 3 
    Simulation Type = Steady state
    Steady State Max Iterations = 1
    Output Intervals = 1
-!  Post File = test.ep
 End
 
 Constants
