@@ -344,6 +344,7 @@ CONTAINS
     IF(.NOT. Found ) JfixAuto = GetLogical( SolverParams, &
         'Automated Source Projection BCs', Found )
 
+    JfixStatCurr = .FALSE.
     IF( Found ) THEN
       ! Old automated flag set false => use StatCurrentSolver mode
       JfixStatCurr = .NOT. JfixAuto
