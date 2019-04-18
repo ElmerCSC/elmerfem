@@ -410,7 +410,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     JFix = ListCheckPrefixAnyBodyForce(Model, 'Current Density')
   END IF
   JFixSolve = JFix
-  
+
   IF (JFix) THEN
     JfixPhase = 1
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
@@ -544,6 +544,7 @@ CONTAINS
   CALL ResetTimer('MGDynAssembly')
   CALL DefaultInitialize()
   Active = GetNOFActive()
+
   DO t=1,active
      Element => GetActiveElement(t)
      n  = GetElementNOFNodes() ! kulmat
@@ -633,18 +634,18 @@ CONTAINS
        END SELECT
      END IF
 
-
      !Get element local matrix and rhs vector:
      !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, &
          Element, n, nd+nb, PiolaVersion, SecondOrder)
-
+       
      ! Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
      IF (Transient) CALL DefaultUpdateMass(MASS)
 
+     
      ! Collect weak diverence constraint.
      !-----------------------------------------------------------------
      IF (Transient .AND. TransientGauge .AND. .NOT. TransientGaugeCollected) THEN
@@ -694,7 +695,6 @@ CONTAINS
     END DO    
     CALL Info('WhitneyAVSolver','Finished adding the fixing potential',Level=10)   
   END IF
-
 
   
 100 CONTINUE
@@ -748,14 +748,13 @@ CONTAINS
      
      CALL DefaultUpdateEquations(STIFF,FORCE,Element)
   END DO
-
+  
   CALL DefaultFinishBoundaryAssembly(BulkUpdate=ConstantSystem)
 
   DoneAssembly = .TRUE.
 
   ! Check the timer
   CALL CheckTimer('MGDynAssembly', Delete=.TRUE.)
-
   
   
 200 CONTINUE
@@ -1918,7 +1917,7 @@ END SUBROUTINE LocalConstraintMatrix
       IF ( JFixSolve ) THEN
         JfixFORCE = 0.0_dp
         JfixVec = 0.0_dp
-      ELSE
+      ELSE        
         JfixPot(1:n) = JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) )        
       END IF
     END IF
@@ -1947,7 +1946,7 @@ END SUBROUTINE LocalConstraintMatrix
         HBCurve = .TRUE.
       END IF
     END IF
-
+    
     IF(siz<=1) THEN
       Lst => ListFind(Material,'H-B Curve',HBcurve)
       IF(HBcurve) THEN
@@ -2046,11 +2045,10 @@ END SUBROUTINE LocalConstraintMatrix
            END DO
          ELSE         
            ! If we have already solved for the Jfix potential use it here
-           L = L - MATMUL(JfixPot, dBasisdx(1:n,:))
+           L = L - MATMUL(JfixPot(1:n), dBasisdx(1:n,:))
          END IF
        END IF
-
-       
+             
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
          babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
@@ -2286,7 +2284,7 @@ END SUBROUTINE LocalConstraintMatrix
     ELSE
       EdgeBasisDegree = 1
     END IF
-
+    
     CALL GetElementNodes( Nodes )
 
     FORCE = 0.0_dp

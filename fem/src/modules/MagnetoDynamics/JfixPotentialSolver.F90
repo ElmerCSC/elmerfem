@@ -67,10 +67,9 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   INTEGER, POINTER :: Perm(:)
   REAL(KIND=dp), POINTER :: fixpot(:),fixpotim(:),tmpsol(:)
   TYPE(Variable_t), POINTER :: jfixpot, jfixpotim, svar, IterV 
-  LOGICAL :: StatCurrMode, NeumannMode, DirichletMode, ComplexSystem, Visited = .FALSE.
-  INTEGER :: SolStep = 0
+  LOGICAL :: ComplexSystem, Visited = .FALSE.
 
-  SAVE :: A, Perm, SolStep, Def_Dofs, jfixPot, jfixPotim
+  SAVE :: A, Perm, Def_Dofs, jfixPot, jfixPotim
   
   CALL Info('JfixPotentialSolver','Computing fixing potential for given current density',Level=6)
   
@@ -167,10 +166,6 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     Solver % Def_Dofs(:,:,1)=1
   END IF
       
-  StatCurrMode = GetLogical( SolverParams,'StatCurrent Source Projection', Found )
-  DirichletMode = GetLogical( SolverParams,'Dirichlet Source Projection',Found )
-  NeumannMode = GetLogical( SolverParams,'Neumann Source Projection',Found )
-
   Visited = .TRUE.
   
   Solver % Variable => jfixpot
@@ -200,9 +195,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     ELSE
       JfixSurfaceVec = 0.0_dp
     END IF
-    Solver % Variable => svar
-    Solver % Matrix => B
-    Solver % Def_Dofs = Def_Dofs    
+
   ELSE IF( JfixPhase == 2 ) THEN
     CALL ListSetNameSpace('jfix:')    
 
@@ -251,10 +244,6 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       CALL Info('JfixPotentialSolver',Message,Level=8)
     END IF   
     
-    Solver % Matrix => B
-    Solver % Variable => svar
-    Solver % Def_Dofs=Def_Dofs
-
     CALL ListSetNameSpace('')
 
     IterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
@@ -262,6 +251,10 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   ELSE
     CALL Fatal('JfixPotentialSolver','Invalid JfixPhase')
   END IF
+  
+  Solver % Variable => svar
+  Solver % Matrix => B
+  Solver % Def_Dofs = Def_Dofs    
 
     
 CONTAINS
@@ -333,7 +326,7 @@ CONTAINS
     IMPLICIT NONE       
     INTEGER :: i,j,k1,k2,t,n,meshdim,ActParents,ParParents
     TYPE(Nodes_t) :: Nodes
-    LOGICAL :: Found, AutomatedBCs, JfixHybrid, JfixNeu, JfixDir
+    LOGICAL :: Found, JfixHybrid, JfixNeu, JfixDir, JfixAuto
     TYPE(Element_t), POINTER :: Element, LElement, P1, P2
     REAL(KIND=dp) :: NrmEps,Jlen,JVec(3),Nrm(3),NrmProj,MaxProj,&
         MaxJVec,JEps,Jrel,Jabs,Jnrm
@@ -343,12 +336,13 @@ CONTAINS
 
     meshdim = Solver % Mesh % MeshDim    
 
-    JfixNeu = GetLogical( SolverParams,'Jfix All Neumann',Found ) 
-    JfixDir = GetLogical( SolverParams,'Jfix All Dirichlet',Found )
-    JfixHybrid = GetLogical( SolverParams,'Jfix Hybrid Strategy',Found )
-    AutomatedBCs = GetLogical( SolverParams, &
+    JfixNeu = GetLogical( SolverParams,'Jfix Neumann BCs',Found ) 
+    JfixDir = GetLogical( SolverParams,'Jfix Dirichlet BCs',Found )
+    JfixHybrid = GetLogical( SolverParams,'Jfix Hybrid BCs',Found )
+    JfixAuto = GetLogical( SolverParams,'Jfix Automated BCs',Found )
+    IF(.NOT. Found ) JfixAuto = GetLogical( SolverParams, &
         'Automated Source Projection BCs', Found )
-    IF(.NOT. Found .AND. .NOT. (JfixNeu .OR. JfixDir .OR. JfixHybrid )) AutomatedBCs = .TRUE.
+    IF(.NOT. Found .AND. .NOT. (JfixNeu .OR. JfixDir .OR. JfixHybrid )) JfixAuto = .TRUE.
     
     ! This keyword fixes all outer boundaries with same strategy.
     ! If we set Dirichlet conditions it is needless to set anything else.
@@ -374,7 +368,7 @@ CONTAINS
     
     
     ! Find the tolerances for detecting automatically the Jfix BCs.
-    IF( AutomatedBCs .OR. JfixHybrid ) THEN
+    IF( JfixAuto .OR. JfixHybrid ) THEN
       NrmEps = GetCReal(SolverParams, 'Jfix norm eps', Found)
       IF (.NOT. Found) NrmEps = 0.5_dp
 
@@ -412,7 +406,7 @@ CONTAINS
       ! We may choose to set some BC to be Neumann overriding the automated strategy
       BC => GetBC( Element )
       IF( ASSOCIATED( BC ) ) THEN
-        JfixNeu = ListGetLogical( BC,'Jfix Neumann',Found )
+        JfixNeu = ListGetLogical( BC,'Jfix Neumann BC',Found )
         IF( JfixNeu ) THEN
           IF( ComplexSystem ) THEN
             JfixRhsC(JfixSurfacePerm(Element % NodeIndexes)) = 0.0_dp
@@ -423,7 +417,7 @@ CONTAINS
         END IF
       END IF
 
-      IF( .NOT. ( AutomatedBCs .OR. JfixHybrid ) ) CYCLE
+      IF( .NOT. ( JfixAuto .OR. JfixHybrid ) ) CYCLE
       CALL GetElementNodes(Nodes)
       Nrm = NormalVector(Element,Nodes,Check=.TRUE.)
       
@@ -455,7 +449,7 @@ CONTAINS
       END DO
     END DO
 
-    IF( AutomatedBCs .OR. JfixHybrid ) THEN
+    IF( JfixAuto .OR. JfixHybrid ) THEN
       WRITE( Message,'(A,ES12.3)') 'Maximum norm projection:',MaxProj
       CALL Info('JfixBCs',Message,Level=15)           
     END IF
