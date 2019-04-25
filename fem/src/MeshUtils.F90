@@ -2740,8 +2740,8 @@ END SUBROUTINE GetMaxDefs
          ! If element is of type tetrahedron and is a p element, 
          ! do the Ainsworth & Coyle trick
          IF (Element % TYPE % ElementCode == 504) CALL ConvertToACTetra(Element)
-         CALL GetRefPElementNodes( Element,  Element % TYPE % NodeU, &
-             Element % TYPE % NodeV, Element % TYPE % NodeW )
+         CALL GetRefPElementNodes( Element % Type,  Element % Type % NodeU, &
+             Element % Type % NodeV, Element % Type % NodeW )
        ELSE 
          ! Clear P element definitions and set manual bubbles
          Element % PDefs => NULL()
@@ -14866,8 +14866,8 @@ END SUBROUTINE FindNeighbourNodes
            ! If element is of type tetrahedron and is a p element,
            ! do the Ainsworth & Coyle trick
            IF (Enew % TYPE % ElementCode == 504) CALL ConvertToACTetra(Enew)
-            CALL GetRefPElementNodes( Enew,  Enew % TYPE % NodeU, &
-                 Enew % TYPE % NodeV, Enew % TYPE % NodeW )
+            CALL GetRefPElementNodes( Enew % Type,  Enew % Type % NodeU, &
+                 Enew % Type % NodeV, Enew % Type % NodeW )
          END IF
       ELSE
         Enew % PDefs=>NULL()
