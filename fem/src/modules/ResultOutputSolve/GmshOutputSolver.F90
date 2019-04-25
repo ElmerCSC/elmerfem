@@ -57,6 +57,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
 
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: OutputFile, Txt, FieldName, CompName
+  INTEGER :: GmshUnit
     
   SAVE VisitedTimes
   
@@ -105,15 +106,15 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
       CALL Info('GmshOutputSolver','Writing mesh and data to a new file: '//TRIM(OutputFile))
     ELSE IF( FileAppend ) THEN      
       CALL Info('GmshOutputSolver','Appending data to the same file: '//TRIM(OutputFile))
-      OPEN(UNIT=10, FILE=OutputFile, POSITION='APPEND' )      
+      OPEN(NEWUNIT=GmshUnit, FILE=OutputFile, POSITION='APPEND' )      
       GOTO 10
     ELSE
       OutputFile = NextFreeFilename( OutputFile )          
       CALL Info('GmshOutputSolver','Writing data to a new file: '//TRIM(OutputFile))
-      OPEN(UNIT=10, FILE=OutputFile )
-      WRITE(10,'(A)') '$MeshFormat'
-      WRITE(10,'(A)') '2.0 0 8'
-      WRITE(10,'(A)') '$EndMeshFormat'          
+      OPEN(NEWUNIT=GmshUnit, FILE=OutputFile )
+      WRITE(GmshUnit,'(A)') '$MeshFormat'
+      WRITE(GmshUnit,'(A)') '2.0 0 8'
+      WRITE(GmshUnit,'(A)') '$EndMeshFormat'          
       GOTO 10    
     END IF
   END IF
@@ -122,11 +123,11 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   ! Save the header
   !-------------------------------------------------
   CALL Info('GsmhOutputSolver','Saving results to file: '//TRIM(OutputFile))
-  OPEN(UNIT=10, FILE=OutputFile )
+  OPEN(NEWUNIT=GmshUnit, FILE=OutputFile )
   
-  WRITE(10,'(A)') '$MeshFormat'
-  WRITE(10,'(A)') '2.0 0 8'
-  WRITE(10,'(A)') '$EndMeshFormat'    
+  WRITE(GmshUnit,'(A)') '$MeshFormat'
+  WRITE(GmshUnit,'(A)') '2.0 0 8'
+  WRITE(GmshUnit,'(A)') '$EndMeshFormat'    
   
 
   ! Save the mesh nodes
@@ -138,24 +139,24 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
     nsize = Model % NumberOfNodes
   END IF
 
-  WRITE(10,'(A)') '$Nodes'
-  WRITE(10,'(I8)') nsize
+  WRITE(GmshUnit,'(A)') '$Nodes'
+  WRITE(GmshUnit,'(I8)') nsize
   IF( dim == 3 ) THEN
     DO i = 1, Model % NumberOfNodes
       IF( MaskExists ) THEN
         IF( MaskPerm(i) == 0 ) CYCLE
       END IF      
-      WRITE(10,'(I8,3ES16.7E3)') i,Model % Nodes % x(i),Model % Nodes % y(i), Model % Nodes % z(i)
+      WRITE(GmshUnit,'(I8,3ES16.7E3)') i,Model % Nodes % x(i),Model % Nodes % y(i), Model % Nodes % z(i)
     END DO
   ELSE 
     DO i = 1, Model % NumberOfNodes
       IF( MaskExists ) THEN
         IF( MaskPerm(i) == 0 ) CYCLE
       END IF            
-      WRITE(10,'(I8,2ES16.7E3,A)') i,Model % Nodes % x(i),Model % Nodes % y(i),' 0.0' 
+      WRITE(GmshUnit,'(I8,2ES16.7E3,A)') i,Model % Nodes % x(i),Model % Nodes % y(i),' 0.0' 
     END DO
   END IF
-  WRITE(10,'(A)') '$EndNodes'
+  WRITE(GmshUnit,'(A)') '$EndNodes'
 
   ! Save the mesh elements
   !-------------------------------------------------
@@ -179,8 +180,8 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
     BCOffset = 10 * BCOffset
   END DO
 
-  WRITE(10,'(A)') '$Elements'
-  WRITE(10,'(I8)') nsize
+  WRITE(GmshUnit,'(A)') '$Elements'
+  WRITE(GmshUnit,'(I8)') nsize
   DO i = 1, NumberOfAllElements
     Element => Model % Mesh % Elements(i)
     ElmerCode = Element % TYPE % ElementCode
@@ -202,41 +203,41 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
       Tag = GetBCId( Element ) + BCOffset
     END IF
 
-    WRITE(10,'(I8,I3,I3,I5,I5)',ADVANCE='NO') i,GmshCode,2,Tag,Tag
+    WRITE(GmshUnit,'(I8,I3,I3,I5,I5)',ADVANCE='NO') i,GmshCode,2,Tag,Tag
     k = MOD(ElmerCode,100)
 
     CALL ElmerToGmshIndex(ElmerCode,ElmerIndexes,GmshIndexes)
 
     DO j=1,k-1
-      WRITE(10,'(I8)',ADVANCE='NO') GmshIndexes(j)
+      WRITE(GmshUnit,'(I8)',ADVANCE='NO') GmshIndexes(j)
     END DO
-    WRITE(10,'(I8)') GmshIndexes(k)
+    WRITE(GmshUnit,'(I8)') GmshIndexes(k)
   END DO
-  WRITE(10,'(A)') '$EndElements'
+  WRITE(GmshUnit,'(A)') '$EndElements'
 
   ! With a mask the list of physical entities should be checked
   !-------------------------------------------------------------
   IF(.NOT. MaskExists ) THEN
     nsize = Model % NumberOfBodies + Model % NumberOfBCs
-    WRITE(10,'(A)') '$PhysicalNames'
-    WRITE(10,'(I8)') nsize
+    WRITE(GmshUnit,'(A)') '$PhysicalNames'
+    WRITE(GmshUnit,'(I8)') nsize
     DO i=1,Model % NumberOfBodies 
       Txt = ListGetString( Model % Bodies(i) % Values,'Name',Found)
       IF( Found ) THEN
-        WRITE(10,'(I8,A)') i,'"'//TRIM(Txt)//'"'
+        WRITE(GmshUnit,'(I8,A)') i,'"'//TRIM(Txt)//'"'
       ELSE
-        WRITE(10,'(I8,A,I0,A)') i,'"Body ',i,'"'       
+        WRITE(GmshUnit,'(I8,A,I0,A)') i,'"Body ',i,'"'       
       END IF
     END DO
     DO i=1,Model % NumberOfBCs
       Txt = ListGetString( Model % BCs(i) % Values,'Name',Found)
       IF( Found ) THEN
-        WRITE(10,'(I8,A)') i+BCOffset,'"'//TRIM(Txt)//'"'
+        WRITE(GmshUnit,'(I8,A)') i+BCOffset,'"'//TRIM(Txt)//'"'
       ELSE
-        WRITE(10,'(I8,A,I0,A)') i+BCOffset,'"Boundary Condition ',i,'"'               
+        WRITE(GmshUnit,'(I8,A,I0,A)') i+BCOffset,'"Boundary Condition ',i,'"'               
       END IF
     END DO
-    WRITE(10,'(A)') '$EndPhysicalNames'
+    WRITE(GmshUnit,'(A)') '$EndPhysicalNames'
   END IF
 
 
@@ -315,27 +316,27 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
 
       
-      WRITE(10,'(A)') '$NodeData'
-      WRITE(10,'(A)') '1'
-      WRITE(10,'(A)') '"'//TRIM(FieldName)//'"'
-      WRITE(10,'(A)') '1'
+      WRITE(GmshUnit,'(A)') '$NodeData'
+      WRITE(GmshUnit,'(A)') '1'
+      WRITE(GmshUnit,'(A)') '"'//TRIM(FieldName)//'"'
+      WRITE(GmshUnit,'(A)') '1'
 
       ! Gmsh starts steady state indexes from zero, hence deductions by one
       IF( TransientSimulation ) THEN
-        WRITE(10,'(ES16.7E3)') Time
+        WRITE(GmshUnit,'(ES16.7E3)') Time
       ELSE
-        WRITE(10,'(ES16.7E3)') Time - 1.0_dp
+        WRITE(GmshUnit,'(ES16.7E3)') Time - 1.0_dp
       END IF
-      WRITE(10,'(A)') '3'
-      WRITE(10,'(I8)') VisitedTimes-1
+      WRITE(GmshUnit,'(A)') '3'
+      WRITE(GmshUnit,'(I8)') VisitedTimes-1
       IF(Rank == 0) THEN
-        WRITE(10,'(A)') '1'
+        WRITE(GmshUnit,'(A)') '1'
       ELSE IF(Rank == 1) THEN
-        WRITE(10,'(A)') '3'
+        WRITE(GmshUnit,'(A)') '3'
       ELSE 
-        WRITE(10,'(A)') '9'
+        WRITE(GmshUnit,'(A)') '9'
       END IF     
-      WRITE(10,'(I8)') nsize
+      WRITE(GmshUnit,'(I8)') nsize
      
       DO i=1,SIZE(Perm) 
         j = Perm(i)
@@ -345,44 +346,44 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
         END IF
         
         IF( Rank == 0 ) THEN
-          WRITE(10,'(I8,ES16.7E3)') i,Values(j)
+          WRITE(GmshUnit,'(I8,ES16.7E3)') i,Values(j)
         ELSE IF(Rank == 1) THEN
           IF( ComponentVector ) THEN
             IF( truedim == 2 ) THEN
-              WRITE(10,'(I8,2ES16.7E3,A)') i,&
+              WRITE(GmshUnit,'(I8,2ES16.7E3,A)') i,&
                   Values(j),Values2(j),' 0.0'
             ELSE
-              WRITE(10,'(I8,3ES16.7E3)') i,&
+              WRITE(GmshUnit,'(I8,3ES16.7E3)') i,&
                   Values(j),Values2(j),Values3(j)
             END IF
           ELSE
             IF( truedim == 2 ) THEN
-              WRITE(10,'(I8,2ES16.7E3,A)') i,&
+              WRITE(GmshUnit,'(I8,2ES16.7E3,A)') i,&
                   Values(dofs*(j-1)+1),Values(dofs*(j-1)+2),' 0.0'
             ELSE
-              WRITE(10,'(I8,3ES16.7E3)') i,&
+              WRITE(GmshUnit,'(I8,3ES16.7E3)') i,&
                   Values(dofs*(j-1)+1),Values(dofs*(j-1)+2),Values(dofs*(j-1)+3)
             END IF           
           END IF
         END IF
       END DO
-      WRITE(10,'(A)') '$EndNodeData'
+      WRITE(GmshUnit,'(A)') '$EndNodeData'
 
     END DO
   END DO
   
       
   IF(.FALSE.) THEN
-    WRITE(10,'(A)') '$ElementData'
-    WRITE(10,'(A)') '$EndElementData'
+    WRITE(GmshUnit,'(A)') '$ElementData'
+    WRITE(GmshUnit,'(A)') '$EndElementData'
   END IF
   
   IF(.FALSE.) THEN
-    WRITE(10,'(A)') '$ElementNodeData'
-    WRITE(10,'(A)') '$EndElementNodeData'
+    WRITE(GmshUnit,'(A)') '$ElementNodeData'
+    WRITE(GmshUnit,'(A)') '$EndElementNodeData'
   END IF
   
-  CLOSE(10)
+  CLOSE(GmshUnit)
   
   CALL Info('GmshOutputSolver','Gmsh output complete')
 

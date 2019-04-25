@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter R�back, Mika Malinen, Martin van Gijzen
+! *  Authors: Juha Ruokolainen, Peter Råback, Mika Malinen, Martin van Gijzen
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.

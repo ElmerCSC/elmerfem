@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Thomas Zwinger, Peter R�back, Juha Ruokolainen, Mikko Lyly
+! *  Authors: Thomas Zwinger, Peter Råback, Juha Ruokolainen, Mikko Lyly
 ! *  Email:   Thomas.Zwinger@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.

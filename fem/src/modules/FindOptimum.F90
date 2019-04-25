@@ -74,6 +74,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: Name, ParamStr, Method
   CHARACTER(LEN=MAX_NAME_LEN) :: BestFile, HistoryFile
   TYPE(Variable_t),POINTER :: Var
+  INTEGER :: IOUnit
   
   SAVE Param, MinParam, MaxParam, PrevParam, NoParam, &
       OptimizationsDone, Method, Direction, x, c, PrevCost, &
@@ -215,15 +216,15 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
 
       BestFile = ListGetString(Solver % Values,'Best File',GotIt )
       IF( GotIt ) THEN
-        OPEN (10, FILE=BestFile, STATUS='UNKNOWN')
-        WRITE (10,'(I0)') NoParam
+        OPEN( NEWUNIT=IOUnit, FILE=BestFile, STATUS='UNKNOWN')
+        WRITE (IOUnit,'(I0)') NoParam
         DO i=1,NoParam
-          WRITE (10,'(ES17.8E3)') Param(i)
+          WRITE (IOUnit,'(ES17.8E3)') Param(i)
         END DO
-        WRITE (10,'(ES17.8E3)') Cost
-        WRITE (10,'(I0)') NoImprovements
-        WRITE (10,'(I0)') OptimizationsDone 
-        CLOSE(10)
+        WRITE (IOUnit,'(ES17.8E3)') Cost
+        WRITE (IOUnit,'(I0)') NoImprovements
+        WRITE (IOUnit,'(I0)') OptimizationsDone 
+        CLOSE(IOUnit)
       END IF
     END IF
 
@@ -237,17 +238,17 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     HistoryFile = ListGetString(Solver % Values,'History File',GotIt )
     IF( GotIt ) THEN
       IF(OptimizationsDone == 1) THEN
-        OPEN (10, FILE=HistoryFile)
+        OPEN (NEWUNIT=IOUnit, FILE=HistoryFile)
       ELSE
-        OPEN (10, FILE=HistoryFile,POSITION='APPEND')
+        OPEN (NEWUNIT=IOUnit, FILE=HistoryFile,POSITION='APPEND')
       END IF
       
-      WRITE (10,'(I8,ES17.8E3)',advance='no') OptimizationsDone, Cost
+      WRITE (IOUnit,'(I8,ES17.8E3)',advance='no') OptimizationsDone, Cost
       DO i=1,NoParam
-        WRITE (10,'(ES17.8E3)',advance='no') Param(i)
+        WRITE (IOUnit,'(ES17.8E3)',advance='no') Param(i)
       END DO
-      WRITE(10,'(A)') ' '
-      CLOSE(10)
+      WRITE(IOUnit,'(A)') ' '
+      CLOSE(IOUnit)
     END IF
     
     IF( OptimalFinish .AND. OptimizationsDone == NoValues - 1 ) THEN
@@ -852,7 +853,8 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: Name
     LOGICAL :: fileis, GotIt
     CHARACTER(LEN=MAX_NAME_LEN) :: GuessFile
-
+    INTEGER :: IOUnit
+    
     GuessFile = ListGetString(Solver % Values,'Guess File',GotIt )
     IF(.NOT. GotIt) GuessFile = 'best.dat'
 
@@ -863,13 +865,13 @@ CONTAINS
       RETURN
     END IF
 
-    OPEN(10,FILE=GuessFile)
-    READ (10,*) n
+    OPEN(NEWUNIT=IOUnit,FILE=GuessFile)
+    READ (IOUnit,*) n
     ALLOCATE (guessparam(n))
     DO i=1,n
-      READ (10,*) guessparam(i)
+      READ (IOUnit,*) guessparam(i)
     END DO
-    CLOSE(10)
+    CLOSE(IOUnit)
 
     n = MIN( n, SIZE( param) )
     param(1:n) = guessparam(1:n)

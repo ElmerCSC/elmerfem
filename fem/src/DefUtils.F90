@@ -724,7 +724,7 @@ CONTAINS
      IF ( .NOT. ASSOCIATED( Variable % EigenValues ) ) RETURN
      
      NofEigenModes = SIZE( Variable % EigenValues, 1)
-  END FUNCTION
+  END FUNCTION GetNofEigenModes
 
 
 !> Returns the desired eigenmode as a scalar field in an element
@@ -939,7 +939,7 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
      str = ListGetString( List, Name, Found )
-  END FUNCTION
+  END FUNCTION GetString
 
 
 !> Returns an integer by its name if found in the list structure
@@ -951,7 +951,7 @@ CONTAINS
      INTEGER :: i
 
      i = ListGetInteger( List, Name, Found )
-  END FUNCTION
+  END FUNCTION GetInteger
 
 
 !> Returns a logical flag by its name if found in the list structure, otherwise false
@@ -963,7 +963,7 @@ CONTAINS
      LOGICAL :: l
 
      l = ListGetLogical( List, Name, Found )
-  END FUNCTION
+  END FUNCTION GetLogical
 
 
 !> Returns a constant real by its name if found in the list structure
@@ -983,7 +983,7 @@ CONTAINS
      IF ( PRESENT( z ) ) zz = z
 
      r = ListGetConstReal( List, Name, Found,xx,yy,zz )
-  END FUNCTION
+  END FUNCTION GetConstReal
 
 
 !> Returns a real that may depend on global variables such as time, or timestep size, 
@@ -5033,7 +5033,7 @@ CONTAINS
              !--------------------------------------------------------------------------
              ! This branch should be able to handle BCs for face (div-conforming)
              ! elements. Now this works only for RT(0), ABF(0) and BMD(1) in 2D and
-             ! for RT(0) in 3D.
+             ! for the Nedelec tetrahedron of the first and second kind in 3D.
              !--------------------------------------------------------------------------
              SELECT CASE(GetElementFamily())
              CASE(2)
@@ -5215,6 +5215,71 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveLinSys
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Here the given element can be supposed to be some face of its parent element.
+!> The index of the face in reference to the parent element and pointer
+!> to the face are returned. The given element and the face returned are thus
+!> representations of the same entity but they may still be indexed differently.
+!------------------------------------------------------------------------------
+SUBROUTINE PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
+!------------------------------------------------------------------------------
+  IMPLICIT NONE
+  TYPE(Mesh_t), POINTER, INTENT(IN) :: Mesh  
+  TYPE(Element_t), POINTER, INTENT(IN) :: Parent, Element
+  TYPE(Element_t), POINTER, INTENT(OUT) :: Face
+  INTEGER, INTENT(OUT) :: ActiveFaceId
+!------------------------------------------------------------------------------
+  INTEGER :: matches, k, l
+!------------------------------------------------------------------------------
+  SELECT CASE( GetElementFamily(Element) )
+  CASE(2)
+    IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
+      DO ActiveFaceId=1,Parent % TYPE % NumberOfEdges
+        Face => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
+        matches = 0
+        DO k=1,Element % TYPE % NumberOfNodes
+          DO l=1,Face % TYPE % NumberOfNodes
+            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) &
+                matches=matches+1
+          END DO
+        END DO
+        IF (matches==Element % TYPE % NumberOfNodes) EXIT
+      END DO
+    ELSE
+      matches = 0
+    END IF
+  CASE(3,4)
+    IF ( ASSOCIATED(Parent % FaceIndexes) ) THEN
+      DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
+        Face => Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
+        IF (GetElementFamily(Element) /= GetElementFamily(Face)) CYCLE
+        matches = 0
+        DO k=1,Element % TYPE % NumberOfNodes
+          DO l=1,Face % TYPE % NumberOfNodes
+            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) &
+                matches=matches+1
+          END DO
+        END DO
+        IF (matches == Element % TYPE % NumberOfNodes ) EXIT
+      END DO
+    ELSE
+      matches = 0
+    END IF
+  CASE DEFAULT
+    CALL Fatal('PickActiveFace', 'Element variable is of a wrong dimension')
+  END SELECT
+
+  IF (matches /= Element % TYPE % NumberOfNodes) THEN
+    Face => NULL()
+    ActiveFaceId = 0
+    CALL Warn('PickActiveFace', 'The element is not a face of given parent')
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE PickActiveFace
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> This subroutine computes the values of DOFs that are associated with 
@@ -5527,10 +5592,10 @@ CONTAINS
 
     ElementCopyCreated= .FALSE.
     IF (SecondKindBasis) THEN
-      TetraFaceMap(1,:) = (/ 2, 1, 3 /)
-      TetraFaceMap(2,:) = (/ 1, 2, 4 /)
-      TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
-      TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+      TetraFaceMap(1,:) = [ 2, 1, 3 ]
+      TetraFaceMap(2,:) = [ 1, 2, 4 ]
+      TetraFaceMap(3,:) = [ 2, 3, 4 ] 
+      TetraFaceMap(4,:) = [ 3, 1, 4 ]
       
       ActiveFaceMap(1:3) = TetraFaceMap(FaceId,1:3)
 

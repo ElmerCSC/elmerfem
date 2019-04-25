@@ -26,7 +26,7 @@
 ! *  Module for solving losses by utilizing the Fourier expansion of 
 ! *  degrees of freedom.
 ! *
-! *  Authors: Juha Ruokolainen, Peter R�back, Mika Malinen
+! *  Authors: Juha Ruokolainen, Peter Råback, Mika Malinen
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.

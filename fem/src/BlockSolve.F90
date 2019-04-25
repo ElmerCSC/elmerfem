@@ -1376,7 +1376,7 @@ CONTAINS
         CALL Fatal('BlockPrecMatrix','Schur matrix does not exist for: '//TRIM(str))       
       END IF
 
-      CALL Info('BlockPrecMatrix','Using shcur matrix to precondition block '//TRIM(I2S(NoVar)))
+      CALL Info('BlockPrecMatrix','Using Schur matrix to precondition block '//TRIM(I2S(NoVar)))
       TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => AVAr % Solver % Matrix
     END IF  
 
@@ -1628,15 +1628,15 @@ CONTAINS
         A => TotMatrix % SubMatrix(i,j) % Mat
         IF( A % NumberOfRows > 0 ) THEN
           
-          IF( MAXVAL( A % Cols ) > offset(j+1)-offset(j) ) THEN
-            CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
-                //TRIM(I2S(MAXVAL( A % Cols )))//' vs. '//TRIM(I2S(offset(j+1)-offset(j))))
-          END IF
-          IF( A % NumberofRows > offset(i+1)-offset(i)) THEN         
-            CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
-                //TRIM(I2S( A % NumberOfRows ))//' vs. '//TRIM(I2S(offset(i+1)-offset(i))))
-          END IF
-          
+!         IF( MAXVAL( A % Cols ) > offset(j+1)-offset(j) ) THEN
+!           CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
+!               //TRIM(I2S(MAXVAL( A % Cols )))//' vs. '//TRIM(I2S(offset(j+1)-offset(j))))
+!         END IF
+!         IF( A % NumberofRows > offset(i+1)-offset(i)) THEN         
+!           CALL Fatal('BlockMatrixVectorProd','Wrong max column index: '&
+!               //TRIM(I2S( A % NumberOfRows ))//' vs. '//TRIM(I2S(offset(i+1)-offset(i))))
+!         END IF
+!         
           CALL Info('BlockMatrixVectorProd','Multiplying with submatrix ('&
               //TRIM(I2S(i))//','//TRIM(I2S(j))//')',Level=8)          
           
@@ -2039,7 +2039,7 @@ CONTAINS
 #endif
 
     CALL Info('BlockMatrixPrec','Starting block matrix preconditioning',Level=6)
-    
+
     Solver => CurrentModel % Solver
     Params => Solver % Values
     
@@ -2179,7 +2179,7 @@ CONTAINS
       IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,i,i,b,UsePrecMat)
 
       IF( DiagScaling .AND. UsePrecMat ) THEN
-        n = offset(i+1)-offset(i)
+        n = A % NumberOfRows
         ALLOCATE( diagtmp(n), btmp(n) )
 
         IF( TotMatrix % GotBlockStruct ) THEN
@@ -2192,8 +2192,9 @@ CONTAINS
           k = i
           l = NoVar
         END IF
-        diagtmp(1:n) = Solver % Matrix % DiagScaling(k::l)
-                
+
+        Diagtmp(1:n) = Solver % Matrix % DiagScaling(k::l)
+
         ! Scale x & b to the unscaled system of the tailored preconditioning matrix for given block.
         x(1:n) = x(1:n) * diagtmp(1:n)
         btmp(1:n) = b(1:n) / diagtmp(1:n) * Solver % Matrix % RhsScaling**2        
@@ -2938,7 +2939,7 @@ CONTAINS
 
           IF(Amat % NumberOfRows>0) THEN
             IF(Amat % NumberOfRows==MAXVAL(Amat % Cols)) THEN
-              IF (.NOT.ASSOCIATED(Amat % ParMatrix)) &          
+              IF (.NOT.ASSOCIATED(Amat % ParMatrix)) &
                 CALL ParallelInitMatrix(Solver,Amat)
             END IF
 

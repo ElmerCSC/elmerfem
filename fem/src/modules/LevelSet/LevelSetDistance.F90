@@ -73,13 +73,12 @@
      LOGICAL :: Reinitialize, Extrct
      REAL(KIND=dp) :: Relax, dt, r, NarrowBand, DsMax
      REAL(KIND=dp), ALLOCATABLE :: ElemVelo(:,:), SurfaceFlux(:)
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,totat,st,totst
-#else
-     REAL(KIND=dp) :: at,totat,st,totst,CPUTime
+#ifndef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: CPUTime
 #endif
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
-
+     
      SAVE ElementNodes, ElemVelo, Direction, ZeroNodes, TimesVisited, &
          Distance, DistancePerm, ExtractAllocated, DistanceAllocated
 
@@ -278,7 +277,8 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: Filename, Filename2
     INTEGER :: VisitedTimes = 0, NumberOfFields=0
     TYPE(ValueList_t), POINTER :: Params
-
+    INTEGER :: IOUnit
+    
     SAVE VisitedTimes, FileAppend, NumberOfFields
 !------------------------------------------------------------------------------
 
@@ -292,11 +292,11 @@ CONTAINS
 
       IF( FileNumber ) THEN
         WRITE( Filename,'(A,I0)') TRIM(Filename),VisitedTimes
-        OPEN (10,FILE=Filename)
+        OPEN (NEWUNIT=IOUnit,FILE=Filename)
       ELSE IF(FileAppend .AND. VisitedTimes > 1) THEN 
-        OPEN (10, FILE=Filename, POSITION='APPEND')
+        OPEN (NEWUNIT=IOUnit, FILE=Filename, POSITION='APPEND')
       ELSE 
-        OPEN (10,FILE=Filename)
+        OPEN (NEWUNIT=IOUnit,FILE=Filename)
       END IF      
     END IF
     
@@ -425,7 +425,7 @@ CONTAINS
           DO onetwo = 1,2
             
             IF( FileAppend ) THEN
-              WRITE(10,'(I4)',ADVANCE='NO') Solver % DoneTime
+              WRITE(IOUnit,'(I4)',ADVANCE='NO') Solver % DoneTime
             END IF            
 
 	    m = 0
@@ -451,10 +451,10 @@ CONTAINS
                 END IF
               END DO
               
-              WRITE(10,'(ES20.11E3)',ADVANCE='NO') fval
+              WRITE(IOUnit,'(ES20.11E3)',ADVANCE='NO') fval
               Var => Var % Next          
             END DO
-            WRITE(10,'(A)') ' '
+            WRITE(IOUnit,'(A)') ' '
             
           END DO
 	END IF        
@@ -467,7 +467,7 @@ CONTAINS
 
 
     IF(FileSave) THEN
-      CLOSE(10)
+      CLOSE(IOUnit)
 
       IF( m /= NumberOfFields ) THEN
 	IF( NumberOfFields > 0 ) THEN
@@ -476,10 +476,10 @@ CONTAINS
 	END IF
 	NumberOfFields = m
 
-        OPEN (10, FILE=TRIM(Filename)//TRIM(".names") )
-        WRITE(10,'(A,A)') 'Variables in file: ',TRIM(Filename)
+        OPEN(NEWUNIT=IOUnit, FILE=TRIM(Filename)//TRIM(".names") )
+        WRITE(IOUnit,'(A,A)') 'Variables in file: ',TRIM(Filename)
         j = 1
-        WRITE(10,'(I3,": ",A)') j,'timestep'
+        WRITE(IOUnit,'(I3,": ",A)') j,'timestep'
         
         Var => Model % Variables
         DO WHILE( ASSOCIATED( Var ) )          
@@ -488,10 +488,10 @@ CONTAINS
             CYCLE 
           END IF          
           j = j + 1
-          WRITE(10,'(I3,": ",A)') j,TRIM(Var % Name)
+          WRITE(IOUnit,'(I3,": ",A)') j,TRIM(Var % Name)
           Var => Var % Next          
         END DO
-        CLOSE(10)
+        CLOSE(IOUnit)
       END IF  
     END  IF
 

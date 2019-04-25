@@ -3529,53 +3529,53 @@ END SUBROUTINE GetMaxDefs
       Enforce = .FALSE.
     END IF
 
-    TriangleCenterMap(1,:) = (/ 1, 2, 4/)
-    TriangleCenterMap(2,:) = (/ 2, 3, 5/)
-    TriangleCenterMap(3,:) = (/ 3, 1, 6/)
+    TriangleCenterMap(1,:) = [ 1, 2, 4]
+    TriangleCenterMap(2,:) = [ 2, 3, 5]
+    TriangleCenterMap(3,:) = [ 3, 1, 6]
     
-    QuadCenterMap(1,:) = (/ 1, 2, 5/)
-    QuadCenterMap(2,:) = (/ 2, 3, 6/)
-    QuadCenterMap(3,:) = (/ 3, 4, 7/)
-    QuadCenterMap(4,:) = (/ 4, 1, 8/)
+    QuadCenterMap(1,:) = [ 1, 2, 5]
+    QuadCenterMap(2,:) = [ 2, 3, 6]
+    QuadCenterMap(3,:) = [ 3, 4, 7]
+    QuadCenterMap(4,:) = [ 4, 1, 8]
     
-    TetraCenterMap(1,:) = (/ 1, 2, 5/)
-    TetraCenterMap(2,:) = (/ 2, 3, 6/)
-    TetraCenterMap(3,:) = (/ 3, 1, 7/)
-    TetraCenterMap(4,:) = (/ 1, 4, 8/)
-    TetraCenterMap(5,:) = (/ 2, 4, 9/)
-    TetraCenterMap(6,:) = (/ 3, 4, 10/)
+    TetraCenterMap(1,:) = [ 1, 2, 5]
+    TetraCenterMap(2,:) = [ 2, 3, 6]
+    TetraCenterMap(3,:) = [ 3, 1, 7]
+    TetraCenterMap(4,:) = [ 1, 4, 8]
+    TetraCenterMap(5,:) = [ 2, 4, 9]
+    TetraCenterMap(6,:) = [ 3, 4, 10]
 
-    BrickCenterMap(1,:) = (/ 1, 2,  9 /)
-    BrickCenterMap(2,:) = (/ 2, 3,  10 /)
-    BrickCenterMap(3,:) = (/ 3, 4,  11 /)
-    BrickCenterMap(4,:) = (/ 4, 1,  12 /)
-    BrickCenterMap(5,:) = (/ 1, 5,  13 /)
-    BrickCenterMap(6,:) = (/ 2, 6,  14 /)
-    BrickCenterMap(7,:) = (/ 3, 7,  15 /)
-    BrickCenterMap(8,:) = (/ 4, 8,  16 /)
-    BrickCenterMap(9,:) = (/ 5, 6,  17 /)
-    BrickCenterMap(10,:) = (/ 6, 7, 18 /)
-    BrickCenterMap(11,:) = (/ 7, 8, 19 /)
-    BrickCenterMap(12,:) = (/ 8, 5, 20 /)
+    BrickCenterMap(1,:) = [ 1, 2,  9 ]
+    BrickCenterMap(2,:) = [ 2, 3,  10 ]
+    BrickCenterMap(3,:) = [ 3, 4,  11 ]
+    BrickCenterMap(4,:) = [ 4, 1,  12 ]
+    BrickCenterMap(5,:) = [ 1, 5,  13 ]
+    BrickCenterMap(6,:) = [ 2, 6,  14 ]
+    BrickCenterMap(7,:) = [ 3, 7,  15 ]
+    BrickCenterMap(8,:) = [ 4, 8,  16 ]
+    BrickCenterMap(9,:) = [ 5, 6,  17 ]
+    BrickCenterMap(10,:) = [ 6, 7, 18 ]
+    BrickCenterMap(11,:) = [ 7, 8, 19 ]
+    BrickCenterMap(12,:) = [ 8, 5, 20 ]
     
-    WedgeCenterMap(1,:) = (/ 1, 2, 7 /)
-    WedgeCenterMap(2,:) = (/ 2, 3, 8 /)
-    WedgeCenterMap(3,:) = (/ 3, 1, 9 /)
-    WedgeCenterMap(4,:) = (/ 4, 5, 10 /)
-    WedgeCenterMap(5,:) = (/ 5, 6, 11 /)
-    WedgeCenterMap(6,:) = (/ 6, 4, 12 /)
-    WedgeCenterMap(7,:) = (/ 1, 4, 13 /)
-    WedgeCenterMap(8,:) = (/ 2, 5, 14 /)
-    WedgeCenterMap(9,:) = (/ 3, 6, 15 /)
+    WedgeCenterMap(1,:) = [ 1, 2, 7 ]
+    WedgeCenterMap(2,:) = [ 2, 3, 8 ]
+    WedgeCenterMap(3,:) = [ 3, 1, 9 ]
+    WedgeCenterMap(4,:) = [ 4, 5, 10 ]
+    WedgeCenterMap(5,:) = [ 5, 6, 11 ]
+    WedgeCenterMap(6,:) = [ 6, 4, 12 ]
+    WedgeCenterMap(7,:) = [ 1, 4, 13 ]
+    WedgeCenterMap(8,:) = [ 2, 5, 14 ]
+    WedgeCenterMap(9,:) = [ 3, 6, 15 ]
     
-    PyramidCenterMap(1,:) = (/ 1,2,6 /)
-    PyramidCenterMap(2,:) = (/ 2,3,7 /)
-    PyramidCenterMap(3,:) = (/ 3,4,8 /)
-    PyramidCenterMap(4,:) = (/ 4,1,9 /)
-    PyramidCenterMap(5,:) = (/ 1,5,10 /)
-    PyramidCenterMap(6,:) = (/ 2,5,11 /)
-    PyramidCenterMap(7,:) = (/ 3,5,12 /)
-    PyramidCenterMap(8,:) = (/ 4,5,13 /)
+    PyramidCenterMap(1,:) = [ 1,2,6 ]
+    PyramidCenterMap(2,:) = [ 2,3,7 ]
+    PyramidCenterMap(3,:) = [ 3,4,8 ]
+    PyramidCenterMap(4,:) = [ 4,1,9 ]
+    PyramidCenterMap(5,:) = [ 1,5,10 ]
+    PyramidCenterMap(6,:) = [ 2,5,11 ]
+    PyramidCenterMap(7,:) = [ 3,5,12 ]
+    PyramidCenterMap(8,:) = [ 4,5,13 ]
     
     x => Mesh % Nodes % x
     y => Mesh % Nodes % y
@@ -4266,22 +4266,22 @@ END SUBROUTINE GetMaxDefs
       
       IF( nSplit > 1 ) THEN
         IF( ElemCode == 408 ) THEN
-          SplitSizes(1:nSplit) = (/ 4,3,3,3,3 /)
+          SplitSizes(1:nSplit) = [ 4,3,3,3,3 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
             
             SELECT CASE (ii)
             CASE( 1 )
-              SplitMap(1:m) = (/ 5,6,7,8 /)
+              SplitMap(1:m) = [ 5,6,7,8 ]
             CASE( 2 )
-              SplitMap(1:m) = (/ 1, 5, 8 /)
+              SplitMap(1:m) = [ 1, 5, 8 ]
             CASE( 3 ) 
-              SplitMap(1:m) = (/ 2, 6, 5 /)
+              SplitMap(1:m) = [ 2, 6, 5 ]
             CASE( 4 )
-              SplitMap(1:m) = (/ 3, 7, 6 /)
+              SplitMap(1:m) = [ 3, 7, 6 ]
             CASE( 5 ) 
-              SplitMap(1:m) = (/ 4, 8, 7 /)
+              SplitMap(1:m) = [ 4, 8, 7 ]
             END SELECT
 
             CALL AllocateVector(PMesh % Elements(jj) % NodeIndexes, m )
@@ -4295,20 +4295,20 @@ END SUBROUTINE GetMaxDefs
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
 
         ELSE IF( ElemCode == 409 ) THEN
-          SplitSizes(1:n) = (/ 4,4,4,4 /)
+          SplitSizes(1:n) = [ 4,4,4,4 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
             
             SELECT CASE (ii)
             CASE( 1 )
-              SplitMap(1:m) = (/ 1, 5, 9, 8 /)
+              SplitMap(1:m) = [ 1, 5, 9, 8 ]
             CASE( 2 )
-              SplitMap(1:m) = (/ 2, 6, 9, 5 /)
+              SplitMap(1:m) = [ 2, 6, 9, 5 ]
             CASE( 3 ) 
-              SplitMap(1:m) = (/ 3, 7, 9, 6 /)
+              SplitMap(1:m) = [ 3, 7, 9, 6 ]
             CASE( 4 ) 
-              SplitMap(1:m) = (/ 4, 8, 9, 7 /)
+              SplitMap(1:m) = [ 4, 8, 9, 7 ]
             END SELECT
 
             CALL AllocateVector(PMesh % Elements(jj) % NodeIndexes, m )
@@ -4322,20 +4322,20 @@ END SUBROUTINE GetMaxDefs
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
           
         ELSE IF( ElemCode == 306 ) THEN
-          SplitSizes(1:n) = (/ 3,3,3,3 /)
+          SplitSizes(1:n) = [ 3,3,3,3 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
             
             SELECT CASE (ii)
             CASE( 1 )
-              SplitMap(1:m) = (/ 1, 4, 6 /)
+              SplitMap(1:m) = [ 1, 4, 6 ]
             CASE( 2 )
-              SplitMap(1:m) = (/ 2, 5, 4 /)
+              SplitMap(1:m) = [ 2, 5, 4 ]
             CASE( 3 ) 
-              SplitMap(1:m) = (/ 3, 6, 5 /)
+              SplitMap(1:m) = [ 3, 6, 5 ]
             CASE( 4 ) 
-              SplitMap(1:m) = (/ 4, 5, 6 /)
+              SplitMap(1:m) = [ 4, 5, 6 ]
             END SELECT
 
             CALL AllocateVector(PMesh % Elements(j) % NodeIndexes, m )
@@ -10956,38 +10956,69 @@ END SUBROUTINE GetMaxDefs
 !> Note that the 3rd algorithm involves iterative solution of the nodal
 !> positions and is therefore not bullet-proof.
 !------------------------------------------------------------------------------
-  SUBROUTINE UnitSegmentDivision( w, n )
+  SUBROUTINE UnitSegmentDivision( w, n, ExtList )
     REAL(KIND=dp), ALLOCATABLE :: w(:)
     INTEGER :: n
+    TYPE(ValueList_t), POINTER, OPTIONAL :: ExtList
     !---------------------------------------------------------------
     INTEGER :: i,J,iter,maxiter
-    REAL(KIND=dp) :: q,h1,hn,minhn,err_eps,err,xn
+    REAL(KIND=dp) :: q,r,h1,hn,minhn,err_eps,err,xn
     REAL(KIND=dp), ALLOCATABLE :: wold(:),h(:)
     LOGICAL :: Found, GotRatio
     TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: ParList
     
-    ! Linear distribution and an initial guess for the generic case
-    !---------------------------------------------------------------
-
+    IF( PRESENT( ExtList ) ) THEN
+      ParList => ExtList
+    ELSE
+      ParList => CurrentModel % Simulation
+    END IF
+    
     ! Geometric division
     !---------------------------------------------------------------
-    q = ListGetConstReal(CurrentModel % Simulation,'Extruded Mesh Ratio',GotRatio)
+    q = ListGetConstReal( ParList,'Extruded Mesh Ratio',GotRatio)
+    IF( GotRatio ) THEN
+      IF( ( ABS(ABS(q)-1.0_dp) < 1.0e-6 ) .OR. (q < 0.0_dp .AND. n <= 2) ) THEN
+        CALL Info('UnitSegmentDivision','Assuming linear division as mesh ratio is close to one!')
+        GotRatio = .FALSE.
+      END IF
+    END IF
+
     IF( GotRatio ) THEN
       CALL Info('UnitSegmentDivision','Creating geometric division',Level=5)
 
-      h1 = (1-q**(1.0_dp/(n-1)))/(1-q)
-      w(0) = 0.0_dp
-      hn = h1;
-      DO i=1,n-1
-        w(i) = w(i-1) + hn;
-        hn = hn * ( q**(1.0_dp/(n-1)) )
-      END DO
-      w(n) = 1.0_dp
-
-
+      IF( q > 0.0_dp ) THEN      
+        r = q**(1.0_dp/(n-1))
+        h1 = (1-r)/(1-r**n)
+        w(0) = 0.0_dp
+        DO i=1,n-1
+          w(i) = h1 * (1-r**i)/(1-r)
+        END DO
+        w(n) = 1.0_dp
+      ELSE
+        q = -q
+        IF(MODULO(n,2) == 0) THEN
+          r = q**(1.0_dp/(n/2-1))
+          h1 = 0.5*(1-r)/(1-r**(n/2))
+        ELSE 
+          r = q**(1.0_dp/((n-1)/2))
+          h1 = 0.5 / ( (1-r**((n+1)/2))/(1-r) - 0.5 * r**((n-1)/2))
+        END IF
+        
+        w(0) = 0.0_dp
+        DO i=1,n
+          IF( i <= n/2 ) THEN
+            w(i) = h1 * (1-r**i)/(1-r)
+          ELSE
+            w(i) = 1.0_dp -  h1 * (1-r**(n-i))/(1-r)
+          END IF
+        END DO
+        w(n) = 1.0_dp
+      END IF
+            
     ! Generic division given by a function
     !-----------------------------------------------------------------------
-    ELSE IF( ListCheckPresent( CurrentModel % Simulation,'Extruded Mesh Density') ) THEN
+    ELSE IF( ListCheckPresent( ParList,'Extruded Mesh Density') ) THEN
 
       CALL Info('UnitSegmentDivision','Creating functional division',Level=5)
 
@@ -11017,7 +11048,7 @@ END SUBROUTINE GetMaxDefs
         DO i=1,n
           xn = (w(i)+w(i-1))/2.0_dp
           minhn = MIN( minhn, w(i)-w(i-1) )
-          h(i) = ListGetFun( CurrentModel % Simulation,'Extruded Mesh Density', xn )
+          h(i) = ListGetFun( ParList,'Extruded Mesh Density', xn )
           IF( h(i) < EPSILON( h(i) ) ) THEN
             CALL Fatal('UnitSegmentDivision','Given value for h(i) was negative!')
           END IF
@@ -11065,7 +11096,6 @@ END SUBROUTINE GetMaxDefs
       CALL Info('UnitSegmentDivision', Message, Level=9 )
     END DO
 
-
   END SUBROUTINE UnitSegmentDivision
 !------------------------------------------------------------------------------
 
@@ -11089,7 +11119,8 @@ END SUBROUTINE GetMaxDefs
         ExtrudedCoord,dg_n,totalnumberofelements
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     INTEGER :: nnodes,gnodes,gelements,ierr
-    LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline, PreserveEdges
+    LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline, PreserveEdges, &
+        Rotational, Rotate2Pi
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
@@ -11165,12 +11196,25 @@ END SUBROUTINE GetMaxDefs
     MaxCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found )
     IF(.NOT. Found) MaxCoord = 1.0_dp
 
+    Rotate2Pi = .FALSE.
+    Rotational = ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Rotational',Found )    
+    IF( Rotational ) THEN
+      Rotate2Pi = ( ABS(ABS( MaxCoord-MinCoord ) - 2*PI) < 1.0e-3*PI )
+      IF( Rotate2Pi ) CALL Info('MeshExtrude','Perfoming full 2Pi rotation',Level=6)
+    END IF
+
+    
     cnt=0
     DO i=0,in_levels+1
 
+      ! If we rotate full 2Pi then we have natural closure!
+      IF( Rotate2Pi ) THEN
+        IF( i == in_levels+1) EXIT
+      END IF
+      
       w = Wtable( i ) 
-      CurrCoord = w * MaxCoord + (1-w) * MinCoord
-
+      CurrCoord = w * MaxCoord + (1-w) * MinCoord      
+      
       DO j=1,Mesh_in % NumberOfNodes
 
         cnt = cnt + 1
@@ -11197,6 +11241,23 @@ END SUBROUTINE GetMaxDefs
     END DO
     Mesh_out % NumberOfNodes=cnt
 
+    
+    IF( Rotational ) THEN
+      BLOCK
+        REAL(KIND=DP) :: x,y,z,r        
+        DO i=1,cnt          
+          x = Mesh_out % Nodes % x(i)
+          y = Mesh_out % Nodes % y(i)
+          z = Mesh_out % Nodes % z(i)
+
+          Mesh_out % Nodes % x(i) = COS(z) * x
+          Mesh_out % Nodes % y(i) = SIN(z) * x
+          Mesh_out % Nodes % z(i) = y
+        END DO
+      END BLOCK
+    END IF
+    
+    
     ! Count 101 elements:
     ! (these require an extra layer)
     ! -------------------
@@ -11210,9 +11271,14 @@ END SUBROUTINE GetMaxDefs
     n=SIZE(Mesh_in % Elements)
 
     ! inquire total number of needed 
-    totalnumberofelements = n*(in_levels+3) + cnt101
+    IF( Rotate2Pi ) THEN
+      totalnumberofelements = n*(in_levels+1) + cnt101
+    ELSE
+      totalnumberofelements = n*(in_levels+3) + cnt101
+    END IF
+
     IF (PreserveBaseline) &
-         totalnumberofelements = totalnumberofelements + Mesh_in % NumberOfBoundaryElements
+        totalnumberofelements = totalnumberofelements + Mesh_in % NumberOfBoundaryElements
     ALLOCATE(Mesh_out % Elements(totalnumberofelements))
     
     ! Generate volume bulk elements:
@@ -11236,7 +11302,11 @@ END SUBROUTINE GetMaxDefs
         END DO
         DO k=1,Mesh_in % Elements(j) % TYPE % NumberOfNodes
           l_n=l_n+1
-          ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)+(i+1)*n
+          IF( Rotate2Pi .AND. i==in_levels ) THEN
+            ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)
+          ELSE
+            ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)+(i+1)*n
+          END IF
         END DO
         Mesh_out % Elements(cnt) % NDOFs = l_n
         Mesh_out % MaxElementNodes=MAX(Mesh_out % MaxElementNodes,l_n)
@@ -11391,9 +11461,15 @@ END SUBROUTINE GetMaxDefs
 
           ind(1) = Mesh_in % Elements(k) % NodeIndexes(1)+i*n
           ind(2) = Mesh_in % Elements(k) % NodeIndexes(2)+i*n
-          ind(3) = Mesh_in % Elements(k) % NodeIndexes(2)+(i+1)*n
-          ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)+(i+1)*n
-          Mesh_out % Elements(cnt) % NodeIndexes = ind(1:4)
+
+          IF( Rotate2Pi .AND. i==in_levels ) THEN
+            ind(3) = Mesh_in % Elements(k) % NodeIndexes(2)
+            ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)
+          ELSE
+            ind(3) = Mesh_in % Elements(k) % NodeIndexes(2)+(i+1)*n
+            ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)+(i+1)*n
+          END IF
+            Mesh_out % Elements(cnt) % NodeIndexes = ind(1:4)
           Mesh_out % Elements(cnt) % TYPE => GetElementType(404)
         ELSE
           Mesh_out % Elements(cnt) % NDOFs = 1
@@ -11476,6 +11552,9 @@ END SUBROUTINE GetMaxDefs
     CALL Info('ExtrudeMesh',Message,Level=8)
 
 
+    ! Add start and finish planes except if we have a full rotational symmetry
+    IF( .NOT. Rotate2Pi ) THEN
+
     ! Add bottom boundary:
     ! --------------------
     DO i=1,Mesh_in % NumberOfBulkElements
@@ -11551,6 +11630,9 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % FaceIndexes => NULL()
       Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
     END DO
+
+    END IF
+    
 
     Mesh_out % NumberOfBoundaryElements=cnt-Mesh_out % NumberOfBulkElements
 
@@ -12401,29 +12483,29 @@ CONTAINS
 
     Masked = PRESENT(BulkMask)
 
-    TetraFaceMap(1,:) = (/ 1, 2, 3, 5, 6, 7 /)
-    TetraFaceMap(2,:) = (/ 1, 2, 4, 5, 9, 8 /)
-    TetraFaceMap(3,:) = (/ 2, 3, 4, 6, 10, 9 /)
-    TetraFaceMap(4,:) = (/ 3, 1, 4, 7, 8,10 /)
+    TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
+    TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
+    TetraFaceMap(3,:) = [ 2, 3, 4, 6, 10, 9 ]
+    TetraFaceMap(4,:) = [ 3, 1, 4, 7, 8,10 ]
 
-    WedgeFaceMap(1,:) = (/ 1, 2, 3, 7, 8, 9, -1, -1 /)
-    WedgeFaceMap(2,:) = (/ 4, 5, 6, 10, 11, 12, -1, -1 /)
-    WedgeFaceMap(3,:) = (/ 1, 2, 5, 4, 7, 14, 10, 13 /)
-    WedgeFaceMap(4,:) = (/ 3, 2, 5, 6, 8, 14, 11, 15 /)
-    WedgeFaceMap(5,:) = (/ 3, 1, 4, 6, 9, 13, 12, 15 /)
+    WedgeFaceMap(1,:) = [ 1, 2, 3, 7, 8, 9, -1, -1 ]
+    WedgeFaceMap(2,:) = [ 4, 5, 6, 10, 11, 12, -1, -1 ]
+    WedgeFaceMap(3,:) = [ 1, 2, 5, 4, 7, 14, 10, 13 ]
+    WedgeFaceMap(4,:) = [ 3, 2, 5, 6, 8, 14, 11, 15 ]
+    WedgeFaceMap(5,:) = [ 3, 1, 4, 6, 9, 13, 12, 15 ]
 
-    PyramidFaceMap(1,:) = (/ 1, 2, 3, 4,  6,  7,  8,  9 /)
-    PyramidFaceMap(2,:) = (/ 1, 2, 5, 6, 11, 10, -1, -1 /)
-    PyramidFaceMap(3,:) = (/ 2, 3, 5, 7, 12, 11, -1, -1 /)
-    PyramidFaceMap(4,:) = (/ 3, 4, 5, 8, 13, 12, -1, -1 /)
-    PyramidFaceMap(5,:) = (/ 4, 1, 5, 9, 10, 13, -1, -1 /)
+    PyramidFaceMap(1,:) = [ 1, 2, 3, 4,  6,  7,  8,  9 ]
+    PyramidFaceMap(2,:) = [ 1, 2, 5, 6, 11, 10, -1, -1 ]
+    PyramidFaceMap(3,:) = [ 2, 3, 5, 7, 12, 11, -1, -1 ]
+    PyramidFaceMap(4,:) = [ 3, 4, 5, 8, 13, 12, -1, -1 ]
+    PyramidFaceMap(5,:) = [ 4, 1, 5, 9, 10, 13, -1, -1 ]
 
-    BrickFaceMap(1,:) = (/ 1, 2, 3, 4,  9, 10, 11, 12, 25 /)
-    BrickFaceMap(2,:) = (/ 5, 6, 7, 8, 17, 18, 19, 20, 26 /)
-    BrickFaceMap(3,:) = (/ 1, 2, 6, 5,  9, 14, 17, 13, 21 /)
-    BrickFaceMap(4,:) = (/ 2, 3, 7, 6, 10, 15, 18, 14, 22 /)
-    BrickFaceMap(5,:) = (/ 3, 4, 8, 7, 11, 16, 19, 15, 23 /)
-    BrickFaceMap(6,:) = (/ 4, 1, 5, 8, 12, 13, 20, 16, 24 /)
+    BrickFaceMap(1,:) = [ 1, 2, 3, 4,  9, 10, 11, 12, 25 ]
+    BrickFaceMap(2,:) = [ 5, 6, 7, 8, 17, 18, 19, 20, 26 ]
+    BrickFaceMap(3,:) = [ 1, 2, 6, 5,  9, 14, 17, 13, 21 ]
+    BrickFaceMap(4,:) = [ 2, 3, 7, 6, 10, 15, 18, 14, 22 ]
+    BrickFaceMap(5,:) = [ 3, 4, 8, 7, 11, 16, 19, 15, 23 ]
+    BrickFaceMap(6,:) = [ 4, 1, 5, 8, 12, 13, 20, 16, 24 ]
 
 !
 !   Initialize:
@@ -12730,73 +12812,73 @@ CONTAINS
 
     CALL Info('FindMeshEdges3D','Finding mesh edges in 3D mesh',Level=12)
 
-    TetraFaceMap(1,:) = (/ 1, 2, 3, 5, 6, 7 /)
-    TetraFaceMap(2,:) = (/ 1, 2, 4, 5, 9, 8 /)
-    TetraFaceMap(3,:) = (/ 2, 3, 4, 6,10, 9 /)
-    TetraFaceMap(4,:) = (/ 3, 1, 4, 7, 8,10 /)
+    TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
+    TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
+    TetraFaceMap(3,:) = [ 2, 3, 4, 6,10, 9 ]
+    TetraFaceMap(4,:) = [ 3, 1, 4, 7, 8,10 ]
 
-    TetraFaceEdgeMap(1,:) = (/ 1,2,3 /)
-    TetraFaceEdgeMap(2,:) = (/ 1,5,4 /)
-    TetraFaceEdgeMap(3,:) = (/ 2,6,5 /)
-    TetraFaceEdgeMap(4,:) = (/ 3,4,6 /)
+    TetraFaceEdgeMap(1,:) = [ 1,2,3 ]
+    TetraFaceEdgeMap(2,:) = [ 1,5,4 ]
+    TetraFaceEdgeMap(3,:) = [ 2,6,5 ]
+    TetraFaceEdgeMap(4,:) = [ 3,4,6 ]
 
-    TetraEdgeMap(1,:) = (/ 1,2,5 /)
-    TetraEdgeMap(2,:) = (/ 2,3,6 /)
-    TetraEdgeMap(3,:) = (/ 3,1,7 /)
-    TetraEdgeMap(4,:) = (/ 1,4,8 /)
-    TetraEdgeMap(5,:) = (/ 2,4,9 /)
-    TetraEdgeMap(6,:) = (/ 3,4,10 /)
+    TetraEdgeMap(1,:) = [ 1,2,5 ]
+    TetraEdgeMap(2,:) = [ 2,3,6 ]
+    TetraEdgeMap(3,:) = [ 3,1,7 ]
+    TetraEdgeMap(4,:) = [ 1,4,8 ]
+    TetraEdgeMap(5,:) = [ 2,4,9 ]
+    TetraEdgeMap(6,:) = [ 3,4,10 ]
 
-    PyramidEdgeMap(1,:) = (/ 1,2,1 /)
-    PyramidEdgeMap(2,:) = (/ 2,3,1 /)
-    PyramidEdgeMap(3,:) = (/ 3,4,1 /)
-    PyramidEdgeMap(4,:) = (/ 4,1,1 /)
-    PyramidEdgeMap(5,:) = (/ 1,5,1 /)
-    PyramidEdgeMap(6,:) = (/ 2,5,1 /)
-    PyramidEdgeMap(7,:) = (/ 3,5,1 /)
-    PyramidEdgeMap(8,:) = (/ 4,5,1 /)
+    PyramidEdgeMap(1,:) = [ 1,2,1 ]
+    PyramidEdgeMap(2,:) = [ 2,3,1 ]
+    PyramidEdgeMap(3,:) = [ 3,4,1 ]
+    PyramidEdgeMap(4,:) = [ 4,1,1 ]
+    PyramidEdgeMap(5,:) = [ 1,5,1 ]
+    PyramidEdgeMap(6,:) = [ 2,5,1 ]
+    PyramidEdgeMap(7,:) = [ 3,5,1 ]
+    PyramidEdgeMap(8,:) = [ 4,5,1 ]
 
-    PyramidFaceEdgeMap(1,:) = (/ 1,2,3,4 /)
-    PyramidFaceEdgeMap(2,:) = (/ 1,6,5,0 /)
-    PyramidFaceEdgeMap(3,:) = (/ 2,7,6,0 /)
-    PyramidFaceEdgeMap(4,:) = (/ 3,8,7,0 /)
-    PyramidFaceEdgeMap(5,:) = (/ 4,5,8,0 /)
+    PyramidFaceEdgeMap(1,:) = [ 1,2,3,4 ]
+    PyramidFaceEdgeMap(2,:) = [ 1,6,5,0 ]
+    PyramidFaceEdgeMap(3,:) = [ 2,7,6,0 ]
+    PyramidFaceEdgeMap(4,:) = [ 3,8,7,0 ]
+    PyramidFaceEdgeMap(5,:) = [ 4,5,8,0 ]
 
-    WedgeEdgeMap(1,:) = (/ 1, 2, 1 /)
-    WedgeEdgeMap(2,:) = (/ 2, 3, 1 /)
-    WedgeEdgeMap(3,:) = (/ 1, 3, 1 /)
-    WedgeEdgeMap(4,:) = (/ 4, 5, 1 /)
-    WedgeEdgeMap(5,:) = (/ 5, 6, 1 /)
-    WedgeEdgeMap(6,:) = (/ 6, 4, 1 /)
-    WedgeEdgeMap(7,:) = (/ 1, 4, 1 /)
-    WedgeEdgeMap(8,:) = (/ 2, 5, 1 /)
-    WedgeEdgeMap(9,:) = (/ 3, 6, 1 /)
+    WedgeEdgeMap(1,:) = [ 1, 2, 1 ]
+    WedgeEdgeMap(2,:) = [ 2, 3, 1 ]
+    WedgeEdgeMap(3,:) = [ 1, 3, 1 ]
+    WedgeEdgeMap(4,:) = [ 4, 5, 1 ]
+    WedgeEdgeMap(5,:) = [ 5, 6, 1 ]
+    WedgeEdgeMap(6,:) = [ 6, 4, 1 ]
+    WedgeEdgeMap(7,:) = [ 1, 4, 1 ]
+    WedgeEdgeMap(8,:) = [ 2, 5, 1 ]
+    WedgeEdgeMap(9,:) = [ 3, 6, 1 ]
 
-    WedgeFaceEdgeMap(1,:) = (/ 1,2,3,0 /)
-    WedgeFaceEdgeMap(2,:) = (/ 4,5,6,0 /)
-    WedgeFaceEdgeMap(3,:) = (/ 1,8,4,7 /)
-    WedgeFaceEdgeMap(4,:) = (/ 2,9,5,8 /)
-    WedgeFaceEdgeMap(5,:) = (/ 3,7,6,9 /)
+    WedgeFaceEdgeMap(1,:) = [ 1,2,3,0 ]
+    WedgeFaceEdgeMap(2,:) = [ 4,5,6,0 ]
+    WedgeFaceEdgeMap(3,:) = [ 1,8,4,7 ]
+    WedgeFaceEdgeMap(4,:) = [ 2,9,5,8 ]
+    WedgeFaceEdgeMap(5,:) = [ 3,7,6,9 ]
 
-    BrickEdgeMap(1,:) = (/ 1, 2,  9 /)
-    BrickEdgeMap(2,:) = (/ 2, 3,  10 /)
-    BrickEdgeMap(3,:) = (/ 4, 3,  11 /)
-    BrickEdgeMap(4,:) = (/ 1, 4,  12 /)
-    BrickEdgeMap(5,:) = (/ 5, 6,  13 /)
-    BrickEdgeMap(6,:) = (/ 6, 7,  14 /)
-    BrickEdgeMap(7,:) = (/ 8, 7,  15 /)
-    BrickEdgeMap(8,:) = (/ 5, 8,  16 /)
-    BrickEdgeMap(9,:) = (/ 1, 5,  17 /)
-    BrickEdgeMap(10,:) = (/ 2, 6, 18 /)
-    BrickEdgeMap(11,:) = (/ 3, 7, 19 /)
-    BrickEdgeMap(12,:) = (/ 4, 8, 20 /)
+    BrickEdgeMap(1,:) = [ 1, 2,  9 ]
+    BrickEdgeMap(2,:) = [ 2, 3,  10 ]
+    BrickEdgeMap(3,:) = [ 4, 3,  11 ]
+    BrickEdgeMap(4,:) = [ 1, 4,  12 ]
+    BrickEdgeMap(5,:) = [ 5, 6,  13 ]
+    BrickEdgeMap(6,:) = [ 6, 7,  14 ]
+    BrickEdgeMap(7,:) = [ 8, 7,  15 ]
+    BrickEdgeMap(8,:) = [ 5, 8,  16 ]
+    BrickEdgeMap(9,:) = [ 1, 5,  17 ]
+    BrickEdgeMap(10,:) = [ 2, 6, 18 ]
+    BrickEdgeMap(11,:) = [ 3, 7, 19 ]
+    BrickEdgeMap(12,:) = [ 4, 8, 20 ]
 
-    BrickFaceEdgeMap(1,:) = (/ 1,2,3,4   /)
-    BrickFaceEdgeMap(2,:) = (/ 5,6,7,8   /)    
-    BrickFaceEdgeMap(3,:) = (/ 1,10,5,9  /)
-    BrickFaceEdgeMap(4,:) = (/ 2,11,6,10 /)
-    BrickFaceEdgeMap(5,:) = (/ 3,12,7,11 /)
-    BrickFaceEdgeMap(6,:) = (/ 4,9,8,12  /)
+    BrickFaceEdgeMap(1,:) = [ 1,2,3,4   ]
+    BrickFaceEdgeMap(2,:) = [ 5,6,7,8   ]    
+    BrickFaceEdgeMap(3,:) = [ 1,10,5,9  ]
+    BrickFaceEdgeMap(4,:) = [ 2,11,6,10 ]
+    BrickFaceEdgeMap(5,:) = [ 3,12,7,11 ]
+    BrickFaceEdgeMap(6,:) = [ 4,9,8,12  ]
 
 !
 !   Initialize:
@@ -15184,7 +15266,7 @@ CONTAINS
 !      nodes, hence the reorder array:
 !      -------------------------------------------
        CALL AllocateVector( Reorder, NewMesh % NumberOfNodes )
-       Reorder = (/ (i, i=1,NewMesh % NumberOfNodes) /)
+       Reorder = [ (i, i=1,NewMesh % NumberOfNodes) ]
 
        k = NewMesh % Nodes % NumberOfNodes - Mesh % Nodes % NumberOfNodes
 
@@ -18555,9 +18637,12 @@ CONTAINS
 !--------------------------------------------------------------    
     Order = ListGetInteger( Params,'1D Element Order',Found,minv=1,maxv=2)
     NoElements = ListGetInteger( Params,'1D Number Of Elements',minv=1)
-    Length = ListGetConstReal( Params,'1D Mesh Length')    
-    ActiveDirection = ListGetInteger( Params,'1D Active Direction',minv=-3,maxv=3)
-    BodyId = ListGetInteger( Params,'1D Body Id',minv=1)
+    Length = ListGetConstReal( Params,'1D Mesh Length',Found)
+    IF(.NOT. Found) Length = 1.0_dp
+    ActiveDirection = ListGetInteger( Params,'1D Active Direction',Found,minv=-3,maxv=3)
+    IF(.NOT.Found) ActiveDirection = 1
+    BodyId = ListGetInteger( Params,'1D Body Id',Found,minv=1)
+    IF(.NOT. Found) BodyId = 1
     MeshName = ListGetString( Params,'1D Mesh Name',Found)
     IF(.NOT. Found) MeshName = '1d_mesh'
     
@@ -18571,7 +18656,7 @@ CONTAINS
     MeshVector( ABS( ActiveDirection ) ) = 1.0_dp
     IF( ActiveDirection < 0 ) MeshVector = -MeshVector
     MeshVector = MeshVector * Length
-
+    
 !   Define nodal coordinates
 !   -------------------------------
     CALL AllocateVector( Mesh % Nodes % x, NoNodes )

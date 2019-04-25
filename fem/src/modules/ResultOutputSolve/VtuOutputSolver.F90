@@ -2413,7 +2413,10 @@ CONTAINS
             ELSE
               IndField = iField
             END IF
-            WRITE( FullName,'(A,I0)') TRIM( FieldName )//' mode',IndField
+            WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
+
+            ! Note: this should be added for "HarmonicMode" and "ConstraintMode" too
+            ! now the .vptu file for these vectors is not correct!
           END IF
 
           IF( AsciiOutput ) THEN

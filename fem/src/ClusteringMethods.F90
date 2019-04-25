@@ -27,7 +27,7 @@
 !------------------------------------------------------------------------------
 !> Module containing various clustering methods that may be used in conjunction
 !> with algebraic multigrid methods, for example.
-! author Peter R�back
+! author Peter Råback
 !------------------------------------------------------------------------------
 
 

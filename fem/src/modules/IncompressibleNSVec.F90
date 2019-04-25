@@ -51,15 +51,15 @@ CONTAINS
 ! it to the global matrix. Routine is vectorized and multithreaded.
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(Element, n, nd, ntot, dim, &
-      DivCurlForm, GradPVersion, StokesFlow, dt, LinearAssembly, &
-      nb, Newton, Transient, InitHandles, SchurSolver )
+       DivCurlForm, GradPVersion, SpecificLoad, StokesFlow, &
+       dt, LinearAssembly, nb, Newton, Transient, InitHandles, SchurSolver )
 !------------------------------------------------------------------------------
     USE LinearForms
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, ntot, dim, nb
-    LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion, StokesFlow
+    LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion, SpecificLoad, StokesFlow
     REAL(KIND=dp), INTENT(IN) :: dt   
     LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient, InitHandles
     TYPE(Solver_t), POINTER :: SchurSolver
@@ -208,7 +208,13 @@ CONTAINS
     LoadAtIpVec = 0._dp
     DO i=1,dim
       LoadVec => ListGetElementRealVec( Load_h(i), ngp, BasisVec, Element, Found ) 
-      IF( Found ) LoadAtIpVec(1:ngp,i) = LoadVec(1:ngp)
+      IF( Found ) THEN
+        IF (SpecificLoad) THEN
+          LoadAtIpVec(1:ngp,i) = LoadVec(1:ngp)
+        ELSE
+          LoadAtIpVec(1:ngp,i) = rho * LoadVec(1:ngp)
+        END IF
+      END IF
     END DO
 
     IF ( Newton ) THEN
@@ -910,7 +916,8 @@ END BLOCK
     REAL(KIND=dp) :: ExtPressure, s, detJ
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), Vect(3)
     TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, NormalTangential_h
+    TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
+                NormalTangential_h, NormalTangentialVelo_h
 
     SAVE Basis
     
@@ -923,8 +930,12 @@ END BLOCK
       END IF
       CALL ListInitElementKeyword( SurfaceTraction_h,'Boundary Condition','Surface Traction',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
+
+      CALL ListInitElementKeyword( NormalTangentialVelo_h,'Boundary Condition',&
+             'Normal-Tangential Velocity' )
+
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
-          'Normal Tangential '//GetVarName(CurrentModel % Solver % Variable) )
+          'Normal-Tangential '//GetVarName(CurrentModel % Solver % Variable) )
 
       InitHandles = .FALSE.
     END IF
@@ -951,7 +962,10 @@ END BLOCK
     IP = GaussPoints( Element )
     ngp = IP % n
     
-    NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
+    NormalTangential = ListGetElementLogical( NormalTangentialVelo_h, Element, Found )
+    IF (.NOT.Found) THEN
+        NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
+    END IF
    
     DO t=1,ngp      
 !------------------------------------------------------------------------------
@@ -1056,7 +1070,6 @@ END BLOCK
             END SELECT
 
             DO q=1,nd
-              k = (q-1)*c + i
               DO j=1,dim
                 l = (q-1)*c + j
                 FORCE(l) = FORCE(l) + s * Basis(q) * SurfaceTraction(i) * Vect(j)
@@ -1147,6 +1160,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   CALL ListAddNewLogical(Params, 'GradP Discretization', .FALSE.)
   CALL ListAddNewLogical(Params, 'Div-Curl Discretization', .FALSE.)
 
+  
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
 
@@ -1199,7 +1213,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: Norm
 
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec
-  LOGICAL :: GradPVersion, DivCurlForm, InitHandles=.TRUE., InitBCHandles=.TRUE.
+  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitHandles=.TRUE., InitBCHandles=.TRUE.
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
   
@@ -1261,7 +1275,8 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   GradPVersion = GetLogical(Params, 'GradP Discretization', Found)
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
   BlockPrec = GetLogical(Params,'Block Preconditioner',Found )
-
+  SpecificLoad = GetLogical(Params,'Specific Load',Found)
+  
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
   IF (.NOT.Found) Maxiter = 1
   !-----------------------------------------------------------------------------
@@ -1307,12 +1322,15 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
-      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          StokesFlow, dt, LinearAssembly, nb, Newton, Transient,  InitHandles, SchurSolver )
+      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  &
+           DivCurlForm, GradPVersion, &
+           SpecificLoad, StokesFlow, &
+           dt, LinearAssembly, nb, &
+           Newton, Transient,  InitHandles, SchurSolver )
     END DO
     InitHandles = .FALSE.
     
-    !$OMP PARALLEL SHARED(Active, dim, StokesFlow, &
+    !$OMP PARALLEL SHARED(Active, dim, SpecificLoad, StokesFlow, &
     !$OMP                 DivCurlForm, GradPVersion, &
     !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver ) &
     !$OMP PRIVATE(Element, Element_id, n, nd, nb)  DEFAULT(None)
@@ -1326,7 +1344,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE., SchurSolver )
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE., SchurSolver )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
@@ -1352,6 +1370,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
+    IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
 
     Norm = DefaultSolve()
 

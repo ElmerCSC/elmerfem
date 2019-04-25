@@ -28,7 +28,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Thomas Zwinger, Jonas Thies, Peter R�back, Mika Malinen
+! *  Authors: Juha Ruokolainen, Thomas Zwinger, Jonas Thies, Peter Råback, Mika Malinen
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -197,12 +197,12 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
 
    HYPRE_IJVectorAssemble(x);
    HYPRE_IJVectorGetObject(x, (void **) &par_x);
-   if( verbosity >= 12 ) fprintf( stderr, "ID no. %i: setup time: %g\n", myid, realtime_()-st );
+   if( verbosity >= 12 ) fprintf( stdout, "ID no. %i: setup time: %g\n", myid, realtime_()-st );
    st = realtime_();
 
 
-/*    fprintf(stderr,"HYRPE INT: %d %d  %d %d %d \n", hypre_intpara[0], hypre_intpara[1], hypre_intpara[2], hypre_intpara[3], hypre_intpara[4]);  */
-/*    fprintf(stderr,"HYRPE DP: %d %d %d %d %d \n", hypre_dppara[0], hypre_dppara[1], hypre_dppara[2], hypre_dppara[3], hypre_dppara[4]);  */
+/*    fprintf(stdout,"HYRPE INT: %d %d  %d %d %d \n", hypre_intpara[0], hypre_intpara[1], hypre_intpara[2], hypre_intpara[3], hypre_intpara[4]);  */
+/*    fprintf(stdout,"HYRPE DP: %d %d %d %d %d \n", hypre_dppara[0], hypre_dppara[1], hypre_dppara[2], hypre_dppara[3], hypre_dppara[4]);  */
    /* Choose a solver and solve the system */
    /* NB.: hypremethod = 0 ... BiCGStab + ILUn
                          1 ... BiCGStab + ParaSails
@@ -225,7 +225,7 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
          static char *argv[5], str[3];
          argv[0] = "-level";
          sprintf( str, "%d", *ILUn );
-	 if (myid == 0 & verbosity >= 5) fprintf( stderr,"SolveHypre: using BiCGStab + ILU%i\n",*ILUn); 
+	 if (myid == 0 & verbosity >= 5) fprintf( stdout,"SolveHypre: using BiCGStab + ILU%i\n",*ILUn); 
          argv[1] = str;
          HYPRE_EuclidSetParams( precond, 2, argv );
        }
@@ -234,7 +234,7 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_EuclidSolve,
 				(HYPRE_PtrToSolverFcn) HYPRE_EuclidSetup, precond);
      } else if (*hypre_method == 1) { 
-       if (myid == 0 & verbosity >= 5) fprintf( stderr,"SolveHypre: using BiCGStab + paraSails\n"); 
+       if (myid == 0 & verbosity >= 5) fprintf( stdout,"SolveHypre: using BiCGStab + paraSails\n"); 
 
        /* Now set up the ParaSails preconditioner and specify any parameters */
        HYPRE_ParaSailsCreate(comm, &precond);
@@ -255,17 +255,17 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
      } else if(*hypre_method == 2){
        if (myid == 0 ) {
 	 if( verbosity >= 5 ) {
-	   fprintf( stderr,"SolveHypre: using BiCGStab + boomerAMG\n");
+	   fprintf( stdout,"SolveHypre: using BiCGStab + boomerAMG\n");
 	 }
 	 if( verbosity >= 10 ) {
-	   fprintf( stderr,"RelaxType = %d\n",hypre_intpara[0]); 
-	   fprintf( stderr,"CoarsenType = %d\n",hypre_intpara[1]); 
-	   fprintf( stderr,"NumSweeps = %d\n",hypre_intpara[2]); 
-	   fprintf( stderr,"MaxLevels = %d\n",hypre_intpara[3]); 
-	   fprintf( stderr,"Interpolation Type = %d\n",hypre_intpara[4]); 
-	   fprintf( stderr,"Smooth Type = %d\n",hypre_intpara[5]);
-	   fprintf( stderr,"Cycle Type = %d\n",hypre_intpara[6]);
-	   fprintf( stderr,"DOFs = %d\n",hypre_intpara[7]);
+	   fprintf( stdout,"RelaxType = %d\n",hypre_intpara[0]); 
+	   fprintf( stdout,"CoarsenType = %d\n",hypre_intpara[1]); 
+	   fprintf( stdout,"NumSweeps = %d\n",hypre_intpara[2]); 
+	   fprintf( stdout,"MaxLevels = %d\n",hypre_intpara[3]); 
+	   fprintf( stdout,"Interpolation Type = %d\n",hypre_intpara[4]); 
+	   fprintf( stdout,"Smooth Type = %d\n",hypre_intpara[5]);
+	   fprintf( stdout,"Cycle Type = %d\n",hypre_intpara[6]);
+	   fprintf( stdout,"DOFs = %d\n",hypre_intpara[7]);
 	 }
        }
        HYPRE_BoomerAMGCreate(&precond); 
@@ -287,7 +287,7 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
 				(HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if (*hypre_method != 9) {
-       fprintf( stderr,"Hypre preconditioning method not implemented\n");
+       fprintf( stdout,"Hypre preconditioning method not implemented\n");
        exit(EXIT_FAILURE);
      }
      
@@ -311,17 +311,17 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
 
       if (myid == 0) {
 	if( verbosity >= 5 ) {
-	  fprintf( stderr,"SolveHypre: using BoomerAMG\n"); 
+	  fprintf( stdout,"SolveHypre: using BoomerAMG\n"); 
 	}
 	if( verbosity >= 10 ) {
-	  fprintf( stderr,"RelaxType = %d\n",hypre_intpara[0]); 
-	  fprintf( stderr,"CoarsenType = %d\n",hypre_intpara[1]); 
-	  fprintf( stderr,"NumSweeps = %d\n",hypre_intpara[2]); 
-	  fprintf( stderr,"MaxLevels = %d\n",hypre_intpara[3]); 
-	  fprintf( stderr,"Interpolation Type = %d\n",hypre_intpara[4]); 
-	  fprintf( stderr,"Smooth Type = %d\n",hypre_intpara[5]);
-	  fprintf( stderr,"Cycle Type = %d\n",hypre_intpara[6]);
-	  fprintf( stderr,"DOFs = %d\n",hypre_intpara[7]);
+	  fprintf( stdout,"RelaxType = %d\n",hypre_intpara[0]); 
+	  fprintf( stdout,"CoarsenType = %d\n",hypre_intpara[1]); 
+	  fprintf( stdout,"NumSweeps = %d\n",hypre_intpara[2]); 
+	  fprintf( stdout,"MaxLevels = %d\n",hypre_intpara[3]); 
+	  fprintf( stdout,"Interpolation Type = %d\n",hypre_intpara[4]); 
+	  fprintf( stdout,"Smooth Type = %d\n",hypre_intpara[5]);
+	  fprintf( stdout,"Cycle Type = %d\n",hypre_intpara[6]);
+	  fprintf( stdout,"DOFs = %d\n",hypre_intpara[7]);
 	}
       }
       /* Create solver */
@@ -349,17 +349,17 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
       HYPRE_BoomerAMGGetFinalRelativeResidualNorm(solver, &final_res_norm);
       if (myid == 0) {
 	if( verbosity >= 5 ) {
-	  fprintf(stderr,"BoomerAMG:\n");
-	  fprintf(stderr,"Iterations = %d\n", num_iterations);
-	  fprintf(stderr,"Final Relative Residual Norm = %e\n", final_res_norm);
-	  fprintf(stderr,"\n");
+	  fprintf(stdout,"BoomerAMG:\n");
+	  fprintf(stdout,"Iterations = %d\n", num_iterations);
+	  fprintf(stdout,"Final Relative Residual Norm = %e\n", final_res_norm);
+	  fprintf(stdout,"\n");
 	}
       }
 
       /* Destroy solver */
       HYPRE_BoomerAMGDestroy(solver);
    } else {
-     fprintf( stderr,"Hypre solver not implemented\n");
+     fprintf( stdout,"Hypre solver not implemented\n");
      exit(EXIT_FAILURE);
    }
 
@@ -372,7 +372,7 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
      if ( owner[i] ) xvec[i] = txvec[k++];
    
    if( myid == 0 && verbosity >= 5 ) {
-     fprintf( stderr, "Hypre solve time: %g\n", realtime_()-st );
+     fprintf( stdout, "Hypre solve time: %g\n", realtime_()-st );
    }
    free( txvec );
    free( rcols );
@@ -438,7 +438,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    if (myid==0 && verbosity >= 4) fprintf(stdout,"Performing HYPRE Setup\n");
 
    if (*ContainerPtr != 0) {
-     fprintf( stderr, "ID no. %i: pointer passed into SolveHypre1 not NULL, possible memory leak.\n", myid);
+     fprintf( stdout, "ID no. %i: pointer passed into SolveHypre1 not NULL, possible memory leak.\n", myid);
    }
    
    Container = (ElmerHypreContainer*)malloc(sizeof(ElmerHypreContainer));
@@ -582,9 +582,9 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    HYPRE_IJVectorGetObject(x, (void **) &par_x);
 
    if(myid==0 && verbosity >= 12) {
-     fprintf(stderr,"HYRPE INT: %d %d  %d %d %d \n", 
+     fprintf(stdout,"Hypre integer parameters: %d %d %d %d %d\n", 
 	     hypre_intpara[0], hypre_intpara[1], hypre_intpara[2], hypre_intpara[3], hypre_intpara[4]);  
-     fprintf(stderr,"HYRPE DP: %d %d %d %d %d \n", &
+     fprintf(stdout,"Hypre dp parameters: %12.5le %12.5le %12.5le %12.5le %12.5le\n", 
 	     hypre_dppara[0], hypre_dppara[1], hypre_dppara[2], hypre_dppara[3], hypre_dppara[4]);  
    }
    /* Choose a solver and solve the system */
@@ -619,13 +619,13 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      static char *argv[5], str[3];
      argv[0] = "-level";
      sprintf( str, "%d", *ILUn );
-     if (myid == 0 && verbosity >= 4) fprintf( stderr,"SolveHypre: using ILU%i as preconditioner\n",*ILUn); 
+     if (myid == 0 && verbosity >= 4) fprintf( stdout,"SolveHypre: using ILU%i as preconditioner\n",*ILUn); 
      argv[1] = str;
      HYPRE_EuclidSetParams( precond, 2, argv );
    }
 
    else if ( hypre_pre == 1 ) {
-     if (myid == 0 && verbosity >= 4) fprintf( stderr,"SolveHypre: using ParaSails as preconditioner\n"); 
+     if (myid == 0 && verbosity >= 4) fprintf( stdout,"SolveHypre: using ParaSails as preconditioner\n"); 
 
      /* Now set up the ParaSails preconditioner and specify any parameters */
      HYPRE_ParaSailsCreate(comm, &precond);
@@ -645,18 +645,18 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    else if ( hypre_pre == 2 || hypre_sol == 1 )  {
      if (myid == 0 ) {
        if( verbosity >= 5 ) {
-	 fprintf( stderr,"SolveHypre: using BoomerAMG\n");
+	 fprintf( stdout,"SolveHypre: using BoomerAMG\n");
        }
        if( verbosity >= 10 ) {
-	 fprintf( stderr,"RelaxType = %d\n",hypre_intpara[0]); 
-	 fprintf( stderr,"CoarsenType = %d\n",hypre_intpara[1]); 
-	 fprintf( stderr,"NumSweeps = %d\n",hypre_intpara[2]); 
-	 fprintf( stderr,"MaxLevels = %d\n",hypre_intpara[3]); 
-	 fprintf( stderr,"Interpolation Type = %d\n",hypre_intpara[4]); 
-	 fprintf( stderr,"Smooth Type = %d\n",hypre_intpara[5]);
-	 fprintf( stderr,"Cycle Type = %d\n",hypre_intpara[6]);
-	 fprintf( stderr,"DOFs = %d\n",hypre_intpara[7]);
-	 fprintf( stderr,"StrongThreshold = %g\n",hypre_dppara[0]);
+	 fprintf( stdout,"RelaxType = %d\n",hypre_intpara[0]); 
+	 fprintf( stdout,"CoarsenType = %d\n",hypre_intpara[1]); 
+	 fprintf( stdout,"NumSweeps = %d\n",hypre_intpara[2]); 
+	 fprintf( stdout,"MaxLevels = %d\n",hypre_intpara[3]); 
+	 fprintf( stdout,"Interpolation Type = %d\n",hypre_intpara[4]); 
+	 fprintf( stdout,"Smooth Type = %d\n",hypre_intpara[5]);
+	 fprintf( stdout,"Cycle Type = %d\n",hypre_intpara[6]);
+	 fprintf( stdout,"DOFs = %d\n",hypre_intpara[7]);
+	 fprintf( stdout,"StrongThreshold = %g\n",hypre_dppara[0]);
        }
      }
      HYPRE_BoomerAMGCreate(&precond);
@@ -681,7 +681,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_BoomerAMGSetStrongThreshold(precond, hypre_dppara[0]);  	 
 
    } else if ( hypre_pre != 9 ) {
-     fprintf( stderr,"Hypre preconditioning method not implemented\n");
+     fprintf( stdout,"Hypre preconditioning method not implemented\n");
      exit(EXIT_FAILURE);
    }
 
@@ -865,7 +865,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 #endif
 
    else {
-     fprintf( stderr,"Hypre solver method not implemented\n");
+     fprintf( stdout,"Hypre solver method not implemented\n");
      exit(EXIT_FAILURE);
    }
 
@@ -918,7 +918,7 @@ void STDCALLBULL FC_FUNC(updatehypre,UPDATEHYPRE)
   }
 #endif
   else {
-    fprintf( stderr,"Hypre solver method not implemented\n");
+    fprintf( stdout,"Hypre solver method not implemented\n");
     exit(EXIT_FAILURE);
   }
 }
@@ -969,7 +969,7 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
    if (myid==0 && verbosity >= 6) fprintf(stdout,"HYPRE Solve\n");
 
    if (Container==NULL) {
-     fprintf( stderr, "ID no. %i: pointer passed into SolveHypre2 is NULL, not solving",myid);
+     fprintf( stdout, "ID no. %i: pointer passed into SolveHypre2 is NULL, not solving",myid);
      return;
    }
   
@@ -1342,12 +1342,12 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
    HYPRE_IJVectorGetObject(zz, (void **) &par_zz);
 #endif
 
-   if( verbosity >= 12 ) fprintf( stderr, "ID no. %i: setup time: %g\n", myid, realtime_()-st );
+   if( verbosity >= 12 ) fprintf( stdout, "ID no. %i: setup time: %g\n", myid, realtime_()-st );
    st = realtime_();
 
    if (myid == 0 ) 
       if ( verbosity >= 5 )
-        fprintf( stderr,"SolveHypre: using BiCGStab + AMS\n");
+        fprintf( stdout,"SolveHypre: using BiCGStab + AMS\n");
 
    HYPRE_AMSCreate(&precond); 
    HYPRE_AMSSetMaxIter(precond,1);
@@ -1393,7 +1393,7 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
      if ( owner[i] ) xvec[i] = txvec[k++];
    
    if( myid == 0 && verbosity >= 5 ) {
-     fprintf( stderr, "Hypre solve time: %g\n", realtime_()-st );
+     fprintf( stdout, "Hypre solve time: %g\n", realtime_()-st );
    }
    free( txvec );
    free( rcols );

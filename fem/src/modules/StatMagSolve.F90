@@ -24,7 +24,7 @@
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen, Ville Savolainen, Jussi Heikonen,
-! *           Peter R�back, Antti Pursula
+! *           Peter Råback, Antti Pursula
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -672,7 +672,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Subroutine for computing local matrices for harmonic magnetic field
 !> in cylindrical coordinates with axisymmetry.
-! Author: Peter R�back
+! Author: Peter Råback
 !------------------------------------------------------------------------------
    SUBROUTINE HarmMagAxisCompose( &
        StiffMatrix,ForceVector,CurrentDensity,NodalAngle,NodalReluctivity, NodalConductivity,&

@@ -1,0 +1,91 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "toroid2d"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 8
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Timestepping Method = BDF
+  BDF Order = 1
+  Post File = case.vtu
+
+  Extruded Mesh Levels = Integer 20
+  Extruded Min Coordinate = 0.0
+  Extruded Max Coordinate = $2*pi
+  Extruded Mesh Rotational = Logical True
+End 
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Toroid"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+  
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  BiCGstabl polynomial degree = 2
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+End
+
+Body Force 1
+  name = "Heating"
+  Heat Source = Equals "Coordinate 1"
+End 
+
+Equation 1
+  Name = "HeatEquation"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4 
+  Name = "Sides"
+  Temperature = 0.0
+End
+
+
+Solver 1 :: Reference Norm = 7.59052249E-02
