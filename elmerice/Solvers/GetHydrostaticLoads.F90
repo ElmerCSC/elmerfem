@@ -130,7 +130,7 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
        Model % Mesh % NumberOfBulkElements + Model % Mesh % NumberOfBoundaryElements
     Element => Model % Mesh % Elements(t)
     IF (.NOT.ASSOCIATED(Element)) THEN
-      WRITE(*,Message) 'Element no. ', t,' not associated'
+      WRITE(Message,*) 'Element no. ', t,' not associated'
       CALL FATAL(SolverName,Message)
     END IF
     
@@ -141,11 +141,7 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
     IF(.NOT. ANY(Permutation(Element % NodeIndexes(1:n)) > 0)) CYCLE
 
     BC => GetBC( Element )
-    IF (.NOT.ASSOCIATED(BC)) THEN
-      WRITE(*,Message) 'Boundary condition for Element no. ',&
-           t,' not associated'
-      CALL FATAL(SolverName,Message)
-    END IF
+    IF (.NOT.ASSOCIATED(BC)) CYCLE
     
     pwt(1:n) =  -1.0 * ListGetReal(BC, 'External Pressure', n, &
                     Element % NodeIndexes , GotIt)
