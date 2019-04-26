@@ -1020,8 +1020,8 @@ CONTAINS
          Damping(1:n) = GetReal( Material, 'Damping', Found )
          RayleighDamping = GetLogical( Material, 'Rayleigh damping', Found )
          IF( RayleighDamping ) THEN
-           RayleighAlpha(1:N) = GetReal( Material, 'Rayleigh alpha', Found )
-           RayleighBeta(1:N) = GetReal( Material, 'Rayleigh beta', Found )
+           RayleighAlpha(1:N) = GetReal( Material, 'Rayleigh Damping alpha', Found )
+           RayleighBeta(1:N) = GetReal( Material, 'Rayleigh Damping beta', Found )
          ELSE
            RayleighAlpha = 0.0d0
            RayleighBeta = 0.0d0        
