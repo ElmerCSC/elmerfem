@@ -4991,7 +4991,8 @@ END SUBROUTINE GetMaxDefs
     TYPE(Matrix_t), POINTER :: Projector    
     !--------------------------------------------------------------------------
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
-    LOGICAL ::  StrongNodes, StrongEdges, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
+    LOGICAL ::  StrongNodes, StrongEdges, StrongLevelEdges, StrongExtrudedEdges, &
+        StrongSkewEdges, StrongConformingEdges
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
         EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, WeakProjector, &
         StrongProjector, CreateDual, HaveMaxDistance
@@ -5164,6 +5165,8 @@ END SUBROUTINE GetMaxDefs
       IF( StrongLevelEdges .AND. GenericIntegrator ) THEN
         CALL Info('LevelProjector','Using strong level edges with partially weak projector',Level=7)
       END IF
+
+      StrongConformingEdges = ListGetLogical( BC,'Level Projector Conforming Edges Strong', Found ) 
       
       StrongExtrudedEdges = ListGetLogical( BC,'Level Projector Extruded Edges Strong', Found ) 
       IF( .NOT. Found ) StrongExtrudedEdges = StrongEdges
@@ -5523,14 +5526,15 @@ END SUBROUTINE GetMaxDefs
         FaceCol0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
       END IF
 
-      IF( StrongLevelEdges .OR. StrongExtrudedEdges ) THEN
-        CALL AddEdgeProjectorStrongStrides()
+      IF( StrongLevelEdges .OR. StrongExtrudedEdges .OR. StrongConformingEdges ) THEN
+        IF( StrongConformingEdges ) THEN
+          CALL AddEdgeProjectorStrongConforming()
+        ELSE
+          CALL AddEdgeProjectorStrongStrides()
+        END IF
         ! Compute the unset edge dofs. 
         ! Some of the dofs may have been set by the strong projector. 
-        m = 0
-        DO i=1, Mesh % NumberOfEdges
-          IF( EdgePerm(i) > 0 ) m = m + 1
-        END DO
+        m = COUNT( EdgePerm > 0 )
         IF( m > 0 ) THEN
           CALL Info('LevelProjector',&
               'Number of weak edges in projector: '//TRIM(I2S(m)),Level=10)      
@@ -6583,7 +6587,219 @@ END SUBROUTINE GetMaxDefs
     END SUBROUTINE AddEdgeProjectorStrongStrides
     !----------------------------------------------------------------------
 
+    
+    SUBROUTINE CreateEdgeCenters( EdgeMesh, noedges, EdgeInds, EdgeX, EdgeY ) 
+      TYPE(Mesh_t), POINTER :: EdgeMesh
+      INTEGER :: noedges
+      INTEGER, ALLOCATABLE :: EdgeInds(:)
+      REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:)
 
+      LOGICAL, ALLOCATABLE :: EdgeDone(:)
+      INTEGER :: ind, eind, i, i1, i2, k1, k2
+      TYPE(Element_t), POINTER :: Element
+      INTEGER, POINTER :: EdgeMap(:,:), Indexes(:)
+      LOGICAL :: AllocationsDone 
+      
+      ALLOCATE( EdgeDone( CurrentModel % Mesh % NumberOfEdges ) )
+      AllocationsDone = .FALSE.
+
+      
+100   noedges = 0
+      EdgeDone = .FALSE.
+      
+      DO ind=1,EdgeMesh % NumberOfBulkElements
+        
+        Element => EdgeMesh % Elements(ind)        
+        EdgeMap => GetEdgeMap( Element % TYPE % ElementCode / 100)
+
+        Indexes => Element % NodeIndexes
+
+        DO i = 1,Element % TYPE % NumberOfEdges          
+          
+          eind = Element % EdgeIndexes(i)
+          
+          IF( EdgeDone(eind) ) CYCLE
+         
+          ! Get the nodes of the edge
+          i1 = EdgeMap(i,1) 
+          i2 = EdgeMap(i,2)
+
+          k1 = Indexes( i1 )
+          k2 = Indexes( i2 )
+
+          noedges = noedges + 1
+          EdgeDone(eind) = .TRUE.
+          
+          IF( ALLOCATED( EdgeInds ) ) THEN
+            EdgeX(1,noedges) = EdgeMesh % Nodes % x(k1)
+            EdgeX(2,noedges) = EdgeMesh % Nodes % x(k2)
+
+            EdgeY(1,noedges) = EdgeMesh % Nodes % y(k1)
+            EdgeY(2,noedges) = EdgeMesh % Nodes % y(k2)
+
+            ! The center of the edge (note we skip multiplication by 0.5 is it is redundant)
+            EdgeX(3,noedges) = EdgeX(1,noedges) + EdgeX(2,noedges)
+            EdgeY(3,noedges) = EdgeY(1,noedges) + EdgeY(2,noedges)
+
+            EdgeInds(noedges) = eind
+          END IF
+        END DO
+      END DO
+      
+      IF(noedges > 0 .AND. .NOT. AllocationsDone ) THEN
+        CALL Info('LevelProjector','Allocating stuff for edges',Level=20)
+        ALLOCATE( EdgeInds(noedges), EdgeX(3,noedges), EdgeY(3,noedges) )
+        AllocationsDone = .TRUE.
+        GOTO 100
+      END IF
+
+      DEALLOCATE( EdgeDone ) 
+      
+    END SUBROUTINE CreateEdgeCenters
+
+      
+      
+        
+    !---------------------------------------------------------------------------------
+    ! Create a strong projector for edges in a conforming case.
+    !---------------------------------------------------------------------------------
+    SUBROUTINE AddEdgeProjectorStrongConforming()
+
+      INTEGER :: ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i1, i2, &
+          noedges, noedgesm, Nundefined
+      TYPE(Element_t), POINTER :: Edge, EdgeM
+      INTEGER, POINTER :: Indexes(:), IndexesM(:)
+      REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2, Xeps
+      INTEGER, ALLOCATABLE :: PeriodicEdge(:), EdgeInds(:), EdgeIndsM(:)
+      REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeMX(:,:), EdgeMY(:,:)
+      REAL(KIND=dp) :: coordprod, indexprod
+      INTEGER :: pluscount, minuscount
+      
+      CALL Info('LevelProjector','Creating strong projector for conforming edges',Level=8)
+
+      n = Mesh % NumberOfEdges
+      IF( n == 0 ) RETURN      
+
+      Xeps = 1.0e-8
+      sgn0 = 1.0_dp
+      IF( SelfProject ) sgn0 = -sgn0
+
+      CALL CreateEdgeCenters( BMesh1, noedges, EdgeInds, EdgeX, EdgeY ) 
+      CALL Info('LevelProjector','Number of edges in slave mesh: '//TRIM(I2S(noedges)),Level=10)
+
+      CALL CreateEdgeCenters( BMesh2, noedgesm, EdgeIndsM, EdgeMX, EdgeMY )
+      CALL Info('LevelProjector','Number of edges in master mesh: '//TRIM(I2S(noedgesm)),Level=10)
+      
+      IF( noedges == 0 ) RETURN
+      
+      ALLOCATE( PeriodicEdge(noedges))
+      PeriodicEdge = 0
+      DO i1=1,noedges
+        x1 = EdgeX(3,i1)
+        y1 = EdgeY(3,i1)
+
+        DO i2=1,noedgesm
+          x2 = EdgeMX(3,i2)
+          IF( ABS(x1-x2) > Xeps ) CYCLE
+
+          y2 = EdgeMY(3,i2)
+          IF( ABS(y1-y2) > Xeps ) CYCLE
+         
+          ! we have a hit
+          PeriodicEdge(i1) = i2
+          EXIT
+        END DO
+      END DO
+
+      Nundefined = COUNT( PeriodicEdge == 0 )
+      IF( Nundefined > 0 ) THEN
+        CALL Fatal('LevelProjector',&
+            'Number of edges could not be mapped: '//TRIM(I2S(Nundefined)))          
+      ELSE
+        CALL Info('LevelProjector','Found all conforming counterparts',Level=10)
+      END IF
+
+      pluscount = 0
+      minuscount = 0
+      
+      DO e=1,noedges        
+        eind = EdgeInds(e)
+        IF( EdgePerm(eind) == 0 ) CYCLE
+
+        ! Get the conforming counterpart
+        em = PeriodicEdge(e)
+        IF( em == 0 ) CYCLE
+        eindm = EdgeIndsM(em)        
+        
+        ! Get the coordinates and indexes of the 1st edge
+        Edge => Mesh % Edges(eind)
+        k1 = Edge % NodeIndexes( 1 )
+        k2 = Edge % NodeIndexes( 2 )
+        IF(Parallel) THEN
+          k1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm1(k1))
+          k2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm1(k2))
+        END IF
+
+        x1 = EdgeX(1,e)
+        x2 = EdgeX(2,e)
+        y1 = EdgeY(1,e)
+        y2 = EdgeY(2,e)
+
+        nrow = EdgeRow0 + EdgePerm(eind) 
+        
+        ! Get the coordinates and indexes of the 2nd edge
+        EdgeM => Mesh % Edges(eindm)
+        km1 = EdgeM % NodeIndexes( 1 )
+        km2 = EdgeM % NodeIndexes( 2 )
+        IF(Parallel) THEN
+          km1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km1))
+          km2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km2))
+        END IF
+
+        xm1 = EdgeX(1,em)
+        xm2 = EdgeX(2,em)
+        ym1 = EdgeY(1,em)
+        ym2 = EdgeY(2,em)
+
+        coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) 
+        indexprod = (k1-k2)*(km1-km2)
+
+        sgn = sgn0 
+        IF( coordprod * indexprod < 0 ) THEN
+          minuscount = minuscount + 1
+          sgn = -sgn0
+        ELSE
+          pluscount = pluscount + 1
+        END IF
+          
+        ! Mark that this is set so it don't need to be set again
+        EdgePerm(eind) = 0
+        
+        ! Ok, we found a true projector entry
+        Projector % InvPerm(nrow) = EdgeCol0 + eind
+        
+        ! Create the projection matrix
+        IF( SelfProject ) THEN
+          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+              EdgeCol0 + eind, EdgeCoeff ) 
+        END IF        
+        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+            EdgeCol0 + eindm, EdgeScale * EdgeCoeff * sgn )
+      END DO
+      
+      DEALLOCATE( EdgeInds, EdgeX, EdgeY ) 
+      DEALLOCATE( EdgeIndsM, EdgeMX, EdgeMY )
+      DEALLOCATE( PeriodicEdge )
+
+      CALL Info('LevelProjector','Switched sign of '//TRIM(I2S(minuscount))//' edge projectors',Level=10)
+      
+      CALL Info('LevelProjector','Created strong constraints for conforming edge dofs',Level=10)      
+
+      
+    END SUBROUTINE AddEdgeProjectorStrongConforming
+    !----------------------------------------------------------------------
+
+    
     !----------------------------------------------------------------------
     ! Create weak projector for the remaining nodes and edges.
     ! This uses the generic way to introduce the weights. The resulting 
@@ -6843,7 +7059,6 @@ END SUBROUTINE GetMaxDefs
             CALL SortR(kmax,inds,phi)
             x(1:kmax) = x(inds(1:kmax))
             y(1:kmax) = y(inds(1:kmax))
-
             !PRINT *,'Polygon: ',ind,indm,LeftSplit, RightSplit, LeftSplit2, RightSplit2, TopEdge, BottomEdge, kmax 
 
           ! Deal the case with multiple corners by making 
@@ -7013,7 +7228,7 @@ END SUBROUTINE GetMaxDefs
 
     END SUBROUTINE AddProjectorWeakStrides
 
-
+    
 
     !----------------------------------------------------------------------
     ! Create weak projector for the remaining nodes and edges
@@ -10521,7 +10736,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, WeakProjector, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
-        Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
+        Flat, Plane, AntiPlane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
         ParallelNumbering, EnforceOverlay
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -10653,7 +10868,10 @@ END SUBROUTINE GetMaxDefs
         'Flat Projector',GotIt )
     Plane = ListGetLogical( BC, &
         'Plane Projector',GotIt )
-
+    AntiPlane = ListGetLogical( BC, &
+        'Anti Plane Projector',GotIt )    
+    IF( AntiPlane ) Plane = .TRUE.
+    
     IF( Radial ) CALL Info('PeriodicProjector','Enforcing > Radial Projector <',Level=12)
     IF( Axial ) CALL Info('PeriodicProjector','Enforcing > Axial Projector <',Level=12)
     IF( Sliding ) CALL Info('PeriodicProjector','Enforcing > Sliding Projector <',Level=12)
@@ -10665,7 +10883,7 @@ END SUBROUTINE GetMaxDefs
 
     NodeScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) THEN
-      IF( AntiRadial ) THEN
+      IF( AntiRadial .OR. AntiPlane ) THEN
         NodeScale = -1._dp
       ELSE
         NodeScale = 1.0_dp
@@ -10769,7 +10987,7 @@ END SUBROUTINE GetMaxDefs
 
     Repeating = ( Rotational .OR. Sliding .OR. Axial ) .AND. .NOT. FullCircle 
     AntiRepeating = ( AntiRotational .OR. AntiSliding .OR. AntiAxial ) .AND. .NOT. FullCircle 
-
+      
     IF( UseExtProjector ) THEN
       Projector => ExtProjectorCaller( PMesh, BMesh1, BMesh2, This )
     ELSE IF( LevelProj ) THEN 
