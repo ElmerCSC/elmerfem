@@ -14,7 +14,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 7
   Coordinate System = "Cartesian"
   Simulation Type = Steady
   Steady State Max Iterations = 1
@@ -64,17 +64,25 @@ Solver 1
 
   Linear System Symmetric = True
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = none
+  Linear System Preconditioning = ILU1 !none
   Linear System Residual Output = 10
   Linear System Max Iterations = 1000
   Linear System Iterative Method = BiCgStabl 
   Linear System Convergence Tolerance = 1.0e-7
-  BicgStabl Polynomial Degree = 4
+  BicgStabl Polynomial Degree = 6
 
   Apply Mortar BCs = True
+  Edge Basis = Logical True
 
-  FixZ Coordinates(3) = Real 0.0 0.0 0.0
-  FixZ Direction(3) = Real 0.0 0.0 1.0
+!  Mortar BCs Additive = Logical True
+!  Optimize Bandwidth = False
+
+!  Mortar Diag = Real 0.0
+!  Lumped Diag = Logical True
+
+!  FixZ Coordinates(3) = Real 0.0 0.0 0.0
+!  FixZ Direction(3) = Real 0.0 0.0 1.0
+!  FixZ Amplitude = Real 1.0e-4
 End
 
 
@@ -89,7 +97,8 @@ Solver 2
   Calculate Current Density = False 
   Calculate Electric Field = False 
   Calculate Magnetic Field Strength = True
-  Calculate Joule Heating = True
+  Calculate Joule Heating = False
+  Calculate Magnetic Vector Potential = True
 
   Steady State Convergence Tolerance = 0
   Linear System Solver = "Iterative"
@@ -99,12 +108,11 @@ Solver 2
   Linear System Iterative Method = CG
   Linear System Convergence Tolerance = 1.0e-8
 
-  Calculate Nodal Fields = Logical False
+  Calculate Nodal Fields = Logical True
   Impose Body Force Potential = Logical True
   Impose Body Force Current = Logical True
 
   Discontinuous Bodies = True
-  Mortar BCs Additive = Logical True
 End
 
 
@@ -189,23 +197,27 @@ Boundary Condition 6
   Name = "MaxX"
   Target Boundaries(1) = 5
 
-  AV {e} 1 = Real 0.0
-  AV {e} 2 = Real 0.0
+!  AV {e} 1 = Real 0.0
+!  AV {e} 2 = Real 0.0
 
-!  Mortar BC = Integer 7
-!  Galerkin Projector = Logical True
-!  Plane Projector = Logical True
+  Mortar BC = Integer 7
+  Galerkin Projector = Logical True
+  Plane Projector = Logical True
+  Level Projector Conforming Edges Strong = Logical True
+  Projector Skip Nodes = True
 !  Projector Priority = Integer 1 
+
+!  Save Projector = Logical True
 End
 
 Boundary Condition 7
   Name = "MinX"
   Target Boundaries(1) = 7
 
-  AV {e} 1 = Real 0.0
-  AV {e} 2 = Real 0.0
+!  AV {e} 1 = Real 0.0
+!  AV {e} 2 = Real 0.0
 End
-
+ 
 Boundary Condition 8
   Name = "MaxY"
   Target Boundaries(1) = 6
@@ -215,11 +227,13 @@ Boundary Condition 8
 
   Mortar BC = Integer 9
   Galerkin Projector = Logical True
-  Plane Projector = Logical True
+!  Anti Plane Projector = Logical True
+!  Level Projector Conforming Edges Strong = Logical True
+  Projector Skip Nodes = True
 !  Projector Priority = Integer 2
 End
 
-
+ 
 Boundary Condition 9
   Name = "MinY"
   Target Boundaries(1) = 8
@@ -228,6 +242,6 @@ Boundary Condition 9
 !  AV {e} 2 = Real 0.0
 End
 
-Solver 1 :: Reference Norm = 1.26990974E-10
+Solver 1 :: Reference Norm = 4.69017942E-10
 
 ! not periodic: 9.83777801E-11
