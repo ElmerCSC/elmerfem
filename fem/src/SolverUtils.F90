@@ -16425,8 +16425,16 @@ CONTAINS
            'Nothing to do since there are no constrained dofs!',Level=12)       
        RETURN
      END IF
-       
-     IF( mcount == 1 .AND. bcount == 0 ) THEN
+
+     MortarDiag = ListGetCReal( Solver % Values,'Mortar Diag',HaveMortarDiag )
+     LumpedDiag = ListGetLogical( Solver % Values,'Lumped Diag',Found )
+
+     IF( HaveMortarDiag ) THEN
+       CALL Info('GenerateConstraintMatrix',&
+           'Adding diagonal entry to mortar constraint!',Level=12)              
+     END IF
+     
+     IF( mcount == 1 .AND. bcount == 0 .AND. .NOT. HaveMortarDiag ) THEN
        CALL Info('GenerateConstraintMatrix','Using initial constraint matrix',Level=12)       
        Solver % Matrix % ConstraintMatrix => Solver % ConstraintMatrix
        RETURN
@@ -16503,9 +16511,6 @@ CONTAINS
      END IF
      NeglectedRows = 0
 
-     MortarDiag = ListGetCReal( Solver % Values,'Mortar Diag',HaveMortarDiag )
-     LumpedDiag = ListGetLogical( Solver % Values,'Lumped Diag',Found )
-     
 
 100  sumrow = 0
      k2 = 0
@@ -16667,7 +16672,6 @@ CONTAINS
          IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) THEN
            IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN                   
              k = MAXVAL( Atmp % Cols )
-             PRINT *,'creating mortar perm of size: ',k
              ALLOCATE( MortarBC % Perm(k) )
              MortarBC % Perm = 0
              DO k=1,SIZE(Atmp % InvPerm )
@@ -16796,12 +16800,11 @@ CONTAINS
                IF( SumThis) SumCount(row) = SumCount(row) + 1
              END IF
            END IF
-
-
+           
            ! Add a diagonal entry if requested. When this is done at the final stage
            ! all the hassle with the right column index is easier.
            IF( ThisIsMortar ) THEN
-             IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) THEN
+             diag: IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) THEN
                IF( .NOT. HaveMortarDiag ) THEN
                  MortarDiag = MortarBC % Diag(i)
                  LumpedDiag = MortarBC % LumpedDiag
@@ -16823,7 +16826,7 @@ CONTAINS
                  IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN                   
                    CALL Fatal('GenerateConstraintMarix','MortarBC % Perm required, try lumped')
                  END IF
-
+                 
                  DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
                    col = Atmp % Cols(k) 
 
@@ -16859,7 +16862,7 @@ CONTAINS
                    END IF
                  END DO
                END IF
-             END IF
+             END IF diag
            END IF
 
            IF( AllocationsDone ) THEN
@@ -17178,7 +17181,7 @@ CONTAINS
        CALL Info('GenerateConstraintMatrix','Number of neglected rows: '&
            //TRIM(I2S(NeglectedRows)))
      END IF
-
+        
      Solver % Matrix % ConstraintMatrix => Btmp     
      Solver % MortarBCsChanged = .FALSE.
      
