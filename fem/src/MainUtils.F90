@@ -1871,10 +1871,6 @@ CONTAINS
       IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
     END IF
 
-    Solver % MortarProc = 0
-    str = ListGetString( Solver % Values, 'External Projector Procedure', Found )
-    IF ( Found ) Solver % MortarProc = GetProcAddr( str )
-
   END SUBROUTINE AddEquationBasics
 
 
@@ -2607,7 +2603,6 @@ CONTAINS
      Solver % SolverExecWhen = SOLVER_EXEC_NEVER
      Solver % LinBeforeProc = 0
      Solver % LinAfterProc = 0
-     Solver % MortarProc = 0
 
      IF ( Parenv  % PEs >1 ) THEN
        CALL ParallelInitMatrix( Solver, Solver % Matrix )

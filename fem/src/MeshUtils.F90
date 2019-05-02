@@ -10736,7 +10736,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, WeakProjector, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
-        Flat, Plane, AntiPlane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
+        Flat, Plane, AntiPlane, LevelProj, FullCircle, Cylindrical, &
         ParallelNumbering, EnforceOverlay
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -10826,11 +10826,7 @@ END SUBROUTINE GetMaxDefs
       RETURN
     END IF
 
-    ! Do we have external procedure to take care of the projection matrix creation
-    UseExtProjector = ListGetLogical( BC, 'External Projector', GotIt )
-
-    ! If requested map the interface coordinate from (x,y,z) to any permutation
-    ! of these. 
+    ! If requested map the interface coordinate from (x,y,z) to any permutation of these. 
     CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
 
     ! Check whether to use (anti)rotational projector.
@@ -10988,9 +10984,7 @@ END SUBROUTINE GetMaxDefs
     Repeating = ( Rotational .OR. Sliding .OR. Axial ) .AND. .NOT. FullCircle 
     AntiRepeating = ( AntiRotational .OR. AntiSliding .OR. AntiAxial ) .AND. .NOT. FullCircle 
       
-    IF( UseExtProjector ) THEN
-      Projector => ExtProjectorCaller( PMesh, BMesh1, BMesh2, This )
-    ELSE IF( LevelProj ) THEN 
+    IF( LevelProj ) THEN 
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
           FullCircle, Radius, DoNodes, DoEdges, &          
           NodeScale, EdgeScale, BC )
@@ -11076,93 +11070,6 @@ END SUBROUTINE GetMaxDefs
       END IF
     END DO
   END SUBROUTINE GeneratePeriodicProjectors
-
-  
-
-  FUNCTION ExtProjectorCaller( Mesh, SlaveMesh, MasterMesh, SlaveBcInd ) RESULT ( Projector )
-    !---------------------------------------------------------------------------
-    USE Lists
-    USE Messages
-    USE Types
-    USE GeneralUtils
-    IMPLICIT NONE
-
-    TYPE(Mesh_t), POINTER :: Mesh, SlaveMesh, MasterMesh
-    INTEGER :: SlaveBCind
-    TYPE(Matrix_t), POINTER :: Projector    
-    !--------------------------------------------------------------------------
-    TYPE(ValueList_t), POINTER :: BC
-    LOGICAL :: Found, Parallel, CreateDual, BiorthogonalBasis
-    INTEGER(KIND=AddrInt) :: ProjectorAddr
-
-    CALL Info('ExtProjectorCaller','Creating projector using an external function',Level=7)
-
-    Parallel = ( ParEnv % PEs > 1 )
-    Mesh => CurrentModel % Mesh
-    BC => CurrentModel % BCs(SlaveBcInd) % Values
-
-    Projector => AllocateMatrix()
-    Projector % FORMAT = MATRIX_LIST
-    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
-
-    CreateDual = ListGetLogical( BC,'Create Dual Projector',Found ) 
-    IF( CreateDual ) THEN
-      Projector % Ematrix => AllocateMatrix()
-      Projector % Ematrix % FORMAT = MATRIX_LIST
-      Projector % Ematrix % ProjectorType = PROJECTOR_TYPE_GALERKIN
-    ELSE
-      Projector % EMatrix => NULL()
-    END IF
-
-    ! Check whether biorthogonal basis for projectors requested:
-    ! ----------------------------------------------------------
-    BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
-
-    ! If we want to eliminate the constraints we have to have a biortgonal basis
-    IF(.NOT. Found ) THEN
-      BiOrthogonalBasis = ListGetLogical( CurrentModel % Solver % Values, &
-          'Eliminate Linear Constraints',Found )
-      IF( BiOrthogonalBasis ) THEN
-        CALL Info('ContactProjector',&
-            'Setting > Use Biorthogonal Basis < to True to enable elimination',Level=8)
-      END IF
-    END IF
-
-    IF (BiOrthogonalBasis) THEN
-      Projector % Child => AllocateMatrix()
-      Projector % Child % Format = MATRIX_LIST
-      CALL Info('ContactProjector','Using biorthogonal basis, as requested',Level=8)      
-    ELSE
-      Projector % Child => NULL()
-    END IF
-
-
-    ProjectorAddr = CurrentModel % Solver % MortarProc
-    IF( ProjectorAddr == 0 ) THEN
-      CALL Fatal('ExtProjectorCaller','External projector requested by no > Mortar Proc < given!')
-    ELSE
-      CALL ExecMortarProjector( ProjectorAddr, &
-          Mesh, SlaveMesh, MasterMesh, SlaveBCind, Projector )
-    END IF
-
-    ! Now change the matrix format to CRS from list matrix
-    !--------------------------------------------------------------
-    CALL List_toCRSMatrix(Projector)
-    CALL CRS_SortMatrix(Projector,.TRUE.)
-
-    IF( ASSOCIATED(Projector % Child) ) THEN
-      CALL List_toCRSMatrix(Projector % Child)
-      CALL CRS_SortMatrix(Projector % Child,.TRUE.)
-    END IF
-
-    IF( ASSOCIATED( Projector % Ematrix) ) THEN
-      CALL List_toCRSMatrix(Projector % Ematrix)
-      CALL CRS_SortMatrix(Projector % Ematrix,.TRUE.)
-    END IF
-
-    CALL Info('ExtProjectorCaller','Projector created',Level=10)
-    
-  END FUNCTION ExtProjectorCaller
 
 
 !------------------------------------------------------------------------------
