@@ -1779,7 +1779,7 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
        Ks = Ks * Ngrad**(nbs-2.0_dp) 
 
        Kc = SUM( NodalKc(1:n) * Basis(1:n))
-       Kc = Kc * MAX(CArea,0.0)**(nac - 1.0_dp) 
+       Kc = Kc * MAX(CArea,0.0)**nac
        Kc = Kc * Ngrad**(nbc-2.0_dp)  
 
        PhiG = SUM(NodalHydPot(1:n)*Basis(1:n))
