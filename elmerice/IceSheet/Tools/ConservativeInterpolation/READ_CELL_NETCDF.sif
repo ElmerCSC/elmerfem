@@ -1,0 +1,138 @@
+! ******************************************************************************
+! *
+! *  Authors: F. Gillet-Chaulet (IGE-France)
+! *  Web:     http://elmerice.elmerfem.org
+! *  Original Date: 04/2019
+! * 
+! *****************************************************************************
+! Example .sif file to read the nectdf resulting from the conservative interpolation with CDO
+!
+Header
+  Mesh DB "." "MESH"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+  Simulation Type = Transient
+  Timestep Intervals = 150
+  Timestep Sizes = 0.5
+  Output Intervals = 2
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+
+  Post File = "READ.vtu"
+
+  max output level = 4
+End
+!#####
+Body 1
+  Equation = 1
+  Material = 1
+End
+!#####
+Material 1
+  flux = Equals smb_elem
+End
+
+!##### e.g. read the reference SMB (no time dimension)
+Solver 1
+  Exec Solver = Before simulation
+  Equation = Reader1
+  Procedure = "READ_CELL_NETCDF2" "READ_CELL_NETCDF"
+  Variable = -nooutput "reader2"
+
+  Optimize Bandwidth = False
+!---- NOTE: File is case sensitive, String is not!
+  File Name = File "PROJ_DATA/MARv3.9-ERA-Interim-1980-1999-UNST.nc"
+
+  Variable Name = File "SMB"
+  Target Variable Name = String "smb_elem"
+
+  Exported Variable 1 = -elem "smb_elem"
+End
+
+!##### do conservative projection to nodes
+Solver 2
+  Exec Solver = Before simulation
+  Equation = Proj
+  Procedure = "CELL_TO_NODE" "CELL_TO_NODE"
+  Variable = -nooutput "ctn"
+
+  Optimize Bandwidth = False
+
+  Nodal Variable Name = File "smb_node"
+  Elemental Variable Name = String "smb_elem"
+
+  Exported Variable 1 = smb_node
+End
+
+!##### Compare with direct bi-linear interp from GridDataReadera
+! takes some time in serial....
+Solver 3
+  Exec Solver = Before simulation
+
+  Equation = Reader2
+    Procedure = "GridDataReader" "GridDataReader"
+    Variable = -nooutput "reader3"
+
+  Optimize Bandwidth = False
+!---- NOTE: File is case sensitive, String is not!
+   Filename = File "DATA/MARv3.9-ERA-Interim-1980-1999.nc"
+
+   X Dim Name = File "X"
+   Y Dim Name = File "Y"
+!--- 
+  Variable 1 = File "SMB"
+  Target Variable 1 = String "smb_lin"
+
+  Exported Variable 1 = smb_lin
+End
+
+!### e.g. read aSMB forcing with time dimension
+Solver 4
+  Equation = Reader3
+  Procedure = "READ_CELL_NETCDF" "READ_CELL_NETCDF"
+  Variable = -nooutput "reader1"
+  
+  Optimize Bandwidth = False
+!---- NOTE: File is case sensitive, String is not!
+  File Name = File "PROJ_DATA/aSMB_MARv3.9-yearly-MIROC5-rcp85-UNST-2015-2100.nc"
+
+  Variable Name = File "aSMB"
+  Target Variable Name = String "asmb_elem"
+
+  Exported Variable 1 = -elem "asmb_elem"
+
+End
+
+!###  for comparison integrate the smb
+Solver 5
+  Exec Solver = After All
+
+  Equation = "Save Scalars"
+   Procedure = File "SaveData" "SaveScalars"
+
+  Parallel Reduce = logical True
+
+   Filename = File "Scalars.dat"
+
+! SaveScalars does not understand elemental variable
+!  hack => compute area with coeff. equals to the elemental variable (cf Material 1)
+  Variable 1 = "smb_elem"
+  Operator 1 = volume
+  coefficient 1 = "flux"
+
+  Variable 2 = "smb_node"
+  Operator 2 = int
+
+  Variable 3 = "smb_lin"
+  Operator 3 = int
+End
+
+!#####
+Equation 1
+  Active Solvers(4)= 1 2 3 4
+End
+
