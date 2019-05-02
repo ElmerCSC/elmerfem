@@ -156,11 +156,7 @@ END INTERFACE
        Version = .FALSE.
        IF( NoArgs > 0 ) THEN 
          DO i = 1, NoArgs 
-#ifdef USE_ISO_C_BINDINGS
            CALL GET_COMMAND_ARGUMENT(i, OptionString)
-#else
-           CALL getarg( i,OptionString )
-#endif
            Silent = Silent .OR. &
                ( OptionString=='-s' .OR. OptionString=='--silent' ) 
            Version = Version .OR. &
@@ -258,18 +254,10 @@ END INTERFACE
      !----------------------------------------------------------------------
      GotModelName = .FALSE.
      IF ( NoArgs > 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
        CALL GET_COMMAND_ARGUMENT(1, ModelName)
-#else
-       CALL getarg( 1,ModelName )
-#endif
        IF( ModelName(1:1) /= '-') THEN 
          GotModelName = .TRUE.
-#ifdef USE_ISO_C_BINDINGS
          IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
-#else
-         IF ( NoArgs > 1 ) CALL getarg( 2,eq )
-#endif
        END IF
      END IF
          
@@ -1306,7 +1294,22 @@ END INTERFACE
                  END IF
 
                  DO j=1,n
-                   k = Element % NodeIndexes(j)
+                   IF (Solver % DG) THEN
+                     BLOCK
+                       INTEGER :: i
+                       TYPE(Element_t), POINTER :: P
+
+                       p => Element % BoundaryInfo % Left
+                       IF(.NOT.ASSOCIATED(p)) p => Element % BoundaryInfo % Right
+                       DO i=1,p % Type % NumberOfNodes
+                         IF(p % NodeIndexes(i) == Element % NodeIndexes(j) ) THEN
+                           k = p % DGIndexes(i); EXIT
+                         END IF
+                       END DO
+                     END BLOCK
+                   ELSE
+                     k = Element % NodeIndexes(j)
+                   END IF
                    IF ( ASSOCIATED(Var % Perm) ) k = Var % Perm(k)
                    IF ( k>0 ) THEN
                      IF ( nt_boundary ) THEN
@@ -1383,7 +1386,7 @@ END INTERFACE
      INTEGER :: DOFs,i,j,k,k1,k2,l,n,m
      CHARACTER(LEN=MAX_NAME_LEN) :: str, VarName
      LOGICAL :: Found, ThingsToDO, NamespaceFound, AnyNameSpace
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t), POINTER :: Solver, CSolver
      INTEGER, ALLOCATABLE :: Indexes(:)
      REAL(KIND=dp) :: Val
      REAL(KIND=dp),ALLOCATABLE :: Work(:)
@@ -1509,7 +1512,11 @@ END INTERFACE
              END IF
                
              Solver => Var % Solver
-             IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
+             IF ( .NOT. ASSOCIATED(Solver) ) THEN
+              Solver => CurrentModel % Solver
+            END IF
+            CSolver => CurrentModel % Solver
+            CurrentModel % Solver => Solver
 
              IF( AnyNameSpace ) THEN
                str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
@@ -1607,6 +1614,7 @@ END INTERFACE
              IF(NamespaceFound) CALL ListPopNamespace()
              Var => Var % Next
            END DO
+           CSolver => CurrentModel % Solver
          END DO
 
          

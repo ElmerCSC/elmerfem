@@ -29,7 +29,7 @@ Material 1
 End
 
 Equation 1
-  Active Solvers(1) = 1
+  Active Solvers(2) = 1 2
 End
 
 Solver 1
@@ -52,6 +52,12 @@ Solver 1
   Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 200
   Linear System Convergence Tolerance = 1e-6
+End
+
+Solver 2
+  Equation = "Compute Error"
+  Procedure = "ComputeError" "IntegrateError"
+  Target Equation = String "Mixed Poisson"
 End
 
 !---------------------------------------------------------------

@@ -134,6 +134,11 @@ CONTAINS
 
     RefMesh => Solver % Mesh
 
+    IF( RefMesh % DiscontMesh ) THEN
+      CALL Fatal('RefineMesh','Adaptive refinement not possible for discontinous mesh!')
+    END IF
+
+    
     MaxDepth = ListGetInteger( Solver % Values, 'Adaptive Max Depth', Found )
     IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
        WRITE( Message, * ) 'Max adaptive depth reached.'
@@ -448,16 +453,8 @@ CONTAINS
     IF ( .NOT. Found ) NewMesh % Name = 'RefinedMesh'
 
     NewMesh % AdaptiveDepth = RefMesh % AdaptiveDepth + 1
-
-    i = NewMesh % AdaptiveDepth
-    n = FLOOR(LOG10(REAL(i))) + 1.5d0 
-    Nlen = LEN_TRIM(NewMesh % Name)
-    DO j=n,1,-1
-       k = i / 10**(j-1)
-       NewMesh % Name = NewMesh % Name(1:NLen) // CHAR(k+ICHAR('0'))
-       i = i - k*10**(j-1)
-    END DO
-
+    NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // TRIM(I2S(NewMesh % AdaptiveDepth))
+     
     Nlen = LEN_TRIM(OutputPath)
     IF ( Nlen > 0 ) THEN
        Path = OutputPath(1:Nlen) // '/' // TRIM(NewMesh % Name)

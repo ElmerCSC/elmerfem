@@ -607,39 +607,39 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF(.NOT. Visited ) THEN  
-      TetraFaceMap(1,:) = (/ 1, 2, 3 /)
-      TetraFaceMap(2,:) = (/ 1, 2, 4 /)
-      TetraFaceMap(3,:) = (/ 2, 3, 4 /)
-      TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+      TetraFaceMap(1,:) = [ 1, 2, 3 ]
+      TetraFaceMap(2,:) = [ 1, 2, 4 ]
+      TetraFaceMap(3,:) = [ 2, 3, 4 ]
+      TetraFaceMap(4,:) = [ 3, 1, 4 ]
       
-      WedgeFaceMap(1,:) = (/ 1, 2, 3 /)
-      WedgeFaceMap(2,:) = (/ 4, 5, 6 /)
-      WedgeFaceMap(3,:) = (/ 1, 2, 5 /)
-      WedgeFaceMap(4,:) = (/ 5, 4, 1 /)
-      WedgeFaceMap(5,:) = (/ 3, 2, 5 /)
-      WedgeFaceMap(6,:) = (/ 5, 6, 3/)
-      WedgeFaceMap(7,:) = (/ 3, 1, 4 /)
-      WedgeFaceMap(8,:) = (/ 4, 6, 3/)
+      WedgeFaceMap(1,:) = [ 1, 2, 3 ]
+      WedgeFaceMap(2,:) = [ 4, 5, 6 ]
+      WedgeFaceMap(3,:) = [ 1, 2, 5 ]
+      WedgeFaceMap(4,:) = [ 5, 4, 1 ]
+      WedgeFaceMap(5,:) = [ 3, 2, 5 ]
+      WedgeFaceMap(6,:) = [ 5, 6, 3]
+      WedgeFaceMap(7,:) = [ 3, 1, 4 ]
+      WedgeFaceMap(8,:) = [ 4, 6, 3]
       
-      PyramidFaceMap(1,:) = (/ 1, 2, 3 /)
-      PyramidFaceMap(2,:) = (/ 3, 4, 1 /)
-      PyramidFaceMap(3,:) = (/ 1, 2, 5 /)
-      PyramidFaceMap(4,:) = (/ 2, 3, 5 /)
-      PyramidFaceMap(5,:) = (/ 3, 4, 5 /)
-      PyramidFaceMap(6,:) = (/ 4, 1, 5 /)
+      PyramidFaceMap(1,:) = [ 1, 2, 3 ]
+      PyramidFaceMap(2,:) = [ 3, 4, 1 ]
+      PyramidFaceMap(3,:) = [ 1, 2, 5 ]
+      PyramidFaceMap(4,:) = [ 2, 3, 5 ]
+      PyramidFaceMap(5,:) = [ 3, 4, 5 ]
+      PyramidFaceMap(6,:) = [ 4, 1, 5 ]
       
-      BrickFaceMap(1,:) = (/ 1, 2, 3 /)
-      BrickFaceMap(2,:) = (/ 3, 4, 1 /)
-      BrickFaceMap(3,:) = (/ 5, 6, 7 /)
-      BrickFaceMap(4,:) = (/ 7, 8, 5 /)      
-      BrickFaceMap(5,:) = (/ 1, 2, 6 /)
-      BrickFaceMap(6,:) = (/ 6, 5, 1 /)      
-      BrickFaceMap(7,:) = (/ 2, 3, 7 /)
-      BrickFaceMap(8,:) = (/ 7, 6, 2 /)      
-      BrickFaceMap(9,:) = (/ 3, 4, 8 /)
-      BrickFaceMap(10,:) = (/ 8, 7, 3 /)      
-      BrickFaceMap(11,:) = (/ 4, 1, 5 /)
-      BrickFaceMap(12,:) = (/ 5, 8, 4 /)
+      BrickFaceMap(1,:) = [ 1, 2, 3 ]
+      BrickFaceMap(2,:) = [ 3, 4, 1 ]
+      BrickFaceMap(3,:) = [ 5, 6, 7 ]
+      BrickFaceMap(4,:) = [ 7, 8, 5 ]      
+      BrickFaceMap(5,:) = [ 1, 2, 6 ]
+      BrickFaceMap(6,:) = [ 6, 5, 1 ]      
+      BrickFaceMap(7,:) = [ 2, 3, 7 ]
+      BrickFaceMap(8,:) = [ 7, 6, 2 ]      
+      BrickFaceMap(9,:) = [ 3, 4, 8 ]
+      BrickFaceMap(10,:) = [ 8, 7, 3 ]      
+      BrickFaceMap(11,:) = [ 4, 1, 5 ]
+      BrickFaceMap(12,:) = [ 5, 8, 4 ]
 
       Visited = .TRUE.
     END IF
@@ -1689,39 +1689,39 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF(.NOT. Visited ) THEN  
-      TetraFaceMap(1,:) = (/ 1, 2, 3 /)
-      TetraFaceMap(2,:) = (/ 1, 2, 4 /)
-      TetraFaceMap(3,:) = (/ 2, 3, 4 /)
-      TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+      TetraFaceMap(1,:) = [ 1, 2, 3 ]
+      TetraFaceMap(2,:) = [ 1, 2, 4 ]
+      TetraFaceMap(3,:) = [ 2, 3, 4 ]
+      TetraFaceMap(4,:) = [ 3, 1, 4 ]
       
-      WedgeFaceMap(1,:) = (/ 1, 2, 3 /)
-      WedgeFaceMap(2,:) = (/ 4, 5, 6 /)
-      WedgeFaceMap(3,:) = (/ 1, 2, 5 /)
-      WedgeFaceMap(4,:) = (/ 5, 4, 1 /)
-      WedgeFaceMap(5,:) = (/ 3, 2, 5 /)
-      WedgeFaceMap(6,:) = (/ 5, 6, 3/)
-      WedgeFaceMap(7,:) = (/ 3, 1, 4 /)
-      WedgeFaceMap(8,:) = (/ 4, 6, 3/)
+      WedgeFaceMap(1,:) = [ 1, 2, 3 ]
+      WedgeFaceMap(2,:) = [ 4, 5, 6 ]
+      WedgeFaceMap(3,:) = [ 1, 2, 5 ]
+      WedgeFaceMap(4,:) = [ 5, 4, 1 ]
+      WedgeFaceMap(5,:) = [ 3, 2, 5 ]
+      WedgeFaceMap(6,:) = [ 5, 6, 3]
+      WedgeFaceMap(7,:) = [ 3, 1, 4 ]
+      WedgeFaceMap(8,:) = [ 4, 6, 3]
       
-      PyramidFaceMap(1,:) = (/ 1, 2, 3 /)
-      PyramidFaceMap(2,:) = (/ 3, 4, 1 /)
-      PyramidFaceMap(3,:) = (/ 1, 2, 5 /)
-      PyramidFaceMap(4,:) = (/ 2, 3, 5 /)
-      PyramidFaceMap(5,:) = (/ 3, 4, 5 /)
-      PyramidFaceMap(6,:) = (/ 4, 1, 5 /)
+      PyramidFaceMap(1,:) = [ 1, 2, 3 ]
+      PyramidFaceMap(2,:) = [ 3, 4, 1 ]
+      PyramidFaceMap(3,:) = [ 1, 2, 5 ]
+      PyramidFaceMap(4,:) = [ 2, 3, 5 ]
+      PyramidFaceMap(5,:) = [ 3, 4, 5 ]
+      PyramidFaceMap(6,:) = [ 4, 1, 5 ]
       
-      BrickFaceMap(1,:) = (/ 1, 2, 3 /)
-      BrickFaceMap(2,:) = (/ 3, 4, 1 /)
-      BrickFaceMap(3,:) = (/ 5, 6, 7 /)
-      BrickFaceMap(4,:) = (/ 7, 8, 5 /)      
-      BrickFaceMap(5,:) = (/ 1, 2, 6 /)
-      BrickFaceMap(6,:) = (/ 6, 5, 1 /)      
-      BrickFaceMap(7,:) = (/ 2, 3, 7 /)
-      BrickFaceMap(8,:) = (/ 7, 6, 2 /)      
-      BrickFaceMap(9,:) = (/ 3, 4, 8 /)
-      BrickFaceMap(10,:) = (/ 8, 7, 3 /)      
-      BrickFaceMap(11,:) = (/ 4, 1, 5 /)
-      BrickFaceMap(12,:) = (/ 5, 8, 4 /)
+      BrickFaceMap(1,:) = [ 1, 2, 3 ]
+      BrickFaceMap(2,:) = [ 3, 4, 1 ]
+      BrickFaceMap(3,:) = [ 5, 6, 7 ]
+      BrickFaceMap(4,:) = [ 7, 8, 5 ]      
+      BrickFaceMap(5,:) = [ 1, 2, 6 ]
+      BrickFaceMap(6,:) = [ 6, 5, 1 ]      
+      BrickFaceMap(7,:) = [ 2, 3, 7 ]
+      BrickFaceMap(8,:) = [ 7, 6, 2 ]      
+      BrickFaceMap(9,:) = [ 3, 4, 8 ]
+      BrickFaceMap(10,:) = [ 8, 7, 3 ]      
+      BrickFaceMap(11,:) = [ 4, 1, 5 ]
+      BrickFaceMap(12,:) = [ 5, 8, 4 ]
 
       Visited = .TRUE.
     END IF

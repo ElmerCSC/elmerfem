@@ -275,6 +275,13 @@ CONTAINS
 
     SAVE ScalarField, Nodes
 !------------------------------------------------------------------------------
+    Family = GetElementFamily(Element)
+    IF (Family == 1) RETURN
+    IF (Family == 4) THEN
+      CALL Warn('ModelMixedPoisson', 'Neumann BCs for 4-node faces have not been implemented yet')
+      RETURN
+    END IF
+
     BC => GetBC()
     IF (.NOT. ASSOCIATED(BC)) RETURN
 
@@ -293,68 +300,39 @@ CONTAINS
       Parent => Element % BoundaryInfo % Right
     END IF
     IF (.NOT. ASSOCIATED(Parent)) RETURN
+    !
+    ! Identify the face representing the element among the faces of 
+    ! the parent element:
+    !
+    CALL PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
+    IF (ActiveFaceId == 0) RETURN
+    FDOFs = Face % BDOFs
+    IF (FDOFs < 1) RETURN
+    !
+    ! Use the parent element to check whether sign reversions are needed:
+    !
+    CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
 
+    !
+    ! In the case of the basis of the second kind the effect of orientation
+    ! must be taken into account:
+    !
     RevertIndices = .FALSE.
-    Family = GetElementFamily(Element)
-    SELECT CASE(Family)
-    CASE(2)
-      IF (.NOT. ASSOCIATED(Parent % EdgeIndexes)) RETURN
-      !
-      ! Pick the edge (face) of the parent element corresponding to the boundary element:
-      ! (TO CONSIDER: write a subroutine for this routine task)
-      !
-      DO ActiveFaceId=1,Parent % TYPE % NumberOfEdges
-        Face => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
-        matches = 0
-        DO k=1,Element % TYPE % NumberOfNodes
-          DO l=1,Face % TYPE % NumberOfNodes
-            IF (Element % NodeIndexes(k)==Face % NodeIndexes(l)) matches=matches+1
-          END DO
-        END DO
-        IF (matches==Element % TYPE % NumberOfNodes) EXIT
-      END DO
-      IF (matches /= Element % TYPE % NumberOfNodes) RETURN
+    IF (SecondFamily) THEN
+      SELECT CASE(Family)
+      CASE(2)
+        !
+        ! Check whether the parametrization of the element conforms with the global positive 
+        ! orientation of the edge:
+        !
+        FaceMap => GetEdgeMap(GetElementFamily(Parent))
+        IF (RevertSign(ActiveFaceId)) THEN
+          OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,2))
+        ELSE
+          OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,1))
+        END IF
 
-      !
-      ! Use the parent element to check whether sign reversions are needed:
-      !
-      CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
-
-      !
-      ! Check whether the parametrization of the element conforms with the global positive 
-      ! orientation of the edge:
-      !
-      FaceMap => GetEdgeMap(GetElementFamily(Parent))
-      IF (RevertSign(ActiveFaceId)) THEN
-        OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,2))
-      ELSE
-        OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,1))
-      END IF
-
-    CASE(3)
-      IF (.NOT. ASSOCIATED(Parent % FaceIndexes)) RETURN
-      !
-      ! Pick the face of the parent element corresponding to the boundary element:
-      ! (TO CONSIDER: write a subroutine for this routine task)
-      !      
-      DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
-        Face => Solver % Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
-        IF (GetElementFamily(Element) /= GetElementFamily(Face)) CYCLE
-        matches = 0
-        DO k=1,Element % TYPE % NumberOfNodes
-          DO l=1,Face % TYPE % NumberOfNodes
-            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) matches=matches+1
-          END DO
-        END DO
-        IF (matches == Element % TYPE % NumberOfNodes ) EXIT
-      END DO
-      IF (matches /= Element % TYPE % NumberOfNodes) RETURN
-
-      FDOFs = Face % BDOFs
-      IF (FDOFs < 1) RETURN
-
-      CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
-      IF (SecondFamily) THEN
+      CASE(3)
         IF (FDOFs /= 3) CALL Fatal('ModelMixedPoisson', '3-DOF faces expected')
         TetraFaceMap(1,:) = (/ 2, 1, 3 /)
         TetraFaceMap(2,:) = (/ 1, 2, 4 /)
@@ -364,7 +342,7 @@ CONTAINS
         !FaceMap => TetraFaceMap 
 
         CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
-        
+
         IF (ANY(Element % NodeIndexes(1:3) /= Parent % NodeIndexes(TetraFaceMap(ActiveFaceId,1:3)))) THEN
           !
           ! The parent element face is indexed differently, reorder and revert afterwards:
@@ -373,12 +351,9 @@ CONTAINS
           Element % NodeIndexes(1:3) =  Parent % NodeIndexes(TetraFaceMap(ActiveFaceId,1:3))
           RevertIndices = .TRUE.
         END IF
-      END IF
 
-    CASE DEFAULT
-      CALL Warn('ModelMixedPoisson', 'Neumann BCs for 4-node faces have not been implemented yet')
-      RETURN
-    END SELECT
+      END SELECT
+    END IF
 
     np = n * Solver % Def_Dofs(GetElementFamily(Parent), Parent % BodyId, 1)
 

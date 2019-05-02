@@ -1,0 +1,106 @@
+! In addition for simple transient heat equation.
+! This is the test that continues from restart.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 12
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+  Timestepping Method = bdf
+  Bdf Order = 1
+  Timestep intervals(1) = 10
+  Timestep Sizes(1) = 2.0
+  Output Intervals(1) = 1 
+
+  Post File = case.vtu
+!  Output File = case.result
+!  Binary Output = Logical True
+
+!  Restart File = ../init_asc.result
+  Restart File = init_bin.result
+!  Restart File = ../old.result
+  Restart Position = 0
+
+! These are for testing selective restart
+  Restart Variable 1 = String Temperature
+  Restart Variable 3 = String globaltest 1  ! takes component of the global vector
+
+  Mesh Levels = 2
+!  Mesh Keep = 1
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Energy
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = -dofs 1 Temperature
+  Stabilize = True
+  Bubbles = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-3
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Symmetric = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+End
+
+
+Equation 1
+  Name = "Just Heat"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Heat Capacity = 100.0
+  Density = 1.0
+End
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1 2 3 4
+  Name = "Sides"
+  Temperature = 0.0
+End
+
+
+Solver 1 :: Reference Norm = 2.22947790E-01

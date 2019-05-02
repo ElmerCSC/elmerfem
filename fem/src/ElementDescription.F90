@@ -11706,21 +11706,96 @@ END SUBROUTINE FaceElementBasisOrdering
 
 
 !------------------------------------------------------------------------------
+!>   Normal will point out from the parent.
+!------------------------------------------------------------------------------
+  SUBROUTINE CheckNormalDirectionParent( Boundary,Normal,x,y,z,Element,turn )
+!------------------------------------------------------------------------------
+
+    TYPE(Element_t), POINTER :: Boundary
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp) :: Normal(3),x,y,z
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, OPTIONAL :: turn
+!------------------------------------------------------------------------------
+    INTEGER :: n,k
+    REAL(KIND=dp) :: x1,y1,z1
+    REAL(KIND=dp), ALLOCATABLE :: nx(:),ny(:),nz(:)
+    LOGICAL :: LPassive
+!------------------------------------------------------------------------------
+
+    IF( PRESENT( turn ) ) turn = .FALSE.
+    
+    IF ( .NOT. ASSOCIATED(Element) ) RETURN
+
+    n = Element % TYPE % NumberOfNodes
+
+    ALLOCATE( nx(n), ny(n), nz(n) )
+    
+    nx(1:n) = CurrentModel % Nodes % x(Element % NodeIndexes)
+    ny(1:n) = CurrentModel % Nodes % y(Element % NodeIndexes)
+    nz(1:n) = CurrentModel % Nodes % z(Element % NodeIndexes)
+
+    SELECT CASE( Element % TYPE % ElementCode / 100 )
+
+    CASE(2,4,8)
+      x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 0.0d0 )
+      y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 0.0d0 )
+      z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 0.0d0 )
+    CASE(3)
+      x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+    CASE(5)
+      x1 = InterpolateInElement( Element, nx, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
+      y1 = InterpolateInElement( Element, ny, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
+      z1 = InterpolateInElement( Element, nz, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
+    CASE(6)
+      x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 1.0d0/3 )
+      y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 1.0d0/3 )
+      z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 1.0d0/3 )
+    CASE(7)
+      x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+    CASE DEFAULT
+      CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
+      
+    END SELECT
+
+    ! Test vector points from surface to center of parent
+    x1 = x1 - x
+    y1 = y1 - y
+    z1 = z1 - z
+    
+    ! Swap the sign if the tentative normal points to the center, it should point outward
+    IF ( x1*Normal(1) + y1*Normal(2) + z1*Normal(3) > 0 ) THEN
+      Normal = -Normal
+      IF ( PRESENT(turn) ) turn = .TRUE.
+    END IF
+
+    DEALLOCATE( nx,ny,nz )
+!------------------------------------------------------------------------------
+  END SUBROUTINE CheckNormalDirectionParent
+!------------------------------------------------------------------------------
+
+  
+!------------------------------------------------------------------------------
 !> Gives the normal vector of a boundary element.
 !> For noncurved elements the normal vector does not depend on the local coordinate
 !> while otherwise it does. There are different uses of the function where some
 !> do not have the luxury of knowing the local coordinates and hence the center
 !> point is used as default.
 !------------------------------------------------------------------------------
-  FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check ) RESULT(Normal)
+  FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent) RESULT(Normal)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Boundary
     TYPE(Nodes_t)   :: BoundaryNodes
     REAL(KIND=dp), OPTIONAL :: u0,v0
-    LOGICAL, OPTIONAL :: Check 
+    LOGICAL, OPTIONAL :: Check
+    TYPE(Element_t), POINTER, OPTIONAL :: Parent
     REAL(KIND=dp) :: Normal(3)
 !------------------------------------------------------------------------------
-    LOGICAL :: DoCheck
+    LOGICAL :: CheckBody, CheckParent
     TYPE(ElementType_t),POINTER :: elt
     REAL(KIND=dp) :: u,v,Auu,Auv,Avu,Avv,detA,x,y,z
     REAL(KIND=dp) :: dxdu,dxdv,dydu,dydv,dzdu,dzdv
@@ -11796,30 +11871,36 @@ END SUBROUTINE FaceElementBasisOrdering
     END SELECT
 
 
-    DoCheck = .FALSE.
-    IF ( PRESENT(Check) ) DoCheck = Check
+    CheckParent = .FALSE.
+    IF( PRESENT( Parent ) ) CheckParent = ASSOCIATED( Parent ) 
+    
+    CheckBody = .FALSE.
+    IF ( PRESENT(Check) ) CheckBody = Check
 
-    IF ( DoCheck ) THEN
-      SELECT CASE( Boundary % TYPE % ElementCode / 100 ) 
-        
-      CASE(1)
-        x = nx(1)
-        y = nx(1)
-        z = nz(1)
+    IF ( .NOT. ( CheckBody .OR. CheckParent ) ) RETURN
+   
+    SELECT CASE( Boundary % TYPE % ElementCode / 100 ) 
 
-      CASE(2,4)
-        x = InterpolateInElement( Boundary,nx,0.0d0,0.0d0,0.0d0 )
-        y = InterpolateInElement( Boundary,ny,0.0d0,0.0d0,0.0d0 )
-        z = InterpolateInElement( Boundary,nz,0.0d0,0.0d0,0.0d0 )
+    CASE(1)
+      x = nx(1)
+      y = nx(1)
+      z = nz(1)
 
-      CASE(3)
-        x = InterpolateInElement( Boundary,nx,1.0d0/3,1.0d0/3,0.0d0)
-        y = InterpolateInElement( Boundary,ny,1.0d0/3,1.0d0/3,0.0d0)
-        z = InterpolateInElement( Boundary,nz,1.0d0/3,1.0d0/3,0.0d0)
-      END SELECT
+    CASE(2,4)
+      x = InterpolateInElement( Boundary,nx,0.0d0,0.0d0,0.0d0 )
+      y = InterpolateInElement( Boundary,ny,0.0d0,0.0d0,0.0d0 )
+      z = InterpolateInElement( Boundary,nz,0.0d0,0.0d0,0.0d0 )
 
+    CASE(3)
+      x = InterpolateInElement( Boundary,nx,1.0d0/3,1.0d0/3,0.0d0)
+      y = InterpolateInElement( Boundary,ny,1.0d0/3,1.0d0/3,0.0d0)
+      z = InterpolateInElement( Boundary,nz,1.0d0/3,1.0d0/3,0.0d0)
+    END SELECT
+
+    IF( CheckParent ) THEN
+      CALL CheckNormalDirectionParent( Boundary, Normal, x, y, z, Parent )   
+    ELSE
       CALL CheckNormalDirection( Boundary,Normal,x,y,z )
-
     END IF
 
 !------------------------------------------------------------------------------

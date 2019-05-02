@@ -558,6 +558,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
    REAL(KIND=dp) :: HarmPowerCoeff = 0.5_dp
+   INTEGER :: IOUnit
    
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
 !-------------------------------------------------------------------------------------------
@@ -1837,15 +1838,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      IF( ParEnv % MyPe == 0 ) THEN
        LossFile = ListGetString(SolverParams,'Harmonic Loss Filename',Found )
        IF( Found ) THEN
-         OPEN (10, FILE=LossFile)
-         WRITE( 10,'(A)')  '!body_id   harmonic(1)      harmonic(2)      joule'
+         OPEN(NEWUNIT=IOUnit, FILE=LossFile)
+         WRITE(IOUnit,'(A)')  '!body_id   harmonic(1)      harmonic(2)      joule'
          DO j=1,Model % NumberOfBodies
            IF( SUM(BodyLoss(1:3,j)) < TINY( TotalLoss(1) ) ) CYCLE
-           WRITE( 10,'(I0,T10,3ES17.9)') j, BodyLoss(1:3,j)
+           WRITE(IOUnit,'(I0,T10,3ES17.9)') j, BodyLoss(1:3,j)
          END DO
          CALL Info('MagnetoDynamicsCalsFields', &
              'Harmonic loss for bodies was saved to file: '//TRIM(LossFile),Level=6 )
-         CLOSE(10)
+         CLOSE(IOUnit)
        END IF
      END IF
 

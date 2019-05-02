@@ -54,12 +54,12 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t),POINTER :: SolverParams
+  TYPE(ValueList_t),POINTER :: SolverParams, BF
   INTEGER :: i,j,k,n,m,dim,dofs
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER :: A,B
   REAL(KIND=dp) :: Norm
-  LOGICAL:: AutomatedBCs, Found
+  LOGICAL:: AutomatedBCs, SingleNodeBC, Found
   INTEGER, ALLOCATABLE :: Def_Dofs(:,:,:)
   CHARACTER(LEN=MAX_NAME_LEN):: Equation
   INTEGER, POINTER :: Perm(:)
@@ -80,11 +80,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       CALL Info('JfixPotentialSolver','Current density is constant, nothing to do!',Level=8)
       RETURN
     END IF
-  END IF
-    
-  Visited = .TRUE.
-  
-
+  END IF  
   
   fixJpot => VariableGet( Mesh % Variables, 'Jfix')
 
@@ -121,12 +117,27 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     fixJpot => VariableGet(Mesh % Variables, 'Jfix')
   END IF
   
-
   
   AutomatedBCs = GetLogical( SolverParams, &
        'Automated Source Projection BCs', Found )
   IF (.NOT. Found) AutomatedBCs = .TRUE.
-
+  
+  ! Set potential only on a single node
+  ! This uses the functionality of DefaultDirichlet
+  SingleNodeBC = GetLogical( SolverParams,'Single Node Projection BC',Found ) 
+  IF( SingleNodeBC .AND. .NOT. Visited ) THEN
+    DO i=1,Model % NumberOfBodyForces
+      BF => Model % BodyForces(i) % Values
+      IF( ListCheckPrefix( BF,'Current Density') ) THEN
+        CALL ListAddConstReal( BF,'Jfix Single Node',0.0_dp )
+      END IF
+    END DO    
+  END IF
+  ! We may have used the single node BC directly (in case of many body forces)
+  IF(.NOT. SingleNodeBC ) THEN
+    SingleNodeBC = ListCheckPresentAnyBodyForce( Model,'Jfix Single Node' ) 
+  END IF
+  
   svar => Solver % Variable
   Solver % Variable => fixJpot
 
@@ -135,25 +146,29 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   IF(ParEnv % PEs>1) CALL ParallelInitMatrix(Solver,A)
 
   CALL ListSetNameSpace('jfix:')
-  CALL ListAddString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
-  CALL ListAddString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
+  CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
+  CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
 
-  CALL ListAddLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
-  CALL ListAddLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
-
-  IF (.NOT.ListCheckPresent(SolverParams,'Jfix: Linear System Preconditioning')) &
-    CALL ListAddString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
-
-  IF (.NOT.ListCheckPresent(SolverParams,'Jfix: Linear System Convergence Tolerance')) &
-    CALL ListAddConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
+  CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
+  CALL ListAddNewLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
+  CALL ListAddNewString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
+  CALL ListAddNewConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
       0.001_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
-
-
-  CALL ListAddLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
+  CALL ListAddNewLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
+  CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
+  CALL ListAddNewString(SolverParams,'Jfix: Nonlinear System Convergence Measure','Norm')
 
   CALL DefaultInitialize()
   CALL BulkAssembly()
-  IF ( (.NOT. A % COMPLEX) .AND. (.NOT. AutomatedBCs) ) CALL BCVectorAssembly()
+
+  IF( SingleNodeBC ) THEN
+    CONTINUE
+  ELSE IF( AutomatedBCs ) THEN
+    CALL BCAssemblyAutomated()
+  ELSE IF( .NOT. A % COMPLEX ) THEN
+    CALL BCAssemblyStatCurrent()
+  END IF
+
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
 
@@ -168,6 +183,9 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   
   IterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
   IterV % Values(1) = 1
+
+  Visited = .TRUE.
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -176,23 +194,17 @@ CONTAINS
     IMPLICIT NONE       
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF_C(:,:), FORCE_C(:)
     REAL(KIND=dp), ALLOCATABLE :: STIFF_R(:,:), FORCE_R(:)
-    INTEGER :: elem,t,i,j,k,p,q,n,nd, Rank
+    INTEGER :: elem,t,i,j,k,p,q,n,nd
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: Found
-    TYPE(Element_t), POINTER :: Element, P1,P2
+    TYPE(Element_t), POINTER :: Element
     TYPE(ValueList_t), POINTER ::  BodyForce
-
-    REAL(KIND=dp) :: weight,detJ,Source,L_R(3),Nrm(3), Jfluxeps,rabs
+    REAL(KIND=dp) :: weight,detJ,L_R(3),Nrm(3),rabs
     REAL(KIND=dp), ALLOCATABLE :: Load_R(:,:)
-
     COMPLEX(KIND=dp) :: L_C(3)
     COMPLEX(KIND=dp), ALLOCATABLE :: Load_C(:,:)
-
-    TYPE(Matrix_t), POINTER :: gm
-    INTEGER, ALLOCATABLE :: narr(:)
-    INTEGER :: l,m,ncols,ierr,status(MPI_STATUS_SIZE)
-
+    INTEGER :: l,m
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     
     SAVE Nodes
@@ -209,6 +221,8 @@ CONTAINS
       ! Element information
       ! ---------------------
       Element => GetActiveElement(elem)
+      IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+
       CALL GetElementNodes( Nodes )
       n  = GetElementNOFNodes()
       nd = n
@@ -270,14 +284,45 @@ CONTAINS
       END IF
     END DO
 
+!------------------------------------------------------------------------------
+  END SUBROUTINE BulkAssembly
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+! This subroutine fixes the potential to zero where there is some current density
+! component in the normal direction.
+!------------------------------------------------------------------------------
+  SUBROUTINE BCAssemblyAutomated()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE       
+    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF_C(:,:), FORCE_C(:)
+    REAL(KIND=dp), ALLOCATABLE :: STIFF_R(:,:), FORCE_R(:)
+    INTEGER :: elem,t,i,j,k,q,n,nd,meshdim,ip,np
+    TYPE(Nodes_t) :: Nodes
+    LOGICAL :: Found
+    TYPE(Element_t), POINTER :: Element, P1,P2, P
+    TYPE(ValueList_t), POINTER ::  BodyForce
+    REAL(KIND=dp) :: weight,L_R(3),Nrm(3), Jfluxeps,rabs
+    REAL(KIND=dp), ALLOCATABLE :: Load_R(:,:), Load_RP(:,:)
+    COMPLEX(KIND=dp) :: L_C(3)
+    COMPLEX(KIND=dp), ALLOCATABLE :: Load_C(:,:), Load_CP(:,:)
+    INTEGER :: l,m,ActParents,ParParents
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
+    
+    SAVE Nodes
+
+    meshdim = Solver % Mesh % MeshDim
+    
+    n = MAX(Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes)
+    IF (A % COMPLEX) THEN
+      ALLOCATE( Load_c(3,n), Load_CP(3,n), STIFF_C(n,n), FORCE_C(n) )
+    ELSE
+      ALLOCATE( Load_r(3,n), Load_RP(3,n), STIFF_R(n,n), FORCE_R(n) )
+    END IF
+    ALLOCATE( Basis(n), dBasisdx(n,3) )
 
     Jfluxeps = GetCReal(SolverParams, 'J normal eps', Found)
     IF (.NOT. Found) Jfluxeps = 1.0d-2
-
-    IF (ParEnv%Pes>1) THEN
-      gm => AllocateMatrix()
-      gm % FORMAT = MATRIX_LIST
-    END IF
 
     ! At outer boundaries, if J has component normal to the
     ! surface, set Fix_pot=0:
@@ -286,140 +331,111 @@ CONTAINS
     ! Automated Projection BCs = Logical False
     ! and set BCs explicitly in the sif file    
     ! ------------------------------------------------------
-    IF (AutomatedBCs) THEN
-       DO i=1,GetNOFBoundaryElements()
-          Element => GetBoundaryElement(i)
-          n = GetElementNOFNodes()
-          IF (.NOT.ActiveBoundaryElement()) CYCLE
+    DO i=1,GetNOFBoundaryElements()
+      Element => GetBoundaryElement(i)
+      n = GetElementNOFNodes()
+      IF (.NOT.ActiveBoundaryElement()) CYCLE
 
-
-          P1 => Element % BoundaryInfo % Left
-          P2 => Element % BoundaryInfo % Right
-          IF(ASSOCIATED(P1).AND.ASSOCIATED(P2)) THEN
-             IF (ALL(Perm(P1 % NodeIndexes)>0).AND.&
-                  ALL(Perm(P2 % NodeIndexes)>0)) CYCLE
-          ELSE IF (.NOT.ASSOCIATED(P1).AND..NOT.ASSOCIATED(P2)) THEN
-             CYCLE
-          END IF
-
-          IF (ASSOCIATED(P1)) THEN
-             BodyForce => GetBodyForce(P1)
-             IF (Element % TYPE % DIMENSION<P1 % TYPE % DIMENSION-1) CYCLE
-          ELSE
-             BodyForce => GetBodyForce(P2)
-             IF (Element % TYPE % DIMENSION<P2 % TYPE % DIMENSION-1) CYCLE
-          END IF
-          IF (.NOT. ASSOCIATED(BodyForce)) CYCLE
-
-          CALL GetElementNodes(Nodes)
-          Nrm = NormalVector(Element,Nodes,0._dp,0._dp)
-
-          IF (A % COMPLEX ) THEN
-             CALL GetComplexVector( BodyForce, Load_C(1:3,1:n), 'Current Density', Found )
-             L_C(1) = SUM(Load_C(1,1:n))/n
-             L_C(2) = SUM(Load_C(2,1:n))/n
-             L_C(3) = SUM(Load_C(3,1:n))/n
-
-             L_R = REAL(L_C)
-             IF (ANY(L_R /= 0.0d0)) L_R = L_R / SQRT(SUM(L_R**2))
-             IF (ABS(SUM(L_R*Nrm))<Jfluxeps) THEN
-                L_R = AIMAG(L_C)
-                IF (ANY(L_R /= 0.0d0)) L_R = L_R / SQRT(SUM(L_R**2))
-                IF (ABS(SUM(L_R*Nrm))<Jfluxeps) CYCLE
-             END IF
-          ELSE
-             CALL GetRealVector( BodyForce, Load_R(1:3,1:n), 'Current Density', Found )
-
-             L_R(1) = SUM(Load_R(1,1:n))/n
-             L_R(2) = SUM(Load_R(2,1:n))/n
-             L_R(3) = SUM(Load_R(3,1:n))/n
-             rabs = SQRT(SUM(L_R**2))
-             IF(rabs/=0) L_R = L_R / rabs
-             IF (ABS(SUM(L_R*Nrm))<Jfluxeps) CYCLE
-          END IF
-
-          DO j=1,dofs
-             DO k=1,n
-                p = Element % NodeIndexes(k) 
-                p = dofs*(Perm(p)-1)+j
-
-#ifdef OLD_DIRICHLET
-                ! In parallel collect shared constrained dofs and send to
-                ! other owners...
-                ! -------------------------------------------------------
-                IF (Parenv % PEs>1) THEN
-                   IF(A % ParallelInfo % INTERFACE(p)) THEN
-                      DO l=1,SIZE(A % ParallelInfo % Neighbourlist(p) % Neighbours)
-                         m=A % ParallelInfo % NeighbourList(p) % Neighbours(l)
-                         IF(m/=ParEnv % MyPE) THEN
-                            CALL List_AddToMatrixElement( gm % ListMatrix, m+1, &
-                                 A % ParallelInfo % GlobalDOFs(p), 1._dp)
-                         ELSE
-                            CALL CRS_SetSymmDirichlet(A,A % RHS,p,1._dp)
-                         END IF
-                      END DO
-                   ELSE
-                      CALL CRS_SetSymmDirichlet(A,A % RHS,p,1._dp)
-                   END IF
-                ELSE
-                   CALL CRS_SetSymmDirichlet(A,A % RHS,p,1._dp)
-                END IF
-#else
-                CALL UpdateDirichletDof(A, p, 0._dp)
-#endif
-             END DO
-          END DO
-       END DO
-    END IF
-
-    ! In parallel apply constraints spotted by other partitions
-    ! ---------------------------------------------------------
-#ifdef OLD_DIRICHLET
-    IF(ParEnv % PEs>1) THEN
-      IF(ASSOCIATED(gm % ListMatrix)) CALL List_toCRSMatrix(gm)
-
-      DO i=1,ParEnv % PEs
-        IF(i-1==Parenv % myPE.OR..NOT.ParEnv % Active(i)) CYCLE
-
-        IF(i<=gm % NumberOfRows) THEN
-          ncols=gm % Rows(i+1)-gm % Rows(i)
-          CALL MPI_BSEND(ncols,1,MPI_INTEGER,i-1,2120,ELMER_COMM_WORLD,ierr)
-          IF(ncols>0) THEN
-            CALL MPI_BSEND(gm%cols(gm%rows(i):gm%rows(i+1)-1),ncols, &
-                 MPI_INTEGER,i-1,2121,ELMER_COMM_WORLD,ierr)
-          END IF
+      IF (Element % TYPE % DIMENSION < meshdim -1 ) CYCLE
+      
+      P1 => Element % BoundaryInfo % Left
+      P2 => Element % BoundaryInfo % Right
+      ActParents = 0
+      ParParents = 0
+      IF( ASSOCIATED( P1 ) ) THEN
+        IF (ALL(Perm(P1 % NodeIndexes)>0)) THEN
+          ActParents = ActParents + 1
+          IF( P1 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1
         ELSE
-           ncols=0
-          CALL MPI_BSEND(ncols,1,MPI_INTEGER,i-1,2120,ELMER_COMM_WORLD,ierr)
+          NULLIFY( P1 )
         END IF
-      END DO
-
-      CALL FreeMatrix(gm)
-
-      DO i=1,ParEnv % PEs
-        IF(i-1==Parenv % myPE.OR..NOT.ParEnv % Active(i)) CYCLE
-
-        CALL MPI_RECV(ncols,1,MPI_INTEGER,i-1,2120,ELMER_COMM_WORLD,status,ierr)
-        IF(ncols>0) THEN
-          ALLOCATE(narr(ncols))
-          CALL MPI_RECV(narr,ncols,MPI_INTEGER,i-1,2121,ELMER_COMM_WORLD,status,ierr)
-          DO j=1,ncols
-            k = SearchIAItem(A % NumberOfRows,A % ParallelInfo % GlobalDOFs, narr(j))
-            IF(k>0) THEN
-              CALL CRS_SetSymmDirichlet(A,A % RHS,k,1._dp)
-            END IF
-          END DO
-          DEALLOCATE(narr)
+      END IF
+      IF( ASSOCIATED( P2 ) ) THEN
+        IF (ALL(Perm(P2 % NodeIndexes)>0)) THEN
+          ActParents = ActParents + 1
+          IF( P2 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1         
+        ELSE
+          NULLIFY( P2 )
         END IF
+      END IF
+
+      ! We have either none or both parents as actice
+      IF( ActParents == 0 .OR. ActParents == 2 ) CYCLE
+
+      ! The on parent is not a true one!
+      IF( ParEnv % PEs > 0 .AND. ParParents == 0 ) CYCLE
+
+
+      IF (ASSOCIATED(P1)) THEN
+        P => P1
+      ELSE
+        P => P2
+      END IF
+      np = P % Type % NumberOfNodes
+      BodyForce => GetBodyForce(P)
+      IF (.NOT. ASSOCIATED(BodyForce)) CYCLE
+
+      CALL GetElementNodes(Nodes)
+      Nrm = NormalVector(Element,Nodes,0._dp,0._dp)
+
+      IF (A % COMPLEX ) THEN
+        CALL GetComplexVector( BodyForce, Load_C(1:3,1:n),'Current Density', Found )
+        L_C(1) = SUM(Load_C(1,1:n))/n
+        L_C(2) = SUM(Load_C(2,1:n))/n
+        L_C(3) = SUM(Load_C(3,1:n))/n
+
+        L_R = REAL(L_C)
+        IF (ANY(L_R /= 0.0d0)) L_R = L_R / SQRT(SUM(L_R**2))
+        IF (ABS(SUM(L_R*Nrm))<Jfluxeps) THEN
+          L_R = AIMAG(L_C)
+          IF (ANY(L_R /= 0.0d0)) L_R = L_R / SQRT(SUM(L_R**2))
+          IF (ABS(SUM(L_R*Nrm))<Jfluxeps) CYCLE
+        END IF
+      ELSE
+
+!       CALL GetRealVector( BodyForce, Load_R(1:3,1:n),'Current Density', Found )
+        CurrentModel % CurrentElement => P
+        Load_RP(1,1:np) = GetReal( BodyForce, 'Current Density 1', Found, UElement=P )
+        Load_RP(2,1:np) = GetReal( BodyForce, 'Current Density 2', Found, UElement=P )
+        Load_RP(3,1:np) = GetReal( BodyForce, 'Current Density 3', Found, UElement=P )
+        CurrentModel % CurrentElement => Element
+
+        DO j=1,np
+        DO k=1,n
+          IF(Element % NodeIndexes(k)==P % NodeIndexes(j)) THEN
+            Load_R(:,k) = Load_RP(:,j)
+            EXIT
+          END IF
+        END DO
+        END DO
+
+        L_R(1) = SUM(Load_R(1,1:n))/n
+        L_R(2) = SUM(Load_R(2,1:n))/n
+        L_R(3) = SUM(Load_R(3,1:n))/n
+        rabs = SQRT(SUM(L_R**2))
+        IF(rabs/=0) L_R = L_R / rabs
+
+        ! If there is no normal component of the current density then
+        ! don't set the corresponding Dirichlet condition to zero. 
+        IF (ABS(SUM(L_R*Nrm)) < Jfluxeps) CYCLE
+      END IF
+
+      DO j=1,dofs
+        DO k=1,n
+          ip = Element % NodeIndexes(k) 
+          ip = dofs*(Perm(ip)-1)+j
+          CALL UpdateDirichletDof(A, ip, 0._dp)
+        END DO
       END DO
-    END IF
-#endif
-!------------------------------------------------------------------------------
-  END SUBROUTINE BulkAssembly
-!------------------------------------------------------------------------------
+    END DO
 
 !------------------------------------------------------------------------------
-  SUBROUTINE BCVectorAssembly()
+  END SUBROUTINE BCAssemblyAutomated
+!------------------------------------------------------------------------------
+
+  
+!------------------------------------------------------------------------------
+  SUBROUTINE BCAssemblyStatCurrent()
 !------------------------------------------------------------------------------
 !   This is intended to alter the natural boundary conditions of the potential associated
 !   with the Helmholtz projection if the source electric current density is
@@ -451,28 +467,42 @@ CONTAINS
        nd = GetElementNOFDOFs(Element)
        n  = GetElementNOFNodes(Element)
 
-       Load = 0.0d0
-       FORCE_R =0.0d0
 
+#if 1
+       Load = 0.0d0
+       FORCE_R = 0.0d0
        Load(1:n) = GetReal( BC, 'Current Density', Found )
-       Jn = SUM( Load(1:n)*Basis(1:n) ) 
 
        CALL GetElementNodes( Nodes )
        IP = GaussPoints( Element )
        DO t=1,IP % n
           stat = ElementInfo( Element, Nodes, IP % u(t), &
                IP % v(t), IP % w(t), detJ, Basis, dBasisdx )
+
+          Jn = SUM( Load(1:n)*Basis(1:n) ) 
+
           DO p=1,n
              FORCE_R(p) = FORCE_R(p) + Jn*Basis(p)*detJ*IP % s(t)
           END DO
        END DO
 
        CALL DefaultUpdateForce(FORCE_R,Element)
-    END DO
+#else
+       
+       IF( ListCheckPresent( BC,'Current Density') .OR. &
+           ListCheckPresent( BC,'Potential') ) THEN       
+         DO t=1,n
+           p = Perm(Element % NodeIndexes(t))
+           IF( p == 0 ) CYCLE
+           CALL UpdateDirichletDof(A, p, 0._dp)
+         END DO
+       END IF
+#endif       
+     END DO
 
     DEALLOCATE(FORCE_R,LOAD,Basis,dBasisdx)
 !------------------------------------------------------------------------------
-END SUBROUTINE BCVectorAssembly
+  END SUBROUTINE BCAssemblyStatCurrent
 !------------------------------------------------------------------------------
 
 
