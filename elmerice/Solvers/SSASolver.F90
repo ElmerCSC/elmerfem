@@ -267,7 +267,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
     ! bulk assembly
     DO t=1,Solver % NumberOfActiveElements
       Element => GetActiveElement(t)
-      IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+      !IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
       n = GetElementNOFNodes()
 
       NodeIndexes => Element % NodeIndexes
@@ -411,7 +411,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       IF ( GetElementFamily() == 1 ) CYCLE
 
       NodeIndexes => BoundaryElement % NodeIndexes
-      IF (ParEnv % myPe .NE. BoundaryElement % partIndex) CYCLE
+      !IF (ParEnv % myPe .NE. BoundaryElement % partIndex) CYCLE
 
       n = GetElementNOFNodes()
       FORCE = 0.0_dp
