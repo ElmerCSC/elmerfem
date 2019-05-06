@@ -584,6 +584,25 @@ CONTAINS
        t = t + 1
      END DO
 
+     ! Here we create the initial permutation such that the conforming dofs are eliminated. 
+     IF( ListGetLogical( Solver % Values,'Apply Conforming BCs',Found ) ) THEN
+       IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
+         WHERE( Mesh % PeriodicPerm > 0 ) Perm = 0
+         k = 0                  
+         DO i=1,SIZE( Perm )
+           IF( Perm(i) > 0 ) THEN
+             k = k + 1
+             Perm(i) = k
+           END IF
+         END DO
+         DO i=1,SIZE( Mesh % PeriodicPerm )
+           j = Mesh % PeriodicPerm(i)
+           IF( j > 0 ) Perm(i) = Perm(j)
+         END DO
+       END IF
+     END IF
+
+    
      IF ( ALLOCATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs)
      IF ( ALLOCATED(FaceDOFs) ) DEALLOCATE(FaceDOFs)
 !------------------------------------------------------------------------------

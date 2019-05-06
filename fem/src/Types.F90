@@ -793,6 +793,8 @@ END INTERFACE
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
      INTEGER :: DisContNodes
+
+     INTEGER, POINTER :: PeriodicPerm(:) => NULL()
      
      INTEGER, POINTER :: InvPerm(:)
 

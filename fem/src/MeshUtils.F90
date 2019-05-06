@@ -6587,78 +6587,6 @@ END SUBROUTINE GetMaxDefs
     END SUBROUTINE AddEdgeProjectorStrongStrides
     !----------------------------------------------------------------------
 
-    
-    SUBROUTINE CreateEdgeCenters( EdgeMesh, noedges, EdgeInds, EdgeX, EdgeY ) 
-      TYPE(Mesh_t), POINTER :: EdgeMesh
-      INTEGER :: noedges
-      INTEGER, ALLOCATABLE :: EdgeInds(:)
-      REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:)
-
-      LOGICAL, ALLOCATABLE :: EdgeDone(:)
-      INTEGER :: ind, eind, i, i1, i2, k1, k2
-      TYPE(Element_t), POINTER :: Element
-      INTEGER, POINTER :: EdgeMap(:,:), Indexes(:)
-      LOGICAL :: AllocationsDone 
-      
-      ALLOCATE( EdgeDone( CurrentModel % Mesh % NumberOfEdges ) )
-      AllocationsDone = .FALSE.
-
-      
-100   noedges = 0
-      EdgeDone = .FALSE.
-      
-      DO ind=1,EdgeMesh % NumberOfBulkElements
-        
-        Element => EdgeMesh % Elements(ind)        
-        EdgeMap => GetEdgeMap( Element % TYPE % ElementCode / 100)
-
-        Indexes => Element % NodeIndexes
-
-        DO i = 1,Element % TYPE % NumberOfEdges          
-          
-          eind = Element % EdgeIndexes(i)
-          
-          IF( EdgeDone(eind) ) CYCLE
-         
-          ! Get the nodes of the edge
-          i1 = EdgeMap(i,1) 
-          i2 = EdgeMap(i,2)
-
-          k1 = Indexes( i1 )
-          k2 = Indexes( i2 )
-
-          noedges = noedges + 1
-          EdgeDone(eind) = .TRUE.
-          
-          IF( ALLOCATED( EdgeInds ) ) THEN
-            EdgeX(1,noedges) = EdgeMesh % Nodes % x(k1)
-            EdgeX(2,noedges) = EdgeMesh % Nodes % x(k2)
-
-            EdgeY(1,noedges) = EdgeMesh % Nodes % y(k1)
-            EdgeY(2,noedges) = EdgeMesh % Nodes % y(k2)
-
-            ! The center of the edge (note we skip multiplication by 0.5 is it is redundant)
-            EdgeX(3,noedges) = EdgeX(1,noedges) + EdgeX(2,noedges)
-            EdgeY(3,noedges) = EdgeY(1,noedges) + EdgeY(2,noedges)
-
-            EdgeInds(noedges) = eind
-          END IF
-        END DO
-      END DO
-      
-      IF(noedges > 0 .AND. .NOT. AllocationsDone ) THEN
-        CALL Info('LevelProjector','Allocating stuff for edges',Level=20)
-        ALLOCATE( EdgeInds(noedges), EdgeX(3,noedges), EdgeY(3,noedges) )
-        AllocationsDone = .TRUE.
-        GOTO 100
-      END IF
-
-      DEALLOCATE( EdgeDone ) 
-      
-    END SUBROUTINE CreateEdgeCenters
-
-      
-      
         
     !---------------------------------------------------------------------------------
     ! Create a strong projector for edges in a conforming case.
@@ -6673,7 +6601,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER, ALLOCATABLE :: PeriodicEdge(:), EdgeInds(:), EdgeIndsM(:)
       REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeMX(:,:), EdgeMY(:,:)
       REAL(KIND=dp) :: coordprod, indexprod
-      INTEGER :: pluscount, minuscount
+      INTEGER :: minuscount
       
       CALL Info('LevelProjector','Creating strong projector for conforming edges',Level=8)
 
@@ -6684,10 +6612,10 @@ END SUBROUTINE GetMaxDefs
       sgn0 = 1.0_dp
       IF( SelfProject ) sgn0 = -sgn0
 
-      CALL CreateEdgeCenters( BMesh1, noedges, EdgeInds, EdgeX, EdgeY ) 
+      CALL CreateEdgeCenters( Mesh, BMesh1, noedges, EdgeInds, EdgeX, EdgeY ) 
       CALL Info('LevelProjector','Number of edges in slave mesh: '//TRIM(I2S(noedges)),Level=10)
 
-      CALL CreateEdgeCenters( BMesh2, noedgesm, EdgeIndsM, EdgeMX, EdgeMY )
+      CALL CreateEdgeCenters( Mesh, BMesh2, noedgesm, EdgeIndsM, EdgeMX, EdgeMY )
       CALL Info('LevelProjector','Number of edges in master mesh: '//TRIM(I2S(noedgesm)),Level=10)
       
       IF( noedges == 0 ) RETURN
@@ -6719,7 +6647,6 @@ END SUBROUTINE GetMaxDefs
         CALL Info('LevelProjector','Found all conforming counterparts',Level=10)
       END IF
 
-      pluscount = 0
       minuscount = 0
       
       DO e=1,noedges        
@@ -6745,8 +6672,8 @@ END SUBROUTINE GetMaxDefs
         y1 = EdgeY(1,e)
         y2 = EdgeY(2,e)
 
-        nrow = EdgeRow0 + EdgePerm(eind) 
-        
+        nrow = EdgeRow0 + EdgePerm(eind)         
+
         ! Get the coordinates and indexes of the 2nd edge
         EdgeM => Mesh % Edges(eindm)
         km1 = EdgeM % NodeIndexes( 1 )
@@ -6756,10 +6683,10 @@ END SUBROUTINE GetMaxDefs
           km2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km2))
         END IF
 
-        xm1 = EdgeX(1,em)
-        xm2 = EdgeX(2,em)
-        ym1 = EdgeY(1,em)
-        ym2 = EdgeY(2,em)
+        xm1 = EdgeMX(1,em)
+        xm2 = EdgeMX(2,em)
+        ym1 = EdgeMY(1,em)
+        ym2 = EdgeMY(2,em)
 
         coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) 
         indexprod = (k1-k2)*(km1-km2)
@@ -6768,8 +6695,6 @@ END SUBROUTINE GetMaxDefs
         IF( coordprod * indexprod < 0 ) THEN
           minuscount = minuscount + 1
           sgn = -sgn0
-        ELSE
-          pluscount = pluscount + 1
         END IF
           
         ! Mark that this is set so it don't need to be set again
@@ -6791,10 +6716,14 @@ END SUBROUTINE GetMaxDefs
       DEALLOCATE( EdgeIndsM, EdgeMX, EdgeMY )
       DEALLOCATE( PeriodicEdge )
 
-      CALL Info('LevelProjector','Switched sign of '//TRIM(I2S(minuscount))//' edge projectors',Level=10)
-      
-      CALL Info('LevelProjector','Created strong constraints for conforming edge dofs',Level=10)      
-
+      IF( minuscount == 0 ) THEN
+        CALL Info('LevelProjector','All edges in conforming projector have consistent sign!',Level=8)
+      ELSE
+        CALL Warn('LevelProjector','Wrong sign of '//TRIM(I2S(minuscount))//&
+          ' (out of '//TRIM(I2S(noedges))//') edge projectors')
+      END IF
+        
+      CALL Info('LevelProjector','Created strong constraints for conforming edge dofs',Level=10)            
       
     END SUBROUTINE AddEdgeProjectorStrongConforming
     !----------------------------------------------------------------------
@@ -9631,6 +9560,90 @@ END SUBROUTINE GetMaxDefs
   END SUBROUTINE CylinderFit
 
 
+  ! Create edge centers for the mapping routines.
+  !------------------------------------------------------------------------------
+  SUBROUTINE CreateEdgeCenters( Mesh, EdgeMesh, noedges, EdgeInds, EdgeX, EdgeY ) 
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), POINTER :: EdgeMesh
+    INTEGER :: noedges
+    INTEGER, ALLOCATABLE :: EdgeInds(:)
+    REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:)
+
+    LOGICAL, ALLOCATABLE :: EdgeDone(:)
+    INTEGER :: ind, eind, i, i1, i2, k1, k2, ktmp
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: EdgeMap(:,:), Indexes(:)
+    LOGICAL :: AllocationsDone 
+
+
+    ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )
+    AllocationsDone = .FALSE.
+
+
+100 noedges = 0
+    EdgeDone = .FALSE.
+
+    DO ind=1,EdgeMesh % NumberOfBulkElements
+
+      Element => EdgeMesh % Elements(ind)        
+      EdgeMap => GetEdgeMap( Element % TYPE % ElementCode / 100)
+
+      Indexes => Element % NodeIndexes
+
+      DO i = 1,Element % TYPE % NumberOfEdges          
+
+        eind = Element % EdgeIndexes(i)
+
+        IF( EdgeDone(eind) ) CYCLE
+
+        noedges = noedges + 1
+        EdgeDone(eind) = .TRUE.
+
+        IF( ALLOCATED( EdgeInds ) ) THEN            
+          ! Get the nodes of the edge
+          i1 = EdgeMap(i,1) 
+          i2 = EdgeMap(i,2)
+
+          ! These point to the local boundary mesh
+          k1 = Indexes( i1 )
+          k2 = Indexes( i2 )
+
+          ! Ensure that the order of node is consistent with the global mesh
+          ! because this is later used to check the sign of the edge. 
+          IF( EdgeMesh % InvPerm(k1) /= Mesh % Edges(eind) % NodeIndexes(1) ) THEN
+            ktmp = k1
+            k1 = k2
+            k2 = ktmp
+          END IF
+
+          EdgeX(1,noedges) = EdgeMesh % Nodes % x(k1)
+          EdgeX(2,noedges) = EdgeMesh % Nodes % x(k2)
+
+          EdgeY(1,noedges) = EdgeMesh % Nodes % y(k1)
+          EdgeY(2,noedges) = EdgeMesh % Nodes % y(k2)
+
+          ! The center of the edge (note we skip multiplication by 0.5 is it is redundant)
+          EdgeX(3,noedges) = EdgeX(1,noedges) + EdgeX(2,noedges)
+          EdgeY(3,noedges) = EdgeY(1,noedges) + EdgeY(2,noedges)
+
+          EdgeInds(noedges) = eind
+        END IF
+      END DO
+    END DO
+
+    IF(noedges > 0 .AND. .NOT. AllocationsDone ) THEN
+      CALL Info('LevelProjector','Allocating stuff for edges',Level=20)
+      ALLOCATE( EdgeInds(noedges), EdgeX(3,noedges), EdgeY(3,noedges) )
+      AllocationsDone = .TRUE.
+      GOTO 100
+    END IF
+
+    DEALLOCATE( EdgeDone ) 
+
+  END SUBROUTINE CreateEdgeCenters
+
+  
 
   !---------------------------------------------------------------------------
   !> Given two interface meshes for nonconforming rotating boundaries make 
@@ -11055,13 +11068,362 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
-  !> If periodic BCs given, compute boundary mesh projector:
+
+!------------------------------------------------------------------------------
+!> Create a permutation between two meshes such that we can solve a smaller system.
+!------------------------------------------------------------------------------
+  SUBROUTINE PeriodicPermutation( Model, Mesh, This, Trgt, PerPerm ) 
+!------------------------------------------------------------------------------   
+    TYPE(Model_t) :: Model
+    INTEGER :: This, Trgt
+    TYPE(Mesh_t), TARGET :: Mesh
+    INTEGER, POINTER :: PerPerm(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,n,dim
+    LOGICAL :: GotIt, Success, Rotational, AntiRotational, Sliding, AntiSliding, Repeating, &
+        AntiRepeating, Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
+        Flat, Plane, AntiPlane, Cylindrical, ParallelNumbering, EnforceOverlay, &
+        FullCircle
+    REAL(KIND=dp) :: Radius
+    TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
+    TYPE(ValueList_t), POINTER :: BC
+    
+!------------------------------------------------------------------------------
+    IF ( This <= 0  .OR. Trgt <= 0 ) RETURN    
+    CALL Info('PeriodicPermutation','Starting periodic permutation creation',Level=12)
+
+    DIM = CoordinateSystemDimension()
+    BC => Model % BCs(This) % Values
+    PMesh => Mesh
+    
+    CALL Info('PeriodicPermutation','-----------------------------------------------------',Level=8)
+    WRITE( Message,'(A,I0,A,I0)') 'Creating mapping between BCs ',This,' and ',Trgt
+    CALL Info('PeriodicPermutation',Message,Level=8)
+
+    BMesh1 => AllocateMesh()
+    BMesh2 => AllocateMesh()
+    
+    CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, Success ) 
+    
+    IF(.NOT. Success) THEN
+      CALL ReleaseMesh(BMesh1)
+      CALL ReleaseMesh(BMesh2)
+      RETURN
+    END IF
+
+    ! If requested map the interface coordinate from (x,y,z) to any permutation of these. 
+    CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
+    
+    ! Lets check what kind of symmetry we have.
+    Rotational = ListGetLogical( BC,'Rotational Projector',GotIt )
+    AntiRotational = ListGetLogical( BC,'Anti Rotational Projector',GotIt )
+
+    Cylindrical =  ListGetLogical( BC,'Cylindrical Projector',GotIt )
+
+    Radial = ListGetLogical( BC,'Radial Projector',GotIt )
+    AntiRadial = ListGetLogical( BC,'Anti Radial Projector',GotIt )
+
+    Axial = ListGetLogical( BC,'Axial Projector',GotIt )
+    AntiAxial = ListGetLogical( BC,'Anti Axial Projector',GotIt )
+
+    Sliding = ListGetLogical( BC, 'Sliding Projector',GotIt )
+    AntiSliding = ListGetLogical( BC, 'Anti Sliding Projector',GotIt )
+
+    Flat = ListGetLogical( BC, 'Flat Projector',GotIt )
+    Plane = ListGetLogical( BC, 'Plane Projector',GotIt )
+    AntiPlane = ListGetLogical( BC,'Anti Plane Projector',GotIt )    
+
+    IF( AntiRotational .OR. AntiRadial .OR. AntiAxial .OR. AntiPlane ) THEN
+      CALL Fatal('PeriodicPermutation','We cannot deal with antiperiodic systems with permutation!')
+    END IF
+    
+    IF( Radial ) CALL Info('PeriodicProjector','Enforcing > Radial Projector <',Level=12)
+    IF( Axial ) CALL Info('PeriodicProjector','Enforcing > Axial Projector <',Level=12)
+    IF( Sliding ) CALL Info('PeriodicProjector','Enforcing > Sliding Projector <',Level=12)
+    IF( Cylindrical ) CALL Info('PeriodicProjector','Enforcing > Cylindrical Projector <',Level=12)
+    IF( Rotational ) CALL Info('PeriodicProjector','Enforcing > Rotational Projector <',Level=12)
+    IF( Flat ) CALL Info('PeriodicProjector','Enforcing > Flat Projector <',Level=12)
+    IF( Plane ) CALL Info('PeriodicProjector','Enforcing > Plane Projector <',Level=12)
+
+    DoNodes = .TRUE.
+    IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',GotIt ) ) DoNodes = .FALSE.    
+    IF( ListGetLogical( BC,'Projector Skip Nodes',GotIt) ) DoNodes = .FALSE.
+
+    ! We are conservative here since there may be edges in 2D which 
+    ! still cannot be used for creating the projector
+    DoEdges = ( Mesh % NumberOfEdges > 0 .AND. Mesh % MeshDim == 3 .AND. Dim == 3 )
+    
+    ! Ensure that there is no p-elements that made us think that we have edges
+    ! Here we assume that if there is any p-element then also the 1st element is such
+    IF( DoEdges ) THEN
+      IF(isPelement(Mesh % Elements(1))) THEN
+        DoEdges = .FALSE.
+        CALL Info('PeriodicProjector','Edge projector will not be created for p-element mesh',Level=10)
+      END IF
+    END IF
+        
+    IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',GotIt ) ) DoEdges = .FALSE.
+    IF( ListGetLogical( BC,'Projector Skip Edges',GotIt) ) DoEdges = .FALSE.
+      
+    ! Make the two meshes to coincide using rotation, translation scaling.
+    !---------------------------------------------------------------------------------
+    Radius = 1.0_dp
+    EnforceOverlay = ListGetLogical( BC, 'Mortar BC enforce overlay', GotIt )
+
+    IF( Rotational .OR. Cylindrical ) THEN
+      CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, Cylindrical, &
+          Radius, FullCircle )
+      IF( FullCircle ) CALL Fatal('PeriodicPermutation','Cannot deal full circle with permutation')
+    ELSE IF( Radial ) THEN
+      CALL RadialInterfaceMeshes( BMesh1, BMesh2, BC )
+    ELSE IF( Flat ) THEN
+      CALL FlatInterfaceMeshes( BMesh1, BMesh2, BC )
+    ELSE IF( Axial ) THEN
+      CALL FlatInterfaceMeshes( BMesh1, BMesh2, BC )      
+      CALL AxialInterfaceMeshes( BMesh1, BMesh2, BC )
+    ELSE IF( Plane ) THEN
+      CALL PlaneInterfaceMeshes( BMesh1, BMesh2, BC )
+    ELSE IF( .NOT. Sliding ) THEN
+      IF( .NOT. GotIt ) EnforceOverlay = .TRUE.
+    END IF
+    
+    IF( EnforceOverlay ) THEN
+      CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
+    END IF
+    
+    IF( DoNodes ) CALL ConformingNodePerm()
+    IF( DoEdges ) CALL ConformingEdgePerm()
+
+    ! Deallocate mesh structures:
+    !---------------------------------------------------------------
+    BMesh1 % Projector => NULL()
+    BMesh1 % Parent => NULL()
+    !DEALLOCATE( BMesh1 % InvPerm ) 
+    CALL ReleaseMesh(BMesh1)
+
+    BMesh2 % Projector => NULL()
+    BMesh2 % Parent => NULL()
+    !DEALLOCATE( BMesh2 % InvPerm ) 
+    CALL ReleaseMesh(BMesh2)
+
+    CALL Info('PeriodicPermutation','Periodic permutation created, now exiting...',Level=8)
+
+
+  CONTAINS
+
+    
+
+    !---------------------------------------------------------------------------------
+    ! Create a permutation to eliminate edges in a conforming case.
+    !---------------------------------------------------------------------------------
+    SUBROUTINE ConformingEdgePerm()
+
+      INTEGER :: ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i1, i2, &
+          noedges, noedgesm, Nundefined, n0
+      TYPE(Element_t), POINTER :: Edge, EdgeM
+      INTEGER, POINTER :: Indexes(:), IndexesM(:)
+      REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2, y2m, nrow
+      INTEGER, ALLOCATABLE :: PeriodicEdge(:), EdgeInds(:), EdgeIndsM(:)
+      REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeMX(:,:), EdgeMY(:,:)
+      REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
+      INTEGER :: minuscount, mini
+      LOGICAL :: Parallel
+      TYPE(Mesh_t), POINTER :: pMesh
+      
+      CALL Info('ConformingEdgePerm','Creating permutation for elimination of conforming edges',Level=8)
+
+      n = Mesh % NumberOfEdges
+      IF( n == 0 ) RETURN      
+            
+      sgn0 = 1.0_dp
+      pMesh => Mesh
+      
+      CALL CreateEdgeCenters( pMesh, BMesh1, noedges, EdgeInds, EdgeX, EdgeY ) 
+      CALL Info('ConformingEdgePerm','Number of edges in slave mesh: '//TRIM(I2S(noedges)),Level=10)
+
+      CALL CreateEdgeCenters( pMesh, BMesh2, noedgesm, EdgeIndsM, EdgeMX, EdgeMY )
+      CALL Info('ConformingEdgePerm','Number of edges in master mesh: '//TRIM(I2S(noedgesm)),Level=10)
+
+      IF( noedges == 0 ) RETURN
+      IF( noedgesm == 0 ) RETURN
+      
+      ALLOCATE( PeriodicEdge(noedges))
+      PeriodicEdge = 0
+      maxminss = 0.0_dp
+      n0 = Mesh % NumberOfNodes
+      Parallel = ( ParEnv % PEs > 1 )
+      
+      DO i1=1,noedges
+        x1 = EdgeX(3,i1)
+        y1 = EdgeY(3,i1)
+        
+        IF( PerPerm( EdgeInds(i1) + n0 ) > 0 ) CYCLE
+
+        minss = HUGE(minss)
+        mini = 0
+        
+        DO i2=1,noedgesm
+          x2 = EdgeMX(3,i2)
+          y2 = EdgeMY(3,i2)
+
+          ss = (x1-x2)**2 + (y1-y2)**2
+          IF( ss < minss ) THEN
+            minss = ss
+            mini = i2
+          END IF
+        END DO
+        
+        ! we have a hit
+        PeriodicEdge(i1) = mini
+        maxminss = MAX( maxminss, minss )
+      END DO
+
+      WRITE(Message,'(A,ES12.4)') 'Maximum minimum deviation in edge centers:',SQRT(maxminss)
+      CALL Info('ConformingEdgePerm',Message,Level=8)
+            
+      minuscount = 0
+
+      DO e=1,noedges        
+        eind = EdgeInds(e)
+
+        ! This has already been set
+        IF( PerPerm(eind+n0) > 0 ) CYCLE
+
+        ! Get the conforming counterpart
+        em = PeriodicEdge(e)
+        IF( em == 0 ) CYCLE
+        eindm = EdgeIndsM(em)        
+
+        ! Get the coordinates and indexes of the 1st edge
+        Edge => Mesh % Edges(eind)
+        k1 = Edge % NodeIndexes( 1 )
+        k2 = Edge % NodeIndexes( 2 )
+        IF(Parallel) THEN
+          k1 = Mesh % ParallelInfo % GlobalDOFs(BMesh1 % InvPerm(k1))
+          k2 = Mesh % ParallelInfo % GlobalDOFs(BMesh1 % InvPerm(k2))
+        END IF
+
+        ! We cannot use the (x,y) coordinates of the full "Mesh" as the boundary meshes
+        ! have been mapped such that interpolation is possible. 
+        x1 = EdgeX(1,e)
+        x2 = EdgeX(2,e)
+        y1 = EdgeY(1,e)
+        y2 = EdgeY(2,e)
+
+        ! Get the coordinates and indexes of the 2nd edge
+        EdgeM => Mesh % Edges(eindm)
+        km1 = EdgeM % NodeIndexes( 1 )
+        km2 = EdgeM % NodeIndexes( 2 )
+        IF(Parallel) THEN
+          km1 = Mesh % ParallelInfo % GlobalDOFs(BMesh2 % InvPerm(km1))
+          km2 = Mesh % ParallelInfo % GlobalDOFs(BMesh2 % InvPerm(km2))
+        END IF
+
+        xm1 = EdgeMX(1,em)
+        xm2 = EdgeMX(2,em)
+        ym1 = EdgeMY(1,em)
+        ym2 = EdgeMY(2,em)
+
+        coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) 
+        indexprod = (k1-k2)*(km1-km2)
+
+        IF( coordprod * indexprod < 0 ) THEN
+          minuscount = minuscount + 1
+          !PRINT *,'prod:',coordprod,indexprod
+          !PRINT *,'x:',x1,x2,xm1,xm2
+          !PRINT *,'y:',y1,y2,ym1,ym2
+          !PRINT *,'k:',k1,k2,km1,km2
+        END IF
+
+        ! Mark that this is set so it don't need to be set again
+        PerPerm(eind+n0) = eindm + n0
+      END DO
+
+      DEALLOCATE( EdgeInds, EdgeX, EdgeY ) 
+      DEALLOCATE( EdgeIndsM, EdgeMX, EdgeMY )
+      DEALLOCATE( PeriodicEdge )
+
+      IF( minuscount == 0 ) THEN
+        CALL Info('ConformingEdgePerm','All edges in conforming projector have consistent sign!',Level=8)
+      ELSE
+        CALL Warn('ConformingEdgePerm','Wrong sign of '//TRIM(I2S(minuscount))//&
+          ' (out of '//TRIM(I2S(noedges))//') edge projectors')
+      END IF
+
+
+    END SUBROUTINE ConformingEdgePerm
+
+
+    
+    ! Create a permutation to eliminate nodes in a conforming case.
+    !----------------------------------------------------------------------
+    SUBROUTINE ConformingNodePerm()
+
+      INTEGER :: n, i1, i2, j1, j2, k1, k2, mini
+      REAL(KIND=dp) :: x1, y1, x2, y2
+      REAL(KIND=dp) :: ss, minss, maxminss
+
+      CALL Info('ConformingNodePerm','Creating permutations for conforming nodes',Level=8)
+
+      n = Mesh % NumberOfNodes
+      IF( n == 0 ) RETURN      
+
+      IF( Bmesh1 % NumberOfNodes == 0 ) RETURN
+      IF( Bmesh2 % NumberOfNodes == 0 ) RETURN
+
+      maxminss = 0.0_dp
+      DO i1=1,Bmesh1 % NumberOfNodes
+
+        j1 = BMesh1 % InvPerm(i1)
+        IF( PerPerm(j1) > 0 ) CYCLE
+
+        x1 = BMesh1 % Nodes % x(i1)
+        y1 = BMesh1 % Nodes % y(i1)      
+        
+        minss = HUGE(minss)
+        mini = 0
+        
+        DO i2=1,Bmesh2 % NumberOfNodes
+          x2 = BMesh2 % Nodes % x(i2)
+          y2 = BMesh2 % Nodes % y(i2)
+          
+          ss = (x1-x2)**2 + (y1-y2)**2
+          IF( ss < minss ) THEN
+            minss = ss
+            mini = i2
+          END IF
+
+          IF( minss < EPSILON( minss ) ) EXIT
+        END DO
+        
+        ! Assume that the closest node is a hit
+        PerPerm(j1) = BMesh2 % InvPerm(mini)
+        maxminss = MAX( maxminss, minss )
+      END DO
+      
+      WRITE(Message,'(A,ES12.4)') 'Maximum minimum deviation in node coords:',SQRT(maxminss)
+      CALL Info('ConformingNodePerm',Message,Level=8)
+
+
+    END SUBROUTINE ConformingNodePerm
+    !----------------------------------------------------------------------
+
+    
+!------------------------------------------------------------------------------
+  END SUBROUTINE PeriodicPermutation
+!------------------------------------------------------------------------------
+
+
+  
+  !> If periodic BCs given, compute boundary mesh projector.
+  !> If conforming BCs given, create permutation for elimination.
   !------------------------------------------------------
   SUBROUTINE GeneratePeriodicProjectors( Model, Mesh ) 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: i,k
-    LOGICAL :: Found 
+    INTEGER :: i,j,k,n,nocyclic,noconf,mini,maxi
+    LOGICAL :: Found
+    INTEGER, POINTER :: PerPerm(:)
     
     DO i = 1,Model % NumberOfBCs
       k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', Found )
@@ -11069,6 +11431,41 @@ END SUBROUTINE GetMaxDefs
         Model % BCs(i) % PMatrix => PeriodicProjector( Model, Mesh, i, k )
       END IF
     END DO
+
+    IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
+      IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
+        n = Mesh % NumberOfNodes + Mesh % NumberOfEdges
+        ALLOCATE( Mesh % PeriodicPerm(n) )
+      END IF
+      PerPerm => Mesh % PeriodicPerm 
+      PerPerm = 0
+      DO i = 1,Model % NumberOfBCs
+        k = ListGetInteger( Model % BCs(i) % Values, 'Conforming BC', Found )
+        IF( Found ) THEN
+          CALL PeriodicPermutation( Model, Mesh, i, k, PerPerm )
+        END IF
+      END DO
+      nocyclic = 0
+      noconf = 0
+      mini = HUGE(mini)
+      maxi = 0
+      DO i = 1,n
+        j = PerPerm(i)
+        IF( j > 0 ) THEN
+          mini = MIN( mini, i )
+          maxi = MAX( maxi, i )
+          noconf = noconf + 1
+          IF( PerPerm(j) > 0 ) THEN
+            PerPerm(i) = PerPerm(j)
+            nocyclic = nocyclic + 1
+          END IF
+        END IF
+      END DO
+      CALL Info('GeneratePeriodicProjectors','Number of conforming maps: '//TRIM(I2S(noconf)),Level=8)
+      CALL Info('GeneratePeriodicProjectors','Number of cyclic maps: '//TRIM(I2S(nocyclic)),Level=8)
+    END IF
+
+    
   END SUBROUTINE GeneratePeriodicProjectors
 
 
