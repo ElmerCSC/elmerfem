@@ -795,6 +795,7 @@ END INTERFACE
      INTEGER :: DisContNodes
 
      INTEGER, POINTER :: PeriodicPerm(:) => NULL()
+     LOGICAL, POINTER :: PeriodicFlip(:) => NULL()
      
      INTEGER, POINTER :: InvPerm(:)
 
