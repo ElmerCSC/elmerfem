@@ -1,7 +1,4 @@
 ! This test case computes the magnetic field induced by a cylindrical wire
-! The field outside the wire should be |B|=\mu*I/(2*pi*r).
-! If I=1 A and r=0.01 m then |B|=2.0e-4.
-! The computed result is 1.974e-4 i.e. error of around 1%.
 !
 ! This one with extruded wedge mesh & periodic BCs. 
 !
@@ -14,7 +11,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 10
   Coordinate System = "Cartesian"
   Simulation Type = Steady
   Steady State Max Iterations = 1
@@ -62,9 +59,8 @@ Solver 1
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
   Fix Input Current Density = True
 
-  Linear System Symmetric = True
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = ILU1 !none
+  Linear System Preconditioning = ILU1
   Linear System Residual Output = 10
   Linear System Max Iterations = 1000
   Linear System Iterative Method = BiCgStabl 
@@ -74,15 +70,8 @@ Solver 1
   Apply Mortar BCs = True
   Edge Basis = Logical True
 
-!  Mortar BCs Additive = Logical True
-!  Optimize Bandwidth = False
-
-!  Mortar Diag = Real 0.0
-!  Lumped Diag = Logical True
-
-!  FixZ Coordinates(3) = Real 0.0 0.0 0.0
-!  FixZ Direction(3) = Real 0.0 0.0 1.0
-!  FixZ Amplitude = Real 1.0e-4
+  Mortar BCs Additive = Logical True
+  Optimize Bandwidth = False
 End
 
 
@@ -141,7 +130,7 @@ Body Force 1
 ! a) Give current density
   Current Density 1 = 0.0
   Current Density 2 = 0.0
-  Current Density 3 = $ 1.0/(1.0e-6*pi)
+  Current Density 3 = $ 1.0e6/(1.0e-6*pi)
 End
 
 Boundary Condition 1
@@ -154,30 +143,21 @@ Boundary Condition 2
   Name = "WireStart"
   Target Boundaries(1) = 9 
 
-  Coil Start = Logical True
-
-  AV {e} 1 = Real 0.0
-  AV {e} 2 = Real 0.0
-  AV = Real 0.0
+  AV {e} = Real 0.0
 End
 
 Boundary Condition 3
   Name = "AirStart"
   Target Boundaries(1) = 10
 
-  AV {e} 1 = Real 0.0
-  AV {e} 2 = Real 0.0
+  AV {e} = Real 0.0
 End
 
 Boundary Condition 4
   Name = "WireEnd"
   Target Boundaries(1) = 11
 
-  Coil End = Logical True
-
-  AV {e} 1 = Real 0.0
-  AV {e} 2 = Real 0.0
-  AV = Real 0.0
+  AV {e} = Real 0.0
 End
 
 
@@ -185,8 +165,7 @@ Boundary Condition 5
   Name = "AirEnd"
   Target Boundaries(1) = 12
 
-  AV {e} 1 = Real 0.0
-  AV {e} 2 = Real 0.0
+  AV {e} = Real 0.0
 End
 
 
@@ -197,51 +176,35 @@ Boundary Condition 6
   Name = "MaxX"
   Target Boundaries(1) = 5
 
-!  AV {e} 1 = Real 0.0
-!  AV {e} 2 = Real 0.0
-
   Mortar BC = Integer 7
-  Galerkin Projector = Logical True
   Plane Projector = Logical True
   Level Projector Conforming Edges Strong = Logical True
   Projector Skip Nodes = True
-!  Projector Priority = Integer 1 
-
-!  Save Projector = Logical True
 End
 
 Boundary Condition 7
   Name = "MinX"
   Target Boundaries(1) = 7
-
-!  AV {e} 1 = Real 0.0
-!  AV {e} 2 = Real 0.0
 End
  
 Boundary Condition 8
   Name = "MaxY"
   Target Boundaries(1) = 6
 
-!  AV {e} 1 = Real 0.0
-!  AV {e} 2 = Real 0.0
-
   Mortar BC = Integer 9
-  Galerkin Projector = Logical True
-!  Anti Plane Projector = Logical True
-!  Level Projector Conforming Edges Strong = Logical True
+
+! It is strange that if we change this to periodic this does not converge
+  Anti Plane Projector = Logical True
+  Level Projector Conforming Edges Strong = Logical True
   Projector Skip Nodes = True
-!  Projector Priority = Integer 2
 End
 
  
 Boundary Condition 9
   Name = "MinY"
   Target Boundaries(1) = 8
-
-!  AV {e} 1 = Real 0.0
-!  AV {e} 2 = Real 0.0
 End
 
-Solver 1 :: Reference Norm = 4.69017942E-10
+Solver 1 :: Reference Norm = 1.22793647E-04
 
-! not periodic: 9.83777801E-11
+! not periodic: 9.83777801E-5

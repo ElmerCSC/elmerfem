@@ -6716,12 +6716,8 @@ END SUBROUTINE GetMaxDefs
       DEALLOCATE( EdgeIndsM, EdgeMX, EdgeMY )
       DEALLOCATE( PeriodicEdge )
 
-      IF( minuscount == 0 ) THEN
-        CALL Info('LevelProjector','All edges in conforming projector have consistent sign!',Level=8)
-      ELSE
-        CALL Warn('LevelProjector','Wrong sign of '//TRIM(I2S(minuscount))//&
-          ' (out of '//TRIM(I2S(noedges))//') edge projectors')
-      END IF
+      CALL Info('LevelProjector','Swicthed sign in '//TRIM(I2S(minuscount))//&
+          ' (out of '//TRIM(I2S(noedges))//') conforming edge projectors',Level=8)
         
       CALL Info('LevelProjector','Created strong constraints for conforming edge dofs',Level=10)            
       
