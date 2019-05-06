@@ -1,0 +1,131 @@
+! Test case for Poisson equation + conforming BCs.
+!
+! P.R. 6.5.2019
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "hexwire"
+End
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+
+  Post File = case.vtu
+End
+
+Body 1
+  Name = "Heat"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Rest"
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End
+
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+
+Solver 1
+  Equation = "HeatEq"
+
+  Variable = "Temperature"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCgStabl 
+  Linear System Convergence Tolerance = 1.0e-7
+  BicgStabl Polynomial Degree = 4
+
+  Apply Conforming BCs = Logical True
+  Optimize Bandwidth = False
+End
+
+
+
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 1.0
+End
+
+
+Boundary Condition 1
+  Name = "AirStart"
+  Target Boundaries(1) = 5
+End
+
+
+Boundary Condition 2
+  Name = "WireStart"
+  Target Boundaries(1) = 6 
+  Temperature = 0.0
+End
+
+
+Boundary Condition 3
+  Name = "AirEnd"
+  Target Boundaries(1) = 7
+End
+
+
+Boundary Condition 4
+  Name = "WireEnd"
+  Target Boundaries(1) = 8
+  Temperature = 0.0
+End
+
+
+Boundary Condition 5
+  Name = "MaxX"
+  Target Boundaries(1) = 2
+
+!  Periodic BC = 6
+!  Periodic BC Temperature = Logical True
+  Conforming BC = Integer 6
+  Plane Projector = Logical True
+End
+
+Boundary Condition 6
+  Name = "MinX"
+  Target Boundaries(1) = 1
+End
+ 
+Boundary Condition 7
+  Name = "MaxY"
+  Target Boundaries(1) = 4
+
+!  Periodic BC = 8
+!  Periodic BC Temperature = Logical True
+  Conforming BC = Integer 8
+  Plane Projector = Logical True
+End
+ 
+Boundary Condition 8
+  Name = "MinY"
+  Target Boundaries(1) = 3
+End
+
+Solver 1 :: Reference Norm = 2.76830599E+01
+
+
