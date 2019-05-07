@@ -16628,7 +16628,7 @@ CONTAINS
            CALL Info('GenerateConstraintMatrix','Skipping component: '//TRIM(I2S(1)),Level=12)
            CYCLE
          END IF
-         
+
          IF( SumThis ) THEN
            DO i=1,Atmp % NumberOfRows                               
              ! Skip empty row
@@ -16649,17 +16649,19 @@ CONTAINS
              ELSE
                k = i
              END IF
-             
+
+             kk = k             
              IF( Reorder ) THEN
-               IF( Perm(k) == 0 ) CYCLE
+               kk = Perm(k)
+               IF( kk == 0 ) CYCLE
              END IF
              
-             NewRow = ( SumPerm(k) == 0 )
-             IF( SumPerm(k) == 0 ) THEN
+             NewRow = ( SumPerm(kk) == 0 )
+             IF( NewRow ) THEN
                sumrow = sumrow + 1                
-               SumPerm(k) = sumrow 
+               SumPerm(kk) = sumrow 
              ELSE IF(.NOT. AllocationsDone ) THEN
-               IF( Priority /= PrevPriority .AND. SumPerm(k) < 0 ) THEN
+               IF( Priority /= PrevPriority .AND. SumPerm(kk) < 0 ) THEN
                  NeglectedRows = NeglectedRows + 1
                ELSE
                  EliminatedRows = EliminatedRows + 1
@@ -16700,19 +16702,18 @@ CONTAINS
              k = i
            END IF
 
+           kk = k
            IF( Reorder ) THEN
              kk = Perm(k) 
              IF( kk == 0 ) CYCLE
-           ELSE
-             kk = k
            END IF
              
            IF( SumThis ) THEN             
-             row = SumPerm(k)
+             row = SumPerm(kk)
              IF( row <= 0 ) CYCLE
 
              ! Mark this for future contributions so we know this is already set
-             IF( Priority /= PrevPriority ) SumPerm(k) = -SumPerm(k)
+             IF( Priority /= PrevPriority ) SumPerm(kk) = -SumPerm(kk)
            ELSE
              sumrow = sumrow + 1
              row = sumrow
@@ -16850,7 +16851,7 @@ CONTAINS
                    k2 = k2 + 1
                    IF( AllocationsDone ) THEN                                        
                      IF( SumThis ) THEN
-                       l = ABS( SumPerm( col) )
+                       l = ABS( SumPerm( col2) )
                      ELSE
                        l = MortarBC % Perm(col)
                      END IF
@@ -16914,27 +16915,26 @@ CONTAINS
                k = i
              END IF
 
+             kk = k
              IF( Reorder ) THEN
                kk = Perm(k)
                IF( kk == 0 ) CYCLE
-             ELSE
-               kk = k
              END IF
 
              IF( SumThis ) THEN
                IF( Dofs*(k-1)+j > SIZE(SumPerm) ) THEN
                  PRINT *,'bad1'
                END IF
-               NewRow = ( SumPerm(Dofs*(k-1)+j) == 0 )
+               NewRow = ( SumPerm(Dofs*(kk-1)+j) == 0 )
                IF( NewRow ) THEN
                  sumrow = sumrow + 1                
                  IF( Priority /= 0 ) THEN
                    ! Use negative sign to show that this has already been set by priority
-                   SumPerm(Dofs*(k-1)+j) = -sumrow 
+                   SumPerm(Dofs*(kk-1)+j) = -sumrow 
                  ELSE
-                   SumPerm(Dofs*(k-1)+j) = sumrow 
+                   SumPerm(Dofs*(kk-1)+j) = sumrow 
                  END IF
-               ELSE IF( Priority /= PrevPriority .AND. SumPerm(Dofs*(k-1)+j) < 0 ) THEN
+               ELSE IF( Priority /= PrevPriority .AND. SumPerm(Dofs*(kk-1)+j) < 0 ) THEN
                  IF(.NOT. AllocationsDone ) THEN
                    NeglectedRows = NeglectedRows + 1
                  END IF                 
@@ -16944,7 +16944,7 @@ CONTAINS
                    EliminatedRows = EliminatedRows + 1
                  END IF
                END IF
-               row = ABS( SumPerm(Dofs*(k-1)+j) )
+               row = ABS( SumPerm(Dofs*(kk-1)+j) )
              ELSE
                sumrow = sumrow + 1
                row = sumrow
@@ -17171,10 +17171,10 @@ CONTAINS
          Level=6)
           
      ! Eliminate entries
-     IF( EliminatedRows > 0 ) THEN
+     IF( SumProjectors ) THEN
        CALL Info('GenerateConstraintMatrix','Number of eliminated rows: '&
            //TRIM(I2S(EliminatedRows)))
-       CALL CRS_PackMatrix( Btmp ) 
+       IF( EliminatedRows > 0 ) CALL CRS_PackMatrix( Btmp ) 
      END IF
 
      IF( NeglectedRows > 0 ) THEN
