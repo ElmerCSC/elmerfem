@@ -1,0 +1,148 @@
+! Solver a system with block preconditioner such that different
+! physical domains corresponds to different blocks in matrix.
+!
+! This is the reference solution.
+!
+! P.R. 9.5.2019
+
+Check Keywords warn
+
+! Heating in different blocks
+$h1=1.0  
+$h2=2.0  
+$h3=3.0  
+$h4=4.0  
+
+Header
+  Mesh DB "." "spots"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Timestep Intervals = 1
+  Timestep Sizes = 1.0
+  Timestepping Method = implicit euler
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "ref.vtu"
+
+  Mesh Levels = 3
+End
+
+Constants
+  Stefan Boltzmann = 1.0
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Name = "Body3"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Name = "Body4"
+  Body Force = 3
+  Equation = 1
+  Material = 1
+End
+
+Body 5
+  Name = "Body5"
+  Body Force = 4
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation"
+  Active Solvers = 1
+End
+
+Material 1
+  Name = "Unity"
+  Density = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 1.0
+End
+
+Body Force 1
+  Name = "Heater1"
+  Heat Source = $h1  
+End
+
+Body Force 2
+  Name = "Heater2"
+  Heat Source = $h2
+End
+
+Body Force 3
+  Name = "Heater3"
+  Heat Source = $h3
+End
+
+Body Force 4
+  Name = "Heater4"
+  Heat Source = $h4
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Variable = Temperature
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 20
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+
+  Variable 1 = Temperature
+  Operator 1 = max
+
+  Show Norm Index = 1
+End 
+  
+
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries = 1
+  Temperature = Real 0
+End
+
+
+Solver 2 :: Reference Norm = 1.76496705E+00
+
+
+
