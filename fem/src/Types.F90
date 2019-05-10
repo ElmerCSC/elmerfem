@@ -600,6 +600,7 @@ END INTERFACE
 
      INTEGER :: DOFs = 0
      INTEGER, POINTER          :: Perm(:) => NULL()
+     LOGICAL :: PeriodicFlipActive = .FALSE.
      REAL(KIND=dp)             :: Norm=0, PrevNorm=0,NonlinChange=0, SteadyChange=0
      INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter=-1
      INTEGER :: LinConverged=-1
@@ -853,7 +854,7 @@ END INTERFACE
       REAL(KIND=dp) :: Alpha,Beta,dt
 
       LOGICAL :: NewtonActive = .FALSE.
-      LOGICAL :: AnyPeriodicFlip = .FALSE.
+      LOGICAL :: PeriodicFlipActive = .FALSE.
       
       INTEGER :: SolverExecWhen
       INTEGER :: SolverMode

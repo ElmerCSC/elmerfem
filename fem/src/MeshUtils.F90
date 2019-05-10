@@ -11275,8 +11275,6 @@ END SUBROUTINE GetMaxDefs
     BMesh2 => AllocateMesh()
     
     CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, Success ) 
-
-PRINT *,'a1'
     
     IF(.NOT. Success) THEN
       CALL ReleaseMesh(BMesh1)
@@ -11286,8 +11284,6 @@ PRINT *,'a1'
 
     ! If requested map the interface coordinate from (x,y,z) to any permutation of these. 
     CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
-
-PRINT *,'a2'
     
     ! Lets check what kind of symmetry we have.
     Rotational = ListGetLogical( BC,'Rotational Projector',GotIt )
@@ -11308,9 +11304,7 @@ PRINT *,'a2'
     Plane = ListGetLogical( BC, 'Plane Projector',GotIt )
     AntiPlane = ListGetLogical( BC,'Anti Plane Projector',GotIt )    
     IF( AntiPlane ) Plane = .TRUE.
-    
-PRINT *,'a3'
-    
+        
     AntiPeriodic = ( AntiRotational .OR. AntiRadial .OR. AntiAxial .OR. AntiPlane ) 
 
     IF( AntiPeriodic ) CALL Info('PeriodicPermutation','Assuming antiperiodic conforming projector',Level=8)

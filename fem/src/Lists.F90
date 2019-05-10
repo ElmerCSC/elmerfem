@@ -586,7 +586,7 @@ CONTAINS
 
      ! Here we create the initial permutation such that the conforming dofs are eliminated. 
      IF( ListGetLogical( Solver % Values,'Apply Conforming BCs',Found ) ) THEN
-       Solver % AnyPeriodicFlip = .FALSE.
+       Solver % PeriodicFlipActive = .FALSE.
        n = 0
        IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
          ! Set the eliminated dofs to zero and renumber
@@ -608,7 +608,7 @@ CONTAINS
            END IF
          END DO
 
-         Solver % AnyPeriodicFlip = ( n > 0 )
+         Solver % PeriodicFlipActive = ( n > 0 )
          CALL Info('InitialPermutation','Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
        END IF
      END IF
