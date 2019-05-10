@@ -583,13 +583,26 @@ CONTAINS
 
 
      IF ( ASSOCIATED( Variable % Perm ) ) THEN
-       DO i=1,n
-         j = Indexes(i)
-         IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
-           j = Variable % Perm(j)
-           IF ( j>0 ) x(i) = Values(j)
-         END IF
-       END DO
+       IF( Variable % PeriodicFlipActive ) THEN
+         DO i=1,n
+           j = Indexes(i)
+           IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
+             j = Variable % Perm(j)
+             IF ( j>0 ) THEN
+               x(i) = Values(j)
+               IF( CurrentModel % Mesh % PeriodicFlip(j) ) x(i) = -x(i)
+             END IF
+           END IF
+         END DO
+       ELSE
+         DO i=1,n
+           j = Indexes(i)
+           IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
+             j = Variable % Perm(j)
+             IF ( j>0 ) x(i) = Values(j)
+           END IF
+         END DO
+       END IF
      ELSE
         DO i=1,n
           j = Indexes(i)
@@ -614,7 +627,7 @@ CONTAINS
      TYPE(Solver_t)  , POINTER :: Solver
      TYPE(Element_t),  POINTER :: Element
 
-     INTEGER :: i, j, k, n
+     INTEGER :: i, j, k, l, n
      INTEGER, POINTER :: Indexes(:)
      REAL(KIND=dp), POINTER ::  Values(:)
 
@@ -676,13 +689,26 @@ CONTAINS
 
      DO i=1,Variable % DOFs
        IF ( ASSOCIATED( Variable % Perm ) ) THEN
-         DO j=1,n
-           k = Indexes(j)
-           IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
-             k = Variable % Perm(k)
-             IF (k>0) x(i,j) = Values(Variable % DOFs*(k-1)+i)
-           END IF
-         END DO
+         IF( Variable % PeriodicFlipActive ) THEN
+           DO j=1,n
+             k = Indexes(j)
+             IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
+               l = Variable % Perm(l)
+               IF (l>0) THEN
+                 x(i,j) = Values(Variable % DOFs*(l-1)+i)
+                 IF( CurrentModel % Mesh % PeriodicFlip(k) ) x(i,j) = -x(i,j)
+               END IF
+             END IF
+           END DO
+         ELSE           
+           DO j=1,n
+             k = Indexes(j)
+             IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
+               l = Variable % Perm(k)
+               IF (k>0) x(i,j) = Values(Variable % DOFs*(l-1)+i)
+             END IF
+           END DO
+         END IF
        ELSE
          DO j=1,n
            IF ( Variable % DOFs*(Indexes(j)-1)+i <= &
@@ -3500,7 +3526,7 @@ CONTAINS
        n = GetElementDOFs( Indexes, Element, Solver )
 
        ! If we have any antiperiodic entries we need to check them all!
-       IF( Solver % AnyPeriodicFlip ) THEN
+       IF( Solver % PeriodicFlipActive ) THEN
          BLOCK 
            LOGICAL, POINTER :: PerFlip(:)
            PerFlip => Solver % Mesh % PeriodicFlip           
