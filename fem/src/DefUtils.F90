@@ -3401,7 +3401,7 @@ CONTAINS
 
      LOGICAL :: Found, BUpd, VecAsm, MCAsm
 
-     INTEGER :: j, n, nd
+     INTEGER :: i, j, n, nd
      INTEGER(KIND=AddrInt) :: Proc
      INTEGER, POINTER CONTIG :: Indexes(:), PermIndexes(:)
 
@@ -3499,6 +3499,21 @@ CONTAINS
        Indexes => GetIndexStore()
        n = GetElementDOFs( Indexes, Element, Solver )
 
+       ! If we have any antiperiodic entries we need to check them all!
+       IF( Solver % AnyPeriodicFlip ) THEN
+         BLOCK 
+           LOGICAL, POINTER :: PerFlip(:)
+           PerFlip => Solver % Mesh % PeriodicFlip           
+           DO i=1,n
+             DO j=1,n
+               IF( XOR(PerFlip(Indexes(i)),PerFlip(Indexes(j))) ) THEN
+                 G(i,j) = -G(i,j)
+               END IF
+             END DO
+           END DO
+         END BLOCK
+       END IF
+       
        IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )

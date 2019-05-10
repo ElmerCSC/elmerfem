@@ -853,6 +853,7 @@ END INTERFACE
       REAL(KIND=dp) :: Alpha,Beta,dt
 
       LOGICAL :: NewtonActive = .FALSE.
+      LOGICAL :: AnyPeriodicFlip = .FALSE.
       
       INTEGER :: SolverExecWhen
       INTEGER :: SolverMode

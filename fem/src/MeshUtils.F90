@@ -4969,10 +4969,11 @@ END SUBROUTINE GetMaxDefs
   !---------------------------------------------------------------------------------
   ! Create a permutation to eliminate edges in a conforming case.
   !---------------------------------------------------------------------------------
-  SUBROUTINE ConformingEdgePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip )
+  SUBROUTINE ConformingEdgePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
     TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
+    LOGICAL, OPTIONAL :: AntiPeriodic 
     !---------------------------------------------------------------------------------      
     INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i1, i2, &
         noedges, noedgesm, Nundefined, n0
@@ -4983,12 +4984,15 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeMX(:,:), EdgeMY(:,:)
     REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
     INTEGER :: minuscount, mini
-    LOGICAL :: Parallel
+    LOGICAL :: Parallel, AntiPer
 
     CALL Info('ConformingEdgePerm','Creating permutation for elimination of conforming edges',Level=8)
 
     n = Mesh % NumberOfEdges
-    IF( n == 0 ) RETURN      
+    IF( n == 0 ) RETURN
+
+    AntiPer = .FALSE.
+    IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
 
     CALL CreateEdgeCenters( Mesh, BMesh1, noedges, EdgeInds, EdgeX, EdgeY ) 
     CALL Info('ConformingEdgePerm','Number of edges in slave mesh: '//TRIM(I2S(noedges)),Level=10)
@@ -5004,7 +5008,7 @@ END SUBROUTINE GetMaxDefs
     maxminss = 0.0_dp
     n0 = Mesh % NumberOfNodes
     Parallel = ( ParEnv % PEs > 1 )
-
+    
     DO i1=1,noedges
       x1 = EdgeX(3,i1)
       y1 = EdgeY(3,i1)
@@ -5081,11 +5085,13 @@ END SUBROUTINE GetMaxDefs
 
       IF( coordprod * indexprod < 0 ) THEN
         minuscount = minuscount + 1
-        PerFlip(eind+n0) = .TRUE.
+        PerFlip(eind+n0) = .NOT. AntiPer
         !PRINT *,'prod:',coordprod,indexprod
         !PRINT *,'x:',x1,x2,xm1,xm2
         !PRINT *,'y:',y1,y2,ym1,ym2
         !PRINT *,'k:',k1,k2,km1,km2
+      ELSE
+        PerFlip(eind+n0) = AntiPer
       END IF
 
       ! Mark that this is set so it don't need to be set again
@@ -5196,16 +5202,25 @@ END SUBROUTINE GetMaxDefs
 
   ! Create a permutation to eliminate nodes in a conforming case.
   !----------------------------------------------------------------------
-  SUBROUTINE ConformingNodePerm( Mesh, BMesh1, BMesh2, PerPerm )
+  SUBROUTINE ConformingNodePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
     TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
     INTEGER, POINTER :: PerPerm(:)
-
+    LOGICAL, POINTER, OPTIONAL :: PerFlip(:)
+    LOGICAL, OPTIONAL :: AntiPeriodic 
+    !----------------------------------------------------------------------
     INTEGER :: n, i1, i2, j1, j2, k1, k2, mini
     REAL(KIND=dp) :: x1, y1, x2, y2
     REAL(KIND=dp) :: ss, minss, maxminss
 
     CALL Info('ConformingNodePerm','Creating permutations for conforming nodes',Level=8)
 
+    n = 0
+    IF( PRESENT( PerFlip ) ) n = n + 1
+    IF( PRESENT( AntiPeriodic ) ) n = n + 1
+    IF( n == 1 ) THEN
+      CALL Fatal('ConformingNodePerm','Either have zero or two optional parameters!')
+    END IF
+      
     n = Mesh % NumberOfNodes
     IF( n == 0 ) RETURN      
 
@@ -5240,7 +5255,12 @@ END SUBROUTINE GetMaxDefs
 
       ! Assume that the closest node is a hit
       PerPerm(j1) = BMesh2 % InvPerm(mini)
+
       maxminss = MAX( maxminss, minss )
+
+      IF( PRESENT( PerFlip ) ) THEN
+        IF( AntiPeriodic ) PerFlip(j1) = .TRUE.
+      END IF
     END DO
 
     WRITE(Message,'(A,ES12.4)') 'Maximum minimum deviation in node coords:',SQRT(maxminss)
@@ -11234,7 +11254,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, Success, Rotational, AntiRotational, Sliding, AntiSliding, Repeating, &
         AntiRepeating, Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
         Flat, Plane, AntiPlane, Cylindrical, ParallelNumbering, EnforceOverlay, &
-        FullCircle
+        FullCircle, AntiPeriodic
     REAL(KIND=dp) :: Radius
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(ValueList_t), POINTER :: BC
@@ -11255,6 +11275,8 @@ END SUBROUTINE GetMaxDefs
     BMesh2 => AllocateMesh()
     
     CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, Success ) 
+
+PRINT *,'a1'
     
     IF(.NOT. Success) THEN
       CALL ReleaseMesh(BMesh1)
@@ -11264,6 +11286,8 @@ END SUBROUTINE GetMaxDefs
 
     ! If requested map the interface coordinate from (x,y,z) to any permutation of these. 
     CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
+
+PRINT *,'a2'
     
     ! Lets check what kind of symmetry we have.
     Rotational = ListGetLogical( BC,'Rotational Projector',GotIt )
@@ -11283,10 +11307,13 @@ END SUBROUTINE GetMaxDefs
     Flat = ListGetLogical( BC, 'Flat Projector',GotIt )
     Plane = ListGetLogical( BC, 'Plane Projector',GotIt )
     AntiPlane = ListGetLogical( BC,'Anti Plane Projector',GotIt )    
+    IF( AntiPlane ) Plane = .TRUE.
+    
+PRINT *,'a3'
+    
+    AntiPeriodic = ( AntiRotational .OR. AntiRadial .OR. AntiAxial .OR. AntiPlane ) 
 
-    IF( AntiRotational .OR. AntiRadial .OR. AntiAxial .OR. AntiPlane ) THEN
-      CALL Fatal('PeriodicPermutation','We cannot deal with antiperiodic systems with permutation!')
-    END IF
+    IF( AntiPeriodic ) CALL Info('PeriodicPermutation','Assuming antiperiodic conforming projector',Level=8)
     
     IF( Radial ) CALL Info('PeriodicProjector','Enforcing > Radial Projector <',Level=12)
     IF( Axial ) CALL Info('PeriodicProjector','Enforcing > Axial Projector <',Level=12)
@@ -11342,9 +11369,9 @@ END SUBROUTINE GetMaxDefs
       CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
     END IF
     
-    IF( DoNodes ) CALL ConformingNodePerm(PMesh, BMesh1, BMesh2, PerPerm )
-    IF( DoEdges ) CALL ConformingEdgePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip )
-
+    IF( DoNodes ) CALL ConformingNodePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
+    IF( DoEdges ) CALL ConformingEdgePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
+        
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
     BMesh1 % Projector => NULL()
@@ -11412,6 +11439,11 @@ END SUBROUTINE GetMaxDefs
           noconf = noconf + 1
           IF( PerPerm(j) > 0 ) THEN
             PerPerm(i) = PerPerm(j)
+            IF( PerFlip(i) ) THEN
+              PerFlip(i) = .NOT. PerFlip(j)
+            ELSE
+              PerFlip(i) = PerFlip(j)
+            END IF
             nocyclic = nocyclic + 1
           END IF
         END IF
