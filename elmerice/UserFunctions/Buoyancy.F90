@@ -225,6 +225,13 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
       IF ( .NOT. ASSOCIATED(BoundaryElement) ) THEN
          CALL FATAL('Sea Pressure','No boundary element found')
       END IF
+
+      IF ( .NOT. ASSOCIATED( BoundaryElement % BoundaryInfo ) ) THEN
+         WRITE(Message,'(A,I8,I8,I8)') 'Element Index, prtindex, bodyid ',  ElementIndex, PartIndex, BodyId
+         CALL Info('Sea Pressure',Message,Level=1)
+         CALL FATAL('Sea Pressure','Element has no boundary info!')
+      END IF
+
       other_body_id = BoundaryElement % BoundaryInfo % outbody
       IF (other_body_id < 1) THEN ! only one body in calculation
          ParentElement => BoundaryElement % BoundaryInfo % Right
