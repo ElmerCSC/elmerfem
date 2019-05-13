@@ -58,7 +58,7 @@ Solver 1
 
   Variable = "AV"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
-  Fix Input Current Density = False
+!  Fix Input Current Density = False
 
   Linear System Solver = "Iterative"
   Linear System Preconditioning = none
@@ -71,7 +71,7 @@ Solver 1
   Apply Conforming BCs = Logical True
   Optimize Bandwidth = False
 
-!  Edge Basis = Logical True
+  Edge Basis = Logical True
 End
 
 
