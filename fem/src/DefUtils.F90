@@ -533,7 +533,7 @@ CONTAINS
      TYPE(Solver_t)  , POINTER :: Solver
      TYPE(Element_t),  POINTER :: Element
 
-     INTEGER :: i, j, n
+     INTEGER :: i, j, k, n
      INTEGER, POINTER :: Indexes(:)
 
      Solver => CurrentModel % Solver
@@ -587,9 +587,9 @@ CONTAINS
          DO i=1,n
            j = Indexes(i)
            IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
-             j = Variable % Perm(j)
-             IF ( j>0 ) THEN
-               x(i) = Values(j)
+             k = Variable % Perm(j)
+             IF ( k>0 ) THEN
+               x(i) = Values(k)
                IF( CurrentModel % Mesh % PeriodicFlip(j) ) x(i) = -x(i)
              END IF
            END IF
@@ -693,8 +693,8 @@ CONTAINS
            DO j=1,n
              k = Indexes(j)
              IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
-               l = Variable % Perm(l)
-               IF (l>0) THEN
+               l = Variable % Perm(k)
+               IF( l>0 ) THEN
                  x(i,j) = Values(Variable % DOFs*(l-1)+i)
                  IF( CurrentModel % Mesh % PeriodicFlip(k) ) x(i,j) = -x(i,j)
                END IF

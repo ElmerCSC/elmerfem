@@ -4983,7 +4983,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, ALLOCATABLE :: PeriodicEdge(:), EdgeInds(:), EdgeIndsM(:)
     REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeMX(:,:), EdgeMY(:,:)
     REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
-    INTEGER :: minuscount, mini
+    INTEGER :: minuscount, samecount, mini
     LOGICAL :: Parallel, AntiPer
 
     CALL Info('ConformingEdgePerm','Creating permutation for elimination of conforming edges',Level=8)
@@ -5008,6 +5008,7 @@ END SUBROUTINE GetMaxDefs
     maxminss = 0.0_dp
     n0 = Mesh % NumberOfNodes
     Parallel = ( ParEnv % PEs > 1 )
+    samecount = 0 
     
     DO i1=1,noedges
       x1 = EdgeX(3,i1)
@@ -5029,6 +5030,11 @@ END SUBROUTINE GetMaxDefs
         END IF
       END DO
 
+      IF( EdgeInds(i1) == EdgeIndsM(mini) ) THEN        
+        samecount = samecount + 1        
+        CYCLE
+      END IF
+            
       ! we have a hit
       PeriodicEdge(i1) = mini
       maxminss = MAX( maxminss, minss )
@@ -5102,6 +5108,10 @@ END SUBROUTINE GetMaxDefs
     DEALLOCATE( EdgeIndsM, EdgeMX, EdgeMY )
     DEALLOCATE( PeriodicEdge )
 
+    IF( samecount > 0 ) THEN
+      CALL Info('ConformingEdgePerm','Number of edges are the same: '//TRIM(I2S(samecount)),Level=8)
+    END IF
+        
     IF( minuscount == 0 ) THEN
       CALL Info('ConformingEdgePerm','All edges in conforming projector have consistent sign!',Level=8)
     ELSE
@@ -5208,7 +5218,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL, POINTER, OPTIONAL :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !----------------------------------------------------------------------
-    INTEGER :: n, i1, i2, j1, j2, k1, k2, mini
+    INTEGER :: n, i1, i2, j1, j2, k1, k2, mini, samecount
     REAL(KIND=dp) :: x1, y1, x2, y2
     REAL(KIND=dp) :: ss, minss, maxminss
 
@@ -5228,6 +5238,8 @@ END SUBROUTINE GetMaxDefs
     IF( Bmesh2 % NumberOfNodes == 0 ) RETURN
 
     maxminss = 0.0_dp
+    samecount = 0
+    
     DO i1=1,Bmesh1 % NumberOfNodes
 
       j1 = BMesh1 % InvPerm(i1)
@@ -5254,6 +5266,11 @@ END SUBROUTINE GetMaxDefs
       END DO
 
       ! Assume that the closest node is a hit
+      IF( j1 == BMesh2 % InvPerm(mini) ) THEN
+        samecount = samecount + 1
+        CYCLE
+      END IF
+      
       PerPerm(j1) = BMesh2 % InvPerm(mini)
 
       maxminss = MAX( maxminss, minss )
@@ -5262,6 +5279,10 @@ END SUBROUTINE GetMaxDefs
         IF( AntiPeriodic ) PerFlip(j1) = .TRUE.
       END IF
     END DO
+
+    IF( samecount > 0 ) THEN
+      CALL Info('ConformingNodePerm','Number of nodes are the same: '//TRIM(I2S(samecount)),Level=8)
+    END IF
 
     WRITE(Message,'(A,ES12.4)') 'Maximum minimum deviation in node coords:',SQRT(maxminss)
     CALL Info('ConformingNodePerm',Message,Level=8)
