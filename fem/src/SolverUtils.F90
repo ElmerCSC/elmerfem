@@ -16803,6 +16803,13 @@ CONTAINS
                  ELSE
                    wsum = wsum + Atmp % Values(l)
                  END IF
+
+                 ! If we sum up to anti-periodic dof then use different sign
+                 ! - except if the target is also antiperiodic.
+                 IF( PerFlipActive ) THEN
+                   IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                 END IF
+                 
                END IF
 
                ! Add a new column index to the summed up row               
@@ -16815,12 +16822,6 @@ CONTAINS
                ELSE
                  k2 = k2 + 1
                END IF
-
-               ! If we sum up to anti-periodic dof then use different sign
-               ! - except if the target is also antiperiodic.
-               IF( PerFlipActive ) THEN
-                 IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
-               END IF  
                
                Btmp % Cols(k2) = col2
                Btmp % Values(k2) = Scale * Atmp % Values(l)
