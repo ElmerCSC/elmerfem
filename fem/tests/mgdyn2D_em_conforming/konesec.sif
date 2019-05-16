@@ -193,7 +193,7 @@ Solver 2
   Nonlinear System Convergence Without Constraints = Logical True
 
   Apply Mortar BCs = Logical True
-  Mortar BCs Additive = Logical True
+!  Mortar BCs Additive = Logical True
   Apply Conforming BCs = Logical True
 End 
 
