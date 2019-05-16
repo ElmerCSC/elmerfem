@@ -16493,6 +16493,12 @@ CONTAINS
              'Enforcing > Mortar BCs Additive < to True to enable elimination',Level=6)
          SumProjectors = .TRUE.
        END IF
+       IF( .NOT. SumProjectos .AND. ListGetLogical( Solver % Values, &
+           'Apply Conforming BCs',Found ) ) THEN
+         CALL Info('GenerateConstraintMatrix',&
+             'Enforcing > Mortar BCs Additive < to True because of conforming BCs',Level=6)
+         SumProjectors = .TRUE.
+       END IF
      END IF
      EliminatedRows = 0
 
