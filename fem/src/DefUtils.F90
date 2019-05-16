@@ -2518,9 +2518,20 @@ CONTAINS
     dt = Solver % dt
     Indexes => GetIndexStore()
     n = GetElementDOFs( Indexes,Element,Solver )
-
+    
+    ! If we have any antiperiodic entries we need to check them all!
+    IF( Solver % PeriodicFlipActive ) THEN
+      CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, A, M )
+    END IF
+      
     CALL Add1stOrderTime( M, A, F, dt, n, x % DOFs, &
-           x % Perm(Indexes(1:n)), Solver, UElement=Element )
+        x % Perm(Indexes(1:n)), Solver, UElement=Element )
+
+    IF( Solver % PeriodicFlipActive ) THEN
+      ! Backflip in case A or M is needed again
+      CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, A, M)
+    END IF      
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE Default1stOrderTimeR
 !------------------------------------------------------------------------------
@@ -3527,19 +3538,9 @@ CONTAINS
 
        ! If we have any antiperiodic entries we need to check them all!
        IF( Solver % PeriodicFlipActive ) THEN
-         BLOCK 
-           LOGICAL, POINTER :: PerFlip(:)
-           PerFlip => Solver % Mesh % PeriodicFlip           
-           DO i=1,n
-             DO j=1,n
-               IF( XOR(PerFlip(Indexes(i)),PerFlip(Indexes(j))) ) THEN
-                 G(i,j) = -G(i,j)
-               END IF
-             END DO
-           END DO
-         END BLOCK
+         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, G )
        END IF
-       
+              
        IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
@@ -3548,6 +3549,12 @@ CONTAINS
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
        END IF
+
+       ! backflip, in case G is needed again
+       IF( Solver % PeriodicFlipActive ) THEN
+         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, G )
+       END IF
+       
      END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR

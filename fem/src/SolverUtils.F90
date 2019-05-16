@@ -368,6 +368,35 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!---------------------------------------------------------------------------
+!> If we have antiperiodic DOFs in periodic system and want to do elimination
+!> for conforming mesh, then we need to flip entries in stiffness/mass matrix.
+!---------------------------------------------------------------------------
+   SUBROUTINE FlipPeriodicLocalMatrix( Solver, n, Indexes, A, B )
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER :: n
+     INTEGER, POINTER :: Indexes(:)
+     REAL(KIND=dp) :: A(:,:)
+     REAL(KIND=dp), OPTIONAL :: B(:,:)
+
+     LOGICAL, POINTER :: PerFlip(:)
+     INTEGER :: i,j
+
+     IF( .NOT. Solver % PeriodicFlipActive ) RETURN
+
+     PerFlip => Solver % Mesh % PeriodicFlip           
+     DO i=1,n
+       DO j=1,n
+         IF( XOR(PerFlip(Indexes(i)),PerFlip(Indexes(j))) ) THEN
+           A(i,j) = -A(i,j)
+           IF( PRESENT(B) ) B(i,j) = -B(i,j)
+         END IF
+       END DO
+     END DO
+   END SUBROUTINE FlipPeriodicLocalMatrix
+
+
+   
 !> Glues a local matrix to the global one.
 !------------------------------------------------------------------------------
    SUBROUTINE GlueLocalSubMatrix( A,row0,col0,Nrow,Ncol,RowInds,ColInds,&
@@ -16345,7 +16374,7 @@ CONTAINS
      TYPE(Solver_t) :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,j2,k,k2,l,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,mcount,bcount,kk
+     INTEGER :: i,j,j2,k,k2,l,l2,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,mcount,bcount,kk
      TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
      LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent, Found, &
          SetDof, SomeSet, SomeSkip, SumProjectors, NewRow, SumThis
@@ -16362,13 +16391,20 @@ CONTAINS
      INTEGER, ALLOCATABLE :: BCOrdering(:), BCPriority(:)
      LOGICAL :: NeedToGenerate 
 
-     LOGICAL :: HaveMortarDiag, LumpedDiag
+     LOGICAL :: HaveMortarDiag, LumpedDiag, PerFlipActive
      REAL(KIND=dp) :: MortarDiag
-
+     LOGICAL, POINTER :: PerFlip(:)
+     
 
      
      ! Should we genarete the matrix
      NeedToGenerate = Solver % MortarBCsChanged
+
+     PerFlipActive = Solver % PeriodicFlipActive
+     IF( PerFlipActive ) THEN
+       CALL Info('GenerateConstraintMatrix','Periodic flip is active',Level=8)
+       PerFlip => Solver % Mesh % PeriodicFlip           
+     END IF
      
      ! Set pointers to save the initial constraint matrix
      ! We assume that the given ConstraintMatrix is constant but we have consider it the 1st time
@@ -16726,9 +16762,9 @@ CONTAINS
            
            wsum = 0.0_dp
            
-           DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1
+           DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1
              
-             col = Atmp % Cols(k) 
+             col = Atmp % Cols(l) 
 
              IF( Reorder ) THEN
                IF( col <= permsize ) THEN
@@ -16749,17 +16785,17 @@ CONTAINS
                  IF( CreateSelf ) THEN
                    ! We want to create [D-P] hence the negative sign
                    Scale = MortarBC % MasterScale
-                   wsum = wsum + Atmp % Values(k)
+                   wsum = wsum + Atmp % Values(l)
                  ELSE IF( ASSOCIATED( MortarBC % Perm ) ) THEN
                    ! Look if the component refers to the slave
                    IF( MortarBC % Perm( col ) > 0 ) THEN
                      Scale = MortarBC % SlaveScale 
-                     wsum = wsum + Atmp % Values(k) 
+                     wsum = wsum + Atmp % Values(l) 
                    ELSE
                      Scale = MortarBC % MasterScale
                    END IF
                  ELSE
-                   wsum = wsum + Atmp % Values(k)
+                   wsum = wsum + Atmp % Values(l)
                  END IF
                END IF
 
@@ -16773,14 +16809,20 @@ CONTAINS
                ELSE
                  k2 = k2 + 1
                END IF
+
+               ! If we sum up to anti-periodic dof then use different sign
+               ! - except if the target is also antiperiodic.
+               IF( PerFlipActive ) THEN
+                 IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+               END IF  
                
                Btmp % Cols(k2) = col2
-               Btmp % Values(k2) = Scale * Atmp % Values(k)
+               Btmp % Values(k2) = Scale * Atmp % Values(l)
                IF(ASSOCIATED(Btmp % TValues)) THEN
                  IF(ASSOCIATED(Atmp % Child)) THEN
-                   Btmp % TValues(k2) = Scale * Atmp % Child % Values(k)
+                   Btmp % TValues(k2) = Scale * Atmp % Child % Values(l)
                  ELSE
-                   Btmp % TValues(k2) = Scale * Atmp % Values(k)
+                   Btmp % TValues(k2) = Scale * Atmp % Values(l)
                  END IF
                END IF
              ELSE
@@ -16828,8 +16870,8 @@ CONTAINS
                    CALL Fatal('GenerateConstraintMarix','MortarBC % Perm required, try lumped')
                  END IF
                  
-                 DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
-                   col = Atmp % Cols(k) 
+                 DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
+                   col = Atmp % Cols(l) 
 
                    IF( col > permsize ) THEN
                      PRINT *,'col too large',col,permsize
@@ -16851,13 +16893,13 @@ CONTAINS
                    k2 = k2 + 1
                    IF( AllocationsDone ) THEN                                        
                      IF( SumThis ) THEN
-                       l = ABS( SumPerm( col2) )
+                       l2 = ABS( SumPerm( col2) )
                      ELSE
-                       l = MortarBC % Perm(col)
+                       l2 = MortarBC % Perm(col)
                      END IF
                      
-                     Btmp % Cols(k2) = l + arows + rowoffset
-                     Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * Atmp % Values(k) * MortarDiag
+                     Btmp % Cols(k2) = l2 + arows + rowoffset
+                     Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * Atmp % Values(l) * MortarDiag
                    ELSE
                      IF( SumThis) SumCount(row) = SumCount(row) + 1
                    END IF

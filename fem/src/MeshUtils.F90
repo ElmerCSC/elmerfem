@@ -4983,9 +4983,11 @@ END SUBROUTINE GetMaxDefs
     INTEGER, ALLOCATABLE :: PeriodicEdge(:), EdgeInds(:), EdgeIndsM(:)
     REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeMX(:,:), EdgeMY(:,:)
     REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
-    INTEGER :: minuscount, samecount, mini
+    INTEGER :: minuscount, samecount, mini, doubleusecount
     LOGICAL :: Parallel, AntiPer
+    LOGICAL, ALLOCATABLE :: EdgeUsed(:)
 
+    
     CALL Info('ConformingEdgePerm','Creating permutation for elimination of conforming edges',Level=8)
 
     n = Mesh % NumberOfEdges
@@ -5002,13 +5004,15 @@ END SUBROUTINE GetMaxDefs
 
     IF( noedges == 0 ) RETURN
     IF( noedgesm == 0 ) RETURN
-
-    ALLOCATE( PeriodicEdge(noedges))
+    
+    ALLOCATE( PeriodicEdge(noedges),EdgeUsed(noedgesm))
     PeriodicEdge = 0
+    EdgeUsed = .FALSE.
     maxminss = 0.0_dp
     n0 = Mesh % NumberOfNodes
     Parallel = ( ParEnv % PEs > 1 )
-    samecount = 0 
+    samecount = 0
+    doubleusecount = 0
     
     DO i1=1,noedges
       x1 = EdgeX(3,i1)
@@ -5034,7 +5038,13 @@ END SUBROUTINE GetMaxDefs
         samecount = samecount + 1        
         CYCLE
       END IF
-            
+
+      IF( EdgeUsed(mini ) ) THEN
+        doubleusecount = doubleusecount + 1
+      ELSE
+        EdgeUsed(mini) = .TRUE.
+      END IF
+              
       ! we have a hit
       PeriodicEdge(i1) = mini
       maxminss = MAX( maxminss, minss )
@@ -5119,7 +5129,10 @@ END SUBROUTINE GetMaxDefs
           ' (out of '//TRIM(I2S(noedges))//') edge projectors')
     END IF
 
-
+    IF( doubleusecount > 0 ) THEN
+      CALL Fatal('ConformingEdgePerm','This is not conforming! Number of edges used twice: '//TRIM(I2S(doubleusecount)))
+    END IF
+        
   CONTAINS 
     
     ! Create edge centers for the mapping routines.
@@ -5218,10 +5231,12 @@ END SUBROUTINE GetMaxDefs
     LOGICAL, POINTER, OPTIONAL :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !----------------------------------------------------------------------
-    INTEGER :: n, i1, i2, j1, j2, k1, k2, mini, samecount
+    INTEGER :: n, i1, i2, j1, j2, k1, k2, mini, samecount, doubleusecount
     REAL(KIND=dp) :: x1, y1, x2, y2
     REAL(KIND=dp) :: ss, minss, maxminss
+    LOGICAL, ALLOCATABLE :: NodeUsed(:)
 
+    
     CALL Info('ConformingNodePerm','Creating permutations for conforming nodes',Level=8)
 
     n = 0
@@ -5239,6 +5254,10 @@ END SUBROUTINE GetMaxDefs
 
     maxminss = 0.0_dp
     samecount = 0
+    doubleusecount = 0
+
+    ALLOCATE( NodeUsed(BMesh2 % NumberOfNodes) )
+    NodeUsed = .FALSE.
     
     DO i1=1,Bmesh1 % NumberOfNodes
 
@@ -5270,7 +5289,13 @@ END SUBROUTINE GetMaxDefs
         samecount = samecount + 1
         CYCLE
       END IF
-      
+
+      IF( NodeUsed(mini ) ) THEN
+        doubleusecount = doubleusecount + 1
+      ELSE
+        NodeUsed(mini) = .TRUE.
+      END IF
+        
       PerPerm(j1) = BMesh2 % InvPerm(mini)
 
       maxminss = MAX( maxminss, minss )
@@ -5287,12 +5312,15 @@ END SUBROUTINE GetMaxDefs
     WRITE(Message,'(A,ES12.4)') 'Maximum minimum deviation in node coords:',SQRT(maxminss)
     CALL Info('ConformingNodePerm',Message,Level=8)
 
+    IF( doubleusecount > 0 ) THEN
+      CALL Fatal('ConformingNodePerm','This is not conforming! Number of nodes used twice: '//TRIM(I2S(doubleusecount)))
+    END IF
 
   END SUBROUTINE ConformingNodePerm
   !----------------------------------------------------------------------
 
 
-  
+   
   !---------------------------------------------------------------------------
   !> Create a projector for mixed nodal / edge problems assuming constant level
   !> in the 2nd direction. This kind of projector is suitable for 2D meshes where
@@ -11314,13 +11342,16 @@ END SUBROUTINE GetMaxDefs
 
     Radial = ListGetLogical( BC,'Radial Projector',GotIt )
     AntiRadial = ListGetLogical( BC,'Anti Radial Projector',GotIt )
-
+    IF( AntiRadial ) Radial = .TRUE.
+    
     Axial = ListGetLogical( BC,'Axial Projector',GotIt )
     AntiAxial = ListGetLogical( BC,'Anti Axial Projector',GotIt )
-
+    IF( AntiAxial ) Axial = .TRUE.
+    
     Sliding = ListGetLogical( BC, 'Sliding Projector',GotIt )
     AntiSliding = ListGetLogical( BC, 'Anti Sliding Projector',GotIt )
-
+    IF( AntiSliding ) Sliding = .TRUE.
+    
     Flat = ListGetLogical( BC, 'Flat Projector',GotIt )
     Plane = ListGetLogical( BC, 'Plane Projector',GotIt )
     AntiPlane = ListGetLogical( BC,'Anti Plane Projector',GotIt )    
@@ -11414,7 +11445,7 @@ END SUBROUTINE GetMaxDefs
   SUBROUTINE GeneratePeriodicProjectors( Model, Mesh ) 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: i,j,k,n,nocyclic,noconf,mini,maxi
+    INTEGER :: i,j,k,n,nocyclic,noconf,noflip,mini,maxi
     LOGICAL :: Found
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
@@ -11446,6 +11477,7 @@ END SUBROUTINE GetMaxDefs
       noconf = 0
       mini = HUGE(mini)
       maxi = 0
+      
       DO i = 1,n
         j = PerPerm(i)
         IF( j > 0 ) THEN
@@ -11463,8 +11495,11 @@ END SUBROUTINE GetMaxDefs
           END IF
         END IF
       END DO
+      noflip = COUNT( PerFlip )
+            
       CALL Info('GeneratePeriodicProjectors','Number of conforming maps: '//TRIM(I2S(noconf)),Level=8)
-      CALL Info('GeneratePeriodicProjectors','Number of cyclic maps: '//TRIM(I2S(nocyclic)),Level=8)
+      IF(nocyclic>0) CALL Info('GeneratePeriodicProjectors','Number of cyclic maps: '//TRIM(I2S(nocyclic)),Level=8)
+      IF(noflip>0) CALL Info('GeneratePeriodicProjectors','Number of periodic flips: '//TRIM(I2S(noconf)),Level=8)
     END IF
 
     
