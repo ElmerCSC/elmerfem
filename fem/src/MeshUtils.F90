@@ -4986,7 +4986,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: minuscount, samecount, mini, doubleusecount
     LOGICAL :: Parallel, AntiPer
     LOGICAL, ALLOCATABLE :: EdgeUsed(:)
-
+    
     
     CALL Info('ConformingEdgePerm','Creating permutation for elimination of conforming edges',Level=8)
 
@@ -5071,8 +5071,8 @@ END SUBROUTINE GetMaxDefs
       k1 = Edge % NodeIndexes( 1 )
       k2 = Edge % NodeIndexes( 2 )
       IF(Parallel) THEN
-        k1 = Mesh % ParallelInfo % GlobalDOFs(BMesh1 % InvPerm(k1))
-        k2 = Mesh % ParallelInfo % GlobalDOFs(BMesh1 % InvPerm(k2))
+        k1 = Mesh % ParallelInfo % GlobalDOFs(k1) !BMesh1 % InvPerm(k1))
+        k2 = Mesh % ParallelInfo % GlobalDOFs(k2) !BMesh1 % InvPerm(k2))
       END IF
 
       ! We cannot use the (x,y) coordinates of the full "Mesh" as the boundary meshes
@@ -5087,10 +5087,10 @@ END SUBROUTINE GetMaxDefs
       km1 = EdgeM % NodeIndexes( 1 )
       km2 = EdgeM % NodeIndexes( 2 )
       IF(Parallel) THEN
-        km1 = Mesh % ParallelInfo % GlobalDOFs(BMesh2 % InvPerm(km1))
-        km2 = Mesh % ParallelInfo % GlobalDOFs(BMesh2 % InvPerm(km2))
+        km1 = Mesh % ParallelInfo % GlobalDOFs(km1) !BMesh2 % InvPerm(km1))
+        km2 = Mesh % ParallelInfo % GlobalDOFs(km2) !BMesh2 % InvPerm(km2))
       END IF
-
+      
       xm1 = EdgeMX(1,em)
       xm2 = EdgeMX(2,em)
       ym1 = EdgeMY(1,em)
@@ -5125,14 +5125,15 @@ END SUBROUTINE GetMaxDefs
     IF( minuscount == 0 ) THEN
       CALL Info('ConformingEdgePerm','All edges in conforming projector have consistent sign!',Level=8)
     ELSE
-      CALL Warn('ConformingEdgePerm','Wrong sign of '//TRIM(I2S(minuscount))//&
-          ' (out of '//TRIM(I2S(noedges))//') edge projectors')
+      CALL Info('ConformingEdgePerm','Flipped sign of '//TRIM(I2S(minuscount))//&
+          ' (out of '//TRIM(I2S(noedges))//') edge projectors',Level=6)
     END IF
 
     IF( doubleusecount > 0 ) THEN
       CALL Fatal('ConformingEdgePerm','This is not conforming! Number of edges used twice: '//TRIM(I2S(doubleusecount)))
     END IF
-        
+
+    
   CONTAINS 
     
     ! Create edge centers for the mapping routines.
@@ -5187,6 +5188,9 @@ END SUBROUTINE GetMaxDefs
             ! Ensure that the order of node is consistent with the global mesh
             ! because this is later used to check the sign of the edge. 
             IF( EdgeMesh % InvPerm(k1) /= Mesh % Edges(eind) % NodeIndexes(1) ) THEN
+              IF( EdgeMesh % InvPerm(k1) /= Mesh % Edges(eind) % NodeIndexes(2) ) THEN
+                PRINT *,'We have a problem with the edges:',k1,k2
+              END IF
               ktmp = k1
               k1 = k2
               k2 = ktmp
