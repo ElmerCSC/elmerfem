@@ -3539,8 +3539,9 @@ CONTAINS
        ! If we have any antiperiodic entries we need to check them all!
        IF( Solver % PeriodicFlipActive ) THEN
          CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, G )
+         CALL FlipPeriodicLocalForce( Solver, n, Indexes, f )
        END IF
-              
+               
        IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
@@ -3553,6 +3554,7 @@ CONTAINS
        ! backflip, in case G is needed again
        IF( Solver % PeriodicFlipActive ) THEN
          CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, G )
+         CALL FlipPeriodicLocalForce( Solver, n, Indexes, f )
        END IF
        
      END IF
@@ -4135,14 +4137,26 @@ CONTAINS
      END IF
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
-         ALLOCATE( A % MassValues(SIZE(A % Values)) )
-         A % MassValues = 0.0d0
-       END IF
+     IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
+       ALLOCATE( A % MassValues(SIZE(A % Values)) )
+       A % MassValues = 0.0d0
+     END IF
 !$OMP END CRITICAL
 
+     ! flip mass matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, M )
+     END IF
+                
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
-             A % MassValues ) 
+         A % MassValues ) 
+     
+     ! backflip to be on the safe side
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, M )
+     END IF
+
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateMassR
 !------------------------------------------------------------------------------

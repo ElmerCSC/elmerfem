@@ -396,6 +396,28 @@ CONTAINS
    END SUBROUTINE FlipPeriodicLocalMatrix
 
 
+!---------------------------------------------------------------------------
+!> If we have antiperiodic DOFs in periodic system and want to do elimination
+!> for conforming mesh, then we need to flip entries in local force.
+!---------------------------------------------------------------------------
+   SUBROUTINE FlipPeriodicLocalForce( Solver, n, Indexes, F )
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER :: n
+     INTEGER, POINTER :: Indexes(:)
+     REAL(KIND=dp) :: F(:)
+     
+     LOGICAL, POINTER :: PerFlip(:)
+     INTEGER :: i
+
+     IF( .NOT. Solver % PeriodicFlipActive ) RETURN
+
+     PerFlip => Solver % Mesh % PeriodicFlip           
+     DO i=1,n
+       IF( PerFlip(Indexes(i))) F(i) = -F(i)
+     END DO
+   END SUBROUTINE FlipPeriodicLocalForce
+
+
    
 !> Glues a local matrix to the global one.
 !------------------------------------------------------------------------------
@@ -779,6 +801,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
      INTEGER :: PredCorrOrder       !< Order of predictor-corrector scheme
+
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE
@@ -839,26 +862,19 @@ CONTAINS
          CurSol(K) = Solver % Variable % Values(L)
        END DO
      END DO
-
+     
      LForce(1:n*DOFs) = Force(1:n*DOFs)
      CALL UpdateGlobalForce( Solver % Matrix % Force(:,1), LForce, &
-                  n, DOFs, NodeIndexes, UElement=Element )
+         n, DOFs, NodeIndexes, UElement=Element )
 !------------------------------------------------------------------------------
 !PrevSol(:,Order) needed for BDF
      Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
 
-     PredCorrOrder = ListGetInteger( Solver % Values, &
-                    'Predictor-Corrector Scheme Order', GotIt)
-      IF (.NOT. GotIt) THEN
-        PredCorrOrder = 2
-      END IF 
-
-      PredCorrOrder = MIN(PredCorrOrder, Solver % DoneTime /2)
-
      SELECT CASE( Method )
      CASE( 'fs' ) 
        CALL FractionalStep( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
-                   PrevSol(:,1), Solver % Beta, Solver )
+           PrevSol(:,1), Solver % Beta, Solver )
+
      CASE('bdf')
        Dts(1) = Dt
        ConstantDt = .TRUE.
@@ -869,33 +885,42 @@ CONTAINS
            IF(ABS(Dts(i)-Dts(1)) > 1.0d-6 * Dts(1)) ConstantDt = .FALSE.
          END DO
        END IF
-
+       
        IF(ConstantDt) THEN
          CALL BDFLocal( n*DOFs, dt, MassMatrix, StiffMatrix, Force, PrevSol, &
-                          Order )
+             Order )
        ELSE     
          CALL VBDFLocal( n*DOFs, dts, MassMatrix, StiffMatrix, Force, PrevSol, &
-                         Order )
+             Order )
        END IF
-
+       
      CASE('runge-kutta')
        CALL RungeKutta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
-                PrevSol(:,1), CurSol )
-
+           PrevSol(:,1), CurSol )
+       
      CASE('adams-bashforth')
        zeta = ListGetConstReal( Solver % Values, 'Adams Zeta', GotIt )
        IF ( .NOT. Gotit) zeta = 1.0_dp
+       PredCorrOrder = ListGetInteger( Solver % Values, &
+           'Predictor-Corrector Scheme Order', GotIt)
+       IF (.NOT. GotIt) PredCorrOrder = 2
+       PredCorrOrder = MIN(PredCorrOrder, Solver % DoneTime /2)       
        CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol(:,1), zeta, PredCorrOrder)
-
+       
      CASE('adams-moulton')
-        CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
-                PrevSol, PredCorrOrder )      
+       PredCorrOrder = ListGetInteger( Solver % Values, &
+           'Predictor-Corrector Scheme Order', GotIt)
+       IF (.NOT. GotIt) PredCorrOrder = 2
+       PredCorrOrder = MIN(PredCorrOrder, Solver % DoneTime /2)
+       CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+           PrevSol, PredCorrOrder )      
        
      CASE DEFAULT
        CALL NewmarkBeta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
-                 PrevSol(:,1), Solver % Beta )
+           PrevSol(:,1), Solver % Beta )
      END SELECT
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE Add1stOrderTime
 !------------------------------------------------------------------------------
