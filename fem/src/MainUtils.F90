@@ -961,7 +961,7 @@ CONTAINS
         MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
         VariableGlobal, VariableIP, VariableElem, VariableDG, VariableNodal, &
         DG, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, IsProcedure, &
-        IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType
+        IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType, DoIt
     
     CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name, sec_name
 
@@ -1089,13 +1089,18 @@ CONTAINS
     ! If there is a matrix level Flux Corrected Transport and/or nonlinear timestepping
     ! then you must use global matrices for time integration.
     !----------------------------------------------------------------------------------
+    DoIt = .FALSE.
     IF( ListGetLogical( SolverParams,'Linear System FCT',Found ) ) THEN
       IF( ParEnv % PEs > 1 ) THEN
         CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
       END IF
-      CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)
+      DoIt = .TRUE.
     END IF
-    IF( ListGetLogical( SolverParams,'Nonlinear Timestepping',Found ) ) THEN
+    IF( ListGetLogical( SolverParams,'Nonlinear Timestepping',Found ) ) DoIt = .TRUE.
+    IF( ListGetLogical( SolverParams,'Apply Conforming BCs',Found ) ) DoIt = .TRUE.
+    
+    IF( DoIt ) THEN
+      CALL Info('AddEquationBasics','Enforcing use of global mass matrix needed by other features!')
       CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)
     END IF
 

@@ -11316,6 +11316,8 @@ END SUBROUTINE GetMaxDefs
     IF ( This <= 0  .OR. Trgt <= 0 ) RETURN    
     CALL Info('PeriodicPermutation','Starting periodic permutation creation',Level=12)
 
+    CALL ResetTimer('PeriodicPermutation')
+    
     DIM = CoordinateSystemDimension()
     BC => Model % BCs(This) % Values
     PMesh => Mesh
@@ -11434,6 +11436,8 @@ END SUBROUTINE GetMaxDefs
     !DEALLOCATE( BMesh2 % InvPerm ) 
     CALL ReleaseMesh(BMesh2)
 
+    CALL CheckTimer('PeriodicPermutation',Delete=.TRUE.)
+           
     CALL Info('PeriodicPermutation','Periodic permutation created, now exiting...',Level=8)
    
     
