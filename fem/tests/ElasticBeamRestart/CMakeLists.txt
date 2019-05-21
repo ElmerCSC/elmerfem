@@ -4,4 +4,4 @@ CONFIGURE_FILE( restart.sif restart.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO beam2d.grd ref.sif DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ElasticBeamRestart)
+ADD_ELMER_TEST(ElasticBeamRestart LABELS transient)

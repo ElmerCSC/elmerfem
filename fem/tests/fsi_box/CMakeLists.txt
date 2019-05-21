@@ -5,4 +5,4 @@ CONFIGURE_FILE( box.sif box.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO box.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(fsi_box LABELS elasticsolve)
+ADD_ELMER_TEST(fsi_box LABELS elasticsolve transient)
