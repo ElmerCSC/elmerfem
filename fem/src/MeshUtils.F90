@@ -4869,7 +4869,7 @@ END SUBROUTINE GetMaxDefs
 
     ! One needs to change the sign of the projector for the mirror nodes
     !-----------------------------------------------------------------------------
-    IF( AntiRepeating ) THEN
+    IF( Repeating .AND. AntiRepeating ) THEN
       CALL PostRotationalProjector( Projector, MirrorNode )
       DEALLOCATE( MirrorNode ) 
     END IF
@@ -11217,7 +11217,13 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     Repeating = ( Rotational .OR. Sliding .OR. Axial ) .AND. .NOT. FullCircle 
-    AntiRepeating = ( AntiRotational .OR. AntiSliding .OR. AntiAxial ) .AND. .NOT. FullCircle 
+    AntiRepeating = .FALSE.
+    IF( Repeating ) THEN
+      AntiRepeating = ListGetLogical( BC,'Antisymmetric BC',GotIt ) 
+      IF( .NOT. GotIt ) THEN
+        AntiRepeating = ( AntiRotational .OR. AntiSliding .OR. AntiAxial ) .AND. .NOT. FullCircle 
+      END IF
+    END IF
       
     IF( LevelProj ) THEN 
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
@@ -11305,7 +11311,7 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,dim
     LOGICAL :: GotIt, Success, Rotational, AntiRotational, Sliding, AntiSliding, Repeating, &
-        AntiRepeating, Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
+        Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
         Flat, Plane, AntiPlane, Cylindrical, ParallelNumbering, EnforceOverlay, &
         FullCircle, AntiPeriodic
     REAL(KIND=dp) :: Radius
@@ -11362,9 +11368,12 @@ END SUBROUTINE GetMaxDefs
     Plane = ListGetLogical( BC, 'Plane Projector',GotIt )
     AntiPlane = ListGetLogical( BC,'Anti Plane Projector',GotIt )    
     IF( AntiPlane ) Plane = .TRUE.
-        
-    AntiPeriodic = ( AntiRotational .OR. AntiRadial .OR. AntiAxial .OR. AntiPlane ) 
 
+    AntiPeriodic = ListGetLogical( BC,'Antisymmetric BC',GotIt )
+    IF( .NOT. GotIt ) THEN   
+      AntiPeriodic = ( AntiRotational .OR. AntiRadial .OR. AntiAxial .OR. AntiPlane ) 
+    END IF
+      
     IF( AntiPeriodic ) CALL Info('PeriodicPermutation','Assuming antiperiodic conforming projector',Level=8)
     
     IF( Radial ) CALL Info('PeriodicProjector','Enforcing > Radial Projector <',Level=12)

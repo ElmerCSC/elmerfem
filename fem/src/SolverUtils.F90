@@ -372,27 +372,43 @@ CONTAINS
 !> If we have antiperiodic DOFs in periodic system and want to do elimination
 !> for conforming mesh, then we need to flip entries in stiffness/mass matrix.
 !---------------------------------------------------------------------------
-   SUBROUTINE FlipPeriodicLocalMatrix( Solver, n, Indexes, A, B )
+   SUBROUTINE FlipPeriodicLocalMatrix( Solver, n, Indexes, dofs, A )
      TYPE(Solver_t), POINTER :: Solver
-     INTEGER :: n
-     INTEGER, POINTER :: Indexes(:)
+     INTEGER :: n, dofs
+     INTEGER :: Indexes(:)
      REAL(KIND=dp) :: A(:,:)
-     REAL(KIND=dp), OPTIONAL :: B(:,:)
 
      LOGICAL, POINTER :: PerFlip(:)
-     INTEGER :: i,j
+     INTEGER :: i,j,k,l
 
      IF( .NOT. Solver % PeriodicFlipActive ) RETURN
 
      PerFlip => Solver % Mesh % PeriodicFlip           
-     DO i=1,n
-       DO j=1,n
-         IF( XOR(PerFlip(Indexes(i)),PerFlip(Indexes(j))) ) THEN
-           A(i,j) = -A(i,j)
-           IF( PRESENT(B) ) B(i,j) = -B(i,j)
-         END IF
+
+     IF( .NOT. ANY( PerFlip( Indexes(1:n) ) ) ) RETURN
+     
+     IF( dofs == 1 ) THEN
+       DO i=1,n
+         DO j=1,n
+           IF( XOR(PerFlip(Indexes(i)),PerFlip(Indexes(j))) ) THEN
+             A(i,j) = -A(i,j)
+           END IF
+         END DO
        END DO
-     END DO
+     ELSE
+       DO i=1,n
+         DO j=1,n
+           IF( XOR(PerFlip(Indexes(i)),PerFlip(Indexes(j))) ) THEN
+             DO k=1,dofs
+               DO l=1,dofs
+                 A(dofs*(i-1)+k,dofs*(j-1)+l) = -A(dofs*(i-1)+k,dofs*(j-1)+l)
+               END DO
+             END DO
+           END IF
+         END DO
+       END DO       
+     END IF
+              
    END SUBROUTINE FlipPeriodicLocalMatrix
 
 
@@ -400,24 +416,58 @@ CONTAINS
 !> If we have antiperiodic DOFs in periodic system and want to do elimination
 !> for conforming mesh, then we need to flip entries in local force.
 !---------------------------------------------------------------------------
-   SUBROUTINE FlipPeriodicLocalForce( Solver, n, Indexes, F )
+   SUBROUTINE FlipPeriodicLocalForce( Solver, n, Indexes, dofs, F )
      TYPE(Solver_t), POINTER :: Solver
-     INTEGER :: n
-     INTEGER, POINTER :: Indexes(:)
+     INTEGER :: n, dofs
+     INTEGER :: Indexes(:)
      REAL(KIND=dp) :: F(:)
      
      LOGICAL, POINTER :: PerFlip(:)
-     INTEGER :: i
+     INTEGER :: i,j
 
      IF( .NOT. Solver % PeriodicFlipActive ) RETURN
 
      PerFlip => Solver % Mesh % PeriodicFlip           
-     DO i=1,n
-       IF( PerFlip(Indexes(i))) F(i) = -F(i)
-     END DO
+     
+     IF( .NOT. ANY( PerFlip( Indexes(1:n) ) ) ) RETURN
+     
+     IF( dofs == 1 ) THEN
+       DO i=1,n
+         IF( PerFlip(Indexes(i))) F(i) = -F(i)
+       END DO
+     ELSE
+       DO i=1,n
+         IF( PerFlip(Indexes(i))) THEN
+           DO j=1,dofs
+             F(dofs*(i-1)+j) = -F(dofs*(i-1)+j)
+           END DO
+         END IF
+       END DO
+     END IF
+          
    END SUBROUTINE FlipPeriodicLocalForce
 
 
+!---------------------------------------------------------------------------
+!> Check if there is something to flip.
+!---------------------------------------------------------------------------
+   FUNCTION AnyFlipPeriodic( Solver, n, Indexes ) RESULT ( DoFlip ) 
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER :: n
+     INTEGER :: Indexes(:)
+     LOGICAL :: DoFlip 
+     
+     LOGICAL, POINTER :: PerFlip(:)
+
+     DoFlip = .FALSE.
+     IF( .NOT. Solver % PeriodicFlipActive ) RETURN
+    
+     PerFlip => Solver % Mesh % PeriodicFlip                
+     DoFlip = ANY( PerFlip(Indexes(1:n)))
+
+   END FUNCTION AnyFlipPeriodic
+
+   
    
 !> Glues a local matrix to the global one.
 !------------------------------------------------------------------------------
@@ -5589,7 +5639,11 @@ CONTAINS
 
     IF ( ListGetLogical( BC,& 
         'Periodic BC ' // Name(1:nlen), GotIt ) ) THEN
-      Scale = -1.0_dp
+      IF( ListGetLogical( BC,'Antisymmetric BC',GotIt ) ) THEN
+        Scale = 1.0_dp
+      ELSE
+        Scale = -1.0_dp
+      END IF
     ELSE IF ( ListGetLogical( BC, &
         'Anti Periodic BC ' // Name(1:nlen), GotIt ) ) THEN
       Scale = 1.0d0
@@ -5832,7 +5886,11 @@ CONTAINS
 
     IF ( ListGetLogical( BC, &
        'Periodic BC ' // Name(1:nlen), GotIt ) ) THEN
-      Scale = -1.0_dp
+      IF( ListGetLogical( BC,'Antisymmetric BC',GotIt ) ) THEN
+        Scale = 1.0_dp
+      ELSE
+        Scale = -1.0_dp
+      END IF
     ELSE IF ( ListGetLogical( BC, &
         'Anti Periodic BC ' // Name(1:nlen), GotIt ) ) THEN
       Scale = 1.0d0
