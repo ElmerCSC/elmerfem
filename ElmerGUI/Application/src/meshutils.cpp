@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Rï¿½back                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -1772,7 +1772,7 @@ void Meshutils::findSurfaceElementNormals(mesh_t *mesh)
       }
   }
 
-  // avarage normals over surfaces connected to vertices if
+  // average normals over surfaces connected to vertices if
   // normals within the limit_angle:
   double limit_angle = cos(50.*3.14159/180.);
 

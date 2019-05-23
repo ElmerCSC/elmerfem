@@ -868,7 +868,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
     nameproblem = FALSE;
 
     if( nonames ) {
-      printf("Ignoring > mesh.names < because it was explicitely requested!\n");
+      printf("Ignoring > mesh.names < because it was explicitly requested!\n");
       goto namesend;
     }
 
@@ -4502,7 +4502,7 @@ int OptimizePartitioningAtBoundary(struct FemType *data,struct BoundaryType *bou
       bound[j].parent2[i] = MAX(0, bound[j].parent2[i]);
   }
 
-  if(0) printf("The partitioning at discontinous gaps was optimized.\n"); 
+  if(0) printf("The partitioning at discontinuous gaps was optimized.\n");
   return(0);
 }
 
@@ -5841,7 +5841,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       }
     }
 
-    /* The discontinuous stuff is more or less obsolite as these things can now be made also 
+    /* The discontinuous stuff is more or less obsolete as these things can now be made also
        within ElmerSolver. */
     /* The second side for discontinuous boundary conditions.
        Note that this has not been treated for orphan control. */

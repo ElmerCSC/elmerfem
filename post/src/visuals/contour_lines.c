@@ -354,7 +354,7 @@ static void vis_contour_lines_delete(contour_lines_t *contour_line)
  *
  *         Output:  none
  *   
- *   Return value:  vis_add_visual_type (malloc success propably)...
+ *   Return value:  vis_add_visual_type (malloc success probably)...
  *
  ******************************************************************************/
 int vis_initialize_contour_line_visual()

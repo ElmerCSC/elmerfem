@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author:  Peter Råback
+   Author:  Peter Rï¿½back
    Email:   Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -2252,7 +2252,7 @@ int LoadElmergridOld(struct GridType **grid,int *nogrids,char *prefix,int info)
     case 31:
     case 32:
 
-      /* I dont know how to set this, luckily this piece of code should be obsolite */
+      /* I don't know how to set this, luckily this piece of code should be obsolete */
       l = 1;
       for(i=grid[k]->mappings;i<grid[k]->mappings+l;i++) {
 	Getline(line,in);
@@ -3095,8 +3095,3 @@ int ShowCorners(struct FemType *data,int variable,Real offset)
   }
   return(0);
 }
-
-
-
-
-

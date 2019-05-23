@@ -481,7 +481,7 @@ static void vis_mesh_delete(mesh_t *mesh)
  *
  *         Output:  none
  *   
- *   Return value:  vis_add_visual_type (malloc success propably)...
+ *   Return value:  vis_add_visual_type (malloc success probably)...
  *
  ******************************************************************************/
 int vis_initialize_mesh_visual()

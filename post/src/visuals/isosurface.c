@@ -397,7 +397,7 @@ static void vis_isosurface_delete(isosurface_t *isosurface)
  *
  *         Output:  none
  *   
- *   Return value:  vis_add_visual_type (malloc success propably)...
+ *   Return value:  vis_add_visual_type (malloc success probably)...
  *
  ******************************************************************************/
 int vis_initialize_isosurface_visual()

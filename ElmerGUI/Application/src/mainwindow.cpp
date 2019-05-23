@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Rï¿½back                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -6164,9 +6164,9 @@ void MainWindow::runsolverSlot()
       logMessage("Executing: " + partitioningCommand);
       
       meshSplitter->start(partitioningCommand);
-      
+
       if(!meshSplitter->waitForStarted()) {
-	logMessage("Unable to start ElmerGrid for mesh paritioning - aborted");
+	logMessage("Unable to start ElmerGrid for mesh partitioning - aborted");
 	return;
       }
     }
@@ -6856,7 +6856,7 @@ void MainWindow::showaboutSlot()
 			"from the SVN repository at Sourceforge.net\n\n"
 			"http://sourceforge.net/projects/elmerfem/\n\n"
             "Written by Mikko Lyly, Juha Ruokolainen, "
-            "Peter Råback and Sampo Sillanpää 2008-2014"));
+            "Peter Rï¿½back and Sampo Sillanpï¿½ï¿½ 2008-2014"));
 }
 
 

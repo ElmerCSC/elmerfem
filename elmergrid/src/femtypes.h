@@ -250,7 +250,7 @@ struct BoundaryType {
     maparea,         /* mappings of the area */
     open,            /* is the closure partially open? */
     echain,          /* does the chain exist? */
-    ediscont,        /* does the discontinous boundary exist */
+    ediscont,        /* does the discontinuous boundary exist */
     chainsize;       /* size of the chain */ 
   int *parent,       /* primary parents of the sides */
     *parent2,        /* secondary parents of the sides */
