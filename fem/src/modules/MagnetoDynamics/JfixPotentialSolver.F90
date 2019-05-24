@@ -198,6 +198,10 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
           CALL VariableAddVector( Mesh % Variables,Mesh,Solver,'Jfix Surface Source',&
               3,pJfixSurfaceVec,JfixSurfacePerm)
         END IF      
+        IF( ListGetLogical( SolverParams,'Jfix rhs Save') ) THEN      
+          CALL VariableAddVector( Mesh % Variables,Mesh,Solver,'Jfix rhs',&
+              1,A % rhs,Perm)
+        END IF      
       END IF
     END IF
     IF( ComplexSystem ) THEN
