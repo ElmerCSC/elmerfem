@@ -98,6 +98,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     ! Add default strategies for Jfix solver
     ! The AV equation typically prefers different ones. 
     CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
+    CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Max Iterations', 1000 )
     CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
     CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
     CALL ListAddNewLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
@@ -194,11 +195,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       ELSE
         ALLOCATE( JfixSurfaceVec(3*n) )
         pJfixSurfaceVec => JfixSurfaceVec
-        IF( ListGetLogical( SolverParams,'Jfix Surface Source Save') ) THEN      
+        IF( ListGetLogical( SolverParams,'Jfix Surface Source Save',Found) ) THEN      
           CALL VariableAddVector( Mesh % Variables,Mesh,Solver,'Jfix Surface Source',&
               3,pJfixSurfaceVec,JfixSurfacePerm)
         END IF      
-        IF( ListGetLogical( SolverParams,'Jfix rhs Save') ) THEN      
+        IF( ListGetLogical( SolverParams,'Jfix rhs Save',Found) ) THEN      
           CALL VariableAddVector( Mesh % Variables,Mesh,Solver,'Jfix rhs',&
               1,A % rhs,Perm)
         END IF      
@@ -341,11 +342,12 @@ CONTAINS
     IMPLICIT NONE       
     INTEGER :: i,j,k1,k2,t,n,meshdim,ActParents,ParParents
     TYPE(Nodes_t) :: Nodes
-    LOGICAL :: Found, JfixHybrid, JfixNeu, JfixDir, JfixAuto, JfixStatCurr
+    LOGICAL :: Found, JfixHybrid, JfixNeu, JfixDir, JfixAuto, JfixStatCurr, Parallel, DoIt
     TYPE(Element_t), POINTER :: Element, LElement, P1, P2
     REAL(KIND=dp) :: NrmEps,Jlen,JVec(3),Nrm(3),NrmProj,MaxProj,&
         MaxJVec,JEps,Jrel,Jabs,Jnrm
     TYPE(ValueList_t), POINTER :: BC
+    LOGICAL, POINTER :: JfixRhsZero(:)
     
     SAVE Nodes
 
@@ -367,33 +369,73 @@ CONTAINS
       JfixAuto = .TRUE.
       JfixStatCurr = .FALSE.
     END IF
-      
-      
+    
     ! This keyword fixes all outer boundaries with same strategy.
     ! If we set Dirichlet conditions it is needless to set anything else.
     ! If we set Neumann conditions with the hubrid strategy we may still combine
     ! with selected Dirichlet nodes.
-    IF( JfixDir .OR. JfixNeu .OR. JfixHybrid ) THEN
+    IF( JfixDir ) THEN
+      CALL Info('JfixPotentialSolver','Setting all external boundaries to zero',Level=8)
       DO j=1,Mesh % NumberOfNodes
         k1 = Perm(j)
         k2 = JfixSurfacePerm(j)
         IF( k1 == 0 .OR. k2 == 0 ) CYCLE
-        IF( JfixDir ) THEN
-          CALL UpdateDirichletDof(A, k1, 0._dp)
-        ELSE
-          IF( ComplexSystem ) THEN
-            JfixRhsC(k1) = 0.0_dp
-          ELSE
-            JfixRhs(k1) = 0.0_dp
-          END IF
+        CALL UpdateDirichletDof(A, k1, 0._dp)        
+      END DO
+      RETURN
+    END IF
+      
+    Parallel = ( ParEnv % PEs > 1 ) 
+    IF( JfixNeu .OR. JfixStatCurr .OR. JfixHybrid ) THEN
+      ALLOCATE( JfixRhsZero( SIZE( JfixRhs ) ) )
+      JfixRhsZero = .FALSE.
+    END IF
+      
+    ! In these modes all r.h.s. terms are set to zero.
+    IF( JfixNeu ) THEN
+      CALL Info('JfixPotentialSolver','Setting all boundary source terms to zero',Level=8)
+      DO j=1,Mesh % NumberOfNodes
+        k1 = Perm(j)
+        k2 = JfixSurfacePerm(j)
+        IF( k1 == 0 .OR. k2 == 0 ) CYCLE
+        JfixRhsZero(k1) = .TRUE.
+      END DO
+    END IF
+
+
+    ! This is here mainly to have backward compatibility with old non-automated strategy
+    ! intended to be used with StatCurrentSolver where we follow "Current Density" keyword.
+    IF( JfixStatCurr ) THEN
+      CALL Info('JfixPotentialSolver','Setting all neumann condition source BCs to zero',Level=8)      
+      DO t=1,GetNOFBoundaryElements()
+        Element => GetBoundaryElement(t)
+        n = GetElementNOFNodes()
+
+        IF (Element % TYPE % DIMENSION < meshdim-1 ) CYCLE
+
+        IF( ANY( Perm(Element % NodeIndexes) == 0 ) ) CYCLE
+        IF( ANY( JfixSurfacePerm(Element % NodeIndexes) == 0 ) ) CYCLE
+
+        ! We may choose to set some BC to be Neumann overriding the automated strategy
+        BC => GetBC( Element )
+        IF( ASSOCIATED( BC ) ) THEN
+          DoIt = ListGetLogical( BC,'Jfix Neumann BC',Found )
+          IF(.NOT. Found ) DoIt = ListCheckPrefix( BC,'Current Density')
+          IF( DoIt ) JfixRhsZero(Perm(Element % NodeIndexes)) = .TRUE.
         END IF
       END DO
-      IF( JfixDir .OR. JfixNeu) RETURN
     END IF
-    
-    
+
+
+    ! These srategies study the integrated current density orientation and magintude at the boundary.
     ! Find the tolerances for detecting automatically the Jfix BCs.
     IF( JfixAuto .OR. JfixHybrid ) THEN
+      IF( JfixAuto ) THEN
+        CALL Info('JfixPotentialSolver','Setting all out-of-plane source nodes to zero',Level=8)      
+      ELSE
+        CALL Info('JfixPotentialSolver','Setting hybrid Dirichlet/Neumann conditions depending on sign',Level=8)      
+      END IF
+
       NrmEps = GetCReal(SolverParams, 'Jfix norm eps', Found)
       IF (.NOT. Found) NrmEps = 0.5_dp
 
@@ -416,73 +458,74 @@ CONTAINS
       JEps = MAX( Jabs, Jrel * MaxJVec )
       WRITE( Message,'(A,ES12.3)') 'Using jfix epsilon for flux:',Jeps
       CALL Info('JfixBCs',Message,Level=8)   
-    END IF
 
       
-    DO t=1,GetNOFBoundaryElements()
-      Element => GetBoundaryElement(t)
-      n = GetElementNOFNodes()
+      DO t=1,GetNOFBoundaryElements()
+        Element => GetBoundaryElement(t)
+        n = GetElementNOFNodes()
 
-      IF (Element % TYPE % DIMENSION < meshdim-1 ) CYCLE
+        IF (Element % TYPE % DIMENSION < meshdim-1 ) CYCLE
 
-      IF( ANY( Perm(Element % NodeIndexes) == 0 ) ) CYCLE
-      IF( ANY( JfixSurfacePerm(Element % NodeIndexes) == 0 ) ) CYCLE
+        IF( ANY( Perm(Element % NodeIndexes) == 0 ) ) CYCLE
+        IF( ANY( JfixSurfacePerm(Element % NodeIndexes) == 0 ) ) CYCLE
 
-      ! We may choose to set some BC to be Neumann overriding the automated strategy
-      BC => GetBC( Element )
-      IF( ASSOCIATED( BC ) ) THEN
-        JfixNeu = ListGetLogical( BC,'Jfix Neumann BC',Found )
-
-        IF(.NOT. Found .AND. JfixStatCurr ) THEN
-          ! This is here to have backward compatibility with old non-automated strategy
-          ! intended to be used with StatCurrentSolver.
-          JfixNeu = ListCheckPrefix( BC,'Current Density')
-        END IF
-        IF( JfixNeu ) THEN
+        CALL GetElementNodes(Nodes)
+        Nrm = NormalVector(Element,Nodes,Check=.TRUE.)
+      
+        DO i=1,n
+          j = Element % NodeIndexes(i) 
+          k1 = Perm(j)
+          k2 = JfixSurfacePerm(j)
+          IF( k2 == 0 ) CYCLE
+          
           IF( ComplexSystem ) THEN
-            JfixRhsC(JfixSurfacePerm(Element % NodeIndexes)) = 0.0_dp
+            JVec = ABS( JfixSurfaceVecC(3*k2-2:3*k2) )
           ELSE
-            JfixRhs(JfixSurfacePerm(Element % NodeIndexes)) = 0.0_dp
+            JVec = JfixSurfaceVec(3*k2-2:3*k2)
           END IF
-          CYCLE
-        END IF        
-      END IF
 
-      IF( .NOT. ( JfixAuto .OR. JfixHybrid ) ) CYCLE
-      CALL GetElementNodes(Nodes)
-      Nrm = NormalVector(Element,Nodes,Check=.TRUE.)
-      
-      DO i=1,n
-        j = Element % NodeIndexes(i) 
-        k1 = Perm(j)
-        k2 = JfixSurfacePerm(j)
+          JLen = SQRT( SUM( JVec**2 ) )
 
-        IF( ComplexSystem ) THEN
-          JVec = ABS( JfixSurfaceVecC(3*k2-2:3*k2) )
-        ELSE
-          JVec = JfixSurfaceVec(3*k2-2:3*k2)
-        END IF
-
-        JLen = SQRT( SUM( JVec**2 ) )
-
-        IF( Jlen < Jeps ) CYCLE          
-        Jnrm = SUM( Nrm * Jvec ) 
-
-        ! This is to test whether to only fix positive flux BCs and 
-        IF( JfixHybrid .AND. Jnrm < 0.0 ) CYCLE
-
-        NrmProj = ABS( Jnrm ) / Jlen
-        MaxProj = MAX( MaxProj, NrmProj ) 
-
-        IF( NrmProj > Nrmeps ) THEN
-          CALL UpdateDirichletDof(A, k1, 0._dp)
-        END IF
+          IF( Jlen < Jeps ) CYCLE          
+          Jnrm = SUM( Nrm * Jvec ) 
+          
+          ! This is to test whether to only fix positive flux BCs and 
+          IF( JfixHybrid .AND. Jnrm < 0.0 ) THEN
+            JfixRhsZero(k1) = .TRUE.
+          ELSE
+            NrmProj = ABS( Jnrm ) / Jlen
+            MaxProj = MAX( MaxProj, NrmProj )             
+            IF( NrmProj > Nrmeps ) THEN
+              CALL UpdateDirichletDof(A, k1, 0._dp)
+            END IF
+          END IF
+            
+        END DO
       END DO
-    END DO
-
-    IF( JfixAuto .OR. JfixHybrid ) THEN
+      
       WRITE( Message,'(A,ES12.3)') 'Maximum norm projection:',MaxProj
       CALL Info('JfixBCs',Message,Level=15)           
+    END IF
+
+    ! If seme neumaan conditions where set communicate them, and set them
+    IF( JfixNeu .OR. JfixStatCurr .OR. JfixHybrid ) THEN
+      IF( ParEnv % PEs > 1 ) THEN
+        CALL Info('JfixPotentialSolver','Communicating zero source terms',Level=10)      
+        CALL CommunicateLinearSystemTag(A,JfixRhsZero)
+      END IF
+                
+      DO j=1,Mesh % NumberOfNodes
+        k1 = Perm(j)
+        IF( k1 == 0 ) CYCLE
+        IF( JfixRhsZero(k1) ) THEN        
+          IF( ComplexSystem ) THEN
+            JfixRhsC(k1) = 0.0_dp
+          ELSE
+            JfixRhs(k1) = 0.0_dp
+          END IF
+        END IF
+      END DO
+      DEALLOCATE( JfixRhsZero ) 
     END IF
       
 !------------------------------------------------------------------------------
