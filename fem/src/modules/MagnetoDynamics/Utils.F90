@@ -711,23 +711,28 @@ CONTAINS
   !-------------------------------------------------------------------------------
   ! Mark nodes that are on outher boundary using face elements and node parmutation.
   !-------------------------------------------------------------------------------
-  SUBROUTINE MarkOuterNodes(Mesh,Perm,SurfaceNodes,SurfacePerm) 
+  SUBROUTINE MarkOuterNodes(Mesh,Perm,SurfaceNodes,SurfacePerm,EnsureBC) 
 
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: Perm(:),SurfacePerm(:)
     INTEGER :: SurfaceNodes
-
-    INTEGER :: i,t,n,ActParents,ParParents
+    LOGICAL :: EnsureBC
+    
+    INTEGER :: snodes0, snodes, i,t,n,ActParents,ParParents
     TYPE(Element_t), POINTER :: Element, P1, P2, P
-        
+    LOGICAL, ALLOCATABLE :: BcNode(:)
+    
     CALL Info('MarkOuterNodes','Marking outer nodes on outer boundary',Level=8)
     
+    SurfaceNodes = 0
+
     IF( Mesh % NumberOfFaces == 0 ) THEN
       CALL Fatal('MarkOuterNodes','The faces are not created!')
     END IF
     
+    n = Mesh % NumberOfNodes
     IF(.NOT. ASSOCIATED( SurfacePerm ) ) THEN
-      ALLOCATE( SurfacePerm( Mesh % NumberOfNodes ) ) 
+      ALLOCATE( SurfacePerm( n ) )
     END IF
     SurfacePerm = 0
     
@@ -775,17 +780,49 @@ CONTAINS
       SurfacePerm(Element % NodeIndexes) = 1
     END DO
 
+    IF( EnsureBC ) THEN
+      ALLOCATE( BcNode(n) )
+      BcNode = .FALSE.
+
+      DO t=Mesh % NumberOfBulkElements +1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements      
+        Element => Mesh % Elements(t)         
+        BcNode(Element % NodeIndexes) = .TRUE.
+      END DO
+
+      snodes0 = COUNT( SurfacePerm > 0 )
+      snodes0 = NINT( ParallelReduction(1.0_dp * snodes0) ) 
+
+      !DO i=1,n
+      !  IF( SurfacePerm(i) > 0 .AND. .NOT. BcNode(i) ) THEN
+      !    PRINT *,'node:',ParEnv % MyPe, i, Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
+      !  END IF
+      !END DO
+
+      WHERE( .NOT. BcNode ) SurfacePerm = 0
+      DEALLOCATE( BcNode ) 
+    END IF
+      
     ! Create numbering for the surface nodes
-    SurfaceNodes = 0
-    DO i=1,Mesh % NumberOfNodes
+    snodes = 0
+    DO i=1,n
       IF( SurfacePerm(i) > 0 ) THEN
-        SurfaceNodes = SurfaceNodes + 1
-        SurfacePerm(i) = SurfaceNodes
+        snodes = snodes + 1
+        SurfacePerm(i) = snodes
       END IF
-    END DO
+    END DO     
     
-    n = NINT( ParallelReduction(1.0_dp * SurfaceNodes) ) 
-    CALL Info('MarkOuterNodes','Total number of surface nodes: '//TRIM(I2S(n)),Level=6)
+    snodes = NINT( ParallelReduction(1.0_dp * snodes) ) 
+    CALL Info('MarkOuterNodes','Total number of surface nodes: '//TRIM(I2S(snodes)),Level=6)
+
+    IF( EnsureBC ) THEN
+      IF( snodes0 > snodes ) THEN
+        CALL Info('MarkOuterNodes','Removed number of surface nodes not at BCs: '&
+            //TRIM(I2S(snodes0-snodes)),Level=6)
+      END IF
+    END IF
+
+    SurfaceNodes = snodes
     
   END SUBROUTINE MarkOuterNodes
 

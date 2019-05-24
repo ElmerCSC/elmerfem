@@ -61,7 +61,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER :: A => NULL(),B
   REAL(KIND=dp) :: Norm
-  LOGICAL:: SingleNodeBC, Found
+  LOGICAL:: SingleNodeBC, EnsureBC, Found
   INTEGER, ALLOCATABLE :: Def_Dofs(:,:,:)
   CHARACTER(LEN=MAX_NAME_LEN):: Equation
   INTEGER, POINTER :: Perm(:)
@@ -187,7 +187,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     CALL JfixBulkAssembly()
   
     IF(.NOT. ASSOCIATED( JfixSurfacePerm ) ) THEN
-      CALL MarkOuterNodes(Mesh,Perm,n,JfixSurfacePerm)
+      EnsureBC = .NOT. ListGetLogical( SolverParams,'Jfix without boundaries',Found)
+      CALL MarkOuterNodes(Mesh,Perm,n,JfixSurfacePerm,EnsureBC)
       IF( ComplexSystem ) THEN
         ALLOCATE( JfixSurfaceVecC(3*n) )    
       ELSE
