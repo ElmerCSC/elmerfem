@@ -65,7 +65,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   INTEGER, ALLOCATABLE :: Def_Dofs(:,:,:)
   CHARACTER(LEN=MAX_NAME_LEN):: Equation
   INTEGER, POINTER :: Perm(:)
-  REAL(KIND=dp), POINTER :: fixpot(:),fixpotim(:),tmpsol(:)
+  REAL(KIND=dp), POINTER :: fixpot(:),fixpotim(:),tmpsol(:),pJfixSurfaceVec(:)
   TYPE(Variable_t), POINTER :: jfixpot, jfixpotim, svar, IterV 
   LOGICAL :: ComplexSystem, Visited = .FALSE.
 
@@ -193,6 +193,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
         ALLOCATE( JfixSurfaceVecC(3*n) )    
       ELSE
         ALLOCATE( JfixSurfaceVec(3*n) )
+        pJfixSurfaceVec => JfixSurfaceVec
+        IF( ListGetLogical( SolverParams,'Jfix Surface Source Save') ) THEN      
+          CALL VariableAddVector( Mesh % Variables,Mesh,Solver,'Jfix Surface Source',&
+              3,pJfixSurfaceVec,JfixSurfacePerm)
+        END IF      
       END IF
     END IF
     IF( ComplexSystem ) THEN
@@ -201,6 +206,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       JfixSurfaceVec = 0.0_dp
     END IF
 
+    
   ELSE IF( JfixPhase == 2 ) THEN
     CALL ListSetNameSpace('jfix:')    
 

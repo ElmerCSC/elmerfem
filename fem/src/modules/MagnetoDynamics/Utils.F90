@@ -49,7 +49,7 @@ MODULE MagnetoDynamicsUtils
    REAL(KIND=dp), POINTER :: Jfixrhs(:)
    COMPLEX(KIND=dp), POINTER :: JfixRhsC(:)
    INTEGER, POINTER :: JfixSurfacePerm(:) 
-   REAL(KIND=dp), ALLOCATABLE :: JfixSurfaceVec(:)
+   REAL(KIND=dp), ALLOCATABLE, TARGET :: JfixSurfaceVec(:)
    COMPLEX(KIND=dp), ALLOCATABLE :: JfixSurfaceVecC(:)
    
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
