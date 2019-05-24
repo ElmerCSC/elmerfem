@@ -760,7 +760,7 @@ END INTERFACE
            END IF
 
            ! Compare to given reference norm
-           IF( Err > Tol ) THEN
+           IF( Err > Tol .OR. Err /= Err ) THEN
              ! Warn only in the main core
              IF( ParEnv % MyPe == 0 ) THEN
                WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
