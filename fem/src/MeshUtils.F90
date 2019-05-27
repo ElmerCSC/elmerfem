@@ -10985,12 +10985,14 @@ END SUBROUTINE GetMaxDefs
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
         Flat, Plane, AntiPlane, LevelProj, FullCircle, Cylindrical, &
-        ParallelNumbering, EnforceOverlay
+        ParallelNumbering, TimestepNumbering, EnforceOverlay
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
     REAL(KIND=dp) :: NodeScale, EdgeScale, Radius, Coeff
     TYPE(ValueList_t), POINTER :: BC
+    CHARACTER(LEN=MAX_NAME_LEN) :: FilePrefix
+    TYPE(Variable_t), POINTER :: v
 
     INTERFACE
       FUNCTION WeightedProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
@@ -11272,16 +11274,28 @@ END SUBROUTINE GetMaxDefs
     IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
       ParallelNumbering = ListGetLogical( BC,'Save Projector Global Numbering',GotIt )
 
-      CALL SaveProjector( Projector, .TRUE.,'p'//TRIM(I2S(This)), Parallel = ParallelNumbering) 
+      FilePrefix = 'p'//TRIM(I2S(This))
+      
+      TimestepNumbering = ListGetLogical( BC,'Save Projector Timestep Numbering',GotIt )
+      IF( TimestepNumberIng ) THEN
+        i = 0
+        v => VariableGet( Mesh % Variables, 'timestep' )
+        IF( ASSOCIATED( v ) ) i = NINT( v % Values(1) )
+        WRITE( FilePrefix,'(A,I4.4)') TRIM(FilePrefix)//'_',i
+      END IF
+        
+      CALL SaveProjector( Projector, .TRUE.,TRIM(FilePrefix), &
+          Parallel = ParallelNumbering) 
+      
       ! Dual projector if it exists
       IF( ASSOCIATED( Projector % Ematrix ) ) THEN
-        CALL SaveProjector( Projector % Ematrix, .TRUE.,'pd'//TRIM(I2S(This)), &
+        CALL SaveProjector( Projector % Ematrix, .TRUE.,'dual_'//TRIM(FilePrefix),&
             Projector % InvPerm, Parallel = ParallelNumbering) 
       END IF
 
       ! Biorthogonal projector if it exists
       IF( ASSOCIATED( Projector % Child ) ) THEN
-        CALL SaveProjector( Projector % Child, .TRUE.,'pb'//TRIM(I2S(This)), & 
+        CALL SaveProjector( Projector % Child, .TRUE.,'biortho_'//TRIM(FilePrefix), &
             Projector % InvPerm, Parallel = ParallelNumbering ) 
       END IF
 
