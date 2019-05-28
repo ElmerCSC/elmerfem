@@ -16567,7 +16567,7 @@ CONTAINS
      LOGICAL :: NeedToGenerate 
 
      LOGICAL :: HaveMortarDiag, LumpedDiag, PerFlipActive
-     REAL(KIND=dp) :: MortarDiag
+     REAL(KIND=dp) :: MortarDiag, val, MinVal
      LOGICAL, POINTER :: PerFlip(:)
      
 
@@ -16658,6 +16658,10 @@ CONTAINS
        Solver % Matrix % ConstraintMatrix => NULL()
      END IF
        
+     MinVal = ListGetConstReal( Solver % Values,&
+         'Minimum Projector Value', Found )
+     IF(.NOT. Found ) MinVal = TINY( MinVal ) 
+     
      
      SumProjectors = ListGetLogical( Solver % Values,&
          'Mortar BCs Additive', Found )
@@ -16946,7 +16950,11 @@ CONTAINS
            DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1
              
              col = Atmp % Cols(l) 
+             val = Atmp % Values(l)
 
+             IF( ABS( val ) < MinVal ) CYCLE
+
+             
              IF( Reorder ) THEN
                IF( col <= permsize ) THEN
                  col2 = Perm(col)
@@ -16966,17 +16974,17 @@ CONTAINS
                  IF( CreateSelf ) THEN
                    ! We want to create [D-P] hence the negative sign
                    Scale = MortarBC % MasterScale
-                   wsum = wsum + Atmp % Values(l)
+                   wsum = wsum + val
                  ELSE IF( ASSOCIATED( MortarBC % Perm ) ) THEN
                    ! Look if the component refers to the slave
                    IF( MortarBC % Perm( col ) > 0 ) THEN
                      Scale = MortarBC % SlaveScale 
-                     wsum = wsum + Atmp % Values(l) 
+                     wsum = wsum + val
                    ELSE
                      Scale = MortarBC % MasterScale
                    END IF
                  ELSE
-                   wsum = wsum + Atmp % Values(l)
+                   wsum = wsum + val
                  END IF
 
                  ! If we sum up to anti-periodic dof then use different sign
@@ -16999,12 +17007,12 @@ CONTAINS
                END IF
                
                Btmp % Cols(k2) = col2
-               Btmp % Values(k2) = Scale * Atmp % Values(l)
+               Btmp % Values(k2) = Scale * val
                IF(ASSOCIATED(Btmp % TValues)) THEN
                  IF(ASSOCIATED(Atmp % Child)) THEN
                    Btmp % TValues(k2) = Scale * Atmp % Child % Values(l)
                  ELSE
-                   Btmp % TValues(k2) = Scale * Atmp % Values(l)
+                   Btmp % TValues(k2) = Scale * val
                  END IF
                END IF
              ELSE
@@ -17081,7 +17089,7 @@ CONTAINS
                      END IF
                      
                      Btmp % Cols(k2) = l2 + arows + rowoffset
-                     Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * Atmp % Values(l) * MortarDiag
+                     Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * val * MortarDiag
                    ELSE
                      IF( SumThis) SumCount(row) = SumCount(row) + 1
                    END IF
