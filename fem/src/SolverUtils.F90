@@ -16567,7 +16567,7 @@ CONTAINS
      LOGICAL :: NeedToGenerate 
 
      LOGICAL :: HaveMortarDiag, LumpedDiag, PerFlipActive
-     REAL(KIND=dp) :: MortarDiag, val, MinVal
+     REAL(KIND=dp) :: MortarDiag, val, valsum, EpsVal
      LOGICAL, POINTER :: PerFlip(:)
      
 
@@ -16658,9 +16658,9 @@ CONTAINS
        Solver % Matrix % ConstraintMatrix => NULL()
      END IF
        
-     MinVal = ListGetConstReal( Solver % Values,&
+     EpsVal = ListGetConstReal( Solver % Values,&
          'Minimum Projector Value', Found )
-     IF(.NOT. Found ) MinVal = TINY( MinVal ) 
+     IF(.NOT. Found ) EpsVal = 1.0e-8_dp
      
      
      SumProjectors = ListGetLogical( Solver % Values,&
@@ -16947,12 +16947,19 @@ CONTAINS
            
            wsum = 0.0_dp
            
+
+           valsum = 0.0_dp
+           DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1             
+             valsum = valsum + ABS( Atmp % Values(l) ) 
+           END DO
+             
+
            DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1
              
              col = Atmp % Cols(l) 
              val = Atmp % Values(l)
 
-             IF( ABS( val ) < MinVal ) CYCLE
+             IF( ABS( val ) < EpsVal * valsum ) CYCLE
 
              
              IF( Reorder ) THEN
