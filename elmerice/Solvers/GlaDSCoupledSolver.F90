@@ -1161,6 +1161,11 @@
                 IF(WorkVar % Values(k)==0.0) THEN
                   ThickSolution(k) = 0.0
                   ThickPrev(k,1) = 0.0
+                  CycleElement = .TRUE.
+                END IF
+                IF (ThickSolution(k)>100.0) THEN
+                  ThickSolution(k) = 0.0
+                  ThickPrev(k,1) = 0.0
                 END IF
                 NULLIFY(WorkVar, WorkVar2)
                 IF(CycleElement) CYCLE
