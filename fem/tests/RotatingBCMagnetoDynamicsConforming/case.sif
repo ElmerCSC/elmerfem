@@ -347,8 +347,9 @@ Boundary Condition 14
   P {e} = real 0
   P = Real 1.0
 End 
- 
 
-Solver 2 :: Reference Norm = 4.16898977E-03
+
+Solver 2 :: Reference Norm = 4.16868320E-03
+
 
 

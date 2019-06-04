@@ -16699,7 +16699,6 @@ CONTAINS
        ALLOCATE( SumCount( arows ) )
        SumCount = 0
      END IF
-
      
      ComplexMatrix = Solver % Matrix % Complex
      IF( ComplexMatrix ) THEN
@@ -16784,8 +16783,10 @@ CONTAINS
            CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
          END IF
 
-         Priority = ListGetInteger( Model % BCs(bc_ind) % Values,'Projector Priority',Found)
-
+         IF( AnyPriority ) THEN
+           Priority = ListGetInteger( Model % BCs(bc_ind) % Values,'Projector Priority',Found)
+         END IF
+           
          ! Enable that the user can for vector valued cases either set some 
          ! or skip some field components. 
          SomeSet = .FALSE.
@@ -16850,6 +16851,7 @@ CONTAINS
            CYCLE
          END IF
 
+         ! Number the rows. 
          IF( SumThis ) THEN
            DO i=1,Atmp % NumberOfRows                               
              ! Skip empty row
@@ -16891,7 +16893,6 @@ CONTAINS
            END DO
          END IF
          
-         
          IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) THEN
            IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN                   
              k = MAXVAL( Atmp % Cols )
@@ -16922,7 +16923,7 @@ CONTAINS
            ELSE
              k = i
            END IF
-
+            
            kk = k
            IF( Reorder ) THEN
              kk = Perm(k) 
@@ -16931,10 +16932,17 @@ CONTAINS
              
            IF( SumThis ) THEN             
              row = SumPerm(kk)
-             IF( row <= 0 ) CYCLE
-
+               
              ! Mark this for future contributions so we know this is already set
-             IF( Priority /= PrevPriority ) SumPerm(kk) = -SumPerm(kk)
+             ! and can skip this above.
+             IF( AnyPriority ) THEN
+               IF( row < 0 ) CYCLE
+               IF( Priority /= PrevPriority ) SumPerm(kk) = -SumPerm(kk)
+             END IF
+             
+             IF( row <= 0 ) THEN
+               CALL Fatal('GenerateConstraintMatrix','Invalid row index: '//TRIM(I2S(row)))
+             END IF
            ELSE
              sumrow = sumrow + 1
              row = sumrow
@@ -16966,9 +16974,8 @@ CONTAINS
                IF( col <= permsize ) THEN
                  col2 = Perm(col)
                  IF( col2 == 0 ) CYCLE
-               ELSE 
-                 PRINT *,'col too large',col,permsize
-                 CYCLE
+               ELSE
+                 CALL Fatal('GenerateConstraintMatrix','col index too large: '//TRIM(I2S(col)))
                END IF
              ELSE
                col2 = col
