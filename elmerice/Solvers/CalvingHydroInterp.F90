@@ -405,7 +405,7 @@
         CASE (0)
           CALL Info('CalvingHydroInterp', 'No non-0 values of NormalStress. &
                    Making a guess')
-          NewNS = -4.0
+          NewNS = SUM(WorkVar2 % Values)/SIZE(WorkVar2 % Values)
         CASE (1)
           NewNS = SUM(NSValues) 
         CASE (2)
