@@ -691,7 +691,85 @@ CONTAINS
 
   END SUBROUTINE BlockPickDofsPhysical
     
+
+
+  !-------------------------------------------------------------------------------------
+  !> Picks the components of a full matrix to given domains or bodies.
+  !> The rest stays in 1st domain.
+  !-------------------------------------------------------------------------------------
+  SUBROUTINE BlockPickHdiv( Solver, BlockIndex, NoVar )
     
+    TYPE(Solver_t), POINTER :: Solver
+    INTEGER, POINTER :: BlockIndex(:)
+    INTEGER :: Novar
+    
+    INTEGER :: i,j,n,nn,ne,nf,nb,nnis,neis,nfis,nbis
+    INTEGER :: nncount,necount,nfcount,nbcount
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL :: Found
+    INTEGER, POINTER :: Perm(:)
+    
+    
+    CALL Info('BlockSolver','Picking block matrix for mixed hdiv solver',Level=10)
+
+    Mesh => Solver % Mesh
+    nn = Mesh % NumberOfNodes
+    ne = Mesh % NumberOfEdges
+    nf = Mesh % NumberOfFaces
+    nb = Mesh % NumberOfBulkElements
+
+    ! true/false flags whether dof type exists
+    nnis = 0
+    neis = 0
+    nfis = 0
+    nbis = 0
+
+    ! counter of types of dofs
+    nncount = 0
+    necount = 0
+    nfcount = 0
+    nbcount = 0
+    
+    Perm => Solver % Variable % Perm 
+    n = SIZE( Perm ) 
+
+    DO i=1,n
+      j = Perm(i)
+      IF( j == 0 ) CYCLE
+
+      IF( i <= nn ) THEN
+        nnis = 1
+        nncount = nncount + 1
+        BlockIndex(j) = 1
+      ELSE IF( i <= nn + ne ) THEN
+        neis = 1
+        necount = necount + 1
+        BlockIndex(j) = nnis + 1
+      ELSE IF( i <= nn + ne + nf ) THEN
+        nfis = 1
+        nfcount = nfcount + 1
+        BlockIndex(j) = nnis + neis + 1
+      ELSE
+        nbis = 1
+        nbcount = nbcount + 1
+        BlockIndex(j) = nnis + neis + nfis + 1
+      END IF
+    END DO
+
+    IF( nncount > 0 ) CALL Info('BlockSolver','Number of nodal dofs: '//TRIM(I2S(nncount)),Level=8)
+    IF( necount > 0 ) CALL Info('BlockSolver','Number of edge dofs: '//TRIM(I2S(necount)),Level=8)
+    IF( nfcount > 0 ) CALL Info('BlockSolver','Number of face dofs: '//TRIM(I2S(nfcount)),Level=8)
+    IF( nbcount > 0 ) CALL Info('BlockSolver','Number of elemental dofs: '//TRIM(I2S(nbcount)),Level=8)
+       
+    NoVar = nnis + neis + nfis + nbis
+
+    CALL Info('BlockSolver','Found dofs related to '//TRIM(I2S(NoVar))//' groups',Level=6)
+    
+  END SUBROUTINE BlockPickHdiv
+  
+
+
+  
   !-------------------------------------------------------------------------------------
   !> Picks the components of a full matrix when blockindex table is given.
   !-------------------------------------------------------------------------------------
@@ -1487,13 +1565,13 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     INTEGER :: Novar
 
-    INTEGER :: i, RowVar, ColVar
+    INTEGER :: i, RowVar, ColVar, CopyVar
     CHARACTER(LEN=max_name_len) :: str
     REAL(KIND=dp) :: Coeff
     LOGICAL :: GotIt, GotIt2
     INTEGER, POINTER :: VarPerm(:)
     TYPE(ValueList_t), POINTER :: Params
-    TYPE(Matrix_t), POINTER :: Amat
+    TYPE(Matrix_t), POINTER :: Amat, PMat
     TYPE(Variable_t), POINTER :: AVar
     
     
@@ -1526,6 +1604,21 @@ CONTAINS
           CALL MassMatrixAssembly( Solver, VarPerm, Amat )
           Amat % Values = Coeff * Amat % Values
         END IF
+      END IF
+
+      WRITE (str,'(A,I0)') 'Prec Matrix Diagonal ',RowVar
+      Coeff = ListGetCReal( Params, TRIM(str), GotIt)
+      IF( GotIt ) THEN
+        CopyVar = NoVar+1 - RowVar
+        PMat => TotMatrix % Submatrix(RowVar,CopyVar) % Mat
+        Amat => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat 
+        CALL Info('BlockPrecMatrix','Creating preconditioner from matrix ('&
+            //TRIM(I2S(RowVar))//','//TRIM(I2S(CopyVar))//')',Level=6)
+        PRINT *,'proj matrix sum:',SUM( ABS( PMat % Values ) ) 
+        PRINT *,'orig diag matrix sum:',SUM( ABS( TotMatrix % Submatrix(RowVar,RowVar) % Mat % Values ) )
+        
+        CALL DiagonalMatrixSumming( Solver, PMat, Amat )
+        Amat % Values = Coeff * Amat % Values
       END IF
     END DO
     
@@ -2966,7 +3059,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,l,n,nd,NonLinIter,tests,NoTests,iter
     LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, &
-        BlockHorVer, BlockCart, BlockNodal, BlockDomain
+        BlockHdiv, BlockHorVer, BlockCart, BlockNodal, BlockDomain
     INTEGER :: ColVar, RowVar, NoVar, BlockDofs, VarDofs
     
     REAL(KIND=dp) :: NonlinearTol, Norm, PrevNorm, Residual, PrevResidual, &
@@ -3015,6 +3108,7 @@ CONTAINS
 
     ! Different strategies on how to split the initial monolithic matrix into blocks
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)
+    BlockHdiv = ListGetLogical( Params,'Block Hdiv system',GotIt)
     BlockNodal = ListGetLogical( Params,'Block Nodal System', GotIt)
     BlockHorVer = ListGetLogical( Params,'Block Hor-Ver System', GotIt)
     BlockCart = ListGetLogical( Params,'Block Cartesian System', GotIt)
@@ -3029,6 +3123,12 @@ CONTAINS
       ALLOCATE( BlockIndex(n) )
       BlockDofs = 0
       CALL BlockPickDofsPhysical( PSolver, BlockIndex, BlockDofs )  
+      SkipVar = .TRUE.
+    ELSE IF( BlockHdiv ) THEN
+      n = MAXVAL( Solver % Variable % Perm )
+      ALLOCATE( BlockIndex(n) )
+      BlockDofs = 0
+      CALL BlockPickHdiv( PSolver, BlockIndex, BlockDofs )  
       SkipVar = .TRUE.
     ELSE IF( BlockAV .OR. BlockNodal .OR. BlockHorVer ) THEN
       BlockDofs = 2
@@ -3073,7 +3173,7 @@ CONTAINS
     SolverMatrix % RHS => b
     
     IF( .NOT. GotSlaveSolvers ) THEN    
-      IF( BlockDomain ) THEN
+      IF( BlockDomain .OR. BlockHdiv ) THEN
         CALL BlockPickMatrixPerm( Solver, BlockIndex, VarDofs )
         DEALLOCATE( BlockIndex ) 
       ELSE IF( BlockAV ) THEN
