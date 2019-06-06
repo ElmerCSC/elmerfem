@@ -78,7 +78,7 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverPars
-  LOGICAL :: SavePrincipalAxes, Found
+  LOGICAL :: SavePrincipalAxes, Found, Eigenanalysis
   INTEGER  :: i
 !------------------------------------------------------------------------------
   SolverPars => GetSolverParams()
@@ -92,9 +92,14 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
   ! Only created if the system is harmonic
   CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 DNU im:3]')
 
-  
-  CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
-  CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
+  Eigenanalysis = GetLogical(SolverPars, 'Eigen Analysis', Found)
+  IF (Eigenanalysis) THEN
+    CALL ListAddLogical(SolverPars, 'Large Deflection', .FALSE.)
+    CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 1)
+  ELSE
+    CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
+    CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
+  END IF
   CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
   CALL ListAddNewLogical(SolverPars, 'Skip Compute Nonlinear Change', .TRUE.)
 
@@ -241,8 +246,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   Parallel = ParEnv % PEs > 1
   MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
   
-  HarmonicAssembly = GetLogical(SolverPars, 'Harmonic Mode', Found) .OR. &
-      GetLogical(SolverPars, 'Harmonic Analysis', Found)
+  HarmonicAssembly = EigenOrHarmonicAnalysis(Solver) .OR. GetLogical(SolverPars, &
+      'Harmonic Mode', Found) .OR. GetLogical(SolverPars, 'Harmonic Analysis', Found)
   MassAssembly =  TransientSimulation .OR. HarmonicAssembly 
 
   ! ---------------------------------------------------------------------------------
@@ -4275,6 +4280,8 @@ CONTAINS
             DO j=1,nd
               Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
                   Basis(i) * Basis(j) * Weight
+              Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
+                  h**3/12.0d0 * Basis(i) * Basis(j) * Weight
             END DO
           END DO
         END DO
