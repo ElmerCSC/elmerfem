@@ -5725,6 +5725,81 @@ use spariterglobals
 
 
 !------------------------------------------------------------------------------
+!> This is a wrapper to get gradient of a real valued keyword with functional dependencies.  
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementRealGrad( Handle,dBasisdx,Element,Found,Indexes) RESULT(RGrad)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     ! dBasisdx is required since it is used to evaluate the gradient
+     REAL(KIND=dp) :: dBasisdx(:,:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     REAL(KIND=dp)  :: RGrad(3)
+     LOGICAL :: Lfound
+     INTEGER :: i
+     
+     RGrad = 0.0_dp
+     
+     IF( Handle % NotPresentAnywhere ) THEN
+       IF( PRESENT( Found ) ) Found = .FALSE.
+       RETURN
+     END IF
+
+     ! Derivative of constant is zero
+     IF( Handle % ConstantEverywhere ) THEN
+       IF( PRESENT( Found ) ) Found = .TRUE.      
+       RETURN
+     END IF
+
+     ! Obtain gradient of a scalar field going through the partial derivatives of the components
+     DO i=1,3     
+       RGrad(i) = ListGetElementReal(Handle,dBasisdx(:,i),Element,Lfound,Indexes)
+       ! If we don't have it needless to contunue to 2nd and 3rd dimensions
+       IF(.NOT. Lfound ) EXIT
+     END DO
+     IF( PRESENT( Found ) ) Found = Lfound
+     
+   END FUNCTION ListGetElementRealGrad
+
+
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting divergence of a 3D real vector.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementRealDiv( Handle,dBasisdx,Element,Found,Indexes) RESULT(Rdiv)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     ! dBasisdx is required since it is used to evaluate the divergence
+     REAL(KIND=dp) :: dBasisdx(:,:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     REAL(KIND=dp)  :: Rdiv(3)
+
+     LOGICAL :: Found1, Found2, Found3
+
+     Rdiv = 0.0_dp
+     
+     IF(.NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
+       CALL Fatal('ListGetElementReal3D','Initialize with 3D components!')
+     END IF
+
+     IF( Handle % NotPresentAnywhere .AND. Handle % Handle2 % NotPresentAnywhere &
+         .AND.  Handle % Handle3 % NotPresentAnywhere ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RETURN
+     END IF
+
+     Rdiv(1) = ListGetElementReal(Handle,dBasisdx(:,1),Element,Found1,Indexes)
+     Rdiv(2) = ListGetElementReal(Handle % Handle2,dBasisdx(:,2),Element,Found2,Indexes)
+     Rdiv(3) = ListGetElementReal(Handle % Handle3,dBasisdx(:,3),Element,Found3,Indexes)
+     IF( PRESENT( Found ) ) Found = Found1 .OR. Found2 .OR. Found3
+     
+   END FUNCTION ListGetElementRealDiv
+
+
+   
+!------------------------------------------------------------------------------
 !> This is just a wrapper for getting a 3D complex vector.
 !------------------------------------------------------------------------------
    FUNCTION ListGetElementComplex3D( Handle,Basis,Element,Found,Indexes,&
