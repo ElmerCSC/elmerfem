@@ -349,7 +349,7 @@
                       ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
                    % Order, Solver % TimeOrder)))
-          WorkVar % PrevValues = 0.0_dp
+          WorkVar % PrevValues(:,1) = WorkVar % Values
             
           WorkVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
                      % Variables, 'Channel Flux', ThisOnly=.TRUE.)
@@ -364,7 +364,7 @@
                       ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
                    % Order, Solver % TimeOrder)))
-          WorkVar % PrevValues = 0.0_dp
+          WorkVar % PrevValues(:,1) = WorkVar % Values
 
           !The same for sheet thickness
           DO i=1,Model % NumberOfSolvers
@@ -386,7 +386,7 @@
                       ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
                    % Order, Solver % TimeOrder)))
-          WorkVar % PrevValues = 0.0_dp
+          WorkVar % PrevValues(:,1) = WorkVar % Values
           !Necessary to ensure initial condition value reflected in PrevValues
           WorkVar % PrevValues(1:Solver % Mesh % NumberOfNodes,1) = WorkVar % Values(1:Solver % Mesh % NumberOfNodes)
           NULLIFY(WorkVar, ValuesPointer, PermPointer)
@@ -829,7 +829,7 @@
               M = Solver % Mesh % NumberOfNodes
               !CHANGE
               !To stabilise channels
-              IF(AreaSolution(AreaPerm(M+t)) > 999.0) AreaSolution(AreaPerm(M+t)) = 0.0
+              IF(AreaSolution(AreaPerm(M+t)) > 999.0) AreaSolution(AreaPerm(M+t)) = 999.0
               ChannelArea = AreaSolution(AreaPerm(M+t))
 
               !------------------------------------------------------------------------------
@@ -859,7 +859,7 @@
               !shouldn't do much, so resetting to 0 seems safest
               !TODO Come up with a better way of fixing this
               k = AreaPerm(M+t)
-              IF(AreaSolution(k) > 999.0) AreaSolution(k) = 0.0
+              IF(AreaSolution(k) > 999.0) AreaSolution(k) = 999.0
               ! This should be not needed as MASS = 0 here
               IF ( TransientSimulation ) THEN
                  CALL Default1stOrderTime( MASS, STIFF, FORCE, Edge )
@@ -1359,10 +1359,10 @@
                  !TODO Come up with a better way of fixing this
                  IF(AreaPrev(k,1) .NE. 0.0) THEN
                    IF(AreaSolution(k)>1.0 .AND. (AreaSolution(k)/AreaPrev(k,1))>5.0) THEN
-                     AreaSolution(k) = 0.0
+                     AreaSolution(k) = AreaPrev(k,1)
                    END IF
                  END IF
-                 IF(AreaSolution(k) > 999.0) AreaSolution(k) = 0.0
+                 IF(AreaSolution(k) > 999.0) AreaSolution(k) = 999.0
                  IF(ISNAN(AreaSolution(k))) AreaSolution(k) = 0.0
 
                  ! Save Qc if variable exists
@@ -1403,7 +1403,7 @@
         AreaSolution(AreaPerm(M+1:M+t)) = MAX(AreaSolution(AreaPerm(M+1:M+t)),0.0_dp)
         !CHANGE
         !Stop channels from expanding to eleventy-stupid
-        AreaSolution(AreaPerm(M+1:M+t)) = MIN(AreaSolution(AreaPerm(M+1:M+t)),1000.0_dp)
+        AreaSolution(AreaPerm(M+1:M+t)) = MIN(AreaSolution(AreaPerm(M+1:M+t)),999.0_dp)
 
 
      END IF  ! If Channels
