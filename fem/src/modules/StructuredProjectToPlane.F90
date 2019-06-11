@@ -320,7 +320,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       WRITE (TargetName,'(A,A)') TRIM(Oper0)//' '//TRIM(VarName)
     END IF
 
-    IF( Oper == 'height' .OR. Oper == 'depth' .OR. Oper == 'index' .OR. Oper == 'distance' .OR. Oper =='spread') THEN
+    IF( Oper == 'height' .OR. Oper == 'depth' .OR. Oper == 'index' .OR. Oper == 'distance') THEN
       ReducedDimensional = .FALSE.
     ELSE
       ReducedDimensional = .TRUE.
@@ -709,46 +709,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         END DO
 
       ! Following four operators may have full dimensional results
-      !--------------------------------------------------------------      
-
-      CASE ('spread')
-        TopField = 0.0_dp
-        DO i=1,nnodes
-
-          j = i
-          IF( MaskExist ) THEN
-            j = MaskPerm(i)
-            IF( j == 0 ) CYCLE
-          END IF              
-          
-          IF( UpperOper ) THEN
-            IF( Coord(j) < Coord(MidPointer(j) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(j) > Coord(MidPointer(j) ) ) CYCLE
-          END IF
-         
-          IF( i == TmpBotPointer(j) ) THEN
-            l = i
-            
-            IF(ASSOCIATED(PermIn)) l = PermIn(i)
-            l = Dofs*(l-1)+dof
-            TopField(TopPerm(TopPointer(j))) = FieldIn(l)
-            DO k=1,nsize
-              ll = l
-              IF( MaskExist ) ll = MaskPerm(l)
-              IF( ASSOCIATED(PermOut)) THEN
-                IF( PermOut(l) > 0 ) THEN
-                  FieldOut(PermOut(l)) = TopField(TopPerm(TopPointer(j)))
-                END IF
-              ELSE
-                FieldOut(l) = TopField(TopPerm(TopPointer(j)))
-              END IF
-              IF( l == TmpTopPointer(ll)) EXIT
-              l = UpPointer(ll)
-            END DO
-          END IF
-        END DO
-        
+      !--------------------------------------------------------------              
       CASE ('index')
         FieldOut = 0.0_dp
         DO i=1,nnodes
