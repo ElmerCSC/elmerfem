@@ -1,6 +1,7 @@
-! A simple 3D steady-state structured computing of 'depth' and 'height'
-! Test case authors: Peter Råback
-! Test case created: 27.9.2012
+! A simple 3D steady-state of bottom variable
+! spread over the whole column of structured mesh
+! Test case authors: Peter RÃ¥back, Thomas Zwinger
+! Test case created: 06.10.2019
 
 Header
   CHECK KEYWORDS Warn
