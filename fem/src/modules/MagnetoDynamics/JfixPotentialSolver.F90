@@ -69,7 +69,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   TYPE(Variable_t), POINTER :: jfixpot, jfixpotim, svar, IterV 
   LOGICAL :: ComplexSystem, Visited = .FALSE.
 
-  SAVE :: A, Perm, Def_Dofs, jfixPot, jfixPotim
+  SAVE :: A, Def_Dofs, jfixPot, jfixPotim
   
   CALL Info('JfixPotentialSolver','Computing fixing potential for given current density',Level=6)
   
@@ -92,8 +92,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
   IF( .NOT. ASSOCIATED(jfixPot)) THEN    
     
-    
-    IF(ASSOCIATED(Perm)) DEALLOCATE(Perm)
+    ALLOCATE(Perm(SIZE(Solver % Variable % Perm)))
     Perm = 0    
     Equation=GetString(SolverParams,'Equation',Found)
     
@@ -184,7 +183,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   
   Solver % Variable => jfixpot
   Solver % Matrix => A
-
+  Perm => Solver % Variable % Perm
+ 
   IF( JfixPhase == 1 ) THEN
     A % Values = 0.0_dp
     A % rhs = 0.0_dp
