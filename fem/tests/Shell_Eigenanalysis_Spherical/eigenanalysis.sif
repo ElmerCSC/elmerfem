@@ -1,0 +1,111 @@
+!
+! This case gives an eigenanalysis model for a spherical shell. The results 
+! have been verified by comparing against a commercial software.
+!
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "piece_of_sphere"
+End
+
+Simulation
+  Max Output Level = 6
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Density = 7800.0
+  Shell Thickness = 0.1
+  Youngs Modulus = 200.0e9
+  Poisson Ratio = 0.3
+End
+
+Body Force 1 
+  Normal Pressure = Real 0.0
+End
+
+Equation 1 :: Active Solvers(2) = 1 2
+
+Solver 1
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+  !
+  ! For the eigenvector output we need a single name for
+  ! the entire solution: 
+  !
+  Variable = U
+
+  Displace Mesh = False
+
+  Linear System Solver = Direct !"Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-7
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 300
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+
+  Eigen Analysis = True
+  Eigen System Values = 13
+  Eigen System Convergence Tolerance = Real 1.0e-6
+  Eigen System Select = Smallest Magnitude
+
+End
+
+Solver 2
+  ! Exec Solver = never
+
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "case"
+  Output Format = "vtu"
+
+  Eigen Analysis = True
+  Show Variables = Logical True
+!  Active Eigenmodes = 5
+End
+
+Solver 3
+  Equation = "SaveScalars"
+!  Filename = f.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = Logical True
+  !
+  ! Pick the lowest eigenvalue:
+  !
+  Show Norm Index = 1
+End
+
+! ----------------------------------------------------
+! BCs are defined with respect the global XYZ system:
+! ----------------------------------------------------
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  !
+  ! The components of the mid-surface displacement:
+  !
+  U 1 = Real 0
+  U 2 = Real 0
+  U 3 = Real 0
+  !
+  ! The components of the rotation-like variables:
+  !
+  U 4 = Real 0
+  U 5 = Real 0
+  U 6 = Real 0
+End
+
+Solver 3 :: Reference Norm = Real 5.254741041097E+003
