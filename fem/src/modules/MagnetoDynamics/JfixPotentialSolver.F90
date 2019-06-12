@@ -91,7 +91,9 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   END IF
 
   IF( .NOT. ASSOCIATED(jfixPot)) THEN    
-    ALLOCATE(Perm(SIZE(Solver % Variable % Perm)))
+    
+    
+    IF(ASSOCIATED(Perm)) DEALLOCATE(Perm)
     Perm = 0    
     Equation=GetString(SolverParams,'Equation',Found)
     
@@ -112,6 +114,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Complex',.FALSE.)
     CALL ListAddNewLogical(SolverParams,'Jfix: Apply Conforming BCs',.FALSE.)
         
+
+    IF(ALLOCATED(Def_Dofs)) DEALLOCATE(Def_Dofs)
     n=SIZE(Solver % Def_Dofs,1)
     m=SIZE(Solver % Def_Dofs,2)
     k=SIZE(Solver % Def_Dofs,3)
@@ -122,7 +126,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     Solver % Def_Dofs(:,:,1)=1
 
     ! Set namespace for matrix creation (to omit conforming BCs)
-    CALL ListSetNameSpace('jfix:')    
+    CALL ListSetNameSpace('jfix:')
+    IF(ASSOCIATED(A)) CALL FreeMatrix(A)
     A => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
         Perm, 1, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.,&
         NodalDofsOnly = .TRUE.)          
