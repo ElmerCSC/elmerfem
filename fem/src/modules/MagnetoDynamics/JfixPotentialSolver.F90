@@ -164,6 +164,9 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
         END IF
       END DO
     END IF
+    Solver % Variable => jfixpot
+    Solver % Matrix => A
+    IF(ParEnv % PEs > 1) CALL ParallelInitMatrix(Solver,A)
     
     CALL Info('JfixPotentialSolver','Finished creating matrix equation',Level=10)
   ELSE
@@ -172,11 +175,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   END IF
       
   Visited = .TRUE.
+
   
   Solver % Variable => jfixpot
   Solver % Matrix => A
-  IF(ParEnv % PEs > 1) CALL ParallelInitMatrix(Solver,A)
-  
+
   IF( JfixPhase == 1 ) THEN
     A % Values = 0.0_dp
     A % rhs = 0.0_dp
