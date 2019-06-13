@@ -1187,7 +1187,7 @@ static int MathCommand(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
 
 
     /*
-     * then check the varibles which are good for then
+     * then check the variables which are good for then
      * element model...
      *
      */

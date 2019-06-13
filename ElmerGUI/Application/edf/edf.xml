@@ -33,7 +33,7 @@
 
          <Parameter Widget="Edit" >
             <Name> Density </Name>
-            <Whatis>Density value may be entered here. Some models, like the ideal gas model compute density internally. In such case this value may not be necessery.</Whatis>
+            <Whatis>Density value may be entered here. Some models, like the ideal gas model compute density internally. In such case this value may not be necessary.</Whatis>
             <StatusTip>Give value to density.</StatusTip>
          </Parameter>
 

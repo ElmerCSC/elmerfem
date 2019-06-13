@@ -185,7 +185,7 @@ End
 
 Equation 1
   Name = "MagFields"
-  Active Solvers(3) = 2 3 7
+  Active Solvers(3) = 2 3 6
 End
 
 Material 1
@@ -212,12 +212,24 @@ Body Force 2
   Name = "Hot Move"
   Mesh Rotate 3 = Variable time, Coordinate 3 
     Real MATC "omega*(t0+tx(0))+skew*tx(1)"
+  !
+  ! In the case of rigid motion the A-V solver needs to know 
+  ! the angular velocity for the consistent treatment of time 
+  ! derivatives; see the model documentation in Models Manual
+  ! 
+  Angular Velocity 3 = Real MATC "2.0*3.141592654/18.0"  
 End 
 
 Body Force 3
   Name = "Cold Move"
   Mesh Rotate 3 = Variable time, Coordinate 3 
     Real MATC "omega*(t0+tx(0))+skew*tx(1)"
+  !
+  ! In the case of rigid motion the A-V solver needs to know 
+  ! the angular velocity for the consistent treatment of time 
+  ! derivatives; see the model documentation in Models Manual
+  ! 
+  Angular Velocity 3 = Real MATC "2.0*3.141592654/18.0"
 End 
 
 Boundary Condition 1
@@ -341,6 +353,6 @@ Boundary Condition 14
 End 
  
 
-Solver 2 :: Reference Norm = Real 0.41206705E-02
+Solver 2 :: Reference Norm = Real 4.12071509E-03
 RUN
 

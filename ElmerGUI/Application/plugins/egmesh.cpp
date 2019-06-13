@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter Rï¿½back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -1466,10 +1466,10 @@ int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 int CreateBoundary(struct CellType *cell,struct FemType *data,
 		   struct BoundaryType *bound,int material1,int material2,
 		   int solidmat,int boundarytype,int info)
-/* This subroutine makes a boundary which includes all sides that separate 
-   two materials that fullfill the conditions in the function call. If both 
-   materials are positive only the sides for which both of the materials 
-   coinside are accepted. In other cases the negative argument tells which 
+/* This subroutine makes a boundary which includes all sides that separate
+   two materials that fullfill the conditions in the function call. If both
+   materials are positive only the sides for which both of the materials
+   coincide are accepted. In other cases the negative argument tells which
    conditions the positive argument should fullfill. Note that on a boundary
    where knots are created only for the other material, this material
    should be the latter one in the function call (material). The physical
@@ -2040,8 +2040,8 @@ static int CreateNewNodes(struct FemType *data,int *order,int material,int newkn
 
 int SetDiscontinuousBoundary(struct FemType *data,struct BoundaryType *bound,
 			     int boundtype,int endnodes,int info)
-/* Create secondary points for a given boundary. 
-   This feature is handy when one wants to solve problems with discontinous
+/* Create secondary points for a given boundary.
+   This feature is handy when one wants to solve problems with discontinuous
    field variables.
    */
 {
@@ -2133,7 +2133,7 @@ int SetDiscontinuousBoundary(struct FemType *data,struct BoundaryType *bound,
       }
     }
     disconttype = maxtype + 1;
-    if(info) printf("Type of the other side of discontinous boundary set to %d.\n",disconttype);
+    if(info) printf("Type of the other side of discontinuous boundary set to %d.\n",disconttype);
   }
   else {
     disconttype = boundtype;
@@ -4657,7 +4657,7 @@ int IncreaseElementOrder(struct FemType *data,int info)
     maxnodes = 20;
   else {
     printf("Not implemented for elementtype %d\n",maxelemtype);
-    bigerror("IncreaseElementOrder: Cant continue the subroutine");
+    bigerror("IncreaseElementOrder: Cannot continue the subroutine");
   }
 
   if(info) printf("New leading elementtype is %d\n",100*(maxelemtype/100)+maxnodes);
@@ -6490,7 +6490,7 @@ int FindPeriodicNodes(struct FemType *data,int periodicdim[],int info)
   if(!periodicdim[0] && !periodicdim[1] && !periodicdim[2]) return(1);
 
   if(data->periodicexist) {
-    printf("FindPeriodicNodes: Subroutine is called for second time¡\n");
+    printf("FindPeriodicNodes: Subroutine is called for second timeï¿½\n");
     return(2);
   }
 
@@ -7227,7 +7227,7 @@ omstart:
     }
     free_Ivector(inside2,1,noknots);
 
-     /* Still, go trough all elements and if they are not on the list of
+     /* Still, go through all elements and if they are not on the list of
 	active materials assume them outside */
     if(checkmaterials) {
       for(j=1;j<=oldnoelements;j++) {

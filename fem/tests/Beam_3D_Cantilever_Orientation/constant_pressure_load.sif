@@ -1,0 +1,105 @@
+! A reference case where a cantilever is subject to a constant pressure load f.
+! This is a variant of the test Beam_3D_Cantilever. Here the beam axis makes
+! an angle of 45 degrees with the global coordinate axes.
+!
+! For parameters EI/(GA) = eps we expect the deflection and the rotation at the 
+! free end to be w(L) = L^4 f (1 + 4 eps)/(8 EI) and theta(L) = L^3 f/(6 EI).
+! Here the SaveScalars module is set to output the variable values at the end. 
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "Mesh"
+End
+
+Simulation
+  Max Output Level = 6
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = "timoshenko.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+ Youngs Modulus = Real 2.0e-1
+ Shear Modulus = Real 1.0
+ ! Youngs Modulus = Real 70.0e+9
+ ! Shear Modulus = Real 26.0e+9
+
+ ! Specify basis where the cross section parameters are expressed: 
+ Principal Direction 2(3) = Real 0.0 0.0 -1.0
+
+ ! Specify I_k:
+ Second Moment of Area 2 = Real 1.0
+ Second Moment of Area 3 = Real 1.0
+ ! Specify A:
+ Cross Section Area = Real 1.0
+ ! Specify J_T:
+ Torsional Constant = Real 1.0
+ ! The density is used only in transient cases:
+ Density = 2700.0
+End
+
+Body Force 1
+  ! The load components are expressed with respect to the global frame
+  Body Force 1 = -0.707106781e-2
+  Body Force 2 = 0.707106781e-2
+  Body Force 3 = 0.0
+End
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Timoshenko Beam Equations"
+  Procedure = "BeamSolver3D" "TimoshenkoSolver"
+
+!  Displace Mesh = False
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1e-7
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = Diagonal
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-9
+  Linear System Iterative Method = IDRS
+!  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-9
+End
+
+! -------------------------------------------------------------------------
+! The following can be used to save the deflection and the rotation
+! at the end:
+! -------------------------------------------------------------------------
+Solver 2
+  Equation = "Save Scalars"
+!  Exec Solver = After Timestep
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = cantilever.dat
+  Variable 1 = U 1
+  Variable 2 = U 2
+  Variable 3 = U 3
+  Variable 4 = Theta 1
+  Variable 5 = Theta 2
+  Variable 6 = Theta 3
+  Save Points(1) = 2
+End
+
+Boundary Condition 1
+  Target Nodes(1) = 1
+  U 1 = Real 0.0
+  U 2 = Real 0.0
+  U 3 = Real 0.0
+  Theta 1 = Real 0.0
+  Theta 2 = Real 0.0
+  Theta 3 = Real 0.0
+End
+
+Solver 1 :: Reference Norm = Real 3.88782384E-03
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
