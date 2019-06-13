@@ -267,6 +267,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->outmethod = 0;
   eg->nofilesin = 1;
   eg->unitemeshes = FALSE;
+  eg->unitenooverlap = FALSE;
   eg->triangles = FALSE;
   eg->triangleangle = 0.0;
   eg->rotate = FALSE;
@@ -595,6 +596,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-unite") == 0) {
       eg->unitemeshes = TRUE;
       printf("The meshes will be united.\n");
+    }   
+    if(strcmp(argv[arg],"-unitenooverlap") == 0) {
+      eg->unitemeshes = TRUE;
+      eg->unitenooverlap = TRUE;
+      printf("The meshes will be united without overlap in BCs or bodies.\n");
     }   
 
     if(strcmp(argv[arg],"-nonames") == 0) {
@@ -1165,6 +1171,14 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->unitemeshes = TRUE;      
     }
+    else if(strstr(command,"UNITENOOVERLAP")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) {
+	eg->unitemeshes = TRUE;      
+	eg->unitenooverlap = TRUE;      
+      }
+    }
+    
     else if(strstr(command,"ORDER NODES")) {
       eg->order = TRUE;
       if(eg->dim == 1) 
