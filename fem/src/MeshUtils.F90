@@ -7500,12 +7500,12 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: x(10),y(10),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,TrueArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , &
+          SumArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , &
           val_dual, zmin, zmax, zminm, zmaxm, dAlpha, uq, vq
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol, &
           amin, amax, aminM, amaxM, rmin2, rmax2, rmin2M, rmax2M
-      REAL(KIND=dp) :: TotRefArea, TotSumArea, TotTrueArea
+      REAL(KIND=dp) :: TotRefArea, TotSumArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       REAL(KIND=dp), POINTER :: Alpha(:), AlphaM(:)
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
@@ -7590,7 +7590,6 @@ END SUBROUTINE GetMaxDefs
       ActiveHits = 0
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
-      TotTrueArea = 0.0_dp
       Point = 0.0_dp
       MaxSubTriangles = 0
       Nslave = 0
@@ -7751,7 +7750,6 @@ END SUBROUTINE GetMaxDefs
         IP = GaussPoints( Element ) 
         RefArea = detJ * SUM( IP % s(1:IP % n) )
         SumArea = 0.0_dp
-        TrueArea = 0.0_dp
 
         IF( SaveElem ) THEN
           FileName = 't'//TRIM(I2S(TimeStep))//'_a.dat'
@@ -8368,8 +8366,6 @@ END SUBROUTINE GetMaxDefs
                   val = Basis(j) * Wtemp
                   IF(BiorthogonalBasis) val_dual = CoeffBasis(j) * Wtemp
 
-                  TrueArea = TrueArea + val
-
                   IF( DebugElem ) PRINT *,'Vals:',val
 
                   DO i=1,n
@@ -8561,7 +8557,6 @@ END SUBROUTINE GetMaxDefs
         TotHits = TotHits + ElemHits
         TotSumArea = TotSumArea + SumArea
         TotRefArea = TotRefArea + RefArea
-        TotTrueArea = TotTruearea + TrueArea
 
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
@@ -8621,9 +8616,6 @@ END SUBROUTINE GetMaxDefs
 
       Err = TotSumArea / TotRefArea
       WRITE( Message,'(A,ES15.6)') 'Average ratio in area integration:',Err 
-      CALL Info('LevelProjector',Message,Level=8)
-
-      WRITE( Message,'(A,ES15.6)') 'True integrated area:',TotTrueArea
       CALL Info('LevelProjector',Message,Level=8)
 
       WRITE( Message,'(A,I0,A,ES12.4)') &
