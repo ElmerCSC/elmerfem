@@ -3113,10 +3113,10 @@ END SUBROUTINE GetMaxDefs
 
    OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT=iostat )
    IF( iostat /= 0 ) THEN
-     RETURN
-   ELSE
-     CALL Info('ReadTargetNames','Reading names info from file: '//TRIM(FileName))
+     CALL Fatal('ReadTargetNames','Requested the use of entity names but this file does not exits: '//TRIM(FileName))
    END IF
+   
+   CALL Info('ReadTargetNames','Reading names info from file: '//TRIM(FileName))
 
    DO WHILE( .TRUE. ) 
      READ(FileUnit,'(A)',IOSTAT=iostat) str
