@@ -146,10 +146,21 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
         Solver,'Jfix',1,fixpot,Perm)
     jfixpot => VariableGet(Mesh % Variables, 'Jfix')
     
+
+    IF( ASSOCIATED(JfixSurfacePerm) ) THEN
+      DEALLOCATE(JfixSurfacePerm, JfixSurfaceVec)
+      JfixSurfacePerm => NULL()
+      IF(ComplexSystem) DEALLOCATE(JfixSurfaceVecC)
+    END IF
+
     ! For complex cases create separately the variable for the imaginary component
     ! These are allocated component-wise so that we may easily solve them separately.
     ! Its the same equation for both with different load vector. 
     IF( ComplexSystem ) THEN
+      IF(ASSOCIATED(jFixRhsC)) THEN
+        DEALLOCATE(JfixRhsC)
+        JfixRhsC => Null()
+      END IF
       ALLOCATE( jfixRhsC(n), fixpotim(n) )
       fixpotim = 0.0_dp
       CALL VariableAddVector( Mesh % Variables, Mesh, &
