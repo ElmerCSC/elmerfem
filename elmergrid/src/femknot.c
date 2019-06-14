@@ -6270,6 +6270,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   Real z,*newx=NULL,*newy=NULL,*newz=NULL,corder[3];
   Real meanx,meany;
   int layerbcoffset;
+  int usenames;
 
   if(grid->rotate)
     SetElementDivisionCylinder(grid,info);
@@ -6320,6 +6321,19 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   data->nodeconnectexist = FALSE;
   data->elemconnectexist = FALSE;
 
+  usenames = dataxy->bodynamesexist || dataxy->boundarynamesexist; 
+  if( usenames ) {
+    if( grid->zmaterialmapexists ) {
+      printf("Cannot extrude names when there is a given material mapping!\n");
+      usenames = FALSE;
+    }
+    else {
+      if(info) printf("Trying to maintain entity names in extrusion\n");
+    }
+  }
+  
+
+  
   maxsidetype = 0;
 
   AllocateKnots(data);
@@ -6369,7 +6383,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
     }
   }
   if(info) printf("Allocated for %d new BC lists\n",j);
-
+  
   knot0 = 0;
   knot1 = layers*dataxy->noknots;
   if(layers == 2) 
@@ -6621,11 +6635,21 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   bcset = dataxy->noboundaries-1;
 
 
+  if( usenames ) {
+    for(i=1;i< MAXBODIES;i++) 
+      strcpy(data->bodyname[i],dataxy->bodyname[i]);
+    for(i=1;i< MAXBOUNDARIES;i++) 
+      strcpy(data->boundaryname[i],dataxy->boundaryname[i]);
+    data->bodynamesexist = TRUE;
+    data->boundarynamesexist = TRUE;
+  }
+
+  
   /* Find the BCs that are created for constant z-levels. 
      Here number all parent combinations so that each pair gets 
      a new BC index. They are numbered by their order of appearance. */
   layerbcoffset = grid->layerbcoffset;
-
+  
   if(grid->layeredbc) {
 
     if( !layerbcoffset ) sidetype = maxsidetype;
@@ -6678,7 +6702,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	  bclevel++;
 	  maxsidetype = 0;
 	  minsidetype = INT_MAX;
-
+	  
 	  for(i=1;i<=dataxy->noelements;i++){
 
 	    /* Check the parent elements of the layers. Only create a BC if the parents are 
@@ -6746,6 +6770,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	    /* Create bc index only if the materials are different */
 	    if(material != material2) {	     	      
 	      side++;
+
 	      bound[bcset].nosides = side;
 	      bound[bcset].parent[side] = parent;
 	      bound[bcset].parent2[side] = parent2;
@@ -6786,6 +6811,21 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 		  }
 		}
 		bound[bcset].types[side] = refsidetype[m];
+
+		
+		if( usenames ) {
+		  if( bclevel == 1 ) 
+		    sprintf(data->boundaryname[refsidetype[m]],"%s%s",
+			    dataxy->bodyname[dataxy->material[i]],"_Start");		  
+		  else if( cellk == grid->zcells )
+		    sprintf(data->boundaryname[refsidetype[m]],"%s%s",
+			    dataxy->bodyname[dataxy->material[i]],"_End");		  
+		  else
+		    sprintf(data->boundaryname[refsidetype[m]],"%s%s%d",
+			    dataxy->bodyname[dataxy->material[i]],"_Level",bclevel);		  
+		}
+
+
 	      }
 
 	    }
