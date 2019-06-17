@@ -1879,7 +1879,7 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
+                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
                      A_t(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
@@ -1888,7 +1888,7 @@ END SUBROUTINE LocalConstraintMatrix
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
     LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody, &
-        HasVelocity, HasLorenzVelocity, HasAngularVelocity
+        HasVelocity, HasLorentzVelocity, HasAngularVelocity
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -1926,8 +1926,8 @@ END SUBROUTINE LocalConstraintMatrix
     HasVelocity = .FALSE.
     IF(ASSOCIATED(BodyForce)) THEN
       CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
-      CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
-      HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
+      CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorentzVelocity)
+      HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
 
     CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
@@ -1993,11 +1993,14 @@ END SUBROUTINE LocalConstraintMatrix
          END DO
        END IF
 
-       ! Compute convection type term coming from rotation
-       ! -------------------------------------------------
-       IF(HasVelocity) THEN
+       ! Compute convection type term coming from a rigid motion:
+       ! --------------------------------------------------------
+       IF (HasVelocity) THEN
          velo = 0.0_dp
          IF( HasAngularVelocity ) THEN
+           omega(1) = SUM(basis(1:n)*omega_velo(1,1:n))
+           omega(2) = SUM(basis(1:n)*omega_velo(2,1:n))
+           omega(3) = SUM(basis(1:n)*omega_velo(3,1:n))
            DO i=1,n
              velo(1:3) = velo(1:3) + CrossProduct(omega_velo(1:3,i), [ &
                  basis(i) * Nodes % x(i), &
@@ -2005,7 +2008,7 @@ END SUBROUTINE LocalConstraintMatrix
                  basis(i) * Nodes % z(i)])
            END DO
          END IF
-         IF( HasLorenzVelocity ) THEN
+         IF( HasLorentzVelocity ) THEN
            velo(1:3) = velo(1:3) + [ &
                SUM(basis(1:n)*lorentz_velo(1,1:n)), &
                SUM(basis(1:n)*lorentz_velo(2,1:n)), &
@@ -2069,94 +2072,140 @@ END SUBROUTINE LocalConstraintMatrix
          ! --------------------------------------------------------
          ! The constraint equation involving the scalar potential:
          !     -div(C*(dA/dt+grad(V)))=0
+         ! All terms that are added here depend on the electrical conductivity,
+         ! so they have an effect on a conductor only.
          ! --------------------------------------------------------
-         IF ( Transient ) THEN
-
-           DO i=1,np
-             p = i
-             DO j=1,np
-               q = j
-
-	       ! Compute the conductivity term <C grad V,grad v> for stiffness 
-               ! matrix (anisotropy taken into account)
-               ! -------------------------------------------
-
-               IF ( SUM(C) /= 0._dp ) THEN
-                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
-               END IF
-             END DO
-             DO j=1,nd-np
-               q = j+np
-
-               ! Compute the conductivity term <C A,grad v> for 
-               ! mass matrix (anisotropy taken into account)
-               ! -------------------------------------------
-               MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
-
-	       ! Compute the conductivity term <C grad V, eta> for 
-               ! stiffness matrix (anisotropy taken into account)
-               ! ------------------------------------------------
-               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
-             END DO
-           END DO
-         ELSE
-           ! ---------------------------------------------------------------
-           ! This is the steady state branch. Adding the scalar potential 
-           ! solver as done in the following is reasonable only in the case 
-           ! where the electrical conductivity is nonzero.
-           ! ------------------------------------------------------------------
-           IF (.NOT. LaminateStack ) THEN
-             DO i=1,np
-               p = i
-               DO j=1,np
-                 q = j
+         CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
+           IF ( Transient ) THEN
+             DO p=1,np
+               DO q=1,np
 
                  ! Compute the conductivity term <C grad V,grad v> for stiffness 
                  ! matrix (anisotropy taken into account)
                  ! -------------------------------------------
-                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(j,:)) * dBasisdx(i,:))*detJ*IP % s(t)
-               END DO
 
+                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
+
+               END DO
                DO j=1,nd-np
                  q = j+np
-                 ! The equation for the vector potential:
+
+                 ! Compute the conductivity term <C A,grad v> for 
+                 ! mass matrix (anisotropy taken into account)
+                 ! -------------------------------------------
+                 MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, Wbasis(j,:))*dBasisdx(p,:))*detJ*IP % s(t)
+
                  ! Compute the conductivity term <C grad V, eta> for 
                  ! stiffness matrix (anisotropy taken into account)
                  ! ------------------------------------------------
-                 STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
+                 STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(p,:))*WBasis(j,:))*detJ*IP % s(t)
                END DO
              END DO
-           END IF
-         END IF
-         
 
+           ELSE
+             ! ---------------------------------------------------------------
+             ! This is the steady state branch. 
+             ! ------------------------------------------------------------------
+             IF (.NOT. LaminateStack ) THEN
+               DO p=1,np
+                 DO q=1,np
+
+                   ! Compute the conductivity term <C grad V,grad v> for stiffness 
+                   ! matrix (anisotropy taken into account)
+                   ! -------------------------------------------
+                   STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
+                 END DO
+
+                 DO j=1,nd-np
+                   q = j+np
+                   ! The equation for the vector potential:
+                   ! Compute the conductivity term <C grad V, eta> for 
+                   ! stiffness matrix (anisotropy taken into account)
+                   ! ------------------------------------------------
+                   STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(p,:))*WBasis(j,:))*detJ*IP % s(t)
+                 END DO
+               END DO
+             END IF
+           END IF
+         END IF CONDUCTOR
        END IF ! (.NOT. CoilBody)
 
-       IF ( HasVelocity ) THEN
-         DO i=1,np
-           p = i
-           DO j=1,nd-np
-             q = j+np
+       LORENTZ_EFFECT: IF ( HasVelocity ) THEN
+         !
+         ! All terms that are added here depend on the electrical conductivity,
+         ! so they have an effect on a conductor only.
+         !
+         A_CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
+           IF (Transient) THEN
+             IF (HasAngularVelocity) THEN
+               !
+               ! In a transient case where the mesh is transformed via a rigid motion the angular velocity 
+               ! can be used to add a correction term -(omega x A) in order to replace the substantial 
+               ! time derivative which the time stepping machinery of Elmer generates by
+               ! the upper convected (Lie) time derivative. Otherwise the definition of the velocity should 
+               ! be in-built into the transformation of the mesh and doesn't need to be specified explicitly. 
+               !
+               DO p=1,np          
+                 DO j=1,nd-np
+                   q = j+np
 #ifndef __INTEL_COMPILER
-             STIFF(p,q) = STIFF(p,q) - &
-                 SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(i,:))*detJ*IP % s(t)
-#else
-             ! Ifort workaround
-             RotWJ(1:3) = RotWBasis(j,1:3)
-             ! VeloCrossW(1:3) = CrossProduct(velo(1:3), RotWJ(1:3))
-             ! CVelo(1:3)=MATMUL(C(1:3,1:3),VeloCrossW(1:3))
-             CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
-             CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
-             CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
-             CVeloSum = REAL(0,dp)
-             DO k=1,3
-               CVeloSum = CVeloSum + CVelo(k)*dBasisdx(i,k)
-             END DO
-             STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
+                   STIFF(p,q) = STIFF(p,q) - &
+                       SUM(MATMUL(C,CrossProduct(omega, WBasis(j,:)))*dBasisdx(p,:))*detJ*IP % s(t)
 #endif
-           END DO
-         END DO
-       END IF
+                   ! TO DO: Add a workaround for the compiler?
+                 END DO
+               END DO
+
+               DO i = 1,nd-np
+                 p = i+np
+                 DO j = 1,nd-np
+                   q = j+np          
+                   STIFF(p,q) = STIFF(p,q) - &
+                       SUM(WBasis(i,:)*MATMUL(C,CrossProduct(omega, WBasis(j,:))))*detJ*IP % s(t)
+                 END DO
+               END DO
+             END IF
+           ELSE
+             !
+             ! In the case of steady state model add the effect of v x curl A to 
+             ! the electromagnetic field: 
+             !
+             DO p=1,np
+               DO j=1,nd-np
+                 q = j+np
+#ifndef __INTEL_COMPILER
+                 STIFF(p,q) = STIFF(p,q) - &
+                     SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(p,:))*detJ*IP % s(t)
+#else
+                 ! Ifort workaround
+                 RotWJ(1:3) = RotWBasis(j,1:3)
+                 ! VeloCrossW(1:3) = CrossProduct(velo(1:3), RotWJ(1:3))
+                 ! CVelo(1:3)=MATMUL(C(1:3,1:3),VeloCrossW(1:3))
+                 CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
+                 CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
+                 CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
+                 CVeloSum = REAL(0,dp)
+                 DO k=1,3
+                   CVeloSum = CVeloSum + CVelo(k)*dBasisdx(p,k)
+                 END DO
+                 STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
+#endif
+               END DO
+             END DO
+
+             DO i = 1,nd-np
+               p = i+np
+               DO j = 1,nd-np
+                 q = j+np          
+                 STIFF(p,q) = STIFF(p,q) - &
+                     SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
+               END DO
+             END DO
+
+           END IF
+         END IF A_CONDUCTOR
+       END IF LORENTZ_EFFECT
+
        !-----------------------------------------------------------------
        ! The equations for the H(curl)-conforming part, i.e. the equation 
        ! for the vector potential
@@ -2176,10 +2225,6 @@ END SUBROUTINE LocalConstraintMatrix
            IF(HasTensorReluctivity) THEN
              STIFF(p,q) = STIFF(p,q) &
                   + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
-           END IF
-           IF( HasVelocity ) THEN
-             STIFF(p,q) = STIFF(p,q) &
-                 - SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
            END IF
            IF ( Newton ) THEN
              JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
@@ -2209,7 +2254,7 @@ END SUBROUTINE LocalConstraintMatrix
        END DO
 
        ! In steady state we can utilize the scalar variable
-       ! for Gauging the vector potential.
+       ! for gauging the vector potential.
        IF ( SteadyGauge ) THEN
          DO j = 1, np
            q = j

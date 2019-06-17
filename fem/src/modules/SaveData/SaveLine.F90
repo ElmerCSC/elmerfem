@@ -111,7 +111,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
       SkipBoundaryInfo, GotDivisions, EdgeBasis, DG
   INTEGER :: i,ii,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
-      Side, SaveNodes, SaveNodes2, SaveNodes3, SaveNodes4, node, NoResults, &
+      Side, SaveNodes=0, SaveNodes2, SaveNodes3, SaveNodes4, node, NoResults, &
       LocalNodes, NoVar, No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, &
       NoFaces, NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
       i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex, LineInd
@@ -201,8 +201,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END IF
   
   LineInd = ListGetInteger( Params,'Line Marker',GotIt)
-  SaveNodes = 0; SaveNodes2 = 0
-  SaveNodes3 = 0; SaveNodes4 = 0
+  SaveNodes2 = 0;SaveNodes3 = 0; SaveNodes4 = 0
   
 !----------------------------------------------
 ! Specify the number of entries for each node

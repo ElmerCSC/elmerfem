@@ -12,7 +12,7 @@ IF(CMAKE_CROSSCOMPILING)
   ENDIF()
 ENDIF()
 
-# Dont install metis
+# Don't install metis
 SET(METIS_INSTALL FALSE CACHE BOOL "")
 ADD_SUBDIRECTORY(metis-5.1.0)
 

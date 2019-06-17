@@ -453,10 +453,10 @@ void geo_triangle_normal( geometry_t *geom,triangle_t *triangle )
  *     Name:         geo_vertex_normals( geometry_t *, double )
  *
  *     Purpose:      Generete triangle vertex normals from face normals,
- *                   by avarageing face normals connected to same vertex
+ *                   by averaging face normals connected to same vertex
  *                   and within a given angle.
  *
- *     Parameters: 
+ *     Parameters:
  *
  *         Input:    (geometry_t *) pointer to geometry structure to modify
  *                   (double)       threshold angle

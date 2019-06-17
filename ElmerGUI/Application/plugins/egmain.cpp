@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter Rï¿½back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -1198,7 +1198,7 @@ static int ManipulateMeshDefinition(int inmethod,int outmethod,Real relh)
      or mesh union. */
   for(k=0;k<nomeshes;k++) {
     
-    /* Make the discontinous boundary needed, for example, in poor thermal conduction */
+    /* Make the discontinuous boundary needed, for example, in poor thermal conduction */
     if(!eg.discont) {
       for(j=0;j<grids[k].noboundaries;j++) 
 	if(grids[k].boundsolid[j] == 2) {
