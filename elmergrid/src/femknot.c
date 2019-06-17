@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter Rï¿½back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -1622,10 +1622,10 @@ void SideAreas(struct FemType *data,struct BoundaryType *bound)
 int CreateBoundary(struct CellType *cell,struct FemType *data,
 		   struct BoundaryType *bound,int material1,int material2,
 		   int solidmat,int boundarytype)
-/* This subroutine makes a boundary which includes all sides that separate 
-   two materials that fullfill the conditions in the function call. If both 
-   materials are positive only the sides for which both of the materials 
-   coinside are accepted. In other cases the negative argument tells which 
+/* This subroutine makes a boundary which includes all sides that separate
+   two materials that fullfill the conditions in the function call. If both
+   materials are positive only the sides for which both of the materials
+   coincide are accepted. In other cases the negative argument tells which
    conditions the positive argument should fullfill. Note that on a boundary
    where knots are created only for the other material, this material
    should be the latter one in the function call (material). The physical
@@ -2199,8 +2199,8 @@ static int CreateNewNodes(struct FemType *data,int *order,int material,int new)
 
 int SetDiscontinuousBoundary(struct FemType *data,struct BoundaryType *bound,
 			     int boundtype,int endnodes,int info)
-/* Create secondary points for a given boundary. 
-   This feature is handy when one wants to solve problems with discontinous
+/* Create secondary points for a given boundary.
+   This feature is handy when one wants to solve problems with discontinuous
    field variables.
    */
 {
@@ -2304,7 +2304,7 @@ int SetDiscontinuousBoundary(struct FemType *data,struct BoundaryType *bound,
       }
     }
     disconttype = maxtype + 1;
-    if(info) printf("Type of the other side of discontinous boundary set to %d.\n",disconttype);
+    if(info) printf("Type of the other side of discontinuous boundary set to %d.\n",disconttype);
   }
   else {
     disconttype = boundtype;
@@ -3253,7 +3253,7 @@ int CylinderCoordinates(struct FemType *data,int info)
 
 int UniteMeshes(struct FemType *data1,struct FemType *data2,
 		struct BoundaryType *bound1,struct BoundaryType *bound2,
-		int info)
+		int nooverlap, int info)
 /* Unites two meshes for one larger mesh */
 {
   int i,j,k;
@@ -3261,6 +3261,8 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   int **newtopo=NULL,*newmaterial=NULL,*newelementtypes=NULL;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
   int mat,usenames,*bodynameis,*boundarynameis,*bodyused,*boundaryused;
+  int bcmax1,bcmin2,bcoffset;
+  int bodymax1,bodymin2,bodyoffset;
 
   noknots = data1->noknots + data2->noknots;
   noelements  = data1->noelements + data2->noelements;
@@ -3271,6 +3273,8 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   if(0) printf("Uniting two meshes to %d nodes and %d elements.\n",noknots,noelements);
 
   usenames = data1->bodynamesexist || data1->boundarynamesexist; 
+  bcoffset = 0; bodyoffset = 0;
+
   if( usenames ) {
     bodynameis = Ivector(1,MAXBODIES);
     boundarynameis = Ivector(1,MAXBCS);
@@ -3368,6 +3372,46 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
     }
 
   }
+  else if (nooverlap ) {
+    bcmax1 = 0;
+    for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound1[j].created) continue;     
+      for(i=1; i <= bound1[k].nosides; i++) {
+	mat = bound1[j].types[i];
+	bcmax1 = MAX( bcmax1, mat );	
+      }
+    }
+
+    bcmin2 = 1000;
+    for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound2[j].created) continue;     
+
+      for(i=1; i <= bound2[j].nosides; i++) {
+	mat = bound2[j].types[i];
+	bcmin2 = MIN( bcmin2, mat );
+      }
+    }
+    bcoffset = MAX(0, bcmax1 - bcmin2 + 1);
+    if( info ) {
+      printf("Max(bc1) is %d and Min(bc2) is %d, using BC offset %d for mesh 2!\n",bcmax1,bcmin2,bcoffset);
+    }
+        
+    bodymax1 = 0;
+    for(i=1;i<=data1->noelements;i++) {
+      mat = data1->material[i];
+      bodymax1 = MAX( bodymax1, mat );	
+    }
+
+    bodymin2 = 1000;
+    for(i=1;i<=data2->noelements;i++) {
+      mat = data2->material[i];
+      bodymin2 = MIN( bodymin2, mat );	
+    }
+    bodyoffset = MAX(0, bodymax1 - bodymin2 + 1);
+    if( info ) {
+      printf("Max(body1) is %d and Min(body2) is %d, using body offset %d for mesh 2!\n",bodymax1,bodymin2,bodyoffset);
+    }
+  }
   
 
 
@@ -3395,14 +3439,15 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
       if(bound1[k].parent2[i])
 	bound1[k].parent2[i] += data1->noelements;	 
       
+      mat = bound2[j].types[i];
       if( usenames ) {
-	mat = bound2[j].types[i];
 	if( mat < MAXBCS ) {
 	  bound1[k].types[i] = boundarynameis[mat];
 	}
+      } else {
+	bound1[k].types[i] = bcoffset + mat;
       }
     }
-
   }
 
   data1->maxnodes = maxnodes;
@@ -3434,7 +3479,6 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   }
   for(i=1;i<=data2->noelements;i++) {
     mat = data2->material[i];
-    newmaterial[i+data1->noelements] = mat;
     newelementtypes[i+data1->noelements] = data2->elementtypes[i]; 
     nonodes = newelementtypes[i+data1->noelements]%100;
     for(j=0;j<nonodes;j++)
@@ -3445,7 +3489,9 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
         newmaterial[i+data1->noelements] = bodynameis[mat];
       }
     }
-
+    else {
+      newmaterial[i+data1->noelements] = bodyoffset + mat;
+    }
   }
 
   free_Imatrix(data1->topology,1,data1->noelements,0,data1->maxnodes-1);
@@ -5394,7 +5440,7 @@ int IncreaseElementOrder(struct FemType *data,int info)
     maxnodes = 20;
   else {
     printf("Not implemented for elementtype %d\n",maxelemtype);
-    bigerror("IncreaseElementOrder: Cant continue the subroutine");
+    bigerror("IncreaseElementOrder: Cannot continue the subroutine");
   }
 
   if(info) printf("New leading elementtype is %d\n",100*(maxelemtype/100)+maxnodes);
@@ -6224,6 +6270,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   Real z,*newx=NULL,*newy=NULL,*newz=NULL,corder[3];
   Real meanx,meany;
   int layerbcoffset;
+  int usenames;
 
   if(grid->rotate)
     SetElementDivisionCylinder(grid,info);
@@ -6274,6 +6321,19 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   data->nodeconnectexist = FALSE;
   data->elemconnectexist = FALSE;
 
+  usenames = dataxy->bodynamesexist || dataxy->boundarynamesexist; 
+  if( usenames ) {
+    if( grid->zmaterialmapexists ) {
+      printf("Cannot extrude names when there is a given material mapping!\n");
+      usenames = FALSE;
+    }
+    else {
+      if(info) printf("Trying to maintain entity names in extrusion\n");
+    }
+  }
+  
+
+  
   maxsidetype = 0;
 
   AllocateKnots(data);
@@ -6323,7 +6383,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
     }
   }
   if(info) printf("Allocated for %d new BC lists\n",j);
-
+  
   knot0 = 0;
   knot1 = layers*dataxy->noknots;
   if(layers == 2) 
@@ -6575,11 +6635,21 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   bcset = dataxy->noboundaries-1;
 
 
+  if( usenames ) {
+    for(i=1;i< MAXBODIES;i++) 
+      strcpy(data->bodyname[i],dataxy->bodyname[i]);
+    for(i=1;i< MAXBOUNDARIES;i++) 
+      strcpy(data->boundaryname[i],dataxy->boundaryname[i]);
+    data->bodynamesexist = TRUE;
+    data->boundarynamesexist = TRUE;
+  }
+
+  
   /* Find the BCs that are created for constant z-levels. 
      Here number all parent combinations so that each pair gets 
      a new BC index. They are numbered by their order of appearance. */
   layerbcoffset = grid->layerbcoffset;
-
+  
   if(grid->layeredbc) {
 
     if( !layerbcoffset ) sidetype = maxsidetype;
@@ -6632,7 +6702,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	  bclevel++;
 	  maxsidetype = 0;
 	  minsidetype = INT_MAX;
-
+	  
 	  for(i=1;i<=dataxy->noelements;i++){
 
 	    /* Check the parent elements of the layers. Only create a BC if the parents are 
@@ -6700,6 +6770,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	    /* Create bc index only if the materials are different */
 	    if(material != material2) {	     	      
 	      side++;
+
 	      bound[bcset].nosides = side;
 	      bound[bcset].parent[side] = parent;
 	      bound[bcset].parent2[side] = parent2;
@@ -6740,6 +6811,21 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 		  }
 		}
 		bound[bcset].types[side] = refsidetype[m];
+
+		
+		if( usenames ) {
+		  if( bclevel == 1 ) 
+		    sprintf(data->boundaryname[refsidetype[m]],"%s%s",
+			    dataxy->bodyname[dataxy->material[i]],"_Start");		  
+		  else if( cellk == grid->zcells )
+		    sprintf(data->boundaryname[refsidetype[m]],"%s%s",
+			    dataxy->bodyname[dataxy->material[i]],"_End");		  
+		  else
+		    sprintf(data->boundaryname[refsidetype[m]],"%s%s%d",
+			    dataxy->bodyname[dataxy->material[i]],"_Level",bclevel);		  
+		}
+
+
 	      }
 
 	    }
@@ -7628,7 +7714,7 @@ int FindPeriodicNodes(struct FemType *data,int periodicdim[],int info)
   if(!periodicdim[0] && !periodicdim[1] && !periodicdim[2]) return(1);
 
   if(data->periodicexist) {
-    printf("FindPeriodicNodes: Subroutine is called for second time¡\n");
+    printf("FindPeriodicNodes: Subroutine is called for second timeï¿½\n");
     return(2);
   }
 
@@ -8523,7 +8609,7 @@ omstart:
     }
     free_Ivector(inside2,1,noknots);
 
-     /* Still, go trough all elements and if they are not on the list of
+     /* Still, go through all elements and if they are not on the list of
 	active materials assume them outside */
     if(checkmaterials) {
       for(j=1;j<=oldnoelements;j++) {

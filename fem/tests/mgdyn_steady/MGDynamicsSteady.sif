@@ -1,3 +1,5 @@
+! Solve magnetic field in an analytical test case
+
 Check Keywords "Warn"
 
 Header
@@ -9,12 +11,9 @@ Simulation
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady
-  Timestepping Method = BDF
-  Timestep Sizes = 1
-  Timestep Intervals = 10
   Steady State Max Iterations = 1
 
-  Post File = MGDynamics.ep
+  Post File = MGDynamics.vtu
   Output Intervals(1) = 1
 End
 
@@ -45,24 +44,29 @@ Solver 1
   Variable = "P"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
 
-  Linear System Symmetric = True
+  Linear System Symmetric = False
+  Fix input Current Density = Logical False
 
-  Linear System Solver = "Direct"
-  Linear System Direct Method = Umfpack
-
-! Linear System Scaling=False
+!  Linear System Solver = "Direct"
+!  Linear System Direct Method = Umfpack
 
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = Ilu
+  Linear System Preconditioning = none
   Linear System Residual Output = 10
   Linear System Max Iterations = 5000
   Linear System Iterative Method = Bicgstab
-  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Convergence Tolerance = 1.0e-10
 
 ! USE Tree Gauge = Logical TRUE
 ! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
   Steady State Convergence Tolerance = 1e-09
+
+! Usually we cannot enforce field that is not almost aligned with the surface
+! normal. For this analytical test case this is however possible. Hence if
+! the jfix field is activated then we need to have this to be smaller than
+! the default 0.5. 
+  Jfix norm eps = Real 0.01
 End
 
 Solver 2
@@ -139,4 +143,3 @@ End
 Solver 2 :: Reference Norm = Real 1.41535
 Solver 2 :: Reference Norm Tolerance = Real 1.0E-4
 Solver 3 :: Reference Norm = Real 9.162083E-01
-RUN

@@ -760,7 +760,7 @@ END INTERFACE
            END IF
 
            ! Compare to given reference norm
-           IF( Err > Tol ) THEN
+           IF( Err > Tol .OR. Err /= Err ) THEN
              ! Warn only in the main core
              IF( ParEnv % MyPe == 0 ) THEN
                WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
@@ -1667,7 +1667,7 @@ END INTERFACE
                END IF
                
                PrevBodyId = -1 
-               DO t=1, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+100            DO t=1, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
                  
                  CurrentElement => Mesh % Elements(t)
 
@@ -1696,28 +1696,40 @@ END INTERFACE
 
                  IF( k2- k1 > 0 ) THEN
                    
+                   IP = GaussPointsAdapt( CurrentElement, Solver )
+
+                   IF( k2 - k1 /= Ip % n ) THEN
+                     CALL Info('InitCond','Number of Gauss points has changed, redoing permutations!',Level=8)
+                     CALL UpdateIpPerm( Solver, Var % Perm )
+                     m = MAXVAL( Var % Perm )
+                     
+                     CALL Info('InitCond','Total number of new IP dofs: '//TRIM(I2S(m)))
+                     
+                     IF( SIZE( Var % Values ) / Var % Dofs /= m ) THEN
+                       DEALLOCATE( Var % Values )
+                       ALLOCATE( Var % Values( m * Var % Dofs ) )
+                     END IF
+                     Var % Values = 0.0_dp
+                     GOTO 100 
+                   END IF
+
                    Nodes % x(1:n) = Mesh % Nodes % x(CurrentElement % NodeIndexes)
                    Nodes % y(1:n) = Mesh % Nodes % y(CurrentElement % NodeIndexes)
                    Nodes % z(1:n) = Mesh % Nodes % z(CurrentElement % NodeIndexes)
 
-                   IP = GaussPoints( CurrentElement )
-                   IF( k2 - k1 /= Ip % n ) THEN
-                     CALL Warn('InitCond','Incompatible number of Gauss points, skipping')
-                   ELSE              
-                     DO k=1,IP % n
-                       stat = ElementInfo( CurrentElement, Nodes, IP % U(k), IP % V(k), &
-                           IP % W(k), detJ, Basis )
+                   DO k=1,IP % n
+                     stat = ElementInfo( CurrentElement, Nodes, IP % U(k), IP % V(k), &
+                         IP % W(k), detJ, Basis )
 
-                       val = ListGetElementReal( LocalSol_h,Basis,CurrentElement,Found,GaussPoint=k)
-                       
-                       IF( VarOrder == 0 ) THEN
-                         Var % Values(k1+k) = val
-                       ELSE 
-                         Var % PrevValues(k1+k,VarOrder) = val
-                       END IF
+                     val = ListGetElementReal( LocalSol_h,Basis,CurrentElement,Found,GaussPoint=k)
 
-                     END DO
-                   END IF
+                     IF( VarOrder == 0 ) THEN
+                       Var % Values(k1+k) = val
+                     ELSE 
+                       Var % PrevValues(k1+k,VarOrder) = val
+                     END IF
+
+                   END DO
                    
                  END IF 
                END DO

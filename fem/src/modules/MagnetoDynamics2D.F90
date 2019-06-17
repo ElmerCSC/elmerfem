@@ -609,10 +609,10 @@ CONTAINS
 
       ! Finally, the elemental matrix & vector:
       !----------------------------------------
-      IF(TransientSimulation .AND. C_ip/=0._dp) THEN
+      IF (TransientSimulation .AND. C_ip/=0._dp .AND. CoilType /= 'stranded') THEN
         DO p=1,nd
           DO q=1,nd
-            IF(CoilType /= 'stranded') MASS(p,q) = MASS(p,q) + IP % s(t) * detJ * C_ip * Basis(q)*Basis(p)
+            MASS(p,q) = MASS(p,q) + IP % s(t) * detJ * C_ip * Basis(q)*Basis(p)
           END DO
         END DO
       END IF
@@ -626,9 +626,9 @@ CONTAINS
         Bt(:,2) = Bt(:,2) + Basis(:)/x
       end if
 
-        DO p = 1,nd
-          Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
-        END DO
+      DO p = 1,nd
+        Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
+      END DO
 
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
              MATMUL(Ht, TRANSPOSE(Bt))
@@ -1541,12 +1541,14 @@ CONTAINS
       C_ip = SUM( Basis(1:n) * C(1:n) )
       M_ip = MATMUL( M,Basis(1:n) )
 
-      DO p=1,nd
-        DO q=1,nd
-          IF(CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + &
-                                   IP % s(t) * detJ * im * omega * C_ip * Basis(q)*Basis(p)
+      IF(CoilType /= 'stranded') THEN
+        DO p=1,nd
+          DO q=1,nd
+            STIFF(p,q) = STIFF(p,q) + &
+                IP % s(t) * detJ * im * omega * C_ip * Basis(q)*Basis(p)
+          END DO
         END DO
-      END DO
+      END IF
 
       Bt(:,1) = -dbasisdx(:,2)
       Bt(:,2) =  dbasisdx(:,1)

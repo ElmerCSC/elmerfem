@@ -666,10 +666,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      EL_FWP => VariableGet( Mesh % Variables, 'Winding Voltage E' )
    END IF
 
-   !IF( RealField ) THEN
-     NF => VariableGet( Mesh % Variables, 'Nodal Force') 
-     EL_NF => VariableGet( Mesh % Variables, 'Nodal Force E')
-   !END IF
+   NF => VariableGet( Mesh % Variables, 'Nodal Force') 
+   EL_NF => VariableGet( Mesh % Variables, 'Nodal Force E')
 
    CD => VariableGet( Mesh % Variables, 'Current Density' )
    EL_CD => VariableGet( Mesh % Variables, 'Current Density E' )

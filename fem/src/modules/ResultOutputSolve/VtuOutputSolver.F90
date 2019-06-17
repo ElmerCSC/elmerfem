@@ -1145,7 +1145,7 @@ CONTAINS
         FieldName, FieldName2, OutStr
     CHARACTER :: lf
     LOGICAL :: ScalarsExist, VectorsExist, Found,&
-        ComponentVector, ComplementExists, Use2, IsHarmonic
+        ComponentVector, ComplementExists, Use2, IsHarmonic, FlipActive
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution
     INTEGER, POINTER :: Perm(:), Perm2(:), DispPerm(:), Disp2Perm(:)
@@ -1175,7 +1175,8 @@ CONTAINS
     WriteData = AsciiOutput
     Params => GetSolverParams()
     Buffered = .TRUE.
-
+    FlipActive = .FALSE.
+    
     ! we could have huge amount of gauss points
     ALLOCATE( ElemInd(512)) !Model % Mesh % MaxElementDOFS))
 
@@ -1373,7 +1374,8 @@ CONTAINS
           dofs = Solution % DOFs
           Values => Solution % Values
           VarType = Solution % Type
-                    
+          FlipActive = Solution % PeriodicFlipActive 
+          
           !---------------------------------------------------------------------
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
@@ -1543,6 +1545,10 @@ CONTAINS
                     val = Values(dofs*(j-1)+k)              
                   END IF
 
+                  IF( FlipActive ) THEN
+                    IF( Model % Mesh % PeriodicFlip(i) ) val = -val
+                  END IF
+                  
                   CALL AscBinRealWrite( val )
                 END DO
               END DO
@@ -1637,6 +1643,10 @@ CONTAINS
           Perm => Solution % Perm
           Dofs = Solution % DOFs
           Values => Solution % Values
+
+          IF( Solution % PeriodicFlipActive ) THEN
+            CALL Warn('VtuOutputSolver','Cannot yet deal with PeriodicFlip in elemental variables!')
+          END IF
           
           !---------------------------------------------------------------------
           ! Some vectors are defined by a set of components (either 2 or 3)
@@ -1810,7 +1820,7 @@ CONTAINS
                 END IF
                 
               END IF
-                
+                            
               DO k=1,sdofs
                 CALL AscBinRealWrite( ElemVectVal(k) )
               END DO
@@ -2014,7 +2024,6 @@ CONTAINS
 
         CurrentElement => Model % Elements(i)
 
-        !          NodeIndexes => Elmer2VtkIndexes( CurrentElement, DG .OR. DN, SaveLinear )
         CALL Elmer2VtkIndexes( CurrentElement, DG .OR. DN, SaveLinear, TmpIndexes )
 
         IF( SaveLinear ) THEN
@@ -2026,8 +2035,6 @@ CONTAINS
         DO j=1,n
           IF( DN .OR. DG ) THEN
             jj = DgPerm( TmpIndexes(j) )
-!          ELSE IF( DG ) THEN
-!            jj = TmpIndexes(j)
           ELSE IF( NoPermutation ) THEN
             jj = TmpIndexes(j)
           ELSE

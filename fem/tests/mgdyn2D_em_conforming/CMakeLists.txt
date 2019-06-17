@@ -1,0 +1,8 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( konesec.sif konesec.sif COPYONLY)
+
+file(COPY ELMERSOLVER_STARTINFO PM_machine DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(mgdyn2D_em_conforming LABELS transient)

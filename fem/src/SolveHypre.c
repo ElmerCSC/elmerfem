@@ -59,6 +59,8 @@ int ilower, iupper;
 HYPRE_IJMatrix A;
 HYPRE_IJMatrix Atilde;
 
+HYPRE_IJVector x,b;
+
 int hypre_method;
 HYPRE_Solver solver, precond;
 
@@ -873,6 +875,8 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    Container->iupper = iupper;     
    Container->hypre_method = *hypre_method;
    Container->A = A;
+   Container->b = b;
+   Container->x = x;
    Container->Atilde = Atilde;
    Container->solver = solver;
    Container->precond = precond;
@@ -1140,6 +1144,13 @@ void STDCALLBULL FC_FUNC(solvehypre4,SOLVEHYPRE4)(int** ContainerPtr) {
    if (Container->Atilde != Container->A) {
      HYPRE_IJMatrixDestroy(Container->Atilde);
    }
+
+   if (Container->A) {
+     HYPRE_IJMatrixDestroy(Container->A);
+   }
+   if(Container->x) HYPRE_IJVectorDestroy(Container->x);
+   if(Container->b) HYPRE_IJVectorDestroy(Container->b);
+
    free(Container);
    *ContainerPtr = NULL;
 }

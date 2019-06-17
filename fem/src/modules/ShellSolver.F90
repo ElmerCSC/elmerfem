@@ -78,7 +78,7 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverPars
-  LOGICAL :: SavePrincipalAxes, Found
+  LOGICAL :: SavePrincipalAxes, Found, Eigenanalysis
   INTEGER  :: i
 !------------------------------------------------------------------------------
   SolverPars => GetSolverParams()
@@ -92,9 +92,14 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
   ! Only created if the system is harmonic
   CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 DNU im:3]')
 
-  
-  CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
-  CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
+  Eigenanalysis = GetLogical(SolverPars, 'Eigen Analysis', Found)
+  IF (Eigenanalysis) THEN
+    CALL ListAddLogical(SolverPars, 'Large Deflection', .FALSE.)
+    CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 1)
+  ELSE
+    CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
+    CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
+  END IF
   CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
   CALL ListAddNewLogical(SolverPars, 'Skip Compute Nonlinear Change', .TRUE.)
 
@@ -241,8 +246,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   Parallel = ParEnv % PEs > 1
   MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
   
-  HarmonicAssembly = GetLogical(SolverPars, 'Harmonic Mode', Found) .OR. &
-      GetLogical(SolverPars, 'Harmonic Analysis', Found)
+  HarmonicAssembly = EigenOrHarmonicAnalysis(Solver) .OR. GetLogical(SolverPars, &
+      'Harmonic Mode', Found) .OR. GetLogical(SolverPars, 'Harmonic Analysis', Found)
   MassAssembly =  TransientSimulation .OR. HarmonicAssembly 
 
   ! ---------------------------------------------------------------------------------
@@ -2365,7 +2370,7 @@ CONTAINS
     LOGICAL :: Converged, ComputeTaylorPolynomial
     LOGICAL :: ApproximatePlaneDomain, CheckOrientation, WriteElementProperties
     LOGICAL :: Subtriangulation, Planar, Umbilical
-    INTEGER :: Family, n, m, e, i, j, k,  GridPoint
+    INTEGER :: Family, n, m, e, i, j, k, GridPoint
 
     REAL(KIND=dp) :: TaylorParams(6), PlanarFlag(1), UmbilicalFlag(1) 
     REAL(KIND=dp) :: u, v
@@ -2376,6 +2381,7 @@ CONTAINS
     REAL(KIND=dp) :: DualBase1(3), DualBase2(3), Id(2,2), EigenMat(2,2), T(2,2) 
     REAL(KIND=dp) :: BPrinc(2,2), scale, Err
     REAL(KIND=dp) :: rK, hK, h1, h2, pk(3), xi, eta, z(MaxPatchNodes), x1(4), x2(4), uk, vk
+    REAL(KIND=dp) :: rK_umbilical_test
     REAL(KIND=dp) :: p(3), r(2), delta(2), DerMat(2,2), ptarget(2), p0(2)
     REAL(KIND=dp) :: APar, BPar, DPar, EPar, FPar, GPar
     REAL(KIND=dp) :: FrameData(FrameDataSize), NodesArray(3*MaxPatchNodes)
@@ -2549,23 +2555,28 @@ CONTAINS
       rK = 0.0d0
       SELECT CASE(Family)
       CASE(3)
-        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(2) - Nodes % x(1))**2 + (Nodes % y(2) - Nodes % y(1))**2 + &
+        rK = MAX(rK, SQRT((Nodes % x(2) - Nodes % x(1))**2 + (Nodes % y(2) - Nodes % y(1))**2 + &
             (Nodes % z(2) - Nodes % z(1))**2))
-        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(3) - Nodes % x(2))**2 + (Nodes % y(3) - Nodes % y(2))**2 + &
+        rK = MAX(rK, SQRT((Nodes % x(3) - Nodes % x(2))**2 + (Nodes % y(3) - Nodes % y(2))**2 + &
             (Nodes % z(3) - Nodes % z(2))**2))
-        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(3) - Nodes % x(1))**2 + (Nodes % y(3) - Nodes % y(1))**2 + &
+        rK = MAX(rK, SQRT((Nodes % x(3) - Nodes % x(1))**2 + (Nodes % y(3) - Nodes % y(1))**2 + &
             (Nodes % z(3) - Nodes % z(1))**2))
       CASE(4)
-        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(3) - Nodes % x(1))**2 + (Nodes % y(3) - Nodes % y(1))**2 + &
+        rK = MAX(rK, SQRT((Nodes % x(3) - Nodes % x(1))**2 + (Nodes % y(3) - Nodes % y(1))**2 + &
             (Nodes % z(3) - Nodes % z(1))**2))
-        rK = MAX(rK, 0.5d0 * SQRT((Nodes % x(4) - Nodes % x(2))**2 + (Nodes % y(4) - Nodes % y(2))**2 + &
+        rK = MAX(rK, SQRT((Nodes % x(4) - Nodes % x(2))**2 + (Nodes % y(4) - Nodes % y(2))**2 + &
             (Nodes % z(4) - Nodes % z(2))**2))
       END SELECT
       delta(1) = ABS(Lambda1-Lambda2)/LambdaMax
-      Umbilical = delta(1) < 1.0d1*(rK*LambdaMax)**2
+      !
+      ! The following test is based on assuming a quadratic error for the principal radii.
+      ! In addition a certain similarity of the eigenvalues is always required.
+      !
+      Umbilical = delta(1) < 5.0d1*(rK*LambdaMax)**2 .AND. delta(1) < 9.0d-2 
+      IF (Umbilical) rK_umbilical_test = rK
       !print *, 'this point is umbilical=', Umbilical
       !PRINT *, 'difference of eigenvals=',delta(1)
-      !print *, 'delta,O-term', delta(1),1.0d1*(rK*LambdaMax)**2
+      !print *, 'O-term', 5.0d1*(rK*LambdaMax)**2
     END IF
 
     !-----------------------------------------------------------------
@@ -2872,7 +2883,7 @@ CONTAINS
       ELSE
         IF (Umbilical) THEN
           err = ABS(APar-BPar)/MAX(ABS(APar), ABS(BPar))
-          IF ( err > 5.0d1*(rK * MAX(ABS(APar), ABS(BPar)))**2 ) THEN
+          IF ( err > 5.0d1*(rK_umbilical_test * MAX(ABS(APar), ABS(BPar)))**2 ) THEN
             CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial (umbilical point)')
             print *, '|APar-BPar|/max(|APar|,|BPar|) = ', err
           END IF
@@ -4275,6 +4286,8 @@ CONTAINS
             DO j=1,nd
               Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
                   Basis(i) * Basis(j) * Weight
+              Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
+                  h**3/12.0d0 * Basis(i) * Basis(j) * Weight
             END DO
           END DO
         END DO

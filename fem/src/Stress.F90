@@ -147,7 +147,7 @@ MODULE StressLocal
      DAMP  = 0.0d0
 
      NeedMass = ANY( NodalDensity(1:n) /= 0.0d0 )
-     NeedMass = NeedMass .OR. ANY( NodalDamping(1:n) /= 0.0d0 )
+     NeedMass = NeedMass .OR. ANY( NodalDamping(1:n) /= 0.0d0 ) .OR. RayleighDamping
 
      NeedHeat = ANY( NodalTemperature(1:n) /= 0.0d0 )
      NeedHarmonic = ANY( LOAD_im(:,1:n) /= 0.0d0 ) 
