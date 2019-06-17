@@ -533,7 +533,7 @@ CONTAINS
      TYPE(Solver_t)  , POINTER :: Solver
      TYPE(Element_t),  POINTER :: Element
 
-     INTEGER :: i, j, n
+     INTEGER :: i, j, k, n
      INTEGER, POINTER :: Indexes(:)
 
      Solver => CurrentModel % Solver
@@ -583,13 +583,26 @@ CONTAINS
 
 
      IF ( ASSOCIATED( Variable % Perm ) ) THEN
-       DO i=1,n
-         j = Indexes(i)
-         IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
-           j = Variable % Perm(j)
-           IF ( j>0 ) x(i) = Values(j)
-         END IF
-       END DO
+       IF( Variable % PeriodicFlipActive ) THEN
+         DO i=1,n
+           j = Indexes(i)
+           IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
+             k = Variable % Perm(j)
+             IF ( k>0 ) THEN
+               x(i) = Values(k)
+               IF( CurrentModel % Mesh % PeriodicFlip(j) ) x(i) = -x(i)
+             END IF
+           END IF
+         END DO
+       ELSE
+         DO i=1,n
+           j = Indexes(i)
+           IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
+             j = Variable % Perm(j)
+             IF ( j>0 ) x(i) = Values(j)
+           END IF
+         END DO
+       END IF
      ELSE
         DO i=1,n
           j = Indexes(i)
@@ -614,7 +627,7 @@ CONTAINS
      TYPE(Solver_t)  , POINTER :: Solver
      TYPE(Element_t),  POINTER :: Element
 
-     INTEGER :: i, j, k, n
+     INTEGER :: i, j, k, l, n
      INTEGER, POINTER :: Indexes(:)
      REAL(KIND=dp), POINTER ::  Values(:)
 
@@ -676,13 +689,26 @@ CONTAINS
 
      DO i=1,Variable % DOFs
        IF ( ASSOCIATED( Variable % Perm ) ) THEN
-         DO j=1,n
-           k = Indexes(j)
-           IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
-             k = Variable % Perm(k)
-             IF (k>0) x(i,j) = Values(Variable % DOFs*(k-1)+i)
-           END IF
-         END DO
+         IF( Variable % PeriodicFlipActive ) THEN
+           DO j=1,n
+             k = Indexes(j)
+             IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
+               l = Variable % Perm(k)
+               IF( l>0 ) THEN
+                 x(i,j) = Values(Variable % DOFs*(l-1)+i)
+                 IF( CurrentModel % Mesh % PeriodicFlip(k) ) x(i,j) = -x(i,j)
+               END IF
+             END IF
+           END DO
+         ELSE           
+           DO j=1,n
+             k = Indexes(j)
+             IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
+               l = Variable % Perm(k)
+               IF (k>0) x(i,j) = Values(Variable % DOFs*(l-1)+i)
+             END IF
+           END DO
+         END IF
        ELSE
          DO j=1,n
            IF ( Variable % DOFs*(Indexes(j)-1)+i <= &
@@ -2480,6 +2506,7 @@ CONTAINS
 
     Params => GetSolverParams(Solver)
 
+    ! Antiperiodic elimination and FCT always use this
     IF (GetLogical(Params,'Use Global Mass Matrix',Found)) THEN
       CALL DefaultUpdateMass(M,UElement,USolver)
       RETURN
@@ -2492,9 +2519,10 @@ CONTAINS
     dt = Solver % dt
     Indexes => GetIndexStore()
     n = GetElementDOFs( Indexes,Element,Solver )
-
+          
     CALL Add1stOrderTime( M, A, F, dt, n, x % DOFs, &
-           x % Perm(Indexes(1:n)), Solver, UElement=Element )
+        x % Perm(Indexes(1:n)), Solver, UElement=Element )
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE Default1stOrderTimeR
 !------------------------------------------------------------------------------
@@ -3401,7 +3429,7 @@ CONTAINS
 
      LOGICAL :: Found, BUpd, VecAsm, MCAsm
 
-     INTEGER :: j, n, nd
+     INTEGER :: i, j, n, nd
      INTEGER(KIND=AddrInt) :: Proc
      INTEGER, POINTER CONTIG :: Indexes(:), PermIndexes(:)
 
@@ -3499,6 +3527,12 @@ CONTAINS
        Indexes => GetIndexStore()
        n = GetElementDOFs( Indexes, Element, Solver )
 
+       ! If we have any antiperiodic entries we need to check them all!
+       IF( Solver % PeriodicFlipActive ) THEN
+         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+         CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+       END IF
+               
        IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
@@ -3507,6 +3541,13 @@ CONTAINS
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
        END IF
+
+       ! backflip, in case G is needed again
+       IF( Solver % PeriodicFlipActive ) THEN
+         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+         CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+       END IF
+       
      END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
@@ -3658,6 +3699,12 @@ CONTAINS
        END DO
      END DO
 
+     ! If we have any antiperiodic entries we need to check them all!
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+          
      CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)) )
 
      DEALLOCATE( G, F)
@@ -3712,8 +3759,18 @@ CONTAINS
        END IF
      END IF
 
+     ! If we have any antiperiodic entries we need to check them all!
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+     
      CALL UpdateGlobalForce( Solver % Matrix % RHS, &
          F, n, x % DOFs, x % Perm(Indexes(1:n)), UElement=Element)
+
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+     
 
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateForceR
@@ -3774,6 +3831,10 @@ CONTAINS
        F( 2*(i-1) + 2 ) = AIMAG(FC(i))
     END DO
 
+    IF( Solver % PeriodicFlipActive ) THEN
+      CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+    END IF
+            
     CALL UpdateGlobalForce( Solver % Matrix % RHS, &
         F, n, x % DOFs, x % Perm(Indexes(1:n)) )
 
@@ -3826,8 +3887,17 @@ CONTAINS
        END IF
      END IF
 
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+          
      CALL UpdateTimeForce( Solver % Matrix,Solver % Matrix % RHS, &
-          F, n, x % DOFs, x % Perm(Indexes(1:n)) )
+         F, n, x % DOFs, x % Perm(Indexes(1:n)) )
+
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF     
+     
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateTimeForceR
 !------------------------------------------------------------------------------
@@ -3885,7 +3955,11 @@ CONTAINS
          F( 2*(i-1) + 1 ) =   REAL(FC(i))
          F( 2*(i-1) + 2 ) = -AIMAG(FC(i))
       END DO
-
+      
+      IF( Solver % PeriodicFlipActive ) THEN
+        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+      END IF      
+      
       CALL UpdateTimeForce( Solver % Matrix,Solver % Matrix % RHS, &
                F, n, x % DOFs, x % Perm(Indexes(1:n)) )
 
@@ -3947,14 +4021,24 @@ CONTAINS
      END IF
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
-         ALLOCATE( A % PrecValues(SIZE(A % Values)) )
-         A % PrecValues = 0.0d0
-       END IF
+     IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
+       ALLOCATE( A % PrecValues(SIZE(A % Values)) )
+       A % PrecValues = 0.0d0
+     END IF
 !$OMP END CRITICAL
 
+     ! flip mass matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF
+      
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), & 
-            A % PrecValues )
+         A % PrecValues )
+
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF
+          
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdatePrecR
 !------------------------------------------------------------------------------
@@ -4029,6 +4113,11 @@ CONTAINS
        END DO
      END DO
 
+     ! flip preconditioning matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF
+     
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
               A % PrecValues )
      DEALLOCATE( M )
@@ -4087,14 +4176,26 @@ CONTAINS
      END IF
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
-         ALLOCATE( A % MassValues(SIZE(A % Values)) )
-         A % MassValues = 0.0d0
-       END IF
+     IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
+       ALLOCATE( A % MassValues(SIZE(A % Values)) )
+       A % MassValues = 0.0d0
+     END IF
 !$OMP END CRITICAL
 
+     ! flip mass matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF
+                
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
-             A % MassValues ) 
+         A % MassValues ) 
+     
+     ! backflip to be on the safe side
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % Dofs, M )
+     END IF
+
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateMassR
 !------------------------------------------------------------------------------
@@ -4169,6 +4270,11 @@ CONTAINS
        END DO
      END DO
 
+     ! flip mass matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF                
+
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
                     A % MassValues )
      DEALLOCATE( M )
@@ -4228,14 +4334,23 @@ CONTAINS
      END IF
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
-          ALLOCATE( A % DampValues(SIZE(A % Values)) ) 
-          A % DampValues = 0.0d0
-       END IF
+     IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
+       ALLOCATE( A % DampValues(SIZE(A % Values)) ) 
+       A % DampValues = 0.0d0
+     END IF
 !$OMP END CRITICAL
 
+     ! flip damp matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+     END IF                
+     
      CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)), &
               A  % DampValues )
+
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+     END IF                
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateDampR
 !------------------------------------------------------------------------------
@@ -4311,6 +4426,10 @@ CONTAINS
        END DO
      END DO
 
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+     END IF                
+     
      CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)), &
                  A % DampValues )
      DEALLOCATE( B )
@@ -4371,21 +4490,34 @@ CONTAINS
      END IF
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
-          ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
-          A % BulkValues = 0.0_dp
-       END IF
+     IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
+       ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
+       A % BulkValues = 0.0_dp
+     END IF
 !$OMP END CRITICAL
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
-          ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
-          A % BulkRHS = 0.0_dp
-       END IF
+     IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
+       ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
+       A % BulkRHS = 0.0_dp
+     END IF
 !$OMP END CRITICAL
 
+       
+     ! If we have any antiperiodic entries we need to check them all!
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+     
      CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)),  &
-                  GlobalValues=A % BulkValues )
+         GlobalValues=A % BulkValues )
+     
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateBulkR
 !------------------------------------------------------------------------------
@@ -4448,17 +4580,17 @@ CONTAINS
 
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
-          ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
-          A % BulkValues = 0.0_dp
-       END IF
+     IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
+       ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
+       A % BulkValues = 0.0_dp
+     END IF
 !$OMP END CRITICAL
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
-            ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
-          A % BulkRHS = 0.0_dp
-       END IF
+     IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
+       ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
+       A % BulkRHS = 0.0_dp
+     END IF
 !$OMP END CRITICAL
 
      ALLOCATE( B(DOFs*n, DOFs*n), F(DOFs*n) )
@@ -4474,10 +4606,15 @@ CONTAINS
        END DO
      END DO
 
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+      
      CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)), &
                  GlobalValues=A % BulkValues )
 
-     DEALLOCATE( B )
+     DEALLOCATE( B, F )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateBulkC
 !------------------------------------------------------------------------------

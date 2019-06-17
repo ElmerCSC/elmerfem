@@ -1421,6 +1421,10 @@ CONTAINS
          CALL Info('CreateMatrix','Suppressing bandwidth optimization for discontinuous bodies',Level=8)
          OptimizeBW = .FALSE.
        END IF
+       IF( ListGetLogical( Solver % Values,'Apply Conforming BCs',Found ) ) THEN
+         CALL Info('CreateMatrix','Suppressing bandwidth optimization for conforming bcs',Level=8)
+         OptimizeBW = .FALSE.
+       END IF
      END IF
 
      

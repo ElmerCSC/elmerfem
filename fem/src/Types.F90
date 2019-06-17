@@ -600,6 +600,7 @@ END INTERFACE
 
      INTEGER :: DOFs = 0
      INTEGER, POINTER          :: Perm(:) => NULL()
+     LOGICAL :: PeriodicFlipActive = .FALSE.
      REAL(KIND=dp)             :: Norm=0, PrevNorm=0,NonlinChange=0, SteadyChange=0
      INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter=-1
      INTEGER :: LinConverged=-1
@@ -793,6 +794,9 @@ END INTERFACE
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
      INTEGER :: DisContNodes
+
+     INTEGER, POINTER :: PeriodicPerm(:) => NULL()
+     LOGICAL, POINTER :: PeriodicFlip(:) => NULL()
      
      INTEGER, POINTER :: InvPerm(:)
 
@@ -850,6 +854,7 @@ END INTERFACE
       REAL(KIND=dp) :: Alpha,Beta,dt
 
       LOGICAL :: NewtonActive = .FALSE.
+      LOGICAL :: PeriodicFlipActive = .FALSE.
       
       INTEGER :: SolverExecWhen
       INTEGER :: SolverMode
@@ -870,8 +875,7 @@ END INTERFACE
       TYPE(Matrix_t), POINTER :: ConstraintMatrix => NULL()
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
       LOGICAL :: MortarBCsChanged = .FALSE., ConstraintMatrixVisited = .FALSE.
-      INTEGER(KIND=AddrInt) :: MortarProc, &
-          BoundaryElementProcedure=0, BulkElementProcedure=0
+      INTEGER(KIND=AddrInt) :: BoundaryElementProcedure=0, BulkElementProcedure=0
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL(), BoundaryColourIndexList => NULL()
       INTEGER :: CurrentColour = 0, CurrentBoundaryColour = 0

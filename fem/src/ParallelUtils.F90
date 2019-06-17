@@ -121,14 +121,25 @@ CONTAINS
        k = n*DOFs + Matrix % ExtraDOFs
        ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(k))
 
-       Matrix % Perm = 0
-       DO i=1,n
-         IF ( Perm(i) /= 0 )  THEN
-            DO j=1,DOFs
-               Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
-            END DO
-         END IF
-       END DO
+       BLOCK
+         LOGICAL :: DoConf = .FALSE.
+
+         DoConf = ListGetLogical( Solver % Values, 'Apply Conforming BCs',Found )
+         DoConf = DoConf .AND. ASSOCIATED(Mesh % PeriodicPerm)
+
+         Matrix % Perm = 0
+         DO i=1,n
+           IF ( DoConf ) THEN
+             IF ( Mesh % PeriodicPerm(i) /= 0 ) CYCLE
+           END IF
+
+           IF ( Perm(i) /= 0 ) THEN
+              DO j=1,DOFs
+                 Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
+              END DO
+           END IF
+         END DO
+        END BLOCK
 
         DO i=n*DOFs+1,SIZE(Matrix % Perm)
           Matrix % Perm(i) = i
@@ -157,7 +168,8 @@ CONTAINS
          DO i=1,Mesh % NumberOfNodes
            DO j=1,DOFs
               k = Matrix % Perm((i-1)*DOFs+j)
-              IF(k<=0) CYCLE
+              IF ( k<=0 ) CYCLE
+
               Matrix % ParallelInfo % GlobalDOFs(k) = &
                 DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
               Matrix % ParallelInfo % Interface(k) = &
@@ -198,7 +210,7 @@ CONTAINS
              DO j=1,Element % BDOFs
                DO m=1,DOFs
                  l = DOFs*(l_beg + edofs*(i-1)+j-1)+m
-                 l=Matrix % Perm(l)
+                 l = Matrix % Perm(l)
                  IF(l==0) CYCLE
                  Matrix % ParallelInfo % GlobalDOFs(l) = &
                      DOFs*(g_beg+maxedofs*(Element % GelementIndex-1)+j-1)+m

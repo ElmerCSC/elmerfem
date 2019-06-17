@@ -584,6 +584,35 @@ CONTAINS
        t = t + 1
      END DO
 
+     ! Here we create the initial permutation such that the conforming dofs are eliminated. 
+     IF( ListGetLogical( Solver % Values,'Apply Conforming BCs',Found ) ) THEN
+       Solver % PeriodicFlipActive = .FALSE.
+       n = 0
+       IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
+         ! Set the eliminated dofs to zero and renumber
+         WHERE( Mesh % PeriodicPerm > 0 ) Perm = -Perm
+
+         k = 0                  
+         DO i=1,SIZE( Perm )
+           IF( Perm(i) > 0 ) THEN
+             k = k + 1
+             Perm(i) = k
+           END IF
+         END DO
+                          
+         DO i=1,SIZE( Mesh % PeriodicPerm )
+           j = Mesh % PeriodicPerm(i)
+           IF( j > 0 .AND. Perm(i) /= 0 ) THEN             
+             Perm(i) = Perm(j)
+             IF(Mesh % PeriodicFlip(i)) n = n + 1
+           END IF
+         END DO
+
+         Solver % PeriodicFlipActive = ( n > 0 )
+         CALL Info('InitialPermutation','Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
+       END IF
+     END IF
+    
      IF ( ALLOCATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs)
      IF ( ALLOCATED(FaceDOFs) ) DEALLOCATE(FaceDOFs)
 !------------------------------------------------------------------------------

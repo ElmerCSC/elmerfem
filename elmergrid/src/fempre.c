@@ -140,6 +140,7 @@ static void Instructions()
   printf("-mirror int[3]       : copy the mesh around the origin in coordinate directions\n");
   printf("-cloneinds           : when performing cloning should cloned entitities be given new indexes\n");
   printf("-unite               : the meshes will be united\n");
+  printf("-unitenooverlap      : the meshes will be united without overlap in entity numbering\n");
   printf("-polar real          : map 2D mesh to a cylindrical shell with given radius\n");
   printf("-cylinder            : map 2D/3D cylindrical mesh to a cartesian mesh\n");
   printf("-reduce int[2]       : reduce element order at material interval [int1 int2]\n");
@@ -744,7 +745,7 @@ int main(int argc, char *argv[])
   /* Unite meshes if there are several of them */
   if(eg.unitemeshes) {
     for(k=1;k<nomeshes;k++)
-      UniteMeshes(&data[0],&data[k],boundaries[0],boundaries[k],info);
+      UniteMeshes(&data[0],&data[k],boundaries[0],boundaries[k],eg.unitenooverlap,info);
     nomeshes = nogrids = 1;
   }
   
