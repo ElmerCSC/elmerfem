@@ -1,4 +1,4 @@
-!/*****************************************************************************/
+/*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -351,12 +351,18 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   Perm => Solver % Variable % Perm
   Vecpot => Solver % Variable % Values
 
-  IF ( .NOT. AllocationsDone ) THEN
+  IF ( .NOT. AllocationsDone .OR. Mesh % Changed ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
+
+     IF(ALLOCATED(FORCE)) THEN
+       DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, TCoef, GapLength, AirGapMu, &
+             Acoef, LamThick, LamCond, WBase, RotM, DConstr, Acoef_t )
+     END IF
+
      ALLOCATE( FORCE(N), JFixFORCE(n), JFixVec(3,n), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
-          LamCond(N), Wbase(N), RotM(3,3,N), Cwrk(3,3,N), &
+          LamCond(N), Wbase(N), RotM(3,3,N),  &
           DConstr(N,N), Acoef_t(3,3,N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
@@ -396,11 +402,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      AllocationsDone = .TRUE.
   END IF
 
-  ConstantSystem = GetLogical( SolverParams, &
-       'Constant System', Found )
-
-  ConstantBulk = GetLogical( SolverParams, &
-       'Constant Bulk System', Found )
+  ConstantSystem = GetLogical( SolverParams, 'Constant System', Found )
+  ConstantBulk   = GetLogical( SolverParams, 'Constant Bulk System', Found )
 
   SkipAssembly = DoneAssembly.AND.(ConstantBulk.OR.ConstantSystem)
 
@@ -412,9 +415,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   JFixSolve = JFix
 
   IF (JFix) THEN
-    JfixPhase = 1
-    CALL JfixPotentialSolver(Model,Solver,dt,Transient)
-    JFixVar => VariableGet(Mesh % Variables, 'Jfix')    
+    JFixPhase = 1
+    CALL JFixPotentialSolver(Model,Solver,dt,Transient)
+    JFixVar => VariableGet(Mesh % Variables, 'JFix')    
     IF(.NOT. ASSOCIATED( JFixRhs ) ) THEN
       CALL Fatal('WhitneyAVSolver','JFixRhs should be associated!')
     END IF
@@ -434,18 +437,17 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   ! Resolve internal non.linearities, if requeted:
   ! ----------------------------------------------
-  NoIterationsMax = GetInteger( SolverParams, &
-	      'Nonlinear System Max Iterations',Found)
+  NoIterationsMax = GetInteger( SolverParams, 'Nonlinear System Max Iterations',Found)
   IF(.NOT. Found) NoIterationsMax = 1
 
-  NoIterationsMin = GetInteger( SolverParams, &
-	      'Nonlinear System Min Iterations',Found)
+  NoIterationsMin = GetInteger( SolverParams, 'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
   ! Use also these keyword for compatibility with ElmerGUI and old practices
   NewtonIter = GetInteger( SolverParams,&
       'Nonlinear System Newton After Iterations',Found ) 
   IF(.NOT. Found ) NewtonIter = NoIterationsMax
+
   NewtonTol = GetCReal( SolverParams,&
       'Nonlinear System Newton After Tolerance',Found )
 
@@ -573,8 +575,7 @@ CONTAINS
      Material => GetMaterial( Element )
 
      IF(ASSOCIATED(Material).AND..NOT.FoundMagnetization) THEN
-       CALL GetRealVector( Material, Load(4:6,1:n), &
-                'Magnetization', FoundMagnetization )
+       CALL GetRealVector( Material, Load(4:6,1:n), 'Magnetization', FoundMagnetization )
      END IF
 
      CoilBody = .FALSE.
@@ -618,8 +619,8 @@ CONTAINS
      END IF
 
 
-     LamThick=0d0
-     LamCond=0d0
+     LamThick = 0.0_dp
+     LamCond  = 0.0_dp
      IF (LaminateStack) THEN
        SELECT CASE(LaminateStackModel)
        CASE('low-frequency model')
@@ -666,9 +667,9 @@ CONTAINS
        JFixRhs(JFixVar % Perm(Element % NodeIndexes)) = &
            JFixRhs(JFixVar % Perm(Element % NodeIndexes)) + JFixFORCE(1:n)
        DO i=1,n
-         j = JfixSurfacePerm(Element % NodeIndexes(i) )         
-         IF( j > 0 ) JfixSurfaceVec(3*j-2:3*j) = &
-             JfixSurfaceVec(3*j-2:3*j) + JFixVec(1:3,i)
+         j = JFixSurfacePerm(Element % NodeIndexes(i) )         
+         IF( j > 0 ) JFixSurfaceVec(3*j-2:3*j) = &
+             JFixSurfaceVec(3*j-2:3*j) + JFixVec(1:3,i)
        END DO
      END IF
 
@@ -681,8 +682,8 @@ CONTAINS
   ! add its contribution to the AV equation.
   IF( JFixSolve ) THEN    
     CALL Info('WhitneyAVSolver','Solving the fixing potential',Level=7)
-    JfixPhase = 2
-    CALL JfixPotentialSolver(Model,Solver,dt,Transient)
+    JFixPhase = 2
+    CALL JFixPotentialSolver(Model,Solver,dt,Transient)
     
     CALL Info('WhitneyAVSolver','Adding the fixing potential to the r.h.s. of AV equation',Level=10)   
     DO t=1,active
@@ -1905,20 +1906,20 @@ END SUBROUTINE LocalConstraintMatrix
 
     CALL GetElementNodes( Nodes )
 
-    STIFF = 0.0d0
-    FORCE = 0.0d0
-    MASS  = 0.0d0
-    JAC = 0._dp
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    MASS  = 0.0_dp
+    JAC = 0.0_dp
     Newton = .FALSE.
 
-    IF( Jfix ) THEN
+    IF( JFix ) THEN
       ! If we are solving for the JFix field we cannot yet use it!
       ! This happens on the first iteration
       IF ( JFixSolve ) THEN
-        JfixFORCE = 0.0_dp
-        JfixVec = 0.0_dp
+        JFixVec   = 0.0_dp
+        JFixFORCE = 0.0_dp
       ELSE        
-        JfixPot(1:n) = JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) )        
+        JFixPot(1:n) = JFixVar % Values(JFixVar % Perm(Element % NodeIndexes))
       END IF
     END IF
       
@@ -2035,7 +2036,7 @@ END SUBROUTINE LocalConstraintMatrix
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
        
-       IF( Jfix ) THEN
+       IF( JFix ) THEN
          IF( JFixSolve ) THEN
            ! If we haven't solved for the disbalance of source terms assemble it here
            DO i = 1,n
@@ -2044,8 +2045,8 @@ END SUBROUTINE LocalConstraintMatrix
              JFixVec(:,p) = JFixVec(:,p) + L * Basis(i) * detJ * IP%s(t)
            END DO
          ELSE         
-           ! If we have already solved for the Jfix potential use it here
-           L = L - MATMUL(JfixPot(1:n), dBasisdx(1:n,:))
+           ! If we have already solved for the JFix potential use it here
+           L = L - MATMUL(JFixPot(1:n), dBasisdx(1:n,:))
          END IF
        END IF
              
@@ -2261,8 +2262,7 @@ END SUBROUTINE LocalConstraintMatrix
 
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalFixMatrix( FORCE, &
-      Element, n, nd, PiolaVersion, SecondOrder )
+  SUBROUTINE LocalFixMatrix( FORCE, Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: FORCE(:)
@@ -2288,11 +2288,11 @@ END SUBROUTINE LocalConstraintMatrix
     CALL GetElementNodes( Nodes )
 
     FORCE = 0.0_dp
-    !CALL GetScalarLocalSolution( JFixPot, 'Jfix')
+    !CALL GetScalarLocalSolution( JFixPot, 'JFix')
 
-    JfixPot(1:n) = JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) )
+    JFixPot(1:n) = JFixVar % Values( JFixVar % Perm( Element % NodeIndexes ) )
     
-    IF( SUM( ABS( JfixPot(1:n) ) ) < TINY( DetJ ) ) RETURN
+    IF( SUM(ABS(JFixPot(1:n))) < TINY(DetJ) ) RETURN
     
     ! Numerical integration:
     !----------------------
@@ -2397,8 +2397,7 @@ END SUBROUTINE LocalConstraintMatrix
        DO p=1,np
          FORCE(p) = FORCE(p) + F*Basis(p)*detJ*IP % s(t)
          DO q=1,np
-           STIFF(p,q) = STIFF(p,q) + TC * &
-                  Basis(p)*Basis(q)*detJ*IP % s(T)
+           STIFF(p,q) = STIFF(p,q) + TC * Basis(p)*Basis(q)*detJ*IP % s(T)
          END DO
        END DO
 
@@ -2417,8 +2416,7 @@ END SUBROUTINE LocalConstraintMatrix
              w1 = CrossProduct(Wbasis(j,:),Normal)
            END IF
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(w1*w0)*detJ*IP % s(t)
+           STIFF(p,q) = STIFF(p,q) + B * SUM(w1*w0)*detJ*IP % s(t)
          END DO
        END DO
     END DO
