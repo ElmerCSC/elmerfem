@@ -12929,11 +12929,10 @@ END SUBROUTINE VariableNameParser
         
     DO j=1,DOFs
       
+100   Values => ExpVariable % Values
       IF( Dofs > 1 ) THEN
         tmpname = ComponentName( var_name(1:n), j )
-        !nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs
-        !Perm => Solver % Variable % Perm
-        Solution => Values( j:: DOFs ) ! nSize-DOFs+j:DOFs )
+        Solution => Values( j:: DOFs ) 
       ELSE
         tmpname = var_name(1:n)
         Solution => Values
@@ -12963,7 +12962,7 @@ END SUBROUTINE VariableNameParser
         CALL ListInitElementKeyword( LocalSol_h,'Body Force',TmpName )
       END IF
 
-100   DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
         Element => Mesh % Elements(t) 
         IF( Element % BodyId <= 0 ) CYCLE
@@ -12996,13 +12995,13 @@ END SUBROUTINE VariableNameParser
 
             pSolver => Solver
             CALL UpdateIpPerm( pSolver, Perm )
-            m = MAXVAL( Perm )
+            nsize = MAXVAL( Perm )
 
-            CALL Info('UpdateExportedVariables','Total number of new IP dofs: '//TRIM(I2S(m)))
+            CALL Info('UpdateExportedVariables','Total number of new IP dofs: '//TRIM(I2S(nsize)))
 
-            IF( SIZE( ExpVariable % Values ) / ExpVariable % Dofs /= m ) THEN
+            IF( SIZE( ExpVariable % Values ) /= ExpVariable % Dofs * nsize ) THEN
               DEALLOCATE( ExpVariable % Values )
-              ALLOCATE( ExpVariable % Values( m * ExpVariable % Dofs ) )
+              ALLOCATE( ExpVariable % Values( nsize * ExpVariable % Dofs ) )
             END IF
             ExpVariable % Values = 0.0_dp
             GOTO 100 
