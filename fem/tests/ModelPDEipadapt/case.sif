@@ -81,8 +81,8 @@ Solver 1
   Adaptive Integration Upper Limit = Real $width
   Adaptive Integration Order = Integer 1
 
-  Nonlinear Update Exported Variables = True
-  Exported Variable 1 = -ip MyCapacity
+! Nonlinear Update Exported Variables = True
+! Exported Variable 1 = -ip MyCapacity
 End
 
 Boundary Condition 1
