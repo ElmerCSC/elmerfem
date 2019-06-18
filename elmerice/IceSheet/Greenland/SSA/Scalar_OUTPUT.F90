@@ -605,8 +605,8 @@
        np = Parent % TYPE % NumberOfNodes
 
        ! GL could be a boundary; compute flux from gounded parent
-       ! Parent is Grounded if ALL GM>=0
-       IF (.NOT.( ALL( GMVar % Values( GMVar % Perm( Parent % NodeIndexes(1:np) ) ) .GT. -AEPS ) ) ) RETURN
+       ! Parent is Grounded if ANY GM > 0
+       IF (.NOT.( ANY( GMVar % Values( GMVar % Perm( Parent % NodeIndexes(1:np) ) ) .GT. AEPS ) ) ) RETURN
        ! a vector from the center of the edge to the center of the parent to check that normal points outside parent 
        dx = ElementCenter(Mesh,Parent) - ElementCenter(Mesh,Edge)
      
