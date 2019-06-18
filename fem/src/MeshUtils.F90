@@ -2839,7 +2839,7 @@ END SUBROUTINE GetMaxDefs
      END DO
 
      ! Create parallel numbering of faces
-     CALL SParFaceNumbering(Mesh)
+     CALL SParFaceNumbering(Mesh, .TRUE. )
 
      DO i=1,Mesh % NumberOfFaces
        Mesh % MinFaceDOFs = MIN(Mesh % MinFaceDOFs,Mesh % Faces(i) % BDOFs)
@@ -2848,7 +2848,7 @@ END SUBROUTINE GetMaxDefs
      IF(Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs) Mesh % MinFaceDOFs = Mesh % MaxFaceDOFs
 
      ! Create parallel numbering for edges
-     CALL SParEdgeNumbering(Mesh)
+     CALL SParEdgeNumbering(Mesh, .TRUE.)
 
      DO i=1,Mesh % NumberOfEdges
        Mesh % MinEdgeDOFs = MIN(Mesh % MinEdgeDOFs,Mesh % Edges(i) % BDOFs)
