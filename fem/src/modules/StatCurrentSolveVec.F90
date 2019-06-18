@@ -960,7 +960,7 @@ CONTAINS
    TYPE(Variable_t), POINTER :: pVar
    REAL(KIND=dp), ALLOCATABLE :: tmp(:)
    LOGICAL :: DoneWeight = .FALSE.
-   REAL(KIND=dp) :: PotDiff, Resistance, ControlTarget, ControlScaling
+   REAL(KIND=dp) :: PotDiff, Resistance, ControlTarget, ControlScaling, val
    
    VolTot     = ParallelReduction(VolTot)
    HeatingTot = ParallelReduction(HeatingTot)
@@ -1011,7 +1011,8 @@ CONTAINS
      END IF
      
      DO i=1,dofs
-       pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
+       WHERE( ABS( WeightVector ) > EPSILON( val ) ) &
+           pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
      END DO
    END DO
 
