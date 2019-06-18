@@ -2494,7 +2494,9 @@ INCLUDE "mpif.h"
 
     ind = INDEX( FileName0,'.',.TRUE. )
     len = LEN_TRIM(Filename0)
-    IF(ind > 0) THEN
+
+    ! If the only dot is the first one it only related to the current working directory.
+    IF(ind > 1) THEN
       Prefix = Filename0(1:ind-1)
       Suffix = Filename0(ind:len)
     ELSE
@@ -2505,7 +2507,7 @@ INCLUDE "mpif.h"
         Suffix = '.dat'
       END IF
     END IF
-
+    
     IF( Parallel ) THEN
       No = MyPe + 1
       IF( No < 10000 ) THEN

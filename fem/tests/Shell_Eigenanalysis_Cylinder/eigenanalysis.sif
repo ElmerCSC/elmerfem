@@ -1,0 +1,132 @@
+!
+! This case gives a FE model for a fan blade problem considered in
+!
+! Olson M, Lindberg G: Vibration analysis of cantilevered curved plates using
+! a new cylindrical shell finite element. A report of Air Force Flight Dynamics
+! Laboratory, AFFDL-TR-68-150, 1968.
+!
+! The report lists the first natural frequencies that were measured 
+! experimentally. The table below shows the first seven vibration frequencies 
+! obtained computationally with the this FE model and the experimental values of
+! the report. Note that Elmer outputs true eigenvalues, so to get the natural 
+! frequency one needs to compute f = sqrt(lambda)/(2 pi), with lambda being 
+! the eigenvalue. 
+!
+! Mode  FE model    Experimental  
+! 1     95.3        86.6
+! 2     145.4       135.5
+! 3     251.7       258.9
+! 4     362.5       350.6
+! 5     404.7       395.2
+! 6     535.6       531.1
+! 7     752.6       743.2
+!
+! The author of this test: Mika Malinen
+!
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "fan_blade"
+End
+
+Simulation
+  Max Output Level = 6
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Density = 7747.73
+  Shell Thickness = 0.3048e-2
+  Youngs Modulus = 206.84e9
+  Poisson Ratio = 0.3
+End
+
+Body Force 1 
+  Normal Pressure = Real 0.0
+End
+
+Equation 1 :: Active Solvers(2) = 1 2
+
+Solver 1
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+  !
+  ! For the eigenvector output we need a single name for
+  ! the entire solution: 
+  !
+  Variable = U
+
+  Displace Mesh = False
+
+  Linear System Solver = Direct !"Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-7
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 300
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+
+  Eigen Analysis = True
+  Eigen System Values = 7
+  Eigen System Convergence Tolerance = Real 1.0e-6
+  Eigen System Select = Smallest Magnitude
+
+End
+
+Solver 2
+  ! Exec Solver = never
+
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "case"
+  Output Format = "vtu"
+
+  Eigen Analysis = True
+  Show Variables = Logical True
+!  Active Eigenmodes = 5
+End
+
+Solver 3
+  Equation = "SaveScalars"
+!  Filename = f.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = Logical True
+  !
+  ! Pick the lowest eigenvalue:
+  !
+  Show Norm Index = 1
+End
+
+! ----------------------------------------------------
+! BCs are defined with respect the global XYZ system:
+! ----------------------------------------------------
+
+Boundary Condition 1
+  Target Boundaries(1) = 3
+  !
+  ! The components of the mid-surface displacement:
+  !
+  U 1 = Real 0
+  U 2 = Real 0
+  U 3 = Real 0
+  !
+  ! The components of the rotation-like variables:
+  !
+  U 4 = Real 0
+  U 5 = Real 0
+  U 6 = Real 0
+End
+
+Solver 3 :: Reference Norm = Real 3.58493992E+05

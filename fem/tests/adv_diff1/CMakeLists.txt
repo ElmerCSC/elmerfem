@@ -5,5 +5,4 @@ CONFIGURE_FILE( ad1.sif ad1.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO Step.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(adv_diff1)
-ADD_ELMER_LABEL(adv_diff1 quick)
+ADD_ELMER_TEST(adv_diff1 LABELS quick transient)

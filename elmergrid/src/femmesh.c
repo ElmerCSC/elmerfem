@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter Rï¿½back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -157,7 +157,7 @@ void InitGrid(struct GridType *grid)
 
 void ExampleGrid1D(struct GridType **grids,int *nogrids,int info) 
 /* Creates an example grid that might be used to analyze 
-   flow trough a step. */
+   flow through a step. */
 {
   int j;
   struct GridType *grid;
@@ -213,7 +213,7 @@ void ExampleGrid1D(struct GridType **grids,int *nogrids,int info)
 
 void ExampleGrid2D(struct GridType **grids,int *nogrids,int info) 
 /* Creates an example grid that might be used to analyze 
-   flow trough a step. */
+   flow through a step. */
 {
   int j;
   struct GridType *grid;

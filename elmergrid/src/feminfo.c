@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author:  Peter Råback
+   Author:  Peter Rï¿½back
    Email:   Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -267,6 +267,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->outmethod = 0;
   eg->nofilesin = 1;
   eg->unitemeshes = FALSE;
+  eg->unitenooverlap = FALSE;
   eg->triangles = FALSE;
   eg->triangleangle = 0.0;
   eg->rotate = FALSE;
@@ -595,6 +596,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-unite") == 0) {
       eg->unitemeshes = TRUE;
       printf("The meshes will be united.\n");
+    }   
+    if(strcmp(argv[arg],"-unitenooverlap") == 0) {
+      eg->unitemeshes = TRUE;
+      eg->unitenooverlap = TRUE;
+      printf("The meshes will be united without overlap in BCs or bodies.\n");
     }   
 
     if(strcmp(argv[arg],"-nonames") == 0) {
@@ -1165,6 +1171,14 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->unitemeshes = TRUE;      
     }
+    else if(strstr(command,"UNITENOOVERLAP")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) {
+	eg->unitemeshes = TRUE;      
+	eg->unitenooverlap = TRUE;      
+      }
+    }
+    
     else if(strstr(command,"ORDER NODES")) {
       eg->order = TRUE;
       if(eg->dim == 1) 
@@ -2252,7 +2266,7 @@ int LoadElmergridOld(struct GridType **grid,int *nogrids,char *prefix,int info)
     case 31:
     case 32:
 
-      /* I dont know how to set this, luckily this piece of code should be obsolite */
+      /* I don't know how to set this, luckily this piece of code should be obsolete */
       l = 1;
       for(i=grid[k]->mappings;i<grid[k]->mappings+l;i++) {
 	Getline(line,in);
@@ -3095,8 +3109,3 @@ int ShowCorners(struct FemType *data,int variable,Real offset)
   }
   return(0);
 }
-
-
-
-
-

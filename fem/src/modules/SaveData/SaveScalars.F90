@@ -426,6 +426,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
+    WRITE (Name,'(A,I0)') 'Nodal Variable ',NoVar
+    IF( ListCheckPresent( Params,TRIM(Name) ) ) THEN
+      NodalOper = ListGetLogical(Params,TRIM(Name),GotNodalOper)   
+    END IF
+      
     NoOper = NoVar     
     MaskOper = .FALSE.
     WRITE (Name,'(A,I0)') 'Operator ',NoOper
