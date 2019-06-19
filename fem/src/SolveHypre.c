@@ -465,6 +465,11 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
        if ( ilower > globaldofs[i] ) ilower=globaldofs[i];
      }
    }
+
+
+   /* if the partition doesn't own any of the dofs, apply null range (with valid indices) */
+   if ( iupper == 0 ) ilower = 1;
+
    
    /* Create the matrix.
       Note that this is a square matrix, so we indicate the row partition
