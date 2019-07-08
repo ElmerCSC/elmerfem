@@ -829,7 +829,7 @@
               M = Solver % Mesh % NumberOfNodes
               !CHANGE
               !To stabilise channels
-              IF(AreaSolution(AreaPerm(M+t)) > 999.0) AreaSolution(AreaPerm(M+t)) = 999.0
+              IF(AreaSolution(AreaPerm(M+t)) > 9999.0) AreaSolution(AreaPerm(M+t)) = 9999.0
               ChannelArea = AreaSolution(AreaPerm(M+t))
 
               !------------------------------------------------------------------------------
@@ -859,7 +859,7 @@
               !shouldn't do much, so resetting to 0 seems safest
               !TODO Come up with a better way of fixing this
               k = AreaPerm(M+t)
-              IF(AreaSolution(k) > 999.0) AreaSolution(k) = 999.0
+              IF(AreaSolution(k) > 9999.0) AreaSolution(k) = 9999.0
               ! This should be not needed as MASS = 0 here
               IF ( TransientSimulation ) THEN
                  CALL Default1stOrderTime( MASS, STIFF, FORCE, Edge )
@@ -1061,7 +1061,7 @@
                         WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
                         Vvar(Element % NodeIndexes(i)) = 0.0
                         NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
-                        PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
+                        !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
                         hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
                       END IF
                     END IF
@@ -1075,7 +1075,7 @@
                       WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
                       Vvar(Element % NodeIndexes(i)) = 0.0
                       NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
-                      PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
+                      !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
                       hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
                     END IF
                   END DO
@@ -1120,7 +1120,7 @@
                  IF(Calving) THEN
                    IF(Snn(i)==0.0) THEN
                      Np = 0.0
-                     pw = 0.0
+                     !pw = 0.0
                      he = 0.0
                    END IF
                  END IF 
@@ -1362,7 +1362,7 @@
                      AreaSolution(k) = AreaPrev(k,1)
                    END IF
                  END IF
-                 IF(AreaSolution(k) > 999.0) AreaSolution(k) = 999.0
+                 IF(AreaSolution(k) > 9999.0) AreaSolution(k) = 9999.0
                  IF(ISNAN(AreaSolution(k))) AreaSolution(k) = 0.0
 
                  ! Save Qc if variable exists
@@ -1403,7 +1403,7 @@
         AreaSolution(AreaPerm(M+1:M+t)) = MAX(AreaSolution(AreaPerm(M+1:M+t)),0.0_dp)
         !CHANGE
         !Stop channels from expanding to eleventy-stupid
-        AreaSolution(AreaPerm(M+1:M+t)) = MIN(AreaSolution(AreaPerm(M+1:M+t)),999.0_dp)
+        AreaSolution(AreaPerm(M+1:M+t)) = MIN(AreaSolution(AreaPerm(M+1:M+t)),9999.0_dp)
 
 
      END IF  ! If Channels
@@ -2048,7 +2048,7 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
        Ks = Ks * Ngrad**(nbs-2.0_dp) 
 
        Kc = SUM( NodalKc(1:n) * Basis(1:n))
-       Kc = Kc * MAX(CArea,0.0)**(nac) 
+       Kc = Kc * MAX(CArea,0.0)**(nac-1.0_dp) 
        Kc = Kc * Ngrad**(nbc-2.0_dp)  
 
        PhiG = SUM(NodalHydPot(1:n)*Basis(1:n))
@@ -2086,7 +2086,7 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
        BETA = Bfactor*(Xi - Pii) 
 
        ! Channel flux for output
-       Qcc = ABS(Kc*GradPhi)
+       Qcc = ABS(MAX(CArea,0.0)*Kc*GradPhi)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE GetEvolveChannel
