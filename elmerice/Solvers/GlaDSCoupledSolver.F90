@@ -1143,7 +1143,7 @@
                  END IF
 
                  k = AreaPerm(M+t)
-                 SELECT CASE(methodSheet)
+                 SELECT CASE(methodChannels)
                  CASE('implicit') 
                     AreaSolution(k) = (AreaPrev(k,1) + dt*BETA)/(1.0_dp - dt*ALPHA)
                  CASE('explicit')
