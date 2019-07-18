@@ -90,7 +90,8 @@
                 ZeroCounter
      REAL(KIND=dp), POINTER :: NVP(:)=>NULL()
      REAL(KIND=dp) :: IceTempResSum, HydroTempResSum, ScaleFactor,&
-                      ElementTempResSum, Dist, Threshold, MinDist, x, y, NewNS
+                      ElementTempResSum, Dist, Threshold, MinDist, x, y,&
+                      NewNS, MeanNS
      REAL(KIND=dp), ALLOCATABLE :: NSValues(:)
      REAL(KIND=dp), ALLOCATABLE, TARGET :: NewValues1(:), NewValues2(:),&
                                            NewValues3(:), NewValues4(:),&
@@ -386,6 +387,23 @@
     END DO
 
     WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "normalstress", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    MeanNS = 0.0_dp
+    !ZeroCounter = 0
+
+    !DO i=1, HydroSolver % Mesh % NumberOfBoundaryElements
+    !  Element => GetBoundaryElement(i, HydroSolver)
+    !  n = GetElementNOFNodes(Element)
+    !  IF(ANY(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(1:n))) == -1.0)) CYCLE
+    !  DO j=1,n
+    !    MeanNS = MeanNS+WorkVar2 % Values(WorkVar2 % Perm(Element %&
+    !    NodeIndexes(j)))
+     !   IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j)))==0.0)&
+     !     THEN
+     !     ZeroCounter = ZeroCounter + 1
+     !   END IF
+     ! END DO
+    !END DO
+    !MeanNS = MeanNS/(HydroSolver % Mesh % NumberOfBoundaryElements-ZeroCounter)
 
     DO i=1, HydroSolver % Mesh % NumberOfBoundaryElements
       Element => GetBoundaryElement(i, HydroSolver)
@@ -405,7 +423,7 @@
         CASE (0)
           CALL Info('CalvingHydroInterp', 'No non-0 values of NormalStress. &
                    Making a guess')
-          NewNS = SUM(WorkVar2 % Values)/SIZE(WorkVar2 % Values)
+          NewNS = (SUM(WorkVar2 % Values)/SIZE(WorkVar2 % Values))+3.0_dp !MeanNS
         CASE (1)
           NewNS = SUM(NSValues) 
         CASE (2)
@@ -544,14 +562,15 @@
      TYPE(ValueList_t), POINTER :: Params
      LOGICAL :: FirstTime=.TRUE.
      LOGICAL, POINTER :: BasalLogical(:)
-     INTEGER, POINTER :: InterpDim(:), IceMeshBasePerm(:)=>NULL(), NPP(:)=>NULL()
-     INTEGER, ALLOCATABLE, TARGET :: NewPerm1(:), NewPerm2(:), NewPerm3(:)
+     INTEGER, POINTER :: InterpDim(:), IceMeshBasePerm(:)=>NULL(),&
+                         NPP(:)=>NULL(), NewPerm1(:)
+     INTEGER, ALLOCATABLE, TARGET :: NewPerm2(:), NewPerm3(:)
      INTEGER :: i, HPSolver, DummyInt, ierr
-     REAL(KIND=dp), POINTER :: NVP(:)=>NULL()
-     REAL(KIND=dp), ALLOCATABLE, TARGET :: NewValues1(:), NewValues2(:),&
+     REAL(KIND=dp), POINTER :: NVP(:)=>NULL(), NewValues1(:)
+     REAL(KIND=dp), ALLOCATABLE, TARGET :: NewValues2(:),&
                                            NewValues3(:)
-     SAVE HydroMesh, FirstTime, HPSolver, NewPerm1,&
-          NewValues1, NewPerm2, NewValues2, NewPerm3, NewValues3
+     SAVE HydroMesh, FirstTime, HPSolver! NewPerm1,&
+          !NewValues1, NewPerm2, NewValues2, NewPerm3, NewValues3
 
 !------------------------------------------------------------------------------
 
@@ -583,32 +602,32 @@
 
     !Set up list of variables needed by GlaDS that have to be interpolated
     InterpVar1 => VariableGet(HydroSolver % Mesh % Variables, "water pressure", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-    InterpVar2 => VariableGet(HydroSolver % Mesh % Variables, "sheet discharge 1", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-    InterpVar3 => VariableGet(HydroSolver % Mesh % Variables, "sheet discharge 2", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    !InterpVar2 => VariableGet(HydroSolver % Mesh % Variables, "sheet discharge 1", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    !InterpVar3 => VariableGet(HydroSolver % Mesh % Variables, "sheet discharge 2", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
 
     !Make copies of the relevant variables to save messing around with the mesh
     !variable list - only need perms and values
     ALLOCATE(InterpVar1Copy % Values(SIZE(InterpVar1 % Values)), InterpVar1Copy % Perm(SIZE(InterpVar1 % Perm)))
     InterpVar1Copy % Values = InterpVar1 % Values
     InterpVar1Copy % Perm = InterpVar1 % Perm
-    InterpVar1Copy % Next => InterpVar2Copy
+    InterpVar1Copy % Next => NULL() !InterpVar2Copy
     InterpVar1Copy % Name = InterpVar1 % Name
 
-    ALLOCATE(InterpVar2Copy % Values(SIZE(InterpVar2 % Values)), InterpVar2Copy % Perm(SIZE(InterpVar2 % Perm)))
-    InterpVar2Copy % Values = InterpVar2 % Values
-    InterpVar2Copy % Perm = InterpVar2 % Perm
-    InterpVar2Copy % Next => InterpVar3Copy
-    InterpVar2Copy % Name = InterpVar2 % Name
+    !ALLOCATE(InterpVar2Copy % Values(SIZE(InterpVar2 % Values)), InterpVar2Copy % Perm(SIZE(InterpVar2 % Perm)))
+    !InterpVar2Copy % Values = InterpVar2 % Values
+    !InterpVar2Copy % Perm = InterpVar2 % Perm
+    !InterpVar2Copy % Next => InterpVar3Copy
+    !InterpVar2Copy % Name = InterpVar2 % Name
 
-    ALLOCATE(InterpVar3Copy % Values(SIZE(InterpVar3 % Values)), InterpVar3Copy % Perm(SIZE(InterpVar3 % Perm)))
-    InterpVar3Copy % Values = InterpVar3 % Values
-    InterpVar3Copy % Perm = InterpVar3 % Perm
-    InterpVar3Copy % Next => NULL()
-    InterpVar3Copy % Name = InterpVar3 % Name
+    !ALLOCATE(InterpVar3Copy % Values(SIZE(InterpVar3 % Values)), InterpVar3Copy % Perm(SIZE(InterpVar3 % Perm)))
+    !InterpVar3Copy % Values = InterpVar3 % Values
+    !InterpVar3Copy % Perm = InterpVar3 % Perm
+    !InterpVar3Copy % Next => NULL()
+    !InterpVar3Copy % Name = InterpVar3 % Name
 
     InterpVar1 => InterpVar1Copy
-    InterpVar2 => InterpVar2Copy
-    InterpVar3 => InterpVar3Copy
+    !InterpVar2 => InterpVar2Copy
+    !InterpVar3 => InterpVar3Copy
 
     !Variables need to be added to mesh before interpolated as list
     IF(FirstTime) THEN
@@ -616,29 +635,29 @@
       WorkVar => VariableGet(Model % Mesh % Variables,&
                  'velocity 1', ThisOnly=.TRUE.)
       ALLOCATE(NewPerm1(SIZE(WorkVar % Perm)),NewValues1(SIZE(WorkVar % Values)))
-      ALLOCATE(NewPerm2(SIZE(WorkVar % Perm)),NewValues2(SIZE(WorkVar % Values)))
-      ALLOCATE(NewPerm3(SIZE(WorkVar % Perm)),NewValues3(SIZE(WorkVar % Values)))
+      !ALLOCATE(NewPerm2(SIZE(WorkVar % Perm)),NewValues2(SIZE(WorkVar % Values)))
+      !ALLOCATE(NewPerm3(SIZE(WorkVar % Perm)),NewValues3(SIZE(WorkVar % Values)))
       NewPerm1 = WorkVar % Perm
-      NewPerm2 = NewPerm1
-      NewPerm3 = NewPerm1
-      NPP => NewPerm1
+      !NewPerm2 = NewPerm1
+      !NewPerm3 = NewPerm1
+      !NPP => NewPerm1
       NewValues1 = 0.0_dp
-      NewValues2 = 0.0_dp
-      NewValues3 = 0.0_dp
-      NVP => NewValues1
+      !NewValues2 = 0.0_dp
+      !NewValues3 = 0.0_dp
+      !NVP => NewValues1
       CALL VariableAdd(Model % Mesh % Variables, Model % & 
            Mesh, CurrentModel % Solver, InterpVar1 % Name, 1,&
-           NVP, NPP)
-      NPP => NewPerm2
-      NVP => NewValues2
-      CALL VariableAdd(Model % Mesh % Variables, Model % & 
-           Mesh, CurrentModel % Solver, InterpVar2 % Name, 1,&
-           NVP, NPP)
-      NPP => NewPerm3
-      NVP => NewValues3
-      CALL VariableAdd(Model % Mesh % Variables, Model % & 
-           Mesh, CurrentModel % Solver, InterpVar3 % Name, 1,&
-           NVP, NPP)
+           NewValues1, NewPerm1)
+      !NPP => NewPerm2
+      !NVP => NewValues2
+      !CALL VariableAdd(Model % Mesh % Variables, Model % & 
+      !     Mesh, CurrentModel % Solver, InterpVar2 % Name, 1,&
+      !     NVP, NPP)
+      !NPP => NewPerm3
+      !NVP => NewValues3
+      !CALL VariableAdd(Model % Mesh % Variables, Model % & 
+      !     Mesh, CurrentModel % Solver, InterpVar3 % Name, 1,&
+      !     NVP, NPP)
     END IF
 
     CALL ParallelActive(.TRUE.)
@@ -649,9 +668,9 @@
     CALL ParallelActive(.FALSE.)
 
     DEALLOCATE(InterpDim, BasalLogical, IceMeshBasePerm, InterpVar1Copy % Perm,&
-               InterpVar1Copy % Values, InterpVar2Copy % Perm,&
-               InterpVar2Copy % Values, InterpVar3Copy % Perm,&
-               InterpVar3Copy % Values)
-    NULLIFY(HydroSolver, WorkVar, NVP, NPP, InterpVar1, InterpVar2, InterpVar3)
+               InterpVar1Copy % Values)!, InterpVar2Copy % Perm,&
+               !InterpVar2Copy % Values, InterpVar3Copy % Perm,&
+               !InterpVar3Copy % Values)
+    NULLIFY(HydroSolver, WorkVar, NVP, NPP, InterpVar1)!, InterpVar2, InterpVar3)
 
   END SUBROUTINE

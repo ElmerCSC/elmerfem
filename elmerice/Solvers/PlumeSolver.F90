@@ -78,7 +78,7 @@
         BMSummerStart, Season, aboveMelt, meMelt, Dist, MinDist, ChannelQ,&
         Q0, Plume1MR, Plume2MR, PlProp, Node, NearestNode(3),&
         TargetNode(3), MaxX, MinX, MaxY, MinY, PlDist(2), MeshRes, BMRDist,&
-        BMRMinDist, PlDepth
+        BMRMinDist, PlDepth, SStart, SStop
 
    REAL(KIND=dp), ALLOCATABLE :: Xs(:), Ys(:), DwDz(:), W0(:), DmDz(:), MMR(:), MME(:), &
         PlumePoints(:,:,:), PlStart(:,:),PlStop(:,:), PointStore(:),&
@@ -153,10 +153,12 @@
 
    IF(dim /= 3) CALL Fatal(SolverName, "User Function only works in 3D!")
 
+   PlMode = ListGetString( Params, 'Plume Melt Mode', Found, UnfoundFatal=.FALSE.)
+   IF(.NOT. Found) PlMode = 'off'
+   PlMode = TRIM(PlMode)
+
    !Potential to turn melt off
    IF(.NOT. Calving) THEN
-     PlMode = ListGetString( Params, 'Plume Melt Mode', Found, UnfoundFatal=.TRUE.)
-     PlMode = TRIM(PlMode)
 
      BGMode = ListGetString( Params, 'Background Melt Mode', Found, UnfoundFatal=.TRUE.)
      BGMode = TRIM(BGMode)
@@ -380,6 +382,9 @@
            NearestFrontNodes(j, 3) = ZArray(ProcID+1)
            NearestFrontNodes(j, 4) = MinDist
            NearestFrontNodes(j, 5) = BMRMinDist
+           !This is for the case where nodes on the two meshes exactly coincide
+           !and a 'depth' of 0 is returned
+           IF(NearestFrontNodes(j,3) > -2.0) NearestFrontNodes(j,3) = TargetNode(3)
          END IF
        END DO !j
      END DO !i
@@ -485,9 +490,27 @@
      !Q0 taken straight from hydrology - will be total discharge
      !Then run plume model.
      Output = 0
+     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
      IF(PlCount > 0) THEN
        ALLOCATE(HydroPlume(PlCount))
-       SaTaZiFile = ListGetString( Params, "Salinity Temp Depth Input File", UnfoundFatal=.TRUE.)
+       SELECT CASE(PlMode)
+       CASE("seasonal")
+         SStart = ListGetConstReal( Params, "Plume Melt Summer Start", UnfoundFatal=.TRUE.)
+         SStop = ListGetConstReal( Params, "Plume Melt Summer Stop", UnfoundFatal=.TRUE.)
+         IF(season > SStart .AND. season < SStop) THEN
+           SaTaZiFile = ListGetString( Params, "Summer Salinity Temp Depth Input File", UnfoundFatal=.TRUE.)
+         ELSE
+           SaTaZiFile = ListGetString( Params, "Winter Salinity Temp Depth Input File", UnfoundFatal=.TRUE.)
+         END IF
+       CASE("constant")
+         SaTaZiFile = ListGetString( Params, "Salinity Temp Depth Input File", UnfoundFatal=.TRUE.)
+       CASE("off")
+         RETURN
+       CASE DEFAULT
+         PRINT *, 'Please specify what mode you want plumes to operate in.&
+                  Options are seasonal, constant or off'
+         RETURN
+       END SELECT
 
        OPEN(UNIT=InputFileUnit, FILE=SaTaZiFile, IOSTAT=ierr)
 
@@ -646,7 +669,7 @@
        CALL MPI_BCAST(PlMRArray, OutputSize*TotalPlCount, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
        CALL MPI_BCAST(PlCoordArray, SIZE(PlCoordArray), MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
        CALL MPI_BCAST(TotalPlCount, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+       CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
  
        DEALLOCATE(TempPlCoordArray, TempPlZArray, TempPlMRArray, Plz, PlMR)
      ELSE
@@ -1406,7 +1429,6 @@
            PRINT *, 'Plume total toe melt: ', TotalToeMelt
          END IF
       END IF
-      CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
       CALL MPI_AllReduce(MPI_IN_PLACE, TotalArea, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
       CALL MPI_AllReduce(MPI_IN_PLACE, TotalPMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
@@ -1482,6 +1504,10 @@
       MeltRate = MeltRate + ToeMeltRate
       ToeCalveVar % Values = ToeMeltRate
     END IF
+    
+    DO i=1,SIZE(MeltRate)
+      IF(ISNAN(MeltRate(i))) MeltRate(i) = 10000.0_dp
+    END DO
     
     NULLIFY(WorkVar, WorkSolver, HydroMesh, Edge, ZOutput, MROutput, WorkVar2,&
            WorkVar3)
