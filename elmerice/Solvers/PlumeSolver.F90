@@ -101,9 +101,10 @@
                            HydroGLNodes(:), SearchIndex(:)
    INTEGER, POINTER :: MeltPerm(:), NodeIndexes(:), ColumnPerm(:), OrderPerm(:)
    INTEGER, PARAMETER :: OutFileUnit = 65, InputFileUnit = 75
-   LOGICAL :: Found, Parallel, Boss, Debug, BMeltSwitch, stat, AverageMelt,&
-        OutputStats, Visited=.FALSE., BMFromFile, PlFromFile, RemoveToe,&
-        found_intersection, Calving, NoPlume
+   LOGICAL :: Found, Parallel, Boss, Debug, BMeltSwitch, stat,&
+              AverageMelt=.FALSE., OutputStats=.FALSE., Visited=.FALSE.,&
+              BMFromFile, PlFromFile, RemoveToe, found_intersection, Calving,&
+              NoPlume
    LOGICAL, ALLOCATABLE :: PlActive(:), IHavePlume(:), WhoHasPlume(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, PlumeStr, PlumeStrX, &
         PlumeStrY, PlumeStrDwDz, PlumeStrW0, PlumeStrDmDz, PlumeStrMME, PlumeStrMMR, &
