@@ -81,25 +81,22 @@
      LOGICAL :: Found=.FALSE., FirstTime=.TRUE., LoadReaders, Hit=.FALSE.
      LOGICAL, POINTER :: BasalLogical(:)
      INTEGER, POINTER :: InterpDim(:), IceMeshBasePerm(:)=>NULL(),&
-                         NPP(:)=>NULL(), RefNode(:)=>NULL()
-     INTEGER, ALLOCATABLE, TARGET :: NewPerm1(:), DefaultPerm(:),&
-                                     ZeroNodes(:)
+                         NPP(:)=>NULL(), RefNode(:)=>NULL(), NewPerm1(:)
+     INTEGER, ALLOCATABLE, TARGET :: DefaultPerm(:), ZeroNodes(:)
      INTEGER :: i, j, k, HPSolver, Reader1, Reader2, Reader3,&
                 Reader4, Reader5, Reader, NumVar, DummyInt, ierr,&
                 ElementBC, BasalBC, n, NearestNode, SideBC1, SideBC2, HitCount,&
                 ZeroCounter
-     REAL(KIND=dp), POINTER :: NVP(:)=>NULL()
+     REAL(KIND=dp), POINTER :: NVP(:)=>NULL(), NewValues1(:), NewValues2(:),&
+                               NewValues3(:), NewValues4(:), NewValues5(:)
      REAL(KIND=dp) :: IceTempResSum, HydroTempResSum, ScaleFactor,&
                       ElementTempResSum, Dist, Threshold, MinDist, x, y,&
                       NewNS, MeanNS
      REAL(KIND=dp), ALLOCATABLE :: NSValues(:)
-     REAL(KIND=dp), ALLOCATABLE, TARGET :: NewValues1(:), NewValues2(:),&
-                                           NewValues3(:), NewValues4(:),&
-                                           NewValues5(:), ParITRS(:),&
-                                           ParHTRS(:), NewValues6(:)
-     SAVE HydroMesh, FirstTime, HPSolver,&
-          NewPerm1,&
-          NewValues1,NewValues2, NewValues3, NewValues4, NewValues5, DefaultPerm
+     REAL(KIND=dp), ALLOCATABLE, TARGET :: ParITRS(:), ParHTRS(:), NewValues6(:)
+     SAVE HydroMesh, FirstTime, HPSolver
+          !NewPerm1,&
+          !NewValues1,NewValues2, NewValues3, NewValues4, NewValues5, DefaultPerm
 !------------------------------------------------------------------------------
     Params => GetSolverParams()
 
@@ -241,35 +238,35 @@
       ALLOCATE(NewValues4(SIZE(WorkVar % Values)))
       ALLOCATE(NewValues5(SIZE(WorkVar % Values)))
       NewPerm1 = WorkVar % Perm
-      NPP => NewPerm1
+      !NPP => NewPerm1
       NewValues1 = 0.0_dp
       NewValues2 = 0.0_dp
       NewValues3 = 0.0_dp
       NewValues4 = 0.0_dp
       NewValues5 = 0.0_dp
-      NVP => NewValues1
+      !NVP => NewValues1
       CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
            Mesh, HydroSolver, InterpVar1 % Name, 1,&
-           NVP, NPP)
-      NVP => NewValues2
+           NewValues1, NewPerm1)
+      !NVP => NewValues2
       CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
            Mesh, HydroSolver, InterpVar2 % Name, 1,&
-           NVP, NPP)
-      NVP => NewValues3
+           NewValues2, NewPerm1)
+      !NVP => NewValues3
       CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
            Mesh, HydroSolver, InterpVar3 % Name, 1,&
-           NVP, NPP)
+           NewValues3, NewPerm1)
       IF(ASSOCIATED(InterpVar4)) THEN
-        NVP => NewValues4
+        !NVP => NewValues4
         CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
              Mesh, HydroSolver, InterpVar4 % Name, 1,&
-             NVP, NPP)
+             NewValues4, NewPerm1)
       END IF
       IF(ASSOCIATED(InterpVar5)) THEN
-        NVP => NewValues5
+        !NVP => NewValues5
         CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
              Mesh, HydroSolver, InterpVar5 % Name, 1,&
-             NVP, NPP)
+             NewValues5, NewPerm1)
       END IF
     END IF
 
