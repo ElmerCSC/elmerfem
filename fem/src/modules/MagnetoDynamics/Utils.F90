@@ -344,7 +344,13 @@ CONTAINS
 
     SAVE Avacuum
 
-    CALL GetRealArray( Material, Acoef, 'Relative Reluctivity', Found )
+    CALL GetRealArray( Material, Acoef, 'Reluctivity', Found )
+    !
+    ! Earlier versions used 'Relative Reluctivity' although 'Relative' appears
+    ! to lack a physical meaning. For backward compatibility seek for
+    ! the old keyword command if needed:
+    !
+    IF (.NOT. Found) CALL GetRealArray( Material, Acoef, 'Relative Reluctivity', Found )
 !-------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityTensorR
 !-------------------------------------------------------------------------------

@@ -606,8 +606,15 @@ CONTAINS
      IF ( ASSOCIATED(Material) ) THEN
        HasTensorReluctivity = .FALSE.
        CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
-       IF(.NOT. HasTensorReluctivity) CALL GetReluctivity(Material,Acoef,n)
-
+       IF (HasTensorReluctivity) THEN
+         IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+           i = MIN(SIZE(Acoef), SIZE(Acoef_t,3))
+           Acoef(1:i) = Acoef_t(1,1,1:i) 
+           HasTensorReluctivity = .FALSE.
+         END IF
+       ELSE
+         CALL GetReluctivity(Material,Acoef,n)
+       END IF
 !------------------------------------------------------------------------------
 !      Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
