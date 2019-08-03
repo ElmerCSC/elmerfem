@@ -2744,8 +2744,11 @@ void MainWindow::pdeEditorFinishedSlot(int signal, int id)
        if(!body)
 	 continue;
        
-       if ( body->equation == pe )
-	 body->equation = NULL;
+       if ( body->equation == pe ){
+         body->equation = NULL;
+         body->ui.equationCombo->setCurrentIndex(0);
+         body->touched = true;
+       }
     }
 
     // Equation is not in menu:
@@ -2886,8 +2889,11 @@ void MainWindow::matEditorFinishedSlot(int signal, int id)
       if(!body)
 	continue;
 
-      if ( body->material == pe )
-	body->material = NULL;
+      if ( body->material == pe ){
+        body->material = NULL;
+        body->ui.materialCombo->setCurrentIndex(0);
+        body->touched = true;
+      }
     }
 
     // Material is not in menu:
@@ -3020,8 +3026,11 @@ void MainWindow::bodyForceEditorFinishedSlot(int signal, int id)
       if(!body)
 	continue;
 
-      if ( body->force == pe )
-	body->force = NULL;
+      if ( body->force == pe ){
+        body->force = NULL;
+        body->ui.bodyForceCombo->setCurrentIndex(0);
+        body->touched = true;
+      }
     }
 
     if(pe->menuAction == NULL) {
@@ -3148,8 +3157,11 @@ void MainWindow::initialConditionEditorFinishedSlot(int signal, int id)
       if(!body)
 	continue;
 
-      if ( body->initial == pe )
-	body->initial = NULL;
+      if ( body->initial == pe ){
+        body->initial = NULL;
+        body->ui.initialConditionCombo->setCurrentIndex(0);
+        body->touched = true;
+      }
     }
 
     // Initial condition is not in menu:
