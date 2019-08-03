@@ -1784,6 +1784,7 @@ void MainWindow::saveProjectContents(QDomDocument projectDoc,
 
   QDomElement editorBlock = projectDoc.createElement(blockName);
   projectDoc.documentElement().appendChild(editorBlock);
+  int index = 0; // index excluding removed DynamicEditor instances
 
   for(int i = 0; i < Nmax; i++) {
     DynamicEditor *de = editor[i];
@@ -1793,7 +1794,7 @@ void MainWindow::saveProjectContents(QDomDocument projectDoc,
 
     // Menu item number:
     QDomElement item = projectDoc.createElement("item");
-    item.setAttribute("index", QString::number(i));
+    item.setAttribute("index", QString::number(index++));
     editorBlock.appendChild(item);
 
     // Is active?
@@ -2759,8 +2760,8 @@ void MainWindow::pdeEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
 
-    int k = equationEditor.indexOf(pe);
-    if(k>=0) equationEditor.remove(k);
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Equation deleted");
   }
@@ -2901,8 +2902,8 @@ void MainWindow::matEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
 
-    int k = materialEditor.indexOf(pe);
-    if(k>=0) materialEditor.remove(k);
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Material deleted");
 
@@ -3034,8 +3035,8 @@ void MainWindow::bodyForceEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
 
-    int k = bodyForceEditor.indexOf(pe);
-    if(k>=0) bodyForceEditor.remove(k);
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Body force deleted");
   }
@@ -3163,8 +3164,8 @@ void MainWindow::initialConditionEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
     
-    int k = initialConditionEditor.indexOf(pe);
-    if(k>=0) initialConditionEditor.remove(k);
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Initial condition deleted");
   }
@@ -3375,10 +3376,8 @@ void MainWindow::boundaryConditionEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
 
-    int k = boundaryConditionEditor.indexOf(pe);
-    if(k>=0) {
-        boundaryConditionEditor.remove(k);
-    }
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Boundary condition deleted");
   }
