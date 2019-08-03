@@ -3373,6 +3373,8 @@ void MainWindow::boundaryConditionEditorFinishedSlot(int signal, int id)
 
        if ( bndry->condition == pe ) {
            bndry->condition=NULL;
+           bndry->ui.boundaryConditionCombo->setCurrentIndex(0);
+           bndry->touched = true;
        }
     }
 
