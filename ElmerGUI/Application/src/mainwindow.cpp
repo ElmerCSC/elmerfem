@@ -5297,18 +5297,11 @@ void MainWindow::surfaceUnifySlot()
   }
   
   int targetindex = -1, selected=0;
-  QVector<BoundaryPropertyEditor*> unusedBoundary;
   for(int i=0; i<lists; i++) {
     list_t *l = glWidget->getList(i);
     if(l->isSelected() && (l->getType() == SURFACELIST) && (l->getNature() == PDE_BOUNDARY)) {
       selected++;
       if(targetindex < 0) targetindex = l->getIndex();
-      else{
-        int v = glWidget->boundaryMap.value(l->getIndex());
-        if(v >= 0 && v < boundaryPropertyEditor.size() && boundaryPropertyEditor[v] != NULL){
-          unusedBoundary.append(v);
-        }
-      }
     }
   }
   
@@ -5338,11 +5331,6 @@ void MainWindow::surfaceUnifySlot()
 	  s->setIndex(targetindex);
       }
     }
-  }
-
-  for(int i=0; i<unusedBoundary.size(); i++){
-    boundaryPropertyEditor.remove(boundaryPropertyEditor.indexOf(unusedBoundary[i]));
-    delete unusedBoundary[i];
   }
   
   cout << "Selected surfaces marked with index " << targetindex << endl;
@@ -5559,18 +5547,11 @@ void MainWindow::edgeUnifySlot()
   }
   
   int targetindex = -1, selected=0;
-  QVector<BoundaryPropertyEditor*> unusedBoundary;
   for(int i=0; i<lists; i++) {
     list_t *l = glWidget->getList(i);
     if(l->isSelected() && l->getType() == EDGELIST && l->getNature() == PDE_BOUNDARY) {
       selected++;
       if(targetindex < 0) targetindex = l->getIndex();
-      else{
-        int v = glWidget->boundaryMap.value(l->getIndex());
-        if(v >= 0 && v < boundaryPropertyEditor.size() && boundaryPropertyEditor[v] != NULL){
-          unusedBoundary.append(v);
-        }
-      }
     }
   }
   
@@ -5601,11 +5582,6 @@ void MainWindow::edgeUnifySlot()
 	  e->setIndex(targetindex);
       }
     }
-  }
-  
-  for(int i=0; i<unusedBoundary.size(); i++){
-    boundaryPropertyEditor.remove(boundaryPropertyEditor.indexOf(unusedBoundary[i]));
-    delete unusedBoundary[i];
   }
   
   cout << "Selected edges marked with index " << targetindex << endl;
