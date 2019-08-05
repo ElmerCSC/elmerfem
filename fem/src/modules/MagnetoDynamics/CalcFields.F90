@@ -1443,7 +1443,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
 
          IF (vDOFS == 1) THEN
-           IF( JouleHeatingFromCurrent ) THEN
+           IF ( JouleHeatingFromCurrent .AND. (ASSOCIATED(CD).OR.ASSOCIATED(EL_CD)) ) THEN
              ! The Joule heating power per unit volume: J.E = J.J/sigma 
              Coeff = 0.0_dp
              DO l=1,3
