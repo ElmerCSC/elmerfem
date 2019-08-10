@@ -163,7 +163,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       VariableName, OldVariableName, ResultPrefix, Suffix, Oper, Oper0, OldOper0, ParOper, Name, &
       CoefficientName, ScalarParFile, OutputDirectory, MinOper, MaxOper, &
       MaskName, OldMaskName, SaveName
-  INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
+  INTEGER :: i,j,k,l,lpar,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen      
   INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit
@@ -289,6 +289,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
       IF(.NOT. GotIt ) THEN
         CALL Info('SaveScalars','Searching for elements containing save coordinates',Level=8)
+
         ALLOCATE(ClosestIndex(NoElements), STAT=istat)
         IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error for CoordinateElemNo')         
         DO j=1,NoElements
@@ -296,6 +297,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
           ClosestIndex(j) = ClosestElementInMesh( Mesh, Coords )
         END DO
+
         CoordinatesElemNo => ClosestIndex
         IF( .NOT. MovingMesh ) THEN
           CALL ListAddIntegerArray( Params,'Save Coordinate Elements',&
@@ -318,6 +320,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
           ClosestIndex(j) = ClosestNodeInMesh( Mesh, Coords )
         END DO
+        
         CoordinateIndex => ClosestIndex
         IF( .NOT. MovingMesh ) THEN
           CALL ListAddIntegerArray( Params,'Save Coordinate Indexes',&
@@ -573,7 +576,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
       CASE ('partition checksum')
         Val = 0.0_dp
-        IF( ParEnv % PEs > 1 ) THEN
+        IF( IsParallel ) THEN
           Val = 1.0_dp * SUM( 1.0_dp * Mesh % ParallelInfo % GlobalDOFS ) 
           ! Give different partition different weight to create something like a checksum
           Val = ( ParEnv % MyPe + 1 ) * Val
@@ -584,7 +587,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
       CASE ('partition neighbours checksum')
         Val = 0.0_dp
-        IF( ParEnv % PEs > 1 ) THEN
+        IF( IsParallel ) THEN
           DO j=1,Mesh % NumberOfNodes 
             Val = Val + 1.0_dp * SUM( Mesh % ParallelInfo % NeighbourList(j) % Neighbours )
           END DO
@@ -719,7 +722,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         DO j=1,Model % NumberOfBCs
           IF( ActiveBC(j) ) THEN
             IF( TRIM(Oper) == 'boundary mean' ) THEN
-              IF( ParEnv % PEs > 1 .AND. ParallelReduce ) THEN
+              IF( IsParallel .AND. ParallelReduce ) THEN
                 CALL Warn('SaveScalars','Operator > boundary mean < not implemented in parallel!')
               ELSE IF( BoundaryHits(j) > 0 ) THEN
                 BoundaryFluxes(j) = BoundaryFluxes(j) / BoundaryHits(j)
@@ -750,7 +753,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           DO j=1,Model % NumberOfBCs
             IF( ActiveBC(j) ) THEN
               IF( TRIM(Oper) == 'boundary int mean' ) THEN
-                IF( ParEnv % PEs > 1 .AND. ParallelReduce ) THEN
+                IF( IsParallel .AND. ParallelReduce ) THEN
                   CALL Warn('SaveScalars','Operator > boundary int mean < not implemented in parallel!')
                 ELSE IF( BoundaryAreas(j) > 0.0 ) THEN
                   BoundaryFluxes(j) = BoundaryFluxes(j) / BoundaryAreas(j)
@@ -933,7 +936,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       Var => Var % Next      
     END DO
   END DO
-
+  
   IF( NoPoints + NoCoordinates > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Tabulated all field values at ',NoPoints+NoCoordinates,' points'
     CALL Info('SaveScalars',Message)
@@ -949,8 +952,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   DO k=1,NoElements        
     l = CoordinatesElemNo(k)
+
+    lpar = l
     IF( l > 0 ) THEN
       CurrentElement => Mesh % Elements(l)
+      IF( IsParallel ) lpar = CurrentElement % GElementIndex
+    END IF
+
+    lpar = NINT( ParallelReduction(1.0_dp, 2 ) )
+    IF( lpar == 0 ) CYCLE
+    
+    IF( l > 0 ) THEN
       n = CurrentElement % TYPE % NumberOfNodes
 
       NodeIndexes => CurrentElement % NodeIndexes
@@ -973,8 +985,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
             LocalCoords(1), LocalCoords(2), LocalCoords(3) )
         ElementValues(q) = 0.0d0
       END DO
-    ELSE
-      IF( .NOT. IsParallel ) CYCLE
     END IF
 
     Var => Model % Variables
@@ -997,39 +1007,39 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
               Val2 = -HUGE(Val)
               GotIt = .FALSE.
 
-              IF( ElementalVar ) THEN
-                NodeIndexes => CurrentElement % DgIndexes
-              ELSE
-                NodeIndexes => CurrentElement % NodeIndexes 
-              END IF
-
-              IF( l == 0 ) THEN
-                
-              ELSE IF( ALL(Var % Perm(NodeIndexes(1:n)) > 0)) THEN
-                ElementValues(1:n) = REAL( Var % EigenVectors(j,Var%Dofs*(Var % Perm(NodeIndexes(1:n))-1)+i) )
-                Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) )             
-                
-                IF(ComplexEigenVectors) THEN
-                  ElementValues(1:n) = AIMAG( Var % EigenVectors(j,Var%Dofs*(Var % Perm(NodeIndexes(1:n))-1)+i) )
-                  Val2 = SUM( CoordinateBasis(1:n) * ElementValues(1:n) )             
+              IF( l > 0 ) THEN
+                IF( ElementalVar ) THEN
+                  NodeIndexes => CurrentElement % DgIndexes
+                ELSE
+                  NodeIndexes => CurrentElement % NodeIndexes 
                 END IF
-
-                GotIt = .TRUE.
+                
+                IF( ALL(Var % Perm(NodeIndexes(1:n)) > 0)) THEN
+                  ElementValues(1:n) = REAL( Var % EigenVectors(j,Var%Dofs*(Var % Perm(NodeIndexes(1:n))-1)+i) )
+                  Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) )             
+                  
+                  IF(ComplexEigenVectors) THEN
+                    ElementValues(1:n) = AIMAG( Var % EigenVectors(j,Var%Dofs*(Var % Perm(NodeIndexes(1:n))-1)+i) )
+                    Val2 = SUM( CoordinateBasis(1:n) * ElementValues(1:n) )             
+                  END IF
+                  
+                  GotIt = .TRUE.
+                END IF
               END IF
-              
+                
               IF( GotIt .OR. IsParallel ) THEN
                 IF(Var % DOFs == 1) THEN
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),l
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),lpar
                 ELSE
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,l
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,lpar
                 END IF
                 CALL AddToSaveList(TRIM(Name), Val,.FALSE.,ParOper)
 
                 IF( ComplexEigenVectors ) THEN
                   IF(Var % DOFs == 1) THEN
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),l
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),lpar
                   ELSE
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,l
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,lpar
                   END IF
                   CALL AddToSaveList(TRIM(Name), Val2,.FALSE.,ParOper)                  
                 END IF
@@ -1042,29 +1052,29 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
         Val = -HUGE( Val )
         GotIt = .FALSE.
-        
-        IF( ElementalVar ) THEN
-          NodeIndexes => CurrentElement % DgIndexes
-        ELSE
-          NodeIndexes => CurrentElement % NodeIndexes 
-        END IF
 
-        IF( l == 0 ) THEN
-
-        ELSE IF( ASSOCIATED( Var % Perm ) ) THEN
-          IF( ALL(Var % Perm(NodeIndexes(1:n)) > 0)) THEN            
-            ElementValues(1:n) = Var % Values(Var % Perm(NodeIndexes(1:n)))
+        IF( l > 0 ) THEN
+          IF( ElementalVar ) THEN
+            NodeIndexes => CurrentElement % DgIndexes
+          ELSE
+            NodeIndexes => CurrentElement % NodeIndexes 
+          END IF
+          
+          IF( ASSOCIATED( Var % Perm ) ) THEN
+            IF( ALL(Var % Perm(NodeIndexes(1:n)) > 0)) THEN            
+              ElementValues(1:n) = Var % Values(Var % Perm(NodeIndexes(1:n)))
+              Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) ) 
+              GotIt = .TRUE.
+            END IF
+          ELSE
+            ElementValues(1:n) = Var % Values(NodeIndexes(1:n))
             Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) ) 
             GotIt = .TRUE.
           END IF
-        ELSE
-          ElementValues(1:n) = Var % Values(NodeIndexes(1:n))
-          Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) ) 
-          GotIt = .TRUE.
         END IF
 
         IF(GotIt .OR. IsParallel) THEN
-          WRITE(Name,'("value: ",A," in element ",I0)') TRIM(Var % Name),l
+          WRITE(Name,'("value: ",A," in element ",I0)') TRIM(Var % Name),lpar
           CALL AddToSaveList(TRIM(Name), Val,.FALSE.,ParOper)                   
         END IF
       END IF
@@ -1073,6 +1083,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     END DO
   END DO
+
   IF( NoElements > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Tabulated points within ',NoElements,' elements'
     CALL Info('SaveScalars',Message)
@@ -1383,7 +1394,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   
   CALL Info('SaveScalars', '-----------------------------------------', Level=7 )
 
-
+  
 !------------------------------------------------------------------------------
 
 CONTAINS
@@ -1451,7 +1462,6 @@ CONTAINS
     LOGICAL :: GotParOper
 
     SAVE TmpValues, TmpValueNames
-
 
     ! For the first time allocate some space
     IF(.NOT. ALLOCATED(Values)) THEN
@@ -1525,6 +1535,7 @@ CONTAINS
           MPIOper = 0
           
         END SELECT
+
         
         IF( MPIOper > 0 ) THEN
           CALL MPI_ALLREDUCE(Val,ParVal,1,&
@@ -1538,10 +1549,10 @@ CONTAINS
             WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_sum'
           END IF
         END IF
+        
       END IF
     END IF
-
-
+  
     !------------------------------------------------------------------------------
     ! If requested, create variable of the result
     ! This is performed already here so the variable can be used 
@@ -1563,7 +1574,7 @@ CONTAINS
       TargetVar % Values(1) = Values(n)
       CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(n)),Level=8)
     END IF
-
+    
   END SUBROUTINE AddToSaveList
 
 
@@ -1674,7 +1685,7 @@ CONTAINS
     END IF
 
     nlist => NULL()
-    IF(ParEnv % PEs>1) THEN
+    IF( IsParallel ) THEN
       IF(ASSOCIATED(Var % Solver)) THEN
         IF(ASSOCIATED(Var % Solver % Matrix)) THEN
           IF(ASSOCIATED(Var % Solver % Matrix % ParallelInfo)) THEN
@@ -1707,7 +1718,7 @@ CONTAINS
       IF(ASSOCIATED(PPerm)) j = Var % Perm(i)
 
       IF(j > 0) THEN
-        IF( ParEnv % PEs > 1 .AND. ASSOCIATED(nlist) ) THEN
+        IF( IsParallel .AND. ASSOCIATED(nlist) ) THEN
           IF( nlist(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
         END IF
 
@@ -1847,7 +1858,7 @@ CONTAINS
 
       j = i
 
-      IF( ParEnv % PEs > 1 ) THEN
+      IF( IsParallel ) THEN
         IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
       END IF
 
@@ -2628,7 +2639,7 @@ CONTAINS
         DO i=1,n
           j = NodeIndexes(i)
 
-          IF( ParEnv % PEs > 1 ) THEN
+          IF( IsParallel ) THEN
             IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           END IF
 
