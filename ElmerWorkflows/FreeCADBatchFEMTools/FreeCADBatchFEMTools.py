@@ -27,7 +27,7 @@
 
   Original Date: May 2018
 """
-
+from __future__ import print_function
 import Fem
 import FreeCAD
 import BOPTools.SplitFeatures
@@ -470,7 +470,7 @@ def create_mesh(mesh_object):
     """
     gmsh_mesh = femmesh.gmshtools.GmshTools(mesh_object)
     error = gmsh_mesh.create_mesh()
-    print error
+    print(error)
 
 def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, doc):
     """

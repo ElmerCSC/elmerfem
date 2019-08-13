@@ -35,8 +35,8 @@ def print_line(line_str, start_time):
     :param start_time: A float.
     """
     elapsed_time = round(time.time() - start_time, 1)
-    print 'Elapsed time: {} seconds'.format(elapsed_time)
-    print line_str
+    print('Elapsed time: {} seconds'.format(elapsed_time))
+    print(line_str)
     sys.stdout.flush()
     return elapsed_time
 
@@ -253,7 +253,7 @@ try:
                                     script_directory, create_air, find_with_points, create_spheres, float(air_mesh_size))
 except Exception:
     import traceback
-    print str(traceback.format_exc())
+    print(str(traceback.format_exc()))
 else:
     if create_air:
         info_line = '\nexecution times with {} cubes (air: {}, spheres: {}, fb: {}, '.format(number_of_cubes, create_air,
@@ -264,9 +264,9 @@ else:
         info_line = '\nexecution times with {} cubes (air: {}, spheres: {}, fb: {}, '.format(number_of_cubes, create_air,
                                                                                              create_spheres, find_boundaries)
         info_line += 'fs: {}, mesh_size: {}, point_search: {}):'.format(find_solids, cube_mesh_size, find_with_points)
-    print info_line
+    print(info_line)
     for time_tuple in elapsed_times:
-        print time_tuple[0], round(time_tuple[1], 1)
+        print(time_tuple[0], round(time_tuple[1], 1))
     sys.stdout.flush()
     if append_file.lower() == 'true':
         with open(os.path.join(script_directory, 'cubemeshtestexecutiontimes.txt'), 'a') as f:

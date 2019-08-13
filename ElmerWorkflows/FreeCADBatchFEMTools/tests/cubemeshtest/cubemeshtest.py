@@ -24,7 +24,7 @@ args = parser.parse_args()
 directory = os.path.dirname(os.path.realpath(__file__))
 freecadscript_name = os.path.join(directory, 'cubemeshtest_freecadscript.py')
 if not os.path.isfile(freecadscript_name):
-    print "cubemeshtest_freecadscript.py does not exist, check that you are in correct directory"
+    print("cubemeshtest_freecadscript.py does not exist, check that you are in correct directory")
 else:
     with open(os.path.join(directory, 'cubemeshtestparameters.txt'), 'w') as f:
         f.write('{} {} {} {} {} {} {} {} {}'.format(args.number_of_cubes, args.cube_mesh_size, args.find_boundaries,
