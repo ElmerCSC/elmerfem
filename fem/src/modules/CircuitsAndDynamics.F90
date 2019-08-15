@@ -151,7 +151,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ! Create CRS matrix strucures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
-    ALLOCATE(ip(Model%Circuit_tot_n))
+    ALLOCATE(ip(Model % Circuit_tot_n))
   END IF
   
   IF (Tstep /= GetTimestep()) THEN
@@ -299,7 +299,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       vvarId = Comp % vvar % ValueId + nm
       IvarId = Comp % ivar % ValueId + nm
 
-      CompParams => CurrentModel % Components(CompInd) % Values
+      CompParams => CurrentModel % Components(Comp % ComponentId) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
       IF (Comp % CoilType == 'stranded') THEN
         Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
@@ -501,8 +501,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           IF ( TransientSimulation ) THEN 
             IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt*w(3)
             IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
- !          localL = value
-!          Comp % Inductance = Comp % Inductance + localL
+!           localL = value
+!           Comp % Inductance = Comp % Inductance + localL
 
             CALL AddToMatrixElement(CM, VvarId, PS(Indexes(q)), tscl * value)
             CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
@@ -1160,7 +1160,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       vvarId = Comp % vvar % ValueId + nm
       IvarId = Comp % ivar % ValueId + nm
 
-      CompParams => CurrentModel % Components(CompInd) % Values
+      CompParams => CurrentModel % Components(Comp % ComponentId) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
       IF (Comp % CoilType == 'stranded') THEN
         Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
