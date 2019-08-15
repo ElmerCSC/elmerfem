@@ -42,7 +42,7 @@ end
 
 Material 2 ! nonlinear material
   Name = "Iron"
-  Relative reluctivity(3,3) = variable coordinate
+  Reluctivity(3,3) = variable coordinate
     real procedure "reluctivity" "reluct"
   Relative Permittivity = 1
 End
