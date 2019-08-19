@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Thomas Zwinger, Peter R�back, Juha Ruokolainen, Mikko Lyly
+! *  Authors: Thomas Zwinger, Peter Råback, Juha Ruokolainen, Mikko Lyly
 ! *  Email:   Thomas.Zwinger@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -245,13 +245,13 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        NeedOldValues, LimitDisp,  Bubbles = .TRUE.,&
        NormalFlux = .TRUE., SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE.,&
-       RotateFS, ReAllocate=.TRUE., ResetLimiters=.FALSE.
+       RotateFS, ReAllocate=.TRUE., ResetLimiters=.FALSE., MeshChanged=.FALSE.
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
        i,j,K,L, p, q, R, t,N,NMAX,MMAX,nfamily, deg, Nmatrix,&
        edge, bf_id,DIM,istat,LocalNodes,nocorr,&
-       NSDOFs,NonlinearIter,iter, numberofsurfacenodes
+       NSDOFs,NonlinearIter,iter, numberofsurfacenodes, OldMeshTag
   INTEGER, POINTER ::&
        FreeSurfPerm(:), FlowPerm(:), NodeIndexes(:), EdgeMap(:,:)
 
@@ -292,7 +292,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        ElemFreeSurf, Flux, SubstantialSurface, NormalFlux,&
        UseBodyForce, LimitedSolution, LowerLimit, &
        UpperLimit, ActiveNode, ResetLimiters, OldValues, OldRHS, &
-       ResidualVector, StiffVector, MeshVelocity
+       ResidualVector, StiffVector, MeshVelocity, OldMeshTag
   !------------------------------------------------------------------------------
   !    Get variables for the solution
   !------------------------------------------------------------------------------
@@ -301,7 +301,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   FreeSurfPerm => Solver % Variable % Perm       ! Permutations for free surface displacement
   PreFreeSurf  => Solver % Variable % PrevValues ! Nodal values for free surface displacement
   !------------------------------------------------------------------------------
-  !    Get variabel/solver name
+  !    Get variable/solver name
   !------------------------------------------------------------------------------
   IF (VariableName .NE. TRIM(Solver % Variable % Name)) THEN
     VariableName = TRIM(Solver % Variable % Name)
@@ -311,10 +311,10 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   END IF
     
   SolverName = 'FreeSurfaceSolver ('// TRIM(Solver % Variable % Name) // ')'
-  
+
   !------------------------------------------------------------------------------
   !    if this partition (or the serial problem) has no free surface,
-  !    then nothing to be doneGet variabel/solver name
+  !    then nothing to be doneGet variable/solver name
   !------------------------------------------------------------------------------
   IF ( COUNT(FreeSurfPerm/=0)==0) THEN
      IF (ParEnv % PEs > 1) THEN
@@ -424,8 +424,15 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !    Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
-
-  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed .OR. ReAllocate) THEN
+  !CHANGE
+  IF (.NOT. AllocationsDone) OldMeshTag = Solver % Mesh % MeshTag
+  IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+    OldMeshTag = Solver % Mesh % MeshTag
+    MeshChanged = .TRUE.
+  END IF
+  IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+  IF ( (.NOT. AllocationsDone) .OR. MeshChanged .OR. ReAllocate) THEN
+    IF (MeshChanged .OR. Solver % Mesh % Changed) MeshChanged = .FALSE.
     NMAX = Model % MaxElementNodes
     MMAX = Model % Mesh % NumberOfNodes 
     K = SIZE( SystemMatrix % Values )

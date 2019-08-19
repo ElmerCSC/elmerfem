@@ -76,7 +76,7 @@
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
         Projection, CrevasseThreshold, search_eps, Norm, MinCalvingSize,&
         PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, &
-        gradLimit, Displace, y_coord(2), ShiftTo,&
+        gradLimit, Displace, y_coord(2), ShiftTo, Time,&
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -109,6 +109,7 @@
 !---------------Get Variables and Parameters for Solution-----------
 
    rt0 = RealTime()
+   Time = GetTime()
 
    IF(FirstTime) THEN
       SolverName = "Find_Calving3D"
@@ -1696,6 +1697,8 @@
        IF(Parallel) DEALLOCATE(disps, PFaceNodeCount)
 
     END IF
+    !CHANGE
+    CALL ListAddConstReal( Model % Simulation, 'CalvingTime', Time )
 
     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 

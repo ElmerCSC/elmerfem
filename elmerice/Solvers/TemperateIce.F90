@@ -80,7 +80,7 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
 
   INTEGER :: i,j,k,l,m,n,t,iter,body_id,eq_id,material_id, &
        istat, LocalNodes,bf_id, bc_id,  DIM, ierr, &
-       NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin
+       NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin,OldMeshTag
 
   INTEGER, POINTER :: NodeIndexes(:), TempPerm(:),FlowPerm(:),CurrentPerm(:),MeshPerm(:)
 
@@ -89,7 +89,8 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
   LOGICAL :: Stabilize = .TRUE., Bubbles = .TRUE., UseBubbles, &
        Found, FluxBC, Permeable=.TRUE., IsPeriodicBC=.FALSE.,&
        AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., FirstTime=.TRUE.,&
-       LimitSolution, ApplyDirichlet, FlowSolutionFound, DummyLogical = .FALSE.
+       LimitSolution, ApplyDirichlet, FlowSolutionFound, DummyLogical =.FALSE.,&
+       MeshChanged=.FALSE.
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:), ActiveNode(:), IsGhostNode(:)
   LOGICAL :: strainHeating
   LOGICAL :: LoopWhileUnconstrainedNodes, UnconstrainedNodesExist, GlobalUnconstrainedNodesExist
@@ -157,7 +158,8 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
        M,                     &
        round,                 &
        DummyLogical,          &
-       DummyRealArray
+       DummyRealArray,        &
+       OldMeshTag
 
   totat = 0.0_dp
   totst = 0.0_dp
@@ -186,7 +188,15 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
   !------------------------------------------------------------------------------
   !    Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  !CHANGE
+  IF (.NOT. AllocationsDone) OldMeshTag = Solver % Mesh % MeshTag
+  IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+    OldMeshTag = Solver % Mesh % MeshTag
+    MeshChanged = .TRUE.
+  END IF
+  IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+  IF ( .NOT. AllocationsDone .OR. MeshChanged ) THEN
+     IF (MeshChanged .OR. Solver % Mesh % Changed) MeshChanged = .FALSE.
      N = Solver % Mesh % MaxElementNodes
      M = Model % Mesh % NumberOfNodes
      K = SIZE( SystemMatrix % Values )

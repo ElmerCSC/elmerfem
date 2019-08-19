@@ -290,7 +290,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   REAL(KIND=dp) ::FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3)
   REAL(KIND=dp), POINTER :: PArray(:,:) => NULL(), TimestepSizes(:,:)
   REAL(KIND=dp) :: time, dt, PseudoSSdt, SaveDt, LastRemeshTime, TimeSinceRemesh, ForceRemeshTime,&
-       ZThresh, global_eps, local_eps
+       ZThresh, global_eps, local_eps, CalvingTime
   LOGICAL :: Debug, Parallel, CalvingOccurs, RemeshOccurs, PauseSolvers, Found, &
        RotFS, FirstTime = .TRUE.,CalvingLastTime, PauseAfterCalving, FrontalBecomeBasal, &
        TangleOccurs, CheckTangled, NSFail, CheckFlowConvergence
@@ -412,10 +412,22 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   TimeVar => VariableGet(Model % Variables, 'Time', .TRUE.)
   time = TimeVar % Values(1)
 
+  !CHANGE
+  CalvingTime = ListGetConstReal(Model % Simulation, 'CalvingTime', Found)
+  IF(.NOT. Found) CalvingTime = time
+
   !Is there a calving event?
   CalvingOccurs = ListGetLogical(Model % Simulation, 'CalvingOccurs', Found)
   IF(.NOT.Found) CALL Warn(SolverName, "Unable to find CalvingOccurs logical, &
        & assuming no calving event.")
+
+  !CHANGE
+  PRINT *, 'Times: ',time,CalvingTime
+  IF(time == CalvingTime) THEN
+    CalvingOccurs = CalvingOccurs
+  ELSE
+    CalvingOccurs = .FALSE.
+  END IF
 
   !Note - two switches: PauseAfterCalving is the rule in the sif (i.e. do or don't)
   !PauseSolvers is marked by Calving3D if calving event exceeding certain size occurred
@@ -502,8 +514,8 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   CALL ConvertFrontalToBasal(Model, Mesh, FrontMaskName, BotMaskName, ZThresh, &
        NewBasalNode, FrontalBecomeBasal)
 
-  IF(CalvingOccurs) LastRemeshTime = time
-  TimeSinceRemesh = time - LastRemeshTime
+          IF(CalvingOccurs) LastRemeshTime = time
+          TimeSinceRemesh = time - LastRemeshTime
 
   !Force remesh every so often to maintain mesh quality
   IF( (TimeSinceRemesh > ForceRemeshTime) .OR. FrontalBecomeBasal) THEN
@@ -535,7 +547,11 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
 
      NewMesh % Name = TRIM(Mesh % Name)
      NewMesh % OutputActive = .TRUE.
-     NewMesh % Changed = .TRUE. 
+     NewMesh % Changed = .TRUE.
+     !CHANGE
+     NewMesh % MeshTag = Mesh % MeshTag
+     NewMesh % MeshTag = NewMesh % MeshTag + 1
+     !PRINT *, 'M%C set to TRUE MU',Mesh % MeshTag,NewMesh % MeshTag
 
      CALL SwitchMesh(Model, Solver, Mesh, NewMesh)
      CALL MeshStabParams( Model % Mesh )
@@ -558,6 +574,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
      !Needs to be .TRUE. for first timestep after a calving event, as 
      !Mesh Update and FreeSurface solvers haven't been called in the mean time
      IF(.NOT. CalvingLastTime) Mesh % Changed = .FALSE.
+     !PRINT *, 'M%C set to FALSE CR'
   END IF
 
   !Reset listed mesh update variable values to zero
@@ -668,7 +685,12 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   END IF
 
   FirstTime = .FALSE.
-  CalvingLastTime = CalvingOccurs
+  !CHANGE
+  IF(time == CalvingTime) THEN
+    CalvingLastTime = CalvingOccurs
+  ELSE
+    CalvingLastTime = CalvingLastTime
+  END IF
 
   IF(ASSOCIATED(NewBasalNode)) DEALLOCATE(NewBasalNode)
 
@@ -696,7 +718,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: OldMesh
     TYPE(Solver_t), POINTER :: MUSolver=>NULL()
     TYPE(Matrix_t), POINTER :: StiffMatrix
-    TYPE(Element_t), POINTER :: Element, CurrentElement
+    TYPE(Element_t), POINTER :: Element, CurrentElement, OldElement
     TYPE(ValueList_t), POINTER :: Params, Material
     TYPE(Variable_t), POINTER :: TopVar=>NULL(), BottomVar=>NULL(), OldGLVar, NewGLVar, &
          WorkVar, HeightVar, Var, TimestepVar
@@ -2022,7 +2044,7 @@ CONTAINS
     ALLOCATE(WorkPerm(SIZE(FrontPerm)))
     WorkPerm = FrontPerm
 
-    CALL VariableRemove(OldMesh % Variables, "ActualHeight")
+    CALL VariableRemove(OldMesh % Variables, "ActualHeight", .FALSE.)
     CALL VariableAdd(OldMesh % Variables, OldMesh, Solver, "ActualHeight", 1,&
          ActualHeight, WorkPerm)
 
@@ -2037,7 +2059,7 @@ CONTAINS
        WorkReal(WorkPerm(i)) = OldMesh % Nodes % z(i)
     END DO
 
-    CALL VariableRemove(OldMesh % Variables, "FrontExtent")
+    CALL VariableRemove(OldMesh % Variables, "FrontExtent", .FALSE.)
     CALL VariableAdd(OldMesh % Variables, OldMesh, Solver, "FrontExtent", 1,&
          WorkReal, WorkPerm)
 
@@ -2282,7 +2304,6 @@ CONTAINS
     !  put the nodes back to pre-calving geometry
     CALL DisplaceCalvingFront(OldMesh, CalvingVar, -1)
 
-
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
          PRINT *, 'Remesh, Time taken to Extrude Mesh and do front interp: ', rt
@@ -2350,14 +2371,17 @@ CONTAINS
 
     !Add to ExtrudedMesh 
     n = ExtrudedMesh % NumberOfNodes
-    ALLOCATE(TopVarValues(n),BottomVarValues(n),TopVarPerm(n),BottomVarPerm(n))
-    TopVarPerm = 0; BottomVarPerm = 0;
     NodesPerLevel = n / ExtrudeLevels
+    ALLOCATE(TopVarValues(NodesPerLevel),BottomVarValues(NodesPerLevel),TopVarPerm(n),BottomVarPerm(n))
+    TopVarPerm = 0; BottomVarPerm = 0;
 
     DO i=1,NodesPerLevel
        BottomVarPerm(i) = i
        TopVarPerm(n - NodesPerLevel + i) = i
     END DO
+
+    CALL VariableRemove(ExtrudedMesh % Variables, TopVarName, .FALSE.)
+    CALL VariableRemove(ExtrudedMesh % Variables, BottomVarName, .FALSE.)
 
     CALL VariableAdd(ExtrudedMesh % Variables, ExtrudedMesh, Solver, TopVarName, 1, &
          TopVarValues, TopVarPerm, .TRUE.)
@@ -2483,6 +2507,8 @@ CONTAINS
           n = Element % TYPE % NumberOfNodes
 
           IF(ANY(BottomVarPerm(Element % NodeIndexes) <= 0)) CYCLE
+
+          OldElement => SetCurrentElement(Element)
 
           BedHeight(Element % Nodeindexes(1:N)) = &
               ListGetReal(Material,'Min Zs Bottom',n,Element % NodeIndexes, Found, UnfoundFatal=.TRUE.)
@@ -3000,8 +3026,8 @@ CONTAINS
          NoMatrix, DoOptimizeBandwidth, PrimaryVar, HasValuesInPartition, &
          PrimarySolver
     LOGICAL, POINTER :: UnfoundNodes(:)=>NULL()
-    INTEGER :: i,j,k,DOFs, nrows,n
-    INTEGER, POINTER :: WorkPerm(:)=>NULL()
+    INTEGER :: i,j,k,DOFs, nrows,n, ierr
+    INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL()
     REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
@@ -3284,7 +3310,7 @@ CONTAINS
     !-----------------------------------------------
     ! Point solvers at the correct mesh and variable
     !-----------------------------------------------
-
+    
     !CHANGE
     !Needs to be told to ignore certain solvers if using multiple meshes
     SolversToIgnore => ListGetIntegerArray(Params, 'Solvers To Ignore')
@@ -3363,12 +3389,13 @@ CONTAINS
     NewMesh % Next => OldMesh % Next
     Model % Meshes => NewMesh
     Model % Mesh => NewMesh
-    Model % Variables => NewMesh % Variables
+    Model % Variables => NewMesh % Variables    
 
     !Free old mesh and associated variables
     CALL ReleaseMesh(OldMesh)
     DEALLOCATE(OldMesh)
     DEALLOCATE(UnfoundNodes)
+    NULLIFY(SolversToIgnore)
 
     OldMesh => Model % Meshes
 

@@ -65,19 +65,19 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    TYPE(Element_t), POINTER ::  BoundaryElement, BCElement, CurElement, ParentElement
    TYPE(ValueList_t), POINTER :: BC, material, ParentMaterial, BodyForce
    INTEGER :: NBoundary, NParent, BoundaryElementNode, ParentElementNode, body_id, other_body_id, material_id
-   INTEGER :: nodenumber, NumberOfNodesOnBoundary 
+   INTEGER :: nodenumber, NumberOfNodesOnBoundary, OldMeshTag 
    INTEGER, ALLOCATABLE :: NodeOnBoundary(:)
    INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM, bf_id_FS 
    REAL(KIND=dp) :: y, pw, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: Zsl, rhow, gravity
    REAL(KIND=dp), ALLOCATABLE :: S(:), Ns(:),  a_perp(:), SourceFunc(:), normal(:,:)
-   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE., UnFoundFatal=.TRUE.
+   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE., UnFoundFatal=.TRUE., MeshChanged=.FALSE.
    CHARACTER(LEN=MAX_NAME_LEN)  :: BottomSurfaceName
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
    SAVE S, rhow, gravity, Zsl, NormalFlux, a_perp, SourceFunc
    SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal
-   SAVE BottomSurfaceName, bf_id_FS 
+   SAVE BottomSurfaceName, bf_id_FS, OldMeshTag
    
 
 
@@ -95,6 +95,8 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    IF (FirstTime) THEN
       NewTime = .TRUE.
       told = t
+      !CHANGE
+      OldMeshTag = Model % Mesh % MeshTag
       DIM = CoordinateSystemDimension()
 
       rhow = GetConstReal( Model % Constants, 'Water Density', GotIt )
@@ -170,9 +172,16 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
          told = t
       END IF
    ENDIF  ! FirstTime
+   !PRINT *, 'Mesh % Changed: ',Model % Mesh % Changed,OldMeshTag,Model % Mesh % MeshTag
+   !CHANGE
+   IF(OldMeshTag .NE. Model % Mesh % MeshTag) THEN
+     OldMeshTag = Model % Mesh % MeshTag
+     MeshChanged = .TRUE.
+   END IF
+   IF(Model % Mesh % Changed) MeshChanged = .TRUE.
 
-   IF(FirstTime .OR. (NewTime .AND. Model % Mesh % Changed)) THEN
-
+   IF(FirstTime .OR. (NewTime .AND. MeshChanged)) THEN!Model % Mesh % Changed)) THEN
+      MeshChanged = .FALSE.
       IF(.NOT. FirstTime) &
            DEALLOCATE(NodeOnBoundary, SourceFunc)
       ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
@@ -319,8 +328,10 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
                  ELSE
                     Bv = 0.0D0
                  END IF
+                 !PRINT *, 'Normal before:',Normal(:,NodeOnBoundary(j)),SIZE(Normal,2),NodeOnBoundary(j)
                  Normal(:,NodeOnBoundary(j))  = Normal(:,NodeOnBoundary(j)) + &
                                 NormalVector(BCElement, Nodes, Bu, Bv, .TRUE.)
+                 !PRINT *, 'Normal after: ',Normal(:,NodeOnBoundary(j))
                  a_perp( NodeOnBoundary(j) ) = SourceFunc (i)
              END DO
            END IF
