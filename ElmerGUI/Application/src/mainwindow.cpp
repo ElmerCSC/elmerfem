@@ -1256,7 +1256,7 @@ void MainWindow::readInputFile(QString fileName)
 
     in->deinitialize();
     in->initialize();
-    in->load_medit(cs);
+    in->load_medit(cs,1);
     
     tetlibInputOk = true;
     

@@ -108,6 +108,7 @@ int main(int argc, char *argv[])
     cout << " -o <string>      Select output dir" << endl;
     cout << " -nogui           Disable GUI" << endl;
     cout << " -e               Exit after saving" << endl;
+    cout << " -tq <value>      Mesh quality (Tetgen only)" << endl;
     cout << endl;
     return 0;
   }
