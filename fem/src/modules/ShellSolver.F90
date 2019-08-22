@@ -169,10 +169,10 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   INTEGER, PARAMETER :: AutomatedChoice = -1
   INTEGER, PARAMETER :: NoStrainReduction = 0
-  INTEGER, PARAMETER :: CurlKernel = 1
-  INTEGER, PARAMETER :: MITC = 2
-  INTEGER, PARAMETER :: DoubleReduction = 3
-  INTEGER, PARAMETER :: CurlKernelWithEdgeDOFs = 4
+  INTEGER, PARAMETER :: CurlKernel = 1             ! This builds on Ker(curl) of either RT_0 or ABF_0   
+  INTEGER, PARAMETER :: MITC = 2                   ! This builds on RT_0
+  INTEGER, PARAMETER :: DoubleReduction = 3        ! This builds on Ker(curl) of RT_0 (triangles)
+  INTEGER, PARAMETER :: CurlKernelWithEdgeDOFs = 4 ! This also builds on Ker(curl) of ABF_0
 
   INTEGER, PARAMETER :: MaxBGElementNodes = 9
   INTEGER, PARAMETER :: MaxPatchNodes = 16    ! The maximum node count for the surface description 
@@ -522,7 +522,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     END DO ASSEMBLYLOOP
 
 
-    
     CALL DefaultFinishBulkAssembly() 
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -3461,7 +3460,7 @@ CONTAINS
     REAL(KIND=dp) :: StrainBasis(4,3)   ! Four rows large enough for p=1
     REAL(KIND=dp) :: MembraneStrainBasis1(4,3), MembraneStrainBasis2(4,3)
 
-    REAL(KIND=dp) :: DOFsTransform(2,3)
+    REAL(KIND=dp) :: DOFsTransform(3,4)
     REAL(KIND=dp) :: ShearParMat(2,2,nd)
     REAL(KIND=dp) :: ChristoffelMat1(2,2,nd), ChristoffelMat2(2,2,nd)
     REAL(KIND=dp) :: BParMat(2,2,nd), BParMat1(2,2,nd), BParMat2(2,2,nd)
@@ -3740,6 +3739,8 @@ CONTAINS
             ! Two sets of basis functions available, create both:
             stat = ReductionOperatorInfo(Element, Nodes, uq, vq, MembraneStrainBasis2, &
                 MembraneReductionMethod, ApplyPiolaTransform = .TRUE., EdgeDirection=2)
+          ELSE
+            MembraneStrainBasis2 = MembraneStrainBasis1
           END IF
         ELSE
           MembraneStrainBasis1 = StrainBasis
@@ -3802,9 +3803,10 @@ CONTAINS
         IF (MembraneReductionMethod == DoubleReduction) THEN
           ! First, get DOFs for the RT interpolant ...
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, ChristoffelMat1)
+              Family, nd, MITC, ChristoffelMat1)
           ! and then apply a second round of reductions:
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+          ReductionDOFsArray(1:MembraneStrainDim,1:2*nd) = MATMUL(DOFsTransform(1:MembraneStrainDim,1:Family), &
+              ReductionDOFsArray(1:Family,1:2*nd))
         ELSE
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               MembraneStrainDim, nd, MembraneReductionMethod, ChristoffelMat1, EdgeDirection=1)
@@ -3820,8 +3822,9 @@ CONTAINS
 
         IF (MembraneReductionMethod == DoubleReduction) THEN
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, ChristoffelMat2)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+              Family, nd, MITC, ChristoffelMat2)
+          ReductionDOFsArray(1:MembraneStrainDim,1:2*nd) = MATMUL(DOFsTransform(1:MembraneStrainDim,1:Family), &
+              ReductionDOFsArray(1:Family,1:2*nd))
         ELSE
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               MembraneStrainDim, nd, MembraneReductionMethod, ChristoffelMat2, EdgeDirection=2)
@@ -3860,8 +3863,9 @@ CONTAINS
           ! Here all strain reduction operations are created by using just one parameter matrix:
           IF (MembraneReductionMethod == DoubleReduction) THEN
             CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-                3, nd, MITC, BParMat)
-            ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+                Family, nd, MITC, BParMat)
+            ReductionDOFsArray(1:MembraneStrainDim,1:2*nd) = MATMUL(DOFsTransform(1:MembraneStrainDim,1:Family), &
+                ReductionDOFsArray(1:Family,1:2*nd))
           ELSE
             CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
                 MembraneStrainDim, nd, MembraneReductionMethod, BParMat)
@@ -3892,21 +3896,45 @@ CONTAINS
           ! operators is missing.
           ! Apply the strain reduction operator to plain derivative terms. This doesn't make
           ! any modification really with the current set of strain reduction operators.
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE.)
-          DO p=1,nd
-            DO j=1,MembraneStrainDim
-              BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
-              BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
-              BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
-              BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
 
-              BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
-              BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
-              BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
-              BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+          IF (MembraneReductionMethod == CurlKernelWithEdgeDOFs) THEN
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE., EdgeDirection=1)
+            DO p=1,nd
+              DO j=1,MembraneStrainDim
+                BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+                BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+                BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+                BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+              END DO
             END DO
-          END DO
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE., EdgeDirection=2)
+            DO p=1,nd
+              DO j=1,MembraneStrainDim
+                BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis2(j,1)
+                BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis2(j,2)
+                BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,1)
+                BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,2)
+              END DO
+            END DO
+          ELSE
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE.)
+            DO p=1,nd
+              DO j=1,MembraneStrainDim
+                BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+                BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+                BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+                BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+
+                BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+                BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+                BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+                BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+              END DO
+            END DO
+          END IF
         END IF
 
       ELSE
@@ -4391,7 +4419,7 @@ CONTAINS
     INTEGER, INTENT(OUT) :: ReducedStrainDim          ! The number of basis functions for strain interpolation
     LOGICAL, INTENT(INOUT) :: UseBubbles              ! To augment approximation by bubble functions
     LOGICAL, INTENT(OUT) :: UseShearCorrection        ! To activate shear correctionn trick
-    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(2,3)! To reduce RT_0 functions to constants
+    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(3,4)! To reduce RT_0 functions to Ker(curl)
     LOGICAL, INTENT(IN) :: MembraneStrains            ! To select the method for membrane strains
 !------------------------------------------------------------------------------
     LOGICAL :: PVersion, SecondOrder
@@ -4488,7 +4516,7 @@ CONTAINS
         ELSE
           UseShearCorrection = .TRUE.
         END IF
-        ! Coefficients to transform from MITC DOFs to the kernel DOFs: 
+        ! Coefficients to transform from MITC3 DOFs to the Ker(curl) DOFs: 
         DOFsTransform(1,1) = 1.0d0/3.0d0
         DOFsTransform(1,2) = -1.0d0/6.0d0
         DOFsTransform(1,3) = DOFsTransform(1,2)
@@ -4496,7 +4524,22 @@ CONTAINS
         DOFsTransform(2,2) = 1.0d0/(2.0d0*sqrt(3.0d0))
         DOFsTransform(2,3) = -1.0d0/(2.0d0*sqrt(3.0d0))
       ELSE
-        CALL Fatal('SetStrainReductionParameters', 'Double reduction is not defined for quads')
+        ReducedStrainDim = 3
+        UseShearCorrection = .TRUE.
+        ! Coefficients to transform from MITC4 DOFs to the Ker(curl) DOFs:
+        ! This effectively removes components that build on local vectors (-v,u).
+        DOFsTransform(1,1) = 1.0d0/4.0d0
+        DOFsTransform(1,2) = 0.0d0
+        DOFsTransform(1,3) = -1.0d0/4.0d0
+        DOFsTransform(1,4) = 0.0d0
+        DOFsTransform(2,1) = 0.0d0
+        DOFsTransform(2,2) = 1.0d0/4.0d0
+        DOFsTransform(2,3) = 0.0d0
+        DOFsTransform(2,4) = -1.0d0/4.0d0
+        DOFsTransform(3,1) = -1.0d0/8.0d0
+        DOFsTransform(3,2) = 1.0d0/8.0d0
+        DOFsTransform(3,3) = -1.0d0/8.0d0
+        DOFsTransform(3,4) = 1.0d0/8.0d0
       END IF
     CASE(CurlKernelWithEdgeDOFs)
       IF (Family==3) THEN
@@ -4892,8 +4935,8 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: u                         !< 1st reference element coordinate
     REAL(KIND=dp), INTENT(IN) :: v                         !< 2nd reference element coordinate
     REAL(KIND=dp), INTENT(OUT) :: StrainBasis(:,:)         !< The basis functions b spanning the reference element space
-    INTEGER, INTENT(IN) :: ReductionMethod                 !< The method chosen: (1,4=kernel version,2=MITC)
-    LOGICAL, INTENT(IN), OPTIONAL :: ApplyPiolaTransform   !< If  .TRUE., perform the Piola transform so that, instead of b(p),
+    INTEGER, INTENT(IN) :: ReductionMethod                 !< The method chosen (integer parameters are introduced elsewhere)
+    LOGICAL, INTENT(IN), OPTIONAL :: ApplyPiolaTransform   !< If .TRUE., perform the Piola transform so that, instead of b(p),
                                                            !< return B(f(p)) with B(x) the basis functions on the physical
                                                            !< element K and f the element map f:k->K
     REAL(KIND=dp), INTENT(OUT), OPTIONAL :: F(3,3)         !< The gradient F=Grad f
@@ -4905,7 +4948,7 @@ CONTAINS
                                                            !< is done with respect to physical coordinates x
     REAL(KIND=dp), INTENT(OUT), OPTIONAL :: DOFWeigths(:,:)!< Auxiliary div-conforming functions needed in the evaluation of DOFs
     LOGICAL, INTENT(IN), OPTIONAL :: Bubbles               !< Indicate whether a bubble function is requested
-    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection         !< Preferred direction for edge DOFs when ReductionMethod=4
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection         !< Preferred direction for edge DOFs when ReductionMethod=CurlKernelWithEdgeDOFs
     LOGICAL :: Stat                                        !< Currently a dummy return value
 !---------------------------------------------------------------------------------
     LOGICAL :: PerformPiolaTransform, CreateBubbles
@@ -5015,7 +5058,7 @@ CONTAINS
 
       CASE(4)
         SELECT CASE(ReductionMethod)
-        CASE(CurlKernel)
+        CASE(CurlKernel,DoubleReduction)
           !---------------------------------------------------------------------
           ! The basis functions for ABF_0(k,0), with DOFs defined as integrals
           ! of the type d_i = (u,v_i)_k. Here the given function v_i transforms
@@ -5174,7 +5217,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: ModelPars(2,2,n) !< To include the effect of additional model parameters
     LOGICAL, OPTIONAL :: GradientField                      !< To return [d_k(grad(N1).e1) d_k(grad(N1).e2) ... ]
-    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection          !< Preferred direction for edge DOFs when ReductionMethod=4
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection          !< Preferred direction for edge DOFs when ReductionMethod=CurlKernelWithEdgeDOFs
 !---------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
 
