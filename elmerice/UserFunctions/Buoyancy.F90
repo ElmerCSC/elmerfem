@@ -381,11 +381,11 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    INTEGER :: NBoundary, NParent, BoundaryElementNode, ParentElementNode, body_id, other_body_id, material_id
    INTEGER :: nodenumber, NumberOfNodesOnBoundary 
    INTEGER, ALLOCATABLE :: NodeOnBoundary(:)
-   INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM 
+   INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM, OldMeshTag
    REAL(KIND=dp) :: y, C, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: rhow, gravity
    REAL(KIND=dp), ALLOCATABLE :: Ns(:), normal(:,:)
-   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS   
+   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,MeshChanged=.FALSE.
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
    SAVE rhow, gravity
@@ -410,7 +410,13 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
       told = t
    END IF
 
-   IF (FirstTime .OR. (NewTime .AND. Model % Mesh % Changed)) THEN
+   !CHANGE
+   IF(OldMeshTag .NE. Model % Mesh % MeshTag) THEN
+     OldMeshTag = Model % Mesh % MeshTag
+     MeshChanged = .TRUE.
+   END IF
+   IF(Model % Mesh % Changed) MeshChanged = .TRUE.
+   IF (FirstTime .OR. (NewTime .AND. MeshChanged)) THEN
 
       IF(.NOT. FirstTime) DEALLOCATE(NodeOnBoundary, Ns)
       FirstTime = .FALSE.

@@ -22,7 +22,7 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: Olivier Gagliardini, Ga¨el Durand
+! *  Authors: Olivier Gagliardini, Ga¨el Durand, Mondher Chekki
 ! *  Email:   
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
@@ -54,6 +54,7 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
   USE DefUtils
+  USE ElmerIceUtils
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -65,16 +66,16 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  TYPE(Element_t),POINTER :: Element
+  TYPE(Element_t),POINTER :: Element, Element2, OldElement
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Variable_t), POINTER :: PointerToVariable
   TYPE(Solver_t), POINTER :: PointerToSolver
   TYPE(Nodes_t), SAVE :: Nodes
   TYPE(GaussIntegrationPoints_t) :: IP
 
-  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat
+  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat, MeshChanged=.FALSE.
 
-  INTEGER :: i, j, n, m, t, p, Nn, istat, DIM
+  INTEGER :: i, j, n, m, t, p, Nn, istat, DIM, jdim, OldMeshTag
   INTEGER, POINTER :: Permutation(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
@@ -84,15 +85,17 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: pwt(:), Basis(:), dBasisdx(:,:), &
                                 ddBasisddx(:,:,:)
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
-       
+  CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+  CHARACTER(LEN=MAX_NAME_LEN),PARAMETER :: SolverName='GetHydrostaticLoads'
 
-  SAVE AllocationsDone, DIM, SolverName, pwt
+  SAVE AllocationsDone, DIM, pwt, OldMeshTag
   SAVE Basis, dBasisdx, ddBasisddx
   
   !------------------------------------------------------------------------------
 
   PointerToVariable => Solver % Variable
+  IF (.NOT.ASSOCIATED(PointerToVariable)) &
+       CALL FATAL(SolverName,"Variable not associated")
   Permutation  => PointerToVariable % Perm
   VariableValues => PointerToVariable % Values
 
@@ -100,10 +103,15 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
 
-  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed  ) THEN
-
+  !CHANGE
+  IF (.NOT. AllocationsDone) OldMeshTag = Solver % Mesh % MeshTag
+  IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+    OldMeshTag = Solver % Mesh % MeshTag
+    MeshChanged = .TRUE.
+  END IF
+  IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+  IF ( (.NOT. AllocationsDone) .OR. MeshChanged  ) THEN
     DIM = CoordinateSystemDimension()
-    WRITE(SolverName, '(A)') 'GetHydrostaticLoads'
     n = Solver % Mesh % MaxElementNodes ! just big enough for elemental arrays
     m = Model % Mesh % NumberOfNodes
     IF (AllocationsDone) DEALLOCATE(pwt, Basis, dBasisdx, ddBasisddx)
@@ -128,13 +136,28 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   DO t = Model % Mesh % NumberOfBulkElements+1,&
        Model % Mesh % NumberOfBulkElements + Model % Mesh % NumberOfBoundaryElements
     Element => Model % Mesh % Elements(t)
+    IF (.NOT.ASSOCIATED(Element)) THEN
+      WRITE(Message,*) 'Element no. ', t,' not associated'
+      CALL FATAL(SolverName,Message)
+    END IF
+    
     IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
     n = GetElementNOFNodes( Element )
 
     !Does this element contribute to any basal nodes?
     IF(.NOT. ANY(Permutation(Element % NodeIndexes(1:n)) > 0)) CYCLE
 
-    BC => GetBC( Element ) 
+    !Element2 => GetCurrentElement()
+    BC => GetBC( Element )
+    IF (.NOT.ASSOCIATED(BC)) CYCLE
+    !IF(Element % BoundaryInfo % Constraint == 1) THEN
+      !PRINT *, 'BC: ',Element % BoundaryInfo % Constraint,Element % BodyID
+      !PRINT *, 'NodeIndexes: ',Element % NodeIndexes
+      !PRINT *, 'BC2: ',Element2 % BoundaryInfo % Constraint,Element2 % BodyID
+      !PRINT *, 'NodeIndexes: ',Element2 % NodeIndexes
+    !END IF
+    OldElement => SetCurrentElement(Element)
+    
     pwt(1:n) =  -1.0 * ListGetReal(BC, 'External Pressure', n, &
                     Element % NodeIndexes , GotIt)
 
@@ -142,7 +165,6 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
     IF(.NOT. GotIt) CYCLE
     IF(ALL(pwt(1:n) == 0.0)) CYCLE
 
-!
 ! Integration
 ! 
     CALL GetElementNodes( Nodes, Element )
@@ -175,7 +197,20 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 
   END DO
 
-  IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues )
+  DO jdim=1, DIM
+     IF (DIM > 1) THEN
+        VarName=ComponentNameStr( Solver % Variable % Name, jdim )
+     ELSE
+        VarName=GetVarName(Solver % Variable)
+     ENDIF
+     IF (jdim .eq. 1 ) THEN
+        IF ( ParEnv % PEs >1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues)
+     END IF
+!------------------------------------------------------------------------------
+!     Update Periodic Nodes 
+!------------------------------------------------------------------------------
+     CALL UpdatePeriodicNodes(Model, Solver, VarName, PointerToVariable, jdim)
+  ENDDO 
 
   CALL INFO(SolverName, 'End', level=3)
 

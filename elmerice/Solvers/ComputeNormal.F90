@@ -75,7 +75,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   TYPE(Variable_t), POINTER :: NormalSolution
   TYPE(ValueList_t), POINTER :: BC, SolverParams
 
-  INTEGER :: i, j, k, l, m, n, cnt, ierr, t, DIM
+  INTEGER :: i, j, k, l, m, n, cnt, ierr, t, DIM, OldMeshTag
   REAL(KIND=dp) :: u, v, w, s 
   REAL(KIND=dp), POINTER :: Nvector(:), PassNVector(:), RecvNVector(:)
   INTEGER, POINTER :: Permutation(:), Neighbours(:)
@@ -86,13 +86,13 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp) :: Bu, Bv, Normal(3), NormalCond(4)
 
   LOGICAL :: CompAll = .TRUE., CompBC = .TRUE., Found, Parallel, &
-       FirstTime = .TRUE.,UnFoundFatal=.TRUE.
+       FirstTime = .TRUE.,UnFoundFatal=.TRUE., MeshChanged=.FALSE.
   LOGICAL, ALLOCATABLE :: Hit(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'ComputeNormalSolver'
 
   SAVE :: NeighbourPerm, PassCount, RecvCount, PassIndices, &
-       RecvIndices, LocalPerm, Hit
+       RecvIndices, LocalPerm, Hit, OldMeshTag
 
   Parallel = (ParEnv % PEs > 1)
   Mesh => Solver % Mesh
@@ -121,7 +121,14 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
     IF (CompAll) CompBC = .TRUE.
   END IF
 
-  IF((FirstTime .OR. Solver % Mesh % Changed) .AND. Parallel) THEN
+  !CHANGE
+  IF (FirstTime) OldMeshTag = Solver % Mesh % MeshTag
+  IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+    OldMeshTag = Solver % Mesh % MeshTag
+    MeshChanged = .TRUE.
+  END IF
+  IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+  IF((FirstTime .OR. MeshChanged) .AND. Parallel) THEN
      
      IF(.NOT. FirstTime) THEN
         DEALLOCATE(Hit, NeighbourPerm, PassCount, RecvCount, &
@@ -204,7 +211,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
 
   IF(Parallel) THEN
 
-     IF(FirstTime .OR. Solver % Mesh % Changed) THEN
+     IF(FirstTime .OR. MeshChanged) THEN
 
         !Find nodes on partition boundaries
         FirstTime = .FALSE.

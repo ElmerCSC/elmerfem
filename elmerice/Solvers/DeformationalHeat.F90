@@ -67,20 +67,21 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable,FlowSol
   TYPE(Solver_t), POINTER :: PointerToSolver
 
-  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal=.TRUE.
+  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal=.TRUE.,&
+             MeshChanged=.FALSE.
 
   INTEGER :: i, j,n, m, t, istat,k
   INTEGER, POINTER :: Permutation(:), FlowPerm(:), NodeIndexes(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:), FlowSolution(:) 
   REAL(KIND=dp) :: Norm
-  Integer :: STDOFs,NSDOFs,dim
+  Integer :: STDOFs,NSDOFs,dim, OldMeshTag
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), Velo(:,:), Viscosity(:)
   
   CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolName,SolverName
 
-  SAVE STIFF, LOAD, FORCE,  Velo, AllocationsDone, Viscosity
+  SAVE STIFF, LOAD, FORCE,  Velo, AllocationsDone, Viscosity, OldMeshTag
 !------------------------------------------------------------------------------
   SolverName = 'Deformational Heat Solver'
   PointerToVariable => Solver % Variable
@@ -99,7 +100,14 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
-  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed  ) THEN
+  !CHANGE
+  IF (.NOT. AllocationsDone) OldMeshTag = Solver % Mesh % MeshTag
+  IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+    OldMeshTag = Solver % Mesh % MeshTag
+    MeshChanged = .TRUE.
+  END IF
+  IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+  IF ( (.NOT. AllocationsDone) .OR. MeshChanged  ) THEN
      N = Solver % Mesh % MaxElementNodes ! just big enough for elemental arrays
      M = Model % Mesh % NumberOfNodes
      IF (AllocationsDone) DEALLOCATE(FORCE, LOAD, STIFF, Viscosity, Velo)

@@ -85,7 +85,7 @@
      
      LOGICAL :: stat, CSymmetry 
 
-     INTEGER :: NewtonIter, NonlinearIter, COMP
+     INTEGER :: NewtonIter, NonlinearIter, COMP, OldMeshTag
 
      TYPE(Variable_t), POINTER :: EiiSol, FlowVariable 
 
@@ -95,7 +95,7 @@
      INTEGER, POINTER :: EiiPerm(:), NodeIndexes(:), &
                          FlowPerm(:)
 
-     LOGICAL :: GotIt, AllocationsDone = .FALSE.
+     LOGICAL :: GotIt, AllocationsDone = .FALSE., MeshChanged=.FALSE.
 
      REAL(KIND=dp), ALLOCATABLE:: LocalMassMatrix(:,:), &
        LocalStiffMatrix(:,:), LocalForce(:), &
@@ -112,7 +112,7 @@
 !!-----------------------------------------------------------------------------
      SAVE LocalMassMatrix, LocalStiffMatrix, LocalForce, &
           ElementNodes, AllocationsDone  
-     SAVE LocalVelo,  dim
+     SAVE LocalVelo,  dim, OldMeshTag
 
 !------------------------------------------------------------------------------
 !  Read the name of the Flow Solver (NS, AIFlow, Porous, ...)
@@ -165,7 +165,14 @@
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-      IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed) THEN
+  !CHANGE
+  IF (.NOT. AllocationsDone) OldMeshTag = Solver % Mesh % MeshTag
+  IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+    OldMeshTag = Solver % Mesh % MeshTag
+    MeshChanged = .TRUE.
+  END IF
+  IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+      IF ( .NOT. AllocationsDone .OR. MeshChanged) THEN
         N = Model % MaxElementNodes
 
        IF ( AllocationsDone ) THEN

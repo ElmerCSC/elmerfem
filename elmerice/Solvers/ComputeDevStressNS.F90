@@ -104,14 +104,15 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   
   LOGICAL :: Isotropic, AllocationsDone = .FALSE.,  &
        Requal0
-  LOGICAL :: GotIt,  Cauchy = .FALSE.,UnFoundFatal=.TRUE.,OutOfPlaneFlow
+  LOGICAL :: GotIt,  Cauchy = .FALSE.,UnFoundFatal=.TRUE.,OutOfPlaneFlow,&
+             MeshChanged=.FALSE.
   
   REAL(KIND=dp), ALLOCATABLE:: LocalMassMatrix(:,:), &
        LocalStiffMatrix(:,:), LocalForce(:), &
        LocalP(:),  &
        LocalVelo(:,:), LocalViscosity(:)
   
-  INTEGER :: NumberOfBoundaryNodes, COMP
+  INTEGER :: NumberOfBoundaryNodes, COMP, OldMeshTag
   INTEGER, POINTER :: BoundaryReorder(:)
   
   REAL(KIND=dp), POINTER :: BoundaryNormals(:,:), &
@@ -134,7 +135,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
        old_body, &
        LocalViscosity, Cauchy
   
-  SAVE LocalVelo, LocalP, dim
+  SAVE LocalVelo, LocalP, dim, OldMeshTag
   
 !  NULLIFY(StressSol, FlowVariable)
 
@@ -185,7 +186,14 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed) THEN
+  !CHANGE
+  IF (.NOT. AllocationsDone) OldMeshTag = Solver % Mesh % MeshTag
+  IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+    OldMeshTag = Solver % Mesh % MeshTag
+    MeshChanged = .TRUE.
+  END IF
+  IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+  IF ( .NOT. AllocationsDone .OR. MeshChanged) THEN
      N = Model % MaxElementNodes
      
      IF ( AllocationsDone ) THEN
