@@ -209,7 +209,7 @@ def create_geometry(nof_cubes, mesh_size, find_boundaries_from_entities_dict, fi
         print_line("Finding boundaries...", total_start_time)
         start_time = time.time()
         FreeCADBatchFEMTools.find_boundaries_with_entities_dict(mesh_object, compound_filter,
-                                                                entities_dict, doc, point_search)
+                                                                entities_dict, doc)
         return_time_list.append(('-Find boundaries:', time.time() - start_time))
     if find_solids_from_entities_dict.lower() == 'true':
         print_line("Finding bodies...", total_start_time)

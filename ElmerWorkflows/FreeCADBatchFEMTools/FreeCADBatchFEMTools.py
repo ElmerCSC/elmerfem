@@ -305,32 +305,26 @@ def get_point_from_face(face):
                     return face.valueAt(u_test, v_test)
     return None
 
-def is_face_in_face(face1, face2, tolerance=0.0001, point_search=True):
+def is_face_in_face(face1, face2, tolerance=0.0001):
     """
-    If point_search is True:
-        returns True if all vertices and point in face1 also belongs to face2
-    else:
-        returns face1.section(face2).Length > 0
+    Returns True if all vertices and point in face1 also belongs to face2
 
     :param face1: FreeCAD face object
     :param face2: FreeCAD face object
     :param tolerance: float
-    :param point_search: bool
 
     :return: bool
     """
-    if point_search:
-        for vertex in face1.Vertexes:
-            if not is_point_inside_face(face2, vertex.Point, tolerance):
-                return False
-        point_in_face1 = get_point_from_face(face1)
-        if point_in_face1 is not None:
-            if not is_point_inside_face(face2, point_in_face1, tolerance):
-                return False
-        else:
-            raise ValueError('Face point not found')
-        return True
-    return face1.section(face2).Length > 0
+    for vertex in face1.Vertexes:
+        if not is_point_inside_face(face2, vertex.Point, tolerance):
+            return False
+    point_in_face1 = get_point_from_face(face1)
+    if point_in_face1 is not None:
+        if not is_point_inside_face(face2, point_in_face1, tolerance):
+            return False
+    else:
+        raise ValueError('Face point not found')
+    return True
 
 def is_face_in_solid(solid, face, tolerance=0.0001, use_round=True):
     """
@@ -558,20 +552,19 @@ def find_compound_filter_solid(compound_filter, solid):
     string = "Solid" + str(solid_found+1)
     return string
 
-def find_compound_filter_boundaries(compound_filter, face, point_search=True):
+def find_compound_filter_boundaries(compound_filter, face):
     """
     Finds all faces in the compound filter object which are inside given face.
     Returns a tuple containing all names of the faces in compound filter.
 
     :param compound_filter: FreeCAD compound filter
     :param face: FreeCAD face object
-    :param point_search: bool
 
     :return: tuple
     """
     face_name_list = []
     for num, cface in enumerate(compound_filter.Shape.Faces):
-        if is_face_in_face(cface, face, point_search):
+        if is_face_in_face(cface, face):
             face_name_list.append("Face" + str(num+1))
     if len(face_name_list) == 0:
         raise ValueError("Faces not found")
@@ -827,7 +820,7 @@ def merge_boundaries(mesh_object, compound_filter, doc, face_entity_dict, compou
 
     return surface_object, tuple(filtered_compound_faces)
 
-def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_dict, doc, point_search=True):
+def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_dict, doc):
     """
     For all faces in entities_dict, the same face in compound filter is added to a Mesh Group.
     All faces with same name in entities_dict are merged into one Mesh Group with the original name. 
@@ -836,7 +829,6 @@ def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_di
     :param compound_filter: FreeCAD compound filter
     :param entities_dict: entities dictionary
     :param doc: FreeCAD document object.
-    :param point_search: bool
 
     :return: list containing MeshGroup objects with mesh size.
     """
@@ -848,7 +840,7 @@ def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_di
             # Old name, do not create new MeshGroup
             index_found = face_name_list.index(face['name'])
             found_cface_names = surface_objs[index_found].References[0][1]
-            cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'], point_search)
+            cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'])
             surface_obj, filtered_cface_names = merge_boundaries(mesh_object, compound_filter, doc, face,
                                                                  cface_names, face_name_list, surface_objs,
                                                                  surface_objs_by_cface_names,
@@ -857,7 +849,7 @@ def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_di
               surface_obj.References = [(compound_filter, found_cface_names+filtered_cface_names)]
         else:
             # New name, create new MeshGroup
-            cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'], point_search)
+            cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'])
             surface_obj, filtered_cface_names = merge_boundaries(mesh_object, compound_filter, doc, face,
                                                                  cface_names, face_name_list, surface_objs,
                                                                  surface_objs_by_cface_names, surface_object=None)
