@@ -71,7 +71,7 @@
     USE Adaptive
     USE DefUtils
     USE FreeSurface
-
+    USE ElementDescription, ONLY: GetEdgeMap
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -85,7 +85,7 @@
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER :: StiffMatrix
 
-     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m
+     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m,OldMeshTag
 
      TYPE(ValueList_t),POINTER :: Material, BC, BodyForce, Equation
      TYPE(Nodes_t) :: ElementNodes
@@ -132,7 +132,7 @@
          PseudoPressureExists, PseudoCompressible, Bubbles, P2P1, &
          Porous =.FALSE., PotentialForce=.FALSE., Hydrostatic=.FALSE., &
          MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate, &
-         AllIncompressible
+         AllIncompressible, MeshChanged=.FALSE.
 
 
      REAL(KIND=dp),ALLOCATABLE :: MASS(:,:),STIFF(:,:), LoadVector(:,:), &
@@ -152,7 +152,7 @@
        LocalTemperature, GasConstant, HeatCapacity, LocalTempPrev,MU,MV,MW,     &
        PseudoCompressibilityScale, PseudoCompressibility, PseudoPressure,       &
        PseudoPressureExists, PSolution, Drag, PotentialField, PotentialCoefficient, &
-       ComputeFree, Indexes
+       ComputeFree, Indexes, OldMeshTag
 
 #ifdef USE_ISO_C_BINDINGS
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
@@ -287,7 +287,14 @@
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
 
-     IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  !CHANGE
+     IF (.NOT. AllocationsDone) OldMeshTag = Solver % Mesh % MeshTag
+     IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+       OldMeshTag = Solver % Mesh % MeshTag
+       MeshChanged = .TRUE.
+     END IF
+     IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+     IF ( .NOT.AllocationsDone .OR. MeshChanged ) THEN
 
        N = Solver % Mesh % MaxElementDOFs
        

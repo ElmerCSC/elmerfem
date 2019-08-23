@@ -111,16 +111,16 @@ END SUBROUTINE MeshSolver_Init
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
             GotForceBC, Found, ComputeMeshVelocity, DisplaceFirst, &
             SkipFirstMeshVelocity = .FALSE., FirstTime = .TRUE., &
-            SkipDisplace 
+            SkipDisplace, MeshChanged=.FALSE. 
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
        Alpha(:,:), Beta(:)
 
-  INTEGER :: dim
+  INTEGER :: dim, OldMeshTag
   
   SAVE STIFF, LOAD, FORCE, MeshVelocity, MeshVeloPerm, AllocationsDone, &
        ElasticModulus, PoissonRatio, TPerm, Alpha, Beta, &
-       SkipFirstMeshVelocity, FirstTime
+       SkipFirstMeshVelocity, FirstTime, OldMeshTag
 
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
@@ -179,7 +179,14 @@ END SUBROUTINE MeshSolver_Init
      STDOFs       =  StressSol % DOFs
      Displacement => StressSol % Values
 
-     IF( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+     !CHANGE
+     IF (.NOT. AllocationsDone) OldMeshTag = Solver % Mesh % MeshTag
+     IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+       OldMeshTag = Solver % Mesh % MeshTag
+       MeshChanged = .TRUE.
+     END IF
+     IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+     IF( .NOT.AllocationsDone .OR. MeshChanged ) THEN
         IF ( AllocationsDone ) DEALLOCATE( TPerm )
 
         ALLOCATE( TPerm( SIZE(MeshPerm) ), STAT=istat )
@@ -209,7 +216,7 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. MeshChanged ) THEN
      N = Solver % Mesh % MaxElementDOFs
 
      IF ( AllocationsDone ) THEN
@@ -430,7 +437,6 @@ END SUBROUTINE MeshSolver_Init
       MeshVelocity = 0.0d0
     END IF
   END IF
-
 
   IF( SkipDisplace ) THEN
     CONTINUE

@@ -94,7 +94,7 @@
         PhaseChange=.FALSE., CheckLatentHeatRelease=.FALSE., FirstTime, &
         SmartHeaterControl, IntegralHeaterControl, HeaterControlLocal, SmartTolReached=.FALSE., &
         TransientHeaterControl, SmartHeaterAverage, ConstantBulk, SaveBulk, &
-	TransientAssembly, Converged, AnyMultiply
+	TransientAssembly, Converged, AnyMultiply, MeshChanged=.FALSE.
      LOGICAL, POINTER :: SmartHeaters(:), IntegralHeaters(:)
 
      TYPE(Variable_t), POINTER :: TempSol,FlowSol,HeatSol,CurrentSol, MeshSol, DensitySol
@@ -103,7 +103,7 @@
      INTEGER, POINTER :: TempPerm(:),FlowPerm(:),CurrentPerm(:),MeshPerm(:)
 
      INTEGER :: NSDOFs,NewtonIter,NonlinearIter,MDOFs, &
-         SmartHeaterBC, SmartHeaterNode, DoneTime=0, NOFactive
+         SmartHeaterBC, SmartHeaterNode, DoneTime=0, NOFactive, OldMeshTag
      REAL(KIND=dp) :: NonlinearTol,NewtonTol,SmartTol,Relax, &
             SaveRelax,dt,dt0,CumulativeTime, VisibleFraction, PowerScaling=1.0, PrevPowerScaling=1.0, &
             PowerRelax, PowerTimeScale, PowerSensitivity, xave, yave, Normal(3), &
@@ -141,7 +141,7 @@
        ReferenceTemperature, HeatExpansionCoeff, PrevPowerScaling, PowerScaling, &
        MeltPoint, DoneTime, SmartHeaterNode, SmartHeaterBC, SmartHeaterAverage, &
        HeatConductivityIso, &
-       PerfusionRate, PerfusionDensity, PerfusionHeatCapacity, PerfusionRefTemperature
+       PerfusionRate, PerfusionDensity, PerfusionHeatCapacity, PerfusionRefTemperature, OldMeshTag
 
 
      INTERFACE
@@ -234,7 +234,14 @@
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+     !CHANGE
+     IF (.NOT. AllocationsDone) OldMeshTag = Solver % Mesh % MeshTag
+     IF(OldMeshTag .NE. Solver % Mesh % MeshTag) THEN
+       OldMeshTag = Solver % Mesh % MeshTag
+       MeshChanged = .TRUE.
+     END IF
+     IF(Solver % Mesh % Changed) MeshChanged = .TRUE.
+     IF ( .NOT. AllocationsDone .OR. MeshChanged ) THEN
         N = Solver % Mesh % MaxElementDOFs
 
         IF ( AllocationsDone ) THEN
@@ -1522,7 +1529,7 @@ CONTAINS
                  Temperature, TempPerm, Emissivity, AngleFraction)
       ELSE   !  Full Newton-Raphson solver
 !------------------------------------------------------------------------------
-!       Go trough surfaces (j) this surface (i) is getting
+!       Go through surfaces (j) this surface (i) is getting
 !       radiated from.
 !------------------------------------------------------------------------------
 
@@ -1537,7 +1544,7 @@ CONTAINS
           Asum = Asum + Text
 !------------------------------------------------------------------------------
 !         Gebhardt factors are given elementwise at the center
-!         of the element, so take avarage of nodal temperatures
+!         of the element, so take average of nodal temperatures
 !         (or integrate over surface j)
 !------------------------------------------------------------------------------
 

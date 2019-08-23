@@ -27,7 +27,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Mikko Lyly, Peter R�back
+! *  Authors: Juha Ruokolainen, Mikko Lyly, Peter Råback
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -54,7 +54,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     INTEGER :: dim,i
     TYPE(ValueList_t), POINTER :: SolverParams
     LOGICAL :: Found, CalculateStrains, CalcPrincipalAngle, CalcPrincipalAll, &
-        CalcStressAll
+        CalcStressAll, MaxwellMaterial
 !------------------------------------------------------------------------------
 
     SolverParams => GetSolverParams()
@@ -65,7 +65,17 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       CALL ListAddString( SolverParams, 'Variable', 'Displacement' )
     END IF
 
-    IF( GetLogical(SolverParams, 'Maxwell material', Found ) ) THEN
+    MaxwellMaterial = ListGetLogicalAnyMaterial(Model, 'Maxwell material')
+    IF (.NOT.MaxwellMaterial) THEN
+      MaxwellMaterial = GetLogical(SolverParams, 'Maxwell material', Found )
+      IF( MaxwellMaterial ) THEN
+        DO i=1,Model % NumberOfMaterials
+          CALL ListAddLogical( Model % Materials(i) % Values, 'Maxwell material', .TRUE.)
+        END DO
+      END IF
+    END IF
+
+    IF( MaxwellMaterial ) THEN
       CALL ListAddString(SolverParams, 'Timestepping Method', 'BDF' )
       CALL ListAddInteger(SolverParams, 'BDF Order', 2 )
       CALL ListAddInteger(SolverParams, 'Time derivative Order', 1)
@@ -209,7 +219,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      LOGICAL :: AllocationsDone = .FALSE., NormalTangential, HarmonicAnalysis
      LOGICAL :: StabilityAnalysis = .FALSE., ModelLumping, FixDisplacement
      LOGICAL :: GeometricStiffness = .FALSE., EigenAnalysis=.FALSE., OrigEigenAnalysis, &
-           Refactorize = .TRUE., Incompressible
+           Refactorize = .TRUE., Incompressible, MeshChanged=.FALSE.
 
      REAL(KIND=dp),ALLOCATABLE:: MASS(:,:),STIFF(:,:),&
        DAMP(:,:), LOAD(:,:),LOAD_im(:,:),FORCE(:),FORCE_im(:), &
@@ -232,9 +242,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        RayleighAlpha, RayleighBeta, RayleighDamping, &
        NodalStrain, PrincipalStress, PrincipalStrain, Tresca, &
        PrincipalAngle, PrincipalAngleComp, CalcPrincipalAngle, &
-       CalcPrincipalAll, CalculateStrains
+       CalcPrincipalAll, CalculateStrains, OldMeshTag
 !------------------------------------------------------------------------------
-     INTEGER :: dim
+     INTEGER :: dim, OldMeshTag
 #ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,at0
 #else
@@ -318,7 +328,14 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone .OR. Mesh % Changed) THEN
+     !CHANGE
+     IF (.NOT. AllocationsDone) OldMeshTag = Mesh % MeshTag
+     IF(OldMeshTag .NE. Mesh % MeshTag) THEN
+       OldMeshTag = Mesh % MeshTag
+       MeshChanged = .TRUE.
+     END IF
+     IF(Mesh % Changed) MeshChanged = .TRUE.
+     IF ( .NOT. AllocationsDone .OR. MeshChanged) THEN
        N = Mesh % MaxElementDOFs
 
        IF ( AllocationsDone ) THEN
@@ -1025,7 +1042,7 @@ CONTAINS
            'Youngs Modulus', Material, n, NodeIndexes )
 
        PoissonRatio = 0.0d0
-       IF ( Isotropic(1) )  PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
+       IF ( .NOT.Incompressible .AND. Isotropic(1) )  PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
 
        IF( GotHeatExp ) THEN
          ReferenceTemperature(1:n) = GetReal(Material, &
@@ -1492,7 +1509,7 @@ CONTAINS
      INTEGER :: n,nd
      TYPE(Element_t), POINTER :: Element
 
-     INTEGER :: i,j,k,l,p,q, t, dim,sdim,elem, IND(9), BodyId,EqId
+     INTEGER :: i,j,k,l,p,q, t, dim,sdim,elem, IND(9), BodyId,EqId,OldMeshTag
      LOGICAL :: stat, CSymmetry, Isotropic(2), UseMask, ContactOn
      INTEGER, POINTER :: Visited(:), Indexes(:), Permutation(:)
      REAL(KIND=dp) :: u,v,w,x,y,z,Strain(3,3),Stress(3,3),LGrad(3,3),detJ, &
@@ -1504,12 +1521,13 @@ CONTAINS
 
      LOGICAL :: FirstTime = .TRUE., OptimizeBW, GlobalBubbles, &
           Factorize, FoundFactorize, FreeFactorize, FoundFreeFactorize, &
-          LimiterOn, SkipChange, FoundSkipChange
+          LimiterOn, SkipChange, FoundSkipChange, MeshChanged=.FALSE.
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      CHARACTER(LEN=MAX_NAME_LEN) :: eqname
 
-     SAVE Nodes, StSolver, ForceG, Permutation, SForceG, Eqname, UseMask
+     SAVE Nodes, StSolver, ForceG, Permutation, SForceG, Eqname, UseMask,&
+          OldMeshTag
 
      ! These variables are needed for Principal stress calculation
      ! they are quite small and allocated even if principal stress calculation
@@ -1545,7 +1563,14 @@ CONTAINS
          SFORCE(6*n), &
          Basis(n), dBasisdx(n,3) )
 
-     IF ( FirstTime .OR. Mesh % Changed ) THEN
+     !CHANGE
+     IF (FirstTime ) OldMeshTag = Mesh % MeshTag
+     IF(OldMeshTag .NE. Mesh % MeshTag) THEN
+       OldMeshTag =  Mesh % MeshTag
+       MeshChanged = .TRUE.
+     END IF
+     IF(Mesh % Changed) MeshChanged = .TRUE.
+     IF ( FirstTime .OR. MeshChanged ) THEN
        IF ( FirstTime ) THEN
          ALLOCATE( StSolver )
        ELSE
@@ -2056,11 +2081,11 @@ CONTAINS
 
          END DO
        END DO
-         
+
        IF(.NOT. FoundBoundary) THEN
-        CALL Fatal('StressSolve','Model lumping boudary must be defined')        
+        CALL Fatal('StressSolve','Model lumping boundary must be defined')
        END IF
-   
+
        IF(power == 1) Center(1:DIM) = Center(1:DIM) / Area
      END DO
 
