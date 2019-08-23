@@ -997,7 +997,7 @@ CONTAINS
      LOGICAL :: ConstantDt, Lumped, Found
 !------------------------------------------------------------------------------
 
-     CALL Info('Add1stOrderTime_CRS','Adding time discretization to CRS matrix')
+     CALL Info('Add1stOrderTime_CRS','Adding time discretization to CRS matrix',Level=20)
 
 !------------------------------------------------------------------------------
      Order = MIN(Solver % DoneTime, Solver % Order)
