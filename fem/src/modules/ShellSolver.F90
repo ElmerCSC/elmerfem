@@ -521,8 +521,24 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
     END DO ASSEMBLYLOOP
 
-
     CALL DefaultFinishBulkAssembly() 
+
+    
+    Active = GetNOFBoundaryElements()
+
+    BOUNDARY_ASSEMBLY: DO k=1,Active
+      BGElement => GetBoundaryElement(k)
+      Family = GetElementFamily(BGElement)
+
+      IF (ActiveBoundaryElement() .AND. Family == 2) THEN
+        n  = GetElementNOFNodes(BGElement)
+        nd = GetElementNOFDOFs(BGElement)
+        CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar)
+      END IF     
+    END DO BOUNDARY_ASSEMBLY
+
+    CALL DefaultFinishBoundaryAssembly()
+
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 
@@ -4402,6 +4418,64 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ShellLocalMatrix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+! This subroutine is used to compute an elementwise load vector arising
+! from given resultant force and resultant couple vectors over the 1-D
+! boundary.
+!------------------------------------------------------------------------------
+  SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! A boundary element of background mesh
+    INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
+    INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component 
+    INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Nodes_t) :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    LOGICAL :: Found, AssemblyNeeded, Stat
+
+    INTEGER :: i, i0, t
+    REAL(KIND=dp) :: Stiff(m*nd,m*nd), Force(m*nd), Basis(nd)
+    REAL(KIND=dp) :: NodalForce(3,1:n), NodalCouple(3,1:n)
+    REAL(KIND=dp) :: ResultantForce(3), ResultantCouple(3)
+    REAL(KIND=dp) :: detJ, Weight
+
+    SAVE Nodes
+!------------------------------------------------------------------------------
+    BC => GetBC()
+    IF (.NOT.ASSOCIATED(BC)) RETURN
+
+    CALL GetRealVector(BC, NodalForce(1:3,1:n), 'Resultant Force', AssemblyNeeded)
+    CALL GetRealVector(BC, NodalCouple(1:3,1:n), 'Resultant Couple', Found)
+    AssemblyNeeded = AssemblyNeeded .OR. Found
+    IF (.NOT. AssemblyNeeded) RETURN
+
+    CALL GetElementNodes(Nodes)
+    Force = 0.0d0
+    Stiff = 0.0d0
+
+    IP = GaussPoints(BGElement)
+    DO t=1,IP % n
+      stat = ElementInfo(BGElement, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis)
+      ResultantForce(1:3) = MATMUL(NodalForce(1:3,1:n), Basis(1:n))
+      ResultantCouple(1:3) = MATMUL(NodalCouple(1:3,1:n), Basis(1:n))
+      Weight = IP % s(t) * DetJ
+      DO i=1,nd
+        i0 = (i-1)*m
+        Force(i0+1:i0+3) = Force(i0+1:i0+3) + Weight * ResultantForce(1:3) * Basis(i)
+        Force(i0+4:i0+6) = Force(i0+4:i0+6) + Weight * ResultantCouple(1:3) * Basis(i)
+      END DO
+    END DO
+
+    CALL DefaultUpdateEquations(Stiff,Force)
+!------------------------------------------------------------------------------
+  END SUBROUTINE ShellBoundaryMatrix
 !------------------------------------------------------------------------------
 
 
