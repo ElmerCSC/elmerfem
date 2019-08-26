@@ -4614,7 +4614,7 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
 {
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE];
-  int errno;
+  int errnum;
 
   sprintf(filename,"%s",prefix);
   if ((in = fopen(filename,"r")) == NULL) {
@@ -4647,14 +4647,14 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     
     if( verno == 4 ) {
       if( minorno == 0 ) 
-	errno = LoadGmshInput4(data,bound,filename,info);
+	errnum = LoadGmshInput4(data,bound,filename,info);
       else if( minorno == 1 ) 
-	errno = LoadGmshInput41(data,bound,filename,info);
+	errnum = LoadGmshInput41(data,bound,filename,info);
       else
 	printf("Minor version not yet supported, cannot continue!\n");
     }
     else {
-      errno = LoadGmshInput2(data,bound,filename,info);
+      errnum = LoadGmshInput2(data,bound,filename,info);
     }      
   } else {
     fclose(in);
@@ -4664,10 +4664,10 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     printf("Please use Gsmh 2 or 4 versions for output\n");
     printf("*****************************************************\n");
     
-    errno = LoadGmshInput1(data,bound,filename,info);
+    errnum = LoadGmshInput1(data,bound,filename,info);
   }     
 
-  return(errno);
+  return(errnum);
 }
 
 

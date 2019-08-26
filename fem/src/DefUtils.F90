@@ -3172,7 +3172,8 @@ CONTAINS
     TYPE(Matrix_t), POINTER   :: A
     TYPE(Variable_t), POINTER :: x
     REAL(KIND=dp), POINTER CONTIG :: b(:)
-    REAL(KIND=dp), POINTER CONTIG :: SOL(:)
+!    REAL(KIND=dp), POINTER CONTIG :: SOL(:)
+    REAL(KIND=dp), POINTER :: SOL(:)
 
     LOGICAL :: Found, BackRot
 
