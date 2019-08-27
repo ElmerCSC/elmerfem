@@ -165,7 +165,7 @@ IF(HAVE_ZOLTAN)
 ENDIF()
 
 # ElmerSolver libraries 
-SET(ELMERSOLVER_LIBRARIES matc umfpack 
+SET(ELMERSOLVER_LIBRARIES matc umfpack scotch scotcherr
                           amd fhuti binio arpack
                           ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
