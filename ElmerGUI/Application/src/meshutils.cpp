@@ -1620,6 +1620,9 @@ void Meshutils::findSurfaceElementNormals(mesh_t *mesh)
     } else if(e1<0) {
       // e0 known, e1 unknown
       bigger = e0;
+    } else if (e0<0) {
+	  // e0 unknown, e1 known
+	  bigger = e1;
     } else {
       // both parents known
       bigger = e0;

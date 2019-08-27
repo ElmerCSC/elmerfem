@@ -1,0 +1,9 @@
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+CONFIGURE_FILE(test.sif test.sif COPYONLY)
+
+ADD_ELMERICETEST_MODULE(FrictionHeatMasked DummySolver DummySolver.f90)
+FILE(COPY ELMERSOLVER_STARTINFO DummySolver.f90 cube.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMERICE_TEST(FrictionHeatMasked)
+

@@ -969,7 +969,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       END IF
      ELSE
        CALL GetReluctivity(Material,R_t,n,HasTensorReluctivity)
-       IF(.NOT. HasTensorReluctivity) CALL GetReluctivity(Material,R,n)
+       IF (HasTensorReluctivity) THEN
+         IF (SIZE(R_t,1)==1 .AND. SIZE(R_t,2)==1) THEN
+           l = MIN(SIZE(R), SIZE(R_t,3))
+           R(1:l) = R_t(1,1,1:l)
+           HasTensorReluctivity = .FALSE.
+         END IF
+       ELSE
+         CALL GetReluctivity(Material,R,n)
+       END IF
      END IF
 
      HasVelocity = .FALSE.
@@ -1435,7 +1443,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
 
          IF (vDOFS == 1) THEN
-           IF( JouleHeatingFromCurrent ) THEN
+           IF ( JouleHeatingFromCurrent .AND. (ASSOCIATED(CD).OR.ASSOCIATED(EL_CD)) ) THEN
              ! The Joule heating power per unit volume: J.E = J.J/sigma 
              Coeff = 0.0_dp
              DO l=1,3

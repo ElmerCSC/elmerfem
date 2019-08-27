@@ -551,7 +551,7 @@ CONTAINS
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Current Density')
-      CALL ListInitElementKeyword( Robin_h,'Boundary Condition','Electric Resistivity')
+      CALL ListInitElementKeyword( Robin_h,'Boundary Condition','External Conductivity')
       CALL ListInitElementKeyword( Ext_h,'Boundary Condition','External Potential')
       CALL ListInitElementKeyword( Farfield_h,'Boundary Condition','Farfield Potential')
       InitHandles = .FALSE.
