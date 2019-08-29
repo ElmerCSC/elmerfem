@@ -104,20 +104,17 @@ End
 
 Boundary Condition 1
   Name = "Hot line"
-  Target Boundaries = 1
-  Potential = Real 40.0
+  Target Boundaries (2)  = 1 3
+  Potential = Real 60.0
 End
+
 Boundary Condition 2
-  Name = "Cold line"
-  Target Boundaries = 3
-  Potential = Real 0.0
-End
-Boundary Condition 2
-  Name = "Adiabatic line"
+  Name = "cold line"
   Target Boundaries(2) = 2 4
+  Potential = Real -10.0
 End
 Boundary Condition 3
-  Name = "Hot surface 1"
+  Name = "Hot surface"
   Target Boundaries(2) = 5 7
   Temperature = Real 40.0
 End
@@ -145,8 +142,8 @@ Boundary Condition 6
   Temperature = 0
 End
 
-Solver 1 :: Reference Norm = Real 12.097596
-Solver 3 :: Reference Norm = Real 15.485587
+Solver 1 :: Reference Norm = Real 1.76006621E+01
+Solver 3 :: Reference Norm = Real 3.35220719E+01
 RUN
 
 !End Of File
