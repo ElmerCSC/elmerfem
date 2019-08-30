@@ -26,7 +26,7 @@ $dtMin = 0.01/yearindays
 $OutPut = 1
 
 $ev = 0.0 
-$Source = 0.0                 ! all imput in moulins 
+$Source = 0.0                 ! all input in moulins 
 
 ! Common input parameters for all tests SHMIP 
 
@@ -251,7 +251,7 @@ Solver 2
   Activate Melt from Channels = Logical True
   Neglect Sheet Thickness in Potential = Logical True
 
-  ! choices are EXPLICT, CRANK-NICOLSON, IMPLICIT
+  ! choices are EXPLICIT, CRANK-NICOLSON, IMPLICIT
   Channels Integration method = String "Crank-Nicolson"
   Sheet Integration method = String "Crank-Nicolson"
 

@@ -328,7 +328,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   CALL Info( SolverName, Message, LEVEL=16 )
 
   !------------------------------------------------------------------------------
-  ! Possible permutation of coorinate directions
+  ! Possible permutation of coordinate directions
   !------------------------------------------------------------------------------
   VolumeX => Mesh3D % Nodes % x
   VolumeY => Mesh3D % Nodes % y

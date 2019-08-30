@@ -6,8 +6,8 @@
 !!                                       !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Updated January 2014: comment Solver 5 (top freesurface)
-!    because of implementation problems when using 2 same solvers 
-!    whithout recompiling on of them
+!    because of implementation problems when using 2 of
+!    the same solvers without recompiling one of them
 
 check keywords warn
 echo on

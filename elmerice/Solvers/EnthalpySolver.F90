@@ -1666,7 +1666,7 @@ CONTAINS
           Asum = Asum + Text
 !------------------------------------------------------------------------------
 !         Gebhardt factors are given elementwise at the center
-!         of the element, so take avarage of nodal Enthalpy_hs
+!         of the element, so take average of nodal Enthalpy_hs
 !         (or integrate over surface j)
 !------------------------------------------------------------------------------
 

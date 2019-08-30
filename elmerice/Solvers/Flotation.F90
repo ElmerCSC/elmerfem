@@ -36,12 +36,12 @@
 !   OUTPUT Variables:
 !     Zb
 !     Zs
-!     DZbDt (optionnal, if variable found and transient simulation)
-!     DZsDt (optionnal, if variable found and transient simulation)
+!     DZbDt (optional, if variable found and transient simulation)
+!     DZsDt (optional, if variable found and transient simulation)
 !   
 !   INPUT Variable:
 !     H
-!     bedrock (optionnal)
+!     bedrock (optional)
 !
 ! PARAMETERS:
 !   Constants: 

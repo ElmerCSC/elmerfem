@@ -257,7 +257,7 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
         s = SqrtElementMetric * IntegStuff % s(t) 
         
         ! compute gradient from Stokes and adjoint computation
-        ! follow the compuation of the stiffMatrix as done in the NS solver
+        ! follow the computation of the stiffMatrix as done in the NS solver
         Normal = NormalVector( Element, ElementNodes, u,v,.TRUE. )
         SELECT CASE( Element % TYPE % DIMENSION )
         CASE(1)

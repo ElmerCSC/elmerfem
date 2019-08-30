@@ -27,7 +27,7 @@
 ! *  notes from Peter below: 
 ! *
 ! *  This solver may be used to map the field variables of a stretched mesh
-! *  to the unstretched initial configuarion of the same mesh. In addition
+! *  to the unstretched initial configuration of the same mesh. In addition
 ! *  the vertical size of the mesh is accommodated so that the height of 
 ! *  the mesh stays fixed. All-in-all two different mapping stages and 
 ! *  one solution of Laplace equation is needed for the mapping.
@@ -151,7 +151,7 @@ SUBROUTINE TwoMeshes( Model,Solver,dt,TransientSimulation )
 
 
   Parallel = ParEnv % Pes > 1
-  IF(Parallel) CALL Fatal(SolverName, "Solver doesnt work in parallel yet!")
+  IF(Parallel) CALL Fatal(SolverName, "Solver does not work in parallel yet!")
 
   IF ( FirstTime ) THEN
      FirstTime = .FALSE.
