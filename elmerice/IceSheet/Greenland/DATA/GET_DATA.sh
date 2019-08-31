@@ -42,7 +42,7 @@ FILE_IS_HERE $TOPOGRAPHY
 VELOCITY_X=greenland_vel_mosaic250_vx_v1.tif
 if [ ! -f "$VELOCITY_X" ]; then
    echo "****************************************************************"
-   echo "$VELOCITY_X file not found downlowding from nsidc using curl"
+   echo "$VELOCITY_X file not found downloading from nsidc using curl"
    echo "****************************************************************"
    sh scripts/GET_FROM_NSIDC.sh https://n5eil01u.ecs.nsidc.org/MEASURES/NSIDC-0670.001/1995.12.01/greenland_vel_mosaic250_vx_v1.tif
 fi
@@ -51,7 +51,7 @@ FILE_IS_HERE $VELOCITY_X
 VELOCITY_Y=greenland_vel_mosaic250_vy_v1.tif
 if [ ! -f "$VELOCITY_Y" ]; then
    echo "****************************************************************"
-   echo "$VELOCITY_Y file not found downlowding from nsidc using curl"
+   echo "$VELOCITY_Y file not found downloading from nsidc using curl"
    echo "****************************************************************"
    sh scripts/GET_FROM_NSIDC.sh https://n5eil01u.ecs.nsidc.org/MEASURES/NSIDC-0670.001/1995.12.01/greenland_vel_mosaic250_vy_v1.tif
 fi
@@ -124,7 +124,7 @@ if [ ! -f "$SMB_PROJ" ]; then
       echo "****************************************************************"
       echo " $SMB not found"
       echo "****************************************************************"
-      echo "downlading data file from $link "
+      echo "downloading data file from $link "
       wget $link
    fi 
    FILE_IS_HERE $SMB
@@ -146,7 +146,7 @@ if [ ! -f "MARv3.5.2-10km-yearly-ERA-Interim-1979-2014.nc" ] ; then
    echo "****************************************************************"
    echo "MARv3.5.2-10km-yearly-ERA-Interim-1979-2014.nc not found"
    echo "****************************************************************"
-   echo "downlading data file from ftp://ftp.climato.be/fettweis/"
+   echo "downloading data file from ftp://ftp.climato.be/fettweis/"
    wget ftp://ftp.climato.be/fettweis/MARv3.5.2/Greenland/ERA-int_1979-2014_10km/monthly_outputs_interpolated_at_5km/MARv3.5.2-10km-yearly-ERA-Interim-1979-2014.nc
    echo
 fi

@@ -148,7 +148,7 @@ if __name__=='__main__':
 		
 		    # Write the 101 BC at the end of the mesh.boundary file
 		    MaxBC = np.max(bc[:,1]) 
-		    # get the minimun elment index to add fro 101 BC
+		    # get the minimum element index to add for 101 BC
 		    MinEIndex= np.min(elements[:,0])
 		
 		    # Rewrite the file and add the 101 elements

@@ -10,7 +10,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Updated January 2014: comment Solver 5 (top freesurface)
 !    because of implementation problems when using 2 same solvers 
-!    whithout recompiling one of them
+!    without recompiling one of them
 
 check keywords warn
 echo on

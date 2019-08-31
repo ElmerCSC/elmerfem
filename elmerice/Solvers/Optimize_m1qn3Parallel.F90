@@ -394,7 +394,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
     deallocate(VisitedNode,NewNode)
 
 !! Gather number of active nodes in each partition and compute total number of
-!active nodes in partion 0
+!active nodes in partition 0
     Npes=ParEnv % PEs
     allocate(NodePerPe(Npes))
 
@@ -467,7 +467,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
           BWeightVar % Perm(ActiveNodes(1:NActiveNodes)))
 
     ! Send variables to partition 0
-    ! and receive results from partion 0
+    ! and receive results from partition 0
 
      if (ParEnv % MyPE .ne.0) then
 

@@ -33,7 +33,7 @@
 ! *
 ! ****************************************************************************/
 !> FlowDepthSolver: Solver to inquire the vertical distance from a line (2d) 
-!>   or surface (3d). Solves a degenrated Poisson-equation
+!>   or surface (3d). Solves a degenerated Poisson-equation
 SUBROUTINE FlowdepthSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
@@ -129,7 +129,7 @@ SUBROUTINE FlowdepthSolver( Model,Solver,dt,TransientSimulation )
      CALL INFO(SolverName, Message,Level=1)
   END IF
   !----------------------------------------------------------------
-  ! Assign Variables for computations fo free surface and gradients
+  ! Assign Variables for computations of free surface and gradients
   !----------------------------------------------------------------
   CalcFree = GetLogical(SolverParams, 'Calc Free Surface', Found)
   IF (.NOT.Found) THEN
