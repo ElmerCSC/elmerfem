@@ -18,6 +18,7 @@ parser.add_argument('-am', '--air_mesh_size', type=float, help='If not given cub
 parser.add_argument('-ps', '--point_search', action='store_true', help=ps_help)
 parser.add_argument('-s', '--spheres', action='store_true', help='Use spheres instead of cubes')
 parser.add_argument('-af', '--append_file', action='store_true', help=af_help)
+parser.add_argument('-fe', '--freecad-executable', type=str, default="FreeCAD", help='give the path to FreeCAD executable')
 
 args = parser.parse_args()
 
@@ -30,5 +31,9 @@ else:
         f.write('{} {} {} {} {} {} {} {} {}'.format(args.number_of_cubes, args.cube_mesh_size, args.find_boundaries,
                                                     args.find_solids, args.create_air, args.air_mesh_size,
                                                     args.point_search, args.spheres, args.append_file))
-    p = subprocess.Popen(['FreeCAD', '-c', freecadscript_name])
-    p.communicate()
+    try:
+        p = subprocess.Popen([args.freecad_executable, '-c', freecadscript_name])
+        p.communicate()
+    except:
+        print("Running FreeCAD failed!!! Try to give the correct FreeCAD executable as an argument (--freecad-executable, -fe)")
+        exit()
