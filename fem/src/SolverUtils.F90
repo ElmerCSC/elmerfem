@@ -15806,6 +15806,126 @@ CONTAINS
   END SUBROUTINE FsiCouplingAssembly
 
 
+!------------------------------------------------------------------------------
+!> Assemble coupling matrix related to structure-structure interaction
+!------------------------------------------------------------------------------
+  SUBROUTINE StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
+      IsSolid, IsPlate, IsShell, IsBeam )
+    
+    TYPE(Solver_t) :: Solver          ! leading solver
+    TYPE(Variable_t), POINTER :: FVar ! fluid variable
+    TYPE(Variable_t), POINTER :: SVar ! structure variable
+    TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_f, A_s
+    LOGICAL :: IsSolid, IsPlate, IsShell, IsBeam
+   !------------------------------------------------------------------------------
+    LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
+    INTEGER, POINTER :: FPerm(:), SPerm(:)
+    INTEGER :: FDofs, SDofs
+    TYPE(Mesh_t), POINTER :: Mesh
+!    INTEGER, POINTER :: Indexes(:), pIndexes(:)
+    INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
+    REAL(KIND=dp) :: vdiag
+!    TYPE(Element_t), POINTER :: Element, Parent
+!    TYPE(GaussIntegrationPoints_t) :: IP
+!    TYPE(Solver_t), POINTER :: PSolver
+!    TYPE(Nodes_t) :: Nodes
+!    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:)
+!    REAL(KIND=dp), POINTER :: Basis(:)
+!    REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area, fdiag
+!    LOGICAL :: Stat, IsHarmonic
+!    INTEGER :: dim,mat_id,tcount
+!    LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, UseDensity, Found
+!    LOGICAL, ALLOCATABLE :: NodeDone(:)
+!    REAL(KIND=dp) :: MultSF, MultFS
+    
+    
+    CALL Info('StructureCouplingAssembly','Creating coupling matrix for structures',Level=6)
+    
+    IF( A_fs % FORMAT /= MATRIX_LIST ) THEN
+      A_fs % Values = 0.0_dp
+      A_sf % Values = 0.0_dp      
+    END IF
+          
+    Mesh => Solver % Mesh
+    dim = 3
+
+    FPerm => FVar % Perm
+    SPerm => SVar % Perm
+    
+    fdofs = FVar % Dofs
+    IF( fdofs /= 3 ) THEN
+      CALL Fatal('StructureCouplingAssembly','Currently applicable only to 3D solid as master!')
+    END IF
+
+    sdofs = SVar % Dofs
+
+    IF( IsSolid ) CALL Info('StructureCouplingAssembly','Assuming structure to be solid',Level=8)
+    IF( IsBeam ) CALL Info('StructureCouplingAssembly','Assuming structure to be beam',Level=8)
+    IF( IsPlate ) CALL Info('StructureCouplingAssembly','Assuming structure to be plate',Level=8)
+    IF( IsShell ) CALL Info('StructureCouplingAssembly','Assuming structure to be shell',Level=8)
+    
+    ConstrainedF => A_f % ConstrainedDof
+    ConstrainedS => A_s % ConstrainedDof
+                  
+    nf = SIZE( FVar % Values ) 
+    ns = SIZE( SVar % Values ) 
+    
+    CALL Info('StructureCouplingAssembly','Master structure dofs '//TRIM(I2S(nf))//&
+        ' with '//TRIM(I2S(fdofs))//' components',Level=10)
+    CALL Info('StructureCouplingAssembly','Slave structure dofs '//TRIM(I2S(ns))//&
+        ' with '//TRIM(I2S(sdofs))//' components',Level=10)   
+    CALL Info('StructureCouplingAssembly','Assuming '//TRIM(I2S(dim))//&
+        ' active dimensions',Level=10)   
+
+    ! Add the largest entry that allocates the whole list matrix structure
+    CALL AddToMatrixElement(A_fs,nf,ns,0.0_dp)
+    CALL AddToMatrixElement(A_sf,ns,nf,0.0_dp)
+    
+
+    ncount = 0
+    DO i=1,Mesh % NumberOfNodes
+      jf = FPerm(i)      
+      js = SPerm(i)
+      IF( jf == 0 .OR. js == 0 ) CYCLE
+      ncount = ncount + 1
+      
+      DO j = 1, dim
+        kf = dim*(jf-1)+j
+        ks = dim*(js-1)+j
+        
+        vdiag = A_s % Values( A_s % Diag(ks) ) 
+        IF( .NOT. ConstrainedF(kf) ) THEN        
+          ! Copy the force in implicit form from "S" to "F", and zero it
+          DO k=A_s % Rows(ks),A_s % Rows(ks+1)-1
+            CALL AddToMatrixElement(A_fs,kf,A_s % Cols(k), A_s % Values(k) )
+            A_s % Values(k) = 0.0_dp
+          END DO
+        END IF
+          
+        ! Set Dirichlet Condition to "S" such that it is equal to "F"
+        A_s % Values( A_s % Diag(ks)) = vdiag
+        CALL AddToMatrixElement(A_sf,ks,kf, -vdiag )
+      END DO
+    END DO
+            
+    IF( A_fs % FORMAT == MATRIX_LIST ) THEN
+      CALL List_toCRSMatrix(A_fs)
+      CALL List_toCRSMatrix(A_sf)
+    END IF
+      
+    !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
+    !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
+
+    CALL Info('StructureCouplingAssembly','Number of nodes on interface: '&
+        //TRIM(I2S(ncount)),Level=10)    
+    CALL Info('StructureCouplingAssembly','Number of entries in master-slave coupling matrix: '&
+        //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
+    CALL Info('StructureCouplingAssembly','Number of entries in slave-master coupling matrix: '&
+        //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
+    
+    CALL Info('StructureCouplingAssembly','All done',Level=20)
+    
+  END SUBROUTINE StructureCouplingAssembly
 
   
 !---------------------------------------------------------------------------------
