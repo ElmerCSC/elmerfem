@@ -1749,6 +1749,7 @@ CONTAINS
     IF(.NOT. ListGetLogical( Params,'Structure-Structure Coupling',Found ) ) RETURN
 
     ! Currently we simply assume master solver to be "1"
+    ! Note that the indexes refer to the block structure, not original solver indexes!
     j = 1
     
     DO k = 1, 4

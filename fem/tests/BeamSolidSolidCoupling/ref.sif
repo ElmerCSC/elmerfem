@@ -64,6 +64,8 @@ Solver 1
   Linear System Direct Method = MUMPS
   Linear System Scaling = True
   Optimize Bandwidth = False
+
+  Displace Mesh = False
 End 
 
 Solver 2
