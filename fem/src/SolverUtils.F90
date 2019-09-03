@@ -15829,16 +15829,12 @@ CONTAINS
     CALL Info('StructureCouplingAssembly','Creating coupling matrix for structures',Level=6)
     
     Mesh => Solver % Mesh
-    dim = 3
+    dim = Mesh % MeshDim
 
     FPerm => FVar % Perm
     SPerm => SVar % Perm
     
     fdofs = FVar % Dofs
-    IF( fdofs /= 3 ) THEN
-      CALL Fatal('StructureCouplingAssembly','Currently applicable only to 3D solid as master!')
-    END IF
-
     sdofs = SVar % Dofs
 
     IF( IsSolid ) CALL Info('StructureCouplingAssembly','Assuming coupling with solid solver',Level=8)
@@ -15871,7 +15867,7 @@ CONTAINS
     
 
     ! Note: we may have to rethink this coupling if visiting for 2nd time!
-    IF( IsSolid ) THEN  
+    IF( IsSolid .OR. IsShell ) THEN  
       ncount = 0
       DO i=1,Mesh % NumberOfNodes
         jf = FPerm(i)      
@@ -15880,8 +15876,9 @@ CONTAINS
         ncount = ncount + 1
 
         DO j = 1, dim
-          kf = dim*(jf-1)+j
-          ks = dim*(js-1)+j
+          ! Indeces for matrix rows
+          kf = fdofs*(jf-1)+j
+          ks = sdofs*(js-1)+j
 
           vdiag = A_s % Values( A_s % Diag(ks) ) 
           ! Copy the force in implicit form from "S" to "F", and zero it
@@ -15899,6 +15896,10 @@ CONTAINS
           CALL AddToMatrixElement(A_sf,ks,kf, -vdiag )
         END DO
       END DO
+
+      IF( IsShell ) THEN
+        CALL Warn('StructureCouplingAssembly','Coupling for rotational shell dofs is missing!')
+      END IF
     ELSE
       CALL Fatal('StructureCouplingAssembly','Coupling type not implemented yet!')
     END IF

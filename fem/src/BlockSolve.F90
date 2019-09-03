@@ -1746,8 +1746,6 @@ CONTAINS
     
     Params => Solver % Values
 
-    IF(.NOT. ListGetLogical( Params,'Structure-Structure Coupling',Found ) ) RETURN
-
     ! Currently we simply assume master solver to be "1"
     ! Note that the indexes refer to the block structure, not original solver indexes!
     j = 1
@@ -3129,7 +3127,7 @@ CONTAINS
     REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
     CHARACTER(LEN=max_name_len) :: str, VarName, ColName, RowName
     LOGICAL :: Robust, LinearSearch, ErrorReduced, IsProcedure, ScaleSystem,&
-        ReuseMatrix, LS, BlockScaling
+        ReuseMatrix, LS, BlockScaling, Found
     INTEGER :: HaveConstraint, HaveAdd
     INTEGER, POINTER :: VarPerm(:)
     INTEGER, POINTER :: SlaveSolvers(:)
@@ -3257,8 +3255,12 @@ CONTAINS
       CALL BlockPrecMatrix( Solver, VarDofs ) 
     END IF
 
-    CALL FsiCouplingBlocks( Solver )
-    CALL StructureCouplingBlocks( Solver )
+    ! Currently we cannot have both structure-structure and fluid-structure couplings!
+    IF( ListGetLogical( Solver % Values,'Structure-Structure Coupling',Found ) ) THEN
+      CALL StructureCouplingBlocks( Solver )
+    ELSE
+      CALL FsiCouplingBlocks( Solver )
+    END IF
     
     IF( HaveConstraint > 0 ) THEN
       CALL BlockPickConstraint( Solver, VarDofs )
