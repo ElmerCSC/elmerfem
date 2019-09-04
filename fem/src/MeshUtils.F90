@@ -2168,6 +2168,10 @@ END SUBROUTINE GetMaxDefs
       
    CALL Info('LoadMesh','Preparing mesh done',Level=8)
 
+   IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
+     Mesh % MaxElementDOFs  = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementDOFs,2  ) )
+     Mesh % MaxElementNodes = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementNodes,2 ) )
+   END IF
    
  CONTAINS
 
@@ -2869,6 +2873,7 @@ END SUBROUTINE GetMaxDefs
            Element % BDOFs, &
            Element % DGDOFs )
      END DO
+
 
    END SUBROUTINE ParallelNonNodalElements
 
