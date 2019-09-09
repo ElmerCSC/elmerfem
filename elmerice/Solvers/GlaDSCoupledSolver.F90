@@ -649,8 +649,9 @@
               
               Edge => Solver % Mesh % Edges(t)
               IF (.NOT.ASSOCIATED(Edge)) CYCLE
-              IF ((ParEnv % PEs > 1) .AND. &
-                (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+              IF (ParEnv % PEs > 1) THEN
+                IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+              END IF
               n = Edge % TYPE % NumberOfNodes
 
               ! Work only for 202 elements => n=2
@@ -1041,14 +1042,13 @@
            PrevNorm = SQRT(SUM(AreaSolution(AreaPerm(M+1:M+t))*AreaSolution(AreaPerm(M+1:M+t))))/t  
         END IF
 
-!        print*,"parenvstuff",parenv%mype,M,Solver % Mesh % NumberOfEdges,SIZE(Solver % Mesh % Edges)
-
         DO iter = 1, NonlinearIter
               DO t=1, Solver % Mesh % NumberOfEdges 
                  Edge => Solver % Mesh % Edges(t)
                  IF (.NOT.ASSOCIATED(Edge)) CYCLE
-!                 IF ((ParEnv % PEs > 1) .AND. &
-!                   (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+                 IF (ParEnv % PEs > 1) THEN
+                   IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                 END IF
                  n = Edge % TYPE % NumberOfNodes
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                  IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
@@ -1158,8 +1158,7 @@
 
            t = Solver % Mesh % NumberOfEdges 
            IF (ParEnv % PEs > 1) THEN
-!              Norm = ParallelNorm(t,AreaSolution(AreaPerm(M+1:M+t))) 
-              Norm = SQRT(SUM(AreaSolution(AreaPerm(M+1:M+t))*AreaSolution(AreaPerm(M+1:M+t))))/t  
+              Norm = ParallelNorm(t,AreaSolution(AreaPerm(M+1:M+t))) 
            ELSE            
               Norm = SQRT(SUM(AreaSolution(AreaPerm(M+1:M+t))*AreaSolution(AreaPerm(M+1:M+t))))/t  
            END IF
