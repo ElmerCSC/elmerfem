@@ -317,7 +317,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! via reading the director data from the file mesh.elements.data. 
   !----------------------------------------------------------------------------------
   Director => VariableGet(Mesh % Variables, 'Director', .TRUE.)
-  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars, Director)
+  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars, Director, &
+      Solver % ActiveElements)
   CALL CheckSurfaceOrientation()
   
   ! --------------------------------------------------------------------------------
@@ -761,17 +762,20 @@ CONTAINS
 !       been implemented. Parallel execution is thus possible only when the
 !       director is available as an ordinary field variable.
 !------------------------------------------------------------------------------
-  SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars, Director)
+  SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars, Director, &
+      ActiveElements)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
     TYPE(ValueList_t), POINTER, INTENT(IN) :: SolverPars
-    TYPE(Variable_t), POINTER, INTENT(IN) :: Director    
+    TYPE(Variable_t), POINTER, INTENT(IN) :: Director
+    INTEGER, POINTER :: ActiveElements(:)
     !------------------------------------------------------------------------------
     LOGICAL :: UseFieldVariable, ReadNodalDirectors, WriteElementsData, Found
-    INTEGER :: n, iostat, i, j, k, i0
+    INTEGER :: n, iostat, i, j, k, i0, NumberOfLines
+    INTEGER, POINTER :: InvPerm(:)
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: ElementDirectors(3*MaxBGElementNodes)
@@ -795,30 +799,39 @@ CONTAINS
       DirectorFile = TRIM(MeshName)//'/'//'mesh.director'//CHAR(0)
       
       INQUIRE(FILE = DirectorFile(1:n+15), EXIST = ReadNodalDirectors)
+
+      IF (ReadNodalDirectors) THEN
+        OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
+        IF ( iostat /= 0 ) CALL Fatal('ReadSurfaceDirector', &
+            'Opening mesh.director file failed.')
+
+        ! Director data may not have been defined in all mesh nodes.  
+        ! Find out how many director values can be read:
+        NumberOfLines = 0
+        DO WHILE (.TRUE.)
+          READ(10,*, IOSTAT=iostat, END=100) k, d
+          NumberOfLines = NumberOfLines + 1
+        END DO
+100     REWIND(10)
+      END IF
     END IF
 
     IF (UseFieldVariable .OR. ReadNodalDirectors) THEN
       IF (ReadNodalDirectors) THEN
-        CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
+        CALL AllocateArray(NodalDirector, NumberOfLines, 3, 'ReadSurfaceDirector', &
             'NodalDirector array could not be allocated')
+        CALL AllocateVector(InvPerm, NumberOfNodes, 'ReadSurfaceDirector', &
+            'InvPerm array could not be allocated')
       
-        OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
-        IF ( iostat /= 0 ) THEN
-          CALL Fatal('ReadSurfaceDirector', 'Opening mesh.director file failed.')     
-        ELSE
-          DO i=1,NumberOfNodes
-            READ(10,*,IOSTAT=iostat) k, d
-
-            IF (k /= i) CALL Fatal('mesh.director', &
-                'Trivial correspondence between rows and node numbers assumed currently')
-
-            Norm = SQRT(SUM(d(1:3)**2))
-            NodalDirector(i,1) = d(1)/Norm
-            NodalDirector(i,2) = d(2)/Norm
-            NodalDirector(i,3) = d(3)/Norm
-          END DO
-          CLOSE(10)
-        END IF
+        DO i=1,NumberOfLines
+          READ(10,*,IOSTAT=iostat) k, d
+          InvPerm(k) = i 
+          Norm = SQRT(SUM(d(1:3)**2))
+          NodalDirector(i,1) = d(1)/Norm
+          NodalDirector(i,2) = d(2)/Norm
+          NodalDirector(i,3) = d(3)/Norm
+        END DO
+        CLOSE(10)
       END IF
       ! ---------------------------------------------------------------------
       ! Create director data as elementwise property
@@ -836,7 +849,7 @@ CONTAINS
         IF (ReadNodalDirectors) THEN
           DO i=1,n
             i0 = (i-1)*3
-            ElementDirectors(i0+1:i0+3) = NodalDirector(Element % NodeIndexes(i),1:3)
+            ElementDirectors(i0+1:i0+3) = NodalDirector(InvPerm(Element % NodeIndexes(i)),1:3)
           END DO
         ELSE
           DO i=1,n
@@ -864,6 +877,7 @@ CONTAINS
       n = LEN_TRIM(MeshName)
       DirectorFile = MeshName(1:n)//'/'//TRIM(OutputFile)//CHAR(0)
 
+      n = LEN_TRIM(DirectorFile)
       INQUIRE(FILE = DirectorFile(1:n), EXIST = Found)
       IF (Found) THEN
         CALL Info('ReadSurfaceDirector', &
@@ -895,7 +909,7 @@ CONTAINS
             WRITE(FormatString(i0+2:i0+10),'(A9)') '2x,E22.15'
             WRITE(FormatString(i0+11:i0+12),'(A2)') '))'
 
-            WRITE(10,'(A8,I0)') 'element:', k
+            WRITE(10,'(A8,I0)') 'element:', ActiveElements(k)
             WRITE(10,'(A9)',ADVANCE='NO') 'director:'
             WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
             WRITE(10,'(A3)') 'end'
@@ -907,7 +921,7 @@ CONTAINS
       END IF
     END IF
 
-    IF (ReadNodalDirectors) DEALLOCATE(NodalDirector)
+    IF (ReadNodalDirectors) DEALLOCATE(NodalDirector, InvPerm)
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadSurfaceDirector
 !------------------------------------------------------------------------------
@@ -1044,7 +1058,7 @@ CONTAINS
           PRINT *, 'Reference normal =', e3(:)
           PRINT *, 'Node Index = ', j, Element % NodeIndexes(j)
           PRINT *, 'Director =', d2(:)
-          CALL Fatal('ReadSurfaceDirector', &
+          CALL Fatal('CheckSurfaceOrientation', &
               'Director data does not define a unique upper/lower surface.')
         END IF
       END DO
@@ -4459,6 +4473,10 @@ CONTAINS
     Force = 0.0d0
     Stiff = 0.0d0
 
+    ! Note that in the following the integration is not done accurately as
+    ! the effect of the improved surface reconstruction is not taken into
+    ! account. The weight would contain some small correction terms
+    ! if the effect of metric tensor would be considered precisely.
     IP = GaussPoints(BGElement)
     DO t=1,IP % n
       stat = ElementInfo(BGElement, Nodes, IP % U(t), IP % V(t), &
