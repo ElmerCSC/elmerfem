@@ -254,6 +254,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       Model % CurrentElement => CurrentElement
 
       IF( GetElementFamily( CurrentElement ) == 1 ) CYCLE          
+      IF (.NOT. IsBoundaryElement .AND. CurrentElement % BodyId < 1) CYCLE
       
       IF( SkipHalo .OR. SaveOnlyHalo ) THEN
         IF( IsBoundaryElement ) THEN
