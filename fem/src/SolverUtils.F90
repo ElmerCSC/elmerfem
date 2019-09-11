@@ -15864,8 +15864,11 @@ CONTAINS
       A_fs % Values = 0.0_dp
       A_sf % Values = 0.0_dp      
     END IF
-    
 
+    ! This is still under development and not used for anything
+    IF( IsShell ) CALL DetermineCouplingNormals()
+
+    
     ! Note: we may have to rethink this coupling if visiting for 2nd time!
     IF( IsSolid .OR. IsShell ) THEN  
       ncount = 0
@@ -15922,6 +15925,166 @@ CONTAINS
     
     CALL Info('StructureCouplingAssembly','All done',Level=20)
     
+  CONTAINS
+
+
+    ! This routine determines normals of the solid at the common nodes with shell solver.
+    ! The normals are determined by summing up potential outer normals and thereafter
+    ! subtracting projections to the shell normals.
+    !------------------------------------------------------------------------------------
+    SUBROUTINE DetermineCouplingNormals()
+      INTEGER, ALLOCATABLE :: CouplingPerm(:)
+      REAL(KIND=dp), ALLOCATABLE, TARGET :: CouplingNormals(:,:)
+      REAL(KIND=dp), POINTER :: WallNormal(:)
+      REAL(KIND=dp) :: Normal(3), sNormal
+      INTEGER :: CouplingNodes, n, t, nbulk, nbound
+      TYPE(Element_t), POINTER :: Element, Parent1, Parent2
+      TYPE(Nodes_t), SAVE :: Nodes
+      LOGICAL :: Solid1,Solid2
+      
+
+      ! allocate elemental stuff
+      n = Mesh % MaxElementNodes
+      IF ( .NOT. ASSOCIATED( Nodes % x ) ) THEN
+        ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
+      END IF
+     
+      ! Generate the permutation for the common nodes
+      n = Mesh % NumberOfNodes
+      ALLOCATE(CouplingPerm(n))
+      WHERE( FVar % Perm(1:n) > 0 .AND. SVar % Perm(1:n) > 0 )
+        CouplingPerm = 1
+      ELSE WHERE
+        CouplingPerm = 0
+      END WHERE
+      j = 0 
+      DO i=1,n
+        IF( CouplingPerm(i) > 0 ) THEN
+          j = j + 1
+          CouplingPerm(i) = j
+        END IF
+      END DO
+      CouplingNodes = j      
+      PRINT *,'number of common nodes:',j
+
+      ALLOCATE( CouplingNormals(j,3) )
+      CouplingNormals = 0.0_dp
+      
+      nbulk = Mesh % NumberOfBulkElements
+      nbound = Mesh % NumberOfBoundaryElements
+      
+      ! Sum up all the wall normals associated to coupling nodes together
+      DO t=nbulk+1, nbulk+nbound
+        Element => Mesh % Elements(t)
+
+        ! If there a node for which we need normal? 
+        IF( COUNT( CouplingPerm( Element % NodeIndexes ) > 0 ) < 2 ) CYCLE
+
+        IF( ANY( SVar % Perm( Element % NodeIndexes ) == 0 ) ) CYCLE
+        
+        ! This needs to be an element where normal can be defined
+        !IF( GetElementDim(Element) /= 2 ) CYCLE
+        IF( Element % TYPE % ElementCode > 500 ) CYCLE
+        IF( Element % TYPE % ElementCode < 300 ) CYCLE
+   
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+        
+        n = Element % TYPE % NumberOfNodes
+
+        !CALL GetElementNodes(Nodes,Element)
+        Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
+        Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
+        Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+        
+        ! Determine whether parents also are active on the solid
+        Solid1 = .FALSE.
+        Parent1 => Element % BoundaryInfo % Left
+        IF( ASSOCIATED( Parent1 ) ) THEN
+          Solid1 = ALL(  SVar % Perm( Parent1 % NodeIndexes ) > 0 )
+        END IF
+        
+        Solid2 = .FALSE.
+        Parent2 => Element % BoundaryInfo % Right
+        IF( ASSOCIATED( Parent2 ) ) THEN
+          Solid2 = ALL(  SVar % Perm( Parent2 % NodeIndexes ) > 0 )
+        END IF        
+
+        ! Only consider external walls with just either parent in solid
+        IF( .NOT. XOR( Solid1, Solid2 ) ) CYCLE
+        
+        ! Check that the normal points outward of the solid
+        IF( Solid1 ) THEN
+          Normal = NormalVector(Element,Nodes,Parent=Parent1)
+        ELSE
+          Normal = NormalVector(Element,Nodes,Parent=Parent2)
+        END IF
+        
+        n = Element % TYPE % NumberOfNodes
+        DO i=1,n          
+          j = CouplingPerm( Element % NodeIndexes(i) )
+          IF( j == 0 ) CYCLE
+          
+          ! Note that we assume that normals are consistent in a way that they can be summed up
+          ! and do not cancel each other
+          WallNormal => CouplingNormals(j,:)
+          WallNormal = WallNormal + Normal 
+        END DO                  
+      END DO
+
+      ! Remove the shell normal from the wall normal
+      DO t=1, nbulk+nbound
+        Element => Mesh % Elements(t)
+
+        ! If there a node for which we need normal? 
+        IF( COUNT( CouplingPerm( Element % NodeIndexes ) > 0 ) < 2 ) CYCLE
+
+        ! Shell must be active for all nodes
+        IF( ANY( FVar % Perm( Element % NodeIndexes ) == 0 ) ) CYCLE
+
+        ! This needs to be an element where shell can be solved
+        !IF( GetElementDim(Element) /= 2 ) CYCLE
+        IF( Element % TYPE % ElementCode > 500 ) CYCLE
+        IF( Element % TYPE % ElementCode < 300 ) CYCLE
+        
+        n = Element % TYPE % NumberOfNodes
+
+        !CALL GetElementNodes(Nodes,Element)
+        Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
+        Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
+        Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+
+        ! Normal vector for shell, no need check the sign
+        Normal = NormalVector(Element,Nodes)
+ 
+        DO i=1,n
+          j = CouplingPerm( Element % NodeIndexes(i) )
+          IF( j == 0 ) CYCLE
+          WallNormal => CouplingNormals(j,:)
+          WallNormal = WallNormal - SUM( WallNormal * Normal ) * Normal
+        END DO
+      END DO
+
+      ! Finally normalize the normals such that their length is one
+      j = 0
+      DO i=1,CouplingNodes
+        WallNormal => CouplingNormals(i,:)
+        sNormal = SQRT( SUM( WallNormal**2) )
+        IF( sNormal > 1.0e-3 ) THEN
+          WallNormal = WallNormal / sNormal 
+          PRINT *,'WallNormal:',WallNormal
+        ELSE
+          j = j + 1
+        END IF
+      END DO
+      
+      IF( j > 0 ) THEN
+        CALL Fatal('DetermineCouplingNormals','Could not define normals count: '//TRIM(I2S(j)))
+      END IF
+       
+      
+    END SUBROUTINE DetermineCouplingNormals
+
+
   END SUBROUTINE StructureCouplingAssembly
 
   

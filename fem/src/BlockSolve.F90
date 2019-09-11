@@ -1748,7 +1748,7 @@ CONTAINS
 
     ! Currently we simply assume master solver to be "1"
     ! Note that the indexes refer to the block structure, not original solver indexes!
-    j = 1
+    i = 1
     
     DO k = 1, 4
       IsSolid = .FALSE.
@@ -1756,12 +1756,12 @@ CONTAINS
       IsShell = .FALSE.
       IsBeam = .FALSE.
       
-      IF(k==1) i = ListGetInteger( Params,'Solid Solver Index',IsSolid)
-      IF(k==2) i = ListGetInteger( Params,'Plate Solver Index',IsPlate)
-      IF(k==3) i = ListGetInteger( Params,'Shell Solver Index',IsShell)
-      IF(k==4) i = ListGetInteger( Params,'Beam Solver Index',IsBeam)
+      IF(k==1) j = ListGetInteger( Params,'Solid Solver Index',IsSolid)
+      IF(k==2) j = ListGetInteger( Params,'Plate Solver Index',IsPlate)
+      IF(k==3) j = ListGetInteger( Params,'Shell Solver Index',IsShell)
+      IF(k==4) j = ListGetInteger( Params,'Beam Solver Index',IsBeam)
 
-      IF(i==0) CYCLE
+      IF(j==0) CYCLE
       
       CALL Info('SolidCouplingBlocks','Generating coupling between solvers '&
           //TRIM(I2S(i))//' and '//TRIM(I2S(j)))
