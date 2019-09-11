@@ -476,13 +476,20 @@ CONTAINS
          GetReal( BC, 'Magnetic Transfer Coefficient im', Found), KIND=dp)
 
        !If air gap length keyword is detected, use air gap boundary condition
-       GapLength=GetConstReal( BC, 'Air Gap Length', Found)
+       GapLength = GetConstReal( BC, 'Air Gap Length', Found)
        IF (Found) THEN
          AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
-         IF (.NOT. Found) AirGapMu=1d0 ! if not found default to "air" property
+         IF (.NOT. Found) AirGapMu = 1.0_dp ! if not found default to "air" property
          CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd )
        ELSE
-         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+         GapLength = GetConstReal( BC, 'Layer Electric Conductivity', Found)
+         IF( Found ) THEN
+           AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
+           IF (.NOT. Found) AirGapMu = 1.0_dp ! if not found default to "air" property           
+           CALL LocalMatrixSkinBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd)
+         ELSE         
+           CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+         END IF
        END IF
        
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
@@ -503,7 +510,7 @@ CONTAINS
     ! ---------------------------------------------
     IF ( TG ) THEN
       ! temporary fix to some scaling problem (to be resolved)...
-      CALL ListAddLogical( GetSolverParams(), 'Linear System Dirichlet Scaling', .FALSE.) 
+      CALL ListAddLogical( SolverParams, 'Linear System Dirichlet Scaling', .FALSE.) 
     END IF
 
     CALL DefaultDirichletBCs()
@@ -531,7 +538,7 @@ CONTAINS
     !
     ! Fix unused potential DOFs:
     ! --------------------------
-    CALL ConstrainUnused(A)
+    !CALL ConstrainUnused(A)
 
     !
     ! Linear system solution:
@@ -1976,6 +1983,92 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixSkinBC(  STIFF, FORCE, LOAD, SkinCond, SkinMu, Element, n, nd )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: LOAD(:,:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element, Parent, Edge
+    REAL(KIND=dp) :: SkinCond(:), SkinMu(:)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), cond, mu, muVacuum, delta
+    LOGICAL :: Stat
+    INTEGER, POINTER :: EdgeMap(:,:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+    COMPLEX(KIND=dp) :: imu, invZs
+    
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    MASS  = 0.0_dp
+
+    muVacuum = 4 * PI * 1d-7
+    imu = COMPLEX( 0.0_dp, 1.0_dp ) 
+    
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    DO t=1,IP % n
+      IF ( PiolaVersion ) THEN
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )
+
+        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
+
+      cond = SUM(Basis(1:n) * SkinCond(1:n))
+      mu  = muVacuum * SUM(Basis(1:n) * SkinMu(1:n))
+      delta = SQRT( 2/(cond*omega*mu))      
+      invZs = (cond*delta)/(1+imu)
+      
+      DO i = 1,nd-np
+        p = i+np
+        DO j = 1,np
+          q = j
+          STIFF(p,q) = STIFF(p,q) + invZs * &
+              SUM(WBasis(i,:)*dBasisdx(j,:))*detJ*IP%s(t)
+          STIFF(q,p) = STIFF(q,p) + imu * Omega * &
+              delta * cond * SUM(Wbasis(i,:)*dBasisdx(j,:)) * detJ * IP % s(t)
+       END DO
+      END DO
+
+      PRINT *,'skin:',cond,delta,omega,invZs
+      !PRINT *,'elem:',Element % NodeIndexes
+
+      
+      DO i = 1,np
+        p = i
+        DO j = 1,np
+          q = j
+          STIFF(p,q) = STIFF(p,q) + delta * cond * &
+              SUM(dBasisdx(i,:)*dBasisdx(j,:))*detJ*IP%s(t)
+        END DO
+      END DO
+      
+    END DO
+    
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixSkinBC
+!------------------------------------------------------------------------------
+
+  
 !-----------------------------------------------------------------------------
   FUNCTION LocalFluxBC( LOAD, Element, n, nd ) RESULT(Bn)
 !------------------------------------------------------------------------------
