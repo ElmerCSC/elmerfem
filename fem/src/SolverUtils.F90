@@ -6783,11 +6783,12 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> This subroutine seeks for nodes which are adjacent to the given target node
-!> and then creates a couple which corresponds to a given torque. This version
-!> is intended for 3-D models of solids. If the optional definition of the director 
-!> vector d is given, the torque arm should ideally be parallel to d and the couple
-!> created does not have a d-component. This version may be more convenient when
-!> the torque comes from a dimensionally reduced model over a thin body.
+!> and then creates a couple which corresponds to a given torque. If the 
+!> optional definition of the director vector d is given, the torque arm should 
+!> ideally be parallel to d and the couple created does not have a d-component. 
+!> This version may be more convenient when the torque comes from a dimensionally
+!> reduced model over a thin body. Without specifying the director, this 
+!> subroutine expects a 3-D geometry.
 !
 ! TO DO: - The target nodes can now be defined only by their indices
 !        - Add a way to find the director from the specification of a shell model.
@@ -7012,11 +7013,11 @@ CONTAINS
              k = Perm(jz)
              F((k-1)*Dofs+1) = F((k-1)*Dofs+1) + F1
              F((k-1)*Dofs+2) = F((k-1)*Dofs+2) + F2
-             F((k-1)*Dofs+3) = F((k-1)*Dofs+3) + F3
+             IF (Dofs > 2) F((k-1)*Dofs+3) = F((k-1)*Dofs+3) + F3
              k = Perm(lz)
              F((k-1)*Dofs+1) = F((k-1)*Dofs+1) - F1
              F((k-1)*Dofs+2) = F((k-1)*Dofs+2) - F2
-             F((k-1)*Dofs+3) = F((k-1)*Dofs+3) - F3
+             IF (Dofs > 2) F((k-1)*Dofs+3) = F((k-1)*Dofs+3) - F3
            END IF
 
          ELSE
