@@ -5020,6 +5020,11 @@ CONTAINS
          SaveElement => SetCurrentElement(SaveElement)
      END DO
 
+     !
+     ! Apply special couple loads for 3-D models of solids:
+     !
+     CALL SetCoupleLoads(CurrentModel, x % Perm, A, b, x % DOFs )
+
      ! ----------------------------------------------------------------------------
      ! Set Dirichlet BCs for edge and face dofs which arise from approximating with
      ! edge (curl-conforming) or face (div-conforming) elements:
