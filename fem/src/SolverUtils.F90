@@ -6781,9 +6781,459 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> This subroutine seeks for nodes which are adjacent to the given target node
+!> and then creates a couple which corresponds to a given torque. If the 
+!> optional definition of the director vector d is given, the torque arm should 
+!> ideally be parallel to d and the couple created does not have a d-component. 
+!> This version may be more convenient when the torque comes from a dimensionally
+!> reduced model over a thin body. Without specifying the director, this 
+!> subroutine expects a 3-D geometry.
+!
+! TO DO: - The target nodes can now be defined only by their indices
+!        - Add a way to find the director from the specification of a shell model.
+!------------------------------------------------------------------------------
+   SUBROUTINE SetCoupleLoads(Model, Perm, A, F, Dofs)
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     TYPE(Model_t) :: Model                     !< The current model structure
+     INTEGER, POINTER, INTENT(IN) :: Perm(:)    !< The permutation of the associated variable
+     TYPE(Matrix_t), INTENT(INOUT) :: A         !< The coefficient matrix of the problem
+     REAL(KIND=dp), POINTER, INTENT(INOUT) :: F(:) !< The RHS vector of the problem
+     INTEGER, INTENT(IN) :: Dofs                !< The DOF count of the associated variable
+!------------------------------------------------------------------------------
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(ValueList_t), POINTER :: ValueList
+
+     LOGICAL :: WithDirector
+     LOGICAL :: Found, NoUpperNode, NoLowerNode
+     
+     INTEGER, ALLOCATABLE :: NearNodes(:) 
+     INTEGER, POINTER :: NodeIndexes(:)
+     INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
+     INTEGER :: Row, TargetNode, TargetInd, BC, TargetCount
+     INTEGER :: i, j, k, l, n, p
+     INTEGER :: jx, lx, jy, ly, jz, lz 
+     INTEGER :: intarray(1)
+
+     REAL(KIND=dp), ALLOCATABLE :: NearCoordinates(:,:), AllDirectors(:,:), Work(:,:)
+     REAL(KIND=dp) :: E(3,3)
+     REAL(KIND=dp) :: Torque(3)  ! The torque vector with respect to the global frame
+     REAL(KIND=dp) :: d(3)       ! Director at a solid-shell/plate interface    
+     REAL(KIND=dp) :: ex(3), ey(3), ez(3)
+     REAL(KIND=dp) :: e1(3), e2(3), e3(3)
+     REAL(KIND=dp) :: T(3), Force(3), v(3)
+     REAL(KIND=dp) :: M1, M2, F1, F2, F3
+     REAL(KIND=dp) :: res_x, maxres_x, minres_x
+     REAL(KIND=dp) :: res_y, maxres_y, minres_y
+     REAL(KIND=dp) :: res_z, maxres_z, minres_z
+     REAL(KIND=dp) :: rlower, rupper, FVal, MVal
+!------------------------------------------------------------------------------
+     IF (.NOT. ListCheckPrefixAnyBC(Model, 'Torque')) RETURN
+
+     Mesh => Model % Solver % Mesh
+
+     IF (.NOT. ASSOCIATED(A % InvPerm)) THEN
+       ALLOCATE(A % InvPerm(A % NumberOfRows))
+       DO i = 1,SIZE(Perm)
+         IF (Perm(i) > 0) THEN
+           A % InvPerm(Perm(i)) = i
+         END IF
+       END DO
+     END IF
+
+     ex = [1.0d0, 0.0d0, 0.0d0]
+     ey = [0.0d0, 1.0d0, 0.0d0]
+     ez = [0.0d0, 0.0d0, 1.0d0]
+     E(:,1) = ex
+     E(:,2) = ey
+     E(:,3) = ez
+
+     Diag   => A % Diag
+     Rows   => A % Rows
+     Cols   => A % Cols
+
+     DO BC=1,Model % NumberOfBCs
+       ValueList => Model % BCs(BC) % Values
+       IF (.NOT.ListCheckPresent(ValueList, 'Torque 1') .AND. &
+           .NOT.ListCheckPresent(ValueList, 'Torque 2') .AND. &
+           .NOT.ListCheckPresent(ValueList, 'Torque 3')) CYCLE
+       NodeIndexes => ListGetIntegerArray(ValueList, 'Target Nodes', UnfoundFatal=.TRUE.)
+
+       TargetCount = SIZE(NodeIndexes)
+       ALLOCATE(Work(3,TargetCount))
+       Work(1,1:TargetCount) = ListGetReal(ValueList, 'Torque 1', TargetCount, NodeIndexes, Found)
+       Work(2,1:TargetCount) = ListGetReal(ValueList, 'Torque 2', TargetCount, NodeIndexes, Found)
+       Work(3,1:TargetCount) = ListGetReal(ValueList, 'Torque 3', TargetCount, NodeIndexes, Found)
+
+       !
+       ! Check whether the torque arm is given by the director vector. This option
+       ! is not finalized yet. Here the director definition is sought from the BC
+       ! definition, while the director might already be available from the specification 
+       ! of a shell model.
+       !
+       IF (.NOT.ListCheckPresent(ValueList, 'Director 1') .AND. &
+           .NOT.ListCheckPresent(ValueList, 'Director 2') .AND. &
+           .NOT.ListCheckPresent(ValueList, 'Director 3')) THEN
+         WithDirector = .FALSE.
+       ELSE
+         WithDirector = .TRUE.
+         ALLOCATE(AllDirectors(3,TargetCount))
+         AllDirectors(1,1:TargetCount) = ListGetReal(ValueList, 'Director 1', TargetCount, NodeIndexes, Found)
+         AllDirectors(2,1:TargetCount) = ListGetReal(ValueList, 'Director 2', TargetCount, NodeIndexes, Found)
+         AllDirectors(3,1:TargetCount) = ListGetReal(ValueList, 'Director 3', TargetCount, NodeIndexes, Found)
+       END IF
+
+       DO p=1,TargetCount
+         TargetNode = NodeIndexes(p)
+         TargetInd = Perm(NodeIndexes(p))
+         IF (TargetInd == 0) CYCLE
+
+         !------------------------------------------------------------------------------
+         ! Find nodes which can potentially be used to make a representation of couple:
+         !------------------------------------------------------------------------------
+         Row = TargetInd * Dofs
+         n = (Rows(Row+1)-1 - Rows(Row)-Dofs+1)/DOFs + 1
+         ALLOCATE(NearNodes(n), NearCoordinates(3,n))
+
+         k = 0
+         DO i = Rows(Row)+Dofs-1, Rows(Row+1)-1, Dofs
+           j = Cols(i)/Dofs
+           k = k + 1
+           NearNodes(k) = A % InvPerm(j)
+         END DO
+         ! PRINT *, 'POTENTIAL NODE CONNECTIONS:'
+         ! print *, 'Nodes near target=', NearNodes(1:k)
+
+         !
+         ! The position vectors for the potential nodes where forces may be applied:
+         !
+         NearCoordinates(1,1:n) = Mesh % Nodes % x(NearNodes(1:n)) - Mesh % Nodes % x(TargetNode)
+         NearCoordinates(2,1:n) = Mesh % Nodes % y(NearNodes(1:n)) - Mesh % Nodes % y(TargetNode)
+         NearCoordinates(3,1:n) = Mesh % Nodes % z(NearNodes(1:n)) - Mesh % Nodes % z(TargetNode)
+
+
+         IF (WithDirector) THEN
+           !
+           ! In this case the torque arm should ideally be parallel to the director vector d.
+           ! Construct an orthonormal basis, with d giving the third basis vector.
+           !
+           d = AllDirectors(:,p)
+           e3 = d/SQRT(DOT_PRODUCT(d,d))
+           v(1:3) = ABS([DOT_PRODUCT(ex,e3), DOT_PRODUCT(ey,e3), DOT_PRODUCT(ez,e3)]) 
+           intarray = MINLOC(v)
+           k = intarray(1)
+           v(1:3) = E(1:3,k)
+           e1 = v - DOT_PRODUCT(v,e3)*e3
+           e1 = e1/SQRT(DOT_PRODUCT(e1,e1))
+           e2 = CrossProduct(e3,e1)
+           !
+           ! The torque is supposed to have no component in the direction of d, so remove it
+           ! and also find the representation of the altered torque with respect to the local basis:
+           !
+           Torque = Work(:,p)
+           v = DOT_PRODUCT(Torque,e3)*e3
+           T = Torque - v
+           M1 = DOT_PRODUCT(T,e1)
+           M2 = DOT_PRODUCT(T,e2)
+
+           !------------------------------------------------------------------------------
+           ! Seek torque arms which are closest to be parallel to d:
+           !------------------------------------------------------------------------------
+           maxres_z = 0.0d0
+           minres_z = 0.0d0
+           jz = 0
+           lz = 0
+           DO i=1,n
+             IF (NearNodes(i) == TargetNode) CYCLE
+             res_z = DOT_PRODUCT(e3(:), NearCoordinates(:,i)) / &
+                 SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+             IF (res_z > 0.0d0) THEN
+               !
+               ! A near node is on +d side
+               !
+               IF (res_z > maxres_z) THEN
+                 jz = NearNodes(i)
+                 maxres_z = res_z
+               END IF
+             ELSE
+               !
+               ! A near node is on -d side
+               !
+               IF (res_z < minres_z) THEN
+                 lz = NearNodes(i)
+                 minres_z = res_z
+               END IF
+             END IF
+           END DO
+
+           !
+           ! Calculate arm lengths with respect to the coordinate axis parallel to d:
+           !
+           NoUpperNode = .FALSE.
+           NoLowerNode = .FALSE.
+           IF (jz == 0) THEN
+             NoUpperNode = .TRUE.
+           ELSE
+             rupper = DOT_PRODUCT(e3(:), [ Mesh % Nodes % x(jz) - Mesh % Nodes % x(TargetNode), &
+                 Mesh % Nodes % y(jz) - Mesh % Nodes % y(TargetNode), &
+                 Mesh % Nodes % z(jz) - Mesh % Nodes % z(TargetNode) ])
+             ! print *, 'THE NODE ON +d SIDE = ', JZ
+             ! print *, 'TORQUE ARM = ', rupper
+           END IF
+
+           IF (lz == 0) THEN
+             NoLowerNode = .TRUE.
+           ELSE
+             rlower = DOT_PRODUCT(-e3(:), [ Mesh % Nodes % x(lz) - Mesh % Nodes % x(TargetNode), &
+                 Mesh % Nodes % y(lz) - Mesh % Nodes % y(TargetNode), &
+                 Mesh % Nodes % z(lz) - Mesh % Nodes % z(TargetNode) ])
+             ! print *, 'THE NODE ON -d SIDE = ', LZ
+             ! print *, 'TORQUE ARM = ', rlower
+           END IF
+
+           IF (NoUpperNode .OR. NoLowerNode) THEN
+             CALL Warn('SetCoupleLoads', 'A couple BC would need two nodes on opposite sides')
+           ELSE
+             !
+             ! The torque generated from point loads as M1 * e1 + M2 * e2 = (r e3) x (f1 * e1 - f2 * e2) = 
+             ! (r*f2)* e1 + (r*f1)* e2
+             !
+             F2 = M1/(rupper + rlower)
+             F1 = M2/(rupper + rlower)
+             Force = F1 * e1 - F2 * e2
+             !
+             ! Finally compute the components of force with respect to the global frame and
+             ! add to the RHS: 
+             !
+             F1 = DOT_PRODUCT(Force,ex)
+             F2 = DOT_PRODUCT(Force,ey)
+             F3 = DOT_PRODUCT(Force,ez)
+
+             k = Perm(jz)
+             F((k-1)*Dofs+1) = F((k-1)*Dofs+1) + F1
+             F((k-1)*Dofs+2) = F((k-1)*Dofs+2) + F2
+             IF (Dofs > 2) F((k-1)*Dofs+3) = F((k-1)*Dofs+3) + F3
+             k = Perm(lz)
+             F((k-1)*Dofs+1) = F((k-1)*Dofs+1) - F1
+             F((k-1)*Dofs+2) = F((k-1)*Dofs+2) - F2
+             IF (Dofs > 2) F((k-1)*Dofs+3) = F((k-1)*Dofs+3) - F3
+           END IF
+
+         ELSE
+           !------------------------------------------------------------------------------
+           ! Seek torque arms which are closest to be parallel to the global coordinate
+           ! axes: 
+           !------------------------------------------------------------------------------
+           maxres_x = 0.0d0
+           minres_x = 0.0d0
+           maxres_y = 0.0d0
+           minres_y = 0.0d0
+           maxres_z = 0.0d0
+           minres_z = 0.0d0
+           jx = 0
+           lx = 0
+           jy = 0
+           ly = 0
+           jz = 0
+           lz = 0
+           DO i=1,n
+             IF (NearNodes(i) == TargetNode) CYCLE
+
+             IF (ABS(Torque(3)) > AEPS) THEN
+               res_x = DOT_PRODUCT(ex(:), NearCoordinates(:,i)) / &
+                   SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+               IF (res_x > 0.0d0) THEN
+                 !
+                 ! A near node is on +E_X side
+                 !
+                 IF (res_x > maxres_x) THEN
+                   jx = NearNodes(i)
+                   maxres_x = res_x
+                 END IF
+               ELSE
+                 !
+                 ! A near node is on -E_X side
+                 !
+                 IF (res_x < minres_x) THEN
+                   lx = NearNodes(i)
+                   minres_x = res_x
+                 END IF
+               END IF
+             END IF
+
+             IF (ABS(Torque(1)) > AEPS) THEN
+               res_y = DOT_PRODUCT(ey(:), NearCoordinates(:,i)) / &
+                   SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+               IF (res_y > 0.0d0) THEN
+                 !
+                 ! A near node is on +E_Y side
+                 !
+                 IF (res_y > maxres_y) THEN
+                   jy = NearNodes(i)
+                   maxres_y = res_y
+                 END IF
+               ELSE
+                 !
+                 ! A near node is on -E_Y side
+                 !
+                 IF (res_y < minres_y) THEN
+                   ly = NearNodes(i)
+                   minres_y = res_y
+                 END IF
+               END IF
+             END IF
+
+             IF (ABS(Torque(2)) > AEPS) THEN
+               res_z = DOT_PRODUCT(ez(:), NearCoordinates(:,i)) / &
+                   SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+               IF (res_z > 0.0d0) THEN
+                 !
+                 ! A near node is on +E_Z side
+                 !
+                 IF (res_z > maxres_z) THEN
+                   jz = NearNodes(i)
+                   maxres_z = res_z
+                 END IF
+               ELSE
+                 !
+                 ! A near node is on -E_Z side
+                 !
+                 IF (res_z < minres_z) THEN
+                   lz = NearNodes(i)
+                   minres_z = res_z
+                 END IF
+               END IF
+             END IF
+           END DO
+
+           IF (ABS(Torque(1)) > AEPS) THEN
+             !------------------------------------------------------------------------------
+             ! Calculate arm lengths with respect to the Y-axis:
+             !------------------------------------------------------------------------------
+             NoUpperNode = .FALSE.
+             NoLowerNode = .FALSE.
+             IF (jy == 0) THEN
+               NoUpperNode = .TRUE.
+             ELSE
+               rupper = DOT_PRODUCT(ey(:), [ Mesh % Nodes % x(jy) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(jy) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(jy) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (ly == 0) THEN
+               NoLowerNode = .TRUE.
+             ELSE
+               rlower = DOT_PRODUCT(-ey(:), [ Mesh % Nodes % x(ly) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(ly) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(ly) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             !------------------------------------------------------------------------------
+             ! Finally, create a couple which tends to cause rotation about the X-axis 
+             ! provided nodes on both sides have been identified
+             !------------------------------------------------------------------------------
+             IF (NoUpperNode .OR. NoLowerNode) THEN
+               CALL Warn('SetCoupleLoads', 'A couple BC would need two nodes on opposite Y-sides')
+             ELSE
+               !
+               ! The torque M_X E_X = (r E_Y) x (f E_Z), with the force f>0 applied on +E_Y side:
+               !
+               MVal = Torque(1)
+               FVal = Mval/(rupper + rlower)
+               k = Perm(jy)
+               F((k-1)*Dofs+3) = F((k-1)*Dofs+3) + Fval
+               k = Perm(ly)
+               F((k-1)*Dofs+3) = F((k-1)*Dofs+3) - Fval
+             END IF
+           END IF
+
+           IF (ABS(Torque(2)) > AEPS) THEN
+             !
+             ! Calculate arm lengths with respect to the Z-axis:
+             !
+             NoUpperNode = .FALSE.
+             NoLowerNode = .FALSE.
+             IF (jz == 0) THEN
+               NoUpperNode = .TRUE.
+             ELSE
+               rupper = DOT_PRODUCT(ez(:), [ Mesh % Nodes % x(jz) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(jz) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(jz) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (lz == 0) THEN
+               NoLowerNode = .TRUE.
+             ELSE
+               rlower = DOT_PRODUCT(-ez(:), [ Mesh % Nodes % x(lz) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(lz) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(lz) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (NoUpperNode .OR. NoLowerNode) THEN
+               CALL Warn('SetCoupleLoads', 'A couple BC would need two nodes on opposite Z-sides')
+             ELSE
+               !
+               ! The torque M_Y E_Y = (r E_Z) x (f E_X), with the force f>0 applied on +E_Z side:
+               !
+               MVal = Torque(2)
+               FVal = Mval/(rupper + rlower)
+               k = Perm(jz)
+               F((k-1)*Dofs+1) = F((k-1)*Dofs+1) + Fval
+               k = Perm(lz)
+               F((k-1)*Dofs+1) = F((k-1)*Dofs+1) - Fval
+             END IF
+           END IF
+
+           IF (ABS(Torque(3)) > AEPS) THEN
+             !
+             ! Calculate arm lengths with respect to the X-axis:
+             !
+             NoUpperNode = .FALSE.
+             NoLowerNode = .FALSE.
+             IF (jx == 0) THEN
+               NoUpperNode = .TRUE.
+             ELSE
+               rupper = DOT_PRODUCT(ex(:), [ Mesh % Nodes % x(jx) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(jx) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(jx) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (lx == 0) THEN
+               NoLowerNode = .TRUE.
+             ELSE
+               rlower = DOT_PRODUCT(-ex(:), [ Mesh % Nodes % x(lx) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(lx) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(lx) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (NoUpperNode .OR. NoLowerNode) THEN
+               CALL Warn('SetCoupleLoads', 'A couple BC would need two nodes on opposite Y-sides')
+             ELSE
+               !
+               ! The torque M_Z E_Z = (r E_X) x (f E_Y), with the force f>0 applied on +E_X side:
+               !
+               MVal = Torque(3)
+               FVal = Mval/(rupper + rlower)
+               k = Perm(jx)
+               F((k-1)*Dofs+1) = F((k-1)*Dofs+1) - Fval
+               k = Perm(lx)
+               F((k-1)*Dofs+1) = F((k-1)*Dofs+1) + Fval
+             END IF
+           END IF
+         END IF
+
+         DEALLOCATE(NearNodes, NearCoordinates)
+       END DO
+       DEALLOCATE(Work)
+       IF (WithDirector) DEALLOCATE(AllDirectors)
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetCoupleLoads
+!------------------------------------------------------------------------------
 
   
-    !-------------------------------------------------------------------------------
+  !-------------------------------------------------------------------------------
   SUBROUTINE CommunicateDirichletBCs(A)
   !-------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
