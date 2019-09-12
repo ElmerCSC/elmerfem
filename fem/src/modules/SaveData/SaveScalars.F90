@@ -143,7 +143,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
       MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
-      Numbering, NodalOper, GotNodalOper, SaveFluxRange
+      Numbering, NodalOper, GotNodalOper, SaveFluxRange, PosOper, NegOper
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -168,7 +168,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen      
   INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit
   LOGICAL, ALLOCATABLE :: NodeMask(:)
-  REAL (KIND=DP) :: CT, RT
+  REAL (KIND=DP) :: CT, RT  
 #ifndef USE_ISO_C_BINDINGS
   REAL (KIND=DP) :: CPUTime, RealTime, CPUMemory
 #endif
@@ -362,7 +362,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   MaxOper = 'max'
   GotNodalOper = .FALSE.
   OldMaskName = 'save scalars'
-
+  PosOper = .FALSE.
+  NegOper = .FALSE.
+  
   
   DO WHILE(GotVar .OR. GotOper)
     
@@ -492,6 +494,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CALL Info('SaveScalars','Operator to be masked: '//TRIM(Oper),Level=12)
     END IF
 
+    nlen = LEN_TRIM(Oper) 
+    PosOper = .FALSE.
+    NegOper = .FALSE.
+    IF( Oper(1:9) == 'positive ') THEN
+      PosOper = .TRUE.
+      Oper = Oper(10:nlen)
+    ELSE IF( Oper(1:9) == 'negative ') THEN
+      NegOper = .TRUE.
+      Oper = Oper(10:nlen)
+    END IF
+    
 
     WRITE (Name,'(A,I0)') 'Coefficient ',NoOper
     CoefficientName = ListGetString(Params,TRIM(Name),GotCoeff )
@@ -1495,7 +1508,16 @@ CONTAINS
 
     n = n + 1
     Values(n) = Val
-    ValueNames(n) = TRIM(Name)
+
+    ! If we have positive or negative operator then revert that back in the save name
+    IF( PosOper ) THEN
+      ValueNames(n) = 'positive '//TRIM(Name)
+    ELSE IF( NegOper ) THEN
+     ValueNames(n) = 'negative '//TRIM(Name)
+    ELSE
+      ValueNames(n) = TRIM(Name)
+    END IF
+      
     IF( PRESENT( ValueIsInteger ) ) THEN
       ValuesInteger(n) = ValueIsInteger
     ELSE
@@ -1732,6 +1754,9 @@ CONTAINS
           x = SQRT(x)
         END IF
 
+        IF( PosOper .AND. x < 0 ) CYCLE
+        IF( NegOper .AND. x > 0 ) CYCLE
+        
         sumi = sumi + 1
         sumx = sumx + x
         sumxx = sumxx + x*x
@@ -1873,6 +1898,10 @@ CONTAINS
           END DO
           x = SQRT(x)
         END IF
+
+        IF( PosOper .AND. x < 0 ) CYCLE
+        IF( NegOper .AND. x > 0 ) CYCLE
+
         sumi = sumi + 1
         sumx = sumx + x
       END IF
@@ -1896,6 +1925,10 @@ CONTAINS
           END DO
           x = SQRT(x)
         END IF
+
+        IF( PosOper .AND. x < 0 ) CYCLE
+        IF( NegOper .AND. x > 0 ) CYCLE
+
         dx = ABS(x-Mean)
         sumi = sumi + 1
         sumdx = sumdx + dx
@@ -2060,18 +2093,27 @@ CONTAINS
 
           CASE ('int','int mean')
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          IF( PosOper ) func = MAX( 0.0_dp, func )
+          IF( NegOper ) func = MIN( 0.0_dp, func ) 
+
           integral1 = integral1 + S * coeff * func 
 
           CASE ('int square','int square mean','int rms')
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          IF( PosOper ) func = MAX( 0.0_dp, func )
+          IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func**2 
           
           CASE ('int abs','int abs mean')
           func = ABS( SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) ) )
+          IF( PosOper ) func = MAX( 0.0_dp, func )
+          IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func 
 
           CASE ('int variance')
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          IF( PosOper ) func = MAX( 0.0_dp, func )
+          IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func 
           integral2 = integral2 + S * coeff * func**2 
 
@@ -2089,7 +2131,9 @@ CONTAINS
 
           CASE ('convective energy')
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
-
+          IF( PosOper ) func = MAX( 0.0_dp, func )
+          IF( NegOper ) func = MIN( 0.0_dp, func ) 
+          
           IF(NoDofs == 1) THEN
             func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
             integral1 = integral1 + s * coeff * func**2
@@ -2104,6 +2148,9 @@ CONTAINS
           CASE ('potential energy')
 
           func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          IF( PosOper ) func = MAX( 0.0_dp, func )
+          IF( NegOper ) func = MIN( 0.0_dp, func ) 
+
           integral1 = integral1 + s * coeff * func
 
         CASE DEFAULT 
@@ -2506,11 +2553,15 @@ CONTAINS
             END DO
             
             flux = SUM(Normal(1:DIM) * Flow(1:DIM))
+
             IF( SaveFluxRange ) THEN
               Minimum = MIN(flux,Minimum)
               Maximum = MAX(flux,Maximum)
             END IF
-              
+
+            IF( PosOper ) flux = MAX( flux, 0.0_dp )
+            IF( NegOper ) flux = MIN( flux, 0.0_dp ) 
+                         
             fluxes(bc) = fluxes(bc) + s * flux
             
           CASE ('convective flux')
@@ -2534,6 +2585,11 @@ CONTAINS
               Minimum = MIN(flux,Minimum)
               Maximum = MAX(flux,Maximum)
             END IF
+
+            ! Enable positive and negative flux integrals
+            IF( PosOper ) flux = MAX( flux, 0.0_dp )
+            IF( NegOper ) flux = MIN( flux, 0.0_dp ) 
+          
             fluxes(bc) = fluxes(bc) + s * flux
               
           CASE ('boundary int','boundary int mean')
@@ -2543,6 +2599,8 @@ CONTAINS
             IF(NoDofs == 1) THEN
               func = SUM( LocalVectorSolution(1,1:n) * Basis(1:n) )
               flux = coeff * func 
+              IF( PosOper ) flux = MAX( flux, 0.0_dp )
+              IF( NegOper ) flux = MIN( flux, 0.0_dp ) 
               fluxes(bc) = fluxes(bc) + s * flux
             ELSE 
               flux = 0.0_dp
@@ -2550,6 +2608,8 @@ CONTAINS
                 flux = flux + SUM( Var % Values(NoDofs*(PermIndexes(1:n)-1)+j) * Basis(1:n) )**2
               END DO
               flux = coeff * SQRT( flux )
+              IF( PosOper ) flux = MAX( flux, 0.0_dp )
+              IF( NegOper ) flux = MIN( flux, 0.0_dp ) 
               fluxes(bc) = fluxes(bc) + s * flux
             END IF
      
