@@ -169,10 +169,10 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   INTEGER, PARAMETER :: AutomatedChoice = -1
   INTEGER, PARAMETER :: NoStrainReduction = 0
-  INTEGER, PARAMETER :: CurlKernel = 1
-  INTEGER, PARAMETER :: MITC = 2
-  INTEGER, PARAMETER :: DoubleReduction = 3
-  INTEGER, PARAMETER :: CurlKernelWithEdgeDOFs = 4
+  INTEGER, PARAMETER :: CurlKernel = 1             ! This builds on Ker(curl) of either RT_0 or ABF_0   
+  INTEGER, PARAMETER :: MITC = 2                   ! This builds on RT_0
+  INTEGER, PARAMETER :: DoubleReduction = 3        ! This builds on Ker(curl) of RT_0 (triangles)
+  INTEGER, PARAMETER :: CurlKernelWithEdgeDOFs = 4 ! This also builds on Ker(curl) of ABF_0
 
   INTEGER, PARAMETER :: MaxBGElementNodes = 9
   INTEGER, PARAMETER :: MaxPatchNodes = 16    ! The maximum node count for the surface description 
@@ -317,7 +317,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! via reading the director data from the file mesh.elements.data. 
   !----------------------------------------------------------------------------------
   Director => VariableGet(Mesh % Variables, 'Director', .TRUE.)
-  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars, Director)
+  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars, Director, &
+      Solver % ActiveElements)
   CALL CheckSurfaceOrientation()
   
   ! --------------------------------------------------------------------------------
@@ -521,9 +522,24 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
     END DO ASSEMBLYLOOP
 
+    CALL DefaultFinishBulkAssembly() 
 
     
-    CALL DefaultFinishBulkAssembly() 
+    Active = GetNOFBoundaryElements()
+
+    BOUNDARY_ASSEMBLY: DO k=1,Active
+      BGElement => GetBoundaryElement(k)
+      Family = GetElementFamily(BGElement)
+
+      IF (ActiveBoundaryElement() .AND. Family == 2) THEN
+        n  = GetElementNOFNodes(BGElement)
+        nd = GetElementNOFDOFs(BGElement)
+        CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar)
+      END IF     
+    END DO BOUNDARY_ASSEMBLY
+
+    CALL DefaultFinishBoundaryAssembly()
+
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 
@@ -746,17 +762,20 @@ CONTAINS
 !       been implemented. Parallel execution is thus possible only when the
 !       director is available as an ordinary field variable.
 !------------------------------------------------------------------------------
-  SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars, Director)
+  SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars, Director, &
+      ActiveElements)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
     TYPE(ValueList_t), POINTER, INTENT(IN) :: SolverPars
-    TYPE(Variable_t), POINTER, INTENT(IN) :: Director    
+    TYPE(Variable_t), POINTER, INTENT(IN) :: Director
+    INTEGER, POINTER :: ActiveElements(:)
     !------------------------------------------------------------------------------
     LOGICAL :: UseFieldVariable, ReadNodalDirectors, WriteElementsData, Found
-    INTEGER :: n, iostat, i, j, k, i0
+    INTEGER :: n, iostat, i, j, k, i0, NumberOfLines
+    INTEGER, POINTER :: InvPerm(:)
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: ElementDirectors(3*MaxBGElementNodes)
@@ -780,30 +799,39 @@ CONTAINS
       DirectorFile = TRIM(MeshName)//'/'//'mesh.director'//CHAR(0)
       
       INQUIRE(FILE = DirectorFile(1:n+15), EXIST = ReadNodalDirectors)
+
+      IF (ReadNodalDirectors) THEN
+        OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
+        IF ( iostat /= 0 ) CALL Fatal('ReadSurfaceDirector', &
+            'Opening mesh.director file failed.')
+
+        ! Director data may not have been defined in all mesh nodes.  
+        ! Find out how many director values can be read:
+        NumberOfLines = 0
+        DO WHILE (.TRUE.)
+          READ(10,*, IOSTAT=iostat, END=100) k, d
+          NumberOfLines = NumberOfLines + 1
+        END DO
+100     REWIND(10)
+      END IF
     END IF
 
     IF (UseFieldVariable .OR. ReadNodalDirectors) THEN
       IF (ReadNodalDirectors) THEN
-        CALL AllocateArray(NodalDirector, NumberOfNodes, 3, 'ReadSurfaceDirector', &
+        CALL AllocateArray(NodalDirector, NumberOfLines, 3, 'ReadSurfaceDirector', &
             'NodalDirector array could not be allocated')
+        CALL AllocateVector(InvPerm, NumberOfNodes, 'ReadSurfaceDirector', &
+            'InvPerm array could not be allocated')
       
-        OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
-        IF ( iostat /= 0 ) THEN
-          CALL Fatal('ReadSurfaceDirector', 'Opening mesh.director file failed.')     
-        ELSE
-          DO i=1,NumberOfNodes
-            READ(10,*,IOSTAT=iostat) k, d
-
-            IF (k /= i) CALL Fatal('mesh.director', &
-                'Trivial correspondence between rows and node numbers assumed currently')
-
-            Norm = SQRT(SUM(d(1:3)**2))
-            NodalDirector(i,1) = d(1)/Norm
-            NodalDirector(i,2) = d(2)/Norm
-            NodalDirector(i,3) = d(3)/Norm
-          END DO
-          CLOSE(10)
-        END IF
+        DO i=1,NumberOfLines
+          READ(10,*,IOSTAT=iostat) k, d
+          InvPerm(k) = i 
+          Norm = SQRT(SUM(d(1:3)**2))
+          NodalDirector(i,1) = d(1)/Norm
+          NodalDirector(i,2) = d(2)/Norm
+          NodalDirector(i,3) = d(3)/Norm
+        END DO
+        CLOSE(10)
       END IF
       ! ---------------------------------------------------------------------
       ! Create director data as elementwise property
@@ -821,7 +849,7 @@ CONTAINS
         IF (ReadNodalDirectors) THEN
           DO i=1,n
             i0 = (i-1)*3
-            ElementDirectors(i0+1:i0+3) = NodalDirector(Element % NodeIndexes(i),1:3)
+            ElementDirectors(i0+1:i0+3) = NodalDirector(InvPerm(Element % NodeIndexes(i)),1:3)
           END DO
         ELSE
           DO i=1,n
@@ -849,6 +877,7 @@ CONTAINS
       n = LEN_TRIM(MeshName)
       DirectorFile = MeshName(1:n)//'/'//TRIM(OutputFile)//CHAR(0)
 
+      n = LEN_TRIM(DirectorFile)
       INQUIRE(FILE = DirectorFile(1:n), EXIST = Found)
       IF (Found) THEN
         CALL Info('ReadSurfaceDirector', &
@@ -880,7 +909,7 @@ CONTAINS
             WRITE(FormatString(i0+2:i0+10),'(A9)') '2x,E22.15'
             WRITE(FormatString(i0+11:i0+12),'(A2)') '))'
 
-            WRITE(10,'(A8,I0)') 'element:', k
+            WRITE(10,'(A8,I0)') 'element:', ActiveElements(k)
             WRITE(10,'(A9)',ADVANCE='NO') 'director:'
             WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
             WRITE(10,'(A3)') 'end'
@@ -892,7 +921,7 @@ CONTAINS
       END IF
     END IF
 
-    IF (ReadNodalDirectors) DEALLOCATE(NodalDirector)
+    IF (ReadNodalDirectors) DEALLOCATE(NodalDirector, InvPerm)
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadSurfaceDirector
 !------------------------------------------------------------------------------
@@ -1029,7 +1058,7 @@ CONTAINS
           PRINT *, 'Reference normal =', e3(:)
           PRINT *, 'Node Index = ', j, Element % NodeIndexes(j)
           PRINT *, 'Director =', d2(:)
-          CALL Fatal('ReadSurfaceDirector', &
+          CALL Fatal('CheckSurfaceOrientation', &
               'Director data does not define a unique upper/lower surface.')
         END IF
       END DO
@@ -3461,7 +3490,7 @@ CONTAINS
     REAL(KIND=dp) :: StrainBasis(4,3)   ! Four rows large enough for p=1
     REAL(KIND=dp) :: MembraneStrainBasis1(4,3), MembraneStrainBasis2(4,3)
 
-    REAL(KIND=dp) :: DOFsTransform(2,3)
+    REAL(KIND=dp) :: DOFsTransform(3,4)
     REAL(KIND=dp) :: ShearParMat(2,2,nd)
     REAL(KIND=dp) :: ChristoffelMat1(2,2,nd), ChristoffelMat2(2,2,nd)
     REAL(KIND=dp) :: BParMat(2,2,nd), BParMat1(2,2,nd), BParMat2(2,2,nd)
@@ -3740,6 +3769,8 @@ CONTAINS
             ! Two sets of basis functions available, create both:
             stat = ReductionOperatorInfo(Element, Nodes, uq, vq, MembraneStrainBasis2, &
                 MembraneReductionMethod, ApplyPiolaTransform = .TRUE., EdgeDirection=2)
+          ELSE
+            MembraneStrainBasis2 = MembraneStrainBasis1
           END IF
         ELSE
           MembraneStrainBasis1 = StrainBasis
@@ -3802,9 +3833,10 @@ CONTAINS
         IF (MembraneReductionMethod == DoubleReduction) THEN
           ! First, get DOFs for the RT interpolant ...
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, ChristoffelMat1)
+              Family, nd, MITC, ChristoffelMat1)
           ! and then apply a second round of reductions:
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+          ReductionDOFsArray(1:MembraneStrainDim,1:2*nd) = MATMUL(DOFsTransform(1:MembraneStrainDim,1:Family), &
+              ReductionDOFsArray(1:Family,1:2*nd))
         ELSE
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               MembraneStrainDim, nd, MembraneReductionMethod, ChristoffelMat1, EdgeDirection=1)
@@ -3820,8 +3852,9 @@ CONTAINS
 
         IF (MembraneReductionMethod == DoubleReduction) THEN
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              3, nd, MITC, ChristoffelMat2)
-          ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+              Family, nd, MITC, ChristoffelMat2)
+          ReductionDOFsArray(1:MembraneStrainDim,1:2*nd) = MATMUL(DOFsTransform(1:MembraneStrainDim,1:Family), &
+              ReductionDOFsArray(1:Family,1:2*nd))
         ELSE
           CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
               MembraneStrainDim, nd, MembraneReductionMethod, ChristoffelMat2, EdgeDirection=2)
@@ -3860,8 +3893,9 @@ CONTAINS
           ! Here all strain reduction operations are created by using just one parameter matrix:
           IF (MembraneReductionMethod == DoubleReduction) THEN
             CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-                3, nd, MITC, BParMat)
-            ReductionDOFsArray(1:2,1:2*nd) = MATMUL(DOFsTransform(1:2,1:3), ReductionDOFsArray(1:3,1:2*nd))
+                Family, nd, MITC, BParMat)
+            ReductionDOFsArray(1:MembraneStrainDim,1:2*nd) = MATMUL(DOFsTransform(1:MembraneStrainDim,1:Family), &
+                ReductionDOFsArray(1:Family,1:2*nd))
           ELSE
             CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
                 MembraneStrainDim, nd, MembraneReductionMethod, BParMat)
@@ -3892,21 +3926,45 @@ CONTAINS
           ! operators is missing.
           ! Apply the strain reduction operator to plain derivative terms. This doesn't make
           ! any modification really with the current set of strain reduction operators.
-          CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
-              MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE.)
-          DO p=1,nd
-            DO j=1,MembraneStrainDim
-              BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
-              BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
-              BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
-              BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
 
-              BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
-              BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
-              BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
-              BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+          IF (MembraneReductionMethod == CurlKernelWithEdgeDOFs) THEN
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE., EdgeDirection=1)
+            DO p=1,nd
+              DO j=1,MembraneStrainDim
+                BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+                BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+                BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+                BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+              END DO
             END DO
-          END DO
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE., EdgeDirection=2)
+            DO p=1,nd
+              DO j=1,MembraneStrainDim
+                BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis2(j,1)
+                BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis2(j,2)
+                BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,1)
+                BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis2(j,2)
+              END DO
+            END DO
+          ELSE
+            CALL ReductionOperatorDofs(Element, Nodes, ReductionDOFsArray, &
+                MembraneStrainDim, nd, MembraneReductionMethod, GradientField=.TRUE.)
+            DO p=1,nd
+              DO j=1,MembraneStrainDim
+                BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+                BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+                BM(1,(p-1)*m+1) = BM(1,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+                BM(3,(p-1)*m+1) = BM(3,(p-1)*m+1) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+
+                BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,1)
+                BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p-1) * MembraneStrainBasis1(j,2)
+                BM(3,(p-1)*m+2) = BM(3,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,1)
+                BM(2,(p-1)*m+2) = BM(2,(p-1)*m+2) + ReductionDOFsArray(j,2*p) * MembraneStrainBasis1(j,2)
+              END DO
+            END DO
+          END IF
         END IF
 
       ELSE
@@ -4376,6 +4434,68 @@ CONTAINS
   END SUBROUTINE ShellLocalMatrix
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+! This subroutine is used to compute an elementwise load vector arising
+! from given resultant force and resultant couple vectors over the 1-D
+! boundary.
+!------------------------------------------------------------------------------
+  SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! A boundary element of background mesh
+    INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
+    INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component 
+    INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Nodes_t) :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    LOGICAL :: Found, AssemblyNeeded, Stat
+
+    INTEGER :: i, i0, t
+    REAL(KIND=dp) :: Stiff(m*nd,m*nd), Force(m*nd), Basis(nd)
+    REAL(KIND=dp) :: NodalForce(3,1:n), NodalCouple(3,1:n)
+    REAL(KIND=dp) :: ResultantForce(3), ResultantCouple(3)
+    REAL(KIND=dp) :: detJ, Weight
+
+    SAVE Nodes
+!------------------------------------------------------------------------------
+    BC => GetBC()
+    IF (.NOT.ASSOCIATED(BC)) RETURN
+
+    CALL GetRealVector(BC, NodalForce(1:3,1:n), 'Resultant Force', AssemblyNeeded)
+    CALL GetRealVector(BC, NodalCouple(1:3,1:n), 'Resultant Couple', Found)
+    AssemblyNeeded = AssemblyNeeded .OR. Found
+    IF (.NOT. AssemblyNeeded) RETURN
+
+    CALL GetElementNodes(Nodes)
+    Force = 0.0d0
+    Stiff = 0.0d0
+
+    ! Note that in the following the integration is not done accurately as
+    ! the effect of the improved surface reconstruction is not taken into
+    ! account. The weight would contain some small correction terms
+    ! if the effect of metric tensor would be considered precisely.
+    IP = GaussPoints(BGElement)
+    DO t=1,IP % n
+      stat = ElementInfo(BGElement, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis)
+      ResultantForce(1:3) = MATMUL(NodalForce(1:3,1:n), Basis(1:n))
+      ResultantCouple(1:3) = MATMUL(NodalCouple(1:3,1:n), Basis(1:n))
+      Weight = IP % s(t) * DetJ
+      DO i=1,nd
+        i0 = (i-1)*m
+        Force(i0+1:i0+3) = Force(i0+1:i0+3) + Weight * ResultantForce(1:3) * Basis(i)
+        Force(i0+4:i0+6) = Force(i0+4:i0+6) + Weight * ResultantCouple(1:3) * Basis(i)
+      END DO
+    END DO
+
+    CALL DefaultUpdateEquations(Stiff,Force)
+!------------------------------------------------------------------------------
+  END SUBROUTINE ShellBoundaryMatrix
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 ! Define what strain reduction strategy is applied and set parameters that
@@ -4391,7 +4511,7 @@ CONTAINS
     INTEGER, INTENT(OUT) :: ReducedStrainDim          ! The number of basis functions for strain interpolation
     LOGICAL, INTENT(INOUT) :: UseBubbles              ! To augment approximation by bubble functions
     LOGICAL, INTENT(OUT) :: UseShearCorrection        ! To activate shear correctionn trick
-    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(2,3)! To reduce RT_0 functions to constants
+    REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(3,4)! To reduce RT_0 functions to Ker(curl)
     LOGICAL, INTENT(IN) :: MembraneStrains            ! To select the method for membrane strains
 !------------------------------------------------------------------------------
     LOGICAL :: PVersion, SecondOrder
@@ -4488,7 +4608,7 @@ CONTAINS
         ELSE
           UseShearCorrection = .TRUE.
         END IF
-        ! Coefficients to transform from MITC DOFs to the kernel DOFs: 
+        ! Coefficients to transform from MITC3 DOFs to the Ker(curl) DOFs: 
         DOFsTransform(1,1) = 1.0d0/3.0d0
         DOFsTransform(1,2) = -1.0d0/6.0d0
         DOFsTransform(1,3) = DOFsTransform(1,2)
@@ -4496,7 +4616,22 @@ CONTAINS
         DOFsTransform(2,2) = 1.0d0/(2.0d0*sqrt(3.0d0))
         DOFsTransform(2,3) = -1.0d0/(2.0d0*sqrt(3.0d0))
       ELSE
-        CALL Fatal('SetStrainReductionParameters', 'Double reduction is not defined for quads')
+        ReducedStrainDim = 3
+        UseShearCorrection = .TRUE.
+        ! Coefficients to transform from MITC4 DOFs to the Ker(curl) DOFs:
+        ! This effectively removes components that build on local vectors (-v,u).
+        DOFsTransform(1,1) = 1.0d0/4.0d0
+        DOFsTransform(1,2) = 0.0d0
+        DOFsTransform(1,3) = -1.0d0/4.0d0
+        DOFsTransform(1,4) = 0.0d0
+        DOFsTransform(2,1) = 0.0d0
+        DOFsTransform(2,2) = 1.0d0/4.0d0
+        DOFsTransform(2,3) = 0.0d0
+        DOFsTransform(2,4) = -1.0d0/4.0d0
+        DOFsTransform(3,1) = -1.0d0/8.0d0
+        DOFsTransform(3,2) = 1.0d0/8.0d0
+        DOFsTransform(3,3) = -1.0d0/8.0d0
+        DOFsTransform(3,4) = 1.0d0/8.0d0
       END IF
     CASE(CurlKernelWithEdgeDOFs)
       IF (Family==3) THEN
@@ -4892,8 +5027,8 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: u                         !< 1st reference element coordinate
     REAL(KIND=dp), INTENT(IN) :: v                         !< 2nd reference element coordinate
     REAL(KIND=dp), INTENT(OUT) :: StrainBasis(:,:)         !< The basis functions b spanning the reference element space
-    INTEGER, INTENT(IN) :: ReductionMethod                 !< The method chosen: (1,4=kernel version,2=MITC)
-    LOGICAL, INTENT(IN), OPTIONAL :: ApplyPiolaTransform   !< If  .TRUE., perform the Piola transform so that, instead of b(p),
+    INTEGER, INTENT(IN) :: ReductionMethod                 !< The method chosen (integer parameters are introduced elsewhere)
+    LOGICAL, INTENT(IN), OPTIONAL :: ApplyPiolaTransform   !< If .TRUE., perform the Piola transform so that, instead of b(p),
                                                            !< return B(f(p)) with B(x) the basis functions on the physical
                                                            !< element K and f the element map f:k->K
     REAL(KIND=dp), INTENT(OUT), OPTIONAL :: F(3,3)         !< The gradient F=Grad f
@@ -4905,7 +5040,7 @@ CONTAINS
                                                            !< is done with respect to physical coordinates x
     REAL(KIND=dp), INTENT(OUT), OPTIONAL :: DOFWeigths(:,:)!< Auxiliary div-conforming functions needed in the evaluation of DOFs
     LOGICAL, INTENT(IN), OPTIONAL :: Bubbles               !< Indicate whether a bubble function is requested
-    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection         !< Preferred direction for edge DOFs when ReductionMethod=4
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection         !< Preferred direction for edge DOFs when ReductionMethod=CurlKernelWithEdgeDOFs
     LOGICAL :: Stat                                        !< Currently a dummy return value
 !---------------------------------------------------------------------------------
     LOGICAL :: PerformPiolaTransform, CreateBubbles
@@ -5015,7 +5150,7 @@ CONTAINS
 
       CASE(4)
         SELECT CASE(ReductionMethod)
-        CASE(CurlKernel)
+        CASE(CurlKernel,DoubleReduction)
           !---------------------------------------------------------------------
           ! The basis functions for ABF_0(k,0), with DOFs defined as integrals
           ! of the type d_i = (u,v_i)_k. Here the given function v_i transforms
@@ -5174,7 +5309,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: ModelPars(2,2,n) !< To include the effect of additional model parameters
     LOGICAL, OPTIONAL :: GradientField                      !< To return [d_k(grad(N1).e1) d_k(grad(N1).e2) ... ]
-    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection          !< Preferred direction for edge DOFs when ReductionMethod=4
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection          !< Preferred direction for edge DOFs when ReductionMethod=CurlKernelWithEdgeDOFs
 !---------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
 

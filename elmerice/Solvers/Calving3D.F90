@@ -1572,7 +1572,7 @@
              !NOTE: This produces evenly spaced nodes (vertically). Not an issue because 
              ! will be remeshed anyway...
              DO k=GroupStart, GroupEnd
-                prop = (REAL(k) - (GroupStart - 1)) / (GroupCount + 1) !REAL to force real arithmatic
+                prop = (REAL(k) - (GroupStart - 1)) / (GroupCount + 1) !REAL to force real arithmetic
                 HeightDirich(ColumnPerm(OrderPerm(k))) = BotZ + ( (TopZ - BotZ) * prop)
                 IF(Debug) THEN
                    PRINT *,'debug node: ',ColumnPerm(OrderPerm(k)),' has prop: ',prop,&

@@ -498,7 +498,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
                    Eps(3),Time,x0e(3),x1e(3),pTime,EpsTime,q,r
   INTEGER :: DimSize(3), CoordVarNDims(3), i
   INTEGER :: TimeSize, IntTimeIndex,tnmax, NoVar, InterpStatus
-  INTEGER :: status, time_begin,time_end,MaskNodes
+  INTEGER :: status, time_begin,time_end,MaskNodes,fdofs,maxfdofs,idof
   INTEGER :: StatusCount(6)
   CHARACTER (len = MAX_NAME_LEN) :: str, VarName, TargetName, MaskName, &
       CoordSystem, TimeInterpolationMethod
@@ -695,8 +695,11 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     END IF
   END IF
 
-
-
+  maxfdofs = 1
+  idof = 1
+  ! If we read in vectors we jump here to continue
+100 CONTINUE
+  
   !--------------------------------------------------------------------------------------
   ! Get the timestep at which interpolation is desired
   ! If the time does not coincide with a timestep in the file, two timesteps are needed.
@@ -706,7 +709,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     IntTimeIndex = 0
     nTime = 1
     pTime = 1.0_dp
- ELSE
+  ELSE
     CALL GetTimePoint(Params, t0, dt, TimeIndex )
 
     IntTimeIndex = NINT( TimeIndex )
@@ -758,12 +761,17 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     IF( .NOT. Found ) TargetName = VarName
     FieldVar => VariableGet( Mesh % Variables,TargetName )
     IF( .NOT. ASSOCIATED( FieldVar ) ) THEN
+      WRITE( str,'(A,I0,A)') 'Target Variable ',NoVar,' Dofs'
+      fdofs = GetInteger( Params, str, Found ) 
+      IF(.NOT. Found ) fdofs = 1 
+      maxfdofs = MAX( fdofs, maxfdofs )
+
       WRITE( str,'(A,I0)') 'Mask Name ',NoVar
       MaskName = GetString( Params,str, Found )
 
       NULLIFY(FieldPerm)
-      ALLOCATE( FieldPerm( Mesh % NumberOfNodes ) )
-
+      ALLOCATE( FieldPerm( Mesh % NumberOfNodes ) )            
+      
       IF( Found ) THEN
         CALL MakePermUsingMask( Model, Solver, Mesh, MaskName,.FALSE.,FieldPerm,&
             MaskNodes,RequireLogical=.TRUE.)
@@ -776,16 +784,25 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
             ,MaskNodes,' nodes out of ',Mesh % NumberOfNodes
         CALL Info('GridDataReader',Message,Level=6)
 
-        CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,1,Perm=FieldPerm)
+        CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,fdofs,Perm=FieldPerm)
         FieldVar => VariableGet( Mesh % Variables,TargetName )
         NULLIFY(FieldPerm)
       ELSE
-         FieldPerm = [(i,i=1,Mesh % NumberOfNodes)]
-         CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,1, Perm=FieldPerm)
+        FieldPerm = [(i,i=1,Mesh % NumberOfNodes)]
+        CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,fdofs,Perm=FieldPerm)
         FieldVar => VariableGet( Mesh % Variables,TargetName )
       END IF
     END IF
-    Field => FieldVar % Values
+
+    fdofs = FieldVar % Dofs
+    ! Don't read variables which have constant target in vain again
+    IF( fdofs < idof ) CYCLE
+        
+    IF( fdofs > 1 ) THEN
+      Field => FieldVar % Values(idof::fdofs)
+    ELSE
+      Field => FieldVar % Values
+    END IF
     FieldPerm => FieldVar % Perm
 
     !In case the user wants unfound values to retain their previous values
@@ -935,7 +952,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
         ELSE
           CALL Fatal('GridDataReader','Unknown InterpStatus!')
         END IF
-
+        
         Field(k) = Field(k) + Coeff * val
 
         IF(KeepOld .AND. (InterpStatus == 2)) Field(k) = FieldOldValues(k)
@@ -973,6 +990,13 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     END IF
   END DO
 
+  IF( maxfdofs > idof ) THEN
+    idof = idof + 1
+    CALL Info('GridDataReader','Continuing to read timestep: '//TRIM(I2S(idof)))
+    GOTO 100
+  END IF
+
+  
   CALL NetCDFClose()
 
   DO i = 1,3

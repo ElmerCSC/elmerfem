@@ -35,7 +35,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   !******************************************************************************
   !
   !  Solve the in-plane basal velocity with the SSA solution !
-  !  To be computed only at the base. Use then the SSASolver to export verticaly 
+  !  To be computed only at the base. Use then the SSASolver to export vertically 
   !  the basal velocity and compute the vertical velocity and pressure (if needed)
   !
   !  ARGUMENTS:

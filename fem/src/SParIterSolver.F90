@@ -1203,7 +1203,7 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 !> Create continuous numbering for the dofs expected by some linear solvers.
 !----------------------------------------------------------------------
-  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin,Mesh, nOwn )
+  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin, Mesh, nOwn )
 !--------------------------------------------------------------------
      INTEGER :: Mperm(:), Aperm(:), Owner(:)
      TYPE(Mesh_t), OPTIONAL :: Mesh
@@ -1260,12 +1260,14 @@ END SUBROUTINE ZeroSplittedMatrix
      gindp = gind
      DO i=1,n
        nb => ParallelInfo % NeighbourList(i) % Neighbours
-       IF ( nb(1)==my_id ) THEN
+       IF ( nb(1)==my_id .OR. ALL(nb/=my_id) ) THEN
          Owner(i) = 1
          gind = gind + 1
          Aperm(i) = gind
        END IF
      END DO
+
+
      ! Compute the number of dofs owned                                         
      IF (PRESENT(nOwn)) nOwn = gind - gindp
 
@@ -1296,34 +1298,43 @@ END SUBROUTINE ZeroSplittedMatrix
 
      sz = 0
      DO i=1,n
-       IF ( Owner(i) == 1 ) THEN
+       IF ( Owner(i)==1 ) THEN
          nb => ParallelInfo % NeighbourList(i) % Neighbours
-         DO j=2,SIZE(nb)
-           k = neigh(nb(j)+1)
-           IF(k<=0) CYCLE
-           sz(k) = sz(k) + 1
-         END DO
+         IF(nb(1) == my_id) THEN
+           DO j=2,SIZE(nb)
+             k = neigh(nb(j)+1)
+             IF(k<=0) CYCLE
+             sz(k) = sz(k) + 1
+           END DO
+         END IF
        END IF
      END DO
+
 
      ALLOCATE( buf_a(MAXVAL(sz),nneigh), &
                buf_g(MAXVAL(sz),nneigh))
 
      nob = COUNT(owner==0)
+     DO i=1,n
+       nb => ParallelInfo % NeighbourList(i) % Neighbours
+       IF(Owner(i)==1.AND. nb(1)/=my_id) nob=nob+1
+     END DO
      ALLOCATE( n_nownbuf(nob), g_nownbuf(nob), i_nownbuf(nob) )
 
      sz  = 0
      nob = 0
      DO i=1,n
-       IF ( Owner(i) /= 0  ) THEN
+       IF ( Owner(i)==1 ) THEN
          nb => ParallelInfo % NeighbourList(i) % Neighbours
-         DO j=2,SIZE(nb)
-           k = neigh(nb(j)+1)
-           IF(k<=0) CYCLE
-           sz(k) = sz(k) + 1
-           buf_a(sz(k),k) = Aperm(i)
-           buf_g(sz(k),k) = ParallelInfo % GlobalDOFs(i)
-         END DO
+         IF(nb(1)==my_id) THEN
+           DO j=2,SIZE(nb)
+             k = neigh(nb(j)+1)
+             IF(k<=0) CYCLE
+             sz(k) = sz(k) + 1
+             buf_a(sz(k),k) = Aperm(i)
+             buf_g(sz(k),k) = ParallelInfo % GlobalDOFs(i)
+           END DO
+         END IF
        ELSE
          nob = nob + 1
          i_nownbuf(nob) = nob

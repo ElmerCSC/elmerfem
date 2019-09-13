@@ -517,7 +517,7 @@ CONTAINS
     IF( PRESENT( movecoeff ) ) THEN      
       i = A % Rows(n2+1)-A % Rows(n2)
       ALLOCATE( Row2(i) )
-      DO i = A % Rows(n2), A % Rows(n2)-1
+      DO i = A % Rows(n2), A % Rows(n2+1)-1
         i2 = i - A % Rows(n2) + 1 
         j = A % Cols(i)
         val = A % Values(i) 

@@ -1147,7 +1147,7 @@ END INTERFACE
            ALLOCATE( PartField(n), PartPerm(n) )
            DO i=1,n
              PartPerm(i) = i
-             PartField(i) = 1.0-dp * Mesh % RePartition(i)
+             PartField(i) = 1.0_dp * Mesh % RePartition(i)
            END DO
            
            CALL VariableAdd( Mesh % Variables, Mesh, Name='PartField',DOFs=1, &
@@ -1383,7 +1383,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
      USE DefUtils
      TYPE(Element_t), POINTER :: Edge
-     INTEGER :: DOFs,i,j,k,k1,k2,l,n,m
+     INTEGER :: DOFs,i,j,k,k1,k2,l,n,m,nsize
      CHARACTER(LEN=MAX_NAME_LEN) :: str, VarName
      LOGICAL :: Found, ThingsToDO, NamespaceFound, AnyNameSpace
      TYPE(Solver_t), POINTER :: Solver, CSolver
@@ -1666,8 +1666,8 @@ END INTERFACE
                  CALL Fatal('InitCond','Initialization only for scalar elemental fields!')
                END IF
                
-               PrevBodyId = -1 
-100            DO t=1, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+100            PrevBodyId = -1 
+               DO t=1, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
                  
                  CurrentElement => Mesh % Elements(t)
 
@@ -1697,17 +1697,17 @@ END INTERFACE
                  IF( k2- k1 > 0 ) THEN
                    
                    IP = GaussPointsAdapt( CurrentElement, Solver )
-
+                   
                    IF( k2 - k1 /= Ip % n ) THEN
                      CALL Info('InitCond','Number of Gauss points has changed, redoing permutations!',Level=8)
                      CALL UpdateIpPerm( Solver, Var % Perm )
-                     m = MAXVAL( Var % Perm )
+                     nsize = MAXVAL( Var % Perm )
                      
-                     CALL Info('InitCond','Total number of new IP dofs: '//TRIM(I2S(m)))
+                     CALL Info('InitCond','Total number of new IP dofs: '//TRIM(I2S(nsize)))
                      
-                     IF( SIZE( Var % Values ) / Var % Dofs /= m ) THEN
+                     IF( SIZE( Var % Values ) /= Var % Dofs * nsize ) THEN
                        DEALLOCATE( Var % Values )
-                       ALLOCATE( Var % Values( m * Var % Dofs ) )
+                       ALLOCATE( Var % Values( nsize * Var % Dofs ) )
                      END IF
                      Var % Values = 0.0_dp
                      GOTO 100 

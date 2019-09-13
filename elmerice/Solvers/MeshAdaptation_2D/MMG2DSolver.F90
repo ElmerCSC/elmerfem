@@ -42,7 +42,7 @@
 !!!  
 !!!   - replace current mesh by NewMesh to have remeshing during the simulation:
 !!!     
-!!!    TODO: Varaible RELEASE_MESH (default false) allow to release prev
+!!!    TODO: Variable RELEASE_MESH (default false) allow to release prev
 !mesh if true (seems that not everything is deallocated); 
 !!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

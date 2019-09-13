@@ -282,18 +282,24 @@ CONTAINS
     INTEGER :: PDMaxIter
  
     CALL GetElementNodes(Nodes)
-    tmpvar => VariableGet( Mesh % Variables, 'alpha')
+    tmpvar => VariableGet( Mesh % Variables, 'alpha direction')
     IF(ASSOCIATED(tmpvar)) THEN
-      CALL GetLocalSolution(alpha,'alpha')
-    ELSE
       CALL GetLocalSolution(alpha,'alpha direction')
+    ELSE
+      tmpvar => VariableGet( Mesh % Variables, 'alpha')
+      IF(ASSOCIATED(tmpvar)) THEN
+        CALL GetLocalSolution(alpha,'alpha')
+      END IF
     END IF
 
-    tmpvar => VariableGet( Mesh % Variables, 'beta')
+    tmpvar => VariableGet( Mesh % Variables, 'beta direction')
     IF(ASSOCIATED(tmpvar)) THEN
-      CALL GetLocalSolution(beta,'beta')
-    ELSE
       CALL GetLocalSolution(beta,'beta direction')
+    ELSE
+      tmpvar => VariableGet( Mesh % Variables, 'beta')
+      IF(ASSOCIATED(tmpvar)) THEN
+        CALL GetLocalSolution(beta,'beta')
+      END IF
     END IF
 
     DO j=1,nn

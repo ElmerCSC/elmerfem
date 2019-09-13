@@ -106,7 +106,7 @@ FUNCTION Calculate_Haf ( Model, nodenumber, nodeHeight) RESULT(Haf)
   ! we assume sea level is at zero height.  Hence:
   ! (-nodeHeight/rhoRatio) = 
   ! (vertical distance from lower surface to sea level)*rho_ocean / rho_ice = 
-  ! is the thicknes of ice up to floatation. 
+  ! is the thickness of ice up to floatation. 
   IF (nodeHeight.GT.0.0_dp)  THEN
      Haf = thickness
   ELSE

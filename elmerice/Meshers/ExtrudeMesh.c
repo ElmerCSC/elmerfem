@@ -86,7 +86,7 @@ double newton(double x_0, double tol, int max_iters,
 
 
 
-// Compute layer cordinate Z for geometric refinement at BL and uniform:
+// Compute layer coordinate Z for geometric refinement at BL and uniform:
 //-----------------------------------------------------
 double refinedHeightBL (double S, double B, int levels, int level, int GL, double p, double r)
 {
@@ -628,7 +628,7 @@ int extrudepartition( char *argv[], char *inputfilename, char *outputfilename, i
     }
   }
 
-  // already exsisting boundaries (extruded sides, bcids = original + 2)
+  // already existing boundaries (extruded sides, bcids = original + 2)
   for (k=0;k<belementsinpartition;++k){ //belementsinpartition
     for (level=0;level<levels-1;++level){
       for (i=0;i<2;++i)
@@ -963,7 +963,7 @@ int extrudeserial( char *argv[], char *inputfilename, char *outputfilename, int 
     }
   }
 
-  // already exsisting boundaries (extruded sides, bcids = original + 2)
+  // already existing boundaries (extruded sides, bcids = original + 2)
   for (k=0;k<belementsinpartition;++k){ //belementsinpartition
     for (level=0;level<levels-1;++level){
       for (i=0;i<2;++i)
@@ -1083,7 +1083,7 @@ int main(int argc, char *argv[])
     printf("                 with respect to the local height (as 0..1) \n"); 
     printf("                 if positive BL at bottom, if negative at the surface \n"); 
     printf("       ratio ... ratio between two adjacent layers in boundary layer(>1) \n"); 
-    printf("                  has to be >1, if it's 0 automatical calculation, but does not work always \n"); 
+    printf("                  has to be >1, if it's 0 automatic calculation, but does not work always \n"); 
 
     printf("         DEM  ... (optional) directory of digital elevation model\n");
     printf("                  for interpolation of bed/surface (see below)\n");

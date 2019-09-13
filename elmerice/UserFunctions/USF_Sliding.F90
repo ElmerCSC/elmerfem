@@ -643,7 +643,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
         Zab = 0.0
      END IF
 
-     ! this "offset" to the height above bouyancy is intended to provide a non-zero  
+     ! this "offset" to the height above buoyancy is intended to provide a non-zero  
      ! basal drag due to contact with the bed, even when effective pressure is zero.
      ! Physically, this can be seen as a compromise between Elmer's "Weertman" 
      ! implementation and Elmer's "Budd" implementation.

@@ -1730,6 +1730,64 @@ CONTAINS
   END SUBROUTINE FsiCouplingBlocks
     
 
+  !> Create the coupling between elasticity solvers of various types.
+  !--------------------------------------------------------------------------------
+  SUBROUTINE StructureCouplingBlocks( Solver )
+
+    TYPE(Solver_t) :: Solver
+    
+    INTEGER :: i,j,k,Novar
+    LOGICAL :: Found
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_s, A_f
+    TYPE(Variable_t), POINTER :: FVar, SVar
+    LOGICAL :: IsPlate, IsShell, IsBeam, IsSolid
+
+    
+    Params => Solver % Values
+
+    ! Currently we simply assume master solver to be "1"
+    ! Note that the indexes refer to the block structure, not original solver indexes!
+    i = 1
+    
+    DO k = 1, 4
+      IsSolid = .FALSE.
+      IsPlate = .FALSE.
+      IsShell = .FALSE.
+      IsBeam = .FALSE.
+      
+      IF(k==1) j = ListGetInteger( Params,'Solid Solver Index',IsSolid)
+      IF(k==2) j = ListGetInteger( Params,'Plate Solver Index',IsPlate)
+      IF(k==3) j = ListGetInteger( Params,'Shell Solver Index',IsShell)
+      IF(k==4) j = ListGetInteger( Params,'Beam Solver Index',IsBeam)
+
+      IF(j==0) CYCLE
+      
+      CALL Info('SolidCouplingBlocks','Generating coupling between solvers '&
+          //TRIM(I2S(i))//' and '//TRIM(I2S(j)))
+      
+      A_fs => TotMatrix % Submatrix(j,i) % Mat
+      A_sf => TotMatrix % Submatrix(i,j) % Mat
+      
+      SVar => TotMatrix % Subvector(i) % Var
+      FVar => TotMatrix % Subvector(j) % Var
+      
+      A_s => TotMatrix % Submatrix(i,i) % Mat
+      A_f => TotMatrix % Submatrix(j,j) % Mat
+      
+      IF(.NOT. ASSOCIATED( SVar ) ) THEN
+        CALL Fatal('StructureCouplingBlocks','Slave structure variable not present!')
+      END IF
+      IF(.NOT. ASSOCIATED( FVar ) ) THEN
+        CALL Fatal('StructureCouplingBlocks','Master structure variable not present!')
+      END IF
+      
+      CALL StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
+          IsSolid, IsPlate, IsShell, IsBeam )
+    END DO
+      
+  END SUBROUTINE StructureCouplingBlocks
+  
   
   !------------------------------------------------------------------------------          
   !> Compute the rhs for the block matrix system which is solved
@@ -3069,7 +3127,7 @@ CONTAINS
     REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
     CHARACTER(LEN=max_name_len) :: str, VarName, ColName, RowName
     LOGICAL :: Robust, LinearSearch, ErrorReduced, IsProcedure, ScaleSystem,&
-        ReuseMatrix, LS, BlockScaling
+        ReuseMatrix, LS, BlockScaling, Found
     INTEGER :: HaveConstraint, HaveAdd
     INTEGER, POINTER :: VarPerm(:)
     INTEGER, POINTER :: SlaveSolvers(:)
@@ -3197,7 +3255,12 @@ CONTAINS
       CALL BlockPrecMatrix( Solver, VarDofs ) 
     END IF
 
-    CALL FsiCouplingBlocks( Solver )
+    ! Currently we cannot have both structure-structure and fluid-structure couplings!
+    IF( ListGetLogical( Solver % Values,'Structure-Structure Coupling',Found ) ) THEN
+      CALL StructureCouplingBlocks( Solver )
+    ELSE
+      CALL FsiCouplingBlocks( Solver )
+    END IF
     
     IF( HaveConstraint > 0 ) THEN
       CALL BlockPickConstraint( Solver, VarDofs )

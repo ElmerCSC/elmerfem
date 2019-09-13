@@ -91,61 +91,57 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   END IF
 
   IF( .NOT. ASSOCIATED(jfixPot)) THEN    
-    
     ALLOCATE(Perm(SIZE(Solver % Variable % Perm)))
     Perm = 0    
     Equation=GetString(SolverParams,'Equation',Found)
     
     ! Add default strategies for Jfix solver
     ! The AV equation typically prefers different ones. 
-    CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
-    CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Max Iterations', 1000 )
-    CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
-    CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
-    CALL ListAddNewLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
-    CALL ListAddNewString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
-    CALL ListAddNewConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
-        0.001_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
-    CALL ListAddNewLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
-    CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
-    CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Residual Output',20)
-    CALL ListAddNewString(SolverParams,'Jfix: Nonlinear System Convergence Measure','Norm')
-    CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Complex',.FALSE.)
-    CALL ListAddNewLogical(SolverParams,'Jfix: Apply Conforming BCs',.FALSE.)
+    IF(.NOT.Visited) THEN
+      CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
+      CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Max Iterations', 1000 )
+      CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
+      CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
+      CALL ListAddNewLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
+      CALL ListAddNewString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
+      CALL ListAddNewConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
+          0.001_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
+      CALL ListAddNewLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
+      CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
+      CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Residual Output',20)
+      CALL ListAddNewString(SolverParams,'Jfix: Nonlinear System Convergence Measure','Norm')
+      CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Complex',.FALSE.)
+      CALL ListAddNewLogical(SolverParams,'Jfix: Apply Conforming BCs',.FALSE.)
+
+      n=SIZE(Solver % Def_Dofs,1)
+      m=SIZE(Solver % Def_Dofs,2)
+      k=SIZE(Solver % Def_Dofs,3)
+      ALLOCATE(Def_Dofs(n,m,k))
+      Def_Dofs = Solver % Def_Dofs
+    END IF
         
-
-    IF(ALLOCATED(Def_Dofs)) DEALLOCATE(Def_Dofs)
-    n=SIZE(Solver % Def_Dofs,1)
-    m=SIZE(Solver % Def_Dofs,2)
-    k=SIZE(Solver % Def_Dofs,3)
-    ALLOCATE(Def_Dofs(n,m,k))
-    Def_Dofs = Solver % Def_Dofs
-
     Solver % Def_Dofs = 0
     Solver % Def_Dofs(:,:,1)=1
 
     ! Set namespace for matrix creation (to omit conforming BCs)
-    CALL ListSetNameSpace('jfix:')
+    CALL ListPushNameSpace('jfix:')
     IF(ASSOCIATED(A)) CALL FreeMatrix(A)
     A => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
-        Perm, 1, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.,&
-        NodalDofsOnly = .TRUE.)          
-    CALL ListSetNameSpace('')    
+        Perm, 1, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.,NodalDofsOnly = .TRUE.)          
+    CALL ListPopNameSpace()    
     n = A % NumberOfRows
     ALLOCATE(A % RHS(n))
     A % rhs = 0.0_dp
     A % Complex = .FALSE.
-    
+
     ! Put pointers in the module so that these can be used externally also
     jfixRhs => A % Rhs 
 
     ! Create the variable for the (real part) fixing potential
     ALLOCATE(fixpot(n))
     fixpot = 0._dp
-    CALL VariableAddVector( Mesh % Variables, Mesh, &
-        Solver,'Jfix',1,fixpot,Perm)
+    CALL VariableAddVector( Mesh % Variables, Mesh, Solver,'Jfix',1,fixpot,Perm)
     jfixpot => VariableGet(Mesh % Variables, 'Jfix')
-    
 
     IF( ASSOCIATED(JfixSurfacePerm) ) THEN
       DEALLOCATE(JfixSurfacePerm, JfixSurfaceVec)
@@ -157,14 +153,10 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     ! These are allocated component-wise so that we may easily solve them separately.
     ! Its the same equation for both with different load vector. 
     IF( ComplexSystem ) THEN
-      IF(ASSOCIATED(jFixRhsC)) THEN
-        DEALLOCATE(JfixRhsC)
-        JfixRhsC => Null()
-      END IF
+      IF(ASSOCIATED(jFixRhsC)) DEALLOCATE(JfixRhsC)
       ALLOCATE( jfixRhsC(n), fixpotim(n) )
       fixpotim = 0.0_dp
-      CALL VariableAddVector( Mesh % Variables, Mesh, &
-          Solver,'Jfix Im',1,fixpotim,Perm)
+      CALL VariableAddVector( Mesh % Variables, Mesh, Solver,'Jfix Im',1,fixpotim,Perm)
       jfixpotim => VariableGet(Mesh % Variables,'Jfix Im') 
     END IF
 
@@ -191,10 +183,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       
   Visited = .TRUE.
 
-  
   Solver % Variable => jfixpot
   Solver % Matrix => A
   Perm => Solver % Variable % Perm
+
+  n = A % NumberOfRows
  
   IF( JfixPhase == 1 ) THEN
     A % Values = 0.0_dp
@@ -203,7 +196,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       JfixRhsC = CMPLX( 0.0_dp, 0.0_dp )
     END IF
 
-    !CALL DefaultInitialize()
+    CALL DefaultInitialize()
     CALL JfixBulkAssembly()
   
     IF(.NOT. ASSOCIATED( JfixSurfacePerm ) ) THEN
@@ -219,8 +212,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
               3,pJfixSurfaceVec,JfixSurfacePerm)
         END IF      
         IF( ListGetLogical( SolverParams,'Jfix rhs Save',Found) ) THEN      
-          CALL VariableAddVector( Mesh % Variables,Mesh,Solver,'Jfix rhs',&
-              1,A % rhs,Perm)
+          CALL VariableAddVector( Mesh % Variables,Mesh,Solver,'Jfix rhs',1,A % rhs,Perm)
         END IF      
       END IF
     END IF
@@ -232,7 +224,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
     
   ELSE IF( JfixPhase == 2 ) THEN
-    CALL ListSetNameSpace('jfix:')    
+    CALL ListPushNameSpace('jfix:')    
 
     ! Set load before applying Dircihlet condistions
     IF( ComplexSystem ) A % rhs = REAL( JfixRhsC )      
@@ -261,6 +253,9 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
         WHERE( A % ConstrainedDOF ) A % rhs = 0.0_dp
       END IF
     END IF
+  
+    IF ( ParEnv % PEs>1) ParEnv = A % ParMatrix % ParEnv
+
     CALL SolveSystem(A,ParMatrix,A % rhs,jfixpot % Values,jfixpot % Norm,1,Solver)
 
     WRITE(Message,'(A,ES12.3)') 'Norm for Jfix computation: ',SUM( ABS( jfixpot % Values ) )
@@ -278,8 +273,10 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       WRITE(Message,'(A,ES12.3)') 'Norm for Jfix Im computation: ',SUM( ABS( jfixpotim % Values ) )
       CALL Info('JfixPotentialSolver',Message,Level=8)
     END IF   
+
+    IF ( ParEnv % PEs>1) ParEnv = B % ParMatrix % ParEnv
     
-    CALL ListSetNameSpace('')
+    CALL ListPopNameSpace()
 
     IterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
     IterV % Values(1) = 1

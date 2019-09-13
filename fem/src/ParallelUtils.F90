@@ -326,8 +326,21 @@ CONTAINS
              IF(NeighboursGiven) THEN
                ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours( &
                   SIZE(Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours)))
+
                Matrix % ParallelInfo % NeighbourList(i) % Neighbours = &
                   Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours
+
+               IF(ALL(Matrix % ParallelInfo % NeighbourList(i) % Neighbours /= ParEnv % myPE)) THEN
+                 Matrix % ParallelInfo % Interface(i) = .FALSE.
+                 DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
+                 ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
+                 Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % mype
+
+                 CALL CRS_ZeroRow(Matrix,i)
+                 CALL CRS_SetMatrixElement(Matrix,i,i,1._dp)
+                 Matrix % RHS(i) = 0._dp
+               END IF
+
              ELSE IF (OwnersGiven) THEN
                ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
                DO k=1,ParEnv % PEs
@@ -1165,9 +1178,11 @@ CONTAINS
         ELSE
           oper = 0
         END IF
-        IF(.NOT.ASSOCIATED(ParEnv % Active)) &
+
+        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
           CALL ParallelActive(.TRUE.)
         CALL SparActiveSUM(rsum,oper)
+
       END IF
 #endif
 !-------------------------------------------------------------------------------

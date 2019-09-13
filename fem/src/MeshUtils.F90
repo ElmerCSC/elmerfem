@@ -2168,6 +2168,10 @@ END SUBROUTINE GetMaxDefs
       
    CALL Info('LoadMesh','Preparing mesh done',Level=8)
 
+   IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
+     Mesh % MaxElementDOFs  = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementDOFs,2  ) )
+     Mesh % MaxElementNodes = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementNodes,2 ) )
+   END IF
    
  CONTAINS
 
@@ -2839,7 +2843,7 @@ END SUBROUTINE GetMaxDefs
      END DO
 
      ! Create parallel numbering of faces
-     CALL SParFaceNumbering(Mesh)
+     CALL SParFaceNumbering(Mesh, .TRUE. )
 
      DO i=1,Mesh % NumberOfFaces
        Mesh % MinFaceDOFs = MIN(Mesh % MinFaceDOFs,Mesh % Faces(i) % BDOFs)
@@ -2848,7 +2852,7 @@ END SUBROUTINE GetMaxDefs
      IF(Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs) Mesh % MinFaceDOFs = Mesh % MaxFaceDOFs
 
      ! Create parallel numbering for edges
-     CALL SParEdgeNumbering(Mesh)
+     CALL SParEdgeNumbering(Mesh, .TRUE.)
 
      DO i=1,Mesh % NumberOfEdges
        Mesh % MinEdgeDOFs = MIN(Mesh % MinEdgeDOFs,Mesh % Edges(i) % BDOFs)
@@ -2869,6 +2873,7 @@ END SUBROUTINE GetMaxDefs
            Element % BDOFs, &
            Element % DGDOFs )
      END DO
+
 
    END SUBROUTINE ParallelNonNodalElements
 

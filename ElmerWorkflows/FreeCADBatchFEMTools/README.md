@@ -16,6 +16,9 @@ Reseach Centre of Finland Ltd supported by Business Finland Oy.
 - Gmsh 3
 - ElmerGrid (Elmer 8.3)
 
+## Tested FreeCAD versions
+- freecad-daily (2. September 2019)
+
 # Tests
 
 Tests are located at ./tests folder.

@@ -151,7 +151,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
 
    Debug = .FALSE.
 
-   IF(ParEnv % Pes > 1) CALL Fatal(SolverName, "Solver doesnt work in parallel!")
+   IF(ParEnv % Pes > 1) CALL Fatal(SolverName, "Solver does not work in parallel!")
 
    Timevar => VariableGet( Model % Variables,'Time', UnfoundFatal=.TRUE.)
    t = TimeVar % Values(1)

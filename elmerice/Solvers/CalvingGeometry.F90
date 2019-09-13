@@ -660,7 +660,7 @@ CONTAINS
       ! Paths should not 'snake' inwards in a narrow slit...
       !-----------------------------------------------------
 
-      !it's insufficent to require that no nodes be
+      !it's insufficient to require that no nodes be
       !further away than the two edge nodes.
       !Instead, must ensure that no nodes are further away than any
       !surrounding nodes.
@@ -792,13 +792,13 @@ CONTAINS
             ! <  > rather than    > <
             ! then skip this combo
             IF(SUM(ConstrictDirection(i,:)*Dir1) < 0) THEN
-              IF(Debug) PRINT *,'Constrictions ',i,j,' dont face each other 1: ',&
+              IF(Debug) PRINT *,'Constrictions ',i,j,' do not face each other 1: ',&
                    SUM(ConstrictDirection(i,:)*Dir1)
               CYCLE
             END IF
 
             IF(SUM(ConstrictDirection(j,:)*Dir2) < 0) THEN
-              IF(Debug) PRINT *,'Constrictions ',j,i,' dont face each other 2: ',&
+              IF(Debug) PRINT *,'Constrictions ',j,i,' do not face each other 2: ',&
                    SUM(ConstrictDirection(j,:)*Dir2)
               CYCLE
             END IF
@@ -1863,7 +1863,7 @@ CONTAINS
 
     NoNodesOnEdge = COUNT(OnEdge)
     IF(NoNodesOnEdge == 1) THEN
-      CALL Fatal(FuncName, "A single node identified on boundary, shouldnt be possible. &
+      CALL Fatal(FuncName, "A single node identified on boundary, should not be possible. &
            &Someone is messing around with 101 elements.")
     END IF
 

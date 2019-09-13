@@ -457,14 +457,19 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    /* No preconditioner for BoomerAMG */
    if( hypre_sol == 1 ) hypre_pre = -1;
 
-   ilower=1000000000;
-   iupper=0;
+   ilower =  1000000000;
+   iupper = -1;
    for( i=0; i<local_size; i++ ) {
      if ( owner[i] ) {
-       if ( iupper < globaldofs[i] ) iupper=globaldofs[i];
-       if ( ilower > globaldofs[i] ) ilower=globaldofs[i];
+       if ( iupper < globaldofs[i] ) iupper = globaldofs[i];
+       if ( ilower > globaldofs[i] ) ilower = globaldofs[i];
      }
    }
+
+
+   /* if the partition doesn't own any of the dofs, apply null range (with valid indices) */
+   if ( iupper == -1 ) { ilower = 1; iupper = 0; }
+
    
    /* Create the matrix.
       Note that this is a square matrix, so we indicate the row partition

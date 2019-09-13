@@ -1256,7 +1256,7 @@ void MainWindow::readInputFile(QString fileName)
 
     in->deinitialize();
     in->initialize();
-    in->load_medit(cs);
+    in->load_medit(cs,1);
     
     tetlibInputOk = true;
     
@@ -1784,6 +1784,7 @@ void MainWindow::saveProjectContents(QDomDocument projectDoc,
 
   QDomElement editorBlock = projectDoc.createElement(blockName);
   projectDoc.documentElement().appendChild(editorBlock);
+  int index = 0; // index excluding removed DynamicEditor instances
 
   for(int i = 0; i < Nmax; i++) {
     DynamicEditor *de = editor[i];
@@ -1793,7 +1794,7 @@ void MainWindow::saveProjectContents(QDomDocument projectDoc,
 
     // Menu item number:
     QDomElement item = projectDoc.createElement("item");
-    item.setAttribute("index", QString::number(i));
+    item.setAttribute("index", QString::number(index++));
     editorBlock.appendChild(item);
 
     // Is active?
@@ -2743,8 +2744,11 @@ void MainWindow::pdeEditorFinishedSlot(int signal, int id)
        if(!body)
 	 continue;
        
-       if ( body->equation == pe )
-	 body->equation = NULL;
+       if ( body->equation == pe ){
+         body->equation = NULL;
+         body->ui.equationCombo->setCurrentIndex(0);
+         body->touched = true;
+       }
     }
 
     // Equation is not in menu:
@@ -2759,8 +2763,8 @@ void MainWindow::pdeEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
 
-    int k = equationEditor.indexOf(pe);
-    if(k>=0) equationEditor.remove(k);
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Equation deleted");
   }
@@ -2885,8 +2889,11 @@ void MainWindow::matEditorFinishedSlot(int signal, int id)
       if(!body)
 	continue;
 
-      if ( body->material == pe )
-	body->material = NULL;
+      if ( body->material == pe ){
+        body->material = NULL;
+        body->ui.materialCombo->setCurrentIndex(0);
+        body->touched = true;
+      }
     }
 
     // Material is not in menu:
@@ -2901,8 +2908,8 @@ void MainWindow::matEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
 
-    int k = materialEditor.indexOf(pe);
-    if(k>=0) materialEditor.remove(k);
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Material deleted");
 
@@ -3019,8 +3026,11 @@ void MainWindow::bodyForceEditorFinishedSlot(int signal, int id)
       if(!body)
 	continue;
 
-      if ( body->force == pe )
-	body->force = NULL;
+      if ( body->force == pe ){
+        body->force = NULL;
+        body->ui.bodyForceCombo->setCurrentIndex(0);
+        body->touched = true;
+      }
     }
 
     if(pe->menuAction == NULL) {
@@ -3034,8 +3044,8 @@ void MainWindow::bodyForceEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
 
-    int k = bodyForceEditor.indexOf(pe);
-    if(k>=0) bodyForceEditor.remove(k);
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Body force deleted");
   }
@@ -3147,8 +3157,11 @@ void MainWindow::initialConditionEditorFinishedSlot(int signal, int id)
       if(!body)
 	continue;
 
-      if ( body->initial == pe )
-	body->initial = NULL;
+      if ( body->initial == pe ){
+        body->initial = NULL;
+        body->ui.initialConditionCombo->setCurrentIndex(0);
+        body->touched = true;
+      }
     }
 
     // Initial condition is not in menu:
@@ -3163,8 +3176,8 @@ void MainWindow::initialConditionEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
     
-    int k = initialConditionEditor.indexOf(pe);
-    if(k>=0) initialConditionEditor.remove(k);
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Initial condition deleted");
   }
@@ -3360,6 +3373,8 @@ void MainWindow::boundaryConditionEditorFinishedSlot(int signal, int id)
 
        if ( bndry->condition == pe ) {
            bndry->condition=NULL;
+           bndry->ui.boundaryConditionCombo->setCurrentIndex(0);
+           bndry->touched = true;
        }
     }
 
@@ -3375,10 +3390,8 @@ void MainWindow::boundaryConditionEditorFinishedSlot(int signal, int id)
     pe->menuAction = NULL;
     pe->close();
 
-    int k = boundaryConditionEditor.indexOf(pe);
-    if(k>=0) {
-        boundaryConditionEditor.remove(k);
-    }
+    pe->ID = -100;
+    pe->nameEdit->setText("***removed***");
 
     logMessage("Boundary condition deleted");
   }
@@ -5284,11 +5297,18 @@ void MainWindow::surfaceUnifySlot()
   }
   
   int targetindex = -1, selected=0;
+  QVector<BoundaryPropertyEditor*> unusedBoundary;
   for(int i=0; i<lists; i++) {
     list_t *l = glWidget->getList(i);
     if(l->isSelected() && (l->getType() == SURFACELIST) && (l->getNature() == PDE_BOUNDARY)) {
       selected++;
       if(targetindex < 0) targetindex = l->getIndex();
+      else{
+        int v = glWidget->boundaryMap.value(l->getIndex());
+        if(v >= 0 && v < boundaryPropertyEditor.size() && boundaryPropertyEditor[v] != NULL){
+          unusedBoundary.append(boundaryPropertyEditor[v]);
+        }
+      }
     }
   }
   
@@ -5318,6 +5338,11 @@ void MainWindow::surfaceUnifySlot()
 	  s->setIndex(targetindex);
       }
     }
+  }
+
+  for(int i=0; i<unusedBoundary.size(); i++){
+    boundaryPropertyEditor.remove(boundaryPropertyEditor.indexOf(unusedBoundary[i]));
+    delete unusedBoundary[i];
   }
   
   cout << "Selected surfaces marked with index " << targetindex << endl;
@@ -5534,11 +5559,18 @@ void MainWindow::edgeUnifySlot()
   }
   
   int targetindex = -1, selected=0;
+  QVector<BoundaryPropertyEditor*> unusedBoundary;
   for(int i=0; i<lists; i++) {
     list_t *l = glWidget->getList(i);
     if(l->isSelected() && l->getType() == EDGELIST && l->getNature() == PDE_BOUNDARY) {
       selected++;
       if(targetindex < 0) targetindex = l->getIndex();
+      else{
+        int v = glWidget->boundaryMap.value(l->getIndex());
+        if(v >= 0 && v < boundaryPropertyEditor.size() && boundaryPropertyEditor[v] != NULL){
+          unusedBoundary.append(boundaryPropertyEditor[v]);
+        }
+      }
     }
   }
   
@@ -5569,6 +5601,11 @@ void MainWindow::edgeUnifySlot()
 	  e->setIndex(targetindex);
       }
     }
+  }
+  
+  for(int i=0; i<unusedBoundary.size(); i++){
+    boundaryPropertyEditor.remove(boundaryPropertyEditor.indexOf(unusedBoundary[i]));
+    delete unusedBoundary[i];
   }
   
   cout << "Selected edges marked with index " << targetindex << endl;

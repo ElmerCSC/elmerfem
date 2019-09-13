@@ -997,7 +997,7 @@ CONTAINS
      LOGICAL :: ConstantDt, Lumped, Found
 !------------------------------------------------------------------------------
 
-     CALL Info('Add1stOrderTime_CRS','Adding time discretization to CRS matrix')
+     CALL Info('Add1stOrderTime_CRS','Adding time discretization to CRS matrix',Level=20)
 
 !------------------------------------------------------------------------------
      Order = MIN(Solver % DoneTime, Solver % Order)
@@ -6781,9 +6781,459 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> This subroutine seeks for nodes which are adjacent to the given target node
+!> and then creates a couple which corresponds to a given torque. If the 
+!> optional definition of the director vector d is given, the torque arm should 
+!> ideally be parallel to d and the couple created does not have a d-component. 
+!> This version may be more convenient when the torque comes from a dimensionally
+!> reduced model over a thin body. Without specifying the director, this 
+!> subroutine expects a 3-D geometry.
+!
+! TO DO: - The target nodes can now be defined only by their indices
+!        - Add a way to find the director from the specification of a shell model.
+!------------------------------------------------------------------------------
+   SUBROUTINE SetCoupleLoads(Model, Perm, A, F, Dofs)
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     TYPE(Model_t) :: Model                     !< The current model structure
+     INTEGER, POINTER, INTENT(IN) :: Perm(:)    !< The permutation of the associated variable
+     TYPE(Matrix_t), INTENT(INOUT) :: A         !< The coefficient matrix of the problem
+     REAL(KIND=dp), POINTER, INTENT(INOUT) :: F(:) !< The RHS vector of the problem
+     INTEGER, INTENT(IN) :: Dofs                !< The DOF count of the associated variable
+!------------------------------------------------------------------------------
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(ValueList_t), POINTER :: ValueList
+
+     LOGICAL :: WithDirector
+     LOGICAL :: Found, NoUpperNode, NoLowerNode
+     
+     INTEGER, ALLOCATABLE :: NearNodes(:) 
+     INTEGER, POINTER :: NodeIndexes(:)
+     INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
+     INTEGER :: Row, TargetNode, TargetInd, BC, TargetCount
+     INTEGER :: i, j, k, l, n, p
+     INTEGER :: jx, lx, jy, ly, jz, lz 
+     INTEGER :: intarray(1)
+
+     REAL(KIND=dp), ALLOCATABLE :: NearCoordinates(:,:), AllDirectors(:,:), Work(:,:)
+     REAL(KIND=dp) :: E(3,3)
+     REAL(KIND=dp) :: Torque(3)  ! The torque vector with respect to the global frame
+     REAL(KIND=dp) :: d(3)       ! Director at a solid-shell/plate interface    
+     REAL(KIND=dp) :: ex(3), ey(3), ez(3)
+     REAL(KIND=dp) :: e1(3), e2(3), e3(3)
+     REAL(KIND=dp) :: T(3), Force(3), v(3)
+     REAL(KIND=dp) :: M1, M2, F1, F2, F3
+     REAL(KIND=dp) :: res_x, maxres_x, minres_x
+     REAL(KIND=dp) :: res_y, maxres_y, minres_y
+     REAL(KIND=dp) :: res_z, maxres_z, minres_z
+     REAL(KIND=dp) :: rlower, rupper, FVal, MVal
+!------------------------------------------------------------------------------
+     IF (.NOT. ListCheckPrefixAnyBC(Model, 'Torque')) RETURN
+
+     Mesh => Model % Solver % Mesh
+
+     IF (.NOT. ASSOCIATED(A % InvPerm)) THEN
+       ALLOCATE(A % InvPerm(A % NumberOfRows))
+       DO i = 1,SIZE(Perm)
+         IF (Perm(i) > 0) THEN
+           A % InvPerm(Perm(i)) = i
+         END IF
+       END DO
+     END IF
+
+     ex = [1.0d0, 0.0d0, 0.0d0]
+     ey = [0.0d0, 1.0d0, 0.0d0]
+     ez = [0.0d0, 0.0d0, 1.0d0]
+     E(:,1) = ex
+     E(:,2) = ey
+     E(:,3) = ez
+
+     Diag   => A % Diag
+     Rows   => A % Rows
+     Cols   => A % Cols
+
+     DO BC=1,Model % NumberOfBCs
+       ValueList => Model % BCs(BC) % Values
+       IF (.NOT.ListCheckPresent(ValueList, 'Torque 1') .AND. &
+           .NOT.ListCheckPresent(ValueList, 'Torque 2') .AND. &
+           .NOT.ListCheckPresent(ValueList, 'Torque 3')) CYCLE
+       NodeIndexes => ListGetIntegerArray(ValueList, 'Target Nodes', UnfoundFatal=.TRUE.)
+
+       TargetCount = SIZE(NodeIndexes)
+       ALLOCATE(Work(3,TargetCount))
+       Work(1,1:TargetCount) = ListGetReal(ValueList, 'Torque 1', TargetCount, NodeIndexes, Found)
+       Work(2,1:TargetCount) = ListGetReal(ValueList, 'Torque 2', TargetCount, NodeIndexes, Found)
+       Work(3,1:TargetCount) = ListGetReal(ValueList, 'Torque 3', TargetCount, NodeIndexes, Found)
+
+       !
+       ! Check whether the torque arm is given by the director vector. This option
+       ! is not finalized yet. Here the director definition is sought from the BC
+       ! definition, while the director might already be available from the specification 
+       ! of a shell model.
+       !
+       IF (.NOT.ListCheckPresent(ValueList, 'Director 1') .AND. &
+           .NOT.ListCheckPresent(ValueList, 'Director 2') .AND. &
+           .NOT.ListCheckPresent(ValueList, 'Director 3')) THEN
+         WithDirector = .FALSE.
+       ELSE
+         WithDirector = .TRUE.
+         ALLOCATE(AllDirectors(3,TargetCount))
+         AllDirectors(1,1:TargetCount) = ListGetReal(ValueList, 'Director 1', TargetCount, NodeIndexes, Found)
+         AllDirectors(2,1:TargetCount) = ListGetReal(ValueList, 'Director 2', TargetCount, NodeIndexes, Found)
+         AllDirectors(3,1:TargetCount) = ListGetReal(ValueList, 'Director 3', TargetCount, NodeIndexes, Found)
+       END IF
+
+       DO p=1,TargetCount
+         TargetNode = NodeIndexes(p)
+         TargetInd = Perm(NodeIndexes(p))
+         IF (TargetInd == 0) CYCLE
+
+         !------------------------------------------------------------------------------
+         ! Find nodes which can potentially be used to make a representation of couple:
+         !------------------------------------------------------------------------------
+         Row = TargetInd * Dofs
+         n = (Rows(Row+1)-1 - Rows(Row)-Dofs+1)/DOFs + 1
+         ALLOCATE(NearNodes(n), NearCoordinates(3,n))
+
+         k = 0
+         DO i = Rows(Row)+Dofs-1, Rows(Row+1)-1, Dofs
+           j = Cols(i)/Dofs
+           k = k + 1
+           NearNodes(k) = A % InvPerm(j)
+         END DO
+         ! PRINT *, 'POTENTIAL NODE CONNECTIONS:'
+         ! print *, 'Nodes near target=', NearNodes(1:k)
+
+         !
+         ! The position vectors for the potential nodes where forces may be applied:
+         !
+         NearCoordinates(1,1:n) = Mesh % Nodes % x(NearNodes(1:n)) - Mesh % Nodes % x(TargetNode)
+         NearCoordinates(2,1:n) = Mesh % Nodes % y(NearNodes(1:n)) - Mesh % Nodes % y(TargetNode)
+         NearCoordinates(3,1:n) = Mesh % Nodes % z(NearNodes(1:n)) - Mesh % Nodes % z(TargetNode)
+
+
+         IF (WithDirector) THEN
+           !
+           ! In this case the torque arm should ideally be parallel to the director vector d.
+           ! Construct an orthonormal basis, with d giving the third basis vector.
+           !
+           d = AllDirectors(:,p)
+           e3 = d/SQRT(DOT_PRODUCT(d,d))
+           v(1:3) = ABS([DOT_PRODUCT(ex,e3), DOT_PRODUCT(ey,e3), DOT_PRODUCT(ez,e3)]) 
+           intarray = MINLOC(v)
+           k = intarray(1)
+           v(1:3) = E(1:3,k)
+           e1 = v - DOT_PRODUCT(v,e3)*e3
+           e1 = e1/SQRT(DOT_PRODUCT(e1,e1))
+           e2 = CrossProduct(e3,e1)
+           !
+           ! The torque is supposed to have no component in the direction of d, so remove it
+           ! and also find the representation of the altered torque with respect to the local basis:
+           !
+           Torque = Work(:,p)
+           v = DOT_PRODUCT(Torque,e3)*e3
+           T = Torque - v
+           M1 = DOT_PRODUCT(T,e1)
+           M2 = DOT_PRODUCT(T,e2)
+
+           !------------------------------------------------------------------------------
+           ! Seek torque arms which are closest to be parallel to d:
+           !------------------------------------------------------------------------------
+           maxres_z = 0.0d0
+           minres_z = 0.0d0
+           jz = 0
+           lz = 0
+           DO i=1,n
+             IF (NearNodes(i) == TargetNode) CYCLE
+             res_z = DOT_PRODUCT(e3(:), NearCoordinates(:,i)) / &
+                 SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+             IF (res_z > 0.0d0) THEN
+               !
+               ! A near node is on +d side
+               !
+               IF (res_z > maxres_z) THEN
+                 jz = NearNodes(i)
+                 maxres_z = res_z
+               END IF
+             ELSE
+               !
+               ! A near node is on -d side
+               !
+               IF (res_z < minres_z) THEN
+                 lz = NearNodes(i)
+                 minres_z = res_z
+               END IF
+             END IF
+           END DO
+
+           !
+           ! Calculate arm lengths with respect to the coordinate axis parallel to d:
+           !
+           NoUpperNode = .FALSE.
+           NoLowerNode = .FALSE.
+           IF (jz == 0) THEN
+             NoUpperNode = .TRUE.
+           ELSE
+             rupper = DOT_PRODUCT(e3(:), [ Mesh % Nodes % x(jz) - Mesh % Nodes % x(TargetNode), &
+                 Mesh % Nodes % y(jz) - Mesh % Nodes % y(TargetNode), &
+                 Mesh % Nodes % z(jz) - Mesh % Nodes % z(TargetNode) ])
+             ! print *, 'THE NODE ON +d SIDE = ', JZ
+             ! print *, 'TORQUE ARM = ', rupper
+           END IF
+
+           IF (lz == 0) THEN
+             NoLowerNode = .TRUE.
+           ELSE
+             rlower = DOT_PRODUCT(-e3(:), [ Mesh % Nodes % x(lz) - Mesh % Nodes % x(TargetNode), &
+                 Mesh % Nodes % y(lz) - Mesh % Nodes % y(TargetNode), &
+                 Mesh % Nodes % z(lz) - Mesh % Nodes % z(TargetNode) ])
+             ! print *, 'THE NODE ON -d SIDE = ', LZ
+             ! print *, 'TORQUE ARM = ', rlower
+           END IF
+
+           IF (NoUpperNode .OR. NoLowerNode) THEN
+             CALL Warn('SetCoupleLoads', 'A couple BC would need two nodes on opposite sides')
+           ELSE
+             !
+             ! The torque generated from point loads as M1 * e1 + M2 * e2 = (r e3) x (f1 * e1 - f2 * e2) = 
+             ! (r*f2)* e1 + (r*f1)* e2
+             !
+             F2 = M1/(rupper + rlower)
+             F1 = M2/(rupper + rlower)
+             Force = F1 * e1 - F2 * e2
+             !
+             ! Finally compute the components of force with respect to the global frame and
+             ! add to the RHS: 
+             !
+             F1 = DOT_PRODUCT(Force,ex)
+             F2 = DOT_PRODUCT(Force,ey)
+             F3 = DOT_PRODUCT(Force,ez)
+
+             k = Perm(jz)
+             F((k-1)*Dofs+1) = F((k-1)*Dofs+1) + F1
+             F((k-1)*Dofs+2) = F((k-1)*Dofs+2) + F2
+             IF (Dofs > 2) F((k-1)*Dofs+3) = F((k-1)*Dofs+3) + F3
+             k = Perm(lz)
+             F((k-1)*Dofs+1) = F((k-1)*Dofs+1) - F1
+             F((k-1)*Dofs+2) = F((k-1)*Dofs+2) - F2
+             IF (Dofs > 2) F((k-1)*Dofs+3) = F((k-1)*Dofs+3) - F3
+           END IF
+
+         ELSE
+           !------------------------------------------------------------------------------
+           ! Seek torque arms which are closest to be parallel to the global coordinate
+           ! axes: 
+           !------------------------------------------------------------------------------
+           maxres_x = 0.0d0
+           minres_x = 0.0d0
+           maxres_y = 0.0d0
+           minres_y = 0.0d0
+           maxres_z = 0.0d0
+           minres_z = 0.0d0
+           jx = 0
+           lx = 0
+           jy = 0
+           ly = 0
+           jz = 0
+           lz = 0
+           DO i=1,n
+             IF (NearNodes(i) == TargetNode) CYCLE
+
+             IF (ABS(Torque(3)) > AEPS) THEN
+               res_x = DOT_PRODUCT(ex(:), NearCoordinates(:,i)) / &
+                   SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+               IF (res_x > 0.0d0) THEN
+                 !
+                 ! A near node is on +E_X side
+                 !
+                 IF (res_x > maxres_x) THEN
+                   jx = NearNodes(i)
+                   maxres_x = res_x
+                 END IF
+               ELSE
+                 !
+                 ! A near node is on -E_X side
+                 !
+                 IF (res_x < minres_x) THEN
+                   lx = NearNodes(i)
+                   minres_x = res_x
+                 END IF
+               END IF
+             END IF
+
+             IF (ABS(Torque(1)) > AEPS) THEN
+               res_y = DOT_PRODUCT(ey(:), NearCoordinates(:,i)) / &
+                   SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+               IF (res_y > 0.0d0) THEN
+                 !
+                 ! A near node is on +E_Y side
+                 !
+                 IF (res_y > maxres_y) THEN
+                   jy = NearNodes(i)
+                   maxres_y = res_y
+                 END IF
+               ELSE
+                 !
+                 ! A near node is on -E_Y side
+                 !
+                 IF (res_y < minres_y) THEN
+                   ly = NearNodes(i)
+                   minres_y = res_y
+                 END IF
+               END IF
+             END IF
+
+             IF (ABS(Torque(2)) > AEPS) THEN
+               res_z = DOT_PRODUCT(ez(:), NearCoordinates(:,i)) / &
+                   SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+               IF (res_z > 0.0d0) THEN
+                 !
+                 ! A near node is on +E_Z side
+                 !
+                 IF (res_z > maxres_z) THEN
+                   jz = NearNodes(i)
+                   maxres_z = res_z
+                 END IF
+               ELSE
+                 !
+                 ! A near node is on -E_Z side
+                 !
+                 IF (res_z < minres_z) THEN
+                   lz = NearNodes(i)
+                   minres_z = res_z
+                 END IF
+               END IF
+             END IF
+           END DO
+
+           IF (ABS(Torque(1)) > AEPS) THEN
+             !------------------------------------------------------------------------------
+             ! Calculate arm lengths with respect to the Y-axis:
+             !------------------------------------------------------------------------------
+             NoUpperNode = .FALSE.
+             NoLowerNode = .FALSE.
+             IF (jy == 0) THEN
+               NoUpperNode = .TRUE.
+             ELSE
+               rupper = DOT_PRODUCT(ey(:), [ Mesh % Nodes % x(jy) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(jy) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(jy) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (ly == 0) THEN
+               NoLowerNode = .TRUE.
+             ELSE
+               rlower = DOT_PRODUCT(-ey(:), [ Mesh % Nodes % x(ly) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(ly) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(ly) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             !------------------------------------------------------------------------------
+             ! Finally, create a couple which tends to cause rotation about the X-axis 
+             ! provided nodes on both sides have been identified
+             !------------------------------------------------------------------------------
+             IF (NoUpperNode .OR. NoLowerNode) THEN
+               CALL Warn('SetCoupleLoads', 'A couple BC would need two nodes on opposite Y-sides')
+             ELSE
+               !
+               ! The torque M_X E_X = (r E_Y) x (f E_Z), with the force f>0 applied on +E_Y side:
+               !
+               MVal = Torque(1)
+               FVal = Mval/(rupper + rlower)
+               k = Perm(jy)
+               F((k-1)*Dofs+3) = F((k-1)*Dofs+3) + Fval
+               k = Perm(ly)
+               F((k-1)*Dofs+3) = F((k-1)*Dofs+3) - Fval
+             END IF
+           END IF
+
+           IF (ABS(Torque(2)) > AEPS) THEN
+             !
+             ! Calculate arm lengths with respect to the Z-axis:
+             !
+             NoUpperNode = .FALSE.
+             NoLowerNode = .FALSE.
+             IF (jz == 0) THEN
+               NoUpperNode = .TRUE.
+             ELSE
+               rupper = DOT_PRODUCT(ez(:), [ Mesh % Nodes % x(jz) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(jz) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(jz) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (lz == 0) THEN
+               NoLowerNode = .TRUE.
+             ELSE
+               rlower = DOT_PRODUCT(-ez(:), [ Mesh % Nodes % x(lz) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(lz) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(lz) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (NoUpperNode .OR. NoLowerNode) THEN
+               CALL Warn('SetCoupleLoads', 'A couple BC would need two nodes on opposite Z-sides')
+             ELSE
+               !
+               ! The torque M_Y E_Y = (r E_Z) x (f E_X), with the force f>0 applied on +E_Z side:
+               !
+               MVal = Torque(2)
+               FVal = Mval/(rupper + rlower)
+               k = Perm(jz)
+               F((k-1)*Dofs+1) = F((k-1)*Dofs+1) + Fval
+               k = Perm(lz)
+               F((k-1)*Dofs+1) = F((k-1)*Dofs+1) - Fval
+             END IF
+           END IF
+
+           IF (ABS(Torque(3)) > AEPS) THEN
+             !
+             ! Calculate arm lengths with respect to the X-axis:
+             !
+             NoUpperNode = .FALSE.
+             NoLowerNode = .FALSE.
+             IF (jx == 0) THEN
+               NoUpperNode = .TRUE.
+             ELSE
+               rupper = DOT_PRODUCT(ex(:), [ Mesh % Nodes % x(jx) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(jx) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(jx) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (lx == 0) THEN
+               NoLowerNode = .TRUE.
+             ELSE
+               rlower = DOT_PRODUCT(-ex(:), [ Mesh % Nodes % x(lx) - Mesh % Nodes % x(TargetNode), &
+                   Mesh % Nodes % y(lx) - Mesh % Nodes % y(TargetNode), &
+                   Mesh % Nodes % z(lx) - Mesh % Nodes % z(TargetNode) ])
+             END IF
+
+             IF (NoUpperNode .OR. NoLowerNode) THEN
+               CALL Warn('SetCoupleLoads', 'A couple BC would need two nodes on opposite Y-sides')
+             ELSE
+               !
+               ! The torque M_Z E_Z = (r E_X) x (f E_Y), with the force f>0 applied on +E_X side:
+               !
+               MVal = Torque(3)
+               FVal = Mval/(rupper + rlower)
+               k = Perm(jx)
+               F((k-1)*Dofs+1) = F((k-1)*Dofs+1) - Fval
+               k = Perm(lx)
+               F((k-1)*Dofs+1) = F((k-1)*Dofs+1) + Fval
+             END IF
+           END IF
+         END IF
+
+         DEALLOCATE(NearNodes, NearCoordinates)
+       END DO
+       DEALLOCATE(Work)
+       IF (WithDirector) DEALLOCATE(AllDirectors)
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetCoupleLoads
+!------------------------------------------------------------------------------
 
   
-    !-------------------------------------------------------------------------------
+  !-------------------------------------------------------------------------------
   SUBROUTINE CommunicateDirichletBCs(A)
   !-------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
@@ -12929,11 +13379,10 @@ END SUBROUTINE VariableNameParser
         
     DO j=1,DOFs
       
+100   Values => ExpVariable % Values
       IF( Dofs > 1 ) THEN
         tmpname = ComponentName( var_name(1:n), j )
-        !nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs
-        !Perm => Solver % Variable % Perm
-        Solution => Values( j:: DOFs ) ! nSize-DOFs+j:DOFs )
+        Solution => Values( j:: DOFs ) 
       ELSE
         tmpname = var_name(1:n)
         Solution => Values
@@ -12963,7 +13412,7 @@ END SUBROUTINE VariableNameParser
         CALL ListInitElementKeyword( LocalSol_h,'Body Force',TmpName )
       END IF
 
-100   DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
         Element => Mesh % Elements(t) 
         IF( Element % BodyId <= 0 ) CYCLE
@@ -12996,13 +13445,13 @@ END SUBROUTINE VariableNameParser
 
             pSolver => Solver
             CALL UpdateIpPerm( pSolver, Perm )
-            m = MAXVAL( Perm )
+            nsize = MAXVAL( Perm )
 
-            CALL Info('UpdateExportedVariables','Total number of new IP dofs: '//TRIM(I2S(m)))
+            CALL Info('UpdateExportedVariables','Total number of new IP dofs: '//TRIM(I2S(nsize)))
 
-            IF( SIZE( ExpVariable % Values ) / ExpVariable % Dofs /= m ) THEN
+            IF( SIZE( ExpVariable % Values ) /= ExpVariable % Dofs * nsize ) THEN
               DEALLOCATE( ExpVariable % Values )
-              ALLOCATE( ExpVariable % Values( m * ExpVariable % Dofs ) )
+              ALLOCATE( ExpVariable % Values( nsize * ExpVariable % Dofs ) )
             END IF
             ExpVariable % Values = 0.0_dp
             GOTO 100 
@@ -15807,6 +16256,286 @@ CONTAINS
   END SUBROUTINE FsiCouplingAssembly
 
 
+!------------------------------------------------------------------------------
+!> Assemble coupling matrix related to structure-structure interaction
+!------------------------------------------------------------------------------
+  SUBROUTINE StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
+      IsSolid, IsPlate, IsShell, IsBeam )
+    
+    TYPE(Solver_t) :: Solver          ! leading solver
+    TYPE(Variable_t), POINTER :: FVar ! master structure variable
+    TYPE(Variable_t), POINTER :: SVar ! slave structure variable
+    TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_f, A_s
+    LOGICAL :: IsSolid, IsPlate, IsShell, IsBeam
+   !------------------------------------------------------------------------------
+    LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
+    INTEGER, POINTER :: FPerm(:), SPerm(:)
+    INTEGER :: FDofs, SDofs
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
+    REAL(KIND=dp) :: vdiag
+    
+    
+    CALL Info('StructureCouplingAssembly','Creating coupling matrix for structures',Level=6)
+    
+    Mesh => Solver % Mesh
+    dim = Mesh % MeshDim
+
+    FPerm => FVar % Perm
+    SPerm => SVar % Perm
+    
+    fdofs = FVar % Dofs
+    sdofs = SVar % Dofs
+
+    IF( IsSolid ) CALL Info('StructureCouplingAssembly','Assuming coupling with solid solver',Level=8)
+    IF( IsBeam )  CALL Info('StructureCouplingAssembly','Assuming coupling with beam solver',Level=8)
+    IF( IsPlate ) CALL Info('StructureCouplingAssembly','Assuming coupling with plate solver',Level=8)
+    IF( IsShell ) CALL Info('StructureCouplingAssembly','Assuming coupling with shell solver',Level=8)
+    
+    ConstrainedF => A_f % ConstrainedDof
+    ConstrainedS => A_s % ConstrainedDof
+                  
+    nf = SIZE( FVar % Values ) 
+    ns = SIZE( SVar % Values ) 
+    
+    CALL Info('StructureCouplingAssembly','Master structure dofs '//TRIM(I2S(nf))//&
+        ' with '//TRIM(I2S(fdofs))//' components',Level=10)
+    CALL Info('StructureCouplingAssembly','Slave structure dofs '//TRIM(I2S(ns))//&
+        ' with '//TRIM(I2S(sdofs))//' components',Level=10)   
+    CALL Info('StructureCouplingAssembly','Assuming '//TRIM(I2S(dim))//&
+        ' active dimensions',Level=10)   
+
+    IF( A_fs % FORMAT == MATRIX_LIST ) THEN
+      ! Add the largest entry that allocates the whole list matrix structure
+      CALL AddToMatrixElement(A_fs,nf,ns,0.0_dp)
+      CALL AddToMatrixElement(A_sf,ns,nf,0.0_dp)
+    ELSE
+      ! If we are revisiting then initialize the CRS matrices to zero
+      A_fs % Values = 0.0_dp
+      A_sf % Values = 0.0_dp      
+    END IF
+
+    ! This is still under development and not used for anything
+    IF( IsShell ) CALL DetermineCouplingNormals()
+
+    
+    ! Note: we may have to rethink this coupling if visiting for 2nd time!
+    IF( IsSolid .OR. IsShell ) THEN  
+      ncount = 0
+      DO i=1,Mesh % NumberOfNodes
+        jf = FPerm(i)      
+        js = SPerm(i)
+        IF( jf == 0 .OR. js == 0 ) CYCLE
+        ncount = ncount + 1
+
+        DO j = 1, dim
+          ! Indeces for matrix rows
+          kf = fdofs*(jf-1)+j
+          ks = sdofs*(js-1)+j
+
+          vdiag = A_s % Values( A_s % Diag(ks) ) 
+          ! Copy the force in implicit form from "S" to "F", and zero it
+          DO k=A_s % Rows(ks),A_s % Rows(ks+1)-1
+            IF( .NOT. ConstrainedF(kf) ) THEN        
+              CALL AddToMatrixElement(A_fs,kf,A_s % Cols(k), A_s % Values(k) )
+              A_f % rhs(kf) = A_f % rhs(kf) + A_s % rhs(ks)
+            END IF
+            A_s % Values(k) = 0.0_dp
+            A_s % rhs(ks) = 0.0_dp
+          END DO
+
+          ! Set Dirichlet Condition to "S" such that it is equal to "F"
+          A_s % Values( A_s % Diag(ks)) = vdiag
+          CALL AddToMatrixElement(A_sf,ks,kf, -vdiag )
+        END DO
+      END DO
+
+      IF( IsShell ) THEN
+        CALL Warn('StructureCouplingAssembly','Coupling for rotational shell dofs is missing!')
+      END IF
+    ELSE
+      CALL Fatal('StructureCouplingAssembly','Coupling type not implemented yet!')
+    END IF
+
+      
+    IF( A_fs % FORMAT == MATRIX_LIST ) THEN
+      CALL List_toCRSMatrix(A_fs)
+      CALL List_toCRSMatrix(A_sf)
+    END IF
+      
+    !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
+    !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
+
+    CALL Info('StructureCouplingAssembly','Number of nodes on interface: '&
+        //TRIM(I2S(ncount)),Level=10)    
+    CALL Info('StructureCouplingAssembly','Number of entries in master-slave coupling matrix: '&
+        //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
+    CALL Info('StructureCouplingAssembly','Number of entries in slave-master coupling matrix: '&
+        //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
+    
+    CALL Info('StructureCouplingAssembly','All done',Level=20)
+    
+  CONTAINS
+
+
+    ! This routine determines normals of the solid at the common nodes with shell solver.
+    ! The normals are determined by summing up potential outer normals and thereafter
+    ! subtracting projections to the shell normals.
+    !------------------------------------------------------------------------------------
+    SUBROUTINE DetermineCouplingNormals()
+      INTEGER, ALLOCATABLE :: CouplingPerm(:)
+      REAL(KIND=dp), ALLOCATABLE, TARGET :: CouplingNormals(:,:)
+      REAL(KIND=dp), POINTER :: WallNormal(:)
+      REAL(KIND=dp) :: Normal(3), sNormal
+      INTEGER :: CouplingNodes, n, t, nbulk, nbound
+      TYPE(Element_t), POINTER :: Element, Parent1, Parent2
+      TYPE(Nodes_t), SAVE :: Nodes
+      LOGICAL :: Solid1,Solid2
+      
+
+      ! allocate elemental stuff
+      n = Mesh % MaxElementNodes
+      IF ( .NOT. ASSOCIATED( Nodes % x ) ) THEN
+        ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
+      END IF
+     
+      ! Generate the permutation for the common nodes
+      n = Mesh % NumberOfNodes
+      ALLOCATE(CouplingPerm(n))
+      WHERE( FVar % Perm(1:n) > 0 .AND. SVar % Perm(1:n) > 0 )
+        CouplingPerm = 1
+      ELSE WHERE
+        CouplingPerm = 0
+      END WHERE
+      j = 0 
+      DO i=1,n
+        IF( CouplingPerm(i) > 0 ) THEN
+          j = j + 1
+          CouplingPerm(i) = j
+        END IF
+      END DO
+      CouplingNodes = j      
+      PRINT *,'number of common nodes:',j
+
+      ALLOCATE( CouplingNormals(j,3) )
+      CouplingNormals = 0.0_dp
+      
+      nbulk = Mesh % NumberOfBulkElements
+      nbound = Mesh % NumberOfBoundaryElements
+      
+      ! Sum up all the wall normals associated to coupling nodes together
+      DO t=nbulk+1, nbulk+nbound
+        Element => Mesh % Elements(t)
+
+        ! If there a node for which we need normal? 
+        IF( COUNT( CouplingPerm( Element % NodeIndexes ) > 0 ) < 2 ) CYCLE
+
+        IF( ANY( SVar % Perm( Element % NodeIndexes ) == 0 ) ) CYCLE
+        
+        ! This needs to be an element where normal can be defined
+        !IF( GetElementDim(Element) /= 2 ) CYCLE
+        IF( Element % TYPE % ElementCode > 500 ) CYCLE
+        IF( Element % TYPE % ElementCode < 300 ) CYCLE
+   
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+        
+        n = Element % TYPE % NumberOfNodes
+
+        !CALL GetElementNodes(Nodes,Element)
+        Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
+        Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
+        Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+        
+        ! Determine whether parents also are active on the solid
+        Solid1 = .FALSE.
+        Parent1 => Element % BoundaryInfo % Left
+        IF( ASSOCIATED( Parent1 ) ) THEN
+          Solid1 = ALL(  SVar % Perm( Parent1 % NodeIndexes ) > 0 )
+        END IF
+        
+        Solid2 = .FALSE.
+        Parent2 => Element % BoundaryInfo % Right
+        IF( ASSOCIATED( Parent2 ) ) THEN
+          Solid2 = ALL(  SVar % Perm( Parent2 % NodeIndexes ) > 0 )
+        END IF        
+
+        ! Only consider external walls with just either parent in solid
+        IF( .NOT. XOR( Solid1, Solid2 ) ) CYCLE
+        
+        ! Check that the normal points outward of the solid
+        IF( Solid1 ) THEN
+          Normal = NormalVector(Element,Nodes,Parent=Parent1)
+        ELSE
+          Normal = NormalVector(Element,Nodes,Parent=Parent2)
+        END IF
+        
+        n = Element % TYPE % NumberOfNodes
+        DO i=1,n          
+          j = CouplingPerm( Element % NodeIndexes(i) )
+          IF( j == 0 ) CYCLE
+          
+          ! Note that we assume that normals are consistent in a way that they can be summed up
+          ! and do not cancel each other
+          WallNormal => CouplingNormals(j,:)
+          WallNormal = WallNormal + Normal 
+        END DO                  
+      END DO
+
+      ! Remove the shell normal from the wall normal
+      DO t=1, nbulk+nbound
+        Element => Mesh % Elements(t)
+
+        ! If there a node for which we need normal? 
+        IF( COUNT( CouplingPerm( Element % NodeIndexes ) > 0 ) < 2 ) CYCLE
+
+        ! Shell must be active for all nodes
+        IF( ANY( FVar % Perm( Element % NodeIndexes ) == 0 ) ) CYCLE
+
+        ! This needs to be an element where shell can be solved
+        !IF( GetElementDim(Element) /= 2 ) CYCLE
+        IF( Element % TYPE % ElementCode > 500 ) CYCLE
+        IF( Element % TYPE % ElementCode < 300 ) CYCLE
+        
+        n = Element % TYPE % NumberOfNodes
+
+        !CALL GetElementNodes(Nodes,Element)
+        Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
+        Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
+        Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+
+        ! Normal vector for shell, no need check the sign
+        Normal = NormalVector(Element,Nodes)
+ 
+        DO i=1,n
+          j = CouplingPerm( Element % NodeIndexes(i) )
+          IF( j == 0 ) CYCLE
+          WallNormal => CouplingNormals(j,:)
+          WallNormal = WallNormal - SUM( WallNormal * Normal ) * Normal
+        END DO
+      END DO
+
+      ! Finally normalize the normals such that their length is one
+      j = 0
+      DO i=1,CouplingNodes
+        WallNormal => CouplingNormals(i,:)
+        sNormal = SQRT( SUM( WallNormal**2) )
+        IF( sNormal > 1.0e-3 ) THEN
+          WallNormal = WallNormal / sNormal 
+          PRINT *,'WallNormal:',WallNormal
+        ELSE
+          j = j + 1
+        END IF
+      END DO
+      
+      IF( j > 0 ) THEN
+        CALL Fatal('DetermineCouplingNormals','Could not define normals count: '//TRIM(I2S(j)))
+      END IF
+       
+      
+    END SUBROUTINE DetermineCouplingNormals
+
+
+  END SUBROUTINE StructureCouplingAssembly
 
   
 !---------------------------------------------------------------------------------

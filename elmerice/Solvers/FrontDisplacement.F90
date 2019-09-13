@@ -356,7 +356,7 @@ END SUBROUTINE FDMeshSolver_Init
 
   
   IF ( TransientSimulation ) THEN
-    ComputeMeshVelocity = ListGetLogical( Solver % Values, 'Compute Front Displacment Velocity', Found )
+    ComputeMeshVelocity = ListGetLogical( Solver % Values, 'Compute Front Displacement Velocity', Found )
     IF ( .NOT. Found ) ComputeMeshVelocity = .TRUE.
     
     IF ( ComputeMeshVelocity ) THEN

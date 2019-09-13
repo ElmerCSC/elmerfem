@@ -551,7 +551,7 @@ CONTAINS
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Current Density')
-      CALL ListInitElementKeyword( Robin_h,'Boundary Condition','Electric Resistivity')
+      CALL ListInitElementKeyword( Robin_h,'Boundary Condition','External Conductivity')
       CALL ListInitElementKeyword( Ext_h,'Boundary Condition','External Potential')
       CALL ListInitElementKeyword( Farfield_h,'Boundary Condition','Farfield Potential')
       InitHandles = .FALSE.
@@ -960,7 +960,7 @@ CONTAINS
    TYPE(Variable_t), POINTER :: pVar
    REAL(KIND=dp), ALLOCATABLE :: tmp(:)
    LOGICAL :: DoneWeight = .FALSE.
-   REAL(KIND=dp) :: PotDiff, Resistance, ControlTarget, ControlScaling
+   REAL(KIND=dp) :: PotDiff, Resistance, ControlTarget, ControlScaling, val
    
    VolTot     = ParallelReduction(VolTot)
    HeatingTot = ParallelReduction(HeatingTot)
@@ -1011,7 +1011,8 @@ CONTAINS
      END IF
      
      DO i=1,dofs
-       pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
+       WHERE( ABS( WeightVector ) > EPSILON( val ) ) &
+           pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
      END DO
    END DO
 

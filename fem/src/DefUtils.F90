@@ -3172,7 +3172,8 @@ CONTAINS
     TYPE(Matrix_t), POINTER   :: A
     TYPE(Variable_t), POINTER :: x
     REAL(KIND=dp), POINTER CONTIG :: b(:)
-    REAL(KIND=dp), POINTER CONTIG :: SOL(:)
+!    REAL(KIND=dp), POINTER CONTIG :: SOL(:)
+    REAL(KIND=dp), POINTER :: SOL(:)
 
     LOGICAL :: Found, BackRot
 
@@ -5018,6 +5019,11 @@ CONTAINS
          
          SaveElement => SetCurrentElement(SaveElement)
      END DO
+
+     !
+     ! Apply special couple loads for 3-D models of solids:
+     !
+     CALL SetCoupleLoads(CurrentModel, x % Perm, A, b, x % DOFs )
 
      ! ----------------------------------------------------------------------------
      ! Set Dirichlet BCs for edge and face dofs which arise from approximating with
