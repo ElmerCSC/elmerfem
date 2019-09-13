@@ -1,0 +1,8 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( coupling.sif coupling.sif COPYONLY)
+
+file(COPY ELMERSOLVER_STARTINFO shell_and_solid DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(Shell_And_Solid LABELS quick shell)
