@@ -1147,7 +1147,7 @@ END INTERFACE
            ALLOCATE( PartField(n), PartPerm(n) )
            DO i=1,n
              PartPerm(i) = i
-             PartField(i) = 1.0-dp * Mesh % RePartition(i)
+             PartField(i) = 1.0_dp * Mesh % RePartition(i)
            END DO
            
            CALL VariableAdd( Mesh % Variables, Mesh, Name='PartField',DOFs=1, &
