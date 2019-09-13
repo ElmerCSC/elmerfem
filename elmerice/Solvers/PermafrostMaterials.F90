@@ -591,11 +591,12 @@ CONTAINS
     TYPE(RockMaterial_t), TARGET :: LocalRockMaterial
     TYPE(Element_t), POINTER :: CurrentElement
     INTEGER, ALLOCATABLE :: GlobalToLocalPerm(:)
-    INTEGER :: OK, CurrentNo, I, J, io, NoElements, minglobalelementnumber, maxglobalelementnumber
+    INTEGER :: OK, CurrentNo, I, J, io, NoElements, LocalNoElements, &
+         minglobalelementnumber, maxglobalelementnumber, mmaxglobalelementnumber, ierr 
     REAL(KIND=dp) :: ReceivingArray(50)    
 
     SAVE LocalRockMaterial, FirstTime, Parallel, minglobalelementnumber, maxglobalelementnumber,&
-         GlobalToLocalPerm, NoElements
+         GlobalToLocalPerm, NoElements, mmaxglobalelementnumber
 
     IF (PRESENT(SkipInit) .AND. FirstTime) CALL FATAL(SubroutineName,'Initialization error')
     
@@ -614,6 +615,9 @@ CONTAINS
             maxglobalelementnumber = MAX((CurrentElement % GElementIndex),maxglobalelementnumber)
           END IF
         END DO
+        CALL MPI_ALLREDUCE(maxglobalelementnumber,mmaxglobalelementnumber,1,&
+            MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
+        
         !IF (ParEnv % myPE == 0) &
         !     PRINT *,"ReadPermafrostElementRockMaterial:",Parenv % myPE, "ming/maxg",&
         !     minglobalelementnumber,maxglobalelementnumber
@@ -632,6 +636,7 @@ CONTAINS
       ELSE
         minglobalelementnumber = 1
         maxglobalelementnumber = NoElements
+        mmaxglobalelementnumber = NoElements
       END IF      
       ALLOCATE(&           
            LocalRockMaterial % ks0th(NoElements),&
@@ -670,11 +675,12 @@ CONTAINS
         ! MIND: all receiving array numbers are shifted by -1 in index with resepect
         !       to J. Hartikainen's instructions in input_data_forsmark_2d_example.pdf!
         !------------------------------------------------------------------------------
-        WRITE (Message,*) "Attempting to read ",NoElements,&
+        WRITE (Message,*) "Attempting to read ",mmaxglobalelementnumber,&
              " records from data file ",TRIM(MaterialFileName)
         CALL INFO(SubroutineName,Message,level=3)
+        LocalNoElements = 0
         DO J=1,maxglobalelementnumber                             
-          READ (io, *, END=50, ERR=60, IOSTAT=OK) CurrentNo, ReceivingArray(1:50)                    
+          READ (io, *, END=50, ERR=60, IOSTAT=OK) CurrentNo, ReceivingArray(1:50)
           IF ( Parallel ) THEN
             IF (J < minglobalelementnumber) CYCLE
             I = GlobalToLocalPerm(J - minglobalelementnumber +1)
@@ -682,9 +688,11 @@ CONTAINS
             !     PRINT *,"ReadPermafrostElementRockMaterial:", Parenv % myPE, &
             !     "GlobalToLocalPerm(",J," -", minglobalelementnumber," +1) =", &
             !     GlobalToLocalPerm(J - minglobalelementnumber +1)
-            IF (I == 0) CYCLE 
+            IF (I == 0) CYCLE
+            LocalNoElements = LocalNoElements + 1
           ELSE
             I=J
+            LocalNoElements = LocalNoElements + 1
           END IF
           CurrentElement => Solver % Mesh % Elements(I)
           !! IMPORTANT: Mind that all ReceivingArray numbers ar N-1 with respect to the document (input_data_forsmark_2d)
@@ -754,16 +762,28 @@ CONTAINS
         LocalRockMaterial % NumerOfRockRecords = NoElements
         NumberOfRockRecords = NoElements
 50      CLOSE(io)
-        IF (CurrentNo < NoElements) THEN
-          WRITE (Message,*) 'Found only ',CurrentNo,' entries in file ',TRIM(MaterialFileName),&
-               ' for ', NoElements, ' elements in mesh.'
+        IF (LocalNoElements < NoElements) THEN
+          IF (Parallel) THEN
+            WRITE (Message,*) 'Parallel proc.', ParEnv % myPe, '. Found ONLY ',&
+                 LocalNoElements,' entries in file ',TRIM(MaterialFileName),&
+                 ' for ', NoElements, ' elements in mesh partition.'
+          ELSE
+            WRITE (Message,*) 'Found ONLY ',LocalNoElements,' entries in file ',&
+                 TRIM(MaterialFileName),&
+                 ' for ', NoElements, ' elements in mesh'
+          END IF
           CALL FATAL(TRIM(SubroutineName),Message)
         ELSE
-          WRITE (Message,*) 'Read ',CurrentNo,' entries in file ',TRIM(MaterialFileName)
-          CALL INFO(TRIM(SubroutineName),Message,Level=3)
+          IF (Parallel) THEN
+            PRINT *, TRIM(SubroutineName), ': Parallel proc.', ParEnv % myPe, '. Read ', NoElements, 'entries in file'
+          ELSE
+            WRITE (Message,*) 'Read ',LocalNoElements,' entries in file ',TRIM(MaterialFileName)
+            CALL INFO(TRIM(SubroutineName),Message,Level=3)
+          END IF
         END IF
       END IF
       IF (Parallel) DEALLOCATE(GlobalToLocalPerm)
+      CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
       CurrentRockMaterial => LocalRockMaterial
       FirstTime = .FALSE.
     ELSE
