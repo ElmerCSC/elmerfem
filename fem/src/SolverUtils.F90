@@ -6972,7 +6972,7 @@ CONTAINS
            !
            NoUpperNode = .FALSE.
            NoLowerNode = .FALSE.
-           IF (jz == 0) THEN
+           IF (jz == 0 .OR. ABS(maxres_z) < AEPS) THEN
              NoUpperNode = .TRUE.
            ELSE
              rupper = DOT_PRODUCT(e3(:), [ Mesh % Nodes % x(jz) - Mesh % Nodes % x(TargetNode), &
@@ -6982,7 +6982,7 @@ CONTAINS
              ! print *, 'TORQUE ARM = ', rupper
            END IF
 
-           IF (lz == 0) THEN
+           IF (lz == 0 .OR. ABS(minres_z) < AEPS) THEN
              NoLowerNode = .TRUE.
            ELSE
              rlower = DOT_PRODUCT(-e3(:), [ Mesh % Nodes % x(lz) - Mesh % Nodes % x(TargetNode), &
