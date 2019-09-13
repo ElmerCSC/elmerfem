@@ -3246,17 +3246,15 @@ CONTAINS
          END IF
          CALL PartitionMeshPart(SetNo,SectionParams,.TRUE.)
        END DO
-     
-       CALL InheritBoundaryPart()
-       IF( ListGetLogical( Params,'Partition Mesh Merge Boundaries',Found ) ) THEN
-         CALL MergeBoundaryPart()
-       END IF
-       CALL ExtendBoundaryPart()
-     END IF
 
-     !DO i=1,MAXVAL( Mesh % RePartition )
-     !  PRINT *,'Elems in part:',i,COUNT( Mesh % RePartition == i )
-     !END DO
+       IF( ListGetLogical( Params,'Partition Mesh Merge Boundaries',Found ) ) THEN
+         CALL MergeJoinedPartitions(.TRUE.)
+       END IF
+        
+       CALL InheritBoundaryPart()
+
+      CALL ExtendBoundaryPart()
+     END IF
      
      CALL Info(FuncName,'Partition the bulk elements sets')
      CALL InitializeBulkElementSet(NumberOfSets)
@@ -3274,13 +3272,12 @@ CONTAINS
 
      !CALL Info(FuncName,'Defining halo mesh')     
      !CALL DefineMeshHalo()
-    
-     CALL CreateNeighbourList()
 
      DO i=1,MAXVAL( Mesh % RePartition ) 
        PRINT *,'Elements in partition:',i,COUNT( Mesh % RePartition == i )
      END DO
-     
+    
+     CALL CreateNeighbourList()
 
 100  CALL Info(FuncName,'All done for now',Level=12)
 
@@ -3304,10 +3301,10 @@ CONTAINS
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
          Element => Mesh % Elements(t) 
 
-         BoundPart = ElementSet( t )
+         BoundPart = ElementPart( t )
          ! Don't inherit from unset elements
          IF( BoundPart == 0 ) CYCLE
-
+         
          IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
            DO LeftRight=0,1
              IF( LeftRight == 0 ) THEN
@@ -3318,10 +3315,10 @@ CONTAINS
 
              IF( ASSOCIATED( Parent ) ) THEN               
                ElemIndx = Parent % ElementIndex
-               IF( ElementSet( ElemIndx ) == 0 ) THEN
+               IF( ElementPart( ElemIndx ) == 0 ) THEN
                  NoHerited = NoHerited + 1
                  ElementPart( ElemIndx ) = BoundPart
-               ELSE IF( ElementSet( ElemIndx ) /= BoundPart ) THEN
+               ELSE IF( ElementPart( ElemIndx ) /= BoundPart ) THEN
                  NoConflict = NoConflict + 1
                END IF
              END IF
@@ -3339,15 +3336,15 @@ CONTAINS
      ! The algorithm works fine when there is a small number of 
      ! partitions on the boundary and requires minimal additional space.
      !------------------------------------------------------------------
-     SUBROUTINE MergeBoundaryPart()
+     SUBROUTINE MergeJoinedPartitions(IsBoundary)
+       LOGICAL :: IsBoundary
        
        TYPE(Element_t), POINTER :: Element
-       INTEGER :: t, i, j, MaxPart
+       INTEGER :: t, tstart, tfin, i, j, MaxPart
        LOGICAL, ALLOCATABLE :: PartFlag(:), PartitionCoupling(:,:)
        INTEGER, ALLOCATABLE :: PartMap(:)
        
-
-       CALL Info(FuncName,'Inheriting the boundary patitioning into the bulk mesh') 
+       CALL Info(FuncName,'Checking for partitions joined by a node',Level=8)
 
        MaxPart = MAXVAL( ElementPart ) 
 
@@ -3356,10 +3353,20 @@ CONTAINS
        
        ALLOCATE( PartFlag( Mesh % NumberOfNodes ) ) 
 
+       IF( IsBoundary ) THEN
+         tstart = Mesh % NumberOfBulkElements
+         tfin = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+       ELSE
+         tstart = 1
+         tfin = Mesh % NumberOfBulkElements
+       END IF
+         
        DO i = 1, MaxPart
          PartFlag = .FALSE.
          CALL Info(FuncName,'Studying coupling with partition:'//TRIM(I2S(i)),Level=20)
-         DO t=1, Mesh % NumberOfBulkElements 
+
+         ! Mark the nodes that are included in this partition, even in one element
+         DO t=tstart, tfin
            IF( ElementPart( t ) == i ) THEN 
              Element => Mesh % Elements(t) 
              PartFlag( Element % NodeIndexes ) = .TRUE.
@@ -3368,24 +3375,23 @@ CONTAINS
 
          ! Studying to which partitions couple to
          ! Only study cases j>i since the coupling is symmetric
-         DO t=1, Mesh % NumberOfBulkElements 
+         DO t=tstart, tfin
            j = ElementPart( t )
            IF( j > i ) THEN
+             IF( PartitionCoupling(i,j) ) CYCLE
              Element => Mesh % Elements(t) 
              IF( ANY( PartFlag( Element % NodeIndexes ) ) ) THEN
-               IF( .NOT. PartitionCoupling(i,j) ) THEN
-                 CALL Info(FuncName,&
-                     'Coupling '//TRIM(I2S(i))//' and '//TRIM(I2S(j)),Level=10)
-                 PartitionCoupling(i,j) = .TRUE.
-                 PartitionCoupling(j,i) = .TRUE.
-               END IF
+               CALL Info(FuncName,&
+                   'Joined no is coupling '//TRIM(I2S(i))//' and '//TRIM(I2S(j)),Level=10)
+               PartitionCoupling(i,j) = .TRUE.
+               PartitionCoupling(j,i) = .TRUE.
              END IF
            END IF
          END DO
        END DO
 
        IF(.NOT. ANY( PartitionCoupling ) ) THEN
-         CALL Info(FuncName,'Partitions are not coupled')
+         CALL Info(FuncName,'Partitions are not coupled',Level=8)
          RETURN
        END IF
 
@@ -3399,29 +3405,30 @@ CONTAINS
            IF( PartitionCoupling(i,j) ) THEN
              IF( PartMap(i) /= PartMap(j) ) THEN
                CALL Info(FuncName,'Mapping partition '&
-                   //TRIM(I2S(j))//' to be '//TRIM(I2S(PartMap(i))),Level=8)
+                   //TRIM(I2S(j))//' to become '//TRIM(I2S(PartMap(i))),Level=8)
                PartMap(j) = PartMap(i)
              END IF
            END IF
          END DO
        END DO
        j = MAXVAL( PartMap ) 
-       CALL Info(FuncName,'Number of mapped partitions: '//TRIM(I2S(j)))
+       CALL Info(FuncName,'Number of mapped partitions: '//TRIM(I2S(j)),Level=8)
 
-       ! The coupling is studied via bulk elements as they are all that matters.
-       ! In the end we also remap the boundary elements for consistency.
-       DO t=1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+       ! If we studied bulk elements then make the boundary elements follow the new indexing.
+       ! If we stufied boundary elements bulk elements will be studied later.
+       IF( .NOT. IsBoundary ) THEN
+         tfin = tfin + Mesh % NumberOfBoundaryElements
+       END IF
+        
+       DO t=tstart, tfin
          i = ElementPart( t )
          IF( i > 0 ) THEN
            ElementPart(t) = PartMap(i)
          END IF
        END DO
-       CALL Info(FuncName,'Connected boundaries merged')
-
+       CALL Info(FuncName,'Connected boundaries merged',Level=12)
        
-     END SUBROUTINE MergeBoundaryPart
-
-
+     END SUBROUTINE MergeJoinedPartitions
 
 
      ! Extend partition from an existing bulk partitioning. 
@@ -3429,7 +3436,6 @@ CONTAINS
      ! The routine is written with just a small number of existing
      ! boundary partitions in mind and uses minimal memory. 
      !------------------------------------------------------------
-
      SUBROUTINE ExtendBoundaryPart()
        
        TYPE(Element_t), POINTER :: Element
@@ -3463,7 +3469,7 @@ CONTAINS
 
        DO i=1,ExtendLayers
 
-         ! If testing for several partitions then nullify the reference
+         ! If testing for several partitions then we need a reference for the most hits
          IF( NumberOfParts > 1 ) THEN
            RefHits = 0
          END IF
@@ -3472,19 +3478,33 @@ CONTAINS
 
            ! Set the active nodes for the partition under testing
            ActiveNode = .FALSE.
-           DO t=1, Mesh % NumberOfBulkElements 
-             IF( ElementPart( t ) == TestPart ) THEN
-               Element => Mesh % Elements(t) 
-               ActiveNode( Element % NodeIndexes ) = .TRUE.
-             END IF
-           END DO
-           
+           IF( i == 1 ) THEN
+             ! First layer make starting from boundary elements
+             DO t=Mesh % NumberOfBulkElements + 1, &
+                 Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+               IF( ElementPart( t ) == TestPart ) THEN
+                 Element => Mesh % Elements(t) 
+                 ActiveNode( Element % NodeIndexes ) = .TRUE.
+               END IF
+             END DO
+           ELSE
+             ! Thereafter continue from bulk elements
+             DO t=1, Mesh % NumberOfBulkElements 
+               IF( ElementPart( t ) == TestPart ) THEN
+                 Element => Mesh % Elements(t) 
+                 ActiveNode( Element % NodeIndexes ) = .TRUE.
+               END IF
+             END DO
+           END IF
+             
            ! Count the number of hits for this partition
            ! If larger than the maximum so far set the partition
            ! For just one existing partitioning no checks need to be done. 
+           ! Use negative values in a dirty way...
            !--------------------------------------------------------------
            DO t=1, Mesh % NumberOfBulkElements 
-             IF( ElementPart( t ) /= 0 ) CYCLE
+             ! These are already decided elements
+             IF( ElementPart( t ) > 0 ) CYCLE
 
              Element => Mesh % Elements(t) 
              NoHits = COUNT( ActiveNode( Element % NodeIndexes ) )
@@ -3495,13 +3515,20 @@ CONTAINS
                RefHits( t ) = NoHits
              END IF
              
-             ElementPart( t ) = TestPart 
-             NoExtend = NoExtend + 1
+             ! So far this is tentative, hence negative sign
+             ElementPart( t ) = -TestPart 
            END DO
          END DO
-       END DO
 
-       CALL Info(FuncName,'Number of extended bulk elements: '//TRIM(I2S(NoExtend)))
+         ! Now include the layer in the new partitioning
+         t = COUNT( ElementPart < 0 )
+         NoExtend = NoExtend + t
+         CALL Info(FuncName,'Layer '//TRIM(I2S(i))//' with elements: '//TRIM(I2S(t)),Level=8)
+
+         ElementPart = ABS( ElementPart ) 
+       END DO
+      
+       CALL Info(FuncName,'Number of extended bulk elements: '//TRIM(I2S(NoExtend)),Level=6)
        
        DEALLOCATE( ActiveNode ) 
        IF( NumberOfParts > 1 ) DEALLOCATE( RefHits ) 
@@ -3697,7 +3724,7 @@ CONTAINS
 
 
       IF( ASSOCIATED( LocalParams) ) THEN
-        NoPartitions = ListGetInteger( LocalParams,'Number of Partitions',Found )
+        NoPartitions = ListGetInteger( LocalParams,'Number of Partitions',Found )        
       END IF
       IF(.NOT. Found ) THEN
         IF( IsBoundary ) THEN
@@ -3707,17 +3734,11 @@ CONTAINS
         END IF
       END IF
 
-      IF( IsBoundary .AND. NoPartitions == 0 ) THEN
-        CALL Info(FuncName,'Partition number for BC set not given, assuming one.',Level=10)
-        WHERE( PartitionCand ) ElementPart = SetNo
-        RETURN
-      END IF
-      
       BoundaryFraction = ListGetCReal( Params,&
-          'Boundary Partitioning Maximum Fraction',Found)
-      IF( IsBoundary .AND. NoCandElements <= &
+          'Partitioning Maximum Fraction',Found)
+      IF( Found .AND. NoCandElements <= &
           BoundaryFraction * Mesh % NumberOfBulkElements ) THEN
-        WRITE(Message,'(A,ES12.3)') 'Number of boundary elements below critical limit: ',BoundaryFraction
+        WRITE(Message,'(A,ES12.3)') 'Number of elements in set below critical limit: ',BoundaryFraction
         CALL Info(FuncName,Message )
         WHERE( PartitionCand ) ElementPart = SetNo
         RETURN
@@ -3732,15 +3753,20 @@ CONTAINS
       IF(.NOT. Found ) THEN
         IF( IsBoundary ) THEN
           SetMethod = ListGetString( Params,'Boundary Partitioning Method',Found)
+        ELSE
+          SetMethod = ListGetString( Params,'Partitioning Method',Found)
         END IF
-        IF(.NOT. Found ) SetMethod = ListGetString( Params,'Partitioning Method',Found)
       END IF
-      IF( Found ) THEN
-        CALL Info(FuncName,'Using partition method: '//TRIM(SetMethod))
-      ELSE
-        CALL Fatal(FuncName,'Could not define > Partitioning Method < ')
+      IF( .NOT. Found ) THEN
+        IF( IsBoundary .AND. NoPartitions == 0 ) THEN
+          CALL Info(FuncName,'Partition method and count not given, doing nothing.',Level=10)
+          WHERE( PartitionCand ) ElementPart = SetNo
+          RETURN
+        ELSE
+          CALL Fatal(FuncName,'Could not define > Partitioning Method < ')
+        END IF
       END IF
-
+          
       Found = .FALSE.
       IF( ASSOCIATED( LocalParams) ) THEN
         CoordTransform = ListGetString( LocalParams,&
@@ -3803,7 +3829,7 @@ CONTAINS
         CASE( 'zoltan' )
 #ifdef HAVE_ZOLTAN
           IF( SetNo /= 1 .OR. IsBoundary ) THEN
-            CALL Fatal('PartitionMeshPart','Zoltan interface not applicable to hybrid partitioning!')
+            CALL Fatal('PartitionMeshPart','Zoltan interface not yet applicable to boundary partitioning!')
           END IF
           NoPartitions = ListGetInteger( Params,'Number of Partitions',Found )
           IF(.NOT. Found ) NoPartitions = ParEnv % PEs 
@@ -3820,14 +3846,13 @@ CONTAINS
       IF( PartOffset > 0 ) THEN
         WHERE( PartitionCand ) ElementPart = ElementPart + PartOffset
       END IF
-
-      CALL Info(FuncName,'Partitioning of set finished')
-
+        
+      CALL Info(FuncName,'Partitioning of set finished')      
+      
       IF( GotCoordTransform ) THEN
         CALL BackCoordinateTransformation( Mesh, DeleteTemporalMesh = .TRUE. )
       END IF
 
-  
     END SUBROUTINE PartitionMeshPart
       
 

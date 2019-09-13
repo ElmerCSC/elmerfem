@@ -18,6 +18,8 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
+  Post File = case.vtu
+
 !  Max Output Partition = Integer 10
 End
 
@@ -61,16 +63,6 @@ Solver 1
 !  Output Directory = File squares
 End
 
-Solver 2
-  Exec Solver = never
-
-  Equation = "ResultOutput"
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = "part" 
-
-  Vtu format = Logical True
-End
-
 
 Material 1
   Name = "Material"
@@ -112,5 +104,5 @@ Boundary Condition 4
 End
 
 
-Solver 1 :: Reference Norm = 6.13446353
+Solver 1 :: Reference Norm = 6.19781498E+00 
 Solver 1 :: Reference Norm Tolerance = 0.01

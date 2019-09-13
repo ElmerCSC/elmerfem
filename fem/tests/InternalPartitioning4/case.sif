@@ -95,6 +95,6 @@ Boundary Condition 2
   Partition Set = Integer 1
 End
 
-Solver 1:: Reference Norm = 0.16443938814975653
+Solver 1:: Reference Norm = 3.41161600E+00
 
 !End Of File
