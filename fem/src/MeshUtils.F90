@@ -11715,7 +11715,6 @@ END SUBROUTINE GetMaxDefs
     Mesh_out => AllocateMesh()
 !   Mesh_out = Mesh_in
 
-
     isParallel = ParEnv % PEs>1
 
     ! Generate volume nodal points:
@@ -11943,7 +11942,6 @@ END SUBROUTINE GetMaxDefs
 
     ! include edges (see below)
     NeedEdges =  (NeedEdges .OR. PreserveEdges)
-    
     
     ! -------------------------------------------------------
     IF (PreserveBaseline) THEN
@@ -12230,14 +12228,18 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % MeshDim = 3
     CurrentModel % Dimension = 3
 
-    IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh_out,NeedEdges=.TRUE.)
+    IF ( NeedEdges ) THEN
+      CALL SetMeshEdgeFaceDOFs(Mesh_out,NeedEdges=.TRUE.)
+      IF (isParallel) CALL SParEdgeNumbering(Mesh_out,.TRUE.)
+    END IF
+    
     CALL SetMeshMaxDOFs(Mesh_out)
 
     IF (PRESENT(ExtrudedMeshName)) THEN
        CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
     END IF
 
-!------------------------------------------------------------------------------
+    !------------------------------------------------------------------------------
   END FUNCTION MeshExtrude
 !------------------------------------------------------------------------------
 

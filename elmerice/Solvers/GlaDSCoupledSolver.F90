@@ -262,11 +262,7 @@
         ! Default is False - We allow Channel to growth everywhere
         NoChannel = .False. 
         DO t=1, Solver % Mesh % NumberOfBoundaryElements
-           ! get element information
            Element => GetBoundaryElement(t)
-           !IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-           IF ((ParEnv % PEs > 1) .AND. &
-            (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
 
            n = GetElementNOFNodes()
            IF ( GetElementFamily() == 1 ) CYCLE
@@ -653,8 +649,9 @@
               
               Edge => Solver % Mesh % Edges(t)
               IF (.NOT.ASSOCIATED(Edge)) CYCLE
-              IF ((ParEnv % PEs > 1) .AND. &
-                (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+              IF (ParEnv % PEs > 1) THEN
+                IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+              END IF
               n = Edge % TYPE % NumberOfNodes
 
               ! Work only for 202 elements => n=2
@@ -1049,8 +1046,9 @@
               DO t=1, Solver % Mesh % NumberOfEdges 
                  Edge => Solver % Mesh % Edges(t)
                  IF (.NOT.ASSOCIATED(Edge)) CYCLE
-                 IF ((ParEnv % PEs > 1) .AND. &
-                   (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+                 IF (ParEnv % PEs > 1) THEN
+                   IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                 END IF
                  n = Edge % TYPE % NumberOfNodes
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                  IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
