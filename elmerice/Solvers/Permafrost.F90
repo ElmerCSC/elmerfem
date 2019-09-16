@@ -2163,7 +2163,9 @@ CONTAINS
       ! Contribution from Radiogenic Heat Production
       DepthAtIP = ListGetElementReal( Depth_h, Basis, Element, DepthExists, GaussPoint=t)
       IF (DepthExists) &
-           LoadAtIP = LoadAtIP  + RadiogenicHeatProduction(CurrentRockMaterial,RockMaterialID,DepthAtIP,RefDepth)
+           RefDepth = GetConstReal(Material,'Radiogenic Reference Depth',DepthExists)
+      IF (DepthExists)  &
+        LoadAtIP = LoadAtIP  + RadiogenicHeatProduction(CurrentRockMaterial,RockMaterialID,DepthAtIP,RefDepth)
 
       ! System variables (Temperature, Porosity, Pressure, Salinity) at IP
       TemperatureAtIP = ListGetElementReal( Temperature_h, Basis, Element, Found, GaussPoint=t)

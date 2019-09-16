@@ -591,8 +591,9 @@ CONTAINS
     TYPE(RockMaterial_t), TARGET :: LocalRockMaterial
     TYPE(Element_t), POINTER :: CurrentElement
     INTEGER, ALLOCATABLE :: GlobalToLocalPerm(:)
-    INTEGER :: OK, CurrentNo, I, J, io, NoElements, LocalNoElements, &
-         minglobalelementnumber, maxglobalelementnumber, mmaxglobalelementnumber, ierr 
+    INTEGER :: OK, CurrentNo, I, J, NoElements, LocalNoElements, &
+         minglobalelementnumber, maxglobalelementnumber, mmaxglobalelementnumber, ierr
+    INTEGER, PARAMETER :: io=21
     REAL(KIND=dp) :: ReceivingArray(50)    
 
     SAVE LocalRockMaterial, FirstTime, Parallel, minglobalelementnumber, maxglobalelementnumber,&
@@ -2584,7 +2585,6 @@ CONTAINS
     !-------------------------
     REAL(KIND=dp) :: nu1, nu2, xc
     !-------------------------
-    mugw = CurrentSolventMaterial % muw0
     IF (.NOT.ConstVal) THEN
       xc = Salinity/Xi
       nu1 = (CurrentSolventMaterial % nu10) *&
@@ -2599,8 +2599,14 @@ CONTAINS
            GeneralPolynomial(xc,0.0_dp,1.0_dp,&
            CurrentSoluteMaterial % bnc(0:5),&
            CurrentSoluteMaterial % bncl)
-      !      PRINT *,"mugw:", nu1,nu2,Temperature, xc
-      mugw = mugw * EXP(nu1 * (Temperature - T0) + nu2 * (xc - 0.0))
+      mugw = CurrentSolventMaterial % muw0 * &
+           EXP(nu1 * (Temperature - T0) + nu2 * (xc - 0.0))
+      IF ((mugw .NE. mugw) .OR. (mugw > HUGE(mugw))) THEN
+        WRITE (Message,*) 'invalid value:' , mugw,&
+             'Input values: muw0/nu1/nu2/xc/Salinity/Xi: ',&
+             CurrentSolventMaterial % muw0, nu1,nu2,Temperature, T0, xc, Salinity, Xi
+        CALL FATAL("PermafrostMaterials(mugw)",Message)
+      END IF
     END IF
   END FUNCTION mugw
   !---------------------------------------------------------------------------------------------
