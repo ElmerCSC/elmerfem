@@ -1940,7 +1940,7 @@ CONTAINS
 
     IF( FreeOldMesh ) CALL ReleaseMesh( Mesh )
 
-    CALL Info('RedistributeMesh','Deallocating temporal packed structures',Level=20)
+    CALL Info(FuncName,'Deallocating temporal packed structures',Level=20)
     DO i=1,NoPartitions
       IF( ALLOCATED( SentPack(i) % idata ) ) DEALLOCATE( SentPack(i) % idata )
       IF( ALLOCATED( SentPack(i) % rdata ) ) DEALLOCATE( SentPack(i) % rdata )
@@ -1950,7 +1950,7 @@ CONTAINS
 
     DEALLOCATE( GlobalToLocal )
 
-    CALL Info('CommunicateMeshPieces','Waiting for MPI barrier',Level=15)
+    CALL Info(FuncName,'Waiting for MPI barrier',Level=15)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
     CALL CheckTimer(FuncName,Level=5,Delete=.TRUE.)
@@ -1958,7 +1958,31 @@ CONTAINS
 
   END FUNCTION RedistributeMesh
 
-
+  
+  FUNCTION ElementPartitions( Mesh, ElemInd, NewPart, IndPart ) RESULT ( npart )
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: ElemInd
+    INTEGER, POINTER :: NewPart(:)
+    INTEGER, ALLOCATABLE :: IndPart(:)
+    INTEGER :: nPart
+    
+    INTEGER :: n
+   
+    IndPart(1) = NewPart(ElemInd)
+    npart = 1
+    
+    IF(ASSOCIATED( Mesh % Halo ) ) THEN
+      IF( ASSOCIATED( Mesh % Halo(ElemInd) % Neighbours ) ) THEN
+        n = SIZE( Mesh % Halo(ElemInd) % Neighbours )
+        IndPart(2:n+1) = Mesh % Halo(ElemInd) % Neighbours(1:n)
+        npart = npart + n
+        ! PRINT *,'halo:',npart,IndPart(1:n+1)       
+      END IF
+    END IF
+       
+  END FUNCTION ElementPartitions
+  
+  
   !> Converts element datastructure into a integer and real stream to facilitate
   !> sending to another partition.
   !------------------------------------------------------------------------------
@@ -1974,18 +1998,22 @@ CONTAINS
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:)
     !------------------------
     TYPE(Element_t), POINTER :: Element, Parent
-    INTEGER :: i,j,k,n,nblk,nbdry,allocstat,part,elemcode,geom_id,sweep
+    INTEGER :: i,j,k,l,n,nblk,nbdry,allocstat,part,elemcode,geom_id,sweep
     LOGICAL :: CheckNeighbours, IsBulk
     TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
     TYPE(MeshPack_t), POINTER :: PPack
     INTEGER, POINTER :: TmpPart(:)
+    LOGICAL :: HaveHalo
+    INTEGER :: NPart
+    INTEGER, ALLOCATABLE, SAVE :: IndPart(:)
 
     CALL Info('PackMeshPieces','Packing mesh pieces for sending',Level=8)
 
     ! Allocate and initialize the structures used to communicate this mesh
     n = NoPartitions
     ALLOCATE( SentPack( n ) )
-
+    IF(.NOT. ALLOCATED(IndPart)) ALLOCATE( IndPart(20))
+    
     SentPack(1:n) % NumberOfNodes = 0
     SentPack(1:n) % NumberOfBulkElements = 0
     SentPack(1:n) % NumberOfBoundaryElements = 0
@@ -2000,6 +2028,11 @@ CONTAINS
       RETURN
     END IF
 
+    HaveHalo = ASSOCIATED( Mesh % Halo )
+    IF( HaveHalo ) THEN
+      CALL info('PackMeshPieces','Including halo elements in communication',Level=10)        
+    END IF
+            
     nblk = Mesh % NumberOfBulkElements
     nbdry = Mesh % NumberOfBoundaryElements
 
@@ -2050,7 +2083,6 @@ CONTAINS
     DO Sweep = 1, 2
 
       DO part=1,NoPartitions
-
         IF( part <= 0 ) CYCLE ! This one for possible elements to be eliminated
         IF( part-1 == ParEnv % MyPe ) CYCLE  ! Skip this partition
 
@@ -2067,78 +2099,91 @@ CONTAINS
           SentPack(1:NoPartitions) % bcpos = SentPack(1:NoPartitions) % icount
         END IF
 
-        part = NewPart(i)
-        IF( part <= 0 .OR. part-1 == ParEnv % MyPe ) CYCLE
-
         IsBulk = ( i <= nblk )
-
         Element => Mesh % Elements(i)
         elemcode = Element % Type % ElementCode
         n = Element % TYPE % NumberOfNodes
 
-        PPack => SentPack(part)
-
-        IF( Sweep == 1) THEN
-          IF( IsBulk ) THEN
-            PPack % NumberOfBulkElements = PPack % NumberOfBulkElements + 1
-          ELSE
-            PPack % NumberOfBoundaryElements = PPack % NumberOfBoundaryElements + 1
-          END IF
-          IF( IsBulk ) THEN
-            PPack % icount = PPack % icount + 3
-          ELSE
-            PPack % icount = PPack % icount + 5
-          END IF
-
-        ELSE IF( Sweep == 2 ) THEN
-          ! Populate the table on the second sweep
-
-          ! Pack the global element index
-          IF( ParallelMesh ) THEN
-            PPack % idata(PPack % icount+1) = Element % GElementIndex
-          ELSE
-            PPack % idata(PPack % icount+1) = Element % ElementIndex
-          END IF
-
-          ! Pack the type
-          PPack % idata(PPack % icount+2) = elemcode
-
-          ! Pack either the body id or boundary id
-          IF( IsBulk ) THEN
-            PPack % idata(PPack % icount+3) = Element % BodyID
-            PPack % icount = PPack % icount + 3
-          ELSE
-            PPack % idata(PPack % icount+3) = Element % BoundaryInfo % Constraint
-            PPack % idata(PPack % icount+4:5) = 0
-            IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
-              IF( ParallelMesh ) THEN
-                PPack % idata(PPack % icount+4) = Element % BoundaryInfo % Left % GElementIndex
-              ELSE
-                PPack % idata(PPack % icount+4) = Element % BoundaryInfo % Left % ElementIndex
-              END IF
+        Npart = ElementPartitions( Mesh, i, NewPart, IndPart )        
+        DO l=1,NPart
+          part = IndPart(l)
+          
+          IF( part-1 == ParEnv % MyPe ) CYCLE
+          PPack => SentPack(part)
+        
+          IF( Sweep == 1) THEN
+            ! Add partition index to communication if there is halo
+            IF( HaveHalo ) THEN
+              PPack % icount = PPack % icount + 1
             END IF
-            IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
-              IF( ParallelMesh ) THEN
-                PPack % idata(PPack % icount+5) = Element % BoundaryInfo % Right % GElementIndex
-              ELSE
-                PPack % idata(PPack % icount+5) = Element % BoundaryInfo % Right % ElementIndex
-              END IF
+
+            IF( IsBulk ) THEN
+              PPack % NumberOfBulkElements = PPack % NumberOfBulkElements + 1
+            ELSE
+              PPack % NumberOfBoundaryElements = PPack % NumberOfBoundaryElements + 1
             END IF
-            PPack % icount = PPack % icount + 5
+            IF( IsBulk ) THEN
+              PPack % icount = PPack % icount + 3
+            ELSE
+              PPack % icount = PPack % icount + 5
+            END IF
+
+          ELSE IF( Sweep == 2 ) THEN
+            ! Populate the table on the second sweep
+
+            ! Owner partition only needed for halo
+            IF( HaveHalo ) THEN
+              PPack % idata(PPack % icount+1) = NewPart(i)
+              PPack % icount = PPack % icount + 1
+            END IF
+
+            ! Pack the global element index
+            IF( ParallelMesh ) THEN
+              PPack % idata(PPack % icount+1) = Element % GElementIndex
+            ELSE
+              PPack % idata(PPack % icount+1) = Element % ElementIndex
+            END IF
+
+            ! Pack the type
+            PPack % idata(PPack % icount+2) = elemcode
+
+            ! Pack either the body id or boundary id
+            IF( IsBulk ) THEN
+              PPack % idata(PPack % icount+3) = Element % BodyID
+              PPack % icount = PPack % icount + 3
+            ELSE
+              PPack % idata(PPack % icount+3) = Element % BoundaryInfo % Constraint
+              PPack % idata(PPack % icount+4:5) = 0
+              IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
+                IF( ParallelMesh ) THEN
+                  PPack % idata(PPack % icount+4) = Element % BoundaryInfo % Left % GElementIndex
+                ELSE
+                  PPack % idata(PPack % icount+4) = Element % BoundaryInfo % Left % ElementIndex
+                END IF
+              END IF
+              IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+                IF( ParallelMesh ) THEN
+                  PPack % idata(PPack % icount+5) = Element % BoundaryInfo % Right % GElementIndex
+                ELSE
+                  PPack % idata(PPack % icount+5) = Element % BoundaryInfo % Right % ElementIndex
+                END IF
+              END IF
+              PPack % icount = PPack % icount + 5
+            END IF
+
+            ! Pack node indexes
+            IF( ParallelMesh ) THEN
+              PPack % idata(PPack % icount+1:PPack % icount+n) = &
+                  Mesh % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:n))
+            ELSE
+              PPack % idata(PPack % icount+1:PPack % icount+n) = &
+                  Element % NodeIndexes(1:n)
+            END IF
           END IF
 
-          ! Pack node indexes
-          IF( ParallelMesh ) THEN
-            PPack % idata(PPack % icount+1:PPack % icount+n) = &
-                 Mesh % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:n))
-          ELSE
-            PPack % idata(PPack % icount+1:PPack % icount+n) = &
-                 Element % NodeIndexes(1:n)
-          END IF
-        END IF
-
-        ! Advance the counter for the data
-        PPack % icount = PPack % icount + n
+          ! Advance the counter for the data
+          PPack % icount = PPack % icount + n
+        END DO
       END DO
 
 
@@ -2159,31 +2204,37 @@ CONTAINS
 
         ! For each active partition mark the nodes that must be sent
         DO i=1,nblk+nbdry
-          part = NewPart(i)
-
-          IF( part <= 0 .OR. part-1 == ParEnv % MyPe ) CYCLE
-
-          PPack => SentPack(part)
-
           Element => Mesh % Elements(i)
           elemcode = Element % TYPE % ElementCode
           n = Element % TYPE % NumberOfNodes
+          
+          Npart = ElementPartitions( Mesh, i, NewPart, IndPart )        
+          DO l=1,NPart
+            part = IndPart(l)
+            
+            ! No need to sent to self
+            IF( part-1 == ParEnv % MyPe ) CYCLE
 
-          IF( CheckNeighbours ) THEN
-            DO j=1,n
-              k = Element % NodeIndexes(j)
-              ! We may already have the node in the partition
-              IF( ANY( part-1 == NeighbourList(k) % Neighbours ) ) CYCLE
-              PPack % NodeMask(k) = .TRUE.
-            END DO
-          ELSE
-            PPack % NodeMask(Element % NodeIndexes(1:n)) = .TRUE.
-          END IF
+            PPack => SentPack(part)
+
+            IF( CheckNeighbours ) THEN
+              DO j=1,n
+                k = Element % NodeIndexes(j)
+                ! We may already have the node in the partition
+                IF( ANY( part-1 == NeighbourList(k) % Neighbours ) ) CYCLE
+                PPack % NodeMask(k) = .TRUE.
+              END DO
+            ELSE
+              PPack % NodeMask(Element % NodeIndexes(1:n)) = .TRUE.
+            END IF
+          END DO
         END DO
 
         ! Add the nodes count to be sent to the data structure
         DO part=1,NoPartitions
+          ! Nothing to sent for self
           IF( part-1 == ParEnv % MyPe ) CYCLE
+          
           PPack => SentPack(part)
 
           IF(  PPack % icount <= 5 ) CYCLE
@@ -2260,10 +2311,10 @@ CONTAINS
     LOGICAL :: ParallelMesh
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:), RecPack(:)
     !------------------------
-
     INTEGER :: i,j,n,ierr,ni,nr,nl,status(MPI_STATUS_SIZE)
     INTEGER, ALLOCATABLE :: Requests(:)
-
+    LOGICAL :: HaveHalo
+    
     CALL Info('CommunicateMeshPieces','communicating mesh pieces in parallel',Level=6)
 
     ni = SUM( SentPack(1:NoPartitions) % icount )
@@ -2289,6 +2340,16 @@ CONTAINS
     CALL CheckBuffer( nl + ni*4 + nr*8 + (NoPartitions-1)* ( 4*2 + &
          2*MPI_BSEND_OVERHEAD ) )
 
+
+    ! Should we communicate element owner index 
+    HaveHalo = ( ASSOCIATED( Mesh % Halo ) )
+    CALL MPI_ALLREDUCE(HaveHalo, Mesh % HaveHalo, 1, MPI_LOGICAL, &
+        MPI_LOR, ELMER_COMM_WORLD, ierr )
+    IF( Mesh % HaveHalo ) THEN
+      CALL Info('CommunicateMeshPieces','Assuming halo being communicated',Level=12)
+    END IF
+       
+    
     ! Sent data sizes:
     !--------------------------
     ALLOCATE( Requests(NoPartitions) )
@@ -2301,7 +2362,7 @@ CONTAINS
       CALL MPI_BSEND( SentPack(i) % lcount, 1, MPI_INTEGER, i-1, &
            1002, ELMER_COMM_WORLD, ierr )
     END DO
-
+    
     ! Receive data sizes:
     !--------------------------
     DO i = 1, NoPartitions
@@ -2317,6 +2378,20 @@ CONTAINS
     CALL Info('PackMeshPieces','Waiting for the 1st barrier',Level=15)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
+    IF( InfoActive(15) ) THEN
+      DO i = 1, NoPartitions
+        IF( i-1 == ParEnv % MyPe ) CYCLE
+        IF( SentPack(i) % icount > 5 ) THEN
+          PRINT *,'Mesh send sizes: '//TRIM(I2S(ParEnv % Mype))//'-'//TRIM(I2S(i-1)), &
+              SentPack(i) % icount, SentPack(i) % rcount, SentPack(i) % lcount
+        END IF
+        IF( RecPack(i) % icount > 5 ) THEN       
+          PRINT *,'Mesh recv sizes: '//TRIM(I2S(ParEnv % Mype))//'-'//TRIM(I2S(i-1)), &
+              RecPack(i) % icount, RecPack(i) % rcount, RecPack(i) % lcount      
+        END IF
+      END DO
+    END IF
+        
     n = SUM( RecPack(1:NoPartitions) % icount )
     CALL Info('PackDataToSend','Number of integer values to receive: '//TRIM(I2S(n)),Level=8)
     n = SUM( RecPack(1:NoPartitions) % rcount )
@@ -2398,15 +2473,23 @@ CONTAINS
     INTEGER :: gind,lind,rcount,icount,nbrdy,i1,i2
     TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
     TYPE(MeshPack_t), POINTER :: PPack
-
+    INTEGER :: NPart
+    INTEGER, ALLOCATABLE, SAVE :: IndPart(:)
+    LOGICAL :: HaveHalo
+    
+    
     CALL Info('LocalNumberingMeshPieces','Renumbering local nodes in each partition',Level=8)
 
+    HaveHalo = Mesh % HaveHalo
+    IF(.NOT. ALLOCATED(IndPart)) ALLOCATE( IndPart(20))
+    
     newnbulk = 0
     newnbdry = 0
 
     ! Compute the number of elements staying
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-      IF( NewPart(i)-1 == ParEnv % MyPe ) THEN
+      Npart = ElementPartitions( Mesh, i, NewPart, IndPart )
+      IF( ANY( IndPart(1:NPart) == ParEnv % MyPe + 1 ) ) THEN
         IF( i <= Mesh % NumberOfBulkElements ) THEN
           newnbulk = newnbulk + 1
         ELSE
@@ -2414,6 +2497,8 @@ CONTAINS
         END IF
       END IF
     END DO
+    CALL Info('LocalNumberingMeshPieces','Number of staying elements: '&
+         //TRIM(I2S(newnbulk+newnbdry)),Level=15)
 
     ! Add the number of elements coming from different partitions
     DO part=1,NoPartitions
@@ -2431,7 +2516,7 @@ CONTAINS
       newnbdry = newnbdry + PPack % NumberOfBoundaryElements
     END DO
 
-    CALL Info('LocalNumberingMeshPieces','Combined number of elements: '&
+    CALL Info('LocalNumberingMeshPieces','Number of combined elements: '&
          //TRIM(I2S(newnbulk+newnbdry)),Level=8)
 
 
@@ -2474,7 +2559,9 @@ CONTAINS
 
     ! Check which of the staying nodes are used
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-      IF( NewPart(i)-1 == ParEnv % MyPe ) THEN
+      
+      Npart = ElementPartitions( Mesh, i, NewPart, IndPart )
+      IF( ANY( IndPart(1:NPart) == ParEnv % MyPe + 1 ) ) THEN
         Element => Mesh % Elements(i)
         n = Element % Type % NumberOfNodes
 
@@ -2501,6 +2588,9 @@ CONTAINS
       icount = 5
       DO i=1, PPack % NumberOfBulkElements
 
+        ! If we have halo the 1st index is the owner partition
+        IF( HaveHalo ) icount = icount+1 
+        
         elemcode = PPack % idata(icount+2)
 
         Etype => GetElementType( elemcode )
@@ -2512,15 +2602,15 @@ CONTAINS
         END IF
 
         DO j=1,n
-          gind = PPack % idata(icount+1)
+          gind = PPack % idata(icount+j)
 
           IF( gind < minind .OR. gind > maxind ) THEN
             CALL Fatal('LocalNumberingMeshPieces','gind out of bounds')
           END IF
 
           GlobalToLocal(gind) = 1
-          icount = icount + 1
         END DO
+        icount = icount + n
       END DO
     END DO
 
@@ -2532,7 +2622,7 @@ CONTAINS
         GlobalToLocal(i) = newnodes
       END IF
     END DO
-
+    
     CALL Info('LocalNumberingMeshPieces','Combined number of nodes: '//TRIM(I2S(newnodes)),Level=8)
 
   END SUBROUTINE LocalNumberingMeshPieces
@@ -2557,15 +2647,17 @@ CONTAINS
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
     !----------------------------------
     TYPE(Element_t), POINTER :: Element, Element0
-    INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
+    INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep,partindex
     INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
     LOGICAL :: IsBulk
     TYPE(MeshPack_t), POINTER :: PPack
     INTEGER, ALLOCATABLE :: GlobalToLocalElem(:), LeftParent(:), RightParent(:)
     CHARACTER(*), PARAMETER :: Caller = 'UnpackMeshPieces'
+    INTEGER :: NPart, errcount 
+    INTEGER, ALLOCATABLE, SAVE :: IndPart(:)
+    LOGICAL :: HaveHalo
     
     CALL Info(Caller,'Unpacking mesh pieces to form a new mesh',Level=12)
-
 
     minelem = HUGE( minelem )
     maxelem = 0
@@ -2573,10 +2665,14 @@ CONTAINS
     newnodes = NewMesh % NumberOfNodes
     newnbulk = NewMesh % NumberOfBulkElements 
     newnbdry = NewMesh % NumberOfBoundaryElements 
+
+    HaveHalo = Mesh % HaveHalo
+    IF(.NOT. ALLOCATED(IndPart)) ALLOCATE( IndPart(20))    
     
     nbulk = 0
     nbdry = 0
-
+    errcount = 0
+    
     ! There are temporal arrays needed to inherit the parent information
     ALLOCATE( LeftParent(NewNBulk+1:NewNBulk+NewNBdry ) ) 
     LeftParent = 0
@@ -2587,7 +2683,8 @@ CONTAINS
     CALL Info(Caller,'Copying staying elements',Level=20)
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
-      IF( NewPart(i)-1 /= ParEnv % MyPe ) CYCLE
+      Npart = ElementPartitions( Mesh, i, NewPart, IndPart )
+      IF( ALL( IndPart(1:NPart) /= ParEnv % MyPe + 1 ) ) CYCLE
 
       IsBulk = ( i <= Mesh % NumberOfBulkElements )
 
@@ -2651,8 +2748,12 @@ CONTAINS
       Element % ElementIndex = t
 
       ! Change the owner partition of the element
-      Element % PartIndex = ParEnv % MyPe
-
+      IF( HaveHalo ) THEN
+        Element % PartIndex = Mesh % RePartition(i)-1 
+      ELSE
+        Element % PartIndex = ParEnv % MyPe
+      END IF
+        
       NULLIFY( Element % NodeIndexes )
       ALLOCATE( Element % NodeIndexes(n), STAT = allocstat )
       IF( allocstat /= 0 ) THEN
@@ -2686,12 +2787,14 @@ CONTAINS
       j = i
       IF( ParallelMesh ) j = Mesh % ParallelInfo % GlobalDofs(i)
       IF( j < minind .OR. j > maxind ) THEN
-        CALL Fatal(Caller,'j out of bounds')
+        errcount = errcount + 1
+        PRINT *,'Global index out of bounds:',ParEnv % Mype, j,minind,maxind
       END IF
       k = GlobalToLocal(j)
       IF( k == 0 ) CYCLE
       IF( k > newnodes ) THEN
-        CALL Fatal(Caller,'k2 out of bounds: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(newnodes)))
+        errcount = errcount + 1
+        PRINT *,'Mapped index out of bounds:',ParEnv % Mype,k,newnodes
       END IF
       NewMesh % Nodes % x(k) = Mesh % Nodes % x(i)
       NewMesh % Nodes % y(k) = Mesh % Nodes % y(i)
@@ -2726,6 +2829,11 @@ CONTAINS
           t = newnbulk + nbdry
         END IF
 
+        IF( HaveHalo ) THEN
+          partindex = PPack % idata(icount+1)
+          icount = icount + 1
+        END IF
+        
         elemindex = PPack % idata(icount+1)
         elemcode = PPack % idata(icount+2)
         geom_id = PPack % idata(icount+3)
@@ -2749,10 +2857,14 @@ CONTAINS
           minelem = MIN( minelem, Element % GElementIndex )
           maxelem = MAX( maxelem, Element % GElementIndex )
         END IF
-          
+        
         ! Change the owner partition of the element
-        Element % PartIndex = ParEnv % MyPe
-
+        IF( HaveHalo ) THEN
+          Element % PartIndex = partindex-1
+        ELSE
+          Element % PartIndex = ParEnv % MyPe
+        END IF
+        
         IF( IsBulk ) THEN
           Element % BodyId = geom_id
           icount = icount + 3
@@ -2788,10 +2900,12 @@ CONTAINS
         DO j=1, n
           k = Element % NodeIndexes(j)
           IF( k < minind .OR. k > maxind ) THEN
-            CALL Fatal(Caller,'k3 out of bounds: '//TRIM(I2S(k)))
+            errcount = errcount + 1
+            PRINT *,'Node index out of bounds:',ParEnv % Mype,k,minind,maxind
           END IF
           IF( GlobalToLocal(k) <= 0 .OR. GlobalToLocal(k) > newnodes ) THEN
-            CALL Fatal(Caller,'Local index out of bounds')
+            errcount = errcount + 1
+            PRINT *,'Local index out of bounds:',ParEnv % Mype,Element % PartIndex, k,minind,maxind,GlobalToLocal(k)
           END IF
           Element % NodeIndexes(j) = GlobalToLocal(k)
         END DO
@@ -2800,12 +2914,16 @@ CONTAINS
         icount = icount + n
       END DO
 
-      CALL Info(Caller,'Finished piece',Level=20)
+      CALL Info(Caller,'Finished unpacking piece',Level=20)
       IF( icount /= PPack % indpos ) THEN
         CALL Fatal(Caller,'Inconsistent icount value: '//TRIM(I2S(icount)))
       END IF
     END DO
 
+    IF( errcount > 0 ) THEN
+      CALL Fatal(Caller,'Encountered '//TRIM(I2S(errcount))//' indexing issues in elements')
+    END IF
+      
     IF( minelem <= maxelem ) THEN
       ! First create global to local array for the elements 
       CALL Info(Caller,'Global element index range: '&
@@ -2829,7 +2947,8 @@ CONTAINS
         IF( j >= minelem .AND. j <= maxelem ) THEN
           k = GlobalToLocalElem(j)
           IF( k <= 0 .OR. k > newnbulk ) THEN
-            PRINT *,'k left out of bounds:',ParEnv % MyPe, i, j, k
+            errcount = errcount + 1
+            PRINT *,'k left out of bounds:',ParEnv % MyPe, i, j, k, newnbulk, minelem, maxelem
           ELSE
             Element % BoundaryInfo % Left => NewMesh % Elements(k)
           END IF
@@ -2838,7 +2957,8 @@ CONTAINS
         IF( j >= minelem .AND. j <= maxelem ) THEN
           k = GlobalToLocalElem(j)
           IF( k <= 0 .OR. k > newnbulk ) THEN
-            PRINT *,'k right out of bounds:',ParEnv % MyPe, i, j, k
+            errcount = errcount + 1
+            PRINT *,'k right out of bounds:',ParEnv % MyPe, i, j, k, newnbulk, minelem, maxelem
           ELSE          
             Element % BoundaryInfo % Right => NewMesh % Elements(k)
           END IF
@@ -2884,6 +3004,12 @@ CONTAINS
       END DO
     END DO
 
+    IF( errcount > 0 ) THEN
+      CALL Fatal(Caller,'Encountered '//TRIM(I2S(errcount))//' indexing issues in nodes')
+    END IF
+ 
+
+    
     n = COUNT( NewMesh % ParallelInfo % INTERFACE )
     CALL Info(Caller,'Potential interface nodes '//TRIM(I2S(n))//' out of '&
         //TRIM(I2S(NewMesh % NumberOfNodes)),Level=20)
@@ -2940,7 +3066,8 @@ CONTAINS
 
     n = Mesh % NumberOfNodes
     IF( n == 0 ) RETURN
-    
+
+    ! The interface includes the old interface between partitions
     IF( .NOT. ASSOCIATED( Mesh % ParallelInfo % INTERFACE ) ) THEN
       ALLOCATE( Mesh % ParallelInfo % INTERFACE( n ), STAT=allocstat )
       IF( allocstat /= 0 ) THEN
@@ -2960,7 +3087,8 @@ CONTAINS
       CALL Fatal(Caller,'Allocation error for prev partition!')
     END IF
     PrevPartition = 0
-    
+
+    ! And all nodes which have nodes on the interface between two partitions
     DO i=1,Mesh % NumberOfBulkElements
       Element => Mesh % Elements(i)
       part = ElementPart(i)
@@ -2974,12 +3102,18 @@ CONTAINS
           PartInterface(k) = .TRUE.
         END IF
       END DO
+      
+      IF( ASSOCIATED( Mesh % Halo ) ) THEN
+        IF( ASSOCIATED( Mesh % Halo(i) % Neighbours ) ) THEN
+          PartInterface( Element % NodeIndexes ) = .TRUE.
+        END IF
+      END IF
     END DO
 
     n = COUNT( PartInterface ) 
     DEALLOCATE( PrevPartition )
     
-    CALL Info(Caller,'Number of potential nodes at the intarface: '//TRIM(I2S(n)),Level=10)      
+    CALL Info(Caller,'Number of potential nodes at the interface: '//TRIM(I2S(n)),Level=10)      
       
   END SUBROUTINE UpdateInterfaceNodeCandidates
 
@@ -3250,11 +3384,19 @@ CONTAINS
        IF( ListGetLogical( Params,'Partition Mesh Merge Boundaries',Found ) ) THEN
          CALL MergeJoinedPartitions(.TRUE.)
        END IF
-        
-       CALL InheritBoundaryPart()
+       
+       CALL InheritBoundaryToBulkPart()
 
-      CALL ExtendBoundaryPart()
-     END IF
+       IF( ListGetLogical( Params,'Boundary Partition Halo',Found ) ) THEN
+         CALL GenerateSetHalo()
+       END IF
+       
+       CALL ExtendBoundaryPart()
+
+       IF( ListGetLogical( Params,'Boundary Partition Halo',Found ) ) THEN
+         !CALL GenerateSetHalo()
+       END IF
+    END IF
      
      CALL Info(FuncName,'Partition the bulk elements sets')
      CALL InitializeBulkElementSet(NumberOfSets)
@@ -3269,9 +3411,12 @@ CONTAINS
        END IF
        CALL PartitionMeshPart(SetNo,SectionParams,.FALSE.)
      END DO
+       
+     CALL InheritBulkToBoundaryPart()
 
-     !CALL Info(FuncName,'Defining halo mesh')     
-     !CALL DefineMeshHalo()
+     IF( ListGetLogicalAnySolver( Model,'Discontinuous Galerkin') ) THEN
+       CALL GenerateDGHalo()
+     END IF
 
      DO i=1,MAXVAL( Mesh % RePartition ) 
        PRINT *,'Elements in partition:',i,COUNT( Mesh % RePartition == i )
@@ -3287,7 +3432,7 @@ CONTAINS
      ! Inherit partition from a boundary partition.
      ! In case of conflict the 1st occurrence prevails.
      !-----------------------------------------------------
-     SUBROUTINE InheritBoundaryPart()
+     SUBROUTINE InheritBoundaryToBulkPart()
        
        TYPE(Element_t), POINTER :: Element, Parent
        INTEGER :: t, LeftRight, BoundPart, NoHerited, NoConflict, ElemIndx
@@ -3329,8 +3474,53 @@ CONTAINS
        CALL Info(FuncName,'Number of herited bulk elements: '//TRIM(I2S(NoHerited)))
        CALL Info(FuncName,'Number of conflicted bulk elements: '//TRIM(I2S(NoConflict)))
        
-     END SUBROUTINE InheritBoundaryPart
+     END SUBROUTINE InheritBoundaryToBulkPart
 
+
+     ! Inherit partition from a bulkd partition to boundary.
+     ! In case of conflict the 1st occurrence prevails.
+     !-----------------------------------------------------
+     SUBROUTINE InheritBulkToBoundaryPart()
+       
+       TYPE(Element_t), POINTER :: Element, Parent
+       INTEGER :: t, LeftRight, BoundPart, NoHerited, NoConflict, ElemIndx
+
+       CALL Info(FuncName,'Inheriting the bulk partitioning into the boundary mesh') 
+
+       NoHerited = 0
+       NoConflict = 0
+
+       DO t=Mesh % NumberOfBulkElements + 1,&
+           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+         Element => Mesh % Elements(t) 
+
+         ! Don't set boundaries that are already defined
+         IF( ElementPart( t ) > 0 ) CYCLE
+         
+         IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+           DO LeftRight=0,1
+             IF( LeftRight == 0 ) THEN
+               Parent => Element % BoundaryInfo % Left
+             ELSE
+               Parent => Element % BoundaryInfo % Right
+             END IF
+             
+             IF( ASSOCIATED( Parent ) ) THEN               
+               ElemIndx = Parent % ElementIndex
+               ElementPart(t) = ElementPart(ElemIndx)
+               NoHerited = NoHerited + 1
+               EXIT
+             END IF
+           END DO
+         END IF
+       END DO
+       
+       CALL Info(FuncName,'Number of herited boundary elements: '//TRIM(I2S(NoHerited)))
+       !CALL Info(FuncName,'Number of conflicted bulk elements: '//TRIM(I2S(NoConflict)))
+       
+     END SUBROUTINE InheritBulkToBoundaryPart
+
+     
 
      ! Merge partitioned boundaries that share even just one node. 
      ! The algorithm works fine when there is a small number of 
@@ -3354,7 +3544,7 @@ CONTAINS
        ALLOCATE( PartFlag( Mesh % NumberOfNodes ) ) 
 
        IF( IsBoundary ) THEN
-         tstart = Mesh % NumberOfBulkElements
+         tstart = Mesh % NumberOfBulkElements + 1
          tfin = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
        ELSE
          tstart = 1
@@ -3431,6 +3621,140 @@ CONTAINS
      END SUBROUTINE MergeJoinedPartitions
 
 
+     ! Generates a halo that includes all the couplings between elements
+     ! in a set. 
+     !------------------------------------------------------------------
+     SUBROUTINE GenerateSetHalo()
+       
+       TYPE(Element_t), POINTER :: Element
+       INTEGER :: t, nblk, nbndry, nelem, nhalo, ntothalo, i, j, MinPart, MaxPart
+       
+       MaxPart = MAXVAL( ElementPart, PartitionCand ) 
+       MinPart = MINVAL( ElementPart, PartitionCand ) 
+
+       IF( MaxPart - MinPart == 0 ) THEN
+         CALL Info(FuncName,'No need not generate halo within one partition!',Level=12)
+         RETURN
+       END IF
+
+       CALL Info(FuncName,'Generating halo among partitions '&
+           //TRIM(I2S(MinPart))//' to '//TRIM(I2S(MaxPart)),Level=10 )
+       
+       nblk = Mesh % NumberOfBulkElements
+       nbndry = Mesh % NumberOfBoundaryElements
+       nelem = nblk + nbndry
+       
+       IF(.NOT. ASSOCIATED( Mesh % Halo ) ) THEN
+         ALLOCATE( Mesh % Halo(nelem) )         
+         DO t=1,nelem
+           NULLIFY( Mesh % Halo(t) % Neighbours )
+         END DO
+       END IF
+       
+       ! For this halo type the number of neighbuor partitions in always constant
+       nhalo = MaxPart - MinPart
+       ntothalo = 0
+       
+       DO t=1, nelem
+         IF( ElementPart( t ) < MinPart .OR. ElementPart( t ) > MaxPart ) CYCLE
+
+         Element => Mesh % Elements(t) 
+         IF(.NOT. ASSOCIATED( Mesh % Halo(t) % Neighbours ) ) THEN
+           ALLOCATE( Mesh % Halo(t) % Neighbours(nhalo) )
+           j = 0
+           DO i=MinPart, MaxPart
+             ! The owner is always considred, hence don't add that to the halo elements
+             IF( ElementPart(t) == i ) CYCLE
+             j = j + 1
+             Mesh % Halo(t) % Neighbours(j) = i
+           END DO
+           ntothalo = ntothalo + nhalo
+         END IF
+       END DO
+
+       CALL Info(FuncName,'Total number of halo elements:'//TRIM(I2S(ntothalo)),Level=10)
+     END SUBROUTINE GenerateSetHalo
+
+
+     ! Generates a halo for discontinuous Galerkin (DG) method.
+     !------------------------------------------------------------------
+     SUBROUTINE GenerateDGHalo()
+       
+       TYPE(Element_t), POINTER :: Element
+       INTEGER :: t, nblk, nbndry, nelem, nhalo, ntothalo, ownerpart, i, j, MinPart, MaxPart
+       LOGICAL, ALLOCATABLE :: NodeActive(:)
+       INTEGER :: TmpNeighbours(20)
+       
+       MaxPart = MAXVAL( ElementPart )!, PartitionCand ) 
+       MinPart = MINVAL( ElementPart )!, PartitionCand ) 
+
+       IF( MaxPart - MinPart == 0 ) THEN
+         CALL Info(FuncName,'No need not generate halo within this partition!',Level=12)
+         RETURN
+       END IF
+
+      
+       CALL Info(FuncName,'Generating halo for DG in partitions '&
+           //TRIM(I2S(MinPart))//' to '//TRIM(I2S(MaxPart)),Level=10 )
+       
+       nblk = Mesh % NumberOfBulkElements
+       nbndry = Mesh % NumberOfBoundaryElements
+       nelem = nblk + nbndry
+       
+       IF(.NOT. ASSOCIATED( Mesh % Halo ) ) THEN
+         ALLOCATE( Mesh % Halo(nelem) )         
+         DO t=1,nelem
+           NULLIFY( Mesh % Halo(t) % Neighbours )
+         END DO
+       END IF
+       
+       ! For this halo type the number of neighbuor partitions in always constant
+       nhalo = MaxPart - MinPart
+       ntothalo = 0
+
+       ALLOCATE( NodeActive( Mesh % NumberOfNodes ) )
+
+       DO ownerpart = MinPart, MaxPart
+
+         ! Mark nodes in partition "ownerpart"
+         NodeActive = .FALSE.
+         DO t=1, nelem        
+           IF( ElementPart( t ) /= ownerpart ) CYCLE
+           Element => Mesh % Elements(t) 
+           NodeActive( Element % NodeIndexes ) = .TRUE.
+         END DO
+
+         ! Find which elements in other partitions have some node in partition "ownerpart"
+         DO t=1, nelem
+           IF( ElementPart( t ) == ownerpart ) CYCLE                      
+           Element => Mesh % Elements(t)
+           IF(.NOT. ANY( NodeActive( Element % NodeIndexes ) ) ) CYCLE
+           IF(.NOT. ASSOCIATED( Mesh % Halo(t) % Neighbours ) ) THEN
+             ! Halo not yet present, creating one
+             nhalo = 1
+             ALLOCATE( Mesh % Halo(t) % Neighbours(1) )             
+           ELSE
+             ! Halo present, adding one partition to it
+             IF( ANY( Mesh % Halo(t) % Neighbours == ownerpart ) ) CYCLE
+             nhalo = SIZE( Mesh % Halo(t) % Neighbours )
+             TmpNeighbours(1:nhalo) = Mesh % Halo(t) % Neighbours
+             DEALLOCATE( Mesh % Halo(t) % Neighbours )
+             ALLOCATE( Mesh % Halo(t) % Neighbours(nhalo+1) )
+             Mesh % Halo(t) % Neighbours(1:nhalo) = TmpNeighbours(1:nhalo)
+             nhalo = nhalo + 1
+           END IF
+                      
+           Mesh % Halo(t) % Neighbours(nhalo) = ownerpart
+           ntothalo = ntothalo + 1           
+
+           !PRINT *,'dghalo:',t,nhalo,ownerpart,ntothalo,Mesh % Halo(t) % Neighbours 
+         END DO
+       END DO
+
+       CALL Info(FuncName,'Total number of DG halo elements:'//TRIM(I2S(ntothalo)),Level=10)
+     END SUBROUTINE GenerateDGHalo
+
+     
      ! Extend partition from an existing bulk partitioning. 
      ! In case of conflict the dominating partitioning prevails.
      ! The routine is written with just a small number of existing
@@ -3846,7 +4170,7 @@ CONTAINS
       IF( PartOffset > 0 ) THEN
         WHERE( PartitionCand ) ElementPart = ElementPart + PartOffset
       END IF
-        
+      
       CALL Info(FuncName,'Partitioning of set finished')      
       
       IF( GotCoordTransform ) THEN
