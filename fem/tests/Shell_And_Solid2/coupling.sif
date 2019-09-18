@@ -134,20 +134,20 @@ Boundary Condition 3
 End
 
 Boundary Condition 4
-  Target Nodes(2) = 6 8
+  !Target Nodes(2) = 6 8
+  Target Boundaries(1) = 10
   !
   ! The keyword "Structure Interface" is used to specify that the shell
   ! constraints are computed from the 3-D solution "Displacement":
   !
   Structure Interface = True
   !
-  ! TO DO on the code side: The shell director should be figured out
-  ! from the shell model data, so that the following director
-  ! specification would not be needed.
+  ! The following (redundant) director specification would be needed if 
+  ! the constraint was activated by listing nodes with the keyword Target Nodes:
   !
-  Director 1 = Real 0.0
-  Director 2 = Real 0.0
-  Director 3 = Real 1.0
+  !Director 1 = Real 0.0
+  !Director 2 = Real 0.0
+  !Director 3 = Real 1.0
 End
 
 Boundary Condition 5

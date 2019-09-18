@@ -4517,11 +4517,12 @@ CONTAINS
 !> like variables (directional derivatives) of the shell model are calculated from 
 !> the solution at solid nodes found in the positive and negative direction 
 !> of the shell normal (director). The displacement vector of the mid-surface is
-!> also constrained. The implementation is not yet perfect as it expects
-!> that 1) the nodes where this constraint is given must be listed by using
-!> the "Target Nodes" keyword and 2) the shell director is not yet figured out
-!> from the shell model data, so a redundant director specification should now be
-!> given in a Boundary Condition section of the sif file.
+!> also constrained. The implementation is not yet perfect as when
+!> the nodes where this constraint is activated are listed by using
+!> the "Target Nodes" keyword, a redundant director specification should be
+!> given in a Boundary Condition section of the sif file. However, the redundant 
+!> definition is not needed if the constraint is activated by referring to 
+!> the boundary numbering, which is expected to be a more convenient way.
 ! ---------------------------------------------------------------------------------    
   SUBROUTINE SetSolidCouplingBCs(Model, Solver, Displacement)
 ! ---------------------------------------------------------------------------------
@@ -4534,23 +4535,28 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Matrix_t), POINTER :: ShellMatrix, A
     TYPE(ValueList_t), POINTER :: ValueList
+    TYPE(Element_t), POINTER :: BGElement, Parent
 
-    LOGICAL :: Found, SolidCoupling, WithDirector
+    LOGICAL :: Found, SolidCoupling, GivenTargetNodes
 
+    INTEGER, ALLOCATABLE, TARGET :: BoundaryNodes(:)
+    INTEGER, ALLOCATABLE :: ActiveElementList(:)
     INTEGER, ALLOCATABLE :: NearNodes(:)
     INTEGER, POINTER :: Perm(:), NodeIndices(:)
     INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
     INTEGER :: BC, TargetCount, TargetNode, TargetInd, Row, ShellDOFs, DOFs
-    INTEGER :: i, j, k, n, p, jz, lz
+    INTEGER :: i, j, k, l, n, p, jz, lz, np, i0
+    INTEGER :: Active, Family
 
     REAL(KIND=dp), ALLOCATABLE :: NearCoordinates(:,:), AllDirectors(:,:)
+    REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: res_z, maxres_z, minres_z
     REAL(KIND=dp) :: U_mid(3), U_upper(3), U_lower(3), h_eff
     REAL(KIND=dp) :: d(3), d_h(3), v(3), DNU(3)
 ! ---------------------------------------------------------------------------------
     IF (.NOT. ListGetLogicalAnyBC(Model, 'Structure Interface')) RETURN
     IF (.NOT. Displacement % DOFs == 3) THEN
-      CALL Warn('Set3DCouplingBCs', 'Structure coupling possible in 3D only')
+      CALL Warn('SetSolidCouplingBCs', 'Structure coupling possible in 3D only')
       RETURN
     ELSE
       DOFs = 3
@@ -4583,33 +4589,90 @@ CONTAINS
       END DO
     END IF
 
-    !
-    ! It might be better to loop over elements in order to avoid listing
-    ! target nodes where the coupling BC is activated. The value of director
-    ! could then also be retrieved easily. This will do for testing purposes.
-    !
+    Active = GetNOFBoundaryElements()
     DO BC=1,Model % NumberOfBCs
       ValueList => Model % BCs(BC) % Values
       SolidCoupling = ListGetLogical(ValueList, 'Structure Interface', Found)
       IF (.NOT. SolidCoupling) CYCLE
 
-      NodeIndices => ListGetIntegerArray(ValueList, 'Target Nodes', UnfoundFatal=.TRUE.)
-      TargetCount = SIZE(NodeIndices)
+      NodeIndices => ListGetIntegerArray(ValueList, 'Target Nodes', GivenTargetNodes)
 
-      ! Here the director definition is sought from the BC definition, 
-      ! although the director should already be available from the specification 
-      ! of a shell model.
-      !
-      IF (.NOT.ListCheckPresent(ValueList, 'Director 1') .AND. &
-          .NOT.ListCheckPresent(ValueList, 'Director 2') .AND. &
-          .NOT.ListCheckPresent(ValueList, 'Director 3')) THEN
-        WithDirector = .FALSE.
+      IF (GivenTargetNodes) THEN
+        TargetCount = SIZE(NodeIndices)
+        !
+        ! Here the director definition is sought from the BC definition, 
+        ! although the director should already be available from the specification 
+        ! of a shell model. The redundant definition is not needed if the 
+        ! constraint is activated by referring to the boundary numbering.
+        !
+        IF (.NOT.ListCheckPresent(ValueList, 'Director 1') .AND. &
+            .NOT.ListCheckPresent(ValueList, 'Director 2') .AND. &
+            .NOT.ListCheckPresent(ValueList, 'Director 3')) THEN
+          CALL Fatal('SetSolidCouplingBCs', &
+              'Director must be defined in the BC section when using Target Nodes')
+        ELSE
+          ALLOCATE(AllDirectors(3,TargetCount))
+          AllDirectors(1,1:TargetCount) = ListGetReal(ValueList, 'Director 1', TargetCount, NodeIndices, Found)
+          AllDirectors(2,1:TargetCount) = ListGetReal(ValueList, 'Director 2', TargetCount, NodeIndices, Found)
+          AllDirectors(3,1:TargetCount) = ListGetReal(ValueList, 'Director 3', TargetCount, NodeIndices, Found)
+        END IF        
+
       ELSE
-        WithDirector = .TRUE.
-        ALLOCATE(AllDirectors(3,TargetCount))
-        AllDirectors(1,1:TargetCount) = ListGetReal(ValueList, 'Director 1', TargetCount, NodeIndices, Found)
-        AllDirectors(2,1:TargetCount) = ListGetReal(ValueList, 'Director 2', TargetCount, NodeIndices, Found)
-        AllDirectors(3,1:TargetCount) = ListGetReal(ValueList, 'Director 3', TargetCount, NodeIndices, Found)
+        !
+        ! We shall loop over the elements in order to list target nodes where the coupling BC 
+        ! is activated. The value of director must be sought from the parent elements.
+        !
+        IF (.NOT. ALLOCATED(ActiveElementList)) ALLOCATE(ActiveElementList(Active))
+        ActiveElementList = 0
+        !
+        ! First, figure out suitable sizes for some arrays:
+        !
+        n = 0
+        p = 0
+        DO k=1, Active
+          BGElement => GetBoundaryElement(k)
+          Family = GetElementFamily(BGElement)
+          IF (.NOT.(ActiveBoundaryElement() .AND. Family == 2)) CYCLE
+          IF (BGElement % BoundaryInfo % Constraint /= Model % BCs(BC) % Tag ) CYCLE
+          p = p + BGElement % TYPE % NumberOfNodes
+          n = n + 1
+          ActiveElementList(n) = k
+        END DO
+        ! print *, 'ACTIVE BC ELEMENTS = ', N
+        ! print *, 'ACTIVE BC NODES = ', P       
+        ALLOCATE(BoundaryNodes(p))
+        ALLOCATE(AllDirectors(3,p))
+        !
+        ! Then, write data to the arrays:
+        !
+        l = 0
+        DO k=1,n
+          BGElement => GetBoundaryElement(ActiveElementList(k))
+          DirectorValues => NULL()
+          Parent => BGElement % BoundaryInfo % Left
+          IF (ASSOCIATED(Parent)) &
+              DirectorValues => GetElementalDirector(Parent)
+          IF (.NOT. ASSOCIATED(DirectorValues)) THEN
+            Parent => BGElement % BoundaryInfo % Right
+            DirectorValues => GetElementalDirector(Parent)
+          END IF
+          IF (.NOT. ASSOCIATED(DirectorValues)) CALL Fatal('SetSolidCouplingBCs', &
+              'Director cannot be found from parent elements')
+
+          DO i=1, BGElement % TYPE % NumberOfNodes
+            DO j=1, Parent % TYPE % NumberOfNodes
+              IF (BGElement % NodeIndexes(i) == Parent % NodeIndexes(j)) THEN
+                i0 = 3*(j-1)
+                l = l + 1
+                AllDirectors(1:3,l) = DirectorValues(i0+1:i0+3)
+                BoundaryNodes(l) = BGElement % NodeIndexes(i)
+                EXIT
+              END IF
+            END DO
+          END DO
+        END DO
+        NodeIndices => BoundaryNodes(:)
+        TargetCount = l
       END IF
 
       DO p=1,TargetCount
@@ -4640,88 +4703,85 @@ CONTAINS
         NearCoordinates(2,1:n) = Mesh % Nodes % y(NearNodes(1:n)) - Mesh % Nodes % y(TargetNode)
         NearCoordinates(3,1:n) = Mesh % Nodes % z(NearNodes(1:n)) - Mesh % Nodes % z(TargetNode)  
 
-        IF (WithDirector) THEN
-          d = AllDirectors(:,p)
-          e3 = d/SQRT(DOT_PRODUCT(d,d))
-          !------------------------------------------------------------------------------
-          ! Seek for nodes which are closest to be parallel to d and have a non-negligible
-          ! component with respect to d
-          !------------------------------------------------------------------------------
-          maxres_z = 0.0d0
-          minres_z = 0.0d0
-          jz = 0
-          lz = 0
-          DO i=1,n
-            IF (NearNodes(i) == TargetNode) CYCLE
+        d = AllDirectors(:,p)
+        e3 = d/SQRT(DOT_PRODUCT(d,d))
+        !------------------------------------------------------------------------------
+        ! Seek for nodes which are closest to be parallel to d and have a non-negligible
+        ! component with respect to d
+        !------------------------------------------------------------------------------
+        maxres_z = 0.0d0
+        minres_z = 0.0d0
+        jz = 0
+        lz = 0
+        DO i=1,n
+          IF (NearNodes(i) == TargetNode) CYCLE
 
-            res_z = DOT_PRODUCT(e3(:), NearCoordinates(:,i)) / &
-                SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+          res_z = DOT_PRODUCT(e3(:), NearCoordinates(:,i)) / &
+              SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+          !
+          ! Skip orthogonal couplings.
+          ! TO DO: The following test should better be replaced by one where
+          !        the comparison is made against some fraction of the shell thickness, e.g.
+          !        IF (ABS(res_z) < h/1000 CYCLE
+          IF (ABS(res_z) < AEPS) CYCLE
+
+          IF (res_z > 0.0d0) THEN
             !
-            ! Skip orthogonal couplings.
-            ! TO DO: The following test should better be replaced by one where
-            !        the comparison is made against some fraction of the shell thickness, e.g.
-            !        IF (ABS(res_z) < h/1000 CYCLE
-            IF (ABS(res_z) < AEPS) CYCLE
-
-            IF (res_z > 0.0d0) THEN
-              !
-              ! A near node is on +d side
-              !
-              IF (res_z > maxres_z) THEN
-                jz = NearNodes(i)
-                maxres_z = res_z
-              END IF
-            ELSE
-              !
-              ! A near node is on -d side
-              !
-              IF (res_z < minres_z) THEN
-                lz = NearNodes(i)
-                minres_z = res_z
-              END IF
+            ! A near node is on +d side
+            !
+            IF (res_z > maxres_z) THEN
+              jz = NearNodes(i)
+              maxres_z = res_z
             END IF
-          END DO
-
-          ! PRINT *, 'HANDLING NODE = ', TargetNode
-          ! PRINT *, 'UPPER NODE = ', JZ
-          ! PRINT *, 'LOWER NODE = ', LZ
-
-          ! Now, evaluate the directional derivative DNU(:) in the normal direction:
-          i = Perm(lz)
-          j = Perm(jz)
-          k = Perm(TargetNode)
-          U_lower(1:3) = Displacement % Values(i*DOFs-2:i*DOFs)
-          U_upper(1:3) = Displacement % Values(j*DOFs-2:j*DOFs)
-          U_mid(1:3) = Displacement % Values(k*DOFs-2:k*DOFs)
-          v(1:3) = [Mesh % Nodes % x(jz) - Mesh % Nodes % x(lz), &
-              Mesh % Nodes % y(jz) - Mesh % Nodes % y(lz), &
-              Mesh % Nodes % z(jz) - Mesh % Nodes % z(lz)]
-          h_eff = SQRT(DOT_PRODUCT(v,v))
-          DNU(:) = -1.0d0/h_eff * (U_upper(:) - U_lower(:))
-
-          d_h = v/SQRT(DOT_PRODUCT(v,v))
-          IF (ABS(DOT_PRODUCT(d_h,e3)) < 0.98d0) THEN
-            CALL Warn('SetSolidCouplingBCs', 'A BC omitted: Solid-model nodes does not span the director')
-            CYCLE
+          ELSE
+            !
+            ! A near node is on -d side
+            !
+            IF (res_z < minres_z) THEN
+              lz = NearNodes(i)
+              minres_z = res_z
+            END IF
           END IF
+        END DO
 
-          !
-          ! Finally, constrain the shell to follow the deformation of the solid: 
-          !
-          k = (Solver % Variable % Perm(TargetNode)-1) * ShellDOFs
-          ShellMatrix % DValues(k+1:k+3) = U_mid(1:3)
-          Solver % Matrix % ConstrainedDOF(k+1:k+3) = .TRUE.
-          ShellMatrix % DValues(k+4:k+6) = DNU(1:3)
-          Solver % Matrix % ConstrainedDOF(k+4:k+6) = .TRUE.
-        ELSE
-          CALL Fatal('SetSolidCouplingBCs', &
-              'Director must be defined in the BC section for solid-coupling')      
+        ! PRINT *, 'HANDLING NODE = ', TargetNode
+        ! PRINT *, 'UPPER NODE = ', JZ
+        ! PRINT *, 'LOWER NODE = ', LZ
+
+        ! Now, evaluate the directional derivative DNU(:) in the normal direction:
+        i = Perm(lz)
+        j = Perm(jz)
+        k = Perm(TargetNode)
+        U_lower(1:3) = Displacement % Values(i*DOFs-2:i*DOFs)
+        U_upper(1:3) = Displacement % Values(j*DOFs-2:j*DOFs)
+        U_mid(1:3) = Displacement % Values(k*DOFs-2:k*DOFs)
+        v(1:3) = [Mesh % Nodes % x(jz) - Mesh % Nodes % x(lz), &
+            Mesh % Nodes % y(jz) - Mesh % Nodes % y(lz), &
+            Mesh % Nodes % z(jz) - Mesh % Nodes % z(lz)]
+        h_eff = SQRT(DOT_PRODUCT(v,v))
+        DNU(:) = -1.0d0/h_eff * (U_upper(:) - U_lower(:))
+
+        d_h = v/SQRT(DOT_PRODUCT(v,v))
+        IF (ABS(DOT_PRODUCT(d_h,e3)) < 0.98d0) THEN
+          CALL Warn('SetSolidCouplingBCs', 'A BC omitted: Solid-model nodes does not span the director')
+          CYCLE
         END IF
-          
+
+        !
+        ! Finally, constrain the shell to follow the deformation of the solid: 
+        !
+        k = (Solver % Variable % Perm(TargetNode)-1) * ShellDOFs
+        ShellMatrix % DValues(k+1:k+3) = U_mid(1:3)
+        Solver % Matrix % ConstrainedDOF(k+1:k+3) = .TRUE.
+        ShellMatrix % DValues(k+4:k+6) = DNU(1:3)
+        Solver % Matrix % ConstrainedDOF(k+4:k+6) = .TRUE.
+            
         DEALLOCATE(NearNodes, NearCoordinates)
       END DO
-      IF (WithDirector) DEALLOCATE(AllDirectors)
+      IF (ALLOCATED(AllDirectors)) DEALLOCATE(AllDirectors)
+      IF (ALLOCATED(BoundaryNodes)) DEALLOCATE(BoundaryNodes)
     END DO
+    IF (ALLOCATED(ActiveElementList)) DEALLOCATE(ActiveElementList)
 ! ---------------------------------------------------------------------------------
   END SUBROUTINE SetSolidCouplingBCs
 ! ---------------------------------------------------------------------------------
