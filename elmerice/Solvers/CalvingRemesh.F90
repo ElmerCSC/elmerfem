@@ -3071,6 +3071,7 @@ CONTAINS
        HasValuesInPartition = .TRUE.
 
        !Do nothing if it already exists
+       !e.g. it's a DOF component added previously
        NewVar => VariableGet( NewMesh % Variables, Var % Name, ThisOnly = .TRUE.)
        IF(ASSOCIATED(NewVar)) THEN
           NULLIFY(NewVar)
@@ -3240,6 +3241,23 @@ CONTAINS
 
        NULLIFY(WorkReal, WorkPerm)
        Var => Var % Next
+    END DO
+
+    !Go back through and set non-primary variables to have same % perm as the primary var
+    !Bit of a hack - would be nice to somehow do this in one loop...
+    Var => NewMesh % Variables
+    DO WHILE( ASSOCIATED(Var) )
+
+      WorkSolver => Var % Solver
+      PrimaryVar = ASSOCIATED(WorkSolver % Variable, Var)
+      IF(PrimaryVar) THEN
+        Var => Var % Next
+        CYCLE
+      END IF
+
+      Var % Perm = WorkSolver % Variable % Perm
+
+      Var => Var % Next
     END DO
 
     !set partitions to active, so variable can be -global -nooutput
