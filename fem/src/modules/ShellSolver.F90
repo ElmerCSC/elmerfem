@@ -4719,11 +4719,9 @@ CONTAINS
           res_z = DOT_PRODUCT(e3(:), NearCoordinates(:,i)) / &
               SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
           !
-          ! Skip orthogonal couplings.
-          ! TO DO: The following test should better be replaced by one where
-          !        the comparison is made against some fraction of the shell thickness, e.g.
-          !        IF (ABS(res_z) < h/1000 CYCLE
-          IF (ABS(res_z) < AEPS) CYCLE
+          ! Skip nearly orthogonal couplings:
+          !
+          IF (ABS(res_z) < 2.0d-2) CYCLE
 
           IF (res_z > 0.0d0) THEN
             !
