@@ -3390,9 +3390,18 @@ CONTAINS
        IF( ListGetLogical( Params,'Boundary Partition Halo',Found ) ) THEN
          CALL GenerateSetHalo()
        END IF
+
+       IF( ListGetLogical( Params,'Boundary Bounding Box Halo',Found ) ) THEN
+         CALL GenerateBBoxHalo()
+         CALL InheritHaloToBulkPart
+       END IF
        
        CALL ExtendBoundaryPart()
 
+       ! We could do the halo stuff also after extending 
+       IF( ListGetLogical( Params,'Boundary Bounding Box Halo',Found ) ) THEN
+         ! CALL GenerateBBoxHalo()
+       END IF
        IF( ListGetLogical( Params,'Boundary Partition Halo',Found ) ) THEN
          !CALL GenerateSetHalo()
        END IF
@@ -3475,6 +3484,78 @@ CONTAINS
        CALL Info(FuncName,'Number of conflicted bulk elements: '//TRIM(I2S(NoConflict)))
        
      END SUBROUTINE InheritBoundaryToBulkPart
+
+
+     ! Inherit partition from a boundary partition.
+     ! In case of conflict the 1st occurrence prevails.
+     !-----------------------------------------------------
+     SUBROUTINE InheritHaloToBulkPart()
+       
+       TYPE(Element_t), POINTER :: Element, Parent
+       INTEGER :: t, tB, LeftRight, BoundPart, NoHerited, NoConflict, ElemIndx
+       INTEGER :: npart, npartB
+       INTEGER, ALLOCATABLE, SAVE :: IndPart(:), IndPartB(:)
+       
+       IF( .NOT. ASSOCIATED( Mesh % Halo ) ) RETURN
+       
+       CALL Info(FuncName,'Inheriting the boundary halo into the bulk mesh') 
+
+       IF(.NOT. ALLOCATED(IndPart)) ALLOCATE( IndPart(20), IndPartB(20))
+       
+       NoHerited = 0
+       NoConflict = 0
+       
+       
+       DO t=Mesh % NumberOfBulkElements + 1,&
+           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+         Element => Mesh % Elements(t) 
+
+         ! Don't inherit from unset elements
+         IF( ElementPart(t) == 0 ) CYCLE
+
+         npart = ElementPartitions( Mesh, t, ElementPart, IndPart ) 
+         IF( npart == 1 ) CYCLE
+
+         DO k=1,npart         
+           BoundPart = IndPart(k)
+         
+           IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+             DO LeftRight=0,1
+               IF( LeftRight == 0 ) THEN
+                 Parent => Element % BoundaryInfo % Left
+               ELSE
+                 Parent => Element % BoundaryInfo % Right
+               END IF
+
+               IF( ASSOCIATED( Parent ) ) THEN
+                 tB = Parent % ElementIndex
+                 npartB = ElementPartitions( Mesh, tB, ElementPart, IndPartB ) 
+
+                 ! Halo already present
+                 IF( ANY( IndPartB(1:npartB) == BoundPart ) ) CYCLE
+
+                 IF( npartB == 1 ) THEN
+                   ! Halo not yet present, creating one
+                   ALLOCATE( Mesh % Halo(tB) % Neighbours(1) )             
+                 ELSE
+                   ! Halo present, adding one partition to it
+                   DEALLOCATE( Mesh % Halo(tB) % Neighbours )
+                   ALLOCATE( Mesh % Halo(tB) % Neighbours(npartB) )
+                   Mesh % Halo(tb) % Neighbours(1:nPart-1) = IndPartB(2:npartB)
+                 END IF
+
+                 NoHerited = NoHerited + 1 
+                 Mesh % Halo(tb) % Neighbours(nPartB) = BoundPart
+
+               END IF
+             END DO
+           END IF
+         END DO
+       END DO
+       
+       CALL Info(FuncName,'Number of herited halo bulk elements: '//TRIM(I2S(NoHerited)))
+       
+     END SUBROUTINE InheritHaloToBulkPart
 
 
      ! Inherit partition from a bulkd partition to boundary.
@@ -3672,7 +3753,7 @@ CONTAINS
          END IF
        END DO
 
-       CALL Info(FuncName,'Total number of halo elements:'//TRIM(I2S(ntothalo)),Level=10)
+       CALL Info(FuncName,'Total number of set halo elements: '//TRIM(I2S(ntothalo)),Level=10)
      END SUBROUTINE GenerateSetHalo
 
 
@@ -3708,8 +3789,6 @@ CONTAINS
          END DO
        END IF
        
-       ! For this halo type the number of neighbuor partitions in always constant
-       nhalo = MaxPart - MinPart
        ntothalo = 0
 
        ALLOCATE( NodeActive( Mesh % NumberOfNodes ) )
@@ -3751,9 +3830,140 @@ CONTAINS
          END DO
        END DO
 
-       CALL Info(FuncName,'Total number of DG halo elements:'//TRIM(I2S(ntothalo)),Level=10)
+       CALL Info(FuncName,'Total number of DG halo elements: '//TRIM(I2S(ntothalo)),Level=10)
      END SUBROUTINE GenerateDGHalo
 
+
+     ! Generates a halo for overlapping bounding boxes.
+     !------------------------------------------------------------------
+     SUBROUTINE GenerateBBoxHalo()
+       
+       TYPE(Element_t), POINTER :: Element
+       INTEGER :: t, nblk, nbndry, nelem, nhalo, ntothalo, ownerpart, i, j, MinPart, MaxPart
+       LOGICAL, ALLOCATABLE :: NodeActive(:)
+       INTEGER :: TmpNeighbours(20)
+
+       REAL(KIND=dp) :: Bbox(6),Coord(3),MaxDx
+       LOGICAL :: ConstCoord(3)
+       INTEGER :: dim
+       LOGICAL :: Hit
+       
+       MaxPart = MAXVAL( ElementPart, PartitionCand ) 
+       MinPart = MINVAL( ElementPart, PartitionCand ) 
+       MinPart = MAX(1,MinPart)
+       
+       IF( MaxPart - MinPart == 0 ) THEN
+         CALL Info(FuncName,'No need not generate halo within this partition!',Level=12)
+         RETURN
+       END IF
+
+       dim = 3
+       
+       CALL Info(FuncName,'Generating halo for bounding boxes in partitions '&
+           //TRIM(I2S(MinPart))//' to '//TRIM(I2S(MaxPart)),Level=10 )
+       
+       nblk = Mesh % NumberOfBulkElements
+       nbndry = Mesh % NumberOfBoundaryElements
+       nelem = nblk + nbndry
+       
+       IF(.NOT. ASSOCIATED( Mesh % Halo ) ) THEN
+         ALLOCATE( Mesh % Halo(nelem) )         
+         DO t=1,nelem
+           NULLIFY( Mesh % Halo(t) % Neighbours )
+         END DO
+       END IF
+       
+       ntothalo = 0
+
+       ALLOCATE( NodeActive( Mesh % NumberOfNodes ) )
+
+       DO ownerpart = MinPart, MaxPart
+
+         ! Mark nodes in partition "ownerpart"
+         NodeActive = .FALSE.
+         DO t=nblk+1, nelem        
+           IF( ElementPart( t ) /= ownerpart ) CYCLE
+           Element => Mesh % Elements(t) 
+           NodeActive( Element % NodeIndexes ) = .TRUE.
+         END DO
+
+         PRINT *,'noactive:',dim,ownerpart,COUNT( NodeActive ) 
+         
+         BBox(1) = MINVAL( Mesh % Nodes % x, NodeActive ) 
+         BBox(2) = MAXVAL( Mesh % Nodes % x, NodeActive ) 
+         BBox(3) = MINVAL( Mesh % Nodes % y, NodeActive ) 
+         BBox(4) = MAXVAL( Mesh % Nodes % y, NodeActive ) 
+         IF( dim > 2 ) THEN
+           BBox(5) = MINVAL( Mesh % Nodes % z, NodeActive ) 
+           BBox(6) = MAXVAL( Mesh % Nodes % z, NodeActive ) 
+         END IF
+
+         MaxDx = MAXVAL( Bbox(2::2)-Bbox(1::2) )           
+         ConstCoord = (BBox(2::2)-BBox(1::2) < 1.0e-6*MaxDx)
+
+         !ConstCoord(1:2) = .TRUE.
+         
+         PRINT *,'Bounding box min:',BBox(1::2)
+         PRINT *,'Bounding box max:',BBox(2::2)
+         PRINT *,'ConstCoord:',ConstCoord
+         
+         
+         ! Find which elements in other partitions have some node in partition "ownerpart"
+         DO t=nblk+1, nelem
+           IF( ElementPart( t ) == 0 ) CYCLE
+           IF( ElementPart( t ) == ownerpart ) CYCLE                      
+           Element => Mesh % Elements(t)
+
+           Hit = .FALSE.
+           DO i = 1, Element % TYPE % NumberOfNodes
+             j = Element % NodeIndexes(i)
+             Coord(1) = Mesh % Nodes % x(j)
+             Coord(2) = Mesh % Nodes % y(j)
+             Coord(3) = Mesh % Nodes % z(j)
+
+             ! Is node in bounding box? 
+             Hit = .TRUE.
+             DO k=1,dim
+               IF( ConstCoord(k) ) CYCLE
+               IF( (Bbox(2*k)-Coord(k))*(Coord(k)-BBox(2*k-1)) < 0.0_dp ) THEN
+                 Hit = .FALSE.
+                 EXIT
+               END IF
+             END DO               
+             IF( Hit ) EXIT
+           END DO
+
+           IF(.NOT. Hit ) CYCLE
+
+           PRINT *,'hit:',t,ElementPart(t),i,j,Coord, Element % Type % ElementCode
+
+           
+           IF(.NOT. ASSOCIATED( Mesh % Halo(t) % Neighbours ) ) THEN
+             ! Halo not yet present, creating one
+             nhalo = 1
+             ALLOCATE( Mesh % Halo(t) % Neighbours(1) )             
+           ELSE
+             ! Halo present, adding one partition to it
+             IF( ANY( Mesh % Halo(t) % Neighbours == ownerpart ) ) CYCLE
+             nhalo = SIZE( Mesh % Halo(t) % Neighbours )
+             TmpNeighbours(1:nhalo) = Mesh % Halo(t) % Neighbours
+             DEALLOCATE( Mesh % Halo(t) % Neighbours )
+             ALLOCATE( Mesh % Halo(t) % Neighbours(nhalo+1) )
+             Mesh % Halo(t) % Neighbours(1:nhalo) = TmpNeighbours(1:nhalo)
+             nhalo = nhalo + 1
+           END IF
+                      
+           Mesh % Halo(t) % Neighbours(nhalo) = ownerpart
+           ntothalo = ntothalo + 1           
+           
+           !PRINT *,'bboxhalo:',t,nhalo,ownerpart,ntothalo,Mesh % Halo(t) % Neighbours 
+         END DO
+       END DO
+
+       CALL Info(FuncName,'Total number of BBox halo elements: '//TRIM(I2S(ntothalo)),Level=10)
+     END SUBROUTINE GenerateBBoxHalo
+
+     
      
      ! Extend partition from an existing bulk partitioning. 
      ! In case of conflict the dominating partitioning prevails.

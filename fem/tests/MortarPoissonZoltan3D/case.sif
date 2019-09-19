@@ -13,7 +13,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 7
+  Max Output Level = 10
 
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
@@ -34,9 +34,10 @@ Simulation
 
   Boundary Partitioning Method = String "uniform"
   Boundary Partition Halo = Logical True
+!  Boundary Bounding Box Halo = Logical True
   Partitioning Divisions(3) = Integer 1 1 2
   Partition Mesh Extend Layers = Integer 1
-End 
+End  
 
 Constants
   Gravity(4) = 0 -1 0 9.82
