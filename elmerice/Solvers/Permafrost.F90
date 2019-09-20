@@ -283,7 +283,11 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
           FirstTime = .FALSE.
         END IF
         CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
+        IF (.NOT.ASSOCIATED(CurrentSolventMaterial)) &
+             CALL FATAL(Solvername,'Solvent Material not associated')
         CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
+        IF (.NOT.ASSOCIATED(CurrentSoluteMaterial)) &
+             CALL FATAL(Solvername,'Solute Material not associated')
       END IF
       IF (.NOT.ASSOCIATED(Material)) THEN
         WRITE (Message,'(A,I3)') 'No Material found for boundary element no. ', t
