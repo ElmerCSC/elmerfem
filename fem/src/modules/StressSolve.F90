@@ -54,9 +54,14 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     INTEGER :: dim,i
     TYPE(ValueList_t), POINTER :: SolverParams
     LOGICAL :: Found, CalculateStrains, CalcPrincipalAngle, CalcPrincipalAll, &
-        CalcStressAll, MaxwellMaterial
-!------------------------------------------------------------------------------
+         CalcStressAll, CalcVelocities, MaxwellMaterial
+    CHARACTER :: DimensionString
 
+!------------------------------------------------------------------------------
+    CALL Info( 'StressSolve_init', ' ', Level=1 )
+    CALL Info( 'StressSolve_init', '--------------------------------------------------',Level=1 )
+    CALL Info( 'StressSolve_init', 'Solving displacements from linear elasticity model',Level=1 )     
+    CALL Info( 'StressSolve_init', '--------------------------------------------------',Level=1 )
     SolverParams => GetSolverParams()
     dim = CoordinateSystemDimension()
 
@@ -101,6 +106,11 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     IF(CalcPrincipalAll)   CalcStressAll = .TRUE. ! can't calculate principal without components
     IF(CalculateStrains)   CalcStressAll = .TRUE. ! can't calculate principal without components
 
+    IF (Transient) THEN
+      CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
+      IF (.NOT.Found) CalcVelocities = .FALSE.
+    END IF
+    
     ! If stress computation is requested somewhere then enforce it 
     IF( .NOT. ( CalcStressAll .OR. CalculateStrains) ) THEN
       CalcStressAll = ListGetLogicalAnyEquation( Model,'Calculate Stresses')
@@ -141,7 +151,17 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
             'Principal Strain[Principal Strain:3]' )
       END IF
     END IF
-
+    
+    IF (CalcVelocities) THEN
+      WRITE (Message,'(A,I1,A)') '-dofs ',DIM, ' Displacement Velocity'
+      
+      CALL ListAddString( SolverParams,&
+            NextFreeKeyword('Exported Variable ',SolverParams), &
+            Message )
+      WRITE (Message,'(A,A,I1,A)') 'Added:','-dofs ',DIM, ' Displacement Velocity'
+      CALL INFO('StressSolve_init',Message,Level=1)
+    END IF
+    
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
 
 !------------------------------------------------------------------------------
@@ -180,7 +200,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      TYPE(Element_t),POINTER :: Element
      TYPE(Mesh_t),POINTER :: Mesh
 
-     TYPE(Variable_t), POINTER :: ReferenceSol
+     TYPE(Variable_t), POINTER :: ReferenceSol,DisplacementVelVar
      REAL(KIND=dp), POINTER :: DispValues(:)
      REAL(KIND=dp), ALLOCATABLE :: UpdateRef(:), Ref_rhs(:), NodalRefD(:)
      INTEGER :: RefDofs, indx
@@ -188,10 +208,10 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
      REAL(KIND=dp) :: UNorm,s, UzawaParameter
 
-     INTEGER ::  MaxIter, MinIter, NoModes, Nsize, Dofs
+     INTEGER ::  MaxIter, MinIter, NoModes, Nsize, Dofs, DisplacementVelDOFs
      TYPE(Variable_t), POINTER :: StressSol, iVar, Var, TimeVar
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TemperatureName
 
      REAL(KIND=dp), POINTER :: Temperature(:),Work(:,:,:), &
        VonMises(:), NodalStress(:), NodalStrain(:), StressComp(:), StrainComp(:), ContactPressure(:), &
@@ -199,27 +219,28 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        PrincipalAngle(:), PrincipalAngleComp(:), &            ! needed for principal angle calculation
        PrincipalStressComp(:), PrincipalStrainComp(:), &
        NormalDisplacement(:), TransformMatrix(:,:), UWrk(:,:), &
-       RayleighAlpha(:), RayleighBeta(:)
+       RayleighAlpha(:), RayleighBeta(:), DisplacementVel(:)
      REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
 
      REAL(KIND=dp), POINTER :: Displacement(:)
 
      REAL(KIND=dp) :: UnitNorm, Prevdt=-1, PrevTime=-1
 
-     INTEGER, POINTER :: TempPerm(:),DisplPerm(:),StressPerm(:),NodeIndexes(:)
+     INTEGER, POINTER :: TempPerm(:),DisplPerm(:),StressPerm(:),&
+          DisplacementVelPerm(:), NodeIndexes(:)
 
      LOGICAL :: GotForceBC,Found,RayleighDamping, NormalSpring
      LOGICAL :: PlaneStress, CalcStress, CalcStressAll, &
-        CalcPrincipalAll, CalcPrincipalAngle, CalculateStrains, Isotropic(2) = .TRUE.
+        CalcPrincipalAll, CalcPrincipalAngle, CalculateStrains, CalcVelocities, Isotropic(2) = .TRUE.
      LOGICAL :: Contact = .FALSE.
      LOGICAL :: stat, stat2, stat3, RotateC, MeshDisplacementActive, &
                 ConstantBulkSystem, ConstantBulkMatrix, ConstantBulkMatrixInUse, ConstantSystem, &
-                UpdateSystem, GotHeatExp, Converged
-
+                UpdateSystem, GotHeatExp, Converged,&
+                EvaluateAtIP(3) = .FALSE., EvaluateLoadAtIp = .FALSE., QuasiStationary = .FALSE.
      LOGICAL :: AllocationsDone = .FALSE., NormalTangential, HarmonicAnalysis
      LOGICAL :: StabilityAnalysis = .FALSE., ModelLumping, FixDisplacement
      LOGICAL :: GeometricStiffness = .FALSE., EigenAnalysis=.FALSE., OrigEigenAnalysis, &
-           Refactorize = .TRUE., Incompressible
+           Refactorize = .TRUE., Incompr
 
      REAL(KIND=dp),ALLOCATABLE:: MASS(:,:),STIFF(:,:),&
        DAMP(:,:), LOAD(:,:),LOAD_im(:,:),FORCE(:),FORCE_im(:), &
@@ -234,7 +255,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        FORCE,ElementNodes,DampCoeff,SpringCoeff,Beta,Density, Damping, &
        LocalTemperature,AllocationsDone,ReferenceTemperature, &
        ElasticModulus, PoissonRatio,HeatExpansionCoeff, VonMises, NodalStress, &
-       CalcStress, CalcStressAll, NodalDisplacement, Contact, ContactPressure, &
+       CalcStress, CalcStressAll, CalcVelocities, NodalDisplacement, Contact, ContactPressure, &
        NormalDisplacement, ContactLimit, LocalNormalDisplacement, &
        LocalContactPressure, PreStress, PreStrain, StressLoad, StrainLoad, Work, &
        RotateC, TransformMatrix, body_id, NodalMeshVelo, PrevTime, &
@@ -242,7 +263,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        RayleighAlpha, RayleighBeta, RayleighDamping, &
        NodalStrain, PrincipalStress, PrincipalStrain, Tresca, &
        PrincipalAngle, PrincipalAngleComp, CalcPrincipalAngle, &
-       CalcPrincipalAll, CalculateStrains
+       CalcPrincipalAll, CalculateStrains, TemperatureName,&
+       DisplacementVel, DisplacementVelPerm, DisplacementVelVar,&
+       DisplacementVelDOFs
 !------------------------------------------------------------------------------
      INTEGER :: dim
 #ifdef USE_ISO_C_BINDINGS
@@ -308,8 +331,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        CALL Fatal('StressSolver','Number of Dofs smaller than dim: '&
            //I2S(STDOFs)//' vs. '//I2S(Mesh % MeshDim))
      END IF
-
-     Incompressible = GetLogical( SolverParams, 'Incompressible', Found )
+     QuasiStationary = GetLogical( SolverParams, 'Quasi Stationary',Found)
+     
+     Incompr = GetLogical( SolverParams, 'Incompressible', Found )
 
      MeshDisplacementActive = ListGetLogical( SolverParams,  &
                'Displace Mesh', Found )
@@ -318,7 +342,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        MeshDisplacementActive = .NOT.EigenOrHarmonicAnalysis()
 
      IF ( AllocationsDone .AND. MeshDisplacementActive ) THEN
-        IF(Incompressible ) THEN
+        IF(Incompr ) THEN
           CALL DisplaceMesh( Mesh, Displacement, -1, DisplPerm, STDOFs, UpdateDirs=STDOFs-1 )
         ELSE
           CALL DisplaceMesh( Mesh, Displacement, -1, DisplPerm, STDOFs )
@@ -334,7 +358,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        IF ( AllocationsDone ) THEN
          DEALLOCATE( Density,                &
                      Damping,                &
-                   RayleighAlpha,          &
+                     RayleighAlpha,          &
                      RayleighBeta,           &
                      DampCoeff,              &
                      SpringCoeff,            &
@@ -390,7 +414,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
        IF ( istat /= 0 ) THEN
           CALL Fatal( 'StressSolve', 'Memory allocation error.' )
-       END IF
+        END IF
 
        NULLIFY( Work )
        TransformMatrix = 0.0d0
@@ -402,6 +426,25 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        IF(CalcPrincipalAngle) CalcPrincipalAll = .TRUE. ! can't calculate angle without principal
        IF(CalcPrincipalAll)   CalcStressAll = .TRUE. ! can't calculate principal without components
        IF(CalculateStrains)   CalcStressAll = .TRUE. ! can't calculate principal without components
+
+       IF (Transient) THEN
+         CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
+         IF (.NOT.Found) THEN
+           CalcVelocities = .FALSE.
+         ELSE
+           DisplacementVelVar => VariableGet( Mesh % Variables, 'Displacement Velocity' )
+           IF (ASSOCIATED(DisplacementVelVar)) THEN
+             DisplacementVel => DisplacementVelVar % Values
+             DisplacementVelPerm => DisplacementVelVar % Perm
+             DisplacementVelDOFs = DisplacementVelVar % DOFs
+           ELSE
+             CALL FATAL('StressSolver',&
+                  ' "Calculate Velocities" set but variable "Displacement Velocity" not found')
+           END IF
+         END IF
+       ELSE
+         CalcVelocities = .FALSE.
+       END IF
        
        Contact = GetLogical( SolverParams, 'Contact', Found )
        IF( Contact ) THEN
@@ -605,7 +648,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        END IF
        CALL Info( 'StressSolve', 'Starting assembly...',Level=5 )
 !------------------------------------------------------------------------------
-
 500    CALL DefaultInitialize()
 
        ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
@@ -692,7 +734,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
          IF( Iter == 1 ) THEN
            CALL ComputeStress( Displacement, NodalStress,  &
                VonMises, DisplPerm, StressPerm, &
-               NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle )
+               NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, &
+               EvaluateAtIP=EvaluateAtIP, EvaluateLoadAtIP=EvaluateLoadAtIP )
            
            CALL InvalidateVariable( Model % Meshes, Mesh, 'Stress' )
            CALL InvalidateVariable( Model % Meshes, Mesh, 'VonMises' )
@@ -727,7 +770,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
            CALL ComputeStress( Displacement, NodalStress,  &
                VonMises, DisplPerm, StressPerm, &
-               NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle )
+               NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, &
+               EvaluateAtIP=EvaluateAtIP, EvaluateLoadAtIP=EvaluateLoadAtIP)
 
            DO j=1,7               
              SELECT CASE ( j )
@@ -816,7 +860,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
             CALL ComputeStress( Displacement, NodalStress,  &
                VonMises, DisplPerm, StressPerm, &
-               NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle )
+               NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, &
+               EvaluateAtIP=EvaluateAtIP, EvaluateLoadAtIP=EvaluateLoadAtIP)
 
 
            DO j=1,7               
@@ -905,11 +950,17 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
            END DO
            END DO
          END DO
-
        ELSE
          CALL ComputeStress( Displacement, NodalStress,  &
              VonMises, DisplPerm, StressPerm, &
-             NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle )
+             NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, &
+             EvaluateAtIP=EvaluateAtIP, EvaluateLoadAtIP=EvaluateLoadAtIP)
+         IF (CalcVelocities) THEN
+           IF (DisplacementVelDOFs .NE. StressSol % DOFs) &
+                CALL FATAL('StressSolve',"Non matching DOFs for Displacement and DisplacementVelocity")
+           CALL ComputeDisplacementVelocity(Displacement,StressSol % PrevValues,DisplPerm,&
+                     DisplacementVel,DisplacementVelPerm,DisplacementVelDOFs,dt)
+         END IF
        END IF
 
        CALL InvalidateVariable( Model % Meshes, Mesh, 'Stress' )
@@ -920,6 +971,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        CALL InvalidateVariable( Model % Meshes, Mesh, 'Tresca' )
        CALL InvalidateVariable( Model % Meshes, Mesh, 'Principal Angle' )
      END IF
+
+
 
      IF ( GetLogical( SolverParams, 'Adaptive Mesh Refinement', Found) ) THEN
        CALL RefineMesh( Model, Solver, Displacement, DisplPerm, &
@@ -934,7 +987,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      END IF
  
      IF ( MeshDisplacementActive ) THEN
-       IF (Incompressible ) THEN
+       IF (Incompr ) THEN
          CALL DisplaceMesh(Model % Mesh, Displacement, 1, &
              DisplPerm, STDOFs, .FALSE., STDOFs-1 )
        ELSE
@@ -977,7 +1030,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: RelIntegOrder, NoActive 
 
-    LOGICAL :: AnyDamping
+    LOGICAL :: AnyDamping, NeedMass
 
     AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
         ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
@@ -985,7 +1038,8 @@ CONTAINS
     RayleighDamping = .FALSE.
 
     
-
+    NeedMass = .NOT.QuasiStationary
+    
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
      body_id = -1
 
@@ -1008,9 +1062,23 @@ CONTAINS
 
        Equation => GetEquation()
        PlaneStress = GetLogical( Equation, 'Plane Stress',Found )
-
+       TemperatureName = ListGetString( Equation,'Temperature Name', Found)
+       IF (.NOT.Found) &
+            WRITE (TemperatureName,'(A)') 'Temperature' 
+       
        Material => GetMaterial()
+
+       ! inquire if material parameters shall be replaced by handles
+       EvaluateAtIP(1)= &
+            GetLogical( Material, 'Youngs Modulus at IP',Found)
+       EvaluateAtIP(2)= &
+            GetLogical( Material, 'Heat Expansion Coefficient IP',Found)
+       EvaluateAtIP(3) = &
+            GetLogical( Material, 'Poisson Ratio at IP',Found)
+ 
+       
        Density(1:n) = GetReal( Material, 'Density', Found )
+       
        IF ( .NOT. Found )  THEN
          IF ( Transient .OR. EigenOrHarmonicAnalysis() ) &
             CALL Fatal( 'StressSolve', 'No value for density found.' )
@@ -1027,20 +1095,37 @@ CONTAINS
            RayleighBeta = 0.0d0        
          END IF
        END IF
-         
-       CALL InputTensor( HeatExpansionCoeff, Isotropic(2),  &
-           'Heat Expansion Coefficient', Material, n, NodeIndexes, GotHeatExp )
 
-       CALL InputTensor( ElasticModulus, Isotropic(1), &
-           'Youngs Modulus', Material, n, NodeIndexes )
+       IF  (EvaluateAtIP(2)) THEN
 
+         HeatExpansionCoeff = 0.0_dp
+         Isotropic(2) = .TRUE. ! we assume isotropy for function, at the moment
+         !CALL ListInitElementKeyword(BetaIP_h,'Material','Heat Expansion Coefficient')
+       ELSE
+         CALL InputTensor( HeatExpansionCoeff, Isotropic(2),  &
+              'Heat Expansion Coefficient', Material, n, NodeIndexes, GotHeatExp )
+       END IF
+
+        EvaluateAtIP(1)= &
+            GetLogical( Material, 'Youngs Modulus at IP',Found)
+       IF  (EvaluateAtIP(1)) THEN
+         ElasticModulus = 0.0_dp
+         Isotropic(1) = .TRUE. ! we assume isotropy for function, at the moment
+       ELSE
+         CALL InputTensor( ElasticModulus, Isotropic(1), &
+              'Youngs Modulus', Material, n, NodeIndexes )
+       END IF
+       
        PoissonRatio = 0.0d0
-       IF ( .NOT.Incompressible .AND. Isotropic(1) )  PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
+       IF ( Isotropic(1) .AND. (.NOT.EvaluateAtIP(3)) )  THEN
+         PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
+       END IF
 
        IF( GotHeatExp ) THEN
          ReferenceTemperature(1:n) = GetReal(Material, &
-             'Reference Temperature', Found )
-         CALL GetScalarLocalSolution( LocalTemperature, 'Temperature' )
+              'Reference Temperature', Found )
+         
+         CALL GetScalarLocalSolution( LocalTemperature, TemperatureName)
          LocalTemperature(1:n) = LocalTemperature(1:n) - &
              ReferenceTemperature(1:n)
        ELSE
@@ -1101,7 +1186,7 @@ CONTAINS
            END IF
          END IF
        END IF
-
+       
        ! Set body forces:
        !-----------------
        BodyForce => GetBodyForce()
@@ -1109,16 +1194,21 @@ CONTAINS
        StressLoad = 0.0d0
        StrainLoad = 0.0d0
        IF ( ASSOCIATED( BodyForce ) ) THEN
-         LOAD(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1', Found )
-         LOAD(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2', Found )
-         LOAD(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3', Found )
-         LOAD(4,1:n)  = GetReal( BodyForce, 'Stress Pressure', Found )
+         EvaluateLoadAtIP= &
+              GetLogical( BodyForce, 'Stress Bodyforce at IP',Found)
 
-         IF ( HarmonicAnalysis ) THEN
-           LOAD_im(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1 im', Found )
-           LOAD_im(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2 im', Found )
-           LOAD_im(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3 im', Found )
-           LOAD_im(4,1:n)  = GetReal( BodyForce, 'Stress Pressure im', Found )
+         IF (.NOT.EvaluateLoadAtIP) THEN         
+           LOAD(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1', Found )
+           LOAD(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2', Found )
+           LOAD(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3', Found )
+           LOAD(4,1:n)  = GetReal( BodyForce, 'Stress Pressure', Found )
+
+           IF ( HarmonicAnalysis ) THEN
+             LOAD_im(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1 im', Found )
+             LOAD_im(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2 im', Found )
+             LOAD_im(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3 im', Found )
+             LOAD_im(4,1:n)  = GetReal( BodyForce, 'Stress Pressure im', Found )
+           END IF
          END IF
 
          CALL ListGetRealArray( BodyForce, 'Stress Load', Work, n, NodeIndexes, Found )
@@ -1164,7 +1254,7 @@ CONTAINS
                LocalTemperature, Element, n, ntot, ElementNodes, RelIntegOrder, StabilityAnalysis  &
                .AND. iter>1, GeometricStiffness .AND. iter>1, NodalDisplacement,    &
                RotateC, TransformMatrix, NodalMeshVelo, Damping, RayleighDamping,            &
-               RayleighAlpha, RayleighBeta )
+               RayleighAlpha, RayleighBeta,EvaluateAtIP,EvaluateLoadAtIp,NeedMass)
           END IF
 
        CASE DEFAULT
@@ -1485,18 +1575,41 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE ComputeNormalDisplacement
 !------------------------------------------------------------------------------
+  SUBROUTINE ComputeDisplacementVelocity(Displ,PrevDispl,DisplPerm,&
+       DisplVelo,DisplVeloPerm,DIM,dt)
 
-
+    USE DefUtils
+    
+    IMPLICIT NONE
+    
+    REAL(KIND=dp), POINTER :: Displ(:),PrevDispl(:,:),DisplVelo(:)
+    REAL(KIND=dp) :: dt
+    INTEGER, POINTER :: DisplPerm(:),DisplVeloPerm(:)
+    INTEGER :: DIM
+    !---------------------------------
+    INTEGER :: I, J, Cnt=0, CurrIndx
+    DO I=1,SIZE( DisplPerm )
+      IF ( DisplPerm(I) <= 0 ) CYCLE
+      Cnt = Cnt + 1
+      DisplVeloPerm(I) = DisplPerm(I)
+      DO J=1,DIM
+        CurrIndx = DIM*(DisplPerm(I)-1)+J
+        DisplVelo(CurrIndx) = (Displ(CurrIndx) - PrevDispl(CurrIndx,1))/dt
+      END DO
+    END DO
+  END SUBROUTINE ComputeDisplacementVelocity
 !------------------------------------------------------------------------------
    SUBROUTINE ComputeStress( Displacement, NodalStress, &
               VonMises, DisplPerm, StressPerm, &
-              NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle)
+              NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle,&
+              EvaluateAtIP,EvaluateLoadAtIp)
 !------------------------------------------------------------------------------
      INTEGER :: DisplPerm(:)
      INTEGER, POINTER :: StressPerm(:)
      REAL(KIND=dp) :: VonMises(:), NodalStress(:), Displacement(:), &
                       NodalStrain(:), PrincipalStress(:), PrincipalStrain(:), &
                       Tresca(:), PrincipalAngle(:)
+     LOGICAL, OPTIONAL  :: EvaluateAtIP(3),EvaluateLoadAtIp
 !------------------------------------------------------------------------------
      TYPE(Nodes_t) :: Nodes
      INTEGER :: n,nd
@@ -1527,7 +1640,6 @@ CONTAINS
      REAL(KIND=dp) :: PriCache(3,3), PriTmp, PriW(3),PriWork(102)
      INTEGER       :: PriN=3, PriLWork=102, PriInfo=0
      REAL(KIND=dp) :: PriAngT1=0, PriAngT2=0, PriAngV(3)=0
-
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
@@ -1651,13 +1763,36 @@ CONTAINS
         ! ------------------------
         Material => GetMaterial()
 
-        CALL InputTensor( HeatExpansionCoeff, Isotropic(2),  &
-            'Heat Expansion Coefficient', Material, n, Element % NodeIndexes, GotHeatExp )
+        IF  (EvaluateAtIP(2)) THEN
+          HeatExpansionCoeff = 0.0_dp
+          Isotropic(2) = .TRUE. ! we assume isotropy for function, at the moment
+          !CALL ListInitElementKeyword(BetaIP_h,'Material','Heat Expansion Coefficient')
+        ELSE
+          CALL InputTensor( HeatExpansionCoeff, Isotropic(2),  &
+               'Heat Expansion Coefficient', Material, n, Element % NodeIndexes, GotHeatExp )
+        END IF
 
-        CALL InputTensor( ElasticModulus, Isotropic(1), &
-                'Youngs Modulus', Material, n, Element % NodeIndexes )
+        !EvaluateAtIP(1)= &
+        !     GetLogical( Material, 'Youngs Modulus at IP',Found)
+        IF  (EvaluateAtIP(1)) THEN
+          ElasticModulus = 0.0_dp
+          Isotropic(1) = .TRUE. ! we assume isotropy for function, at the moment
+        ELSE
+          CALL InputTensor( ElasticModulus, Isotropic(1), &
+               'Youngs Modulus', Material, n, Element % NodeIndexes )
+        END IF
+       
+        PoissonRatio = 0.0d0
+        IF ( Isotropic(1)   .AND. (.NOT.EvaluateAtIP(3))) &
+             PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )          
+
+!!$        CALL InputTensor( HeatExpansionCoeff, Isotropic(2),  &
+!!$            'Heat Expansion Coefficient', Material, n, Element % NodeIndexes, GotHeatExp )
+!!$
+!!$        CALL InputTensor( ElasticModulus, Isotropic(1), &
+!!$                'Youngs Modulus', Material, n, Element % NodeIndexes )
         PlaneStress = ListGetLogical( Equation, 'Plane Stress', stat )
-        PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio', Stat )
+        !PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio', Stat )
 
         ! Element nodal points:
         ! ---------------------
@@ -1699,7 +1834,8 @@ CONTAINS
           CALL LocalStress( Stress, Strain, PoissonRatio, &
               ElasticModulus, HeatExpansionCoeff, LocalTemperature, &
               Isotropic, CSymmetry, PlaneStress, LocalDisplacement, &
-              Basis, dBasisdx, Nodes, dim, n, nd, .TRUE. )
+              Basis, dBasisdx, Nodes, dim, n, nd, .TRUE.,&
+              EvaluateAtIP=EvaluateAtIP, EvaluateLoadAtIP=EvaluateLoadAtIP,GaussPoint=t )
 
           DO p=1,nd
             DO q=1,nd
