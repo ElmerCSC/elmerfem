@@ -213,8 +213,12 @@ CONTAINS
       ELSE
         ParallelEnv => ParallelInit()
       END IF
-      OutputPE = ParEnv % MyPE
 
+      OutputPE = -1
+      IF( ParEnv % MyPe == 0 ) THEN
+        OutputPE = 0
+      END IF
+      
       !
       ! Print banner to output:
       ! -----------------------
