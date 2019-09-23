@@ -828,7 +828,7 @@ CONTAINS
         Particles % Velocity(No,2) = COS( Angle ) * Velo(2) + SIN( Angle ) * Velo(1)
 
         ! For higher order scheme enforce the previous velocity also to zero since
-        ! otheriwse there is a funny velocity correction added.
+        ! otherwise there is a funny velocity correction added.
         IF( Particles % TimeOrder > 1 ) THEN
           Particles % PrevVelocity(No,:) = Particles % Velocity(No,:)
         END IF

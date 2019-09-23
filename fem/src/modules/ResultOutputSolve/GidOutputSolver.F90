@@ -208,7 +208,7 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
         body_id = Element % BodyId
 
         IF( Code == 613 ) THEN
-           ! 13 noded pyramids will be splitted into 14 linear tetraheda
+           ! 13 noded pyramids will be split into 14 linear tetraheda
            !------------------------------------------------------------
            DO m = 1,14
               ElementCounter = ElementCounter + 1
@@ -216,7 +216,7 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
                    Element % NodeIndexes(PyramidMap613(m,:)), body_id
            END DO
         ELSEIF( Code == 605 ) THEN
-           ! 5 noded pyramids will be splitted into 2 linear tetraheda
+           ! 5 noded pyramids will be split into 2 linear tetraheda
            !----------------------------------------------------------
            DO m = 1,2
               ElementCounter = ElementCounter + 1
@@ -224,7 +224,7 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
                    Element % NodeIndexes(PyramidMap605(m,:)), body_id
            END DO           
         ELSEIF( Code == 706 ) THEN
-           ! 6 noded wedges will be splitted into 3 linear tetraheda
+           ! 6 noded wedges will be split into 3 linear tetraheda
            !---------------------------------------------------------
            DO m = 1,3
               ElementCounter = ElementCounter + 1
@@ -232,7 +232,7 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
                    Element % NodeIndexes(WedgeMap706(m,:)), body_id
            END DO           
         ELSEIF( Code == 715 ) THEN
-           ! 15 noded wedges will be splitted into 21 linear tetraheda
+           ! 15 noded wedges will be split into 21 linear tetraheda
            !----------------------------------------------------------
            DO m = 1,21
               ElementCounter = ElementCounter + 1

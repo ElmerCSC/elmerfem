@@ -998,7 +998,7 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
     CALL Info( 'ProjectToPlane', Message, LEVEL=16 )
 
     !------------------------------------------------------------------------------
-    ! Possible permutation of coorinate directions
+    ! Possible permutation of coordinate directions
     !------------------------------------------------------------------------------
     VolumeX => Mesh3D % Nodes % x
     VolumeY => Mesh3D % Nodes % y      

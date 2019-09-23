@@ -811,7 +811,7 @@ CONTAINS
 
 
 !-----------------------------------------------------------------------
-!> Compuation of normal flux.
+!> Computation of normal flux.
 !> Note that this is calculated on the nodal points only
 !> using a single boundary element. The direction of the normal
 !> may be somewhat different on the nodal point when calculated using 

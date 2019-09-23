@@ -286,7 +286,7 @@ CONTAINS
          END IF
 
          ! Add extra degrees of freedom to parallel structures. The additional
-         ! variables are assingned to task zero, and are assumed to be shared by
+         ! variables are assigned to task zero, and are assumed to be shared by
          ! all tasks (TODO: to be optimized if need be...)
          ! --------------------------------------------------------------------
          g_beg = NINT(ParallelReduction(1._dp*MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2))
