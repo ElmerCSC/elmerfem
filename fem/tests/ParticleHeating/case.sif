@@ -3,7 +3,7 @@
 ! is set to one and the time is scaled accordingly. Still the heat equation is 
 ! solved in steady state as there is no heat capacity.
 !
-! In the current case the particles are sent evenly in 2D space since the initailization
+! In the current case the particles are sent evenly in 2D space since the initialization
 ! methods using random numbers differ on different platforms.
 !---------------------------------------------------------------------------------
 Check Keywords Warn
