@@ -73,7 +73,7 @@ int LoadSolutionElmer(struct FemType *data,int results,char *prefix,int info)
   
   AddExtension(prefix,filename,"ep");
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadSolutionElmer: The opening of the Elmer-file %s wasn't succesfull!\n",
+    printf("LoadSolutionElmer: The opening of the Elmer-file %s wasn't successful!\n",
 	   filename);
     return(1);
   }
@@ -216,7 +216,7 @@ int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int par
   nofiles = i;
 
   if(nofiles < 2) {
-    printf("Opening of partitioned data from file %s wasn't succesfull!\n",
+    printf("Opening of partitioned data from file %s wasn't successful!\n",
 	   filename);
     return(2);
   } else {
@@ -955,7 +955,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   if(!cdstat) cdstat = chdir("..");
 
-  if(info) printf("Elmer mesh loaded succesfully\n");
+  if(info) printf("Elmer mesh loaded successfully\n");
 
   return(0);
 }
@@ -1405,7 +1405,7 @@ int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
 int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 			 char *prefix,int decimals,int info)
 /* Saves the mesh in a form that may be used as input 
-   in Elmer calculations. Taylored to work with FEM/BEM coupling,
+   in Elmer calculations. Tailored to work with FEM/BEM coupling,
    or other problems with mixed dimension of bulk elements.
    */
 {
@@ -1919,7 +1919,7 @@ static int PartitionNodesByElements(struct FemType *data,int info)
     for(j=1;j<=nopartitions;j++) 
       nodesinpart[j] = 0;
 
-    /* Tag the number of ownder partitions */
+    /* Tag the number of owner partitions */
     for(j=invrow[i-1];j<invrow[i];j++) {
       k = invcol[j]+1;
       part = elempart[k];
@@ -1965,7 +1965,7 @@ static int PartitionNodesByElements(struct FemType *data,int info)
 	  cuminpart[maxpart] += 1;
       }
 
-    /* Otherwise make a half and half split betwen the major owners */
+    /* Otherwise make a half and half split between the major owners */
       else {
 	if(set) {
 	  cumknows[maxpart][maxpart2] += 1;
@@ -2687,7 +2687,7 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
   minpart = noelements;
   j = 0;
 
-  /* Check whether some partion was not used */
+  /* Check whether some partition was not used */
   hit = FALSE;
   for(i=1;i<=partitions;i++) 
     if(!nopart[i]) hit = TRUE;
@@ -2833,9 +2833,9 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 
   if(info) {
     if( partz )
-      printf("Making a simple 1D partitioing in z for the connected elements only\n");
+      printf("Making a simple 1D partitioning in z for the connected elements only\n");
     else
-      printf("Making a simple 1D partitioing in r for the connected elements only\n");     
+      printf("Making a simple 1D partitioning in r for the connected elements only\n");     
   }
 
   if(!data->nodeconnectexist) {
@@ -3031,7 +3031,7 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
   
 
   if(info) {
-    printf("Making a Metis partitioing for the connected BC elements only\n");
+    printf("Making a Metis partitioning for the connected BC elements only\n");
   }
 
   if(!data->nodeconnectexist) {
@@ -3748,7 +3748,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   /* Are there periodic boundaries. This information is used to join the boundaries. */
   periodic = data->periodicexist;
   if(periodic) {
-    if(info) printf("There seems to be peridic boundaries\n");
+    if(info) printf("There seems to be periodic boundaries\n");
     indxper = data->periodic;
   }
   
@@ -3897,7 +3897,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 			int dual,int info)
 /* Perform partitioning using Metis. One may use either the direct or the dual
    graph. The direct graph means that the nodes are first partitioned and the 
-   elements follow. The dual graph means that the elemenets are partitioned and 
+   elements follow. The dual graph means that the elements are partitioned and 
    the ownership of the nodes will follow. The latter is optimal for Elmer. */
 {
   int i,j,k,noelements,noknots,errstat;
@@ -3996,7 +3996,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     xadj[nn] = totcon;
   }
 
-  if(info) printf("There are %d connections alltogether in the graph.\n",totcon);
+  if(info) printf("There are %d connections altogether in the graph.\n",totcon);
 
   /* Parameters for Metis */
   numflag = 0;
@@ -4633,7 +4633,7 @@ static int RenumberCuthillMckee( int nrows, int *rows, int *cols, int *iperm )
 
 static void RenumberPartitions(struct FemType *data,int info)
 /* Minimize bandwidth of partition indexing. This could be favourable if the
-   communication between neigbouring partitions is faster than between 
+   communication between neighbouring partitions is faster than between 
    partitions with larger partition index. Probably there is not much 
    difference for normal hardware configurations. */
 {
@@ -4694,7 +4694,7 @@ static void RenumberPartitions(struct FemType *data,int info)
   }
 
   if(info) {
-    printf("There are %d connections alltogether\n",totcon);
+    printf("There are %d connections altogether\n",totcon);
     printf("There are %.3f connections between partitions in average\n",1.0*totcon/partitions);
   }
 
@@ -4722,7 +4722,7 @@ static void RenumberPartitions(struct FemType *data,int info)
 
   /* Print the new order of partitions */
   if(0 && info) {
-    printf( "Partition order afer Cuthill-McKee bandwidth optimization: \n" );
+    printf( "Partition order after Cuthill-McKee bandwidth optimization: \n" );
     for(i=0;i<partitions;i++)
       printf("old=%d new=%d\n",i,perm[i] );
   }
@@ -4827,7 +4827,7 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
   CreatePartitionTable(data,info);
   maxneededtimes = data->maxpartitiontable;
 
-  /* Renumber the bandwith of partition-partition connections */
+  /* Renumber the bandwidth of partition-partition connections */
   if(partbw) RenumberPartitions(data,info);
 
   /* Check partitioning after table is created for the first time */
@@ -5770,7 +5770,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	  /* Either parent must be associated with this partition, otherwise do not save this (except for halo nodes) */
 	  if( parent && !trueparent ) {	  
 	    splitsides++;
-	    /* For halo elemets also the 2nd true parent exists by construction. */
+	    /* For halo elements also the 2nd true parent exists by construction. */
 	    if(!parthalo[1] && !parthalo[2] && !parthalo[4]) parent = 0;
 	  }
 	  else if( parent2 && !trueparent2 ) {
@@ -5997,7 +5997,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	}
       }
 
-      /* Remove dublicate connections */
+      /* Remove duplicate connections */
       l = 0;
       for(i=1;i<=connectednodes;i++) {
 	for(j=1;j<=maxnodeconnections;j++)
@@ -6237,7 +6237,7 @@ int ReorderElementsMetis(struct FemType *data,int info)
       if(con) totcon++;
     }
   }
-  if(info) printf("There are %d connections alltogether\n",totcon);
+  if(info) printf("There are %d connections altogether\n",totcon);
 
   xadj = Ivector(0,noknots);
   adjncy = Ivector(0,totcon-1);
