@@ -67,7 +67,7 @@
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(Mesh_t), POINTER :: IceMesh, HydroMesh
-     TYPE(Solver_t), POINTER ::  HydroSolver
+     TYPE(Solver_t), POINTER ::  HydroSolver, TempSolver
      TYPE(Variable_t), POINTER :: HydroVar=>NULL(),WorkVar=>NULL(),&
                                   InterpVar1=>NULL(),InterpVar2=>NULL(),&
                                   InterpVar3=>NULL(),InterpVar4=>NULL(),&
@@ -86,7 +86,7 @@
      INTEGER :: i, j, k, HPSolver, Reader1, Reader2, Reader3,&
                 Reader4, Reader5, Reader, NumVar, DummyInt, ierr,&
                 ElementBC, BasalBC, n, NearestNode, SideBC1, SideBC2, HitCount,&
-                ZeroCounter
+                ZeroCounter, TSolver
      REAL(KIND=dp), POINTER :: NVP(:)=>NULL(), NewValues1(:), NewValues2(:),&
                                NewValues3(:), NewValues4(:), NewValues5(:)
      REAL(KIND=dp) :: IceTempResSum, HydroTempResSum, ScaleFactor,&
@@ -94,7 +94,7 @@
                       NewNS, MeanNS
      REAL(KIND=dp), ALLOCATABLE :: NSValues(:)
      REAL(KIND=dp), ALLOCATABLE, TARGET :: ParITRS(:), ParHTRS(:), NewValues6(:)
-     SAVE HydroMesh, FirstTime, HPSolver
+     SAVE HydroMesh, FirstTime, HPSolver, TSolver
           !NewPerm1,&
           !NewValues1,NewValues2, NewValues3, NewValues4, NewValues5, DefaultPerm
 !------------------------------------------------------------------------------
@@ -108,6 +108,13 @@
         IF(Model % Solvers(i) % Variable % Name == 'hydraulic potential') THEN
           HPSolver = i
           HydroSolver => Model % Solvers(HPSolver)
+          EXIT
+        END IF
+      END DO
+      DO i=1,Model % NumberOfSolvers
+        IF(Model % Solvers(i) % Variable % Name == 'temp') THEN
+          TSolver = i
+          TempSolver => Model % Solvers(TSolver)
           EXIT
         END IF
       END DO
@@ -160,6 +167,7 @@
 
     !Time to interpolate variables that are solved on ice mesh
     HydroSolver => Model % Solvers(HPSolver)
+    TempSolver => Model % Solvers(TSolver)
     ALLOCATE(InterpDim(1)); InterpDim = (/3/)
     ALLOCATE(BasalLogical(Model % Mesh % NumberOfNodes))
     ALLOCATE(IceMeshBasePerm(Model % Mesh % NumberOfNodes))
@@ -279,8 +287,9 @@
     ALLOCATE(NewValues6(SIZE(WorkVar % Values)))
     NewValues6 = 0.0_dp
     NewValues6 = WorkVar % Values
-    CALL CalculateNodalWeights(Solver, .TRUE., WorkVar % Perm, 'IceWeights')
+    !CALL CalculateNodalWeights(TempSolver, .TRUE., WorkVar % Perm, 'IceWeights')
     WorkVar2 => VariableGet(Model % Mesh % Variables, 'IceWeights', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    !IF(ParEnv % PEs > 1) CALL ParallelSumVector(TempSolver % Matrix, WorkVar2 % Values)
     DO i=1, SIZE(WorkVar % Perm)
       IF(WorkVar2 % Values(WorkVar2 % Perm(i)) .NE. 0.0) THEN
         WorkVar % Values(WorkVar % Perm(i)) = WorkVar % Values(WorkVar % Perm(i))/WorkVar2 % Values(WorkVar2 % Perm(i))
@@ -459,13 +468,23 @@
     IceTempResSum = 0.0_dp
     IceTempResSum = SUM(WorkVar % Values)
 
+    !WorkVar => VariableGet(HydroSolver % Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     WorkVar => VariableGet(HydroSolver % Mesh % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     !WorkVar => VariableGet(HydroSolver % Mesh % Variables, "WeightedTR", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-    CALL CalculateNodalWeights(HydroSolver, .FALSE., WorkVar % Perm, 'HydroWeights')
+    !CALL CalculateNodalWeights(HydroSolver, .FALSE., WorkVar % Perm, 'HydroWeights')
+    !WorkVar => VariableGet(HydroSolver % Mesh % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-    DO i=1, SIZE(WorkVar % Perm)
-      WorkVar % Values(WorkVar % Perm(i)) =&
-      WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
+    !IF(ParEnv % PEs > 1) CALL ParallelSumVector(HydroSolver % Matrix, WorkVar2 % Values)
+    DO i=1, HydroSolver % Mesh % NumberOfBulkElements!SIZE(WorkVar % Perm)
+      Element => HydroSolver % Mesh % Elements(i)
+      n = GetElementNOFNodes(Element)
+      DO j=1, n
+        WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j))) =&
+        WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j)))*&
+        WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j)))
+      END DO
+      !WorkVar % Values(WorkVar % Perm(i)) =&
+      !WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
     END DO
     HydroTempResSum = 0.0_dp
     HydroTempResSum = SUM(WorkVar % Values)
@@ -503,7 +522,8 @@
     IF(ASSOCIATED(InterpVar4)) DEALLOCATE(InterpVar4Copy % Values, InterpVar4Copy % Perm)
     IF(ASSOCIATED(InterpVar5)) DEALLOCATE(InterpVar5Copy % Values, InterpVar5Copy % Perm)
     NULLIFY(InterpVar1, InterpVar2, InterpVar3, InterpVar4, InterpVar5,&
-           WorkVar, HydroSolver, NVP, NPP, BC, Element, RefNode, WorkVar2)
+           WorkVar, HydroSolver, NVP, NPP, BC, Element, RefNode, WorkVar2,&
+           TempSolver)
 !-------------------------------------------------------------------------------
   CONTAINS
 !-------------------------------------------------------------------------------
@@ -671,3 +691,85 @@
     NULLIFY(HydroSolver, WorkVar, NVP, NPP, InterpVar1)!, InterpVar2, InterpVar3)
 
   END SUBROUTINE
+! *****************************************************************************/
+!> Works out weights on hydro mesh at beginning of simulation
+   SUBROUTINE HydroWeightsSolver( Model,Solver,Timestep,TransientSimulation )
+!******************************************************************************
+!
+!  ARGUMENTS:
+!
+!  TYPE(Model_t) :: Model,  
+!     INPUT: All model information (mesh,materials,BCs,etc...)
+!
+!  TYPE(Solver_t) :: Solver
+!     INPUT: Linear equation solver options
+!
+!  REAL(KIND=dp) :: Timestep
+!     INPUT: Timestep size for time dependent simulations
+!
+!******************************************************************************
+     USE Differentials
+     USE MaterialModels
+     USE DefUtils
+     USE InterpVarToVar
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!    External variables
+!------------------------------------------------------------------------------
+     TYPE(Model_t)  :: Model
+     TYPE(Solver_t), TARGET :: Solver
+     LOGICAL :: TransientSimulation
+     REAL(KIND=dp) :: Timestep
+!------------------------------------------------------------------------------
+!    Local variables
+!------------------------------------------------------------------------------
+     TYPE(Variable_t), POINTER :: WorkVar
+!------------------------------------------------------------------------------    
+    CALL CalculateNodalWeights(Solver, .FALSE.,VarName='HydroWeights')
+    WorkVar => VariableGet(Solver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    IF(ParEnv % PEs > 1) CALL ParallelSumVector(Solver % Matrix, WorkVar % Values)
+    NULLIFY(WorkVar)
+END SUBROUTINE
+! *****************************************************************************/
+!> Works out weights on ice mesh
+   SUBROUTINE IceWeightsSolver( Model,Solver,Timestep,TransientSimulation )
+!******************************************************************************
+!
+!  ARGUMENTS:
+!
+!  TYPE(Model_t) :: Model,  
+!     INPUT: All model information (mesh,materials,BCs,etc...)
+!
+!  TYPE(Solver_t) :: Solver
+!     INPUT: Linear equation solver options
+!
+!  REAL(KIND=dp) :: Timestep
+!     INPUT: Timestep size for time dependent simulations
+!
+!******************************************************************************
+     USE Differentials
+     USE MaterialModels
+     USE DefUtils
+     USE InterpVarToVar
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!    External variables
+!------------------------------------------------------------------------------
+     TYPE(Model_t)  :: Model
+     TYPE(Solver_t), TARGET :: Solver
+     LOGICAL :: TransientSimulation
+     REAL(KIND=dp) :: Timestep
+!------------------------------------------------------------------------------
+!    Local variables
+!------------------------------------------------------------------------------
+     TYPE(Variable_t), POINTER :: WorkVar
+!------------------------------------------------------------------------------    
+    CALL CalculateNodalWeights(Solver, .TRUE.,VarName='IceWeights')
+    WorkVar => VariableGet(Solver % Mesh % Variables, "IceWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    IF(ParEnv % PEs > 1) CALL ParallelSumVector(Solver % Matrix, WorkVar % Values)
+    NULLIFY(WorkVar)
+END SUBROUTINE
