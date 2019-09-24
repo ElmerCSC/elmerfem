@@ -185,7 +185,7 @@
     InterpVar2 => VariableGet(Model % Mesh % Variables, "velocity 1", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     InterpVar3 => VariableGet(Model % Mesh % Variables, "velocity 2", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     InterpVar4 => VariableGet(Model % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-    InterpVar5 => VariableGet(Model % Mesh % Variables, "basalmeltrate", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+    InterpVar5 => VariableGet(Model % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
 
     !Make copies of the relevant variables to save messing around with the mesh
     !variable list - only need perms and values
@@ -290,6 +290,16 @@
     !CALL CalculateNodalWeights(TempSolver, .TRUE., WorkVar % Perm, 'IceWeights')
     WorkVar2 => VariableGet(Model % Mesh % Variables, 'IceWeights', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     !IF(ParEnv % PEs > 1) CALL ParallelSumVector(TempSolver % Matrix, WorkVar2 % Values)
+    !DO i=1, Model % Mesh % NumberOfBoundaryElements!SIZE(WorkVar % Perm)
+      !Element => Model % Mesh % Elements(Model % Mesh % NumberOfBulkElements+i)
+      !n = GetElementNOFNodes(Element)
+      !DO j=1, n
+        !IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j)))==0) CYCLE
+        !WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j))) =&
+        !WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j)))/&
+        !WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j)))
+      !END DO
+    !END DO
     DO i=1, SIZE(WorkVar % Perm)
       IF(WorkVar2 % Values(WorkVar2 % Perm(i)) .NE. 0.0) THEN
         WorkVar % Values(WorkVar % Perm(i)) = WorkVar % Values(WorkVar % Perm(i))/WorkVar2 % Values(WorkVar2 % Perm(i))
@@ -311,6 +321,12 @@
     !or 1, so need to round them to the nearest integer
     !Also, enforce grounded on upstream areas to deal with boundary
     !interpolation artefacts
+    IF(ASSOCIATED(InterpVar5)) THEN
+      WorkVar => VariableGet(HydroSolver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+      DO i=1, SIZE(WorkVar % Values)
+        WorkVar % Values(i) = ANINT(WorkVar % Values(i))
+      END DO
+    END IF
     IF(ASSOCIATED(InterpVar4)) THEN
       WorkVar => VariableGet(HydroSolver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
       DO i=1, SIZE(WorkVar % Values)
@@ -475,16 +491,16 @@
     !WorkVar => VariableGet(HydroSolver % Mesh % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     !IF(ParEnv % PEs > 1) CALL ParallelSumVector(HydroSolver % Matrix, WorkVar2 % Values)
-    DO i=1, HydroSolver % Mesh % NumberOfBulkElements!SIZE(WorkVar % Perm)
-      Element => HydroSolver % Mesh % Elements(i)
-      n = GetElementNOFNodes(Element)
-      DO j=1, n
-        WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j))) =&
-        WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j)))*&
-        WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j)))
-      END DO
-      !WorkVar % Values(WorkVar % Perm(i)) =&
-      !WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
+    DO i=1,SIZE(WorkVar % Perm)
+      !Element => HydroSolver % Mesh % Elements(i)
+      !n = GetElementNOFNodes(Element)
+      !DO j=1, n
+        !WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j))) =&
+        !WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j)))*&
+        !WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j)))
+      !END DO
+      WorkVar % Values(WorkVar % Perm(i)) =&
+      WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
     END DO
     HydroTempResSum = 0.0_dp
     HydroTempResSum = SUM(WorkVar % Values)
