@@ -728,7 +728,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     }
     if(strcmp(argv[arg],"-parthypre") == 0) {
       eg->parthypre = TRUE;
-      printf("Numbering of partitions will be made continous.\n");
+      printf("Numbering of partitions will be made continuous.\n");
     }
     if(strcmp(argv[arg],"-partdual") == 0) {
       eg->partdual = TRUE;
@@ -1077,7 +1077,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       fclose(in);
       printf("Using the file %s defined in ELMERGRID_STARTINFO\n",filename);
       if ((in = fopen(filename,"r")) == NULL) {
-	printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
+	printf("LoadCommands: opening of the file '%s' wasn't successful !\n",filename);
 	return(1);
       }    
       else printf("Loading ElmerGrid commands from file '%s'.\n",filename);    
@@ -1088,7 +1088,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   else if(mode == 1) { 
     AddExtension(prefix,filename,"eg");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
+      printf("LoadCommands: opening of the file '%s' wasn't successful !\n",filename);
       return(3);
     }    
     if(info) printf("Loading ElmerGrid commands from file '%s'.\n",filename);    
@@ -1096,7 +1096,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   else if(mode == 2) {
     AddExtension(prefix,filename,"grd");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
+      printf("LoadCommands: opening of the file '%s' wasn't successful !\n",filename);
       return(4);
     }    
     if(info) printf("\nLoading ElmerGrid commands from file '%s'.\n",filename);
@@ -1731,7 +1731,7 @@ int SaveBoundaryForm(struct FemType *data,struct CellType *cell,
   char filename[MAXFILESIZE];
 
   if(data->created == FALSE) {
-    printf("SaveBoundaryForm: stucture FemType not created\n");
+    printf("SaveBoundaryForm: structure FemType not created\n");
     return(1);
   }
 
@@ -1778,7 +1778,7 @@ int SaveBoundaryLine(struct FemType *data,int direction,
   Real c,c1,eps;
 
   if(data->created == FALSE) {
-    printf("SaveBoundaryLine: stucture FemType not created\n");
+    printf("SaveBoundaryLine: structure FemType not created\n");
     return(1);
   }
 
@@ -1844,7 +1844,7 @@ int SaveSubcellForm(struct FemType *data,struct CellType *cell,
   more = FALSE;
 
   if(data->created == FALSE) {
-    printf("SaveSubcellForm: stucture FemType not created\n");
+    printf("SaveSubcellForm: structure FemType not created\n");
     return(1);
   }
 
@@ -2108,7 +2108,7 @@ int LoadElmergridOld(struct GridType **grid,int *nogrids,char *prefix,int info)
 
   AddExtension(prefix,filename,"grd");
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadElmergrid: opening of the file '%s' wasn't succesfull !\n",filename);
+    printf("LoadElmergrid: opening of the file '%s' wasn't successful !\n",filename);
     return(1);
   }
 
@@ -2565,7 +2565,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
 
   AddExtension(prefix,filename,"grd");
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadElmergrid: opening of the file '%s' wasn't succesfull !\n",filename);
+    printf("LoadElmergrid: opening of the file '%s' wasn't successful !\n",filename);
     return(1);
   }
 
@@ -2676,7 +2676,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
 	       grid[k]->xcells,grid[k]->ycells,grid[k]->zcells,MAXCELLS);
      }
 
-      /* Initialize the default stucture with ones */
+      /* Initialize the default structure with ones */
       for(j=grid[k]->ycells;j>=1;j--) 
 	for(i=1;i<=grid[k]->xcells;i++) 
 	  grid[k]->structure[j][i] = 1;
@@ -2804,7 +2804,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
     else if(strstr(command,"MATERIAL STRUCTURE")) {
       printf("Loading material structure\n");
 
-      /* Initialize the default stucture with zeros */
+      /* Initialize the default structure with zeros */
       for(j=grid[k]->ycells;j>=1;j--) 
 	for(i=1;i<=grid[k]->xcells;i++) 
 	  grid[k]->structure[j][i] = 0;

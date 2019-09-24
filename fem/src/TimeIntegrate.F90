@@ -534,12 +534,12 @@ CONTAINS
 !> Apply 2nd order Newmark time integration scheme.
 !------------------------------------------------------------------------------
    SUBROUTINE Newmark2ndOrder( N, dt, MassMatrix, DampMatrix, StiffMatrix, &
-                        Force, PrevSol0,PrevSol1, Avarage )
+                        Force, PrevSol0,PrevSol1, Average )
 !------------------------------------------------------------------------------
 
      INTEGER :: N
      REAL(KIND=dp) :: Force(:),PrevSol0(:),PrevSol1(:),dt
-     LOGICAL :: Avarage
+     LOGICAL :: Average
      REAL(KIND=dp) :: MassMatrix(:,:),DampMatrix(:,:),StiffMatrix(:,:)
 
 !------------------------------------------------------------------------------
@@ -547,7 +547,7 @@ CONTAINS
 
      REAL(KIND=dp) :: s
 !------------------------------------------------------------------------------
-     IF ( Avarage ) THEN 
+     IF ( Average ) THEN 
        DO i=1,N
          s = 0.0d0
          DO j=1,N

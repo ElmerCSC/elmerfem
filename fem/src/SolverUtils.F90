@@ -9403,7 +9403,7 @@ END FUNCTION SearchNodeL
         
     CASE('residual')
       !--------------------------------------------------------------------------
-      ! x is solution of A(x0)x=b(x0), thus residual should be reall r=b(x)-A(x)x 
+      ! x is solution of A(x0)x=b(x0) thus residual should really be r=b(x)-A(x)x
       ! Instead we use r=b(x0)-A(x0)x0 which unfortunately is one step behind.
       !--------------------------------------------------------------------------
       IF(PRESENT(Matrix)) THEN

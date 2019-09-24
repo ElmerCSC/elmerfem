@@ -1,7 +1,7 @@
 ! Test case for Poisson equation + conforming BCs.
 !
 ! This is reference to the test case using old periodic BCs.
-! The norm is diferent but max temperature is the same.
+! The norm is different but max temperature is the same.
 !
 ! This has antiperiodic BCs. 
 !

@@ -162,7 +162,7 @@ MODULE Interpolation
     IsInElement = .FALSE.
     n = Element % TYPE % NumberOfNodes
 
-    ! The numberic precision 
+    ! The numeric precision 
     IF ( PRESENT(NumericEps) ) THEN
       eps0 = NumericEps
     ELSE

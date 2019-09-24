@@ -4580,7 +4580,7 @@ RETURN
 
   !-------------------------------------------------------------
   !> This subroutine may be used to enquire position dependent material data.
-  !> Also if the particle is splitted between two elements then this 
+  !> Also if the particle is split between two elements then this 
   !> routine can assess the data on the secondary mesh.
   !-------------------------------------------------------------
   FUNCTION GetMaterialPropertyInMesh(PropertyName, BulkElement, Basis, &

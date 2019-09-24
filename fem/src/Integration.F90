@@ -471,7 +471,7 @@ MODULE Integration
 !------------------------------------------------------------------------------
 ! Quadrilateral - 36-point rule for complete polynomials of order p<=13
 ! Note 1: Some points lie outside the reference element
-! Note 2: Weigths somewhat inaccurate?
+! Note 2: Weights somewhat inaccurate?
 !------------------------------------------------------------------------------
    REAL(KIND=dp), DIMENSION(36), PRIVATE :: UPQuad36 = &
        (/  0.108605615857397d1,  -0.108605615857397d1,   0.000000000000000d0, &

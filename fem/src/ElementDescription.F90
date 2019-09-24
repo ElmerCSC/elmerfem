@@ -2678,9 +2678,9 @@ END IF
 
 
 !------------------------------------------------------------------------------
-!>  Return the referencial description b(f(p)) of the basis function b(x),
+!>  Return the referential description b(f(p)) of the basis function b(x),
 !>  with f mapping points p on a reference element to points x on a physical
-!>  element. The referencial description of the spatial gradient field grad b 
+!>  element. The referential description of the spatial gradient field grad b 
 !>  and, if requested, the second spatial derivatives may also be returned.
 !>  Also return the square root of the determinant of the metric tensor
 !>  (=sqrt(det(J^TJ))) related to the mapping f.
@@ -2706,7 +2706,7 @@ END IF
      TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
      LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:)      !< If present, the values of H(curl)-conforming basis functions B(f(p))
-     REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referencial description of the spatial curl of B
+     REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referential description of the spatial curl of B
      LOGICAL :: Stat                                !< If .FALSE. element is degenerate.
 !------------------------------------------------------------------------------
 !    Local variables
@@ -3722,7 +3722,7 @@ END IF
      END IF
 
      IF(PRESENT(dBasisdx))  &
-       dBasisdx = 0._dp ! avoid unitialized stuff depending on coordinate dimension...
+       dBasisdx = 0._dp ! avoid uninitialized stuff depending on coordinate dimension...
 
      retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
            uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx)
@@ -3774,7 +3774,7 @@ END IF
      dim  = Element % TYPE % DIMENSION
      cdim = CoordinateSystemDimension()
 
-     dBasisdxWrk = 0._dp ! avoid unitialized stuff depending on coordinate dimension...
+     dBasisdxWrk = 0._dp ! avoid uninitialized stuff depending on coordinate dimension...
 
      ! Block the computation for large values of input points
      DO ll=1,nc,VECTOR_BLOCK_LENGTH
@@ -10086,7 +10086,7 @@ END SUBROUTINE FaceElementBasisOrdering
      REAL(KIND=dp) :: Metric(:,:)    !< Contravariant metric tensor
      REAL(KIND=dp) :: dLBasisdx(:,:) !< Derivatives of element basis function with respect to local coordinates
      REAL(KIND=dp) :: DetG           !< SQRT of determinant of metric tensor
-     REAL(KIND=dp) :: LtoGMap(3,3)   !< Transformation to obtain the referencial description of the spatial gradient
+     REAL(KIND=dp) :: LtoGMap(3,3)   !< Transformation to obtain the referential description of the spatial gradient
      LOGICAL :: Success              !< Returns .FALSE. if element is degenerate
 !------------------------------------------------------------------------------
 !    Local variables
@@ -10175,7 +10175,7 @@ END SUBROUTINE FaceElementBasisOrdering
 !--------------------------------------------------------------------------------------
 !    Construct a transformation X = LtoGMap such that (grad B)(f(p)) = X(p) Grad b(p),
 !    with Grad the gradient with respect to the reference element coordinates p and 
-!    the referencial description of the spatial field B(x) satisfying B(f(p)) = b(p).
+!    the referential description of the spatial field B(x) satisfying B(f(p)) = b(p).
 !    If cdim > dim (e.g. a surface embedded in the 3-dimensional space), X is
 !    the pseudo-inverse of (Grad f)^{T}.
 !-------------------------------------------------------------------------------
@@ -10511,7 +10511,7 @@ END SUBROUTINE FaceElementBasisOrdering
 !>    Given element structure return value of the first partial derivatives with
 !>    respect to global coordinates of a quantity x given at element nodes at
 !>    local coordinate point u,v,w inside the element. Element basis functions
-!>    are used to compute the value. This is internal version,and shoudnt
+!>    are used to compute the value. This is internal version, and shouldn't
 !>    usually be called directly by the user, but through the wrapper routine
 !>    GlobalFirstDerivatives.
 !------------------------------------------------------------------------------
