@@ -737,6 +737,7 @@ CONTAINS
           PRINT *, "flux(",i,")= Jgwg",fluxgAtIP(i),"+ JgwpT", fluxTAtIP(i)
           PRINT *, "KgwAtIP=",KgwAtIP(i,1:DIM)
           PRINT *, "KgwpTAtIP=",KgwpTAtIP(i,1:DIM)
+          PRINT *, "gradTAtIP(1:DIM):", gradTAtIP(1:DIM)
           IF (KgwpTAtIP(i,1) .NE. KgwpTAtIP(i,1)) PRINT *,CryogenicSuction,fwAtIP,XiPAtIP,KgwAtIP
           PRINT *, "rhowAtIP=",rhowAtIP," rhocAtIP=",rhocAtIP
           PRINT *, "XiAtIP(",IPPerm,")=",XiAtIP(IPPerm)
@@ -1646,7 +1647,7 @@ SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostStressInvariant'
   CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, StressVariableName, PressureName
-  LOGICAL :: Found, FirstTime=.TRUE., NoPressure, UpdatePrev=.FALSE.
+  LOGICAL :: Found, FirstTime=.TRUE., NoPressure, UpdatePrev=.FALSE.,SteadyState=.FALSE.
   TYPE(Variable_t), POINTER :: InvariantVar, InvariantVeloVar, StressVariableVar, PressureVar
   INTEGER, POINTER :: InvariantPerm(:), InvariantVeloPerm(:), StressVariablePerm(:), PressurePerm(:)
   INTEGER :: I, DIM, StressVariableDOFs, CurrentTime, activenodes
@@ -1657,7 +1658,7 @@ SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
   SAVE FirstTime, CurrentTime, DIM, NoPressure,&
        PressureVar, Pressure, PressurePerm, PressureName,&
        StressVariableVar, StressVariable, StressVariablePerm, StressVariableDOFs, &
-       StressVariableName, InvariantVeloVar, InvariantVeloPerm, InvariantVelo
+       StressVariableName, InvariantVeloVar, InvariantVeloPerm, InvariantVelo,SteadyState
  
   
   CALL Info( SolverName, '-----------------------------------------',Level=1 )
@@ -1680,9 +1681,15 @@ SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-  IF (FirstTime .OR. Model % Mesh % Changed) THEN  
+  IF (FirstTime .OR. Model % Mesh % Changed) THEN
+    CALL INFO( SolverName, 'Initialization step:',Level=9 )
+    SteadyState = GetLogical(SolverParams,'Steady State',Found)
+    IF (SteadyState) THEN
+      CALL INFO (SolverName,'Computing steady state only',Level=1)
+      UpdatePrev = .FALSE.
+    END IF
     PressureName = ListGetString(SolverParams, &
-       'Pressure Variable', Found )
+         'Pressure Variable', Found )
     IF (.NOT.Found) THEN
       CALL WARN(SolverName," 'Pressure Variable' not found. Using default 'Pressure' ")
       WRITE(PressureName,'(A)') 'Pressure'
@@ -1697,13 +1704,19 @@ SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
       CALL FATAL(SolverName,Message)
     ELSE
       Pressure => PressureVar % Values
-      PressurePerm => PressureVar % Perm
-      PrevPressure => PressureVar % PrevValues(:,1)
-      NoPressure = .FALSE.
-      WRITE(Message,'(A,A,A)') 'Pressure Variable "', TRIM(PressureName), '" associated'
-      CALL INFO(SolverName,Message,Level=9)
+      IF (ASSOCIATED(Pressure)) THEN
+        PressurePerm => PressureVar % Perm
+        PrevPressure => PressureVar % PrevValues(:,1)
+        NoPressure = .FALSE.
+        WRITE(Message,'(A,A,A)') 'Pressure Variable "', TRIM(PressureName), '" associated'
+        CALL INFO(SolverName,Message,Level=9)
+      ELSE
+        CALL FATAL(SolverName,'Pressure values not associated')
+      END IF
     END IF
+    CALL INFO( SolverName, 'Initialization completed',Level=9 )
   END IF
+  
   StressVariableName = ListGetString(SolverParams,'Stress Variable Name',Found)
   IF (.NOT.Found) CALL FATAL(SolverName,' "Stress Variable Name" not found')
   StressVariableVar => VariableGet( Solver % Mesh % Variables, StressVariableName )
@@ -1720,15 +1733,22 @@ SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
 
     
   InvariantVar =>  Solver % Variable
-  VariableName = InvariantVar % Name
-  Invariant => Solver % Variable % Values
-  InvariantPerm => Solver % Variable % Perm
-  InvariantPrev => Solver % Variable % PrevValues
+  IF ( ASSOCIATED(InvariantVar)) THEN    
+    VariableName = InvariantVar % Name
+    Invariant => Solver % Variable % Values
+    InvariantPerm => Solver % Variable % Perm
+    InvariantPrev => Solver % Variable % PrevValues
+    WRITE (Message,*) 'Solver variable ', TRIM(VariableName),', found'
+    CALL INFO(SolverName,Message,Level=9)
+  ELSE
+    CALL FATAL(SolverName,'Solver variable not associated')
+  END IF
 
   InvariantVeloVar => VariableGet( Solver % Mesh % Variables, TRIM(VariableName) // " Velocity" )
   IF ( ASSOCIATED(InvariantVeloVar)) THEN
     InvariantVeloPerm => InvariantVeloVar % Perm
     InvariantVelo =>InvariantVeloVar  % Values
+     CALL INFO(SolverName, TRIM(VariableName) // " Velocity"//' found',Level=9)
   ELSE
     CALL FATAL(SolverName, TRIM(VariableName) // " Velocity"//' not found')
   END IF
@@ -1743,20 +1763,28 @@ SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
       WRITE (Message,*) 'No entry for pressure variable',PressureName,'at point',I
       CALL FATAL(SolverName,Message)
     END IF
-    IF ( UpdatePrev ) THEN
+    IF ( UpdatePrev .AND. .NOT.(SteadyState) ) THEN
       InvariantPrev(InvariantPerm(I),1) =  Invariant(InvariantPerm(I))  
     END IF
-    !PRINT *,"PermafrostStressInvariant",Pressure(PressurePerm(I))
+    !PRINT *,"PermafrostStressInvariant:",Pressure(PressurePerm(I))
+    !PRINT *,InvariantPerm(I)
+    !PRINT *,Invariant(InvariantPerm(I))
+    !PRINT *, (StressVariablePerm(I)-1)*StressVariableDOFs
     Invariant(InvariantPerm(I)) = &
          GetFirstInvariant(StressVariable,Pressure(PressurePerm(I)),(StressVariablePerm(I)-1)*StressVariableDOFs,DIM)
-    InvariantVelo(InvariantVeloPerm(I)) = &
-         (Invariant(InvariantPerm(I))-InvariantPrev(InvariantPerm(I),1))/dt
+    IF (SteadyState) THEN
+      InvariantVelo(InvariantVeloPerm(I)) = 0.0
+    ELSE
+      InvariantVelo(InvariantVeloPerm(I)) = &
+           (Invariant(InvariantPerm(I))-InvariantPrev(InvariantPerm(I),1))/dt
+      !PRINT *,"PermafrostStressInvariant:",InvariantVelo(InvariantVeloPerm(I))
+    END IF
     !IF (InvariantVelo(InvariantVeloPerm(I)) /= 0.0_dp) THEN
     !  PRINT *, "InvariantVelo:", InvariantVelo(InvariantVeloPerm(I)), Invariant(InvariantPerm(I)), InvariantPrev(InvariantPerm(I),1)
     !END IF
     activenodes = activenodes + 1
     AverageInvariant = AverageInvariant + Invariant(InvariantPerm(I))
-    IF (FirstTime) THEN
+    IF (FirstTime .AND. .NOT.(SteadyState)) THEN
       InvariantPrev(InvariantPerm(I),1) = Invariant(InvariantPerm(I))
     END IF
   END DO
@@ -1775,6 +1803,7 @@ SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
       INTEGER :: I
       
       FirstInvariant = 0.0_dp
+      ! tr(sigma - 1p)
       DO I=1,DIM
         FirstInvariant = FirstInvariant + Stress(Position+I) - PressureAtPoint
       END DO
@@ -2805,14 +2834,10 @@ CONTAINS
       IF (.NOT.Found) CALL FATAL(SolverName,'Pressure not found')
       SalinityAtIP = ListGetElementReal( Salinity_h, Basis, Element, Found, GaussPoint=t)
       IF (.NOT.Found) CALL WARN(SolverName,'Salinity not found - setting to zero')
+      gradpAtIP = ListGetElementRealGrad( Pressure_h,dBasisdx,Element,Found)
+      gradTAtIP = ListGetElementRealGrad( Temperature_h,dBasisdx,Element,Found)
 
       vstarAtIP = 0.0_dp ! CHANGE to SUM(  Basis(1:N) * NodalRockVelocity(1:N) )
-
-      ! Gradients of Variables at IP - moved from flux computation to here
-      !DO i=1,DIM
-      !  gradTAtIP(i) =  SUM(NodalTemperature(1:N)*dBasisdx(1:N,i))
-      !  gradPAtIP(i) =  SUM(NodalPressure(1:N) * dBasisdx(1:N,i))
-      !END DO
 
       !Materialproperties needed at IP
 
@@ -2891,6 +2916,9 @@ CONTAINS
 
       JgwDAtIP = GetJgwD(KgwppAtIP,KgwpTAtIP,KgwAtIP,gradpAtIP,gradTAtIP,&
            Gravity,rhogwAtIP,DIM,CryogenicSuction)
+      !PRINT *, 'SoluteTransport: Jgw=', JgwDAtIP(1)*(365.25*3600*24), JgwDAtIP(2)*(365.25*3600*24)
+      !PRINT *, KgwppAtIP(1,1),KgwAtIP(1,1),gradpAtIP,&
+      !     Gravity,rhogwAtIP,DIM,CryogenicSuction
 
 !!$      END IF
 
@@ -2942,7 +2970,7 @@ CONTAINS
           ! (rhoc/Xi) (u, Jgw.grad(v))
           STIFF (p,q) = STIFF(p,q) &
                - Weight * rhocAtIP * Basis(q) * SUM(JgwDAtIP(1:DIM) * dBasisdx(p,1:DIM))/XiAtIP(IPPerm)
-
+          !PRINT *,'SoluteTransport:', JgwDAtIP(1:DIM), rhocAtIP
           ! porosity rhoc  (u,(Kc.fc).grad(v))         
           DO i=1,DIM
             extforceFlux =  SUM(KcAtIP(i,1:DIM)*fcAtIP(1:DIM))
