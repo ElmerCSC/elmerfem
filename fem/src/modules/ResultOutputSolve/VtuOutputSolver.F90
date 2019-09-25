@@ -50,7 +50,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: Var
   INTEGER :: i, j, k, l, n, m, Partitions, Part, ExtCount, FileindexOffSet, MeshDim, PrecBits, &
              PrecSize, IntSize, FileIndex
-  CHARACTER(MAX_NAME_LEN) :: Dir
+  CHARACTER(MAX_NAME_LEN) :: OutputDirectory
   LOGICAL :: Visited = .FALSE.
   REAL(KIND=dp) :: DoubleWrk
   REAL :: SingleWrk
@@ -156,25 +156,26 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   BaseFile = FilePrefix
   IF ( .NOT. FileNameQualified(FilePrefix) ) THEN
-    Dir = GetString( Params,'Output Directory',GotIt) 
-    IF(.NOT. GotIt) Dir = GetString( Model % Simulation,&
+    OutputDirectory = GetString( Params,'Output Directory',GotIt) 
+    IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
         'Output Directory',GotIt)     
-    IF( GotIt ) THEN
-      IF( LEN_TRIM(Dir) > 0 ) THEN
-        BaseFile = TRIM(Dir)// '/' //TRIM(FilePrefix)
-        CALL MakeDirectory( TRIM(Dir) // CHAR(0) )
+    IF(.NOT. GotIt) OutputDirectory = TRIM(OutputPath)
+    n = LEN_TRIM(OutputDirectory)
+    IF( n > 0 ) THEN
+      IF( OutputDirectory(1:2) == '~/') THEN
+        CALL GETENV('HOME',Str)
+        OutputDirectory = TRIM(Str)//'/'//OutputDirectory(3:n)
       END IF
-    ELSE 
-      BaseFile = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/' //TRIM(FilePrefix)
+      CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
+    ELSE
+      OutputDirectory = TRIM(Mesh % Name) 
     END IF
+    BaseFile = TRIM(OutputDirectory)// '/' //TRIM(FilePrefix)
   END IF
+
   CALL Info('VtuOutputSolver','Full filename base is: '//TRIM(Basefile), Level=10 )
-
-  
-
-  
+    
   FixedMesh = ListGetLogical(Params,'Fixed Mesh',GotIt)
-
   
   !------------------------------------------------------------------------------
   ! Initialize stuff for masked saving

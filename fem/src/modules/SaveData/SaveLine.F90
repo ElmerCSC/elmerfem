@@ -1011,13 +1011,17 @@ CONTAINS
       OutputDirectory = GetString( Params,'Output Directory',GotIt) 
       IF(.NOT. GotIt ) OutputDirectory = GetString( Model % Simulation,&
           'Output Directory',GotIt)
-      IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
-        SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
+      IF(.NOT. GotIt ) OutputDirectory = TRIM(OutputPath)
+      n = LEN_TRIM(OutputDirectory)
+      IF( n > 0 ) THEN
+        IF( OutputDirectory(1:2) == '~/') THEN
+          CALL GETENV('HOME',Name)
+          OutputDirectory = TRIM(Name)//'/'//OutputDirectory(3:n)
+        END IF
         IF( Solver % TimesVisited == 0 ) THEN
           CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
         END IF
-      ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
-        SideFile = TRIM(OutputPath)// '/' //TRIM(SideFile)
+        SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
       END IF
     END IF
 

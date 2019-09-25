@@ -212,11 +212,15 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       OutputDirectory = GetString( Params,'Output Directory',GotIt) 
       IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
           'Output Directory',GotIt) 
-      IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
+      IF(.NOT. GotIt) OutputDirectory = TRIM(OutputPath)      
+      n =  LEN_TRIM(OutputDirectory)
+      IF( n > 0 ) THEN
+        IF( OutputDirectory(1:2) == '~/') THEN
+          CALL GETENV('HOME',Name)
+          OutputDirectory = TRIM(Name)//'/'//OutputDirectory(3:n)
+        END IF
         ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
         CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-      ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
-        ScalarsFile = TRIM(OutputPath)// '/' //TRIM(ScalarsFile)
       END IF
     END IF
 
@@ -1206,6 +1210,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(FileAppend) CALL Info('SaveScalars','Data is appended to existing file',Level=6)
       
       OPEN(NEWUNIT=NamesUnit, FILE=ScalarNamesFile)
+      
       Message = ListGetString(Model % Simulation,'Comment',GotIt)
       IF( GotIt ) THEN
         WRITE(NamesUnit,'(A)') TRIM(Message)

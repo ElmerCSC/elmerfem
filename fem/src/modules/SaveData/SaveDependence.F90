@@ -90,7 +90,7 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  CHARACTER(LEN=MAX_NAME_LEN) :: FileName, ParName, OutputDirectory
+  CHARACTER(LEN=MAX_NAME_LEN) :: FileName, ParName, Str, OutputDirectory
   REAL(KIND=dp) :: x1, x0, x, w, f, Norm
   INTEGER :: i,j,n,NoPar,NormInd,IOUnit
   TYPE(ValueList_t), POINTER :: Params
@@ -116,12 +116,18 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
   Norm = 0.0_dp
 
   IF ( .NOT. FileNameQualified(FileName) ) THEN
-    OutputDirectory = GetString( Params,'Output Directory',GotIt)
-    IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
-      FileName = TRIM(OutputDirectory)// '/' //TRIM(Filename)
+    OutputDirectory = GetString( Params,'Output Directory',GotIt) 
+    IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
+        'Output Directory',GotIt) 
+    IF(.NOT. GotIt) OutputDirectory = TRIM(OutputPath)      
+    n = LEN_TRIM(OutputDirectory)
+    IF( n > 0 ) THEN
+      IF( OutputDirectory(1:2) == '~/') THEN
+        CALL GETENV('HOME',Str)
+        OutputDirectory = TRIM(Str)//'/'//OutputDirectory(3:n)
+      END IF
+      Filename = TRIM(OutputDirectory)// '/' //TRIM(Filename)
       CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-    ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
-      Filename = TRIM(OutputPath)// '/' //TRIM(Filename)
     END IF
   END IF
 
