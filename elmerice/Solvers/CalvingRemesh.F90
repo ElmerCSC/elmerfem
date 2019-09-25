@@ -3243,20 +3243,26 @@ CONTAINS
        Var => Var % Next
     END DO
 
-    !Go back through and set non-primary variables to have same % perm as the primary var
+    !Go back through and set non-primary variables to have same % perm as the primary var.
     !Bit of a hack - would be nice to somehow do this in one loop...
+    !Set perms equal if: variable has solver, solver has variable, both variables have perm
     Var => NewMesh % Variables
-    DO WHILE( ASSOCIATED(Var) )
+    DO WHILE (ASSOCIATED(Var))
 
       WorkSolver => Var % Solver
-      PrimaryVar = ASSOCIATED(WorkSolver % Variable, Var)
-      IF(PrimaryVar) THEN
-        Var => Var % Next
-        CYCLE
+      IF(ASSOCIATED(WorkSolver)) THEN
+        IF(ASSOCIATED(WorkSolver % Variable % Perm)) THEN
+          WorkVar => VariableGet(NewMesh % Variables, &
+            WorkSolver % Variable % Name, .TRUE., UnfoundFatal=.TRUE.)
+          PrimaryVar = ASSOCIATED(WorkSolver % Variable, Var)
+          IF(ASSOCIATED(WorkVar) .AND. .NOT. PrimaryVar) THEN
+            IF(ASSOCIATED(WorkVar % Perm) .AND. ASSOCIATED(Var % Perm)) THEN
+              Var % Perm = WorkVar % Perm
+            END IF
+          END IF
+        END IF
       END IF
-
-      Var % Perm = WorkSolver % Variable % Perm
-
+ 
       Var => Var % Next
     END DO
 
