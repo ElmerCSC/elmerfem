@@ -179,6 +179,7 @@
 
    DO k=1,1000
      FoundNew = 0
+
      !Count and gather nodes from all valid groups
      GroupNodeCount = 0
      county = 0
