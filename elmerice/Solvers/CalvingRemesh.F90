@@ -422,7 +422,6 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
        & assuming no calving event.")
 
   !CHANGE
-  PRINT *, 'Times: ',time,CalvingTime
   IF(time == CalvingTime) THEN
     CalvingOccurs = CalvingOccurs
   ELSE
@@ -3132,6 +3131,9 @@ CONTAINS
 
              IF(.NOT. NoMatrix) THEN
                 IF(ParEnv % MyPE == 0) PRINT *, 'Computing matrix for variable: ',TRIM(Var % Name)
+                !IF(TRIM(Var % Name) == 'normalstress') PRINT *, 'SwitchMesh1: ',&
+                !ParEnv % myPE,NoMatrix,WorkSolver % Matrix % NumberOfRows,&
+                !WorkSolver % Matrix % Comm,WorkSolver % Matrix % Perm(1:10)
 
                 DoOptimizeBandwidth = ListGetLogical( WorkSolver % Values, &
                      'Optimize Bandwidth', Found )
@@ -3187,6 +3189,10 @@ CONTAINS
 
              IF(ASSOCIATED(WorkSolver % Matrix)) CALL FreeMatrix(WorkSolver % Matrix)
              WorkSolver % Matrix => WorkMatrix
+             !IF(TRIM(Var % Name) == 'normalstress') PRINT *, 'SwitchMesh2: ',&
+             !PRINT *, 'SwitchMesh2: ',Var % Name,&
+             !ParEnv % myPE,NoMatrix,WorkSolver % Matrix % NumberOfRows,&
+             !WorkSolver % Matrix % Comm,WorkSolver % Matrix % Perm(1:10)
 
              !Check for duplicate solvers with same var
              DO j=1,Model % NumberOfSolvers
@@ -3268,6 +3274,31 @@ CONTAINS
        Var => Var % Next
     END DO
 
+    !Go back through and set non-primary variables to have same % perm as the
+    !primary var.
+    !Bit of a hack - would be nice to somehow do this in one loop...
+    !Set perms equal if: variable has solver, solver has variable, both variable    s have perm
+    Var => NewMesh % Variables
+    DO WHILE (ASSOCIATED(Var))
+
+      WorkSolver => Var % Solver
+      IF(ASSOCIATED(WorkSolver)) THEN
+        IF(ASSOCIATED(WorkSolver % Variable % Perm)) THEN
+          WorkVar => VariableGet(NewMesh % Variables, &
+            WorkSolver % Variable % Name, .TRUE., UnfoundFatal=.TRUE.)
+          PrimaryVar = ASSOCIATED(WorkSolver % Variable, Var)
+          IF(ASSOCIATED(WorkVar) .AND. .NOT. PrimaryVar) THEN
+            IF(ASSOCIATED(WorkVar % Perm) .AND. ASSOCIATED(Var % Perm)) THEN
+              Var % Perm = WorkVar % Perm
+            END IF
+          END IF
+        END IF
+      END IF
+
+      Var => Var % Next
+        
+    END DO
+
     !set partitions to active, so variable can be -global -nooutput
     CALL ParallelActive(.TRUE.) 
     !MPI_BSend buffer issue in this call to InterpolateMeshToMesh
@@ -3289,9 +3320,13 @@ CONTAINS
 
     CALL RotateMesh(OldMesh, RotationMatrix)
     CALL RotateMesh(NewMesh, RotationMatrix)
+    WorkVar => VariableGet(OldMesh % Variables, &
+        'meltrate', .TRUE., UnfoundFatal=.TRUE.)
 
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
-         "Calving Front Mask", UnfoundNodes,globaleps=globaleps,localeps=localeps)
+         "Calving Front Mask", globaleps=globaleps,localeps=localeps)
+    WorkVar => VariableGet(NewMesh % Variables, &
+        'meltrate', .TRUE., UnfoundFatal=.TRUE.)
 
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
@@ -3414,15 +3449,17 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Variables
     INTEGER, POINTER :: OldMaskPerm(:)=>NULL(), NewMaskPerm(:)=>NULL()
     INTEGER, POINTER  :: InterpDim(:)
-    INTEGER :: dummyint
+    INTEGER :: dummyint, ierr
     REAL(KIND=dp), OPTIONAL :: globaleps,localeps
     REAL(KIND=dp) :: geps,leps
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
     LOGICAL, POINTER, OPTIONAL :: SeekNodes(:)
     CHARACTER(LEN=*) :: MaskName
-
+    
     CALL MakePermUsingMask( Model, Solver, NewMesh, MaskName, &
          .FALSE., NewMaskPerm, dummyint)
+    !PRINT *, 'New Mask Perm done',ParEnv % myPE,COUNT(NewMaskPerm>0)
+    !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     CALL MakePermUsingMask( Model, Solver, OldMesh, MaskName, &
          .FALSE., OldMaskPerm, dummyint)
@@ -3432,9 +3469,11 @@ CONTAINS
 
     OldMaskLogical = (OldMaskPerm <= 0)
     NewMaskLogical = (NewMaskPerm <= 0)
+    !IF(COUNT(NewMaskPerm>0)>0) PRINT *, 'IMBCR1: ',ParEnv % myPE,COUNT(NewMaskPerm>0),COUNT(.NOT. NewMaskLogical)
     IF(PRESENT(SeekNodes)) NewMaskLogical = &
          NewMaskLogical .OR. .NOT. SeekNodes
 
+    !IF(COUNT(NewMaskPerm>0)>0) PRINT *, 'IMBCR2: ',ParEnv % myPE,COUNT(NewMaskPerm>0),COUNT(.NOT. NewMaskLogical)
     IF(PRESENT(globaleps)) THEN
       geps = globaleps
     ELSE
