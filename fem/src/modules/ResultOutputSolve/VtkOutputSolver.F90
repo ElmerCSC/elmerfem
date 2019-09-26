@@ -542,19 +542,23 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
   
   INTEGER, SAVE :: nTime = 0
   LOGICAL :: GotIt
-  CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
+  CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix, OutputDirectory
   
   ! Avoid compiler warings about unused variables
-  IF ( TransientSimulation ) THEN; ENDIF
-    IF ( dt > 0.0 ) THEN; ENDIF
+  IF ( TransientSimulation ) CONTINUE
+  IF ( dt > 0.0 ) CONTINUE
       
-      IF ( nTime == 0 ) THEN
-        FilePrefix = GetString( Solver % Values,'Output File Name',GotIt )
-        IF ( .NOT.GotIt ) FilePrefix = "Output"
-      END IF
-      nTime = nTime + 1
-      
-      CALL WriteData( TRIM(FilePrefix), Model, nTime )
+  IF ( nTime == 0 ) THEN
+    FilePrefix = GetString( Solver % Values,'Output File Name',GotIt )
+    IF ( .NOT.GotIt ) FilePrefix = "Output"
+
+    CALL SolverOutputDirectory( Solver, FilePrefix, OutputDirectory, &
+        UseMeshDir = .TRUE. )
+    FilePrefix = TRIM(OutputDirectory)// '/' //TRIM(FilePrefix)        
+  END IF
+  nTime = nTime + 1
+
+  CALL WriteData( TRIM(FilePrefix), Model, nTime )
       
 
     CONTAINS
@@ -570,16 +574,9 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
         LOGICAL :: EigAnal
         REAL(dp), POINTER :: OrigValues(:)
         INTEGER :: OrigDOFs
-        CHARACTER(MAX_NAME_LEN) :: Dir
         
         Mesh => Model % Mesh
-          
-        IF (LEN_TRIM(Mesh % Name) > 0 ) THEN
-          Dir = TRIM(Mesh % Name) // "/"
-        ELSE
-          Dir = "./"
-        END IF
-          
+                    
         EigAnal = .FALSE.
         
         Solvers: DO i = 1, Model % NumberOfSolvers
@@ -603,8 +600,8 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
                 Var % Values = Var % EigenVectors(j,:)
               END IF
               
-              WRITE( VtkFile, '(A,A,I4.4,"_",I3.3,".vtk")' ) &
-                  TRIM(Dir), Prefix, nTime, j
+              WRITE( VtkFile, '(A,I4.4,"_",I3.3,".vtk")' ) &
+                  Prefix, nTime, j
               CALL WriteVtkLegacyFile( VtkFile, Model, .FALSE. )
               
               DEALLOCATE( Var % Values )
@@ -616,7 +613,7 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
         END DO Solvers
         
         IF ( .NOT.EigAnal ) THEN
-          WRITE( VtkFile,'(A,A,I4.4,".vtk")' ) TRIM(Dir),Prefix,nTime
+          WRITE( VtkFile,'(A,I4.4,".vtk")' ) Prefix,nTime
           CALL WriteVtkLegacyFile( VtkFile, Model, .TRUE. )
         END IF
         

@@ -115,22 +115,9 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
   NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
   Norm = 0.0_dp
 
-  IF ( .NOT. FileNameQualified(FileName) ) THEN
-    OutputDirectory = GetString( Params,'Output Directory',GotIt) 
-    IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
-        'Output Directory',GotIt) 
-    IF(.NOT. GotIt) OutputDirectory = TRIM(OutputPath)      
-    n = LEN_TRIM(OutputDirectory)
-    IF( n > 0 ) THEN
-      IF( OutputDirectory(1:2) == '~/') THEN
-        CALL GETENV('HOME',Str)
-        OutputDirectory = TRIM(Str)//'/'//OutputDirectory(3:n)
-      END IF
-      Filename = TRIM(OutputDirectory)// '/' //TRIM(Filename)
-      CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-    END IF
-  END IF
-
+  CALL SolverOutputDirectory( Solver, Filename, OutputDirectory )
+  Filename = TRIM(OutputDirectory)// '/' //TRIM(Filename)
+  
   IF( GetLogical(Params,'Filename Numbering',GotIt)) THEN
     Filename = NextFreeFilename( Filename )
   END IF

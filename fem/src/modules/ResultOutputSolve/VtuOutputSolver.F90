@@ -153,26 +153,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     CALL Info('VtuOutputSolver', Message )
   END IF
 
-
   BaseFile = FilePrefix
-  IF ( .NOT. FileNameQualified(FilePrefix) ) THEN
-    OutputDirectory = GetString( Params,'Output Directory',GotIt) 
-    IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
-        'Output Directory',GotIt)     
-    IF(.NOT. GotIt) OutputDirectory = TRIM(OutputPath)
-    n = LEN_TRIM(OutputDirectory)
-    IF( n > 0 ) THEN
-      IF( OutputDirectory(1:2) == '~/') THEN
-        CALL GETENV('HOME',Str)
-        OutputDirectory = TRIM(Str)//'/'//OutputDirectory(3:n)
-      END IF
-      CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-    ELSE
-      OutputDirectory = TRIM(Mesh % Name) 
-    END IF
-    BaseFile = TRIM(OutputDirectory)// '/' //TRIM(FilePrefix)
-  END IF
 
+  CALL SolverOutputDirectory( Solver, BaseFile, OutputDirectory, UseMeshDir = .TRUE.  )
+  BaseFile = TRIM(OutputDirectory)// '/' //TRIM(BaseFile)
+  
   CALL Info('VtuOutputSolver','Full filename base is: '//TRIM(Basefile), Level=10 )
     
   FixedMesh = ListGetLogical(Params,'Fixed Mesh',GotIt)

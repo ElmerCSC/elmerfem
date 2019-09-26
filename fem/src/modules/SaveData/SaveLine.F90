@@ -1007,24 +1007,8 @@ CONTAINS
     SideFile = ListGetString(Params,'Filename',GotIt )
     IF(.NOT. GotIt) SideFile = DefaultSideFile
 
-    IF ( .NOT. FileNameQualified(SideFile) ) THEN
-      OutputDirectory = GetString( Params,'Output Directory',GotIt) 
-      IF(.NOT. GotIt ) OutputDirectory = GetString( Model % Simulation,&
-          'Output Directory',GotIt)
-      IF(.NOT. GotIt ) OutputDirectory = TRIM(OutputPath)
-      n = LEN_TRIM(OutputDirectory)
-      IF( n > 0 ) THEN
-        IF( OutputDirectory(1:2) == '~/') THEN
-          CALL GETENV('HOME',Name)
-          OutputDirectory = TRIM(Name)//'/'//OutputDirectory(3:n)
-        END IF
-        IF( Solver % TimesVisited == 0 ) THEN
-          CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-        END IF
-        SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
-      END IF
-    END IF
-
+    CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
+    SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
 
     SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
 
@@ -1038,9 +1022,7 @@ CONTAINS
 
     CALL Info('SaveLine','Saving line data to file: '//TRIM(SideParFile),Level=12)
 
-
     FileAppend = ListGetLogical(Params,'File Append',GotIt )
-
 
     IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
       OPEN (NEWUNIT=LineUnit, FILE=SideParFile,POSITION='APPEND')

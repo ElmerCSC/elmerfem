@@ -54,7 +54,7 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: ListElemTypes(MaxElemCode)
 
 
-  CHARACTER(LEN=1024) :: OutputFile, ResFile, MshFile, Txt, Family, &
+  CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile, OutputDirectory, ResFile, MshFile, Txt, Family, &
        ScalarFieldName, VectorFieldName, TensorFieldName, CompName
   CHARACTER(LEN=1024) :: Txt2, Txt3
 
@@ -124,14 +124,15 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
   OutputFile = GetString( Solver % Values, 'Output File Name', Found )
   IF(.NOT. Found) OutputFile = 'Output'
 
+  CALL SolverOutputDirectory( Solver, OutputFile, OutputDirectory, UseMeshDir = .TRUE. )
+  OutputFile = TRIM(OutputDirectory)// '/' //TRIM(OutputFile)
+  
   WRITE(ResFile,'(A,A)') TRIM(OutputFile),'.flavia.res'
   WRITE(MshFile,'(A,A)') TRIM(OutputFile),'.flavia.msh'
-
 
   CALL Info('GidOutputSolver','Writing result for GiD postprocessing')
   CALL Info('GidOutputSolver','res-file = :'//TRIM(ResFile) )
   CALL Info('GidOutputSolver','msh-file = :'//TRIM(MshFile) )
-
 
   ! Write the GiD msh-file:
   !------------------------

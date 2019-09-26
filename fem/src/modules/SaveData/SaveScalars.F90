@@ -208,22 +208,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    IF ( .NOT. FileNameQualified(ScalarsFile) ) THEN
-      OutputDirectory = GetString( Params,'Output Directory',GotIt) 
-      IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
-          'Output Directory',GotIt) 
-      IF(.NOT. GotIt) OutputDirectory = TRIM(OutputPath)      
-      n =  LEN_TRIM(OutputDirectory)
-      IF( n > 0 ) THEN
-        IF( OutputDirectory(1:2) == '~/') THEN
-          CALL GETENV('HOME',Name)
-          OutputDirectory = TRIM(Name)//'/'//OutputDirectory(3:n)
-        END IF
-        ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
-        CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-      END IF
-    END IF
-
+    CALL SolverOutputDirectory( Solver, ScalarsFile, OutputDirectory )
+    ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
+    
     Numbering = ListGetLogical(Params,'Filename Numbering',GotIt)
 
     IF( Numbering  ) THEN
