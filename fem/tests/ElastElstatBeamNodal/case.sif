@@ -1,6 +1,11 @@
 ! Bending 2D beam under the influence of electrostatic forces
 ! The forces are computed to nodal force values from the Maxwell stress tensor
 ! using the solution of the electrostatic equation.
+!
+! This version modifies the historical example by using
+! nodal forces instead of force densities.
+!
+! P.R. 27.9.2019
 
 Check Keywords Warn
 
@@ -13,6 +18,7 @@ Simulation
   Coordinate System = Cartesian 
   Simulation Type = Steady State
   Steady State Max Iterations = 1
+
   Post File = "case.vtu"
 End
 
@@ -70,6 +76,8 @@ Solver 2
 
   Equation = Electric Force
   Procedure = "ElectricForce" "StatElecForce"
+
+  Calculate Nodal Force = Logical True
 End
 
 
@@ -132,8 +140,11 @@ Boundary Condition 2
   Potential = 0.0
   Calculate Electric Force = True
 
-  Force 1 = Equals "Electric Force Density 1"
-  Force 2 = Equals "Electric Force Density 2"
+  Displacement 1 Load = Equals "Electric Nodal Force 1"
+  Displacement 2 Load = Equals "Electric Nodal Force 2"
+
+!  Force 1 = Equals "Electric Force Density 1"
+!  Force 2 = Equals "Electric Force Density 2"
 End
 
 Boundary Condition 3
@@ -148,8 +159,8 @@ Boundary Condition 4
 End
 
 
+Solver 3 :: Reference Norm = 2.36963984E-04
 
-Solver 3 :: Reference Norm = 2.36963985E-04
 
 !End Of File
 
