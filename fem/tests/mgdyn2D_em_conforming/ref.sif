@@ -153,10 +153,10 @@ Material 4
 
   $ mag = -8e5
   Magnetization 1 = Variable Coordinate
-    Real MATC "mag*mx(tx(0) tx(1))
+    Real MATC "-mag*mx(tx(0) tx(1))
 
   Magnetization 2 = Variable Coordinate
-    Real MATC "mag*mx(tx(1) tx(0))
+    Real MATC "-mag*mx(tx(1) tx(0))
 End
 
 Equation 1 :: Active Solvers(2) = 2 3
