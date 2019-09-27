@@ -18286,7 +18286,7 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: Filename, OutputDirectory
      LOGICAL, OPTIONAL :: MakeDir, UseMeshDir
 
-     LOGICAL :: Found, AbsPathInName, DoDir
+     LOGICAL :: Found, AbsPathInName, DoDir, PartitioningSubDir
      INTEGER :: nd, nf, n
      CHARACTER(LEN=MAX_NAME_LEN) :: Str
 
@@ -18365,6 +18365,22 @@ CONTAINS
        END IF
      END IF
 
+     ! Finally, on request save each partitioning to different directory.
+     PartitioningSubDir = ListGetLogical( Solver % Values,'Output Partitioning Directory',Found)
+     IF(.NOT. Found ) THEN
+       PartitioningSubDir = ListGetLogical( CurrentModel % Simulation,'Output Partitioning Directory',Found)
+     END IF
+     IF( PartitioningSubDir ) THEN
+       OutputDirectory = TRIM(OutputDirectory)//'/np'//TRIM(I2S(ParEnv % PEs))
+       nd = LEN_TRIM(OutputDirectory)             
+       IF( DoDir ) THEN
+         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
+         CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )
+       END IF
+      END IF
+       
+
+     
      !PRINT *,'Filename:',TRIM(Filename)
      !PRINT *,'OutputDirectory:',TRIM(OutputDirectory) 
 

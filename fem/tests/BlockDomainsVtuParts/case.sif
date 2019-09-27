@@ -27,12 +27,16 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
+
   ! Partition Mesh = Logical True
   ! Partitioning Method = String "zoltan"
   Post File = case.vtu
 
   vtu: Output Directory = File "par"
   vtu: Vtu Part Collection = Logical True
+
+! This will affect all save routines: vtu, scalars, line
+!  Output Partitioning Directory = Logical True
 
   ! vtu: save bulk only = Logical True
   ! vtu: save boundaries only = Logical True

@@ -518,10 +518,9 @@ CONTAINS
         IF( j > 0 ) VtuFile = VtuFile(j+1:)
       END IF
     END IF
-      
-    
+          
     VtuFile = TRIM( VtuFile)//TRIM(Suffix) 
-    PRINT *,'vtufile:',TRIM(VtuFile)
+    !PRINT *,'vtufile:',TRIM(VtuFile)
 
   END SUBROUTINE VtuFileNaming
 
