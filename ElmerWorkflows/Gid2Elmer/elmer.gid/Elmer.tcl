@@ -31,8 +31,8 @@ proc CreateWindow {dir mat cond mes} {
    
     frame $w.information  -relief ridge -bd 2 
     label $w.information.path        -text " Problem Type path: $dir "
-    label $w.information.materials   -text " Avalaible materials: $mat"
-    label $w.information.conditions  -text " Avalaible conditions: $cond"
+    label $w.information.materials   -text " Available materials: $mat"
+    label $w.information.conditions  -text " Available conditions: $cond"
     ## ----- lines for 2D
     ##label $w.information.mesh_options  -text " Mesh always by default option : lines($mes) set"
     ## ----- Surfaces for 3D

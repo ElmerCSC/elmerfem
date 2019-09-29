@@ -48,7 +48,7 @@
  \section Introduction
 
  \b PythonQt is a dynamic Python (http://www.python.org) binding for Qt (http://www.trolltech.com).
- It offers an easy way to embedd the Python scripting language into
+ It offers an easy way to embed the Python scripting language into
  your Qt applications. It makes heavy use of the QMetaObject system and thus requires Qt4.x.
 
  In contrast to <a href="http://www.riverbankcomputing.co.uk/pyqt/">PyQt</a> , PythonQt is \b not a complete
@@ -79,7 +79,7 @@
  - StdOut/Err redirection to Qt signals instead of cout
  - Interface for creating your own \c import replacement, so that Python scripts can be e.g. signed/verified before they are executed (PythonQtImportInterface)
  - Mapping of plain-old-datatypes and ALL QVariant types to and from Python
- - Support for wrapping of user QVariant types which are registerd via QMetaType
+ - Support for wrapping of user QVariant types which are registered via QMetaType
  - Support for Qt namespace (with all enumerators)
  - All PythonQt wrapped objects support the dir() statement, so that you can see easily which attributes a QObject, CPP object or QVariant has
  - No preprocessing/wrapping tool needs to be started, PythonQt can script any QObject without prior knowledge about it (except for the MetaObject information from the \b moc)
@@ -144,7 +144,7 @@
 
  It is important that you call PythonQt::registerClass() for any QObject derived class
  that may become visible to Python, except when you add it via PythonQt::addObject().
- This will register the complete parent hierachy of the registered class, so that
+ This will register the complete parent hierarchy of the registered class, so that
  when you register e.g. a QPushButton, QWidget will be registered as well (and all intermediate
  parents).
 
