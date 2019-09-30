@@ -67,7 +67,7 @@ typedef struct {
 } PythonQtMetaObjectWrapper;
 
 //---------------------------------------------------------------
-// an abstact class for handling construction of objects
+// an abstract class for handling construction of objects
 class PythonQtConstructorHandler {
 public:
   virtual QObject* create(const QMetaObject* meta, PyObject *args, PyObject *kw, QString& error) = 0;

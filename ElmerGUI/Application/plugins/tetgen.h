@@ -157,7 +157,7 @@ public:
 
 
   // Additional parameters associated with an input (or mesh) vertex.
-  //   These informations are provided by CAD libraries. 
+  //   This information is provided by CAD libraries. 
   typedef struct {
     REAL uv[2];
     int tag;
@@ -207,7 +207,7 @@ public:
   //   tetrahedron's first corner is at index [0], followed by its other 
   //   corners, followed by six nodes on the edges of the tetrahedron if the
   //   second order option (-o2) is applied. Each tetrahedron occupies
-  //   'numberofcorners' ints.  The second order nodes are ouput only. 
+  //   'numberofcorners' ints.  The second order nodes are output only. 
   // 'tetrahedronattributelist':  An array of tetrahedron attributes.  Each
   //   tetrahedron's attributes occupy 'numberoftetrahedronattributes' REALs.
   // 'tetrahedronvolumelist':  An array of constraints, i.e. tetrahedron's
@@ -904,7 +904,7 @@ public:
   //   - an integer for boundary marker (point index);
   //   - an integer for point type (and flags).
   //   - an integer for geometry tag (optional, for -s switch).
-  // The structure of a point is an array of REALs.  Its acutal size is 
+  // The structure of a point is an array of REALs.  Its actual size is 
   //   determined at the runtime.
 
   typedef REAL *point;
@@ -1559,7 +1559,7 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////////
 //                                                                           //
-//  Memory managment                                                         //
+//  Memory management                                                        //
 //                                                                           //
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -2655,7 +2655,7 @@ inline bool tetgenmesh::marktest2ed(triface& t) {
   return (((int *) (t.tet))[elemmarkerindex] & (int) (4096)) != 0;
 }
 
-// elemcounter(), setelemcounter() -- primitives to read or ser a (small)
+// elemcounter(), setelemcounter() -- primitives to read or set a (small)
 //   integer counter in this tet. It is saved from the 16th bit. On 32 bit
 //   system, the range of the counter is [0, 2^15 = 32768]. 
 
@@ -2992,7 +2992,7 @@ inline void tetgenmesh::tsbond(triface& t, face& s)
 
 // tspivot() finds a subface (s) abutting on the given tetrahdera (t).
 //   Return s.sh = NULL if there is no subface at t. Otherwise, return
-//   the subface s, and s and t must be at the same edge wth the same
+//   the subface s, and s and t must be at the same edge with the same
 //   orientation.
 
 inline void tetgenmesh::tspivot(triface& t, face& s) 
