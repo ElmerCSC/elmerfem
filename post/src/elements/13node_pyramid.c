@@ -392,7 +392,7 @@ static double elm_13node_pyramid_dndw_fvalue(double *F,double u,double v,double 
  *         Input:  (char *) description of the element
  *                 (int)    numeric code for the element
  *
- *         Output:  Global list of element types is modfied
+ *         Output:  Global list of element types is modified
  *
  *   Return value:  malloc() success
  *
