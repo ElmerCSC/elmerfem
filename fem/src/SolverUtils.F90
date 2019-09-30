@@ -18293,7 +18293,7 @@ CONTAINS
      IF( PRESENT( MakeDir ) ) THEN
        DoDir = MakeDir
      ELSE
-       DoDir = ( Solver % TimesVisited == 0 )
+       DoDir = ( Solver % TimesVisited == 0 ) .AND. ( ParEnv % MyPe == 0 )
      END IF
 
      ! Output directory is obtained in order
