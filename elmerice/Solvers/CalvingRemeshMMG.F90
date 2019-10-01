@@ -68,10 +68,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
   !--------------------------------------
+  TYPE(Variable_t), POINTER :: CalvingVar
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,FinalMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
-  INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
+  INTEGER :: i,j,k,l,n,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),front_BC_ID, &
        my_calv_front,calv_front, ncalv_parts, group_calve, comm_calve, group_world,ecode, NElNodes
   INTEGER, POINTER :: NodeIndexes(:)
@@ -79,7 +80,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:)
-  REAL(KIND=dp), POINTER :: PArray(:,:)=> NULL()
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:)
   LOGICAL :: ImBoss, Found, Debug=.FALSE.
@@ -106,9 +106,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     END IF
   END DO
 
-  !For testing - set a calving levelset function to mimick calving events
-  !-------------------
 
+  !TODO - unhardcode (detect?) this
   front_BC_id = 1
 
   hmin = ListGetConstReal(SolverParams, &
@@ -127,18 +126,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        "Mesh Hausd", Found)
   IF(.NOT. Found) hausd = 20.0
 
-  PArray => ListGetConstRealArray(SolverParams, &
-       "Test Point", Found)
-  IF(Found) THEN
-    test_point = PArray(1:3,1)
-  ELSE 
-    test_point = (/491600.0, -2290000.0,79.9166641235/)
-  END IF
-
-  test_thresh = ListGetConstReal(SolverParams, &
-       "Test Calve Dist", Found)
-  IF(.NOT. Found) test_thresh = 1500.0
-
   remesh_thresh = ListGetConstReal(SolverParams, &
        "Test Remesh Dist", Found)
   IF(.NOT. Found) remesh_thresh = 1000.0
@@ -146,7 +133,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   PRINT *,ParEnv % MyPE,' hmin: ',hmin
   PRINT *,ParEnv % MyPE,' hmax: ',hmax
   PRINT *,ParEnv % MyPE,' hausd: ',hausd
-  PRINT *,ParEnv % MyPE,' test_point: ',test_point
+  PRINT *,ParEnv % MyPE,' remesh_thresh: ',remesh_thresh
+
+
+  !For testing - set a calving levelset function to mimick calving events
+  !-------------------
+  CalvingVar => VariableGet(Mesh % Variables, "Calving Lset", .TRUE., UnfoundFatal=.TRUE.)
 
   ALLOCATE(test_dist(NNodes),&
        test_lset(NNodes),&
@@ -160,16 +152,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   calved_node = .FALSE.
   fixed_node = .FALSE.
 
-  !Compute involved nodes
-  DO i=1, NNodes
-    test_dist(i) = (((Mesh % Nodes % x(i) - test_point(1))**2.0) + &
-         ((Mesh % Nodes % y(i) - test_point(2))**2.0) + &
-         ((Mesh % Nodes % z(i) - test_point(3))**2.0)) ** 0.5
-  END DO
-
-  calved_node = test_dist < test_thresh
-  remeshed_node = test_dist < (test_thresh + remesh_thresh)
-  test_lset = test_dist - test_thresh
+  test_lset = CalvingVar % Values(CalvingVar % Perm(:)) !TODO - quick&dirty, possibly zero perm?
+  calved_node = test_lset < 0.0
+  remeshed_node = test_lset < remesh_thresh
 
   my_calv_front = 0
   IF(ANY(remeshed_node)) THEN
@@ -437,7 +422,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       NNodes = NewMeshR % NumberOfNodes
       NBulk = NewMeshR % NumberOfBulkElements
       NBdry = NewMeshR % NumberOfBoundaryElements
-      IF(DEBUG) PRINT *, 'NewMeshR nonodes: ',NNodes, NBulk, NBdry
+      IF(DEBUG) PRINT *, 'NewMeshR nonodes, nbulk, nbdry: ',NNodes, NBulk, NBdry
       
       !Clear out unneeded elements
       !Body elems with BodyID 3 (2) are the calving event (remaining domain)
@@ -464,10 +449,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           CYCLE
         END IF
 
+        !Get rid of any isolated elements (I think?)
         CALL MMG3D_Get_AdjaTet(mmgMesh, i, adjList,ierr)
         IF(ALL(adjList == 0)) RmElem(i) = .TRUE.
 
-        !Mark any nodes found in valid bulk elements 
+        !Mark all nodes in valid elements for keeping
         RmNode(Element % NodeIndexes(1:NElNodes)) = .FALSE.
       END DO
 
@@ -614,6 +600,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    CALL Zoltan_Interface( Model, GatheredMesh )
 
    FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
+
+
+   CALL SwitchMesh(Model, Solver, Model % Mesh, FinalMesh)
 
    Model % Mesh => FinalMesh
    Solver % Mesh => FinalMesh

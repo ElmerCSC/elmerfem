@@ -128,6 +128,8 @@ CONTAINS
 
     zz_obj => Zoltan_Create(ELMER_COMM_WORLD)
 
+    IF(Debug) PRINT *, ParEnv % MyPE,' About to set Zoltan parameters.'
+
     zierr = Zoltan_Set_Param(zz_obj, "LB_METHOD", "GRAPH")
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan param LB_METHOD")
     zierr = Zoltan_Set_Param(zz_obj, "LB_APPROACH", "REFINE") !REPARTITION/REFINE <- faster
@@ -150,6 +152,8 @@ CONTAINS
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: CHECK_GRAPH")
     zierr = Zoltan_Set_Param(zz_obj, "PHG_MULTILEVEL", "1")
     IF(zierr /= 0) CALL Fatal(FuncName,"Unable to set Zoltan Parameter: PHG_MULTILEVEL")
+
+    IF(Debug) PRINT *, ParEnv % MyPE,' About to register Zoltan callbacks.'
 
     !Callback functions to query number of elements and the element data
     zierr = Zoltan_Set_Fn(zz_obj, ZOLTAN_NUM_OBJ_FN_TYPE,zoltNumObjs)
@@ -179,26 +183,34 @@ CONTAINS
     ! ZOLTAN_PART_MULTI_FN or ZOLTAN_PART_FN - Optional for LB_APPROACH=Repartition and for REMAP=1. 
 
 
+    IF(Debug) PRINT *, ParEnv % MyPE,' Defining global element adjacency.'
+
     CALL GlobalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
 
     numGidEntries = 1
     numLidEntries = 1
+
+    IF(Debug) PRINT *, ParEnv % MyPE,' Calling zoltan...'
 
     zierr = Zoltan_LB_Partition(zz_obj, changes, numGidEntries, numLidEntries, &
          numImport, importGlobalGids, importLocalGids, importProcs, importToPart, &
          numExport, exportGlobalGids, exportLocalGids, exportProcs, exportToPart)
     IF(zierr /= 0) CALL Fatal(FuncName,"Error computing partitioning in Zoltan")
 
+    IF(Debug) PRINT *, ParEnv % MyPE,' Zoltan finished.'
+
     !Put the information in Mesh % Repartition - boundary elems will follow bulks (thanks Peter!)
     IF(ASSOCIATED(Mesh % Repartition)) DEALLOCATE(Mesh % Repartition)
     ALLOCATE(Mesh % Repartition(NBulk))
     Mesh % Repartition = ParEnv % MyPE + 1 !default stay on this proc
 
+    IF(Debug) PRINT *,ParEnv % MyPE,' numExport: ',numExport
     DO i=1,numExport
       IF(exportLocalGids(i) > NBulk .OR. exportLocalGids(i) <= 0) &
            CALL Fatal(FuncName, "Bad local ID")
       Mesh % Repartition(exportLocalGids(i)) = exportProcs(i) + 1
     END DO
+
   CONTAINS
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
