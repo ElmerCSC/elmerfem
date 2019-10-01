@@ -426,18 +426,21 @@ END SUBROUTINE Get_MMG3D_Mesh
 !as a necessary precursor to repartitioning the mesh.
 !Expects to receive OldMesh with valid GlobalDOFs, and new mesh 
 !in which all GlobalDOFs are either present in the OldMesh, or set to zero.
-!We assume here that each partition may have any number of nodes (inc. zero)
+!We allow here that each partition may have any number of nodes (inc. zero)
+!Assumes that NewMesh doesn't have any nodes which are both *shared* and *unmarked*
 SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
   TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
   !----------------------
   INTEGER :: i,j,k,n,counter, OldNN, NewNN, nglobal_pool, nlocal_pool,&
-       d_ngdofs, gd_ngdofs, ierr, my_maxgdof, mingdof, maxgdof, request,unused
+       ierr, my_maxgdof, mingdof, maxgdof, request,unused,&
+       Need, PNeed(ParEnv % PEs), pnlocal_pool(ParEnv % PEs), disps(ParEnv % PEs), &
+       PNeed_tot
   INTEGER, ALLOCATABLE :: old_gdofs(:), new_gdofs(:), global_pool(:),&
-       local_pool(:),pd_ngdofs(:), work_int(:), disps(:),GDOF_remap(:)
+       local_pool(:), work_int(:), GDOF_remap(:), send_to(:)
   INTEGER, POINTER :: ngdof_ptr(:), ogdof_ptr(:)
   LOGICAL :: Root, Debug = .FALSE.
-  LOGICAL, ALLOCATABLE :: AvailGDOF(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="RenumberNodes"
+  LOGICAL, ALLOCATABLE :: AvailGDOF(:), pool_duplicate(:), im_using(:), used(:)
+  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="RenumberGDOFs"
 
   Root = ParEnv % MyPE == 0
   OldNN = OldMesh % NumberOfNodes
@@ -448,8 +451,7 @@ SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
 
   ALLOCATE(old_gdofs(OldNN), &
        new_gdofs(NewNN), &
-       AvailGDOF(OldNN), &
-       pd_ngdofs(ParEnv % PEs))
+       AvailGDOF(OldNN))
 
   AvailGDOF = .FALSE.
 
@@ -467,9 +469,11 @@ SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
   DO i=1,OldNN-1
     IF(old_gdofs(i) == old_gdofs(i+1)) &
          CALL Fatal(FuncName,"OldMesh has duplicate GlobalDOFs")
-    IF(old_gdofs(i) == 0) &
-         CALL Fatal(FuncName,"OldMesh has at least 1 GlobalDOFs = 0")
+    IF(old_gdofs(i) <= 0) &
+         CALL Fatal(FuncName,"OldMesh has at least 1 GlobalDOFs <= 0")
   END DO
+  IF(old_gdofs(OldNN) <= 0) &
+       CALL Fatal(FuncName,"OldMesh has at least 1 GlobalDOFs <= 0")
 
   !Determine locally which GlobalDOFs are available for assignment
   DO i=1, OldNN
@@ -480,137 +484,178 @@ SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
   nlocal_pool = COUNT(AvailGDOF)
   ALLOCATE(local_pool(COUNT(AvailGDOF)))
   local_pool = PACK(old_gdofs,AvailGDOF)
-  !Sort to optimize renegotiation, preferentially fill from lower nums
-  CALL Sort(nlocal_pool, local_pool)
+  CALL Assert(ALL(local_pool > 0), "RenumberGDOFs", "Programming error: some local pool <= 0")
 
-  !Fill locally from available pool
-  counter = 0
-  DO i=1,NewNN
-    IF(ngdof_ptr(i) == 0) THEN
-      counter = counter + 1
-      IF(counter <= nlocal_pool) ngdof_ptr(i) = local_pool(counter)
-    END IF
-  END DO
+  !Gather pool of available global nodenums to root
+  !--------------------------------------
+  !Note: previously allowed partitions to fill from local pool at this stage
+  !but this assumes that no previously shared nodes are destroyed. Not necessarily
+  !the case.
 
-  !Now, if counter < nlocal_pool, we have GDOFs to give parallel
-  !     if counter == nlocal_pool, we perfectly reassigned locally
-  !     if counter > nlocal_pool, we need from other partitions
-  d_ngdofs = counter-nlocal_pool
-  IF(Debug) PRINT *,ParEnv % MyPE,' counter - nlocal_pool',d_ngdofs,&
-       ' to fill: ', COUNT(ngdof_ptr == 0)
+  CALL MPI_GATHER(nlocal_pool, 1, MPI_INTEGER, pnlocal_pool, 1, &
+       MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
-  !Remake local_pool with those we can share to other parts
-  nlocal_pool = MAX(nlocal_pool - counter,0)
-  IF(nlocal_pool > 0) THEN
-    ALLOCATE(work_int(nlocal_pool))
-    work_int = local_pool(counter:SIZE(local_pool))
-    DEALLOCATE(local_pool)
-    CALL MOVE_ALLOC(work_int, local_pool)
-  ELSE
-    nlocal_pool = 0
-    DEALLOCATE(local_pool)
-    ALLOCATE(local_pool(0))
-  END IF
-
-
-  CALL MPI_ALLGATHER(d_ngdofs, 1, MPI_INTEGER, pd_ngdofs, 1, &
-       MPI_INTEGER, ELMER_COMM_WORLD, ierr)
-
-  !When gd_ngdofs is positive, new global nodenumbers are required
-  !When negative, some need to be destroyed
-  gd_ngdofs = SUM(pd_ngdofs)
-  nglobal_pool = -SUM(pd_ngdofs, pd_ngdofs < 0)
-
-  IF(Debug) PRINT *,ParEnv % MyPE,' debug global gd_ngdofs ', gd_ngdofs
-
-
-  !Root now gathers the available global_pool
-  !-------------------------------------
   IF(Root) THEN
-    ALLOCATE(global_pool(nglobal_pool), disps(ParEnv % PEs))
+    IF(Debug) PRINT *,'pnlocal_pool: ',pnlocal_pool
+    nglobal_pool = SUM(pnlocal_pool)
+    ALLOCATE(global_pool(nglobal_pool), pool_duplicate(nglobal_pool))
+    pool_duplicate = .FALSE.
     disps(1) = 0
     DO i=2,ParEnv % PEs
-      disps(i) = disps(i-1) + MAX(-pd_ngdofs(i-1),0)
+      disps(i) = disps(i-1) + pnlocal_pool(i-1)
     END DO
   END IF
-
-  IF(Debug) PRINT *,ParEnv % MyPE,' debug local_pool ',local_pool
-  IF(Debug) PRINT *,ParEnv % MyPE,' debug nlocal_pool ',nlocal_pool
-  IF(Root .AND. Debug) PRINT *,'size global_pool: ', SIZE(global_pool)
 
   CALL MPI_GatherV(local_pool, nlocal_pool, MPI_INTEGER, global_pool, &
-       MAX(-pd_ngdofs,0),disps, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-
-  IF(Root .AND. Debug) PRINT *,'debug global pool: ',global_pool
-
-
-  !Root sends to each partition the required nodenums
-  !-------------------------------------------
-
-  !Two cases to deal with:
-  !gd_ngdofs <= 0 - no new global nodenums required
-  !gd_ngdofs > 0 - need to generate new global nos
-
-  !Produce new gdofs if required
-  IF(Root) THEN
-    IF(gd_ngdofs > 0) THEN
-      ALLOCATE(work_int(nglobal_pool + gd_ngdofs))
-      work_int(1:nglobal_pool) = global_pool(1:nglobal_pool)
-      DO i=1,gd_ngdofs
-        work_int(nglobal_pool+i) = maxgdof + i
-      END DO
-      DEALLOCATE(global_pool)
-      CALL MOVE_ALLOC(work_int,global_pool)
-      nglobal_pool = nglobal_pool + gd_ngdofs
-    END IF
-
-    !Sort the global pool to minimize renumbering operations
-    CALL Sort(nglobal_pool, global_pool)
-  END IF
+       pnlocal_pool,disps, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
   DEALLOCATE(local_pool)
-  ALLOCATE(local_pool(MAX(d_ngdofs,0)))
-  !Post a receive to get our new globaldofs
-  CALL MPI_iRECV(local_pool, MAX(d_ngdofs,0),MPI_INTEGER,0,1000,&
-       ELMER_COMM_WORLD, request, ierr)
+
+  !Sort & remove duplicates from global pool
+  IF(Root) THEN
+    CALL Sort(nglobal_pool, global_pool)
+    DO i=2,nglobal_pool
+      IF(global_pool(i) == global_pool(i-1)) pool_duplicate(i) = .TRUE.
+    END DO
+    nglobal_pool = COUNT(.NOT. pool_duplicate)
+
+    ALLOCATE(work_int(nglobal_pool))
+    work_int = PACK(global_pool, .NOT. pool_duplicate)
+
+    DEALLOCATE(global_pool)
+    CALL MOVE_ALLOC(work_int, global_pool)
+
+    IF(Debug) THEN
+      PRINT *,'Removed ',COUNT(pool_duplicate),' duplicate global pool entries'
+      PRINT *,'new global pool: ',global_pool
+    END IF
+  END IF
+
+  !Now we have a pool of nodenums (global_pool) no longer
+  !used by each partition, but we need to check for those 
+  !nodes which were simply passed from one partition to another
+  !in OldMesh -> NewMesh
+  CALL MPI_BCAST(nglobal_pool,1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+  IF(.NOT. Root) ALLOCATE(global_pool(nglobal_pool))
+  ALLOCATE(im_using(nglobal_pool))
+  im_using = .FALSE.
+  CALL MPI_BCAST(global_pool,nglobal_pool, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+  DO i=1, nglobal_pool
+    k = SearchI(NewNN, new_gdofs, global_pool(i))
+    IF(k /= 0) im_using(i) = .TRUE.
+    IF(k /= 0 .AND. Debug) PRINT *,ParEnv % MyPE,' using ',global_pool(i),' from global pool'
+  END DO
+
+  !Logical reduction to determine which global dofs are actually in use
+  IF(Root) ALLOCATE(used(nglobal_pool))
+  CALL MPI_REDUCE(im_using, used, nglobal_pool, MPI_LOGICAL, MPI_LOR, 0, ELMER_COMM_WORLD, ierr)
+
+  IF(ROOT) THEN
+    IF(Debug) PRINT *, COUNT(used),' are in use of ',nglobal_pool
+    ALLOCATE(work_int(COUNT(.NOT. used)))
+    work_int = PACK(global_pool, .NOT. used)
+    DEALLOCATE(global_pool)
+    CALL MOVE_ALLOC(work_int, global_pool)
+    nglobal_pool = SIZE(global_pool)
+  ELSE
+    DEALLOCATE(global_pool)
+  END IF
+
+  !Gather how many global nodenums required by each partition
+  Need = COUNT(ngdof_ptr == 0)
+  CALL MPI_GATHER(Need, 1, MPI_INTEGER, PNeed, 1, MPI_INTEGER, &
+       0, ELMER_COMM_WORLD, ierr)
+
+  !Either: 
+  ! SUM(PNeed) > nglobal_pool : generate additional globalDOFs
+  ! SUM(PNeed) < nglobal_pool : delete excess globalDOFs
+  ! SUM(PNeed) == nglobal_pool : all good (rare)
 
   IF(Root) THEN
+    PNeed_tot = SUM(PNeed)
+
+    IF(PNeed_tot > nglobal_pool) THEN
+
+      ALLOCATE(work_int(PNeed_tot))
+      work_int = 0
+      work_int(1:nglobal_pool) = global_pool
+      DO i=1, PNeed_tot - nglobal_pool
+        work_int(nglobal_pool + i) = maxgdof + i
+      END DO
+      DEALLOCATE(global_pool)
+      CALL MOVE_ALLOC(work_int, global_pool)
+      nglobal_pool = PNeed_tot
+    END IF
+
+    !Mark global dofs to send to each part
+    !-1 means excess (to be destroyed)
+    ALLOCATE(send_to(nglobal_pool))
+    send_to = -1 !default
     counter = 1
-    DO i=1, ParEnv % PEs
-      n = MAX(pd_ngdofs(i),0)
-      CALL MPI_SEND(global_pool(counter:counter+n-1),MAX(pd_ngdofs(i),0),&
-           MPI_INTEGER, i-1, 1000, ELMER_COMM_WORLD, ierr)
-      !Clear out the global pool as we go
-      global_pool(counter:counter+n-1) = 0
-      counter = counter + n
-      IF(counter-1 > SIZE(global_pool)) CALL Fatal(FuncName, &
-           "Programming error: ran out of global nodes")
+    DO i=1,ParEnv % PEs
+      send_to(counter:counter+PNeed(i)-1) = i-1
+      counter = counter + PNeed(i)
     END DO
   END IF
 
-  CALL MPI_Wait(request, MPI_STATUS_IGNORE, ierr)
+  !Set up iRECV if required
+  IF(Need > 0) THEN
+    ALLOCATE(local_pool(Need))
+    CALL MPI_iRECV(local_pool,Need,MPI_INTEGER,0,1001,&
+       ELMER_COMM_WORLD, request, ierr)
+  END IF
 
-  IF(Debug) PRINT *,ParEnv % MyPE,' new local pool: ', local_pool
-
-  !Each partition fills any remaining blanks from new local_pool
-  counter = 0
-  DO i=1, NewNN
-    IF(ngdof_ptr(i) == 0) THEN
-      counter = counter + 1
-      IF(counter > SIZE(local_pool)) CALL Fatal(FuncName, &
-           "Programming error: ran out of local nodes")
-      ngdof_ptr(i) = local_pool(counter)
-    END IF
-  END DO
-
-  !Root transmits any unused global nodenumbers (implies gd_ngdofs > 0)
-  unused = MAX(-gd_ngdofs, 0)
+  !Root sends out nodes from pool
   IF(Root) THEN
+    IF(Debug) PRINT *,'Pneed: ',PNeed
+    counter = 1
+    DO i=1,ParEnv % PEs
+      IF(PNeed(i) <= 0) CYCLE
+
+      IF(ANY(send_to(counter:counter+PNeed(i)-1) /= i-1)) &
+           CALL Fatal(FuncName, "Programming error in send pool")
+
+      CALL MPI_SEND(global_pool(counter:counter+PNeed(i)-1),PNeed(i),&
+           MPI_INTEGER, i-1, 1001, ELMER_COMM_WORLD, ierr)
+
+      counter = counter + PNeed(i)
+    END DO
+  END IF
+
+  IF(Need > 0) CALL MPI_Wait(request, MPI_STATUS_IGNORE, ierr)
+
+  !Fill from pool as required
+  IF(Need > 0) THEN
+    counter = 0
+    DO i=1,NewNN
+      IF(ngdof_ptr(i) == 0) THEN
+        counter = counter + 1
+        ngdof_ptr(i) = local_pool(counter)
+      END IF
+    END DO
+  END IF
+
+
+  !Root packs and sends unused gdofs
+  IF(Root) THEN
+    unused = COUNT(send_to == -1)
+    IF(Debug) PRINT *,ParEnv % MyPE,' unused: ',unused
+
     ALLOCATE(work_int(unused))
-    work_int = PACK(global_pool,  global_pool>0)
+    work_int = PACK(global_pool,  send_to == -1)
     DEALLOCATE(global_pool)
     CALL MOVE_ALLOC(work_int, global_pool)
-  ELSE
+
+    IF(Debug) THEN
+      PRINT *,' unused, size(global_pool): ', unused, SIZE(global_pool)
+      PRINT *,'Final global pool: ',global_pool
+    END IF
+  END IF
+
+  CALL MPI_BCAST(unused,1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+  IF(.NOT. Root) THEN
     ALLOCATE(global_pool(unused))
   END IF
 
@@ -618,6 +663,8 @@ SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
 
   !Renumber GDOFs to ensure contiguity if required
   IF(unused > 0) THEN
+    IF(Debug) PRINT *,ParEnv % MyPE,' final global pool: ',global_pool
+
     MaxGDOF = MAXVAL(ngdof_ptr)
     MinGDOF = MINVAL(ngdof_ptr)
     IF(MinGDOF <= 0) CALL Fatal(FuncName, "Programming error: at least one gdof == 0")
@@ -628,7 +675,8 @@ SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
     ALLOCATE(GDOF_remap(MinGDOF:MaxGDOF))
     DO i=1,NewNN
         GDOF_remap(new_gdofs(i)) = new_gdofs(i) - SearchIntPosition(global_pool, new_gdofs(i))
-        IF(Debug) PRINT *,ParEnv % MyPE,' debug gdof map: ',new_gdofs(i), GDOF_remap(new_gdofs(i))
+        IF(Debug) PRINT *,ParEnv % MyPE,' debug gdof map: ',new_gdofs(i), &
+             SearchIntPosition(global_pool, new_gdofs(i)), GDOF_remap(new_gdofs(i))
     END DO
 
     ngdof_ptr = GDOF_remap(ngdof_ptr)
