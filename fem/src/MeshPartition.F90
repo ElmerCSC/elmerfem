@@ -313,7 +313,7 @@ CONTAINS
     !-------------------------------------
     TYPE(Element_t), POINTER :: MFacePtr(:), Element
     INTEGER :: i,j,k,m,n,max_elfaces,el1,el2,gface_id, gpar_id,gpar_lid,ierr,counter,&
-         NBulk,NFaces,Sweep,NIFFaces
+         NBulk,NFaces,Sweep,NIFFaces,work_size
     INTEGER, ALLOCATABLE :: ElemConn(:,:), ElemConnPart(:,:), NElConn(:), FaceIFIDX(:),status(:),&
          work_int(:)
     INTEGER, POINTER :: ElFaceIdx(:)
@@ -389,7 +389,11 @@ CONTAINS
 
 
     !Generate shared Face GElementIndex list & respective parent GElementIndex
-    ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs),work_int(NBulk))
+    !don't know at this point the required size of work_int, if there are lots
+    !of bulk elements, probably NBulk is sufficient, but for only a few
+    !disconnected elements, maybe not. So set min size = 1000
+    work_size = MAX(NBulk, 1000)
+    ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs),work_int(work_size))
 
     RecvFaces % Count = 0
 
