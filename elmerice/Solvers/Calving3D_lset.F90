@@ -163,15 +163,20 @@
    CIndexPerm => CIndexVar % Perm
 
    !This solver's variable, two dofs, holds x and y pseudo mesh update
-   CalvingVar => VariableGet(Model % Variables,"Calving",.TRUE.)
+   CalvingVar => Solver % Variable
    IF(.NOT.ASSOCIATED(CalvingVar)) &
-      CALL Fatal(SolverName, "Can't find exported variable 'Calving'.")
-   IF(CalvingVar % DOFs /= 3) &
-        CALL Fatal(SolverName,"Solver variable has wrong number of DOFs")
+      CALL Fatal(SolverName, "Find_Calving3D_Lset has no variable!")
+   IF(CalvingVar % DOFs /= 1) &
+        CALL Fatal(SolverName,"Solver variable has more than one DOF")
 
    CalvingValues => CalvingVar % Values
    CalvingPerm => CalvingVar % Perm
    DOFs = CalvingVar % DOFs
+
+   CalvingValues = DistValues - 200.0
+   RETURN
+
+   !------- END OF TEST -----------
 
    NoNodes = Mesh % NumberOfNodes
    ALLOCATE( TopPerm(NoNodes), BotPerm(NoNodes), LeftPerm(NoNodes),&
